@@ -812,12 +812,13 @@ class Player extends Ork3 {
 				$this->mundane->pronoun_custom = is_null($request['PronounCustom'])?$this->mundane->pronoun_custom:$request['PronounCustom'];
 
 				// reeve or corpora qual changes
-				// TODO: add error messaging
 				if (Ork3::$Lib->authorization->HasAuthority($requester_id, AUTH_KINGDOM, $this->mundane->kingdom_id, AUTH_EDIT) || Ork3::$Lib->authorization->HasAuthority($requester_id, AUTH_ADMIN, 0, AUTH_EDIT) || Ork3::$Lib->authorization->HasAuthority($requester_id, AUTH_PARK, $this->mundane->park_id, AUTH_EDIT)) {
 					$this->mundane->reeve_qualified = is_null($request['ReeveQualified'])?$this->mundane->reeve_qualified:$request['ReeveQualified'];
 					$this->mundane->reeve_qualified_until = is_null($request['ReeveQualifiedUntil'])?$this->mundane->reeve_qualified_until:$request['ReeveQualifiedUntil'];
 					$this->mundane->corpora_qualified = is_null($request['CorporaQualified'])?$this->mundane->corpora_qualified:$request['CorporaQualified'];
 					$this->mundane->corpora_qualified_until = is_null($request['CorporaQualifiedUntil'])?$this->mundane->corpora_qualified_until:$request['CorporaQualifiedUntil'];
+				} else if (!is_null($request['ReeveQualified']) || !is_null($request['ReeveQualifiedUntil']) || !is_null($request['CorporaQualified']) || !is_null($request['CorporaQualifiedUntil'])) {
+					$notices .= 'You do not have sufficient authority to update reeve or corpora qualification fields. ';
 				}
 
 				$this->mundane->save();
@@ -1279,7 +1280,6 @@ class Player extends Ork3 {
 			$dues->park_id = $request['ParkId'];
 			$dues->kingdom_id = $request['KingdomId'];
 			$dues->dues_from = date('Y-m-d', strtotime($request['DuesFrom']));
-			// TODO: create private function that determins DuesUntil based on kingdom configured terms
 			$dues->dues_until = $this->determine_dues_until($request['KingdomId'], $request['DuesFrom'], $request['Terms']);
 			$dues->terms = $request['Terms'];
 			$dues->dues_for_life = $request['DuesForLife'];
@@ -1344,7 +1344,6 @@ class Player extends Ork3 {
         return $duesReport;
 	}
 
-	// TODO:
 	public function RevokeDues($request) {
 		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
 		$dues = new yapo($this->db, DB_PREFIX . 'dues');

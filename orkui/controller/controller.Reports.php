@@ -286,7 +286,6 @@ class Controller_Reports extends Controller {
 
 	/* New Cooler Dues functionality */
 	public function dues($type=null) {
-		// TODO: totally dupe and change up this template
 		$this->template = 'Reports_dues.tpl';
 		$this->data['roster'] = $this->Reports->dues_paid_list($type, $this->request->id);
 		$this->data['page_title'] ="Dues Paid List";
