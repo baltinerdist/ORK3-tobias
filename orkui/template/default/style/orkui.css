@@ -6668,6 +6668,40 @@ a:hover {
 	font-size: 10pt;
 	text-align: center;
 }
+.pager {
+	padding: 8px 0;
+	text-align: center;
+	font-family: "Gill Sans MT","lucida sans unicode",helvetica,arial;
+	font-size: 10pt;
+}
+.pager button {
+	background-color: #f0f0f0;
+	border: 1px solid #ccc;
+	border-radius: 3px;
+	padding: 4px 8px;
+	margin: 0 2px;
+	cursor: pointer;
+	font-size: 10pt;
+}
+.pager button:hover {
+	background-color: #ddd;
+}
+.pager button.disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+.pager .pagedisplay {
+	display: inline-block;
+	margin: 0 8px;
+	color: #555;
+}
+.pager select.pagesize {
+	margin-left: 8px;
+	padding: 3px;
+	border: 1px solid #ccc;
+	border-radius: 3px;
+	font-size: 10pt;
+}
 .restricted-player-display {
 	font-style: italic;
 }

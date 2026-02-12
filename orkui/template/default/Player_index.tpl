@@ -436,6 +436,19 @@
 <?php endforeach ?>
 		</tbody>
 	</table>
+	<div id="attendance-pager" class="pager">
+		<button type="button" class="first"><i class="fas fa-angle-double-left"></i></button>
+		<button type="button" class="prev"><i class="fas fa-angle-left"></i></button>
+		<span class="pagedisplay"></span>
+		<button type="button" class="next"><i class="fas fa-angle-right"></i></button>
+		<button type="button" class="last"><i class="fas fa-angle-double-right"></i></button>
+		<select class="pagesize">
+			<option value="10" selected="selected">10</option>
+			<option value="25">25</option>
+			<option value="50">50</option>
+			<option value="all">All</option>
+		</select>
+	</div>
 </div>
 
 <?php if ($this->__session->user_id): ?>
@@ -445,6 +458,7 @@
 		</div>
 	</div>
 <?php endif; ?>
+<script src="<?=HTTP_TEMPLATE;?>default/script/js/jquery-tablesorter/widgets/widget-pager.js"></script>
 <script>
 		<?php if ($this->__session->user_id): ?>
 			$(".confirm-delete-recommendation").click(function(e) {
@@ -452,13 +466,33 @@
 				var targetUrl = $(this).attr("href");
 
 				$( "#delete-recommendation" ).dialog({ width: 460,
-					buttons: { 
-						"Cancel": function() { $(this).dialog("close"); }, 
-						"Confirm": function() { window.location.href = targetUrl; $(this).dialog("close"); } 
+					buttons: {
+						"Cancel": function() { $(this).dialog("close"); },
+						"Confirm": function() { window.location.href = targetUrl; $(this).dialog("close"); }
 					}
 				});
 			});
 		<?php endif; ?>
+
+		$("#Attendance").tablesorter({
+			theme: 'jui',
+			widgets: ["zebra", "pager"],
+			widgetOptions: {
+				zebra: ["normal-row", "alt-row"],
+				pager_size: 10,
+				pager_output: '{startRow} to {endRow} of {totalRows} rows',
+				pager_selectors: {
+					container: '#attendance-pager',
+					first: '.first',
+					prev: '.prev',
+					next: '.next',
+					last: '.last',
+					gotoPage: '.gotoPage',
+					pageDisplay: '.pagedisplay',
+					pageSize: '.pagesize'
+				}
+			}
+		});
 
 </script>
 
