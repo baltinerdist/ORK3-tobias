@@ -121,4 +121,11 @@ $server->register(
 		$namespace
 	);
 
+$server->register(
+		'Player.ResetWaivers',
+		array('ResetWaiversRequest'=>'tns:ResetWaiversRequest'),
+		array('return' => 'tns:StatusType'),
+		$namespace
+	);
+
 ?>

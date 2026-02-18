@@ -1036,12 +1036,15 @@ class Report  extends Ork3 {
 			$per_period = date("Y-m-d", strtotime("-$request[AverageMonths] month"));
 		}
 
-		$monthly_period = date("Y-m-d", strtotime("-1 year"));
 		$escaped_kingdom_id = mysql_real_escape_string($request['KingdomId']);
+
+		// Only join mundane table when NativePopulace or Waivered filters are active
+		$mundane_join = (!empty($native_populace) || !empty($waivered_peeps))
+			? "left join " . DB_PREFIX . "mundane m on a.mundane_id = m.mundane_id"
+			: "";
 
 		$sql = "select
 						count(mundanesbyweek.mundane_id) attendance_count, p.park_id, p.name, p.has_heraldry,
-						ifnull(monthly_attendance.monthly_attendance_count, 0) monthly_count,
 						pt.title, p.parktitle_id
 					from
 						" . DB_PREFIX . "park p
@@ -1050,7 +1053,7 @@ class Report  extends Ork3 {
 								(select
 										a.mundane_id, a.date_week3 as week, a.park_id
 									from " . DB_PREFIX . "attendance a
-										left join " . DB_PREFIX . "mundane m on a.mundane_id = m.mundane_id
+										$mundane_join
 									where
 										$native_populace
 										$waivered_peeps
@@ -1059,23 +1062,6 @@ class Report  extends Ork3 {
 										and a.mundane_id > 0
 									group by date_year, date_week3, mundane_id) mundanesbyweek
 								on p.park_id = mundanesbyweek.park_id
-							left join
-								(select
-										count(mundanesbymonth.mundane_id) monthly_attendance_count, mundanesbymonth.park_id
-									from
-										(select
-												a.mundane_id, a.date_month as month, a.park_id
-											from " . DB_PREFIX . "attendance a
-												left join " . DB_PREFIX . "mundane m on a.mundane_id = m.mundane_id
-											where
-												$native_populace
-												$waivered_peeps
-												date > '$monthly_period'
-												and a.kingdom_id = '$escaped_kingdom_id'
-												and a.mundane_id > 0
-											group by date_month, mundane_id) mundanesbymonth
-									group by mundanesbymonth.park_id) monthly_attendance
-								on p.park_id = monthly_attendance.park_id
 					where p.kingdom_id = '$escaped_kingdom_id' and p.active = 'Active'
 					group by park_id
 					order by name";
@@ -1090,9 +1076,117 @@ class Report  extends Ork3 {
 		} else {
 			$report = array();
 			while ($r->next()) {
-				$report[] = array( 'AttendanceCount' => $r->attendance_count, 'MonthlyCount' => $r->monthly_count, 'ParkId' => $r->park_id, 'ParkName' => $r->name, 'Title' => $r->title, 'ParkTitleId' => $r->parktitle_id, 'HasHeraldry' => $r->has_heraldry );
+				$report[] = array( 'AttendanceCount' => $r->attendance_count, 'ParkId' => $r->park_id, 'ParkName' => $r->name, 'Title' => $r->title, 'ParkTitleId' => $r->parktitle_id, 'HasHeraldry' => $r->has_heraldry );
 			}
 			$response['KingdomParkAveragesSummary'] = $report;
+		}
+		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
+	}
+
+	public function GetKingdomParkMonthlyAverages($request) {
+		$key = Ork3::$Lib->ghettocache->key($request);
+		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 600)) !== false)
+			return $cache;
+
+		if (strlen($request['KingdomId']) == 0) $request['KingdomId'] = '0';
+		$monthly_period = date("Y-m-d", strtotime("-1 year"));
+		$escaped_kingdom_id = mysql_real_escape_string($request['KingdomId']);
+
+		// Group by date_year AND date_month so the same calendar month in two
+		// different years (e.g. Feb 2025 vs Feb 2026) counts as two distinct months.
+		$sql = "select
+						count(mundanesbymonth.mundane_id) monthly_count, mundanesbymonth.park_id
+					from
+						(select
+								a.mundane_id, a.date_year, a.date_month, a.park_id
+							from " . DB_PREFIX . "attendance a
+							where
+								date > '$monthly_period'
+								and a.kingdom_id = '$escaped_kingdom_id'
+								and a.mundane_id > 0
+							group by a.date_year, a.date_month, a.mundane_id, a.park_id) mundanesbymonth
+					group by mundanesbymonth.park_id";
+		logtrace('Report: GetKingdomParkMonthlyAverages', array($request, $sql));
+		$r = $this->db->query($sql);
+		$response = array(
+			'Status' => Success(),
+			'KingdomParkMonthlySummary' => array()
+		);
+		if ($r === false) {
+			$response['Status'] = InvalidParameter();
+		} else {
+			$summary = array();
+			while ($r->next()) {
+				$summary[] = array( 'ParkId' => $r->park_id, 'MonthlyCount' => (int)$r->monthly_count );
+			}
+			$response['KingdomParkMonthlySummary'] = $summary;
+		}
+		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
+	}
+
+	public function GetTopParksByAttendance($request=null) {
+		$key = Ork3::$Lib->ghettocache->key($request);
+		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 600)) !== false)
+			return $cache;
+
+		if (strlen($request['Limit'] ?? '') == 0) $request['Limit'] = 25;
+		if (strlen($request['StartDate'] ?? '') == 0) $request['StartDate'] = date("Y-m-d", strtotime("-12 month"));
+		if (strlen($request['EndDate'] ?? '') == 0) $request['EndDate'] = date("Y-m-d");
+
+		$escaped_start = mysql_real_escape_string($request['StartDate']);
+		$escaped_end = mysql_real_escape_string($request['EndDate']);
+		$escaped_limit = intval($request['Limit']);
+		$native_populace = $request['NativePopulace'] ? "m.park_id = a.park_id and" : "";
+
+		$sql = "select
+					count(mundanesbyweek.mundane_id) attendance_count,
+					p.park_id, p.name, p.has_heraldry,
+					k.name kingdom_name, k.kingdom_id,
+					pt.title, p.parktitle_id
+				from
+					" . DB_PREFIX . "park p
+						left join " . DB_PREFIX . "kingdom k on k.kingdom_id = p.kingdom_id
+						left join " . DB_PREFIX . "parktitle pt on pt.parktitle_id = p.parktitle_id
+						left join
+							(select
+									a.mundane_id, a.date_week3 as week, a.park_id
+								from " . DB_PREFIX . "attendance a
+									left join " . DB_PREFIX . "mundane m on a.mundane_id = m.mundane_id
+								where
+									$native_populace
+									date >= '$escaped_start'
+									and date <= '$escaped_end'
+									and a.mundane_id > 0
+								group by date_year, date_week3, mundane_id) mundanesbyweek
+							on p.park_id = mundanesbyweek.park_id
+				where p.active = 'Active'
+					and k.active = 'Active'
+				group by p.park_id
+				order by attendance_count desc
+				limit $escaped_limit";
+		logtrace('Report: GetTopParksByAttendance', array($request, $sql));
+		$r = $this->db->query($sql);
+		$response = array(
+			'Status' => Success(),
+			'TopParksSummary' => ''
+		);
+		if ($r === false) {
+			$response['Status'] = InvalidParameter();
+		} else {
+			$report = array();
+			while ($r->next()) {
+				$report[] = array(
+					'AttendanceCount' => $r->attendance_count,
+					'ParkId' => $r->park_id,
+					'ParkName' => $r->name,
+					'HasHeraldry' => $r->has_heraldry,
+					'KingdomId' => $r->kingdom_id,
+					'KingdomName' => $r->kingdom_name,
+					'Title' => $r->title,
+					'ParkTitleId' => $r->parktitle_id
+				);
+			}
+			$response['TopParksSummary'] = $report;
 		}
 		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
 	}
@@ -1480,6 +1574,202 @@ class Report  extends Ork3 {
 			$response['RestrictAccess'] = $restrict_access; 
 		}
         return $response;
+	}
+
+	/* ------------------------------------------------------------------ */
+	/*  Park Attendance Explorer helpers & methods                        */
+	/* ------------------------------------------------------------------ */
+
+	private function _periodExpr($period, $alias = 'a') {
+		switch ($period) {
+			case 'Weekly':
+				return "CONCAT({$alias}.date_year, '-W', LPAD({$alias}.date_week3, 2, '0'))";
+			case 'Monthly':
+				return "CONCAT({$alias}.date_year, '-', LPAD({$alias}.date_month, 2, '0'))";
+			case 'Quarterly':
+				return "CONCAT({$alias}.date_year, '-Q', CEIL({$alias}.date_month / 3))";
+			case 'Annually':
+				return "CAST({$alias}.date_year AS CHAR)";
+			default:
+				return "CONCAT({$alias}.date_year, '-', LPAD({$alias}.date_month, 2, '0'))";
+		}
+	}
+
+	public function ParkAttendanceAllParks($request) {
+		$cache_key = Ork3::$Lib->ghettocache->key($request);
+		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $cache_key, 300)) !== false)
+			return $cache;
+
+		$kingdom_id = mysql_real_escape_string($request['KingdomId']);
+		$start_date = mysql_real_escape_string($request['StartDate']);
+		$end_date   = mysql_real_escape_string($request['EndDate']);
+		$period_expr = $this->_periodExpr($request['Period']);
+
+		// Main query: per-park per-period aggregates
+		$sql = "SELECT
+					p.park_id,
+					p.name as park_name,
+					$period_expr as period_label,
+					COUNT(*) as total_signins,
+					COUNT(DISTINCT a.mundane_id) as unique_players,
+					COUNT(DISTINCT CASE WHEN m.park_id = a.park_id THEN a.mundane_id END) as unique_members,
+					COUNT(DISTINCT CONCAT(a.date_year, '-', a.date_week3)) as weeks_in_period,
+					COUNT(DISTINCT CONCAT(a.date_year, '-', a.date_month)) as months_in_period
+				FROM " . DB_PREFIX . "attendance a
+					INNER JOIN " . DB_PREFIX . "park p ON a.park_id = p.park_id
+					LEFT JOIN " . DB_PREFIX . "mundane m ON a.mundane_id = m.mundane_id
+				WHERE a.kingdom_id = '$kingdom_id'
+					AND a.date >= '$start_date'
+					AND a.date <= '$end_date'
+					AND a.park_id > 0
+					AND p.active = 'Active'
+				GROUP BY p.park_id, period_label
+				ORDER BY p.name, period_label";
+
+		$r = $this->db->query($sql);
+		$response = array('Status' => Success(), 'Attendance' => array());
+		if ($r !== false && $r->size() > 0) {
+			do {
+				$response['Attendance'][] = array(
+					'ParkId' => $r->park_id,
+					'ParkName' => $r->park_name,
+					'PeriodLabel' => $r->period_label,
+					'TotalSignins' => $r->total_signins,
+					'UniquePlayers' => $r->unique_players,
+					'UniqueMembers' => $r->unique_members,
+					'WeeksInPeriod' => $r->weeks_in_period,
+					'MonthsInPeriod' => $r->months_in_period
+				);
+			} while ($r->next());
+		}
+
+		// Second query: count of park members with 2+/3+/4+ sign-ins per park per period
+		$sql2 = "SELECT
+					sub.park_id,
+					sub.period_label,
+					SUM(CASE WHEN sub.cnt >= 2 THEN 1 ELSE 0 END) as members_2plus,
+					SUM(CASE WHEN sub.cnt >= 3 THEN 1 ELSE 0 END) as members_3plus,
+					SUM(CASE WHEN sub.cnt >= 4 THEN 1 ELSE 0 END) as members_4plus
+				FROM (
+					SELECT a.park_id, $period_expr as period_label, a.mundane_id, COUNT(*) as cnt
+					FROM " . DB_PREFIX . "attendance a
+						INNER JOIN " . DB_PREFIX . "park p ON a.park_id = p.park_id
+						INNER JOIN " . DB_PREFIX . "mundane m ON a.mundane_id = m.mundane_id
+							AND m.park_id = a.park_id
+					WHERE a.kingdom_id = '$kingdom_id'
+						AND a.date >= '$start_date'
+						AND a.date <= '$end_date'
+						AND a.park_id > 0
+						AND p.active = 'Active'
+					GROUP BY a.park_id, period_label, a.mundane_id
+				) sub
+				GROUP BY sub.park_id, sub.period_label";
+
+		$r2 = $this->db->query($sql2);
+		$membercounts = array();
+		if ($r2 !== false && $r2->size() > 0) {
+			do {
+				$membercounts[$r2->park_id . '|' . $r2->period_label] = array(
+					'Members2Plus' => $r2->members_2plus,
+					'Members3Plus' => $r2->members_3plus,
+					'Members4Plus' => $r2->members_4plus
+				);
+			} while ($r2->next());
+		}
+
+		// Attach member counts to each row
+		foreach ($response['Attendance'] as &$row) {
+			$lookup = $row['ParkId'] . '|' . $row['PeriodLabel'];
+			$row['Members2Plus'] = isset($membercounts[$lookup]) ? $membercounts[$lookup]['Members2Plus'] : 0;
+			$row['Members3Plus'] = isset($membercounts[$lookup]) ? $membercounts[$lookup]['Members3Plus'] : 0;
+			$row['Members4Plus'] = isset($membercounts[$lookup]) ? $membercounts[$lookup]['Members4Plus'] : 0;
+		}
+		unset($row);
+
+		logtrace("Report->ParkAttendanceAllParks()", array($this->db->lastSql, $request));
+		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $cache_key, $response);
+	}
+
+	public function ParkAttendanceSinglePark($request) {
+		$key = Ork3::$Lib->ghettocache->key($request);
+		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 300)) !== false)
+			return $cache;
+
+		$park_id    = mysql_real_escape_string($request['ParkId']);
+		$kingdom_id = mysql_real_escape_string($request['KingdomId']);
+		$start_date = mysql_real_escape_string($request['StartDate']);
+		$end_date   = mysql_real_escape_string($request['EndDate']);
+		$min_signins = intval($request['MinimumSignIns']);
+		$period_expr = $this->_periodExpr($request['Period']);
+
+		$local_only = !empty($request['LocalPlayersOnly']);
+		$local_filter = $local_only ? "AND m.park_id = '$park_id'" : '';
+
+		$min_filter = '';
+		if ($min_signins > 0) {
+			$min_filter = "AND a.mundane_id IN (
+				SELECT a2.mundane_id
+				FROM " . DB_PREFIX . "attendance a2" .
+				($local_only ? " INNER JOIN " . DB_PREFIX . "mundane m2 ON a2.mundane_id = m2.mundane_id AND m2.park_id = '$park_id'" : "") . "
+				WHERE a2.park_id = '$park_id'
+					AND a2.kingdom_id = '$kingdom_id'
+					AND a2.date >= '$start_date'
+					AND a2.date <= '$end_date'
+					AND a2.mundane_id > 0
+				GROUP BY a2.mundane_id
+				HAVING COUNT(*) >= $min_signins
+			)";
+		}
+
+		$sql = "SELECT
+					a.mundane_id,
+					m.persona,
+					m.waivered,
+					$period_expr as period_label,
+					COUNT(*) as signin_count,
+					MAX(d.dues_until) as dues_until,
+					MAX(d.dues_for_life) as dues_for_life
+				FROM " . DB_PREFIX . "attendance a
+					LEFT JOIN " . DB_PREFIX . "mundane m ON a.mundane_id = m.mundane_id
+					LEFT JOIN " . DB_PREFIX . "dues d ON d.mundane_id = a.mundane_id
+						AND d.kingdom_id = a.kingdom_id
+						AND d.revoked != 1
+						AND (d.dues_for_life = 1 OR d.dues_until >= CURDATE())
+				WHERE a.park_id = '$park_id'
+					AND a.kingdom_id = '$kingdom_id'
+					AND a.date >= '$start_date'
+					AND a.date <= '$end_date'
+					AND a.mundane_id > 0
+					$local_filter
+					$min_filter
+				GROUP BY a.mundane_id, period_label
+				ORDER BY m.persona, period_label";
+
+		$r = $this->db->query($sql);
+		$response = array('Status' => Success(), 'Attendance' => array());
+		if ($r !== false && $r->size() > 0) {
+			do {
+				// Determine dues paid status
+				$dues_paid = null;
+				if ($r->dues_for_life == 1) {
+					$dues_paid = 'Life';
+				} else if ($r->dues_until && $r->dues_until >= date('Y-m-d')) {
+					$dues_paid = $r->dues_until;
+				}
+
+				$response['Attendance'][] = array(
+					'MundaneId' => $r->mundane_id,
+					'Persona' => $r->persona,
+					'Waivered' => $r->waivered,
+					'DuesPaid' => $dues_paid,
+					'PeriodLabel' => $r->period_label,
+					'SignInCount' => $r->signin_count
+				);
+			} while ($r->next());
+		}
+
+		logtrace("Report->ParkAttendanceSinglePark()", array($this->db->lastSql, $request));
+		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
 	}
 }
 
