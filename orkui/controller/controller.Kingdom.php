@@ -385,6 +385,8 @@ class Controller_Kingdom extends Controller {
 		$recsPublic = isset($knConfigs['AwardRecsPublic'])
 			? (bool)(int)$knConfigs['AwardRecsPublic']['Value']
 			: true;
+		$this->data['ShowRecsTab']      = $recsPublic || $this->data['CanManageKingdom'] || $uid > 0;
+		$this->data['CanManageTests']   = $uid > 0 && Ork3::$Lib->qualtest->canManage($uid, (int)$kingdom_id);
 		$this->data['AwardRecsPublic'] = $recsPublic;
 
 		$this->data['AwardRecommendations'] = [];
