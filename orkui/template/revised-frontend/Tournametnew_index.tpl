@@ -172,8 +172,9 @@ $heroStyles = array_keys($heroStyles);
 
 /* Bracket visualization */
 .tn-bv-wrap { overflow-x:auto; padding-bottom:8px; }
-.tn-bv-tree { display:flex; gap:0; align-items:flex-start; min-width:max-content; position:relative; }
+.tn-bv-tree { display:flex; gap:0; align-items:stretch; min-width:max-content; position:relative; }
 .tn-bv-round { display:flex; flex-direction:column; min-width:190px; padding:0 14px; }
+.tn-bv-round-body { display:flex; flex-direction:column; justify-content:space-around; flex:1; }
 .tn-bv-round-label { font-size:11px; font-weight:700; color:#a0aec0; text-transform:uppercase; letter-spacing:0.5px; text-align:center; margin-bottom:10px; padding-bottom:6px; border-bottom:1px solid #e2e8f0; }
 .tn-bv-match { border:1px solid #e2e8f0; border-radius:7px; overflow:hidden; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,0.05); margin:6px 0; position:relative; z-index:1; }
 .tn-bv-match.tn-bv-clickable { cursor:pointer; border-color:#276749; }
@@ -1445,9 +1446,12 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 			}
 			col.appendChild(lbl);
 
+			var body = document.createElement('div');
+			body.className = 'tn-bv-round-body';
 			rMatches.forEach(function(m) {
-				col.appendChild(buildMatchBox(m, pMap));
+				body.appendChild(buildMatchBox(m, pMap));
 			});
+			col.appendChild(body);
 			tree.appendChild(col);
 		}
 		wrap.appendChild(tree);
