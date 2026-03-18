@@ -36,6 +36,10 @@ class Model_Tournament extends Model {
 		return $this->Tournament->GetMatches($request);
 	}
 
+	function remove_participant($request) {
+		return $this->Tournament->RemoveParticipant($request);
+	}
+
 	function get_teams($tournament_id) {
 		return ['Status' => 0, 'Detail' => []];
 	}

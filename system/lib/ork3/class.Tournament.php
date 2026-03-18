@@ -218,6 +218,18 @@ class Tournament extends Ork3 {
 		return Success($participants);
 	}
 
+	public function RemoveParticipant($request) {
+		if (!$this->check_auth($request)) return NoAuthorization();
+
+		$participant_id = (int)($request['ParticipantId'] ?? 0);
+		if (!valid_id($participant_id)) return InvalidParameter('ParticipantId required');
+
+		$this->db->query("DELETE FROM " . DB_PREFIX . "participant_mundane WHERE participant_id = $participant_id");
+		$this->db->query("DELETE FROM " . DB_PREFIX . "participant WHERE participant_id = $participant_id");
+
+		return Success($participant_id);
+	}
+
 	public function GetMatches($request) {
 		$where = '';
 		if (valid_id($request['TournamentId'])) $where .= " AND m.tournament_id = " . (int)$request['TournamentId'];
