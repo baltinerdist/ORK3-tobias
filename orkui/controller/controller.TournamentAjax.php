@@ -137,6 +137,24 @@ class Controller_TournamentAjax extends Controller {
 				? json_encode(['status' => 0, 'participantId' => (int)($r['Detail'] ?? 0)])
 				: json_encode(['status' => $r['Status'], 'error' => ($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? '')]);
 
+		} elseif ($action === 'removeparticipant') {
+			$participant_id = (int)($_POST['ParticipantId'] ?? 0);
+			if (!valid_id($participant_id)) {
+				echo json_encode(['status' => 1, 'error' => 'ParticipantId required.']); exit;
+			}
+			$tid = (int)($_POST['TournamentId'] ?? 0);
+			if (!valid_id($tid)) {
+				echo json_encode(['status' => 1, 'error' => 'TournamentId required.']); exit;
+			}
+			$r = $this->Tournament->remove_participant([
+				'Token'         => $this->session->token,
+				'TournamentId'  => $tid,
+				'ParticipantId' => $participant_id,
+			]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0, 'participantId' => $participant_id])
+				: json_encode(['status' => $r['Status'], 'error' => ($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? '')]);
+
 		} elseif ($action === 'reorder') {
 			// Update seed order for participants (Phase 7 — drag-drop)
 			$order_json = trim($_POST['Order'] ?? '');
