@@ -472,7 +472,7 @@ $heroStyles = array_keys($heroStyles);
 									<span class="tn-participant-seed"><?= $i + 1 ?></span>
 									<span style="flex:1">
 										<?php if (!empty($p['Persona'])): ?>
-											<a href="<?= UIR ?>Player/profile/<?= $p['BracketId'] ?>" style="color:#276749;text-decoration:none"><?= htmlspecialchars($p['Alias'] ?: $p['Persona']) ?></a>
+											<?php if ($p['MundaneId'] > 0): ?><a href="<?= UIR ?>Playernew/index/<?= $p['MundaneId'] ?>" style="color:#276749;text-decoration:none"><?= htmlspecialchars($p['Alias'] ?: $p['Persona']) ?></a><?php else: ?><?= htmlspecialchars($p['Alias'] ?: $p['Persona']) ?><?php endif; ?>
 											<?php if ($p['Alias'] && $p['Alias'] !== $p['Persona']): ?>
 												<span style="color:#a0aec0;font-size:11px">(<?= htmlspecialchars($p['Persona']) ?>)</span>
 											<?php endif; ?>
@@ -921,8 +921,9 @@ function tnHideFeedback(elId) {
 
 // ---- Add Participant Modal ----
 (function() {
-	var OVERLAY    = 'tn-addparticipant-overlay';
+	var OVERLAY      = 'tn-addparticipant-overlay';
 	var playerTimer;
+	var _addedCount  = 0;
 
 	window.tnOpenAddParticipantModal = function(bracketId, tournamentId) {
 		document.getElementById('tn-addparticipant-bracket-id').value    = bracketId;
@@ -935,14 +936,15 @@ function tnHideFeedback(elId) {
 		tnOpenModal(OVERLAY);
 	};
 
-	['tn-addparticipant-close','tn-addparticipant-cancel'].forEach(function(id) {
-		var el = document.getElementById(id);
-		if (el) el.addEventListener('click', function() { tnCloseModal(OVERLAY); });
-	});
-
+	// Backdrop click — also reload if participants were added
 	var ov = document.getElementById(OVERLAY);
 	if (ov) {
-		ov.addEventListener('click', function(e) { if (e.target === ov) tnCloseModal(OVERLAY); });
+		ov.addEventListener('click', function(e) {
+			if (e.target === ov) {
+				tnCloseModal(OVERLAY);
+				if (_addedCount > 0) { _addedCount = 0; window.location.reload(); }
+			}
+		});
 	}
 
 	// Player autocomplete — kingdom-scoped first, global SOAP fallback
@@ -1020,15 +1022,32 @@ function tnHideFeedback(elId) {
 		});
 	}
 
+	function tnResetAddParticipantForm() {
+		document.getElementById('tn-addparticipant-alias').value       = '';
+		document.getElementById('tn-addparticipant-player-text').value = '';
+		document.getElementById('tn-addparticipant-player-id').value   = '0';
+		tnAcClose();
+		if (playerInput) { setTimeout(function() { playerInput.focus(); }, 50); }
+	}
+
+	// Reload on close if participants were added
+	['tn-addparticipant-close','tn-addparticipant-cancel'].forEach(function(id) {
+		var el = document.getElementById(id);
+		if (el) el.addEventListener('click', function() {
+			tnCloseModal(OVERLAY);
+			if (_addedCount > 0) { _addedCount = 0; window.location.reload(); }
+		});
+	});
+
 	// Submit
 	var submitBtn = document.getElementById('tn-addparticipant-submit');
 	if (submitBtn) {
 		submitBtn.addEventListener('click', function() {
-			var btn        = this;
-			var alias      = document.getElementById('tn-addparticipant-alias').value.trim();
-			var bracketId  = document.getElementById('tn-addparticipant-bracket-id').value;
+			var btn          = this;
+			var alias        = document.getElementById('tn-addparticipant-alias').value.trim();
+			var bracketId    = document.getElementById('tn-addparticipant-bracket-id').value;
 			var tournamentId = document.getElementById('tn-addparticipant-tournament-id').value;
-			var mundaneId  = document.getElementById('tn-addparticipant-player-id').value;
+			var mundaneId    = document.getElementById('tn-addparticipant-player-id').value;
 
 			if (!alias) { tnShowFeedback('tn-addparticipant-feedback', 'Alias is required.', false); return; }
 
@@ -1044,13 +1063,19 @@ function tnHideFeedback(elId) {
 				.then(function(d) {
 					btn.disabled = false;
 					if (d && d.status === 0) {
-						tnShowFeedback('tn-addparticipant-feedback', 'Participant added!', true);
-						setTimeout(function() { tnCloseModal(OVERLAY); window.location.reload(); }, 800);
+						_addedCount++;
+						tnShowFeedback('tn-addparticipant-feedback', 'Added! Keep adding participants, or close to refresh.', true);
+						tnResetAddParticipantForm();
 					} else {
+						console.error('[AddParticipant] server error:', d);
 						tnShowFeedback('tn-addparticipant-feedback', (d && d.error) ? d.error : 'Failed to add participant.', false);
 					}
 				})
-				.catch(function() { btn.disabled = false; tnShowFeedback('tn-addparticipant-feedback', 'Request failed. Please try again.', false); });
+				.catch(function(err) {
+					btn.disabled = false;
+					console.error('[AddParticipant] fetch failed:', err);
+					tnShowFeedback('tn-addparticipant-feedback', 'Request failed. Please try again.', false);
+				});
 		});
 	}
 })();
