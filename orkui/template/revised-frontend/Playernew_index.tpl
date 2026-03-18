@@ -120,6 +120,18 @@
 	$_duesForLife = is_array($Dues) && count(array_filter($Dues, function($d) { return $d['DuesForLife'] == 1; })) > 0;
 
 	// Last class used (for attendance modal default)
+	function pnClassSwatch(array $cls): string {
+		if (empty($cls)) return '';
+		if (!empty($cls['icon'])) {
+			return '<i class="fas ' . htmlspecialchars($cls['icon']) . '" style="color:' . htmlspecialchars($cls['color']) . ';margin-right:5px;vertical-align:middle;"></i>';
+		}
+		if (!empty($cls['color'])) {
+			$isRepeating = strpos($cls['color'], 'repeating-') !== false;
+			$bgStyle = 'background:' . $cls['color'] . ';' . ($isRepeating ? 'background-size:8px 8px;' : '');
+			return '<span style="display:inline-block;width:12px;height:12px;' . $bgStyle . 'border:1px solid rgba(0,0,0,0.25);margin-right:5px;vertical-align:middle;border-radius:2px;"></span>';
+		}
+		return '';
+	}
 	$_lastClassId = 0;
 	foreach (is_array($Details['Attendance']) ? $Details['Attendance'] : [] as $_att) {
 		if (!empty($_att['ClassId'])) { $_lastClassId = (int)$_att['ClassId']; break; }
@@ -1159,7 +1171,7 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 		<div class="pn-stat-label">Titles</div>
 	</div>
 	<div class="pn-stat-card pn-stat-card-link" onclick="pnActivateTab('classes')">
-		<div class="pn-stat-icon"><i class="fas fa-shield-alt"></i></div>
+		<div class="pn-stat-icon" id="pn-att-last-icon"><i class="fas fa-shield-alt"></i></div>
 		<div class="pn-stat-number pn-stat-text" id="pn-att-last-class">…</div>
 		<div class="pn-stat-label">Last Played</div>
 	</div>
@@ -2365,8 +2377,8 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 									$ackClassNameSafe = htmlspecialchars($detail['ClassName'], ENT_QUOTES);
 								?>
 								<tr>
-									<td>
-										<?= htmlspecialchars($detail['ClassName']) ?>
+									<td style="white-space:nowrap;">
+										<?= pnClassSwatch($ClassLookup[$detail['ClassId']] ?? []) ?><?= htmlspecialchars($detail['ClassName']) ?>
 										<?php if ($hasParagon): ?>
 											<span class="pn-paragon-badge" title="Paragon title earned"><i class="fas fa-crown"></i> Paragon</span>
 										<?php endif; ?>

@@ -343,6 +343,8 @@ class Controller_Kingdom extends Controller {
 				COALESCE(sub.last_signin, '1970-01-01')             AS last_signin,
 				COALESCE(sub.signin_count, 0)                       AS signin_count,
 				c.name                                              AS last_class,
+				c.color                                             AS last_class_color,
+				c.icon                                              AS last_class_icon,
 				hp.name                                             AS park_name,
 				GROUP_CONCAT(DISTINCT o.role ORDER BY o.role SEPARATOR ', ') AS officer_roles
 			FROM ork_mundane m
@@ -381,16 +383,18 @@ class Controller_Kingdom extends Controller {
 				$imgUrl  = $hasImg ? HTTP_PLAYER_IMAGE    . Common::resolve_image_ext(DIR_PLAYER_IMAGE,    $midPad) : ($hasHer ? $herUrl : null);
 				$mn = ((int)$r->restricted === 0) ? trim($r->given_name . ' ' . $r->surname) : '';
 				$players[] = [
-					'id'           => $mid,
-					'persona'      => $r->persona,
-					'mundaneName'  => $mn,
-					'parkName'     => $r->park_name,
-					'signinCount'  => (int)$r->signin_count,
-					'lastSignin'   => $r->last_signin,
-					'lastClass'    => $r->last_class,
-					'officerRoles' => $r->officer_roles,
-					'avatarUrl'    => $imgUrl,
-					'heraldryUrl'  => $herUrl,
+					'id'             => $mid,
+					'persona'        => $r->persona,
+					'mundaneName'    => $mn,
+					'parkName'       => $r->park_name,
+					'signinCount'    => (int)$r->signin_count,
+					'lastSignin'     => $r->last_signin,
+					'lastClass'      => $r->last_class,
+					'lastClassColor' => $r->last_class_color,
+					'lastClassIcon'  => $r->last_class_icon,
+					'officerRoles'   => $r->officer_roles,
+					'avatarUrl'      => $imgUrl,
+					'heraldryUrl'    => $herUrl,
 				];
 			}
 		}
