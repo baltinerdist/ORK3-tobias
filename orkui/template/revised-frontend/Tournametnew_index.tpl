@@ -129,6 +129,8 @@ $heroStyles = array_keys($heroStyles);
 .tn-participant-list li:last-child { border-bottom:none; }
 .tn-participant-seed { width:20px; height:20px; background:#e2e8f0; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; color:#718096; flex-shrink:0; }
 .tn-empty { color:#a0aec0; font-size:13px; font-style:italic; padding:8px 0; }
+.tn-remove-participant { background:none; border:none; color:#cbd5e0; cursor:pointer; font-size:15px; padding:0 2px; line-height:1; flex-shrink:0; }
+.tn-remove-participant:hover { color:#e53e3e; }
 .tn-bracket-actions { display:flex; gap:8px; margin-top:10px; padding-top:10px; border-top:1px solid #f0f4f8; }
 
 /* Buttons */
@@ -237,11 +239,11 @@ $heroStyles = array_keys($heroStyles);
 		<div class="tn-hero-center">
 			<div class="tn-breadcrumb">
 				<?php if ($tKingdomId > 0): ?>
-					<a href="<?= UIR ?>Kingdom/profile/<?= $tKingdomId ?>"><i class="fas fa-crown" style="font-size:10px"></i> <?= htmlspecialchars($tKingdomName) ?></a>
+					<a href="<?= UIR ?>Kingdom/index/<?= $tKingdomId ?>"><i class="fas fa-crown" style="font-size:10px"></i> <?= htmlspecialchars($tKingdomName) ?></a>
 					<span>/</span>
 				<?php endif; ?>
 				<?php if ($tParkId > 0): ?>
-					<a href="<?= UIR ?>Park/profile/<?= $tParkId ?>"><?= htmlspecialchars($tParkName) ?></a>
+					<a href="<?= UIR ?>Park/index/<?= $tParkId ?>"><?= htmlspecialchars($tParkName) ?></a>
 					<span>/</span>
 				<?php endif; ?>
 				<?php if (!empty($tEventName)): ?>
@@ -328,12 +330,12 @@ $heroStyles = array_keys($heroStyles);
 			<?php if ($tParkId > 0): ?>
 			<div class="tn-detail-row">
 				<span class="tn-detail-icon"><i class="fas fa-map-marker-alt"></i></span>
-				<span class="tn-detail-text"><a href="<?= UIR ?>Park/profile/<?= $tParkId ?>"><?= htmlspecialchars($tParkName) ?></a></span>
+				<span class="tn-detail-text"><a href="<?= UIR ?>Park/index/<?= $tParkId ?>"><?= htmlspecialchars($tParkName) ?></a></span>
 			</div>
 			<?php elseif ($tKingdomId > 0): ?>
 			<div class="tn-detail-row">
 				<span class="tn-detail-icon"><i class="fas fa-crown"></i></span>
-				<span class="tn-detail-text"><a href="<?= UIR ?>Kingdom/profile/<?= $tKingdomId ?>"><?= htmlspecialchars($tKingdomName) ?></a></span>
+				<span class="tn-detail-text"><a href="<?= UIR ?>Kingdom/index/<?= $tKingdomId ?>"><?= htmlspecialchars($tKingdomName) ?></a></span>
 			</div>
 			<?php endif; ?>
 			<?php if (!empty($tEventName)): ?>
@@ -482,6 +484,9 @@ $heroStyles = array_keys($heroStyles);
 									</span>
 									<?php if (!empty($p['ParkName'])): ?>
 									<span style="font-size:11px;color:#a0aec0"><?= htmlspecialchars($p['ParkName']) ?></span>
+									<?php endif; ?>
+									<?php if ($canManage): ?>
+									<button class="tn-remove-participant" data-pid="<?= (int)$p['ParticipantId'] ?>" data-bid="<?= $bid ?>" data-tid="<?= $tournament_id ?>" title="Remove participant" onclick="tnRemoveParticipant(this)">&times;</button>
 									<?php endif; ?>
 								</li>
 								<?php endforeach; ?>
@@ -841,6 +846,39 @@ function tnScrollToBracket(bracketId) {
 
 // ---- Modal helpers ----
 function tnEsc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function tnRemoveParticipant(btn) {
+	if (!confirm('Remove this participant?')) return;
+	var pid = btn.dataset.pid;
+	var bid = btn.dataset.bid;
+	var tid = btn.dataset.tid;
+	var fd = new FormData();
+	fd.append('ParticipantId', pid);
+	fd.append('TournamentId',  tid);
+	fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bid + '/removeparticipant', {method:'POST', body:fd})
+		.then(function(r){ return r.json(); })
+		.then(function(r){
+			if (r.status === 0) {
+				var li = btn.closest('li');
+				var ul = li.parentNode;
+				li.remove();
+				ul.querySelectorAll('li').forEach(function(item, i) {
+					var seed = item.querySelector('.tn-participant-seed');
+					if (seed) seed.textContent = i + 1;
+				});
+				var card = document.getElementById('tn-bracket-' + bid);
+				if (card) {
+					var remaining = ul.querySelectorAll('li').length;
+					card.querySelectorAll('span').forEach(function(s) {
+						if (/\d+ participant/.test(s.textContent)) s.textContent = remaining + ' participant' + (remaining !== 1 ? 's' : '');
+					});
+				}
+			} else {
+				alert('Error: ' + (r.error || 'Could not remove participant.'));
+			}
+		})
+		.catch(function(){ alert('Network error removing participant.'); });
+}
 function tnOpenModal(id) {
 	var ov = document.getElementById(id);
 	if (ov) ov.classList.add('tn-open');
@@ -1079,7 +1117,7 @@ function tnHideFeedback(elId) {
 							}
 							var num = ul.querySelectorAll('li').length + 1;
 							var li = document.createElement('li');
-							li.innerHTML = '<span class="tn-participant-seed">' + num + '</span><span style="flex:1">' + tnEsc(alias) + '</span>';
+							li.innerHTML = '<span class="tn-participant-seed">' + num + '</span><span style="flex:1">' + tnEsc(alias) + '</span>' + (TnConfig.canManage ? '<button class="tn-remove-participant" data-pid="' + (d.participantId || 0) + '" data-bid="' + bracketId + '" data-tid="' + TnConfig.tournamentId + '" title="Remove participant" onclick="tnRemoveParticipant(this)">&times;</button>' : '');
 							ul.appendChild(li);
 							var hdr = card.querySelector('.tn-bracket-header');
 							if (hdr) { hdr.querySelectorAll('span').forEach(function(s) { if (/\d+ participant/.test(s.textContent)) s.textContent = num + ' participant' + (num !== 1 ? 's' : ''); }); }
