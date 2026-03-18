@@ -131,6 +131,15 @@ $heroStyles = array_keys($heroStyles);
 .tn-empty { color:#a0aec0; font-size:13px; font-style:italic; padding:8px 0; }
 .tn-remove-participant { background:none; border:none; color:#cbd5e0; cursor:pointer; font-size:15px; padding:0 2px; line-height:1; flex-shrink:0; }
 .tn-remove-participant:hover { color:#e53e3e; }
+.tn-bracket-toggle { background:none; border:none; color:#a0aec0; cursor:pointer; padding:4px 6px; display:flex; align-items:center; flex-shrink:0; }
+.tn-bracket-toggle:hover { color:#4a5568; }
+.tn-bracket-toggle i { transition:transform .2s; }
+.tn-bracket-card.tn-collapsed .tn-bracket-toggle i { transform:rotate(-90deg); }
+.tn-bracket-card.tn-collapsed .tn-bracket-body { display:none; }
+.tn-quickadd-row { display:flex; align-items:center; gap:8px; padding:5px 0; border-bottom:1px solid #f0f4f8; font-size:13px; }
+.tn-quickadd-row:last-child { border-bottom:none; }
+.tn-quickadd-name { flex:1; color:#4a5568; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.tn-quickadd-row.tn-quickadd-done .tn-quickadd-name { color:#a0aec0; text-decoration:line-through; }
 .tn-bracket-actions { display:flex; gap:8px; margin-top:10px; padding-top:10px; border-top:1px solid #f0f4f8; }
 
 /* Buttons */
@@ -435,6 +444,7 @@ $heroStyles = array_keys($heroStyles);
 					<?php $b = $bd['Bracket']; $pList = $bd['Participants']; $mList = $bd['Matches']; ?>
 					<div class="tn-bracket-card" id="tn-bracket-<?= $bid ?>">
 						<div class="tn-bracket-header">
+							<button class="tn-bracket-toggle" onclick="tnToggleBracket(<?= $bid ?>)" title="Collapse/expand"><i class="fas fa-chevron-down"></i></button>
 							<div style="flex:1">
 								<h4><?= htmlspecialchars($styleLabelMap[$b['Style']] ?? $b['Style']) ?></h4>
 								<div class="tn-bracket-meta">
@@ -752,6 +762,10 @@ $heroStyles = array_keys($heroStyles);
 				<input type="text" id="tn-addparticipant-alias" placeholder="Name as it appears in the bracket" maxlength="100">
 			</div>
 		</div>
+		<div id="tn-quickadd-section" style="display:none;margin-top:0;border-top:1px solid #e2e8f0;padding:12px 20px 4px">
+			<div style="font-size:11px;font-weight:700;color:#718096;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Quick Add from other brackets</div>
+			<div id="tn-quickadd-list" style="max-height:180px;overflow-y:auto"></div>
+		</div>
 		<div class="tn-modal-footer">
 			<button class="tn-btn tn-btn-ghost" id="tn-addparticipant-cancel">Cancel</button>
 			<button class="tn-btn tn-btn-primary" id="tn-addparticipant-submit">
@@ -847,6 +861,11 @@ function tnScrollToBracket(bracketId) {
 
 // ---- Modal helpers ----
 function tnEsc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function tnToggleBracket(bid) {
+	var card = document.getElementById('tn-bracket-' + bid);
+	if (card) card.classList.toggle('tn-collapsed');
+}
 
 function tnRemoveParticipant(btn) {
 	if (!confirm('Remove this participant?')) return;
@@ -948,7 +967,7 @@ function tnHideFeedback(elId) {
 					btn.disabled = false;
 					if (d && d.status === 0) {
 						tnShowFeedback('tn-addbracket-feedback', 'Bracket added!', true);
-						setTimeout(function() { tnCloseModal(OVERLAY); window.location.reload(); }, 800);
+						setTimeout(function() { tnCloseModal(OVERLAY); sessionStorage.setItem('tnOpenTab','brackets'); window.location.reload(); }, 800);
 					} else {
 						tnShowFeedback('tn-addbracket-feedback', (d && d.error) ? d.error : 'Failed to add bracket.', false);
 					}
@@ -965,6 +984,7 @@ function tnHideFeedback(elId) {
 	var _addedCount  = 0;
 
 	window.tnOpenAddParticipantModal = function(bracketId, tournamentId) {
+		_addedCount = 0;
 		document.getElementById('tn-addparticipant-bracket-id').value    = bracketId;
 		document.getElementById('tn-addparticipant-tournament-id').value = tournamentId;
 		document.getElementById('tn-addparticipant-alias').value         = '';
@@ -972,8 +992,101 @@ function tnHideFeedback(elId) {
 		document.getElementById('tn-addparticipant-player-id').value     = '0';
 		tnAcClose();
 		tnHideFeedback('tn-addparticipant-feedback');
+		tnBuildQuickAddList(bracketId, tournamentId);
 		tnOpenModal(OVERLAY);
 	};
+
+	// Quick Add list — participants from other brackets not yet in target bracket
+	function tnBuildQuickAddList(bracketId, tournamentId) {
+		var section = document.getElementById('tn-quickadd-section');
+		var panel   = document.getElementById('tn-quickadd-list');
+		if (!section || !panel) return;
+		panel.innerHTML = '';
+
+		// Collect ParticipantIds already in the target bracket
+		var inBracket = {};
+		var bd = TnConfig.bracketData[bracketId];
+		if (bd && bd.Participants) {
+			bd.Participants.forEach(function(p) {
+				inBracket['pid' + p.ParticipantId] = true;
+				if (p.MundaneId > 0) inBracket['mid' + p.MundaneId] = true;
+			});
+		}
+
+		// Gather candidates from all other brackets
+		var candidates = [];
+		var seen = {};
+		for (var bid in TnConfig.bracketData) {
+			if (parseInt(bid) === parseInt(bracketId)) continue;
+			var bData = TnConfig.bracketData[bid];
+			if (!bData || !bData.Participants) continue;
+			bData.Participants.forEach(function(p) {
+				var key = p.MundaneId > 0 ? ('mid' + p.MundaneId) : ('pid' + p.ParticipantId);
+				if (!inBracket[key] && !seen[key]) {
+					seen[key] = true;
+					candidates.push(p);
+				}
+			});
+		}
+
+		if (candidates.length === 0) { section.style.display = 'none'; return; }
+		section.style.display = '';
+
+		candidates.forEach(function(p) {
+			var row = document.createElement('div');
+			row.className = 'tn-quickadd-row';
+			var nameEl = document.createElement('span');
+			nameEl.className = 'tn-quickadd-name';
+			nameEl.textContent = p.Alias || p.Persona || '—';
+			if (p.Persona && p.Alias && p.Alias !== p.Persona) nameEl.title = p.Persona;
+			var btn = document.createElement('button');
+			btn.className = 'tn-btn tn-btn-outline tn-btn-sm';
+			btn.style.cssText = 'padding:2px 10px;flex-shrink:0';
+			btn.innerHTML = '<i class="fas fa-plus"></i> Add';
+			btn.addEventListener('click', function() { tnQuickAdd(p, bracketId, tournamentId, row); });
+			row.appendChild(nameEl);
+			row.appendChild(btn);
+			panel.appendChild(row);
+		});
+	}
+
+	function tnQuickAdd(p, bracketId, tournamentId, rowEl) {
+		var alias     = p.Alias || p.Persona || '';
+		var mundaneId = p.MundaneId || 0;
+		if (!alias) return;
+		var qBtn = rowEl.querySelector('button');
+		if (qBtn) qBtn.disabled = true;
+		var fd = new FormData();
+		fd.append('Alias', alias);
+		fd.append('MundaneId', mundaneId);
+		fd.append('TournamentId', tournamentId);
+		fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bracketId + '/addparticipant', {method:'POST', body:fd})
+			.then(function(r){ return r.json(); })
+			.then(function(d){
+				if (d && d.status === 0) {
+					_addedCount++;
+					rowEl.classList.add('tn-quickadd-done');
+					if (qBtn) { qBtn.innerHTML = '<i class="fas fa-check"></i>'; qBtn.disabled = true; }
+					var card = document.getElementById('tn-bracket-' + bracketId);
+					if (card) {
+						var emptyEl = card.querySelector('.tn-bracket-body .tn-empty');
+						if (emptyEl) emptyEl.remove();
+						var ul = card.querySelector('.tn-participant-list');
+						if (!ul) { ul = document.createElement('ul'); ul.className = 'tn-participant-list'; var body = card.querySelector('.tn-bracket-body'); if (body) body.insertBefore(ul, body.firstChild); }
+						var num = ul.querySelectorAll('li').length + 1;
+						var li  = document.createElement('li');
+						li.innerHTML = '<span class="tn-participant-seed">' + num + '</span><span style="flex:1">' + tnEsc(alias) + '</span>' + (TnConfig.canManage ? '<button class="tn-remove-participant" data-pid="' + (d.participantId||0) + '" data-bid="' + bracketId + '" data-tid="' + TnConfig.tournamentId + '" title="Remove participant" onclick="tnRemoveParticipant(this)">&times;</button>' : '');
+						ul.appendChild(li);
+						var hdr = card.querySelector('.tn-bracket-header');
+						if (hdr) hdr.querySelectorAll('span').forEach(function(s){ if(/\d+ participant/.test(s.textContent)) s.textContent = num + ' participant' + (num !== 1 ? 's' : ''); });
+					}
+				} else {
+					if (qBtn) qBtn.disabled = false;
+					tnShowFeedback('tn-addparticipant-feedback', (d && d.error) ? d.error : 'Failed to add.', false);
+				}
+			})
+			.catch(function(){ if (qBtn) qBtn.disabled = false; tnShowFeedback('tn-addparticipant-feedback', 'Request failed.', false); });
+	}
 
 	// Backdrop click — also reload if participants were added
 	var ov = document.getElementById(OVERLAY);
@@ -1603,6 +1716,8 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 
 	// Initialize on page load
 	document.addEventListener('DOMContentLoaded', function() {
+		var tabToOpen = sessionStorage.getItem('tnOpenTab');
+		if (tabToOpen) { sessionStorage.removeItem('tnOpenTab'); tnActivateTab(tabToOpen); }
 		var firstId = firstBracketId();
 		if (firstId) tnRenderBracketViz(firstId);
 	});
