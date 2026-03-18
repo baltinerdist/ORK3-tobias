@@ -11,3 +11,6 @@ ALTER TABLE ork_match       ADD COLUMN bracket_side ENUM('winners','losers','gra
 ALTER TABLE ork_bracket     ADD COLUMN status ENUM('setup','active','complete') NOT NULL DEFAULT 'setup' AFTER seeding;
 
 ALTER TABLE ork_tournament  ADD COLUMN status ENUM('setup','active','complete') NOT NULL DEFAULT 'setup' AFTER url;
+
+-- Fix: result column must allow NULL so unplayed matches don't default to '1-wins'
+ALTER TABLE ork_match MODIFY result ENUM('1-wins','2-wins','tie','1-forfeits','2-forfeits','1-is-disqualified','2-is-disqualified','1-is-bye','2-is-bye','score') NULL DEFAULT NULL;
