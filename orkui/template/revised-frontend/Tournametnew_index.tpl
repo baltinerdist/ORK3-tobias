@@ -1064,7 +1064,26 @@ function tnHideFeedback(elId) {
 					btn.disabled = false;
 					if (d && d.status === 0) {
 						_addedCount++;
-						tnShowFeedback('tn-addparticipant-feedback', 'Added! Keep adding participants, or close to refresh.', true);
+						tnShowFeedback('tn-addparticipant-feedback', 'Added! (' + _addedCount + ' so far) Keep adding, or close when done.', true);
+						// Update bracket card DOM in-place
+						var card = document.getElementById('tn-bracket-' + bracketId);
+						if (card) {
+							var emptyEl = card.querySelector('.tn-bracket-body .tn-empty');
+							if (emptyEl) emptyEl.remove();
+							var ul = card.querySelector('.tn-participant-list');
+							if (!ul) {
+								ul = document.createElement('ul');
+								ul.className = 'tn-participant-list';
+								var body = card.querySelector('.tn-bracket-body');
+								if (body) body.insertBefore(ul, body.firstChild);
+							}
+							var num = ul.querySelectorAll('li').length + 1;
+							var li = document.createElement('li');
+							li.innerHTML = '<span class="tn-participant-seed">' + num + '</span><span style="flex:1">' + tnEsc(alias) + '</span>';
+							ul.appendChild(li);
+							var hdr = card.querySelector('.tn-bracket-header');
+							if (hdr) { hdr.querySelectorAll('span').forEach(function(s) { if (/\d+ participant/.test(s.textContent)) s.textContent = num + ' participant' + (num !== 1 ? 's' : ''); }); }
+						}
 						tnResetAddParticipantForm();
 					} else {
 						console.error('[AddParticipant] server error:', d);
