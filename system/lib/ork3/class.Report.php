@@ -75,31 +75,18 @@ class Report  extends Ork3 {
 		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 1800)) !== false)
 			return $cache;
 
-		if (valid_id($request['KingdomId'])) $where .= " and t.kingdom_id = $request[KingdomId] or e.kingdom_id = $request[KingdomId]";
-		if (valid_id($request['ParkId'])) $where .= " and t.park_id = $request[ParkId] or e.park_id = $request[ParkId]";
-		if (valid_id($request['EventId'])) $where .= " and e.event_id = $request[EventId]";
-		if (valid_id($request['EventCalendarDetailId'])) $where .= " and d.event_calendardetail_id = $request[EventCalendarDetailId]";
+		if (valid_id($request['KingdomId']))             $where .= " and (t.kingdom_id = " . (int)$request['KingdomId'] . " or e.kingdom_id = " . (int)$request['KingdomId'] . ")";
+		if (valid_id($request['ParkId']))               $where .= " and (t.park_id = " . (int)$request['ParkId'] . " or e.park_id = " . (int)$request['ParkId'] . ")";
+		if (valid_id($request['EventId']))              $where .= " and e.event_id = " . (int)$request['EventId'];
+		if (valid_id($request['TournamentId']))         $where .= " and t.tournament_id = " . (int)$request['TournamentId'];
+		if (valid_id($request['EventCalendarDetailId'])) $where .= " and d.event_calendardetail_id = " . (int)$request['EventCalendarDetailId'];
 
-		if (valid_id($request['ParticipantMundaneId'])) {
-			$where .= " and pm.mundane_id = '" . mysql_real_escape_string($request['MundaneId']) . "'";
-		}
-		if (valid_id($request['ParticipantUnitId'])) {
-			$where .= " and p.unit_id = '" . mysql_real_escape_string($request['UnitId']) . "'";
-		}
-		if (valid_id($request['ParticipantParkId'])) {
-			$where .= " and p.park_id = '" . mysql_real_escape_string($request['ParkId']) . "'";
-		}
-		if (valid_id($request['ParticipantKingdomId'])) {
-			$where .= " and p.kingdom_id = '" . mysql_real_escape_string($request['KingdomId']) . "'";
-		}
-		if (valid_id($request['ParticipantTeamId'])) {
-			$where .= " and p.team_id = '" . mysql_real_escape_string($request['TeamId']) . "'";
-		}
-		if (valid_id($request['ParticipantAlias'])) {
-			$where .= " and p.alias like '" . mysql_real_escape_string($request['Alias']) . "'";
-		}
+		if (valid_id($request['ParticipantMundaneId'])) $where .= " and pm.mundane_id = " . (int)$request['ParticipantMundaneId'];
+		if (valid_id($request['ParticipantUnitId']))    $where .= " and p.unit_id = " . (int)$request['ParticipantUnitId'];
+		if (valid_id($request['ParticipantParkId']))    $where .= " and p.park_id = " . (int)$request['ParticipantParkId'];
+		if (valid_id($request['ParticipantKingdomId'])) $where .= " and p.kingdom_id = " . (int)$request['ParticipantKingdomId'];
 
-		if (valid_id($request['Limit'])) $limit = " limit " . mysql_real_escape_string($request['Limit']);
+		if (valid_id($request['Limit'])) $limit = " limit " . (int)$request['Limit'];
 
 		$sql = "select t.*, k.name as kingdom_name, k.parent_kingdom_id, park.name as park_name, e.name as event_name, d.event_start
 					from " . DB_PREFIX . "tournament t
