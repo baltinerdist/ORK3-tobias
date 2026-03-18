@@ -146,13 +146,14 @@ class Tournament extends Ork3 {
 			return Success($this->db->getInsertId());
 		} else {
 			$this->Participant->clear();
-			$this->Participant->tournament_id = $request['TournamentId'];
-			$this->Participant->bracket_id    = $request['BracketId'];
+			$this->Participant->tournament_id = (int)$request['TournamentId'];
+			$this->Participant->bracket_id    = (int)$request['BracketId'];
 			$this->Participant->alias         = $request['Alias'];
-			$this->Participant->unit_id       = $request['UnitId'];
-			$this->Participant->park_id       = $request['ParkId'];
-			$this->Participant->kingdom_id    = $request['KingdomId'];
+			$this->Participant->unit_id       = (int)($request['UnitId']     ?? 0);
+			$this->Participant->park_id       = (int)($request['ParkId']     ?? 0);
+			$this->Participant->kingdom_id    = (int)($request['KingdomId']  ?? 0);
 			$this->Participant->save();
+			if (!valid_id($this->Participant->participant_id)) return InvalidParameter('Participant save failed — check DB sql_mode and table constraints');
 
 			if (valid_id($request['MundaneId'])) {
 				// Individual participant — link single player
