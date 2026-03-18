@@ -172,10 +172,10 @@ $heroStyles = array_keys($heroStyles);
 
 /* Bracket visualization */
 .tn-bv-wrap { overflow-x:auto; padding-bottom:8px; }
-.tn-bv-tree { display:flex; gap:0; align-items:flex-start; min-width:max-content; }
+.tn-bv-tree { display:flex; gap:0; align-items:flex-start; min-width:max-content; position:relative; }
 .tn-bv-round { display:flex; flex-direction:column; min-width:190px; padding:0 14px; }
 .tn-bv-round-label { font-size:11px; font-weight:700; color:#a0aec0; text-transform:uppercase; letter-spacing:0.5px; text-align:center; margin-bottom:10px; padding-bottom:6px; border-bottom:1px solid #e2e8f0; }
-.tn-bv-match { border:1px solid #e2e8f0; border-radius:7px; overflow:hidden; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,0.05); margin:6px 0; }
+.tn-bv-match { border:1px solid #e2e8f0; border-radius:7px; overflow:hidden; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,0.05); margin:6px 0; position:relative; z-index:1; }
 .tn-bv-match.tn-bv-clickable { cursor:pointer; border-color:#276749; }
 .tn-bv-match.tn-bv-clickable:hover { box-shadow:0 2px 8px rgba(39,103,73,0.18); background:#f0fff4; }
 .tn-bv-match.tn-bv-resolved { border-color:#c6f6d5; background:#f0fff4; }
@@ -1356,6 +1356,62 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 		}
 	}
 
+	function tnDrawBracketConnectors(tree, rounds, maxRound) {
+		if (maxRound < 2) return;
+		requestAnimationFrame(function() {
+			var treeRect = tree.getBoundingClientRect();
+			if (!treeRect.width) return; // not visible yet
+
+			var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+			svg.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:0';
+
+			for (var r = 1; r < maxRound; r++) {
+				var srcRound = (rounds[r] || []).slice().sort(function(a,b){ return (a.Order||0)-(b.Order||0); });
+				var dstRound = (rounds[r+1] || []).slice().sort(function(a,b){ return (a.Order||0)-(b.Order||0); });
+				for (var i = 0; i < srcRound.length; i += 2) {
+					var m1   = srcRound[i];
+					var m2   = srcRound[i+1] || null;
+					var mDst = dstRound[Math.floor(i/2)] || null;
+					if (!mDst) continue;
+					var box1   = tree.querySelector('[data-matchid="' + m1.MatchId + '"]');
+					var box2   = m2  ? tree.querySelector('[data-matchid="' + m2.MatchId  + '"]') : null;
+					var boxDst = tree.querySelector('[data-matchid="' + mDst.MatchId + '"]');
+					if (!box1 || !boxDst) continue;
+
+					var r1   = box1.getBoundingClientRect();
+					var rDst = boxDst.getBoundingClientRect();
+					var x1   = r1.right   - treeRect.left;
+					var y1   = r1.top     - treeRect.top  + r1.height   / 2;
+					var xDst = rDst.left  - treeRect.left;
+					var yDst = rDst.top   - treeRect.top  + rDst.height / 2;
+					var xMid = (x1 + xDst) / 2;
+					var yMid = y1;
+
+					var d;
+					if (box2) {
+						var r2 = box2.getBoundingClientRect();
+						var y2 = r2.top - treeRect.top + r2.height / 2;
+						yMid = (y1 + y2) / 2;
+						// arm from src1 right → xMid, vertical bar y1→y2, arm xMid→dst left
+						d = 'M'+x1+','+y1+' H'+xMid+' V'+y2+' M'+xMid+','+yMid+' H'+xDst;
+					} else {
+						// single source: straight line
+						d = 'M'+x1+','+y1+' H'+xDst;
+					}
+
+					var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+					path.setAttribute('d', d);
+					path.setAttribute('stroke', '#cbd5e0');
+					path.setAttribute('stroke-width', '2');
+					path.setAttribute('fill', 'none');
+					path.setAttribute('stroke-linecap', 'square');
+					svg.appendChild(path);
+				}
+			}
+			tree.insertBefore(svg, tree.firstChild);
+		});
+	}
+
 	function renderSection(wrap, matches, pMap, side) {
 		// Group by round
 		var rounds = {};
@@ -1395,6 +1451,7 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 			tree.appendChild(col);
 		}
 		wrap.appendChild(tree);
+		tnDrawBracketConnectors(tree, rounds, maxRound);
 	}
 
 	function buildMatchBox(m, pMap) {
@@ -1407,6 +1464,7 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 
 		var box = document.createElement('div');
 		box.className = 'tn-bv-match';
+		box.dataset.matchid = m.MatchId || '';
 		if (isClickable) box.className += ' tn-bv-clickable';
 		if (hasResult)   box.className += ' tn-bv-resolved';
 
