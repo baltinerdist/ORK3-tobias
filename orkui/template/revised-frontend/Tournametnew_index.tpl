@@ -1391,10 +1391,11 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 					var d;
 					if (box2) {
 						var r2 = box2.getBoundingClientRect();
+						var x2 = r2.right - treeRect.left;
 						var y2 = r2.top - treeRect.top + r2.height / 2;
 						yMid = (y1 + y2) / 2;
-						// arm from src1 right → xMid, vertical bar y1→y2, arm xMid→dst left
-						d = 'M'+x1+','+y1+' H'+xMid+' V'+y2+' M'+xMid+','+yMid+' H'+xDst;
+						// src1 arm → xMid, vertical bar y1→y2, src2 arm back, center arm to dst
+						d = 'M'+x1+','+y1+' H'+xMid+' V'+y2+' H'+x2+' M'+xMid+','+yMid+' H'+xDst;
 					} else {
 						// single source: straight line
 						d = 'M'+x1+','+y1+' H'+xDst;
