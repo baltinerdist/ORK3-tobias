@@ -734,16 +734,16 @@ $heroStyles = array_keys($heroStyles);
 			<input type="hidden" id="tn-addparticipant-bracket-id" value="">
 			<input type="hidden" id="tn-addparticipant-tournament-id" value="<?= $tid ?>">
 			<div class="tn-field">
-				<label for="tn-addparticipant-alias">Alias / Fighter Name <span style="color:#e53e3e">*</span></label>
-				<input type="text" id="tn-addparticipant-alias" placeholder="Name as it appears in the bracket" maxlength="100">
-			</div>
-			<div class="tn-field">
-				<label>Player <span style="color:#a0aec0;font-size:11px;font-weight:400">(optional — link to ORK account)</span></label>
+				<label>Player <span style="color:#a0aec0;font-size:11px;font-weight:400">(search to auto-fill name)</span></label>
 				<div style="position:relative">
 					<input type="text" id="tn-addparticipant-player-text" placeholder="Search by persona…" autocomplete="off">
 					<input type="hidden" id="tn-addparticipant-player-id" value="0">
 					<div id="tn-addparticipant-player-results" class="tn-ac-results"></div>
 				</div>
+			</div>
+			<div class="tn-field">
+				<label for="tn-addparticipant-alias">Alias / Fighter Name <span style="color:#e53e3e">*</span></label>
+				<input type="text" id="tn-addparticipant-alias" placeholder="Name as it appears in the bracket" maxlength="100">
 			</div>
 		</div>
 		<div class="tn-modal-footer">
@@ -930,8 +930,7 @@ function tnHideFeedback(elId) {
 		document.getElementById('tn-addparticipant-alias').value         = '';
 		document.getElementById('tn-addparticipant-player-text').value   = '';
 		document.getElementById('tn-addparticipant-player-id').value     = '0';
-		var res = document.getElementById('tn-addparticipant-player-results');
-		if (res) res.style.display = 'none';
+		tnAcClose();
 		tnHideFeedback('tn-addparticipant-feedback');
 		tnOpenModal(OVERLAY);
 	};
@@ -946,48 +945,74 @@ function tnHideFeedback(elId) {
 		ov.addEventListener('click', function(e) { if (e.target === ov) tnCloseModal(OVERLAY); });
 	}
 
-	// Player autocomplete — kingdom-scoped via KingdomAjax/playersearch
+	// Player autocomplete — kingdom-scoped first, global SOAP fallback
 	var playerInput = document.getElementById('tn-addparticipant-player-text');
 	var playerIdEl  = document.getElementById('tn-addparticipant-player-id');
 	var resultsEl   = document.getElementById('tn-addparticipant-player-results');
 
-	function tnAcClose() { resultsEl.classList.remove('tn-ac-open'); resultsEl.innerHTML = ''; }
+	function tnAcClose() {
+		if (!resultsEl) return;
+		resultsEl.classList.remove('tn-ac-open');
+		resultsEl.innerHTML = '';
+	}
 
-	if (playerInput) {
+	function tnAcRender(players) {
+		resultsEl.innerHTML = '';
+		if (!players || !players.length) {
+			resultsEl.innerHTML = '<div class="tn-ac-item tn-ac-empty">No players found</div>';
+			resultsEl.classList.add('tn-ac-open');
+			return;
+		}
+		players.forEach(function(pl) {
+			var item = document.createElement('div');
+			item.className = 'tn-ac-item';
+			item.tabIndex = -1;
+			var label = tnEsc(pl.Persona || pl.Name || '');
+			var sub   = pl.KAbbr ? (' <span style="color:#a0aec0;font-size:11px">(' + tnEsc(pl.KAbbr) + (pl.PAbbr ? ':' + tnEsc(pl.PAbbr) : '') + ')</span>') : '';
+			item.innerHTML = label + sub;
+			item.addEventListener('mousedown', function(e) {
+				e.preventDefault();
+				var name = pl.Persona || pl.Name || '';
+				playerInput.value = name;
+				playerIdEl.value  = pl.MundaneId || pl.mundane_id || 0;
+				// Always auto-fill alias (user can adjust)
+				var aliasEl = document.getElementById('tn-addparticipant-alias');
+				if (aliasEl) { aliasEl.value = name; }
+				tnAcClose();
+			});
+			resultsEl.appendChild(item);
+		});
+		resultsEl.classList.add('tn-ac-open');
+	}
+
+	if (playerInput && resultsEl) {
 		playerInput.addEventListener('input', function() {
 			var term = this.value.trim();
 			playerIdEl.value = '0';
 			clearTimeout(playerTimer);
 			if (term.length < 2) { tnAcClose(); return; }
 			playerTimer = setTimeout(function() {
-				var url = TnConfig.uir + 'KingdomAjax/playersearch/' + TnConfig.kingdomId + '&q=' + encodeURIComponent(term);
-				fetch(url).then(function(r) { return r.json(); }).then(function(data) {
-					resultsEl.innerHTML = '';
-					if (!data || !data.length) {
-						resultsEl.innerHTML = '<div class="tn-ac-item tn-ac-empty">No players found</div>';
-						resultsEl.classList.add('tn-ac-open');
-						return;
-					}
-					data.forEach(function(pl) {
-						var item = document.createElement('div');
-						item.className = 'tn-ac-item';
-						item.tabIndex = -1;
-						item.dataset.id      = pl.MundaneId;
-						item.dataset.persona = pl.Persona;
-						item.innerHTML = tnEsc(pl.Persona) + ' <span style="color:#a0aec0;font-size:11px">(' + tnEsc(pl.KAbbr||'') + ':' + tnEsc(pl.PAbbr||'') + ')</span>';
-						item.addEventListener('mousedown', function(e) {
-							e.preventDefault(); // keep focus on input
-							playerInput.value = pl.Persona;
-							playerIdEl.value  = pl.MundaneId;
-							// Auto-fill alias if still empty
-							var aliasEl = document.getElementById('tn-addparticipant-alias');
-							if (aliasEl && !aliasEl.value.trim()) { aliasEl.value = pl.Persona; }
+				if (TnConfig.kingdomId > 0) {
+					// Kingdom-scoped search (same endpoint as award modals)
+					var url = TnConfig.uir + 'KingdomAjax/playersearch/' + TnConfig.kingdomId + '&q=' + encodeURIComponent(term);
+					fetch(url)
+						.then(function(r) { return r.json(); })
+						.then(function(data) { tnAcRender(data); })
+						.catch(function(err) {
+							console.error('[AddParticipant] kingdom search failed:', err);
 							tnAcClose();
 						});
-						resultsEl.appendChild(item);
-					});
-					resultsEl.classList.add('tn-ac-open');
-				}).catch(function() { tnAcClose(); });
+				} else {
+					// Fallback: global SOAP persona search
+					var url = TnConfig.httpService + 'Search/SearchService.php?Action=Search%2FPlayer&type=PERSONA&search=' + encodeURIComponent(term) + '&limit=10';
+					fetch(url)
+						.then(function(r) { return r.json(); })
+						.then(function(data) { tnAcRender(data.Players || data.Results || []); })
+						.catch(function(err) {
+							console.error('[AddParticipant] global search failed:', err);
+							tnAcClose();
+						});
+				}
 			}, 280);
 		});
 		playerInput.addEventListener('blur', function() {
