@@ -1727,6 +1727,16 @@ var KnConfig = {
 			+ '<span><i class="fas fa-calendar-check" style="color:#63b3ed;width:14px"></i> ' + knFmtDate(p.lastSignin) + '</span>'
 			+ classSpan + '</div></a>';
 	}
+	function knClassSwatch(p) {
+		if (!p.lastClass) return '';
+		if (p.lastClassIcon) {
+			return '<i class="fas ' + p.lastClassIcon + '" style="color:' + p.lastClassColor + ';margin-right:5px;vertical-align:middle;"></i>';
+		}
+		var color = p.lastClassColor || '#ccc';
+		var isRepeating = color.indexOf('repeating-') !== -1;
+		var bgStyle = 'background:' + color + ';' + (isRepeating ? 'background-size:8px 8px;' : '');
+		return '<span style="display:inline-block;width:12px;height:12px;' + bgStyle + 'border:1px solid rgba(0,0,0,0.25);margin-right:5px;vertical-align:middle;border-radius:2px;flex-shrink:0;"></span>';
+	}
 	function knPlayerRowHtml(p, uir) {
 		var pills = (p.officerRoles || '').split(', ').filter(Boolean).map(function(r) {
 			return '<span class="kn-officer-pill">' + knHtmlEsc(r.trim()) + '</span>';
@@ -1736,7 +1746,7 @@ var KnConfig = {
 			+ '<td>' + knHtmlEsc(p.parkName || '') + '</td>'
 			+ '<td data-sortval="' + p.signinCount + '">' + p.signinCount + '</td>'
 			+ '<td class="kn-date-col" data-sortval="' + knHtmlEsc(p.lastSignin) + '">' + knFmtDate(p.lastSignin, true) + '</td>'
-			+ '<td>' + knHtmlEsc(p.lastClass || '') + '</td>'
+			+ '<td style="white-space:nowrap;">' + knClassSwatch(p) + knHtmlEsc(p.lastClass || '') + '</td>'
 			+ '<td>' + knHtmlEsc(p.officerRoles || '') + '</td>'
 			+ '</tr>';
 	}

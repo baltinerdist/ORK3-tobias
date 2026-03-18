@@ -444,6 +444,20 @@ class Controller_Player extends Controller {
 			}
 		}
 
+		// Class color/icon lookup — passed to template for swatch rendering
+		global $DB;
+		$_classRows = $DB->DataSet("SELECT class_id, color, icon FROM ork_class");
+		$classLookup = [];
+		if ($_classRows) {
+			while ($_classRows->Next()) {
+				$classLookup[(int)$_classRows->class_id] = ['color' => $_classRows->color, 'icon' => $_classRows->icon];
+			}
+		}
+		$this->data['ClassLookup'] = $classLookup;
+		$_lastClassId2 = !empty($_att[0]['ClassId']) ? (int)$_att[0]['ClassId'] : 0;
+		$this->data['Stats']['LastPlayedClassColor'] = $classLookup[$_lastClassId2]['color'] ?? '';
+		$this->data['Stats']['LastPlayedClassIcon']  = $classLookup[$_lastClassId2]['icon']  ?? '';
+
 		$preloadOfficers = [];
 		$kingdomOfficers = $this->Kingdom->get_officers($this->session->kingdom_id, $this->session->token);
 		if (is_array($kingdomOfficers)) {

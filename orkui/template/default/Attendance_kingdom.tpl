@@ -18,6 +18,38 @@ foreach ($att_rows as $row) {
 arsort($park_counts);
 arsort($class_counts);
 
+/* ── Class color/icon lookup ─────────────────────────── */
+global $DB;
+$_cr = $DB->DataSet("SELECT name, color, icon FROM ork_class");
+$classInfo = [];
+if ($_cr) { while ($_cr->Next()) { $classInfo[$_cr->name] = ['color' => $_cr->color, 'icon' => $_cr->icon]; } }
+
+function classColorToHighcharts(string $color): mixed {
+	if (empty($color)) return '#7c3aed';
+	if (strpos($color, 'linear-gradient') !== false) {
+		preg_match_all('/#[0-9a-fA-F]{6}/', $color, $m);
+		if (!empty($m[0])) {
+			$stops = []; $n = count($m[0]);
+			foreach ($m[0] as $i => $h) { $stops[] = [$i / max(1, $n - 1), $h]; }
+			return ['linearGradient' => ['x1'=>0,'x2'=>1,'y1'=>0,'y2'=>0], 'stops' => $stops];
+		}
+	}
+	if (strpos($color, 'repeating-') !== false) return '#888888';
+	return $color;
+}
+
+/* Map display-name → ClassName for colour lookup (handles Flavor) */
+$class_name_map = [];
+foreach ($att_rows as $_r) {
+	$_dn = strlen($_r['Flavor'] ?? '') > 0 ? $_r['Flavor'] : ($_r['ClassName'] ?? 'Unknown');
+	if (!isset($class_name_map[$_dn])) $class_name_map[$_dn] = $_r['ClassName'] ?? '';
+}
+$class_chart_data = [];
+foreach ($class_counts as $_cn => $_ct) {
+	$_lookup = $class_name_map[$_cn] ?? $_cn;
+	$class_chart_data[] = ['y' => $_ct, 'color' => classColorToHighcharts($classInfo[$_lookup]['color'] ?? '')];
+}
+
 $park_chart_h  = 300;
 $class_chart_h = 300;
 
@@ -299,7 +331,16 @@ $show_charts = $total > 0;
 						<a href="<?=UIR.'Player/profile/'.$row['MundaneId']?>"><?=htmlspecialchars($row['Persona'])?></a>
 <?php endif; ?>
 					</td>
-					<td><?=htmlspecialchars(strlen($row['Flavor']??'')>0?$row['Flavor']:$row['ClassName'])?></td>
+				<td style="white-space:nowrap;"><?php
+					$_ci = $classInfo[$row['ClassName'] ?? ''] ?? [];
+					if (!empty($_ci['icon'])) {
+						echo '<i class="fas ' . htmlspecialchars($_ci['icon']) . '" style="color:' . htmlspecialchars($_ci['color']) . ';margin-right:4px;vertical-align:middle;"></i>';
+					} elseif (!empty($_ci['color'])) {
+						$_isRep = strpos($_ci['color'], 'repeating-') !== false;
+						$_bg = 'background:' . $_ci['color'] . ';' . ($_isRep ? 'background-size:8px 8px;' : '');
+						echo '<span style="display:inline-block;width:10px;height:10px;' . $_bg . 'border:1px solid rgba(0,0,0,0.25);margin-right:4px;vertical-align:middle;border-radius:2px;"></span>';
+					}
+				?><?=htmlspecialchars(strlen($row['Flavor']??'')>0?$row['Flavor']:$row['ClassName'])?></td>
 					<td><?=(int)$row['Credits']?></td>
 					<td><a href="<?=UIR.'Player/profile/'.$row['EnteredById']?>"><?=htmlspecialchars($row['EnteredBy']??'')?></a></td>
 <?php if ($LoggedIn) : ?>
@@ -426,23 +467,37 @@ $(function() {
 		legend: { enabled: false },
 		credits: { enabled: false },
 		tooltip: { headerFormat: '', pointFormat: '<b>{point.category}</b>: {point.y}' },
-		plotOptions: { column: { dataLabels: { enabled: true } } }
+		plotOptions: { column: { dataLabels: { enabled: true }, borderWidth: 1, borderColor: 'rgba(0,0,0,0.25)' } }
 	});
 
 	new Highcharts.Chart({
 		chart: { renderTo: 'att-class-chart', type: 'column',
-			style: { fontFamily: 'inherit' } },
+			style: { fontFamily: 'inherit' },
+			events: { load: function() {
+				var svg = this.container.querySelector('svg');
+				if (!svg) return;
+				var defs = svg.querySelector('defs');
+				if (!defs) { defs = document.createElementNS('http://www.w3.org/2000/svg','defs'); svg.insertBefore(defs, svg.firstChild); }
+				var pat = document.createElementNS('http://www.w3.org/2000/svg','pattern');
+				pat.setAttribute('id','hc-reeve-check'); pat.setAttribute('patternUnits','userSpaceOnUse'); pat.setAttribute('width','8'); pat.setAttribute('height','8');
+				var r1=document.createElementNS('http://www.w3.org/2000/svg','rect'); r1.setAttribute('width','8'); r1.setAttribute('height','8'); r1.setAttribute('fill','#fff');
+				var r2=document.createElementNS('http://www.w3.org/2000/svg','rect'); r2.setAttribute('width','4'); r2.setAttribute('height','4'); r2.setAttribute('fill','#000');
+				var r3=document.createElementNS('http://www.w3.org/2000/svg','rect'); r3.setAttribute('x','4'); r3.setAttribute('y','4'); r3.setAttribute('width','4'); r3.setAttribute('height','4'); r3.setAttribute('fill','#000');
+				pat.appendChild(r1); pat.appendChild(r2); pat.appendChild(r3); defs.appendChild(pat);
+				var pts = this.series[0] ? this.series[0].data : [];
+				for (var i=0;i<pts.length;i++) { if (pts[i].category==='Reeve' && pts[i].graphic) { pts[i].graphic.element.setAttribute('fill','url(#hc-reeve-check)'); } }
+			} } },
 		title: { text: null },
 		xAxis: {
 			categories: <?=json_encode(array_keys($class_counts))?>,
 			labels: { rotation: -45, align: 'right', style: { fontSize: '12px' } }
 		},
 		yAxis: { title: { text: null }, allowDecimals: false, min: 0 },
-		series: [{ name: 'Attendees', data: <?=json_encode(array_values($class_counts))?>, color: '#7c3aed' }],
+		series: [{ name: 'Attendees', data: <?=json_encode($class_chart_data)?> }],
 		legend: { enabled: false },
 		credits: { enabled: false },
 		tooltip: { headerFormat: '', pointFormat: '<b>{point.category}</b>: {point.y}' },
-		plotOptions: { column: { dataLabels: { enabled: true } } }
+		plotOptions: { column: { dataLabels: { enabled: true }, borderWidth: 1, borderColor: 'rgba(0,0,0,0.25)' } }
 	});
 <?php endif; ?>
 });

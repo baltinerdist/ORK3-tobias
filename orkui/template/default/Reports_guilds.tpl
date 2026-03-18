@@ -15,6 +15,15 @@ if (is_array($Guilds)) {
 $guild_names = array_keys($unique_guilds);
 sort($guild_names);
 
+/* Class color/icon lookup keyed by class name */
+global $DB;
+$_cr = $DB->DataSet("SELECT name, color, icon FROM ork_class");
+$classInfo = [];
+if ($_cr) { while ($_cr->Next()) { $classInfo[$_cr->name] = ['color' => $_cr->color, 'icon' => $_cr->icon]; } }
+/* Normalize award-name variants → canonical ork_class names */
+$classAliases = ['AntiPaladin' => 'Anti-Paladin'];
+
+
 /* Scope chip */
 $scope_label = '';
 $scope_link  = '';
@@ -122,8 +131,18 @@ if (isset($this->__session->park_id) && !empty($Guilds)) {
 					<p style="font-size:0.8rem;color:#6b7280;margin:0 0 8px;">Filter by guild:</p>
 					<div class="rp-guild-pills">
 						<button class="rp-guild-pill rp-guild-pill-active" data-guild="">All</button>
-<?php foreach ($guild_names as $gname) : ?>
-						<button class="rp-guild-pill" data-guild="<?=htmlspecialchars($gname, ENT_QUOTES)?>"><?=htmlspecialchars($gname)?></button>
+<?php foreach ($guild_names as $gname) :
+	$_ci = $classInfo[$gname] ?? [];
+	$_swatch = '';
+	if (!empty($_ci['icon'])) {
+		$_swatch = '<i class="fas ' . htmlspecialchars($_ci['icon']) . '" style="color:' . htmlspecialchars($_ci['color']) . ';margin-right:4px;vertical-align:middle;"></i>';
+	} elseif (!empty($_ci['color'])) {
+		$_isRep = strpos($_ci['color'], 'repeating-') !== false;
+		$_bg = 'background:' . $_ci['color'] . ';' . ($_isRep ? 'background-size:8px 8px;' : '');
+		$_swatch = '<span style="display:inline-block;width:10px;height:10px;' . $_bg . 'border:1px solid rgba(0,0,0,0.25);margin-right:4px;vertical-align:middle;border-radius:2px;flex-shrink:0;"></span>';
+	}
+?>
+						<button class="rp-guild-pill" data-guild="<?=htmlspecialchars($gname, ENT_QUOTES)?>"><?=$_swatch?><?=htmlspecialchars($gname)?></button>
 <?php endforeach; ?>
 					</div>
 <?php else : ?>
@@ -186,7 +205,16 @@ if (isset($this->__session->park_id) && !empty($Guilds)) {
 <?php if (is_array($Guilds)) : ?>
 <?php 	foreach ($Guilds as $guild) : ?>
 				<tr>
-					<td><?=htmlspecialchars($guild['ClassName'])?></td>
+					<td style="white-space:nowrap;"><?php
+						$_ci = $classInfo[$guild['ClassName']] ?? [];
+						if (!empty($_ci['icon'])) {
+							echo '<i class="fas ' . htmlspecialchars($_ci['icon']) . '" style="color:' . htmlspecialchars($_ci['color']) . ';margin-right:4px;vertical-align:middle;"></i>';
+						} elseif (!empty($_ci['color'])) {
+							$_isRep = strpos($_ci['color'], 'repeating-') !== false;
+							$_bg = 'background:' . $_ci['color'] . ';' . ($_isRep ? 'background-size:8px 8px;' : '');
+							echo '<span style="display:inline-block;width:10px;height:10px;' . $_bg . 'border:1px solid rgba(0,0,0,0.25);margin-right:4px;vertical-align:middle;border-radius:2px;"></span>';
+						}
+					?><?=htmlspecialchars($guild['ClassName'])?></td>
 <?php 		if (!isset($this->__session->kingdom_id)) : ?>
 					<td><a href='<?=UIR.'Kingdom/profile/'.$guild['KingdomId']?>'><?=htmlspecialchars($guild['KingdomName'])?></a></td>
 <?php 		endif; ?>

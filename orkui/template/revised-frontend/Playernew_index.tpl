@@ -76,6 +76,18 @@
 	$_duesPeriod = (!empty($_kconfig['DuesPeriod']['Value']->Period)) ? (int)$_kconfig['DuesPeriod']['Value']->Period : 6;
 
 	// Last class used (for attendance modal default)
+	function pnClassSwatch(array $cls): string {
+		if (empty($cls)) return '';
+		if (!empty($cls['icon'])) {
+			return '<i class="fas ' . htmlspecialchars($cls['icon']) . '" style="color:' . htmlspecialchars($cls['color']) . ';margin-right:5px;vertical-align:middle;"></i>';
+		}
+		if (!empty($cls['color'])) {
+			$isRepeating = strpos($cls['color'], 'repeating-') !== false;
+			$bgStyle = 'background:' . $cls['color'] . ';' . ($isRepeating ? 'background-size:8px 8px;' : '');
+			return '<span style="display:inline-block;width:12px;height:12px;' . $bgStyle . 'border:1px solid rgba(0,0,0,0.25);margin-right:5px;vertical-align:middle;border-radius:2px;"></span>';
+		}
+		return '';
+	}
 	$_lastClassId = 0;
 	foreach (is_array($Details['Attendance']) ? $Details['Attendance'] : [] as $_att) {
 		if (!empty($_att['ClassId'])) { $_lastClassId = (int)$_att['ClassId']; break; }
@@ -199,7 +211,15 @@
 		<div class="pn-stat-label">Titles</div>
 	</div>
 	<div class="pn-stat-card pn-stat-card-link" onclick="pnActivateTab('classes')">
-		<div class="pn-stat-icon"><i class="fas fa-shield-alt"></i></div>
+		<div class="pn-stat-icon">
+			<?php if (!empty($Stats['LastPlayedClassIcon'])): ?>
+				<i class="fas <?= htmlspecialchars($Stats['LastPlayedClassIcon']) ?>" style="color:<?= htmlspecialchars($Stats['LastPlayedClassColor']) ?>"></i>
+			<?php elseif (!empty($Stats['LastPlayedClassColor'])): ?>
+				<i class="fas fa-shield-alt" style="color:<?= htmlspecialchars($Stats['LastPlayedClassColor']) ?>"></i>
+			<?php else: ?>
+				<i class="fas fa-shield-alt"></i>
+			<?php endif; ?>
+		</div>
 		<div class="pn-stat-number pn-stat-text"><?= htmlspecialchars($Stats['LastPlayedClass'] ?: '—') ?></div>
 		<div class="pn-stat-label">Last Played</div>
 	</div>
@@ -816,7 +836,7 @@
 									<td><a href="<?= UIR ?>Kingdom/profile/<?= $detail['KingdomId'] ?>"><?= $detail['KingdomName'] ?></a></td>
 									<td><a href="<?= UIR ?>Park/profile/<?= $detail['ParkId'] ?>"><?= $detail['ParkName'] ?></a></td>
 									<td><a href="<?= UIR ?>Attendance/event/<?= $detail['EventId'] ?>/<?= $detail['EventCalendarDetailId'] ?>"><?= $detail['EventName'] ?></a></td>
-									<td><?= trimlen($detail['Flavor']) > 0 ? $detail['Flavor'] : $detail['ClassName'] ?></td>
+									<td style="white-space:nowrap;"><?= pnClassSwatch($ClassLookup[$detail['ClassId']] ?? []) ?><?= htmlspecialchars(trimlen($detail['Flavor']) > 0 ? $detail['Flavor'] : $detail['ClassName']) ?></td>
 									<td class="pn-col-numeric"><?= $detail['Credits'] ?></td>
 									<?php if ($canEditAdmin): ?>
 									<td class="pn-award-actions-cell">
@@ -993,8 +1013,8 @@
 									$hasParagon = $paragonAwardId && isset($pnHeldAwardIds[$paragonAwardId]);
 								?>
 								<tr>
-									<td>
-										<?= htmlspecialchars($detail['ClassName']) ?>
+									<td style="white-space:nowrap;">
+										<?= pnClassSwatch($ClassLookup[$detail['ClassId']] ?? []) ?><?= htmlspecialchars($detail['ClassName']) ?>
 										<?php if ($hasParagon): ?>
 											<span class="pn-paragon-badge" title="Paragon title earned"><i class="fas fa-crown"></i> Paragon</span>
 										<?php endif; ?>
