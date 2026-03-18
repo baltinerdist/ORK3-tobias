@@ -541,7 +541,35 @@
 
 			</div><!-- /.ev-tab-panel -->
 
-			<?php /* [TOURNAMENTS HIDDEN] tab panel */ ?>
+			<?php // ---- Tournaments Tab ---- ?>
+			<div class="ev-tab-panel" id="ev-tab-tournaments">
+				<?php if ($tourneyCount > 0): ?>
+				<table class="ev-table">
+					<thead>
+						<tr>
+							<th>Tournament</th>
+							<th>Date</th>
+						</tr>
+					</thead>
+					<tbody>
+						<?php foreach ($tournaments as $t): ?>
+						<tr>
+							<td>
+								<a href="<?= UIR ?>Tournament/profile/<?= (int)$t['TournamentId'] ?>">
+									<?= htmlspecialchars($t['Name'] ?? 'Tournament') ?>
+								</a>
+							</td>
+							<td><?= $t['EventStart'] ? date('M j, Y', strtotime($t['EventStart'])) : '—' ?></td>
+						</tr>
+						<?php endforeach; ?>
+					</tbody>
+				</table>
+				<?php else: ?>
+				<div class="ev-empty">
+					<i class="fas fa-trophy" style="margin-right:6px"></i>No tournaments recorded
+				</div>
+				<?php endif; ?>
+			</div><!-- /.ev-tab-panel -->
 
 			<?php // ---- RSVPs Tab ---- ?>
 			<div class="ev-tab-panel" id="ev-tab-rsvp">

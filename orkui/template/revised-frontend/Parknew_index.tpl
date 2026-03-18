@@ -649,7 +649,39 @@
 				<?php endif; ?>
 				</div><!-- /pk-events-list-view -->
 
-				<?php /* [TOURNAMENTS HIDDEN] */ ?>
+				<div style="display:flex;align-items:center;justify-content:space-between;margin:20px 0 10px;border-top:1px solid #e2e8f0;padding-top:16px;">
+					<h4 style="margin:0;font-size:14px;font-weight:700;color:#4a5568;"><i class="fas fa-trophy" style="margin-right:6px;color:#a0aec0"></i>Tournaments</h4>
+					<?php if ($CanManagePark): ?>
+					<button onclick="pkOpenAddTournamentModal()" style="display:inline-flex;align-items:center;gap:5px;background:#276749;color:#fff;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:600;border:none;cursor:pointer;">
+						<i class="fas fa-plus"></i> Add Tournament
+					</button>
+					<?php endif; ?>
+				</div>
+				<?php if (count($tournamentList) > 0): ?>
+					<table class="pk-table" id="pk-tournaments-table">
+						<thead>
+							<tr>
+								<th data-sorttype="text">Tournament</th>
+								<th data-sorttype="text">Event</th>
+								<th data-sorttype="date">Date</th>
+							</tr>
+						</thead>
+						<tbody>
+							<?php foreach ($tournamentList as $t): ?>
+							<tr onclick='window.location.href="<?= UIR ?>Tournament/profile/<?= $t['TournamentId'] ?>"'> 
+								<td><?= htmlspecialchars($t['Name']) ?></td>
+								<td><?= htmlspecialchars($t['EventName']) ?></td>
+								<td class="pk-date-col" data-sortval="<?= $t['DateTime'] ?>">
+									<?= date('M. j, Y', strtotime($t['DateTime'])) ?>
+								</td>
+							</tr>
+							<?php endforeach; ?>
+						</tbody>
+					</table>
+					<div class="pk-pagination" id="pk-tournaments-table-pages"></div>
+				<?php else: ?>
+					<div class="pk-empty">No tournaments found</div>
+				<?php endif; ?>
 			</div>
 
 
