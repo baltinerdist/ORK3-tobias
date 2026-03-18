@@ -486,7 +486,7 @@ $heroStyles = array_keys($heroStyles);
 									<span style="font-size:11px;color:#a0aec0"><?= htmlspecialchars($p['ParkName']) ?></span>
 									<?php endif; ?>
 									<?php if ($canManage): ?>
-									<button class="tn-remove-participant" data-pid="<?= (int)$p['ParticipantId'] ?>" data-bid="<?= $bid ?>" data-tid="<?= $tournament_id ?>" title="Remove participant" onclick="tnRemoveParticipant(this)">&times;</button>
+									<button class="tn-remove-participant" data-pid="<?= (int)$p['ParticipantId'] ?>" data-bid="<?= $bid ?>" data-tid="<?= $tid ?>" title="Remove participant" onclick="tnRemoveParticipant(this)">&times;</button>
 									<?php endif; ?>
 								</li>
 								<?php endforeach; ?>
