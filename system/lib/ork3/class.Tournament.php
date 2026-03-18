@@ -188,7 +188,7 @@ class Tournament extends Ork3 {
 					LEFT JOIN " . DB_PREFIX . "participant_mundane pm ON pm.participant_id = p.participant_id
 						LEFT JOIN " . DB_PREFIX . "mundane m ON pm.mundane_id = m.mundane_id
 					LEFT JOIN " . DB_PREFIX . "unit u ON p.unit_id = u.unit_id
-					LEFT JOIN " . DB_PREFIX . "park ON p.park_id = park.park_id
+					LEFT JOIN " . DB_PREFIX . "park park ON p.park_id = park.park_id
 					LEFT JOIN " . DB_PREFIX . "kingdom k ON k.kingdom_id = p.kingdom_id
 				WHERE 1 $where
 				ORDER BY p.participant_id";
