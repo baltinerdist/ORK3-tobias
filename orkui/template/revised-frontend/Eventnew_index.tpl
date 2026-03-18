@@ -548,7 +548,7 @@
 						<?php foreach ($tournaments as $t): ?>
 						<tr>
 							<td>
-								<a href="<?= UIR ?>Tournament/worksheet/<?= (int)$t['TournamentId'] ?>">
+								<a href="<?= UIR ?>Tournament/profile/<?= (int)$t['TournamentId'] ?>">
 									<?= htmlspecialchars($t['Name'] ?? 'Tournament') ?>
 								</a>
 							</td>

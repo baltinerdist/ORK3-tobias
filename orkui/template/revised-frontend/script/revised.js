@@ -8947,7 +8947,7 @@ function setupPronounPicker(cfg) {
                 btn.disabled = false;
                 if (r && r.status === 0) {
                     showFb('Tournament created!', true);
-                    setTimeout(function() { closeModal(); window.location.reload(); }, 900);
+                    setTimeout(function() { closeModal(); window.location.href = KnConfig.uir + 'Tournament/profile/' + r.tournamentId; }, 900);
                 } else {
                     showFb((r && r.error) ? r.error : 'Failed to create tournament.', false);
                 }
@@ -9014,7 +9014,7 @@ function setupPronounPicker(cfg) {
                 btn.disabled = false;
                 if (r && r.status === 0) {
                     showFb('Tournament created!', true);
-                    setTimeout(function() { closeModal(); window.location.reload(); }, 900);
+                    setTimeout(function() { closeModal(); window.location.href = PkConfig.uir + 'Tournament/profile/' + r.tournamentId; }, 900);
                 } else {
                     showFb((r && r.error) ? r.error : 'Failed to create tournament.', false);
                 }

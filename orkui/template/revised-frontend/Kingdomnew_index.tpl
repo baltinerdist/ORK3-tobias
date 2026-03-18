@@ -480,10 +480,10 @@
 						</thead>
 						<tbody>
 							<?php foreach ($tournamentList as $t): ?>
-								<tr class="kn-row-link" data-type="<?= (int)($t['ParkId'] ?? 0) > 0 ? 'park-event' : 'kingdom-event' ?>" onclick="window.location.href='<?= UIR ?>Tournament/worksheet/<?= $t['TournamentId'] ?>'">
+								<tr class="kn-row-link" data-type="<?= (int)($t['ParkId'] ?? 0) > 0 ? 'park-event' : 'kingdom-event' ?>" onclick="window.location.href='<?= UIR ?>Tournament/profile/<?= $t['TournamentId'] ?>'">
 									<td class="kn-col-nowrap"><?= date("M j, Y", strtotime($t['DateTime'])) ?></td>
 									<td>
-										<a href="<?= UIR ?>Tournament/worksheet/<?= $t['TournamentId'] ?>"><?= htmlspecialchars($t['Name']) ?></a>
+										<a href="<?= UIR ?>Tournament/profile/<?= $t['TournamentId'] ?>"><?= htmlspecialchars($t['Name']) ?></a>
 									</td>
 									<td><?= htmlspecialchars($t['ParkName']) ?></td>
 									<td><?= htmlspecialchars($t['EventName']) ?></td>

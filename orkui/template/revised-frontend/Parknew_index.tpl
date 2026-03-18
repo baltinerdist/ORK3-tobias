@@ -645,7 +645,7 @@
 						</thead>
 						<tbody>
 							<?php foreach ($tournamentList as $t): ?>
-							<tr onclick='window.location.href="<?= UIR ?>Tournament/worksheet/<?= $t['TournamentId'] ?>"'>
+							<tr onclick='window.location.href="<?= UIR ?>Tournament/profile/<?= $t['TournamentId'] ?>"'>
 								<td><?= htmlspecialchars($t['Name']) ?></td>
 								<td><?= htmlspecialchars($t['EventName']) ?></td>
 								<td class="pk-date-col" data-sortval="<?= $t['DateTime'] ?>">

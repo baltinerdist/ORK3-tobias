@@ -33,7 +33,7 @@ class Controller_Tournament extends Controller {
 		if ($_uid > 0 && Ork3::$Lib->authorization->HasAuthority($_uid, AUTH_PARK, (int)$this->session->park_id, AUTH_EDIT)) {
 			$this->data['menu']['admin'] = array( 'url' => UIR.'Admin/park/'.$this->session->park_id, 'display' => 'Admin Panel <i class="fas fa-cog"></i>', 'no-crumb' => 'no-crumb' );
 			$this->data['menulist']['admin'] = array(
-					array( 'url' => UIR.'Admin/tournament/'.$id, 'display' => 'tournament' ),
+					array( 'url' => UIR.'Tournament/profile/'.$id, 'display' => 'Tournament' ),
 					array( 'url' => UIR.'Admin/park/'.$this->session->park_id, 'display' => 'Park' ),
 					array( 'url' => UIR.'Admin/kingdom/'.$this->session->kingdom_id, 'display' => 'Kingdom' )
 				);
@@ -119,5 +119,96 @@ class Controller_Tournament extends Controller {
 				'EventCalendarDetailId' =>  $this->data['EventCalendarDetailId']
 			));
 	}
+
+	public function profile($tournament_id) {
+		$this->template = '../revised-frontend/Tournametnew_index.tpl';
+		$tournament_id  = (int)preg_replace('/[^0-9]/', '', $tournament_id ?? '');
+
+		if (!valid_id($tournament_id)) {
+			header('Location: ' . UIR . 'Tournament/create');
+			exit;
+		}
+
+		// Fetch tournament record via TournamentReport (accepts TournamentId filter)
+		$tr         = $this->Tournament->get_tournies(['TournamentId' => $tournament_id]);
+		$tournament = $tr['Tournaments'][0] ?? null;
+		if (!$tournament) {
+			header('Location: ' . UIR . 'Tournament/create');
+			exit;
+		}
+		$this->data['tournament'] = $tournament;
+
+		// Auth: kingdom > park level edit
+		$_uid      = isset($this->session->user_id) ? (int)$this->session->user_id : 0;
+		$canManage = false;
+		if ($_uid > 0) {
+			if (valid_id($tournament['KingdomId'])) {
+				$canManage = Ork3::$Lib->authorization->HasAuthority($_uid, AUTH_KINGDOM, (int)$tournament['KingdomId'], AUTH_EDIT);
+			}
+			if (!$canManage && valid_id($tournament['ParkId'])) {
+				$canManage = Ork3::$Lib->authorization->HasAuthority($_uid, AUTH_PARK, (int)$tournament['ParkId'], AUTH_EDIT);
+			}
+		}
+		$this->data['CanManageTournament'] = $canManage;
+		$this->data['LoggedIn']            = isset($this->session->user_id);
+
+		// Load brackets
+		$bracketsResult = $this->Tournament->get_brackets($tournament_id);
+		$brackets       = $bracketsResult['Detail'] ?? [];
+		$this->data['brackets'] = $brackets;
+
+		// Load per-bracket participants and matches
+		$bracketData       = [];
+		$totalParticipants = 0;
+		$totalMatches      = 0;
+		foreach ($brackets as $b) {
+			$bid   = (int)$b['BracketId'];
+			$parts = $this->Tournament->get_participants(['TournamentId' => $tournament_id, 'BracketId' => $bid]);
+			$mtchs = $this->Tournament->get_matches(['TournamentId' => $tournament_id, 'BracketId' => $bid]);
+			$pList = $parts['Detail'] ?? [];
+			$mList = $mtchs['Detail'] ?? [];
+			$bracketData[$bid] = [
+				'Bracket'      => $b,
+				'Participants' => $pList,
+				'Matches'      => $mList,
+			];
+			$totalParticipants += count($pList);
+			$totalMatches      += count($mList);
+		}
+		$this->data['bracket_data']      = $bracketData;
+		$this->data['TotalBrackets']     = count($brackets);
+		$this->data['TotalParticipants'] = $totalParticipants;
+		$this->data['TotalMatches']      = $totalMatches;
+
+		// Load standings per bracket (only meaningful when matches exist)
+		$standingsData = [];
+		foreach ($brackets as $b) {
+			$bid = (int)$b['BracketId'];
+			if (!empty($bracketData[$bid]['Matches'])) {
+				$sr = $this->Tournament->get_standings($bid);
+				$standingsData[$bid] = $sr['Detail'] ?? [];
+			}
+		}
+		$this->data['standings_data'] = $standingsData;
+
+		// Breadcrumb / nav menu
+		if (valid_id($tournament['KingdomId'])) {
+			$this->data['menu']['kingdom'] = [
+				'url'     => UIR . 'Kingdom/profile/' . $tournament['KingdomId'],
+				'display' => $tournament['KingdomName'],
+			];
+		}
+		if (valid_id($tournament['ParkId'])) {
+			$this->data['menu']['park'] = [
+				'url'     => UIR . 'Park/profile/' . $tournament['ParkId'],
+				'display' => $tournament['ParkName'],
+			];
+		}
+		$this->data['menu']['tournament'] = [
+			'url'     => UIR . 'Tournament/profile/' . $tournament_id,
+			'display' => $tournament['Name'],
+		];
+	}
+
 }
 ?>
