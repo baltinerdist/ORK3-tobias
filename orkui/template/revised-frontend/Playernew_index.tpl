@@ -1,5 +1,7 @@
 <?php
-	$passwordExpired = strtotime($Player['PasswordExpires']) - time() <= 0;
+	$passwordExpired  = strtotime($Player['PasswordExpires']) - time() <= 0;
+	$passwordSoonSecs = strtotime($Player['PasswordExpires']) - time();
+	$passwordSoon     = !$passwordExpired && $passwordSoonSecs <= (14 * 86400);
 	$passwordExpiring = $passwordExpired ? 'Expired' : date('Y-m-j', strtotime($Player['PasswordExpires']));
 	$recError = isset($_GET['rec_error']) ? htmlspecialchars(urldecode($_GET['rec_error'])) : '';
 
@@ -232,9 +234,9 @@
 				<span class="pn-detail-label">Username</span>
 				<span class="pn-detail-value"><?= htmlspecialchars($Player['UserName']) ?></span>
 			</div>
-			<div class="pn-detail-row">
+			<div class="pn-detail-row"<?= ($passwordExpired || $passwordSoon) ? ' style="background:#fffbe6;border-left:3px solid #f6ad55;padding-left:6px;margin-left:-6px;"' : '' ?>>
 				<span class="pn-detail-label">Password Expires</span>
-				<span class="pn-detail-value"><?= $passwordExpiring ?></span>
+				<span class="pn-detail-value" style="<?= $passwordExpired ? 'color:#c53030;font-weight:600;' : ($passwordSoon ? 'color:#b7791f;font-weight:600;' : '') ?>"><?= $passwordExpiring ?><?= $passwordSoon ? ' <i class="fas fa-exclamation-triangle" style="margin-left:5px;font-size:12px;" title="Expires within 2 weeks"></i>' : '' ?></span>
 			</div>
 			<div class="pn-detail-row">
 				<span class="pn-detail-label">Member Since</span>
@@ -275,7 +277,7 @@
 						<?php if (!$reeveUntil): ?>
 							<span class="pn-badge pn-badge-green">No end date</span>
 						<?php else: ?>
-							<span class="pn-badge <?= $reeveExpired ? 'pn-badge-red' : 'pn-badge-green' ?>">Until <?= $reeveUntil ?></span>
+							<span class="pn-badge <?= $reeveExpired ? 'pn-badge-red' : 'pn-badge-green' ?>"><?= $reeveExpired ? 'Expired' : 'Until' ?> <?= $reeveUntil ?></span>
 						<?php endif; ?>
 					<?php else: ?>
 						<span class="pn-badge pn-badge-gray">No</span>
@@ -293,7 +295,7 @@
 						<?php if (!$corporaUntil): ?>
 							<span class="pn-badge pn-badge-green">No end date</span>
 						<?php else: ?>
-							<span class="pn-badge <?= $corporaExpired ? 'pn-badge-red' : 'pn-badge-green' ?>">Until <?= $corporaUntil ?></span>
+							<span class="pn-badge <?= $corporaExpired ? 'pn-badge-red' : 'pn-badge-green' ?>"><?= $corporaExpired ? 'Expired' : 'Until' ?> <?= $corporaUntil ?></span>
 						<?php endif; ?>
 					<?php else: ?>
 						<span class="pn-badge pn-badge-gray">No</span>
@@ -389,7 +391,7 @@
 			<?php if (count($unitList) > 0): ?>
 				<?php foreach ($unitList as $unit): ?>
 					<div class="pn-unit-row">
-						<a class="pn-unit-link" href="<?= UIR ?>Unit/index/<?= $unit['UnitId'] ?>"><?= htmlspecialchars($unit['Name'] ?? '') ?: '(Unnamed)' ?></a>
+						<a class="pn-unit-link" href="<?= UIR ?>Unit/index/<?= $unit['UnitId'] ?>&from_player=<?= (int)$Player['MundaneId'] ?>"><?= htmlspecialchars($unit['Name'] ?? '') ?: '(Unnamed)' ?></a>
 						<span class="pn-unit-type"><?= ucfirst($unit['Type']) ?></span>
 						<?php if ($canEditAdmin || $isOwnProfile): ?>
 						<span class="pn-delete-cell pn-unit-quit-cell">
@@ -813,7 +815,7 @@
 									</td>
 									<td><a href="<?= UIR ?>Kingdom/profile/<?= $detail['KingdomId'] ?>"><?= $detail['KingdomName'] ?></a></td>
 									<td><a href="<?= UIR ?>Park/profile/<?= $detail['ParkId'] ?>"><?= $detail['ParkName'] ?></a></td>
-									<td><a href="<?= UIR ?>Attendance/event/<?= $detail['EventId'] ?>/<?= $detail['EventCalendarDetailId'] ?>"><?= $detail['EventName'] ?></a></td>
+									<td><a href="<?= UIR ?>Event/detail/<?= $detail['EventId'] ?>/<?= $detail['EventCalendarDetailId'] ?>"><?= $detail['EventName'] ?></a></td>
 									<td><?= trimlen($detail['Flavor']) > 0 ? $detail['Flavor'] : $detail['ClassName'] ?></td>
 									<td class="pn-col-numeric"><?= $detail['Credits'] ?></td>
 									<?php if ($canEditAdmin): ?>

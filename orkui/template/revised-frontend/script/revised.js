@@ -1708,7 +1708,7 @@ window.knInitMap = async function() {
     var infowindow = new google.maps.InfoWindow();
     for (var i = 0; i < knMapLocations.length; i++) {
         (function(loc) {
-            var pinGlyph = new PinElement({ scale: 0.7 });
+            var pinGlyph = new PinElement({ scale: 0.7, background: '#8B1A1A', borderColor: '#B8860B', glyphColor: '#FFD700' });
             var marker = new google.maps.marker.AdvancedMarkerElement({
                 position: new google.maps.LatLng(loc.lat, loc.lng),
                 map: map,
@@ -3115,29 +3115,35 @@ $(document).ready(function() {
             vacateBtn.style.display     = occupied ? '' : 'none';
             (function(r, btn, ni, hi) {
                 btn.addEventListener('click', function() {
-                    if (!confirm('Remove the current ' + r + '?')) return;
-                    btn.disabled    = true;
-                    btn.textContent = '\u2026';
-                    $.post(VACATE_URL, { Role: r }, function(result) {
-                        if (result && result.status === 0) {
-                            ni.value = '';
-                            hi.value = '';
-                            btn.style.display = 'none';
-                            btn.disabled      = false;
-                            btn.textContent   = 'Vacate';
-                            (KnConfig.officerList || []).forEach(function(off) {
-                                if (off.OfficerRole === r) { off.MundaneId = 0; off.Persona = ''; }
-                            });
-                            showFeedback(r + ' vacated.', true);
-                        } else {
+                    pnConfirm({
+                        title: 'Vacate Position?',
+                        message: 'Remove the current ' + r + '?',
+                        confirmText: 'Vacate',
+                        danger: true
+                    }, function() {
+                        btn.disabled    = true;
+                        btn.textContent = '\u2026';
+                        $.post(VACATE_URL, { Role: r }, function(result) {
+                            if (result && result.status === 0) {
+                                ni.value = '';
+                                hi.value = '';
+                                btn.style.display = 'none';
+                                btn.disabled      = false;
+                                btn.textContent   = 'Vacate';
+                                (KnConfig.officerList || []).forEach(function(off) {
+                                    if (off.OfficerRole === r) { off.MundaneId = 0; off.Persona = ''; }
+                                });
+                                showFeedback(r + ' vacated.', true);
+                            } else {
+                                btn.disabled    = false;
+                                btn.textContent = 'Vacate';
+                                showFeedback((result && result.error) ? result.error : 'Vacate failed.', false);
+                            }
+                        }, 'json').fail(function() {
                             btn.disabled    = false;
                             btn.textContent = 'Vacate';
-                            showFeedback((result && result.error) ? result.error : 'Vacate failed.', false);
-                        }
-                    }, 'json').fail(function() {
-                        btn.disabled    = false;
-                        btn.textContent = 'Vacate';
-                        showFeedback('Request failed.', false);
+                            showFeedback('Request failed.', false);
+                        });
                     });
                 });
             })(role, vacateBtn, nameInput, hiddenInput);
@@ -7844,28 +7850,34 @@ function setupPronounPicker(cfg) {
             vacateBtn.style.display = occupied ? '' : 'none';
             (function(r, btn, ni, hi) {
                 btn.addEventListener('click', function() {
-                    if (!confirm('Remove the current ' + r + '?')) return;
-                    btn.disabled    = true;
-                    btn.textContent = '\u2026';
-                    $.post(VACATE_URL, { Role: r }, function(result) {
-                        if (result && result.status === 0) {
-                            ni.value = ''; hi.value = '';
-                            btn.style.display = 'none';
-                            btn.disabled      = false;
-                            btn.textContent   = 'Vacate';
-                            (PkConfig.officerList || []).forEach(function(off) {
-                                if (off.OfficerRole === r) { off.MundaneId = 0; off.Persona = ''; }
-                            });
-                            showFeedback(r + ' vacated.', true);
-                        } else {
+                    pnConfirm({
+                        title: 'Vacate Position?',
+                        message: 'Remove the current ' + r + '?',
+                        confirmText: 'Vacate',
+                        danger: true
+                    }, function() {
+                        btn.disabled    = true;
+                        btn.textContent = '\u2026';
+                        $.post(VACATE_URL, { Role: r }, function(result) {
+                            if (result && result.status === 0) {
+                                ni.value = ''; hi.value = '';
+                                btn.style.display = 'none';
+                                btn.disabled      = false;
+                                btn.textContent   = 'Vacate';
+                                (PkConfig.officerList || []).forEach(function(off) {
+                                    if (off.OfficerRole === r) { off.MundaneId = 0; off.Persona = ''; }
+                                });
+                                showFeedback(r + ' vacated.', true);
+                            } else {
+                                btn.disabled    = false;
+                                btn.textContent = 'Vacate';
+                                showFeedback((result && result.error) ? result.error : 'Vacate failed.', false);
+                            }
+                        }, 'json').fail(function() {
                             btn.disabled    = false;
                             btn.textContent = 'Vacate';
-                            showFeedback((result && result.error) ? result.error : 'Vacate failed.', false);
-                        }
-                    }, 'json').fail(function() {
-                        btn.disabled    = false;
-                        btn.textContent = 'Vacate';
-                        showFeedback('Request failed.', false);
+                            showFeedback('Request failed.', false);
+                        });
                     });
                 });
             })(role, vacateBtn, nameInput, hiddenInput);

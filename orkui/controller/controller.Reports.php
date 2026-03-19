@@ -7,16 +7,23 @@ class Controller_Reports extends Controller {
 		parent::__construct($call, $method);
 		$back_url = UIR . 'Reports';
 		if (isset($this->session->park_id) && valid_id($this->session->park_id)) {
-			$back_url = UIR . 'Park/profile/' . (int)$this->session->park_id . '?tab=reports';
+			$back_url = UIR . 'Park/profile/' . (int)$this->session->park_id . '&tab=reports';
 		} elseif (isset($this->session->kingdom_id) && valid_id($this->session->kingdom_id)) {
-			$back_url = UIR . 'Kingdom/profile/' . (int)$this->session->kingdom_id . '?tab=reports';
+			$back_url = UIR . 'Kingdom/profile/' . (int)$this->session->kingdom_id . '&tab=reports';
 		}
 		$this->data['menu']['reports'] = array( 'url' => $back_url, 'display' => 'Reports' );
 		$this->data[ 'no_index' ] = true;
 	}
 
 	public function index($action = null) {
-
+		if (valid_id($this->session->park_id)) {
+			header('Location: ' . UIR . 'Park/profile/' . (int)$this->session->park_id . '&tab=reports');
+		} elseif (valid_id($this->session->kingdom_id)) {
+			header('Location: ' . UIR . 'Kingdom/profile/' . (int)$this->session->kingdom_id . '&tab=reports');
+		} else {
+			header('Location: ' . UIR);
+		}
+		exit;
 	}
 
 	function parkheraldry($kingdom_id=null) {
@@ -132,6 +139,7 @@ class Controller_Reports extends Controller {
 			$ladder = $this->request->Ladder;
 		$this->template = 'Reports_playerawardrecommendations.tpl';
 		$this->data['AwardRecommendations'] = $this->Reports->recommended_awards(array('KingdomId'=>'Kingdom'==$type?$id:0, 'ParkId'=>'Park'==$type?$id:0, 'IncludeKnights' => 1, 'IncludeMasters' => 1, 'IncludeLadder' => 1, 'LadderMinimum' => $ladder));
+		$this->data['ScopeType'] = ($type === 'Park') ? 'park' : (($type === 'Kingdom') ? 'kingdom' : '');
 		$this->data[ 'page_title' ] = "Award Recommendations";
 	}
 
@@ -151,9 +159,9 @@ class Controller_Reports extends Controller {
 		$this->data['report_type'] = $type ?? null;
 		$this->data['report_id']   = $id   ?? null;
 		if (($type ?? null) === 'Park') {
-			$this->data['menu']['reports']['url'] = UIR . 'Park/profile/' . (int)$id . '?tab=reports';
+			$this->data['menu']['reports']['url'] = UIR . 'Park/profile/' . (int)$id . '&tab=reports';
 		} elseif (($type ?? null) === 'Kingdom') {
-			$this->data['menu']['reports']['url'] = UIR . 'Kingdom/profile/' . (int)$id . '?tab=reports';
+			$this->data['menu']['reports']['url'] = UIR . 'Kingdom/profile/' . (int)$id . '&tab=reports';
 		}
 	}
 
@@ -239,9 +247,9 @@ class Controller_Reports extends Controller {
 		$this->data['report_type'] = $type;
 		$this->data['report_id']   = $this->request->id ?? null;
 		if ($type === 'Park') {
-			$this->data['menu']['reports']['url'] = UIR . 'Park/profile/' . (int)$this->request->id . '?tab=reports';
+			$this->data['menu']['reports']['url'] = UIR . 'Park/profile/' . (int)$this->request->id . '&tab=reports';
 		} elseif ($type === 'Kingdom') {
-			$this->data['menu']['reports']['url'] = UIR . 'Kingdom/profile/' . (int)$this->request->id . '?tab=reports';
+			$this->data['menu']['reports']['url'] = UIR . 'Kingdom/profile/' . (int)$this->request->id . '&tab=reports';
 		}
 	}
 
@@ -286,9 +294,9 @@ class Controller_Reports extends Controller {
 		$this->data['report_type'] = $type;
 		$this->data['report_id']   = $this->request->id ?? null;
 		if ($type === 'Park') {
-			$this->data['menu']['reports']['url'] = UIR . 'Park/profile/' . (int)$this->request->id . '?tab=reports';
+			$this->data['menu']['reports']['url'] = UIR . 'Park/profile/' . (int)$this->request->id . '&tab=reports';
 		} elseif ($type === 'Kingdom') {
-			$this->data['menu']['reports']['url'] = UIR . 'Kingdom/profile/' . (int)$this->request->id . '?tab=reports';
+			$this->data['menu']['reports']['url'] = UIR . 'Kingdom/profile/' . (int)$this->request->id . '&tab=reports';
 		}
     }
 
@@ -372,7 +380,16 @@ class Controller_Reports extends Controller {
 	public function suspended($type=null) {
 		$this->template = 'Reports_roster.tpl';
 		$this->data['show_suspension'] = 1;
-		$this->data['roster'] = $this->Reports->player_roster($type, $this->request->id, null, null, null, 2, 1);
+		$this->data['roster']     = $this->Reports->player_roster($type, $this->request->id, null, null, null, 2, 1);
+		$this->data['ScopeType']  = ($type === 'Park') ? 'park' : (($type === 'Kingdom') ? 'kingdom' : '');
+		$this->data['ScopeId']    = valid_id($this->request->id) ? (int)$this->request->id : null;
+		if ($type === 'Park' && valid_id($this->request->id)) {
+			$this->load_model('Park');
+			$this->data['ScopeName'] = $this->Park->get_park_name($this->request->id);
+		} elseif ($type === 'Kingdom' && valid_id($this->request->id)) {
+			$this->load_model('Kingdom');
+			$this->data['ScopeName'] = $this->Kingdom->get_kingdom_name($this->request->id);
+		}
 		$this->data['page_title'] ="Suspended Player Roster";
 	}
 
@@ -663,10 +680,10 @@ class Controller_Reports extends Controller {
 		$this->data['report_id']   = $id;
 
 		if ($type === 'Park') {
-			$this->data['menu']['reports']['url'] = UIR . 'Park/profile/' . $id . '?tab=reports';
+			$this->data['menu']['reports']['url'] = UIR . 'Park/profile/' . $id . '&tab=reports';
 			$this->data['page_title'] = 'Park Event Attendance';
 		} else {
-			$this->data['menu']['reports']['url'] = UIR . 'Kingdom/profile/' . $id . '?tab=reports';
+			$this->data['menu']['reports']['url'] = UIR . 'Kingdom/profile/' . $id . '&tab=reports';
 			$this->data['page_title'] = 'Kingdom Event Attendance';
 		}
 
@@ -694,7 +711,7 @@ class Controller_Reports extends Controller {
 			return;
 		}
 
-		$this->data['menu']['reports']['url'] = UIR . 'Kingdom/profile/' . $kingdom_id . '?tab=reports';
+		$this->data['menu']['reports']['url'] = UIR . 'Kingdom/profile/' . $kingdom_id . '&tab=reports';
 
 		$result = $this->Reports->beltline_data(array('KingdomId' => $kingdom_id));
 		$this->data['BeltlineRelationships'] = $result['Relationships'];
@@ -729,9 +746,9 @@ class Controller_Reports extends Controller {
 		$this->data['report_id']   = $id;
 
 		if ($type === 'Park') {
-			$this->data['menu']['reports']['url'] = UIR . 'Park/profile/' . $park_id . '?tab=reports';
+			$this->data['menu']['reports']['url'] = UIR . 'Park/profile/' . $park_id . '&tab=reports';
 		} elseif ($type === 'Kingdom') {
-			$this->data['menu']['reports']['url'] = UIR . 'Kingdom/profile/' . $kingdom_id . '?tab=reports';
+			$this->data['menu']['reports']['url'] = UIR . 'Kingdom/profile/' . $kingdom_id . '&tab=reports';
 		}
 
 		// 1. Get ladder awards for this kingdom (columns)

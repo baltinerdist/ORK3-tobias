@@ -185,6 +185,7 @@
 .ev-sched-day-section:first-child .ev-sched-day-header { margin-top: 4px; }
 .ev-sched-day-section + .ev-sched-day-section { margin-top: 10px; }
 .ev-sched-table { table-layout: fixed; width: 100%; }
+.ev-fp-title { background: #2b6cb0; color: #fff; font-size: 12px; font-weight: 700; padding: 6px 12px; text-align: center; letter-spacing: .04em; }
 </style>
 
 <?php // ---- HERO ---- ?>
@@ -615,7 +616,7 @@
 				<?php endif; ?>
 
 				<?php if (count($attendanceList) > 0): ?>
-				<table class="ev-table">
+				<table class="display" id="ev-attendance-table" style="width:100%">
 					<thead>
 						<tr>
 							<th>Player</th>
@@ -624,7 +625,7 @@
 							<th>Class</th>
 							<th>Credits</th>
 							<?php if ($canManageAttendance): ?>
-							<th class="ev-del-cell">&times;</th>
+							<th class="ev-del-cell"></th>
 							<?php endif; ?>
 						</tr>
 					</thead>
@@ -640,7 +641,7 @@
 							<td class="ev-del-cell">
 								<a class="ev-del-link" title="Remove"
 									href="<?= UIR ?>Event/detail/<?= $eventId ?>/<?= $detailId ?>/delete/<?= (int)$att['AttendanceId'] ?>"
-									onclick="return confirm('Remove this attendance record?')">×</a>
+									onclick="evConfirmAttDelete(event, this)">×</a>
 							</td>
 							<?php endif; ?>
 						</tr>
@@ -719,12 +720,12 @@
 					</table>
 					<?php else: ?>
 					<div class="ev-empty">
-						<i class="fas fa-calendar-check" style="margin-right:6px"></i>No RSVPs yet
+						<i class="fas fa-calendar-check" style="margin-right:6px"></i><?php echo $isPastEvent ? 'No RSVPs' : 'No RSVPs yet' ?>
 					</div>
 					<?php endif; ?>
 				<?php elseif ($rsvpCount === 0): ?>
 				<div class="ev-empty">
-					<i class="fas fa-calendar-check" style="margin-right:6px"></i>No RSVPs yet
+					<i class="fas fa-calendar-check" style="margin-right:6px"></i><?php echo $isPastEvent ? 'No RSVPs' : 'No RSVPs yet' ?>
 				</div>
 				<?php endif; ?>
 			</div><!-- /.ev-tab-panel -->
@@ -835,16 +836,26 @@
 				<?php endif; ?>
 
 				<div class="ev-modal-section">
+					<h4>Event Name</h4>
+					<div class="ev-modal-row">
+						<div class="ev-modal-field ev-field-full">
+							<label>Name</label>
+							<input type="text" name="EventName" value="<?= htmlspecialchars($info['Name'] ?? '') ?>" required>
+						</div>
+					</div>
+				</div>
+
+				<div class="ev-modal-section">
 					<h4>Dates &amp; Price</h4>
 					<div class="ev-modal-row">
 						<div class="ev-modal-field">
 							<label>Start Date &amp; Time</label>
-							<input type="datetime-local" name="StartDate"
+							<input type="text" name="StartDate" id="ev-fp-start" autocomplete="off"
 								value="<?php $sTs = $eventStart ? strtotime($eventStart) : 0; echo ($sTs > 0) ? date('Y-m-d\TH:i', $sTs) : ''; ?>">
 						</div>
 						<div class="ev-modal-field">
 							<label>End Date &amp; Time</label>
-							<input type="datetime-local" name="EndDate"
+							<input type="text" name="EndDate" id="ev-fp-end" autocomplete="off"
 								value="<?php $eTs = $eventEnd ? strtotime($eventEnd) : 0; echo ($eTs > 0) ? date('Y-m-d\TH:i', $eTs) : ''; ?>">
 						</div>
 						<div class="ev-modal-field" style="max-width:120px">
@@ -935,7 +946,7 @@
 		<div class="ev-modal-footer" style="justify-content:space-between;align-items:center;display:flex">
 			<div>
 <?php if ($canDelete): ?>
-				<form method="post" action="<?= UIR ?>Event/detail/<?= $eventId ?>/<?= $detailId ?>/deletedetail" style="margin:0" onsubmit="return confirm('Delete this event occurrence? This cannot be undone.')">
+				<form method="post" action="<?= UIR ?>Event/detail/<?= $eventId ?>/<?= $detailId ?>/deletedetail" style="margin:0" onsubmit="evConfirmDeleteOccurrence(event, this)">
 					<button type="submit" class="ev-modal-btn-delete">
 						<i class="fas fa-trash-alt" style="margin-right:5px"></i>Delete Occurrence
 					</button>
@@ -1193,4 +1204,99 @@ var EvConfig = {
 	</div>
 </div>
 <?php endif; ?>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
 <script src="<?= HTTP_TEMPLATE ?>revised-frontend/script/revised.js?v=<?= filemtime(__DIR__ . '/script/revised.js') ?>"></script>
+<script>
+(function() {
+    var hash = location.hash.replace('#', '');
+    if (hash) {
+        var li = document.querySelector('[data-tab="' + hash + '"]');
+        if (li && typeof evShowTab === 'function') evShowTab(li, hash);
+    }
+})();
+<?php if (count($attendanceList) > 0): ?>
+$(function() {
+	$('#ev-attendance-table').DataTable({
+		dom: 'lfrtip',
+		order: [[0, 'asc']],
+		columnDefs: [
+<?php if ($canManageAttendance): ?>
+			{ targets: [-1], orderable: false, searchable: false }
+<?php endif; ?>
+		],
+		pageLength: 25
+	});
+});
+<?php endif; ?>
+<?php if ($canManage && ($CalendarDetailCount ?? 1) > 1): ?>
+(function() {
+	var form = document.getElementById('ev-edit-form');
+	if (!form) return;
+	var originalName = <?= json_encode($info['Name'] ?? '') ?>;
+	var detailCount  = <?= (int)($CalendarDetailCount ?? 1) ?>;
+	form.addEventListener('submit', function(e) {
+		var newName = (form.querySelector('[name="EventName"]') || {}).value || '';
+		if (newName && newName !== originalName) {
+			e.preventDefault();
+			pnConfirm({
+				title: 'Rename Event?',
+				message: 'This event has ' + detailCount + ' scheduled dates. Renaming it will update the name for all ' + detailCount + ' occurrences.',
+				confirmText: 'Rename',
+				danger: true
+			}, function() { form.submit(); });
+		}
+	});
+})();
+<?php endif; ?>
+
+function evConfirmAttDelete(e, link) {
+	e.preventDefault();
+	pnConfirm({ title: 'Remove Attendance?', message: 'Remove this attendance record? This cannot be undone.', confirmText: 'Remove', danger: true }, function() {
+		window.location.href = link.href;
+	});
+}
+function evConfirmDeleteOccurrence(e, form) {
+	e.preventDefault();
+	pnConfirm({ title: 'Delete Occurrence?', message: 'Delete this event occurrence? This cannot be undone.', confirmText: 'Delete', danger: true }, function() {
+		form.submit();
+	});
+}
+
+// Flatpickr for event edit modal date fields
+function fpAddTitle(label, calEl) {
+	var title = document.createElement('div');
+	title.className = 'ev-fp-title';
+	title.textContent = label;
+	calEl.insertBefore(title, calEl.firstChild);
+}
+var _fpOpts = {
+	enableTime: true,
+	dateFormat: 'Y-m-d\\TH:i',
+	minuteIncrement: 10,
+	time_24hr: false
+};
+var _prevStartDate = null;
+var _fpStart = flatpickr('#ev-fp-start', Object.assign({}, _fpOpts, {
+	onReady: function(sel, str, fp) {
+		fpAddTitle('Start Date & Time', fp.calendarContainer);
+		_prevStartDate = sel[0] || null;
+	},
+	onChange: function(sel) {
+		if (!sel[0]) return;
+		var endDates = _fpEnd.selectedDates;
+		if (endDates[0] && _prevStartDate) {
+			var offset = endDates[0].getTime() - _prevStartDate.getTime();
+			_fpEnd.setDate(new Date(sel[0].getTime() + offset), true);
+		} else if (!endDates[0]) {
+			_fpEnd.setDate(new Date(sel[0].getTime() + 60 * 60 * 1000), true);
+		}
+		_prevStartDate = sel[0];
+	}
+}));
+var _fpEnd = flatpickr('#ev-fp-end', Object.assign({}, _fpOpts, {
+	onReady: function(sel, str, fp) { fpAddTitle('End Date & Time', fp.calendarContainer); }
+}));
+</script>

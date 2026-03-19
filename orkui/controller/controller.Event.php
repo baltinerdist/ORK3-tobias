@@ -247,9 +247,9 @@ class Controller_Event extends Controller {
 				$evPid = (int)$evRow->park_id;
 			}
 			if ($evPid > 0) {
-				$redirect = UIR . 'Park/profile/' . $evPid . '?tab=events';
+				$redirect = UIR . 'Park/profile/' . $evPid . '&tab=events';
 			} elseif ($evKid > 0) {
-				$redirect = UIR . 'Kingdom/profile/' . $evKid . '?tab=events';
+				$redirect = UIR . 'Kingdom/profile/' . $evKid . '&tab=events';
 			} else {
 				$redirect = UIR;
 			}
@@ -268,6 +268,12 @@ class Controller_Event extends Controller {
 			if ( $action === 'edit' ) {
 				if ( Ork3::$Lib->authorization->HasAuthority($uid, AUTH_EVENT, $event_id, AUTH_EDIT) || $uid_staff_can_manage ) {
 					$this->request->save('Eventnew_edit', true);
+					$newName = trim($this->request->Eventnew_edit->EventName ?? '');
+					if ( $newName ) {
+						$this->Event->update_event($this->session->token, $event_id, null, null, null, null, $newName, '', '');
+						$bustKey = Ork3::$Lib->ghettocache->key(['', null, null, null, null, null, $event_id]);
+						Ork3::$Lib->ghettocache->bust('SearchService.Event', $bustKey);
+					}
 					$r = $this->Event->update_event_detail([
 						'Token'                 => $this->session->token,
 						'EventCalendarDetailId' => $detail_id,
@@ -457,6 +463,9 @@ class Controller_Event extends Controller {
 		unset($schItem);
 	}
 	$this->data['ScheduleList'] = $scheduleList;
+
+	$cdCountRow = $DB->DataSet('SELECT COUNT(*) AS cnt FROM ' . DB_PREFIX . 'event_calendardetail WHERE event_id = ' . $event_id . ' LIMIT 1');
+		$this->data['CalendarDetailCount'] = ($cdCountRow && $cdCountRow->Size() > 0 && $cdCountRow->Next()) ? (int)$cdCountRow->cnt : 1;
 	}
 
 	public function create( $p = null ) {
@@ -544,6 +553,8 @@ class Controller_Event extends Controller {
 					$all     = $details['CalendarEventDetails'] ?? [];
 					if ( $all ) $new_id = max(array_map('intval', array_column($all, 'EventCalendarDetailId')));
 				}
+				$bustKey = Ork3::$Lib->ghettocache->key(['', null, null, null, null, null, $event_id]);
+				Ork3::$Lib->ghettocache->bust('SearchService.Event', $bustKey);
 				header('Location: ' . UIR . "Event/detail/{$event_id}/{$new_id}");
 				return;
 			} elseif ( $r['Status'] != 5 ) {

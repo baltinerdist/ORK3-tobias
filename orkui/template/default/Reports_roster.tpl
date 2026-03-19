@@ -46,20 +46,44 @@ $scope_link  = '';
 $scope_icon  = 'fa-globe';
 $scope_noun  = 'kingdom';
 
-if (isset($this->__session->park_id) && !empty($roster)) {
-	$first       = reset($roster);
-	$scope_label = $first['ParkName']    ?? '';
-	$scope_link  = UIR . 'Park/profile/'    . (int)$this->__session->park_id;
+$_scopeType = $ScopeType ?? (isset($this->__session->park_id) ? 'park' : (isset($this->__session->kingdom_id) ? 'kingdom' : ''));
+$_scopeId   = $ScopeId   ?? ($this->__session->park_id ?? ($this->__session->kingdom_id ?? null));
+
+if ($_scopeType === 'park') {
+	$first       = !empty($roster) ? reset($roster) : [];
+	$scope_label = $ScopeName ?? ($first['ParkName'] ?? '');
+	$scope_link  = UIR . 'Park/profile/'    . (int)$_scopeId;
 	$scope_icon  = 'fa-tree';
 	$scope_noun  = 'park';
-} elseif (isset($this->__session->kingdom_id) && !empty($roster)) {
-	$first       = reset($roster);
-	$scope_label = $first['KingdomName'] ?? '';
-	$scope_link  = UIR . 'Kingdom/profile/' . (int)$this->__session->kingdom_id;
+} elseif ($_scopeType === 'kingdom') {
+	$first       = !empty($roster) ? reset($roster) : [];
+	$scope_label = $ScopeName ?? ($first['KingdomName'] ?? '');
+	$scope_link  = UIR . 'Kingdom/profile/' . (int)$_scopeId;
 	$scope_icon  = 'fa-chess-rook';
 }
 
-$context_text = sprintf($context_map[$variant] ?? $context_map['full'], $scope_label ?: $scope_noun);
+if ($variant === 'suspended' && !$scope_label) {
+	$context_text = 'Players currently under a suspension throughout all Kingdoms.';
+} else {
+	$context_text = sprintf($context_map[$variant] ?? $context_map['full'], $scope_label ?: $scope_noun);
+}
+
+/* ── Pre-sort suspended roster server-side ────────────────── */
+if ($variant === 'suspended' && is_array($roster) && count($roster) > 1) {
+	$_showKingdom = !isset($this->__session->kingdom_id);
+	$_showPark    = !isset($this->__session->park_id);
+	usort($roster, function($a, $b) use ($_showKingdom, $_showPark) {
+		if ($_showKingdom) {
+			$c = strcmp($a['KingdomName'] ?? '', $b['KingdomName'] ?? '');
+			if ($c !== 0) return $c;
+		}
+		if ($_showPark) {
+			$c = strcmp($a['ParkName'] ?? '', $b['ParkName'] ?? '');
+			if ($c !== 0) return $c;
+		}
+		return strcmp($a['Persona'] ?? '', $b['Persona'] ?? '');
+	});
+}
 ?>
 
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
@@ -100,6 +124,7 @@ $context_text = sprintf($context_map[$variant] ?? $context_map['full'], $scope_l
 	</div>
 
 	<!-- ── Stats row ──────────────────────────────────────── -->
+<?php if ($variant !== 'suspended') : ?>
 	<div class="rp-stats-row">
 		<div class="rp-stat-card">
 			<div class="rp-stat-icon"><i class="fas <?=$report_icon?>"></i></div>
@@ -113,14 +138,13 @@ $context_text = sprintf($context_map[$variant] ?? $context_map['full'], $scope_l
 			<div class="rp-stat-label">Waivered</div>
 		</div>
 <?php endif; ?>
-<?php if ($variant !== 'suspended') : ?>
 		<div class="rp-stat-card">
 			<div class="rp-stat-icon"><i class="fas fa-ban"></i></div>
 			<div class="rp-stat-number"><?=$suspended_count?></div>
 			<div class="rp-stat-label">Suspended</div>
 		</div>
-<?php endif; ?>
 	</div>
+<?php endif; ?>
 
 	<!-- ── Charts placeholder ─────────────────────────────── -->
 	<div class="rp-charts-row" id="rp-charts-row"></div>
@@ -196,6 +220,11 @@ $context_text = sprintf($context_map[$variant] ?? $context_map['full'], $scope_l
 
 		<!-- Table area -->
 		<div class="rp-table-area">
+			<div id="rp-roster-loading" style="text-align:center;padding:48px 32px;color:#a0aec0">
+				<i class="fas fa-spinner fa-spin" style="font-size:28px;display:block;margin-bottom:10px"></i>
+				Loading report&hellip;
+			</div>
+			<div id="rp-roster-table-wrap" style="opacity:0">
 			<table id="roster-report-table" class="display" style="width:100%">
 				<thead>
 					<tr>
@@ -250,6 +279,7 @@ $context_text = sprintf($context_map[$variant] ?? $context_map['full'], $scope_l
 <?php endif; ?>
 				</tbody>
 			</table>
+			</div><!-- /rp-roster-table-wrap -->
 		</div><!-- /rp-table-area -->
 
 	</div><!-- /rp-body -->
@@ -286,20 +316,25 @@ $(function() {
 		],
 		pageLength: 25,
 		order: <?php
-			$sortOrder = [];
-			if (!isset($this->__session->park_id)) {
-				$parkCol    = !isset($this->__session->kingdom_id) ? 1 : 0;
-				$sortOrder[] = [$parkCol, 'asc'];
+			$_colIdx    = 0;
+			$sortOrder  = [];
+			if (!isset($this->__session->kingdom_id)) {
+				$sortOrder[] = [$_colIdx++, 'asc']; // Kingdom
 			}
-			$personaCol = (!isset($this->__session->kingdom_id) ? 1 : 0)
-				+ (!isset($this->__session->park_id) ? 1 : 0);
-			$sortOrder[] = [$personaCol, 'asc'];
+			if (!isset($this->__session->park_id)) {
+				$sortOrder[] = [$_colIdx++, 'asc']; // Park
+			}
+			$sortOrder[] = [$_colIdx, 'asc'];        // Persona
 			echo json_encode($sortOrder);
 		?>,
 		fixedHeader : { headerOffset: 48 },
 		responsive  : true,
 		scrollX     : true,
-		fixedColumns: { left: 1 }
+		fixedColumns: { left: 1 },
+		initComplete: function() {
+			$('#rp-roster-loading').hide();
+			$('#rp-roster-table-wrap').css('opacity', '1');
+		}
 	});
 
 	$('.rp-btn-export').on('click', function() { table.button(0).trigger(); });
