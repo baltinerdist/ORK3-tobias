@@ -295,6 +295,21 @@ class Controller_Event extends Controller {
 					]);
 					if ( $r['Status'] == 0 ) {
 						$this->request->clear('Eventnew_edit');
+						// Sync admission fees
+						global $DB;
+						$DB->Clear();
+						$DB->Execute('DELETE FROM ' . DB_PREFIX . 'event_fees WHERE event_calendardetail_id = ' . $detail_id);
+						$_feesJson = trim($_POST['Fees'] ?? '');
+						$_feesIn = ($_feesJson !== '') ? json_decode($_feesJson, true) : [];
+						if (is_array($_feesIn)) {
+							foreach ($_feesIn as $_fi => $_fee) {
+								$_at = trim($_fee['AdmissionType'] ?? '');
+								$_atSafe = str_replace(["'", '\\'], ["''", '\\\\'], $_at);
+								$_cost = round((float)($_fee['Cost'] ?? 0), 2);
+								$DB->Clear();
+								$DB->Execute('INSERT INTO ' . DB_PREFIX . 'event_fees (event_calendardetail_id, admission_type, cost, sort_order) VALUES (' . $detail_id . ', \'' . $_atSafe . '\', ' . $_cost . ', ' . $_fi . ')');
+							}
+						}
 						header('Location: ' . UIR . 'Event/detail/' . $event_id . '/' . $detail_id);
 						exit;
 					} elseif ( $r['Status'] != 5 ) {
@@ -464,6 +479,27 @@ class Controller_Event extends Controller {
 	}
 	$this->data['ScheduleList'] = $scheduleList;
 
+	// Load admission fees for this occurrence
+	$DB->Clear();
+	$feeRows = $DB->DataSet(
+		'SELECT event_fees_id AS EventFeesId, admission_type AS AdmissionType, cost AS Cost, sort_order AS SortOrder
+		FROM ' . DB_PREFIX . 'event_fees
+		WHERE event_calendardetail_id = ' . $detail_id . '
+		ORDER BY sort_order, event_fees_id'
+	);
+	$feeList = [];
+	if ($feeRows) {
+		while ($feeRows->Next()) {
+			$feeList[] = [
+				'EventFeesId'   => (int)$feeRows->EventFeesId,
+				'AdmissionType' => $feeRows->AdmissionType,
+				'Cost'          => (float)$feeRows->Cost,
+				'SortOrder'     => (int)$feeRows->SortOrder,
+			];
+		}
+	}
+	$this->data['EventFees'] = $feeList;
+
 	$cdCountRow = $DB->DataSet('SELECT COUNT(*) AS cnt FROM ' . DB_PREFIX . 'event_calendardetail WHERE event_id = ' . $event_id . ' LIMIT 1');
 		$this->data['CalendarDetailCount'] = ($cdCountRow && $cdCountRow->Size() > 0 && $cdCountRow->Next()) ? (int)$cdCountRow->cnt : 1;
 	}
@@ -555,6 +591,21 @@ class Controller_Event extends Controller {
 				}
 				$bustKey = Ork3::$Lib->ghettocache->key(['', null, null, null, null, null, $event_id]);
 				Ork3::$Lib->ghettocache->bust('SearchService.Event', $bustKey);
+				// Sync admission fees for the new occurrence
+				$_feesJson = trim($_POST['Fees'] ?? '');
+				$_feesIn = ($_feesJson !== '') ? json_decode($_feesJson, true) : [];
+				if (is_array($_feesIn) && !empty($_feesIn) && $new_id > 0) {
+					global $DB;
+					$DB->Clear();
+					$DB->Execute('DELETE FROM ' . DB_PREFIX . 'event_fees WHERE event_calendardetail_id = ' . $new_id);
+					foreach ($_feesIn as $_fi => $_fee) {
+						$_at = trim($_fee['AdmissionType'] ?? '');
+						$_atSafe = str_replace(["'", '\\'], ["''", '\\\\'], $_at);
+						$_cost = round((float)($_fee['Cost'] ?? 0), 2);
+						$DB->Clear();
+						$DB->Execute('INSERT INTO ' . DB_PREFIX . 'event_fees (event_calendardetail_id, admission_type, cost, sort_order) VALUES (' . $new_id . ', \'' . $_atSafe . '\', ' . $_cost . ', ' . $_fi . ')');
+					}
+				}
 				header('Location: ' . UIR . "Event/detail/{$event_id}/{$new_id}");
 				return;
 			} elseif ( $r['Status'] != 5 ) {
