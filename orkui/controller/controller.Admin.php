@@ -22,6 +22,73 @@ class Controller_Admin extends Controller {
 		unset($this->session->park_id);
 
 		$this->data['ActiveKingdomSummary'] = $this->Report->GetActiveKingdomsSummary();
+		$this->data['TotalActivePlayers'] = $this->Report->GetDistinctActivePlayerCount(26);
+
+		// Year-over-year trend stats
+		$thisYearStart = date('Y') . '-01-01';
+		$lastYearStart = (date('Y') - 1) . '-01-01';
+		$lastYearEnd   = date('Y-m-d', strtotime('-1 year')); // same day last year
+		$now1yr        = date('Y-m-d');
+		$prev1yrStart  = date('Y-m-d', strtotime('-2 years'));
+		$prev1yrEnd    = date('Y-m-d', strtotime('-1 year'));
+		global $DB;
+		$DB->Clear();
+		$rs = $DB->DataSet(
+			"SELECT
+			  (SELECT COUNT(*) FROM " . DB_PREFIX . "awards WHERE entered_at >= '$thisYearStart' AND entered_at < '$now1yr') AS awards_cur,
+			  (SELECT COUNT(*) FROM " . DB_PREFIX . "awards WHERE entered_at >= '$lastYearStart' AND entered_at < '$lastYearEnd') AS awards_prev,
+			  (SELECT COUNT(*) FROM " . DB_PREFIX . "attendance WHERE date >= '$thisYearStart' AND date < '$now1yr' AND mundane_id > 0) AS att_cur,
+			  (SELECT COUNT(*) FROM " . DB_PREFIX . "attendance WHERE date >= '$lastYearStart' AND date < '$lastYearEnd' AND mundane_id > 0) AS att_prev,
+			  (SELECT COUNT(DISTINCT mundane_id) FROM " . DB_PREFIX . "attendance WHERE date >= '$prev1yrEnd' AND date < '$now1yr' AND mundane_id > 0) AS players_cur,
+			  (SELECT COUNT(DISTINCT mundane_id) FROM " . DB_PREFIX . "attendance WHERE date >= '$prev1yrStart' AND date < '$prev1yrEnd' AND mundane_id > 0) AS players_prev,
+			  (SELECT COUNT(*) FROM " . DB_PREFIX . "recommendations WHERE date_recommended >= '$thisYearStart' AND date_recommended < '$now1yr' AND deleted_at IS NULL) AS recs_cur,
+			  (SELECT COUNT(*) FROM " . DB_PREFIX . "recommendations WHERE date_recommended >= '$lastYearStart' AND date_recommended < '$lastYearEnd' AND deleted_at IS NULL) AS recs_prev"
+		);
+		$trendStats = ['awards_cur'=>0,'awards_prev'=>0,'att_cur'=>0,'att_prev'=>0,'players_cur'=>0,'players_prev'=>0,'recs_cur'=>0,'recs_prev'=>0];
+		if ($rs && $rs->Next()) {
+			foreach ($trendStats as $k => $_) $trendStats[$k] = (int)$rs->$k;
+		}
+		$this->data['TrendStats'] = $trendStats;
+
+		// Previous-period kingdom attendance for trend indicators
+		$DB->Clear();
+		$prevWkRs = $DB->DataSet(
+			"SELECT COUNT(mw.mundane_id) AS att, mw.kingdom_id
+			 FROM (
+			     SELECT mundane_id, date_year, date_week3, kingdom_id
+			     FROM " . DB_PREFIX . "attendance
+			     WHERE date >  DATE_SUB(CURDATE(), INTERVAL 52 WEEK)
+			       AND date <= DATE_SUB(CURDATE(), INTERVAL 26 WEEK)
+			       AND mundane_id > 0
+			     GROUP BY date_year, date_week3, mundane_id, kingdom_id
+			 ) mw
+			 GROUP BY mw.kingdom_id"
+		);
+		$prevWeekly = [];
+		if ($prevWkRs) {
+			while ($prevWkRs->Next()) $prevWeekly[(int)$prevWkRs->kingdom_id] = (int)$prevWkRs->att;
+		}
+		$DB->Clear();
+		$prevMoRs = $DB->DataSet(
+			"SELECT COUNT(mm.mundane_id) AS mo, mm.kingdom_id
+			 FROM (
+			     SELECT mundane_id, date_year, date_month, kingdom_id
+			     FROM " . DB_PREFIX . "attendance
+			     WHERE date >= DATE_SUB(CURDATE(), INTERVAL 24 MONTH)
+			       AND date <  DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+			       AND mundane_id > 0
+			     GROUP BY date_year, date_month, mundane_id, kingdom_id
+			 ) mm
+			 GROUP BY mm.kingdom_id"
+		);
+		$prevMonthly = [];
+		if ($prevMoRs) {
+			while ($prevMoRs->Next()) $prevMonthly[(int)$prevMoRs->kingdom_id] = (int)$prevMoRs->mo;
+		}
+		$this->data['PrevWeekly']  = $prevWeekly;
+		$this->data['PrevMonthly'] = $prevMonthly;
+
+		$this->template = '../revised-frontend/Admin_index.tpl';
 	}
 
     public function mergepark($submit = null) {
@@ -711,6 +778,268 @@ class Controller_Admin extends Controller {
 			);
 	}
 
+	public function permissions($path = null) {
+		$parts    = explode('/', $path ?? '');
+		$type     = in_array($parts[0] ?? '', ['Kingdom', 'Park', 'Event']) ? $parts[0] : null;
+		$id       = (int)preg_replace('/[^0-9]/', '', $parts[1] ?? '');
+		$detailId = (int)preg_replace('/[^0-9]/', '', $parts[2] ?? '');
+		$uid = (int)($this->session->user_id ?? 0);
+
+		// Global ORK view — no type/id provided
+		if (!$type || !$id) {
+			if (!Ork3::$Lib->authorization->HasAuthority($uid, AUTH_ADMIN, 0, AUTH_ADMIN)) {
+				header('Location: ' . UIR . 'Admin');
+				exit;
+			}
+			global $DB;
+			$DB->Clear();
+			$rs = $DB->DataSet(
+				"SELECT a.authorization_id, a.mundane_id, a.role, a.modified,
+				        m.persona, m.username, m.given_name, m.surname,
+				        DATE_SUB(m.token_expires, INTERVAL 72 HOUR) AS last_login,
+				        lc.last_credit
+				 FROM " . DB_PREFIX . "authorization a
+				 LEFT JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = a.mundane_id
+				 LEFT JOIN (SELECT mundane_id, MAX(date) AS last_credit FROM " . DB_PREFIX . "attendance WHERE credits > 0 GROUP BY mundane_id) lc ON lc.mundane_id = a.mundane_id
+				 WHERE a.role = 'admin' AND a.kingdom_id = 0 AND a.park_id = 0 AND a.event_id = 0 AND a.unit_id = 0
+				 ORDER BY m.persona"
+			);
+			$adminAuths = [];
+			if ($rs) {
+				while ($rs->Next()) {
+					$adminAuths[] = [
+						'AuthorizationId' => (int)$rs->authorization_id,
+						'MundaneId'       => (int)$rs->mundane_id,
+						'Modified'        => $rs->modified,
+						'Persona'         => $rs->persona,
+						'UserName'        => $rs->username,
+						'GivenName'       => $rs->given_name,
+						'Surname'         => $rs->surname,
+						'LastLogin'       => $rs->last_login,
+						'LastCredit'      => $rs->last_credit,
+					];
+				}
+			}
+			$DB->Clear();
+			$rs2 = $DB->DataSet(
+				"SELECT k.kingdom_id, k.name AS kingdom_name
+				 FROM " . DB_PREFIX . "kingdom k
+				 WHERE k.active = 'Active' AND k.parent_kingdom_id = 0
+				 ORDER BY k.name"
+			);
+			$kingdoms = [];
+			if ($rs2) {
+				while ($rs2->Next()) {
+					$kingdoms[] = ['KingdomId' => (int)$rs2->kingdom_id, 'KingdomName' => $rs2->kingdom_name];
+				}
+			}
+			$this->data['AdminAuths'] = $adminAuths;
+			$this->data['Kingdoms']   = $kingdoms;
+			$this->template = 'Admin_permissions_global.tpl';
+			return;
+		}
+		$authTypeMap = ['Kingdom' => AUTH_KINGDOM, 'Park' => AUTH_PARK, 'Event' => AUTH_EVENT];
+		$authType = $authTypeMap[$type];
+		if (!Ork3::$Lib->authorization->HasAuthority($uid, $authType, $id, AUTH_CREATE)) {
+			$backUrl = $type === 'Event'
+				? UIR . 'Event/detail/' . $id . ($detailId ? '/' . $detailId : '')
+				: UIR . ($type === 'Kingdom' ? 'Kingdom/profile/' : 'Park/profile/') . $id;
+			header('Location: ' . $backUrl);
+			exit;
+		}
+
+		$this->load_model('Reports');
+		$this->template = 'Admin_permissions.tpl';
+
+		if ($type === 'Kingdom') {
+			$this->load_model('Kingdom');
+			$info = $this->Kingdom->get_kingdom_shortinfo($id);
+			$name = $info['Info']['KingdomInfo']['KingdomName'] ?? 'Kingdom ' . $id;
+			$url  = UIR . 'Kingdom/profile/' . $id;
+		} elseif ($type === 'Park') {
+			$this->load_model('Park');
+			$info = $this->Park->get_park_details($id);
+			$name = $info['ParkInfo']['ParkName'] ?? 'Park ' . $id;
+			$url  = UIR . 'Park/profile/' . $id;
+		} else { // Event
+			$this->load_model('Event');
+			$info = $this->Event->get_event_details($id);
+			$name = $info['Name'] ?? 'Event ' . $id;
+			$url  = UIR . 'Event/detail/' . $id . ($detailId ? '/' . $detailId : '');
+		}
+
+		// All grants at this type+id level (officers + non-officers), including modified timestamp
+		global $DB;
+		$eid = (int)$id;
+		$scopeColMap = ['Kingdom' => 'a.kingdom_id', 'Park' => 'a.park_id', 'Event' => 'a.event_id'];
+		$scopeCol    = $scopeColMap[$type];
+		$DB->Clear();
+		$rs = $DB->DataSet(
+			"SELECT a.authorization_id, a.mundane_id, a.role, a.modified,
+			        m.persona, m.username, m.given_name, m.surname, m.restricted,
+			        o.role AS officer_role, o.officer_id
+			 FROM " . DB_PREFIX . "authorization a
+			 LEFT JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = a.mundane_id
+			 LEFT JOIN " . DB_PREFIX . "officer o ON o.authorization_id = a.authorization_id
+			 WHERE $scopeCol = $eid
+			 ORDER BY m.persona"
+		);
+		$auths = [];
+		if ($rs) {
+			while ($rs->Next()) {
+				$auths[] = [
+					'AuthorizationId' => (int)$rs->authorization_id,
+					'MundaneId'       => (int)$rs->mundane_id,
+					'Role'            => $rs->role,
+					'Modified'        => $rs->modified,
+					'Persona'         => $rs->persona,
+					'UserName'        => $rs->username,
+					'GivenName'       => $rs->given_name,
+					'Surname'         => $rs->surname,
+					'OfficerRole'     => $rs->officer_role,
+					'OfficerId'       => $rs->officer_id,
+				];
+			}
+		}
+
+		// For kingdom pages: all park-level grants for every park in the kingdom
+		$parkAuths = [];
+		if ($type === 'Kingdom') {
+			$DB->Clear();
+			$rs = $DB->DataSet(
+				"SELECT a.authorization_id, a.mundane_id, a.park_id, a.role, a.modified,
+				        p.name AS park_name, m.persona, m.username, m.given_name, m.surname, m.restricted,
+				        o.role AS officer_role, o.officer_id
+				 FROM " . DB_PREFIX . "authorization a
+				 JOIN " . DB_PREFIX . "park p ON p.park_id = a.park_id
+				 LEFT JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = a.mundane_id
+				 LEFT JOIN " . DB_PREFIX . "officer o ON o.authorization_id = a.authorization_id
+				 WHERE p.kingdom_id = $eid
+				 ORDER BY p.name, m.persona"
+			);
+			if ($rs) {
+				while ($rs->Next()) {
+					$parkAuths[] = [
+						'AuthorizationId' => (int)$rs->authorization_id,
+						'MundaneId'       => (int)$rs->mundane_id,
+						'ParkId'          => (int)$rs->park_id,
+						'ParkName'        => $rs->park_name,
+						'Role'            => $rs->role,
+						'Modified'        => $rs->modified,
+						'Persona'         => $rs->persona,
+						'UserName'        => $rs->username,
+						'GivenName'       => $rs->given_name,
+						'Surname'         => $rs->surname,
+						'OfficerRole'     => $rs->officer_role,
+						'OfficerId'       => $rs->officer_id,
+					];
+				}
+			}
+		}
+
+		// For event pages: show inherited access (creator + park/kingdom grant holders)
+		$eventCreator      = null;
+		$inheritedParkAuths     = [];
+		$inheritedKingdomAuths  = [];
+		$inheritedParkName      = '';
+		$inheritedKingdomName   = '';
+		if ($type === 'Event') {
+			$DB->Clear();
+			$evRow = $DB->DataSet(
+				"SELECT e.mundane_id AS creator_id, e.park_id AS ev_park_id, e.kingdom_id AS ev_kingdom_id,
+				        m.persona AS creator_persona, m.given_name, m.surname,
+				        p.name AS park_name, k.name AS kingdom_name
+				 FROM " . DB_PREFIX . "event e
+				 LEFT JOIN " . DB_PREFIX . "mundane m  ON m.mundane_id = e.mundane_id
+				 LEFT JOIN " . DB_PREFIX . "park p     ON p.park_id    = e.park_id
+				 LEFT JOIN " . DB_PREFIX . "kingdom k  ON k.kingdom_id = e.kingdom_id
+				 WHERE e.event_id = $eid LIMIT 1"
+			);
+			$evParkId = 0; $evKingdomId = 0;
+			if ($evRow && $evRow->Next()) {
+				$evParkId    = (int)$evRow->ev_park_id;
+				$evKingdomId = (int)$evRow->ev_kingdom_id;
+				$inheritedParkName    = $evRow->park_name    ?? '';
+				$inheritedKingdomName = $evRow->kingdom_name ?? '';
+				if ((int)$evRow->creator_id > 0) {
+					$eventCreator = [
+						'MundaneId' => (int)$evRow->creator_id,
+						'Persona'   => $evRow->creator_persona,
+						'GivenName' => $evRow->given_name,
+						'Surname'   => $evRow->surname,
+					];
+				}
+			}
+
+			// Park-level grant holders for the event's host park
+			if ($evParkId) {
+				$DB->Clear();
+				$rs = $DB->DataSet(
+					"SELECT a.authorization_id, a.mundane_id, a.role,
+					        m.persona, m.given_name, m.surname,
+					        o.role AS officer_role
+					 FROM " . DB_PREFIX . "authorization a
+					 LEFT JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = a.mundane_id
+					 LEFT JOIN " . DB_PREFIX . "officer o ON o.authorization_id = a.authorization_id
+					 WHERE a.park_id = $evParkId
+					 ORDER BY a.role DESC, m.persona"
+				);
+				if ($rs) {
+					while ($rs->Next()) {
+						$inheritedParkAuths[] = [
+							'MundaneId'   => (int)$rs->mundane_id,
+							'Role'        => $rs->role,
+							'Persona'     => $rs->persona,
+							'GivenName'   => $rs->given_name,
+							'Surname'     => $rs->surname,
+							'OfficerRole' => $rs->officer_role,
+						];
+					}
+				}
+			}
+
+			// Kingdom-level grant holders for the event's kingdom
+			if ($evKingdomId) {
+				$DB->Clear();
+				$rs = $DB->DataSet(
+					"SELECT a.authorization_id, a.mundane_id, a.role,
+					        m.persona, m.given_name, m.surname,
+					        o.role AS officer_role
+					 FROM " . DB_PREFIX . "authorization a
+					 LEFT JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = a.mundane_id
+					 LEFT JOIN " . DB_PREFIX . "officer o ON o.authorization_id = a.authorization_id
+					 WHERE a.kingdom_id = $evKingdomId
+					 ORDER BY a.role DESC, m.persona"
+				);
+				if ($rs) {
+					while ($rs->Next()) {
+						$inheritedKingdomAuths[] = [
+							'MundaneId'   => (int)$rs->mundane_id,
+							'Role'        => $rs->role,
+							'Persona'     => $rs->persona,
+							'GivenName'   => $rs->given_name,
+							'Surname'     => $rs->surname,
+							'OfficerRole' => $rs->officer_role,
+						];
+					}
+				}
+			}
+		}
+
+		$this->data['PermType']         = $type;
+		$this->data['PermId']           = $id;
+		$this->data['PermName']         = $name;
+		$this->data['PermUrl']          = $url;
+		$this->data['PermAuths']        = $auths;
+		$this->data['PermParkAuths']    = $parkAuths;
+		$this->data['PermCanGrantAdmin']      = Ork3::$Lib->authorization->HasAuthority($uid, AUTH_ADMIN, 0, AUTH_ADMIN);
+		$this->data['PermEventCreator']       = $eventCreator;
+		$this->data['PermInheritedParkAuths']    = $inheritedParkAuths;
+		$this->data['PermInheritedKingdomAuths'] = $inheritedKingdomAuths;
+		$this->data['PermInheritedParkName']     = $inheritedParkName;
+		$this->data['PermInheritedKingdomName']  = $inheritedKingdomName;
+	}
+
 	public function player($id) {
 		logtrace("player call", $_REQUEST);
 		$this->load_model('Player');
@@ -1139,6 +1468,7 @@ class Controller_Admin extends Controller {
 						'SuspendedAt' => $this->request->Admin_suspendplayer->SuspendedAt,
 						'SuspendedUntil' => $this->request->Admin_suspendplayer->SuspendedUntil,
 						'Suspension' => $this->request->Admin_suspendplayer->Suspension,
+					'SuspensionPropagates' => $this->request->Admin_suspendplayer->SuspensionPropagates,
 					));
 				if ($r['Status'] == 0) {
 					$this->data['Message'] = "Player has been <b><a href='" . UIR . "Reports/suspended/Kingdom&id=" . $this->session->kingdom_id . "'>" .
@@ -1657,7 +1987,106 @@ class Controller_Admin extends Controller {
 		}
 	}
 
-	private function kingdom_route($id) {
+	public function ajax($action = null) {
+		header('Content-Type: application/json');
+		if (!isset($this->session->user_id)) {
+			echo json_encode(['status' => 5, 'error' => 'Not logged in']); exit;
+		}
+		$uid = (int)($this->session->user_id ?? 0);
+		if (!Ork3::$Lib->authorization->HasAuthority($uid, AUTH_ADMIN, 0, AUTH_ADMIN)) {
+			echo json_encode(['status' => 5, 'error' => 'Unauthorized']); exit;
+		}
+
+		if ($action === 'suspendplayer') {
+			$this->load_model('Player');
+			$mid        = (int)($_POST['MundaneId']  ?? 0);
+			$suspended  = (int)($_POST['Suspended']  ?? 1);
+			$byId       = (int)($_POST['SuspendedById'] ?? 0);
+			$at         = trim($_POST['SuspendedAt']    ?? '');
+			$until      = trim($_POST['SuspendedUntil'] ?? '');
+			$reason     = trim($_POST['Suspension']    ?? '');
+			$propagates = (int)($_POST['SuspensionPropagates'] ?? 0);
+			if (!$mid) { echo json_encode(['status' => 1, 'error' => 'Select a player.']); exit; }
+			$r = $this->Player->suspend_player([
+				'Token'                => $this->session->token,
+				'MundaneId'            => $mid,
+				'Suspended'            => (bool)$suspended,
+				'SuspendedById'        => $byId ?: $this->session->user_id,
+				'SuspendedAt'          => $at,
+				'SuspendedUntil'       => $until,
+				'Suspension'           => $reason,
+				'SuspensionPropagates' => $propagates,
+			]);
+			// SetPlayerSuspension returns null on success (no explicit return Success() in service layer)
+			echo ($r === null || $r['Status'] == 0)
+				? json_encode(['status' => 0])
+				: json_encode(['status' => $r['Status'] ?? 1, 'error' => ($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? '')]);
+
+		} elseif ($action === 'banplayer') {
+			$this->load_model('Player');
+			$mid    = (int)($_POST['MundaneId'] ?? 0);
+			$banned = (int)($_POST['Banned']    ?? 0);
+			if (!$mid) { echo json_encode(['status' => 1, 'error' => 'Select a player.']); exit; }
+			$r = $this->Player->set_ban([
+				'Token'     => $this->session->token,
+				'MundaneId' => $mid,
+				'Banned'    => $banned,
+			]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0])
+				: json_encode(['status' => $r['Status'], 'error' => ($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? '')]);
+
+		} elseif ($action === 'mergepark') {
+			$this->load_model('Park');
+			$from = (int)($_POST['FromParkId'] ?? 0);
+			$to   = (int)($_POST['ToParkId']   ?? 0);
+			if (!$from || !$to) { echo json_encode(['status' => 1, 'error' => 'Both parks are required.']); exit; }
+			if ($from === $to)   { echo json_encode(['status' => 1, 'error' => 'Cannot merge a park into itself.']); exit; }
+			$r = $this->Park->mergeparks([
+				'Token'      => $this->session->token,
+				'FromParkId' => $from,
+				'ToParkId'   => $to,
+			]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0])
+				: json_encode(['status' => $r['Status'], 'error' => ($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? '')]);
+
+		} elseif ($action === 'transferpark') {
+			$this->load_model('Park');
+			$park_id    = (int)($_POST['ParkId']    ?? 0);
+			$kingdom_id = (int)($_POST['KingdomId'] ?? 0);
+			if (!$park_id || !$kingdom_id) { echo json_encode(['status' => 1, 'error' => 'Park and destination kingdom are required.']); exit; }
+			$r = $this->Park->TransferPark([
+				'Token'     => $this->session->token,
+				'ParkId'    => $park_id,
+				'KingdomId' => $kingdom_id,
+			]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0])
+				: json_encode(['status' => $r['Status'], 'error' => ($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? '')]);
+
+		} elseif ($action === 'mergeunit') {
+			$this->load_model('Unit');
+			$from = (int)($_POST['FromUnitId'] ?? 0);
+			$to   = (int)($_POST['ToUnitId']   ?? 0);
+			if (!$from || !$to) { echo json_encode(['status' => 1, 'error' => 'Both units are required.']); exit; }
+			if ($from === $to)   { echo json_encode(['status' => 1, 'error' => 'Cannot merge a unit into itself.']); exit; }
+			$r = $this->Unit->merge([
+				'Token'      => $this->session->token,
+				'FromUnitId' => $from,
+				'ToUnitId'   => $to,
+			]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0])
+				: json_encode(['status' => $r['Status'], 'error' => ($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? '')]);
+
+		} else {
+			echo json_encode(['status' => 1, 'error' => 'Unknown action']);
+		}
+		exit;
+	}
+
+		private function kingdom_route($id) {
 		$this->data['kingdom_id'] = $id;
 		$this->session->kingdom_id = $id;
 

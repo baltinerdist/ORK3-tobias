@@ -218,7 +218,7 @@ class Attendance  extends Ork3 {
 				logtrace('attendance_authority_h() - ecdid match', $detail);
 				return false;
 			}
-			if (Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_EVENT, $detail['CalendarEventDetails'][0]['EventId'], AUTH_CREATE)) {
+			if (Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_EVENT, $detail['CalendarEventDetails'][0]['EventId'], AUTH_EDIT)) {
 				return AUTH_EVENT;
 			}
 			// Check event staff with can_attendance permission
@@ -226,7 +226,7 @@ class Attendance  extends Ork3 {
 			$staffRow = $this->db->DataSet('SELECT 1 FROM ' . DB_PREFIX . 'event_staff WHERE event_calendardetail_id = ' . (int)$request['EventCalendarDetailId'] . ' AND mundane_id = ' . (int)$mundane_id . ' AND can_attendance = 1 LIMIT 1');
 			if ($staffRow && $staffRow->Next()) return AUTH_EVENT;
 		} else if (valid_id($request['EventId'])) {
-			if (Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_EVENT, $request['EventId'], AUTH_CREATE)) {
+			if (Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_EVENT, $request['EventId'], AUTH_EDIT)) {
 				return AUTH_EVENT;
 			}
 			// Check event staff with can_attendance permission (via event_id join for delete path)

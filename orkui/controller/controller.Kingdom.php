@@ -47,8 +47,7 @@ class Controller_Kingdom extends Controller {
 		$this->data['kingdom_info'] = $this->Kingdom->get_kingdom_shortinfo($kingdom_id);
 		$this->data['kingdom_officers'] = $this->Kingdom->GetOfficers(['KingdomId' => $kingdom_id, 'Token' => $this->session->token]);
 		$this->data['IsPrinz'] = $this->data['kingdom_info']['Info']['KingdomInfo']['IsPrincipality'];
-		$this->data['kingdom_tournaments'] = $this->Reports->get_tournaments(null, $kingdom_id);
-		logtrace("index($kingdom_id = null)", $this->data['kingdom_tournaments']);
+		// [TOURNAMENTS HIDDEN] $this->data['kingdom_tournaments'] = [];
 	}
 
 	public function park_monthly_json($kingdom_id = null) {
@@ -88,6 +87,7 @@ class Controller_Kingdom extends Controller {
 			INNER JOIN ork_mundane m ON m.mundane_id = a.mundane_id AND m.suspended = 0 AND m.active = 1
 			WHERE a.date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) AND a.mundane_id > 0
 			GROUP BY a.park_id";
+		$DB->Clear();
 		$pcResult = $DB->DataSet($pcSql);
 		if ($pcResult && $pcResult->Size() > 0) {
 			while ($pcResult->Next()) {
@@ -109,12 +109,61 @@ class Controller_Kingdom extends Controller {
 					AND mundane_id > 0
 				GROUP BY date_year, date_week3, mundane_id
 			) t";
+		$DB->Clear();
 		$knResult = $DB->DataSet($knSql);
 		$katt = 0;
 		if ($knResult && $knResult->Size() > 0 && $knResult->Next()) {
 			$katt = (int)$knResult->katt;
 		}
 		$result['_kingdom'] = ['att' => $katt];
+
+		// Previous-period trend data — only for users with kingdom-level auth
+		$uid = (int)($this->session->user_id ?? 0);
+		if ($uid > 0 && Ork3::$Lib->authorization->HasAuthority($uid, AUTH_KINGDOM, $kid, AUTH_EDIT)) {
+			// Previous 26 weeks (weeks 27–52 ago)
+			$DB->Clear();
+			$prevWkResult = $DB->DataSet(
+				"SELECT COUNT(mw.mundane_id) AS att, p.park_id
+				 FROM ork_park p
+				 LEFT JOIN (
+				     SELECT a.mundane_id, a.park_id
+				     FROM ork_attendance a
+				     WHERE a.date >  DATE_SUB(CURDATE(), INTERVAL 52 WEEK)
+				       AND a.date <= DATE_SUB(CURDATE(), INTERVAL 26 WEEK)
+				       AND a.kingdom_id = {$kid} AND a.mundane_id > 0
+				     GROUP BY date_year, date_week3, mundane_id, a.park_id
+				 ) mw ON p.park_id = mw.park_id
+				 WHERE p.kingdom_id = {$kid} AND p.active = 'Active'
+				 GROUP BY p.park_id"
+			);
+			if ($prevWkResult) {
+				while ($prevWkResult->Next()) {
+					$pid = (int)$prevWkResult->park_id;
+					if (isset($result[$pid])) $result[$pid]['prev_att'] = (int)$prevWkResult->att;
+				}
+			}
+			// Previous 12 months (months 13–24 ago)
+			$DB->Clear();
+			$prevMoResult = $DB->DataSet(
+				"SELECT COUNT(mm.mundane_id) AS mo, mm.park_id
+				 FROM (
+				     SELECT a.mundane_id, a.date_year, a.date_month, a.park_id
+				     FROM ork_attendance a
+				     INNER JOIN ork_park p ON p.park_id = a.park_id AND p.kingdom_id = {$kid}
+				     WHERE a.date >= DATE_SUB(CURDATE(), INTERVAL 24 MONTH)
+				       AND a.date <  DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+				       AND a.mundane_id > 0
+				     GROUP BY a.date_year, a.date_month, a.mundane_id, a.park_id
+				 ) mm
+				 GROUP BY mm.park_id"
+			);
+			if ($prevMoResult) {
+				while ($prevMoResult->Next()) {
+					$pid = (int)$prevMoResult->park_id;
+					if (isset($result[$pid])) $result[$pid]['prev_mo'] = (int)$prevMoResult->mo;
+				}
+			}
+		}
 		header('Content-Type: application/json');
 		echo json_encode($result);
 		exit();
@@ -217,7 +266,7 @@ class Controller_Kingdom extends Controller {
 				$preloadOfficers[] = ['MundaneId' => $o['MundaneId'], 'Persona' => $o['Persona'], 'Role' => $o['OfficerRole']];
 		}
 		$this->data['PreloadOfficers']     = $preloadOfficers;
-		$this->data['kingdom_tournaments'] = $this->Reports->get_tournaments(null, $kingdom_id);
+		// [TOURNAMENTS HIDDEN] $this->data['kingdom_tournaments'] = [];
 
 		$rawParks = $this->Kingdom->GetParks(['KingdomId' => $kingdom_id]);
 		$this->data['map_parks'] = is_array($rawParks['Parks'])
@@ -252,23 +301,21 @@ class Controller_Kingdom extends Controller {
 			ORDER BY cd.event_start, p.name, e.name";
 		$evtResult    = $DB->DataSet($evtSql);
 		$eventSummary = [];
-		if ($evtResult) {
-			do {
-				$eid = (int)($evtResult->event_id ?? 0);
-				if ($eid) {
-					$eventSummary[] = [
-						'EventId'      => $eid,
-						'Name'         => $evtResult->name,
-						'ParkName'     => $evtResult->park_name,
-						'NextDate'     => $evtResult->event_start,
-						'NextDetailId' => (int)$evtResult->next_detail_id,
-						'HasHeraldry'  => (int)$evtResult->has_heraldry,
-						'ParkAbbr'     => $evtResult->park_abbr,
-						'RsvpCount'    => (int)$evtResult->rsvp_count,
-						'_IsParkEvent' => (int)$evtResult->park_id > 0,
-					];
-				}
-			} while ($evtResult->Next());
+		while ($evtResult && $evtResult->Next()) {
+			$eid = (int)($evtResult->event_id ?? 0);
+			if ($eid) {
+				$eventSummary[] = [
+					'EventId'      => $eid,
+					'Name'         => $evtResult->name,
+					'ParkName'     => $evtResult->park_name,
+					'NextDate'     => $evtResult->event_start,
+					'NextDetailId' => (int)$evtResult->next_detail_id,
+					'HasHeraldry'  => (int)$evtResult->has_heraldry,
+					'ParkAbbr'     => $evtResult->park_abbr,
+					'RsvpCount'    => (int)$evtResult->rsvp_count,
+					'_IsParkEvent' => (int)$evtResult->park_id > 0,
+				];
+			}
 		}
 		$this->data['event_summary'] = $eventSummary;
 
@@ -334,13 +381,24 @@ class Controller_Kingdom extends Controller {
 		$recsPublic = isset($knConfigs['AwardRecsPublic'])
 			? (bool)(int)$knConfigs['AwardRecsPublic']['Value']
 			: true;
-		$this->data['ShowRecsTab']    = $recsPublic || $this->data['CanManageKingdom'] || $uid > 0;
 		$this->data['AwardRecsPublic'] = $recsPublic;
 
 		$this->data['AwardRecommendations'] = [];
-		if ($this->data['ShowRecsTab']) {
+		$canManageKingdom = $this->data['CanManageKingdom'] ?? false;
+		if ($recsPublic || $canManageKingdom) {
+			$this->data['ShowRecsTab'] = true;
 			$recs = $this->Reports->recommended_awards(['KingdomId' => $kingdom_id, 'ParkId' => 0, 'PlayerId' => 0]);
 			$this->data['AwardRecommendations'] = is_array($recs) ? $recs : [];
+		} elseif ($uid > 0) {
+			$recs = $this->Reports->recommended_awards(['KingdomId' => $kingdom_id, 'ParkId' => 0, 'PlayerId' => 0]);
+			$allRecs = is_array($recs) ? $recs : [];
+			$myRecs = array_values(array_filter($allRecs, function($r) use ($uid) {
+				return (int)$r['RecommendedById'] === $uid;
+			}));
+			$this->data['AwardRecommendations'] = $myRecs;
+			$this->data['ShowRecsTab'] = !empty($myRecs);
+		} else {
+			$this->data['ShowRecsTab'] = false;
 		}
 
 		$this->data['ParkTitleId_options'] = [];
@@ -385,6 +443,112 @@ class Controller_Kingdom extends Controller {
 
 		$this->data['PronounList']          = $this->Pronoun->fetch_pronoun_list();
 		$this->data['PronounOptionsCreate'] = $this->Pronoun->fetch_pronoun_option_list(null);
+		$this->data['IcsUrl'] = UIR . 'Kingdom/ics/' . $kingdom_id;
+	}
+
+	// ------------------------------------------------------------------ ICS helpers
+	private static function ics_dt($str) {
+		return gmdate('Ymd\THis\Z', strtotime($str));
+	}
+	private static function ics_dt_plus1hr($str) {
+		return gmdate('Ymd\THis\Z', strtotime($str) + 3600);
+	}
+	private static function ics_escape($str) {
+		$str = str_replace('\\', '\\\\', $str);
+		$str = str_replace(';',  '\;',   $str);
+		$str = str_replace(',',  '\,',   $str);
+		$str = str_replace(["\r\n", "\r", "\n"], '\\n', $str);
+		return $str;
+	}
+	private static function ics_fold($line) {
+		$out = '';
+		while (strlen($line) > 75) {
+			$out  .= substr($line, 0, 75) . "\r\n ";
+			$line  = substr($line, 75);
+		}
+		return $out . $line;
+	}
+	private static function ics_location($address, $city, $province, $postal, $country) {
+		$parts = array_filter([$address, $city, $province, $postal, $country], 'strlen');
+		return implode(', ', $parts);
+	}
+
+	// ------------------------------------------------------------------ ICS Feed
+	public function ics($kingdom_id = null) {
+		$kingdom_id = preg_replace('/[^0-9]/', '', $kingdom_id);
+		$kid = (int)$kingdom_id;
+
+		// Kingdom name for CALNAME
+		$knName = $this->Kingdom->get_kingdom_name($kid);
+		if (empty($knName)) $knName = 'Kingdom';
+
+		// Fetch events
+		global $DB;
+		$sql = "
+			SELECT
+				e.event_id, e.name,
+				p.name AS park_name,
+				cd.event_calendardetail_id, cd.event_start, cd.event_end,
+				cd.description, cd.url,
+				cd.address, cd.city, cd.province, cd.postal_code, cd.country
+			FROM ork_event e
+			LEFT JOIN ork_park p ON p.park_id = e.park_id
+			JOIN ork_event_calendardetail cd ON cd.event_id = e.event_id
+				AND cd.event_start >= CURDATE()
+				AND cd.event_start <= DATE_ADD(NOW(), INTERVAL 12 MONTH)
+			WHERE e.kingdom_id = {$kid}
+			ORDER BY cd.event_start ASC";
+		$DB->Clear();
+		$result = $DB->DataSet($sql);
+
+		// Build ICS
+		$lines = [];
+		$lines[] = 'BEGIN:VCALENDAR';
+		$lines[] = 'VERSION:2.0';
+		$lines[] = 'PRODID:-//ORK3//Amtgard ORK//EN';
+		$lines[] = 'CALSCALE:GREGORIAN';
+		$lines[] = 'METHOD:PUBLISH';
+		$lines[] = self::ics_fold('X-WR-CALNAME:' . self::ics_escape($knName) . ' Events');
+
+		if ($result) {
+			while ($result->Next()) {
+				$dtstart = self::ics_dt($result->event_start);
+				$rawEnd  = $result->event_end;
+				$dtend   = (!empty($rawEnd) && $rawEnd !== '0000-00-00 00:00:00')
+					? self::ics_dt($rawEnd)
+					: self::ics_dt_plus1hr($result->event_start);
+
+				$uid      = 'event-' . (int)$result->event_id . '-' . (int)$result->event_calendardetail_id . '@ork3';
+				$location = self::ics_location($result->address, $result->city, $result->province, $result->postal_code, $result->country);
+				$dtstamp  = gmdate('Ymd\THis\Z');
+
+				$lines[] = 'BEGIN:VEVENT';
+				$lines[] = self::ics_fold('UID:' . $uid);
+				$lines[] = 'DTSTAMP:' . $dtstamp;
+				$lines[] = 'DTSTART:' . $dtstart;
+				$lines[] = 'DTEND:' . $dtend;
+				$lines[] = self::ics_fold('SUMMARY:' . self::ics_escape($result->name));
+				if (!empty($result->description)) {
+					$lines[] = self::ics_fold('DESCRIPTION:' . self::ics_escape(strip_tags($result->description)));
+				}
+				if (!empty($location)) {
+					$lines[] = self::ics_fold('LOCATION:' . self::ics_escape($location));
+				}
+				if (!empty($result->url)) {
+					$lines[] = self::ics_fold('URL:' . $result->url);
+				}
+				$lines[] = 'END:VEVENT';
+			}
+		}
+
+		$lines[] = 'END:VCALENDAR';
+
+		$safeName = preg_replace('/[^a-z0-9]/i', '-', $knName);
+		header('Content-Type: text/calendar; charset=utf-8');
+		header('Content-Disposition: attachment; filename="' . $safeName . '-events.ics"');
+		header('Cache-Control: no-cache, must-revalidate');
+		echo implode("\r\n", $lines) . "\r\n";
+		exit();
 	}
 
 }

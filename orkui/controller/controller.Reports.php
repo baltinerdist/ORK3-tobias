@@ -254,13 +254,22 @@ class Controller_Reports extends Controller {
 	}
 
 	public function active_waivered_duespaid($type=null) {
+		if (!$type || !valid_id($this->request->id)) {
+			header('Location: ' . $this->data['menu']['reports']['url']);
+			exit;
+		}
         $this->_peerage_waivered_duespaid(null, $type);
-		$this->data['page_title'] ="Active Waivered Dues Paid";
+		$this->data['page_title']     = "Active Waivered Dues Paid";
+		$this->data['activewaivered'] = true;
 	}
 
     public function active_duespaid($type=null) {
+		if (!$type || !valid_id($this->request->id)) {
+			header('Location: ' . $this->data['menu']['reports']['url']);
+			exit;
+		}
         $this->_peerage_waivered_duespaid(null, $type, true, null);
-		$this->data['page_title'] ="Active Dues Paid";
+		$this->data['page_title'] = "Active Dues Paid";
 	}
 
     public function knights($type=null) {
@@ -302,7 +311,11 @@ class Controller_Reports extends Controller {
 
 	public function roster($type=null) {
 		$this->data['roster'] = $this->Reports->player_roster($type, $this->request->id, null, 0, 0, 1);
-		$this->data['page_title'] ="Player Roster";
+		$this->data['page_title'] = "Player Roster";
+		$_uid     = isset($this->session->user_id) ? (int)$this->session->user_id : 0;
+		$_authType = $type === 'Kingdom' ? AUTH_KINGDOM : AUTH_PARK;
+		$this->data['canViewMundane'] = $_uid > 0 && valid_id($this->request->id)
+			&& Ork3::$Lib->authorization->HasAuthority($_uid, $_authType, (int)$this->request->id, AUTH_EDIT);
 	}
 
 	public function reeve($type=null) {
@@ -906,6 +919,38 @@ class Controller_Reports extends Controller {
 		unset($pRow);
 
 		$this->data['GridRows'] = array_values($playerData);
+	}
+
+	public function park_distance_matrix($type = null) {
+		$this->template = 'Reports_parkdistancematrix.tpl';
+		$this->data['page_title'] = "Park Distance Matrix";
+
+		$kingdom_id = intval($this->request->KingdomId ?: $this->session->kingdom_id);
+		if (!valid_id($kingdom_id)) {
+			$this->data['error'] = "No kingdom specified.";
+			return;
+		}
+
+		$result = $this->Reports->park_distance_matrix(array('KingdomId' => $kingdom_id));
+		$this->data['parks']      = $result['Parks'];
+		$this->data['matrix']     = $result['Matrix'];
+		$this->data['kingdom_id'] = $kingdom_id;
+	}
+
+	public function closest_parks($type = null) {
+		$this->template = 'Reports_closestparks.tpl';
+		$this->data['page_title'] = "Closest Parks";
+
+		$park_id = intval($this->request->ParkId);
+		if (!valid_id($park_id)) {
+			$this->data['error'] = "No park specified.";
+			return;
+		}
+
+		$result = $this->Reports->closest_parks(array('ParkId' => $park_id));
+		$this->data['parks']       = $result['Parks'];
+		$this->data['origin_park'] = $result['OriginPark'];
+		$this->data['park_id']     = $park_id;
 	}
 
 }

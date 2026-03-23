@@ -50,7 +50,7 @@ class Controller_Event extends Controller {
 		}
 
 		$can_manage = $uid > 0 && valid_id($event_id)
-			&& Ork3::$Lib->authorization->HasAuthority($uid, AUTH_EVENT, $event_id, AUTH_EDIT);
+			&& Ork3::$Lib->authorization->HasAuthority($uid, AUTH_EVENT, $event_id, AUTH_CREATE);
 		$this->data['CanManageEvent'] = $can_manage;
 
 		$rsvp_data = [];
@@ -161,7 +161,7 @@ class Controller_Event extends Controller {
 
 		$uid = isset($this->session->user_id) ? (int)$this->session->user_id : 0;
 		$this->data['CanManageEvent'] = $uid > 0
-			&& Ork3::$Lib->authorization->HasAuthority( $uid, AUTH_EVENT, $event_id, AUTH_EDIT );
+			&& Ork3::$Lib->authorization->HasAuthority( $uid, AUTH_EVENT, $event_id, AUTH_CREATE );
 	}
 
 	public function detail( $p = null ) {
@@ -230,7 +230,7 @@ class Controller_Event extends Controller {
 		$this->data['DefaultKingdomId']   = $this->session->kingdom_id   ?? 0;
 
 		if ( $action === 'deletedetail' && $uid > 0 ) {
-			if ( Ork3::$Lib->authorization->HasAuthority($uid, AUTH_EVENT, $event_id, AUTH_EDIT) ) {
+			if ( Ork3::$Lib->authorization->HasAuthority($uid, AUTH_EVENT, $event_id, AUTH_CREATE) ) {
 				global $DB;
 				$checkAtt  = $DB->DataSet("SELECT COUNT(*) AS cnt FROM " . DB_PREFIX . "attendance WHERE event_calendardetail_id = " . $detail_id . " LIMIT 1");
 				$attCnt    = ($checkAtt && $checkAtt->Size() > 0 && $checkAtt->Next()) ? (int)$checkAtt->cnt : 0;
@@ -374,7 +374,7 @@ class Controller_Event extends Controller {
 		$this->data['AttendanceReport'] = $this->Attendance->get_attendance_for_event($event_id, $detail_id);
 		$classes                        = $this->Attendance->get_classes();
 		$this->data['Classes']          = $classes['Classes'];
-		$this->data['Tournaments']      = $this->Reports->get_tournaments(null, null, null, $event_id, $detail_id);
+		// [TOURNAMENTS HIDDEN] $this->data['Tournaments'] = [];
 
 		if ( $this->request->exists('Attendance_event') ) {
 			$this->data['Attendance_event'] = $this->request->Attendance_event->Request;

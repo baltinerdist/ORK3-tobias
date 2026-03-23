@@ -235,6 +235,17 @@ function pnActivateTab(tab) {
     if (pnLabel) $('#pn-active-tab-label').text(pnLabel);
 }
 
+// ---- Custom Recommendation Modal (global — called from inline onclick) ----
+function pnOpenModal() {
+    $('#pn-rec-overlay').addClass('pn-open');
+    $('body').css('overflow', 'hidden');
+}
+function pnCloseModal() {
+    $('#pn-rec-overlay').removeClass('pn-open');
+    $('body').css('overflow', '');
+    $('#pn-rec-error').hide().empty();
+}
+
 $(document).ready(function() {
     if (typeof PnConfig === 'undefined') return;
 
@@ -323,16 +334,6 @@ $(document).ready(function() {
 
 
     // ---- Custom Recommendation Modal ----
-    function pnOpenModal() {
-        $('#pn-rec-overlay').addClass('pn-open');
-        $('body').css('overflow', 'hidden');
-    }
-    function pnCloseModal() {
-        $('#pn-rec-overlay').removeClass('pn-open');
-        $('body').css('overflow', '');
-        $('#pn-rec-error').hide().empty();
-    }
-
     $('#pn-recommend-btn').on('click', function(e) {
         e.preventDefault();
         pnOpenModal();
@@ -963,7 +964,6 @@ if (PnConfig.recError) {
             gid('pn-dues-overlay').classList.remove('pn-open');
             document.body.style.overflow = '';
         };
-
         gid('pn-dues-close-btn').addEventListener('click', pnCloseDuesModal);
         gid('pn-dues-cancel').addEventListener('click', pnCloseDuesModal);
         gid('pn-dues-overlay').addEventListener('click', function(e) {
@@ -1539,9 +1539,9 @@ function knToggleFilter(btn, type) {
     knFilters[type] = !knFilters[type];
     var isOn = knFilters[type];
     $(btn).toggleClass('kn-filter-on', isOn);
-    $('#kn-events-table, #kn-tournaments-table').find('tr[data-type="' + type + '"]').css('display', isOn ? '' : 'none');
+    $('#kn-events-table').find('tr[data-type="' + type + '"]').css('display', isOn ? '' : 'none');
     knPaginate($('#kn-events-table'), 1);
-    knPaginate($('#kn-tournaments-table'), 1);
+    // [TOURNAMENTS HIDDEN] knPaginate($('#kn-tournaments-table'), 1);
     // Sync calendar — refetch re-runs our events function which re-applies knFilters from cache (no extra HTTP request)
     if (knCalendar) knCalendar.refetchEvents();
 }
@@ -2092,8 +2092,8 @@ $(document).ready(function() {
     knSortAsc($('#kn-events-table'), 0, 'date');
     knPaginate($('#kn-events-table'), 1);
 
-    knSortDesc($('#kn-tournaments-table'), 0, 'date');
-    knPaginate($('#kn-tournaments-table'), 1);
+    // [TOURNAMENTS HIDDEN] knSortDesc($('#kn-tournaments-table'), 0, 'date');
+    // [TOURNAMENTS HIDDEN] knPaginate($('#kn-tournaments-table'), 1);
 
     knPaginate($('#kn-players-table'), 1);
 
@@ -2416,7 +2416,19 @@ $(document).ready(function() {
         }
         var dimBtn = e.target.closest ? e.target.closest('.pk-rec-dismiss-btn') : null;
         if (dimBtn && dimBtn.closest('#kn-tab-recommendations')) {
-            if (!confirm('Dismiss this recommendation?')) return;
+            if (!dimBtn.dataset.confirm) {
+                dimBtn.dataset.confirm = '1';
+                dimBtn.textContent = 'Confirm Dismiss?';
+                dimBtn.classList.add('pk-rec-dismiss-confirm');
+                dimBtn._confirmTimer = setTimeout(function() {
+                    dimBtn.dataset.confirm = '';
+                    dimBtn.textContent = 'Dismiss';
+                    dimBtn.classList.remove('pk-rec-dismiss-confirm');
+                }, 3000);
+                return;
+            }
+            clearTimeout(dimBtn._confirmTimer);
+            dimBtn.dataset.confirm = '';
             var recId = dimBtn.getAttribute('data-rec-id');
             var row   = dimBtn.closest('.pk-rec-row');
             var fd = new FormData();
@@ -3416,13 +3428,36 @@ $(document).ready(function() {
                 var key = sub ? ('Config[' + cid + '][' + sub + ']') : ('Config[' + cid + ']');
                 data[key] = inp.value;
             });
-            if (!Object.keys(data).length) { feedback('kn-admin-config-feedback', 'No configuration fields found.', false); return; }
+            var recsEl = gid('kn-admin-recs-public');
+            var recsVal = recsEl ? recsEl.value : null;
+            if (!Object.keys(data).length && recsVal === null) { feedback('kn-admin-config-feedback', 'No configuration fields found.', false); return; }
             btn.disabled = true;
-            $.post(BASE_URL + 'setconfig', data, function(r) {
-                btn.disabled = false;
-                if (r && r.status === 0) feedback('kn-admin-config-feedback', 'Configuration saved!', true);
-                else feedback('kn-admin-config-feedback', (r && r.error) ? r.error : 'Save failed.', false);
-            }, 'json').fail(function() { btn.disabled = false; feedback('kn-admin-config-feedback', 'Request failed.', false); });
+            function saveRecs(cb) {
+                if (recsVal === null) { cb(true, null); return; }
+                $.post(BASE_URL + 'setrecsvisibility', { Value: recsVal }, function(r2) {
+                    cb(r2 && r2.status === 0, (r2 && r2.error) ? r2.error : 'Visibility save failed.');
+                }, 'json').fail(function() { cb(false, 'Visibility request failed.'); });
+            }
+            if (Object.keys(data).length) {
+                $.post(BASE_URL + 'setconfig', data, function(r) {
+                    if (r && r.status === 0) {
+                        saveRecs(function(ok, err) {
+                            btn.disabled = false;
+                            if (ok) feedback('kn-admin-config-feedback', 'Configuration saved!', true);
+                            else feedback('kn-admin-config-feedback', err, false);
+                        });
+                    } else {
+                        btn.disabled = false;
+                        feedback('kn-admin-config-feedback', (r && r.error) ? r.error : 'Save failed.', false);
+                    }
+                }, 'json').fail(function() { btn.disabled = false; feedback('kn-admin-config-feedback', 'Request failed.', false); });
+            } else {
+                saveRecs(function(ok, err) {
+                    btn.disabled = false;
+                    if (ok) feedback('kn-admin-config-feedback', 'Configuration saved!', true);
+                    else feedback('kn-admin-config-feedback', err, false);
+                });
+            }
         });
     }
 
@@ -4485,6 +4520,7 @@ $(document).ready(function() {
 
 });
 (function() {
+    if (typeof PkConfig === 'undefined') return;
     if (!document.getElementById('pk-award-overlay')) return;
     var UIR_JS = PkConfig.uir;
     var SEARCH_URL = PkConfig.httpService + 'Search/SearchService.php';
@@ -4813,7 +4849,19 @@ $(document).ready(function() {
         }
         var dimBtn = e.target.closest ? e.target.closest('.pk-rec-dismiss-btn') : null;
         if (dimBtn && dimBtn.closest('#pk-tab-recommendations')) {
-            if (!confirm('Dismiss this recommendation?')) return;
+            if (!dimBtn.dataset.confirm) {
+                dimBtn.dataset.confirm = '1';
+                dimBtn.textContent = 'Confirm Dismiss?';
+                dimBtn.classList.add('pk-rec-dismiss-confirm');
+                dimBtn._confirmTimer = setTimeout(function() {
+                    dimBtn.dataset.confirm = '';
+                    dimBtn.textContent = 'Dismiss';
+                    dimBtn.classList.remove('pk-rec-dismiss-confirm');
+                }, 3000);
+                return;
+            }
+            clearTimeout(dimBtn._confirmTimer);
+            dimBtn.dataset.confirm = '';
             var recId = dimBtn.getAttribute('data-rec-id');
             var row   = dimBtn.closest('.pk-rec-row');
             var fd = new FormData();
@@ -4940,6 +4988,7 @@ $(document).ready(function() {
     });
 })();
 (function() {
+    if (typeof PkConfig === 'undefined') return;
     if (!document.getElementById('pk-rec-overlay')) return;
     var UIR_JS      = PkConfig.uir;
     var PARK_ID     = PkConfig.parkId;
@@ -5213,52 +5262,30 @@ $(document).ready(function() {
             return false;
         }
 
-        $('#ev-KingdomName').autocomplete({
-            source: function(req, res) {
-                $.getJSON(EvConfig.httpService + 'Search/SearchService.php',
-                    { Action: 'Search/Kingdom', name: req.term, limit: 6 },
-                    function(data) {
-                        res($.map(data, function(v) { return { label: v.Name, value: v.KingdomId }; }));
-                    });
-            },
-            focus:  function(e,ui) { return showLabel('#ev-KingdomName', ui); },
-            delay: 250, minLength: 0,
-            select: function(e,ui) { showLabel('#ev-KingdomName',ui); $('#ev-KingdomId').val(ui.item.value); return false; },
-            change: function(e,ui) { if(!ui.item) { showLabel('#ev-KingdomName',null); $('#ev-KingdomId').val(''); } return false; }
-        }).focus(function() { if(!this.value) $(this).trigger('keydown.autocomplete'); });
-
-        $('#ev-ParkName').autocomplete({
-            source: function(req, res) {
-                $.getJSON(EvConfig.httpService + 'Search/SearchService.php',
-                    { Action: 'Search/Park', name: req.term, kingdom_id: $('#ev-KingdomId').val(), limit: 6 },
-                    function(data) {
-                        res($.map(data, function(v) { return { label: v.Name, value: v.ParkId }; }));
-                    });
-            },
-            focus:  function(e,ui) { return showLabel('#ev-ParkName', ui); },
-            delay: 250, minLength: 0,
-            select: function(e,ui) { showLabel('#ev-ParkName',ui); $('#ev-ParkId').val(ui.item.value); return false; },
-            change: function(e,ui) { if(!ui.item) { showLabel('#ev-ParkName',null); $('#ev-ParkId').val(''); } return false; }
-        }).focus(function() { if(!this.value) $(this).trigger('keydown.autocomplete'); });
+        function evAttAbbr(v) {
+            return (v.KAbbr && v.PAbbr) ? v.KAbbr + ':' + v.PAbbr : (v.ParkName || '');
+        }
 
         $('#ev-PlayerName').autocomplete({
             source: function(req, res) {
                 $.getJSON(EvConfig.httpService + 'Search/SearchService.php',
-                    { Action: 'Search/Player', type: 'all', search: req.term,
-                      park_id: $('#ev-ParkId').val(), kingdom_id: $('#ev-KingdomId').val(), limit: 15 },
+                    { Action: 'Search/Player', type: 'all', search: req.term, limit: 15 },
                     function(data) {
-                        res($.map(data, function(v) { return { label: v.Persona, value: v.MundaneId + '|' + v.PenaltyBox }; }));
+                        res($.map(data, function(v) {
+                            var abbr = evAttAbbr(v);
+                            return { label: v.Persona + (abbr ? ' — ' + abbr : ''), name: v.Persona, value: v.MundaneId + '|' + v.PenaltyBox };
+                        }));
                     });
             },
-            focus:  function(e,ui) { return showLabel('#ev-PlayerName', ui); },
-            delay: 250, minLength: 0,
+            focus:  function(e,ui) { if (ui.item) $('#ev-PlayerName').val(ui.item.name); return false; },
+            delay: 250, minLength: 2,
             select: function(e,ui) {
-                showLabel('#ev-PlayerName', ui);
+                $('#ev-PlayerName').val(ui.item.name);
                 $('#ev-MundaneId').val(ui.item.value.split('|')[0]);
                 return false;
             },
-            change: function(e,ui) { if(!ui.item) { showLabel('#ev-PlayerName',null); $('#ev-MundaneId').val(''); } return false; }
-        }).focus(function() { if(!this.value) $(this).trigger('keydown.autocomplete'); });
+            change: function(e,ui) { if(!ui.item) { $('#ev-MundaneId').val(''); } return false; }
+        });
     });
 
     // ---- Hero dominant-color tint ----
@@ -5438,53 +5465,49 @@ $(document).ready(function() {
         .then(function(response) { return response.json(); })
         .then(function(data) {
             if (data.status === 0 && data.attendance) {
-                var newRow = '<tr>' +
-                    '<td><a href="' + EvConfig.uir + 'Player/profile/' + data.attendance.MundaneId + '">' + data.attendance.Persona + '</a></td>' +
-                    '<td><a href="' + EvConfig.uir + 'Kingdom/profile/' + data.attendance.KingdomId + '">' + data.attendance.KingdomName + '</a></td>' +
-                    '<td><a href="' + EvConfig.uir + 'Park/profile/' + data.attendance.ParkId + '">' + data.attendance.ParkName + '</a></td>' +
-                    '<td>' + data.attendance.ClassName + '</td>' +
-                    '<td>' + data.attendance.Credits + '</td>' +
+                var att = data.attendance;
+                var delUrl = EvConfig.uir + 'AttendanceAjax/attendance/' + att.AttendanceId + '/delete';
+                var kingCell  = att.KingdomId ? '<a href="' + EvConfig.uir + 'Kingdom/profile/' + att.KingdomId + '">' + escHtml(att.KingdomName || '') + '</a>' : escHtml(att.KingdomName || '');
+                var parkCell  = att.ParkId    ? '<a href="' + EvConfig.uir + 'Park/profile/'    + att.ParkId    + '">' + escHtml(att.ParkName    || '') + '</a>' : escHtml(att.ParkName    || '');
+                var newRow = '<tr data-att-id="' + att.AttendanceId + '">' +
+                    '<td><a href="' + EvConfig.uir + 'Player/profile/' + att.MundaneId + '">' + escHtml(att.Persona || '') + '</a></td>' +
+                    '<td>' + kingCell + '</td>' +
+                    '<td>' + parkCell + '</td>' +
+                    '<td>' + escHtml(att.ClassName || '') + '</td>' +
+                    '<td>' + escHtml(att.Credits || '') + '</td>' +
                     '<td class="ev-del-cell">' +
-                        '<a class="ev-del-link" title="Remove" href="' + EvConfig.uir + 'Event/detail/' + EvConfig.eventId + '/' + EvConfig.detailId + '/delete/' + data.attendance.AttendanceId + '" onclick="return confirm(\'Remove this attendance record?\')">×</a>' +
+                        '<a class="ev-del-link" title="Remove" href="#" data-del-url="' + delUrl + '" onclick="evConfirmAttDelete(event,this)">×</a>' +
                     '</td>' +
                 '</tr>';
-                
-                var tableBody = document.querySelector('.ev-table tbody');
-                if (tableBody) { tableBody.insertAdjacentHTML('beforeend', newRow); }
+
+                var tableBody = document.querySelector('#ev-attendance-table tbody');
+                if (tableBody) {
+                    tableBody.insertAdjacentHTML('beforeend', newRow);
+                } else {
+                    // Table doesn't exist yet — create it
+                    var emptyMsg = document.querySelector('#ev-tab-attendance .ev-empty');
+                    var tableHtml = '<table class="display" id="ev-attendance-table" style="width:100%">' +
+                        '<thead><tr><th>Player</th><th>Kingdom</th><th>Park</th><th>Class</th><th>Credits</th><th class="ev-del-cell"></th></tr></thead>' +
+                        '<tbody>' + newRow + '</tbody></table>';
+                    if (emptyMsg) { emptyMsg.outerHTML = tableHtml; }
+                }
 
                 form.reset();
                 $('#ev-PlayerName').val('');
                 $('#ev-MundaneId').val('');
 
-                var attendeeCount = document.querySelector('.ev-tab-count');
-                if (attendeeCount) { attendeeCount.textContent = parseInt(attendeeCount.textContent || '0') + 1; }
-                
-                var emptyMessage = document.querySelector('#ev-tab-attendance .ev-empty');
-                if (emptyMessage) {
-                    emptyMessage.style.display = 'none';
-                }
+                var tabCount = document.querySelector('[data-tab="ev-tab-attendance"] .ev-tab-count');
+                if (tabCount) { tabCount.textContent = parseInt(tabCount.textContent || '0') + 1; }
             } else {
-                var errorDiv = document.querySelector('.ev-error');
-                if (!errorDiv) {
-                    errorDiv = document.createElement('div');
-                    errorDiv.className = 'ev-error';
-                    var mainDiv = document.querySelector('.ev-main');
-                    if (mainDiv) { mainDiv.insertBefore(errorDiv, mainDiv.firstChild); }
-                }
+                var errorDiv = document.querySelector('.ev-att-form .ev-error') || document.createElement('div');
+                errorDiv.className = 'ev-error';
                 errorDiv.style.display = 'block';
                 errorDiv.innerHTML = '<i class="fas fa-exclamation-triangle" style="margin-right:6px"></i>' + (data.error || 'An unknown error occurred.');
+                if (!errorDiv.parentNode) { form.parentNode.insertBefore(errorDiv, form.nextSibling); }
             }
         })
         .catch(function(error) {
-            var errorDiv = document.querySelector('.ev-error');
-            if (!errorDiv) {
-                errorDiv = document.createElement('div');
-                errorDiv.className = 'ev-error';
-                var mainDiv = document.querySelector('.ev-main');
-                if (mainDiv) { mainDiv.insertBefore(errorDiv, mainDiv.firstChild); }
-            }
-            errorDiv.style.display = 'block';
-            errorDiv.innerHTML = '<i class="fas fa-exclamation-triangle" style="margin-right:6px"></i>Request failed: ' + error.message;
+            console.error('Add attendance failed:', error);
         })
         .finally(function() {
             submitBtn.disabled = false;
@@ -6579,6 +6602,7 @@ if (typeof EcConfig !== 'undefined') (function() {
 // ============================================================
 // Parknew — Attendance Modal (pk-att-)
 $(document).ready(function() {
+    if (typeof PkConfig === 'undefined') return;
     if (!document.getElementById('pk-att-overlay')) return;
 
     var ADD_URL    = PkConfig.uir + 'AttendanceAjax/park/' + PkConfig.parkId + '/add';
@@ -7688,22 +7712,29 @@ function setupPronounPicker(cfg) {
             var row      = $(this).closest('tr');
             var awardsId = $(this).data('awards-id');
             var kind     = $(this).closest('table').is('#pn-titles-table') ? 'title' : 'award';
-            if (!awardsId || !confirm('Delete this ' + kind + ' record? This cannot be undone.')) return;
-            btn.disabled = true;
-            fetch(PnConfig.uir + 'PlayerAjax/player/' + PnConfig.playerId + '/deleteaward', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'AwardsId=' + encodeURIComponent(awardsId),
-            }).then(function(r) { return r.json(); }).then(function(result) {
-                if (result && result.status === 0) {
-                    row.fadeOut(300, function() { row.remove(); });
-                } else {
+            if (!awardsId) return;
+            pnConfirm({
+                title:       'Delete ' + (kind === 'title' ? 'Title' : 'Award'),
+                message:     'Delete this ' + kind + ' record? This cannot be undone.',
+                confirmText: 'Delete',
+                danger:      true
+            }, function() {
+                btn.disabled = true;
+                fetch(PnConfig.uir + 'PlayerAjax/player/' + PnConfig.playerId + '/deleteaward', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: 'AwardsId=' + encodeURIComponent(awardsId),
+                }).then(function(r) { return r.json(); }).then(function(result) {
+                    if (result && result.status === 0) {
+                        location.reload();
+                    } else {
+                        btn.disabled = false;
+                        pnConfirm({ title: 'Error', message: (result && result.error) ? result.error : 'Delete failed.', confirmText: 'OK', danger: false }, function() {});
+                    }
+                }).catch(function() {
                     btn.disabled = false;
-                    alert((result && result.error) ? result.error : 'Delete failed.');
-                }
-            }).catch(function() {
-                btn.disabled = false;
-                alert('Request failed.');
+                    pnConfirm({ title: 'Error', message: 'Request failed.', confirmText: 'OK', danger: false }, function() {});
+                });
             });
         });
 
@@ -8189,11 +8220,7 @@ function setupPronounPicker(cfg) {
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 if (data.status === 0) {
-                    // Mark row as revoked visually (strike-through on first cell)
-                    $('.pn-award-revoke-btn[data-awards-id="' + currentRevokeAwardsId + '"]').closest('tr').find('td:first').css('text-decoration', 'line-through');
-                    // Remove action buttons since award is now revoked
-                    $('.pn-award-revoke-btn[data-awards-id="' + currentRevokeAwardsId + '"]').closest('.pn-award-actions-cell').html('<em style="color:#a0aec0;font-size:11px">revoked</em>');
-                    pnCloseAwardRevokeModal();
+                    location.reload();
                 } else {
                     if (fb) { fb.textContent = data.error || 'Error revoking award.'; fb.style.display = ''; fb.className = 'pn-form-error'; }
                     btn.disabled = false;
@@ -8551,6 +8578,36 @@ function setupPronounPicker(cfg) {
     });
 })();
 
+// ---- Shared: autocomplete keyboard navigation ----
+// Adds ArrowUp/Down/Enter key nav to an input+results dropdown pair.
+// selectFn(item) is called when Enter is pressed on a focused item.
+function setupAcKeyNav(inputEl, resultsEl, itemSel, focusedClass, selectFn) {
+    var idx = -1;
+    function items() { return resultsEl.querySelectorAll(itemSel); }
+    function clearFocus(all) { if (idx >= 0 && all[idx]) all[idx].classList.remove(focusedClass); }
+    inputEl.addEventListener('input', function() { idx = -1; });
+    inputEl.addEventListener('keydown', function(e) {
+        var all = items();
+        if (!all.length) return;
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            clearFocus(all);
+            idx = Math.min(idx + 1, all.length - 1);
+            all[idx].classList.add(focusedClass);
+            all[idx].scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            clearFocus(all);
+            idx = Math.max(idx - 1, 0);
+            all[idx].classList.add(focusedClass);
+            all[idx].scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'Enter' && idx >= 0 && all[idx]) {
+            e.preventDefault();
+            selectFn(all[idx]);
+        }
+    });
+}
+
 // ---- Playernew: Move Player ----
 (function() {
     if (typeof PnConfig === 'undefined' || !PnConfig.canEditAdmin) return;
@@ -8682,6 +8739,7 @@ function setupPronounPicker(cfg) {
                 var btn = gid('pn-move-submit');
                 if (btn) btn.disabled = false;
             });
+            setupAcKeyNav(parkInput, gid('pn-moveplayer-park-results'), '.pn-ac-item[data-id]', 'pn-ac-focused', function(item) { item.click(); });
         }
 
         // Submit
@@ -8902,34 +8960,28 @@ function setupPronounPicker(cfg) {
 })();
 
 // ---- Create Unit Modal (Playernew) ----
+window.pnOpenUnitCreateModal = function() {
+    var el = document.getElementById('pn-unit-create-overlay');
+    if (!el) return;
+    el.classList.add('pn-open');
+    document.body.style.overflow = 'hidden';
+    var nameInput = el.querySelector('input[name="Name"]');
+    if (nameInput) setTimeout(function() { nameInput.focus(); }, 50);
+};
+window.pnCloseUnitCreateModal = function() {
+    var el = document.getElementById('pn-unit-create-overlay');
+    if (!el) return;
+    el.classList.remove('pn-open');
+    document.body.style.overflow = '';
+};
 (function() {
-    if (typeof PnConfig === 'undefined' || !PnConfig.canCreateUnit) return;
-
     $(document).ready(function() {
-        var overlay   = document.getElementById('pn-unit-create-overlay');
-        var closeBtn  = document.getElementById('pn-unit-create-close-btn');
-        var cancelBtn = document.getElementById('pn-unit-create-cancel');
-        var openBtn   = document.getElementById('pn-unit-create-btn');
-        if (!overlay || !openBtn) return;
-
-        function openModal() {
-            overlay.classList.add('pn-open');
-            document.body.style.overflow = 'hidden';
-            var nameInput = overlay.querySelector('input[name="Name"]');
-            if (nameInput) setTimeout(function() { nameInput.focus(); }, 50);
-        }
-        function closeModal() {
-            overlay.classList.remove('pn-open');
-            document.body.style.overflow = '';
-        }
-
-        openBtn.addEventListener('click', openModal);
-        if (closeBtn)  closeBtn.addEventListener('click', closeModal);
-        if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
-        overlay.addEventListener('click', function(e) { if (e.target === this) closeModal(); });
+        var overlay = document.getElementById('pn-unit-create-overlay');
+        if (!overlay) return;
+        overlay.addEventListener('click', function(e) { if (e.target === this) pnCloseUnitCreateModal(); });
         document.addEventListener('keydown', function(e) {
             if ((e.key === 'Escape' || e.keyCode === 27) && overlay.classList.contains('pn-open'))
-                closeModal();
+                pnCloseUnitCreateModal();
         });
     });
 })();
@@ -8958,6 +9010,13 @@ function setupPronounPicker(cfg) {
         var ov = gid('kn-moveplayer-overlay');
         if (ov) ov.classList.remove('kn-open');
         document.body.style.overflow = '';
+    }
+
+    function knmpCheckSubmit() {
+        var hasPlayer = !!gid('kn-moveplayer-player-id').value;
+        var hasPark   = !!gid('kn-moveplayer-park-id').value;
+        var btn = gid('kn-moveplayer-submit');
+        if (btn) btn.disabled = !(hasPlayer && hasPark);
     }
 
     function setMode(mode) {
@@ -8994,6 +9053,7 @@ function setupPronounPicker(cfg) {
         gid('kn-moveplayer-player-results').classList.remove('kn-ac-open');
         gid('kn-moveplayer-park-results').classList.remove('kn-ac-open');
         gid('kn-moveplayer-feedback').style.display = 'none';
+        knmpCheckSubmit();
     }
 
     window.knOpenMovePlayerModal = function() {
@@ -9053,7 +9113,12 @@ function setupPronounPicker(cfg) {
             gid('kn-moveplayer-player-name').value = decodeURIComponent(item.dataset.name);
             gid('kn-moveplayer-player-id').value   = item.dataset.id;
             this.classList.remove('kn-ac-open');
+            knmpCheckSubmit();
         });
+        gid('kn-moveplayer-player-name').addEventListener('input', function() {
+            if (!this.value.trim()) { gid('kn-moveplayer-player-id').value = ''; knmpCheckSubmit(); }
+        });
+        setupAcKeyNav(gid('kn-moveplayer-player-name'), gid('kn-moveplayer-player-results'), '.kn-ac-item[data-id]', 'kn-ac-focused', function(item) { item.click(); });
 
         // Park autocomplete
         gid('kn-moveplayer-park-name').addEventListener('input', function() {
@@ -9087,7 +9152,12 @@ function setupPronounPicker(cfg) {
             gid('kn-moveplayer-park-name').value = decodeURIComponent(item.dataset.name);
             gid('kn-moveplayer-park-id').value   = item.dataset.id;
             this.classList.remove('kn-ac-open');
+            knmpCheckSubmit();
         });
+        gid('kn-moveplayer-park-name').addEventListener('input', function() {
+            if (!this.value.trim()) { gid('kn-moveplayer-park-id').value = ''; knmpCheckSubmit(); }
+        });
+        setupAcKeyNav(gid('kn-moveplayer-park-name'), gid('kn-moveplayer-park-results'), '.kn-ac-item[data-id]', 'kn-ac-focused', function(item) { item.click(); });
 
         gid('kn-moveplayer-submit').addEventListener('click', function() {
             var mundaneId = gid('kn-moveplayer-player-id').value;
@@ -9514,6 +9584,13 @@ function setupPronounPicker(cfg) {
         if (el) { el.innerHTML = ''; el.classList.remove('pk-ac-open'); }
     }
 
+    function pkmpCheckSubmit() {
+        var hasPlayer = parseInt(gid('pk-moveplayer-player-id').value) > 0;
+        var hasPark   = mpMode === 'in' ? true : parseInt(gid('pk-moveplayer-park-id').value) > 0;
+        var btn = gid('pk-moveplayer-submit');
+        if (btn) btn.disabled = !(hasPlayer && hasPark);
+    }
+
     function setMode(mode) {
         mpMode = mode;
         var parkSection = gid('pk-moveplayer-park-section');
@@ -9547,6 +9624,7 @@ function setupPronounPicker(cfg) {
             closeDropdown('pk-moveplayer-park-results');
             mpParkId = 0;
         }
+        pkmpCheckSubmit();
     }
 
     window.pkOpenMovePlayerModal = function() {
@@ -9567,6 +9645,9 @@ function setupPronounPicker(cfg) {
         if (playerInput) {
             playerInput.addEventListener('input', function() {
                 clearTimeout(mpPlayerTimer);
+                mpPlayerId = 0;
+                gid('pk-moveplayer-player-id').value = '';
+                pkmpCheckSubmit();
                 var term = this.value.trim();
                 if (term.length < 2) { closeDropdown('pk-moveplayer-player-results'); return; }
                 var searchUrl = (mpMode === 'in') ? PSEARCH_EXCLUDE : PSEARCH_OWN;
@@ -9591,6 +9672,7 @@ function setupPronounPicker(cfg) {
                                     gid('pk-moveplayer-player-name').value = player.Persona;
                                     gid('pk-moveplayer-player-id').value = player.MundaneId;
                                     closeDropdown('pk-moveplayer-player-results');
+                                    pkmpCheckSubmit();
                                 });
                                 res.appendChild(item);
                             });
@@ -9602,6 +9684,9 @@ function setupPronounPicker(cfg) {
             playerInput.addEventListener('blur', function() {
                 setTimeout(function() { closeDropdown('pk-moveplayer-player-results'); }, 200);
             });
+            setupAcKeyNav(playerInput, gid('pk-moveplayer-player-results'), '.pk-ac-item', 'pk-ac-focused', function(item) {
+                item.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+            });
         }
 
         // Park autocomplete (Transfer to New Park mode only)
@@ -9609,6 +9694,9 @@ function setupPronounPicker(cfg) {
         if (parkInput) {
             parkInput.addEventListener('input', function() {
                 clearTimeout(mpParkTimer);
+                mpParkId = 0;
+                gid('pk-moveplayer-park-id').value = '';
+                pkmpCheckSubmit();
                 var term = this.value.trim();
                 if (term.length < 2) { closeDropdown('pk-moveplayer-park-results'); return; }
                 mpParkTimer = setTimeout(function() {
@@ -9629,6 +9717,7 @@ function setupPronounPicker(cfg) {
                                 gid('pk-moveplayer-park-name').value = pk.ParkName || pk.Name || pk.name || '';
                                 gid('pk-moveplayer-park-id').value = mpParkId;
                                 closeDropdown('pk-moveplayer-park-results');
+                                pkmpCheckSubmit();
                             });
                             res.appendChild(item);
                         });
@@ -9638,6 +9727,9 @@ function setupPronounPicker(cfg) {
             });
             parkInput.addEventListener('blur', function() {
                 setTimeout(function() { closeDropdown('pk-moveplayer-park-results'); }, 200);
+            });
+            setupAcKeyNav(parkInput, gid('pk-moveplayer-park-results'), '.pk-ac-item', 'pk-ac-focused', function(item) {
+                item.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
             });
         }
 
@@ -9663,6 +9755,7 @@ function setupPronounPicker(cfg) {
                             gid('pk-moveplayer-park-name').value = '';
                             gid('pk-moveplayer-park-id').value = '';
                         }
+                        pkmpCheckSubmit();
                     } else {
                         showFb((r && r.error) ? r.error : 'Move failed.', false);
                     }
@@ -9694,139 +9787,9 @@ function setupPronounPicker(cfg) {
     });
 })();
 
-// ── Add Tournament Modal (Kingdom) ──────────────────────────────────────────
-(function() {
-    if (!window.KnConfig || !KnConfig.canManage) return;
-    var overlay = document.getElementById('kn-addtournament-overlay');
-    if (!overlay) return;
+/* [TOURNAMENTS HIDDEN] KN add tournament modal */
 
-    function showFb(msg, ok) {
-        var fb = document.getElementById('kn-addtournament-feedback');
-        if (!fb) return;
-        fb.textContent = msg;
-        fb.style.display = 'block';
-        fb.style.color = ok ? '#276749' : '#e53e3e';
-    }
-
-    function openModal() {
-        document.getElementById('kn-addtournament-name').value = '';
-        document.getElementById('kn-addtournament-when').value = '';
-        document.getElementById('kn-addtournament-desc').value = '';
-        document.getElementById('kn-addtournament-url').value  = '';
-        var fb = document.getElementById('kn-addtournament-feedback');
-        if (fb) { fb.style.display = 'none'; fb.textContent = ''; }
-        overlay.classList.add('kn-open');
-    }
-
-    function closeModal() {
-        overlay.classList.remove('kn-open');
-    }
-
-    window.knOpenAddTournamentModal = openModal;
-
-    document.getElementById('kn-addtournament-close-btn').addEventListener('click', closeModal);
-    document.getElementById('kn-addtournament-cancel').addEventListener('click', closeModal);
-    overlay.addEventListener('click', function(e) { if (e.target === overlay) closeModal(); });
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape' && overlay.classList.contains('kn-open')) closeModal();
-    });
-
-    document.getElementById('kn-addtournament-submit').addEventListener('click', function() {
-        var btn  = this;
-        var name = document.getElementById('kn-addtournament-name').value.trim();
-        var when = document.getElementById('kn-addtournament-when').value.trim();
-        var desc = document.getElementById('kn-addtournament-desc').value.trim();
-        var url  = document.getElementById('kn-addtournament-url').value.trim();
-
-        if (!name) { showFb('Tournament name is required.', false); return; }
-        if (!when) { showFb('Tournament date is required.', false); return; }
-
-        btn.disabled = true;
-        jQuery.post(
-            KnConfig.uir + 'KingdomAjax/kingdom/' + KnConfig.kingdomId + '/createtournament',
-            { Name: name, When: when, Description: desc, Url: url },
-            function(r) {
-                btn.disabled = false;
-                if (r && r.status === 0) {
-                    showFb('Tournament created!', true);
-                    setTimeout(function() { closeModal(); window.location.reload(); }, 900);
-                } else {
-                    showFb((r && r.error) ? r.error : 'Failed to create tournament.', false);
-                }
-            }, 'json'
-        ).fail(function() {
-            btn.disabled = false;
-            showFb('Request failed. Please try again.', false);
-        });
-    });
-})();
-
-// ── Add Tournament Modal (Park) ──────────────────────────────────────────────
-(function() {
-    if (!window.PkConfig || !PkConfig.canManage) return;
-    var overlay = document.getElementById('pk-addtournament-overlay');
-    if (!overlay) return;
-
-    function showFb(msg, ok) {
-        var fb = document.getElementById('pk-addtournament-feedback');
-        if (!fb) return;
-        fb.textContent = msg;
-        fb.style.display = 'block';
-        fb.style.color = ok ? '#276749' : '#e53e3e';
-    }
-
-    function openModal() {
-        document.getElementById('pk-addtournament-name').value = '';
-        document.getElementById('pk-addtournament-when').value = '';
-        document.getElementById('pk-addtournament-desc').value = '';
-        document.getElementById('pk-addtournament-url').value  = '';
-        var fb = document.getElementById('pk-addtournament-feedback');
-        if (fb) { fb.style.display = 'none'; fb.textContent = ''; }
-        overlay.classList.add('pk-open');
-    }
-
-    function closeModal() {
-        overlay.classList.remove('pk-open');
-    }
-
-    window.pkOpenAddTournamentModal = openModal;
-
-    document.getElementById('pk-addtournament-close-btn').addEventListener('click', closeModal);
-    document.getElementById('pk-addtournament-cancel').addEventListener('click', closeModal);
-    overlay.addEventListener('click', function(e) { if (e.target === overlay) closeModal(); });
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape' && overlay.classList.contains('pk-open')) closeModal();
-    });
-
-    document.getElementById('pk-addtournament-submit').addEventListener('click', function() {
-        var btn  = this;
-        var name = document.getElementById('pk-addtournament-name').value.trim();
-        var when = document.getElementById('pk-addtournament-when').value.trim();
-        var desc = document.getElementById('pk-addtournament-desc').value.trim();
-        var url  = document.getElementById('pk-addtournament-url').value.trim();
-
-        if (!name) { showFb('Tournament name is required.', false); return; }
-        if (!when) { showFb('Tournament date is required.', false); return; }
-
-        btn.disabled = true;
-        jQuery.post(
-            PkConfig.uir + 'ParkAjax/park/' + PkConfig.parkId + '/createtournament',
-            { Name: name, When: when, Description: desc, Url: url, KingdomId: PkConfig.kingdomId },
-            function(r) {
-                btn.disabled = false;
-                if (r && r.status === 0) {
-                    showFb('Tournament created!', true);
-                    setTimeout(function() { closeModal(); window.location.reload(); }, 900);
-                } else {
-                    showFb((r && r.error) ? r.error : 'Failed to create tournament.', false);
-                }
-            }, 'json'
-        ).fail(function() {
-            btn.disabled = false;
-            showFb('Request failed. Please try again.', false);
-        });
-    });
-})();
+/* [TOURNAMENTS HIDDEN] PK add tournament modal */
 
 
 // ---- Merge Players Modal (Parknew) ----
@@ -10612,4 +10575,28 @@ function setupPronounPicker(cfg) {
     }
 
     render();
+})();
+/* [TOURNAMENTS HIDDEN] KN delete tournament buttons */
+// ---- Recommendations tab filter bar (Kingdomnew) ----
+(function() {
+    var bar = document.querySelector('.kn-rec-filter-bar');
+    if (!bar) return;
+
+    var activeFilter = 'all';
+
+    function applyFilter(filter) {
+        activeFilter = filter;
+        var rows = document.querySelectorAll('#kn-recs-tbody .pk-rec-row');
+        rows.forEach(function(row) {
+            row.style.display = (filter === 'all' || row.dataset.filter === filter) ? '' : 'none';
+        });
+        bar.querySelectorAll('.kn-rec-filter-btn').forEach(function(btn) {
+            btn.classList.toggle('kn-rec-filter-active', btn.dataset.filter === filter);
+        });
+    }
+
+    bar.addEventListener('click', function(e) {
+        var btn = e.target.closest('.kn-rec-filter-btn');
+        if (btn) applyFilter(btn.dataset.filter);
+    });
 })();

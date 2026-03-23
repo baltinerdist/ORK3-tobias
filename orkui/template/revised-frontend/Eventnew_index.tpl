@@ -75,8 +75,9 @@
 		}
 	}
 
-	$tournaments    = $Tournaments['Tournaments'] ?? [];
-	$tourneyCount   = count($tournaments);
+	// [TOURNAMENTS HIDDEN]
+	$tournaments  = [];
+	$tourneyCount = 0;
 	$attendanceList = $AttendanceReport['Attendance'] ?? [];
 	$checkedInIds   = array_flip(array_column($attendanceList, 'MundaneId'));
 	$attendanceForm = $Attendance_event ?? [];
@@ -429,10 +430,7 @@
 					<i class="fas fa-clipboard-list"></i><span class="ev-tab-label"> Attendance</span>
 					<span class="ev-tab-count"><?= $attendeeCount ?></span>
 				</li>
-				<li data-tab="ev-tab-tournaments" onclick="evShowTab(this,'ev-tab-tournaments')">
-					<i class="fas fa-trophy"></i><span class="ev-tab-label"> Tournaments</span>
-					<span class="ev-tab-count"><?= $tourneyCount ?></span>
-				</li>
+				<?php /* [TOURNAMENTS HIDDEN] tab */ ?>
 				<li data-tab="ev-tab-rsvp" onclick="evShowTab(this,'ev-tab-rsvp')">
 					<i class="fas fa-calendar-check"></i><span class="ev-tab-label"> RSVPs</span>
 					<span class="ev-tab-count"><?= $rsvpCount ?></span>
@@ -444,6 +442,11 @@
 				<?php if ($hasMapTab): ?>
 				<li data-tab="ev-tab-map" onclick="evShowTab(this,'ev-tab-map')">
 					<i class="fas fa-map-marked-alt"></i><span class="ev-tab-label"> Map</span>
+				</li>
+				<?php endif; ?>
+				<?php if ($canManage): ?>
+				<li data-tab="ev-tab-admin" onclick="evShowTab(this,'ev-tab-admin')">
+					<i class="fas fa-cog"></i><span class="ev-tab-label"> Admin Tasks</span>
 				</li>
 				<?php endif; ?>
 			</ul>
@@ -576,26 +579,10 @@
 					<form method="post" id="ev-attendance-form" action="<?= UIR ?>EventAjax/add_attendance/<?= $eventId ?>/<?= $detailId ?>" onsubmit="evHandleAttendanceSubmit(this); return false;">
 						<div class="ev-form-row">
 							<div class="ev-form-field">
-								<label>Kingdom</label>
-								<input type="text" id="ev-KingdomName" name="KingdomName" style="width:140px"
-									value="<?= htmlspecialchars($attendanceForm['KingdomName'] ?? $defaultKingdomName) ?>"
-									autocomplete="off" placeholder="Search…">
-								<input type="hidden" id="ev-KingdomId" name="KingdomId"
-									value="<?= (int)($attendanceForm['KingdomId'] ?? $defaultKingdomId) ?>">
-							</div>
-							<div class="ev-form-field">
-								<label>Park</label>
-								<input type="text" id="ev-ParkName" name="ParkName" style="width:140px"
-									value="<?= htmlspecialchars($attendanceForm['ParkName'] ?? $defaultParkName) ?>"
-									autocomplete="off" placeholder="Search…">
-								<input type="hidden" id="ev-ParkId" name="ParkId"
-									value="<?= (int)($attendanceForm['ParkId'] ?? $defaultParkId) ?>">
-							</div>
-							<div class="ev-form-field">
 								<label>Player</label>
-								<input type="text" id="ev-PlayerName" name="PlayerName" style="width:160px"
+								<input type="text" id="ev-PlayerName" name="PlayerName" style="width:200px"
 									value="<?= htmlspecialchars($attendanceForm['PlayerName'] ?? '') ?>"
-									autocomplete="off" placeholder="Search…">
+									autocomplete="off" placeholder="Search players…">
 								<input type="hidden" id="ev-MundaneId" name="MundaneId"
 									value="<?= (int)($attendanceForm['MundaneId'] ?? 0) ?>">
 							</div>
@@ -645,16 +632,16 @@
 					</thead>
 					<tbody>
 						<?php foreach ($attendanceList as $att): ?>
-						<tr>
+						<tr data-att-id="<?= (int)$att['AttendanceId'] ?>">
 							<td><a href="<?= UIR ?>Player/profile/<?= (int)$att['MundaneId'] ?>"><?= htmlspecialchars($att['Persona']) ?></a></td>
-							<td><a href="<?= UIR ?>Kingdom/profile/<?= (int)$att['KingdomId'] ?>"><?= htmlspecialchars($att['KingdomName']) ?></a></td>
-							<td><a href="<?= UIR ?>Park/profile/<?= (int)$att['ParkId'] ?>"><?= htmlspecialchars($att['ParkName']) ?></a></td>
+							<td><?php if (!empty($att['KingdomId'])): ?><a href="<?= UIR ?>Kingdom/profile/<?= (int)$att['KingdomId'] ?>"><?= htmlspecialchars($att['KingdomName']) ?></a><?php else: ?><?= htmlspecialchars($att['KingdomName'] ?? '') ?><?php endif; ?></td>
+							<td><?php if (!empty($att['ParkId'])): ?><a href="<?= UIR ?>Park/profile/<?= (int)$att['ParkId'] ?>"><?= htmlspecialchars($att['ParkName']) ?></a><?php else: ?><?= htmlspecialchars($att['ParkName'] ?? '') ?><?php endif; ?></td>
 							<td><?= htmlspecialchars($att['ClassName']) ?></td>
 							<td><?= htmlspecialchars($att['Credits']) ?></td>
 							<?php if ($canManageAttendance): ?>
 							<td class="ev-del-cell">
-								<a class="ev-del-link" title="Remove"
-									href="<?= UIR ?>Event/detail/<?= $eventId ?>/<?= $detailId ?>/delete/<?= (int)$att['AttendanceId'] ?>"
+								<a class="ev-del-link" title="Remove" href="#"
+									data-del-url="<?= UIR ?>AttendanceAjax/attendance/<?= (int)$att['AttendanceId'] ?>/delete"
 									onclick="evConfirmAttDelete(event, this)">×</a>
 							</td>
 							<?php endif; ?>
@@ -670,35 +657,7 @@
 
 			</div><!-- /.ev-tab-panel -->
 
-			<?php // ---- Tournaments Tab ---- ?>
-			<div class="ev-tab-panel" id="ev-tab-tournaments">
-				<?php if ($tourneyCount > 0): ?>
-				<table class="ev-table">
-					<thead>
-						<tr>
-							<th>Tournament</th>
-							<th>Date</th>
-						</tr>
-					</thead>
-					<tbody>
-						<?php foreach ($tournaments as $t): ?>
-						<tr>
-							<td>
-								<a href="<?= UIR ?>Tournament/worksheet/<?= (int)$t['TournamentId'] ?>">
-									<?= htmlspecialchars($t['Name'] ?? 'Tournament') ?>
-								</a>
-							</td>
-							<td><?= $t['EventStart'] ? date('M j, Y', strtotime($t['EventStart'])) : '—' ?></td>
-						</tr>
-						<?php endforeach; ?>
-					</tbody>
-				</table>
-				<?php else: ?>
-				<div class="ev-empty">
-					<i class="fas fa-trophy" style="margin-right:6px"></i>No tournaments recorded
-				</div>
-				<?php endif; ?>
-			</div><!-- /.ev-tab-panel -->
+			<?php /* [TOURNAMENTS HIDDEN] tab panel */ ?>
 
 			<?php // ---- RSVPs Tab ---- ?>
 			<div class="ev-tab-panel" id="ev-tab-rsvp">
@@ -824,6 +783,18 @@
 						referrerpolicy="no-referrer-when-downgrade"
 					></iframe>
 				</div>
+			</div><!-- /.ev-tab-panel -->
+			<?php endif; ?>
+
+			<?php if ($canManage): ?>
+			<div class="ev-tab-panel" id="ev-tab-admin">
+				<ul style="margin:0;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:8px">
+					<li>
+						<a href="<?= UIR ?>Admin/permissions/Event/<?= $eventId ?>/<?= $detailId ?>" style="display:inline-flex;align-items:center;gap:7px;padding:7px 14px;background:#f0faf4;border:1px solid #c6e8d4;border-radius:6px;font-size:13px;font-weight:600;color:#276749;text-decoration:none">
+							<i class="fas fa-key"></i> Roles &amp; Permissions
+						</a>
+					</li>
+				</ul>
 			</div><!-- /.ev-tab-panel -->
 			<?php endif; ?>
 
@@ -1274,8 +1245,24 @@ $(function() {
 
 function evConfirmAttDelete(e, link) {
 	e.preventDefault();
+	var url = link.dataset.delUrl;
+	if (!url) return;
 	pnConfirm({ title: 'Remove Attendance?', message: 'Remove this attendance record? This cannot be undone.', confirmText: 'Remove', danger: true }, function() {
-		window.location.href = link.href;
+		link.textContent = '…';
+		fetch(url, { method: 'POST' })
+			.then(function(r) { return r.json(); })
+			.then(function(data) {
+				if (data.status === 0) {
+					var row = link.closest('tr');
+					if (row) row.remove();
+					var tabCount = document.querySelector('[data-tab="ev-tab-attendance"] .ev-tab-count');
+					if (tabCount) { tabCount.textContent = Math.max(0, parseInt(tabCount.textContent || '0') - 1); }
+				} else {
+					link.textContent = '×';
+					alert(data.error || 'Could not remove attendance.');
+				}
+			})
+			.catch(function() { link.textContent = '×'; alert('Request failed.'); });
 	});
 }
 function evConfirmDeleteOccurrence(e, form) {

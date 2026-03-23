@@ -240,12 +240,18 @@ class Controller_Player extends Controller {
 
 	public function profile( $id = null ) {
 		$this->template = '../revised-frontend/Playernew_index.tpl';
+
+		$params    = explode('/', $id ?? '');
+		$id        = $params[0];
+
+		if (!(int)$id) {
+			header('Location: ' . UIR);
+			exit;
+		}
+
 		$this->load_model('Unit');
 		$this->load_model('Kingdom');
 		$this->load_model('Event');
-
-		$params    = explode('/', $id);
-		$id        = $params[0];
 		$action    = $params[1] ?? '';
 		$roastbeef = $params[2] ?? '';
 
@@ -342,6 +348,7 @@ class Controller_Player extends Controller {
 		}
 
 		global $DB;
+		$DB->Clear();
 		$playerParkId = (int)$this->data['Player']['ParkId'];
 		$officerSql   = "SELECT o.role, o.park_id,
 			CASE WHEN o.park_id > 0 THEN IFNULL(pt.title, 'Park') ELSE 'Kingdom' END AS entity_type,
@@ -419,6 +426,7 @@ class Controller_Player extends Controller {
 			'TotalAttendance'   => count($_att),
 			'TotalAwards'       => 0,
 			'TotalTitles'       => 0,
+			'HighestClassLevel' => 0,
 			'LastPlayedClass'   => !empty($_att[0]['ClassName']) ? $_att[0]['ClassName'] : '',
 		];
 		if (is_array($this->data['Details']['Awards'])) {
@@ -464,9 +472,43 @@ class Controller_Player extends Controller {
 		}
 		$this->data['PreloadOfficers'] = $preloadOfficers;
 
-		$this->data['UpcomingRsvps'] = $this->Event->get_upcoming_rsvps((int)$id);
-		$this->data['IsOwnProfile']  = $uid === (int)$id;
+		$this->data['UpcomingRsvps']   = $this->Event->get_upcoming_rsvps((int)$id);
+		$this->data['KingdomEvents']   = ($uid === (int)$id) ? $this->Event->get_kingdom_upcoming_events((int)$this->session->kingdom_id, (int)$id) : [];
+		$this->data['IsOwnProfile']    = $uid === (int)$id;
 		$this->data['Player']['ParkName'] = $this->session->park_name;
+
+		if ($uid === (int)$id) {
+			global $DB;
+			$DB->Clear();
+			$__assocSql = "SELECT ma.mundane_id AS RecipientId, m.persona AS Persona,
+				IFNULL(ka.name, a.name) AS TitleName, a.peerage AS Peerage, ma.date AS Date
+				FROM ork_awards ma
+				JOIN ork_award a ON a.award_id = ma.award_id
+				LEFT JOIN ork_kingdomaward ka ON ka.kingdomaward_id = ma.kingdomaward_id
+				JOIN ork_mundane m ON m.mundane_id = ma.mundane_id
+				WHERE ma.given_by_id = $uid
+					AND (a.peerage IN ('Squire','Man-At-Arms','Page','Lords-Page')
+						OR LOWER(IFNULL(ka.name, a.name)) LIKE '%woman%at%arms%')
+					AND (ma.revoked = 0 OR ma.revoked IS NULL)
+				ORDER BY CASE a.peerage
+					WHEN 'Squire' THEN 1 WHEN 'Man-At-Arms' THEN 2
+					WHEN 'Lords-Page' THEN 3 WHEN 'Page' THEN 4 ELSE 5 END, m.persona ASC";
+			$__assocResult = $DB->DataSet($__assocSql);
+			$__assocs = [];
+			if ($__assocResult) {
+				while ($__assocResult->Next()) {
+					$__assocs[] = [
+						'RecipientId' => (int)$__assocResult->RecipientId,
+						'Persona'     => $__assocResult->Persona,
+						'TitleName'   => $__assocResult->TitleName,
+						'Peerage'     => $__assocResult->Peerage,
+						'Date'        => $__assocResult->Date,
+					];
+				}
+			}
+			$DB->Clear();
+			$this->data['MyAssociates'] = $__assocs;
+		}
 	}
 
 
@@ -516,6 +558,7 @@ class Controller_Player extends Controller {
 
 		// AwardId → KingdomAwardId map for current kingdom (pre-match historical award dropdowns)
 		global $DB;
+		$DB->Clear();
 		$rs = $DB->DataSet(
 			'SELECT kingdomaward_id, award_id FROM ork_kingdomaward WHERE kingdom_id = ' . (int)$this->session->kingdom_id . ' AND is_title = 0'
 		);

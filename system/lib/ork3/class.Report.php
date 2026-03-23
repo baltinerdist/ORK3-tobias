@@ -111,6 +111,7 @@ class Report  extends Ork3 {
 						left join " . DB_PREFIX . "park park on t.park_id = park.park_id
 					where
 						1 $where
+					group by t.tournament_id
 					order by t.date_time
 					$limit";
 
@@ -452,8 +453,16 @@ class Report  extends Ork3 {
 			recs.deleted_by,
 			ka.award_id as ka_award_id,
 			ka.kingdomaward_id as ka_kaward_id,
-			(SELECT COUNT(suboa.awards_id) FROM " . DB_PREFIX . "awards suboa WHERE suboa.mundane_id = recs.mundane_id AND suboa.kingdomaward_id = ka.kingdomaward_id AND suboa.rank >= recs.rank) as kacount,
-			(SELECT COUNT(suboa2.awards_id) FROM " . DB_PREFIX . "awards suboa2 WHERE suboa2.mundane_id = recs.mundane_id AND suboa2.award_id = recs.award_id AND suboa2.rank >= recs.rank) as awcount
+			(SELECT COUNT(suboa.awards_id) FROM " . DB_PREFIX . "awards suboa WHERE suboa.mundane_id = recs.mundane_id AND suboa.kingdomaward_id = ka.kingdomaward_id AND suboa.rank >= COALESCE(recs.rank, 0)) as kacount,
+			(SELECT COUNT(suboa2.awards_id) FROM " . DB_PREFIX . "awards suboa2 WHERE suboa2.mundane_id = recs.mundane_id AND suboa2.award_id = recs.award_id AND suboa2.rank >= COALESCE(recs.rank, 0)) as awcount,
+			COALESCE(
+				(SELECT MAX(subr.rank) FROM " . DB_PREFIX . "awards subr WHERE subr.mundane_id = recs.mundane_id AND subr.kingdomaward_id = ka.kingdomaward_id),
+				(SELECT MAX(subr2.rank) FROM " . DB_PREFIX . "awards subr2 WHERE subr2.mundane_id = recs.mundane_id AND subr2.award_id = recs.award_id)
+			) as player_ka_rank,
+			COALESCE(
+				(SELECT subr.date FROM " . DB_PREFIX . "awards subr WHERE subr.mundane_id = recs.mundane_id AND subr.kingdomaward_id = ka.kingdomaward_id ORDER BY subr.rank DESC, subr.date DESC LIMIT 1),
+				(SELECT subr2.date FROM " . DB_PREFIX . "awards subr2 WHERE subr2.mundane_id = recs.mundane_id AND subr2.award_id = recs.award_id ORDER BY subr2.rank DESC, subr2.date DESC LIMIT 1)
+			) as player_ka_date
 			FROM " . DB_PREFIX . "recommendations recs			
 			LEFT JOIN " . DB_PREFIX . "kingdomaward ka ON ka.kingdomaward_id = recs.kingdomaward_id
 			LEFT JOIN " . DB_PREFIX . "award a on a.award_id = ka.award_id
@@ -462,7 +471,6 @@ class Report  extends Ork3 {
 			LEFT join " . DB_PREFIX . "park p on p.park_id = m.park_id
 			LEFT join " . DB_PREFIX . "kingdom k on k.kingdom_id = m.kingdom_id
 			WHERE (recs.deleted_by IS NULL OR recs.deleted_by = 0) $location_clause
-			HAVING (kacount = 0 AND awcount = 0)
 			order by m.persona, a.name, recs.rank, m.persona";
 		$r = $this->db->query($sql);
 		$response = array();
@@ -484,6 +492,9 @@ class Report  extends Ork3 {
 						'KingdomId' => $r->kingdom_id,
 						'ParkName' => $r->park_name,
 						'KingdomName' => $r->kingdom_name,
+						'AlreadyHas' => ($r->kacount > 0 || $r->awcount > 0),
+						'CurrentRank' => ($r->kacount > 0 || $r->awcount > 0) ? (int)$r->player_ka_rank : null,
+						'CurrentRankDate' => ($r->kacount > 0 || $r->awcount > 0) ? $r->player_ka_date : null,
 					);
 			}
 			$response['Status'] = Success();
@@ -692,7 +703,7 @@ class Report  extends Ork3 {
 			$unit_phrase = "u.name as unit_name, ";
 		}
 
-		$sql = "select a.*, k.name as kingdom_name, p.park_id, p.name as park_name, k.parent_kingdom_id, m.persona, $unit_phrase c.name as class_name
+		$sql = "select a.*, k.name as kingdom_name, p.park_id, p.name as park_name, k.abbreviation as k_abbr, p.abbreviation as p_abbr, k.parent_kingdom_id, m.persona, $unit_phrase c.name as class_name
 					from " . DB_PREFIX . "attendance a
 						LEFT JOIN " . DB_PREFIX . "mundane m on a.mundane_id = m.mundane_id
 							LEFT JOIN " . DB_PREFIX . "kingdom k on m.kingdom_id = k.kingdom_id
@@ -730,6 +741,8 @@ class Report  extends Ork3 {
 						'Credits' => $r->credits,
 						'KingdomName' => $r->kingdom_name,
 						'ParkName' => $r->park_name,
+						'KAbbr' => $r->k_abbr,
+						'PAbbr' => $r->p_abbr,
 						'UnitName' => $r->unit_name,
 						'Persona' => $r->persona,
 						'ClassName' => $r->class_name,
@@ -929,7 +942,7 @@ class Report  extends Ork3 {
 		$restrict_clause = array();
 		if (true == $request['Suspended']) {
 			/* Borrowed from Player class to clear the suspensions past their suspended_until date before running the report */
-			$sql = "update " . DB_PREFIX . "mundane set suspended = 0, suspended_by_id = null, suspended_at = null, suspended_until = null, suspension = null where suspended_until < curdate() and suspended_until is not null and suspended_until != '0000-00-00'";
+			$sql = "update " . DB_PREFIX . "mundane set suspended = 0, suspended_by_id = null, suspended_at = null, suspended_until = null, suspension = null, suspension_propagates = 1 where suspended_until < curdate() and suspended_until is not null and suspended_until != '0000-00-00'";
 			$this->db->query($sql);
 		}
 		switch ($request['Type']) {
@@ -965,7 +978,7 @@ class Report  extends Ork3 {
 		$select_list = array_merge($select_list,
 			array(
 				'm.mundane_id','m.persona','m.park_id','m.kingdom_id','m.restricted','m.waivered','m.given_name', 'm.surname', 'm.other_name',
-				'm.suspended', 'm.suspended_at', 'm.suspended_until', 'm.suspension', 'suspended_by.persona suspendator',
+				'm.suspended', 'm.suspended_at', 'm.suspended_until', 'm.suspension', 'm.suspension_propagates', 'suspended_by.persona suspendator',
 				'p.name as park_name','k.name as kingdom_name','m.penalty_box'));
 			if (true == $request['Active']) $restrict_clause[] = ' m.active = 1 ';
 			if (true == $request['InActive']) $restrict_clause[] = ' m.active = 0 ';
@@ -1028,6 +1041,7 @@ class Report  extends Ork3 {
 								'SuspendedUntil' => $r->suspended_until,
 								'Suspendator' => $r->suspendator,
 								'Suspension' => $r->suspension,
+							'SuspensionPropagates' => $r->suspension_propagates,
 								'ParkId' => $r->park_id,
 								'KingdomId' => $r->kingdom_id,
 								'ParentKingdomId' => $r->parent_kingdom_id,
@@ -1288,6 +1302,20 @@ class Report  extends Ork3 {
 			'ActiveKingdomsSummaryList' => $report
 		);
 		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
+	}
+
+	public function GetDistinctActivePlayerCount($weeks = 26) {
+		$cacheKey = Ork3::$Lib->ghettocache->key(['weeks' => $weeks]);
+		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $cacheKey, 600)) !== false)
+			return $cache;
+		$since = date('Y-m-d', strtotime("-{$weeks} week"));
+		$sql = "SELECT COUNT(DISTINCT mundane_id) AS player_count FROM `" . DB_PREFIX . "attendance` WHERE date > '{$since}' AND mundane_id > 0";
+		$r = $this->db->query($sql);
+		$count = 0;
+		if ($r && $r->next()) {
+			$count = (int)$r->player_count;
+		}
+		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $cacheKey, $count);
 	}
 
 	public function GetActivePlayers($request) {
@@ -2079,7 +2107,101 @@ class Report  extends Ork3 {
 		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
 	}
 
-		public function RecentParkAttendees($request) {
+	public function GetParkDistanceMatrix($request) {
+		$kingdom_id = intval($request['KingdomId']);
+
+		$sql = "SELECT
+					p1.park_id  AS row_id,
+					p1.name     AS row_name,
+					p1.city     AS row_city,
+					p1.province AS row_province,
+					p2.park_id  AS col_id,
+					ROUND(ST_Distance_Sphere(POINT(p1.longitude, p1.latitude), POINT(p2.longitude, p2.latitude)) / 1609.344, 1) AS miles
+				FROM " . DB_PREFIX . "park p1
+				CROSS JOIN " . DB_PREFIX . "park p2
+				WHERE p1.kingdom_id = '$kingdom_id'
+					AND p2.kingdom_id = '$kingdom_id'
+					AND p1.active = 'Active'
+					AND p2.active = 'Active'
+					AND p1.latitude  IS NOT NULL AND p1.latitude  != 0
+					AND p1.longitude IS NOT NULL AND p1.longitude != 0
+					AND p2.latitude  IS NOT NULL AND p2.latitude  != 0
+					AND p2.longitude IS NOT NULL AND p2.longitude != 0
+				ORDER BY p1.name ASC, p2.name ASC";
+
+		$r = $this->db->query($sql);
+
+		$parks  = array();
+		$matrix = array();
+
+		if ($r !== false && $r->size() > 0) {
+			while ($r->next()) {
+				$row_id = $r->row_id;
+				$col_id = $r->col_id;
+				if (!isset($parks[$row_id])) {
+					$parks[$row_id] = array(
+						'Name'     => $r->row_name,
+						'City'     => $r->row_city,
+						'Province' => $r->row_province,
+					);
+				}
+				if ($row_id !== $col_id) $matrix[$row_id][$col_id] = floatval($r->miles);
+			}
+		}
+
+		return array('Parks' => $parks, 'Matrix' => $matrix);
+	}
+
+	public function GetClosestParks($request) {
+		$park_id = intval($request['ParkId']);
+
+		$origin_sql = "SELECT latitude, longitude, name FROM " . DB_PREFIX . "park WHERE park_id = '$park_id'";
+		$origin = $this->db->query($origin_sql);
+		if ($origin === false || $origin->size() == 0) return array('Parks' => array(), 'OriginPark' => null);
+
+		$origin->next();
+		$lat = floatval($origin->latitude);
+		$lng = floatval($origin->longitude);
+		$origin_name = $origin->name;
+
+		if ($lat == 0 && $lng == 0) return array('Parks' => array(), 'OriginPark' => $origin_name);
+
+		$sql = "SELECT
+					p.park_id,
+					p.name AS park_name,
+					k.name AS kingdom_name,
+					p.city,
+					p.province,
+					ROUND(ST_Distance_Sphere(POINT(p.longitude, p.latitude), POINT('$lng', '$lat')) / 1609.344, 1) AS miles
+				FROM " . DB_PREFIX . "park p
+				INNER JOIN " . DB_PREFIX . "kingdom k ON p.kingdom_id = k.kingdom_id
+				WHERE p.park_id != '$park_id'
+					AND p.active = 'Active'
+					AND p.latitude IS NOT NULL
+					AND p.longitude IS NOT NULL
+					AND p.latitude != 0
+					AND p.longitude != 0
+				ORDER BY miles ASC
+				LIMIT 25";
+
+		$r = $this->db->query($sql);
+		$response = array('Parks' => array(), 'OriginPark' => $origin_name);
+		if ($r !== false && $r->size() > 0) {
+			while ($r->next()) {
+				$response['Parks'][] = array(
+					'ParkId'      => $r->park_id,
+					'ParkName'    => $r->park_name,
+					'KingdomName' => $r->kingdom_name,
+					'City'        => $r->city,
+					'Province'    => $r->province,
+					'Miles'       => $r->miles,
+				);
+			}
+		}
+		return $response;
+	}
+
+	public function RecentParkAttendees($request) {
 		$park_id = intval($request['ParkId']);
 		if (!valid_id($park_id)) return ['Status' => InvalidParameter(), 'Attendees' => []];
 		$sql = "SELECT a.mundane_id, m.persona,
@@ -2128,7 +2250,22 @@ class Report  extends Ork3 {
 						MAX(CASE WHEN o.role = 'Champion'       THEN m.persona    END) AS champion_persona,
 						MAX(CASE WHEN o.role = 'Champion'       THEN m.mundane_id END) AS champion_id,
 						MAX(CASE WHEN o.role = 'GMR'            THEN m.persona    END) AS gmr_persona,
-						MAX(CASE WHEN o.role = 'GMR'            THEN m.mundane_id END) AS gmr_id
+						MAX(CASE WHEN o.role = 'GMR'            THEN m.mundane_id END) AS gmr_id,
+					MAX(CASE WHEN o.role = 'Monarch'        THEN m.given_name  END) AS monarch_given,
+					MAX(CASE WHEN o.role = 'Monarch'        THEN m.surname     END) AS monarch_surname,
+					MAX(CASE WHEN o.role = 'Monarch'        THEN m.email       END) AS monarch_email,
+					MAX(CASE WHEN o.role = 'Regent'         THEN m.given_name  END) AS regent_given,
+					MAX(CASE WHEN o.role = 'Regent'         THEN m.surname     END) AS regent_surname,
+					MAX(CASE WHEN o.role = 'Regent'         THEN m.email       END) AS regent_email,
+					MAX(CASE WHEN o.role = 'Prime Minister' THEN m.given_name  END) AS pm_given,
+					MAX(CASE WHEN o.role = 'Prime Minister' THEN m.surname     END) AS pm_surname,
+					MAX(CASE WHEN o.role = 'Prime Minister' THEN m.email       END) AS pm_email,
+					MAX(CASE WHEN o.role = 'Champion'       THEN m.given_name  END) AS champion_given,
+					MAX(CASE WHEN o.role = 'Champion'       THEN m.surname     END) AS champion_surname,
+					MAX(CASE WHEN o.role = 'Champion'       THEN m.email       END) AS champion_email,
+					MAX(CASE WHEN o.role = 'GMR'            THEN m.given_name  END) AS gmr_given,
+					MAX(CASE WHEN o.role = 'GMR'            THEN m.surname     END) AS gmr_surname,
+					MAX(CASE WHEN o.role = 'GMR'            THEN m.email       END) AS gmr_email
 					FROM " . DB_PREFIX . "park p
 						LEFT JOIN " . DB_PREFIX . "officer o ON o.park_id = p.park_id
 						LEFT JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = o.mundane_id
@@ -2151,7 +2288,22 @@ class Report  extends Ork3 {
 						MAX(CASE WHEN o.role = 'Champion'       THEN m.persona    END) AS champion_persona,
 						MAX(CASE WHEN o.role = 'Champion'       THEN m.mundane_id END) AS champion_id,
 						MAX(CASE WHEN o.role = 'GMR'            THEN m.persona    END) AS gmr_persona,
-						MAX(CASE WHEN o.role = 'GMR'            THEN m.mundane_id END) AS gmr_id
+						MAX(CASE WHEN o.role = 'GMR'            THEN m.mundane_id END) AS gmr_id,
+					MAX(CASE WHEN o.role = 'Monarch'        THEN m.given_name  END) AS monarch_given,
+					MAX(CASE WHEN o.role = 'Monarch'        THEN m.surname     END) AS monarch_surname,
+					MAX(CASE WHEN o.role = 'Monarch'        THEN m.email       END) AS monarch_email,
+					MAX(CASE WHEN o.role = 'Regent'         THEN m.given_name  END) AS regent_given,
+					MAX(CASE WHEN o.role = 'Regent'         THEN m.surname     END) AS regent_surname,
+					MAX(CASE WHEN o.role = 'Regent'         THEN m.email       END) AS regent_email,
+					MAX(CASE WHEN o.role = 'Prime Minister' THEN m.given_name  END) AS pm_given,
+					MAX(CASE WHEN o.role = 'Prime Minister' THEN m.surname     END) AS pm_surname,
+					MAX(CASE WHEN o.role = 'Prime Minister' THEN m.email       END) AS pm_email,
+					MAX(CASE WHEN o.role = 'Champion'       THEN m.given_name  END) AS champion_given,
+					MAX(CASE WHEN o.role = 'Champion'       THEN m.surname     END) AS champion_surname,
+					MAX(CASE WHEN o.role = 'Champion'       THEN m.email       END) AS champion_email,
+					MAX(CASE WHEN o.role = 'GMR'            THEN m.given_name  END) AS gmr_given,
+					MAX(CASE WHEN o.role = 'GMR'            THEN m.surname     END) AS gmr_surname,
+					MAX(CASE WHEN o.role = 'GMR'            THEN m.email       END) AS gmr_email
 					FROM " . DB_PREFIX . "kingdom k
 						LEFT JOIN " . DB_PREFIX . "officer o ON o.kingdom_id = k.kingdom_id AND o.park_id = 0
 						LEFT JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = o.mundane_id
@@ -2172,16 +2324,31 @@ class Report  extends Ork3 {
 				$response['Kingdoms'][] = [
 					'KingdomId'      => $r->entity_id,
 					'KingdomName'    => $r->entity_name,
-					'MonarchPersona' => $r->monarch_persona,
-					'MonarchId'      => $r->monarch_id,
-					'RegentPersona'  => $r->regent_persona,
-					'RegentId'       => $r->regent_id,
-					'PMPersona'      => $r->pm_persona,
-					'PMId'           => $r->pm_id,
-					'ChampionPersona'=> $r->champion_persona,
-					'ChampionId'     => $r->champion_id,
-					'GMRPersona'     => $r->gmr_persona,
-					'GMRId'          => $r->gmr_id,
+					'MonarchPersona'  => $r->monarch_persona,
+					'MonarchId'       => $r->monarch_id,
+					'MonarchGiven'    => $r->monarch_given,
+					'MonarchSurname'  => $r->monarch_surname,
+					'MonarchEmail'    => $r->monarch_email,
+					'RegentPersona'   => $r->regent_persona,
+					'RegentId'        => $r->regent_id,
+					'RegentGiven'     => $r->regent_given,
+					'RegentSurname'   => $r->regent_surname,
+					'RegentEmail'     => $r->regent_email,
+					'PMPersona'       => $r->pm_persona,
+					'PMId'            => $r->pm_id,
+					'PMGiven'         => $r->pm_given,
+					'PMSurname'       => $r->pm_surname,
+					'PMEmail'         => $r->pm_email,
+					'ChampionPersona' => $r->champion_persona,
+					'ChampionId'      => $r->champion_id,
+					'ChampionGiven'   => $r->champion_given,
+					'ChampionSurname' => $r->champion_surname,
+					'ChampionEmail'   => $r->champion_email,
+					'GMRPersona'      => $r->gmr_persona,
+					'GMRId'           => $r->gmr_id,
+					'GMRGiven'        => $r->gmr_given,
+					'GMRSurname'      => $r->gmr_surname,
+					'GMREmail'        => $r->gmr_email,
 				];
 			}
 		}

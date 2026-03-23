@@ -126,7 +126,7 @@ class Controller_Unit extends Controller {
 			case 'addauth':
 					$r = $this->Unit->add_unit_auth(array(
 						'Token'     => $this->session->token,
-						'Role'      => AUTH_EDIT,
+						'Role'      => AUTH_CREATE,
 						'Type'      => AUTH_UNIT,
 						'Id'        => $unit_id_int,
 						'MundaneId' => (int)$this->request->MundaneId,
@@ -148,6 +148,14 @@ class Controller_Unit extends Controller {
 						'Token'           => $this->session->token,
 						'AuthorizationId' => (int)$this->request->AuthorizationId,
 					));
+					break;
+				case 'convert_type':
+					$target = $this->request->TargetType;
+					if ($target === 'Household') {
+						$r = $this->Unit->convert_to_household($unit_id_int);
+					} elseif ($target === 'Company') {
+						$r = $this->Unit->convert_to_company($unit_id_int);
+					}
 					break;
 			}
 			if (isset($r)) {
