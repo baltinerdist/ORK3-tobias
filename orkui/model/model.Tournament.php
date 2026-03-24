@@ -20,6 +20,10 @@ class Model_Tournament extends Model {
 		return $this->Tournament->AddBracket($request);
 	}
 
+	function update_bracket($request) {
+		return $this->Tournament->UpdateBracket($request);
+	}
+
 	function add_participant($request) {
 		return $this->Tournament->AddParticipant($request);
 	}

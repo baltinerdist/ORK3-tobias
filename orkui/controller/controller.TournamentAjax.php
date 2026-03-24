@@ -67,6 +67,31 @@ class Controller_TournamentAjax extends Controller {
 				? json_encode(['status' => 0, 'bracketId' => (int)($r['Detail'] ?? 0)])
 				: json_encode(['status' => $r['Status'], 'error' => ($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? '')]);
 
+		} elseif ($action === 'updatebracket') {
+			$bracket_id = (int)($_POST['BracketId'] ?? 0);
+			if (!valid_id($bracket_id)) {
+				echo json_encode(['status' => 1, 'error' => 'BracketId required.']); exit;
+			}
+			$style = trim($_POST['Style'] ?? '');
+			$method = trim($_POST['Method'] ?? '');
+			if (!strlen($style) || !strlen($method)) {
+				echo json_encode(['status' => 1, 'error' => 'Style and method are required.']); exit;
+			}
+			$r = $this->Tournament->update_bracket([
+				'Token'        => $this->session->token,
+				'TournamentId' => $tournament_id,
+				'BracketId'    => $bracket_id,
+				'Style'        => $style,
+				'StyleNote'    => trim($_POST['StyleNote']   ?? ''),
+				'Method'       => $method,
+				'Rings'        => max(1, min(20, (int)($_POST['Rings'] ?? 1))),
+				'Participants' => trim($_POST['Participants'] ?? 'individual'),
+				'Seeding'      => trim($_POST['Seeding']      ?? 'random'),
+			]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0, 'bracketId' => (int)($r['Detail'] ?? 0)])
+				: json_encode(['status' => $r['Status'], 'error' => ($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? '')]);
+
 		} else {
 			echo json_encode(['status' => 1, 'error' => 'Unknown action']);
 		}
@@ -205,6 +230,7 @@ class Controller_TournamentAjax extends Controller {
 
 		$result = trim($_POST['Result'] ?? '');
 		$score  = trim($_POST['Score']  ?? '');
+		$bouts  = trim($_POST['Bouts']  ?? '[]');
 
 		$allowed_results = ['1-wins', '2-wins', 'tie', 'forfeit', 'disqualified'];
 		if (!in_array($result, $allowed_results)) {
@@ -217,6 +243,7 @@ class Controller_TournamentAjax extends Controller {
 			'MatchId'      => $match_id,
 			'Result'       => $result,
 			'Score'        => $score,
+			'Bouts'        => $bouts,
 		]);
 		echo ($r['Status'] == 0)
 			? json_encode(['status' => 0, 'matchId' => $match_id])

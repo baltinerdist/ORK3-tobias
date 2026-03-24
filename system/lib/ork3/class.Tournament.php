@@ -23,6 +23,7 @@ class Tournament extends Ork3 {
 		$this->Tournament->kingdom_id             = $request['KingdomId'];
 		$this->Tournament->park_id                = $request['ParkId'];
 		$this->Tournament->event_calendardetail_id = $request['EventCalendarDetailId'];
+		$this->Tournament->event_id = 0;
 		if (valid_id($request['EventCalendarDetailId'])) {
 			$detail = new yapo($this->db, DB_PREFIX . 'event_calendardetail');
 			$detail->event_calendardetail_id = $request['EventCalendarDetailId'];
@@ -105,6 +106,26 @@ class Tournament extends Ork3 {
 		}
 	}
 
+	public function UpdateBracket($request) {
+		if (!$this->check_auth($request)) return NoAuthorization();
+
+		$bracket_id = (int)($request['BracketId'] ?? 0);
+		if (!valid_id($bracket_id)) return InvalidParameter('BracketId required');
+
+		$this->Bracket->clear();
+		$this->Bracket->bracket_id = $bracket_id;
+		if (!$this->Bracket->find()) return InvalidParameter('Bracket not found');
+
+		if (isset($request['Style']))        $this->Bracket->style        = $request['Style'];
+		if (isset($request['StyleNote']))     $this->Bracket->style_note   = $request['StyleNote'];
+		if (isset($request['Method']))        $this->Bracket->method       = $request['Method'];
+		if (isset($request['Rings']))         $this->Bracket->rings        = (int)$request['Rings'];
+		if (isset($request['Participants']))   $this->Bracket->participants = $request['Participants'];
+		if (isset($request['Seeding']))        $this->Bracket->seeding      = $request['Seeding'];
+		$this->Bracket->save();
+		return Success($bracket_id);
+	}
+
 	public function GetBrackets($request) {
 		if (!valid_id($request['TournamentId'])) return InvalidParameter();
 		$tournament_id = (int)$request['TournamentId'];
@@ -183,10 +204,17 @@ class Tournament extends Ork3 {
 		if (valid_id($request['TournamentId'])) $where .= " AND p.tournament_id = " . (int)$request['TournamentId'];
 		if (valid_id($request['BracketId']))    $where .= " AND p.bracket_id = "    . (int)$request['BracketId'];
 
-		$sql = "SELECT p.*, m.persona, pm.mundane_id, k.name AS kingdom_name, park.name AS park_name, u.name AS unit_name
+		$sql = "SELECT p.*, m.persona, pm.mundane_id, k.name AS kingdom_name,
+					COALESCE(park.name, mpark.name) AS park_name,
+					u.name AS unit_name,
+					(SELECT COUNT(*) FROM " . DB_PREFIX . "awards aw WHERE aw.mundane_id = pm.mundane_id AND aw.award_id = 27 AND aw.revoked = 0) AS warrior_count,
+					(SELECT IFNULL(MAX(aw.rank), 0) FROM " . DB_PREFIX . "awards aw WHERE aw.mundane_id = pm.mundane_id AND aw.award_id = 27 AND aw.revoked = 0) AS warrior_rank,
+					(SELECT COUNT(*) > 0 FROM " . DB_PREFIX . "awards aw WHERE aw.mundane_id = pm.mundane_id AND aw.award_id = 12 AND aw.revoked = 0) AS is_warlord,
+					(SELECT COUNT(*) > 0 FROM " . DB_PREFIX . "awards aw WHERE aw.mundane_id = pm.mundane_id AND aw.award_id = 20 AND aw.revoked = 0) AS is_knight_sword
 				FROM " . DB_PREFIX . "participant p
 					LEFT JOIN " . DB_PREFIX . "participant_mundane pm ON pm.participant_id = p.participant_id
 						LEFT JOIN " . DB_PREFIX . "mundane m ON pm.mundane_id = m.mundane_id
+							LEFT JOIN " . DB_PREFIX . "park mpark ON mpark.park_id = m.park_id
 					LEFT JOIN " . DB_PREFIX . "unit u ON p.unit_id = u.unit_id
 					LEFT JOIN " . DB_PREFIX . "park park ON p.park_id = park.park_id
 					LEFT JOIN " . DB_PREFIX . "kingdom k ON k.kingdom_id = p.kingdom_id
@@ -209,6 +237,10 @@ class Tournament extends Ork3 {
 					'KingdomName'   => $r->kingdom_name,
 					'ParkName'      => $r->park_name,
 					'UnitName'      => $r->unit_name,
+					'WarriorCount'  => (int)$r->warrior_count,
+					'WarriorRank'   => (int)$r->warrior_rank,
+					'IsWarlord'     => (bool)$r->is_warlord,
+					'IsKnightSword' => (bool)$r->is_knight_sword,
 					'Seed'          => (int)$r->seed,
 					'Eliminated'    => (int)$r->eliminated,
 					'BracketSide'   => $r->bracket_side,
@@ -303,6 +335,12 @@ class Tournament extends Ork3 {
 		$seeding = $this->Bracket->seeding;
 		if ($seeding === 'manual' || $seeding === 'glicko2-manual') {
 			usort($participants, function($a, $b) { return (int)$a['Seed'] - (int)$b['Seed']; });
+		} elseif ($seeding === 'warrior') {
+			// Order of the Warrior seeding: 0=unranked (weakest) … 12=Sword Knight (strongest)
+			// Sort descending so strongest gets seed position 1 (top of bracket)
+			usort($participants, function($a, $b) {
+				return $this->warrior_seed_rank($b) - $this->warrior_seed_rank($a);
+			});
 		} elseif ($seeding === 'glicko2' || $seeding === 'random-manual' || $seeding === 'random') {
 			shuffle($participants);
 		} else {
@@ -373,9 +411,18 @@ class Tournament extends Ork3 {
 		elseif ($result === 'disqualified') { $winner_id = $p2_id; $loser_id = $p1_id; }
 		// tie: no winner/loser elimination
 
+		// Sanitize and store bout series
+		$bouts_raw = trim($request['Bouts'] ?? '');
+		$bouts_arr = json_decode($bouts_raw, true);
+		if (!is_array($bouts_arr)) $bouts_arr = [];
+		$bouts_arr = array_values(array_filter(array_map(function($b) {
+			return ($b === '1' || $b === '2') ? $b : null;
+		}, $bouts_arr)));
+
 		$safe_result = mysql_real_escape_string($result);
 		$safe_score  = mysql_real_escape_string($score);
-		$this->db->query("UPDATE " . DB_PREFIX . "match SET result = '$safe_result', score = '$safe_score' WHERE match_id = $match_id");
+		$safe_bouts  = mysql_real_escape_string(json_encode($bouts_arr));
+		$this->db->query("UPDATE " . DB_PREFIX . "match SET result = '$safe_result', score = '$safe_score', bouts = '$safe_bouts' WHERE match_id = $match_id");
 
 		// Load bracket to determine style
 		$this->Bracket->clear();
@@ -482,6 +529,16 @@ class Tournament extends Ork3 {
 		$this->db->query("INSERT INTO " . DB_PREFIX . "match
 			(tournament_id, bracket_id, round, `match`, `order`, participant_1_id, participant_2_id, bracket_side)
 			VALUES ($tournament_id, $bracket_id, $round, $match_num, $order, $p1, $p2, '$bside')");
+	}
+
+	/**
+	 * Returns the warrior seeding rank (0-12) for a participant.
+	 * 12 = Sword Knight (strongest), 11 = Warlord, 1-10 = OotW rank, 0 = unranked.
+	 */
+	private function warrior_seed_rank(array $p): int {
+		if (!empty($p['IsKnightSword'])) return 12;
+		if (!empty($p['IsWarlord']))     return 11;
+		return min(10, max(0, (int)($p['WarriorRank'] ?? 0)));
 	}
 
 	/**
