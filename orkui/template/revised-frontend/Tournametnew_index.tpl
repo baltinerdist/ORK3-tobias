@@ -28,6 +28,19 @@ $shortDate     = ($tDate && substr($tDate, 0, 10) !== '0000-00-00')
 	? date('M j, Y', strtotime($tDate))
 	: '—';
 
+function tnParticipantPills(array $p): string {
+	$html = '';
+	if (($p['WarriorCount'] ?? 0) > 0) {
+		$wc = min((int)$p['WarriorCount'], 10);
+		$html .= '<span class="tn-pill tn-pill-warrior" title="Order of the Warrior x' . (int)$p['WarriorCount'] . '">' . $wc . '</span>';
+	}
+	if (!empty($p['IsWarlord']))
+		$html .= '<span class="tn-pill tn-pill-warlord" title="Warlord">W</span>';
+	if (!empty($p['IsKnightSword']))
+		$html .= '<span class="tn-pill tn-pill-knight" title="Knight of the Sword">K</span>';
+	return $html ? '<span style="display:inline-flex;gap:3px;margin-left:4px;vertical-align:middle">' . $html . '</span>' : '';
+}
+
 // Style label map for display
 $styleLabelMap = [
 	'Single Sword'    => 'Single Sword',
@@ -131,6 +144,16 @@ $heroStyles = array_keys($heroStyles);
 .tn-empty { color:#a0aec0; font-size:13px; font-style:italic; padding:8px 0; }
 .tn-remove-participant { background:none; border:none; color:#cbd5e0; cursor:pointer; font-size:15px; padding:0 2px; line-height:1; flex-shrink:0; }
 .tn-remove-participant:hover { color:#e53e3e; }
+.tn-pill { display:inline-flex; align-items:center; justify-content:center; font-size:9px; font-weight:700; border-radius:10px; padding:1px 5px; line-height:1.4; letter-spacing:0.3px; flex-shrink:0; }
+.tn-pill-warrior { background:#ebf8ff; color:#2b6cb0; border:1px solid #bee3f8; }
+.tn-pill-warlord { background:#fff8e1; color:#b45309; border:1px solid #fcd34d; }
+.tn-pill-knight  { background:#f0fff4; color:#276749; border:1px solid #9ae6b4; }
+.tn-bout-pips { display:flex; gap:7px; justify-content:center; margin-top:8px; }
+.tn-bout-pip { width:24px; height:24px; border-radius:50%; border:2px solid #cbd5e0; background:#fff; cursor:pointer; padding:0; transition:background .15s, border-color .15s, transform .1s; flex-shrink:0; }
+.tn-bout-pip:hover { border-color:#718096; transform:scale(1.15); }
+.tn-bout-pip.tn-pip-win  { background:#276749; border-color:#276749; }
+.tn-bout-pip.tn-pip-loss { background:#e53e3e; border-color:#e53e3e; }
+.tn-bout-score { text-align:center; font-size:13px; font-weight:700; color:#276749; margin-top:10px; min-height:18px; }
 .tn-bracket-toggle { background:none; border:none; color:#a0aec0; cursor:pointer; padding:4px 6px; display:flex; align-items:center; flex-shrink:0; }
 .tn-bracket-toggle:hover { color:#4a5568; }
 .tn-bracket-toggle i { transition:transform .2s; }
@@ -453,7 +476,8 @@ $heroStyles = array_keys($heroStyles);
 									<?php if ((int)$b['Rings'] > 0): ?>
 									<span><i class="fas fa-circle"></i> <?= (int)$b['Rings'] ?> ring<?= (int)$b['Rings'] != 1 ? 's' : '' ?></span>
 									<?php endif; ?>
-									<span><i class="fas fa-random"></i> Seeding: <?= htmlspecialchars(str_replace('-', ' ', $b['Seeding'])) ?></span>
+									<?php $seedingLabels = ['random'=>'Random','manual'=>'Manual','warrior'=>'Orders of the Warrior','glicko2'=>'Performance Score','random-manual'=>'Random + Manual','glicko2-manual'=>'Performance + Manual']; ?>
+								<span><i class="fas fa-random"></i> Seeding: <?= htmlspecialchars($seedingLabels[$b['Seeding']] ?? str_replace('-', ' ', $b['Seeding'])) ?></span>
 									<span style="color:#a0aec0"><?= count($pList) ?> participant<?= count($pList) != 1 ? 's' : '' ?></span>
 									<?php if (count($mList) > 0): ?>
 									<span style="color:#a0aec0"><?= count($mList) ?> match<?= count($mList) != 1 ? 'es' : '' ?></span>
@@ -462,6 +486,9 @@ $heroStyles = array_keys($heroStyles);
 							</div>
 							<?php if ($canManage): ?>
 							<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+								<button class="tn-btn tn-btn-outline tn-btn-sm" onclick="tnOpenEditBracketModal(<?= $bid ?>, <?= json_encode(['style'=>$b['Style'],'styleNote'=>$b['StyleNote'],'method'=>$b['Method'],'rings'=>(int)$b['Rings'],'participants'=>$b['Participants'],'seeding'=>$b['Seeding']]) ?>)">
+									<i class="fas fa-pencil-alt"></i> Edit
+								</button>
 								<button class="tn-btn tn-btn-outline tn-btn-sm" onclick="tnOpenAddParticipantModal(<?= $bid ?>, <?= $tid ?>)">
 									<i class="fas fa-user-plus"></i> Add Participant
 								</button>
@@ -485,12 +512,13 @@ $heroStyles = array_keys($heroStyles);
 									<span class="tn-participant-seed"><?= $i + 1 ?></span>
 									<span style="flex:1">
 										<?php if (!empty($p['Persona'])): ?>
-											<?php if ($p['MundaneId'] > 0): ?><a href="<?= UIR ?>Playernew/index/<?= $p['MundaneId'] ?>" style="color:#276749;text-decoration:none"><?= htmlspecialchars($p['Alias'] ?: $p['Persona']) ?></a><?php else: ?><?= htmlspecialchars($p['Alias'] ?: $p['Persona']) ?><?php endif; ?>
+											<?php if ($p['MundaneId'] > 0): ?><a href="<?= UIR ?>Player/profile/<?= $p['MundaneId'] ?>" style="color:#276749;text-decoration:none"><?= htmlspecialchars($p['Alias'] ?: $p['Persona']) ?></a><?php else: ?><?= htmlspecialchars($p['Alias'] ?: $p['Persona']) ?><?php endif; ?>
+											<?= tnParticipantPills($p) ?>
 											<?php if ($p['Alias'] && $p['Alias'] !== $p['Persona']): ?>
 												<span style="color:#a0aec0;font-size:11px">(<?= htmlspecialchars($p['Persona']) ?>)</span>
 											<?php endif; ?>
 										<?php else: ?>
-											<?= htmlspecialchars($p['Alias'] ?: '—') ?>
+											<?= htmlspecialchars($p['Alias'] ?: '—') ?><?= tnParticipantPills($p) ?>
 										<?php endif; ?>
 									</span>
 									<?php if (!empty($p['ParkName'])): ?>
@@ -563,17 +591,17 @@ $heroStyles = array_keys($heroStyles);
 							<?php foreach ($pList as $i => $p): ?>
 							<tr>
 								<td style="color:#a0aec0;width:32px"><?= $i + 1 ?></td>
-								<td><?= htmlspecialchars($p['Alias'] ?: '—') ?></td>
+								<td><?= htmlspecialchars($p['Alias'] ?: '—') ?> <?= tnParticipantPills($p) ?></td>
 								<td>
 									<?php if (!empty($p['Persona']) && $p['MundaneId'] > 0): ?>
-									<a href="<?= UIR ?>Playernew/index/<?= (int)$p['MundaneId'] ?>" style="color:#276749;text-decoration:none"><?= htmlspecialchars($p['Persona']) ?></a>
+									<a href="<?= UIR ?>Player/profile/<?= (int)$p['MundaneId'] ?>" style="color:#276749;text-decoration:none"><?= htmlspecialchars($p['Persona']) ?></a>
 									<?php elseif (!empty($p['Persona'])): ?>
 									<?= htmlspecialchars($p['Persona']) ?>
 									<?php else: ?>
 									<span style="color:#a0aec0">—</span>
 									<?php endif; ?>
 								</td>
-								<td style="color:#718096"><?= htmlspecialchars($p['ParkName'] ?? '—') ?></td>
+								<td style="color:#718096"><?= htmlspecialchars(!empty($p['ParkName']) ? $p['ParkName'] : '—') ?></td>
 							</tr>
 							<?php endforeach; ?>
 						</tbody>
@@ -717,6 +745,7 @@ $heroStyles = array_keys($heroStyles);
 				<select id="tn-addbracket-seeding">
 					<option value="random">Random</option>
 					<option value="manual">Manual</option>
+					<option value="warrior">Orders of the Warrior</option>
 					<option value="glicko2">Performance Score</option>
 					<option value="random-manual">Random + Manual Adjust</option>
 					<option value="glicko2-manual">Performance + Manual Adjust</option>
@@ -731,6 +760,83 @@ $heroStyles = array_keys($heroStyles);
 			<button class="tn-btn tn-btn-ghost" id="tn-addbracket-cancel">Cancel</button>
 			<button class="tn-btn tn-btn-primary" id="tn-addbracket-submit">
 				<i class="fas fa-plus"></i> Add Bracket
+			</button>
+		</div>
+	</div>
+</div>
+
+<!-- =============================================
+     Edit Bracket Modal
+     ============================================= -->
+<div class="tn-overlay" id="tn-editbracket-overlay">
+	<div class="tn-modal-box" style="width:520px;max-width:calc(100vw - 40px)">
+		<div class="tn-modal-header">
+			<h3 class="tn-modal-title"><i class="fas fa-pencil-alt" style="margin-right:8px;color:#276749"></i>Edit Bracket</h3>
+			<button class="tn-modal-close" id="tn-editbracket-close">&times;</button>
+		</div>
+		<div class="tn-modal-body">
+			<div id="tn-editbracket-feedback" class="tn-feedback"></div>
+			<input type="hidden" id="tn-editbracket-bid">
+			<div class="tn-field-row">
+				<div class="tn-field">
+					<label for="tn-editbracket-style">Weapon Style <span style="color:#e53e3e">*</span></label>
+					<select id="tn-editbracket-style">
+						<option value="Single Sword">Single Sword</option>
+						<option value="Florentine">Florentine</option>
+						<option value="Sword and Shield">Sword &amp; Shield</option>
+						<option value="Great Weapon">Great Weapon</option>
+						<option value="Missile">Missile</option>
+						<option value="Jugging">Jugging</option>
+						<option value="Battlegame">Battlegame</option>
+						<option value="Quest">Quest</option>
+						<option value="Other">Other / Open</option>
+					</select>
+				</div>
+				<div class="tn-field">
+					<label for="tn-editbracket-method">Format <span style="color:#e53e3e">*</span></label>
+					<select id="tn-editbracket-method">
+						<option value="single">Single Elimination</option>
+						<option value="double">Double Elimination</option>
+						<option value="swiss">Swiss</option>
+						<option value="round-robin">Round Robin</option>
+						<option value="ironman">Ironman</option>
+						<option value="score">Score</option>
+					</select>
+				</div>
+			</div>
+			<div class="tn-field-row">
+				<div class="tn-field">
+					<label for="tn-editbracket-participants">Participants</label>
+					<select id="tn-editbracket-participants">
+						<option value="individual">Individual</option>
+						<option value="team">Team</option>
+					</select>
+				</div>
+				<div class="tn-field">
+					<label for="tn-editbracket-rings">Rings (concurrent)</label>
+					<input type="number" id="tn-editbracket-rings" value="1" min="1" max="20">
+				</div>
+			</div>
+			<div class="tn-field">
+				<label for="tn-editbracket-seeding">Seeding</label>
+				<select id="tn-editbracket-seeding">
+					<option value="random">Random</option>
+					<option value="manual">Manual</option>
+					<option value="warrior">Orders of the Warrior</option>
+					<option value="glicko2">Performance Score</option>
+					<option value="random-manual">Random + Manual Adjust</option>
+					<option value="glicko2-manual">Performance + Manual Adjust</option>
+				</select>
+			</div>
+			<div class="tn-field">
+				<label for="tn-editbracket-stylenote">Style Note <span style="color:#a0aec0;font-size:11px;font-weight:400">(optional)</span></label>
+				<input type="text" id="tn-editbracket-stylenote" placeholder="e.g. No shields allowed, florentine only…" maxlength="255">
+			</div>
+		</div>
+		<div class="tn-modal-footer">
+			<button class="tn-btn tn-btn-ghost" id="tn-editbracket-cancel">Cancel</button>
+			<button class="tn-btn tn-btn-primary" id="tn-editbracket-submit">
+				<i class="fas fa-save"></i> Save Changes
 			</button>
 		</div>
 	</div>
@@ -790,28 +896,43 @@ $heroStyles = array_keys($heroStyles);
 			<div id="tn-recordresult-feedback" class="tn-feedback"></div>
 			<input type="hidden" id="tn-recordresult-match-id" value="">
 			<input type="hidden" id="tn-recordresult-tournament-id" value="<?= $tid ?>">
-			<div style="background:#f7fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:14px">
-				<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
-					<div id="tn-rr-p1-name" style="font-size:14px;font-weight:700;color:#1a202c;flex:1;text-align:center">—</div>
-					<div style="font-size:12px;color:#a0aec0;font-weight:600">vs</div>
-					<div id="tn-rr-p2-name" style="font-size:14px;font-weight:700;color:#1a202c;flex:1;text-align:center">—</div>
+			<div style="background:#f7fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px 16px;margin-bottom:14px">
+				<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+					<div style="flex:1;text-align:center">
+						<div id="tn-rr-p1-name" style="font-size:14px;font-weight:700;color:#1a202c">—</div>
+						<div class="tn-bout-pips" id="tn-rr-pips-1">
+							<button class="tn-bout-pip" type="button" data-side="1" data-idx="0"></button>
+							<button class="tn-bout-pip" type="button" data-side="1" data-idx="1"></button>
+							<button class="tn-bout-pip" type="button" data-side="1" data-idx="2"></button>
+							<button class="tn-bout-pip" type="button" data-side="1" data-idx="3"></button>
+							<button class="tn-bout-pip" type="button" data-side="1" data-idx="4"></button>
+						</div>
+					</div>
+					<div style="font-size:12px;color:#a0aec0;font-weight:600;padding-top:4px;flex-shrink:0">vs</div>
+					<div style="flex:1;text-align:center">
+						<div id="tn-rr-p2-name" style="font-size:14px;font-weight:700;color:#1a202c">—</div>
+						<div class="tn-bout-pips" id="tn-rr-pips-2">
+							<button class="tn-bout-pip" type="button" data-side="2" data-idx="0"></button>
+							<button class="tn-bout-pip" type="button" data-side="2" data-idx="1"></button>
+							<button class="tn-bout-pip" type="button" data-side="2" data-idx="2"></button>
+							<button class="tn-bout-pip" type="button" data-side="2" data-idx="3"></button>
+							<button class="tn-bout-pip" type="button" data-side="2" data-idx="4"></button>
+						</div>
+					</div>
 				</div>
-				<div id="tn-rr-round-info" style="text-align:center;font-size:11px;color:#a0aec0;margin-top:6px"></div>
+				<div id="tn-rr-bout-score" class="tn-bout-score"></div>
+				<div id="tn-rr-round-info" style="text-align:center;font-size:11px;color:#a0aec0;margin-top:4px"></div>
 			</div>
 			<div class="tn-field">
-				<label for="tn-rr-result">Result <span style="color:#e53e3e">*</span></label>
+				<label for="tn-rr-result">RESULT <span style="color:#e53e3e">*</span></label>
 				<select id="tn-rr-result">
 					<option value="">— select —</option>
-					<option value="1-wins">Player 1 Wins</option>
-					<option value="2-wins">Player 2 Wins</option>
+					<option value="1-wins" id="tn-rr-opt-p1wins">— wins</option>
+					<option value="2-wins" id="tn-rr-opt-p2wins">— wins</option>
 					<option value="tie">Tie</option>
 					<option value="forfeit">Forfeit (P2 wins)</option>
 					<option value="disqualified">Disqualified (P2 wins)</option>
 				</select>
-			</div>
-			<div class="tn-field">
-				<label for="tn-rr-score">Score <span style="color:#a0aec0;font-size:11px;font-weight:400">(optional)</span></label>
-				<input type="text" id="tn-rr-score" placeholder="e.g. 3-1" maxlength="50">
 			</div>
 		</div>
 		<div class="tn-modal-footer">
@@ -839,6 +960,7 @@ var TnConfig = {
 	methodLabels: <?= json_encode($methodLabelMap) ?>,
 	styleLabels:  <?= json_encode($styleLabelMap) ?>,
 };
+document.title = 'ORK 3: <?= htmlspecialchars($tName, ENT_QUOTES) ?>';
 </script>
 
 <script src="<?= HTTP_TEMPLATE ?>revised-frontend/script/revised.js?v=<?= filemtime(__DIR__ . '/script/revised.js') ?>"></script>
@@ -973,6 +1095,71 @@ function tnHideFeedback(elId) {
 					}
 				})
 				.catch(function() { btn.disabled = false; tnShowFeedback('tn-addbracket-feedback', 'Request failed. Please try again.', false); });
+		});
+	}
+})();
+
+// ---- Edit Bracket Modal ----
+(function() {
+	var OVERLAY  = 'tn-editbracket-overlay';
+	var EDIT_URL = TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/updatebracket';
+
+	window.tnOpenEditBracketModal = function(bracketId, data) {
+		tnHideFeedback('tn-editbracket-feedback');
+		document.getElementById('tn-editbracket-bid').value = bracketId;
+		document.getElementById('tn-editbracket-style').value        = data.style        || '';
+		document.getElementById('tn-editbracket-method').value       = data.method       || 'single';
+		document.getElementById('tn-editbracket-participants').value  = data.participants || 'individual';
+		document.getElementById('tn-editbracket-rings').value         = data.rings        || 1;
+		document.getElementById('tn-editbracket-seeding').value       = data.seeding      || 'random';
+		document.getElementById('tn-editbracket-stylenote').value     = data.styleNote    || '';
+		tnOpenModal(OVERLAY);
+	};
+
+	['tn-editbracket-close', 'tn-editbracket-cancel'].forEach(function(id) {
+		var el = document.getElementById(id);
+		if (el) el.addEventListener('click', function() { tnCloseModal(OVERLAY); });
+	});
+
+	var ov = document.getElementById(OVERLAY);
+	if (ov) {
+		ov.addEventListener('click', function(e) { if (e.target === ov) tnCloseModal(OVERLAY); });
+	}
+
+	document.addEventListener('keydown', function(e) {
+		if (e.key === 'Escape' && ov && ov.classList.contains('tn-open')) tnCloseModal(OVERLAY);
+	});
+
+	var submitBtn = document.getElementById('tn-editbracket-submit');
+	if (submitBtn) {
+		submitBtn.addEventListener('click', function() {
+			var btn    = this;
+			var style  = document.getElementById('tn-editbracket-style').value;
+			var method = document.getElementById('tn-editbracket-method').value;
+			if (!style || !method) { tnShowFeedback('tn-editbracket-feedback', 'Style and format are required.', false); return; }
+
+			btn.disabled = true;
+			var fd = new FormData();
+			fd.append('BracketId',    document.getElementById('tn-editbracket-bid').value);
+			fd.append('Style',        style);
+			fd.append('Method',       method);
+			fd.append('Participants', document.getElementById('tn-editbracket-participants').value);
+			fd.append('Rings',        document.getElementById('tn-editbracket-rings').value);
+			fd.append('Seeding',      document.getElementById('tn-editbracket-seeding').value);
+			fd.append('StyleNote',    document.getElementById('tn-editbracket-stylenote').value);
+
+			fetch(EDIT_URL, { method:'POST', body:fd })
+				.then(function(r) { return r.json(); })
+				.then(function(d) {
+					btn.disabled = false;
+					if (d && d.status === 0) {
+						tnShowFeedback('tn-editbracket-feedback', 'Bracket updated!', true);
+						setTimeout(function() { tnCloseModal(OVERLAY); sessionStorage.setItem('tnOpenTab','brackets'); window.location.reload(); }, 800);
+					} else {
+						tnShowFeedback('tn-editbracket-feedback', (d && d.error) ? d.error : 'Failed to update bracket.', false);
+					}
+				})
+				.catch(function() { btn.disabled = false; tnShowFeedback('tn-editbracket-feedback', 'Request failed. Please try again.', false); });
 		});
 	}
 })();
@@ -1739,16 +1926,73 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 // ============================================================
 (function() {
 	var OVERLAY = 'tn-recordresult-overlay';
-	var currentMatch = null;
+	var bouts = [null, null, null, null, null]; // null | '1' | '2' per bout
+	var p1Name = '—', p2Name = '—';
 
+	// ---- Pip rendering ----
+	function renderPips() {
+		for (var i = 0; i < 5; i++) {
+			var pip1 = document.querySelector('#tn-rr-pips-1 [data-idx="' + i + '"]');
+			var pip2 = document.querySelector('#tn-rr-pips-2 [data-idx="' + i + '"]');
+			if (!pip1 || !pip2) continue;
+			pip1.className = 'tn-bout-pip';
+			pip2.className = 'tn-bout-pip';
+			if (bouts[i] === '1') { pip1.classList.add('tn-pip-win'); pip2.classList.add('tn-pip-loss'); }
+			else if (bouts[i] === '2') { pip2.classList.add('tn-pip-win'); pip1.classList.add('tn-pip-loss'); }
+		}
+		updateScoreDisplay();
+		updateResultFromBouts();
+	}
+
+	// ---- Score display ----
+	function updateScoreDisplay() {
+		var p1 = bouts.filter(function(b) { return b === '1'; }).length;
+		var p2 = bouts.filter(function(b) { return b === '2'; }).length;
+		var el = document.getElementById('tn-rr-bout-score');
+		if (el) el.textContent = (p1 + p2 > 0) ? (p1 + ' – ' + p2) : '';
+	}
+
+	// ---- Auto-populate result dropdown from pip state ----
+	function updateResultFromBouts() {
+		var p1 = bouts.filter(function(b) { return b === '1'; }).length;
+		var p2 = bouts.filter(function(b) { return b === '2'; }).length;
+		var sel = document.getElementById('tn-rr-result');
+		if (!sel || p1 + p2 === 0) return;
+		if (p1 > p2)      sel.value = '1-wins';
+		else if (p2 > p1) sel.value = '2-wins';
+		else              sel.value = 'tie';
+	}
+
+	// ---- Pip click handler ----
+	['tn-rr-pips-1','tn-rr-pips-2'].forEach(function(containerId) {
+		var container = document.getElementById(containerId);
+		if (!container) return;
+		container.addEventListener('click', function(e) {
+			var pip = e.target.closest('.tn-bout-pip');
+			if (!pip) return;
+			var side = pip.dataset.side; // '1' or '2'
+			var idx  = parseInt(pip.dataset.idx, 10);
+			bouts[idx] = (bouts[idx] === side) ? null : side; // toggle or set
+			renderPips();
+		});
+	});
+
+	// ---- Open modal ----
 	window.tnOpenRecordResult = function(match, p1, p2) {
-		currentMatch = match;
+		bouts = [null, null, null, null, null];
+		p1Name = p1 ? (p1.Alias || p1.Persona || '—') : '—';
+		p2Name = p2 ? (p2.Alias || p2.Persona || '—') : '—';
 		document.getElementById('tn-recordresult-match-id').value = match.MatchId;
-		document.getElementById('tn-rr-p1-name').textContent = p1 ? (p1.Alias || p1.Persona || '—') : '—';
-		document.getElementById('tn-rr-p2-name').textContent = p2 ? (p2.Alias || p2.Persona || '—') : '—';
+		document.getElementById('tn-rr-p1-name').textContent = p1Name;
+		document.getElementById('tn-rr-p2-name').textContent = p2Name;
+		var opt1 = document.getElementById('tn-rr-opt-p1wins');
+		var opt2 = document.getElementById('tn-rr-opt-p2wins');
+		if (opt1) opt1.textContent = p1Name + ' wins';
+		if (opt2) opt2.textContent = p2Name + ' wins';
 		document.getElementById('tn-rr-round-info').textContent = 'Round ' + match.Round + ', Match ' + (match.Match || '');
 		document.getElementById('tn-rr-result').value = '';
-		document.getElementById('tn-rr-score').value = '';
+		document.getElementById('tn-rr-bout-score').textContent = '';
+		renderPips();
 		tnHideFeedback('tn-recordresult-feedback');
 		tnOpenModal(OVERLAY);
 	};
@@ -1764,11 +2008,13 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 	var submitBtn = document.getElementById('tn-recordresult-submit');
 	if (submitBtn) {
 		submitBtn.addEventListener('click', function() {
-			var btn       = this;
-			var matchId   = document.getElementById('tn-recordresult-match-id').value;
-			var tid       = document.getElementById('tn-recordresult-tournament-id').value;
-			var result    = document.getElementById('tn-rr-result').value;
-			var score     = document.getElementById('tn-rr-score').value;
+			var btn    = this;
+			var matchId = document.getElementById('tn-recordresult-match-id').value;
+			var tid     = document.getElementById('tn-recordresult-tournament-id').value;
+			var result  = document.getElementById('tn-rr-result').value;
+			var p1w     = bouts.filter(function(b) { return b === '1'; }).length;
+			var p2w     = bouts.filter(function(b) { return b === '2'; }).length;
+			var score   = (p1w + p2w > 0) ? (p1w + '-' + p2w) : '';
 
 			if (!result) { tnShowFeedback('tn-recordresult-feedback', 'Please select a result.', false); return; }
 
@@ -1777,6 +2023,7 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 			var fd = new FormData();
 			fd.append('Result', result);
 			fd.append('Score',  score);
+			fd.append('Bouts',  JSON.stringify(bouts.filter(function(b) { return b !== null; })));
 
 			fetch(url, { method:'POST', body:fd })
 				.then(function(r) { return r.json(); })
@@ -1784,7 +2031,7 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 					btn.disabled = false;
 					if (d && d.status === 0) {
 						tnShowFeedback('tn-recordresult-feedback', 'Result saved!', true);
-						setTimeout(function() { tnCloseModal(OVERLAY); window.location.reload(); }, 700);
+						setTimeout(function() { tnCloseModal(OVERLAY); sessionStorage.setItem('tnOpenTab','bracketviz'); window.location.reload(); }, 700);
 					} else {
 						tnShowFeedback('tn-recordresult-feedback', (d && d.error) ? d.error : 'Failed to save result.', false);
 					}

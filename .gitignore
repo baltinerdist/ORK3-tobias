@@ -41,4 +41,5 @@ ork.zip
 config.tmpprod.php
 .DS_Store
 .vscode/
-map/amtgard_kingdoms.htmlsystem/lib/ork3/class.Authorization.php
+map/amtgard_kingdoms.html
+system/lib/ork3/class.Authorization.php
