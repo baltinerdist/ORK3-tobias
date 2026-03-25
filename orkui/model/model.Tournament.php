@@ -16,6 +16,10 @@ class Model_Tournament extends Model {
 		return $this->Tournament->CreateTournament($request);
 	}
 
+	function update_tournament($request) {
+		return $this->Tournament->UpdateTournament($request);
+	}
+
 	function add_bracket($request) {
 		return $this->Tournament->AddBracket($request);
 	}
@@ -58,6 +62,34 @@ class Model_Tournament extends Model {
 
 	function post_match_result($request) {
 		return $this->Tournament->PostMatchResult($request);
+	}
+
+	function reset_match($request) {
+		return $this->Tournament->ResetMatch($request);
+	}
+
+	function create_confirmation_match($request) {
+		return $this->Tournament->CreateConfirmationMatch($request);
+	}
+
+	function create_tiebreaker_match($request) {
+		return $this->Tournament->CreateTiebreakerMatch($request);
+	}
+
+	function record_ironman_win($request) {
+		return $this->Tournament->RecordIronmanWin($request);
+	}
+
+	function complete_bracket($request) {
+		return $this->Tournament->CompleteBracket($request);
+	}
+
+	function delete_bracket($request) {
+		return $this->Tournament->DeleteBracket($request);
+	}
+
+	function clear_bracket_matches($request) {
+		return $this->Tournament->ClearBracketMatches($request);
 	}
 
 	function get_standings($bracket_id) {

@@ -88,7 +88,9 @@ class Report  extends Ork3 {
 
 		if (valid_id($request['Limit'])) $limit = " limit " . (int)$request['Limit'];
 
-		$sql = "select t.*, k.name as kingdom_name, k.parent_kingdom_id, park.name as park_name, e.name as event_name, d.event_start
+		$sql = "select t.*, k.name as kingdom_name, k.parent_kingdom_id, park.name as park_name, e.name as event_name, d.event_start,
+						(SELECT COUNT(*) FROM " . DB_PREFIX . "bracket b WHERE b.tournament_id = t.tournament_id) as bracket_count,
+						(SELECT COUNT(DISTINCT pm2.mundane_id) FROM " . DB_PREFIX . "participant_mundane pm2 WHERE pm2.tournament_id = t.tournament_id) as participant_count
 					from " . DB_PREFIX . "tournament t
 						left join " . DB_PREFIX . "event_calendardetail d on d.event_calendardetail_id = t.event_calendardetail_id
 							left join " . DB_PREFIX . "event e on d.event_id = e.event_id
@@ -98,6 +100,7 @@ class Report  extends Ork3 {
 						left join " . DB_PREFIX . "park park on t.park_id = park.park_id
 					where
 						1 $where
+					group by t.tournament_id
 					order by t.date_time
 					$limit";
 
@@ -119,7 +122,9 @@ class Report  extends Ork3 {
 							'Name' => $r->name,
 							'Description' => $r->description,
 							'Url' => $r->url,
-							'DateTime' => $r->date_time
+							'DateTime' => $r->date_time,
+							'BracketCount' => (int)$r->bracket_count,
+							'ParticipantCount' => (int)$r->participant_count
 						);
 				}
 			}
