@@ -5,7 +5,7 @@
 	$parkList         = is_array($park_summary['KingdomParkAveragesSummary']) ? $park_summary['KingdomParkAveragesSummary'] : array();
 	$parkCounts       = []; // loaded via AJAX (park_averages_json)
 	$eventList        = is_array($event_summary) ? $event_summary : array();
-	$tournamentList   = is_array($kingdom_tournaments['Tournaments']) ? $kingdom_tournaments['Tournaments'] : array();
+	// [TOURNAMENTS HIDDEN] $tournamentList = [];
 	$principalityList = is_array($principalities['Principalities']) ? $principalities['Principalities'] : array();
 	$officerList      = is_array($kingdom_officers['Officers']) ? $kingdom_officers['Officers'] : array();
 
@@ -61,12 +61,15 @@
      ZONE 1: Hero Header
      ============================================= -->
 <div class="kn-hero">
-	<div class="kn-hero-bg" style="background-image: url('<?= $heraldryUrl ?>')"></div>
+	<div class="kn-hero-bg" style="background-image: url('<?= htmlspecialchars($heraldryUrl) ?>')"></div>
 	<div class="kn-hero-content">
 
 		<div class="kn-heraldry-wrap">
 			<div class="kn-heraldry-frame<?= !empty($CanManageKingdom) ? ' kn-heraldry-editable' : '' ?>">
-				<img class="heraldry-img" src="<?= $heraldryUrl ?>" alt="<?= htmlspecialchars($kingdom_name) ?>" />
+				<img class="heraldry-img" src="<?= htmlspecialchars($heraldryUrl) ?>"
+				     alt="<?= htmlspecialchars($kingdom_name) ?>"
+				     crossorigin="anonymous"
+				     onload="typeof knApplyHeroColor==='function'&&knApplyHeroColor(this)">
 			</div>
 			<?php if (!empty($CanManageKingdom)): ?>
 			<button class="kn-heraldry-edit-btn" onclick="knOpenHeraldryModal()" title="Change heraldry">
@@ -187,7 +190,7 @@
 					<span class="kn-link-icon"><i class="fas fa-search"></i></span>
 					<a href="<?= UIR ?>Search/kingdom/<?= $kingdom_id ?>">Search Players</a>
 				</li>
-				<?php if ($LoggedIn): ?>
+				<?php if ($IsLoggedIn): ?>
 					<li>
 						<span class="kn-link-icon"><i class="fas fa-medal"></i></span>
 						<a href="<?= UIR ?>Award/kingdom/<?= $kingdom_id ?>">Enter Awards</a>
@@ -196,10 +199,6 @@
 				<li>
 					<span class="kn-link-icon"><i class="fas fa-map-marked-alt"></i></span>
 					<a href="#" onclick="knActivateTab('map');return false;">Kingdom Map</a>
-				</li>
-				<li>
-					<span class="kn-link-icon"><i class="fas fa-coins"></i></span>
-					<a href="<?= UIR ?>Treasury/kingdom/<?= $kingdom_id ?>">Treasury</a>
 				</li>
 				<li>
 					<span class="kn-link-icon"><i class="fas fa-users"></i></span>
@@ -260,6 +259,11 @@
 				<li data-kntab="court">
 					<i class="fas fa-gavel"></i><span class="kn-tab-label"> Court Planner</span>
 					<?php if (!empty($CourtList)): ?><span class="kn-tab-count">(<?= count($CourtList) ?>)</span><?php endif; ?>
+				</li>
+				<?php endif; ?>
+				<?php if ($CanManageKingdom ?? false): ?>
+				<li data-kntab="admin">
+					<i class="fas fa-cog"></i><span class="kn-tab-label"> Admin Tasks</span>
 				</li>
 				<?php endif; ?>
 			</ul>
@@ -401,6 +405,31 @@
 							<button class="kn-filter-toggle kn-filter-on" data-filter="park-event">Park Events</button>
 							<button class="kn-filter-toggle" data-filter="park-day">Park Days</button>
 						</div>
+						<div class="kn-sub-wrap" id="kn-sub-wrap">
+							<button class="kn-view-btn" id="kn-sub-btn" title="Subscribe to calendar"
+								onclick="document.getElementById('kn-sub-pop').classList.toggle('kn-sub-open');event.stopPropagation();">
+								<i class="fas fa-rss"></i>
+							</button>
+							<div class="kn-sub-pop" id="kn-sub-pop">
+								<div class="kn-sub-pop-title"><i class="fas fa-calendar-check" style="margin-right:5px"></i>Subscribe to Events</div>
+								<div class="kn-sub-pop-row">
+									<input class="kn-sub-url-input" id="kn-sub-url-input" type="text"
+										value="<?= htmlspecialchars($IcsUrl) ?>" readonly>
+									<button class="kn-sub-copy-btn" onclick="knCopyIcsUrl()" title="Copy URL">
+										<i class="fas fa-copy"></i>
+									</button>
+								</div>
+								<a class="kn-sub-gcal-btn"
+									href="https://calendar.google.com/calendar/r/settings/addbyurl?url=<?= urlencode($IcsUrl) ?>"
+									target="_blank" rel="noopener">
+									<i class="fab fa-google" style="margin-right:6px"></i>Add to Google Calendar
+								</a>
+								<a class="kn-sub-webcal-btn"
+									href="webcal://<?= htmlspecialchars(preg_replace('#^https?://#', '', $IcsUrl)) ?>">
+									<i class="fas fa-link" style="margin-right:4px"></i>webcal:// (direct app)
+								</a>
+							</div>
+						</div>
 						<?php if ($CanManageKingdom): ?>
 						<button onclick="knOpenEventModal()" style="display:inline-flex;align-items:center;gap:5px;background:#276749;color:#fff;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:600;text-decoration:none;border:none;cursor:pointer;">
 							<i class="fas fa-plus"></i> Add Event
@@ -466,40 +495,7 @@
 				<?php endif; ?>
 				</div><!-- /kn-events-list-view -->
 
-				<div style="display:flex;align-items:center;justify-content:space-between;margin:20px 0 10px;border-top:1px solid #e2e8f0;padding-top:16px;">
-					<h4 style="margin:0;font-size:14px;font-weight:700;color:#4a5568;"><i class="fas fa-trophy" style="margin-right:6px;color:#a0aec0"></i>Tournaments</h4>
-					<?php if ($CanManageKingdom): ?>
-					<button onclick="knOpenAddTournamentModal()" style="display:inline-flex;align-items:center;gap:5px;background:#276749;color:#fff;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:600;border:none;cursor:pointer;">
-						<i class="fas fa-plus"></i> Add Tournament
-					</button>
-					<?php endif; ?>
-				</div>
-				<?php if (count($tournamentList) > 0): ?>
-					<table class="kn-table kn-sortable" id="kn-tournaments-table">
-						<thead>
-							<tr>
-								<th data-sorttype="date">Date</th>
-								<th data-sorttype="text">Tournament</th>
-								<th data-sorttype="text">Park</th>
-								<th data-sorttype="text">Event</th>
-							</tr>
-						</thead>
-						<tbody>
-							<?php foreach ($tournamentList as $t): ?>
-								<tr class="kn-row-link" data-type="<?= (int)($t['ParkId'] ?? 0) > 0 ? 'park-event' : 'kingdom-event' ?>" onclick="window.location.href='<?= UIR ?>Tournament/worksheet/<?= $t['TournamentId'] ?>'">
-									<td class="kn-col-nowrap"><?= date("M j, Y", strtotime($t['DateTime'])) ?></td>
-									<td>
-										<a href="<?= UIR ?>Tournament/worksheet/<?= $t['TournamentId'] ?>"><?= htmlspecialchars($t['Name']) ?></a>
-									</td>
-									<td><?= htmlspecialchars($t['ParkName']) ?></td>
-									<td><?= htmlspecialchars($t['EventName']) ?></td>
-								</tr>
-							<?php endforeach; ?>
-						</tbody>
-					</table>
-				<?php else: ?>
-					<div class="kn-empty">No tournaments found</div>
-				<?php endif; ?>
+				<?php /* [TOURNAMENTS HIDDEN] */ ?>
 			</div>
 
 
@@ -607,10 +603,11 @@
 					</div>
 
 					<div class="kn-report-group">
-						<h5><i class="fas fa-image"></i> Heraldry</h5>
+						<h5><i class="fas fa-ellipsis-h"></i> Other</h5>
 						<ul>
 							<li><a href="<?= UIR ?>Reports/parkheraldry/<?= $kingdom_id ?>"><?= $entityLabel ?> Heraldry, Parks</a></li>
 							<li><a href="<?= UIR ?>Reports/playerheraldry/<?= $kingdom_id ?>"><?= $entityLabel ?> Heraldry, Players</a></li>
+							<li><a href="<?= UIR ?>Reports/park_distance_matrix&KingdomId=<?= $kingdom_id ?>"><i class="fas fa-th"></i> Park Distance Matrix</a></li>
 						</ul>
 					</div>
 
@@ -624,27 +621,40 @@
 						</ul>
 					</div>
 
-					<?php if ($CanManageKingdom ?? false): ?>
-					<div class="kn-report-group">
-						<h5><i class="fas fa-cog"></i> Admin</h5>
-						<ul>
-							<li><a href="<?= UIR ?>Admin/kingdom/<?= $kingdom_id ?>">Admin Panel</a></li>
-							<li><a href="#" onclick="knOpenAddPlayerModal();return false;">Create Player</a></li>
-							<li><a href="#" onclick="knOpenMovePlayerModal();return false;">Move Player</a></li>
-							<li><a href="<?= UIR ?>Admin/mergeplayers">Merge Players</a></li>
-							<li><a href="<?= UIR ?>Admin/suspensions/kingdom/<?= $kingdom_id ?>">Suspensions</a></li>
-							<li><a href="#" onclick="knOpenClaimParkModal();return false;">Claim Park</a></li>
-						</ul>
-					</div>
-					<?php endif; ?>
+
 
 				</div>
 			</div>
 
+		<!-- Admin Tab -->
+		<?php if ($CanManageKingdom ?? false): ?>
+		<div class="kn-tab-panel" id="kn-tab-admin" style="display:none">
+			<div class="kn-report-cols">
+				<div class="kn-report-group">
+					<h5><i class="fas fa-users-cog"></i> Players</h5>
+					<ul>
+						<li><a href="#" onclick="knOpenAddPlayerModal();return false;">Create Player</a></li>
+						<li><a href="#" onclick="knOpenMovePlayerModal();return false;">Move Player</a></li>
+						<li><a href="<?= UIR ?>Admin/mergeplayers">Merge Players</a></li>
+						<li><a href="<?= UIR ?>Reports/suspended/Kingdom&id=<?= $kingdom_id ?>">Suspensions</a></li>
+					</ul>
+				</div>
+				<div class="kn-report-group">
+					<h5><i class="fas fa-cog"></i> Kingdom</h5>
+					<ul>
+						<li><a href="<?= UIR ?>Admin/kingdom/<?= $kingdom_id ?>">Admin Panel</a></li>
+						<li><a href="<?= UIR ?>Admin/permissions/Kingdom/<?= $kingdom_id ?>">Roles &amp; Permissions</a></li>
+						<li><a href="#" onclick="knOpenClaimParkModal();return false;">Claim Park</a></li>
+					</ul>
+				</div>
+			</div>
+		</div>
+		<?php endif; ?>
+
 		<!-- Recommendations Tab -->
 		<?php if ($ShowRecsTab ?? false): ?>
 		<div class="kn-tab-panel" id="kn-tab-recommendations" style="display:none">
-			<?php if ($LoggedIn): ?>
+			<?php if ($IsLoggedIn): ?>
 			<div class="pk-tab-toolbar">
 				<button class="kn-btn kn-btn-secondary" onclick="knOpenRecModal()">
 					<i class="fas fa-star"></i> Recommend an Award
@@ -652,9 +662,15 @@
 			</div>
 			<?php endif; ?>
 			<?php if (empty($AwardRecommendations)): ?>
-			<div class="pk-recs-empty">There are no open award recommendations for <?= htmlspecialchars($kingdom_name) ?>. <a href="#" onclick="knOpenRecModal();return false;">You can submit a new recommendation here!</a></div>
+			<div class="pk-recs-empty">There are no open award recommendations for <?= htmlspecialchars($kingdom_name) ?>.</div>
 			<?php else: ?>
-			<div class="pk-recs-table-wrap">
+			<div class="kn-rec-filter-bar">
+				<button class="kn-rec-filter-btn kn-rec-filter-active" data-filter="all">All</button>
+				<button class="kn-rec-filter-btn" data-filter="below">Below Recommended</button>
+				<button class="kn-rec-filter-btn" data-filter="already">At or Above Recommended</button>
+				<button class="kn-rec-filter-btn" data-filter="nonladder">Non-Ladder</button>
+			</div>
+				<div class="pk-recs-table-wrap">
 				<table id="kn-rec-table" class="pk-recs-table display">
 					<thead>
 						<tr>
@@ -669,11 +685,21 @@
 					</thead>
 					<tbody id="kn-recs-tbody">
 					<?php foreach ($AwardRecommendations as $rec): ?>
-					<tr class="pk-rec-row" data-rec-id="<?= (int)$rec['RecommendationsId'] ?>">
+					<tr class="pk-rec-row"
+						data-rec-id="<?= (int)$rec['RecommendationsId'] ?>"
+						data-filter="<?= !empty($rec['AlreadyHas']) ? 'already' : ((int)$rec['Rank'] > 0 ? 'below' : 'nonladder') ?>">
 						<td><a href="<?= UIR ?>Player/profile/<?= (int)$rec['MundaneId'] ?>"><?= htmlspecialchars($rec['Persona']) ?></a></td>
 						<td><?= htmlspecialchars($rec['AwardName']) ?></td>
-						<td><?= (int)$rec['Rank'] > 0 ? (int)$rec['Rank'] : '&mdash;' ?></td>
-						<td>
+<td style="white-space:nowrap">
+							<?= (int)$rec['Rank'] > 0 ? (int)$rec['Rank'] : '&mdash;' ?>
+							<?php if (!empty($rec['AlreadyHas'])): ?>
+							<span class="pk-rec-has-tip"
+								title="<?= (int)$rec['Rank'] > 0 ? 'Player is currently at rank ' . (int)$rec['CurrentRank'] . ' as of ' . htmlspecialchars($rec['CurrentRankDate'] ?? '') : 'Player already has this award (granted ' . htmlspecialchars($rec['CurrentRankDate'] ?? 'unknown date') . ')' ?>">
+								<i class="fas fa-info-circle"></i>
+							</span>
+							<?php endif; ?>
+						</td>
+<td>
 							<?php if (!empty($rec['IsAnonymous']) && !($CallerIsOrkAdmin ?? false)): ?>
 								<span style="color:#718096;font-style:italic">Anonymous</span>
 							<?php elseif (!empty($rec['IsAnonymous']) && ($CallerIsOrkAdmin ?? false)): ?>
@@ -955,9 +981,10 @@ var KnConfig = {
 	adminConfig:     <?= json_encode($AdminConfig     ?? [], JSON_HEX_TAG | JSON_HEX_AMP) ?>,
 	adminParkTitles: <?= json_encode($AdminParkTitles ?? [], JSON_HEX_TAG | JSON_HEX_AMP) ?>,
 	adminAwards:     <?= json_encode($AdminAwards     ?? [], JSON_HEX_TAG | JSON_HEX_AMP) ?>,
+	adminRecsPublic: <?= !empty($AwardRecsPublic) ? 'true' : 'false' ?>,
 };
 </script>
-<?php if ($LoggedIn): ?>
+<?php if ($IsLoggedIn): ?>
 <div id="kn-award-overlay">
 	<div class="kn-modal-box" style="width:560px;max-width:calc(100vw - 40px);">
 		<div class="kn-modal-header">
@@ -1339,6 +1366,17 @@ var KnConfig = {
 				</button>
 				<div class="kn-admin-panel-body" id="kn-admin-body-config" style="display:none">
 					<div id="kn-admin-config-feedback" class="kn-admin-feedback" style="display:none"></div>
+					<div class="kn-admin-field kn-admin-recs-visibility-row" style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid #e2e8f0;margin-bottom:12px">
+						<div>
+							<div style="font-size:13px;font-weight:600;color:#2d3748">Recommendation Visibility</div>
+							<div style="font-size:12px;color:#718096;margin-top:3px">When Private, besides the monarchy, only the submitter can see their own recommendations.</div>
+						</div>
+						<select id="kn-admin-recs-public" style="font-size:13px;border:1.5px solid #e2e8f0;border-radius:6px;padding:5px 8px;flex-shrink:0">
+							<option value="1" <?= !empty($AwardRecsPublic) ? 'selected' : '' ?>>Public</option>
+							<option value="0" <?= empty($AwardRecsPublic) ? 'selected' : '' ?>>Private (monarchy and submitters only)</option>
+						</select>
+					</div>
+					<div id="kn-admin-recs-feedback" class="kn-admin-feedback" style="display:none"></div>
 					<div id="kn-admin-config-rows">
 						<!-- Built by JS from KnConfig.adminConfig -->
 					</div>
@@ -1683,6 +1721,37 @@ var KnConfig = {
 #kn-moveplayer-overlay .kn-modal-body { overflow:visible; }
 #kn-moveplayer-overlay .kn-acct-field { position:relative; }
 #kn-moveplayer-overlay .kn-ac-results { position:absolute; left:0; right:0; z-index:9999; }
+/* Subscribe popover */
+.kn-sub-wrap { position:relative; }
+.kn-sub-pop {
+	display:none; position:absolute; top:calc(100% + 6px); right:0; z-index:200;
+	background:#fff; border:1px solid #e2e8f0; border-radius:8px;
+	box-shadow:0 4px 16px rgba(0,0,0,0.12); padding:12px 14px; width:280px; font-size:13px;
+}
+.kn-sub-pop.kn-sub-open { display:block; }
+.kn-sub-pop-title {
+	font-weight:700; color:#2d3748; margin-bottom:8px; font-size:12px;
+	text-transform:uppercase; letter-spacing:.05em;
+}
+.kn-sub-pop-row { display:flex; gap:4px; margin-bottom:8px; }
+.kn-sub-url-input {
+	flex:1; font-size:11px; padding:4px 6px; border:1px solid #e2e8f0;
+	border-radius:4px; color:#4a5568; background:#f7fafc; min-width:0;
+}
+.kn-sub-copy-btn {
+	padding:4px 8px; border:1px solid #e2e8f0; border-radius:4px;
+	background:#edf2f7; cursor:pointer; color:#4a5568; font-size:12px;
+}
+.kn-sub-copy-btn:hover { background:#e2e8f0; }
+.kn-sub-gcal-btn {
+	display:block; text-align:center; background:#4285f4; color:#fff;
+	border-radius:5px; padding:7px 10px; font-size:12px; font-weight:600; text-decoration:none;
+}
+.kn-sub-gcal-btn:hover { background:#3367d6; color:#fff; }
+.kn-sub-webcal-btn {
+	display:block; margin-top:6px; font-size:11px; color:#718096; text-align:center; text-decoration:none;
+}
+.kn-sub-webcal-btn:hover { color:#4a5568; }
 </style>
 <div id="kn-moveplayer-overlay">
 	<div class="kn-modal-box" style="width:520px;max-width:calc(100vw - 40px)">
@@ -1719,7 +1788,7 @@ var KnConfig = {
 		</div>
 		<div class="kn-modal-footer">
 			<button class="kn-btn-ghost" id="kn-moveplayer-cancel">Cancel</button>
-			<button class="kn-btn kn-btn-primary" id="kn-moveplayer-submit"><i class="fas fa-arrow-right"></i> Move Player</button>
+			<button class="kn-btn kn-btn-primary" id="kn-moveplayer-submit" disabled><i class="fas fa-arrow-right"></i> Move Player</button>
 		</div>
 	</div>
 </div>
@@ -1796,41 +1865,58 @@ var KnConfig = {
 </div>
 
 
-<!-- Add Tournament Modal --><!-- Add Tournament Modal -->
-<div id="kn-addtournament-overlay">
-	<div class="kn-modal-box" style="width:480px;max-width:calc(100vw - 40px);">
-		<div class="kn-modal-header">
-			<h3 class="kn-modal-title"><i class="fas fa-trophy" style="margin-right:8px;color:#276749"></i>Add Tournament</h3>
-			<button class="kn-modal-close-btn" id="kn-addtournament-close-btn" aria-label="Close">&times;</button>
-		</div>
-		<div class="kn-modal-body">
-			<div id="kn-addtournament-feedback" style="display:none;margin-bottom:12px;font-size:13px;font-weight:600;"></div>
-			<div class="kn-acct-field">
-				<label for="kn-addtournament-name">Name <span style="color:#e53e3e">*</span></label>
-				<input type="text" id="kn-addtournament-name" placeholder="e.g. Bear Pit" maxlength="128" />
-			</div>
-			<div class="kn-acct-field">
-				<label for="kn-addtournament-when">Date <span style="color:#e53e3e">*</span></label>
-				<input type="date" id="kn-addtournament-when" />
-			</div>
-			<div class="kn-acct-field">
-				<label for="kn-addtournament-desc">Description <span style="color:#a0aec0;font-size:11px;text-transform:none;letter-spacing:0">(optional)</span></label>
-				<textarea id="kn-addtournament-desc" rows="3" placeholder="Brief description..."></textarea>
-			</div>
-			<div class="kn-acct-field">
-				<label for="kn-addtournament-url">URL <span style="color:#a0aec0;font-size:11px;text-transform:none;letter-spacing:0">(optional)</span></label>
-				<input type="url" id="kn-addtournament-url" placeholder="https://..." maxlength="255" />
-			</div>
-		</div>
-		<div class="kn-modal-footer">
-			<button class="kn-btn-ghost" id="kn-addtournament-cancel">Cancel</button>
-			<button class="kn-btn kn-btn-primary" id="kn-addtournament-submit">
-				<i class="fas fa-plus"></i> Create Tournament
-			</button>
-		</div>
-	</div>
-</div>
+<!-- [TOURNAMENTS HIDDEN] add-tournament modal -->
 <?php endif; ?>
+<script>
+function knApplyHeroColor(img) {
+	var canvas = document.createElement('canvas');
+	canvas.width = 60; canvas.height = 60;
+	var ctx = canvas.getContext('2d');
+	try {
+		ctx.drawImage(img, 0, 0, 60, 60);
+		var px = ctx.getImageData(0, 0, 60, 60).data;
+		var buckets = {};
+		for (var i = 0; i < px.length; i += 4) {
+			var r = px[i], g = px[i+1], b = px[i+2], a = px[i+3];
+			if (a < 120) continue;
+			if (r > 215 && g > 215 && b > 215) continue;
+			if (r < 25  && g < 25  && b < 25)  continue;
+			var key = (r >> 4) + ',' + (g >> 4) + ',' + (b >> 4);
+			buckets[key] = (buckets[key] || 0) + 1;
+		}
+		var best = null, bestN = 0;
+		for (var k in buckets) { if (buckets[k] > bestN) { bestN = buckets[k]; best = k; } }
+		if (!best) return;
+		var parts = best.split(',');
+		var dr = parseInt(parts[0]) * 16 + 8;
+		var dg = parseInt(parts[1]) * 16 + 8;
+		var db = parseInt(parts[2]) * 16 + 8;
+		var rf = dr/255, gf = dg/255, bf = db/255;
+		var max = Math.max(rf,gf,bf), min = Math.min(rf,gf,bf);
+		var h = 0, s = 0, l = (max+min)/2;
+		if (max !== min) {
+			var d = max - min;
+			s = l > 0.5 ? d/(2-max-min) : d/(max+min);
+			if      (max === rf) h = (gf-bf)/d + (gf < bf ? 6 : 0);
+			else if (max === gf) h = (bf-rf)/d + 2;
+			else                 h = (rf-gf)/d + 4;
+			h /= 6;
+		}
+		var finalS = Math.max(s, 0.28);
+		var hDeg   = Math.round(h * 360);
+		var sPct   = Math.round(finalS * 100);
+		var heroEl = document.querySelector('.kn-hero');
+		if (heroEl) {
+			heroEl.style.backgroundColor = 'hsl(' + hDeg + ',' + sPct + '%,18%)';
+		}
+		document.documentElement.style.setProperty('--kn-hue', hDeg);
+		document.documentElement.style.setProperty('--kn-sat', sPct + '%');
+		document.documentElement.style.setProperty(
+			'--kn-page-tint', 'rgba(' + dr + ',' + dg + ',' + db + ',0.05)'
+		);
+	} catch(e) { /* CORS or tainted canvas — keep default */ }
+}
+</script>
 <script>
 (function() {
 	var kingdomId = <?= (int)($kingdom_id ?? 0) ?>;
@@ -1842,18 +1928,25 @@ var KnConfig = {
 		.then(function(data) {
 			var totalAtt = 0, totalMo = 0, totalTp = 0, totalTm = 0;
 			var kingdomAtt = (data._kingdom && data._kingdom.att) ? data._kingdom.att : null;
+			function knTrend(cur, prev, decimals) {
+				if (prev === undefined) return '';
+				if (cur > prev) return ' <span class="kn-trend kn-trend-up" title="Up from ' + prev.toFixed(decimals) + ' (prev period)">&#9650;</span>';
+				if (cur < prev) return ' <span class="kn-trend kn-trend-dn" title="Down from ' + prev.toFixed(decimals) + ' (prev period)">&#9660;</span>';
+				return '';
+			}
 			for (var parkId in data) {
 				if (parkId === '_kingdom') continue;
 				var att = data[parkId].att || 0, mo = data[parkId].mo || 0;
 				var tp  = data[parkId].tp  || 0, tm = data[parkId].tm  || 0;
+				var prevAtt = data[parkId].prev_att, prevMo = data[parkId].prev_mo;
 				totalAtt += att; totalMo += mo; totalTp += tp; totalTm += tm;
 				// Tile view
 				var tile = document.querySelector('.kn-park-tile[data-park-id="' + parkId + '"]');
 				if (tile) {
 					var wkEl = tile.querySelector('.kn-avgwk-tile');
 					var moEl = tile.querySelector('.kn-avgmo-tile');
-					if (wkEl) wkEl.textContent = (att / 26).toFixed(1);
-					if (moEl) moEl.textContent = (mo / 12).toFixed(1);
+					if (wkEl) wkEl.innerHTML = (att / 26).toFixed(1) + knTrend(att / 26, prevAtt !== undefined ? prevAtt / 26 : undefined, 1);
+					if (moEl) moEl.innerHTML = (mo / 12).toFixed(1)  + knTrend(mo / 12,  prevMo  !== undefined ? prevMo  / 12 : undefined, 1);
 				}
 				// List view row
 				var row = document.querySelector('tr[data-park-id="' + parkId + '"]');
@@ -1862,8 +1955,8 @@ var KnConfig = {
 					var moTd = row.querySelector('.kn-avgmo-row');
 					var tpTd = row.querySelector('.kn-tp-row');
 					var tmTd = row.querySelector('.kn-tm-row');
-					if (wkTd) { wkTd.textContent = (att / 26).toFixed(2); wkTd.setAttribute('data-sortval', att / 26); }
-					if (moTd) { moTd.textContent = (mo / 12).toFixed(1);  moTd.setAttribute('data-sortval', mo / 12); }
+					if (wkTd) { wkTd.innerHTML = (att / 26).toFixed(2) + knTrend(att / 26, prevAtt !== undefined ? prevAtt / 26 : undefined, 2); wkTd.setAttribute('data-sortval', att / 26); }
+					if (moTd) { moTd.innerHTML = (mo / 12).toFixed(1)  + knTrend(mo / 12,  prevMo  !== undefined ? prevMo  / 12 : undefined, 1);  moTd.setAttribute('data-sortval', mo / 12); }
 					if (tpTd) { tpTd.textContent = tp;  tpTd.setAttribute('data-sortval', tp); }
 					if (tmTd) { tmTd.textContent = tm;  tmTd.setAttribute('data-sortval', tm); }
 				}
@@ -1884,7 +1977,7 @@ var KnConfig = {
 			if (footTp) footTp.textContent = totalTp;
 			if (footTm) footTm.textContent = totalTm;
 		})
-		.catch(function() {});
+		.catch(function(err) { console.error('Kingdom park_averages_json failed:', err); });
 
 	// ---- Players tab: lazy-load on first click ----
 	function knHtmlEsc(s) {
@@ -2029,6 +2122,29 @@ var KnConfig = {
 			});
 		}
 	});
+
+	function knCopyIcsUrl() {
+		var inp = document.getElementById('kn-sub-url-input');
+		if (!inp) return;
+		inp.select();
+		inp.setSelectionRange(0, 99999);
+		try {
+			navigator.clipboard.writeText(inp.value).then(function() {
+				var btn = document.querySelector('.kn-sub-copy-btn');
+				if (btn) { btn.innerHTML = '<i class="fas fa-check"></i>'; setTimeout(function(){ btn.innerHTML = '<i class="fas fa-copy"></i>'; }, 1500); }
+			});
+		} catch(e) { document.execCommand('copy'); }
+	}
+
+	// Close subscribe popover on outside click
+	document.addEventListener('click', function(e) {
+		var wrap = document.getElementById('kn-sub-wrap');
+		if (wrap && !wrap.contains(e.target)) {
+			var pop = document.getElementById('kn-sub-pop');
+			if (pop) pop.classList.remove('kn-sub-open');
+		}
+	});
+
 })();
 </script>
 <script src="<?= HTTP_TEMPLATE ?>revised-frontend/script/revised.js?v=<?= filemtime(__DIR__ . '/script/revised.js') ?>"></script>

@@ -74,8 +74,9 @@
 		}
 	}
 
-	$tournaments    = $Tournaments['Tournaments'] ?? [];
-	$tourneyCount   = count($tournaments);
+	// [TOURNAMENTS HIDDEN]
+	$tournaments  = [];
+	$tourneyCount = 0;
 	$attendanceList = $AttendanceReport['Attendance'] ?? [];
 	$checkedInIds   = array_flip(array_column($attendanceList, 'MundaneId'));
 	$attendanceForm = $Attendance_event ?? [];
@@ -163,6 +164,7 @@
 .ev-img-step-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
 .ev-crop-wrap { overflow: auto; max-height: 360px; display: flex; justify-content: center; }
 .ev-img-form-error { background: #fff5f5; border: 1px solid #feb2b2; color: #c53030; padding: 8px 12px; border-radius: 5px; font-size: 13px; margin-top: 8px; }
+.ev-fp-title { background: #2b6cb0; color: #fff; font-size: 12px; font-weight: 700; padding: 6px 12px; text-align: center; letter-spacing: .04em; }
 </style>
 
 <?php // ---- HERO ---- ?>
@@ -405,10 +407,7 @@
 					<i class="fas fa-clipboard-list"></i><span class="ev-tab-label"> Attendance</span>
 					<span class="ev-tab-count"><?= $attendeeCount ?></span>
 				</li>
-				<li data-tab="ev-tab-tournaments" onclick="evShowTab(this,'ev-tab-tournaments')">
-					<i class="fas fa-trophy"></i><span class="ev-tab-label"> Tournaments</span>
-					<span class="ev-tab-count"><?= $tourneyCount ?></span>
-				</li>
+				<?php /* [TOURNAMENTS HIDDEN] tab */ ?>
 				<li data-tab="ev-tab-rsvp" onclick="evShowTab(this,'ev-tab-rsvp')">
 					<i class="fas fa-calendar-check"></i><span class="ev-tab-label"> RSVPs</span>
 					<span class="ev-tab-count"><?= $rsvpCount ?></span>
@@ -416,6 +415,11 @@
 				<?php if ($hasMapTab): ?>
 				<li data-tab="ev-tab-map" onclick="evShowTab(this,'ev-tab-map')">
 					<i class="fas fa-map-marked-alt"></i><span class="ev-tab-label"> Map</span>
+				</li>
+				<?php endif; ?>
+				<?php if ($canManage): ?>
+				<li data-tab="ev-tab-admin" onclick="evShowTab(this,'ev-tab-admin')">
+					<i class="fas fa-cog"></i><span class="ev-tab-label"> Admin Tasks</span>
 				</li>
 				<?php endif; ?>
 			</ul>
@@ -440,26 +444,10 @@
 					<form method="post" id="ev-attendance-form" action="<?= UIR ?>EventAjax/add_attendance/<?= $eventId ?>/<?= $detailId ?>" onsubmit="evHandleAttendanceSubmit(this); return false;">
 						<div class="ev-form-row">
 							<div class="ev-form-field">
-								<label>Kingdom</label>
-								<input type="text" id="ev-KingdomName" name="KingdomName" style="width:140px"
-									value="<?= htmlspecialchars($attendanceForm['KingdomName'] ?? $defaultKingdomName) ?>"
-									autocomplete="off" placeholder="Search…">
-								<input type="hidden" id="ev-KingdomId" name="KingdomId"
-									value="<?= (int)($attendanceForm['KingdomId'] ?? $defaultKingdomId) ?>">
-							</div>
-							<div class="ev-form-field">
-								<label>Park</label>
-								<input type="text" id="ev-ParkName" name="ParkName" style="width:140px"
-									value="<?= htmlspecialchars($attendanceForm['ParkName'] ?? $defaultParkName) ?>"
-									autocomplete="off" placeholder="Search…">
-								<input type="hidden" id="ev-ParkId" name="ParkId"
-									value="<?= (int)($attendanceForm['ParkId'] ?? $defaultParkId) ?>">
-							</div>
-							<div class="ev-form-field">
 								<label>Player</label>
-								<input type="text" id="ev-PlayerName" name="PlayerName" style="width:160px"
+								<input type="text" id="ev-PlayerName" name="PlayerName" style="width:200px"
 									value="<?= htmlspecialchars($attendanceForm['PlayerName'] ?? '') ?>"
-									autocomplete="off" placeholder="Search…">
+									autocomplete="off" placeholder="Search players…">
 								<input type="hidden" id="ev-MundaneId" name="MundaneId"
 									value="<?= (int)($attendanceForm['MundaneId'] ?? 0) ?>">
 							</div>
@@ -494,7 +482,7 @@
 				<?php endif; ?>
 
 				<?php if (count($attendanceList) > 0): ?>
-				<table class="ev-table">
+				<table class="display" id="ev-attendance-table" style="width:100%">
 					<thead>
 						<tr>
 							<th>Player</th>
@@ -503,23 +491,23 @@
 							<th>Class</th>
 							<th>Credits</th>
 							<?php if ($canManageAttendance): ?>
-							<th class="ev-del-cell">&times;</th>
+							<th class="ev-del-cell"></th>
 							<?php endif; ?>
 						</tr>
 					</thead>
 					<tbody>
 						<?php foreach ($attendanceList as $att): ?>
-						<tr>
+						<tr data-att-id="<?= (int)$att['AttendanceId'] ?>">
 							<td><a href="<?= UIR ?>Player/profile/<?= (int)$att['MundaneId'] ?>"><?= htmlspecialchars($att['Persona']) ?></a></td>
-							<td><a href="<?= UIR ?>Kingdom/profile/<?= (int)$att['KingdomId'] ?>"><?= htmlspecialchars($att['KingdomName']) ?></a></td>
-							<td><a href="<?= UIR ?>Park/profile/<?= (int)$att['ParkId'] ?>"><?= htmlspecialchars($att['ParkName']) ?></a></td>
+							<td><?php if (!empty($att['KingdomId'])): ?><a href="<?= UIR ?>Kingdom/profile/<?= (int)$att['KingdomId'] ?>"><?= htmlspecialchars($att['KingdomName']) ?></a><?php else: ?><?= htmlspecialchars($att['KingdomName'] ?? '') ?><?php endif; ?></td>
+							<td><?php if (!empty($att['ParkId'])): ?><a href="<?= UIR ?>Park/profile/<?= (int)$att['ParkId'] ?>"><?= htmlspecialchars($att['ParkName']) ?></a><?php else: ?><?= htmlspecialchars($att['ParkName'] ?? '') ?><?php endif; ?></td>
 							<td><?= htmlspecialchars($att['ClassName']) ?></td>
 							<td><?= htmlspecialchars($att['Credits']) ?></td>
 							<?php if ($canManageAttendance): ?>
 							<td class="ev-del-cell">
-								<a class="ev-del-link" title="Remove"
-									href="<?= UIR ?>Event/detail/<?= $eventId ?>/<?= $detailId ?>/delete/<?= (int)$att['AttendanceId'] ?>"
-									onclick="return confirm('Remove this attendance record?')">×</a>
+								<a class="ev-del-link" title="Remove" href="#"
+									data-del-url="<?= UIR ?>AttendanceAjax/attendance/<?= (int)$att['AttendanceId'] ?>/delete"
+									onclick="evConfirmAttDelete(event, this)">×</a>
 							</td>
 							<?php endif; ?>
 						</tr>
@@ -534,35 +522,7 @@
 
 			</div><!-- /.ev-tab-panel -->
 
-			<?php // ---- Tournaments Tab ---- ?>
-			<div class="ev-tab-panel" id="ev-tab-tournaments">
-				<?php if ($tourneyCount > 0): ?>
-				<table class="ev-table">
-					<thead>
-						<tr>
-							<th>Tournament</th>
-							<th>Date</th>
-						</tr>
-					</thead>
-					<tbody>
-						<?php foreach ($tournaments as $t): ?>
-						<tr>
-							<td>
-								<a href="<?= UIR ?>Tournament/worksheet/<?= (int)$t['TournamentId'] ?>">
-									<?= htmlspecialchars($t['Name'] ?? 'Tournament') ?>
-								</a>
-							</td>
-							<td><?= $t['EventStart'] ? date('M j, Y', strtotime($t['EventStart'])) : '—' ?></td>
-						</tr>
-						<?php endforeach; ?>
-					</tbody>
-				</table>
-				<?php else: ?>
-				<div class="ev-empty">
-					<i class="fas fa-trophy" style="margin-right:6px"></i>No tournaments recorded
-				</div>
-				<?php endif; ?>
-			</div><!-- /.ev-tab-panel -->
+			<?php /* [TOURNAMENTS HIDDEN] tab panel */ ?>
 
 			<?php // ---- RSVPs Tab ---- ?>
 			<div class="ev-tab-panel" id="ev-tab-rsvp">
@@ -598,12 +558,12 @@
 					</table>
 					<?php else: ?>
 					<div class="ev-empty">
-						<i class="fas fa-calendar-check" style="margin-right:6px"></i>No RSVPs yet
+						<i class="fas fa-calendar-check" style="margin-right:6px"></i><?php echo $isPastEvent ? 'No RSVPs' : 'No RSVPs yet' ?>
 					</div>
 					<?php endif; ?>
 				<?php elseif ($rsvpCount === 0): ?>
 				<div class="ev-empty">
-					<i class="fas fa-calendar-check" style="margin-right:6px"></i>No RSVPs yet
+					<i class="fas fa-calendar-check" style="margin-right:6px"></i><?php echo $isPastEvent ? 'No RSVPs' : 'No RSVPs yet' ?>
 				</div>
 				<?php endif; ?>
 			</div><!-- /.ev-tab-panel -->
@@ -641,6 +601,18 @@
 			</div><!-- /.ev-tab-panel -->
 			<?php endif; ?>
 
+			<?php if ($canManage): ?>
+			<div class="ev-tab-panel" id="ev-tab-admin">
+				<ul style="margin:0;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:8px">
+					<li>
+						<a href="<?= UIR ?>Admin/permissions/Event/<?= $eventId ?>/<?= $detailId ?>" style="display:inline-flex;align-items:center;gap:7px;padding:7px 14px;background:#f0faf4;border:1px solid #c6e8d4;border-radius:6px;font-size:13px;font-weight:600;color:#276749;text-decoration:none">
+							<i class="fas fa-key"></i> Roles &amp; Permissions
+						</a>
+					</li>
+				</ul>
+			</div><!-- /.ev-tab-panel -->
+			<?php endif; ?>
+
 		</div><!-- /.ev-tabs -->
 	</div><!-- /.ev-main -->
 
@@ -664,16 +636,26 @@
 				<?php endif; ?>
 
 				<div class="ev-modal-section">
+					<h4>Event Name</h4>
+					<div class="ev-modal-row">
+						<div class="ev-modal-field ev-field-full">
+							<label>Name</label>
+							<input type="text" name="EventName" value="<?= htmlspecialchars($info['Name'] ?? '') ?>" required>
+						</div>
+					</div>
+				</div>
+
+				<div class="ev-modal-section">
 					<h4>Dates &amp; Price</h4>
 					<div class="ev-modal-row">
 						<div class="ev-modal-field">
 							<label>Start Date &amp; Time</label>
-							<input type="datetime-local" name="StartDate"
+							<input type="text" name="StartDate" id="ev-fp-start" autocomplete="off"
 								value="<?php $sTs = $eventStart ? strtotime($eventStart) : 0; echo ($sTs > 0) ? date('Y-m-d\TH:i', $sTs) : ''; ?>">
 						</div>
 						<div class="ev-modal-field">
 							<label>End Date &amp; Time</label>
-							<input type="datetime-local" name="EndDate"
+							<input type="text" name="EndDate" id="ev-fp-end" autocomplete="off"
 								value="<?php $eTs = $eventEnd ? strtotime($eventEnd) : 0; echo ($eTs > 0) ? date('Y-m-d\TH:i', $eTs) : ''; ?>">
 						</div>
 						<div class="ev-modal-field" style="max-width:120px">
@@ -764,7 +746,7 @@
 		<div class="ev-modal-footer" style="justify-content:space-between;align-items:center;display:flex">
 			<div>
 <?php if ($canDelete): ?>
-				<form method="post" action="<?= UIR ?>Event/detail/<?= $eventId ?>/<?= $detailId ?>/deletedetail" style="margin:0" onsubmit="return confirm('Delete this event occurrence? This cannot be undone.')">
+				<form method="post" action="<?= UIR ?>Event/detail/<?= $eventId ?>/<?= $detailId ?>/deletedetail" style="margin:0" onsubmit="evConfirmDeleteOccurrence(event, this)">
 					<button type="submit" class="ev-modal-btn-delete">
 						<i class="fas fa-trash-alt" style="margin-right:5px"></i>Delete Occurrence
 					</button>
@@ -884,6 +866,10 @@ var EvConfig = {
 	</div>
 </div>
 <?php endif; ?>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
 <script src="<?= HTTP_TEMPLATE ?>revised-frontend/script/revised.js?v=<?= filemtime(__DIR__ . '/script/revised.js') ?>"></script>
 <script>
 (function() {
@@ -893,4 +879,104 @@ var EvConfig = {
         if (li && typeof evShowTab === 'function') evShowTab(li, hash);
     }
 })();
+<?php if (count($attendanceList) > 0): ?>
+$(function() {
+	$('#ev-attendance-table').DataTable({
+		dom: 'lfrtip',
+		order: [[0, 'asc']],
+		columnDefs: [
+<?php if ($canManageAttendance): ?>
+			{ targets: [-1], orderable: false, searchable: false }
+<?php endif; ?>
+		],
+		pageLength: 25
+	});
+});
+<?php endif; ?>
+<?php if ($canManage && ($CalendarDetailCount ?? 1) > 1): ?>
+(function() {
+	var form = document.getElementById('ev-edit-form');
+	if (!form) return;
+	var originalName = <?= json_encode($info['Name'] ?? '') ?>;
+	var detailCount  = <?= (int)($CalendarDetailCount ?? 1) ?>;
+	form.addEventListener('submit', function(e) {
+		var newName = (form.querySelector('[name="EventName"]') || {}).value || '';
+		if (newName && newName !== originalName) {
+			e.preventDefault();
+			pnConfirm({
+				title: 'Rename Event?',
+				message: 'This event has ' + detailCount + ' scheduled dates. Renaming it will update the name for all ' + detailCount + ' occurrences.',
+				confirmText: 'Rename',
+				danger: true
+			}, function() { form.submit(); });
+		}
+	});
+})();
+<?php endif; ?>
+
+function evConfirmAttDelete(e, link) {
+	e.preventDefault();
+	var url = link.dataset.delUrl;
+	if (!url) return;
+	pnConfirm({ title: 'Remove Attendance?', message: 'Remove this attendance record? This cannot be undone.', confirmText: 'Remove', danger: true }, function() {
+		link.textContent = '…';
+		fetch(url, { method: 'POST' })
+			.then(function(r) { return r.json(); })
+			.then(function(data) {
+				if (data.status === 0) {
+					var row = link.closest('tr');
+					if (row) row.remove();
+					var tabCount = document.querySelector('[data-tab="ev-tab-attendance"] .ev-tab-count');
+					if (tabCount) { tabCount.textContent = Math.max(0, parseInt(tabCount.textContent || '0') - 1); }
+				} else {
+					link.textContent = '×';
+					alert(data.error || 'Could not remove attendance.');
+				}
+			})
+			.catch(function() { link.textContent = '×'; alert('Request failed.'); });
+	});
+}
+function evConfirmDeleteOccurrence(e, form) {
+	e.preventDefault();
+	pnConfirm({ title: 'Delete Occurrence?', message: 'Delete this event occurrence? This cannot be undone.', confirmText: 'Delete', danger: true }, function() {
+		form.submit();
+	});
+}
+
+// Flatpickr for event edit modal date fields
+function fpAddTitle(label, calEl) {
+	var title = document.createElement('div');
+	title.className = 'ev-fp-title';
+	title.textContent = label;
+	calEl.insertBefore(title, calEl.firstChild);
+}
+var _fpOpts = {
+	enableTime: true,
+	dateFormat: 'Y-m-d\\TH:i',
+	altInput: true,
+	altFormat: 'M j, Y h:i K',
+	minuteIncrement: 10,
+	time_24hr: false
+};
+var _prevStartDate = null;
+var _fpStart = flatpickr('#ev-fp-start', Object.assign({}, _fpOpts, {
+	onReady: function(sel, str, fp) {
+		fpAddTitle('Start Date & Time', fp.calendarContainer);
+		_prevStartDate = sel[0] || null;
+	},
+	onChange: function(sel) {
+		if (!sel[0]) return;
+		var endDates = _fpEnd.selectedDates;
+		if (endDates[0] && _prevStartDate) {
+			var offset = endDates[0].getTime() - _prevStartDate.getTime();
+			_fpEnd.setDate(new Date(sel[0].getTime() + offset), true);
+		} else if (!endDates[0]) {
+			_fpEnd.setDate(new Date(sel[0].getTime() + 60 * 60 * 1000), true);
+		}
+		_prevStartDate = sel[0];
+	}
+}));
+var _fpEnd = flatpickr('#ev-fp-end', Object.assign({}, _fpOpts, {
+	onReady: function(sel, str, fp) { fpAddTitle('End Date & Time', fp.calendarContainer); }
+}));
 </script>

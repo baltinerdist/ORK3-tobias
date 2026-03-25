@@ -50,7 +50,7 @@ class Controller_Event extends Controller {
 		}
 
 		$can_manage = $uid > 0 && valid_id($event_id)
-			&& Ork3::$Lib->authorization->HasAuthority($uid, AUTH_EVENT, $event_id, AUTH_EDIT);
+			&& Ork3::$Lib->authorization->HasAuthority($uid, AUTH_EVENT, $event_id, AUTH_CREATE);
 		$this->data['CanManageEvent'] = $can_manage;
 
 		$rsvp_data = [];
@@ -161,7 +161,7 @@ class Controller_Event extends Controller {
 
 		$uid = isset($this->session->user_id) ? (int)$this->session->user_id : 0;
 		$this->data['CanManageEvent'] = $uid > 0
-			&& Ork3::$Lib->authorization->HasAuthority( $uid, AUTH_EVENT, $event_id, AUTH_EDIT );
+			&& Ork3::$Lib->authorization->HasAuthority( $uid, AUTH_EVENT, $event_id, AUTH_CREATE );
 	}
 
 	public function detail( $p = null ) {
@@ -217,7 +217,7 @@ class Controller_Event extends Controller {
 		$this->data['DefaultKingdomId']   = $this->session->kingdom_id   ?? 0;
 
 		if ( $action === 'deletedetail' && $uid > 0 ) {
-			if ( Ork3::$Lib->authorization->HasAuthority($uid, AUTH_EVENT, $event_id, AUTH_EDIT) ) {
+			if ( Ork3::$Lib->authorization->HasAuthority($uid, AUTH_EVENT, $event_id, AUTH_CREATE) ) {
 				global $DB;
 				$checkAtt  = $DB->DataSet("SELECT COUNT(*) AS cnt FROM " . DB_PREFIX . "attendance WHERE event_calendardetail_id = " . $detail_id . " LIMIT 1");
 				$attCnt    = ($checkAtt && $checkAtt->Size() > 0 && $checkAtt->Next()) ? (int)$checkAtt->cnt : 0;
@@ -234,9 +234,9 @@ class Controller_Event extends Controller {
 				$evPid = (int)$evRow->park_id;
 			}
 			if ($evPid > 0) {
-				$redirect = UIR . 'Park/profile/' . $evPid . '?tab=events';
+				$redirect = UIR . 'Park/profile/' . $evPid . '&tab=events';
 			} elseif ($evKid > 0) {
-				$redirect = UIR . 'Kingdom/profile/' . $evKid . '?tab=events';
+				$redirect = UIR . 'Kingdom/profile/' . $evKid . '&tab=events';
 			} else {
 				$redirect = UIR;
 			}
@@ -253,8 +253,14 @@ class Controller_Event extends Controller {
 		if ( strlen($action) > 0 && $uid > 0 ) {
 
 			if ( $action === 'edit' ) {
-				if ( Ork3::$Lib->authorization->HasAuthority($uid, AUTH_EVENT, $event_id, AUTH_EDIT) ) {
+				if ( Ork3::$Lib->authorization->HasAuthority($uid, AUTH_EVENT, $event_id, AUTH_CREATE) ) {
 					$this->request->save('Eventnew_edit', true);
+					$newName = trim($this->request->Eventnew_edit->EventName ?? '');
+					if ( $newName ) {
+						$this->Event->update_event($this->session->token, $event_id, null, null, null, null, $newName, '', '');
+						$bustKey = Ork3::$Lib->ghettocache->key(['', null, null, null, null, null, $event_id]);
+						Ork3::$Lib->ghettocache->bust('SearchService.Event', $bustKey);
+					}
 					$r = $this->Event->update_event_detail([
 						'Token'                 => $this->session->token,
 						'EventCalendarDetailId' => $detail_id,
@@ -340,7 +346,7 @@ class Controller_Event extends Controller {
 		$this->data['AttendanceReport'] = $this->Attendance->get_attendance_for_event($event_id, $detail_id);
 		$classes                        = $this->Attendance->get_classes();
 		$this->data['Classes']          = $classes['Classes'];
-		$this->data['Tournaments']      = $this->Reports->get_tournaments(null, null, null, $event_id, $detail_id);
+		// [TOURNAMENTS HIDDEN] $this->data['Tournaments'] = [];
 
 		if ( $this->request->exists('Attendance_event') ) {
 			$this->data['Attendance_event'] = $this->request->Attendance_event->Request;
@@ -362,13 +368,17 @@ class Controller_Event extends Controller {
 		$this->data['AttendanceCount'] = count($this->data['AttendanceReport']['Attendance'] ?? []);
 
 		$this->data['CanManageEvent'] = $uid > 0
-			&& Ork3::$Lib->authorization->HasAuthority($uid, AUTH_EVENT, $event_id, AUTH_EDIT);
-		$this->data['CanManageAttendance'] = $uid > 0
 			&& Ork3::$Lib->authorization->HasAuthority($uid, AUTH_EVENT, $event_id, AUTH_CREATE);
+		$this->data['CanManageAttendance'] = $uid > 0
+			&& Ork3::$Lib->authorization->HasAuthority($uid, AUTH_EVENT, $event_id, AUTH_EDIT);
 
 		$this->data['RsvpCount']     = $this->Event->get_rsvp_count($detail_id);
 		$this->data['UserAttending'] = $uid > 0 ? $this->Event->get_rsvp($detail_id, $uid) : false;
 		$this->data['RsvpList']      = $this->data['CanManageAttendance'] ? $this->Event->get_rsvp_list($detail_id) : [];
+
+		global $DB;
+		$cdCountRow = $DB->DataSet('SELECT COUNT(*) AS cnt FROM ' . DB_PREFIX . 'event_calendardetail WHERE event_id = ' . $event_id . ' LIMIT 1');
+		$this->data['CalendarDetailCount'] = ($cdCountRow && $cdCountRow->Size() > 0 && $cdCountRow->Next()) ? (int)$cdCountRow->cnt : 1;
 	}
 
 	public function create( $p = null ) {
@@ -456,6 +466,8 @@ class Controller_Event extends Controller {
 					$all     = $details['CalendarEventDetails'] ?? [];
 					if ( $all ) $new_id = max(array_map('intval', array_column($all, 'EventCalendarDetailId')));
 				}
+				$bustKey = Ork3::$Lib->ghettocache->key(['', null, null, null, null, null, $event_id]);
+				Ork3::$Lib->ghettocache->bust('SearchService.Event', $bustKey);
 				header('Location: ' . UIR . "Event/detail/{$event_id}/{$new_id}");
 				return;
 			} elseif ( $r['Status'] != 5 ) {

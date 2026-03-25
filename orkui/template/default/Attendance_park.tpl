@@ -7,10 +7,12 @@ $total         = count($att_rows);
 $total_credits = 0;
 $class_counts  = [];
 
+$has_events = false;
 foreach ($att_rows as $row) {
 	$total_credits += (int)($row['Credits'] ?? 1);
 	$cname = strlen($row['Flavor'] ?? '') > 0 ? $row['Flavor'] : ($row['ClassName'] ?? 'Unknown');
 	$class_counts[$cname] = ($class_counts[$cname] ?? 0) + 1;
+	if (!empty($row['EventId'])) $has_events = true;
 }
 arsort($class_counts);
 $class_chart_h = 280;
@@ -107,7 +109,8 @@ $show_chart = $total > 0;
 	cursor: pointer;
 	margin-top: 6px;
 }
-.att-form-btn:hover { background: #3730a3; }
+.att-form-btn:hover:not(:disabled) { background: #3730a3; }
+.att-form-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .att-chart-card {
 	background: #fff;
 	border: 1px solid #e5e7eb;
@@ -359,6 +362,7 @@ $show_chart = $total > 0;
 	<div class="rp-body">
 
 		<!-- Sidebar -->
+<?php if ($CanAddAttendance) : ?>
 		<div class="rp-sidebar">
 			<div class="att-form-card">
 				<div class="att-form-card-header">
@@ -403,15 +407,10 @@ $show_chart = $total > 0;
 							<input class="att-form-input" type="text" name="Credits" id="Credits"
 								value="<?=valid_id($Attendance_park['Credits'])?$Attendance_park['Credits']:$DefaultCredits?>">
 						</div>
-<?php if ($LoggedIn) : ?>
-						<button class="att-form-btn" type="submit">Add Attendance</button>
-<?php endif; ?>
-
-	<?php if ($LoggedIn) : ?>
+					<button class="att-form-btn" type="submit" id="att-submit-btn" disabled>Add Attendance</button>
 					<button class="att-qa-open-btn" type="button" id="att-qa-open">
 						<i class="fas fa-users"></i> Quick Add — Recent Attendees
 					</button>
-<?php endif; ?>
 					<input type="hidden" id="KingdomId" name="KingdomId"
 							value="<?=valid_id($Attendance_park['KingdomId'])?$Attendance_park['KingdomId']:$DefaultKingdomId?>">
 						<input type="hidden" id="ParkId" name="ParkId"
@@ -421,8 +420,8 @@ $show_chart = $total > 0;
 					</form>
 				</div>
 			</div>
-
 		</div><!-- /rp-sidebar -->
+<?php endif; ?>
 
 		<!-- Table area -->
 		<div class="rp-table-area">
@@ -449,7 +448,8 @@ $show_chart = $total > 0;
 						<th>Class</th>
 						<th>Credits</th>
 						<th>Entered By</th>
-<?php if ($LoggedIn) : ?>
+<?php if ($has_events) : ?><th>Event</th><?php endif; ?>
+<?php if ($CanAddAttendance) : ?>
 						<th></th>
 <?php endif; ?>
 					</tr>
@@ -464,12 +464,13 @@ $show_chart = $total > 0;
 						<a href="<?=UIR.'Player/profile/'.$row['MundaneId']?>"><?=htmlspecialchars($row['Persona'])?></a>
 <?php endif; ?>
 					</td>
-					<td><a href="<?=UIR.'Kingdom/profile/'.$row['KingdomId']?>"><?=htmlspecialchars($row['KingdomName'])?></a></td>
-					<td><a href="<?=UIR.'Park/profile/'.$row['ParkId']?>"><?=htmlspecialchars($row['ParkName'])?></a></td>
+					<td><?php if (!empty($row['FromKingdomId'])) : ?><a href="<?=UIR.'Kingdom/profile/'.$row['FromKingdomId']?>"><?=htmlspecialchars($row['FromKingdomName']??'')?></a><?php else : ?><?=htmlspecialchars($row['FromKingdomName']??'')?><?php endif; ?></td>
+					<td><?php if (!empty($row['FromParkId'])) : ?><a href="<?=UIR.'Park/profile/'.$row['FromParkId']?>"><?=htmlspecialchars($row['FromParkName']??'')?></a><?php else : ?><?=htmlspecialchars($row['FromParkName']??'')?><?php endif; ?></td>
 					<td><?=htmlspecialchars(strlen($row['Flavor']??'')>0?$row['Flavor']:$row['ClassName'])?></td>
 					<td><?=(int)$row['Credits']?></td>
 					<td><a href="<?=UIR.'Player/profile/'.$row['EnteredById']?>"><?=htmlspecialchars($row['EnteredBy']??'')?></a></td>
-<?php if ($LoggedIn) : ?>
+<?php if ($has_events) : ?><td><?php if (!empty($row['EventId'])) : ?><a href="<?=UIR.'Event/detail/'.$row['EventId'].'/'.$row['EventCalendarDetailId']?>"><?=htmlspecialchars($row['EventName']??'')?></a><?php endif; ?></td><?php endif; ?>
+<?php if ($CanAddAttendance) : ?>
 					<td style="text-align:center;">
 						<a class="att-del-link" href="<?=UIR?>Attendance/park/<?=$Id?>/delete/<?=$row['AttendanceId']?>&AttendanceDate=<?=$AttendanceDate?>" title="Remove">&times;</a>
 					</td>
@@ -485,6 +486,7 @@ $show_chart = $total > 0;
 
 </div><!-- /rp-root -->
 
+<?php if ($CanAddAttendance) : ?>
 <!-- ── Quick Add Modal ──────────────────────────────── -->
 <div class="att-qa-overlay" id="att-qa-overlay">
 	<div class="att-qa-modal">
@@ -520,7 +522,7 @@ $show_chart = $total > 0;
 		</div>
 	</div>
 </div>
-
+<?php endif; ?>
 
 <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js"></script>
@@ -531,8 +533,19 @@ $show_chart = $total > 0;
 
 <script>
 $(function() {
+<?php if ($CanAddAttendance) : ?>
 	/* ── Datepicker ──────────────────────────────────── */
-	$('#AttendanceDate').datepicker({ dateFormat: 'yy-mm-dd' });
+	$('#AttendanceDate').datepicker({ dateFormat: 'yy-mm-dd', onSelect: attCheckSubmit });
+
+	/* ── Submit button validation ────────────────────── */
+	function attCheckSubmit() {
+		var ok = $('#AttendanceDate').val().trim() !== ''
+			&& parseInt($('#MundaneId').val(), 10) > 0
+			&& $('#ClassId').val() !== ''
+			&& $('#Credits').val().trim() !== '';
+		$('#att-submit-btn').prop('disabled', !ok);
+	}
+	$('#ClassId, #Credits').on('change input', attCheckSubmit);
 
 	/* ── Kingdom autocomplete ────────────────────────── */
 	$('#KingdomName').autocomplete({
@@ -610,17 +623,6 @@ $(function() {
 					kingdomOutsiders.push({ label: '', value: null, separator: true });
 				response(suggestions.concat(kingdomOutsiders).concat(globalOutsiders));
 			});
-				var outsiders = [];
-				$.each(kingdomRes[0], function(i, v) {
-					if (!localIds[v.MundaneId]) {
-						var abbr = (v.KAbbr && v.PAbbr) ? v.KAbbr + ':' + v.PAbbr : v.ParkName;
-						outsiders.push({ label: v.Persona + ' (' + abbr + ')', value: { MundaneId: v.MundaneId, PenaltyBox: v.PenaltyBox } });
-					}
-				});
-				if (suggestions.length > 0 && outsiders.length > 0)
-					suggestions.push({ label: '', value: null, separator: true });
-				response(suggestions.concat(outsiders));
-			});
 		},
 		focus:  function(e, ui) { if (!ui.item.value) return false; return showLabel('#PlayerName', ui); },
 		delay:  250,
@@ -628,9 +630,10 @@ $(function() {
 			if (!ui.item.value) return false;
 			showLabel('#PlayerName', ui);
 			$('#MundaneId').val(ui.item.value.MundaneId);
+			attCheckSubmit();
 			return false;
 		},
-		change: function(e, ui) { if (!ui.item) { showLabel('#PlayerName', null); $('#MundaneId').val(null); } return false; }
+		change: function(e, ui) { if (!ui.item) { showLabel('#PlayerName', null); $('#MundaneId').val(null); } attCheckSubmit(); return false; }
 	}).focus(function() { if (!this.value) $(this).trigger('keydown.autocomplete'); });
 
 	playerAC.data('autocomplete')._renderItem = function(ul, item) {
@@ -640,7 +643,6 @@ $(function() {
 	};
 
 	/* ── Quick Add Modal ────────────────────────────── */
-<?php if ($LoggedIn) : ?>
 	(function() {
 		var RECENT     = <?=json_encode(array_values(is_array($RecentAttendees['Attendees'] ?? null) ? $RecentAttendees['Attendees'] : []))?>;
 		var CLASSES    = <?=json_encode(array_values($Classes['Classes'] ?? []))?>;
@@ -788,8 +790,11 @@ $(function() {
 		],
 		columnDefs: [
 			{ targets: [4], type: 'num', className: 'dt-right' },
-<?php if ($LoggedIn) : ?>
-			{ targets: [-1], orderable: false, searchable: false }
+<?php if ($has_events) : ?>
+			{ targets: [6], orderable: false, searchable: false },
+<?php endif; ?>
+<?php if ($CanAddAttendance) : ?>
+			{ targets: [-1], orderable: false, searchable: false },
 <?php endif; ?>
 		],
 		order: [[0, 'asc']],

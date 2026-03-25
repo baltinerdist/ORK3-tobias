@@ -7,11 +7,12 @@
 	$description = trim(str_replace(['<br />', '<br/>', '<br>'], '', $parkInfo['Description'] ?? ''));
 	$directions  = trim(str_replace(['<br />', '<br/>', '<br>'], '', $parkInfo['Directions']  ?? ''));
 	$websiteUrl  = trim($parkInfo['Url']          ?? '');
+	$parkIsInactive = (trim($parkInfo['Active'] ?? 'Active') !== 'Active');
 
 	$officerList    = $park_officers['Officers']          ?? [];
 	$parkDayList    = $park_days['ParkDays']              ?? [];
 	$eventList      = (array)($event_summary              ?? []);
-	$tournamentList = $park_tournaments['Tournaments']    ?? [];
+	// [TOURNAMENTS HIDDEN] $tournamentList = [];
 
 	// Extract Monarch & Regent for hero display
 	$monarch = null; $regent = null;
@@ -171,7 +172,7 @@
 <!-- =============================================
      ZONE 1: Hero Header
      ============================================= -->
-<div class="pk-hero">
+<div class="pk-hero<?= $parkIsInactive ? ' pk-hero--inactive' : '' ?>">
 	<div class="pk-hero-bg" style="background-image: url('<?= htmlspecialchars($heraldryUrl) ?>')"></div>
 	<div class="pk-hero-content">
 
@@ -183,7 +184,7 @@
 				<img class="heraldry-img" src="<?= htmlspecialchars($displayHeraldryUrl) ?>"
 				     alt="<?= htmlspecialchars($park_name) ?> heraldry"
 				     crossorigin="anonymous"
-				     onload="typeof pkApplyHeroColor==='function'&&pkApplyHeroColor(this)">
+				     onload="typeof pkApplyHeroColor==='function'&&!<?= $parkIsInactive ? 'true' : 'false' ?>&&pkApplyHeroColor(this)">
 				<?php if (!empty($CanManagePark)): ?>
 				<button class="pk-heraldry-edit-btn" onclick="pkOpenHeraldryModal()" title="Change heraldry">
 					<i class="fas fa-camera"></i>
@@ -209,6 +210,9 @@
 					$_heroProvince = trim($parkInfo['Province'] ?? '');
 					$_heroLocation = implode(', ', array_filter([$_heroCity, $_heroProvince]));
 				?>
+				<?php if ($parkIsInactive): ?>
+					<span class="pk-inactive-badge"><i class="fas fa-moon"></i> Inactive Park</span>
+				<?php endif; ?>
 				<?php if ($_heroLocation): ?>
 					<span class="pk-hero-location"><i class="fas fa-map-marker-alt"></i> <?= htmlspecialchars($_heroLocation) ?></span>
 				<?php endif; ?>
@@ -340,7 +344,7 @@
 					<span class="pk-link-icon"><i class="fas fa-image"></i></span>
 					<a href="<?= UIR ?>Reports/playerheraldry/<?= $kingdom_id ?>&ParkId=<?= $park_id ?>">Park Heraldry</a>
 				</li>
-				<?php if ($LoggedIn): ?>
+				<?php if ($IsLoggedIn): ?>
 				<li>
 					<span class="pk-link-icon"><i class="fas fa-eye"></i></span>
 					<a href="<?= UIR ?>Attendance/behold/<?= $park_id ?>">Behold!</a>
@@ -399,6 +403,11 @@
 					<?php if (!empty($AwardRecommendations)): ?>
 					<span class="pk-tab-count">(<?= count($AwardRecommendations) ?>)</span>
 					<?php endif; ?>
+				</li>
+				<?php endif; ?>
+				<?php if (!empty($CanManagePark)): ?>
+				<li data-pktab="admin">
+					<i class="fas fa-cog"></i><span class="pk-tab-label"> Admin Tasks</span>
 				</li>
 				<?php endif; ?>
 			</ul>
@@ -467,10 +476,17 @@
 					<div class="pk-schedule-grid">
 						<?php foreach ($parkDayList as $day): ?>
 						<?php
+							if (!function_exists('pk_ordinal')) {
+								function pk_ordinal($n) {
+									$n = (int)$n; $m = $n % 100;
+									if ($m >= 11 && $m <= 13) return $n . 'th';
+									return $n . (['th','st','nd','rd'][$n % 10] ?? 'th');
+								}
+							}
 							switch ($day['Recurrence']) {
 								case 'weekly':        $recText = 'Every ' . $day['WeekDay']; break;
-								case 'week-of-month': $recText = 'Every ' . shortScale::toDigith($day['WeekOfMonth']) . ' ' . $day['WeekDay']; break;
-								case 'monthly':       $recText = 'Monthly on the ' . shortScale::toDigith($day['MonthDay']); break;
+								case 'week-of-month': $recText = 'Every ' . pk_ordinal($day['WeekOfMonth']) . ' ' . $day['WeekDay']; break;
+								case 'monthly':       $recText = 'Monthly on the ' . pk_ordinal($day['MonthDay']); break;
 								default:              $recText = $day['Recurrence'];
 							}
 							switch ($day['Purpose']) {
@@ -537,7 +553,6 @@
 					<div class="pk-empty">No park days scheduled</div>
 				<?php endif; ?>
 				</div><!-- /pk-about-schedule -->
-				</div><!-- /pk-about-grid -->
 			</div><!-- /pk-tab-about -->
 
 			<!-- Events Tab -->
@@ -600,8 +615,8 @@
 							<?php
 								switch ($pkDay['Recurrence']) {
 									case 'weekly':        $pkDayRec = 'Every ' . $pkDay['WeekDay']; break;
-									case 'week-of-month': $pkDayRec = 'Every ' . shortScale::toDigith($pkDay['WeekOfMonth']) . ' ' . $pkDay['WeekDay']; break;
-									case 'monthly':       $pkDayRec = 'Monthly on the ' . shortScale::toDigith($pkDay['MonthDay']); break;
+									case 'week-of-month': $pkDayRec = 'Every ' . pk_ordinal($pkDay['WeekOfMonth']) . ' ' . $pkDay['WeekDay']; break;
+									case 'monthly':       $pkDayRec = 'Monthly on the ' . pk_ordinal($pkDay['MonthDay']); break;
 									default:              $pkDayRec = $pkDay['Recurrence'];
 								}
 								$pkPurposeLabels = ['fighter-practice'=>'Fighter Practice','arts-day'=>'A&S Day','other'=>'Other'];
@@ -626,39 +641,7 @@
 				<?php endif; ?>
 				</div><!-- /pk-events-list-view -->
 
-				<div style="display:flex;align-items:center;justify-content:space-between;margin:20px 0 10px;border-top:1px solid #e2e8f0;padding-top:16px;">
-					<h4 style="margin:0;font-size:14px;font-weight:700;color:#4a5568;"><i class="fas fa-trophy" style="margin-right:6px;color:#a0aec0"></i>Tournaments</h4>
-					<?php if ($CanManagePark): ?>
-					<button onclick="pkOpenAddTournamentModal()" style="display:inline-flex;align-items:center;gap:5px;background:#276749;color:#fff;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:600;border:none;cursor:pointer;">
-						<i class="fas fa-plus"></i> Add Tournament
-					</button>
-					<?php endif; ?>
-				</div>
-				<?php if (count($tournamentList) > 0): ?>
-					<table class="pk-table" id="pk-tournaments-table">
-						<thead>
-							<tr>
-								<th data-sorttype="text">Tournament</th>
-								<th data-sorttype="text">Event</th>
-								<th data-sorttype="date">Date</th>
-							</tr>
-						</thead>
-						<tbody>
-							<?php foreach ($tournamentList as $t): ?>
-							<tr onclick='window.location.href="<?= UIR ?>Tournament/worksheet/<?= $t['TournamentId'] ?>"'>
-								<td><?= htmlspecialchars($t['Name']) ?></td>
-								<td><?= htmlspecialchars($t['EventName']) ?></td>
-								<td class="pk-date-col" data-sortval="<?= $t['DateTime'] ?>">
-									<?= date('M. j, Y', strtotime($t['DateTime'])) ?>
-								</td>
-							</tr>
-							<?php endforeach; ?>
-						</tbody>
-					</table>
-					<div class="pk-pagination" id="pk-tournaments-table-pages"></div>
-				<?php else: ?>
-					<div class="pk-empty">No tournaments found</div>
-				<?php endif; ?>
+				<?php /* [TOURNAMENTS HIDDEN] */ ?>
 			</div>
 
 
@@ -885,13 +868,11 @@
 
 			<!-- Hall of Arms Tab -->
 			<?php
-				$_isOwnPark = isset($this->__session->user_id)
-					&& (int)$this->__session->user_id > 0
-					&& (int)($this->__session->park_id ?? 0) === (int)$park_id;
+				$_isOwnPark = !empty($IsOwnPark);
 				$_currentUserHasHeraldry = true;
 				if ($_isOwnPark) {
 					foreach ($allPlayers as $_cp) {
-						if ((int)$_cp['MundaneId'] === (int)$this->__session->user_id) {
+						if ((int)$_cp['MundaneId'] === (int)$CurrentUserId) {
 							$_currentUserHasHeraldry = (bool)$_cp['HasHeraldry'];
 							break;
 						}
@@ -938,7 +919,7 @@
 				<div class="pk-hoa-cta">
 					<i class="fas fa-shield-alt pk-hoa-cta-icon"></i>
 					<div class="pk-hoa-cta-body">
-						<strong>Your arms should be here!</strong> Visit <a href="<?= UIR ?>Player/profile/<?= (int)$this->__session->user_id ?>">your profile</a> to upload your own heraldry. Don't have heraldry of your own? Reach out to your park or kingdom Regent to be connected with heraldic resources who can help.
+						<strong>Your arms should be here!</strong> Visit <a href="<?= UIR ?>Player/profile/<?= (int)$CurrentUserId ?>">your profile</a> to upload your own heraldry. Don't have heraldry of your own? Reach out to your park or kingdom Regent to be connected with heraldic resources who can help.
 					</div>
 				</div>
 				<?php endif; ?>
@@ -966,6 +947,7 @@
 							<li><a href="<?= UIR ?>Reports/active_waivered_duespaid/Park&id=<?= $park_id ?>">Waivered Attendance</a></li>
 							<li><a href="<?= UIR ?>Reports/reeve&KingdomId=<?= $kingdom_id ?>&ParkId=<?= $park_id ?>">Reeve Qualified</a></li>
 							<li><a href="<?= UIR ?>Reports/corpora&KingdomId=<?= $kingdom_id ?>&ParkId=<?= $park_id ?>">Corpora Qualified</a></li>
+							<li><a href="<?= UIR ?>Reports/closest_parks&ParkId=<?= $park_id ?>"><i class="fas fa-map-marker-alt"></i> Closest Parks</a></li>
 						</ul>
 					</div>
 					<div class="kn-report-group">
@@ -991,23 +973,37 @@
 							<li><a href="<?= UIR ?>Reports/custom_awards&KingdomId=<?= $kingdom_id ?>&ParkId=<?= $park_id ?>">Custom Awards</a></li>
 						</ul>
 					</div>
-					<?php if (!empty($CanManagePark)): ?>
+
+				</div>
+			</div>
+
+			<!-- Admin Tab -->
+			<?php if (!empty($CanManagePark)): ?>
+			<div class="pk-tab-panel" id="pk-tab-admin" style="display:none">
+				<div class="kn-report-cols">
 					<div class="kn-report-group">
-						<h5><i class="fas fa-cog"></i> Admin</h5>
+						<h5><i class="fas fa-users-cog"></i> Players</h5>
 						<ul>
 							<li><a href="#" onclick="pkOpenAddPlayerModal();return false;">Add Player</a></li>
 							<li><a href="#" onclick="pkOpenMovePlayerModal();return false;">Move Player</a></li>
 							<li><a href="<?= UIR ?>Admin/mergeplayer/park/<?= $park_id ?>">Merge Players</a></li>
+							<li><a href="<?= UIR ?>Reports/suspended/Park&id=<?= $park_id ?>">Suspensions</a></li>
 						</ul>
 					</div>
-					<?php endif; ?>
+					<div class="kn-report-group">
+						<h5><i class="fas fa-cog"></i> Park</h5>
+						<ul>
+							<li><a href="<?= UIR ?>Admin/permissions/Park/<?= $park_id ?>">Roles &amp; Permissions</a></li>
+						</ul>
+					</div>
 				</div>
 			</div>
+			<?php endif; ?>
 
 			<!-- Recommendations Tab -->
 			<?php if (!empty($ShowRecsTab)): ?>
 			<div class="pk-tab-panel" id="pk-tab-recommendations" style="display:none">
-				<?php if ($LoggedIn): ?>
+				<?php if ($IsLoggedIn): ?>
 				<div class="pk-tab-toolbar">
 					<button class="pk-btn pk-btn-secondary" onclick="pkOpenRecModal()">
 						<i class="fas fa-star"></i> Recommend an Award
@@ -1015,7 +1011,7 @@
 				</div>
 				<?php endif; ?>
 				<?php if (empty($AwardRecommendations)): ?>
-				<div class="pk-recs-empty">There are no open award recommendations for <?= htmlspecialchars($park_name) ?>. <a href="#" onclick="pkOpenRecModal();return false;">You can submit a new recommendation here!</a></div>
+				<div class="pk-recs-empty">There are no open award recommendations for <?= htmlspecialchars($park_name) ?>.</div>
 				<?php else: ?>
 				<div class="pk-recs-table-wrap">
 					<table id="pk-rec-table" class="pk-recs-table display">
@@ -1055,7 +1051,7 @@
 							<?php if (!empty($CanManagePark)): ?>
 							<td class="pk-rec-actions">
 								<button class="pk-btn pk-btn-primary pk-rec-grant-btn"
-									data-rec="<?= htmlspecialchars(json_encode(['MundaneId'=>(int)$rec['MundaneId'],'Persona'=>$rec['Persona'],'KingdomAwardId'=>(int)$rec['KingdomAwardId'],'Rank'=>(int)$rec['Rank'],'Reason'=>$rec['Reason']??''])) ?>">
+									data-rec="<?= htmlspecialchars(json_encode(['MundaneId'=>(int)$rec['MundaneId'],'Persona'=>$rec['Persona'],'KingdomAwardId'=>(int)$rec['KingdomAwardId'],'Rank'=>(int)$rec['Rank'],'Reason'=>$rec['Reason']??''], JSON_HEX_APOS | JSON_HEX_QUOT), ENT_QUOTES) ?>">
 									<i class="fas fa-medal"></i> Grant
 								</button>
 								<button class="pk-rec-dismiss-btn"
@@ -1112,7 +1108,7 @@ var PkConfig = {
 	},
 };
 </script>
-<?php if ($LoggedIn): ?>
+<?php if ($IsLoggedIn): ?>
 <div id="pk-award-overlay">
 	<div class="pk-modal-box" style="width:560px;max-width:calc(100vw - 40px);">
 		<div class="pk-modal-header">
@@ -1690,13 +1686,13 @@ var PkConfig = {
 <?php if (!empty($CanManagePark)): ?>
 <!-- Heraldry Upload Modal -->
 <div id="pk-heraldry-overlay">
-	<div class="pn-modal-box" style="width:420px;max-width:calc(100vw - 40px)">
-		<div class="pn-modal-header">
-			<h3 class="pn-modal-title"><i class="fas fa-camera" style="margin-right:8px;color:#2c5282"></i>Change Heraldry</h3>
-			<button class="pn-modal-close-btn" id="pk-heraldry-close-btn" aria-label="Close">&times;</button>
+	<div class="pk-modal-box" style="width:420px;max-width:calc(100vw - 40px)">
+		<div class="pk-modal-header">
+			<h3 class="pk-modal-title"><i class="fas fa-camera" style="margin-right:8px;color:#2c5282"></i>Change Heraldry</h3>
+			<button class="pk-modal-close-btn" id="pk-heraldry-close-btn" aria-label="Close">&times;</button>
 		</div>
 		<!-- Step: select -->
-		<div class="pn-modal-body" id="pk-heraldry-step-select">
+		<div class="pk-modal-body" id="pk-heraldry-step-select">
 			<label class="pn-upload-area" for="pk-heraldry-file-input" style="cursor:pointer">
 				<i class="fas fa-cloud-upload-alt pn-upload-icon"></i>
 				Click to choose an image
@@ -1719,12 +1715,12 @@ var PkConfig = {
 <?php endif; ?>
 		</div>
 		<!-- Step: uploading -->
-		<div class="pn-modal-body" id="pk-heraldry-step-uploading" style="display:none;text-align:center;padding:40px 20px">
+		<div class="pk-modal-body" id="pk-heraldry-step-uploading" style="display:none;text-align:center;padding:40px 20px">
 			<i class="fas fa-spinner fa-spin" style="font-size:32px;color:#4299e1"></i>
 			<p style="margin-top:12px;color:#718096">Uploading&hellip;</p>
 		</div>
 		<!-- Step: done -->
-		<div class="pn-modal-body" id="pk-heraldry-step-done" style="display:none;text-align:center;padding:40px 20px">
+		<div class="pk-modal-body" id="pk-heraldry-step-done" style="display:none;text-align:center;padding:40px 20px">
 			<i class="fas fa-check-circle" style="font-size:32px;color:#48bb78"></i>
 			<p style="margin-top:12px;color:#48bb78;font-weight:600">Updated! Refreshing&hellip;</p>
 		</div>
@@ -1772,7 +1768,7 @@ var PkConfig = {
 		</div>
 		<div class="pk-modal-footer">
 			<button class="pk-btn-ghost" id="pk-moveplayer-cancel">Cancel</button>
-			<button class="pk-btn pk-btn-primary" id="pk-moveplayer-submit"><i class="fas fa-arrow-right"></i> Move Player</button>
+			<button class="pk-btn pk-btn-primary" id="pk-moveplayer-submit" disabled><i class="fas fa-arrow-right"></i> Move Player</button>
 		</div>
 	</div>
 </div>
@@ -1931,41 +1927,8 @@ var PkConfig = {
 	</div>
 </div>
 
-<!-- Add Tournament Modal -->
-<div id="pk-addtournament-overlay">
-	<div class="pk-modal-box" style="width:480px;max-width:calc(100vw - 40px);">
-		<div class="pk-modal-header">
-			<h3 class="pk-modal-title"><i class="fas fa-trophy" style="margin-right:8px;color:#276749"></i>Add Tournament</h3>
-			<button class="pk-modal-close-btn" id="pk-addtournament-close-btn" aria-label="Close">&times;</button>
-		</div>
-		<div class="pk-modal-body">
-			<div id="pk-addtournament-feedback" style="display:none;margin-bottom:12px;font-size:13px;font-weight:600;"></div>
-			<div class="pk-addday-field">
-				<label for="pk-addtournament-name">Name <span style="color:#e53e3e">*</span></label>
-				<input type="text" id="pk-addtournament-name" placeholder="e.g. Bear Pit" maxlength="128" />
-			</div>
-			<div class="pk-addday-field">
-				<label for="pk-addtournament-when">Date <span style="color:#e53e3e">*</span></label>
-				<input type="date" id="pk-addtournament-when" />
-			</div>
-			<div class="pk-addday-field">
-				<label for="pk-addtournament-desc">Description <span style="color:#a0aec0;font-size:11px;text-transform:none;letter-spacing:0">(optional)</span></label>
-				<textarea id="pk-addtournament-desc" rows="3" placeholder="Brief description..."></textarea>
-			</div>
-			<div class="pk-addday-field">
-				<label for="pk-addtournament-url">URL <span style="color:#a0aec0;font-size:11px;text-transform:none;letter-spacing:0">(optional)</span></label>
-				<input type="url" id="pk-addtournament-url" placeholder="https://..." maxlength="255" />
-			</div>
-		</div>
-		<div class="pk-modal-footer">
-			<button class="pk-btn pk-btn-ghost" id="pk-addtournament-cancel">Cancel</button>
-			<button class="pk-btn pk-btn-primary" id="pk-addtournament-submit">
-				<i class="fas fa-plus"></i> Create Tournament
-			</button>
-		</div>
-	</div>
-</div>
 <?php endif; ?>
+<!-- [TOURNAMENTS HIDDEN] add-tournament modal -->
 <script src="<?= HTTP_TEMPLATE ?>revised-frontend/script/revised.js?v=<?= filemtime(__DIR__ . '/script/revised.js') ?>"></script>
 
 <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>

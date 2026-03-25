@@ -25,7 +25,7 @@ class Controller_Park extends Controller
 		}
 		$this->data[ 'kingdom_id' ] = $this->session->kingdom_id;
 		$this->data[ 'park_id' ] = $this->session->park_id;
-		$this->data[ 'kingdom_name' ] = $this->session->kingdom_id;
+		$this->data[ 'kingdom_name' ] = $this->session->kingdom_name;
 
 		if ( isset( $this->request->park_name ) ) {
 			$this->session->park_name = $this->request->park_name;
@@ -53,7 +53,7 @@ class Controller_Park extends Controller
 		$this->data[ 'park_days' ] = $this->Park->get_park_parkdays( $park_id );
 		$this->data[ 'park_info' ] = $this->Park->get_park_details( $park_id );
 		$this->data[ 'park_officers' ] = $this->Park->GetOfficers(['ParkId' => $park_id, 'Token' => $this->session->token]);
-		$this->data[ 'park_tournaments' ] = $this->Reports->get_tournaments( null, null, $park_id );
+		// [TOURNAMENTS HIDDEN] $this->data['park_tournaments'] = [];
 	}
 
 	public function profile( $park_id = null )
@@ -119,7 +119,8 @@ class Controller_Park extends Controller
 			    AND cd.event_start <= DATE_ADD(NOW(), INTERVAL 12 MONTH)
 			WHERE e.park_id = {$pid}
 			ORDER BY cd.event_start, e.name";
-		$evtResult    = $DB->DataSet($evtSql);
+		$DB->Clear();
+	$evtResult    = $DB->DataSet($evtSql);
 		$eventSummary = [];
 		if ($evtResult) {
 			do {
@@ -170,7 +171,8 @@ class Controller_Park extends Controller
 			  AND m.active = 1
 			GROUP BY m.mundane_id
 			ORDER BY m.persona";
-		$rosterResult = $DB->DataSet($rosterSql);
+		$DB->Clear();
+	$rosterResult = $DB->DataSet($rosterSql);
 		$parkPlayers  = [];
 		if ($rosterResult && $rosterResult->Size() > 0) {
 			while ($rosterResult->Next()) {
@@ -199,7 +201,8 @@ class Controller_Park extends Controller
 				  AND a.mundane_id > 0
 				GROUP BY a.date_year, a.date_month, a.mundane_id
 			) monthly_uniques";
-		$maResult = $DB->DataSet($monthlyAvgSql);
+		$DB->Clear();
+	$maResult = $DB->DataSet($monthlyAvgSql);
 		$this->data['MonthlyAvg'] = 0;
 		if ($maResult && $maResult->Next()) {
 			$_totalPM = (int)$maResult->total_player_months;
@@ -208,21 +211,34 @@ class Controller_Park extends Controller
 
 		$uid = isset($this->session->user_id) ? (int)$this->session->user_id : 0;
 		$this->data['IsLoggedIn']    = $uid > 0;
+		$this->data['CurrentUserId'] = $uid;
+		$this->data['IsOwnPark']     = $uid > 0 && (int)($this->session->park_id ?? 0) === (int)$park_id;
 		$this->data['CanManagePark'] = $uid > 0
-			&& Ork3::$Lib->authorization->HasAuthority($uid, AUTH_PARK, (int)$park_id, AUTH_CREATE);
+			&& Ork3::$Lib->authorization->HasAuthority($uid, AUTH_PARK, (int)$park_id, AUTH_EDIT);
 
 		$knConfigs  = Common::get_configs($this->session->kingdom_id, CFG_KINGDOM);
 		$recsPublic = isset($knConfigs['AwardRecsPublic'])
 			? (bool)(int)$knConfigs['AwardRecsPublic']['Value']
 			: true;
-		$this->data['ShowRecsTab']     = $recsPublic || $this->data['CanManagePark'] || $uid > 0;
-		$this->data['AwardRecsPublic']   = $recsPublic;
-		$this->data['CallerIsOrkAdmin']  = $uid > 0 && Ork3::$Lib->authorization->HasAuthority($uid, AUTH_ADMIN, 0, AUTH_EDIT);
+		$this->data['AwardRecsPublic']  = $recsPublic;
+		$this->data['CallerIsOrkAdmin'] = $uid > 0 && Ork3::$Lib->authorization->HasAuthority($uid, AUTH_ADMIN, 0, AUTH_EDIT);
 
 		$this->data['AwardRecommendations'] = [];
-		if ($this->data['ShowRecsTab']) {
+		$canManagePark = $this->data['CanManagePark'] ?? false;
+		if ($recsPublic || $canManagePark) {
+			$this->data['ShowRecsTab'] = true;
 			$recs = $this->Reports->recommended_awards(['KingdomId' => 0, 'ParkId' => $park_id, 'PlayerId' => 0, 'CallerUid' => $uid]);
 			$this->data['AwardRecommendations'] = is_array($recs) ? $recs : [];
+		} elseif ($uid > 0) {
+			$recs = $this->Reports->recommended_awards(['KingdomId' => 0, 'ParkId' => $park_id, 'PlayerId' => 0, 'CallerUid' => $uid]);
+			$allRecs = is_array($recs) ? $recs : [];
+			$myRecs = array_values(array_filter($allRecs, function($r) use ($uid) {
+				return (int)$r['RecommendedById'] === $uid;
+			}));
+			$this->data['AwardRecommendations'] = $myRecs;
+			$this->data['ShowRecsTab'] = !empty($myRecs);
+		} else {
+			$this->data['ShowRecsTab'] = false;
 		}
 
 		$this->data['PronounList']          = $this->Pronoun->fetch_pronoun_list();

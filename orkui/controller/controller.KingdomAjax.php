@@ -448,6 +448,94 @@ class Controller_KingdomAjax extends Controller {
 				? json_encode(['status' => 0, 'tournamentId' => (int)($r['Detail'] ?? 0)])
 				: json_encode(['status' => $r['Status'], 'error' => ($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? '')]);
 
+		} elseif ($action === 'deletetournament') {
+			$this->load_model('Tournament');
+			$tournament_id = (int)($_POST['TournamentId'] ?? 0);
+			if (!valid_id($tournament_id)) {
+				echo json_encode(['status' => 1, 'error' => 'Invalid tournament ID.']); exit;
+			}
+			$r = $this->Tournament->delete_tournament([
+				'Token'        => $this->session->token,
+				'TournamentId' => $tournament_id,
+			]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0])
+				: json_encode(['status' => $r['Status'], 'error' => ($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? '')]);
+
+				} elseif ($action === 'setrecsvisibility') {
+			$uid = (int)$this->session->user_id;
+			if (!Ork3::$Lib->authorization->HasAuthority($uid, AUTH_KINGDOM, $kingdom_id, AUTH_EDIT)) {
+				echo json_encode(['status' => 5, 'error' => 'Not authorized.']); exit;
+			}
+			$value = (int)($_POST['Value'] ?? 1) ? '1' : '0';
+			global $DB;
+			$kid = (int)$kingdom_id;
+			$DB->Clear();
+			$existing = $DB->DataSet("SELECT configuration_id FROM " . DB_PREFIX . "configuration WHERE type='Kingdom' AND id=$kid AND `key`='AwardRecsPublic' LIMIT 1");
+			if ($existing && $existing->Next()) {
+				$cid = (int)$existing->configuration_id;
+				$DB->Clear();
+				$DB->Execute("UPDATE " . DB_PREFIX . "configuration SET value='" . json_encode($value) . "', modified=NOW() WHERE configuration_id=$cid");
+			} else {
+				$DB->Clear();
+				$DB->Execute("INSERT INTO " . DB_PREFIX . "configuration (type, var_type, id, `key`, value, user_setting, allowed_values, modified) VALUES ('Kingdom', 'fixed', $kid, 'AwardRecsPublic', '" . json_encode($value) . "', 1, 'null', NOW())");
+			}
+			echo json_encode(['status' => 0]);
+
+		} elseif ($action === 'addauth') {
+			$uid = (int)$this->session->user_id;
+			if (!Ork3::$Lib->authorization->HasAuthority($uid, AUTH_KINGDOM, $kingdom_id, AUTH_CREATE)) {
+				echo json_encode(['status' => 5, 'error' => 'Not authorized.']); exit;
+			}
+			$mid  = (int)($_POST['MundaneId'] ?? 0);
+			$role = in_array($_POST['Role'] ?? '', ['create','edit','admin']) ? $_POST['Role'] : 'create';
+			if (!$mid) { echo json_encode(['status' => 1, 'error' => 'Invalid player.']); exit; }
+			if ($role === 'admin' && !Ork3::$Lib->authorization->HasAuthority($uid, AUTH_ADMIN, 0, AUTH_ADMIN)) {
+				echo json_encode(['status' => 5, 'error' => 'Only a system administrator can grant the Administrator role.']); exit;
+			}
+			global $DB;
+			$DB->Clear();
+			$DB->Execute("INSERT INTO ork_authorization (mundane_id, park_id, kingdom_id, event_id, unit_id, role, modified)
+				VALUES ({$mid}, 0, {$kingdom_id}, 0, 0, '{$role}', NOW())");
+			$DB->Clear();
+			$rs = $DB->DataSet("SELECT a.authorization_id, m.persona FROM ork_authorization a
+				LEFT JOIN ork_mundane m ON m.mundane_id = a.mundane_id
+				WHERE a.mundane_id = {$mid} AND a.kingdom_id = {$kingdom_id}
+				ORDER BY a.authorization_id DESC LIMIT 1");
+			$authId = 0; $persona = '';
+			if ($rs && $rs->Next()) { $authId = (int)$rs->authorization_id; $persona = $rs->persona; }
+			echo json_encode(['status' => 0, 'authId' => $authId, 'persona' => $persona]);
+
+		} elseif ($action === 'removeauth') {
+			$uid = (int)$this->session->user_id;
+			if (!Ork3::$Lib->authorization->HasAuthority($uid, AUTH_KINGDOM, $kingdom_id, AUTH_CREATE)) {
+				echo json_encode(['status' => 5, 'error' => 'Not authorized.']); exit;
+			}
+			$this->load_model('Authorization');
+			$r = $this->Authorization->del_auth([
+				'Token'           => $this->session->token,
+				'AuthorizationId' => (int)($_POST['AuthorizationId'] ?? 0),
+			]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0])
+				: json_encode(['status' => $r['Status'], 'error' => ($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? '')]);
+
+		} elseif ($action === 'getparks') {
+			$this->load_model('Kingdom');
+			$r = $this->Kingdom->get_park_info($kingdom_id);
+			$parks = [];
+			foreach ($r['Parks'] ?? [] as $park) {
+				$parks[] = ['ParkId' => $park['ParkId'], 'Name' => $park['Name']];
+			}
+			echo json_encode(['status' => 0, 'parks' => $parks]);
+		} elseif ($action === 'parktitles') {
+			$this->load_model('Kingdom');
+			$result = $this->Kingdom->get_park_info($kingdom_id);
+			$titles = [];
+			foreach ($result['Titles'] ?? [] as $pt) {
+				$titles[] = ['ParkTitleId' => (int)$pt['ParkTitleId'], 'Title' => $pt['Title']];
+			}
+			echo json_encode(['status' => 0, 'titles' => $titles]);
 		} else {
 			echo json_encode(['status' => 1, 'error' => 'Unknown action']);
 		}
@@ -600,8 +688,9 @@ class Controller_KingdomAjax extends Controller {
 			exit;
 		}
 
-		$q     = trim($_GET['q']     ?? '');
-		$scope = trim($_GET['scope'] ?? 'own'); // 'own' | 'exclude'
+		$q       = trim($_GET['q']       ?? '');
+		$scope   = trim($_GET['scope']   ?? 'own'); // 'own' | 'exclude'
+		$park_id = (int)($_GET['park_id'] ?? 0);
 		if (strlen($q) < 2) {
 			echo json_encode([]);
 			exit;
@@ -617,6 +706,8 @@ class Controller_KingdomAjax extends Controller {
 			$kingdom_clause = "AND m.kingdom_id = {$kid}";
 		}
 
+		$park_clause = valid_id($park_id) ? "AND m.park_id = {$park_id}" : '';
+
 		$sql = "
 			SELECT m.mundane_id, m.persona, p.park_id, k.kingdom_id,
 			       k.name AS kingdom_name, p.name AS park_name,
@@ -627,6 +718,7 @@ class Controller_KingdomAjax extends Controller {
 			LEFT JOIN ork_park p ON p.park_id = m.park_id
 			WHERE m.suspended = 0 AND m.active = 1 AND LENGTH(m.persona) > 0
 			  {$kingdom_clause}
+			  {$park_clause}
 			  AND (m.persona LIKE '%{$term}%'
 			    OR m.given_name LIKE '%{$term}%'
 			    OR m.surname LIKE '%{$term}%'
@@ -634,6 +726,7 @@ class Controller_KingdomAjax extends Controller {
 			ORDER BY m.persona
 			LIMIT 15";
 
+		$DB->Clear();
 		$rs      = $DB->DataSet($sql);
 		$results = [];
 		while ($rs->Next()) {

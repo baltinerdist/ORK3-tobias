@@ -11,7 +11,6 @@
 		<li><a href='<?=UIR ?>Award/kingdom/<?=$kingdom_id ?>'>Enter Awards</a></li>
 <?php endif ; ?>
 		<li><a href='<?=UIR ?>Kingdom/map/<?=$kingdom_id ?>'>Kingdom Map</a></li>
-		<li><a href='<?=UIR ?>Treasury/kingdom/<?=$KingdomInfo['KingdomId'] ?>'>Treasury</a></li>
 	</ul>
 
 	<?php if (!empty($kingdom_officers['Officers'])): ?>
@@ -155,6 +154,7 @@ jQuery(document).ready(function($) {
 				<li><a href='<?=UIR ?>Reports/attendance/Kingdom/<?=$kingdom_id ?>/All'>All</a></li>
 				<li><a href='<?=UIR ?>Reports/park_attendance_explorer'>Park Attendance Explorer</a></li>
 				<li><a href='<?=UIR ?>Reports/new_player_attendance'>New Player Attendance</a></li>
+				<li><a href='<?=UIR ?>Reports/park_distance_matrix&KingdomId=<?=$kingdom_id ?>'>Park Distance Matrix</a></li>
 			</ul>
 		</li>
 		<li>
@@ -164,7 +164,6 @@ jQuery(document).ready(function($) {
 				<li><a href='<?=UIR ?>Reports/playerheraldry/<?=$kingdom_id ?>'><?=$IsPrinz?'Principality':'Kingdom' ?> Heraldry, Players</a></li>
 			</ul>
 		</li>
-		<li><a href='' class='unimplemented'>Treasury Report</a></li>
 		<li><a href='<?=UIR ?>Unit/unitlist&KingdomId=<?=$kingdom_id ?>'>Companies and Households</a></li>
 	</ul>
 </div>
