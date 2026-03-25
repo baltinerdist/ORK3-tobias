@@ -319,6 +319,7 @@ class Controller_ParkAjax extends Controller {
 				'Rank'           => $rank > 0 ? $rank : null,
 				'GivenById'      => $this->session->user_id,
 				'Reason'         => $reason,
+				'Anonymous'      => $anonymous,
 			]);
 			echo ($r['Status'] == 0)
 				? json_encode(['status' => 0])
