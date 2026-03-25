@@ -14,15 +14,14 @@ class Controller_Tournament extends Controller {
 			$this->data['menu']['park'] = array( 'url' => UIR.'Park/index/'.$this->session->park_id, 'display' => $this->session->park_name );
 		}
 		
-		if (isset($this->session->kingdom_id)) {
-			// Direct link
-			$this->session->kingdom_id = $park_info['KingdomInfo']['KingdomId'];
+		if (isset($park_info)) {
+			$this->session->kingdom_id   = $park_info['KingdomInfo']['KingdomId'];
 			$this->session->kingdom_name = $park_info['KingdomInfo']['KingdomName'];
 			$this->data['menu']['kingdom'] = array( 'url' => UIR.'Kingdom/profile/'.$this->session->kingdom_id, 'display' => $this->session->kingdom_name );
 		}
 		$this->data['kingdom_id'] = $this->session->kingdom_id;
 		$this->data['park_id'] = $this->session->park_id;
-		$this->data['kingdom_name'] = $this->session->kingdom_id;
+		$this->data['kingdom_name'] = $this->session->kingdom_name;
 		
 		if (isset($this->request->park_name)) {
 			$this->session->park_name = $this->request->park_name;
@@ -138,6 +137,47 @@ class Controller_Tournament extends Controller {
 		}
 		$this->data['tournament'] = $tournament;
 
+		// Build formatted event label for Edit modal pre-fill
+		$this->data['tournament_event_label'] = '';
+		if (valid_id($tournament['EventCalendarDetailId'])) {
+			global $DB;
+			$_ecd = (int)$tournament['EventCalendarDetailId'];
+			$DB->Clear();
+			$_elr = $DB->query(
+				'SELECT k.abbreviation AS kabbr, p.abbreviation AS pabbr, d.event_start '
+				. 'FROM ork_event_calendardetail d '
+				. 'LEFT JOIN ork_event e ON e.event_id = d.event_id '
+				. 'LEFT JOIN ork_kingdom k ON k.kingdom_id = e.kingdom_id '
+				. 'LEFT JOIN ork_park p ON p.park_id = e.park_id '
+				. "WHERE d.event_calendardetail_id = $_ecd"
+			);
+			if ($_elr && $_elr->next()) {
+				$_abbr = '';
+				if ($_elr->kabbr) $_abbr = $_elr->kabbr;
+				if ($_elr->pabbr) $_abbr .= ($_abbr ? ':' : '') . $_elr->pabbr;
+				$_ds = ($_elr->event_start && substr($_elr->event_start, 0, 10) !== '0000-00-00')
+					? date('m/d/Y', strtotime($_elr->event_start)) : '';
+				$_lbl = $tournament['EventName'] ?? '';
+				if ($_abbr) $_lbl .= ' ' . $_abbr;
+				if ($_ds)   $_lbl .= ' - ' . $_ds;
+				$this->data['tournament_event_label'] = $_lbl;
+			} else {
+				$this->data['tournament_event_label'] = $tournament['EventName'] ?? '';
+			}
+		}
+
+		// Load standings points config (direct query, bypasses TournamentReport cache)
+		global $DB;
+		$DB->Clear();
+		$_spRow = $DB->query('SELECT standings_points FROM ork_tournament WHERE tournament_id = ' . $tournament_id);
+		$_spDefault = [5,4,3,2,1,0,0,0];
+		if ($_spRow && $_spRow->next() && !empty($_spRow->standings_points)) {
+			$_spParsed = json_decode($_spRow->standings_points, true);
+			$this->data['standings_points'] = (is_array($_spParsed) && count($_spParsed) === 8) ? $_spParsed : $_spDefault;
+		} else {
+			$this->data['standings_points'] = $_spDefault;
+		}
+
 		// Auth: kingdom > park level edit
 		$_uid      = isset($this->session->user_id) ? (int)$this->session->user_id : 0;
 		$canManage = false;
@@ -175,9 +215,17 @@ class Controller_Tournament extends Controller {
 			$totalParticipants += count($pList);
 			$totalMatches      += count($mList);
 		}
+		// Compute distinct participant count (by MundaneId, or alias for unlinked)
+		$_seen = [];
+		foreach ($bracketData as $_bd) {
+			foreach ($_bd['Participants'] as $_p) {
+				$_key = (int)$_p['MundaneId'] > 0 ? 'mid:' . (int)$_p['MundaneId'] : 'alias:' . strtolower(trim($_p['Alias']));
+				$_seen[$_key] = true;
+			}
+		}
 		$this->data['bracket_data']      = $bracketData;
 		$this->data['TotalBrackets']     = count($brackets);
-		$this->data['TotalParticipants'] = $totalParticipants;
+		$this->data['TotalParticipants'] = count($_seen);
 		$this->data['TotalMatches']      = $totalMatches;
 
 		// Load standings per bracket (only meaningful when matches exist)
