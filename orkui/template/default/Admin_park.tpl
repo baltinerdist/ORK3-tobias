@@ -24,10 +24,9 @@
 		<li>Events
 			<ul>
 				<li><a href='<?=UIR ?>Admin/createevent'>Schedule an Event</a></li>
-				<li><a href='<?=UIR ?>Admin/manageevent'>Event Templates</a></li>
-			</ul>
+				</ul>
 		</li>
-		<li><a href='<?=UIR ?>Tournament/create&ParkId=<?=$ParkInfo['ParkId'] ?>' class='unimplemented'>Create Tournament</a></li>
+		<li><a href='<?=UIR ?>Tournament/create&ParkId=<?=$ParkInfo['ParkId'] ?>'>Create Tournament</a></li>
 	</ul>
 </div>
 <div id="dialogs" style="display: none">
