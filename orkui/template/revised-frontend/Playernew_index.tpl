@@ -36,7 +36,8 @@
 
 	// Auth helpers
 	$isOwnProfile  = isset($this->__session->user_id) && (int)$this->__session->user_id === (int)$Player['MundaneId'];
-	$canEditAdmin  = isset($this->__session->user_id) && Ork3::$Lib->authorization->HasAuthority($this->__session->user_id, AUTH_PARK, $Player['ParkId'], AUTH_EDIT);
+	$canEditAdmin     = isset($this->__session->user_id) && Ork3::$Lib->authorization->HasAuthority($this->__session->user_id, AUTH_PARK, $Player['ParkId'], AUTH_EDIT);
+	$callerIsOrkAdmin = isset($this->__session->user_id) && Ork3::$Lib->authorization->HasAuthority($this->__session->user_id, AUTH_ADMIN, 0, AUTH_EDIT);
 	$canEditImages  = $isOwnProfile || $canEditAdmin;
 	$canEditAccount = $isOwnProfile || $canEditAdmin;
 
@@ -868,7 +869,16 @@
 									<td><?= $rec['AwardName'] ?></td>
 									<td class="pn-col-numeric"><?= valid_id($rec['Rank']) ? $rec['Rank'] : '' ?></td>
 									<td class="pn-col-nowrap"><?= $rec['DateRecommended'] ?></td>
-									<td><a href="<?= UIR ?>Player/profile/<?= $rec['RecommendedById'] ?>"><?= $rec['RecommendedByName'] ?></a></td>
+									<td>
+									<?php if (!empty($rec['IsAnonymous']) && !$callerIsOrkAdmin): ?>
+										<span style="color:#718096;font-style:italic">Anonymous</span>
+									<?php elseif (!empty($rec['IsAnonymous']) && $callerIsOrkAdmin): ?>
+										<a href="<?= UIR ?>Player/profile/<?= $rec['RecommendedById'] ?>"><?= htmlspecialchars((string)$rec['RecommendedByName']) ?></a>
+										<span style="color:#a0aec0;font-size:11px">(anon)</span>
+									<?php elseif (!empty($rec['RecommendedById'])): ?>
+										<a href="<?= UIR ?>Player/profile/<?= $rec['RecommendedById'] ?>"><?= htmlspecialchars((string)$rec['RecommendedByName']) ?></a>
+									<?php else: ?>&mdash;<?php endif; ?>
+								</td>
 									<td><?= htmlspecialchars($rec['Reason']) ?></td>
 									<?php if ($this->__session->user_id): ?>
 										<td style="white-space:nowrap">
@@ -1579,6 +1589,13 @@
 					<label for="pn-rec-reason">Reason <span style="color:#e53e3e">*</span></label>
 					<input type="text" name="Reason" id="pn-rec-reason" maxlength="400" placeholder="Why should this player receive this award?" />
 					<span class="pn-char-count" id="pn-rec-char-count">400 characters remaining</span>
+				</div>
+				<div style="margin-top:12px">
+					<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:normal">
+						<input type="checkbox" name="Anonymous" id="pn-rec-anon" value="1" style="width:16px;height:16px;cursor:pointer">
+						<span>Submit Anonymously</span>
+					</label>
+					<div style="font-size:11px;color:#718096;margin-top:3px;padding-left:24px">Your name will not be visible to others on this recommendation</div>
 				</div>
 			</form>
 		</div>

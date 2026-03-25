@@ -1629,7 +1629,8 @@ class Player extends Ork3 {
 			$awardRec->rank = $check_rank;
 			$awardRec->date_recommended = date('Y-m-d');
 			$awardRec->recommended_by_id = $mundane_id;
-			$awardRec->reason = $request['Reason'];
+			$awardRec->reason     = $request['Reason'];
+			$awardRec->mask_giver = !empty($request['Anonymous']) ? 1 : 0;
 			$awardRec->save();
 			return Success('Recommendation Added!');
 		} else {

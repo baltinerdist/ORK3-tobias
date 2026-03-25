@@ -216,11 +216,12 @@ class Controller_Park extends Controller
 			? (bool)(int)$knConfigs['AwardRecsPublic']['Value']
 			: true;
 		$this->data['ShowRecsTab']     = $recsPublic || $this->data['CanManagePark'] || $uid > 0;
-		$this->data['AwardRecsPublic'] = $recsPublic;
+		$this->data['AwardRecsPublic']   = $recsPublic;
+		$this->data['CallerIsOrkAdmin']  = $uid > 0 && Ork3::$Lib->authorization->HasAuthority($uid, AUTH_ADMIN, 0, AUTH_EDIT);
 
 		$this->data['AwardRecommendations'] = [];
 		if ($this->data['ShowRecsTab']) {
-			$recs = $this->Reports->recommended_awards(['KingdomId' => 0, 'ParkId' => $park_id, 'PlayerId' => 0]);
+			$recs = $this->Reports->recommended_awards(['KingdomId' => 0, 'ParkId' => $park_id, 'PlayerId' => 0, 'CallerUid' => $uid]);
 			$this->data['AwardRecommendations'] = is_array($recs) ? $recs : [];
 		}
 

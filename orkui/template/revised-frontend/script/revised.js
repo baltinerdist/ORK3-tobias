@@ -2655,6 +2655,7 @@ $(document).ready(function() {
         gid('kn-rec-rank-pills').innerHTML  = '';
         gid('kn-rec-reason').value          = '';
         gid('kn-rec-char-count').textContent = '400 characters remaining';
+        var knAnonEl = gid('kn-rec-anon'); if (knAnonEl) knAnonEl.checked = false;
         knRecRanks = {};
         checkRequired();
         gid('kn-rec-overlay').classList.add('kn-open');
@@ -2680,6 +2681,8 @@ $(document).ready(function() {
         fd.append('Reason',         gid('kn-rec-reason').value.trim());
         var rank = gid('kn-rec-rank-val').value;
         if (rank) fd.append('Rank', rank);
+        var anonEl = gid('kn-rec-anon');
+        if (anonEl && anonEl.checked) fd.append('Anonymous', 1);
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
         fetch(UIR_JS + 'KingdomAjax/kingdom/' + KINGDOM_ID + '/addrecommendation', { method: 'POST', body: fd })
@@ -2695,6 +2698,7 @@ $(document).ready(function() {
                     gid('kn-rec-rank-pills').innerHTML = '';
                     gid('kn-rec-reason').value = '';
                     gid('kn-rec-char-count').textContent = '400 characters remaining';
+                    var knAnonElS = gid('kn-rec-anon'); if (knAnonElS) knAnonElS.checked = false;
                     knRecRanks = {};
                     setTimeout(function() { gid('kn-rec-success').style.display = 'none'; }, 3000);
                 } else {
@@ -5048,6 +5052,7 @@ $(document).ready(function() {
         gid('pk-rec-rank-pills').innerHTML  = '';
         gid('pk-rec-reason').value          = '';
         gid('pk-rec-char-count').textContent = '400 characters remaining';
+        var pkAnonEl = gid('pk-rec-anon'); if (pkAnonEl) pkAnonEl.checked = false;
         pkRecRanks = {};
         checkRequired();
         gid('pk-rec-overlay').classList.add('pk-open');
@@ -5073,6 +5078,8 @@ $(document).ready(function() {
         fd.append('Reason',         gid('pk-rec-reason').value.trim());
         var rank = gid('pk-rec-rank-val').value;
         if (rank) fd.append('Rank', rank);
+        var anonEl = gid('pk-rec-anon');
+        if (anonEl && anonEl.checked) fd.append('Anonymous', 1);
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
         fetch(UIR_JS + 'ParkAjax/park/' + PARK_ID + '/addrecommendation', { method: 'POST', body: fd })

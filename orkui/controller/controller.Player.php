@@ -205,7 +205,7 @@ class Controller_Player extends Controller {
 		$this->data['ShowRecsTab']          = $recsPublic || $canEdit;
 		$this->data['AwardRecommendations'] = [];
 		if ($this->data['ShowRecsTab'] || $uid > 0) {
-			$recs = $this->Reports->recommended_awards(array('PlayerId'=>$id, 'KingdomId'=>0, 'ParkId'=>0, 'IncludeKnights' => 1, 'IncludeMasters' => 1, 'IncludeLadder' => 1, 'LadderMinimum' => $ladder));
+			$recs = $this->Reports->recommended_awards(array('PlayerId'=>$id, 'KingdomId'=>0, 'ParkId'=>0, 'IncludeKnights' => 1, 'IncludeMasters' => 1, 'IncludeLadder' => 1, 'LadderMinimum' => $ladder, 'CallerUid' => $uid));
 			$this->data['AwardRecommendations'] = is_array($recs) ? $recs : [];
 		}
 
@@ -275,6 +275,7 @@ class Controller_Player extends Controller {
 							'KingdomAwardId' => $this->request->Player_profile->KingdomAwardId,
 							'Rank'           => $this->request->Player_profile->Rank,
 							'Reason'         => $this->request->Player_profile->Reason,
+							'Anonymous'      => !empty($this->request->Player_profile->Anonymous) ? 1 : 0,
 						]);
 						$this->request->clear('Player_profile');
 						if ($r['Status'] == 0) {
@@ -337,7 +338,7 @@ class Controller_Player extends Controller {
 		$this->data['ShowRecsTab']          = $recsPublic || $canEdit;
 		$this->data['AwardRecommendations'] = [];
 		if ($this->data['ShowRecsTab'] || $uid > 0) {
-			$recs = $this->Reports->recommended_awards(['PlayerId' => $id, 'KingdomId' => 0, 'ParkId' => 0, 'IncludeKnights' => 1, 'IncludeMasters' => 1, 'IncludeLadder' => 1, 'LadderMinimum' => 0]);
+			$recs = $this->Reports->recommended_awards(['PlayerId' => $id, 'KingdomId' => 0, 'ParkId' => 0, 'IncludeKnights' => 1, 'IncludeMasters' => 1, 'IncludeLadder' => 1, 'LadderMinimum' => 0, 'CallerUid' => $uid]);
 			$this->data['AwardRecommendations'] = is_array($recs) ? $recs : [];
 		}
 

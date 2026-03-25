@@ -339,7 +339,7 @@ class Controller_Kingdom extends Controller {
 
 		$this->data['AwardRecommendations'] = [];
 		if ($this->data['ShowRecsTab']) {
-			$recs = $this->Reports->recommended_awards(['KingdomId' => $kingdom_id, 'ParkId' => 0, 'PlayerId' => 0]);
+			$recs = $this->Reports->recommended_awards(['KingdomId' => $kingdom_id, 'ParkId' => 0, 'PlayerId' => 0, 'CallerUid' => $uid]);
 			$this->data['AwardRecommendations'] = is_array($recs) ? $recs : [];
 		}
 
@@ -381,6 +381,15 @@ class Controller_Kingdom extends Controller {
 				];
 			}
 			$this->data['AdminAwards'] = $adminAwards;
+		}
+
+		$this->data['CallerIsOrkAdmin']    = $uid > 0 && Ork3::$Lib->authorization->HasAuthority($uid, AUTH_ADMIN, 0, AUTH_EDIT);
+		$this->data['CanManageCourt']      = $uid > 0 && Ork3::$Lib->court->canManage($uid, (int)$kingdom_id, 0);
+		$this->data['CourtList']           = [];
+		$this->data['CourtUpcomingEvents'] = [];
+		if ($this->data['CanManageCourt']) {
+			$this->data['CourtList']           = Ork3::$Lib->court->getCourtList((int)$kingdom_id, 0);
+			$this->data['CourtUpcomingEvents'] = Ork3::$Lib->court->getUpcomingEvents((int)$kingdom_id);
 		}
 
 		$this->data['PronounList']          = $this->Pronoun->fetch_pronoun_list();

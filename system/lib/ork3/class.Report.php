@@ -446,6 +446,7 @@ class Report  extends Ork3 {
 			recs.reason,
 			recs.deleted_at,
 			recs.deleted_by,
+			recs.mask_giver,
 			ka.award_id as ka_award_id,
 			ka.kingdomaward_id as ka_kaward_id,
 			(SELECT COUNT(suboa.awards_id) FROM " . DB_PREFIX . "awards suboa WHERE suboa.mundane_id = recs.mundane_id AND suboa.kingdomaward_id = ka.kingdomaward_id AND suboa.rank >= recs.rank) as kacount,
@@ -460,9 +461,13 @@ class Report  extends Ork3 {
 			order by m.persona, a.name, recs.rank, m.persona";
 		$r = $this->db->query($sql);
 		$response = array();
+		$callerUid     = isset($request['CallerUid']) ? (int)$request['CallerUid'] : 0;
+		$callerIsAdmin = $callerUid > 0 && Ork3::$Lib->authorization->HasAuthority($callerUid, AUTH_ADMIN, 0, AUTH_EDIT);
 		if ($r !== false && $r->size() > 0) {
 			$response['AwardRecommendations'] = array();
 			while ($r->next()) {
+				$isAnon = (int)$r->mask_giver === 1;
+				$hideSubmitter = $isAnon && !$callerIsAdmin;
 				$response['AwardRecommendations'][] = array(
 						'RecommendationsId' => $r->recommendations_id,
 						'MundaneId' => $r->mundane_id,
@@ -471,8 +476,9 @@ class Report  extends Ork3 {
 						'Rank' => $r->rank,
 						'AwardName' => $r->award_name,
 						'Reason' => $r->reason,
-						'RecommendedByName' => $r->recommended_by_persona,
-						'RecommendedById' => $r->recommended_by_id,
+						'IsAnonymous' => $isAnon,
+						'RecommendedByName' => $hideSubmitter ? null : $r->recommended_by_persona,
+						'RecommendedById' => $hideSubmitter ? null : $r->recommended_by_id,
 						'KingdomAwardId' => (int)$r->ka_kaward_id
 					);
 			}
