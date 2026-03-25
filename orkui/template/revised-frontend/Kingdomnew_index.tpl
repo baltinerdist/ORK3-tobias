@@ -540,6 +540,8 @@
 								<th data-sorttype="text">Tournament</th>
 								<th data-sorttype="text">Park</th>
 								<th data-sorttype="text">Event</th>
+								<th data-sorttype="num">Brackets</th>
+								<th data-sorttype="num">Participants</th>
 							</tr>
 						</thead>
 						<tbody>
@@ -551,6 +553,8 @@
 									</td>
 									<td><?= htmlspecialchars($t['ParkName']) ?></td>
 									<td><?= htmlspecialchars($t['EventName']) ?></td>
+									<td><?= $t['BracketCount'] ?></td>
+									<td><?= $t['ParticipantCount'] ?></td>
 								</tr>
 							<?php endforeach; ?>
 						</tbody>
