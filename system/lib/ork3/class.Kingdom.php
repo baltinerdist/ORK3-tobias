@@ -321,6 +321,7 @@ class Kingdom  extends Ork3 {
 			$c->add_config($mundane_id, CFG_KINGDOM, 'number', $this->kingdom->kingdom_id, 'DuesAmount', $request['DuesAmount']);
 			$c->add_config($mundane_id, CFG_KINGDOM, 'number', $this->kingdom->kingdom_id, 'KingdomDuesTake', $request['KingdomDuesTake']);
     		$c->add_config($mundane_id, CFG_KINGDOM, 'color', $this->kingdom->kingdom_id, 'AtlasColor', 'FE7569');
+			$c->add_config($mundane_id, CFG_KINGDOM, 'fixed', $this->kingdom->kingdom_id, 'AwardRecsPublic', '1');
 			
 			$c->create_officers($this->kingdom->kingdom_id, 0);
 			
@@ -387,6 +388,8 @@ class Kingdom  extends Ork3 {
 						'Title' => $r->title,
 						'Class' => $r->class,
                         'HasHeraldry' => $r->has_heraldry,
+                        'City' => $r->city,
+                        'Province' => $r->province,
 						'ParentOf' => $r->is_principality==1?Ork3::$Lib->park->GetParks(array('ParkId'=>$r->park_id, 'Stack' => array($r->park_id))):null
 					);
 			}
