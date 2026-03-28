@@ -238,6 +238,7 @@ class Controller_ParkAjax extends Controller {
 			if (!valid_id($mundane_id)) { echo json_encode(['status' => 1, 'error' => 'Please select a player.']); exit; }
 			if (!valid_id($award_id))   { echo json_encode(['status' => 1, 'error' => 'Please select an award.']); exit; }
 			if (!$reason)               { echo json_encode(['status' => 1, 'error' => 'Please enter a reason.']); exit; }
+			$anonymous = isset($_POST['Anonymous']) ? 1 : 0;
 			$r = $this->Player->add_player_recommendation([
 				'Token'          => $this->session->token,
 				'MundaneId'      => $mundane_id,
@@ -251,6 +252,40 @@ class Controller_ParkAjax extends Controller {
 				? json_encode(['status' => 0])
 				: json_encode(['status' => $r['Status'], 'error' => ($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? '')]);
 
+		} elseif ($action === 'checkrecommendation') {
+			if (!isset($this->session->user_id)) { echo json_encode(['status' => 0, 'existing' => []]); exit; }
+			$mundane_id   = (int)($_POST['MundaneId']      ?? 0);
+			$award_id     = (int)($_POST['KingdomAwardId'] ?? 0);
+			$rank         = (int)($_POST['Rank']           ?? 0);
+			$caller_uid   = (int)$this->session->user_id;
+			if (!valid_id($mundane_id) || !valid_id($award_id)) { echo json_encode(['status' => 0, 'existing' => []]); exit; }
+			global $DB;
+			$rank_clause = $rank > 0 ? ' AND r.rank = ' . $rank : ' AND r.rank = 0';
+			$DB->Clear();
+			$rs = $DB->DataSet(
+				'SELECT r.date_recommended, r.mask_giver, rbi.persona AS recommender_persona
+				 FROM ' . DB_PREFIX . 'recommendations r
+				 LEFT JOIN ' . DB_PREFIX . 'mundane rbi ON rbi.mundane_id = r.recommended_by_id
+				 WHERE r.mundane_id = ' . $mundane_id .
+				 ' AND r.kingdomaward_id = ' . $award_id .
+				 $rank_clause .
+				 ' AND (r.deleted_by IS NULL OR r.deleted_by = 0)
+				 AND r.recommended_by_id != ' . $caller_uid .
+				 ' LIMIT 5'
+			);
+			$existing = [];
+			if ($rs && $rs->Size() > 0) {
+				while ($rs->Next()) {
+					$isAnon = (int)$rs->mask_giver === 1;
+					$existing[] = [
+						'DateRecommended'   => $rs->date_recommended,
+						'IsAnonymous'       => $isAnon,
+						'RecommendedByName' => $isAnon ? null : $rs->recommender_persona,
+					];
+				}
+			}
+			echo json_encode(['status' => 0, 'existing' => $existing]);
+
 		} elseif ($action === 'dismissrecommendation') {
 			$this->load_model('Player');
 			$rec_id = (int)($_POST['RecommendationsId'] ?? 0);
@@ -259,6 +294,30 @@ class Controller_ParkAjax extends Controller {
 				'Token'             => $this->session->token,
 				'RecommendationsId' => $rec_id,
 				'RequestedBy'       => $this->session->user_id,
+			]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0])
+				: json_encode(['status' => $r['Status'], 'error' => ($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? '')]);
+
+		} elseif ($action === 'snoozerecommendation') {
+			$this->load_model('Player');
+			$rec_id = (int)($_POST['RecommendationsId'] ?? 0);
+			if (!valid_id($rec_id)) { echo json_encode(['status' => 1, 'error' => 'Invalid recommendation.']); exit; }
+			$r = $this->Player->snooze_recommendation([
+				'Token'             => $this->session->token,
+				'RecommendationsId' => $rec_id,
+			]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0])
+				: json_encode(['status' => $r['Status'], 'error' => ($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? '')]);
+
+		} elseif ($action === 'unsnoozerecommendation') {
+			$this->load_model('Player');
+			$rec_id = (int)($_POST['RecommendationsId'] ?? 0);
+			if (!valid_id($rec_id)) { echo json_encode(['status' => 1, 'error' => 'Invalid recommendation.']); exit; }
+			$r = $this->Player->unsnooze_recommendation([
+				'Token'             => $this->session->token,
+				'RecommendationsId' => $rec_id,
 			]);
 			echo ($r['Status'] == 0)
 				? json_encode(['status' => 0])
