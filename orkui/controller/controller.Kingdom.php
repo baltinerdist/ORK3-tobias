@@ -435,6 +435,13 @@ class Controller_Kingdom extends Controller {
 		$this->data['CanManageTests']   = $uid > 0 && Ork3::$Lib->qualtest->canManage($uid, (int)$kingdom_id);
 		$this->data['AwardRecsPublic'] = $recsPublic;
 
+		$this->data['QualTestReeveEnabled'] = isset($knConfigs['QualTestReeveEnabled'])
+			? (bool)(int)$knConfigs['QualTestReeveEnabled']['Value']
+			: false;
+		$this->data['QualTestCorporaEnabled'] = isset($knConfigs['QualTestCorporaEnabled'])
+			? (bool)(int)$knConfigs['QualTestCorporaEnabled']['Value']
+			: false;
+
 		$this->data['AwardRecommendations'] = [];
 		$canManageKingdom = $this->data['CanManageKingdom'] ?? false;
 		if ($recsPublic || $canManageKingdom) {
