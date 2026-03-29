@@ -1117,6 +1117,7 @@
 									        data-awards-id="<?= (int)$detail['AwardsId'] ?>"
 									        data-award="<?= htmlspecialchars($awardData, ENT_QUOTES) ?>"
 									        title="Revoke award"><i class="fas fa-ban"></i></button>
+									<a class="pn-award-action-btn" href="<?= UIR ?>Scroll/builder/<?= (int)$Player['MundaneId'] ?>/<?= (int)$detail['AwardsId'] ?>" title="Generate Scroll" style="color:#805ad5"><i class="fas fa-scroll"></i></a>
 								</td>
 								<?php endif; ?>
 							</tr>
