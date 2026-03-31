@@ -46,6 +46,10 @@ class Controller_TournamentAjax extends Controller {
 			if (!strlen($style) || !strlen($method)) {
 				echo json_encode(['status' => 1, 'error' => 'Style and method are required.']); exit;
 			}
+			$allowed_methods = ['single','double','swiss','round-robin','ironman','score'];
+			if (!in_array($method, $allowed_methods, true)) {
+				echo json_encode(['status' => 1, 'error' => 'Invalid bracket method.']); exit;
+			}
 			$r = $this->Tournament->add_bracket([
 				'Token'        => $this->session->token,
 				'TournamentId' => $tournament_id,
@@ -84,6 +88,10 @@ class Controller_TournamentAjax extends Controller {
 			$method = trim($_POST['Method'] ?? '');
 			if (!strlen($style) || !strlen($method)) {
 				echo json_encode(['status' => 1, 'error' => 'Style and method are required.']); exit;
+			}
+			$allowed_methods = ['single','double','swiss','round-robin','ironman','score'];
+			if (!in_array($method, $allowed_methods, true)) {
+				echo json_encode(['status' => 1, 'error' => 'Invalid bracket method.']); exit;
 			}
 			$r = $this->Tournament->update_bracket([
 				'Token'        => $this->session->token,
@@ -127,7 +135,7 @@ class Controller_TournamentAjax extends Controller {
 			]);
 			echo ($r['Status'] == 0)
 				? json_encode(['status' => 0, 'matchId' => (int)($r['Detail'] ?? 0)])
-				: json_encode(['status' => $r['Status'], 'error' => ($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? '')]);
+				: $this->modelError($r);
 
 		} elseif ($action === 'completebracket') {
 			$bracket_id = (int)($_POST['BracketId'] ?? 0);
@@ -159,10 +167,17 @@ class Controller_TournamentAjax extends Controller {
 				: $this->modelError($r);
 
 		} elseif ($action === 'savestandingspoints') {
+			$r = $this->Tournament->auth_check(['Token' => $this->session->token, 'TournamentId' => $tournament_id]);
+			if (!isset($r) || (isset($r['Status']) && $r['Status'] != 0)) {
+				echo json_encode(['status' => 5, 'error' => 'Not authorized.']); exit;
+			}
 			$points_raw = trim($_POST['Points'] ?? '');
+			if ($points_raw === '') {
+				echo json_encode(['status' => 1, 'error' => 'Points data is required.']); exit;
+			}
 			$points_arr = json_decode($points_raw, true);
-			if (!is_array($points_arr) || count($points_arr) !== 8) {
-				echo json_encode(['status' => 1, 'error' => 'Invalid points data.']); exit;
+			if (!is_array($points_arr) || count($points_arr) < 1 || count($points_arr) > 16) {
+				echo json_encode(['status' => 1, 'error' => 'Invalid points data (must be 1-16 positions).']); exit;
 			}
 			$points_clean = array_map(function($v) { return max(0, (int)$v); }, $points_arr);
 			global $DB;
@@ -248,7 +263,7 @@ class Controller_TournamentAjax extends Controller {
 				echo json_encode(['status' => 1, 'error' => 'Invalid tournament ID.']); exit;
 			}
 
-			$r = $this->Tournament->add_participant([
+			$params = [
 				'Token'        => $this->session->token,
 				'TournamentId' => $tid,
 				'BracketId'    => $bracket_id,
@@ -257,7 +272,18 @@ class Controller_TournamentAjax extends Controller {
 				'UnitId'       => (int)($_POST['UnitId']    ?? 0),
 				'ParkId'       => (int)($_POST['ParkId']    ?? 0),
 				'KingdomId'    => (int)($_POST['KingdomId'] ?? 0),
-			]);
+			];
+
+			// Team participant: pass Members array of {MundaneId} objects
+			$membersJson = $_POST['Members'] ?? '';
+			if ($membersJson !== '') {
+				$members = json_decode($membersJson, true);
+				if (is_array($members) && count($members) > 0) {
+					$params['Members'] = $members;
+				}
+			}
+
+			$r = $this->Tournament->add_participant($params);
 			echo ($r['Status'] == 0)
 				? json_encode(['status' => 0, 'participantId' => (int)($r['Detail'] ?? 0)])
 				: $this->modelError($r);
@@ -317,6 +343,25 @@ class Controller_TournamentAjax extends Controller {
 
 		} elseif ($action === 'reorder') {
 			// Update seed order for participants (Phase 7 — drag-drop)
+			$tid = (int)($_POST['TournamentId'] ?? 0);
+			if (!valid_id($tid)) {
+				echo json_encode(['status' => 1, 'error' => 'TournamentId required.']); exit;
+			}
+			$r = $this->Tournament->auth_check(['Token' => $this->session->token, 'TournamentId' => $tid]);
+			if (!isset($r) || (isset($r['Status']) && $r['Status'] != 0)) {
+				echo json_encode(['status' => 5, 'error' => 'Not authorized.']); exit;
+			}
+			// Block reordering on brackets that are already active, complete, or finalized
+			global $DB;
+			$DB->Clear();
+			$bstatus_r = $DB->query("SELECT status FROM ork_bracket WHERE bracket_id = :bid", [':bid' => $bracket_id]);
+			if (!$bstatus_r || !$bstatus_r->next()) {
+				echo json_encode(['status' => 1, 'error' => 'Bracket not found.']); exit;
+			}
+			$bstatus = $bstatus_r->status ?? '';
+			if (in_array($bstatus, ['active', 'complete', 'finalized'], true)) {
+				echo json_encode(['status' => 1, 'error' => 'Cannot reorder seeds on an active or completed bracket.']); exit;
+			}
 			$order_json = trim($_POST['Order'] ?? '');
 			$order_arr  = json_decode($order_json, true);
 			if (!is_array($order_arr)) {
@@ -326,7 +371,7 @@ class Controller_TournamentAjax extends Controller {
 			// Fetch the valid participant IDs for this bracket to prevent cross-bracket seed writes
 			$DB->Clear();
 			$validPids = [];
-			$pRows = $DB->query("SELECT participant_id FROM ork_participant WHERE bracket_id = $bracket_id");
+			$pRows = $DB->query("SELECT participant_id FROM ork_participant WHERE bracket_id = :bid", [":bid" => $bracket_id]);
 			if ($pRows) { while ($pRows->next()) $validPids[(int)$pRows->participant_id] = true; }
 			foreach ($order_arr as $seed => $participant_id) {
 				$pid = (int)$participant_id;
@@ -339,6 +384,39 @@ class Controller_TournamentAjax extends Controller {
 				}
 			}
 			echo json_encode(['status' => 0]);
+
+		} elseif ($action === 'updateparticipantstatus') {
+			$tid = (int)($_POST['TournamentId'] ?? 0);
+			if (!valid_id($tid)) {
+				echo json_encode(['status' => 1, 'error' => 'TournamentId required.']); exit;
+			}
+			$r = $this->Tournament->auth_check(['Token' => $this->session->token, 'TournamentId' => $tid]);
+			if (!isset($r) || (isset($r['Status']) && $r['Status'] != 0)) {
+				echo json_encode(['status' => 5, 'error' => 'Not authorized.']); exit;
+			}
+			$participant_id = (int)($_POST['ParticipantId'] ?? 0);
+			if (!valid_id($participant_id)) {
+				echo json_encode(['status' => 1, 'error' => 'ParticipantId required.']); exit;
+			}
+			global $DB;
+			$DB->Clear();
+			$exists = $DB->query("SELECT participant_id FROM ork_participant WHERE participant_id = :pid AND bracket_id = :bid",
+				[':pid' => $participant_id, ':bid' => $bracket_id]);
+			if (!$exists || !$exists->next()) {
+				echo json_encode(['status' => 1, 'error' => 'Participant not found in this bracket.']); exit;
+			}
+			$status = trim($_POST['Status'] ?? '');
+			$allowed = ['active','withdrawn','disqualified'];
+			if (!in_array($status, $allowed)) {
+				echo json_encode(['status' => 1, 'error' => 'Invalid status. Allowed: ' . implode(', ', $allowed)]); exit;
+			}
+			global $DB;
+			$DB->Clear();
+			$DB->query(
+				"UPDATE ork_participant SET status = :st WHERE participant_id = :pid AND bracket_id = :bid",
+				[':st' => $status, ':pid' => $participant_id, ':bid' => $bracket_id]
+			);
+			echo json_encode(['status' => 0, 'participantId' => $participant_id, 'newStatus' => $status]);
 
 		} else {
 			echo json_encode(['status' => 1, 'error' => 'Unknown action']);

@@ -103,6 +103,10 @@ class Tournament extends Ork3 {
 		return [0, 0]; // tie or unknown
 	}
 
+	public function CheckAuth($request) {
+		return $this->check_auth($request) ? Response(null) : NoAuthorization();
+	}
+
 	private function check_auth($Token, $TournamentId = null) {
 		if (is_array($Token)) {
 			// Fix: capture TournamentId before overwriting $Token
@@ -137,13 +141,29 @@ class Tournament extends Ork3 {
 						SELECT tournament_id, style, style_note, method, rings, participants, seeding
 						FROM " . DB_PREFIX . "bracket WHERE bracket_id = $copy_id AND tournament_id = $tournament_id";
 			$this->db->query($sql);
-			$bracket_id = $this->db->getInsertId();
+			$bracket_id = $this->db->GetLastInsertId();
 			if (!valid_id($bracket_id)) return InvalidParameter('Source bracket not found in this tournament');
 
 			$sql = "INSERT INTO " . DB_PREFIX . "participant (tournament_id, bracket_id, alias, unit_id, park_id, kingdom_id)
 						SELECT tournament_id, $bracket_id, alias, unit_id, park_id, kingdom_id
 						FROM " . DB_PREFIX . "participant WHERE bracket_id = $copy_id";
 			$this->db->query($sql);
+
+			// Copy team records for team participants
+			$this->db->query("INSERT INTO " . DB_PREFIX . "participant_teams (tournament_id, bracket_id, participant_id, name)
+				SELECT pt.tournament_id, $bracket_id, p_new.participant_id, pt.name
+				FROM " . DB_PREFIX . "participant_teams pt
+				INNER JOIN " . DB_PREFIX . "participant p_old ON pt.participant_id = p_old.participant_id
+				INNER JOIN " . DB_PREFIX . "participant p_new ON p_new.bracket_id = $bracket_id AND p_new.alias = p_old.alias
+				WHERE pt.bracket_id = $copy_id");
+
+			// Copy team members
+			$this->db->query("INSERT INTO " . DB_PREFIX . "participant_team_members (team_id, mundane_id, tournament_id)
+				SELECT pt_new.team_id, ptm.mundane_id, ptm.tournament_id
+				FROM " . DB_PREFIX . "participant_team_members ptm
+				INNER JOIN " . DB_PREFIX . "participant_teams pt_old ON ptm.team_id = pt_old.team_id AND pt_old.bracket_id = $copy_id
+				INNER JOIN " . DB_PREFIX . "participant_teams pt_new ON pt_new.bracket_id = $bracket_id AND pt_new.name = pt_old.name");
+
 			return Success($bracket_id);
 		} else {
 			$this->Bracket->clear();
@@ -230,7 +250,7 @@ class Tournament extends Ork3 {
 						SELECT tournament_id, $bid, alias, unit_id, park_id, kingdom_id, participant_number
 						FROM " . DB_PREFIX . "participant WHERE participant_id = $pid AND tournament_id = $tournament_id";
 			$this->db->query($sql);
-			$new_id = $this->db->getInsertId();
+			$new_id = $this->db->GetLastInsertId();
 			if (!valid_id($new_id)) return InvalidParameter('Source participant not found in this tournament');
 			return Success($new_id);
 		} else {
@@ -278,13 +298,30 @@ class Tournament extends Ork3 {
 				$this->Player->bracket_id     = $request['BracketId'];
 				$this->Player->save();
 			} elseif (!empty($request['Members'])) {
-				// Team participant — link multiple players
+				// Team participant — create durable team record then link members
+				$_tid2  = (int)$this->Participant->tournament_id;
+				$_bid2  = (int)$this->Participant->bracket_id;
+				$_pid2  = (int)$this->Participant->participant_id;
+				$this->db->query(
+					"INSERT INTO " . DB_PREFIX . "participant_teams (tournament_id, bracket_id, participant_id, name)"
+					. " VALUES (:tid2, :bid2, :pid2, :tname)",
+					[':tid2' => $_tid2, ':bid2' => $_bid2, ':pid2' => $_pid2, ':tname' => $this->Participant->alias]
+				);
+				$_team_id = (int)$this->db->GetLastInsertId();
 				foreach ($request['Members'] as $member) {
+					$_mid2 = (int)$member['MundaneId'];
+					// Roster row in new team tables
+					$this->db->query(
+						"INSERT IGNORE INTO " . DB_PREFIX . "participant_team_members (team_id, mundane_id, tournament_id)"
+						. " VALUES (:team_id, :mid2, :tid2)",
+						[":team_id" => $_team_id, ":mid2" => $_mid2, ":tid2" => $_tid2]
+					);
+					// Also keep ork_participant_mundane populated for backwards-compat queries
 					$this->Player->clear();
-					$this->Player->participant_id = $this->Participant->participant_id;
-					$this->Player->mundane_id     = $member['MundaneId'];
-					$this->Player->tournament_id  = $request['TournamentId'];
-					$this->Player->bracket_id     = $request['BracketId'];
+					$this->Player->participant_id = $_pid2;
+					$this->Player->mundane_id     = $_mid2;
+					$this->Player->tournament_id  = $_tid2;
+					$this->Player->bracket_id     = $_bid2;
 					$this->Player->save();
 				}
 			}
@@ -341,6 +378,29 @@ class Tournament extends Ork3 {
 		}
 		return Success($participants);
 	}
+
+	public function RemoveParticipant($request) {
+		if (!$this->check_auth($request)) return NoAuthorization();
+
+		$participant_id = (int)($request['ParticipantId'] ?? 0);
+		$tournament_id  = (int)($request['TournamentId']  ?? 0);
+		if (!valid_id($participant_id)) return InvalidParameter('ParticipantId required');
+		if (!valid_id($tournament_id))  return InvalidParameter('TournamentId required');
+
+		// Verify participant belongs to the authorized tournament before deleting
+		$check = $this->db->query('SELECT participant_id FROM ' . DB_PREFIX . 'participant WHERE participant_id = ' . $participant_id . ' AND tournament_id = ' . $tournament_id);
+		if (!$check || $check->size() === 0) return InvalidParameter('Participant not found in this tournament');
+
+		$this->db->query('DELETE ptm FROM ' . DB_PREFIX . 'participant_team_members ptm'
+			. ' INNER JOIN ' . DB_PREFIX . 'participant_teams pt ON ptm.team_id = pt.team_id'
+			. ' WHERE pt.participant_id = ' . $participant_id);
+		$this->db->query('DELETE FROM ' . DB_PREFIX . 'participant_teams WHERE participant_id = ' . $participant_id);
+		$this->db->query("DELETE FROM " . DB_PREFIX . "participant_mundane WHERE participant_id = $participant_id");
+		$this->db->query("DELETE FROM " . DB_PREFIX . "participant WHERE participant_id = $participant_id AND tournament_id = $tournament_id");
+
+		return Success($participant_id);
+	}
+
 
 	public function DeleteTournament($request) {
 		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
@@ -556,8 +616,20 @@ class Tournament extends Ork3 {
 			return InvalidParameter('Invalid match: same participant on both sides');
 		}
 
+		// Verify neither participant is withdrawn or disqualified
+		$active_pids = array_filter([$p1_id, $p2_id], fn($x) => $x > 0);
+		if (!empty($active_pids)) {
+			$pid_list = implode(',', $active_pids);
+			$status_r = $this->db->query("SELECT participant_id FROM " . DB_PREFIX . "participant WHERE participant_id IN ($pid_list) AND status NOT IN ('active', '')");
+			if ($status_r && $status_r->next()) {
+				return InvalidParameter('Cannot record result: a participant is withdrawn or disqualified');
+			}
+		}
+
 		// Determine winner/loser
 		[$winner_id, $loser_id] = $this->resolveWinnerLoser($result, $p1_id, $p2_id);
+		// Ties produce [0,0] — advancement logic below is guarded by $winner_id > 0 / $loser_id > 0,
+		// so no participants will be advanced or eliminated for a tie result.
 
 		// Sanitize and store bout series
 		$bouts_raw = trim($request['Bouts'] ?? '');
@@ -616,6 +688,8 @@ class Tournament extends Ork3 {
 					$lr_match = $wr1_count - $match_num + 1;
 					$lr_slot  = 'participant_2_id';
 				}
+				$slot_chk_1 = $this->db->query("SELECT match_id FROM " . DB_PREFIX . "match WHERE bracket_id = $bracket_id AND round = 1 AND `match` = $lr_match AND bracket_side = 'losers'");
+				if (!$slot_chk_1 || !$slot_chk_1->next()) return InvalidParameter("Double-elimination routing error: no losers bracket slot found for round 1 match $lr_match");
 				$this->db->query("UPDATE " . DB_PREFIX . "match
 					SET $lr_slot = $loser_id
 					WHERE bracket_id = $bracket_id AND round = 1 AND `match` = $lr_match AND bracket_side = 'losers'");
@@ -624,6 +698,8 @@ class Tournament extends Ork3 {
 				$lb_round         = ($round - 1) * 2;
 				$lb_round_matches = max(1, (int)($wr1_count / pow(2, $round - 1)));
 				$lr_match         = max(1, $lb_round_matches - $match_num + 1);
+				$slot_chk_2 = $this->db->query("SELECT match_id FROM " . DB_PREFIX . "match WHERE bracket_id = $bracket_id AND round = $lb_round AND `match` = $lr_match AND bracket_side = 'losers'");
+				if (!$slot_chk_2 || !$slot_chk_2->next()) return InvalidParameter("Double-elimination routing error: no losers bracket slot found for round $lb_round match $lr_match");
 				$this->db->query("UPDATE " . DB_PREFIX . "match
 					SET participant_2_id = $loser_id
 					WHERE bracket_id = $bracket_id AND round = $lb_round AND `match` = $lr_match AND bracket_side = 'losers'");
@@ -718,11 +794,14 @@ class Tournament extends Ork3 {
 
 		// Determine winner/loser from current result
 		[$winner_id, $loser_id] = $this->resolveWinnerLoser($result, $p1_id, $p2_id);
+		// Ties produce [0,0] — reversal logic below is guarded by $winner_id > 0 / $loser_id > 0,
+		// so no advancement or elimination is reversed for a tie result.
 
 		// Load bracket method
 		$this->Bracket->clear();
 		$this->Bracket->bracket_id = $bracket_id;
 		$this->Bracket->find();
+		if (!$this->Bracket->bracket_id) return InvalidParameter('Bracket not found');
 		$method = $this->Bracket->method;
 
 		// Check: no later-round match involving either participant may already be resolved
@@ -738,7 +817,7 @@ class Tournament extends Ork3 {
 		}
 
 		// Clear match result
-		$this->db->query("UPDATE " . DB_PREFIX . "match SET result = NULL, score = NULL, bouts = NULL WHERE match_id = $match_id");
+		$this->db->query("UPDATE " . DB_PREFIX . "match SET result = NULL, score = NULL, bouts = ''  WHERE match_id = $match_id");
 
 		// Reverse advancement/elimination for elim brackets
 		// Bracket size from WR round 1 match count
@@ -969,10 +1048,19 @@ class Tournament extends Ork3 {
 	public function DeleteBracket($request) {
 		if (!$this->check_auth($request)) return NoAuthorization();
 
-		$bracket_id = (int)($request['BracketId'] ?? 0);
+		$bracket_id    = (int)($request['BracketId']    ?? 0);
+		$tournament_id = (int)($request['TournamentId'] ?? 0);
 		if (!valid_id($bracket_id)) return InvalidParameter('BracketId required');
+		if (!valid_id($tournament_id)) return InvalidParameter('TournamentId required');
+
+		$chk = $this->db->query("SELECT bracket_id FROM " . DB_PREFIX . "bracket WHERE bracket_id = $bracket_id AND tournament_id = $tournament_id");
+		if (!$chk || !$chk->next()) return InvalidParameter('Bracket not found in this tournament');
 
 		// Delete all related data in dependency order
+		$this->db->query('DELETE ptm FROM ' . DB_PREFIX . 'participant_team_members ptm'
+			. ' INNER JOIN ' . DB_PREFIX . 'participant_teams pt ON ptm.team_id = pt.team_id'
+			. ' WHERE pt.bracket_id = ' . $bracket_id);
+		$this->db->query('DELETE FROM ' . DB_PREFIX . 'participant_teams WHERE bracket_id = ' . $bracket_id);
 		$this->db->query('DELETE pm FROM ' . DB_PREFIX . 'participant_mundane pm'
 			. ' INNER JOIN ' . DB_PREFIX . 'participant p ON pm.participant_id = p.participant_id'
 			. ' WHERE p.bracket_id = ' . $bracket_id);
@@ -992,6 +1080,9 @@ class Tournament extends Ork3 {
 		$tournament_id = (int)($request['TournamentId'] ?? 0);
 		if (!valid_id($bracket_id))    return InvalidParameter('BracketId required');
 		if (!valid_id($tournament_id)) return InvalidParameter('TournamentId required');
+
+		$chk = $this->db->query("SELECT bracket_id FROM " . DB_PREFIX . "bracket WHERE bracket_id = $bracket_id AND tournament_id = $tournament_id");
+		if (!$chk || !$chk->next()) return InvalidParameter('Bracket not found in this tournament');
 
 		$this->db->query('DELETE FROM ' . DB_PREFIX . 'match WHERE bracket_id = ' . $bracket_id . ' AND tournament_id = ' . $tournament_id);
 
@@ -1193,7 +1284,7 @@ class Tournament extends Ork3 {
 			$this->insert_match($bracket_id, $tournament_id, 1, $match_num++, $order++, $p1, $p2, 'winners');
 			// Auto-complete bye matches so they count in standings from round 1
 			if ($p1 > 0 && $p2 === 0) {
-				$bm = (int)$this->db->getLastInsertId();
+				$bm = (int)$this->db->GetLastInsertId();
 				if ($bm > 0) {
 					$this->db->query("UPDATE " . DB_PREFIX . "match SET result = '1-wins' WHERE match_id = $bm");
 				}
@@ -1367,7 +1458,8 @@ class Tournament extends Ork3 {
 		$maxOrd = $this->db->query('SELECT MAX(`order`) AS m FROM ' . DB_PREFIX . 'match WHERE bracket_id = ' . $bracket_id);
 		$next_order = ($maxOrd && $maxOrd->next() && $maxOrd->m !== null) ? (int)$maxOrd->m + 1 : 1;
 		$this->insert_match($bracket_id, $tournament_id, 2, 1, $next_order, $gf_p1, $gf_p2, 'grand-final');
-		$new_id = (int)$this->db->getInsertId();
+		$new_id = (int)$this->db->GetLastInsertId();
+		if (!valid_id($new_id)) return InvalidParameter('Failed to create match record');
 
 		// Reopen bracket for play
 		$this->db->query('UPDATE ' . DB_PREFIX . 'bracket SET status = \'active\' WHERE bracket_id = ' . $bracket_id);
@@ -1473,7 +1565,8 @@ class Tournament extends Ork3 {
 		$maxOrd = $this->db->query('SELECT MAX(`order`) AS m FROM ' . DB_PREFIX . 'match WHERE bracket_id = ' . $bracket_id);
 		$next_order = ($maxOrd && $maxOrd->next() && $maxOrd->m !== null) ? (int)$maxOrd->m + 1 : 1;
 		$this->insert_match($bracket_id, $tournament_id, $max_round, 1, $next_order, $losers[0], $losers[1], 'tiebreaker-3rd');
-		$new_id = (int)$this->db->getInsertId();
+		$new_id = (int)$this->db->GetLastInsertId();
+		if (!valid_id($new_id)) return InvalidParameter('Failed to create match record');
 
 		// Reopen bracket for play
 		$this->db->query('UPDATE ' . DB_PREFIX . 'bracket SET status = \'active\' WHERE bracket_id = ' . $bracket_id);
@@ -1493,6 +1586,11 @@ class Tournament extends Ork3 {
 
 		$bracket_id = (int)($request['BracketId'] ?? 0);
 		if (!valid_id($bracket_id)) return InvalidParameter('BracketId required');
+
+		$unresolved = $this->db->query("SELECT COUNT(*) AS cnt FROM " . DB_PREFIX . "match WHERE bracket_id = $bracket_id AND (result IS NULL OR result = '') AND participant_1_id > 0 AND participant_2_id > 0");
+		if ($unresolved && $unresolved->next() && (int)$unresolved->cnt > 0) {
+			return InvalidParameter('Cannot finalize bracket with unresolved matches (' . (int)$unresolved->cnt . ' remaining)');
+		}
 
 		$this->db->query('UPDATE ' . DB_PREFIX . 'bracket SET status = \'finalized\' WHERE bracket_id = ' . $bracket_id);
 		return Success($bracket_id);
