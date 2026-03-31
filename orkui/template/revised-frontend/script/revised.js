@@ -1909,9 +1909,9 @@ function knToggleFilter(btn, type) {
     knFilters[type] = !knFilters[type];
     var isOn = knFilters[type];
     $(btn).toggleClass('kn-filter-on', isOn);
-    $('#kn-events-table').find('tr[data-type="' + type + '"]').css('display', isOn ? '' : 'none');
+    $('#kn-events-table, #kn-tournaments-table').find('tr[data-type="' + type + '"]').css('display', isOn ? '' : 'none');
     knPaginate($('#kn-events-table'), 1);
-    // [TOURNAMENTS HIDDEN] knPaginate($('#kn-tournaments-table'), 1);
+    knPaginate($('#kn-tournaments-table'), 1);
     // Sync calendar — refetch re-runs our events function which re-applies knFilters from cache (no extra HTTP request)
     if (knCalendar) knCalendar.refetchEvents();
 }
@@ -2461,8 +2461,8 @@ $(document).ready(function() {
     knSortAsc($('#kn-events-table'), 0, 'date');
     knPaginate($('#kn-events-table'), 1);
 
-    // [TOURNAMENTS HIDDEN] knSortDesc($('#kn-tournaments-table'), 0, 'date');
-    // [TOURNAMENTS HIDDEN] knPaginate($('#kn-tournaments-table'), 1);
+    knSortDesc($('#kn-tournaments-table'), 0, 'date');
+    knPaginate($('#kn-tournaments-table'), 1);
 
     knPaginate($('#kn-players-table'), 1);
 

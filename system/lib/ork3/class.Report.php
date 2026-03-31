@@ -136,6 +136,69 @@ class Report  extends Ork3 {
 		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
 	}
 
+
+	public function GetPlayerTournamentHistory($request) {
+		$mundane_id = (int)($request['MundaneId'] ?? 0);
+		if ($mundane_id < 1) return Success([]);
+
+		$key = Ork3::$Lib->ghettocache->key($request);
+		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 1800)) !== false)
+			return $cache;
+
+		$sql = "SELECT
+					p.participant_id,
+					t.tournament_id,
+					t.name AS tournament_name,
+					t.date_time,
+					b.bracket_id,
+					b.style,
+					b.style_note,
+					b.method,
+					b.participants AS participant_type,
+					COALESCE(pk.name, '') AS park_name,
+					COALESCE(k.name, '') AS kingdom_name,
+					COALESCE(e.name, '') AS event_name,
+					t.event_id,
+					t.event_calendardetail_id,
+					(SELECT COUNT(DISTINCT p2.participant_id) FROM " . DB_PREFIX . "participant p2 WHERE p2.bracket_id = b.bracket_id) AS total_in_bracket
+				FROM " . DB_PREFIX . "participant_mundane pm
+					JOIN " . DB_PREFIX . "participant p ON pm.participant_id = p.participant_id
+					JOIN " . DB_PREFIX . "bracket b ON p.bracket_id = b.bracket_id
+					JOIN " . DB_PREFIX . "tournament t ON p.tournament_id = t.tournament_id
+					LEFT JOIN " . DB_PREFIX . "park pk ON t.park_id = pk.park_id
+					LEFT JOIN " . DB_PREFIX . "kingdom k ON t.kingdom_id = k.kingdom_id
+					LEFT JOIN " . DB_PREFIX . "event_calendardetail d ON t.event_calendardetail_id = d.event_calendardetail_id
+						LEFT JOIN " . DB_PREFIX . "event e ON d.event_id = e.event_id
+				WHERE pm.mundane_id = $mundane_id
+				ORDER BY t.date_time DESC, t.tournament_id, b.bracket_id";
+
+		$r = $this->db->query($sql);
+		$rows = [];
+		if ($r !== false && $r->size() > 0) {
+			while ($r->next()) {
+				$rows[] = [
+					'ParticipantId'         => (int)$r->participant_id,
+					'TournamentId'          => (int)$r->tournament_id,
+					'TournamentName'        => $r->tournament_name,
+					'DateTime'              => $r->date_time,
+					'BracketId'             => (int)$r->bracket_id,
+					'Style'                 => $r->style,
+					'StyleNote'             => $r->style_note,
+					'Method'                => $r->method,
+					'ParticipantType'       => $r->participant_type,
+					'ParkName'              => $r->park_name,
+					'KingdomName'           => $r->kingdom_name,
+					'EventName'             => $r->event_name,
+					'EventId'               => (int)$r->event_id,
+					'EventDetailId'         => (int)$r->event_calendardetail_id,
+					'TotalInBracket'        => (int)$r->total_in_bracket,
+				];
+			}
+		}
+		$response = Success($rows);
+		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
+	}
+
 	public function ClassMasters($request) {
 		$key = Ork3::$Lib->ghettocache->key($request);
 		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 60)) !== false)

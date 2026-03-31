@@ -464,7 +464,7 @@ class Controller_Event extends Controller {
 		$this->data['AttendanceReport'] = $this->Attendance->get_attendance_for_event($event_id, $detail_id);
 		$classes                        = $this->Attendance->get_classes();
 		$this->data['Classes']          = $classes['Classes'];
-		// [TOURNAMENTS HIDDEN] $this->data['Tournaments'] = [];
+		$this->data['Tournaments']      = $this->Reports->get_tournaments(null, null, null, $event_id, $detail_id);
 
 		if ( $this->request->exists('Attendance_event') ) {
 			$this->data['Attendance_event'] = $this->request->Attendance_event->Request;

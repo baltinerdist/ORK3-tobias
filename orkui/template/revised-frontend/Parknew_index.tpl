@@ -12,7 +12,7 @@
 	$officerList    = $park_officers['Officers']          ?? [];
 	$parkDayList    = $park_days['ParkDays']              ?? [];
 	$eventList      = (array)($event_summary              ?? []);
-	// [TOURNAMENTS HIDDEN] $tournamentList = [];
+	$tournamentList = $park_tournaments['Tournaments']    ?? [];
 
 	// Extract Monarch & Regent for hero display
 	$monarch = null; $regent = null;
@@ -2056,8 +2056,40 @@ var PkConfig = {
 </div>
 
 <?php endif; ?>
-<!-- [TOURNAMENTS HIDDEN] add-tournament modal -->
 <script src="<?= HTTP_TEMPLATE ?>revised-frontend/script/email-spell-checker.min.js"></script>
+<div id="pk-addtournament-overlay">
+	<div class="pk-modal-box" style="width:480px;max-width:calc(100vw - 40px);">
+		<div class="pk-modal-header">
+			<h3 class="pk-modal-title"><i class="fas fa-trophy" style="margin-right:8px;color:#276749"></i>Add Tournament</h3>
+			<button class="pk-modal-close-btn" id="pk-addtournament-close-btn" aria-label="Close">&times;</button>
+		</div>
+		<div class="pk-modal-body">
+			<div id="pk-addtournament-feedback" style="display:none;margin-bottom:12px;font-size:13px;font-weight:600;"></div>
+			<div class="pk-addday-field">
+				<label for="pk-addtournament-name">Name <span style="color:#e53e3e">*</span></label>
+				<input type="text" id="pk-addtournament-name" placeholder="e.g. Bear Pit" maxlength="128" />
+			</div>
+			<div class="pk-addday-field">
+				<label for="pk-addtournament-when">Date <span style="color:#e53e3e">*</span></label>
+				<input type="date" id="pk-addtournament-when" />
+			</div>
+			<div class="pk-addday-field">
+				<label for="pk-addtournament-desc">Description <span style="color:#a0aec0;font-size:11px;text-transform:none;letter-spacing:0">(optional)</span></label>
+				<textarea id="pk-addtournament-desc" rows="3" placeholder="Brief description..."></textarea>
+			</div>
+			<div class="pk-addday-field">
+				<label for="pk-addtournament-url">URL <span style="color:#a0aec0;font-size:11px;text-transform:none;letter-spacing:0">(optional)</span></label>
+				<input type="url" id="pk-addtournament-url" placeholder="https://..." maxlength="255" />
+			</div>
+		</div>
+		<div class="pk-modal-footer">
+			<button class="pk-btn pk-btn-ghost" id="pk-addtournament-cancel">Cancel</button>
+			<button class="pk-btn pk-btn-primary" id="pk-addtournament-submit">
+				<i class="fas fa-plus"></i> Create Tournament
+			</button>
+		</div>
+	</div>
+</div>
 <script src="<?= HTTP_TEMPLATE ?>revised-frontend/script/revised.js?v=<?= filemtime(__DIR__ . '/script/revised.js') ?>"></script>
 
 <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
