@@ -263,6 +263,7 @@ class Controller_Player extends Controller {
 		$this->load_model('Unit');
 		$this->load_model('Kingdom');
 		$this->load_model('Event');
+		$this->load_model('Tournament');
 		$action    = $params[1] ?? '';
 		$roastbeef = $params[2] ?? '';
 
@@ -490,6 +491,7 @@ class Controller_Player extends Controller {
 		$this->data['KingdomEvents']   = ($uid === (int)$id) ? $this->Event->get_kingdom_upcoming_events((int)$this->session->kingdom_id, (int)$id) : [];
 		$this->data['IsOwnProfile']    = $uid === (int)$id;
 		$this->data['Player']['ParkName'] = $this->session->park_name;
+		$this->data['PlayerTournaments'] = $this->Tournament->get_player_history((int)$id);
 
 		if ($uid === (int)$id) {
 			$DB->Clear();

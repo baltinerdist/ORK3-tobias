@@ -80,9 +80,8 @@
 		}
 	}
 
-	// [TOURNAMENTS HIDDEN]
-	$tournaments  = [];
-	$tourneyCount = 0;
+	$tournaments    = $Tournaments['Tournaments'] ?? [];
+	$tourneyCount   = count($tournaments);
 	$attendanceList = $AttendanceReport['Attendance'] ?? [];
 	$checkedInIds   = array_flip(array_column($attendanceList, 'MundaneId'));
 	$attendanceForm = $Attendance_event ?? [];
@@ -422,7 +421,10 @@
 					<i class="fas fa-clipboard-list"></i><span class="ev-tab-label"> Attendance</span>
 					<span class="ev-tab-count">(<?= $attendeeCount ?>)</span>
 				</li>
-				<?php /* [TOURNAMENTS HIDDEN] tab */ ?>
+				<li data-tab="ev-tab-tournaments" onclick="evShowTab(this,'ev-tab-tournaments')">
+					<i class="fas fa-trophy"></i><span class="ev-tab-label"> Tournaments</span>
+					<span class="ev-tab-count">(<?= $tourneyCount ?>)</span>
+				</li>
 				<li data-tab="ev-tab-rsvp" onclick="evShowTab(this,'ev-tab-rsvp')">
 					<i class="fas fa-calendar-check"></i><span class="ev-tab-label"> RSVPs</span>
 					<span class="ev-tab-count">(<?= $rsvpCount ?>)</span>

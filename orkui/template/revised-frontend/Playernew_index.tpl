@@ -610,6 +610,12 @@
 			<?php if ($_showRecs): ?><li data-tab="recommendations">
 					<i class="fas fa-star"></i><span class="pn-tab-label"> Recommendations</span> <span class="pn-tab-count">(<?= count($_recList) ?>)</span>
 				</li><?php endif; ?>
+				<?php $pnTourneyList = is_array($PlayerTournaments) ? $PlayerTournaments : []; ?>
+				<?php if (count($pnTourneyList) > 0): ?>
+				<li data-tab="tourneys">
+					<i class="fas fa-trophy"></i><span class="pn-tab-label"> Tourneys</span> <span class="pn-tab-count">(<?= count($pnTourneyList) ?>)</span>
+				</li>
+				<?php endif; ?>
 				<li data-tab="history">
 					<i class="fas fa-sticky-note"></i><span class="pn-tab-label"> Notes</span> <span class="pn-tab-count">(<?= is_array($Notes) ? count($Notes) : 0 ?>)</span>
 				</li>
@@ -1357,7 +1363,41 @@
 				<?php endif; ?>
 			</div>
 
-			<!-- Class Levels Tab -->
+			<!-- Tourneys Tab -->
+			<?php if (count($pnTourneyList) > 0): ?>
+			<div class="pn-tab-panel" id="pn-tab-tourneys" style="display:none">
+				<table class="pn-table pn-sortable" id="pn-tourneys-table">
+					<thead>
+						<tr>
+							<th data-sorttype="date">Date</th>
+							<th data-sorttype="text">Tournament</th>
+							<th data-sorttype="text">Event</th>
+							<th data-sorttype="text">Location</th>
+							<th data-sorttype="text">Bracket</th>
+							<th data-sorttype="text">Placement</th>
+						</tr>
+					</thead>
+					<tbody>
+						<?php foreach ($pnTourneyList as $_t): ?>
+						<tr>
+							<td class="pn-col-nowrap"><?= $_t['DateTime'] ? date('M j, Y', strtotime($_t['DateTime'])) : '&mdash;' ?></td>
+							<td><a href="<?= UIR ?>Tournament/profile/<?= $_t['TournamentId'] ?>"><?= htmlspecialchars($_t['TournamentName']) ?></a></td>
+							<td><?php if (!empty($_t['EventName'])): ?><a href="<?= UIR ?>Event/index/<?= $_t['EventId'] ?>/<?= $_t['EventDetailId'] ?>"><?= htmlspecialchars($_t['EventName']) ?></a><?php else: ?>&mdash;<?php endif; ?></td>
+							<td><?= htmlspecialchars(implode(', ', array_filter([$_t['ParkName'], $_t['KingdomName']]))) ?: '&mdash;' ?></td>
+							<td>
+								<?= htmlspecialchars($_t['Style']) ?>
+								<?php if (!empty($_t['StyleNote'])): ?><span style="color:#718096;font-size:0.85em"> (<?= htmlspecialchars($_t['StyleNote']) ?>)</span><?php endif; ?>
+								<span style="color:#a0aec0;font-size:0.8em;display:block"><?= ucfirst($_t['Method']) ?><?= $_t['ParticipantType'] === 'team' ? ' &middot; Team' : '' ?></span>
+							</td>
+							<td class="pn-col-nowrap"><?php if ($_t['Placement'] !== null): ?><?= $_t['Placement'] ?> of <?= $_t['TotalInBracket'] ?><?php else: ?>&mdash;<?php endif; ?></td>
+						</tr>
+						<?php endforeach; ?>
+					</tbody>
+				</table>
+			</div>
+			<?php endif; ?>
+
+						<!-- Class Levels Tab -->
 			<div class="pn-tab-panel" id="pn-tab-classes" style="display:none">
 				<?php
 					$classList = is_array($Details['Classes']) ? $Details['Classes'] : array();
@@ -2126,6 +2166,7 @@ pnSortDesc($('#pn-awards-table'), 2, 'date');     pnPaginate($('#pn-awards-table
 pnSortDesc($('#pn-titles-table'), 2, 'date');     pnPaginate($('#pn-titles-table'), 1);
 pnSortDesc($('#pn-attendance-table'), 0, 'date'); pnPaginate($('#pn-attendance-table'), 1);
 pnSortDesc($('#pn-history-table'), 2, 'date');    pnPaginate($('#pn-history-table'), 1);
+pnSortDesc($('#pn-tourneys-table'), 0, 'date');  pnPaginate($('#pn-tourneys-table'), 1);
 // 26-week sparkline
 (function() {
 	var el = document.getElementById('pna-sparkline');

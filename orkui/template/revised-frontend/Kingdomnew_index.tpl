@@ -6,7 +6,7 @@
 	$parkList         = is_array($park_summary['KingdomParkAveragesSummary']) ? $park_summary['KingdomParkAveragesSummary'] : array();
 	$parkCounts       = []; // loaded via AJAX (park_averages_json)
 	$eventList        = is_array($event_summary) ? $event_summary : array();
-	// [TOURNAMENTS HIDDEN] $tournamentList = [];
+	$tournamentList   = is_array($kingdom_tournaments['Tournaments']) ? $kingdom_tournaments['Tournaments'] : array();
 	$principalityList = is_array($principalities['Principalities']) ? $principalities['Principalities'] : array();
 	$officerList      = is_array($kingdom_officers['Officers']) ? $kingdom_officers['Officers'] : array();
 
@@ -1846,7 +1846,39 @@ var KnConfig = {
 </div>
 
 
-<!-- [TOURNAMENTS HIDDEN] add-tournament modal -->
+<div id="kn-addtournament-overlay">
+	<div class="kn-modal-box" style="width:480px;max-width:calc(100vw - 40px);">
+		<div class="kn-modal-header">
+			<h3 class="kn-modal-title"><i class="fas fa-trophy" style="margin-right:8px;color:#276749"></i>Add Tournament</h3>
+			<button class="kn-modal-close-btn" id="kn-addtournament-close-btn" aria-label="Close">&times;</button>
+		</div>
+		<div class="kn-modal-body">
+			<div id="kn-addtournament-feedback" style="display:none;margin-bottom:12px;font-size:13px;font-weight:600;"></div>
+			<div class="kn-acct-field">
+				<label for="kn-addtournament-name">Name <span style="color:#e53e3e">*</span></label>
+				<input type="text" id="kn-addtournament-name" placeholder="e.g. Bear Pit" maxlength="128" />
+			</div>
+			<div class="kn-acct-field">
+				<label for="kn-addtournament-when">Date <span style="color:#e53e3e">*</span></label>
+				<input type="date" id="kn-addtournament-when" />
+			</div>
+			<div class="kn-acct-field">
+				<label for="kn-addtournament-desc">Description <span style="color:#a0aec0;font-size:11px;text-transform:none;letter-spacing:0">(optional)</span></label>
+				<textarea id="kn-addtournament-desc" rows="3" placeholder="Brief description..."></textarea>
+			</div>
+			<div class="kn-acct-field">
+				<label for="kn-addtournament-url">URL <span style="color:#a0aec0;font-size:11px;text-transform:none;letter-spacing:0">(optional)</span></label>
+				<input type="url" id="kn-addtournament-url" placeholder="https://..." maxlength="255" />
+			</div>
+		</div>
+		<div class="kn-modal-footer">
+			<button class="kn-btn-ghost" id="kn-addtournament-cancel">Cancel</button>
+			<button class="kn-btn kn-btn-primary" id="kn-addtournament-submit">
+				<i class="fas fa-plus"></i> Create Tournament
+			</button>
+		</div>
+	</div>
+</div>
 <?php endif; ?>
 <script>
 (function() {
