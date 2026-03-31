@@ -96,8 +96,36 @@ class Model_Tournament extends Model {
 		return $this->Tournament->ClearBracketMatches($request);
 	}
 
+	function auth_check($request) {
+		return $this->Tournament->CheckAuth($request);
+	}
+
 	function get_standings($bracket_id) {
 		return $this->Tournament->GetStandings(['BracketId' => $bracket_id]);
+	}
+
+	function get_player_history($mundane_id) {
+		$report = $this->Report->GetPlayerTournamentHistory(['MundaneId' => $mundane_id]);
+		$rows = is_array($report['Detail']) ? $report['Detail'] : [];
+		if (empty($rows)) return [];
+
+		$bracketStandings = [];
+		foreach ($rows as &$row) {
+			$bid = $row['BracketId'];
+			if (!isset($bracketStandings[$bid])) {
+				$s = $this->Tournament->GetStandings(['BracketId' => $bid]);
+				$bracketStandings[$bid] = is_array($s['Detail']) ? $s['Detail'] : [];
+			}
+			$row['Placement'] = null;
+			foreach ($bracketStandings[$bid] as $s) {
+				if ((int)$s['ParticipantId'] === (int)$row['ParticipantId']) {
+					$row['Placement'] = (int)$s['Rank'];
+					break;
+				}
+			}
+		}
+		unset($row);
+		return $rows;
 	}
 
 }
