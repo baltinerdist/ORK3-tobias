@@ -435,24 +435,6 @@ class Tournament extends Ork3 {
 		return Success($tournament_id);
 	}
 
-	public function RemoveParticipant($request) {
-		if (!$this->check_auth($request)) return NoAuthorization();
-
-		$participant_id = (int)($request['ParticipantId'] ?? 0);
-		$tournament_id  = (int)($request['TournamentId']  ?? 0);
-		if (!valid_id($participant_id)) return InvalidParameter('ParticipantId required');
-		if (!valid_id($tournament_id))  return InvalidParameter('TournamentId required');
-
-		// Verify participant belongs to the authorized tournament before deleting
-		$check = $this->db->query('SELECT participant_id FROM ' . DB_PREFIX . 'participant WHERE participant_id = ' . $participant_id . ' AND tournament_id = ' . $tournament_id);
-		if (!$check || $check->size() === 0) return InvalidParameter('Participant not found in this tournament');
-
-		$this->db->query("DELETE FROM " . DB_PREFIX . "participant_mundane WHERE participant_id = $participant_id");
-		$this->db->query("DELETE FROM " . DB_PREFIX . "participant WHERE participant_id = $participant_id AND tournament_id = $tournament_id");
-
-		return Success($participant_id);
-	}
-
 	public function GetMatches($request) {
 		$where = $this->buildFilterWhere($request, 'm');
 
