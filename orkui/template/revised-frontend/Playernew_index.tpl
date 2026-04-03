@@ -1831,8 +1831,12 @@
 				<button type="button" class="pn-award-type-btn" id="pn-award-type-officers">
 					<i class="fas fa-crown" style="margin-right:5px"></i>Officer Titles
 				</button>
+				<button type="button" class="pn-award-type-btn" id="pn-award-type-assoc">
+					<i class="fas fa-link" style="margin-right:5px"></i>Associations
+				</button>
 			</div>
 
+			<div id="pn-std-award-panel">
 			<!-- Award Select -->
 			<div class="pn-acct-field">
 				<label for="pn-award-select">Award <span style="color:#e53e3e">*</span></label>
@@ -1901,12 +1905,40 @@
 				          placeholder="What was this award given for?"></textarea>
 				<span class="pn-char-count" id="pn-award-char-count">400 characters remaining</span>
 			</div>
+			</div><!-- /pn-std-award-panel -->
 		</div>
+
+		<!-- Associations Panel (shown when Associations tab is active) -->
+		<div id="pn-assoc-panel" style="display:none;padding:0 20px 4px;">
+			<div class="pn-acct-field">
+				<label>Associate <strong><?= htmlspecialchars($Player['Persona'] ?? '') ?></strong></label>
+			</div>
+			<div class="pn-acct-field">
+				<label for="pn-assoc-type-select">as <span style="color:#e53e3e">*</span></label>
+				<select id="pn-assoc-type-select">
+					<option value="">Select association type…</option>
+					<?php foreach ($AssociateAwards ?? [] as $aa): ?>
+					<option value="<?= (int)$aa['KingdomAwardId'] ?>"><?= htmlspecialchars($aa['Name']) ?></option>
+					<?php endforeach; ?>
+				</select>
+			</div>
+			<div class="pn-acct-field">
+				<label>to <span style="color:#e53e3e">*</span></label>
+				<input type="text" id="pn-assoc-to-text" placeholder="Search by persona…" autocomplete="off" />
+				<div class="pn-ac-results" id="pn-assoc-to-results"></div>
+				<input type="hidden" id="pn-assoc-to-id" value="" />
+			</div>
+			<div class="pn-acct-field">
+				<label for="pn-assoc-date">as of <span style="color:#e53e3e">*</span></label>
+				<input type="date" id="pn-assoc-date" />
+			</div>
+		</div>
+
 		<div class="pn-modal-footer" style="display:flex;align-items:center;justify-content:space-between">
 			<button class="pn-btn pn-btn-ghost" id="pn-award-cancel">Close</button>
 			<div style="display:flex;gap:8px">
 				<button class="pn-btn pn-btn-primary" id="pn-award-save-same" disabled>
-					<i class="fas fa-plus"></i> Add Award
+					<i class="fas fa-plus"></i> <span id="pn-award-save-label">Add Award</span>
 				</button>
 			</div>
 		</div>
@@ -2114,6 +2146,7 @@ var PnConfig = {
 	duesPeriodType:   <?= json_encode($_duesPeriodType) ?>,
 	duesPeriod:       <?= (int)$_duesPeriod ?>,
 	canCreateUnit:    <?= (!empty($canEditAdmin) || !empty($isOwnProfile)) && !empty($LoggedIn) ? 'true' : 'false' ?>,
+	associateAwards:  <?= json_encode(array_values($AssociateAwards ?? [])) ?>,
 	lastClassId:      <?= $_lastClassId ?>,
 	attendanceDates:  <?= json_encode(array_values(array_unique(array_filter(array_map(function($a) { return $a['Date'] ?? ''; }, is_array($Details['Attendance']) ? $Details['Attendance'] : []))))) ?>,
 };

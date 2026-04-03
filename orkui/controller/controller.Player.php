@@ -242,7 +242,29 @@ class Controller_Player extends Controller {
 				}
 			}
 		}
-		$this->data['PreloadOfficers'] = $preloadOfficers;
+		$this->data['PreloadOfficers']  = $preloadOfficers;
+
+		// Association awards: Squire, Man-at-Arms, Page, Lord's Page for this kingdom
+		$DB->Clear();
+		$_assocAwardSql = "SELECT ka.kingdomaward_id, IFNULL(ka.name, a.name) AS name, a.award_id
+			FROM ork_kingdomaward ka
+			JOIN ork_award a ON a.award_id = ka.award_id
+			WHERE ka.kingdom_id = " . (int)$this->session->kingdom_id . "
+			  AND a.award_id IN (13, 14, 15, 16)
+			ORDER BY FIELD(a.award_id, 16, 14, 15, 13)";
+		$_assocAwardResult = $DB->DataSet($_assocAwardSql);
+		$_assocAwards = [];
+		if ($_assocAwardResult && $_assocAwardResult->Size() > 0) {
+			while ($_assocAwardResult->Next()) {
+				$_assocAwards[] = [
+					'KingdomAwardId' => (int)$_assocAwardResult->kingdomaward_id,
+					'Name'           => $_assocAwardResult->name,
+					'AwardId'        => (int)$_assocAwardResult->award_id,
+				];
+			}
+		}
+		$DB->Clear();
+		$this->data['AssociateAwards'] = $_assocAwards;
 
 		$this->data['UpcomingRsvps'] = $this->Event->get_upcoming_rsvps((int)$id);
 		$this->data['IsOwnProfile'] = $uid === (int)$id;
