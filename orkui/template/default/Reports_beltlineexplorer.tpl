@@ -30,6 +30,26 @@ if ($kingdom_id && !empty($knights)) {
 /* ── Beltline Explorer specific styles ───────────────────── */
 .be-root { }
 
+.be-info-banner {
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+	background: #e8f0fe;
+	border: 1px solid #a8c7fa;
+	border-radius: 8px;
+	padding: 14px 18px;
+	margin-bottom: 16px;
+	color: #174ea6;
+	font-size: 14px;
+	line-height: 1.5;
+}
+.be-info-banner-icon {
+	font-size: 18px;
+	margin-top: 2px;
+	flex-shrink: 0;
+	color: #1a73e8;
+}
+
 .be-selector-bar {
 	display: flex;
 	align-items: center;
@@ -252,6 +272,15 @@ if ($kingdom_id && !empty($knights)) {
 				</a>
 			</div>
 <?php endif; ?>
+		</div>
+	</div>
+
+	<!-- ── Experimental banner ────────────────────────────── -->
+	<div class="be-info-banner">
+		<i class="fas fa-flask be-info-banner-icon"></i>
+		<div>
+			<strong>This is an experimental report.</strong>
+			Some data may be inaccurate or out of date. This data is based on the presence of associations in the awards and titles sections of individual player profiles. If this data looks incorrect or associations are missing, review the individual players to ensure they have been given their association titles and that the &ldquo;given by&rdquo; field is properly set to their overbelt.
 		</div>
 	</div>
 
