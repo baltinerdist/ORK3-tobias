@@ -1155,27 +1155,59 @@ if (PnConfig.recError) {
         var officerOptHTML = PnConfig.officerOptHTML;
 
         var currentType = 'awards';
+        var associateAwards = PnConfig.associateAwards || [];
+        var associateIds = {};
+        associateAwards.forEach(function(a) { associateIds[a.KingdomAwardId] = true; });
 
         function gid(id) { return document.getElementById(id); }
+
+        // Build filtered awardOptHTML (strips association-type awards out)
+        function buildFilteredAwardOptHTML() {
+            var tmp = document.createElement('div');
+            tmp.innerHTML = awardOptHTML;
+            tmp.querySelectorAll('option[value]').forEach(function(opt) {
+                if (associateIds[opt.value]) opt.remove();
+            });
+            tmp.querySelectorAll('optgroup').forEach(function(og) {
+                if (og.querySelectorAll('option').length === 0) og.remove();
+            });
+            return tmp.innerHTML;
+        }
+        var filteredAwardOptHTML = buildFilteredAwardOptHTML();
 
         // ---- Award Type Toggle ----
         function setAwardType(type) {
             currentType = type;
             var isOfficer = (type === 'officers');
-            gid('pn-award-type-awards').classList.toggle('pn-active', !isOfficer);
+            var isAssoc   = (type === 'assoc');
+            gid('pn-award-type-awards').classList.toggle('pn-active', type === 'awards');
             gid('pn-award-type-officers').classList.toggle('pn-active', isOfficer);
-            gid('pn-award-modal-title').innerHTML = isOfficer
-                ? '<i class="fas fa-crown" style="margin-right:8px;color:#553c9a"></i>Add Officer Title'
-                : '<i class="fas fa-trophy" style="margin-right:8px;color:#2c5282"></i>Add Award';
-            gid('pn-award-select').innerHTML = isOfficer ? officerOptHTML : awardOptHTML;
-            gid('pn-award-rank-row').style.display   = 'none';
-            gid('pn-award-custom-row').style.display  = 'none';
-            gid('pn-award-info-line').innerHTML       = '';
-            gid('pn-award-rank-val').value            = '';
+            gid('pn-award-type-assoc').classList.toggle('pn-active', isAssoc);
+            gid('pn-std-award-panel').style.display = isAssoc ? 'none' : '';
+            gid('pn-assoc-panel').style.display     = isAssoc ? ''     : 'none';
+            if (isAssoc) {
+                gid('pn-award-modal-title').innerHTML = '<i class="fas fa-link" style="margin-right:8px;color:#2b6cb0"></i>Add Association';
+                gid('pn-award-save-label').textContent = 'Add Association';
+            } else if (isOfficer) {
+                gid('pn-award-modal-title').innerHTML = '<i class="fas fa-crown" style="margin-right:8px;color:#553c9a"></i>Add Officer Title';
+                gid('pn-award-save-label').textContent = 'Add Award';
+                gid('pn-award-select').innerHTML = officerOptHTML;
+            } else {
+                gid('pn-award-modal-title').innerHTML = '<i class="fas fa-trophy" style="margin-right:8px;color:#2c5282"></i>Add Award';
+                gid('pn-award-save-label').textContent = 'Add Award';
+                gid('pn-award-select').innerHTML = filteredAwardOptHTML;
+            }
+            if (!isAssoc) {
+                gid('pn-award-rank-row').style.display   = 'none';
+                gid('pn-award-custom-row').style.display  = 'none';
+                gid('pn-award-info-line').innerHTML       = '';
+                gid('pn-award-rank-val').value            = '';
+            }
             checkRequired();
         }
         gid('pn-award-type-awards').addEventListener('click',   function() { setAwardType('awards'); });
         gid('pn-award-type-officers').addEventListener('click', function() { setAwardType('officers'); });
+        gid('pn-award-type-assoc').addEventListener('click',    function() { setAwardType('assoc'); });
 
         // ---- Award Select Change ----
         var pnNoBadgeAwards = ['griffon', 'griffin', 'hydra', 'jovious', 'jovius', 'mask', 'zodiac', 'walker'];
@@ -1327,16 +1359,61 @@ if (PnConfig.recError) {
         acKeyNav(gid('pn-award-givenby-text'), gid('pn-award-givenby-results'), 'pn-ac-open', '.pn-ac-item');
         acKeyNav(gid('pn-award-givenat-text'), gid('pn-award-givenat-results'), 'pn-ac-open', '.pn-ac-item');
 
+        // ---- Association tab: type select → drives KingdomAwardId on submit ----
+        gid('pn-assoc-type-select').addEventListener('change', checkRequired);
+        gid('pn-assoc-date').addEventListener('change', checkRequired);
+        gid('pn-assoc-date').addEventListener('input',  checkRequired);
+
+        // ---- Association tab: "to" player search ----
+        var assocToTimer;
+        gid('pn-assoc-to-text').addEventListener('input', function() {
+            clearTimeout(assocToTimer);
+            gid('pn-assoc-to-id').value = '';
+            checkRequired();
+            var term = this.value.trim();
+            if (term.length < 2) { gid('pn-assoc-to-results').classList.remove('pn-ac-open'); return; }
+            assocToTimer = setTimeout(function() {
+                var url = SEARCH_URL + '?Action=Search%2FPlayer&type=all&search=' + encodeURIComponent(term) + '&kingdom_id=' + KINGDOM_ID + '&limit=6';
+                fetch(url).then(function(r) { return r.json(); }).then(function(data) {
+                    var results = gid('pn-assoc-to-results');
+                    if (!data || !data.length) {
+                        results.innerHTML = '<div class="pn-ac-no-results">No players found</div>';
+                    } else {
+                        results.innerHTML = data.map(function(p) {
+                            return '<div class="pn-ac-item" tabindex="-1" data-id="' + p.MundaneId + '" data-name="' + encodeURIComponent(p.Persona) + '">'
+                                + escHtml(p.Persona)
+                                + ' <span style="color:#a0aec0;font-size:11px">(' + escHtml(p.KAbbr || '') + ':' + escHtml(p.PAbbr || '') + ')</span>'
+                                + '</div>';
+                        }).join('');
+                    }
+                    results.classList.add('pn-ac-open');
+                }).catch(function(err) { if (err.name !== 'AbortError') console.warn('[revised.js] assoc fetch failed:', err); });
+            }, AUTOCOMPLETE_DEBOUNCE_MS);
+        });
+        gid('pn-assoc-to-results').addEventListener('click', function(e) {
+            var item = e.target.closest ? e.target.closest('.pn-ac-item') : (e.target.classList.contains('pn-ac-item') ? e.target : null);
+            if (!item) return;
+            gid('pn-assoc-to-text').value = decodeURIComponent(item.dataset.name);
+            gid('pn-assoc-to-id').value   = item.dataset.id;
+            this.classList.remove('pn-ac-open');
+            checkRequired();
+        });
+        acKeyNav(gid('pn-assoc-to-text'), gid('pn-assoc-to-results'), 'pn-ac-open', '.pn-ac-item');
+
         // Close dropdowns when clicking elsewhere inside the overlay
         gid('pn-award-overlay').addEventListener('click', function(e) {
             var givenByInput   = gid('pn-award-givenby-text');
             var givenByResults = gid('pn-award-givenby-results');
             var givenAtInput   = gid('pn-award-givenat-text');
             var givenAtResults = gid('pn-award-givenat-results');
+            var assocToInput   = gid('pn-assoc-to-text');
+            var assocToResults = gid('pn-assoc-to-results');
             if (e.target !== givenByInput && !givenByResults.contains(e.target))
                 givenByResults.classList.remove('pn-ac-open');
             if (e.target !== givenAtInput && !givenAtResults.contains(e.target))
                 givenAtResults.classList.remove('pn-ac-open');
+            if (e.target !== assocToInput && !assocToResults.contains(e.target))
+                assocToResults.classList.remove('pn-ac-open');
         });
 
         // ---- Note char counter ----
@@ -1349,7 +1426,12 @@ if (PnConfig.recError) {
 
         // ---- Required field check ----
         function checkRequired() {
-            var ok = !!gid('pn-award-select').value && !!gid('pn-award-givenby-id').value && !!gid('pn-award-date').value;
+            var ok;
+            if (currentType === 'assoc') {
+                ok = !!gid('pn-assoc-type-select').value && !!gid('pn-assoc-to-id').value && !!gid('pn-assoc-date').value;
+            } else {
+                ok = !!gid('pn-award-select').value && !!gid('pn-award-givenby-id').value && !!gid('pn-award-date').value;
+            }
             gid('pn-award-save-same').disabled = !ok;
         }
         gid('pn-award-select').addEventListener('change', checkRequired);
@@ -1379,6 +1461,12 @@ if (PnConfig.recError) {
             gid('pn-award-rank-val').value           = '';
             gid('pn-award-info-line').innerHTML      = '';
             document.querySelectorAll('#pn-award-officer-chips .pn-officer-chip').forEach(function(c) { c.classList.remove('pn-selected'); });
+            // Reset association fields
+            gid('pn-assoc-type-select').value = '';
+            gid('pn-assoc-to-text').value     = '';
+            gid('pn-assoc-to-id').value       = '';
+            gid('pn-assoc-to-results').classList.remove('pn-ac-open');
+            gid('pn-assoc-date').value        = gid('pn-award-date').value;
             // Default date = today
             var today = new Date();
             gid('pn-award-date').value = today.getFullYear() + '-'
@@ -1443,6 +1531,15 @@ if (PnConfig.recError) {
             pnSuccessTimer = setTimeout(function() { el.style.display = 'none'; }, 3000);
         }
         function pnClearAward() {
+            if (currentType === 'assoc') {
+                gid('pn-assoc-type-select').value = '';
+                gid('pn-assoc-to-text').value     = '';
+                gid('pn-assoc-to-id').value       = '';
+                gid('pn-assoc-to-results').classList.remove('pn-ac-open');
+                checkRequired();
+                gid('pn-assoc-type-select').focus();
+                return;
+            }
             gid('pn-award-select').value             = '';
             gid('pn-award-rank-val').value           = '';
             gid('pn-award-rank-row').style.display   = 'none';
@@ -1462,30 +1559,44 @@ if (PnConfig.recError) {
             gid('pn-award-select').focus();
         }
         function pnDoSave(onSuccess) {
-            var errEl   = gid('pn-award-error');
-            var awardId = gid('pn-award-select').value;
-            var giverId = gid('pn-award-givenby-id').value;
-            var date    = gid('pn-award-date').value;
-
+            var errEl = gid('pn-award-error');
             errEl.style.display = 'none';
-            if (!awardId) { errEl.textContent = 'Please select an award.';            errEl.style.display = ''; return; }
-            if (!giverId) { errEl.textContent = 'Please select who gave this award.'; errEl.style.display = ''; return; }
-            if (!date)    { errEl.textContent = 'Please enter the award date.';       errEl.style.display = ''; return; }
-
             var fd = new FormData();
-            fd.append('KingdomAwardId', awardId);
-            fd.append('GivenById',      giverId);
-            fd.append('Date',           date);
-            fd.append('ParkId',         gid('pn-award-park-id').value    || '0');
-            fd.append('KingdomId',      gid('pn-award-kingdom-id').value || '0');
-            fd.append('EventId',        gid('pn-award-event-id').value   || '0');
-            fd.append('Note',           gid('pn-award-note').value       || '');
-            var rank = gid('pn-award-rank-val').value;
-            if (rank) fd.append('Rank', rank);
-            var customName = gid('pn-award-custom-name').value.trim();
-            if (customName) fd.append('AwardName', customName);
-
             var btnSame = gid('pn-award-save-same');
+
+            if (currentType === 'assoc') {
+                var assocId   = gid('pn-assoc-type-select').value;
+                var assocToId = gid('pn-assoc-to-id').value;
+                var assocDate = gid('pn-assoc-date').value;
+                if (!assocId)   { errEl.textContent = 'Please select an association type.'; errEl.style.display = ''; return; }
+                if (!assocToId) { errEl.textContent = 'Please select who they are associated to.'; errEl.style.display = ''; return; }
+                if (!assocDate) { errEl.textContent = 'Please enter the association date.'; errEl.style.display = ''; return; }
+                fd.append('KingdomAwardId', assocId);
+                fd.append('GivenById',      assocToId);
+                fd.append('Date',           assocDate);
+                fd.append('ParkId',   '0');
+                fd.append('KingdomId','0');
+                fd.append('EventId',  '0');
+            } else {
+                var awardId = gid('pn-award-select').value;
+                var giverId = gid('pn-award-givenby-id').value;
+                var date    = gid('pn-award-date').value;
+                if (!awardId) { errEl.textContent = 'Please select an award.';            errEl.style.display = ''; return; }
+                if (!giverId) { errEl.textContent = 'Please select who gave this award.'; errEl.style.display = ''; return; }
+                if (!date)    { errEl.textContent = 'Please enter the award date.';       errEl.style.display = ''; return; }
+                fd.append('KingdomAwardId', awardId);
+                fd.append('GivenById',      giverId);
+                fd.append('Date',           date);
+                fd.append('ParkId',         gid('pn-award-park-id').value    || '0');
+                fd.append('KingdomId',      gid('pn-award-kingdom-id').value || '0');
+                fd.append('EventId',        gid('pn-award-event-id').value   || '0');
+                fd.append('Note',           gid('pn-award-note').value       || '');
+                var rank = gid('pn-award-rank-val').value;
+                if (rank) fd.append('Rank', rank);
+                var customName = gid('pn-award-custom-name').value.trim();
+                if (customName) fd.append('AwardName', customName);
+            }
+
             btnSame.disabled = true;
             btnSame.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
 
@@ -1499,7 +1610,9 @@ if (PnConfig.recError) {
                     errEl.style.display = '';
                 })
                 .finally(function() {
-                    btnSame.innerHTML = '<i class="fas fa-plus"></i> Add Award';
+                    if (gid('pn-award-save-label'))
+                        gid('pn-award-save-label').textContent = currentType === 'assoc' ? 'Add Association' : 'Add Award';
+                    btnSame.disabled = false;
                     checkRequired();
                 });
         }
