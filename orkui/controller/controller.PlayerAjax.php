@@ -316,19 +316,7 @@ class Controller_PlayerAjax extends Controller {
 				: json_encode(['status' => $r['Status'], 'error' => ($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? '')]);
 
 		} elseif ($action === 'awardranks') {
-			global $DB;
-			$DB->Clear();
-			$pid = (int)$player_id;
-			$rs  = $DB->DataSet("
-				SELECT ka.award_id, MAX(aw.rank) AS max_rank
-				FROM ork_awards aw
-				INNER JOIN ork_kingdomaward ka ON ka.kingdomaward_id = aw.kingdomaward_id
-				WHERE aw.mundane_id = {$pid} AND aw.rank > 0
-				GROUP BY ka.award_id");
-			$ranks = [];
-			while ($rs && $rs->Next()) {
-				$ranks[(int)$rs->award_id] = (int)$rs->max_rank;
-			}
+			$ranks = $this->Player->GetPlayerAwardRanks((int)$player_id);
 			echo json_encode($ranks);
 
 		} else {
@@ -354,13 +342,12 @@ class Controller_PlayerAjax extends Controller {
 			echo json_encode(['status' => 1, 'error' => 'Cannot merge a player with themselves.']);
 			exit;
 		}
+		$this->load_model('Player');
 		// Auth: caller must have kingdom-level authority over at least one of the players' kingdoms
-		global $DB;
-		$DB->Clear();
-		$rs = $DB->DataSet("SELECT kingdom_id FROM " . DB_PREFIX . "mundane WHERE mundane_id IN ({$from_id}, {$to_id})");
+		$playerKingdoms = $this->Player->GetPlayersKingdoms([$from_id, $to_id]);
 		$authorized = false;
-		while ($rs && $rs->Next()) {
-			$kid = (int)$rs->kingdom_id;
+		foreach ($playerKingdoms as $pk) {
+			$kid = (int)$pk['kingdom_id'];
 			if ($kid > 0 && Ork3::$Lib->authorization->HasAuthority($uid, AUTH_KINGDOM, $kid, AUTH_CREATE)) {
 				$authorized = true;
 				break;
@@ -370,7 +357,6 @@ class Controller_PlayerAjax extends Controller {
 			echo json_encode(['status' => 5, 'error' => 'Not authorized to merge these players.']);
 			exit;
 		}
-		$this->load_model('Player');
 		$r = $this->Player->merge_player([
 			'Token'         => $this->session->token,
 			'FromMundaneId' => $from_id,
