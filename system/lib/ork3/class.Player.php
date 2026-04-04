@@ -1759,6 +1759,159 @@ class Player extends Ork3 {
 		return $date ? date('Y-m-d', strtotime($date)) : null;
 	}
 
+	public function GetPlayerOfficerRoles($player_id, $park_id) {
+		$sql = "SELECT o.role, o.park_id,
+			CASE WHEN o.park_id > 0 THEN IFNULL(pt.title, 'Park') ELSE 'Kingdom' END AS entity_type,
+			CASE WHEN o.park_id > 0 THEN p.name ELSE k.name END AS entity_name
+			FROM " . DB_PREFIX . "officer o
+			LEFT JOIN " . DB_PREFIX . "kingdom k ON o.kingdom_id = k.kingdom_id
+			LEFT JOIN " . DB_PREFIX . "park p ON o.park_id = p.park_id AND o.park_id > 0
+			LEFT JOIN " . DB_PREFIX . "parktitle pt ON p.parktitle_id = pt.parktitle_id
+			WHERE o.mundane_id = " . (int)$player_id . "
+			  AND (o.park_id = " . (int)$park_id . " OR o.park_id = 0)
+			ORDER BY o.park_id DESC, o.role";
+		$r = $this->db->query($sql);
+		if ($r === false || $r->size() == 0) {
+			return [];
+		}
+		$roles = [];
+		while ($r->next()) {
+			$roles[] = [
+				'role' => $r->role,
+				'entity_type' => $r->entity_type,
+				'entity_name' => $r->entity_name,
+			];
+		}
+		return $roles;
+	}
+
+	public function GetRevokedAwards($player_id, $type = 'awards') {
+		$sql = "SELECT a.awards_id, a.rank, a.date, a.revoked_at, a.revocation,
+			COALESCE(NULLIF(a.custom_name,''), ka.name, aw.name) AS award_name,
+			m.persona AS revoked_by
+			FROM " . DB_PREFIX . "awards a
+			LEFT JOIN " . DB_PREFIX . "kingdomaward ka ON a.kingdomaward_id = ka.kingdomaward_id
+			LEFT JOIN " . DB_PREFIX . "award aw ON a.award_id = aw.award_id
+			LEFT JOIN " . DB_PREFIX . "mundane m ON a.revoked_by_id = m.mundane_id
+			WHERE a.stripped_from = " . (int)$player_id . "
+			  AND a.revoked = 1";
+		if ($type === 'titles') {
+			$sql .= " AND (aw.officer_role != 'none' OR ka.is_title = 1)";
+		} else {
+			$sql .= " AND (aw.officer_role = 'none' OR aw.officer_role IS NULL) AND (ka.is_title IS NULL OR ka.is_title = 0)";
+		}
+		$sql .= " ORDER BY a.revoked_at DESC, a.date DESC";
+		$r = $this->db->query($sql);
+		if ($r === false || $r->size() == 0) {
+			return [];
+		}
+		$results = [];
+		while ($r->next()) {
+			$results[] = [
+				'AwardsId' => $r->awards_id,
+				'AwardName' => $r->award_name,
+				'Rank' => $r->rank,
+				'Date' => $r->date,
+				'RevokedAt' => $r->revoked_at,
+				'Revocation' => $r->revocation,
+				'RevokedBy' => $r->revoked_by,
+			];
+		}
+		return $results;
+	}
+
+	public function IsOrkAdmin($player_id) {
+		$sql = "SELECT 1 FROM " . DB_PREFIX . "authorization
+			WHERE mundane_id = " . (int)$player_id . "
+			  AND role = 'admin'
+			  AND park_id = 0 AND kingdom_id = 0 AND event_id = 0 AND unit_id = 0
+			LIMIT 1";
+		$r = $this->db->query($sql);
+		return ($r !== false && $r->size() > 0);
+	}
+
+	public function GetPlayerAssociates($giver_id) {
+		$sql = "SELECT ma.mundane_id AS RecipientId, m.persona AS Persona,
+			IFNULL(ka.name, a.name) AS TitleName, a.peerage AS Peerage, ma.date AS Date
+			FROM " . DB_PREFIX . "awards ma
+			JOIN " . DB_PREFIX . "award a ON a.award_id = ma.award_id
+			LEFT JOIN " . DB_PREFIX . "kingdomaward ka ON ka.kingdomaward_id = ma.kingdomaward_id
+			JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = ma.mundane_id
+			WHERE ma.given_by_id = " . (int)$giver_id . "
+				AND (a.peerage IN ('Squire','Man-At-Arms','Page','Lords-Page')
+					OR LOWER(IFNULL(ka.name, a.name)) LIKE '%woman%at%arms%')
+				AND (ma.revoked = 0 OR ma.revoked IS NULL)
+			ORDER BY CASE a.peerage
+				WHEN 'Squire' THEN 1 WHEN 'Man-At-Arms' THEN 2
+				WHEN 'Lords-Page' THEN 3 WHEN 'Page' THEN 4 ELSE 5 END, m.persona ASC";
+		$r = $this->db->query($sql);
+		if ($r === false || $r->size() == 0) {
+			return [];
+		}
+		$results = [];
+		while ($r->next()) {
+			$results[] = [
+				'RecipientId' => $r->RecipientId,
+				'Persona' => $r->Persona,
+				'TitleName' => $r->TitleName,
+				'Peerage' => $r->Peerage,
+				'Date' => $r->Date,
+			];
+		}
+		return $results;
+	}
+
+	public function GetKingdomAwardMap($kingdom_id) {
+		$sql = "SELECT kingdomaward_id, award_id FROM " . DB_PREFIX . "kingdomaward WHERE kingdom_id = " . (int)$kingdom_id . " AND is_title = 0";
+		$r = $this->db->query($sql);
+		if ($r === false || $r->size() == 0) {
+			return [];
+		}
+		$map = [];
+		while ($r->next()) {
+			$map[$r->award_id] = $r->kingdomaward_id;
+		}
+		return $map;
+	}
+
+	public function GetPlayerAwardRanks($player_id) {
+		$sql = "SELECT ka.award_id, MAX(aw.rank) AS max_rank
+			FROM " . DB_PREFIX . "awards aw
+			INNER JOIN " . DB_PREFIX . "kingdomaward ka ON ka.kingdomaward_id = aw.kingdomaward_id
+			WHERE aw.mundane_id = " . (int)$player_id . " AND aw.rank > 0
+			GROUP BY ka.award_id";
+		$r = $this->db->query($sql);
+		if ($r === false || $r->size() == 0) {
+			return [];
+		}
+		$ranks = [];
+		while ($r->next()) {
+			$ranks[$r->award_id] = $r->max_rank;
+		}
+		return $ranks;
+	}
+
+	public function GetPlayersKingdoms($mundane_ids) {
+		if (empty($mundane_ids)) {
+			return [];
+		}
+		$ids = implode(',', array_map('intval', $mundane_ids));
+		$sql = "SELECT mundane_id, kingdom_id FROM " . DB_PREFIX . "mundane WHERE mundane_id IN (" . $ids . ")";
+		$r = $this->db->query($sql);
+		if ($r === false || $r->size() == 0) {
+			return [];
+		}
+		$results = [];
+		while ($r->next()) {
+			$results[] = [
+				'mundane_id' => $r->mundane_id,
+				'kingdom_id' => $r->kingdom_id,
+			];
+		}
+		return $results;
+	}
+
+
 }
 
 ?>
