@@ -550,10 +550,10 @@ if (PnConfig.recError) {
                 img.src = url;
             }
 
-            if (file.size > 348836) {
+            if (file.size > 1048576) {
                 var isPng = (file.type === 'image/png');
                 gid('pn-img-resize-notice').textContent = 'Resizing\u2026';
-                resizeImageToLimit(file, 348836, function(blob) {
+                resizeImageToLimit(file, 1048576, function(blob) {
                     gid('pn-img-resize-notice').textContent = 'Auto-resized to ' + Math.round(blob.size / 1024) + '\u00a0KB';
                     loadIntoModal(blob);
                 }, function(errMsg) {
@@ -598,27 +598,53 @@ if (PnConfig.recError) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.drawImage(origImg, 0, 0, canvas.width, canvas.height);
 
-            // Dim outside crop
-            ctx.fillStyle = 'rgba(0,0,0,0.52)';
-            ctx.fillRect(0, 0, canvas.width, cy);
-            ctx.fillRect(0, cy + ch, canvas.width, canvas.height - cy - ch);
-            ctx.fillRect(0, cy, cx, ch);
-            ctx.fillRect(cx + cw, cy, canvas.width - cx - cw, ch);
-
-            // Crop border
-            ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-            ctx.lineWidth = 1.5;
-            ctx.strokeRect(cx + 0.5, cy + 0.5, cw - 1, ch - 1);
-
-            // Rule-of-thirds
-            ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(cx + cw/3, cy); ctx.lineTo(cx + cw/3, cy + ch);
-            ctx.moveTo(cx + 2*cw/3, cy); ctx.lineTo(cx + 2*cw/3, cy + ch);
-            ctx.moveTo(cx, cy + ch/3); ctx.lineTo(cx + cw, cy + ch/3);
-            ctx.moveTo(cx, cy + 2*ch/3); ctx.lineTo(cx + cw, cy + 2*ch/3);
-            ctx.stroke();
+            if (imgType === 'photo') {
+                // Circle overlay for photos
+                ctx.fillStyle = 'rgba(0,0,0,0.52)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                // Cut out circle
+                var centerX = cx + cw / 2, centerY = cy + ch / 2;
+                var radius = Math.min(cw, ch) / 2;
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+                ctx.clip();
+                ctx.drawImage(origImg, 0, 0, canvas.width, canvas.height);
+                ctx.restore();
+                // Circle border
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+                // Rule-of-thirds inside circle
+                ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(cx + cw/3, cy); ctx.lineTo(cx + cw/3, cy + ch);
+                ctx.moveTo(cx + 2*cw/3, cy); ctx.lineTo(cx + 2*cw/3, cy + ch);
+                ctx.moveTo(cx, cy + ch/3); ctx.lineTo(cx + cw, cy + ch/3);
+                ctx.moveTo(cx, cy + 2*ch/3); ctx.lineTo(cx + cw, cy + 2*ch/3);
+                ctx.stroke();
+            } else {
+                // Rectangle overlay for heraldry
+                ctx.fillStyle = 'rgba(0,0,0,0.52)';
+                ctx.fillRect(0, 0, canvas.width, cy);
+                ctx.fillRect(0, cy + ch, canvas.width, canvas.height - cy - ch);
+                ctx.fillRect(0, cy, cx, ch);
+                ctx.fillRect(cx + cw, cy, canvas.width - cx - cw, ch);
+                ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+                ctx.lineWidth = 1.5;
+                ctx.strokeRect(cx + 0.5, cy + 0.5, cw - 1, ch - 1);
+                ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(cx + cw/3, cy); ctx.lineTo(cx + cw/3, cy + ch);
+                ctx.moveTo(cx + 2*cw/3, cy); ctx.lineTo(cx + 2*cw/3, cy + ch);
+                ctx.moveTo(cx, cy + ch/3); ctx.lineTo(cx + cw, cy + ch/3);
+                ctx.moveTo(cx, cy + 2*ch/3); ctx.lineTo(cx + cw, cy + 2*ch/3);
+                ctx.stroke();
+            }
 
             // Corner handles
             var hs = 8;
@@ -630,6 +656,7 @@ if (PnConfig.recError) {
                 ctx.strokeRect(pt[0] - hs/2, pt[1] - hs/2, hs, hs);
             });
         }
+
 
         function getCanvasPos(canvas, e) {
             var rect = canvas.getBoundingClientRect();
@@ -722,10 +749,11 @@ if (PnConfig.recError) {
             var outCanvas = document.createElement('canvas');
             outCanvas.width  = Math.round(cb.w);
             outCanvas.height = Math.round(cb.h);
-            outCanvas.getContext('2d').drawImage(origImg, cb.x, cb.y, cb.w, cb.h, 0, 0, cb.w, cb.h);
+            var outCtx = outCanvas.getContext('2d');
+            outCtx.drawImage(origImg, cb.x, cb.y, cb.w, cb.h, 0, 0, cb.w, cb.h);
             outCanvas.toBlob(function(blob) {
-                if (blob.size > 348836) {
-                    resizeImageToLimit(blob, 348836, doUpload, function(err) {
+                if (blob.size > 1048576) {
+                    resizeImageToLimit(blob, 1048576, doUpload, function(err) {
                         showStep('pn-img-step-select');
                         showError(err);
                     }, false);
@@ -734,6 +762,7 @@ if (PnConfig.recError) {
                 }
             }, 'image/jpeg', 0.88);
         }
+
 
         function doUpload(blob) {
             showStep('pn-img-step-uploading');
