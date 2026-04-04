@@ -373,79 +373,16 @@ class Controller_Player extends Controller {
 			$this->data['AwardRecommendations'] = is_array($recs) ? $recs : [];
 		}
 
-		global $DB;
-		$DB->Clear();
-		$officerSql   = "SELECT o.role, o.park_id,
-			CASE WHEN o.park_id > 0 THEN IFNULL(pt.title, 'Park') ELSE 'Kingdom' END AS entity_type,
-			CASE WHEN o.park_id > 0 THEN p.name ELSE k.name END AS entity_name
-			FROM ork_officer o
-			LEFT JOIN ork_kingdom k ON o.kingdom_id = k.kingdom_id
-			LEFT JOIN ork_park p ON o.park_id = p.park_id AND o.park_id > 0
-			LEFT JOIN ork_parktitle pt ON p.parktitle_id = pt.parktitle_id
-			WHERE o.mundane_id = " . (int)$id . "
-			ORDER BY o.park_id DESC, o.role";
-		$officerResult = $DB->DataSet($officerSql);
-		$officerRoles  = [];
-		if ($officerResult->Size() > 0) {
-			while ($officerResult->Next()) {
-				$officerRoles[] = [
-					'role'        => $officerResult->role,
-					'entity_type' => $officerResult->entity_type,
-					'entity_name' => $officerResult->entity_name,
-				];
-			}
-		}
-		$this->data['OfficerRoles'] = $officerRoles;
+		$this->data['OfficerRoles'] = $this->Player->GetPlayerOfficerRoles((int)$id, (int)$this->data['Player']['ParkId']);
 
 		$this->data['RevokedAwards'] = [];
 		$this->data['RevokedTitles'] = [];
 		if ($canEdit) {
-			$revokedBaseSql = "SELECT a.awards_id, a.rank, a.date, a.revoked_at, a.revocation,
-				COALESCE(NULLIF(a.custom_name,''), ka.name, aw.name) AS award_name,
-				m.persona AS revoked_by
-				FROM ork_awards a
-				LEFT JOIN ork_kingdomaward ka ON a.kingdomaward_id = ka.kingdomaward_id
-				LEFT JOIN ork_award aw ON a.award_id = aw.award_id
-				LEFT JOIN ork_mundane m ON a.revoked_by_id = m.mundane_id
-				WHERE a.stripped_from = " . (int)$id . "
-				  AND a.revoked = 1";
-			$revokedAwardsSql = $revokedBaseSql . "
-				  AND (aw.officer_role = 'none' OR aw.officer_role IS NULL)
-				  AND (ka.is_title IS NULL OR ka.is_title = 0)
-				ORDER BY a.revoked_at DESC, a.date DESC";
-			$revokedTitlesSql = $revokedBaseSql . "
-				  AND (aw.officer_role != 'none' OR ka.is_title = 1)
-				ORDER BY a.revoked_at DESC, a.date DESC";
-			foreach (['RevokedAwards' => $revokedAwardsSql, 'RevokedTitles' => $revokedTitlesSql] as $key => $sql) {
-				$DB->Clear();
-				$result = $DB->DataSet($sql);
-				$rows = [];
-				if ($result->Size() > 0) {
-					while ($result->Next()) {
-						$rows[] = [
-							'AwardsId'   => $result->awards_id,
-							'AwardName'  => $result->award_name,
-							'Rank'       => $result->rank,
-							'Date'       => $result->date,
-							'RevokedAt'  => $result->revoked_at,
-							'Revocation' => $result->revocation,
-							'RevokedBy'  => $result->revoked_by,
-						];
-					}
-				}
-				$this->data[$key] = $rows;
-			}
+			$this->data['RevokedAwards'] = $this->Player->GetRevokedAwards((int)$id, 'awards');
+			$this->data['RevokedTitles'] = $this->Player->GetRevokedAwards((int)$id, 'titles');
 		}
 
-		$DB->Clear();
-		$adminCheck = $DB->DataSet(
-			"SELECT 1 FROM ork_authorization
-			 WHERE mundane_id = " . (int)$id . "
-			   AND role = 'admin'
-			   AND park_id = 0 AND kingdom_id = 0 AND event_id = 0 AND unit_id = 0
-			 LIMIT 1"
-		);
-		$this->data['IsOrkAdmin'] = ($adminCheck && $adminCheck->Size() > 0);
+		$this->data['IsOrkAdmin'] = $this->Player->IsOrkAdmin((int)$id);
 
 		$_att = is_array($this->data['Details']['Attendance']) ? $this->data['Details']['Attendance'] : [];
 		$this->data['Stats'] = [
@@ -504,35 +441,7 @@ class Controller_Player extends Controller {
 		$this->data['Player']['ParkName'] = $this->session->park_name;
 
 		if ($uid === (int)$id) {
-			$DB->Clear();
-			$__assocSql = "SELECT ma.mundane_id AS RecipientId, m.persona AS Persona,
-				IFNULL(ka.name, a.name) AS TitleName, a.peerage AS Peerage, ma.date AS Date
-				FROM ork_awards ma
-				JOIN ork_award a ON a.award_id = ma.award_id
-				LEFT JOIN ork_kingdomaward ka ON ka.kingdomaward_id = ma.kingdomaward_id
-				JOIN ork_mundane m ON m.mundane_id = ma.mundane_id
-				WHERE ma.given_by_id = $uid
-					AND (a.peerage IN ('Squire','Man-At-Arms','Page','Lords-Page')
-						OR LOWER(IFNULL(ka.name, a.name)) LIKE '%woman%at%arms%')
-					AND (ma.revoked = 0 OR ma.revoked IS NULL)
-				ORDER BY CASE a.peerage
-					WHEN 'Squire' THEN 1 WHEN 'Man-At-Arms' THEN 2
-					WHEN 'Lords-Page' THEN 3 WHEN 'Page' THEN 4 ELSE 5 END, m.persona ASC";
-			$__assocResult = $DB->DataSet($__assocSql);
-			$__assocs = [];
-			if ($__assocResult) {
-				while ($__assocResult->Next()) {
-					$__assocs[] = [
-						'RecipientId' => (int)$__assocResult->RecipientId,
-						'Persona'     => $__assocResult->Persona,
-						'TitleName'   => $__assocResult->TitleName,
-						'Peerage'     => $__assocResult->Peerage,
-						'Date'        => $__assocResult->Date,
-					];
-				}
-			}
-			$DB->Clear();
-			$this->data['MyAssociates'] = $__assocs;
+			$this->data['MyAssociates'] = $this->Player->GetPlayerAssociates($uid);
 		}
 	}
 
@@ -583,14 +492,7 @@ class Controller_Player extends Controller {
 		$this->data['PreloadOfficers'] = $preloadOfficers;
 
 		// AwardId → KingdomAwardId map for current kingdom (pre-match historical award dropdowns)
-		global $DB;
-		$DB->Clear();
-		$rs = $DB->DataSet(
-			'SELECT kingdomaward_id, award_id FROM ork_kingdomaward WHERE kingdom_id = ' . (int)$this->session->kingdom_id . ' AND is_title = 0'
-		);
-		$awardIdMap = [];
-		if ($rs) { while ($rs->Next()) { $awardIdMap[(int)$rs->award_id] = (int)$rs->kingdomaward_id; } }
-		$this->data['AwardIdToKingdomAwardId'] = $awardIdMap;
+		$this->data['AwardIdToKingdomAwardId'] = $this->Player->GetKingdomAwardMap((int)$this->session->kingdom_id);
 	}
 
 }
