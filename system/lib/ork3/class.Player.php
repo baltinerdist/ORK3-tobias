@@ -615,6 +615,7 @@ class Player extends Ork3 {
 							imagejpeg($playerimage, $base . '.jpg');
 						}
 						$this->mundane->has_image = 1;
+						Heraldry::LogMediaChange('player', $new_mundane_id, 'image', 'set', $mundane_id);
 					} else {
 						$this->mundane->has_image = 0;
 					}
@@ -951,7 +952,7 @@ class Player extends Ork3 {
 				$this->mundane->save();
 				$this->set_waiver($request);
 				$this->mundane->save();
-				$this->set_image($request);
+				$this->set_image($request, $requester_id);
 				$this->mundane->save();
 				logtrace("Mundane DB 1", $this->mundane);
 				$this->mundane->email = is_null($request['Email'])?$this->mundane->email:$request['Email'];
@@ -1046,7 +1047,7 @@ class Player extends Ork3 {
         return $request;
     }
 
-	public function set_image($request) {
+	public function set_image($request, $performed_by = 0) {
         logtrace("set_image", $request);
         $request = $this->media_fetch('Image', $request);
 		if (strlen($request['Image']) > 0 && strlen($request['Image']) < 465000 && Common::supported_mime_types($request['ImageMimeType']) && !Common::is_pdf_mime_type($request['ImageMimeType'])) {
@@ -1067,6 +1068,7 @@ class Player extends Ork3 {
 					imagejpeg($playerimage, $base . '.jpg');
 				}
 				$this->mundane->has_image = 1;
+				Heraldry::LogMediaChange('player', $this->mundane->mundane_id, 'image', 'set', $performed_by);
 			} else {
 				$notices .= "Image could not be decoded.";
 			}
@@ -1178,6 +1180,7 @@ class Player extends Ork3 {
 				if (file_exists($path)) unlink($path);
 				$this->mundane->has_image = 0;
 				$this->mundane->save();
+				Heraldry::LogMediaChange('player', $request['MundaneId'], 'image', 'remove', $mundane_id);
 				return Success();
 			} else {
 				return InvalidParameter();
@@ -1198,7 +1201,7 @@ class Player extends Ork3 {
 			$this->mundane->clear();
 			$this->mundane->mundane_id = $request['MundaneId'];
 			if ($this->mundane->find()) {
-				$r = $this->set_image($request);
+				$r = $this->set_image($request, $mundane_id);
 				$this->mundane->save();
 				return $r;
 			} else {
