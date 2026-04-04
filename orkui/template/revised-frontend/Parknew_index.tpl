@@ -1987,6 +1987,15 @@ var PkConfig = {
 							<i class="fas fa-eraser"></i> Reset Waivers
 						</button>
 					</div>
+					<div class="kn-admin-ops-row">
+						<div class="kn-admin-ops-info">
+							<strong>Scroll Generator</strong>
+							<p>Design and generate custom award scrolls for this park's members.</p>
+						</div>
+						<a class="kn-admin-ops-btn" href="<?= UIR ?>Scroll/builder" style="text-decoration:none;text-align:center">
+							<i class="fas fa-scroll"></i> Open Generator
+						</a>
+					</div>
 				</div>
 			</div>
 
