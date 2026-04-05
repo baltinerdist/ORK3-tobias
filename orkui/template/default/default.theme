@@ -272,7 +272,7 @@ $downtime_note  = 'ORK downtime to migrate to the Mask 3.5.2 Release';
 					<?php endif; ?>
 					<a href='https://play.amtgard.com/' target='_blank'><i class='fas fa-map-marker-alt'></i> Find a Chapter</a>
 					<div class='nav-dropdown-divider'></div>
-					<a href='#' onclick="navInfoDialog('New Documentation Coming Soon!');return false;"><i class='fas fa-book'></i> ORK Documentation</a>
+					<a href='#' onclick="orkDocOpen();return false;"><i class='fas fa-book'></i> ORK Documentation</a>
 				</div>
 			</div>
 
@@ -721,6 +721,7 @@ endif;
 })();
 </script>
 <?php endif; ?>
+<?php require_once(DIR_TEMPLATE . 'default/docs_modal.tpl'); ?>
 
 <footer style="margin-top:40px;padding:18px 24px;border-top:1px solid var(--ork-border,#e2e8f0);background:var(--ork-bg-secondary,#f8fafc);font-size:11px;color:var(--ork-text-muted,#94a3b8);text-align:center;line-height:1.7;">
   Amtgard is a registered trademark of Amtgard International, Inc., a 501(c)(3) non-profit organization.
