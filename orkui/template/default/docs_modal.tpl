@@ -1218,8 +1218,6 @@ var ORKDOC_DATA = {
 		        '<li><strong>Website</strong> &mdash; an optional link to an external event website or social media page</li>' +
 		        '<li><strong>Heraldry</strong> &mdash; an optional event logo or image</li>' +
 		        '</ul>' +
-		        '<h3>Multiple Occurrences</h3>' +
-		        '<p>A single event can have multiple scheduled occurrences (dates). For example, a recurring monthly tournament might be one event with multiple date entries. Each occurrence tracks its own RSVP counts and attendance separately.</p>' +
 		        '<h3>Finding Events</h3>' +
 		        '<p>You can find events listed on kingdom and park profile pages under the <strong>Events</strong> tab. Events are displayed with their dates, location, and RSVP status.</p>' +
 		        '<blockquote><strong>Tip:</strong> Check your kingdom\'s event listings regularly to stay up to date on upcoming gatherings in your area.</blockquote>'
@@ -1229,23 +1227,20 @@ var ORKDOC_DATA = {
 		      title: 'Creating Events',
 		      body: '<h2>Creating Events</h2>' +
 		        '<p>Officers with event management authority can create new events in the ORK. This is typically available to kingdom and park officers.</p>' +
-		        '<h3>Step 1: Create the Event</h3>' +
-		        '<p>Start by providing the basic information:</p>' +
+		        '<h3>Creating a New Event</h3>' +
+		        '<p>Click the <strong>+ New Event</strong> button on a kingdom or park\'s Events tab. Provide the basic information:</p>' +
 		        '<ul>' +
 		        '<li><strong>Event Name</strong> &mdash; A descriptive title for the event (required).</li>' +
 		        '<li><strong>Level</strong> &mdash; Whether this is a kingdom-level or park-level event. This determines where it appears in listings and who can manage it.</li>' +
 		        '</ul>' +
-		        '<h3>Step 2: Add Event Details</h3>' +
-		        '<p>Once the event is created, you can fill in the full details through the admin panel:</p>' +
+		        '<p>The system will create the event and take you to its admin panel, where you can fill in the full details:</p>' +
 		        '<ul>' +
-		        '<li><strong>Date and Time</strong> &mdash; Set the start and end date/time for each occurrence of the event.</li>' +
+		        '<li><strong>Date and Time</strong> &mdash; Set the start and end date/time for the event.</li>' +
 		        '<li><strong>Price</strong> &mdash; Enter the cost to attend. Leave at $0 for free events.</li>' +
 		        '<li><strong>Description</strong> &mdash; Provide details about the event. HTML formatting is allowed for rich descriptions.</li>' +
 		        '<li><strong>Location</strong> &mdash; Enter the street address, city, province/state, and postal code. The system will automatically geocode the address and display it on a map.</li>' +
 		        '<li><strong>Website</strong> &mdash; Add a URL and display name for an external event page (such as a Facebook event).</li>' +
 		        '</ul>' +
-		        '<h3>Managing Occurrences</h3>' +
-		        '<p>You can add multiple date occurrences to a single event. This is useful for recurring events or multi-day events where each day has its own attendance tracking. Mark occurrences as "current" to indicate they are active and upcoming.</p>' +
 		        '<h3>Editing Events</h3>' +
 		        '<p>If you have management authority for an event, you will see an <strong>Admin Panel</strong> link in the navigation when viewing the event page. Use this to update any event details after creation.</p>' +
 		        '<blockquote><strong>Note:</strong> You must be logged in with appropriate officer authority to create or edit events. If you do not see the creation option, contact your kingdom or park officers.</blockquote>'
@@ -1256,14 +1251,14 @@ var ORKDOC_DATA = {
 		      body: '<h2>RSVP & Event Attendance</h2>' +
 		        '<p>The ORK allows players to indicate their plans for upcoming events and tracks actual attendance for events that have occurred.</p>' +
 		        '<h3>RSVPing to Events</h3>' +
-		        '<p>When viewing an event with upcoming occurrences, logged-in players can RSVP to indicate their plans:</p>' +
+		        '<p>When viewing an event with upcoming dates, logged-in players can RSVP to indicate their plans:</p>' +
 		        '<ul>' +
 		        '<li><strong>Going</strong> &mdash; You plan to attend the event.</li>' +
 		        '<li><strong>Interested</strong> &mdash; You are considering attending but have not committed.</li>' +
 		        '</ul>' +
 		        '<p>To RSVP, click the RSVP button on the event\'s date entry. You can change or remove your RSVP at any time by clicking the button again &mdash; it toggles on and off.</p>' +
 		        '<h3>RSVP Counts</h3>' +
-		        '<p>Each event occurrence displays a count of how many players are attending or interested (for example, "47 attending"). This helps the community gauge interest and helps event organizers plan accordingly.</p>' +
+		        '<p>Each event displays a count of how many players are attending or interested (for example, "47 attending"). This helps the community gauge interest and helps event organizers plan accordingly.</p>' +
 		        '<h3>Attendee List (Event Managers)</h3>' +
 		        '<p>Officers who manage the event can see the full RSVP attendee list. This list shows each player\'s:</p>' +
 		        '<ul>' +
@@ -1297,14 +1292,14 @@ var ORKDOC_DATA = {
 		        '<li><strong>Class Played</strong> &mdash; the Amtgard class the player participated as</li>' +
 		        '<li><strong>Credits</strong> &mdash; the number of credits earned (defaults to 1)</li>' +
 		        '<li><strong>Park / Kingdom</strong> &mdash; where attendance was recorded</li>' +
-		        '<li><strong>Event</strong> &mdash; optionally linked to a specific event occurrence</li>' +
+		        '<li><strong>Event</strong> &mdash; optionally linked to a specific event</li>' +
 		        '</ul>' +
 		        '<h3>Entry Points</h3>' +
 		        '<p>There are three main places where attendance is recorded:</p>' +
 		        '<ul>' +
 		        '<li><strong>Park Attendance</strong> &mdash; The most common method. Officers enter attendance for players at regular park days. Accessible from a park\'s attendance page.</li>' +
 		        '<li><strong>Kingdom Attendance</strong> &mdash; Kingdom-level officers can record attendance for kingdom-wide activities.</li>' +
-		        '<li><strong>Event Attendance</strong> &mdash; Event managers can record attendance for specific event occurrences. Sign-ins open 24 hours before the event starts.</li>' +
+		        '<li><strong>Event Attendance</strong> &mdash; Event managers can record attendance for specific events. Sign-ins open 24 hours before the event starts.</li>' +
 		        '</ul>' +
 		        '<h3>Why Attendance Matters</h3>' +
 		        '<p>Credits earned through attendance contribute directly to your <strong>class levels</strong>. As you accumulate credits in a class, your level in that class increases, unlocking new abilities in the game. Attendance is also used to determine eligibility for certain awards and titles.</p>' +
@@ -1379,7 +1374,7 @@ var ORKDOC_DATA = {
 		        '</ul>' +
 		        '<p>The park attendance explorer lets you navigate through dates to review trends in park activity over time.</p>' +
 		        '<h3>Event Attendance Report</h3>' +
-		        '<p>Each event occurrence has its own attendance view showing all players who were checked in. Event managers can see the full list and add or remove entries as needed.</p>' +
+		        '<p>Each event has its own attendance view showing all players who were checked in. Event managers can see the full list and add or remove entries as needed.</p>' +
 		        '<h3>New Player Attendance</h3>' +
 		        '<p>The system tracks new players within a <strong>90-day window</strong>, helping parks and kingdoms understand how many newcomers are participating and measure retention and growth efforts.</p>' +
 		        '<h3>Player Profile Attendance</h3>' +
@@ -1456,18 +1451,17 @@ var ORKDOC_DATA = {
 		      id: 'understanding-units',
 		      title: 'Understanding Units',
 		      body: '<h2>Understanding Units</h2>' +
-		        '<p>Units are player-created groups that exist independently of the park and kingdom structure. They represent fighting companies, households, and event-organizing teams.</p>' +
+		        '<p>Units are player-created groups that exist independently of the park and kingdom structure. They represent fighting companies and households.</p>' +
 		        '<h3>Types of Units</h3>' +
 		        '<ul>' +
 		        '<li><strong>Company</strong> &mdash; A military or social fighting group. When you create a company, you automatically become its <strong>Captain</strong>. Your player record is linked to the company as your primary unit affiliation.</li>' +
 		        '<li><strong>Household</strong> &mdash; A social group or family structure. The creator becomes the <strong>Lord</strong> of the household.</li>' +
-		        '<li><strong>Event Unit</strong> &mdash; A group created specifically for organizing events. The creator becomes the <strong>Organizer</strong>.</li>' +
 		        '</ul>' +
 		        '<h3>Unit Information</h3>' +
 		        '<p>Each unit has a profile page displaying:</p>' +
 		        '<ul>' +
 		        '<li><strong>Name</strong> &mdash; The unit&rsquo;s display name.</li>' +
-		        '<li><strong>Type</strong> &mdash; Company, Household, or Event.</li>' +
+		        '<li><strong>Type</strong> &mdash; Company or Household.</li>' +
 		        '<li><strong>Description</strong> &mdash; A summary of the unit&rsquo;s purpose or theme.</li>' +
 		        '<li><strong>History</strong> &mdash; Background and lore for the unit.</li>' +
 		        '<li><strong>URL</strong> &mdash; An optional link to the unit&rsquo;s website or social media.</li>' +
@@ -1482,7 +1476,7 @@ var ORKDOC_DATA = {
 		      body: '<h2>Managing Units</h2>' +
 		        '<p>If you have management authorization for a unit, you can administer its details and membership from the unit admin panel.</p>' +
 		        '<h3>Creating a Unit</h3>' +
-		        '<p>Any logged-in player can create a new unit. Provide a <strong>Name</strong>, select the <strong>Type</strong> (Company, Household, or Event), and optionally fill in a description, history, URL, and heraldry image. You will automatically be added as the first member with the appropriate leadership role and the &ldquo;Founder&rdquo; title.</p>' +
+		        '<p>Any logged-in player can create a new unit. Provide a <strong>Name</strong>, select the <strong>Type</strong> (Company or Household), and optionally fill in a description, history, URL, and heraldry image. You will automatically be added as the first member with the appropriate leadership role and the &ldquo;Founder&rdquo; title.</p>' +
 		        '<h3>Editing Unit Details</h3>' +
 		        '<p>From the admin panel, you can update the unit&rsquo;s name, description, history, URL, and heraldry image at any time.</p>' +
 		        '<h3>Managing Members</h3>' +
