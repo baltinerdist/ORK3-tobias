@@ -38,6 +38,7 @@ class Tournament extends Ork3 {
 		$this->Tournament->url         = $request['Url'];
 		$this->Tournament->date_time   = $request['When'];
 		$this->Tournament->save();
+		$this->bustTournamentReportCache();
 
 		return Success($this->Tournament->tournament_id);
 	}
@@ -68,6 +69,7 @@ class Tournament extends Ork3 {
 		}
 
 		$this->Tournament->save();
+		$this->bustTournamentReportCache();
 		return Success($this->Tournament->tournament_id);
 	}
 
@@ -130,6 +132,17 @@ class Tournament extends Ork3 {
 		return false;
 	}
 
+
+	private function bustTournamentReportCache() {
+		$bust_request = ['KingdomId' => $this->Tournament->kingdom_id, 'ParkId' => null, 'EventId' => null, 'EventCalendarDetailId' => null, 'Limit' => null];
+		Ork3::$Lib->ghettocache->bust('Report.TournamentReport', Ork3::$Lib->ghettocache->key($bust_request));
+		if (valid_id($this->Tournament->park_id)) {
+			$bust_request['ParkId'] = $this->Tournament->park_id;
+			$bust_request['KingdomId'] = null;
+			Ork3::$Lib->ghettocache->bust('Report.TournamentReport', Ork3::$Lib->ghettocache->key($bust_request));
+		}
+	}
+
 	public function AddBracket($request) {
 		if (!$this->check_auth($request)) return NoAuthorization();
 
@@ -137,33 +150,64 @@ class Tournament extends Ork3 {
 			$copy_id       = (int)$request['CopyOfId'];
 			$tournament_id = (int)($request['TournamentId'] ?? 0);
 			if (!valid_id($tournament_id)) return InvalidParameter('TournamentId required');
-			$sql = "INSERT INTO " . DB_PREFIX . "bracket (tournament_id, style, style_note, method, rings, participants, seeding)
-						SELECT tournament_id, style, style_note, method, rings, participants, seeding
+			$sql = "INSERT INTO " . DB_PREFIX . "bracket (tournament_id, style, style_note, method, rings, participants, seeding, duration_minutes)
+						SELECT tournament_id, style, style_note, method, rings, participants, seeding, duration_minutes
 						FROM " . DB_PREFIX . "bracket WHERE bracket_id = $copy_id AND tournament_id = $tournament_id";
 			$this->db->query($sql);
 			$bracket_id = $this->db->GetLastInsertId();
 			if (!valid_id($bracket_id)) return InvalidParameter('Source bracket not found in this tournament');
 
-			$sql = "INSERT INTO " . DB_PREFIX . "participant (tournament_id, bracket_id, alias, unit_id, park_id, kingdom_id)
-						SELECT tournament_id, $bracket_id, alias, unit_id, park_id, kingdom_id
-						FROM " . DB_PREFIX . "participant WHERE bracket_id = $copy_id";
+			// Fetch old participant IDs in order (before copy)
+			$old_pids = [];
+			$opr = $this->db->query("SELECT participant_id FROM " . DB_PREFIX . "participant WHERE bracket_id = $copy_id ORDER BY participant_id ASC");
+			if ($opr) { while ($opr->next()) $old_pids[] = (int)$opr->participant_id; }
+
+			$sql = "INSERT INTO " . DB_PREFIX . "participant (tournament_id, bracket_id, alias, unit_id, park_id, kingdom_id, participant_number, seed)
+						SELECT tournament_id, $bracket_id, alias, unit_id, park_id, kingdom_id, participant_number, seed
+						FROM " . DB_PREFIX . "participant WHERE bracket_id = $copy_id ORDER BY participant_id ASC";
 			$this->db->query($sql);
 
-			// Copy team records for team participants
-			$this->db->query("INSERT INTO " . DB_PREFIX . "participant_teams (tournament_id, bracket_id, participant_id, name)
-				SELECT pt.tournament_id, $bracket_id, p_new.participant_id, pt.name
-				FROM " . DB_PREFIX . "participant_teams pt
-				INNER JOIN " . DB_PREFIX . "participant p_old ON pt.participant_id = p_old.participant_id
-				INNER JOIN " . DB_PREFIX . "participant p_new ON p_new.bracket_id = $bracket_id AND p_new.alias = p_old.alias
-				WHERE pt.bracket_id = $copy_id");
+			// Fetch new participant IDs in order (same insertion order as old)
+			$new_pids = [];
+			$npr = $this->db->query("SELECT participant_id FROM " . DB_PREFIX . "participant WHERE bracket_id = $bracket_id ORDER BY participant_id ASC");
+			if ($npr) { while ($npr->next()) $new_pids[] = (int)$npr->participant_id; }
 
-			// Copy team members
-			$this->db->query("INSERT INTO " . DB_PREFIX . "participant_team_members (team_id, mundane_id, tournament_id)
-				SELECT pt_new.team_id, ptm.mundane_id, ptm.tournament_id
-				FROM " . DB_PREFIX . "participant_team_members ptm
-				INNER JOIN " . DB_PREFIX . "participant_teams pt_old ON ptm.team_id = pt_old.team_id AND pt_old.bracket_id = $copy_id
-				INNER JOIN " . DB_PREFIX . "participant_teams pt_new ON pt_new.bracket_id = $bracket_id AND pt_new.name = pt_old.name");
+			// Build explicit old→new participant_id mapping (safe for duplicate aliases)
+			$pid_map = [];
+			for ($i = 0; $i < count($old_pids) && $i < count($new_pids); $i++) {
+				$pid_map[$old_pids[$i]] = $new_pids[$i];
+			}
 
+			// Copy participant_mundane links using explicit mapping
+			foreach ($pid_map as $old_pid => $new_pid) {
+				$this->db->query("INSERT INTO " . DB_PREFIX . "participant_mundane (participant_id, mundane_id, tournament_id, bracket_id)
+					SELECT $new_pid, mundane_id, tournament_id, $bracket_id
+					FROM " . DB_PREFIX . "participant_mundane WHERE participant_id = $old_pid");
+			}
+
+			// Copy team records using explicit mapping
+			foreach ($pid_map as $old_pid => $new_pid) {
+				$this->db->query("INSERT INTO " . DB_PREFIX . "participant_teams (tournament_id, bracket_id, participant_id, name)
+					SELECT tournament_id, $bracket_id, $new_pid, name
+					FROM " . DB_PREFIX . "participant_teams WHERE participant_id = $old_pid AND bracket_id = $copy_id");
+			}
+
+			// Copy team members: map old team_ids to new team_ids
+			$old_teams = $this->db->query("SELECT team_id, participant_id FROM " . DB_PREFIX . "participant_teams WHERE bracket_id = $copy_id ORDER BY team_id");
+			$new_teams = $this->db->query("SELECT team_id, participant_id FROM " . DB_PREFIX . "participant_teams WHERE bracket_id = $bracket_id ORDER BY team_id");
+			$team_map = [];
+			if ($old_teams && $new_teams) {
+				$ot = []; while ($old_teams->next()) $ot[] = (int)$old_teams->team_id;
+				$nt = []; while ($new_teams->next()) $nt[] = (int)$new_teams->team_id;
+				for ($i = 0; $i < count($ot) && $i < count($nt); $i++) $team_map[$ot[$i]] = $nt[$i];
+			}
+			foreach ($team_map as $old_tid => $new_tid) {
+				$this->db->query("INSERT INTO " . DB_PREFIX . "participant_team_members (team_id, mundane_id, tournament_id)
+					SELECT $new_tid, mundane_id, tournament_id
+					FROM " . DB_PREFIX . "participant_team_members WHERE team_id = $old_tid");
+			}
+
+			$this->bustTournamentReportCache();
 			return Success($bracket_id);
 		} else {
 			$this->Bracket->clear();
@@ -176,6 +220,7 @@ class Tournament extends Ork3 {
 			$this->Bracket->seeding          = $request['Seeding'];
 			$this->Bracket->duration_minutes = max(0, (int)($request['DurationMinutes'] ?? 0));
 			$this->Bracket->save();
+			$this->bustTournamentReportCache();
 			return Success($this->Bracket->bracket_id);
 		}
 	}
@@ -252,6 +297,7 @@ class Tournament extends Ork3 {
 			$this->db->query($sql);
 			$new_id = $this->db->GetLastInsertId();
 			if (!valid_id($new_id)) return InvalidParameter('Source participant not found in this tournament');
+			$this->bustTournamentReportCache();
 			return Success($new_id);
 		} else {
 			$hasAlias   = strlen(trim($request['Alias']   ?? '')) > 0;
@@ -325,6 +371,7 @@ class Tournament extends Ork3 {
 					$this->Player->save();
 				}
 			}
+			$this->bustTournamentReportCache();
 			return Success($this->Participant->participant_id);
 		}
 	}
@@ -398,6 +445,7 @@ class Tournament extends Ork3 {
 		$this->db->query("DELETE FROM " . DB_PREFIX . "participant_mundane WHERE participant_id = $participant_id");
 		$this->db->query("DELETE FROM " . DB_PREFIX . "participant WHERE participant_id = $participant_id AND tournament_id = $tournament_id");
 
+		$this->bustTournamentReportCache();
 		return Success($participant_id);
 	}
 
@@ -423,14 +471,7 @@ class Tournament extends Ork3 {
 
 		$this->Tournament->delete();
 
-		// Bust TournamentReport cache for the affected kingdom/park
-		$bust_request = ['KingdomId' => $this->Tournament->kingdom_id, 'ParkId' => null, 'EventId' => null, 'EventCalendarDetailId' => null, 'Limit' => null];
-		Ork3::$Lib->ghettocache->bust('Report.TournamentReport', Ork3::$Lib->ghettocache->key($bust_request));
-		if (valid_id($this->Tournament->park_id)) {
-			$bust_request['ParkId'] = $this->Tournament->park_id;
-			$bust_request['KingdomId'] = null;
-			Ork3::$Lib->ghettocache->bust('Report.TournamentReport', Ork3::$Lib->ghettocache->key($bust_request));
-		}
+		$this->bustTournamentReportCache();
 
 		return Success($tournament_id);
 	}
@@ -1052,6 +1093,7 @@ class Tournament extends Ork3 {
 		$this->db->query('DELETE FROM ' . DB_PREFIX . 'seed               WHERE bracket_id = ' . $bracket_id);
 		$this->db->query('DELETE FROM ' . DB_PREFIX . 'bracket            WHERE bracket_id = ' . $bracket_id);
 
+		$this->bustTournamentReportCache();
 		return Success($bracket_id);
 	}
 
