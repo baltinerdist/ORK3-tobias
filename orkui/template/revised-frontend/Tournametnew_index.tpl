@@ -142,7 +142,13 @@ $heroStyles = array_keys($heroStyles);
 .tn-tab-panel { padding:16px 18px; }
 
 /* Bracket cards */
-.tn-bracket-card { border:1px solid #e2e8f0; border-radius:8px; margin-bottom:14px; overflow:hidden; }
+.tn-bracket-card { border:1px solid #e2e8f0; border-radius:8px; margin-bottom:14px; overflow:hidden; border-left:4px solid #a0aec0; }
+.tn-bracket-card[data-method="single"] { border-left-color:#276749; }
+.tn-bracket-card[data-method="double"] { border-left-color:#2b6cb0; }
+.tn-bracket-card[data-method="swiss"] { border-left-color:#d69e2e; }
+.tn-bracket-card[data-method="round-robin"] { border-left-color:#9f7aea; }
+.tn-bracket-card[data-method="ironman"] { border-left-color:#e53e3e; }
+.tn-bracket-card[data-method="score"] { border-left-color:#718096; }
 .tn-bracket-card:last-child { margin-bottom:0; }
 .tn-bracket-header { background:#f7fafc; padding:12px 14px; display:flex; align-items:center; gap:10px; border-bottom:1px solid #e2e8f0; }
 .tn-bracket-header h4 { margin:0; font-size:14px; font-weight:700; color:#1a202c; background:transparent!important; border:none!important; padding:0!important; border-radius:0!important; text-shadow:none!important; }
@@ -161,6 +167,13 @@ $heroStyles = array_keys($heroStyles);
 .tn-pill-warlord { background:#fff8e1; color:#b45309; border:1px solid #fcd34d; }
 .tn-pill-knight  { background:#f0fff4; color:#276749; border:1px solid #9ae6b4; }
 .tn-pill-complete { background:#f0fff4; color:#276749; border:1px solid #9ae6b4; font-size:11px; font-weight:600; padding:2px 8px; border-radius:10px; display:inline-flex; align-items:center; gap:4px; }
+.tn-bracket-status { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:600; line-height:1.4; }
+.tn-bracket-status-setup { background:#edf2f7; color:#718096; }
+.tn-bracket-status-active { background:#f0fff4; color:#276749; border:1px solid #c6f6d5; }
+.tn-bracket-status-active i { animation: tn-pulse 1.5s ease-in-out infinite; }
+@keyframes tn-pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+.tn-bracket-status-complete { background:#ebf8ff; color:#2b6cb0; border:1px solid #bee3f8; }
+.tn-bracket-status-finalized { background:#faf5ff; color:#6b46c1; border:1px solid #e9d8fd; }
 .tn-placement-list { list-style:none; padding:0; margin:0; }
 .tn-placement-list li { display:flex; align-items:center; gap:8px; padding:5px 6px; border-bottom:1px solid #f0f4f8; }
 .tn-placement-list li:last-child { border-bottom:none; }
@@ -323,7 +336,8 @@ $heroStyles = array_keys($heroStyles);
 .tn-bv-status-badge { font-size:11px; font-weight:700; padding:2px 8px; border-radius:10px; }
 .tn-bv-status-setup    { background:#e2e8f0; color:#718096; }
 .tn-bv-status-active   { background:#bee3f8; color:#2b6cb0; }
-.tn-bv-status-complete { background:#c6f6d5; color:#276749; }
+.tn-bv-status-complete  { background:#c6f6d5; color:#276749; }
+.tn-bv-status-finalized { background:#fefcbf; color:#744210; }
 .tn-bv-empty { color:#a0aec0; font-size:13px; font-style:italic; padding:16px 0; text-align:center; }
 .tn-bv-section-hdr { display:flex; align-items:center; gap:7px; padding:5px 12px; border-radius:5px; margin:14px 0 6px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; }
 .tn-bv-section-hdr.winners { border-left:3px solid #276749; background:#f0fff4; color:#276749; }
@@ -352,6 +366,327 @@ $heroStyles = array_keys($heroStyles);
 .tn-rr-standings td:nth-child(2) { font-weight:600; color:#2d3748; text-align:left; }
 .tn-rr-standings tr:last-child td { border-bottom:none; }
 .tn-rr-standings .tn-rr-std-top td { background:#f0fff4; }
+
+/* ================================================================
+   ROUND ROBIN ENHANCEMENTS
+   Prefix: tn-rr-  (round-robin specific additions)
+   ================================================================ */
+
+/* ── View Toggle (Rounds / Matrix) ── */
+.tn-rr-view-toggle {
+	display:inline-flex;
+	border-radius:20px;
+	overflow:hidden;
+	border:1px solid #e2e8f0;
+	background:#fff;
+}
+.tn-rr-view-toggle-btn {
+	padding:4px 14px;
+	font-size:12px;
+	font-weight:600;
+	color:#718096;
+	background:#fff;
+	border:none;
+	cursor:pointer;
+	transition:background .15s, color .15s;
+	white-space:nowrap;
+}
+.tn-rr-view-toggle-btn:first-child { border-right:1px solid #e2e8f0; }
+.tn-rr-view-toggle-btn:hover:not(.active) { background:#f7fafc; color:#4a5568; }
+.tn-rr-view-toggle-btn.active { background:#276749; color:#fff; }
+
+/* ── Cross-Table Matrix View ── */
+.tn-rr-matrix-wrap {
+	overflow-x:auto;
+	-webkit-overflow-scrolling:touch;
+	margin-top:12px;
+	border:1px solid #e2e8f0;
+	border-radius:8px;
+	background:#fff;
+}
+.tn-rr-matrix {
+	width:100%;
+	border-collapse:separate;
+	border-spacing:0;
+	font-size:12px;
+	min-width:400px;
+}
+.tn-rr-matrix th,
+.tn-rr-matrix td {
+	padding:6px 10px;
+	text-align:center;
+	border-bottom:1px solid #f0f4f8;
+	border-right:1px solid #f0f4f8;
+}
+.tn-rr-matrix th:last-child,
+.tn-rr-matrix td:last-child { border-right:none; }
+.tn-rr-matrix tr:last-child td { border-bottom:none; }
+.tn-rr-matrix thead th {
+	position:sticky;
+	top:0;
+	z-index:3;
+	background:#f7fafc;
+	font-size:11px;
+	font-weight:700;
+	color:#718096;
+	text-transform:uppercase;
+	letter-spacing:0.3px;
+	border-bottom:2px solid #e2e8f0;
+	white-space:nowrap;
+	max-width:80px;
+	overflow:hidden;
+	text-overflow:ellipsis;
+}
+.tn-rr-mx-player-col {
+	position:sticky;
+	left:0;
+	z-index:2;
+	background:#f7fafc;
+	font-weight:600;
+	color:#2d3748;
+	text-align:left !important;
+	white-space:nowrap;
+	min-width:120px;
+	border-right:2px solid #e2e8f0 !important;
+}
+.tn-rr-matrix thead th:first-child {
+	position:sticky;
+	left:0;
+	z-index:4;
+	border-right:2px solid #e2e8f0;
+}
+.tn-rr-mx-win { background:#f0fff4; color:#276749; font-weight:700; }
+.tn-rr-mx-loss { background:#fff5f5; color:#e53e3e; font-weight:600; }
+.tn-rr-mx-tie { background:#fefcbf; color:#744210; font-weight:600; }
+.tn-rr-mx-self {
+	background:#edf2f7; color:#cbd5e0; cursor:default; position:relative;
+}
+.tn-rr-mx-self::after {
+	content:'';
+	position:absolute;
+	top:0; left:0; right:0; bottom:0;
+	background:repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(0,0,0,0.04) 3px, rgba(0,0,0,0.04) 6px);
+	pointer-events:none;
+}
+.tn-rr-mx-pending { color:#a0aec0; font-style:italic; }
+.tn-rr-mx-cell-clickable { cursor:pointer; transition:background .12s, box-shadow .12s; }
+.tn-rr-mx-cell-clickable:hover { box-shadow:inset 0 0 0 2px #276749; background:#f0fff4; }
+.tn-rr-mx-avatar {
+	width:20px; height:20px; border-radius:50%;
+	display:inline-flex; align-items:center; justify-content:center;
+	font-size:9px; font-weight:800; color:#fff; flex-shrink:0;
+	vertical-align:middle; margin-right:4px;
+}
+.tn-rr-mx-avatar-sm { width:16px; height:16px; font-size:7px; margin-right:2px; }
+.tn-rr-mx-col-header { vertical-align:bottom; padding:8px 6px !important; }
+.tn-rr-mx-col-name { display:block; margin-top:3px; font-size:10px; }
+.tn-rr-mx-player-name { vertical-align:middle; }
+.tn-rr-mx-result { display:block; font-size:13px; line-height:1.2; }
+.tn-rr-mx-bouts { display:block; font-size:9px; color:inherit; opacity:0.65; line-height:1; margin-top:1px; }
+.tn-rr-mx-corner { min-width:120px; }
+
+/* ── Enhanced Standings Table ── */
+.tn-rr-standings-enhanced { width:100%; border-collapse:collapse; font-size:12px; margin-top:18px; }
+.tn-rr-standings-enhanced caption {
+	font-size:11px; font-weight:700; color:#718096;
+	text-transform:uppercase; letter-spacing:0.4px;
+	text-align:left; padding:0 0 6px; caption-side:top;
+}
+.tn-rr-standings-enhanced th {
+	background:#f7fafc; padding:6px 10px; font-size:11px; font-weight:700;
+	color:#718096; text-transform:uppercase; letter-spacing:0.4px;
+	border-bottom:2px solid #e2e8f0; text-align:center;
+}
+.tn-rr-standings-enhanced td {
+	padding:7px 10px; border-bottom:1px solid #f0f4f8;
+	color:#4a5568; text-align:center; vertical-align:middle;
+}
+.tn-rr-standings-enhanced tr:last-child td { border-bottom:none; }
+.tn-rr-std-col-player { text-align:left !important; }
+.tn-rr-std-col-rank { width:44px; }
+.tn-rr-std-col-progress { min-width:90px; }
+.tn-rr-std-rank { text-align:center; }
+.tn-rr-std-medal { font-size:16px; line-height:1; }
+.tn-rr-std-player { text-align:left !important; }
+.tn-rr-std-player-wrap { display:flex; align-items:center; gap:8px; }
+.tn-rr-std-avatar {
+	width:24px; height:24px; border-radius:50%;
+	display:flex; align-items:center; justify-content:center;
+	font-size:9px; font-weight:800; color:#fff; flex-shrink:0;
+}
+.tn-rr-std-name-wrap { display:flex; flex-direction:column; gap:1px; }
+.tn-rr-std-name { font-weight:600; color:#2d3748; font-size:12px; }
+.tn-rr-std-park { font-size:10px; color:#a0aec0; display:block; }
+.tn-rr-std-w { color:#276749; font-weight:700; }
+.tn-rr-std-l { color:#e53e3e; font-weight:600; }
+.tn-rr-std-t { color:#744210; font-weight:600; }
+.tn-rr-std-pts { font-weight:800; color:#1a202c; font-size:14px; }
+.tn-rr-std-winpct { font-weight:700; color:#276749; font-size:11px; }
+.tn-rr-std-bar {
+	display:inline-flex; align-items:center; gap:6px;
+}
+.tn-rr-std-bar-track {
+	width:50px; height:8px; background:#e2e8f0;
+	border-radius:4px; overflow:hidden; flex-shrink:0;
+}
+.tn-rr-std-bar-fill {
+	height:100%; border-radius:4px;
+	background:linear-gradient(90deg, #38a169, #276749);
+	transition:width .3s ease;
+}
+.tn-rr-std-bar-text { font-size:10px; color:#718096; font-weight:600; white-space:nowrap; }
+.tn-rr-std-caption-progress { font-size:10px; color:#a0aec0; margin-left:8px; font-weight:400; }
+.tn-rr-std-active td { background:#ebf8ff !important; box-shadow:inset 3px 0 0 #3182ce; }
+.tn-rr-std-clickable tr { cursor:pointer; transition:background .12s; }
+.tn-rr-std-clickable tr:hover td { background:#f7fafc; }
+
+/* ── Overall Progress Bar ── */
+.tn-rr-progress-wrap { margin:12px 0; }
+.tn-rr-progress-bar {
+	position:relative; width:100%; height:22px;
+	background:#e2e8f0; border-radius:11px; overflow:hidden;
+	box-shadow:inset 0 1px 2px rgba(0,0,0,0.06);
+}
+.tn-rr-progress-fill {
+	height:100%; border-radius:11px;
+	background:linear-gradient(90deg, #38a169 0%, #276749 100%);
+	transition:width .4s ease; min-width:0;
+}
+.tn-rr-progress-label {
+	position:absolute; top:0; left:0; right:0; bottom:0;
+	display:flex; align-items:center; justify-content:center;
+	font-size:11px; font-weight:700; color:#fff;
+	text-shadow:0 1px 2px rgba(0,0,0,0.2); pointer-events:none;
+}
+.tn-rr-progress-bar.tn-rr-progress-low .tn-rr-progress-label {
+	color:#4a5568; text-shadow:none;
+}
+.tn-rr-round-count {
+	display:inline-block; font-size:9px; font-weight:700; color:#a0aec0;
+	background:#f7fafc; border:1px solid #e2e8f0;
+	padding:0 5px; border-radius:8px; margin-left:4px;
+	vertical-align:middle; line-height:16px;
+}
+.tn-bv-round-btn.active .tn-rr-round-count {
+	color:rgba(255,255,255,0.8); background:rgba(255,255,255,0.15); border-color:rgba(255,255,255,0.25);
+}
+.tn-bv-round-btn.tn-rr-complete:not(.active) .tn-rr-round-count {
+	color:rgba(255,255,255,0.8); background:rgba(255,255,255,0.15); border-color:rgba(255,255,255,0.25);
+}
+
+/* ── Champion Banner sub-elements ── */
+.tn-bv-champion-row { display:flex; align-items:center; gap:12px; }
+.tn-bv-champion-trophy { font-size:32px; flex-shrink:0; }
+.tn-bv-podium-rank { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.3px; }
+.tn-bv-podium-avatar {
+	width:28px; height:28px; border-radius:50%;
+	display:flex; align-items:center; justify-content:center;
+	font-size:10px; font-weight:800; color:#fff; margin:4px auto;
+}
+.tn-bv-podium-name { font-size:12px; font-weight:700; color:#1a202c; text-align:center; }
+.tn-bv-podium-park { font-size:10px; color:#718096; text-align:center; }
+.tn-bv-podium-stats { font-size:10px; color:#276749; font-weight:600; text-align:center; margin-top:2px; }
+
+/* ── Match Card Record Badge ── */
+.tn-rr-card-record {
+	font-size:9px; font-weight:600; color:#a0aec0;
+	white-space:nowrap; flex-shrink:0; margin-left:4px;
+}
+
+/* ── Player Focus Mode ── */
+.tn-rr-focus-active .tn-bv-match:not(.tn-rr-focus-match) {
+	opacity:0.3; filter:grayscale(0.5); transition:opacity .2s, filter .2s;
+}
+.tn-rr-focus-active .tn-rr-focus-match {
+	border-color:#3182ce;
+	box-shadow:0 0 0 2px rgba(49,130,206,0.25), 0 2px 8px rgba(49,130,206,0.15);
+	transition:border-color .2s, box-shadow .2s;
+}
+.tn-rr-focus-active .tn-rr-matrix tr:not(.tn-rr-focus-row) td:not(.tn-rr-mx-player-col) { opacity:0.3; }
+.tn-rr-focus-active .tn-rr-standings-enhanced tbody tr:not(.tn-rr-std-active) { opacity:0.45; }
+.tn-rr-focus-banner {
+	display:flex; align-items:center; gap:8px;
+	padding:8px 14px; background:#ebf8ff; border:1px solid #bee3f8;
+	border-radius:8px; margin-bottom:12px;
+	font-size:12px; color:#2b6cb0; font-weight:600;
+}
+.tn-rr-focus-banner-name { font-weight:800; color:#1a202c; }
+.tn-rr-focus-banner-close {
+	margin-left:auto; background:none; border:none;
+	font-size:16px; color:#3182ce; cursor:pointer;
+	padding:2px 6px; border-radius:4px; line-height:1;
+	transition:background .12s, color .12s;
+}
+.tn-rr-focus-banner-close:hover { background:#bee3f8; color:#2b6cb0; }
+
+/* ── Mobile Overrides ── */
+@media (max-width: 768px) {
+	.tn-rr-matrix th, .tn-rr-matrix td { padding:4px 6px; font-size:11px; }
+	.tn-rr-mx-player-col { min-width:90px; font-size:11px; }
+	.tn-rr-standings-enhanced th, .tn-rr-standings-enhanced td { padding:5px 6px; font-size:11px; }
+	.tn-rr-std-bar-track { width:40px; }
+	.tn-rr-focus-banner { flex-wrap:wrap; font-size:11px; }
+	.tn-rr-progress-bar { height:18px; }
+	.tn-rr-progress-label { font-size:10px; }
+}
+@media (max-width: 480px) {
+	.tn-rr-matrix-wrap { position:relative; }
+	.tn-rr-matrix-wrap::after {
+		content:''; position:absolute; top:0; right:0; bottom:0; width:24px;
+		background:linear-gradient(90deg, transparent, rgba(255,255,255,0.85));
+		pointer-events:none; border-radius:0 8px 8px 0;
+	}
+	.tn-rr-matrix th, .tn-rr-matrix td { padding:4px 5px; font-size:10px; min-width:36px; }
+	.tn-rr-mx-player-col { min-width:70px; font-size:10px; }
+	.tn-rr-mx-cell-clickable { min-height:36px; min-width:36px; }
+	.tn-rr-std-bar-track { width:32px; height:6px; }
+	.tn-rr-std-winpct { font-size:10px; }
+	.tn-rr-std-pts { font-size:12px; }
+	.tn-rr-view-toggle { width:100%; }
+	.tn-rr-view-toggle-btn { flex:1; text-align:center; padding:8px 12px; }
+	.tn-rr-progress-bar { height:16px; border-radius:8px; }
+	.tn-rr-progress-fill { border-radius:8px; }
+	.tn-rr-progress-label { font-size:9px; }
+	.tn-rr-focus-banner-close { padding:6px 10px; font-size:18px; }
+}
+
+
+/* -- Bracket Viz Enhancements -- */
+.tn-bv-match-num { position:absolute; top:3px; left:6px; font-size:9px; font-weight:700; color:#a0aec0; letter-spacing:0.3px; z-index:2; }
+.tn-bv-match.tn-bv-bye-match { border-style:dashed; border-color:#e2e8f0; background:#fafafa; opacity:0.7; }
+.tn-bv-match.tn-bv-bye-match .tn-bv-slot { color:#cbd5e0; }
+.tn-bv-bye-label { font-size:9px; color:#a0aec0; text-align:center; padding:2px 0; font-style:italic; border-top:1px dashed #e2e8f0; }
+.tn-bv-match.tn-bv-next-playable { animation:tn-next-pulse 2s ease-in-out infinite; }
+@keyframes tn-next-pulse { 0%,100% { box-shadow:0 0 0 0 rgba(39,103,73,0); } 50% { box-shadow:0 0 0 4px rgba(39,103,73,0.2); } }
+.tn-bv-avatar { width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:800; color:#fff; flex-shrink:0; line-height:1; }
+.tn-bv-tooltip { position:fixed; background:#1a202c; color:#fff; padding:8px 12px; border-radius:6px; font-size:12px; line-height:1.4; z-index:2000; pointer-events:none; max-width:260px; box-shadow:0 4px 12px rgba(0,0,0,0.25); opacity:0; transition:opacity .15s; }
+.tn-bv-tooltip.tn-bv-tooltip-show { opacity:1; }
+.tn-bv-tooltip-name { font-weight:700; }
+.tn-bv-tooltip-park { color:#a0aec0; font-size:11px; }
+.tn-bv-tooltip-bouts { margin-top:4px; font-size:11px; color:#cbd5e0; }
+.tn-bv-champion-banner { display:flex; align-items:center; gap:12px; padding:14px 18px; background:linear-gradient(135deg,#f6e05e 0%,#ecc94b 100%); border-radius:8px; margin-bottom:14px; box-shadow:0 2px 8px rgba(236,201,75,0.3); }
+.tn-bv-champion-crown { font-size:28px; flex-shrink:0; }
+.tn-bv-champion-info { flex:1; }
+.tn-bv-champion-label { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:1px; color:#744210; }
+.tn-bv-champion-name { font-size:18px; font-weight:800; color:#1a202c; }
+.tn-bv-champion-park { font-size:12px; color:#744210; }
+.tn-bv-podium { display:flex; gap:8px; flex-wrap:wrap; }
+.tn-bv-podium-card { display:flex; align-items:center; gap:8px; padding:6px 12px; border-radius:6px; font-size:12px; font-weight:600; }
+.tn-bv-podium-1st { background:#fefcbf; color:#744210; border:1px solid #ecc94b; }
+.tn-bv-podium-2nd { background:#e2e8f0; color:#4a5568; border:1px solid #cbd5e0; }
+.tn-bv-podium-3rd { background:#fed7aa; color:#7b341e; border:1px solid #f6ad55; }
+.tn-bv-podium-num { font-size:11px; font-weight:800; }
+.tn-bv-zoom-controls { display:flex; align-items:center; gap:6px; margin-bottom:10px; }
+.tn-bv-zoom-btn { width:28px; height:28px; border-radius:6px; border:1px solid #e2e8f0; background:#fff; color:#718096; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; transition:background .15s,color .15s; }
+.tn-bv-zoom-btn:hover { background:#f0fff4; color:#276749; border-color:#276749; }
+.tn-bv-zoom-level { font-size:11px; color:#a0aec0; min-width:36px; text-align:center; }
+.tn-bv-section-hdr.tiebreaker-3rd { border-left:3px solid #dd6b20; background:#fffaf0; color:#c05621; }
+.tn-bv-losers-compact .tn-bv-round { min-width:160px; padding:0 8px; }
+.tn-bv-losers-compact .tn-bv-match { margin:3px 0; }
+.tn-bv-losers-compact .tn-bv-slot { padding:4px 8px; font-size:12px; min-height:28px; }
+.tn-bv-losers-compact .tn-bv-seed { width:16px; height:16px; font-size:8px; }
+.tn-bv-losers-compact .tn-bv-avatar { width:16px; height:16px; font-size:7px; }
+.tn-bv-losers-compact .tn-bv-round-label { font-size:10px; margin-bottom:6px; padding-bottom:4px; }
 
 /* Responsive */
 @media (max-width: 768px) {
@@ -673,7 +1008,18 @@ $heroStyles = array_keys($heroStyles);
 
 			<!-- Brackets Tab -->
 			<div class="tn-tab-panel" id="tn-tab-brackets" style="display:none">
-				<?php if ($canManage): ?>
+				<?php if ($totalBrackets > 1): ?>
+				<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:10px">
+					<button class="tn-btn tn-btn-ghost tn-btn-sm" onclick="tnToggleAllBrackets()" id="tn-toggle-all-btn">
+						<i class="fas fa-compress-alt"></i> <span>Collapse All</span>
+					</button>
+					<?php if ($canManage): ?>
+					<button class="tn-btn tn-btn-primary tn-btn-sm" onclick="tnOpenAddBracketModal()">
+						<i class="fas fa-plus"></i> Add Bracket
+					</button>
+					<?php endif; ?>
+				</div>
+				<?php elseif ($canManage): ?>
 				<div style="display:flex;justify-content:flex-end;margin-bottom:14px">
 					<button class="tn-btn tn-btn-primary tn-btn-sm" onclick="tnOpenAddBracketModal()">
 						<i class="fas fa-plus"></i> Add Bracket
@@ -686,14 +1032,23 @@ $heroStyles = array_keys($heroStyles);
 				<?php else: ?>
 					<?php foreach ($bracketData as $bid => $bd): ?>
 					<?php $b = $bd['Bracket']; $pList = $bd['Participants']; $mList = $bd['Matches']; ?>
-					<div class="tn-bracket-card" id="tn-bracket-<?= $bid ?>">
+					<div class="tn-bracket-card" id="tn-bracket-<?= $bid ?>" data-method="<?= htmlspecialchars($b['Method']) ?>" data-status="<?= htmlspecialchars($b['Status'] ?: 'setup') ?>">
 						<div class="tn-bracket-header">
 							<button class="tn-bracket-toggle" onclick="tnToggleBracket(<?= $bid ?>)" title="Collapse/expand"><i class="fas fa-chevron-down"></i></button>
 							<div style="flex:1">
 								<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
 							<h4 style="margin:0"><?= htmlspecialchars($styleLabelMap[$b['Style']] ?? $b['Style']) ?></h4>
-							<?php if ($b['Status'] === 'complete'): ?>
-							<span class="tn-pill-complete"><i class="fas fa-check-circle"></i> Complete</span>
+							<?php
+							$_bStatus = $b['Status'] ?? 'setup';
+							if ($_bStatus === '' || $_bStatus === 'setup'):
+							?>
+							<span class="tn-bracket-status tn-bracket-status-setup"><i class="fas fa-cog"></i> Setup</span>
+							<?php elseif ($_bStatus === 'active'): ?>
+							<span class="tn-bracket-status tn-bracket-status-active"><i class="fas fa-circle" style="font-size:8px"></i> Live</span>
+							<?php elseif ($_bStatus === 'complete'): ?>
+							<span class="tn-bracket-status tn-bracket-status-complete"><i class="fas fa-check-circle"></i> Complete</span>
+							<?php elseif ($_bStatus === 'finalized'): ?>
+							<span class="tn-bracket-status tn-bracket-status-finalized"><i class="fas fa-lock"></i> Finalized</span>
 							<?php endif; ?>
 						</div>
 								<div class="tn-bracket-meta">
@@ -724,6 +1079,9 @@ $heroStyles = array_keys($heroStyles);
 								<button class="tn-btn tn-btn-outline tn-btn-sm" onclick="tnOpenEditBracketModal(<?= $bid ?>, <?= htmlspecialchars(json_encode(['style'=>$b['Style'],'styleNote'=>$b['StyleNote'],'method'=>$b['Method'],'rings'=>(int)$b['Rings'],'participants'=>$b['Participants'],'seeding'=>$b['Seeding'],'durationMinutes'=>(int)($b['DurationMinutes']??0)]), ENT_QUOTES) ?>)">
 									<i class="fas fa-pencil-alt"></i> Edit
 								</button>
+								<button class="tn-btn tn-btn-outline tn-btn-sm" onclick="tnCopyBracket(<?= $bid ?>, <?= $tid ?>)" title="Duplicate this bracket with its participants">
+									<i class="fas fa-copy"></i> Copy
+								</button>
 								<?php if (($b['Participants'] ?? 'individual') === 'team'): ?>
 								<button class="tn-btn tn-btn-outline tn-btn-sm" onclick="tnOpenAddTeamModal(<?= $bid ?>, <?= $tid ?>)">
 									<i class="fas fa-users"></i> Add Team
@@ -733,12 +1091,11 @@ $heroStyles = array_keys($heroStyles);
 									<i class="fas fa-user-plus"></i> Add Participant
 								</button>
 								<?php endif; ?>
-								<?php if (count($pList) >= 2 && $b['Status'] !== 'complete'): ?>
+								<?php if (count($pList) >= 2 && !in_array($b['Status'], ['complete', 'finalized'])): ?>
 								<button class="tn-btn tn-btn-primary tn-btn-sm" onclick="tnGenerateMatches(<?= $bid ?>, <?= $tid ?>)">
 									<i class="fas fa-play"></i> <?= $b['Status'] === 'active' ? 'Re-generate' : 'Generate' ?>
 								</button>
 								<?php endif; ?>
-								<?php $_hasResults = !empty(array_filter($mList, function($m) { return !empty($m['Result']); })); ?>
 								<button class="tn-btn tn-btn-danger tn-btn-sm" onclick="tnDeleteBracket(<?= $bid ?>, <?= $tid ?>)" title="Delete bracket">
 									<i class="fas fa-times"></i>
 								</button>
@@ -860,7 +1217,7 @@ $heroStyles = array_keys($heroStyles);
 							</div>
 							<?php elseif (count($pList) > 0): ?>
 							<div class="tn-empty" style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f4f8">
-								No matches generated yet. Bracket generation coming in a future update.
+								No matches generated yet. Use "Generate" to create the bracket draw.
 							</div>
 							<?php endif; ?>
 						</div>
@@ -1569,6 +1926,59 @@ function tnDeleteBracket(bid, tid) {
 			}
 		})
 		.catch(function() { alert('Request failed. Please try again.'); });
+}
+
+// ---- Copy Bracket ----
+function tnCopyBracket(bid, tid) {
+	if (!confirm('Copy this bracket? This will duplicate the bracket settings and all participants into a new bracket.')) return;
+	var fd = new FormData();
+	fd.append('BracketId', bid);
+	fetch(TnConfig.uir + 'TournamentAjax/tournament/' + tid + '/copybracket', { method:'POST', body:fd })
+		.then(function(r) { return r.json(); })
+		.then(function(d) {
+			if (d && d.status === 0) {
+				sessionStorage.setItem('tnOpenTab', 'brackets');
+				window.location.reload();
+			} else {
+				alert((d && d.error) ? d.error : 'Failed to copy bracket.');
+			}
+		})
+		.catch(function() { alert('Request failed. Please try again.'); });
+}
+
+// ---- Collapse/Expand All Brackets ----
+function tnToggleAllBrackets() {
+	var cards = document.querySelectorAll('.tn-bracket-card');
+	if (!cards.length) return;
+	// If any are expanded, collapse all; otherwise expand all
+	var anyExpanded = false;
+	cards.forEach(function(c) { if (!c.classList.contains('tn-collapsed')) anyExpanded = true; });
+	var key = 'tnCollapsed_' + TnConfig.tournamentId;
+	var state = {};
+	cards.forEach(function(c) {
+		var bid = c.id.replace('tn-bracket-', '');
+		if (anyExpanded) {
+			c.classList.add('tn-collapsed');
+			state[bid] = true;
+		} else {
+			c.classList.remove('tn-collapsed');
+			state[bid] = false;
+		}
+	});
+	sessionStorage.setItem(key, JSON.stringify(state));
+	// Update button label
+	var btn = document.getElementById('tn-toggle-all-btn');
+	if (btn) {
+		var span = btn.querySelector('span');
+		var icon = btn.querySelector('i');
+		if (anyExpanded) {
+			if (span) span.textContent = 'Expand All';
+			if (icon) { icon.className = 'fas fa-expand-alt'; }
+		} else {
+			if (span) span.textContent = 'Collapse All';
+			if (icon) { icon.className = 'fas fa-compress-alt'; }
+		}
+	}
 }
 
 function tnRemoveParticipant(btn) {
@@ -2830,7 +3240,46 @@ window.tnSortTable = function(tableId, colIndex, numeric) {
 // ============================================================
 window.tnGenerateMatches = function(bracketId, tournamentId) {
 	if (!TnConfig.canManage) return;
-	if (!confirm('Generate matches for this bracket? Any existing matches will be replaced.')) return;
+
+	// Build pre-generate stats from TnConfig data
+	var bd = TnConfig.bracketData[bracketId];
+	if (!bd) { alert('Bracket data not found.'); return; }
+	var bracket = bd.Bracket;
+	var pCount  = (bd.Participants || []).length;
+	var method  = bracket.Method || 'single';
+	var methodLabel = TnConfig.methodLabels[method] || method;
+	var styleLabel  = TnConfig.styleLabels[bracket.Style] || bracket.Style;
+	var status  = bracket.Status || 'setup';
+	var hasMatches = (bd.Matches || []).length > 0;
+
+	// Calculate byes and rounds
+	var byes = 0, rounds = 0;
+	if (method === 'single' || method === 'double') {
+		var slots = 1;
+		while (slots < pCount) slots *= 2;
+		byes = slots - pCount;
+		rounds = Math.round(Math.log2(slots));
+		if (method === 'double') rounds = rounds + ' WR + ' + ((rounds - 1) * 2) + ' LR + GF';
+	} else if (method === 'swiss') {
+		var rings = Math.max(1, parseInt(bracket.Rings) || 1);
+		rounds = rings > 1 ? rings : Math.ceil(Math.log2(pCount));
+	} else if (method === 'round-robin') {
+		rounds = pCount % 2 === 0 ? pCount - 1 : pCount;
+	}
+
+	// Build confirmation message
+	var msg = styleLabel + ' \u2014 ' + methodLabel + '\n\n';
+	msg += '\u2022 Participants: ' + pCount + '\n';
+	if (byes > 0) msg += '\u2022 First-round byes: ' + byes + '\n';
+	if (rounds) msg += '\u2022 Rounds: ' + rounds + '\n';
+	if (parseInt(bracket.Rings) > 1) msg += '\u2022 Concurrent rings: ' + bracket.Rings + '\n';
+	msg += '\n';
+	if (status === 'active' && hasMatches) {
+		msg += '\u26a0\ufe0f WARNING: This bracket is currently ACTIVE with existing match data. Re-generating will DELETE all current matches and results.\n\n';
+	}
+	msg += 'Generate matches now?';
+
+	if (!confirm(msg)) return;
 
 	var url = TnConfig.uir + 'TournamentAjax/tournament/' + tournamentId + '/generate';
 	var fd  = new FormData();
@@ -2864,15 +3313,21 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 	}
 
 	function tnRefreshAndRender(bracketId) {
-		fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bracketId + '/matches')
-			.then(function(r){ return r.json(); })
-			.then(function(d){
-				if (d.status === 0 && TnConfig.bracketData[bracketId]) {
-					TnConfig.bracketData[bracketId].Matches = d.matches || [];
-				}
-				tnRenderBracketViz(bracketId);
-			})
-			.catch(function(){ tnRenderBracketViz(bracketId); });
+		var tid = TnConfig.tournamentId;
+		Promise.all([
+			fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bracketId + '/matches').then(function(r){ return r.json(); }),
+			fetch(TnConfig.uir + 'TournamentAjax/tournament/' + tid + '/brackets').then(function(r){ return r.json(); })
+		]).then(function(results) {
+			var mData = results[0], bData = results[1];
+			if (mData.status === 0 && TnConfig.bracketData[bracketId]) {
+				TnConfig.bracketData[bracketId].Matches = mData.matches || [];
+			}
+			if (bData.status === 0 && bData.brackets && TnConfig.bracketData[bracketId]) {
+				var br = bData.brackets.find(function(b) { return parseInt(b.BracketId) === parseInt(bracketId); });
+				if (br) TnConfig.bracketData[bracketId].Bracket = br;
+			}
+			tnRenderBracketViz(bracketId);
+		}).catch(function(){ tnRenderBracketViz(bracketId); });
 	}
 
 	window.tnRenderBracketViz = function(bracketId) {
@@ -2947,7 +3402,7 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 		} else if (method === 'ironman') {
 			renderIronmanView(container, matches, pMap, participants, bracketId);
 		} else {
-			renderRoundTable(container, matches, pMap);
+			renderRoundTable(container, matches, pMap, bracketId);
 		}
 	};
 
@@ -2957,30 +3412,112 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 		wrap.className = 'tn-bv-wrap';
 		container.appendChild(wrap);
 
+		// Zoom controls
+		var zoomLevel = 100;
+		var zoomWrap = document.createElement('div');
+		zoomWrap.className = 'tn-bv-zoom-controls';
+		var zoomOut = document.createElement('button');
+		zoomOut.className = 'tn-bv-zoom-btn'; zoomOut.innerHTML = '&minus;'; zoomOut.title = 'Zoom out';
+		var zoomIn = document.createElement('button');
+		zoomIn.className = 'tn-bv-zoom-btn'; zoomIn.innerHTML = '&plus;'; zoomIn.title = 'Zoom in';
+		var zoomReset = document.createElement('button');
+		zoomReset.className = 'tn-bv-zoom-btn'; zoomReset.innerHTML = '<i class="fas fa-compress-arrows-alt" style="font-size:11px"></i>'; zoomReset.title = 'Reset zoom';
+		var zoomLabel = document.createElement('span');
+		zoomLabel.className = 'tn-bv-zoom-level'; zoomLabel.textContent = '100%';
+		function applyZoom() {
+			zoomLabel.textContent = zoomLevel + '%';
+			wrap.style.transform = 'scale(' + (zoomLevel / 100) + ')';
+			wrap.style.transformOrigin = 'top left';
+		}
+		zoomOut.onclick = function() { zoomLevel = Math.max(40, zoomLevel - 10); applyZoom(); };
+		zoomIn.onclick = function() { zoomLevel = Math.min(150, zoomLevel + 10); applyZoom(); };
+		zoomReset.onclick = function() { zoomLevel = 100; applyZoom(); };
+		zoomWrap.appendChild(zoomOut);
+		zoomWrap.appendChild(zoomLabel);
+		zoomWrap.appendChild(zoomIn);
+		zoomWrap.appendChild(zoomReset);
+		container.insertBefore(zoomWrap, wrap);
+
 		// Separate sections: winners, losers, grand-final
 		var sections = [
 			{ key:'winners',     label:'Winners Bracket' },
 			{ key:'losers',      label:'Second Chance Bracket' },
 			{ key:'grand-final', label:'Grand Final' },
-			{ key:'tiebreaker-3rd', label:'3rd Place Match' },
+			
 		];
 
-		var hasSections = matches.some(function(m) { return m.BracketSide && m.BracketSide !== 'winners'; });
+		var hasSections = matches.some(function(m) { return m.BracketSide && m.BracketSide !== 'winners' && m.BracketSide !== 'tiebreaker-3rd'; });
 
 		if (!hasSections) {
 			// Single section
 			renderSection(wrap, matches, pMap, null);
 		} else {
 			sections.forEach(function(s) {
-				var sMatches = matches.filter(function(m) { return (m.BracketSide || 'winners') === s.key; });
+				var sMatches = matches.filter(function(m) { var side = m.BracketSide || 'winners'; return side === s.key || (s.key === 'winners' && side === 'tiebreaker-3rd'); });
 				if (!sMatches.length) return;
 				var iconMap = {'winners':'fa-trophy','losers':'fa-shield-alt','grand-final':'fa-star','tiebreaker-3rd':'fa-medal'};
 				var lbl = document.createElement('div');
 				lbl.className = 'tn-bv-section-hdr ' + s.key;
 				lbl.innerHTML = '<i class="fas ' + (iconMap[s.key] || 'fa-circle') + '"></i> ' + s.label;
 				wrap.appendChild(lbl);
-				renderSection(wrap, sMatches, pMap, s.key);
+				if (s.key === 'losers') {
+					var losersDiv = document.createElement('div');
+					losersDiv.className = 'tn-bv-losers-compact';
+					wrap.appendChild(losersDiv);
+					renderSection(losersDiv, sMatches, pMap, s.key);
+				} else {
+					renderSection(wrap, sMatches, pMap, s.key);
+				}
 			});
+		}
+
+		// Champion / podium callout when bracket is complete/finalized
+		var bd0 = TnConfig.bracketData[bracketId];
+		var bracketSt = bd0 && bd0.Bracket ? (bd0.Bracket.Status || '') : '';
+		if (bracketSt === 'complete' || bracketSt === 'finalized') {
+			var finalMatches = matches.filter(function(m) {
+				var side = m.BracketSide || 'winners';
+				return side === 'grand-final' || (side === 'winners' && !hasSections);
+			});
+			if (!finalMatches.length) finalMatches = matches.filter(function(m){ return (m.BracketSide||'winners')==='winners'; });
+			var maxFR = 0;
+			finalMatches.forEach(function(m){ var rr = parseInt(m.Round)||0; if(rr>maxFR) maxFR=rr; });
+			var finalMatch = finalMatches.filter(function(m){ return (parseInt(m.Round)||0)===maxFR && m.Result; })[0];
+			if (finalMatch) {
+				var champId = (finalMatch.Result==='1-wins') ? parseInt(finalMatch.Participant1Id) : (finalMatch.Result==='2-wins') ? parseInt(finalMatch.Participant2Id) : 0;
+				var runnerUpId = (finalMatch.Result==='1-wins') ? parseInt(finalMatch.Participant2Id) : (finalMatch.Result==='2-wins') ? parseInt(finalMatch.Participant1Id) : 0;
+				var champ = champId ? (pMap[champId]||null) : null;
+				var runner = runnerUpId ? (pMap[runnerUpId]||null) : null;
+				if (champ) {
+					var championBanner = document.createElement('div');
+					championBanner.className = 'tn-bv-champion-banner';
+					var crownIcon = document.createElement('div');
+					crownIcon.className = 'tn-bv-champion-crown';
+					crownIcon.innerHTML = '<i class="fas fa-trophy" style="color:#744210;font-size:28px"></i>';
+					championBanner.appendChild(crownIcon);
+					var champInfo = document.createElement('div');
+					champInfo.className = 'tn-bv-champion-info';
+					champInfo.innerHTML = '<div class="tn-bv-champion-label">Champion</div><div class="tn-bv-champion-name">' + tnEscHtml(champ.Alias || champ.Persona || 'Unknown') + '</div>' + (champ.ParkName ? '<div class="tn-bv-champion-park">' + tnEscHtml(champ.ParkName) + '</div>' : '');
+					championBanner.appendChild(champInfo);
+					var podium = document.createElement('div');
+					podium.className = 'tn-bv-podium';
+					var podiumHtml = '<div class="tn-bv-podium-card tn-bv-podium-1st"><span class="tn-bv-podium-num">1st</span> ' + tnEscHtml(champ.Alias || champ.Persona || '?') + '</div>';
+					if (runner) podiumHtml += '<div class="tn-bv-podium-card tn-bv-podium-2nd"><span class="tn-bv-podium-num">2nd</span> ' + tnEscHtml(runner.Alias || runner.Persona || '?') + '</div>';
+					// 3rd/4th from tiebreaker-3rd match (single elim) or semifinal losers
+					var tbMatch = matches.filter(function(m) { return m.BracketSide === 'tiebreaker-3rd' && m.Result; })[0];
+					if (tbMatch) {
+						var thirdId = (tbMatch.Result === '1-wins') ? parseInt(tbMatch.Participant1Id) : (tbMatch.Result === '2-wins') ? parseInt(tbMatch.Participant2Id) : 0;
+						var fourthId = (tbMatch.Result === '1-wins') ? parseInt(tbMatch.Participant2Id) : (tbMatch.Result === '2-wins') ? parseInt(tbMatch.Participant1Id) : 0;
+						var third = thirdId ? (pMap[thirdId] || null) : null;
+						var fourth = fourthId ? (pMap[fourthId] || null) : null;
+						if (third) podiumHtml += '<div class="tn-bv-podium-card tn-bv-podium-3rd"><span class="tn-bv-podium-num">3rd</span> ' + tnEscHtml(third.Alias || third.Persona || '?') + '</div>';
+						if (fourth) podiumHtml += '<div class="tn-bv-podium-card" style="background:#f7fafc;color:#718096;border:1px solid #e2e8f0"><span class="tn-bv-podium-num">4th</span> ' + tnEscHtml(fourth.Alias || fourth.Persona || '?') + '</div>';
+					}
+					podium.innerHTML = podiumHtml;
+					championBanner.appendChild(podium);
+					wrap.insertBefore(championBanner, wrap.firstChild);
+				}
+			}
 		}
 
 		// ── Grand Final confirmation match banner + inline buttons ────────────
@@ -3141,7 +3678,7 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 		if (maxRound < 2) return;
 		requestAnimationFrame(function() {
 			var treeRect = tree.getBoundingClientRect();
-			if (!treeRect.width) return; // not visible yet
+			if (!treeRect.width) return;
 
 			var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
 			svg.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:0';
@@ -3162,38 +3699,53 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 					var r1   = box1.getBoundingClientRect();
 					var rDst = boxDst.getBoundingClientRect();
 					var x1   = r1.right   - treeRect.left;
-					var y1   = r1.top     - treeRect.top  + r1.height   / 2;
+					var y1   = r1.top     - treeRect.top  + r1.height / 2;
 					var xDst = rDst.left  - treeRect.left;
 					var yDst = rDst.top   - treeRect.top  + rDst.height / 2;
 					var xMid = (x1 + xDst) / 2;
-					var yMid = y1;
 
-					var d;
+					var m1Resolved = m1.Result && m1.Result !== '';
+					var m2Resolved = m2 && m2.Result && m2.Result !== '';
+
 					if (box2) {
 						var r2 = box2.getBoundingClientRect();
 						var x2 = r2.right - treeRect.left;
 						var y2 = r2.top - treeRect.top + r2.height / 2;
-						yMid = (y1 + y2) / 2;
-						// src1 arm → xMid, vertical bar y1→y2, src2 arm back, center arm to dst
-						d = 'M'+x1+','+y1+' H'+xMid+' V'+y2+' H'+x2+' M'+xMid+','+yMid+' H'+xDst;
-					} else {
-						// single source: straight line
-						d = 'M'+x1+','+y1+' H'+xDst;
-					}
+						var yMid = (y1 + y2) / 2;
 
-					var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-					path.setAttribute('d', d);
-					path.setAttribute('stroke', '#cbd5e0');
-					path.setAttribute('stroke-width', '2');
-					path.setAttribute('fill', 'none');
-					path.setAttribute('stroke-linecap', 'square');
-					svg.appendChild(path);
+						var color1 = m1Resolved ? '#48bb78' : '#cbd5e0';
+						var p1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+						p1.setAttribute('d', 'M'+x1+','+y1+' C'+xMid+','+y1+' '+xMid+','+yMid+' '+xMid+','+yMid);
+						p1.setAttribute('stroke', color1); p1.setAttribute('stroke-width', m1Resolved ? '2.5' : '1.5');
+						p1.setAttribute('fill', 'none'); p1.setAttribute('stroke-linecap', 'round');
+						svg.appendChild(p1);
+
+						var color2 = m2Resolved ? '#48bb78' : '#cbd5e0';
+						var p2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+						p2.setAttribute('d', 'M'+x2+','+y2+' C'+xMid+','+y2+' '+xMid+','+yMid+' '+xMid+','+yMid);
+						p2.setAttribute('stroke', color2); p2.setAttribute('stroke-width', m2Resolved ? '2.5' : '1.5');
+						p2.setAttribute('fill', 'none'); p2.setAttribute('stroke-linecap', 'round');
+						svg.appendChild(p2);
+
+						var colorC = (m1Resolved && m2Resolved) ? '#48bb78' : '#cbd5e0';
+						var pC = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+						pC.setAttribute('d', 'M'+xMid+','+yMid+' C'+((xMid+xDst)/2)+','+yMid+' '+((xMid+xDst)/2)+','+yDst+' '+xDst+','+yDst);
+						pC.setAttribute('stroke', colorC); pC.setAttribute('stroke-width', (m1Resolved && m2Resolved) ? '2.5' : '1.5');
+						pC.setAttribute('fill', 'none'); pC.setAttribute('stroke-linecap', 'round');
+						svg.appendChild(pC);
+					} else {
+						var colorS = m1Resolved ? '#48bb78' : '#cbd5e0';
+						var pS = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+						pS.setAttribute('d', 'M'+x1+','+y1+' C'+xMid+','+y1+' '+xMid+','+yDst+' '+xDst+','+yDst);
+						pS.setAttribute('stroke', colorS); pS.setAttribute('stroke-width', m1Resolved ? '2.5' : '1.5');
+						pS.setAttribute('fill', 'none'); pS.setAttribute('stroke-linecap', 'round');
+						svg.appendChild(pS);
+					}
 				}
 			}
 			tree.insertBefore(svg, tree.firstChild);
 		});
 	}
-
 	function isMatchResettable(m, allMatches) {
 		var bid = m.BracketId;
 		var bd  = TnConfig.bracketData[bid];
@@ -3227,6 +3779,7 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 
 		for (var r = 1; r <= maxRound; r++) {
 			var rMatches = (rounds[r] || []).sort(function(a,b) { return (a.Order||0)-(b.Order||0); });
+			if (rMatches.length === 0) continue; // Skip empty rounds (e.g. tiebreaker-3rd has only one round)
 			var col = document.createElement('div');
 			col.className = 'tn-bv-round';
 			var lbl = document.createElement('div');
@@ -3258,6 +3811,25 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 		tnDrawBracketConnectors(tree, rounds, maxRound);
 	}
 
+	// Avatar color palette (stable per participant id)
+	var _tnAvatarColors = ['#276749','#2b6cb0','#6b46c1','#c05621','#b83280','#2c7a7b','#744210','#2d3748','#9b2c2c','#1a365d'];
+	function tnAvatarColor(pid) { return _tnAvatarColors[(parseInt(pid)||0) % _tnAvatarColors.length]; }
+	function tnInitials(name) { if (!name) return '?'; var parts = name.trim().split(/\s+/); return parts.length > 1 ? (parts[0][0]+parts[parts.length-1][0]).toUpperCase() : name.substring(0,2).toUpperCase(); }
+
+	// Tooltip singleton
+	var _tnTooltipEl = null;
+	function tnShowTooltip(e, html) {
+		if (!_tnTooltipEl) { _tnTooltipEl = document.createElement('div'); _tnTooltipEl.className = 'tn-bv-tooltip'; document.body.appendChild(_tnTooltipEl); }
+		_tnTooltipEl.innerHTML = html;
+		_tnTooltipEl.classList.add('tn-bv-tooltip-show');
+		var x = e.clientX + 12, y = e.clientY + 12;
+		if (x + 260 > window.innerWidth) x = e.clientX - 270;
+		if (y + 100 > window.innerHeight) y = e.clientY - 110;
+		_tnTooltipEl.style.left = x + 'px'; _tnTooltipEl.style.top = y + 'px';
+	}
+	function tnHideTooltip() { if (_tnTooltipEl) _tnTooltipEl.classList.remove('tn-bv-tooltip-show'); }
+	function tnEscHtml(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
 	function buildMatchBox(m, pMap, sectionMatches) {
 		var p1Id = parseInt(m.Participant1Id) || 0;
 		var p2Id = parseInt(m.Participant2Id) || 0;
@@ -3266,11 +3838,30 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 		var hasResult = m.Result && m.Result !== '';
 		var isClickable = !hasResult && p1 && p2 && TnConfig.canManage;
 
+		var isBye = (!p1Id && p2Id) || (p1Id && !p2Id) || (p1Id === -1 || p2Id === -1);
+
 		var box = document.createElement('div');
 		box.className = 'tn-bv-match';
 		box.dataset.matchid = m.MatchId || '';
 		if (isClickable) box.className += ' tn-bv-clickable';
 		if (hasResult)   box.className += ' tn-bv-resolved';
+		if (isBye && !hasResult) box.className += ' tn-bv-bye-match';
+		if (!hasResult && p1 && p2) box.className += ' tn-bv-next-playable';
+
+		// Match number badge
+		if (m.MatchId) {
+			var matchNum = document.createElement('span');
+			matchNum.className = 'tn-bv-match-num';
+			matchNum.textContent = '#' + m.MatchId;
+			box.appendChild(matchNum);
+		}
+			if (m.BracketSide === 'tiebreaker-3rd') {
+			var tbLabel = document.createElement('span');
+			tbLabel.className = 'tn-bv-match-num';
+			tbLabel.style.cssText = 'left:auto;right:6px;background:#dd6b20;color:#fff';
+			tbLabel.textContent = '3rd Place';
+			box.appendChild(tbLabel);
+		}
 
 		[
 			{ pid:p1Id, p:p1, slot:1 },
@@ -3292,12 +3883,19 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 				var awaitLabel = parseInt(m.Round) > 1 ? 'Awaiting Rd ' + (parseInt(m.Round) - 1) : 'TBD';
 				slot.innerHTML = '<span class="tn-bv-seed">?</span><span class="tn-bv-tbd-label">' + awaitLabel + '</span>';
 			} else {
+				var displayName = info.p.Alias || info.p.Persona || '—';
+				var av = document.createElement('span');
+				av.className = 'tn-bv-avatar';
+				av.style.background = tnAvatarColor(info.pid);
+				av.textContent = tnInitials(displayName);
+				slot.appendChild(av);
+
 				var seed = document.createElement('span');
 				seed.className = 'tn-bv-seed';
 				seed.textContent = info.p.Seed || '?';
 				slot.appendChild(seed);
 				var name = document.createElement('span');
-				name.textContent = info.p.Alias || info.p.Persona || '—';
+				name.textContent = displayName;
 				slot.appendChild(name);
 				if (hasResult && info.slot === 1 && (m.Result === '1-wins')) {
 					var pill = document.createElement('span');
@@ -3313,6 +3911,43 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 			}
 			box.appendChild(slot);
 		});
+
+		// Bye auto-advance label
+		if (isBye && !hasResult) {
+			var byeLabel = document.createElement('div');
+			byeLabel.className = 'tn-bv-bye-label';
+			byeLabel.textContent = 'Auto-advance';
+			box.appendChild(byeLabel);
+		}
+
+		// Tooltip on hover
+		if (p1 || p2) {
+			box.addEventListener('mouseenter', function(e) {
+				var lines = [];
+				[p1, p2].forEach(function(pp, idx) {
+					if (!pp) return;
+					var pName = pp.Alias || pp.Persona || 'Unknown';
+					var pPark = pp.ParkName || '';
+					lines.push('<div class="tn-bv-tooltip-name">' + (idx+1) + '. ' + tnEscHtml(pName) + '</div>');
+					if (pPark) lines.push('<div class="tn-bv-tooltip-park">' + tnEscHtml(pPark) + '</div>');
+				});
+				if (hasResult) {
+					var resultLabel = m.Result === '1-wins' ? 'Player 1 wins' : m.Result === '2-wins' ? 'Player 2 wins' : m.Result === 'tie' ? 'Tie' : m.Result;
+					lines.push('<div class="tn-bv-tooltip-bouts">Result: ' + resultLabel + '</div>');
+					try {
+						var ba = (m.Bouts && m.Bouts !== '[]') ? JSON.parse(m.Bouts) : [];
+						if (ba.length > 0) {
+							var w1 = ba.filter(function(b){return b==='1'}).length;
+							var w2 = ba.filter(function(b){return b==='2'}).length;
+							lines.push('<div class="tn-bv-tooltip-bouts">Bouts: ' + w1 + '-' + w2 + '</div>');
+						}
+					} catch(ex){}
+				}
+				tnShowTooltip(e, lines.join(''));
+			});
+			box.addEventListener('mousemove', function(e) { if (_tnTooltipEl) tnShowTooltip(e, _tnTooltipEl.innerHTML); });
+			box.addEventListener('mouseleave', tnHideTooltip);
+		}
 
 		if (hasResult) {
 			var boutsArr = [];
@@ -3430,14 +4065,18 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 								var sel = document.getElementById('tn-bv-bracket-select');
 								var bid = sel ? parseInt(sel.value) : 0;
 								if (bid && TnConfig.bracketData[bid]) {
-									fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bid + '/matches')
-										.then(function(r2) { return r2.json(); })
-										.then(function(md) {
-											if (md && md.status === 0) {
-												TnConfig.bracketData[bid].Matches = md.matches;
-												tnRenderBracketViz(bid);
-											}
-										});
+									Promise.all([
+										fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bid + '/matches').then(function(r2) { return r2.json(); }),
+										fetch(TnConfig.uir + 'TournamentAjax/tournament/' + tid + '/brackets').then(function(r2) { return r2.json(); })
+									]).then(function(res2) {
+										var md = res2[0], bd2 = res2[1];
+										if (md && md.status === 0) TnConfig.bracketData[bid].Matches = md.matches;
+										if (bd2 && bd2.status === 0 && bd2.brackets && TnConfig.bracketData[bid]) {
+											var br = bd2.brackets.find(function(b) { return parseInt(b.BracketId) === parseInt(bid); });
+											if (br) TnConfig.bracketData[bid].Bracket = br;
+										}
+										tnRenderBracketViz(bid);
+									});
 								}
 							} else {
 								alert((d && d.error) ? d.error : 'Reset failed.');
@@ -4046,8 +4685,448 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 		}
 	}
 
-		// ── Round-table renderer (Swiss / Round Robin) ──
-	function renderRoundTable(container, matches, pMap) {
+	// ── Cross-table matrix view (Round Robin) ──
+	function renderMatrixView(container, matches, pMap) {
+		var participants = Object.keys(pMap).map(function(id) { return pMap[id]; });
+		participants.sort(function(a, b) {
+			var seedA = parseInt(a.Seed, 10) || 9999;
+			var seedB = parseInt(b.Seed, 10) || 9999;
+			if (seedA !== seedB) return seedA - seedB;
+			var nameA = (a.Alias || a.Persona || '').toLowerCase();
+			var nameB = (b.Alias || b.Persona || '').toLowerCase();
+			return nameA < nameB ? -1 : nameA > nameB ? 1 : 0;
+		});
+
+		var matchLookup = {};
+		matches.forEach(function(match) {
+			if (match.Participant1Id && match.Participant2Id) {
+				matchLookup[match.Participant1Id + '-' + match.Participant2Id] = match;
+				matchLookup[match.Participant2Id + '-' + match.Participant1Id] = match;
+			}
+		});
+
+		function displayName(p) { return p.Alias || p.Persona || 'Unknown'; }
+		function truncate(str, max) { return str.length <= max ? str : str.substring(0, max) + '\u2026'; }
+
+		function makeAvatar(pid, small) {
+			var av = document.createElement('span');
+			av.className = small ? 'tn-rr-mx-avatar tn-rr-mx-avatar-sm' : 'tn-rr-mx-avatar';
+			av.style.backgroundColor = tnAvatarColor(pid);
+			av.textContent = tnInitials(displayName(pMap[pid]));
+			return av;
+		}
+
+		function boutScore(match, playerId) {
+			if (!match.Bouts) return null;
+			try {
+				var bouts = JSON.parse(match.Bouts);
+				if (!Array.isArray(bouts) || bouts.length === 0) return null;
+				var isP1 = String(match.Participant1Id) === String(playerId);
+				var wins = 0, losses = 0;
+				bouts.forEach(function(b) {
+					if (isP1) { if (b === '1') wins++; else if (b === '2') losses++; }
+					else { if (b === '2') wins++; else if (b === '1') losses++; }
+				});
+				return wins + '-' + losses;
+			} catch(e) { return null; }
+		}
+
+		function cellResult(match, rowPlayerId) {
+			if (!match || !match.Result) return { code: 'pending', label: '\u00B7' };
+			var result = match.Result;
+			var isP1 = String(match.Participant1Id) === String(rowPlayerId);
+			if (result === '1-wins') return isP1 ? { code: 'win', label: 'W' } : { code: 'loss', label: 'L' };
+			if (result === '2-wins') return isP1 ? { code: 'loss', label: 'L' } : { code: 'win', label: 'W' };
+			if (result === 'tie') return { code: 'tie', label: 'T' };
+			if (result === 'forfeit' || result === 'disqualified') return isP1 ? { code: 'win', label: 'W' } : { code: 'loss', label: 'L' };
+			return { code: 'pending', label: '\u00B7' };
+		}
+
+		var wrap = document.createElement('div');
+		wrap.className = 'tn-rr-matrix-wrap';
+		var table = document.createElement('table');
+		table.className = 'tn-rr-matrix';
+
+		var thead = document.createElement('thead');
+		var headerRow = document.createElement('tr');
+		var cornerTh = document.createElement('th');
+		cornerTh.className = 'tn-rr-mx-corner';
+		headerRow.appendChild(cornerTh);
+
+		participants.forEach(function(p) {
+			var th = document.createElement('th');
+			th.className = 'tn-rr-mx-col-header';
+			th.appendChild(makeAvatar(p.ParticipantId, true));
+			var nameSpan = document.createElement('span');
+			nameSpan.className = 'tn-rr-mx-col-name';
+			nameSpan.textContent = truncate(displayName(p), 8);
+			nameSpan.title = displayName(p);
+			th.appendChild(nameSpan);
+			headerRow.appendChild(th);
+		});
+		thead.appendChild(headerRow);
+		table.appendChild(thead);
+
+		var tbody = document.createElement('tbody');
+		participants.forEach(function(rowP) {
+			var row = document.createElement('tr');
+			row.dataset.pid = rowP.ParticipantId;
+
+			var rowTh = document.createElement('th');
+			rowTh.className = 'tn-rr-mx-player-col';
+			rowTh.appendChild(makeAvatar(rowP.ParticipantId, false));
+			var rowNameSpan = document.createElement('span');
+			rowNameSpan.className = 'tn-rr-mx-player-name';
+			rowNameSpan.textContent = displayName(rowP);
+			rowTh.appendChild(rowNameSpan);
+			row.appendChild(rowTh);
+
+			participants.forEach(function(colP) {
+				var td = document.createElement('td');
+				if (String(rowP.ParticipantId) === String(colP.ParticipantId)) {
+					td.className = 'tn-rr-mx-self';
+					td.textContent = '\u2014';
+				} else {
+					var key = rowP.ParticipantId + '-' + colP.ParticipantId;
+					var matchObj = matchLookup[key] || null;
+					var res = cellResult(matchObj, rowP.ParticipantId);
+					td.className = 'tn-rr-mx-' + res.code;
+
+					var resultSpan = document.createElement('span');
+					resultSpan.className = 'tn-rr-mx-result';
+					resultSpan.textContent = res.label;
+					td.appendChild(resultSpan);
+
+					if (matchObj && res.code !== 'pending') {
+						var bs = boutScore(matchObj, rowP.ParticipantId);
+						if (bs) {
+							var boutSpan = document.createElement('span');
+							boutSpan.className = 'tn-rr-mx-bouts';
+							boutSpan.textContent = bs;
+							td.appendChild(boutSpan);
+						}
+					}
+
+					if (TnConfig.canManage && matchObj && matchObj.Participant1Id && matchObj.Participant2Id) {
+						td.classList.add('tn-rr-mx-cell-clickable');
+						(function(mObj) {
+							td.addEventListener('click', function() {
+								tnOpenRecordResult(mObj, pMap[mObj.Participant1Id], pMap[mObj.Participant2Id]);
+							});
+						})(matchObj);
+					}
+				}
+				row.appendChild(td);
+			});
+			tbody.appendChild(row);
+		});
+		table.appendChild(tbody);
+		wrap.appendChild(table);
+		container.appendChild(wrap);
+	}
+
+	// ── Enhanced standings table (Round Robin) ──
+	function renderEnhancedStandings(container, matches, pMap, onPlayerClick) {
+		var pids = Object.keys(pMap);
+		var totalPossible = pids.length > 1 ? (pids.length * (pids.length - 1)) / 2 : 0;
+		var maxMatchesPerPlayer = pids.length > 1 ? pids.length - 1 : 0;
+		var stats = {};
+		pids.forEach(function(pid) { stats[pid] = { w: 0, l: 0, t: 0, played: 0 }; });
+
+		var completedMatches = 0;
+		matches.forEach(function(m) {
+			if (!m.Result || m.Result === '') return;
+			completedMatches++;
+			var p1 = String(m.Participant1Id), p2 = String(m.Participant2Id);
+			if (stats[p1]) stats[p1].played++;
+			if (stats[p2]) stats[p2].played++;
+			if (m.Result === '1-wins' || m.Result === 'forfeit' || m.Result === 'disqualified') {
+				if (stats[p1]) stats[p1].w++;
+				if (stats[p2]) stats[p2].l++;
+			} else if (m.Result === '2-wins') {
+				if (stats[p2]) stats[p2].w++;
+				if (stats[p1]) stats[p1].l++;
+			} else if (m.Result === 'tie') {
+				if (stats[p1]) stats[p1].t++;
+				if (stats[p2]) stats[p2].t++;
+			}
+		});
+
+		var rows = [];
+		pids.forEach(function(pid) {
+			var s = stats[pid];
+			var pts = s.w * 3 + s.t * 1;
+			var pct = s.played > 0 ? (s.w / s.played) : 0;
+			rows.push({ p: pid, w: s.w, l: s.l, t: s.t, played: s.played, pts: pts, pct: pct, totalPossible: maxMatchesPerPlayer });
+		});
+		rows.sort(function(a, b) {
+			if (b.pts !== a.pts) return b.pts - a.pts;
+			if (b.w !== a.w) return b.w - a.w;
+			if (a.l !== b.l) return a.l - b.l;
+			var nameA = (pMap[a.p] ? (pMap[a.p].Alias || pMap[a.p].Persona || '') : '').toLowerCase();
+			var nameB = (pMap[b.p] ? (pMap[b.p].Alias || pMap[b.p].Persona || '') : '').toLowerCase();
+			return nameA < nameB ? -1 : nameA > nameB ? 1 : 0;
+		});
+		rows.forEach(function(row, idx) {
+			if (idx === 0) { row.rank = 1; }
+			else {
+				var prev = rows[idx - 1];
+				row.rank = (row.pts === prev.pts && row.w === prev.w && row.l === prev.l && row.t === prev.t) ? prev.rank : idx + 1;
+			}
+		});
+
+		var table = document.createElement('table');
+		table.className = 'tn-rr-standings-enhanced';
+
+		var caption = document.createElement('caption');
+		caption.innerHTML = '<span style="font-weight:bold">Standings</span><span class="tn-rr-std-caption-progress">' + completedMatches + '/' + totalPossible + ' matches played</span>';
+		table.appendChild(caption);
+
+		var thead = document.createElement('thead');
+		var hRow = document.createElement('tr');
+		['Rank','Player','W','L','T','Pts','Win%','Progress'].forEach(function(col) {
+			var th = document.createElement('th');
+			th.textContent = col;
+			th.className = 'tn-rr-std-col-' + col.toLowerCase().replace('%','pct');
+			hRow.appendChild(th);
+		});
+		thead.appendChild(hRow);
+		table.appendChild(thead);
+
+		var tbody = document.createElement('tbody');
+		tbody.className = 'tn-rr-std-clickable';
+		var activePlayerId = null;
+		var rowEls = {};
+
+		rows.forEach(function(row) {
+			var tr = document.createElement('tr');
+			tr.dataset.participantId = row.p;
+			rowEls[row.p] = tr;
+
+			tr.addEventListener('click', function() {
+				if (activePlayerId === row.p) {
+					tr.classList.remove('tn-rr-std-active');
+					activePlayerId = null;
+					if (onPlayerClick) onPlayerClick(null);
+				} else {
+					if (activePlayerId && rowEls[activePlayerId]) rowEls[activePlayerId].classList.remove('tn-rr-std-active');
+					tr.classList.add('tn-rr-std-active');
+					activePlayerId = row.p;
+					if (onPlayerClick) onPlayerClick(row.p);
+				}
+			});
+
+			// Rank
+			var tdRank = document.createElement('td');
+			tdRank.className = 'tn-rr-std-rank';
+			if (row.rank <= 3) {
+				var medals = { 1: '\uD83E\uDD47', 2: '\uD83E\uDD48', 3: '\uD83E\uDD49' };
+				tdRank.innerHTML = '<span class="tn-rr-std-medal">' + medals[row.rank] + '</span>';
+			} else {
+				tdRank.textContent = row.rank;
+			}
+			tr.appendChild(tdRank);
+
+			// Player
+			var tdPlayer = document.createElement('td');
+			tdPlayer.className = 'tn-rr-std-player';
+			var playerWrap = document.createElement('div');
+			playerWrap.className = 'tn-rr-std-player-wrap';
+			var pInfo = pMap[row.p];
+			var dName = pInfo ? (pInfo.Alias || pInfo.Persona || 'Unknown') : 'Unknown';
+			var avatar = document.createElement('div');
+			avatar.className = 'tn-rr-std-avatar';
+			avatar.style.backgroundColor = tnAvatarColor(row.p);
+			avatar.textContent = tnInitials(dName);
+			var nameWrap = document.createElement('div');
+			nameWrap.className = 'tn-rr-std-name-wrap';
+			var nameSpan = document.createElement('span');
+			nameSpan.className = 'tn-rr-std-name';
+			nameSpan.textContent = dName;
+			nameWrap.appendChild(nameSpan);
+			if (pInfo && pInfo.ParkName) {
+				var parkSpan = document.createElement('small');
+				parkSpan.className = 'tn-rr-std-park';
+				parkSpan.textContent = pInfo.ParkName;
+				nameWrap.appendChild(parkSpan);
+			}
+			playerWrap.appendChild(avatar);
+			playerWrap.appendChild(nameWrap);
+			tdPlayer.appendChild(playerWrap);
+			tr.appendChild(tdPlayer);
+
+			// W / L / T
+			var tdW = document.createElement('td'); tdW.className = 'tn-rr-std-w'; tdW.textContent = row.w; tr.appendChild(tdW);
+			var tdL = document.createElement('td'); tdL.className = 'tn-rr-std-l'; tdL.textContent = row.l; tr.appendChild(tdL);
+			var tdT = document.createElement('td'); tdT.className = 'tn-rr-std-t'; tdT.textContent = row.t; tr.appendChild(tdT);
+
+			// Pts
+			var tdPts = document.createElement('td'); tdPts.className = 'tn-rr-std-pts'; tdPts.textContent = row.pts; tr.appendChild(tdPts);
+
+			// Win%
+			var tdPct = document.createElement('td'); tdPct.className = 'tn-rr-std-winpct';
+			tdPct.textContent = (row.pct * 100).toFixed(1) + '%'; tr.appendChild(tdPct);
+
+			// Progress bar
+			var tdProgress = document.createElement('td');
+			tdProgress.className = 'tn-rr-std-progress';
+			var barOuter = document.createElement('div');
+			barOuter.className = 'tn-rr-std-bar';
+			var barTrack = document.createElement('div');
+			barTrack.className = 'tn-rr-std-bar-track';
+			var barFill = document.createElement('div');
+			barFill.className = 'tn-rr-std-bar-fill';
+			var barPct = row.totalPossible > 0 ? (row.played / row.totalPossible) * 100 : 0;
+			barFill.style.width = barPct.toFixed(1) + '%';
+			barTrack.appendChild(barFill);
+			barOuter.appendChild(barTrack);
+			var barText = document.createElement('span');
+			barText.className = 'tn-rr-std-bar-text';
+			barText.textContent = row.played + '/' + row.totalPossible;
+			barOuter.appendChild(barText);
+			tdProgress.appendChild(barOuter);
+			tr.appendChild(tdProgress);
+
+			tbody.appendChild(tr);
+		});
+		table.appendChild(tbody);
+		container.appendChild(table);
+
+		container._tnSetActivePlayer = function(pid) {
+			if (activePlayerId && rowEls[activePlayerId]) rowEls[activePlayerId].classList.remove('tn-rr-std-active');
+			activePlayerId = pid;
+			if (pid && rowEls[pid]) rowEls[pid].classList.add('tn-rr-std-active');
+		};
+
+		return rows;
+	}
+
+	// ── Champion banner for Round Robin ──
+	function renderRRChampionBanner(container, stdRows, pMap) {
+		if (!stdRows || stdRows.length === 0) return;
+
+		var banner = document.createElement('div');
+		banner.className = 'tn-bv-champion-banner';
+
+		var champRow = document.createElement('div');
+		champRow.className = 'tn-bv-champion-row';
+		var trophyEl = document.createElement('div');
+		trophyEl.className = 'tn-bv-champion-trophy';
+		trophyEl.innerHTML = '&#x1F3C6;';
+		champRow.appendChild(trophyEl);
+
+		var champInfo = document.createElement('div');
+		champInfo.className = 'tn-bv-champion-info';
+		var champLabel = document.createElement('div');
+		champLabel.className = 'tn-bv-champion-label';
+		champLabel.textContent = 'Champion';
+		champInfo.appendChild(champLabel);
+
+		var champ = stdRows[0];
+		var champData = pMap[champ.p];
+		var champName = champData ? (champData.Alias || champData.Persona || 'Unknown') : 'Unknown';
+		var champNameEl = document.createElement('div');
+		champNameEl.className = 'tn-bv-champion-name';
+		champNameEl.textContent = champName;
+		champInfo.appendChild(champNameEl);
+
+		if (champData && champData.ParkName) {
+			var champPark = document.createElement('div');
+			champPark.className = 'tn-bv-champion-park';
+			champPark.textContent = champData.ParkName;
+			champInfo.appendChild(champPark);
+		}
+		champRow.appendChild(champInfo);
+		banner.appendChild(champRow);
+
+		var podium = document.createElement('div');
+		podium.className = 'tn-bv-podium';
+		var medals = [
+			{ rank: 1, cls: 'tn-bv-podium-1st', label: '1st' },
+			{ rank: 2, cls: 'tn-bv-podium-2nd', label: '2nd' },
+			{ rank: 3, cls: 'tn-bv-podium-3rd', label: '3rd' }
+		];
+		medals.forEach(function(medal) {
+			var player = null;
+			for (var i = 0; i < stdRows.length; i++) {
+				if (stdRows[i].rank === medal.rank) { player = stdRows[i]; break; }
+			}
+			if (!player) return;
+			var card = document.createElement('div');
+			card.className = 'tn-bv-podium-card ' + medal.cls;
+			var rankBadge = document.createElement('div');
+			rankBadge.className = 'tn-bv-podium-rank';
+			rankBadge.textContent = medal.label;
+			card.appendChild(rankBadge);
+			var pData = pMap[player.p];
+			var pName = pData ? (pData.Alias || pData.Persona || '?') : '?';
+			var av = document.createElement('div');
+			av.className = 'tn-bv-podium-avatar';
+			av.style.backgroundColor = tnAvatarColor(player.p);
+			av.textContent = tnInitials(pName);
+			card.appendChild(av);
+			var nameEl = document.createElement('div');
+			nameEl.className = 'tn-bv-podium-name';
+			nameEl.textContent = pName;
+			card.appendChild(nameEl);
+			if (pData && pData.ParkName) {
+				var parkEl = document.createElement('div');
+				parkEl.className = 'tn-bv-podium-park';
+				parkEl.textContent = pData.ParkName;
+				card.appendChild(parkEl);
+			}
+			var statsEl = document.createElement('div');
+			statsEl.className = 'tn-bv-podium-stats';
+			statsEl.textContent = player.w + 'W-' + player.l + 'L-' + player.t + 'T \u2022 ' + player.pts + ' pts';
+			card.appendChild(statsEl);
+			podium.appendChild(card);
+		});
+		banner.appendChild(podium);
+		container.insertBefore(banner, container.firstChild);
+	}
+
+	// ── Enhance match card for Round Robin (add W-L record) ──
+	function enhanceRRMatchCard(box, m, pMap, rrStats) {
+		var slots = box.querySelectorAll('.tn-bv-slot');
+		[{ pid: parseInt(m.Participant1Id) || 0, idx: 0 }, { pid: parseInt(m.Participant2Id) || 0, idx: 1 }].forEach(function(info) {
+			if (!info.pid || info.idx >= slots.length) return;
+			var st = rrStats[String(info.pid)];
+			if (!st || st.played === 0) return;
+			var slot = slots[info.idx];
+			var badge = document.createElement('span');
+			badge.className = 'tn-rr-card-record';
+			badge.textContent = '(' + st.w + '-' + st.l + (st.t > 0 ? '-' + st.t : '') + ')';
+			badge.title = st.w + 'W ' + st.l + 'L' + (st.t > 0 ? ' ' + st.t + 'T' : '');
+			var pill = slot.querySelector('.tn-bv-result-pill');
+			if (pill) slot.insertBefore(badge, pill);
+			else slot.appendChild(badge);
+		});
+	}
+
+	// ── Round-table renderer (Swiss / Round Robin) — Enhanced ──
+	function renderRoundTable(container, matches, pMap, bracketId) {
+		// Compute shared stats
+		var pids = Object.keys(pMap);
+		var totalPossible = pids.length > 1 ? (pids.length * (pids.length - 1)) / 2 : 0;
+		var rrStats = {};
+		pids.forEach(function(pid) { rrStats[pid] = { w: 0, l: 0, t: 0, played: 0 }; });
+		var completedMatches = 0;
+		matches.forEach(function(m) {
+			if (!m.Result || m.Result === '') return;
+			completedMatches++;
+			var p1 = String(m.Participant1Id), p2 = String(m.Participant2Id);
+			if (rrStats[p1]) rrStats[p1].played++;
+			if (rrStats[p2]) rrStats[p2].played++;
+			if (m.Result === '1-wins' || m.Result === 'forfeit' || m.Result === 'disqualified') {
+				if (rrStats[p1]) rrStats[p1].w++; if (rrStats[p2]) rrStats[p2].l++;
+			} else if (m.Result === '2-wins') {
+				if (rrStats[p2]) rrStats[p2].w++; if (rrStats[p1]) rrStats[p1].l++;
+			} else if (m.Result === 'tie') {
+				if (rrStats[p1]) rrStats[p1].t++; if (rrStats[p2]) rrStats[p2].t++;
+			}
+		});
+
+		// Group by round
 		var rounds = {};
 		var maxRound = 0;
 		matches.forEach(function(m) {
@@ -4057,50 +5136,143 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 			if (r > maxRound) maxRound = r;
 		});
 
-		// Round nav buttons
+		// Header: view toggle
+		var headerRow = document.createElement('div');
+		headerRow.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap';
+		var viewToggle = document.createElement('div');
+		viewToggle.className = 'tn-rr-view-toggle';
+		var btnRounds = document.createElement('button');
+		btnRounds.className = 'tn-rr-view-toggle-btn active';
+		btnRounds.innerHTML = '<i class="fas fa-list" style="margin-right:5px"></i>Rounds';
+		var btnMatrix = document.createElement('button');
+		btnMatrix.className = 'tn-rr-view-toggle-btn';
+		btnMatrix.innerHTML = '<i class="fas fa-th" style="margin-right:5px"></i>Matrix';
+		viewToggle.appendChild(btnRounds);
+		viewToggle.appendChild(btnMatrix);
+		headerRow.appendChild(viewToggle);
+		container.appendChild(headerRow);
+
+		// Overall progress bar
+		if (totalPossible > 0) {
+			var progressWrap = document.createElement('div');
+			progressWrap.className = 'tn-rr-progress-wrap';
+			var progressBar = document.createElement('div');
+			progressBar.className = 'tn-rr-progress-bar';
+			var pctComplete = (completedMatches / totalPossible) * 100;
+			if (pctComplete < 35) progressBar.classList.add('tn-rr-progress-low');
+			var progressFill = document.createElement('div');
+			progressFill.className = 'tn-rr-progress-fill';
+			progressFill.style.width = pctComplete.toFixed(1) + '%';
+			progressBar.appendChild(progressFill);
+			var progressLabel = document.createElement('div');
+			progressLabel.className = 'tn-rr-progress-label';
+			progressLabel.textContent = completedMatches + ' of ' + totalPossible + ' matches complete (' + Math.round(pctComplete) + '%)';
+			progressBar.appendChild(progressLabel);
+			progressWrap.appendChild(progressBar);
+			container.appendChild(progressWrap);
+		}
+
+		// Focus banner (hidden initially)
+		var focusBanner = document.createElement('div');
+		focusBanner.className = 'tn-rr-focus-banner';
+		focusBanner.style.display = 'none';
+		focusBanner.innerHTML = '<i class="fas fa-filter" style="font-size:11px"></i> Showing matches for <span class="tn-rr-focus-banner-name"></span>';
+		var focusClose = document.createElement('button');
+		focusClose.className = 'tn-rr-focus-banner-close';
+		focusClose.innerHTML = '&times;';
+		focusBanner.appendChild(focusClose);
+		container.appendChild(focusBanner);
+
+		var standingsContainer = null;
+		var focusedPlayer = null;
+
+		function setPlayerFocus(pid) {
+			focusedPlayer = pid;
+			if (pid) {
+				container.classList.add('tn-rr-focus-active');
+				var pInfo = pMap[pid];
+				focusBanner.querySelector('.tn-rr-focus-banner-name').textContent = pInfo ? (pInfo.Alias || pInfo.Persona || '?') : '?';
+				focusBanner.style.display = '';
+				// Highlight matching match cards
+				container.querySelectorAll('.tn-bv-match').forEach(function(card) {
+					var mid = card.dataset.matchid;
+					var m = matches.find(function(mm) { return String(mm.MatchId) === mid; });
+					if (m && (String(m.Participant1Id) === String(pid) || String(m.Participant2Id) === String(pid))) {
+						card.classList.add('tn-rr-focus-match');
+					} else {
+						card.classList.remove('tn-rr-focus-match');
+					}
+				});
+				// Highlight matching matrix rows
+				container.querySelectorAll('.tn-rr-matrix tbody tr').forEach(function(tr) {
+					if (tr.dataset.pid === String(pid)) tr.classList.add('tn-rr-focus-row');
+					else tr.classList.remove('tn-rr-focus-row');
+				});
+				if (standingsContainer && standingsContainer._tnSetActivePlayer) standingsContainer._tnSetActivePlayer(pid);
+			} else {
+				container.classList.remove('tn-rr-focus-active');
+				focusBanner.style.display = 'none';
+				container.querySelectorAll('.tn-rr-focus-match').forEach(function(el) { el.classList.remove('tn-rr-focus-match'); });
+				container.querySelectorAll('.tn-rr-focus-row').forEach(function(el) { el.classList.remove('tn-rr-focus-row'); });
+				if (standingsContainer && standingsContainer._tnSetActivePlayer) standingsContainer._tnSetActivePlayer(null);
+			}
+		}
+		focusClose.onclick = function() { setPlayerFocus(null); };
+
+		// ── Rounds view ──
+		var roundsView = document.createElement('div');
+		roundsView.className = 'tn-rr-rounds-view';
+
 		var nav = document.createElement('div');
 		nav.className = 'tn-bv-round-nav';
-		var activeRound = 1;
+		var _savedRound = parseInt(sessionStorage.getItem('tnRRActiveRound_' + bracketId)) || 0;
+		var _activeRound = (_savedRound >= 1 && _savedRound <= maxRound) ? _savedRound : 1;
 
 		for (var r = 1; r <= maxRound; r++) {
 			(function(round) {
 				var btn = document.createElement('button');
-				btn.className = 'tn-bv-round-btn' + (round === 1 ? ' active' : '');
-				btn.textContent = 'Round ' + round;
+				btn.className = 'tn-bv-round-btn' + (round === _activeRound ? ' active' : '');
+				var rMatches = rounds[round] || [];
+				var rDone = rMatches.filter(function(m) { return m.Result && m.Result !== ''; }).length;
+				btn.textContent = 'Round ' + round + ' ';
+				var countBadge = document.createElement('span');
+				countBadge.className = 'tn-rr-round-count';
+				countBadge.textContent = rDone + '/' + rMatches.length;
+				btn.appendChild(countBadge);
 				btn.dataset.round = round;
 				btn.addEventListener('click', function() {
 					nav.querySelectorAll('.tn-bv-round-btn').forEach(function(b) { b.classList.remove('active'); });
 					btn.classList.add('active');
-					container.querySelectorAll('.tn-bv-round-section').forEach(function(s) {
+					roundsView.querySelectorAll('.tn-bv-round-section').forEach(function(s) {
 						s.style.display = parseInt(s.dataset.round) === round ? '' : 'none';
 					});
+					sessionStorage.setItem('tnRRActiveRound_' + bracketId, round);
 				});
 				nav.appendChild(btn);
 			})(r);
 		}
-		container.appendChild(nav);
+		roundsView.appendChild(nav);
 
 		for (var r = 1; r <= maxRound; r++) {
 			(function(round) {
 				var section = document.createElement('div');
 				section.className = 'tn-bv-round-section';
 				section.dataset.round = round;
-				section.style.display = round === 1 ? '' : 'none';
-
+				section.style.display = round === _activeRound ? '' : 'none';
 				var body = document.createElement('div');
 				body.className = 'tn-rr-round-body';
-
 				var rMatches = (rounds[round] || []).sort(function(a,b) { return (a.Order||0)-(b.Order||0); });
 				rMatches.forEach(function(m) {
-					body.appendChild(buildMatchBox(m, pMap, matches));
+					var box = buildMatchBox(m, pMap, matches);
+					enhanceRRMatchCard(box, m, pMap, rrStats);
+					body.appendChild(box);
 				});
-
 				section.appendChild(body);
-				container.appendChild(section);
+				roundsView.appendChild(section);
 			})(r);
 		}
 
-		// Mark complete rounds blue; pulse the first incomplete round after a complete one
+		// Mark complete rounds
 		var firstIncomplete = -1;
 		for (var rc = 1; rc <= maxRound; rc++) {
 			var rcMatches = rounds[rc] || [];
@@ -4117,49 +5289,49 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 			if (pulseBtn) pulseBtn.classList.add('tn-rr-next-pulse');
 		}
 
-		// ── Inline standings ─────────────────────────────────────────────────
-		var stdPlayed = matches.filter(function(m) { return m.Result && m.Result !== ''; }).length;
-		if (stdPlayed > 0) {
-			var stdData = {};
-			Object.keys(pMap).forEach(function(pid) {
-				stdData[pid] = { p: pMap[pid], w:0, l:0, t:0 };
+		container.appendChild(roundsView);
+
+		// ── Matrix view (hidden by default) ──
+		var matrixView = document.createElement('div');
+		matrixView.className = 'tn-rr-matrix-view';
+		matrixView.style.display = 'none';
+		renderMatrixView(matrixView, matches, pMap);
+		container.appendChild(matrixView);
+
+		// View toggle wiring
+		btnRounds.onclick = function() {
+			btnRounds.classList.add('active'); btnMatrix.classList.remove('active');
+			roundsView.style.display = ''; matrixView.style.display = 'none';
+			sessionStorage.setItem('tnRRView_' + bracketId, 'rounds');
+		};
+		btnMatrix.onclick = function() {
+			btnMatrix.classList.add('active'); btnRounds.classList.remove('active');
+			matrixView.style.display = ''; roundsView.style.display = 'none';
+			sessionStorage.setItem('tnRRView_' + bracketId, 'matrix');
+		};
+		// Restore saved view
+		var _savedView = sessionStorage.getItem('tnRRView_' + bracketId);
+		if (_savedView === 'matrix') { btnMatrix.onclick(); }
+
+		// ── Enhanced standings ──
+		if (completedMatches > 0) {
+			standingsContainer = document.createElement('div');
+			var stdRows = renderEnhancedStandings(standingsContainer, matches, pMap, function(pid) {
+				setPlayerFocus(pid);
 			});
-			matches.forEach(function(m) {
-				if (!m.Result || m.Result === '') return;
-				var id1 = parseInt(m.Participant1Id) || 0;
-				var id2 = parseInt(m.Participant2Id) || 0;
-				if      (m.Result === '1-wins') { if (stdData[id1]) stdData[id1].w++; if (stdData[id2]) stdData[id2].l++; }
-				else if (m.Result === '2-wins') { if (stdData[id2]) stdData[id2].w++; if (stdData[id1]) stdData[id1].l++; }
-				else if (m.Result === 'tie')    { if (stdData[id1]) stdData[id1].t++; if (stdData[id2]) stdData[id2].t++; }
-			});
-			var stdRows = [];
-			Object.keys(stdData).forEach(function(pid) { stdRows.push(stdData[pid]); });
-			stdRows.sort(function(a,b) {
-				if (b.w !== a.w) return b.w - a.w;
-				if (a.l !== b.l) return a.l - b.l;
-				return (a.p.Alias || a.p.Persona || '').localeCompare(b.p.Alias || b.p.Persona || '');
-			});
-			var stdWrap = document.createElement('div');
-			stdWrap.style.cssText = 'overflow-x:auto;-webkit-overflow-scrolling:touch;';
-			var stdTbl = document.createElement('table');
-			stdTbl.className = 'tn-rr-standings';
-			stdTbl.innerHTML = '<caption>Standings</caption><thead><tr><th>#</th><th>Player</th><th>W</th><th>L</th><th>T</th></tr></thead>';
-			var stdBody = document.createElement('tbody');
-			var stdRank = 1;
-			stdRows.forEach(function(row, i) {
-				if (i > 0 && (stdRows[i-1].w !== row.w || stdRows[i-1].l !== row.l)) stdRank = i + 1;
-				var tr = document.createElement('tr');
-				if (stdRank === 1) tr.className = 'tn-rr-std-top';
-				tr.innerHTML = '<td>' + stdRank + '</td><td>' + (row.p.Alias || row.p.Persona || '—') + '</td><td>' + row.w + '</td><td>' + row.l + '</td><td>' + row.t + '</td>';
-				stdBody.appendChild(tr);
-			});
-			stdTbl.appendChild(stdBody);
-			stdWrap.appendChild(stdTbl);
-			container.appendChild(stdWrap);
+			container.appendChild(standingsContainer);
+
+			// Champion banner (if bracket is complete/finalized)
+			var bd0 = TnConfig.bracketData[bracketId];
+			var bracketSt = bd0 && bd0.Bracket ? (bd0.Bracket.Status || '') : '';
+			if (bracketSt === 'complete' || bracketSt === 'finalized') {
+				renderRRChampionBanner(container, stdRows, pMap);
+			}
 		}
 	}
 
-	// Initialize on page load
+
+		// Initialize on page load
 	document.addEventListener('DOMContentLoaded', function() {
 		// Restore bracket collapse state across reloads
 		var collKey = 'tnCollapsed_' + TnConfig.tournamentId;
@@ -4310,14 +5482,18 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 							var sel = document.getElementById('tn-bv-bracket-select');
 							var bid = sel ? parseInt(sel.value) : 0;
 							if (bid && TnConfig.bracketData[bid]) {
-								fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bid + '/matches')
-									.then(function(r) { return r.json(); })
-									.then(function(md) {
-										if (md && md.status === 0) {
-											TnConfig.bracketData[bid].Matches = md.matches;
-											tnRenderBracketViz(bid);
-										}
-									});
+								Promise.all([
+									fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bid + '/matches').then(function(r) { return r.json(); }),
+									fetch(TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/brackets').then(function(r) { return r.json(); })
+								]).then(function(res2) {
+									var md = res2[0], bd2 = res2[1];
+									if (md && md.status === 0) TnConfig.bracketData[bid].Matches = md.matches;
+									if (bd2 && bd2.status === 0 && bd2.brackets && TnConfig.bracketData[bid]) {
+										var br = bd2.brackets.find(function(b) { return parseInt(b.BracketId) === parseInt(bid); });
+										if (br) TnConfig.bracketData[bid].Bracket = br;
+									}
+									tnRenderBracketViz(bid);
+								});
 							}
 						}, 400);
 					} else {
@@ -4418,14 +5594,19 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 				var sel = document.getElementById('tn-bv-bracket-select');
 				var bid = sel ? parseInt(sel.value) : 0;
 				if (bid && TnConfig.bracketData[bid]) {
-					fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bid + '/matches')
-						.then(function(r) { return r.json(); })
-						.then(function(md) {
-							if (md && md.status === 0) {
-								TnConfig.bracketData[bid].Matches = md.matches;
-								tnRenderBracketViz(bid);
-							}
-						});
+					var _tid = TnConfig.tournamentId;
+					Promise.all([
+						fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bid + '/matches').then(function(r) { return r.json(); }),
+						fetch(TnConfig.uir + 'TournamentAjax/tournament/' + _tid + '/brackets').then(function(r) { return r.json(); })
+					]).then(function(results) {
+						var md = results[0], bd = results[1];
+						if (md && md.status === 0) TnConfig.bracketData[bid].Matches = md.matches;
+						if (bd && bd.status === 0 && bd.brackets && TnConfig.bracketData[bid]) {
+							var br = bd.brackets.find(function(b) { return parseInt(b.BracketId) === parseInt(bid); });
+							if (br) TnConfig.bracketData[bid].Bracket = br;
+						}
+						tnRenderBracketViz(bid);
+					});
 				}
 			} else {
 				alert((d && d.error) ? d.error : 'Failed to save result.');
