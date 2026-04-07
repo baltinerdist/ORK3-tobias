@@ -207,6 +207,20 @@ class Controller_TournamentAjax extends Controller {
 				? json_encode(['status' => 0, 'tournamentId' => $tournament_id])
 				: $this->modelError($r);
 
+		} elseif ($action === 'copybracket') {
+			$source_bid = (int)($_POST['BracketId'] ?? 0);
+			if (!valid_id($source_bid)) {
+				echo json_encode(['status' => 1, 'error' => 'Source BracketId required.']); exit;
+			}
+			$r = $this->Tournament->add_bracket([
+				'Token'        => $this->session->token,
+				'TournamentId' => $tournament_id,
+				'CopyOfId'     => $source_bid,
+			]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0, 'bracketId' => (int)($r['Detail'] ?? 0)])
+				: $this->modelError($r);
+
 		} else {
 			echo json_encode(['status' => 1, 'error' => 'Unknown action']);
 		}
