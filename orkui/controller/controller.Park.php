@@ -34,7 +34,7 @@ class Controller_Park extends Controller
 		$this->data[ 'page_title' ] = $this->session->park_name;
 
 		$_uid = isset($this->session->user_id) ? (int)$this->session->user_id : 0;
-		if ($_uid > 0 && Ork3::$Lib->authorization->HasAuthority($_uid, AUTH_PARK, (int)$id, AUTH_EDIT)) {
+		if ($_uid > 0 && Ork3::$Lib->authorization->HasPermissionOrAuthority($_uid, 'park.details.edit', 'park', (int)$id, AUTH_EDIT)) {
 			$this->data[ 'menu' ][ 'admin' ] = [ 'url' => UIR . 'Admin/park/' . $this->session->park_id, 'display' => 'Admin Panel <i class="fas fa-cog"></i>', 'no-crumb' => 'no-crumb' ];
 			$this->data[ 'menulist' ][ 'admin' ] = [
 				[ 'url' => UIR . 'Admin/park/' . $this->session->park_id, 'display' => 'Park' ],
@@ -245,9 +245,9 @@ class Controller_Park extends Controller
 		$this->data['CurrentUserId'] = $uid;
 		$this->data['IsOwnPark']     = $uid > 0 && (int)($this->session->park_id ?? 0) === (int)$park_id;
 		$this->data['CanManagePark'] = $uid > 0
-			&& Ork3::$Lib->authorization->HasAuthority($uid, AUTH_PARK, (int)$park_id, AUTH_EDIT);
+			&& Ork3::$Lib->authorization->HasPermissionOrAuthority($uid, 'park.details.edit', 'park', (int)$park_id, AUTH_EDIT);
 		$this->data['CanAdminPark']  = $uid > 0
-			&& Ork3::$Lib->authorization->HasAuthority($uid, AUTH_PARK, (int)$park_id, AUTH_CREATE);
+			&& Ork3::$Lib->authorization->HasPermissionOrAuthority($uid, 'park.officer.set', 'park', (int)$park_id, AUTH_CREATE);
 
 		$knConfigs  = Common::get_configs($this->session->kingdom_id, CFG_KINGDOM);
 		$recsPublic = isset($knConfigs['AwardRecsPublic'])

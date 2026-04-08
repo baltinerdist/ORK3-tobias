@@ -358,7 +358,7 @@ class Controller_PlayerAjax extends Controller {
 		$authorized = false;
 		while ($rs && $rs->Next()) {
 			$kid = (int)$rs->kingdom_id;
-			if ($kid > 0 && Ork3::$Lib->authorization->HasAuthority($uid, AUTH_KINGDOM, $kid, AUTH_CREATE)) {
+			if ($kid > 0 && Ork3::$Lib->authorization->HasPermissionOrAuthority($uid, 'player.merge', 'kingdom', $kid, AUTH_CREATE)) {
 				$authorized = true;
 				break;
 			}

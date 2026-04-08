@@ -1625,9 +1625,10 @@
 	background: #f7fafc;
 	flex-wrap: nowrap;
 	overflow-x: auto;
+	overflow-y: hidden;
 }
 .kn-tab-nav li {
-	padding: 12px 18px;
+	padding: 12px 14px;
 	cursor: pointer;
 	font-size: 13px;
 	font-weight: 600;
