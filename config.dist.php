@@ -28,6 +28,7 @@ define('HERALDRY_PARK_DEFAULT', HTTP_PARK_HERALDRY . '00000.jpg');
 define('HERALDRY_KINGDOM_DEFAULT', HTTP_KINGDOM_HERALDRY . '0000.jpg');
 define('HERALDRY_EVENT_DEFAULT', HTTP_EVENT_HERALDRY . '00000.jpg');
 define('HERALDRY_UNIT_DEFAULT', HTTP_UNIT_HERALDRY . '00000.jpg');
+define('HTTP_SCROLL_ARTWORK', HTTP_ASSETS . 'scroll/artwork/');
 
 // HTTPS
 define('HTTPS_SERVICE', "https://{$_SERVER[HTTP_HOST]}/" . ORK_DIST_NAME . '/orkservice/');
@@ -49,6 +50,7 @@ define('DIR_KINGDOM_HERALDRY', DIR_HERALDRY . "kingdom/");
 define('DIR_EVENT_HERALDRY', DIR_HERALDRY . "event/");
 define('DIR_UNIT_HERALDRY', DIR_HERALDRY . "unit/");
 define('DIR_CACHE', DIR_BASENAME . 'cache/');
+define('DIR_SCROLL_ARTWORK', DIR_ASSETS . 'scroll/artwork/');
 
 // System
 define('DIR_LIB', DIR_SYSTEM . 'lib/');

@@ -12,6 +12,8 @@
 	$sgPreloadOfficers = $preload_officers ?? array();
 	$sgKingdomId       = (int)($kingdom_id ?? 0);
 	$sgParkId          = (int)($park_id ?? 0);
+	$sgIsOrkAdmin      = !empty($is_ork_admin);
+	$sgSessionToken    = $session_token ?? '';
 
 	// Determine auto-template from award type
 	$sgAutoTemplate = 'B'; // default: Order/Award
@@ -65,6 +67,8 @@
 		'heraldryPlayerBase'  => HTTP_PLAYER_HERALDRY,
 		'heraldryParkBase'    => HTTP_PARK_HERALDRY,
 		'heraldryKingdomBase' => HTTP_KINGDOM_HERALDRY,
+		'token'               => $sgSessionToken,
+		'isOrkAdmin'          => $sgIsOrkAdmin,
 	];
 ?>
 
@@ -1099,6 +1103,626 @@
   .sc-hero-icon { width: 48px; height: 48px; font-size: 20px; border-radius: 10px; }
   .sc-two-col { grid-template-columns: 1fr; }
 }
+
+/* ---- Artwork section ---- */
+.sc-artwork-slots-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.sc-artwork-slot {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: border-color 0.15s;
+}
+.sc-artwork-slot:hover {
+  border-color: #90cdf4;
+}
+.sc-artwork-slot-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  background: #f7fafc;
+  border: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #a0aec0;
+  font-size: 18px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.sc-artwork-slot-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.sc-artwork-slot-info {
+  flex: 1;
+  min-width: 0;
+}
+.sc-artwork-slot-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #2d3748;
+  display: block;
+  margin-bottom: 1px;
+}
+.sc-artwork-slot-dims {
+  font-size: 10px;
+  color: #a0aec0;
+  display: block;
+}
+.sc-artwork-slot-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.sc-artwork-slot-btn {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 5px;
+  cursor: pointer;
+  border: 1px solid #e2e8f0;
+  background: #f7fafc;
+  color: #4a5568;
+  transition: background 0.12s, border-color 0.12s;
+}
+.sc-artwork-slot-btn:hover {
+  background: #edf2f7;
+  border-color: #cbd5e0;
+}
+.sc-artwork-slot-btn.sc-btn-clear {
+  color: #e53e3e;
+  border-color: #fed7d7;
+  background: #fff5f5;
+  display: none;
+}
+.sc-artwork-slot-btn.sc-btn-clear:hover {
+  background: #fed7d7;
+}
+.sc-artwork-slot.sc-has-artwork .sc-btn-clear {
+  display: inline-block;
+}
+.sc-artwork-link-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.sc-artwork-link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px dashed #cbd5e0;
+  border-radius: 6px;
+  background: none;
+  color: #718096;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.sc-artwork-link-btn:hover {
+  background: #f7fafc;
+  border-color: #a0aec0;
+  color: #4a5568;
+}
+.sc-artwork-link-btn.sc-admin-btn {
+  border-color: #fbd38d;
+  color: #975a16;
+}
+.sc-artwork-link-btn.sc-admin-btn:hover {
+  background: #fefcbf;
+}
+
+/* ---- Artwork Modal ---- */
+.sc-artwork-modal {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 10000;
+  background: rgba(0,0,0,0.5);
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.sc-artwork-modal.sc-modal-open {
+  display: flex;
+}
+.sc-artwork-modal-content {
+  background: #fff;
+  border-radius: 12px;
+  max-width: 720px;
+  width: 100%;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+.sc-artwork-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e2e8f0;
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 1;
+  border-radius: 12px 12px 0 0;
+}
+.sc-artwork-modal-header h3 {
+  background: transparent;
+  border: none;
+  padding: 0;
+  border-radius: 0;
+  text-shadow: none;
+  font-size: 16px;
+  font-weight: 700;
+  color: #2d3748;
+  margin: 0;
+}
+.sc-artwork-modal-header h4 {
+  background: transparent;
+  border: none;
+  padding: 0;
+  border-radius: 0;
+  text-shadow: none;
+  font-size: 12px;
+  font-weight: 400;
+  color: #a0aec0;
+  margin: 2px 0 0;
+}
+.sc-artwork-modal-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: #a0aec0;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.12s;
+}
+.sc-artwork-modal-close:hover {
+  background: #f7fafc;
+  color: #4a5568;
+}
+.sc-artwork-modal-body {
+  padding: 20px;
+}
+.sc-artwork-modal-footer {
+  padding: 12px 20px;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* ---- Artwork Grid (browse) ---- */
+.sc-artwork-search-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.sc-artwork-search-bar input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #cbd5e0;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #2d3748;
+  background: #fff;
+}
+.sc-artwork-search-bar input:focus {
+  outline: none;
+  border-color: #3182ce;
+  box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.12);
+}
+.sc-artwork-search-btn {
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid #cbd5e0;
+  border-radius: 6px;
+  background: #f7fafc;
+  color: #4a5568;
+  cursor: pointer;
+}
+.sc-artwork-search-btn:hover {
+  background: #edf2f7;
+}
+.sc-artwork-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  min-height: 120px;
+}
+.sc-artwork-thumb {
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+  background: #fff;
+}
+.sc-artwork-thumb:hover {
+  border-color: #90cdf4;
+  box-shadow: 0 2px 8px rgba(66, 153, 225, 0.15);
+  transform: translateY(-1px);
+}
+.sc-artwork-thumb.sc-selected {
+  border-color: #3182ce;
+  box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.2);
+}
+.sc-artwork-thumb-img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  display: block;
+  background: #f7fafc;
+}
+.sc-artwork-thumb-info {
+  padding: 6px 8px;
+  border-top: 1px solid #f0f0f0;
+}
+.sc-artwork-thumb-name {
+  font-size: 11px;
+  font-weight: 700;
+  color: #2d3748;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sc-artwork-thumb-artist {
+  font-size: 10px;
+  color: #a0aec0;
+  display: block;
+}
+.sc-artwork-empty-state {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 40px 20px;
+  color: #a0aec0;
+  font-size: 13px;
+}
+.sc-artwork-empty-state i {
+  display: block;
+  font-size: 28px;
+  margin-bottom: 8px;
+  opacity: 0.5;
+}
+.sc-artwork-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  font-size: 12px;
+  color: #718096;
+}
+.sc-artwork-pagination button {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid #cbd5e0;
+  border-radius: 5px;
+  background: #fff;
+  color: #4a5568;
+  cursor: pointer;
+}
+.sc-artwork-pagination button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.sc-artwork-pagination button:hover:not(:disabled) {
+  background: #f7fafc;
+}
+
+/* ---- Upload form ---- */
+.sc-artwork-upload-form .sc-field-group {
+  margin-bottom: 12px;
+}
+.sc-artwork-upload-form .sc-field-group:last-child {
+  margin-bottom: 0;
+}
+.sc-artwork-license {
+  max-height: 140px;
+  overflow-y: auto;
+  padding: 12px 14px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #4a5568;
+  background: #f7fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  white-space: pre-wrap;
+}
+.sc-artwork-upload-submit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 20px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #3182ce, #2b6cb0);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.sc-artwork-upload-submit:hover {
+  background: linear-gradient(135deg, #2b6cb0, #2c5282);
+}
+.sc-artwork-upload-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.sc-artwork-file-info {
+  font-size: 11px;
+  color: #718096;
+  margin-top: 4px;
+}
+
+/* ---- Status badges ---- */
+.sc-artwork-status-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.sc-artwork-status-badge.sc-status-pending {
+  background: #fefcbf;
+  color: #975a16;
+}
+.sc-artwork-status-badge.sc-status-approved {
+  background: #c6f6d5;
+  color: #276749;
+}
+.sc-artwork-status-badge.sc-status-rejected {
+  background: #fed7d7;
+  color: #9b2c2c;
+}
+
+/* ---- Admin panel (in modal) ---- */
+.sc-artwork-admin-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+.sc-artwork-admin-item:last-child {
+  border-bottom: none;
+}
+.sc-artwork-admin-thumb {
+  width: 64px;
+  height: 64px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  flex-shrink: 0;
+  overflow: hidden;
+  background: #f7fafc;
+}
+.sc-artwork-admin-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.sc-artwork-admin-info {
+  flex: 1;
+  min-width: 0;
+}
+.sc-artwork-admin-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #2d3748;
+}
+.sc-artwork-admin-meta {
+  font-size: 11px;
+  color: #a0aec0;
+  margin-top: 2px;
+}
+.sc-artwork-admin-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+.sc-artwork-admin-actions button {
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 5px;
+  cursor: pointer;
+  border: 1px solid;
+  transition: background 0.12s;
+}
+.sc-btn-approve {
+  background: #c6f6d5;
+  border-color: #9ae6b4;
+  color: #276749;
+}
+.sc-btn-approve:hover {
+  background: #9ae6b4;
+}
+.sc-btn-reject {
+  background: #fed7d7;
+  border-color: #feb2b2;
+  color: #9b2c2c;
+}
+.sc-btn-reject:hover {
+  background: #feb2b2;
+}
+.sc-artwork-reject-input {
+  margin-top: 6px;
+  display: none;
+}
+.sc-artwork-reject-input.sc-visible {
+  display: flex;
+  gap: 6px;
+}
+.sc-artwork-reject-input input {
+  flex: 1;
+  padding: 5px 8px;
+  font-size: 12px;
+  border: 1px solid #cbd5e0;
+  border-radius: 5px;
+}
+.sc-artwork-reject-input button {
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #e53e3e;
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+/* ---- My Uploads item ---- */
+.sc-artwork-my-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+.sc-artwork-my-item:last-child {
+  border-bottom: none;
+}
+.sc-artwork-my-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  flex-shrink: 0;
+  overflow: hidden;
+  background: #f7fafc;
+}
+.sc-artwork-my-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.sc-artwork-my-info {
+  flex: 1;
+  min-width: 0;
+}
+.sc-artwork-my-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: #2d3748;
+}
+.sc-artwork-my-meta {
+  font-size: 10px;
+  color: #a0aec0;
+}
+.sc-artwork-my-delete {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #e53e3e;
+  background: #fff5f5;
+  border: 1px solid #fed7d7;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.sc-artwork-my-delete:hover {
+  background: #fed7d7;
+}
+
+/* ---- Artwork checkbox / agreement ---- */
+.sc-artwork-agree-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.sc-artwork-agree-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #3182ce;
+}
+.sc-artwork-agree-row label {
+  font-size: 12px;
+  color: #4a5568;
+  font-weight: 600;
+}
+
+/* ---- Artwork modal tabs ---- */
+.sc-artwork-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid #e2e8f0;
+  margin-bottom: 16px;
+}
+.sc-artwork-tab {
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #718096;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  background: none;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  transition: color 0.12s, border-color 0.12s;
+}
+.sc-artwork-tab:hover {
+  color: #4a5568;
+}
+.sc-artwork-tab.sc-active {
+  color: #3182ce;
+  border-bottom-color: #3182ce;
+}
+.sc-artwork-tab-content {
+  display: none;
+}
+.sc-artwork-tab-content.sc-active {
+  display: block;
+}
+
+/* ---- Loading spinner ---- */
+.sc-artwork-loading {
+  text-align: center;
+  padding: 30px;
+  color: #a0aec0;
+}
+.sc-artwork-loading i {
+  font-size: 20px;
+  margin-bottom: 8px;
+  display: block;
+}
+
+@media (max-width: 768px) {
+  .sc-artwork-slots-grid {
+    grid-template-columns: 1fr;
+  }
+  .sc-artwork-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .sc-artwork-modal-content {
+    max-width: 100%;
+    max-height: 95vh;
+  }
+}
 </style>
 
 <!-- =============================================
@@ -1498,6 +2122,34 @@
 
     </div><!-- /sc-two-col -->
 
+    <!-- SECTION: Artwork -->
+    <div class="sc-section" id="sc-sec-artwork">
+      <div class="sc-section-title" onclick="sgToggleSection('sc-sec-artwork')">
+        <h3><i class="fas fa-palette" style="margin-right:6px;opacity:0.5"></i>Artwork</h3>
+        <i class="fas fa-chevron-down sc-chevron"></i>
+      </div>
+      <div class="sc-section-body">
+        <div class="sc-artwork-slots-grid" id="sc-artwork-slots">
+          <!-- Slot cards rendered by JS -->
+        </div>
+        <div class="sc-artwork-link-row">
+          <button type="button" class="sc-artwork-link-btn" onclick="sgArtworkDownloadGuide()" title="Download a template guide showing artwork slot positions and dimensions">
+            <i class="fas fa-ruler-combined"></i> Template Guide
+          </button>
+          <?php if ($sgSessionUserId > 0): ?>
+          <button type="button" class="sc-artwork-link-btn" onclick="sgArtworkOpenMyUploads()">
+            <i class="fas fa-images"></i> My Uploads
+          </button>
+          <?php endif; ?>
+          <?php if ($sgIsOrkAdmin): ?>
+          <button type="button" class="sc-artwork-link-btn sc-admin-btn" onclick="sgArtworkOpenAdmin()">
+            <i class="fas fa-check-circle"></i> Pending Approval
+          </button>
+          <?php endif; ?>
+        </div>
+      </div>
+    </div>
+
     <!-- SECTION: Signatures -->
     <div class="sc-section" id="sc-sec-signatures">
       <div class="sc-section-title" onclick="sgToggleSection('sc-sec-signatures')">
@@ -1579,6 +2231,143 @@
 
 <!-- Toast notification -->
 <div class="sc-toast" id="sc-toast"></div>
+
+<!-- =============================================
+     Artwork Modals
+     ============================================= -->
+
+<!-- Browse/Upload Modal -->
+<div class="sc-artwork-modal" id="sc-artwork-browse-modal">
+  <div class="sc-artwork-modal-content">
+    <div class="sc-artwork-modal-header">
+      <div>
+        <h3 id="sc-artwork-browse-title">Browse Artwork</h3>
+        <h4 id="sc-artwork-browse-subtitle">Select artwork for this slot</h4>
+      </div>
+      <button class="sc-artwork-modal-close" onclick="sgArtworkCloseBrowse()">&times;</button>
+    </div>
+    <div class="sc-artwork-modal-body">
+      <div class="sc-artwork-tabs">
+        <button class="sc-artwork-tab sc-active" data-tab="browse" onclick="sgArtworkSwitchTab(this, 'browse')">Browse</button>
+        <button class="sc-artwork-tab" data-tab="upload" onclick="sgArtworkSwitchTab(this, 'upload')">Upload New</button>
+      </div>
+
+      <!-- Browse tab -->
+      <div class="sc-artwork-tab-content sc-active" id="sc-artwork-tab-browse">
+        <div class="sc-artwork-search-bar">
+          <input type="text" id="sc-artwork-search-input" placeholder="Search by name or tags..." autocomplete="off">
+          <button type="button" class="sc-artwork-search-btn" onclick="sgArtworkSearch()"><i class="fas fa-search"></i></button>
+        </div>
+        <div class="sc-artwork-grid" id="sc-artwork-browse-grid">
+          <div class="sc-artwork-empty-state">
+            <i class="fas fa-palette"></i>
+            Loading artwork...
+          </div>
+        </div>
+        <div class="sc-artwork-pagination" id="sc-artwork-browse-pagination" style="display:none">
+          <button type="button" onclick="sgArtworkBrowsePrev()"><i class="fas fa-chevron-left"></i> Prev</button>
+          <span id="sc-artwork-browse-page-info">Page 1</span>
+          <button type="button" onclick="sgArtworkBrowseNext()">Next <i class="fas fa-chevron-right"></i></button>
+        </div>
+      </div>
+
+      <!-- Upload tab -->
+      <div class="sc-artwork-tab-content" id="sc-artwork-tab-upload">
+        <div class="sc-artwork-upload-form">
+          <div class="sc-field-group">
+            <label class="sc-field-label" for="sc-artwork-file">Image File <span style="color:#e53e3e">*</span></label>
+            <input type="file" class="sc-input" id="sc-artwork-file" accept="image/png,image/jpeg,image/gif">
+            <div class="sc-artwork-file-info" id="sc-artwork-file-info">PNG or JPEG. See template guide for recommended dimensions.</div>
+          </div>
+          <div class="sc-field-group">
+            <label class="sc-field-label" for="sc-artwork-upload-name">Name <span style="color:#e53e3e">*</span></label>
+            <input type="text" class="sc-input" id="sc-artwork-upload-name" placeholder="A descriptive name for this artwork" maxlength="150">
+          </div>
+          <div class="sc-field-group">
+            <label class="sc-field-label" for="sc-artwork-upload-desc">Description</label>
+            <textarea class="sc-textarea" id="sc-artwork-upload-desc" rows="2" placeholder="Brief description (optional)" maxlength="500"></textarea>
+          </div>
+          <div class="sc-field-group">
+            <label class="sc-field-label" for="sc-artwork-upload-tags">Tags <span style="color:#a0aec0;font-weight:400;text-transform:none">(comma-separated)</span></label>
+            <input type="text" class="sc-input" id="sc-artwork-upload-tags" placeholder="e.g. floral, celtic, border" maxlength="500">
+          </div>
+          <div class="sc-field-group">
+            <label class="sc-field-label">Artwork Slot</label>
+            <input type="text" class="sc-input" id="sc-artwork-upload-slot" readonly style="background:#f7fafc;color:#718096">
+          </div>
+          <div class="sc-field-group">
+            <label class="sc-field-label">License Agreement</label>
+            <div class="sc-artwork-license">AMTGARD SCROLL ARTWORK LICENSE
+
+By uploading artwork to the ORK Scroll Artwork Repository, you grant to Amtgard, Inc. and all Amtgard players a perpetual, worldwide, non-exclusive, royalty-free license to use, display, reproduce, and incorporate the uploaded artwork solely for the purpose of generating award scrolls through the ORK system.
+
+You represent and warrant that:
+1. You are the original creator of this artwork, or have obtained all necessary rights and permissions to grant this license.
+2. The artwork does not infringe upon the intellectual property rights of any third party.
+3. You understand this artwork will be made available to other Amtgard players for use in their scroll designs.
+
+This license does not transfer ownership of the artwork. You retain all other rights to your work. Amtgard may remove artwork at any time at its discretion.
+
+By typing your full legal name below, you acknowledge that this constitutes a legally binding digital signature indicating your agreement to these terms.</div>
+          </div>
+          <div class="sc-field-group">
+            <label class="sc-field-label" for="sc-artwork-signer">Full Legal Name <span style="color:#e53e3e">*</span></label>
+            <input type="text" class="sc-input" id="sc-artwork-signer" placeholder="Type your full legal name as a digital signature" maxlength="200">
+          </div>
+          <div class="sc-artwork-agree-row">
+            <input type="checkbox" id="sc-artwork-agree">
+            <label for="sc-artwork-agree">I agree to the terms above</label>
+          </div>
+          <div style="margin-top:12px">
+            <button type="button" class="sc-artwork-upload-submit" id="sc-artwork-upload-btn" onclick="sgArtworkUpload()">
+              <i class="fas fa-upload"></i> Upload Artwork
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- My Uploads Modal -->
+<div class="sc-artwork-modal" id="sc-artwork-myuploads-modal">
+  <div class="sc-artwork-modal-content">
+    <div class="sc-artwork-modal-header">
+      <h3>My Uploads</h3>
+      <button class="sc-artwork-modal-close" onclick="sgArtworkCloseMyUploads()">&times;</button>
+    </div>
+    <div class="sc-artwork-modal-body">
+      <div id="sc-artwork-myuploads-list">
+        <div class="sc-artwork-loading"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+      </div>
+      <div class="sc-artwork-pagination" id="sc-artwork-myuploads-pagination" style="display:none">
+        <button type="button" onclick="sgArtworkMyUploadsPrev()"><i class="fas fa-chevron-left"></i> Prev</button>
+        <span id="sc-artwork-myuploads-page-info">Page 1</span>
+        <button type="button" onclick="sgArtworkMyUploadsNext()">Next <i class="fas fa-chevron-right"></i></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Admin Approval Modal -->
+<div class="sc-artwork-modal" id="sc-artwork-admin-modal">
+  <div class="sc-artwork-modal-content">
+    <div class="sc-artwork-modal-header">
+      <h3>Pending Artwork Approval</h3>
+      <button class="sc-artwork-modal-close" onclick="sgArtworkCloseAdmin()">&times;</button>
+    </div>
+    <div class="sc-artwork-modal-body">
+      <div id="sc-artwork-admin-list">
+        <div class="sc-artwork-loading"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+      </div>
+      <div class="sc-artwork-pagination" id="sc-artwork-admin-pagination" style="display:none">
+        <button type="button" onclick="sgArtworkAdminPrev()"><i class="fas fa-chevron-left"></i> Prev</button>
+        <span id="sc-artwork-admin-page-info">Page 1</span>
+        <button type="button" onclick="sgArtworkAdminNext()">Next <i class="fas fa-chevron-right"></i></button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- =============================================
      JavaScript
@@ -1774,6 +2563,52 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
       { name: '', role: '' }
     ]
   };
+
+  // Artwork state — each slot is null or {id: N, url: '...'}
+  sgState.artwork = {
+    watermark: null, full_border: null, border_left: null, border_right: null,
+    border_top: null, border_bottom: null, center_image: null, top_graphic: null
+  };
+
+  // Artwork slot definitions
+  // HTML escape helper to prevent XSS in innerHTML
+  function sgEscapeHtml(s) {
+    if (!s) return '';
+    var d = document.createElement('div');
+    d.textContent = String(s);
+    return d.innerHTML;
+  }
+
+  var ARTWORK_SLOTS = {
+    watermark:     { label: 'Page Watermark',     w: 2550, h: 3300, pw: 850, ph: 1100, desc: 'Full-page semi-transparent background' },
+    full_border:   { label: 'Full Border',        w: 2550, h: 3300, pw: 850, ph: 1100, desc: 'Complete page frame overlay' },
+    border_left:   { label: 'Left Border',        w: 300,  h: 3300, pw: 100, ph: 1100, desc: 'Left edge decorative strip' },
+    border_right:  { label: 'Right Border',       w: 300,  h: 3300, pw: 100, ph: 1100, desc: 'Right edge decorative strip' },
+    border_top:    { label: 'Top Border',         w: 2550, h: 400,  pw: 850, ph: 133,  desc: 'Top edge decorative strip' },
+    border_bottom: { label: 'Bottom Border',      w: 2550, h: 400,  pw: 850, ph: 133,  desc: 'Bottom edge decorative strip' },
+    center_image:  { label: 'Center Image',       w: 1200, h: 1200, pw: 400, ph: 400,  desc: 'Semi-transparent body area graphic' },
+    top_graphic:   { label: 'Top Center Graphic', w: 800,  h: 500,  pw: 267, ph: 167,  desc: 'Decorative element above title' }
+  };
+
+  // Canvas positions for each artwork slot (preview resolution)
+  var ARTWORK_POSITIONS = {
+    watermark:     { x: 0,   y: 0,   w: 850, h: 1100, alpha: 0.10 },
+    full_border:   { x: 0,   y: 0,   w: 850, h: 1100, alpha: 1.0 },
+    border_left:   { x: 0,   y: 0,   w: 100, h: 1100, alpha: 1.0 },
+    border_right:  { x: 750, y: 0,   w: 100, h: 1100, alpha: 1.0 },
+    border_top:    { x: 0,   y: 0,   w: 850, h: 133,  alpha: 1.0 },
+    border_bottom: { x: 0,   y: 967, w: 850, h: 133,  alpha: 1.0 },
+    top_graphic:   { x: 292, y: 17,  w: 267, h: 167,  alpha: 1.0 },
+    center_image:  { x: 225, y: 350, w: 400, h: 400,  alpha: 0.15 }
+  };
+
+  // Artwork slot rendering order (defines z-order within categories)
+  var ARTWORK_SLOT_KEYS = ['watermark', 'full_border', 'border_left', 'border_right', 'border_top', 'border_bottom', 'center_image', 'top_graphic'];
+
+  // Image cache for artwork
+  var sgArtworkImages = {};
+  var sgArtworkImagesLoading = {};
+  for (var _ak in ARTWORK_SLOTS) { sgArtworkImages[_ak] = null; sgArtworkImagesLoading[_ak] = false; }
 
   // Image cache for heraldry
   var sgImages = { kingdom: null, park: null, player: null };
@@ -2312,6 +3147,41 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
   // ============================================================
   //  Canvas: Main render
   // ============================================================
+  // ============================================================
+  //  Helper: Draw a single artwork slot on canvas
+  // ============================================================
+  function sgDrawArtworkSlot(ctx, slotKey) {
+    if (!sgState.artwork[slotKey] || !sgArtworkImages[slotKey]) return;
+    var pos = ARTWORK_POSITIONS[slotKey];
+    if (!pos) return;
+    ctx.save();
+    ctx.globalAlpha = pos.alpha;
+    ctx.drawImage(sgArtworkImages[slotKey], pos.x, pos.y, pos.w, pos.h);
+    ctx.restore();
+  }
+
+  // ============================================================
+  //  Helper: Load artwork image for a slot
+  // ============================================================
+  function sgLoadArtworkImage(slotKey, url, cb) {
+    if (!url) { sgArtworkImages[slotKey] = null; if (cb) cb(); return; }
+    if (sgArtworkImages[slotKey] && sgArtworkImages[slotKey].src === url) { if (cb) cb(); return; }
+    sgArtworkImagesLoading[slotKey] = true;
+    var img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = function() {
+      sgArtworkImages[slotKey] = img;
+      sgArtworkImagesLoading[slotKey] = false;
+      if (cb) cb();
+    };
+    img.onerror = function() {
+      sgArtworkImages[slotKey] = null;
+      sgArtworkImagesLoading[slotKey] = false;
+      if (cb) cb();
+    };
+    img.src = url;
+  }
+
   function sgRender() {
     var canvas = document.getElementById('sc-canvas');
     if (!canvas) return;
@@ -2352,8 +3222,19 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, w, h);
 
+    // ---- Artwork: watermark (behind everything) ----
+    sgDrawArtworkSlot(ctx, 'watermark');
+
     // ---- Draw border ----
     sgDrawBorder(ctx, w, h, sgState.palette, sgState.template, sgState.borderStyle);
+
+    // ---- Artwork: full border + edge borders + top graphic (over drawn border, before heraldry) ----
+    sgDrawArtworkSlot(ctx, 'full_border');
+    sgDrawArtworkSlot(ctx, 'border_left');
+    sgDrawArtworkSlot(ctx, 'border_right');
+    sgDrawArtworkSlot(ctx, 'border_top');
+    sgDrawArtworkSlot(ctx, 'border_bottom');
+    sgDrawArtworkSlot(ctx, 'top_graphic');
 
     // ---- Draw heraldry images ----
     var heraldryPositions = tpl.heraldry;
@@ -2379,6 +3260,8 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
       ctx.restore();
     }
 
+    // ---- Artwork: center image (semi-transparent behind text) ----
+    sgDrawArtworkSlot(ctx, 'center_image');
 
     // ---- Title text ----
     ctx.textAlign = 'center';
@@ -2779,6 +3662,13 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
     fd.append('heraldry_park', sgState.heraldry.park ? (sgState.heraldryUrls.park || SgConfig.parkHeraldry) : '');
     fd.append('heraldry_player', sgState.heraldry.player ? (sgState.heraldryUrls.player || SgConfig.playerHeraldry) : '');
 
+    // Artwork slot IDs
+    var artworkSlotKeys = ['full_border','border_left','border_right','border_top','border_bottom','center_image','watermark','top_graphic'];
+    for (var _ai = 0; _ai < artworkSlotKeys.length; _ai++) {
+      var _akey = artworkSlotKeys[_ai];
+      fd.append('artwork_' + _akey, sgState.artwork[_akey] ? sgState.artwork[_akey].id : '');
+    }
+
     fetch(SgConfig.uir + 'ScrollAjax/generate', { method: 'POST', body: fd })
       .then(function(response) {
         if (!response.ok) throw new Error('Server returned ' + response.status);
@@ -3108,6 +3998,13 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
         for (var i = 0; i < invalids.length; i++) invalids[i].classList.remove('sc-invalid');
         var errors = document.querySelectorAll('.sc-field-error');
         for (var i = 0; i < errors.length; i++) errors[i].classList.remove('sc-visible');
+
+        // Reset artwork slots
+        for (var _rk in ARTWORK_SLOTS) {
+          sgState.artwork[_rk] = null;
+          sgArtworkImages[_rk] = null;
+        }
+        sgRenderArtworkSlots();
 
         // Deselect officer chips
         var chips = document.querySelectorAll('.sc-officer-chip');
@@ -3508,6 +4405,532 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
   }
 
   // ============================================================
+  //  Artwork: Render slot cards in the section
+  // ============================================================
+  function sgRenderArtworkSlots() {
+    var container = document.getElementById('sc-artwork-slots');
+    if (!container) return;
+    var html = '';
+    var slotOrder = ['watermark', 'full_border', 'border_left', 'border_right', 'border_top', 'border_bottom', 'center_image', 'top_graphic'];
+    for (var i = 0; i < slotOrder.length; i++) {
+      var key = slotOrder[i];
+      var slot = ARTWORK_SLOTS[key];
+      var artwork = sgState.artwork[key];
+      var hasArt = artwork && artwork.url;
+      html += '<div class="sc-artwork-slot' + (hasArt ? ' sc-has-artwork' : '') + '" data-slot="' + key + '">';
+      html += '<div class="sc-artwork-slot-thumb">';
+      if (hasArt) {
+        html += '<img src="' + artwork.url + '" alt="' + slot.label + '">';
+      } else {
+        html += '<i class="fas fa-image"></i>';
+      }
+      html += '</div>';
+      html += '<div class="sc-artwork-slot-info">';
+      html += '<span class="sc-artwork-slot-label">' + slot.label + '</span>';
+      html += '<span class="sc-artwork-slot-dims">' + slot.w + ' \u00d7 ' + slot.h + 'px</span>';
+      html += '</div>';
+      html += '<div class="sc-artwork-slot-actions">';
+      html += '<button type="button" class="sc-artwork-slot-btn" onclick="sgArtworkOpenBrowse(\'' + key + '\')"><i class="fas fa-search"></i></button>';
+      html += '<button type="button" class="sc-artwork-slot-btn sc-btn-clear" onclick="sgArtworkClearSlot(\'' + key + '\')" title="Remove artwork"><i class="fas fa-times"></i></button>';
+      html += '</div></div>';
+    }
+    container.innerHTML = html;
+  }
+
+  // ============================================================
+  //  Artwork: Browse modal
+  // ============================================================
+  var _artworkBrowseSlot = '';
+  var _artworkBrowsePage = 1;
+  var _artworkBrowseQuery = '';
+
+  window.sgArtworkOpenBrowse = function(slotKey) {
+    _artworkBrowseSlot = slotKey;
+    _artworkBrowsePage = 1;
+    _artworkBrowseQuery = '';
+    var slot = ARTWORK_SLOTS[slotKey];
+    var titleEl = document.getElementById('sc-artwork-browse-title');
+    var subtitleEl = document.getElementById('sc-artwork-browse-subtitle');
+    if (titleEl) titleEl.textContent = 'Browse: ' + (slot ? slot.label : slotKey);
+    if (subtitleEl) subtitleEl.textContent = (slot ? slot.desc + ' — ' + slot.w + ' \u00d7 ' + slot.h + 'px recommended' : '');
+    var searchInput = document.getElementById('sc-artwork-search-input');
+    if (searchInput) searchInput.value = '';
+    var uploadSlot = document.getElementById('sc-artwork-upload-slot');
+    if (uploadSlot) uploadSlot.value = (slot ? slot.label : slotKey);
+
+    // Reset to browse tab
+    sgArtworkSwitchTab(null, 'browse');
+
+    // Reset upload form fields
+    sgArtworkResetUploadForm();
+
+    var modal = document.getElementById('sc-artwork-browse-modal');
+    if (modal) modal.classList.add('sc-modal-open');
+    sgArtworkLoadBrowse();
+  };
+
+  window.sgArtworkCloseBrowse = function() {
+    var modal = document.getElementById('sc-artwork-browse-modal');
+    if (modal) modal.classList.remove('sc-modal-open');
+  };
+
+  window.sgArtworkSwitchTab = function(btn, tabId) {
+    var tabs = document.querySelectorAll('#sc-artwork-browse-modal .sc-artwork-tab');
+    for (var i = 0; i < tabs.length; i++) {
+      tabs[i].classList.remove('sc-active');
+      if (tabs[i].getAttribute('data-tab') === tabId) tabs[i].classList.add('sc-active');
+    }
+    var contents = document.querySelectorAll('#sc-artwork-browse-modal .sc-artwork-tab-content');
+    for (var j = 0; j < contents.length; j++) {
+      contents[j].classList.remove('sc-active');
+    }
+    var target = document.getElementById('sc-artwork-tab-' + tabId);
+    if (target) target.classList.add('sc-active');
+  };
+
+  function sgArtworkLoadBrowse() {
+    var grid = document.getElementById('sc-artwork-browse-grid');
+    if (grid) grid.innerHTML = '<div class="sc-artwork-loading"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+    var url = SgConfig.uir + 'ScrollArtworkAjax/';
+    if (_artworkBrowseQuery) {
+      url += 'search?query=' + encodeURIComponent(_artworkBrowseQuery) + '&layout_location=' + encodeURIComponent(_artworkBrowseSlot) + '&page=' + _artworkBrowsePage;
+    } else {
+      url += 'browse?layout_location=' + encodeURIComponent(_artworkBrowseSlot) + '&page=' + _artworkBrowsePage;
+    }
+    fetch(url)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        sgArtworkRenderBrowseGrid(data);
+      })
+      .catch(function(err) {
+        if (grid) grid.innerHTML = '<div class="sc-artwork-empty-state"><i class="fas fa-exclamation-triangle"></i>Failed to load artwork</div>';
+      });
+  }
+
+  function sgArtworkRenderBrowseGrid(data) {
+    var grid = document.getElementById('sc-artwork-browse-grid');
+    if (!grid) return;
+    var items = data.Artwork || [];
+    if (items.length === 0) {
+      grid.innerHTML = '<div class="sc-artwork-empty-state"><i class="fas fa-palette"></i>No artwork found' + (_artworkBrowseQuery ? ' for "' + sgEscapeHtml(_artworkBrowseQuery) + '"' : '') + '. Try uploading some!</div>';
+    } else {
+      var html = '';
+      var currentId = sgState.artwork[_artworkBrowseSlot] ? sgState.artwork[_artworkBrowseSlot].id : 0;
+      for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        var isSelected = (parseInt(item.ArtworkId) === currentId);
+        html += '<div class="sc-artwork-thumb' + (isSelected ? ' sc-selected' : '') + '" data-id="' + item.ArtworkId + '" data-url="' + sgEscapeHtml(item.Url || '') + '" onclick="sgArtworkSelectFromBrowse(this)">';
+        html += '<img class="sc-artwork-thumb-img" src="' + sgEscapeHtml(item.Url || '') + '" alt="' + sgEscapeHtml(item.Name || '') + '" loading="lazy">';
+        html += '<div class="sc-artwork-thumb-info">';
+        html += '<span class="sc-artwork-thumb-name">' + sgEscapeHtml(item.Name || 'Untitled') + '</span>';
+        html += '<span class="sc-artwork-thumb-artist">' + sgEscapeHtml(item.UploaderPersona || 'Unknown') + '</span>';
+        html += '</div></div>';
+      }
+      grid.innerHTML = html;
+    }
+    // Pagination
+    var pagEl = document.getElementById('sc-artwork-browse-pagination');
+    var pageInfo = document.getElementById('sc-artwork-browse-page-info');
+    var total = parseInt(data.Total || 0);
+    var perPage = parseInt(data.PerPage || 12);
+    var page = parseInt(data.Page || 1);
+    var totalPages = Math.max(1, Math.ceil(total / perPage));
+    if (total > perPage && pagEl) {
+      pagEl.style.display = 'flex';
+      if (pageInfo) pageInfo.textContent = 'Page ' + page + ' of ' + totalPages;
+      var btns = pagEl.querySelectorAll('button');
+      if (btns[0]) btns[0].disabled = (page <= 1);
+      if (btns[1]) btns[1].disabled = (page >= totalPages);
+    } else if (pagEl) {
+      pagEl.style.display = 'none';
+    }
+  }
+
+  window.sgArtworkSelectFromBrowse = function(el) {
+    var id = parseInt(el.getAttribute('data-id'));
+    var url = el.getAttribute('data-url');
+    if (!id || !url) return;
+    sgState.artwork[_artworkBrowseSlot] = { id: id, url: url };
+    sgLoadArtworkImage(_artworkBrowseSlot, url, function() {
+      sgRender();
+    });
+    sgRenderArtworkSlots();
+    sgArtworkCloseBrowse();
+    sgToast('Artwork selected for ' + (ARTWORK_SLOTS[_artworkBrowseSlot] ? ARTWORK_SLOTS[_artworkBrowseSlot].label : _artworkBrowseSlot));
+  };
+
+  window.sgArtworkSearch = function() {
+    var input = document.getElementById('sc-artwork-search-input');
+    _artworkBrowseQuery = input ? input.value.trim() : '';
+    _artworkBrowsePage = 1;
+    sgArtworkLoadBrowse();
+  };
+
+  window.sgArtworkBrowsePrev = function() {
+    if (_artworkBrowsePage > 1) { _artworkBrowsePage--; sgArtworkLoadBrowse(); }
+  };
+  window.sgArtworkBrowseNext = function() {
+    _artworkBrowsePage++;
+    sgArtworkLoadBrowse();
+  };
+
+  window.sgArtworkClearSlot = function(slotKey) {
+    sgState.artwork[slotKey] = null;
+    sgArtworkImages[slotKey] = null;
+    sgRenderArtworkSlots();
+    sgRender();
+  };
+
+  // ============================================================
+  //  Artwork: Upload
+  // ============================================================
+  function sgArtworkResetUploadForm() {
+    var fields = ['sc-artwork-file', 'sc-artwork-upload-name', 'sc-artwork-upload-desc', 'sc-artwork-upload-tags', 'sc-artwork-signer'];
+    for (var i = 0; i < fields.length; i++) {
+      var el = document.getElementById(fields[i]);
+      if (el) el.value = '';
+    }
+    var agree = document.getElementById('sc-artwork-agree');
+    if (agree) agree.checked = false;
+    var fileInfo = document.getElementById('sc-artwork-file-info');
+    if (fileInfo) fileInfo.textContent = 'PNG or JPEG. See template guide for recommended dimensions.';
+  }
+
+  window.sgArtworkUpload = function() {
+    var fileEl = document.getElementById('sc-artwork-file');
+    var nameEl = document.getElementById('sc-artwork-upload-name');
+    var descEl = document.getElementById('sc-artwork-upload-desc');
+    var tagsEl = document.getElementById('sc-artwork-upload-tags');
+    var signerEl = document.getElementById('sc-artwork-signer');
+    var agreeEl = document.getElementById('sc-artwork-agree');
+    var btn = document.getElementById('sc-artwork-upload-btn');
+
+    var file = fileEl && fileEl.files[0];
+    var name = nameEl ? nameEl.value.trim() : '';
+    var signer = signerEl ? signerEl.value.trim() : '';
+    var agreed = agreeEl ? agreeEl.checked : false;
+
+    if (!file) { sgToast('Please select an image file', 'warn'); return; }
+    if (file.size > 2097152) { sgToast('Image must be 2MB or smaller (' + Math.round(file.size / 1024) + 'KB selected)', 'warn'); return; }
+    if (!name) { sgToast('Please enter a name for the artwork', 'warn'); return; }
+    if (!signer) { sgToast('Please type your full legal name', 'warn'); return; }
+    if (!agreed) { sgToast('Please agree to the license terms', 'warn'); return; }
+    if (!SgConfig.token) { sgToast('You must be logged in to upload artwork', 'warn'); return; }
+
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...'; }
+
+    var reader = new FileReader();
+    reader.onload = function() {
+      var base64 = reader.result.split(',')[1] || '';
+      var mimeType = file.type || 'image/png';
+
+      var fd = new FormData();
+      fd.append('image', base64);
+      fd.append('image_mime', mimeType);
+      fd.append('name', name);
+      fd.append('description', descEl ? descEl.value.trim() : '');
+      fd.append('tags', tagsEl ? tagsEl.value.trim() : '');
+      fd.append('layout_location', _artworkBrowseSlot);
+      fd.append('license_signer_name', signer);
+
+      fetch(SgConfig.uir + 'ScrollArtworkAjax/upload', { method: 'POST', body: fd })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data.Status === 0) {
+            sgToast('Artwork uploaded! It will be available after admin approval.');
+            sgArtworkResetUploadForm();
+            sgArtworkSwitchTab(null, 'browse');
+          } else {
+            sgToast(data.Message || 'Upload failed', 'warn');
+          }
+        })
+        .catch(function(err) {
+          sgToast('Upload failed: ' + err.message, 'warn');
+        })
+        .finally(function() {
+          if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-upload"></i> Upload Artwork'; }
+        });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Enter key in search bar triggers search
+  (function() {
+    // Deferred binding — called after DOM ready
+    function bindArtworkSearchEnter() {
+      var searchInput = document.getElementById('sc-artwork-search-input');
+      if (searchInput) {
+        searchInput.addEventListener('keydown', function(e) {
+          if (e.keyCode === 13) { e.preventDefault(); sgArtworkSearch(); }
+        });
+      }
+    }
+    // Will be called from sgInit
+    window._sgBindArtworkSearchEnter = bindArtworkSearchEnter;
+  })();
+
+  // ============================================================
+  //  Artwork: Template Guide download
+  // ============================================================
+  window.sgArtworkDownloadGuide = function() {
+    window.open(SgConfig.uir + 'ScrollArtworkAjax/template_guide', '_blank');
+  };
+
+  // ============================================================
+  //  Artwork: My Uploads modal
+  // ============================================================
+  var _artworkMyUploadsPage = 1;
+
+  window.sgArtworkOpenMyUploads = function() {
+    _artworkMyUploadsPage = 1;
+    var modal = document.getElementById('sc-artwork-myuploads-modal');
+    if (modal) modal.classList.add('sc-modal-open');
+    sgArtworkLoadMyUploads();
+  };
+
+  window.sgArtworkCloseMyUploads = function() {
+    var modal = document.getElementById('sc-artwork-myuploads-modal');
+    if (modal) modal.classList.remove('sc-modal-open');
+  };
+
+  function sgArtworkLoadMyUploads() {
+    var list = document.getElementById('sc-artwork-myuploads-list');
+    if (list) list.innerHTML = '<div class="sc-artwork-loading"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+    fetch(SgConfig.uir + 'ScrollArtworkAjax/my_uploads?page=' + _artworkMyUploadsPage)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        sgArtworkRenderMyUploads(data);
+      })
+      .catch(function(err) {
+        if (list) list.innerHTML = '<div class="sc-artwork-empty-state"><i class="fas fa-exclamation-triangle"></i>Failed to load uploads</div>';
+      });
+  }
+
+  function sgArtworkRenderMyUploads(data) {
+    var list = document.getElementById('sc-artwork-myuploads-list');
+    if (!list) return;
+    var items = data.Artwork || [];
+    if (items.length === 0) {
+      list.innerHTML = '<div class="sc-artwork-empty-state"><i class="fas fa-images"></i>You have not uploaded any artwork yet.</div>';
+    } else {
+      var html = '';
+      for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        var statusClass = 'sc-status-' + (item.Status || 'pending').toLowerCase();
+        var statusText = (item.Status || 'Pending');
+        html += '<div class="sc-artwork-my-item" data-id="' + item.ArtworkId + '">';
+        html += '<div class="sc-artwork-my-thumb"><img src="' + sgEscapeHtml(item.Url || '') + '" alt="' + sgEscapeHtml(item.Name || '') + '" loading="lazy"></div>';
+        html += '<div class="sc-artwork-my-info">';
+        html += '<div class="sc-artwork-my-name">' + sgEscapeHtml(item.Name || 'Untitled') + ' <span class="sc-artwork-status-badge ' + statusClass + '">' + sgEscapeHtml(statusText) + '</span></div>';
+        html += '<div class="sc-artwork-my-meta">' + sgEscapeHtml(item.LayoutLocation || '') + ' — ' + (item.Width || '?') + ' \u00d7 ' + (item.Height || '?') + 'px</div>';
+        html += '</div>';
+        html += '<button type="button" class="sc-artwork-my-delete" onclick="sgArtworkDelete(' + item.ArtworkId + ', this)"><i class="fas fa-trash"></i></button>';
+        html += '</div>';
+      }
+      list.innerHTML = html;
+    }
+    // Pagination
+    var pagEl = document.getElementById('sc-artwork-myuploads-pagination');
+    var pageInfo = document.getElementById('sc-artwork-myuploads-page-info');
+    var total = parseInt(data.Total || 0);
+    var perPage = parseInt(data.PerPage || 20);
+    var page = parseInt(data.Page || 1);
+    var totalPages = Math.max(1, Math.ceil(total / perPage));
+    if (total > perPage && pagEl) {
+      pagEl.style.display = 'flex';
+      if (pageInfo) pageInfo.textContent = 'Page ' + page + ' of ' + totalPages;
+      var btns = pagEl.querySelectorAll('button');
+      if (btns[0]) btns[0].disabled = (page <= 1);
+      if (btns[1]) btns[1].disabled = (page >= totalPages);
+    } else if (pagEl) {
+      pagEl.style.display = 'none';
+    }
+  }
+
+  window.sgArtworkMyUploadsPrev = function() {
+    if (_artworkMyUploadsPage > 1) { _artworkMyUploadsPage--; sgArtworkLoadMyUploads(); }
+  };
+  window.sgArtworkMyUploadsNext = function() {
+    _artworkMyUploadsPage++;
+    sgArtworkLoadMyUploads();
+  };
+
+  window.sgArtworkDelete = function(artworkId, btnEl) {
+    if (!confirm('Delete this artwork? This cannot be undone.')) return;
+    if (!SgConfig.token) { sgToast('You must be logged in', 'warn'); return; }
+    var fd = new FormData();
+    fd.append('artwork_id', artworkId);
+    fetch(SgConfig.uir + 'ScrollArtworkAjax/delete', { method: 'POST', body: fd })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.Status === 0) {
+          sgToast('Artwork deleted');
+          // Remove from any slots using this artwork
+          for (var sk in sgState.artwork) {
+            if (sgState.artwork[sk] && sgState.artwork[sk].id === artworkId) {
+              sgState.artwork[sk] = null;
+              sgArtworkImages[sk] = null;
+            }
+          }
+          sgRenderArtworkSlots();
+          sgRender();
+          sgArtworkLoadMyUploads();
+        } else {
+          sgToast(data.Message || 'Delete failed', 'warn');
+        }
+      })
+      .catch(function(err) {
+        sgToast('Delete failed', 'warn');
+      });
+  };
+
+  // ============================================================
+  //  Artwork: Admin Approval modal
+  // ============================================================
+  var _artworkAdminPage = 1;
+
+  window.sgArtworkOpenAdmin = function() {
+    _artworkAdminPage = 1;
+    var modal = document.getElementById('sc-artwork-admin-modal');
+    if (modal) modal.classList.add('sc-modal-open');
+    sgArtworkLoadAdmin();
+  };
+
+  window.sgArtworkCloseAdmin = function() {
+    var modal = document.getElementById('sc-artwork-admin-modal');
+    if (modal) modal.classList.remove('sc-modal-open');
+  };
+
+  function sgArtworkLoadAdmin() {
+    var list = document.getElementById('sc-artwork-admin-list');
+    if (list) list.innerHTML = '<div class="sc-artwork-loading"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+    fetch(SgConfig.uir + 'ScrollArtworkAjax/pending?page=' + _artworkAdminPage)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        sgArtworkRenderAdmin(data);
+      })
+      .catch(function(err) {
+        if (list) list.innerHTML = '<div class="sc-artwork-empty-state"><i class="fas fa-exclamation-triangle"></i>Failed to load pending artwork</div>';
+      });
+  }
+
+  function sgArtworkRenderAdmin(data) {
+    var list = document.getElementById('sc-artwork-admin-list');
+    if (!list) return;
+    var items = data.Artwork || [];
+    if (items.length === 0) {
+      list.innerHTML = '<div class="sc-artwork-empty-state"><i class="fas fa-check-circle"></i>No pending artwork to review.</div>';
+    } else {
+      var html = '';
+      for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        html += '<div class="sc-artwork-admin-item" data-id="' + item.ArtworkId + '">';
+        html += '<div class="sc-artwork-admin-thumb"><img src="' + sgEscapeHtml(item.Url || '') + '" alt="' + sgEscapeHtml(item.Name || '') + '" loading="lazy"></div>';
+        html += '<div class="sc-artwork-admin-info">';
+        html += '<div class="sc-artwork-admin-name">' + sgEscapeHtml(item.Name || 'Untitled') + '</div>';
+        html += '<div class="sc-artwork-admin-meta">' + sgEscapeHtml(item.UploaderPersona || 'Unknown') + ' — ' + sgEscapeHtml(item.LayoutLocation || '') + ' — ' + (item.Width || '?') + ' \u00d7 ' + (item.Height || '?') + 'px</div>';
+        if (item.Description) html += '<div class="sc-artwork-admin-meta" style="color:#4a5568">' + sgEscapeHtml(item.Description) + '</div>';
+        if (item.Tags) html += '<div class="sc-artwork-admin-meta">Tags: ' + sgEscapeHtml(item.Tags) + '</div>';
+        html += '<div class="sc-artwork-admin-actions">';
+        html += '<button type="button" class="sc-btn-approve" onclick="sgArtworkApprove(' + item.ArtworkId + ', this)"><i class="fas fa-check"></i> Approve</button>';
+        html += '<button type="button" class="sc-btn-reject" onclick="sgArtworkShowReject(this)"><i class="fas fa-times"></i> Reject</button>';
+        html += '</div>';
+        html += '<div class="sc-artwork-reject-input">';
+        html += '<input type="text" placeholder="Reason for rejection..." maxlength="500">';
+        html += '<button type="button" onclick="sgArtworkReject(' + item.ArtworkId + ', this)">Reject</button>';
+        html += '</div>';
+        html += '</div></div>';
+      }
+      list.innerHTML = html;
+    }
+    // Pagination
+    var pagEl = document.getElementById('sc-artwork-admin-pagination');
+    var pageInfo = document.getElementById('sc-artwork-admin-page-info');
+    var total = parseInt(data.Total || 0);
+    var perPage = parseInt(data.PerPage || 20);
+    var page = parseInt(data.Page || 1);
+    var totalPages = Math.max(1, Math.ceil(total / perPage));
+    if (total > perPage && pagEl) {
+      pagEl.style.display = 'flex';
+      if (pageInfo) pageInfo.textContent = 'Page ' + page + ' of ' + totalPages;
+      var btns = pagEl.querySelectorAll('button');
+      if (btns[0]) btns[0].disabled = (page <= 1);
+      if (btns[1]) btns[1].disabled = (page >= totalPages);
+    } else if (pagEl) {
+      pagEl.style.display = 'none';
+    }
+  }
+
+  window.sgArtworkAdminPrev = function() {
+    if (_artworkAdminPage > 1) { _artworkAdminPage--; sgArtworkLoadAdmin(); }
+  };
+  window.sgArtworkAdminNext = function() {
+    _artworkAdminPage++;
+    sgArtworkLoadAdmin();
+  };
+
+  window.sgArtworkApprove = function(artworkId, btnEl) {
+    if (!SgConfig.token) { sgToast('Not authorized', 'warn'); return; }
+    var fd = new FormData();
+    fd.append('artwork_id', artworkId);
+    fetch(SgConfig.uir + 'ScrollArtworkAjax/approve', { method: 'POST', body: fd })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.Status === 0) {
+          sgToast('Artwork approved');
+          var row = btnEl.closest('.sc-artwork-admin-item');
+          if (row) row.remove();
+          // Check if list is empty now
+          var list = document.getElementById('sc-artwork-admin-list');
+          if (list && !list.querySelector('.sc-artwork-admin-item')) {
+            list.innerHTML = '<div class="sc-artwork-empty-state"><i class="fas fa-check-circle"></i>No pending artwork to review.</div>';
+          }
+        } else {
+          sgToast(data.Message || 'Approval failed', 'warn');
+        }
+      })
+      .catch(function(err) {
+        sgToast('Approval failed', 'warn');
+      });
+  };
+
+  window.sgArtworkShowReject = function(btnEl) {
+    var item = btnEl.closest('.sc-artwork-admin-item');
+    if (!item) return;
+    var rejectRow = item.querySelector('.sc-artwork-reject-input');
+    if (rejectRow) rejectRow.classList.toggle('sc-visible');
+  };
+
+  window.sgArtworkReject = function(artworkId, btnEl) {
+    var row = btnEl.closest('.sc-artwork-reject-input');
+    var input = row ? row.querySelector('input') : null;
+    var reason = input ? input.value.trim() : '';
+    if (!reason) { sgToast('Please enter a reason for rejection', 'warn'); return; }
+    if (!SgConfig.token) { sgToast('Not authorized', 'warn'); return; }
+    var fd = new FormData();
+    fd.append('artwork_id', artworkId);
+    fd.append('reason', reason);
+    fetch(SgConfig.uir + 'ScrollArtworkAjax/reject', { method: 'POST', body: fd })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.Status === 0) {
+          sgToast('Artwork rejected');
+          var item = btnEl.closest('.sc-artwork-admin-item');
+          if (item) item.remove();
+          var list = document.getElementById('sc-artwork-admin-list');
+          if (list && !list.querySelector('.sc-artwork-admin-item')) {
+            list.innerHTML = '<div class="sc-artwork-empty-state"><i class="fas fa-check-circle"></i>No pending artwork to review.</div>';
+          }
+        } else {
+          sgToast(data.Message || 'Rejection failed', 'warn');
+        }
+      })
+      .catch(function(err) {
+        sgToast('Rejection failed', 'warn');
+      });
+  };
+
+  // ============================================================
   //  Init
   // ============================================================
   // Render border style preview thumbnails
@@ -3563,6 +4986,28 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
     sgBindRecipientAc();
     sgBindGivenByAc();
     sgBindOfficerChips();
+
+    // Render artwork slot cards
+    sgRenderArtworkSlots();
+
+    // Bind artwork search enter key
+    if (window._sgBindArtworkSearchEnter) window._sgBindArtworkSearchEnter();
+
+    // Close artwork modals on backdrop click or ESC
+    var artworkModals = document.querySelectorAll('.sc-artwork-modal');
+    for (var mi = 0; mi < artworkModals.length; mi++) {
+      (function(modal) {
+        modal.addEventListener('click', function(e) {
+          if (e.target === modal) modal.classList.remove('sc-modal-open');
+        });
+      })(artworkModals[mi]);
+    }
+    document.addEventListener('keydown', function(e) {
+      if (e.keyCode === 27) {
+        var openModals = document.querySelectorAll('.sc-artwork-modal.sc-modal-open');
+        for (var i = 0; i < openModals.length; i++) openModals[i].classList.remove('sc-modal-open');
+      }
+    });
 
     // Render border preview thumbnails
     sgRenderBorderPreviews();
