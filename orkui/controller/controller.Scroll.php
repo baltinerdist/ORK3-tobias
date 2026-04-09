@@ -40,6 +40,8 @@ class Controller_Scroll extends Controller {
 		$this->data['kingdom_id']           = 0;
 		$this->data['park_id']              = 0;
 		$this->data['preload_officers']     = array();
+		$this->data['is_ork_admin']         = false;
+		$this->data['session_token']        = isset($this->session->token) ? $this->session->token : '';
 
 		if ($mundane_id > 0) {
 			// Fetch the player record
@@ -116,6 +118,9 @@ class Controller_Scroll extends Controller {
 						&& Ork3::$Lib->authorization->HasAuthority($uid, AUTH_KINGDOM, $kingdom_id, AUTH_EDIT);
 
 					$this->data['can_generate'] = $isOwnAward || $isParkOfficer || $isKingdomOfficer;
+
+					// Check ORK admin for artwork moderation
+					$this->data['is_ork_admin'] = Ork3::$Lib->authorization->HasAuthority($uid, AUTH_ADMIN, 0, AUTH_EDIT);
 
 					// Clear stale PDO bindings after auth checks
 					global $DB; $DB->Clear();

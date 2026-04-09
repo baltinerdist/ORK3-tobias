@@ -140,6 +140,14 @@ class Controller_ScrollAjax extends Controller {
 		$heraldry_park    = trim($_POST['heraldry_park']    ?? '');
 		$heraldry_player  = trim($_POST['heraldry_player']  ?? '');
 
+		// ---- Read artwork POST parameters ----
+		$artwork_ids = [];
+		$artwork_slots = ['full_border','border_left','border_right','border_top','border_bottom','center_image','watermark','top_graphic'];
+		foreach ($artwork_slots as $slot) {
+			$val = (int)($_POST['artwork_' . $slot] ?? 0);
+			if ($val > 0) $artwork_ids[$slot] = $val;
+		}
+
 		// ---- Validate template / palette ----
 		if (!isset(self::$TEMPLATES[$template])) $template = 'B';
 		if (!isset(self::$PALETTES[$palette]))   $palette  = 'classic';
@@ -173,6 +181,20 @@ class Controller_ScrollAjax extends Controller {
 		$useBuiltinFont = ($fontFiles['title'] === null);
 		$fontFile = $fontFiles['title'];
 		$bodyFontFile = $fontFiles['body'] ?: $fontFiles['title'];
+
+		// ---- Load artwork images ----
+		$artworkImages = [];
+		if (!empty($artwork_ids)) {
+			$sa = Ork3::$Lib->scrollartwork;
+			foreach ($artwork_ids as $slot => $aid) {
+				$result = $sa->get($aid);
+				if (!isset($result['Artwork']) || $result['Artwork']['Status'] !== 'approved') continue;
+				$artwork = $result['Artwork'];
+				$filePath = DIR_SCROLL_ARTWORK . $artwork['FileName'];
+				if (!file_exists($filePath)) continue;
+				$artworkImages[$slot] = $filePath;
+			}
+		}
 
 		// ---- Create image ----
 		$img = @imagecreatetruecolor(self::W, self::H);
@@ -214,13 +236,41 @@ class Controller_ScrollAjax extends Controller {
 		imagecopymerge($img, $vignetteImg, 0, 0, 0, 0, self::W, self::H, 4); // 4% merge
 		imagedestroy($vignetteImg);
 
+		// ---- Artwork: watermark (below drawn border) ----
+		if (isset($artworkImages['watermark'])) {
+			$dims = ScrollArtwork::SLOT_DIMENSIONS['watermark'];
+			$this->compositeArtwork($img, $artworkImages['watermark'], $dims['x'], $dims['y'], $dims['w'], $dims['h'], 10);
+		}
+
 		// ---- Draw border (double-line rectangle + corner ornaments) ----
 		$this->drawBorder($img, $cBorder, $cAccent, $pal, $template, $borderStyle);
+
+		// ---- Artwork: full_border + edge borders + top_graphic (above drawn border, below heraldry) ----
+		if (isset($artworkImages['full_border'])) {
+			$dims = ScrollArtwork::SLOT_DIMENSIONS['full_border'];
+			$this->compositeArtwork($img, $artworkImages['full_border'], $dims['x'], $dims['y'], $dims['w'], $dims['h'], 100);
+		}
+		foreach (['border_left', 'border_right', 'border_top', 'border_bottom'] as $edgeSlot) {
+			if (isset($artworkImages[$edgeSlot])) {
+				$dims = ScrollArtwork::SLOT_DIMENSIONS[$edgeSlot];
+				$this->compositeArtwork($img, $artworkImages[$edgeSlot], $dims['x'], $dims['y'], $dims['w'], $dims['h'], 100);
+			}
+		}
+		if (isset($artworkImages['top_graphic'])) {
+			$dims = ScrollArtwork::SLOT_DIMENSIONS['top_graphic'];
+			$this->compositeArtwork($img, $artworkImages['top_graphic'], $dims['x'], $dims['y'], $dims['w'], $dims['h'], 100);
+		}
 
 		// ---- Draw heraldry ----
 		$this->drawHeraldryImage($img, $heraldry_kingdom, $tpl['heraldry']['kingdom']);
 		$this->drawHeraldryImage($img, $heraldry_park,    $tpl['heraldry']['park']);
 		$this->drawHeraldryImage($img, $heraldry_player,  $tpl['heraldry']['player']);
+
+		// ---- Artwork: center_image (below text, above heraldry) ----
+		if (isset($artworkImages['center_image'])) {
+			$dims = ScrollArtwork::SLOT_DIMENSIONS['center_image'];
+			$this->compositeArtwork($img, $artworkImages['center_image'], $dims['x'], $dims['y'], $dims['w'], $dims['h'], 15);
+		}
 
 		// ---- Title text (centered, accent color) ----
 		$titleText = strlen($awardName) ? $awardName : 'Award Title';
@@ -392,6 +442,70 @@ class Controller_ScrollAjax extends Controller {
 	// ================================================================
 	//  Private helpers
 	// ================================================================
+
+	/**
+	 * Composite an artwork PNG onto the scroll canvas at the given position/size/opacity.
+	 *
+	 * @param resource $img        Destination GD image (the scroll canvas)
+	 * @param string   $artworkPath  Absolute path to the artwork PNG file
+	 * @param int      $x           X position on canvas
+	 * @param int      $y           Y position on canvas
+	 * @param int      $w           Target width on canvas
+	 * @param int      $h           Target height on canvas
+	 * @param int      $opacity     Opacity 0-100 (100 = fully opaque)
+	 */
+	private function compositeArtwork($img, $artworkPath, $x, $y, $w, $h, $opacity) {
+		$src = @imagecreatefrompng($artworkPath);
+		if (!$src) return;
+
+		imagesavealpha($src, true);
+		imagealphablending($src, true);
+
+		// Create a resampled version at target dimensions
+		$resized = imagecreatetruecolor($w, $h);
+		imagealphablending($resized, false);
+		imagesavealpha($resized, true);
+		$transparent = imagecolorallocatealpha($resized, 0, 0, 0, 127);
+		imagefill($resized, 0, 0, $transparent);
+		imagealphablending($resized, true);
+
+		imagecopyresampled(
+			$resized, $src,
+			0, 0,
+			0, 0,
+			$w, $h,
+			imagesx($src), imagesy($src)
+		);
+		imagedestroy($src);
+
+		// Composite onto canvas
+		imagealphablending($img, true);
+		if ($opacity >= 100) {
+			imagecopy($img, $resized, $x, $y, 0, 0, $w, $h);
+		} else {
+			// imagecopymerge() destroys source alpha channel at partial opacity.
+			// Instead, pre-multiply the source alpha by the desired opacity so that
+			// transparent pixels in the artwork stay transparent.
+			$opacityFactor = $opacity / 100.0;
+			for ($py = 0; $py < $h; $py++) {
+				for ($px = 0; $px < $w; $px++) {
+					$rgba = imagecolorat($resized, $px, $py);
+					$a = ($rgba >> 24) & 0x7F; // 0=opaque, 127=transparent
+					// Scale the opaque portion by opacity factor
+					$newAlpha = (int)(127 - (127 - $a) * $opacityFactor);
+					$newAlpha = max(0, min(127, $newAlpha));
+					$r = ($rgba >> 16) & 0xFF;
+					$g = ($rgba >> 8) & 0xFF;
+					$b = $rgba & 0xFF;
+					$newColor = imagecolorallocatealpha($resized, $r, $g, $b, $newAlpha);
+					imagesetpixel($resized, $px, $py, $newColor);
+				}
+			}
+			imagealphablending($img, true);
+			imagecopy($img, $resized, $x, $y, 0, 0, $w, $h);
+		}
+		imagedestroy($resized);
+	}
 
 	/**
 	 * Draw decorative divider (diamond-line-diamond motif).
