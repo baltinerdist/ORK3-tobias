@@ -112,6 +112,21 @@
 }
 .se-empty i { display:block; font-size:22px; margin-bottom:8px; color:#cbd5e0; }
 .se-hidden { display:none; }
+.se-type-badge {
+	display:inline-flex; align-items:center;
+	background:#e9d8fd; color:#553c9a;
+	font-size:10px; font-weight:700;
+	padding:1px 6px; border-radius:3px;
+	text-transform:uppercase; letter-spacing:.04em;
+	margin-left:4px; white-space:nowrap;
+}
+.se-rsvp-badge {
+	display:inline-flex; align-items:center; gap:3px;
+	background:#c6f6d5; color:#276749;
+	font-size:10px; font-weight:700;
+	padding:1px 6px; border-radius:3px;
+	margin-left:4px;
+}
 
 @media (max-width:768px) {
 	.se-search-card { flex-direction:column; align-items:stretch; gap:10px; }
@@ -227,8 +242,11 @@
 		var parkCel = v.ParkName && v.ParkId
 			? navLink('<?= UIR ?>Park/profile/' + v.ParkId, v.ParkName)
 			: (v.ParkName || '');
+		var nameCel = '<span class="se-event-name">' + name + '</span>';
+		if (v.EventType) nameCel += ' <span class="se-type-badge">' + v.EventType + '</span>';
+		if (v.RsvpTotal > 0) nameCel += ' <span class="se-rsvp-badge"><i class="fas fa-check-circle"></i>' + v.RsvpTotal + '</span>';
 		return '<tr onclick="window.location.href=\'' + url + '\'">'
-			+ '<td><span class="se-event-name">' + name + '</span></td>'
+			+ '<td>' + nameCel + '</td>'
 			+ '<td>' + dateCel + '</td>'
 			+ '<td>' + kingdomCel + '</td>'
 			+ '<td>' + parkCel + '</td>'
@@ -325,15 +343,18 @@
 
 	document.getElementById('se-all-past-toggle').addEventListener('change', function() {
 		_allPast = this.checked;
-		if (_current.length >= 2) doSearch(_current);
+		doSearch(_current.length >= 2 || _current.length === 0 ? _current : '');
 	});
 
 	document.getElementById('se-event-input').addEventListener('input', function() {
 		var term = this.value;
 		_current = term;
 		clearTimeout(_timer);
-		if (term.length < 2) { resetTables(); return; }
+		if (term.length === 0) { doSearch(''); return; }
+		if (term.length < 2) { return; }
 		_timer = setTimeout(function() { doSearch(term); }, 300);
 	});
+	// Browse upcoming events on page load
+	doSearch('');
 })();
 </script>
