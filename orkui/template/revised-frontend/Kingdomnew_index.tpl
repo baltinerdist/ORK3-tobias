@@ -424,13 +424,13 @@
 			<style>
 			.kn-sub-pop-title{font-weight:700;color:#2d3748;margin-bottom:8px;font-size:12px;text-transform:uppercase;letter-spacing:.05em}
 			.kn-sub-pop-row{display:flex;gap:4px;margin-bottom:8px}
-			.kn-sub-url-input{flex:1;font-size:11px;padding:4px 6px;border:1px solid #e2e8f0;border-radius:4px;color:#4a5568;background:#f7fafc;min-width:0}
-			.kn-sub-copy-btn{padding:4px 8px;border:1px solid #e2e8f0;border-radius:4px;background:#edf2f7;cursor:pointer;color:#4a5568;font-size:12px}
+			.kn-sub-url-input{flex:1;font-size:11px;padding:4px 6px;border:1px solid var(--ork-border);border-radius:4px;color:var(--ork-text-body);background:var(--ork-surface-light);min-width:0}
+			.kn-sub-copy-btn{padding:4px 8px;border:1px solid var(--ork-border);border-radius:4px;background:var(--ork-surface-hover);cursor:pointer;color:var(--ork-text-body);font-size:12px}
 			.kn-sub-copy-btn:hover{background:#e2e8f0}
 			.kn-sub-gcal-btn{display:block;text-align:center;background:#4285f4;color:#fff;border-radius:5px;padding:7px 10px;font-size:12px;font-weight:600;text-decoration:none;margin-bottom:2px}
 			.kn-sub-gcal-btn:hover{background:#3367d6;color:#fff}
-			.kn-sub-webcal-btn{display:block;margin-top:6px;font-size:11px;color:#718096;text-align:center;text-decoration:none}
-			.kn-sub-webcal-btn:hover{color:#4a5568}
+			.kn-sub-webcal-btn{display:block;margin-top:6px;font-size:11px;color:var(--ork-text-muted);text-align:center;text-decoration:none}
+			.kn-sub-webcal-btn:hover{color:var(--ork-text-body)}
 			</style>
 			<!-- Events Tab -->
 			<div class="kn-tab-panel" id="kn-tab-events" style="display:none">
@@ -1724,10 +1724,10 @@ var KnConfig = {
 
 <!-- Move Player Modal -->
 <style>
-.kn-mp-toggle { display:flex; background:#edf2f7; border-radius:6px; padding:3px; gap:3px; margin-bottom:14px; }
+.kn-mp-toggle { display:flex; background:var(--ork-surface-hover); border-radius:6px; padding:3px; gap:3px; margin-bottom:14px; }
 .kn-mp-toggle-btn {
 	flex:1; padding:6px 8px; border:none; border-radius:4px; font-size:11px; font-weight:600;
-	cursor:pointer; background:transparent; color:#718096; transition:background 0.15s,color 0.15s; white-space:nowrap;
+	cursor:pointer; background:transparent; color:var(--ork-text-muted); transition:background 0.15s,color 0.15s; white-space:nowrap;
 }
 .kn-mp-toggle-btn.kn-mp-active { background:#fff; color:#2b6cb0; box-shadow:0 1px 3px rgba(0,0,0,0.1); }
 #kn-moveplayer-overlay .kn-modal-body { overflow:visible; }
@@ -1737,7 +1737,7 @@ var KnConfig = {
 .kn-sub-wrap { position:relative; }
 .kn-sub-pop {
 	display:none !important; position:fixed; z-index:9000;
-	background:#fff; border:1px solid #e2e8f0; border-radius:8px;
+	background:#fff; border:1px solid var(--ork-border); border-radius:8px;
 	box-shadow:0 4px 16px rgba(0,0,0,0.12); padding:12px 14px; width:280px; font-size:13px;
 }
 .kn-sub-pop.kn-sub-open { display:block !important; }
@@ -1747,12 +1747,12 @@ var KnConfig = {
 }
 .kn-sub-pop-row { display:flex; gap:4px; margin-bottom:8px; }
 .kn-sub-url-input {
-	flex:1; font-size:11px; padding:4px 6px; border:1px solid #e2e8f0;
-	border-radius:4px; color:#4a5568; background:#f7fafc; min-width:0;
+	flex:1; font-size:11px; padding:4px 6px; border:1px solid var(--ork-border);
+	border-radius:4px; color:var(--ork-text-body); background:var(--ork-surface-light); min-width:0;
 }
 .kn-sub-copy-btn {
-	padding:4px 8px; border:1px solid #e2e8f0; border-radius:4px;
-	background:#edf2f7; cursor:pointer; color:#4a5568; font-size:12px;
+	padding:4px 8px; border:1px solid var(--ork-border); border-radius:4px;
+	background:var(--ork-surface-hover); cursor:pointer; color:var(--ork-text-body); font-size:12px;
 }
 .kn-sub-copy-btn:hover { background:#e2e8f0; }
 .kn-sub-gcal-btn {
@@ -1761,9 +1761,9 @@ var KnConfig = {
 }
 .kn-sub-gcal-btn:hover { background:#3367d6; color:#fff; }
 .kn-sub-webcal-btn {
-	display:block; margin-top:6px; font-size:11px; color:#718096; text-align:center; text-decoration:none;
+	display:block; margin-top:6px; font-size:11px; color:var(--ork-text-muted); text-align:center; text-decoration:none;
 }
-.kn-sub-webcal-btn:hover { color:#4a5568; }
+.kn-sub-webcal-btn:hover { color:var(--ork-text-body); }
 </style>
 <div id="kn-moveplayer-overlay">
 	<div class="kn-modal-box" style="width:520px;max-width:calc(100vw - 40px)">
