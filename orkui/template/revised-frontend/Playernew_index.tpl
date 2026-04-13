@@ -2284,6 +2284,7 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 								<th data-sorttype="text">Class</th>
 								<th data-sorttype="numeric" class="pn-col-numeric">Credits</th>
 								<th data-sorttype="numeric" class="pn-col-numeric">Level</th>
+								<th class="pn-col-ack" aria-label="Post-L6 acknowledgements"></th>
 							</tr>
 						</thead>
 						<tbody>
@@ -2292,6 +2293,8 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 									$totalCredits = $detail['Credits'] + (isset($Player_index) ? $Player_index['Class_' . $detail['ClassId']] : $detail['Reconciled']);
 									$paragonAwardId = $pnClassToParagon[$detail['ClassId']] ?? null;
 									$hasParagon = $paragonAwardId && isset($pnHeldAwardIds[$paragonAwardId]);
+									$ackCount = max(0, min(10, intdiv((int)$totalCredits - 50, 25)));
+									$ackClassNameSafe = htmlspecialchars($detail['ClassName'], ENT_QUOTES);
 								?>
 								<tr>
 									<td>
@@ -2302,6 +2305,15 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 									</td>
 									<td class="pn-col-numeric pn-credits"><?= $totalCredits ?></td>
 									<td class="pn-col-numeric pn-level">-</td>
+									<td class="pn-class-ack">
+										<?php for ($i = 1; $i <= $ackCount; $i++): ?>
+											<?php
+												$ackThreshold = 50 + ($i * 25);
+												$ackColor = $i <= 5 ? '#c0c0c0' : '#d4af37';
+											?>
+											<i class="fas fa-star" style="color:<?= $ackColor ?>;margin-right:2px" title="Earned <?= $ackThreshold ?> Credits in <?= $ackClassNameSafe ?>"></i>
+										<?php endfor; ?>
+									</td>
 								</tr>
 							<?php endforeach; ?>
 						</tbody>
