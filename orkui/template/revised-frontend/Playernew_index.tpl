@@ -217,17 +217,17 @@
 .pn-gem-6{filter:drop-shadow(0 0 2px rgba(16,185,129,0.6))}
 .pn-gem-7 .pn-gem-shape{background:linear-gradient(180deg,#f87171,#7f1d1d)}
 .pn-gem-7{filter:drop-shadow(0 0 3px rgba(239,68,68,0.7));animation:pnGemPulse 2.4s ease-in-out infinite}
-.pn-gem-8 .pn-gem-shape{background:conic-gradient(from 0deg,#f9a8d4,#67e8f9,#86efac,#c4b5fd,#f9a8d4);animation:pnGemSpin 6s linear infinite}
+.pn-gem-8 .pn-gem-shape{background:conic-gradient(from 0deg,#f9a8d4,#67e8f9,#86efac,#c4b5fd,#f9a8d4);animation:pnGemShimmer 6s linear infinite}
 .pn-gem-8{filter:drop-shadow(0 0 3px rgba(196,181,253,0.65))}
 .pn-gem-9 .pn-gem-shape{background:radial-gradient(circle at 40% 30%,#ffffff,#bae6fd 55%,#0ea5e9)}
 .pn-gem-9{filter:drop-shadow(0 0 4px rgba(186,230,253,0.9))}
 .pn-gem-9::before,.pn-gem-9::after{content:'';position:absolute;width:10px;height:10px;top:50%;left:50%;transform:translate(-50%,-50%);background:radial-gradient(circle,rgba(255,255,255,0.95),transparent 60%);pointer-events:none;animation:pnGemSparkle 3s linear infinite}
 .pn-gem-9::after{animation-delay:1.5s}
-.pn-gem-10 .pn-gem-shape{background:conic-gradient(from 45deg,#fbbf24,#ef4444,#be185d,#fbbf24);animation:pnGemSpin 5s linear infinite}
+.pn-gem-10 .pn-gem-shape{background:conic-gradient(from 45deg,#fbbf24,#ef4444,#be185d,#fbbf24);animation:pnGemShimmer 5s linear infinite}
 .pn-gem-10{filter:drop-shadow(0 0 5px rgba(251,146,60,0.85));animation:pnGemBreathe 3s ease-in-out infinite}
 .pn-gem-10::before{content:'';position:absolute;width:12px;height:12px;top:50%;left:50%;transform:translate(-50%,-50%);background:radial-gradient(circle,rgba(255,255,255,0.95),transparent 60%);pointer-events:none;animation:pnGemSparkle 2.5s linear infinite}
 @keyframes pnGemPulse{0%,100%{opacity:1}50%{opacity:0.82}}
-@keyframes pnGemSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+@keyframes pnGemShimmer{from{filter:hue-rotate(0deg)}to{filter:hue-rotate(360deg)}}
 @keyframes pnGemSparkle{0%,100%{opacity:0;transform:translate(-50%,-50%) scale(0.5) rotate(0deg)}50%{opacity:1;transform:translate(-50%,-50%) scale(1) rotate(180deg)}}
 @keyframes pnGemBreathe{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
 @media (prefers-reduced-motion:reduce){.pn-gem-7,.pn-gem-10{animation:none!important}.pn-gem-8 .pn-gem-shape,.pn-gem-10 .pn-gem-shape{animation:none!important}.pn-gem-9::before,.pn-gem-9::after,.pn-gem-10::before{animation:none!important;opacity:0.6}}
