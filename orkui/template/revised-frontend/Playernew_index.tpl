@@ -202,6 +202,41 @@
 .pna-bar-max{background:linear-gradient(90deg,#f6ad55,#dd6b20)}
 .pna-class-credits{font-size:10px;color:#a0aec0;margin-top:3px}
 .pna-paragon-dot{color:#b7791f;font-size:10px;margin-left:3px}
+/* Post-L6 Gemstone Acknowledgement */
+.pn-class-ack{white-space:nowrap}
+.pn-gem{display:inline-block;width:16px;height:18px;margin-right:2px;position:relative;vertical-align:middle}
+.pn-gem-shape{display:block;width:100%;height:100%;clip-path:polygon(50% 0%,100% 35%,80% 100%,20% 100%,0% 35%);-webkit-clip-path:polygon(50% 0%,100% 35%,80% 100%,20% 100%,0% 35%)}
+.pn-gem-1 .pn-gem-shape{background:radial-gradient(circle at 40% 30%,#f3f4f6,#9ca3af)}
+.pn-gem-2 .pn-gem-shape{background:radial-gradient(circle at 40% 30%,#fde68a,#b45309)}
+.pn-gem-3 .pn-gem-shape{background:radial-gradient(circle at 40% 30%,#ef4444,#450a0a)}
+.pn-gem-4 .pn-gem-shape{background:linear-gradient(180deg,#c4b5fd,#4c1d95)}
+.pn-gem-5 .pn-gem-shape{background:linear-gradient(180deg,#60a5fa,#1e3a8a)}
+.pn-gem-6 .pn-gem-shape{background:linear-gradient(180deg,#34d399,#064e3b)}
+.pn-gem-6{filter:drop-shadow(0 0 2px rgba(16,185,129,0.6))}
+.pn-gem-7 .pn-gem-shape{background:linear-gradient(180deg,#f87171,#7f1d1d)}
+.pn-gem-7{filter:drop-shadow(0 0 3px rgba(239,68,68,0.7));animation:pnGemPulse 2.4s ease-in-out infinite}
+.pn-gem-8 .pn-gem-shape{background:conic-gradient(from 0deg,#f9a8d4,#67e8f9,#86efac,#c4b5fd,#f9a8d4);animation:pnGemSpin 6s linear infinite}
+.pn-gem-8{filter:drop-shadow(0 0 3px rgba(196,181,253,0.65))}
+.pn-gem-9 .pn-gem-shape{background:radial-gradient(circle at 40% 30%,#ffffff,#bae6fd 55%,#0ea5e9)}
+.pn-gem-9{filter:drop-shadow(0 0 4px rgba(186,230,253,0.9))}
+.pn-gem-9::before,.pn-gem-9::after{content:'';position:absolute;width:10px;height:10px;top:50%;left:50%;transform:translate(-50%,-50%);background:radial-gradient(circle,rgba(255,255,255,0.95),transparent 60%);pointer-events:none;animation:pnGemSparkle 3s linear infinite}
+.pn-gem-9::after{animation-delay:1.5s}
+.pn-gem-10 .pn-gem-shape{background:conic-gradient(from 45deg,#fbbf24,#ef4444,#be185d,#fbbf24);animation:pnGemSpin 5s linear infinite}
+.pn-gem-10{filter:drop-shadow(0 0 5px rgba(251,146,60,0.85));animation:pnGemBreathe 3s ease-in-out infinite}
+.pn-gem-10::before{content:'';position:absolute;width:12px;height:12px;top:50%;left:50%;transform:translate(-50%,-50%);background:radial-gradient(circle,rgba(255,255,255,0.95),transparent 60%);pointer-events:none;animation:pnGemSparkle 2.5s linear infinite}
+@keyframes pnGemPulse{0%,100%{opacity:1}50%{opacity:0.82}}
+@keyframes pnGemSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+@keyframes pnGemSparkle{0%,100%{opacity:0;transform:translate(-50%,-50%) scale(0.5) rotate(0deg)}50%{opacity:1;transform:translate(-50%,-50%) scale(1) rotate(180deg)}}
+@keyframes pnGemBreathe{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+@media (prefers-reduced-motion:reduce){.pn-gem-7,.pn-gem-10{animation:none!important}.pn-gem-8 .pn-gem-shape,.pn-gem-10 .pn-gem-shape{animation:none!important}.pn-gem-9::before,.pn-gem-9::after,.pn-gem-10::before{animation:none!important;opacity:0.6}}
+/* Post-L6 Ack toggle */
+.pn-ack-toggle{display:inline-flex;gap:4px;margin-bottom:10px;align-items:center;font-size:12px;color:#4a5568}
+.pn-ack-toggle-label{margin-right:6px;font-weight:600}
+.pn-ack-toggle-btn{background:transparent;border:1px solid #cbd5e0;border-radius:999px;padding:4px 12px;font-size:12px;font-weight:600;cursor:pointer;color:#4a5568;display:inline-flex;align-items:center;gap:4px;transition:background 0.15s,color 0.15s,border-color 0.15s}
+.pn-ack-toggle-btn:hover{border-color:#718096}
+.pn-ack-toggle-active{background:#2c5282;border-color:#2c5282;color:#fff}
+#pn-classes-table.pn-ack-mode-stars .pn-ack-gems{display:none}
+#pn-classes-table.pn-ack-mode-gems .pn-ack-stars{display:none}
 .pna-officer-row{display:flex;flex-direction:column;padding:6px 0;border-bottom:1px solid #f7fafc}
 .pna-officer-row:last-child{border-bottom:none}
 .pna-officer-title{font-size:12px;font-weight:600;color:#2d3748}
@@ -1510,7 +1545,33 @@
 				</div>
 				<?php endif; ?>
 				<?php if (count($classList) > 0): ?>
-					<table class="pn-table" id="pn-classes-table">
+					<?php
+						$pnGemTiers = array(
+							1  => array('name' => 'Quartz',      'class' => 'pn-gem-1'),
+							2  => array('name' => 'Amber',       'class' => 'pn-gem-2'),
+							3  => array('name' => 'Garnet',      'class' => 'pn-gem-3'),
+							4  => array('name' => 'Amethyst',    'class' => 'pn-gem-4'),
+							5  => array('name' => 'Sapphire',    'class' => 'pn-gem-5'),
+							6  => array('name' => 'Emerald',     'class' => 'pn-gem-6'),
+							7  => array('name' => 'Ruby',        'class' => 'pn-gem-7'),
+							8  => array('name' => 'Opal',        'class' => 'pn-gem-8'),
+							9  => array('name' => 'Diamond',     'class' => 'pn-gem-9'),
+							10 => array('name' => 'Dragonstone', 'class' => 'pn-gem-10'),
+						);
+						$pnAnyAck = false;
+						foreach ($classList as $_pnAckChk) {
+							$_pnAckTotal = $_pnAckChk['Credits'] + (isset($Player_index) ? $Player_index['Class_' . $_pnAckChk['ClassId']] : $_pnAckChk['Reconciled']);
+							if ($_pnAckTotal >= 75) { $pnAnyAck = true; break; }
+						}
+					?>
+					<?php if ($pnAnyAck): ?>
+					<div class="pn-ack-toggle" id="pn-ack-toggle" role="group" aria-label="Acknowledgement style">
+						<span class="pn-ack-toggle-label">Acknowledgement style:</span>
+						<button type="button" class="pn-ack-toggle-btn" data-ack-mode="stars"><i class="fas fa-star"></i> Stars</button>
+						<button type="button" class="pn-ack-toggle-btn" data-ack-mode="gems"><i class="fas fa-gem"></i> Gems</button>
+					</div>
+					<?php endif; ?>
+					<table class="pn-table pn-ack-mode-stars" id="pn-classes-table">
 						<thead>
 							<tr>
 								<th data-sorttype="text">Class</th>
@@ -1538,18 +1599,58 @@
 									<td class="pn-col-numeric pn-credits"><?= $totalCredits ?></td>
 									<td class="pn-col-numeric pn-level">-</td>
 									<td class="pn-class-ack">
-										<?php for ($i = 1; $i <= $ackCount; $i++): ?>
-											<?php
-												$ackThreshold = 50 + ($i * 25);
-												$ackColor = $i <= 5 ? '#c0c0c0' : '#d4af37';
-											?>
-											<i class="fas fa-star" style="color:<?= $ackColor ?>;margin-right:2px" title="Earned <?= $ackThreshold ?> Credits in <?= $ackClassNameSafe ?>"></i>
-										<?php endfor; ?>
+										<span class="pn-ack-stars">
+											<?php for ($i = 1; $i <= $ackCount; $i++): ?>
+												<?php
+													$ackThreshold = 50 + ($i * 25);
+													$ackColor = $i <= 5 ? '#c0c0c0' : '#d4af37';
+												?>
+												<i class="fas fa-star" style="color:<?= $ackColor ?>;margin-right:2px" title="Earned <?= $ackThreshold ?> Credits in <?= $ackClassNameSafe ?>"></i>
+											<?php endfor; ?>
+										</span>
+										<span class="pn-ack-gems">
+											<?php for ($i = 1; $i <= $ackCount; $i++): ?>
+												<?php
+													$ackThreshold = 50 + ($i * 25);
+													$gemTier = $pnGemTiers[$i];
+												?>
+												<span class="pn-gem <?= $gemTier['class'] ?>" title="Earned <?= $ackThreshold ?> Credits in <?= $ackClassNameSafe ?> &mdash; <?= $gemTier['name'] ?>"><span class="pn-gem-shape"></span></span>
+											<?php endfor; ?>
+										</span>
 									</td>
 								</tr>
 							<?php endforeach; ?>
 						</tbody>
 					</table>
+					<script>
+					(function() {
+						var table = document.getElementById('pn-classes-table');
+						if (!table) return;
+						var toggle = document.getElementById('pn-ack-toggle');
+						var STORAGE_KEY = 'pn-ack-mode';
+						function setMode(mode) {
+							if (mode !== 'stars' && mode !== 'gems') mode = 'stars';
+							table.classList.remove('pn-ack-mode-stars', 'pn-ack-mode-gems');
+							table.classList.add('pn-ack-mode-' + mode);
+							if (toggle) {
+								var btns = toggle.querySelectorAll('[data-ack-mode]');
+								for (var i = 0; i < btns.length; i++) {
+									btns[i].classList.toggle('pn-ack-toggle-active', btns[i].getAttribute('data-ack-mode') === mode);
+								}
+							}
+							try { localStorage.setItem(STORAGE_KEY, mode); } catch (e) {}
+						}
+						var initial = 'stars';
+						try { initial = localStorage.getItem(STORAGE_KEY) || 'stars'; } catch (e) {}
+						setMode(initial);
+						if (toggle) {
+							toggle.addEventListener('click', function(e) {
+								var btn = e.target.closest ? e.target.closest('[data-ack-mode]') : null;
+								if (btn) setMode(btn.getAttribute('data-ack-mode'));
+							});
+						}
+					})();
+					</script>
 				<?php else: ?>
 					<div class="pn-empty">No class records</div>
 				<?php endif; ?>
