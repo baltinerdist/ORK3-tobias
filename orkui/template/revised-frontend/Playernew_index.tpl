@@ -211,6 +211,8 @@
 .pn-gem-3 .pn-gem-shape{background:radial-gradient(circle at 40% 30%,#ef4444,#450a0a)}
 .pn-gem-4 .pn-gem-shape{background:linear-gradient(180deg,#c4b5fd,#4c1d95)}
 .pn-gem-5 .pn-gem-shape{background:linear-gradient(180deg,#60a5fa,#1e3a8a)}
+.pn-gem-4 .pn-gem-shape,.pn-gem-5 .pn-gem-shape{position:relative}
+.pn-gem-4 .pn-gem-shape::before,.pn-gem-5 .pn-gem-shape::before{content:'';position:absolute;inset:0;background:linear-gradient(160deg,rgba(255,255,255,0.55) 0%,rgba(255,255,255,0.18) 30%,transparent 55%);pointer-events:none}
 .pn-gem-6 .pn-gem-shape{background:linear-gradient(180deg,#34d399,#064e3b)}
 .pn-gem-6{filter:drop-shadow(0 0 2px rgba(16,185,129,0.6))}
 .pn-gem-7 .pn-gem-shape{background:linear-gradient(180deg,#f87171,#7f1d1d)}
