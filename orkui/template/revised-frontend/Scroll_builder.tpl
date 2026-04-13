@@ -1764,35 +1764,96 @@
   <!-- ============ Controls (left panel) ============ -->
   <div class="sc-controls">
 
-    <!-- SECTION: Template (hidden for now — may return later) -->
-    <div class="sc-section" id="sc-sec-template" style="display:none">
+    <!-- SECTION: Template -->
+    <div class="sc-section" id="sc-sec-template">
       <div class="sc-section-title" onclick="sgToggleSection('sc-sec-template')">
-        <h3><i class="fas fa-layer-group" style="margin-right:6px;opacity:0.5"></i>Template</h3>
+        <h3><i class="fas fa-layer-group" style="margin-right:6px;opacity:0.5"></i>Scroll Template</h3>
         <i class="fas fa-chevron-down sc-chevron"></i>
       </div>
       <div class="sc-section-body">
         <div class="sc-template-grid">
-          <div class="sc-template-card" data-template="A" id="sc-tpl-a">
-            <span class="sc-tpl-icon"><i class="fas fa-shield-alt"></i></span>
-            <div>
-              <span class="sc-tpl-name">Knight / Peerage</span>
-              <span class="sc-tpl-desc">Knighthood and peerage orders</span>
-            </div>
-          </div>
-          <div class="sc-template-card" data-template="B" id="sc-tpl-b">
-            <span class="sc-tpl-icon"><i class="fas fa-medal"></i></span>
-            <div>
-              <span class="sc-tpl-name">Order / Award</span>
-              <span class="sc-tpl-desc">Ladder awards and grants</span>
-            </div>
-          </div>
-          <div class="sc-template-card" data-template="C" id="sc-tpl-c">
+          <div class="sc-template-card" data-template="royal_decree">
             <span class="sc-tpl-icon"><i class="fas fa-crown"></i></span>
-            <div>
-              <span class="sc-tpl-name">Title / Office</span>
-              <span class="sc-tpl-desc">Titles and office appointments</span>
-            </div>
+            <span class="sc-tpl-name">Royal Decree</span>
+            <span class="sc-tpl-desc">Peerages &amp; proclamations</span>
           </div>
+          <div class="sc-template-card" data-template="heraldic_shield">
+            <span class="sc-tpl-icon"><i class="fas fa-shield-alt"></i></span>
+            <span class="sc-tpl-name">Heraldic Shield</span>
+            <span class="sc-tpl-desc">Orders &amp; chivalric grants</span>
+          </div>
+          <div class="sc-template-card" data-template="chancery_letter">
+            <span class="sc-tpl-icon"><i class="fas fa-feather-alt"></i></span>
+            <span class="sc-tpl-name">Chancery Letter</span>
+            <span class="sc-tpl-desc">Titles &amp; offices</span>
+          </div>
+          <div class="sc-template-card" data-template="illuminated_ms">
+            <span class="sc-tpl-icon"><i class="fas fa-book-open"></i></span>
+            <span class="sc-tpl-name">Illuminated</span>
+            <span class="sc-tpl-desc">Master &amp; journeyman awards</span>
+          </div>
+          <div class="sc-template-card" data-template="battle_standard">
+            <span class="sc-tpl-icon"><i class="fas fa-flag"></i></span>
+            <span class="sc-tpl-name">Battle Standard</span>
+            <span class="sc-tpl-desc">Landscape combat honors</span>
+          </div>
+          <div class="sc-template-card" data-template="guild_charter">
+            <span class="sc-tpl-icon"><i class="fas fa-scroll"></i></span>
+            <span class="sc-tpl-name">Guild Charter</span>
+            <span class="sc-tpl-desc">Service &amp; installations</span>
+          </div>
+          <div class="sc-template-card" data-template="arcane_grimoire">
+            <span class="sc-tpl-icon"><i class="fas fa-hat-wizard"></i></span>
+            <span class="sc-tpl-name">Arcane Grimoire</span>
+            <span class="sc-tpl-desc">Mystical honors with laurel</span>
+          </div>
+          <div class="sc-template-card" data-template="bardic_ballad">
+            <span class="sc-tpl-icon"><i class="fas fa-music"></i></span>
+            <span class="sc-tpl-name">Bardic Ballad</span>
+            <span class="sc-tpl-desc">Arts &amp; song scrolls</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION: Decorative Elements (toggles) -->
+    <div class="sc-section" id="sc-sec-elements">
+      <div class="sc-section-title" onclick="sgToggleSection('sc-sec-elements')">
+        <h3><i class="fas fa-sparkles" style="margin-right:6px;opacity:0.5"></i>Decorative Elements</h3>
+        <i class="fas fa-chevron-down sc-chevron"></i>
+      </div>
+      <div class="sc-section-body">
+        <div class="sc-toggle-row">
+          <label class="sc-toggle-switch"><input type="checkbox" id="sc-el-ribbon"><span class="sc-toggle-slider"></span></label>
+          <span class="sc-toggle-label"><i class="fas fa-ribbon" style="color:#8b1a1a;margin-right:5px"></i>Ribbon Banner <small style="color:#718096;font-weight:400">— decorative title ribbon</small></span>
+        </div>
+        <div class="sc-toggle-row">
+          <label class="sc-toggle-switch"><input type="checkbox" id="sc-el-dropCap"><span class="sc-toggle-slider"></span></label>
+          <span class="sc-toggle-label"><i class="fas fa-font" style="color:#805AD5;margin-right:5px"></i>Drop Cap <small style="color:#718096;font-weight:400">— illuminated first letter</small></span>
+        </div>
+        <div class="sc-toggle-row">
+          <label class="sc-toggle-switch"><input type="checkbox" id="sc-el-waxSeal"><span class="sc-toggle-slider"></span></label>
+          <span class="sc-toggle-label"><i class="fas fa-stamp" style="color:#8b1a1a;margin-right:5px"></i>Wax Seal <small style="color:#718096;font-weight:400">— 3D burgundy seal with initials</small></span>
+        </div>
+        <div class="sc-toggle-row">
+          <label class="sc-toggle-switch"><input type="checkbox" id="sc-el-swords"><span class="sc-toggle-slider"></span></label>
+          <span class="sc-toggle-label"><i class="fas fa-khanda" style="color:#555;margin-right:5px"></i>Crossed Swords <small style="color:#718096;font-weight:400">— combat award motif</small></span>
+        </div>
+        <div class="sc-toggle-row">
+          <label class="sc-toggle-switch"><input type="checkbox" id="sc-el-medallions"><span class="sc-toggle-slider"></span></label>
+          <span class="sc-toggle-label"><i class="fas fa-circle" style="color:#b8902a;margin-right:5px"></i>Margin Medallions <small style="color:#718096;font-weight:400">— heraldry stacked in margin</small></span>
+        </div>
+        <div class="sc-toggle-row">
+          <label class="sc-toggle-switch"><input type="checkbox" id="sc-el-laurel"><span class="sc-toggle-slider"></span></label>
+          <span class="sc-toggle-label"><i class="fas fa-leaf" style="color:#2d5016;margin-right:5px"></i>Laurel Wreath <small style="color:#718096;font-weight:400">— wreath around title</small></span>
+        </div>
+        <div class="sc-toggle-row">
+          <label class="sc-toggle-switch"><input type="checkbox" id="sc-el-compass"><span class="sc-toggle-slider"></span></label>
+          <span class="sc-toggle-label"><i class="fas fa-compass" style="color:#1a3a6b;margin-right:5px"></i>Compass Rose <small style="color:#718096;font-weight:400">— 8-point decorative compass</small></span>
+        </div>
+        <div class="sc-toggle-row">
+          <label class="sc-toggle-switch"><input type="checkbox" id="sc-el-flourishes"><span class="sc-toggle-slider"></span></label>
+          <span class="sc-toggle-label"><i class="fas fa-seedling" style="color:#a67a1e;margin-right:5px"></i>Corner Flourishes <small style="color:#718096;font-weight:400">— vine &amp; leaf corners</small></span>
         </div>
       </div>
     </div>
@@ -2001,6 +2062,48 @@
                 <i class="fas fa-check sc-swatch-check" style="color:#333;text-shadow:none"></i>
               </div>
               <span class="sc-palette-label">White</span>
+            </div>
+            <div class="sc-palette-item">
+              <div class="sc-palette-swatch" data-palette="burgundy">
+                <span class="sc-swatch-inner" style="background:linear-gradient(135deg,#f4e8d0,#d4a5a5 60%,#5c1e1e)"></span>
+                <i class="fas fa-check sc-swatch-check"></i>
+              </div>
+              <span class="sc-palette-label">Burgundy</span>
+            </div>
+            <div class="sc-palette-item">
+              <div class="sc-palette-swatch" data-palette="forest">
+                <span class="sc-swatch-inner" style="background:linear-gradient(135deg,#eee6c8,#6b8a4a 60%,#2d4a2b)"></span>
+                <i class="fas fa-check sc-swatch-check"></i>
+              </div>
+              <span class="sc-palette-label">Forest</span>
+            </div>
+            <div class="sc-palette-item">
+              <div class="sc-palette-swatch" data-palette="ink">
+                <span class="sc-swatch-inner" style="background:linear-gradient(135deg,#fbf4e4,#a0895e 60%,#3d2612)"></span>
+                <i class="fas fa-check sc-swatch-check"></i>
+              </div>
+              <span class="sc-palette-label">Ink</span>
+            </div>
+            <div class="sc-palette-item">
+              <div class="sc-palette-swatch" data-palette="illuminated">
+                <span class="sc-swatch-inner" style="background:linear-gradient(135deg,#f6ebd0,#d4af4d 60%,#4a1616)"></span>
+                <i class="fas fa-check sc-swatch-check"></i>
+              </div>
+              <span class="sc-palette-label">Illuminated</span>
+            </div>
+            <div class="sc-palette-item">
+              <div class="sc-palette-swatch" data-palette="sable">
+                <span class="sc-swatch-inner" style="background:linear-gradient(135deg,#e8dfc4,#8a7048 60%,#2a1f10)"></span>
+                <i class="fas fa-check sc-swatch-check"></i>
+              </div>
+              <span class="sc-palette-label">Sable</span>
+            </div>
+            <div class="sc-palette-item">
+              <div class="sc-palette-swatch" data-palette="twilight">
+                <span class="sc-swatch-inner" style="background:linear-gradient(135deg,#e4dfeb,#8e6bbf 60%,#3a2a66)"></span>
+                <i class="fas fa-check sc-swatch-check"></i>
+              </div>
+              <span class="sc-palette-label">Twilight</span>
             </div>
           </div>
         </div>
@@ -4989,6 +5092,15 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
   // ============================================================
   //  Event binding
   // ============================================================
+  // --- Decorative element toggle sync ---
+  function sgSyncElementTogglesUI() {
+    var keys = ['ribbon','dropCap','waxSeal','swords','medallions','laurel','compass','flourishes'];
+    for (var i = 0; i < keys.length; i++) {
+      var cb = document.getElementById('sc-el-' + keys[i]);
+      if (cb) cb.checked = !!sgState.elements[keys[i]];
+    }
+  }
+
   function sgBindEvents() {
     // Template cards
     var tplCards = document.querySelectorAll('.sc-template-card');
@@ -4998,6 +5110,19 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
           sgSelectTemplate(card.getAttribute('data-template'));
         });
       })(tplCards[i]);
+    }
+
+    // Decorative element toggles
+    var elKeys = ['ribbon','dropCap','waxSeal','swords','medallions','laurel','compass','flourishes'];
+    for (var ek = 0; ek < elKeys.length; ek++) {
+      (function(key) {
+        var cb = document.getElementById('sc-el-' + key);
+        if (!cb) return;
+        cb.addEventListener('change', function() {
+          sgState.elements[key] = cb.checked;
+          sgRender();
+        });
+      })(elKeys[ek]);
     }
 
     // Palette swatches
