@@ -3,68 +3,197 @@
 class Controller_ScrollAjax extends Controller {
 
 	/**
-	 * Scale factor from 900x1200 preview canvas to 2550x3300 print canvas.
+	 * Scale factor from preview canvas to print canvas (300 DPI letter).
+	 * Preview is 850x1100 portrait; print is 2550x3300. Landscape templates
+	 * flip the axes but use the same scale.
 	 */
 	const SCALE = 3.0;
 
 	/**
-	 * Print canvas dimensions (300 DPI letter size).
+	 * Default print canvas dimensions (portrait).
 	 */
-	const W = 2550;
-	const H = 3300;
+	const DEFAULT_W = 2550;
+	const DEFAULT_H = 3300;
 
 	/**
-	 * Template definitions at print resolution.
+	 * Legacy template key aliases (for old clients / saved scrolls).
+	 */
+	private static $TEMPLATE_ALIASES = [
+		'A' => 'royal_decree',
+		'B' => 'heraldic_shield',
+		'C' => 'chancery_letter',
+	];
+
+	/**
+	 * Template definitions at print resolution (preview * SCALE).
+	 * Each entry mirrors the JS TEMPLATES object 1:1.
 	 */
 	private static $TEMPLATES = [
-		'A' => [
-			'sigCount'  => 3,
-			'title'     => ['x' => 1275, 'y' => 510,  'size' => 153, 'maxWidth' => 1983],
-			'recipient' => ['x' => 1275, 'y' => 838,  'size' => 108, 'maxWidth' => 1983],
-			'body'      => ['x' => 1275, 'y' => 1076, 'size' => 62,  'maxWidth' => 1927, 'lineHeight' => 91],
-			'sigY'      => 2916,
+		// -----------------------------------------------------
+		//  Royal Decree — ribbon title + corner heraldry + seal
+		// -----------------------------------------------------
+		'royal_decree' => [
+			'orientation' => 'portrait',
+			'previewW' => 850, 'previewH' => 1100,
+			'printW' => 2550, 'printH' => 3300,
+			'sigCount' => 3,
+			'defaults' => ['ribbon'=>true,'dropCap'=>false,'waxSeal'=>true,'swords'=>false,'medallions'=>false,'laurel'=>false,'compass'=>false,'flourishes'=>true],
+			'title'     => ['x' => 1275, 'y' => 780,  'size' => 156, 'maxWidth' => 1860],
+			'recipient' => ['x' => 1275, 'y' => 1080, 'size' => 120, 'maxWidth' => 2040],
+			'body'      => ['x' => 1275, 'y' => 1380, 'size' => 66,  'maxWidth' => 1920, 'lineHeight' => 96],
+			'sigY' => 2790,
 			'heraldry'  => [
-				'kingdom' => ['x' => 227,  'y' => 227,  'w' => 340, 'h' => 340],
-				'park'    => ['x' => 1983, 'y' => 227,  'w' => 340, 'h' => 340],
-				'player'  => ['x' => 1063, 'y' => 1983, 'w' => 425, 'h' => 425],
+				'kingdom' => ['x' => 240,  'y' => 240,  'w' => 345, 'h' => 345],
+				'park'    => ['x' => 1965, 'y' => 240,  'w' => 345, 'h' => 345],
+				'player'  => ['x' => 1065, 'y' => 1770, 'w' => 420, 'h' => 420],
 			],
 		],
-		'B' => [
-			'sigCount'  => 2,
-			'title'     => ['x' => 1275, 'y' => 453,  'size' => 136, 'maxWidth' => 1983],
-			'recipient' => ['x' => 1275, 'y' => 753,  'size' => 96,  'maxWidth' => 1983],
-			'body'      => ['x' => 1275, 'y' => 963,  'size' => 57,  'maxWidth' => 1927, 'lineHeight' => 85],
-			'sigY'      => 2916,
-			'heraldry'  => [
-				'kingdom' => ['x' => 227,  'y' => 227,  'w' => 312, 'h' => 312],
-				'park'    => ['x' => 2012, 'y' => 227,  'w' => 312, 'h' => 312],
-				'player'  => ['x' => 1063, 'y' => 1927, 'w' => 425, 'h' => 425],
+
+		// -----------------------------------------------------
+		//  Heraldic Shield — quartered shield centerpiece
+		// -----------------------------------------------------
+		'heraldic_shield' => [
+			'orientation' => 'portrait',
+			'previewW' => 850, 'previewH' => 1100,
+			'printW' => 2550, 'printH' => 3300,
+			'sigCount' => 2,
+			'defaults' => ['ribbon'=>false,'dropCap'=>false,'waxSeal'=>false,'swords'=>false,'medallions'=>false,'laurel'=>false,'compass'=>false,'flourishes'=>false],
+			'title'     => ['x' => 1275, 'y' => 1440, 'size' => 132, 'maxWidth' => 1980],
+			'recipient' => ['x' => 1275, 'y' => 1680, 'size' => 96,  'maxWidth' => 1980],
+			'body'      => ['x' => 1275, 'y' => 1890, 'size' => 57,  'maxWidth' => 1860, 'lineHeight' => 84],
+			'sigY' => 2880,
+			'heraldry' => null,
+			'shield' => ['cx' => 1275, 'cy' => 720, 'size' => 870],
+		],
+
+		// -----------------------------------------------------
+		//  Chancery Letter — left-aligned epistolary
+		// -----------------------------------------------------
+		'chancery_letter' => [
+			'orientation' => 'portrait',
+			'previewW' => 850, 'previewH' => 1100,
+			'printW' => 2550, 'printH' => 3300,
+			'sigCount' => 2,
+			'defaults' => ['ribbon'=>false,'dropCap'=>false,'waxSeal'=>true,'swords'=>false,'medallions'=>true,'laurel'=>false,'compass'=>false,'flourishes'=>false],
+			'title'     => ['x' => 510,  'y' => 465,  'size' => 120, 'maxWidth' => 1680],
+			'recipient' => ['x' => 510,  'y' => 705,  'size' => 114, 'maxWidth' => 1680],
+			'body'      => ['x' => 510,  'y' => 1020, 'size' => 57,  'maxWidth' => 1680, 'lineHeight' => 90],
+			'sigY' => 2730,
+			'heraldry' => null,
+		],
+
+		// -----------------------------------------------------
+		//  Illuminated Manuscript — drop cap + margin medallions
+		// -----------------------------------------------------
+		'illuminated_ms' => [
+			'orientation' => 'portrait',
+			'previewW' => 850, 'previewH' => 1100,
+			'printW' => 2550, 'printH' => 3300,
+			'sigCount' => 2,
+			'defaults' => ['ribbon'=>false,'dropCap'=>true,'waxSeal'=>false,'swords'=>false,'medallions'=>true,'laurel'=>false,'compass'=>false,'flourishes'=>true],
+			'title'     => ['x' => 1275, 'y' => 480,  'size' => 156, 'maxWidth' => 2040],
+			'recipient' => ['x' => 1275, 'y' => 750,  'size' => 96,  'maxWidth' => 2040],
+			'body'      => ['x' => 720,  'y' => 1110, 'size' => 63,  'maxWidth' => 1470, 'lineHeight' => 102],
+			'sigY' => 2850,
+			'heraldry' => null,
+		],
+
+		// -----------------------------------------------------
+		//  Battle Standard — LANDSCAPE combat award
+		// -----------------------------------------------------
+		'battle_standard' => [
+			'orientation' => 'landscape',
+			'previewW' => 1100, 'previewH' => 850,
+			'printW' => 3300, 'printH' => 2550,
+			'sigCount' => 2,
+			'defaults' => ['ribbon'=>false,'dropCap'=>false,'waxSeal'=>false,'swords'=>true,'medallions'=>false,'laurel'=>false,'compass'=>false,'flourishes'=>false],
+			'title'     => ['x' => 1650, 'y' => 510,  'size' => 174, 'maxWidth' => 2640],
+			'recipient' => ['x' => 1650, 'y' => 840,  'size' => 120, 'maxWidth' => 2640],
+			'body'      => ['x' => 1650, 'y' => 1170, 'size' => 63,  'maxWidth' => 2460, 'lineHeight' => 96],
+			'sigY' => 2160,
+			'heraldry' => [
+				'kingdom' => ['x' => 270,  'y' => 1710, 'w' => 450, 'h' => 450],
+				'park'    => ['x' => 2580, 'y' => 1710, 'w' => 450, 'h' => 450],
+				'player'  => ['x' => 1425, 'y' => 1710, 'w' => 450, 'h' => 450],
 			],
 		],
-		'C' => [
-			'sigCount'  => 2,
-			'title'     => ['x' => 1275, 'y' => 397,  'size' => 125, 'maxWidth' => 1983],
-			'recipient' => ['x' => 1275, 'y' => 668,  'size' => 91,  'maxWidth' => 1983],
-			'body'      => ['x' => 1275, 'y' => 850,  'size' => 57,  'maxWidth' => 1927, 'lineHeight' => 85],
-			'sigY'      => 2916,
-			'heraldry'  => [
-				'kingdom' => ['x' => 227,  'y' => 170,  'w' => 283, 'h' => 283],
-				'park'    => ['x' => 2040, 'y' => 170,  'w' => 283, 'h' => 283],
-				'player'  => ['x' => 1063, 'y' => 1870, 'w' => 425, 'h' => 425],
+
+		// -----------------------------------------------------
+		//  Guild Charter — ribbon title + dual-column layout
+		// -----------------------------------------------------
+		'guild_charter' => [
+			'orientation' => 'portrait',
+			'previewW' => 850, 'previewH' => 1100,
+			'printW' => 2550, 'printH' => 3300,
+			'sigCount' => 2,
+			'defaults' => ['ribbon'=>true,'dropCap'=>false,'waxSeal'=>true,'swords'=>false,'medallions'=>false,'laurel'=>false,'compass'=>false,'flourishes'=>false],
+			'title'     => ['x' => 1275, 'y' => 600,  'size' => 132, 'maxWidth' => 2040],
+			'recipient' => ['x' => 1275, 'y' => 960,  'size' => 102, 'maxWidth' => 2040],
+			'body'      => ['x' => 390,  'y' => 1260, 'size' => 57,  'maxWidth' => 1140, 'lineHeight' => 84],
+			'sigY' => 2280,
+			'heraldry' => [
+				'kingdom' => ['x' => 240,  'y' => 240, 'w' => 285, 'h' => 285],
+				'park'    => ['x' => 2025, 'y' => 240, 'w' => 285, 'h' => 285],
+				'player'  => ['x' => 1800, 'y' => 1290, 'w' => 540, 'h' => 540],
+			],
+		],
+
+		// -----------------------------------------------------
+		//  Arcane Grimoire — laurel wreath centerpiece
+		// -----------------------------------------------------
+		'arcane_grimoire' => [
+			'orientation' => 'portrait',
+			'previewW' => 850, 'previewH' => 1100,
+			'printW' => 2550, 'printH' => 3300,
+			'sigCount' => 2,
+			'defaults' => ['ribbon'=>false,'dropCap'=>false,'waxSeal'=>false,'swords'=>false,'medallions'=>false,'laurel'=>true,'compass'=>true,'flourishes'=>true],
+			'title'     => ['x' => 1275, 'y' => 780,  'size' => 132, 'maxWidth' => 1440],
+			'recipient' => ['x' => 1275, 'y' => 1260, 'size' => 96,  'maxWidth' => 1980],
+			'body'      => ['x' => 1275, 'y' => 1560, 'size' => 60,  'maxWidth' => 1860, 'lineHeight' => 90],
+			'sigY' => 2790,
+			'heraldry' => [
+				'kingdom' => ['x' => 240,  'y' => 300, 'w' => 300, 'h' => 300],
+				'park'    => ['x' => 2010, 'y' => 300, 'w' => 300, 'h' => 300],
+			],
+		],
+
+		// -----------------------------------------------------
+		//  Bardic Ballad — script fonts + drop cap
+		// -----------------------------------------------------
+		'bardic_ballad' => [
+			'orientation' => 'portrait',
+			'previewW' => 850, 'previewH' => 1100,
+			'printW' => 2550, 'printH' => 3300,
+			'sigCount' => 2,
+			'defaults' => ['ribbon'=>false,'dropCap'=>true,'waxSeal'=>true,'swords'=>false,'medallions'=>false,'laurel'=>false,'compass'=>false,'flourishes'=>true],
+			'title'     => ['x' => 1275, 'y' => 480,  'size' => 216, 'maxWidth' => 1860],
+			'recipient' => ['x' => 1275, 'y' => 870,  'size' => 144, 'maxWidth' => 1860],
+			'body'      => ['x' => 720,  'y' => 1290, 'size' => 60,  'maxWidth' => 1470, 'lineHeight' => 102],
+			'sigY' => 2850,
+			'heraldry' => [
+				'kingdom' => ['x' => 240,  'y' => 240, 'w' => 285, 'h' => 285],
+				'park'    => ['x' => 2025, 'y' => 240, 'w' => 285, 'h' => 285],
+				'player'  => ['x' => 1065, 'y' => 2280, 'w' => 420, 'h' => 420],
 			],
 		],
 	];
 
 	/**
-	 * Color palettes.
+	 * Color palettes (6 legacy + 6 fantasy presets).
 	 */
 	private static $PALETTES = [
-		'classic' => ['bg' => [245, 230, 200], 'text' => [45, 27, 0],   'accent' => [139, 105, 20], 'border' => [107, 90, 50]],
-		'royal'   => ['bg' => [238, 242, 249], 'text' => [26, 58, 107], 'accent' => [196, 151, 42], 'border' => [26, 58, 107]],
-		'nature'   => ['bg' => [240, 230, 208], 'text' => [45, 80, 22],  'accent' => [184, 148, 42], 'border' => [45, 80, 22]],
-		'crimson'  => ['bg' => [249, 240, 240], 'text' => [74, 16, 16],  'accent' => [139, 26, 26],  'border' => [107, 46, 46]],
-		'obsidian' => ['bg' => [232, 228, 223], 'text' => [26, 26, 46],  'accent' => [112, 96, 64],  'border' => [61, 61, 80]],
-		'white'    => ['bg' => [255, 255, 255], 'text' => [26, 26, 26],  'accent' => [85, 85, 85],   'border' => [153, 153, 153]],
+		'classic'     => ['bg' => [245, 230, 200], 'text' => [45, 27, 0],   'accent' => [139, 105, 20], 'border' => [107, 90, 50]],
+		'royal'       => ['bg' => [238, 242, 249], 'text' => [26, 58, 107], 'accent' => [196, 151, 42], 'border' => [26, 58, 107]],
+		'nature'      => ['bg' => [240, 230, 208], 'text' => [45, 80, 22],  'accent' => [184, 148, 42], 'border' => [45, 80, 22]],
+		'crimson'     => ['bg' => [249, 240, 240], 'text' => [74, 16, 16],  'accent' => [139, 26, 26],  'border' => [107, 46, 46]],
+		'obsidian'    => ['bg' => [232, 228, 223], 'text' => [26, 26, 46],  'accent' => [112, 96, 64],  'border' => [61, 61, 80]],
+		'white'       => ['bg' => [255, 255, 255], 'text' => [26, 26, 26],  'accent' => [85, 85, 85],   'border' => [153, 153, 153]],
+		'burgundy'    => ['bg' => [244, 232, 208], 'text' => [61, 16, 16],  'accent' => [184, 144, 42], 'border' => [92, 30, 30]],
+		'forest'      => ['bg' => [238, 230, 200], 'text' => [26, 46, 24],  'accent' => [166, 122, 30], 'border' => [45, 74, 43]],
+		'ink'         => ['bg' => [251, 244, 228], 'text' => [43, 24, 16],  'accent' => [139, 105, 20], 'border' => [61, 38, 18]],
+		'illuminated' => ['bg' => [246, 235, 208], 'text' => [61, 16, 16],  'accent' => [201, 166, 58], 'border' => [74, 22, 22]],
+		'sable'       => ['bg' => [232, 223, 196], 'text' => [26, 18, 8],   'accent' => [196, 151, 42], 'border' => [42, 31, 16]],
+		'twilight'    => ['bg' => [228, 223, 235], 'text' => [42, 30, 74],  'accent' => [142, 107, 191], 'border' => [58, 42, 102]],
 	];
 
 	/**
@@ -148,12 +277,31 @@ class Controller_ScrollAjax extends Controller {
 			if ($val > 0) $artwork_ids[$slot] = $val;
 		}
 
-		// ---- Validate template / palette ----
-		if (!isset(self::$TEMPLATES[$template])) $template = 'B';
+		// ---- Normalize legacy aliases + validate ----
+		if (isset(self::$TEMPLATE_ALIASES[$template])) {
+			$template = self::$TEMPLATE_ALIASES[$template];
+		}
+		if (!isset(self::$TEMPLATES[$template])) $template = 'heraldic_shield';
 		if (!isset(self::$PALETTES[$palette]))   $palette  = 'classic';
 
 		$tpl = self::$TEMPLATES[$template];
 		$pal = self::$PALETTES[$palette];
+
+		// ---- Canvas dimensions from template ----
+		$w = $tpl['printW'] ?? self::DEFAULT_W;
+		$h = $tpl['printH'] ?? self::DEFAULT_H;
+
+		// ---- Decorative element toggles ----
+		$elements = [
+			'ribbon'     => ($_POST['el_ribbon']     ?? '0') === '1',
+			'dropCap'    => ($_POST['el_dropCap']    ?? '0') === '1',
+			'waxSeal'    => ($_POST['el_waxSeal']    ?? '0') === '1',
+			'swords'     => ($_POST['el_swords']     ?? '0') === '1',
+			'medallions' => ($_POST['el_medallions'] ?? '0') === '1',
+			'laurel'     => ($_POST['el_laurel']     ?? '0') === '1',
+			'compass'    => ($_POST['el_compass']    ?? '0') === '1',
+			'flourishes' => ($_POST['el_flourishes'] ?? '0') === '1',
+		];
 
 		// ---- Resolve per-element font paths ----
 		$fontDir = DIR_ASSETS . 'scroll/fonts/';
@@ -197,7 +345,7 @@ class Controller_ScrollAjax extends Controller {
 		}
 
 		// ---- Create image ----
-		$img = @imagecreatetruecolor(self::W, self::H);
+		$img = @imagecreatetruecolor($w, $h);
 		if (!$img) {
 			header('Content-Type: application/json');
 			echo json_encode(['status' => 1, 'error' => 'Failed to generate scroll image']);
@@ -215,8 +363,8 @@ class Controller_ScrollAjax extends Controller {
 
 		// ---- Noise texture overlay (5% opacity) ----
 		$noiseColor = imagecolorallocatealpha($img, 0, 0, 0, 121); // ~5% opacity
-		for ($nx = 0; $nx < self::W; $nx += 12) {
-			for ($ny = 0; $ny < self::H; $ny += 12) {
+		for ($nx = 0; $nx < $w; $nx += 12) {
+			for ($ny = 0; $ny < $h; $ny += 12) {
 				if (mt_rand(0, 1)) {
 					imagefilledrectangle($img, $nx, $ny, $nx + 5, $ny + 5, $noiseColor);
 				}
@@ -224,16 +372,16 @@ class Controller_ScrollAjax extends Controller {
 		}
 
 		// ---- Radial vignette ----
-		$vignetteImg = imagecreatetruecolor(self::W, self::H);
+		$vignetteImg = imagecreatetruecolor($w, $h);
 		imagefill($vignetteImg, 0, 0, imagecolorallocate($vignetteImg, 0, 0, 0));
-		$vigCenterX = (int)(self::W / 2);
-		$vigCenterY = (int)(self::H / 2);
-		$vigRadius = (int)(self::W * 0.75);
+		$vigCenterX = (int)($w / 2);
+		$vigCenterY = (int)($h / 2);
+		$vigRadius = (int)($w * 0.75);
 		// Draw a white ellipse in center (will act as transparency mask)
 		$vigWhite = imagecolorallocate($vignetteImg, 255, 255, 255);
-		imagefilledellipse($vignetteImg, $vigCenterX, $vigCenterY, (int)(self::W * 0.4), (int)(self::W * 0.4), $vigWhite);
+		imagefilledellipse($vignetteImg, $vigCenterX, $vigCenterY, (int)($w * 0.4), (int)($w * 0.4), $vigWhite);
 		// Apply as semi-transparent overlay
-		imagecopymerge($img, $vignetteImg, 0, 0, 0, 0, self::W, self::H, 4); // 4% merge
+		imagecopymerge($img, $vignetteImg, 0, 0, 0, 0, $w, $h, 4); // 4% merge
 		imagedestroy($vignetteImg);
 
 		// ---- Artwork: watermark (below drawn border) ----
@@ -243,7 +391,7 @@ class Controller_ScrollAjax extends Controller {
 		}
 
 		// ---- Draw border (double-line rectangle + corner ornaments) ----
-		$this->drawBorder($img, $cBorder, $cAccent, $pal, $template, $borderStyle);
+		$this->drawBorder($img, $cBorder, $cAccent, $pal, $template, $borderStyle, $w, $h);
 
 		// ---- Artwork: full_border + edge borders + top_graphic (above drawn border, below heraldry) ----
 		if (isset($artworkImages['full_border'])) {
@@ -261,168 +409,36 @@ class Controller_ScrollAjax extends Controller {
 			$this->compositeArtwork($img, $artworkImages['top_graphic'], $dims['x'], $dims['y'], $dims['w'], $dims['h'], 100);
 		}
 
-		// ---- Draw heraldry ----
-		$this->drawHeraldryImage($img, $heraldry_kingdom, $tpl['heraldry']['kingdom']);
-		$this->drawHeraldryImage($img, $heraldry_park,    $tpl['heraldry']['park']);
-		$this->drawHeraldryImage($img, $heraldry_player,  $tpl['heraldry']['player']);
-
-		// ---- Artwork: center_image (below text, above heraldry) ----
-		if (isset($artworkImages['center_image'])) {
-			$dims = ScrollArtwork::SLOT_DIMENSIONS['center_image'];
-			$this->compositeArtwork($img, $artworkImages['center_image'], $dims['x'], $dims['y'], $dims['w'], $dims['h'], 15);
-		}
-
-		// ---- Title text (centered, accent color) ----
-		$titleText = strlen($awardName) ? $awardName : 'Award Title';
-		$this->drawCenteredText($img, $titleText, $tpl['title'], $cAccent, $fontFiles['title'], $useBuiltinFont);
-
-		// Decorative divider above title (Template A only)
-		$titleFontSize = $tpl['title']['size'];
-		if ($template === 'A') {
-			$this->drawDivider($img, (int)(self::W / 2), $tpl['title']['y'] - (int)(30 * self::SCALE), (int)(250 * self::SCALE), $pal, 0.6);
-		}
-		// Decorative divider below title
-		$divider1Y = $tpl['title']['y'] + $titleFontSize + (int)(25 * self::SCALE);
-		$this->drawDivider($img, (int)(self::W / 2), $divider1Y, (int)(250 * self::SCALE), $pal, 0.6);
-
-		// ---- Recipient name (centered, text color) ----
-		$recipientText = strlen($recipient) ? $recipient : 'Recipient Name';
-		$this->drawCenteredText($img, $recipientText, $tpl['recipient'], $cText, $fontFiles['recipient'], $useBuiltinFont);
-
-		// ---- Body text (word-wrapped, centered lines) ----
-		$bodyContent = strlen($bodyText) ? $bodyText : $this->generateBodyText($recipient, $awardName, $rank, $date, $kingdom, $template, $park);
-		$this->drawWrappedText($img, $bodyContent, $tpl['body'], $cText, $fontFiles['body'], $useBuiltinFont);
-
-		// ---- Date / location line ----
-		$dateLine = '';
-		if (strlen($park) || strlen($kingdom)) {
-			$dateLine = 'Given at';
-			if (strlen($park)) {
-				$dateLine .= ' ' . $park;
-			}
-			if (strlen($kingdom)) {
-				$dateLine .= (strlen($park) ? ', ' : ' ') . $kingdom;
-			}
-		}
-		if (strlen($dateLine)) {
-			$dateSize = (int)($tpl['body']['size'] * 0.8);
-			$dateY = $tpl['sigY'] - (int)(40 * self::SCALE);
-			$dateColor = imagecolorallocatealpha($img, $pal['text'][0], $pal['text'][1], $pal['text'][2], 51); // ~60% opacity
-			if (!$useBuiltinFont) {
-				$box = imagettfbbox($dateSize, 0, ($fontFiles['body'] ?: $bodyFontFile), $dateLine);
-				$dateW = $box[2] - $box[0];
-				imagettftext($img, $dateSize, 0, (int)(self::W / 2) - (int)($dateW / 2), $dateY, $dateColor, ($fontFiles['body'] ?: $bodyFontFile), $dateLine);
-			} else {
-				$this->drawBuiltinCentered($img, $dateLine, self::W / 2, $dateY, $dateColor);
-			}
-		}
-
-		// ---- Seal element ----
-		$sealX = (int)(self::W / 2);
-		$sealY = $tpl['sigY'] - (int)(100 * self::SCALE);
-		// Outer circle (radius 50*3=150, 2px*3=6 thick)
-		$sealOuterColor = imagecolorallocatealpha($img, $pal['accent'][0], $pal['accent'][1], $pal['accent'][2], 51); // 60% opacity
-		imagesetthickness($img, (int)(2 * self::SCALE));
-		imageellipse($img, $sealX, $sealY, 300, 300, $sealOuterColor);
-		// Inner circle (radius 38*3=114, 1px*3=3 thick)
-		$sealInnerColor = imagecolorallocatealpha($img, $pal['accent'][0], $pal['accent'][1], $pal['accent'][2], 76); // 40% opacity
-		imagesetthickness($img, (int)(1 * self::SCALE));
-		imageellipse($img, $sealX, $sealY, 228, 228, $sealInnerColor);
-		// 12 radial tick marks (8px*3=24 long)
-		$sealTickColor = imagecolorallocatealpha($img, $pal['accent'][0], $pal['accent'][1], $pal['accent'][2], 64); // 50% opacity
-		imagesetthickness($img, (int)(1 * self::SCALE));
-		for ($ti = 0; $ti < 12; $ti++) {
-			$angle = ($ti / 12.0) * 2.0 * M_PI;
-			$tx1 = $sealX + (int)(cos($angle) * 150);
-			$ty1 = $sealY + (int)(sin($angle) * 150);
-			$tx2 = $sealX + (int)(cos($angle) * 174);
-			$ty2 = $sealY + (int)(sin($angle) * 174);
-			imageline($img, $tx1, $ty1, $tx2, $ty2, $sealTickColor);
-		}
-		// Center initials (skip "The", "Kingdom", "of")
-		if (strlen($kingdom) > 0 && !$useBuiltinFont) {
-			$sealLetterColor = imagecolorallocatealpha($img, $pal['accent'][0], $pal['accent'][1], $pal['accent'][2], 95); // 25% opacity
-			$skipWords = ['the', 'kingdom', 'of'];
-			$words = preg_split('/\s+/', $kingdom);
-			$initials = '';
-			foreach ($words as $w) {
-				if (!in_array(mb_strtolower($w), $skipWords)) {
-					$initials .= mb_strtoupper(mb_substr($w, 0, 1));
-				}
-			}
-			if (strlen($initials) > 0) {
-				$sealFontSize = (int)((mb_strlen($initials) > 2 ? 28 : 36) * self::SCALE);
-				$sealFont = $fontFiles['body'] ?: $bodyFontFile;
-				$box = imagettfbbox($sealFontSize, 0, $sealFont, $initials);
-				$slW = $box[2] - $box[0];
-				$slH = $box[1] - $box[5];
-				imagettftext($img, $sealFontSize, 0, $sealX - (int)($slW / 2), $sealY + (int)($slH / 2), $sealLetterColor, $sealFont, $initials);
-			}
-		}
-		imagesetthickness($img, 1);
-
-		// ---- Decorative divider above signatures ----
-		$this->drawDivider($img, (int)(self::W / 2), $tpl['sigY'] - (int)(60 * self::SCALE), (int)(350 * self::SCALE), $pal, 0.4);
-
-		// ---- Signature lines ----
-		$allSigs = [
-			['name' => $sig1_name, 'role' => $sig1_role],
-			['name' => $sig2_name, 'role' => $sig2_role],
-			['name' => $sig3_name, 'role' => $sig3_role],
+		// ---- Build state bundle for content rendering ----
+		$state = [
+			'img' => $img, 'w' => $w, 'h' => $h,
+			'template' => $template, 'tpl' => $tpl, 'pal' => $pal,
+			'elements' => $elements,
+			'fontFiles' => $fontFiles, 'useBuiltin' => $useBuiltinFont, 'bodyFontFile' => $bodyFontFile,
+			'recipient' => $recipient, 'awardName' => $awardName, 'rank' => $rank, 'date' => $date,
+			'givenBy' => $givenBy, 'park' => $park, 'kingdom' => $kingdom,
+			'bodyText' => strlen($bodyText) ? $bodyText : $this->generateBodyText($recipient, $awardName, $rank, $date, $kingdom, $template, $park),
+			'sigs' => [
+				['name' => $sig1_name, 'role' => $sig1_role],
+				['name' => $sig2_name, 'role' => $sig2_role],
+				['name' => $sig3_name, 'role' => $sig3_role],
+			],
+			'sig2_visible' => $sig2_visible,
+			'heraldry' => [
+				'kingdom' => $heraldry_kingdom,
+				'park'    => $heraldry_park,
+				'player'  => $heraldry_player,
+			],
+			'artworkImages' => $artworkImages,
+			'cBg' => $cBg, 'cText' => $cText, 'cAccent' => $cAccent, 'cBorder' => $cBorder,
 		];
-		// Build active sigs list: sig1 always, sig2 if visible, sig3 if template allows
-		$sigs = [$allSigs[0]];
-		if ($sig2_visible) $sigs[] = $allSigs[1];
-		if ($tpl['sigCount'] >= 3) $sigs[] = $allSigs[2];
-		$sigCount = count($sigs);
-		$sigSpacing = (int)(self::W / ($sigCount + 1));
-		$lineW     = (int)(180 * self::SCALE);
-		$sigLineY  = $tpl['sigY'] + (int)(30 * self::SCALE);
 
-		$sigTextColor  = imagecolorallocatealpha($img, $pal['text'][0], $pal['text'][1], $pal['text'][2], 0);   // 100% opacity
-		$sigLineColor  = imagecolorallocatealpha($img, $pal['text'][0], $pal['text'][1], $pal['text'][2], 51);  // ~60% opacity
-		$sigRoleColor  = imagecolorallocatealpha($img, $pal['text'][0], $pal['text'][1], $pal['text'][2], 45);  // ~65% opacity
-
-		imagesetthickness($img, (int)(1 * self::SCALE));
-
-		for ($si = 0; $si < $sigCount; $si++) {
-			$sigX = $sigSpacing * ($si + 1);
-
-			// Signature line
-			imageline($img, $sigX - (int)($lineW / 2), $sigLineY, $sigX + (int)($lineW / 2), $sigLineY, $sigLineColor);
-
-			// Serif ticks at endpoints (3px * 3 = 9px vertical)
-			$tickH = (int)(3 * self::SCALE);
-			imageline($img, $sigX - (int)($lineW / 2), $sigLineY - $tickH, $sigX - (int)($lineW / 2), $sigLineY + $tickH, $sigLineColor);
-			imageline($img, $sigX + (int)($lineW / 2), $sigLineY - $tickH, $sigX + (int)($lineW / 2), $sigLineY + $tickH, $sigLineColor);
-
-			// Name above line
-			$sigName = $sigs[$si]['name'] ?? '';
-			if (strlen($sigName)) {
-				$nameSize = (int)($tpl['body']['size'] * 0.85);
-				if (!$useBuiltinFont) {
-					$box = imagettfbbox($nameSize, 0, ($fontFiles['signatures'] ?: $bodyFontFile), $sigName);
-					$nameW = $box[2] - $box[0];
-					$nameY = $tpl['sigY'] + (int)(8 * self::SCALE);
-					imagettftext($img, $nameSize, 0, $sigX - (int)($nameW / 2), $nameY, $sigTextColor, ($fontFiles['signatures'] ?: $bodyFontFile), $sigName);
-				} else {
-					$this->drawBuiltinCentered($img, $sigName, $sigX, $tpl['sigY'] + (int)(8 * self::SCALE), $sigTextColor);
-				}
-			}
-
-			// Role below line
-			$sigRole = $sigs[$si]['role'] ?? '';
-			if (strlen($sigRole)) {
-				$roleSize = (int)($tpl['body']['size'] * 0.7);
-				$roleY = $tpl['sigY'] + (int)(48 * self::SCALE);
-				if (!$useBuiltinFont) {
-					$box = imagettfbbox($roleSize, 0, ($fontFiles['signatures'] ?: $bodyFontFile), $sigRole);
-					$roleW = $box[2] - $box[0];
-					imagettftext($img, $roleSize, 0, $sigX - (int)($roleW / 2), $roleY, $sigRoleColor, ($fontFiles['signatures'] ?: $bodyFontFile), $sigRole);
-				} else {
-					$this->drawBuiltinCentered($img, $sigRole, $sigX, $roleY, $sigRoleColor);
-				}
-			}
+		// ---- Dispatch to template-specific content renderer ----
+		$method = 'render_' . $template;
+		if (method_exists($this, $method)) {
+			$this->{$method}($state);
+		} else {
+			$this->renderContentDefault($state);
 		}
 
 		imagesetthickness($img, 1);
@@ -538,41 +554,39 @@ class Controller_ScrollAjax extends Controller {
 	/**
 	 * Draw decorative border matching the selected borderStyle.
 	 */
-	private function drawBorder($img, $cBorder, $cAccent, $pal, $template = 'B', $borderStyle = 'classic') {
-		$w = self::W;
-		$h = self::H;
+	private function drawBorder($img, $cBorder, $cAccent, $pal, $template, $borderStyle, $w, $h) {
 		$s = self::SCALE;
 
 		if ($borderStyle === 'none') return;
 
 		switch ($borderStyle) {
 			case 'ornate':
-				$this->drawBorderOrnate($img, $cBorder, $cAccent, $pal);
+				$this->drawBorderOrnate($img, $cBorder, $cAccent, $pal, $w, $h);
 				break;
 			case 'celtic':
-				$this->drawBorderCeltic($img, $cBorder, $cAccent, $pal);
+				$this->drawBorderCeltic($img, $cBorder, $cAccent, $pal, $w, $h);
 				break;
 			case 'simple':
-				$this->drawBorderSimple($img, $cBorder);
+				$this->drawBorderSimple($img, $cBorder, $w, $h);
 				break;
 			case 'royal':
-				$this->drawBorderRoyal($img, $cBorder, $cAccent, $pal);
+				$this->drawBorderRoyal($img, $cBorder, $cAccent, $pal, $w, $h);
 				break;
 			case 'rustic':
-				$this->drawBorderRustic($img, $cBorder, $pal);
+				$this->drawBorderRustic($img, $cBorder, $pal, $w, $h);
 				break;
 			case 'filigree':
-				$this->drawBorderFiligree($img, $cBorder, $cAccent, $pal);
+				$this->drawBorderFiligree($img, $cBorder, $cAccent, $pal, $w, $h);
 				break;
 			case 'classic':
 			default:
-				$this->drawBorderClassic($img, $cBorder, $cAccent, $pal);
+				$this->drawBorderClassic($img, $cBorder, $cAccent, $pal, $w, $h);
 				break;
 		}
 	}
 
-	private function drawBorderClassic($img, $cBorder, $cAccent, $pal) {
-		$w = self::W; $h = self::H; $s = self::SCALE;
+	private function drawBorderClassic($img, $cBorder, $cAccent, $pal, $w, $h) {
+		$s = self::SCALE;
 		imagesetthickness($img, (int)(4*$s));
 		$o = (int)(28*$s);
 		imagerectangle($img, $o, $o, $w-$o-1, $h-$o-1, $cBorder);
@@ -626,8 +640,8 @@ class Controller_ScrollAjax extends Controller {
 		imagesetthickness($img, 1);
 	}
 
-	private function drawBorderOrnate($img, $cBorder, $cAccent, $pal) {
-		$w = self::W; $h = self::H; $s = self::SCALE;
+	private function drawBorderOrnate($img, $cBorder, $cAccent, $pal, $w, $h) {
+		$s = self::SCALE;
 		imagesetthickness($img, (int)(5*$s));
 		$o=(int)(22*$s);
 		imagerectangle($img, $o, $o, $w-$o-1, $h-$o-1, $cBorder);
@@ -680,8 +694,8 @@ class Controller_ScrollAjax extends Controller {
 		imagesetthickness($img, 1);
 	}
 
-	private function drawBorderCeltic($img, $cBorder, $cAccent, $pal) {
-		$w = self::W; $h = self::H; $s = self::SCALE;
+	private function drawBorderCeltic($img, $cBorder, $cAccent, $pal, $w, $h) {
+		$s = self::SCALE;
 		$m = (int)(30*$s);
 		imagesetthickness($img, (int)(3*$s));
 		imagerectangle($img, $m, $m, $w-$m-1, $h-$m-1, $cBorder);
@@ -700,16 +714,16 @@ class Controller_ScrollAjax extends Controller {
 		imagesetthickness($img, 1);
 	}
 
-	private function drawBorderSimple($img, $cBorder) {
-		$w = self::W; $h = self::H; $s = self::SCALE;
+	private function drawBorderSimple($img, $cBorder, $w, $h) {
+		$s = self::SCALE;
 		imagesetthickness($img, (int)(2*$s));
 		$o = (int)(32*$s);
 		imagerectangle($img, $o, $o, $w-$o-1, $h-$o-1, $cBorder);
 		imagesetthickness($img, 1);
 	}
 
-	private function drawBorderRoyal($img, $cBorder, $cAccent, $pal) {
-		$w = self::W; $h = self::H; $s = self::SCALE;
+	private function drawBorderRoyal($img, $cBorder, $cAccent, $pal, $w, $h) {
+		$s = self::SCALE;
 		imagesetthickness($img, (int)(7*$s));
 		$o=(int)(20*$s);
 		imagerectangle($img, $o, $o, $w-$o-1, $h-$o-1, $cAccent);
@@ -746,8 +760,8 @@ class Controller_ScrollAjax extends Controller {
 		imagesetthickness($img, 1);
 	}
 
-	private function drawBorderRustic($img, $cBorder, $pal) {
-		$w = self::W; $h = self::H; $s = self::SCALE;
+	private function drawBorderRustic($img, $cBorder, $pal, $w, $h) {
+		$s = self::SCALE;
 		imagesetthickness($img, (int)(3*$s));
 		$o=(int)(26*$s);
 		imagerectangle($img, $o, $o, $w-$o-1, $h-$o-1, $cBorder);
@@ -768,8 +782,8 @@ class Controller_ScrollAjax extends Controller {
 		imagesetthickness($img, 1);
 	}
 
-	private function drawBorderFiligree($img, $cBorder, $cAccent, $pal) {
-		$w = self::W; $h = self::H; $s = self::SCALE;
+	private function drawBorderFiligree($img, $cBorder, $cAccent, $pal, $w, $h) {
+		$s = self::SCALE;
 		imagesetthickness($img, (int)(1.5*$s));
 		$o = (int)(28*$s);
 		imagerectangle($img, $o, $o, $w-$o-1, $h-$o-1, $cBorder);
@@ -989,8 +1003,10 @@ class Controller_ScrollAjax extends Controller {
 			}
 		}
 
-		if ($template === 'A') {
-			// Knight / Peerage
+		// Normalize template alias
+		if (isset(self::$TEMPLATE_ALIASES[$template])) $template = self::$TEMPLATE_ALIASES[$template];
+
+		if ($template === 'royal_decree') {
 			$text = 'To all and singular who shall see these presents, greetings. Be it known that by the right and authority vested in the Crown of ' . $kingdomRef . ', and in recognition of valor, honor, and service, We do hereby elevate ' . $persona . ' to the ' . $award . '.';
 			if ($day && $monthName) {
 				$text .= ' Given under Our hand this ' . $day . $suffix . ' day of ' . $monthName . ', in the year ' . $year;
@@ -998,14 +1014,28 @@ class Controller_ScrollAjax extends Controller {
 				if (strlen($kingdom)) $text .= ', in the Kingdom of ' . $kingdom;
 				$text .= '.';
 			}
-		} elseif ($template === 'C') {
-			// Title / Office
+		} elseif ($template === 'chancery_letter') {
 			$text = 'Be it proclaimed that ' . $persona . ' is hereby recognized and granted the title of ' . $award . ', with all rights, privileges, and responsibilities thereto pertaining, by the authority of the Crown of ' . $kingdomRef . '.';
 			if ($day && $monthName) {
 				$text .= ' Given this ' . $day . $suffix . ' day of ' . $monthName . ', ' . $year . '.';
 			}
+		} elseif ($template === 'illuminated_ms') {
+			$text = 'Herein is set down, by ancient custom and with due reverence, that ' . $persona . ' has attained such mastery as to warrant the ' . $award . '. May this illumination stand as enduring testament to the skill and dedication that have brought forth this honor.';
+			if ($day && $monthName) $text .= ' Inscribed this ' . $day . $suffix . ' day of ' . $monthName . ', ' . $year . '.';
+		} elseif ($template === 'battle_standard') {
+			$text = 'On the field of glory, ' . $persona . ' hath proven valor without question. By right of arms, and witnessed by comrades and foes alike, the ' . $award . ' is hereby conferred, that all who see this standard may know the measure of this warrior.';
+			if ($day && $monthName) $text .= ' Declared upon the ' . $day . $suffix . ' day of ' . $monthName . ', ' . $year . '.';
+		} elseif ($template === 'guild_charter') {
+			$text = 'By the charter of this guild, and upon vote of its membership, ' . $persona . ' is hereby granted the ' . $award . ', with all rights and duties pertaining thereto. Let this record stand within the annals of our guild, a mark of service freely given and gratefully received.';
+			if ($day && $monthName) $text .= ' Sealed the ' . $day . $suffix . ' day of ' . $monthName . ', ' . $year . '.';
+		} elseif ($template === 'arcane_grimoire') {
+			$text = 'Between the veils of mundane and mystery, ' . $persona . ' has walked with purpose, and has earned by study, by craft, and by right the ' . $award . '. May the light of this honor guide future steps, and may the laurel bind this moment to the long memory of the realm.';
+			if ($day && $monthName) $text .= ' Conjured upon the ' . $day . $suffix . ' day of ' . $monthName . ', in the year of our reckoning ' . $year . '.';
+		} elseif ($template === 'bardic_ballad') {
+			$text = 'Let every hall and every hearth hear tell of ' . $persona . ', whose art has warmed our nights and whose voice has given shape to our joys and sorrows alike. In recognition of such grace, the ' . $award . ' is bestowed, that music and remembrance may ever follow.';
+			if ($day && $monthName) $text .= ' Sung into record this ' . $day . $suffix . ' day of ' . $monthName . ', ' . $year . '.';
 		} else {
-			// Template B: Order / Award
+			// Default: Order / Award (heraldic_shield)
 			$text = 'Let it be known to all that ' . $persona . ', having demonstrated worth and dedication, is hereby granted the ' . $award;
 			if ($rank > 0) {
 				$ordSuffix = 'th';
@@ -1022,4 +1052,1015 @@ class Controller_ScrollAjax extends Controller {
 
 		return $text;
 	}
+	// ================================================================
+	//  v2: Content helpers (mirror JS)
+	// ================================================================
+
+	private function scl($n) { return (int)round($n * self::SCALE); }
+
+	private function computeSealInitials($kingdom) {
+		$skip = ['the', 'kingdom', 'of'];
+		$words = preg_split('/\s+/', $kingdom ?? '');
+		$out = '';
+		foreach ($words as $w) {
+			if ($w !== '' && !in_array(mb_strtolower($w), $skip)) {
+				$out .= mb_strtoupper(mb_substr($w, 0, 1));
+			}
+		}
+		return $out;
+	}
+
+	private function rgba($img, $rgb, $alpha = 0) {
+		return imagecolorallocatealpha($img, $rgb[0], $rgb[1], $rgb[2], $alpha);
+	}
+
+	// Parse "#rrggbb" hex string → [r,g,b]
+	private function hex2rgb($hex) {
+		$h = ltrim($hex ?? '', '#');
+		if (strlen($h) !== 6) return [0, 0, 0];
+		return [hexdec(substr($h, 0, 2)), hexdec(substr($h, 2, 2)), hexdec(substr($h, 4, 2))];
+	}
+
+	private function lighten($rgb, $amt) {
+		return [
+			(int)min(255, $rgb[0] + (255 - $rgb[0]) * $amt),
+			(int)min(255, $rgb[1] + (255 - $rgb[1]) * $amt),
+			(int)min(255, $rgb[2] + (255 - $rgb[2]) * $amt),
+		];
+	}
+
+	private function darken($rgb, $amt) {
+		return [
+			(int)max(0, $rgb[0] * (1 - $amt)),
+			(int)max(0, $rgb[1] * (1 - $amt)),
+			(int)max(0, $rgb[2] * (1 - $amt)),
+		];
+	}
+
+	private function mixRgb($a, $b, $amt) {
+		return [
+			(int)round($a[0] * (1 - $amt) + $b[0] * $amt),
+			(int)round($a[1] * (1 - $amt) + $b[1] * $amt),
+			(int)round($a[2] * (1 - $amt) + $b[2] * $amt),
+		];
+	}
+
+	// --- Heraldry from spec block ---
+	private function drawHeraldryFromSpec($state, $spec) {
+		if (!$spec) return;
+		if (!empty($spec['kingdom'])) $this->drawHeraldryImage($state['img'], $state['heraldry']['kingdom'], $spec['kingdom']);
+		if (!empty($spec['park']))    $this->drawHeraldryImage($state['img'], $state['heraldry']['park'],    $spec['park']);
+		if (!empty($spec['player']))  $this->drawHeraldryImage($state['img'], $state['heraldry']['player'],  $spec['player']);
+	}
+
+	// --- Title centered ---
+	private function drawTitleCenter($state, $spec) {
+		$text = strlen($state['awardName']) ? $state['awardName'] : 'Award Title';
+		$this->drawCenteredText($state['img'], $text, $spec, $state['cAccent'], $state['fontFiles']['title'], $state['useBuiltin']);
+	}
+
+	// --- Title left-aligned ---
+	private function drawTitleLeft($state, $spec) {
+		$text = strlen($state['awardName']) ? $state['awardName'] : 'Award Title';
+		$fontFile = $state['fontFiles']['title'];
+		if ($state['useBuiltin'] || !$fontFile) {
+			imagestring($state['img'], 5, $spec['x'], $spec['y'], $text, $state['cAccent']);
+			return;
+		}
+		$size = $this->fitFontSize($fontFile, $text, $spec['size'], $spec['maxWidth']);
+		imagettftext($state['img'], $size, 0, $spec['x'], $spec['y'] + $size, $state['cAccent'], $fontFile, $text);
+	}
+
+	// --- Recipient centered ---
+	private function drawRecipientCenter($state, $spec) {
+		$text = strlen($state['recipient']) ? $state['recipient'] : 'Recipient Name';
+		$this->drawCenteredText($state['img'], $text, $spec, $state['cText'], $state['fontFiles']['recipient'], $state['useBuiltin']);
+	}
+
+	// --- Recipient left-aligned ---
+	private function drawRecipientLeft($state, $spec) {
+		$text = strlen($state['recipient']) ? $state['recipient'] : 'Recipient Name';
+		$fontFile = $state['fontFiles']['recipient'];
+		if ($state['useBuiltin'] || !$fontFile) {
+			imagestring($state['img'], 5, $spec['x'], $spec['y'], $text, $state['cText']);
+			return;
+		}
+		$size = $this->fitFontSize($fontFile, $text, $spec['size'], $spec['maxWidth']);
+		imagettftext($state['img'], $size, 0, $spec['x'], $spec['y'] + $size, $state['cText'], $fontFile, $text);
+	}
+
+	// --- Body centered ---
+	private function drawBodyCenter($state, $spec) {
+		$this->drawWrappedText($state['img'], $state['bodyText'], $spec, $state['cText'], $state['fontFiles']['body'], $state['useBuiltin']);
+	}
+
+	// --- Body left-aligned (word wrap) ---
+	private function drawBodyLeft($state, $spec, $overrideText = null) {
+		$text = $overrideText ?? $state['bodyText'];
+		$fontFile = $state['fontFiles']['body'];
+		if ($state['useBuiltin'] || !$fontFile) {
+			// Fallback: use built-in wrap
+			$lines = $this->wordWrapString($text, (int)($spec['maxWidth'] / 9));
+			$y = $spec['y'];
+			foreach ($lines as $line) {
+				imagestring($state['img'], 5, $spec['x'], $y, $line, $state['cText']);
+				$y += 20;
+			}
+			return;
+		}
+		$words = explode(' ', $text);
+		$line = '';
+		$lines = [];
+		foreach ($words as $word) {
+			$test = $line . (strlen($line) ? ' ' : '') . $word;
+			$box = imagettfbbox($spec['size'], 0, $fontFile, $test);
+			$w = $box[2] - $box[0];
+			if ($w > $spec['maxWidth'] && strlen($line)) {
+				$lines[] = $line;
+				$line = $word;
+			} else {
+				$line = $test;
+			}
+		}
+		if (strlen($line)) $lines[] = $line;
+		$y = $spec['y'] + $spec['size'];
+		foreach ($lines as $ln) {
+			imagettftext($state['img'], $spec['size'], 0, $spec['x'], $y, $state['cText'], $fontFile, $ln);
+			$y += $spec['lineHeight'];
+		}
+	}
+
+	// --- Body left-aligned with first-line indent (for drop cap) ---
+	private function drawBodyLeftWithIndent($state, $spec, $indent, $text) {
+		$fontFile = $state['fontFiles']['body'];
+		if ($state['useBuiltin'] || !$fontFile) {
+			$this->drawBodyLeft($state, $spec, $text);
+			return;
+		}
+		$words = explode(' ', $text);
+		$line = '';
+		$lines = [];
+		$isFirst = true;
+		foreach ($words as $word) {
+			$test = $line . (strlen($line) ? ' ' : '') . $word;
+			$box = imagettfbbox($spec['size'], 0, $fontFile, $test);
+			$w = $box[2] - $box[0];
+			$cap = $isFirst ? ($spec['maxWidth'] - $indent) : $spec['maxWidth'];
+			if ($w > $cap && strlen($line)) {
+				$lines[] = $line;
+				$line = $word;
+				$isFirst = false;
+			} else {
+				$line = $test;
+			}
+		}
+		if (strlen($line)) $lines[] = $line;
+		$y = $spec['y'] + $spec['size'];
+		foreach ($lines as $idx => $ln) {
+			$x = $spec['x'] + ($idx === 0 ? $indent : 0);
+			imagettftext($state['img'], $spec['size'], 0, $x, $y, $state['cText'], $fontFile, $ln);
+			$y += $spec['lineHeight'];
+		}
+	}
+
+	// --- Date / location line ---
+	private function drawDateLine($state, $y) {
+		$parts = [];
+		$line = '';
+		if (strlen($state['park']) || strlen($state['kingdom'])) {
+			$line = 'Given at';
+			if (strlen($state['park'])) $line .= ' ' . $state['park'];
+			if (strlen($state['kingdom'])) $line .= (strlen($state['park']) ? ', ' : ' ') . $state['kingdom'];
+		}
+		if (!strlen($line)) return;
+		$size = $this->scl(16);
+		$color = imagecolorallocatealpha($state['img'], $state['pal']['text'][0], $state['pal']['text'][1], $state['pal']['text'][2], 51);
+		$fontFile = $state['fontFiles']['body'];
+		if ($state['useBuiltin'] || !$fontFile) {
+			$this->drawBuiltinCentered($state['img'], $line, (int)($state['w'] / 2), $y, $color);
+			return;
+		}
+		$box = imagettfbbox($size, 0, $fontFile, $line);
+		$tw = $box[2] - $box[0];
+		imagettftext($state['img'], $size, 0, (int)($state['w'] / 2) - (int)($tw / 2), $y + $size, $color, $fontFile, $line);
+	}
+
+	// --- Seal element (centered circle with initials) ---
+	private function drawSealElement($state, $cx, $cy, $r) {
+		$img = $state['img'];
+		$pal = $state['pal'];
+		$outer = imagecolorallocatealpha($img, $pal['accent'][0], $pal['accent'][1], $pal['accent'][2], 51);
+		$inner = imagecolorallocatealpha($img, $pal['accent'][0], $pal['accent'][1], $pal['accent'][2], 76);
+		$tick  = imagecolorallocatealpha($img, $pal['accent'][0], $pal['accent'][1], $pal['accent'][2], 64);
+		imagesetthickness($img, $this->scl(2));
+		imageellipse($img, $cx, $cy, $r * 2, $r * 2, $outer);
+		imagesetthickness($img, $this->scl(1));
+		imageellipse($img, $cx, $cy, (int)($r * 1.52), (int)($r * 1.52), $inner);
+		for ($i = 0; $i < 12; $i++) {
+			$ang = ($i / 12.0) * 2.0 * M_PI;
+			imageline($img,
+				(int)($cx + cos($ang) * $r), (int)($cy + sin($ang) * $r),
+				(int)($cx + cos($ang) * $r * 1.16), (int)($cy + sin($ang) * $r * 1.16),
+				$tick
+			);
+		}
+		$initials = $this->computeSealInitials($state['kingdom']);
+		if ($initials && !$state['useBuiltin']) {
+			$font = $state['fontFiles']['body'] ?: $state['bodyFontFile'];
+			$letter = imagecolorallocatealpha($img, $pal['accent'][0], $pal['accent'][1], $pal['accent'][2], 95);
+			$sz = mb_strlen($initials) > 2 ? (int)($r * 0.56) : (int)($r * 0.72);
+			$box = imagettfbbox($sz, 0, $font, $initials);
+			$tw = $box[2] - $box[0];
+			$th = $box[1] - $box[5];
+			imagettftext($img, $sz, 0, $cx - (int)($tw / 2), $cy + (int)($th / 2), $letter, $font, $initials);
+		}
+		imagesetthickness($img, 1);
+	}
+
+	// --- Signature bar (horizontal) ---
+	private function drawSignatureBar($state, $y, $sigCountMax) {
+		$img = $state['img'];
+		$pal = $state['pal'];
+		$active = [0];
+		if ($state['sig2_visible']) $active[] = 1;
+		if ($sigCountMax >= 3) $active[] = 2;
+		$n = count($active);
+		$spacing = (int)($state['w'] / ($n + 1));
+		$lineW = $this->scl(180);
+		$lineY = $y + $this->scl(30);
+		$lineC = imagecolorallocatealpha($img, $pal['text'][0], $pal['text'][1], $pal['text'][2], 51);
+		$textC = imagecolorallocatealpha($img, $pal['text'][0], $pal['text'][1], $pal['text'][2], 0);
+		$roleC = imagecolorallocatealpha($img, $pal['text'][0], $pal['text'][1], $pal['text'][2], 45);
+		imagesetthickness($img, $this->scl(1));
+		$fontSig = $state['fontFiles']['signatures'] ?: $state['bodyFontFile'];
+		foreach ($active as $ai => $si) {
+			$sigX = $spacing * ($ai + 1);
+			imageline($img, $sigX - (int)($lineW / 2), $lineY, $sigX + (int)($lineW / 2), $lineY, $lineC);
+			$tickH = $this->scl(3);
+			imageline($img, $sigX - (int)($lineW / 2), $lineY - $tickH, $sigX - (int)($lineW / 2), $lineY + $tickH, $lineC);
+			imageline($img, $sigX + (int)($lineW / 2), $lineY - $tickH, $sigX + (int)($lineW / 2), $lineY + $tickH, $lineC);
+			$sig = $state['sigs'][$si] ?? ['name' => '', 'role' => ''];
+			if ($sig['name'] && !$state['useBuiltin']) {
+				$sz = $this->scl(18);
+				$box = imagettfbbox($sz, 0, $fontSig, $sig['name']);
+				$tw = $box[2] - $box[0];
+				imagettftext($img, $sz, 0, $sigX - (int)($tw / 2), $y + $this->scl(8) + $sz, $textC, $fontSig, $sig['name']);
+			}
+			if ($sig['role'] && !$state['useBuiltin']) {
+				$sz = $this->scl(14);
+				$box = imagettfbbox($sz, 0, $fontSig, $sig['role']);
+				$tw = $box[2] - $box[0];
+				imagettftext($img, $sz, 0, $sigX - (int)($tw / 2), $y + $this->scl(48) + $sz, $roleC, $fontSig, $sig['role']);
+			}
+		}
+		imagesetthickness($img, 1);
+	}
+
+	// --- Signature stack (vertical) ---
+	private function drawSignatureStack($state, $x, $y, $sigCountMax, $align) {
+		$img = $state['img'];
+		$pal = $state['pal'];
+		$active = [0];
+		if ($state['sig2_visible']) $active[] = 1;
+		if ($sigCountMax >= 3) $active[] = 2;
+		$rowH = $this->scl(70);
+		$lineW = $this->scl(180);
+		$lineC = imagecolorallocatealpha($img, $pal['text'][0], $pal['text'][1], $pal['text'][2], 51);
+		$textC = imagecolorallocatealpha($img, $pal['text'][0], $pal['text'][1], $pal['text'][2], 0);
+		$roleC = imagecolorallocatealpha($img, $pal['text'][0], $pal['text'][1], $pal['text'][2], 45);
+		imagesetthickness($img, $this->scl(1));
+		$fontSig = $state['fontFiles']['signatures'] ?: $state['bodyFontFile'];
+		foreach ($active as $i => $si) {
+			$yy = $y + $i * $rowH;
+			if ($align === 'right') { $x1 = $x - $lineW; $x2 = $x; $tx = $x; }
+			elseif ($align === 'left') { $x1 = $x; $x2 = $x + $lineW; $tx = $x; }
+			else { $x1 = $x - (int)($lineW / 2); $x2 = $x + (int)($lineW / 2); $tx = $x; }
+			imageline($img, $x1, $yy + $this->scl(30), $x2, $yy + $this->scl(30), $lineC);
+			$tickH = $this->scl(3);
+			imageline($img, $x1, $yy + $this->scl(30) - $tickH, $x1, $yy + $this->scl(30) + $tickH, $lineC);
+			imageline($img, $x2, $yy + $this->scl(30) - $tickH, $x2, $yy + $this->scl(30) + $tickH, $lineC);
+			$sig = $state['sigs'][$si] ?? ['name' => '', 'role' => ''];
+			if ($sig['name'] && !$state['useBuiltin']) {
+				$sz = $this->scl(18);
+				$box = imagettfbbox($sz, 0, $fontSig, $sig['name']);
+				$tw = $box[2] - $box[0];
+				$nx = $align === 'right' ? $tx - $tw : ($align === 'left' ? $tx : $tx - (int)($tw / 2));
+				imagettftext($img, $sz, 0, $nx, $yy + $this->scl(8) + $sz, $textC, $fontSig, $sig['name']);
+			}
+			if ($sig['role'] && !$state['useBuiltin']) {
+				$sz = $this->scl(14);
+				$box = imagettfbbox($sz, 0, $fontSig, $sig['role']);
+				$tw = $box[2] - $box[0];
+				$rx = $align === 'right' ? $tx - $tw : ($align === 'left' ? $tx : $tx - (int)($tw / 2));
+				imagettftext($img, $sz, 0, $rx, $yy + $this->scl(40) + $sz, $roleC, $fontSig, $sig['role']);
+			}
+		}
+		imagesetthickness($img, 1);
+	}
+
+	// --- Center image artwork slot helper ---
+	private function drawCenterImageSlot($state) {
+		if (isset($state['artworkImages']['center_image'])) {
+			$dims = ScrollArtwork::SLOT_DIMENSIONS['center_image'];
+			$this->compositeArtwork($state['img'], $state['artworkImages']['center_image'], $dims['x'], $dims['y'], $dims['w'], $dims['h'], 15);
+		}
+	}
+
+	// ================================================================
+	//  v2: Decorative primitives
+	// ================================================================
+
+	// --- Ribbon banner ---
+	private function drawRibbonBanner($state, $cx, $cy, $width, $height, $text, $fontFile, $textSize) {
+		$img = $state['img'];
+		$pal = $state['pal'];
+		$x = $cx - (int)($width / 2);
+		$y = $cy - (int)($height / 2);
+		$notch = (int)($height * 0.4);
+		$accent = $pal['accent'];
+		$border = $pal['border'];
+		$light = $this->lighten($accent, 0.25);
+		$dark  = $this->darken($accent, 0.35);
+		$fill = $this->rgba($img, $light);
+		$darkFill = $this->rgba($img, $dark);
+		$stroke = $this->rgba($img, $border);
+		// Main body polygon
+		$pts = [
+			$x + $notch, $y,
+			$x + $width - $notch, $y,
+			$x + $width, $y + (int)($height / 2),
+			$x + $width - $notch, $y + $height,
+			$x + $notch, $y + $height,
+			$x, $y + (int)($height / 2),
+		];
+		imagefilledpolygon($img, $pts, $fill);
+		imagesetthickness($img, $this->scl(2));
+		imagepolygon($img, $pts, $stroke);
+		// Left fold tail
+		$ptsL = [
+			$x, $y + (int)($height / 2),
+			$x - (int)($notch * 0.6), $y + (int)($height / 2) - (int)($notch * 0.35),
+			$x - (int)($notch * 0.6), $y + (int)($height / 2) + (int)($notch * 0.35),
+		];
+		imagefilledpolygon($img, $ptsL, $darkFill);
+		imagepolygon($img, $ptsL, $stroke);
+		// Right fold tail
+		$ptsR = [
+			$x + $width, $y + (int)($height / 2),
+			$x + $width + (int)($notch * 0.6), $y + (int)($height / 2) - (int)($notch * 0.35),
+			$x + $width + (int)($notch * 0.6), $y + (int)($height / 2) + (int)($notch * 0.35),
+		];
+		imagefilledpolygon($img, $ptsR, $darkFill);
+		imagepolygon($img, $ptsR, $stroke);
+		imagesetthickness($img, 1);
+		// Text (cream-colored) centered inside
+		if ($text && !$state['useBuiltin'] && $fontFile) {
+			$textColor = $this->rgba($img, $pal['bg']);
+			$sz = $textSize;
+			$box = imagettfbbox($sz, 0, $fontFile, $text);
+			$tw = $box[2] - $box[0];
+			$maxTextW = $width - $notch * 2 - $this->scl(20);
+			while ($tw > $maxTextW && $sz > $this->scl(16)) {
+				$sz -= $this->scl(2);
+				$box = imagettfbbox($sz, 0, $fontFile, $text);
+				$tw = $box[2] - $box[0];
+			}
+			$th = $box[1] - $box[5];
+			imagettftext($img, $sz, 0, $cx - (int)($tw / 2), $cy + (int)($th / 2), $textColor, $fontFile, $text);
+		}
+	}
+
+	// --- Drop cap ---
+	private function drawDropCap($state, $letter, $x, $y, $size, $fontFile) {
+		$img = $state['img'];
+		$pal = $state['pal'];
+		if (!$letter) return;
+		$bg = $this->rgba($img, $this->lighten($pal['accent'], 0.7));
+		$accent = $this->rgba($img, $pal['accent']);
+		imagefilledrectangle($img, $x, $y, $x + $size, $y + $size, $bg);
+		imagesetthickness($img, $this->scl(2));
+		imagerectangle($img, $x, $y, $x + $size, $y + $size, $accent);
+		// Inner gold rule
+		$inner = imagecolorallocatealpha($img, $pal['accent'][0], $pal['accent'][1], $pal['accent'][2], 64);
+		imagesetthickness($img, $this->scl(1));
+		imagerectangle($img, $x + $this->scl(4), $y + $this->scl(4), $x + $size - $this->scl(4), $y + $size - $this->scl(4), $inner);
+		// Corner dots
+		$dot = $this->scl(3);
+		imagefilledellipse($img, $x + $this->scl(6), $y + $this->scl(6), $dot * 2, $dot * 2, $accent);
+		imagefilledellipse($img, $x + $size - $this->scl(6), $y + $this->scl(6), $dot * 2, $dot * 2, $accent);
+		imagefilledellipse($img, $x + $this->scl(6), $y + $size - $this->scl(6), $dot * 2, $dot * 2, $accent);
+		imagefilledellipse($img, $x + $size - $this->scl(6), $y + $size - $this->scl(6), $dot * 2, $dot * 2, $accent);
+		// Letter
+		if (!$state['useBuiltin'] && $fontFile) {
+			$fs = (int)($size * 0.78);
+			$box = imagettfbbox($fs, 0, $fontFile, $letter);
+			$tw = $box[2] - $box[0];
+			$th = $box[1] - $box[5];
+			imagettftext($img, $fs, 0, $x + (int)(($size - $tw) / 2), $y + (int)(($size + $th) / 2), $accent, $fontFile, $letter);
+		}
+		imagesetthickness($img, 1);
+	}
+
+	// --- Quartered shield (simplified: big shield shape containing player heraldry) ---
+	private function drawQuarteredShield($state, $cx, $cy, $size) {
+		$img = $state['img'];
+		$pal = $state['pal'];
+		$halfW = (int)($size * 0.55);
+		$topY = $cy - (int)($size * 0.55);
+		$ptY = $cy + (int)($size * 0.75);
+		// Shield polygon (approximated — true path with quadratic curves not available in GD)
+		$pts = [
+			$cx - $halfW, $topY,
+			$cx + $halfW, $topY,
+			$cx + $halfW, $cy + (int)($size * 0.1),
+			$cx + (int)($halfW * 0.6), $cy + (int)($size * 0.3),
+			$cx, $ptY,
+			$cx - (int)($halfW * 0.6), $cy + (int)($size * 0.3),
+			$cx - $halfW, $cy + (int)($size * 0.1),
+		];
+		$bgRgb = $this->lighten($pal['bg'], 0.15);
+		$bgC = $this->rgba($img, $bgRgb);
+		imagefilledpolygon($img, $pts, $bgC);
+		// Clip + draw player heraldry (GD has no clip, so we draw heraldry in shield bounds)
+		if (strlen($state['heraldry']['player'])) {
+			$imgW = $halfW * 2;
+			$imgH = $ptY - $topY;
+			// Heraldry goes within the shield bounds (rough approximation; no true clip)
+			$pos = ['x' => $cx - $halfW, 'y' => $topY, 'w' => $imgW, 'h' => $imgH];
+			$this->drawHeraldryImage($img, $state['heraldry']['player'], $pos);
+		}
+		// Shield border (gold stroke)
+		imagesetthickness($img, $this->scl(3));
+		$strokeC = $this->rgba($img, $pal['accent']);
+		imagepolygon($img, $pts, $strokeC);
+		// Mini kingdom shield top-left
+		if (strlen($state['heraldry']['kingdom'])) {
+			$mini = (int)($size * 0.3);
+			$mx = $cx - $halfW + (int)($mini * 0.1);
+			$my = $topY - (int)($mini * 0.2);
+			$this->drawMiniShield($state, $mx, $my, $mini, $state['heraldry']['kingdom']);
+		}
+		// Mini park shield top-right
+		if (strlen($state['heraldry']['park'])) {
+			$mini = (int)($size * 0.3);
+			$mx = $cx + $halfW - (int)($mini * 1.1);
+			$my = $topY - (int)($mini * 0.2);
+			$this->drawMiniShield($state, $mx, $my, $mini, $state['heraldry']['park']);
+		}
+		imagesetthickness($img, 1);
+	}
+
+	private function drawMiniShield($state, $x, $y, $size, $url) {
+		$img = $state['img'];
+		$pal = $state['pal'];
+		$halfW = (int)($size / 2);
+		$pts = [
+			$x, $y,
+			$x + $size, $y,
+			$x + $size, $y + (int)($size * 0.55),
+			$x + $halfW + (int)($halfW * 0.5), $y + (int)($size * 0.85),
+			$x + $halfW, $y + $size,
+			$x + $halfW - (int)($halfW * 0.5), $y + (int)($size * 0.85),
+			$x, $y + (int)($size * 0.55),
+		];
+		$bgC = $this->rgba($img, $this->lighten($pal['bg'], 0.1));
+		imagefilledpolygon($img, $pts, $bgC);
+		$this->drawHeraldryImage($img, $url, ['x' => $x, 'y' => $y, 'w' => $size, 'h' => $size]);
+		imagesetthickness($img, $this->scl(2));
+		imagepolygon($img, $pts, $this->rgba($img, $pal['accent']));
+		imagesetthickness($img, 1);
+	}
+
+	// --- Wax seal (3D burgundy disc) ---
+	private function drawWaxSealLarge($state, $cx, $cy, $r) {
+		$img = $state['img'];
+		$pal = $state['pal'];
+		$wax = $this->mixRgb($pal['accent'], [92, 30, 30], 0.6);
+		$waxHi = $this->lighten($wax, 0.4);
+		$waxLo = $this->darken($wax, 0.45);
+		// Drop shadow (offset darker disc)
+		$shadow = imagecolorallocatealpha($img, 0, 0, 0, 70);
+		imagefilledellipse($img, $cx + $this->scl(2), $cy + $this->scl(4), $r * 2, $r * 2, $shadow);
+		// Outer disc (base wax color)
+		imagefilledellipse($img, $cx, $cy, $r * 2, $r * 2, $this->rgba($img, $wax));
+		// Highlight arc (lighter upper-left)
+		imagefilledellipse($img, $cx - (int)($r * 0.25), $cy - (int)($r * 0.3), (int)($r * 1.4), (int)($r * 1.1), imagecolorallocatealpha($img, $waxHi[0], $waxHi[1], $waxHi[2], 70));
+		// Pressed rim
+		imagesetthickness($img, $this->scl(2));
+		imageellipse($img, $cx, $cy, (int)($r * 1.84), (int)($r * 1.84), $this->rgba($img, $waxLo));
+		// Radial ticks
+		imagesetthickness($img, $this->scl(1));
+		$tickC = imagecolorallocatealpha($img, $waxHi[0], $waxHi[1], $waxHi[2], 80);
+		for ($i = 0; $i < 16; $i++) {
+			$ang = ($i / 16.0) * 2.0 * M_PI;
+			imageline($img,
+				(int)($cx + cos($ang) * $r * 0.85), (int)($cy + sin($ang) * $r * 0.85),
+				(int)($cx + cos($ang) * $r * 0.95), (int)($cy + sin($ang) * $r * 0.95),
+				$tickC
+			);
+		}
+		// Initials stamped
+		$initials = $this->computeSealInitials($state['kingdom']);
+		if ($initials && !$state['useBuiltin']) {
+			$font = $state['fontFiles']['body'] ?: $state['bodyFontFile'];
+			$sz = mb_strlen($initials) > 2 ? (int)($r * 0.56) : (int)($r * 0.78);
+			$box = imagettfbbox($sz, 0, $font, $initials);
+			$tw = $box[2] - $box[0];
+			$th = $box[1] - $box[5];
+			// Emboss: dark shadow underneath
+			imagettftext($img, $sz, 0, $cx - (int)($tw / 2) + 2, $cy + (int)($th / 2) + 2, $this->rgba($img, $waxLo, 20), $font, $initials);
+			imagettftext($img, $sz, 0, $cx - (int)($tw / 2), $cy + (int)($th / 2), $this->rgba($img, $waxHi, 30), $font, $initials);
+		}
+		imagesetthickness($img, 1);
+	}
+
+	// --- Crossed swords ---
+	private function drawCrossedSwords($state, $cx, $cy, $size) {
+		$img = $state['img'];
+		$pal = $state['pal'];
+		// Draw 2 swords: 45° clockwise and counter-clockwise
+		// For simplicity, use polygons for blade + rect for crossbar + circle for pommel.
+		$bladeSilver = imagecolorallocate($img, 200, 200, 205);
+		$bladeDark   = imagecolorallocate($img, 120, 120, 128);
+		$guardC      = $this->rgba($img, $pal['accent']);
+		$pommelC     = $this->rgba($img, $this->lighten($pal['accent'], 0.2));
+		$guardStroke = $this->rgba($img, $this->darken($pal['accent'], 0.4));
+		$gripC       = imagecolorallocate($img, 74, 40, 24);
+		for ($s = 0; $s < 2; $s++) {
+			$sign = $s === 0 ? -1 : 1;
+			$ang = $sign * M_PI / 4;
+			$cosA = cos($ang); $sinA = sin($ang);
+			// Transform (0,0)-relative points to (cx,cy)
+			$tx = function($x, $y) use ($cx, $cy, $cosA, $sinA) {
+				return [(int)($cx + $x * $cosA - $y * $sinA), (int)($cy + $x * $sinA + $y * $cosA)];
+			};
+			// Blade polygon
+			$bladePts = [];
+			foreach ([
+				[-$this->scl(3), 0],
+				[-$this->scl(3), -(int)($size * 0.7)],
+				[0, -(int)($size * 0.78)],
+				[$this->scl(3), -(int)($size * 0.7)],
+				[$this->scl(3), 0],
+			] as $pt) {
+				$p = $tx($pt[0], $pt[1]);
+				$bladePts[] = $p[0];
+				$bladePts[] = $p[1];
+			}
+			imagefilledpolygon($img, $bladePts, $bladeSilver);
+			imagesetthickness($img, $this->scl(1));
+			imagepolygon($img, $bladePts, $bladeDark);
+			// Crossbar (rect approximated via polygon)
+			$gLen = (int)($size * 0.24);
+			$gH = $this->scl(5);
+			$guardPts = [];
+			foreach ([
+				[-(int)($gLen / 2), -(int)($gH / 2)],
+				[(int)($gLen / 2), -(int)($gH / 2)],
+				[(int)($gLen / 2), (int)($gH / 2)],
+				[-(int)($gLen / 2), (int)($gH / 2)],
+			] as $pt) {
+				$p = $tx($pt[0], $pt[1]);
+				$guardPts[] = $p[0];
+				$guardPts[] = $p[1];
+			}
+			imagefilledpolygon($img, $guardPts, $guardC);
+			imagepolygon($img, $guardPts, $guardStroke);
+			// Grip
+			$grLen = (int)($size * 0.18);
+			$grPts = [];
+			foreach ([
+				[-$this->scl(2), $this->scl(3)],
+				[$this->scl(2), $this->scl(3)],
+				[$this->scl(2), $this->scl(3) + $grLen],
+				[-$this->scl(2), $this->scl(3) + $grLen],
+			] as $pt) {
+				$p = $tx($pt[0], $pt[1]);
+				$grPts[] = $p[0];
+				$grPts[] = $p[1];
+			}
+			imagefilledpolygon($img, $grPts, $gripC);
+			// Pommel
+			$pm = $tx(0, $this->scl(3) + $grLen + $this->scl(4));
+			imagefilledellipse($img, $pm[0], $pm[1], $this->scl(10), $this->scl(10), $pommelC);
+			imageellipse($img, $pm[0], $pm[1], $this->scl(10), $this->scl(10), $guardStroke);
+		}
+		imagesetthickness($img, 1);
+	}
+
+	// --- Margin medallions ---
+	private function drawMarginMedallions($state, $x, $startY, $spacing, $r) {
+		$img = $state['img'];
+		$pal = $state['pal'];
+		$items = [];
+		if (strlen($state['heraldry']['kingdom'])) $items[] = $state['heraldry']['kingdom'];
+		if (strlen($state['heraldry']['park']))    $items[] = $state['heraldry']['park'];
+		if (strlen($state['heraldry']['player']))  $items[] = $state['heraldry']['player'];
+		foreach ($items as $i => $url) {
+			$cy = $startY + $i * $spacing;
+			// Draw heraldry clipped to circle (GD approx: draw square, then overlay ring)
+			$this->drawHeraldryImage($img, $url, ['x' => $x - $r, 'y' => $cy - $r, 'w' => $r * 2, 'h' => $r * 2]);
+			imagesetthickness($img, $this->scl(3));
+			imageellipse($img, $x, $cy, $r * 2, $r * 2, $this->rgba($img, $pal['accent']));
+			imagesetthickness($img, $this->scl(1));
+			imageellipse($img, $x, $cy, (int)($r * 2 - $this->scl(8)), (int)($r * 2 - $this->scl(8)), imagecolorallocatealpha($img, $pal['accent'][0], $pal['accent'][1], $pal['accent'][2], 70));
+		}
+		imagesetthickness($img, 1);
+	}
+
+	// --- Ruled line ---
+	private function drawRuledLine($state, $x1, $y1, $x2, $y2, $opacity) {
+		$img = $state['img'];
+		$pal = $state['pal'];
+		$alpha = (int)(127 * (1 - $opacity));
+		$c = imagecolorallocatealpha($img, $pal['accent'][0], $pal['accent'][1], $pal['accent'][2], $alpha);
+		imagesetthickness($img, $this->scl(1));
+		imageline($img, $x1, $y1, $x2, $y2, $c);
+		$dotR = $this->scl(2);
+		imagefilledellipse($img, $x1, $y1, $dotR * 2, $dotR * 2, $c);
+		imagefilledellipse($img, $x2, $y2, $dotR * 2, $dotR * 2, $c);
+		imagesetthickness($img, 1);
+	}
+
+	// --- Laurel wreath ---
+	private function drawLaurelWreath($state, $cx, $cy, $outerR) {
+		$img = $state['img'];
+		$pal = $state['pal'];
+		$leafC = imagecolorallocatealpha($img, $pal['accent'][0], $pal['accent'][1], $pal['accent'][2], 64);
+		for ($side = 0; $side < 2; $side++) {
+			$dir = $side === 0 ? -1 : 1;
+			$leaves = 14;
+			for ($i = 0; $i < $leaves; $i++) {
+				$t = $i / ($leaves - 1);
+				$ang = M_PI * 0.92 - $t * M_PI * 0.85;
+				$lx = $cx + $dir * cos($ang) * $outerR;
+				$ly = $cy - sin($ang) * $outerR;
+				// Approximate leaf as small filled ellipse
+				imagefilledellipse($img, (int)$lx, (int)$ly, (int)($outerR * 0.16), (int)($outerR * 0.06), $leafC);
+			}
+		}
+		imagesetthickness($img, $this->scl(2));
+		imageellipse($img, $cx, (int)($cy + $outerR * 0.9), (int)($outerR * 0.16), (int)($outerR * 0.16), imagecolorallocatealpha($img, $pal['accent'][0], $pal['accent'][1], $pal['accent'][2], 64));
+		imagesetthickness($img, 1);
+	}
+
+	// --- Compass rose ---
+	private function drawCompassRose($state, $cx, $cy, $r) {
+		$img = $state['img'];
+		$pal = $state['pal'];
+		$c = imagecolorallocatealpha($img, $pal['accent'][0], $pal['accent'][1], $pal['accent'][2], 64);
+		imagesetthickness($img, $this->scl(1));
+		imageellipse($img, $cx, $cy, $r * 2, $r * 2, $c);
+		imageellipse($img, $cx, $cy, (int)($r * 1.64), (int)($r * 1.64), $c);
+		for ($i = 0; $i < 8; $i++) {
+			$ang = ($i / 8.0) * 2.0 * M_PI - M_PI / 2;
+			$long = ($i % 2 === 0);
+			$pr = $long ? $r * 0.82 : $r * 0.45;
+			$pts = [
+				$cx, $cy,
+				(int)($cx + cos($ang - 0.12) * $pr * 0.3), (int)($cy + sin($ang - 0.12) * $pr * 0.3),
+				(int)($cx + cos($ang) * $pr), (int)($cy + sin($ang) * $pr),
+				(int)($cx + cos($ang + 0.12) * $pr * 0.3), (int)($cy + sin($ang + 0.12) * $pr * 0.3),
+			];
+			imagefilledpolygon($img, $pts, $c);
+		}
+		imagefilledellipse($img, $cx, $cy, $this->scl(6), $this->scl(6), $this->rgba($img, $pal['accent']));
+		imagesetthickness($img, 1);
+	}
+
+	// --- Fleur-de-lis (simplified: central pointed shape + band + base) ---
+	private function drawFleurDeLis($state, $cx, $cy, $size) {
+		$img = $state['img'];
+		$pal = $state['pal'];
+		$accent = $this->rgba($img, $pal['accent']);
+		$dark = $this->rgba($img, $this->darken($pal['accent'], 0.4));
+		// Central petal (diamond)
+		$pts = [
+			$cx, $cy - (int)($size * 0.5),
+			$cx + (int)($size * 0.12), $cy - (int)($size * 0.15),
+			$cx, $cy + (int)($size * 0.05),
+			$cx - (int)($size * 0.12), $cy - (int)($size * 0.15),
+		];
+		imagefilledpolygon($img, $pts, $accent);
+		imagepolygon($img, $pts, $dark);
+		// Left petal
+		$ptsL = [
+			$cx - (int)($size * 0.25), $cy - (int)($size * 0.3),
+			$cx - (int)($size * 0.42), $cy + (int)($size * 0.05),
+			$cx - (int)($size * 0.1), $cy + (int)($size * 0.1),
+			$cx - (int)($size * 0.05), $cy - (int)($size * 0.1),
+		];
+		imagefilledpolygon($img, $ptsL, $accent);
+		imagepolygon($img, $ptsL, $dark);
+		// Right petal
+		$ptsR = [
+			$cx + (int)($size * 0.25), $cy - (int)($size * 0.3),
+			$cx + (int)($size * 0.42), $cy + (int)($size * 0.05),
+			$cx + (int)($size * 0.1), $cy + (int)($size * 0.1),
+			$cx + (int)($size * 0.05), $cy - (int)($size * 0.1),
+		];
+		imagefilledpolygon($img, $ptsR, $accent);
+		imagepolygon($img, $ptsR, $dark);
+		// Band
+		imagefilledrectangle($img, $cx - (int)($size * 0.22), $cy + (int)($size * 0.08), $cx + (int)($size * 0.22), $cy + (int)($size * 0.14), $accent);
+		imagerectangle($img, $cx - (int)($size * 0.22), $cy + (int)($size * 0.08), $cx + (int)($size * 0.22), $cy + (int)($size * 0.14), $dark);
+	}
+
+	// --- Corner flourish (approx vine + leaves) ---
+	private function drawCornerFlourish($state, $cx, $cy, $size, $corner) {
+		$img = $state['img'];
+		$pal = $state['pal'];
+		$sx = ($corner === 'tr' || $corner === 'br') ? -1 : 1;
+		$sy = ($corner === 'bl' || $corner === 'br') ? -1 : 1;
+		$c = imagecolorallocatealpha($img, $pal['accent'][0], $pal['accent'][1], $pal['accent'][2], 70);
+		imagesetthickness($img, $this->scl(2));
+		// Main vine (approximate quadratic with line segments)
+		$segs = 8;
+		$start = [$cx, $cy];
+		$ctl   = [$cx + $sx * (int)($size * 0.3), $cy + $sy * (int)($size * 0.1)];
+		$endP  = [$cx + $sx * (int)($size * 0.4), $cy + $sy * (int)($size * 0.35)];
+		$prev = $start;
+		for ($i = 1; $i <= $segs; $i++) {
+			$t = $i / $segs;
+			$u = 1 - $t;
+			$px = (int)($u*$u*$start[0] + 2*$u*$t*$ctl[0] + $t*$t*$endP[0]);
+			$py = (int)($u*$u*$start[1] + 2*$u*$t*$ctl[1] + $t*$t*$endP[1]);
+			imageline($img, $prev[0], $prev[1], $px, $py, $c);
+			$prev = [$px, $py];
+		}
+		// Secondary line to end curl
+		$start2 = [$cx + $sx * (int)($size * 0.1), $cy + $sy * (int)($size * 0.05)];
+		$endP2 = [$cx + $sx * (int)($size * 0.55), $cy + $sy * (int)($size * 0.25)];
+		imageline($img, $start2[0], $start2[1], $endP2[0], $endP2[1], $c);
+		// Leaves
+		$leafSpots = [
+			[$cx + $sx * (int)($size * 0.25), $cy + $sy * (int)($size * 0.2)],
+			[$cx + $sx * (int)($size * 0.45), $cy + $sy * (int)($size * 0.45)],
+			[$cx + $sx * (int)($size * 0.35), $cy + $sy * (int)($size * 0.7)],
+		];
+		foreach ($leafSpots as $p) {
+			imagefilledellipse($img, $p[0], $p[1], $this->scl(16), $this->scl(7), $c);
+		}
+		imagesetthickness($img, 1);
+	}
+
+	// --- Ornamental rule ---
+	private function drawOrnamentalRule($state, $cx, $cy, $width) {
+		$img = $state['img'];
+		$pal = $state['pal'];
+		$c = imagecolorallocatealpha($img, $pal['accent'][0], $pal['accent'][1], $pal['accent'][2], 45);
+		$half = (int)($width / 2);
+		imagesetthickness($img, $this->scl(1));
+		imageline($img, $cx - $half, $cy, $cx - $this->scl(24), $cy, $c);
+		imageline($img, $cx + $this->scl(24), $cy, $cx + $half, $cy, $c);
+		// Center fleur
+		$this->drawFleurDeLis($state, $cx, $cy, $this->scl(26));
+		// Endpoint diamonds
+		$ed = $this->scl(4);
+		imagefilledpolygon($img, [$cx - $half, $cy, $cx - $half + $this->scl(6), $cy - $ed, $cx - $half + $this->scl(10), $cy, $cx - $half + $this->scl(6), $cy + $ed], $c);
+		imagefilledpolygon($img, [$cx + $half, $cy, $cx + $half - $this->scl(6), $cy - $ed, $cx + $half - $this->scl(10), $cy, $cx + $half - $this->scl(6), $cy + $ed], $c);
+		imagesetthickness($img, 1);
+	}
+
+	// ================================================================
+	//  v2: Default / per-template content renderers
+	// ================================================================
+
+	private function renderContentDefault($state) {
+		$tpl = $state['tpl'];
+		$this->drawHeraldryFromSpec($state, $tpl['heraldry']);
+		$this->drawCenterImageSlot($state);
+		$this->drawTitleCenter($state, $tpl['title']);
+		$this->drawRecipientCenter($state, $tpl['recipient']);
+		$this->drawBodyCenter($state, $tpl['body']);
+		$this->drawDateLine($state, $tpl['sigY'] - $this->scl(45));
+		$this->drawSealElement($state, (int)($state['w'] / 2), $tpl['sigY'] - $this->scl(95), $this->scl(50));
+		$this->drawSignatureBar($state, $tpl['sigY'], $tpl['sigCount']);
+	}
+
+	// --- 1. Royal Decree ---
+	private function render_royal_decree($state) {
+		$tpl = $state['tpl'];
+		$el  = $state['elements'];
+		$w = $state['w']; $h = $state['h'];
+		if ($el['flourishes']) {
+			$this->drawCornerFlourish($state, $this->scl(70), $this->scl(70), $this->scl(90), 'tl');
+			$this->drawCornerFlourish($state, $w - $this->scl(70), $this->scl(70), $this->scl(90), 'tr');
+			$this->drawCornerFlourish($state, $this->scl(70), $h - $this->scl(70), $this->scl(90), 'bl');
+			$this->drawCornerFlourish($state, $w - $this->scl(70), $h - $this->scl(70), $this->scl(90), 'br');
+		}
+		if ($el['ribbon']) {
+			$this->drawRibbonBanner($state, (int)($w / 2), $this->scl(230), $this->scl(620), $this->scl(88),
+				strlen($state['awardName']) ? $state['awardName'] : 'Award Title',
+				$state['fontFiles']['title'], $this->scl(42));
+		} else {
+			$this->drawTitleCenter($state, $tpl['title']);
+		}
+		$this->drawOrnamentalRule($state, (int)($w / 2), $this->scl(325), $this->scl(440));
+		$this->drawHeraldryFromSpec($state, $tpl['heraldry']);
+		$this->drawCenterImageSlot($state);
+		$this->drawRecipientCenter($state, $tpl['recipient']);
+		$this->drawBodyCenter($state, $tpl['body']);
+		$this->drawDateLine($state, $tpl['sigY'] - $this->scl(45));
+		if ($el['waxSeal']) {
+			$this->drawWaxSealLarge($state, $w - $this->scl(110), $h - $this->scl(130), $this->scl(54));
+		}
+		$this->drawSignatureBar($state, $tpl['sigY'], $tpl['sigCount']);
+	}
+
+	// --- 2. Heraldic Shield ---
+	private function render_heraldic_shield($state) {
+		$tpl = $state['tpl'];
+		$w = $state['w']; $h = $state['h'];
+		// Quartered shield dominates top
+		$shield = $tpl['shield'] ?? ['cx' => (int)($w / 2), 'cy' => $this->scl(240), 'size' => $this->scl(290)];
+		$this->drawQuarteredShield($state, $shield['cx'], $shield['cy'], $shield['size']);
+		$this->drawCenterImageSlot($state);
+		$this->drawTitleCenter($state, $tpl['title']);
+		$this->drawDividerV2($state, (int)($w / 2), $tpl['title']['y'] + $tpl['title']['size'] + $this->scl(25), $this->scl(320), 0.55);
+		$this->drawRecipientCenter($state, $tpl['recipient']);
+		$this->drawBodyCenter($state, $tpl['body']);
+		$this->drawDateLine($state, $tpl['sigY'] - $this->scl(45));
+		$this->drawSealElement($state, (int)($w / 2), $tpl['sigY'] - $this->scl(95), $this->scl(46));
+		$this->drawDividerV2($state, (int)($w / 2), $tpl['sigY'] - $this->scl(40), $this->scl(350), 0.4);
+		$this->drawSignatureBar($state, $tpl['sigY'], $tpl['sigCount']);
+	}
+
+	// --- 3. Chancery Letter ---
+	private function render_chancery_letter($state) {
+		$tpl = $state['tpl'];
+		$el = $state['elements'];
+		$w = $state['w']; $h = $state['h'];
+		// Margin medallions (right edge)
+		if ($el['medallions']) {
+			$this->drawMarginMedallions($state, $w - $this->scl(90), $this->scl(170), $this->scl(120), $this->scl(42));
+		}
+		// Opening phrase (small italic)
+		if (!$state['useBuiltin'] && $state['fontFiles']['body']) {
+			$italic = imagecolorallocatealpha($state['img'], $state['pal']['text'][0], $state['pal']['text'][1], $state['pal']['text'][2], 45);
+			imagettftext($state['img'], $this->scl(16), 0, $this->scl(170), $this->scl(115) + $this->scl(16), $italic, $state['fontFiles']['body'], 'Let it be known —');
+		}
+		$this->drawTitleLeft($state, $tpl['title']);
+		$this->drawRuledLine($state, $this->scl(170), $this->scl(215), $w - $this->scl(170), $this->scl(215), 0.45);
+		$this->drawRecipientLeft($state, $tpl['recipient']);
+		$this->drawRuledLine($state, $this->scl(170), $this->scl(310), $w - $this->scl(170), $this->scl(310), 0.35);
+		$this->drawCenterImageSlot($state);
+		$this->drawBodyLeft($state, $tpl['body']);
+		$this->drawSignatureStack($state, $w - $this->scl(100), $tpl['sigY'], $tpl['sigCount'], 'right');
+		if ($el['waxSeal']) {
+			$this->drawWaxSealLarge($state, $this->scl(200), $tpl['sigY'] + $this->scl(40), $this->scl(54));
+		}
+	}
+
+	// --- 4. Illuminated Manuscript ---
+	private function render_illuminated_ms($state) {
+		$tpl = $state['tpl'];
+		$el = $state['elements'];
+		$w = $state['w']; $h = $state['h'];
+		if ($el['flourishes']) {
+			$this->drawCornerFlourish($state, $this->scl(70), $this->scl(70), $this->scl(100), 'tl');
+			$this->drawCornerFlourish($state, $w - $this->scl(70), $this->scl(70), $this->scl(100), 'tr');
+			$this->drawCornerFlourish($state, $this->scl(70), $h - $this->scl(70), $this->scl(100), 'bl');
+			$this->drawCornerFlourish($state, $w - $this->scl(70), $h - $this->scl(70), $this->scl(100), 'br');
+		}
+		$this->drawTitleCenter($state, $tpl['title']);
+		$this->drawOrnamentalRule($state, (int)($w / 2), $this->scl(225), $this->scl(400));
+		$this->drawRecipientCenter($state, $tpl['recipient']);
+		$this->drawOrnamentalRule($state, (int)($w / 2), $this->scl(315), $this->scl(360));
+		if ($el['medallions']) {
+			$this->drawMarginMedallions($state, $this->scl(150), $this->scl(400), $this->scl(120), $this->scl(50));
+		}
+		$this->drawCenterImageSlot($state);
+		// Body with optional drop cap
+		$body = $state['bodyText'];
+		if ($el['dropCap'] && strlen($body)) {
+			$first = mb_strtoupper(mb_substr($body, 0, 1));
+			$rest = ltrim(mb_substr($body, 1));
+			$this->drawDropCap($state, $first, $tpl['body']['x'], $tpl['body']['y'], $this->scl(72), $state['fontFiles']['title']);
+			$this->drawBodyLeftWithIndent($state, $tpl['body'], $this->scl(86), $rest);
+		} else {
+			$this->drawBodyLeft($state, $tpl['body']);
+		}
+		$this->drawDateLine($state, $tpl['sigY'] - $this->scl(45));
+		$this->drawSealElement($state, (int)($w / 2), $tpl['sigY'] - $this->scl(95), $this->scl(48));
+		$this->drawOrnamentalRule($state, (int)($w / 2), $tpl['sigY'] - $this->scl(35), $this->scl(400));
+		$this->drawSignatureBar($state, $tpl['sigY'], $tpl['sigCount']);
+	}
+
+	// --- 5. Battle Standard ---
+	private function render_battle_standard($state) {
+		$tpl = $state['tpl'];
+		$el = $state['elements'];
+		$w = $state['w']; $h = $state['h'];
+		if ($el['swords']) {
+			$this->drawCrossedSwords($state, (int)($w / 2), $this->scl(105), $this->scl(95));
+		}
+		$this->drawTitleCenter($state, $tpl['title']);
+		$this->drawOrnamentalRule($state, (int)($w / 2), $this->scl(240), $this->scl(520));
+		$this->drawRecipientCenter($state, $tpl['recipient']);
+		$this->drawDividerV2($state, (int)($w / 2), $this->scl(345), $this->scl(460), 0.5);
+		$this->drawBodyCenter($state, $tpl['body']);
+		$this->drawHeraldryFromSpec($state, $tpl['heraldry']);
+		$this->drawCenterImageSlot($state);
+		$this->drawDateLine($state, $tpl['sigY'] - $this->scl(20));
+		$this->drawSignatureBar($state, $tpl['sigY'], $tpl['sigCount']);
+	}
+
+	// --- 6. Guild Charter ---
+	private function render_guild_charter($state) {
+		$tpl = $state['tpl'];
+		$el = $state['elements'];
+		$w = $state['w']; $h = $state['h'];
+		if ($el['ribbon']) {
+			$this->drawRibbonBanner($state, (int)($w / 2), $this->scl(205), $this->scl(620), $this->scl(82),
+				strlen($state['awardName']) ? $state['awardName'] : 'Charter Title',
+				$state['fontFiles']['title'], $this->scl(38));
+		} else {
+			$this->drawTitleCenter($state, $tpl['title']);
+		}
+		$this->drawHeraldryFromSpec($state, $tpl['heraldry']);
+		$this->drawRecipientCenter($state, $tpl['recipient']);
+		$this->drawDividerV2($state, (int)($w / 2), $this->scl(370), $this->scl(420), 0.4);
+		// Column divider (vertical line between body and signatures)
+		$divC = imagecolorallocatealpha($state['img'], $state['pal']['accent'][0], $state['pal']['accent'][1], $state['pal']['accent'][2], 80);
+		imagesetthickness($state['img'], $this->scl(1));
+		imageline($state['img'], $this->scl(530), $this->scl(405), $this->scl(530), $this->scl(920), $divC);
+		imagesetthickness($state['img'], 1);
+		$this->drawCenterImageSlot($state);
+		$this->drawBodyLeft($state, $tpl['body']);
+		$this->drawSignatureStack($state, $this->scl(665), $this->scl(660), $tpl['sigCount'], 'center');
+		if ($el['waxSeal']) {
+			$this->drawWaxSealLarge($state, $this->scl(665), $this->scl(870), $this->scl(50));
+		}
+	}
+
+	// --- 7. Arcane Grimoire ---
+	private function render_arcane_grimoire($state) {
+		$tpl = $state['tpl'];
+		$el = $state['elements'];
+		$w = $state['w']; $h = $state['h'];
+		if ($el['flourishes']) {
+			$this->drawCornerFlourish($state, $this->scl(60), $this->scl(60), $this->scl(85), 'tl');
+			$this->drawCornerFlourish($state, $w - $this->scl(60), $this->scl(60), $this->scl(85), 'tr');
+			$this->drawCornerFlourish($state, $this->scl(60), $h - $this->scl(60), $this->scl(85), 'bl');
+			$this->drawCornerFlourish($state, $w - $this->scl(60), $h - $this->scl(60), $this->scl(85), 'br');
+		}
+		if ($el['laurel']) {
+			$this->drawLaurelWreath($state, (int)($w / 2), $this->scl(275), $this->scl(165));
+		}
+		$this->drawTitleCenter($state, $tpl['title']);
+		$this->drawHeraldryFromSpec($state, $tpl['heraldry']);
+		$this->drawOrnamentalRule($state, (int)($w / 2), $this->scl(380), $this->scl(420));
+		$this->drawRecipientCenter($state, $tpl['recipient']);
+		$this->drawCenterImageSlot($state);
+		$this->drawBodyCenter($state, $tpl['body']);
+		if ($el['compass']) {
+			$this->drawCompassRose($state, (int)($w / 2), $tpl['sigY'] - $this->scl(85), $this->scl(56));
+		} else {
+			$this->drawSealElement($state, (int)($w / 2), $tpl['sigY'] - $this->scl(85), $this->scl(48));
+		}
+		$this->drawDateLine($state, $tpl['sigY'] - $this->scl(30));
+		$this->drawOrnamentalRule($state, (int)($w / 2), $tpl['sigY'] - $this->scl(5), $this->scl(440));
+		$this->drawSignatureBar($state, $tpl['sigY'], $tpl['sigCount']);
+	}
+
+	// --- 8. Bardic Ballad ---
+	private function render_bardic_ballad($state) {
+		$tpl = $state['tpl'];
+		$el = $state['elements'];
+		$w = $state['w']; $h = $state['h'];
+		if ($el['flourishes']) {
+			$this->drawCornerFlourish($state, $this->scl(70), $this->scl(70), $this->scl(95), 'tl');
+			$this->drawCornerFlourish($state, $w - $this->scl(70), $this->scl(70), $this->scl(95), 'tr');
+			$this->drawCornerFlourish($state, $this->scl(70), $h - $this->scl(70), $this->scl(95), 'bl');
+			$this->drawCornerFlourish($state, $w - $this->scl(70), $h - $this->scl(70), $this->scl(95), 'br');
+		}
+		$this->drawTitleCenter($state, $tpl['title']);
+		$this->drawOrnamentalRule($state, (int)($w / 2), $this->scl(230), $this->scl(380));
+		$this->drawHeraldryFromSpec($state, $tpl['heraldry']);
+		$this->drawRecipientCenter($state, $tpl['recipient']);
+		$this->drawOrnamentalRule($state, (int)($w / 2), $this->scl(360), $this->scl(380));
+		$this->drawCenterImageSlot($state);
+		$body = $state['bodyText'];
+		if ($el['dropCap'] && strlen($body)) {
+			$first = mb_strtoupper(mb_substr($body, 0, 1));
+			$rest = ltrim(mb_substr($body, 1));
+			$this->drawDropCap($state, $first, $tpl['body']['x'], $tpl['body']['y'], $this->scl(62), $state['fontFiles']['title']);
+			$this->drawBodyLeftWithIndent($state, $tpl['body'], $this->scl(78), $rest);
+		} else {
+			$this->drawBodyLeft($state, $tpl['body']);
+		}
+		if ($el['waxSeal']) {
+			$this->drawWaxSealLarge($state, $w - $this->scl(115), $tpl['sigY'] - $this->scl(40), $this->scl(48));
+		}
+		$this->drawDateLine($state, $tpl['sigY'] - $this->scl(30));
+		$this->drawSignatureBar($state, $tpl['sigY'], $tpl['sigCount']);
+	}
+
+	// --- Thin wrapper around existing drawDivider (takes $state instead of individual args) ---
+	private function drawDividerV2($state, $cx, $cy, $width, $opacity) {
+		$this->drawDivider($state['img'], $cx, $cy, $width, $state['pal'], $opacity);
+	}
+
+
 }
