@@ -206,6 +206,9 @@
 .pn-class-ack{white-space:nowrap}
 .pn-gem{display:inline-block;width:16px;height:18px;margin-right:2px;position:relative;vertical-align:middle}
 .pn-gem-shape{display:block;width:100%;height:100%;clip-path:polygon(50% 0%,100% 35%,80% 100%,20% 100%,0% 35%);-webkit-clip-path:polygon(50% 0%,100% 35%,80% 100%,20% 100%,0% 35%)}
+.pn-gem-1 .pn-gem-shape,.pn-gem-2 .pn-gem-shape,.pn-gem-3 .pn-gem-shape{clip-path:polygon(50% 0%,100% 50%,50% 100%,0% 50%);-webkit-clip-path:polygon(50% 0%,100% 50%,50% 100%,0% 50%)}
+.pn-gem-7 .pn-gem-shape,.pn-gem-8 .pn-gem-shape,.pn-gem-9 .pn-gem-shape{clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);-webkit-clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%)}
+.pn-gem-10 .pn-gem-shape{clip-path:polygon(50% 0%,89% 19%,99% 61%,72% 95%,28% 95%,1% 61%,11% 19%);-webkit-clip-path:polygon(50% 0%,89% 19%,99% 61%,72% 95%,28% 95%,1% 61%,11% 19%)}
 .pn-gem-1 .pn-gem-shape{background:radial-gradient(circle at 40% 30%,#f3f4f6,#9ca3af)}
 .pn-gem-2 .pn-gem-shape{background:radial-gradient(circle at 40% 30%,#fde68a,#b45309)}
 .pn-gem-3 .pn-gem-shape{background:radial-gradient(circle at 40% 30%,#ef4444,#450a0a)}
