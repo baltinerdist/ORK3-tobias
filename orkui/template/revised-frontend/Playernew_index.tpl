@@ -211,8 +211,9 @@
 .pn-gem-3 .pn-gem-shape{background:radial-gradient(circle at 40% 30%,#ef4444,#450a0a)}
 .pn-gem-4 .pn-gem-shape{background:linear-gradient(180deg,#c4b5fd,#4c1d95)}
 .pn-gem-5 .pn-gem-shape{background:linear-gradient(180deg,#60a5fa,#1e3a8a)}
-.pn-gem-4 .pn-gem-shape,.pn-gem-5 .pn-gem-shape{position:relative}
+.pn-gem-4 .pn-gem-shape,.pn-gem-5 .pn-gem-shape,.pn-gem-6 .pn-gem-shape{position:relative}
 .pn-gem-4 .pn-gem-shape::before,.pn-gem-5 .pn-gem-shape::before{content:'';position:absolute;inset:0;background:linear-gradient(160deg,rgba(255,255,255,0.55) 0%,rgba(255,255,255,0.18) 30%,transparent 55%);pointer-events:none}
+.pn-gem-4 .pn-gem-shape::after,.pn-gem-5 .pn-gem-shape::after,.pn-gem-6 .pn-gem-shape::after{content:'';position:absolute;inset:0;background:linear-gradient(120deg,transparent 40%,rgba(255,255,255,0.45) 50%,transparent 60%);background-size:250% 100%;background-position:150% 0;animation:pnGemSweep 7s ease-in-out infinite;pointer-events:none}
 .pn-gem-6 .pn-gem-shape{background:linear-gradient(180deg,#34d399,#064e3b)}
 .pn-gem-6{filter:drop-shadow(0 0 2px rgba(16,185,129,0.6))}
 .pn-gem-7 .pn-gem-shape{background:linear-gradient(180deg,#f87171,#7f1d1d)}
@@ -230,7 +231,8 @@
 @keyframes pnGemShimmer{from{filter:hue-rotate(0deg)}to{filter:hue-rotate(360deg)}}
 @keyframes pnGemSparkle{0%,100%{opacity:0;transform:translate(-50%,-50%) scale(0.5) rotate(0deg)}50%{opacity:1;transform:translate(-50%,-50%) scale(1) rotate(180deg)}}
 @keyframes pnGemBreathe{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
-@media (prefers-reduced-motion:reduce){.pn-gem-7,.pn-gem-10{animation:none!important}.pn-gem-8 .pn-gem-shape,.pn-gem-10 .pn-gem-shape{animation:none!important}.pn-gem-9::before,.pn-gem-9::after,.pn-gem-10::before{animation:none!important;opacity:0.6}}
+@keyframes pnGemSweep{0%,70%,100%{background-position:150% 0}88%{background-position:-50% 0}}
+@media (prefers-reduced-motion:reduce){.pn-gem-7,.pn-gem-10{animation:none!important}.pn-gem-8 .pn-gem-shape,.pn-gem-10 .pn-gem-shape{animation:none!important}.pn-gem-9::before,.pn-gem-9::after,.pn-gem-10::before{animation:none!important;opacity:0.6}.pn-gem-4 .pn-gem-shape::after,.pn-gem-5 .pn-gem-shape::after,.pn-gem-6 .pn-gem-shape::after{animation:none!important;opacity:0}}
 /* Post-L6 Ack toggle */
 .pn-ack-toggle{display:inline-flex;gap:4px;margin-bottom:10px;align-items:center;font-size:12px;color:#4a5568}
 .pn-ack-toggle-label{margin-right:6px;font-weight:600}
