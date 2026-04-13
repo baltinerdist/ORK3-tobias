@@ -2423,44 +2423,426 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
   // ============================================================
   //  Template Definitions
   // ============================================================
+  // ============================================================
+  //  Template Definitions
+  //  ------------------------------------------------------------
+  //  Each template has: name, preset (palette/border/fonts),
+  //  orientation, preview dimensions, positional specs, a set of
+  //  default element toggles, and a render(ctx,w,h,st,pal) fn
+  //  that composes primitives to draw the scroll content.
+  // ============================================================
+
+  // Legacy key aliases (for existing saved scrolls / old clients)
+  var TEMPLATE_ALIASES = {
+    'A': 'royal_decree',
+    'B': 'heraldic_shield',
+    'C': 'chancery_letter'
+  };
+
+  function sgResolveTemplate(key) {
+    if (TEMPLATE_ALIASES[key]) return TEMPLATE_ALIASES[key];
+    return key;
+  }
+
   var TEMPLATES = {
-    A: {
-      name: 'Knight / Peerage',
+
+    // ========================================================
+    //  1. ROYAL DECREE — ribbon title, corner heraldry, seal BR
+    // ========================================================
+    royal_decree: {
+      name: 'Royal Decree',
+      blurb: 'Peerages, knighthoods, and sovereign proclamations',
+      icon: 'fa-crown',
+      orientation: 'portrait',
+      previewW: 850, previewH: 1100,
       sigCount: 3,
-      title:     { x: 425, y: 170, size: 51, maxWidth: 661 },
-      recipient: { x: 425, y: 279, size: 36, maxWidth: 661 },
-      body:      { x: 425, y: 359, size: 21, maxWidth: 642, lineHeight: 30 },
-      sigY: 972,
+      preset: {
+        palette: 'burgundy',
+        borderStyle: 'royal',
+        fonts: { title: 'Cinzel Decorative', recipient: 'Cinzel', body: 'Cormorant Garamond', signatures: 'Cormorant Garamond' }
+      },
+      defaults: { ribbon: true, dropCap: false, waxSeal: true, swords: false, medallions: false, laurel: false, compass: false, flourishes: true },
+      title:     { x: 425, y: 260, size: 52, maxWidth: 620 },
+      recipient: { x: 425, y: 360, size: 40, maxWidth: 680 },
+      body:      { x: 425, y: 460, size: 22, maxWidth: 640, lineHeight: 32 },
+      sigY: 930,
       heraldry: {
-        kingdom: { x: 76, y: 76, w: 113, h: 113 },
-        park:    { x: 661, y: 76, w: 113, h: 113 },
-        player:  { x: 354, y: 661, w: 142, h: 142 }
+        kingdom: { x: 80,  y: 80,  w: 115, h: 115 },
+        park:    { x: 655, y: 80,  w: 115, h: 115 },
+        player:  { x: 355, y: 590, w: 140, h: 140 }
+      },
+      render: function(ctx, w, h, st, pal) {
+        var el = st.elements;
+        // Corner flourishes
+        if (el.flourishes) {
+          sgDrawCornerFlourish(ctx, 70, 70, 90, 'tl', pal);
+          sgDrawCornerFlourish(ctx, w - 70, 70, 90, 'tr', pal);
+          sgDrawCornerFlourish(ctx, 70, h - 70, 90, 'bl', pal);
+          sgDrawCornerFlourish(ctx, w - 70, h - 70, 90, 'br', pal);
+        }
+        // Ribbon title
+        if (el.ribbon) {
+          sgDrawRibbonBanner(ctx, w / 2, 230, 620, 88, st.awardName || 'Award Title', st.fonts.title, pal, 42);
+        } else {
+          sgDrawTitleCenter(ctx, st, pal, this.title);
+        }
+        sgDrawOrnamentalRule(ctx, w / 2, 325, 440, pal);
+        sgDrawHeraldryFromSpec(ctx, st, this.heraldry);
+        sgDrawArtworkSlot(ctx, 'center_image');
+        sgDrawRecipientCenter(ctx, st, pal, this.recipient);
+        sgDrawBodyCenter(ctx, st, pal, this.body);
+        sgDrawDateLine(ctx, st, pal, w, this.sigY - 45);
+        // Wax seal bottom-right
+        if (el.waxSeal) {
+          sgDrawWaxSealLarge(ctx, w - 110, h - 130, 54, pal, sgComputeSealInitials(st.kingdom), st.fonts.body);
+        }
+        sgDrawSignatureBar(ctx, st, pal, w, this.sigY, this.sigCount);
       }
     },
-    B: {
-      name: 'Order / Award',
+
+    // ========================================================
+    //  2. HERALDIC SHIELD — quartered shield dominates top
+    // ========================================================
+    heraldic_shield: {
+      name: 'Heraldic Shield',
+      blurb: 'Ladder orders and chivalric grants',
+      icon: 'fa-shield-alt',
+      orientation: 'portrait',
+      previewW: 850, previewH: 1100,
       sigCount: 2,
-      title:     { x: 425, y: 151, size: 45, maxWidth: 661 },
-      recipient: { x: 425, y: 251, size: 32, maxWidth: 661 },
-      body:      { x: 425, y: 321, size: 19, maxWidth: 642, lineHeight: 28 },
-      sigY: 972,
-      heraldry: {
-        kingdom: { x: 76, y: 76, w: 104, h: 104 },
-        park:    { x: 671, y: 76, w: 104, h: 104 },
-        player:  { x: 354, y: 642, w: 142, h: 142 }
+      preset: {
+        palette: 'forest',
+        borderStyle: 'celtic',
+        fonts: { title: 'Cinzel', recipient: 'MedievalSharp', body: 'EB Garamond', signatures: 'EB Garamond' }
+      },
+      defaults: { ribbon: false, dropCap: false, waxSeal: false, swords: false, medallions: false, laurel: false, compass: false, flourishes: false },
+      title:     { x: 425, y: 480, size: 44, maxWidth: 660 },
+      recipient: { x: 425, y: 560, size: 32, maxWidth: 660 },
+      body:      { x: 425, y: 630, size: 19, maxWidth: 620, lineHeight: 28 },
+      sigY: 960,
+      heraldry: null,
+      render: function(ctx, w, h, st, pal) {
+        // Big quartered shield dominates the upper half
+        sgDrawQuarteredShield(ctx, w / 2, 240, 290, sgImages, st, pal);
+        sgDrawArtworkSlot(ctx, 'center_image');
+        sgDrawTitleCenter(ctx, st, pal, this.title);
+        sgDrawDivider(ctx, w / 2, this.title.y + 60, 320, pal.accent, 0.55);
+        sgDrawRecipientCenter(ctx, st, pal, this.recipient);
+        sgDrawBodyCenter(ctx, st, pal, this.body);
+        sgDrawDateLine(ctx, st, pal, w, this.sigY - 45);
+        sgDrawSeal(ctx, st, pal, w / 2, this.sigY - 95, 46);
+        sgDrawDivider(ctx, w / 2, this.sigY - 40, 350, pal.accent, 0.4);
+        sgDrawSignatureBar(ctx, st, pal, w, this.sigY, this.sigCount);
       }
     },
-    C: {
-      name: 'Title / Office',
+
+    // ========================================================
+    //  3. CHANCERY LETTER — left-aligned epistolary layout
+    // ========================================================
+    chancery_letter: {
+      name: 'Chancery Letter',
+      blurb: 'Titles, offices, and epistolary proclamations',
+      icon: 'fa-feather-alt',
+      orientation: 'portrait',
+      previewW: 850, previewH: 1100,
       sigCount: 2,
-      title:     { x: 425, y: 132, size: 42, maxWidth: 661 },
-      recipient: { x: 425, y: 223, size: 30, maxWidth: 661 },
-      body:      { x: 425, y: 283, size: 19, maxWidth: 642, lineHeight: 28 },
-      sigY: 972,
+      preset: {
+        palette: 'ink',
+        borderStyle: 'filigree',
+        fonts: { title: 'Cinzel Decorative', recipient: 'Pinyon Script', body: 'EB Garamond', signatures: 'Fondamento' }
+      },
+      defaults: { ribbon: false, dropCap: false, waxSeal: true, swords: false, medallions: true, laurel: false, compass: false, flourishes: false },
+      title:     { x: 170, y: 155, size: 40, maxWidth: 560 },
+      recipient: { x: 170, y: 235, size: 38, maxWidth: 560 },
+      body:      { x: 170, y: 340, size: 19, maxWidth: 560, lineHeight: 30 },
+      sigY: 910,
+      heraldry: null,
+      render: function(ctx, w, h, st, pal) {
+        var el = st.elements;
+        // Margin medallions (right edge)
+        if (el.medallions) {
+          sgDrawMarginMedallions(ctx, sgImages, st, w - 90, 170, 120, 42, pal);
+        }
+        // Opening phrase (small)
+        ctx.save();
+        ctx.font = 'italic 16px ' + st.fonts.body;
+        ctx.fillStyle = pal.text;
+        ctx.globalAlpha = 0.65;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillText('Let it be known —', 170, 115);
+        ctx.restore();
+        sgDrawTitleLeft(ctx, st, pal, this.title);
+        sgDrawRuledLine(ctx, 170, 215, 670, 215, pal, 0.45);
+        sgDrawRecipientLeft(ctx, st, pal, this.recipient);
+        sgDrawRuledLine(ctx, 170, 310, 670, 310, pal, 0.35);
+        sgDrawArtworkSlot(ctx, 'center_image');
+        sgDrawBodyLeft(ctx, st, pal, this.body);
+        // Right-aligned signature stack
+        sgDrawSignatureStack(ctx, st, pal, w - 100, this.sigY, this.sigCount, 'right');
+        // Wax seal at bottom-left next to signatures
+        if (el.waxSeal) {
+          sgDrawWaxSealLarge(ctx, 200, this.sigY + 40, 54, pal, sgComputeSealInitials(st.kingdom), st.fonts.body);
+        }
+      }
+    },
+
+    // ========================================================
+    //  4. ILLUMINATED MANUSCRIPT — drop cap, margin medallions
+    // ========================================================
+    illuminated_ms: {
+      name: 'Illuminated Manuscript',
+      blurb: 'Master & journeyman awards, medieval-book feel',
+      icon: 'fa-book-open',
+      orientation: 'portrait',
+      previewW: 850, previewH: 1100,
+      sigCount: 2,
+      preset: {
+        palette: 'illuminated',
+        borderStyle: 'ornate',
+        fonts: { title: 'UnifrakturMaguntia', recipient: 'MedievalSharp', body: 'Cormorant Garamond', signatures: 'Fondamento' }
+      },
+      defaults: { ribbon: false, dropCap: true, waxSeal: false, swords: false, medallions: true, laurel: false, compass: false, flourishes: true },
+      title:     { x: 425, y: 160, size: 52, maxWidth: 680 },
+      recipient: { x: 425, y: 250, size: 32, maxWidth: 680 },
+      body:      { x: 240, y: 370, size: 21, maxWidth: 490, lineHeight: 34 },
+      sigY: 950,
+      heraldry: null,
+      render: function(ctx, w, h, st, pal) {
+        var el = st.elements;
+        if (el.flourishes) {
+          sgDrawCornerFlourish(ctx, 70, 70, 100, 'tl', pal);
+          sgDrawCornerFlourish(ctx, w - 70, 70, 100, 'tr', pal);
+          sgDrawCornerFlourish(ctx, 70, h - 70, 100, 'bl', pal);
+          sgDrawCornerFlourish(ctx, w - 70, h - 70, 100, 'br', pal);
+        }
+        sgDrawTitleCenter(ctx, st, pal, this.title);
+        sgDrawOrnamentalRule(ctx, w / 2, 225, 400, pal);
+        sgDrawRecipientCenter(ctx, st, pal, this.recipient);
+        sgDrawOrnamentalRule(ctx, w / 2, 315, 360, pal);
+        if (el.medallions) {
+          sgDrawMarginMedallions(ctx, sgImages, st, 150, 400, 120, 50, pal);
+        }
+        sgDrawArtworkSlot(ctx, 'center_image');
+        // Body with drop cap
+        var body = st.bodyText || sgGenerateBodyText();
+        if (el.dropCap) {
+          var first = (body.charAt(0) || '').toUpperCase();
+          sgDrawDropCap(ctx, first, this.body.x, this.body.y, 72, pal, st.fonts.title);
+          sgDrawBodyLeftWithIndent(ctx, st, pal, this.body, 86, body.substring(1).trimStart());
+        } else {
+          sgDrawBodyLeft(ctx, st, pal, this.body);
+        }
+        sgDrawDateLine(ctx, st, pal, w, this.sigY - 45);
+        sgDrawSeal(ctx, st, pal, w / 2, this.sigY - 95, 48);
+        sgDrawOrnamentalRule(ctx, w / 2, this.sigY - 35, 400, pal);
+        sgDrawSignatureBar(ctx, st, pal, w, this.sigY, this.sigCount);
+      }
+    },
+
+    // ========================================================
+    //  5. BATTLE STANDARD — LANDSCAPE, combat awards
+    // ========================================================
+    battle_standard: {
+      name: 'Battle Standard',
+      blurb: 'Bold landscape banner for combat honors',
+      icon: 'fa-flag',
+      orientation: 'landscape',
+      previewW: 1100, previewH: 850,
+      sigCount: 2,
+      preset: {
+        palette: 'sable',
+        borderStyle: 'rustic',
+        fonts: { title: 'Pirata One', recipient: 'MedievalSharp', body: 'EB Garamond', signatures: 'EB Garamond' }
+      },
+      defaults: { ribbon: false, dropCap: false, waxSeal: false, swords: true, medallions: false, laurel: false, compass: false, flourishes: false },
+      title:     { x: 550, y: 170, size: 58, maxWidth: 880 },
+      recipient: { x: 550, y: 280, size: 40, maxWidth: 880 },
+      body:      { x: 550, y: 390, size: 21, maxWidth: 820, lineHeight: 32 },
+      sigY: 720,
       heraldry: {
-        kingdom: { x: 76, y: 57, w: 94, h: 94 },
-        park:    { x: 680, y: 57, w: 94, h: 94 },
-        player:  { x: 354, y: 623, w: 142, h: 142 }
+        kingdom: { x: 90,  y: 570, w: 150, h: 150 },
+        park:    { x: 860, y: 570, w: 150, h: 150 },
+        player:  { x: 475, y: 570, w: 150, h: 150 }
+      },
+      render: function(ctx, w, h, st, pal) {
+        var el = st.elements;
+        if (el.swords) {
+          sgDrawCrossedSwords(ctx, w / 2, 105, 95, pal);
+        }
+        sgDrawTitleCenter(ctx, st, pal, this.title);
+        sgDrawOrnamentalRule(ctx, w / 2, 240, 520, pal);
+        sgDrawRecipientCenter(ctx, st, pal, this.recipient);
+        sgDrawDivider(ctx, w / 2, 345, 460, pal.accent, 0.5);
+        sgDrawBodyCenter(ctx, st, pal, this.body);
+        sgDrawHeraldryFromSpec(ctx, st, this.heraldry);
+        sgDrawArtworkSlot(ctx, 'center_image');
+        sgDrawDateLine(ctx, st, pal, w, this.sigY - 20);
+        sgDrawSignatureBar(ctx, st, pal, w, this.sigY, this.sigCount);
+      }
+    },
+
+    // ========================================================
+    //  6. GUILD CHARTER — ribbon title + dual-column body/sigs
+    // ========================================================
+    guild_charter: {
+      name: 'Guild Charter',
+      blurb: 'Service awards and guild installations',
+      icon: 'fa-scroll',
+      orientation: 'portrait',
+      previewW: 850, previewH: 1100,
+      sigCount: 2,
+      preset: {
+        palette: 'nature',
+        borderStyle: 'classic',
+        fonts: { title: 'Cinzel', recipient: 'Metamorphous', body: 'Sorts Mill Goudy', signatures: 'Sorts Mill Goudy' }
+      },
+      defaults: { ribbon: true, dropCap: false, waxSeal: true, swords: false, medallions: false, laurel: false, compass: false, flourishes: false },
+      title:     { x: 425, y: 200, size: 44, maxWidth: 680 },
+      recipient: { x: 425, y: 320, size: 34, maxWidth: 680 },
+      body:      { x: 130, y: 420, size: 19, maxWidth: 380, lineHeight: 28 },
+      sigY: 760,
+      heraldry: {
+        kingdom: { x: 80,  y: 80,  w: 95, h: 95 },
+        park:    { x: 675, y: 80,  w: 95, h: 95 },
+        player:  { x: 600, y: 430, w: 180, h: 180 }
+      },
+      render: function(ctx, w, h, st, pal) {
+        var el = st.elements;
+        if (el.ribbon) {
+          sgDrawRibbonBanner(ctx, w / 2, 205, 620, 82, st.awardName || 'Charter Title', st.fonts.title, pal, 38);
+        } else {
+          sgDrawTitleCenter(ctx, st, pal, this.title);
+        }
+        sgDrawHeraldryFromSpec(ctx, st, this.heraldry);
+        sgDrawRecipientCenter(ctx, st, pal, this.recipient);
+        sgDrawDivider(ctx, w / 2, 370, 420, pal.accent, 0.4);
+        // Column divider
+        ctx.save();
+        ctx.strokeStyle = pal.accent;
+        ctx.globalAlpha = 0.35;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(530, 405);
+        ctx.lineTo(530, 920);
+        ctx.stroke();
+        ctx.restore();
+        // Left column: body
+        sgDrawArtworkSlot(ctx, 'center_image');
+        sgDrawBodyLeft(ctx, st, pal, this.body);
+        // Right column: signatures stacked + seal
+        sgDrawSignatureStack(ctx, st, pal, 665, 660, this.sigCount, 'center');
+        if (el.waxSeal) {
+          sgDrawWaxSealLarge(ctx, 665, 870, 50, pal, sgComputeSealInitials(st.kingdom), st.fonts.body);
+        }
+        sgDrawDateLine(ctx, st, pal, 285, 960);
+      }
+    },
+
+    // ========================================================
+    //  7. ARCANE GRIMOIRE — center title inside laurel wreath
+    // ========================================================
+    arcane_grimoire: {
+      name: 'Arcane Grimoire',
+      blurb: 'Mystical honors with laurel wreath centerpiece',
+      icon: 'fa-hat-wizard',
+      orientation: 'portrait',
+      previewW: 850, previewH: 1100,
+      sigCount: 2,
+      preset: {
+        palette: 'twilight',
+        borderStyle: 'filigree',
+        fonts: { title: 'Cinzel Decorative', recipient: 'MedievalSharp', body: 'Almendra', signatures: 'Fondamento' }
+      },
+      defaults: { ribbon: false, dropCap: false, waxSeal: false, swords: false, medallions: false, laurel: true, compass: true, flourishes: true },
+      title:     { x: 425, y: 260, size: 44, maxWidth: 480 },
+      recipient: { x: 425, y: 420, size: 32, maxWidth: 660 },
+      body:      { x: 425, y: 520, size: 20, maxWidth: 620, lineHeight: 30 },
+      sigY: 930,
+      heraldry: {
+        kingdom: { x: 80,  y: 100, w: 100, h: 100 },
+        park:    { x: 670, y: 100, w: 100, h: 100 }
+      },
+      render: function(ctx, w, h, st, pal) {
+        var el = st.elements;
+        if (el.flourishes) {
+          sgDrawCornerFlourish(ctx, 60, 60, 85, 'tl', pal);
+          sgDrawCornerFlourish(ctx, w - 60, 60, 85, 'tr', pal);
+          sgDrawCornerFlourish(ctx, 60, h - 60, 85, 'bl', pal);
+          sgDrawCornerFlourish(ctx, w - 60, h - 60, 85, 'br', pal);
+        }
+        if (el.laurel) {
+          sgDrawLaurelWreath(ctx, w / 2, 275, 165, pal);
+        }
+        sgDrawTitleCenter(ctx, st, pal, this.title);
+        sgDrawHeraldryFromSpec(ctx, st, this.heraldry);
+        sgDrawOrnamentalRule(ctx, w / 2, 380, 420, pal);
+        sgDrawRecipientCenter(ctx, st, pal, this.recipient);
+        sgDrawArtworkSlot(ctx, 'center_image');
+        sgDrawBodyCenter(ctx, st, pal, this.body);
+        if (el.compass) {
+          sgDrawCompassRose(ctx, w / 2, this.sigY - 85, 56, pal);
+        } else {
+          sgDrawSeal(ctx, st, pal, w / 2, this.sigY - 85, 48);
+        }
+        sgDrawDateLine(ctx, st, pal, w, this.sigY - 30);
+        sgDrawOrnamentalRule(ctx, w / 2, this.sigY - 5, 440, pal);
+        sgDrawSignatureBar(ctx, st, pal, w, this.sigY, this.sigCount);
+      }
+    },
+
+    // ========================================================
+    //  8. BARDIC BALLAD — narrow centered column, script fonts
+    // ========================================================
+    bardic_ballad: {
+      name: 'Bardic Ballad',
+      blurb: 'Romantic scrolls for the arts and song',
+      icon: 'fa-music',
+      orientation: 'portrait',
+      previewW: 850, previewH: 1100,
+      sigCount: 2,
+      preset: {
+        palette: 'crimson',
+        borderStyle: 'filigree',
+        fonts: { title: 'Tangerine', recipient: 'Great Vibes', body: 'Cormorant Garamond', signatures: 'Pinyon Script' }
+      },
+      defaults: { ribbon: false, dropCap: true, waxSeal: true, swords: false, medallions: false, laurel: false, compass: false, flourishes: true },
+      title:     { x: 425, y: 160, size: 72, maxWidth: 620 },
+      recipient: { x: 425, y: 290, size: 48, maxWidth: 620 },
+      body:      { x: 240, y: 430, size: 20, maxWidth: 490, lineHeight: 34 },
+      sigY: 950,
+      heraldry: {
+        kingdom: { x: 80,  y: 80, w: 95, h: 95 },
+        park:    { x: 675, y: 80, w: 95, h: 95 },
+        player:  { x: 355, y: 760, w: 140, h: 140 }
+      },
+      render: function(ctx, w, h, st, pal) {
+        var el = st.elements;
+        if (el.flourishes) {
+          sgDrawCornerFlourish(ctx, 70, 70, 95, 'tl', pal);
+          sgDrawCornerFlourish(ctx, w - 70, 70, 95, 'tr', pal);
+          sgDrawCornerFlourish(ctx, 70, h - 70, 95, 'bl', pal);
+          sgDrawCornerFlourish(ctx, w - 70, h - 70, 95, 'br', pal);
+        }
+        sgDrawTitleCenter(ctx, st, pal, this.title);
+        sgDrawOrnamentalRule(ctx, w / 2, 230, 380, pal);
+        sgDrawHeraldryFromSpec(ctx, st, this.heraldry);
+        sgDrawRecipientCenter(ctx, st, pal, this.recipient);
+        sgDrawOrnamentalRule(ctx, w / 2, 360, 380, pal);
+        sgDrawArtworkSlot(ctx, 'center_image');
+        var body = st.bodyText || sgGenerateBodyText();
+        if (el.dropCap) {
+          var first = (body.charAt(0) || '').toUpperCase();
+          sgDrawDropCap(ctx, first, this.body.x, this.body.y, 62, pal, st.fonts.title);
+          sgDrawBodyLeftWithIndent(ctx, st, pal, this.body, 78, body.substring(1).trimStart());
+        } else {
+          sgDrawBodyLeft(ctx, st, pal, this.body);
+        }
+        if (el.waxSeal) {
+          sgDrawWaxSealLarge(ctx, w - 115, this.sigY - 40, 48, pal, sgComputeSealInitials(st.kingdom), st.fonts.body);
+        }
+        sgDrawDateLine(ctx, st, pal, w, this.sigY - 30);
+        sgDrawSignatureBar(ctx, st, pal, w, this.sigY, this.sigCount);
       }
     }
   };
@@ -2469,12 +2851,19 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
   //  Color Palettes
   // ============================================================
   var PALETTES = {
-    classic:  { bg: '#f5e6c8', text: '#2d1b00', accent: '#8b6914', border: '#6b5a32' },
-    royal:    { bg: '#eef2f9', text: '#1a3a6b', accent: '#c4972a', border: '#1a3a6b' },
-    nature:   { bg: '#f0e6d0', text: '#2d5016', accent: '#b8942a', border: '#2d5016' },
-    crimson:  { bg: '#f9f0f0', text: '#4a1010', accent: '#8b1a1a', border: '#6b2e2e' },
-    obsidian: { bg: '#e8e4df', text: '#1a1a2e', accent: '#706040', border: '#3d3d50' },
-    white:    { bg: '#ffffff', text: '#1a1a1a', accent: '#555555', border: '#999999' }
+    classic:     { bg: '#f5e6c8', text: '#2d1b00', accent: '#8b6914', border: '#6b5a32' },
+    royal:       { bg: '#eef2f9', text: '#1a3a6b', accent: '#c4972a', border: '#1a3a6b' },
+    nature:      { bg: '#f0e6d0', text: '#2d5016', accent: '#b8942a', border: '#2d5016' },
+    crimson:     { bg: '#f9f0f0', text: '#4a1010', accent: '#8b1a1a', border: '#6b2e2e' },
+    obsidian:    { bg: '#e8e4df', text: '#1a1a2e', accent: '#706040', border: '#3d3d50' },
+    white:       { bg: '#ffffff', text: '#1a1a1a', accent: '#555555', border: '#999999' },
+    // Fantasy-preset palettes (v2)
+    burgundy:    { bg: '#f4e8d0', text: '#3d1010', accent: '#b8902a', border: '#5c1e1e' },
+    forest:      { bg: '#eee6c8', text: '#1a2e18', accent: '#a67a1e', border: '#2d4a2b' },
+    ink:         { bg: '#fbf4e4', text: '#2b1810', accent: '#8b6914', border: '#3d2612' },
+    illuminated: { bg: '#f6ebd0', text: '#3d1010', accent: '#c9a63a', border: '#4a1616' },
+    sable:       { bg: '#e8dfc4', text: '#1a1208', accent: '#c4972a', border: '#2a1f10' },
+    twilight:    { bg: '#e4dfeb', text: '#2a1e4a', accent: '#8e6bbf', border: '#3a2a66' }
   };
 
   // ============================================================
@@ -2526,9 +2915,14 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
   //  State
   // ============================================================
   var sgState = {
-    template:   SgConfig.autoTemplate || 'B',
+    template:   sgResolveTemplate(SgConfig.autoTemplate || 'B'),
     palette:    'classic',
     borderStyle: 'classic',
+    // Decorative element toggles (template defaults override on select)
+    elements: {
+      ribbon: false, dropCap: false, waxSeal: false, swords: false,
+      medallions: false, laurel: false, compass: false, flourishes: false
+    },
     celtic: { strandSize: 4, outlineWidth: 1, fillColor: '#8b6914', strokeColor: '#6b5a32' },
     fonts: {
       title:      'MedievalSharp',
@@ -2769,7 +3163,7 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
     var dateStr = sgState.date;
     var kingdom = sgState.kingdom;
     var park = sgState.park;
-    var tplKey = sgState.template || 'B';
+    var tplKey = sgResolveTemplate(sgState.template || 'heraldic_shield');
 
     // Parse date for fancy format
     var day = 0, suffix = 'th', monthName = '', year = '';
@@ -2789,7 +3183,7 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
     }
 
     var text = '';
-    if (tplKey === 'A') {
+    if (tplKey === 'royal_decree') {
       // Knight / Peerage
       text = 'To all and singular who shall see these presents, greetings. Be it known that by the right and authority vested in the Crown of ' + (kingdom || 'the Kingdom') + ', and in recognition of valor, honor, and service, We do hereby elevate ' + persona + ' to the ' + award + '.';
       if (day && monthName) {
@@ -2798,14 +3192,29 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
         if (kingdom) text += ', in the Kingdom of ' + kingdom;
         text += '.';
       }
-    } else if (tplKey === 'C') {
+    } else if (tplKey === 'chancery_letter') {
       // Title / Office
       text = 'Be it proclaimed that ' + persona + ' is hereby recognized and granted the title of ' + award + ', with all rights, privileges, and responsibilities thereto pertaining, by the authority of the Crown of ' + (kingdom || 'the Kingdom') + '.';
       if (day && monthName) {
         text += ' Given this ' + day + suffix + ' day of ' + monthName + ', ' + year + '.';
       }
+    } else if (tplKey === 'illuminated_ms') {
+      text = 'Herein is set down, by ancient custom and with due reverence, that ' + persona + ' has attained such mastery as to warrant the ' + award + '. May this illumination stand as enduring testament to the skill and dedication that have brought forth this honor.';
+      if (day && monthName) text += ' Inscribed this ' + day + suffix + ' day of ' + monthName + ', ' + year + '.';
+    } else if (tplKey === 'battle_standard') {
+      text = 'On the field of glory, ' + persona + ' hath proven valor without question. By right of arms, and witnessed by comrades and foes alike, the ' + award + ' is hereby conferred, that all who see this standard may know the measure of this warrior.';
+      if (day && monthName) text += ' Declared upon the ' + day + suffix + ' day of ' + monthName + ', ' + year + '.';
+    } else if (tplKey === 'guild_charter') {
+      text = 'By the charter of this guild, and upon vote of its membership, ' + persona + ' is hereby granted the ' + award + ', with all rights and duties pertaining thereto. Let this record stand within the annals of our guild, a mark of service freely given and gratefully received.';
+      if (day && monthName) text += ' Sealed the ' + day + suffix + ' day of ' + monthName + ', ' + year + '.';
+    } else if (tplKey === 'arcane_grimoire') {
+      text = 'Between the veils of mundane and mystery, ' + persona + ' has walked with purpose, and has earned by study, by craft, and by right the ' + award + '. May the light of this honor guide future steps, and may the laurel bind this moment to the long memory of the realm.';
+      if (day && monthName) text += ' Conjured upon the ' + day + suffix + ' day of ' + monthName + ', in the year of our reckoning ' + year + '.';
+    } else if (tplKey === 'bardic_ballad') {
+      text = 'Let every hall and every hearth hear tell of ' + persona + ', whose art has warmed our nights and whose voice has given shape to our joys and sorrows alike. In recognition of such grace, the ' + award + ' is bestowed, that music and remembrance may ever follow.';
+      if (day && monthName) text += ' Sung into record this ' + day + suffix + ' day of ' + monthName + ', ' + year + '.';
     } else {
-      // Template B: Order / Award
+      // Default: Order / Award (heraldic_shield)
       text = 'Let it be known to all that ' + persona + ', having demonstrated worth and dedication, is hereby granted the ' + award;
       if (rank && rank > 0) {
         var ordinal = rank + 'th';
@@ -3182,22 +3591,939 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
     img.src = url;
   }
 
+  // ============================================================
+  //  Scroll content helpers (refactored from sgRender)
+  //  ------------------------------------------------------------
+  //  These take (ctx, state, pal, spec) and draw one element.
+  //  Templates mix and match them in custom render() functions.
+  // ============================================================
+
+  function sgComputeSealInitials(kingdom) {
+    return (kingdom || '').split(/\s+/).filter(function(w) {
+      return !(/^(the|kingdom|of)$/i.test(w));
+    }).map(function(w) { return w.charAt(0).toUpperCase(); }).join('');
+  }
+
+  // Resolve palette color by name (supports new palette keys).
+  function sgPal(name) { return PALETTES[name] || PALETTES.classic; }
+
+  // --- Title (centered, auto-shrink to fit maxWidth) ---
+  function sgDrawTitleCenter(ctx, st, pal, spec) {
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = pal.accent;
+    var font = st.fonts.title;
+    var size = spec.size;
+    var text = st.awardName || 'Award Title';
+    ctx.font = (font === 'EB Garamond' ? 'bold ' : '') + size + 'px ' + font;
+    while (ctx.measureText(text).width > spec.maxWidth && size > 18) {
+      size -= 2;
+      ctx.font = (font === 'EB Garamond' ? 'bold ' : '') + size + 'px ' + font;
+    }
+    ctx.fillText(text, spec.x, spec.y);
+    ctx.restore();
+    return size;
+  }
+
+  // --- Title (left-aligned, auto-shrink) ---
+  function sgDrawTitleLeft(ctx, st, pal, spec) {
+    ctx.save();
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = pal.accent;
+    var font = st.fonts.title;
+    var size = spec.size;
+    var text = st.awardName || 'Award Title';
+    ctx.font = (font === 'EB Garamond' ? 'bold ' : '') + size + 'px ' + font;
+    while (ctx.measureText(text).width > spec.maxWidth && size > 18) {
+      size -= 2;
+      ctx.font = (font === 'EB Garamond' ? 'bold ' : '') + size + 'px ' + font;
+    }
+    ctx.fillText(text, spec.x, spec.y);
+    ctx.restore();
+    return size;
+  }
+
+  // --- Recipient (centered) ---
+  function sgDrawRecipientCenter(ctx, st, pal, spec) {
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = pal.text;
+    var font = st.fonts.recipient;
+    var size = spec.size;
+    var text = st.recipientDisplay || st.recipient || 'Recipient Name';
+    ctx.font = size + 'px ' + font;
+    while (ctx.measureText(text).width > spec.maxWidth && size > 14) {
+      size -= 2;
+      ctx.font = size + 'px ' + font;
+    }
+    ctx.fillText(text, spec.x, spec.y);
+    ctx.restore();
+  }
+
+  // --- Recipient (left-aligned) ---
+  function sgDrawRecipientLeft(ctx, st, pal, spec) {
+    ctx.save();
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = pal.text;
+    var font = st.fonts.recipient;
+    var size = spec.size;
+    var text = st.recipientDisplay || st.recipient || 'Recipient Name';
+    ctx.font = size + 'px ' + font;
+    while (ctx.measureText(text).width > spec.maxWidth && size > 14) {
+      size -= 2;
+      ctx.font = size + 'px ' + font;
+    }
+    ctx.fillText(text, spec.x, spec.y);
+    ctx.restore();
+  }
+
+  // --- Body (centered word-wrap) ---
+  function sgDrawBodyCenter(ctx, st, pal, spec) {
+    ctx.save();
+    ctx.fillStyle = pal.text;
+    ctx.font = spec.size + 'px ' + st.fonts.body;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    var text = st.bodyText || sgGenerateBodyText();
+    sgWrapText(ctx, text, spec.x, spec.y, spec.maxWidth, spec.lineHeight);
+    ctx.restore();
+  }
+
+  // --- Body (left-aligned word-wrap) ---
+  function sgDrawBodyLeft(ctx, st, pal, spec, overrideText) {
+    ctx.save();
+    ctx.fillStyle = pal.text;
+    ctx.font = spec.size + 'px ' + st.fonts.body;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    var text = overrideText || st.bodyText || sgGenerateBodyText();
+    sgWrapTextLeft(ctx, text, spec.x, spec.y, spec.maxWidth, spec.lineHeight);
+    ctx.restore();
+  }
+
+  // --- Body (left-aligned with first-line indent, for drop cap) ---
+  function sgDrawBodyLeftWithIndent(ctx, st, pal, spec, firstLineIndent, overrideText) {
+    ctx.save();
+    ctx.fillStyle = pal.text;
+    ctx.font = spec.size + 'px ' + st.fonts.body;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    var text = overrideText || st.bodyText || sgGenerateBodyText();
+    sgWrapTextLeftIndented(ctx, text, spec.x, spec.y, spec.maxWidth, spec.lineHeight, firstLineIndent);
+    ctx.restore();
+  }
+
+  // --- Left-aligned word wrap helper ---
+  function sgWrapTextLeft(ctx, text, x, y, maxWidth, lineHeight) {
+    var words = text.split(' ');
+    var line = '';
+    var lines = [];
+    for (var i = 0; i < words.length; i++) {
+      var test = line + words[i] + ' ';
+      if (ctx.measureText(test).width > maxWidth && line.length > 0) {
+        lines.push(line.trim());
+        line = words[i] + ' ';
+      } else {
+        line = test;
+      }
+    }
+    if (line.length > 0) lines.push(line.trim());
+    for (var j = 0; j < lines.length; j++) {
+      ctx.fillText(lines[j], x, y + j * lineHeight);
+    }
+  }
+
+  // --- Left-aligned word wrap with first-line indent (for drop cap) ---
+  function sgWrapTextLeftIndented(ctx, text, x, y, maxWidth, lineHeight, firstLineIndent) {
+    var words = text.split(' ');
+    var line = '';
+    var lines = [];
+    var firstW = maxWidth - firstLineIndent;
+    var isFirstLine = true;
+    for (var i = 0; i < words.length; i++) {
+      var test = line + words[i] + ' ';
+      var cap = isFirstLine ? firstW : maxWidth;
+      if (ctx.measureText(test).width > cap && line.length > 0) {
+        lines.push(line.trim());
+        line = words[i] + ' ';
+        isFirstLine = false;
+      } else {
+        line = test;
+      }
+    }
+    if (line.length > 0) lines.push(line.trim());
+    for (var j = 0; j < lines.length; j++) {
+      var lineX = (j === 0) ? x + firstLineIndent : x;
+      ctx.fillText(lines[j], lineX, y + j * lineHeight);
+    }
+  }
+
+  // --- Date line ---
+  function sgDrawDateLine(ctx, st, pal, w, y) {
+    var text = '';
+    if (st.park || st.kingdom) {
+      text = 'Given at';
+      if (st.park) text += ' ' + st.park;
+      if (st.kingdom) text += (st.park ? ', ' : ' ') + st.kingdom;
+    }
+    if (!text) return;
+    ctx.save();
+    var sz = 16;
+    ctx.font = sz + 'px ' + st.fonts.body;
+    ctx.fillStyle = pal.text;
+    ctx.globalAlpha = 0.6;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(text, w / 2, y);
+    ctx.restore();
+  }
+
+  // --- Heraldry corners from spec ---
+  function sgDrawHeraldryFromSpec(ctx, st, spec) {
+    if (!spec) return;
+    if (st.heraldry.kingdom && sgImages.kingdom && spec.kingdom) {
+      var kp = spec.kingdom;
+      ctx.save();
+      ctx.globalAlpha = 0.95;
+      ctx.drawImage(sgImages.kingdom, kp.x, kp.y, kp.w, kp.h);
+      ctx.restore();
+    }
+    if (st.heraldry.park && sgImages.park && spec.park) {
+      var pp = spec.park;
+      ctx.save();
+      ctx.globalAlpha = 0.95;
+      ctx.drawImage(sgImages.park, pp.x, pp.y, pp.w, pp.h);
+      ctx.restore();
+    }
+    if (st.heraldry.player && sgImages.player && spec.player) {
+      var plp = spec.player;
+      ctx.save();
+      ctx.globalAlpha = 0.95;
+      ctx.drawImage(sgImages.player, plp.x, plp.y, plp.w, plp.h);
+      ctx.restore();
+    }
+  }
+
+  // --- Seal element (centered circle with initials) ---
+  function sgDrawSeal(ctx, st, pal, cx, cy, r) {
+    ctx.save();
+    ctx.strokeStyle = pal.accent;
+    ctx.globalAlpha = 0.6;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 0.4;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 0.76, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 0.5;
+    for (var i = 0; i < 12; i++) {
+      var ang = (i / 12) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(ang) * r, cy + Math.sin(ang) * r);
+      ctx.lineTo(cx + Math.cos(ang) * (r * 1.16), cy + Math.sin(ang) * (r * 1.16));
+      ctx.stroke();
+    }
+    var initials = sgComputeSealInitials(st.kingdom);
+    if (initials) {
+      ctx.globalAlpha = 0.25;
+      ctx.fillStyle = pal.accent;
+      var sfz = initials.length > 2 ? Math.round(r * 0.56) : Math.round(r * 0.72);
+      ctx.font = sfz + 'px ' + st.fonts.body;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(initials, cx, cy);
+    }
+    ctx.restore();
+  }
+
+  // --- Signature bar (horizontal) ---
+  function sgDrawSignatureBar(ctx, st, pal, w, sigY, sigCountMax) {
+    var active = [0];
+    if (sgSig2Visible) active.push(1);
+    if (sigCountMax >= 3) active.push(2);
+    var n = active.length;
+    var spacing = w / (n + 1);
+    ctx.save();
+    ctx.strokeStyle = pal.text;
+    ctx.fillStyle = pal.text;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.6;
+    for (var ai = 0; ai < n; ai++) {
+      var si = active[ai];
+      var sigX = spacing * (ai + 1);
+      var lineW = 180;
+      var sigLineY = sigY + 30;
+      ctx.beginPath();
+      ctx.moveTo(sigX - lineW / 2, sigLineY);
+      ctx.lineTo(sigX + lineW / 2, sigLineY);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(sigX - lineW / 2, sigLineY - 3);
+      ctx.lineTo(sigX - lineW / 2, sigLineY + 3);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(sigX + lineW / 2, sigLineY - 3);
+      ctx.lineTo(sigX + lineW / 2, sigLineY + 3);
+      ctx.stroke();
+      ctx.globalAlpha = 1.0;
+      ctx.font = 'italic ' + 18 + 'px ' + st.fonts.signatures;
+      ctx.textAlign = 'center';
+      var nm = st.signatures[si] ? st.signatures[si].name : '';
+      if (nm) ctx.fillText(nm, sigX, sigY + 8);
+      ctx.globalAlpha = 0.65;
+      ctx.font = 14 + 'px ' + st.fonts.signatures;
+      var rl = st.signatures[si] ? st.signatures[si].role : '';
+      if (rl) ctx.fillText(rl, sigX, sigY + 48);
+      ctx.globalAlpha = 0.6;
+    }
+    ctx.restore();
+  }
+
+  // --- Signature stack (vertical) ---
+  function sgDrawSignatureStack(ctx, st, pal, x, y, sigCountMax, align) {
+    var active = [0];
+    if (sgSig2Visible) active.push(1);
+    if (sigCountMax >= 3) active.push(2);
+    var rowH = 70;
+    var lineW = 180;
+    ctx.save();
+    ctx.strokeStyle = pal.text;
+    ctx.fillStyle = pal.text;
+    ctx.lineWidth = 1;
+    ctx.textAlign = align || 'center';
+    ctx.textBaseline = 'top';
+    for (var i = 0; i < active.length; i++) {
+      var si = active[i];
+      var yy = y + i * rowH;
+      var x1, x2, tx;
+      if (align === 'right') {
+        x2 = x;
+        x1 = x - lineW;
+        tx = x;
+      } else if (align === 'left') {
+        x1 = x;
+        x2 = x + lineW;
+        tx = x;
+      } else {
+        x1 = x - lineW / 2;
+        x2 = x + lineW / 2;
+        tx = x;
+      }
+      ctx.globalAlpha = 0.6;
+      ctx.beginPath();
+      ctx.moveTo(x1, yy + 30);
+      ctx.lineTo(x2, yy + 30);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x1, yy + 27);
+      ctx.lineTo(x1, yy + 33);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x2, yy + 27);
+      ctx.lineTo(x2, yy + 33);
+      ctx.stroke();
+      ctx.globalAlpha = 1.0;
+      ctx.font = 'italic 18px ' + st.fonts.signatures;
+      var nm = st.signatures[si] ? st.signatures[si].name : '';
+      if (nm) ctx.fillText(nm, tx, yy + 8);
+      ctx.globalAlpha = 0.65;
+      ctx.font = '14px ' + st.fonts.signatures;
+      var rl = st.signatures[si] ? st.signatures[si].role : '';
+      if (rl) ctx.fillText(rl, tx, yy + 40);
+    }
+    ctx.restore();
+  }
+
+  // ============================================================
+  //  Primitives library (decorative elements)
+  // ============================================================
+
+  // --- Ribbon banner (decorative title holder) ---
+  function sgDrawRibbonBanner(ctx, cx, cy, width, height, text, fontFace, pal, textSize) {
+    var x = cx - width / 2;
+    var y = cy - height / 2;
+    var notch = height * 0.4;
+    ctx.save();
+    // Main banner body
+    var grad = ctx.createLinearGradient(x, y, x, y + height);
+    grad.addColorStop(0, pal.accent);
+    grad.addColorStop(0.5, sgLighten(pal.accent, 0.25));
+    grad.addColorStop(1, pal.accent);
+    ctx.fillStyle = grad;
+    ctx.strokeStyle = pal.border;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x + notch, y);
+    ctx.lineTo(x + width - notch, y);
+    ctx.lineTo(x + width, y + height / 2);
+    ctx.lineTo(x + width - notch, y + height);
+    ctx.lineTo(x + notch, y + height);
+    ctx.lineTo(x, y + height / 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // Fold-back tails
+    ctx.fillStyle = sgDarken(pal.accent, 0.35);
+    ctx.beginPath();
+    ctx.moveTo(x, y + height / 2);
+    ctx.lineTo(x - notch * 0.6, y + height / 2 - notch * 0.35);
+    ctx.lineTo(x - notch * 0.6, y + height / 2 + notch * 0.35);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x + width, y + height / 2);
+    ctx.lineTo(x + width + notch * 0.6, y + height / 2 - notch * 0.35);
+    ctx.lineTo(x + width + notch * 0.6, y + height / 2 + notch * 0.35);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // Text
+    if (text) {
+      ctx.fillStyle = pal.bg;
+      ctx.strokeStyle = pal.border;
+      ctx.lineWidth = 1;
+      ctx.font = (fontFace === 'EB Garamond' ? 'bold ' : '') + (textSize || 38) + 'px ' + fontFace;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      // Auto-shrink
+      var sz = textSize || 38;
+      while (ctx.measureText(text).width > width - notch * 2 - 20 && sz > 16) {
+        sz -= 2;
+        ctx.font = (fontFace === 'EB Garamond' ? 'bold ' : '') + sz + 'px ' + fontFace;
+      }
+      ctx.strokeText(text, cx, cy);
+      ctx.fillText(text, cx, cy);
+    }
+    ctx.restore();
+  }
+
+  // --- Drop cap (illuminated initial letter) ---
+  function sgDrawDropCap(ctx, letter, x, y, size, pal, fontFace) {
+    if (!letter) return;
+    ctx.save();
+    // Decorated background box
+    ctx.fillStyle = sgLighten(pal.accent, 0.7);
+    ctx.strokeStyle = pal.accent;
+    ctx.lineWidth = 2;
+    ctx.fillRect(x, y, size, size);
+    ctx.strokeRect(x, y, size, size);
+    // Inner gold rule
+    ctx.strokeStyle = pal.accent;
+    ctx.globalAlpha = 0.5;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 4, y + 4, size - 8, size - 8);
+    ctx.globalAlpha = 1;
+    // Corner dots
+    ctx.fillStyle = pal.accent;
+    var d = 3;
+    ctx.beginPath(); ctx.arc(x + 6, y + 6, d, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x + size - 6, y + 6, d, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x + 6, y + size - 6, d, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x + size - 6, y + size - 6, d, 0, Math.PI * 2); ctx.fill();
+    // Letter
+    ctx.fillStyle = pal.accent;
+    var fs = Math.round(size * 0.78);
+    ctx.font = fs + 'px ' + fontFace;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(letter, x + size / 2, y + size / 2 + 2);
+    ctx.restore();
+  }
+
+  // --- Quartered shield (heraldic shield with 4 or more heraldry) ---
+  function sgDrawQuarteredShield(ctx, cx, cy, size, images, st, pal) {
+    ctx.save();
+    var halfW = size * 0.55;
+    var topY = cy - size * 0.55;
+    var ptY = cy + size * 0.75;
+    // Shield outline path
+    ctx.beginPath();
+    ctx.moveTo(cx - halfW, topY);
+    ctx.lineTo(cx + halfW, topY);
+    ctx.lineTo(cx + halfW, cy + size * 0.1);
+    ctx.quadraticCurveTo(cx + halfW, cy + size * 0.45, cx, ptY);
+    ctx.quadraticCurveTo(cx - halfW, cy + size * 0.45, cx - halfW, cy + size * 0.1);
+    ctx.closePath();
+    // Background fill
+    var grd = ctx.createLinearGradient(cx, topY, cx, ptY);
+    grd.addColorStop(0, sgLighten(pal.bg, 0.15));
+    grd.addColorStop(1, pal.bg);
+    ctx.fillStyle = grd;
+    ctx.fill();
+    // Clip to shield + draw player heraldry filling it
+    ctx.save();
+    ctx.clip();
+    if (st.heraldry.player && images.player) {
+      var ph = images.player;
+      // Center the image within shield bounds
+      var imgW = halfW * 2;
+      var imgH = (ptY - topY);
+      ctx.globalAlpha = 0.85;
+      ctx.drawImage(ph, cx - imgW / 2, topY, imgW, imgH);
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+    // Shield border (gold stroke)
+    ctx.strokeStyle = pal.accent;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    // Inner gold rule
+    ctx.save();
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.55;
+    ctx.stroke();
+    ctx.restore();
+    // Small kingdom mini-shield top-left overlapping
+    if (st.heraldry.kingdom && images.kingdom) {
+      var mini = size * 0.3;
+      sgDrawMiniShield(ctx, cx - halfW + mini * 0.1, topY - mini * 0.2, mini, images.kingdom, pal);
+    }
+    // Small park mini-shield top-right overlapping
+    if (st.heraldry.park && images.park) {
+      var mini2 = size * 0.3;
+      sgDrawMiniShield(ctx, cx + halfW - mini2 * 1.1, topY - mini2 * 0.2, mini2, images.park, pal);
+    }
+    ctx.restore();
+  }
+
+  function sgDrawMiniShield(ctx, x, y, size, img, pal) {
+    ctx.save();
+    ctx.beginPath();
+    var halfW = size / 2;
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + size, y);
+    ctx.lineTo(x + size, y + size * 0.55);
+    ctx.quadraticCurveTo(x + size, y + size * 0.85, x + halfW, y + size);
+    ctx.quadraticCurveTo(x, y + size * 0.85, x, y + size * 0.55);
+    ctx.closePath();
+    ctx.save();
+    ctx.clip();
+    ctx.drawImage(img, x, y, size, size);
+    ctx.restore();
+    ctx.strokeStyle = pal.accent;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // --- Wax seal (3D gradient disc with initials) ---
+  function sgDrawWaxSealLarge(ctx, cx, cy, r, pal, initials, fontFace) {
+    ctx.save();
+    // Drop shadow
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetX = 2;
+    ctx.shadowOffsetY = 4;
+    // Outer disc — radial gradient burgundy
+    var wax = sgMixColor(pal.accent, '#5c1e1e', 0.6);
+    var waxHi = sgLighten(wax, 0.4);
+    var waxLo = sgDarken(wax, 0.45);
+    var g = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.35, r * 0.1, cx, cy, r);
+    g.addColorStop(0, waxHi);
+    g.addColorStop(0.4, wax);
+    g.addColorStop(1, waxLo);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    // Pressed rim
+    ctx.strokeStyle = waxLo;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 0.92, 0, Math.PI * 2);
+    ctx.stroke();
+    // Decorative radial ticks
+    ctx.strokeStyle = waxHi;
+    ctx.globalAlpha = 0.55;
+    ctx.lineWidth = 1;
+    for (var i = 0; i < 16; i++) {
+      var ang = (i / 16) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(ang) * r * 0.85, cy + Math.sin(ang) * r * 0.85);
+      ctx.lineTo(cx + Math.cos(ang) * r * 0.95, cy + Math.sin(ang) * r * 0.95);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    // Initials stamped
+    if (initials) {
+      ctx.fillStyle = waxHi;
+      ctx.globalAlpha = 0.75;
+      var fs = initials.length > 2 ? Math.round(r * 0.56) : Math.round(r * 0.78);
+      ctx.font = 'bold ' + fs + 'px ' + fontFace;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      // Emboss: dark shadow down-right
+      ctx.fillStyle = waxLo;
+      ctx.fillText(initials, cx + 1, cy + 2);
+      ctx.fillStyle = waxHi;
+      ctx.fillText(initials, cx - 1, cy - 1);
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  }
+
+  // --- Crossed swords (combat awards) ---
+  function sgDrawCrossedSwords(ctx, cx, cy, size, pal) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    for (var s = 0; s < 2; s++) {
+      ctx.save();
+      ctx.rotate((s === 0 ? -1 : 1) * Math.PI / 4);
+      // Blade
+      var blade = ctx.createLinearGradient(0, -size / 2, 0, 0);
+      blade.addColorStop(0, '#f0f0f0');
+      blade.addColorStop(0.5, '#c0c0c0');
+      blade.addColorStop(1, '#909090');
+      ctx.fillStyle = blade;
+      ctx.strokeStyle = '#505050';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-3, 0);
+      ctx.lineTo(-3, -size * 0.7);
+      ctx.lineTo(0, -size * 0.78);
+      ctx.lineTo(3, -size * 0.7);
+      ctx.lineTo(3, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      // Guard (crossbar)
+      ctx.fillStyle = pal.accent;
+      ctx.strokeStyle = sgDarken(pal.accent, 0.4);
+      ctx.fillRect(-size * 0.12, -2, size * 0.24, 5);
+      ctx.strokeRect(-size * 0.12, -2, size * 0.24, 5);
+      // Grip
+      ctx.fillStyle = '#4a2818';
+      ctx.fillRect(-2, 3, 4, size * 0.18);
+      // Pommel
+      ctx.fillStyle = pal.accent;
+      ctx.beginPath();
+      ctx.arc(0, 3 + size * 0.18 + 4, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = sgDarken(pal.accent, 0.4);
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  // --- Margin medallions (circular heraldry stack) ---
+  function sgDrawMarginMedallions(ctx, images, st, x, startY, spacing, r, pal) {
+    var items = [];
+    if (st.heraldry.kingdom && images.kingdom) items.push(images.kingdom);
+    if (st.heraldry.park && images.park) items.push(images.park);
+    if (st.heraldry.player && images.player) items.push(images.player);
+    for (var i = 0; i < items.length; i++) {
+      var cy = startY + i * spacing;
+      ctx.save();
+      // Outer gold ring
+      ctx.strokeStyle = pal.accent;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(x, cy, r, 0, Math.PI * 2);
+      ctx.stroke();
+      // Clip + draw image
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(x, cy, r - 3, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.drawImage(items[i], x - r, cy - r, r * 2, r * 2);
+      ctx.restore();
+      // Inner gold thin ring
+      ctx.strokeStyle = sgLighten(pal.accent, 0.2);
+      ctx.lineWidth = 1;
+      ctx.globalAlpha = 0.7;
+      ctx.beginPath();
+      ctx.arc(x, cy, r - 5, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  // --- Ruled line (thin decorative rule) ---
+  function sgDrawRuledLine(ctx, x1, y1, x2, y2, pal, opacity) {
+    ctx.save();
+    ctx.globalAlpha = opacity;
+    ctx.strokeStyle = pal.accent;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    // endpoint dots
+    ctx.fillStyle = pal.accent;
+    ctx.beginPath(); ctx.arc(x1, y1, 2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x2, y2, 2, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  // --- Laurel wreath ---
+  function sgDrawLaurelWreath(ctx, cx, cy, outerR, pal) {
+    ctx.save();
+    ctx.strokeStyle = pal.accent;
+    ctx.fillStyle = pal.accent;
+    ctx.globalAlpha = 0.5;
+    // Two C-shaped laurel arcs (left half and right half)
+    for (var side = 0; side < 2; side++) {
+      var dir = side === 0 ? -1 : 1;
+      var leaves = 12;
+      for (var i = 0; i < leaves; i++) {
+        var t = i / (leaves - 1);
+        var ang = Math.PI * 0.9 - t * Math.PI * 0.85; // bottom-to-top arc
+        var lx = cx + dir * Math.cos(ang) * outerR;
+        var ly = cy - Math.sin(ang) * outerR;
+        // Leaf orientation tangent to circle
+        var leafAng = ang - Math.PI / 2;
+        ctx.save();
+        ctx.translate(lx, ly);
+        ctx.rotate(-dir * leafAng);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, outerR * 0.09, outerR * 0.035, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+    // Ribbon tie at bottom
+    ctx.globalAlpha = 0.6;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy + outerR * 0.9, outerR * 0.08, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // --- Compass rose ---
+  function sgDrawCompassRose(ctx, cx, cy, r, pal) {
+    ctx.save();
+    ctx.strokeStyle = pal.accent;
+    ctx.fillStyle = pal.accent;
+    ctx.globalAlpha = 0.55;
+    ctx.lineWidth = 1;
+    // Outer circle
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 0.82, 0, Math.PI * 2);
+    ctx.stroke();
+    // 8-point star
+    for (var i = 0; i < 8; i++) {
+      var ang = (i / 8) * Math.PI * 2 - Math.PI / 2;
+      var long = (i % 2 === 0);
+      var pr = long ? r * 0.82 : r * 0.45;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(ang - 0.12) * pr * 0.3, cy + Math.sin(ang - 0.12) * pr * 0.3);
+      ctx.lineTo(cx + Math.cos(ang) * pr, cy + Math.sin(ang) * pr);
+      ctx.lineTo(cx + Math.cos(ang + 0.12) * pr * 0.3, cy + Math.sin(ang + 0.12) * pr * 0.3);
+      ctx.closePath();
+      if (long) ctx.fill(); else { ctx.globalAlpha = 0.35; ctx.fill(); ctx.globalAlpha = 0.55; }
+    }
+    // Center dot
+    ctx.beginPath();
+    ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // --- Fleur-de-lis ---
+  function sgDrawFleurDeLis(ctx, cx, cy, size, pal) {
+    ctx.save();
+    ctx.fillStyle = pal.accent;
+    ctx.strokeStyle = sgDarken(pal.accent, 0.35);
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.8;
+    // Central petal
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - size * 0.5);
+    ctx.quadraticCurveTo(cx + size * 0.12, cy - size * 0.15, cx, cy + size * 0.05);
+    ctx.quadraticCurveTo(cx - size * 0.12, cy - size * 0.15, cx, cy - size * 0.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // Left petal
+    ctx.beginPath();
+    ctx.moveTo(cx - size * 0.25, cy - size * 0.3);
+    ctx.quadraticCurveTo(cx - size * 0.45, cy + size * 0.05, cx - size * 0.1, cy + size * 0.1);
+    ctx.quadraticCurveTo(cx - size * 0.05, cy - size * 0.1, cx - size * 0.25, cy - size * 0.3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // Right petal
+    ctx.beginPath();
+    ctx.moveTo(cx + size * 0.25, cy - size * 0.3);
+    ctx.quadraticCurveTo(cx + size * 0.45, cy + size * 0.05, cx + size * 0.1, cy + size * 0.1);
+    ctx.quadraticCurveTo(cx + size * 0.05, cy - size * 0.1, cx + size * 0.25, cy - size * 0.3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // Band
+    ctx.fillRect(cx - size * 0.22, cy + size * 0.08, size * 0.44, size * 0.06);
+    ctx.strokeRect(cx - size * 0.22, cy + size * 0.08, size * 0.44, size * 0.06);
+    // Base
+    ctx.beginPath();
+    ctx.moveTo(cx - size * 0.15, cy + size * 0.14);
+    ctx.lineTo(cx + size * 0.15, cy + size * 0.14);
+    ctx.lineTo(cx + size * 0.05, cy + size * 0.35);
+    ctx.lineTo(cx - size * 0.05, cy + size * 0.35);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // --- Corner flourish (decorative vine) ---
+  function sgDrawCornerFlourish(ctx, cx, cy, size, corner, pal) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    // corner ∈ 'tl' 'tr' 'bl' 'br' — flip accordingly
+    var sx = (corner === 'tr' || corner === 'br') ? -1 : 1;
+    var sy = (corner === 'bl' || corner === 'br') ? -1 : 1;
+    ctx.scale(sx, sy);
+    ctx.strokeStyle = pal.accent;
+    ctx.fillStyle = pal.accent;
+    ctx.lineWidth = 1.5;
+    ctx.globalAlpha = 0.65;
+    // Main vine
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(size * 0.3, size * 0.1, size * 0.4, size * 0.35);
+    ctx.quadraticCurveTo(size * 0.5, size * 0.6, size * 0.3, size * 0.75);
+    ctx.stroke();
+    // Secondary curl
+    ctx.beginPath();
+    ctx.moveTo(size * 0.1, size * 0.05);
+    ctx.quadraticCurveTo(size * 0.4, size * 0.05, size * 0.55, size * 0.25);
+    ctx.stroke();
+    // Leaves
+    var leafSpots = [
+      [size * 0.25, size * 0.2],
+      [size * 0.45, size * 0.45],
+      [size * 0.35, size * 0.7]
+    ];
+    for (var i = 0; i < leafSpots.length; i++) {
+      ctx.beginPath();
+      ctx.ellipse(leafSpots[i][0], leafSpots[i][1], size * 0.08, size * 0.035, Math.PI / 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Small spiral terminal
+    ctx.beginPath();
+    ctx.arc(size * 0.08, size * 0.08, 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // --- Ornamental rule (fancier divider) ---
+  function sgDrawOrnamentalRule(ctx, cx, cy, width, pal) {
+    ctx.save();
+    ctx.strokeStyle = pal.accent;
+    ctx.fillStyle = pal.accent;
+    ctx.globalAlpha = 0.65;
+    ctx.lineWidth = 1;
+    var half = width / 2;
+    // Main lines with gap
+    ctx.beginPath();
+    ctx.moveTo(cx - half, cy);
+    ctx.lineTo(cx - 22, cy);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx + 22, cy);
+    ctx.lineTo(cx + half, cy);
+    ctx.stroke();
+    // Center fleur
+    sgDrawFleurDeLis(ctx, cx, cy, 24, pal);
+    // Endpoint diamonds
+    ctx.beginPath();
+    ctx.moveTo(cx - half, cy);
+    ctx.lineTo(cx - half + 5, cy - 3);
+    ctx.lineTo(cx - half + 10, cy);
+    ctx.lineTo(cx - half + 5, cy + 3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(cx + half, cy);
+    ctx.lineTo(cx + half - 5, cy - 3);
+    ctx.lineTo(cx + half - 10, cy);
+    ctx.lineTo(cx + half - 5, cy + 3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // ============================================================
+  //  Color utilities (used by primitives)
+  // ============================================================
+  function sgParseColor(c) {
+    var m = /^#?([a-f\d]{6})$/i.exec(c || '');
+    if (!m) return [0, 0, 0];
+    var n = parseInt(m[1], 16);
+    return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+  }
+  function sgToHex(r, g, b) {
+    r = Math.max(0, Math.min(255, Math.round(r)));
+    g = Math.max(0, Math.min(255, Math.round(g)));
+    b = Math.max(0, Math.min(255, Math.round(b)));
+    return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+  }
+  function sgLighten(c, amt) {
+    var rgb = sgParseColor(c);
+    return sgToHex(
+      rgb[0] + (255 - rgb[0]) * amt,
+      rgb[1] + (255 - rgb[1]) * amt,
+      rgb[2] + (255 - rgb[2]) * amt
+    );
+  }
+  function sgDarken(c, amt) {
+    var rgb = sgParseColor(c);
+    return sgToHex(rgb[0] * (1 - amt), rgb[1] * (1 - amt), rgb[2] * (1 - amt));
+  }
+  function sgMixColor(a, b, amt) {
+    var ra = sgParseColor(a), rb = sgParseColor(b);
+    return sgToHex(
+      ra[0] * (1 - amt) + rb[0] * amt,
+      ra[1] * (1 - amt) + rb[1] * amt,
+      ra[2] * (1 - amt) + rb[2] * amt
+    );
+  }
+
   function sgRender() {
     var canvas = document.getElementById('sc-canvas');
     if (!canvas) return;
+    // Resolve alias → canonical key
+    var tplKey = sgResolveTemplate(sgState.template);
+    var tpl = TEMPLATES[tplKey] || TEMPLATES.heraldic_shield;
+    // Resize canvas if template orientation requires different dims
+    var pw = tpl.previewW || 850;
+    var ph = tpl.previewH || 1100;
+    if (canvas.width !== pw || canvas.height !== ph) {
+      canvas.width = pw;
+      canvas.height = ph;
+      var wrap = canvas.parentElement;
+      if (wrap && wrap.classList) {
+        if (tpl.orientation === 'landscape') wrap.classList.add('sc-landscape');
+        else wrap.classList.remove('sc-landscape');
+      }
+      sgRender._noiseCanvas = null; // invalidate noise cache on resize
+    }
     var ctx = canvas.getContext('2d');
     var w = canvas.width;
     var h = canvas.height;
-    var tpl = TEMPLATES[sgState.template] || TEMPLATES.B;
     var pal = PALETTES[sgState.palette] || PALETTES.classic;
-    // Per-element fonts accessed via sgState.fonts.*
 
     // ---- Clear & fill background ----
     ctx.clearRect(0, 0, w, h);
     ctx.fillStyle = pal.bg;
     ctx.fillRect(0, 0, w, h);
 
-    // Subtle parchment texture (pre-rendered offscreen canvas, drawn once)
+    // Subtle parchment texture (cached offscreen canvas)
     if (!sgRender._noiseCanvas) {
       var nc = document.createElement('canvas');
       nc.width = w; nc.height = h;
@@ -3226,9 +4552,9 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
     sgDrawArtworkSlot(ctx, 'watermark');
 
     // ---- Draw border ----
-    sgDrawBorder(ctx, w, h, sgState.palette, sgState.template, sgState.borderStyle);
+    sgDrawBorder(ctx, w, h, sgState.palette, tplKey, sgState.borderStyle);
 
-    // ---- Artwork: full border + edge borders + top graphic (over drawn border, before heraldry) ----
+    // ---- Artwork: full/edge border + top graphic ----
     sgDrawArtworkSlot(ctx, 'full_border');
     sgDrawArtworkSlot(ctx, 'border_left');
     sgDrawArtworkSlot(ctx, 'border_right');
@@ -3236,197 +4562,28 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
     sgDrawArtworkSlot(ctx, 'border_bottom');
     sgDrawArtworkSlot(ctx, 'top_graphic');
 
-    // ---- Draw heraldry images ----
-    var heraldryPositions = tpl.heraldry;
-    if (sgState.heraldry.kingdom && sgImages.kingdom) {
-      var kp = heraldryPositions.kingdom;
-      ctx.save();
-      ctx.globalAlpha = 0.95;
-      ctx.drawImage(sgImages.kingdom, kp.x, kp.y, kp.w, kp.h);
-      ctx.restore();
-    }
-    if (sgState.heraldry.park && sgImages.park) {
-      var pp = heraldryPositions.park;
-      ctx.save();
-      ctx.globalAlpha = 0.95;
-      ctx.drawImage(sgImages.park, pp.x, pp.y, pp.w, pp.h);
-      ctx.restore();
-    }
-    if (sgState.heraldry.player && sgImages.player) {
-      var plp = heraldryPositions.player;
-      ctx.save();
-      ctx.globalAlpha = 0.95;
-      ctx.drawImage(sgImages.player, plp.x, plp.y, plp.w, plp.h);
-      ctx.restore();
-    }
-
-    // ---- Artwork: center image (semi-transparent behind text) ----
-    sgDrawArtworkSlot(ctx, 'center_image');
-
-    // ---- Title text ----
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillStyle = pal.accent;
-    var titleFont = sgState.fonts.title;
-    ctx.font = (titleFont === 'EB Garamond' ? 'bold ' : '') + tpl.title.size + 'px ' + titleFont;
-    var titleText = sgState.awardName || 'Award Title';
-    // Scale down if too wide
-    var titleFontSize = tpl.title.size;
-    while (ctx.measureText(titleText).width > tpl.title.maxWidth && titleFontSize > 20) {
-      titleFontSize -= 2;
-      ctx.font = (titleFont === 'EB Garamond' ? 'bold ' : '') + titleFontSize + 'px ' + titleFont;
-    }
-    ctx.fillText(titleText, tpl.title.x, tpl.title.y);
-
-    // Decorative divider above title (Template A only)
-    if (sgState.template === 'A') {
-      sgDrawDivider(ctx, tpl.title.x, tpl.title.y - 30, 250, pal.accent, 0.6);
-    }
-    // Decorative divider below title
-    sgDrawDivider(ctx, tpl.title.x, tpl.title.y + titleFontSize + 25, 250, pal.accent, 0.6);
-
-    // ---- Recipient name ----
-    ctx.fillStyle = pal.text;
-    var recipFont = sgState.fonts.recipient;
-    ctx.font = '' + tpl.recipient.size + 'px ' + recipFont;
-    var recipientText = sgState.recipientDisplay || sgState.recipient || 'Recipient Name';
-    var recipFontSize = tpl.recipient.size;
-    while (ctx.measureText(recipientText).width > tpl.recipient.maxWidth && recipFontSize > 16) {
-      recipFontSize -= 2;
-      ctx.font = '' + recipFontSize + 'px ' + recipFont;
-    }
-    ctx.fillText(recipientText, tpl.recipient.x, tpl.recipient.y);
-
-    // ---- Body text (word-wrapped) ----
-    ctx.fillStyle = pal.text;
-    ctx.font = '' + tpl.body.size + 'px ' + sgState.fonts.body;
-    ctx.textAlign = 'center';
-    var bodyText = sgState.bodyText || sgGenerateBodyText();
-    sgWrapText(ctx, bodyText, tpl.body.x, tpl.body.y, tpl.body.maxWidth, tpl.body.lineHeight);
-
-    // ---- Date / Location line ----
-    var dateLine = '';
-    if (sgState.park || sgState.kingdom) {
-      dateLine = 'Given at';
-      if (sgState.park) {
-        dateLine += ' ' + sgState.park;
-      }
-      if (sgState.kingdom) {
-        dateLine += (sgState.park ? ', ' : ' ') + sgState.kingdom;
-      }
-    }
-    if (dateLine) {
-      ctx.font = '' + Math.round(tpl.body.size * 0.8) + 'px ' + sgState.fonts.body;
-      ctx.fillStyle = pal.text;
-      ctx.globalAlpha = 0.6;
-      ctx.textAlign = 'center';
-      ctx.fillText(dateLine, w / 2, tpl.sigY - 40);
-      ctx.globalAlpha = 1.0;
-    }
-
-    // ---- Seal element ----
-    var sealX = w / 2;
-    var sealY = tpl.sigY - 100;
-    // Outer circle
-    ctx.save();
-    ctx.strokeStyle = pal.accent;
-    ctx.globalAlpha = 0.6;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(sealX, sealY, 50, 0, Math.PI * 2);
-    ctx.stroke();
-    // Inner circle
-    ctx.globalAlpha = 0.4;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(sealX, sealY, 38, 0, Math.PI * 2);
-    ctx.stroke();
-    // 12 radial tick marks
-    ctx.globalAlpha = 0.5;
-    ctx.lineWidth = 1;
-    for (var ti = 0; ti < 12; ti++) {
-      var angle = (ti / 12) * Math.PI * 2;
-      var tx1 = sealX + Math.cos(angle) * 50;
-      var ty1 = sealY + Math.sin(angle) * 50;
-      var tx2 = sealX + Math.cos(angle) * 58;
-      var ty2 = sealY + Math.sin(angle) * 58;
-      ctx.beginPath();
-      ctx.moveTo(tx1, ty1);
-      ctx.lineTo(tx2, ty2);
-      ctx.stroke();
-    }
-    // Center initials (skip "The", "Kingdom", "of")
-    var sealInitials = (sgState.kingdom || '').split(/\s+/).filter(function(w) {
-      return !(/^(the|kingdom|of)$/i.test(w));
-    }).map(function(w) { return w.charAt(0).toUpperCase(); }).join('');
-    if (sealInitials) {
-      ctx.globalAlpha = 0.25;
-      ctx.fillStyle = pal.accent;
-      var sealFontSize = sealInitials.length > 2 ? 28 : 36;
-      ctx.font = sealFontSize + 'px ' + sgState.fonts.body;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(sealInitials, sealX, sealY);
-    }
-    ctx.restore();
-
-    // ---- Decorative divider above signatures ----
-    sgDrawDivider(ctx, w / 2, tpl.sigY - 60, 350, pal.accent, 0.4);
-
-    // ---- Signature lines ----
-    // Build list of active signature indices based on visibility
-    var activeSigs = [0]; // sig1 always visible
-    if (sgSig2Visible) activeSigs.push(1);
-    if (tpl.sigCount >= 3) activeSigs.push(2);
-    var sigCount = activeSigs.length;
-    var sigSpacing = w / (sigCount + 1);
-    ctx.strokeStyle = pal.text;
-    ctx.fillStyle = pal.text;
-    ctx.lineWidth = 1;
-    ctx.globalAlpha = 0.6;
-
-    for (var ai = 0; ai < sigCount; ai++) {
-      var si = activeSigs[ai];
-      var sigX = sigSpacing * (ai + 1);
-      var lineW = 180;
-      var sigLineY = tpl.sigY + 30;
-
-      // Signature line
-      ctx.beginPath();
-      ctx.moveTo(sigX - lineW / 2, sigLineY);
-      ctx.lineTo(sigX + lineW / 2, sigLineY);
-      ctx.stroke();
-
-      // Serif ticks at endpoints (3px vertical)
-      ctx.beginPath();
-      ctx.moveTo(sigX - lineW / 2, sigLineY - 3);
-      ctx.lineTo(sigX - lineW / 2, sigLineY + 3);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(sigX + lineW / 2, sigLineY - 3);
-      ctx.lineTo(sigX + lineW / 2, sigLineY + 3);
-      ctx.stroke();
-
-      // Name above line
-      ctx.globalAlpha = 1.0;
-      ctx.font = 'italic ' + Math.round(tpl.body.size * 0.85) + 'px ' + sgState.fonts.signatures;
-      ctx.textAlign = 'center';
-      var sigName = sgState.signatures[si] ? sgState.signatures[si].name : '';
-      if (sigName) {
-        ctx.fillText(sigName, sigX, tpl.sigY + 8);
-      }
-
-      // Role below line
-      ctx.globalAlpha = 0.65;
-      ctx.font = '' + Math.round(tpl.body.size * 0.7) + 'px ' + sgState.fonts.signatures;
-      var sigRole = sgState.signatures[si] ? sgState.signatures[si].role : '';
-      if (sigRole) {
-        ctx.fillText(sigRole, sigX, tpl.sigY + 48);
-      }
-      ctx.globalAlpha = 0.6;
+    // ---- Template content (handles heraldry + title + body + seal + sigs) ----
+    if (typeof tpl.render === 'function') {
+      tpl.render(ctx, w, h, sgState, pal);
+    } else {
+      sgDrawContentDefault(ctx, w, h, sgState, pal, tpl);
     }
 
     ctx.globalAlpha = 1.0;
+  }
+
+  // --- Fallback content renderer (legacy) ---
+  function sgDrawContentDefault(ctx, w, h, st, pal, tpl) {
+    sgDrawHeraldryFromSpec(ctx, st, tpl.heraldry);
+    sgDrawArtworkSlot(ctx, 'center_image');
+    sgDrawTitleCenter(ctx, st, pal, tpl.title);
+    sgDrawDivider(ctx, w / 2, tpl.title.y + tpl.title.size + 25, 250, pal.accent, 0.6);
+    sgDrawRecipientCenter(ctx, st, pal, tpl.recipient);
+    sgDrawBodyCenter(ctx, st, pal, tpl.body);
+    sgDrawDateLine(ctx, st, pal, w, tpl.sigY - 45);
+    sgDrawSeal(ctx, st, pal, w / 2, tpl.sigY - 95, 50);
+    sgDrawDivider(ctx, w / 2, tpl.sigY - 40, 350, pal.accent, 0.4);
+    sgDrawSignatureBar(ctx, st, pal, w, tpl.sigY, tpl.sigCount || 2);
   }
 
   // ============================================================
@@ -3471,7 +4628,7 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
   var sgSig2Visible = true;  // default: visible
 
   function sgUpdateSigVisibility() {
-    var tpl = TEMPLATES[sgState.template] || TEMPLATES.B;
+    var tpl = TEMPLATES[sgResolveTemplate(sgState.template)] || TEMPLATES.heraldic_shield;
     var sig2 = document.getElementById('sc-sig-2');
     var sig3 = document.getElementById('sc-sig-3');
 
@@ -3523,15 +4680,71 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
   // ============================================================
   //  Template card selection
   // ============================================================
-  function sgSelectTemplate(key) {
-    sgState.template = key;
+  function sgSelectTemplate(key, applyPreset) {
+    // Resolve legacy aliases
+    var resolved = sgResolveTemplate(key);
+    sgState.template = resolved;
+    var tpl = TEMPLATES[resolved];
+
+    // Apply preset (palette/border/fonts) unless caller opted out
+    if (tpl && applyPreset !== false && tpl.preset) {
+      sgState.palette = tpl.preset.palette || sgState.palette;
+      sgState.borderStyle = tpl.preset.borderStyle || sgState.borderStyle;
+      if (tpl.preset.fonts) {
+        sgState.fonts.title      = tpl.preset.fonts.title      || sgState.fonts.title;
+        sgState.fonts.recipient  = tpl.preset.fonts.recipient  || sgState.fonts.recipient;
+        sgState.fonts.body       = tpl.preset.fonts.body       || sgState.fonts.body;
+        sgState.fonts.signatures = tpl.preset.fonts.signatures || sgState.fonts.signatures;
+      }
+      // Copy default element toggles
+      if (tpl.defaults) {
+        sgState.elements = {
+          ribbon: !!tpl.defaults.ribbon,
+          dropCap: !!tpl.defaults.dropCap,
+          waxSeal: !!tpl.defaults.waxSeal,
+          swords: !!tpl.defaults.swords,
+          medallions: !!tpl.defaults.medallions,
+          laurel: !!tpl.defaults.laurel,
+          compass: !!tpl.defaults.compass,
+          flourishes: !!tpl.defaults.flourishes
+        };
+      }
+    }
+
+    // Update template card highlight (accept either canonical or legacy key)
     var cards = document.querySelectorAll('.sc-template-card');
     for (var i = 0; i < cards.length; i++) {
       cards[i].classList.remove('sc-active');
-      if (cards[i].getAttribute('data-template') === key) {
+      var c = cards[i].getAttribute('data-template');
+      if (c === resolved || sgResolveTemplate(c) === resolved) {
         cards[i].classList.add('sc-active');
       }
     }
+    // Sync palette swatches if preset applied
+    if (applyPreset !== false) {
+      var swatches = document.querySelectorAll('.sc-palette-swatch');
+      for (var j = 0; j < swatches.length; j++) {
+        swatches[j].classList.remove('sc-active');
+        if (swatches[j].getAttribute('data-palette') === sgState.palette) {
+          swatches[j].classList.add('sc-active');
+        }
+      }
+      // Sync border cards
+      var bcards = document.querySelectorAll('.sc-border-card');
+      for (var k = 0; k < bcards.length; k++) {
+        bcards[k].classList.remove('sc-active');
+        if (bcards[k].getAttribute('data-border') === sgState.borderStyle) {
+          bcards[k].classList.add('sc-active');
+        }
+      }
+      // Sync font pickers if present
+      if (typeof sgSyncFontPickerUI === 'function') sgSyncFontPickerUI();
+      // Sync element toggles
+      if (typeof sgSyncElementTogglesUI === 'function') sgSyncElementTogglesUI();
+      if (typeof sgSyncCelticOptsFromPalette === 'function') sgSyncCelticOptsFromPalette();
+      if (typeof sgRenderBorderPreviews === 'function') sgRenderBorderPreviews();
+    }
+
     sgUpdateSigVisibility();
     if (sgState.bodyMode === 'auto') sgSetAutoBody();
     sgRender();
@@ -3632,8 +4845,13 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
     if (btn2) { btn2.disabled = true; }
 
     var fd = new FormData();
-    fd.append('template', sgState.template);
+    fd.append('template', sgResolveTemplate(sgState.template));
     fd.append('palette', sgState.palette);
+    // Decorative element toggles
+    var elKeys = ['ribbon','dropCap','waxSeal','swords','medallions','laurel','compass','flourishes'];
+    for (var _ei = 0; _ei < elKeys.length; _ei++) {
+      fd.append('el_' + elKeys[_ei], sgState.elements[elKeys[_ei]] ? '1' : '0');
+    }
     fd.append('borderStyle', sgState.borderStyle);
     fd.append('celtic_strandSize', sgState.celtic.strandSize);
     fd.append('celtic_outlineWidth', sgState.celtic.outlineWidth);
