@@ -16,22 +16,22 @@ Both visualizations render server-side in every row; the toggle only flips a CSS
 
 ## The 10 Gemstones
 
-Shared silhouette: a single inline SVG path using a classic brilliant-cut gem shape (~16px wide). Only the fill, filter, and overlay change per tier.
+Shared silhouette: a single CSS `clip-path` polygon rendering a classic brilliant-cut gem shape (~16px wide) on a `<span class="pn-gem-shape">` child element. Only the fill, filter, and overlay change per tier.
 
 | # | Threshold | Gem | Base color (top → bottom) | Effects |
 |---|-----------|-----|---------------------------|---------|
 | 1 | 75  | Quartz      | `#e5e7eb` → `#9ca3af` | Flat radial fill |
 | 2 | 100 | Amber       | `#fbbf24` → `#b45309` | Flat radial fill |
 | 3 | 125 | Garnet      | `#b91c1c` → `#450a0a` | Flat radial fill |
-| 4 | 150 | Amethyst    | `#a78bfa` → `#4c1d95` | Linear gradient + inner highlight (`::before` sheen) |
-| 5 | 175 | Sapphire    | `#3b82f6` → `#1e3a8a` | Linear gradient + inner highlight |
-| 6 | 200 | Emerald     | `#10b981` → `#064e3b` | Gradient + soft outer halo via `drop-shadow` |
+| 4 | 150 | Amethyst    | `#a78bfa` → `#4c1d95` | Linear gradient + static inner sheen + very subtle diagonal shimmer sweep (occasional, ~7s cycle) |
+| 5 | 175 | Sapphire    | `#3b82f6` → `#1e3a8a` | Linear gradient + static inner sheen + very subtle diagonal shimmer sweep (occasional, ~7s cycle) |
+| 6 | 200 | Emerald     | `#10b981` → `#064e3b` | Gradient + soft outer halo via `drop-shadow` + very subtle diagonal shimmer sweep (occasional, ~7s cycle) |
 | 7 | 225 | Ruby        | `#ef4444` → `#7f1d1d` | Halo + slow pulse (`@keyframes` opacity 0.85↔1.0, 2.4s) |
 | 8 | 250 | Opal        | Conic-gradient iridescent (pink → cyan → mint → lavender → pink) | Hue-shimmering conic (6s hue-rotate cycle, gem stays still) |
 | 9 | 275 | Diamond     | White with cyan rim highlight | Strong glow + two rotating cross-star sparkle pseudo-elements |
 | 10 | 300 | Dragonstone | Conic aurora (gold → red → magenta → gold) | Pulsing halo + hue-shimmering conic + sparkle overlay + subtle scale breathe |
 
-**Escalation rule:** tiers 1–3 are fully static, tiers 4–5 add a static sheen, tier 6 introduces glow, tier 7 introduces motion (pulse), tier 8 introduces color motion (hue shimmer, no geometric rotation), tier 9 adds light motion (sparkle), tier 10 layers everything.
+**Escalation rule:** tiers 1–3 are fully static, tiers 4–5 add a static sheen plus a very subtle occasional diagonal shimmer, tier 6 adds glow on top of the shimmer, tier 7 is the first with obvious motion (pulse), tier 8 introduces color motion (hue shimmer, no geometric rotation), tier 9 adds light motion (sparkle), tier 10 layers everything.
 
 **Performance:** all effects are CSS-only using `transform`, `opacity`, `filter`, and `background-position` — no layout thrash. Animations run only on tiers 7+; tiers 1–6 are fully static. All animations are `prefers-reduced-motion: reduce` aware — motion effects are disabled (but color/glow stays) when the user opts out.
 
@@ -67,7 +67,7 @@ Acknowledgement style:  [ ★ Stars ]  [ 💎 Gems ]
     ...
   </span>
   <span class="pn-ack-gems">
-    <span class="pn-gem pn-gem-1" title="..."><svg>...</svg></span>
+    <span class="pn-gem pn-gem-1" title="..."><span class="pn-gem-shape"></span></span>
     ...
   </span>
 </td>
@@ -92,7 +92,7 @@ Only `orkui/template/revised-frontend/Playernew_index.tpl`:
    - A small inline `<script>` at the end of the tab panel for toggle wiring and `localStorage` (or appended to an existing inline script region in the file).
 3. A PHP associative array `$pnGemTiers` defined at the top of the Class Levels tab block (or near the existing `$pnClassToParagon` preamble) that maps tier index 1–10 to `['name' => 'Ruby', 'class' => 'pn-gem-7']`.
 
-No new CSS files, no new JS files, no controller/model/DB changes. No Font Awesome icon additions — gems are pure SVG + CSS.
+No new CSS files, no new JS files, no controller/model/DB changes. No new Font Awesome icon additions for the gem bodies themselves — each gem is pure CSS (clip-path + gradients + pseudo-element overlays). The toggle's existing `fa-star` and a new `fa-gem` icon are used only as decorative labels inside the segmented control buttons, not in the gem visualization.
 
 ## JavaScript
 
