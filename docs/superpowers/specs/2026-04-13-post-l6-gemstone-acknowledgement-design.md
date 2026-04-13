@@ -16,7 +16,7 @@ Both visualizations render server-side in every row; the toggle only flips a CSS
 
 ## The 10 Gemstones
 
-Shared silhouette: a single CSS `clip-path` polygon rendering a classic brilliant-cut gem shape (~16px wide) on a `<span class="pn-gem-shape">` child element. Only the fill, filter, and overlay change per tier.
+Silhouette progresses by polygon count as the tier climbs: tiers 1–3 are a 4-sided diamond/rhombus, tiers 4–6 a 5-sided pentagon, tiers 7–9 a 6-sided hexagon, and tier 10 a 7-sided heptagon. The shape is delivered via CSS `clip-path: polygon(...)` on a `<span class="pn-gem-shape">` child element (~16px wide). Fill, filter, and overlay effects layer on top of the shape per tier as described below.
 
 | # | Threshold | Gem | Base color (top → bottom) | Effects |
 |---|-----------|-----|---------------------------|---------|
