@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS `ork_idp_claim_token` (
     PRIMARY KEY (`token`),
     KEY `idx_mundane` (`mundane_id`),
     KEY `idx_expires` (`expires_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- IDP mirror retry tracking on existing IDP auth table
 ALTER TABLE `ork_idp_auth`
