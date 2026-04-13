@@ -2567,12 +2567,12 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
       defaults: { ribbon: true, dropCap: false, waxSeal: true, swords: false, medallions: false, laurel: false, compass: false, flourishes: true },
       title:     { x: 425, y: 260, size: 52, maxWidth: 620 },
       recipient: { x: 425, y: 360, size: 40, maxWidth: 680 },
-      body:      { x: 425, y: 460, size: 22, maxWidth: 640, lineHeight: 32 },
+      body:      { x: 425, y: 440, size: 21, maxWidth: 620, lineHeight: 30 },
       sigY: 930,
       heraldry: {
         kingdom: { x: 80,  y: 80,  w: 115, h: 115 },
         park:    { x: 655, y: 80,  w: 115, h: 115 },
-        player:  { x: 355, y: 590, w: 140, h: 140 }
+        player:  { x: 360, y: 660, w: 130, h: 130 }
       },
       render: function(ctx, w, h, st, pal) {
         var el = st.elements;

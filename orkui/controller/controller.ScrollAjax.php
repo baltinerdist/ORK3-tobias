@@ -40,12 +40,12 @@ class Controller_ScrollAjax extends Controller {
 			'defaults' => ['ribbon'=>true,'dropCap'=>false,'waxSeal'=>true,'swords'=>false,'medallions'=>false,'laurel'=>false,'compass'=>false,'flourishes'=>true],
 			'title'     => ['x' => 1275, 'y' => 780,  'size' => 156, 'maxWidth' => 1860],
 			'recipient' => ['x' => 1275, 'y' => 1080, 'size' => 120, 'maxWidth' => 2040],
-			'body'      => ['x' => 1275, 'y' => 1380, 'size' => 66,  'maxWidth' => 1920, 'lineHeight' => 96],
+			'body'      => ['x' => 1275, 'y' => 1320, 'size' => 63,  'maxWidth' => 1860, 'lineHeight' => 90],
 			'sigY' => 2790,
 			'heraldry'  => [
 				'kingdom' => ['x' => 240,  'y' => 240,  'w' => 345, 'h' => 345],
 				'park'    => ['x' => 1965, 'y' => 240,  'w' => 345, 'h' => 345],
-				'player'  => ['x' => 1065, 'y' => 1770, 'w' => 420, 'h' => 420],
+				'player'  => ['x' => 1080, 'y' => 1980, 'w' => 390, 'h' => 390],
 			],
 		],
 
