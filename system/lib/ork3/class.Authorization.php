@@ -381,6 +381,9 @@ class Authorization extends Ork3
 		return $response;
 	}
 
+	const IDP_RESULT_LOGGED_IN  = 'logged_in';
+	const IDP_RESULT_NEEDS_CLAIM = 'needs_claim';
+
 	public function AuthorizeIdp()
 	{
 		$request = [
@@ -397,10 +400,23 @@ class Authorization extends Ork3
 		$this->idp_auth->idp_user_id = $request['IdpUserId'];
 
 		if ($this->idp_auth->find()) {
-			return $this->idpAuthorize($request);
+			$resp = $this->idpAuthorize($request);
+			$resp['IdpResult'] = self::IDP_RESULT_LOGGED_IN;
+			return $resp;
 		}
 
-		return $this->linkIdpAuthorization($request);
+		// No existing link. Try the email auto-link path.
+		$autoLinked = $this->tryAutoLinkByEmail($request);
+		if ($autoLinked !== false) {
+			$autoLinked['IdpResult'] = self::IDP_RESULT_LOGGED_IN;
+			return $autoLinked;
+		}
+
+		// No auto-link possible: caller should redirect into the claim flow.
+		return [
+			'Status' => Success(),
+			'IdpResult' => self::IDP_RESULT_NEEDS_CLAIM,
+		];
 	}
 
 	private function idpAuthorize($request)
@@ -437,31 +453,6 @@ class Authorization extends Ork3
 			'UserName' => $this->mundane->username,
 			'Timeout' => $this->mundane->token_expires
 		];
-	}
-
-	private function linkIdpAuthorization($request)
-	{
-		error_log("AuthorizeIdp: No link found. Checking for MundaneId or Email.");
-
-		$this->mundane->clear();
-		$found_mundane = false;
-
-		// Try to find by MundaneId first if provided
-		if (isset($request['MundaneId']) && $request['MundaneId'] > 0) {
-			error_log("AuthorizeIdp: Trying to link by MundaneId: " . $request['MundaneId']);
-			$this->mundane->mundane_id = $request['MundaneId'];
-			if ($this->mundane->find()) {
-				$found_mundane = true;
-				error_log("AuthorizeIdp: User found by MundaneId.");
-			}
-		}
-
-		if (!$found_mundane) {
-			error_log("AuthorizeIdp: User not found by MundaneId or Email.");
-			return ['Status' => NoAuthorization("User not found and could not be automatically linked.")];
-		}
-
-		return $this->createIdpLink($request);
 	}
 
 	private function createIdpLink($request)
