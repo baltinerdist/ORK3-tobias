@@ -144,4 +144,46 @@ class Controller_Login extends Controller {
 		$this->data['idp_email'] = $this->session->Email;
 		$this->template = '../revised-frontend/Login_claim.tpl';
 	}
+
+	public function claim_submit()
+	{
+		if (!isset($this->session->IdpUserId) || strlen($this->session->IdpUserId) === 0) {
+			$this->data['error'] = 'Session expired — please start over.';
+			$this->template = '../revised-frontend/Login_index.tpl';
+			return;
+		}
+
+		$username = trim($_POST['username'] ?? '');
+		$password = $_POST['password'] ?? '';
+		if (strlen($username) === 0 || strlen($password) === 0) {
+			$this->data['idp_email'] = $this->session->Email;
+			$this->data['error'] = 'Enter both your ORK username and password.';
+			$this->template = '../revised-frontend/Login_claim.tpl';
+			return;
+		}
+
+		$claim = [
+			'IdpUserId'    => $this->session->IdpUserId,
+			'Email'        => $this->session->Email,
+			'AccessToken'  => $this->session->AccessToken,
+			'RefreshToken' => $this->session->RefreshToken,
+			'ExpiresAt'    => $this->session->ExpiresAt,
+		];
+
+		$result = $this->Login->Authorization->verifyClaimCredentials($username, $password, $claim);
+
+		if (isset($result['Status']['Status']) && $result['Status']['Status'] === 0) {
+			$this->session->user_id   = $result['UserId'];
+			$this->session->user_name = $result['UserName'];
+			$this->session->token     = $result['Token'];
+			$this->session->timeout   = $result['Timeout'];
+			setcookie('ork_idp_autoredirect', '1', time() + 60 * 60 * 24 * 365, '/');
+			header('Location: ' . UIR);
+			return;
+		}
+
+		$this->data['idp_email'] = $this->session->Email;
+		$this->data['error'] = $result['Status']['Error'] ?? 'Username or password incorrect';
+		$this->template = '../revised-frontend/Login_claim.tpl';
+	}
 }
