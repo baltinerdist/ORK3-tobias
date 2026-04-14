@@ -419,6 +419,52 @@ class Authorization extends Ork3
 		];
 	}
 
+	/**
+	 * Try to link this IDP identity to an existing ork_mundane row by email.
+	 * Returns the standard auth response array on a successful link, or false
+	 * if there were zero or multiple matches.
+	 */
+	private function tryAutoLinkByEmail($request)
+	{
+		global $DB;
+		$email = trim($request['Email']);
+		if (strlen($email) === 0) {
+			return false;
+		}
+
+		// Case-insensitive exact match. ork_mundane.email is varchar(165) MUL.
+		$DB->Clear();
+		$rows = $DB->DataSet(
+			"SELECT m.mundane_id FROM " . DB_PREFIX . "mundane m " .
+			"LEFT JOIN " . DB_PREFIX . "idp_auth ia ON ia.mundane_id = m.mundane_id " .
+			"WHERE LOWER(m.email) = LOWER(?) AND ia.authorization_id IS NULL",
+			array($email)
+		);
+
+		if (!is_array($rows) || count($rows) !== 1) {
+			error_log("AuthorizeIdp: tryAutoLinkByEmail matched " . (is_array($rows) ? count($rows) : 0) . " rows for $email");
+			return false;
+		}
+
+		$mundaneId = (int)$rows[0]['mundane_id'];
+		$this->mundane->clear();
+		$this->mundane->mundane_id = $mundaneId;
+		if (!$this->mundane->find()) {
+			return false;
+		}
+		if ($this->mundane->penalty_box == 1 || $this->mundane->suspended == 1) {
+			return false;
+		}
+
+		// Reuse createIdpLink, which writes ork_idp_auth + issues the ORK token.
+		$linked = $this->createIdpLink($request);
+
+		// Mirror to bastion-idp (best-effort).
+		$this->mirrorLinkToIdp($request['IdpUserId'], $mundaneId);
+
+		return $linked;
+	}
+
 	private function idpAuthorize($request)
 	{
 		error_log("AuthorizeIdp: Link found for IDP User ID: " . $request['IdpUserId']);
