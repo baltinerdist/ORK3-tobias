@@ -5692,7 +5692,7 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 .tn-nu-toggle-btn:last-child { border-right:none; }
 .tn-nu-toggle-btn:hover:not(.tn-nu-toggle-on) { background:#f7fafc; color:#4a5568; }
 .tn-nu-toggle-btn.tn-nu-toggle-on { background:#276749; color:#fff; }
-.tn-nu-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:10px; }
+.tn-nu-grid { display:grid; grid-template-columns:1fr; gap:10px; }
 .tn-nu-card { background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; display:flex; align-items:center; gap:10px; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
 .tn-nu-pos-label { flex-shrink:0; padding:3px 10px; font-size:10px; font-weight:800; letter-spacing:0.6px; text-transform:uppercase; border-radius:10px; }
 .tn-nu-pos-label.tn-nu-now  { background:#276749; color:#fff; }
