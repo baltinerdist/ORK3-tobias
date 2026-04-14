@@ -613,6 +613,31 @@ class Authorization extends Ork3
 		return $linked;
 	}
 
+	/**
+	 * Best-effort mirror of an ORK link back to bastion-idp.
+	 * Updates ork_idp_auth.idp_mirror_status accordingly. Never throws.
+	 */
+	public function mirrorLinkToIdp($idpUserId, $mundaneId)
+	{
+		global $DB;
+
+		// Lazy-load the model — Authorization doesn't normally use orkui models.
+		if (!class_exists('Model_AmtgardIdpLink')) {
+			require_once $_SERVER['DOCUMENT_ROOT'] . '/orkui/model/Model.php';
+			require_once $_SERVER['DOCUMENT_ROOT'] . '/orkui/model/model.AmtgardIdpLink.php';
+		}
+		$model = new Model_AmtgardIdpLink();
+		$ok = $model->linkOrkProfile($idpUserId, $mundaneId);
+
+		$status = $ok ? 'synced' : 'failed';
+		$DB->Clear();
+		$DB->Execute(
+			"UPDATE " . DB_PREFIX . "idp_auth SET idp_mirror_status = ?, idp_mirror_last_attempt = NOW() " .
+			"WHERE idp_user_id = ? AND mundane_id = ?",
+			array($status, $idpUserId, (int)$mundaneId)
+		);
+	}
+
 	private function idpAuthorize($request)
 	{
 		error_log("AuthorizeIdp: Link found for IDP User ID: " . $request['IdpUserId']);
