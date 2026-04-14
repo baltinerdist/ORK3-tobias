@@ -1304,6 +1304,7 @@ foreach ($bracketData as $_bid => $_bd) {
 					<?php $bvFirst = false; endforeach; ?>
 				</div>
 				<?php endif; ?>
+				<div id="tn-nextup"></div>
 				<div id="tn-bv-container"></div>
 				<?php endif; ?>
 			</div>
@@ -5663,6 +5664,36 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
      self-contained function invocation that does not depend on the
      others. No shared state beyond TnConfig.
      ===================================================================== -->
+<style id="tn-ux-styles">
+/* Next-Up strip — task 14. Same palette as the rest of the tn- page. */
+#tn-nextup:empty { display:none; }
+#tn-nextup { margin: 0 0 14px; }
+.tn-nu-wrap { background:#f7fafc; border:1px solid #e2e8f0; border-radius:10px; padding:12px 14px 14px; }
+.tn-nu-header { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+.tn-nu-title { font-size:11px; font-weight:800; color:#4a5568; letter-spacing:0.6px; text-transform:uppercase; }
+.tn-nu-sub { font-size:11px; color:#a0aec0; }
+.tn-nu-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:10px; }
+.tn-nu-card { background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; display:flex; align-items:center; gap:10px; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
+.tn-nu-ring-badge { flex-shrink:0; width:24px; height:24px; border-radius:50%; background:#edf2f7; color:#4a5568; font-size:10px; font-weight:800; display:flex; align-items:center; justify-content:center; }
+.tn-nu-match-num { font-size:10px; color:#a0aec0; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; }
+.tn-nu-players { flex:1; min-width:0; font-size:14px; line-height:1.25; }
+.tn-nu-players .tn-nu-p { font-weight:700; color:#1a202c; }
+.tn-nu-players .tn-nu-vs { color:#a0aec0; font-size:11px; padding:0 6px; }
+.tn-nu-players .tn-nu-p-seed { display:inline-block; width:16px; height:16px; border-radius:50%; background:#edf2f7; color:#718096; font-size:9px; font-weight:800; text-align:center; line-height:16px; margin-right:4px; vertical-align:middle; }
+.tn-nu-actions { display:flex; gap:6px; flex-shrink:0; flex-wrap:wrap; justify-content:flex-end; }
+.tn-nu-btn { padding:7px 12px; border-radius:6px; font-size:12px; font-weight:700; border:1px solid #e2e8f0; background:#fff; color:#4a5568; cursor:pointer; white-space:nowrap; }
+.tn-nu-btn:hover { background:#f7fafc; border-color:#cbd5e0; }
+.tn-nu-btn-p1, .tn-nu-btn-p2 { background:#276749; color:#fff; border-color:#276749; }
+.tn-nu-btn-p1:hover, .tn-nu-btn-p2:hover { background:#1e4e36; }
+.tn-nu-btn-tie { color:#718096; }
+.tn-nu-btn-more { color:#a0aec0; font-size:11px; font-weight:600; padding:7px 8px; }
+.tn-nu-empty { font-size:12px; font-style:italic; color:#a0aec0; padding:4px 0; }
+@media (max-width: 720px) {
+	.tn-nu-card { flex-direction:column; align-items:stretch; }
+	.tn-nu-actions { justify-content:stretch; }
+	.tn-nu-btn { flex:1; text-align:center; padding:10px 8px; }
+}
+</style>
 <script>
 (function(){
 	'use strict';
@@ -5694,6 +5725,167 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 	});
 	var _bulkOv = $('tn-bulkadd-overlay');
 	if (_bulkOv) _bulkOv.addEventListener('click', function(e){ if (e.target === _bulkOv) closeBulkAdd(); });
+
+	// ================================================================
+	// TASK 14 · NEXT-UP live strip
+	// Pinned above the bracket visualization. For the currently
+	// selected bracket, shows the next unresolved match(es) — one per
+	// concurrent ring — with inline P1 / P2 / Tie buttons so the
+	// marshal never has to click into the tree to record a result.
+	// Re-renders whenever tnRenderBracketViz runs.
+	// ================================================================
+	(function(){
+		var nuHost = null;
+
+		function parseRoundOrder(str){
+			var s = String(str || '');
+			var r = parseInt((s.match(/Round\s*(\d+)/i) || [])[1] || 0, 10);
+			var o = parseInt((s.match(/Match\s*(\d+)/i) || [])[1] || 0, 10);
+			return { round: r, order: o };
+		}
+
+		function nextUnresolved(bd){
+			var matches = (bd && bd.Matches) || [];
+			var ms = matches.map(function(m){
+				var ro = parseRoundOrder(m.Match);
+				return Object.assign({}, m, {
+					_round: m.Round || ro.round,
+					_order: ro.order,
+					_side:  (m.BracketSide || '').toLowerCase()
+				});
+			});
+			var sideRank = { winners:0, '':0, losers:1, 'grand-final':2 };
+			ms.sort(function(a,b){
+				var sa = sideRank[a._side] || 0, sb = sideRank[b._side] || 0;
+				if (sa !== sb) return sa - sb;
+				if (a._round !== b._round) return a._round - b._round;
+				return a._order - b._order;
+			});
+			return ms.filter(function(m){
+				if (m.Result) return false;
+				if (!m.Participant1Id || !m.Participant2Id) return false;
+				return true;
+			});
+		}
+
+		function participantLookup(bd){
+			var map = {};
+			(bd && bd.Participants || []).forEach(function(p){ map[p.ParticipantId] = p; });
+			return map;
+		}
+
+		function cardHTML(m, pMap){
+			var p1 = pMap[m.Participant1Id] || {};
+			var p2 = pMap[m.Participant2Id] || {};
+			var p1Name = esc(m.Participant1Alias || p1.Alias || p1.Persona || '—');
+			var p2Name = esc(m.Participant2Alias || p2.Alias || p2.Persona || '—');
+			var p1Seed = p1.Seed ? '<span class="tn-nu-p-seed">' + p1.Seed + '</span>' : '';
+			var p2Seed = p2.Seed ? '<span class="tn-nu-p-seed">' + p2.Seed + '</span>' : '';
+			return (
+				'<div class="tn-nu-card">' +
+					'<div class="tn-nu-ring-badge" title="Ring">R' + (m._ring || 1) + '</div>' +
+					'<div style="min-width:0;flex:1">' +
+						'<div class="tn-nu-match-num">Round ' + m._round + ' &middot; Match ' + m._order + (m._side && m._side !== 'winners' ? ' &middot; ' + m._side : '') + '</div>' +
+						'<div class="tn-nu-players"><span class="tn-nu-p">' + p1Seed + p1Name + '</span><span class="tn-nu-vs">vs</span><span class="tn-nu-p">' + p2Seed + p2Name + '</span></div>' +
+					'</div>' +
+					(TnConfig.canManage
+						? '<div class="tn-nu-actions">' +
+							'<button class="tn-nu-btn tn-nu-btn-p1" data-mid="' + m.MatchId + '" data-r="1-wins" title="' + p1Name + ' wins">' + p1Name + ' wins</button>' +
+							'<button class="tn-nu-btn tn-nu-btn-p2" data-mid="' + m.MatchId + '" data-r="2-wins" title="' + p2Name + ' wins">' + p2Name + ' wins</button>' +
+							'<button class="tn-nu-btn tn-nu-btn-tie" data-mid="' + m.MatchId + '" data-r="tie">Tie</button>' +
+							'<button class="tn-nu-btn tn-nu-btn-more" data-mid="' + m.MatchId + '" data-more="1" title="Bouts / forfeit / DQ">⋯</button>' +
+						'</div>'
+						: '') +
+				'</div>'
+			);
+		}
+
+		window.tnRenderNextUp = function(bracketId){
+			nuHost = nuHost || $('tn-nextup');
+			if (!nuHost) return;
+			var bid = parseInt(bracketId, 10);
+			if (!bid || !TnConfig.bracketData || !TnConfig.bracketData[bid]){
+				nuHost.innerHTML = '';
+				return;
+			}
+			var bd = TnConfig.bracketData[bid];
+			var method = (bd.Bracket && bd.Bracket.Method) || '';
+			// Ironman has its own tap-to-win UI already; don't duplicate.
+			if (method === 'ironman'){ nuHost.innerHTML = ''; return; }
+			var status = (bd.Bracket && bd.Bracket.Status) || '';
+			if (status === 'setup' || status === 'complete' || status === 'finalized'){
+				nuHost.innerHTML = '';
+				return;
+			}
+			var rings = Math.max(1, parseInt((bd.Bracket && bd.Bracket.Rings) || 1, 10));
+			var unresolved = nextUnresolved(bd);
+			if (!unresolved.length){
+				nuHost.innerHTML =
+					'<div class="tn-nu-wrap"><div class="tn-nu-header">' +
+					'<span class="tn-nu-title">Next up</span>' +
+					'<span class="tn-nu-sub">&mdash; all ready matches are recorded. Waiting on later rounds.</span>' +
+					'</div></div>';
+				return;
+			}
+			// Assign ring numbers: cycle 1..rings over the first N matches
+			var show = unresolved.slice(0, rings);
+			show.forEach(function(m, i){ m._ring = (i % rings) + 1; });
+			var pMap = participantLookup(bd);
+			var sub = rings > 1 ? ' &mdash; showing one match per ring' : '';
+			nuHost.innerHTML =
+				'<div class="tn-nu-wrap">' +
+					'<div class="tn-nu-header">' +
+						'<span class="tn-nu-title">Next up</span>' +
+						'<span class="tn-nu-sub">' + sub + '</span>' +
+					'</div>' +
+					'<div class="tn-nu-grid">' +
+						show.map(function(m){ return cardHTML(m, pMap); }).join('') +
+					'</div>' +
+				'</div>';
+
+			nuHost.querySelectorAll('.tn-nu-btn').forEach(function(btn){
+				btn.addEventListener('click', function(ev){
+					ev.preventDefault();
+					var mid = btn.getAttribute('data-mid');
+					if (btn.getAttribute('data-more') === '1'){
+						// fall back to the full record-result modal
+						var matchObj = (bd.Matches || []).find(function(mm){ return String(mm.MatchId) === String(mid); });
+						if (matchObj){
+							var p1 = pMap[matchObj.Participant1Id];
+							var p2 = pMap[matchObj.Participant2Id];
+							if (typeof window.tnOpenRecordResult === 'function') window.tnOpenRecordResult(matchObj, p1, p2);
+						}
+						return;
+					}
+					var r = btn.getAttribute('data-r');
+					if (typeof window.tnSubmitQuickResult === 'function'){
+						window.tnSubmitQuickResult(mid, r, ev);
+					}
+				});
+			});
+		};
+
+		// Wrap the base bracket viz renderer so Next-Up repaints on every
+		// refresh (initial render + every match submit).
+		(function wrapRender(){
+			function attempt(){
+				if (typeof window.tnRenderBracketViz !== 'function'){
+					setTimeout(attempt, 60); return;
+				}
+				var original = window.tnRenderBracketViz;
+				window.tnRenderBracketViz = function(bid){
+					var ret = original.apply(this, arguments);
+					try { window.tnRenderNextUp(bid); } catch(e){ console.warn('[tn-nextup] render failed', e); }
+					return ret;
+				};
+				// Paint once for the initial bracket if the tab has already initialized.
+				var sel = $('tn-bv-bracket-select');
+				if (sel && sel.value) window.tnRenderNextUp(parseInt(sel.value, 10));
+			}
+			if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', attempt);
+			else attempt();
+		})();
+	})();
 
 	// ================================================================
 	// TASK 13 · Pip majority → soft auto-commit
