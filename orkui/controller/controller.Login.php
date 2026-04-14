@@ -186,4 +186,52 @@ class Controller_Login extends Controller {
 		$this->data['error'] = $result['Status']['Error'] ?? 'Username or password incorrect';
 		$this->template = '../revised-frontend/Login_claim.tpl';
 	}
+
+	public function claim_request_magic_link()
+	{
+		if (!isset($this->session->IdpUserId) || strlen($this->session->IdpUserId) === 0) {
+			$this->data['error'] = 'Session expired — please start over.';
+			$this->template = '../revised-frontend/Login_index.tpl';
+			return;
+		}
+
+		$username = trim($_POST['username'] ?? '');
+		if (strlen($username) === 0) {
+			$this->data['idp_email'] = $this->session->Email;
+			$this->data['error'] = 'Enter your ORK username so we know where to send the link.';
+			$this->template = '../revised-frontend/Login_claim.tpl';
+			return;
+		}
+
+		$claim = [
+			'IdpUserId' => $this->session->IdpUserId,
+			'Email'     => $this->session->Email,
+		];
+
+		$issued = $this->Login->Authorization->issueClaimMagicLink($username, $claim);
+
+		// Always show the same banner (no info disclosure on whether the username exists).
+		$this->data['idp_email'] = $this->session->Email;
+		$this->data['notice']    = 'If that username has an ORK account, we just emailed a one-time link to the address on file. Open it in this same browser to finish linking.';
+
+		if ($issued !== false) {
+			$link = UIR . 'Login/claim_magic_link?token=' . $issued['token'];
+			$m = new Mail('smtp', AMAZON_SES_HOST, AMAZON_SES_USERNAME, AMAZON_SES_PASSWORD, 587);
+			$m->setTo($issued['email']);
+			$m->setFrom('ork3@amtgard.com');
+			$m->setSender('ork3@amtgard.com');
+			$m->setSubject('Connect your Amtgard ORK profile (link expires in 24 hours)');
+			$m->setHtml(
+				'<h2>Connect your ORK profile</h2>' .
+				'You requested a one-time link to connect your ORK profile <b>' . htmlspecialchars($issued['username']) . '</b> ' .
+				'to your Amtgard IDP account (' . htmlspecialchars($claim['Email']) . ').' .
+				'<p><a href="' . $link . '">Click here to finish linking</a> — this link expires in 24 hours and works only once.' .
+				'<p>If you did not request this, you can safely ignore this email.' .
+				'<p>Regards,<br>-ORK Team'
+			);
+			$m->send();
+		}
+
+		$this->template = '../revised-frontend/Login_claim.tpl';
+	}
 }
