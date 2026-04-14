@@ -465,6 +465,52 @@ class Authorization extends Ork3
 		return $linked;
 	}
 
+	/**
+	 * Verify ORK credentials and finalize the IDP link in one shot.
+	 * $claim is the session-stashed callback context: idp_user_id, email,
+	 * access_token, refresh_token, expires_at. $username/$password are what
+	 * the user typed into the claim form.
+	 *
+	 * Returns the standard auth response array on success, or
+	 * ['Status' => NoAuthorization(...)] on credential failure.
+	 */
+	public function verifyClaimCredentials($username, $password, $claim)
+	{
+		// Reuse the existing password verification path.
+		$auth = $this->Authorize(['UserName' => $username, 'Password' => $password, 'Token' => null]);
+		if (!isset($auth['Status']) || $auth['Status']['Status'] !== 0) {
+			return ['Status' => NoAuthorization("Username or password incorrect")];
+		}
+
+		$mundaneId = $auth['UserId'];
+
+		// Refuse if this ORK profile is already linked to a different IDP id.
+		$this->idp_auth->clear();
+		$this->idp_auth->mundane_id = $mundaneId;
+		if ($this->idp_auth->find() && $this->idp_auth->idp_user_id !== $claim['IdpUserId']) {
+			return ['Status' => NoAuthorization("This ORK profile is already linked to another Amtgard account. Contact support if you need to transfer it.")];
+		}
+
+		// Build the request shape createIdpLink expects.
+		$this->mundane->clear();
+		$this->mundane->mundane_id = $mundaneId;
+		$this->mundane->find();
+
+		$request = [
+			'IdpUserId'    => $claim['IdpUserId'],
+			'Email'        => $claim['Email'],
+			'AccessToken'  => $claim['AccessToken'],
+			'RefreshToken' => $claim['RefreshToken'],
+			'ExpiresAt'    => $claim['ExpiresAt'],
+		];
+		$linked = $this->createIdpLink($request);
+
+		// Mirror to bastion-idp (best-effort).
+		$this->mirrorLinkToIdp($claim['IdpUserId'], $mundaneId);
+
+		return $linked;
+	}
+
 	private function idpAuthorize($request)
 	{
 		error_log("AuthorizeIdp: Link found for IDP User ID: " . $request['IdpUserId']);
