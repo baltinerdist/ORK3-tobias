@@ -1095,8 +1095,11 @@ $heroStyles = array_keys($heroStyles);
 								</button>
 								<?php endif; ?>
 								<?php if (count($pList) >= 2 && !in_array($b['Status'], ['complete', 'finalized'])): ?>
-								<button class="tn-btn tn-btn-primary tn-btn-sm" onclick="tnGenerateMatches(<?= $bid ?>, <?= $tid ?>)">
-									<i class="fas fa-play"></i> <?= $b['Status'] === 'active' ? 'Re-generate' : 'Generate' ?>
+								<?php $_isRegen = $b['Status'] === 'active' && count($mList) > 0; ?>
+								<button
+									class="tn-btn tn-btn-primary tn-btn-sm<?= $_isRegen ? ' tn-regen-btn' : '' ?>"
+									<?php if ($_isRegen): ?>data-bid="<?= $bid ?>" data-tid="<?= $tid ?>" data-match-count="<?= count($mList) ?>" onclick="tnRegenArm(this, event)"<?php else: ?>onclick="tnGenerateMatches(<?= $bid ?>, <?= $tid ?>)"<?php endif; ?>>
+									<i class="fas fa-play"></i> <?= $_isRegen ? 'Re-generate' : 'Generate' ?>
 								</button>
 								<?php endif; ?>
 								<button class="tn-btn tn-btn-danger tn-btn-sm" onclick="tnDeleteBracket(<?= $bid ?>, <?= $tid ?>)" title="Delete bracket">
@@ -5691,6 +5694,70 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 	});
 	var _bulkOv = $('tn-bulkadd-overlay');
 	if (_bulkOv) _bulkOv.addEventListener('click', function(e){ if (e.target === _bulkOv) closeBulkAdd(); });
+
+	// ================================================================
+	// TASK 12 · ARM-AND-FIRE Re-generate
+	// Intercepts the re-generate button click when the bracket has
+	// existing matches. First click "arms" the button (label swaps to
+	// a red COMMIT state, 4s timeout). Second click within the window
+	// runs the real tnGenerateMatches. Clicking anywhere else disarms.
+	// ================================================================
+	(function(){
+		var armedBtn = null;
+		var armedTimer = null;
+		var armedOriginal = null;
+
+		function disarm(){
+			if (!armedBtn) return;
+			armedBtn.innerHTML = armedOriginal;
+			armedBtn.classList.remove('tn-btn-danger');
+			armedBtn.classList.add('tn-btn-primary');
+			armedBtn.removeAttribute('data-armed');
+			armedBtn = null;
+			if (armedTimer){ clearTimeout(armedTimer); armedTimer = null; }
+		}
+
+		window.tnRegenArm = function(btn, ev){
+			if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+			if (!btn) return false;
+			var bid = parseInt(btn.getAttribute('data-bid'), 10);
+			var tid = parseInt(btn.getAttribute('data-tid'), 10);
+			var n   = parseInt(btn.getAttribute('data-match-count'), 10) || 0;
+			if (btn.getAttribute('data-armed') === '1'){
+				// Second click — fire
+				disarm();
+				window.tnGenerateMatches(bid, tid);
+				return false;
+			}
+			// First click — arm, show countdown
+			if (armedBtn && armedBtn !== btn) disarm();
+			armedBtn = btn;
+			armedOriginal = btn.innerHTML;
+			btn.classList.remove('tn-btn-primary');
+			btn.classList.add('tn-btn-danger');
+			btn.setAttribute('data-armed', '1');
+			var remaining = 4;
+			function render(){
+				btn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Click to wipe ' + n + ' match' + (n===1?'':'es') + ' &middot; ' + remaining + 's';
+			}
+			render();
+			var tick = function(){
+				remaining--;
+				if (remaining <= 0){ disarm(); return; }
+				render();
+				armedTimer = setTimeout(tick, 1000);
+			};
+			armedTimer = setTimeout(tick, 1000);
+			return false;
+		};
+
+		// Click anywhere else disarms
+		document.addEventListener('click', function(e){
+			if (!armedBtn) return;
+			if (e.target === armedBtn || armedBtn.contains(e.target)) return;
+			disarm();
+		}, true);
+	})();
 
 	var _bulkBtn = $('tn-bulkadd-submit');
 	if (_bulkBtn) _bulkBtn.addEventListener('click', function(){
