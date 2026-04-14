@@ -1076,7 +1076,7 @@ $heroStyles = array_keys($heroStyles);
 							</div>
 							<?php if ($canManage): ?>
 							<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-								<button class="tn-btn tn-btn-outline tn-btn-sm" onclick="tnOpenEditBracketModal(<?= $bid ?>, <?= htmlspecialchars(json_encode(['style'=>$b['Style'],'styleNote'=>$b['StyleNote'],'method'=>$b['Method'],'rings'=>(int)$b['Rings'],'participants'=>$b['Participants'],'seeding'=>$b['Seeding'],'durationMinutes'=>(int)($b['DurationMinutes']??0)]), ENT_QUOTES) ?>)">
+								<button class="tn-btn tn-btn-outline tn-btn-sm" onclick="tnOpenEditBracketModal(<?= $bid ?>, <?= htmlspecialchars(json_encode(['style'=>$b['Style'],'styleNote'=>$b['StyleNote'],'method'=>$b['Method'],'rings'=>(int)$b['Rings'],'participants'=>$b['Participants'],'seeding'=>$b['Seeding'],'durationMinutes'=>(int)($b['DurationMinutes']??0),'bestOf'=>(int)($b['BestOf']??1)]), ENT_QUOTES) ?>)">
 									<i class="fas fa-pencil-alt"></i> Edit
 								</button>
 								<button class="tn-btn tn-btn-outline tn-btn-sm" onclick="tnCopyBracket(<?= $bid ?>, <?= $tid ?>)" title="Duplicate this bracket with its participants">
@@ -1483,16 +1483,28 @@ foreach ($bracketData as $_bid => $_bd) {
 						<input type="number" id="tn-addbracket-rings" value="1" min="1" max="20">
 					</div>
 				</div>
-				<div class="tn-field">
-					<label for="tn-addbracket-seeding">Seeding</label>
-					<select id="tn-addbracket-seeding">
-						<option value="random">Random</option>
-						<option value="manual">Manual</option>
-						<option value="warrior">Orders of the Warrior</option>
-						<option value="glicko2">Performance Score</option>
-						<option value="random-manual">Random + Manual Adjust</option>
-						<option value="glicko2-manual">Performance + Manual Adjust</option>
-					</select>
+				<div class="tn-field-row">
+					<div class="tn-field">
+						<label for="tn-addbracket-seeding">Seeding</label>
+						<select id="tn-addbracket-seeding">
+							<option value="random">Random</option>
+							<option value="manual">Manual</option>
+							<option value="warrior">Orders of the Warrior</option>
+							<option value="glicko2">Performance Score</option>
+							<option value="random-manual">Random + Manual Adjust</option>
+							<option value="glicko2-manual">Performance + Manual Adjust</option>
+						</select>
+					</div>
+					<div class="tn-field">
+						<label for="tn-addbracket-bestof">Best of <span style="color:#a0aec0;font-size:11px;font-weight:400">(bouts per match)</span></label>
+						<select id="tn-addbracket-bestof">
+							<option value="1" selected>1 — single bout</option>
+							<option value="3">3</option>
+							<option value="5">5</option>
+							<option value="7">7</option>
+							<option value="9">9</option>
+						</select>
+					</div>
 				</div>
 				<div class="tn-field" id="tn-addbracket-duration-field" style="display:none">
 					<label for="tn-addbracket-duration">Max Duration <span style="color:#a0aec0;font-size:11px;font-weight:400">(minutes, 0 = unlimited)</span></label>
@@ -1571,16 +1583,28 @@ foreach ($bracketData as $_bid => $_bd) {
 						<input type="number" id="tn-editbracket-rings" value="1" min="1" max="20">
 					</div>
 				</div>
-				<div class="tn-field">
-					<label for="tn-editbracket-seeding">Seeding</label>
-					<select id="tn-editbracket-seeding">
-						<option value="random">Random</option>
-						<option value="manual">Manual</option>
-						<option value="warrior">Orders of the Warrior</option>
-						<option value="glicko2">Performance Score</option>
-						<option value="random-manual">Random + Manual Adjust</option>
-						<option value="glicko2-manual">Performance + Manual Adjust</option>
-					</select>
+				<div class="tn-field-row">
+					<div class="tn-field">
+						<label for="tn-editbracket-seeding">Seeding</label>
+						<select id="tn-editbracket-seeding">
+							<option value="random">Random</option>
+							<option value="manual">Manual</option>
+							<option value="warrior">Orders of the Warrior</option>
+							<option value="glicko2">Performance Score</option>
+							<option value="random-manual">Random + Manual Adjust</option>
+							<option value="glicko2-manual">Performance + Manual Adjust</option>
+						</select>
+					</div>
+					<div class="tn-field">
+						<label for="tn-editbracket-bestof">Best of <span style="color:#a0aec0;font-size:11px;font-weight:400">(bouts per match)</span></label>
+						<select id="tn-editbracket-bestof">
+							<option value="1">1 — single bout</option>
+							<option value="3">3</option>
+							<option value="5">5</option>
+							<option value="7">7</option>
+							<option value="9">9</option>
+						</select>
+					</div>
 				</div>
 				<div class="tn-field" id="tn-editbracket-duration-field" style="display:none">
 					<label for="tn-editbracket-duration">Max Duration <span style="color:#a0aec0;font-size:11px;font-weight:400">(minutes, 0 = unlimited)</span></label>
@@ -1852,6 +1876,10 @@ foreach ($bracketData as $_bid => $_bd) {
 							<button class="tn-bout-pip" type="button" data-side="1" data-idx="2"></button>
 							<button class="tn-bout-pip" type="button" data-side="1" data-idx="3"></button>
 							<button class="tn-bout-pip" type="button" data-side="1" data-idx="4"></button>
+							<button class="tn-bout-pip" type="button" data-side="1" data-idx="5"></button>
+							<button class="tn-bout-pip" type="button" data-side="1" data-idx="6"></button>
+							<button class="tn-bout-pip" type="button" data-side="1" data-idx="7"></button>
+							<button class="tn-bout-pip" type="button" data-side="1" data-idx="8"></button>
 						</div>
 					</div>
 					<div style="font-size:12px;color:#a0aec0;font-weight:600;padding-top:4px;flex-shrink:0">vs</div>
@@ -1863,6 +1891,10 @@ foreach ($bracketData as $_bid => $_bd) {
 							<button class="tn-bout-pip" type="button" data-side="2" data-idx="2"></button>
 							<button class="tn-bout-pip" type="button" data-side="2" data-idx="3"></button>
 							<button class="tn-bout-pip" type="button" data-side="2" data-idx="4"></button>
+							<button class="tn-bout-pip" type="button" data-side="2" data-idx="5"></button>
+							<button class="tn-bout-pip" type="button" data-side="2" data-idx="6"></button>
+							<button class="tn-bout-pip" type="button" data-side="2" data-idx="7"></button>
+							<button class="tn-bout-pip" type="button" data-side="2" data-idx="8"></button>
 						</div>
 					</div>
 				</div>
@@ -2296,6 +2328,7 @@ function tnUpdatePlacePtsCols() {
 			fd.append('Seeding',      document.getElementById('tn-addbracket-seeding').value);
 			fd.append('StyleNote',    document.getElementById('tn-addbracket-stylenote').value);
 			fd.append('DurationMinutes', document.getElementById('tn-addbracket-duration').value || 0);
+			fd.append('BestOf',       document.getElementById('tn-addbracket-bestof').value || 1);
 
 			fetch(ADD_URL, { method:'POST', body:fd })
 				.then(function(r) { return r.json(); })
@@ -2327,6 +2360,8 @@ function tnUpdatePlacePtsCols() {
 		document.getElementById('tn-editbracket-rings').value         = data.rings        || 1;
 		document.getElementById('tn-editbracket-seeding').value       = data.seeding      || 'random';
 		document.getElementById('tn-editbracket-stylenote').value     = data.styleNote    || '';
+		var _ebo = document.getElementById('tn-editbracket-bestof');
+		if (_ebo) _ebo.value = String(data.bestOf || 1);
 		var _edur = document.getElementById('tn-editbracket-duration');
 		var _edFld = document.getElementById('tn-editbracket-duration-field');
 		if (_edur) _edur.value = data.durationMinutes || 0;
@@ -2371,6 +2406,7 @@ function tnUpdatePlacePtsCols() {
 			fd.append('Seeding',      document.getElementById('tn-editbracket-seeding').value);
 			fd.append('StyleNote',    document.getElementById('tn-editbracket-stylenote').value);
 			fd.append('DurationMinutes', document.getElementById('tn-editbracket-duration').value || 0);
+			fd.append('BestOf',       document.getElementById('tn-editbracket-bestof').value || 1);
 
 			fetch(EDIT_URL, { method:'POST', body:fd })
 				.then(function(r) { return r.json(); })
@@ -5420,12 +5456,12 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 (function() {
 	var OVERLAY = 'tn-recordresult-overlay';
 	var tnBoutLabelShown = false;
-	var bouts = [null, null, null, null, null]; // null | '1' | '2' per bout
+	var bouts = [null, null, null, null, null, null, null, null, null]; // null | '1' | '2' per bout (up to best-of-9)
 	var p1Name = '—', p2Name = '—';
 
 	// ---- Pip rendering ----
 	function renderPips() {
-		for (var i = 0; i < 5; i++) {
+		for (var i = 0; i < 9; i++) {
 			var pip1 = document.querySelector('#tn-rr-pips-1 [data-idx="' + i + '"]');
 			var pip2 = document.querySelector('#tn-rr-pips-2 [data-idx="' + i + '"]');
 			if (!pip1 || !pip2) continue;
@@ -5473,7 +5509,7 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 
 	// ---- Open modal ----
 	window.tnOpenRecordResult = function(match, p1, p2) {
-		bouts = [null, null, null, null, null];
+		bouts = [null, null, null, null, null, null, null, null, null];
 		p1Name = p1 ? (p1.Alias || p1.Persona || '—') : '—';
 		p2Name = p2 ? (p2.Alias || p2.Persona || '—') : '—';
 		document.getElementById('tn-recordresult-match-id').value = match.MatchId;
@@ -5484,6 +5520,19 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 		if (opt1) opt1.textContent = p1Name + ' wins';
 		if (opt2) opt2.textContent = p2Name + ' wins';
 		var _bid = match.BracketId, _bdata = TnConfig.bracketData[_bid], _method = _bdata && _bdata.Bracket ? _bdata.Bracket.Method : '';
+		var _bestOf = parseInt((_bdata && _bdata.Bracket && _bdata.Bracket.BestOf) || 1, 10);
+		if ([1,3,5,7,9].indexOf(_bestOf) === -1) _bestOf = 1;
+		// Show only the first _bestOf pip buttons on each side; the rest are hidden.
+		['1','2'].forEach(function(side){
+			for (var i = 0; i < 9; i++){
+				var pip = document.querySelector('#tn-rr-pips-' + side + ' [data-idx="' + i + '"]');
+				if (pip) pip.style.display = (i < _bestOf) ? '' : 'none';
+			}
+		});
+		// Stash the effective best-of on the overlay so the auto-commit
+		// layer (task 13) can read it for its remaining-pips math.
+		var _ov = document.getElementById(OVERLAY);
+		if (_ov) _ov.setAttribute('data-best-of', String(_bestOf));
 		document.getElementById('tn-rr-round-info').textContent = _method === 'ironman'
 			? 'Fight #' + (match.Match || '')
 			: 'Round ' + match.Round + ', Match ' + (match.Match || '');
@@ -5799,11 +5848,13 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 					var rv = $('tn-editbracket-rings');
 					var sv = $('tn-editbracket-seeding');
 					var nv = $('tn-editbracket-stylenote');
+					var bo = $('tn-editbracket-bestof');
 					var nonDefault =
 						(pv && pv.value && pv.value !== 'individual') ||
 						(rv && rv.value && parseInt(rv.value, 10) > 1) ||
 						(sv && sv.value && sv.value !== 'random') ||
-						(nv && nv.value && nv.value.trim() !== '');
+						(nv && nv.value && nv.value.trim() !== '') ||
+						(bo && bo.value && parseInt(bo.value, 10) > 1);
 					var adv = $('tn-editbracket-advanced');
 					var btn = document.querySelector('.tn-advanced-toggle[data-target="tn-editbracket-advanced"]');
 					if (adv){
@@ -5871,8 +5922,17 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 	(function(){
 		var nuHost = null;
 		var mode = 'quick';            // 'quick' | 'track'
-		var trackState = Object.create(null); // matchId -> [null|'1'|'2', × 5]
+		var trackState = Object.create(null); // matchId -> [null|'1'|'2', × bestOf]
+		var activeBestOf = 1;          // effective best-of for the currently rendered bracket
 		var MODE_KEY = 'tn_nu_mode_' + (TnConfig.tournamentId || 0);
+
+		function bestOfForBracket(bd){
+			var n = parseInt((bd && bd.Bracket && bd.Bracket.BestOf) || 1, 10);
+			return ([1,3,5,7,9].indexOf(n) !== -1) ? n : 1;
+		}
+		function emptyBouts(n){
+			var a = []; for (var i = 0; i < n; i++) a.push(null); return a;
+		}
 		try {
 			var saved = localStorage.getItem(MODE_KEY);
 			if (saved === 'quick' || saved === 'track') mode = saved;
@@ -5916,9 +5976,9 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 		}
 
 		function pipRowHTML(side, matchId){
-			var bouts = trackState[matchId] || [null,null,null,null,null];
+			var bouts = trackState[matchId] || emptyBouts(activeBestOf);
 			var row = '<div class="tn-nu-track-pips" data-side="' + side + '">';
-			for (var i = 0; i < 5; i++){
+			for (var i = 0; i < activeBestOf; i++){
 				var cls = 'tn-bout-pip';
 				if (bouts[i] === side) cls += ' tn-pip-win';
 				else if (bouts[i] != null) cls += ' tn-pip-loss';
@@ -5986,8 +6046,8 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 			if (!nuHost) return;
 			var card = nuHost.querySelector('.tn-nu-card-track[data-mid="' + matchId + '"]');
 			if (!card) return;
-			var bouts = trackState[matchId] || [null,null,null,null,null];
-			for (var i = 0; i < 5; i++){
+			var bouts = trackState[matchId] || emptyBouts(activeBestOf);
+			for (var i = 0; i < activeBestOf; i++){
 				var pip1 = card.querySelector('.tn-nu-track-pips[data-side="1"] [data-idx="' + i + '"]');
 				var pip2 = card.querySelector('.tn-nu-track-pips[data-side="2"] [data-idx="' + i + '"]');
 				if (!pip1 || !pip2) continue;
@@ -6049,11 +6109,11 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 			var p1 = bouts.filter(function(b){ return b === '1'; }).length;
 			var p2 = bouts.filter(function(b){ return b === '2'; }).length;
 			var total = p1 + p2;
-			var remaining = 5 - total;
+			var remaining = activeBestOf - total;
 			var decided = null;
 			if (p1 > p2 && (p1 - p2) > remaining) decided = '1-wins';
 			else if (p2 > p1 && (p2 - p1) > remaining) decided = '2-wins';
-			else if (total >= 5) decided = (p1 > p2) ? '1-wins' : (p2 > p1 ? '2-wins' : 'tie');
+			else if (total >= activeBestOf) decided = (p1 > p2) ? '1-wins' : (p2 > p1 ? '2-wins' : 'tie');
 			if (decided) submitWithBouts(matchId, decided);
 		}
 
@@ -6111,7 +6171,7 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 			if (!matchId) return;
 			var side = pip.getAttribute('data-side');
 			var idx = parseInt(pip.getAttribute('data-idx'), 10);
-			var bouts = trackState[matchId] || (trackState[matchId] = [null,null,null,null,null]);
+			var bouts = trackState[matchId] || (trackState[matchId] = emptyBouts(activeBestOf));
 			bouts[idx] = (bouts[idx] === side) ? null : side;
 			repaintCardPips(matchId);
 			evaluateMajority(matchId);
@@ -6170,6 +6230,7 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 				nuHost.innerHTML = '';
 				return;
 			}
+			activeBestOf = bestOfForBracket(bd);
 			var unresolved = nextUnresolved(bd);
 			// Purge track state for matches that no longer exist in the queue.
 			Object.keys(trackState).forEach(function(mid){
@@ -6327,8 +6388,10 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 			var p2 = countWins(2);
 			var total = p1 + p2;
 			if (total === 0){ cancelCommit(); return; }
-			// Mathematical majority of best-of-5: |p1-p2| greater than pips remaining
-			var remaining = 5 - total;
+			// Effective best-of is stashed on the overlay by tnOpenRecordResult.
+			var bestOf = parseInt(rrOverlay.getAttribute('data-best-of') || '5', 10);
+			if ([1,3,5,7,9].indexOf(bestOf) === -1) bestOf = 5;
+			var remaining = bestOf - total;
 			if (p1 > p2 && (p1 - p2) > remaining){
 				var n1 = $('tn-rr-p1-name') ? $('tn-rr-p1-name').textContent : 'Player 1';
 				startCommit(n1 + ' wins');

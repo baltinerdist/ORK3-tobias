@@ -150,8 +150,8 @@ class Tournament extends Ork3 {
 			$copy_id       = (int)$request['CopyOfId'];
 			$tournament_id = (int)($request['TournamentId'] ?? 0);
 			if (!valid_id($tournament_id)) return InvalidParameter('TournamentId required');
-			$sql = "INSERT INTO " . DB_PREFIX . "bracket (tournament_id, style, style_note, method, rings, participants, seeding, duration_minutes)
-						SELECT tournament_id, style, style_note, method, rings, participants, seeding, duration_minutes
+			$sql = "INSERT INTO " . DB_PREFIX . "bracket (tournament_id, style, style_note, method, rings, participants, seeding, duration_minutes, best_of)
+						SELECT tournament_id, style, style_note, method, rings, participants, seeding, duration_minutes, best_of
 						FROM " . DB_PREFIX . "bracket WHERE bracket_id = $copy_id AND tournament_id = $tournament_id";
 			$this->db->query($sql);
 			$bracket_id = $this->db->GetLastInsertId();
@@ -219,10 +219,18 @@ class Tournament extends Ork3 {
 			$this->Bracket->participants  = $request['Participants'];
 			$this->Bracket->seeding          = $request['Seeding'];
 			$this->Bracket->duration_minutes = max(0, (int)($request['DurationMinutes'] ?? 0));
+			$this->Bracket->best_of          = self::normalize_best_of($request['BestOf'] ?? 1);
 			$this->Bracket->save();
 			$this->bustTournamentReportCache();
 			return Success($this->Bracket->bracket_id);
 		}
+	}
+
+	/** Clamp best_of to a valid odd value in {1,3,5,7,9}. */
+	private static function normalize_best_of($v) {
+		$n = (int)$v;
+		$allowed = [1, 3, 5, 7, 9];
+		return in_array($n, $allowed, true) ? $n : 1;
 	}
 
 	public function UpdateBracket($request) {
@@ -237,10 +245,11 @@ class Tournament extends Ork3 {
 
 		$is_setup = ($this->Bracket->status === 'setup' || $this->Bracket->status === '');
 
-		// Style/StyleNote/DurationMinutes are cosmetic — always editable
+		// Style/StyleNote/DurationMinutes/BestOf are cosmetic — always editable
 		if (isset($request['Style']))           $this->Bracket->style            = $request['Style'];
 		if (isset($request['StyleNote']))       $this->Bracket->style_note       = $request['StyleNote'];
 		if (isset($request['DurationMinutes'])) $this->Bracket->duration_minutes = max(0, (int)$request['DurationMinutes']);
+		if (isset($request['BestOf']))          $this->Bracket->best_of          = self::normalize_best_of($request['BestOf']);
 
 		// Structural fields — only editable while bracket is still in setup
 		if ($is_setup) {
@@ -276,6 +285,7 @@ class Tournament extends Ork3 {
 					'Seeding'      => $r->seeding,
 					'Status'          => $r->status,
 					'DurationMinutes' => (int)$r->duration_minutes,
+					'BestOf'          => (int)$r->best_of,
 				];
 			}
 		}
