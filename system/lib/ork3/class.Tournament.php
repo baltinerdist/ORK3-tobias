@@ -1109,6 +1109,10 @@ class Tournament extends Ork3 {
 		if (!$chk || !$chk->next()) return InvalidParameter('Bracket not found in this tournament');
 
 		$this->db->query('DELETE FROM ' . DB_PREFIX . 'match WHERE bracket_id = ' . $bracket_id . ' AND tournament_id = ' . $tournament_id);
+		// Return the bracket to setup so it can be re-generated. Ironman's
+		// RecordIronmanWin flips status back to active on the next fight,
+		// so that flow is unaffected.
+		$this->db->query('UPDATE ' . DB_PREFIX . 'bracket SET status = \'setup\' WHERE bracket_id = ' . $bracket_id);
 
 		return Success($bracket_id);
 	}
