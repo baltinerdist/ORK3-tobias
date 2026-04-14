@@ -234,4 +234,23 @@ class Controller_Login extends Controller {
 
 		$this->template = '../revised-frontend/Login_claim.tpl';
 	}
+
+	public function claim_magic_link()
+	{
+		$token = $_GET['token'] ?? '';
+		$result = $this->Login->Authorization->consumeMagicLink($token);
+
+		if (isset($result['Status']['Status']) && $result['Status']['Status'] === 0) {
+			$this->session->user_id   = $result['UserId'];
+			$this->session->user_name = $result['UserName'];
+			$this->session->token     = $result['Token'];
+			$this->session->timeout   = $result['Timeout'];
+			setcookie('ork_idp_autoredirect', '1', time() + 60 * 60 * 24 * 365, '/');
+			header('Location: ' . UIR);
+			return;
+		}
+
+		$this->data['error'] = $result['Status']['Error'] ?? "That link isn't valid.";
+		$this->template = '../revised-frontend/Login_index.tpl';
+	}
 }
