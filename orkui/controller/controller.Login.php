@@ -89,6 +89,14 @@ class Controller_Login extends Controller {
 		}
 
 		$token_data = $this->AmtgardIdp->exchangeAuthCodeForAccessToken($_GET['code'], $this->session->code_verifier);
+
+		if (isset($token_data['error'])) {
+			error_log("Amtgard IDP OAuth callback: Token exchange failed");
+			$this->data['error'] = "Couldn't exchange the IDP authorization code. Try again or use legacy login.";
+			$this->template = '../revised-frontend/Login_index.tpl';
+			return;
+		}
+
 		$user_data = $this->AmtgardIdp->fetchUserInfo($token_data['access_token']);
 
 		if (isset($user_data['error'])) {
