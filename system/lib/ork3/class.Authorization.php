@@ -511,6 +511,108 @@ class Authorization extends Ork3
 		return $linked;
 	}
 
+	/**
+	 * Generate a magic-link token row and return the token string.
+	 * The caller is responsible for sending the email.
+	 * Returns false if the username has no matching ork_mundane.
+	 */
+	public function issueClaimMagicLink($username, $claim)
+	{
+		global $DB;
+
+		$this->mundane->clear();
+		$this->mundane->like('username', trim($username));
+		if (!$this->mundane->find()) {
+			return false;
+		}
+		if ($this->mundane->penalty_box == 1 || $this->mundane->suspended == 1) {
+			return false;
+		}
+
+		$token = bin2hex(openssl_random_pseudo_bytes(32)); // 64 hex chars
+		$expires = date('Y-m-d H:i:s', time() + 60 * 60 * 24); // 24h
+
+		$DB->Clear();
+		$DB->Execute(
+			"INSERT INTO " . DB_PREFIX . "idp_claim_token " .
+			"(token, idp_user_id, idp_email, mundane_id, expires_at) " .
+			"VALUES (?, ?, ?, ?, ?)",
+			array($token, $claim['IdpUserId'], $claim['Email'], (int)$this->mundane->mundane_id, $expires)
+		);
+
+		return [
+			'token'      => $token,
+			'email'      => $this->mundane->email,
+			'username'   => $this->mundane->username,
+			'mundane_id' => (int)$this->mundane->mundane_id,
+		];
+	}
+
+	/**
+	 * Consume a magic-link token. Marks the row consumed and finalizes
+	 * the IDP link in one shot. Returns the standard auth response array,
+	 * or ['Status' => NoAuthorization(...)] with a specific reason.
+	 */
+	public function consumeMagicLink($token)
+	{
+		global $DB;
+		$token = trim((string)$token);
+		if (strlen($token) !== 64) {
+			return ['Status' => NoAuthorization("That link isn't valid.")];
+		}
+
+		$DB->Clear();
+		$rows = $DB->DataSet(
+			"SELECT * FROM " . DB_PREFIX . "idp_claim_token WHERE token = ? LIMIT 1",
+			array($token)
+		);
+		if (!is_array($rows) || count($rows) === 0) {
+			return ['Status' => NoAuthorization("That link isn't valid.")];
+		}
+		$row = $rows[0];
+
+		if (!is_null($row['consumed_at'])) {
+			return ['Status' => NoAuthorization("That link has already been used.")];
+		}
+		if (strtotime($row['expires_at']) < time()) {
+			return ['Status' => NoAuthorization("That link has expired. Start over from the login page.")];
+		}
+
+		// Refuse if this ORK profile is already linked to a different IDP id.
+		$this->idp_auth->clear();
+		$this->idp_auth->mundane_id = (int)$row['mundane_id'];
+		if ($this->idp_auth->find() && $this->idp_auth->idp_user_id !== $row['idp_user_id']) {
+			return ['Status' => NoAuthorization("This ORK profile is already linked to another Amtgard account.")];
+		}
+
+		// Mark consumed BEFORE finalizing so concurrent uses fail fast.
+		$DB->Clear();
+		$DB->Execute(
+			"UPDATE " . DB_PREFIX . "idp_claim_token SET consumed_at = NOW() WHERE token = ?",
+			array($token)
+		);
+
+		// Build createIdpLink request shape. We don't have access/refresh
+		// tokens at magic-link consumption time — that's fine, the next IDP
+		// sign-in will refresh them via idpAuthorize().
+		$this->mundane->clear();
+		$this->mundane->mundane_id = (int)$row['mundane_id'];
+		$this->mundane->find();
+
+		$request = [
+			'IdpUserId'    => $row['idp_user_id'],
+			'Email'        => $row['idp_email'],
+			'AccessToken'  => null,
+			'RefreshToken' => null,
+			'ExpiresAt'    => time(),
+		];
+		$linked = $this->createIdpLink($request);
+
+		$this->mirrorLinkToIdp($row['idp_user_id'], (int)$row['mundane_id']);
+
+		return $linked;
+	}
+
 	private function idpAuthorize($request)
 	{
 		error_log("AuthorizeIdp: Link found for IDP User ID: " . $request['IdpUserId']);
