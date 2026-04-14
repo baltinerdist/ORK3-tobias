@@ -5683,12 +5683,20 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 #tn-nextup:empty { display:none; }
 #tn-nextup { margin: 0 0 14px; }
 .tn-nu-wrap { background:#f7fafc; border:1px solid #e2e8f0; border-radius:10px; padding:12px 14px 14px; }
-.tn-nu-header { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+.tn-nu-header { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
 .tn-nu-title { font-size:11px; font-weight:800; color:#4a5568; letter-spacing:0.6px; text-transform:uppercase; }
 .tn-nu-sub { font-size:11px; color:#a0aec0; }
+.tn-nu-header .tn-nu-toggle { margin-left:auto; }
+.tn-nu-toggle { display:inline-flex; border:1px solid #e2e8f0; border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0; }
+.tn-nu-toggle-btn { padding:6px 12px; font-size:10px; font-weight:700; color:#718096; background:#fff; border:none; cursor:pointer; border-right:1px solid #e2e8f0; text-transform:uppercase; letter-spacing:0.6px; }
+.tn-nu-toggle-btn:last-child { border-right:none; }
+.tn-nu-toggle-btn:hover:not(.tn-nu-toggle-on) { background:#f7fafc; color:#4a5568; }
+.tn-nu-toggle-btn.tn-nu-toggle-on { background:#276749; color:#fff; }
 .tn-nu-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:10px; }
 .tn-nu-card { background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; display:flex; align-items:center; gap:10px; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
-.tn-nu-ring-badge { flex-shrink:0; width:24px; height:24px; border-radius:50%; background:#edf2f7; color:#4a5568; font-size:10px; font-weight:800; display:flex; align-items:center; justify-content:center; }
+.tn-nu-pos-label { flex-shrink:0; padding:3px 10px; font-size:10px; font-weight:800; letter-spacing:0.6px; text-transform:uppercase; border-radius:10px; }
+.tn-nu-pos-label.tn-nu-now  { background:#276749; color:#fff; }
+.tn-nu-pos-label.tn-nu-deck { background:#edf2f7; color:#718096; border:1px solid #e2e8f0; }
 .tn-nu-match-num { font-size:10px; color:#a0aec0; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; }
 .tn-nu-players { flex:1; min-width:0; font-size:14px; line-height:1.25; }
 .tn-nu-players .tn-nu-p { font-weight:700; color:#1a202c; }
@@ -5700,6 +5708,17 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 .tn-nu-btn-p1, .tn-nu-btn-p2 { background:#276749; color:#fff; border-color:#276749; }
 .tn-nu-btn-p1:hover, .tn-nu-btn-p2:hover { background:#1e4e36; }
 .tn-nu-btn-tie { color:#718096; }
+/* Track Fights mode: stacked two-row layout with pip tracking per side */
+.tn-nu-card-track { flex-direction:column; align-items:stretch; padding:12px 14px; gap:0; }
+.tn-nu-card-track .tn-nu-card-head { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+.tn-nu-track-row { display:flex; align-items:center; gap:12px; padding:8px 0; }
+.tn-nu-track-row + .tn-nu-track-row { border-top:1px solid #f0f4f8; }
+.tn-nu-track-name { flex:1; min-width:0; font-size:14px; font-weight:700; color:#1a202c; display:flex; align-items:center; gap:6px; }
+.tn-nu-track-name span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.tn-nu-track-pips { display:flex; gap:6px; flex-shrink:0; }
+.tn-nu-track-pips .tn-bout-pip { width:22px; height:22px; }
+.tn-nu-card-track .tn-nu-actions { padding-top:8px; margin-top:4px; border-top:1px solid #f0f4f8; justify-content:space-between; align-items:center; }
+.tn-nu-track-hint { font-size:10px; color:#a0aec0; letter-spacing:0.3px; }
 .tn-nu-btn-more { color:#a0aec0; font-size:11px; font-weight:600; padding:7px 8px; }
 .tn-nu-empty { font-size:12px; font-style:italic; color:#a0aec0; padding:4px 0; }
 @media (max-width: 720px) {
@@ -5838,14 +5857,22 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 
 	// ================================================================
 	// TASK 14 · NEXT-UP live strip
-	// Pinned above the bracket visualization. For the currently
-	// selected bracket, shows the next unresolved match(es) — one per
-	// concurrent ring — with inline P1 / P2 / Tie buttons so the
-	// marshal never has to click into the tree to record a result.
-	// Re-renders whenever tnRenderBracketViz runs.
+	// Pinned above the bracket visualization. Always shows up to 2
+	// upcoming matches (labeled NOW and ON DECK), dynamically moving
+	// forward as results come in. A header toggle flips between
+	// "Quick Win" mode (P1/P2/Tie buttons → one tap commits) and
+	// "Track Fights" mode (green/red bout pips → auto-commits on
+	// mathematical majority). Mode choice persists across reloads.
 	// ================================================================
 	(function(){
 		var nuHost = null;
+		var mode = 'quick';            // 'quick' | 'track'
+		var trackState = Object.create(null); // matchId -> [null|'1'|'2', × 5]
+		var MODE_KEY = 'tn_nu_mode_' + (TnConfig.tournamentId || 0);
+		try {
+			var saved = localStorage.getItem(MODE_KEY);
+			if (saved === 'quick' || saved === 'track') mode = saved;
+		} catch(e){}
 
 		function parseRoundOrder(str){
 			var s = String(str || '');
@@ -5884,7 +5911,26 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 			return map;
 		}
 
-		function cardHTML(m, pMap){
+		function pipRowHTML(side, matchId){
+			var bouts = trackState[matchId] || [null,null,null,null,null];
+			var row = '<div class="tn-nu-track-pips" data-side="' + side + '">';
+			for (var i = 0; i < 5; i++){
+				var cls = 'tn-bout-pip';
+				if (bouts[i] === side) cls += ' tn-pip-win';
+				else if (bouts[i] != null) cls += ' tn-pip-loss';
+				row += '<button type="button" class="' + cls + '" data-side="' + side + '" data-idx="' + i + '"></button>';
+			}
+			row += '</div>';
+			return row;
+		}
+
+		function headLine(m, posLabel){
+			var side = (m._side && m._side !== 'winners') ? ' &middot; ' + esc(m._side) : '';
+			return '<span class="tn-nu-pos-label ' + (posLabel === 'NOW' ? 'tn-nu-now' : 'tn-nu-deck') + '">' + posLabel + '</span>' +
+				'<span class="tn-nu-match-num">Round ' + m._round + ' &middot; Match ' + m._order + side + '</span>';
+		}
+
+		function quickCardHTML(m, pMap, posLabel){
 			var p1 = pMap[m.Participant1Id] || {};
 			var p2 = pMap[m.Participant2Id] || {};
 			var p1Name = esc(m.Participant1Alias || p1.Alias || p1.Persona || '—');
@@ -5892,10 +5938,9 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 			var p1Seed = p1.Seed ? '<span class="tn-nu-p-seed">' + p1.Seed + '</span>' : '';
 			var p2Seed = p2.Seed ? '<span class="tn-nu-p-seed">' + p2.Seed + '</span>' : '';
 			return (
-				'<div class="tn-nu-card">' +
-					'<div class="tn-nu-ring-badge" title="Ring">R' + (m._ring || 1) + '</div>' +
+				'<div class="tn-nu-card" data-mid="' + m.MatchId + '">' +
+					headLine(m, posLabel) +
 					'<div style="min-width:0;flex:1">' +
-						'<div class="tn-nu-match-num">Round ' + m._round + ' &middot; Match ' + m._order + (m._side && m._side !== 'winners' ? ' &middot; ' + m._side : '') + '</div>' +
 						'<div class="tn-nu-players"><span class="tn-nu-p">' + p1Seed + p1Name + '</span><span class="tn-nu-vs">vs</span><span class="tn-nu-p">' + p2Seed + p2Name + '</span></div>' +
 					'</div>' +
 					(TnConfig.canManage
@@ -5910,55 +5955,131 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 			);
 		}
 
-		window.tnRenderNextUp = function(bracketId){
-			nuHost = nuHost || $('tn-nextup');
-			if (!nuHost) return;
-			var bid = parseInt(bracketId, 10);
-			if (!bid || !TnConfig.bracketData || !TnConfig.bracketData[bid]){
-				nuHost.innerHTML = '';
-				return;
-			}
-			var bd = TnConfig.bracketData[bid];
-			var method = (bd.Bracket && bd.Bracket.Method) || '';
-			// Ironman has its own tap-to-win UI already; don't duplicate.
-			if (method === 'ironman'){ nuHost.innerHTML = ''; return; }
-			var status = (bd.Bracket && bd.Bracket.Status) || '';
-			if (status === 'setup' || status === 'complete' || status === 'finalized'){
-				nuHost.innerHTML = '';
-				return;
-			}
-			var rings = Math.max(1, parseInt((bd.Bracket && bd.Bracket.Rings) || 1, 10));
-			var unresolved = nextUnresolved(bd);
-			if (!unresolved.length){
-				nuHost.innerHTML =
-					'<div class="tn-nu-wrap"><div class="tn-nu-header">' +
-					'<span class="tn-nu-title">Next up</span>' +
-					'<span class="tn-nu-sub">&mdash; all ready matches are recorded. Waiting on later rounds.</span>' +
-					'</div></div>';
-				return;
-			}
-			// Assign ring numbers: cycle 1..rings over the first N matches
-			var show = unresolved.slice(0, rings);
-			show.forEach(function(m, i){ m._ring = (i % rings) + 1; });
-			var pMap = participantLookup(bd);
-			var sub = rings > 1 ? ' &mdash; showing one match per ring' : '';
-			nuHost.innerHTML =
-				'<div class="tn-nu-wrap">' +
-					'<div class="tn-nu-header">' +
-						'<span class="tn-nu-title">Next up</span>' +
-						'<span class="tn-nu-sub">' + sub + '</span>' +
+		function trackCardHTML(m, pMap, posLabel){
+			var p1 = pMap[m.Participant1Id] || {};
+			var p2 = pMap[m.Participant2Id] || {};
+			var p1Name = esc(m.Participant1Alias || p1.Alias || p1.Persona || '—');
+			var p2Name = esc(m.Participant2Alias || p2.Alias || p2.Persona || '—');
+			var p1Seed = p1.Seed ? '<span class="tn-nu-p-seed">' + p1.Seed + '</span>' : '';
+			var p2Seed = p2.Seed ? '<span class="tn-nu-p-seed">' + p2.Seed + '</span>' : '';
+			return (
+				'<div class="tn-nu-card tn-nu-card-track" data-mid="' + m.MatchId + '">' +
+					'<div class="tn-nu-card-head">' +
+						headLine(m, posLabel) +
 					'</div>' +
-					'<div class="tn-nu-grid">' +
-						show.map(function(m){ return cardHTML(m, pMap); }).join('') +
+					'<div class="tn-nu-track-row">' +
+						'<div class="tn-nu-track-name">' + p1Seed + '<span>' + p1Name + '</span></div>' +
+						pipRowHTML('1', m.MatchId) +
 					'</div>' +
-				'</div>';
+					'<div class="tn-nu-track-row">' +
+						'<div class="tn-nu-track-name">' + p2Seed + '<span>' + p2Name + '</span></div>' +
+						pipRowHTML('2', m.MatchId) +
+					'</div>' +
+					(TnConfig.canManage
+						? '<div class="tn-nu-actions">' +
+							'<span class="tn-nu-track-hint">Tap a pip to record a bout · majority auto-saves</span>' +
+							'<button class="tn-nu-btn tn-nu-btn-more" data-mid="' + m.MatchId + '" data-more="1" title="Bouts / forfeit / DQ">⋯</button>' +
+						'</div>'
+						: '') +
+				'</div>'
+			);
+		}
 
+		function repaintCardPips(matchId){
+			if (!nuHost) return;
+			var card = nuHost.querySelector('.tn-nu-card-track[data-mid="' + matchId + '"]');
+			if (!card) return;
+			var bouts = trackState[matchId] || [null,null,null,null,null];
+			for (var i = 0; i < 5; i++){
+				var pip1 = card.querySelector('.tn-nu-track-pips[data-side="1"] [data-idx="' + i + '"]');
+				var pip2 = card.querySelector('.tn-nu-track-pips[data-side="2"] [data-idx="' + i + '"]');
+				if (!pip1 || !pip2) continue;
+				pip1.className = 'tn-bout-pip';
+				pip2.className = 'tn-bout-pip';
+				if (bouts[i] === '1'){ pip1.classList.add('tn-pip-win'); pip2.classList.add('tn-pip-loss'); }
+				else if (bouts[i] === '2'){ pip2.classList.add('tn-pip-win'); pip1.classList.add('tn-pip-loss'); }
+			}
+		}
+
+		function evaluateMajority(matchId){
+			var bouts = trackState[matchId] || [];
+			var p1 = bouts.filter(function(b){ return b === '1'; }).length;
+			var p2 = bouts.filter(function(b){ return b === '2'; }).length;
+			var total = p1 + p2;
+			var remaining = 5 - total;
+			var decided = null;
+			if (p1 > p2 && (p1 - p2) > remaining) decided = '1-wins';
+			else if (p2 > p1 && (p2 - p1) > remaining) decided = '2-wins';
+			else if (total >= 5) decided = (p1 > p2) ? '1-wins' : (p2 > p1 ? '2-wins' : 'tie');
+			if (decided) submitWithBouts(matchId, decided);
+		}
+
+		function submitWithBouts(matchId, result){
+			var bouts = trackState[matchId] || [];
+			var compact = bouts.filter(function(b){ return b !== null; });
+			delete trackState[matchId];
+			var fd = new FormData();
+			fd.append('Result', result);
+			fd.append('Score', '');
+			fd.append('Bouts', JSON.stringify(compact));
+			fetch(TnConfig.uir + 'TournamentAjax/match/' + matchId + '/' + TnConfig.tournamentId, { method:'POST', body: fd })
+				.then(function(r){ return r.json(); })
+				.then(function(d){
+					if (d && d.status === 0){
+						refreshBracket();
+					} else {
+						alert((d && d.error) || 'Failed to save result.');
+					}
+				})
+				.catch(function(){ alert('Network error recording result.'); });
+		}
+
+		function refreshBracket(){
+			var sel = $('tn-bv-bracket-select');
+			var bid = sel ? parseInt(sel.value, 10) : 0;
+			if (!bid || !TnConfig.bracketData[bid]) return;
+			var tid = TnConfig.tournamentId;
+			Promise.all([
+				fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bid + '/matches').then(function(r){ return r.json(); }),
+				fetch(TnConfig.uir + 'TournamentAjax/tournament/' + tid + '/brackets').then(function(r){ return r.json(); })
+			]).then(function(results){
+				var md = results[0], bd = results[1];
+				if (md && md.status === 0) TnConfig.bracketData[bid].Matches = md.matches;
+				if (bd && bd.status === 0 && bd.brackets && TnConfig.bracketData[bid]){
+					var br = bd.brackets.find(function(b){ return parseInt(b.BracketId) === parseInt(bid); });
+					if (br) TnConfig.bracketData[bid].Bracket = br;
+				}
+				if (typeof window.tnRenderBracketViz === 'function'){
+					window.tnRenderBracketViz(bid);
+				} else {
+					window.tnRenderNextUp(bid);
+				}
+			});
+		}
+
+		function handlePipClick(ev){
+			var pip = ev.target.closest('.tn-bout-pip');
+			if (!pip) return;
+			ev.preventDefault();
+			ev.stopPropagation();
+			var card = pip.closest('.tn-nu-card-track');
+			if (!card) return;
+			var matchId = card.getAttribute('data-mid');
+			if (!matchId) return;
+			var side = pip.getAttribute('data-side');
+			var idx = parseInt(pip.getAttribute('data-idx'), 10);
+			var bouts = trackState[matchId] || (trackState[matchId] = [null,null,null,null,null]);
+			bouts[idx] = (bouts[idx] === side) ? null : side;
+			repaintCardPips(matchId);
+			evaluateMajority(matchId);
+		}
+
+		function bindQuickButtons(bd, pMap){
 			nuHost.querySelectorAll('.tn-nu-btn').forEach(function(btn){
 				btn.addEventListener('click', function(ev){
 					ev.preventDefault();
 					var mid = btn.getAttribute('data-mid');
 					if (btn.getAttribute('data-more') === '1'){
-						// fall back to the full record-result modal
 						var matchObj = (bd.Matches || []).find(function(mm){ return String(mm.MatchId) === String(mid); });
 						if (matchObj){
 							var p1 = pMap[matchObj.Participant1Id];
@@ -5973,6 +6094,103 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 					}
 				});
 			});
+		}
+
+		function bindToggle(bracketId){
+			nuHost.querySelectorAll('.tn-nu-toggle-btn').forEach(function(btn){
+				btn.addEventListener('click', function(){
+					var newMode = btn.getAttribute('data-mode');
+					if (newMode === mode) return;
+					mode = newMode;
+					// Clear any partial pip state when leaving track mode so
+					// we never half-commit a prior click path.
+					trackState = Object.create(null);
+					try { localStorage.setItem(MODE_KEY, mode); } catch(e){}
+					window.tnRenderNextUp(bracketId);
+				});
+			});
+		}
+
+		window.tnRenderNextUp = function(bracketId){
+			nuHost = nuHost || $('tn-nextup');
+			if (!nuHost) return;
+			var bid = parseInt(bracketId, 10);
+			if (!bid || !TnConfig.bracketData || !TnConfig.bracketData[bid]){
+				nuHost.innerHTML = '';
+				return;
+			}
+			var bd = TnConfig.bracketData[bid];
+			var method = (bd.Bracket && bd.Bracket.Method) || '';
+			if (method === 'ironman'){ nuHost.innerHTML = ''; return; }
+			var status = (bd.Bracket && bd.Bracket.Status) || '';
+			if (status === 'setup' || status === 'complete' || status === 'finalized'){
+				nuHost.innerHTML = '';
+				return;
+			}
+			var unresolved = nextUnresolved(bd);
+			// Purge track state for matches that no longer exist in the queue.
+			Object.keys(trackState).forEach(function(mid){
+				if (!unresolved.some(function(m){ return String(m.MatchId) === String(mid); })){
+					delete trackState[mid];
+				}
+			});
+
+			var toggleHTML =
+				'<div class="tn-nu-toggle" role="tablist" aria-label="Next Up mode">' +
+					'<button class="tn-nu-toggle-btn' + (mode === 'quick' ? ' tn-nu-toggle-on' : '') + '" data-mode="quick" role="tab" aria-selected="' + (mode === 'quick') + '">Quick Win</button>' +
+					'<button class="tn-nu-toggle-btn' + (mode === 'track' ? ' tn-nu-toggle-on' : '') + '" data-mode="track" role="tab" aria-selected="' + (mode === 'track') + '">Track Fights</button>' +
+				'</div>';
+
+			if (!unresolved.length){
+				nuHost.innerHTML =
+					'<div class="tn-nu-wrap"><div class="tn-nu-header">' +
+					'<span class="tn-nu-title">Next up</span>' +
+					'<span class="tn-nu-sub">&mdash; all ready matches are recorded. Waiting on later rounds.</span>' +
+					toggleHTML +
+					'</div></div>';
+				bindToggle(bid);
+				return;
+			}
+
+			var show = unresolved.slice(0, 2);
+			var pMap = participantLookup(bd);
+			var cardFn = (mode === 'track') ? trackCardHTML : quickCardHTML;
+			var labels = ['NOW', 'ON DECK'];
+
+			nuHost.innerHTML =
+				'<div class="tn-nu-wrap">' +
+					'<div class="tn-nu-header">' +
+						'<span class="tn-nu-title">Next up</span>' +
+						'<span class="tn-nu-sub">&mdash; updates after each result</span>' +
+						toggleHTML +
+					'</div>' +
+					'<div class="tn-nu-grid">' +
+						show.map(function(m, i){ return cardFn(m, pMap, labels[i]); }).join('') +
+					'</div>' +
+				'</div>';
+
+			bindToggle(bid);
+
+			if (mode === 'track'){
+				nuHost.querySelectorAll('.tn-nu-card-track .tn-bout-pip').forEach(function(pip){
+					pip.addEventListener('click', handlePipClick);
+				});
+				// The ⋯ more button still works in track mode
+				nuHost.querySelectorAll('.tn-nu-card-track .tn-nu-btn[data-more="1"]').forEach(function(btn){
+					btn.addEventListener('click', function(ev){
+						ev.preventDefault();
+						var mid = btn.getAttribute('data-mid');
+						var matchObj = (bd.Matches || []).find(function(mm){ return String(mm.MatchId) === String(mid); });
+						if (matchObj){
+							var p1 = pMap[matchObj.Participant1Id];
+							var p2 = pMap[matchObj.Participant2Id];
+							if (typeof window.tnOpenRecordResult === 'function') window.tnOpenRecordResult(matchObj, p1, p2);
+						}
+					});
+				});
+			} else {
+				bindQuickButtons(bd, pMap);
+			}
 		};
 
 		// Wrap the base bracket viz renderer so Next-Up repaints on every
@@ -5988,7 +6206,6 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 					try { window.tnRenderNextUp(bid); } catch(e){ console.warn('[tn-nextup] render failed', e); }
 					return ret;
 				};
-				// Paint once for the initial bracket if the tab has already initialized.
 				var sel = $('tn-bv-bracket-select');
 				if (sel && sel.value) window.tnRenderNextUp(parseInt(sel.value, 10));
 			}
