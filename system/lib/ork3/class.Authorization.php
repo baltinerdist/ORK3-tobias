@@ -395,7 +395,6 @@ class Authorization extends Ork3
 			'ExpiresAt' => $_SESSION['Session_Vars']['ExpiresAt'],
 		];
 
-		error_log("AuthorizeIdp: Request: " . print_r($request, true));
 		$this->idp_auth->clear();
 		$this->idp_auth->idp_user_id = $request['IdpUserId'];
 
