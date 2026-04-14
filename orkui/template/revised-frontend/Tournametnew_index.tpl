@@ -6117,9 +6117,27 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 
 		function commit(bid, tid){
 			disarm();
-			if (typeof window.tnGenerateMatches === 'function'){
-				window.tnGenerateMatches(bid, tid);
-			}
+			// Chain: clearmatches (also resets bracket status to 'setup')
+			// → generate. Direct fetch so we don't trip the old
+			// tnGenerateMatches confirm() dialog on top of our undo-toast.
+			var fd1 = new FormData();
+			fd1.append('TournamentId', tid);
+			fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bid + '/clearmatches', { method: 'POST', body: fd1 })
+				.then(function(r){ return r.json(); })
+				.then(function(d){
+					if (!d || d.status !== 0) throw new Error((d && d.error) || 'Clear failed');
+					var fd2 = new FormData();
+					fd2.append('BracketId', bid);
+					return fetch(TnConfig.uir + 'TournamentAjax/tournament/' + tid + '/generate', { method: 'POST', body: fd2 });
+				})
+				.then(function(r){ return r.json(); })
+				.then(function(d){
+					if (!d || d.status !== 0) throw new Error((d && d.error) || 'Generate failed');
+					window.location.reload();
+				})
+				.catch(function(err){
+					alert('Re-generate failed: ' + (err && err.message ? err.message : err));
+				});
 		}
 
 		window.tnRegenArm = function(btn, ev){
