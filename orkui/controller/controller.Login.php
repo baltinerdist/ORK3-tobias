@@ -83,7 +83,7 @@ class Controller_Login extends Controller {
 	public function oauth_callback()
 	{
 		if (!isset($_GET['code'])) {
-			$this->data['error'] = 'No authorization returned from Amtgard IDP';
+			$this->data['error'] = 'IDP did not return an authorization code.';
 			$this->template = '../revised-frontend/Login_index.tpl';
 			return;
 		}
@@ -93,45 +93,44 @@ class Controller_Login extends Controller {
 
 		if (isset($user_data['error'])) {
 			error_log("Amtgard IDP OAuth callback: Failed to get user info: " . $user_data['response']);
-			$this->data['error'] = 'Failed to get user info';
+			$this->data['error'] = "Couldn't reach Amtgard IDP. Try again or use legacy login.";
 			$this->data['detail'] = $user_data['response'];
 			$this->template = '../revised-frontend/Login_index.tpl';
 			return;
 		}
 
-		error_log("Amtgard IDP OAuth callback: User Data: " . print_r($user_data, true));
+		// Stash the IDP context in the session for AuthorizeIdp + the claim flow.
+		$this->session->IdpUserId    = $user_data['id'];
+		$this->session->Email        = $user_data['email'] ?? '';
+		$this->session->MundaneId    = isset($user_data['ork_profile']['mundane_id']) ? $user_data['ork_profile']['mundane_id'] : null;
+		$this->session->AccessToken  = $token_data['access_token'];
+		$this->session->RefreshToken = $token_data['refresh_token'] ?? null;
+		$this->session->ExpiresAt    = time() + ($token_data['expires_in'] ?? 3600);
 
-		$result = $this->authorizeUser($user_data, $token_data);
+		$result = $this->Login->Authorization->AuthorizeIdp();
 
-		error_log("Amtgard IDP OAuth callback: AuthorizeIdp Result: " . print_r($result, true));
-
-		if ($result['Status']['Status'] === 0) {
-			$this->session->user_id = $result['UserId'];
+		// Auto-link / existing-link: log the user in and go to dashboard.
+		if (isset($result['IdpResult']) && $result['IdpResult'] === Authorization::IDP_RESULT_LOGGED_IN
+			&& isset($result['Status']['Status']) && $result['Status']['Status'] === 0) {
+			$this->session->user_id  = $result['UserId'];
 			$this->session->user_name = $result['UserName'];
-			$this->session->token = $result['Token'];
-			$this->session->timeout = $result['Timeout'];
+			$this->session->token    = $result['Token'];
+			$this->session->timeout  = $result['Timeout'];
+			// Power-user opt-in: came in via the IDP button, set the autoredirect cookie.
+			setcookie('ork_idp_autoredirect', '1', time() + 60 * 60 * 24 * 365, '/');
 			header('Location: ' . UIR);
-		} else {
-			$this->data['error'] = $result['Status']['Error'];
-			$this->data['detail'] = $result['Status']['Detail'];
-			$this->template = '../revised-frontend/Login_index.tpl';
-		}
-	}
-
-	private function authorizeUser($userData, $tokenData)
-	{
-		$mundane_id = null;
-		if (isset($userData['ork_profile']) && isset($userData['ork_profile']['mundane_id'])) {
-			$mundane_id = $userData['ork_profile']['mundane_id'];
+			return;
 		}
 
-		$this->session->IdpUserId = $userData['id'];
-		$this->session->Email = $userData['email'];
-		$this->session->MundaneId = $mundane_id;
-		$this->session->AccessToken = $tokenData['access_token'];
-		$this->session->RefreshToken = $tokenData['refresh_token'] ?? null;
-		$this->session->ExpiresAt = time() + ($tokenData['expires_in'] ?? 3600);
+		// Needs a manual claim — redirect to the claim form.
+		if (isset($result['IdpResult']) && $result['IdpResult'] === Authorization::IDP_RESULT_NEEDS_CLAIM) {
+			header('Location: ' . UIR . 'Login/claim_profile');
+			return;
+		}
 
-		return $this->Login->Authorization->AuthorizeIdp();
+		// Fallthrough: treat as failure.
+		$this->data['error'] = $result['Status']['Error'] ?? 'Authentication failed';
+		$this->data['detail'] = $result['Status']['Detail'] ?? '';
+		$this->template = '../revised-frontend/Login_index.tpl';
 	}
 }
