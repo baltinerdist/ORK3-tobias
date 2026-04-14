@@ -6091,15 +6091,17 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 	})();
 
 	// ================================================================
-	// TASK 12 · ARM-AND-FIRE Re-generate
-	// Intercepts the re-generate button click when the bracket has
-	// existing matches. First click "arms" the button (label swaps to
-	// a red COMMIT state, 4s timeout). Second click within the window
-	// runs the real tnGenerateMatches. Clicking anywhere else disarms.
+	// TASK 12 · UNDO-TOAST Re-generate
+	// Clicking Re-generate arms a 4s countdown on the button itself.
+	// At the end of the countdown it commits automatically. Clicking
+	// the explicit "cancel" link inside the button during the
+	// countdown aborts. Clicking the body of the button again while
+	// armed is a no-op (the countdown is already doing the work).
+	// Click-anywhere-else does not cancel — only the explicit cancel.
 	// ================================================================
 	(function(){
 		var armedBtn = null;
-		var armedTimer = null;
+		var tickTimer = null;
 		var armedOriginal = null;
 
 		function disarm(){
@@ -6109,7 +6111,15 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 			armedBtn.classList.add('tn-btn-primary');
 			armedBtn.removeAttribute('data-armed');
 			armedBtn = null;
-			if (armedTimer){ clearTimeout(armedTimer); armedTimer = null; }
+			armedOriginal = null;
+			if (tickTimer){ clearTimeout(tickTimer); tickTimer = null; }
+		}
+
+		function commit(bid, tid){
+			disarm();
+			if (typeof window.tnGenerateMatches === 'function'){
+				window.tnGenerateMatches(bid, tid);
+			}
 		}
 
 		window.tnRegenArm = function(btn, ev){
@@ -6118,13 +6128,17 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 			var bid = parseInt(btn.getAttribute('data-bid'), 10);
 			var tid = parseInt(btn.getAttribute('data-tid'), 10);
 			var n   = parseInt(btn.getAttribute('data-match-count'), 10) || 0;
+
+			// Click on the inline "cancel" link while armed
 			if (btn.getAttribute('data-armed') === '1'){
-				// Second click — fire
-				disarm();
-				window.tnGenerateMatches(bid, tid);
+				if (ev && ev.target && ev.target.closest('.tn-regen-cancel')){
+					disarm();
+				}
+				// Any other click on the body of the armed button is a no-op.
 				return false;
 			}
-			// First click — arm, show countdown
+
+			// First click — arm + countdown that auto-commits at zero
 			if (armedBtn && armedBtn !== btn) disarm();
 			armedBtn = btn;
 			armedOriginal = btn.innerHTML;
@@ -6133,25 +6147,21 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 			btn.setAttribute('data-armed', '1');
 			var remaining = 4;
 			function render(){
-				btn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Click to wipe ' + n + ' match' + (n===1?'':'es') + ' &middot; ' + remaining + 's';
+				btn.innerHTML =
+					'<i class="fas fa-exclamation-triangle"></i> ' +
+					'Wiping ' + n + ' match' + (n===1?'':'es') + ' in ' + remaining + 's ' +
+					'<span class="tn-regen-cancel" style="text-decoration:underline;margin-left:10px;font-weight:700;cursor:pointer">cancel</span>';
 			}
 			render();
 			var tick = function(){
 				remaining--;
-				if (remaining <= 0){ disarm(); return; }
+				if (remaining <= 0){ commit(bid, tid); return; }
 				render();
-				armedTimer = setTimeout(tick, 1000);
+				tickTimer = setTimeout(tick, 1000);
 			};
-			armedTimer = setTimeout(tick, 1000);
+			tickTimer = setTimeout(tick, 1000);
 			return false;
 		};
-
-		// Click anywhere else disarms
-		document.addEventListener('click', function(e){
-			if (!armedBtn) return;
-			if (e.target === armedBtn || armedBtn.contains(e.target)) return;
-			disarm();
-		}, true);
 	})();
 
 	var _bulkBtn = $('tn-bulkadd-submit');
