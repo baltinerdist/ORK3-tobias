@@ -5718,6 +5718,11 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 .tn-nu-track-pips .tn-bout-pip { width:22px; height:22px; }
 .tn-nu-mini-vs { font-size:11px; font-weight:700; color:#a0aec0; text-transform:uppercase; letter-spacing:0.4px; flex-shrink:0; padding:0 2px; }
 .tn-nu-card-track .tn-nu-btn-more { flex-shrink:0; }
+.tn-nu-btn-end { flex-shrink:0; background:#c53030; color:#fff; border-color:#c53030; display:none; }
+.tn-nu-btn-end:hover { background:#9b2c2c; border-color:#9b2c2c; }
+.tn-nu-btn-end.tn-nu-btn-end-tie { background:#718096; border-color:#718096; }
+.tn-nu-btn-end.tn-nu-btn-end-tie:hover { background:#4a5568; border-color:#4a5568; }
+.tn-nu-btn-end.tn-nu-btn-end-show { display:inline-flex; }
 .tn-nu-btn-more { color:#a0aec0; font-size:11px; font-weight:600; padding:7px 8px; }
 .tn-nu-empty { font-size:12px; font-style:italic; color:#a0aec0; padding:4px 0; }
 @media (max-width: 720px) {
@@ -5962,7 +5967,7 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 			var p1Seed = p1.Seed ? '<span class="tn-nu-p-seed">' + p1.Seed + '</span>' : '';
 			var p2Seed = p2.Seed ? '<span class="tn-nu-p-seed">' + p2.Seed + '</span>' : '';
 			return (
-				'<div class="tn-nu-card tn-nu-card-track" data-mid="' + m.MatchId + '">' +
+				'<div class="tn-nu-card tn-nu-card-track" data-mid="' + m.MatchId + '" data-p1-name="' + p1Name + '" data-p2-name="' + p2Name + '">' +
 					headLine(m, posLabel) +
 					'<div class="tn-nu-mini-name tn-nu-mini-name-1">' + p1Seed + '<span>' + p1Name + '</span></div>' +
 					pipRowHTML('1', m.MatchId) +
@@ -5970,7 +5975,8 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 					pipRowHTML('2', m.MatchId) +
 					'<div class="tn-nu-mini-name tn-nu-mini-name-2">' + p2Seed + '<span>' + p2Name + '</span></div>' +
 					(TnConfig.canManage
-						? '<button class="tn-nu-btn tn-nu-btn-more" data-mid="' + m.MatchId + '" data-more="1" title="Bouts / forfeit / DQ · tap a pip to record a bout">⋯</button>'
+						? '<button class="tn-nu-btn tn-nu-btn-end" data-mid="' + m.MatchId + '" data-end="1">End</button>' +
+						  '<button class="tn-nu-btn tn-nu-btn-more" data-mid="' + m.MatchId + '" data-more="1" title="Bouts / forfeit / DQ · tap a pip to record a bout">⋯</button>'
 						: '') +
 				'</div>'
 			);
@@ -5990,6 +5996,52 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 				if (bouts[i] === '1'){ pip1.classList.add('tn-pip-win'); pip2.classList.add('tn-pip-loss'); }
 				else if (bouts[i] === '2'){ pip2.classList.add('tn-pip-win'); pip1.classList.add('tn-pip-loss'); }
 			}
+			updateEndButton(matchId);
+		}
+
+		function updateEndButton(matchId){
+			if (!nuHost) return;
+			var card = nuHost.querySelector('.tn-nu-card-track[data-mid="' + matchId + '"]');
+			if (!card) return;
+			var btn = card.querySelector('.tn-nu-btn-end');
+			if (!btn) return;
+			var bouts = trackState[matchId] || [];
+			var p1 = bouts.filter(function(b){ return b === '1'; }).length;
+			var p2 = bouts.filter(function(b){ return b === '2'; }).length;
+			var total = p1 + p2;
+			if (total === 0){
+				btn.classList.remove('tn-nu-btn-end-show', 'tn-nu-btn-end-tie');
+				btn.textContent = 'End';
+				return;
+			}
+			var p1Name = card.getAttribute('data-p1-name') || 'P1';
+			var p2Name = card.getAttribute('data-p2-name') || 'P2';
+			btn.classList.add('tn-nu-btn-end-show');
+			if (p1 > p2){
+				btn.classList.remove('tn-nu-btn-end-tie');
+				btn.textContent = 'End · ' + p1Name + ' wins';
+			} else if (p2 > p1){
+				btn.classList.remove('tn-nu-btn-end-tie');
+				btn.textContent = 'End · ' + p2Name + ' wins';
+			} else {
+				btn.classList.add('tn-nu-btn-end-tie');
+				btn.textContent = 'End · Tie';
+			}
+		}
+
+		function handleEndClick(ev){
+			var btn = ev.target.closest('.tn-nu-btn-end');
+			if (!btn) return;
+			ev.preventDefault();
+			ev.stopPropagation();
+			var matchId = btn.getAttribute('data-mid');
+			if (!matchId) return;
+			var bouts = trackState[matchId] || [];
+			var p1 = bouts.filter(function(b){ return b === '1'; }).length;
+			var p2 = bouts.filter(function(b){ return b === '2'; }).length;
+			if (p1 + p2 === 0) return;
+			var result = p1 > p2 ? '1-wins' : (p2 > p1 ? '2-wins' : 'tie');
+			submitWithBouts(matchId, result);
 		}
 
 		function evaluateMajority(matchId){
@@ -6166,6 +6218,10 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 				nuHost.querySelectorAll('.tn-nu-card-track .tn-bout-pip').forEach(function(pip){
 					pip.addEventListener('click', handlePipClick);
 				});
+				// End buttons — early-finish commit per card
+				nuHost.querySelectorAll('.tn-nu-card-track .tn-nu-btn-end').forEach(function(btn){
+					btn.addEventListener('click', handleEndClick);
+				});
 				// The ⋯ more button still works in track mode
 				nuHost.querySelectorAll('.tn-nu-card-track .tn-nu-btn[data-more="1"]').forEach(function(btn){
 					btn.addEventListener('click', function(ev){
@@ -6178,6 +6234,10 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 							if (typeof window.tnOpenRecordResult === 'function') window.tnOpenRecordResult(matchObj, p1, p2);
 						}
 					});
+				});
+				// Seed button visibility for any pre-existing pip state (e.g. after a refresh preserves trackState)
+				nuHost.querySelectorAll('.tn-nu-card-track').forEach(function(card){
+					updateEndButton(card.getAttribute('data-mid'));
 				});
 			} else {
 				bindQuickButtons(bd, pMap);
