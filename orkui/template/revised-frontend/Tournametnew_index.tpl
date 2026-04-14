@@ -1464,37 +1464,44 @@ foreach ($bracketData as $_bid => $_bd) {
 					</select>
 				</div>
 			</div>
-			<div class="tn-field-row">
+			<button type="button" class="tn-advanced-toggle" data-target="tn-addbracket-advanced" style="background:none;border:none;color:#718096;cursor:pointer;padding:4px 0;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:4px">
+				<i class="fas fa-chevron-right" style="transition:transform .15s;font-size:10px"></i>
+				Advanced options
+				<span style="color:#a0aec0;font-weight:400;font-size:11px">(participants, rings, seeding, note)</span>
+			</button>
+			<div id="tn-addbracket-advanced" style="display:none">
+				<div class="tn-field-row">
+					<div class="tn-field">
+						<label for="tn-addbracket-participants">Participants</label>
+						<select id="tn-addbracket-participants">
+							<option value="individual">Individual</option>
+							<option value="team">Team</option>
+						</select>
+					</div>
+					<div class="tn-field">
+						<label for="tn-addbracket-rings">Rings (concurrent)</label>
+						<input type="number" id="tn-addbracket-rings" value="1" min="1" max="20">
+					</div>
+				</div>
 				<div class="tn-field">
-					<label for="tn-addbracket-participants">Participants</label>
-					<select id="tn-addbracket-participants">
-						<option value="individual">Individual</option>
-						<option value="team">Team</option>
+					<label for="tn-addbracket-seeding">Seeding</label>
+					<select id="tn-addbracket-seeding">
+						<option value="random">Random</option>
+						<option value="manual">Manual</option>
+						<option value="warrior">Orders of the Warrior</option>
+						<option value="glicko2">Performance Score</option>
+						<option value="random-manual">Random + Manual Adjust</option>
+						<option value="glicko2-manual">Performance + Manual Adjust</option>
 					</select>
 				</div>
-				<div class="tn-field">
-					<label for="tn-addbracket-rings">Rings (concurrent)</label>
-					<input type="number" id="tn-addbracket-rings" value="1" min="1" max="20">
+				<div class="tn-field" id="tn-addbracket-duration-field" style="display:none">
+					<label for="tn-addbracket-duration">Max Duration <span style="color:#a0aec0;font-size:11px;font-weight:400">(minutes, 0 = unlimited)</span></label>
+					<input type="number" id="tn-addbracket-duration" value="0" min="0" max="480">
 				</div>
-			</div>
-			<div class="tn-field">
-				<label for="tn-addbracket-seeding">Seeding</label>
-				<select id="tn-addbracket-seeding">
-					<option value="random">Random</option>
-					<option value="manual">Manual</option>
-					<option value="warrior">Orders of the Warrior</option>
-					<option value="glicko2">Performance Score</option>
-					<option value="random-manual">Random + Manual Adjust</option>
-					<option value="glicko2-manual">Performance + Manual Adjust</option>
-				</select>
-			</div>
-			<div class="tn-field" id="tn-addbracket-duration-field" style="display:none">
-				<label for="tn-addbracket-duration">Max Duration <span style="color:#a0aec0;font-size:11px;font-weight:400">(minutes, 0 = unlimited)</span></label>
-				<input type="number" id="tn-addbracket-duration" value="0" min="0" max="480">
-			</div>
-			<div class="tn-field">
-				<label for="tn-addbracket-stylenote">Style Note <span style="color:#a0aec0;font-size:11px;font-weight:400">(optional)</span></label>
-				<input type="text" id="tn-addbracket-stylenote" placeholder="e.g. No shields allowed, florentine only…" maxlength="255">
+				<div class="tn-field">
+					<label for="tn-addbracket-stylenote">Style Note <span style="color:#a0aec0;font-size:11px;font-weight:400">(optional)</span></label>
+					<input type="text" id="tn-addbracket-stylenote" placeholder="e.g. No shields allowed, florentine only…" maxlength="255">
+				</div>
 			</div>
 		</div>
 		<div class="tn-modal-footer">
@@ -1545,37 +1552,44 @@ foreach ($bracketData as $_bid => $_bd) {
 					</select>
 				</div>
 			</div>
-			<div class="tn-field-row">
+			<button type="button" class="tn-advanced-toggle" data-target="tn-editbracket-advanced" style="background:none;border:none;color:#718096;cursor:pointer;padding:4px 0;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:4px">
+				<i class="fas fa-chevron-right" style="transition:transform .15s;font-size:10px"></i>
+				Advanced options
+				<span style="color:#a0aec0;font-weight:400;font-size:11px">(participants, rings, seeding, note)</span>
+			</button>
+			<div id="tn-editbracket-advanced" style="display:none">
+				<div class="tn-field-row">
+					<div class="tn-field">
+						<label for="tn-editbracket-participants">Participants</label>
+						<select id="tn-editbracket-participants">
+							<option value="individual">Individual</option>
+							<option value="team">Team</option>
+						</select>
+					</div>
+					<div class="tn-field">
+						<label for="tn-editbracket-rings">Rings (concurrent)</label>
+						<input type="number" id="tn-editbracket-rings" value="1" min="1" max="20">
+					</div>
+				</div>
 				<div class="tn-field">
-					<label for="tn-editbracket-participants">Participants</label>
-					<select id="tn-editbracket-participants">
-						<option value="individual">Individual</option>
-						<option value="team">Team</option>
+					<label for="tn-editbracket-seeding">Seeding</label>
+					<select id="tn-editbracket-seeding">
+						<option value="random">Random</option>
+						<option value="manual">Manual</option>
+						<option value="warrior">Orders of the Warrior</option>
+						<option value="glicko2">Performance Score</option>
+						<option value="random-manual">Random + Manual Adjust</option>
+						<option value="glicko2-manual">Performance + Manual Adjust</option>
 					</select>
 				</div>
-				<div class="tn-field">
-					<label for="tn-editbracket-rings">Rings (concurrent)</label>
-					<input type="number" id="tn-editbracket-rings" value="1" min="1" max="20">
+				<div class="tn-field" id="tn-editbracket-duration-field" style="display:none">
+					<label for="tn-editbracket-duration">Max Duration <span style="color:#a0aec0;font-size:11px;font-weight:400">(minutes, 0 = unlimited)</span></label>
+					<input type="number" id="tn-editbracket-duration" value="0" min="0" max="480">
 				</div>
-			</div>
-			<div class="tn-field">
-				<label for="tn-editbracket-seeding">Seeding</label>
-				<select id="tn-editbracket-seeding">
-					<option value="random">Random</option>
-					<option value="manual">Manual</option>
-					<option value="warrior">Orders of the Warrior</option>
-					<option value="glicko2">Performance Score</option>
-					<option value="random-manual">Random + Manual Adjust</option>
-					<option value="glicko2-manual">Performance + Manual Adjust</option>
-				</select>
-			</div>
-			<div class="tn-field" id="tn-editbracket-duration-field" style="display:none">
-				<label for="tn-editbracket-duration">Max Duration <span style="color:#a0aec0;font-size:11px;font-weight:400">(minutes, 0 = unlimited)</span></label>
-				<input type="number" id="tn-editbracket-duration" value="0" min="0" max="480">
-			</div>
-			<div class="tn-field">
-				<label for="tn-editbracket-stylenote">Style Note <span style="color:#a0aec0;font-size:11px;font-weight:400">(optional)</span></label>
-				<input type="text" id="tn-editbracket-stylenote" placeholder="e.g. No shields allowed, florentine only…" maxlength="255">
+				<div class="tn-field">
+					<label for="tn-editbracket-stylenote">Style Note <span style="color:#a0aec0;font-size:11px;font-weight:400">(optional)</span></label>
+					<input type="text" id="tn-editbracket-stylenote" placeholder="e.g. No shields allowed, florentine only…" maxlength="255">
+				</div>
 			</div>
 		</div>
 		<div class="tn-modal-footer">
@@ -5725,6 +5739,74 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 	});
 	var _bulkOv = $('tn-bulkadd-overlay');
 	if (_bulkOv) _bulkOv.addEventListener('click', function(e){ if (e.target === _bulkOv) closeBulkAdd(); });
+
+	// ================================================================
+	// TASK 16 · Advanced-options disclosure on Add/Edit Bracket
+	// The bracket modal used to ask six questions for what is usually
+	// a two-decision action (style + format). The four secondary
+	// fields (participants type, rings, seeding, style note) are now
+	// hidden behind a disclosure. Edit Bracket auto-expands if any of
+	// those fields differs from their defaults, so existing state is
+	// never hidden from the user.
+	// ================================================================
+	(function(){
+		document.querySelectorAll('.tn-advanced-toggle').forEach(function(btn){
+			btn.addEventListener('click', function(){
+				var targetId = btn.getAttribute('data-target');
+				var target = $(targetId);
+				if (!target) return;
+				var open = target.style.display !== 'none';
+				target.style.display = open ? 'none' : '';
+				var icon = btn.querySelector('i');
+				if (icon) icon.style.transform = open ? '' : 'rotate(90deg)';
+			});
+		});
+
+		// Auto-expand Edit Bracket advanced section when non-default state
+		// is loaded. We watch the bracket-id hidden input for changes made
+		// by tnOpenEditBracketModal — it populates the fields synchronously
+		// before showing the modal, so a MutationObserver on bracket-id is
+		// the cleanest trigger.
+		var editBid = $('tn-editbracket-bid');
+		if (editBid){
+			var mo = new MutationObserver(function(){
+				// fires when tnOpenEditBracketModal sets the hidden input
+				setTimeout(function(){
+					var pv = $('tn-editbracket-participants');
+					var rv = $('tn-editbracket-rings');
+					var sv = $('tn-editbracket-seeding');
+					var nv = $('tn-editbracket-stylenote');
+					var nonDefault =
+						(pv && pv.value && pv.value !== 'individual') ||
+						(rv && rv.value && parseInt(rv.value, 10) > 1) ||
+						(sv && sv.value && sv.value !== 'random') ||
+						(nv && nv.value && nv.value.trim() !== '');
+					var adv = $('tn-editbracket-advanced');
+					var btn = document.querySelector('.tn-advanced-toggle[data-target="tn-editbracket-advanced"]');
+					if (adv){
+						adv.style.display = nonDefault ? '' : 'none';
+						if (btn){
+							var icon = btn.querySelector('i');
+							if (icon) icon.style.transform = nonDefault ? 'rotate(90deg)' : '';
+						}
+					}
+				}, 0);
+			});
+			mo.observe(editBid, { attributes: true, attributeFilter: ['value'] });
+
+			// Some JS assigns .value directly which doesn't fire attribute
+			// mutations — also listen to a property set via a shim.
+			var origDesc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+			Object.defineProperty(editBid, 'value', {
+				set: function(v){
+					origDesc.set.call(this, v);
+					this.setAttribute('value', v);
+				},
+				get: function(){ return origDesc.get.call(this); },
+				configurable: true
+			});
+		}
+	})();
 
 	// ================================================================
 	// TASK 15 · DEFAULT to Run Tournament tab when matches exist
