@@ -8,7 +8,8 @@
  *   0 * * * * php /var/www/cron/idp-mirror-retry.php
  */
 
-require_once dirname(__DIR__) . '/system/lib/system.php';
+putenv('ENVIRONMENT=' . (getenv('ENVIRONMENT') ?: 'DEV'));
+require_once dirname(__DIR__) . '/startup.php';
 
 global $DB;
 $DB->Clear();
