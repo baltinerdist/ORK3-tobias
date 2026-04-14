@@ -5708,17 +5708,16 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 .tn-nu-btn-p1, .tn-nu-btn-p2 { background:#276749; color:#fff; border-color:#276749; }
 .tn-nu-btn-p1:hover, .tn-nu-btn-p2:hover { background:#1e4e36; }
 .tn-nu-btn-tie { color:#718096; }
-/* Track Fights mode: stacked two-row layout with pip tracking per side */
-.tn-nu-card-track { flex-direction:column; align-items:stretch; padding:12px 14px; gap:0; }
-.tn-nu-card-track .tn-nu-card-head { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
-.tn-nu-track-row { display:flex; align-items:center; gap:12px; padding:8px 0; }
-.tn-nu-track-row + .tn-nu-track-row { border-top:1px solid #f0f4f8; }
-.tn-nu-track-name { flex:1; min-width:0; font-size:14px; font-weight:700; color:#1a202c; display:flex; align-items:center; gap:6px; }
-.tn-nu-track-name span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.tn-nu-track-pips { display:flex; gap:6px; flex-shrink:0; }
+/* Track Fights mode: single horizontal row —  X ●●●●● vs ●●●●● Y */
+.tn-nu-card-track { flex-direction:row; align-items:center; gap:12px; padding:10px 14px; flex-wrap:nowrap; }
+.tn-nu-mini-name { font-size:14px; font-weight:700; color:#1a202c; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; display:flex; align-items:center; gap:6px; }
+.tn-nu-mini-name-1 { flex:1 1 0; justify-content:flex-end; text-align:right; }
+.tn-nu-mini-name-2 { flex:1 1 0; justify-content:flex-start; text-align:left; }
+.tn-nu-mini-name span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.tn-nu-track-pips { display:flex; gap:5px; flex-shrink:0; }
 .tn-nu-track-pips .tn-bout-pip { width:22px; height:22px; }
-.tn-nu-card-track .tn-nu-actions { padding-top:8px; margin-top:4px; border-top:1px solid #f0f4f8; justify-content:space-between; align-items:center; }
-.tn-nu-track-hint { font-size:10px; color:#a0aec0; letter-spacing:0.3px; }
+.tn-nu-mini-vs { font-size:11px; font-weight:700; color:#a0aec0; text-transform:uppercase; letter-spacing:0.4px; flex-shrink:0; padding:0 2px; }
+.tn-nu-card-track .tn-nu-btn-more { flex-shrink:0; }
 .tn-nu-btn-more { color:#a0aec0; font-size:11px; font-weight:600; padding:7px 8px; }
 .tn-nu-empty { font-size:12px; font-style:italic; color:#a0aec0; padding:4px 0; }
 @media (max-width: 720px) {
@@ -5964,22 +5963,14 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 			var p2Seed = p2.Seed ? '<span class="tn-nu-p-seed">' + p2.Seed + '</span>' : '';
 			return (
 				'<div class="tn-nu-card tn-nu-card-track" data-mid="' + m.MatchId + '">' +
-					'<div class="tn-nu-card-head">' +
-						headLine(m, posLabel) +
-					'</div>' +
-					'<div class="tn-nu-track-row">' +
-						'<div class="tn-nu-track-name">' + p1Seed + '<span>' + p1Name + '</span></div>' +
-						pipRowHTML('1', m.MatchId) +
-					'</div>' +
-					'<div class="tn-nu-track-row">' +
-						'<div class="tn-nu-track-name">' + p2Seed + '<span>' + p2Name + '</span></div>' +
-						pipRowHTML('2', m.MatchId) +
-					'</div>' +
+					headLine(m, posLabel) +
+					'<div class="tn-nu-mini-name tn-nu-mini-name-1">' + p1Seed + '<span>' + p1Name + '</span></div>' +
+					pipRowHTML('1', m.MatchId) +
+					'<span class="tn-nu-mini-vs">vs</span>' +
+					pipRowHTML('2', m.MatchId) +
+					'<div class="tn-nu-mini-name tn-nu-mini-name-2">' + p2Seed + '<span>' + p2Name + '</span></div>' +
 					(TnConfig.canManage
-						? '<div class="tn-nu-actions">' +
-							'<span class="tn-nu-track-hint">Tap a pip to record a bout · majority auto-saves</span>' +
-							'<button class="tn-nu-btn tn-nu-btn-more" data-mid="' + m.MatchId + '" data-more="1" title="Bouts / forfeit / DQ">⋯</button>' +
-						'</div>'
+						? '<button class="tn-nu-btn tn-nu-btn-more" data-mid="' + m.MatchId + '" data-more="1" title="Bouts / forfeit / DQ · tap a pip to record a bout">⋯</button>'
 						: '') +
 				'</div>'
 			);
