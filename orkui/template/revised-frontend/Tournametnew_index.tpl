@@ -5727,6 +5727,34 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 	if (_bulkOv) _bulkOv.addEventListener('click', function(e){ if (e.target === _bulkOv) closeBulkAdd(); });
 
 	// ================================================================
+	// TASK 15 · DEFAULT to Run Tournament tab when matches exist
+	// The Brackets tab is the default landing surface, which makes
+	// sense during setup. Once any bracket has generated matches,
+	// the tournament is running and the marshal almost always wants
+	// the Run Tournament tab instead. Honors a #hash override so
+	// deep links still land where they aim.
+	// ================================================================
+	(function(){
+		if (window.location.hash){
+			var h = window.location.hash.replace('#','');
+			// leave existing hash handling alone
+			if (['about','brackets','participants','bracketviz','standings'].indexOf(h) !== -1) return;
+		}
+		if (!TnConfig.bracketData) return;
+		var anyMatches = false;
+		for (var bid in TnConfig.bracketData){
+			var bd = TnConfig.bracketData[bid];
+			if (bd && (bd.Matches || []).length > 0){ anyMatches = true; break; }
+		}
+		if (!anyMatches) return;
+		function activate(){
+			if (typeof window.tnActivateTab === 'function') window.tnActivateTab('bracketviz');
+		}
+		if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', activate);
+		else activate();
+	})();
+
+	// ================================================================
 	// TASK 14 · NEXT-UP live strip
 	// Pinned above the bracket visualization. For the currently
 	// selected bracket, shows the next unresolved match(es) — one per
