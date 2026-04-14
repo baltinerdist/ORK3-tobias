@@ -133,4 +133,15 @@ class Controller_Login extends Controller {
 		$this->data['detail'] = $result['Status']['Detail'] ?? '';
 		$this->template = '../revised-frontend/Login_index.tpl';
 	}
+
+	public function claim_profile()
+	{
+		if (!isset($this->session->IdpUserId) || strlen($this->session->IdpUserId) === 0) {
+			$this->data['error'] = 'Session expired — please start over.';
+			$this->template = '../revised-frontend/Login_index.tpl';
+			return;
+		}
+		$this->data['idp_email'] = $this->session->Email;
+		$this->template = '../revised-frontend/Login_claim.tpl';
+	}
 }
