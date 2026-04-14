@@ -1090,6 +1090,9 @@ $heroStyles = array_keys($heroStyles);
 								<button class="tn-btn tn-btn-outline tn-btn-sm" onclick="tnOpenAddParticipantModal(<?= $bid ?>, <?= $tid ?>)">
 									<i class="fas fa-user-plus"></i> Add Participant
 								</button>
+								<button class="tn-btn tn-btn-outline tn-btn-sm" onclick="tnOpenBulkAddModal(<?= $bid ?>, <?= $tid ?>)" title="Paste a list of aliases, one per line">
+									<i class="fas fa-clipboard-list"></i> Paste Roster
+								</button>
 								<?php endif; ?>
 								<?php if (count($pList) >= 2 && !in_array($b['Status'], ['complete', 'finalized'])): ?>
 								<button class="tn-btn tn-btn-primary tn-btn-sm" onclick="tnGenerateMatches(<?= $bid ?>, <?= $tid ?>)">
@@ -1617,6 +1620,38 @@ foreach ($bracketData as $_bid => $_bd) {
 			<button class="tn-btn tn-btn-ghost" id="tn-addparticipant-cancel">Cancel</button>
 			<button class="tn-btn tn-btn-primary" id="tn-addparticipant-submit">
 				<i class="fas fa-user-plus"></i> Add Participant
+			</button>
+		</div>
+	</div>
+</div>
+
+<!-- =============================================
+     Bulk Add (Paste Roster) Modal — one alias per line
+     ============================================= -->
+<div class="tn-overlay" id="tn-bulkadd-overlay">
+	<div class="tn-modal-box" style="width:520px;max-width:calc(100vw - 40px)">
+		<div class="tn-modal-header">
+			<h3 class="tn-modal-title"><i class="fas fa-clipboard-list" style="margin-right:8px;color:#276749"></i>Paste Roster</h3>
+			<button class="tn-modal-close" id="tn-bulkadd-close">&times;</button>
+		</div>
+		<div class="tn-modal-body">
+			<div id="tn-bulkadd-feedback" class="tn-feedback"></div>
+			<input type="hidden" id="tn-bulkadd-bracket-id" value="">
+			<input type="hidden" id="tn-bulkadd-tournament-id" value="<?= $tid ?>">
+			<p style="margin:0 0 10px;font-size:12px;color:#718096;line-height:1.5">
+				One fighter per line. Paste from a signup sheet or type as fast as you can.
+				Fighters won't be linked to player profiles, but you can fix that later from the bracket card.
+			</p>
+			<div class="tn-field">
+				<label for="tn-bulkadd-text">ALIASES <span style="color:#e53e3e">*</span></label>
+				<textarea id="tn-bulkadd-text" rows="10" placeholder="Sir Galahad&#10;Morgana&#10;The Grey Wolf&#10;..." style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;line-height:1.5"></textarea>
+			</div>
+			<div id="tn-bulkadd-progress" style="display:none;font-size:12px;color:#718096;margin-top:4px"></div>
+		</div>
+		<div class="tn-modal-footer">
+			<button class="tn-btn tn-btn-ghost" id="tn-bulkadd-cancel">Cancel</button>
+			<button class="tn-btn tn-btn-primary" id="tn-bulkadd-submit">
+				<i class="fas fa-users"></i> Add All
 			</button>
 		</div>
 	</div>
@@ -5614,6 +5649,86 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 		})
 		.catch(function() { alert('Network error recording result.'); });
 };
+
+})();
+</script>
+
+<!-- =====================================================================
+     UX workflow layer.
+     Each section is an independent, revertable feature. Remove a
+     section by deleting its labeled block — every section is a
+     self-contained function invocation that does not depend on the
+     others. No shared state beyond TnConfig.
+     ===================================================================== -->
+<script>
+(function(){
+	'use strict';
+	function $(id){ return document.getElementById(id); }
+	function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+	function openOv(id){ var el=$(id); if(el) el.classList.add('tn-open'); }
+	function closeOv(id){ var el=$(id); if(el) el.classList.remove('tn-open'); }
+
+	// ================================================================
+	// TASK 11 · PASTE ROSTER
+	// Bulk-adds participants one line at a time via the existing
+	// TournamentAjax/bracket/{bid}/addparticipant endpoint. Shows inline
+	// progress, single reload at the end.
+	// ================================================================
+	window.tnOpenBulkAddModal = function(bracketId, tournamentId){
+		if (!TnConfig.canManage) return;
+		$('tn-bulkadd-bracket-id').value    = bracketId;
+		$('tn-bulkadd-tournament-id').value = tournamentId;
+		$('tn-bulkadd-text').value = '';
+		$('tn-bulkadd-feedback').style.display = 'none';
+		$('tn-bulkadd-progress').style.display = 'none';
+		$('tn-bulkadd-submit').disabled = false;
+		openOv('tn-bulkadd-overlay');
+		setTimeout(function(){ var t = $('tn-bulkadd-text'); if (t) t.focus(); }, 80);
+	};
+	function closeBulkAdd(){ closeOv('tn-bulkadd-overlay'); }
+	['tn-bulkadd-close','tn-bulkadd-cancel'].forEach(function(id){
+		var el = $(id); if (el) el.addEventListener('click', closeBulkAdd);
+	});
+	var _bulkOv = $('tn-bulkadd-overlay');
+	if (_bulkOv) _bulkOv.addEventListener('click', function(e){ if (e.target === _bulkOv) closeBulkAdd(); });
+
+	var _bulkBtn = $('tn-bulkadd-submit');
+	if (_bulkBtn) _bulkBtn.addEventListener('click', function(){
+		var text = $('tn-bulkadd-text').value || '';
+		var bid  = $('tn-bulkadd-bracket-id').value;
+		var tid  = $('tn-bulkadd-tournament-id').value;
+		var fb   = $('tn-bulkadd-feedback');
+		var prog = $('tn-bulkadd-progress');
+		var lines = text.split(/\r?\n/).map(function(l){ return l.trim(); }).filter(function(l){ return l.length > 0; });
+		if (!lines.length){
+			fb.className = 'tn-feedback tn-feedback-err';
+			fb.textContent = 'Paste at least one alias.';
+			fb.style.display = '';
+			return;
+		}
+		_bulkBtn.disabled = true;
+		fb.style.display = 'none';
+		prog.style.display = '';
+		var i = 0, ok = 0, fail = 0;
+		function step(){
+			if (i >= lines.length){
+				prog.textContent = 'Done — added ' + ok + (fail ? ', ' + fail + ' failed' : '') + '.';
+				setTimeout(function(){ closeBulkAdd(); window.location.reload(); }, fail ? 1400 : 500);
+				return;
+			}
+			var alias = lines[i];
+			prog.textContent = 'Adding ' + (i+1) + ' of ' + lines.length + ' — ' + alias;
+			var fd = new FormData();
+			fd.append('Alias', alias);
+			fd.append('TournamentId', tid);
+			fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bid + '/addparticipant', { method:'POST', body: fd })
+				.then(function(r){ return r.json(); })
+				.then(function(d){ if (d && d.status === 0) ok++; else fail++; })
+				.catch(function(){ fail++; })
+				.finally(function(){ i++; step(); });
+		}
+		step();
+	});
 
 })();
 </script>
