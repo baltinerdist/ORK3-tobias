@@ -5696,6 +5696,99 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 	if (_bulkOv) _bulkOv.addEventListener('click', function(e){ if (e.target === _bulkOv) closeBulkAdd(); });
 
 	// ================================================================
+	// TASK 13 · Pip majority → soft auto-commit
+	// The Record Result modal already mirrors pip state to the result
+	// dropdown. What it does not do is save without a button click.
+	// When one fighter reaches mathematical majority (3+ of 5, or any
+	// state where the other side can no longer tie), we start a 2s
+	// visible countdown and auto-click the submit button. Any pip
+	// click or a modal close cancels.
+	// ================================================================
+	(function(){
+		var rrOverlay  = $('tn-recordresult-overlay');
+		var scoreEl    = $('tn-rr-bout-score');
+		if (!rrOverlay || !scoreEl) return;
+
+		var commitTimer = null;
+		var countdownTimer = null;
+		var originalScoreHTML = '';
+
+		function countWins(side){
+			return document.querySelectorAll('#tn-rr-pips-' + side + ' .tn-pip-win').length;
+		}
+
+		function cancelCommit(){
+			if (commitTimer){ clearTimeout(commitTimer); commitTimer = null; }
+			if (countdownTimer){ clearInterval(countdownTimer); countdownTimer = null; }
+			if (scoreEl.dataset.tnAutocommit === '1'){
+				scoreEl.dataset.tnAutocommit = '';
+				scoreEl.style.color = '';
+				// let renderPips / updateScoreDisplay repaint naturally on the next click
+			}
+		}
+
+		function startCommit(winnerLabel){
+			cancelCommit();
+			scoreEl.dataset.tnAutocommit = '1';
+			scoreEl.style.color = '#276749';
+			var remaining = 2;
+			function paint(){
+				scoreEl.innerHTML = '<strong>' + winnerLabel + '</strong> &middot; saving in ' + remaining + 's &middot; <a href="#" id="tn-rr-cancel-commit" style="color:#e53e3e;text-decoration:underline">cancel</a>';
+				var c = $('tn-rr-cancel-commit');
+				if (c) c.addEventListener('click', function(e){ e.preventDefault(); cancelCommit(); });
+			}
+			paint();
+			countdownTimer = setInterval(function(){
+				remaining--;
+				if (remaining <= 0){ clearInterval(countdownTimer); countdownTimer = null; return; }
+				paint();
+			}, 1000);
+			commitTimer = setTimeout(function(){
+				commitTimer = null;
+				scoreEl.dataset.tnAutocommit = '';
+				scoreEl.style.color = '';
+				var sb = $('tn-recordresult-submit');
+				if (sb && !sb.disabled) sb.click();
+			}, 2000);
+		}
+
+		function evaluate(){
+			var p1 = countWins(1);
+			var p2 = countWins(2);
+			var total = p1 + p2;
+			if (total === 0){ cancelCommit(); return; }
+			// Mathematical majority of best-of-5: |p1-p2| greater than pips remaining
+			var remaining = 5 - total;
+			if (p1 > p2 && (p1 - p2) > remaining){
+				var n1 = $('tn-rr-p1-name') ? $('tn-rr-p1-name').textContent : 'Player 1';
+				startCommit(n1 + ' wins');
+			} else if (p2 > p1 && (p2 - p1) > remaining){
+				var n2 = $('tn-rr-p2-name') ? $('tn-rr-p2-name').textContent : 'Player 2';
+				startCommit(n2 + ' wins');
+			} else {
+				cancelCommit();
+			}
+		}
+
+		// Piggyback on pip clicks: the existing click handler fires first
+		// (it was attached with addEventListener during IIFE init), then
+		// our bubble-phase listener reads the freshly-painted pip classes.
+		['tn-rr-pips-1','tn-rr-pips-2'].forEach(function(id){
+			var el = $(id);
+			if (!el) return;
+			el.addEventListener('click', function(){
+				setTimeout(evaluate, 0); // after existing handler completes
+			});
+		});
+
+		// Closing the modal cancels any pending commit
+		var mo = new MutationObserver(function(){
+			if (!rrOverlay.classList.contains('tn-open')) cancelCommit();
+		});
+		mo.observe(rrOverlay, { attributes: true, attributeFilter: ['class'] });
+	})();
+
+	// ================================================================
 	// TASK 12 · ARM-AND-FIRE Re-generate
 	// Intercepts the re-generate button click when the bracket has
 	// existing matches. First click "arms" the button (label swaps to
