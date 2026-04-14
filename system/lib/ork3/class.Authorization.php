@@ -441,7 +441,10 @@ class Authorization extends Ork3
 		);
 
 		if (!is_array($rows) || count($rows) !== 1) {
-			error_log("AuthorizeIdp: tryAutoLinkByEmail matched " . (is_array($rows) ? count($rows) : 0) . " rows for $email");
+			$matchCount = is_array($rows) ? count($rows) : 0;
+			error_log("AuthorizeIdp: tryAutoLinkByEmail matched $matchCount rows for $email");
+			// Stash the count so the claim form can show a helpful banner.
+			$_SESSION['Session_Vars']['IdpEmailMatchCount'] = $matchCount;
 			return false;
 		}
 

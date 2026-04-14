@@ -150,6 +150,10 @@ class Controller_Login extends Controller {
 			return;
 		}
 		$this->data['idp_email'] = $this->session->Email;
+		// If auto-link saw multiple ORK profiles sharing the IDP email, explain the situation.
+		if (isset($this->session->IdpEmailMatchCount) && $this->session->IdpEmailMatchCount > 1) {
+			$this->data['notice'] = 'Multiple ORK profiles share that email — please sign in below to confirm which one is yours.';
+		}
 		$this->template = '../revised-frontend/Login_claim.tpl';
 	}
 
