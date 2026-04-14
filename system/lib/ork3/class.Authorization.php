@@ -585,11 +585,20 @@ class Authorization extends Ork3
 		}
 
 		// Mark consumed BEFORE finalizing so concurrent uses fail fast.
+		// Atomic guard: only one concurrent request will flip consumed_at from NULL.
 		$DB->Clear();
 		$DB->Execute(
-			"UPDATE " . DB_PREFIX . "idp_claim_token SET consumed_at = NOW() WHERE token = ?",
+			"UPDATE " . DB_PREFIX . "idp_claim_token SET consumed_at = NOW() WHERE token = ? AND consumed_at IS NULL",
 			array($token)
 		);
+		$DB->Clear();
+		$check = $DB->DataSet(
+			"SELECT consumed_at FROM " . DB_PREFIX . "idp_claim_token WHERE token = ? LIMIT 1",
+			array($token)
+		);
+		if (!is_array($check) || count($check) === 0 || is_null($check[0]['consumed_at'])) {
+			return ['Status' => NoAuthorization("That link has already been used.")];
+		}
 
 		// Build createIdpLink request shape. We don't have access/refresh
 		// tokens at magic-link consumption time — that's fine, the next IDP
