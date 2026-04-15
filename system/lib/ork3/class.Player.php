@@ -13,6 +13,18 @@ class Player extends Ork3 {
 		$this->load_model('Pronoun');
 	}
 
+	private $_customTitleAwardId = null;
+	public function getCustomTitleAwardId() {
+		if ($this->_customTitleAwardId !== null) return $this->_customTitleAwardId;
+		$r = $this->db->query("SELECT award_id FROM " . DB_PREFIX . "award WHERE name = 'Custom Title' AND officer_role='none' LIMIT 1");
+		$this->_customTitleAwardId = 0;
+		if ($r && $r->size() > 0) {
+			$r->next();
+			$this->_customTitleAwardId = (int)$r->award_id;
+		}
+		return $this->_customTitleAwardId;
+	}
+
     public function AddOneShotFaceImage($request) {
       $mundane = $this->player_info($request['MundaneId']);
 		  $requester_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
@@ -178,6 +190,18 @@ class Player extends Ork3 {
 		return NoAuthorization();
 	}
 
+	public function ClearNotes($request) {
+		if (!valid_id($request['MundaneId'])) return InvalidParameter('Invalid player ID.');
+		$uid = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+		if ($uid <= 0) return NoAuthorization();
+		$thePlayer = $this->player_info($request['MundaneId']);
+		$isOwn  = $uid === (int)$request['MundaneId'];
+		$isAdmin = Ork3::$Lib->authorization->HasAuthority($uid, AUTH_PARK, $thePlayer['ParkId'], AUTH_EDIT);
+		if (!$isOwn && !$isAdmin) return NoAuthorization();
+		$this->db->query('DELETE FROM ' . DB_PREFIX . 'mundane_note WHERE mundane_id = ' . intval($request['MundaneId']));
+		return Success();
+	}
+
 	public function SetPlayerReconciledCredits($request) {
 
 		$thePlayer = $this->player_info($request['MundaneId']);
@@ -293,7 +317,26 @@ class Player extends Ork3 {
 					//'ParkMemberSince' => date('d/m/Y', strtotime($this->mundane->park_member_since))
 					'ParkMemberSince' => $this->mundane->park_member_since,
 					'IsNewPlayer' => $is_new_player,
-					'DuesPaidList' => $dues
+					'DuesPaidList' => $dues,
+					'AboutPersona' => $this->mundane->about_persona,
+					'AboutStory' => $this->mundane->about_story,
+					'ColorPrimary' => $this->mundane->color_primary,
+					'ColorAccent' => $this->mundane->color_accent,
+						'ColorSecondary' => $this->mundane->color_secondary,
+						'HeroOverlay' => $this->mundane->hero_overlay,
+					'NamePrefix' => $this->mundane->name_prefix,
+					'NameSuffix' => $this->mundane->name_suffix,
+						'SuffixComma' => (int)$this->mundane->suffix_comma,
+					'PhotoFocusX' => $this->mundane->photo_focus_x,
+					'PhotoFocusY' => $this->mundane->photo_focus_y,
+					'PhotoFocusSize' => $this->mundane->photo_focus_size,
+						'ShowBeltline' => (int)$this->mundane->show_beltline,
+						'PronunciationGuide' => $this->mundane->pronunciation_guide,
+						'ShowMundaneFirst' => (int)$this->mundane->show_mundane_first,
+						'ShowMundaneLast' => (int)$this->mundane->show_mundane_last,
+						'ShowEmail' => (int)$this->mundane->show_email,
+						'MilestoneConfig' => $this->mundane->milestone_config,
+						'NameFont' => $this->mundane->name_font,
 				);
 			$unit = Ork3::$Lib->report->UnitSummary(array( 'MundaneId' => $this->mundane->mundane_id, 'IncludeCompanies' => 1, 'ActiveOnly' => 1 ));
 			if ($unit['Status']['Status'] != 0) {
@@ -380,12 +423,19 @@ class Player extends Ork3 {
 			$player_award = "or awards.awards_id = '" . mysql_real_escape_string($request['AwardsId']) . "'";
 		}
 		$sql = "select distinct awards.*, a.*,
-						COALESCE(a.is_title, ka.is_title) as is_title,
-						COALESCE(a.title_class, ka.title_class) as title_class,
+						GREATEST(IFNULL(a.is_title,0), IFNULL(ka.is_title,0), IFNULL(alias.is_title,0)) as is_title,
+						COALESCE(alias.title_class, a.title_class, ka.title_class) as title_class,
+						COALESCE(alias.peerage, a.peerage) as peerage,
+						COALESCE(alias.officer_role, a.officer_role) as officer_role,
+						COALESCE(alias.is_ladder, a.is_ladder) as is_ladder,
+						alias.award_id as alias_award_id_resolved,
+						alias.name as alias_award_name,
+						alias.peerage as alias_peerage,
 						ka.name as kingdom_awardname, p.name as park_name, k.name as kingdom_name, e.name as event_name, m.persona, bwm.persona as entered_by_persona, bwm.mundane_id as entered_by_id
 					from " . DB_PREFIX . "awards awards
 						left join " . DB_PREFIX . "kingdomaward ka on awards.kingdomaward_id = ka.kingdomaward_id
 							left join " . DB_PREFIX . "award a on a.award_id = ka.award_id
+						left join " . DB_PREFIX . "award alias on alias.award_id = awards.alias_award_id
 						left join " . DB_PREFIX . "park p on p.park_id = awards.at_park_id
 						left join " . DB_PREFIX . "kingdom k on k.kingdom_id = awards.at_kingdom_id
 						left join " . DB_PREFIX . "event e on e.event_id = awards.at_event_id
@@ -393,7 +443,7 @@ class Player extends Ork3 {
 						left join " . DB_PREFIX . "mundane bwm on bwm.mundane_id = awards.by_whom_id
 					where awards.mundane_id = '" . mysql_real_escape_string($request['MundaneId']) . "' $player_award
 					order by
-						COALESCE(a.is_ladder, 0), COALESCE(a.is_title, ka.is_title, 0), COALESCE(a.title_class, ka.title_class, 0), a.name, awards.rank, awards.date";
+						COALESCE(alias.is_ladder, a.is_ladder, 0), GREATEST(IFNULL(a.is_title,0), IFNULL(ka.is_title,0), IFNULL(alias.is_title,0)), COALESCE(alias.title_class, a.title_class, ka.title_class, 0), a.name, awards.rank, awards.date";
 
 		$r = $this->db->query($sql);
 		$response = array();
@@ -421,6 +471,9 @@ class Player extends Ork3 {
 						'TitleClass' => $r->title_class,
 						'OfficerRole' => $r->officer_role,
 						'Peerage' => $r->peerage,
+						'AliasAwardId' => (int)($r->alias_award_id_resolved ?? 0),
+						'AliasAwardName' => $r->alias_award_name,
+						'AliasPeerage' => $r->alias_peerage,
 						'ParkName' => $r->park_name,
 						'KingdomName' => $r->kingdom_name,
 						'EventName' => $r->event_name,
@@ -597,7 +650,7 @@ class Player extends Ork3 {
 						$this->mundane->waiver_ext = 'pdf';
 					}
 				}
-				if ($request['HasImage'] && strlen($request['Image']) > 0 && strlen($request['Image']) < 465000 && Common::supported_mime_types($request['ImageMimeType']) && !Common::is_pdf_mime_type($request['ImageMimeType'])) {
+				if ($request['HasImage'] && strlen($request['Image']) > 0 && strlen($request['Image']) < 1365334 && Common::supported_mime_types($request['ImageMimeType']) && !Common::is_pdf_mime_type($request['ImageMimeType'])) {
 					$playerimage = @imagecreatefromstring(base64_decode($request['Image']));
 					if ($playerimage !== false)
 					{
@@ -939,6 +992,30 @@ class Player extends Ork3 {
 				$this->mundane->pronoun_id = is_null($request['PronounId'])?$this->mundane->pronoun_id:$request['PronounId'];
 				$this->mundane->pronoun_custom = is_null($request['PronounCustom'])?$this->mundane->pronoun_custom:$request['PronounCustom'];
 
+				// Profile customization fields (own-profile only)
+				if ($requester_id == $request['MundaneId']) {
+					$this->mundane->about_persona = is_null($request['AboutPersona'])?$this->mundane->about_persona:$request['AboutPersona'];
+					$this->mundane->about_story = is_null($request['AboutStory'])?$this->mundane->about_story:$request['AboutStory'];
+					$this->mundane->color_primary = is_null($request['ColorPrimary'])?$this->mundane->color_primary:$request['ColorPrimary'];
+					$this->mundane->color_accent = is_null($request['ColorAccent'])?$this->mundane->color_accent:$request['ColorAccent'];
+					$this->mundane->color_secondary = is_null($request['ColorSecondary'])?$this->mundane->color_secondary:$request['ColorSecondary'];
+					$validOverlays = ['low','med','high'];
+					$this->mundane->hero_overlay = (isset($request['HeroOverlay']) && in_array($request['HeroOverlay'], $validOverlays)) ? $request['HeroOverlay'] : $this->mundane->hero_overlay;
+					$this->mundane->name_prefix = is_null($request['NamePrefix'])?$this->mundane->name_prefix:$request['NamePrefix'];
+					$this->mundane->name_suffix = is_null($request['NameSuffix'])?$this->mundane->name_suffix:$request['NameSuffix'];
+					$this->mundane->suffix_comma = is_null($request['SuffixComma'])?$this->mundane->suffix_comma:(int)$request['SuffixComma'];
+					$this->mundane->photo_focus_x = is_null($request['PhotoFocusX'])?$this->mundane->photo_focus_x:(int)$request['PhotoFocusX'];
+					$this->mundane->photo_focus_y = is_null($request['PhotoFocusY'])?$this->mundane->photo_focus_y:(int)$request['PhotoFocusY'];
+					$this->mundane->photo_focus_size = is_null($request['PhotoFocusSize'])?$this->mundane->photo_focus_size:(int)$request['PhotoFocusSize'];
+					$this->mundane->show_beltline = is_null($request['ShowBeltline'])?$this->mundane->show_beltline:(int)$request['ShowBeltline'];
+					$this->mundane->pronunciation_guide = is_null($request['PronunciationGuide'])?$this->mundane->pronunciation_guide:$request['PronunciationGuide'];
+					$this->mundane->show_mundane_first = is_null($request['ShowMundaneFirst'])?$this->mundane->show_mundane_first:(int)$request['ShowMundaneFirst'];
+					$this->mundane->show_mundane_last = is_null($request['ShowMundaneLast'])?$this->mundane->show_mundane_last:(int)$request['ShowMundaneLast'];
+					$this->mundane->show_email = is_null($request['ShowEmail'])?$this->mundane->show_email:(int)$request['ShowEmail'];
+					$this->mundane->milestone_config = is_null($request['MilestoneConfig'])?$this->mundane->milestone_config:$request['MilestoneConfig'];
+						$this->mundane->name_font = is_null($request['NameFont'])?$this->mundane->name_font:$request['NameFont'];
+				}
+
 				// reeve or corpora qual changes
 				// TODO: add error messaging
 				if (Ork3::$Lib->authorization->HasAuthority($requester_id, AUTH_KINGDOM, $this->mundane->kingdom_id, AUTH_EDIT) || Ork3::$Lib->authorization->HasAuthority($requester_id, AUTH_ADMIN, 0, AUTH_EDIT) || Ork3::$Lib->authorization->HasAuthority($requester_id, AUTH_PARK, $this->mundane->park_id, AUTH_EDIT)) {
@@ -1038,7 +1115,7 @@ class Player extends Ork3 {
         $mime = $prefix . 'MimeType';
     	if (strlen($request[$url]) > 0 && Common::url_exists($request[$url])) {
 			$mime_type = Common::exif_to_mime(@exif_imagetype($request[$url]), $request[$url]);
-			if (Common::supported_mime_types($mime_type) && Ork3::$Lib->heraldry->url_file_size($request[$url]) < 465000) {
+			if (Common::supported_mime_types($mime_type) && Ork3::$Lib->heraldry->url_file_size($request[$url]) < 1365334) {
 				$request[$media] = base64_encode(file_get_contents($request[$url]));
 				$request[$mime] = $mime_type;
 			}
@@ -1049,7 +1126,7 @@ class Player extends Ork3 {
 	public function set_image($request) {
         logtrace("set_image", $request);
         $request = $this->media_fetch('Image', $request);
-		if (strlen($request['Image']) > 0 && strlen($request['Image']) < 465000 && Common::supported_mime_types($request['ImageMimeType']) && !Common::is_pdf_mime_type($request['ImageMimeType'])) {
+		if (strlen($request['Image']) > 0 && strlen($request['Image']) < 1365334 && Common::supported_mime_types($request['ImageMimeType']) && !Common::is_pdf_mime_type($request['ImageMimeType'])) {
 			$playerimage = imagecreatefromstring(base64_decode($request['Image']));
 			if ($playerimage !== false)
 			{
@@ -1071,7 +1148,7 @@ class Player extends Ork3 {
 				$notices .= "Image could not be decoded.";
 			}
 		} else {
-			$notices .= 'Images must be jpeg, gifs, or pngs, and may be no larger than 340KB.<br />';
+			$notices .= 'Images must be jpeg, gifs, or pngs, and may be no larger than 1MB.<br />';
 		}
 		logtrace("set_image() complete", array($request, $notices));
 		return Success($notices);
@@ -1305,6 +1382,7 @@ class Player extends Ork3 {
 			$awards->kingdomaward_id = $request['KingdomAwardId'];
     		$awards->award_id = $request['AwardId'];
 			$awards->custom_name = $request['CustomName'] ?? '';
+			$awards->alias_award_id = (!empty($request['AliasAwardId']) && (int)$request['AliasAwardId'] > 0) ? (int)$request['AliasAwardId'] : null;
 			$awards->mundane_id = $request['RecipientId'];
 			$awards->rank = $request['Rank'];
 			$awards->date = $request['Date'];
@@ -1322,6 +1400,21 @@ class Player extends Ork3 {
     			$awards->kingdom_id = valid_id($given_by['Player']['KingdomId'])?$given_by['Player']['KingdomId']:0;
             }
 			// Events are awesome.
+
+			if (!empty($awards->alias_award_id)) {
+				$ctid = $this->getCustomTitleAwardId();
+				$aid = (int)$awards->alias_award_id;
+				$chk = $this->db->query("SELECT award_id, is_title, peerage, officer_role FROM " . DB_PREFIX . "award WHERE award_id = " . $aid . " LIMIT 1");
+				$bad = true;
+				if ($chk && $chk->size() > 0) {
+					$chk->next();
+					if ((int)$chk->award_id !== $ctid && $chk->officer_role === 'none'
+					    && ((int)$chk->is_title === 1 || !in_array($chk->peerage, array('', 'None'), true))) {
+						$bad = false;
+					}
+				}
+				if ($bad) return InvalidParameter();
+			}
 
 			$awards->save();
 
@@ -1428,7 +1521,56 @@ class Player extends Ork3 {
 				$set_at_event_id   = valid_id($request['EventId']) ? intval($request['EventId']) : 0;
 				$set_awards_id  = intval($request['AwardsId']);
 
-				$sql = 'UPDATE ' . DB_PREFIX . 'awards SET rank=' . $set_rank . ', date=\'' . addslashes($set_date) . '\', given_by_id=' . $set_given_by_id . ', note=\'' . $set_note . '\', at_park_id=' . $set_at_park_id . ', at_kingdom_id=' . $set_at_kingdom_id . ', at_event_id=' . $set_at_event_id . ' WHERE awards_id=' . $set_awards_id;
+				// Custom Title reclassification: allow switching between Custom Award and Custom Title sentinels,
+				// updating custom_name, alias_award_id, and kingdomaward_id in the same write.
+				$extra_sql = '';
+				$ctid = $this->getCustomTitleAwardId();
+				if (array_key_exists('AwardId', $request) && valid_id($request['AwardId'])) {
+					$req_award_id = (int)$request['AwardId'];
+					if ($req_award_id === 94 || $req_award_id === $ctid) {
+						$extra_sql .= ', award_id=' . $req_award_id;
+						// Also rewrite kingdomaward_id so AwardsForPlayer's ka->a join yields the
+						// correct base award (is_title flag, peerage, etc). Find the matching
+						// kingdomaward row in the same kingdom as the existing row.
+						$curKaKingdomId = 0;
+						if (valid_id($awards->kingdomaward_id)) {
+							$kq = $this->db->query("SELECT kingdom_id FROM " . DB_PREFIX . "kingdomaward WHERE kingdomaward_id = " . (int)$awards->kingdomaward_id . " LIMIT 1");
+							if ($kq && $kq->size() > 0) { $kq->next(); $curKaKingdomId = (int)$kq->kingdom_id; }
+						}
+						if ($curKaKingdomId > 0) {
+							$targetName = ($req_award_id === $ctid) ? 'Custom Title' : 'Custom Award';
+							$tq = $this->db->query("SELECT kingdomaward_id FROM " . DB_PREFIX . "kingdomaward WHERE kingdom_id = " . $curKaKingdomId . " AND award_id = " . $req_award_id . " AND name = '" . addslashes($targetName) . "' LIMIT 1");
+							if ($tq && $tq->size() > 0) {
+								$tq->next();
+								$extra_sql .= ', kingdomaward_id=' . (int)$tq->kingdomaward_id;
+							}
+						}
+					}
+				}
+				if (array_key_exists('CustomName', $request)) {
+					$extra_sql .= ", custom_name='" . addslashes($request['CustomName']) . "'";
+				}
+				if (array_key_exists('AliasAwardId', $request)) {
+					$new_alias = (!empty($request['AliasAwardId']) && (int)$request['AliasAwardId'] > 0) ? (int)$request['AliasAwardId'] : 0;
+					if ($new_alias > 0) {
+						// Validate alias target
+						$chk = $this->db->query("SELECT award_id, is_title, peerage, officer_role FROM " . DB_PREFIX . "award WHERE award_id = " . $new_alias . " LIMIT 1");
+						$bad = true;
+						if ($chk && $chk->size() > 0) {
+							$chk->next();
+							if ((int)$chk->award_id !== $ctid && $chk->officer_role === 'none'
+							    && ((int)$chk->is_title === 1 || !in_array($chk->peerage, array('', 'None'), true))) {
+								$bad = false;
+							}
+						}
+						if ($bad) return InvalidParameter();
+						$extra_sql .= ', alias_award_id=' . $new_alias;
+					} else {
+						$extra_sql .= ', alias_award_id=NULL';
+					}
+				}
+
+				$sql = 'UPDATE ' . DB_PREFIX . 'awards SET rank=' . $set_rank . ', date=\'' . addslashes($set_date) . '\', given_by_id=' . $set_given_by_id . ', note=\'' . $set_note . '\', at_park_id=' . $set_at_park_id . ', at_kingdom_id=' . $set_at_kingdom_id . ', at_event_id=' . $set_at_event_id . $extra_sql . ' WHERE awards_id=' . $set_awards_id;
 				$this->db->query($sql);
 
 				return Success($set_awards_id);
@@ -1521,6 +1663,7 @@ class Player extends Ork3 {
 		$award->at_kingdom_id = $awards->at_kingdom_id;
 		$award->at_event_id = $awards->at_event_id;
 		$award->custom_name = $awards->custom_name;
+		$award->alias_award_id = $awards->alias_award_id;
 		$award->award_id = $awards->award_id;
 		return $award;
 	}
@@ -1750,6 +1893,80 @@ class Player extends Ork3 {
 		} else {
 			return NoAuthorization();
 		}
+	}
+
+
+	public function GetCustomMilestones($mundane_id) {
+		$milestones = new yapo($this->db, DB_PREFIX . 'player_milestones');
+		$milestones->clear();
+		$milestones->mundane_id = (int)$mundane_id;
+		$results = array();
+		if ($milestones->find()) {
+			do {
+				$results[] = array(
+					'MilestoneId' => $milestones->milestone_id,
+					'MundaneId' => $milestones->mundane_id,
+					'Icon' => $milestones->icon,
+					'Description' => $milestones->description,
+					'MilestoneDate' => $milestones->milestone_date,
+				);
+			} while ($milestones->next());
+		}
+		return $results;
+	}
+
+	public function AddCustomMilestone($request) {
+		$requester_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+		if (!valid_id($requester_id) || (int)$requester_id !== (int)$request['MundaneId']) {
+			return NoAuthorization();
+		}
+		$milestones = new yapo($this->db, DB_PREFIX . 'player_milestones');
+		$milestones->clear();
+		$milestones->mundane_id = (int)$request['MundaneId'];
+		$icon = trim($request['Icon']) ?: 'fa-star';
+		if (!preg_match('/^fa-[a-z0-9-]+$/', $icon)) $icon = 'fa-star';
+		$milestones->icon = $icon;
+		$milestones->description = trim($request['Description']);
+		$milestones->milestone_date = date('Y-m-d', strtotime($request['MilestoneDate']));
+		$milestones->save();
+		return Success($milestones->milestone_id);
+	}
+
+	public function UpdateCustomMilestone($request) {
+		$requester_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+		if (!valid_id($requester_id) || (int)$requester_id !== (int)$request['MundaneId']) {
+			return NoAuthorization();
+		}
+		$milestones = new yapo($this->db, DB_PREFIX . 'player_milestones');
+		$milestones->clear();
+		$milestones->milestone_id = (int)$request['MilestoneId'];
+		$milestones->mundane_id = (int)$request['MundaneId'];
+		if (!$milestones->find()) {
+			return InvalidParameter('Milestone not found.');
+		}
+		$icon = trim($request['Icon']);
+		if ($icon && !preg_match('/^fa-[a-z0-9-]+$/', $icon)) $icon = '';
+		$milestones->icon = $icon ?: $milestones->icon;
+		$milestones->description = trim($request['Description']) ?: $milestones->description;
+		$milestones->milestone_date = !empty($request['MilestoneDate']) ? date('Y-m-d', strtotime($request['MilestoneDate'])) : $milestones->milestone_date;
+		$milestones->save();
+		return Success($milestones->milestone_id);
+	}
+
+	public function DeleteCustomMilestone($request) {
+		$requester_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+		if (!valid_id($requester_id) || (int)$requester_id !== (int)$request['MundaneId']) {
+			return NoAuthorization();
+		}
+		$milestones = new yapo($this->db, DB_PREFIX . 'player_milestones');
+		$milestones->clear();
+		$milestones->milestone_id = (int)$request['MilestoneId'];
+		$milestones->mundane_id = (int)$request['MundaneId'];
+		if (!$milestones->find()) {
+			return InvalidParameter('Milestone not found.');
+		}
+		$milestones->delete();
+		return Success();
 	}
 
 	public function get_latest_attendance_date($mundane_id) {
