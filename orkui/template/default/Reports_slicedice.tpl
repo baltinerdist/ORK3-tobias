@@ -1,8 +1,8 @@
 <?php
 $_uid = isset($this->__session->user_id) ? (int)$this->__session->user_id : 0;
 if ($_uid <= 0) { header('Location: ' . UIR . 'Login'); exit; }
-$kingdom_id   = (int)($this->data['kingdom_id'] ?? 0);
-$kingdom_name = $this->data['kingdom_name'] ?? 'Unknown';
+$kingdom_id   = (int)($kingdom_id ?? 0);
+$kingdom_name = $kingdom_name ?? 'Unknown';
 ?>
 <!-- DataTables CDN -->
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
@@ -228,9 +228,9 @@ $kingdom_name = $this->data['kingdom_name'] ?? 'Unknown';
 /* ── Slice & Dice Explorer JS ─────────────────────────── */
 (function() {
     var SD_KINGDOM_ID = <?= $kingdom_id ?>;
-    var SD_PARKS      = <?= $this->data['parks_json'] ?>;
-    var SD_CLASSES    = <?= $this->data['classes_json'] ?>;
-    var SD_AWARDS     = <?= $this->data['awards_json'] ?>;
+    var SD_PARKS      = <?= $parks_json ?>;
+    var SD_CLASSES    = <?= $classes_json ?>;
+    var SD_AWARDS     = <?= $awards_json ?>;
     var UIR_JS        = '<?= UIR ?>';
 
     var currentDataset = null;
