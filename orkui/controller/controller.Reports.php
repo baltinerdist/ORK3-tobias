@@ -346,6 +346,58 @@ class Controller_Reports extends Controller {
 		$this->data['page_title'] = "Active Knights";
 	}
 
+	public function slicedice($kingdom_id = null) {
+		$_uid = isset($this->session->user_id) ? (int)$this->session->user_id : 0;
+		if ($_uid <= 0) {
+			header('Location: ' . UIR . 'Login');
+			exit;
+		}
+
+		$kingdom_id = valid_id($kingdom_id) ? (int)$kingdom_id : (int)($this->session->kingdom_id ?? 0);
+		if (!valid_id($kingdom_id)) {
+			header('Location: ' . UIR);
+			exit;
+		}
+
+		global $DB;
+
+		// Kingdom name
+		$DB->Clear();
+		$kd = $DB->DataSet("SELECT name FROM " . DB_PREFIX . "kingdom WHERE kingdom_id = " . $kingdom_id . " LIMIT 1");
+		$kingdom_name = ($kd && $kd->Next()) ? $kd->name : 'Unknown';
+
+		// Parks in this kingdom (for filter dropdown)
+		$DB->Clear();
+		$parks = [];
+		$rs = $DB->DataSet("SELECT park_id, name FROM " . DB_PREFIX . "park WHERE kingdom_id = " . $kingdom_id . " AND active = 1 ORDER BY name");
+		if ($rs) { while ($rs->Next()) { $parks[] = ['park_id' => (int)$rs->park_id, 'name' => $rs->name]; } }
+
+		// Active classes (for attendance filter)
+		$DB->Clear();
+		$classes = [];
+		$rs = $DB->DataSet("SELECT class_id, name FROM " . DB_PREFIX . "class WHERE active = 1 ORDER BY name");
+		if ($rs) { while ($rs->Next()) { $classes[] = ['class_id' => (int)$rs->class_id, 'name' => $rs->name]; } }
+
+		// Kingdom awards grouped by type (for award filter)
+		$DB->Clear();
+		$awards = [];
+		$rs = $DB->DataSet("SELECT ka.kingdomaward_id, ka.name AS ka_name, a.name AS award_name, a.is_ladder, a.is_title FROM " . DB_PREFIX . "kingdomaward ka JOIN " . DB_PREFIX . "award a ON ka.award_id = a.award_id WHERE ka.kingdom_id = " . $kingdom_id . " ORDER BY a.name, ka.name");
+		if ($rs) {
+			while ($rs->Next()) {
+				$type = ((int)$rs->is_ladder === 1) ? 'ladder' : (((int)$rs->is_title === 1) ? 'title' : 'nonladder');
+				$awards[] = ['kingdomaward_id' => (int)$rs->kingdomaward_id, 'name' => $rs->ka_name ?: $rs->award_name, 'type' => $type];
+			}
+		}
+
+		$this->data['kingdom_id']   = $kingdom_id;
+		$this->data['kingdom_name'] = $kingdom_name;
+		$this->data['parks_json']   = json_encode($parks);
+		$this->data['classes_json'] = json_encode($classes);
+		$this->data['awards_json']  = json_encode($awards);
+		$this->data['page_title']   = 'Slice & Dice Explorer';
+		$this->template = 'Reports_slicedice.tpl';
+	}
+
     public function masters($type=null) {
 		$_uid = isset($this->session->user_id) ? (int)$this->session->user_id : 0;
 		$_isOrkAdmin = $_uid > 0 && Ork3::$Lib->authorization->HasAuthority($_uid, AUTH_ADMIN, 0, AUTH_ADMIN);
