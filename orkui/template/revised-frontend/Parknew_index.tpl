@@ -1017,6 +1017,12 @@
 							<li><a href="<?= UIR ?>Reports/custom_awards&KingdomId=<?= $kingdom_id ?>&ParkId=<?= $park_id ?>">Custom Awards</a></li>
 						</ul>
 					</div>
+					<div class="kn-report-group">
+						<h5><i class="fas fa-filter"></i> Tools</h5>
+						<ul>
+							<li><a href="<?= UIR ?>Reports/slicedice/<?= $kingdom_id ?>"><i class="fas fa-filter"></i> Slice &amp; Dice Explorer</a></li>
+						</ul>
+					</div>
 					<?php endif; ?>
 
 				</div>

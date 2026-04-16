@@ -672,6 +672,7 @@
 							<li><a href="<?= UIR ?>Reports/parkheraldry/<?= $kingdom_id ?>"><?= $entityLabel ?> Heraldry, Parks</a></li>
 							<li><a href="<?= UIR ?>Reports/playerheraldry/<?= $kingdom_id ?>"><?= $entityLabel ?> Heraldry, Players</a></li>
 							<li><a href="<?= UIR ?>Reports/park_distance_matrix&KingdomId=<?= $kingdom_id ?>"><i class="fas fa-th"></i> Park Distance Matrix</a></li>
+							<li><a href="<?= UIR ?>Reports/slicedice/<?= $kingdom_id ?>"><i class="fas fa-filter"></i> Slice &amp; Dice Explorer</a></li>
 						</ul>
 					</div>
 					<?php endif; ?>
