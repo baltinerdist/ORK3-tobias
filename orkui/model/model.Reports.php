@@ -477,14 +477,38 @@ class Model_Reports extends Model {
 		$rs = $DB->DataSet($sql);
 		$records = [];
 		if ($rs) {
-			while ($rs->Next()) {
-				$row = [];
-				foreach ($rs->fields as $key => $val) {
-					if (!is_numeric($key)) {
-						$row[$key] = $val;
-					}
+			if ($dataset === 'awards') {
+				while ($rs->Next()) {
+					$records[] = [
+						'player' => $rs->player, 'player_id' => $rs->player_id,
+						'park' => $rs->park, 'park_id' => $rs->park_id,
+						'award' => $rs->award, 'award_type' => $rs->award_type,
+						'rank' => $rs->rank, 'date' => $rs->date,
+						'year' => $rs->year, 'month' => $rs->month
+					];
 				}
-				$records[] = $row;
+			} elseif ($dataset === 'attendance') {
+				while ($rs->Next()) {
+					$records[] = [
+						'player' => $rs->player, 'player_id' => $rs->player_id,
+						'park' => $rs->park, 'park_id' => $rs->park_id,
+						'class_played' => $rs->class_played, 'date' => $rs->date,
+						'year' => $rs->year, 'month' => $rs->month,
+						'day_of_week' => $rs->day_of_week, 'credits' => $rs->credits,
+						'event_type' => $rs->event_type, 'event_name' => $rs->event_name
+					];
+				}
+			} elseif ($dataset === 'players') {
+				while ($rs->Next()) {
+					$records[] = [
+						'player' => $rs->player, 'player_id' => $rs->player_id,
+						'given_name' => $rs->given_name,
+						'park' => $rs->park, 'park_id' => $rs->park_id,
+						'active_status' => $rs->active_status,
+						'waiver_status' => $rs->waiver_status,
+						'year_joined' => $rs->year_joined
+					];
+				}
 			}
 		}
 
