@@ -337,6 +337,166 @@ class Model_Reports extends Model {
 		return false;
 	}
 
+
+	function get_slicedice_data($dataset, $filters) {
+		global $DB;
+		$kid = (int)$filters['kingdom_id'];
+		$limit = 25000;
+
+		$where_extra = '';
+
+		if ($dataset === 'awards') {
+			if (valid_id($filters['park_id'])) $where_extra .= " AND p.park_id = " . (int)$filters['park_id'];
+			if ($filters['date_start'])        $where_extra .= " AND aw.date >= '" . addslashes($filters['date_start']) . "'";
+			if ($filters['date_end'])          $where_extra .= " AND aw.date <= '" . addslashes($filters['date_end']) . "'";
+			if (valid_id($filters['award_id'])) $where_extra .= " AND ka.kingdomaward_id = " . (int)$filters['award_id'];
+			if (valid_id($filters['player_id'])) $where_extra .= " AND m.mundane_id = " . (int)$filters['player_id'];
+			if ($filters['award_type'] === 'ladder')    $where_extra .= " AND a.is_ladder = 1";
+			if ($filters['award_type'] === 'title')     $where_extra .= " AND a.is_title = 1";
+			if ($filters['award_type'] === 'nonladder') $where_extra .= " AND a.is_ladder = 0 AND a.is_title = 0";
+
+			$sql = "SELECT
+				m.persona AS player,
+				m.mundane_id AS player_id,
+				p.name AS park,
+				p.park_id,
+				COALESCE(ka.name, a.name) AS award,
+				CASE WHEN a.is_ladder = 1 THEN 'ladder' WHEN a.is_title = 1 THEN 'title' ELSE 'nonladder' END AS award_type,
+				aw.rank,
+				aw.date,
+				YEAR(aw.date) AS year,
+				MONTH(aw.date) AS month
+			FROM " . DB_PREFIX . "awards aw
+			JOIN " . DB_PREFIX . "kingdomaward ka ON aw.kingdomaward_id = ka.kingdomaward_id
+			JOIN " . DB_PREFIX . "award a ON ka.award_id = a.award_id
+			JOIN " . DB_PREFIX . "mundane m ON aw.mundane_id = m.mundane_id
+			JOIN " . DB_PREFIX . "park p ON m.park_id = p.park_id
+			WHERE ka.kingdom_id = {$kid}
+				AND aw.revoked = 0
+				{$where_extra}
+			ORDER BY aw.date DESC
+			LIMIT {$limit}";
+
+			$meta = [
+				'dimensions' => [
+					'park' => 'Park', 'award' => 'Award Name', 'award_type' => 'Award Type',
+					'player' => 'Player', 'year' => 'Year', 'month' => 'Month'
+				],
+				'aggregates' => [
+					'count' => 'Count', 'count_distinct_players' => 'Unique Players',
+					'max_rank' => 'Max Rank', 'avg_rank' => 'Avg Rank'
+				]
+			];
+
+		} elseif ($dataset === 'attendance') {
+			if (valid_id($filters['park_id']))   $where_extra .= " AND att.park_id = " . (int)$filters['park_id'];
+			if ($filters['date_start'])          $where_extra .= " AND att.date >= '" . addslashes($filters['date_start']) . "'";
+			if ($filters['date_end'])            $where_extra .= " AND att.date <= '" . addslashes($filters['date_end']) . "'";
+			if (valid_id($filters['class_id']))  $where_extra .= " AND att.class_id = " . (int)$filters['class_id'];
+			if (valid_id($filters['player_id'])) $where_extra .= " AND att.mundane_id = " . (int)$filters['player_id'];
+			if ($filters['event_filter'] === 'events')  $where_extra .= " AND att.event_id > 0";
+			if ($filters['event_filter'] === 'regular') $where_extra .= " AND (att.event_id = 0 OR att.event_id IS NULL)";
+
+			$sql = "SELECT
+				m.persona AS player,
+				m.mundane_id AS player_id,
+				p.name AS park,
+				p.park_id,
+				COALESCE(c.name, 'Unknown') AS class_played,
+				att.date,
+				YEAR(att.date) AS year,
+				MONTH(att.date) AS month,
+				DAYNAME(att.date) AS day_of_week,
+				att.credits,
+				CASE WHEN att.event_id > 0 THEN 'Event' ELSE 'Regular' END AS event_type,
+				COALESCE(e.name, '') AS event_name
+			FROM " . DB_PREFIX . "attendance att
+			JOIN " . DB_PREFIX . "mundane m ON att.mundane_id = m.mundane_id
+			JOIN " . DB_PREFIX . "park p ON att.park_id = p.park_id
+			LEFT JOIN " . DB_PREFIX . "class c ON att.class_id = c.class_id
+			LEFT JOIN " . DB_PREFIX . "event e ON att.event_id = e.event_id
+			WHERE att.kingdom_id = {$kid}
+				{$where_extra}
+			ORDER BY att.date DESC
+			LIMIT {$limit}";
+
+			$meta = [
+				'dimensions' => [
+					'park' => 'Park', 'player' => 'Player', 'class_played' => 'Class',
+					'year' => 'Year', 'month' => 'Month', 'day_of_week' => 'Day of Week',
+					'event_type' => 'Event vs Regular'
+				],
+				'aggregates' => [
+					'count' => 'Count', 'count_distinct_players' => 'Unique Players',
+					'count_distinct_dates' => 'Unique Dates', 'avg_credits' => 'Avg Credits/Player'
+				]
+			];
+
+		} elseif ($dataset === 'players') {
+			if (valid_id($filters['park_id']))          $where_extra .= " AND m.park_id = " . (int)$filters['park_id'];
+			if ($filters['active_status'] === 'active')   $where_extra .= " AND m.active = 1";
+			if ($filters['active_status'] === 'inactive') $where_extra .= " AND m.active = 0";
+			if ($filters['waiver_status'] === 'waivered')   $where_extra .= " AND m.waivered = 1";
+			if ($filters['waiver_status'] === 'unwaivered') $where_extra .= " AND m.waivered = 0";
+
+			$sql = "SELECT
+				m.persona AS player,
+				m.mundane_id AS player_id,
+				m.given_name,
+				p.name AS park,
+				p.park_id,
+				CASE WHEN m.active = 1 THEN 'Active' ELSE 'Inactive' END AS active_status,
+				CASE WHEN m.waivered = 1 THEN 'Waivered' ELSE 'Unwaivered' END AS waiver_status,
+				COALESCE(YEAR(ea.earliest_date), 'Unknown') AS year_joined
+			FROM " . DB_PREFIX . "mundane m
+			JOIN " . DB_PREFIX . "park p ON m.park_id = p.park_id
+			LEFT JOIN (
+				SELECT mundane_id, MIN(date) AS earliest_date
+				FROM " . DB_PREFIX . "attendance
+				WHERE date >= '1988-01-01'
+				GROUP BY mundane_id
+			) ea ON m.mundane_id = ea.mundane_id
+			WHERE m.kingdom_id = {$kid}
+				AND m.persona != ''
+				{$where_extra}
+			ORDER BY m.persona
+			LIMIT {$limit}";
+
+			$meta = [
+				'dimensions' => [
+					'park' => 'Park', 'active_status' => 'Active/Inactive',
+					'waiver_status' => 'Waivered/Unwaivered', 'year_joined' => 'Year Joined'
+				],
+				'aggregates' => [
+					'count' => 'Count', 'count_active' => 'Count Active', 'count_waivered' => 'Count Waivered'
+				]
+			];
+		}
+
+		$DB->Clear();
+		$rs = $DB->DataSet($sql);
+		$records = [];
+		if ($rs) {
+			while ($rs->Next()) {
+				$row = [];
+				foreach ($rs->fields as $key => $val) {
+					if (!is_numeric($key)) {
+						$row[$key] = $val;
+					}
+				}
+				$records[] = $row;
+			}
+		}
+
+		return [
+			'status'     => 0,
+			'dataset'    => $dataset,
+			'kingdom_id' => $kid,
+			'count'      => count($records),
+			'records'    => $records,
+			'meta'       => $meta
+		];
+	}
 	function set_player_active_status($token, $mundane_id, $active) {
 		return $this->Report->SetPlayerActiveStatus(array(
 			'Token'     => $token,
