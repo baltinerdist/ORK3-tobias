@@ -11,6 +11,15 @@ class Heraldry  extends Ork3 {
 		$this->event = new yapo($this->db, DB_PREFIX . 'event');
 	}
 
+	public static function LogMediaChange($entity_type, $entity_id, $media_type, $action, $performed_by = 0) {
+		$db = Ork3::$Lib->db;
+		$db->Clear();
+		$db->Execute(
+			"INSERT INTO " . DB_PREFIX . "media_log (entity_type, entity_id, media_type, action, performed_by, created_at) VALUES (?, ?, ?, ?, ?, NOW())",
+			array($entity_type, (int)$entity_id, $media_type, $action, (int)$performed_by)
+		);
+	}
+
 	public function GetHeraldry($request) {
 		$response = array('Heraldry'=>'');
 		switch ($request['Type']) {
@@ -44,7 +53,7 @@ class Heraldry  extends Ork3 {
 		}
 		return $http_base . $name . '.jpg';
 	}
-	
+
 	public function RemovePlayerHeraldry($request) {
 		$mundane = Ork3::$Lib->player->player_info($request['MundaneId']);
 
@@ -58,6 +67,7 @@ class Heraldry  extends Ork3 {
 				if (file_exists($path)) unlink($path);
 				$this->mundane->has_heraldry = 0;
 				$this->mundane->save();
+				self::LogMediaChange('player', $request['MundaneId'], 'heraldry', 'remove', $mundane_id);
 				return Success();
 			} else {
 				return InvalidParameter();
@@ -69,7 +79,7 @@ class Heraldry  extends Ork3 {
 
 	public function SetPlayerHeraldry($request) {
 		$mundane = Ork3::$Lib->player->player_info($request['MundaneId']);
-	
+
 		if ((($mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token'])) > 0
 				&& Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_PARK, $mundane['ParkId'], AUTH_EDIT))
 			|| $mundane_id == $request['MundaneId']) {
@@ -77,18 +87,18 @@ class Heraldry  extends Ork3 {
 			$this->mundane->mundane_id = $request['MundaneId'];
 			if ($this->mundane->find()) {
                 $request = $this->fetch_url_heraldry($request);
-                $this->store_heraldry($request, DIR_PLAYER_HERALDRY, 6, 'mundane');
+                $this->store_heraldry($request, DIR_PLAYER_HERALDRY, 6, 'mundane', $mundane_id);
 				$this->mundane->save();
 				return Success();
 			} else {
 				return InvalidParameter();
 			}
-		} else { 
+		} else {
 			return NoAuthorization();
 		}
 	}
-    
-    private function store_heraldry($request, $path, $img_len, $table) {
+
+    private function store_heraldry($request, $path, $img_len, $table, $performed_by = 0) {
 		if (strlen($request['Heraldry']) > 0 && strlen($request['Heraldry']) < 465000 && Common::supported_mime_types($request['HeraldryMimeType'])) {
 			$heraldry = @imagecreatefromstring(base64_decode($request['Heraldry']));
 			if ($heraldry !== false) {
@@ -112,10 +122,13 @@ class Heraldry  extends Ork3 {
 				}
 
 				$this->$table->has_heraldry = 1;
+
+				$entity_type = ($table === 'mundane') ? 'player' : $table;
+				self::LogMediaChange($entity_type, $request[$src_id], 'heraldry', 'set', $performed_by);
 			}
 		}
     }
-	
+
     private function fetch_url_heraldry($request) {
 		if (strlen($request['HeraldryUrl']) > 0 && Common::url_exists($request['HeraldryUrl'])) {
 			if ($this->url_file_size($request['HeraldryUrl']) < 465000) {
@@ -125,12 +138,12 @@ class Heraldry  extends Ork3 {
 		}
         return $request;
     }
-    
+
     public function SetPrincipalityHeraldry($request) {
         $request['KingdomId'] = $request['PrincipalityId'];
         $this->SetKingdomHeraldry($request);
     }
-    
+
     public function url_file_size($remoteFile) {
         $ch = curl_init($remoteFile);
         curl_setopt($ch, CURLOPT_NOBODY, true);
@@ -143,15 +156,15 @@ class Heraldry  extends Ork3 {
           echo 'cURL failed';
           exit;
         }
-        
+
         $contentLength = 0;
         if (preg_match('/Content-Length: (\d+)/', $data, $matches)) {
           $contentLength = (int)$matches[1];
         }
-        
+
         return $contentLength;
     }
-    
+
 	public function SetKingdomHeraldry($request) {
 		if (($mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token'])) > 0
 				&& Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_KINGDOM, $request['KingdomId'], AUTH_EDIT)) {
@@ -159,17 +172,17 @@ class Heraldry  extends Ork3 {
 			$this->kingdom->kingdom_id = $request['KingdomId'];
 			if ($this->kingdom->find()) {
                 $request = $this->fetch_url_heraldry($request);
-                $this->store_heraldry($request, DIR_KINGDOM_HERALDRY, 4, 'kingdom');
+                $this->store_heraldry($request, DIR_KINGDOM_HERALDRY, 4, 'kingdom', $mundane_id);
 				$this->kingdom->save();
 				return Success();
 			} else {
 				return InvalidParameter();
 			}
-		} else { 
+		} else {
 			return NoAuthorization();
 		}
 	}
-	
+
 	public function RemoveKingdomHeraldry($request) {
 		if (($mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token'])) > 0
 				&& Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_KINGDOM, $request['KingdomId'], AUTH_EDIT)) {
@@ -181,6 +194,7 @@ class Heraldry  extends Ork3 {
 				if (file_exists($base . '.png')) unlink($base . '.png');
 				$this->kingdom->has_heraldry = 0;
 				$this->kingdom->save();
+				self::LogMediaChange('kingdom', $request['KingdomId'], 'heraldry', 'remove', $mundane_id);
 				return Success();
 			} else {
 				return InvalidParameter();
@@ -191,24 +205,24 @@ class Heraldry  extends Ork3 {
 	}
 
 	public function SetParkHeraldry($request) {
-	
+
 		if (($mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token'])) > 0
 			&& Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_PARK, $request['ParkId'], AUTH_EDIT)) {
     		$this->park->clear();
     		$this->park->park_id = $request['ParkId'];
     		if ($this->park->find()) {
                 $request = $this->fetch_url_heraldry($request);
-                $this->store_heraldry($request, DIR_PARK_HERALDRY, 5, 'park');
+                $this->store_heraldry($request, DIR_PARK_HERALDRY, 5, 'park', $mundane_id);
     			$this->park->save();
     			return Success();
     		} else {
 				return InvalidParameter();
 			}
-		} else { 
+		} else {
 			return NoAuthorization();
 		}
 	}
-	
+
 	public function RemoveParkHeraldry($request) {
 		if (($mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token'])) > 0
 				&& Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_PARK, $request['ParkId'], AUTH_EDIT)) {
@@ -220,6 +234,7 @@ class Heraldry  extends Ork3 {
 				if (file_exists($base . '.png')) unlink($base . '.png');
 				$this->park->has_heraldry = 0;
 				$this->park->save();
+				self::LogMediaChange('park', $request['ParkId'], 'heraldry', 'remove', $mundane_id);
 				return Success();
 			} else {
 				return InvalidParameter();
@@ -237,17 +252,17 @@ class Heraldry  extends Ork3 {
 			$this->unit->unit_id = $request['UnitId'];
 			if ($this->unit->find()) {
                 $request = $this->fetch_url_heraldry($request);
-                $this->store_heraldry($request, DIR_UNIT_HERALDRY, 5, 'unit');
+                $this->store_heraldry($request, DIR_UNIT_HERALDRY, 5, 'unit', $mundane_id);
 				$this->unit->save();
 				return Success();
 			} else {
 				return InvalidParameter();
 			}
-		} else { 
+		} else {
 			return NoAuthorization();
 		}
 	}
-	
+
 	public function RemoveUnitHeraldry($request) {
 		if (($mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token'])) > 0
 				&& Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_UNIT, $request['UnitId'], AUTH_EDIT)) {
@@ -259,6 +274,7 @@ class Heraldry  extends Ork3 {
 				if (file_exists($base . '.png')) unlink($base . '.png');
 				$this->unit->has_heraldry = 0;
 				$this->unit->save();
+				self::LogMediaChange('unit', $request['UnitId'], 'heraldry', 'remove', $mundane_id);
 				return Success();
 			} else {
 				return InvalidParameter();
@@ -275,17 +291,17 @@ class Heraldry  extends Ork3 {
 			$this->event->event_id = $request['EventId'];
 			if ($this->event->find()) {
                 $request = $this->fetch_url_heraldry($request);
-                $this->store_heraldry($request, DIR_EVENT_HERALDRY, 5, 'event');
+                $this->store_heraldry($request, DIR_EVENT_HERALDRY, 5, 'event', $mundane_id);
 				$this->event->save();
 				return Success();
 			} else {
 				return InvalidParameter();
 			}
-		} else { 
+		} else {
 			return NoAuthorization();
 		}
 	}
-	
+
 }
 
 ?>
