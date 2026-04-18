@@ -1982,6 +1982,18 @@ function knRenderCalendar() {
                 }
             ).fail(function() { failureCallback('Network error loading events'); });
         },
+        eventDidMount: function(info) {
+            var tzAbbr = info.event.extendedProps.tzAbbr;
+            if (tzAbbr) {
+                var titleEl = info.el.querySelector('.fc-event-title') || info.el.querySelector('.fc-list-event-title');
+                if (titleEl) {
+                    var badge = document.createElement('span');
+                    badge.className = 'kn-tz-badge';
+                    badge.textContent = tzAbbr;
+                    titleEl.appendChild(badge);
+                }
+            }
+        },
         eventClick: function(info) {
             info.jsEvent.preventDefault();
             if (info.event.url) window.location.href = info.event.url;
@@ -3911,10 +3923,13 @@ $(document).ready(function() {
             var fd = new FormData();
             var url = (gid('kn-admin-url').value || '').trim();
 
+            var timezone = gid('kn-admin-timezone') ? gid('kn-admin-timezone').value : '';
+
             fd.append('Name',         name);
             fd.append('Abbreviation', abbr);
             fd.append('Description',  description);
             fd.append('Url',          url);
+            fd.append('Timezone',     timezone);
 
             btn.disabled = true;
             $.ajax({
@@ -6418,10 +6433,10 @@ $(document).ready(function() {
     var _evEditSaveBtn = document.getElementById('ev-edit-save-btn');
 
     if (_evEditForm) {
-        _evEditForm.querySelectorAll('input, textarea').forEach(function(el) {
+        _evEditForm.querySelectorAll('input, textarea, select').forEach(function(el) {
             if (el.name) _evEditOriginals[el.name] = el.value;
         });
-        _evEditForm.querySelectorAll('input, textarea').forEach(function(el) {
+        _evEditForm.querySelectorAll('input, textarea, select').forEach(function(el) {
             el.addEventListener('input', evCheckEditDirty);
             el.addEventListener('change', evCheckEditDirty);
         });
@@ -6430,7 +6445,7 @@ $(document).ready(function() {
     function evCheckEditDirty() {
         if (!_evEditForm) return;
         var dirty = false;
-        _evEditForm.querySelectorAll('input, textarea').forEach(function(el) {
+        _evEditForm.querySelectorAll('input, textarea, select').forEach(function(el) {
             if (el.name && _evEditOriginals.hasOwnProperty(el.name) && el.value !== _evEditOriginals[el.name]) {
                 dirty = true;
             }
@@ -6440,7 +6455,7 @@ $(document).ready(function() {
 
     function evRestoreEditForm() {
         if (!_evEditForm) return;
-        _evEditForm.querySelectorAll('input, textarea').forEach(function(el) {
+        _evEditForm.querySelectorAll('input, textarea, select').forEach(function(el) {
             if (el.name && _evEditOriginals.hasOwnProperty(el.name)) {
                 el.value = _evEditOriginals[el.name];
                 if (el._flatpickr) el._flatpickr.setDate(el.value, false);
@@ -9409,6 +9424,7 @@ function setupPronounPicker(cfg) {
             'pk-editdetails-mapurl':      d.mapUrl      || '',
             'pk-editdetails-description': d.description || '',
             'pk-editdetails-directions':  d.directions  || '',
+            'pk-editdetails-timezone':    d.timezone     || '',
         };
         Object.keys(fields).forEach(function(id) {
             var el = gid(id); if (el) el.value = fields[id];
@@ -9458,8 +9474,8 @@ function setupPronounPicker(cfg) {
         // Dirty tracking on Details fields
         ['pk-editdetails-url', 'pk-editdetails-address', 'pk-editdetails-city',
          'pk-editdetails-province', 'pk-editdetails-postalcode', 'pk-editdetails-mapurl',
-         'pk-editdetails-description', 'pk-editdetails-directions'].forEach(function(id) {
-            var el = gid(id); if (el) el.addEventListener('input', pkMarkDetailsDirty);
+         'pk-editdetails-description', 'pk-editdetails-directions', 'pk-editdetails-timezone'].forEach(function(id) {
+            var el = gid(id); if (el) el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', pkMarkDetailsDirty);
         });
 
         // Save Details
@@ -9475,7 +9491,8 @@ function setupPronounPicker(cfg) {
                     + '&PostalCode='  + encodeURIComponent((gid('pk-editdetails-postalcode')  || {}).value || '')
                     + '&MapUrl='      + encodeURIComponent((gid('pk-editdetails-mapurl')      || {}).value || '')
                     + '&Description=' + encodeURIComponent((gid('pk-editdetails-description') || {}).value || '')
-                    + '&Directions='  + encodeURIComponent((gid('pk-editdetails-directions')  || {}).value || '');
+                    + '&Directions='  + encodeURIComponent((gid('pk-editdetails-directions')  || {}).value || '')
+                    + '&Timezone='    + encodeURIComponent((gid('pk-editdetails-timezone')    || {}).value || '');
                 fetch(AJAX_BASE + 'setdetails', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
