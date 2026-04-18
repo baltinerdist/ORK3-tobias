@@ -293,6 +293,11 @@
 					<i class="fas fa-cog"></i><span class="kn-tab-label"> Admin Tasks</span>
 				</li>
 				<?php endif; ?>
+				<?php if (!empty($CanManageTests) || !empty($QualTestReeveEnabled) || !empty($QualTestCorporaEnabled)): ?>
+				<li data-kntab="tests">
+					<i class="fas fa-clipboard-check"></i><span class="kn-tab-label"> Tests</span>
+				</li>
+				<?php endif; ?>
 			</ul>
 			<div class="kn-active-tab-label" id="kn-active-tab-label">Parks</div>
 
@@ -672,6 +677,12 @@
 							<li><a href="<?= UIR ?>Reports/parkheraldry/<?= $kingdom_id ?>"><?= $entityLabel ?> Heraldry, Parks</a></li>
 							<li><a href="<?= UIR ?>Reports/playerheraldry/<?= $kingdom_id ?>"><?= $entityLabel ?> Heraldry, Players</a></li>
 							<li><a href="<?= UIR ?>Reports/park_distance_matrix&KingdomId=<?= $kingdom_id ?>"><i class="fas fa-th"></i> Park Distance Matrix</a></li>
+							<?php if (!empty($QualTestReeveEnabled)): ?>
+							<li><a href="<?= UIR ?>Reports/reeve_test_results/Kingdom&id=<?= $kingdom_id ?>"><i class="fas fa-gavel"></i> Reeve's Test Results</a></li>
+							<?php endif; ?>
+							<?php if (!empty($QualTestCorporaEnabled)): ?>
+							<li><a href="<?= UIR ?>Reports/corpora_test_results/Kingdom&id=<?= $kingdom_id ?>"><i class="fas fa-book"></i> Corpora Test Results</a></li>
+							<?php endif; ?>
 						</ul>
 					</div>
 					<?php endif; ?>
@@ -864,6 +875,62 @@
 				<div class="kn-pagination" id="kn-players-table-pages"></div>
 			</div>
 		</div><!-- /kn-tab-players -->
+
+		<!-- Tests Tab -->
+		<?php if (!empty($CanManageTests) || !empty($QualTestReeveEnabled) || !empty($QualTestCorporaEnabled)): ?>
+		<div class="kn-tab-panel" id="kn-tab-tests" style="display:none">
+			<?php
+				$_qtReeveConfig   = Ork3::$Lib->qualtest->getConfig($kingdom_id, 'reeve');
+				$_qtCorporaConfig = Ork3::$Lib->qualtest->getConfig($kingdom_id, 'corpora');
+				$_qtReeveCnt      = Ork3::$Lib->qualtest->countActiveQuestions($kingdom_id, 'reeve');
+				$_qtCorporaCnt    = Ork3::$Lib->qualtest->countActiveQuestions($kingdom_id, 'corpora');
+			?>
+			<?php if ($CanManageKingdom ?? false): ?>
+			<div class="kn-tab-toolbar">
+				<a class="kn-btn kn-btn-secondary" href="<?= UIR ?>QualTest/manage/<?= $kingdom_id ?>">
+					<i class="fas fa-cog"></i> Configure Tests
+				</a>
+			</div>
+			<?php endif; ?>
+			<div class="kn-qt-cards">
+				<?php
+					$_qtTypes = [
+						'reeve'   => ['label' => "Reeve's Test",  'config' => $_qtReeveConfig,   'count' => $_qtReeveCnt,   'enabled' => !empty($QualTestReeveEnabled)],
+						'corpora' => ['label' => 'Corpora Test',  'config' => $_qtCorporaConfig,  'count' => $_qtCorporaCnt, 'enabled' => !empty($QualTestCorporaEnabled)],
+					];
+				?>
+				<?php foreach ($_qtTypes as $_qtType => $_qtMeta): ?>
+				<?php if (!$_qtMeta['enabled'] && empty($CanManageTests)) continue; ?>
+				<div class="kn-qt-card<?= !$_qtMeta['enabled'] ? ' kn-qt-card-disabled' : '' ?>">
+					<div class="kn-qt-card-title"><i class="fas fa-scroll"></i> <?= $_qtMeta['label'] ?><?php if (!$_qtMeta['enabled']): ?> <span class="kn-qt-badge-disabled">Disabled</span><?php endif; ?></div>
+					<div class="kn-qt-stats">
+						<span class="kn-qt-stat"><strong><?= $_qtMeta['count'] ?></strong> active question<?= $_qtMeta['count'] !== 1 ? 's' : '' ?></span>
+						<span class="kn-qt-stat"><strong><?= $_qtMeta['config']['QuestionCount'] ?></strong> per test</span>
+						<span class="kn-qt-stat"><strong><?= $_qtMeta['config']['PassPercent'] ?>%</strong> to pass</span>
+						<span class="kn-qt-stat">Valid <strong><?= $_qtMeta['config']['ValidDays'] ?></strong> days</span>
+					</div>
+					<?php if ($CanManageKingdom ?? false): ?>
+					<div class="kn-qt-actions">
+						<a class="kn-btn kn-btn-sm" href="<?= UIR ?>QualTest/questions/<?= $kingdom_id ?>/<?= $_qtType ?>">
+							<i class="fas fa-list"></i> Questions
+						</a>
+						<a class="kn-btn kn-btn-sm kn-btn-outline" href="<?= UIR ?>QualTest/question/create/<?= $kingdom_id ?>/<?= $_qtType ?>">
+							<i class="fas fa-plus"></i> Add Question
+						</a>
+					</div>
+					<?php endif; ?>
+					<?php if (!empty($IsLoggedIn) && $_qtMeta['enabled']): ?>
+					<div class="kn-qt-actions" style="margin-top:8px;">
+						<a class="kn-btn kn-btn-sm kn-btn-primary" href="<?= UIR ?>QualTest/take/<?= $kingdom_id ?>/<?= $_qtType ?>">
+							<i class="fas fa-play-circle"></i> Take Test
+						</a>
+					</div>
+					<?php endif; ?>
+				</div>
+				<?php endforeach; ?>
+			</div>
+		</div><!-- /kn-tab-tests -->
+		<?php endif; ?>
 
 		</div><!-- /kn-tabs -->
 	</div><!-- /kn-main -->
@@ -1723,6 +1790,18 @@ var KnConfig = {
 </div>
 
 <!-- Move Player Modal -->
+<style>
+.kn-qt-cards { display: flex; flex-wrap: wrap; gap: 16px; padding: 4px 0; }
+.kn-qt-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px 20px; min-width: 220px; flex: 1; }
+.kn-qt-card-title { font-weight: 700; font-size: 1rem; color: #2d3748; margin-bottom: 10px; }
+.kn-qt-stats { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-bottom: 12px; font-size: 0.82rem; color: #4a5568; }
+.kn-qt-stat strong { color: #2b6cb0; }
+.kn-qt-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.kn-qt-card-disabled { opacity: 0.55; border-style: dashed; }
+.kn-qt-badge-disabled { display: inline-block; font-size: 0.7rem; font-weight: 600; color: #a0aec0; background: #edf2f7; border-radius: 4px; padding: 1px 7px; margin-left: 6px; vertical-align: middle; text-transform: uppercase; letter-spacing: 0.03em; }
+.kn-btn-sm { padding: 5px 12px; font-size: 0.8rem; }
+.kn-tab-toolbar { margin-bottom: 14px; }
+</style>
 <style>
 .kn-mp-toggle { display:flex; background:#edf2f7; border-radius:6px; padding:3px; gap:3px; margin-bottom:14px; }
 .kn-mp-toggle-btn {

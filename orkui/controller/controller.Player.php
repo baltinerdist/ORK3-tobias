@@ -534,6 +534,25 @@ class Controller_Player extends Controller {
 			$DB->Clear();
 			$this->data['MyAssociates'] = $__assocs;
 		}
+
+		// Qualification test results — use the viewed player's home kingdom, not the session context
+		$playerKingdomId = (int)($this->data['Player']['KingdomId'] ?? $this->session->kingdom_id);
+		$this->data['QualResults']   = Ork3::$Lib->qualtest->getPlayerResults((int)$id, $playerKingdomId);
+		$this->data['QualKingdomId'] = $playerKingdomId;
+		$this->data['QualCanManage'] = $canEdit || Ork3::$Lib->qualtest->canManage($uid, $playerKingdomId);
+		$this->data['QualConfigs']   = [
+			'reeve'   => Ork3::$Lib->qualtest->getConfig($playerKingdomId, 'reeve'),
+			'corpora' => Ork3::$Lib->qualtest->getConfig($playerKingdomId, 'corpora'),
+		];
+		$this->data['QualPlayerId']  = (int)$id;
+
+		$playerKnConfigs = Common::get_configs($playerKingdomId, CFG_KINGDOM);
+		$this->data['QualTestReeveEnabled'] = isset($playerKnConfigs['QualTestReeveEnabled'])
+			? (bool)(int)$playerKnConfigs['QualTestReeveEnabled']['Value']
+			: false;
+		$this->data['QualTestCorporaEnabled'] = isset($playerKnConfigs['QualTestCorporaEnabled'])
+			? (bool)(int)$playerKnConfigs['QualTestCorporaEnabled']['Value']
+			: false;
 	}
 
 
