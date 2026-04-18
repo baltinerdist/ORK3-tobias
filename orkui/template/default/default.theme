@@ -144,7 +144,7 @@
 					<a href='https://wiki.amtgard.com/Main_Page' target='_blank'><i class='fas fa-book-open'></i> Amtgard Wiki</a>
 					<a href='https://play.amtgard.com/' target='_blank'><i class='fas fa-map-marker-alt'></i> Find a Chapter</a>
 					<div class='nav-dropdown-divider'></div>
-					<a href='#' onclick="navInfoDialog('New Documentation Coming Soon!');return false;"><i class='fas fa-book'></i> ORK Documentation</a>
+					<a href='#' onclick="orkDocOpen();return false;"><i class='fas fa-book'></i> ORK Documentation</a>
 				</div>
 			</div>
 
@@ -585,6 +585,7 @@ endif;
 })();
 </script>
 <?php endif; ?>
+<?php require_once(DIR_TEMPLATE . 'default/docs_modal.tpl'); ?>
 
 <footer style="margin-top:40px;padding:18px 24px;border-top:1px solid #e2e8f0;background:#f8fafc;font-size:11px;color:#94a3b8;text-align:center;line-height:1.7;">
   Amtgard is a registered trademark of Amtgard International, Inc., a 501(c)(3) non-profit organization.
