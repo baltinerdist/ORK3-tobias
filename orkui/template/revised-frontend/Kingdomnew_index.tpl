@@ -293,6 +293,12 @@
 					<i class="fas fa-cog"></i><span class="kn-tab-label"> Admin Tasks</span>
 				</li>
 				<?php endif; ?>
+				<?php if ($CanManageCourt ?? false): ?>
+				<li data-kntab="court">
+					<i class="fas fa-gavel"></i><span class="kn-tab-label"> Court Planner</span>
+					<?php if (!empty($CourtList)): ?><span class="kn-tab-count">(<?= count($CourtList) ?>)</span><?php endif; ?>
+				</li>
+				<?php endif; ?>
 			</ul>
 			<div class="kn-active-tab-label" id="kn-active-tab-label">Parks</div>
 
@@ -718,41 +724,33 @@
 		<!-- Recommendations Tab -->
 		<?php if ($ShowRecsTab ?? false): ?>
 		<div class="kn-tab-panel" id="kn-tab-recommendations" style="display:none">
-			<?php if ($IsLoggedIn): ?>
-			<div class="pk-tab-toolbar">
-				<button class="kn-btn kn-btn-secondary" onclick="knOpenRecModal()">
-					<i class="fas fa-star"></i> Recommend an Award
-				</button>
-			</div>
-			<?php endif; ?>
+			<?php if ($CanManageKingdom ?? false): ?><script>var KnCourtList = <?= json_encode($CourtList ?? []) ?>;</script><?php endif; ?>
 			<?php if (empty($AwardRecommendations)): ?>
 			<div class="pk-recs-empty">There are no open award recommendations for <?= htmlspecialchars($kingdom_name) ?>.</div>
 			<?php else: ?>
+			<div class="kn-rec-header-row">
+				<div class="kn-rec-header-left">
+					<?php if ($CanManageKingdom ?? false): ?>
+					<button class="kn-rec-filter-btn" id="kn-bulk-toggle"><i class="fas fa-tasks"></i> Bulk Actions</button>
+					<?php endif; ?>
+					<button class="kn-rec-filter-btn kn-rec-filter-active" data-filter="all">All</button>
+					<button class="kn-rec-filter-btn" data-filter="below">Below Recommended</button>
+					<button class="kn-rec-filter-btn" data-filter="already">At or Above Recommended</button>
+					<button class="kn-rec-filter-btn" data-filter="nonladder">Non-Ladder</button>
+					<button class="kn-rec-filter-btn" data-filter="snoozed">Snoozed</button>
+				</div>
+				<?php if ($IsLoggedIn): ?>
+				<button class="kn-btn kn-btn-secondary kn-rec-header-action" onclick="knOpenRecModal()">
+					<i class="fas fa-star"></i> Recommend an Award
+				</button>
+				<?php endif; ?>
+			</div>
 			<?php if ($CanManageKingdom ?? false): ?>
-			<div class="kn-rec-filter-bar">
-				<button class="kn-rec-filter-btn kn-rec-filter-active" data-filter="open">Open Recs</button>
-				<button class="kn-rec-filter-btn" data-filter="below">Below Recommended</button>
-				<button class="kn-rec-filter-btn" data-filter="nonladder">Non-Ladder</button>
-				<button class="kn-rec-filter-btn" data-filter="already">At or Above Recommended</button>
-				<button class="kn-rec-filter-btn" data-filter="all">All</button>
-				<span class="kn-rec-filter-info">
-					<button class="kn-rec-filter-info-btn" type="button" aria-label="Filter help"><i class="fas fa-question-circle"></i></button>
-					<div class="kn-rec-filter-popover">
-						<h4>About These Filters</h4>
-						<dl>
-							<dt>Open Recs <small style="font-weight:400;color:#718096">(default)</small></dt>
-							<dd>All pending recommendations &mdash; both rank-based and flat awards. Hides recs that have already been fulfilled.</dd>
-							<dt>Below Recommended</dt>
-							<dd>Players who haven&rsquo;t yet reached the recommended rank. The core action list &mdash; Grant these.</dd>
-							<dt>Non-Ladder</dt>
-							<dd>Flat awards with no rank progression (e.g. service awards). Grant or Delete as appropriate.</dd>
-							<dt>At or Above Recommended</dt>
-							<dd>Players who already hold this award at or above the recommended rank. The rec has been fulfilled &mdash; Delete these to keep the list tidy.</dd>
-							<dt>All</dt>
-							<dd>Every recommendation regardless of status. Use for a full audit.</dd>
-						</dl>
-					</div>
-				</span>
+			<div class="kn-bulk-actions-row" id="kn-bulk-actions" style="display:none">
+				<button class="kn-bulk-btn" id="kn-bulk-addcourt" disabled><i class="fas fa-scroll"></i> Add <span class="kn-bulk-n">0</span> to Court</button>
+				<button class="kn-bulk-btn" id="kn-bulk-grant"    disabled><i class="fas fa-medal"></i> Grant <span class="kn-bulk-n">0</span></button>
+				<button class="kn-bulk-btn" id="kn-bulk-dismiss"  disabled><i class="fas fa-times"></i> Dismiss <span class="kn-bulk-n">0</span></button>
+				<button class="kn-bulk-btn" id="kn-bulk-snooze"   disabled><i class="fas fa-bell-slash"></i> Snooze <span class="kn-bulk-n">0</span></button>
 				<span class="kn-rec-export-btns">
 					<button class="kn-rec-export-btn" type="button" onclick="knRecPrint()"><i class="fas fa-print"></i> Print</button>
 					<button class="kn-rec-export-btn" type="button" onclick="knRecCsv()"><i class="fas fa-download"></i> CSV</button>
@@ -763,23 +761,26 @@
 				<table id="kn-rec-table" class="pk-recs-table display">
 					<thead>
 						<tr>
+							<?php if ($CanManageKingdom ?? false): ?><th class="kn-bulk-col" style="display:none;width:1%;padding:0 8px"><input type="checkbox" id="kn-bulk-select-all" title="Select all"></th><?php endif; ?>
 							<th>Player</th>
 							<th>Award</th>
 							<th>Rank</th>
 							<th data-short="Rec. By">Recommended By</th>
 							<th>Date</th>
 							<th>Notes</th>
-							<?php if ($CanManageKingdom ?? false): ?><th></th><?php endif; ?>
+							<?php if ($CanManageKingdom ?? false): ?><th style="width:1%;text-align:right"></th><?php endif; ?>
 						</tr>
 					</thead>
 					<tbody id="kn-recs-tbody">
 					<?php foreach ($AwardRecommendations as $rec): ?>
 					<tr class="pk-rec-row"
 						data-rec-id="<?= (int)$rec['RecommendationsId'] ?>"
+						data-snoozed="<?= !empty($rec['IsSnoozed']) ? '1' : '0' ?>"
 						data-filter="<?= !empty($rec['AlreadyHas']) ? 'already' : ((int)$rec['Rank'] > 0 ? 'below' : 'nonladder') ?>">
-						<td><a href="<?= UIR ?>Player/profile/<?= (int)$rec['MundaneId'] ?>"><?= htmlspecialchars($rec['Persona']) ?></a></td>
-						<td><?= htmlspecialchars($rec['AwardName']) ?></td>
-						<td style="white-space:nowrap">
+						<?php if ($CanManageKingdom ?? false): ?><td class="kn-bulk-col" style="display:none;padding:0 8px;text-align:center"><input type="checkbox" class="kn-bulk-check" value="<?= (int)$rec['RecommendationsId'] ?>" data-rec-full="<?= htmlspecialchars(json_encode(['RecommendationsId'=>(int)$rec['RecommendationsId'],'MundaneId'=>(int)$rec['MundaneId'],'Persona'=>htmlspecialchars($rec['Persona']),'KingdomAwardId'=>(int)$rec['KingdomAwardId'],'Rank'=>(int)$rec['Rank'],'Reason'=>$rec['Reason']??''])) ?>"></td><?php endif; ?>
+					<td><a href="<?= UIR ?>Player/profile/<?= (int)$rec['MundaneId'] ?>"><?= htmlspecialchars($rec['Persona']) ?></a><?php if (!empty($rec['ParkName'])): ?><br><span style="font-size:11px;color:#718096"><?= htmlspecialchars($rec['ParkName']) ?></span><?php endif; ?></td>
+						<td><?= htmlspecialchars(preg_replace('/^Order of(?:\s+the)?\s+/i', '', $rec['AwardName'])) ?></td>
+<td style="white-space:nowrap">
 							<?= (int)$rec['Rank'] > 0 ? (int)$rec['Rank'] : '&mdash;' ?>
 							<?php if (!empty($rec['AlreadyHas'])): ?>
 							<span class="pk-rec-has-tip"
@@ -788,19 +789,58 @@
 							</span>
 							<?php endif; ?>
 						</td>
-						<td><?php if (!empty($rec['RecommendedById'])): ?><a href="<?= UIR ?>Player/profile/<?= (int)$rec['RecommendedById'] ?>"><?= htmlspecialchars($rec['RecommendedByName']) ?></a><?php else: ?>&mdash;<?php endif; ?></td>
-						<td><?= htmlspecialchars($rec['DateRecommended']) ?></td>
+						<td>
+							<?php if (!empty($rec['IsAnonymous']) && !($CallerIsOrkAdmin ?? false)): ?>
+								<span style="color:#718096;font-style:italic">Anonymous</span>
+							<?php elseif (!empty($rec['IsAnonymous']) && ($CallerIsOrkAdmin ?? false)): ?>
+								<a href="<?= UIR ?>Player/profile/<?= (int)$rec['RecommendedById'] ?>"><?= htmlspecialchars((string)$rec['RecommendedByName']) ?></a>
+								<span style="color:#a0aec0;font-size:11px">(anon)</span>
+							<?php elseif (!empty($rec['RecommendedById'])): ?>
+								<a href="<?= UIR ?>Player/profile/<?= (int)$rec['RecommendedById'] ?>"><?= htmlspecialchars($rec['RecommendedByName']) ?></a>
+							<?php else: ?>&mdash;<?php endif; ?>
+						</td>
+						<td><?= htmlspecialchars($rec['DateRecommended']) ?>
+<?php
+$_d = (int)($rec['AgeDays'] ?? 0);
+if ($_d < 1)        { $_al = 'today'; $_ac = 'kn-rec-age-green'; }
+elseif ($_d < 30)   { $_al = $_d.'d'; $_ac = 'kn-rec-age-green'; }
+elseif ($_d < 90)   { $_mo = round($_d/30); $_al = $_mo.'mo'; $_ac = 'kn-rec-age-yellow'; }
+elseif ($_d < 180)  { $_mo = round($_d/30); $_al = $_mo.'mo'; $_ac = 'kn-rec-age-orange'; }
+else                { $_y  = round($_d/365); $_al = $_y.'y+'; $_ac = 'kn-rec-age-red'; }
+?><span class="kn-rec-age-badge <?= $_ac ?>"><?= $_al ?></span></td>
 						<td class="pk-rec-notes"><?php if (!empty($rec['Reason'])): ?><span class="pk-rec-notes-short"><?= htmlspecialchars(mb_substr($rec['Reason'], 0, 50)) ?><?php if (mb_strlen($rec['Reason']) > 50): ?><span class="pk-rec-notes-ellipsis">&hellip; <button class="pk-rec-expand-btn" type="button">[&hellip;]</button></span><span class="pk-rec-notes-full" style="display:none"><?= htmlspecialchars(mb_substr($rec['Reason'], 50)) ?> <button class="pk-rec-expand-btn pk-rec-collapse-btn" type="button">[&laquo;]</button></span><?php endif; ?></span><?php else: ?>&mdash;<?php endif; ?></td>
 						<?php if ($CanManageKingdom ?? false): ?>
-						<td class="pk-rec-actions">
-							<button class="pk-btn pk-btn-primary pk-rec-grant-btn"
-								data-rec="<?= htmlspecialchars(json_encode(['RecommendationsId'=>(int)$rec['RecommendationsId'],'MundaneId'=>(int)$rec['MundaneId'],'Persona'=>$rec['Persona'],'KingdomAwardId'=>(int)$rec['KingdomAwardId'],'Rank'=>(int)$rec['Rank'],'Reason'=>$rec['Reason']??''])) ?>">
-								<i class="fas fa-medal"></i> Grant
-							</button>
-							<button class="pk-rec-dismiss-btn"
-								data-rec-id="<?= (int)$rec['RecommendationsId'] ?>">
-								<i class="fas fa-times"></i> Delete
-							</button>
+						<td class="pk-rec-actions" style="text-align:right;white-space:nowrap">
+							<div class="kn-rec-actions-wrap">
+								<button class="kn-rec-actions-toggle" onclick="var d=this.nextElementSibling;d.classList.toggle('open');event.stopPropagation()">Actions <i class="fas fa-caret-down"></i></button>
+								<div class="kn-rec-actions-drop">
+									<button class="pk-btn pk-btn-primary pk-rec-grant-btn"
+										data-rec="<?= htmlspecialchars(json_encode(['RecommendationsId'=>(int)$rec['RecommendationsId'],'MundaneId'=>(int)$rec['MundaneId'],'Persona'=>$rec['Persona'],'KingdomAwardId'=>(int)$rec['KingdomAwardId'],'Rank'=>(int)$rec['Rank'],'Reason'=>$rec['Reason']??''])) ?>">
+										<i class="fas fa-medal"></i> Grant
+									</button>
+									<button class="pk-rec-dismiss-btn"
+										data-rec-id="<?= (int)$rec['RecommendationsId'] ?>">
+										<i class="fas fa-times"></i> Dismiss
+									</button>
+									<button class="pk-rec-snooze-btn"
+										data-rec-id="<?= (int)$rec['RecommendationsId'] ?>"
+										data-snoozed="<?= !empty($rec['IsSnoozed']) ? '1' : '0' ?>">
+										<i class="fas <?= !empty($rec['IsSnoozed']) ? 'fa-bell' : 'fa-bell-slash' ?>"></i>
+										<?= !empty($rec['IsSnoozed']) ? 'Unsnooze' : 'Snooze' ?>
+									</button>
+									<?php if ($CanManageCourt ?? false): ?>
+									<button class="pk-rec-addcourt-btn<?= !empty($rec['IsOnCourt']) ? ' pk-rec-oncourt' : '' ?>"
+										data-rec-id="<?= (int)$rec['RecommendationsId'] ?>"
+										data-mundane-id="<?= (int)$rec['MundaneId'] ?>"
+										data-kingdomaward-id="<?= (int)$rec['KingdomAwardId'] ?>"
+										data-rank="<?= (int)$rec['Rank'] ?>"
+										data-on-court="<?= !empty($rec['IsOnCourt']) ? '1' : '0' ?>"
+										data-persona="<?= htmlspecialchars($rec['Persona']) ?>">
+										<i class="fas fa-scroll"></i> <?= !empty($rec['IsOnCourt']) ? 'On Court Plan' : 'Add to Court' ?>
+									</button>
+									<?php endif; ?>
+								</div>
+							</div>
 						</td>
 						<?php endif; ?>
 					</tr>
@@ -809,6 +849,206 @@
 				</table>
 			</div>
 			<?php endif; ?>
+		</div>
+		<?php endif; ?>
+
+		<!-- Add to Court modal -->
+		<?php if ($CanManageCourt ?? false): ?>
+		<div id="kn-addcourt-overlay" class="kn-overlay">
+			<div class="kn-modal-box" style="max-width:420px">
+				<button class="kn-modal-close-btn" id="kn-addcourt-close-btn" aria-label="Close">&times;</button>
+				<h3 style="margin-top:0">Add to Court</h3>
+				<p id="kn-addcourt-desc" style="margin:4px 0 12px;color:#4a5568;font-size:13px"></p>
+				<div class="pk-acct-field">
+					<label for="kn-addcourt-select">Select Court</label>
+					<select id="kn-addcourt-select" style="width:100%;padding:7px 10px;border:1px solid #cbd5e0;border-radius:6px;font-size:13px">
+						<option value="">— choose a court —</option>
+						<?php foreach ($CourtList ?? [] as $court): ?>
+						<option value="<?= (int)$court['CourtId'] ?>">
+							<?= htmlspecialchars($court['Name']) ?><?= $court['CourtDate'] ? ' (' . htmlspecialchars($court['CourtDate']) . ')' : '' ?>
+						</option>
+						<?php endforeach; ?>
+					</select>
+				</div>
+				<div class="pk-form-error" id="kn-addcourt-error" style="display:none"></div>
+				<div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
+					<button class="pk-btn-ghost" id="kn-addcourt-cancel">Cancel</button>
+					<button class="kn-btn kn-btn-primary" id="kn-addcourt-submit" disabled>Add to Court</button>
+				</div>
+			</div>
+		</div>
+		<?php endif; ?>
+
+		<!-- Court Planner Tab -->
+		<?php if ($CanManageCourt ?? false): ?>
+		<div class="kn-tab-panel" id="kn-tab-court" style="display:none">
+			<style>
+			.kn-cp-toolbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+			.kn-cp-court-card { background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:14px 18px; margin-bottom:10px; display:flex; align-items:center; gap:14px; transition:box-shadow .15s; }
+			.kn-cp-court-card:hover { box-shadow:0 2px 8px rgba(0,0,0,.1); }
+			.kn-cp-court-date { font-size:13px; color:#718096; white-space:nowrap; min-width:88px; }
+			.kn-cp-court-info { flex:1; }
+			.kn-cp-court-name { font-weight:700; font-size:15px; color:#2d3748; }
+			.kn-cp-court-meta { font-size:12px; color:#718096; margin-top:2px; }
+			.kn-cp-court-badges { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+			.kn-cp-badge { display:inline-block; padding:3px 9px; border-radius:12px; font-size:11px; font-weight:700; }
+			.kn-cp-badge-count { background:#edf2f7; color:#4a5568; padding:3px 9px; border-radius:12px; font-size:11px; }
+			.kn-cp-btn-link { background:none; border:1px solid #cbd5e0; color:#4a5568; padding:5px 12px; border-radius:5px; font-size:12px; cursor:pointer; text-decoration:none; display:inline-block; }
+			.kn-cp-btn-link:hover { background:#f7fafc; color:#2d3748; }
+			.kn-cp-empty { text-align:center; padding:48px 24px; color:#718096; font-size:15px; border:1px dashed #e2e8f0; border-radius:8px; }
+			.kn-rec-age-badge { font-size:11px; padding:1px 6px; border-radius:10px; font-weight:600; margin-left:4px; }
+			.kn-rec-age-green  { background:#c6f6d5; color:#22543d; }
+			.kn-rec-age-yellow { background:#fefcbf; color:#744210; }
+			.kn-rec-age-orange { background:#fed7aa; color:#7b341e; }
+			.kn-rec-age-red    { background:#fed7d7; color:#742a2a; }
+			</style>
+			<div class="kn-cp-toolbar">
+				<span style="font-size:13px;color:#718096"><?= count($CourtList ?? []) ?> court<?= count($CourtList ?? []) !== 1 ? 's' : '' ?> planned</span>
+				<button class="kn-btn kn-btn-primary" onclick="knCpOpenNewCourt()">
+					<i class="fas fa-plus"></i> Plan a Court
+				</button>
+			</div>
+			<?php
+				$_cpStatusLabel = ['draft' => 'Draft', 'published' => 'Published', 'complete' => 'Complete'];
+				$_cpStatusColor = ['draft' => '#718096', 'published' => '#2b6cb0', 'complete' => '#276749'];
+				$_cpStatusBg    = ['draft' => '#edf2f7', 'published' => '#ebf8ff', 'complete' => '#f0fff4'];
+			?>
+			<?php if (empty($CourtList)): ?>
+			<div class="kn-cp-empty">
+				<i class="fas fa-gavel" style="font-size:32px;margin-bottom:12px;display:block;opacity:.3"></i>
+				No courts planned yet. Click <strong>Plan a Court</strong> to get started.
+			</div>
+			<?php else: ?>
+			<?php foreach ($CourtList as $_court): ?>
+			<?php
+				$_st  = $_court['Status'];
+				$_lbl = $_cpStatusLabel[$_st] ?? $_st;
+				$_clr = $_cpStatusColor[$_st] ?? '#718096';
+				$_bg  = $_cpStatusBg[$_st]    ?? '#edf2f7';
+			?>
+			<div class="kn-cp-court-card">
+				<div class="kn-cp-court-date">
+					<?= $_court['CourtDate'] ? date('M j, Y', strtotime($_court['CourtDate'])) : '<em style="color:#a0aec0">No date</em>' ?>
+				</div>
+				<div class="kn-cp-court-info">
+					<div class="kn-cp-court-name"><?= htmlspecialchars($_court['Name']) ?></div>
+					<?php if ($_court['EventName']): ?>
+					<div class="kn-cp-court-meta"><i class="fas fa-calendar-alt" style="margin-right:3px"></i><?= htmlspecialchars($_court['EventName']) ?></div>
+					<?php endif; ?>
+				</div>
+				<div class="kn-cp-court-badges">
+					<span class="kn-cp-badge" style="background:<?= $_bg ?>;color:<?= $_clr ?>"><?= $_lbl ?></span>
+					<span class="kn-cp-badge-count"><i class="fas fa-award" style="margin-right:3px"></i><?= (int)$_court['AwardCount'] ?></span>
+					<a href="<?= UIR ?>Court/detail/<?= (int)$_court['CourtId'] ?>" class="kn-cp-btn-link">
+						Open <i class="fas fa-arrow-right"></i>
+					</a>
+				</div>
+			</div>
+			<?php endforeach; ?>
+			<?php endif; ?>
+
+			<!-- New Court Modal (kingdom-scoped) -->
+			<div class="kn-overlay" id="kn-cp-new-court-modal" style="display:none">
+				<div class="kn-modal-box" style="max-width:480px">
+					<div class="kn-modal-header">
+						<h3 class="kn-modal-title"><i class="fas fa-gavel" style="margin-right:8px;color:#4a5568"></i>Plan a New Court</h3>
+						<button class="kn-modal-close-btn" onclick="knCpCloseNewCourt()">&times;</button>
+					</div>
+					<div class="kn-modal-body">
+						<div class="kn-acct-field">
+							<label >Court Name <span style="color:#e53e3e">*</span></label>
+							<input type="text" id="kn-cp-new-name" placeholder="Summer Coronation Court&#x2026;" autocomplete="off">
+						</div>
+						<?php if (!empty($CourtUpcomingEvents)): ?>
+						<div class="kn-acct-field">
+							<label >Link to Event (optional)</label>
+							<select id="kn-cp-new-event" onchange="knCpOnEventChange(this,'kn-cp-new-date')">
+								<option value="0" data-start="">— None —</option>
+								<?php foreach ($CourtUpcomingEvents as $_ev): ?>
+								<option value="<?= (int)$_ev['EventCalendarDetailId'] ?>" data-start="<?= $_ev['EventStart'] ? date('Y-m-d', strtotime($_ev['EventStart'])) : '' ?>">
+									<?= htmlspecialchars($_ev['Name']) ?><?= $_ev['EventStart'] ? ' (' . date('M j', strtotime($_ev['EventStart'])) . ')' : '' ?>
+								</option>
+								<?php endforeach; ?>
+							</select>
+						</div>
+						<?php endif; ?>
+						<div class="kn-acct-field">
+							<label >Date</label>
+							<input type="date" id="kn-cp-new-date" >
+						</div>
+						<div id="kn-cp-new-error" style="color:#c53030;font-size:13px;margin-top:8px;display:none"></div>
+					</div>
+					<div class="kn-modal-footer">
+						<button class="kn-btn kn-btn-secondary" onclick="knCpCloseNewCourt()">Cancel</button>
+						<button class="kn-btn kn-btn-primary" onclick="knCpSubmitNewCourt()">
+							<i class="fas fa-plus"></i> Create Court
+						</button>
+					</div>
+				</div>
+			</div>
+
+			<script>
+			(function() {
+				if (!<?= !empty($CanManageCourt) ? 'true' : 'false' ?>) return;
+				var uir       = '<?= UIR ?>';
+				var kingdomId = <?= (int)($kingdom_id ?? 0) ?>;
+
+				window.knCpOnEventChange = function(sel, dateId) {
+					var opt = sel.options[sel.selectedIndex];
+					var start = opt ? opt.getAttribute('data-start') : '';
+					if (start) document.getElementById(dateId).value = start;
+				};
+
+				window.knCpOpenNewCourt = function() {
+					document.getElementById('kn-cp-new-name').value = '';
+					document.getElementById('kn-cp-new-date').value = '';
+					var evEl = document.getElementById('kn-cp-new-event');
+					if (evEl) evEl.value = '0';
+					document.getElementById('kn-cp-new-error').style.display = 'none';
+					var modal = document.getElementById('kn-cp-new-court-modal');
+					modal.style.display = 'flex';
+					setTimeout(function() { document.getElementById('kn-cp-new-name').focus(); }, 50);
+				};
+
+				window.knCpCloseNewCourt = function() {
+					document.getElementById('kn-cp-new-court-modal').style.display = 'none';
+				};
+
+				window.knCpSubmitNewCourt = function() {
+					var name    = document.getElementById('kn-cp-new-name').value.trim();
+					var date    = document.getElementById('kn-cp-new-date').value;
+					var evEl    = document.getElementById('kn-cp-new-event');
+					var eventId = evEl ? evEl.value : '0';
+					var errEl   = document.getElementById('kn-cp-new-error');
+					if (!name) { errEl.textContent = 'Please enter a court name.'; errEl.style.display = 'block'; return; }
+					errEl.style.display = 'none';
+					var fd = new FormData();
+					fd.append('KingdomId', kingdomId);
+					fd.append('ParkId', 0);
+					fd.append('Name', name);
+					fd.append('CourtDate', date);
+					fd.append('EventCalendarDetailId', eventId);
+					fetch(uir + 'CourtAjax/create_court', {
+						method: 'POST', body: fd,
+						headers: { 'X-Requested-With': 'XMLHttpRequest' }
+					})
+					.then(function(r) { return r.json(); })
+					.then(function(data) {
+						if (data.status === 0 && data.court_id) {
+							window.location.href = uir + 'Court/detail/' + data.court_id;
+						} else {
+							errEl.textContent = data.error || 'An error occurred.';
+							errEl.style.display = 'block';
+						}
+					})
+					.catch(function(e) { errEl.textContent = 'Request failed: ' + e.message; errEl.style.display = 'block'; });
+				};
+
+				var modal = document.getElementById('kn-cp-new-court-modal');
+				modal.addEventListener('click', function(e) { if (e.target === this) knCpCloseNewCourt(); });
+				document.addEventListener('keydown', function(e) { if (e.key === 'Escape') knCpCloseNewCourt(); });
+			})();
+			</script>
 		</div>
 		<?php endif; ?>
 
@@ -1007,7 +1247,7 @@ var KnConfig = {
 		</div>
 		<div class="kn-modal-footer">
 			<button class="kn-btn-ghost" id="kn-award-cancel">Close</button>
-			<div style="display:flex;gap:8px">
+			<div style="display:flex;gap:8px" id="kn-award-footer-normal">
 				<button class="kn-btn kn-btn-secondary" id="kn-award-save-same" disabled>
 					<i class="fas fa-plus"></i> <span class="award-btn-prefix">Add + </span>Same Player
 				</button>
@@ -1015,6 +1255,9 @@ var KnConfig = {
 					<i class="fas fa-plus"></i> <span class="award-btn-prefix">Add + </span>New Player
 				</button>
 			</div>
+			<button class="kn-btn kn-btn-primary" id="kn-award-save-next" disabled style="display:none">
+				<i class="fas fa-arrow-right"></i> Add and Next
+			</button>
 		</div>
 	</div>
 </div>
@@ -1054,6 +1297,13 @@ var KnConfig = {
 				<label for="kn-rec-reason">Reason <span style="color:#e53e3e">*</span></label>
 				<input type="text" id="kn-rec-reason" maxlength="400" placeholder="Why should this player receive this award?" />
 				<span class="pk-char-count" id="kn-rec-char-count">400 characters remaining</span>
+			</div>
+			<div class="pk-acct-field" style="margin-top:12px">
+				<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:normal">
+					<input type="checkbox" id="kn-rec-anon" value="1" style="width:16px;height:16px;cursor:pointer">
+					<span>Submit Anonymously</span>
+				</label>
+				<div style="font-size:11px;color:#718096;margin-top:3px;padding-left:24px">Your name will not be visible to others on this recommendation</div>
 			</div>
 		</div>
 		<div class="kn-modal-footer">
@@ -1733,6 +1983,17 @@ var KnConfig = {
 #kn-moveplayer-overlay .kn-modal-body { overflow:visible; }
 #kn-moveplayer-overlay .kn-acct-field { position:relative; }
 #kn-moveplayer-overlay .kn-ac-results { position:absolute; left:0; right:0; z-index:9999; }
+/* Rec actions dropdown */
+.kn-rec-actions-wrap { position:relative; display:inline-block; text-align:left; }
+.kn-rec-actions-toggle { background:#edf2f7; border:1px solid #cbd5e0; color:#4a5568; border-radius:5px; padding:4px 10px; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap; }
+.kn-rec-actions-toggle:hover { background:#e2e8f0; }
+.kn-rec-actions-drop { display:none; position:absolute; right:0; top:calc(100% + 4px); background:#fff; border:1px solid #e2e8f0; border-radius:6px; box-shadow:0 4px 16px rgba(0,0,0,.12); z-index:1000; min-width:150px; overflow:hidden; }
+.kn-rec-actions-drop.open { display:block; }
+.kn-rec-actions-drop button { display:block; width:100%; text-align:left; padding:8px 14px; background:none; border:none; border-bottom:1px solid #f0f4f8; font-size:13px; cursor:pointer; color:#2d3748; white-space:nowrap; }
+.kn-rec-actions-drop button:last-child { border-bottom:none; }
+.kn-rec-actions-drop button:hover { background:#f7fafc; }
+.kn-rec-actions-drop button.pk-btn-primary { color:#276749; font-weight:700; }
+.kn-rec-actions-drop button.pk-rec-oncourt { color:#2b6cb0; }
 /* Subscribe popover */
 .kn-sub-wrap { position:relative; }
 .kn-sub-pop {
@@ -2104,6 +2365,10 @@ var KnConfig = {
 			var pop = document.getElementById('kn-sub-pop');
 			if (pop) pop.style.setProperty('display', 'none', 'important');
 		}
+		// Close any open rec action dropdowns
+		if (!e.target.closest('.kn-rec-actions-wrap')) {
+			document.querySelectorAll('.kn-rec-actions-drop.open').forEach(function(d) { d.classList.remove('open'); });
+		}
 	});
 
 })();
@@ -2125,15 +2390,23 @@ $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
 });
 $(function() {
 	if ($('#kn-rec-table').length) {
-		window.knRecDT = $('#kn-rec-table').DataTable({
-			order: [[4, 'desc']],
+		var knRecTable = $('#kn-rec-table').DataTable({
+			order: [<?php if ($CanManageKingdom ?? false): ?>[5, 'desc']<?php else: ?>[4, 'desc']<?php endif; ?>],
+			autoWidth: false,
 			columnDefs: [
-				{ targets: [4], type: 'date' },
 				<?php if ($CanManageKingdom ?? false): ?>
-				{ targets: [-1], orderable: false, searchable: false },
+				{ targets: [0], orderable: false, searchable: false, width: '1%' },
+				{ targets: [5], type: 'date' },
+				{ targets: [-1], orderable: false, searchable: false, width: '1%' },
+				<?php else: ?>
+				{ targets: [4], type: 'date' },
 				<?php endif; ?>
 			],
-			pageLength: 25
+			pageLength: 25,
+			initComplete: function() {
+				var allBtn = document.querySelector('.kn-rec-filter-btn[data-filter="all"]');
+				if (allBtn) allBtn.click();
+			}
 		});
 	}
 });

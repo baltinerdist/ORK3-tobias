@@ -452,6 +452,12 @@ class Report  extends Ork3 {
 			recs.reason,
 			recs.deleted_at,
 			recs.deleted_by,
+			recs.mask_giver,
+			recs.snoozed_monarch_id,
+			recs.snoozed_regent_id,
+			(SELECT COALESCE(MAX(CASE WHEN role='Monarch' THEN mundane_id END), 0) FROM " . DB_PREFIX . "officer WHERE park_id = m.park_id) AS current_monarch_id,
+			(SELECT COALESCE(MAX(CASE WHEN role='Regent'  THEN mundane_id END), 0) FROM " . DB_PREFIX . "officer WHERE park_id = m.park_id) AS current_regent_id,
+			(SELECT COUNT(*) FROM " . DB_PREFIX . "court_award ca WHERE ca.recommendations_id = recs.recommendations_id AND ca.status != 'cancelled') AS on_court_count,
 			ka.award_id as ka_award_id,
 			ka.kingdomaward_id as ka_kaward_id,
 			(SELECT COUNT(suboa.awards_id) FROM " . DB_PREFIX . "awards suboa WHERE suboa.mundane_id = recs.mundane_id AND suboa.kingdomaward_id = ka.kingdomaward_id AND suboa.rank >= COALESCE(recs.rank, 0)) as kacount,
@@ -471,13 +477,22 @@ class Report  extends Ork3 {
 			LEFT join " . DB_PREFIX . "mundane rbi on rbi.mundane_id = recs.recommended_by_id
 			LEFT join " . DB_PREFIX . "park p on p.park_id = m.park_id
 			LEFT join " . DB_PREFIX . "kingdom k on k.kingdom_id = m.kingdom_id
-			WHERE (recs.deleted_by IS NULL OR recs.deleted_by = 0) $location_clause
+			WHERE (recs.deleted_by IS NULL OR recs.deleted_by = 0)
+			  AND m.active = 1 AND (m.suspended IS NULL OR m.suspended = 0)
+			  $location_clause
 			order by m.persona, a.name, recs.rank, m.persona";
 		$r = $this->db->query($sql);
 		$response = array();
+		$callerUid     = isset($request['CallerUid']) ? (int)$request['CallerUid'] : 0;
+		$callerIsAdmin = $callerUid > 0 && Ork3::$Lib->authorization->HasAuthority($callerUid, AUTH_ADMIN, 0, AUTH_EDIT);
 		if ($r !== false && $r->size() > 0) {
 			$response['AwardRecommendations'] = array();
 			while ($r->next()) {
+				$isAnon = (int)$r->mask_giver === 1;
+				$hideSubmitter = $isAnon && !$callerIsAdmin;
+				$isSnoozed = $r->snoozed_monarch_id !== null
+					&& (int)$r->snoozed_monarch_id === (int)$r->current_monarch_id
+					&& (int)$r->snoozed_regent_id  === (int)$r->current_regent_id;
 				$response['AwardRecommendations'][] = array(
 						'RecommendationsId' => $r->recommendations_id,
 						'MundaneId' => $r->mundane_id,
@@ -486,8 +501,9 @@ class Report  extends Ork3 {
 						'Rank' => $r->rank,
 						'AwardName' => $r->award_name,
 						'Reason' => $r->reason,
-						'RecommendedByName' => $r->recommended_by_persona,
-						'RecommendedById' => $r->recommended_by_id,
+						'IsAnonymous' => $isAnon,
+						'RecommendedByName' => $hideSubmitter ? null : $r->recommended_by_persona,
+						'RecommendedById' => $hideSubmitter ? null : $r->recommended_by_id,
 						'KingdomAwardId' => (int)$r->ka_kaward_id,
 						'ParkId' => $r->park_id,
 						'KingdomId' => $r->kingdom_id,
@@ -496,6 +512,9 @@ class Report  extends Ork3 {
 						'AlreadyHas' => ($r->kacount > 0 || $r->awcount > 0),
 						'CurrentRank' => ($r->kacount > 0 || $r->awcount > 0) ? (int)$r->player_ka_rank : null,
 						'CurrentRankDate' => ($r->kacount > 0 || $r->awcount > 0) ? $r->player_ka_date : null,
+						'IsSnoozed' => $isSnoozed,
+						'IsOnCourt' => (int)$r->on_court_count > 0,
+						'AgeDays' => (int)(new DateTime())->diff(new DateTime($r->date_recommended))->days,
 					);
 			}
 			$response['Status'] = Success();
