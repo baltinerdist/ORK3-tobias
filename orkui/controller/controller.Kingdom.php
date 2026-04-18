@@ -44,7 +44,7 @@ class Controller_Kingdom extends Controller {
 		$this->data['kingdom_info'] = $this->Kingdom->get_kingdom_shortinfo($kingdom_id);
 		$this->data['kingdom_officers'] = $this->Kingdom->GetOfficers(['KingdomId' => $kingdom_id, 'Token' => $this->session->token]);
 		$this->data['IsPrinz'] = $this->data['kingdom_info']['Info']['KingdomInfo']['IsPrincipality'];
-		// [TOURNAMENTS HIDDEN] $this->data['kingdom_tournaments'] = [];
+		$this->data['kingdom_tournaments'] = $this->Reports->get_tournaments(null, $kingdom_id);
 	}
 
 	public function park_monthly_json($kingdom_id = null) {
@@ -303,7 +303,7 @@ class Controller_Kingdom extends Controller {
 				$preloadOfficers[] = ['MundaneId' => $o['MundaneId'], 'Persona' => $o['Persona'], 'Role' => $o['OfficerRole']];
 		}
 		$this->data['PreloadOfficers']     = $preloadOfficers;
-		// [TOURNAMENTS HIDDEN] $this->data['kingdom_tournaments'] = [];
+		$this->data['kingdom_tournaments'] = $this->Reports->get_tournaments(null, $kingdom_id);
 
 		$rawParks = $this->Kingdom->GetParks(['KingdomId' => $kingdom_id]);
 		$this->data['map_parks'] = is_array($rawParks['Parks'])

@@ -1909,9 +1909,9 @@ function knToggleFilter(btn, type) {
     knFilters[type] = !knFilters[type];
     var isOn = knFilters[type];
     $(btn).toggleClass('kn-filter-on', isOn);
-    $('#kn-events-table').find('tr[data-type="' + type + '"]').css('display', isOn ? '' : 'none');
+    $('#kn-events-table, #kn-tournaments-table').find('tr[data-type="' + type + '"]').css('display', isOn ? '' : 'none');
     knPaginate($('#kn-events-table'), 1);
-    // [TOURNAMENTS HIDDEN] knPaginate($('#kn-tournaments-table'), 1);
+    knPaginate($('#kn-tournaments-table'), 1);
     // Sync calendar — refetch re-runs our events function which re-applies knFilters from cache (no extra HTTP request)
     if (knCalendar) knCalendar.refetchEvents();
 }
@@ -2461,8 +2461,8 @@ $(document).ready(function() {
     knSortAsc($('#kn-events-table'), 0, 'date');
     knPaginate($('#kn-events-table'), 1);
 
-    // [TOURNAMENTS HIDDEN] knSortDesc($('#kn-tournaments-table'), 0, 'date');
-    // [TOURNAMENTS HIDDEN] knPaginate($('#kn-tournaments-table'), 1);
+    knSortDesc($('#kn-tournaments-table'), 0, 'date');
+    knPaginate($('#kn-tournaments-table'), 1);
 
     knPaginate($('#kn-players-table'), 1);
 
@@ -10719,9 +10719,140 @@ window.pnCloseUnitCreateModal = function() {
     });
 })();
 
-/* [TOURNAMENTS HIDDEN] KN add tournament modal */
 
-/* [TOURNAMENTS HIDDEN] PK add tournament modal */
+// ── Add Tournament Modal (Kingdom) ──────────────────────────────────────────
+(function() {
+    if (!window.KnConfig || !KnConfig.canManage) return;
+    var overlay = document.getElementById('kn-addtournament-overlay');
+    if (!overlay) return;
+
+    function showFb(msg, ok) {
+        var fb = document.getElementById('kn-addtournament-feedback');
+        if (!fb) return;
+        fb.textContent = msg;
+        fb.style.display = 'block';
+        fb.style.color = ok ? '#276749' : '#e53e3e';
+    }
+
+    function openModal() {
+        document.getElementById('kn-addtournament-name').value = '';
+        document.getElementById('kn-addtournament-when').value = '';
+        document.getElementById('kn-addtournament-desc').value = '';
+        document.getElementById('kn-addtournament-url').value  = '';
+        var fb = document.getElementById('kn-addtournament-feedback');
+        if (fb) { fb.style.display = 'none'; fb.textContent = ''; }
+        overlay.classList.add('kn-open');
+    }
+
+    function closeModal() {
+        overlay.classList.remove('kn-open');
+    }
+
+    window.knOpenAddTournamentModal = openModal;
+
+    document.getElementById('kn-addtournament-close-btn').addEventListener('click', closeModal);
+    document.getElementById('kn-addtournament-cancel').addEventListener('click', closeModal);
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) closeModal(); });
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && overlay.classList.contains('kn-open')) closeModal();
+    });
+
+    document.getElementById('kn-addtournament-submit').addEventListener('click', function() {
+        var btn  = this;
+        var name = document.getElementById('kn-addtournament-name').value.trim();
+        var when = document.getElementById('kn-addtournament-when').value.trim();
+        var desc = document.getElementById('kn-addtournament-desc').value.trim();
+        var url  = document.getElementById('kn-addtournament-url').value.trim();
+
+        if (!name) { showFb('Tournament name is required.', false); return; }
+        if (!when) { showFb('Tournament date is required.', false); return; }
+
+        btn.disabled = true;
+        jQuery.post(
+            KnConfig.uir + 'KingdomAjax/kingdom/' + KnConfig.kingdomId + '/createtournament',
+            { Name: name, When: when, Description: desc, Url: url },
+            function(r) {
+                btn.disabled = false;
+                if (r && r.status === 0) {
+                    showFb('Tournament created!', true);
+                    setTimeout(function() { closeModal(); window.location.href = KnConfig.uir + 'Tournament/profile/' + r.tournamentId; }, 900);
+                } else {
+                    showFb((r && r.error) ? r.error : 'Failed to create tournament.', false);
+                }
+            }, 'json'
+        ).fail(function() {
+            btn.disabled = false;
+            showFb('Request failed. Please try again.', false);
+        });
+    });
+})();
+
+// ── Add Tournament Modal (Park) ──────────────────────────────────────────────
+(function() {
+    if (!window.PkConfig || !PkConfig.canManage) return;
+    var overlay = document.getElementById('pk-addtournament-overlay');
+    if (!overlay) return;
+
+    function showFb(msg, ok) {
+        var fb = document.getElementById('pk-addtournament-feedback');
+        if (!fb) return;
+        fb.textContent = msg;
+        fb.style.display = 'block';
+        fb.style.color = ok ? '#276749' : '#e53e3e';
+    }
+
+    function openModal() {
+        document.getElementById('pk-addtournament-name').value = '';
+        document.getElementById('pk-addtournament-when').value = '';
+        document.getElementById('pk-addtournament-desc').value = '';
+        document.getElementById('pk-addtournament-url').value  = '';
+        var fb = document.getElementById('pk-addtournament-feedback');
+        if (fb) { fb.style.display = 'none'; fb.textContent = ''; }
+        overlay.classList.add('pk-open');
+    }
+
+    function closeModal() {
+        overlay.classList.remove('pk-open');
+    }
+
+    window.pkOpenAddTournamentModal = openModal;
+
+    document.getElementById('pk-addtournament-close-btn').addEventListener('click', closeModal);
+    document.getElementById('pk-addtournament-cancel').addEventListener('click', closeModal);
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) closeModal(); });
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && overlay.classList.contains('pk-open')) closeModal();
+    });
+
+    document.getElementById('pk-addtournament-submit').addEventListener('click', function() {
+        var btn  = this;
+        var name = document.getElementById('pk-addtournament-name').value.trim();
+        var when = document.getElementById('pk-addtournament-when').value.trim();
+        var desc = document.getElementById('pk-addtournament-desc').value.trim();
+        var url  = document.getElementById('pk-addtournament-url').value.trim();
+
+        if (!name) { showFb('Tournament name is required.', false); return; }
+        if (!when) { showFb('Tournament date is required.', false); return; }
+
+        btn.disabled = true;
+        jQuery.post(
+            PkConfig.uir + 'ParkAjax/park/' + PkConfig.parkId + '/createtournament',
+            { Name: name, When: when, Description: desc, Url: url, KingdomId: PkConfig.kingdomId },
+            function(r) {
+                btn.disabled = false;
+                if (r && r.status === 0) {
+                    showFb('Tournament created!', true);
+                    setTimeout(function() { closeModal(); window.location.href = PkConfig.uir + 'Tournament/profile/' + r.tournamentId; }, 900);
+                } else {
+                    showFb((r && r.error) ? r.error : 'Failed to create tournament.', false);
+                }
+            }, 'json'
+        ).fail(function() {
+            btn.disabled = false;
+            showFb('Request failed. Please try again.', false);
+        });
+    });
+})();
 
 
 // ---- Merge Players Modal (Parknew) ----
