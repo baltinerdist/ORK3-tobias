@@ -26,6 +26,17 @@
 		<link type="text/css" href="<?=HTTP_TEMPLATE;?>default/style/orkui.css?v=<?=filemtime(DIR_TEMPLATE.'default/style/orkui.css')?>" rel="stylesheet" />
 
 	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.8.2/css/all.min.css" integrity="sha384-oS3vJWv+0UjzBfQzYUhtDYW+Pj2yciDJxpsK1OYPAYjqT085Qq/1cq5FLXAZQ7Ay" crossorigin="anonymous" referrerpolicy="no-referrer">
+		<?php if (!empty($ViewerDyslexiaFonts)) : ?>
+		<link rel="preconnect" href="https://fonts.googleapis.com">
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+		<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&display=swap">
+		<style>
+		body.ork-dyslexia-font,
+		body.ork-dyslexia-font *:not(i):not([class*="fa-"]):not([class*="fas"]):not([class*="far"]):not([class*="fab"]):not(.ork-font-sample) {
+			font-family: 'Lexend', sans-serif !important;
+		}
+		</style>
+		<?php endif; ?>
 		<script type="text/javascript" src="<?=HTTP_TEMPLATE;?>default/script/orkui.js"></script>
 		<!-- Google tag (gtag.js) -->
 		<script async src="https://www.googletagmanager.com/gtag/js?id=G-PVQCKENY0M"></script>
@@ -97,7 +108,7 @@
 	html[data-theme="dark"] #theme_container a:hover { color: #90cdf4; }
 		</style>
 </head>
-	<body>
+	<body<?php if (!empty($ViewerDyslexiaFonts)) echo ' class="ork-dyslexia-font"'; ?>>
 		<div id='theme_container'>
 
 <?php
@@ -181,6 +192,9 @@
 				<div class='nav-dropdown-menu' style='min-width:200px'>
 					<a href='https://www.amtgard.com/' target='_blank'><i class='fas fa-globe'></i> Amtgard Website</a>
 					<a href='https://wiki.amtgard.com/Main_Page' target='_blank'><i class='fas fa-book-open'></i> Amtgard Wiki</a>
+					<?php if ($this->__session->token != null) : ?>
+					<a href='https://discord.gg/YTS82nxnsh' target='_blank'><i class='fab fa-discord'></i> Amtgard ORK Discord</a>
+					<?php endif; ?>
 					<a href='https://play.amtgard.com/' target='_blank'><i class='fas fa-map-marker-alt'></i> Find a Chapter</a>
 					<div class='nav-dropdown-divider'></div>
 					<a href='#' onclick="navInfoDialog('New Documentation Coming Soon!');return false;"><i class='fas fa-book'></i> ORK Documentation</a>
@@ -191,7 +205,7 @@
 				<!-- SVG injected by JS -->
 			</button>
 <?php if ($this->__session->token == null) : ?>
-			<a href='<?=UIR;?>Login' class='nav-login-btn'><i class='fas fa-sign-in-alt'></i> Login</a>
+			<a href='<?=UIR;?>Login&return=<?=urlencode($_REQUEST['Route'] ?? '')?>' class='nav-login-btn'><i class='fas fa-sign-in-alt'></i> Login</a>
 <?php else : ?>
 <?php
 	$__navUid      = (int)$this->__session->user_id;

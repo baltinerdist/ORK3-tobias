@@ -12,6 +12,10 @@ class Model_Player extends Model {
         return $this->Player->RemoveNote($request);
     }
 
+    function clear_notes($request) {
+        return $this->Player->ClearNotes($request);
+    }
+
     function edit_note($request) {
         return Ork3::$Lib->player->EditNote($request);
     }
@@ -37,12 +41,19 @@ class Model_Player extends Model {
 			return $cache;
 		$awards = $this->Player->AwardsForPlayer(array( 'MundaneId' => $mundane_id ));
 		if ($awards['Status']['Status'] != 0) return $awards;
-		$attendance = $this->Player->AttendanceForPlayer(array( 'MundaneId' => $mundane_id ));
-		if ($attendance['Status']['Status'] != 0) return $attendance;
 		$classes = $this->Player->GetPlayerClasses(array( 'MundaneId' => $mundane_id ));
 		if ($classes['Status']['Status'] != 0) return $classes;
-		$details = array( 'Awards' => $awards['Awards'], 'Attendance' => $attendance['Attendance'], 'Classes' => $classes['Classes'] );
+		$details = array( 'Awards' => $awards['Awards'], 'Attendance' => [], 'Classes' => $classes['Classes'] );
 		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $details);
+	}
+
+	function fetch_player_attendance($mundane_id) {
+		$key = Ork3::$Lib->ghettocache->key(['MundaneId' => $mundane_id]);
+		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 60)) !== false)
+			return $cache;
+		$attendance = $this->Player->AttendanceForPlayer(array( 'MundaneId' => $mundane_id ));
+		if ($attendance['Status']['Status'] != 0) return [];
+		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $attendance['Attendance'] ?? []);
 	}
 
 	private function bust_player_details_cache($request) {
@@ -60,6 +71,12 @@ class Model_Player extends Model {
 
 	function revoke_player_award($request) {
 		$r = $this->Player->RevokeAward($request);
+		if ($r['Status']['Status'] == 0) $this->bust_player_details_cache($request);
+		return $r;
+	}
+
+	function reactivate_player_award($request) {
+		$r = $this->Player->ReactivateAward($request);
 		if ($r['Status']['Status'] == 0) $this->bust_player_details_cache($request);
 		return $r;
 	}
@@ -150,6 +167,22 @@ class Model_Player extends Model {
 
 	function remove_image($request) {
 		return $this->Player->RemoveImage($request);
+	}
+
+	function get_custom_milestones($mundane_id) {
+		return Ork3::$Lib->player->GetCustomMilestones($mundane_id);
+	}
+
+	function add_custom_milestone($request) {
+		return Ork3::$Lib->player->AddCustomMilestone($request);
+	}
+
+	function update_custom_milestone($request) {
+		return Ork3::$Lib->player->UpdateCustomMilestone($request);
+	}
+
+	function delete_custom_milestone($request) {
+		return Ork3::$Lib->player->DeleteCustomMilestone($request);
 	}
 
 	function get_latest_attendance_date($mundane_id) {

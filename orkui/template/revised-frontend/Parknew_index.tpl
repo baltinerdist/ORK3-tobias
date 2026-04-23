@@ -727,6 +727,7 @@
 							?>
 							<a class="pk-player-card<?= $heraldryBgSrc ? ' pk-player-card-hbg' : '' ?>"
 							   <?= $heraldryBgSrc ? 'style="--hbg: url(\'' . htmlspecialchars($heraldryBgSrc) . '\')"'  : '' ?>
+							   <?= !empty($p['MundaneName']) ? 'data-mundane-name="' . htmlspecialchars(strtolower($p['MundaneName'])) . '"' : '' ?>
 							   href="<?= UIR ?>Player/profile/<?= $p['MundaneId'] ?>">
 								<div class="pk-player-card-top">
 									<div class="pk-player-avatar">
@@ -780,6 +781,7 @@
 								?>
 								<a class="pk-player-card<?= $heraldryBgSrc ? ' pk-player-card-hbg' : '' ?>"
 								   <?= $heraldryBgSrc ? 'style="--hbg: url(\'' . htmlspecialchars($heraldryBgSrc) . '\')"'  : '' ?>
+								   <?= !empty($p['MundaneName']) ? 'data-mundane-name="' . htmlspecialchars(strtolower($p['MundaneName'])) . '"' : '' ?>
 								   href="<?= UIR ?>Player/profile/<?= $p['MundaneId'] ?>">
 									<div class="pk-player-card-top">
 										<div class="pk-player-avatar">
@@ -838,7 +840,7 @@
 							</thead>
 							<tbody>
 								<?php foreach ($playerPeriods[0] ?? [] as $p): ?>
-								<tr onclick='window.location.href="<?= UIR ?>Player/profile/<?= $p['MundaneId'] ?>"'>
+								<tr <?= !empty($p['MundaneName']) ? 'data-mundane-name="' . htmlspecialchars(strtolower($p['MundaneName'])) . '"' : '' ?> onclick='window.location.href="<?= UIR ?>Player/profile/<?= $p['MundaneId'] ?>"'>
 									<td>
 										<?= htmlspecialchars($p['Persona']) ?>
 										<?php if (!empty($p['OfficerRoles'])): ?>
@@ -1117,9 +1119,26 @@
 <?php if (!empty($rec['Reason'])): ?>
 							<span class="pk-rec-notes-short"><?= htmlspecialchars(mb_substr($rec['Reason'], 0, 50)) ?><?php if (mb_strlen($rec['Reason']) > 50): ?><span class="pk-rec-notes-ellipsis">&hellip; <button class="pk-rec-expand-btn" type="button">[&hellip;]</button></span><span class="pk-rec-notes-full" style="display:none"><?= htmlspecialchars(mb_substr($rec['Reason'], 50)) ?> <button class="pk-rec-expand-btn pk-rec-collapse-btn" type="button">[&laquo;]</button></span><?php endif; ?></span>
 <?php else: ?>&mdash;<?php endif; ?>
-						</td>
-							<?php if (!empty($CanAdminPark)): ?>
-							<td class="pk-rec-actions">
+								<?php if (!empty($rec['ViewerCanEditReason'])): ?>
+								<button class="rs-edit-reason-btn" data-rec="<?= (int)$rec['RecommendationsId'] ?>" data-reason="<?= htmlspecialchars($rec['Reason'] ?? '', ENT_QUOTES) ?>" data-award="<?= htmlspecialchars($rec['AwardName'] ?? '', ENT_QUOTES) ?>" data-rstip="Edit your reason"><i class="fas fa-pen"></i></button>
+								<?php endif; ?>
+								<?php if (!empty($rec['Seconds']) && is_array($rec['Seconds'])): ?>
+								<div class="rs-seconds">
+									<?php foreach ($rec['Seconds'] as $sec): ?>
+									<div class="rs-second"><i class="fas fa-thumbs-up" style="color:#48bb78;font-size:10px"></i><a class="rs-supporter" href="<?= UIR ?>Player/profile/<?= (int)$sec['SupporterMundaneId'] ?>"><?= htmlspecialchars($sec['SupporterName'] ?? '') ?></a><?php if (!empty($sec['Notes'])): ?><span class="rs-notes">&mdash; "<?= htmlspecialchars($sec['Notes']) ?>"</span><?php else: ?><span class="rs-notes-empty">&mdash; (no comment)</span><?php endif; ?><?php if (!empty($sec['IsMine'])): ?> <button class="rs-second-edit" data-sid="<?= (int)$sec['RecommendationSecondsId'] ?>" data-notes="<?= htmlspecialchars($sec['Notes'] ?? '', ENT_QUOTES) ?>" data-rstip="Edit your notes"><i class="fas fa-pen"></i></button><button class="rs-second-withdraw" data-sid="<?= (int)$sec['RecommendationSecondsId'] ?>" data-rstip="Withdraw your second"><i class="fas fa-times"></i></button><?php endif; ?></div>
+									<?php endforeach; ?>
+								</div>
+								<?php endif; ?>
+							</td>
+							<?php if (!empty($IsLoggedIn)): ?>
+							<td class="pk-rec-actions rs-tip-right" style="white-space:nowrap;text-align:right;width:1%">
+								<?php if (!empty($rec['SecondsCount'])): $_sc = (int)$rec['SecondsCount']; ?>
+								<span class="rs-seconds-badge" data-rstip="<?= $_sc ?> supporting <?= $_sc === 1 ? 'second' : 'seconds' ?>"><i class="fas fa-thumbs-up"></i><?= $_sc ?></span>
+								<?php endif; ?>
+								<?php if (!empty($rec['ViewerCanSecond'])): ?>
+								<button class="rs-action-btn" data-rec="<?= (int)$rec['RecommendationsId'] ?>" data-award="<?= htmlspecialchars($rec['AwardName'] ?? '', ENT_QUOTES) ?>" data-recipient="<?= htmlspecialchars($rec['Persona'] ?? '', ENT_QUOTES) ?>" data-rstip="Second this recommendation and add your feedback."><i class="fas fa-plus"></i></button>
+								<?php endif; ?>
+								<?php if (!empty($CanAdminPark)): ?>
 								<button class="pk-btn pk-btn-primary pk-rec-grant-btn"
 									data-rec="<?= htmlspecialchars(json_encode(['RecommendationsId'=>(int)$rec['RecommendationsId'],'MundaneId'=>(int)$rec['MundaneId'],'Persona'=>$rec['Persona'],'KingdomAwardId'=>(int)$rec['KingdomAwardId'],'Rank'=>(int)$rec['Rank'],'Reason'=>$rec['Reason']??''], JSON_HEX_APOS | JSON_HEX_QUOT), ENT_QUOTES) ?>">
 									<i class="fas fa-medal"></i> Grant
@@ -1128,6 +1147,7 @@
 									data-rec-id="<?= (int)$rec['RecommendationsId'] ?>">
 									<i class="fas fa-times"></i> Delete
 								</button>
+								<?php endif; ?>
 							</td>
 							<?php endif; ?>
 						</tr>
@@ -1550,6 +1570,7 @@ var PkConfig = {
 						<label class="plr-radio"><input type="radio" name="pk-addplayer-restricted" value="0" checked> No</label>
 						<label class="plr-radio"><input type="radio" name="pk-addplayer-restricted" value="1"> Yes</label>
 					</div>
+					<small style="display:block;color:var(--ork-text-muted);margin-top:4px">Hides the player's real name from searches and public displays. Use for members who prefer their mundane identity kept private.</small>
 				</div>
 				<div class="plr-field">
 					<label>Waivered</label>
@@ -2118,3 +2139,14 @@ window.pkRecPrint = function() { if (window.pkRecDT) window.recsExportPrint(wind
 window.pkRecCsv   = function() { if (window.pkRecDT) window.recsExportCsv(window.pkRecDT, 'recs-<?= preg_replace('/[^a-z0-9]+/i', '-', $park_name) ?>.csv'); };
 initEmailSpellCheck('pk-addplayer-email', 'pk-addplayer-email-suggestion');
 </script>
+
+<?php if (!empty($IsLoggedIn)): ?>
+<script>
+window.OrkRsCfg = {
+	uir:    '<?= UIR ?>',
+	userId: <?= (int)$this->__session->user_id ?>,
+	reload: function() { location.reload(); }
+};
+</script>
+<?php include __DIR__ . '/_recommendation_seconds_assets.tpl'; ?>
+<?php endif; ?>

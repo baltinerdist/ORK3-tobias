@@ -123,6 +123,21 @@ class Controller_PlayerAjax extends Controller {
 				? json_encode(['status' => 0])
 				: json_encode(['status' => $r['Status'], 'error' => ($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? '')]);
 
+		} elseif ($action === 'reactivateaward') {
+			$awards_id = (int)($_POST['AwardsId'] ?? 0);
+			if (!valid_id($awards_id)) {
+				echo json_encode(['status' => 1, 'error' => 'Invalid award ID.']);
+				exit;
+			}
+			$r = $this->Player->reactivate_player_award([
+				'Token'       => $this->session->token,
+				'AwardsId'    => $awards_id,
+				'RecipientId' => $player_id,
+			]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0])
+				: json_encode(['status' => $r['Status'], 'error' => ($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? '')]);
+
 		} elseif ($action === 'addnote') {
 			$note     = trim($_POST['Note']         ?? '');
 			$desc     = trim($_POST['Description']  ?? '');
@@ -190,6 +205,15 @@ class Controller_PlayerAjax extends Controller {
 				'Description'  => $desc,
 				'Date'         => $date,
 				'DateComplete' => $dateComp,
+			]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0])
+				: json_encode(['status' => $r['Status'], 'error' => ($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? '')]);
+
+		} elseif ($action === 'clearnotes') {
+			$r = $this->Player->clear_notes([
+				'Token'     => $this->session->token,
+				'MundaneId' => $player_id,
 			]);
 			echo ($r['Status'] == 0)
 				? json_encode(['status' => 0])
@@ -328,6 +352,102 @@ class Controller_PlayerAjax extends Controller {
 			}
 			echo json_encode($ranks);
 
+	} elseif ($action === 'updateprofile') {
+			// Own-profile customization: about, colors, name prefix/suffix, photo focus
+			$uid = (int)$this->session->user_id;
+			if ($uid !== $player_id) {
+				echo json_encode(['status' => 5, 'error' => 'You can only customize your own profile.']);
+				exit;
+			}
+			$fields = [
+				'Token'         => $this->session->token,
+				'MundaneId'     => $player_id,
+				'AboutPersona'  => isset($_POST['AboutPersona'])  ? $_POST['AboutPersona']  : null,
+				'AboutStory'    => isset($_POST['AboutStory'])    ? $_POST['AboutStory']    : null,
+				'ColorPrimary'  => (isset($_POST['ColorPrimary']) && preg_match('/^#[0-9a-fA-F]{6}$/', $_POST['ColorPrimary'])) ? $_POST['ColorPrimary'] : null,
+				'ColorAccent'   => (isset($_POST['ColorAccent']) && preg_match('/^#[0-9a-fA-F]{6}$/', $_POST['ColorAccent'])) ? $_POST['ColorAccent'] : null,
+					'ColorSecondary'=> isset($_POST['ColorSecondary']) ? (preg_match('/^#[0-9a-fA-F]{6}$/', $_POST['ColorSecondary']) ? $_POST['ColorSecondary'] : '') : null,
+					'HeroOverlay'   => isset($_POST['HeroOverlay'])     ? $_POST['HeroOverlay']    : null,
+				'NamePrefix'    => isset($_POST['NamePrefix'])    ? trim($_POST['NamePrefix'])  : null,
+				'NameSuffix'    => isset($_POST['NameSuffix'])    ? trim($_POST['NameSuffix'])  : null,
+					'SuffixComma'   => isset($_POST['SuffixComma'])   ? (int)$_POST['SuffixComma']   : null,
+				'Persona'       => isset($_POST['Persona'])       ? trim($_POST['Persona'])     : null,
+				'PhotoFocusX'   => isset($_POST['PhotoFocusX'])   ? (int)$_POST['PhotoFocusX']  : null,
+				'PhotoFocusY'   => isset($_POST['PhotoFocusY'])   ? (int)$_POST['PhotoFocusY']  : null,
+				'PhotoFocusSize'=> isset($_POST['PhotoFocusSize'])? (int)$_POST['PhotoFocusSize']: null,
+					'ShowBeltline'  => isset($_POST['ShowBeltline'])  ? (int)$_POST['ShowBeltline']   : null,
+					'PronunciationGuide' => isset($_POST['PronunciationGuide']) ? trim($_POST['PronunciationGuide']) : null,
+					'ShowMundaneFirst' => isset($_POST['ShowMundaneFirst']) ? (int)$_POST['ShowMundaneFirst'] : null,
+					'ShowMundaneLast'  => isset($_POST['ShowMundaneLast'])  ? (int)$_POST['ShowMundaneLast']  : null,
+					'ShowEmail'        => isset($_POST['ShowEmail'])        ? (int)$_POST['ShowEmail']        : null,
+					'MilestoneConfig'  => isset($_POST['MilestoneConfig'])  ? $_POST['MilestoneConfig']  : null,
+				'NameFont'         => (isset($_POST['NameFont']) && in_array($_POST['NameFont'], ['','Cinzel','Cinzel Decorative','IM Fell English','UnifrakturMaguntia','Metamorphous','Uncial Antiqua','Pirata One','Almendra','Pinyon Script','Great Vibes'])) ? $_POST['NameFont'] : null,
+					'BeltDisplay'      => (isset($_POST['BeltDisplay']) && in_array($_POST['BeltDisplay'], ['white','own','none'])) ? $_POST['BeltDisplay'] : null,
+			];
+			$r = $this->Player->update_player($fields);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0])
+				: json_encode(['status' => $r['Status'], 'error' => ($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? '')]);
+
+		} elseif ($action === 'addmilestone') {
+			$description = trim($_POST['Description'] ?? '');
+			$icon        = trim($_POST['Icon'] ?? 'fa-star');
+			$msDate      = trim($_POST['MilestoneDate'] ?? '');
+			if (!strlen($description)) {
+				echo json_encode(['status' => 1, 'error' => 'Description is required.']);
+				exit;
+			}
+			if (!strlen($msDate) || !strtotime($msDate)) {
+				echo json_encode(['status' => 1, 'error' => 'A valid date is required.']);
+				exit;
+			}
+			$r = $this->Player->add_custom_milestone([
+				'Token'         => $this->session->token,
+				'MundaneId'     => $player_id,
+				'Icon'          => $icon,
+				'Description'   => $description,
+				'MilestoneDate' => $msDate,
+			]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0, 'milestoneId' => (int)($r['Detail'] ?? 0)])
+				: json_encode(['status' => $r['Status'], 'error' => ($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? '')]);
+
+		} elseif ($action === 'updatemilestone') {
+			$milestone_id = (int)($_POST['MilestoneId'] ?? 0);
+			$description  = trim($_POST['Description'] ?? '');
+			$icon         = trim($_POST['Icon'] ?? '');
+			$msDate       = trim($_POST['MilestoneDate'] ?? '');
+			if (!valid_id($milestone_id)) {
+				echo json_encode(['status' => 1, 'error' => 'Invalid milestone ID.']);
+				exit;
+			}
+			$r = $this->Player->update_custom_milestone([
+				'Token'         => $this->session->token,
+				'MundaneId'     => $player_id,
+				'MilestoneId'   => $milestone_id,
+				'Icon'          => $icon,
+				'Description'   => $description,
+				'MilestoneDate' => $msDate,
+			]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0])
+				: json_encode(['status' => $r['Status'], 'error' => ($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? '')]);
+
+		} elseif ($action === 'deletemilestone') {
+			$milestone_id = (int)($_POST['MilestoneId'] ?? 0);
+			if (!valid_id($milestone_id)) {
+				echo json_encode(['status' => 1, 'error' => 'Invalid milestone ID.']);
+				exit;
+			}
+			$r = $this->Player->delete_custom_milestone([
+				'Token'         => $this->session->token,
+				'MundaneId'     => $player_id,
+				'MilestoneId'   => $milestone_id,
+			]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0])
+				: json_encode(['status' => $r['Status'], 'error' => ($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? '')]);
+
 		} else {
 			echo json_encode(['status' => 1, 'error' => 'Unknown action']);
 		}
@@ -378,6 +498,124 @@ class Controller_PlayerAjax extends Controller {
 			: json_encode(['status' => $r['Status'], 'error' => ($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? '')]);
 		exit;
 	}
+	public function voting_eligible($p = null) {
+		header('Content-Type: application/json');
+		$mundane_id = (int)($p ?? 0);
+		if (!valid_id($mundane_id)) {
+			echo json_encode(['status' => 1, 'error' => 'Invalid player ID']);
+			exit;
+		}
+		$this->load_model('Reports');
+		global $DB;
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT kingdom_id FROM " . DB_PREFIX . "mundane WHERE mundane_id = $mundane_id LIMIT 1");
+		if (!$rs || !$rs->Next()) {
+			echo json_encode(['status' => 1, 'error' => 'Player not found']);
+			exit;
+		}
+		$kingdom_id = (int)$rs->kingdom_id;
+		$DB->Clear();
+		$supported = [31, 17, 10, 20, 25, 6, 38, 4, 27, 36, 14, 19, 3, 24, 12];
+		if (!in_array($kingdom_id, $supported)) {
+			echo json_encode(['status' => 0, 'eligible' => false]);
+			exit;
+		}
+		$vr     = $this->Reports->get_voting_eligible_for_player($mundane_id, $kingdom_id);
+		$player = $vr['Players'][0] ?? [];
+		echo json_encode([
+			'status'           => 0,
+			'eligible'         => !empty($player['VotingEligible']),
+			'province_mode'    => !empty($vr['ProvinceMode']),
+			'province_eligible'=> !empty($player['ProvinceEligible']),
+			'active_knight'    => !empty($player['ActiveKnight']),
+			'active_member'    => $player['ActiveMember'] ?? null,
+		]);
+		exit;
+	}
+
+	public function attendance($p = null) {
+		header('Content-Type: application/json');
+		$mundane_id = (int)($p ?? 0);
+		if (!valid_id($mundane_id)) {
+			echo json_encode(['status' => 1, 'error' => 'Invalid player ID']);
+			exit;
+		}
+		$this->load_model('Player');
+		$attendance = $this->Player->fetch_player_attendance($mundane_id);
+		$parkEditAuth = [];
+		if (isset($this->session->user_id)) {
+			$uid = (int)$this->session->user_id;
+			$uniqueParkIds = array_unique(array_filter(array_column(
+				array_filter($attendance, fn($a) => (int)($a['EventId'] ?? 0) === 0),
+				'ParkId'
+			)));
+			foreach ($uniqueParkIds as $pid) {
+				if (valid_id($pid))
+					$parkEditAuth[(int)$pid] = (bool)Ork3::$Lib->authorization->HasAuthority($uid, AUTH_PARK, (int)$pid, AUTH_EDIT);
+			}
+		}
+		echo json_encode([
+			'status'               => 0,
+			'attendance'           => $attendance,
+			'parkEditAuth'         => $parkEditAuth,
+			'canEditAnyAttendance' => !empty(array_filter($parkEditAuth)),
+			'total'                => count($attendance),
+			'lastClass'            => !empty($attendance[0]['ClassName']) ? $attendance[0]['ClassName'] : '',
+		]);
+		exit;
+	}
+
+	public function all_dues($p = null) {
+		header('Content-Type: application/json');
+		if (!isset($this->session->user_id)) {
+			echo json_encode(['status' => 5, 'error' => 'Not logged in']);
+			exit;
+		}
+		$mundane_id = (int)($p ?? 0);
+		if (!valid_id($mundane_id)) {
+			echo json_encode(['status' => 1, 'error' => 'Invalid player ID']);
+			exit;
+		}
+		$this->load_model('Player');
+		$dues = $this->Player->get_dues($mundane_id, 0, false);
+		echo json_encode(['status' => 0, 'dues' => is_array($dues) ? $dues : []]);
+		exit;
+	}
+
+	public function notes($p = null) {
+		header('Content-Type: application/json');
+		$mundane_id = (int)($p ?? 0);
+		if (!valid_id($mundane_id)) {
+			echo json_encode(['status' => 1, 'error' => 'Invalid player ID']);
+			exit;
+		}
+		$this->load_model('Player');
+		$notes = $this->Player->get_notes($mundane_id);
+		echo json_encode(['status' => 0, 'notes' => is_array($notes) ? $notes : []]);
+		exit;
+	}
+
+	public function recommendations($p = null) {
+		header('Content-Type: application/json');
+		if (!isset($this->session->user_id)) {
+			echo json_encode(['status' => 5, 'error' => 'Not logged in']);
+			exit;
+		}
+		$mundane_id = (int)($p ?? 0);
+		if (!valid_id($mundane_id)) {
+			echo json_encode(['status' => 1, 'error' => 'Invalid player ID']);
+			exit;
+		}
+		$this->load_model('Reports');
+		$recs = $this->Reports->recommended_awards([
+			'PlayerId' => $mundane_id, 'KingdomId' => 0, 'ParkId' => 0,
+			'IncludeKnights' => 1, 'IncludeMasters' => 1, 'IncludeLadder' => 1, 'LadderMinimum' => 0,
+			'RequestedBy' => (int)$this->session->user_id,
+		]);
+		echo json_encode(['status' => 0, 'recs' => is_array($recs) ? $recs : []]);
+		exit;
+	}
+
 	public function save_my_email() {
 		header('Content-Type: application/json');
 		if (!isset($this->session->user_id)) {
@@ -399,6 +637,70 @@ class Controller_PlayerAjax extends Controller {
 		$DB->email = $email;
 		$DB->Execute("UPDATE ork_mundane SET email = :email WHERE mundane_id = $mundane_id");
 		echo json_encode(['status' => 0]);
+		exit;
+	}
+
+	// ---- Recommendation seconds ----
+
+	public function add_second($p = null) {
+		header('Content-Type: application/json');
+		if (!isset($this->session->user_id)) { echo json_encode(['status' => 5, 'error' => 'Not logged in']); exit; }
+		$rec_id = (int)($p ?? 0);
+		if (!valid_id($rec_id)) { echo json_encode(['status' => 1, 'error' => 'Invalid recommendation']); exit; }
+		$notes = isset($_POST['notes']) ? (string)$_POST['notes'] : '';
+		$this->load_model('Player');
+		$r = $this->Player->AddSecondToRecommendation([
+			'Token' => $this->session->token,
+			'RecommendationsId' => $rec_id,
+			'Notes' => $notes,
+		]);
+		echo json_encode(['status' => (int)($r['Status'] ?? 1), 'error' => $r['Error'] ?? '', 'detail' => $r['Detail'] ?? '']);
+		exit;
+	}
+
+	public function edit_second_notes($p = null) {
+		header('Content-Type: application/json');
+		if (!isset($this->session->user_id)) { echo json_encode(['status' => 5, 'error' => 'Not logged in']); exit; }
+		$sid = (int)($p ?? 0);
+		if (!valid_id($sid)) { echo json_encode(['status' => 1, 'error' => 'Invalid second']); exit; }
+		$notes = isset($_POST['notes']) ? (string)$_POST['notes'] : '';
+		$this->load_model('Player');
+		$r = $this->Player->EditSecondNotes([
+			'Token' => $this->session->token,
+			'RecommendationSecondsId' => $sid,
+			'Notes' => $notes,
+		]);
+		echo json_encode(['status' => (int)($r['Status'] ?? 1), 'error' => $r['Error'] ?? '', 'detail' => $r['Detail'] ?? '']);
+		exit;
+	}
+
+	public function withdraw_second($p = null) {
+		header('Content-Type: application/json');
+		if (!isset($this->session->user_id)) { echo json_encode(['status' => 5, 'error' => 'Not logged in']); exit; }
+		$sid = (int)($p ?? 0);
+		if (!valid_id($sid)) { echo json_encode(['status' => 1, 'error' => 'Invalid second']); exit; }
+		$this->load_model('Player');
+		$r = $this->Player->WithdrawSecond([
+			'Token' => $this->session->token,
+			'RecommendationSecondsId' => $sid,
+		]);
+		echo json_encode(['status' => (int)($r['Status'] ?? 1), 'error' => $r['Error'] ?? '', 'detail' => $r['Detail'] ?? '']);
+		exit;
+	}
+
+	public function edit_recommendation_reason($p = null) {
+		header('Content-Type: application/json');
+		if (!isset($this->session->user_id)) { echo json_encode(['status' => 5, 'error' => 'Not logged in']); exit; }
+		$rec_id = (int)($p ?? 0);
+		if (!valid_id($rec_id)) { echo json_encode(['status' => 1, 'error' => 'Invalid recommendation']); exit; }
+		$reason = isset($_POST['reason']) ? (string)$_POST['reason'] : '';
+		$this->load_model('Player');
+		$r = $this->Player->EditAwardRecommendationReason([
+			'Token' => $this->session->token,
+			'RecommendationsId' => $rec_id,
+			'Reason' => $reason,
+		]);
+		echo json_encode(['status' => (int)($r['Status'] ?? 1), 'error' => $r['Error'] ?? '', 'detail' => $r['Detail'] ?? '']);
 		exit;
 	}
 }
