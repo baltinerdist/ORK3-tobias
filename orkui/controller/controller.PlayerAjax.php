@@ -328,6 +328,265 @@ class Controller_PlayerAjax extends Controller {
 			}
 			echo json_encode($ranks);
 
+		} elseif ($action === 'beltline_playersearch') {
+			// Scoped player search for the Take Associate modal.
+			// Priority: session user's park > kingdom > everywhere else.
+			global $DB;
+			$q = trim($_GET['q'] ?? '');
+			if (strlen($q) < 2) {
+				echo json_encode([]);
+				exit;
+			}
+			$uid      = (int)$this->session->user_id;
+			$actorPid = 0;
+			$actorKid = 0;
+			$DB->Clear();
+			$urs = $DB->DataSet("SELECT park_id, kingdom_id FROM ork_mundane WHERE mundane_id = {$uid} LIMIT 1");
+			if ($urs && $urs->Next()) {
+				$actorPid = (int)$urs->park_id;
+				$actorKid = (int)$urs->kingdom_id;
+			}
+			$DB->Clear();
+
+			// Optional "KK:PP search term" abbreviation prefix.
+			$filterKid = 0;
+			$filterPid = 0;
+			$searchQ   = $q;
+			if (preg_match('/^([a-z0-9]{2,3}):([a-z0-9]{2,3}|\*)?\s+(.+)$/i', $q, $mm)) {
+				$kAbbr = str_replace(["'", '%', '_', '\\'], ["''", '\\%', '\\_', '\\\\'], $mm[1]);
+				$DB->Clear();
+				$kRs = $DB->DataSet("SELECT kingdom_id FROM ork_kingdom WHERE abbreviation = '{$kAbbr}' LIMIT 1");
+				if ($kRs && $kRs->Next()) $filterKid = (int)$kRs->kingdom_id;
+				$DB->Clear();
+				if ($filterKid > 0 && !empty($mm[2]) && $mm[2] !== '*') {
+					$pAbbr = str_replace(["'", '%', '_', '\\'], ["''", '\\%', '\\_', '\\\\'], $mm[2]);
+					$pRs = $DB->DataSet("SELECT park_id FROM ork_park WHERE abbreviation = '{$pAbbr}' AND kingdom_id = {$filterKid} LIMIT 1");
+					if ($pRs && $pRs->Next()) $filterPid = (int)$pRs->park_id;
+					$DB->Clear();
+				}
+				$searchQ = trim($mm[3]);
+			}
+			$term = str_replace(["'", '%', '_', '\\'], ["''", '\\%', '\\_', '\\\\'], $searchQ);
+
+			if ($filterPid > 0) {
+				$scope_clause = "AND m.park_id = {$filterPid}";
+			} elseif ($filterKid > 0) {
+				$scope_clause = "AND m.kingdom_id = {$filterKid}";
+			} else {
+				$scope_clause = '';
+			}
+
+			$order_priority = ($actorPid > 0 || $actorKid > 0)
+				? "CASE WHEN m.park_id = {$actorPid} THEN 0 WHEN m.kingdom_id = {$actorKid} THEN 1 ELSE 2 END,"
+				: "";
+
+			$DB->Clear();
+			$sql = "
+				SELECT m.mundane_id, m.persona,
+				       k.name AS kingdom_name, p.name AS park_name,
+				       p.abbreviation AS p_abbr, k.abbreviation AS k_abbr
+				FROM ork_mundane m
+				LEFT JOIN ork_kingdom k ON k.kingdom_id = m.kingdom_id
+				LEFT JOIN ork_park p ON p.park_id = m.park_id
+				WHERE LENGTH(m.persona) > 0
+				  AND m.suspended = 0
+				  AND m.active = 1
+				  AND m.mundane_id != {$uid}
+				  {$scope_clause}
+				  AND (m.persona LIKE '%{$term}%'
+				    OR m.given_name LIKE '%{$term}%'
+				    OR m.surname LIKE '%{$term}%'
+				    OR m.username LIKE '%{$term}%')
+				ORDER BY {$order_priority} m.persona ASC
+				LIMIT 15";
+			$rs = $DB->DataSet($sql);
+			$results = [];
+			while ($rs && $rs->Next()) {
+				$results[] = [
+					'MundaneId'    => (int)$rs->mundane_id,
+					'Persona'      => $rs->persona,
+					'KingdomName'  => $rs->kingdom_name,
+					'ParkName'     => $rs->park_name,
+					'p_abbr'       => $rs->p_abbr,
+					'k_abbr'       => $rs->k_abbr,
+				];
+			}
+			$DB->Clear();
+			echo json_encode($results);
+
+		} elseif ($action === 'beltline_take') {
+			// Self-service: create a beltline association.
+			// Actor = session user; target = posted MundaneId.
+			global $DB;
+			$uid     = (int)$this->session->user_id;
+			$target  = (int)($_POST['MundaneId']      ?? 0);
+			$awardId = (int)($_POST['AwardId']        ?? 0);
+			$kaId    = (int)($_POST['KingdomAwardId'] ?? 0);
+			$date    = trim($_POST['Date']            ?? '');
+			$note    = trim($_POST['Note']            ?? '');
+			$coreIds = [13, 14, 15, 16];
+
+			if (!valid_id($target) || $target === $uid) {
+				echo json_encode(['status' => 1, 'error' => 'Please select a valid person (not yourself).']);
+				exit;
+			}
+			if (!strlen($date) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+				echo json_encode(['status' => 1, 'error' => 'A valid start date is required.']);
+				exit;
+			}
+			if (strtotime($date) > strtotime('today')) {
+				echo json_encode(['status' => 1, 'error' => 'Start date cannot be in the future.']);
+				exit;
+			}
+
+			// Resolve: alias overrides award_id if present.
+			$resolvedAwardId    = 0;
+			$resolvedKaId       = 0;
+			if ($kaId > 0) {
+				$DB->Clear();
+				$kaRs = $DB->DataSet("SELECT award_id, kingdom_id FROM ork_kingdomaward WHERE kingdomaward_id = {$kaId} LIMIT 1");
+				if (!$kaRs || !$kaRs->Next()) {
+					echo json_encode(['status' => 1, 'error' => 'Invalid kingdom-award alias.']);
+					exit;
+				}
+				$resolvedAwardId = (int)$kaRs->award_id;
+				$resolvedKaId    = $kaId;
+				$DB->Clear();
+				if (!in_array($resolvedAwardId, $coreIds, true)) {
+					echo json_encode(['status' => 1, 'error' => 'That title is not a recognized associate title.']);
+					exit;
+				}
+			} else {
+				if (!in_array($awardId, $coreIds, true)) {
+					echo json_encode(['status' => 1, 'error' => 'Please pick a valid associate title.']);
+					exit;
+				}
+				$resolvedAwardId = $awardId;
+				$resolvedKaId    = 0;
+			}
+
+			// Duplicate active row check.
+			$DB->Clear();
+			$dupSql = "SELECT awards_id FROM ork_awards
+				WHERE given_by_id = {$uid}
+				  AND mundane_id = {$target}
+				  AND award_id = {$resolvedAwardId}
+				  AND kingdomaward_id = {$resolvedKaId}
+				  AND (revoked = 0 OR revoked IS NULL)
+				LIMIT 1";
+			$dupRs = $DB->DataSet($dupSql);
+			if ($dupRs && $dupRs->Next()) {
+				$DB->Clear();
+				echo json_encode(['status' => 1, 'error' => 'An active association with this person and title already exists.']);
+				exit;
+			}
+			$DB->Clear();
+
+			$safeNote = str_replace(["'", '\\'], ["''", '\\\\'], substr($note, 0, 400));
+
+			$DB->Clear();
+			$insSql = "INSERT INTO ork_awards
+				(kingdomaward_id, mundane_id, stripped_from, unit_id, park_id, kingdom_id, team_id,
+				 rank, date, given_by_id, note, at_park_id, at_kingdom_id, at_event_id,
+				 custom_name, alias_award_id, award_id, by_whom_id, entered_at,
+				 revoked, revoked_at, revocation, revoked_by_id)
+				VALUES
+				({$resolvedKaId}, {$target}, NULL, 0, 0, 0, 0,
+				 0, '{$date}', {$uid}, '{$safeNote}', 0, 0, 0,
+				 '', NULL, {$resolvedAwardId}, {$uid}, NOW(),
+				 0, NULL, '', 0)";
+			$DB->Execute($insSql);
+			$DB->Clear();
+
+			// Fetch the new row for UI injection.
+			$DB->Clear();
+			$newRs = $DB->DataSet("SELECT ma.awards_id, ma.date, m.persona, IFNULL(ka.name, a.name) AS title_name, a.peerage
+				FROM ork_awards ma
+				JOIN ork_award a ON a.award_id = ma.award_id
+				LEFT JOIN ork_kingdomaward ka ON ka.kingdomaward_id = ma.kingdomaward_id
+				JOIN ork_mundane m ON m.mundane_id = ma.mundane_id
+				WHERE ma.given_by_id = {$uid}
+				  AND ma.mundane_id = {$target}
+				  AND ma.award_id = {$resolvedAwardId}
+				  AND ma.kingdomaward_id = {$resolvedKaId}
+				  AND (ma.revoked = 0 OR ma.revoked IS NULL)
+				ORDER BY ma.awards_id DESC LIMIT 1");
+			$rowData = null;
+			if ($newRs && $newRs->Next()) {
+				$rowData = [
+					'AwardsId'    => (int)$newRs->awards_id,
+					'RecipientId' => $target,
+					'Persona'     => $newRs->persona,
+					'TitleName'   => $newRs->title_name,
+					'Peerage'     => $newRs->peerage,
+					'Date'        => $newRs->date,
+				];
+			}
+			$DB->Clear();
+
+			echo json_encode(['status' => 0, 'row' => $rowData]);
+
+		} elseif ($action === 'beltline_end') {
+			// Self-service: end an active beltline association.
+			// Either party may end; recorded with revocation='ended' sentinel.
+			global $DB;
+			$uid      = (int)$this->session->user_id;
+			$awardsId = (int)($_POST['AwardsId'] ?? 0);
+			$coreIds  = [13, 14, 15, 16];
+
+			if (!valid_id($awardsId)) {
+				echo json_encode(['status' => 1, 'error' => 'Invalid association id.']);
+				exit;
+			}
+			$DB->Clear();
+			$rowRs = $DB->DataSet("SELECT ma.awards_id, ma.given_by_id, ma.mundane_id, ma.award_id, ma.kingdomaward_id, ma.revoked,
+					ka.award_id AS ka_award_id
+				FROM ork_awards ma
+				LEFT JOIN ork_kingdomaward ka ON ka.kingdomaward_id = ma.kingdomaward_id
+				WHERE ma.awards_id = {$awardsId} LIMIT 1");
+			if (!$rowRs || !$rowRs->Next()) {
+				$DB->Clear();
+				echo json_encode(['status' => 1, 'error' => 'Association not found.']);
+				exit;
+			}
+			$givenBy      = (int)$rowRs->given_by_id;
+			$mundaneId    = (int)$rowRs->mundane_id;
+			$coreAwardId  = (int)$rowRs->award_id;
+			$aliasAwardId = (int)$rowRs->ka_award_id;
+			$isRevoked    = (int)$rowRs->revoked;
+			$DB->Clear();
+
+			if ($uid !== $givenBy && $uid !== $mundaneId) {
+				echo json_encode(['status' => 1, 'error' => 'You are not part of this association.']);
+				exit;
+			}
+			// Defense-in-depth: ensure the row is actually a beltline associate row.
+			if (!in_array($coreAwardId, $coreIds, true) && !in_array($aliasAwardId, $coreIds, true)) {
+				echo json_encode(['status' => 1, 'error' => 'That is not a beltline association.']);
+				exit;
+			}
+			if ($isRevoked === 1) {
+				echo json_encode(['status' => 1, 'error' => 'This association has already ended.']);
+				exit;
+			}
+
+			// Mirror the officer revoke pattern so the ended row also disappears
+			// from the associate's visible awards list (which joins on mundane_id)
+			// while preserving lineage via stripped_from. Sentinel 'ended' marks
+			// the row as a mutual end rather than a disciplinary strip.
+			$DB->Clear();
+			$DB->Execute("UPDATE ork_awards
+				SET revoked = 1,
+				    revoked_at = CURDATE(),
+				    revoked_by_id = {$uid},
+				    revocation = 'ended',
+				    stripped_from = mundane_id,
+				    mundane_id = 0
+				WHERE awards_id = {$awardsId} AND (revoked = 0 OR revoked IS NULL)");
+			$DB->Clear();
+
+			echo json_encode(['status' => 0, 'AwardsId' => $awardsId]);
+
 		} else {
 			echo json_encode(['status' => 1, 'error' => 'Unknown action']);
 		}

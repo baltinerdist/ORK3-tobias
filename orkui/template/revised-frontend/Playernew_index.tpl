@@ -388,6 +388,105 @@ html[data-theme="dark"] .pn-active-tab-label { background: var(--ork-card-bg); c
 html[data-theme="dark"] .pn-persona { color: #fff !important; background: transparent !important; border: none !important; padding: 0 !important; border-radius: 0 !important; text-shadow: 0 1px 3px rgba(0,0,0,0.4) !important; }
 
 /* ============================================================
+   My Beltline card
+   ============================================================ */
+.pn-beltline-card { padding: 0; }
+.pn-beltline-card-head { padding: 14px 16px 8px; border-bottom: 1px solid #e2e8f0; }
+.pn-beltline-card-title { font-size: 15px; font-weight: 600; color: #2d3748; margin: 0; display: flex; align-items: center; gap: 8px;
+	background: transparent; border: none; padding: 0; border-radius: 0; text-shadow: none; }
+.pn-beltline-card-title i { color: #805ad5; }
+.pn-beltline-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+.pn-beltline-col { padding: 12px 16px 16px; }
+.pn-beltline-col + .pn-beltline-col { border-left: 1px solid #e2e8f0; }
+.pn-beltline-col-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; gap: 8px; }
+.pn-beltline-col-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #718096; }
+.pn-beltline-take-btn { font-size: 12px; font-weight: 600; border: 1px solid #c6f6d5; background: #f0fff4; color: #276749; padding: 4px 10px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+.pn-beltline-take-btn:hover { background: #c6f6d5; border-color: #9ae6b4; }
+.pn-beltline-take-btn i { font-size: 10px; }
+.pn-beltline-empty { font-size: 13px; color: #a0aec0; font-style: italic; padding: 6px 0; }
+.pn-beltline-list { display: flex; flex-direction: column; gap: 6px; }
+.pn-beltline-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-radius: 4px; background: #f7fafc; border: 1px solid #edf2f7; }
+.pn-beltline-row + .pn-beltline-row { margin-top: 4px; }
+.pn-beltline-row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.pn-beltline-person { font-weight: 600; color: #2c5282; text-decoration: none; }
+.pn-beltline-person:hover { text-decoration: underline; }
+.pn-beltline-title { font-size: 12px; color: #4a5568; }
+.pn-beltline-date { font-size: 11px; color: #a0aec0; }
+.pn-beltline-end-btn { font-size: 11px; font-weight: 600; border: 1px solid #fed7d7; background: #fff; color: #c53030; padding: 3px 8px; border-radius: 3px; cursor: pointer; }
+.pn-beltline-end-btn:hover { background: #fed7d7; }
+
+/* Sponsor column uses same row style but no inner list wrapper */
+.pn-beltline-col > .pn-beltline-row { margin-top: 4px; }
+.pn-beltline-col > .pn-beltline-row:first-of-type { margin-top: 0; }
+
+/* Mobile stacking */
+@media (max-width: 700px) {
+	.pn-beltline-grid { grid-template-columns: 1fr; }
+	.pn-beltline-col + .pn-beltline-col { border-left: none; border-top: 1px solid #e2e8f0; }
+}
+
+/* Dark mode */
+html[data-theme="dark"] .pn-beltline-card-head { border-color: var(--ork-border); }
+html[data-theme="dark"] .pn-beltline-card-title { color: var(--ork-text); }
+html[data-theme="dark"] .pn-beltline-col + .pn-beltline-col { border-color: var(--ork-border); }
+html[data-theme="dark"] .pn-beltline-col-title { color: var(--ork-text-muted); }
+html[data-theme="dark"] .pn-beltline-take-btn { background: rgba(56, 161, 105, 0.15); border-color: rgba(56, 161, 105, 0.35); color: #68d391; }
+html[data-theme="dark"] .pn-beltline-take-btn:hover { background: rgba(56, 161, 105, 0.25); }
+html[data-theme="dark"] .pn-beltline-row { background: var(--ork-bg-secondary); border-color: var(--ork-border); }
+html[data-theme="dark"] .pn-beltline-person { color: var(--ork-link); }
+html[data-theme="dark"] .pn-beltline-title { color: var(--ork-text); }
+html[data-theme="dark"] .pn-beltline-date { color: var(--ork-text-muted); }
+html[data-theme="dark"] .pn-beltline-empty { color: var(--ork-text-muted); }
+html[data-theme="dark"] .pn-beltline-end-btn { background: rgba(197, 48, 48, 0.15); border-color: rgba(197, 48, 48, 0.35); color: #feb2b2; }
+html[data-theme="dark"] .pn-beltline-end-btn:hover { background: rgba(197, 48, 48, 0.3); }
+
+/* ============================================================
+   Beltline modals (Take + End)
+   ============================================================ */
+#pn-beltline-take-overlay .pn-modal-body,
+#pn-beltline-end-overlay .pn-modal-body { overflow: visible; }
+.pn-beltline-field { margin-bottom: 14px; }
+.pn-beltline-field label { display: block; font-size: 13px; font-weight: 600; color: #2d3748; margin-bottom: 6px; }
+.pn-beltline-search-wrap { position: relative; }
+.pn-beltline-search-wrap .kn-ac-results { position: fixed; z-index: 10050; background: #fff; border: 1px solid #cbd5e0; border-radius: 4px; max-height: 260px; overflow-y: auto; box-shadow: 0 6px 20px rgba(0,0,0,0.15); display: none; }
+.pn-beltline-search-wrap .kn-ac-results.kn-ac-open { display: block; }
+.pn-beltline-search-wrap .kn-ac-item { padding: 8px 12px; cursor: pointer; font-size: 13px; }
+.pn-beltline-search-wrap .kn-ac-item:hover, .pn-beltline-search-wrap .kn-ac-item.kn-ac-active { background: #ebf8ff; }
+.pn-beltline-search-wrap input[type="text"] { width: 100%; padding: 8px 10px; font-size: 13px; border: 1px solid #cbd5e0; border-radius: 4px; box-sizing: border-box; }
+.pn-beltline-selected-pill { display: inline-flex; align-items: center; gap: 8px; background: #ebf8ff; color: #2c5282; padding: 6px 10px; border-radius: 4px; font-size: 13px; margin-top: 4px; }
+.pn-beltline-selected-pill button { background: none; border: none; color: #2c5282; cursor: pointer; font-size: 14px; padding: 0; }
+.pn-beltline-titles { display: flex; flex-direction: column; gap: 4px; max-height: 200px; overflow-y: auto; padding: 4px; border: 1px solid #e2e8f0; border-radius: 4px; }
+.pn-beltline-title-opt { display: flex; align-items: center; gap: 8px; padding: 6px 8px; cursor: pointer; border-radius: 3px; }
+.pn-beltline-title-opt:hover { background: #f7fafc; }
+.pn-beltline-title-opt input { margin: 0; }
+.pn-beltline-title-opt-label { font-size: 13px; color: #2d3748; }
+.pn-beltline-title-opt-alias-hint { font-size: 11px; color: #a0aec0; margin-left: auto; }
+.pn-beltline-field input[type="text"].pn-beltline-date-input,
+.pn-beltline-field textarea { width: 100%; padding: 8px 10px; font-size: 13px; border: 1px solid #cbd5e0; border-radius: 4px; box-sizing: border-box; }
+.pn-beltline-field textarea { resize: vertical; min-height: 70px; }
+.pn-beltline-note-count { font-size: 11px; color: #a0aec0; margin-top: 2px; display: block; }
+.pn-beltline-error-banner { display: none; background: #fed7d7; color: #742a2a; border: 1px solid #feb2b2; padding: 8px 12px; border-radius: 4px; font-size: 13px; margin-bottom: 12px; }
+.pn-beltline-error-banner.pn-show { display: block; }
+
+#pn-beltline-end-overlay .pn-beltline-end-sentence { font-size: 14px; color: #2d3748; margin-bottom: 10px; line-height: 1.5; }
+#pn-beltline-end-overlay .pn-beltline-end-note { font-size: 12px; color: #718096; font-style: italic; }
+
+html[data-theme="dark"] .pn-beltline-field label { color: var(--ork-text); }
+html[data-theme="dark"] .pn-beltline-search-wrap .kn-ac-results { background: var(--ork-card-bg); border-color: var(--ork-border); box-shadow: 0 6px 20px rgba(0,0,0,0.5); }
+html[data-theme="dark"] .pn-beltline-search-wrap .kn-ac-item { color: var(--ork-text); }
+html[data-theme="dark"] .pn-beltline-search-wrap .kn-ac-item:hover, html[data-theme="dark"] .pn-beltline-search-wrap .kn-ac-item.kn-ac-active { background: var(--ork-bg-tertiary); }
+html[data-theme="dark"] .pn-beltline-search-wrap input[type="text"] { background: var(--ork-bg-secondary); border-color: var(--ork-border); color: var(--ork-text); }
+html[data-theme="dark"] .pn-beltline-selected-pill { background: var(--ork-bg-tertiary); color: var(--ork-link); }
+html[data-theme="dark"] .pn-beltline-titles { background: var(--ork-bg-secondary); border-color: var(--ork-border); }
+html[data-theme="dark"] .pn-beltline-title-opt:hover { background: var(--ork-bg-tertiary); }
+html[data-theme="dark"] .pn-beltline-title-opt-label { color: var(--ork-text); }
+html[data-theme="dark"] .pn-beltline-field input[type="text"].pn-beltline-date-input,
+html[data-theme="dark"] .pn-beltline-field textarea { background: var(--ork-bg-secondary); border-color: var(--ork-border); color: var(--ork-text); }
+html[data-theme="dark"] #pn-beltline-end-overlay .pn-beltline-end-sentence { color: var(--ork-text); }
+html[data-theme="dark"] #pn-beltline-end-overlay .pn-beltline-end-note { color: var(--ork-text-muted); }
+html[data-theme="dark"] .pn-beltline-error-banner { background: rgba(197, 48, 48, 0.2); color: #feb2b2; border-color: rgba(197, 48, 48, 0.4); }
+
+/* ============================================================
    </style>
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>revised-frontend/style/revised.css?v=<?= filemtime(DIR_TEMPLATE . 'revised-frontend/style/revised.css') ?>">
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
@@ -984,25 +1083,85 @@ html[data-theme="dark"] .pn-persona { color: #fff !important; background: transp
 						<?php endif; ?>
 
 
-						<!-- My Associates -->
-						<?php if (!empty($MyAssociates)): ?>
-						<div class="pna-card">
-							<div class="pna-card-title"><i class="fas fa-user-friends"></i> My Associates</div>
-							<?php
-							$_maCurPeerage = null;
-							$_maPeerageLabels = ['Squire' => 'Squires', 'Man-At-Arms' => 'Men/Women-at-Arms', 'Lords-Page' => 'Lords-Pages', 'Page' => 'Pages'];
-							?>
-							<?php foreach ($MyAssociates as $_as): ?>
-							<?php if ($_as['Peerage'] !== $_maCurPeerage): ?>
-							<div class="pna-assoc-group"><?= htmlspecialchars($_maPeerageLabels[$_as['Peerage']] ?? $_as['Peerage']) ?></div>
-							<?php $_maCurPeerage = $_as['Peerage']; endif; ?>
-							<div class="pna-feed-row">
-								<span class="pna-feed-label"><a href="<?= UIR ?>Player/profile/<?= (int)$_as['RecipientId'] ?>"><?= htmlspecialchars($_as['Persona']) ?></a></span>
-								<span class="pna-feed-sub"><?= htmlspecialchars($_as['TitleName']) ?></span>
+						<!-- My Beltline -->
+						<?php
+						$_blPeerageLabels = [
+							'Squire'      => 'Squires',
+							'Man-At-Arms' => 'Men/Women-at-Arms',
+							'Lords-Page'  => 'Lords-Pages',
+							'Page'        => 'Pages',
+						];
+						$_blFormatDate = function($d) {
+							if (empty($d) || $d === '0000-00-00') return '';
+							$ts = strtotime($d);
+							return $ts ? date('M Y', $ts) : '';
+						};
+						$_mySponsors   = $MySponsors   ?? [];
+						$_myAssociates = $MyAssociates ?? [];
+						?>
+						<div class="pna-card pn-beltline-card">
+							<div class="pn-beltline-card-head">
+								<h3 class="pn-beltline-card-title"><i class="fas fa-link"></i> My Beltline</h3>
 							</div>
-							<?php endforeach; ?>
+							<div class="pn-beltline-grid">
+								<!-- My Sponsors -->
+								<div class="pn-beltline-col">
+									<div class="pn-beltline-col-head">
+										<span class="pn-beltline-col-title">My Sponsors</span>
+									</div>
+									<?php if (empty($_mySponsors)): ?>
+										<div class="pn-beltline-empty">No current sponsors.</div>
+									<?php else: ?>
+										<?php foreach ($_mySponsors as $_sp): ?>
+										<div class="pn-beltline-row" data-awards-id="<?= (int)$_sp['AwardsId'] ?>"
+										     data-side="sponsor"
+										     data-persona="<?= htmlspecialchars($_sp['Persona'], ENT_QUOTES) ?>"
+										     data-title="<?= htmlspecialchars($_sp['TitleName'], ENT_QUOTES) ?>">
+											<div class="pn-beltline-row-main">
+												<a class="pn-beltline-person" href="<?= UIR ?>Player/profile/<?= (int)$_sp['SponsorId'] ?>"><?= htmlspecialchars($_sp['Persona']) ?></a>
+												<span class="pn-beltline-title"><?= htmlspecialchars($_sp['TitleName']) ?></span>
+												<?php $_fd = $_blFormatDate($_sp['Date']); if ($_fd): ?>
+												<span class="pn-beltline-date">Since <?= htmlspecialchars($_fd) ?></span>
+												<?php endif; ?>
+											</div>
+											<button type="button" class="pn-beltline-end-btn" aria-label="End association">End</button>
+										</div>
+										<?php endforeach; ?>
+									<?php endif; ?>
+								</div>
+
+								<!-- My Associates -->
+								<div class="pn-beltline-col">
+									<div class="pn-beltline-col-head">
+										<span class="pn-beltline-col-title">My Associates</span>
+										<button type="button" class="pn-beltline-take-btn" id="pn-beltline-take-open-btn">
+											<i class="fas fa-plus"></i> Take New
+										</button>
+									</div>
+									<div class="pn-beltline-list" id="pn-beltline-associates-list">
+										<?php if (empty($_myAssociates)): ?>
+											<div class="pn-beltline-empty" data-empty-for="associates">You have no associates yet. Take one?</div>
+										<?php else: ?>
+											<?php foreach ($_myAssociates as $_as): ?>
+											<div class="pn-beltline-row" data-awards-id="<?= (int)$_as['AwardsId'] ?>"
+											     data-side="associate"
+											     data-persona="<?= htmlspecialchars($_as['Persona'], ENT_QUOTES) ?>"
+											     data-title="<?= htmlspecialchars($_as['TitleName'], ENT_QUOTES) ?>">
+												<div class="pn-beltline-row-main">
+													<a class="pn-beltline-person" href="<?= UIR ?>Player/profile/<?= (int)$_as['RecipientId'] ?>"><?= htmlspecialchars($_as['Persona']) ?></a>
+													<span class="pn-beltline-title"><?= htmlspecialchars($_as['TitleName']) ?></span>
+													<?php $_fd = $_blFormatDate($_as['Date']); if ($_fd): ?>
+													<span class="pn-beltline-date">Since <?= htmlspecialchars($_fd) ?></span>
+													<?php endif; ?>
+												</div>
+												<button type="button" class="pn-beltline-end-btn" aria-label="End association">End</button>
+											</div>
+											<?php endforeach; ?>
+										<?php endif; ?>
+									</div>
+								</div>
+							</div>
 						</div>
-						<?php endif; ?>
 
 					</div><!-- /.pna-feed -->
 				</div><!-- /.pna-layout -->
@@ -2338,6 +2497,94 @@ html[data-theme="dark"] .pn-persona { color: #fff !important; background: transp
 </div>
 <?php endif; ?>
 
+<!-- =============================================
+     Take Associate Modal
+     ============================================= -->
+<?php if ($isOwnProfile): ?>
+<div class="pn-overlay" id="pn-beltline-take-overlay">
+	<div class="pn-modal-box" style="width:540px;max-width:calc(100vw - 40px);">
+		<div class="pn-modal-header">
+			<h3 class="pn-modal-title"><i class="fas fa-link" style="margin-right:8px;color:#805ad5"></i>Take an Associate</h3>
+			<button class="pn-modal-close-btn" id="pn-beltline-take-close-btn" type="button">&times;</button>
+		</div>
+		<div class="pn-modal-body">
+			<div class="pn-beltline-error-banner" id="pn-beltline-take-error"></div>
+
+			<div class="pn-beltline-field">
+				<label for="pn-beltline-person-text">Person <span class="required-indicator">*</span></label>
+				<div class="pn-beltline-search-wrap">
+					<input type="text" id="pn-beltline-person-text" placeholder="Search persona or username..." autocomplete="off" />
+					<input type="hidden" id="pn-beltline-person-id" />
+					<div class="kn-ac-results" id="pn-beltline-person-results"></div>
+				</div>
+				<div class="pn-beltline-selected-pill" id="pn-beltline-person-pill" style="display:none">
+					<span id="pn-beltline-person-pill-name"></span>
+					<button type="button" id="pn-beltline-person-pill-clear" aria-label="Clear">&times;</button>
+				</div>
+			</div>
+
+			<div class="pn-beltline-field">
+				<label>Title <span class="required-indicator">*</span></label>
+				<div class="pn-beltline-titles" id="pn-beltline-title-list">
+					<?php if (!empty($BeltlineTitleOptions)): foreach ($BeltlineTitleOptions as $_idx => $_opt): ?>
+					<label class="pn-beltline-title-opt">
+						<input type="radio" name="BeltlineTitle"
+						       value="<?= (int)$_opt['AwardId'] ?>:<?= (int)$_opt['KingdomAwardId'] ?>"
+						       data-award-id="<?= (int)$_opt['AwardId'] ?>"
+						       data-kingdomaward-id="<?= (int)$_opt['KingdomAwardId'] ?>"
+						       data-label="<?= htmlspecialchars($_opt['Label'], ENT_QUOTES) ?>">
+						<span class="pn-beltline-title-opt-label"><?= htmlspecialchars($_opt['Label']) ?></span>
+						<?php if (!empty($_opt['IsAlias'])): ?>
+							<span class="pn-beltline-title-opt-alias-hint">(kingdom alias for <?= htmlspecialchars($_opt['ParentLabel'] ?? '') ?>)</span>
+						<?php endif; ?>
+					</label>
+					<?php endforeach; else: ?>
+						<div class="pn-beltline-empty">No title options available.</div>
+					<?php endif; ?>
+				</div>
+			</div>
+
+			<div class="pn-beltline-field">
+				<label for="pn-beltline-date">Start date <span class="required-indicator">*</span></label>
+				<input type="text" id="pn-beltline-date" class="pn-beltline-date-input" placeholder="Select date..." autocomplete="off" />
+			</div>
+
+			<div class="pn-beltline-field">
+				<label for="pn-beltline-note">Note <span style="color:#a0aec0;font-weight:400;font-size:11px">(optional)</span></label>
+				<textarea id="pn-beltline-note" maxlength="400" placeholder="Optional short note about this association"></textarea>
+				<span class="pn-beltline-note-count" id="pn-beltline-note-count">400 characters remaining</span>
+			</div>
+		</div>
+		<div class="pn-modal-footer">
+			<button class="pn-btn pn-btn-secondary" id="pn-beltline-take-cancel" type="button">Cancel</button>
+			<button class="pn-btn pn-btn-primary" id="pn-beltline-take-submit" type="button"><i class="fas fa-link"></i> Take Associate</button>
+		</div>
+	</div>
+</div>
+
+<!-- =============================================
+     End Association Modal
+     ============================================= -->
+<div class="pn-overlay" id="pn-beltline-end-overlay">
+	<div class="pn-modal-box" style="width:440px;max-width:calc(100vw - 40px);">
+		<div class="pn-modal-header">
+			<h3 class="pn-modal-title"><i class="fas fa-unlink" style="margin-right:8px;color:#c53030"></i>End Association</h3>
+			<button class="pn-modal-close-btn" id="pn-beltline-end-close-btn" type="button">&times;</button>
+		</div>
+		<div class="pn-modal-body">
+			<div class="pn-beltline-error-banner" id="pn-beltline-end-error"></div>
+			<div class="pn-beltline-end-sentence" id="pn-beltline-end-sentence"></div>
+			<div class="pn-beltline-end-note">This can't be undone from here &mdash; a park or kingdom officer would need to restore it.</div>
+		</div>
+		<div class="pn-modal-footer">
+			<button class="pn-btn pn-btn-secondary" id="pn-beltline-end-cancel" type="button">Cancel</button>
+			<button class="pn-btn pn-btn-primary" id="pn-beltline-end-confirm" type="button" style="background:#c53030;border-color:#c53030"><i class="fas fa-unlink"></i> End</button>
+		</div>
+	</div>
+</div>
+<?php endif; // isOwnProfile ?>
+
+
 <?php
 // Build KingdomAwardId => max rank held by this player (for ladder award pre-fill)
 $playerAwardRanks = array();
@@ -2406,6 +2653,9 @@ var PnConfig = {
 	lastClassId:      <?= $_lastClassId ?>,
 	attendanceDates:  <?= json_encode(array_values(array_unique(array_filter(array_map(function($a) { return $a['Date'] ?? ''; }, is_array($Details['Attendance']) ? $Details['Attendance'] : []))))) ?>,
 	canEditAnyAttendance: <?= !empty($canEditAnyAttendance) ? 'true' : 'false' ?>,
+	isOwnProfile:      <?= !empty($isOwnProfile) ? 'true' : 'false' ?>,
+	sessionUserId:     <?= (int)($this->__session->user_id ?? 0) ?>,
+	beltlineTitleOptions: <?= json_encode($BeltlineTitleOptions ?? []) ?>,
 };
 // Use the viewed player's kingdom for nav search prioritization if the user has no home kingdom
 if (typeof nsKid !== 'undefined' && nsKid === 0 && PnConfig.kingdomId) nsKid = PnConfig.kingdomId;
@@ -2782,4 +3032,385 @@ $(function() {
 	}
 });
 initEmailSpellCheck('pn-acct-email', 'pn-acct-email-suggestion');
+
+// ============================================================
+// My Beltline — self-service associations
+// ============================================================
+(function() {
+	if (typeof PnConfig === 'undefined' || !PnConfig.isOwnProfile) return;
+
+	var AC_DEBOUNCE_MS = 250;
+	var CORE_AWARD_IDS = [13, 14, 15, 16];
+
+	function gid(id) { return document.getElementById(id); }
+	function escHtml(s) {
+		return String(s == null ? '' : s)
+			.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+	}
+	function formatMonthYear(isoDate) {
+		if (!isoDate) return '';
+		var parts = String(isoDate).split('-');
+		if (parts.length < 2) return '';
+		var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+		var mi = parseInt(parts[1], 10) - 1;
+		if (mi < 0 || mi > 11) return '';
+		return months[mi] + ' ' + parts[0];
+	}
+	function pnFixedAcPosition(inputEl, dropdownEl) {
+		var rect = inputEl.getBoundingClientRect();
+		dropdownEl.style.top   = (rect.bottom + 2) + 'px';
+		dropdownEl.style.left  = rect.left + 'px';
+		dropdownEl.style.width = rect.width + 'px';
+	}
+	function showOverlay(id) { var el = gid(id); if (el) el.classList.add('pn-open'); }
+	function hideOverlay(id) { var el = gid(id); if (el) el.classList.remove('pn-open'); }
+	function showError(bannerId, msg) {
+		var el = gid(bannerId);
+		if (!el) return;
+		el.textContent = msg || 'An error occurred.';
+		el.classList.add('pn-show');
+	}
+	function clearError(bannerId) {
+		var el = gid(bannerId);
+		if (!el) return;
+		el.textContent = '';
+		el.classList.remove('pn-show');
+	}
+
+	// ---------- Take Associate modal ----------
+	var takeOpenBtn   = gid('pn-beltline-take-open-btn');
+	var takeOverlay   = gid('pn-beltline-take-overlay');
+	var takeCloseBtn  = gid('pn-beltline-take-close-btn');
+	var takeCancelBtn = gid('pn-beltline-take-cancel');
+	var takeSubmitBtn = gid('pn-beltline-take-submit');
+	var personText   = gid('pn-beltline-person-text');
+	var personId     = gid('pn-beltline-person-id');
+	var personResults= gid('pn-beltline-person-results');
+	var personPill   = gid('pn-beltline-person-pill');
+	var personPillName = gid('pn-beltline-person-pill-name');
+	var personPillClear= gid('pn-beltline-person-pill-clear');
+	var titleList    = gid('pn-beltline-title-list');
+	var dateInput    = gid('pn-beltline-date');
+	var noteInput    = gid('pn-beltline-note');
+	var noteCount    = gid('pn-beltline-note-count');
+	var dateFp       = null;
+	var personTimer  = null;
+
+	function resetTakeForm() {
+		clearError('pn-beltline-take-error');
+		personText.value = '';
+		personId.value   = '';
+		if (personResults) personResults.classList.remove('kn-ac-open');
+		if (personPill) personPill.style.display = 'none';
+		personText.style.display = '';
+		if (titleList) {
+			var radios = titleList.querySelectorAll('input[type=radio]');
+			for (var i = 0; i < radios.length; i++) radios[i].checked = false;
+		}
+		if (dateFp) dateFp.clear();
+		if (dateFp) dateFp.setDate(new Date(), true);
+		noteInput.value = '';
+		noteCount.textContent = '400 characters remaining';
+	}
+
+	if (takeOpenBtn) {
+		takeOpenBtn.addEventListener('click', function() {
+			resetTakeForm();
+			showOverlay('pn-beltline-take-overlay');
+			setTimeout(function() { personText.focus(); }, 60);
+		});
+	}
+	if (takeCloseBtn)  takeCloseBtn.addEventListener('click',  function() { hideOverlay('pn-beltline-take-overlay'); });
+	if (takeCancelBtn) takeCancelBtn.addEventListener('click', function() { hideOverlay('pn-beltline-take-overlay'); });
+	if (takeOverlay) {
+		takeOverlay.addEventListener('click', function(e) {
+			if (e.target === takeOverlay) hideOverlay('pn-beltline-take-overlay');
+		});
+	}
+
+	// Flatpickr date
+	if (dateInput && typeof flatpickr !== 'undefined') {
+		dateFp = flatpickr(dateInput, {
+			altInput: true,
+			altFormat: 'F j, Y',
+			dateFormat: 'Y-m-d',
+			maxDate: 'today',
+			defaultDate: 'today'
+		});
+	}
+
+	// Note char counter
+	if (noteInput && noteCount) {
+		noteInput.addEventListener('input', function() {
+			var remaining = 400 - (noteInput.value || '').length;
+			if (remaining < 0) remaining = 0;
+			noteCount.textContent = remaining + ' characters remaining';
+		});
+	}
+
+	// Person autocomplete
+	if (personText && personResults) {
+		personText.addEventListener('input', function() {
+			personId.value = '';
+			var term = this.value.trim();
+			clearTimeout(personTimer);
+			if (term.length < 2) {
+				personResults.classList.remove('kn-ac-open');
+				return;
+			}
+			personTimer = setTimeout(function() {
+				var url = PnConfig.uir + 'PlayerAjax/player/' + PnConfig.sessionUserId + '/beltline_playersearch?q=' + encodeURIComponent(term);
+				fetch(url, { credentials: 'same-origin' })
+					.then(function(r) { return r.json(); })
+					.then(function(data) {
+						if (!data || !data.length) {
+							personResults.innerHTML = '<div class="kn-ac-item" style="color:#a0aec0;cursor:default">No players found</div>';
+							pnFixedAcPosition(personText, personResults);
+							personResults.classList.add('kn-ac-open');
+							return;
+						}
+						personResults.innerHTML = data.map(function(p) {
+							var abbr = '';
+							if (p.k_abbr || p.p_abbr) {
+								abbr = ' <span style="color:#a0aec0;font-size:11px">(' + escHtml(p.k_abbr||'') + (p.p_abbr ? ':'+escHtml(p.p_abbr) : '') + ')</span>';
+							}
+							return '<div class="kn-ac-item" tabindex="-1" data-id="' + p.MundaneId + '" data-name="' + encodeURIComponent(p.Persona||'') + '">'
+								+ escHtml(p.Persona||'') + abbr + '</div>';
+						}).join('');
+						pnFixedAcPosition(personText, personResults);
+						personResults.classList.add('kn-ac-open');
+					})
+					.catch(function(err) { console.warn('[beltline] playersearch failed', err); });
+			}, AC_DEBOUNCE_MS);
+		});
+
+		personResults.addEventListener('click', function(e) {
+			var item = e.target.closest('.kn-ac-item[data-id]');
+			if (!item) return;
+			var name = decodeURIComponent(item.dataset.name || '');
+			var id   = item.dataset.id;
+			personId.value = id;
+			personText.value = '';
+			personText.style.display = 'none';
+			personPillName.textContent = name;
+			personPill.style.display = 'inline-flex';
+			personResults.classList.remove('kn-ac-open');
+		});
+
+		document.addEventListener('click', function(e) {
+			if (!personResults.contains(e.target) && e.target !== personText) {
+				personResults.classList.remove('kn-ac-open');
+			}
+		});
+	}
+	if (personPillClear) {
+		personPillClear.addEventListener('click', function() {
+			personId.value = '';
+			personPill.style.display = 'none';
+			personText.style.display = '';
+			personText.value = '';
+			personText.focus();
+		});
+	}
+
+	// Submit
+	if (takeSubmitBtn) {
+		takeSubmitBtn.addEventListener('click', function() {
+			clearError('pn-beltline-take-error');
+
+			var mundaneId = parseInt(personId.value || '0', 10);
+			if (!mundaneId) { showError('pn-beltline-take-error', 'Please select a person.'); return; }
+
+			var selected = titleList ? titleList.querySelector('input[type=radio]:checked') : null;
+			if (!selected) { showError('pn-beltline-take-error', 'Please pick a title.'); return; }
+			var awardId        = parseInt(selected.dataset.awardId || '0', 10);
+			var kingdomAwardId = parseInt(selected.dataset.kingdomawardId || '0', 10);
+			if (CORE_AWARD_IDS.indexOf(awardId) === -1) {
+				showError('pn-beltline-take-error', 'That title is not a valid associate title.');
+				return;
+			}
+
+			var dateVal = dateInput ? dateInput.value : '';
+			if (!dateVal || !/^\d{4}-\d{2}-\d{2}$/.test(dateVal)) {
+				showError('pn-beltline-take-error', 'Please pick a start date.'); return;
+			}
+
+			var note = (noteInput && noteInput.value) ? noteInput.value : '';
+
+			takeSubmitBtn.disabled = true;
+			takeSubmitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+
+			var body = new URLSearchParams();
+			body.append('MundaneId', String(mundaneId));
+			body.append('AwardId', String(awardId));
+			body.append('KingdomAwardId', String(kingdomAwardId));
+			body.append('Date', dateVal);
+			body.append('Note', note);
+
+			fetch(PnConfig.uir + 'PlayerAjax/player/' + PnConfig.sessionUserId + '/beltline_take', {
+				method: 'POST',
+				credentials: 'same-origin',
+				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+				body: body.toString()
+			})
+				.then(function(r) { return r.json(); })
+				.then(function(resp) {
+					takeSubmitBtn.disabled = false;
+					takeSubmitBtn.innerHTML = '<i class="fas fa-link"></i> Take Associate';
+					if (!resp || resp.status !== 0) {
+						showError('pn-beltline-take-error', (resp && resp.error) || 'Could not create association.');
+						return;
+					}
+					// Inject new row into My Associates column
+					var listEl = gid('pn-beltline-associates-list');
+					if (listEl && resp.row) {
+						var emptyMsg = listEl.querySelector('.pn-beltline-empty[data-empty-for="associates"]');
+						if (emptyMsg) emptyMsg.remove();
+						var rowHtml = buildAssociateRow(resp.row);
+						listEl.insertAdjacentHTML('beforeend', rowHtml);
+					}
+					hideOverlay('pn-beltline-take-overlay');
+				})
+				.catch(function(err) {
+					console.warn('[beltline] take failed', err);
+					takeSubmitBtn.disabled = false;
+					takeSubmitBtn.innerHTML = '<i class="fas fa-link"></i> Take Associate';
+					showError('pn-beltline-take-error', 'Network error — please try again.');
+				});
+		});
+	}
+
+	function buildAssociateRow(row) {
+		var pid   = parseInt(row.RecipientId || 0, 10);
+		var name  = row.Persona || '';
+		var title = row.TitleName || '';
+		var dateLabel = formatMonthYear(row.Date);
+		var dateHtml = dateLabel ? '<span class="pn-beltline-date">Since ' + escHtml(dateLabel) + '</span>' : '';
+		return '<div class="pn-beltline-row" data-awards-id="' + parseInt(row.AwardsId||0,10) + '"'
+			+ ' data-side="associate"'
+			+ ' data-persona="' + escHtml(name) + '"'
+			+ ' data-title="' + escHtml(title) + '">'
+			+ '<div class="pn-beltline-row-main">'
+			+ '<a class="pn-beltline-person" href="' + PnConfig.uir + 'Player/profile/' + pid + '">' + escHtml(name) + '</a>'
+			+ '<span class="pn-beltline-title">' + escHtml(title) + '</span>'
+			+ dateHtml
+			+ '</div>'
+			+ '<button type="button" class="pn-beltline-end-btn" aria-label="End association">End</button>'
+			+ '</div>';
+	}
+
+	// ---------- End Association modal ----------
+	var endOverlay    = gid('pn-beltline-end-overlay');
+	var endCloseBtn   = gid('pn-beltline-end-close-btn');
+	var endCancelBtn  = gid('pn-beltline-end-cancel');
+	var endConfirmBtn = gid('pn-beltline-end-confirm');
+	var endSentenceEl = gid('pn-beltline-end-sentence');
+	var pendingEndRow = null;  // DOM row reference
+
+	function openEndModal(rowEl) {
+		pendingEndRow = rowEl;
+		clearError('pn-beltline-end-error');
+		var side    = rowEl.getAttribute('data-side');
+		var persona = rowEl.getAttribute('data-persona') || '';
+		var title   = rowEl.getAttribute('data-title') || '';
+		var sentence;
+		if (side === 'sponsor') {
+			sentence = 'You’re ending your association with <strong>' + escHtml(persona) + '</strong> as their <strong>' + escHtml(title) + '</strong>.';
+		} else {
+			sentence = 'You’re ending <strong>' + escHtml(persona) + '</strong>’s association as your <strong>' + escHtml(title) + '</strong>.';
+		}
+		endSentenceEl.innerHTML = sentence;
+		showOverlay('pn-beltline-end-overlay');
+	}
+
+	// Delegated click handler for all [End] buttons in both columns
+	document.addEventListener('click', function(e) {
+		var btn = e.target.closest('.pn-beltline-end-btn');
+		if (!btn) return;
+		var row = btn.closest('.pn-beltline-row');
+		if (!row) return;
+		openEndModal(row);
+	});
+
+	if (endCloseBtn)  endCloseBtn.addEventListener('click',  function() { hideOverlay('pn-beltline-end-overlay'); });
+	if (endCancelBtn) endCancelBtn.addEventListener('click', function() { hideOverlay('pn-beltline-end-overlay'); });
+	if (endOverlay) {
+		endOverlay.addEventListener('click', function(e) {
+			if (e.target === endOverlay) hideOverlay('pn-beltline-end-overlay');
+		});
+	}
+
+	if (endConfirmBtn) {
+		endConfirmBtn.addEventListener('click', function() {
+			if (!pendingEndRow) { hideOverlay('pn-beltline-end-overlay'); return; }
+			clearError('pn-beltline-end-error');
+			var awardsId = parseInt(pendingEndRow.getAttribute('data-awards-id') || '0', 10);
+			if (!awardsId) {
+				showError('pn-beltline-end-error', 'Invalid association.');
+				return;
+			}
+
+			endConfirmBtn.disabled = true;
+			endConfirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Ending...';
+
+			var body = new URLSearchParams();
+			body.append('AwardsId', String(awardsId));
+
+			fetch(PnConfig.uir + 'PlayerAjax/player/' + PnConfig.sessionUserId + '/beltline_end', {
+				method: 'POST',
+				credentials: 'same-origin',
+				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+				body: body.toString()
+			})
+				.then(function(r) { return r.json(); })
+				.then(function(resp) {
+					endConfirmBtn.disabled = false;
+					endConfirmBtn.innerHTML = '<i class="fas fa-unlink"></i> End';
+					if (!resp || resp.status !== 0) {
+						showError('pn-beltline-end-error', (resp && resp.error) || 'Could not end association.');
+						return;
+					}
+					// Fade + remove the row
+					pendingEndRow.style.transition = 'opacity 220ms ease';
+					pendingEndRow.style.opacity = '0';
+					var rowToRemove = pendingEndRow;
+					setTimeout(function() {
+						var parentCol = rowToRemove.parentNode;
+						rowToRemove.remove();
+						// If a column is now empty, drop an empty-state message in
+						if (parentCol) {
+							var stillHas = parentCol.querySelector('.pn-beltline-row');
+							if (!stillHas) {
+								var isAssocList = parentCol.id === 'pn-beltline-associates-list';
+								if (isAssocList) {
+									parentCol.insertAdjacentHTML('beforeend', '<div class="pn-beltline-empty" data-empty-for="associates">You have no associates yet. Take one?</div>');
+								} else {
+									// sponsors column
+									var colEl = parentCol;
+									colEl.insertAdjacentHTML('beforeend', '<div class="pn-beltline-empty">No current sponsors.</div>');
+								}
+							}
+						}
+					}, 240);
+					pendingEndRow = null;
+					hideOverlay('pn-beltline-end-overlay');
+				})
+				.catch(function(err) {
+					console.warn('[beltline] end failed', err);
+					endConfirmBtn.disabled = false;
+					endConfirmBtn.innerHTML = '<i class="fas fa-unlink"></i> End';
+					showError('pn-beltline-end-error', 'Network error — please try again.');
+				});
+		});
+	}
+
+	// Escape closes the topmost open modal
+	document.addEventListener('keydown', function(e) {
+		if (e.key !== 'Escape' && e.keyCode !== 27) return;
+		if (endOverlay && endOverlay.classList.contains('pn-open'))     { hideOverlay('pn-beltline-end-overlay'); return; }
+		if (takeOverlay && takeOverlay.classList.contains('pn-open'))  { hideOverlay('pn-beltline-take-overlay'); return; }
+	});
+})();
+
 </script>
