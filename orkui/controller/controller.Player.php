@@ -521,8 +521,9 @@ class Controller_Player extends Controller {
 		$this->data['Player']['ParkName'] = $this->session->park_name;
 
 		if ($uid === (int)$id) {
+			// === My Beltline: associates I've taken ===
 			$DB->Clear();
-			$__assocSql = "SELECT ma.mundane_id AS RecipientId, m.persona AS Persona,
+			$__assocSql = "SELECT ma.awards_id AS AwardsId, ma.mundane_id AS RecipientId, m.persona AS Persona,
 				IFNULL(ka.name, a.name) AS TitleName, a.peerage AS Peerage, ma.date AS Date
 				FROM ork_awards ma
 				JOIN ork_award a ON a.award_id = ma.award_id
@@ -540,6 +541,7 @@ class Controller_Player extends Controller {
 			if ($__assocResult) {
 				while ($__assocResult->Next()) {
 					$__assocs[] = [
+						'AwardsId'    => (int)$__assocResult->AwardsId,
 						'RecipientId' => (int)$__assocResult->RecipientId,
 						'Persona'     => $__assocResult->Persona,
 						'TitleName'   => $__assocResult->TitleName,
@@ -550,6 +552,82 @@ class Controller_Player extends Controller {
 			}
 			$DB->Clear();
 			$this->data['MyAssociates'] = $__assocs;
+
+			// === My Beltline: sponsors who have taken me ===
+			$DB->Clear();
+			$__sponsorSql = "SELECT ma.awards_id AS AwardsId, ma.given_by_id AS SponsorId, s.persona AS Persona,
+				IFNULL(ka.name, a.name) AS TitleName, a.peerage AS Peerage, ma.date AS Date
+				FROM ork_awards ma
+				JOIN ork_award a ON a.award_id = ma.award_id
+				LEFT JOIN ork_kingdomaward ka ON ka.kingdomaward_id = ma.kingdomaward_id
+				JOIN ork_mundane s ON s.mundane_id = ma.given_by_id
+				WHERE ma.mundane_id = $uid
+					AND (a.peerage IN ('Squire','Man-At-Arms','Page','Lords-Page')
+						OR LOWER(IFNULL(ka.name, a.name)) LIKE '%woman%at%arms%')
+					AND (ma.revoked = 0 OR ma.revoked IS NULL)
+				ORDER BY CASE a.peerage
+					WHEN 'Squire' THEN 1 WHEN 'Man-At-Arms' THEN 2
+					WHEN 'Lords-Page' THEN 3 WHEN 'Page' THEN 4 ELSE 5 END, s.persona ASC";
+			$__sponsorResult = $DB->DataSet($__sponsorSql);
+			$__sponsors = [];
+			if ($__sponsorResult) {
+				while ($__sponsorResult->Next()) {
+					$__sponsors[] = [
+						'AwardsId'  => (int)$__sponsorResult->AwardsId,
+						'SponsorId' => (int)$__sponsorResult->SponsorId,
+						'Persona'   => $__sponsorResult->Persona,
+						'TitleName' => $__sponsorResult->TitleName,
+						'Peerage'   => $__sponsorResult->Peerage,
+						'Date'      => $__sponsorResult->Date,
+					];
+				}
+			}
+			$DB->Clear();
+			$this->data['MySponsors'] = $__sponsors;
+
+			// === Title options for Take Associate modal ===
+			// Core associate awards: 13 Lord's Page, 14 Man-at-Arms, 15 Page, 16 Squire
+			// Ordered for UX: Squire, Man-at-Arms, Page, Lord's Page.
+			$__beltTitles = [
+				['AwardId' => 16, 'Label' => 'Squire',       'KingdomAwardId' => 0, 'IsAlias' => false, 'ParentLabel' => 'Squire'],
+				['AwardId' => 14, 'Label' => 'Man-at-Arms',  'KingdomAwardId' => 0, 'IsAlias' => false, 'ParentLabel' => 'Man-at-Arms'],
+				['AwardId' => 15, 'Label' => 'Page',         'KingdomAwardId' => 0, 'IsAlias' => false, 'ParentLabel' => 'Page'],
+				['AwardId' => 13, 'Label' => "Lord's Page",  'KingdomAwardId' => 0, 'IsAlias' => false, 'ParentLabel' => "Lord's Page"],
+			];
+			$__mentorKingdomId = (int)($this->session->kingdom_id ?? 0);
+			$__aliasByParent = [16 => [], 14 => [], 15 => [], 13 => []];
+			if ($__mentorKingdomId > 0) {
+				$DB->Clear();
+				$__aliasSql = "SELECT kingdomaward_id, award_id, name
+					FROM ork_kingdomaward
+					WHERE kingdom_id = {$__mentorKingdomId}
+					  AND award_id IN (13, 14, 15, 16)
+					ORDER BY name ASC";
+				$__aliasRs = $DB->DataSet($__aliasSql);
+				if ($__aliasRs) {
+					while ($__aliasRs->Next()) {
+						$__pid = (int)$__aliasRs->award_id;
+						if (!isset($__aliasByParent[$__pid])) continue;
+						$__aliasByParent[$__pid][] = [
+							'AwardId'        => $__pid,
+							'Label'          => $__aliasRs->name,
+							'KingdomAwardId' => (int)$__aliasRs->kingdomaward_id,
+							'IsAlias'        => true,
+							'ParentLabel'    => null, // filled below from the parent
+						];
+					}
+				}
+				$DB->Clear();
+			}
+			$__beltlineTitleOptions = [];
+			foreach ($__beltTitles as $__core) {
+				$__beltlineTitleOptions[] = $__core;
+				foreach ($__aliasByParent[$__core['AwardId']] as $__alias) {
+					$__alias['ParentLabel'] = $__core['Label'];
+					$__beltlineTitleOptions[] = $__alias;
+				}
+			}
+			$this->data['BeltlineTitleOptions'] = $__beltlineTitleOptions;
 		}
 	}
 
