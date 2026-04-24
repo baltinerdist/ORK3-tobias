@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/../officer_dashboard_helper.php';
+
 class Controller_Kingdom extends Controller {
 
 	public function __construct($call=null, $id=null) {
@@ -303,6 +305,7 @@ class Controller_Kingdom extends Controller {
 				$preloadOfficers[] = ['MundaneId' => $o['MundaneId'], 'Persona' => $o['Persona'], 'Role' => $o['OfficerRole']];
 		}
 		$this->data['PreloadOfficers']     = $preloadOfficers;
+		$this->data['OfficerContext'] = officer_dashboard_build_context($this->session, 'kingdom', (int)$kingdom_id);
 		// [TOURNAMENTS HIDDEN] $this->data['kingdom_tournaments'] = [];
 
 		$rawParks = $this->Kingdom->GetParks(['KingdomId' => $kingdom_id]);

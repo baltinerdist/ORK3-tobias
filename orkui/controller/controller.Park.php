@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/../officer_dashboard_helper.php';
+
 class Controller_Park extends Controller
 {
 	public function __construct( $call = null, $id = null )
@@ -96,6 +98,7 @@ class Controller_Park extends Controller
 			}
 		}
 		$this->data['PreloadOfficers'] = $preloadOfficers;
+		$this->data['OfficerContext'] = officer_dashboard_build_context($this->session, 'park', (int)$park_id);
 
 		$classesResult = $this->Attendance->get_classes();
 		$this->data['Classes'] = array_map(function($c) {
