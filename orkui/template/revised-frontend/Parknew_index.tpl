@@ -386,7 +386,13 @@
 
 			<!-- Tab navigation -->
 			<ul class="pk-tab-nav">
-				<li data-pktab="about" class="pk-tab-active">
+				<?php $__isOfficer = !empty($OfficerContext['IsOfficer']); ?>
+				<?php if ($__isOfficer): ?>
+				<li class="pk-tab-active pk-tab-officer" data-pktab="officer">
+					<i class="fas fa-user-shield"></i><span class="pk-tab-label"> My Park</span>
+				</li>
+				<?php endif; ?>
+				<li data-pktab="about" class="<?= $__isOfficer ? '' : 'pk-tab-active' ?>">
 					<i class="fas fa-info-circle"></i><span class="pk-tab-label"> About</span>
 				</li>
 				<li data-pktab="events" class="">
@@ -420,10 +426,17 @@
 				</li>
 				<?php endif; ?>
 			</ul>
-			<div class="pk-active-tab-label" id="pk-active-tab-label">About</div>
+			<div class="pk-active-tab-label" id="pk-active-tab-label"><?= $__isOfficer ? 'My Park' : 'About' ?></div>
+
+			<!-- Officer Dashboard Tab -->
+			<?php if ($__isOfficer): ?>
+			<div class="pk-tab-panel" id="pk-tab-officer">
+				<?php include __DIR__ . '/officer_dashboard_panel.tpl'; ?>
+			</div>
+			<?php endif; ?>
 
 			<!-- About Tab -->
-			<div class="pk-tab-panel" id="pk-tab-about">
+			<div class="pk-tab-panel" id="pk-tab-about"<?= $__isOfficer ? ' style="display:none"' : '' ?>>
 				<?php
 					$_addrParts = array_filter([trim($parkInfo['Address'] ?? ''), trim($parkInfo['City'] ?? '')]);
 					$_addrLine1 = implode(', ', $_addrParts);

@@ -251,7 +251,13 @@
 	<div class="kn-main">
 		<div class="kn-tabs">
 			<ul class="kn-tab-nav">
-				<li class="kn-tab-active" data-kntab="parks">
+				<?php $__isOfficer = !empty($OfficerContext['IsOfficer']); ?>
+				<?php if ($__isOfficer): ?>
+				<li class="kn-tab-active kn-tab-officer" data-kntab="officer">
+					<i class="fas fa-user-shield"></i><span class="kn-tab-label"> My Kingdom</span>
+				</li>
+				<?php endif; ?>
+				<li class="<?= $__isOfficer ? '' : 'kn-tab-active' ?>" data-kntab="parks">
 					<i class="fas fa-map-marker-alt"></i><span class="kn-tab-label"> Parks</span>
 					<span class="kn-tab-count">(<?= count($parkList) ?>)</span>
 				</li>
@@ -289,10 +295,17 @@
 				</li>
 				<?php endif; ?>
 			</ul>
-			<div class="kn-active-tab-label" id="kn-active-tab-label">Parks</div>
+			<div class="kn-active-tab-label" id="kn-active-tab-label"><?= $__isOfficer ? 'My Kingdom' : 'Parks' ?></div>
+
+			<!-- Officer Dashboard Tab -->
+			<?php if ($__isOfficer): ?>
+			<div class="kn-tab-panel" id="kn-tab-officer">
+				<?php include __DIR__ . '/officer_dashboard_panel.tpl'; ?>
+			</div>
+			<?php endif; ?>
 
 			<!-- Parks Tab -->
-			<div class="kn-tab-panel" id="kn-tab-parks">
+			<div class="kn-tab-panel" id="kn-tab-parks"<?= $__isOfficer ? ' style="display:none"' : '' ?>>
 				<?php
 					// Pre-sort alphabetically so tiles match default list order
 					usort($parkList, function($a, $b) { return strcmp($a['ParkName'], $b['ParkName']); });
