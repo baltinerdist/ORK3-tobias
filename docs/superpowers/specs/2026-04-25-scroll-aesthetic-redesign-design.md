@@ -58,7 +58,7 @@ Orientation (portrait 8.5×11 / landscape 11×8.5) is **independent of family** 
 
 ## 4. Palette Token System
 
-Current palette has 4 tokens: `bg`, `text`, `accent`, `border`. Extend to 8 to support real illumination:
+Current palette has 4 tokens: `bg`, `text`, `accent`, `border`. Extend to **7 tokens** (originally proposed 8 with `ground_b` + `ink_secondary` — cut after PM review as speculative; only 4 of 10 families would have used `ground_b` and `ink_secondary` had no concrete consumer):
 
 ```
 bg              — primary parchment / ground color
@@ -71,15 +71,9 @@ wax             — wax seal color (varies family-to-family)
 ground_a        — supporting decoration color (per family)
 ```
 
-Two optional extension tokens for families that need more:
-```
-ground_b        — third decoration color (Provençal Bestiary, Imperial Edict, Scholar's Hand, Crusader's Charter)
-ink_secondary   — secondary ink for sub-headings, marginalia (italics, small-caps subtitles)
-```
+Token references inside primitives stay the same — primitives ask the palette for the token they need.
 
-Token references inside primitives stay the same — primitives ask the palette for the token they need. Adding tokens is additive; existing primitives that consume only `bg/text/accent/border` continue to work.
-
-The 12 legacy palettes (`classic`, `royal`, `nature`, `crimson`, `obsidian`, `white`, `burgundy`, `forest`, `ink`, `illuminated`, `sable`, `twilight`) are removed — replaced by the 10 family palettes. No legacy fallback; v1 ships clean.
+The 12 legacy palettes (`classic`, `royal`, `nature`, `crimson`, `obsidian`, `white`, `burgundy`, `forest`, `ink`, `illuminated`, `sable`, `twilight`) are removed in the new builder UI — replaced by the 10 family palettes. A **Classic Templates preserve mode** (see section 13) keeps the legacy renderer reachable via an opt-in toggle for one quarter post-launch as a stakeholder safety net.
 
 ## 5. Family Manifest (Single Source of Truth)
 
@@ -212,18 +206,22 @@ A new migration `db-migrations/2026-04-25-scroll-family-assets.sql` adds the col
 
 Asset bundle ships in-repo at `/system/assets/scroll/families/`. ~120 PNGs at ~30 KB each ≈ 3.6 MB committed to the repo. Acceptable for v1.
 
-### Tint pipeline
+### Tint pipeline — pre-tinted at seed time (revised after Architect review)
 
-At render time, for each asset reference:
-1. Load source PNG (alpha-preserved).
-2. If `tint_mode = 'channel_multiply'`: multiply each non-transparent pixel by the target palette token color. (Preserves shading; converts e.g. red ink to ultramarine.)
-3. If `tint_mode = 'overlay'`: composite the asset over a palette-color fill, using the asset's alpha as the mask. (Replaces the asset's color with palette color.)
-4. If `tint_mode = 'none'`: composite as-is.
+**Decision:** Tint all palette variants of every system-owned asset at **seed time**, not render time. Render becomes a file lookup + composite — no per-pixel loops in the hot path, no ephemeral cache fragility.
 
-JS canvas: implemented via `globalCompositeOperation = 'multiply'` plus a colored fill rect masked by the asset's alpha channel.
-PHP: GD's `imagefilter(IMG_FILTER_COLORIZE)` is **additive**, not multiplicative — it lightens, doesn't replace luminance correctly. Real channel-multiply requires per-pixel manipulation or Imagick. **Decision (v1):** prefer Imagick (`Imagick::compositeImage(Imagick::COMPOSITE_MULTIPLY)`) when available; fall back to a hand-rolled per-pixel multiply via `imagecolorat`/`imagesetpixel` when not. Performance acceptable due to the asset cache (each `<asset, palette>` tinted once, then cached as PNG). Phase 1 validates the Imagick path against the production container before committing.
+For each system-owned asset (frame corner, edge tile, initial vine, drôlerie):
+1. Source PNG must be **grayscale + alpha** (luminance-only). Seed script rejects color-mixed PNGs to prevent silent wrong-tint output.
+2. For each palette token the asset is meant to be tinted to (typically `border`, sometimes `accent` or `gold`), seed script generates a pre-tinted variant: `{role}_{token}.png`.
+3. Generated files committed alongside source: `system/assets/scroll/families/<family>/frame_corner_nw.png` (source, grayscale) plus `frame_corner_nw_border.png` (pre-tinted to that family's `border` color).
 
-Asset caching: tinted variants cached server-side (filesystem) keyed on `<asset_id>_<palette_hash>.png`. Cache lifetime indefinite; invalidated when the source asset is replaced.
+At render time, family renderer loads the pre-tinted PNG by name and composites — no tinting happens during user-facing requests.
+
+**Channel-multiply math (used at seed time only):** for each pixel, `output_R = (source_gray / 255.0) * target_R`. Same for G and B. Alpha preserved.
+
+**User-uploaded artwork** (the existing `ScrollArtwork` upload flow, unchanged) does not benefit from seed-time tinting and falls back to runtime tint when needed; this path uses GD per-pixel multiply with a `/tmp` cache. The cold-start cost there only affects user-uploaded decorative slots, not the family rendering hot path.
+
+**Storage cost:** ~10 families × ~10 assets × 1-2 tinted variants per asset ≈ 100-200 small PNGs (~30 KB each) ≈ 3-6 MB additional. Acceptable.
 
 ## 8. Layout Conventions
 
@@ -357,11 +355,28 @@ None required. The builder is single-session — there's no persisted "draft scr
 - **Old palettes / borders** — no in-flight consumers (single-session builder), removed cleanly.
 - **`controller.ScrollAjax.php` API contract** — `POST /ScrollAjax/generate` accepts the new `family` field; rejects requests with old `template`+`palette`+`borderStyle` shape with a clear error pointing to the new shape. (User-facing builder always sends the new shape; only old bookmarks or scripted callers would hit this.)
 
+### Classic Templates preserve mode (added after PM review — stakeholder safety net)
+
+The 8 legacy templates (Royal Decree, Heraldic Shield, Chancery Letter, Illuminated Manuscript, Battle Standard, Guild Charter, Arcane Grimoire, Bardic Ballad) are preserved as a **read-only opt-in mode** for one quarter (90 days) post-launch:
+
+- Builder UI shows a small "Use classic templates" link beneath the family picker. Clicking opens the legacy builder route.
+- Legacy route: `/Scroll/index/{id}?classic=1` → renders the pre-redesign `Scroll_builder.tpl` UI verbatim, dispatching to a frozen copy of the legacy generator preserved at `orkui/controller/controller.ScrollAjaxLegacy.php` (forked from `controller.ScrollAjax.php` at the spec commit). No new features land in the legacy generator.
+- Deprecation banner inside classic mode: "These templates are scheduled for retirement on [today + 90 days]. The new style families produce richer output — try them with this link."
+- After 90 days, classic mode is removed in a follow-up PR; the legacy controller file deleted.
+
+This gives stakeholder rollback without forking the project's main UX path.
+
+### Print fidelity adjustments for dark-ground families
+
+Astral Codex uses a dark celestial ground (`#0A0A1F`). When rendered for **print export** (300 DPI PNG download), the renderer auto-substitutes a parchment-bg variant: `bg → #F4E8C8`, `text → #1C1810` (rest of the palette unchanged so the silver/violet accents still read). The screen preview retains the dark-bg version. This avoids the "ink-saturated rectangle" failure mode on home printers without losing the family identity. A small "preview" badge over the canvas tells the user "Print version uses parchment background" when Astral Codex is selected.
+
 ## 14. Testing
 
 ### Visual regression
 
-CI test: render all 10 families with a fixed input fixture (same recipient name, award name, body text, signatures, heraldry stubs) on both renderers. Pixel-diff JS-canvas output (rendered to PNG via headless Chrome) against PHP-GD output. Tolerance ≤ 1% per-channel on non-text regions. Failures block merge.
+CI test: render all 10 families with a fixed input fixture (same recipient name, award name, body text, signatures, heraldry stubs) on both renderers. Pixel-diff JS-canvas output (rendered to PNG via headless Chrome) against PHP-GD output. Tolerance ≤ 3% per-channel on non-text regions; **text regions, historiated initial bounding boxes, and banderole regions are excluded from the diff** (`PARITY_EXCLUSIONS`) because canvas vs. GD glyph metrics, pattern alignment, and text-along-curve sampling are not byte-identical and snapshot stability would require pixel-perfect text rasterization which is out of scope. Failures outside excluded regions block merge.
+
+Random elements (foxing spots, burnt-edge bites) MUST use a deterministic seeded PRNG (`seed = w * 7919 + h * 6151` is the existing pattern) so that repeated renders of the same input produce identical output. JS `Math.random()` is banned in the render path.
 
 Snapshot test: render all 10 families with the same fixture, store result PNGs in `tests/scroll/snapshots/`. PR that changes any family must update its snapshot intentionally; uncommitted snapshot diffs fail CI.
 
@@ -468,7 +483,11 @@ Phasing is dev-internal — all 10 families ship together as v1. This is the ord
 
 **Asset bundle size.** 120 assets × ~30KB ≈ 3.6 MB committed to repo. Acceptable for v1. If it grows past 10 MB consider moving to a CDN or release artifact.
 
-**Imagick dependency.** Per section 7, PHP GD's colorize filter is additive, not channel-multiply. Imagick is the preferred path. Risk: Imagick may not be installed in the production container. Mitigation: phase 1 first task is to verify `extension_loaded('imagick')` in the prod-equivalent Docker container (`ork3-php8`); if missing, install via dockerfile update before any other work proceeds. The hand-rolled per-pixel fallback is acceptable as a backup but slower for first-render of un-cached assets.
+**Imagick dependency — eliminated.** Pre-tinting at seed time (section 7 revised) means the render path no longer needs channel-multiply at all for system-owned assets. GD remains the only required dependency. Imagick is no longer a prerequisite; the user-uploaded artwork path retains a per-pixel multiply fallback in GD but the cost is bounded to user-decorated scrolls only.
+
+**Astral Codex print fidelity.** Dark-bg + light-text on home inkjet printers wastes ink and produces washed-out text on lower-quality paper. Mitigation in section 13 (print export auto-substitutes parchment bg).
+
+**Game-icons.net CC-BY 3.0 attribution.** Visible attribution required, not just buried in a repo file. Plan 3 adds a small "Decorations: game-icons.net (CC-BY 3.0)" line in the bottom margin of any scroll using Game-icons assets, plus a per-asset row in `system/assets/scroll/ATTRIBUTION.md`. Builder UI also shows a small attribution link.
 
 ### Open questions for user review
 
