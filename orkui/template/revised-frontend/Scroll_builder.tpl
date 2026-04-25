@@ -2330,6 +2330,8 @@
 
 </div><!-- /sc-workspace -->
 
+<script src="<?= HTTP_TEMPLATE ?>revised-frontend/scroll/scroll-palette.js?v=<?= filemtime(DIR_TEMPLATE . 'revised-frontend/scroll/scroll-palette.js') ?>"></script>
+<script src="<?= HTTP_TEMPLATE ?>revised-frontend/scroll/scroll-primitives.js?v=<?= filemtime(DIR_TEMPLATE . 'revised-frontend/scroll/scroll-primitives.js') ?>"></script>
 <script src="<?= HTTP_ASSETS ?>scroll/celticknot.js?v=<?= filemtime(DIR_ASSETS . "scroll/celticknot.js") ?>"></script>
 
 <!-- Toast notification -->
