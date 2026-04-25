@@ -1,0 +1,222 @@
+{
+	"hibernian_knotwork": {
+		"name": "Hibernian Knotwork",
+		"period": "Insular · c. 700",
+		"mood": "Pagan-Christian, timeless, no gold. Saturated earth pigments, geometric interlace.",
+		"orientation_default": "portrait",
+		"palette": {
+			"bg": "#EBDDB2", "text": "#1C1810", "accent": "#E34234",
+			"border": "#0B6623", "gold": "#D4A017", "gold_highlight": "#F0C870",
+			"wax": "#7B1F2A", "ground_a": "#0B6623"
+		},
+		"fonts": {
+			"title": "Uncial Antiqua, serif", "title_php": "Uncial Antiqua",
+			"subtitle": "Caudex, serif", "subtitle_php": "Caudex",
+			"body": "Caudex, serif", "body_php": "Caudex",
+			"signatures": "Pinyon Script, cursive", "signatures_php": "Pinyon Script",
+			"date": "Caudex, serif", "date_php": "Caudex"
+		},
+		"frame": "insular_knot",
+		"decoration": ["heraldry_medallion", "knotwork_corners"],
+		"layout": "three_zone_vertical",
+		"sigCount": 2
+	},
+	"northern_gothic": {
+		"name": "Northern Gothic",
+		"period": "Germanic · 14th c.",
+		"mood": "Imperial decree, dense ivy borders, gilded besants, deep ultramarine and vermilion.",
+		"orientation_default": "portrait",
+		"palette": {
+			"bg": "#F4E8C8", "text": "#1C1810", "accent": "#B71C2A",
+			"border": "#2A4B8D", "gold": "#D4AF37", "gold_highlight": "#FFF3B0",
+			"wax": "#7B1F2A", "ground_a": "#0B6623"
+		},
+		"fonts": {
+			"title": "UnifrakturMaguntia, serif", "title_php": "UnifrakturMaguntia",
+			"subtitle": "Cormorant Garamond, serif", "subtitle_php": "Cormorant Garamond",
+			"body": "EB Garamond, serif", "body_php": "EB Garamond",
+			"signatures": "Pinyon Script, cursive", "signatures_php": "Pinyon Script",
+			"date": "Goudy Bookletter 1911, serif", "date_php": "Goudy Bookletter 1911"
+		},
+		"frame": "gothic_ivy",
+		"decoration": ["historiated_initial", "drolerie", "heraldry_medallion", "gilded_besants"],
+		"layout": "three_zone_vertical",
+		"sigCount": 2
+	},
+	"provencal_bestiary": {
+		"name": "Provençal Bestiary",
+		"period": "Gothic · 14th c.",
+		"mood": "Whimsical Gothic margins overrun with grotesques. Asymmetric, jewel-tone.",
+		"orientation_default": "portrait",
+		"palette": {
+			"bg": "#F1E4BD", "text": "#1C1810", "accent": "#E34234",
+			"border": "#3B5998", "gold": "#D4AF37", "gold_highlight": "#FFF3B0",
+			"wax": "#7B1F2A", "ground_a": "#43A47A"
+		},
+		"fonts": {
+			"title": "MedievalSharp, cursive", "title_php": "MedievalSharp",
+			"subtitle": "Sorts Mill Goudy, serif", "subtitle_php": "Sorts Mill Goudy",
+			"body": "Sorts Mill Goudy, serif", "body_php": "Sorts Mill Goudy",
+			"signatures": "Pinyon Script, cursive", "signatures_php": "Pinyon Script",
+			"date": "Sorts Mill Goudy, serif", "date_php": "Sorts Mill Goudy"
+		},
+		"frame": "asymmetric_ivy_grotesque",
+		"decoration": ["historiated_initial", "drolerie", "banderole", "marginalia_grotesque"],
+		"layout": "asymmetric_l_frame",
+		"sigCount": 2
+	},
+	"crimson_decree": {
+		"name": "Crimson Decree",
+		"period": "Royal · Byzantine-influenced",
+		"mood": "Royal red and gold, gothic arch frame, oversized wax seal. Monarchical proclamation.",
+		"orientation_default": "portrait",
+		"palette": {
+			"bg": "#F8F4E3", "text": "#1C1810", "accent": "#7B1F2A",
+			"border": "#7B1F2A", "gold": "#D4AF37", "gold_highlight": "#FFF8DC",
+			"wax": "#7B1F2A", "ground_a": "#5C0E1A"
+		},
+		"fonts": {
+			"title": "Cinzel, serif", "title_php": "Cinzel",
+			"subtitle": "Cormorant Garamond, serif", "subtitle_php": "Cormorant Garamond",
+			"body": "Cormorant Garamond, serif", "body_php": "Cormorant Garamond",
+			"signatures": "Great Vibes, cursive", "signatures_php": "Great Vibes",
+			"date": "Cormorant Garamond, serif", "date_php": "Cormorant Garamond"
+		},
+		"frame": "gothic_arch",
+		"decoration": ["historiated_initial", "heraldry_medallion", "gold_ground_panel", "gilded_fleurs"],
+		"layout": "three_zone_vertical",
+		"sigCount": 3
+	},
+	"forest_reverie": {
+		"name": "Forest Reverie",
+		"period": "Druidic · Naturalistic",
+		"mood": "Verdigris and sepia. Twining vines that break the frame, fey/druidic mood.",
+		"orientation_default": "portrait",
+		"palette": {
+			"bg": "#EFE2BD", "text": "#2C1810", "accent": "#43745A",
+			"border": "#704214", "gold": "#D4A017", "gold_highlight": "#F0C870",
+			"wax": "#1F4D2E", "ground_a": "#43A47A"
+		},
+		"fonts": {
+			"title": "Caudex, serif", "title_php": "Caudex",
+			"subtitle": "EB Garamond, serif", "subtitle_php": "EB Garamond",
+			"body": "EB Garamond, serif", "body_php": "EB Garamond",
+			"signatures": "Pinyon Script, cursive", "signatures_php": "Pinyon Script",
+			"date": "EB Garamond, serif", "date_php": "EB Garamond"
+		},
+		"frame": "organic_vine",
+		"decoration": ["historiated_initial", "leaf_rosettes", "vine_break"],
+		"layout": "three_zone_vertical",
+		"sigCount": 2
+	},
+	"charred_edict": {
+		"name": "Charred Edict",
+		"period": "Battlefield · Beleaguered",
+		"mood": "Burnt edges, blood-red wax, hasty scribal hand. Smuggled out of a besieged keep.",
+		"orientation_default": "portrait",
+		"palette": {
+			"bg": "#C2A672", "text": "#1C1810", "accent": "#5C0E1A",
+			"border": "#3D2418", "gold": "#A98445", "gold_highlight": "#D4B570",
+			"wax": "#1A1A1A", "ground_a": "#3D2418"
+		},
+		"fonts": {
+			"title": "Goudy Bookletter 1911, serif", "title_php": "Goudy Bookletter 1911",
+			"subtitle": "Sorts Mill Goudy, serif", "subtitle_php": "Sorts Mill Goudy",
+			"body": "Sorts Mill Goudy, serif", "body_php": "Sorts Mill Goudy",
+			"signatures": "Tangerine, cursive", "signatures_php": "Tangerine",
+			"date": "Sorts Mill Goudy, serif", "date_php": "Sorts Mill Goudy"
+		},
+		"frame": "minimal_burnt",
+		"decoration": ["burnt_edge", "fold_creases", "foxing_heavy"],
+		"layout": "three_zone_vertical",
+		"sigCount": 1
+	},
+	"imperial_edict": {
+		"name": "Imperial Edict",
+		"period": "Byzantine · Hieratic",
+		"mood": "Gold-ground icon panel, jeweled border, axial symmetry.",
+		"orientation_default": "portrait",
+		"palette": {
+			"bg": "#F8F4E3", "text": "#1C1810", "accent": "#E34234",
+			"border": "#2A4B8D", "gold": "#D4AF37", "gold_highlight": "#FFF8DC",
+			"wax": "#7B1F2A", "ground_a": "#2A4B8D"
+		},
+		"fonts": {
+			"title": "Cinzel, serif", "title_php": "Cinzel",
+			"subtitle": "Caudex, serif", "subtitle_php": "Caudex",
+			"body": "Caudex, serif", "body_php": "Caudex",
+			"signatures": "Pinyon Script, cursive", "signatures_php": "Pinyon Script",
+			"date": "Caudex, serif", "date_php": "Caudex"
+		},
+		"frame": "jeweled_cabochon",
+		"decoration": ["gold_ground_panel", "heraldry_medallion", "axial_symmetric_seal"],
+		"layout": "tympanum_and_base",
+		"sigCount": 2
+	},
+	"scholars_hand": {
+		"name": "Scholar's Hand",
+		"period": "Italian Humanist · c. 1480",
+		"mood": "Renaissance restraint. White-vine bianchi girari border, classical urns, restrained gold.",
+		"orientation_default": "portrait",
+		"palette": {
+			"bg": "#F8F4E3", "text": "#1C1810", "accent": "#2A4B8D",
+			"border": "#0B6623", "gold": "#D4AF37", "gold_highlight": "#FFF3B0",
+			"wax": "#7B1F2A", "ground_a": "#E34234"
+		},
+		"fonts": {
+			"title": "Cormorant Garamond, serif", "title_php": "Cormorant Garamond",
+			"subtitle": "EB Garamond, serif", "subtitle_php": "EB Garamond",
+			"body": "EB Garamond, serif", "body_php": "EB Garamond",
+			"signatures": "Pinyon Script, cursive", "signatures_php": "Pinyon Script",
+			"date": "EB Garamond, serif", "date_php": "EB Garamond"
+		},
+		"frame": "renaissance_white_vine",
+		"decoration": ["historiated_initial", "classical_urn", "tri_color_ground"],
+		"layout": "three_zone_vertical",
+		"sigCount": 2
+	},
+	"crusaders_charter": {
+		"name": "Crusader's Charter",
+		"period": "Romanesque · c. 1100",
+		"mood": "Holy military order. Round arches, lion supporters, jeweled cross, heavy red-and-gold.",
+		"orientation_default": "portrait",
+		"palette": {
+			"bg": "#F4E8C8", "text": "#1C1810", "accent": "#8B0000",
+			"border": "#8B0000", "gold": "#D4AF37", "gold_highlight": "#FFF8DC",
+			"wax": "#8B0000", "ground_a": "#0B6623"
+		},
+		"fonts": {
+			"title": "Cinzel, serif", "title_php": "Cinzel",
+			"subtitle": "EB Garamond, serif", "subtitle_php": "EB Garamond",
+			"body": "EB Garamond, serif", "body_php": "EB Garamond",
+			"signatures": "Great Vibes, cursive", "signatures_php": "Great Vibes",
+			"date": "EB Garamond, serif", "date_php": "EB Garamond"
+		},
+		"frame": "romanesque_arch",
+		"decoration": ["jeweled_cross", "lion_supporters", "heraldry_medallion", "triumphal_arch"],
+		"layout": "three_zone_vertical",
+		"sigCount": 2
+	},
+	"astral_codex": {
+		"name": "Astral Codex",
+		"period": "Occult · Alchemical",
+		"mood": "Deep purple/silver/black. Zodiac glyphs, alchemical symbols, star-pattern margins.",
+		"orientation_default": "portrait",
+		"palette": {
+			"bg": "#0A0A1F", "text": "#F0F0F0", "accent": "#B8860B",
+			"border": "#3D1F4E", "gold": "#B8860B", "gold_highlight": "#E8C547",
+			"wax": "#3D1F4E", "ground_a": "#3D1F4E"
+		},
+		"fonts": {
+			"title": "Pirata One, serif", "title_php": "Pirata One",
+			"subtitle": "EB Garamond, serif", "subtitle_php": "EB Garamond",
+			"body": "EB Garamond, serif", "body_php": "EB Garamond",
+			"signatures": "Tangerine, cursive", "signatures_php": "Tangerine",
+			"date": "EB Garamond, serif", "date_php": "EB Garamond"
+		},
+		"frame": "astral_star_pattern",
+		"decoration": ["zodiac_glyphs", "alchemical_seal", "constellation_diagram"],
+		"layout": "three_zone_vertical",
+		"sigCount": 1
+	}
+}
