@@ -1723,6 +1723,34 @@
     max-height: 95vh;
   }
 }
+
+/* ================================================================
+   Style Family picker (Plan 1 redesign)
+   ================================================================ */
+.sc-section-family { border: 1px solid rgba(212, 175, 55, 0.4); border-radius: 6px; padding: 12px 14px; margin-bottom: 14px; background: linear-gradient(135deg, rgba(212,175,55,0.06), rgba(212,175,55,0)); }
+.sc-family-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 8px; }
+.sc-family-card { border: 1px solid rgba(0,0,0,0.18); border-radius: 6px; cursor: pointer; overflow: hidden; transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s; background: #fff; }
+.sc-family-card:hover { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(0,0,0,0.15); }
+.sc-family-card.sc-selected { border-color: #d4af37; box-shadow: 0 0 0 2px #d4af37; }
+.sc-family-preview { padding: 14px 12px; min-height: 70px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
+.sc-family-title-sample { font-size: 18px; line-height: 1; text-align: center; }
+.sc-family-swatches { display: flex; gap: 3px; }
+.sc-family-swatches span { display: inline-block; width: 14px; height: 14px; border-radius: 2px; border: 1px solid rgba(0,0,0,0.18); }
+.sc-family-meta { padding: 6px 10px; background: #f7f5ed; font-size: 12px; line-height: 1.3; }
+.sc-family-meta strong { display: block; }
+.sc-family-meta em { font-size: 10px; opacity: 0.65; font-style: normal; text-transform: uppercase; letter-spacing: 0.4px; }
+html[data-theme="dark"] .sc-family-card { background: #1f1f1f; border-color: #444; }
+html[data-theme="dark"] .sc-family-meta { background: #2a2a2a; color: #ddd; }
+html[data-theme="dark"] .sc-family-card:hover { border-color: #888; }
+
+/* Family preview canvas (right column, separate from legacy template canvas) */
+.sc-family-preview-wrap { position: relative; margin: 14px 0; padding: 12px; background: #f5f1e6; border: 1px solid #d4af37; border-radius: 6px; }
+.sc-family-preview-wrap h4 { margin: 0 0 8px; font-size: 13px; color: #5a4a0f; }
+.sc-family-preview-wrap canvas { display: block; max-width: 100%; height: auto; border: 1px solid rgba(0,0,0,0.1); }
+.sc-family-download-btn { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 8px 14px; background: #d4af37; color: #1a1a1a; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; transition: background 0.15s; }
+.sc-family-download-btn:hover { background: #b8961f; }
+html[data-theme="dark"] .sc-family-preview-wrap { background: #2a2820; border-color: #d4af37; }
+html[data-theme="dark"] .sc-family-preview-wrap h4 { color: #d4af37; }
 </style>
 
 <!-- =============================================
@@ -1764,10 +1792,41 @@
   <!-- ============ Controls (left panel) ============ -->
   <div class="sc-controls">
 
+    <!-- SECTION: Style Family (Plan 1 — new family-driven path) -->
+    <div class="sc-section sc-section-family" id="sc-sec-family">
+      <div class="sc-section-title" onclick="sgToggleSection('sc-sec-family')">
+        <h3><i class="fas fa-feather-alt" style="margin-right:6px;color:#d4af37"></i>Style Family <span style="font-size:10px;background:#d4af37;color:#000;padding:2px 6px;border-radius:3px;margin-left:6px;letter-spacing:0.5px;">NEW</span></h3>
+        <i class="fas fa-chevron-down sc-section-chevron"></i>
+      </div>
+      <div class="sc-section-body">
+        <p style="margin:0 0 10px;font-size:12px;opacity:0.75;line-height:1.4;">
+          10 illuminated style families — each a coordinated palette + typography + decoration system grounded in a real medieval period. Pick one to see your scroll re-render. Use the <strong>Download (Style Family)</strong> button at the right to export.
+        </p>
+        <div class="sc-family-grid" id="sc-family-grid">
+          <?php foreach (json_decode(file_get_contents(__DIR__ . '/scroll/families.json'), true) as $famKey => $famDef): ?>
+          <div class="sc-family-card" data-family="<?= htmlspecialchars($famKey) ?>" onclick="sgSelectFamily('<?= htmlspecialchars($famKey) ?>')">
+            <div class="sc-family-preview" style="background: <?= htmlspecialchars($famDef['palette']['bg']) ?>; color: <?= htmlspecialchars($famDef['palette']['text']) ?>;">
+              <span class="sc-family-title-sample" style="font-family: <?= htmlspecialchars($famDef['fonts']['title']) ?>; color: <?= htmlspecialchars($famDef['palette']['accent']) ?>;"><?= htmlspecialchars($famDef['name']) ?></span>
+              <span class="sc-family-swatches">
+                <?php foreach (['accent', 'border', 'gold', 'wax'] as $tok): ?>
+                  <span style="background: <?= htmlspecialchars($famDef['palette'][$tok]) ?>"></span>
+                <?php endforeach; ?>
+              </span>
+            </div>
+            <div class="sc-family-meta">
+              <strong><?= htmlspecialchars($famDef['name']) ?></strong>
+              <em><?= htmlspecialchars($famDef['period']) ?></em>
+            </div>
+          </div>
+          <?php endforeach; ?>
+        </div>
+      </div>
+    </div>
+
     <!-- SECTION: Template -->
     <div class="sc-section" id="sc-sec-template">
       <div class="sc-section-title" onclick="sgToggleSection('sc-sec-template')">
-        <h3><i class="fas fa-layer-group" style="margin-right:6px;opacity:0.5"></i>Scroll Template</h3>
+        <h3><i class="fas fa-layer-group" style="margin-right:6px;opacity:0.5"></i>Scroll Template <span style="font-size:10px;opacity:0.45;margin-left:6px;font-weight:400;">(legacy · 90-day deprecation)</span></h3>
         <i class="fas fa-chevron-down sc-chevron"></i>
       </div>
       <div class="sc-section-body">
@@ -2323,7 +2382,16 @@
         </div>
       </div>
       <button type="button" class="sc-download-btn" id="sc-download-btn-2">
-        <i class="fas fa-download"></i> Download PNG
+        <i class="fas fa-download"></i> Download PNG (legacy template)
+      </button>
+    </div>
+
+    <!-- New Style Family preview (Plan 1) -->
+    <div class="sc-family-preview-wrap">
+      <h4><i class="fas fa-feather-alt" style="margin-right:6px;color:#d4af37"></i>Style Family Preview <span style="font-size:10px;background:#d4af37;color:#000;padding:2px 6px;border-radius:3px;margin-left:6px;letter-spacing:0.5px;">NEW</span></h4>
+      <canvas id="sc-family-canvas" width="425" height="550" style="background:#f4e8c8;"></canvas>
+      <button type="button" class="sc-family-download-btn" onclick="sgDownloadFamilyScroll()">
+        <i class="fas fa-download"></i> Download (Style Family)
       </button>
     </div>
   </div><!-- /sc-preview-wrap -->
@@ -2332,6 +2400,108 @@
 
 <script src="<?= HTTP_TEMPLATE ?>revised-frontend/scroll/scroll-palette.js?v=<?= filemtime(DIR_TEMPLATE . 'revised-frontend/scroll/scroll-palette.js') ?>"></script>
 <script src="<?= HTTP_TEMPLATE ?>revised-frontend/scroll/scroll-primitives.js?v=<?= filemtime(DIR_TEMPLATE . 'revised-frontend/scroll/scroll-primitives.js') ?>"></script>
+<script src="<?= HTTP_TEMPLATE ?>revised-frontend/scroll/scroll-families.js?v=<?= filemtime(DIR_TEMPLATE . 'revised-frontend/scroll/scroll-families.js') ?>"></script>
+<script>
+window.SC_FAMILIES = <?= file_get_contents(__DIR__ . '/scroll/families.json') ?>;
+
+// Family-driven render path. Selecting a family re-renders the preview canvas
+// using ScrollFamilies.renderFamily (same coordinate system as PHP renderer).
+window.sgFamilyState = {
+	family: 'northern_gothic',
+	awardName: <?= json_encode($sgAwardName ?? 'Award Title') ?>,
+	recipient: <?= json_encode($sgPlayer['Persona'] ?? 'Recipient') ?>,
+	bodyText: '',
+	date: '',
+	signatures: [],
+	decorationIntensity: 'balanced',
+};
+
+function sgSelectFamily(key) {
+	if (!SC_FAMILIES[key]) return;
+	sgFamilyState.family = key;
+	document.querySelectorAll('.sc-family-card').forEach(c => c.classList.remove('sc-selected'));
+	const card = document.querySelector('.sc-family-card[data-family="' + key + '"]');
+	if (card) card.classList.add('sc-selected');
+	sgRenderFamily();
+}
+
+function sgRenderFamily() {
+	const canvas = document.getElementById('sc-family-canvas');
+	if (!canvas || !window.SC_FAMILIES) return;
+	const fam = SC_FAMILIES[sgFamilyState.family];
+	if (!fam) return;
+	const orientation = (fam.orientation_default || 'portrait') === 'landscape' ? 'landscape' : 'portrait';
+	const w = orientation === 'landscape' ? 1100 : 850;
+	const h = orientation === 'landscape' ? 850 : 1100;
+	if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+	const ctx = canvas.getContext('2d');
+	ctx.clearRect(0, 0, w, h);
+	// Pull live state from existing form fields if present
+	const nameEl = document.getElementById('sc-award-name');
+	const personaEl = document.getElementById('sc-recipient-name') || document.getElementById('sc-recipient');
+	const bodyEl = document.getElementById('sc-body-text');
+	if (nameEl) sgFamilyState.awardName = nameEl.value;
+	if (personaEl) sgFamilyState.recipient = personaEl.value;
+	if (bodyEl) sgFamilyState.bodyText = bodyEl.value;
+	// Read signatures from form
+	const sigs = [];
+	for (let i = 1; i <= 3; i++) {
+		const n = document.getElementById('sc-sig-name-' + i)?.value || document.querySelector('[name="sig' + i + '_name"]')?.value || '';
+		const r = document.getElementById('sc-sig-role-' + i)?.value || document.querySelector('[name="sig' + i + '_role"]')?.value || '';
+		if (n || r) sigs.push({ name: n, role: r });
+	}
+	if (sigs.length) sgFamilyState.signatures = sigs;
+	ScrollFamilies.renderFamily(ctx, w, h, sgFamilyState, fam);
+}
+
+function sgDownloadFamilyScroll() {
+	// POST to /ScrollAjax/generate_family with current form fields + selected family.
+	const f = document.createElement('form');
+	f.method = 'POST';
+	f.action = '<?= UIR ?>ScrollAjax/generate_family';
+	f.target = '_blank';
+	const add = (name, value) => {
+		const inp = document.createElement('input'); inp.type = 'hidden'; inp.name = name; inp.value = value || '';
+		f.appendChild(inp);
+	};
+	add('family', sgFamilyState.family);
+	add('awardName', sgFamilyState.awardName);
+	add('recipient', sgFamilyState.recipient);
+	add('bodyText', sgFamilyState.bodyText);
+	add('date', sgFamilyState.date);
+	add('decorationIntensity', sgFamilyState.decorationIntensity);
+	(sgFamilyState.signatures || []).forEach((s, i) => {
+		add('sig' + (i + 1) + '_name', s.name);
+		add('sig' + (i + 1) + '_role', s.role);
+	});
+	document.body.appendChild(f);
+	f.submit();
+	setTimeout(() => f.remove(), 1000);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+	// Initial selection — auto-suggest based on award type if available.
+	let initial = 'northern_gothic';
+	<?php if (!empty($award)): ?>
+	<?php
+		$autoMap = (function($award) {
+			$awardId = (int)($award['AwardId'] ?? 0);
+			if (in_array($awardId, [17, 18, 19, 20, 245], true)) return 'crimson_decree';
+			if (!empty($award['IsTitle'])) return 'northern_gothic';
+			if (!empty($award['IsLadder'])) return 'hibernian_knotwork';
+			return 'northern_gothic';
+		})($award);
+	?>
+	initial = <?= json_encode($autoMap) ?>;
+	<?php endif; ?>
+	if (typeof sgSelectFamily === 'function') sgSelectFamily(initial);
+	// Re-render when relevant fields change
+	['sc-award-name','sc-recipient-name','sc-recipient','sc-body-text'].forEach(id => {
+		const el = document.getElementById(id);
+		if (el) el.addEventListener('input', () => sgRenderFamily());
+	});
+});
+</script>
 <script src="<?= HTTP_ASSETS ?>scroll/celticknot.js?v=<?= filemtime(DIR_ASSETS . "scroll/celticknot.js") ?>"></script>
 
 <!-- Toast notification -->

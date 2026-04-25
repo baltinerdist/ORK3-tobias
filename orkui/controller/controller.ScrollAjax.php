@@ -2062,5 +2062,56 @@ class Controller_ScrollAjax extends Controller {
 		$this->drawDivider($state['img'], $cx, $cy, $width, $state['pal'], $opacity);
 	}
 
+	// ================================================================
+	//  POST /ScrollAjax/generate_family — new family-driven path
+	//  Uses families.json + ScrollFamilyRenderer.
+	//  Coexists with generate() (legacy templates) until Plan 3 cutover.
+	// ================================================================
+	public function generate_family($id = null) {
+		require_once dirname(__DIR__, 2) . '/system/lib/ork3/class.ScrollPalette.php';
+		require_once dirname(__DIR__, 2) . '/system/lib/ork3/class.ScrollPrimitives.php';
+		require_once dirname(__DIR__, 2) . '/system/lib/ork3/class.ScrollFamilyRenderer.php';
+
+		$state = $_POST + $_GET;
+		$familyKey = preg_replace('/[^a-z_]/', '', strtolower($state['family'] ?? 'northern_gothic'));
+		$families = ScrollFamilyRenderer::families();
+		if (!isset($families[$familyKey])) $familyKey = 'northern_gothic';
+		$fam = $families[$familyKey];
+		$fam['key'] = $familyKey;
+
+		$orientation = ($state['orientation'] ?? '') === 'landscape' ? 'landscape' : ($fam['orientation_default'] ?? 'portrait');
+		$w = $orientation === 'landscape' ? 3300 : 2550;
+		$h = $orientation === 'landscape' ? 2550 : 3300;
+
+		// Astral Codex print-substitute: dark celestial bg → parchment for export.
+		// Keeps silver/violet accents but switches the ground so home printers don't ink-saturate.
+		if ($familyKey === 'astral_codex') {
+			$fam['palette']['bg'] = '#F4E8C8';
+			$fam['palette']['text'] = '#1C1810';
+			$state['forPrint'] = true;
+		}
+
+		$state['family'] = $familyKey;
+		$state['signatures'] = $this->parseSignaturesFromPost();
+
+		$img = imagecreatetruecolor($w, $h);
+		ScrollFamilyRenderer::render($img, $w, $h, $state, $fam);
+
+		header('Content-Type: image/png');
+		header('Content-Disposition: attachment; filename="scroll-' . $familyKey . '.png"');
+		imagepng($img);
+		imagedestroy($img);
+		exit;
+	}
+
+	private function parseSignaturesFromPost(): array {
+		$out = [];
+		for ($i = 1; $i <= 3; $i++) {
+			$name = trim($_POST["sig{$i}_name"] ?? '');
+			$role = trim($_POST["sig{$i}_role"] ?? '');
+			if ($name !== '' || $role !== '') $out[] = ['name' => $name, 'role' => $role];
+		}
+		return $out;
+	}
 
 }
