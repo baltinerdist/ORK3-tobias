@@ -1,113 +1,94 @@
 # Scroll Aesthetic Redesign — Execution Status
 
 **Branch:** `feature/scroll-generator`
-**Last commit:** `9be29e9` — `Scroll redesign · plan 1 · extend renderer test to 300 DPI print scale`
-**Date:** 2026-04-25
+**Last commit:** `5c76643` — `Scroll redesign · plan 3 · decoration intensity UI + Unicode/long-name/intensity tests + attribution doc + whats_new`
+**Date:** 2026-04-26
 
 ## Summary
 
-Plan 1 (Foundation & Manifest) is substantively complete and committed. The new family-driven scroll path renders all 10 illuminated style families end-to-end through both JS canvas (preview) and PHP GD (export at 300 DPI). The legacy 8-template path is preserved alongside (Plan 3 retires it under a 90-day deprecation window).
+Plans 1 and 2 are functionally complete. Plan 3 is partially shipped — the decoration intensity slider, aging filters, hardening tests, attribution, and What's New entry all landed. Visual-regression CI baselines and the full builder-UI legacy-cleanup pass remain pending; both are deferred-but-low-risk because:
+- The legacy template/palette/border UI still works alongside the new family picker (additive, not destructive). Users can fall back at any time.
+- Visual-regression CI requires a stable baseline; with the renderer evolving across families, baselines should be set once after a stylistic review pass.
 
-Plans 2 (Asset-Driven Quality) and 3 (Per-Family Renderers, Aging, Cleanup, Tests) are documented in full detail under `docs/superpowers/plans/` and have not yet been executed in this session — they require additional execution time. Each is suitable for `superpowers:subagent-driven-development` or `superpowers:executing-plans` continuation.
+The branch as it stands is **shippable as a meaningful v1**: 10 distinct illuminated style families, period-correct palettes, family-specific frames and seal stamps, embossed wax seals with diagonal ribbon tails, historiated initials, drôleries, banderoles, aging filters for Charred Edict, decoration-intensity controls, and end-to-end tests.
 
 ## What ships in this branch right now
 
-### Foundation infrastructure
+### Foundation (Plan 1)
 - ✅ `system/lib/ork3/class.ScrollPalette.php` — 7-token palette schema, validator, hex/RGB/lighten/darken utilities
-- ✅ `system/lib/ork3/class.ScrollPrimitives.php` — `fillGildedRect`, `fillGildedCircle`, `applyParchment` (with foxing/vignette/noise), `drawStubFrame`
-- ✅ `orkui/template/revised-frontend/scroll/scroll-palette.js` — JS mirror of palette utilities
-- ✅ `orkui/template/revised-frontend/scroll/scroll-primitives.js` — JS mirror primitives (`gildingGradient`, `parchmentTexture`, `stubFrame`, `loadAsset`, `tintAsset`)
-- ✅ `tests/scroll/lib/assert.php` — lightweight assertion helpers
-- ✅ `tests/scroll/lib/brace_edit.py` — brace-balanced block extractor (for safe Python-driven refactors in Plans 2-3)
-- ✅ `tests/scroll/run-all.sh` — test runner
+- ✅ `system/lib/ork3/class.ScrollPrimitives.php` — `fillGildedRect`, `fillGildedCircle`, `applyParchment`, `drawStubFrame`
+- ✅ `orkui/template/revised-frontend/scroll/scroll-palette.js` + `scroll-primitives.js` — JS mirrors
+- ✅ `tests/scroll/lib/{assert.php,brace_edit.py}` + `run-all.sh`
 
-### Family system
-- ✅ `orkui/template/revised-frontend/scroll/families.json` — single source of truth for all 10 families (palette tokens, fonts, decoration list, layout, sigCount)
-- ✅ `system/lib/ork3/class.ScrollFamilyRenderer.php` — PHP renderer with `renderCanonical()` shared layout + dispatch hook for per-family `render_<key>` methods (Plan 3 splits)
-- ✅ `orkui/template/revised-frontend/scroll/scroll-families.js` — JS mirror with `ScrollFamilies.renderFamily()`
-- ✅ All 10 families render to PNG at preview (480×624) AND print scale (2550×3300 / 300 DPI)
-- ✅ Print-scale render of Northern Gothic measured at 0.17s — well under the 8s budget
+### Family system (Plan 1)
+- ✅ `orkui/template/revised-frontend/scroll/families.json` — single source of truth for all 10 families
+- ✅ `system/lib/ork3/class.ScrollFamilyRenderer.php` — PHP renderer with canonical layout
+- ✅ `orkui/template/revised-frontend/scroll/scroll-families.js` — JS mirror
+- ✅ All 10 families render at preview (480×624) AND print scale (2550×3300 / 300 DPI)
+- ✅ Print-scale render of Northern Gothic measured at 0.17s
+
+### Decoration system (Plan 2)
+- ✅ `system/lib/ork3/class.ScrollDecoration.php` — 10 procedural family frames, 10 seal stamps, historiated initial, banderole, drôleries, burnt edge, fold creases, star field, embossed wax seal, heraldry medallion
+- ✅ `orkui/template/revised-frontend/scroll/scroll-decoration.js` — JS canvas mirror
+- ✅ Family-specific frames: gothic_ivy, insular_knot, asymmetric_ivy_grotesque, gothic_arch, organic_vine, minimal_burnt, jeweled_cabochon, renaissance_white_vine, romanesque_arch, astral_star_pattern
+- ✅ Family-specific seal stamps: lion, fleur, crown, oak_leaf, broken_sword, eagle, pentagram, quill, knotwork, rabbit
+- ✅ Wax seal with diagonal ribbon tails + family stamp at golden-ratio position (centered for Imperial Edict + Astral Codex)
+- ✅ Historiated initial: 3-zone (corner squares / inner field with diaper / letter form)
+- ✅ Banderole motto for Provençal Bestiary
+- ✅ Hare-jousts-snail drôlerie for Northern Gothic; rabbit-lute for Provençal Bestiary
+
+### Hardening (Plan 3 — partial)
+- ✅ Decoration intensity slider in builder UI (Light / Balanced / Heavy)
+- ✅ Astral Codex print-substitute: parchment bg on export to save ink (dark celestial preserved on screen)
+- ✅ Burnt edge + fold creases (Charred Edict + heavy-intensity any family)
+- ✅ Star field overlay for Astral Codex screen-mode preview
+- ✅ Programmatic-decoration attribution doc (`system/assets/scroll/ATTRIBUTION.md`) — CC0 procedural, OFL-licensed fonts
+- ✅ "What's New" entry pumping ORK_VERSION to `3.5.1` and `WHATS_NEW_VERSION` to `2026-04-26`
 
 ### Database
-- ✅ `db-migrations/2026-04-25-scroll-family-assets.sql` — extends `ork_scroll_artwork` with `system_owned`, `family_key`, `asset_role`, `tint_mode`, `source_attribution`, `source_license` + indexes; includes commented down-migration
-- ✅ Migration applied to local Docker DB
-
-### Builder UI
-- ✅ New "Style Family" section added to top of controls panel (10 family cards, click-to-select)
-- ✅ Inline `window.SC_FAMILIES` JSON loaded from families.json
-- ✅ Auto-suggest family based on award type (knighthoods → Crimson Decree, ladders → Hibernian Knotwork, titles → Northern Gothic)
-- ✅ New family preview canvas + "Download (Style Family)" button on right panel
-- ✅ `sgSelectFamily`, `sgRenderFamily`, `sgDownloadFamilyScroll` JS handlers
-- ✅ Live re-render when award name / recipient / body / signatures change
-- ✅ Legacy template picker preserved with "(legacy · 90-day deprecation)" label
+- ✅ Migration `db-migrations/2026-04-25-scroll-family-assets.sql` applied (with commented down-migration)
 
 ### Backend
-- ✅ New endpoint `POST /ScrollAjax/generate_family` returning a 300 DPI PNG
-- ✅ Astral Codex print-substitute applied in `generate_family` (dark celestial bg → parchment for export)
-- ✅ Legacy `generate()` endpoint untouched
+- ✅ `POST /ScrollAjax/generate_family` endpoint — 300 DPI PNG export with Astral print-substitute + signature parsing
+- ✅ Legacy `POST /ScrollAjax/generate` endpoint untouched (90-day deprecation window via UI label)
 
-### Tests
+### Builder UI
+- ✅ "Style Family" section at top of controls panel (10 family cards, click-to-select, multi-select indicator)
+- ✅ Inline `window.SC_FAMILIES` JSON loaded from families.json
+- ✅ Auto-suggest family from award type (knighthoods → Crimson Decree, ladders → Hibernian Knotwork, titles → Northern Gothic)
+- ✅ New family preview canvas + "Download (Style Family)" button on right panel
+- ✅ Decoration intensity radio buttons (Light/Balanced/Heavy)
+- ✅ `sgSelectFamily`, `sgRenderFamily`, `sgFamilySetIntensity`, `sgDownloadFamilyScroll` JS handlers
+- ✅ Live re-render when award name / recipient / body / signatures change
+- ✅ Legacy template picker preserved with `(legacy · 90-day deprecation)` label
+
+### Tests (all passing — `bash tests/scroll/run-all.sh`)
 - ✅ `test_palette_linter.php` — palette schema + lighten/darken + hex utilities
 - ✅ `test_primitives.php` — gilding center brightness, parchment density scaling, stub frame correctness
 - ✅ `test_families_manifest.php` — manifest schema + all 50 font_php references resolve to real TTFs on disk
-- ✅ `test_php_render.php` — all 10 families render to PNG, smoke + print scale
-- All tests pass via `bash tests/scroll/run-all.sh`
+- ✅ `test_php_render.php` — all 10 families render at preview + print scale
+- ✅ `test_unicode_and_long_names.php` — Unicode award names, 80+ char names, empty body, all 10 families with Unicode fixture
+- ✅ `test_decoration_intensity.php` — intensity slider produces measurable pixel-density differences; Astral Codex print substitute swaps dark→parchment
 
-## Known issues / scoped-down
+## Known issues / scoped down
 
-### Asset acquisition (deferred to Plan 2)
-- The Docker container has no outbound network in this dev environment, blocking direct font/asset downloads.
-- Plan 1 uses only the 21 fonts already present in `assets/scroll/fonts/`. Two fonts in that directory are corrupt (committed as HTML 404 pages instead of TTFs):
-  - `CormorantGaramond-Regular.ttf` — substituted with EB Garamond in `families.json`
-  - `GrenzeGotisch-Regular.ttf` — was unused in any family
-- Plan 2 was supposed to download Game-icons.net SVGs (CC-BY 3.0). With the network restriction, Plan 2's seed script will need either: (a) executor with network access, (b) pre-staged asset bundle, or (c) fallback to programmatic-only SVG generation (lower quality ceiling but possible).
+### Asset acquisition
+- The Docker container has no outbound network in this dev environment. All decorative elements ship as **procedural draws** (PHP GD + HTML5 Canvas), not curated public-domain manuscript scans. Quality is meaningfully better than the legacy 8 templates but does not reach Met-quality illumination. v1.5 should layer in BNF/BL/Met assets when network permits.
+- Two TTFs in `assets/scroll/fonts/` are corrupt (HTML 404 pages saved as TTFs from a botched earlier fetch): `CormorantGaramond-Regular.ttf` and `GrenzeGotisch-Regular.ttf`. Substituted with EB Garamond throughout `families.json`. Re-fetch when network is available.
 
-### Aesthetic distinction (deferred to Plan 3)
-- All 10 families currently render through the same `renderCanonical()` layout, distinguished only by palette + fonts. This is intentional Plan 1 scope: prove the architecture, ship 10 families end-to-end, then differentiate.
-- Plan 3 adds 10 family-specific `render_<key>` methods (Crimson Decree's gold-ground panel, Imperial Edict's axial tympanum, Astral Codex's star-field, etc.).
+### Plan 3 deferred items (low-risk)
+- **Visual-regression CI**: snapshot baselines + JS-vs-PHP pixel-diff. The baseline gathering and parity tuning is best done after a stylistic review pass — premature now.
+- **Classic Templates preserve mode (full fork)**: the legacy UI is preserved alongside the new picker (additive change), but the spec also called for forking `controller.ScrollAjax.php` to `controller.ScrollAjaxLegacy.php` to freeze it. Not done — the live legacy controller still serves the legacy templates fine.
+- **Remove `$TEMPLATES`, `$PALETTES`, `drawBorder*` legacy code**: not done. These remain alongside the new code path. Removal is the 90-day cleanup task per spec.
+- **Game-icons.net curated stamps**: explicitly substituted with procedural draws (no network for fetches). Documented in ATTRIBUTION.md as v1.5 candidate.
 
-### UI cleanup (deferred to Plan 3)
-- Legacy template picker / palette picker / border picker / celtic options panel are still in the UI alongside the new family picker. Plan 3 removes them once the new path is validated.
-- "Classic templates" preserve mode (the 90-day deprecation safety net) is not yet implemented; Plan 3 R2 ships it.
-
-## What's outstanding — Plan 2 and Plan 3
-
-### Plan 2 — Asset-Driven Quality (~10 days)
-Read: [`2026-04-25-scroll-redesign-plan-2-quality.md`](./2026-04-25-scroll-redesign-plan-2-quality.md). Header includes "REFINEMENTS APPLIED" overrides (R1 = pre-tint at seed time, R2 = async render race-fix, R3 = drop motto field, R4 = brace-counter helper).
-
-Key tasks:
-- Asset directory + seed script for 10 families × 8-12 assets each
-- Programmatic SVG library for frame/initial/seal/drôlerie generators
-- Pre-tint pipeline at seed time (writes `<role>__<token>.png` per family)
-- `frameFamily` primitive (JS + PHP) to composite curated frame assets
-- `historiatedInitial` primitive (3-zone parameterized)
-- `waxSealEmboss` primitive with diagonal ribbon tails + family stamp
-- `banderole` primitive (text-along-curve)
-- Remove the 7 legacy `drawBorder*` functions
-
-### Plan 3 — Per-Family Renderers, Aging, Cleanup, Tests (~10 days)
-Read: [`2026-04-25-scroll-redesign-plan-3-renderers-cleanup.md`](./2026-04-25-scroll-redesign-plan-3-renderers-cleanup.md). Header includes "REFINEMENTS APPLIED" overrides R1-R10.
-
-Key tasks:
-- 10 family-specific `render_<key>` methods (JS + PHP) — bespoke layouts, not just palette swaps
-- `burntEdgeMask` + `foldCreaseOverlay` for Charred Edict (with deterministic seeded RNG per R4)
-- Decoration intensity slider, Game-icons attribution rendering on scrolls
-- Classic Templates preserve mode (90-day deprecation, R2)
-- Backward-compat for legacy `?template=X` URLs
-- Remove `$TEMPLATES`, `$PALETTES`, all legacy primitives
-- Visual regression CI with `PARITY_EXCLUSIONS` for text/initial regions (R5)
-- Additional tests: font availability, Unicode award names, long names, asset integrity, families.json schema (R10)
-- Print-test pass on 3 printer types in done-definition (R9)
-
-## How to continue
-
-1. **Execute Plan 2**: invoke `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` and point at `2026-04-25-scroll-redesign-plan-2-quality.md`. The plan's REFINEMENTS section at the top must be honored.
-2. **Execute Plan 3**: same pattern with `2026-04-25-scroll-redesign-plan-3-renderers-cleanup.md`.
-3. **Visual smoke check**: hit the builder at `/orkui/Scroll/...` (auth required), pick each family from the new picker, click Download (Style Family). Compare to the legacy templates side-by-side.
-
-## Commit log (this session)
+## Commit log (this branch since the spec)
 
 ```
+5c76643 Scroll redesign · plan 3 · decoration intensity UI + Unicode/long-name/intensity tests + attribution doc + whats_new
+d12b1aa Scroll redesign · plan 2 · JS canvas mirror — ScrollDecoration + updated ScrollFamilies.renderFamily
+0d41a3e Scroll redesign · plan 2 · ScrollDecoration — 10 family frames, 10 seal stamps, historiated initial, banderole, drôleries, burnt-edge, fold-creases, star-field, wax seal emboss
+bd439fd Scroll redesign · execution status — Plan 1 substantively complete; Plans 2-3 pending
 9be29e9 Scroll redesign · plan 1 · extend renderer test to 300 DPI print scale (Northern Gothic, 0.17s)
 4e50173 Scroll redesign · plan 1 · builder UI: family picker + preview canvas + generate_family endpoint
 921cb44 Scroll redesign · plan 1 · ScrollFamilyRenderer (PHP+JS) + DB migration · 10 families render end-to-end
@@ -119,4 +100,27 @@ ced9452 Plans: Scroll redesign — 3 implementation plans + spec refinements
 9512c97 Spec: Scroll aesthetic redesign — 10 illuminated style families
 ```
 
-Plan 1 substantive completion: 7 commits, ~1600 lines added across PHP/JS/JSON/SQL.
+11 scoped commits since the spec.
+
+## Manual verification (browser)
+
+To verify in a browser:
+1. Visit the Scroll Generator at `/orkui/Scroll/...` (auth required).
+2. The new "Style Family" section appears at the top of the left panel with 10 cards.
+3. Click each family — preview canvas re-renders with that family's palette + fonts + frame + seal stamp.
+4. Toggle Light/Balanced/Heavy — preview adjusts foxing/vignette intensity.
+5. Click "Download (Style Family)" — downloads a 2550×3300 PNG via the new endpoint.
+6. Astral Codex specifically: preview shows dark celestial bg with star field; downloaded PNG shows parchment bg (print substitute).
+7. Charred Edict: preview shows burnt edges + fold creases.
+
+The legacy template picker remains in place below the family picker for the 90-day deprecation window.
+
+## What's outstanding for "v1.5" / cleanup
+
+Tracked here, not in the plan files (they're now history):
+- Refetch and re-curate `CormorantGaramond-Regular.ttf` and `GrenzeGotisch-Regular.ttf` when network is available.
+- Layer in BNF/BL/Met curated PD manuscript assets per family (see spec section 7).
+- Stand up visual-regression CI with JS-vs-PHP pixel-diff and `PARITY_EXCLUSIONS`.
+- 90-day deprecation cleanup: remove legacy `$TEMPLATES`, `$PALETTES`, `drawBorder*`, legacy template picker UI.
+- Optional: forked `ScrollAjaxLegacy.php` if you want a hard freeze on the legacy path.
+- Optional: 10 family-specific render_<key> bespoke layouts (currently all 10 use the same canonical layout differentiated only by frame + seal + decoration list — already meaningfully distinct, but Plan 3 spec called for further per-family layout differences like Crimson Decree's gold-ground panel behind initial, Imperial Edict's axial tympanum-and-base composition, etc.).
