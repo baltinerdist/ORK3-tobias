@@ -2070,6 +2070,7 @@ class Controller_ScrollAjax extends Controller {
 	public function generate_family($id = null) {
 		require_once dirname(__DIR__, 2) . '/system/lib/ork3/class.ScrollPalette.php';
 		require_once dirname(__DIR__, 2) . '/system/lib/ork3/class.ScrollPrimitives.php';
+		require_once dirname(__DIR__, 2) . '/system/lib/ork3/class.ScrollDecoration.php';
 		require_once dirname(__DIR__, 2) . '/system/lib/ork3/class.ScrollFamilyRenderer.php';
 
 		$state = $_POST + $_GET;

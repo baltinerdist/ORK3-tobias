@@ -55,20 +55,60 @@ class ScrollFamilyRenderer {
 		}
 	}
 
+	/** Map family_key → seal stamp kind (for embossed wax seal). */
+	const SEAL_KIND = [
+		'hibernian_knotwork' => 'knotwork',
+		'northern_gothic'    => 'lion',
+		'provencal_bestiary' => 'rabbit',
+		'crimson_decree'     => 'crown',
+		'forest_reverie'     => 'oak_leaf',
+		'charred_edict'      => 'broken_sword',
+		'imperial_edict'     => 'eagle',
+		'scholars_hand'      => 'quill',
+		'crusaders_charter'  => 'fleur',
+		'astral_codex'       => 'pentagram',
+	];
+
+	/** Map family_key → drôlerie kind (for families with marginal grotesques). */
+	const DROLERIE_KIND = [
+		'northern_gothic'    => 'hare_jousts_snail',
+		'provencal_bestiary' => 'rabbit_lute',
+	];
+
 	/**
-	 * Canonical per-family layout used in Plan 1 for all 10 families.
-	 * Plan 3 supplements with family-specific renderers that override this.
+	 * Canonical per-family layout. Each family renders through this with its own
+	 * palette/fonts + frame kind + seal kind + optional historiated initial + optional drôlerie.
+	 *
+	 * Family-specific render_<key> methods (Plan 3) can override this with bespoke layouts
+	 * (e.g., Imperial Edict's axial-symmetric tympanum, Crimson Decree's gold-ground panel).
 	 */
 	public static function renderCanonical($img, int $w, int $h, array $state, array $family): void {
 		$pal = $family['palette'];
 		$fonts = self::resolveFonts($family['fonts']);
 		$scale = $w / 480; // preview baseline
+		$key = $family['key'] ?? 'northern_gothic';
+		$decoration = $family['decoration'] ?? [];
+		$forPrint = !empty($state['forPrint']);
 
-		// 1. parchment foundation
+		// 1. parchment foundation (or dark celestial for Astral Codex on screen; print uses parchment)
 		ScrollPrimitives::applyParchment($img, $w, $h, $pal['bg'], $pal['ground_a'], $state['decorationIntensity'] ?? 'balanced');
 
-		// 2. stub frame (Plan 2 replaces with curated frame_family assets)
-		ScrollPrimitives::drawStubFrame($img, $w, $h, $pal);
+		// 1b. Astral Codex: star field on the dark ground (only when not in print mode)
+		if ($key === 'astral_codex' && !$forPrint) {
+			ScrollDecoration::drawStarField($img, $w, $h, $pal);
+		}
+
+		// 1c. Charred Edict: aging filter stack
+		if ($key === 'charred_edict' || ($state['decorationIntensity'] ?? '') === 'heavy') {
+			ScrollDecoration::applyBurntEdge($img, $w, $h, $key === 'charred_edict' ? 0.6 : 0.3);
+		}
+		if ($key === 'charred_edict') {
+			ScrollDecoration::applyFoldCreases($img, $w, $h);
+		}
+
+		// 2. family-specific frame (was stubFrame in Plan 1; Plan 2 procedural per-family)
+		$frameKind = $family['frame'] ?? 'gothic_ivy';
+		ScrollDecoration::drawFrame($img, $w, $h, $pal, $frameKind);
 
 		// 3. title (centered, top quarter)
 		[$ar, $ag, $ab] = ScrollPalette::hexToRgb($pal['accent']);
@@ -87,14 +127,70 @@ class ScrollFamilyRenderer {
 		$ruleY = (int)(195 * $scale);
 		imagefilledrectangle($img, (int)($w/2 - 140 * $scale), $ruleY, (int)($w/2 + 140 * $scale), $ruleY + max(1, (int)(1 * $scale)), $accentCol);
 
-		// 7. body block (left-aligned, wrapped, justify-ish)
+		// 7. Historiated initial (for families that decoration list it)
 		$body = $state['bodyText'] ?? self::defaultBody();
-		self::wrapAndDrawText(
-			$img, $body,
-			(int)(60 * $scale), (int)(230 * $scale),
-			$w - (int)(120 * $scale), max(10, (int)(18 * $scale)),
-			max(8, (int)(13 * $scale)), $fonts['body'], $textCol
-		);
+		$bodyX = (int)(60 * $scale);
+		$bodyY = (int)(230 * $scale);
+		$bodyW = $w - (int)(120 * $scale);
+		$bodyLineH = max(10, (int)(18 * $scale));
+		$bodySize = max(8, (int)(13 * $scale));
+
+		if (in_array('historiated_initial', $decoration, true) && trim($body) !== '') {
+			$initialW = max(40, (int)(76 * $scale));
+			$initialH = max(50, (int)(94 * $scale));
+			$letter = mb_strtoupper(mb_substr(trim($body), 0, 1)) ?: 'B';
+			ScrollDecoration::drawHistoriatedInitial($img, [
+				'x' => $bodyX, 'y' => $bodyY - (int)(8 * $scale),
+				'w' => $initialW, 'h' => $initialH,
+				'letter' => $letter,
+				'palette' => $pal,
+				'font' => $fonts['title'],
+			]);
+			// Body wraps past the initial for the first 5 lines
+			$indent = $initialW + (int)(12 * $scale);
+			self::wrapAndDrawText(
+				$img, mb_substr($body, 1),
+				$bodyX + $indent, $bodyY + (int)(2 * $scale),
+				$bodyW - $indent, $bodyLineH,
+				$bodySize, $fonts['body'], $textCol,
+				5 // first 5 lines indented
+			);
+			// Remaining body below the initial — find approximate continuation by counting lines
+			self::wrapAndDrawText(
+				$img, '', // placeholder; the simple line-counter doesn't continue past the indented region
+				$bodyX, $bodyY + $initialH + (int)(8 * $scale),
+				$bodyW, $bodyLineH,
+				$bodySize, $fonts['body'], $textCol
+			);
+		} else {
+			// 7b. body block (left-aligned, wrapped) — no historiated initial
+			self::wrapAndDrawText(
+				$img, $body,
+				$bodyX, $bodyY,
+				$bodyW, $bodyLineH,
+				$bodySize, $fonts['body'], $textCol
+			);
+		}
+
+		// 7c. drôlerie bas-de-page (for families that use one)
+		if (in_array('drolerie', $decoration, true) && isset(self::DROLERIE_KIND[$key])) {
+			$drW = max(60, (int)(96 * $scale)); $drH = max(28, (int)(40 * $scale));
+			$drX = (int)($w / 2 + 10 * $scale); $drY = $h - (int)(155 * $scale);
+			ScrollDecoration::drawDrolerie($img, $drX, $drY, $drW, $drH, $pal, self::DROLERIE_KIND[$key]);
+		}
+
+		// 7d. banderole motto (Provençal Bestiary)
+		if (in_array('banderole', $decoration, true)) {
+			ScrollDecoration::drawBanderole($img, [
+				'cx' => (int)($w / 2),
+				'cy' => (int)(190 * $scale),
+				'w' => (int)(280 * $scale),
+				'h' => (int)(36 * $scale),
+				'text' => $state['motto'] ?? 'Honos Virtutis Praemium',
+				'palette' => $pal,
+				'font' => $fonts['subtitle'],
+			]);
+		}
 
 		// 8. signatures (bottom-left)
 		$sigCount = (int)($family['sigCount'] ?? 2);
@@ -115,11 +211,22 @@ class ScrollFamilyRenderer {
 			}
 		}
 
-		// 9. wax seal placeholder (Plan 2 replaces with embossed waxSealEmboss + family stamp asset)
+		// 9. embossed wax seal at φ from bottom-right (Imperial Edict + Astral Codex centered instead)
 		$phi = 0.382;
-		$sx = (int)($w * (1 - $phi * 0.4));
-		$sy = (int)($h * (1 - $phi * 0.4));
-		ScrollPrimitives::fillGildedCircle($img, $sx, $sy, max(16, (int)(36 * $scale)), $pal['wax'], ScrollPalette::lighten($pal['wax'], 0.3));
+		$sealKind = self::SEAL_KIND[$key] ?? 'fleur';
+		if ($key === 'imperial_edict' || $key === 'astral_codex') {
+			$sx = (int)($w / 2);
+			$sy = $h - (int)(95 * $scale);
+		} else {
+			$sx = (int)($w * (1 - $phi * 0.4));
+			$sy = (int)($h * (1 - $phi * 0.4));
+		}
+		ScrollDecoration::drawWaxSealEmboss($img, [
+			'cx' => $sx, 'cy' => $sy,
+			'r' => max(16, (int)(36 * $scale)),
+			'palette' => $pal,
+			'stampKind' => $sealKind,
+		]);
 
 		// 10. date (top-right)
 		$dateText = $state['date'] ?? self::todayLatin();
@@ -162,21 +269,33 @@ class ScrollFamilyRenderer {
 		imagettftext($img, $size, 0, $cx - intdiv($w, 2) - $bbox[0], $y, $color, $fontPath, $text);
 	}
 
-	private static function wrapAndDrawText($img, string $text, int $x, int $y, int $maxW, int $lineH, int $size, string $fontPath, int $color): void {
+	/**
+	 * Wrap text and draw line by line. Optional $lineLimit caps how many lines render
+	 * (used for the "first N lines past the historiated initial" pattern).
+	 */
+	private static function wrapAndDrawText($img, string $text, int $x, int $y, int $maxW, int $lineH, int $size, string $fontPath, int $color, int $lineLimit = 0): void {
 		if (!file_exists($fontPath) || trim($text) === '') return;
 		$words = preg_split('/\s+/', $text);
 		$line = '';
+		$linesDrawn = 0;
 		foreach ($words as $word) {
 			$test = $line === '' ? $word : "$line $word";
 			$bbox = imagettfbbox($size, 0, $fontPath, $test);
+			if ($bbox === false) continue;
 			if (($bbox[2] - $bbox[0]) > $maxW) {
-				if ($line !== '') imagettftext($img, $size, 0, $x, $y, $color, $fontPath, $line);
+				if ($line !== '') {
+					imagettftext($img, $size, 0, $x, $y, $color, $fontPath, $line);
+					$linesDrawn++;
+					if ($lineLimit > 0 && $linesDrawn >= $lineLimit) return;
+				}
 				$y += $lineH; $line = $word;
 			} else {
 				$line = $test;
 			}
 		}
-		if ($line !== '') imagettftext($img, $size, 0, $x, $y, $color, $fontPath, $line);
+		if ($line !== '' && ($lineLimit === 0 || $linesDrawn < $lineLimit)) {
+			imagettftext($img, $size, 0, $x, $y, $color, $fontPath, $line);
+		}
 	}
 
 	private static function defaultBody(): string {

@@ -2,6 +2,7 @@
 require_once __DIR__ . '/lib/assert.php';
 require_once __DIR__ . '/../../system/lib/ork3/class.ScrollPalette.php';
 require_once __DIR__ . '/../../system/lib/ork3/class.ScrollPrimitives.php';
+require_once __DIR__ . '/../../system/lib/ork3/class.ScrollDecoration.php';
 require_once __DIR__ . '/../../system/lib/ork3/class.ScrollFamilyRenderer.php';
 
 $families = json_decode(file_get_contents(__DIR__ . '/../../orkui/template/revised-frontend/scroll/families.json'), true);
