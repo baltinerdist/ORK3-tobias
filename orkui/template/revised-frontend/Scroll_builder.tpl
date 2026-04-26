@@ -1802,6 +1802,12 @@ html[data-theme="dark"] .sc-family-preview-wrap h4 { color: #d4af37; }
         <p style="margin:0 0 10px;font-size:12px;opacity:0.75;line-height:1.4;">
           10 illuminated style families — each a coordinated palette + typography + decoration system grounded in a real medieval period. Pick one to see your scroll re-render. Use the <strong>Download (Style Family)</strong> button at the right to export.
         </p>
+        <div class="sc-decoration-intensity" style="display:flex;gap:14px;align-items:center;margin-bottom:10px;font-size:12px;">
+          <strong style="opacity:0.7;">Decoration intensity:</strong>
+          <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;"><input type="radio" name="sc-fam-intensity" value="light" onchange="sgFamilySetIntensity('light')"> Light</label>
+          <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;"><input type="radio" name="sc-fam-intensity" value="balanced" checked onchange="sgFamilySetIntensity('balanced')"> Balanced</label>
+          <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;"><input type="radio" name="sc-fam-intensity" value="heavy" onchange="sgFamilySetIntensity('heavy')"> Heavy</label>
+        </div>
         <div class="sc-family-grid" id="sc-family-grid">
           <?php foreach (json_decode(file_get_contents(__DIR__ . '/scroll/families.json'), true) as $famKey => $famDef): ?>
           <div class="sc-family-card" data-family="<?= htmlspecialchars($famKey) ?>" onclick="sgSelectFamily('<?= htmlspecialchars($famKey) ?>')">
@@ -2423,6 +2429,11 @@ function sgSelectFamily(key) {
 	document.querySelectorAll('.sc-family-card').forEach(c => c.classList.remove('sc-selected'));
 	const card = document.querySelector('.sc-family-card[data-family="' + key + '"]');
 	if (card) card.classList.add('sc-selected');
+	sgRenderFamily();
+}
+
+function sgFamilySetIntensity(level) {
+	sgFamilyState.decorationIntensity = level;
 	sgRenderFamily();
 }
 
