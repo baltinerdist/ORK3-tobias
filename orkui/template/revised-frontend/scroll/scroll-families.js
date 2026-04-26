@@ -1,18 +1,52 @@
 // Family-driven scroll renderer (browser canvas).
 // Mirrors system/lib/ork3/class.ScrollFamilyRenderer.php — keep in sync.
-// Plan 1 uses a canonical layout for all 10 families. Plan 3 differentiates per-family.
 window.ScrollFamilies = (function() {
+
+	// Map family_key → seal stamp kind. Mirrors ScrollFamilyRenderer::SEAL_KIND.
+	const SEAL_KIND = {
+		hibernian_knotwork: 'knotwork',
+		northern_gothic: 'lion',
+		provencal_bestiary: 'rabbit',
+		crimson_decree: 'crown',
+		forest_reverie: 'oak_leaf',
+		charred_edict: 'broken_sword',
+		imperial_edict: 'eagle',
+		scholars_hand: 'quill',
+		crusaders_charter: 'fleur',
+		astral_codex: 'pentagram',
+	};
+
+	const DROLERIE_KIND = {
+		northern_gothic: 'hare_jousts_snail',
+		provencal_bestiary: 'rabbit_lute',
+	};
 
 	function renderFamily(ctx, w, h, state, family) {
 		const pal = family.palette;
 		const fonts = family.fonts;
 		const scale = w / 480;
+		const key = state.family || family.key || 'northern_gothic';
+		const decoration = family.decoration || [];
+		const forPrint = !!state.forPrint;
 
-		// 1. parchment
+		// 1. parchment foundation
 		ScrollPrimitives.parchmentTexture(ctx, w, h, pal.bg, pal.ground_a, state.decorationIntensity || 'balanced');
 
-		// 2. stub frame (Plan 2: replaced by drawFrameFamily with curated assets)
-		ScrollPrimitives.stubFrame(ctx, w, h, pal);
+		// 1b. Astral Codex star field (only on screen, not print)
+		if (key === 'astral_codex' && !forPrint) {
+			ScrollDecoration.drawStarField(ctx, w, h, pal);
+		}
+
+		// 1c. Charred Edict aging
+		if (key === 'charred_edict' || (state.decorationIntensity === 'heavy')) {
+			ScrollDecoration.applyBurntEdge(ctx, w, h, key === 'charred_edict' ? 0.6 : 0.3);
+		}
+		if (key === 'charred_edict') {
+			ScrollDecoration.applyFoldCreases(ctx, w, h);
+		}
+
+		// 2. family-specific frame
+		ScrollDecoration.drawFrame(ctx, w, h, pal, family.frame || 'gothic_ivy');
 
 		// 3. title
 		ctx.textAlign = 'center';
@@ -33,11 +67,52 @@ window.ScrollFamilies = (function() {
 		ctx.fillStyle = pal.accent;
 		ctx.fillRect(w/2 - 140 * scale, 195 * scale, 280 * scale, Math.max(1, scale));
 
-		// 7. body
+		// 7. body + historiated initial
 		ctx.textAlign = 'left';
 		ctx.fillStyle = pal.text;
 		ctx.font = `${Math.max(8, Math.round(13 * scale))}px ${fonts.body}`;
-		_wrapText(ctx, state.bodyText || _defaultBody(), 60 * scale, 248 * scale, w - 120 * scale, 18 * scale);
+		const body = state.bodyText || _defaultBody();
+		const bodyX = 60 * scale;
+		const bodyY = 230 * scale;
+		const bodyW = w - 120 * scale;
+		const lineH = Math.max(10, 18 * scale);
+		const fontSize = Math.max(8, Math.round(13 * scale));
+
+		if (decoration.includes('historiated_initial') && body.trim()) {
+			const initialW = Math.max(40, 76 * scale);
+			const initialH = Math.max(50, 94 * scale);
+			const letter = body.trim().charAt(0).toUpperCase() || 'B';
+			ScrollDecoration.drawHistoriatedInitial(ctx, {
+				x: bodyX, y: bodyY - 8 * scale,
+				w: initialW, h: initialH,
+				letter, palette: pal, font: fonts.title,
+			});
+			// Body wraps past the initial for first 5 lines, then below
+			ctx.textAlign = 'left';
+			ctx.fillStyle = pal.text;
+			ctx.font = `${fontSize}px ${fonts.body}`;
+			const indent = initialW + 12 * scale;
+			_wrapText(ctx, body.substr(1), bodyX + indent, bodyY + 2 * scale, bodyW - indent, lineH, 5);
+		} else {
+			_wrapText(ctx, body, bodyX, bodyY, bodyW, lineH);
+		}
+
+		// 7c. drôlerie
+		if (decoration.includes('drolerie') && DROLERIE_KIND[key]) {
+			const drW = Math.max(60, 96 * scale);
+			const drH = Math.max(28, 40 * scale);
+			ScrollDecoration.drawDrolerie(ctx, w / 2 + 10 * scale, h - 155 * scale, drW, drH, pal, DROLERIE_KIND[key]);
+		}
+
+		// 7d. banderole
+		if (decoration.includes('banderole')) {
+			ScrollDecoration.drawBanderole(ctx, {
+				cx: w / 2, cy: 190 * scale,
+				w: 280 * scale, h: 36 * scale,
+				text: state.motto || 'Honos Virtutis Praemium',
+				palette: pal, font: fonts.subtitle,
+			});
+		}
 
 		// 8. signatures (bottom-left)
 		const sigCount = family.sigCount || 2;
@@ -60,17 +135,22 @@ window.ScrollFamilies = (function() {
 			}
 		}
 
-		// 9. wax seal placeholder (Plan 2: replaced by drawWaxSealEmboss + family stamp asset)
+		// 9. embossed wax seal
 		const phi = 0.382;
-		const sx = w * (1 - phi * 0.4);
-		const sy = h * (1 - phi * 0.4);
-		const sr = Math.max(16, 36 * scale);
-		const wg = ctx.createRadialGradient(sx - sr * 0.3, sy - sr * 0.3, sr * 0.1, sx, sy, sr);
-		wg.addColorStop(0, ScrollPalette.lighten(pal.wax, 0.35));
-		wg.addColorStop(0.55, pal.wax);
-		wg.addColorStop(1, ScrollPalette.darken(pal.wax, 0.45));
-		ctx.fillStyle = wg;
-		ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI * 2); ctx.fill();
+		let sx, sy;
+		if (key === 'imperial_edict' || key === 'astral_codex') {
+			sx = w / 2;
+			sy = h - 95 * scale;
+		} else {
+			sx = w * (1 - phi * 0.4);
+			sy = h * (1 - phi * 0.4);
+		}
+		ScrollDecoration.drawWaxSealEmboss(ctx, {
+			cx: sx, cy: sy,
+			r: Math.max(16, 36 * scale),
+			palette: pal,
+			stampKind: SEAL_KIND[key] || 'fleur',
+		});
 
 		// 10. date (top-right)
 		ctx.textAlign = 'right';
@@ -79,19 +159,24 @@ window.ScrollFamilies = (function() {
 		ctx.fillText(state.date || _todayLatin(), w - 60 * scale, 56 * scale);
 	}
 
-	function _wrapText(ctx, text, x, y, maxW, lineH) {
+	function _wrapText(ctx, text, x, y, maxW, lineH, lineLimit = 0) {
 		const words = String(text).split(/\s+/);
 		let line = '';
+		let drawn = 0;
 		for (const w of words) {
 			const test = line ? `${line} ${w}` : w;
 			if (ctx.measureText(test).width > maxW) {
-				if (line) ctx.fillText(line, x, y);
+				if (line) {
+					ctx.fillText(line, x, y);
+					drawn++;
+					if (lineLimit > 0 && drawn >= lineLimit) return;
+				}
 				y += lineH; line = w;
 			} else {
 				line = test;
 			}
 		}
-		if (line) ctx.fillText(line, x, y);
+		if (line && (lineLimit === 0 || drawn < lineLimit)) ctx.fillText(line, x, y);
 	}
 
 	function _defaultBody() {

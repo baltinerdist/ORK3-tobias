@@ -2400,6 +2400,7 @@ html[data-theme="dark"] .sc-family-preview-wrap h4 { color: #d4af37; }
 
 <script src="<?= HTTP_TEMPLATE ?>revised-frontend/scroll/scroll-palette.js?v=<?= filemtime(DIR_TEMPLATE . 'revised-frontend/scroll/scroll-palette.js') ?>"></script>
 <script src="<?= HTTP_TEMPLATE ?>revised-frontend/scroll/scroll-primitives.js?v=<?= filemtime(DIR_TEMPLATE . 'revised-frontend/scroll/scroll-primitives.js') ?>"></script>
+<script src="<?= HTTP_TEMPLATE ?>revised-frontend/scroll/scroll-decoration.js?v=<?= filemtime(DIR_TEMPLATE . 'revised-frontend/scroll/scroll-decoration.js') ?>"></script>
 <script src="<?= HTTP_TEMPLATE ?>revised-frontend/scroll/scroll-families.js?v=<?= filemtime(DIR_TEMPLATE . 'revised-frontend/scroll/scroll-families.js') ?>"></script>
 <script>
 window.SC_FAMILIES = <?= file_get_contents(__DIR__ . '/scroll/families.json') ?>;
