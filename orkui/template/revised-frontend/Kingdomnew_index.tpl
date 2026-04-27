@@ -680,6 +680,22 @@
 				</div><!-- /kn-events-list-view -->
 
 				<?php /* [TOURNAMENTS HIDDEN] */ ?>
+
+				<!-- ========== Arts & Sciences Competitions section ========== -->
+				<div class="kn-as-section" style="margin-top:24px;border-top:1px solid var(--ork-border,#e2e8f0);padding-top:18px">
+					<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+						<h4 class="kn-bare-heading" style="margin:0;font-size:14px;font-weight:700"><i class="fas fa-palette" style="margin-right:6px;color:#a0aec0"></i>Arts &amp; Sciences Competitions</h4>
+						<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+							<a class="kn-view-btn" href="<?= UIR ?>ArtsSciences/index/<?= (int)$kingdom_id ?>" title="Open A&amp;S workspace"><i class="fas fa-external-link-alt"></i></a>
+							<?php if ($CanManageKingdom ?? false): ?>
+							<button onclick="knOpenAsModal()" style="display:inline-flex;align-items:center;gap:5px;background:linear-gradient(135deg,#5a67d8,#805ad5);color:#fff;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:600;border:none;cursor:pointer">
+								<i class="fas fa-plus"></i> Add A&amp;S Competition
+							</button>
+							<?php endif; ?>
+						</div>
+					</div>
+					<div id="kn-as-list" style="min-height:48px;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px"><div class="kn-empty" style="grid-column:1/-1">Loading…</div></div>
+				</div>
 			</div>
 
 
@@ -1137,6 +1153,42 @@ var KnConfig = {
 			<button class="kn-emod-btn-cancel" onclick="knCloseEventModal()">Cancel</button>
 			<button class="kn-emod-btn-go" id="kn-emod-go-btn" onclick="knCreateEvent()" disabled>
 				Create Event <i class="fas fa-arrow-right"></i>
+			</button>
+		</div>
+	</div>
+</div>
+
+<!-- A&S Competition create modal -->
+<div class="kn-emod-overlay" id="kn-as-modal">
+	<div class="kn-emod-box">
+		<div class="kn-emod-header">
+			<h3><i class="fas fa-palette" style="margin-right:8px;color:#5a67d8"></i>Create A&amp;S Competition</h3>
+			<button class="kn-emod-close" onclick="knCloseAsModal()">&times;</button>
+		</div>
+		<div class="kn-emod-body">
+			<div class="kn-emod-field">
+				<label class="kn-emod-label">Competition Name <span style="color:#e53e3e">*</span></label>
+				<input type="text" class="kn-emod-input" id="kn-as-name" autocomplete="off" placeholder="e.g. Crown Quals A&amp;S 2026">
+			</div>
+			<div class="kn-emod-field" style="margin-top:12px">
+				<label class="kn-emod-label">Description <span style="color:#a0aec0;font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+				<textarea class="kn-emod-input" id="kn-as-desc" rows="3" style="resize:vertical"></textarea>
+			</div>
+			<div class="kn-emod-field" style="margin-top:12px">
+				<label class="kn-emod-label">Tied to Event <span style="color:#a0aec0;font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+				<select class="kn-emod-input" id="kn-as-event">
+					<option value="">— Standalone competition (no event) —</option>
+					<?php foreach (($eventList ?? []) as $_ev): ?>
+					<option value="<?= (int)$_ev['EventId'] ?>"><?= htmlspecialchars($_ev['Name']) ?><?php if (!empty($_ev['NextDate']) && $_ev['NextDate'] !== '0000-00-00'): ?> · <?= htmlspecialchars(date('M j, Y', strtotime($_ev['NextDate']))) ?><?php endif; ?></option>
+					<?php endforeach; ?>
+				</select>
+			</div>
+			<div class="kn-emod-feedback" id="kn-as-feedback" style="display:none"></div>
+		</div>
+		<div class="kn-emod-footer">
+			<button class="kn-emod-btn-cancel" onclick="knCloseAsModal()">Cancel</button>
+			<button class="kn-emod-btn-go" id="kn-as-go-btn" onclick="knCreateAsCompetition()">
+				Create Competition <i class="fas fa-arrow-right"></i>
 			</button>
 		</div>
 	</div>
@@ -2504,6 +2556,99 @@ $(function() { window.knInitRecsTab(); });
 window.knRecPrint = function() { if (window.knRecDT) window.recsExportPrint(window.knRecDT, 'Award Recommendations \u2014 <?= htmlspecialchars(addslashes($kingdom_name)) ?>'); };
 window.knRecCsv   = function() { if (window.knRecDT) window.recsExportCsv(window.knRecDT, 'recs-<?= preg_replace('/[^a-z0-9]+/i', '-', $kingdom_name) ?>.csv'); };
 initEmailSpellCheck('kn-addplayer-email', 'kn-addplayer-email-suggestion');
+
+// ========== Arts & Sciences Competitions section (Events tab) ==========
+(function(){
+	var UIR = <?= json_encode(UIR) ?>;
+	var KINGDOM_ID = <?= (int)$kingdom_id ?>;
+	var canManage = <?= !empty($CanManageKingdom) ? 'true' : 'false' ?>;
+
+	function escHtml(s){ return String(s == null ? '' : s).replace(/[&<>\"']/g, function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c];}); }
+
+	function loadAsCompetitions(){
+		var host = document.getElementById('kn-as-list');
+		if (!host) return;
+		fetch(UIR + 'ArtsSciencesAjax/kingdom/' + KINGDOM_ID, { credentials: 'same-origin' })
+			.then(function(r){ return r.json(); })
+			.then(function(j){
+				console.log('[KN A&S list]', j);
+				var list = (j && j.status === 0 && Array.isArray(j.result)) ? j.result : [];
+				if (!list.length) {
+					host.innerHTML = '<div class=\"kn-empty\" style=\"grid-column:1/-1\">No A&amp;S competitions yet'
+						+ (canManage ? '. Click <strong>+ Add A&amp;S Competition</strong> to create one.' : '.')
+						+ '</div>';
+					return;
+				}
+				var statusColors = { draft:'#a0aec0', open:'#38a169', judging:'#d69e2e', closed:'#e53e3e' };
+				host.innerHTML = list.map(function(c){
+					var color = statusColors[c.Status] || '#a0aec0';
+					var dateStr = c.StartDateTime ? new Date(c.StartDateTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+					return '<a href=\"' + UIR + 'ArtsSciences/competition/' + c.CompetitionId + '\" '
+						+ 'style=\"display:flex;flex-direction:column;gap:6px;padding:12px 14px;background:var(--ork-card-bg,#fff);border:1px solid var(--ork-border,#e2e8f0);border-left:4px solid ' + color + ';border-radius:8px;text-decoration:none;color:inherit;transition:transform 0.15s,box-shadow 0.15s\" '
+						+ 'onmouseover=\"this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 4px 12px rgba(0,0,0,0.08)\'\" '
+						+ 'onmouseout=\"this.style.transform=\'\';this.style.boxShadow=\'\'\">'
+						+ '<div style=\"display:flex;justify-content:space-between;align-items:flex-start;gap:8px\">'
+						+ '<div style=\"font-weight:600;font-size:13px\">' + escHtml(c.Name) + '</div>'
+						+ '<span style=\"font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;padding:2px 7px;border-radius:999px;background:' + color + '22;color:' + color + '\">' + escHtml(c.Status) + '</span>'
+						+ '</div>'
+						+ '<div style=\"font-size:11px;color:var(--ork-text-muted,#718096);display:flex;gap:10px;flex-wrap:wrap\">'
+						+ (dateStr ? '<span><i class=\"far fa-calendar\"></i> ' + escHtml(dateStr) + '</span>' : '')
+						+ '<span><i class=\"fas fa-users\"></i> ' + (c.ParticipantCount || 0) + '</span>'
+						+ '<span><i class=\"fas fa-scroll\"></i> ' + (c.EntryCount || 0) + '</span>'
+						+ '</div></a>';
+				}).join('');
+			})
+			.catch(function(err){ console.error('[KN A&S list] failed', err); host.innerHTML = '<div class=\"kn-empty\" style=\"grid-column:1/-1\">Failed to load competitions.</div>'; });
+	}
+
+	window.knOpenAsModal = function(){
+		var modal = document.getElementById('kn-as-modal'); if (!modal) return;
+		document.getElementById('kn-as-name').value  = '';
+		document.getElementById('kn-as-desc').value  = '';
+		document.getElementById('kn-as-event').value = '';
+		document.getElementById('kn-as-feedback').style.display = 'none';
+		modal.classList.add('kn-emod-open');
+		document.body.style.overflow = 'hidden';
+		setTimeout(function(){ document.getElementById('kn-as-name').focus(); }, 60);
+	};
+	window.knCloseAsModal = function(){
+		var modal = document.getElementById('kn-as-modal'); if (!modal) return;
+		modal.classList.remove('kn-emod-open');
+		document.body.style.overflow = '';
+	};
+	window.knCreateAsCompetition = function(){
+		var name = document.getElementById('kn-as-name').value.trim();
+		var fb = document.getElementById('kn-as-feedback');
+		if (!name) { fb.textContent = 'Competition name is required.'; fb.style.display = 'block'; fb.style.color = '#e53e3e'; return; }
+		var btn = document.getElementById('kn-as-go-btn');
+		btn.disabled = true;
+		var fd = new FormData();
+		fd.append('KingdomId',   KINGDOM_ID);
+		fd.append('Name',        name);
+		fd.append('Description', document.getElementById('kn-as-desc').value);
+		var eid = document.getElementById('kn-as-event').value;
+		if (eid) fd.append('EventId', eid);
+		fetch(UIR + 'ArtsSciencesAjax/create', { method: 'POST', body: fd, credentials: 'same-origin' })
+			.then(function(r){ return r.json(); })
+			.then(function(j){
+				console.log('[KN A&S create]', j);
+				if (j && j.status === 0 && j.result) {
+					window.location = UIR + 'ArtsSciences/competition/' + j.result;
+				} else {
+					fb.textContent = 'Error: ' + (j.error || 'Unknown'); fb.style.display = 'block'; fb.style.color = '#e53e3e';
+					btn.disabled = false;
+				}
+			})
+			.catch(function(err){ console.error(err); fb.textContent = 'Network error: ' + err; fb.style.display = 'block'; fb.style.color = '#e53e3e'; btn.disabled = false; });
+	};
+	// Close on backdrop or Escape
+	var mEl = document.getElementById('kn-as-modal');
+	if (mEl) mEl.addEventListener('click', function(e){ if (e.target === mEl) knCloseAsModal(); });
+	document.addEventListener('keydown', function(e){ if (e.key === 'Escape') { var m = document.getElementById('kn-as-modal'); if (m && m.classList.contains('kn-emod-open')) knCloseAsModal(); } });
+
+	// Eager load — section is small and lives inside the events tab.
+	loadAsCompetitions();
+})();
 </script>
 
 <?php if (!empty($IsLoggedIn)): ?>
