@@ -53,24 +53,24 @@ CC0 by the ORK project unless otherwise noted in the row's License.
 
 | Family | Role | File | Source / informed by | License |
 |---|---|---|---|---|
-| scholars_hand | frame_corner_nw | `families/scholars_hand/frame_corner_nw__border.png` | Scholar's Hand — NW corner. Renaissance bianchi girari (white-vine
-    scrollwork): three triangulated white vine spirals on a dark ground
-    band, classical urn at the inner corner, restrained pinpoint pearls.
-    Designed for clean 90/180/270 rotation.
-    Informed by: Florentine humanist book hands (Bartolomeo Sanvito,
-    c. 1470-1490); Vespasiano da Bisticci copies of Cicero; Roman
-    Tabula Iliaca-style framing; license: PD.
+| crusaders_charter | frame_corner_nw | `families/crusaders_charter/frame_corner_nw__border.png` | Crusader's Charter — NW corner. Romanesque round-arch architectural
+    frame: half-column with stylized capital springing into a rounded
+    arch shoulder, chevron moulding on the inner edge, jeweled cross
+    boss at the corner. Designed for clean 90/180/270 rotation.
+    Informed by: Romanesque tympana of Vézelay (c. 1130) and Saint-
+    Trophime in Arles; Westminster Psalter (BL Royal MS 2.A.XXII)
+    initial pages; license: PD.
     SVG path data: original procedural geometry, CC0. | PD |
-| scholars_hand | frame_edge_top | `families/scholars_hand/frame_edge_top__border.png` | Scholar's Hand — top edge tile. Bianchi girari band: white-vine
-    spirals carved in negative space against a solid ground band, with
-    pinpoint pearl row on inner edge. Edges matched for repeat.
-    Informed by: Sanvito's hands for Cardinal Bessarion's library;
-    license: PD.
+| crusaders_charter | frame_edge_top | `families/crusaders_charter/frame_edge_top__border.png` | Crusader's Charter — top edge tile. Romanesque architrave: solid
+    band with chevron moulding row on inner edge, three small Latin
+    crosses spaced across, axial repeat.
+    Informed by: Vézelay nave triforium chevron mouldings; license: PD.
     SVG path data: original procedural geometry, CC0. | PD |
-| scholars_hand | seal_stamp | `families/scholars_hand/seal_stamp__gold.png` | Scholar's Hand — seal stamp. Quill pen crossed over an unfurled
-    scroll, ink-pot at base, laurel wreath encircling the composition.
-    Reads as the universal humanist scribal emblem.
-    Informed by: Renaissance printer's marks (Aldus Manutius dolphin-
-    and-anchor); the Aldine Press emblem tradition; classical Tabula
-    Iliaca scroll-and-stylus motif; license: PD.
+| crusaders_charter | seal_stamp | `families/crusaders_charter/seal_stamp__gold.png` | Crusader's Charter — seal stamp. Templar-style fleur-de-lis with
+    cross-band: a fleur-de-lis (purity/Trinity) overlaid by a horizontal
+    Latin cross-band (martial). Flanked by twin lions passant guardant
+    serving as supporters. Encircled by inscription ring with pearl row.
+    Informed by: Knights Hospitaller and Knights Templar seals (12th-13th
+    c.); the Plantagenet "three lions" royal arms; the manuscript Charter
+    of Jerusalem (Cambridge, Trinity College B.10.4); license: PD.
     SVG path data: original procedural geometry, CC0. | PD |
