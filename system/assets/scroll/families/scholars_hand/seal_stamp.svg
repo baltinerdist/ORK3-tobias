@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+  <desc>
+    Scholar's Hand — seal stamp. Quill pen crossed over an unfurled
+    scroll, ink-pot at base, laurel wreath encircling the composition.
+    Reads as the universal humanist scribal emblem.
+    Informed by: Renaissance printer's marks (Aldus Manutius dolphin-
+    and-anchor); the Aldine Press emblem tradition; classical Tabula
+    Iliaca scroll-and-stylus motif; license: PD.
+    SVG path data: original procedural geometry, CC0.
+  </desc>
+
+  <g transform="translate(120 120)">
+    <!-- Outer rings -->
+    <circle cx="0" cy="0" r="110" fill="none" stroke="#FFFFFF" stroke-width="3"/>
+    <circle cx="0" cy="0" r="100" fill="none" stroke="#FFFFFF" stroke-width="1" opacity="0.55"/>
+
+    <!-- Laurel wreath: two opposing arcs of leaf-pairs -->
+    <g fill="#FFFFFF">
+      <!-- Left half (10 leaves) -->
+      <g transform="translate(-94 0) rotate(180)">
+        <ellipse cx="-2" cy="-30" rx="3" ry="6" transform="rotate(20 -2 -30)"/>
+        <ellipse cx="2" cy="-25" rx="3" ry="6" transform="rotate(-20 2 -25)"/>
+        <ellipse cx="-2" cy="-15" rx="3" ry="6" transform="rotate(20 -2 -15)"/>
+        <ellipse cx="2" cy="-10" rx="3" ry="6" transform="rotate(-20 2 -10)"/>
+        <ellipse cx="-2" cy="0" rx="3" ry="6" transform="rotate(20 -2 0)"/>
+        <ellipse cx="2" cy="5" rx="3" ry="6" transform="rotate(-20 2 5)"/>
+        <ellipse cx="-2" cy="15" rx="3" ry="6" transform="rotate(20 -2 15)"/>
+        <ellipse cx="2" cy="20" rx="3" ry="6" transform="rotate(-20 2 20)"/>
+        <ellipse cx="-2" cy="30" rx="3" ry="6" transform="rotate(20 -2 30)"/>
+      </g>
+      <!-- Right half (mirror) -->
+      <g transform="translate(94 0)">
+        <ellipse cx="-2" cy="-30" rx="3" ry="6" transform="rotate(20 -2 -30)"/>
+        <ellipse cx="2" cy="-25" rx="3" ry="6" transform="rotate(-20 2 -25)"/>
+        <ellipse cx="-2" cy="-15" rx="3" ry="6" transform="rotate(20 -2 -15)"/>
+        <ellipse cx="2" cy="-10" rx="3" ry="6" transform="rotate(-20 2 -10)"/>
+        <ellipse cx="-2" cy="0" rx="3" ry="6" transform="rotate(20 -2 0)"/>
+        <ellipse cx="2" cy="5" rx="3" ry="6" transform="rotate(-20 2 5)"/>
+        <ellipse cx="-2" cy="15" rx="3" ry="6" transform="rotate(20 -2 15)"/>
+        <ellipse cx="2" cy="20" rx="3" ry="6" transform="rotate(-20 2 20)"/>
+        <ellipse cx="-2" cy="30" rx="3" ry="6" transform="rotate(20 -2 30)"/>
+      </g>
+      <!-- Wreath tie ribbon at bottom -->
+      <path d="M -8 38 Q 0 32 8 38 Q 12 44 0 46 Q -12 44 -8 38 Z"/>
+      <path d="M -10 46 L -16 56" stroke="#FFFFFF" stroke-width="2"/>
+      <path d="M 10 46 L 16 56" stroke="#FFFFFF" stroke-width="2"/>
+    </g>
+
+    <!-- Unfurled scroll (background of composition) -->
+    <g fill="#FFFFFF">
+      <!-- Scroll body -->
+      <path d="M -54 -16 L 54 -16 Q 64 -16 64 -8 L 64 22 Q 64 30 54 30 L -54 30 Q -64 30 -64 22 L -64 -8 Q -64 -16 -54 -16 Z"/>
+      <!-- Scroll roll on left -->
+      <path d="M -54 -16 Q -68 -16 -68 -8 L -68 22 Q -68 30 -54 30 Z" opacity="0.85"/>
+      <!-- Scroll roll on right -->
+      <path d="M 54 -16 Q 68 -16 68 -8 L 68 22 Q 68 30 54 30 Z" opacity="0.85"/>
+    </g>
+    <!-- Scroll text lines (negative cuts for visible "inscription") -->
+    <g stroke="#000000" stroke-width="1" opacity="0.45">
+      <line x1="-46" y1="-6" x2="46" y2="-6"/>
+      <line x1="-46" y1="2" x2="40" y2="2"/>
+      <line x1="-46" y1="10" x2="44" y2="10"/>
+      <line x1="-46" y1="18" x2="36" y2="18"/>
+    </g>
+
+    <!-- Quill pen crossing diagonally (upper-left to lower-right) -->
+    <g fill="#FFFFFF">
+      <!-- Shaft -->
+      <polygon points="-58,-58 -52,-64 22,8 16,14"/>
+      <!-- Plume feathering -->
+      <g fill="#FFFFFF">
+        <path d="M -58 -58 Q -76 -56 -78 -42 Q -72 -36 -64 -42 Q -56 -50 -52 -52 Z"/>
+        <path d="M -54 -54 Q -68 -42 -64 -34 Q -54 -34 -50 -44 Z" opacity="0.9"/>
+        <path d="M -50 -50 Q -56 -34 -46 -30 Q -38 -36 -42 -46 Z" opacity="0.85"/>
+      </g>
+      <!-- Quill tip (cut nib) -->
+      <polygon points="22,8 28,14 22,20 16,14"/>
+    </g>
+
+    <!-- Ink-pot at base (small, behind scroll roll) -->
+    <g fill="#FFFFFF">
+      <rect x="-8" y="36" width="16" height="14" rx="2"/>
+      <ellipse cx="0" cy="36" rx="9" ry="2.5"/>
+    </g>
+    <!-- Ink-pot label (negative cuts) -->
+    <g stroke="#000000" stroke-width="0.6" opacity="0.5">
+      <line x1="-5" y1="42" x2="5" y2="42"/>
+      <line x1="-5" y1="46" x2="5" y2="46"/>
+    </g>
+  </g>
+</svg>

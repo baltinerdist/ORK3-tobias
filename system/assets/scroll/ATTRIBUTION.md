@@ -53,25 +53,24 @@ CC0 by the ORK project unless otherwise noted in the row's License.
 
 | Family | Role | File | Source / informed by | License |
 |---|---|---|---|---|
-| imperial_edict | frame_corner_nw | `families/imperial_edict/frame_corner_nw__border.png` | Imperial Edict — NW corner. Byzantine jeweled cabochon border:
-    alternating round + lozenge cabochons set in gold cloisonné cells,
-    pearl-row inner edge, axial-symmetric corner medallion with cross.
+| scholars_hand | frame_corner_nw | `families/scholars_hand/frame_corner_nw__border.png` | Scholar's Hand — NW corner. Renaissance bianchi girari (white-vine
+    scrollwork): three triangulated white vine spirals on a dark ground
+    band, classical urn at the inner corner, restrained pinpoint pearls.
     Designed for clean 90/180/270 rotation.
-    Informed by: cloisonné enamel of the Pala d'Oro (St Mark's Venice,
-    c. 11th-14th c.); Byzantine Lectionary BNF Coislin 18 borders;
+    Informed by: Florentine humanist book hands (Bartolomeo Sanvito,
+    c. 1470-1490); Vespasiano da Bisticci copies of Cicero; Roman
+    Tabula Iliaca-style framing; license: PD.
+    SVG path data: original procedural geometry, CC0. | PD |
+| scholars_hand | frame_edge_top | `families/scholars_hand/frame_edge_top__border.png` | Scholar's Hand — top edge tile. Bianchi girari band: white-vine
+    spirals carved in negative space against a solid ground band, with
+    pinpoint pearl row on inner edge. Edges matched for repeat.
+    Informed by: Sanvito's hands for Cardinal Bessarion's library;
     license: PD.
     SVG path data: original procedural geometry, CC0. | PD |
-| imperial_edict | frame_edge_top | `families/imperial_edict/frame_edge_top__border.png` | Imperial Edict — top edge tile. Byzantine cloisonné jeweled band:
-    alternating round + lozenge cabochons in gold cells, pearl row on
-    inner edge, axial-symmetric repeat.
-    Informed by: Pala d'Oro cell-and-jewel decoration; Constantinopolitan
-    enamel ateliers; license: PD.
-    SVG path data: original procedural geometry, CC0. | PD |
-| imperial_edict | seal_stamp | `families/imperial_edict/seal_stamp__gold.png` | Imperial Edict — seal stamp. Byzantine double-headed eagle (the
-    Palaiologan dynastic emblem): two heads turned outward, wings
-    outspread, tail fanned, holding orb and scepter. Encircled by
-    pearl ring + cross-pattée at the four cardinal points.
-    Informed by: Palaiologan imperial seal of Andronikos II
-    (c. 1295); Byzantine catepan double-eagle on the manuscript of the
-    Treaty of Devol (1108); license: PD.
+| scholars_hand | seal_stamp | `families/scholars_hand/seal_stamp__gold.png` | Scholar's Hand — seal stamp. Quill pen crossed over an unfurled
+    scroll, ink-pot at base, laurel wreath encircling the composition.
+    Reads as the universal humanist scribal emblem.
+    Informed by: Renaissance printer's marks (Aldus Manutius dolphin-
+    and-anchor); the Aldine Press emblem tradition; classical Tabula
+    Iliaca scroll-and-stylus motif; license: PD.
     SVG path data: original procedural geometry, CC0. | PD |
