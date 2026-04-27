@@ -53,21 +53,25 @@ CC0 by the ORK project unless otherwise noted in the row's License.
 
 | Family | Role | File | Source / informed by | License |
 |---|---|---|---|---|
-| forest_reverie | frame_corner_nw | `families/forest_reverie/frame_corner_nw__border.png` | Forest Reverie — NW corner. Gnarled oak vine with five-lobed oak
-    leaves and acorns; tendrils break past the page-margin line into
-    the parchment field; concentric carved-bark spiral at the inner corner.
-    Designed for clean 90/180/270 rotation.
-    Informed by: Sherwood Forest Hours (BL Add MS 18852, c. 1500);
-    Renaissance ornamental engravings of Israhel van Meckenem; license: PD.
+| charred_edict | frame_corner_nw | `families/charred_edict/frame_corner_nw__border.png` | Charred Edict — NW corner. Minimal scribal frame: single thin
+    ink rule, hastily drawn (irregular line weight), with a small
+    hand-stamped sigil at the inner corner. The burnt-edge and
+    fold-crease filters overlay this at render time, so the corner
+    deliberately stays sparse.
+    Informed by: 12th-15th c. battlefield dispatches (administrative
+    minuscule hands); license: PD.
     SVG path data: original procedural geometry, CC0. | PD |
-| forest_reverie | frame_edge_top | `families/forest_reverie/frame_edge_top__border.png` | Forest Reverie — top edge tile. Gnarled oak vine with five-lobed
-    leaves spaced across, three acorns in clusters, irregular sinuous
-    trunk. Edges matched for horizontal repeat.
-    Informed by: Sherwood Forest Hours marginalia; license: PD.
+| charred_edict | frame_edge_top | `families/charred_edict/frame_edge_top__border.png` | Charred Edict — top edge tile. Single irregular hand-drawn ink rule
+    with occasional scribal flecks; minimal by design — the burnt-edge
+    filter dominates the visible frame at render time.
+    Informed by: rough scribal hands of besieged-keep dispatches;
+    license: PD.
     SVG path data: original procedural geometry, CC0. | PD |
-| forest_reverie | seal_stamp | `families/forest_reverie/seal_stamp__gold.png` | Forest Reverie — seal stamp. Single five-lobed oak leaf with central
-    vein and lateral veins, paired acorns at the base, encircled by a
-    ring of woven vine knots. The oak is the druidic axis-mundi tree.
-    Informed by: Quercus heraldic emblems; Sherwood Forest Hours; the
-    Green Man tradition of European folk illumination; license: PD.
+| charred_edict | seal_stamp | `families/charred_edict/seal_stamp__gold.png` | Charred Edict — seal stamp. Broken sword crossed over a battered
+    shield: the blade snapped at midpoint, jagged break, hilt cross-guard
+    intact. The composition reads as defeat-yet-defiance — fitting for
+    edicts smuggled out of besieged keeps.
+    Informed by: 14th-c. effigy tomb iconography (knight with broken
+    sword); the heraldic charge of "sword inverted" symbolizing surrender
+    or martyrdom; license: PD.
     SVG path data: original procedural geometry, CC0. | PD |
