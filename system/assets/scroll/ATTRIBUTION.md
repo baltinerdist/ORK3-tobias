@@ -68,14 +68,12 @@ CC0 by the ORK project unless otherwise noted in the row's License.
     Informed by: Aratus's Phaenomena star-charts; the Vatican Aratus
     (Codex Vat. lat. 9410); license: PD.
     SVG path data: original procedural geometry, CC0. | PD |
-| astral_codex | seal_stamp | `families/astral_codex/seal_stamp__gold.png` | Astral Codex — seal stamp. Alchemical pentagram inscribed in a
-    double circle, with the seven classical-planet glyphs (☉☽☿♀♂♃♄)
-    arrayed at the seven stations between the pentagram and the rim.
-    Reads at small size as a five-pointed star in a circle.
-    Informed by: Cornelius Agrippa's Three Books of Occult Philosophy
-    (1531); the Sworn Book of Honorius (BL Royal MS 17.A.XLII); medieval
-    grimoires; license: PD.
-    SVG path data: original procedural geometry, CC0. | PD |
+| astral_codex | seal_stamp | `families/astral_codex/seal_stamp__gold.png` | Pentagram-circle-interlaced
+    Source: https://commons.wikimedia.org/wiki/File:Pentagram-circle-interlaced.svg
+    Author: AnonMoos
+    License: Public domain
+    Imported into ORK3 scroll redesign v1.5 — channel-multiplied to family
+    palette token at seed time. | Public domain |
 | charred_edict | frame_corner_nw | `families/charred_edict/frame_corner_nw__border.png` | Charred Edict — NW corner. Minimal scribal frame: single thin
     ink rule, hastily drawn (irregular line weight), with a small
     hand-stamped sigil at the inner corner. The burnt-edge and
@@ -90,14 +88,12 @@ CC0 by the ORK project unless otherwise noted in the row's License.
     Informed by: rough scribal hands of besieged-keep dispatches;
     license: PD.
     SVG path data: original procedural geometry, CC0. | PD |
-| charred_edict | seal_stamp | `families/charred_edict/seal_stamp__gold.png` | Charred Edict — seal stamp. Broken sword crossed over a battered
-    shield: the blade snapped at midpoint, jagged break, hilt cross-guard
-    intact. The composition reads as defeat-yet-defiance — fitting for
-    edicts smuggled out of besieged keeps.
-    Informed by: 14th-c. effigy tomb iconography (knight with broken
-    sword); the heraldic charge of "sword inverted" symbolizing surrender
-    or martyrdom; license: PD.
-    SVG path data: original procedural geometry, CC0. | PD |
+| charred_edict | seal_stamp | `families/charred_edict/seal_stamp__gold.png` | Antu BrokenSword
+    Source: https://commons.wikimedia.org/wiki/File:Antu_BrokenSword.svg
+    Author: Fabián Alexis
+    License: CC BY-SA 3.0
+    Imported into ORK3 scroll redesign v1.5 — channel-multiplied to family
+    palette token at seed time. | CC BY-SA 3 |
 | crimson_decree | frame_corner_nw | `families/crimson_decree/frame_corner_nw__border.png` | Crimson Decree — NW corner. Architectural Gothic frame: pointed-arch
     capital springing from a fleur-de-lis pier, dentilled architrave on
     inner edge. Designed for clean 90/180/270 rotation.
@@ -111,12 +107,12 @@ CC0 by the ORK project unless otherwise noted in the row's License.
     Informed by: Gothic cornice mouldings (Sainte-Chapelle nave bands);
     license: PD.
     SVG path data: original procedural geometry, CC0. | PD |
-| crimson_decree | seal_stamp | `families/crimson_decree/seal_stamp__gold.png` | Crimson Decree — seal stamp. Royal crown with three jeweled fleur-de-lis
-    apex spikes, ermine band, three jewel cabochons set in the band.
-    Encircled by an inscription-style ring with twelve fleurettes.
-    Informed by: French royal crown of Charles V (c. 1380); English St
-    Edward's crown silhouette; license: PD.
-    SVG path data: original procedural geometry, CC0. | PD |
+| crimson_decree | seal_stamp | `families/crimson_decree/seal_stamp__gold.png` | Heraldic Royal Crown (Common)
+    Source: https://commons.wikimedia.org/wiki/File:Heraldic_Royal_Crown_(Common).svg
+    Author: Wikimedia Commons
+    License: CC BY-SA 3.0
+    Imported into ORK3 scroll redesign v1.5 — channel-multiplied to family
+    palette token at seed time. | CC BY-SA 3 |
 | crusaders_charter | frame_corner_nw | `families/crusaders_charter/frame_corner_nw__border.png` | Crusader's Charter — NW corner. Romanesque round-arch architectural
     frame: half-column with stylized capital springing into a rounded
     arch shoulder, chevron moulding on the inner edge, jeweled cross
@@ -130,14 +126,12 @@ CC0 by the ORK project unless otherwise noted in the row's License.
     crosses spaced across, axial repeat.
     Informed by: Vézelay nave triforium chevron mouldings; license: PD.
     SVG path data: original procedural geometry, CC0. | PD |
-| crusaders_charter | seal_stamp | `families/crusaders_charter/seal_stamp__gold.png` | Crusader's Charter — seal stamp. Templar-style fleur-de-lis with
-    cross-band: a fleur-de-lis (purity/Trinity) overlaid by a horizontal
-    Latin cross-band (martial). Flanked by twin lions passant guardant
-    serving as supporters. Encircled by inscription ring with pearl row.
-    Informed by: Knights Hospitaller and Knights Templar seals (12th-13th
-    c.); the Plantagenet "three lions" royal arms; the manuscript Charter
-    of Jerusalem (Cambridge, Trinity College B.10.4); license: PD.
-    SVG path data: original procedural geometry, CC0. | PD |
+| crusaders_charter | seal_stamp | `families/crusaders_charter/seal_stamp__gold.png` | Cross-Pattee-Heraldry
+    Source: https://commons.wikimedia.org/wiki/File:Cross-Pattee-Heraldry.svg
+    Author: Masturbius based on original PNG and PostScript source by AnonMoos, AnonMoos
+    License: Public domain
+    Imported into ORK3 scroll redesign v1.5 — channel-multiplied to family
+    palette token at seed time. | Public domain |
 | forest_reverie | frame_corner_nw | `families/forest_reverie/frame_corner_nw__border.png` | Forest Reverie — NW corner. Gnarled oak vine with five-lobed oak
     leaves and acorns; tendrils break past the page-margin line into
     the parchment field; concentric carved-bark spiral at the inner corner.
@@ -150,12 +144,12 @@ CC0 by the ORK project unless otherwise noted in the row's License.
     trunk. Edges matched for horizontal repeat.
     Informed by: Sherwood Forest Hours marginalia; license: PD.
     SVG path data: original procedural geometry, CC0. | PD |
-| forest_reverie | seal_stamp | `families/forest_reverie/seal_stamp__gold.png` | Forest Reverie — seal stamp. Single five-lobed oak leaf with central
-    vein and lateral veins, paired acorns at the base, encircled by a
-    ring of woven vine knots. The oak is the druidic axis-mundi tree.
-    Informed by: Quercus heraldic emblems; Sherwood Forest Hours; the
-    Green Man tradition of European folk illumination; license: PD.
-    SVG path data: original procedural geometry, CC0. | PD |
+| forest_reverie | seal_stamp | `families/forest_reverie/seal_stamp__gold.png` | Gold heraldic oak leaf
+    Source: https://commons.wikimedia.org/wiki/File:Gold_heraldic_oak_leaf.svg
+    Author: Leonardo Piccioni de Almeida
+    License: CC BY 3.0
+    Imported into ORK3 scroll redesign v1.5 — channel-multiplied to family
+    palette token at seed time. | CC BY 3 |
 | hibernian_knotwork | frame_corner_nw | `families/hibernian_knotwork/frame_corner_nw__border.png` | Hibernian Knotwork — NW corner. Insular triskele with two interlocked
     knot bands radiating along the right and bottom edges to meet the
     frame_edge_top tile at the corner seam. Designed to rotate 90/180/270
@@ -170,12 +164,12 @@ CC0 by the ORK project unless otherwise noted in the row's License.
     Informed by: Lindisfarne Gospels, BL Cotton Nero D.IV, carpet pages;
     license: PD (manuscript ~AD 700).
     SVG path data: original procedural geometry, CC0. | PD (manuscript ~AD 700) |
-| hibernian_knotwork | seal_stamp | `families/hibernian_knotwork/seal_stamp__gold.png` | Hibernian Knotwork — seal stamp. Triskele in concentric Insular knot ring,
-    central spiral hub. Reads at small size (~36 px preview) as three radial
-    arms in a circle.
-    Informed by: Cross of Patrick and Columba, Kells, Co. Meath; carpet pages
-    of Lindisfarne and Kells; license: PD.
-    SVG path data: original procedural geometry, CC0. | PD |
+| hibernian_knotwork | seal_stamp | `families/hibernian_knotwork/seal_stamp__gold.png` | Triskele-Symbol1
+    Source: https://commons.wikimedia.org/wiki/File:Triskele-Symbol1.svg
+    Author: Based on work by User:AnonMoos; The original uploader was Dariusofthedark at English Wikipedia.
+    License: Public domain
+    Imported into ORK3 scroll redesign v1.5 — channel-multiplied to family
+    palette token at seed time. | Public domain |
 | imperial_edict | frame_corner_nw | `families/imperial_edict/frame_corner_nw__border.png` | Imperial Edict — NW corner. Byzantine jeweled cabochon border:
     alternating round + lozenge cabochons set in gold cloisonné cells,
     pearl-row inner edge, axial-symmetric corner medallion with cross.
@@ -190,14 +184,12 @@ CC0 by the ORK project unless otherwise noted in the row's License.
     Informed by: Pala d'Oro cell-and-jewel decoration; Constantinopolitan
     enamel ateliers; license: PD.
     SVG path data: original procedural geometry, CC0. | PD |
-| imperial_edict | seal_stamp | `families/imperial_edict/seal_stamp__gold.png` | Imperial Edict — seal stamp. Byzantine double-headed eagle (the
-    Palaiologan dynastic emblem): two heads turned outward, wings
-    outspread, tail fanned, holding orb and scepter. Encircled by
-    pearl ring + cross-pattée at the four cardinal points.
-    Informed by: Palaiologan imperial seal of Andronikos II
-    (c. 1295); Byzantine catepan double-eagle on the manuscript of the
-    Treaty of Devol (1108); license: PD.
-    SVG path data: original procedural geometry, CC0. | PD |
+| imperial_edict | seal_stamp | `families/imperial_edict/seal_stamp__gold.png` | Double-headed eagle of the Sultanate of Rum
+    Source: https://commons.wikimedia.org/wiki/File:Double-headed_eagle_of_the_Sultanate_of_Rum.svg
+    Author: Samhanin
+    License: CC0
+    Imported into ORK3 scroll redesign v1.5 — channel-multiplied to family
+    palette token at seed time. | CC0 |
 | northern_gothic | frame_corner_nw | `families/northern_gothic/frame_corner_nw__border.png` | Northern Gothic — NW corner. Naturalistic ivy bar with three-lobed
     leaves, acanthus curl at the inner corner, gilded besant boss.
     Designed for clean 90/180/270 rotation.
@@ -209,12 +201,12 @@ CC0 by the ORK project unless otherwise noted in the row's License.
     for horizontal repeat.
     Informed by: Luttrell Psalter bar borders; license: PD.
     SVG path data: original procedural geometry, CC0. | PD |
-| northern_gothic | seal_stamp | `families/northern_gothic/seal_stamp__gold.png` | Northern Gothic — seal stamp. Lion rampant with raised forepaw and
-    flowing mane, encircled by gilded ring with twelve cabochon dots.
-    Reads at small size as a leonine silhouette in profile.
-    Informed by: heraldic lions of the Holy Roman Empire and English
-    royal arms (c. 13th-14th c.); license: PD.
-    SVG path data: original procedural geometry, CC0. | PD |
+| northern_gothic | seal_stamp | `families/northern_gothic/seal_stamp__gold.png` | Lion rampant
+    Source: https://commons.wikimedia.org/wiki/File:Lion_rampant.svg
+    Author: Wikimedia Commons
+    License: CC BY-SA 3.0
+    Imported into ORK3 scroll redesign v1.5 — channel-multiplied to family
+    palette token at seed time. | CC BY-SA 3 |
 | provencal_bestiary | frame_corner_nw | `families/provencal_bestiary/frame_corner_nw__border.png` | Provençal Bestiary — NW corner. Asymmetric whimsical ivy with curling
     tendrils, marginal grotesque (small hybrid bird-headed creature peeks
     from inner corner). Designed for clean 90/180/270 rotation.
@@ -227,12 +219,12 @@ CC0 by the ORK project unless otherwise noted in the row's License.
     Informed by: Luttrell Psalter and Romance of Alexander marginalia
     bar borders; license: PD.
     SVG path data: original procedural geometry, CC0. | PD |
-| provencal_bestiary | seal_stamp | `families/provencal_bestiary/seal_stamp__gold.png` | Provençal Bestiary — seal stamp. Rabbit knight on hind legs holding
-    a lance, encircled by a ring of pomegranate clusters and ivy leaves.
-    The whimsical "rabbit knight" trope is a Luttrell Psalter signature
-    bas-de-page motif.
-    Informed by: Luttrell Psalter rabbit-knight marginalia; license: PD.
-    SVG path data: original procedural geometry, CC0. | PD |
+| provencal_bestiary | seal_stamp | `families/provencal_bestiary/seal_stamp__gold.png` | Coa Illustration Elements Animal Rabbit Couchant
+    Source: https://commons.wikimedia.org/wiki/File:Coa_Illustration_Elements_Animal_Rabbit_Couchant.svg
+    Author: Arthur Charles Fox-Davies
+    License: Public domain
+    Imported into ORK3 scroll redesign v1.5 — channel-multiplied to family
+    palette token at seed time. | Public domain |
 | scholars_hand | frame_corner_nw | `families/scholars_hand/frame_corner_nw__border.png` | Scholar's Hand — NW corner. Renaissance bianchi girari (white-vine
     scrollwork): three triangulated white vine spirals on a dark ground
     band, classical urn at the inner corner, restrained pinpoint pearls.
@@ -247,10 +239,9 @@ CC0 by the ORK project unless otherwise noted in the row's License.
     Informed by: Sanvito's hands for Cardinal Bessarion's library;
     license: PD.
     SVG path data: original procedural geometry, CC0. | PD |
-| scholars_hand | seal_stamp | `families/scholars_hand/seal_stamp__gold.png` | Scholar's Hand — seal stamp. Quill pen crossed over an unfurled
-    scroll, ink-pot at base, laurel wreath encircling the composition.
-    Reads as the universal humanist scribal emblem.
-    Informed by: Renaissance printer's marks (Aldus Manutius dolphin-
-    and-anchor); the Aldine Press emblem tradition; classical Tabula
-    Iliaca scroll-and-stylus motif; license: PD.
-    SVG path data: original procedural geometry, CC0. | PD |
+| scholars_hand | seal_stamp | `families/scholars_hand/seal_stamp__gold.png` | Heraldry quill and ink
+    Source: https://commons.wikimedia.org/wiki/File:Heraldry_quill_and_ink.svg
+    Author: Wikimedia Commons
+    License: Public domain
+    Imported into ORK3 scroll redesign v1.5 — channel-multiplied to family
+    palette token at seed time. | Public domain |
