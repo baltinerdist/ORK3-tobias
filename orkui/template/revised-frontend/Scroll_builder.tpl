@@ -1829,8 +1829,8 @@ html[data-theme="dark"] .sc-family-preview-wrap h4 { color: #d4af37; }
       </div>
     </div>
 
-    <!-- SECTION: Template -->
-    <div class="sc-section" id="sc-sec-template">
+    <!-- SECTION: Template (LEGACY — replaced by Style Family selector; hidden in v1.5) -->
+    <div class="sc-section" id="sc-sec-template" style="display:none">
       <div class="sc-section-title" onclick="sgToggleSection('sc-sec-template')">
         <h3><i class="fas fa-layer-group" style="margin-right:6px;opacity:0.5"></i>Scroll Template <span style="font-size:10px;opacity:0.45;margin-left:6px;font-weight:400;">(legacy · 90-day deprecation)</span></h3>
         <i class="fas fa-chevron-down sc-chevron"></i>
@@ -1881,8 +1881,8 @@ html[data-theme="dark"] .sc-family-preview-wrap h4 { color: #d4af37; }
       </div>
     </div>
 
-    <!-- SECTION: Decorative Elements (toggles) -->
-    <div class="sc-section" id="sc-sec-elements">
+    <!-- SECTION: Decorative Elements (LEGACY — element toggles supplanted by per-family decoration arrays in families.json + decoration-intensity slider; hidden in v1.5) -->
+    <div class="sc-section" id="sc-sec-elements" style="display:none">
       <div class="sc-section-title" onclick="sgToggleSection('sc-sec-elements')">
         <h3><i class="fas fa-sparkles" style="margin-right:6px;opacity:0.5"></i>Decorative Elements</h3>
         <i class="fas fa-chevron-down sc-chevron"></i>
@@ -2077,7 +2077,8 @@ html[data-theme="dark"] .sc-family-preview-wrap h4 { color: #d4af37; }
     <div class="sc-two-col">
 
     <!-- SECTION: Colors & Effects -->
-    <div class="sc-section" id="sc-sec-visual">
+    <!-- SECTION: Colors & Effects (LEGACY — 12 free-floating palettes + 8 borders + Celtic-knot panel all replaced by Style Family lock; hidden in v1.5) -->
+    <div class="sc-section" id="sc-sec-visual" style="display:none">
       <div class="sc-section-title" onclick="sgToggleSection('sc-sec-visual')">
         <h3><i class="fas fa-palette" style="margin-right:6px;opacity:0.5"></i>Colors &amp; Effects</h3>
         <i class="fas fa-chevron-down sc-chevron"></i>
@@ -2377,7 +2378,8 @@ html[data-theme="dark"] .sc-family-preview-wrap h4 { color: #d4af37; }
 
   <!-- ============ Preview (right panel) ============ -->
   <div class="sc-preview-wrap">
-    <div class="sc-preview-panel">
+    <!-- LEGACY preview panel: drives the old TEMPLATES rendering pipeline; hidden in v1.5 -->
+    <div class="sc-preview-panel" style="display:none">
       <div class="sc-preview-header">
         <h3><i class="fas fa-eye" style="margin-right:6px;opacity:0.5"></i>Preview</h3>
         <span class="sc-preview-size">8.5&Prime; &times; 11&Prime;</span>
@@ -2421,6 +2423,11 @@ window.sgFamilyState = {
 	date: '',
 	signatures: [],
 	decorationIntensity: 'balanced',
+	// Heraldry URLs are gated on the per-source toggles in sc-sec-heraldry.
+	// sgRenderFamily syncs these at render time from the live checkbox state.
+	kingdomHeraldry: '',
+	parkHeraldry: '',
+	playerHeraldry: '',
 };
 
 function sgSelectFamily(key) {
@@ -2463,6 +2470,13 @@ function sgRenderFamily() {
 		if (n || r) sigs.push({ name: n, role: r });
 	}
 	if (sigs.length) sgFamilyState.signatures = sigs;
+	// Sync heraldry URLs from the toggle checkboxes (URLs come from server-rendered SgConfig).
+	const kEl = document.getElementById('sc-herald-kingdom');
+	const pkEl = document.getElementById('sc-herald-park');
+	const plEl = document.getElementById('sc-herald-player');
+	sgFamilyState.kingdomHeraldry = (kEl && kEl.checked && SgConfig.kingdomHeraldry) ? SgConfig.kingdomHeraldry : '';
+	sgFamilyState.parkHeraldry    = (pkEl && pkEl.checked && SgConfig.parkHeraldry)    ? SgConfig.parkHeraldry    : '';
+	sgFamilyState.playerHeraldry  = (plEl && plEl.checked && SgConfig.playerHeraldry)  ? SgConfig.playerHeraldry  : '';
 	ScrollFamilies.renderFamily(ctx, w, h, sgFamilyState, fam);
 }
 
@@ -2482,6 +2496,9 @@ function sgDownloadFamilyScroll() {
 	add('bodyText', sgFamilyState.bodyText);
 	add('date', sgFamilyState.date);
 	add('decorationIntensity', sgFamilyState.decorationIntensity);
+	add('kingdomHeraldry', sgFamilyState.kingdomHeraldry);
+	add('parkHeraldry',    sgFamilyState.parkHeraldry);
+	add('playerHeraldry',  sgFamilyState.playerHeraldry);
 	(sgFamilyState.signatures || []).forEach((s, i) => {
 		add('sig' + (i + 1) + '_name', s.name);
 		add('sig' + (i + 1) + '_role', s.role);
