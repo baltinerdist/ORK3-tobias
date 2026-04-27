@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150" width="150" height="150">
+  <desc>
+    Provençal Bestiary — NW corner. Asymmetric whimsical ivy with curling
+    tendrils, marginal grotesque (small hybrid bird-headed creature peeks
+    from inner corner). Designed for clean 90/180/270 rotation.
+    Informed by: Luttrell Psalter bas-de-page marginalia (BL Add MS 42130);
+    Romance of Alexander (Bodleian MS Bodley 264); license: PD.
+    SVG path data: original procedural geometry, CC0.
+  </desc>
+
+  <!-- Inner ink rule -->
+  <g fill="none" stroke="#FFFFFF" stroke-width="1" opacity="0.55">
+    <line x1="150" y1="118" x2="150" y2="150"/>
+    <line x1="118" y1="150" x2="150" y2="150"/>
+  </g>
+
+  <!-- Curling ivy along right edge — asymmetric, varied leaf size -->
+  <g fill="#FFFFFF">
+    <path d="M 132 0 Q 128 12 134 22 Q 138 30 132 40 Q 126 50 134 60 Q 138 70 132 80 Q 128 90 134 100 Q 138 108 132 116" fill="none" stroke="#FFFFFF" stroke-width="2.5"/>
+    <!-- Big leaf clusters -->
+    <path d="M 134 22 Q 144 20 146 14 Q 146 8 140 8 Q 134 12 132 18 Z"/>
+    <path d="M 132 50 Q 120 48 118 42 Q 118 36 124 36 Q 132 40 134 46 Z" opacity="0.85"/>
+    <path d="M 134 80 Q 144 78 146 72 Q 146 66 140 66 Q 134 70 132 76 Z"/>
+    <!-- Curling tendrils -->
+    <path d="M 144 30 Q 148 36 144 42" fill="none" stroke="#FFFFFF" stroke-width="1.2"/>
+    <path d="M 116 60 Q 112 66 116 72" fill="none" stroke="#FFFFFF" stroke-width="1.2"/>
+    <path d="M 144 90 Q 148 96 144 102" fill="none" stroke="#FFFFFF" stroke-width="1.2"/>
+  </g>
+
+  <!-- Curling ivy along bottom edge -->
+  <g fill="#FFFFFF">
+    <path d="M 0 132 Q 12 128 22 134 Q 30 138 40 132 Q 50 126 60 134 Q 70 138 80 132 Q 90 128 100 134 Q 108 138 116 132" fill="none" stroke="#FFFFFF" stroke-width="2.5"/>
+    <path d="M 22 134 Q 20 144 14 146 Q 8 146 8 140 Q 12 134 18 132 Z"/>
+    <path d="M 50 132 Q 48 120 42 118 Q 36 118 36 124 Q 40 132 46 134 Z" opacity="0.85"/>
+    <path d="M 80 134 Q 78 144 72 146 Q 66 146 66 140 Q 70 134 76 132 Z"/>
+    <path d="M 30 144 Q 36 148 42 144" fill="none" stroke="#FFFFFF" stroke-width="1.2"/>
+    <path d="M 60 116 Q 66 112 72 116" fill="none" stroke="#FFFFFF" stroke-width="1.2"/>
+  </g>
+
+  <!-- Inner-corner grotesque: small hybrid creature head peeks out -->
+  <g transform="translate(118 118)" fill="#FFFFFF">
+    <!-- Round body -->
+    <ellipse cx="0" cy="0" rx="14" ry="11"/>
+    <!-- Bird-like beak -->
+    <path d="M -14 -2 L -22 -4 L -14 2 Z"/>
+    <!-- Crest -->
+    <path d="M -2 -10 L -6 -16 L 0 -14 Z"/>
+    <!-- Eye (negative dot) -->
+    <circle cx="-8" cy="-2" r="1.6" fill="#000000"/>
+    <!-- Curling tail/fin -->
+    <path d="M 12 4 Q 22 8 24 16 Q 22 22 18 20 Q 14 16 12 12" fill="none" stroke="#FFFFFF" stroke-width="2"/>
+    <!-- Small wing -->
+    <path d="M 0 -6 Q 8 -12 14 -6 Q 12 -2 6 -2 Z" opacity="0.85"/>
+  </g>
+</svg>

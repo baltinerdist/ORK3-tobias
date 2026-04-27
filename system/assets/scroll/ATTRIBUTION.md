@@ -53,20 +53,21 @@ CC0 by the ORK project unless otherwise noted in the row's License.
 
 | Family | Role | File | Source / informed by | License |
 |---|---|---|---|---|
-| northern_gothic | frame_corner_nw | `families/northern_gothic/frame_corner_nw__border.png` | Northern Gothic — NW corner. Naturalistic ivy bar with three-lobed
-    leaves, acanthus curl at the inner corner, gilded besant boss.
-    Designed for clean 90/180/270 rotation.
-    Informed by: Luttrell Psalter (BL Add MS 42130, c. 1325-1340) bar
-    border conventions; license: PD.
+| provencal_bestiary | frame_corner_nw | `families/provencal_bestiary/frame_corner_nw__border.png` | Provençal Bestiary — NW corner. Asymmetric whimsical ivy with curling
+    tendrils, marginal grotesque (small hybrid bird-headed creature peeks
+    from inner corner). Designed for clean 90/180/270 rotation.
+    Informed by: Luttrell Psalter bas-de-page marginalia (BL Add MS 42130);
+    Romance of Alexander (Bodleian MS Bodley 264); license: PD.
     SVG path data: original procedural geometry, CC0. | PD |
-| northern_gothic | frame_edge_top | `families/northern_gothic/frame_edge_top__border.png` | Northern Gothic — top edge tile. Continuous ivy bar with five trefoil
-    leaves, gilded besants between, sinuous central trunk. Edges matched
+| provencal_bestiary | frame_edge_top | `families/provencal_bestiary/frame_edge_top__border.png` | Provençal Bestiary — top edge tile. Whimsical ivy with curling tendrils,
+    pomegranate-fruit clusters, asymmetric leaf placement. Edges matched
     for horizontal repeat.
-    Informed by: Luttrell Psalter bar borders; license: PD.
+    Informed by: Luttrell Psalter and Romance of Alexander marginalia
+    bar borders; license: PD.
     SVG path data: original procedural geometry, CC0. | PD |
-| northern_gothic | seal_stamp | `families/northern_gothic/seal_stamp__gold.png` | Northern Gothic — seal stamp. Lion rampant with raised forepaw and
-    flowing mane, encircled by gilded ring with twelve cabochon dots.
-    Reads at small size as a leonine silhouette in profile.
-    Informed by: heraldic lions of the Holy Roman Empire and English
-    royal arms (c. 13th-14th c.); license: PD.
+| provencal_bestiary | seal_stamp | `families/provencal_bestiary/seal_stamp__gold.png` | Provençal Bestiary — seal stamp. Rabbit knight on hind legs holding
+    a lance, encircled by a ring of pomegranate clusters and ivy leaves.
+    The whimsical "rabbit knight" trope is a Luttrell Psalter signature
+    bas-de-page motif.
+    Informed by: Luttrell Psalter rabbit-knight marginalia; license: PD.
     SVG path data: original procedural geometry, CC0. | PD |

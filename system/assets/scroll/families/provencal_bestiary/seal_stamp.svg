@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+  <desc>
+    Provençal Bestiary — seal stamp. Rabbit knight on hind legs holding
+    a lance, encircled by a ring of pomegranate clusters and ivy leaves.
+    The whimsical "rabbit knight" trope is a Luttrell Psalter signature
+    bas-de-page motif.
+    Informed by: Luttrell Psalter rabbit-knight marginalia; license: PD.
+    SVG path data: original procedural geometry, CC0.
+  </desc>
+
+  <g transform="translate(120 120)">
+    <!-- Outer rings -->
+    <circle cx="0" cy="0" r="110" fill="none" stroke="#FFFFFF" stroke-width="3"/>
+    <circle cx="0" cy="0" r="100" fill="none" stroke="#FFFFFF" stroke-width="1" opacity="0.55"/>
+
+    <!-- Ring of pomegranate berry clusters at 8 stations -->
+    <g fill="#FFFFFF">
+      <g transform="translate(0 -100)"><circle cx="-3" cy="0" r="2.5"/><circle cx="3" cy="0" r="2.5"/><circle cx="0" cy="3" r="2.5"/></g>
+      <g transform="rotate(45)"><g transform="translate(0 -100)"><circle cx="-3" cy="0" r="2.5"/><circle cx="3" cy="0" r="2.5"/><circle cx="0" cy="3" r="2.5"/></g></g>
+      <g transform="rotate(90)"><g transform="translate(0 -100)"><circle cx="-3" cy="0" r="2.5"/><circle cx="3" cy="0" r="2.5"/><circle cx="0" cy="3" r="2.5"/></g></g>
+      <g transform="rotate(135)"><g transform="translate(0 -100)"><circle cx="-3" cy="0" r="2.5"/><circle cx="3" cy="0" r="2.5"/><circle cx="0" cy="3" r="2.5"/></g></g>
+      <g transform="rotate(180)"><g transform="translate(0 -100)"><circle cx="-3" cy="0" r="2.5"/><circle cx="3" cy="0" r="2.5"/><circle cx="0" cy="3" r="2.5"/></g></g>
+      <g transform="rotate(225)"><g transform="translate(0 -100)"><circle cx="-3" cy="0" r="2.5"/><circle cx="3" cy="0" r="2.5"/><circle cx="0" cy="3" r="2.5"/></g></g>
+      <g transform="rotate(270)"><g transform="translate(0 -100)"><circle cx="-3" cy="0" r="2.5"/><circle cx="3" cy="0" r="2.5"/><circle cx="0" cy="3" r="2.5"/></g></g>
+      <g transform="rotate(315)"><g transform="translate(0 -100)"><circle cx="-3" cy="0" r="2.5"/><circle cx="3" cy="0" r="2.5"/><circle cx="0" cy="3" r="2.5"/></g></g>
+    </g>
+
+    <!-- Inner ring -->
+    <circle cx="0" cy="0" r="78" fill="none" stroke="#FFFFFF" stroke-width="1.5" opacity="0.7"/>
+
+    <!-- Rabbit knight standing on hind legs -->
+    <g fill="#FFFFFF">
+      <!-- Body (oval) -->
+      <ellipse cx="-6" cy="14" rx="22" ry="28"/>
+      <!-- Head -->
+      <ellipse cx="-6" cy="-26" rx="16" ry="18"/>
+      <!-- Long ears -->
+      <ellipse cx="-14" cy="-50" rx="5" ry="18"/>
+      <ellipse cx="2" cy="-50" rx="5" ry="18"/>
+      <!-- Ear interiors (slight tonal break) -->
+      <ellipse cx="-14" cy="-50" rx="2" ry="14" fill="#FFFFFF" opacity="0.6"/>
+      <ellipse cx="2" cy="-50" rx="2" ry="14" fill="#FFFFFF" opacity="0.6"/>
+      <!-- Eye (negative) -->
+      <circle cx="-12" cy="-26" r="1.8" fill="#000000"/>
+      <!-- Snout -->
+      <ellipse cx="-6" cy="-18" rx="4" ry="3" opacity="0.85"/>
+      <!-- Front paws holding lance -->
+      <ellipse cx="14" cy="-2" rx="6" ry="9"/>
+      <!-- Lance — long diagonal -->
+      <line x1="22" y1="-32" x2="60" y2="-58" stroke="#FFFFFF" stroke-width="3"/>
+      <!-- Lance pennon -->
+      <path d="M 60 -58 L 72 -56 L 64 -50 Z"/>
+      <!-- Lance grip flare -->
+      <circle cx="22" cy="-32" r="3"/>
+      <!-- Hind feet -->
+      <ellipse cx="-18" cy="44" rx="10" ry="5"/>
+      <ellipse cx="6" cy="44" rx="10" ry="5"/>
+      <!-- Tail -->
+      <circle cx="-22" cy="22" r="6" opacity="0.85"/>
+    </g>
+  </g>
+</svg>
