@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150" width="150" height="150">
+  <desc>
+    Crimson Decree — NW corner. Architectural Gothic frame: pointed-arch
+    capital springing from a fleur-de-lis pier, dentilled architrave on
+    inner edge. Designed for clean 90/180/270 rotation.
+    Informed by: Sainte-Chapelle (Paris, c. 1248); Reims Cathedral
+    portal arch capitals (c. 1230); manuscript decretals of Boniface VIII
+    (BNF Lat. 4080, 14th c.); license: PD.
+    SVG path data: original procedural geometry, CC0.
+  </desc>
+
+  <g fill="none" stroke="#FFFFFF" stroke-width="1" opacity="0.55">
+    <line x1="150" y1="118" x2="150" y2="150"/>
+    <line x1="118" y1="150" x2="150" y2="150"/>
+  </g>
+
+  <!-- Vertical pier (right edge) — fluted column -->
+  <g fill="#FFFFFF">
+    <rect x="126" y="0" width="12" height="115"/>
+    <!-- Fluting (negative cuts) -->
+    <line x1="129" y1="0" x2="129" y2="115" stroke="#000000" stroke-width="0.5" opacity="0.3"/>
+    <line x1="135" y1="0" x2="135" y2="115" stroke="#000000" stroke-width="0.5" opacity="0.3"/>
+  </g>
+
+  <!-- Horizontal pier (bottom edge) -->
+  <g fill="#FFFFFF">
+    <rect x="0" y="126" width="115" height="12"/>
+  </g>
+
+  <!-- Inner-corner capital — gothic capital with foliate volutes -->
+  <g transform="translate(122 122)" fill="#FFFFFF">
+    <!-- Capital block -->
+    <rect x="-18" y="-4" width="22" height="8"/>
+    <rect x="-4" y="-18" width="8" height="22"/>
+    <!-- Foliate volutes (4 around capital) -->
+    <path d="M -18 -4 Q -26 -8 -26 -16 Q -22 -22 -16 -18 Q -14 -10 -14 -4 Z"/>
+    <path d="M 4 -18 Q 8 -26 16 -26 Q 22 -22 18 -16 Q 10 -14 4 -14 Z"/>
+    <!-- Crochet dots -->
+    <circle cx="-22" cy="-22" r="2.5"/>
+    <circle cx="22" cy="-22" r="2.5"/>
+    <!-- Gilded fleur-de-lis at the apex of the capital -->
+    <g transform="translate(-12 -12)">
+      <path d="M 0 -12 L 4 -2 L -4 -2 Z"/>
+      <ellipse cx="0" cy="-2" rx="6" ry="2.5"/>
+      <path d="M -6 -2 Q -10 4 -6 6 Q -2 4 -2 -2 Z"/>
+      <path d="M 6 -2 Q 10 4 6 6 Q 2 4 2 -2 Z"/>
+      <rect x="-7" y="2" width="14" height="2"/>
+    </g>
+  </g>
+
+  <!-- Dentil row on inner edge of the right pier -->
+  <g fill="#FFFFFF">
+    <rect x="116" y="20" width="6" height="3"/>
+    <rect x="116" y="32" width="6" height="3"/>
+    <rect x="116" y="44" width="6" height="3"/>
+    <rect x="116" y="56" width="6" height="3"/>
+    <rect x="116" y="68" width="6" height="3"/>
+    <rect x="116" y="80" width="6" height="3"/>
+    <rect x="116" y="92" width="6" height="3"/>
+    <rect x="116" y="104" width="6" height="3"/>
+  </g>
+
+  <!-- Dentil row on inner edge of bottom pier -->
+  <g fill="#FFFFFF">
+    <rect x="20" y="116" width="3" height="6"/>
+    <rect x="32" y="116" width="3" height="6"/>
+    <rect x="44" y="116" width="3" height="6"/>
+    <rect x="56" y="116" width="3" height="6"/>
+    <rect x="68" y="116" width="3" height="6"/>
+    <rect x="80" y="116" width="3" height="6"/>
+    <rect x="92" y="116" width="3" height="6"/>
+    <rect x="104" y="116" width="3" height="6"/>
+  </g>
+</svg>

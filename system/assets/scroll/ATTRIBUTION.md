@@ -53,21 +53,22 @@ CC0 by the ORK project unless otherwise noted in the row's License.
 
 | Family | Role | File | Source / informed by | License |
 |---|---|---|---|---|
-| provencal_bestiary | frame_corner_nw | `families/provencal_bestiary/frame_corner_nw__border.png` | Provençal Bestiary — NW corner. Asymmetric whimsical ivy with curling
-    tendrils, marginal grotesque (small hybrid bird-headed creature peeks
-    from inner corner). Designed for clean 90/180/270 rotation.
-    Informed by: Luttrell Psalter bas-de-page marginalia (BL Add MS 42130);
-    Romance of Alexander (Bodleian MS Bodley 264); license: PD.
+| crimson_decree | frame_corner_nw | `families/crimson_decree/frame_corner_nw__border.png` | Crimson Decree — NW corner. Architectural Gothic frame: pointed-arch
+    capital springing from a fleur-de-lis pier, dentilled architrave on
+    inner edge. Designed for clean 90/180/270 rotation.
+    Informed by: Sainte-Chapelle (Paris, c. 1248); Reims Cathedral
+    portal arch capitals (c. 1230); manuscript decretals of Boniface VIII
+    (BNF Lat. 4080, 14th c.); license: PD.
     SVG path data: original procedural geometry, CC0. | PD |
-| provencal_bestiary | frame_edge_top | `families/provencal_bestiary/frame_edge_top__border.png` | Provençal Bestiary — top edge tile. Whimsical ivy with curling tendrils,
-    pomegranate-fruit clusters, asymmetric leaf placement. Edges matched
-    for horizontal repeat.
-    Informed by: Luttrell Psalter and Romance of Alexander marginalia
-    bar borders; license: PD.
+| crimson_decree | frame_edge_top | `families/crimson_decree/frame_edge_top__border.png` | Crimson Decree — top edge tile. Solid architectural band with dentil
+    row on the inner edge and three small fleur-de-lis bosses spaced
+    across. Edges matched for horizontal repeat.
+    Informed by: Gothic cornice mouldings (Sainte-Chapelle nave bands);
+    license: PD.
     SVG path data: original procedural geometry, CC0. | PD |
-| provencal_bestiary | seal_stamp | `families/provencal_bestiary/seal_stamp__gold.png` | Provençal Bestiary — seal stamp. Rabbit knight on hind legs holding
-    a lance, encircled by a ring of pomegranate clusters and ivy leaves.
-    The whimsical "rabbit knight" trope is a Luttrell Psalter signature
-    bas-de-page motif.
-    Informed by: Luttrell Psalter rabbit-knight marginalia; license: PD.
+| crimson_decree | seal_stamp | `families/crimson_decree/seal_stamp__gold.png` | Crimson Decree — seal stamp. Royal crown with three jeweled fleur-de-lis
+    apex spikes, ermine band, three jewel cabochons set in the band.
+    Encircled by an inscription-style ring with twelve fleurettes.
+    Informed by: French royal crown of Charles V (c. 1380); English St
+    Edward's crown silhouette; license: PD.
     SVG path data: original procedural geometry, CC0. | PD |

@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 30" width="150" height="30">
+  <desc>
+    Crimson Decree — top edge tile. Solid architectural band with dentil
+    row on the inner edge and three small fleur-de-lis bosses spaced
+    across. Edges matched for horizontal repeat.
+    Informed by: Gothic cornice mouldings (Sainte-Chapelle nave bands);
+    license: PD.
+    SVG path data: original procedural geometry, CC0.
+  </desc>
+
+  <!-- Solid architectural band -->
+  <rect x="0" y="2" width="150" height="14" fill="#FFFFFF"/>
+  <!-- Highlight rule on outer edge -->
+  <rect x="0" y="0" width="150" height="2" fill="#FFFFFF" opacity="0.55"/>
+  <!-- Inner shadow rule -->
+  <rect x="0" y="16" width="150" height="1" fill="#FFFFFF" opacity="0.4"/>
+
+  <!-- Dentil row on inner edge -->
+  <g fill="#FFFFFF">
+    <rect x="6"   y="18" width="6" height="6"/>
+    <rect x="18"  y="18" width="6" height="6"/>
+    <rect x="30"  y="18" width="6" height="6"/>
+    <rect x="42"  y="18" width="6" height="6"/>
+    <rect x="54"  y="18" width="6" height="6"/>
+    <rect x="66"  y="18" width="6" height="6"/>
+    <rect x="78"  y="18" width="6" height="6"/>
+    <rect x="90"  y="18" width="6" height="6"/>
+    <rect x="102" y="18" width="6" height="6"/>
+    <rect x="114" y="18" width="6" height="6"/>
+    <rect x="126" y="18" width="6" height="6"/>
+    <rect x="138" y="18" width="6" height="6"/>
+  </g>
+
+  <!-- Three fleur-de-lis bosses spaced -->
+  <g fill="#FFFFFF">
+    <g transform="translate(25 9)">
+      <path d="M 0 -6 L 2 0 L -2 0 Z"/>
+      <ellipse cx="0" cy="0" rx="4" ry="1.5"/>
+      <path d="M -4 0 Q -6 4 -4 5 Q -2 4 -2 0 Z"/>
+      <path d="M 4 0 Q 6 4 4 5 Q 2 4 2 0 Z"/>
+      <rect x="-5" y="2" width="10" height="1.5"/>
+    </g>
+    <g transform="translate(75 9)">
+      <path d="M 0 -6 L 2 0 L -2 0 Z"/>
+      <ellipse cx="0" cy="0" rx="4" ry="1.5"/>
+      <path d="M -4 0 Q -6 4 -4 5 Q -2 4 -2 0 Z"/>
+      <path d="M 4 0 Q 6 4 4 5 Q 2 4 2 0 Z"/>
+      <rect x="-5" y="2" width="10" height="1.5"/>
+    </g>
+    <g transform="translate(125 9)">
+      <path d="M 0 -6 L 2 0 L -2 0 Z"/>
+      <ellipse cx="0" cy="0" rx="4" ry="1.5"/>
+      <path d="M -4 0 Q -6 4 -4 5 Q -2 4 -2 0 Z"/>
+      <path d="M 4 0 Q 6 4 4 5 Q 2 4 2 0 Z"/>
+      <rect x="-5" y="2" width="10" height="1.5"/>
+    </g>
+  </g>
+</svg>
