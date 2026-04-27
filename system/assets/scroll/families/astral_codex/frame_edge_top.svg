@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 30" width="150" height="30">
+  <desc>
+    Astral Codex — top edge tile. Star-pattern margin: large 5-point
+    silver stars at five stations across, smaller star clusters between,
+    constellation-line connectors. Tile edges matched for repeat.
+    Informed by: Aratus's Phaenomena star-charts; the Vatican Aratus
+    (Codex Vat. lat. 9410); license: PD.
+    SVG path data: original procedural geometry, CC0.
+  </desc>
+
+  <!-- Inner ink rule -->
+  <line x1="0" y1="29" x2="150" y2="29" stroke="#FFFFFF" stroke-width="0.7" opacity="0.4"/>
+
+  <!-- Five large 5-point stars -->
+  <g fill="#FFFFFF">
+    <polygon points="15,4 17,12 25,12 18,17 21,25 15,20 9,25 12,17 5,12 13,12"/>
+    <polygon points="45,4 47,12 55,12 48,17 51,25 45,20 39,25 42,17 35,12 43,12"/>
+    <polygon points="75,4 77,12 85,12 78,17 81,25 75,20 69,25 72,17 65,12 73,12"/>
+    <polygon points="105,4 107,12 115,12 108,17 111,25 105,20 99,25 102,17 95,12 103,12"/>
+    <polygon points="135,4 137,12 145,12 138,17 141,25 135,20 129,25 132,17 125,12 133,12"/>
+  </g>
+
+  <!-- Smaller star clusters between -->
+  <g fill="#FFFFFF">
+    <polygon points="30,8 32,12 36,12 33,15 34,19 30,17 26,19 27,15 24,12 28,12"/>
+    <polygon points="60,8 62,12 66,12 63,15 64,19 60,17 56,19 57,15 54,12 58,12"/>
+    <polygon points="90,8 92,12 96,12 93,15 94,19 90,17 86,19 87,15 84,12 88,12"/>
+    <polygon points="120,8 122,12 126,12 123,15 124,19 120,17 116,19 117,15 114,12 118,12"/>
+  </g>
+
+  <!-- Constellation line connectors (faint) -->
+  <g fill="none" stroke="#FFFFFF" stroke-width="0.5" opacity="0.55">
+    <line x1="15" y1="14" x2="30" y2="13"/>
+    <line x1="30" y1="13" x2="45" y2="14"/>
+    <line x1="45" y1="14" x2="60" y2="13"/>
+    <line x1="60" y1="13" x2="75" y2="14"/>
+    <line x1="75" y1="14" x2="90" y2="13"/>
+    <line x1="90" y1="13" x2="105" y2="14"/>
+    <line x1="105" y1="14" x2="120" y2="13"/>
+    <line x1="120" y1="13" x2="135" y2="14"/>
+  </g>
+
+  <!-- A few pin-prick "background" stars -->
+  <g fill="#FFFFFF" opacity="0.7">
+    <circle cx="10" cy="22" r="0.7"/>
+    <circle cx="22" cy="22" r="0.5"/>
+    <circle cx="38" cy="22" r="0.7"/>
+    <circle cx="50" cy="22" r="0.5"/>
+    <circle cx="68" cy="22" r="0.7"/>
+    <circle cx="80" cy="22" r="0.5"/>
+    <circle cx="98" cy="22" r="0.7"/>
+    <circle cx="110" cy="22" r="0.5"/>
+    <circle cx="128" cy="22" r="0.7"/>
+    <circle cx="140" cy="22" r="0.5"/>
+  </g>
+</svg>

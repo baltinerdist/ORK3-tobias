@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+  <desc>
+    Astral Codex — seal stamp. Alchemical pentagram inscribed in a
+    double circle, with the seven classical-planet glyphs (☉☽☿♀♂♃♄)
+    arrayed at the seven stations between the pentagram and the rim.
+    Reads at small size as a five-pointed star in a circle.
+    Informed by: Cornelius Agrippa's Three Books of Occult Philosophy
+    (1531); the Sworn Book of Honorius (BL Royal MS 17.A.XLII); medieval
+    grimoires; license: PD.
+    SVG path data: original procedural geometry, CC0.
+  </desc>
+
+  <g transform="translate(120 120)">
+    <!-- Outer rings -->
+    <circle cx="0" cy="0" r="110" fill="none" stroke="#FFFFFF" stroke-width="3"/>
+    <circle cx="0" cy="0" r="100" fill="none" stroke="#FFFFFF" stroke-width="1" opacity="0.55"/>
+
+    <!-- Tiny pinprick stars scattered between rings -->
+    <g fill="#FFFFFF">
+      <circle cx="0" cy="-105" r="1"/>
+      <circle cx="32" cy="-100" r="0.8"/>
+      <circle cx="60" cy="-86" r="1"/>
+      <circle cx="86" cy="-60" r="0.8"/>
+      <circle cx="100" cy="-32" r="1"/>
+      <circle cx="105" cy="0" r="0.8"/>
+      <circle cx="100" cy="32" r="1"/>
+      <circle cx="86" cy="60" r="0.8"/>
+      <circle cx="60" cy="86" r="1"/>
+      <circle cx="32" cy="100" r="0.8"/>
+      <circle cx="0" cy="105" r="1"/>
+      <circle cx="-32" cy="100" r="0.8"/>
+      <circle cx="-60" cy="86" r="1"/>
+      <circle cx="-86" cy="60" r="0.8"/>
+      <circle cx="-100" cy="32" r="1"/>
+      <circle cx="-105" cy="0" r="0.8"/>
+      <circle cx="-100" cy="-32" r="1"/>
+      <circle cx="-86" cy="-60" r="0.8"/>
+      <circle cx="-60" cy="-86" r="1"/>
+      <circle cx="-32" cy="-100" r="0.8"/>
+    </g>
+
+    <!-- Inner ring -->
+    <circle cx="0" cy="0" r="78" fill="none" stroke="#FFFFFF" stroke-width="1.5" opacity="0.7"/>
+
+    <!-- Seven planet glyphs arrayed around the pentagram, between r=58 and r=72 -->
+    <!-- ☉ Sun (top) -->
+    <g transform="translate(0 -68)">
+      <circle cx="0" cy="0" r="6" fill="none" stroke="#FFFFFF" stroke-width="1.5"/>
+      <circle cx="0" cy="0" r="1.3" fill="#FFFFFF"/>
+    </g>
+    <!-- ☽ Moon (upper-right) -->
+    <g transform="rotate(51.4) translate(0 -68)">
+      <path d="M 4 -5 A 6 6 0 1 0 4 5 A 4 4 0 1 1 4 -5 Z" fill="#FFFFFF"/>
+    </g>
+    <!-- ☿ Mercury (lower-right) -->
+    <g transform="rotate(102.8) translate(0 -68)">
+      <circle cx="0" cy="-2" r="3" fill="none" stroke="#FFFFFF" stroke-width="1.3"/>
+      <line x1="0" y1="1" x2="0" y2="6" stroke="#FFFFFF" stroke-width="1.3"/>
+      <line x1="-2" y1="4" x2="2" y2="4" stroke="#FFFFFF" stroke-width="1.3"/>
+      <path d="M -3 -5 Q 0 -7 3 -5" fill="none" stroke="#FFFFFF" stroke-width="1.3"/>
+    </g>
+    <!-- ♀ Venus (bottom-right) -->
+    <g transform="rotate(154.2) translate(0 -68)">
+      <circle cx="0" cy="-2" r="3.5" fill="none" stroke="#FFFFFF" stroke-width="1.3"/>
+      <line x1="0" y1="2" x2="0" y2="7" stroke="#FFFFFF" stroke-width="1.3"/>
+      <line x1="-2" y1="5" x2="2" y2="5" stroke="#FFFFFF" stroke-width="1.3"/>
+    </g>
+    <!-- ♂ Mars (bottom-left) -->
+    <g transform="rotate(205.7) translate(0 -68)">
+      <circle cx="-1" cy="2" r="3.5" fill="none" stroke="#FFFFFF" stroke-width="1.3"/>
+      <line x1="2" y1="-1" x2="6" y2="-5" stroke="#FFFFFF" stroke-width="1.3"/>
+      <polygon points="6,-5 4,-7 7,-7 7,-4" fill="#FFFFFF"/>
+    </g>
+    <!-- ♃ Jupiter (lower-left) -->
+    <g transform="rotate(257.1) translate(0 -68)">
+      <path d="M -4 -5 Q -2 -8 1 -8" fill="none" stroke="#FFFFFF" stroke-width="1.3"/>
+      <path d="M 1 -8 Q 5 -8 5 -3 Q 5 1 1 3 L -4 3" fill="none" stroke="#FFFFFF" stroke-width="1.3"/>
+      <line x1="-4" y1="3" x2="4" y2="3" stroke="#FFFFFF" stroke-width="1.3"/>
+      <line x1="-4" y1="3" x2="-4" y2="6" stroke="#FFFFFF" stroke-width="1.3"/>
+    </g>
+    <!-- ♄ Saturn (upper-left) -->
+    <g transform="rotate(308.6) translate(0 -68)">
+      <line x1="-3" y1="-6" x2="3" y2="-6" stroke="#FFFFFF" stroke-width="1.3"/>
+      <line x1="0" y1="-6" x2="0" y2="3" stroke="#FFFFFF" stroke-width="1.3"/>
+      <path d="M 0 3 Q 3 4 4 1 Q 4 -2 1 -2" fill="none" stroke="#FFFFFF" stroke-width="1.3"/>
+    </g>
+
+    <!-- Pentagram (point up, single-stroke) -->
+    <g fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linejoin="miter">
+      <polygon points="0,-46 28,42 -38,-14 38,-14 -28,42"/>
+    </g>
+    <!-- Pentagram interior glow (subtle thinner inner outline) -->
+    <g fill="none" stroke="#FFFFFF" stroke-width="1" opacity="0.45">
+      <polygon points="0,-40 24,36 -32,-12 32,-12 -24,36"/>
+    </g>
+    <!-- Center sigil dot -->
+    <circle cx="0" cy="6" r="3" fill="#FFFFFF"/>
+  </g>
+</svg>

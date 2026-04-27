@@ -53,24 +53,26 @@ CC0 by the ORK project unless otherwise noted in the row's License.
 
 | Family | Role | File | Source / informed by | License |
 |---|---|---|---|---|
-| crusaders_charter | frame_corner_nw | `families/crusaders_charter/frame_corner_nw__border.png` | Crusader's Charter — NW corner. Romanesque round-arch architectural
-    frame: half-column with stylized capital springing into a rounded
-    arch shoulder, chevron moulding on the inner edge, jeweled cross
-    boss at the corner. Designed for clean 90/180/270 rotation.
-    Informed by: Romanesque tympana of Vézelay (c. 1130) and Saint-
-    Trophime in Arles; Westminster Psalter (BL Royal MS 2.A.XXII)
-    initial pages; license: PD.
+| astral_codex | frame_corner_nw | `families/astral_codex/frame_corner_nw__border.png` | Astral Codex — NW corner. Astrological/alchemical motifs: scattered
+    five-point silver stars, a small constellation diagram of Ursa Minor
+    along the right edge, an alchemical sun glyph at the inner corner,
+    Saturn-ring sigil on the bottom edge. Designed for clean 90/180/270
+    rotation.
+    Informed by: Aratus's Phaenomena (BL Harley MS 647); Liber Astronomiae
+    of Bonatti; Splendor Solis alchemical plates (BL Harley MS 3469);
+    license: PD.
     SVG path data: original procedural geometry, CC0. | PD |
-| crusaders_charter | frame_edge_top | `families/crusaders_charter/frame_edge_top__border.png` | Crusader's Charter — top edge tile. Romanesque architrave: solid
-    band with chevron moulding row on inner edge, three small Latin
-    crosses spaced across, axial repeat.
-    Informed by: Vézelay nave triforium chevron mouldings; license: PD.
+| astral_codex | frame_edge_top | `families/astral_codex/frame_edge_top__border.png` | Astral Codex — top edge tile. Star-pattern margin: large 5-point
+    silver stars at five stations across, smaller star clusters between,
+    constellation-line connectors. Tile edges matched for repeat.
+    Informed by: Aratus's Phaenomena star-charts; the Vatican Aratus
+    (Codex Vat. lat. 9410); license: PD.
     SVG path data: original procedural geometry, CC0. | PD |
-| crusaders_charter | seal_stamp | `families/crusaders_charter/seal_stamp__gold.png` | Crusader's Charter — seal stamp. Templar-style fleur-de-lis with
-    cross-band: a fleur-de-lis (purity/Trinity) overlaid by a horizontal
-    Latin cross-band (martial). Flanked by twin lions passant guardant
-    serving as supporters. Encircled by inscription ring with pearl row.
-    Informed by: Knights Hospitaller and Knights Templar seals (12th-13th
-    c.); the Plantagenet "three lions" royal arms; the manuscript Charter
-    of Jerusalem (Cambridge, Trinity College B.10.4); license: PD.
+| astral_codex | seal_stamp | `families/astral_codex/seal_stamp__gold.png` | Astral Codex — seal stamp. Alchemical pentagram inscribed in a
+    double circle, with the seven classical-planet glyphs (☉☽☿♀♂♃♄)
+    arrayed at the seven stations between the pentagram and the rim.
+    Reads at small size as a five-pointed star in a circle.
+    Informed by: Cornelius Agrippa's Three Books of Occult Philosophy
+    (1531); the Sworn Book of Honorius (BL Royal MS 17.A.XLII); medieval
+    grimoires; license: PD.
     SVG path data: original procedural geometry, CC0. | PD |
