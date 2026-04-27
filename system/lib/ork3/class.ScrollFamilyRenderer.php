@@ -108,7 +108,7 @@ class ScrollFamilyRenderer {
 
 		// 2. family-specific frame (was stubFrame in Plan 1; Plan 2 procedural per-family)
 		$frameKind = $family['frame'] ?? 'gothic_ivy';
-		ScrollDecoration::drawFrame($img, $w, $h, $pal, $frameKind);
+		ScrollDecoration::drawFrame($img, $w, $h, $pal, $frameKind, $key);
 
 		// 3. title (centered, top quarter)
 		[$ar, $ag, $ab] = ScrollPalette::hexToRgb($pal['accent']);
@@ -226,6 +226,7 @@ class ScrollFamilyRenderer {
 			'r' => max(16, (int)(36 * $scale)),
 			'palette' => $pal,
 			'stampKind' => $sealKind,
+			'familyKey' => $key,
 		]);
 
 		// 10. date (top-right)

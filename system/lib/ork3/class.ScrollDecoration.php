@@ -24,17 +24,132 @@ class ScrollDecoration {
 
 	const FRAME_INSET = 28; // preview-pixel inset; scaled by caller
 
+	/** Asset directory for system-curated, pre-tinted family PNGs. Resolved per environment. */
+	private static function assetDir(): string {
+		// Inside Docker (controller path): /var/www/ork.amtgard.com/system/assets/scroll/families
+		// Outside Docker (CLI/tests): walk up from this file
+		$inDocker = '/var/www/ork.amtgard.com/system/assets/scroll/families';
+		if (is_dir($inDocker)) return $inDocker;
+		return realpath(__DIR__ . '/../../assets/scroll/families') ?: $inDocker;
+	}
+
 	// ================================================================
 	//  Frames
 	// ================================================================
 
-	public static function drawFrame($img, int $w, int $h, array $palette, string $kind): void {
+	/**
+	 * @param string|null $familyKey  When set, drawFrame first tries to composite
+	 *                                pre-tinted PNG assets from
+	 *                                system/assets/scroll/families/<familyKey>/
+	 *                                and falls back to procedural drawing only
+	 *                                when assets are absent.
+	 */
+	public static function drawFrame($img, int $w, int $h, array $palette, string $kind, ?string $familyKey = null): void {
+		if ($familyKey !== null && self::compositeFrameAssets($img, $w, $h, $familyKey)) {
+			return;
+		}
 		$method = 'drawFrame_' . $kind;
 		if (method_exists(self::class, $method)) {
 			self::$method($img, $w, $h, $palette);
 		} else {
 			self::drawFrame_gothic_ivy($img, $w, $h, $palette);
 		}
+	}
+
+	/**
+	 * Composite pre-tinted frame asset PNGs (corner_nw rotated 4 ways + edge_top rotated 4 ways).
+	 * Returns true if both assets were found and composited; false to signal fallback to procedural.
+	 */
+	private static function compositeFrameAssets($img, int $w, int $h, string $familyKey): bool {
+		$base = self::assetDir() . '/' . $familyKey;
+		$cornerPng = "$base/frame_corner_nw__border.png";
+		$edgePng   = "$base/frame_edge_top__border.png";
+		if (!is_file($cornerPng) || !is_file($edgePng)) return false;
+
+		$scale = $w / 480;
+		$inset = (int)(self::FRAME_INSET * $scale);
+		$cs    = (int)round($inset * 1.6);
+		$eh    = $inset;
+		$ew    = (int)round($eh * 5);
+
+		$corner = @imagecreatefrompng($cornerPng);
+		$edge   = @imagecreatefrompng($edgePng);
+		if (!$corner || !$edge) {
+			if ($corner) imagedestroy($corner);
+			if ($edge)   imagedestroy($edge);
+			return false;
+		}
+		imagealphablending($corner, true); imagesavealpha($corner, true);
+		imagealphablending($edge, true);   imagesavealpha($edge, true);
+
+		$cornerR = self::resampleAlpha($corner, $cs, $cs);
+		$edgeR   = self::resampleAlpha($edge, $ew, $eh);
+		imagedestroy($corner); imagedestroy($edge);
+
+		// Edges first so corners overlay seams.
+		self::tileEdge($img, $edgeR, $inset, $inset - $eh, $w - 2 * $inset, $eh, 0);
+		$edge180 = imagerotate($edgeR, 180, self::transparent($edgeR));
+		imagealphablending($edge180, true); imagesavealpha($edge180, true);
+		self::tileEdge($img, $edge180, $inset, $h - $inset, $w - 2 * $inset, $eh, 0);
+		imagedestroy($edge180);
+		$edge90 = imagerotate($edgeR, 90, self::transparent($edgeR));
+		imagealphablending($edge90, true); imagesavealpha($edge90, true);
+		self::tileEdge($img, $edge90, $inset - $eh, $inset, $eh, $h - 2 * $inset, 1);
+		imagedestroy($edge90);
+		$edge270 = imagerotate($edgeR, -90, self::transparent($edgeR));
+		imagealphablending($edge270, true); imagesavealpha($edge270, true);
+		self::tileEdge($img, $edge270, $w - $inset, $inset, $eh, $h - 2 * $inset, 1);
+		imagedestroy($edge270);
+		imagedestroy($edgeR);
+
+		imagecopy($img, $cornerR, $inset - $cs, $inset - $cs, 0, 0, $cs, $cs);
+		$nec = imagerotate($cornerR, -90, self::transparent($cornerR));
+		imagealphablending($nec, true); imagesavealpha($nec, true);
+		imagecopy($img, $nec, $w - $inset, $inset - $cs, 0, 0, $cs, $cs);
+		imagedestroy($nec);
+		$sec = imagerotate($cornerR, 180, self::transparent($cornerR));
+		imagealphablending($sec, true); imagesavealpha($sec, true);
+		imagecopy($img, $sec, $w - $inset, $h - $inset, 0, 0, $cs, $cs);
+		imagedestroy($sec);
+		$swc = imagerotate($cornerR, 90, self::transparent($cornerR));
+		imagealphablending($swc, true); imagesavealpha($swc, true);
+		imagecopy($img, $swc, $inset - $cs, $h - $inset, 0, 0, $cs, $cs);
+		imagedestroy($swc);
+		imagedestroy($cornerR);
+
+		return true;
+	}
+
+	private static function tileEdge($img, $tile, int $dx, int $dy, int $rectW, int $rectH, int $orientation): void {
+		$tw = imagesx($tile); $th = imagesy($tile);
+		if ($orientation === 0) {
+			$x = 0;
+			while ($x < $rectW) {
+				$drawW = min($tw, $rectW - $x);
+				imagecopy($img, $tile, $dx + $x, $dy, 0, 0, $drawW, $th);
+				$x += $tw;
+			}
+		} else {
+			$y = 0;
+			while ($y < $rectH) {
+				$drawH = min($th, $rectH - $y);
+				imagecopy($img, $tile, $dx, $dy + $y, 0, 0, $tw, $drawH);
+				$y += $th;
+			}
+		}
+	}
+
+	private static function resampleAlpha($src, int $w, int $h) {
+		$dst = imagecreatetruecolor($w, $h);
+		imagealphablending($dst, false); imagesavealpha($dst, true);
+		$tx = imagecolorallocatealpha($dst, 0, 0, 0, 127);
+		imagefilledrectangle($dst, 0, 0, $w, $h, $tx);
+		imagecopyresampled($dst, $src, 0, 0, 0, 0, $w, $h, imagesx($src), imagesy($src));
+		return $dst;
+	}
+
+	private static function transparent($img): int {
+		return imagecolorallocatealpha($img, 0, 0, 0, 127);
 	}
 
 	/** Northern Gothic — running ivy with gilded besants at corners + midpoints. */
@@ -467,13 +582,34 @@ class ScrollDecoration {
 	//  Seal stamps (10 designs, family-keyed)
 	// ================================================================
 
-	public static function drawSealStamp($img, int $cx, int $cy, int $r, array $palette, string $kind): void {
+	public static function drawSealStamp($img, int $cx, int $cy, int $r, array $palette, string $kind, ?string $familyKey = null): void {
+		if ($familyKey !== null && self::compositeSealAsset($img, $cx, $cy, $r, $familyKey)) {
+			return;
+		}
 		$method = 'drawSealStamp_' . $kind;
 		if (method_exists(self::class, $method)) {
 			self::$method($img, $cx, $cy, $r, $palette);
 		} else {
 			self::drawSealStamp_fleur($img, $cx, $cy, $r, $palette);
 		}
+	}
+
+	/**
+	 * Composite a pre-tinted seal_stamp__gold.png centered at (cx, cy) at diameter ≈ 2r.
+	 * Returns true on success, false to signal fallback to procedural drawSealStamp_<kind>.
+	 */
+	private static function compositeSealAsset($img, int $cx, int $cy, int $r, string $familyKey): bool {
+		$png = self::assetDir() . '/' . $familyKey . '/seal_stamp__gold.png';
+		if (!is_file($png)) return false;
+		$src = @imagecreatefrompng($png);
+		if (!$src) return false;
+		imagealphablending($src, true); imagesavealpha($src, true);
+		$d = $r * 2;
+		$resized = self::resampleAlpha($src, $d, $d);
+		imagedestroy($src);
+		imagecopy($img, $resized, $cx - $r, $cy - $r, 0, 0, $d, $d);
+		imagedestroy($resized);
+		return true;
 	}
 
 	public static function drawSealStamp_lion($img, int $cx, int $cy, int $r, array $palette): void {
@@ -782,8 +918,9 @@ class ScrollDecoration {
 			}
 		}
 
-		// Embossed family-specific stamp
-		self::drawSealStamp($img, $cx, $cy, (int)($r * 0.7), $pal, $stampKind);
+		// Embossed family-specific stamp (asset-first if familyKey provided)
+		$familyKey = $opts['familyKey'] ?? null;
+		self::drawSealStamp($img, $cx, $cy, (int)($r * 0.7), $pal, $stampKind, $familyKey);
 	}
 
 	// ================================================================

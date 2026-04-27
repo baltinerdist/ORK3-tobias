@@ -45,8 +45,8 @@ window.ScrollFamilies = (function() {
 			ScrollDecoration.applyFoldCreases(ctx, w, h);
 		}
 
-		// 2. family-specific frame
-		ScrollDecoration.drawFrame(ctx, w, h, pal, family.frame || 'gothic_ivy');
+		// 2. family-specific frame (asset-first, procedural fallback)
+		ScrollDecoration.drawFrame(ctx, w, h, pal, family.frame || 'gothic_ivy', key);
 
 		// 3. title
 		ctx.textAlign = 'center';
@@ -150,6 +150,7 @@ window.ScrollFamilies = (function() {
 			r: Math.max(16, 36 * scale),
 			palette: pal,
 			stampKind: SEAL_KIND[key] || 'fleur',
+			familyKey: key,
 		});
 
 		// 10. date (top-right)

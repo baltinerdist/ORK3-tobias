@@ -15,9 +15,37 @@
 
 window.ScrollDecoration = (function() {
 	const FRAME_INSET = 28;
+	const ASSET_BASE = '/system/assets/scroll/families';
+
+	// Asset cache: key = `${familyKey}/${role}__${token}`, value = HTMLImageElement.
+	// Images load asynchronously; first render falls back to procedural,
+	// subsequent renders use the cached image once `.complete && naturalWidth > 0`.
+	const assetCache = new Map();
+	function getAsset(familyKey, role, token) {
+		const k = `${familyKey}/${role}__${token}`;
+		if (!assetCache.has(k)) {
+			const img = new Image();
+			img.src = `${ASSET_BASE}/${familyKey}/${role}__${token}.png`;
+			img.onerror = () => { img._failed = true; };
+			assetCache.set(k, img);
+		}
+		const img = assetCache.get(k);
+		return (img.complete && !img._failed && img.naturalWidth > 0) ? img : null;
+	}
+
+	// Public preloader the builder UI can call when a family is picked.
+	function preloadFamilyAssets(familyKey) {
+		['frame_corner_nw__border', 'frame_edge_top__border', 'seal_stamp__gold',
+		 'initial_vine__border', 'drolerie__border'].forEach(slot => {
+			const [role, token] = slot.split('__');
+			getAsset(familyKey, role, token);
+		});
+	}
 
 	// ============ Frames =============================================
-	function drawFrame(ctx, w, h, palette, kind) {
+	function drawFrame(ctx, w, h, palette, kind, familyKey) {
+		// Asset-first path: composite pre-tinted PNG corners + edges.
+		if (familyKey && compositeFrameAssets(ctx, w, h, familyKey)) return;
 		const fn = ({
 			gothic_ivy: drawFrame_gothic_ivy,
 			insular_knot: drawFrame_insular_knot,
@@ -31,6 +59,67 @@ window.ScrollDecoration = (function() {
 			astral_star_pattern: drawFrame_astral_star_pattern,
 		}[kind] || drawFrame_gothic_ivy);
 		fn(ctx, w, h, palette);
+	}
+
+	function compositeFrameAssets(ctx, w, h, familyKey) {
+		const corner = getAsset(familyKey, 'frame_corner_nw', 'border');
+		const edge   = getAsset(familyKey, 'frame_edge_top', 'border');
+		if (!corner || !edge) return false;
+
+		const scale = w / 480;
+		const inset = FRAME_INSET * scale;
+		const cs    = inset * 1.6;
+		const eh    = inset;
+		const ew    = eh * 5;
+
+		ctx.save();
+
+		// Edges: tile with rotation.
+		const tileH = (rotate) => {
+			ctx.save();
+			rotate();
+			let x = 0, span = w - 2 * inset;
+			while (x < span) {
+				const dw = Math.min(ew, span - x);
+				const sw = (dw / ew) * edge.naturalWidth;
+				ctx.drawImage(edge, 0, 0, sw, edge.naturalHeight, x, 0, dw, eh);
+				x += ew;
+			}
+			ctx.restore();
+		};
+		// Top: no rotation, dest = (inset, inset - eh).
+		tileH(() => ctx.translate(inset, inset - eh));
+		// Bottom: 180°, dest = (w - inset, h - inset + eh).
+		tileH(() => { ctx.translate(w - inset, h - inset + eh); ctx.rotate(Math.PI); });
+		// Left: 90° CCW (-90° in canvas), dest after rotation = (inset - eh, h - inset).
+		const tileV = (rotate) => {
+			ctx.save();
+			rotate();
+			let x = 0, span = h - 2 * inset;
+			while (x < span) {
+				const dw = Math.min(ew, span - x);
+				const sw = (dw / ew) * edge.naturalWidth;
+				ctx.drawImage(edge, 0, 0, sw, edge.naturalHeight, x, 0, dw, eh);
+				x += ew;
+			}
+			ctx.restore();
+		};
+		tileV(() => { ctx.translate(inset - eh, h - inset); ctx.rotate(-Math.PI / 2); });
+		// Right: 90° CW.
+		tileV(() => { ctx.translate(w - inset + eh, inset); ctx.rotate(Math.PI / 2); });
+
+		// Corners.
+		// NW.
+		ctx.drawImage(corner, inset - cs, inset - cs, cs, cs);
+		// NE: 90° CW around the inner-NE corner.
+		ctx.save(); ctx.translate(w - inset, inset); ctx.rotate(Math.PI / 2); ctx.drawImage(corner, -cs, 0, cs, cs); ctx.restore();
+		// SE: 180°.
+		ctx.save(); ctx.translate(w - inset, h - inset); ctx.rotate(Math.PI); ctx.drawImage(corner, -cs, -cs, cs, cs); ctx.restore();
+		// SW: 90° CCW.
+		ctx.save(); ctx.translate(inset, h - inset); ctx.rotate(-Math.PI / 2); ctx.drawImage(corner, 0, -cs, cs, cs); ctx.restore();
+
+		ctx.restore();
+		return true;
 	}
 
 	function drawFrame_gothic_ivy(ctx, w, h, pal) {
@@ -390,7 +479,15 @@ window.ScrollDecoration = (function() {
 	}
 
 	// ============ Seal stamps =========================================
-	function drawSealStamp(ctx, cx, cy, r, pal, kind) {
+	function drawSealStamp(ctx, cx, cy, r, pal, kind, familyKey) {
+		// Asset-first.
+		if (familyKey) {
+			const seal = getAsset(familyKey, 'seal_stamp', 'gold');
+			if (seal) {
+				ctx.drawImage(seal, cx - r, cy - r, r * 2, r * 2);
+				return;
+			}
+		}
 		const fn = ({
 			lion: stamp_lion, fleur: stamp_fleur, crown: stamp_crown,
 			oak_leaf: stamp_oak_leaf, broken_sword: stamp_broken_sword,
@@ -599,7 +696,7 @@ window.ScrollDecoration = (function() {
 
 	// ============ Wax seal emboss ===================================
 	function drawWaxSealEmboss(ctx, opts) {
-		const { cx, cy, r, palette: pal, stampKind } = opts;
+		const { cx, cy, r, palette: pal, stampKind, familyKey } = opts;
 		ctx.save();
 		// Ribbon tails (behind disc)
 		const ribbonGrad = ctx.createLinearGradient(cx, cy + r, cx, cy + r * 1.7);
@@ -628,8 +725,8 @@ window.ScrollDecoration = (function() {
 		// Highlight
 		ctx.fillStyle = 'rgba(255,255,255,0.18)';
 		ctx.beginPath(); ctx.ellipse(cx - r * 0.3, cy - r * 0.35, r * 0.4, r * 0.18, -Math.PI / 4, 0, Math.PI * 2); ctx.fill();
-		// Embossed stamp
-		drawSealStamp(ctx, cx, cy, r * 0.7, pal, stampKind || 'fleur');
+		// Embossed stamp (asset-first if familyKey provided)
+		drawSealStamp(ctx, cx, cy, r * 0.7, pal, stampKind || 'fleur', familyKey);
 		ctx.restore();
 	}
 
@@ -711,5 +808,6 @@ window.ScrollDecoration = (function() {
 		drawDrolerie, drawBanderole, drawWaxSealEmboss,
 		applyBurntEdge, applyFoldCreases, drawStarField,
 		drawHeraldryMedallion,
+		preloadFamilyAssets,
 	};
 })();
