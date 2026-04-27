@@ -53,25 +53,25 @@ CC0 by the ORK project unless otherwise noted in the row's License.
 
 | Family | Role | File | Source / informed by | License |
 |---|---|---|---|---|
-| charred_edict | frame_corner_nw | `families/charred_edict/frame_corner_nw__border.png` | Charred Edict — NW corner. Minimal scribal frame: single thin
-    ink rule, hastily drawn (irregular line weight), with a small
-    hand-stamped sigil at the inner corner. The burnt-edge and
-    fold-crease filters overlay this at render time, so the corner
-    deliberately stays sparse.
-    Informed by: 12th-15th c. battlefield dispatches (administrative
-    minuscule hands); license: PD.
-    SVG path data: original procedural geometry, CC0. | PD |
-| charred_edict | frame_edge_top | `families/charred_edict/frame_edge_top__border.png` | Charred Edict — top edge tile. Single irregular hand-drawn ink rule
-    with occasional scribal flecks; minimal by design — the burnt-edge
-    filter dominates the visible frame at render time.
-    Informed by: rough scribal hands of besieged-keep dispatches;
+| imperial_edict | frame_corner_nw | `families/imperial_edict/frame_corner_nw__border.png` | Imperial Edict — NW corner. Byzantine jeweled cabochon border:
+    alternating round + lozenge cabochons set in gold cloisonné cells,
+    pearl-row inner edge, axial-symmetric corner medallion with cross.
+    Designed for clean 90/180/270 rotation.
+    Informed by: cloisonné enamel of the Pala d'Oro (St Mark's Venice,
+    c. 11th-14th c.); Byzantine Lectionary BNF Coislin 18 borders;
     license: PD.
     SVG path data: original procedural geometry, CC0. | PD |
-| charred_edict | seal_stamp | `families/charred_edict/seal_stamp__gold.png` | Charred Edict — seal stamp. Broken sword crossed over a battered
-    shield: the blade snapped at midpoint, jagged break, hilt cross-guard
-    intact. The composition reads as defeat-yet-defiance — fitting for
-    edicts smuggled out of besieged keeps.
-    Informed by: 14th-c. effigy tomb iconography (knight with broken
-    sword); the heraldic charge of "sword inverted" symbolizing surrender
-    or martyrdom; license: PD.
+| imperial_edict | frame_edge_top | `families/imperial_edict/frame_edge_top__border.png` | Imperial Edict — top edge tile. Byzantine cloisonné jeweled band:
+    alternating round + lozenge cabochons in gold cells, pearl row on
+    inner edge, axial-symmetric repeat.
+    Informed by: Pala d'Oro cell-and-jewel decoration; Constantinopolitan
+    enamel ateliers; license: PD.
+    SVG path data: original procedural geometry, CC0. | PD |
+| imperial_edict | seal_stamp | `families/imperial_edict/seal_stamp__gold.png` | Imperial Edict — seal stamp. Byzantine double-headed eagle (the
+    Palaiologan dynastic emblem): two heads turned outward, wings
+    outspread, tail fanned, holding orb and scepter. Encircled by
+    pearl ring + cross-pattée at the four cardinal points.
+    Informed by: Palaiologan imperial seal of Andronikos II
+    (c. 1295); Byzantine catepan double-eagle on the manuscript of the
+    Treaty of Devol (1108); license: PD.
     SVG path data: original procedural geometry, CC0. | PD |
