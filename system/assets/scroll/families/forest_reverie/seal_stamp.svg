@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+  <desc>
+    Forest Reverie — seal stamp. Single five-lobed oak leaf with central
+    vein and lateral veins, paired acorns at the base, encircled by a
+    ring of woven vine knots. The oak is the druidic axis-mundi tree.
+    Informed by: Quercus heraldic emblems; Sherwood Forest Hours; the
+    Green Man tradition of European folk illumination; license: PD.
+    SVG path data: original procedural geometry, CC0.
+  </desc>
+
+  <g transform="translate(120 120)">
+    <!-- Outer rings -->
+    <circle cx="0" cy="0" r="110" fill="none" stroke="#FFFFFF" stroke-width="3"/>
+    <circle cx="0" cy="0" r="100" fill="none" stroke="#FFFFFF" stroke-width="1" opacity="0.55"/>
+
+    <!-- Ring of woven vine knots — 16 alternating curves -->
+    <g fill="none" stroke="#FFFFFF" stroke-width="2.5" opacity="0.85">
+      <g><path d="M 0 -106 Q 10 -100 18 -106"/></g>
+      <g transform="rotate(22.5)"><path d="M 0 -106 Q 10 -100 18 -106"/></g>
+      <g transform="rotate(45)"><path d="M 0 -106 Q 10 -100 18 -106"/></g>
+      <g transform="rotate(67.5)"><path d="M 0 -106 Q 10 -100 18 -106"/></g>
+      <g transform="rotate(90)"><path d="M 0 -106 Q 10 -100 18 -106"/></g>
+      <g transform="rotate(112.5)"><path d="M 0 -106 Q 10 -100 18 -106"/></g>
+      <g transform="rotate(135)"><path d="M 0 -106 Q 10 -100 18 -106"/></g>
+      <g transform="rotate(157.5)"><path d="M 0 -106 Q 10 -100 18 -106"/></g>
+      <g transform="rotate(180)"><path d="M 0 -106 Q 10 -100 18 -106"/></g>
+      <g transform="rotate(202.5)"><path d="M 0 -106 Q 10 -100 18 -106"/></g>
+      <g transform="rotate(225)"><path d="M 0 -106 Q 10 -100 18 -106"/></g>
+      <g transform="rotate(247.5)"><path d="M 0 -106 Q 10 -100 18 -106"/></g>
+      <g transform="rotate(270)"><path d="M 0 -106 Q 10 -100 18 -106"/></g>
+      <g transform="rotate(292.5)"><path d="M 0 -106 Q 10 -100 18 -106"/></g>
+      <g transform="rotate(315)"><path d="M 0 -106 Q 10 -100 18 -106"/></g>
+      <g transform="rotate(337.5)"><path d="M 0 -106 Q 10 -100 18 -106"/></g>
+    </g>
+
+    <!-- Inner ring -->
+    <circle cx="0" cy="0" r="78" fill="none" stroke="#FFFFFF" stroke-width="1.5" opacity="0.7"/>
+
+    <!-- Large oak leaf (5-lobed, vertical) -->
+    <g fill="#FFFFFF">
+      <path d="M 0 -68
+               Q -14 -64 -18 -52 Q -22 -42 -16 -36
+               Q -28 -32 -32 -20 Q -34 -8 -22 -4
+               Q -32 4 -32 16 Q -30 28 -16 30
+               Q -8 38 0 36
+               Q 8 38 16 30
+               Q 30 28 32 16 Q 32 4 22 -4
+               Q 34 -8 32 -20 Q 28 -32 16 -36
+               Q 22 -42 18 -52 Q 14 -64 0 -68 Z"/>
+    </g>
+    <!-- Central vein -->
+    <line x1="0" y1="-66" x2="0" y2="36" stroke="#000000" stroke-width="1.5" opacity="0.45"/>
+    <!-- Lateral veins -->
+    <g fill="none" stroke="#000000" stroke-width="1" opacity="0.4">
+      <path d="M 0 -50 Q -10 -50 -20 -46"/>
+      <path d="M 0 -50 Q 10 -50 20 -46"/>
+      <path d="M 0 -32 Q -14 -32 -28 -22"/>
+      <path d="M 0 -32 Q 14 -32 28 -22"/>
+      <path d="M 0 -10 Q -16 -10 -28 0"/>
+      <path d="M 0 -10 Q 16 -10 28 0"/>
+      <path d="M 0 12 Q -12 14 -20 22"/>
+      <path d="M 0 12 Q 12 14 20 22"/>
+    </g>
+
+    <!-- Pair of acorns at the base of the leaf -->
+    <g fill="#FFFFFF">
+      <g transform="translate(-12 50)">
+        <ellipse cx="0" cy="-7" rx="6" ry="3"/>
+        <ellipse cx="0" cy="0" rx="5" ry="8"/>
+      </g>
+      <g transform="translate(12 50)">
+        <ellipse cx="0" cy="-7" rx="6" ry="3"/>
+        <ellipse cx="0" cy="0" rx="5" ry="8"/>
+      </g>
+    </g>
+  </g>
+</svg>

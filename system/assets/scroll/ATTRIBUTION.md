@@ -53,22 +53,21 @@ CC0 by the ORK project unless otherwise noted in the row's License.
 
 | Family | Role | File | Source / informed by | License |
 |---|---|---|---|---|
-| crimson_decree | frame_corner_nw | `families/crimson_decree/frame_corner_nw__border.png` | Crimson Decree — NW corner. Architectural Gothic frame: pointed-arch
-    capital springing from a fleur-de-lis pier, dentilled architrave on
-    inner edge. Designed for clean 90/180/270 rotation.
-    Informed by: Sainte-Chapelle (Paris, c. 1248); Reims Cathedral
-    portal arch capitals (c. 1230); manuscript decretals of Boniface VIII
-    (BNF Lat. 4080, 14th c.); license: PD.
+| forest_reverie | frame_corner_nw | `families/forest_reverie/frame_corner_nw__border.png` | Forest Reverie — NW corner. Gnarled oak vine with five-lobed oak
+    leaves and acorns; tendrils break past the page-margin line into
+    the parchment field; concentric carved-bark spiral at the inner corner.
+    Designed for clean 90/180/270 rotation.
+    Informed by: Sherwood Forest Hours (BL Add MS 18852, c. 1500);
+    Renaissance ornamental engravings of Israhel van Meckenem; license: PD.
     SVG path data: original procedural geometry, CC0. | PD |
-| crimson_decree | frame_edge_top | `families/crimson_decree/frame_edge_top__border.png` | Crimson Decree — top edge tile. Solid architectural band with dentil
-    row on the inner edge and three small fleur-de-lis bosses spaced
-    across. Edges matched for horizontal repeat.
-    Informed by: Gothic cornice mouldings (Sainte-Chapelle nave bands);
-    license: PD.
+| forest_reverie | frame_edge_top | `families/forest_reverie/frame_edge_top__border.png` | Forest Reverie — top edge tile. Gnarled oak vine with five-lobed
+    leaves spaced across, three acorns in clusters, irregular sinuous
+    trunk. Edges matched for horizontal repeat.
+    Informed by: Sherwood Forest Hours marginalia; license: PD.
     SVG path data: original procedural geometry, CC0. | PD |
-| crimson_decree | seal_stamp | `families/crimson_decree/seal_stamp__gold.png` | Crimson Decree — seal stamp. Royal crown with three jeweled fleur-de-lis
-    apex spikes, ermine band, three jewel cabochons set in the band.
-    Encircled by an inscription-style ring with twelve fleurettes.
-    Informed by: French royal crown of Charles V (c. 1380); English St
-    Edward's crown silhouette; license: PD.
+| forest_reverie | seal_stamp | `families/forest_reverie/seal_stamp__gold.png` | Forest Reverie — seal stamp. Single five-lobed oak leaf with central
+    vein and lateral veins, paired acorns at the base, encircled by a
+    ring of woven vine knots. The oak is the druidic axis-mundi tree.
+    Informed by: Quercus heraldic emblems; Sherwood Forest Hours; the
+    Green Man tradition of European folk illumination; license: PD.
     SVG path data: original procedural geometry, CC0. | PD |
