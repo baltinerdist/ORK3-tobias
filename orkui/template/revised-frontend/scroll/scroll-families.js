@@ -158,6 +158,43 @@ window.ScrollFamilies = (function() {
 		ctx.fillStyle = pal.text;
 		ctx.font = `italic ${Math.max(8, Math.round(11 * scale))}px ${fonts.date}`;
 		ctx.fillText(state.date || _todayLatin(), w - 60 * scale, 56 * scale);
+
+		// 11. Heraldry medallions (kingdom top-left, player top-right, park bottom-center).
+		const heraldryR     = Math.max(20, 32 * scale);
+		const heraldryParkR = Math.max(16, 24 * scale);
+		const heraldryY     = 108 * scale;
+		if (state.kingdomHeraldry) {
+			_compositeHeraldry(ctx, 50 * scale + heraldryR, heraldryY, heraldryR, state.kingdomHeraldry, pal);
+		}
+		if (state.playerHeraldry) {
+			_compositeHeraldry(ctx, w - 50 * scale - heraldryR, heraldryY, heraldryR, state.playerHeraldry, pal);
+		}
+		if (state.parkHeraldry) {
+			_compositeHeraldry(ctx, w / 2, h - 160 * scale, heraldryParkR, state.parkHeraldry, pal);
+		}
+	}
+
+	// Image cache for heraldry URLs — keyed by src, value is HTMLImageElement.
+	// First render falls through to a placeholder ring; once the image loads,
+	// trigger one re-render so the medallion appears.
+	const _heraldryCache = new Map();
+	function _compositeHeraldry(ctx, cx, cy, r, src, pal) {
+		if (!src) return;
+		let img = _heraldryCache.get(src);
+		if (!img) {
+			img = new Image();
+			img.crossOrigin = 'anonymous';
+			img.onload = () => { try { window.sgRenderFamily && window.sgRenderFamily(); } catch (e) {} };
+			img.onerror = () => { img._failed = true; };
+			img.src = src;
+			_heraldryCache.set(src, img);
+		}
+		if (img.complete && !img._failed && img.naturalWidth > 0) {
+			ScrollDecoration.drawHeraldryMedallion(ctx, cx, cy, r, img, pal);
+		} else {
+			// Placeholder: draw the gilded ring + parchment disc, image fills in once loaded.
+			ScrollDecoration.drawHeraldryMedallion(ctx, cx, cy, r, null, pal);
+		}
 	}
 
 	function _wrapText(ctx, text, x, y, maxW, lineH, lineLimit = 0) {

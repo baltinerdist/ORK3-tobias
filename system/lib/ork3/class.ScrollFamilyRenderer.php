@@ -229,11 +229,51 @@ class ScrollFamilyRenderer {
 			'familyKey' => $key,
 		]);
 
-		// 10. date (top-right)
+		// 10. date (top-right, below the player heraldry slot)
 		$dateText = $state['date'] ?? self::todayLatin();
 		$bbox = imagettfbbox(max(8, (int)(11 * $scale)), 0, $fonts['date'], $dateText);
 		$tw = $bbox[2] - $bbox[0];
 		imagettftext($img, max(8, (int)(11 * $scale)), 0, $w - (int)(60 * $scale) - $tw, (int)(56 * $scale), $textCol, $fonts['date'], $dateText);
+
+		// 11. Heraldry medallions (kingdom top-left, player top-right, park bottom-center).
+		//     URL or local path passed via $state; drawHeraldryMedallion is no-op when src is empty/unreadable.
+		$heraldryR     = max(20, (int)(32 * $scale));
+		$heraldryParkR = max(16, (int)(24 * $scale));
+		$heraldryY     = (int)(108 * $scale);
+		if (!empty($state['kingdomHeraldry'])) {
+			self::compositeHeraldry($img, (int)(50 * $scale) + $heraldryR, $heraldryY, $heraldryR, (string)$state['kingdomHeraldry'], $pal);
+		}
+		if (!empty($state['playerHeraldry'])) {
+			self::compositeHeraldry($img, $w - (int)(50 * $scale) - $heraldryR, $heraldryY, $heraldryR, (string)$state['playerHeraldry'], $pal);
+		}
+		if (!empty($state['parkHeraldry'])) {
+			$pkY = $h - (int)(160 * $scale);
+			self::compositeHeraldry($img, (int)($w / 2), $pkY, $heraldryParkR, (string)$state['parkHeraldry'], $pal);
+		}
+	}
+
+	/**
+	 * Resolve a heraldry source (URL or path) to a local image and pass to drawHeraldryMedallion.
+	 * Caches downloads in the system tmp dir keyed by URL hash so repeat renders skip the fetch.
+	 */
+	private static function compositeHeraldry($img, int $cx, int $cy, int $r, string $src, array $palette): void {
+		if ($src === '') return;
+		$resolved = $src;
+		if (preg_match('#^https?://#i', $src)) {
+			$cacheDir = sys_get_temp_dir() . '/scroll_heraldry_cache';
+			if (!is_dir($cacheDir)) @mkdir($cacheDir, 0777, true);
+			$cachePath = $cacheDir . '/' . sha1($src);
+			if (!is_file($cachePath) || filesize($cachePath) === 0) {
+				$ctx = stream_context_create(['http' => ['timeout' => 4, 'header' => "User-Agent: ORK3-scroll-renderer/1.0\r\n"]]);
+				$bytes = @file_get_contents($src, false, $ctx);
+				if ($bytes !== false && strlen($bytes) > 32) {
+					file_put_contents($cachePath, $bytes);
+				}
+			}
+			if (!is_file($cachePath) || filesize($cachePath) === 0) return;
+			$resolved = $cachePath;
+		}
+		ScrollDecoration::drawHeraldryMedallion($img, $cx, $cy, $r, $resolved, $palette);
 	}
 
 	/**
