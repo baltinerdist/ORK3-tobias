@@ -117,11 +117,14 @@ foreach ($families as $familyKey => $family) {
 			continue;
 		}
 
-		// Validate grayscale-with-alpha
+		// Validate grayscale-with-alpha (info-level only; the channel-multiply
+		// step auto-desaturates color sources, so vendor SVGs from Wikimedia /
+		// Game-Icons / etc. work end-to-end without source rewrites).
 		$svg = (string)file_get_contents($svgPath);
 		$validation = validate_grayscale_svg($svg);
 		if ($validation !== true) {
-			fwrite(STDERR, "  WARN $role.svg: $validation\n");
+			$colorCount = substr_count($validation, ';') + 1;
+			echo "  ℹ $role.svg has $colorCount non-grayscale colors — will desaturate to luminance\n";
 			$counts['warnings']++;
 		}
 
@@ -223,9 +226,16 @@ function rasterize_svg(string $rasterizer, string $svg, string $out, int $w, int
 }
 
 /**
- * Channel-multiply: output_R = (gray/255) * target_R; same G, B; preserve alpha.
- * Source PNG should be grayscale-with-alpha (R==G==B). For non-grayscale sources
- * we use luminance (0.299R + 0.587G + 0.114B) so the result is still defensible.
+ * Channel-multiply: output_R = (lum/255) * target_R; same G, B; preserve alpha.
+ *
+ * Source can be grayscale-with-alpha (preferred — luminance-only design) or a
+ * fully colored vendor SVG rasterization (Wikimedia Commons heraldic SVGs are
+ * usually colored). Either way we extract per-pixel luminance via Rec. 601
+ * (0.299R + 0.587G + 0.114B) and multiply by the tint color, so colored sources
+ * get auto-desaturated then re-tinted in one pass.
+ *
+ * Light backgrounds in vendor sources (e.g. white body + gold detail) will
+ * render as full tint; mid-tones become darker tint; black stays black.
  */
 function channel_multiply_png(string $srcPath, string $dstPath, string $tintHex): void {
 	$src = imagecreatefrompng($srcPath);
@@ -245,12 +255,11 @@ function channel_multiply_png(string $srcPath, string $dstPath, string $tintHex)
 	for ($y = 0; $y < $h; $y++) {
 		for ($x = 0; $x < $w; $x++) {
 			$rgba = imagecolorat($src, $x, $y);
-			$a = ($rgba >> 24) & 0x7F;        // 0=opaque, 127=transparent in GD
-			if ($a === 127) continue;          // fully transparent — leave dst transparent
+			$a = ($rgba >> 24) & 0x7F;
+			if ($a === 127) continue;
 			$r = ($rgba >> 16) & 0xFF;
 			$g = ($rgba >> 8) & 0xFF;
 			$b = $rgba & 0xFF;
-			// Use luminance (handles both pure-grayscale and lightly-mixed sources).
 			$lum = (int)round(0.299 * $r + 0.587 * $g + 0.114 * $b);
 			$nr = (int)round($lum / 255 * $tr);
 			$ng = (int)round($lum / 255 * $tg);
