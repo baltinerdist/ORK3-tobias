@@ -153,24 +153,27 @@ window.ScrollFamilies = (function() {
 			familyKey: key,
 		});
 
-		// 10. date (top-right)
-		ctx.textAlign = 'right';
+		// 10. date (top-center, between the two top heraldry medallions, small face)
+		ctx.textAlign = 'center';
 		ctx.fillStyle = pal.text;
-		ctx.font = `italic ${Math.max(8, Math.round(11 * scale))}px ${fonts.date}`;
-		ctx.fillText(state.date || _todayLatin(), w - 60 * scale, 56 * scale);
+		ctx.font = `italic ${Math.max(7, Math.round(10 * scale))}px ${fonts.date}`;
+		ctx.fillText(state.date || _todayLatin(), w / 2, 30 * scale);
 
-		// 11. Heraldry medallions (kingdom top-left, player top-right, park bottom-center).
-		const heraldryR     = Math.max(20, 32 * scale);
-		const heraldryParkR = Math.max(16, 24 * scale);
-		const heraldryY     = 108 * scale;
+		// 11. Heraldry medallions — Plan v1.5 layout convention:
+		//   kingdom top-left + park top-right (jurisdictions paired above title)
+		//   player bottom-center (recipient's own arms, secondary, smaller).
+		// Top medallions raised above title ascenders so they don't overlap.
+		const heraldryR       = Math.max(16, 22 * scale);
+		const heraldryPlayerR = Math.max(14, 18 * scale);
+		const heraldryTopY    = 56 * scale;
 		if (state.kingdomHeraldry) {
-			_compositeHeraldry(ctx, 50 * scale + heraldryR, heraldryY, heraldryR, state.kingdomHeraldry, pal);
-		}
-		if (state.playerHeraldry) {
-			_compositeHeraldry(ctx, w - 50 * scale - heraldryR, heraldryY, heraldryR, state.playerHeraldry, pal);
+			_compositeHeraldry(ctx, 46 * scale + heraldryR, heraldryTopY, heraldryR, state.kingdomHeraldry, pal);
 		}
 		if (state.parkHeraldry) {
-			_compositeHeraldry(ctx, w / 2, h - 160 * scale, heraldryParkR, state.parkHeraldry, pal);
+			_compositeHeraldry(ctx, w - 46 * scale - heraldryR, heraldryTopY, heraldryR, state.parkHeraldry, pal);
+		}
+		if (state.playerHeraldry) {
+			_compositeHeraldry(ctx, w / 2, h - 160 * scale, heraldryPlayerR, state.playerHeraldry, pal);
 		}
 	}
 

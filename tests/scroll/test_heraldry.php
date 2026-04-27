@@ -53,15 +53,15 @@ imagepng($img, $snapshot);
 
 test_section('Heraldry medallions composite at the three expected positions');
 
-$scale = $w / 480;
-$inset = 28 * $scale;
-$r = max(20, (int)(32 * $scale));
-$y = (int)(108 * $scale);
+$scale   = $w / 480;
+$r       = max(16, (int)(22 * $scale));
+$rPlayer = max(14, (int)(18 * $scale));
+$y       = (int)(56 * $scale);
 // Probe slightly off-center to skip the cross ink at the disc origin.
 $points = [
-	'kingdom (top-left)'   => [(int)(50 * $scale) + $r + (int)($r * 0.4), $y + (int)($r * 0.4)],
-	'player  (top-right)'  => [$w - (int)(50 * $scale) - $r + (int)($r * 0.4), $y + (int)($r * 0.4)],
-	'park    (bot-center)' => [(int)($w / 2) + (int)($r * 0.3), $h - (int)(160 * $scale) + (int)($r * 0.3)],
+	'kingdom (top-left)'   => [(int)(46 * $scale) + $r + (int)($r * 0.4), $y + (int)($r * 0.4)],
+	'park    (top-right)'  => [$w - (int)(46 * $scale) - $r + (int)($r * 0.4), $y + (int)($r * 0.4)],
+	'player  (bot-center)' => [(int)($w / 2) + (int)($rPlayer * 0.3), $h - (int)(160 * $scale) + (int)($rPlayer * 0.3)],
 ];
 
 foreach ($points as $name => [$cx, $cy]) {
@@ -75,7 +75,7 @@ test_section('Empty heraldry state leaves the renderer unchanged');
 $stateNo = ['family' => 'northern_gothic', 'awardName' => 'Test', 'recipient' => 'Test'];
 $img2 = imagecreatetruecolor($w, $h);
 ScrollFamilyRenderer::render($img2, $w, $h, $stateNo, $fam);
-$rgb = imagecolorat($img2, (int)(50 * $scale) + $r + (int)($r * 0.4), $y + (int)($r * 0.4));
+$rgb = imagecolorat($img2, (int)(46 * $scale) + $r + (int)($r * 0.4), $y + (int)($r * 0.4));
 $r_ = ($rgb >> 16) & 0xFF; $g_ = ($rgb >> 8) & 0xFF; $b_ = $rgb & 0xFF;
 $tealLike = ($g_ > 100 && $b_ > 100 && $r_ < 100);
 assert_true(!$tealLike, "without state.kingdomHeraldry, top-left has no heraldry (rgb $r_,$g_,$b_)");

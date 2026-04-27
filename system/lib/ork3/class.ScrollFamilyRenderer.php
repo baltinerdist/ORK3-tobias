@@ -229,26 +229,31 @@ class ScrollFamilyRenderer {
 			'familyKey' => $key,
 		]);
 
-		// 10. date (top-right, below the player heraldry slot)
+		// 10. date (top-center, between the two top heraldry medallions, small face)
 		$dateText = $state['date'] ?? self::todayLatin();
-		$bbox = imagettfbbox(max(8, (int)(11 * $scale)), 0, $fonts['date'], $dateText);
+		$dateSize = max(7, (int)(10 * $scale));
+		$bbox = imagettfbbox($dateSize, 0, $fonts['date'], $dateText);
 		$tw = $bbox[2] - $bbox[0];
-		imagettftext($img, max(8, (int)(11 * $scale)), 0, $w - (int)(60 * $scale) - $tw, (int)(56 * $scale), $textCol, $fonts['date'], $dateText);
+		imagettftext($img, $dateSize, 0, (int)($w / 2) - intdiv($tw, 2), (int)(30 * $scale), $textCol, $fonts['date'], $dateText);
 
-		// 11. Heraldry medallions (kingdom top-left, player top-right, park bottom-center).
-		//     URL or local path passed via $state; drawHeraldryMedallion is no-op when src is empty/unreadable.
-		$heraldryR     = max(20, (int)(32 * $scale));
-		$heraldryParkR = max(16, (int)(24 * $scale));
-		$heraldryY     = (int)(108 * $scale);
+		// 11. Heraldry medallions — placement convention (Plan v1.5 layout):
+		//   * Kingdom (jurisdictional, principal) → top-LEFT, above the title
+		//   * Park    (jurisdictional, local)     → top-RIGHT, paired with kingdom
+		//   * Player  (recipient's own arms)      → BOTTOM-center, secondary, smaller radius
+		// Top medallions sit at cy = 56 with r = 22 so the bottom edge (y=78) clears
+		// the title's ascender top (~y=82) without overlap. URL or local path passed
+		// via $state; drawHeraldryMedallion is a no-op when src is empty/unreadable.
+		$heraldryR       = max(16, (int)(22 * $scale));
+		$heraldryPlayerR = max(14, (int)(18 * $scale));
+		$heraldryTopY    = (int)(56 * $scale);
 		if (!empty($state['kingdomHeraldry'])) {
-			self::compositeHeraldry($img, (int)(50 * $scale) + $heraldryR, $heraldryY, $heraldryR, (string)$state['kingdomHeraldry'], $pal);
-		}
-		if (!empty($state['playerHeraldry'])) {
-			self::compositeHeraldry($img, $w - (int)(50 * $scale) - $heraldryR, $heraldryY, $heraldryR, (string)$state['playerHeraldry'], $pal);
+			self::compositeHeraldry($img, (int)(46 * $scale) + $heraldryR, $heraldryTopY, $heraldryR, (string)$state['kingdomHeraldry'], $pal);
 		}
 		if (!empty($state['parkHeraldry'])) {
-			$pkY = $h - (int)(160 * $scale);
-			self::compositeHeraldry($img, (int)($w / 2), $pkY, $heraldryParkR, (string)$state['parkHeraldry'], $pal);
+			self::compositeHeraldry($img, $w - (int)(46 * $scale) - $heraldryR, $heraldryTopY, $heraldryR, (string)$state['parkHeraldry'], $pal);
+		}
+		if (!empty($state['playerHeraldry'])) {
+			self::compositeHeraldry($img, (int)($w / 2), $h - (int)(160 * $scale), $heraldryPlayerR, (string)$state['playerHeraldry'], $pal);
 		}
 	}
 
