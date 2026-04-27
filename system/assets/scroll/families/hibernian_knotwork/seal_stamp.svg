@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+  <desc>
+    Hibernian Knotwork — seal stamp. Triskele in concentric Insular knot ring,
+    central spiral hub. Reads at small size (~36 px preview) as three radial
+    arms in a circle.
+    Informed by: Cross of Patrick and Columba, Kells, Co. Meath; carpet pages
+    of Lindisfarne and Kells; license: PD.
+    SVG path data: original procedural geometry, CC0.
+  </desc>
+
+  <g transform="translate(120 120)">
+    <!-- Outer rings -->
+    <circle cx="0" cy="0" r="110" fill="none" stroke="#FFFFFF" stroke-width="3"/>
+    <circle cx="0" cy="0" r="98"  fill="none" stroke="#FFFFFF" stroke-width="1.5" opacity="0.55"/>
+
+    <!-- Knot-band ring: 12 paired arcs around the rim -->
+    <g fill="none" stroke="#FFFFFF" stroke-width="3" opacity="0.85">
+      <g>
+        <circle cx="0"   cy="-92" r="8"/>
+        <circle cx="46"  cy="-80" r="8"/>
+        <circle cx="80"  cy="-46" r="8"/>
+        <circle cx="92"  cy="0"   r="8"/>
+        <circle cx="80"  cy="46"  r="8"/>
+        <circle cx="46"  cy="80"  r="8"/>
+        <circle cx="0"   cy="92"  r="8"/>
+        <circle cx="-46" cy="80"  r="8"/>
+        <circle cx="-80" cy="46"  r="8"/>
+        <circle cx="-92" cy="0"   r="8"/>
+        <circle cx="-80" cy="-46" r="8"/>
+        <circle cx="-46" cy="-80" r="8"/>
+      </g>
+    </g>
+
+    <!-- Inner ring -->
+    <circle cx="0" cy="0" r="62" fill="none" stroke="#FFFFFF" stroke-width="2"/>
+
+    <!-- Triskele — three spiral arms at 0°, 120°, 240° -->
+    <g fill="#FFFFFF">
+      <!-- Arm template, repeated rotated -->
+      <g>
+        <!-- Arm 1 (top) -->
+        <path d="M 0 -50 Q 22 -34 16 -10 Q 10 12 -10 12 Q -22 12 -20 -2 Q -18 -10 -10 -8" fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round"/>
+        <circle cx="-8" cy="0" r="6"/>
+        <!-- Arm 2 -->
+        <g transform="rotate(120)">
+          <path d="M 0 -50 Q 22 -34 16 -10 Q 10 12 -10 12 Q -22 12 -20 -2 Q -18 -10 -10 -8" fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round"/>
+          <circle cx="-8" cy="0" r="6"/>
+        </g>
+        <!-- Arm 3 -->
+        <g transform="rotate(240)">
+          <path d="M 0 -50 Q 22 -34 16 -10 Q 10 12 -10 12 Q -22 12 -20 -2 Q -18 -10 -10 -8" fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round"/>
+          <circle cx="-8" cy="0" r="6"/>
+        </g>
+      </g>
+      <!-- Center hub -->
+      <circle cx="0" cy="0" r="9"/>
+    </g>
+  </g>
+</svg>

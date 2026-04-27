@@ -42,3 +42,34 @@ British Library, Met Open Access, Getty Open Content, and Wikimedia Commons,
 plus optional Game-icons.net (CC-BY 3.0) silhouettes. Those were not landed in
 v1 due to network constraints during initial implementation. When/if added,
 each curated asset will be recorded here with its source URL and license.
+
+## Curated family asset attribution
+
+Each row lists a system-owned, palette-tinted asset committed under
+`system/assets/scroll/families/<family>/`. Sources listed are the
+manuscript or open-content references the SVG was *informed by*; the
+SVG path data itself is original procedural geometry committed as
+CC0 by the ORK project unless otherwise noted in the row's License.
+
+| Family | Role | File | Source / informed by | License |
+|---|---|---|---|---|
+| hibernian_knotwork | frame_corner_nw | `families/hibernian_knotwork/frame_corner_nw__border.png` | Hibernian Knotwork — NW corner. Insular triskele with two interlocked
+    knot bands radiating along the right and bottom edges to meet the
+    frame_edge_top tile at the corner seam. Designed to rotate 90/180/270
+    cleanly to produce NE/SE/SW corners.
+    Informed by: Book of Kells, Trinity College Dublin MS 58, folio 34r
+    (the carpet page); license: PD (manuscript ~AD 800).
+    SVG path data: original procedural geometry, CC0. | PD (manuscript ~AD 800) |
+| hibernian_knotwork | frame_edge_top | `families/hibernian_knotwork/frame_edge_top__border.png` | Hibernian Knotwork — top edge tile. Continuous interlocking knot band
+    with five round knot stations across 150 units; left and right edges
+    matched so the tile repeats horizontally without seams. Designed to
+    rotate 90/180/270 cleanly to produce left/bottom/right edge tiles.
+    Informed by: Lindisfarne Gospels, BL Cotton Nero D.IV, carpet pages;
+    license: PD (manuscript ~AD 700).
+    SVG path data: original procedural geometry, CC0. | PD (manuscript ~AD 700) |
+| hibernian_knotwork | seal_stamp | `families/hibernian_knotwork/seal_stamp__gold.png` | Hibernian Knotwork — seal stamp. Triskele in concentric Insular knot ring,
+    central spiral hub. Reads at small size (~36 px preview) as three radial
+    arms in a circle.
+    Informed by: Cross of Patrick and Columba, Kells, Co. Meath; carpet pages
+    of Lindisfarne and Kells; license: PD.
+    SVG path data: original procedural geometry, CC0. | PD |

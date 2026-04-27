@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 30" width="150" height="30">
+  <desc>
+    Hibernian Knotwork — top edge tile. Continuous interlocking knot band
+    with five round knot stations across 150 units; left and right edges
+    matched so the tile repeats horizontally without seams. Designed to
+    rotate 90/180/270 cleanly to produce left/bottom/right edge tiles.
+    Informed by: Lindisfarne Gospels, BL Cotton Nero D.IV, carpet pages;
+    license: PD (manuscript ~AD 700).
+    SVG path data: original procedural geometry, CC0.
+  </desc>
+
+  <!-- Inner ink rule along the bottom (frame interior side) -->
+  <line x1="0" y1="29" x2="150" y2="29" stroke="#FFFFFF" stroke-width="1" opacity="0.55"/>
+
+  <!-- Continuous knot ribbon: undulating sine that crosses through 5 round-knot stations -->
+  <path d="M 0 22 Q 7.5 8 15 22 Q 22.5 36 30 22 Q 37.5 8 45 22 Q 52.5 36 60 22 Q 67.5 8 75 22 Q 82.5 36 90 22 Q 97.5 8 105 22 Q 112.5 36 120 22 Q 127.5 8 135 22 Q 142.5 36 150 22"
+        fill="none" stroke="#FFFFFF" stroke-width="2.5" opacity="0.85"/>
+
+  <!-- Counter-ribbon for interlace illusion (offset phase) -->
+  <path d="M 0 8 Q 7.5 22 15 8 Q 22.5 -6 30 8 Q 37.5 22 45 8 Q 52.5 -6 60 8 Q 67.5 22 75 8 Q 82.5 -6 90 8 Q 97.5 22 105 8 Q 112.5 -6 120 8 Q 127.5 22 135 8 Q 142.5 -6 150 8"
+        fill="none" stroke="#FFFFFF" stroke-width="2.5" opacity="0.55"/>
+
+  <!-- Round knot stations (5 across) — each a circle with center dot -->
+  <g fill="none" stroke="#FFFFFF" stroke-width="2.5">
+    <circle cx="15" cy="15" r="6"/>
+    <circle cx="45" cy="15" r="6"/>
+    <circle cx="75" cy="15" r="6"/>
+    <circle cx="105" cy="15" r="6"/>
+    <circle cx="135" cy="15" r="6"/>
+  </g>
+  <g fill="#FFFFFF">
+    <circle cx="15" cy="15" r="2"/>
+    <circle cx="45" cy="15" r="2"/>
+    <circle cx="75" cy="15" r="2"/>
+    <circle cx="105" cy="15" r="2"/>
+    <circle cx="135" cy="15" r="2"/>
+  </g>
+</svg>

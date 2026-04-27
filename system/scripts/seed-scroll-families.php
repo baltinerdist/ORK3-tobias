@@ -25,6 +25,10 @@
 
 declare(strict_types=1);
 
+// PHP 8+ GdImage is auto-collected; imagedestroy() is a no-op and PHP 8.5
+// emits a deprecation notice. Silence those — they're noise, not signal.
+error_reporting(E_ALL & ~E_DEPRECATED);
+
 const ROOT = __DIR__ . '/../..';
 const FAMILIES_JSON = ROOT . '/orkui/template/revised-frontend/scroll/families.json';
 const ASSETS_DIR = ROOT . '/system/assets/scroll/families';
