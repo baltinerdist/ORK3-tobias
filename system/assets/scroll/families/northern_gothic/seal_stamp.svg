@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+  <desc>
+    Northern Gothic — seal stamp. Lion rampant with raised forepaw and
+    flowing mane, encircled by gilded ring with twelve cabochon dots.
+    Reads at small size as a leonine silhouette in profile.
+    Informed by: heraldic lions of the Holy Roman Empire and English
+    royal arms (c. 13th-14th c.); license: PD.
+    SVG path data: original procedural geometry, CC0.
+  </desc>
+
+  <g transform="translate(120 120)">
+    <!-- Outer rings -->
+    <circle cx="0" cy="0" r="110" fill="none" stroke="#FFFFFF" stroke-width="3"/>
+    <circle cx="0" cy="0" r="100" fill="none" stroke="#FFFFFF" stroke-width="1.5" opacity="0.55"/>
+
+    <!-- Twelve cabochon dots around rim -->
+    <g fill="#FFFFFF">
+      <circle cx="0" cy="-105" r="4"/>
+      <circle cx="52" cy="-91" r="4"/>
+      <circle cx="91" cy="-52" r="4"/>
+      <circle cx="105" cy="0" r="4"/>
+      <circle cx="91" cy="52" r="4"/>
+      <circle cx="52" cy="91" r="4"/>
+      <circle cx="0" cy="105" r="4"/>
+      <circle cx="-52" cy="91" r="4"/>
+      <circle cx="-91" cy="52" r="4"/>
+      <circle cx="-105" cy="0" r="4"/>
+      <circle cx="-91" cy="-52" r="4"/>
+      <circle cx="-52" cy="-91" r="4"/>
+    </g>
+
+    <!-- Lion rampant body (left-facing profile, posed upright) -->
+    <g fill="#FFFFFF">
+      <!-- Hindquarters -->
+      <ellipse cx="20" cy="40" rx="32" ry="22"/>
+      <!-- Lower back to torso -->
+      <path d="M -10 28 Q -18 0 -10 -20 Q 0 -36 18 -30 Q 32 -22 36 -8 Q 40 8 32 24 Q 22 40 0 38 Z"/>
+      <!-- Chest projection -->
+      <ellipse cx="-12" cy="-8" rx="14" ry="20"/>
+      <!-- Mane: radial spikes around the head -->
+      <g>
+        <circle cx="-26" cy="-38" r="22"/>
+        <!-- Mane spikes -->
+        <path d="M -26 -62 L -32 -76 L -22 -68 Z"/>
+        <path d="M -10 -56 L -2 -68 L -8 -54 Z"/>
+        <path d="M -42 -52 L -52 -60 L -42 -50 Z"/>
+        <path d="M -48 -38 L -62 -42 L -50 -34 Z"/>
+        <path d="M -42 -22 L -54 -18 L -42 -22 Z"/>
+        <path d="M 4 -34 L 16 -36 L 6 -30 Z"/>
+      </g>
+      <!-- Head + muzzle -->
+      <circle cx="-22" cy="-36" r="12"/>
+      <path d="M -34 -34 Q -40 -36 -42 -32 Q -42 -28 -36 -28 Z"/>
+      <!-- Eye (negative space — leave a transparent dot) -->
+      <circle cx="-28" cy="-38" r="1.5" fill="#000000"/>
+      <!-- Forepaws raised (rampant pose) -->
+      <path d="M -2 -14 Q 12 -28 22 -22 Q 26 -16 18 -10 Q 10 -10 8 -16 Z"/>
+      <path d="M 4 8 Q 18 -2 28 6 Q 32 14 24 16 Q 16 14 12 6 Z"/>
+      <!-- Tail curving up and over the back -->
+      <path d="M 50 30 Q 70 10 64 -14 Q 56 -34 40 -28 Q 38 -22 48 -16 Q 56 -8 52 4 Q 46 16 40 22 Z" opacity="0.9"/>
+      <!-- Hind legs/feet -->
+      <path d="M 30 58 Q 36 70 28 76 Q 18 76 16 66 Z"/>
+      <path d="M 0 58 Q 6 70 -2 76 Q -12 76 -14 66 Z"/>
+    </g>
+  </g>
+</svg>

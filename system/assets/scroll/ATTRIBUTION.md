@@ -53,23 +53,20 @@ CC0 by the ORK project unless otherwise noted in the row's License.
 
 | Family | Role | File | Source / informed by | License |
 |---|---|---|---|---|
-| hibernian_knotwork | frame_corner_nw | `families/hibernian_knotwork/frame_corner_nw__border.png` | Hibernian Knotwork — NW corner. Insular triskele with two interlocked
-    knot bands radiating along the right and bottom edges to meet the
-    frame_edge_top tile at the corner seam. Designed to rotate 90/180/270
-    cleanly to produce NE/SE/SW corners.
-    Informed by: Book of Kells, Trinity College Dublin MS 58, folio 34r
-    (the carpet page); license: PD (manuscript ~AD 800).
-    SVG path data: original procedural geometry, CC0. | PD (manuscript ~AD 800) |
-| hibernian_knotwork | frame_edge_top | `families/hibernian_knotwork/frame_edge_top__border.png` | Hibernian Knotwork — top edge tile. Continuous interlocking knot band
-    with five round knot stations across 150 units; left and right edges
-    matched so the tile repeats horizontally without seams. Designed to
-    rotate 90/180/270 cleanly to produce left/bottom/right edge tiles.
-    Informed by: Lindisfarne Gospels, BL Cotton Nero D.IV, carpet pages;
-    license: PD (manuscript ~AD 700).
-    SVG path data: original procedural geometry, CC0. | PD (manuscript ~AD 700) |
-| hibernian_knotwork | seal_stamp | `families/hibernian_knotwork/seal_stamp__gold.png` | Hibernian Knotwork — seal stamp. Triskele in concentric Insular knot ring,
-    central spiral hub. Reads at small size (~36 px preview) as three radial
-    arms in a circle.
-    Informed by: Cross of Patrick and Columba, Kells, Co. Meath; carpet pages
-    of Lindisfarne and Kells; license: PD.
+| northern_gothic | frame_corner_nw | `families/northern_gothic/frame_corner_nw__border.png` | Northern Gothic — NW corner. Naturalistic ivy bar with three-lobed
+    leaves, acanthus curl at the inner corner, gilded besant boss.
+    Designed for clean 90/180/270 rotation.
+    Informed by: Luttrell Psalter (BL Add MS 42130, c. 1325-1340) bar
+    border conventions; license: PD.
+    SVG path data: original procedural geometry, CC0. | PD |
+| northern_gothic | frame_edge_top | `families/northern_gothic/frame_edge_top__border.png` | Northern Gothic — top edge tile. Continuous ivy bar with five trefoil
+    leaves, gilded besants between, sinuous central trunk. Edges matched
+    for horizontal repeat.
+    Informed by: Luttrell Psalter bar borders; license: PD.
+    SVG path data: original procedural geometry, CC0. | PD |
+| northern_gothic | seal_stamp | `families/northern_gothic/seal_stamp__gold.png` | Northern Gothic — seal stamp. Lion rampant with raised forepaw and
+    flowing mane, encircled by gilded ring with twelve cabochon dots.
+    Reads at small size as a leonine silhouette in profile.
+    Informed by: heraldic lions of the Holy Roman Empire and English
+    royal arms (c. 13th-14th c.); license: PD.
     SVG path data: original procedural geometry, CC0. | PD |
