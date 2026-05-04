@@ -188,3 +188,141 @@ Recommendations tab is visible to non-officers.
 - **`AwardService.php` is empty scaffolding.** Don't add
   recommendation logic there — it lives on the Player and Report
   SOAP services.
+
+## 8. Recommendation seconds + originator reason edit
+*(branch: `feature/player-profile-enhancements`, not yet on master)*
+
+Adds a "+1" mechanism to recommendations. Any logged-in player can
+**second** an existing recommendation, optionally with notes, instead
+of filing a duplicate primary rec. The originator can also edit their
+own `reason` after submission.
+
+### 8.1 New table
+
+Migration: `db-migrations/2026-04-22-recommendation-seconds.sql`.
+
+`ork_recommendation_seconds`
+
+| column                       | type         | meaning                                                              |
+| ---------------------------- | ------------ | -------------------------------------------------------------------- |
+| `recommendation_seconds_id`  | int PK       | surrogate key                                                        |
+| `recommendations_id`         | int FK       | parent rec — `ork_recommendations.recommendations_id`                |
+| `supporter_mundane_id`       | int FK       | the +1 — `ork_mundane.mundane_id`                                    |
+| `notes`                      | varchar(400) | optional supporting text                                             |
+| `created_at`                 | timestamp    | `DEFAULT CURRENT_TIMESTAMP`                                          |
+| `updated_at`                 | timestamp    | bumped on notes edit                                                 |
+| `deleted_at`                 | timestamp    | soft-delete (matches §2 convention)                                  |
+| `deleted_by`                 | int FK       | mundane who withdrew/cascade-deleted                                 |
+
+Indexes:
+
+- `UNIQUE KEY uniq_rec_supporter (recommendations_id, supporter_mundane_id)`
+  — one second per supporter per rec. Re-seconding after withdrawal
+  **resurrects** the soft-deleted row (`deleted_at = NULL`, replace
+  `notes`); do not insert a second row.
+- `KEY idx_supporter (supporter_mundane_id)` — for player-merge and
+  "my seconds" lookups.
+
+This table is InnoDB / utf8mb4 (the modern convention going forward),
+not MyISAM like §2's table.
+
+### 8.2 Eligibility — enforced server-side
+
+`Player::AddSecondToRecommendation` rejects (returns
+`InvalidParameter`) when:
+
+1. Parent rec missing or soft-deleted.
+2. Supporter is the recipient (`RequestedBy == rec.mundane_id`).
+3. Supporter is the originator (`RequestedBy == rec.recommended_by_id`).
+4. Supporter already has a non-deleted **primary** rec for the same
+   `(mundane_id, kingdomaward_id, award_id, rank)` tuple — they should
+   keep their own rec, not also second.
+
+These mirror the §5 rules: a player can only have one expression of
+support per rec target, whether primary or second.
+
+### 8.3 New methods on `class.Player.php`
+
+- `AddSecondToRecommendation({ RequestedBy, RecommendationsId, Notes })`
+  — insert or resurrect.
+- `EditSecondNotes({ RequestedBy, RecommendationSecondsId, Notes })`
+  — supporter only; updates `notes` + `updated_at`.
+- `WithdrawSecond({ RequestedBy, RecommendationSecondsId })` —
+  supporter OR an admin/officer matching the same role check used by
+  `DeleteAwardRecommendation` (see §5 rule 4). Soft-delete only.
+- `EditAwardRecommendationReason({ RequestedBy, RecommendationsId, Reason })`
+  — originator only; updates `reason`. Admin edit of someone else's
+  reason is **out of scope** — admins still delete and recreate.
+- `GetSecondsForRecommendations($recommendation_ids, $viewer_id)` —
+  read helper used to hydrate the rec response.
+
+### 8.4 Cascade
+
+`Player::DeleteAwardRecommendation` (see §4) soft-deletes every active
+row in `ork_recommendation_seconds` for the parent rec, using the same
+`deleted_at` and `deleted_by`. Restoring a parent rec does **not**
+auto-restore its seconds — that's by design; supporters must opt in
+again.
+
+### 8.5 Read-path additions
+
+The recommendation loader used by `Reports` and
+`AwardRecommendationsForPlayer` adds these per-rec fields:
+
+```
+Seconds: [
+  { RecommendationSecondsId, SupporterMundaneId, SupporterName,
+    Notes, CreatedAt, IsMine },
+  ...
+]
+SecondsCount:        int
+ViewerCanSecond:     bool   // result of running §8.2 eligibility for the current viewer
+ViewerCanEditReason: bool   // RequestedBy == recommended_by_id
+```
+
+Masking: when the parent rec has `mask_giver = 1` and the viewer is
+unprivileged, `SupporterName` is masked the same way as the
+originator. `Notes` are **always visible** — masking hides identity,
+not content.
+
+### 8.6 Player-merge implications
+
+In `class.Player.php`, after the existing `recommended_by_id` remap,
+also remap supporter rows:
+
+```sql
+UPDATE ork_recommendation_seconds
+SET supporter_mundane_id = <to>
+WHERE supporter_mundane_id = <from>
+```
+
+The `(recommendations_id, supporter_mundane_id)` unique key
+**collides** if both the merged-from and merged-to mundane already
+seconded the same rec. Required pre-pass: detect collisions,
+soft-delete the merged-from row first, then run the bulk UPDATE.
+Skipping the pre-pass crashes the merge.
+
+### 8.7 Frontend surface
+
+`orkui/template/revised-frontend/Playernew_index.tpl`:
+
+- Per-row controls: `+N` seconds badge next to date when
+  `SecondsCount > 0`; `[+]` button when `ViewerCanSecond`; pencil
+  edit next to `reason` when `ViewerCanEditReason`.
+- Inline list of seconds always rendered when `SecondsCount > 0` (no
+  expand toggle in v1). Per-row `[withdraw]` shown only on the
+  viewer's own second.
+- Three custom-JS modals matching the existing add-rec modal:
+  **Second this recommendation**, **Edit notes** (supporter), **Edit
+  reason** (originator). All carry a 400-char counter to match the
+  column width.
+- Per project conventions: CSS prefixed `pn-`, JS inlined in the
+  template, `data-tip` not native `title`, dark-mode coverage from
+  day one.
+
+### 8.8 Out of scope for v1
+
+- Notifications when a second is added.
+- Surfacing second counts in Reports / kingdom-level reports.
+- Sorting the rec list by second count.
+- Admin edit of someone else's `reason` (still delete + recreate).
