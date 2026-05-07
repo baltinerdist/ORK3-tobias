@@ -920,8 +920,8 @@ html[data-theme="dark"] .tn-bv-match.tn-bv-clickable:hover { box-shadow:0 2px 8p
 html[data-theme="dark"] .tn-bv-match.tn-bv-resolved { border-color:#38a169; background:rgba(56,161,105,0.12); }
 html[data-theme="dark"] .tn-bv-slot:first-child { border-bottom-color:#4a5568; }
 html[data-theme="dark"] .tn-bv-slot.tn-bv-winner { color:#9ae6b4; }
-html[data-theme="dark"] .tn-bv-slot.tn-bv-loser  { color:#718096; }
-html[data-theme="dark"] .tn-bv-slot.tn-bv-bye    { color:#4a5568; }
+html[data-theme="dark"] .tn-bv-slot.tn-bv-loser  { color:#a0aec0; }
+html[data-theme="dark"] .tn-bv-slot.tn-bv-bye    { color:#718096; }
 html[data-theme="dark"] .tn-bv-seed { background:#4a5568; color:#cbd5e0; }
 html[data-theme="dark"] .tn-bv-result-pill { background:rgba(56,161,105,0.25); color:#9ae6b4; }
 html[data-theme="dark"] .tn-bv-reset-btn { color:#4a5568; }
@@ -1045,14 +1045,19 @@ html[data-theme="dark"] .tn-rr-focus-banner-close { color:#90cdf4; }
 html[data-theme="dark"] .tn-rr-focus-banner-close:hover { background:rgba(49,130,206,0.3); color:#bee3f8; }
 
 /* Bracket viz extras */
-html[data-theme="dark"] .tn-bv-match-num { color:#718096; }
+html[data-theme="dark"] .tn-bv-match-num { color:#a0aec0; }
 html[data-theme="dark"] .tn-bv-match.tn-bv-bye-match { background:#1a202c; border-color:#4a5568; }
-html[data-theme="dark"] .tn-bv-match.tn-bv-bye-match .tn-bv-slot { color:#4a5568; }
-html[data-theme="dark"] .tn-bv-bye-label { color:#718096; border-top-color:#4a5568; }
-/* Champion banner — keep gold gradient (intentional warm highlight) */
-html[data-theme="dark"] .tn-bv-podium-1st { background:rgba(236,201,75,0.2); color:#fbd38d; border-color:#ecc94b; }
-html[data-theme="dark"] .tn-bv-podium-2nd { background:#4a5568; color:#cbd5e0; border-color:#718096; }
-html[data-theme="dark"] .tn-bv-podium-3rd { background:rgba(217,119,6,0.25); color:#fbd38d; border-color:#d97706; }
+html[data-theme="dark"] .tn-bv-match.tn-bv-bye-match .tn-bv-slot { color:#718096; }
+html[data-theme="dark"] .tn-bv-bye-label { color:#a0aec0; border-top-color:#4a5568; }
+/* Champion banner stays gold in both modes — podium pills sit ON the gold gradient,
+   so they need backgrounds that contrast WITH the gold (not blend into it). */
+html[data-theme="dark"] .tn-bv-podium-1st { background:#fefcbf; color:#744210; border-color:#ecc94b; }
+html[data-theme="dark"] .tn-bv-podium-2nd { background:#e2e8f0; color:#4a5568; border-color:#cbd5e0; }
+html[data-theme="dark"] .tn-bv-podium-3rd { background:#fed7aa; color:#7b341e; border-color:#f6ad55; }
+/* Champion banner inner text — gold gradient stays light, so flip the inline-style override exemption */
+html[data-theme="dark"] .tn-bv-champion-name { color:#1a202c; }
+html[data-theme="dark"] .tn-bv-champion-label { color:#744210; }
+html[data-theme="dark"] .tn-bv-champion-park { color:#744210; }
 html[data-theme="dark"] .tn-bv-zoom-btn { background:#2d3748; border-color:#4a5568; color:#a0aec0; }
 html[data-theme="dark"] .tn-bv-zoom-btn:hover { background:rgba(56,161,105,0.18); color:#9ae6b4; border-color:#68d391; }
 html[data-theme="dark"] .tn-bv-zoom-level { color:#718096; }
