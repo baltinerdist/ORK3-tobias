@@ -804,6 +804,316 @@ $heroStyles = array_keys($heroStyles);
 .tn-ac-item:last-child { border-bottom:none; }
 .tn-ac-item:hover, .tn-ac-item:focus { background:#f7fafc; outline:none; }
 .tn-ac-item.tn-ac-empty { color:#a0aec0; cursor:default; }
+
+/* =================================================================
+   DARK MODE — Tournament Profile (tn-)
+   Surface map: card #2d3748, alt #1a202c, modal #1a202c, border #2d3748/#4a5568
+   Text map: primary #f7fafc, secondary #cbd5e0, muted #a0aec0, faint #718096
+   Accent green: #68d391 (links/wins), tinted bg rgba(56,161,105,.15)
+   ================================================================= */
+html[data-theme="dark"] {
+	--tn-accent: #68d391;
+	--tn-accent-light: rgba(56,161,105,0.15);
+}
+/* Hero (already dark gradient) — only adjust translucent text */
+html[data-theme="dark"] .tn-hero-icon { background:rgba(255,255,255,0.08); border-color:rgba(255,255,255,0.18); }
+
+/* Stats row */
+html[data-theme="dark"] .tn-stat-card { background:#2d3748; border-color:#4a5568; box-shadow:0 1px 3px rgba(0,0,0,0.3); }
+html[data-theme="dark"] .tn-stat-card-link:hover { border-color:#68d391; box-shadow:0 2px 8px rgba(104,211,145,0.2); }
+html[data-theme="dark"] .tn-stat-icon { color:#718096; }
+html[data-theme="dark"] .tn-stat-value { color:#f7fafc; }
+html[data-theme="dark"] .tn-stat-sub,
+html[data-theme="dark"] .tn-stat-label { color:#a0aec0; }
+
+/* Card */
+html[data-theme="dark"] .tn-card { background:#2d3748; border-color:#4a5568; box-shadow:0 1px 3px rgba(0,0,0,0.3); }
+html[data-theme="dark"] .tn-card h4 { color:#cbd5e0; }
+html[data-theme="dark"] .tn-detail-row { color:#cbd5e0; border-bottom-color:#4a5568; }
+html[data-theme="dark"] .tn-detail-icon { color:#718096; }
+html[data-theme="dark"] .tn-detail-text a { color:#68d391; }
+
+/* Tabs */
+html[data-theme="dark"] .tn-tabs { background:#2d3748; border-color:#4a5568; box-shadow:0 1px 3px rgba(0,0,0,0.3); }
+html[data-theme="dark"] .tn-tab-nav { border-bottom-color:#4a5568; }
+html[data-theme="dark"] .tn-tab-nav li { color:#a0aec0; }
+html[data-theme="dark"] .tn-tab-nav li:hover { color:#68d391; background:#1a202c; }
+html[data-theme="dark"] .tn-tab-active { color:#68d391!important; border-bottom-color:#68d391!important; background:#2d3748!important; }
+html[data-theme="dark"] .tn-tab-count { color:#718096; }
+
+/* Bracket cards */
+html[data-theme="dark"] .tn-bracket-card { border-color:#4a5568; }
+html[data-theme="dark"] .tn-bracket-header { background:#1a202c; border-bottom-color:#4a5568; }
+html[data-theme="dark"] .tn-bracket-header h4 { color:#f7fafc; }
+html[data-theme="dark"] .tn-bracket-meta { color:#a0aec0; }
+html[data-theme="dark"] .tn-participant-list li { color:#cbd5e0; border-bottom-color:#2d3748; }
+html[data-theme="dark"] .tn-participant-seed { background:#4a5568; color:#cbd5e0; }
+html[data-theme="dark"] .tn-empty { color:#718096; }
+html[data-theme="dark"] .tn-remove-participant { color:#718096; }
+html[data-theme="dark"] .tn-remove-participant:hover { color:#fc8181; }
+
+/* Pills (warrior/warlord/knight/complete) — darken backgrounds, keep colored text legible */
+html[data-theme="dark"] .tn-pill-warrior { background:rgba(49,130,206,0.2); color:#90cdf4; border-color:rgba(49,130,206,0.4); }
+html[data-theme="dark"] .tn-pill-warlord { background:rgba(180,83,9,0.25); color:#fbd38d; border-color:rgba(252,211,77,0.45); }
+html[data-theme="dark"] .tn-pill-knight  { background:rgba(56,161,105,0.2); color:#9ae6b4; border-color:rgba(154,230,180,0.4); }
+html[data-theme="dark"] .tn-pill-complete { background:rgba(56,161,105,0.2); color:#9ae6b4; border-color:rgba(154,230,180,0.4); }
+
+/* Bracket status badges */
+html[data-theme="dark"] .tn-bracket-status-setup { background:#2d3748; color:#a0aec0; }
+html[data-theme="dark"] .tn-bracket-status-active { background:rgba(56,161,105,0.2); color:#9ae6b4; border-color:rgba(154,230,180,0.4); }
+html[data-theme="dark"] .tn-bracket-status-complete { background:rgba(49,130,206,0.2); color:#90cdf4; border-color:rgba(49,130,206,0.4); }
+html[data-theme="dark"] .tn-bracket-status-finalized { background:rgba(107,70,193,0.25); color:#d6bcfa; border-color:rgba(159,122,234,0.45); }
+
+html[data-theme="dark"] .tn-placement-list li { border-bottom-color:#2d3748; }
+html[data-theme="dark"] .tn-placement-num { color:#68d391; }
+html[data-theme="dark"] .tn-bout-pip { background:#1a202c; border-color:#4a5568; }
+html[data-theme="dark"] .tn-bout-pip:hover { border-color:#a0aec0; }
+html[data-theme="dark"] .tn-bout-pip.tn-pip-win  { background:#38a169; border-color:#68d391; }
+html[data-theme="dark"] .tn-bout-pip.tn-pip-loss { background:#c53030; border-color:#fc8181; }
+html[data-theme="dark"] .tn-bout-score { color:#68d391; }
+
+/* Buttons */
+html[data-theme="dark"] .tn-btn-primary { background:#38a169; color:#f7fafc; }
+html[data-theme="dark"] .tn-btn-primary:hover { background:#48bb78; }
+html[data-theme="dark"] .tn-btn-outline { color:#9ae6b4; border-color:#68d391; }
+html[data-theme="dark"] .tn-btn-outline:hover { background:rgba(56,161,105,0.18); }
+html[data-theme="dark"] .tn-btn-ghost { color:#cbd5e0; border-color:#4a5568; background:transparent; }
+html[data-theme="dark"] .tn-btn-ghost:hover { background:#2d3748; color:#f7fafc; }
+html[data-theme="dark"] .tn-btn-danger { background:transparent; color:#fc8181; border-color:#fc8181; }
+html[data-theme="dark"] .tn-btn-danger:hover { background:#c53030; color:#fff; }
+html[data-theme="dark"] .tn-bracket-toggle { color:#718096; }
+html[data-theme="dark"] .tn-bracket-toggle:hover { color:#cbd5e0; }
+html[data-theme="dark"] .tn-quickadd-row { border-bottom-color:#2d3748; }
+html[data-theme="dark"] .tn-quickadd-name { color:#cbd5e0; }
+html[data-theme="dark"] .tn-quickadd-row.tn-quickadd-done .tn-quickadd-name { color:#718096; }
+html[data-theme="dark"] .tn-bracket-actions { border-top-color:#2d3748; }
+
+/* Tables */
+html[data-theme="dark"] .tn-table th { background:#1a202c; color:#a0aec0; border-bottom-color:#4a5568; }
+html[data-theme="dark"] .tn-table td { color:#cbd5e0; border-bottom-color:#2d3748; }
+
+/* Modals */
+html[data-theme="dark"] .tn-overlay { background:rgba(0,0,0,0.7); }
+html[data-theme="dark"] .tn-overlay .tn-modal-box { background:#1a202c; box-shadow:0 20px 60px rgba(0,0,0,0.6); }
+html[data-theme="dark"] .tn-modal-header { border-bottom-color:#2d3748; }
+html[data-theme="dark"] .tn-modal-title { color:#f7fafc; }
+html[data-theme="dark"] .tn-modal-close { color:#718096; }
+html[data-theme="dark"] .tn-modal-close:hover { color:#cbd5e0; }
+html[data-theme="dark"] .tn-modal-footer { border-top-color:#2d3748; }
+html[data-theme="dark"] .tn-field label { color:#cbd5e0; }
+html[data-theme="dark"] .tn-field input,
+html[data-theme="dark"] .tn-field select,
+html[data-theme="dark"] .tn-field textarea { background:#2d3748; border-color:#4a5568; color:#f7fafc; }
+html[data-theme="dark"] .tn-field input::placeholder,
+html[data-theme="dark"] .tn-field textarea::placeholder { color:#718096; }
+html[data-theme="dark"] .tn-field input:focus,
+html[data-theme="dark"] .tn-field select:focus,
+html[data-theme="dark"] .tn-field textarea:focus { border-color:#68d391; box-shadow:0 0 0 2px rgba(104,211,145,0.2); }
+html[data-theme="dark"] .tn-feedback-err { color:#fc8181; }
+html[data-theme="dark"] .tn-feedback-ok  { color:#9ae6b4; }
+
+/* Bracket visualization */
+html[data-theme="dark"] .tn-bv-round-label { color:#a0aec0; border-bottom-color:#4a5568; }
+html[data-theme="dark"] .tn-bv-match { background:#2d3748; border-color:#4a5568; box-shadow:0 1px 3px rgba(0,0,0,0.3); }
+html[data-theme="dark"] .tn-bv-match.tn-bv-clickable { border-color:#68d391; }
+html[data-theme="dark"] .tn-bv-match.tn-bv-clickable:hover { box-shadow:0 2px 8px rgba(104,211,145,0.25); background:rgba(56,161,105,0.12); }
+html[data-theme="dark"] .tn-bv-match.tn-bv-resolved { border-color:#38a169; background:rgba(56,161,105,0.12); }
+html[data-theme="dark"] .tn-bv-slot:first-child { border-bottom-color:#4a5568; }
+html[data-theme="dark"] .tn-bv-slot.tn-bv-winner { color:#9ae6b4; }
+html[data-theme="dark"] .tn-bv-slot.tn-bv-loser  { color:#718096; }
+html[data-theme="dark"] .tn-bv-slot.tn-bv-bye    { color:#4a5568; }
+html[data-theme="dark"] .tn-bv-seed { background:#4a5568; color:#cbd5e0; }
+html[data-theme="dark"] .tn-bv-result-pill { background:rgba(56,161,105,0.25); color:#9ae6b4; }
+html[data-theme="dark"] .tn-bv-reset-btn { color:#4a5568; }
+html[data-theme="dark"] .tn-bv-reset-btn:hover { color:#fc8181; background:rgba(229,62,62,0.18); }
+html[data-theme="dark"] .tn-bv-reset-btn.tn-bv-reset-confirm { color:#fc8181; background:rgba(229,62,62,0.18); border-color:#fc8181; }
+
+/* Ironman / KOTH */
+html[data-theme="dark"] .tn-im-fight-num { color:#a0aec0; }
+html[data-theme="dark"] .tn-im-king-badge { background:rgba(56,161,105,0.18); border-color:rgba(154,230,180,0.4); }
+html[data-theme="dark"] .tn-im-king-badge-crown { color:#ecc94b; }
+html[data-theme="dark"] .tn-im-king-badge-label { color:#9ae6b4; }
+html[data-theme="dark"] .tn-im-king-badge-name { color:#f7fafc; }
+html[data-theme="dark"] .tn-im-king-badge-streak { color:#9ae6b4; background:rgba(56,161,105,0.3); }
+html[data-theme="dark"] .tn-im-card { background:#2d3748; border-color:#4a5568; }
+html[data-theme="dark"] .tn-im-card.tn-im-card-king { background:rgba(49,130,206,0.18); border-color:#3182ce; }
+html[data-theme="dark"] .tn-im-card.tn-im-card-btn:hover { box-shadow:0 4px 12px rgba(0,0,0,0.5); }
+html[data-theme="dark"] .tn-im-card.tn-im-card-btn.tn-im-card-king:hover { background:rgba(49,130,206,0.3); }
+html[data-theme="dark"] .tn-im-card-name { color:#f7fafc; }
+html[data-theme="dark"] .tn-im-card-wins { color:#a0aec0; }
+html[data-theme="dark"] .tn-im-section-title { color:#a0aec0; }
+html[data-theme="dark"] .tn-im-history-row:nth-child(odd) { background:#1a202c; }
+html[data-theme="dark"] .tn-im-history-fight { color:#718096; }
+html[data-theme="dark"] .tn-im-history-winner { color:#9ae6b4; }
+html[data-theme="dark"] .tn-im-history-loser { color:#718096; }
+html[data-theme="dark"] .tn-im-history-expand { color:#90cdf4; }
+html[data-theme="dark"] .tn-im-qe-wrap { background:#1a202c; border-color:#4a5568; }
+html[data-theme="dark"] .tn-im-qe-label { color:#a0aec0; }
+html[data-theme="dark"] .tn-im-qe-input { background:#2d3748; border-color:#4a5568; color:#f7fafc; }
+html[data-theme="dark"] .tn-im-qe-input:focus { border-color:#3182ce; }
+html[data-theme="dark"] .tn-im-qe-status { color:#a0aec0; }
+html[data-theme="dark"] .tn-im-qe-status.ok { color:#9ae6b4; }
+html[data-theme="dark"] .tn-im-qe-status.err { color:#fc8181; }
+/* Timer bar already dark — keep as-is */
+html[data-theme="dark"] .tn-im-ring { background:#2d3748; border-color:#4a5568; }
+
+/* Method pills (sidebar bracket method picker) */
+html[data-theme="dark"] .tn-bk-pill { background:#2d3748; border-color:#4a5568; color:#a0aec0; }
+html[data-theme="dark"] .tn-bk-pill:hover { border-color:#68d391; color:#9ae6b4; background:rgba(56,161,105,0.15); }
+html[data-theme="dark"] .tn-bk-pill.tn-bk-pill-active { background:#38a169; border-color:#68d391; color:#fff; }
+
+/* Round nav buttons */
+html[data-theme="dark"] .tn-bv-round-btn { background:#2d3748; border-color:#4a5568; color:#a0aec0; }
+html[data-theme="dark"] .tn-bv-round-btn.active { background:#38a169; color:#fff; border-color:#68d391; }
+html[data-theme="dark"] .tn-bv-round-btn.tn-rr-complete:not(.active) { background:#3182ce; border-color:#4299e1; }
+
+/* Section headers */
+html[data-theme="dark"] .tn-bv-section-label { color:#a0aec0; border-bottom-color:#4a5568; }
+html[data-theme="dark"] .tn-bv-generate-bar { background:#1a202c; border-color:#4a5568; }
+html[data-theme="dark"] .tn-bv-status-setup    { background:#4a5568; color:#cbd5e0; }
+html[data-theme="dark"] .tn-bv-status-active   { background:rgba(49,130,206,0.3); color:#90cdf4; }
+html[data-theme="dark"] .tn-bv-status-complete  { background:rgba(56,161,105,0.3); color:#9ae6b4; }
+html[data-theme="dark"] .tn-bv-status-finalized { background:rgba(180,83,9,0.3); color:#fbd38d; }
+html[data-theme="dark"] .tn-bv-empty { color:#718096; }
+html[data-theme="dark"] .tn-bv-section-hdr.winners { background:rgba(56,161,105,0.18); color:#9ae6b4; border-left-color:#68d391; }
+html[data-theme="dark"] .tn-bv-section-hdr.losers { background:rgba(180,83,9,0.2); color:#fbd38d; border-left-color:#d97706; }
+html[data-theme="dark"] .tn-bv-section-hdr.grand-final { background:rgba(107,70,193,0.25); color:#d6bcfa; border-left-color:#9f7aea; }
+
+html[data-theme="dark"] .tn-gf-confirm-banner { background:rgba(180,83,9,0.2); border-color:#ecc94b; }
+html[data-theme="dark"] .tn-gf-confirm-text { color:#fbd38d; }
+
+html[data-theme="dark"] .tn-bv-progress-info { color:#a0aec0; }
+html[data-theme="dark"] .tn-bv-progress-info .tn-bv-pi-ready { color:#9ae6b4; }
+html[data-theme="dark"] .tn-bv-bout-row { background:#1a202c; border-top-color:#4a5568; }
+html[data-theme="dark"] .tn-bv-tbd-label { color:#718096; }
+
+/* Round-robin standings & matrix */
+html[data-theme="dark"] .tn-rr-standings caption { color:#a0aec0; }
+html[data-theme="dark"] .tn-rr-standings th { background:#1a202c; color:#a0aec0; border-bottom-color:#4a5568; }
+html[data-theme="dark"] .tn-rr-standings td { color:#cbd5e0; border-bottom-color:#2d3748; }
+html[data-theme="dark"] .tn-rr-standings td:nth-child(2) { color:#f7fafc; }
+html[data-theme="dark"] .tn-rr-standings .tn-rr-std-top td { background:rgba(56,161,105,0.15); }
+
+html[data-theme="dark"] .tn-rr-view-toggle { background:#2d3748; border-color:#4a5568; }
+html[data-theme="dark"] .tn-rr-view-toggle-btn { background:#2d3748; color:#a0aec0; }
+html[data-theme="dark"] .tn-rr-view-toggle-btn:first-child { border-right-color:#4a5568; }
+html[data-theme="dark"] .tn-rr-view-toggle-btn:hover:not(.active) { background:#1a202c; color:#cbd5e0; }
+html[data-theme="dark"] .tn-rr-view-toggle-btn.active { background:#38a169; color:#fff; }
+
+html[data-theme="dark"] .tn-rr-matrix-wrap { background:#2d3748; border-color:#4a5568; }
+html[data-theme="dark"] .tn-rr-matrix th,
+html[data-theme="dark"] .tn-rr-matrix td { border-bottom-color:#2d3748; border-right-color:#2d3748; }
+html[data-theme="dark"] .tn-rr-matrix thead th { background:#1a202c; color:#a0aec0; border-bottom-color:#4a5568; }
+html[data-theme="dark"] .tn-rr-mx-player-col { background:#1a202c; color:#f7fafc; border-right-color:#4a5568!important; }
+html[data-theme="dark"] .tn-rr-matrix thead th:first-child { border-right-color:#4a5568; }
+html[data-theme="dark"] .tn-rr-mx-win  { background:rgba(56,161,105,0.18); color:#9ae6b4; }
+html[data-theme="dark"] .tn-rr-mx-loss { background:rgba(229,62,62,0.18); color:#fc8181; }
+html[data-theme="dark"] .tn-rr-mx-tie  { background:rgba(180,83,9,0.2); color:#fbd38d; }
+html[data-theme="dark"] .tn-rr-mx-self { background:#1a202c; color:#4a5568; }
+html[data-theme="dark"] .tn-rr-mx-self::after { background:repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(255,255,255,0.04) 3px, rgba(255,255,255,0.04) 6px); }
+html[data-theme="dark"] .tn-rr-mx-pending { color:#718096; }
+html[data-theme="dark"] .tn-rr-mx-cell-clickable:hover { box-shadow:inset 0 0 0 2px #68d391; background:rgba(56,161,105,0.15); }
+
+html[data-theme="dark"] .tn-rr-standings-enhanced caption { color:#a0aec0; }
+html[data-theme="dark"] .tn-rr-standings-enhanced th { background:#1a202c; color:#a0aec0; border-bottom-color:#4a5568; }
+html[data-theme="dark"] .tn-rr-standings-enhanced td { color:#cbd5e0; border-bottom-color:#2d3748; }
+html[data-theme="dark"] .tn-rr-std-name { color:#f7fafc; }
+html[data-theme="dark"] .tn-rr-std-park { color:#718096; }
+html[data-theme="dark"] .tn-rr-std-w { color:#9ae6b4; }
+html[data-theme="dark"] .tn-rr-std-l { color:#fc8181; }
+html[data-theme="dark"] .tn-rr-std-t { color:#fbd38d; }
+html[data-theme="dark"] .tn-rr-std-pts { color:#f7fafc; }
+html[data-theme="dark"] .tn-rr-std-winpct { color:#9ae6b4; }
+html[data-theme="dark"] .tn-rr-std-bar-track { background:#4a5568; }
+html[data-theme="dark"] .tn-rr-std-bar-text { color:#a0aec0; }
+html[data-theme="dark"] .tn-rr-std-caption-progress { color:#718096; }
+html[data-theme="dark"] .tn-rr-std-active td { background:rgba(49,130,206,0.2)!important; box-shadow:inset 3px 0 0 #4299e1; }
+html[data-theme="dark"] .tn-rr-std-clickable tr:hover td { background:#1a202c; }
+
+html[data-theme="dark"] .tn-rr-progress-bar { background:#4a5568; box-shadow:inset 0 1px 2px rgba(0,0,0,0.3); }
+html[data-theme="dark"] .tn-rr-progress-bar.tn-rr-progress-low .tn-rr-progress-label { color:#cbd5e0; }
+html[data-theme="dark"] .tn-rr-round-count { background:#1a202c; border-color:#4a5568; color:#a0aec0; }
+
+html[data-theme="dark"] .tn-bv-podium-name { color:#f7fafc; }
+html[data-theme="dark"] .tn-bv-podium-park { color:#a0aec0; }
+html[data-theme="dark"] .tn-bv-podium-stats { color:#9ae6b4; }
+html[data-theme="dark"] .tn-rr-card-record { color:#718096; }
+
+html[data-theme="dark"] .tn-rr-focus-banner { background:rgba(49,130,206,0.18); border-color:rgba(49,130,206,0.5); color:#90cdf4; }
+html[data-theme="dark"] .tn-rr-focus-banner-name { color:#f7fafc; }
+html[data-theme="dark"] .tn-rr-focus-banner-close { color:#90cdf4; }
+html[data-theme="dark"] .tn-rr-focus-banner-close:hover { background:rgba(49,130,206,0.3); color:#bee3f8; }
+
+/* Bracket viz extras */
+html[data-theme="dark"] .tn-bv-match-num { color:#718096; }
+html[data-theme="dark"] .tn-bv-match.tn-bv-bye-match { background:#1a202c; border-color:#4a5568; }
+html[data-theme="dark"] .tn-bv-match.tn-bv-bye-match .tn-bv-slot { color:#4a5568; }
+html[data-theme="dark"] .tn-bv-bye-label { color:#718096; border-top-color:#4a5568; }
+/* Champion banner — keep gold gradient (intentional warm highlight) */
+html[data-theme="dark"] .tn-bv-podium-1st { background:rgba(236,201,75,0.2); color:#fbd38d; border-color:#ecc94b; }
+html[data-theme="dark"] .tn-bv-podium-2nd { background:#4a5568; color:#cbd5e0; border-color:#718096; }
+html[data-theme="dark"] .tn-bv-podium-3rd { background:rgba(217,119,6,0.25); color:#fbd38d; border-color:#d97706; }
+html[data-theme="dark"] .tn-bv-zoom-btn { background:#2d3748; border-color:#4a5568; color:#a0aec0; }
+html[data-theme="dark"] .tn-bv-zoom-btn:hover { background:rgba(56,161,105,0.18); color:#9ae6b4; border-color:#68d391; }
+html[data-theme="dark"] .tn-bv-zoom-level { color:#718096; }
+html[data-theme="dark"] .tn-bv-section-hdr.tiebreaker-3rd { background:rgba(221,107,32,0.2); color:#fbd38d; border-left-color:#dd6b20; }
+
+/* Status menu / autocomplete dropdown */
+html[data-theme="dark"] .tn-status-btn { color:#718096; }
+html[data-theme="dark"] .tn-status-btn:hover { color:#cbd5e0; }
+html[data-theme="dark"] .tn-status-menu { background:#2d3748; border-color:#4a5568; box-shadow:0 4px 12px rgba(0,0,0,0.4); }
+html[data-theme="dark"] .tn-status-menu-item { color:#cbd5e0; border-bottom-color:#1a202c; }
+html[data-theme="dark"] .tn-status-menu-item:hover { background:#1a202c; }
+html[data-theme="dark"] .tn-status-menu-item.tn-sm-active { color:#9ae6b4; }
+html[data-theme="dark"] .tn-pstatus-pill-withdrawn { background:rgba(180,83,9,0.25); color:#fbd38d; border-color:rgba(252,211,77,0.45); }
+html[data-theme="dark"] .tn-pstatus-pill-disqualified { background:rgba(229,62,62,0.18); color:#fc8181; border-color:rgba(252,129,129,0.4); }
+
+/* Quick result entry */
+html[data-theme="dark"] .tn-qr-bar { background:#1a202c; border-top-color:#4a5568; }
+html[data-theme="dark"] .tn-qr-btn-tie { background:#4a5568; color:#cbd5e0; }
+html[data-theme="dark"] .tn-qr-btn-tie:hover { background:#718096; }
+html[data-theme="dark"] .tn-qr-more { color:#90cdf4; }
+html[data-theme="dark"] .tn-bv-match.tn-qr-expanded { border-color:#68d391; box-shadow:0 2px 8px rgba(104,211,145,0.25); }
+
+html[data-theme="dark"] .tn-bout-score-pill { background:rgba(56,161,105,0.25); color:#9ae6b4; }
+
+/* DnD reorder */
+html[data-theme="dark"] .tn-dnd-over { background:rgba(56,161,105,0.18)!important; outline-color:#68d391; }
+html[data-theme="dark"] .tn-dnd-handle { color:#4a5568; }
+
+/* Autocomplete */
+html[data-theme="dark"] .tn-ac-results { background:#2d3748; border-color:#4a5568; box-shadow:0 4px 12px rgba(0,0,0,0.4); }
+html[data-theme="dark"] .tn-ac-item { border-bottom-color:#1a202c; color:#cbd5e0; }
+html[data-theme="dark"] .tn-ac-item:hover, html[data-theme="dark"] .tn-ac-item:focus { background:#1a202c; }
+html[data-theme="dark"] .tn-ac-item.tn-ac-empty { color:#718096; }
+
+/* =================================================================
+   Inline-style overrides (PHP/JS-rendered hardcoded colors)
+   These hex codes appear repeatedly in inline style="" — neutralize
+   without touching every occurrence. Keep in sync with audit results.
+   ================================================================= */
+/* Player profile links */
+html[data-theme="dark"] [style*="color:#276749"] { color:#9ae6b4 !important; }
+/* Park/secondary text — #718096 is borderline on dark, lift to #a0aec0 */
+html[data-theme="dark"] [style*="color:#718096"] { color:#a0aec0 !important; }
+/* #a0aec0 already reads ~5:1 on dark surfaces — leave as-is */
+/* Inactive rank cells (#e2e8f0 too bright on dark, mute to subtle gray) */
+html[data-theme="dark"] [style*="color:#e2e8f0"] { color:#4a5568 !important; }
+/* Dark text bombs */
+html[data-theme="dark"] [style*="color:#1a202c"] { color:#f7fafc !important; }
+html[data-theme="dark"] [style*="color:#2d3748"] { color:#cbd5e0 !important; }
+html[data-theme="dark"] [style*="color:#4a5568"] { color:#cbd5e0 !important; }
+/* Trophy-gold and hero icon colors stay (they're warm highlights on dark gradients) */
+/* Modal title icons (#276749, #3182ce) flip via the rules above */
+/* Run Tourney button — white bg + dark green text on hero */
+html[data-theme="dark"] .tn-hero .tn-btn-primary[style*="background:#fff"] { background:#1a202c !important; color:#9ae6b4 !important; border:1px solid #68d391; }
+/* Help-text light boxes */
+html[data-theme="dark"] [style*="background:#f7fafc"] { background:#1a202c !important; border-color:#4a5568 !important; }
+html[data-theme="dark"] [style*="background:#fff5f5"] { background:rgba(229,62,62,0.15) !important; }
+/* JS-injected 4th-place podium card */
+html[data-theme="dark"] .tn-bv-podium-card[style*="background:#f7fafc"] { background:#2d3748 !important; color:#a0aec0 !important; border-color:#4a5568 !important; }
+
+/* Bracket-method left-border accents for cards already work in dark mode (color-only) */
 </style>
 
 <!-- =============================================
@@ -5779,6 +6089,35 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 	.tn-nu-actions { justify-content:stretch; }
 	.tn-nu-btn { flex:1; text-align:center; padding:10px 8px; }
 }
+
+/* Dark mode — Next-Up strip */
+html[data-theme="dark"] .tn-nu-wrap { background:#1a202c; border-color:#4a5568; }
+html[data-theme="dark"] .tn-nu-title { color:#cbd5e0; }
+html[data-theme="dark"] .tn-nu-sub { color:#a0aec0; }
+html[data-theme="dark"] .tn-nu-toggle { background:#2d3748; border-color:#4a5568; }
+html[data-theme="dark"] .tn-nu-toggle-btn { background:#2d3748; color:#a0aec0; border-right-color:#4a5568; }
+html[data-theme="dark"] .tn-nu-toggle-btn:hover:not(.tn-nu-toggle-on) { background:#1a202c; color:#cbd5e0; }
+html[data-theme="dark"] .tn-nu-toggle-btn.tn-nu-toggle-on { background:#38a169; color:#fff; }
+html[data-theme="dark"] .tn-nu-card { background:#2d3748; border-color:#4a5568; box-shadow:0 1px 3px rgba(0,0,0,0.3); }
+html[data-theme="dark"] .tn-nu-pos-label.tn-nu-now  { background:#38a169; color:#fff; }
+html[data-theme="dark"] .tn-nu-pos-label.tn-nu-deck { background:#1a202c; color:#a0aec0; border-color:#4a5568; }
+html[data-theme="dark"] .tn-nu-match-num { color:#a0aec0; }
+html[data-theme="dark"] .tn-nu-players .tn-nu-p { color:#f7fafc; }
+html[data-theme="dark"] .tn-nu-players .tn-nu-vs { color:#a0aec0; }
+html[data-theme="dark"] .tn-nu-players .tn-nu-p-seed { background:#4a5568; color:#cbd5e0; }
+html[data-theme="dark"] .tn-nu-btn { background:#1a202c; border-color:#4a5568; color:#cbd5e0; }
+html[data-theme="dark"] .tn-nu-btn:hover { background:#2d3748; border-color:#718096; }
+html[data-theme="dark"] .tn-nu-btn-p1, html[data-theme="dark"] .tn-nu-btn-p2 { background:#38a169; color:#fff; border-color:#68d391; }
+html[data-theme="dark"] .tn-nu-btn-p1:hover, html[data-theme="dark"] .tn-nu-btn-p2:hover { background:#48bb78; }
+html[data-theme="dark"] .tn-nu-btn-tie { color:#a0aec0; }
+html[data-theme="dark"] .tn-nu-mini-name { color:#f7fafc; }
+html[data-theme="dark"] .tn-nu-mini-vs { color:#a0aec0; }
+html[data-theme="dark"] .tn-nu-btn-end { background:#c53030; border-color:#c53030; color:#fff; }
+html[data-theme="dark"] .tn-nu-btn-end:hover { background:#9b2c2c; border-color:#9b2c2c; }
+html[data-theme="dark"] .tn-nu-btn-end.tn-nu-btn-end-tie { background:#4a5568; border-color:#4a5568; color:#cbd5e0; }
+html[data-theme="dark"] .tn-nu-btn-end.tn-nu-btn-end-tie:hover { background:#718096; border-color:#718096; color:#fff; }
+html[data-theme="dark"] .tn-nu-btn-more { color:#a0aec0; }
+html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 </style>
 <script>
 (function(){
