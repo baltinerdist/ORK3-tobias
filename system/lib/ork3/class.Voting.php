@@ -195,7 +195,7 @@ class Voting extends Ork3 {
 		$this->Event->clear();
 		$this->Event->voting_event_id = $voting_event_id;
 		if (!$this->Event->find()) return InvalidParameter();
-		if ($this->Event->status !== 'draft') return Failure(['Status' => 1, 'Error' => 'Only draft events can be edited.', 'Detail' => '']);
+		if ($this->Event->status !== 'draft') return ProcessingError('', 'Only draft events can be edited.');
 
 		$diff = [];
 		foreach (['Title' => 'title', 'Description' => 'description', 'StartDate' => 'start_date', 'EndDate' => 'end_date',
@@ -224,7 +224,7 @@ class Voting extends Ork3 {
 		$this->Event->clear();
 		$this->Event->voting_event_id = $voting_event_id;
 		if (!$this->Event->find()) return InvalidParameter();
-		if ($this->Event->status !== 'draft') return Failure(['Status' => 1, 'Error' => 'Cannot add races after event is open.', 'Detail' => '']);
+		if ($this->Event->status !== 'draft') return ProcessingError('', 'Cannot add races after event is open.');
 
 		$race_type = $request['RaceType'] ?? null;
 		if (!in_array($race_type, ['position','yesno','multichoice'])) return InvalidParameter();
@@ -280,7 +280,7 @@ class Voting extends Ork3 {
 		$this->Event->clear();
 		$this->Event->voting_event_id = $this->Race->voting_event_id;
 		$this->Event->find();
-		if ($this->Event->status !== 'draft') return Failure(['Status' => 1, 'Error' => 'Cannot add candidates after event is open.', 'Detail' => '']);
+		if ($this->Event->status !== 'draft') return ProcessingError('', 'Cannot add candidates after event is open.');
 
 		// Snapshot the candidate's name into the label.
 		$mundane = new yapo($this->db, DB_PREFIX . 'mundane');
@@ -322,7 +322,7 @@ class Voting extends Ork3 {
 		$this->Event->clear();
 		$this->Event->voting_event_id = $this->Race->voting_event_id;
 		$this->Event->find();
-		if ($this->Event->status !== 'draft') return Failure(['Status' => 1, 'Error' => 'Cannot add options after event is open.', 'Detail' => '']);
+		if ($this->Event->status !== 'draft') return ProcessingError('', 'Cannot add options after event is open.');
 
 		global $DB;
 		$DB->Clear();
@@ -347,7 +347,7 @@ class Voting extends Ork3 {
 		$this->Event->clear();
 		$this->Event->voting_event_id = $voting_event_id;
 		if (!$this->Event->find()) return InvalidParameter();
-		if ($this->Event->status !== 'draft') return Failure(['Status' => 1, 'Error' => 'Event is not in draft.', 'Detail' => '']);
+		if ($this->Event->status !== 'draft') return ProcessingError('', 'Event is not in draft.');
 
 		// Validate every race has at least one choice (position) or 2+ choices (multichoice).
 		global $DB;
@@ -360,7 +360,7 @@ class Voting extends Ork3 {
 			$min = $rs->race_type === 'multichoice' ? 2 : 1;
 			if ((int)$rs->n < $min) $errors[] = "Race '{$rs->title}' needs at least $min choice(s).";
 		}
-		if (!empty($errors)) return Failure(['Status' => 1, 'Error' => 'Cannot open event', 'Detail' => implode(' ', $errors)]);
+		if (!empty($errors)) return ProcessingError(implode(' ', $errors), 'Cannot open event');
 
 		$this->Event->status = 'open';
 		$this->Event->save();
@@ -400,8 +400,8 @@ class Voting extends Ork3 {
 		$this->Event->clear();
 		$this->Event->voting_event_id = $voting_event_id;
 		if (!$this->Event->find()) return InvalidParameter();
-		if ($this->Event->status !== 'open') return Failure(['Status' => 1, 'Error' => 'Voting is not open.', 'Detail' => '']);
-		if (strtotime($this->Event->end_date) < time()) return Failure(['Status' => 1, 'Error' => 'Voting has closed.', 'Detail' => '']);
+		if ($this->Event->status !== 'open') return ProcessingError('', 'Voting is not open.');
+		if (strtotime($this->Event->end_date) < time()) return ProcessingError('', 'Voting has closed.');
 
 		// Eligibility check.
 		$elig = $this->check_eligibility_live($voter_mundane_id, $this->Event->scope_type, $this->Event->scope_id);
@@ -410,7 +410,7 @@ class Voting extends Ork3 {
 			if (!empty($this->Event->allow_provisional) && $elig['provisional_possible']) {
 				$is_provisional = 1;
 			} else {
-				return Failure(['Status' => 1, 'Error' => 'Not eligible to vote in this event.', 'Detail' => '']);
+				return ProcessingError('', 'Not eligible to vote in this event.');
 			}
 		}
 
@@ -431,19 +431,19 @@ class Voting extends Ork3 {
 
 		// Validate every vote item.
 		$votes_in = $request['Votes'] ?? [];
-		if (!is_array($votes_in) || empty($votes_in)) return Failure(['Status' => 1, 'Error' => 'No votes submitted.', 'Detail' => '']);
+		if (!is_array($votes_in) || empty($votes_in)) return ProcessingError('', 'No votes submitted.');
 		foreach ($votes_in as $vi) {
 			$rid = (int)($vi['VotingRaceId'] ?? 0);
-			if (!isset($races_by_id[$rid])) return Failure(['Status' => 1, 'Error' => 'Invalid race in submission.', 'Detail' => '']);
+			if (!isset($races_by_id[$rid])) return ProcessingError('', 'Invalid race in submission.');
 			$cfg = $races_by_id[$rid];
 			$abst = !empty($vi['IsAbstain']);
 			$nota = !empty($vi['IsNoneOfAbove']);
-			if ($abst && empty($cfg['allow_abstain'])) return Failure(['Status' => 1, 'Error' => 'Abstain not allowed for race.', 'Detail' => '']);
+			if ($abst && empty($cfg['allow_abstain'])) return ProcessingError('', 'Abstain not allowed for race.');
 			// Single-candidate position races render as confidence votes; the voter UI sends 'No' as IsNoneOfAbove,
 			// and the tally treats NOTA→No when no explicit 'No' choice exists. Bypass the allow_none_of_above
 			// check for that runtime-converted case.
 			$is_single_cand_position = ($cfg['race_type'] === 'position' && $cfg['choice_count'] === 1);
-			if ($nota && empty($cfg['allow_none_of_above']) && !$is_single_cand_position) return Failure(['Status' => 1, 'Error' => 'None-of-the-above not allowed for race.', 'Detail' => '']);
+			if ($nota && empty($cfg['allow_none_of_above']) && !$is_single_cand_position) return ProcessingError('', 'None-of-the-above not allowed for race.');
 		}
 
 		// ── Open transaction with FOR UPDATE on the active_ballot pointer (deadlock-safe).
@@ -559,7 +559,7 @@ class Voting extends Ork3 {
 		$this->Ballot->voting_ballot_id = $voting_ballot_id;
 		if (!$this->Ballot->find()) return InvalidParameter();
 		if (!$this->user_is_runner_of_event($mundane_id, $this->Ballot->voting_event_id)) return NoAuthorization();
-		if (!$this->Ballot->is_provisional) return Failure(['Status' => 1, 'Error' => 'Ballot is not provisional.', 'Detail' => '']);
+		if (!$this->Ballot->is_provisional) return ProcessingError('', 'Ballot is not provisional.');
 
 		$this->Ballot->is_provisional = 0;
 		$this->Ballot->provisional_released_at = date('Y-m-d H:i:s');
@@ -747,7 +747,7 @@ class Voting extends Ork3 {
 		$this->Event->voting_event_id = $voting_event_id;
 		if (!$this->Event->find()) return InvalidParameter();
 		if (!in_array($this->Event->status, ['closed', 'unpublished'])) {
-			return Failure(['Status' => 1, 'Error' => 'Event must be closed before publish.', 'Detail' => '']);
+			return ProcessingError('', 'Event must be closed before publish.');
 		}
 
 		// Gate: no unresolved ties.
@@ -756,7 +756,7 @@ class Voting extends Ork3 {
 			$out = $row['result']['outcome'] ?? null;
 			$tie_resolved = $row['race']['tie_resolved_winner_choice_id'] ?? null;
 			if (in_array($out, ['tie', 'tie_at_elimination', 'tie_at_final']) && !$tie_resolved) {
-				return Failure(['Status' => 1, 'Error' => 'Cannot publish: ' . $row['race']['title'] . ' has an unresolved tie.', 'Detail' => '']);
+				return ProcessingError('', 'Cannot publish: ' . $row['race']['title'] . ' has an unresolved tie.');
 			}
 		}
 
@@ -780,7 +780,7 @@ class Voting extends Ork3 {
 		$this->Event->clear();
 		$this->Event->voting_event_id = $voting_event_id;
 		if (!$this->Event->find()) return InvalidParameter();
-		if ($this->Event->status !== 'published') return Failure(['Status' => 1, 'Error' => 'Event is not published.', 'Detail' => '']);
+		if ($this->Event->status !== 'published') return ProcessingError('', 'Event is not published.');
 
 		$this->Event->status = 'unpublished';
 		$this->Event->save();
@@ -798,7 +798,7 @@ class Voting extends Ork3 {
 		global $DB;
 		$DB->Clear();
 		$rs = $DB->DataSet("SELECT * FROM " . DB_PREFIX . "voting_event WHERE voting_event_id = " . $voting_event_id);
-		if (!$rs || !$rs->Next()) return Failure(['Status' => 1, 'Error' => 'Event not found.', 'Detail' => '']);
+		if (!$rs || !$rs->Next()) return ProcessingError('', 'Event not found.');
 		$ev = (array)$rs;
 		// Strip yapo internals.
 		$ev = array_filter($ev, fn($k) => !str_starts_with((string)$k, '_'), ARRAY_FILTER_USE_KEY);
@@ -883,8 +883,8 @@ class Voting extends Ork3 {
 		global $DB;
 		$DB->Clear();
 		$rs = $DB->DataSet("SELECT status, tally_snapshot, title, event_type, scope_type, scope_id, start_date, end_date FROM " . DB_PREFIX . "voting_event WHERE voting_event_id = " . $voting_event_id);
-		if (!$rs || !$rs->Next()) return Failure(['Status' => 1, 'Error' => 'Not found.', 'Detail' => '']);
-		if ($rs->status !== 'published') return Failure(['Status' => 1, 'Error' => 'Not published.', 'Detail' => $rs->status]);
+		if (!$rs || !$rs->Next()) return ProcessingError('', 'Not found.');
+		if ($rs->status !== 'published') return ProcessingError($rs->status, 'Not published.');
 		return [
 			'Status' => 0,
 			'Event' => ['title' => $rs->title, 'event_type' => $rs->event_type, 'scope_type' => $rs->scope_type, 'scope_id' => (int)$rs->scope_id, 'start_date' => $rs->start_date, 'end_date' => $rs->end_date],
@@ -901,7 +901,7 @@ class Voting extends Ork3 {
 		global $DB;
 		$DB->Clear();
 		$rs = $DB->DataSet("SELECT scope_type, scope_id, allow_provisional FROM " . DB_PREFIX . "voting_event WHERE voting_event_id = " . $voting_event_id);
-		if (!$rs || !$rs->Next()) return Failure(['Status' => 1, 'Error' => 'Event not found.', 'Detail' => '']);
+		if (!$rs || !$rs->Next()) return ProcessingError('', 'Event not found.');
 		$elig = $this->check_eligibility_live($mundane_id, $rs->scope_type, $rs->scope_id);
 		return [
 			'Status' => 0,
