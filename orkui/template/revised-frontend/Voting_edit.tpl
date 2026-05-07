@@ -54,7 +54,7 @@
 </style>
 
 <div class="vte-wrap">
-	<a class="vte-btn-ghost" style="display:inline-block;margin-bottom:12px;text-decoration:none;padding:6px 12px;" href="<?= UIR ?>Voting/index/<?= ucfirst($event['scope_type']) ?>/<?= (int)$event['scope_id'] ?>"><i class="fas fa-arrow-left"></i> Back</a>
+	<a class="vte-btn-ghost" style="display:inline-block;margin-bottom:12px;text-decoration:none;padding:6px 12px;" href="<?= UIR ?>Voting/index/<?= ucfirst($event['scope_type']) ?>_<?= (int)$event['scope_id'] ?>"><i class="fas fa-arrow-left"></i> Back</a>
 
 	<h1 class="vte-h1"><?= htmlspecialchars($event['title']) ?></h1>
 	<div class="vte-sub"><?= htmlspecialchars(ucfirst($event['event_type'])) ?> · <?= htmlspecialchars(ucfirst($event['scope_type'])) ?> · Status: <strong><?= htmlspecialchars($event['status']) ?></strong></div>

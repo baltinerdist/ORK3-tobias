@@ -55,7 +55,7 @@
 	<div class="vt-title-row">
 		<h1 class="vt-h1">Voting <span class="vt-scope-label">— <?= htmlspecialchars($scope_name) ?></span></h1>
 		<?php if ($can_create): ?>
-			<a class="vt-btn-primary" href="<?= UIR ?>Voting/create/<?= $scope_type_label ?>/<?= $scope_id ?>"><i class="fas fa-plus"></i> Create Event</a>
+			<a class="vt-btn-primary" href="<?= UIR ?>Voting/create/<?= $scope_type_label ?>_<?= $scope_id ?>"><i class="fas fa-plus"></i> Create Event</a>
 		<?php endif; ?>
 	</div>
 

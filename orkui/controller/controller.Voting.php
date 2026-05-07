@@ -46,22 +46,24 @@ class Controller_Voting extends Controller {
 
 	// ─────────────────────── Listing ───────────────────────
 
-	public function index($scope_type = null, $scope_id = null) {
-		if (!in_array($scope_type, ['Kingdom', 'Park'])) {
+	public function index($scope = null) {
+		// $scope is "Kingdom_10" or "Park_5" — single arg from the routing system.
+		$parts = explode('_', (string)$scope, 2);
+		$scope_type = $parts[0] ?? '';
+		$scope_id = (int)($parts[1] ?? 0);
+		if (!in_array($scope_type, ['Kingdom', 'Park']) || !$scope_id) {
 			$this->data['Error'] = 'Invalid scope.';
-			$this->template = 'Voting_index.tpl';
+			$this->template = '../revised-frontend/Voting_index.tpl';
 			return;
 		}
 		$st = strtolower($scope_type);
-		$scope_id = (int)$scope_id;
 		$this->data['scope_type'] = $st;
 		$this->data['scope_id'] = $scope_id;
 		$this->data['scope_type_label'] = $scope_type;
 
 		// Get scope title (kingdom/park name) for display.
 		if ($st === 'kingdom') {
-			$ki = $this->Kingdom->get_kingdom_info(['KingdomId' => $scope_id]);
-			$this->data['scope_name'] = $ki['KingdomInfo']['KingdomName'] ?? "Kingdom #$scope_id";
+			$this->data['scope_name'] = $this->Kingdom->get_kingdom_name($scope_id) ?: "Kingdom #$scope_id";
 			$this->data['scope_back_url'] = UIR . 'Kingdom/index/' . $scope_id;
 		} else {
 			$pi = $this->Park->get_park_info($scope_id);
@@ -72,19 +74,21 @@ class Controller_Voting extends Controller {
 		$this->data['events'] = $this->Voting->list_for_scope($st, $scope_id);
 		$this->data['can_create'] = $this->user_can_run_in_scope($st, $scope_id);
 
-		$this->template = 'Voting_index.tpl';
+		$this->template = '../revised-frontend/Voting_index.tpl';
 	}
 
 	// ─────────────────────── Create / Edit ───────────────────────
 
-	public function create($scope_type = null, $scope_id = null) {
+	public function create($scope = null) {
 		$this->require_login();
-		if (!in_array($scope_type, ['Kingdom', 'Park'])) {
+		$parts = explode('_', (string)$scope, 2);
+		$scope_type = $parts[0] ?? '';
+		$scope_id = (int)($parts[1] ?? 0);
+		if (!in_array($scope_type, ['Kingdom', 'Park']) || !$scope_id) {
 			header('Location: ' . UIR);
 			exit;
 		}
 		$st = strtolower($scope_type);
-		$scope_id = (int)$scope_id;
 		if (!$this->user_can_run_in_scope($st, $scope_id)) {
 			header('Location: ' . UIR);
 			exit;
@@ -93,8 +97,7 @@ class Controller_Voting extends Controller {
 		$this->data['scope_id'] = $scope_id;
 		$this->data['scope_type_label'] = $scope_type;
 		if ($st === 'kingdom') {
-			$ki = $this->Kingdom->get_kingdom_info(['KingdomId' => $scope_id]);
-			$this->data['scope_name'] = $ki['KingdomInfo']['KingdomName'] ?? "Kingdom #$scope_id";
+			$this->data['scope_name'] = $this->Kingdom->get_kingdom_name($scope_id) ?: "Kingdom #$scope_id";
 		} else {
 			$pi = $this->Park->get_park_info($scope_id);
 			$this->data['scope_name'] = $pi['ParkInfo']['ParkName'] ?? "Park #$scope_id";
@@ -124,7 +127,7 @@ class Controller_Voting extends Controller {
 			}
 		}
 
-		$this->template = 'Voting_create.tpl';
+		$this->template = '../revised-frontend/Voting_create.tpl';
 	}
 
 	public function edit($voting_event_id = null) {
@@ -140,7 +143,7 @@ class Controller_Voting extends Controller {
 		$this->data['event'] = $event;
 		$this->data['voting_event_id'] = $voting_event_id;
 		$this->data['can_edit'] = ($event['status'] === 'draft');
-		$this->template = 'Voting_edit.tpl';
+		$this->template = '../revised-frontend/Voting_edit.tpl';
 	}
 
 	// ─────────────────────── Voter ballot ───────────────────────
@@ -151,7 +154,7 @@ class Controller_Voting extends Controller {
 		$r = $this->Voting->get_event($voting_event_id);
 		if (($r['Status'] ?? 1) != 0) {
 			$this->data['Error'] = 'Event not found.';
-			$this->template = 'Voting_event.tpl';
+			$this->template = '../revised-frontend/Voting_event.tpl';
 			return;
 		}
 		$event = $r['Event'];
@@ -175,7 +178,7 @@ class Controller_Voting extends Controller {
 		$active = ($rs && $rs->Next()) ? (array)$rs : null;
 		$this->data['active_ballot'] = $active;
 
-		$this->template = 'Voting_event.tpl';
+		$this->template = '../revised-frontend/Voting_event.tpl';
 	}
 
 	// ─────────────────────── Runner dashboard ───────────────────────
@@ -224,7 +227,7 @@ class Controller_Voting extends Controller {
 			$this->data['counts'] = ['counted' => 0, 'provisional' => 0, 'total' => 0];
 		}
 
-		$this->template = 'Voting_runner.tpl';
+		$this->template = '../revised-frontend/Voting_runner.tpl';
 	}
 
 	// ─────────────────────── Public results ───────────────────────
@@ -234,13 +237,13 @@ class Controller_Voting extends Controller {
 		$r = $this->Voting->tally_public($voting_event_id);
 		if (($r['Status'] ?? 1) != 0) {
 			$this->data['Error'] = 'Results not yet published.';
-			$this->template = 'Voting_results.tpl';
+			$this->template = '../revised-frontend/Voting_results.tpl';
 			return;
 		}
 		$this->data['voting_event_id'] = $voting_event_id;
 		$this->data['event'] = $r['Event'];
 		$this->data['tally'] = $r['Tally'];
-		$this->template = 'Voting_results.tpl';
+		$this->template = '../revised-frontend/Voting_results.tpl';
 	}
 
 	public function audit($voting_event_id = null) {
@@ -260,6 +263,6 @@ class Controller_Voting extends Controller {
 		while ($rs && $rs->Next()) $rows[] = (array)$rs;
 		$this->data['rows'] = $rows;
 		$this->data['voting_event_id'] = $voting_event_id;
-		$this->template = 'Voting_audit.tpl';
+		$this->template = '../revised-frontend/Voting_audit.tpl';
 	}
 }

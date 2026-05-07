@@ -68,7 +68,7 @@
 </style>
 
 <div class="vtr-wrap">
-	<a class="vtr-btn-ghost" style="display:inline-block;margin-bottom:12px;text-decoration:none;padding:6px 12px;border-radius:6px;border:1px solid #cbd5e0;color:inherit;" href="<?= UIR ?>Voting/index/<?= ucfirst($event['scope_type']) ?>/<?= (int)$event['scope_id'] ?>"><i class="fas fa-arrow-left"></i> Back</a>
+	<a class="vtr-btn-ghost" style="display:inline-block;margin-bottom:12px;text-decoration:none;padding:6px 12px;border-radius:6px;border:1px solid #cbd5e0;color:inherit;" href="<?= UIR ?>Voting/index/<?= ucfirst($event['scope_type']) ?>_<?= (int)$event['scope_id'] ?>"><i class="fas fa-arrow-left"></i> Back</a>
 
 	<h1 class="vtr-h1"><?= htmlspecialchars($event['title']) ?> <span style="font-weight:400;color:#718096;font-size:16px;">— Runner Dashboard</span></h1>
 	<div class="vtr-sub">

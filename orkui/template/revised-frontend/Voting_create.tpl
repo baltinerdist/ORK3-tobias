@@ -41,7 +41,7 @@
 </style>
 
 <div class="vtc-wrap">
-	<a class="vtc-btn-ghost" style="margin-bottom:12px;display:inline-block;" href="<?= UIR ?>Voting/index/<?= $scope_type_label ?>/<?= $scope_id ?>"><i class="fas fa-arrow-left"></i> Back</a>
+	<a class="vtc-btn-ghost" style="margin-bottom:12px;display:inline-block;" href="<?= UIR ?>Voting/index/<?= $scope_type_label ?>_<?= $scope_id ?>"><i class="fas fa-arrow-left"></i> Back</a>
 
 	<h1 class="vtc-h1">Create Voting Event</h1>
 	<div class="vtc-sub">For <?= htmlspecialchars($scope_name) ?></div>
@@ -111,7 +111,7 @@
 		</div>
 
 		<div class="vtc-actions">
-			<a class="vtc-btn-ghost" href="<?= UIR ?>Voting/index/<?= $scope_type_label ?>/<?= $scope_id ?>">Cancel</a>
+			<a class="vtc-btn-ghost" href="<?= UIR ?>Voting/index/<?= $scope_type_label ?>_<?= $scope_id ?>">Cancel</a>
 			<button type="submit" class="vtc-btn-primary"><i class="fas fa-arrow-right"></i> Continue to add races</button>
 		</div>
 	</form>
