@@ -14,38 +14,911 @@ class Voting extends Ork3 {
 
 	public function __construct() {
 		parent::__construct();
-		// yapo bindings deferred to Task 5 when CRUD methods land.
+		// yapo bindings — guarded so the unit-test harness (which stubs Ork3) can include this file.
+		if (isset($this->db)) {
+			$this->Event       = new yapo($this->db, DB_PREFIX . 'voting_event');
+			$this->Runner      = new yapo($this->db, DB_PREFIX . 'voting_runner');
+			$this->Race        = new yapo($this->db, DB_PREFIX . 'voting_race');
+			$this->Choice      = new yapo($this->db, DB_PREFIX . 'voting_choice');
+			$this->Ballot      = new yapo($this->db, DB_PREFIX . 'voting_ballot');
+			$this->ActiveBal   = new yapo($this->db, DB_PREFIX . 'voting_active_ballot');
+			$this->Vote        = new yapo($this->db, DB_PREFIX . 'voting_vote');
+			$this->Audit       = new yapo($this->db, DB_PREFIX . 'voting_audit');
+			$this->Snap        = new yapo($this->db, DB_PREFIX . 'voting_eligibility_snapshot');
+		}
+	}
+
+	// ════════════════════════════════════════════════════════════════════
+	//                        VOTING RULES (per kingdom)
+	// ════════════════════════════════════════════════════════════════════
+	// Mirror of orkui/model/model.Reports.php::_voting_rules — kept here so
+	// the class layer can resolve eligibility without depending on the model
+	// layer. If/when the rules move to the DB, both copies should be replaced.
+
+	private static $rules_by_kingdom = [
+		14 => ['AttendanceRequired'=>7,'MonthsWindow'=>6,'MinMembershipMonths'=>0,'AttendanceMode'=>'count','ProvinceMode'=>false,'ActiveMemberThreshold'=>12,'AllKingdoms'=>true],
+		31 => ['AttendanceRequired'=>6,'MonthsWindow'=>6,'MinMembershipMonths'=>6,'AttendanceMode'=>'weeks','ProvinceMode'=>false],
+		3  => ['AttendanceRequired'=>6,'MonthsWindow'=>6,'MinMembershipMonths'=>6,'AttendanceMode'=>'weeks','ProvinceMode'=>false],
+		17 => ['AttendanceRequired'=>6,'MonthsWindow'=>6,'MinMembershipMonths'=>6,'AttendanceMode'=>'count','ProvinceMode'=>true,'KingdomEventBonus'=>true],
+		10 => ['AttendanceRequired'=>7,'MonthsWindow'=>6,'MinMembershipMonths'=>6,'AttendanceMode'=>'days','ProvinceMode'=>false,'MembershipMode'=>'first_attendance','WeekSnap'=>true],
+		25 => ['AttendanceRequired'=>6,'MonthsWindow'=>6,'MinMembershipMonths'=>0,'AttendanceMode'=>'days','ProvinceMode'=>false,'WeekSnap'=>true],
+		20 => ['AttendanceRequired'=>6,'MonthsWindow'=>6,'MinMembershipMonths'=>0,'AttendanceMode'=>'days','ProvinceMode'=>false,'ExcludeOnline'=>true,'WeekSnap'=>true],
+		36 => ['AttendanceRequired'=>12,'MonthsWindow'=>0,'DaysWindow'=>180,'MinMembershipMonths'=>0,'AttendanceMode'=>'weeks','ProvinceMode'=>false,'MinAge'=>14],
+		27 => ['AttendanceRequired'=>6,'MonthsWindow'=>6,'MinMembershipMonths'=>3,'AttendanceMode'=>'weeks','WeekOffset'=>6,'ProvinceMode'=>false],
+		38 => ['AttendanceRequired'=>6,'MonthsWindow'=>6,'MinMembershipMonths'=>0,'AttendanceMode'=>'days','ProvinceMode'=>false,'WeekSnap'=>true],
+		4  => ['AttendanceRequired'=>6,'MonthsWindow'=>6,'MinMembershipMonths'=>0,'AttendanceMode'=>'count','ProvinceMode'=>false,'HomeParkOnly'=>true,'KingdomEventBonus'=>true,'WeekSnap'=>true],
+		6  => ['AttendanceRequired'=>6,'MonthsWindow'=>6,'MinMembershipMonths'=>6,'AttendanceMode'=>'weeks','WeekOffset'=>1,'ProvinceMode'=>false,'ActiveKnightThreshold'=>8],
+		19 => ['AttendanceRequired'=>8,'MonthsWindow'=>6,'MinMembershipMonths'=>3,'AttendanceMode'=>'count','ProvinceMode'=>false,'MaxCreditsPerEvent'=>2,'MaxOutsideKingdomCredits'=>2],
+		12 => ['AttendanceRequired'=>12,'MonthsWindow'=>6,'MinMembershipMonths'=>0,'AttendanceMode'=>'count','ProvinceMode'=>false,'ExcludeEvents'=>true,'WaiverAgeMonths'=>6],
+		24 => ['AttendanceRequired'=>6,'MonthsWindow'=>6,'MinMembershipMonths'=>3,'AttendanceMode'=>'weeks','ProvinceMode'=>false,'ShowEventCount'=>true],
+	];
+
+	private static function voting_rules_for_kingdom($kingdom_id) {
+		return self::$rules_by_kingdom[(int)$kingdom_id] ?? null;
+	}
+
+	private function resolve_kingdom_id($scope_type, $scope_id) {
+		if ($scope_type === 'kingdom') return (int)$scope_id;
+		if ($scope_type === 'park') {
+			global $DB;
+			$DB->Clear();
+			$rs = $DB->DataSet("SELECT kingdom_id FROM " . DB_PREFIX . "park WHERE park_id = " . (int)$scope_id . " LIMIT 1");
+			if ($rs && $rs->Next()) return (int)$rs->kingdom_id;
+		}
+		return 0;
+	}
+
+	private function check_eligibility_live($mundane_id, $scope_type, $scope_id) {
+		$kingdom_id = $this->resolve_kingdom_id($scope_type, $scope_id);
+		$rules = self::voting_rules_for_kingdom($kingdom_id);
+		if ($rules === null) {
+			return ['eligible' => false, 'provisional_possible' => false, 'rules' => []];
+		}
+		$report = new Report();
+		$r = $report->GetVotingEligible(array_merge($rules, [
+			'KingdomId' => $kingdom_id,
+			'MundaneId' => (int)$mundane_id,
+		]));
+		$player = $r['Players'][0] ?? [];
+		// "Provisional possible" = currently ineligible but only because of dues — i.e., they have enough
+		// attendance but their membership status is the gating factor. The Reports check exposes
+		// ActiveMember; if ActiveMember is null/false but other criteria are met, treat as provisional-possible.
+		$eligible = !empty($player['VotingEligible']);
+		$provisional_possible = !$eligible && !empty($player) && (
+			!empty($player['AttendanceMet'] ?? false) ||
+			(!empty($player['Days'] ?? 0) >= ($rules['AttendanceRequired'] ?? PHP_INT_MAX))
+		);
+		return [
+			'eligible' => $eligible,
+			'provisional_possible' => $provisional_possible,
+			'rules' => $rules,
+			'player' => $player,
+		];
+	}
+
+	// ════════════════════════════════════════════════════════════════════
+	//                        AUTHORIZATION HELPERS
+	// ════════════════════════════════════════════════════════════════════
+
+	private function user_can_run_in_scope($mundane_id, $scope_type, $scope_id) {
+		if (!valid_id($mundane_id)) return false;
+		$auth = Ork3::$Lib->authorization;
+		if ($auth->HasAuthority($mundane_id, AUTH_ADMIN, 0, AUTH_ADMIN)) return true;
+		$auth_type = $scope_type === 'kingdom' ? AUTH_KINGDOM : AUTH_PARK;
+		return $auth->HasAuthority($mundane_id, $auth_type, (int)$scope_id, AUTH_EDIT);
+	}
+
+	private function user_is_runner_of_event($mundane_id, $voting_event_id) {
+		if (!valid_id($mundane_id)) return false;
+		$auth = Ork3::$Lib->authorization;
+		if ($auth->HasAuthority($mundane_id, AUTH_ADMIN, 0, AUTH_ADMIN)) return true;
+		// Explicit runner row?
+		global $DB;
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT mundane_id FROM " . DB_PREFIX . "voting_runner WHERE voting_event_id = " . (int)$voting_event_id . " AND mundane_id = " . (int)$mundane_id . " LIMIT 1");
+		if ($rs && $rs->Next()) return true;
+		// Otherwise, sitting officer of the event scope.
+		$DB->Clear();
+		$ev = $DB->DataSet("SELECT scope_type, scope_id FROM " . DB_PREFIX . "voting_event WHERE voting_event_id = " . (int)$voting_event_id . " LIMIT 1");
+		if (!$ev || !$ev->Next()) return false;
+		return $this->user_can_run_in_scope($mundane_id, $ev->scope_type, $ev->scope_id);
+	}
+
+	private function user_is_candidate_in_event($mundane_id, $voting_event_id) {
+		if (!valid_id($mundane_id)) return false;
+		global $DB;
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT 1 FROM " . DB_PREFIX . "voting_choice c
+			JOIN " . DB_PREFIX . "voting_race r USING (voting_race_id)
+			WHERE r.voting_event_id = " . (int)$voting_event_id . "
+			  AND c.candidate_mundane_id = " . (int)$mundane_id . "
+			LIMIT 1");
+		return $rs && $rs->Next();
+	}
+
+	// ════════════════════════════════════════════════════════════════════
+	//                              AUDIT
+	// ════════════════════════════════════════════════════════════════════
+
+	private function audit($voting_event_id, $action, $detail = null, $actor_mundane_id = null) {
+		global $DB;
+		$DB->Clear();
+		$DB->Execute(
+			"INSERT INTO " . DB_PREFIX . "voting_audit (voting_event_id, actor_mundane_id, action, detail, created_at) VALUES (?, ?, ?, ?, NOW())",
+			[(int)$voting_event_id, $actor_mundane_id !== null ? (int)$actor_mundane_id : null, (string)$action, $detail !== null ? json_encode($detail) : null]
+		);
+		$DB->Clear();
+	}
+
+	// ════════════════════════════════════════════════════════════════════
+	//                          EVENT / RACE CRUD
+	// ════════════════════════════════════════════════════════════════════
+
+	public function CreateEvent($request) {
+		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+		if (!valid_id($mundane_id)) return NoAuthorization();
+
+		$scope_type = $request['ScopeType'] ?? null;
+		$scope_id   = (int)($request['ScopeId'] ?? 0);
+		$event_type = $request['EventType'] ?? null;
+		if (!in_array($scope_type, ['kingdom','park']) || !$scope_id) return InvalidParameter();
+		if (!in_array($event_type, ['election','althing'])) return InvalidParameter();
+		if (!$this->user_can_run_in_scope($mundane_id, $scope_type, $scope_id)) return NoAuthorization();
+
+		$this->Event->clear();
+		$this->Event->event_type = $event_type;
+		$this->Event->scope_type = $scope_type;
+		$this->Event->scope_id   = $scope_id;
+		$this->Event->title      = trim($request['Title'] ?? '');
+		$this->Event->description = $request['Description'] ?? '';
+		$this->Event->start_date = $request['StartDate'];
+		$this->Event->end_date   = $request['EndDate'];
+		$this->Event->anonymous_to_runner = !empty($request['AnonymousToRunner']) ? 1 : 0;
+		$this->Event->hide_results_from_candidate_runners = !empty($request['HideResultsFromCandidateRunners']) ? 1 : 0;
+		$this->Event->allow_provisional = !empty($request['AllowProvisional']) ? 1 : 0;
+		$this->Event->status = 'draft';
+		$this->Event->created_by_mundane_id = $mundane_id;
+		$this->Event->save();
+
+		$voting_event_id = $this->Event->voting_event_id;
+		$this->audit($voting_event_id, 'event_created', ['title' => $this->Event->title], $mundane_id);
+		return Success($voting_event_id);
+	}
+
+	public function UpdateEvent($request) {
+		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+		if (!valid_id($mundane_id)) return NoAuthorization();
+		$voting_event_id = (int)($request['VotingEventId'] ?? 0);
+		if (!$voting_event_id) return InvalidParameter();
+		if (!$this->user_is_runner_of_event($mundane_id, $voting_event_id)) return NoAuthorization();
+
+		$this->Event->clear();
+		$this->Event->voting_event_id = $voting_event_id;
+		if (!$this->Event->find()) return InvalidParameter();
+		if ($this->Event->status !== 'draft') return Failure(['Status' => 1, 'Error' => 'Only draft events can be edited.', 'Detail' => '']);
+
+		$diff = [];
+		foreach (['Title' => 'title', 'Description' => 'description', 'StartDate' => 'start_date', 'EndDate' => 'end_date',
+				 'AnonymousToRunner' => 'anonymous_to_runner', 'HideResultsFromCandidateRunners' => 'hide_results_from_candidate_runners',
+				 'AllowProvisional' => 'allow_provisional'] as $k => $col) {
+			if (array_key_exists($k, $request)) {
+				$old = $this->Event->$col;
+				$new = (in_array($col, ['anonymous_to_runner','hide_results_from_candidate_runners','allow_provisional'])) ? (!empty($request[$k]) ? 1 : 0) : $request[$k];
+				if ((string)$old !== (string)$new) { $diff[$col] = ['from' => $old, 'to' => $new]; $this->Event->$col = $new; }
+			}
+		}
+		if (!empty($diff)) {
+			$this->Event->save();
+			$this->audit($voting_event_id, 'event_updated', $diff, $mundane_id);
+		}
+		return Success($voting_event_id);
+	}
+
+	public function AddRace($request) {
+		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+		if (!valid_id($mundane_id)) return NoAuthorization();
+		$voting_event_id = (int)($request['VotingEventId'] ?? 0);
+		if (!$voting_event_id) return InvalidParameter();
+		if (!$this->user_is_runner_of_event($mundane_id, $voting_event_id)) return NoAuthorization();
+
+		$this->Event->clear();
+		$this->Event->voting_event_id = $voting_event_id;
+		if (!$this->Event->find()) return InvalidParameter();
+		if ($this->Event->status !== 'draft') return Failure(['Status' => 1, 'Error' => 'Cannot add races after event is open.', 'Detail' => '']);
+
+		$race_type = $request['RaceType'] ?? null;
+		if (!in_array($race_type, ['position','yesno','multichoice'])) return InvalidParameter();
+
+		$voting_mode = $request['VotingMode'] ?? 'plurality';
+		if ($race_type === 'yesno') $voting_mode = 'majority';
+		if ($race_type === 'multichoice') $voting_mode = 'plurality';
+
+		$this->Race->clear();
+		$this->Race->voting_event_id = $voting_event_id;
+		$this->Race->race_type = $race_type;
+		$this->Race->voting_mode = $voting_mode;
+		$this->Race->title = trim($request['Title'] ?? '');
+		$this->Race->rationale = $request['Rationale'] ?? '';
+		$this->Race->position_id = (int)($request['PositionId'] ?? 0) ?: null;
+		$this->Race->allow_abstain = !empty($request['AllowAbstain']) ? 1 : 0;
+		$this->Race->allow_none_of_above = !empty($request['AllowNoneOfAbove']) ? 1 : 0;
+		$this->Race->nota_counts_as = in_array($request['NotaCountsAs'] ?? null, ['no','abstain']) ? $request['NotaCountsAs'] : null;
+		$this->Race->is_non_binding = !empty($request['IsNonBinding']) ? 1 : 0;
+		$this->Race->display_order = (int)($request['DisplayOrder'] ?? 0);
+		$this->Race->save();
+
+		$voting_race_id = $this->Race->voting_race_id;
+
+		// For yesno races, auto-create the Yes and No choices.
+		if ($race_type === 'yesno') {
+			foreach (['Yes', 'No'] as $i => $label) {
+				$this->Choice->clear();
+				$this->Choice->voting_race_id = $voting_race_id;
+				$this->Choice->label = $label;
+				$this->Choice->display_order = $i;
+				$this->Choice->save();
+			}
+		}
+
+		$this->audit($voting_event_id, 'race_created', ['race_id' => $voting_race_id, 'title' => $this->Race->title, 'race_type' => $race_type], $mundane_id);
+		return Success($voting_race_id);
+	}
+
+	public function AddCandidate($request) {
+		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+		if (!valid_id($mundane_id)) return NoAuthorization();
+		$voting_race_id = (int)($request['VotingRaceId'] ?? 0);
+		$candidate_mundane_id = (int)($request['CandidateMundaneId'] ?? 0);
+		if (!$voting_race_id || !valid_id($candidate_mundane_id)) return InvalidParameter();
+
+		$this->Race->clear();
+		$this->Race->voting_race_id = $voting_race_id;
+		if (!$this->Race->find()) return InvalidParameter();
+		if ($this->Race->race_type !== 'position') return InvalidParameter();
+		if (!$this->user_is_runner_of_event($mundane_id, $this->Race->voting_event_id)) return NoAuthorization();
+
+		$this->Event->clear();
+		$this->Event->voting_event_id = $this->Race->voting_event_id;
+		$this->Event->find();
+		if ($this->Event->status !== 'draft') return Failure(['Status' => 1, 'Error' => 'Cannot add candidates after event is open.', 'Detail' => '']);
+
+		// Snapshot the candidate's name into the label.
+		$mundane = new yapo($this->db, DB_PREFIX . 'mundane');
+		$mundane->mundane_id = $candidate_mundane_id;
+		if (!$mundane->find()) return InvalidParameter();
+		$label = trim(($mundane->persona ?: ($mundane->given_name . ' ' . $mundane->surname)));
+
+		$this->Choice->clear();
+		$this->Choice->voting_race_id = $voting_race_id;
+		$this->Choice->candidate_mundane_id = $candidate_mundane_id;
+		$this->Choice->label = $label ?: ('Mundane #' . $candidate_mundane_id);
+		// Append to end.
+		global $DB;
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT MAX(display_order) AS maxo FROM " . DB_PREFIX . "voting_choice WHERE voting_race_id = " . $voting_race_id);
+		$next_order = ($rs && $rs->Next()) ? ((int)$rs->maxo + 1) : 0;
+		$this->Choice->display_order = $next_order;
+		$this->Choice->save();
+
+		$this->audit($this->Race->voting_event_id, 'candidate_added',
+			['race_id' => $voting_race_id, 'candidate_mundane_id' => $candidate_mundane_id, 'label' => $this->Choice->label],
+			$mundane_id);
+		return Success($this->Choice->voting_choice_id);
+	}
+
+	public function AddOption($request) {
+		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+		if (!valid_id($mundane_id)) return NoAuthorization();
+		$voting_race_id = (int)($request['VotingRaceId'] ?? 0);
+		$label = trim($request['Label'] ?? '');
+		if (!$voting_race_id || $label === '') return InvalidParameter();
+
+		$this->Race->clear();
+		$this->Race->voting_race_id = $voting_race_id;
+		if (!$this->Race->find()) return InvalidParameter();
+		if ($this->Race->race_type !== 'multichoice') return InvalidParameter();
+		if (!$this->user_is_runner_of_event($mundane_id, $this->Race->voting_event_id)) return NoAuthorization();
+
+		$this->Event->clear();
+		$this->Event->voting_event_id = $this->Race->voting_event_id;
+		$this->Event->find();
+		if ($this->Event->status !== 'draft') return Failure(['Status' => 1, 'Error' => 'Cannot add options after event is open.', 'Detail' => '']);
+
+		global $DB;
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT MAX(display_order) AS maxo FROM " . DB_PREFIX . "voting_choice WHERE voting_race_id = " . $voting_race_id);
+		$next_order = ($rs && $rs->Next()) ? ((int)$rs->maxo + 1) : 0;
+
+		$this->Choice->clear();
+		$this->Choice->voting_race_id = $voting_race_id;
+		$this->Choice->label = $label;
+		$this->Choice->display_order = $next_order;
+		$this->Choice->save();
+		return Success($this->Choice->voting_choice_id);
+	}
+
+	public function OpenEvent($request) {
+		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+		if (!valid_id($mundane_id)) return NoAuthorization();
+		$voting_event_id = (int)($request['VotingEventId'] ?? 0);
+		if (!$voting_event_id) return InvalidParameter();
+		if (!$this->user_is_runner_of_event($mundane_id, $voting_event_id)) return NoAuthorization();
+
+		$this->Event->clear();
+		$this->Event->voting_event_id = $voting_event_id;
+		if (!$this->Event->find()) return InvalidParameter();
+		if ($this->Event->status !== 'draft') return Failure(['Status' => 1, 'Error' => 'Event is not in draft.', 'Detail' => '']);
+
+		// Validate every race has at least one choice (position) or 2+ choices (multichoice).
+		global $DB;
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT r.voting_race_id, r.race_type, r.title, COUNT(c.voting_choice_id) AS n
+			FROM " . DB_PREFIX . "voting_race r LEFT JOIN " . DB_PREFIX . "voting_choice c USING (voting_race_id)
+			WHERE r.voting_event_id = " . $voting_event_id . " GROUP BY r.voting_race_id");
+		$errors = [];
+		while ($rs && $rs->Next()) {
+			$min = $rs->race_type === 'multichoice' ? 2 : 1;
+			if ((int)$rs->n < $min) $errors[] = "Race '{$rs->title}' needs at least $min choice(s).";
+		}
+		if (!empty($errors)) return Failure(['Status' => 1, 'Error' => 'Cannot open event', 'Detail' => implode(' ', $errors)]);
+
+		$this->Event->status = 'open';
+		$this->Event->save();
+		$this->audit($voting_event_id, 'event_updated', ['status' => 'open'], $mundane_id);
+		return Success($voting_event_id);
+	}
+
+	// ════════════════════════════════════════════════════════════════════
+	//                        BALLOT CASTING
+	// ════════════════════════════════════════════════════════════════════
+
+	/**
+	 * CastBallot. Required: Token, VotingEventId, Votes (array of per-race vote arrays).
+	 * Optional: VoterMundaneId (for runner-entered external ballots), EnteredByRunnerId.
+	 *
+	 * Vote item shape (one entry per race the voter is voting in):
+	 *   ['VotingRaceId' => N, 'ChoiceIds' => [N|null, ...], 'IsAbstain' => 0|1, 'IsNoneOfAbove' => 0|1]
+	 *   - IRV: ChoiceIds is an ordered array ([first_pref_id, second_pref_id, ...]).
+	 *   - Single-select: ChoiceIds is an array with exactly one element (or empty for abstain/NOTA).
+	 */
+	public function CastBallot($request) {
+		$actor_mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+		if (!valid_id($actor_mundane_id)) return NoAuthorization();
+
+		$voting_event_id = (int)($request['VotingEventId'] ?? 0);
+		if (!$voting_event_id) return InvalidParameter();
+
+		$voter_mundane_id = (int)($request['VoterMundaneId'] ?? $actor_mundane_id);
+		$entered_by_runner_id = isset($request['EnteredByRunnerId']) ? (int)$request['EnteredByRunnerId'] : null;
+		$is_runner_entry = $voter_mundane_id !== $actor_mundane_id;
+
+		if ($is_runner_entry) {
+			if (!$this->user_is_runner_of_event($actor_mundane_id, $voting_event_id)) return NoAuthorization();
+			$entered_by_runner_id = $actor_mundane_id;
+		}
+
+		$this->Event->clear();
+		$this->Event->voting_event_id = $voting_event_id;
+		if (!$this->Event->find()) return InvalidParameter();
+		if ($this->Event->status !== 'open') return Failure(['Status' => 1, 'Error' => 'Voting is not open.', 'Detail' => '']);
+		if (strtotime($this->Event->end_date) < time()) return Failure(['Status' => 1, 'Error' => 'Voting has closed.', 'Detail' => '']);
+
+		// Eligibility check.
+		$elig = $this->check_eligibility_live($voter_mundane_id, $this->Event->scope_type, $this->Event->scope_id);
+		$is_provisional = 0;
+		if (!$elig['eligible']) {
+			if (!empty($this->Event->allow_provisional) && $elig['provisional_possible']) {
+				$is_provisional = 1;
+			} else {
+				return Failure(['Status' => 1, 'Error' => 'Not eligible to vote in this event.', 'Detail' => '']);
+			}
+		}
+
+		// Load races + choices for validation.
+		global $DB;
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT voting_race_id, race_type, voting_mode, allow_abstain, allow_none_of_above
+			FROM " . DB_PREFIX . "voting_race WHERE voting_event_id = " . $voting_event_id);
+		$races_by_id = [];
+		while ($rs && $rs->Next()) {
+			$races_by_id[(int)$rs->voting_race_id] = [
+				'race_type' => $rs->race_type, 'voting_mode' => $rs->voting_mode,
+				'allow_abstain' => (int)$rs->allow_abstain, 'allow_none_of_above' => (int)$rs->allow_none_of_above,
+			];
+		}
+
+		// Validate every vote item.
+		$votes_in = $request['Votes'] ?? [];
+		if (!is_array($votes_in) || empty($votes_in)) return Failure(['Status' => 1, 'Error' => 'No votes submitted.', 'Detail' => '']);
+		foreach ($votes_in as $vi) {
+			$rid = (int)($vi['VotingRaceId'] ?? 0);
+			if (!isset($races_by_id[$rid])) return Failure(['Status' => 1, 'Error' => 'Invalid race in submission.', 'Detail' => '']);
+			$cfg = $races_by_id[$rid];
+			$abst = !empty($vi['IsAbstain']);
+			$nota = !empty($vi['IsNoneOfAbove']);
+			if ($abst && empty($cfg['allow_abstain'])) return Failure(['Status' => 1, 'Error' => 'Abstain not allowed for race.', 'Detail' => '']);
+			if ($nota && empty($cfg['allow_none_of_above'])) return Failure(['Status' => 1, 'Error' => 'None-of-the-above not allowed for race.', 'Detail' => '']);
+		}
+
+		// ── Open transaction with FOR UPDATE on the active_ballot pointer (deadlock-safe).
+		$DB->Clear();
+		$DB->Execute("START TRANSACTION");
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT voting_ballot_id FROM " . DB_PREFIX . "voting_active_ballot
+			WHERE voting_event_id = " . $voting_event_id . " AND voter_mundane_id = " . $voter_mundane_id . " FOR UPDATE");
+		$prior_ballot_id = ($rs && $rs->Next()) ? (int)$rs->voting_ballot_id : null;
+
+		// Insert new ballot row.
+		$this->Ballot->clear();
+		$this->Ballot->voting_event_id = $voting_event_id;
+		$this->Ballot->voter_mundane_id = $voter_mundane_id;
+		$this->Ballot->is_provisional = $is_provisional;
+		$this->Ballot->entered_by_runner_id = $entered_by_runner_id;
+		$this->Ballot->submitted_at = date('Y-m-d H:i:s');
+		$this->Ballot->save();
+		$new_ballot_id = (int)$this->Ballot->voting_ballot_id;
+
+		// Insert vote rows.
+		foreach ($votes_in as $vi) {
+			$rid = (int)$vi['VotingRaceId'];
+			$cfg = $races_by_id[$rid];
+			$abst = !empty($vi['IsAbstain']) ? 1 : 0;
+			$nota = !empty($vi['IsNoneOfAbove']) ? 1 : 0;
+
+			if ($abst || $nota) {
+				$this->Vote->clear();
+				$this->Vote->voting_ballot_id = $new_ballot_id;
+				$this->Vote->voting_race_id = $rid;
+				$this->Vote->is_abstain = $abst;
+				$this->Vote->is_none_of_above = $nota;
+				$this->Vote->save();
+				continue;
+			}
+
+			$cids = $vi['ChoiceIds'] ?? [];
+			if (!is_array($cids)) $cids = [];
+
+			if ($cfg['race_type'] === 'position' && $cfg['voting_mode'] === 'irv') {
+				// IRV: one row per rank.
+				$rank = 1;
+				foreach ($cids as $cid) {
+					if (!valid_id($cid)) continue;
+					$this->Vote->clear();
+					$this->Vote->voting_ballot_id = $new_ballot_id;
+					$this->Vote->voting_race_id = $rid;
+					$this->Vote->voting_choice_id = (int)$cid;
+					$this->Vote->rank = $rank++;
+					$this->Vote->save();
+				}
+			} else {
+				// Single-select.
+				$cid = $cids[0] ?? null;
+				if (!valid_id($cid)) continue;
+				$this->Vote->clear();
+				$this->Vote->voting_ballot_id = $new_ballot_id;
+				$this->Vote->voting_race_id = $rid;
+				$this->Vote->voting_choice_id = (int)$cid;
+				$this->Vote->save();
+			}
+		}
+
+		// Mark prior ballot superseded.
+		$action = 'ballot_cast';
+		if ($prior_ballot_id) {
+			$DB->Clear();
+			$DB->Execute("UPDATE " . DB_PREFIX . "voting_ballot SET superseded_by_ballot_id = " . $new_ballot_id . " WHERE voting_ballot_id = " . $prior_ballot_id);
+			$action = 'ballot_changed';
+		}
+		if ($is_runner_entry) {
+			$action = $prior_ballot_id ? 'ballot_replaced_by_paper' : 'ballot_runner_entered';
+		}
+
+		// Eligibility snapshot at submit time.
+		$DB->Clear();
+		$DB->Execute("INSERT INTO " . DB_PREFIX . "voting_eligibility_snapshot
+			(voting_event_id, mundane_id, eligible, was_provisional, source_rules, evaluated_at)
+			VALUES (?, ?, ?, ?, ?, NOW())
+			ON DUPLICATE KEY UPDATE eligible = VALUES(eligible), source_rules = VALUES(source_rules), evaluated_at = NOW()",
+			[$voting_event_id, $voter_mundane_id, $elig['eligible'] ? 1 : 0, $is_provisional, json_encode($elig['rules'])]);
+
+		// Flip the active-ballot pointer.
+		$DB->Clear();
+		$DB->Execute("INSERT INTO " . DB_PREFIX . "voting_active_ballot (voting_event_id, voter_mundane_id, voting_ballot_id) VALUES (?, ?, ?)
+			ON DUPLICATE KEY UPDATE voting_ballot_id = VALUES(voting_ballot_id)",
+			[$voting_event_id, $voter_mundane_id, $new_ballot_id]);
+
+		$DB->Clear();
+		$DB->Execute("COMMIT");
+		$DB->Clear();
+
+		$this->audit($voting_event_id, $action,
+			['ballot_id' => $new_ballot_id, 'voter_mundane_id' => $voter_mundane_id, 'is_provisional' => $is_provisional, 'prior_ballot_id' => $prior_ballot_id],
+			$actor_mundane_id);
+
+		return Success($new_ballot_id);
+	}
+
+	// ════════════════════════════════════════════════════════════════════
+	//                       PROVISIONAL LIFECYCLE
+	// ════════════════════════════════════════════════════════════════════
+
+	public function ReleaseProvisionalManual($request) {
+		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+		if (!valid_id($mundane_id)) return NoAuthorization();
+		$voting_ballot_id = (int)($request['VotingBallotId'] ?? 0);
+		$reason = trim($request['Reason'] ?? '');
+		if (!$voting_ballot_id || $reason === '') return InvalidParameter();
+
+		$this->Ballot->clear();
+		$this->Ballot->voting_ballot_id = $voting_ballot_id;
+		if (!$this->Ballot->find()) return InvalidParameter();
+		if (!$this->user_is_runner_of_event($mundane_id, $this->Ballot->voting_event_id)) return NoAuthorization();
+		if (!$this->Ballot->is_provisional) return Failure(['Status' => 1, 'Error' => 'Ballot is not provisional.', 'Detail' => '']);
+
+		$this->Ballot->is_provisional = 0;
+		$this->Ballot->provisional_released_at = date('Y-m-d H:i:s');
+		$this->Ballot->provisional_released_by_mundane_id = $mundane_id;
+		$this->Ballot->save();
+
+		$this->audit($this->Ballot->voting_event_id, 'provisional_released_runner',
+			['ballot_id' => $voting_ballot_id, 'reason' => $reason], $mundane_id);
+		return Success($voting_ballot_id);
+	}
+
+	public function reevaluate_provisional_for_player($mundane_id) {
+		if (!valid_id($mundane_id)) return;
+		global $DB;
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT b.voting_ballot_id, b.voting_event_id, e.scope_type, e.scope_id
+			FROM " . DB_PREFIX . "voting_ballot b
+			JOIN " . DB_PREFIX . "voting_event e USING (voting_event_id)
+			WHERE b.voter_mundane_id = " . (int)$mundane_id . "
+			  AND b.is_provisional = 1
+			  AND b.superseded_by_ballot_id IS NULL
+			  AND e.status = 'open'");
+		$pending = [];
+		while ($rs && $rs->Next()) {
+			$pending[] = ['ballot_id' => (int)$rs->voting_ballot_id, 'event_id' => (int)$rs->voting_event_id,
+				'scope_type' => $rs->scope_type, 'scope_id' => (int)$rs->scope_id];
+		}
+		foreach ($pending as $p) {
+			$elig = $this->check_eligibility_live($mundane_id, $p['scope_type'], $p['scope_id']);
+			if ($elig['eligible']) {
+				$DB->Clear();
+				$DB->Execute("UPDATE " . DB_PREFIX . "voting_ballot SET is_provisional = 0, provisional_released_at = NOW() WHERE voting_ballot_id = " . $p['ballot_id']);
+				$this->audit($p['event_id'], 'provisional_released_system', ['ballot_id' => $p['ballot_id'], 'mundane_id' => $mundane_id]);
+			}
+		}
+	}
+
+	public function sweep_provisional_eligibility() {
+		global $DB;
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT DISTINCT b.voter_mundane_id
+			FROM " . DB_PREFIX . "voting_ballot b
+			JOIN " . DB_PREFIX . "voting_event e USING (voting_event_id)
+			WHERE b.is_provisional = 1 AND b.superseded_by_ballot_id IS NULL AND e.status = 'open'");
+		$ids = [];
+		while ($rs && $rs->Next()) $ids[] = (int)$rs->voter_mundane_id;
+		foreach ($ids as $mid) $this->reevaluate_provisional_for_player($mid);
+	}
+
+	public function cycle_event_status() {
+		global $DB;
+		// draft → open
+		$DB->Clear();
+		$DB->Execute("UPDATE " . DB_PREFIX . "voting_event SET status = 'open' WHERE status = 'draft' AND start_date <= NOW() AND end_date > NOW()");
+		// open → closed
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT voting_event_id FROM " . DB_PREFIX . "voting_event WHERE status = 'open' AND end_date <= NOW()");
+		$to_close = [];
+		while ($rs && $rs->Next()) $to_close[] = (int)$rs->voting_event_id;
+		foreach ($to_close as $eid) {
+			$this->sweep_provisional_eligibility(); // final sweep
+			$DB->Clear();
+			$DB->Execute("UPDATE " . DB_PREFIX . "voting_event SET status = 'closed' WHERE voting_event_id = " . $eid);
+			$this->audit($eid, 'event_updated', ['status' => 'closed', 'auto' => true]);
+		}
+	}
+
+	// ════════════════════════════════════════════════════════════════════
+	//                        TALLY (DB-BACKED)
+	// ════════════════════════════════════════════════════════════════════
+
+	public function tally($voting_event_id) {
+		global $DB;
+		$voting_event_id = (int)$voting_event_id;
+		// Load races + choices.
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT * FROM " . DB_PREFIX . "voting_race WHERE voting_event_id = " . $voting_event_id . " ORDER BY display_order, voting_race_id");
+		$races = [];
+		while ($rs && $rs->Next()) {
+			$races[(int)$rs->voting_race_id] = [
+				'voting_race_id' => (int)$rs->voting_race_id,
+				'race_type' => $rs->race_type, 'voting_mode' => $rs->voting_mode,
+				'title' => $rs->title, 'rationale' => $rs->rationale,
+				'allow_abstain' => (int)$rs->allow_abstain, 'allow_none_of_above' => (int)$rs->allow_none_of_above,
+				'nota_counts_as' => $rs->nota_counts_as, 'is_non_binding' => (int)$rs->is_non_binding,
+				'tie_resolved_winner_choice_id' => $rs->tie_resolved_winner_choice_id ? (int)$rs->tie_resolved_winner_choice_id : null,
+				'tie_resolution_note' => $rs->tie_resolution_note,
+				'choices' => [],
+			];
+		}
+		if (empty($races)) return [];
+
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT c.* FROM " . DB_PREFIX . "voting_choice c
+			JOIN " . DB_PREFIX . "voting_race r USING (voting_race_id)
+			WHERE r.voting_event_id = " . $voting_event_id . " ORDER BY c.display_order, c.voting_choice_id");
+		while ($rs && $rs->Next()) {
+			$rid = (int)$rs->voting_race_id;
+			if (!isset($races[$rid])) continue;
+			$races[$rid]['choices'][] = [
+				'id' => (int)$rs->voting_choice_id,
+				'label' => $rs->label,
+				'candidate_mundane_id' => $rs->candidate_mundane_id ? (int)$rs->candidate_mundane_id : null,
+				'is_yes' => (strcasecmp($rs->label, 'Yes') === 0) ? 1 : 0,
+				'is_no'  => (strcasecmp($rs->label, 'No')  === 0) ? 1 : 0,
+			];
+		}
+
+		// Load votes for active, non-provisional ballots only.
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT v.voting_race_id, v.voting_ballot_id, v.voting_choice_id, v.rank, v.is_abstain, v.is_none_of_above
+			FROM " . DB_PREFIX . "voting_vote v
+			JOIN " . DB_PREFIX . "voting_active_ballot ab ON ab.voting_ballot_id = v.voting_ballot_id
+			JOIN " . DB_PREFIX . "voting_ballot b ON b.voting_ballot_id = v.voting_ballot_id
+			WHERE ab.voting_event_id = " . $voting_event_id . " AND b.is_provisional = 0");
+		$votes_by_race_ballot = [];
+		while ($rs && $rs->Next()) {
+			$rid = (int)$rs->voting_race_id;
+			$bid = (int)$rs->voting_ballot_id;
+			$votes_by_race_ballot[$rid][$bid][] = [
+				'choice_id' => $rs->voting_choice_id ? (int)$rs->voting_choice_id : null,
+				'rank' => $rs->rank ? (int)$rs->rank : null,
+				'is_abstain' => (int)$rs->is_abstain,
+				'is_nota' => (int)$rs->is_none_of_above,
+			];
+		}
+
+		// Build per-race result.
+		$results = [];
+		foreach ($races as $rid => $race) {
+			$ballots = [];
+			foreach (($votes_by_race_ballot[$rid] ?? []) as $bid => $vrows) {
+				$ballots[] = ['votes' => $vrows];
+			}
+			$result = self::tally_pure($race, $ballots);
+			// Honor manual tie resolution.
+			if ($race['tie_resolved_winner_choice_id'] && in_array($result['outcome'], ['tie', 'tie_at_elimination', 'tie_at_final'])) {
+				$result['outcome'] = 'win_resolved';
+				$result['winner_choice_id'] = $race['tie_resolved_winner_choice_id'];
+				$result['tie_resolution_note'] = $race['tie_resolution_note'];
+			}
+			$results[$rid] = ['race' => $race, 'result' => $result, 'ballot_count' => count($ballots)];
+		}
+		return $results;
+	}
+
+	public function ResolveTie($request) {
+		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+		if (!valid_id($mundane_id)) return NoAuthorization();
+		$voting_race_id = (int)($request['VotingRaceId'] ?? 0);
+		$winner_choice_id = (int)($request['WinnerChoiceId'] ?? 0);
+		$note = trim($request['Note'] ?? '');
+		if (!$voting_race_id || !$winner_choice_id || $note === '') return InvalidParameter();
+
+		$this->Race->clear();
+		$this->Race->voting_race_id = $voting_race_id;
+		if (!$this->Race->find()) return InvalidParameter();
+		if (!$this->user_is_runner_of_event($mundane_id, $this->Race->voting_event_id)) return NoAuthorization();
+
+		// Sanity-check the winner is actually a choice in this race.
+		global $DB;
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT 1 FROM " . DB_PREFIX . "voting_choice WHERE voting_choice_id = " . $winner_choice_id . " AND voting_race_id = " . $voting_race_id);
+		if (!$rs || !$rs->Next()) return InvalidParameter();
+
+		$this->Race->tie_resolved_winner_choice_id = $winner_choice_id;
+		$this->Race->tie_resolution_note = $note;
+		$this->Race->tie_resolution_at = date('Y-m-d H:i:s');
+		$this->Race->tie_resolved_by_mundane_id = $mundane_id;
+		$this->Race->save();
+
+		$this->audit($this->Race->voting_event_id, 'tie_resolved',
+			['race_id' => $voting_race_id, 'winner' => $winner_choice_id, 'note' => $note], $mundane_id);
+		return Success($voting_race_id);
+	}
+
+	public function Publish($request) {
+		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+		if (!valid_id($mundane_id)) return NoAuthorization();
+		$voting_event_id = (int)($request['VotingEventId'] ?? 0);
+		if (!$voting_event_id) return InvalidParameter();
+		if (!$this->user_is_runner_of_event($mundane_id, $voting_event_id)) return NoAuthorization();
+
+		$this->Event->clear();
+		$this->Event->voting_event_id = $voting_event_id;
+		if (!$this->Event->find()) return InvalidParameter();
+		if (!in_array($this->Event->status, ['closed', 'unpublished'])) {
+			return Failure(['Status' => 1, 'Error' => 'Event must be closed before publish.', 'Detail' => '']);
+		}
+
+		// Gate: no unresolved ties.
+		$tally = $this->tally($voting_event_id);
+		foreach ($tally as $rid => $row) {
+			$out = $row['result']['outcome'] ?? null;
+			$tie_resolved = $row['race']['tie_resolved_winner_choice_id'] ?? null;
+			if (in_array($out, ['tie', 'tie_at_elimination', 'tie_at_final']) && !$tie_resolved) {
+				return Failure(['Status' => 1, 'Error' => 'Cannot publish: ' . $row['race']['title'] . ' has an unresolved tie.', 'Detail' => '']);
+			}
+		}
+
+		$this->Event->status = 'published';
+		$this->Event->published_at = date('Y-m-d H:i:s');
+		$this->Event->published_by_mundane_id = $mundane_id;
+		$this->Event->tally_snapshot = json_encode($tally);
+		$this->Event->save();
+
+		$this->audit($voting_event_id, 'results_published', null, $mundane_id);
+		return Success($voting_event_id);
+	}
+
+	public function Unpublish($request) {
+		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+		if (!valid_id($mundane_id)) return NoAuthorization();
+		$voting_event_id = (int)($request['VotingEventId'] ?? 0);
+		if (!$voting_event_id) return InvalidParameter();
+		if (!$this->user_is_runner_of_event($mundane_id, $voting_event_id)) return NoAuthorization();
+
+		$this->Event->clear();
+		$this->Event->voting_event_id = $voting_event_id;
+		if (!$this->Event->find()) return InvalidParameter();
+		if ($this->Event->status !== 'published') return Failure(['Status' => 1, 'Error' => 'Event is not published.', 'Detail' => '']);
+
+		$this->Event->status = 'unpublished';
+		$this->Event->save();
+		$this->audit($voting_event_id, 'results_unpublished', null, $mundane_id);
+		return Success($voting_event_id);
+	}
+
+	// ════════════════════════════════════════════════════════════════════
+	//                            READS
+	// ════════════════════════════════════════════════════════════════════
+
+	public function GetEvent($request) {
+		$voting_event_id = (int)($request['VotingEventId'] ?? 0);
+		if (!$voting_event_id) return InvalidParameter();
+		global $DB;
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT * FROM " . DB_PREFIX . "voting_event WHERE voting_event_id = " . $voting_event_id);
+		if (!$rs || !$rs->Next()) return Failure(['Status' => 1, 'Error' => 'Event not found.', 'Detail' => '']);
+		$ev = (array)$rs;
+		// Strip yapo internals.
+		$ev = array_filter($ev, fn($k) => !str_starts_with((string)$k, '_'), ARRAY_FILTER_USE_KEY);
+
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT * FROM " . DB_PREFIX . "voting_race WHERE voting_event_id = " . $voting_event_id . " ORDER BY display_order, voting_race_id");
+		$races = [];
+		while ($rs && $rs->Next()) {
+			$row = (array)$rs;
+			$races[(int)$row['voting_race_id']] = array_merge($row, ['choices' => []]);
+		}
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT c.* FROM " . DB_PREFIX . "voting_choice c
+			JOIN " . DB_PREFIX . "voting_race r USING (voting_race_id)
+			WHERE r.voting_event_id = " . $voting_event_id . " ORDER BY c.display_order, c.voting_choice_id");
+		while ($rs && $rs->Next()) {
+			$row = (array)$rs;
+			if (isset($races[(int)$row['voting_race_id']])) $races[(int)$row['voting_race_id']]['choices'][] = $row;
+		}
+		$ev['races'] = array_values($races);
+		return ['Status' => 0, 'Event' => $ev];
+	}
+
+	public function ListEventsForScope($request) {
+		$scope_type = $request['ScopeType'] ?? null;
+		$scope_id = (int)($request['ScopeId'] ?? 0);
+		if (!in_array($scope_type, ['kingdom','park']) || !$scope_id) return InvalidParameter();
+		global $DB;
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT voting_event_id, event_type, title, status, start_date, end_date, anonymous_to_runner
+			FROM " . DB_PREFIX . "voting_event
+			WHERE scope_type = '" . mysql_real_escape_string($scope_type) . "' AND scope_id = " . $scope_id . "
+			ORDER BY start_date DESC, voting_event_id DESC LIMIT 50");
+		$events = [];
+		while ($rs && $rs->Next()) $events[] = (array)$rs;
+		return ['Status' => 0, 'Events' => $events];
+	}
+
+	public function CountActiveEvents($request) {
+		$scope_type = $request['ScopeType'] ?? null;
+		$scope_id = (int)($request['ScopeId'] ?? 0);
+		if (!in_array($scope_type, ['kingdom','park']) || !$scope_id) return InvalidParameter();
+		global $DB;
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT COUNT(*) AS n FROM " . DB_PREFIX . "voting_event
+			WHERE scope_type = '" . mysql_real_escape_string($scope_type) . "' AND scope_id = " . $scope_id . "
+			  AND status IN ('open','closed')");
+		$n = ($rs && $rs->Next()) ? (int)$rs->n : 0;
+		return ['Status' => 0, 'Count' => $n];
+	}
+
+	public function ActiveEventsForVoter($request) {
+		$mundane_id = (int)($request['MundaneId'] ?? 0);
+		if (!valid_id($mundane_id)) return InvalidParameter();
+		// Find the voter's kingdom + park; only events in those scopes are relevant.
+		global $DB;
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT kingdom_id, park_id FROM " . DB_PREFIX . "mundane WHERE mundane_id = " . $mundane_id . " LIMIT 1");
+		if (!$rs || !$rs->Next()) return ['Status' => 0, 'Events' => []];
+		$kid = (int)$rs->kingdom_id;
+		$pid = (int)$rs->park_id;
+
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT e.voting_event_id, e.event_type, e.title, e.scope_type, e.scope_id, e.end_date,
+			ab.voting_ballot_id AS active_ballot_id
+			FROM " . DB_PREFIX . "voting_event e
+			LEFT JOIN " . DB_PREFIX . "voting_active_ballot ab
+				ON ab.voting_event_id = e.voting_event_id AND ab.voter_mundane_id = " . $mundane_id . "
+			WHERE e.status = 'open'
+			  AND ((e.scope_type = 'kingdom' AND e.scope_id = " . $kid . ")
+			       OR (e.scope_type = 'park' AND e.scope_id = " . $pid . "))
+			ORDER BY e.end_date ASC LIMIT 20");
+		$events = [];
+		while ($rs && $rs->Next()) $events[] = (array)$rs;
+		return ['Status' => 0, 'Events' => $events];
+	}
+
+	public function GetTallyPublic($request) {
+		// Public read of tally_snapshot — no auth required, but only for published events.
+		$voting_event_id = (int)($request['VotingEventId'] ?? 0);
+		if (!$voting_event_id) return InvalidParameter();
+		global $DB;
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT status, tally_snapshot, title, event_type, scope_type, scope_id, start_date, end_date FROM " . DB_PREFIX . "voting_event WHERE voting_event_id = " . $voting_event_id);
+		if (!$rs || !$rs->Next()) return Failure(['Status' => 1, 'Error' => 'Not found.', 'Detail' => '']);
+		if ($rs->status !== 'published') return Failure(['Status' => 1, 'Error' => 'Not published.', 'Detail' => $rs->status]);
+		return [
+			'Status' => 0,
+			'Event' => ['title' => $rs->title, 'event_type' => $rs->event_type, 'scope_type' => $rs->scope_type, 'scope_id' => (int)$rs->scope_id, 'start_date' => $rs->start_date, 'end_date' => $rs->end_date],
+			'Tally' => json_decode($rs->tally_snapshot, true) ?: [],
+		];
+	}
+
+	public function GetEligibilityCheck($request) {
+		// Used by the voter ballot page to render eligibility status before showing the ballot.
+		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+		if (!valid_id($mundane_id)) return NoAuthorization();
+		$voting_event_id = (int)($request['VotingEventId'] ?? 0);
+		if (!$voting_event_id) return InvalidParameter();
+		global $DB;
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT scope_type, scope_id, allow_provisional FROM " . DB_PREFIX . "voting_event WHERE voting_event_id = " . $voting_event_id);
+		if (!$rs || !$rs->Next()) return Failure(['Status' => 1, 'Error' => 'Event not found.', 'Detail' => '']);
+		$elig = $this->check_eligibility_live($mundane_id, $rs->scope_type, $rs->scope_id);
+		return [
+			'Status' => 0,
+			'Eligible' => $elig['eligible'],
+			'ProvisionalPossible' => $elig['provisional_possible'],
+			'AllowProvisional' => (int)$rs->allow_provisional,
+		];
 	}
 
 	// ════════════════════════════════════════════════════════════════════
 	//                          PURE TALLY ENGINE
 	// ════════════════════════════════════════════════════════════════════
 
-	/**
-	 * Pure tally function. No DB. Inputs:
-	 *   $race    : ['race_type' => 'position'|'yesno'|'multichoice',
-	 *               'voting_mode' => 'majority'|'plurality'|'irv',
-	 *               'allow_abstain', 'allow_none_of_above',
-	 *               'nota_counts_as' => 'no'|'abstain'|null,
-	 *               'choices' => [['id', 'label', 'is_yes', 'is_no']]]
-	 *   $ballots : [['votes' => [['choice_id', 'rank', 'is_abstain', 'is_nota']]]]
-	 *
-	 * Returns shape varies by race kind; documented per branch below.
-	 */
 	public static function tally_pure(array $race, array $ballots): array {
-		// Yes/No proposal → confidence math.
 		if ($race['race_type'] === 'yesno') {
 			return self::tally_confidence($race, $ballots);
 		}
-		// Single-candidate position → confidence math (auto-conversion).
 		if ($race['race_type'] === 'position' && count($race['choices']) === 1) {
 			return self::tally_confidence($race, $ballots);
 		}
-		// Multichoice → always plurality.
 		if ($race['race_type'] === 'multichoice') {
 			return self::tally_plurality($race, $ballots);
 		}
-		// Multi-candidate position → mode-dependent.
 		switch ($race['voting_mode']) {
 			case 'plurality': return self::tally_plurality($race, $ballots);
 			case 'majority':  return self::tally_majority($race, $ballots);
@@ -54,21 +927,12 @@ class Voting extends Ork3 {
 		return ['outcome' => 'error', 'error' => 'unknown voting mode'];
 	}
 
-	/**
-	 * Confidence (yes/no, or single-candidate position auto-convert).
-	 * Returns: ['outcome' => 'pass'|'fail'|'tie', 'yes', 'no', 'abstain', 'nota', 'denominator', 'tie' => null|true]
-	 */
 	private static function tally_confidence(array $race, array $ballots): array {
-		// Map yes/no choice ids.
 		$yes_id = null; $no_id = null;
 		foreach ($race['choices'] as $c) {
 			if (!empty($c['is_yes']) || strcasecmp($c['label'], 'Yes') === 0) $yes_id = $c['id'];
 			if (!empty($c['is_no'])  || strcasecmp($c['label'], 'No')  === 0) $no_id  = $c['id'];
 		}
-		// Single-candidate position: the lone candidate IS the Yes vote;
-		// No is implicit (if voter cast against the candidate, they cast a 'No' choice we'll need to model).
-		// For confidence on single-candidate position, the ballot UI provides Yes/No as two synthetic choices —
-		// the choice with is_yes=1 is the candidate's id, and is_no=1 is the synthetic No.
 		if ($yes_id === null && count($race['choices']) > 0) $yes_id = $race['choices'][0]['id'];
 
 		$yes = 0; $no = 0; $abstain = 0; $nota = 0;
@@ -80,7 +944,6 @@ class Voting extends Ork3 {
 				if ($v['choice_id'] === $no_id)  { $no++; break; }
 			}
 		}
-		// NOTA folding.
 		if (!empty($race['allow_none_of_above']) && $nota > 0 && !empty($race['nota_counts_as'])) {
 			if ($race['nota_counts_as'] === 'no')      $no += $nota;
 			if ($race['nota_counts_as'] === 'abstain') $abstain += $nota;
@@ -97,10 +960,6 @@ class Voting extends Ork3 {
 		];
 	}
 
-	/**
-	 * Plurality. Top vote-getter wins; ties at top → 'tie'.
-	 * Returns: ['outcome' => 'win'|'tie', 'winner_choice_id', 'counts', 'abstain', 'nota', 'tie' => null|[ids]]
-	 */
 	private static function tally_plurality(array $race, array $ballots): array {
 		$counts = [];
 		foreach ($race['choices'] as $c) $counts[$c['id']] = 0;
@@ -122,7 +981,6 @@ class Voting extends Ork3 {
 			return ['outcome' => 'win', 'winner_choice_id' => $top[0],
 				'counts' => $counts, 'abstain' => $abstain, 'nota' => $nota, 'tie' => null];
 		}
-		// 0 votes total OR multiple at top.
 		if ($max === 0) {
 			return ['outcome' => 'no_votes', 'winner_choice_id' => null,
 				'counts' => $counts, 'abstain' => $abstain, 'nota' => $nota, 'tie' => null];
@@ -132,10 +990,6 @@ class Voting extends Ork3 {
 			'counts' => $counts, 'abstain' => $abstain, 'nota' => $nota, 'tie' => $top];
 	}
 
-	/**
-	 * Majority. Top must hold > 50% of (yes/no equivalent: total non-abstain non-nota votes).
-	 * 50/50 split → 'tie' takes precedence over 'no_majority'.
-	 */
 	private static function tally_majority(array $race, array $ballots): array {
 		$plur = self::tally_plurality($race, $ballots);
 		if ($plur['outcome'] === 'tie') return $plur;
@@ -155,17 +1009,7 @@ class Voting extends Ork3 {
 		];
 	}
 
-	/**
-	 * Instant-runoff voting (Hare). Filters ballots, runs rounds.
-	 * Returns: ['outcome' => 'win'|'tie_at_elimination'|'tie_at_final',
-	 *           'winner_choice_id', 'rounds' => [{round, counts, eliminated, exhausted_this_round, winner?}],
-	 *           'tie' => null|[ids], 'abstained' => N]
-	 */
 	private static function tally_irv(array $race, array $ballots): array {
-		// Step 1: input filter — collapse each ballot's votes for this race into an ordered sequence
-		// of choice_ids (rank ASC), dropping abstain/nota and any null-rank rows. Empty sequences
-		// (voter only cast abstain/nota or didn't rank anyone) are excluded entirely from IRV
-		// but tracked as 'abstained' for transparency.
 		$sequences = [];
 		$abstained = 0;
 		foreach ($ballots as $b) {
@@ -183,13 +1027,11 @@ class Voting extends Ork3 {
 			$sequences[] = array_values(array_map(fn($r) => $r['choice_id'], $ranked));
 		}
 
-		// Build the candidate pool from the race choices.
 		$candidates = array_map(fn($c) => $c['id'], $race['choices']);
 		$eliminated = [];
 		$rounds = [];
 
 		while (true) {
-			// Tally first preferences among non-eliminated candidates.
 			$counts = array_fill_keys(array_diff($candidates, $eliminated), 0);
 			$exhausted_this_round = 0;
 			$active_total = 0;
@@ -198,102 +1040,48 @@ class Voting extends Ork3 {
 				foreach ($seq as $cid) {
 					if (!in_array($cid, $eliminated)) { $head = $cid; break; }
 				}
-				if ($head === null) continue; // exhausted
+				if ($head === null) continue;
 				$counts[$head]++;
 				$active_total++;
 			}
 
-			// Did anyone reach strict majority of active_total?
 			$max = empty($counts) ? 0 : max($counts);
 			$winners = [];
 			foreach ($counts as $cid => $n) if ($n === $max && $max > 0) $winners[] = $cid;
-			$majority_threshold = intdiv($active_total, 2) + 1; // strict majority
+			$majority_threshold = intdiv($active_total, 2) + 1;
 
 			if (count($winners) === 1 && $counts[$winners[0]] >= $majority_threshold) {
-				$rounds[] = [
-					'round' => count($rounds) + 1,
-					'counts' => $counts,
-					'eliminated' => null,
-					'winner' => $winners[0],
-					'exhausted_this_round' => $exhausted_this_round,
-				];
-				return [
-					'outcome' => 'win',
-					'winner_choice_id' => $winners[0],
-					'rounds' => $rounds,
-					'tie' => null,
-					'abstained' => $abstained,
-				];
+				$rounds[] = ['round' => count($rounds) + 1, 'counts' => $counts, 'eliminated' => null,
+					'winner' => $winners[0], 'exhausted_this_round' => $exhausted_this_round];
+				return ['outcome' => 'win', 'winner_choice_id' => $winners[0], 'rounds' => $rounds, 'tie' => null, 'abstained' => $abstained];
 			}
 
-			// Only one candidate left and no majority? That's a final-round tie if active_total is split, or win.
 			if (count($counts) === 1) {
 				$only = array_key_first($counts);
-				$rounds[] = [
-					'round' => count($rounds) + 1,
-					'counts' => $counts,
-					'eliminated' => null,
-					'winner' => $only,
-					'exhausted_this_round' => $exhausted_this_round,
-				];
-				return [
-					'outcome' => 'win',
-					'winner_choice_id' => $only,
-					'rounds' => $rounds,
-					'tie' => null,
-					'abstained' => $abstained,
-				];
+				$rounds[] = ['round' => count($rounds) + 1, 'counts' => $counts, 'eliminated' => null,
+					'winner' => $only, 'exhausted_this_round' => $exhausted_this_round];
+				return ['outcome' => 'win', 'winner_choice_id' => $only, 'rounds' => $rounds, 'tie' => null, 'abstained' => $abstained];
 			}
 
-			// Tie at final round: exactly two candidates left and they're tied.
 			if (count($counts) === 2 && count($winners) === 2 && $counts[$winners[0]] === $counts[$winners[1]]) {
-				$rounds[] = [
-					'round' => count($rounds) + 1,
-					'counts' => $counts,
-					'eliminated' => null,
-					'tie' => $winners,
-					'exhausted_this_round' => $exhausted_this_round,
-				];
+				$rounds[] = ['round' => count($rounds) + 1, 'counts' => $counts, 'eliminated' => null,
+					'tie' => $winners, 'exhausted_this_round' => $exhausted_this_round];
 				sort($winners);
-				return [
-					'outcome' => 'tie_at_final',
-					'winner_choice_id' => null,
-					'rounds' => $rounds,
-					'tie' => $winners,
-					'abstained' => $abstained,
-				];
+				return ['outcome' => 'tie_at_final', 'winner_choice_id' => null, 'rounds' => $rounds, 'tie' => $winners, 'abstained' => $abstained];
 			}
 
-			// Need to eliminate the lowest. Find min count among active.
 			$min = min($counts);
 			$lowest = [];
 			foreach ($counts as $cid => $n) if ($n === $min) $lowest[] = $cid;
-
 			if (count($lowest) > 1) {
-				$rounds[] = [
-					'round' => count($rounds) + 1,
-					'counts' => $counts,
-					'eliminated' => null,
-					'tie' => $lowest,
-					'exhausted_this_round' => $exhausted_this_round,
-				];
+				$rounds[] = ['round' => count($rounds) + 1, 'counts' => $counts, 'eliminated' => null,
+					'tie' => $lowest, 'exhausted_this_round' => $exhausted_this_round];
 				sort($lowest);
-				return [
-					'outcome' => 'tie_at_elimination',
-					'winner_choice_id' => null,
-					'rounds' => $rounds,
-					'tie' => $lowest,
-					'abstained' => $abstained,
-				];
+				return ['outcome' => 'tie_at_elimination', 'winner_choice_id' => null, 'rounds' => $rounds, 'tie' => $lowest, 'abstained' => $abstained];
 			}
 
-			// Eliminate the unique lowest.
-			$rounds[] = [
-				'round' => count($rounds) + 1,
-				'counts' => $counts,
-				'eliminated' => $lowest[0],
-				'exhausted_this_round' => $exhausted_this_round,
-			];
+			$rounds[] = ['round' => count($rounds) + 1, 'counts' => $counts,
+				'eliminated' => $lowest[0], 'exhausted_this_round' => $exhausted_this_round];
 			$eliminated[] = $lowest[0];
 		}
 	}
