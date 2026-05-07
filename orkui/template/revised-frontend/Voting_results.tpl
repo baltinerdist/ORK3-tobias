@@ -1,0 +1,157 @@
+<?php
+	$voting_event_id = (int)($voting_event_id ?? 0);
+	$event = $event ?? null;
+	$tally = $tally ?? [];
+?>
+<style>
+	.vtp-wrap { max-width: 880px; margin: 0 auto; padding: 24px 16px; }
+	.vtp-h1 { font-size:28px; font-weight:600; margin:0 0 6px 0; background:transparent;border:none;padding:0;border-radius:0;text-shadow:none; color:var(--vtp-text,#1a202c); }
+	.vtp-sub { color:var(--vtp-meta,#718096); font-size:13px; margin-bottom: 18px; }
+	.vtp-card { background:var(--vtp-card-bg,#fff); border:1px solid var(--vtp-card-border,#e2e8f0); border-radius:10px; padding:20px; margin-bottom:14px; }
+	.vtp-race-title { font-size:18px; font-weight:600; color:var(--vtp-text,#1a202c); margin-bottom:6px; }
+	.vtp-bar { display:flex; align-items:center; gap:10px; margin-bottom: 6px; font-size:13px; }
+	.vtp-bar-label { flex: 0 0 200px; color:var(--vtp-text,#1a202c); }
+	.vtp-bar-track { flex:1; height:22px; background:var(--vtp-toggle-bg,#edf2f7); border-radius:4px; }
+	.vtp-bar-fill { height:100%; background:#3182ce; border-radius:4px; }
+	.vtp-bar-fill.vtp-yes { background:#48bb78; }
+	.vtp-bar-fill.vtp-no { background:#e53e3e; }
+	.vtp-bar-fill.vtp-winner { background:#48bb78; }
+	.vtp-bar-count { flex: 0 0 90px; text-align:right; font-weight:600; color:var(--vtp-text,#1a202c); }
+	.vtp-winner-banner { display:inline-block; padding:6px 14px; background:#c6f6d5; color:#22543d; font-weight:600; border-radius:8px; font-size:14px; margin-top:8px; }
+	.vtp-tie-banner { display:inline-block; padding:6px 14px; background:#fed7d7; color:#742a2a; font-weight:600; border-radius:8px; font-size:14px; margin-top:8px; }
+	.vtp-confidence-pass { display:inline-block; padding:6px 14px; background:#c6f6d5; color:#22543d; font-weight:600; border-radius:8px; font-size:14px; margin-top:8px; }
+	.vtp-confidence-fail { display:inline-block; padding:6px 14px; background:#fed7d7; color:#742a2a; font-weight:600; border-radius:8px; font-size:14px; margin-top:8px; }
+	.vtp-poll-tag { display:inline-block; padding:2px 10px; background:#fefcbf; color:#744210; font-weight:600; font-size:11px; border-radius:999px; text-transform:uppercase; margin-left:6px; }
+	.vtp-error { padding: 28px 20px; background:var(--vtp-card-bg,#fff); border:1px solid var(--vtp-card-border,#e2e8f0); border-radius:10px; text-align:center; color:var(--vtp-text,#1a202c); }
+	.vtp-irv-rounds { background:var(--vtp-toggle-bg,#f7fafc); border-radius:8px; padding:14px; margin-top:10px; }
+	.vtp-irv-round { padding:8px 0; border-bottom:1px solid var(--vtp-card-border,#e2e8f0); }
+	.vtp-irv-round:last-child { border-bottom:none; }
+	.vtp-irv-round-head { font-weight:600; color:var(--vtp-text,#1a202c); margin-bottom:6px; }
+	.vtp-rationale { color:var(--vtp-meta,#718096); margin-bottom: 10px; font-size:13px; }
+	@media (prefers-color-scheme: dark) {
+		.vtp-card, .vtp-error { --vtp-card-bg:#1a202c; --vtp-card-border:#2d3748; --vtp-text:#e2e8f0; --vtp-meta:#a0aec0; --vtp-toggle-bg:#2d3748; }
+		.vtp-h1, .vtp-race-title { color:#e2e8f0; }
+		.vtp-sub { color:#a0aec0; }
+		.vtp-bar-label, .vtp-bar-count { color:#e2e8f0; }
+	}
+	body.dark-mode .vtp-card, body.dark-mode .vtp-error { --vtp-card-bg:#1a202c; --vtp-card-border:#2d3748; --vtp-text:#e2e8f0; --vtp-meta:#a0aec0; --vtp-toggle-bg:#2d3748; }
+	body.dark-mode .vtp-h1, body.dark-mode .vtp-race-title { color:#e2e8f0; }
+	body.dark-mode .vtp-sub { color:#a0aec0; }
+	body.dark-mode .vtp-bar-label, body.dark-mode .vtp-bar-count { color:#e2e8f0; }
+</style>
+
+<div class="vtp-wrap">
+	<?php if (!empty($Error) || !$event): ?>
+		<div class="vtp-error">
+			<i class="fas fa-info-circle" style="font-size:32px;opacity:0.4;margin-bottom:10px;"></i>
+			<div style="font-size:16px;">Results not available.</div>
+			<div style="font-size:13px;margin-top:6px;color:#718096;">This event has either not been published or has been temporarily withdrawn.</div>
+		</div>
+	<?php else: ?>
+		<h1 class="vtp-h1"><?= htmlspecialchars($event['title']) ?></h1>
+		<div class="vtp-sub">
+			<?= htmlspecialchars(ucfirst($event['event_type'])) ?> · Published Results · Voting closed <?= date('F j, Y g:i A', strtotime($event['end_date'])) ?>
+		</div>
+
+		<?php foreach ($tally as $rid => $row):
+			$race = $row['race'];
+			$result = $row['result'];
+			$choices = $race['choices'] ?? [];
+			$choices_by_id = [];
+			foreach ($choices as $c) $choices_by_id[$c['id']] = $c;
+		?>
+			<div class="vtp-card">
+				<div class="vtp-race-title">
+					<?= htmlspecialchars($race['title']) ?>
+					<?php if ($race['race_type'] === 'position' && count($choices) === 1): ?><span class="vtp-poll-tag" style="background:#bee3f8;color:#2a4365;">Confidence</span><?php endif; ?>
+					<?php if (!empty($race['is_non_binding'])): ?><span class="vtp-poll-tag">Poll — non-binding</span><?php endif; ?>
+				</div>
+				<?php if (!empty($race['rationale'])): ?>
+					<div class="vtp-rationale"><?= nl2br(htmlspecialchars($race['rationale'])) ?></div>
+				<?php endif; ?>
+
+				<?php if (in_array($result['outcome'], ['pass','fail','tie'])):
+					$total = ($result['yes']??0) + ($result['no']??0) + ($result['abstain']??0) + ($result['nota']??0);
+				?>
+					<div class="vtp-bar"><div class="vtp-bar-label">Yes</div>
+						<div class="vtp-bar-track"><div class="vtp-bar-fill vtp-yes" style="width:<?= $total > 0 ? round((($result['yes']??0)/$total)*100) : 0 ?>%"></div></div>
+						<div class="vtp-bar-count"><?= (int)($result['yes']??0) ?></div></div>
+					<div class="vtp-bar"><div class="vtp-bar-label">No</div>
+						<div class="vtp-bar-track"><div class="vtp-bar-fill vtp-no" style="width:<?= $total > 0 ? round((($result['no']??0)/$total)*100) : 0 ?>%"></div></div>
+						<div class="vtp-bar-count"><?= (int)($result['no']??0) ?></div></div>
+					<?php if (!empty($result['abstain'])): ?>
+						<div class="vtp-bar"><div class="vtp-bar-label">Abstain</div>
+							<div class="vtp-bar-track"><div class="vtp-bar-fill" style="width:<?= $total > 0 ? round((($result['abstain'])/$total)*100) : 0 ?>%;background:#a0aec0;"></div></div>
+							<div class="vtp-bar-count"><?= (int)$result['abstain'] ?></div></div>
+					<?php endif; ?>
+
+					<?php if ($result['outcome'] === 'pass'): ?>
+						<div class="vtp-confidence-pass"><i class="fas fa-check"></i> <?= $race['race_type'] === 'yesno' ? 'Passed' : 'Confidence Affirmed' ?></div>
+					<?php elseif ($result['outcome'] === 'fail'): ?>
+						<div class="vtp-confidence-fail"><i class="fas fa-times"></i> <?= $race['race_type'] === 'yesno' ? 'Failed' : 'No Confidence' ?></div>
+					<?php else: ?>
+						<div class="vtp-tie-banner"><i class="fas fa-equals"></i> Tied — runner has not yet resolved.</div>
+					<?php endif; ?>
+
+				<?php elseif (!empty($result['rounds']) && is_array($result['rounds'])): ?>
+					<div class="vtp-irv-rounds">
+						<?php foreach ($result['rounds'] as $i => $rd): ?>
+							<div class="vtp-irv-round">
+								<div class="vtp-irv-round-head">
+									Round <?= (int)$rd['round'] ?>
+									<?php if (!empty($rd['eliminated'])): ?>
+										— eliminated: <?= htmlspecialchars($choices_by_id[$rd['eliminated']]['label'] ?? '#'.$rd['eliminated']) ?>
+									<?php elseif (!empty($rd['winner'])): ?>
+										— <strong>winner: <?= htmlspecialchars($choices_by_id[$rd['winner']]['label'] ?? '#'.$rd['winner']) ?></strong>
+									<?php elseif (!empty($rd['tie'])): ?>
+										— <strong>tie</strong>
+									<?php endif; ?>
+								</div>
+								<?php $rdTotal = array_sum($rd['counts'] ?? []); ?>
+								<?php foreach (($rd['counts'] ?? []) as $cid => $n): ?>
+									<div class="vtp-bar"><div class="vtp-bar-label"><?= htmlspecialchars($choices_by_id[$cid]['label'] ?? '#'.$cid) ?></div>
+										<div class="vtp-bar-track"><div class="vtp-bar-fill <?= !empty($rd['winner']) && $rd['winner'] == $cid ? 'vtp-winner' : '' ?>" style="width:<?= $rdTotal > 0 ? round(($n/$rdTotal)*100) : 0 ?>%"></div></div>
+										<div class="vtp-bar-count"><?= (int)$n ?></div></div>
+								<?php endforeach; ?>
+								<?php if (!empty($rd['exhausted_this_round'])): ?>
+									<div style="font-size:11px;color:#718096;margin-top:4px;"><?= (int)$rd['exhausted_this_round'] ?> ballot(s) exhausted this round</div>
+								<?php endif; ?>
+							</div>
+						<?php endforeach; ?>
+					</div>
+					<?php if ($result['outcome'] === 'win'):
+						$winner_label = $choices_by_id[$result['winner_choice_id']]['label'] ?? '#'.$result['winner_choice_id']; ?>
+						<div class="vtp-winner-banner"><i class="fas fa-trophy"></i> Winner: <?= htmlspecialchars($winner_label) ?></div>
+					<?php elseif ($result['outcome'] === 'win_resolved'): ?>
+						<div class="vtp-winner-banner"><i class="fas fa-gavel"></i> Tie resolved: <?= htmlspecialchars($choices_by_id[$result['winner_choice_id']]['label'] ?? '#'.$result['winner_choice_id']) ?></div>
+					<?php else: ?>
+						<div class="vtp-tie-banner"><i class="fas fa-equals"></i> <?= htmlspecialchars($result['outcome']) ?></div>
+					<?php endif; ?>
+
+				<?php else:
+					// Plurality / majority
+					$counts = $result['counts'] ?? [];
+					$grand = array_sum($counts) + ($result['abstain'] ?? 0) + ($result['nota'] ?? 0);
+					foreach ($counts as $cid => $n):
+						$is_winner = !empty($result['winner_choice_id']) && (int)$result['winner_choice_id'] === (int)$cid;
+				?>
+					<div class="vtp-bar"><div class="vtp-bar-label"><?= htmlspecialchars($choices_by_id[$cid]['label'] ?? '#'.$cid) ?></div>
+						<div class="vtp-bar-track"><div class="vtp-bar-fill <?= $is_winner ? 'vtp-winner' : '' ?>" style="width:<?= $grand > 0 ? round(($n/$grand)*100) : 0 ?>%"></div></div>
+						<div class="vtp-bar-count"><?= (int)$n ?></div></div>
+				<?php endforeach;
+					if (!empty($result['abstain'])): ?>
+						<div class="vtp-bar"><div class="vtp-bar-label">Abstain</div>
+							<div class="vtp-bar-track"><div class="vtp-bar-fill" style="width:<?= $grand > 0 ? round(($result['abstain']/$grand)*100) : 0 ?>%;background:#a0aec0;"></div></div>
+							<div class="vtp-bar-count"><?= (int)$result['abstain'] ?></div></div>
+				<?php endif;
+					if ($result['outcome'] === 'win'): ?>
+						<div class="vtp-winner-banner"><i class="fas fa-trophy"></i> Winner: <?= htmlspecialchars($choices_by_id[$result['winner_choice_id']]['label'] ?? '#'.$result['winner_choice_id']) ?></div>
+					<?php elseif ($result['outcome'] === 'win_resolved'): ?>
+						<div class="vtp-winner-banner"><i class="fas fa-gavel"></i> Tie resolved: <?= htmlspecialchars($choices_by_id[$result['winner_choice_id']]['label'] ?? '#'.$result['winner_choice_id']) ?></div>
+					<?php else: ?>
+						<div class="vtp-tie-banner"><i class="fas fa-equals"></i> <?= htmlspecialchars($result['outcome']) ?></div>
+				<?php endif; endif; ?>
+			</div>
+		<?php endforeach; ?>
+	<?php endif; ?>
+</div>

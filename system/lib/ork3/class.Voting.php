@@ -417,13 +417,15 @@ class Voting extends Ork3 {
 		// Load races + choices for validation.
 		global $DB;
 		$DB->Clear();
-		$rs = $DB->DataSet("SELECT voting_race_id, race_type, voting_mode, allow_abstain, allow_none_of_above
-			FROM " . DB_PREFIX . "voting_race WHERE voting_event_id = " . $voting_event_id);
+		$rs = $DB->DataSet("SELECT r.voting_race_id, r.race_type, r.voting_mode, r.allow_abstain, r.allow_none_of_above,
+			(SELECT COUNT(*) FROM " . DB_PREFIX . "voting_choice WHERE voting_race_id = r.voting_race_id) AS choice_count
+			FROM " . DB_PREFIX . "voting_race r WHERE r.voting_event_id = " . $voting_event_id);
 		$races_by_id = [];
 		while ($rs && $rs->Next()) {
 			$races_by_id[(int)$rs->voting_race_id] = [
 				'race_type' => $rs->race_type, 'voting_mode' => $rs->voting_mode,
 				'allow_abstain' => (int)$rs->allow_abstain, 'allow_none_of_above' => (int)$rs->allow_none_of_above,
+				'choice_count' => (int)$rs->choice_count,
 			];
 		}
 
@@ -437,7 +439,11 @@ class Voting extends Ork3 {
 			$abst = !empty($vi['IsAbstain']);
 			$nota = !empty($vi['IsNoneOfAbove']);
 			if ($abst && empty($cfg['allow_abstain'])) return Failure(['Status' => 1, 'Error' => 'Abstain not allowed for race.', 'Detail' => '']);
-			if ($nota && empty($cfg['allow_none_of_above'])) return Failure(['Status' => 1, 'Error' => 'None-of-the-above not allowed for race.', 'Detail' => '']);
+			// Single-candidate position races render as confidence votes; the voter UI sends 'No' as IsNoneOfAbove,
+			// and the tally treats NOTA→No when no explicit 'No' choice exists. Bypass the allow_none_of_above
+			// check for that runtime-converted case.
+			$is_single_cand_position = ($cfg['race_type'] === 'position' && $cfg['choice_count'] === 1);
+			if ($nota && empty($cfg['allow_none_of_above']) && !$is_single_cand_position) return Failure(['Status' => 1, 'Error' => 'None-of-the-above not allowed for race.', 'Detail' => '']);
 		}
 
 		// ── Open transaction with FOR UPDATE on the active_ballot pointer (deadlock-safe).
@@ -947,6 +953,12 @@ class Voting extends Ork3 {
 		if (!empty($race['allow_none_of_above']) && $nota > 0 && !empty($race['nota_counts_as'])) {
 			if ($race['nota_counts_as'] === 'no')      $no += $nota;
 			if ($race['nota_counts_as'] === 'abstain') $abstain += $nota;
+			$nota = 0;
+		}
+		// Single-candidate position confidence: there is no explicit 'No' choice in the DB,
+		// so the voter UI represents 'No' as a NOTA vote. Always count those as No.
+		if ($no_id === null && $nota > 0) {
+			$no += $nota;
 			$nota = 0;
 		}
 		$outcome = 'tie';
