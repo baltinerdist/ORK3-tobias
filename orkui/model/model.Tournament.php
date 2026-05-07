@@ -80,6 +80,14 @@ class Model_Tournament extends Model {
 		return $this->Tournament->CreateTiebreakerMatch($request);
 	}
 
+	function create_round_robin_tiebreaker($request) {
+		return $this->Tournament->CreateRoundRobinTiebreaker($request);
+	}
+
+	function decline_round_robin_tiebreaker($request) {
+		return $this->Tournament->DeclineRoundRobinTiebreaker($request);
+	}
+
 	function record_ironman_win($request) {
 		return $this->Tournament->RecordIronmanWin($request);
 	}

@@ -139,6 +139,34 @@ class Controller_TournamentAjax extends Controller {
 				? json_encode(['status' => 0, 'matchId' => (int)($r['Detail'] ?? 0)])
 				: $this->modelError($r);
 
+		} elseif ($action === 'roundrobintiebreaker') {
+			$bracket_id = (int)($_POST['BracketId'] ?? 0);
+			if (!valid_id($bracket_id)) {
+				echo json_encode(['status' => 1, 'error' => 'BracketId required.']); exit;
+			}
+			$r = $this->Tournament->create_round_robin_tiebreaker([
+				'Token'        => $this->session->token,
+				'TournamentId' => $tournament_id,
+				'BracketId'    => $bracket_id,
+			]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0, 'detail' => $r['Detail']])
+				: $this->modelError($r);
+
+		} elseif ($action === 'roundrobindecline') {
+			$bracket_id = (int)($_POST['BracketId'] ?? 0);
+			if (!valid_id($bracket_id)) {
+				echo json_encode(['status' => 1, 'error' => 'BracketId required.']); exit;
+			}
+			$r = $this->Tournament->decline_round_robin_tiebreaker([
+				'Token'        => $this->session->token,
+				'TournamentId' => $tournament_id,
+				'BracketId'    => $bracket_id,
+			]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0, 'bracketId' => $bracket_id])
+				: $this->modelError($r);
+
 		} elseif ($action === 'completebracket') {
 			$bracket_id = (int)($_POST['BracketId'] ?? 0);
 			if (!valid_id($bracket_id)) {
