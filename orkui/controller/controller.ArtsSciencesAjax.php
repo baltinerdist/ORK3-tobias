@@ -210,6 +210,17 @@ class Controller_ArtsSciencesAjax extends Controller {
 				$req['Rules'] = $_POST['Rules'] ?? '[]';
 				$this->respond($this->unwrap($this->ArtsSciences->preview_award($req)));
 
+			// Award recommendations from the judging form
+			case 'rec.context':
+				$req['EntryId'] = $_POST['EntryId'] ?? $_GET['EntryId'] ?? 0;
+				$this->respond($this->unwrap($this->ArtsSciences->get_rec_context($req)));
+			case 'rec.save':
+				foreach (['EntryId','KingdomAwardId','Rank','Reason'] as $k) if (array_key_exists($k, $_POST)) $req[$k] = $_POST[$k];
+				$this->respond($this->unwrap($this->ArtsSciences->save_rec($req)));
+			case 'rec.delete':
+				$req['RecommendationsId'] = $_POST['RecommendationsId'] ?? 0;
+				$this->respond($this->unwrap($this->ArtsSciences->delete_rec($req)));
+
 			// Results
 			case 'results':
 				$this->respond($this->unwrap($this->ArtsSciences->compute_results($req)));

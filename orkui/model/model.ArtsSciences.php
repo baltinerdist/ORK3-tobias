@@ -41,6 +41,10 @@ class Model_ArtsSciences extends Model {
 	function save_award($request)          { return $this->AS->SaveAward($request); }
 	function delete_award($request)        { return $this->AS->DeleteAward($request); }
 
+	function get_rec_context($request)     { return $this->AS->GetRecContext($request); }
+	function save_rec($request)            { return $this->AS->SaveRec($request); }
+	function delete_rec($request)          { return $this->AS->DeleteRec($request); }
+
 	function compute_results($request)     { return $this->AS->ComputeResults($request); }
 	function preview_award($request)       { return $this->AS->PreviewAward($request); }
 

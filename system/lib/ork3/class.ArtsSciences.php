@@ -819,7 +819,11 @@ class ArtsSciences extends Ork3 {
 		if ($next < 1) $next = 1;
 		$this->db->Clear();
 		$this->Entry->entry_number = (string)$next;
-		if (!$this->Entry->save()) return ProcessingError('Failed to save entry.');
+		// yapo->save() returns an undefined variable, so we can't use its return value.
+		// After save() the row is reloaded into the active record; trust that and
+		// confirm by checking entry_id was populated.
+		$this->Entry->save();
+		if (!valid_id($this->Entry->entry_id ?? null)) return ProcessingError('Failed to save entry.');
 		return Success((int)$this->Entry->entry_id);
 	}
 
@@ -916,6 +920,125 @@ class ArtsSciences extends Ork3 {
 		$rs = $this->db->query("SELECT kingdom_id FROM " . DB_PREFIX . "as_competition WHERE competition_id = $cid LIMIT 1");
 		if ($rs && $rs->next()) return (int)$rs->kingdom_id;
 		return 0;
+	}
+
+	// ------------------------------------------------------------------
+	// Award recommendations from the judging form
+	// ------------------------------------------------------------------
+
+	// Authorize a judge-or-admin call. Returns the calling mundane_id on success, false otherwise.
+	private function check_judge_or_admin($Token, $competition_id) {
+		$mid = Ork3::$Lib->authorization->IsAuthorized($Token);
+		if (!valid_id($mid)) return false;
+		$kid = $this->competition_kingdom_id($competition_id);
+		if ($kid && Ork3::$Lib->authorization->HasAuthority($mid, AUTH_KINGDOM, $kid, AUTH_EDIT)) return $mid;
+		if ($this->is_judge($mid, $competition_id)) return $mid;
+		return false;
+	}
+
+	// Resolve an entry's artisan mundane_id. Returns 0 if unlinked / invalid.
+	private function entry_artisan_mundane_id($competition_id, $entry_id) {
+		$cid = (int)$competition_id;
+		$eid = (int)$entry_id;
+		$this->db->Clear();
+		$rs = $this->db->query("
+			SELECT p.mundane_id
+			FROM " . DB_PREFIX . "as_entry e
+			LEFT JOIN " . DB_PREFIX . "as_participant p ON p.participant_id = e.participant_id
+			WHERE e.entry_id = $eid AND e.competition_id = $cid
+			LIMIT 1
+		");
+		if (!$rs || !$rs->next()) return 0;
+		return $rs->mundane_id ? (int)$rs->mundane_id : 0;
+	}
+
+	// Returns everything the judging-form rec UI needs in a single round trip.
+	public function GetRecContext($request) {
+		$cid = (int)($request['CompetitionId'] ?? 0);
+		$eid = (int)($request['EntryId'] ?? 0);
+		if (!valid_id($cid) || !valid_id($eid)) return InvalidParameter();
+		$mid = $this->check_judge_or_admin($request['Token'], $cid);
+		if (!$mid) return NoAuthorization();
+
+		$artisan = $this->entry_artisan_mundane_id($cid, $eid);
+		if (!valid_id($artisan)) {
+			return Success(['ArtisanMundaneId' => null, 'AwardRanks' => new \stdClass(), 'ExistingRec' => null]);
+		}
+
+		// Awards held (max rank per global award_id); ignore revoked.
+		$this->db->Clear();
+		$rs = $this->db->query("
+			SELECT award_id, MAX(`rank`) AS max_rank
+			FROM " . DB_PREFIX . "awards
+			WHERE mundane_id = $artisan AND revoked = 0
+			GROUP BY award_id
+		");
+		$ranks = [];
+		while ($rs && $rs->next()) {
+			$aid = (int)$rs->award_id;
+			if ($aid > 0) $ranks[$aid] = (int)$rs->max_rank;
+		}
+
+		// Most-recent active rec by current user for this artisan.
+		$this->db->Clear();
+		$rs = $this->db->query("
+			SELECT r.recommendations_id, r.kingdomaward_id, r.award_id, r.`rank`, r.reason, r.date_recommended,
+			       ka.name AS award_name
+			FROM " . DB_PREFIX . "recommendations r
+			LEFT JOIN " . DB_PREFIX . "kingdomaward ka ON ka.kingdomaward_id = r.kingdomaward_id
+			WHERE r.mundane_id = $artisan
+			  AND r.recommended_by_id = $mid
+			  AND r.deleted_at IS NULL
+			ORDER BY r.recommendations_id DESC
+			LIMIT 1
+		");
+		$existing = null;
+		if ($rs && $rs->next()) {
+			$existing = [
+				'RecommendationsId' => (int)$rs->recommendations_id,
+				'KingdomAwardId'    => (int)$rs->kingdomaward_id,
+				'AwardId'           => (int)$rs->award_id,
+				'Rank'              => (int)$rs->rank,
+				'Reason'            => $rs->reason,
+				'AwardName'         => $rs->award_name,
+				'DateRecommended'   => $rs->date_recommended,
+			];
+		}
+
+		return Success([
+			'ArtisanMundaneId' => $artisan,
+			'AwardRanks'       => $ranks,
+			'ExistingRec'      => $existing,
+		]);
+	}
+
+	public function SaveRec($request) {
+		$cid = (int)($request['CompetitionId'] ?? 0);
+		$eid = (int)($request['EntryId'] ?? 0);
+		if (!valid_id($cid) || !valid_id($eid)) return InvalidParameter();
+		$mid = $this->check_judge_or_admin($request['Token'], $cid);
+		if (!$mid) return NoAuthorization();
+		$artisan = $this->entry_artisan_mundane_id($cid, $eid);
+		if (!valid_id($artisan)) return InvalidParameter('Entry has no linked player.');
+		return Ork3::$Lib->player->AddAwardRecommendation([
+			'Token'          => $request['Token'],
+			'MundaneId'      => $artisan,
+			'KingdomAwardId' => $request['KingdomAwardId'] ?? null,
+			'Rank'           => $request['Rank'] ?? 0,
+			'Reason'         => $request['Reason'] ?? '',
+		]);
+	}
+
+	public function DeleteRec($request) {
+		$cid = (int)($request['CompetitionId'] ?? 0);
+		if (!valid_id($cid)) return InvalidParameter();
+		$mid = $this->check_judge_or_admin($request['Token'], $cid);
+		if (!$mid) return NoAuthorization();
+		return Ork3::$Lib->player->DeleteAwardRecommendation([
+			'Token'             => $request['Token'],
+			'RecommendationsId' => $request['RecommendationsId'] ?? 0,
+			'RequestedBy'       => $mid,
+		]);
 	}
 
 	public function GetScores($request) {

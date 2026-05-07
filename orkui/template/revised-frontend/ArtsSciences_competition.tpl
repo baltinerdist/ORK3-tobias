@@ -148,6 +148,50 @@ html[data-theme="dark"] .as-tax-badge-inactive { background: rgba(255,255,255,0.
 .as-score-grid .as-score-value { font-weight: 700; color: #5a67d8; font-size: 1.05em; min-width: 36px; text-align: center; }
 .as-score-grid textarea { grid-column: 1 / -1; min-height: 50px; padding: 7px 9px; border: 1px solid var(--ork-border); border-radius: 6px; background: var(--ork-input-bg); color: var(--ork-text); font-size: 0.86em; resize: vertical; }
 
+/* Award recommendation block in the judging form */
+.as-rec-section { margin-top: 14px; padding: 12px 14px; border: 1px dashed var(--ork-border); border-radius: 8px; background: var(--ork-bg-secondary); }
+.as-rec-toggle { display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--ork-text); cursor: pointer; user-select: none; font-size: 0.92em; }
+.as-rec-toggle input { transform: scale(1.1); accent-color: #5a67d8; }
+.as-rec-no-mid { color: var(--ork-text-muted); font-size: 0.86em; font-style: italic; }
+.as-rec-loading { color: var(--ork-text-muted); font-size: 0.86em; font-style: italic; }
+.as-rec-panel { margin-top: 12px; display: grid; gap: 10px; }
+.as-rec-field label { display: block; font-weight: 600; font-size: 0.82em; color: var(--ork-text); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+.as-rec-field select, .as-rec-field input[type=text], .as-rec-field textarea {
+	width: 100%; padding: 7px 9px; border: 1px solid var(--ork-border);
+	border-radius: 6px; background: var(--ork-input-bg); color: var(--ork-text); font-size: 0.92em;
+}
+.as-rec-field textarea { min-height: 56px; resize: vertical; }
+.as-rec-char-count { display: block; margin-top: 4px; font-size: 0.78em; color: var(--ork-text-muted); }
+.as-rec-char-count.as-rec-char-warn { color: #d69e2e; font-weight: 600; }
+.as-rec-rank-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.as-rec-rank-pill {
+	min-width: 30px; padding: 4px 9px; border: 1px solid var(--ork-border);
+	border-radius: 999px; cursor: pointer; user-select: none; font-size: 0.85em; font-weight: 600;
+	background: var(--ork-input-bg); color: var(--ork-text); transition: background 0.12s, border-color 0.12s;
+}
+.as-rec-rank-pill:hover { border-color: #5a67d8; }
+.as-rec-rank-pill.as-rec-rank-held { background: #bee3f8; color: #2c5282; border-color: #90cdf4; }
+.as-rec-rank-pill.as-rec-rank-suggested { border-color: #38a169; box-shadow: inset 0 0 0 1px #38a169; }
+.as-rec-rank-pill.as-rec-rank-selected { background: #5a67d8; color: #fff; border-color: #5a67d8; }
+.as-rec-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.as-rec-error { color: #c53030; font-size: 0.85em; margin-top: 4px; }
+
+.as-rec-sealed { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 4px; }
+.as-rec-sealed .as-rec-sealed-icon { color: #38a169; font-size: 1.1em; }
+.as-rec-sealed .as-rec-sealed-text { font-size: 0.92em; color: var(--ork-text); flex: 1; }
+.as-rec-sealed .as-rec-sealed-text strong { color: var(--ork-text); }
+.as-rec-sealed .as-rec-sealed-meta { display: block; font-size: 0.8em; color: var(--ork-text-muted); margin-top: 2px; }
+.as-rec-withdraw {
+	background: transparent; border: none; color: #c53030; font-size: 0.82em; cursor: pointer;
+	text-decoration: underline; padding: 4px 6px;
+}
+.as-rec-withdraw:hover { color: #9b2c2c; }
+.as-rec-withdraw.as-rec-withdraw-confirm { background: #c53030; color: #fff; text-decoration: none; border-radius: 4px; padding: 4px 8px; }
+
+/* Dark mode tweaks for held pills (the soft blue is unreadable on dark bg). */
+.dark-mode .as-rec-rank-pill.as-rec-rank-held { background: #2a4365; color: #bee3f8; border-color: #2c5282; }
+.dark-mode .as-rec-section { background: rgba(255,255,255,0.03); }
+
 /* Modals */
 .as-modal-overlay {
 	position: fixed; inset: 0; background: rgba(0,0,0,0.5);
@@ -884,6 +928,11 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 	var SCORE_DEFAULT = <?= $scoringDefault ?>;
 	var SCORE_INCREMENT = <?= $scoringIncrement ?>;
 
+	// Award recommendations (judging form). Inlined kingdom award options + rec context cache.
+	var AS_REC_AWARD_OPTIONS_HTML = <?= json_encode('<option value="">Select award…</option>' . ($rec_award_options_html ?? '')) ?>;
+	var AS_REC_NOTE_MAX = 400;
+	var AS_REC_CTX_BY_ENTRY = {}; // EntryId -> {ArtisanMundaneId, AwardRanks, ExistingRec}
+
 	var ASApi = {
 		comp: function(action, data) {
 			var fd;
@@ -918,7 +967,14 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 	function activateTab(name) {
 		document.querySelectorAll('.as-tab-nav li').forEach(function(li){ li.classList.toggle('as-tab-active', li.getAttribute('data-astab') === name); });
 		document.querySelectorAll('.as-tab-panel').forEach(function(p){ p.style.display = p.id === 'as-tab-' + name ? '' : 'none'; });
-		var url = new URL(window.location.href); url.searchParams.set('tab', name); window.history.replaceState({}, '', url);
+		// Update only the `tab` param without re-serializing the whole query —
+		// URLSearchParams.set encodes '/' (turning Route=ArtsComp/3 into ArtsComp%2F3).
+		var search = window.location.search;
+		var enc = encodeURIComponent(name);
+		var newSearch = /[?&]tab=/.test(search)
+			? search.replace(/([?&]tab=)[^&]*/, '$1' + enc)
+			: search + (search ? '&' : '?') + 'tab=' + enc;
+		window.history.replaceState({}, '', window.location.pathname + newSearch + window.location.hash);
 		// Lazy loaders per tab
 		if (name === 'taxonomy')     loadTaxonomy();
 		if (name === 'participants') loadParticipants();
@@ -1580,11 +1636,13 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 						+ '<textarea placeholder="Feedback (optional)" data-cid-fb="' + c.CriterionId + '">' + escHtml(fb) + '</textarea>'
 						+ '</div>';
 				}).join('');
+				html += '<div class="as-rec-section" id="as-rec-section"><div class="as-rec-loading">Loading recommendation hooks…</div></div>';
 				html += '<div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="as-btn as-btn-primary" id="as-judging-save"><i class="fas fa-save"></i> Save Scores</button></div>';
 				host.innerHTML = html;
 				host.querySelectorAll('.as-judge-range').forEach(function(r){
 					r.addEventListener('input', function(){ host.querySelector('[data-cid-val="' + r.dataset.cid + '"]').textContent = fmtNum(r.value, 2); });
 				});
+				loadRecSection(eid, entry);
 				document.getElementById('as-judging-save').addEventListener('click', function(){
 					var ranges = host.querySelectorAll('.as-judge-range');
 					var saves = [];
@@ -1623,6 +1681,179 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 		if (nextBtn) nextBtn.addEventListener('click', function(){ judgingStep( 1); });
 		updateJudgingNavState();
 		render();
+	}
+
+	// --------- Award recommendation (inside the judging form) ---------
+	// Walk a taxonomy node up to its depth-0 root and return its LadderAwardId (or null).
+	function findRootLadderAwardId(taxId) {
+		if (!taxId) return null;
+		var byId = {}; TAX_FLAT.forEach(function(n){ byId[n.TaxonomyId] = n; });
+		var node = byId[taxId];
+		while (node && node.ParentId) node = byId[node.ParentId];
+		return node && node.LadderAwardId ? parseInt(node.LadderAwardId, 10) : null;
+	}
+
+	function loadRecSection(eid, entry) {
+		var host = document.getElementById('as-rec-section');
+		if (!host) return;
+		var fd = new FormData(); fd.append('EntryId', eid);
+		ASApi.comp('rec.context', fd).then(function(j){
+			if (j.status !== 0) {
+				host.innerHTML = '<div class="as-rec-no-mid">Could not load rec context: ' + escHtml(j.error || '') + '</div>';
+				return;
+			}
+			AS_REC_CTX_BY_ENTRY[eid] = j.result;
+			renderRecSection(eid, entry, j.result);
+		});
+	}
+
+	function renderRecSection(eid, entry, ctx) {
+		var host = document.getElementById('as-rec-section');
+		if (!host) return;
+		// 1) No linked player → can't recommend.
+		if (!ctx.ArtisanMundaneId) {
+			host.innerHTML = '<div class="as-rec-no-mid"><i class="fas fa-info-circle"></i> Award recommendations require a linked player profile. This participant is free-text only.</div>';
+			return;
+		}
+		// 2) Already sealed by current user → show pill + withdraw.
+		if (ctx.ExistingRec) {
+			var r = ctx.ExistingRec;
+			var rankLabel = r.Rank > 0 ? (' &middot; rank ' + r.Rank) : '';
+			host.innerHTML =
+				'<div class="as-rec-sealed">'
+				+   '<i class="fas fa-check-circle as-rec-sealed-icon"></i>'
+				+   '<div class="as-rec-sealed-text">'
+				+     '<strong>Award recommended</strong> &mdash; ' + escHtml(r.AwardName || '(unknown award)') + rankLabel
+				+     (r.Reason ? ('<span class="as-rec-sealed-meta">' + escHtml(r.Reason) + '</span>') : '')
+				+   '</div>'
+				+   '<button type="button" class="as-rec-withdraw" data-rid="' + r.RecommendationsId + '">Withdraw</button>'
+				+ '</div>';
+			var wd = host.querySelector('.as-rec-withdraw');
+			wd.addEventListener('click', function(){
+				if (wd.dataset.confirm !== '1') {
+					wd.dataset.confirm = '1';
+					wd.classList.add('as-rec-withdraw-confirm');
+					wd.textContent = 'Click again to confirm';
+					wd._t = setTimeout(function(){ wd.dataset.confirm = ''; wd.classList.remove('as-rec-withdraw-confirm'); wd.textContent = 'Withdraw'; }, 3000);
+					return;
+				}
+				clearTimeout(wd._t);
+				var fd2 = new FormData(); fd2.append('RecommendationsId', wd.dataset.rid);
+				ASApi.comp('rec.delete', fd2).then(function(j2){
+					if (j2.status !== 0) { alert('Withdraw failed: ' + (j2.error || '')); return; }
+					AS_REC_CTX_BY_ENTRY[eid] = null;
+					loadRecSection(eid, entry);
+				});
+			});
+			return;
+		}
+		// 3) Default — checkbox + collapsed form.
+		var ladderAwardId = findRootLadderAwardId(entry && entry.TaxonomyId);
+		host.innerHTML =
+			'<label class="as-rec-toggle"><input type="checkbox" id="as-rec-toggle"> <span><i class="fas fa-award" style="color:#5a67d8"></i> Recommend this artisan for an award?</span></label>'
+			+ '<div class="as-rec-panel" id="as-rec-panel" style="display:none">'
+			+   '<div class="as-rec-field"><label>Award</label><select id="as-rec-award">' + AS_REC_AWARD_OPTIONS_HTML + '</select></div>'
+			+   '<div class="as-rec-field" id="as-rec-rank-row" style="display:none">'
+			+     '<label>Rank <span style="color:var(--ork-text-muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:0.78em">— click to select; light blue = already held, green border = suggested; dark blue = selected</span></label>'
+			+     '<div class="as-rec-rank-pills" id="as-rec-rank-pills"></div>'
+			+     '<input type="hidden" id="as-rec-rank-val" value="">'
+			+   '</div>'
+			+   '<div class="as-rec-field"><label>Reason</label>'
+			+     '<input type="text" id="as-rec-reason" maxlength="' + AS_REC_NOTE_MAX + '" placeholder="Why does this work merit recognition?">'
+			+     '<span class="as-rec-char-count" id="as-rec-char-count">' + AS_REC_NOTE_MAX + ' characters remaining</span>'
+			+   '</div>'
+			+   '<div class="as-rec-error" id="as-rec-error" style="display:none"></div>'
+			+   '<div class="as-rec-actions"><button type="button" class="as-btn as-btn-primary" id="as-rec-send"><i class="fas fa-paper-plane"></i> Send Recommendation</button></div>'
+			+ '</div>';
+
+		var toggle = document.getElementById('as-rec-toggle');
+		var panel  = document.getElementById('as-rec-panel');
+		var awardSel = document.getElementById('as-rec-award');
+		var reason   = document.getElementById('as-rec-reason');
+		var charCt   = document.getElementById('as-rec-char-count');
+		var errBox   = document.getElementById('as-rec-error');
+		var sendBtn  = document.getElementById('as-rec-send');
+		var rankInp  = document.getElementById('as-rec-rank-val');
+
+		toggle.addEventListener('change', function(){
+			panel.style.display = toggle.checked ? '' : 'none';
+			// On first open, if entry's field is a ladder field, auto-pick that award.
+			if (toggle.checked && !awardSel.value && ladderAwardId) {
+				var opt = awardSel.querySelector('option[data-award-id="' + ladderAwardId + '"]');
+				if (opt) { awardSel.value = opt.value; awardSel.dispatchEvent(new Event('change')); }
+			}
+		});
+
+		awardSel.addEventListener('change', function(){
+			buildRecRankPills(awardSel.value, ctx.AwardRanks || {});
+		});
+
+		// Single delegated click handler for rank pills (the wrap node is reused on award change).
+		var pillsWrap = document.getElementById('as-rec-rank-pills');
+		pillsWrap.addEventListener('click', function(e){
+			var p = e.target.closest && e.target.closest('.as-rec-rank-pill');
+			if (!p) return;
+			pillsWrap.querySelectorAll('.as-rec-rank-pill').forEach(function(x){ x.classList.remove('as-rec-rank-selected'); });
+			p.classList.add('as-rec-rank-selected');
+			rankInp.value = p.dataset.rank;
+		});
+
+		reason.addEventListener('input', function(){
+			var remaining = AS_REC_NOTE_MAX - reason.value.length;
+			charCt.textContent = remaining + ' character' + (remaining === 1 ? '' : 's') + ' remaining';
+			charCt.classList.toggle('as-rec-char-warn', remaining < 50);
+		});
+
+		sendBtn.addEventListener('click', function(){
+			errBox.style.display = 'none';
+			if (!awardSel.value) { errBox.textContent = 'Pick an award.'; errBox.style.display = ''; return; }
+			if (!reason.value.trim()) { errBox.textContent = 'Add a reason.'; errBox.style.display = ''; return; }
+			var rankRow = document.getElementById('as-rec-rank-row');
+			if (rankRow.style.display !== 'none' && !rankInp.value) { errBox.textContent = 'Pick a rank.'; errBox.style.display = ''; return; }
+			sendBtn.disabled = true; sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…';
+			var fd = new FormData();
+			fd.append('EntryId',        eid);
+			fd.append('KingdomAwardId', awardSel.value);
+			fd.append('Rank',           rankInp.value || 0);
+			fd.append('Reason',         reason.value.trim());
+			ASApi.comp('rec.save', fd).then(function(j){
+				if (j.status !== 0) {
+					sendBtn.disabled = false; sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Send Recommendation';
+					errBox.textContent = j.error || 'Failed to send recommendation.';
+					errBox.style.display = '';
+					return;
+				}
+				AS_REC_CTX_BY_ENTRY[eid] = null;
+				loadRecSection(eid, entry);
+			});
+		});
+	}
+
+	function buildRecRankPills(kingdomAwardId, awardRanks) {
+		var row   = document.getElementById('as-rec-rank-row');
+		var wrap  = document.getElementById('as-rec-rank-pills');
+		var input = document.getElementById('as-rec-rank-val');
+		if (!row || !wrap || !input) return;
+		wrap.innerHTML = ''; input.value = ''; row.style.display = 'none';
+		if (!kingdomAwardId) return;
+		var opt = document.querySelector('#as-rec-award option[value="' + kingdomAwardId + '"]');
+		if (!opt || opt.getAttribute('data-is-ladder') !== '1') return;
+		row.style.display = '';
+		var baseAwardId = parseInt(opt.getAttribute('data-award-id'), 10) || 0;
+		var maxRank   = /zodiac/i.test(opt.textContent) ? 12 : 10;
+		var held      = baseAwardId ? (awardRanks[baseAwardId] || 0) : 0;
+		var suggested = Math.min(held + 1, maxRank);
+		for (var r = 1; r <= maxRank; r++) {
+			var pill = document.createElement('div');
+			pill.className = 'as-rec-rank-pill';
+			if (r <= held)       pill.classList.add('as-rec-rank-held');
+			if (r === suggested) pill.classList.add('as-rec-rank-suggested');
+			pill.textContent  = r;
+			pill.dataset.rank = r;
+			wrap.appendChild(pill);
+		}
+		var sug = wrap.querySelector('[data-rank="' + suggested + '"]');
+		if (sug) { sug.classList.add('as-rec-rank-selected'); input.value = suggested; }
 	}
 
 	<?php if ($canManage): ?>

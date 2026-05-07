@@ -5,6 +5,7 @@ class Controller_ArtsSciences extends Controller {
 	public function __construct($call = null, $id = null) {
 		parent::__construct($call, $id);
 		$this->load_model('Kingdom');
+		$this->load_model('Award');
 	}
 
 	public function index($kingdom_id = null) {
@@ -53,7 +54,7 @@ class Controller_ArtsSciences extends Controller {
 		$this->data['kingdom_name']  = $kn;
 		$this->data['menu']['kingdom']     = ['url' => UIR . 'Kingdom/profile/' . $kingdom_id, 'display' => $kn];
 		$this->data['menu']['as']          = ['url' => UIR . 'ArtsSciences/index/' . $kingdom_id, 'display' => 'Arts &amp; Sciences'];
-		$this->data['menu']['competition'] = ['url' => UIR . 'ArtsSciences/competition/' . $competition_id, 'display' => htmlspecialchars($competition['Name'], ENT_QUOTES)];
+		$this->data['menu']['competition'] = ['url' => UIR . 'ArtsComp/' . $competition_id, 'display' => htmlspecialchars($competition['Name'], ENT_QUOTES)];
 
 		$uid     = (int)($this->session->user_id ?? 0);
 		$isAdmin = $uid > 0 && Ork3::$Lib->authorization->HasAuthority($uid, AUTH_KINGDOM, $kingdom_id, AUTH_EDIT);
@@ -75,6 +76,12 @@ class Controller_ArtsSciences extends Controller {
 		$this->data['is_judge']        = $isJudge;
 		$this->data['self_judge_id']   = $selfJudgeId;
 		$this->data['results_bundle']  = $bundle;
+
+		// Award option HTML for the in-judging recommendation form (only fetched when
+		// the current user can use it — judges or admins). Cached server-side per kingdom.
+		$this->data['rec_award_options_html'] = ($isJudge || $isAdmin)
+			? (string)$this->Award->fetch_award_option_list($kingdom_id, 'Awards')
+			: '';
 	}
 
 	public function csv($competition_id = null) {

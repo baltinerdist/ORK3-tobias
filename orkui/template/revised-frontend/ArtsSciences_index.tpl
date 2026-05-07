@@ -184,7 +184,7 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 	<?php else: ?>
 		<div class="as-card-grid">
 			<?php foreach ($competitions as $c): ?>
-				<a class="as-comp-card" href="<?= UIR ?>ArtsSciences/competition/<?= (int)$c['CompetitionId'] ?>">
+				<a class="as-comp-card" href="<?= UIR ?>ArtsComp/<?= (int)$c['CompetitionId'] ?>">
 					<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
 						<div class="as-comp-title"><?= htmlspecialchars($c['Name']) ?></div>
 						<span class="as-status-pill as-status-<?= htmlspecialchars($c['Status']) ?>"><?= htmlspecialchars($c['Status']) ?></span>
@@ -288,7 +288,7 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 			.then(function(j){
 				console.log('[AS create]', j);
 				if (j.status === 0 && j.result) {
-					window.location = UIR + 'ArtsSciences/competition/' + j.result;
+					window.location = UIR + 'ArtsComp/' + j.result;
 				} else {
 					alert('Error: ' + (j.error || 'Unknown'));
 				}

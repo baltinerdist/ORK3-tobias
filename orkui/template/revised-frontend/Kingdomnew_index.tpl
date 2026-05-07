@@ -2583,7 +2583,7 @@ initEmailSpellCheck('kn-addplayer-email', 'kn-addplayer-email-suggestion');
 				host.innerHTML = list.map(function(c){
 					var color = statusColors[c.Status] || '#a0aec0';
 					var dateStr = c.StartDateTime ? new Date(c.StartDateTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
-					return '<a href=\"' + UIR + 'ArtsSciences/competition/' + c.CompetitionId + '\" '
+					return '<a href=\"' + UIR + 'ArtsComp/' + c.CompetitionId + '\" '
 						+ 'style=\"display:flex;flex-direction:column;gap:6px;padding:12px 14px;background:var(--ork-card-bg,#fff);border:1px solid var(--ork-border,#e2e8f0);border-left:4px solid ' + color + ';border-radius:8px;text-decoration:none;color:inherit;transition:transform 0.15s,box-shadow 0.15s\" '
 						+ 'onmouseover=\"this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 4px 12px rgba(0,0,0,0.08)\'\" '
 						+ 'onmouseout=\"this.style.transform=\'\';this.style.boxShadow=\'\'\">'
@@ -2633,7 +2633,7 @@ initEmailSpellCheck('kn-addplayer-email', 'kn-addplayer-email-suggestion');
 			.then(function(j){
 				console.log('[KN A&S create]', j);
 				if (j && j.status === 0 && j.result) {
-					window.location = UIR + 'ArtsSciences/competition/' + j.result;
+					window.location = UIR + 'ArtsComp/' + j.result;
 				} else {
 					fb.textContent = 'Error: ' + (j.error || 'Unknown'); fb.style.display = 'block'; fb.style.color = '#e53e3e';
 					btn.disabled = false;

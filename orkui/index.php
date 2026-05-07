@@ -65,6 +65,17 @@ foreach ($_legacyRedirects as $_old => $_new) {
     }
 }
 
+// Canonical short route for Arts & Sciences competitions: ArtsComp/{id}.
+// Old long route redirects to canonical; canonical rewrites internally to the
+// real controller without changing the URL.
+if (preg_match('#^ArtsSciences/competition/(\d+)$#i', $_REQUEST['Route'], $_m)) {
+    header('Location: ' . UIR . 'ArtsComp/' . $_m[1], true, 301);
+    exit;
+}
+if (preg_match('#^ArtsComp/(\d+)$#i', $_REQUEST['Route'], $_m)) {
+    $_REQUEST['Route'] = 'ArtsSciences/competition/' . $_m[1];
+}
+
 // Redirect Event/index/{id} to the kingdom event attendance report with the event name as filter
 if (preg_match('#^Event/index/(\d+)#i', $_REQUEST['Route'], $_m)) {
     $_event_id = (int)$_m[1];
