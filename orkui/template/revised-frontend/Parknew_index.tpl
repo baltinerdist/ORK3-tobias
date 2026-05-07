@@ -453,6 +453,24 @@
 		</div>
 		<?php endif; ?>
 
+		<!-- Voting -->
+		<?php
+			$pk_voting_count = 0;
+			try {
+				if (class_exists('Voting')) {
+					$_v = new Voting();
+					$pk_voting_count = (int)($_v->CountActiveEvents(['ScopeType' => 'park', 'ScopeId' => (int)$park_id])['Count'] ?? 0);
+				}
+			} catch (Throwable $_e) { $pk_voting_count = 0; }
+		?>
+		<div class="pk-card">
+			<h4 class="kn-bare-heading"><i class="fas fa-vote-yea"></i> Voting</h4>
+			<a href="<?= UIR ?>Voting/index/Park_<?= (int)$park_id ?>" style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#3182ce;color:#fff;border-radius:6px;text-decoration:none;font-weight:600;font-size:13px;">
+				<span><?= $pk_voting_count > 0 ? 'View Active Events' : 'Voting Events' ?></span>
+				<?php if ($pk_voting_count > 0): ?><span style="background:rgba(255,255,255,0.25);padding:2px 8px;border-radius:999px;font-size:11px;"><?= $pk_voting_count ?> active</span><?php else: ?><i class="fas fa-arrow-right" style="opacity:0.7"></i><?php endif; ?>
+			</a>
+		</div>
+
 		<!-- Quick Links -->
 		<div class="pk-card">
 			<h4 class="kn-bare-heading"><i class="fas fa-link"></i> Quick Links</h4>
