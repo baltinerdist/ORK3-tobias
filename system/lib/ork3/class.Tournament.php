@@ -286,6 +286,7 @@ class Tournament extends Ork3 {
 					'Status'          => $r->status,
 					'DurationMinutes' => (int)$r->duration_minutes,
 					'BestOf'          => (int)$r->best_of,
+					'TiebreakerDeclined' => (int)$r->tiebreaker_declined,
 				];
 			}
 		}
@@ -1631,6 +1632,134 @@ class Tournament extends Ork3 {
 		}
 
 		$this->db->query('UPDATE ' . DB_PREFIX . 'bracket SET status = \'finalized\' WHERE bracket_id = ' . $bracket_id);
+		return Success($bracket_id);
+	}
+
+
+	/**
+	 * Returns the participant IDs currently tied at rank 1 in a Round Robin
+	 * bracket, considering every resolved match in the bracket (regular +
+	 * any prior tiebreaker rounds). Used by the RR tiebreaker flow to
+	 * decide whether to surface the banner and which players to pair up.
+	 *
+	 * Returns [] if fewer than 2 players are tied at the top, or if the
+	 * bracket isn't a round robin.
+	 */
+	private function getRoundRobinTopTied($bracket_id) {
+		$bracket_id = (int)$bracket_id;
+		$mr = $this->db->query("SELECT method FROM " . DB_PREFIX . "bracket WHERE bracket_id = $bracket_id");
+		if (!$mr || !$mr->next() || $mr->method !== 'round-robin') return [];
+
+		$tr = $this->db->query("SELECT tournament_id FROM " . DB_PREFIX . "bracket WHERE bracket_id = $bracket_id");
+		$tid = ($tr && $tr->next()) ? (int)$tr->tournament_id : 0;
+
+		$resp = $this->GetStandings(['BracketId' => $bracket_id, 'TournamentId' => $tid]);
+		if ($resp['Status'] != 0) return [];
+		$standings = $resp['Detail'];
+		if (count($standings) < 2) return [];
+
+		// GetStandings already sorts by Points DESC, Losses ASC and assigns competition Rank
+		$tied = [];
+		foreach ($standings as $s) {
+			if ((int)($s['Rank'] ?? 0) === 1) {
+				$tied[] = (int)$s['ParticipantId'];
+			} else {
+				break;
+			}
+		}
+		return count($tied) >= 2 ? $tied : [];
+	}
+
+	/**
+	 * CreateRoundRobinTiebreaker($request)
+	 * For a Round Robin bracket where 2+ players are tied at rank 1, generates
+	 * a mini round-robin among the tied players. Each pair plays one match
+	 * inheriting the parent bracket's Best-of-N. Tiebreaker matches use
+	 * bracket_side='tiebreaker' and round = max(round)+1, so cascading
+	 * tiebreakers stack without any extra schema.
+	 *
+	 * Request: Token, TournamentId, BracketId
+	 */
+	public function CreateRoundRobinTiebreaker($request) {
+		if (!$this->check_auth($request)) return NoAuthorization();
+
+		$bracket_id = (int)($request['BracketId'] ?? 0);
+		if (!valid_id($bracket_id)) return InvalidParameter('BracketId required');
+
+		$tournament_id = (int)($request['TournamentId'] ?? 0);
+
+		$this->Bracket->clear();
+		$this->Bracket->bracket_id = $bracket_id;
+		if (!$this->Bracket->find()) return InvalidParameter('Bracket not found');
+		if ($this->Bracket->method !== 'round-robin') return InvalidParameter('Not a round-robin bracket');
+		if ((int)$this->Bracket->tiebreaker_declined === 1) return InvalidParameter('Tiebreaker has already been declined for this bracket');
+
+		// All matches must be resolved (no in-progress matches anywhere in the bracket)
+		$unresolved = $this->db->query("SELECT COUNT(*) AS cnt FROM " . DB_PREFIX . "match
+			WHERE bracket_id = $bracket_id AND (result IS NULL OR result = '') AND participant_1_id > 0 AND participant_2_id > 0");
+		if ($unresolved && $unresolved->next() && (int)$unresolved->cnt > 0) {
+			return InvalidParameter('Cannot start tiebreaker — ' . (int)$unresolved->cnt . ' match(es) still unresolved');
+		}
+
+		$tied = $this->getRoundRobinTopTied($bracket_id);
+		if (count($tied) < 2) return InvalidParameter('No first-place tie to break');
+
+		// Compute next round number and order
+		$maxRR = $this->db->query("SELECT MAX(round) AS r, MAX(`order`) AS o FROM " . DB_PREFIX . "match WHERE bracket_id = $bracket_id");
+		if (!$maxRR || !$maxRR->next()) return InvalidParameter('No matches found in bracket');
+		$next_round = (int)$maxRR->r + 1;
+		$next_order = (int)$maxRR->o + 1;
+
+		// Snapshot Best-of-N from the parent bracket. This is set per-match implicitly
+		// because the match table doesn't carry a best_of column — the bracket-level
+		// best_of applies at result-recording time. We don't need to copy it here.
+
+		// Insert one match per pair of tied players
+		$match_num = 1;
+		$count = count($tied);
+		for ($i = 0; $i < $count; $i++) {
+			for ($j = $i + 1; $j < $count; $j++) {
+				$this->insert_match($bracket_id, $tournament_id, $next_round, $match_num, $next_order, $tied[$i], $tied[$j], 'tiebreaker');
+				$match_num++;
+				$next_order++;
+			}
+		}
+
+		// Reopen the bracket — status returns to 'active' so result recording can proceed
+		$this->db->query("UPDATE " . DB_PREFIX . "bracket SET status = 'active' WHERE bracket_id = $bracket_id");
+
+		return Success(['Round' => $next_round, 'TiedCount' => $count, 'MatchesCreated' => ($count * ($count - 1)) / 2]);
+	}
+
+	/**
+	 * DeclineRoundRobinTiebreaker($request)
+	 * Organizer accepts joint winners. Sets a sticky flag so the banner
+	 * doesn't re-surface on reload, and finalizes the bracket. The standings
+	 * function already produces shared rank-1 with next rank skipping, so
+	 * no rank rewrite is needed here.
+	 *
+	 * Request: Token, TournamentId, BracketId
+	 */
+	public function DeclineRoundRobinTiebreaker($request) {
+		if (!$this->check_auth($request)) return NoAuthorization();
+
+		$bracket_id = (int)($request['BracketId'] ?? 0);
+		if (!valid_id($bracket_id)) return InvalidParameter('BracketId required');
+
+		$this->Bracket->clear();
+		$this->Bracket->bracket_id = $bracket_id;
+		if (!$this->Bracket->find()) return InvalidParameter('Bracket not found');
+		if ($this->Bracket->method !== 'round-robin') return InvalidParameter('Not a round-robin bracket');
+
+		// All matches must be resolved before declining
+		$unresolved = $this->db->query("SELECT COUNT(*) AS cnt FROM " . DB_PREFIX . "match
+			WHERE bracket_id = $bracket_id AND (result IS NULL OR result = '') AND participant_1_id > 0 AND participant_2_id > 0");
+		if ($unresolved && $unresolved->next() && (int)$unresolved->cnt > 0) {
+			return InvalidParameter('Cannot decline tiebreaker with unresolved matches (' . (int)$unresolved->cnt . ' remaining)');
+		}
+
+		$this->db->query("UPDATE " . DB_PREFIX . "bracket SET tiebreaker_declined = 1, status = 'finalized' WHERE bracket_id = $bracket_id");
+
 		return Success($bracket_id);
 	}
 

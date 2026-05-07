@@ -328,6 +328,8 @@ $heroStyles = array_keys($heroStyles);
 .tn-bv-round-btn { padding:4px 12px; border-radius:20px; font-size:12px; font-weight:600; border:1px solid #e2e8f0; background:#fff; color:#718096; cursor:pointer; }
 .tn-bv-round-btn.active { background:#276749; color:#fff; border-color:#276749; }
 .tn-bv-round-btn.tn-rr-complete:not(.active) { background:#3182ce; color:#fff; border-color:#2b6cb0; }
+.tn-bv-round-btn.tn-bv-round-btn-tb:not(.active) { background:#fffaf0; color:#c05621; border-color:#fbd38d; }
+.tn-bv-round-btn.tn-bv-round-btn-tb.active { background:#dd6b20; color:#fff; border-color:#dd6b20; }
 @keyframes tn-pill-pulse { 0%,100% { box-shadow:0 0 0 0 rgba(49,130,206,0); } 50% { box-shadow:0 0 0 5px rgba(49,130,206,0.38); } }
 .tn-bv-round-btn.tn-rr-next-pulse { animation:tn-pill-pulse 1.4s ease-in-out 3; }
 .tn-bv-round-section { }
@@ -680,7 +682,8 @@ $heroStyles = array_keys($heroStyles);
 .tn-bv-zoom-btn { width:28px; height:28px; border-radius:6px; border:1px solid #e2e8f0; background:#fff; color:#718096; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; transition:background .15s,color .15s; }
 .tn-bv-zoom-btn:hover { background:#f0fff4; color:#276749; border-color:#276749; }
 .tn-bv-zoom-level { font-size:11px; color:#a0aec0; min-width:36px; text-align:center; }
-.tn-bv-section-hdr.tiebreaker-3rd { border-left:3px solid #dd6b20; background:#fffaf0; color:#c05621; }
+.tn-bv-section-hdr.tiebreaker-3rd,
+.tn-bv-section-hdr.tiebreaker-rr { border-left:3px solid #dd6b20; background:#fffaf0; color:#c05621; }
 .tn-bv-losers-compact .tn-bv-round { min-width:160px; padding:0 8px; }
 .tn-bv-losers-compact .tn-bv-match { margin:3px 0; }
 .tn-bv-losers-compact .tn-bv-slot { padding:4px 8px; font-size:12px; min-height:28px; }
@@ -966,6 +969,8 @@ html[data-theme="dark"] .tn-bk-pill.tn-bk-pill-active { background:#38a169; bord
 html[data-theme="dark"] .tn-bv-round-btn { background:#2d3748; border-color:#4a5568; color:#a0aec0; }
 html[data-theme="dark"] .tn-bv-round-btn.active { background:#38a169; color:#fff; border-color:#68d391; }
 html[data-theme="dark"] .tn-bv-round-btn.tn-rr-complete:not(.active) { background:#3182ce; border-color:#4299e1; }
+html[data-theme="dark"] .tn-bv-round-btn.tn-bv-round-btn-tb:not(.active) { background:rgba(221,107,32,0.18); color:#fbd38d; border-color:rgba(221,107,32,0.5); }
+html[data-theme="dark"] .tn-bv-round-btn.tn-bv-round-btn-tb.active { background:#dd6b20; color:#fff; border-color:#dd6b20; }
 
 /* Section headers */
 html[data-theme="dark"] .tn-bv-section-label { color:#a0aec0; border-bottom-color:#4a5568; }
@@ -1061,7 +1066,8 @@ html[data-theme="dark"] .tn-bv-champion-park { color:#744210; }
 html[data-theme="dark"] .tn-bv-zoom-btn { background:#2d3748; border-color:#4a5568; color:#a0aec0; }
 html[data-theme="dark"] .tn-bv-zoom-btn:hover { background:rgba(56,161,105,0.18); color:#9ae6b4; border-color:#68d391; }
 html[data-theme="dark"] .tn-bv-zoom-level { color:#718096; }
-html[data-theme="dark"] .tn-bv-section-hdr.tiebreaker-3rd { background:rgba(221,107,32,0.2); color:#fbd38d; border-left-color:#dd6b20; }
+html[data-theme="dark"] .tn-bv-section-hdr.tiebreaker-3rd,
+html[data-theme="dark"] .tn-bv-section-hdr.tiebreaker-rr { background:rgba(221,107,32,0.2); color:#fbd38d; border-left-color:#dd6b20; }
 
 /* Status menu / autocomplete dropdown */
 html[data-theme="dark"] .tn-status-btn { color:#718096; }
@@ -5540,6 +5546,18 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 			if (r > maxRound) maxRound = r;
 		});
 
+		// Tiebreaker rounds: any round whose matches are all bracket_side='tiebreaker'.
+		// Numbered TB1, TB2, ... in order. Regular rounds keep their numeric label.
+		var tbRoundIndex = {}; // round_num => 1-based tb index
+		var tbCount = 0;
+		for (var _rN = 1; _rN <= maxRound; _rN++) {
+			var _rms = rounds[_rN] || [];
+			if (_rms.length > 0 && _rms.every(function(m) { return m.BracketSide === 'tiebreaker'; })) {
+				tbCount++;
+				tbRoundIndex[_rN] = tbCount;
+			}
+		}
+
 		// Header: view toggle
 		var headerRow = document.createElement('div');
 		headerRow.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap';
@@ -5638,7 +5656,12 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 				btn.className = 'tn-bv-round-btn' + (round === _activeRound ? ' active' : '');
 				var rMatches = rounds[round] || [];
 				var rDone = rMatches.filter(function(m) { return m.Result && m.Result !== ''; }).length;
-				btn.textContent = 'Round ' + round + ' ';
+				if (tbRoundIndex[round]) {
+					btn.textContent = 'TB' + tbRoundIndex[round] + ' ';
+					btn.classList.add('tn-bv-round-btn-tb');
+				} else {
+					btn.textContent = 'Round ' + round + ' ';
+				}
 				var countBadge = document.createElement('span');
 				countBadge.className = 'tn-rr-round-count';
 				countBadge.textContent = rDone + '/' + rMatches.length;
@@ -5663,6 +5686,24 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 				section.className = 'tn-bv-round-section';
 				section.dataset.round = round;
 				section.style.display = round === _activeRound ? '' : 'none';
+
+				// Tiebreaker section header
+				if (tbRoundIndex[round]) {
+					var tbHdr = document.createElement('div');
+					tbHdr.className = 'tn-bv-section-hdr tiebreaker-rr';
+					var tiedNames = (rounds[round] || []).reduce(function(acc, m) {
+						[m.Participant1Id, m.Participant2Id].forEach(function(pid) {
+							var p = pMap[pid];
+							var nm = p ? (p.Alias || p.Persona || ('#' + pid)) : ('#' + pid);
+							if (acc.indexOf(nm) === -1) acc.push(nm);
+						});
+						return acc;
+					}, []);
+					tbHdr.innerHTML = '<i class="fas fa-medal"></i> Tiebreaker Round ' + tbRoundIndex[round] +
+						' <span style="font-weight:600;opacity:0.8;text-transform:none;letter-spacing:0;font-size:11px;margin-left:6px;">— Mini Round-Robin: ' + tnEsc(tiedNames.join(', ')) + '</span>';
+					section.appendChild(tbHdr);
+				}
+
 				var body = document.createElement('div');
 				body.className = 'tn-rr-round-body';
 				var rMatches = (rounds[round] || []).sort(function(a,b) { return (a.Order||0)-(b.Order||0); });
@@ -5730,6 +5771,77 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 			var bracketSt = bd0 && bd0.Bracket ? (bd0.Bracket.Status || '') : '';
 			if (bracketSt === 'complete' || bracketSt === 'finalized') {
 				renderRRChampionBanner(container, stdRows, pMap);
+			}
+
+			// ── First-place tiebreaker banner ─────────────────────────────────────
+			// Show when bracket is complete, 2+ players tied at rank 1, organizer
+			// hasn't already declined, and there are no in-progress tiebreaker matches.
+			if (TnConfig.canManage && bracketSt === 'complete') {
+				var bdTb = TnConfig.bracketData[bracketId];
+				var bracketRow = bdTb && bdTb.Bracket ? bdTb.Bracket : {};
+				var declined = parseInt(bracketRow.TiebreakerDeclined || 0) === 1;
+				// Tied at rank 1 — group by shared rank from renderEnhancedStandings
+				var topTied = (function() {
+					if (!stdRows || stdRows.length < 2) return [];
+					var grp = stdRows.filter(function(r) { return r.rank === 1; });
+					return grp.length >= 2 ? grp : [];
+				})();
+				if (!declined && topTied.length >= 2) {
+					var tbBanner = document.createElement('div');
+					tbBanner.className = 'tn-gf-confirm-banner';
+					var nameList = topTied.map(function(s) {
+						var pi = pMap[s.p];
+						return tnEsc(pi ? (pi.Alias || pi.Persona || ('#' + s.p)) : ('#' + s.p));
+					}).join(', ');
+					tbBanner.innerHTML =
+						'<div class="tn-gf-confirm-text"><i class="fas fa-medal"></i> ' +
+							'<strong>' + topTied.length + ' players are tied for 1st place</strong> (' + nameList + '). ' +
+							'Run a tiebreaker round?</div>' +
+						'<div class="tn-gf-confirm-btns">' +
+							'<button class="tn-gf-confirm-yes"><i class="fas fa-check-circle"></i> Yes, Run Tiebreaker</button>' +
+							'<button class="tn-gf-confirm-no"><i class="fas fa-handshake"></i> No, Joint Winners</button>' +
+						'</div>';
+					container.insertBefore(tbBanner, container.firstChild);
+
+					var tidRR = TnConfig.tournamentId;
+					var refreshTb = function() {
+						Promise.all([
+							fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bracketId + '/matches').then(function(r) { return r.json(); }),
+							fetch(TnConfig.uir + 'TournamentAjax/tournament/' + tidRR + '/brackets').then(function(r) { return r.json(); })
+						]).then(function(results) {
+							var mData = results[0], bData = results[1];
+							if (mData.status === 0 && TnConfig.bracketData[bracketId]) TnConfig.bracketData[bracketId].Matches = mData.matches || [];
+							if (bData.status === 0 && bData.brackets && TnConfig.bracketData[bracketId]) {
+								var br = bData.brackets.find(function(b) { return parseInt(b.BracketId) === parseInt(bracketId); });
+								if (br) TnConfig.bracketData[bracketId].Bracket = br;
+							}
+							tnRenderBracketViz(bracketId);
+						}).catch(function(err) { alert('Refresh error: ' + err); });
+					};
+
+					tbBanner.querySelector('.tn-gf-confirm-yes').onclick = function() {
+						var fd = new FormData();
+						fd.append('BracketId', bracketId);
+						fetch(TnConfig.uir + 'TournamentAjax/tournament/' + tidRR + '/roundrobintiebreaker', { method:'POST', body:fd })
+							.then(function(r) { return r.json(); })
+							.then(function(d) {
+								if (d.status === 0) refreshTb();
+								else alert('Error: ' + (d.error || 'Unknown error'));
+							}).catch(function(err) { alert('Request failed: ' + err); });
+					};
+
+					tbBanner.querySelector('.tn-gf-confirm-no').onclick = function() {
+						if (!confirm('Accept ' + topTied.length + ' joint winners at 1st place? Next ranked player will be at ' + (topTied.length + 1) + 'th. This cannot be undone from the UI.')) return;
+						var fd = new FormData();
+						fd.append('BracketId', bracketId);
+						fetch(TnConfig.uir + 'TournamentAjax/tournament/' + tidRR + '/roundrobindecline', { method:'POST', body:fd })
+							.then(function(r) { return r.json(); })
+							.then(function(d) {
+								if (d.status === 0) refreshTb();
+								else alert('Error: ' + (d.error || 'Unknown error'));
+							}).catch(function(err) { alert('Request failed: ' + err); });
+					};
+				}
 			}
 		}
 	}
