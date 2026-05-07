@@ -107,6 +107,12 @@ $heroStyles = array_keys($heroStyles);
 .tn-hero-right { flex-shrink:0; display:flex; align-items:flex-start; }
 .tn-hero-actions { display:flex; flex-direction:column; gap:8px; }
 
+/* Playtest warning */
+.tn-playtest-warn { display:flex; align-items:flex-start; gap:10px; margin:14px 0 0; padding:11px 14px; background:#fffaf0; border:1px solid #fbd38d; border-left:4px solid #dd6b20; border-radius:8px; color:#7b341e; font-size:13px; line-height:1.45; }
+.tn-playtest-warn-icon { font-size:16px; color:#dd6b20; flex-shrink:0; margin-top:2px; }
+.tn-playtest-warn-text { flex:1; }
+.tn-playtest-warn-text strong { color:#7b341e; font-weight:700; }
+
 /* Stats row */
 .tn-stats-row { display:flex; gap:12px; padding:14px 0; flex-wrap:wrap; }
 .tn-stat-card { flex:1; min-width:120px; background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:14px 12px; text-align:center; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
@@ -821,6 +827,11 @@ html[data-theme="dark"] {
 /* Hero (already dark gradient) — only adjust translucent text */
 html[data-theme="dark"] .tn-hero-icon { background:rgba(255,255,255,0.08); border-color:rgba(255,255,255,0.18); }
 
+/* Playtest warning */
+html[data-theme="dark"] .tn-playtest-warn { background:rgba(221,107,32,0.15); border-color:rgba(221,107,32,0.5); border-left-color:#dd6b20; color:#fbd38d; }
+html[data-theme="dark"] .tn-playtest-warn-icon { color:#f6ad55; }
+html[data-theme="dark"] .tn-playtest-warn-text strong { color:#fbd38d; }
+
 /* Stats row */
 html[data-theme="dark"] .tn-stat-card { background:#2d3748; border-color:#4a5568; box-shadow:0 1px 3px rgba(0,0,0,0.3); }
 html[data-theme="dark"] .tn-stat-card-link:hover { border-color:#68d391; box-shadow:0 2px 8px rgba(104,211,145,0.2); }
@@ -1188,6 +1199,17 @@ html[data-theme="dark"] .tn-bv-podium-card[style*="background:#f7fafc"] { backgr
 			</div>
 		</div>
 		<?php endif; ?>
+	</div>
+</div>
+
+<!-- =============================================
+     Playtest warning
+     ============================================= -->
+<div class="tn-playtest-warn" role="alert">
+	<i class="fas fa-flask tn-playtest-warn-icon" aria-hidden="true"></i>
+	<div class="tn-playtest-warn-text">
+		<strong>The Amtgard ORK Tournament module is currently in open playtesting.</strong>
+		Use at your own risk: your tournaments may not record as expected, standings may not calculate properly, bugs may impact your brackets or data. You've been warned!
 	</div>
 </div>
 
