@@ -248,34 +248,53 @@ class Controller_VotingAjax extends Controller {
 
 	// ──────────────────── Player searches (kn-ac-results format) ────────────────────
 
-	public function candidate_search($scope_type = null, $scope_id = null) {
+	public function candidate_search($scope = null) {
 		$this->require_login();
-		// q can come from $_GET (e.g. "?q=foo"), or from $this->request->q if Smarty parsed it.
+		// $scope is "Kingdom_10" or "Park_5" — single arg from the route system (4-part URLs collapse to one).
+		$parts = explode('_', (string)$scope, 2);
+		$scope_type = $parts[0] ?? '';
+		$scope_id = (int)($parts[1] ?? 0);
+		if (!in_array($scope_type, ['Kingdom', 'Park']) || !$scope_id) { $this->ok(['results' => []]); }
+
+		// q can come from $_GET (e.g. "&q=foo"), or from $this->request->q if Smarty parsed it.
 		$q = trim($_GET['q'] ?? ($this->request->q ?? ''));
 		if (strlen($q) < 2) { $this->ok(['results' => []]); }
 
 		global $DB;
 		// Inline LIKE escape — same pattern as KingdomAjax/playersearch (yapo's DataSet does not support `?` bindings).
 		$term = str_replace(["'", '%', '_', '\\'], ["''", '\\%', '\\_', '\\\\'], $q);
-		$scope_clause = '';
-		if (strcasecmp((string)$scope_type, 'Kingdom') === 0) {
-			$scope_clause = " AND m.kingdom_id = " . (int)$scope_id;
-		} else if (strcasecmp((string)$scope_type, 'Park') === 0) {
-			$scope_clause = " AND m.park_id = " . (int)$scope_id;
+
+		// Scope: park-level pages search the park's players first, then fall back to the parent kingdom's players.
+		// Kingdom-level pages stay within the kingdom. Never bleed across kingdoms by default.
+		$kingdom_id = 0;
+		$park_id = 0;
+		if ($scope_type === 'Kingdom') {
+			$kingdom_id = $scope_id;
+		} else { // Park
+			$park_id = $scope_id;
+			$DB->Clear();
+			$rs = $DB->DataSet("SELECT kingdom_id FROM " . DB_PREFIX . "park WHERE park_id = " . $park_id . " LIMIT 1");
+			if ($rs && $rs->Next()) $kingdom_id = (int)$rs->kingdom_id;
 		}
+		if (!$kingdom_id) { $this->ok(['results' => []]); }
+
+		$park_priority = $park_id > 0
+			? "(CASE WHEN m.park_id = {$park_id} THEN 0 ELSE 1 END), "
+			: '';
 
 		$sql = "SELECT m.mundane_id, m.username, m.persona, m.given_name, m.surname,
-				k.abbreviation AS k_abbr, p.abbreviation AS p_abbr
+				k.abbreviation AS k_abbr, p.abbreviation AS p_abbr,
+				m.kingdom_id, m.park_id
 			FROM " . DB_PREFIX . "mundane m
 			LEFT JOIN " . DB_PREFIX . "kingdom k ON k.kingdom_id = m.kingdom_id
 			LEFT JOIN " . DB_PREFIX . "park p ON p.park_id = m.park_id
 			WHERE m.suspended = 0 AND m.active = 1
-			  " . $scope_clause . "
-			  AND (m.persona  LIKE '%{$term}%'
+			  AND m.kingdom_id = {$kingdom_id}
+			  AND (m.persona    LIKE '%{$term}%'
 			    OR m.given_name LIKE '%{$term}%'
 			    OR m.surname    LIKE '%{$term}%'
 			    OR m.username   LIKE '%{$term}%')
-			ORDER BY (m.persona LIKE '{$term}%') DESC, m.persona
+			ORDER BY {$park_priority}(m.persona LIKE '{$term}%') DESC, m.persona
 			LIMIT 15";
 
 		$DB->Clear();
@@ -305,7 +324,7 @@ class Controller_VotingAjax extends Controller {
 		$DB->Clear();
 		$rs = $DB->DataSet("SELECT scope_type, scope_id FROM " . DB_PREFIX . "voting_event WHERE voting_event_id = " . $voting_event_id . " LIMIT 1");
 		if (!$rs || !$rs->Next()) $this->fail('Event not found.');
-		// Reuse candidate_search semantics — same scoped player lookup.
-		$this->candidate_search(ucfirst($rs->scope_type), (int)$rs->scope_id);
+		// Reuse candidate_search — single combined-arg signature.
+		$this->candidate_search(ucfirst($rs->scope_type) . '_' . (int)$rs->scope_id);
 	}
 }

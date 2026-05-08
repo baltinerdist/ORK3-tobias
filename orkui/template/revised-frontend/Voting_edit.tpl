@@ -246,7 +246,7 @@
 			var q = input.value.trim();
 			if (q.length < 2) { dropdown.classList.remove('kn-ac-open'); dropdown.innerHTML=''; return; }
 			t = setTimeout(function(){
-				fetch('<?= UIR ?>VotingAjax/candidate_search/' + scopeType + '/' + scopeId + '&q=' + encodeURIComponent(q))
+				fetch('<?= UIR ?>VotingAjax/candidate_search/' + scopeType + '_' + scopeId + '&q=' + encodeURIComponent(q))
 					.then(r => r.json()).then(function(j){
 						dropdown.innerHTML = '';
 						if (!j.results || !j.results.length) {
