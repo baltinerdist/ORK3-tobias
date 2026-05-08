@@ -281,7 +281,7 @@
 			var q = extInput.value.trim();
 			if (q.length < 2) { extResults.classList.remove('kn-ac-open'); extResults.innerHTML=''; return; }
 			extT = setTimeout(function(){
-				fetch('<?= UIR ?>VotingAjax/voter_search/' + eventId + '?q=' + encodeURIComponent(q))
+				fetch('<?= UIR ?>VotingAjax/voter_search/' + eventId + '&q=' + encodeURIComponent(q))
 					.then(r => r.json()).then(function(j){
 						extResults.innerHTML = '';
 						if (!j.results || !j.results.length) {
