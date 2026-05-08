@@ -4,9 +4,11 @@
 	$can_edit = !empty($can_edit);
 	if (!$event) { echo '<div style="padding:40px;text-align:center;">Event not found.</div>'; return; }
 ?>
+<link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>default/style/reports.css?v=<?= filemtime(__DIR__ . '/../default/style/reports.css') ?>">
 <style>
-	.vte-wrap { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
-	.vte-h1 { font-size:24px; font-weight:600; margin:0 0 6px 0; background:transparent;border:none;padding:0;border-radius:0;text-shadow:none; color:var(--vte-text,#1a202c); }
+	.rp-root.vt-root { --rp-accent-dark:#2c5282; --rp-accent:#3182ce; --rp-accent-mid:#4299e1; }
+	html[data-theme="dark"] .rp-root.vt-root { --rp-accent-dark:#1a365d; --rp-border:#4a5568; --rp-bg-light:#2d3748; --rp-text:#e2e8f0; --rp-text-body:#cbd5e0; --rp-text-muted:#a0aec0; }
+	.vte-wrap { padding: 16px; }
 	.vte-sub { color:var(--vte-meta,#718096); font-size:13px; margin-bottom: 18px; }
 	.vte-card { background:var(--vte-card-bg,#fff); border:1px solid var(--vte-card-border,#e2e8f0); border-radius:10px; padding:20px; margin-bottom:16px; }
 	.vte-card h2 { margin:0 0 12px 0; font-size:16px; font-weight:600; background:transparent;border:none;padding:0;border-radius:0;text-shadow:none; color:var(--vte-text,#1a202c); }
@@ -53,11 +55,27 @@
 	body.dark-mode .vte-sub { color:#a0aec0; }
 </style>
 
-<div class="vte-wrap">
-	<a class="vte-btn-ghost" style="display:inline-block;margin-bottom:12px;text-decoration:none;padding:6px 12px;" href="<?= UIR ?>Voting/index/<?= ucfirst($event['scope_type']) ?>_<?= (int)$event['scope_id'] ?>"><i class="fas fa-arrow-left"></i> Back</a>
+<div class="rp-root vt-root">
+	<div class="rp-header">
+		<div class="rp-header-left">
+			<div class="rp-header-icon-title">
+				<i class="fas fa-edit rp-header-icon"></i>
+				<h1 class="rp-header-title"><?= htmlspecialchars($event['title']) ?></h1>
+			</div>
+			<div class="rp-header-scope">
+				<a class="rp-scope-chip" href="<?= UIR ?>Voting/index/<?= ucfirst($event['scope_type']) ?>_<?= (int)$event['scope_id'] ?>">
+					<i class="fas fa-arrow-left"></i> Back to Voting
+				</a>
+				<span class="rp-scope-chip" style="cursor:default;">
+					<i class="fas <?= $event['event_type'] === 'election' ? 'fa-vote-yea' : 'fa-comments' ?>"></i>
+					<?= htmlspecialchars(ucfirst($event['event_type'])) ?>
+				</span>
+				<span class="rp-scope-chip" style="cursor:default;">Status: <?= htmlspecialchars($event['status']) ?></span>
+			</div>
+		</div>
+	</div>
 
-	<h1 class="vte-h1"><?= htmlspecialchars($event['title']) ?></h1>
-	<div class="vte-sub"><?= htmlspecialchars(ucfirst($event['event_type'])) ?> · <?= htmlspecialchars(ucfirst($event['scope_type'])) ?> · Status: <strong><?= htmlspecialchars($event['status']) ?></strong></div>
+<div class="vte-wrap">
 
 	<?php if ($event['status'] === 'draft'): ?>
 		<div class="vte-status-banner vte-status-draft">
@@ -171,6 +189,7 @@
 		<?php endif; ?>
 	</div>
 </div>
+</div><!-- /rp-root -->
 
 <script>
 (function(){

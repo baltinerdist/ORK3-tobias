@@ -5,9 +5,11 @@
 	$active = $active_ballot ?? null;
 	if (!$event && empty($Error)) { $Error = 'Event not found.'; }
 ?>
+<link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>default/style/reports.css?v=<?= filemtime(__DIR__ . '/../default/style/reports.css') ?>">
 <style>
-	.vtv-wrap { max-width: 760px; margin: 0 auto; padding: 24px 16px; }
-	.vtv-h1 { font-size:24px; font-weight:600; margin:0 0 6px 0; background:transparent;border:none;padding:0;border-radius:0;text-shadow:none; color:var(--vtv-text,#1a202c); }
+	.rp-root.vt-root { --rp-accent-dark:#2c5282; --rp-accent:#3182ce; --rp-accent-mid:#4299e1; }
+	html[data-theme="dark"] .rp-root.vt-root { --rp-accent-dark:#1a365d; --rp-border:#4a5568; --rp-bg-light:#2d3748; --rp-text:#e2e8f0; --rp-text-body:#cbd5e0; --rp-text-muted:#a0aec0; }
+	.vtv-wrap { padding: 16px; max-width:760px; margin: 0 auto; }
 	.vtv-sub { color:var(--vtv-meta,#718096); font-size:13px; margin-bottom: 16px; }
 	.vtv-card { background:var(--vtv-card-bg,#fff); border:1px solid var(--vtv-card-border,#e2e8f0); border-radius:10px; padding:20px; margin-bottom:14px; }
 	.vtv-banner { padding:14px 16px; border-radius:8px; margin-bottom:14px; font-size:13px; line-height:1.5; }
@@ -49,12 +51,26 @@
 	body.dark-mode .vtv-sub { color:#a0aec0; }
 </style>
 
+<div class="rp-root vt-root">
+	<?php if (empty($Error) && !empty($event)): ?>
+	<div class="rp-header">
+		<div class="rp-header-left">
+			<div class="rp-header-icon-title">
+				<i class="fas <?= $event['event_type'] === 'election' ? 'fa-vote-yea' : 'fa-comments' ?> rp-header-icon"></i>
+				<h1 class="rp-header-title"><?= htmlspecialchars($event['title']) ?></h1>
+			</div>
+			<div class="rp-header-scope">
+				<span class="rp-scope-chip" style="cursor:default;"><i class="fas fa-clock"></i> Closes <?= date('M j, Y g:i A', strtotime($event['end_date'])) ?></span>
+				<span class="rp-scope-chip" style="cursor:default;"><?= htmlspecialchars(ucfirst($event['event_type'])) ?></span>
+			</div>
+		</div>
+	</div>
+	<?php endif; ?>
+
 <div class="vtv-wrap">
 	<?php if (!empty($Error)): ?>
 		<div class="vtv-banner vtv-banner-err"><?= htmlspecialchars($Error) ?></div>
 	<?php else: ?>
-		<h1 class="vtv-h1"><?= htmlspecialchars($event['title']) ?></h1>
-		<div class="vtv-sub"><?= htmlspecialchars(ucfirst($event['event_type'])) ?> · Closes <?= date('F j, Y g:i A', strtotime($event['end_date'])) ?></div>
 
 		<?php if (!empty($event['description'])): ?>
 			<div class="vtv-card"><?= nl2br(htmlspecialchars($event['description'])) ?></div>
@@ -142,6 +158,7 @@
 		<?php endif; ?>
 	<?php endif; ?>
 </div>
+</div><!-- /rp-root -->
 
 <script>
 (function(){

@@ -4,10 +4,11 @@
 	$scope_type_label = $scope_type_label ?? 'Kingdom';
 	$scope_name = $scope_name ?? '';
 ?>
+<link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>default/style/reports.css?v=<?= filemtime(__DIR__ . '/../default/style/reports.css') ?>">
 <style>
-	.vtc-wrap { max-width: 720px; margin: 0 auto; padding: 24px 16px; }
-	.vtc-h1 { margin:0 0 6px 0; font-size:24px; font-weight:600; background:transparent;border:none;padding:0;border-radius:0;text-shadow:none; color:var(--vtc-text,#1a202c); }
-	.vtc-sub { color:var(--vtc-meta,#718096); margin-bottom: 20px; font-size:13px; }
+	.rp-root.vt-root { --rp-accent-dark:#2c5282; --rp-accent:#3182ce; --rp-accent-mid:#4299e1; }
+	html[data-theme="dark"] .rp-root.vt-root { --rp-accent-dark:#1a365d; --rp-border:#4a5568; --rp-bg-light:#2d3748; --rp-text:#e2e8f0; --rp-text-body:#cbd5e0; --rp-text-muted:#a0aec0; --rp-text-hint:#718096; }
+	.vtc-wrap { padding: 16px; }
 	.vtc-card { background:var(--vtc-card-bg,#fff); border:1px solid var(--vtc-card-border,#e2e8f0); border-radius:10px; padding:20px; }
 	.vtc-row { margin-bottom: 16px; }
 	.vtc-row label { display:block; font-size:13px; font-weight:600; margin-bottom:6px; color:var(--vtc-text,#1a202c); }
@@ -40,12 +41,26 @@
 	body.dark-mode .vtc-sub { color:#a0aec0; }
 </style>
 
+<div class="rp-root vt-root">
+	<div class="rp-header">
+		<div class="rp-header-left">
+			<div class="rp-header-icon-title">
+				<i class="fas fa-plus-circle rp-header-icon"></i>
+				<h1 class="rp-header-title">Create Voting Event</h1>
+			</div>
+			<div class="rp-header-scope">
+				<a class="rp-scope-chip" href="<?= UIR ?>Voting/index/<?= $scope_type_label ?>_<?= $scope_id ?>">
+					<i class="fas fa-arrow-left"></i> <?= htmlspecialchars($scope_name) ?>
+				</a>
+			</div>
+		</div>
+	</div>
+	<div class="rp-context">
+		<i class="fas fa-info-circle rp-context-icon"></i>
+		<span>Set up event metadata and options. Add races and candidates on the next page.</span>
+	</div>
+
 <div class="vtc-wrap">
-	<a class="vtc-btn-ghost" style="margin-bottom:12px;display:inline-block;" href="<?= UIR ?>Voting/index/<?= $scope_type_label ?>_<?= $scope_id ?>"><i class="fas fa-arrow-left"></i> Back</a>
-
-	<h1 class="vtc-h1">Create Voting Event</h1>
-	<div class="vtc-sub">For <?= htmlspecialchars($scope_name) ?></div>
-
 	<?php if (!empty($Error)): ?>
 		<div class="vtc-error"><?= htmlspecialchars($Error) ?></div>
 	<?php endif; ?>
@@ -116,6 +131,7 @@
 		</div>
 	</form>
 </div>
+</div><!-- /rp-root -->
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>

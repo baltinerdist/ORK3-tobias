@@ -6,9 +6,11 @@
 	$is_admin = !empty($is_admin);
 	if (!$event) { echo '<div style="padding:40px;text-align:center;">Event not found.</div>'; return; }
 ?>
+<link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>default/style/reports.css?v=<?= filemtime(__DIR__ . '/../default/style/reports.css') ?>">
 <style>
-	.vtr-wrap { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
-	.vtr-h1 { font-size:24px; font-weight:600; margin:0 0 4px 0; background:transparent;border:none;padding:0;border-radius:0;text-shadow:none; color:var(--vtr-text,#1a202c); }
+	.rp-root.vt-root { --rp-accent-dark:#2c5282; --rp-accent:#3182ce; --rp-accent-mid:#4299e1; }
+	html[data-theme="dark"] .rp-root.vt-root { --rp-accent-dark:#1a365d; --rp-border:#4a5568; --rp-bg-light:#2d3748; --rp-text:#e2e8f0; --rp-text-body:#cbd5e0; --rp-text-muted:#a0aec0; }
+	.vtr-wrap { padding: 16px; }
 	.vtr-sub { color:var(--vtr-meta,#718096); font-size:13px; margin-bottom: 16px; }
 	.vtr-card { background:var(--vtr-card-bg,#fff); border:1px solid var(--vtr-card-border,#e2e8f0); border-radius:10px; padding:20px; margin-bottom:14px; }
 	.vtr-card h2 { margin:0 0 12px 0; font-size:16px; font-weight:600; background:transparent;border:none;padding:0;border-radius:0;text-shadow:none; color:var(--vtr-text,#1a202c); }
@@ -67,15 +69,25 @@
 	body.dark-mode .vtr-bar-label, body.dark-mode .vtr-bar-count { color:#e2e8f0; }
 </style>
 
-<div class="vtr-wrap">
-	<a class="vtr-btn-ghost" style="display:inline-block;margin-bottom:12px;text-decoration:none;padding:6px 12px;border-radius:6px;border:1px solid #cbd5e0;color:inherit;" href="<?= UIR ?>Voting/index/<?= ucfirst($event['scope_type']) ?>_<?= (int)$event['scope_id'] ?>"><i class="fas fa-arrow-left"></i> Back</a>
-
-	<h1 class="vtr-h1"><?= htmlspecialchars($event['title']) ?> <span style="font-weight:400;color:#718096;font-size:16px;">— Runner Dashboard</span></h1>
-	<div class="vtr-sub">
-		<?= htmlspecialchars(ucfirst($event['event_type'])) ?> · Status: <strong><?= htmlspecialchars($event['status']) ?></strong> ·
-		Closes <?= date('F j, Y g:i A', strtotime($event['end_date'])) ?>
-		<?php if (!empty($event['anonymous_to_runner'])): ?> · <span class="vtr-pill">anonymous</span><?php endif; ?>
+<div class="rp-root vt-root">
+	<div class="rp-header">
+		<div class="rp-header-left">
+			<div class="rp-header-icon-title">
+				<i class="fas fa-tachometer-alt rp-header-icon"></i>
+				<h1 class="rp-header-title"><?= htmlspecialchars($event['title']) ?> — Runner Dashboard</h1>
+			</div>
+			<div class="rp-header-scope">
+				<a class="rp-scope-chip" href="<?= UIR ?>Voting/index/<?= ucfirst($event['scope_type']) ?>_<?= (int)$event['scope_id'] ?>"><i class="fas fa-arrow-left"></i> Back to Voting</a>
+				<span class="rp-scope-chip" style="cursor:default;">Status: <?= htmlspecialchars($event['status']) ?></span>
+				<span class="rp-scope-chip" style="cursor:default;"><i class="fas fa-clock"></i> Closes <?= date('M j, Y g:i A', strtotime($event['end_date'])) ?></span>
+				<?php if (!empty($event['anonymous_to_runner'])): ?>
+					<span class="rp-scope-chip" style="cursor:default;"><i class="fas fa-user-secret"></i> anonymous</span>
+				<?php endif; ?>
+			</div>
+		</div>
 	</div>
+
+<div class="vtr-wrap">
 
 	<div class="vtr-stats">
 		<div class="vtr-stat"><div class="vtr-stat-label">Counted</div><div class="vtr-stat-value"><?= (int)$counts['counted'] ?></div></div>
@@ -141,6 +153,7 @@
 		</div>
 	</div>
 </div>
+</div><!-- /rp-root -->
 
 <script>
 (function(){

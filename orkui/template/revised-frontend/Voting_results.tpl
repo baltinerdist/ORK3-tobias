@@ -3,9 +3,11 @@
 	$event = $event ?? null;
 	$tally = $tally ?? [];
 ?>
+<link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>default/style/reports.css?v=<?= filemtime(__DIR__ . '/../default/style/reports.css') ?>">
 <style>
-	.vtp-wrap { max-width: 880px; margin: 0 auto; padding: 24px 16px; }
-	.vtp-h1 { font-size:28px; font-weight:600; margin:0 0 6px 0; background:transparent;border:none;padding:0;border-radius:0;text-shadow:none; color:var(--vtp-text,#1a202c); }
+	.rp-root.vt-root { --rp-accent-dark:#2c5282; --rp-accent:#3182ce; --rp-accent-mid:#4299e1; }
+	html[data-theme="dark"] .rp-root.vt-root { --rp-accent-dark:#1a365d; --rp-border:#4a5568; --rp-bg-light:#2d3748; --rp-text:#e2e8f0; --rp-text-body:#cbd5e0; --rp-text-muted:#a0aec0; }
+	.vtp-wrap { padding: 16px; }
 	.vtp-sub { color:var(--vtp-meta,#718096); font-size:13px; margin-bottom: 18px; }
 	.vtp-card { background:var(--vtp-card-bg,#fff); border:1px solid var(--vtp-card-border,#e2e8f0); border-radius:10px; padding:20px; margin-bottom:14px; }
 	.vtp-race-title { font-size:18px; font-weight:600; color:var(--vtp-text,#1a202c); margin-bottom:6px; }
@@ -40,18 +42,39 @@
 	body.dark-mode .vtp-bar-label, body.dark-mode .vtp-bar-count { color:#e2e8f0; }
 </style>
 
-<div class="vtp-wrap">
+<div class="rp-root vt-root">
 	<?php if (!empty($Error) || !$event): ?>
-		<div class="vtp-error">
-			<i class="fas fa-info-circle" style="font-size:32px;opacity:0.4;margin-bottom:10px;"></i>
-			<div style="font-size:16px;">Results not available.</div>
-			<div style="font-size:13px;margin-top:6px;color:#718096;">This event has either not been published or has been temporarily withdrawn.</div>
+		<div class="rp-header">
+			<div class="rp-header-left"><div class="rp-header-icon-title">
+				<i class="fas fa-vote-yea rp-header-icon"></i>
+				<h1 class="rp-header-title">Voting Results</h1>
+			</div></div>
+		</div>
+		<div class="rp-not-supported">
+			<i class="fas fa-info-circle"></i>
+			<h3>Results not available</h3>
+			<p>This event has either not been published or has been temporarily withdrawn.</p>
 		</div>
 	<?php else: ?>
-		<h1 class="vtp-h1"><?= htmlspecialchars($event['title']) ?></h1>
-		<div class="vtp-sub">
-			<?= htmlspecialchars(ucfirst($event['event_type'])) ?> · Published Results · Voting closed <?= date('F j, Y g:i A', strtotime($event['end_date'])) ?>
+		<div class="rp-header">
+			<div class="rp-header-left">
+				<div class="rp-header-icon-title">
+					<i class="fas <?= $event['event_type'] === 'election' ? 'fa-vote-yea' : 'fa-comments' ?> rp-header-icon"></i>
+					<h1 class="rp-header-title"><?= htmlspecialchars($event['title']) ?></h1>
+				</div>
+				<div class="rp-header-scope">
+					<span class="rp-scope-chip" style="cursor:default;"><?= htmlspecialchars(ucfirst($event['event_type'])) ?></span>
+					<span class="rp-scope-chip" style="cursor:default;"><i class="fas fa-check-circle"></i> Published</span>
+					<span class="rp-scope-chip" style="cursor:default;"><i class="fas fa-clock"></i> Closed <?= date('M j, Y g:i A', strtotime($event['end_date'])) ?></span>
+				</div>
+			</div>
 		</div>
+		<div class="rp-context">
+			<i class="fas fa-info-circle rp-context-icon"></i>
+			<span>Final tally of all counted ballots. Provisional ballots that were never released to count are excluded.</span>
+		</div>
+
+<div class="vtp-wrap">
 
 		<?php foreach ($tally as $rid => $row):
 			$race = $row['race'];
@@ -153,5 +176,6 @@
 				<?php endif; endif; ?>
 			</div>
 		<?php endforeach; ?>
+</div><!-- /vtp-wrap -->
 	<?php endif; ?>
-</div>
+</div><!-- /rp-root -->

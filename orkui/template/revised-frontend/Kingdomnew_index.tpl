@@ -232,24 +232,6 @@
 		<?php endif; ?>
 
 		<?php
-			// Voting card — quick link to the kingdom's voting events
-			$kn_voting_count = 0;
-			try {
-				if (class_exists('Voting')) {
-					$_v = new Voting();
-					$kn_voting_count = (int)($_v->CountActiveEvents(['ScopeType' => 'kingdom', 'ScopeId' => (int)$kingdom_id])['Count'] ?? 0);
-				}
-			} catch (Throwable $_e) { $kn_voting_count = 0; }
-		?>
-		<div class="kn-card">
-			<h4 class="kn-bare-heading"><i class="fas fa-vote-yea"></i> Voting</h4>
-			<a href="<?= UIR ?>Voting/index/Kingdom_<?= (int)$kingdom_id ?>" style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#3182ce;color:#fff;border-radius:6px;text-decoration:none;font-weight:600;font-size:13px;">
-				<span><?= $kn_voting_count > 0 ? 'View Active Events' : 'Voting Events' ?></span>
-				<?php if ($kn_voting_count > 0): ?><span style="background:rgba(255,255,255,0.25);padding:2px 8px;border-radius:999px;font-size:11px;"><?= $kn_voting_count ?> active</span><?php else: ?><i class="fas fa-arrow-right" style="opacity:0.7"></i><?php endif; ?>
-			</a>
-		</div>
-
-		<?php
 			$_knDescription = $kingdom_info['Info']['KingdomInfo']['Description'] ?? '';
 		?>
 		<?php if (!empty($_knDescription)): ?>
@@ -851,6 +833,12 @@
 					<ul>
 						<li><a href="<?= UIR ?>Admin/permissions/Kingdom/<?= $kingdom_id ?>">Roles &amp; Permissions</a></li>
 						<li><a href="#" onclick="knOpenClaimParkModal();return false;">Claim Park</a></li>
+					</ul>
+				</div>
+				<div class="kn-report-group">
+					<h5><i class="fas fa-vote-yea"></i> Voting</h5>
+					<ul>
+						<li><a href="<?= UIR ?>Voting/index/Kingdom_<?= $kingdom_id ?>">Elections &amp; Althings</a></li>
 					</ul>
 				</div>
 			</div>
