@@ -250,32 +250,46 @@ class Controller_VotingAjax extends Controller {
 
 	public function candidate_search($scope_type = null, $scope_id = null) {
 		$this->require_login();
-		$q = trim($this->request->q ?? '');
-		if (strlen($q) < 2) $this->ok(['results' => []]);
+		// q can come from $_GET (e.g. "?q=foo"), or from $this->request->q if Smarty parsed it.
+		$q = trim($_GET['q'] ?? ($this->request->q ?? ''));
+		if (strlen($q) < 2) { $this->ok(['results' => []]); }
+
 		global $DB;
-		$DB->Clear();
-		$like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $q) . '%';
-		$bind = [];
-		// Scope filter (kingdom or park).
+		// Inline LIKE escape — same pattern as KingdomAjax/playersearch (yapo's DataSet does not support `?` bindings).
+		$term = str_replace(["'", '%', '_', '\\'], ["''", '\\%', '\\_', '\\\\'], $q);
 		$scope_clause = '';
-		if (strtolower($scope_type) === 'kingdom') {
+		if (strcasecmp((string)$scope_type, 'Kingdom') === 0) {
 			$scope_clause = " AND m.kingdom_id = " . (int)$scope_id;
-		} else if (strtolower($scope_type) === 'park') {
+		} else if (strcasecmp((string)$scope_type, 'Park') === 0) {
 			$scope_clause = " AND m.park_id = " . (int)$scope_id;
 		}
-		$sql = "SELECT m.mundane_id, m.username, m.persona, m.given_name, m.surname
+
+		$sql = "SELECT m.mundane_id, m.username, m.persona, m.given_name, m.surname,
+				k.abbreviation AS k_abbr, p.abbreviation AS p_abbr
 			FROM " . DB_PREFIX . "mundane m
-			WHERE (m.username LIKE ? OR m.persona LIKE ? OR CONCAT(m.given_name,' ',m.surname) LIKE ?)
-			" . $scope_clause . "
-			LIMIT 12";
-		$rs = $DB->DataSet($sql, [$like, $like, $like]);
+			LEFT JOIN " . DB_PREFIX . "kingdom k ON k.kingdom_id = m.kingdom_id
+			LEFT JOIN " . DB_PREFIX . "park p ON p.park_id = m.park_id
+			WHERE m.suspended = 0 AND m.active = 1
+			  " . $scope_clause . "
+			  AND (m.persona  LIKE '%{$term}%'
+			    OR m.given_name LIKE '%{$term}%'
+			    OR m.surname    LIKE '%{$term}%'
+			    OR m.username   LIKE '%{$term}%')
+			ORDER BY (m.persona LIKE '{$term}%') DESC, m.persona
+			LIMIT 15";
+
+		$DB->Clear();
+		$rs = $DB->DataSet($sql);
 		$results = [];
 		while ($rs && $rs->Next()) {
-			$display = $rs->persona ?: trim($rs->given_name . ' ' . $rs->surname);
+			$display = $rs->persona ?: trim(($rs->given_name ?? '') . ' ' . ($rs->surname ?? ''));
+			if ($display === '') $display = $rs->username;
+			$loc = trim(($rs->k_abbr ?? '') . ($rs->p_abbr ? ':' . $rs->p_abbr : ''));
+			$label = $display . ' (' . $rs->username . ')' . ($loc !== '' ? ' [' . $loc . ']' : '');
 			$results[] = [
-				'value' => (int)$rs->mundane_id,
-				'label' => $display . ' (' . $rs->username . ')',
-				'display' => $display,
+				'value'    => (int)$rs->mundane_id,
+				'label'    => $label,
+				'display'  => $display,
 				'username' => $rs->username,
 			];
 		}
@@ -291,10 +305,7 @@ class Controller_VotingAjax extends Controller {
 		$DB->Clear();
 		$rs = $DB->DataSet("SELECT scope_type, scope_id FROM " . DB_PREFIX . "voting_event WHERE voting_event_id = " . $voting_event_id . " LIMIT 1");
 		if (!$rs || !$rs->Next()) $this->fail('Event not found.');
-		$st = $rs->scope_type;
-		$sid = (int)$rs->scope_id;
-		// Reuse candidate_search semantics, but route through the same search.
-		$_GET['q'] = $this->request->q;
-		$this->candidate_search(ucfirst($st), $sid);
+		// Reuse candidate_search semantics — same scoped player lookup.
+		$this->candidate_search(ucfirst($rs->scope_type), (int)$rs->scope_id);
 	}
 }
