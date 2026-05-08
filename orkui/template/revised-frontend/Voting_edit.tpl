@@ -31,6 +31,10 @@
 	.vte-pill-ir { background:#e9d8fd; color:#44337a; }
 	.vte-choices { margin-top: 10px; }
 	.vte-choice { display:flex; gap:8px; align-items:center; padding:6px 10px; background:var(--vte-toggle-bg,#f7fafc); border-radius:6px; margin-bottom:4px; font-size:13px; color:var(--vte-text,#1a202c); }
+	.vte-choice-label { flex:1; }
+	.vte-choice-remove { width:24px; height:24px; border-radius:50%; border:none; background:transparent; color:var(--vte-meta,#a0aec0); cursor:pointer; display:inline-flex; align-items:center; justify-content:center; font-size:11px; transition: background 0.15s, color 0.15s; }
+	.vte-choice-remove:hover { background:#fed7d7; color:#c53030; }
+	.vte-choice-remove[disabled] { opacity:0.3; cursor:not-allowed; }
 	.vte-add-choice-row { display:flex; gap:8px; margin-top:8px; align-items:flex-start; }
 	.vte-ac-wrap { position:relative; flex:1; }
 	.vte-ac-input { width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--vte-input-border,#cbd5e0); background:var(--vte-input-bg,#fff); color:var(--vte-text,#1a202c); border-radius:6px; box-sizing:border-box; }
@@ -109,7 +113,14 @@
 					<?php if (!empty($race['choices'])): ?>
 						<div class="vte-choices">
 							<?php foreach ($race['choices'] as $c): ?>
-								<div class="vte-choice"><i class="far fa-circle" style="opacity:0.4"></i> <?= htmlspecialchars($c['label']) ?></div>
+								<?php $is_yesno = ($race['race_type'] === 'yesno'); ?>
+								<div class="vte-choice">
+									<i class="far fa-circle" style="opacity:0.4"></i>
+									<span class="vte-choice-label"><?= htmlspecialchars($c['label']) ?></span>
+									<?php if ($can_edit && !$is_yesno): ?>
+										<button class="vte-choice-remove" data-choice-id="<?= (int)$c['voting_choice_id'] ?>" data-label="<?= htmlspecialchars($c['label'], ENT_QUOTES) ?>" title="Remove" aria-label="Remove <?= htmlspecialchars($c['label'], ENT_QUOTES) ?>"><i class="fas fa-times"></i></button>
+									<?php endif; ?>
+								</div>
 							<?php endforeach; ?>
 						</div>
 					<?php endif; ?>
@@ -278,6 +289,20 @@
 				.then(r => r.json()).then(function(j){
 					if (j.status === 0) location.reload();
 					else alert('Failed: ' + (j.error || 'unknown'));
+				});
+		});
+	});
+
+	// Remove choice (candidate or multichoice option).
+	$$('.vte-choice-remove').forEach(function(btn){
+		btn.addEventListener('click', function(){
+			var label = btn.dataset.label || 'this choice';
+			if (!confirm('Remove ' + label + '?')) return;
+			btn.disabled = true;
+			fetch('<?= UIR ?>VotingAjax/remove_choice/' + btn.dataset.choiceId, { method:'POST', credentials:'same-origin' })
+				.then(r => r.json()).then(function(j){
+					if (j.status === 0) location.reload();
+					else { btn.disabled = false; alert('Failed: ' + (j.error || 'unknown') + (j.detail ? ': ' + j.detail : '')); }
 				});
 		});
 	});

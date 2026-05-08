@@ -92,6 +92,16 @@ class Controller_VotingAjax extends Controller {
 		$this->ok(['voting_choice_id' => $r['Detail']]);
 	}
 
+	public function remove_choice($voting_choice_id = null) {
+		$this->require_login();
+		$r = $this->Voting->remove_choice([
+			'Token' => $this->session->token,
+			'VotingChoiceId' => (int)$voting_choice_id,
+		]);
+		if (($r['Status'] ?? 1) != 0) $this->fail($r['Error'] ?? 'Failed', $r['Detail'] ?? '');
+		$this->ok(['voting_choice_id' => $r['Detail']]);
+	}
+
 	public function open_event($voting_event_id = null) {
 		$this->require_login();
 		$r = $this->Voting->open_event([

@@ -337,6 +337,44 @@ class Voting extends Ork3 {
 		return Success($this->Choice->voting_choice_id);
 	}
 
+	public function RemoveChoice($request) {
+		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+		if (!valid_id($mundane_id)) return NoAuthorization();
+		$voting_choice_id = (int)($request['VotingChoiceId'] ?? 0);
+		if (!$voting_choice_id) return InvalidParameter();
+
+		$this->Choice->clear();
+		$this->Choice->voting_choice_id = $voting_choice_id;
+		if (!$this->Choice->find()) return InvalidParameter();
+		$voting_race_id = (int)$this->Choice->voting_race_id;
+		$candidate_mundane_id = $this->Choice->candidate_mundane_id ? (int)$this->Choice->candidate_mundane_id : null;
+		$label = $this->Choice->label;
+
+		$this->Race->clear();
+		$this->Race->voting_race_id = $voting_race_id;
+		if (!$this->Race->find()) return InvalidParameter();
+		$voting_event_id = (int)$this->Race->voting_event_id;
+		if (!$this->user_is_runner_of_event($mundane_id, $voting_event_id)) return NoAuthorization();
+
+		$this->Event->clear();
+		$this->Event->voting_event_id = $voting_event_id;
+		$this->Event->find();
+		if ($this->Event->status !== 'draft') return ProcessingError('', 'Choices can only be removed while the event is in draft.');
+
+		// Yes/No race choices are auto-created and required; never let a runner delete them.
+		if ($this->Race->race_type === 'yesno') return ProcessingError('', 'Yes/No choices cannot be removed.');
+
+		global $DB;
+		$DB->Clear();
+		$DB->Execute("DELETE FROM " . DB_PREFIX . "voting_choice WHERE voting_choice_id = " . $voting_choice_id);
+		$DB->Clear();
+
+		$this->audit($voting_event_id, 'candidate_removed',
+			['race_id' => $voting_race_id, 'choice_id' => $voting_choice_id, 'candidate_mundane_id' => $candidate_mundane_id, 'label' => $label],
+			$mundane_id);
+		return Success($voting_choice_id);
+	}
+
 	public function OpenEvent($request) {
 		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
 		if (!valid_id($mundane_id)) return NoAuthorization();

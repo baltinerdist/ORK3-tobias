@@ -14,6 +14,7 @@ class Model_Voting extends Model {
 	function add_race($request)            { return $this->Voting->AddRace($request); }
 	function add_candidate($request)       { return $this->Voting->AddCandidate($request); }
 	function add_option($request)          { return $this->Voting->AddOption($request); }
+	function remove_choice($request)       { return $this->Voting->RemoveChoice($request); }
 	function open_event($request)          { return $this->Voting->OpenEvent($request); }
 
 	// ── Voter / runner ─────────────────────────────────────────────────
