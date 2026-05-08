@@ -67,7 +67,7 @@ class Controller_VotingAjax extends Controller {
 		];
 		$r = $this->Voting->add_race($req);
 		if (($r['Status'] ?? 1) != 0) $this->fail($r['Error'] ?? 'Failed', $r['Detail'] ?? '');
-		$this->ok(['voting_race_id' => $r['Id']]);
+		$this->ok(['voting_race_id' => $r['Detail']]);
 	}
 
 	public function add_candidate($voting_race_id = null) {
@@ -78,7 +78,7 @@ class Controller_VotingAjax extends Controller {
 			'CandidateMundaneId' => (int)$this->request->CandidateMundaneId,
 		]);
 		if (($r['Status'] ?? 1) != 0) $this->fail($r['Error'] ?? 'Failed', $r['Detail'] ?? '');
-		$this->ok(['voting_choice_id' => $r['Id']]);
+		$this->ok(['voting_choice_id' => $r['Detail']]);
 	}
 
 	public function add_option($voting_race_id = null) {
@@ -89,7 +89,7 @@ class Controller_VotingAjax extends Controller {
 			'Label' => $this->request->Label,
 		]);
 		if (($r['Status'] ?? 1) != 0) $this->fail($r['Error'] ?? 'Failed', $r['Detail'] ?? '');
-		$this->ok(['voting_choice_id' => $r['Id']]);
+		$this->ok(['voting_choice_id' => $r['Detail']]);
 	}
 
 	public function open_event($voting_event_id = null) {
@@ -123,7 +123,7 @@ class Controller_VotingAjax extends Controller {
 			'Votes' => $votes,
 		]);
 		if (($r['Status'] ?? 1) != 0) $this->fail($r['Error'] ?? 'Failed', $r['Detail'] ?? '');
-		$this->ok(['voting_ballot_id' => $r['Id']]);
+		$this->ok(['voting_ballot_id' => $r['Detail']]);
 	}
 
 	public function external_ballot($voting_event_id = null) {
@@ -149,7 +149,7 @@ class Controller_VotingAjax extends Controller {
 			'Votes' => $votes,
 		]);
 		if (($r['Status'] ?? 1) != 0) $this->fail($r['Error'] ?? 'Failed', $r['Detail'] ?? '');
-		$this->ok(['voting_ballot_id' => $r['Id']]);
+		$this->ok(['voting_ballot_id' => $r['Detail']]);
 	}
 
 	// ──────────────────── Tally / banner / publish ────────────────────

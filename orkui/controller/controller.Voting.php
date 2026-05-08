@@ -120,7 +120,7 @@ class Controller_Voting extends Controller {
 			];
 			$r = $this->Voting->create_event($req);
 			if (($r['Status'] ?? 1) == 0) {
-				header('Location: ' . UIR . 'Voting/edit/' . $r['Id']);
+				header('Location: ' . UIR . 'Voting/edit/' . $r['Detail']);
 				exit;
 			} else {
 				$this->data['Error'] = ($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? '');
