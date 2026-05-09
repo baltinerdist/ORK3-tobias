@@ -76,7 +76,20 @@
 
 <div class="vtp-wrap">
 
-		<?php foreach ($tally as $rid => $row):
+		<?php
+		$render_choice_label_results = function($cid) use (&$choices_by_id) {
+			$c = $choices_by_id[$cid] ?? null;
+			if (!$c) return '#' . htmlspecialchars((string)$cid);
+			$out = htmlspecialchars($c['label']);
+			if (!empty($c['withdrawn_at'])) {
+				$out = '<span class="vtp-poll-tag" style="background:#feebc8;color:#7c2d12;font-size:10px;margin-right:4px;">withdrawn</span>' . $out;
+			}
+			if (!empty($c['original_label'])) {
+				$out .= ' <span class="vtp-poll-tag" style="background:#e9d8fd;color:#44337a;font-size:10px;" data-tip="Originally: '.htmlspecialchars($c['original_label'], ENT_QUOTES).'">edited</span>';
+			}
+			return $out;
+		};
+		foreach ($tally as $rid => $row):
 			$race = $row['race'];
 			$result = $row['result'];
 			$choices = $race['choices'] ?? [];
@@ -86,6 +99,7 @@
 			<div class="vtp-card">
 				<div class="vtp-race-title">
 					<?= htmlspecialchars($race['title']) ?>
+					<?php if (!empty($race['original_title'])): ?><span class="vtp-poll-tag" style="background:#e9d8fd;color:#44337a;" data-tip="Originally: <?= htmlspecialchars($race['original_title'], ENT_QUOTES) ?>">edited</span><?php endif; ?>
 					<?php if ($race['race_type'] === 'position' && count($choices) === 1): ?><span class="vtp-poll-tag" style="background:#bee3f8;color:#2a4365;">Confidence</span><?php endif; ?>
 					<?php if (!empty($race['is_non_binding'])): ?><span class="vtp-poll-tag">Poll — non-binding</span><?php endif; ?>
 				</div>
@@ -123,16 +137,16 @@
 								<div class="vtp-irv-round-head">
 									Round <?= (int)$rd['round'] ?>
 									<?php if (!empty($rd['eliminated'])): ?>
-										— eliminated: <?= htmlspecialchars($choices_by_id[$rd['eliminated']]['label'] ?? '#'.$rd['eliminated']) ?>
+										— eliminated: <?= $render_choice_label_results($rd['eliminated']) ?>
 									<?php elseif (!empty($rd['winner'])): ?>
-										— <strong>winner: <?= htmlspecialchars($choices_by_id[$rd['winner']]['label'] ?? '#'.$rd['winner']) ?></strong>
+										— <strong>winner: <?= $render_choice_label_results($rd['winner']) ?></strong>
 									<?php elseif (!empty($rd['tie'])): ?>
 										— <strong>tie</strong>
 									<?php endif; ?>
 								</div>
 								<?php $rdTotal = array_sum($rd['counts'] ?? []); ?>
 								<?php foreach (($rd['counts'] ?? []) as $cid => $n): ?>
-									<div class="vtp-bar"><div class="vtp-bar-label"><?= htmlspecialchars($choices_by_id[$cid]['label'] ?? '#'.$cid) ?></div>
+									<div class="vtp-bar"><div class="vtp-bar-label"><?= $render_choice_label_results($cid) ?></div>
 										<div class="vtp-bar-track"><div class="vtp-bar-fill <?= !empty($rd['winner']) && $rd['winner'] == $cid ? 'vtp-winner' : '' ?>" style="width:<?= $rdTotal > 0 ? round(($n/$rdTotal)*100) : 0 ?>%"></div></div>
 										<div class="vtp-bar-count"><?= (int)$n ?></div></div>
 								<?php endforeach; ?>
@@ -143,10 +157,10 @@
 						<?php endforeach; ?>
 					</div>
 					<?php if ($result['outcome'] === 'win'):
-						$winner_label = $choices_by_id[$result['winner_choice_id']]['label'] ?? '#'.$result['winner_choice_id']; ?>
-						<div class="vtp-winner-banner"><i class="fas fa-trophy"></i> Winner: <?= htmlspecialchars($winner_label) ?></div>
+						$winner_label_html = $render_choice_label_results($result['winner_choice_id']); ?>
+						<div class="vtp-winner-banner"><i class="fas fa-trophy"></i> Winner: <?= $winner_label_html ?></div>
 					<?php elseif ($result['outcome'] === 'win_resolved'): ?>
-						<div class="vtp-winner-banner"><i class="fas fa-gavel"></i> Tie resolved: <?= htmlspecialchars($choices_by_id[$result['winner_choice_id']]['label'] ?? '#'.$result['winner_choice_id']) ?></div>
+						<div class="vtp-winner-banner"><i class="fas fa-gavel"></i> Tie resolved: <?= $render_choice_label_results($result['winner_choice_id']) ?></div>
 					<?php else: ?>
 						<div class="vtp-tie-banner"><i class="fas fa-equals"></i> <?= htmlspecialchars($result['outcome']) ?></div>
 					<?php endif; ?>
@@ -158,7 +172,7 @@
 					foreach ($counts as $cid => $n):
 						$is_winner = !empty($result['winner_choice_id']) && (int)$result['winner_choice_id'] === (int)$cid;
 				?>
-					<div class="vtp-bar"><div class="vtp-bar-label"><?= htmlspecialchars($choices_by_id[$cid]['label'] ?? '#'.$cid) ?></div>
+					<div class="vtp-bar"><div class="vtp-bar-label"><?= $render_choice_label_results($cid) ?></div>
 						<div class="vtp-bar-track"><div class="vtp-bar-fill <?= $is_winner ? 'vtp-winner' : '' ?>" style="width:<?= $grand > 0 ? round(($n/$grand)*100) : 0 ?>%"></div></div>
 						<div class="vtp-bar-count"><?= (int)$n ?></div></div>
 				<?php endforeach;
@@ -168,9 +182,9 @@
 							<div class="vtp-bar-count"><?= (int)$result['abstain'] ?></div></div>
 				<?php endif;
 					if ($result['outcome'] === 'win'): ?>
-						<div class="vtp-winner-banner"><i class="fas fa-trophy"></i> Winner: <?= htmlspecialchars($choices_by_id[$result['winner_choice_id']]['label'] ?? '#'.$result['winner_choice_id']) ?></div>
+						<div class="vtp-winner-banner"><i class="fas fa-trophy"></i> Winner: <?= $render_choice_label_results($result['winner_choice_id']) ?></div>
 					<?php elseif ($result['outcome'] === 'win_resolved'): ?>
-						<div class="vtp-winner-banner"><i class="fas fa-gavel"></i> Tie resolved: <?= htmlspecialchars($choices_by_id[$result['winner_choice_id']]['label'] ?? '#'.$result['winner_choice_id']) ?></div>
+						<div class="vtp-winner-banner"><i class="fas fa-gavel"></i> Tie resolved: <?= $render_choice_label_results($result['winner_choice_id']) ?></div>
 					<?php else: ?>
 						<div class="vtp-tie-banner"><i class="fas fa-equals"></i> <?= htmlspecialchars($result['outcome']) ?></div>
 				<?php endif; endif; ?>

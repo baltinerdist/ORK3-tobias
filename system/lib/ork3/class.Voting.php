@@ -1071,6 +1071,7 @@ class Voting extends Ork3 {
 				'voting_race_id' => (int)$rs->voting_race_id,
 				'race_type' => $rs->race_type, 'voting_mode' => $rs->voting_mode,
 				'title' => $rs->title, 'rationale' => $rs->rationale,
+				'original_title' => $rs->original_title, 'original_rationale' => $rs->original_rationale,
 				'allow_abstain' => (int)$rs->allow_abstain, 'allow_none_of_above' => (int)$rs->allow_none_of_above,
 				'nota_counts_as' => $rs->nota_counts_as, 'is_non_binding' => (int)$rs->is_non_binding,
 				'tie_resolved_winner_choice_id' => $rs->tie_resolved_winner_choice_id ? (int)$rs->tie_resolved_winner_choice_id : null,
@@ -1090,6 +1091,8 @@ class Voting extends Ork3 {
 			$races[$rid]['choices'][] = [
 				'id' => (int)$rs->voting_choice_id,
 				'label' => $rs->label,
+				'original_label' => $rs->original_label,
+				'withdrawn_at' => $rs->withdrawn_at,
 				'candidate_mundane_id' => $rs->candidate_mundane_id ? (int)$rs->candidate_mundane_id : null,
 				'is_yes' => (strcasecmp($rs->label, 'Yes') === 0) ? 1 : 0,
 				'is_no'  => (strcasecmp($rs->label, 'No')  === 0) ? 1 : 0,

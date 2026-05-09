@@ -34,11 +34,35 @@
 	<table class="vta-table">
 		<thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Detail</th></tr></thead>
 		<tbody>
-			<?php foreach ($rows as $r): ?>
+			<?php
+			$action_labels = [
+				'event_created' => 'Event created',
+				'event_updated' => 'Event updated',
+				'event_reopened' => 'Configuration reopened',
+				'event_resumed_keep' => 'Voting resumed (kept votes)',
+				'event_resumed_discard' => 'Voting resumed (discarded impacted votes)',
+				'race_created' => 'Race added',
+				'race_removed' => 'Race removed',
+				'race_wording_edited' => 'Race wording edited',
+				'candidate_added' => 'Candidate/option added',
+				'candidate_removed' => 'Candidate/option removed',
+				'candidate_withdrawn' => 'Candidate/option withdrawn',
+				'candidate_restored' => 'Candidate/option restored',
+				'choice_label_edited' => 'Option label edited',
+				'ballot_cast' => 'Ballot cast',
+				'ballot_changed' => 'Ballot changed',
+				'ballot_runner_entered' => 'Runner entered ballot',
+				'ballot_replaced_by_paper' => 'Ballot replaced by runner',
+				'provisional_released_runner' => 'Provisional released by runner',
+				'provisional_released_system' => 'Provisional released (eligibility)',
+			];
+			foreach ($rows as $r):
+				$action_pretty = $action_labels[$r['action']] ?? $r['action'];
+			?>
 				<tr>
 					<td><?= htmlspecialchars($r['created_at']) ?></td>
 					<td><?= htmlspecialchars(($r['persona'] ?: $r['username']) ?? '') ?></td>
-					<td><span class="vta-action-pill"><?= htmlspecialchars($r['action']) ?></span></td>
+					<td><span class="vta-action-pill" data-tip="<?= htmlspecialchars($r['action'], ENT_QUOTES) ?>"><?= htmlspecialchars($action_pretty) ?></span></td>
 					<td class="vta-detail"><?= htmlspecialchars($r['detail'] ?? '') ?></td>
 				</tr>
 			<?php endforeach; ?>
