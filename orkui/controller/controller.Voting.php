@@ -140,9 +140,18 @@ class Controller_Voting extends Controller {
 			header('Location: ' . UIR . 'Voting/results/' . $voting_event_id);
 			exit;
 		}
+		if (!empty($event['reopened_by_mundane_id'])) {
+			global $DB;
+			$DB->Clear();
+			$rs = $DB->DataSet("SELECT persona, given_name, surname FROM " . DB_PREFIX . "mundane WHERE mundane_id = " . (int)$event['reopened_by_mundane_id'] . " LIMIT 1");
+			if ($rs && $rs->Next()) {
+				$event['reopened_by_persona'] = $rs->persona ?: trim(($rs->given_name ?? '') . ' ' . ($rs->surname ?? ''));
+			}
+		}
 		$this->data['event'] = $event;
 		$this->data['voting_event_id'] = $voting_event_id;
 		$this->data['can_edit'] = ($event['status'] === 'draft');
+		$this->data['can_reopen'] = ($event['status'] === 'open');
 		$this->template = '../revised-frontend/Voting_edit.tpl';
 	}
 
