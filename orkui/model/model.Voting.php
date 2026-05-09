@@ -21,6 +21,7 @@ class Model_Voting extends Model {
 	function edit_choice($request)         { return $this->Voting->EditChoice($request); }
 	function restore_choice($request)      { return $this->Voting->RestoreChoice($request); }
 	function remove_race($request)         { return $this->Voting->RemoveRace($request); }
+	function edit_race_settings($request)  { return $this->Voting->EditRaceSettings($request); }
 	function preview_resume($voting_event_id) { return $this->Voting->PreviewResume($voting_event_id); }
 	function resume_event($request)        { return $this->Voting->ResumeEvent($request); }
 

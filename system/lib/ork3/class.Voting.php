@@ -619,6 +619,60 @@ class Voting extends Ork3 {
 		return Success($voting_race_id);
 	}
 
+	public function EditRaceSettings($request) {
+		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+		if (!valid_id($mundane_id)) return NoAuthorization();
+		$voting_race_id = (int)($request['VotingRaceId'] ?? 0);
+		if (!$voting_race_id) return InvalidParameter();
+
+		$this->Race->clear();
+		$this->Race->voting_race_id = $voting_race_id;
+		if (!$this->Race->find()) return InvalidParameter();
+		if (!$this->user_is_runner_of_event($mundane_id, $this->Race->voting_event_id)) return NoAuthorization();
+
+		$this->Event->clear();
+		$this->Event->voting_event_id = $this->Race->voting_event_id;
+		$this->Event->find();
+		if ($this->Event->status !== 'draft') return ProcessingError('', 'Race settings can only be edited while the event is in draft.');
+
+		$diff = [];
+		// VotingMode — only if race type is position; changing mode invalidates rank semantics, so block when votes exist.
+		if (array_key_exists('VotingMode', $request) && $this->Race->race_type === 'position') {
+			$mode = $request['VotingMode'];
+			if (!in_array($mode, ['plurality','majority','irv'], true)) return InvalidParameter();
+			if ($mode !== $this->Race->voting_mode) {
+				if ($this->race_has_votes($voting_race_id)) {
+					return ProcessingError('', 'Cannot change voting mode after votes are cast — Discard them at Resume first.');
+				}
+				$diff['voting_mode'] = ['from' => $this->Race->voting_mode, 'to' => $mode];
+				$this->Race->voting_mode = $mode;
+			}
+		}
+		foreach (['AllowAbstain' => 'allow_abstain', 'AllowNoneOfAbove' => 'allow_none_of_above', 'IsNonBinding' => 'is_non_binding'] as $k => $col) {
+			if (array_key_exists($k, $request)) {
+				$new = !empty($request[$k]) ? 1 : 0;
+				if ((int)$this->Race->$col !== $new) {
+					$diff[$col] = ['from' => (int)$this->Race->$col, 'to' => $new];
+					$this->Race->$col = $new;
+				}
+			}
+		}
+		if (array_key_exists('NotaCountsAs', $request)) {
+			$nca = $request['NotaCountsAs'];
+			$nca = in_array($nca, ['no','abstain'], true) ? $nca : null;
+			if ($nca !== $this->Race->nota_counts_as) {
+				$diff['nota_counts_as'] = ['from' => $this->Race->nota_counts_as, 'to' => $nca];
+				$this->Race->nota_counts_as = $nca;
+			}
+		}
+		if (empty($diff)) return Success($voting_race_id);
+
+		$this->Race->save();
+		$this->audit($this->Race->voting_event_id, 'race_settings_edited',
+			array_merge(['race_id' => $voting_race_id], $diff), $mundane_id);
+		return Success($voting_race_id);
+	}
+
 	public function PreviewResume($voting_event_id) {
 		$voting_event_id = (int)$voting_event_id;
 		if (!$voting_event_id) return ['impacts' => [], 'requires_decision' => false];

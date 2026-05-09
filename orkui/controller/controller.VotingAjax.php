@@ -411,4 +411,32 @@ class Controller_VotingAjax extends Controller {
 		$this->ok();
 	}
 
+
+	public function edit_event($voting_event_id = null) {
+		$this->require_login();
+		$req = ['Token' => $this->session->token, 'VotingEventId' => (int)$voting_event_id];
+		foreach (['Title','Description','StartDate','EndDate'] as $k) {
+			if (isset($this->request->$k)) $req[$k] = $this->request->$k;
+		}
+		foreach (['AnonymousToRunner','HideResultsFromCandidateRunners','AllowProvisional'] as $k) {
+			if (isset($this->request->$k)) $req[$k] = !empty($this->request->$k) ? 1 : 0;
+		}
+		$r = $this->Voting->update_event($req);
+		if (($r['Status'] ?? 1) != 0) $this->fail($r['Error'] ?? 'Failed', $r['Detail'] ?? '');
+		$this->ok();
+	}
+
+	public function edit_race_settings($voting_race_id = null) {
+		$this->require_login();
+		$req = ['Token' => $this->session->token, 'VotingRaceId' => (int)$voting_race_id];
+		if (isset($this->request->VotingMode)) $req['VotingMode'] = $this->request->VotingMode;
+		if (isset($this->request->NotaCountsAs)) $req['NotaCountsAs'] = $this->request->NotaCountsAs;
+		foreach (['AllowAbstain','AllowNoneOfAbove','IsNonBinding'] as $k) {
+			if (isset($this->request->$k)) $req[$k] = !empty($this->request->$k) ? 1 : 0;
+		}
+		$r = $this->Voting->edit_race_settings($req);
+		if (($r['Status'] ?? 1) != 0) $this->fail($r['Error'] ?? 'Failed', $r['Detail'] ?? '');
+		$this->ok();
+	}
+
 }

@@ -74,6 +74,15 @@
 	[data-tip] { position:relative; }
 	[data-tip]:hover::after { content:attr(data-tip); position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%); background:#2d3748; color:#fff; font-size:11px; white-space:nowrap; padding:4px 8px; border-radius:4px; pointer-events:none; z-index:1000; }
 	body.dark-mode [data-tip]:hover::after { background:#e2e8f0; color:#1a202c; }
+	.vte-tabs { display:flex; gap:4px; flex-wrap:wrap; margin-bottom:12px; border-bottom:1px solid var(--vte-card-border,#e2e8f0); }
+	.vte-tab { padding:10px 16px; cursor:pointer; font-size:13px; font-weight:600; color:var(--vte-meta,#718096); border-bottom:2px solid transparent; user-select:none; background:transparent; border-top:none; border-left:none; border-right:none; }
+	.vte-tab.active { color:#3182ce; border-bottom-color:#3182ce; }
+	body.dark-mode .vte-tab { color:#a0aec0; }
+	body.dark-mode .vte-tab.active { color:#63b3ed; border-bottom-color:#63b3ed; }
+	.vte-pane { display:none; }
+	.vte-pane.active { display:block; }
+	.vte-grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+	@media (max-width:640px) { .vte-grid-2 { grid-template-columns:1fr; } }
 	@media (prefers-color-scheme: dark) {
 		.vte-card, .vte-race { --vte-card-bg:#1a202c; --vte-card-border:#2d3748; --vte-text:#e2e8f0; --vte-meta:#a0aec0; --vte-input-border:#4a5568; --vte-input-bg:#2d3748; --vte-toggle-bg:#2d3748; }
 		.vte-h1, .vte-card h2 { color:#e2e8f0; }
@@ -122,6 +131,94 @@
 		</div>
 	<?php endif; ?>
 
+	<div class="vte-tabs">
+		<button class="vte-tab active" data-pane="config" type="button"><i class="fas fa-sliders-h"></i> Configuration</button>
+		<button class="vte-tab" data-pane="ballot" type="button"><i class="fas fa-list-ol"></i> Ballot Management</button>
+	</div>
+
+	<?php $_render_event_settings = $can_edit; ?>
+	<div class="vte-pane active" data-pane="config">
+		<?php if ($_render_event_settings): ?>
+			<div class="vte-card">
+				<h2>Event Settings</h2>
+				<div class="vte-row">
+					<label>Title</label>
+					<input id="vte-cfg-title" type="text" value="<?= htmlspecialchars($event['title'] ?? '', ENT_QUOTES) ?>" />
+				</div>
+				<div class="vte-row">
+					<label>Description (optional)</label>
+					<textarea id="vte-cfg-desc" rows="2"><?= htmlspecialchars($event['description'] ?? '') ?></textarea>
+				</div>
+				<div class="vte-grid-2">
+					<div class="vte-row">
+						<label>Voting opens</label>
+						<input id="vte-cfg-start" type="text" value="<?= htmlspecialchars($event['start_date'] ?? '') ?>" placeholder="Pick a date and time..." />
+					</div>
+					<div class="vte-row">
+						<label>Voting closes</label>
+						<input id="vte-cfg-end" type="text" value="<?= htmlspecialchars($event['end_date'] ?? '') ?>" placeholder="Pick a date and time..." />
+					</div>
+				</div>
+				<div class="vte-toggle"><input id="vte-cfg-anon" type="checkbox" <?= !empty($event['anonymous_to_runner']) ? 'checked' : '' ?> /><label for="vte-cfg-anon">Anonymous to runner (runners cannot see who voted what)</label></div>
+				<div class="vte-toggle"><input id="vte-cfg-hide" type="checkbox" <?= !empty($event['hide_results_from_candidate_runners']) ? 'checked' : '' ?> /><label for="vte-cfg-hide">Hide pre-publish results from runners who are also candidates</label></div>
+				<div class="vte-toggle"><input id="vte-cfg-prov" type="checkbox" <?= !empty($event['allow_provisional']) ? 'checked' : '' ?> /><label for="vte-cfg-prov">Allow provisional ballots from voters whose eligibility is pending</label></div>
+				<div class="vte-actions" style="margin-top:10px;"><button id="vte-cfg-save" class="vte-btn vte-btn-primary" type="button">Save Event Settings</button><span id="vte-cfg-msg" style="margin-left:10px;font-size:13px;"></span></div>
+			</div>
+		<?php endif; ?>
+
+		<?php if (!empty($event['races'])): ?>
+			<div class="vte-card">
+				<h2>Per-Race Settings</h2>
+				<?php foreach ($event['races'] as $race): ?>
+					<?php $is_position = ($race['race_type'] === 'position'); $is_althing = in_array($race['race_type'], ['yesno','multichoice'], true); ?>
+					<div class="vte-race" data-race-settings-id="<?= (int)$race['voting_race_id'] ?>">
+						<div class="vte-race-head">
+							<span class="vte-race-title"><?= htmlspecialchars($race['title']) ?></span>
+							<span class="vte-pill"><?= htmlspecialchars($race['race_type']) ?></span>
+						</div>
+						<div class="vte-grid-2">
+							<?php if ($is_position): ?>
+								<div class="vte-row">
+									<label>Voting mode</label>
+									<select class="vte-rs-mode">
+										<option value="plurality" <?= $race['voting_mode'] === 'plurality' ? 'selected' : '' ?>>Plurality (top vote-getter wins)</option>
+										<option value="majority" <?= $race['voting_mode'] === 'majority' ? 'selected' : '' ?>>Majority (50%+1)</option>
+										<option value="irv" <?= $race['voting_mode'] === 'irv' ? 'selected' : '' ?>>Ranked Choice (Instant Runoff)</option>
+									</select>
+									<div style="font-size:11px;color:var(--vte-meta,#718096);margin-top:4px;">Cannot change once votes are cast.</div>
+								</div>
+							<?php else: ?>
+								<div class="vte-row">
+									<label>Voting mode</label>
+									<input type="text" value="<?= htmlspecialchars($race['voting_mode']) ?>" disabled />
+									<div style="font-size:11px;color:var(--vte-meta,#718096);margin-top:4px;">Mode is fixed for <?= htmlspecialchars($race['race_type']) ?> races.</div>
+								</div>
+							<?php endif; ?>
+							<div>
+								<div class="vte-toggle"><input class="vte-rs-abstain" type="checkbox" <?= !empty($race['allow_abstain']) ? 'checked' : '' ?> /><label>Allow abstain</label></div>
+								<div class="vte-toggle"><input class="vte-rs-nota" type="checkbox" <?= !empty($race['allow_none_of_above']) ? 'checked' : '' ?> /><label>Allow None of the Above</label></div>
+								<div class="vte-row" style="margin-top:6px;<?= !empty($race['allow_none_of_above']) ? '' : 'display:none' ?>" data-rs-nota-row>
+									<label style="font-size:11px;">NOTA counts as</label>
+									<select class="vte-rs-nca">
+										<option value="abstain" <?= $race['nota_counts_as'] === 'abstain' ? 'selected' : '' ?>>Abstain (excluded from threshold)</option>
+										<option value="no" <?= $race['nota_counts_as'] === 'no' ? 'selected' : '' ?>>No (counts against)</option>
+									</select>
+								</div>
+								<?php if ($is_althing): ?>
+									<div class="vte-toggle"><input class="vte-rs-nb" type="checkbox" <?= !empty($race['is_non_binding']) ? 'checked' : '' ?> /><label>Non-binding (poll only)</label></div>
+								<?php endif; ?>
+							</div>
+						</div>
+						<?php if ($can_edit): ?>
+							<div class="vte-actions" style="margin-top:10px;"><button class="vte-btn vte-btn-primary vte-rs-save" data-race-id="<?= (int)$race['voting_race_id'] ?>" type="button">Save Race Settings</button><span class="vte-rs-msg" style="margin-left:10px;font-size:13px;"></span></div>
+						<?php endif; ?>
+					</div>
+				<?php endforeach; ?>
+			</div>
+		<?php endif; ?>
+	</div>
+
+	<div class="vte-pane" data-pane="ballot">
 	<div class="vte-card">
 		<h2>Races</h2>
 		<?php if (empty($event['races'])): ?>
@@ -256,6 +353,7 @@
 			<?php endif; ?>
 		<?php endif; ?>
 	</div>
+	</div><!-- /vte-pane ballot -->
 </div>
 </div><!-- /rp-root -->
 
@@ -556,6 +654,73 @@
 			submitResume('discard');
 		});
 		mod.addEventListener('click', function(e){ if (e.target === mod) mod.classList.remove('vte-mod-open'); });
+	}
+
+	// Tab switching.
+	$$('.vte-tab').forEach(function(tab){
+		tab.addEventListener('click', function(){
+			var name = tab.dataset.pane;
+			$$('.vte-tab').forEach(function(x){ x.classList.toggle('active', x === tab); });
+			$$('.vte-pane').forEach(function(p){ p.classList.toggle('active', p.dataset.pane === name); });
+		});
+	});
+
+	// Configuration tab — Save Event Settings.
+	var cfgSave = $('#vte-cfg-save');
+	if (cfgSave) cfgSave.addEventListener('click', function(){
+		var msg = $('#vte-cfg-msg'); if (msg) msg.textContent = '';
+		var data = new FormData();
+		data.append('Title', $('#vte-cfg-title').value.trim());
+		data.append('Description', $('#vte-cfg-desc').value);
+		data.append('StartDate', $('#vte-cfg-start').value);
+		data.append('EndDate', $('#vte-cfg-end').value);
+		data.append('AnonymousToRunner', $('#vte-cfg-anon').checked ? 1 : 0);
+		data.append('HideResultsFromCandidateRunners', $('#vte-cfg-hide').checked ? 1 : 0);
+		data.append('AllowProvisional', $('#vte-cfg-prov').checked ? 1 : 0);
+		fetch('<?= UIR ?>VotingAjax/edit_event/' + eventId, { method:'POST', body:data, credentials:'same-origin' })
+			.then(r => r.json()).then(function(j){
+				if (j.status === 0) { if (msg) { msg.textContent = 'Saved.'; msg.style.color = '#22543d'; } }
+				else { if (msg) { msg.textContent = 'Failed: ' + (j.error || 'unknown'); msg.style.color = '#c53030'; } }
+			});
+	});
+
+	// NOTA toggle reveals "counts as" select per race.
+	$$('.vte-rs-nota').forEach(function(cb){
+		cb.addEventListener('change', function(){
+			var row = cb.closest('.vte-race').querySelector('[data-rs-nota-row]');
+			if (row) row.style.display = cb.checked ? '' : 'none';
+		});
+	});
+
+	// Per-race save.
+	$$('.vte-rs-save').forEach(function(btn){
+		btn.addEventListener('click', function(){
+			var card = btn.closest('.vte-race');
+			var msg = card.querySelector('.vte-rs-msg'); if (msg) msg.textContent = '';
+			var data = new FormData();
+			var modeEl = card.querySelector('.vte-rs-mode');
+			if (modeEl && !modeEl.disabled) data.append('VotingMode', modeEl.value);
+			var abEl = card.querySelector('.vte-rs-abstain'); if (abEl) data.append('AllowAbstain', abEl.checked ? 1 : 0);
+			var nEl = card.querySelector('.vte-rs-nota'); if (nEl) data.append('AllowNoneOfAbove', nEl.checked ? 1 : 0);
+			var ncaEl = card.querySelector('.vte-rs-nca'); if (ncaEl) data.append('NotaCountsAs', ncaEl.value);
+			var nbEl = card.querySelector('.vte-rs-nb'); if (nbEl) data.append('IsNonBinding', nbEl.checked ? 1 : 0);
+			fetch('<?= UIR ?>VotingAjax/edit_race_settings/' + btn.dataset.raceId, { method:'POST', body:data, credentials:'same-origin' })
+				.then(r => r.json()).then(function(j){
+					if (j.status === 0) { if (msg) { msg.textContent = 'Saved.'; msg.style.color = '#22543d'; } }
+					else { if (msg) { msg.textContent = 'Failed: ' + (j.error || 'unknown') + (j.detail ? ' (' + j.detail + ')' : ''); msg.style.color = '#c53030'; } }
+				});
+		});
+	});
+})();
+</script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>
+(function(){
+	var dateOpts = { enableTime: true, dateFormat: 'Y-m-d H:i', altInput: true, altFormat: 'F j, Y  h:i K' };
+	if (window.flatpickr) {
+		if (document.getElementById('vte-cfg-start')) flatpickr('#vte-cfg-start', dateOpts);
+		if (document.getElementById('vte-cfg-end')) flatpickr('#vte-cfg-end', dateOpts);
 	}
 })();
 </script>
