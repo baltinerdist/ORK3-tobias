@@ -3704,10 +3704,20 @@ if (typeof nsKid !== 'undefined' && nsKid === 0 && PnConfig.kingdomId) nsKid = P
 			j.events.forEach(function(e){
 				var endDate = new Date(e.end_date);
 				var endStr  = endDate.toLocaleString(undefined, { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
-				html += '<a href="' + PnConfig.uir + 'Voting/event/' + e.voting_event_id + '" style="display:flex;align-items:center;gap:14px;padding:14px 18px;background:linear-gradient(90deg,#3182ce,#2c5282);color:#fff;border-radius:10px;text-decoration:none;margin-bottom:10px;box-shadow:0 2px 6px rgba(49,130,206,0.25);">'
-					 + '<i class="fas fa-vote-yea" style="font-size:22px;"></i>'
-					 + '<div style="flex:1;"><div style="font-weight:600;font-size:15px;">Voting open: ' + escapeHtml(e.title) + '</div>'
-					 + '<div style="font-size:12px;opacity:0.9;">Closes ' + escapeHtml(endStr) + ' · Click to vote</div></div>'
+				var isRevote = e.pending_revote && e.pending_race_count > 0;
+				var headline = isRevote
+					? 'Re-vote needed: ' + escapeHtml(e.title)
+					: 'Voting open: ' + escapeHtml(e.title);
+				var subline = isRevote
+					? 'Configuration changed — please re-vote on ' + e.pending_race_count + ' race' + (e.pending_race_count === 1 ? '' : 's') + ' · Closes ' + escapeHtml(endStr)
+					: 'Closes ' + escapeHtml(endStr) + ' · Click to vote';
+				var bg = isRevote
+					? 'linear-gradient(90deg,#d69e2e,#975a16)'
+					: 'linear-gradient(90deg,#3182ce,#2c5282)';
+				html += '<a href="' + PnConfig.uir + 'Voting/event/' + e.voting_event_id + '" style="display:flex;align-items:center;gap:14px;padding:14px 18px;background:' + bg + ';color:#fff;border-radius:10px;text-decoration:none;margin-bottom:10px;box-shadow:0 2px 6px rgba(49,130,206,0.25);">'
+					 + '<i class="fas ' + (isRevote ? 'fa-exclamation-circle' : 'fa-vote-yea') + '" style="font-size:22px;"></i>'
+					 + '<div style="flex:1;"><div style="font-weight:600;font-size:15px;">' + headline + '</div>'
+					 + '<div style="font-size:12px;opacity:0.9;">' + subline + '</div></div>'
 					 + '<i class="fas fa-arrow-right" style="opacity:0.85;"></i></a>';
 			});
 			host.innerHTML = html;

@@ -86,7 +86,11 @@
 					<i class="fas fa-info-circle"></i> Your ballot will be saved as <strong>provisional</strong>. It will count if you become eligible (e.g., pay your dues) before voting closes.
 				</div>
 			<?php endif; ?>
-			<?php if ($active): ?>
+			<?php if (!empty($pending_revote)): ?>
+				<div class="vtv-banner vtv-banner-info" style="background:#fefcbf;color:#744210;border:1px solid #f6e05e;">
+					<i class="fas fa-exclamation-circle"></i> The configuration of this event changed. Please re-vote on the <?= count($pending_race_ids) === 1 ? 'race' : count($pending_race_ids).' races' ?> below â your votes for other races have been preserved.
+				</div>
+			<?php elseif ($active): ?>
 				<div class="vtv-banner vtv-banner-ok">
 					<i class="fas fa-check"></i> You have already voted in this event<?= !empty($active['is_provisional']) ? ' (provisional ballot pending eligibility)' : '' ?>. You can change your vote until <?= date('M j, g:i A', strtotime($event['end_date'])) ?>.
 				</div>

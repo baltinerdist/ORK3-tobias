@@ -167,8 +167,13 @@ class Controller_Voting extends Controller {
 			return;
 		}
 		$event = $r['Event'];
-		$this->data['event'] = $event;
-		$this->data['voting_event_id'] = $voting_event_id;
+		// Hide withdrawn choices from the voter UI (they remain in results display).
+		foreach ($event['races'] as &$_race) {
+			if (!empty($_race['choices'])) {
+				$_race['choices'] = array_values(array_filter($_race['choices'], fn($c) => empty($c['withdrawn_at'])));
+			}
+		}
+		unset($_race);
 
 		// Check eligibility.
 		$elig = $this->Voting->eligibility_check([
@@ -186,6 +191,33 @@ class Controller_Voting extends Controller {
 			WHERE ab.voting_event_id = " . $voting_event_id . " AND ab.voter_mundane_id = " . $uid . " LIMIT 1");
 		$active = ($rs && $rs->Next()) ? (array)$rs : null;
 		$this->data['active_ballot'] = $active;
+
+		// Pending revote: voter has an active ballot but is missing votes for some races
+		// (Resume->Discard cleared their per-race votes).
+		$pending_race_ids = [];
+		if ($active) {
+			$DB->Clear();
+			$rs2 = $DB->DataSet("SELECT DISTINCT voting_race_id FROM " . DB_PREFIX . "voting_vote
+				WHERE voting_ballot_id = " . (int)$active['voting_ballot_id']);
+			$voted = [];
+			while ($rs2 && $rs2->Next()) $voted[(int)$rs2->voting_race_id] = true;
+			foreach ($event['races'] as $r2) {
+				if (empty($voted[(int)$r2['voting_race_id']])) {
+					$pending_race_ids[] = (int)$r2['voting_race_id'];
+				}
+			}
+		}
+		$this->data['pending_revote'] = !empty($pending_race_ids) && $active;
+		$this->data['pending_race_ids'] = $pending_race_ids;
+
+		// If pending revote, narrow visible races to just the pending ones; the cast endpoint
+		// merges in the voter's prior un-impacted race votes when forming the new ballot.
+		if (!empty($pending_race_ids) && $active) {
+			$pending_set = array_flip($pending_race_ids);
+			$event['races'] = array_values(array_filter($event['races'], fn($r) => isset($pending_set[(int)$r['voting_race_id']])));
+		}
+		$this->data['event'] = $event;
+		$this->data['voting_event_id'] = $voting_event_id;
 
 		$this->template = '../revised-frontend/Voting_event.tpl';
 	}
