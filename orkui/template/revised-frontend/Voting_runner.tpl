@@ -135,7 +135,16 @@
 			<h2>Event Management</h2>
 			<?php if ($event['status'] === 'open'): ?>
 				<div class="vtr-banner vtr-banner-warn">Voting is currently open. The event will close automatically at <?= htmlspecialchars(date('M j, Y g:i A', strtotime($event['end_date']))) ?>.</div>
-				<button id="vtr-close-now" class="vtr-btn vtr-btn-danger">Close Voting Now</button>
+				<div style="display:flex;gap:8px;flex-wrap:wrap;">
+					<button id="vtr-close-now" class="vtr-btn vtr-btn-danger">Close Voting Now</button>
+					<button id="vtr-reopen-config" class="vtr-btn"><i class="fas fa-pause"></i> Reopen Configuration</button>
+				</div>
+				<div id="vtr-reopen-msg" style="margin-top:8px;"></div>
+			<?php elseif ($event['status'] === 'draft' && !empty($event['reopened_at'])): ?>
+				<div class="vtr-banner vtr-banner-warn" style="background:#fefcbf;color:#744210;border:1px solid #f6e05e;">
+					<i class="fas fa-pause-circle"></i> Configuration is <strong>reopened</strong>. Voting is paused.
+					<a href="<?= UIR ?>Voting/edit/<?= $voting_event_id ?>" style="margin-left:8px;">Make changes and Resume Voting &rarr;</a>
+				</div>
 			<?php elseif ($event['status'] === 'closed'): ?>
 				<div class="vtr-banner vtr-banner-info">Voting has closed. Review results, then publish to make them publicly visible.</div>
 				<button id="vtr-publish" class="vtr-btn vtr-btn-success">Publish Results</button>
@@ -332,6 +341,33 @@
 	var closeBtn = $('#vtr-close-now');
 	if (closeBtn) closeBtn.addEventListener('click', function(){
 		alert('To close immediately, set the event end_date to a past time. Status auto-flips on cron sweep or next page load.');
+	});
+
+	var reopenBtn = $('#vtr-reopen-config');
+	if (reopenBtn) reopenBtn.addEventListener('click', function(){
+		reopenBtn.disabled = true;
+		var msg = $('#vtr-reopen-msg');
+		var data = new FormData();
+		fetch('<?= UIR ?>VotingAjax/reopen_event/' + eventId, { method:'POST', body:data, credentials:'same-origin' })
+			.then(r => r.json()).then(function(j){
+				if (j.status === 0) { window.location.href = '<?= UIR ?>Voting/edit/' + eventId; return; }
+				if (j.error === 'confirm_required') {
+					if (!confirm('Changing the configuration of this voting event may invalidate current votes. Continue?')) {
+						reopenBtn.disabled = false;
+						return;
+					}
+					var d2 = new FormData(); d2.append('Confirm', 1);
+					fetch('<?= UIR ?>VotingAjax/reopen_event/' + eventId, { method:'POST', body:d2, credentials:'same-origin' })
+						.then(r => r.json()).then(function(k){
+							if (k.status === 0) { window.location.href = '<?= UIR ?>Voting/edit/' + eventId; return; }
+							reopenBtn.disabled = false;
+							if (msg) msg.innerHTML = '<div style="color:#c53030">Failed: ' + (k.error || 'unknown') + '</div>';
+						});
+				} else {
+					reopenBtn.disabled = false;
+					if (msg) msg.innerHTML = '<div style="color:#c53030">Failed: ' + (j.error || 'unknown') + '</div>';
+				}
+			});
 	});
 })();
 </script>
