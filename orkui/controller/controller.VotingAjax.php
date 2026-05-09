@@ -337,4 +337,78 @@ class Controller_VotingAjax extends Controller {
 		// Reuse candidate_search — single combined-arg signature.
 		$this->candidate_search(ucfirst($rs->scope_type) . '_' . (int)$rs->scope_id);
 	}
+
+	public function reopen_event($voting_event_id = null) {
+		$this->require_login();
+		$r = $this->Voting->reopen_event([
+			'Token' => $this->session->token,
+			'VotingEventId' => (int)$voting_event_id,
+			'Confirm' => !empty($this->request->Confirm) ? 1 : 0,
+		]);
+		if (($r['Status'] ?? 1) != 0) $this->fail($r['Error'] ?? 'Failed', $r['Detail'] ?? '');
+		$this->ok();
+	}
+
+	public function preview_resume($voting_event_id = null) {
+		$this->require_login();
+		$voting_event_id = (int)$voting_event_id;
+		if (!$this->user_is_runner_of_event($voting_event_id)) $this->fail('Not authorized.');
+		$preview = $this->Voting->preview_resume($voting_event_id);
+		$this->ok($preview);
+	}
+
+	public function resume_event($voting_event_id = null) {
+		$this->require_login();
+		$r = $this->Voting->resume_event([
+			'Token' => $this->session->token,
+			'VotingEventId' => (int)$voting_event_id,
+			'Decision' => $this->request->Decision,
+		]);
+		if (($r['Status'] ?? 1) != 0) $this->fail($r['Error'] ?? 'Failed', $r['Detail'] ?? '');
+		$this->ok();
+	}
+
+	public function edit_race($voting_race_id = null) {
+		$this->require_login();
+		$r = $this->Voting->edit_race([
+			'Token' => $this->session->token,
+			'VotingRaceId' => (int)$voting_race_id,
+			'Title' => $this->request->Title,
+			'Rationale' => $this->request->Rationale,
+		]);
+		if (($r['Status'] ?? 1) != 0) $this->fail($r['Error'] ?? 'Failed', $r['Detail'] ?? '');
+		$this->ok();
+	}
+
+	public function edit_choice($voting_choice_id = null) {
+		$this->require_login();
+		$r = $this->Voting->edit_choice([
+			'Token' => $this->session->token,
+			'VotingChoiceId' => (int)$voting_choice_id,
+			'Label' => $this->request->Label,
+		]);
+		if (($r['Status'] ?? 1) != 0) $this->fail($r['Error'] ?? 'Failed', $r['Detail'] ?? '');
+		$this->ok();
+	}
+
+	public function restore_choice($voting_choice_id = null) {
+		$this->require_login();
+		$r = $this->Voting->restore_choice([
+			'Token' => $this->session->token,
+			'VotingChoiceId' => (int)$voting_choice_id,
+		]);
+		if (($r['Status'] ?? 1) != 0) $this->fail($r['Error'] ?? 'Failed', $r['Detail'] ?? '');
+		$this->ok();
+	}
+
+	public function remove_race($voting_race_id = null) {
+		$this->require_login();
+		$r = $this->Voting->remove_race([
+			'Token' => $this->session->token,
+			'VotingRaceId' => (int)$voting_race_id,
+		]);
+		if (($r['Status'] ?? 1) != 0) $this->fail($r['Error'] ?? 'Failed', $r['Detail'] ?? '');
+		$this->ok();
+	}
+
 }
