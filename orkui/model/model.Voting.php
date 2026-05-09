@@ -16,6 +16,13 @@ class Model_Voting extends Model {
 	function add_option($request)          { return $this->Voting->AddOption($request); }
 	function remove_choice($request)       { return $this->Voting->RemoveChoice($request); }
 	function open_event($request)          { return $this->Voting->OpenEvent($request); }
+	function reopen_event($request)        { return $this->Voting->ReopenEvent($request); }
+	function edit_race($request)           { return $this->Voting->EditRace($request); }
+	function edit_choice($request)         { return $this->Voting->EditChoice($request); }
+	function restore_choice($request)      { return $this->Voting->RestoreChoice($request); }
+	function remove_race($request)         { return $this->Voting->RemoveRace($request); }
+	function preview_resume($voting_event_id) { return $this->Voting->PreviewResume($voting_event_id); }
+	function resume_event($request)        { return $this->Voting->ResumeEvent($request); }
 
 	// ── Voter / runner ─────────────────────────────────────────────────
 

@@ -365,6 +365,17 @@ class Voting extends Ork3 {
 		if ($this->Race->race_type === 'yesno') return ProcessingError('', 'Yes/No choices cannot be removed.');
 
 		global $DB;
+		if ($this->choice_has_votes($voting_choice_id)) {
+			// Soft-withdraw: preserve row + votes for results display; runner picks Keep/Discard at Resume.
+			$DB->Clear();
+			$DB->Execute("UPDATE " . DB_PREFIX . "voting_choice SET withdrawn_at = NOW(), withdrawn_by_mundane_id = " . (int)$mundane_id . " WHERE voting_choice_id = " . $voting_choice_id);
+			$DB->Clear();
+			$this->audit($voting_event_id, 'candidate_withdrawn',
+				['race_id' => $voting_race_id, 'choice_id' => $voting_choice_id, 'candidate_mundane_id' => $candidate_mundane_id, 'label' => $label],
+				$mundane_id);
+			return Success($voting_choice_id);
+		}
+
 		$DB->Clear();
 		$DB->Execute("DELETE FROM " . DB_PREFIX . "voting_choice WHERE voting_choice_id = " . $voting_choice_id);
 		$DB->Clear();
@@ -407,6 +418,356 @@ class Voting extends Ork3 {
 	}
 
 	// ════════════════════════════════════════════════════════════════════
+	//                        REOPEN / EDIT / RESUME
+	// ════════════════════════════════════════════════════════════════════
+
+	private function race_has_votes($voting_race_id) {
+		global $DB;
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT 1 FROM " . DB_PREFIX . "voting_vote v
+			JOIN " . DB_PREFIX . "voting_ballot b ON b.voting_ballot_id = v.voting_ballot_id
+			WHERE v.voting_race_id = " . (int)$voting_race_id . "
+			  AND b.superseded_by_ballot_id IS NULL
+			LIMIT 1");
+		return $rs && $rs->Next();
+	}
+
+	private function choice_has_votes($voting_choice_id) {
+		global $DB;
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT 1 FROM " . DB_PREFIX . "voting_vote v
+			JOIN " . DB_PREFIX . "voting_ballot b ON b.voting_ballot_id = v.voting_ballot_id
+			WHERE v.voting_choice_id = " . (int)$voting_choice_id . "
+			  AND b.superseded_by_ballot_id IS NULL
+			LIMIT 1");
+		return $rs && $rs->Next();
+	}
+
+	private function event_has_votes($voting_event_id) {
+		global $DB;
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT 1 FROM " . DB_PREFIX . "voting_ballot
+			WHERE voting_event_id = " . (int)$voting_event_id . "
+			  AND superseded_by_ballot_id IS NULL
+			LIMIT 1");
+		return $rs && $rs->Next();
+	}
+
+	public function ReopenEvent($request) {
+		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+		if (!valid_id($mundane_id)) return NoAuthorization();
+		$voting_event_id = (int)($request['VotingEventId'] ?? 0);
+		if (!$voting_event_id) return InvalidParameter();
+		if (!$this->user_is_runner_of_event($mundane_id, $voting_event_id)) return NoAuthorization();
+
+		$this->Event->clear();
+		$this->Event->voting_event_id = $voting_event_id;
+		if (!$this->Event->find()) return InvalidParameter();
+		if ($this->Event->status !== 'open') return ProcessingError('', 'Only open events can be reopened.');
+
+		$has_votes = $this->event_has_votes($voting_event_id);
+		if ($has_votes && empty($request['Confirm'])) {
+			return ProcessingError('confirm_required', 'Changing the configuration of this voting event may invalidate current votes. Continue?');
+		}
+
+		$this->Event->status = 'draft';
+		$this->Event->reopened_at = date('Y-m-d H:i:s');
+		$this->Event->reopened_by_mundane_id = $mundane_id;
+		$this->Event->save();
+
+		$this->audit($voting_event_id, 'event_reopened', ['had_votes' => $has_votes ? 1 : 0], $mundane_id);
+		return Success($voting_event_id);
+	}
+
+	public function EditRace($request) {
+		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+		if (!valid_id($mundane_id)) return NoAuthorization();
+		$voting_race_id = (int)($request['VotingRaceId'] ?? 0);
+		if (!$voting_race_id) return InvalidParameter();
+
+		$this->Race->clear();
+		$this->Race->voting_race_id = $voting_race_id;
+		if (!$this->Race->find()) return InvalidParameter();
+		if (!$this->user_is_runner_of_event($mundane_id, $this->Race->voting_event_id)) return NoAuthorization();
+
+		$this->Event->clear();
+		$this->Event->voting_event_id = $this->Race->voting_event_id;
+		$this->Event->find();
+		if ($this->Event->status !== 'draft') return ProcessingError('', 'Race wording can only be edited while the event is in draft.');
+
+		$new_title = isset($request['Title']) ? trim($request['Title']) : null;
+		$new_rat   = $request['Rationale'] ?? null;
+		$has_votes = $this->race_has_votes($voting_race_id);
+
+		$diff = [];
+		if ($new_title !== null && $new_title !== '' && $new_title !== $this->Race->title) {
+			if ($has_votes && (string)$this->Race->original_title === '') {
+				$this->Race->original_title = $this->Race->title;
+			}
+			$diff['title'] = ['from' => $this->Race->title, 'to' => $new_title];
+			$this->Race->title = $new_title;
+		}
+		if ($new_rat !== null && $new_rat !== $this->Race->rationale) {
+			if ($has_votes && (string)$this->Race->original_rationale === '') {
+				$this->Race->original_rationale = $this->Race->rationale;
+			}
+			$diff['rationale'] = ['from' => $this->Race->rationale, 'to' => $new_rat];
+			$this->Race->rationale = $new_rat;
+		}
+		if (empty($diff)) return Success($voting_race_id);
+
+		$this->Race->save();
+		$this->audit($this->Race->voting_event_id, 'race_wording_edited',
+			array_merge(['race_id' => $voting_race_id, 'had_votes' => $has_votes ? 1 : 0], $diff), $mundane_id);
+		return Success($voting_race_id);
+	}
+
+	public function EditChoice($request) {
+		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+		if (!valid_id($mundane_id)) return NoAuthorization();
+		$voting_choice_id = (int)($request['VotingChoiceId'] ?? 0);
+		$new_label = trim($request['Label'] ?? '');
+		if (!$voting_choice_id || $new_label === '') return InvalidParameter();
+
+		$this->Choice->clear();
+		$this->Choice->voting_choice_id = $voting_choice_id;
+		if (!$this->Choice->find()) return InvalidParameter();
+
+		$this->Race->clear();
+		$this->Race->voting_race_id = $this->Choice->voting_race_id;
+		if (!$this->Race->find()) return InvalidParameter();
+		if ($this->Race->race_type !== 'multichoice') return ProcessingError('', 'Only multichoice option labels are editable.');
+		if (!$this->user_is_runner_of_event($mundane_id, $this->Race->voting_event_id)) return NoAuthorization();
+
+		$this->Event->clear();
+		$this->Event->voting_event_id = $this->Race->voting_event_id;
+		$this->Event->find();
+		if ($this->Event->status !== 'draft') return ProcessingError('', 'Option labels can only be edited while the event is in draft.');
+
+		if ($new_label === $this->Choice->label) return Success($voting_choice_id);
+
+		if ($this->choice_has_votes($voting_choice_id) && (string)$this->Choice->original_label === '') {
+			$this->Choice->original_label = $this->Choice->label;
+		}
+		$old_label = $this->Choice->label;
+		$this->Choice->label = $new_label;
+		$this->Choice->save();
+
+		$this->audit($this->Race->voting_event_id, 'choice_label_edited',
+			['choice_id' => $voting_choice_id, 'race_id' => (int)$this->Race->voting_race_id, 'from' => $old_label, 'to' => $new_label], $mundane_id);
+		return Success($voting_choice_id);
+	}
+
+	public function RestoreChoice($request) {
+		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+		if (!valid_id($mundane_id)) return NoAuthorization();
+		$voting_choice_id = (int)($request['VotingChoiceId'] ?? 0);
+		if (!$voting_choice_id) return InvalidParameter();
+
+		$this->Choice->clear();
+		$this->Choice->voting_choice_id = $voting_choice_id;
+		if (!$this->Choice->find()) return InvalidParameter();
+		$this->Race->clear();
+		$this->Race->voting_race_id = $this->Choice->voting_race_id;
+		$this->Race->find();
+		if (!$this->user_is_runner_of_event($mundane_id, $this->Race->voting_event_id)) return NoAuthorization();
+
+		$this->Event->clear();
+		$this->Event->voting_event_id = $this->Race->voting_event_id;
+		$this->Event->find();
+		if ($this->Event->status !== 'draft') return ProcessingError('', 'Choices can only be restored while the event is in draft.');
+
+		if (!$this->Choice->withdrawn_at) return Success($voting_choice_id);
+		global $DB;
+		$DB->Clear();
+		$DB->Execute("UPDATE " . DB_PREFIX . "voting_choice SET withdrawn_at = NULL, withdrawn_by_mundane_id = NULL WHERE voting_choice_id = " . (int)$voting_choice_id);
+		$DB->Clear();
+
+		$this->audit($this->Race->voting_event_id, 'candidate_restored',
+			['choice_id' => $voting_choice_id, 'race_id' => (int)$this->Race->voting_race_id, 'label' => $this->Choice->label], $mundane_id);
+		return Success($voting_choice_id);
+	}
+
+	public function RemoveRace($request) {
+		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+		if (!valid_id($mundane_id)) return NoAuthorization();
+		$voting_race_id = (int)($request['VotingRaceId'] ?? 0);
+		if (!$voting_race_id) return InvalidParameter();
+
+		$this->Race->clear();
+		$this->Race->voting_race_id = $voting_race_id;
+		if (!$this->Race->find()) return InvalidParameter();
+		if (!$this->user_is_runner_of_event($mundane_id, $this->Race->voting_event_id)) return NoAuthorization();
+
+		$this->Event->clear();
+		$this->Event->voting_event_id = $this->Race->voting_event_id;
+		$this->Event->find();
+		if ($this->Event->status !== 'draft') return ProcessingError('', 'Races can only be removed while the event is in draft.');
+
+		if ($this->race_has_votes($voting_race_id)) {
+			return ProcessingError('', 'This race has votes. Remove its choices individually, then choose Discard at Resume.');
+		}
+
+		$voting_event_id = (int)$this->Race->voting_event_id;
+		$title = $this->Race->title;
+		global $DB;
+		$DB->Clear();
+		$DB->Execute("DELETE FROM " . DB_PREFIX . "voting_race WHERE voting_race_id = " . (int)$voting_race_id);
+		$DB->Clear();
+
+		$this->audit($voting_event_id, 'race_removed', ['race_id' => $voting_race_id, 'title' => $title], $mundane_id);
+		return Success($voting_race_id);
+	}
+
+	public function PreviewResume($voting_event_id) {
+		$voting_event_id = (int)$voting_event_id;
+		if (!$voting_event_id) return ['impacts' => [], 'requires_decision' => false];
+		global $DB;
+
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT voting_event_id, status, reopened_at FROM " . DB_PREFIX . "voting_event WHERE voting_event_id = " . $voting_event_id);
+		if (!$rs || !$rs->Next()) return ['impacts' => [], 'requires_decision' => false];
+		if ($rs->status !== 'draft' || !$rs->reopened_at) return ['impacts' => [], 'requires_decision' => false];
+		$reopened_at = $rs->reopened_at;
+
+		$impacts = [];
+
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT c.voting_choice_id, c.voting_race_id, c.label,
+				r.title AS race_title,
+				(SELECT COUNT(*) FROM " . DB_PREFIX . "voting_vote v
+				 JOIN " . DB_PREFIX . "voting_ballot b ON b.voting_ballot_id = v.voting_ballot_id
+				 WHERE v.voting_choice_id = c.voting_choice_id AND b.superseded_by_ballot_id IS NULL) AS vote_count
+			FROM " . DB_PREFIX . "voting_choice c
+			JOIN " . DB_PREFIX . "voting_race r USING (voting_race_id)
+			WHERE r.voting_event_id = " . $voting_event_id . "
+			  AND c.withdrawn_at IS NOT NULL");
+		while ($rs && $rs->Next()) {
+			$impacts[] = ['kind' => 'choice_withdrawn',
+				'race_id' => (int)$rs->voting_race_id, 'race_title' => $rs->race_title,
+				'choice_id' => (int)$rs->voting_choice_id, 'label' => $rs->label,
+				'vote_count' => (int)$rs->vote_count];
+		}
+
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT c.voting_choice_id, c.voting_race_id, c.original_label, c.label, r.title AS race_title,
+				(SELECT COUNT(*) FROM " . DB_PREFIX . "voting_vote v
+				 JOIN " . DB_PREFIX . "voting_ballot b ON b.voting_ballot_id = v.voting_ballot_id
+				 WHERE v.voting_choice_id = c.voting_choice_id AND b.superseded_by_ballot_id IS NULL) AS vote_count
+			FROM " . DB_PREFIX . "voting_choice c
+			JOIN " . DB_PREFIX . "voting_race r USING (voting_race_id)
+			WHERE r.voting_event_id = " . $voting_event_id . "
+			  AND c.original_label IS NOT NULL");
+		while ($rs && $rs->Next()) {
+			$impacts[] = ['kind' => 'choice_label_edited',
+				'race_id' => (int)$rs->voting_race_id, 'race_title' => $rs->race_title,
+				'choice_id' => (int)$rs->voting_choice_id, 'from' => $rs->original_label, 'to' => $rs->label,
+				'vote_count' => (int)$rs->vote_count];
+		}
+
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT r.voting_race_id, r.title, r.rationale, r.original_title, r.original_rationale
+			FROM " . DB_PREFIX . "voting_race r
+			WHERE r.voting_event_id = " . $voting_event_id . "
+			  AND (r.original_title IS NOT NULL OR r.original_rationale IS NOT NULL)");
+		while ($rs && $rs->Next()) {
+			$impacts[] = ['kind' => 'race_wording_edited',
+				'race_id' => (int)$rs->voting_race_id, 'race_title' => $rs->title,
+				'original_title' => $rs->original_title, 'current_title' => $rs->title,
+				'original_rationale' => $rs->original_rationale, 'current_rationale' => $rs->rationale];
+		}
+
+		// Choices added during reopen on a race that already has votes from the pre-reopen window.
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT c.voting_choice_id, c.voting_race_id, c.label, r.title AS race_title
+			FROM " . DB_PREFIX . "voting_choice c
+			JOIN " . DB_PREFIX . "voting_race r USING (voting_race_id)
+			WHERE r.voting_event_id = " . $voting_event_id . "
+			  AND c.withdrawn_at IS NULL
+			  AND c.original_label IS NULL
+			  AND EXISTS (
+			  	SELECT 1 FROM " . DB_PREFIX . "voting_vote v
+				JOIN " . DB_PREFIX . "voting_ballot b ON b.voting_ballot_id = v.voting_ballot_id
+				WHERE v.voting_race_id = c.voting_race_id
+				  AND b.superseded_by_ballot_id IS NULL
+				  AND b.submitted_at < '" . addslashes($reopened_at) . "'
+			  )
+			  AND NOT EXISTS (
+			  	SELECT 1 FROM " . DB_PREFIX . "voting_vote v2
+				WHERE v2.voting_choice_id = c.voting_choice_id
+			  )");
+		while ($rs && $rs->Next()) {
+			$impacts[] = ['kind' => 'choice_added',
+				'race_id' => (int)$rs->voting_race_id, 'race_title' => $rs->race_title,
+				'choice_id' => (int)$rs->voting_choice_id, 'label' => $rs->label];
+		}
+
+		return ['impacts' => $impacts, 'requires_decision' => !empty($impacts)];
+	}
+
+	public function ResumeEvent($request) {
+		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+		if (!valid_id($mundane_id)) return NoAuthorization();
+		$voting_event_id = (int)($request['VotingEventId'] ?? 0);
+		$decision = $request['Decision'] ?? '';
+		if (!$voting_event_id) return InvalidParameter();
+		if (!$this->user_is_runner_of_event($mundane_id, $voting_event_id)) return NoAuthorization();
+
+		$this->Event->clear();
+		$this->Event->voting_event_id = $voting_event_id;
+		if (!$this->Event->find()) return InvalidParameter();
+		if ($this->Event->status !== 'draft' || !$this->Event->reopened_at) {
+			return ProcessingError('', 'Event is not in a reopened state.');
+		}
+		if (strtotime($this->Event->end_date) < time()) {
+			return ProcessingError('', 'Voting end date is in the past — update End Date before resuming.');
+		}
+
+		$preview = $this->PreviewResume($voting_event_id);
+		$requires = !empty($preview['requires_decision']);
+
+		if ($requires && !in_array($decision, ['keep', 'discard'], true)) {
+			return ProcessingError('decision_required', 'Choose Keep or Discard.');
+		}
+
+		global $DB;
+		if ($requires && $decision === 'discard') {
+			$impacted_race_ids = [];
+			foreach ($preview['impacts'] as $imp) {
+				$impacted_race_ids[(int)$imp['race_id']] = true;
+			}
+			$ids = array_keys($impacted_race_ids);
+			$DB->Clear();
+			$DB->Execute("START TRANSACTION");
+			if (!empty($ids)) {
+				$in = implode(',', array_map('intval', $ids));
+				$DB->Clear();
+				$DB->Execute("DELETE FROM " . DB_PREFIX . "voting_vote WHERE voting_race_id IN ({$in})");
+				$DB->Clear();
+				$DB->Execute("DELETE FROM " . DB_PREFIX . "voting_choice WHERE voting_race_id IN ({$in}) AND withdrawn_at IS NOT NULL");
+				$DB->Clear();
+				$DB->Execute("UPDATE " . DB_PREFIX . "voting_race SET original_title = NULL, original_rationale = NULL WHERE voting_race_id IN ({$in})");
+				$DB->Clear();
+				$DB->Execute("UPDATE " . DB_PREFIX . "voting_choice SET original_label = NULL WHERE voting_race_id IN ({$in})");
+				$DB->Clear();
+			}
+			$DB->Execute("UPDATE " . DB_PREFIX . "voting_event SET status = 'open', reopened_at = NULL, reopened_by_mundane_id = NULL WHERE voting_event_id = " . $voting_event_id);
+			$DB->Clear();
+			$DB->Execute("COMMIT");
+			$DB->Clear();
+			$this->audit($voting_event_id, 'event_resumed_discard',
+				['impact_count' => count($preview['impacts']), 'impacted_races' => $ids], $mundane_id);
+		} else {
+			$DB->Clear();
+			$DB->Execute("UPDATE " . DB_PREFIX . "voting_event SET status = 'open', reopened_at = NULL, reopened_by_mundane_id = NULL WHERE voting_event_id = " . $voting_event_id);
+			$DB->Clear();
+			$this->audit($voting_event_id, 'event_resumed_keep',
+				['impact_count' => count($preview['impacts'])], $mundane_id);
+		}
+		return Success($voting_event_id);
+	}
+
+		// ════════════════════════════════════════════════════════════════════
 	//                        BALLOT CASTING
 	// ════════════════════════════════════════════════════════════════════
 
@@ -546,6 +907,35 @@ class Voting extends Ork3 {
 			}
 		}
 
+		// If the prior ballot has votes for races NOT in this submission, carry them forward
+		// (supports partial-revote after Resume->Discard: voter only fills impacted races).
+		$included_race_ids = array_map(function($vi){ return (int)$vi['VotingRaceId']; }, $votes_in);
+		if ($prior_ballot_id && !empty($included_race_ids)) {
+			$included_in = implode(',', array_unique(array_map('intval', $included_race_ids)));
+			$DB->Clear();
+			$rs2 = $DB->DataSet("SELECT voting_race_id, voting_choice_id, `rank`, is_abstain, is_none_of_above
+				FROM " . DB_PREFIX . "voting_vote
+				WHERE voting_ballot_id = " . (int)$prior_ballot_id . "
+				  AND voting_race_id NOT IN ({$included_in})");
+			$carry = [];
+			while ($rs2 && $rs2->Next()) {
+				$carry[] = ['voting_race_id' => (int)$rs2->voting_race_id,
+					'voting_choice_id' => $rs2->voting_choice_id !== null ? (int)$rs2->voting_choice_id : null,
+					'rank' => $rs2->rank !== null ? (int)$rs2->rank : null,
+					'is_abstain' => (int)$rs2->is_abstain, 'is_none_of_above' => (int)$rs2->is_none_of_above];
+			}
+			foreach ($carry as $row) {
+				$this->Vote->clear();
+				$this->Vote->voting_ballot_id = $new_ballot_id;
+				$this->Vote->voting_race_id = $row['voting_race_id'];
+				if ($row['voting_choice_id'] !== null) $this->Vote->voting_choice_id = $row['voting_choice_id'];
+				if ($row['rank'] !== null) $this->Vote->rank = $row['rank'];
+				$this->Vote->is_abstain = $row['is_abstain'];
+				$this->Vote->is_none_of_above = $row['is_none_of_above'];
+				$this->Vote->save();
+			}
+		}
+
 		// Mark prior ballot superseded.
 		$action = 'ballot_cast';
 		if ($prior_ballot_id) {
@@ -651,7 +1041,7 @@ class Voting extends Ork3 {
 		global $DB;
 		// draft → open
 		$DB->Clear();
-		$DB->Execute("UPDATE " . DB_PREFIX . "voting_event SET status = 'open' WHERE status = 'draft' AND start_date <= NOW() AND end_date > NOW()");
+		$DB->Execute("UPDATE " . DB_PREFIX . "voting_event SET status = 'open' WHERE status = 'draft' AND reopened_at IS NULL AND start_date <= NOW() AND end_date > NOW()");
 		// open → closed
 		$DB->Clear();
 		$rs = $DB->DataSet("SELECT voting_event_id FROM " . DB_PREFIX . "voting_event WHERE status = 'open' AND end_date <= NOW()");
@@ -911,6 +1301,37 @@ class Voting extends Ork3 {
 			ORDER BY e.end_date ASC LIMIT 20");
 		$events = [];
 		while ($rs && $rs->Next()) $events[] = (array)$rs;
+
+		// Annotate each entry with pending_revote / pending_race_count for partial-revote banners.
+		if (!empty($events)) {
+			$ids = array_filter(array_map(function($e){ return (int)($e['voting_event_id'] ?? 0); }, $events));
+			if (!empty($ids)) {
+				$in = implode(',', array_map('intval', $ids));
+				$voter_id = (int)$mundane_id;
+				$DB->Clear();
+				$rs2 = $DB->DataSet("SELECT e.voting_event_id,
+						(SELECT COUNT(*) FROM " . DB_PREFIX . "voting_race r WHERE r.voting_event_id = e.voting_event_id) AS total_races,
+						(SELECT COUNT(DISTINCT v.voting_race_id)
+						 FROM " . DB_PREFIX . "voting_active_ballot ab
+						 JOIN " . DB_PREFIX . "voting_vote v ON v.voting_ballot_id = ab.voting_ballot_id
+						 WHERE ab.voting_event_id = e.voting_event_id AND ab.voter_mundane_id = " . $voter_id . ") AS voted_races
+					FROM " . DB_PREFIX . "voting_event e
+					WHERE e.voting_event_id IN ({$in})");
+				$counts = [];
+				while ($rs2 && $rs2->Next()) {
+					$counts[(int)$rs2->voting_event_id] = ['total' => (int)$rs2->total_races, 'voted' => (int)$rs2->voted_races];
+				}
+				foreach ($events as &$e) {
+					$eid = (int)($e['voting_event_id'] ?? 0);
+					if (!isset($counts[$eid])) { continue; }
+					$voted = $counts[$eid]['voted']; $total = $counts[$eid]['total'];
+					$has_active = !empty($e['active_ballot_id']);
+					$e['pending_revote'] = ($has_active && $voted < $total) ? 1 : 0;
+					$e['pending_race_count'] = max(0, $total - $voted);
+				}
+				unset($e);
+			}
+		}
 		return ['Status' => 0, 'Events' => $events];
 	}
 

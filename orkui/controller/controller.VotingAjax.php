@@ -209,7 +209,7 @@ class Controller_VotingAjax extends Controller {
 		}
 		$events = $this->Voting->active_for_voter($mundane_id);
 		// Filter to those without an active ballot.
-		$pending = array_values(array_filter($events, fn($e) => empty($e['active_ballot_id'])));
+		$pending = array_values(array_filter($events, fn($e) => empty($e['active_ballot_id']) || !empty($e['pending_revote'])));
 		$this->ok(['events' => $pending]);
 	}
 
