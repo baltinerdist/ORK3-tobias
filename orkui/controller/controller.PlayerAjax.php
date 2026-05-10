@@ -396,9 +396,12 @@ class Controller_PlayerAjax extends Controller {
 					'BeltDisplay'      => (isset($_POST['BeltDisplay']) && in_array($_POST['BeltDisplay'], ['white','own','none'])) ? $_POST['BeltDisplay'] : null,
 			];
 			$r = $this->Player->update_player($fields);
+			$_isProf = ($r['Status'] != 0 && ($r['Error'] ?? '') === ProfanityFilter::ERROR_MESSAGE);
 			echo ($r['Status'] == 0)
 				? json_encode(['status' => 0])
-				: json_encode(['status' => $r['Status'], 'error' => rtrim(($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? ''), ': ')]);
+				: ($_isProf
+					? json_encode(['status' => $r['Status'], 'error' => $r['Error'], 'field' => $r['Detail'] ?? ''])
+					: json_encode(['status' => $r['Status'], 'error' => rtrim(($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? ''), ': ')]));
 
 		} elseif ($action === 'addmilestone') {
 			$description = trim($_POST['Description'] ?? '');
@@ -419,9 +422,12 @@ class Controller_PlayerAjax extends Controller {
 				'Description'   => $description,
 				'MilestoneDate' => $msDate,
 			]);
+			$_isProf = ($r['Status'] != 0 && ($r['Error'] ?? '') === ProfanityFilter::ERROR_MESSAGE);
 			echo ($r['Status'] == 0)
 				? json_encode(['status' => 0, 'milestoneId' => (int)($r['Detail'] ?? 0)])
-				: json_encode(['status' => $r['Status'], 'error' => rtrim(($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? ''), ': ')]);
+				: ($_isProf
+					? json_encode(['status' => $r['Status'], 'error' => $r['Error'], 'field' => $r['Detail'] ?? ''])
+					: json_encode(['status' => $r['Status'], 'error' => rtrim(($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? ''), ': ')]));
 
 		} elseif ($action === 'updatemilestone') {
 			$milestone_id = (int)($_POST['MilestoneId'] ?? 0);
@@ -440,9 +446,12 @@ class Controller_PlayerAjax extends Controller {
 				'Description'   => $description,
 				'MilestoneDate' => $msDate,
 			]);
+			$_isProf = ($r['Status'] != 0 && ($r['Error'] ?? '') === ProfanityFilter::ERROR_MESSAGE);
 			echo ($r['Status'] == 0)
 				? json_encode(['status' => 0])
-				: json_encode(['status' => $r['Status'], 'error' => rtrim(($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? ''), ': ')]);
+				: ($_isProf
+					? json_encode(['status' => $r['Status'], 'error' => $r['Error'], 'field' => $r['Detail'] ?? ''])
+					: json_encode(['status' => $r['Status'], 'error' => rtrim(($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? ''), ': ')]));
 
 		} elseif ($action === 'deletemilestone') {
 			$milestone_id = (int)($_POST['MilestoneId'] ?? 0);

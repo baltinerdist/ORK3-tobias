@@ -1037,7 +1037,7 @@ class Player extends Ork3 {
 					require_once(__DIR__ . '/class.ProfanityFilter.php');
 					$pf = new ProfanityFilter();
 					if ($pf->containsProfanity($request['Persona'])) {
-						return InvalidParameter('', ProfanityFilter::ERROR_MESSAGE);
+						return InvalidParameter('Persona', ProfanityFilter::ERROR_MESSAGE);
 					}
 				}
 				$this->mundane->persona = is_null($request['Persona'])?$this->mundane->persona:$request['Persona'];
@@ -1056,10 +1056,10 @@ class Player extends Ork3 {
 					require_once(__DIR__ . '/class.ProfanityFilter.php');
 					$pf = new ProfanityFilter();
 					if (!is_null($request['AboutPersona']) && $pf->containsProfanity($request['AboutPersona'])) {
-						return InvalidParameter('', ProfanityFilter::ERROR_MESSAGE);
+						return InvalidParameter('AboutPersona', ProfanityFilter::ERROR_MESSAGE);
 					}
 					if (!is_null($request['AboutStory']) && $pf->containsProfanity($request['AboutStory'])) {
-						return InvalidParameter('', ProfanityFilter::ERROR_MESSAGE);
+						return InvalidParameter('AboutStory', ProfanityFilter::ERROR_MESSAGE);
 					}
 					$design->about_persona = is_null($request['AboutPersona'])?$design->about_persona:$request['AboutPersona'];
 					$design->about_story = is_null($request['AboutStory'])?$design->about_story:$request['AboutStory'];
@@ -2307,7 +2307,7 @@ class Player extends Ork3 {
 		require_once(__DIR__ . '/class.ProfanityFilter.php');
 		$pf = new ProfanityFilter();
 		if ($pf->containsProfanity(trim($request['Description'] ?? ''))) {
-			return InvalidParameter('', ProfanityFilter::ERROR_MESSAGE);
+			return InvalidParameter('Description', ProfanityFilter::ERROR_MESSAGE);
 		}
 		$milestones = new yapo($this->db, DB_PREFIX . 'player_milestones');
 		$milestones->clear();
@@ -2330,7 +2330,7 @@ class Player extends Ork3 {
 		$pf = new ProfanityFilter();
 		$desc = trim($request['Description'] ?? '');
 		if ($desc !== '' && $pf->containsProfanity($desc)) {
-			return InvalidParameter('', ProfanityFilter::ERROR_MESSAGE);
+			return InvalidParameter('Description', ProfanityFilter::ERROR_MESSAGE);
 		}
 		$milestones = new yapo($this->db, DB_PREFIX . 'player_milestones');
 		$milestones->clear();
