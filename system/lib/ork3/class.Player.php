@@ -1104,6 +1104,14 @@ class Player extends Ork3 {
 				$this->mundane->surname = is_null($request['Surname'])?$this->mundane->surname:$request['Surname'];
 				$this->mundane->other_name = is_null($request['OtherName'])?$this->mundane->other_name:$request['OtherName'];
 				$this->mundane->username = is_null($request['UserName'])?$this->mundane->username:$request['UserName'];
+				// Profanity check on persona (display name) before save.
+				if (!is_null($request['Persona']) && trim($request['Persona']) !== '') {
+					require_once(__DIR__ . '/class.ProfanityFilter.php');
+					$pf = new ProfanityFilter();
+					if ($pf->containsProfanity($request['Persona'])) {
+						return InvalidParameter('Persona', ProfanityFilter::ERROR_MESSAGE);
+					}
+				}
 				$this->mundane->persona = is_null($request['Persona'])?$this->mundane->persona:$request['Persona'];
 				$this->mundane->pronoun_id = is_null($request['PronounId'])?$this->mundane->pronoun_id:$request['PronounId'];
 				$this->mundane->pronoun_custom = is_null($request['PronounCustom'])?$this->mundane->pronoun_custom:$request['PronounCustom'];
@@ -1147,6 +1155,16 @@ class Player extends Ork3 {
 						if (!is_null($req_val)) return $req_val;
 						return $_designExisted ? $_cur[$col] : null;
 					};
+
+					// Profanity check on free-text profile fields before save.
+					require_once(__DIR__ . '/class.ProfanityFilter.php');
+					$pf = new ProfanityFilter();
+					if (!is_null($request['AboutPersona']) && $pf->containsProfanity($request['AboutPersona'])) {
+						return InvalidParameter('AboutPersona', ProfanityFilter::ERROR_MESSAGE);
+					}
+					if (!is_null($request['AboutStory']) && $pf->containsProfanity($request['AboutStory'])) {
+						return InvalidParameter('AboutStory', ProfanityFilter::ERROR_MESSAGE);
+					}
 
 					$design->about_persona = $_pick($request['AboutPersona'], 'about_persona');
 					$design->about_story = $_pick($request['AboutStory'], 'about_story');
@@ -2511,6 +2529,11 @@ class Player extends Ork3 {
 		if (!valid_id($requester_id) || (int)$requester_id !== (int)$request['MundaneId']) {
 			return NoAuthorization();
 		}
+		require_once(__DIR__ . '/class.ProfanityFilter.php');
+		$pf = new ProfanityFilter();
+		if ($pf->containsProfanity(trim($request['Description'] ?? ''))) {
+			return InvalidParameter('Description', ProfanityFilter::ERROR_MESSAGE);
+		}
 		$milestones = new yapo($this->db, DB_PREFIX . 'player_milestones');
 		$milestones->clear();
 		$milestones->mundane_id = (int)$request['MundaneId'];
@@ -2527,6 +2550,12 @@ class Player extends Ork3 {
 		$requester_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
 		if (!valid_id($requester_id) || (int)$requester_id !== (int)$request['MundaneId']) {
 			return NoAuthorization();
+		}
+		require_once(__DIR__ . '/class.ProfanityFilter.php');
+		$pf = new ProfanityFilter();
+		$desc = trim($request['Description'] ?? '');
+		if ($desc !== '' && $pf->containsProfanity($desc)) {
+			return InvalidParameter('Description', ProfanityFilter::ERROR_MESSAGE);
 		}
 		$milestones = new yapo($this->db, DB_PREFIX . 'player_milestones');
 		$milestones->clear();

@@ -31,12 +31,15 @@ class YapoMysql extends YapoDb {
 				apcu_delete('yapo_schema_' . $table);
 			}
 		}
-		// Clear any leftover bound parameters before DESCRIBE/SHOW KEYS so PDO doesn't
-		// try to bind them to these placeholder-free queries (which causes them to fail
-		// silently and return 0 rows — at which point we'd cache an empty schema and
-		// poison every subsequent INSERT/UPDATE/find on this table for 24 hours).
+		// Clear any leftover bindings from prior operations on the shared connection
+		// before running these placeholder-free schema queries. Otherwise PDO emits
+		// SQLSTATE[HY093] (Invalid parameter number) for the unmatched bindings,
+		// silently returns zero rows from DESCRIBE, the table's PrimaryKey is
+		// detected as false, and we'd cache that empty schema — poisoning every
+		// subsequent INSERT/UPDATE/find on this table for 24 hours.
 		$this->Clear();
 		$Keys = $this->DataSet("SHOW KEYS IN $table");
+		$this->Clear();
 		$Fields = $this->DataSet("describe $table");
 		$this->Clear();
 

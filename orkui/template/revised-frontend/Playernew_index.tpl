@@ -4011,6 +4011,8 @@ if (typeof nsKid !== 'undefined' && nsKid === 0 && PnConfig.kingdomId) nsKid = P
 		btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
 		var errEl = gid('pn-design-error');
 		errEl.style.display = 'none';
+		// Clear any inline profanity errors from a prior save attempt.
+		document.querySelectorAll('.pn-profanity-inline-err').forEach(function(el) { el.remove(); });
 
 		var prefix = '';
 		if (prefixSel.value === '__custom__') prefix = prefixCustom.value.trim();
@@ -4063,21 +4065,62 @@ if (typeof nsKid !== 'undefined' && nsKid === 0 && PnConfig.kingdomId) nsKid = P
 			if (beltRadios[bi].checked) { fd.append('BeltDisplay', beltRadios[bi].value); break; }
 		}
 
+		// Inline-render a profanity rejection above the offending field, switching
+		// the design modal to that field's tab if needed. Falls back to the
+		// generic top-of-modal error slot for other failure types.
+		function pnShowProfanityFieldError(fieldName, msg) {
+			var fieldMap = {
+				'Persona':      { fieldId: 'pn-name-core',            tabPanel: 'name'  },
+				'AboutPersona': { fieldId: 'pn-design-about-persona', tabPanel: 'about' },
+				'AboutStory':   { fieldId: 'pn-design-about-story',   tabPanel: 'about' },
+			};
+			var spec = fieldMap[fieldName];
+			if (!spec) return false;
+			var fieldEl = document.getElementById(spec.fieldId);
+			if (!fieldEl) return false;
+			if (spec.tabPanel) {
+				var tabBtn = document.querySelector('.pn-design-tab[data-panel="' + spec.tabPanel + '"]');
+				if (tabBtn) tabBtn.click();
+			}
+			var errId = spec.fieldId + '-profanity-err';
+			var err = document.getElementById(errId);
+			if (!err) {
+				err = document.createElement('div');
+				err.id = errId;
+				err.className = 'pn-form-error pn-profanity-inline-err';
+				err.style.marginBottom = '8px';
+				fieldEl.parentNode.insertBefore(err, fieldEl);
+			}
+			err.textContent = msg;
+			err.style.display = 'block';
+			setTimeout(function() {
+				err.scrollIntoView({behavior: 'smooth', block: 'start'});
+			}, 50);
+			return true;
+		}
+
 		fetch(PnConfig.uir + 'PlayerAjax/player/' + PnConfig.playerId + '/updateprofile', { method: 'POST', body: fd })
 			.then(function(r) { return r.json(); })
 			.then(function(result) {
 				if (result && result.status === 0) {
 					window.location.reload();
 				} else {
-					errEl.textContent = (result && result.error) ? result.error : 'Save failed.';
-					errEl.style.display = '';
+					var msg = (result && result.error) ? result.error : 'Save failed.';
+					var shown = false;
+					if (result && result.field) {
+						shown = pnShowProfanityFieldError(result.field, msg);
+					}
+					if (!shown) {
+						errEl.textContent = msg;
+						errEl.style.display = 'block';
+					}
 					btn.disabled = false;
 					btn.innerHTML = '<i class="fas fa-save"></i> Save Changes';
 				}
 			})
 			.catch(function(err) {
 				errEl.textContent = 'Request failed: ' + err.message;
-				errEl.style.display = '';
+				errEl.style.display = 'block';
 				btn.disabled = false;
 				btn.innerHTML = '<i class="fas fa-save"></i> Save Changes';
 			});
