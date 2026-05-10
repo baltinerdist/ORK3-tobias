@@ -38,34 +38,23 @@
 		? 'https://maps.google.com/maps?q=@' . $parkLat . ',' . $parkLng
 		: null;
 
-	// Group all players by year of last sign-in (newest year first; 'never' last).
-	// Also separately track players whose last signin is within the past 6 months
-	// (for the "active member" stat) and 12 months (for the Heraldry hall of arms).
-	$allPlayers      = $park_players ?? [];
-	$nowTs           = time();
-	$nowYear         = (int)date('Y');
-	$sixMoCutoff     = strtotime('-6 months');
-	$twelveMoCutoff  = strtotime('-12 months');
-	$playersByYear   = [];   // key: 'YYYY' or 'never', value: array of players
-	$playerList      = [];   // active in past 6 months
-	$hoaPlayers12    = [];   // heraldry holders active in past 12 months
-	$totalHeraldry   = 0;
+	// Group all players by 6-month period (0 = 0–6 months ago, 1 = 6–12, etc.)
+	$allPlayers = $park_players ?? [];
+	$nowTs      = time();
+	$playerPeriods  = [];
+	$heraldryPeriods = [];
 	foreach ($allPlayers as $p) {
-		$ts  = strtotime($p['LastSignin']);
-		$key = ($ts && $ts > 0 && date('Y', $ts) !== '1970') ? date('Y', $ts) : 'never';
-		$playersByYear[$key][] = $p;
-		if (!empty($p['HasHeraldry'])) {
-			$totalHeraldry++;
-			if ($ts >= $twelveMoCutoff) $hoaPlayers12[] = $p;
-		}
-		if ($ts >= $sixMoCutoff) $playerList[] = $p;
+		$ts = strtotime($p['LastSignin']);
+		$period = max(0, (int)floor(($nowTs - $ts) / (30.44 * 24 * 3600) / 6));
+		$playerPeriods[$period][] = $p;
+		if ($p['HasHeraldry']) $heraldryPeriods[$period][] = $p;
 	}
-	// Sort: real years descending (newest first); 'never' bucket goes last.
-	uksort($playersByYear, function ($a, $b) {
-		if ($a === 'never') return 1;
-		if ($b === 'never') return -1;
-		return strcmp($b, $a);
-	});
+	ksort($playerPeriods);
+	ksort($heraldryPeriods);
+
+	$playerList    = $playerPeriods[0] ?? [];  // 0–6 months (used for stats row count)
+	$totalHeraldry = array_sum(array_map('count', $heraldryPeriods));
+	$hoaPlayers12  = array_merge($heraldryPeriods[0] ?? [], $heraldryPeriods[1] ?? []);
 
 	$firstTab = 'about';
 
@@ -83,7 +72,31 @@
 	$pkCalEvents = [];
 	foreach ($eventList as $ev) {
 		if (!$ev['NextDate'] || $ev['NextDate'] === '0000-00-00') continue;
-		if (!empty($ev['is_park_day'])) {
+		if (!empty($ev['_IsCalendarItem'])) {
+			$allDay = !empty($ev['AllDay']);
+			$calEv = [
+				'title'         => $ev['Name'],
+				'start'         => $allDay ? substr($ev['NextDate'], 0, 10) : $ev['NextDate'],
+				'color'         => '#64748b',
+				'type'          => 'calendar-item',
+				'allDay'        => $allDay,
+				'extendedProps' => [
+					'calendarItemId' => $ev['CalendarItemId'],
+					'description'    => $ev['Description'] ?? '',
+					'rawStart'       => $ev['NextDate'],
+					'rawEnd'         => $ev['NextEndDate'] ?? $ev['NextDate'],
+				],
+			];
+			$startDate = substr($ev['NextDate'], 0, 10);
+			$endDate   = substr($ev['NextEndDate'] ?? $ev['NextDate'], 0, 10);
+			if ($endDate > $startDate) {
+				$endDt = new DateTime($endDate);
+				if ($allDay) $endDt->modify('+1 day');
+				$calEv['end'] = $allDay ? $endDt->format('Y-m-d') : ($ev['NextEndDate'] ?? '');
+			} elseif (!$allDay) {
+				$calEv['end'] = $ev['NextEndDate'] ?? '';
+			}
+		} elseif (!empty($ev['is_park_day'])) {
 			$calEv = [
 				'title' => $ev['Name'],
 				'start' => $ev['NextDate'] . 'T' . $ev['park_day_time'],
@@ -96,6 +109,11 @@
 				'start' => $ev['NextDate'],
 				'url'   => $ev['NextDetailId'] ? UIR . 'Event/detail/' . $ev['EventId'] . '/' . $ev['NextDetailId'] : '',
 				'color' => '#2b6cb0', // Blue for regular events
+				'extendedProps' => [
+					'eventId'  => (int)$ev['EventId'],
+					'detailId' => (int)$ev['NextDetailId'],
+					'isDraft'  => (($ev['Status'] ?? 'published') === 'draft'),
+				],
 			];
 			$endRaw = $ev['NextEndDate'] ?? '';
 			if ($endRaw && substr($endRaw, 0, 10) > substr($ev['NextDate'], 0, 10)) {
@@ -112,8 +130,8 @@
 	$_pd_today      = new DateTime(); $_pd_today->setTime(0, 0, 0);
 	$_pd_end        = (clone $_pd_today)->modify('+90 days');
 	$_pd_dayNames   = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
-	$_pd_colors     = ['fighter-practice'=>'#e53e3e','arts-day'=>'#805ad5','other'=>'#ed8936'];
-	$_pd_labels     = ['fighter-practice'=>'Fighter Practice','arts-day'=>'A&S Day','other'=>'Other'];
+	$_pd_colors     = ['park-day'=>'#38a169','fighter-practice'=>'#e53e3e','arts-day'=>'#805ad5','other'=>'#ed8936'];
+	$_pd_labels     = ['park-day'=>'Park Day','fighter-practice'=>'Fighter Practice','arts-day'=>'A&S Day','other'=>'Other'];
 	foreach ($parkDayList as $_pd) {
 		$_pdColor   = $_pd_colors[$_pd['Purpose']] ?? '#38a169';
 		$_pdLabel   = $_pd_labels[$_pd['Purpose']] ?? 'Park Day';
@@ -170,7 +188,7 @@
 	}
 
 	// Active Players: last sign-in within the past 6 months — matches the Players tab subtitle
-	$activePlayersYear = count($playerList);
+	$activePlayersYear = count($playerPeriods[0] ?? []);
 ?>
 
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>revised-frontend/style/revised.css?v=<?= filemtime(DIR_TEMPLATE . 'revised-frontend/style/revised.css') ?>">
@@ -510,10 +528,11 @@
 								default:              $recText = $day['Recurrence'];
 							}
 							switch ($day['Purpose']) {
-								case 'fighter-practice': $purposeLabel = 'Fighter Practice'; $purposeCls = 'purpose-fighter'; $iconCls = 'icon-fighter'; $iconFa = 'fa-user-shield'; break;
-								case 'arts-day':         $purposeLabel = 'A&S Day';       $purposeCls = 'purpose-arts';    $iconCls = 'icon-arts';    $iconFa = 'fa-palette';    break;
+								case 'park-day':         $purposeLabel = 'Park Day';          $purposeCls = 'purpose-parkday'; $iconCls = 'icon-parkday'; $iconFa = 'fa-shield-alt'; break;
+								case 'fighter-practice': $purposeLabel = 'Fighter Practice';  $purposeCls = 'purpose-fighter'; $iconCls = 'icon-fighter'; $iconFa = 'fa-user-shield'; break;
+								case 'arts-day':         $purposeLabel = 'A&S Day';           $purposeCls = 'purpose-arts';    $iconCls = 'icon-arts';    $iconFa = 'fa-palette';    break;
 								case 'other':            $purposeLabel = 'Other';             $purposeCls = 'purpose-other';   $iconCls = 'icon-other';   $iconFa = 'fa-star';       break;
-								default:                 $purposeLabel = 'Park Day';          $purposeCls = '';                $iconCls = '';             $iconFa = 'fa-shield-alt';
+								default:                 $purposeLabel = 'Park Day';          $purposeCls = 'purpose-parkday'; $iconCls = 'icon-parkday'; $iconFa = 'fa-shield-alt';
 							}
 							// Day-specific map URL
 							$dayMapUrl = null;
@@ -596,13 +615,15 @@
 					<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
 						<button class="pk-view-btn pk-view-active" id="pk-ev-view-list" title="List view"><i class="fas fa-list"></i></button>
 						<button class="pk-view-btn" id="pk-ev-view-cal" title="Calendar view"><i class="fas fa-calendar-alt"></i></button>
-						<?php if (count($parkDayList) > 0): ?>
+						<button class="pk-view-btn" id="pk-ev-view-map" title="Map view"><i class="fas fa-map-marked-alt"></i></button>
 						<div id="pk-ev-filter-bar" style="display:flex;align-items:center;gap:5px;">
 							<span style="font-size:11px;font-weight:700;color:#a0aec0;text-transform:uppercase;letter-spacing:.05em;margin-right:2px;">Show:</span>
 							<button class="pk-filter-toggle pk-filter-on" data-filter="event">Events</button>
+							<button class="pk-filter-toggle pk-filter-on" data-filter="calendar-item">Calendar Items</button>
+							<?php if (count($parkDayList) > 0): ?>
 							<button class="pk-filter-toggle" data-filter="park-day">Park Days</button>
+							<?php endif; ?>
 						</div>
-						<?php endif; ?>
 						<?php if ($CanAdminPark): ?>
 						<button onclick="pkOpenEventModal()"style="display:inline-flex;align-items:center;gap:5px;background:#276749;color:#fff;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:600;text-decoration:none;border:none;cursor:pointer;">
 							<i class="fas fa-plus"></i> Add Event
@@ -614,6 +635,12 @@
 				<!-- Calendar view (lazy-loaded FullCalendar) -->
 				<div id="pk-events-cal" style="display:none"></div>
 
+				<!-- Map view (lazy-loaded Google Maps) -->
+				<div id="pk-events-map-wrap" style="position:relative;display:none">
+					<div id="pk-events-map" style="width:100%;height:480px;border-radius:8px;border:1px solid #e2e8f0;"></div>
+					<div id="pk-events-map-footer" style="margin-top:8px;font-size:12px;color:#718096;display:none"></div>
+				</div>
+
 				<!-- List view -->
 				<div id="pk-events-list-view">
 				<?php if (count($eventList) > 0 || count($parkDayList) > 0): ?>
@@ -622,34 +649,53 @@
 							<tr>
 								<th data-sorttype="text">Event</th>
 								<th data-sorttype="date">Next Date</th>
-								<th data-sorttype="numeric">Going</th>
-							<th data-sorttype="numeric">Interested</th>
+								<th colspan="2" style="text-align:center;">RSVP</th>
 							</tr>
 						</thead>
 						<tbody>
 							<?php foreach ($eventList as $event): ?>
-							<tr<?= $event['NextDetailId'] ? ' onclick="window.location.href=\''.UIR.'Event/detail/' . $event['EventId'] . '/' . $event['NextDetailId'] . '\'"' : '' ?>>
-								<td>
-									<div class="pk-tiny-heraldry">
-										<?php if ($event['HasHeraldry'] == 1): ?>
-											<img src="<?= HTTP_EVENT_HERALDRY . Common::resolve_image_ext(DIR_EVENT_HERALDRY, sprintf('%05d', $event['EventId'])) ?>"
-											     loading="lazy"
-											     onerror="this.src='<?= HTTP_EVENT_HERALDRY ?>00000.jpg'">
-										<?php else: ?>
-											<img loading="lazy" src="<?= HTTP_EVENT_HERALDRY ?>00000.jpg">
-										<?php endif; ?>
+								<?php if (!empty($event['_IsCalendarItem'])): ?>
+								<?php $ciOff = !empty($event['IsOfficerOnly']); $ciLoc = !empty($event['IsLocalsOnly']); ?>
+								<tr class="<?= $ciOff ? 'pk-officer-only' : '' ?> <?= $ciLoc ? 'pk-locals-only' : '' ?>" data-type="calendar-item" onclick="pkShowCalendarItemOverlay(<?= (int)$event['CalendarItemId'] ?>)">
+									<td>
+										<span class="pk-ci-pill"><i class="fas fa-calendar-day"></i> Calendar Item</span>
+										<?php if ($ciOff): ?><span class="pk-officer-pill" data-tip="Officer-only — hidden from non-officers"><i class="fas fa-shield-alt"></i></span><?php endif; ?><?php if ($ciLoc): ?><span class="pk-locals-pill" data-tip="Locals-only — hidden from out-of-area players"><i class="fas fa-map-marker-alt"></i></span><?php endif; ?>
 										<?= htmlspecialchars($event['Name']) ?>
-									</div>
-								</td>
-								<td class="pk-date-col" data-sortval="<?= $event['NextDate'] ?>">
-									<?php if (0 != $event['NextDate']): ?>
-										<?= date('M. j, Y', strtotime($event['NextDate'])) ?>
-										<?php if (strtotime($event['NextDate']) < time()): ?><span class='event-past-badge'>Past</span><?php endif; ?>
-									<?php endif; ?>
-								</td>
-								<td class="pk-date-col" style="text-align:center"><?= (int)($event['RsvpGoing'] ?? 0) ?: '—' ?></td>
-							<td class="pk-date-col" style="text-align:center"><?= (int)($event['RsvpInterested'] ?? 0) ?: '—' ?></td>
-							</tr>
+									</td>
+									<td class="pk-date-col" data-sortval="<?= htmlspecialchars($event['NextDate']) ?>">
+										<?= $event['NextDate'] ? date('M. j, Y', strtotime($event['NextDate'])) : '' ?>
+									</td>
+									<td class="pk-date-col" style="text-align:center;color:#a0aec0">—</td>
+									<td class="pk-date-col" style="text-align:center;color:#a0aec0">—</td>
+								</tr>
+								<?php else: ?>
+								<?php $isDraft = (($event['Status'] ?? 'published') === 'draft'); ?>
+								<tr class="<?= $isDraft ? 'pk-row-draft' : '' ?>" data-type="event"<?= $event['NextDetailId'] ? ' onclick="if(event.target.closest(\'.pk-rsvp-wrap\'))return; window.location.href=\''.UIR.'Event/detail/' . $event['EventId'] . '/' . $event['NextDetailId'] . '\'"' : '' ?>>
+									<td>
+										<div class="pk-tiny-heraldry">
+											<?php if ($event['HasHeraldry'] == 1): ?>
+												<img src="<?= HTTP_EVENT_HERALDRY . Common::resolve_image_ext(DIR_EVENT_HERALDRY, sprintf('%05d', $event['EventId'])) ?>"
+												     loading="lazy"
+												     onerror="this.src='<?= HTTP_EVENT_HERALDRY ?>00000.jpg'">
+											<?php else: ?>
+												<img loading="lazy" src="<?= HTTP_EVENT_HERALDRY ?>00000.jpg">
+											<?php endif; ?>
+											<?php if ($isDraft): ?><span class="pk-draft-pill" data-tip="Draft — hidden from members. Publish to make visible.">DRAFT</span><?php endif; ?><?= htmlspecialchars($event['Name']) ?>
+											<?php if (!empty($event['Weather']['high_f'])): ?><span class="pk-wx-pill" data-tip="<?= htmlspecialchars($event['Weather']['label']) ?>"><?= $event['Weather']['icon'] ?> <?= (int)$event['Weather']['high_f'] ?>°/<?= (int)$event['Weather']['low_f'] ?>°</span><?php endif; ?>
+										</div>
+									</td>
+									<td class="pk-date-col" data-sortval="<?= $event['NextDate'] ?>">
+										<?= 0 == $event['NextDate'] ? '' : date('M. j, Y', strtotime($event['NextDate'])) ?>
+									</td>
+									<td class="pk-date-col" colspan="2" style="text-align:center;padding:6px 8px;">
+										<?php if ((int)$event['NextDetailId'] > 0): ?>
+											<span class="pk-rsvp-wrap" data-detail="<?= (int)$event['NextDetailId'] ?>" data-going="<?= (int)($event['RsvpGoing'] ?? 0) ?>" data-interested="<?= (int)($event['RsvpInterested'] ?? 0) ?>" data-mine="<?= htmlspecialchars($event['MyRsvp'] ?? '') ?>"></span>
+										<?php else: ?>
+											<span style="color:#a0aec0">—</span>
+										<?php endif; ?>
+									</td>
+								</tr>
+								<?php endif; ?>
 							<?php endforeach; ?>
 							<?php foreach ($parkDayList as $pkDay): ?>
 							<?php
@@ -659,7 +705,7 @@
 									case 'monthly':       $pkDayRec = 'Monthly on the ' . pk_ordinal($pkDay['MonthDay']); break;
 									default:              $pkDayRec = $pkDay['Recurrence'];
 								}
-								$pkPurposeLabels = ['fighter-practice'=>'Fighter Practice','arts-day'=>'A&S Day','other'=>'Other'];
+								$pkPurposeLabels = ['park-day'=>'Park Day','fighter-practice'=>'Fighter Practice','arts-day'=>'A&S Day','other'=>'Other'];
 								$pkDayLabel = $pkPurposeLabels[$pkDay['Purpose']] ?? 'Park Day';
 							?>
 							<tr data-type="park-day" style="display:none">
@@ -691,14 +737,13 @@
 				<?php if (count($allPlayers) > 0): ?>
 					<div class="pk-players-toolbar">
 						<span class="pk-players-toolbar-left">
-							<?= count($playerList) ?> active member<?= count($playerList) != 1 ? 's' : '' ?> (past 6 months)<?php if (count($allPlayers) > count($playerList)): ?> &middot; <?= count($allPlayers) ?> total<?php endif; ?>
+							<?= count($playerPeriods[0] ?? []) ?> active member<?= count($playerPeriods[0] ?? []) != 1 ? 's' : '' ?> (past 6 months)<?php if (count($allPlayers) > count($playerPeriods[0] ?? [])): ?> &middot; <?= count($allPlayers) ?> total<?php endif; ?>
 						</span>
 						<div class="pk-players-toolbar-right">
 							<div class="pk-player-search-wrap">
 								<i class="fas fa-search pk-player-search-icon"></i>
 								<input type="text" id="pk-player-search" class="pk-player-search-input" placeholder="Search all players…" autocomplete="off">
 							</div>
-							<button class="pk-view-btn" id="pk-active-only-btn" type="button" title="Show only members with sign-ins in the past 6 months"><i class="fas fa-filter"></i> Active only</button>
 							<div class="pk-view-toggle">
 								<button class="pk-view-btn pk-view-active" data-pkview="cards">
 									<i class="fas fa-th-large"></i> Cards
@@ -722,30 +767,35 @@
 						</div>
 					</div>
 
-					<?php
-						// Renderers reused for each year section.
-						$pkRenderCard = function (array $p) {
-							$initial = htmlspecialchars(strtoupper(mb_substr($p['Persona'], 0, 1)));
-							$heraldryBgSrc = $p['HasHeraldry']
-								? HTTP_PLAYER_HERALDRY . Common::resolve_image_ext(DIR_PLAYER_HERALDRY, sprintf('%06d', $p['MundaneId']))
-								: null;
-							if ($p['HasImage']) {
-								$avatarSrc = HTTP_PLAYER_IMAGE . Common::resolve_image_ext(DIR_PLAYER_IMAGE, sprintf('%06d', $p['MundaneId']));
-							} elseif ($p['HasHeraldry']) {
-								$avatarSrc = $heraldryBgSrc;
-							} else {
-								$avatarSrc = null;
-							}
+					<!-- Card view (default) -->
+					<div id="pk-players-cards">
+						<!-- Period 0 (0–6 months) always visible -->
+						<div class="pk-players-grid">
+							<?php foreach ($playerPeriods[0] ?? [] as $p): ?>
+							<?php
+								$initial = htmlspecialchars(strtoupper(mb_substr($p['Persona'], 0, 1)));
+								$heraldryBgSrc = $p['HasHeraldry']
+									? HTTP_PLAYER_HERALDRY . Common::resolve_image_ext(DIR_PLAYER_HERALDRY, sprintf('%06d', $p['MundaneId']))
+									: null;
+								if ($p['HasImage']) {
+									$avatarSrc = HTTP_PLAYER_IMAGE . Common::resolve_image_ext(DIR_PLAYER_IMAGE, sprintf('%06d', $p['MundaneId']));
+								} elseif ($p['HasHeraldry']) {
+									$avatarSrc = $heraldryBgSrc;
+								} else {
+									$avatarSrc = null;
+								}
 							?>
 							<a class="pk-player-card<?= $heraldryBgSrc ? ' pk-player-card-hbg' : '' ?>"
 							   <?= $heraldryBgSrc ? 'style="--hbg: url(\'' . htmlspecialchars($heraldryBgSrc) . '\')"'  : '' ?>
 							   <?= !empty($p['MundaneName']) ? 'data-mundane-name="' . htmlspecialchars(strtolower($p['MundaneName'])) . '"' : '' ?>
-							   data-signin-count="<?= (int)$p['SigninCount'] ?>"
 							   href="<?= UIR ?>Player/profile/<?= $p['MundaneId'] ?>">
 								<div class="pk-player-card-top">
 									<div class="pk-player-avatar">
 										<?php if ($avatarSrc): ?>
-											<img src="<?= htmlspecialchars($avatarSrc) ?>" alt="" loading="lazy" onerror="pkAvatarFallback(this,'<?= $initial ?>')">
+											<img src="<?= htmlspecialchars($avatarSrc) ?>"
+											     alt=""
+											     loading="lazy"
+											     onerror="pkAvatarFallback(this,'<?= $initial ?>')">
 										<?php else: ?>
 											<?= $initial ?>
 										<?php endif; ?>
@@ -760,28 +810,120 @@
 									</div>
 								</div>
 								<div class="pk-player-stats">
-									<span><i class="fas fa-check-circle" style="color:#68d391;width:14px"></i> <?= $p['SigninCount'] ?> six month sign-in<?= $p['SigninCount'] != 1 ? 's' : '' ?></span>
-									<?php $_lsTs = strtotime($p['LastSignin']); ?>
-									<span><i class="fas fa-calendar-check" style="color:#63b3ed;width:14px"></i> <?= ($_lsTs > 0 && date('Y', $_lsTs) !== '1970') ? date('M j, Y', $_lsTs) : '—' ?></span>
-									<?php
-										// "Last here" indicator when the player's most recent sign-in wasn't at this park.
-										$_lpTs = !empty($p['LastSigninAtPark']) ? strtotime($p['LastSigninAtPark']) : 0;
-										if (!empty($p['LastSigninAtPark']) && $p['LastSigninAtPark'] !== $p['LastSignin']):
-											$_hereTxt = ($_lpTs > 0 && date('Y', $_lpTs) !== '1970') ? 'here ' . date('M j, Y', $_lpTs) : 'never here';
-									?>
-										<span style="color:#a0aec0"><i class="fas fa-flag" style="color:#a0aec0;width:14px"></i> <?= htmlspecialchars($_hereTxt) ?></span>
-									<?php endif; ?>
+									<span><i class="fas fa-check-circle" style="color:#68d391;width:14px"></i> <?= $p['SigninCount'] ?> sign-in<?= $p['SigninCount'] != 1 ? 's' : '' ?></span>
+									<span><i class="fas fa-calendar-check" style="color:#63b3ed;width:14px"></i> <?= date('M j', strtotime($p['LastSignin'])) ?></span>
 									<?php if (!empty($p['LastClass'])): ?>
 										<span><i class="fas fa-shield-alt" style="color:#b794f4;width:14px"></i> <?= htmlspecialchars($p['LastClass']) ?></span>
 									<?php endif; ?>
 								</div>
 							</a>
-							<?php
-						};
+							<?php endforeach; ?>
+						</div>
 
-						$pkRenderRow = function (array $p) {
-							?>
-							<tr <?= !empty($p['MundaneName']) ? 'data-mundane-name="' . htmlspecialchars(strtolower($p['MundaneName'])) . '"' : '' ?> data-signin-count="<?= (int)$p['SigninCount'] ?>" onclick='window.location.href="<?= UIR ?>Player/profile/<?= $p['MundaneId'] ?>"'>
+						<!-- Period 1+ (hidden; revealed by Load More) -->
+						<?php $_pkCardIdx = 1; foreach (array_slice($playerPeriods, 1, null, true) as $pkPeriod => $pkPeriodPlayers): ?>
+						<div class="pk-period-block" id="pk-players-block-<?= $_pkCardIdx ?>" style="display:none">
+							<div class="pk-period-label"><?= $pkPeriod * 6 ?>–<?= ($pkPeriod + 1) * 6 ?> months ago</div>
+							<div class="pk-players-grid">
+								<?php foreach ($pkPeriodPlayers as $p): ?>
+								<?php
+									$initial = htmlspecialchars(strtoupper(mb_substr($p['Persona'], 0, 1)));
+									$heraldryBgSrc = $p['HasHeraldry']
+										? HTTP_PLAYER_HERALDRY . Common::resolve_image_ext(DIR_PLAYER_HERALDRY, sprintf('%06d', $p['MundaneId']))
+										: null;
+									if ($p['HasImage']) {
+										$avatarSrc = HTTP_PLAYER_IMAGE . Common::resolve_image_ext(DIR_PLAYER_IMAGE, sprintf('%06d', $p['MundaneId']));
+									} elseif ($p['HasHeraldry']) {
+										$avatarSrc = $heraldryBgSrc;
+									} else {
+										$avatarSrc = null;
+									}
+								?>
+								<a class="pk-player-card<?= $heraldryBgSrc ? ' pk-player-card-hbg' : '' ?>"
+								   <?= $heraldryBgSrc ? 'style="--hbg: url(\'' . htmlspecialchars($heraldryBgSrc) . '\')"'  : '' ?>
+								   <?= !empty($p['MundaneName']) ? 'data-mundane-name="' . htmlspecialchars(strtolower($p['MundaneName'])) . '"' : '' ?>
+								   href="<?= UIR ?>Player/profile/<?= $p['MundaneId'] ?>">
+									<div class="pk-player-card-top">
+										<div class="pk-player-avatar">
+											<?php if ($avatarSrc): ?>
+												<img src="<?= htmlspecialchars($avatarSrc) ?>"
+												     loading="lazy"
+												     alt=""
+												     onerror="pkAvatarFallback(this,'<?= $initial ?>')">
+											<?php else: ?>
+												<?= $initial ?>
+											<?php endif; ?>
+										</div>
+										<div>
+											<div class="pk-player-name"><?= htmlspecialchars($p['Persona']) ?></div>
+											<?php if (!empty($p['OfficerRoles'])): ?>
+												<?php foreach (explode(', ', $p['OfficerRoles']) as $role): ?>
+													<span class="pk-officer-pill"><?= htmlspecialchars(trim($role)) ?></span>
+												<?php endforeach; ?>
+											<?php endif; ?>
+										</div>
+									</div>
+									<div class="pk-player-stats">
+										<span><i class="fas fa-check-circle" style="color:#68d391;width:14px"></i> <?= $p['SigninCount'] ?> sign-in<?= $p['SigninCount'] != 1 ? 's' : '' ?></span>
+										<span><i class="fas fa-calendar-check" style="color:#63b3ed;width:14px"></i> <?= date('M j', strtotime($p['LastSignin'])) ?></span>
+										<?php if (!empty($p['LastClass'])): ?>
+											<span><i class="fas fa-shield-alt" style="color:#b794f4;width:14px"></i> <?= htmlspecialchars($p['LastClass']) ?></span>
+										<?php endif; ?>
+									</div>
+								</a>
+								<?php endforeach; ?>
+							</div>
+						</div>
+						<?php $_pkCardIdx++; endforeach; ?>
+
+						<?php if (count($playerPeriods) > 1): ?>
+						<div class="pk-load-more-wrap" data-next="1" data-group="pk-players">
+							<button class="pk-load-more-btn" onclick="pkLoadMoreCards('pk-players', this)">
+								<i class="fas fa-chevron-down"></i> Load More...
+							</button>
+							<span class="pk-load-more-hint">Showing <?= count($playerPeriods[0] ?? []) ?> of <?= count($allPlayers) ?> members</span>
+						</div>
+						<?php endif; ?>
+					</div><!-- /pk-players-cards -->
+
+					<!-- List view (hidden by default) -->
+					<div id="pk-players-list" style="display:none">
+						<table class="pk-table" id="pk-players-table">
+							<thead>
+								<tr>
+									<th data-sorttype="text">Persona</th>
+									<th data-sorttype="numeric">Sign-ins</th>
+									<th data-sorttype="date">Last Visit</th>
+									<th data-sorttype="text">Last Class</th>
+									<th data-sorttype="text">Role</th>
+								</tr>
+							</thead>
+							<tbody>
+								<?php foreach ($playerPeriods[0] ?? [] as $p): ?>
+								<tr <?= !empty($p['MundaneName']) ? 'data-mundane-name="' . htmlspecialchars(strtolower($p['MundaneName'])) . '"' : '' ?> onclick='window.location.href="<?= UIR ?>Player/profile/<?= $p['MundaneId'] ?>"'>
+									<td>
+										<?= htmlspecialchars($p['Persona']) ?>
+										<?php if (!empty($p['OfficerRoles'])): ?>
+											<?php foreach (explode(', ', $p['OfficerRoles']) as $role): ?>
+												<span class="pk-officer-pill"><?= htmlspecialchars(trim($role)) ?></span>
+											<?php endforeach; ?>
+										<?php endif; ?>
+									</td>
+									<td data-sortval="<?= $p['SigninCount'] ?>"><?= $p['SigninCount'] ?></td>
+									<td class="pk-date-col" data-sortval="<?= $p['LastSignin'] ?>">
+										<?= date('M j, Y', strtotime($p['LastSignin'])) ?>
+									</td>
+									<td><?= htmlspecialchars($p['LastClass'] ?? '') ?></td>
+									<td><?= htmlspecialchars($p['OfficerRoles'] ?? '') ?></td>
+								</tr>
+								<?php endforeach; ?>
+							</tbody>
+						</table>
+						<!-- Hidden row templates for older periods -->
+						<?php $_pkListIdx = 1; foreach (array_slice($playerPeriods, 1, null, true) as $pkPeriod => $pkPeriodPlayers): ?>
+						<template id="pk-players-tmpl-<?= $_pkListIdx ?>">
+							<?php foreach ($pkPeriodPlayers as $p): ?>
+							<tr onclick='window.location.href="<?= UIR ?>Player/profile/<?= $p['MundaneId'] ?>"'>
 								<td>
 									<?= htmlspecialchars($p['Persona']) ?>
 									<?php if (!empty($p['OfficerRoles'])): ?>
@@ -791,67 +933,24 @@
 									<?php endif; ?>
 								</td>
 								<td data-sortval="<?= $p['SigninCount'] ?>"><?= $p['SigninCount'] ?></td>
-								<?php
-									$_lsTsRow = strtotime($p['LastSignin']);
-									$_lpTsRow = !empty($p['LastSigninAtPark']) ? strtotime($p['LastSigninAtPark']) : 0;
-									$_dateCell = ($_lsTsRow > 0 && date('Y', $_lsTsRow) !== '1970') ? date('M j, Y', $_lsTsRow) : '—';
-									if (!empty($p['LastSigninAtPark']) && $p['LastSigninAtPark'] !== $p['LastSignin']) {
-										$_hereTxtRow = ($_lpTsRow > 0 && date('Y', $_lpTsRow) !== '1970') ? 'here ' . date('M j, Y', $_lpTsRow) : 'never here';
-										$_dateCell .= ' <span style="color:#a0aec0;font-size:.85em">(' . htmlspecialchars($_hereTxtRow) . ')</span>';
-									}
-								?>
-								<td class="pk-date-col" data-sortval="<?= $p['LastSignin'] ?>"><?= $_dateCell ?></td>
+								<td class="pk-date-col" data-sortval="<?= $p['LastSignin'] ?>">
+									<?= date('M j, Y', strtotime($p['LastSignin'])) ?>
+								</td>
 								<td><?= htmlspecialchars($p['LastClass'] ?? '') ?></td>
 								<td><?= htmlspecialchars($p['OfficerRoles'] ?? '') ?></td>
 							</tr>
-							<?php
-						};
-
-						$pkYearLabel = function ($year) use ($nowYear) {
-							if ($year === 'never') return 'No recorded sign-ins';
-							return ((int)$year === $nowYear) ? ($year . ' (current)') : (string)$year;
-						};
-					?>
-
-					<!-- Card view (default) — one details/year section -->
-					<div id="pk-players-cards">
-						<?php $_pkIdx = 0; foreach ($playersByYear as $_pkYear => $_pkYearPlayers): ?>
-						<details class="pk-year-section"<?= $_pkIdx === 0 ? ' open' : '' ?> data-year="<?= htmlspecialchars((string)$_pkYear) ?>">
-							<summary class="pk-year-summary">
-								<span class="pk-year-label"><?= htmlspecialchars($pkYearLabel($_pkYear)) ?></span>
-								<span class="pk-year-count"><?= count($_pkYearPlayers) ?> member<?= count($_pkYearPlayers) != 1 ? 's' : '' ?></span>
-							</summary>
-							<div class="pk-players-grid">
-								<?php foreach ($_pkYearPlayers as $p) { $pkRenderCard($p); } ?>
-							</div>
-						</details>
-						<?php $_pkIdx++; endforeach; ?>
-					</div><!-- /pk-players-cards -->
-
-					<!-- List view (hidden by default) — one details/year section, each with its own table -->
-					<div id="pk-players-list" style="display:none">
-						<?php $_pkIdx = 0; foreach ($playersByYear as $_pkYear => $_pkYearPlayers): ?>
-						<details class="pk-year-section"<?= $_pkIdx === 0 ? ' open' : '' ?> data-year="<?= htmlspecialchars((string)$_pkYear) ?>">
-							<summary class="pk-year-summary">
-								<span class="pk-year-label"><?= htmlspecialchars($pkYearLabel($_pkYear)) ?></span>
-								<span class="pk-year-count"><?= count($_pkYearPlayers) ?> member<?= count($_pkYearPlayers) != 1 ? 's' : '' ?></span>
-							</summary>
-							<table class="pk-table pk-year-table">
-								<thead>
-									<tr>
-										<th data-sorttype="text">Persona</th>
-										<th data-sorttype="numeric">6mo Sign-ins</th>
-										<th data-sorttype="date">Last Visit</th>
-										<th data-sorttype="text">Last Class</th>
-										<th data-sorttype="text">Role</th>
-									</tr>
-								</thead>
-								<tbody>
-									<?php foreach ($_pkYearPlayers as $p) { $pkRenderRow($p); } ?>
-								</tbody>
-							</table>
-						</details>
-						<?php $_pkIdx++; endforeach; ?>
+							<?php endforeach; ?>
+						</template>
+						<?php $_pkListIdx++; endforeach; ?>
+						<?php if (count($playerPeriods) > 1): ?>
+						<div class="pk-load-more-wrap pk-load-more-list" data-next="1">
+							<button class="pk-load-more-btn" onclick="pkLoadMoreList('pk-players-table', 'pk-players-tmpl', this)">
+								<i class="fas fa-chevron-down"></i> Load More...
+							</button>
+							<span class="pk-load-more-hint">Showing <?= count($playerPeriods[0] ?? []) ?> of <?= count($allPlayers) ?> members</span>
+						</div>
+						<?php endif; ?>
+						<div class="pk-pagination" id="pk-players-table-pages"></div>
 					</div><!-- /pk-players-list -->
 				<?php else: ?>
 					<div class="pk-empty">No players found</div>
@@ -1039,7 +1138,7 @@
 								<dt>Below Recommended</dt>
 								<dd>Players who haven&rsquo;t yet reached the recommended rank. The core action list &mdash; Grant these.</dd>
 								<dt>Non-Ladder</dt>
-								<dd>Includes titles such as Master, Noble, or Knight, custom awards, and other non-ranked options. Grant or Delete as appropriate.</dd>
+								<dd>Flat awards with no rank progression (e.g. service awards). Grant or Delete as appropriate.</dd>
 								<dt>At or Above Recommended</dt>
 								<dd>Players who already hold this award at or above the recommended rank. The rec has been fulfilled &mdash; Delete these to keep the list tidy.</dd>
 								<dt>All</dt>
@@ -1141,6 +1240,8 @@ var PkConfig = {
 		directions:  <?= json_encode($directions) ?>,
 	},
 };
+window.pkEventMapLocations  = <?= json_encode(array_values($pkEventMapLocations ?? []), JSON_HEX_TAG | JSON_HEX_AMP) ?>;
+window.pkEventMapNoLocCount = <?= (int)($pkEventMapNoLocCount ?? 0) ?>;
 </script>
 <?php if (!empty($CanAdminPark)): ?>
 <div id="pk-award-overlay">
@@ -1299,6 +1400,14 @@ var PkConfig = {
 				</div>
 			</div>
 
+			<div id="pk-att-event-nudge" class="pk-att-event-nudge" style="display:none">
+				<div class="pk-att-event-nudge-icon"><i class="fas fa-info-circle"></i></div>
+				<div class="pk-att-event-nudge-body">
+					<p class="pk-att-event-nudge-text">It looks like <strong id="pk-att-event-nudge-name"></strong> is currently happening. Would you like to capture attendance on that event instead? Using event attendance makes for better and more accurate reporting.</p>
+					<a class="pk-att-event-nudge-btn" id="pk-att-event-nudge-link" href="#">Go To Event <i class="fas fa-arrow-right"></i></a>
+				</div>
+			</div>
+
 			<div class="pk-att-feedback" id="pk-att-feedback" style="display:none"></div>
 
 			<!-- Tab bar -->
@@ -1380,9 +1489,7 @@ var PkConfig = {
 	</div>
 </div>
 
-<!-- Recommend Award Modal — outside CanManagePark block; any logged-in user can submit -->
-</div><!-- /CanManagePark -->
-<?php endif; ?>
+<!-- Recommend Award Modal -->
 <div id="pk-rec-overlay">
 	<div class="pk-modal-box" style="width:520px;max-width:calc(100vw - 40px);">
 		<div class="pk-modal-header">
@@ -1428,35 +1535,160 @@ var PkConfig = {
 	</div>
 </div>
 
+<?php endif; ?>
+
 <?php if ($CanAdminPark ?? false): ?>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 
 <div class="pk-emod-overlay" id="pk-event-modal">
 	<div class="pk-emod-box">
 		<div class="pk-emod-header">
-			<h3 class="kn-bare-heading"><i class="fas fa-calendar-plus" style="margin-right:8px;color:#276749"></i>Create New Event</h3>
+			<h3 id="pk-emod-title" class="kn-bare-heading"><i class="fas fa-calendar-plus" style="margin-right:8px;color:#276749"></i>Create New Event</h3>
 			<button class="pk-emod-close" onclick="pkCloseEventModal()">&times;</button>
 		</div>
 		<div class="pk-emod-body">
+
+			<div class="pk-emod-typesel">
+				<label class="pk-emod-typeopt">
+					<input type="radio" name="pk-emod-type" value="event" checked>
+					<span><i class="fas fa-flag"></i> Amtgard Event</span>
+				</label>
+				<label class="pk-emod-typeopt">
+					<input type="radio" name="pk-emod-type" value="calendar-item">
+					<span><i class="fas fa-calendar-day"></i> Calendar Item</span>
+				</label>
+			</div>
+
 			<div class="pk-emod-field">
-				<label class="pk-emod-label">Event Name <span style="color:#e53e3e">*</span></label>
+				<label class="pk-emod-label">Name <span style="color:#e53e3e">*</span></label>
 				<input type="text" class="pk-emod-input" id="pk-event-name" autocomplete="off" placeholder="e.g. Summer Dragonmaster">
 			</div>
 			<div id="pk-emod-date-row" style="display:none;font-size:12px;color:var(--ork-alert-info-text,#2b6cb0);margin-top:8px;padding:5px 8px;background:var(--ork-alert-info-bg,#ebf8ff);border-radius:5px;border-left:3px solid var(--ork-alert-info-border,#90cdf4)">
 				<i class="fas fa-calendar-alt" style="margin-right:5px"></i><span id="pk-emod-date-text"></span>
 			</div>
-			<p class="pk-emod-hint" style="margin-top:8px">This event will be assigned to <strong><?= htmlspecialchars($park_name ?? '') ?></strong>. You'll set dates and details on the next page.</p>
+			<p class="pk-emod-hint pk-emod-event-only" style="margin-top:8px">This event will be assigned to <strong><?= htmlspecialchars($park_name ?? '') ?></strong>. You'll set dates and details on the next page.</p>
+
+			<!-- Calendar-item-only fields -->
+			<div class="pk-emod-ci-only" style="display:none">
+				<div class="pk-emod-field" style="margin-top:12px">
+					<label class="pk-emod-check-label">
+						<input type="checkbox" id="pk-ci-allday"> All day
+					</label>
+				</div>
+				<div class="pk-emod-field" style="margin-top:6px">
+					<label class="pk-emod-check-label" data-tip="Officer-only items are visible only to ORK admins and people serving as Monarch / Regent / PM / Champion of this kingdom or park.">
+						<input type="checkbox" id="pk-ci-officer-only"> <i class="fas fa-shield-alt" style="margin:0 4px 0 2px;color:#805ad5"></i>Only Display to Officers
+					</label>
+				</div>
+				<div class="pk-emod-field" style="margin-top:6px">
+					<label class="pk-emod-check-label" data-tip="Locals-only items are visible only to ORK admins and to logged-in players whose home park (or kingdom, for kingdom-level items) matches.">
+						<input type="checkbox" id="pk-ci-locals-only"> <i class="fas fa-map-marker-alt" style="margin:0 4px 0 2px;color:#0d9488"></i>Only Display to Local Park/Kingdom Players
+					</label>
+				</div>
+				<div style="display:flex;gap:10px;margin-top:8px">
+					<div class="pk-emod-field" style="flex:1">
+						<label class="pk-emod-label">Start <span style="color:#e53e3e">*</span></label>
+						<input type="text" class="pk-emod-input" id="pk-ci-start" autocomplete="off" placeholder="Select start…">
+					</div>
+					<div class="pk-emod-field" style="flex:1">
+						<label class="pk-emod-label">End <span style="color:#e53e3e">*</span></label>
+						<input type="text" class="pk-emod-input" id="pk-ci-end" autocomplete="off" placeholder="Select end…">
+					</div>
+				</div>
+				<div class="pk-emod-field" style="margin-top:10px">
+					<label class="pk-emod-label">Description</label>
+					<textarea class="pk-emod-input" id="pk-ci-description" rows="3" placeholder="Optional details…"></textarea>
+				</div>
+				<div class="pk-emod-ci-note">
+					<i class="fas fa-info-circle" style="margin-right:6px"></i>
+					Calendar Items are lightweight. They do <strong>not</strong> support RSVPs, sign-ins, schedules, attendance, heraldry, pricing, or event authorization lists. Use an Amtgard Event for those.
+				</div>
+			</div>
+
 			<div class="pk-emod-feedback" id="pk-emod-feedback" style="display:none"></div>
 		</div>
 		<div class="pk-emod-footer">
 			<button class="pk-emod-btn-cancel" onclick="pkCloseEventModal()">Cancel</button>
+			<button class="pk-emod-btn-cancel pk-emod-draft-btn" id="pk-emod-draft-btn" onclick="pkCreateEvent('draft')" disabled style="display:none;font-size:12px;">
+				<i class="fas fa-eye-slash"></i> Save as Draft
+			</button>
 			<button class="pk-emod-btn-go" id="pk-emod-go-btn" onclick="pkCreateEvent()" disabled>
-				Create Event <i class="fas fa-arrow-right"></i>
+				<span id="pk-emod-go-label">Create Event</span> <i class="fas fa-arrow-right"></i>
 			</button>
 		</div>
 	</div>
 </div>
 
 <?php endif; ?>
+
+<!-- Event Preview Overlay (calendar quick-look) -->
+<div class="evpv-overlay" id="evpv-overlay">
+	<div class="evpv-box">
+		<div class="evpv-header">
+			<div class="evpv-header-meta">
+				<span class="evpv-kind-pill" id="evpv-kind-pill"><i class="fas fa-flag"></i> <span id="evpv-kind-label">Amtgard Event</span></span>
+				<span class="kn-draft-pill" id="evpv-draft-pill" style="display:none">DRAFT</span>
+			</div>
+			<button class="evpv-close" onclick="evpvClose()" aria-label="Close">&times;</button>
+		</div>
+		<div class="evpv-body">
+			<div class="evpv-hero">
+				<img class="evpv-heraldry" id="evpv-heraldry" alt="" loading="lazy">
+				<div class="evpv-hero-text">
+					<a class="evpv-name" id="evpv-name" href="#"></a>
+					<div class="evpv-meta-row">
+						<span class="evpv-meta-date"><i class="far fa-calendar-alt"></i> <span id="evpv-date"></span></span>
+						<span class="evpv-solar-icon" id="evpv-solar" style="display:none" data-tip=""><i class="fas fa-sun"></i></span>
+					</div>
+					<div class="evpv-meta-row">
+						<span class="evpv-meta-time" id="evpv-time-row"><i class="far fa-clock"></i> <span id="evpv-time"></span></span>
+						<span class="evpv-meta-park" id="evpv-park-row" style="display:none"><i class="fas fa-tree"></i> <span id="evpv-park"></span></span>
+					</div>
+				</div>
+				<div class="evpv-wx-wrap" id="evpv-wx-wrap" style="display:none">
+					<span class="ev-weather-badge" id="evpv-wx" data-tip=""></span>
+				</div>
+			</div>
+			<div class="evpv-description" id="evpv-description" style="display:none"></div>
+			<div class="evpv-rsvp-row">
+				<span class="kn-rsvp-wrap" id="evpv-rsvp"></span>
+			</div>
+		</div>
+		<div class="evpv-footer">
+			<button class="kn-emod-btn-cancel" onclick="evpvClose()">Close</button>
+			<a class="evpv-cta" id="evpv-cta" href="#"><i class="fas fa-arrow-right"></i> See Full Details</a>
+		</div>
+	</div>
+</div>
+
+<!-- Calendar Item Detail Overlay (read/edit/delete) — available to all viewers -->
+<div class="pk-ci-overlay" id="pk-ci-overlay">
+	<div class="pk-ci-box">
+		<div class="pk-ci-header">
+			<h3><i class="fas fa-calendar-day" style="margin-right:8px;color:#64748b"></i>Calendar Item</h3>
+			<button class="pk-emod-close" onclick="pkCloseCalendarItemOverlay()">&times;</button>
+		</div>
+		<div class="pk-ci-body">
+			<div class="pk-ci-name" id="pk-ci-view-name"></div>
+			<div class="pk-ci-meta">
+				<i class="fas fa-clock" style="margin-right:6px;color:#a0aec0"></i>
+				<span id="pk-ci-view-when"></span>
+			</div>
+			<div class="pk-ci-scope" id="pk-ci-view-scope"></div>
+			<div class="pk-ci-description" id="pk-ci-view-desc"></div>
+		</div>
+		<div class="pk-ci-footer">
+			<button class="pk-emod-btn-cancel" onclick="pkCloseCalendarItemOverlay()">Close</button>
+			<button class="pk-emod-btn-cancel" id="pk-ci-edit-btn" style="display:none" onclick="pkEditCalendarItem()">
+				<i class="fas fa-pencil-alt"></i> Edit
+			</button>
+			<button class="pk-emod-btn-cancel" id="pk-ci-delete-btn" style="display:none;color:#c53030;border-color:#fc8181" onclick="pkDeleteCalendarItem()">
+				<i class="fas fa-trash"></i> Delete
+			</button>
+		</div>
+	</div>
+</div>
 
 <?php if ($CanAdminPark ?? false): ?>
 <!-- Add Player Modal -->
@@ -1578,11 +1810,12 @@ var PkConfig = {
 			<div class="pk-addday-field">
 				<label>Purpose</label>
 				<div class="pk-seg-group">
-					<button type="button" class="pk-seg-btn pk-seg-active" data-group="purpose" data-val="fighter-practice">Fighter Practice</button>
+					<button type="button" class="pk-seg-btn pk-seg-active" data-group="purpose" data-val="park-day">Park Day</button>
+					<button type="button" class="pk-seg-btn" data-group="purpose" data-val="fighter-practice">Fighter Practice</button>
 					<button type="button" class="pk-seg-btn" data-group="purpose" data-val="arts-day">A&amp;S Day</button>
 					<button type="button" class="pk-seg-btn" data-group="purpose" data-val="other">Other</button>
 				</div>
-				<input type="hidden" id="pk-addday-purpose" value="fighter-practice" />
+				<input type="hidden" id="pk-addday-purpose" value="park-day" />
 			</div>
 
 			<div class="pk-addday-field">
@@ -1755,10 +1988,10 @@ var PkConfig = {
 
 <!-- Move Player Modal -->
 <style>
-.pk-mp-toggle { display:flex; background:#edf2f7; border-radius:6px; padding:3px; gap:3px; margin-bottom:14px; }
+.pk-mp-toggle { display:flex; background:var(--ork-surface-hover); border-radius:6px; padding:3px; gap:3px; margin-bottom:14px; }
 .pk-mp-toggle-btn {
 	flex:1; padding:6px 10px; border:none; border-radius:4px; font-size:12px; font-weight:600;
-	cursor:pointer; background:transparent; color:#718096; transition:background 0.15s,color 0.15s;
+	cursor:pointer; background:transparent; color:var(--ork-text-muted); transition:background 0.15s,color 0.15s;
 }
 .pk-mp-toggle-btn.pk-mp-active { background:#fff; color:#2b6cb0; box-shadow:0 1px 3px rgba(0,0,0,0.1); }
 
