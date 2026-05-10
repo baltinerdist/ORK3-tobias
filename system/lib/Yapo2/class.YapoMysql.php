@@ -26,7 +26,14 @@ class YapoMysql extends YapoDb {
 				return $cached;
 			}
 		}
+		// Clear any leftover bindings from prior operations on the shared connection
+		// before running the parameterless schema queries. Otherwise PDO emits
+		// SQLSTATE[HY093] (Invalid parameter number) for the unmatched bindings,
+		// silently returns zero rows from describe, and the table's PrimaryKey is
+		// detected as false — corrupting all subsequent saves on this table.
+		$this->Clear();
 		$Keys = $this->DataSet("SHOW KEYS IN $table");
+		$this->Clear();
 		$Fields = $this->DataSet("describe $table");
 		$this->Clear();
 
