@@ -1339,6 +1339,18 @@ if (PnConfig.recError) {
             fetch(SAVE_URL, { method: 'POST', body: fd })
                 .then(function(resp) {
                     if (!resp.ok) throw new Error('Server returned ' + resp.status);
+                    return resp.text();
+                })
+                .then(function(html) {
+                    var m = html.match(/<div class=['"]error-message['"][^>]*>([\s\S]*?)<\/div>/i);
+                    if (m) {
+                        var msg = m[1].replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+                        errEl.textContent = msg || 'Save failed.';
+                        errEl.style.display = '';
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fas fa-save"></i> Save Changes';
+                        return;
+                    }
                     window.location.reload();
                 })
                 .catch(function(err) {
@@ -1610,6 +1622,18 @@ if (PnConfig.recError) {
             fetch(SAVE_URL, { method: 'POST', body: fd })
                 .then(function(resp) {
                     if (!resp.ok) throw new Error('Server returned ' + resp.status);
+                    return resp.text();
+                })
+                .then(function(html) {
+                    var m = html.match(/<div class=['"]error-message['"][^>]*>([\s\S]*?)<\/div>/i);
+                    if (m) {
+                        var msg = m[1].replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+                        errEl.textContent = msg || 'Save failed.';
+                        errEl.style.display = '';
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fas fa-save"></i> Save Changes';
+                        return;
+                    }
                     window.location.reload();
                 })
                 .catch(function(err) {
