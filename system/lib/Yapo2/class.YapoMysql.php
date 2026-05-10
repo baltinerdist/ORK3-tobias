@@ -5,28 +5,50 @@ include_once('class.YapoDb.php');
 class YapoMysql extends YapoDb {
 
 	private $DBH;
-	
+
 	private $Data;
-	
+
+	private static $schema_cache = [];
+
 	function __construct($host, $dbname, $user, $password) {
 		$this->DBH = new PDO("mysql:host=$host;dbname=$dbname", $user, $password);
 		$this->DBH->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_WARNING);
 	}
 	
 	function TableDescription($table) {
+		if (isset(self::$schema_cache[$table])) {
+			return self::$schema_cache[$table];
+		}
+		if (function_exists('apcu_fetch')) {
+			$cached = apcu_fetch('yapo_schema_' . $table, $found);
+			// Treat empty Fields as a poisoned entry (DESCRIBE failed when it was cached) —
+			// drop it and re-fetch.
+			if ($found && !empty($cached['Fields'])) {
+				self::$schema_cache[$table] = $cached;
+				return $cached;
+			}
+			if ($found) {
+				apcu_delete('yapo_schema_' . $table);
+			}
+		}
+		// Clear any leftover bound parameters before DESCRIBE/SHOW KEYS so PDO doesn't
+		// try to bind them to these placeholder-free queries (which causes them to fail
+		// silently and return 0 rows — at which point we'd cache an empty schema and
+		// poison every subsequent INSERT/UPDATE/find on this table for 24 hours).
+		$this->Clear();
 		$Keys = $this->DataSet("SHOW KEYS IN $table");
 		$Fields = $this->DataSet("describe $table");
 		$this->Clear();
-		
+
 		$keys = array();
-		
+
 		while ($Keys->Next()) {
 			if (!isset($keys[$Keys->Key_name]) || !is_array($keys[$Keys->Key_name]))
 				$keys[$Keys->Key_name] = array('Unique'=>!$Keys->Non_unique,'Columns'=>array());
 			$keys[$Keys->Key_name]['Columns'][] = $Keys->Column_name;
 		}
-		
-		
+
+
 		$fields = array();
 		$primary_key = false;
 		while ($Fields->Next()) {
@@ -41,10 +63,16 @@ class YapoMysql extends YapoDb {
 				);
 			if (strtoupper($Fields->Key) == 'PRI') $primary_key = $Fields->Field;
 		}
-		
-		return array("Keys" => $keys, "Fields" => $fields, "PrimaryKey" => $primary_key);
-	}	
-	
+
+		$result = array("Keys" => $keys, "Fields" => $fields, "PrimaryKey" => $primary_key);
+		self::$schema_cache[$table] = $result;
+		// Only persist when we got a real schema back — never cache an empty Fields array.
+		if (function_exists('apcu_store') && !empty($fields)) {
+			apcu_store('yapo_schema_' . $table, $result, 86400);
+		}
+		return $result;
+	}
+
 	function GetLastInsertId() {
 		return $this->DBH->lastInsertId();
 	}

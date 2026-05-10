@@ -478,31 +478,104 @@ class Report  extends Ork3 {
 		$r = $this->db->query($sql);
 		$response = array();
 		if ($r !== false && $r->size() > 0) {
-			$response['AwardRecommendations'] = array();
+			// First pass: collect raw rows and the set of (mundane_id, ladder_award_id) we'll need Master-peerage lookups for.
+			$rawRows = array();
+			$ladderMap = Award::GetLadderMasterMap();
+			$masterIdSet = array();
+			foreach ($ladderMap as $lInfo) {
+				foreach ((array)$lInfo['MasterAwardIds'] as $mAid) {
+					$masterIdSet[(int)$mAid] = true;
+				}
+			}
+			$needMundaneIds = array();
 			while ($r->next()) {
+				$row = (object)[
+					'recommendations_id' => $r->recommendations_id,
+					'mundane_id'         => (int)$r->mundane_id,
+					'persona'            => $r->persona,
+					'date_recommended'   => $r->date_recommended,
+					'rank'               => $r->rank,
+					'award_name'         => $r->award_name,
+					'reason'             => $r->reason,
+					'recommended_by_persona' => $r->recommended_by_persona,
+					'recommended_by_id'      => $r->recommended_by_id,
+					'ka_kaward_id'       => (int)$r->ka_kaward_id,
+					'ka_award_id'        => (int)$r->ka_award_id,
+					'recs_award_id'      => (int)$r->award_id,
+					'park_id'            => $r->park_id,
+					'kingdom_id'         => $r->kingdom_id,
+					'park_name'          => $r->park_name,
+					'kingdom_name'       => $r->kingdom_name,
+					'kacount'            => (int)$r->kacount,
+					'awcount'            => (int)$r->awcount,
+					'player_ka_rank'     => (int)$r->player_ka_rank,
+					'player_ka_date'     => $r->player_ka_date,
+				];
+				$recAwardId = $row->ka_award_id ?: $row->recs_award_id;
+				if (isset($ladderMap[$recAwardId])) {
+					$needMundaneIds[$row->mundane_id] = true;
+				}
+				$rawRows[] = $row;
+			}
+
+			// Second pass: batch-fetch Master-peerage holdings for any mundanes whose recs target a ladder.
+			$heldMasters = array(); // mundane_id => [master_award_id => true]
+			if (!empty($needMundaneIds) && !empty($masterIdSet)) {
+				$midCsv = implode(',', array_map('intval', array_keys($needMundaneIds)));
+				$maCsv  = implode(',', array_map('intval', array_keys($masterIdSet)));
+				$mRes = $this->db->query(
+					"SELECT mundane_id, award_id FROM " . DB_PREFIX . "awards
+					 WHERE mundane_id IN ({$midCsv}) AND award_id IN ({$maCsv})"
+				);
+				if ($mRes !== false && $mRes->size() > 0) {
+					while ($mRes->next()) {
+						$heldMasters[(int)$mRes->mundane_id][(int)$mRes->award_id] = true;
+					}
+				}
+			}
+
+			// Custom Award / Custom Title instances share a single base award_id across every
+			// instance (or use a stale award_id with the display name "Custom Award"), so the
+			// awcount subquery over-matches. Detect by displayed award name and skip AlreadyHas.
+			$customNameSet = ['Custom Award' => true, 'Custom Title' => true];
+
+			// Final pass: build response, flipping AlreadyHas when a Master peerage covers a ladder rec.
+			$response['AwardRecommendations'] = array();
+			foreach ($rawRows as $row) {
+				$recAwardId = $row->ka_award_id ?: $row->recs_award_id;
+				$isCustom   = isset($customNameSet[trim((string)$row->award_name)]);
+				$alreadyHas = $isCustom ? false : ($row->kacount > 0 || $row->awcount > 0);
+				$coveredByMaster = false;
+				if (!$isCustom && !$alreadyHas && isset($ladderMap[$recAwardId])) {
+					foreach ((array)$ladderMap[$recAwardId]['MasterAwardIds'] as $mAid) {
+						if (!empty($heldMasters[$row->mundane_id][(int)$mAid])) {
+							$alreadyHas = true;
+							$coveredByMaster = true;
+							break;
+						}
+					}
+				}
 				$response['AwardRecommendations'][] = array(
-						'RecommendationsId' => $r->recommendations_id,
-						'MundaneId' => $r->mundane_id,
-						'Persona' => $r->persona,
-						'DateRecommended' => $r->date_recommended,
-						'Rank' => $r->rank,
-						'AwardName' => $r->award_name,
-						'Reason' => $r->reason,
-						'RecommendedByName' => $r->recommended_by_persona,
-						'RecommendedById' => $r->recommended_by_id,
-						'KingdomAwardId' => (int)$r->ka_kaward_id,
-						'ParkId' => $r->park_id,
-						'KingdomId' => $r->kingdom_id,
-						'ParkName' => $r->park_name,
-						'KingdomName' => $r->kingdom_name,
-						// Custom awards (base Award with is_ladder=0 AND is_title=0) can legitimately
-						// be held many times, so they must never be filtered out as "already has".
-						'AlreadyHas' => ((int)$r->a_is_ladder === 0 && (int)$r->a_is_title === 0)
-							? false
-							: ($r->kacount > 0 || $r->awcount > 0),
-						'CurrentRank' => ($r->kacount > 0 || $r->awcount > 0) ? (int)$r->player_ka_rank : null,
-						'CurrentRankDate' => ($r->kacount > 0 || $r->awcount > 0) ? $r->player_ka_date : null,
-					);
+					'RecommendationsId' => $row->recommendations_id,
+					'MundaneId' => $row->mundane_id,
+					'Persona' => $row->persona,
+					'DateRecommended' => $row->date_recommended,
+					'Rank' => $row->rank,
+					'AwardName' => $row->award_name,
+					'Reason' => $row->reason,
+					'RecommendedByName' => $row->recommended_by_persona,
+					'RecommendedById' => $row->recommended_by_id,
+					'KingdomAwardId' => $row->ka_kaward_id,
+					'AwardId' => $recAwardId,
+					'ParkId' => $row->park_id,
+					'KingdomId' => $row->kingdom_id,
+					'ParkName' => $row->park_name,
+					'KingdomName' => $row->kingdom_name,
+					'AlreadyHas' => $alreadyHas,
+					'CoveredByMaster' => $coveredByMaster,
+					'CurrentRank' => $alreadyHas ? ($row->player_ka_rank ?: null) : null,
+					'CurrentRankDate' => $alreadyHas ? $row->player_ka_date : null,
+				);
 			}
 			$response['Status'] = Success();
 		} else {
@@ -1118,7 +1191,8 @@ class Report  extends Ork3 {
 									where
 										$native_populace
 										$waivered_peeps
-										date >= '$per_period'
+										a.kingdom_id = '$escaped_kingdom_id'
+										and date >= '$per_period'
 										and a.mundane_id > 0
 									group by date_year, date_week3, mundane_id, a.park_id) mundanesbyweek
 								on p.park_id = mundanesbyweek.park_id
@@ -1160,7 +1234,8 @@ class Report  extends Ork3 {
 						SELECT a.date_year, a.date_month, a.park_id,
 						       COUNT(DISTINCT a.mundane_id) AS monthly_unique
 						FROM " . DB_PREFIX . "attendance a
-						WHERE a.date > '$monthly_period'
+						WHERE a.kingdom_id = '$escaped_kingdom_id'
+						  AND a.date > '$monthly_period'
 						  AND a.mundane_id > 0
 						GROUP BY a.date_year, a.date_month, a.park_id
 					) sub
@@ -1257,14 +1332,15 @@ class Report  extends Ork3 {
 
 	public function GetActiveKingdomsSummary($request=null) {
 		$key = Ork3::$Lib->ghettocache->key($request);
-		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 1200)) !== false)
+		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 3600)) !== false)
 			return $cache;
 
 		if (strlen($request['KingdomAverageWeeks'] ?? '') == 0) $request['KingdomAverageWeeks'] = 26;
 		if (strlen($request['ParkAttendanceWithin'] ?? '') == 0) $request['ParkAttendanceWithin'] = 4;
 		if (strlen($request['ReportFromDate'] ?? '') == 0) $request['ReportFromDate'] = 'curdate()';
 		$wk_start = date("Y-m-d", strtotime("-6 month"));
-		$sql = "SELECT k.name, k.kingdom_id, k.parent_kingdom_id, pcount.park_count, ifnull(attendance_count,0) attendance, ifnull(monthly_attendance_count,0) monthly, ifnull(activeparks.parkcount,0) active_parks
+		$mo_start = date("Y-m-d", strtotime("-1 year"));
+		$sql = "SELECT k.name, k.kingdom_id, k.parent_kingdom_id, pcount.park_count, ifnull(attendance_count,0) attendance, ifnull(monthly_attendance_count,0) monthly, ifnull(avg_monthly_att.avg_monthly,0) avg_monthly, ifnull(activeparks.parkcount,0) active_parks
 					FROM `" . DB_PREFIX . "kingdom` k
 					left join
 						(select count(*) as park_count, pcnt.kingdom_id from `" . DB_PREFIX . "park` pcnt where pcnt.active = 'Active' group by pcnt.kingdom_id) pcount on pcount.kingdom_id = k.kingdom_id
@@ -1285,8 +1361,18 @@ class Report  extends Ork3 {
 								(select
 										mundane_id, date_month as month, kingdom_id
 									from " . DB_PREFIX . "attendance
-									where date > '" . date("Y-m-d", strtotime("-1 year")) . "' and mundane_id > 0 group by date_month, mundane_id, kingdom_id)
+									where date > '$mo_start' and mundane_id > 0 group by date_month, mundane_id, kingdom_id)
 									mundanesbymonth group by kingdom_id) monthly_attendance on monthly_attendance.kingdom_id = k.kingdom_id
+					left join
+						(select kingdom_id, AVG(monthly_unique) AS avg_monthly
+							from (
+								select a.date_year, a.date_month, p2.kingdom_id, COUNT(DISTINCT a.mundane_id) AS monthly_unique
+								from " . DB_PREFIX . "attendance a
+								inner join " . DB_PREFIX . "park p2 on p2.park_id = a.park_id
+								where a.date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) and a.mundane_id > 0
+								group by a.date_year, a.date_month, p2.kingdom_id
+							) mo_sub
+							group by kingdom_id) avg_monthly_att on avg_monthly_att.kingdom_id = k.kingdom_id
 					left join
 						(select
 								count(*) parkcount, kingdom_id
@@ -1308,7 +1394,7 @@ class Report  extends Ork3 {
 		while ($r->next()) {
 			$report[] = array( 'KingdomName' => $r->name, 'ParentKingdomId' => $r->parent_kingdom_id,
 									'IsPrincipality' => $r->parent_kingdom_id>0?1:0, 'KingdomId' => $r->kingdom_id,
-									'ParkCount' => $r->park_count, 'Attendance' => $r->attendance, 'Monthly' => $r->monthly, 'Participation' => $r->active_parks );
+									'ParkCount' => $r->park_count, 'Attendance' => $r->attendance, 'Monthly' => $r->monthly, 'MonthlyAvg' => round((float)$r->avg_monthly, 1), 'Participation' => $r->active_parks );
 		}
 		$response = array(
 			'Status' => Success(),
@@ -2814,6 +2900,12 @@ class Report  extends Ork3 {
 		$park_clause    = $park_id    ? " AND m.park_id    = $park_id"    : '';
 		$mundane_clause = $mundane_id ? " AND m.mundane_id = $mundane_id" : '';
 
+		// Single-player calls (Player profile voting badge) only need attendance for one mundane_id.
+		// Without this push-down, every LEFT JOIN subquery aggregates over the whole kingdom's
+		// attendance and then joins to find one row — turning a single-player check into a
+		// kingdom-wide report.
+		$single_att_clause = $mundane_id ? " AND a.mundane_id = $mundane_id" : '';
+
 		// Online exclusion: LEFT JOIN event + park inside attendance subqueries, filter out
 		// rows where the event name or park name contains 'Online' (case-insensitive).
 		// ExcludeEvents: restrict attendance to park-day sign-ins only (event_id = 0 or NULL).
@@ -2892,6 +2984,7 @@ class Report  extends Ork3 {
 					    FROM " . DB_PREFIX . "attendance a
 					    WHERE a.event_id IS NOT NULL AND a.event_id != 0
 					      AND a.date >= '$start_date'
+					      $single_att_clause
 					    GROUP BY a.mundane_id, a.event_id, a.kingdom_id
 					    UNION ALL
 					    SELECT a.mundane_id,
@@ -2900,6 +2993,7 @@ class Report  extends Ork3 {
 					    FROM " . DB_PREFIX . "attendance a
 					    WHERE (a.event_id = 0 OR a.event_id IS NULL)
 					      AND a.date >= '$start_date'
+					      $single_att_clause
 					) att_inner
 					GROUP BY mundane_id
 				) att ON att.mundane_id = m.mundane_id";
@@ -2919,6 +3013,7 @@ class Report  extends Ork3 {
 					$online_join
 					WHERE $_att_where_kw
 					  AND a.date >= '$start_date'
+					  $single_att_clause
 					  $online_clause
 					  $events_clause
 					GROUP BY a.mundane_id
@@ -2937,6 +3032,7 @@ class Report  extends Ork3 {
 					$online_join
 					WHERE " . ($all_kingdoms ? "1=1" : "a.kingdom_id = $kingdom_id") . "
 					  AND a.date >= '$start_date'
+					  $single_att_clause
 					  $online_clause
 					GROUP BY a.mundane_id
 				) patt ON patt.mundane_id = m.mundane_id
@@ -2957,6 +3053,7 @@ class Report  extends Ork3 {
 					LEFT JOIN " . DB_PREFIX . "park  _op ON _op.park_id  = a.park_id
 					WHERE a.kingdom_id = $kingdom_id
 					  AND a.date >= '$start_date'
+					  $single_att_clause
 					  AND (_oe.name LIKE '%Online%' OR _op.name LIKE '%Online%')
 					GROUP BY a.mundane_id
 				) oatt ON oatt.mundane_id = m.mundane_id
@@ -2975,6 +3072,7 @@ class Report  extends Ork3 {
 					FROM " . DB_PREFIX . "attendance a
 					WHERE a.kingdom_id = $kingdom_id
 					  AND a.date >= '$start_date'
+					  $single_att_clause
 					  AND a.event_id IS NOT NULL AND a.event_id != 0
 					GROUP BY a.mundane_id
 				) evatt ON evatt.mundane_id = m.mundane_id
@@ -2994,6 +3092,7 @@ class Report  extends Ork3 {
 					$online_join
 					WHERE " . ($all_kingdoms ? "1=1" : "a.kingdom_id = $kingdom_id") . "
 					  AND a.date >= '$start_date'
+					  $single_att_clause
 					  $online_clause
 					GROUP BY a.mundane_id
 				) katt ON katt.mundane_id = m.mundane_id

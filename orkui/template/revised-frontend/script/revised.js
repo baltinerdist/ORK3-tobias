@@ -851,8 +851,117 @@ if (PnConfig.recError) {
         var desc = AWARD_DESCRIPTIONS[aid] || '';
         var el = document.getElementById('pn-rec-award-desc');
         if (el) { el.textContent = desc; el.style.display = desc ? '' : 'none'; }
-        pnRecRefreshWarn();
+        pnApplyLadderSuggestion($(this).val());
     });
+
+    // Called whenever the award picker changes. If the player has already achieved the
+    // Master peerage for a ladder, hard-block submit. If they've reached the top rank but
+    // not the Master yet, offer a clickable suggestion that swaps the select to the Master.
+    function pnApplyLadderSuggestion(kingdomAwardId) {
+        var $err    = $('#pn-rec-error');
+        var $submit = $('#pn-rec-submit');
+        // Reset any previous suggestion state
+        $err.removeClass('pn-rec-suggest pn-rec-block').hide().empty();
+        $submit.prop('disabled', false);
+
+        if (!kingdomAwardId) return;
+        var opt = document.querySelector('#pn-rec-award option[value="' + kingdomAwardId + '"]');
+        if (!opt) return;
+
+        var baseAwardId = parseInt(opt.getAttribute('data-award-id')) || 0;
+        var map  = (PnConfig && PnConfig.ladderMasterMap) || {};
+        var held = (PnConfig.heldAwardIds || []).reduce(function(s, x) { s[x] = true; return s; }, {});
+        var name = PnConfig.playerName || 'This player';
+
+        // Case A — recommending a Master peerage the player already holds
+        if (baseAwardId > 0 && opt.getAttribute('data-peerage') === 'Master' && held[baseAwardId]) {
+            $err.addClass('pn-rec-block')
+                .text(name + ' has already achieved the rank of ' + (opt.textContent || '').trim() + '. Maybe consider recommending for a different award?')
+                .show();
+            $submit.prop('disabled', true);
+            return;
+        }
+
+        if (opt.getAttribute('data-is-ladder') !== '1') return;
+
+        var info = map[baseAwardId];
+        if (!info) return;
+
+        var maxRank  = parseInt(info.MaxRank) || (/zodiac/i.test(opt.textContent) ? 12 : 10);
+        var rankHeld = (PnConfig.awardRanks || {})[baseAwardId] || 0;
+
+        // Branch 1 — player already holds the Master peerage
+        var masterHeld = (info.MasterAwardIds || []).some(function(mid) { return !!held[mid]; });
+        if (masterHeld) {
+            $err.addClass('pn-rec-block')
+                .text(name + ' has already achieved the rank of ' + info.MasterName + '. Maybe consider recommending for a different award?')
+                .show();
+            $submit.prop('disabled', true);
+            return;
+        }
+
+        // Branch 2 — player at top rank of the ladder, no Master peerage yet
+        if (rankHeld >= maxRank) {
+            var masterOpt = null;
+            (info.MasterAwardIds || []).some(function(mid) {
+                masterOpt = document.querySelector('#pn-rec-award option[data-peerage="Master"][data-award-id="' + mid + '"]');
+                return !!masterOpt;
+            });
+            var msgParts = [
+                pnEscapeHtml(name),
+                ' has already received the ',
+                pnOrdinal(maxRank),
+                ' ',
+                pnEscapeHtml(info.LadderName),
+                '.'
+            ];
+            if (masterOpt) {
+                msgParts.push(
+                    ' Would you like to recommend them for ',
+                    '<a href="#" class="pn-rec-suggest-link" data-master-value="',
+                    pnEscapeAttr(masterOpt.value),
+                    '">',
+                    pnEscapeHtml(info.MasterName),
+                    '</a> instead?'
+                );
+            } else {
+                msgParts.push(' No higher rank is available.');
+            }
+            $err.addClass('pn-rec-suggest').html(msgParts.join('')).show();
+            $submit.prop('disabled', true);
+            return;
+        }
+    }
+
+    // Click handler: swap the select to the suggested Master option
+    $(document).on('click', '.pn-rec-suggest-link', function(e) {
+        e.preventDefault();
+        var val = $(this).data('master-value');
+        if (!val) return;
+        var $sel = $('#pn-rec-award');
+        $sel.val(String(val));
+        // Rebuild the Select2-style picker if present; otherwise fire change
+        if (typeof awInitPicker === 'function') {
+            try { awInitPicker($sel.get(0)); } catch(e) {}
+        }
+        $sel.trigger('change');
+        $('#pn-rec-reason').focus();
+    });
+
+    function pnOrdinal(n) {
+        n = parseInt(n) || 0;
+        var s = ['th','st','nd','rd'];
+        var v = n % 100;
+        return n + (s[(v - 20) % 10] || s[v] || s[0]);
+    }
+    function pnEscapeHtml(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+    function pnEscapeAttr(s) {
+        return pnEscapeHtml(s);
+    }
 
     // ---- Rec dismiss button (player page) ----
     document.addEventListener('click', function(e) {
@@ -2305,43 +2414,6 @@ function knAvatarFallback(img, initial) {
     img.parentElement.innerText = initial;
 }
 
-// ---- Load More: card view (reveals next hidden period block) ----
-function knLoadMoreCards(group, btn) {
-    var $wrap = $(btn).closest('.kn-load-more-wrap');
-    var next  = parseInt($wrap.attr('data-next') || '1');
-    var $block = $('#' + group + '-block-' + next);
-    if ($block.length) {
-        $block.show();
-        var newNext = next + 1;
-        $wrap.attr('data-next', newNext);
-        if (!$('#' + group + '-block-' + newNext).length) {
-            $wrap.hide();
-        }
-    } else {
-        $wrap.hide();
-    }
-}
-
-// ---- Load More: list view (appends template rows to table, re-paginates) ----
-function knLoadMoreList(tableId, tmplBase, btn) {
-    var $wrap  = $(btn).closest('.kn-load-more-wrap');
-    var next   = parseInt($wrap.attr('data-next') || '1');
-    var tmpl   = document.getElementById(tmplBase + '-' + next);
-    if (tmpl) {
-        var $tbody = $('#' + tableId + ' tbody');
-        var frag = document.importNode(tmpl.content, true);
-        $(frag.querySelectorAll('tr')).appendTo($tbody);
-        var newNext = next + 1;
-        $wrap.attr('data-next', newNext);
-        knPaginate($('#' + tableId), 1);
-        if (!document.getElementById(tmplBase + '-' + newNext)) {
-            $wrap.hide();
-        }
-    } else {
-        $wrap.hide();
-    }
-}
-
 // ---- Activate a tab by name (used by buttons + links) ----
 function knActivateTab(tab) {
     $('.kn-tab-nav li').removeClass('kn-tab-active');
@@ -2636,25 +2708,37 @@ $(document).ready(function() {
         }
     });
 
-    // ---- Players: search (filters all .kn-player-card across all periods) ----
+    // ---- Players: search across every year section (cards + list rows) ----
+    // The DOM is fully populated up-front; content-visibility:auto on each year
+    // section keeps off-screen ones cheap. Search filters in place and force-opens
+    // any year section that has matches.
     $('#kn-player-search').on('input', function() {
         var q = $(this).val().trim().toLowerCase();
+        var $roots = $('#kn-players-cards, #kn-players-list');
         if (q === '') {
-            $('.kn-period-block').show();
-            $('.kn-player-card').show();
-        } else {
-            // Show all period blocks first so cards inside are visible/searchable
-            $('.kn-period-block').show();
-            $('.kn-player-card').each(function() {
-                var name = $(this).find('.kn-player-name').text().toLowerCase();
-                $(this).toggle(name.indexOf(q) !== -1);
-            });
-            // Hide period blocks with no visible cards
-            $('.kn-period-block').each(function() {
-                var hasVisible = $(this).find('.kn-player-card:visible').length > 0;
-                $(this).toggle(hasVisible);
-            });
+            $roots.find('.kn-player-card, .kn-year-table tbody tr').show();
+            $roots.find('.kn-year-section').show();
+            return;
         }
+        $roots.each(function() {
+            var $root = $(this);
+            $root.find('.kn-player-card').each(function() {
+                var name = $(this).find('.kn-player-name').text().toLowerCase();
+                var mn   = ($(this).attr('data-mundane-name') || '').toLowerCase();
+                $(this).toggle(name.indexOf(q) !== -1 || mn.indexOf(q) !== -1);
+            });
+            $root.find('.kn-year-table tbody tr').each(function() {
+                var persona = (this.cells[0] ? this.cells[0].textContent : '').toLowerCase();
+                var mn      = ($(this).attr('data-mundane-name') || '').toLowerCase();
+                $(this).toggle(persona.indexOf(q) !== -1 || mn.indexOf(q) !== -1);
+            });
+            $root.find('.kn-year-section').each(function() {
+                var hasVisible =
+                    $(this).find('.kn-player-card:visible, .kn-year-table tbody tr:visible').length > 0;
+                $(this).toggle(hasVisible);
+                if (hasVisible) this.open = true;
+            });
+        });
     });
 
     // ---- Default sort + initial pagination ----
@@ -2667,8 +2751,6 @@ $(document).ready(function() {
 
     // [TOURNAMENTS HIDDEN] knSortDesc($('#kn-tournaments-table'), 0, 'date');
     // [TOURNAMENTS HIDDEN] knPaginate($('#kn-tournaments-table'), 1);
-
-    knPaginate($('#kn-players-table'), 1);
 
 });
 (function() {
@@ -5594,50 +5676,6 @@ function pkAvatarFallback(img, initial) {
     img.parentElement.innerText = initial;
 }
 
-// ---- Load More: card view (reveals next hidden period block) ----
-// group: prefix string like 'pk-players' or 'pk-hoa'
-// btn:   the button element inside .pk-load-more-wrap[data-next][data-group]
-function pkLoadMoreCards(group, btn) {
-    var $wrap = $(btn).closest('.pk-load-more-wrap');
-    var next  = parseInt($wrap.attr('data-next') || '1');
-    var $block = $('#' + group + '-block-' + next);
-    if ($block.length) {
-        $block.show();
-        var newNext = next + 1;
-        $wrap.attr('data-next', newNext);
-        if (!$('#' + group + '-block-' + newNext).length) {
-            $wrap.hide(); // no more periods to load
-        }
-    } else {
-        $wrap.hide();
-    }
-}
-
-// ---- Load More: list view (appends template rows to table, re-paginates) ----
-// tableId:  id of the <table> element
-// tmplBase: id prefix of <template> elements (e.g. 'pk-players-tmpl')
-// btn:      the button element inside .pk-load-more-wrap[data-next]
-function pkLoadMoreList(tableId, tmplBase, btn) {
-    var $wrap  = $(btn).closest('.pk-load-more-wrap');
-    var next   = parseInt($wrap.attr('data-next') || '1');
-    var tmpl   = document.getElementById(tmplBase + '-' + next);
-    if (tmpl) {
-        var $tbody = $('#' + tableId + ' tbody');
-        // Clone template content and append to tbody
-        var frag = document.importNode(tmpl.content, true);
-        $(frag.querySelectorAll('tr')).appendTo($tbody);
-        var newNext = next + 1;
-        $wrap.attr('data-next', newNext);
-        // Re-paginate from page 1 with the expanded row set
-        pkPaginate($('#' + tableId), 1);
-        if (!document.getElementById(tmplBase + '-' + newNext)) {
-            $wrap.hide();
-        }
-    } else {
-        $wrap.hide();
-    }
-}
-
 // ---- Hero color from heraldry ----
 // Samples the heraldry image via Canvas to find its dominant non-white, non-black
 // color and applies a darkened version as the hero background.
@@ -5880,31 +5918,44 @@ $(document).ready(function() {
         pkPaginate($table, page);
     });
 
-    // ---- Player search (filters cards + list rows across all periods) ----
-    $('#pk-player-search').on('input', function() {
-        var q = $(this).val().trim().toLowerCase();
-        if (q === '') {
-            $('.pk-period-block').show();
-            $('.pk-player-card').show();
-        } else {
-            $('.pk-period-block').show();
-            $('.pk-player-card').each(function() {
+    // ---- Player search + active-only filter (cards + list rows) ----
+    // The DOM holds every player up-front; content-visibility:auto on each year
+    // section keeps off-screen ones cheap. Filters apply in place and force-open
+    // any year section that has matches.
+    function pkApplyPlayerFilters() {
+        var q = ($('#pk-player-search').val() || '').trim().toLowerCase();
+        var activeOnly = $('#pk-active-only-btn').hasClass('pk-view-active');
+        var filtering  = q || activeOnly;
+        var $roots = $('#pk-players-cards, #pk-players-list');
+        $roots.each(function() {
+            var $root = $(this);
+            $root.find('.pk-player-card').each(function() {
                 var name = $(this).find('.pk-player-name').text().toLowerCase();
-                var mundane = ($(this).data('mundane-name') || '').toLowerCase();
-                $(this).toggle(name.indexOf(q) !== -1 || mundane.indexOf(q) !== -1);
+                var mn   = ($(this).attr('data-mundane-name') || '').toLowerCase();
+                var sc   = parseInt($(this).attr('data-signin-count') || '0', 10);
+                var match = (!q || name.indexOf(q) !== -1 || mn.indexOf(q) !== -1) && (!activeOnly || sc > 0);
+                $(this).toggle(match);
             });
-            // Hide period blocks with no visible cards
-            $('.pk-period-block').each(function() {
-                var hasVisible = $(this).find('.pk-player-card:visible').length > 0;
+            $root.find('.pk-year-table tbody tr').each(function() {
+                var persona = (this.cells[0] ? this.cells[0].textContent : '').toLowerCase();
+                var mn      = ($(this).attr('data-mundane-name') || '').toLowerCase();
+                var sc      = parseInt($(this).attr('data-signin-count') || '0', 10);
+                var match = (!q || persona.indexOf(q) !== -1 || mn.indexOf(q) !== -1) && (!activeOnly || sc > 0);
+                $(this).toggle(match);
+            });
+            $root.find('.pk-year-section').each(function() {
+                if (!filtering) { $(this).show(); return; }
+                var hasVisible =
+                    $(this).find('.pk-player-card:visible, .pk-year-table tbody tr:visible').length > 0;
                 $(this).toggle(hasVisible);
+                if (hasVisible) this.open = true;
             });
-        }
-        // Also filter list view rows
-        $('#pk-players-table tbody tr').each(function() {
-            var name = $(this).find('td:first').text().toLowerCase();
-            var mundane = ($(this).data('mundane-name') || '').toLowerCase();
-            $(this).toggle(!q || name.indexOf(q) !== -1 || mundane.indexOf(q) !== -1);
         });
+    }
+    $('#pk-player-search').on('input', pkApplyPlayerFilters);
+    $('#pk-active-only-btn').on('click', function() {
+        $(this).toggleClass('pk-view-active');
+        pkApplyPlayerFilters();
     });
 
     // ---- Players view toggle (cards / list) ----
@@ -5928,8 +5979,6 @@ $(document).ready(function() {
 
     pkSortDesc($('#pk-tournaments-table'), 2, 'date');
     pkPaginate($('#pk-tournaments-table'), 1);
-
-    pkPaginate($('#pk-players-table'), 1);
 
 });
 (function() {

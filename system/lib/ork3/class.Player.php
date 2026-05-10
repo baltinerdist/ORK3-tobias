@@ -233,18 +233,21 @@ class Player extends Ork3 {
 				return strtotime($a['DuesUntil']) - strtotime($b['DuesUntil']);
 			});
 			$last_dues_through = (!empty($all_dues)) ? $all_dues[sizeof($all_dues)-1]['DuesUntil'] : '';
-			// Determine if player is new: fewer than 4 total credits AND at least one credit within the last 14 days
+			// Determine if player is new: fewer than 4 total credits AND at least one credit within the last 14 days.
+			// Skip the attendance query for the 99.9%+ of players who joined more than 14 days ago.
 			$mid = (int)$this->mundane->mundane_id;
-			$att_row = $this->db->query(
-				"SELECT SUM(credits) AS total_credits, SUM(CASE WHEN date >= DATE_SUB(CURDATE(), INTERVAL 14 DAY) THEN credits ELSE 0 END) AS recent_credits" .
-				" FROM " . DB_PREFIX . "attendance WHERE mundane_id = $mid AND credits > 0"
-			);
-			$att_row->next();
-			$total_credits  = (float)($att_row->total_credits  ?? 0);
-			$recent_credits = (float)($att_row->recent_credits ?? 0);
 			$park_member_since = $this->mundane->park_member_since;
-			$is_new_player  = $total_credits < 4 && ($total_credits === 0.0 || $recent_credits > 0)
-				&& !empty($park_member_since) && strtotime($park_member_since) >= strtotime('-14 days');
+			$is_new_player = false;
+			if (!empty($park_member_since) && $park_member_since !== '0000-00-00' && strtotime($park_member_since) >= strtotime('-14 days')) {
+				$att_row = $this->db->query(
+					"SELECT SUM(credits) AS total_credits, SUM(CASE WHEN date >= DATE_SUB(CURDATE(), INTERVAL 14 DAY) THEN credits ELSE 0 END) AS recent_credits" .
+					" FROM " . DB_PREFIX . "attendance WHERE mundane_id = $mid AND credits > 0"
+				);
+				$att_row->next();
+				$total_credits  = (float)($att_row->total_credits  ?? 0);
+				$recent_credits = (float)($att_row->recent_credits ?? 0);
+				$is_new_player  = $total_credits < 4 && ($total_credits === 0.0 || $recent_credits > 0);
+			}
 			$this->pronoun->clear();
 			$this->pronoun->pronoun_id = $this->mundane->pronoun_id;
 			$this->pronoun->find();
@@ -1734,6 +1737,59 @@ class Player extends Ork3 {
         } else {
             return InvalidParameter();
         }
+
+		// Block recommendations for a ladder the player has already topped out on
+		// (either via the Master-peerage companion award or by holding the ladder's max rank).
+		// Also block direct recommendations for a Master peerage the player already holds.
+		$ladderMap  = Award::GetLadderMasterMap();
+		$recAwardId = (int)$request['AwardId'];
+		$persona    = $this->mundane->persona;
+		$mid        = (int)$request['MundaneId'];
+
+		// Build reverse map: master_award_id => ['MasterName' => ...]
+		$masterNameById = [];
+		foreach ($ladderMap as $lid => $lInfo) {
+			foreach ((array)$lInfo['MasterAwardIds'] as $mAid) {
+				$masterNameById[(int)$mAid] = $lInfo['MasterName'];
+			}
+		}
+
+		// Case A: recommending a Master peerage the player already holds (any kingdomaward)
+		if ($recAwardId > 0 && isset($masterNameById[$recAwardId])) {
+			$this->db->clear();
+			$held = $this->db->query(
+				"select a.awards_id from " . DB_PREFIX . "awards a
+				 where a.mundane_id = {$mid} and a.award_id = {$recAwardId} limit 1"
+			);
+			if ($held !== false && $held->size() > 0) {
+				return InvalidParameter($persona . ' has already achieved the rank of ' . $masterNameById[$recAwardId] . '. Maybe consider recommending for a different award?');
+			}
+		}
+
+		// Case B: recommending a ladder where the player has topped out or holds the Master peerage
+		if (isset($ladderMap[$recAwardId])) {
+			$info = $ladderMap[$recAwardId];
+
+			$masterIdsCsv = implode(',', array_map('intval', $info['MasterAwardIds']));
+			$this->db->clear();
+			$masterHeld   = $this->db->query(
+				"select a.awards_id from " . DB_PREFIX . "awards a
+				 where a.mundane_id = {$mid} and a.award_id in ({$masterIdsCsv}) limit 1"
+			);
+			if ($masterHeld !== false && $masterHeld->size() > 0) {
+				return InvalidParameter($persona . ' has already achieved the rank of ' . $info['MasterName'] . '. Maybe consider recommending for a different award?');
+			}
+
+			$maxRank   = (int)$info['MaxRank'];
+			$this->db->clear();
+			$topResult = $this->db->query(
+				"select max(a.rank) as max_rank from " . DB_PREFIX . "awards a
+				 where a.mundane_id = {$mid} and a.award_id = {$recAwardId}"
+			);
+			if ($topResult !== false && $topResult->size() > 0 && $topResult->next() && (int)$topResult->max_rank >= $maxRank) {
+				return InvalidParameter($persona . ' has already reached the top rank of ' . $info['LadderName'] . '. Maybe consider recommending for a different award?');
+			}
+		}
 
 		// Custom awards (is_ladder = 0 AND is_title = 0) allow unlimited duplicates
 		// and unlimited recommendations — skip both dedup checks entirely.

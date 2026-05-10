@@ -1029,6 +1029,38 @@ html[data-theme="dark"] .pn-ladder-bar-track { background: var(--ork-bg-tertiary
 	margin-bottom: 14px;
 	display: none;
 }
+
+/* Suggest state: friendlier tone — amber/blue, not an error */
+.pn-form-error.pn-rec-suggest {
+	background: #ebf8ff;
+	border-color: #bee3f8;
+	color: #2c5282;
+}
+.pn-form-error.pn-rec-suggest .pn-rec-suggest-link {
+	color: #2b6cb0;
+	font-weight: 700;
+	text-decoration: underline;
+	cursor: pointer;
+}
+.pn-form-error.pn-rec-suggest .pn-rec-suggest-link:hover {
+	color: #1a4a7a;
+}
+html[data-theme="dark"] .pn-form-error {
+	background: rgba(229, 62, 62, 0.12);
+	border-color: rgba(229, 62, 62, 0.4);
+	color: #feb2b2;
+}
+html[data-theme="dark"] .pn-form-error.pn-rec-suggest {
+	background: rgba(43, 108, 176, 0.18);
+	border-color: rgba(99, 179, 237, 0.5);
+	color: #bee3f8;
+}
+html[data-theme="dark"] .pn-form-error.pn-rec-suggest .pn-rec-suggest-link {
+	color: #90cdf4;
+}
+html[data-theme="dark"] .pn-form-error.pn-rec-suggest .pn-rec-suggest-link:hover {
+	color: #bee3f8;
+}
 .pn-char-count {
 	display: block;
 	text-align: right;
@@ -2094,6 +2126,66 @@ html[data-theme="dark"] .kn-md-help-btn:hover { background:var(--ork-bg-tertiary
 	font-style: italic;
 }
 
+/* Events tab: lazy-load-more footer */
+.kn-events-loadmore {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	flex-wrap: wrap;
+	margin-top: 10px;
+	padding: 10px 14px;
+	border: 1px dashed var(--ork-border, #e2e8f0);
+	border-radius: 6px;
+	background: var(--ork-bg-secondary, #f7fafc);
+	font-size: 12px;
+	color: var(--ork-text-secondary, #718096);
+}
+.kn-events-loadmore .kn-events-loadmore-msg strong {
+	color: var(--ork-text, #2d3748);
+	font-weight: 700;
+}
+.kn-events-loadmore-link {
+	display: inline-flex;
+	align-items: center;
+	padding: 5px 12px;
+	border-radius: 5px;
+	background: var(--kn-accent-mid, #276749);
+	color: #fff;
+	font-weight: 600;
+	text-decoration: none;
+	font-size: 12px;
+	transition: background 0.15s, transform 0.15s;
+}
+.kn-events-loadmore-link:hover {
+	background: #1f5437;
+	color: #fff;
+	text-decoration: none;
+	transform: translateY(-1px);
+}
+.kn-events-loadmore-link[aria-busy="true"] {
+	opacity: 0.7;
+	cursor: default;
+}
+html[data-theme="dark"] .kn-events-loadmore {
+	background: var(--ork-bg-tertiary, #2d3748);
+	border-color: var(--ork-border, #4a5568);
+	color: var(--ork-text-secondary, #a0aec0);
+}
+html[data-theme="dark"] .kn-events-loadmore .kn-events-loadmore-msg strong {
+	color: var(--ork-text, #e2e8f0);
+}
+/* Override the late-cascade `.kn-card a` rule that otherwise re-tints this link
+   with --ork-link-bright in dark mode. */
+html[data-theme="dark"] .kn-events-loadmore .kn-events-loadmore-link {
+	background: #38a169;
+	color: #fff !important;
+}
+html[data-theme="dark"] .kn-events-loadmore .kn-events-loadmore-link:hover {
+	background: #48bb78;
+	color: #fff !important;
+}
+
 /* Pagination */
 .kn-pagination {
 	display: flex;
@@ -2450,21 +2542,49 @@ html[data-theme="dark"] .kn-md-help-btn:hover { background:var(--ork-bg-tertiary
 	background: #fef3c7; color: #92400e;
 	white-space: nowrap; margin-top: 2px; margin-right: 2px;
 }
-.kn-period-label {
+/* Year-bucketed players list — collapsible per-year sections.
+ * content-visibility:auto lets the browser skip layout/paint for off-screen
+ * sections so we can render every year in the DOM without paying for it until
+ * the user scrolls them into view (or expands them). contain-intrinsic-size
+ * gives the browser a reasonable placeholder height so the scrollbar is stable. */
+.kn-year-section {
+	margin: 14px 0 6px;
+	border-top: 1px solid #e2e8f0;
+	content-visibility: auto;
+	contain-intrinsic-size: 1px 600px;
+}
+.kn-year-section:first-of-type { border-top: 0; margin-top: 0; }
+.kn-year-summary {
+	cursor: pointer;
+	list-style: none;
+	display: flex; align-items: baseline; gap: 10px;
+	padding: 10px 4px;
 	font-size: 11px; font-weight: 700; letter-spacing: 0.07em;
 	color: #a0aec0; text-transform: uppercase;
-	border-bottom: 1px solid #e2e8f0;
-	padding-bottom: 4px; margin: 18px 0 10px;
+	user-select: none;
 }
-.kn-load-more-wrap { text-align: center; padding: 18px 0 8px; }
-.kn-load-more-btn {
-	background: #fff; border: 1.5px solid #cbd5e0; border-radius: 6px;
-	padding: 8px 22px; font-size: 13px; font-weight: 600; color: #4a5568;
-	cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
-	transition: border-color 0.15s, color 0.15s;
+.kn-year-summary::-webkit-details-marker { display: none; }
+.kn-year-summary::before {
+	content: '\25B8'; /* right-pointing triangle */
+	display: inline-block;
+	font-size: 10px;
+	color: #cbd5e0;
+	transition: transform 0.12s ease;
+	transform-origin: 50% 55%;
 }
-.kn-load-more-btn:hover { border-color: var(--kn-accent, #276749); color: var(--kn-accent, #276749); }
-.kn-load-more-hint { display: block; font-size: 11px; color: #a0aec0; margin-top: 6px; }
+.kn-year-section[open] > .kn-year-summary::before { transform: rotate(90deg); }
+.kn-year-summary:hover { color: var(--kn-accent, #276749); }
+.kn-year-summary:hover::before { color: var(--kn-accent, #276749); }
+.kn-year-label { font-size: 12px; }
+.kn-year-count {
+	font-size: 10px; font-weight: 600; letter-spacing: 0.04em;
+	color: #a0aec0;
+	background: #edf2f7;
+	padding: 2px 8px; border-radius: 10px;
+	text-transform: none;
+}
+.kn-year-section .kn-players-grid { padding-top: 4px; }
+.kn-year-table { margin-top: 4px; }
 /* ---- Award entry modal (kn-award-*) ---- */
 .kn-award-type-row { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:16px; }
 .kn-award-type-btn { padding:8px 4px; min-height:44px; line-height:1.2; border:2px solid var(--ork-border); border-radius:8px; background:var(--ork-card-bg); font-size:13px; font-weight:600; color:var(--ork-text-secondary); cursor:pointer; transition:all 0.15s; text-align:center; }
@@ -3502,47 +3622,51 @@ html[data-theme="dark"] .pk-stat-tip-text::after { border-top-color: #e2e8f0; }
 	.pk-active-tab-label { display: block; }
 }
 
-/* ---- Period label (Load More separators) ---- */
-.pk-period-label {
-	font-size: 11px;
-	font-weight: 700;
-	letter-spacing: 0.07em;
-	color: #a0aec0;
-	text-transform: uppercase;
-	border-bottom: 1px solid #e2e8f0;
-	padding-bottom: 4px;
-	margin: 18px 0 10px;
+/* ---- Year-bucketed players list (collapsible per-year sections) ----
+ * content-visibility:auto lets the browser skip layout/paint for off-screen
+ * sections so the full roster lives in the DOM without rendering cost until
+ * scrolled into view. contain-intrinsic-size keeps the scrollbar stable. */
+.pk-year-section {
+	margin: 14px 0 6px;
+	border-top: 1px solid #e2e8f0;
+	content-visibility: auto;
+	contain-intrinsic-size: 1px 600px;
 }
-
-/* ---- Load More button ---- */
-.pk-load-more-wrap {
-	text-align: center;
-	padding: 18px 0 8px;
-}
-.pk-load-more-btn {
-	background: #fff;
-	border: 1.5px solid #cbd5e0;
-	border-radius: 6px;
-	padding: 8px 22px;
-	font-size: 13px;
-	font-weight: 600;
-	color: #4a5568;
+.pk-year-section:first-of-type { border-top: 0; margin-top: 0; }
+.pk-year-summary {
 	cursor: pointer;
-	display: inline-flex;
-	align-items: center;
-	gap: 7px;
-	transition: border-color 0.15s, color 0.15s;
+	list-style: none;
+	display: flex; align-items: baseline; gap: 10px;
+	padding: 10px 4px;
+	font-size: 11px; font-weight: 700; letter-spacing: 0.07em;
+	color: #a0aec0; text-transform: uppercase;
+	user-select: none;
 }
-.pk-load-more-btn:hover {
-	border-color: #0891b2;
-	color: #0891b2;
+.pk-year-summary::-webkit-details-marker { display: none; }
+.pk-year-summary::before {
+	content: '\25B8';
+	display: inline-block;
+	font-size: 10px;
+	color: #cbd5e0;
+	transition: transform 0.12s ease;
+	transform-origin: 50% 55%;
 }
-.pk-load-more-hint {
-	display: block;
-	font-size: 11px;
+.pk-year-section[open] > .pk-year-summary::before { transform: rotate(90deg); }
+.pk-year-summary:hover,
+.pk-year-summary:hover::before { color: #0891b2; }
+.pk-year-label { font-size: 12px; }
+.pk-year-count {
+	font-size: 10px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
 	color: #a0aec0;
-	margin-top: 6px;
+	background: #edf2f7;
+	padding: 2px 8px;
+	border-radius: 10px;
+	text-transform: none;
 }
+.pk-year-section .pk-players-grid { padding-top: 4px; }
+.pk-year-table { margin-top: 4px; }
 
 /* ---- Hall of Arms gallery ---- */
 .pk-hoa-search-wrap {
@@ -5886,7 +6010,7 @@ html[data-theme="dark"] .plr-merge-warning { background:rgba(197,48,48,0.15); bo
 .kn-rec-filter-info-btn:hover { color:#2b6cb0; }
 .kn-rec-filter-popover { display:none; position:absolute; left:0; top:calc(100% + 6px); z-index:200; background:#fff; border:1px solid #e2e8f0; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,.13); padding:14px 16px; width:300px; font-size:13px; color:#2d3748; }
 .kn-rec-filter-popover.kn-pop-open { display:block; }
-.kn-rec-filter-popover h4 { margin:0 0 8px; font-size:13px; font-weight:700; color:#1a202c; border-bottom:1px solid #e2e8f0; padding-bottom:6px; }
+.kn-rec-filter-popover h4 { margin:0 0 8px; font-size:13px; font-weight:700; color:#1a202c; background:transparent; border:none; border-bottom:1px solid #e2e8f0; border-radius:0; padding:0 0 6px; text-shadow:none; }
 .kn-rec-filter-popover dl { margin:0; }
 .kn-rec-filter-popover dt { font-weight:600; color:#2b6cb0; margin-top:8px; }
 .kn-rec-filter-popover dd { margin:2px 0 0; color:#4a5568; line-height:1.4; }
@@ -6758,6 +6882,21 @@ html[data-theme="dark"] .kn-rec-filter-btn.kn-rec-filter-active {
   border-color: var(--ork-link);
   color: #fff;
 }
+html[data-theme="dark"] .kn-rec-filter-info-btn { color: var(--ork-text-muted); }
+html[data-theme="dark"] .kn-rec-filter-info-btn:hover { color: var(--ork-link-bright); }
+html[data-theme="dark"] .kn-rec-filter-popover {
+  background: var(--ork-card-bg, var(--ork-bg-secondary));
+  border-color: var(--ork-border);
+  color: var(--ork-text);
+  box-shadow: 0 4px 16px rgba(0,0,0,.5);
+}
+html[data-theme="dark"] .kn-rec-filter-popover h4 {
+  color: var(--ork-text);
+  border-bottom-color: var(--ork-border);
+}
+html[data-theme="dark"] .kn-rec-filter-popover dt { color: var(--ork-link-bright); }
+html[data-theme="dark"] .kn-rec-filter-popover dd { color: var(--ork-text-secondary); }
+html[data-theme="dark"] .kn-rec-filter-popover dt small { color: var(--ork-text-muted) !important; }
 html[data-theme="dark"] .kn-rec-export-btn {
   background: var(--ork-bg-secondary);
   border-color: var(--ork-border);
@@ -6822,8 +6961,6 @@ html[data-theme="dark"] #theme_container .kn-description-url,
 html[data-theme="dark"] #theme_container .kn-table a,
 html[data-theme="dark"] #theme_container .kn-report-group a,
 html[data-theme="dark"] #theme_container .kn-prinz-name a,
-html[data-theme="dark"] .kn-load-more-btn,
-html[data-theme="dark"] #theme_container .kn-load-more-btn,
 html[data-theme="dark"] #theme_container .kn-award-success,
 html[data-theme="dark"] #kn-events-cal .fc .fc-list-event-title a {
   color: hsl(calc(var(--kn-hue) + 35), 65%, var(--ork-accent-mid-lightness, 58%));
@@ -6832,15 +6969,26 @@ html[data-theme="dark"] .kn-description-body,
 html[data-theme="dark"] .kn-description-card {
   color: var(--ork-text);
 }
-html[data-theme="dark"] .kn-load-more-btn,
-html[data-theme="dark"] .pk-load-more-btn {
-  background: var(--ork-bg-secondary);
-  border-color: var(--ork-border);
+html[data-theme="dark"] .kn-year-section,
+html[data-theme="dark"] .pk-year-section {
+  border-top-color: var(--ork-border);
+}
+html[data-theme="dark"] .kn-year-summary,
+html[data-theme="dark"] .pk-year-summary {
   color: var(--ork-text-secondary);
 }
-html[data-theme="dark"] .kn-load-more-btn:hover {
-  border-color: hsl(var(--kn-hue), var(--kn-sat), var(--ork-accent-lightness, 65%));
+html[data-theme="dark"] .kn-year-count,
+html[data-theme="dark"] .pk-year-count {
+  background: var(--ork-bg-secondary);
+  color: var(--ork-text-secondary);
+}
+html[data-theme="dark"] .kn-year-summary:hover,
+html[data-theme="dark"] .kn-year-summary:hover::before {
   color: hsl(var(--kn-hue), var(--kn-sat), var(--ork-accent-lightness, 65%));
+}
+html[data-theme="dark"] .pk-year-summary:hover,
+html[data-theme="dark"] .pk-year-summary:hover::before {
+  color: hsl(var(--pk-hue, 195), var(--pk-sat, 80%), var(--ork-accent-lightness, 65%));
 }
 html[data-theme="dark"] .kn-officer-chip.kn-selected,
 html[data-theme="dark"] .kn-rank-pill:hover,
@@ -8529,6 +8677,19 @@ html[data-theme="dark"] .pk-att-ac-inactive { color: var(--ork-text-muted) !impo
 html[data-theme="dark"] .pk-att-ac-inactive-badge {
 	background: var(--ork-badge-red-bg);
 	color: var(--ork-badge-red-text);
+}
+
+/* Past-event badge on kingdom/park event tables */
+.event-past-badge {
+	display: inline-block;
+	padding: 1px 6px;
+	border-radius: 10px;
+	font-size: 0.75em;
+	font-weight: 600;
+	background: var(--ork-badge-gray-bg);
+	color: var(--ork-badge-gray-text);
+	vertical-align: middle;
+	margin-left: 4px;
 }
 
 /* @media fallbacks */

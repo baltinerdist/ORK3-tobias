@@ -2148,6 +2148,28 @@ class Controller_Admin extends Controller {
 		}
 	}
 
+	public function serverhealth() {
+		$this->template = 'Admin_serverhealth.tpl';
+		$_uid = isset($this->session->user_id) ? (int)$this->session->user_id : 0;
+		if (!Ork3::$Lib->authorization->HasAuthority($_uid, AUTH_ADMIN, 0, AUTH_ADMIN)) {
+			header('Location: ' . UIR . 'Admin'); exit;
+		}
+		$this->data['page_title'] = 'Server Health';
+		unset($this->data['menu']['kingdom'], $this->data['menu']['park']);
+
+		$this->data['ShowLoadTest'] = (getenv('ENVIRONMENT') === 'DEV');
+		if ($this->data['ShowLoadTest']) {
+			global $DB;
+			$DB->Clear();
+			$kr = $DB->DataSet("SELECT kingdom_id, name FROM " . DB_PREFIX . "kingdom WHERE active='Active' ORDER BY name LIMIT 10");
+			$targets = [['label' => 'Home Page', 'url' => 'Home/index']];
+			if ($kr && $kr->Size() > 0) do {
+				$targets[] = ['label' => 'Kingdom: ' . $kr->name, 'url' => 'Kingdom/profile/' . (int)$kr->kingdom_id];
+			} while ($kr->Next());
+			$this->data['LoadTestTargets'] = $targets;
+		}
+	}
+
 	public function ajax($action = null) {
 		header('Content-Type: application/json');
 		if (!isset($this->session->user_id)) {
@@ -2311,6 +2333,53 @@ class Controller_Admin extends Controller {
 			echo ($r['Status'] == 0)
 				? json_encode(['status' => 0, 'kingdomId' => (int)($r['Detail'] ?? 0)])
 				: json_encode(['status' => $r['Status'], 'error' => ($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? '')]);
+
+		} elseif ($action === 'serverhealth_stats') {
+			$fpm_data = null;
+			$fpm_workers = [];
+			$fpm_json = @file_get_contents('http://127.0.0.1/fpm-status?json&full');
+			if ($fpm_json) {
+				$fpm_data = json_decode($fpm_json, true);
+				if (!empty($fpm_data['processes']) && is_array($fpm_data['processes'])) {
+					foreach ($fpm_data['processes'] as $proc) {
+						if (($proc['state'] ?? '') !== 'Running') continue;
+						$uri = $proc['request uri'] ?? '';
+						if (strpos($uri, '/fpm-status') === 0) continue;
+						if (strpos($uri, 'serverhealth_stats') !== false) continue;
+						$fpm_workers[] = [
+							'pid'      => (int)($proc['pid'] ?? 0),
+							'duration' => (int)($proc['request duration'] ?? 0),
+							'method'   => $proc['request method'] ?? '',
+							'uri'      => $uri,
+						];
+					}
+					unset($fpm_data['processes']);
+				}
+			}
+
+			global $DB;
+			$wanted = ['Slow_queries','Threads_connected','Threads_running','Questions','Uptime','Max_used_connections','Connections','Com_select','Com_insert','Com_update','Com_delete','Com_show_fields','Com_show_keys'];
+			$DB->Clear();
+			$rs = $DB->DataSet("SHOW GLOBAL STATUS WHERE Variable_name IN ('" . implode("','", $wanted) . "')");
+			$db_status = [];
+			if ($rs && $rs->Size() > 0) do { $db_status[$rs->Variable_name] = $rs->Value; } while ($rs->Next());
+
+			$DB->Clear();
+			$pr = $DB->DataSet("SELECT ID, USER, HOST, COMMAND, TIME, STATE, LEFT(INFO, 300) AS INFO FROM information_schema.PROCESSLIST WHERE COMMAND != 'Sleep' ORDER BY TIME DESC LIMIT 20");
+			$processes = [];
+			if ($pr && $pr->Size() > 0) do {
+				$processes[] = [
+					'id'      => (int)$pr->ID,
+					'user'    => $pr->USER,
+					'host'    => $pr->HOST ?? '',
+					'command' => $pr->COMMAND,
+					'time'    => (int)$pr->TIME,
+					'state'   => $pr->STATE ?? '',
+					'info'    => $pr->INFO ?? '',
+				];
+			} while ($pr->Next());
+
+			echo json_encode(['status' => 0, 'fpm' => $fpm_data, 'workers' => $fpm_workers, 'db' => $db_status, 'processes' => $processes]);
 
 		} else {
 			echo json_encode(['status' => 1, 'error' => 'Unknown action']);
