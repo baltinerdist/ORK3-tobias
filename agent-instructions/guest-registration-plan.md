@@ -76,9 +76,50 @@ ALTER TABLE ork_mundane
 
 Note: no DOB / minor columns. The current codebase has no DOB on `ork_mundane` and no minor-tracking anywhere (only reference is the comment at `model.Reports.php:329` confirming "no DOB in DB"). Adding age-tracking only for guests would create a one-off data shape that nothing else in the system consumes. If liability tracking for minors is a real requirement, it should be a separate cross-cutting initiative for both players and guests, not bolted onto this feature.
 
-`is_guest_park` is the index used by the per-park guest list and by every report query that needs to scope to "players, not guests" (see §5.5).
+`is_guest_park` is the index used by the per-park guest list and by every report query that filters on guest status (see §5.0).
 
 Also append the same `ALTER TABLE` to `ork.sql:562` so fresh installs match.
+
+### 2.4 Kingdom-level toggle: `CountGuestsInReports`
+
+The kingdom config k/v system (`Common::add_config` with `CFG_KINGDOM`, surfaced through `$kingdom_config['KingdomConfiguration']['<Key>']['Value']` in controllers — see `controller.Reports.php:313, 321, 378, 387`) is the right home for this. No new table is needed.
+
+Add the config alongside the existing kingdom flags in `system/lib/ork3/class.Kingdom.php` around line 352 (where `'AwardRecsPublic'` is added — same shape, same `'fixed'` type, same '0'/'1' string values):
+
+```php
+$c->add_config($mundane_id, CFG_KINGDOM, 'fixed', $this->kingdom->kingdom_id, 'CountGuestsInReports', '0');
+```
+
+The migration backfills the row for every existing kingdom:
+
+```sql
+-- in 2026-05-11-guest-registration.sql, after the ALTER TABLE
+INSERT INTO ork_configuration (mundane_id, scope, type, scope_id, `key`, value)
+  SELECT 0, 'kingdom', 'fixed', kingdom_id, 'CountGuestsInReports', '0'
+  FROM ork_kingdom
+  WHERE NOT EXISTS (
+    SELECT 1 FROM ork_configuration c
+    WHERE c.scope = 'kingdom' AND c.scope_id = ork_kingdom.kingdom_id AND c.`key` = 'CountGuestsInReports'
+  );
+```
+
+(Exact `ork_configuration` column names need to be confirmed against `Common::add_config` during implementation — table/column shape isn't fully verified yet.)
+
+**Default: `'0'` (off).** Guests are excluded from counts/sums by default. Kingdoms opt in via the edit-kingdom modal.
+
+**UI**: yes/no toggle in the kingdom edit form, rendered alongside the other `Admin_editkingdom->Config` items. The `controller.Admin.php:1719` `case 'config'` handler already iterates the Config array and dispatches to `Kingdom->set_kingdom_details(...)` — no controller change needed beyond making sure the toggle renders into that array. Template change only.
+
+Toggle label: **"Count guest sign-ins with attendance reports"**
+
+Tooltip text (verbatim, on the `(?)` next to the label, instant on hover/tap):
+
+> By default, guest sign-ins are not shown in park averages, attendance report calculations, widgets, and other areas. Guests are shown as separate entries in some areas like attendance lists. You may enable counting guests in these areas here. A guest that is reconciled to a returning player is not double-counted.
+
+**Reading the toggle in queries**: every report controller already loads `kingdom_config` via `Kingdom->get_kingdom_details(...)` (`controller.Reports.php:288, 293`). Extract `$count_guests = ((string)($kingdom_config['KingdomConfiguration']['CountGuestsInReports']['Value'] ?? '0')) === '1';` once at the top, then pass into each Report method as a parameter. Cross-kingdom queries that can't extract a single value per call (e.g. `GetTopParksByAttendance` ranking parks across all kingdoms) need a SQL-side join — see §5.0.
+
+**Reconciliation / double-counting promise (tooltip last sentence)**: Both the convert-to-new-player flow (§6) and any future merge-into-existing-player flow keep attendance on a single `mundane_id`. No attendance row is ever duplicated. The Phase 5 returning-guest dedupe (§5.6) reuses the existing guest `mundane_id` on the second visit, so re-signs are one row per visit, never duplicated.
+
+One **non-bug behavior to document** for kingdom admins: when the toggle is OFF and a guest with prior sign-ins gets converted, those historical sign-in rows transition from "excluded" to "included" the next time a report runs (because they now read `m.is_guest = 0`). This is correct — the rows now belong to a known player — but historical numbers can shift. The tooltip's "not double-counted" promise still holds (the rows are reclassified, not duplicated). Worth a sentence in the kingdom-admin docs.
 
 ---
 
@@ -126,6 +167,90 @@ AND m.is_guest = 0
 
 ## 5. UI surfaces
 
+### 5.0 Comprehensive query inventory — how each surface treats guests
+
+Every query in the system that counts or sums players/attendance falls into one of three buckets. **[pref: reporting accuracy]** This table is the source of truth — every callsite needs to be audited against it before Phase 3 is considered done.
+
+**Legend**:
+- **Toggle** = behavior depends on the kingdom's `CountGuestsInReports` setting. OFF (default) excludes guests; ON includes them.
+- **Always exclude** = ignores the toggle; guests never count. Used where the metric is conceptually player-only.
+- **Always include** = ignores the toggle; guests always count. Used for raw attendance-roster-style surfaces where you literally want to see who was present.
+- **Separate** = guests rendered as their own row/section, never aggregated with players.
+
+| # | Surface | File:line (or area) | Rule | SQL change |
+|---|---|---|---|---|
+| 1 | `AttendanceSummary` (date-range totals) | `class.Report.php:694` | **Toggle** | `AND (m.is_guest = 0 OR :count_guests = 1)` (see §5.0.1 for SQL pattern) |
+| 2 | `AttendanceForEvent` (event roll) | `class.Report.php:783` | **Always include** | No change; this is a roster, not a metric |
+| 3 | `AttendanceForDate` (date roll) | `class.Report.php:843` | **Always include** | No change; roster |
+| 4 | `GetKingdomParkAverages` (weekly avg) | `class.Report.php:1156` | **Toggle** | Per-kingdom value — extract once, branch |
+| 5 | `GetKingdomParkMonthlyAverages` | `class.Report.php:1220` | **Toggle** | Per-kingdom — extract once, branch |
+| 6 | `GetTopParksByAttendance` (cross-kingdom ranking) | `class.Report.php:1261` | **Toggle** (per row's kingdom) | SQL-side: `JOIN ork_configuration kc ON kc.scope='kingdom' AND kc.scope_id = p.kingdom_id AND kc.\`key\`='CountGuestsInReports'` then `WHERE (m.is_guest = 0 OR kc.value = '1')` |
+| 7 | `ParkAttendanceAllParks` (kingdom detail) | `class.Report.php:1848` | **Toggle** | Per-kingdom — extract once, branch |
+| 8 | `GetNewPlayerAttendance` ("new players" feed) | `class.Report.php:1975` | **Always exclude** | `AND m.is_guest = 0` |
+| 9 | `GetNewPlayerAttendanceByKingdom` | `class.Report.php:2144` | **Always exclude** | `AND m.is_guest = 0` |
+| 10 | `ParkAttendanceSinglePark` (park detail) | `class.Report.php:2221` | **Toggle** | Per-kingdom — extract once, branch |
+| 11 | `RecentParkAttendees` ("who showed up lately") | `class.Report.php:2397` | **Always include** + **Separate** | Roster; render guests with the `(Guest)` pill |
+| 12 | `KingdomOfficerDirectory` | `class.Report.php:2429` | **Always exclude** | `AND m.is_guest = 0` |
+| 13 | `EventAttendanceReport` | `class.Report.php:2550` | **Toggle** if it produces counts; **Always include** if it's the event roster. Audit per-section during impl. | Mixed |
+| 14 | Player profile route | `controller.Player.php:45` | **Always exclude** (404 on guests) | Controller-level guard (§5.5) |
+| 15 | Player autocomplete (attendance entry) | find during impl | **Always include** + **Separate** | Show with `(Guest)` suffix; selecting it re-signs that guest (§5.6) |
+| 16 | Player autocomplete (everywhere else: officer assignment, unit add, award nomination, voting) | find during impl | **Always exclude** | `AND m.is_guest = 0` |
+| 17 | Park dashboard quick-stats widget(s) | find during impl | **Toggle** (counts) / **Always include** (rosters) | Audit each widget |
+| 18 | Kingdom dashboard quick-stats widget(s) | find during impl | **Toggle** (counts) / **Always include** (rosters) | Audit each widget |
+| 19 | Award recommendation queries | `class.Award*` callsites — find during impl | **Always exclude** | `AND m.is_guest = 0` |
+| 20 | Voting eligibility queries | find during impl | **Always exclude** | `AND m.is_guest = 0` |
+| 21 | Unit membership queries | find during impl | **Always exclude** | `AND m.is_guest = 0` |
+| 22 | Park member counts ("members at park X") | find during impl | **Always exclude** (members are players) | `AND m.is_guest = 0` |
+| 23 | Login / authorization | `class.Authorization` callsites | **Always exclude** | Reject `is_guest = 1` early in login flow (defense in depth — guest username and missing password salt already prevent it) |
+| 24 | CSV / SOAP attendance exports | `orkservice/Report/ReportService.php:13-15` | **Always include** + **Type column** | Add `type` column (`'guest'` / `'player'`); downstream consumers filter |
+
+Rows 17-22 are "find during implementation." A `grep` pass for `mundane_id` and `COUNT(DISTINCT m.mundane_id)`-shaped queries in the controllers + Report class + Park/Kingdom models should surface them all. Phase 3 acceptance criterion: every callsite that aggregates players is annotated with which rule applies.
+
+#### 5.0.1 SQL pattern for Toggle queries
+
+Two implementation styles, picked per-query:
+
+**Style A (per-kingdom queries)** — controller extracts the setting once, passes as `bool`:
+
+```php
+$count_guests = ((string)($kingdom_config['KingdomConfiguration']['CountGuestsInReports']['Value'] ?? '0')) === '1';
+$rows = $this->Report->GetKingdomParkMonthlyAverages($kingdom_id, $count_guests, ...);
+```
+
+```php
+// in class.Report.php
+$guestFilter = $count_guests ? '' : 'AND m.is_guest = 0';
+$sql = "SELECT ... FROM ork_attendance a JOIN ork_mundane m ON m.mundane_id = a.mundane_id WHERE ... $guestFilter ...";
+```
+
+`$guestFilter` is a literal string concatenation, not a bound parameter — `$count_guests` is a server-side boolean, never user input. No injection risk.
+
+**Style B (cross-kingdom queries — Top Parks, kingdom-comparison dashboards)** — join the config table, filter per row:
+
+```sql
+LEFT JOIN ork_configuration kc
+  ON kc.scope = 'kingdom'
+ AND kc.scope_id = p.kingdom_id
+ AND kc.`key`   = 'CountGuestsInReports'
+WHERE (m.is_guest = 0 OR COALESCE(kc.value, '0') = '1')
+```
+
+The `LEFT JOIN` + `COALESCE` ensures kingdoms missing the config row (shouldn't happen post-migration, but defense) get treated as OFF.
+
+#### 5.0.2 The "of which N were guests" annotation
+
+Only meaningful when the toggle is ON (otherwise guests aren't in the headline number, so there's nothing to annotate). When ON, every Toggle query (rows 1, 4-7, 10, 13 above) returns a parallel `guest_count` via:
+
+```sql
+SUM(CASE WHEN m.is_guest = 1 THEN 1 ELSE 0 END) AS guest_count
+```
+
+Frontend shows `(of which N were guests)` under the headline when `count_guests && guest_count > 0`.
+
+When the toggle is OFF, skip this annotation entirely.
+
+---
+
 ### 5.1 Sign-in / check-in (highest-traffic surface)
 
 Touch-points:
@@ -160,15 +285,7 @@ Touched templates live under `orkui/template/{default,revised-frontend}/`. Both 
 
 ### 5.3 Park profile / attendance stats
 
-`class.Report.php:1156` (`GetKingdomParkAverages`), `:1220` (`GetKingdomParkMonthlyAverages`), `:1261` (`GetTopParksByAttendance`) — these count distinct attendees per week/month.
-
-**[pref: reporting accuracy]** Guests count. No WHERE-clause change to these queries. **[pref: still reporting accuracy]** Add an *additional* column to the underlying result set: `guest_count` (sum of attendance rows where `m.is_guest = 1`), surfaced in the UI as a small "(of which 4 were guests)" annotation under the headline number.
-
-This means each affected report method grows a parallel sub-aggregation:
-```sql
-SUM(CASE WHEN m.is_guest = 1 THEN 1 ELSE 0 END) AS guest_count
-```
-joined on `ork_mundane m` (some queries already join, some don't — `RecentParkAttendees` at `:2397` already does; `GetKingdomParkMonthlyAverages` at `:1220` may not and will need an added join — verify per-query when implementing).
+Rows 4, 5, 7, 10 in the §5.0 inventory. Toggle-governed: by default they exclude guests entirely; when the kingdom enables the toggle, they include guests and surface the "(of which N were guests)" annotation per §5.0.2.
 
 ### 5.4 Park admin — guest list
 
@@ -180,22 +297,11 @@ Query: `SELECT m.*, COUNT(a.attendance_id) AS signins, MAX(a.date) AS last_seen 
 
 Uses `is_guest_park` index.
 
-### 5.5 Reports that **must** exclude guests
+### 5.5 Always-exclude surfaces
 
-These are the surfaces where a guest masquerading as a player would be wrong:
+The "Always exclude" rows in the §5.0 inventory (8, 9, 12, 14, 16, 19-23). These ignore the toggle entirely — a guest never appears in officer directories, award recs, voting rolls, unit lists, new-player feeds, or login. The toggle is only about *attendance counting*, not *player identity*.
 
-| Surface | File:line | Reason |
-|---|---|---|
-| Player profile route | `controller.Player.php:45` | Guests have no persona / heraldry / awards |
-| New player attendance | `class.Report.php:1975, :2144` | "New players" must mean real new players |
-| Kingdom officer directory | `class.Report.php:2429` | Guests can't hold roles |
-| Award recommendations | (separate subsystem) | Guests aren't award-eligible |
-| Voting eligibility | (separate subsystem) | Guests can't vote |
-| Unit membership | (separate subsystem) | Guests can't join units |
-| Search / player autocomplete | (find during impl) | Officer adding a "player" shouldn't get a guest hit; **but** see §5.6 below |
-| Login / auth | `class.Authorization` callsites | A guest username starts `guest_`, no password salt — already can't log in, but defense in depth: refuse `is_guest = 1` early in login |
-
-Each of these needs `AND m.is_guest = 0` added to the relevant query, **and** a guard in the controller for the Player profile route specifically:
+Profile route specifically needs a controller-level guard (no query change is sufficient because the route loads a single mundane row directly):
 
 ```php
 // controller.Player.php near line 47, alongside the existing redirect-on-invalid-id
@@ -215,7 +321,7 @@ Implement by adding `is_guest` to the autocomplete result payload and rendering 
 
 ### 5.7 CSV / SOAP attendance exports
 
-`orkservice/Report/ReportService.php:13-15` exposes Report methods over SOAP. Add a `type` column to relevant export rows: `'guest'` or `'player'`. Existing consumers that ignore unknown columns are unaffected; new consumers can filter.
+Row 24 in the inventory. Always include both — adding a `type` column (`'guest'` / `'player'`) lets downstream consumers filter as they wish. Exports are raw data, not aggregates; the kingdom toggle does not apply here. Existing consumers that ignore unknown columns are unaffected.
 
 ---
 
@@ -248,7 +354,7 @@ Flow:
 |---|---|---|
 | **1. Foundation** | Migration, `CreateGuest`, `is_guest` helper, profile-route guard, guest username scheme | Yes — no UI yet, but DB & guards are safe |
 | **2. Sign-in flow** | `+ Guest` button in attendance UI, `createGuestAndSignIn` AJAX, roster row rendering | Yes — officers can sign guests in |
-| **3. Reporting** | Per-query `is_guest = 0` filters where needed (§5.5); `guest_count` columns where guests should appear (§5.3); CSV `type` column | Yes — reports become accurate |
+| **3. Reporting** | `CountGuestsInReports` kingdom toggle + UI (§2.4); audit every callsite against the §5.0 inventory and apply Toggle / Always-include / Always-exclude / Separate per row; `guest_count` annotation per §5.0.2; CSV `type` column | Yes — reports become accurate |
 | **4. Guest list & conversion** | `Park/guests/{park_id}` view, `ConvertGuestToPlayer`, pre-filled form path | Yes — closes the loop |
 | **5. Polish** | Autocomplete differentiation (§5.6), guest dedupe on returning visits | Optional follow-up |
 
@@ -265,7 +371,8 @@ Phases 1-3 are the MVP. 4 unlocks the long-term value (conversion). 5 is iterati
 
 **Integration**
 - Officer signs in 5 players + 3 guests at one event. `AttendanceForEvent` (`class.Report.php:783`) returns 8 total, 3 with `is_guest = 1`.
-- Monthly average (`GetKingdomParkMonthlyAverages` :1220) includes the guests; `guest_count` annotation shows 3.
+- Toggle OFF (default): monthly average (`GetKingdomParkMonthlyAverages` :1220) shows 5; no guest annotation.
+- Toggle ON: same query shows 8 with "(of which 3 were guests)" annotation.
 - `RecentParkAttendees` (:2397) shows them but doesn't link to a profile page.
 - Direct GET to `/Player/profile/{guest_id}` 404s/redirects.
 - `GetNewPlayerAttendance` (:1975) does **not** include the guests.
@@ -288,6 +395,8 @@ Phases 1-3 are the MVP. 4 unlocks the long-term value (conversion). 5 is iterati
 4. **Audit logging.** `2026-04-21-danger-audit-schema-and-backfill.sql` suggests there's an audit subsystem — confirm whether guest creation/conversion needs to be logged into it.
 5. **PII separation.** Path A keeps guests physically co-resident with players in `ork_mundane`. If legal/compliance later requires a different retention or isolation policy for one-time-attendee data, that would push toward Path B — out of scope for v1 but flagged.
 6. **MyISAM engine.** `ork_mundane` uses MyISAM (`ork.sql:562`). No transactional guarantees around the two-step username insert. The race window is tiny and the fallback (UUID-form username) is permanently valid, so no correctness risk — just noting it.
+7. **Inventory completeness.** The §5.0 inventory covers every Report-class method and the obvious widgets, but rows 17-22 are "find during implementation." Phase 3 acceptance must include a `grep -rn "mundane_id" --include="*.php"` audit and a checklist of every callsite that aggregates over `mundane_id`, annotated with which §5.0 rule applies. Missing a single quick-stats widget breaks the user-facing promise of the toggle.
+8. **`ork_configuration` table shape.** Style B (cross-kingdom JOIN) needs the exact table/column names for the kingdom config k/v store. I traced the API surface (`Common::add_config`, the `Admin_editkingdom->Config` array, `$kingdom_config['KingdomConfiguration'][<Key>]['Value']`) but didn't open the underlying table. Verify before writing the cross-kingdom SQL.
 
 ---
 
@@ -298,6 +407,8 @@ Phases 1-3 are the MVP. 4 unlocks the long-term value (conversion). 5 is iterati
 | `db-migrations/2026-05-11-guest-registration.sql` | new |
 | `ork.sql` | add columns to canonical schema (~line 549) |
 | `system/lib/ork3/class.Player.php` | `+CreateGuest`, `+ConvertGuestToPlayer`, `+is_guest` (~line 640 area) |
+| `system/lib/ork3/class.Kingdom.php` | `+CountGuestsInReports` config add at ~line 352 (`createkingdom` defaults block) |
+| `orkui/template/{default,revised-frontend}/Admin_editkingdom*` | yes/no toggle + `(?)` tooltip in the kingdom config section |
 | `orkui/controller/controller.Attendance.php` | wire guest creation into sign-in (around lines 63/140/192/268) |
 | `orkui/controller/controller.AttendanceAjax.php` | `+createGuestAndSignIn` |
 | `orkui/model/model.Attendance.php` | **no change** |
