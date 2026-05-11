@@ -13,7 +13,7 @@ Status: Concept / pre-implementation
 
 **Non-goals (v1)**
 - Self-service guest sign-in (no kiosk QR for guests yet — officer-mediated only).
-- Guest waivers as first-class records (we capture a `waivered` flag and minor-checkbox; full waiver file upload stays on the player-conversion path).
+- Guest waivers as first-class records. Full waiver file upload stays on the player-conversion path; until conversion, a guest's `waivered` flag stays `0`.
 - Cross-park guest deduplication. If "John D." shows up at two parks, that's two guest rows. We will not try to merge.
 
 **Preference weighting (from the brief)**
@@ -68,13 +68,13 @@ New file: `db-migrations/2026-05-11-guest-registration.sql`
 ```sql
 ALTER TABLE ork_mundane
   ADD COLUMN is_guest TINYINT(1) NOT NULL DEFAULT 0 AFTER active,
-  ADD COLUMN guest_dob DATE NULL DEFAULT NULL AFTER is_guest,
-  ADD COLUMN guest_minor TINYINT(1) NOT NULL DEFAULT 0 AFTER guest_dob,
-  ADD COLUMN converted_at DATETIME NULL DEFAULT NULL AFTER guest_minor,
+  ADD COLUMN converted_at DATETIME NULL DEFAULT NULL AFTER is_guest,
   ADD COLUMN converted_from_guest TINYINT(1) NOT NULL DEFAULT 0 AFTER converted_at,
   ADD KEY is_guest (is_guest),
   ADD KEY is_guest_park (is_guest, park_id);
 ```
+
+Note: no DOB / minor columns. The current codebase has no DOB on `ork_mundane` and no minor-tracking anywhere (only reference is the comment at `model.Reports.php:329` confirming "no DOB in DB"). Adding age-tracking only for guests would create a one-off data shape that nothing else in the system consumes. If liability tracking for minors is a real requirement, it should be a separate cross-cutting initiative for both players and guests, not bolted onto this feature.
 
 `is_guest_park` is the index used by the per-park guest list and by every report query that needs to scope to "players, not guests" (see §5.5).
 
@@ -109,18 +109,16 @@ AND m.is_guest = 0
 - Sets `is_guest = 1`.
 - Returns `Success($new_mundane_id)` like `CreatePlayer` does — same shape so the attendance flow can immediately call `add_attendance` with the new id.
 
-**Input fields** (per the brief):
+**Input fields**:
 
 | Field | Required | Notes |
 |---|---|---|
 | `GivenName` | yes | the one required input |
 | `Surname` | no | empty string if absent |
-| `Email` | no | for conversion hook + waiver receipt |
+| `Email` | no | for conversion hook |
 | `ParkId` | yes (from context) | sign-in context, never user-typed |
-| `Dob` | no | YYYY-MM-DD; if present and < 18 yrs from today, `guest_minor = 1` |
-| `IsMinor` | no | explicit override checkbox; OR'd with computed-from-DOB |
 
-**[pref: frictionless guest]** A guest can be created with just `GivenName` + `ParkId`. The form has email and DOB as collapsed "+ more details" — invisible unless the officer expands.
+**[pref: frictionless guest]** A guest can be created with just `GivenName` + `ParkId`. Surname and email are collapsed behind a "+ more details" disclosure — invisible unless the officer expands.
 
 **Authorization**: same `HasAuthority($mundane_id, AUTH_PARK, $ParkId, AUTH_CREATE)` check `CreatePlayer` uses (`class.Player.php:533`). If a user can add a player, they can add a guest.
 
@@ -140,7 +138,7 @@ Touch-points:
 `+ Guest` opens an inline mini-form (no full-page navigation):
 - Single visible text input: **First name** (autofocused).
 - A submit button labeled **"Sign in"** (not "Create guest" — phrasing matters for officer mental model).
-- A `+ details` disclosure for last name / email / DOB / minor.
+- A `+ details` disclosure for last name and email.
 
 On submit, AJAX:
 1. POST to a new action `AttendanceAjax/createGuestAndSignIn` (preferred) or two sequential calls.
@@ -252,7 +250,7 @@ Flow:
 | **2. Sign-in flow** | `+ Guest` button in attendance UI, `createGuestAndSignIn` AJAX, roster row rendering | Yes — officers can sign guests in |
 | **3. Reporting** | Per-query `is_guest = 0` filters where needed (§5.5); `guest_count` columns where guests should appear (§5.3); CSV `type` column | Yes — reports become accurate |
 | **4. Guest list & conversion** | `Park/guests/{park_id}` view, `ConvertGuestToPlayer`, pre-filled form path | Yes — closes the loop |
-| **5. Polish** | Autocomplete differentiation (§5.6), guest dedupe on returning visits, minor-checkbox UX | Optional follow-up |
+| **5. Polish** | Autocomplete differentiation (§5.6), guest dedupe on returning visits | Optional follow-up |
 
 Phases 1-3 are the MVP. 4 unlocks the long-term value (conversion). 5 is iteration.
 
@@ -288,7 +286,7 @@ Phases 1-3 are the MVP. 4 unlocks the long-term value (conversion). 5 is iterati
 2. **Cache invalidation.** Recent commits (`fe67330`, `0750d95`, `492fca5`) show heavy caching around mundane lookups. `CreateGuest` and `ConvertGuestToPlayer` need to invalidate the same caches `CreatePlayer` does (audit during impl).
 3. **Soft-dedupe of returning guests** is intentionally deferred to Phase 5. If conversion-yield analysis turns out to depend on it heavily, promote it into Phase 4.
 4. **Audit logging.** `2026-04-21-danger-audit-schema-and-backfill.sql` suggests there's an audit subsystem — confirm whether guest creation/conversion needs to be logged into it.
-5. **GDPR / minor data.** Path A keeps guests in `ork_mundane`. If legal requires physical separation for minor PII, that's a Path B variant — out of scope for v1 but flagged.
+5. **PII separation.** Path A keeps guests physically co-resident with players in `ork_mundane`. If legal/compliance later requires a different retention or isolation policy for one-time-attendee data, that would push toward Path B — out of scope for v1 but flagged.
 6. **MyISAM engine.** `ork_mundane` uses MyISAM (`ork.sql:562`). No transactional guarantees around the two-step username insert. The race window is tiny and the fallback (UUID-form username) is permanently valid, so no correctness risk — just noting it.
 
 ---
