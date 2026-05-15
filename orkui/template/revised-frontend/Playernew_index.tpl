@@ -175,7 +175,7 @@
 	unset($_p);
 	$pnParagons = array_values($_pnParagonsByClass);
 	usort($pnParagons, function($a, $b) { return strcmp($b['LatestDate'], $a['LatestDate']); });
-	$hasParagon = count($pnParagons) > 0;
+	$pnHasParagon = count($pnParagons) > 0;
 	$pnFirstParagonDate = null;
 	foreach ($pnParagons as $_p) {
 		if (!empty($_p['EarliestDate']) && ($pnFirstParagonDate === null || $_p['EarliestDate'] < $pnFirstParagonDate)) {
@@ -186,13 +186,13 @@
 	// Resolve effective frame class id: NULL = auto (most recent paragon), 0 = no frame, >0 = explicit
 	$pnFrameRaw = $Player['ParagonFrameClassId'] ?? null;     // null | 0 | int
 	$pnFrameClassId = 0;
-	if ($pnFrameRaw === null && $hasParagon) {
+	if ($pnFrameRaw === null && $pnHasParagon) {
 		$pnFrameClassId = (int)$pnParagons[0]['ClassId'];
 	} elseif (is_int($pnFrameRaw) || (is_numeric($pnFrameRaw) && (int)$pnFrameRaw > 0)) {
 		$_held = array_column($pnParagons, 'ClassId');
 		if (in_array((int)$pnFrameRaw, $_held, true)) {
 			$pnFrameClassId = (int)$pnFrameRaw;
-		} elseif ($hasParagon) {
+		} elseif ($pnHasParagon) {
 			$pnFrameClassId = (int)$pnParagons[0]['ClassId'];
 		}
 	}
@@ -3237,7 +3237,7 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 				<button class="pn-design-tab" data-panel="name"><i class="fas fa-signature"></i> Name</button>
 				<button class="pn-design-tab" data-panel="focus"><i class="fas fa-crosshairs"></i> Photo Focus</button>
 				<button class="pn-design-tab" data-panel="milestones"><i class="fas fa-stream"></i> Milestones</button>
-				<?php if ($isKnight || $hasParagon): ?>
+				<?php if ($isKnight || $pnHasParagon): ?>
 				<button class="pn-design-tab" data-panel="special"><i class="fas fa-star"></i> Special</button>
 				<?php endif; ?>
 			</div>
@@ -3705,7 +3705,7 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 				</div>
 			</div>
 
-			<?php if ($isKnight || $hasParagon): ?>
+			<?php if ($isKnight || $pnHasParagon): ?>
 			<!-- Special Panel (Knights + Paragons) -->
 			<div class="pn-design-panel" id="pn-design-special">
 				<?php if ($isKnight): ?>
@@ -3746,7 +3746,7 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 				</div>
 				<?php endif; ?>
 
-				<?php if ($hasParagon): ?>
+				<?php if ($pnHasParagon): ?>
 				<div class="pn-special-section"<?php if ($isKnight): ?> style="margin-top:24px;padding-top:24px;border-top:1px solid #e2e8f0"<?php endif; ?>>
 					<div class="pn-special-section-title"><i class="fas fa-gem"></i> Paragon Photo Frame</div>
 					<div class="pn-design-hint" style="margin-bottom:12px">Style your hero photo's frame with the colors of one of your Paragons. Auto-mode follows your most-recent Paragon.</div>
@@ -3777,7 +3777,7 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 							array_map(fn($p) => (int)$p['ClassId'], $pnParagons),
 							array_map(fn($p) => ['color' => $p['Color'], 'name' => $p['ClassName']], $pnParagons)
 						)) ?>;
-						window.pnParagonAutoClassId = <?= $hasParagon ? (int)$pnParagons[0]['ClassId'] : 0 ?>;
+						window.pnParagonAutoClassId = <?= $pnHasParagon ? (int)$pnParagons[0]['ClassId'] : 0 ?>;
 					</script>
 				</div>
 				<?php endif; ?>
