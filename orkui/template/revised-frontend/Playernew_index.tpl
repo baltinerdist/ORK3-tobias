@@ -186,9 +186,14 @@
 	// Resolve effective frame class id: NULL = auto (most recent paragon), 0 = no frame, >0 = explicit
 	$pnFrameRaw = $Player['ParagonFrameClassId'] ?? null;     // null | 0 | int
 	$pnFrameClassId = 0;
-	if ($pnFrameRaw === null && $pnHasParagon) {
-		$pnFrameClassId = (int)$pnParagons[0]['ClassId'];
-	} elseif (is_int($pnFrameRaw) || (is_numeric($pnFrameRaw) && (int)$pnFrameRaw > 0)) {
+	if ($pnFrameRaw === null) {
+		// Auto: pick most-recent paragon if any
+		if ($pnHasParagon) $pnFrameClassId = (int)$pnParagons[0]['ClassId'];
+	} elseif ((int)$pnFrameRaw === 0) {
+		// Explicit "No Frame"
+		$pnFrameClassId = 0;
+	} else {
+		// Explicit class — must be in the player's held paragons; else fall back to auto
 		$_held = array_column($pnParagons, 'ClassId');
 		if (in_array((int)$pnFrameRaw, $_held, true)) {
 			$pnFrameClassId = (int)$pnFrameRaw;
@@ -348,11 +353,15 @@ html[data-theme="dark"] .pn-paragon-frame-preview-label{color:var(--ork-text-sec
 html[data-theme="dark"] .pn-paragon-frame-preview-inner{background:linear-gradient(135deg, var(--ork-bg-tertiary) 0%, var(--ork-bg-secondary) 100%)}
 html[data-theme="dark"] .pn-paragon-frame-preview.pn-pfp-empty{border-color:var(--ork-border)}
 
-/* ===== Paragon Photo Frame ===== */
+/* ===== Paragon Photo Frame =====
+   Uses a transparent BORDER (not padding) so that .pn-avatar's clientWidth
+   excludes the ring — otherwise the photo-focus JS sizes the absolutely-
+   positioned <img> to clientWidth and covers the ring entirely on first paint. */
 .pn-avatar.pn-avatar-paragon{
-	border:none;
-	padding:7px;
-	background:var(--pn-frame-bg, #cbd5e0);
+	border:7px solid transparent;
+	padding:0;
+	background:var(--pn-frame-bg, #cbd5e0) border-box;
+	background-clip:border-box;
 	box-sizing:border-box;
 	width:124px;
 	height:124px;
@@ -360,7 +369,7 @@ html[data-theme="dark"] .pn-paragon-frame-preview.pn-pfp-empty{border-color:var(
 }
 .pn-avatar.pn-avatar-paragon img{border-radius:50%}
 @media (max-width: 768px) {
-	.pn-avatar.pn-avatar-paragon{width:104px;height:104px;padding:6px}
+	.pn-avatar.pn-avatar-paragon{width:104px;height:104px;border-width:6px}
 }
 html[data-theme="dark"] .pn-avatar.pn-avatar-paragon{box-shadow:0 0 0 1px rgba(255,255,255,0.12), 0 2px 8px rgba(0,0,0,0.45)}
 
