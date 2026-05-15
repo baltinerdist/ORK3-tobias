@@ -403,6 +403,12 @@ class Controller_PlayerAjax extends Controller {
 					'Waivered'         => isset($_POST['Waivered'])        ? (int)$_POST['Waivered']                                                : null,
 					'ParkMemberSince'  => isset($_POST['ParkMemberSince']) ? trim($_POST['ParkMemberSince'])                                        : null,
 			];
+			// Paragon Photo Frame uses array_key_exists semantics so '' (Auto/NULL),
+			// '0' (No Frame), and absent ("don't touch") are all distinguishable.
+			if (array_key_exists('ParagonFrameClassId', $_POST)) {
+				$_pfcVal = $_POST['ParagonFrameClassId'];
+				$fields['ParagonFrameClassId'] = ($_pfcVal === '') ? null : $_pfcVal;
+			}
 			$r = $this->Player->update_player($fields);
 			$_isProf = ($r['Status'] != 0 && ($r['Error'] ?? '') === ProfanityFilter::ERROR_MESSAGE);
 			echo ($r['Status'] == 0)

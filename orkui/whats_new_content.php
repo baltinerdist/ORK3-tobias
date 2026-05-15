@@ -2,14 +2,19 @@
 
 // Bump WHATS_NEW_VERSION whenever you add new items — every logged-in user will see
 // the modal once on their next page load, then not again until the version changes.
-define('WHATS_NEW_VERSION', '2026-05-13');
+define('WHATS_NEW_VERSION', '2026-05-15');
 
 // Application version — shown in the site footer. Change this if you change the above date.
-define('ORK_VERSION', '3.5.2 Mask');
+define('ORK_VERSION', '3.5.3 Paragon');
 
 // An array of releases, each with a version, date, and array of items. Each item has an icon (Font Awesome class), title, and body. Make sure the latest
 // version matches the ORK_VERSION above, and that the date is in YYYY-MM-DD format and matches the WHATS_NEW_VERSION above.
 $WHATS_NEW_ITEMS = [
+	['version' => '3.5.3 Paragon', 'date' => '2026-05-15', 'items' => [
+		['icon' => 'fas fa-gem', 'title' => 'Paragon Photo Frame', 'body' => 'Players who have earned a Paragon now get a colored ring around their hero photo in the colors (or pattern!) of their Paragon class — rainbow for Color, gold for Paladin, checkerboard for Reeve, and so on. The first time you earn a Paragon, the frame turns on automatically with that class. Heading to your Design My Profile, you\'ll find a new Special tab where you can switch between any of your Paragons or turn the frame off. Knights now get the existing Belt Display options on the same Special tab.'],
+		['icon' => 'fas fa-star', 'title' => 'Gemstone Acknowledgement Past Level 6', 'body' => 'Hit Level 7 in a class? You\'ll start collecting decorative gem icons on your Class Levels tab — diamond, pentagon, hexagon, and heptagon shapes for tier groups, with subtle shimmer effects on higher tiers. Toggle between gem and star modes from the tab.'],
+		['icon' => 'fas fa-palette', 'title' => 'Class Color & Icon Highlights', 'body' => 'Classes now have signature colors (and icons for Monster and Peasant) that show up across the site — kingdom rosters, attendance pages, the Last Played stat card, Reports/Guilds, Reports/Class Masters, and the player profile Class Levels tab. The kingdom attendance class chart picks up per-class colors including a live SVG checkerboard for Reeve.'],
+	]],
 	['version' => '3.5.2 Mask', 'date' => '2026-05-13', 'items' => [
 		['icon' => 'fas fa-feather-alt', 'title' => 'Tell Your Amtgard Story', 'body' => 'The new Design My Profile customizer lets you make your profile feel like yours — markdown bio with Quick Add snippets, adding color and font flair to your nameplate, a flexible name builder with title pickers, beltline visibility, pronunciation guides, and viewer font preferences (including Lexend for dyslexia). Then add your own knightings, first wins, retirements, and any moments worth remembering to a personal Milestones timeline on your About tab.'],
 		['icon' => 'fas fa-thumbs-up', 'title' => 'Recommendation Upgrades', 'body' => 'See an award recommendation you agree with? Hit the + button to add your support — optionally with a few words on why. Already filed a recommendation but learned something new about the recipient? You can now edit your own reason text from any Player, Park, or Kingdom profile where you spotted the rec.'],

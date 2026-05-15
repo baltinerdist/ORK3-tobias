@@ -150,6 +150,66 @@
 		}
 	}
 
+	// === Paragon Photo Frame ===
+	// Build {ClassId, ClassName, AwardId, EarliestDate, LatestDate} per held paragon (sorted desc by LatestDate).
+	$pnParagonAwardToClass = [37=>1,38=>2,39=>3,40=>4,41=>5,241=>6,42=>7,43=>8,44=>9,45=>10,46=>11,47=>12,242=>14,49=>15,50=>16,51=>17];
+	$_pnParagonsByClass = [];
+	if (is_array($Details['Awards'])) {
+		foreach ($Details['Awards'] as $_pa) {
+			$_aid = (int)($_pa['AwardId'] ?? 0);
+			if (!isset($pnParagonAwardToClass[$_aid])) continue;
+			$_cid = $pnParagonAwardToClass[$_aid];
+			$_dt  = $_pa['Date'] ?? '';
+			if (!isset($_pnParagonsByClass[$_cid])) {
+				$_pnParagonsByClass[$_cid] = ['ClassId' => $_cid, 'AwardId' => $_aid, 'EarliestDate' => $_dt, 'LatestDate' => $_dt];
+			} else {
+				if ($_dt && $_dt < $_pnParagonsByClass[$_cid]['EarliestDate']) $_pnParagonsByClass[$_cid]['EarliestDate'] = $_dt;
+				if ($_dt && $_dt > $_pnParagonsByClass[$_cid]['LatestDate'])   $_pnParagonsByClass[$_cid]['LatestDate']   = $_dt;
+			}
+		}
+	}
+	foreach ($_pnParagonsByClass as &$_p) {
+		$_p['ClassName'] = $ClassLookup[$_p['ClassId']]['name'] ?? ('Class ' . $_p['ClassId']);
+		$_p['Color']     = $ClassLookup[$_p['ClassId']]['color'] ?? '';
+	}
+	unset($_p);
+	$pnParagons = array_values($_pnParagonsByClass);
+	usort($pnParagons, function($a, $b) { return strcmp($b['LatestDate'], $a['LatestDate']); });
+	$hasParagon = count($pnParagons) > 0;
+	$pnFirstParagonDate = null;
+	foreach ($pnParagons as $_p) {
+		if (!empty($_p['EarliestDate']) && ($pnFirstParagonDate === null || $_p['EarliestDate'] < $pnFirstParagonDate)) {
+			$pnFirstParagonDate = $_p['EarliestDate'];
+		}
+	}
+
+	// Resolve effective frame class id: NULL = auto (most recent paragon), 0 = no frame, >0 = explicit
+	$pnFrameRaw = $Player['ParagonFrameClassId'] ?? null;     // null | 0 | int
+	$pnFrameClassId = 0;
+	if ($pnFrameRaw === null && $hasParagon) {
+		$pnFrameClassId = (int)$pnParagons[0]['ClassId'];
+	} elseif (is_int($pnFrameRaw) || (is_numeric($pnFrameRaw) && (int)$pnFrameRaw > 0)) {
+		$_held = array_column($pnParagons, 'ClassId');
+		if (in_array((int)$pnFrameRaw, $_held, true)) {
+			$pnFrameClassId = (int)$pnFrameRaw;
+		} elseif ($hasParagon) {
+			$pnFrameClassId = (int)$pnParagons[0]['ClassId'];
+		}
+	}
+	$pnFrameColor = ($pnFrameClassId > 0 && isset($ClassLookup[$pnFrameClassId]['color']))
+		? $ClassLookup[$pnFrameClassId]['color']
+		: '';
+	$pnFrameClassName = ($pnFrameClassId > 0 && isset($ClassLookup[$pnFrameClassId]['name']))
+		? $ClassLookup[$pnFrameClassId]['name']
+		: '';
+
+	// First-paragon banner: own profile, within 7 days of earliest paragon
+	$pnShowFirstParagonBanner = false;
+	if ($isOwnProfile && $pnFirstParagonDate) {
+		$_daysSinceParagon = (time() - strtotime($pnFirstParagonDate)) / 86400;
+		$pnShowFirstParagonBanner = ($_daysSinceParagon >= 0 && $_daysSinceParagon <= 7);
+	}
+
 	// My Amtgard dashboard pre-computation (own profile only)
 	if ($isOwnProfile) {
 		$_maDash_att = is_array($Details['Attendance']) ? $Details['Attendance'] : [];
@@ -274,6 +334,61 @@ if (!in_array($_pnNameFont, $_pnFontAllowed)) $_pnNameFont = '';
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel&family=Cinzel+Decorative&family=IM+Fell+English&family=UnifrakturMaguntia&family=Metamorphous&family=Uncial+Antiqua&family=Pirata+One&family=Almendra&family=Pinyon+Script&family=Great+Vibes&display=swap">
 <?php endif; ?>
 <style>
+/* ===== Special Tab — Paragon Photo Frame ===== */
+.pn-special-section{}
+.pn-special-section-title{font-size:14px;font-weight:700;color:#2d3748;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.pn-special-section-title i{color:var(--pn-accent,#4299e1);font-size:13px}
+.pn-paragon-frame-preview-wrap{display:flex;align-items:center;gap:14px}
+.pn-paragon-frame-preview{width:80px;height:80px;border-radius:50%;padding:6px;box-sizing:border-box;background:var(--pn-frame-bg, #cbd5e0);box-shadow:0 0 0 1px rgba(0,0,0,0.18)}
+.pn-paragon-frame-preview-inner{width:100%;height:100%;border-radius:50%;background:#a0aec0;background-image:linear-gradient(135deg,#a0aec0 0%,#718096 100%)}
+.pn-paragon-frame-preview-label{font-size:13px;color:#4a5568;font-weight:600}
+.pn-paragon-frame-preview.pn-pfp-empty{padding:0;background:transparent;border:2px dashed #cbd5e0;box-shadow:none}
+html[data-theme="dark"] .pn-special-section-title{color:var(--ork-text)}
+html[data-theme="dark"] .pn-paragon-frame-preview-label{color:var(--ork-text-secondary)}
+html[data-theme="dark"] .pn-paragon-frame-preview-inner{background:linear-gradient(135deg, var(--ork-bg-tertiary) 0%, var(--ork-bg-secondary) 100%)}
+html[data-theme="dark"] .pn-paragon-frame-preview.pn-pfp-empty{border-color:var(--ork-border)}
+
+/* ===== Paragon Photo Frame ===== */
+.pn-avatar.pn-avatar-paragon{
+	border:none;
+	padding:7px;
+	background:var(--pn-frame-bg, #cbd5e0);
+	box-sizing:border-box;
+	width:124px;
+	height:124px;
+	box-shadow:0 0 0 1px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.18);
+}
+.pn-avatar.pn-avatar-paragon img{border-radius:50%}
+@media (max-width: 768px) {
+	.pn-avatar.pn-avatar-paragon{width:104px;height:104px;padding:6px}
+}
+html[data-theme="dark"] .pn-avatar.pn-avatar-paragon{box-shadow:0 0 0 1px rgba(255,255,255,0.12), 0 2px 8px rgba(0,0,0,0.45)}
+
+/* ===== First Paragon Congratulations Banner ===== */
+.pna-paragon-congrats{
+	background:linear-gradient(135deg, #fef3c7 0%, #f5e8ff 100%);
+	border:1px solid #d6bcfa;
+	border-radius:8px;
+	padding:14px 16px;
+	margin-bottom:12px;
+	display:flex;
+	align-items:flex-start;
+	gap:12px;
+	color:#553c9a;
+	box-shadow:0 1px 2px rgba(85,60,154,0.08);
+}
+.pna-paragon-congrats-icon{font-size:22px;color:#9b59b6;flex-shrink:0;margin-top:1px}
+.pna-paragon-congrats-text{flex:1;font-size:13px;line-height:1.45}
+.pna-paragon-congrats-text strong{color:#44337a;font-weight:700}
+.pna-paragon-congrats-help{flex-shrink:0;color:#9b59b6;cursor:help;font-size:14px;position:relative;margin-top:1px}
+.pna-paragon-congrats-help .pn-tooltip-text{display:none;position:absolute;top:calc(100% + 6px);right:0;background:#2d3748;color:#fff;font-size:12px;font-weight:400;line-height:1.4;padding:7px 10px;border-radius:5px;width:240px;white-space:normal;z-index:200;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,0.3);text-align:left}
+.pna-paragon-congrats-help:hover .pn-tooltip-text,
+.pna-paragon-congrats-help:focus .pn-tooltip-text{display:block}
+html[data-theme="dark"] .pna-paragon-congrats{background:linear-gradient(135deg, #2d2545 0%, #3a2f5e 100%);border-color:#553c9a;color:#e9d8fd;box-shadow:0 1px 2px rgba(0,0,0,0.4)}
+html[data-theme="dark"] .pna-paragon-congrats-text strong{color:#f7e9ff}
+html[data-theme="dark"] .pna-paragon-congrats-icon{color:#d6bcfa}
+html[data-theme="dark"] .pna-paragon-congrats-help{color:#d6bcfa}
+
 /* ===== My Amtgard Dashboard ===== */
 .pna-alerts{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
 .pna-alert{display:flex;align-items:flex-start;gap:9px;padding:9px 13px;border-radius:6px;font-size:12.5px;line-height:1.4}
@@ -1035,16 +1150,16 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 	<div class="pn-hero-bg" style="background-image: url('<?= htmlspecialchars($heraldryUrl) ?>')"></div>
 <?php endif; ?>
 	<div class="pn-hero-content">
-		<?php if ($canEditImages): ?>
-		<div class="pn-avatar pn-editable-img">
+		<?php
+			$_pnAvatarClasses = 'pn-avatar' . ($canEditImages ? ' pn-editable-img' : '') . ($pnFrameClassId > 0 ? ' pn-avatar-paragon' : '');
+			$_pnAvatarStyle = $pnFrameColor !== '' ? ' style="--pn-frame-bg: ' . htmlspecialchars($pnFrameColor) . '"' : '';
+		?>
+		<div class="<?= $_pnAvatarClasses ?>"<?= $_pnAvatarStyle ?><?php if ($pnFrameClassId > 0): ?> data-paragon-class="<?= htmlspecialchars($pnFrameClassName) ?>" data-tip="Paragon <?= htmlspecialchars($pnFrameClassName) ?>"<?php endif; ?>>
 			<img class="heraldry-img" src="<?= htmlspecialchars($imageUrl) ?>" alt="<?= htmlspecialchars($Player['Persona']) ?>" data-focus-x="<?= $_pnFocusX ?>" data-focus-y="<?= $_pnFocusY ?>" data-focus-size="<?= $_pnFocusSize ?>" />
+			<?php if ($canEditImages): ?>
 			<button class="pn-img-edit-btn" onclick="pnOpenImgModal('photo')" title="Update player photo"><i class="fas fa-camera"></i></button>
+			<?php endif; ?>
 		</div>
-		<?php else: ?>
-		<div class="pn-avatar">
-			<img class="heraldry-img" src="<?= htmlspecialchars($imageUrl) ?>" alt="<?= htmlspecialchars($Player['Persona']) ?>" data-focus-x="<?= $_pnFocusX ?>" data-focus-y="<?= $_pnFocusY ?>" data-focus-size="<?= $_pnFocusSize ?>" />
-		</div>
-		<?php endif; ?>
 		<div class="pn-hero-info">
 			<?php
 				$_pnDisplayName = '';
@@ -1582,6 +1697,20 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 						});
 						$_maRecAwd = array_slice($_maRecAwd, 0, 5);
 						?>
+						<?php if ($pnShowFirstParagonBanner): ?>
+						<div class="pna-paragon-congrats">
+							<i class="fas fa-gem pna-paragon-congrats-icon"></i>
+							<div class="pna-paragon-congrats-text">
+								<strong>Congratulations on your first Paragon award!</strong>
+								As a special recognition, the ORK gave you a Paragon photo frame!
+								You can change this at your leisure in <strong>Design My Profile</strong>.
+							</div>
+							<span class="pna-paragon-congrats-help" tabindex="0" aria-label="Help">
+								<i class="fas fa-question-circle"></i>
+								<span class="pn-tooltip-text">Don't worry, this message will disappear on its own within one week to declutter your My Amtgard.</span>
+							</span>
+						</div>
+						<?php endif; ?>
 						<?php if (!empty($_maRecAwd)): ?>
 						<div class="pna-card">
 							<div class="pna-card-title"><i class="fas fa-medal"></i> Recent Awards <a class="pna-card-more" href="#" onclick="pnActivateTab('awards');return false;">All <?= $Stats['TotalAwards'] ?> &rarr;</a></div>
@@ -3108,8 +3237,8 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 				<button class="pn-design-tab" data-panel="name"><i class="fas fa-signature"></i> Name</button>
 				<button class="pn-design-tab" data-panel="focus"><i class="fas fa-crosshairs"></i> Photo Focus</button>
 				<button class="pn-design-tab" data-panel="milestones"><i class="fas fa-stream"></i> Milestones</button>
-				<?php if ($isKnight): ?>
-				<button class="pn-design-tab" data-panel="icons"><i class="fas fa-shield-alt"></i> Icons</button>
+				<?php if ($isKnight || $hasParagon): ?>
+				<button class="pn-design-tab" data-panel="special"><i class="fas fa-star"></i> Special</button>
 				<?php endif; ?>
 			</div>
 			<button type="button" class="pn-design-tabs-chev pn-design-tabs-chev-right" id="pn-design-tabs-chev-right" aria-label="Scroll tabs right" tabindex="-1"><i class="fas fa-chevron-right"></i></button>
@@ -3576,41 +3705,82 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 				</div>
 			</div>
 
-			<?php if ($isKnight): ?>
-			<!-- Icons Panel (Knights only) -->
-			<div class="pn-design-panel" id="pn-design-icons">
-				<div class="pn-design-hint" style="margin-bottom:12px">Choose which belt icon appears next to your name in the hero.</div>
-				<div class="pn-dm-hint" style="margin-bottom:16px">
-					<i class="fas fa-info-circle"></i>
-					<div>If one or more of your Knighthoods is recorded as a Note or unreconciled award, the icon will not be able to show. Reach out to your Monarch or Prime Minister to reconcile the record so things can display as expected.</div>
+			<?php if ($isKnight || $hasParagon): ?>
+			<!-- Special Panel (Knights + Paragons) -->
+			<div class="pn-design-panel" id="pn-design-special">
+				<?php if ($isKnight): ?>
+				<div class="pn-special-section">
+					<div class="pn-special-section-title"><i class="fas fa-shield-alt"></i> Knight Belt</div>
+					<div class="pn-design-hint" style="margin-bottom:12px">Choose which belt icon appears next to your name in the hero.</div>
+					<div class="pn-dm-hint" style="margin-bottom:16px">
+						<i class="fas fa-info-circle"></i>
+						<div>If one or more of your Knighthoods is recorded as a Note or unreconciled award, the icon will not be able to show. Reach out to your Monarch or Prime Minister to reconcile the record so things can display as expected.</div>
+					</div>
+					<label class="pn-icons-option">
+						<input type="radio" name="pn-design-belt-display" value="white" <?= $_pnBeltDisplay === 'white' ? 'checked' : '' ?> />
+						<div class="pn-icons-option-body">
+							<div class="pn-icons-option-title">Display White Belt</div>
+							<div class="pn-icons-option-desc">Show the generic white-belt icon that marks you as a belted knight. (Default.)</div>
+						</div>
+					</label>
+					<label class="pn-icons-option">
+						<input type="radio" name="pn-design-belt-display" value="own" <?= $_pnBeltDisplay === 'own' ? 'checked' : '' ?> />
+						<div class="pn-icons-option-body">
+							<div class="pn-icons-option-title">Display My Belt<?= count($ownBelts) > 1 ? 's' : '' ?></div>
+							<div class="pn-icons-option-desc">Show your earned knighthood belt<?= count($ownBelts) > 1 ? 's' : '' ?>, oldest first.</div>
+						</div>
+					</label>
+					<label class="pn-icons-option">
+						<input type="radio" name="pn-design-belt-display" value="none" <?= $_pnBeltDisplay === 'none' ? 'checked' : '' ?> />
+						<div class="pn-icons-option-body">
+							<div class="pn-icons-option-title">No Belt</div>
+							<div class="pn-icons-option-desc">Hide the belt icon entirely.</div>
+						</div>
+					</label>
+					<div class="pn-design-preview-label" style="margin-top:18px">Preview</div>
+					<div class="pn-icons-preview" id="pn-icons-preview"></div>
+					<script>
+						window.pnOwnBelts = <?= json_encode(array_map(function($b) { return array('src' => $b['Src'], 'name' => $b['Name']); }, $ownBelts)) ?>;
+						window.pnWhiteBeltUrl = <?= json_encode($beltIconUrl) ?>;
+					</script>
 				</div>
-				<label class="pn-icons-option">
-					<input type="radio" name="pn-design-belt-display" value="white" <?= $_pnBeltDisplay === 'white' ? 'checked' : '' ?> />
-					<div class="pn-icons-option-body">
-						<div class="pn-icons-option-title">Display White Belt</div>
-						<div class="pn-icons-option-desc">Show the generic white-belt icon that marks you as a belted knight. (Default.)</div>
+				<?php endif; ?>
+
+				<?php if ($hasParagon): ?>
+				<div class="pn-special-section"<?php if ($isKnight): ?> style="margin-top:24px;padding-top:24px;border-top:1px solid #e2e8f0"<?php endif; ?>>
+					<div class="pn-special-section-title"><i class="fas fa-gem"></i> Paragon Photo Frame</div>
+					<div class="pn-design-hint" style="margin-bottom:12px">Style your hero photo's frame with the colors of one of your Paragons. Auto-mode follows your most-recent Paragon.</div>
+					<?php
+						$_pnPfcRaw = $Player['ParagonFrameClassId'] ?? null;
+						$_pnPfcMode = ($_pnPfcRaw === null) ? 'auto' : (((int)$_pnPfcRaw === 0) ? 'none' : 'class');
+						$_pnPfcId = ($_pnPfcMode === 'class') ? (int)$_pnPfcRaw : 0;
+					?>
+					<div class="pn-design-field">
+						<label for="pn-design-paragon-frame">Frame</label>
+						<select name="ParagonFrameClassId" id="pn-design-paragon-frame">
+							<option value="" <?= $_pnPfcMode === 'auto' ? 'selected' : '' ?>>Auto &mdash; Most recent Paragon (<?= htmlspecialchars($pnParagons[0]['ClassName']) ?>)</option>
+							<?php foreach ($pnParagons as $_p): ?>
+								<option value="<?= (int)$_p['ClassId'] ?>" <?= ($_pnPfcMode === 'class' && $_pnPfcId === (int)$_p['ClassId']) ? 'selected' : '' ?>>Paragon <?= htmlspecialchars($_p['ClassName']) ?></option>
+							<?php endforeach; ?>
+							<option value="0" <?= $_pnPfcMode === 'none' ? 'selected' : '' ?>>No Frame</option>
+						</select>
 					</div>
-				</label>
-				<label class="pn-icons-option">
-					<input type="radio" name="pn-design-belt-display" value="own" <?= $_pnBeltDisplay === 'own' ? 'checked' : '' ?> />
-					<div class="pn-icons-option-body">
-						<div class="pn-icons-option-title">Display My Belt<?= count($ownBelts) > 1 ? 's' : '' ?></div>
-						<div class="pn-icons-option-desc">Show your earned knighthood belt<?= count($ownBelts) > 1 ? 's' : '' ?>, oldest first.</div>
+					<div class="pn-design-preview-label" style="margin-top:14px">Preview</div>
+					<div class="pn-paragon-frame-preview-wrap">
+						<div class="pn-paragon-frame-preview" id="pn-paragon-frame-preview" style="<?= $pnFrameColor !== '' ? '--pn-frame-bg:' . htmlspecialchars($pnFrameColor) : '' ?>">
+							<div class="pn-paragon-frame-preview-inner"></div>
+						</div>
+						<div class="pn-paragon-frame-preview-label" id="pn-paragon-frame-preview-label"><?= $pnFrameClassId > 0 ? 'Paragon ' . htmlspecialchars($pnFrameClassName) : 'No Frame' ?></div>
 					</div>
-				</label>
-				<label class="pn-icons-option">
-					<input type="radio" name="pn-design-belt-display" value="none" <?= $_pnBeltDisplay === 'none' ? 'checked' : '' ?> />
-					<div class="pn-icons-option-body">
-						<div class="pn-icons-option-title">No Belt</div>
-						<div class="pn-icons-option-desc">Hide the belt icon entirely.</div>
-					</div>
-				</label>
-				<div class="pn-design-preview-label" style="margin-top:18px">Preview</div>
-				<div class="pn-icons-preview" id="pn-icons-preview"></div>
-				<script>
-					window.pnOwnBelts = <?= json_encode(array_map(function($b) { return array('src' => $b['Src'], 'name' => $b['Name']); }, $ownBelts)) ?>;
-					window.pnWhiteBeltUrl = <?= json_encode($beltIconUrl) ?>;
-				</script>
+					<script>
+						window.pnParagonClassColors = <?= json_encode(array_combine(
+							array_map(fn($p) => (int)$p['ClassId'], $pnParagons),
+							array_map(fn($p) => ['color' => $p['Color'], 'name' => $p['ClassName']], $pnParagons)
+						)) ?>;
+						window.pnParagonAutoClassId = <?= $hasParagon ? (int)$pnParagons[0]['ClassId'] : 0 ?>;
+					</script>
+				</div>
+				<?php endif; ?>
 			</div>
 			<?php endif; ?>
 		</div>
@@ -4581,11 +4751,15 @@ if (typeof nsKid !== 'undefined' && nsKid === 0 && PnConfig.kingdomId) nsKid = P
 		fd.append('MilestoneConfig', JSON.stringify(msConfig));
 			fd.append('NameFont', pnSelectedFont || '');
 
-		// Belt display (Icons tab — Knights only; radios aren't rendered for non-knights)
+		// Belt display (Special tab — Knights only; radios aren't rendered for non-knights)
 		var beltRadios = document.querySelectorAll('input[name="pn-design-belt-display"]');
 		for (var bi = 0; bi < beltRadios.length; bi++) {
 			if (beltRadios[bi].checked) { fd.append('BeltDisplay', beltRadios[bi].value); break; }
 		}
+
+		// Paragon Photo Frame (Special tab — Paragon-holders only)
+		var pfcSel = document.getElementById('pn-design-paragon-frame');
+		if (pfcSel) { fd.append('ParagonFrameClassId', pfcSel.value); }
 
 		// Inline-render a profanity rejection above the offending field, switching
 		// the design modal to that field's tab if needed. Falls back to the
@@ -4659,7 +4833,42 @@ if (typeof nsKid !== 'undefined' && nsKid === 0 && PnConfig.kingdomId) nsKid = P
 	});
 })();
 
-// ---- Icons tab (Design My Profile) — live preview ----
+// ---- Special tab — Paragon Frame live preview ----
+(function() {
+	var sel = document.getElementById('pn-design-paragon-frame');
+	var pv  = document.getElementById('pn-paragon-frame-preview');
+	var lbl = document.getElementById('pn-paragon-frame-preview-label');
+	if (!sel || !pv) return;
+	var colors = window.pnParagonClassColors || {};
+	function render() {
+		var v = sel.value;
+		if (v === '0') {
+			pv.classList.add('pn-pfp-empty');
+			pv.style.removeProperty('--pn-frame-bg');
+			if (lbl) lbl.textContent = 'No Frame';
+			return;
+		}
+		pv.classList.remove('pn-pfp-empty');
+		var classId;
+		if (v === '') {
+			classId = window.pnParagonAutoClassId || 0;
+		} else {
+			classId = parseInt(v, 10) || 0;
+		}
+		var info = colors[classId] || colors[String(classId)];
+		if (info && info.color) {
+			pv.style.setProperty('--pn-frame-bg', info.color);
+			if (lbl) lbl.textContent = (v === '' ? 'Auto — Paragon ' : 'Paragon ') + (info.name || '');
+		} else {
+			pv.style.removeProperty('--pn-frame-bg');
+			if (lbl) lbl.textContent = 'No Frame';
+		}
+	}
+	sel.addEventListener('change', render);
+	render();
+})();
+
+// ---- Special tab (Design My Profile) — Knight belt live preview ----
 (function() {
 	var preview = document.getElementById('pn-icons-preview');
 	if (!preview) return; // non-knight, panel not rendered

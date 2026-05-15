@@ -357,6 +357,7 @@ class Player extends Ork3 {
 						'MilestoneConfig' => $design->milestone_config,
 						'NameFont' => $design->name_font,
 							'BeltDisplay' => $design->belt_display,
+							'ParagonFrameClassId' => is_null($design->paragon_frame_class_id) ? null : (int)$design->paragon_frame_class_id,
 						'BasicFonts' => (int)$this->mundane->basic_fonts,
 						'DyslexiaFonts' => (int)$this->mundane->dyslexia_fonts,
 				);
@@ -1205,7 +1206,7 @@ class Player extends Ork3 {
 						foreach (['about_persona','about_story','color_primary','color_accent','color_secondary',
 								  'hero_gradient','hero_overlay','name_prefix','name_suffix','suffix_comma',
 								  'photo_focus_x','photo_focus_y','photo_focus_size',
-								  'show_beltline','belt_display','pronunciation_guide',
+								  'show_beltline','belt_display','paragon_frame_class_id','pronunciation_guide',
 								  'show_mundane_first','show_mundane_last','show_email',
 								  'milestone_config','name_font'] as $_f) {
 							$_cur[$_f] = $design->{$_f};
@@ -1279,6 +1280,38 @@ class Player extends Ork3 {
 					$design->name_font = $_pick($request['NameFont'], 'name_font');
 					$validBeltDisplays = ['white','own','none'];
 					$design->belt_display = (isset($request['BeltDisplay']) && in_array($request['BeltDisplay'], $validBeltDisplays)) ? $request['BeltDisplay'] : ($_designExisted ? $_cur['belt_display'] : 'white');
+						// Paragon Photo Frame: NULL=auto, 0=no frame, >0=class_id (validated server-side)
+						if (array_key_exists('ParagonFrameClassId', $request)) {
+							$_pfcReq = $request['ParagonFrameClassId'];
+							if (is_null($_pfcReq) || $_pfcReq === '') {
+								$design->paragon_frame_class_id = null;
+							} else {
+								$_pfcReq = (int)$_pfcReq;
+								if ($_pfcReq === 0) {
+									$design->paragon_frame_class_id = 0;
+								} else {
+									global $DB;
+									$_paragonAwardIds = '37,38,39,40,41,241,42,43,44,45,46,47,242,49,50,51';
+									$_pfcSql = "SELECT a.award_id FROM " . DB_PREFIX . "awards ma
+										JOIN " . DB_PREFIX . "award a ON a.award_id = ma.award_id
+										WHERE ma.mundane_id = " . (int)$this->mundane->mundane_id . "
+										  AND ma.revoked = 0
+										  AND a.peerage = 'Paragon'
+										  AND a.award_id IN (" . $_paragonAwardIds . ")";
+									$DB->Clear();
+									$_pfcRes = $DB->DataSet($_pfcSql);
+									$_paragonAwardToClass = [37=>1,38=>2,39=>3,40=>4,41=>5,241=>6,42=>7,43=>8,44=>9,45=>10,46=>11,47=>12,242=>14,49=>15,50=>16,51=>17];
+									$_heldClassIds = [];
+									while ($_pfcRes && $_pfcRes->Next()) {
+										$_aid = (int)$_pfcRes->award_id;
+										if (isset($_paragonAwardToClass[$_aid])) $_heldClassIds[$_paragonAwardToClass[$_aid]] = true;
+									}
+									$design->paragon_frame_class_id = isset($_heldClassIds[$_pfcReq]) ? $_pfcReq : null;
+								}
+							}
+						} else {
+							$design->paragon_frame_class_id = $_designExisted ? $_cur['paragon_frame_class_id'] : null;
+						}
 				}
 
 				// reeve or corpora qual changes

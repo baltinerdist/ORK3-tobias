@@ -541,11 +541,11 @@ class Controller_Player extends Controller {
 
 		// Class color/icon lookup — passed to template for swatch rendering
 		global $DB;
-		$_classRows = $DB->DataSet("SELECT class_id, color, icon FROM ork_class");
+		$_classRows = $DB->DataSet("SELECT class_id, name, color, icon FROM ork_class");
 		$classLookup = [];
 		if ($_classRows) {
 			while ($_classRows->Next()) {
-				$classLookup[(int)$_classRows->class_id] = ['color' => $_classRows->color, 'icon' => $_classRows->icon];
+				$classLookup[(int)$_classRows->class_id] = ['name' => $_classRows->name, 'color' => $_classRows->color, 'icon' => $_classRows->icon];
 			}
 		}
 		$this->data['ClassLookup'] = $classLookup;
