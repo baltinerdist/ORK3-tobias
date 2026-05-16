@@ -151,34 +151,41 @@
 	}
 
 	// === Player Accolades (coronet / phoenix / L6 gem) ===
-	// Tier table for noble titles, mapped to NamePrefix via case-insensitive regex.
-	// Tier numbers follow the Amtgard Order of Precedence (highest = 11). Where a
-	// kingdom corpora reorders Marquis vs Count we follow the more common GP order
-	// (Count above Marquis). Apprentice/squire/page knightly prefixes intentionally
-	// receive no coronet — Knighthood is rendered separately via the belt icon row.
-	$pnCoronetMap = [
-		11 => '/^(king|queen|monarch|sovereign)$/i',
-		10 => '/^(prince|princess|regent)$/i',
-		9  => '/^(grand\s*duke|grand\s*duchess|grand\s*dame)$/i',
-		8  => '/^(arch\s*duke|arch\s*duchess|archduke|archduchess)$/i',
-		7  => '/^(duke|duchess)$/i',
-		6  => '/^(count|countess|earl)$/i',
-		5  => '/^(marquis|marquess|marquise|marchioness|marquesa)$/i',
-		4  => '/^(viscount|viscountess)$/i',
-		3  => '/^(baron|baroness)$/i',
-		2  => '/^(baronet|baronette)$/i',
-		1  => '/^(lord|lady)$/i',
+	// Coronet detection: noble peerage in Amtgard is conferred via award rows
+	// (award_ids 52..69). NamePrefix is opt-in display text and is empty across
+	// the production database, so award detection is the authoritative signal.
+	// Tier numbers follow the Amtgard Order of Precedence (Count > Marquis per
+	// the more common GP corpora ordering). Tiers 10–11 (Prince/Monarch) are
+	// elected offices, not awards, and are intentionally not surfaced as coronets
+	// — those roles already render as officer badges in the hero badge row.
+	$pnTitleAwardToTier = [
+		68 => 9, 69 => 9,   // Grand Duke / Grand Duchess
+		66 => 8, 67 => 8,   // Archduke / Archduchess
+		64 => 7, 65 => 7,   // Duke / Duchess
+		60 => 6, 61 => 6,   // Count / Countess
+		62 => 5, 63 => 5,   // Marquis / Marquess
+		58 => 4, 59 => 4,   // Viscount / Viscountess
+		56 => 3, 57 => 3,   // Baron / Baroness
+		54 => 2, 55 => 2,   // Baronet / Baronetess
+		52 => 1, 53 => 1,   // Lord / Lady
+	];
+	$pnTitleAwardToName = [
+		68 => 'Grand Duke', 69 => 'Grand Duchess',
+		66 => 'Archduke',   67 => 'Archduchess',
+		64 => 'Duke',       65 => 'Duchess',
+		60 => 'Count',      61 => 'Countess',
+		62 => 'Marquis',    63 => 'Marquess',
+		58 => 'Viscount',   59 => 'Viscountess',
+		56 => 'Baron',      57 => 'Baroness',
+		54 => 'Baronet',    55 => 'Baronetess',
+		52 => 'Lord',       53 => 'Lady',
 	];
 	$pnCoronetTier  = 0;
 	$pnCoronetTitle = '';
-	$_pnPrefixRaw   = trim((string)($Player['NamePrefix'] ?? ''));
-	if ($_pnPrefixRaw !== '') {
-		foreach ($pnCoronetMap as $_tier => $_re) {
-			if (preg_match($_re, $_pnPrefixRaw)) {
-				$pnCoronetTier  = $_tier;
-				$pnCoronetTitle = $_pnPrefixRaw;
-				break;
-			}
+	foreach ($pnTitleAwardToTier as $_aid => $_tier) {
+		if (isset($pnHeldAwardIds[$_aid]) && $_tier > $pnCoronetTier) {
+			$pnCoronetTier  = $_tier;
+			$pnCoronetTitle = $pnTitleAwardToName[$_aid];
 		}
 	}
 
@@ -394,6 +401,10 @@
 		sort($pnL6Classes);
 	}
 	$pnHasL6 = !empty($pnL6Classes);
+	// Per-player display toggles (Special tab in Design My Profile). Default to
+	// show — if the design row is missing or column null, treat as opted-in.
+	$_pnShowCoronet       = (int)($Player['DisplayCoronet']       ?? 1) === 1;
+	$_pnShowMasterPhoenix = (int)($Player['DisplayMasterPhoenix'] ?? 1) === 1;
 
 
 	// === Paragon Photo Frame ===
@@ -499,6 +510,10 @@
 				break;
 			}
 		}
+	}
+	// Role-gated bonus font: Silkscreen for ORK-level administrators (not award-based).
+	if (!empty($IsOrkAdmin)) {
+		$_pnUnlockedFonts[] = ['key' => 'Silkscreen', 'family' => "'Silkscreen'", 'grantedFor' => 'ORK ADMINISTRATORS', 'awardIds' => []];
 	}
 
 	// First-paragon banner: own profile, within 7 days of earliest paragon
@@ -1504,7 +1519,7 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 			$_pnAvatarStyle = $pnFrameColor !== '' ? ' style="--pn-frame-bg: ' . htmlspecialchars($pnFrameColor) . '"' : '';
 		?>
 		<div class="pn-avatar-wrap">
-			<?php if ($pnCoronetTier > 0): ?>
+			<?php if ($pnCoronetTier > 0 && $_pnShowCoronet): ?>
 			<span class="pn-coronet" data-tip="<?= htmlspecialchars($pnCoronetTitle) ?>"><?= pnRenderCoronet($pnCoronetTier) ?></span>
 			<?php endif; ?>
 			<div class="<?= $_pnAvatarClasses ?>"<?= $_pnAvatarStyle ?><?php if ($pnFrameClassId > 0): ?> data-paragon-class="<?= htmlspecialchars($pnFrameClassName) ?>" data-tip="Paragon <?= htmlspecialchars($pnFrameClassName) ?>"<?php endif; ?>>
@@ -1534,7 +1549,7 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 					<?php endforeach; ?>
 					</span>
 				<?php endif; ?>
-				<?php if ($pnHasMaster): ?>
+				<?php if ($pnHasMaster && $_pnShowMasterPhoenix): ?>
 				<span class="pn-master-phoenix" data-tip="<?= htmlspecialchars(implode(', ', $pnMastersHeld)) ?>" aria-label="Masterhoods: <?= htmlspecialchars(implode(', ', $pnMastersHeld)) ?>"><?= pnRenderPhoenix() ?></span>
 				<?php endif; ?>
 			</h1>
@@ -4065,8 +4080,8 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 				</div>
 			</div>
 
-			<?php if ($isKnight || $pnHasParagon): ?>
-			<!-- Special Panel (Knights + Paragons) -->
+			<?php if ($isKnight || $pnHasParagon || $pnCoronetTier > 0 || $pnHasMaster): ?>
+			<!-- Special Panel (Knights + Paragons + Nobles + Masters) -->
 			<div class="pn-design-panel" id="pn-design-special">
 				<?php if ($isKnight): ?>
 				<div class="pn-special-section">
@@ -4139,6 +4154,48 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 						)) ?>;
 						window.pnParagonAutoClassId = <?= $pnHasParagon ? (int)$pnParagons[0]['ClassId'] : 0 ?>;
 					</script>
+				</div>
+				<?php endif; ?>
+
+				<?php if ($pnCoronetTier > 0): ?>
+				<div class="pn-special-section"<?php if ($isKnight || $pnHasParagon): ?> style="margin-top:24px;padding-top:24px;border-top:1px solid #e2e8f0"<?php endif; ?>>
+					<div class="pn-special-section-title"><i class="fas fa-crown"></i> Display Coronet</div>
+					<div class="pn-design-hint" style="margin-bottom:12px">Show the heraldic coronet for your highest peerage title (currently <strong><?= htmlspecialchars($pnCoronetTitle) ?></strong>) above your hero portrait.</div>
+					<label class="pn-icons-option">
+						<input type="radio" name="pn-design-coronet" value="1" <?= $_pnShowCoronet ? 'checked' : '' ?> />
+						<div class="pn-icons-option-body">
+							<div class="pn-icons-option-title">Yes &mdash; show my coronet</div>
+							<div class="pn-icons-option-desc">Render the <strong><?= htmlspecialchars($pnCoronetTitle) ?></strong> coronet above your hero portrait. (Default.)</div>
+						</div>
+					</label>
+					<label class="pn-icons-option">
+						<input type="radio" name="pn-design-coronet" value="0" <?= $_pnShowCoronet ? '' : 'checked' ?> />
+						<div class="pn-icons-option-body">
+							<div class="pn-icons-option-title">No &mdash; hide it</div>
+							<div class="pn-icons-option-desc">Skip the coronet entirely. Your title still appears in the Titles tab.</div>
+						</div>
+					</label>
+				</div>
+				<?php endif; ?>
+
+				<?php if ($pnHasMaster): ?>
+				<div class="pn-special-section"<?php if ($isKnight || $pnHasParagon || $pnCoronetTier > 0): ?> style="margin-top:24px;padding-top:24px;border-top:1px solid #e2e8f0"<?php endif; ?>>
+					<div class="pn-special-section-title"><i class="fas fa-fire"></i> Display Master Phoenix</div>
+					<div class="pn-design-hint" style="margin-bottom:12px">Show a gold phoenix next to your name marking you as a Master (you hold <?= count($pnMastersHeld) ?>: <?= htmlspecialchars(implode(', ', $pnMastersHeld)) ?>).</div>
+					<label class="pn-icons-option">
+						<input type="radio" name="pn-design-phoenix" value="1" <?= $_pnShowMasterPhoenix ? 'checked' : '' ?> />
+						<div class="pn-icons-option-body">
+							<div class="pn-icons-option-title">Yes &mdash; show my phoenix</div>
+							<div class="pn-icons-option-desc">Render the gold phoenix mark beside your hero name. (Default.)</div>
+						</div>
+					</label>
+					<label class="pn-icons-option">
+						<input type="radio" name="pn-design-phoenix" value="0" <?= $_pnShowMasterPhoenix ? '' : 'checked' ?> />
+						<div class="pn-icons-option-body">
+							<div class="pn-icons-option-title">No &mdash; hide it</div>
+							<div class="pn-icons-option-desc">Skip the phoenix mark entirely. Your Masteries still appear in the Awards tab.</div>
+						</div>
+					</label>
 				</div>
 				<?php endif; ?>
 			</div>
@@ -5118,6 +5175,18 @@ if (typeof nsKid !== 'undefined' && nsKid === 0 && PnConfig.kingdomId) nsKid = P
 		var beltRadios = document.querySelectorAll('input[name="pn-design-belt-display"]');
 		for (var bi = 0; bi < beltRadios.length; bi++) {
 			if (beltRadios[bi].checked) { fd.append('BeltDisplay', beltRadios[bi].value); break; }
+		}
+
+		// Display Coronet (Special tab — noble-titled players only)
+		var coronetRadios = document.querySelectorAll('input[name="pn-design-coronet"]');
+		for (var ci = 0; ci < coronetRadios.length; ci++) {
+			if (coronetRadios[ci].checked) { fd.append('DisplayCoronet', coronetRadios[ci].value); break; }
+		}
+
+		// Display Master Phoenix (Special tab — Master holders only)
+		var phxRadios = document.querySelectorAll('input[name="pn-design-phoenix"]');
+		for (var pi = 0; pi < phxRadios.length; pi++) {
+			if (phxRadios[pi].checked) { fd.append('DisplayMasterPhoenix', phxRadios[pi].value); break; }
 		}
 
 		// Paragon Photo Frame (Special tab — Paragon-holders only)

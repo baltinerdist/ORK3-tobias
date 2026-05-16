@@ -358,6 +358,8 @@ class Player extends Ork3 {
 						'NameFont' => $design->name_font,
 							'BeltDisplay' => $design->belt_display,
 							'ParagonFrameClassId' => is_null($design->paragon_frame_class_id) ? null : (int)$design->paragon_frame_class_id,
+							'DisplayCoronet' => is_null($design->display_coronet) ? 1 : (int)$design->display_coronet,
+							'DisplayMasterPhoenix' => is_null($design->display_master_phoenix) ? 1 : (int)$design->display_master_phoenix,
 						'BasicFonts' => (int)$this->mundane->basic_fonts,
 						'DyslexiaFonts' => (int)$this->mundane->dyslexia_fonts,
 				);
@@ -1109,6 +1111,7 @@ class Player extends Ork3 {
 			'NameFont' => 1,
 			'PhotoFocusX' => 1, 'PhotoFocusY' => 1, 'PhotoFocusSize' => 1,
 			'ShowBeltline' => 1, 'BeltDisplay' => 1,
+			'DisplayCoronet' => 1, 'DisplayMasterPhoenix' => 1,
 			'BasicFonts' => 1, 'DyslexiaFonts' => 1,
 		];
 		// Fields whose value always shifts even on no-op saves — ignore.
@@ -1208,7 +1211,8 @@ class Player extends Ork3 {
 								  'photo_focus_x','photo_focus_y','photo_focus_size',
 								  'show_beltline','belt_display','paragon_frame_class_id','pronunciation_guide',
 								  'show_mundane_first','show_mundane_last','show_email',
-								  'milestone_config','name_font'] as $_f) {
+								  'milestone_config','name_font',
+								  'display_coronet','display_master_phoenix'] as $_f) {
 							$_cur[$_f] = $design->{$_f};
 						}
 					}
@@ -1278,6 +1282,12 @@ class Player extends Ork3 {
 					$design->show_email = is_null($request['ShowEmail']) ? ($_designExisted ? (int)$_cur['show_email'] : 0) : (int)$request['ShowEmail'];
 					$design->milestone_config = $_pick($request['MilestoneConfig'], 'milestone_config');
 					$design->name_font = $_pick($request['NameFont'], 'name_font');
+					// Role-gated bonus font: Silkscreen requires ORK admin authority.
+					if ($design->name_font === 'Silkscreen') {
+						if (!Ork3::$Lib->authorization->HasAuthority($this->mundane->mundane_id, AUTH_ADMIN, null, null)) {
+							$design->name_font = null;
+						}
+					}
 					// Bonus award-gated fonts: validate the player still holds the unlocking award.
 					// If they don't (or it was revoked), drop the font back to null so revoked/transferred
 					// players can't keep their unlocked font indefinitely.
