@@ -395,7 +395,7 @@ class Controller_PlayerAjax extends Controller {
 				'ShowMundaneLast'  => isset($_POST['ShowMundaneLast'])  ? (int)$_POST['ShowMundaneLast']  : null,
 				'ShowEmail'        => isset($_POST['ShowEmail'])        ? (int)$_POST['ShowEmail']        : null,
 				'MilestoneConfig'  => isset($_POST['MilestoneConfig'])  ? $_POST['MilestoneConfig']  : null,
-				'NameFont'         => (isset($_POST['NameFont']) && in_array($_POST['NameFont'], ['','Cinzel','Cinzel Decorative','IM Fell English','UnifrakturMaguntia','Metamorphous','Uncial Antiqua','Pirata One','Almendra','Pinyon Script','Great Vibes'])) ? $_POST['NameFont'] : null,
+				'NameFont'         => (isset($_POST['NameFont']) && in_array($_POST['NameFont'], ['','Cinzel','Cinzel Decorative','IM Fell English','UnifrakturMaguntia','Metamorphous','Uncial Antiqua','Pirata One','Almendra','Pinyon Script','Great Vibes','Ballet','Iceberg','Winky Rough','Kings','Goudy Bookletter 1911','Fleur De Leah','My Soul','New Rocker','Babylonica','Henny Penny','Jim Nightshade'])) ? $_POST['NameFont'] : null,
 					'BeltDisplay'      => (isset($_POST['BeltDisplay']) && in_array($_POST['BeltDisplay'], ['white','own','none'])) ? $_POST['BeltDisplay'] : null,
 					// Administrative fields — UpdatePlayer gates these behind HasAuthority,
 					// so non-officers sending them have no effect.

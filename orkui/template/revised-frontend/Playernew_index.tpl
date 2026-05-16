@@ -150,6 +150,252 @@
 		}
 	}
 
+	// === Player Accolades (coronet / phoenix / L6 gem) ===
+	// Tier table for noble titles, mapped to NamePrefix via case-insensitive regex.
+	// Tier numbers follow the Amtgard Order of Precedence (highest = 11). Where a
+	// kingdom corpora reorders Marquis vs Count we follow the more common GP order
+	// (Count above Marquis). Apprentice/squire/page knightly prefixes intentionally
+	// receive no coronet — Knighthood is rendered separately via the belt icon row.
+	$pnCoronetMap = [
+		11 => '/^(king|queen|monarch|sovereign)$/i',
+		10 => '/^(prince|princess|regent)$/i',
+		9  => '/^(grand\s*duke|grand\s*duchess|grand\s*dame)$/i',
+		8  => '/^(arch\s*duke|arch\s*duchess|archduke|archduchess)$/i',
+		7  => '/^(duke|duchess)$/i',
+		6  => '/^(count|countess|earl)$/i',
+		5  => '/^(marquis|marquess|marquise|marchioness|marquesa)$/i',
+		4  => '/^(viscount|viscountess)$/i',
+		3  => '/^(baron|baroness)$/i',
+		2  => '/^(baronet|baronette)$/i',
+		1  => '/^(lord|lady)$/i',
+	];
+	$pnCoronetTier  = 0;
+	$pnCoronetTitle = '';
+	$_pnPrefixRaw   = trim((string)($Player['NamePrefix'] ?? ''));
+	if ($_pnPrefixRaw !== '') {
+		foreach ($pnCoronetMap as $_tier => $_re) {
+			if (preg_match($_re, $_pnPrefixRaw)) {
+				$pnCoronetTier  = $_tier;
+				$pnCoronetTitle = $_pnPrefixRaw;
+				break;
+			}
+		}
+	}
+
+	// Coronet SVG renderer. ViewBox 80×40; gold gradient + jewel/leaf ornaments.
+	// Each tier is visually distinct enough to read at the avatar size (≈64px).
+	if (!function_exists('pnRenderCoronet')) {
+		function pnRenderCoronet($tier) {
+			$defs = '<defs>'
+			  . '<linearGradient id="pnCorGold" x1="0%" y1="0%" x2="0%" y2="100%">'
+			  . '<stop offset="0%" stop-color="#fff5c2"/>'
+			  . '<stop offset="45%" stop-color="#f6c945"/>'
+			  . '<stop offset="100%" stop-color="#8b5a06"/>'
+			  . '</linearGradient>'
+			  . '<linearGradient id="pnCorVelvet" x1="0%" y1="0%" x2="0%" y2="100%">'
+			  . '<stop offset="0%" stop-color="#9b2c2c"/>'
+			  . '<stop offset="100%" stop-color="#451818"/>'
+			  . '</linearGradient>'
+			  . '<radialGradient id="pnCorPearl" cx="35%" cy="30%" r="60%">'
+			  . '<stop offset="0%" stop-color="#ffffff"/>'
+			  . '<stop offset="60%" stop-color="#e2e8f0"/>'
+			  . '<stop offset="100%" stop-color="#94a3b8"/>'
+			  . '</radialGradient>'
+			  . '<radialGradient id="pnCorRuby" cx="35%" cy="30%" r="60%">'
+			  . '<stop offset="0%" stop-color="#fecaca"/>'
+			  . '<stop offset="55%" stop-color="#dc2626"/>'
+			  . '<stop offset="100%" stop-color="#7f1d1d"/>'
+			  . '</radialGradient>'
+			  . '</defs>';
+			$stroke = 'stroke="#5a3e0a" stroke-width="0.6" stroke-linejoin="round"';
+
+			// Common base: gold band 8–72 wide, sitting at y=26..34
+			$band   = '<rect x="8" y="26" width="64" height="8" rx="2" fill="url(#pnCorGold)" ' . $stroke . '/>';
+			$velvet = '<rect x="8" y="28" width="64" height="3" fill="url(#pnCorVelvet)" opacity="0.85"/>';
+
+			// Pearls along the top edge of the band (at y=26)
+			$pearlAt = function($cx, $r=1.6) { return '<circle cx="' . $cx . '" cy="25.5" r="' . $r . '" fill="url(#pnCorPearl)"/>'; };
+
+			// Strawberry leaf shape rooted at (cx, baseY=26), rising to apex at y= baseY-h.
+			$leaf = function($cx, $h=10) use ($stroke) {
+				$apexY = 26 - $h;
+				$lx = $cx - 5; $rx = $cx + 5;
+				// Trefoil-ish leaf: two side lobes + central spire.
+				$d = "M{$lx} 26 "
+				   . "Q" . ($cx - 6) . " " . ($apexY + 4) . " " . ($cx - 2) . " " . ($apexY + 2) . " "
+				   . "Q{$cx} {$apexY} " . ($cx + 2) . " " . ($apexY + 2) . " "
+				   . "Q" . ($cx + 6) . " " . ($apexY + 4) . " {$rx} 26 Z";
+				return '<path d="' . $d . '" fill="url(#pnCorGold)" ' . $stroke . '/>'
+				  . '<circle cx="' . $cx . '" cy="' . ($apexY + 2.5) . '" r="0.9" fill="#fff7d4" opacity="0.7"/>';
+			};
+
+			// Cross pattée
+			$crossAt = function($cx, $cy=18) use ($stroke) {
+				return '<path d="M' . ($cx-1) . ' ' . ($cy-4) . ' L' . ($cx+1) . ' ' . ($cy-4) . ' '
+				  . 'L' . ($cx+1) . ' ' . ($cy-1) . ' L' . ($cx+4) . ' ' . ($cy-1) . ' '
+				  . 'L' . ($cx+4) . ' ' . ($cy+1) . ' L' . ($cx+1) . ' ' . ($cy+1) . ' '
+				  . 'L' . ($cx+1) . ' ' . ($cy+4) . ' L' . ($cx-1) . ' ' . ($cy+4) . ' '
+				  . 'L' . ($cx-1) . ' ' . ($cy+1) . ' L' . ($cx-4) . ' ' . ($cy+1) . ' '
+				  . 'L' . ($cx-4) . ' ' . ($cy-1) . ' L' . ($cx-1) . ' ' . ($cy-1) . ' Z" '
+				  . 'fill="url(#pnCorGold)" ' . $stroke . '/>';
+			};
+
+			// Fleur-de-lis (highly stylized, pointing up)
+			$fleurAt = function($cx, $cy=18) use ($stroke) {
+				return '<path d="M' . $cx . ' ' . ($cy-7) . ' '
+				  . 'Q' . ($cx-2) . ' ' . ($cy-2) . ' ' . ($cx-4) . ' ' . $cy . ' '
+				  . 'Q' . ($cx-2) . ' ' . ($cy-1) . ' ' . $cx . ' ' . ($cy-2) . ' '
+				  . 'Q' . ($cx+2) . ' ' . ($cy-1) . ' ' . ($cx+4) . ' ' . $cy . ' '
+				  . 'Q' . ($cx+2) . ' ' . ($cy-2) . ' ' . $cx . ' ' . ($cy-7) . ' Z" '
+				  . 'fill="url(#pnCorGold)" ' . $stroke . '/>'
+				  . '<rect x="' . ($cx-3.5) . '" y="' . ($cy+0.5) . '" width="7" height="1.2" '
+				  . 'fill="url(#pnCorGold)" ' . $stroke . '/>';
+			};
+
+			$body = '';
+			switch ((int)$tier) {
+				case 1: // Lord/Lady — plain gold circlet
+					$body = $band . $velvet;
+					break;
+				case 2: // Baronet — circlet + center jewel
+					$body = $band . $velvet
+					  . '<circle cx="40" cy="30" r="2.6" fill="url(#pnCorRuby)" ' . $stroke . '/>';
+					break;
+				case 3: // Baron — 6 pearls on top edge
+					$body = $band . $velvet;
+					foreach ([14,22,30,40,50,58,66] as $i => $cx) {
+						if ($i === 6) break; // exactly 6 pearls
+						$body .= $pearlAt($cx, 1.8);
+					}
+					break;
+				case 4: // Viscount — dense row of pearls (12)
+					$body = $band . $velvet;
+					for ($i = 0; $i < 12; $i++) {
+						$cx = 12 + $i * (56/11);
+						$body .= $pearlAt($cx, 1.4);
+					}
+					break;
+				case 5: // Count — 9 raised points each topped with a pearl
+					$body = $band . $velvet;
+					for ($i = 0; $i < 9; $i++) {
+						$cx = 12 + $i * 7;
+						// Triangular spike from band up to pearl
+						$body .= '<path d="M' . ($cx-2) . ' 26 L' . $cx . ' 16 L' . ($cx+2) . ' 26 Z" '
+						  . 'fill="url(#pnCorGold)" ' . $stroke . '/>'
+						  . '<circle cx="' . $cx . '" cy="14" r="2" fill="url(#pnCorPearl)" stroke="#5a3e0a" stroke-width="0.4"/>';
+					}
+					break;
+				case 6: // Marquis — alternating leaves & pearls (3 leaves, 2 inter-pearls + flank pearls)
+					$body = $band . $velvet;
+					foreach ([20, 40, 60] as $cx) { $body .= $leaf($cx, 9); }
+					foreach ([12, 30, 50, 68] as $cx) {
+						$body .= '<circle cx="' . $cx . '" cy="22" r="2" fill="url(#pnCorPearl)" stroke="#5a3e0a" stroke-width="0.4"/>';
+					}
+					break;
+				case 7: // Duke — 5 strawberry leaves
+					$body = $band . $velvet;
+					foreach ([14, 26, 40, 54, 66] as $cx) { $body .= $leaf($cx, 10); }
+					break;
+				case 8: // Arch Duke — 5 leaves with center taller, pearl bases
+					$body = $band . $velvet;
+					$body .= $leaf(14, 9) . $leaf(26, 11) . $leaf(40, 13) . $leaf(54, 11) . $leaf(66, 9);
+					foreach ([20, 33, 47, 60] as $cx) {
+						$body .= '<circle cx="' . $cx . '" cy="24" r="1.4" fill="url(#pnCorPearl)" stroke="#5a3e0a" stroke-width="0.3"/>';
+					}
+					break;
+				case 9: // Grand Duke — Arch Duke + crimson velvet cap visible behind & gold tassel
+					// Velvet cap behind leaves
+					$body = '<path d="M14 26 Q14 12 40 10 Q66 12 66 26 Z" fill="url(#pnCorVelvet)" stroke="#451818" stroke-width="0.4"/>';
+					$body .= $band . $velvet;
+					$body .= $leaf(14, 9) . $leaf(26, 11) . $leaf(40, 14) . $leaf(54, 11) . $leaf(66, 9);
+					// Tassel
+					$body .= '<circle cx="40" cy="11" r="1.6" fill="url(#pnCorGold)" stroke="#5a3e0a" stroke-width="0.4"/>';
+					foreach ([20, 33, 47, 60] as $cx) {
+						$body .= '<circle cx="' . $cx . '" cy="24" r="1.4" fill="url(#pnCorPearl)" stroke="#5a3e0a" stroke-width="0.3"/>';
+					}
+					break;
+				case 10: // Prince/Regent — alternating cross & fleur on top, single arch with pearl
+					$body = $band . $velvet;
+					$body .= $crossAt(16, 19) . $fleurAt(28, 19) . $crossAt(40, 19) . $fleurAt(52, 19) . $crossAt(64, 19);
+					// One arch (open coronet of estate)
+					$body .= '<path d="M16 19 Q40 4 64 19" fill="none" stroke="url(#pnCorGold)" stroke-width="2" stroke-linecap="round"/>';
+					$body .= '<circle cx="40" cy="9" r="2" fill="url(#pnCorPearl)" stroke="#5a3e0a" stroke-width="0.4"/>';
+					break;
+				case 11: // Monarch — full closed crown with arches, orb, and cross
+					$body = $band . $velvet;
+					$body .= $crossAt(16, 19) . $fleurAt(28, 19) . $crossAt(40, 19) . $fleurAt(52, 19) . $crossAt(64, 19);
+					// Two arches meeting at top center
+					$body .= '<path d="M16 19 Q26 6 40 6 Q54 6 64 19" fill="none" stroke="url(#pnCorGold)" stroke-width="2" stroke-linecap="round"/>';
+					$body .= '<path d="M28 18 Q40 11 52 18" fill="none" stroke="url(#pnCorGold)" stroke-width="1.6" stroke-linecap="round" opacity="0.85"/>';
+					// Orb + cross at apex
+					$body .= '<circle cx="40" cy="6" r="2.2" fill="url(#pnCorGold)" ' . $stroke . '/>';
+					$body .= '<rect x="39.2" y="0.5" width="1.6" height="5" fill="url(#pnCorGold)" stroke="#5a3e0a" stroke-width="0.3"/>';
+					$body .= '<rect x="37.4" y="2" width="5.2" height="1.6" fill="url(#pnCorGold)" stroke="#5a3e0a" stroke-width="0.3"/>';
+					break;
+				default:
+					return '';
+			}
+			return '<svg viewBox="0 0 80 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' . $defs . $body . '</svg>';
+		}
+	}
+
+	// === Master Phoenix Pip ===
+	// Held-master detection uses $pnHeldAwardIds (already built above).
+	$pnMasterIdToName = [
+		1   => 'Master Rose',
+		2   => 'Master Smith',
+		3   => 'Master Lion',
+		4   => 'Master Owl',
+		5   => 'Master Dragon',
+		6   => 'Master Garber',
+		7   => 'Master Jovius',
+		8   => 'Master Zodiac',
+		9   => 'Master Mask',
+		10  => 'Master Hydra',
+		11  => 'Master Griffin',
+		12  => 'Warlord',
+		240 => 'Master Crown',
+		244 => 'Battlemaster',
+	];
+	$pnMastersHeld = [];
+	foreach ($pnMasterIdToName as $_mid => $_mname) {
+		if (isset($pnHeldAwardIds[$_mid])) $pnMastersHeld[] = $_mname;
+	}
+	$pnHasMaster = !empty($pnMastersHeld);
+	if (!function_exists('pnRenderPhoenix')) {
+		function pnRenderPhoenix() {
+			return '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
+			  . '<defs>'
+			  . '<linearGradient id="pnPhxGold" x1="0%" y1="0%" x2="0%" y2="100%">'
+			  . '<stop offset="0%" stop-color="#fff5c2"/>'
+			  . '<stop offset="55%" stop-color="#f59e0b"/>'
+			  . '<stop offset="100%" stop-color="#7c2d12"/>'
+			  . '</linearGradient>'
+			  . '</defs>'
+			  . '<g fill="url(#pnPhxGold)" stroke="#3f1d05" stroke-width="0.4" stroke-linejoin="round">'
+			  . '<path d="M16 5 C14.5 5 14 6 14 7 L14 9 L13 9.5 L14 11 L14 18 L13 22 L15 20 L15 24 L13 28 L16 26 L19 28 L17 24 L17 20 L19 22 L18 18 L18 11 L19 9.5 L18 9 L18 7 C18 6 17.5 5 16 5 Z"/>'
+			  . '<path d="M14 11 C10 10 6 12 4 16 C7 15 10 16 13 17 C11 18 9 19 7 21 C10 20 13 19 14 18 Z"/>'
+			  . '<path d="M18 11 C22 10 26 12 28 16 C25 15 22 16 19 17 C21 18 23 19 25 21 C22 20 19 19 18 18 Z"/>'
+			  . '</g>'
+			  . '</svg>';
+		}
+	}
+
+	// === L6 Class Gem Pip (stat card) ===
+	$pnL6Classes = [];
+	if (is_array($Details['Classes'] ?? null)) {
+		foreach ($Details['Classes'] as $_cl) {
+			$_total = (int)($_cl['Credits'] ?? 0) + (int)($_cl['Reconciled'] ?? 0);
+			if ($_total >= 53) {
+				$_cid = (int)($_cl['ClassId'] ?? 0);
+				$pnL6Classes[] = $ClassLookup[$_cid]['name'] ?? ($_cl['ClassName'] ?? ('Class ' . $_cid));
+			}
+		}
+		sort($pnL6Classes);
+	}
+	$pnHasL6 = !empty($pnL6Classes);
+
+
 	// === Paragon Photo Frame ===
 	// Build {ClassId, ClassName, AwardId, EarliestDate, LatestDate} per held paragon (sorted desc by LatestDate).
 	$pnParagonAwardToClass = [37=>1,38=>2,39=>3,40=>4,41=>5,241=>6,42=>7,43=>8,44=>9,45=>10,46=>11,47=>12,242=>14,49=>15,50=>16,51=>17];
@@ -207,6 +453,53 @@
 	$pnFrameClassName = ($pnFrameClassId > 0 && isset($ClassLookup[$pnFrameClassId]['name']))
 		? $ClassLookup[$pnFrameClassId]['name']
 		: '';
+
+	// === Bonus name fonts unlocked by specific awards ===
+	// Each entry: key = Google Font family name, label = picker label, family = CSS,
+	// grantedFor = uppercase subtitle for the picker tile, awardIds = unlocking ids.
+	// Award-id rationale (from ork_award + alias resolution):
+	//   Knights:       17=Flame  18=Crown  19=Serpent  20=Sword  245=Battle
+	//   Nobles:        52 Lord, 53 Lady, 54 Baronet, 55 Baronetess, 56 Baron,
+	//                  57 Baroness, 58 Viscount, 59 Viscountess
+	//   Greater:       60 Count, 61 Countess, 62 Marquis, 64 Duke, 65 Duchess,
+	//                  66 Archduke, 67 Archduchess
+	//   Grand Duke:    68 Grand Duke, 69 Grand Duchess
+	//   Paragons:      37,38,39,40,42,43,44,45,46,47,49,50,51,242 (any except Color)
+	//                  241 = Paragon Color (its own font)
+	//   Masters:       1,2,3,4,5,6,12,240,244 (peerage='Master')
+	$_pnBonusFontDefs = [
+		['key' => 'Ballet',                'family' => "'Ballet'",                'grantedFor' => 'KNIGHTS OF THE SERPENT', 'awardIds' => [19]],
+		['key' => 'Iceberg',               'family' => "'Iceberg'",               'grantedFor' => 'KNIGHTS OF THE SWORD',   'awardIds' => [20]],
+		['key' => 'Winky Rough',           'family' => "'Winky Rough'",           'grantedFor' => 'KNIGHTS OF BATTLE',      'awardIds' => [245]],
+		['key' => 'Kings',                 'family' => "'Kings'",                 'grantedFor' => 'KNIGHTS OF THE CROWN',   'awardIds' => [18]],
+		['key' => 'Goudy Bookletter 1911', 'family' => "'Goudy Bookletter 1911'", 'grantedFor' => 'KNIGHTS OF THE FLAME',   'awardIds' => [17]],
+		['key' => 'Fleur De Leah',         'family' => "'Fleur De Leah'",         'grantedFor' => 'NOBLE TITLE',            'awardIds' => [52,53,54,55,56,57,58,59]],
+		['key' => 'My Soul',               'family' => "'My Soul'",               'grantedFor' => 'GREATER NOBLE TITLE',    'awardIds' => [60,61,62,64,65,66,67]],
+		['key' => 'New Rocker',            'family' => "'New Rocker'",            'grantedFor' => 'GRAND DUKE',             'awardIds' => [68,69]],
+		['key' => 'Babylonica',            'family' => "'Babylonica'",            'grantedFor' => 'PARAGONS',               'awardIds' => [37,38,39,40,42,43,44,45,46,47,49,50,51,242]],
+		['key' => 'Henny Penny',           'family' => "'Henny Penny'",           'grantedFor' => 'PARAGON COLOR',          'awardIds' => [241]],
+		['key' => 'Jim Nightshade',        'family' => "'Jim Nightshade'",        'grantedFor' => 'MASTER',                 'awardIds' => [1,2,3,4,5,6,12,240,244]],
+	];
+	// Build set of effective award IDs the player holds (direct or via alias).
+	// Custom titles aliased to e.g. Lord still count as a Lord for unlock purposes.
+	$_pnEffectiveAwardIds = [];
+	if (is_array($Details['Awards'])) {
+		foreach ($Details['Awards'] as $_pa) {
+			$_aid = (int)($_pa['AwardId'] ?? 0);
+			$_alias = (int)($_pa['AliasAwardId'] ?? 0);
+			if ($_aid > 0)   $_pnEffectiveAwardIds[$_aid]   = true;
+			if ($_alias > 0) $_pnEffectiveAwardIds[$_alias] = true;
+		}
+	}
+	$_pnUnlockedFonts = [];
+	foreach ($_pnBonusFontDefs as $_bf) {
+		foreach ($_bf['awardIds'] as $_aid) {
+			if (isset($_pnEffectiveAwardIds[$_aid])) {
+				$_pnUnlockedFonts[] = $_bf;
+				break;
+			}
+		}
+	}
 
 	// First-paragon banner: own profile, within 7 days of earliest paragon
 	$pnShowFirstParagonBanner = false;
@@ -327,6 +620,8 @@
 <?php
 $_pnNameFont = (!empty($Player['NameFont']) && empty($ViewerBasicFonts) && empty($ViewerDyslexiaFonts)) ? $Player['NameFont'] : '';
 $_pnFontAllowed = ['Cinzel','Cinzel Decorative','IM Fell English','UnifrakturMaguntia','Metamorphous','Uncial Antiqua','Pirata One','Almendra','Pinyon Script','Great Vibes'];
+// Bonus fonts: only honored if the player still holds the unlocking award.
+foreach ($_pnUnlockedFonts as $_uf) { $_pnFontAllowed[] = $_uf['key']; }
 if (!in_array($_pnNameFont, $_pnFontAllowed)) $_pnNameFont = '';
 ?>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -336,7 +631,15 @@ if (!in_array($_pnNameFont, $_pnFontAllowed)) $_pnNameFont = '';
 <style>#pn-hero-persona,.pn-hero-preview-name,#pn-name-preview{font-family:'<?= htmlspecialchars($_pnNameFont) ?>',serif!important}</style>
 <?php endif; ?>
 <?php if (!empty($isOwnProfile)): ?>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel&family=Cinzel+Decorative&family=IM+Fell+English&family=UnifrakturMaguntia&family=Metamorphous&family=Uncial+Antiqua&family=Pirata+One&family=Almendra&family=Pinyon+Script&family=Great+Vibes&display=swap">
+<?php
+	$_pnPickerFontFamilies = ['Cinzel','Cinzel Decorative','IM Fell English','UnifrakturMaguntia','Metamorphous','Uncial Antiqua','Pirata One','Almendra','Pinyon Script','Great Vibes'];
+	foreach ($_pnUnlockedFonts as $_uf) $_pnPickerFontFamilies[] = $_uf['key'];
+	$_pnPickerFontHref = 'https://fonts.googleapis.com/css2?' . implode('&', array_map(
+		function($f) { return 'family=' . str_replace(' ', '+', $f); },
+		$_pnPickerFontFamilies
+	)) . '&display=swap';
+?>
+<link rel="stylesheet" href="<?= htmlspecialchars($_pnPickerFontHref) ?>">
 <?php endif; ?>
 <style>
 /* ===== Special Tab — Paragon Photo Frame ===== */
@@ -372,6 +675,35 @@ html[data-theme="dark"] .pn-paragon-frame-preview.pn-pfp-empty{border-color:var(
 	.pn-avatar.pn-avatar-paragon{width:104px;height:104px;border-width:6px}
 }
 html[data-theme="dark"] .pn-avatar.pn-avatar-paragon{box-shadow:0 0 0 1px rgba(255,255,255,0.12), 0 2px 8px rgba(0,0,0,0.45)}
+
+/* ===== Player Accolades (Coronet / Phoenix / L6 gem) ===== */
+/* Wrapper introduced so the coronet (positioned above) doesn't get clipped by
+   .pn-avatar's overflow:hidden; preserves the avatar's flex-shrink:0 layout.
+   The hero itself has overflow:hidden, so coronet-anchored tooltips render
+   BELOW the coronet (over the photo) where they stay inside the hero box. */
+.pn-avatar-wrap{position:relative;flex-shrink:0;display:inline-block;line-height:0}
+.pn-coronet{position:absolute;left:50%;top:-22px;transform:translateX(-50%);z-index:3;cursor:help;line-height:0;filter:drop-shadow(0 2px 3px rgba(0,0,0,0.45))}
+.pn-coronet svg{display:block;width:68px;height:auto;pointer-events:none}
+.pn-coronet::after{content:attr(data-tip);position:absolute;left:50%;top:calc(100% + 6px);transform:translateX(-50%);background:#2d3748;color:#fff;font-size:11px;font-weight:600;white-space:nowrap;padding:4px 9px;border-radius:4px;pointer-events:none;opacity:0;transition:opacity 0.12s;z-index:500;letter-spacing:.02em}
+.pn-coronet:hover::after,.pn-coronet:focus::after{opacity:1}
+@media (max-width:768px){
+	.pn-coronet{top:-18px}
+	.pn-coronet svg{width:54px}
+}
+html[data-theme="dark"] .pn-coronet{filter:drop-shadow(0 2px 4px rgba(0,0,0,0.7))}
+
+.pn-master-phoenix{position:relative;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;cursor:help;line-height:0;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.45))}
+.pn-master-phoenix svg{width:24px;height:24px;display:block;pointer-events:none}
+.pn-master-phoenix:hover{filter:drop-shadow(0 1px 3px rgba(245,158,11,0.7)) drop-shadow(0 1px 2px rgba(0,0,0,0.45))}
+.pn-master-phoenix::after{content:attr(data-tip);position:absolute;left:50%;top:calc(100% + 6px);transform:translateX(-50%);background:#2d3748;color:#fff;font-size:11px;font-weight:600;white-space:nowrap;padding:4px 9px;border-radius:4px;pointer-events:none;opacity:0;transition:opacity 0.12s;z-index:500;max-width:320px;overflow:hidden;text-overflow:ellipsis}
+.pn-master-phoenix:hover::after,.pn-master-phoenix:focus::after{opacity:1}
+
+.pn-stat-l6{position:absolute;top:6px;right:8px;cursor:help;z-index:2;line-height:0;filter:drop-shadow(0 0 3px rgba(251,191,36,0.65))}
+.pn-stat-l6-gem{display:block;width:14px;height:16px;clip-path:polygon(50% 0%,100% 35%,80% 100%,20% 100%,0% 35%);-webkit-clip-path:polygon(50% 0%,100% 35%,80% 100%,20% 100%,0% 35%);background:linear-gradient(135deg,#fff7d4 0%,#fbbf24 40%,#92400e 100%);position:relative}
+.pn-stat-l6-gem::before{content:"";position:absolute;inset:0;background:linear-gradient(160deg,rgba(255,255,255,0.7) 0%,rgba(255,255,255,0.2) 30%,transparent 55%);clip-path:polygon(50% 0%,100% 35%,80% 100%,20% 100%,0% 35%);-webkit-clip-path:polygon(50% 0%,100% 35%,80% 100%,20% 100%,0% 35%)}
+.pn-stat-l6::after{content:attr(data-tip);position:absolute;right:0;top:calc(100% + 6px);background:#2d3748;color:#fff;font-size:11px;font-weight:600;white-space:nowrap;padding:4px 9px;border-radius:4px;pointer-events:none;opacity:0;transition:opacity 0.12s;z-index:500;max-width:320px;overflow:hidden;text-overflow:ellipsis}
+.pn-stat-l6:hover::after,.pn-stat-l6:focus::after{opacity:1}
+html[data-theme="dark"] .pn-stat-l6{filter:drop-shadow(0 0 4px rgba(251,191,36,0.85))}
 
 /* ===== First Paragon Congratulations Banner ===== */
 .pna-paragon-congrats{
@@ -917,6 +1249,10 @@ html[data-theme="dark"] .pn-hero-pride .pn-persona{text-shadow:0 0 2px rgba(0,0,
 .pn-font-card.pn-active{border-color:var(--pn-accent,#4299e1);box-shadow:0 0 0 2px rgba(66,153,225,0.2);background:#ebf8ff}
 .pn-font-card-sample{font-size:16px;line-height:1.3;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 4px}
 .pn-font-card-label{font-size:10px;font-weight:600;color:#718096;text-transform:uppercase;letter-spacing:.04em}
+.pn-font-card-grant{font-size:9px;font-weight:700;color:#b7791f;text-transform:uppercase;letter-spacing:.06em;margin-top:3px;line-height:1.2}
+.pn-font-card-bonus{border-color:#fef3c7;background:linear-gradient(180deg,#fffbeb 0%,#fff 60%)}
+.pn-font-card-bonus:hover{border-color:#f6e05e;background:linear-gradient(180deg,#fef3c7 0%,#fffbeb 60%)}
+.pn-font-card-bonus.pn-active{border-color:#d69e2e;box-shadow:0 0 0 2px rgba(214,158,46,0.25);background:linear-gradient(180deg,#fef3c7 0%,#fffbeb 60%)}
 /* Shared yellow warning banner (about visibility, milestones accuracy, name entitlement, reconcile) */
 .pn-about-visibility-warn,
 .pn-warn-banner{margin-bottom:16px;padding:10px 12px;background:#fffaf0;border:1px solid #f6e05e;border-radius:6px;font-size:12px;color:#744210;line-height:1.5}
@@ -1084,6 +1420,10 @@ html[data-theme="dark"] .pn-font-card:hover { background: var(--ork-bg-tertiary)
 html[data-theme="dark"] .pn-font-card.pn-active { background: var(--ork-bg-tertiary); /* --pn-accent border + ring flow through from light rule */ }
 html[data-theme="dark"] .pn-font-card-sample { color: var(--ork-text); }
 html[data-theme="dark"] .pn-font-card-label { color: var(--ork-text-muted); }
+html[data-theme="dark"] .pn-font-card-grant { color: #f6ad55; }
+html[data-theme="dark"] .pn-font-card-bonus { background: linear-gradient(180deg,#3d3300 0%,var(--ork-card-bg) 60%); border-color: #744210; }
+html[data-theme="dark"] .pn-font-card-bonus:hover { background: linear-gradient(180deg,#4a3c00 0%,var(--ork-bg-tertiary) 60%); border-color: #975a16; }
+html[data-theme="dark"] .pn-font-card-bonus.pn-active { background: linear-gradient(180deg,#4a3c00 0%,var(--ork-bg-tertiary) 60%); border-color: #d69e2e; box-shadow: 0 0 0 2px rgba(214,158,46,0.25); }
 
 /* Milestones — toggle list, custom list, add form, icon picker */
 html[data-theme="dark"] .pn-ms-toggle { color: var(--ork-text-secondary); }
@@ -1163,11 +1503,16 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 			$_pnAvatarClasses = 'pn-avatar' . ($canEditImages ? ' pn-editable-img' : '') . ($pnFrameClassId > 0 ? ' pn-avatar-paragon' : '');
 			$_pnAvatarStyle = $pnFrameColor !== '' ? ' style="--pn-frame-bg: ' . htmlspecialchars($pnFrameColor) . '"' : '';
 		?>
-		<div class="<?= $_pnAvatarClasses ?>"<?= $_pnAvatarStyle ?><?php if ($pnFrameClassId > 0): ?> data-paragon-class="<?= htmlspecialchars($pnFrameClassName) ?>" data-tip="Paragon <?= htmlspecialchars($pnFrameClassName) ?>"<?php endif; ?>>
-			<img class="heraldry-img" src="<?= htmlspecialchars($imageUrl) ?>" alt="<?= htmlspecialchars($Player['Persona']) ?>" data-focus-x="<?= $_pnFocusX ?>" data-focus-y="<?= $_pnFocusY ?>" data-focus-size="<?= $_pnFocusSize ?>" />
-			<?php if ($canEditImages): ?>
-			<button class="pn-img-edit-btn" onclick="pnOpenImgModal('photo')" title="Update player photo"><i class="fas fa-camera"></i></button>
+		<div class="pn-avatar-wrap">
+			<?php if ($pnCoronetTier > 0): ?>
+			<span class="pn-coronet" data-tip="<?= htmlspecialchars($pnCoronetTitle) ?>"><?= pnRenderCoronet($pnCoronetTier) ?></span>
 			<?php endif; ?>
+			<div class="<?= $_pnAvatarClasses ?>"<?= $_pnAvatarStyle ?><?php if ($pnFrameClassId > 0): ?> data-paragon-class="<?= htmlspecialchars($pnFrameClassName) ?>" data-tip="Paragon <?= htmlspecialchars($pnFrameClassName) ?>"<?php endif; ?>>
+				<img class="heraldry-img" src="<?= htmlspecialchars($imageUrl) ?>" alt="<?= htmlspecialchars($Player['Persona']) ?>" data-focus-x="<?= $_pnFocusX ?>" data-focus-y="<?= $_pnFocusY ?>" data-focus-size="<?= $_pnFocusSize ?>" />
+				<?php if ($canEditImages): ?>
+				<button class="pn-img-edit-btn" onclick="pnOpenImgModal('photo')" title="Update player photo"><i class="fas fa-camera"></i></button>
+				<?php endif; ?>
+			</div>
 		</div>
 		<div class="pn-hero-info">
 			<?php
@@ -1188,6 +1533,9 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 						<img class="pn-belt-icon pn-belt-icon-own" src="<?= htmlspecialchars($_b['Src']) ?>" alt="<?= htmlspecialchars($_b['Name']) ?>" data-tip="<?= htmlspecialchars($_b['Name']) ?>" />
 					<?php endforeach; ?>
 					</span>
+				<?php endif; ?>
+				<?php if ($pnHasMaster): ?>
+				<span class="pn-master-phoenix" data-tip="<?= htmlspecialchars(implode(', ', $pnMastersHeld)) ?>" aria-label="Masterhoods: <?= htmlspecialchars(implode(', ', $pnMastersHeld)) ?>"><?= pnRenderPhoenix() ?></span>
 				<?php endif; ?>
 			</h1>
 			<?php
@@ -1295,6 +1643,9 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 		<div class="pn-stat-label">Titles</div>
 	</div>
 	<div class="pn-stat-card pn-stat-card-link" onclick="pnActivateTab('classes')">
+		<?php if ($pnHasL6): ?>
+		<span class="pn-stat-l6" data-tip="L6 in: <?= htmlspecialchars(implode(', ', $pnL6Classes)) ?>" aria-label="Reached level 6 in: <?= htmlspecialchars(implode(', ', $pnL6Classes)) ?>"><span class="pn-stat-l6-gem"></span></span>
+		<?php endif; ?>
 		<div class="pn-stat-icon" id="pn-att-last-icon"><i class="fas fa-shield-alt"></i></div>
 		<div class="pn-stat-number pn-stat-text" id="pn-att-last-class">…</div>
 		<div class="pn-stat-label">Last Played</div>
@@ -3993,6 +4344,7 @@ var PnConfig = {
 	milestoneConfig: <?= json_encode(json_decode($Player['MilestoneConfig'] ?? '{}', true) ?: new stdClass()) ?>,
 	customMilestones: <?= json_encode($CustomMilestones ?? []) ?>,
 	nameFont:        <?= json_encode($Player['NameFont'] ?? '') ?>,
+	unlockedFonts:   <?= json_encode(array_map(function($f) { return ['key' => $f['key'], 'family' => $f['family'], 'grantedFor' => $f['grantedFor']]; }, $_pnUnlockedFonts)) ?>,
 	viewerBasicFonts: <?= !empty($ViewerBasicFonts) ? 'true' : 'false' ?>,
 	viewerDyslexiaFonts: <?= !empty($ViewerDyslexiaFonts) ? 'true' : 'false' ?>,
 };
@@ -4463,6 +4815,10 @@ if (typeof nsKid !== 'undefined' && nsKid === 0 && PnConfig.kingdomId) nsKid = P
 		{key:'Pinyon Script',label:'Pinyon Script',family:"'Pinyon Script'"},
 		{key:'Great Vibes',label:'Great Vibes',family:"'Great Vibes'"},
 	];
+	// Append the player's award-unlocked bonus fonts.
+	(PnConfig.unlockedFonts || []).forEach(function(uf) {
+		PN_FONTS.push({key: uf.key, label: uf.key, family: uf.family, grantedFor: uf.grantedFor});
+	});
 	var pnSelectedFont = PnConfig.nameFont || '';
 	var pnLoadedFonts = {};
 	function pnLoadFont(key) {
@@ -4499,9 +4855,13 @@ if (typeof nsKid !== 'undefined' && nsKid === 0 && PnConfig.kingdomId) nsKid = P
 		for (var _j = 0; _j < PN_FONTS.length; _j++) {
 			var _f = PN_FONTS[_j];
 			var _active = _f.key === pnSelectedFont;
-			html += '<div class="pn-font-card' + (_active ? ' pn-active' : '') + '" data-font-key="' + escHtml(_f.key) + '">';
+			var _bonusCls = _f.grantedFor ? ' pn-font-card-bonus' : '';
+			html += '<div class="pn-font-card' + (_active ? ' pn-active' : '') + _bonusCls + '" data-font-key="' + escHtml(_f.key) + '">';
 			html += '<div class="pn-font-card-sample ork-font-sample" style="font-family:' + _f.family + '">' + escHtml(sample) + '</div>';
 			html += '<div class="pn-font-card-label">' + escHtml(_f.label) + '</div>';
+			if (_f.grantedFor) {
+				html += '<div class="pn-font-card-grant">Granted for ' + escHtml(_f.grantedFor) + '</div>';
+			}
 			html += '</div>';
 		}
 		container.innerHTML = html;
@@ -4521,18 +4881,12 @@ if (typeof nsKid !== 'undefined' && nsKid === 0 && PnConfig.kingdomId) nsKid = P
 	// Re-render after all fonts land — fonts.ready resolves too early (before downloads finish).
 	// fonts.load() per family triggers downloads and resolves only when each is paint-ready.
 	if (document.fonts && document.fonts.load) {
-		Promise.all([
-			document.fonts.load('16px Cinzel'),
-			document.fonts.load('16px "Cinzel Decorative"'),
-			document.fonts.load('16px "IM Fell English"'),
-			document.fonts.load('16px UnifrakturMaguntia'),
-			document.fonts.load('16px Metamorphous'),
-			document.fonts.load('16px "Uncial Antiqua"'),
-			document.fonts.load('16px "Pirata One"'),
-			document.fonts.load('16px Almendra'),
-			document.fonts.load("16px 'Pinyon Script'"),
-			document.fonts.load("16px 'Great Vibes'"),
-		]).then(function() { pnRenderFontPicker(); });
+		var _fontLoadPromises = [];
+		for (var _fl = 1; _fl < PN_FONTS.length; _fl++) {
+			var _fam = PN_FONTS[_fl].key.indexOf(' ') >= 0 ? '"' + PN_FONTS[_fl].key + '"' : PN_FONTS[_fl].key;
+			_fontLoadPromises.push(document.fonts.load('16px ' + _fam));
+		}
+		Promise.all(_fontLoadPromises).then(function() { pnRenderFontPicker(); });
 	}
 
 	// Photo focus tool

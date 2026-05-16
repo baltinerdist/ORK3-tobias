@@ -1278,6 +1278,30 @@ class Player extends Ork3 {
 					$design->show_email = is_null($request['ShowEmail']) ? ($_designExisted ? (int)$_cur['show_email'] : 0) : (int)$request['ShowEmail'];
 					$design->milestone_config = $_pick($request['MilestoneConfig'], 'milestone_config');
 					$design->name_font = $_pick($request['NameFont'], 'name_font');
+					// Bonus award-gated fonts: validate the player still holds the unlocking award.
+					// If they don't (or it was revoked), drop the font back to null so revoked/transferred
+					// players can't keep their unlocked font indefinitely.
+					$_bonusFontUnlock = [
+						'Ballet' => [19], 'Iceberg' => [20], 'Winky Rough' => [245], 'Kings' => [18], 'Goudy Bookletter 1911' => [17],
+						'Fleur De Leah' => [52,53,54,55,56,57,58,59],
+						'My Soul' => [60,61,62,64,65,66,67],
+						'New Rocker' => [68,69],
+						'Babylonica' => [37,38,39,40,42,43,44,45,46,47,49,50,51,242],
+						'Henny Penny' => [241],
+						'Jim Nightshade' => [1,2,3,4,5,6,12,240,244],
+					];
+					if (!empty($design->name_font) && isset($_bonusFontUnlock[$design->name_font])) {
+						$_bfIdList = implode(',', array_map('intval', $_bonusFontUnlock[$design->name_font]));
+						global $DB;
+						$DB->Clear();
+						$_bfRes = $DB->DataSet("SELECT 1 FROM " . DB_PREFIX . "awards aw
+							LEFT JOIN " . DB_PREFIX . "kingdomaward ka ON ka.kingdomaward_id = aw.kingdomaward_id
+							WHERE aw.mundane_id = " . (int)$this->mundane->mundane_id . "
+							  AND aw.revoked = 0
+							  AND (ka.award_id IN (" . $_bfIdList . ") OR aw.alias_award_id IN (" . $_bfIdList . "))
+							LIMIT 1");
+						if (!($_bfRes && $_bfRes->Next())) $design->name_font = null;
+					}
 					$validBeltDisplays = ['white','own','none'];
 					$design->belt_display = (isset($request['BeltDisplay']) && in_array($request['BeltDisplay'], $validBeltDisplays)) ? $request['BeltDisplay'] : ($_designExisted ? $_cur['belt_display'] : 'white');
 						// Paragon Photo Frame: NULL=auto, 0=no frame, >0=class_id (validated server-side)
