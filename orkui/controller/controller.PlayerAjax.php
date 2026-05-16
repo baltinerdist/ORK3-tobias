@@ -397,6 +397,7 @@ class Controller_PlayerAjax extends Controller {
 				'MilestoneConfig'  => isset($_POST['MilestoneConfig'])  ? $_POST['MilestoneConfig']  : null,
 				'NameFont'         => (isset($_POST['NameFont']) && in_array($_POST['NameFont'], ['','Cinzel','Cinzel Decorative','IM Fell English','UnifrakturMaguntia','Metamorphous','Uncial Antiqua','Pirata One','Almendra','Pinyon Script','Great Vibes','Ballet','Iceberg','Winky Rough','Kings','Goudy Bookletter 1911','Fleur De Leah','My Soul','New Rocker','Babylonica','Henny Penny','Jim Nightshade','Silkscreen'])) ? $_POST['NameFont'] : null,
 					'BeltDisplay'      => (isset($_POST['BeltDisplay']) && in_array($_POST['BeltDisplay'], ['white','own','none'])) ? $_POST['BeltDisplay'] : null,
+					'NameShimmer'      => isset($_POST['NameShimmer']) ? (int)$_POST['NameShimmer'] : null,
 					'DisplayCoronet'   => isset($_POST['DisplayCoronet'])   ? (int)$_POST['DisplayCoronet']   : null,
 					'DisplayMasterPhoenix' => isset($_POST['DisplayMasterPhoenix']) ? (int)$_POST['DisplayMasterPhoenix'] : null,
 					// Administrative fields — UpdatePlayer gates these behind HasAuthority,

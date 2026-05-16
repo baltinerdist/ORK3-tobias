@@ -358,6 +358,7 @@ class Player extends Ork3 {
 						'NameFont' => $design->name_font,
 							'BeltDisplay' => $design->belt_display,
 							'ParagonFrameClassId' => is_null($design->paragon_frame_class_id) ? null : (int)$design->paragon_frame_class_id,
+								'NameShimmer' => (int)$design->name_shimmer,
 							'DisplayCoronet' => is_null($design->display_coronet) ? 1 : (int)$design->display_coronet,
 							'DisplayMasterPhoenix' => is_null($design->display_master_phoenix) ? 1 : (int)$design->display_master_phoenix,
 						'BasicFonts' => (int)$this->mundane->basic_fonts,
@@ -1209,7 +1210,7 @@ class Player extends Ork3 {
 						foreach (['about_persona','about_story','color_primary','color_accent','color_secondary',
 								  'hero_gradient','hero_overlay','name_prefix','name_suffix','suffix_comma',
 								  'photo_focus_x','photo_focus_y','photo_focus_size',
-								  'show_beltline','belt_display','paragon_frame_class_id','pronunciation_guide',
+								  'show_beltline','belt_display','paragon_frame_class_id','name_shimmer','pronunciation_guide',
 								  'show_mundane_first','show_mundane_last','show_email',
 								  'milestone_config','name_font',
 								  'display_coronet','display_master_phoenix'] as $_f) {
@@ -1346,6 +1347,8 @@ class Player extends Ork3 {
 						} else {
 							$design->paragon_frame_class_id = $_designExisted ? $_cur['paragon_frame_class_id'] : null;
 						}
+						// Knight Color Shimmer toggle (only meaningful for knights, but harmless to store either way).
+						$design->name_shimmer = is_null($request['NameShimmer']) ? ($_designExisted ? (int)$_cur['name_shimmer'] : 0) : ((int)$request['NameShimmer'] ? 1 : 0);
 				}
 
 				// reeve or corpora qual changes

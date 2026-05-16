@@ -60,6 +60,21 @@
 		}
 		usort($ownBelts, function($x, $y) { return strcmp($x['Date'], $y['Date']); });
 	}
+	// Knight Color Shimmer — per-belt color palette (cycles if multiple belts).
+	// Order is significant: $ownBelts is sorted by award date asc, so the
+	// shimmer cycles oldest → newest → repeat.
+	$_pnShimmerColorMap = [
+		17  => '#ef4444', // Flame  → red
+		18  => '#fbbf24', // Crown  → gold
+		19  => '#48bb78', // Serpent → green
+		20  => '#e2e8f0', // Sword  → silver
+		245 => '#3b82f6', // Battle → blue
+	];
+	$_pnShimmerColors = [];
+	foreach ($ownBelts as $_b) {
+		if (isset($_pnShimmerColorMap[$_b['Id']])) $_pnShimmerColors[] = $_pnShimmerColorMap[$_b['Id']];
+	}
+	$_pnShimmerOn = $isKnight && !empty($_pnShimmerColors) && !empty($Player['NameShimmer']);
 	$beltIconUrl = '//' . $_SERVER['HTTP_HOST'] . '/assets/images/belt.svg';
 	$_pnBeltDisplay = $Player['BeltDisplay'] ?? 'white';
 	if (!in_array($_pnBeltDisplay, array('white','own','none'))) { $_pnBeltDisplay = 'white'; }
@@ -670,6 +685,32 @@ html[data-theme="dark"] .pn-special-section-title{color:var(--ork-text)}
 html[data-theme="dark"] .pn-paragon-frame-preview-label{color:var(--ork-text-secondary)}
 html[data-theme="dark"] .pn-paragon-frame-preview-inner{background:linear-gradient(135deg, var(--ork-bg-tertiary) 0%, var(--ork-bg-secondary) 100%)}
 html[data-theme="dark"] .pn-paragon-frame-preview.pn-pfp-empty{border-color:var(--ork-border)}
+
+/* ===== Knight Color Shimmer (hero name) =====
+   When .pn-name-shimmering is added (every ~10s by JS), a thin band of the
+   knighthood color sweeps across the name via background-clip:text. The class
+   is removed when the animation completes so the text returns to its normal
+   color the rest of the time. Honors `prefers-reduced-motion`. */
+@keyframes pn-name-shimmer-sweep {
+	0%   { background-position: 200% 0; }
+	100% { background-position: -100% 0; }
+}
+.pn-persona.pn-name-shimmering {
+	background-image: linear-gradient(110deg,
+		#fff 0%, #fff 38%,
+		var(--pn-shimmer-color, #fff) 50%,
+		#fff 62%, #fff 100%);
+	background-size: 250% 100%;
+	background-position: 200% 0;
+	-webkit-background-clip: text;
+	        background-clip: text;
+	-webkit-text-fill-color: transparent;
+	        color: transparent;
+	animation: pn-name-shimmer-sweep 1.6s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+	.pn-persona.pn-name-shimmering { animation: none; -webkit-text-fill-color: #fff; color: #fff; background-image: none; }
+}
 
 /* ===== Paragon Photo Frame =====
    Uses a transparent BORDER (not padding) so that .pn-avatar's clientWidth
@@ -4118,6 +4159,13 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 						window.pnOwnBelts = <?= json_encode(array_map(function($b) { return array('src' => $b['Src'], 'name' => $b['Name']); }, $ownBelts)) ?>;
 						window.pnWhiteBeltUrl = <?= json_encode($beltIconUrl) ?>;
 					</script>
+					<div class="pn-design-field pn-about-beltline-toggle" style="margin-top:18px;padding-top:18px;border-top:1px solid #e2e8f0">
+						<label>
+							<input type="checkbox" id="pn-design-name-shimmer" <?= !empty($Player['NameShimmer']) ? 'checked' : '' ?> />
+							Knight Color Shimmer on Name
+						</label>
+						<div class="pn-design-hint" style="margin-top:4px">A subtle color sweep crosses your name about every 10 seconds in your knighthood color<?= count($_pnShimmerColors) > 1 ? 's, cycling through each' : '' ?>.</div>
+					</div>
 				</div>
 				<?php endif; ?>
 
@@ -4402,6 +4450,8 @@ var PnConfig = {
 	customMilestones: <?= json_encode($CustomMilestones ?? []) ?>,
 	nameFont:        <?= json_encode($Player['NameFont'] ?? '') ?>,
 	unlockedFonts:   <?= json_encode(array_map(function($f) { return ['key' => $f['key'], 'family' => $f['family'], 'grantedFor' => $f['grantedFor']]; }, $_pnUnlockedFonts)) ?>,
+	shimmerOn:       <?= !empty($_pnShimmerOn) ? 'true' : 'false' ?>,
+	shimmerColors:   <?= json_encode($_pnShimmerColors) ?>,
 	viewerBasicFonts: <?= !empty($ViewerBasicFonts) ? 'true' : 'false' ?>,
 	viewerDyslexiaFonts: <?= !empty($ViewerDyslexiaFonts) ? 'true' : 'false' ?>,
 };
@@ -5177,6 +5227,10 @@ if (typeof nsKid !== 'undefined' && nsKid === 0 && PnConfig.kingdomId) nsKid = P
 			if (beltRadios[bi].checked) { fd.append('BeltDisplay', beltRadios[bi].value); break; }
 		}
 
+		// Knight Color Shimmer toggle (Special tab — Knights only)
+		var shimmerEl = document.getElementById('pn-design-name-shimmer');
+		if (shimmerEl) fd.append('NameShimmer', shimmerEl.checked ? '1' : '0');
+
 		// Display Coronet (Special tab — noble-titled players only)
 		var coronetRadios = document.querySelectorAll('input[name="pn-design-coronet"]');
 		for (var ci = 0; ci < coronetRadios.length; ci++) {
@@ -5263,6 +5317,45 @@ if (typeof nsKid !== 'undefined' && nsKid === 0 && PnConfig.kingdomId) nsKid = P
 				btn.innerHTML = '<i class="fas fa-save"></i> Save Changes';
 			});
 	});
+})();
+
+// ---- Knight Color Shimmer cycle (hero name) ----
+// Fires once on load, then every ~10s. Cycles through all of the player's
+// knighthood colors. Toggling the Special-tab checkbox starts/stops the cycle
+// without requiring a page reload.
+(function() {
+	var nameEl = document.getElementById('pn-hero-persona');
+	if (!nameEl) return;
+	var colors = (PnConfig.shimmerColors || []).slice();
+	if (!colors.length) return;
+	var idx = 0;
+	var timer = null;
+	function tick() {
+		var color = colors[idx % colors.length];
+		idx++;
+		nameEl.style.setProperty('--pn-shimmer-color', color);
+		// Force a reflow so the animation restarts cleanly.
+		nameEl.classList.remove('pn-name-shimmering');
+		void nameEl.offsetWidth;
+		nameEl.classList.add('pn-name-shimmering');
+	}
+	function start() {
+		if (timer) return;
+		tick();
+		timer = setInterval(tick, 10000);
+	}
+	function stop() {
+		if (timer) { clearInterval(timer); timer = null; }
+		nameEl.classList.remove('pn-name-shimmering');
+	}
+	if (PnConfig.shimmerOn) start();
+	// Live-preview toggle in the Design modal: react instantly to the checkbox.
+	var toggleEl = document.getElementById('pn-design-name-shimmer');
+	if (toggleEl) {
+		toggleEl.addEventListener('change', function() {
+			if (toggleEl.checked) start(); else stop();
+		});
+	}
 })();
 
 // ---- Special tab — Paragon Frame live preview ----
