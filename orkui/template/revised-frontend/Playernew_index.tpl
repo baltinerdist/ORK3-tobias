@@ -687,24 +687,26 @@ html[data-theme="dark"] .pn-paragon-frame-preview-inner{background:linear-gradie
 html[data-theme="dark"] .pn-paragon-frame-preview.pn-pfp-empty{border-color:var(--ork-border)}
 
 /* ===== Knight Color Shimmer (hero name) =====
-   White background-color holds the base text color (clipped to the glyphs via
-   background-clip:text), then a small no-repeat gradient with transparent
-   edges overlays a single colored band that sweeps across. Because the
-   gradient is small and transparent at the edges, the white bg shows through
-   for the entire animation — no transparent dead zones at start/end. */
+   Two stacked background-image layers (background-color clipping to text is
+   unreliable across browsers, so we avoid it):
+     1. Top  — small no-repeat gradient with transparent edges and the shimmer
+              color in the middle. This is the only layer that animates.
+     2. Bot  — full-width solid-white "gradient" that always covers every
+              glyph, so the text stays white whenever the top layer is
+              transparent at that pixel.
+   Both are clipped to the text shapes. Result: white name with only a colored
+   band visibly moving across; no transparent dead zones at the start/end. */
 @keyframes pn-name-shimmer-sweep {
-	0%   { background-position: -40% 0; }
-	100% { background-position: 140% 0; }
+	0%   { background-position: -40% 0, 0 0; }
+	100% { background-position: 140% 0, 0 0; }
 }
 .pn-persona.pn-name-shimmering {
-	background-color: #fff;
-	background-image: linear-gradient(110deg,
-		transparent 0%,
-		var(--pn-shimmer-color, #fff) 50%,
-		transparent 100%);
-	background-size: 40% 100%;
-	background-repeat: no-repeat;
-	background-position: -40% 0;
+	background-image:
+		linear-gradient(110deg, transparent 0%, var(--pn-shimmer-color, #fff) 50%, transparent 100%),
+		linear-gradient(#fff, #fff);
+	background-size:     40% 100%, 100% 100%;
+	background-repeat:   no-repeat, no-repeat;
+	background-position: -40% 0,    0 0;
 	-webkit-background-clip: text;
 	        background-clip: text;
 	-webkit-text-fill-color: transparent;
@@ -712,7 +714,7 @@ html[data-theme="dark"] .pn-paragon-frame-preview.pn-pfp-empty{border-color:var(
 	animation: pn-name-shimmer-sweep 1.6s ease-out;
 }
 @media (prefers-reduced-motion: reduce) {
-	.pn-persona.pn-name-shimmering { animation: none; -webkit-text-fill-color: #fff; color: #fff; background-image: none; background-color: transparent; }
+	.pn-persona.pn-name-shimmering { animation: none; -webkit-text-fill-color: #fff; color: #fff; background-image: none; }
 }
 
 /* ===== Paragon Photo Frame =====
