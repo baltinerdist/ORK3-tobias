@@ -448,6 +448,21 @@
 	$pnParagons = array_values($_pnParagonsByClass);
 	usort($pnParagons, function($a, $b) { return strcmp($b['LatestDate'], $a['LatestDate']); });
 	$pnHasParagon = count($pnParagons) > 0;
+
+	// Paragon hero animations — supported per-class effects fire 3s after page
+	// load via CSS animation-delay. Each player gets only the animations whose
+	// class they actually paragon.
+	$_pnAnimSupported = [
+		2 => 'archer',  // class_id 2 = Archer
+		7 => 'druid',   // class_id 7 = Druid
+	];
+	$pnAnimParagons = []; // [class_id => slug]
+	foreach ($pnParagons as $_p) {
+		$_cid = (int)$_p['ClassId'];
+		if (isset($_pnAnimSupported[$_cid])) $pnAnimParagons[$_cid] = $_pnAnimSupported[$_cid];
+	}
+	$pnHasParagonAnim   = !empty($pnAnimParagons);
+	$_pnShowParagonAnim = (int)($Player['DisplayParagonAnimation'] ?? 1) === 1;
 	$pnFirstParagonDate = null;
 	foreach ($pnParagons as $_p) {
 		if (!empty($_p['EarliestDate']) && ($pnFirstParagonDate === null || $_p['EarliestDate'] < $pnFirstParagonDate)) {
@@ -700,21 +715,27 @@ html[data-theme="dark"] .pn-paragon-frame-preview.pn-pfp-empty{border-color:var(
 	0%   { background-position: -40% 0, 0 0; }
 	100% { background-position: 140% 0, 0 0; }
 }
-.pn-persona.pn-name-shimmering {
+.pn-persona.pn-name-shimmering,
+html[data-theme="dark"] .pn-persona.pn-name-shimmering {
 	background-image:
 		linear-gradient(110deg, transparent 0%, var(--pn-shimmer-color, #fff) 50%, transparent 100%),
-		linear-gradient(#fff, #fff);
-	background-size:     40% 100%, 100% 100%;
-	background-repeat:   no-repeat, no-repeat;
-	background-position: -40% 0,    0 0;
-	-webkit-background-clip: text;
-	        background-clip: text;
-	-webkit-text-fill-color: transparent;
-	        color: transparent;
+		linear-gradient(#fff, #fff) !important;
+	background-size:     40% 100%, 100% 100% !important;
+	background-repeat:   no-repeat, no-repeat !important;
+	background-position: -40% 0,    0 0;  /* not !important — keyframes need to drive this */
+	background-color:    transparent !important;
+	-webkit-background-clip: text !important;
+	        background-clip: text !important;
+	-webkit-text-fill-color: transparent !important;
+	        color: transparent !important;
+	/* The persona's text-shadow paints regardless of text-fill; with a
+	   transparent fill it shows through as a gray ghost behind the gradient. */
+	text-shadow: none !important;
 	animation: pn-name-shimmer-sweep 1.6s ease-out;
 }
 @media (prefers-reduced-motion: reduce) {
-	.pn-persona.pn-name-shimmering { animation: none; -webkit-text-fill-color: #fff; color: #fff; background-image: none; }
+	.pn-persona.pn-name-shimmering,
+	html[data-theme="dark"] .pn-persona.pn-name-shimmering { animation: none; -webkit-text-fill-color: #fff !important; color: #fff !important; background-image: none !important; }
 }
 
 /* ===== Paragon Photo Frame =====
@@ -765,6 +786,41 @@ html[data-theme="dark"] .pn-coronet{filter:drop-shadow(0 2px 4px rgba(0,0,0,0.7)
 .pn-stat-l6::after{content:attr(data-tip);position:absolute;right:0;top:calc(100% + 6px);background:#2d3748;color:#fff;font-size:11px;font-weight:600;white-space:nowrap;padding:4px 9px;border-radius:4px;pointer-events:none;opacity:0;transition:opacity 0.12s;z-index:500;max-width:320px;overflow:hidden;text-overflow:ellipsis}
 .pn-stat-l6:hover::after,.pn-stat-l6:focus::after{opacity:1}
 html[data-theme="dark"] .pn-stat-l6{filter:drop-shadow(0 0 4px rgba(251,191,36,0.85))}
+
+/* ===== Paragon Hero Animations =====
+   The .pn-nameplate-fx overlay is a sibling of .pn-hero-content inside .pn-hero
+   (which already has position:relative + overflow:hidden), so it spans the full
+   hero header. Animations fire 3s after page load via CSS animation-delay — no
+   JS scheduling. Each animation runs once. Respects prefers-reduced-motion. */
+.pn-nameplate-fx{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:2}
+.pn-nameplate-fx .pn-anim{position:absolute;opacity:0}
+
+/* Archer arrow — flies left→right across the entire hero at vertical center */
+.pn-anim-archer{top:50%;left:-180px;width:140px;height:28px;transform:translateY(-50%);animation:pnArrowFly 1500ms cubic-bezier(.4,.0,.5,1) 3s 1 forwards;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.55))}
+@keyframes pnArrowFly{
+	0%   {left:-180px;opacity:0}
+	8%   {opacity:1}
+	92%  {opacity:1}
+	100% {left:calc(100% + 20px);opacity:0}
+}
+
+/* Druid flowers — grow from the bottom-right corner of the hero (away from
+   the avatar at the left), hold briefly, then drift upward fading out. */
+.pn-anim-druid{bottom:-8px;right:18px;width:240px;height:120px;opacity:1}
+.pn-anim-druid-flower{transform-origin:center bottom;transform:scale(0) translateY(12px) rotate(-12deg);opacity:0;animation:pnFlowerBloom 3500ms ease-out 3s 1 forwards}
+.pn-anim-druid-f2{animation-delay:3200ms}
+.pn-anim-druid-f3{animation-delay:3400ms}
+@keyframes pnFlowerBloom{
+	0%   {transform:scale(0) translateY(12px) rotate(-12deg);opacity:0}
+	18%  {transform:scale(1.1) translateY(0) rotate(3deg);opacity:1}
+	30%  {transform:scale(1) translateY(0) rotate(0);opacity:1}
+	68%  {transform:scale(1) translateY(0) rotate(0);opacity:1}
+	100% {transform:scale(0.85) translateY(-26px) rotate(8deg);opacity:0}
+}
+
+@media (prefers-reduced-motion: reduce){
+	.pn-anim-archer,.pn-anim-druid-flower{animation:none !important;opacity:0 !important}
+}
 
 /* ===== First Paragon Congratulations Banner ===== */
 .pna-paragon-congrats{
@@ -1054,7 +1110,10 @@ html[data-theme="dark"] .pn-officer-chip span { color: var(--ork-text-muted); }
 html[data-theme="dark"] .pn-officer-chip:hover { background: var(--ork-bg-tertiary); border-color: var(--ork-link); color: var(--ork-link); }
 html[data-theme="dark"] .pn-officer-chip.pn-selected { background: var(--ork-bg-tertiary); border-color: var(--ork-link); color: var(--ork-link); font-weight: 600; }
 html[data-theme="dark"] .pn-active-tab-label { background: var(--ork-card-bg); color: var(--ork-text); }
-html[data-theme="dark"] .pn-persona { color: #fff !important; background: transparent !important; border: none !important; padding: 0 !important; border-radius: 0 !important; text-shadow: 0 1px 3px rgba(0,0,0,0.4) !important; }
+/* Use individual background-{color,image} (not the shorthand) so the
+   shimmer animation can still drive background-position/size without
+   being blocked by !important on the shorthand-expanded properties. */
+html[data-theme="dark"] .pn-persona { color: #fff !important; background-color: transparent !important; background-image: none; border: none !important; padding: 0 !important; border-radius: 0 !important; text-shadow: 0 1px 3px rgba(0,0,0,0.4) !important; }
 
 /* ===== About Tab ===== */
 .pn-about-section{margin-bottom:24px}
@@ -1675,6 +1734,68 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 			<?php endif; ?>
 		</div>
 	</div>
+	<?php if ($pnHasParagonAnim && $_pnShowParagonAnim): ?>
+	<div class="pn-nameplate-fx" aria-hidden="true">
+		<?php if (in_array('archer', $pnAnimParagons, true)): ?>
+		<svg class="pn-anim pn-anim-archer" viewBox="0 0 120 24" xmlns="http://www.w3.org/2000/svg">
+			<defs>
+				<linearGradient id="pnArrowShaft" x1="0%" y1="50%" x2="100%" y2="50%">
+					<stop offset="0%"  stop-color="#5a3e0a"/>
+					<stop offset="60%" stop-color="#a16207"/>
+					<stop offset="100%" stop-color="#5a3e0a"/>
+				</linearGradient>
+			</defs>
+			<!-- fletching -->
+			<path d="M0 12 L16 3 L13 12 L16 21 Z" fill="#fef3c7" stroke="#92400e" stroke-width="0.6"/>
+			<path d="M3 12 L18 6 L15 12 L18 18 Z" fill="#fbbf24" stroke="#92400e" stroke-width="0.5"/>
+			<!-- shaft -->
+			<rect x="16" y="10.5" width="86" height="3" fill="url(#pnArrowShaft)"/>
+			<!-- head -->
+			<path d="M102 5 L120 12 L102 19 L108 12 Z" fill="#cbd5e0" stroke="#1f2937" stroke-width="0.6" stroke-linejoin="round"/>
+		</svg>
+		<?php endif; ?>
+		<?php if (in_array('druid', $pnAnimParagons, true)): ?>
+		<svg class="pn-anim pn-anim-druid" viewBox="0 0 220 110" xmlns="http://www.w3.org/2000/svg">
+			<g class="pn-anim-druid-flower pn-anim-druid-f1">
+				<path d="M30 110 Q26 84 30 56" stroke="#15803d" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+				<path d="M30 76 Q20 72 14 68 Q22 72 30 74 Z" fill="#16a34a"/>
+				<g transform="translate(30 50)">
+					<circle cx="0"   cy="-8"   r="5.5" fill="#fce7f3"/>
+					<circle cx="7"   cy="-2.4" r="5.5" fill="#fce7f3"/>
+					<circle cx="4.4" cy="6.5"  r="5.5" fill="#fce7f3"/>
+					<circle cx="-4.4" cy="6.5" r="5.5" fill="#fce7f3"/>
+					<circle cx="-7"   cy="-2.4" r="5.5" fill="#fce7f3"/>
+					<circle cx="0" cy="0" r="3.4" fill="#fbbf24" stroke="#92400e" stroke-width="0.5"/>
+				</g>
+			</g>
+			<g class="pn-anim-druid-flower pn-anim-druid-f2">
+				<path d="M110 110 Q114 78 110 36" stroke="#15803d" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+				<path d="M110 64 Q120 60 124 56 Q116 60 110 62 Z" fill="#16a34a"/>
+				<g transform="translate(110 30)">
+					<circle cx="0"   cy="-9"   r="6.5" fill="#ddd6fe"/>
+					<circle cx="8"   cy="-2.6" r="6.5" fill="#ddd6fe"/>
+					<circle cx="5"   cy="7.5"  r="6.5" fill="#ddd6fe"/>
+					<circle cx="-5"  cy="7.5"  r="6.5" fill="#ddd6fe"/>
+					<circle cx="-8"  cy="-2.6" r="6.5" fill="#ddd6fe"/>
+					<circle cx="0" cy="0" r="4" fill="#fbbf24" stroke="#92400e" stroke-width="0.5"/>
+				</g>
+			</g>
+			<g class="pn-anim-druid-flower pn-anim-druid-f3">
+				<path d="M188 110 Q192 86 188 60" stroke="#15803d" stroke-width="2" fill="none" stroke-linecap="round"/>
+				<path d="M188 80 Q198 76 204 72 Q196 76 188 78 Z" fill="#16a34a"/>
+				<g transform="translate(188 54)">
+					<circle cx="0"   cy="-7"   r="5"   fill="#fef3c7"/>
+					<circle cx="6.2" cy="-2.2" r="5"   fill="#fef3c7"/>
+					<circle cx="3.8" cy="5.6"  r="5"   fill="#fef3c7"/>
+					<circle cx="-3.8" cy="5.6" r="5"   fill="#fef3c7"/>
+					<circle cx="-6.2" cy="-2.2" r="5"  fill="#fef3c7"/>
+					<circle cx="0" cy="0" r="3.2" fill="#f59e0b" stroke="#92400e" stroke-width="0.4"/>
+				</g>
+			</g>
+		</svg>
+		<?php endif; ?>
+	</div>
+	<?php endif; ?>
 </div>
 
 <?php if (strlen($Error) > 0): ?>
@@ -4251,6 +4372,37 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 					</label>
 				</div>
 				<?php endif; ?>
+
+					<?php if ($pnHasParagonAnim): ?>
+					<?php
+						$_animDescriptions = [
+							'archer' => 'Archer &mdash; an arrow flies across your hero',
+							'druid'  => 'Druid &mdash; a small cluster of flowers grows in the corner',
+						];
+						$_animBullets = [];
+						foreach ($pnAnimParagons as $_slug) {
+							if (isset($_animDescriptions[$_slug])) $_animBullets[] = '&bull; ' . $_animDescriptions[$_slug];
+						}
+					?>
+					<div class="pn-special-section"<?php if ($isKnight || $pnHasParagon || $pnCoronetTier > 0 || $pnHasMaster): ?> style="margin-top:24px;padding-top:24px;border-top:1px solid #e2e8f0"<?php endif; ?>>
+						<div class="pn-special-section-title"><i class="fas fa-magic"></i> Paragon Hero Animation</div>
+						<div class="pn-design-hint" style="margin-bottom:12px">A short class-themed animation plays across your hero header three seconds after the page loads:<br><?= implode('<br>', $_animBullets) ?></div>
+						<label class="pn-icons-option">
+							<input type="radio" name="pn-design-paranim" value="1" <?= $_pnShowParagonAnim ? 'checked' : '' ?> />
+							<div class="pn-icons-option-body">
+								<div class="pn-icons-option-title">Yes &mdash; play the animation</div>
+								<div class="pn-icons-option-desc">Plays once on page load, then disappears. (Default.)</div>
+							</div>
+						</label>
+						<label class="pn-icons-option">
+							<input type="radio" name="pn-design-paranim" value="0" <?= $_pnShowParagonAnim ? '' : 'checked' ?> />
+							<div class="pn-icons-option-body">
+								<div class="pn-icons-option-title">No &mdash; skip it</div>
+								<div class="pn-icons-option-desc">Keep the hero static.</div>
+							</div>
+						</label>
+					</div>
+					<?php endif; ?>
 			</div>
 			<?php endif; ?>
 		</div>
@@ -5246,6 +5398,12 @@ if (typeof nsKid !== 'undefined' && nsKid === 0 && PnConfig.kingdomId) nsKid = P
 		var phxRadios = document.querySelectorAll('input[name="pn-design-phoenix"]');
 		for (var pi = 0; pi < phxRadios.length; pi++) {
 			if (phxRadios[pi].checked) { fd.append('DisplayMasterPhoenix', phxRadios[pi].value); break; }
+		}
+
+		// Display Paragon Hero Animation (Special tab — supported-class Paragons only)
+		var paRadios = document.querySelectorAll('input[name="pn-design-paranim"]');
+		for (var pai = 0; pai < paRadios.length; pai++) {
+			if (paRadios[pai].checked) { fd.append('DisplayParagonAnimation', paRadios[pai].value); break; }
 		}
 
 		// Paragon Photo Frame (Special tab — Paragon-holders only)
