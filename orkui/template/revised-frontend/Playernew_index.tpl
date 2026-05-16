@@ -453,8 +453,17 @@
 	// load via CSS animation-delay. Each player gets only the animations whose
 	// class they actually paragon.
 	$_pnAnimSupported = [
-		2 => 'archer',  // class_id 2 = Archer
-		7 => 'druid',   // class_id 7 = Druid
+		1  => 'antipaladin',// class_id 1  = Anti-Paladin
+		2  => 'archer',     // class_id 2  = Archer
+		3  => 'assassin',   // class_id 3  = Assassin
+		4  => 'barbarian',  // class_id 4  = Barbarian
+		5  => 'bard',       // class_id 5  = Bard
+		7  => 'druid',      // class_id 7  = Druid
+		8  => 'healer',     // class_id 8  = Healer
+		11 => 'paladin',    // class_id 11 = Paladin
+		15 => 'scout',      // class_id 15 = Scout
+		16 => 'warrior',    // class_id 16 = Warrior
+		17 => 'wizard',     // class_id 17 = Wizard
 	];
 	$pnAnimParagons = []; // [class_id => slug]
 	foreach ($pnParagons as $_p) {
@@ -793,7 +802,11 @@ html[data-theme="dark"] .pn-stat-l6{filter:drop-shadow(0 0 4px rgba(251,191,36,0
    hero header. Animations fire 3s after page load via CSS animation-delay — no
    JS scheduling. Each animation runs once. Respects prefers-reduced-motion. */
 .pn-nameplate-fx{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:2}
-.pn-nameplate-fx .pn-anim{position:absolute;opacity:0}
+/* Each .pn-anim subclass below is responsible for its own opacity behavior —
+   we don't apply a blanket opacity:0 here because that would defeat any inner
+   element animations on the druid SVG (its <g> flowers animate, the <svg>
+   doesn't), and CSS specificity would beat single-class overrides. */
+.pn-nameplate-fx .pn-anim{position:absolute}
 
 /* Archer arrow — flies left→right across the entire hero at vertical center */
 .pn-anim-archer{top:50%;left:-180px;width:140px;height:28px;transform:translateY(-50%);animation:pnArrowFly 1500ms cubic-bezier(.4,.0,.5,1) 3s 1 forwards;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.55))}
@@ -806,21 +819,257 @@ html[data-theme="dark"] .pn-stat-l6{filter:drop-shadow(0 0 4px rgba(251,191,36,0
 
 /* Druid flowers — grow from the bottom-right corner of the hero (away from
    the avatar at the left), hold briefly, then drift upward fading out. */
-.pn-anim-druid{bottom:-8px;right:18px;width:240px;height:120px;opacity:1}
-.pn-anim-druid-flower{transform-origin:center bottom;transform:scale(0) translateY(12px) rotate(-12deg);opacity:0;animation:pnFlowerBloom 3500ms ease-out 3s 1 forwards}
-.pn-anim-druid-f2{animation-delay:3200ms}
-.pn-anim-druid-f3{animation-delay:3400ms}
-@keyframes pnFlowerBloom{
-	0%   {transform:scale(0) translateY(12px) rotate(-12deg);opacity:0}
-	18%  {transform:scale(1.1) translateY(0) rotate(3deg);opacity:1}
-	30%  {transform:scale(1) translateY(0) rotate(0);opacity:1}
-	68%  {transform:scale(1) translateY(0) rotate(0);opacity:1}
-	100% {transform:scale(0.85) translateY(-26px) rotate(8deg);opacity:0}
+.pn-anim-druid{bottom:-10px;right:14px;width:280px;height:140px;opacity:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.45))}
+
+/* Vines draw themselves: pathLength=100 lets us use a uniform dasharray
+   regardless of actual path length. Each vine fades together at the end. */
+.pn-vine{stroke-dasharray:100;stroke-dashoffset:100;animation:pnVineDraw 1300ms cubic-bezier(.45,0,.55,1) 1 forwards,pnIvyFade 900ms ease-in 1 forwards}
+.pn-vine-1{animation-delay:3000ms,6500ms}
+.pn-vine-2{animation-delay:3150ms,6500ms}
+.pn-vine-3{animation-delay:3450ms,6500ms}
+.pn-vine-4{animation-delay:3300ms,6500ms}
+@keyframes pnVineDraw{to{stroke-dashoffset:0}}
+@keyframes pnIvyFade{to{opacity:0}}
+
+/* Leaves pop in (slight overshoot) as the vine reaches them, then fade with
+   the vines. transform-box:fill-box keeps each leaf scaling around its own
+   center, not the SVG viewport. */
+.pn-leaf{transform-box:fill-box;transform-origin:center;transform:scale(0);opacity:0;animation:pnLeafBloom 520ms cubic-bezier(.34,1.56,.64,1) 1 forwards,pnIvyFade 900ms ease-in 1 forwards}
+.pn-leaf-1a{animation-delay:3350ms,6500ms}
+.pn-leaf-1b{animation-delay:3550ms,6500ms}
+.pn-leaf-1c{animation-delay:3800ms,6500ms}
+.pn-leaf-1d{animation-delay:4050ms,6500ms}
+.pn-leaf-1e{animation-delay:4250ms,6500ms}
+.pn-leaf-2a{animation-delay:3500ms,6500ms}
+.pn-leaf-2b{animation-delay:3750ms,6500ms}
+.pn-leaf-2c{animation-delay:4050ms,6500ms}
+.pn-leaf-2d{animation-delay:4350ms,6500ms}
+.pn-leaf-3a{animation-delay:3750ms,6500ms}
+.pn-leaf-3b{animation-delay:4150ms,6500ms}
+.pn-leaf-4a{animation-delay:3500ms,6500ms}
+.pn-leaf-4b{animation-delay:3850ms,6500ms}
+.pn-leaf-4c{animation-delay:4150ms,6500ms}
+.pn-leaf-4d{animation-delay:4400ms,6500ms}
+@keyframes pnLeafBloom{
+	0%   {transform:scale(0);opacity:0}
+	60%  {transform:scale(1.15);opacity:1}
+	100% {transform:scale(1);opacity:1}
 }
 
 @media (prefers-reduced-motion: reduce){
-	.pn-anim-archer,.pn-anim-druid-flower{animation:none !important;opacity:0 !important}
+	.pn-anim-archer,.pn-vine,.pn-leaf,.pn-bolt,.pn-flash-wizard,.pn-heal-beam,.pn-heal-burst,.pn-heal-rays,.pn-anim-barbarian,.pn-warrior-sword,.pn-warrior-spark,.pn-poison-drop,.pn-bard-note,.pn-anim-scout,.pn-scout-front,.pn-scout-right,.pn-scout-left,.pn-anim-paladin,.pn-anim-antipaladin{animation:none !important;opacity:0 !important}
+	.pn-hero[data-anim-shake="1"]{animation:none !important;transform:none !important}
 }
+
+/* === Wizard — three jagged bolts strike from top, with a screen-flash pulse.
+   vector-effect on the path keeps the stroke width sane under non-uniform
+   SVG scaling. mix-blend-mode:screen on the flash brightens whatever's
+   beneath without flattening to opaque white. */
+.pn-anim-wizard{position:absolute;inset:0;width:100%;height:100%;opacity:1}
+.pn-bolt{stroke-dasharray:100;stroke-dashoffset:100;opacity:0;filter:drop-shadow(0 0 6px #93c5fd) drop-shadow(0 0 2px #fff);animation:pnBoltStrike 1500ms ease-out 1 forwards}
+.pn-bolt-1{animation-delay:3000ms}
+.pn-bolt-2{animation-delay:3100ms}
+.pn-bolt-3{animation-delay:3220ms}
+@keyframes pnBoltStrike{
+	0%   {stroke-dashoffset:100;opacity:0}
+	5%   {opacity:1}
+	22%  {stroke-dashoffset:0;opacity:1}
+	45%  {stroke-dashoffset:0;opacity:1}
+	100% {stroke-dashoffset:0;opacity:0}
+}
+.pn-flash-wizard{position:absolute;inset:0;background:#ffffff;opacity:0;mix-blend-mode:screen;pointer-events:none;animation:pnWizardFlash 600ms ease-out 3050ms 1 forwards}
+@keyframes pnWizardFlash{
+	0%   {opacity:0}
+	15%  {opacity:0.55}
+	30%  {opacity:0.1}
+	45%  {opacity:0.4}
+	100% {opacity:0}
+}
+
+/* === Healer — vertical white beam descends to ~middle of hero, then a radial
+   burst expands from where it lands, plus 8 short rays bursting outward.
+   mix-blend-mode:screen so the light adds rather than blocks. */
+.pn-anim-healer{position:absolute;inset:0;width:100%;height:100%;opacity:1;mix-blend-mode:screen}
+.pn-heal-beam{transform-box:fill-box;transform-origin:center top;transform:scaleY(0);opacity:0;animation:pnHealBeam 700ms ease-out 3000ms 1 forwards,pnIvyFade 600ms ease-in 4400ms 1 forwards}
+@keyframes pnHealBeam{
+	0%   {transform:scaleY(0);opacity:0}
+	40%  {transform:scaleY(1);opacity:1}
+	100% {transform:scaleY(1);opacity:0.7}
+}
+.pn-heal-burst{transform-box:fill-box;transform-origin:center;transform:scale(0);opacity:0;animation:pnHealBurst 1300ms ease-out 3500ms 1 forwards}
+@keyframes pnHealBurst{
+	0%   {transform:scale(0);opacity:0}
+	25%  {transform:scale(0.5);opacity:1}
+	100% {transform:scale(2.4);opacity:0}
+}
+.pn-heal-rays{transform-box:fill-box;transform-origin:center;transform:scale(0) rotate(0);opacity:0;animation:pnHealRays 900ms ease-out 3550ms 1 forwards}
+@keyframes pnHealRays{
+	0%   {transform:scale(0) rotate(0);opacity:0}
+	40%  {transform:scale(1) rotate(15deg);opacity:1}
+	100% {transform:scale(1.6) rotate(35deg);opacity:0}
+}
+
+/* === Barbarian — entire .pn-hero shakes via a transform animation gated on
+   data-anim-shake; meanwhile a red radial-gradient overlay pulses inside the
+   FX layer. mix-blend-mode:multiply tints the hero crimson rather than just
+   covering it. */
+.pn-hero[data-anim-shake="1"]{animation:pnBarbarianShake 1400ms ease-in-out 3000ms 1 both}
+@keyframes pnBarbarianShake{
+	/* Three discrete jitters, each ~25% of total duration, with a brief settle between.
+	   Magnitude decays slightly each pass for a natural taper. */
+	0%   {transform:translateX(0) rotate(0)}
+	/* Jitter 1 */
+	6%   {transform:translateX(-11px) rotate(-0.5deg)}
+	14%  {transform:translateX(10px) rotate(0.5deg)}
+	22%  {transform:translateX(0) rotate(0)}
+	/* settle */
+	34%  {transform:translateX(0) rotate(0)}
+	/* Jitter 2 */
+	40%  {transform:translateX(-9px) rotate(-0.4deg)}
+	48%  {transform:translateX(8px) rotate(0.4deg)}
+	56%  {transform:translateX(0) rotate(0)}
+	/* settle */
+	68%  {transform:translateX(0) rotate(0)}
+	/* Jitter 3 */
+	74%  {transform:translateX(-6px) rotate(-0.3deg)}
+	82%  {transform:translateX(6px) rotate(0.3deg)}
+	90%  {transform:translateX(0) rotate(0)}
+	100% {transform:translateX(0) rotate(0)}
+}
+.pn-anim-barbarian{position:absolute;inset:0;width:100%;height:100%;background:radial-gradient(ellipse at 50% 50%,rgba(220,38,38,0.7) 0%,rgba(127,29,29,0.5) 60%,rgba(127,29,29,0) 100%);opacity:0;mix-blend-mode:multiply;pointer-events:none;animation:pnBarbarianFlash 1400ms ease-in-out 3000ms 1 forwards}
+@keyframes pnBarbarianFlash{
+	/* Pulses lined up with the three jitter peaks (~10%, ~44%, ~78%). */
+	0%   {opacity:0}
+	10%  {opacity:0.95}
+	22%  {opacity:0.2}
+	44%  {opacity:0.75}
+	56%  {opacity:0.15}
+	78%  {opacity:0.55}
+	90%  {opacity:0.1}
+	100% {opacity:0}
+}
+
+/* === Warrior — two swords slide from off-screen toward center.  Position
+   each so its TIP ends up exactly at center: left sword right:50%, right
+   sword left:50% scaleX(-1).  A spark bursts at the impact frame. */
+.pn-anim-warrior{position:absolute;inset:0;width:100%;height:100%;opacity:1}
+.pn-warrior-sword{position:absolute;top:50%;left:50%;width:160px;height:32px;filter:drop-shadow(0 2px 3px rgba(0,0,0,0.55));pointer-events:none;transform-origin:center;will-change:transform}
+.pn-warrior-left{transform:translate(-50%,-50%) translate(-380px,0) rotate(0deg);opacity:0;animation:pnWarriorLeft 950ms cubic-bezier(.7,0,.3,1) 3000ms 1 forwards}
+.pn-warrior-right{transform:translate(-50%,-50%) translate(380px,0) scaleX(-1) rotate(0deg);opacity:0;animation:pnWarriorRight 950ms cubic-bezier(.7,0,.3,1) 3000ms 1 forwards}
+@keyframes pnWarriorLeft{
+	/* Slide in from off-screen left, rotating from horizontal into a "\\" stroke;
+	   tiny rebound on impact, settle, then fade together with the spark. */
+	0%   {transform:translate(-50%,-50%) translate(-380px,0) rotate(0deg);opacity:0}
+	15%  {opacity:1}
+	60%  {transform:translate(-50%,-50%) translate(0,0) rotate(45deg);opacity:1}
+	70%  {transform:translate(-50%,-50%) translate(-6px,4px) rotate(40deg);opacity:1}
+	80%  {transform:translate(-50%,-50%) translate(0,0) rotate(45deg);opacity:1}
+	100% {transform:translate(-50%,-50%) translate(0,0) rotate(45deg);opacity:0}
+}
+@keyframes pnWarriorRight{
+	/* Mirrored sword sliding in from the right; scaleX(-1) preserved across
+	   every keyframe so the geometry doesn't flicker mid-interpolation. With
+	   scaleX(-1) applied, rotate(45deg) yields a "/" stroke. */
+	0%   {transform:translate(-50%,-50%) translate(380px,0) scaleX(-1) rotate(0deg);opacity:0}
+	15%  {opacity:1}
+	60%  {transform:translate(-50%,-50%) translate(0,0) scaleX(-1) rotate(45deg);opacity:1}
+	70%  {transform:translate(-50%,-50%) translate(6px,4px) scaleX(-1) rotate(40deg);opacity:1}
+	80%  {transform:translate(-50%,-50%) translate(0,0) scaleX(-1) rotate(45deg);opacity:1}
+	100% {transform:translate(-50%,-50%) translate(0,0) scaleX(-1) rotate(45deg);opacity:0}
+}
+.pn-warrior-spark{position:absolute;top:50%;left:50%;width:48px;height:48px;margin-top:-24px;margin-left:-24px;border-radius:50%;background:radial-gradient(circle,#ffffff 0%,#fef3c7 35%,#fbbf24 55%,transparent 75%);transform:scale(0);opacity:0;pointer-events:none;animation:pnWarriorSpark 500ms ease-out 3650ms 1 forwards}
+@keyframes pnWarriorSpark{
+	0%   {transform:scale(0);opacity:0}
+	30%  {transform:scale(1.6);opacity:1}
+	100% {transform:scale(2.6);opacity:0}
+}
+
+/* === Assassin — green poison droplets fall down the right edge, stretching
+   slightly as they accelerate downward. */
+.pn-anim-assassin{position:absolute;inset:0;width:100%;height:100%;opacity:1}
+.pn-poison-drop{position:absolute;top:-16px;width:9px;height:14px;background:linear-gradient(180deg,#22c55e 0%,#15803d 50%,#14532d 100%);border-radius:50% 50% 50% 50% / 60% 60% 40% 40%;filter:drop-shadow(0 0 3px rgba(34,197,94,0.85));opacity:0;animation:pnPoisonDrop 1700ms cubic-bezier(.42,0,.78,1) 1 forwards}
+.pn-poison-d1{right:30px;animation-delay:3000ms}
+.pn-poison-d2{right:60px;animation-delay:3300ms}
+.pn-poison-d3{right:48px;animation-delay:3650ms;width:7px;height:11px}
+.pn-poison-d4{right:80px;animation-delay:3950ms;width:11px;height:16px}
+@keyframes pnPoisonDrop{
+	0%   {top:-16px;opacity:0;transform:scaleY(0.6)}
+	10%  {opacity:1;transform:scaleY(1)}
+	90%  {opacity:0.85;transform:scaleY(1.5)}
+	100% {top:calc(100% + 12px);opacity:0;transform:scaleY(1.7)}
+}
+
+/* === Bard — six music notes float up from the bottom-left corner with
+   slight rightward drift and a rotational sway. */
+.pn-anim-bard{position:absolute;left:18px;bottom:6px;width:140px;height:160px;opacity:1;pointer-events:none}
+.pn-bard-note{position:absolute;left:0;bottom:0;width:18px;height:24px;opacity:0;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.45));animation:pnNoteFloat 2400ms ease-out 1 forwards}
+.pn-bard-n1{animation-delay:3000ms}
+.pn-bard-n2{animation-delay:3200ms;left:24px}
+.pn-bard-n3{animation-delay:3400ms;left:8px}
+.pn-bard-n4{animation-delay:3600ms;left:32px}
+.pn-bard-n5{animation-delay:3850ms;left:14px}
+.pn-bard-n6{animation-delay:4100ms;left:40px}
+@keyframes pnNoteFloat{
+	0%   {transform:translateY(0) translateX(0) rotate(-8deg);opacity:0}
+	12%  {opacity:1;transform:translateY(-12px) translateX(2px) rotate(-4deg)}
+	50%  {opacity:1;transform:translateY(-70px) translateX(14px) rotate(6deg)}
+	100% {opacity:0;transform:translateY(-150px) translateX(28px) rotate(18deg)}
+}
+
+/* === Scout — masked silhouette peeks up from the bottom-left, scans left and
+   right, then ducks back down. translateY uses a 110% offset (relative to its
+   own height) so the head starts and ends fully hidden below the hero. */
+.pn-anim-scout{position:absolute;left:20px;bottom:-6px;width:62px;height:78px;opacity:1;transform:translateY(110%);pointer-events:none;filter:drop-shadow(0 -2px 4px rgba(0,0,0,0.45));animation:pnScoutPeek 3800ms cubic-bezier(.5,0,.5,1) 3000ms 1 forwards}
+@keyframes pnScoutPeek{
+	0%   {transform:translateY(110%)}
+	10%  {transform:translateY(0)}     /* popped up */
+	88%  {transform:translateY(0)}     /* hold up while turning */
+	100% {transform:translateY(110%)}  /* duck back down */
+}
+/* Three silhouette views crossfade via opacity. Hold windows overlap by ~4%
+   with the adjacent transitions so the change reads as a smooth head turn. */
+.pn-scout-front,.pn-scout-right,.pn-scout-left{opacity:0}
+.pn-scout-front{animation:pnScoutFront 3800ms ease-in-out 3000ms 1 forwards}
+.pn-scout-right{animation:pnScoutRight 3800ms ease-in-out 3000ms 1 forwards}
+.pn-scout-left{animation:pnScoutLeft 3800ms ease-in-out 3000ms 1 forwards}
+@keyframes pnScoutFront{
+	0%,10%  {opacity:0}
+	14%,26% {opacity:1}      /* initial peek with binoculars */
+	30%     {opacity:0}
+	68%     {opacity:0}
+	72%,88% {opacity:1}      /* recenter before dropping */
+	94%,100%{opacity:0}
+}
+@keyframes pnScoutRight{
+	0%,26%  {opacity:0}
+	30%,46% {opacity:1}      /* turn to viewer's right */
+	50%,100%{opacity:0}
+}
+@keyframes pnScoutLeft{
+	0%,46%  {opacity:0}
+	50%,66% {opacity:1}      /* turn to viewer's left */
+	72%,100%{opacity:0}
+}
+
+/* === Paladin — bright white shimmer races once around the hero perimeter.
+   pathLength=400 normalizes the rect's total length; stroke-dasharray defines
+   a bright 60-unit streak in a 400-unit perimeter; stroke-dashoffset animates
+   to slide the streak around once. Heavy drop-shadow gives the holy glow. */
+/* === Paladin & Antipaladin — phoenix rises through the center of the hero.
+   Both share the same pnPhoenixRise keyframe (centered horizontally via
+   negative-margin centering so the transform is free for the rise). The
+   white phoenix gets a subtle white glow filter; the black one a darker
+   shadow so its silhouette reads against either light or dark heroes. */
+.pn-anim-paladin,.pn-anim-antipaladin{position:absolute;top:50%;left:50%;width:80px;height:80px;margin:-40px 0 0 -40px;opacity:0;pointer-events:none;animation:pnPhoenixRise 2800ms cubic-bezier(.35,0,.5,1) 3000ms 1 forwards}
+.pn-anim-paladin{filter:drop-shadow(0 0 6px rgba(255,255,255,0.55)) drop-shadow(0 0 2px rgba(255,255,255,0.9))}
+.pn-anim-antipaladin{filter:drop-shadow(0 0 6px rgba(0,0,0,0.6)) drop-shadow(0 0 2px rgba(203,213,224,0.5))}
+@keyframes pnPhoenixRise{
+	0%   {transform:translateY(170%);opacity:0}
+	14%  {opacity:1}
+	86%  {opacity:1}
+	100% {transform:translateY(-180%);opacity:0}
+}
+
 
 /* ===== First Paragon Congratulations Banner ===== */
 .pna-paragon-congrats{
@@ -1611,7 +1860,7 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 <!-- =============================================
      ZONE 1: Profile Hero Header
      ============================================= -->
-<div class="pn-hero<?= $_pnHeroGradientKey ? ' pn-hero-pride' : '' ?>">
+<div class="pn-hero<?= $_pnHeroGradientKey ? ' pn-hero-pride' : '' ?>"<?php if ($pnHasParagonAnim && $_pnShowParagonAnim && in_array('barbarian', $pnAnimParagons, true)): ?> data-anim-shake="1"<?php endif; ?>>
 <?php if ($_pnOverlayIsVignette): ?>
 	<div class="pn-hero-bg pn-hero-bg-vignette-base" style="background-image: url('<?= htmlspecialchars($heraldryUrl) ?>')"></div>
 	<div class="pn-hero-bg-vignette-sharp" style="background-image: url('<?= htmlspecialchars($heraldryUrl) ?>')"></div>
@@ -1755,42 +2004,194 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 		</svg>
 		<?php endif; ?>
 		<?php if (in_array('druid', $pnAnimParagons, true)): ?>
-		<svg class="pn-anim pn-anim-druid" viewBox="0 0 220 110" xmlns="http://www.w3.org/2000/svg">
-			<g class="pn-anim-druid-flower pn-anim-druid-f1">
-				<path d="M30 110 Q26 84 30 56" stroke="#15803d" stroke-width="2.2" fill="none" stroke-linecap="round"/>
-				<path d="M30 76 Q20 72 14 68 Q22 72 30 74 Z" fill="#16a34a"/>
-				<g transform="translate(30 50)">
-					<circle cx="0"   cy="-8"   r="5.5" fill="#fce7f3"/>
-					<circle cx="7"   cy="-2.4" r="5.5" fill="#fce7f3"/>
-					<circle cx="4.4" cy="6.5"  r="5.5" fill="#fce7f3"/>
-					<circle cx="-4.4" cy="6.5" r="5.5" fill="#fce7f3"/>
-					<circle cx="-7"   cy="-2.4" r="5.5" fill="#fce7f3"/>
-					<circle cx="0" cy="0" r="3.4" fill="#fbbf24" stroke="#92400e" stroke-width="0.5"/>
-				</g>
+		<svg class="pn-anim pn-anim-druid" viewBox="0 0 280 140" xmlns="http://www.w3.org/2000/svg">
+			<g stroke="#166534" stroke-linecap="round" fill="none">
+				<!-- vine 1: long sweeping arc up + across -->
+				<path class="pn-vine pn-vine-1" d="M280 140 Q235 132 195 118 Q150 102 110 82 Q80 68 50 60" stroke-width="2.6" pathLength="100"/>
+				<!-- vine 2: vertical climb up the right edge -->
+				<path class="pn-vine pn-vine-2" d="M275 140 Q255 110 240 80 Q225 50 215 22" stroke-width="2.2" pathLength="100"/>
+				<!-- vine 3: short upper-right curl -->
+				<path class="pn-vine pn-vine-3" d="M280 100 Q258 78 240 62 Q230 52 232 40" stroke-width="1.8" pathLength="100"/>
+				<!-- vine 4: low spread along the bottom -->
+				<path class="pn-vine pn-vine-4" d="M260 140 Q200 138 140 132 Q80 128 20 120" stroke-width="2.2" pathLength="100"/>
 			</g>
-			<g class="pn-anim-druid-flower pn-anim-druid-f2">
-				<path d="M110 110 Q114 78 110 36" stroke="#15803d" stroke-width="2.4" fill="none" stroke-linecap="round"/>
-				<path d="M110 64 Q120 60 124 56 Q116 60 110 62 Z" fill="#16a34a"/>
-				<g transform="translate(110 30)">
-					<circle cx="0"   cy="-9"   r="6.5" fill="#ddd6fe"/>
-					<circle cx="8"   cy="-2.6" r="6.5" fill="#ddd6fe"/>
-					<circle cx="5"   cy="7.5"  r="6.5" fill="#ddd6fe"/>
-					<circle cx="-5"  cy="7.5"  r="6.5" fill="#ddd6fe"/>
-					<circle cx="-8"  cy="-2.6" r="6.5" fill="#ddd6fe"/>
-					<circle cx="0" cy="0" r="4" fill="#fbbf24" stroke="#92400e" stroke-width="0.5"/>
-				</g>
+						<g transform="translate(248 134) rotate(-22) scale(1.1)"><path class="pn-leaf pn-leaf-1a" d="M0 -5 C-1.5 -5.5 -3 -4.5 -3.5 -3 L-5 -1.5 L-3.5 -0.5 L-3 1 L-2 2 L-1 4 L0 5 L1 4 L2 2 L3 1 L3.5 -0.5 L5 -1.5 L3.5 -3 C3 -4.5 1.5 -5.5 0 -5 Z" fill="#22c55e" stroke="#14532d" stroke-width="0.5" stroke-linejoin="round"/></g>
+						<g transform="translate(210 122) rotate(-18) scale(1.0)"><path class="pn-leaf pn-leaf-1b" d="M0 -5 C-1.5 -5.5 -3 -4.5 -3.5 -3 L-5 -1.5 L-3.5 -0.5 L-3 1 L-2 2 L-1 4 L0 5 L1 4 L2 2 L3 1 L3.5 -0.5 L5 -1.5 L3.5 -3 C3 -4.5 1.5 -5.5 0 -5 Z" fill="#22c55e" stroke="#14532d" stroke-width="0.5" stroke-linejoin="round"/></g>
+						<g transform="translate(165 105) rotate(-10) scale(1.1)"><path class="pn-leaf pn-leaf-1c" d="M0 -5 C-1.5 -5.5 -3 -4.5 -3.5 -3 L-5 -1.5 L-3.5 -0.5 L-3 1 L-2 2 L-1 4 L0 5 L1 4 L2 2 L3 1 L3.5 -0.5 L5 -1.5 L3.5 -3 C3 -4.5 1.5 -5.5 0 -5 Z" fill="#22c55e" stroke="#14532d" stroke-width="0.5" stroke-linejoin="round"/></g>
+						<g transform="translate(120 88) rotate(0) scale(1.0)"><path class="pn-leaf pn-leaf-1d" d="M0 -5 C-1.5 -5.5 -3 -4.5 -3.5 -3 L-5 -1.5 L-3.5 -0.5 L-3 1 L-2 2 L-1 4 L0 5 L1 4 L2 2 L3 1 L3.5 -0.5 L5 -1.5 L3.5 -3 C3 -4.5 1.5 -5.5 0 -5 Z" fill="#22c55e" stroke="#14532d" stroke-width="0.5" stroke-linejoin="round"/></g>
+						<g transform="translate(75 65) rotate(12) scale(0.95)"><path class="pn-leaf pn-leaf-1e" d="M0 -5 C-1.5 -5.5 -3 -4.5 -3.5 -3 L-5 -1.5 L-3.5 -0.5 L-3 1 L-2 2 L-1 4 L0 5 L1 4 L2 2 L3 1 L3.5 -0.5 L5 -1.5 L3.5 -3 C3 -4.5 1.5 -5.5 0 -5 Z" fill="#22c55e" stroke="#14532d" stroke-width="0.5" stroke-linejoin="round"/></g>
+						<g transform="translate(263 120) rotate(50) scale(1.05)"><path class="pn-leaf pn-leaf-2a" d="M0 -5 C-1.5 -5.5 -3 -4.5 -3.5 -3 L-5 -1.5 L-3.5 -0.5 L-3 1 L-2 2 L-1 4 L0 5 L1 4 L2 2 L3 1 L3.5 -0.5 L5 -1.5 L3.5 -3 C3 -4.5 1.5 -5.5 0 -5 Z" fill="#22c55e" stroke="#14532d" stroke-width="0.5" stroke-linejoin="round"/></g>
+						<g transform="translate(250 92) rotate(62) scale(1.0)"><path class="pn-leaf pn-leaf-2b" d="M0 -5 C-1.5 -5.5 -3 -4.5 -3.5 -3 L-5 -1.5 L-3.5 -0.5 L-3 1 L-2 2 L-1 4 L0 5 L1 4 L2 2 L3 1 L3.5 -0.5 L5 -1.5 L3.5 -3 C3 -4.5 1.5 -5.5 0 -5 Z" fill="#22c55e" stroke="#14532d" stroke-width="0.5" stroke-linejoin="round"/></g>
+						<g transform="translate(232 56) rotate(75) scale(1.05)"><path class="pn-leaf pn-leaf-2c" d="M0 -5 C-1.5 -5.5 -3 -4.5 -3.5 -3 L-5 -1.5 L-3.5 -0.5 L-3 1 L-2 2 L-1 4 L0 5 L1 4 L2 2 L3 1 L3.5 -0.5 L5 -1.5 L3.5 -3 C3 -4.5 1.5 -5.5 0 -5 Z" fill="#22c55e" stroke="#14532d" stroke-width="0.5" stroke-linejoin="round"/></g>
+						<g transform="translate(218 24) rotate(88) scale(0.9)"><path class="pn-leaf pn-leaf-2d" d="M0 -5 C-1.5 -5.5 -3 -4.5 -3.5 -3 L-5 -1.5 L-3.5 -0.5 L-3 1 L-2 2 L-1 4 L0 5 L1 4 L2 2 L3 1 L3.5 -0.5 L5 -1.5 L3.5 -3 C3 -4.5 1.5 -5.5 0 -5 Z" fill="#22c55e" stroke="#14532d" stroke-width="0.5" stroke-linejoin="round"/></g>
+						<g transform="translate(268 88) rotate(38) scale(0.9)"><path class="pn-leaf pn-leaf-3a" d="M0 -5 C-1.5 -5.5 -3 -4.5 -3.5 -3 L-5 -1.5 L-3.5 -0.5 L-3 1 L-2 2 L-1 4 L0 5 L1 4 L2 2 L3 1 L3.5 -0.5 L5 -1.5 L3.5 -3 C3 -4.5 1.5 -5.5 0 -5 Z" fill="#22c55e" stroke="#14532d" stroke-width="0.5" stroke-linejoin="round"/></g>
+						<g transform="translate(246 62) rotate(50) scale(1.0)"><path class="pn-leaf pn-leaf-3b" d="M0 -5 C-1.5 -5.5 -3 -4.5 -3.5 -3 L-5 -1.5 L-3.5 -0.5 L-3 1 L-2 2 L-1 4 L0 5 L1 4 L2 2 L3 1 L3.5 -0.5 L5 -1.5 L3.5 -3 C3 -4.5 1.5 -5.5 0 -5 Z" fill="#22c55e" stroke="#14532d" stroke-width="0.5" stroke-linejoin="round"/></g>
+						<g transform="translate(222 136) rotate(95) scale(0.95)"><path class="pn-leaf pn-leaf-4a" d="M0 -5 C-1.5 -5.5 -3 -4.5 -3.5 -3 L-5 -1.5 L-3.5 -0.5 L-3 1 L-2 2 L-1 4 L0 5 L1 4 L2 2 L3 1 L3.5 -0.5 L5 -1.5 L3.5 -3 C3 -4.5 1.5 -5.5 0 -5 Z" fill="#15803d" stroke="#14532d" stroke-width="0.5" stroke-linejoin="round"/></g>
+						<g transform="translate(158 132) rotate(100) scale(1.05)"><path class="pn-leaf pn-leaf-4b" d="M0 -5 C-1.5 -5.5 -3 -4.5 -3.5 -3 L-5 -1.5 L-3.5 -0.5 L-3 1 L-2 2 L-1 4 L0 5 L1 4 L2 2 L3 1 L3.5 -0.5 L5 -1.5 L3.5 -3 C3 -4.5 1.5 -5.5 0 -5 Z" fill="#22c55e" stroke="#14532d" stroke-width="0.5" stroke-linejoin="round"/></g>
+						<g transform="translate(92 128) rotate(105) scale(0.95)"><path class="pn-leaf pn-leaf-4c" d="M0 -5 C-1.5 -5.5 -3 -4.5 -3.5 -3 L-5 -1.5 L-3.5 -0.5 L-3 1 L-2 2 L-1 4 L0 5 L1 4 L2 2 L3 1 L3.5 -0.5 L5 -1.5 L3.5 -3 C3 -4.5 1.5 -5.5 0 -5 Z" fill="#22c55e" stroke="#14532d" stroke-width="0.5" stroke-linejoin="round"/></g>
+						<g transform="translate(32 122) rotate(110) scale(0.85)"><path class="pn-leaf pn-leaf-4d" d="M0 -5 C-1.5 -5.5 -3 -4.5 -3.5 -3 L-5 -1.5 L-3.5 -0.5 L-3 1 L-2 2 L-1 4 L0 5 L1 4 L2 2 L3 1 L3.5 -0.5 L5 -1.5 L3.5 -3 C3 -4.5 1.5 -5.5 0 -5 Z" fill="#15803d" stroke="#14532d" stroke-width="0.5" stroke-linejoin="round"/></g>
+		</svg>
+		<?php endif; ?>
+
+		<?php if (in_array('wizard', $pnAnimParagons, true)): ?>
+		<svg class="pn-anim pn-anim-wizard" viewBox="0 0 100 100" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+			<path class="pn-bolt pn-bolt-1" vector-effect="non-scaling-stroke" d="M22 0 L26 32 L18 35 L28 60 L20 63 L34 100" stroke="#ffffff" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round" pathLength="100"/>
+			<path class="pn-bolt pn-bolt-2" vector-effect="non-scaling-stroke" d="M52 0 L56 28 L48 31 L58 56 L50 60 L62 100" stroke="#ffffff" stroke-width="2.8" fill="none" stroke-linecap="round" stroke-linejoin="round" pathLength="100"/>
+			<path class="pn-bolt pn-bolt-3" vector-effect="non-scaling-stroke" d="M78 0 L82 36 L74 39 L84 64 L76 67 L86 100" stroke="#ffffff" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round" pathLength="100"/>
+		</svg>
+		<div class="pn-flash pn-flash-wizard"></div>
+		<?php endif; ?>
+
+		<?php if (in_array('healer', $pnAnimParagons, true)): ?>
+		<svg class="pn-anim pn-anim-healer" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+			<defs>
+				<linearGradient id="pnHealBeam" x1="50%" y1="0%" x2="50%" y2="100%">
+					<stop offset="0%"  stop-color="#ffffff" stop-opacity="0"/>
+					<stop offset="40%" stop-color="#ffffff" stop-opacity="0.9"/>
+					<stop offset="100%" stop-color="#fef3c7" stop-opacity="1"/>
+				</linearGradient>
+				<radialGradient id="pnHealBurst" cx="50%" cy="50%" r="50%">
+					<stop offset="0%"  stop-color="#ffffff" stop-opacity="1"/>
+					<stop offset="35%" stop-color="#fef3c7" stop-opacity="0.85"/>
+					<stop offset="100%" stop-color="#fbbf24" stop-opacity="0"/>
+				</radialGradient>
+			</defs>
+			<rect class="pn-heal-beam" x="48" y="0" width="4" height="55" fill="url(#pnHealBeam)"/>
+			<circle class="pn-heal-burst" cx="50" cy="55" r="55" fill="url(#pnHealBurst)"/>
+			<g class="pn-heal-rays">
+				<line x1="50" y1="45" x2="50" y2="29" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round" opacity="0.85"/>
+				<line x1="57" y1="48" x2="68" y2="37" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round" opacity="0.85"/>
+				<line x1="60" y1="55" x2="76" y2="55" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round" opacity="0.85"/>
+				<line x1="57" y1="62" x2="68" y2="73" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round" opacity="0.85"/>
+				<line x1="50" y1="65" x2="50" y2="81" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round" opacity="0.85"/>
+				<line x1="43" y1="62" x2="32" y2="73" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round" opacity="0.85"/>
+				<line x1="40" y1="55" x2="24" y2="55" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round" opacity="0.85"/>
+				<line x1="43" y1="48" x2="32" y2="37" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round" opacity="0.85"/>
 			</g>
-			<g class="pn-anim-druid-flower pn-anim-druid-f3">
-				<path d="M188 110 Q192 86 188 60" stroke="#15803d" stroke-width="2" fill="none" stroke-linecap="round"/>
-				<path d="M188 80 Q198 76 204 72 Q196 76 188 78 Z" fill="#16a34a"/>
-				<g transform="translate(188 54)">
-					<circle cx="0"   cy="-7"   r="5"   fill="#fef3c7"/>
-					<circle cx="6.2" cy="-2.2" r="5"   fill="#fef3c7"/>
-					<circle cx="3.8" cy="5.6"  r="5"   fill="#fef3c7"/>
-					<circle cx="-3.8" cy="5.6" r="5"   fill="#fef3c7"/>
-					<circle cx="-6.2" cy="-2.2" r="5"  fill="#fef3c7"/>
-					<circle cx="0" cy="0" r="3.2" fill="#f59e0b" stroke="#92400e" stroke-width="0.4"/>
+		</svg>
+		<?php endif; ?>
+
+		<?php if (in_array('barbarian', $pnAnimParagons, true)): ?>
+		<div class="pn-anim pn-anim-barbarian"></div>
+		<?php endif; ?>
+
+		<?php if (in_array('warrior', $pnAnimParagons, true)): ?>
+		<div class="pn-anim pn-anim-warrior">
+			<svg class="pn-warrior-sword pn-warrior-left" viewBox="0 0 100 20" xmlns="http://www.w3.org/2000/svg">
+				<defs>
+					<linearGradient id="pnSwordSteelL" x1="0%" y1="0%" x2="0%" y2="100%">
+						<stop offset="0%"  stop-color="#f1f5f9"/>
+						<stop offset="50%" stop-color="#94a3b8"/>
+						<stop offset="100%" stop-color="#475569"/>
+					</linearGradient>
+				</defs>
+				<!-- pommel + grip + crossguard, then blade pointing right -->
+				<circle cx="4" cy="10" r="3.2" fill="#92400e" stroke="#451a03" stroke-width="0.5"/>
+				<rect x="6" y="8.5" width="8" height="3" fill="#7c2d12" stroke="#451a03" stroke-width="0.4"/>
+				<rect x="13" y="5" width="2.4" height="10" fill="#a16207" stroke="#451a03" stroke-width="0.4"/>
+				<polygon points="15,8.5 86,9.5 96,10 86,10.5 15,11.5" fill="url(#pnSwordSteelL)" stroke="#1e293b" stroke-width="0.4" stroke-linejoin="round"/>
+				<polygon points="15,8.5 84,9.6 96,10" fill="#cbd5e0" opacity="0.5"/>
+			</svg>
+			<svg class="pn-warrior-sword pn-warrior-right" viewBox="0 0 100 20" xmlns="http://www.w3.org/2000/svg">
+				<defs>
+					<linearGradient id="pnSwordSteelR" x1="0%" y1="0%" x2="0%" y2="100%">
+						<stop offset="0%"  stop-color="#f1f5f9"/>
+						<stop offset="50%" stop-color="#94a3b8"/>
+						<stop offset="100%" stop-color="#475569"/>
+					</linearGradient>
+				</defs>
+				<circle cx="4" cy="10" r="3.2" fill="#92400e" stroke="#451a03" stroke-width="0.5"/>
+				<rect x="6" y="8.5" width="8" height="3" fill="#7c2d12" stroke="#451a03" stroke-width="0.4"/>
+				<rect x="13" y="5" width="2.4" height="10" fill="#a16207" stroke="#451a03" stroke-width="0.4"/>
+				<polygon points="15,8.5 86,9.5 96,10 86,10.5 15,11.5" fill="url(#pnSwordSteelR)" stroke="#1e293b" stroke-width="0.4" stroke-linejoin="round"/>
+				<polygon points="15,8.5 84,9.6 96,10" fill="#cbd5e0" opacity="0.5"/>
+			</svg>
+			<div class="pn-warrior-spark"></div>
+		</div>
+		<?php endif; ?>
+
+		<?php if (in_array('assassin', $pnAnimParagons, true)): ?>
+		<div class="pn-anim pn-anim-assassin">
+			<div class="pn-poison-drop pn-poison-d1"></div>
+			<div class="pn-poison-drop pn-poison-d2"></div>
+			<div class="pn-poison-drop pn-poison-d3"></div>
+			<div class="pn-poison-drop pn-poison-d4"></div>
+		</div>
+		<?php endif; ?>
+
+		<?php if (in_array('bard', $pnAnimParagons, true)): ?>
+		<div class="pn-anim pn-anim-bard">
+			<?php for ($_n = 1; $_n <= 6; $_n++): ?>
+			<svg class="pn-bard-note pn-bard-n<?= $_n ?>" viewBox="0 0 16 22" xmlns="http://www.w3.org/2000/svg">
+				<g fill="#7c3aed" stroke="#3b0764" stroke-width="0.5">
+					<ellipse cx="4.5" cy="17" rx="4" ry="3" transform="rotate(-18 4.5 17)"/>
+					<rect x="7.6" y="2" width="1.6" height="15"/>
+					<path d="M9.2 2 Q14.5 4 13.5 9 Q11.5 6.5 9.2 6.5 Z"/>
 				</g>
+			</svg>
+			<?php endfor; ?>
+		</div>
+		<?php endif; ?>
+
+		<?php if (in_array('scout', $pnAnimParagons, true)): ?>
+		<svg class="pn-anim pn-anim-scout" viewBox="0 0 60 76" xmlns="http://www.w3.org/2000/svg">
+			<!-- FRONT VIEW: dark hooded silhouette holding binoculars to the eyes -->
+			<g class="pn-scout-front">
+				<path d="M30 4 C16 4 8 14 8 26 L8 44 Q8 54 14 62 Q18 68 22 72 L22 76 L38 76 L38 72 Q42 68 46 62 Q52 54 52 44 L52 26 C52 14 44 4 30 4 Z" fill="#0f172a" stroke="#000" stroke-width="0.5"/>
+				<path d="M8 26 Q8 18 14 14 Q22 8 30 8 Q38 8 46 14 Q52 18 52 26 L52 32 Q42 26 30 26 Q18 26 8 32 Z" fill="#020617" opacity="0.7"/>
+				<path d="M10 42 Q30 50 50 42 L50 56 Q30 62 10 56 Z" fill="#1e293b"/>
+				<!-- Binoculars covering the eye area -->
+				<ellipse cx="20" cy="36" rx="5" ry="5.5" fill="#1e293b" stroke="#020617" stroke-width="0.6"/>
+				<ellipse cx="40" cy="36" rx="5" ry="5.5" fill="#1e293b" stroke="#020617" stroke-width="0.6"/>
+				<rect x="24.5" y="34" width="11" height="4" rx="1" fill="#1e293b" stroke="#020617" stroke-width="0.5"/>
+				<ellipse cx="20" cy="36" rx="3" ry="3.5" fill="#334155"/>
+				<ellipse cx="40" cy="36" rx="3" ry="3.5" fill="#334155"/>
+				<ellipse cx="19" cy="34.5" rx="0.8" ry="1.2" fill="#94a3b8" opacity="0.7"/>
+				<ellipse cx="39" cy="34.5" rx="0.8" ry="1.2" fill="#94a3b8" opacity="0.7"/>
+			</g>
+
+			<!-- RIGHT-FACING PROFILE: head turned to viewer's right, binocular tube juts right -->
+			<g class="pn-scout-right">
+				<!-- Hooded profile silhouette: vertical back-of-hood, dome on top, brow+nose bump on right, jaw + neck -->
+				<path d="M14 76 L14 30 Q14 14 24 8 Q34 4 42 12 Q46 18 46 28 L46 32 L50 36 L46 40 L46 46 L42 50 L38 56 L34 64 L32 76 Z" fill="#0f172a" stroke="#000" stroke-width="0.5"/>
+				<!-- Hood brim shadow on forehead -->
+				<path d="M14 28 Q16 18 24 14 Q34 12 44 18 L44 32 Q36 28 28 28 Q20 28 14 32 Z" fill="#020617" opacity="0.6"/>
+				<!-- Binocular tube extending forward from the eye area -->
+				<rect x="42" y="32" width="14" height="7" rx="2" fill="#1e293b" stroke="#020617" stroke-width="0.6"/>
+				<ellipse cx="56" cy="35.5" rx="3" ry="4.5" fill="#334155" stroke="#020617" stroke-width="0.6"/>
+				<ellipse cx="56" cy="34" rx="0.6" ry="1.2" fill="#94a3b8" opacity="0.7"/>
+			</g>
+
+			<!-- LEFT-FACING PROFILE: same paths mirrored across SVG center -->
+			<g class="pn-scout-left" transform="translate(60 0) scale(-1 1)">
+				<!-- Hooded profile silhouette: vertical back-of-hood, dome on top, brow+nose bump on right, jaw + neck -->
+				<path d="M14 76 L14 30 Q14 14 24 8 Q34 4 42 12 Q46 18 46 28 L46 32 L50 36 L46 40 L46 46 L42 50 L38 56 L34 64 L32 76 Z" fill="#0f172a" stroke="#000" stroke-width="0.5"/>
+				<!-- Hood brim shadow on forehead -->
+				<path d="M14 28 Q16 18 24 14 Q34 12 44 18 L44 32 Q36 28 28 28 Q20 28 14 32 Z" fill="#020617" opacity="0.6"/>
+				<!-- Binocular tube extending forward from the eye area -->
+				<rect x="42" y="32" width="14" height="7" rx="2" fill="#1e293b" stroke="#020617" stroke-width="0.6"/>
+				<ellipse cx="56" cy="35.5" rx="3" ry="4.5" fill="#334155" stroke="#020617" stroke-width="0.6"/>
+				<ellipse cx="56" cy="34" rx="0.6" ry="1.2" fill="#94a3b8" opacity="0.7"/>
+			</g>
+		</svg>
+		<?php endif; ?>
+
+		<?php if (in_array('paladin', $pnAnimParagons, true)): ?>
+		<svg class="pn-anim pn-anim-paladin" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+			<g fill="#ffffff" stroke="#cbd5e0" stroke-width="0.6" stroke-linejoin="round">
+			<path d="M16 5 C14.5 5 14 6 14 7 L14 9 L13 9.5 L14 11 L14 18 L13 22 L15 20 L15 24 L13 28 L16 26 L19 28 L17 24 L17 20 L19 22 L18 18 L18 11 L19 9.5 L18 9 L18 7 C18 6 17.5 5 16 5 Z"/>
+			<path d="M14 11 C10 10 6 12 4 16 C7 15 10 16 13 17 C11 18 9 19 7 21 C10 20 13 19 14 18 Z"/>
+			<path d="M18 11 C22 10 26 12 28 16 C25 15 22 16 19 17 C21 18 23 19 25 21 C22 20 19 19 18 18 Z"/>
+			</g>
+		</svg>
+		<?php endif; ?>
+
+		<?php if (in_array('antipaladin', $pnAnimParagons, true)): ?>
+		<svg class="pn-anim pn-anim-antipaladin" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+			<g fill="#0a0e1a" stroke="#cbd5e0" stroke-width="0.6" stroke-linejoin="round">
+			<path d="M16 5 C14.5 5 14 6 14 7 L14 9 L13 9.5 L14 11 L14 18 L13 22 L15 20 L15 24 L13 28 L16 26 L19 28 L17 24 L17 20 L19 22 L18 18 L18 11 L19 9.5 L18 9 L18 7 C18 6 17.5 5 16 5 Z"/>
+			<path d="M14 11 C10 10 6 12 4 16 C7 15 10 16 13 17 C11 18 9 19 7 21 C10 20 13 19 14 18 Z"/>
+			<path d="M18 11 C22 10 26 12 28 16 C25 15 22 16 19 17 C21 18 23 19 25 21 C22 20 19 19 18 18 Z"/>
 			</g>
 		</svg>
 		<?php endif; ?>
@@ -4376,8 +4777,17 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 					<?php if ($pnHasParagonAnim): ?>
 					<?php
 						$_animDescriptions = [
-							'archer' => 'Archer &mdash; an arrow flies across your hero',
-							'druid'  => 'Druid &mdash; a small cluster of flowers grows in the corner',
+							'antipaladin' => 'Anti-Paladin &mdash; a dark purple crackle races around the hero border',
+							'archer'    => 'Archer &mdash; an arrow flies across your hero',
+							'assassin'  => 'Assassin &mdash; green poison drips down the right side',
+							'barbarian' => 'Barbarian &mdash; the hero shakes and flashes red',
+							'bard'      => 'Bard &mdash; music notes float up from the corner',
+							'druid'     => 'Druid &mdash; ivy and vines spread out from the corner',
+							'healer'    => 'Healer &mdash; a beam of healing light descends and radiates',
+							'paladin'   => 'Paladin &mdash; a bright white shimmer races around the hero border',
+							'scout'     => 'Scout &mdash; a masked figure peeks up from the corner',
+							'warrior'   => 'Warrior &mdash; two swords clash at the center',
+							'wizard'    => 'Wizard &mdash; lightning strikes across the hero',
 						];
 						$_animBullets = [];
 						foreach ($pnAnimParagons as $_slug) {

@@ -361,6 +361,7 @@ class Player extends Ork3 {
 								'NameShimmer' => (int)$design->name_shimmer,
 							'DisplayCoronet' => is_null($design->display_coronet) ? 1 : (int)$design->display_coronet,
 							'DisplayMasterPhoenix' => is_null($design->display_master_phoenix) ? 1 : (int)$design->display_master_phoenix,
+							'DisplayParagonAnimation' => is_null($design->display_paragon_animation) ? 1 : (int)$design->display_paragon_animation,
 						'BasicFonts' => (int)$this->mundane->basic_fonts,
 						'DyslexiaFonts' => (int)$this->mundane->dyslexia_fonts,
 				);
@@ -1112,7 +1113,7 @@ class Player extends Ork3 {
 			'NameFont' => 1,
 			'PhotoFocusX' => 1, 'PhotoFocusY' => 1, 'PhotoFocusSize' => 1,
 			'ShowBeltline' => 1, 'BeltDisplay' => 1,
-			'DisplayCoronet' => 1, 'DisplayMasterPhoenix' => 1,
+			'DisplayCoronet' => 1, 'DisplayMasterPhoenix' => 1, 'DisplayParagonAnimation' => 1,
 			'BasicFonts' => 1, 'DyslexiaFonts' => 1,
 		];
 		// Fields whose value always shifts even on no-op saves — ignore.
@@ -1213,7 +1214,7 @@ class Player extends Ork3 {
 								  'show_beltline','belt_display','paragon_frame_class_id','name_shimmer','pronunciation_guide',
 								  'show_mundane_first','show_mundane_last','show_email',
 								  'milestone_config','name_font',
-								  'display_coronet','display_master_phoenix'] as $_f) {
+								  'display_coronet','display_master_phoenix','display_paragon_animation'] as $_f) {
 							$_cur[$_f] = $design->{$_f};
 						}
 					}

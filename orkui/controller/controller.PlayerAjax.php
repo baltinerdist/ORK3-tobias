@@ -400,6 +400,7 @@ class Controller_PlayerAjax extends Controller {
 					'NameShimmer'      => isset($_POST['NameShimmer']) ? (int)$_POST['NameShimmer'] : null,
 					'DisplayCoronet'   => isset($_POST['DisplayCoronet'])   ? (int)$_POST['DisplayCoronet']   : null,
 					'DisplayMasterPhoenix' => isset($_POST['DisplayMasterPhoenix']) ? (int)$_POST['DisplayMasterPhoenix'] : null,
+					'DisplayParagonAnimation' => isset($_POST['DisplayParagonAnimation']) ? (int)$_POST['DisplayParagonAnimation'] : null,
 					// Administrative fields — UpdatePlayer gates these behind HasAuthority,
 					// so non-officers sending them have no effect.
 					'Active'           => isset($_POST['Active'])          ? (int)$_POST['Active']                                                  : null,
