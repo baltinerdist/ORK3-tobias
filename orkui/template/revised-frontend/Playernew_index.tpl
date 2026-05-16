@@ -5322,7 +5322,8 @@ if (typeof nsKid !== 'undefined' && nsKid === 0 && PnConfig.kingdomId) nsKid = P
 // ---- Knight Color Shimmer cycle (hero name) ----
 // Fires once on load, then every ~10s. Cycles through all of the player's
 // knighthood colors. Toggling the Special-tab checkbox starts/stops the cycle
-// without requiring a page reload.
+// without requiring a page reload. The shimmering class is added at each tick
+// and removed on animationend so the name returns to plain white between pulses.
 (function() {
 	var nameEl = document.getElementById('pn-hero-persona');
 	if (!nameEl) return;
@@ -5339,6 +5340,11 @@ if (typeof nsKid !== 'undefined' && nsKid === 0 && PnConfig.kingdomId) nsKid = P
 		void nameEl.offsetWidth;
 		nameEl.classList.add('pn-name-shimmering');
 	}
+	nameEl.addEventListener('animationend', function(e) {
+		if (e.animationName === 'pn-name-shimmer-sweep') {
+			nameEl.classList.remove('pn-name-shimmering');
+		}
+	});
 	function start() {
 		if (timer) return;
 		tick();
