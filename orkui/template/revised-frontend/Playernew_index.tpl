@@ -687,21 +687,24 @@ html[data-theme="dark"] .pn-paragon-frame-preview-inner{background:linear-gradie
 html[data-theme="dark"] .pn-paragon-frame-preview.pn-pfp-empty{border-color:var(--ork-border)}
 
 /* ===== Knight Color Shimmer (hero name) =====
-   When .pn-name-shimmering is added (every ~10s by JS), a thin band of the
-   knighthood color sweeps across the name via background-clip:text. The class
-   is removed when the animation completes so the text returns to its normal
-   color the rest of the time. Honors `prefers-reduced-motion`. */
+   White background-color holds the base text color (clipped to the glyphs via
+   background-clip:text), then a small no-repeat gradient with transparent
+   edges overlays a single colored band that sweeps across. Because the
+   gradient is small and transparent at the edges, the white bg shows through
+   for the entire animation — no transparent dead zones at start/end. */
 @keyframes pn-name-shimmer-sweep {
-	0%   { background-position: 200% 0; }
-	100% { background-position: -100% 0; }
+	0%   { background-position: -40% 0; }
+	100% { background-position: 140% 0; }
 }
 .pn-persona.pn-name-shimmering {
+	background-color: #fff;
 	background-image: linear-gradient(110deg,
-		#fff 0%, #fff 38%,
+		transparent 0%,
 		var(--pn-shimmer-color, #fff) 50%,
-		#fff 62%, #fff 100%);
-	background-size: 250% 100%;
-	background-position: 200% 0;
+		transparent 100%);
+	background-size: 40% 100%;
+	background-repeat: no-repeat;
+	background-position: -40% 0;
 	-webkit-background-clip: text;
 	        background-clip: text;
 	-webkit-text-fill-color: transparent;
@@ -709,7 +712,7 @@ html[data-theme="dark"] .pn-paragon-frame-preview.pn-pfp-empty{border-color:var(
 	animation: pn-name-shimmer-sweep 1.6s ease-out;
 }
 @media (prefers-reduced-motion: reduce) {
-	.pn-persona.pn-name-shimmering { animation: none; -webkit-text-fill-color: #fff; color: #fff; background-image: none; }
+	.pn-persona.pn-name-shimmering { animation: none; -webkit-text-fill-color: #fff; color: #fff; background-image: none; background-color: transparent; }
 }
 
 /* ===== Paragon Photo Frame =====
