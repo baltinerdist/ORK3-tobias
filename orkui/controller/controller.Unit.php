@@ -199,6 +199,62 @@ class Controller_Unit extends Controller {
 						'MundaneId' => (int)$this->request->MundaneId,
 					));
 					break;
+				case 'save_design':
+					header('Content-Type: application/json');
+					$req = array(
+						'Token'           => $this->session->token,
+						'UnitId'          => $unit_id_int,
+					);
+					foreach (['AboutText','OurHistory','ColorPrimary','ColorAccent','ColorSecondary','HeroOverlay','NameFont','MilestoneConfig','Tagline','SocialLinks','Announcement','AnnouncementUntil','RecruitmentStatus','HowToJoin'] as $_f) {
+						if (isset($_POST[$_f])) $req[$_f] = (string)$_POST[$_f];
+					}
+					$r2 = $this->Unit->set_unit_design($req);
+					if ($r2['Status'] == 0) {
+						echo json_encode(array('status' => 0));
+					} else {
+						echo json_encode(array(
+							'status' => (int)$r2['Status'],
+							'error'  => $r2['Error']  ?? 'Save failed.',
+							'field'  => $r2['Detail'] ?? '',
+						));
+					}
+					exit;
+				case 'add_milestone':
+					header('Content-Type: application/json');
+					$r2 = $this->Unit->add_unit_milestone(array(
+						'Token'         => $this->session->token,
+						'UnitId'        => $unit_id_int,
+						'Description'   => (string)($this->request->Description ?? ''),
+						'MilestoneDate' => (string)($this->request->MilestoneDate ?? ''),
+						'Icon'          => (string)($this->request->Icon ?? 'fa-star'),
+					));
+					if ($r2['Status'] == 0) {
+						echo json_encode(array('status' => 0, 'milestoneId' => (int)($r2['Detail'] ?? 0)));
+					} else {
+						echo json_encode(array(
+							'status' => (int)$r2['Status'],
+							'error'  => $r2['Error']  ?? 'Failed to add milestone.',
+							'field'  => $r2['Detail'] ?? '',
+						));
+					}
+					exit;
+				case 'delete_milestone':
+					header('Content-Type: application/json');
+					$r2 = $this->Unit->delete_unit_milestone(array(
+						'Token'       => $this->session->token,
+						'UnitId'      => $unit_id_int,
+						'MilestoneId' => (int)($this->request->MilestoneId ?? 0),
+					));
+					if ($r2['Status'] == 0) {
+						echo json_encode(array('status' => 0));
+					} else {
+						echo json_encode(array(
+							'status' => (int)$r2['Status'],
+							'error'  => $r2['Error']  ?? 'Failed to delete milestone.',
+							'field'  => $r2['Detail'] ?? '',
+						));
+					}
+					exit;
 			}
 			if (isset($r)) {
 				if ($r['Status'] == 0) {
@@ -216,6 +272,24 @@ class Controller_Unit extends Controller {
 			header('Location: ' . UIR . 'Unit/unitlist');
 			exit;
 		}
+		$_custom  = $this->Unit->get_unit_milestones($unit_id_int);
+		$_derived = $this->Unit->get_derived_unit_milestones($unit_id_int);
+		$milestones = [];
+		foreach (($_custom['Milestones'] ?? []) as $m) {
+			$milestones[] = [
+				'MilestoneId'   => (int)$m['MilestoneId'],
+				'Type'          => 'custom',
+				'Icon'          => $m['Icon'],
+				'Description'   => $m['Description'],
+				'MilestoneDate' => $m['MilestoneDate'],
+				'IsDerived'     => false,
+			];
+		}
+		foreach (($_derived['Milestones'] ?? []) as $m) {
+			$milestones[] = $m + ['MilestoneId' => 0, 'IsDerived' => true];
+		}
+		usort($milestones, function($a, $b) { return strcmp($a['MilestoneDate'], $b['MilestoneDate']); });
+		$this->data['Milestones'] = $milestones;
 		$_uid = isset($this->session->user_id) ? (int)$this->session->user_id : 0;
 		$_canEdit = $_uid > 0 && Ork3::$Lib->authorization->HasAuthority($_uid, AUTH_UNIT, (int)$unit_id, AUTH_EDIT);
 		$this->data['CanEdit'] = $_canEdit;
