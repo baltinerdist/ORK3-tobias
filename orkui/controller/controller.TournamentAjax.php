@@ -197,25 +197,19 @@ class Controller_TournamentAjax extends Controller {
 				: $this->modelError($r);
 
 		} elseif ($action === 'savestandingspoints') {
-			$r = $this->Tournament->auth_check(['Token' => $this->session->token, 'TournamentId' => $tournament_id]);
-			if (!isset($r) || (isset($r['Status']) && $r['Status'] != 0)) {
-				echo json_encode(['status' => 5, 'error' => 'Not authorized.']); exit;
-			}
 			$points_raw = trim($_POST['Points'] ?? '');
 			if ($points_raw === '') {
 				echo json_encode(['status' => 1, 'error' => 'Points data is required.']); exit;
 			}
 			$points_arr = json_decode($points_raw, true);
-			if (!is_array($points_arr) || count($points_arr) < 1 || count($points_arr) > 16) {
-				echo json_encode(['status' => 1, 'error' => 'Invalid points data (must be 1-16 positions).']); exit;
-			}
-			$points_clean = array_map(function($v) { return max(0, (int)$v); }, $points_arr);
-			global $DB;
-			$DB->query(
-				"UPDATE ork_tournament SET standings_points = :points WHERE tournament_id = :tid",
-				[':points' => json_encode($points_clean), ':tid' => $tournament_id]
-			);
-			echo json_encode(['status' => 0, 'points' => $points_clean]);
+			$r = $this->Tournament->save_standings_points([
+				'Token'        => $this->session->token,
+				'TournamentId' => $tournament_id,
+				'Points'       => $points_arr,
+			]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0, 'points' => $r['Detail'] ?? []])
+				: $this->modelError($r);
 
 		} elseif ($action === 'updatetournament') {
 			$name = trim($_POST['Name'] ?? '');
@@ -382,7 +376,7 @@ class Controller_TournamentAjax extends Controller {
 				'RingNumber'   => $ring_number,
 			]);
 			echo ($r['Status'] == 0)
-				? json_encode(['status' => 0, 'matchId' => (int)($r['Detail'] ?? 0)])
+				? json_encode(array_merge(['status' => 0], is_array($r['Detail']) ? $r['Detail'] : ['FightNum' => (int)($r['Detail'] ?? 0)]))
 				: $this->modelError($r);
 
 		} elseif ($action === 'reorder') {
@@ -391,76 +385,37 @@ class Controller_TournamentAjax extends Controller {
 			if (!valid_id($tid)) {
 				echo json_encode(['status' => 1, 'error' => 'TournamentId required.']); exit;
 			}
-			$r = $this->Tournament->auth_check(['Token' => $this->session->token, 'TournamentId' => $tid]);
-			if (!isset($r) || (isset($r['Status']) && $r['Status'] != 0)) {
-				echo json_encode(['status' => 5, 'error' => 'Not authorized.']); exit;
-			}
-			// Block reordering on brackets that are already active, complete, or finalized
-			global $DB;
-			$DB->Clear();
-			$bstatus_r = $DB->query("SELECT status FROM ork_bracket WHERE bracket_id = :bid", [':bid' => $bracket_id]);
-			if (!$bstatus_r || !$bstatus_r->next()) {
-				echo json_encode(['status' => 1, 'error' => 'Bracket not found.']); exit;
-			}
-			$bstatus = $bstatus_r->status ?? '';
-			if (in_array($bstatus, ['active', 'complete', 'finalized'], true)) {
-				echo json_encode(['status' => 1, 'error' => 'Cannot reorder seeds on an active or completed bracket.']); exit;
-			}
 			$order_json = trim($_POST['Order'] ?? '');
 			$order_arr  = json_decode($order_json, true);
-			if (!is_array($order_arr)) {
-				echo json_encode(['status' => 1, 'error' => 'Invalid order data.']); exit;
-			}
-			global $DB;
-			// Fetch the valid participant IDs for this bracket to prevent cross-bracket seed writes
-			$DB->Clear();
-			$validPids = [];
-			$pRows = $DB->query("SELECT participant_id FROM ork_participant WHERE bracket_id = :bid", [":bid" => $bracket_id]);
-			if ($pRows) { while ($pRows->next()) $validPids[(int)$pRows->participant_id] = true; }
-			foreach ($order_arr as $seed => $participant_id) {
-				$pid = (int)$participant_id;
-				$s   = (int)$seed + 1;
-				if (valid_id($pid) && isset($validPids[$pid])) {
-					$DB->query(
-						"UPDATE ork_participant SET seed = :s WHERE participant_id = :pid AND bracket_id = :bid",
-						[':s' => $s, ':pid' => $pid, ':bid' => $bracket_id]
-					);
-				}
-			}
-			echo json_encode(['status' => 0]);
+			$r = $this->Tournament->reorder_seeds([
+				'Token'        => $this->session->token,
+				'TournamentId' => $tid,
+				'BracketId'    => $bracket_id,
+				'Order'        => $order_arr,
+			]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0])
+				: $this->modelError($r);
 
 		} elseif ($action === 'updateparticipantstatus') {
 			$tid = (int)($_POST['TournamentId'] ?? 0);
 			if (!valid_id($tid)) {
 				echo json_encode(['status' => 1, 'error' => 'TournamentId required.']); exit;
 			}
-			$r = $this->Tournament->auth_check(['Token' => $this->session->token, 'TournamentId' => $tid]);
-			if (!isset($r) || (isset($r['Status']) && $r['Status'] != 0)) {
-				echo json_encode(['status' => 5, 'error' => 'Not authorized.']); exit;
-			}
 			$participant_id = (int)($_POST['ParticipantId'] ?? 0);
 			if (!valid_id($participant_id)) {
 				echo json_encode(['status' => 1, 'error' => 'ParticipantId required.']); exit;
 			}
-			global $DB;
-			$DB->Clear();
-			$exists = $DB->query("SELECT participant_id FROM ork_participant WHERE participant_id = :pid AND bracket_id = :bid",
-				[':pid' => $participant_id, ':bid' => $bracket_id]);
-			if (!$exists || !$exists->next()) {
-				echo json_encode(['status' => 1, 'error' => 'Participant not found in this bracket.']); exit;
-			}
-			$status = trim($_POST['Status'] ?? '');
-			$allowed = ['active','withdrawn','disqualified'];
-			if (!in_array($status, $allowed)) {
-				echo json_encode(['status' => 1, 'error' => 'Invalid status. Allowed: ' . implode(', ', $allowed)]); exit;
-			}
-			global $DB;
-			$DB->Clear();
-			$DB->query(
-				"UPDATE ork_participant SET status = :st WHERE participant_id = :pid AND bracket_id = :bid",
-				[':st' => $status, ':pid' => $participant_id, ':bid' => $bracket_id]
-			);
-			echo json_encode(['status' => 0, 'participantId' => $participant_id, 'newStatus' => $status]);
+			$r = $this->Tournament->update_participant_status([
+				'Token'         => $this->session->token,
+				'TournamentId'  => $tid,
+				'BracketId'     => $bracket_id,
+				'ParticipantId' => $participant_id,
+				'Status'        => trim($_POST['Status'] ?? ''),
+			]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0, 'participantId' => (int)($r['Detail']['ParticipantId'] ?? $participant_id), 'newStatus' => $r['Detail']['Status'] ?? ''])
+				: $this->modelError($r);
 
 		} else {
 			echo json_encode(['status' => 1, 'error' => 'Unknown action']);
@@ -543,27 +498,9 @@ class Controller_TournamentAjax extends Controller {
 			echo json_encode([]);
 			exit;
 		}
-		global $DB;
-		$rows = $DB->query(
-			'SELECT p.park_id, p.name AS park_name, k.kingdom_id, k.name AS kingdom_name '
-			. 'FROM ork_park p '
-			. 'LEFT JOIN ork_kingdom k ON k.kingdom_id = p.kingdom_id '
-			. 'WHERE p.name LIKE :q '
-			. 'ORDER BY p.name LIMIT 12',
-			[':q' => '%' . $q . '%']
-		);
-		$results = [];
-		if ($rows) {
-			while ($rows->next()) {
-				$results[] = [
-					'ParkId'      => (int)$rows->park_id,
-					'ParkName'    => $rows->park_name,
-					'KingdomId'   => (int)$rows->kingdom_id,
-					'KingdomName' => $rows->kingdom_name,
-				];
-			}
-		}
-		echo json_encode($results);
+		$this->load_model('Tournament');
+		$r = $this->Tournament->search_parks($q);
+		echo json_encode(($r['Status'] == 0) ? ($r['Detail'] ?? []) : []);
 		exit;
 	}
 
@@ -582,40 +519,9 @@ class Controller_TournamentAjax extends Controller {
 			echo json_encode([]);
 			exit;
 		}
-		global $DB;
-		$rows = $DB->query(
-			'SELECT cd.event_calendardetail_id, e.name AS event_name, '
-			. 'k.abbreviation AS kingdom_abbr, p.abbreviation AS park_abbr, '
-			. 'cd.event_start '
-			. 'FROM ork_event_calendardetail cd '
-			. 'JOIN ork_event e ON e.event_id = cd.event_id '
-			. 'LEFT JOIN ork_kingdom k ON k.kingdom_id = e.kingdom_id '
-			. 'LEFT JOIN ork_park p ON p.park_id = e.park_id '
-			. 'WHERE e.name LIKE :q '
-			. 'ORDER BY cd.event_start DESC LIMIT 12',
-			[':q' => '%' . $q . '%']
-		);
-		$results = [];
-		if ($rows) {
-			while ($rows->next()) {
-				$abbr = '';
-				if ($rows->kingdom_abbr) $abbr = $rows->kingdom_abbr;
-				if ($rows->park_abbr)    $abbr .= ($abbr ? ':' : '') . $rows->park_abbr;
-				$dateStr = '';
-				if ($rows->event_start && substr($rows->event_start, 0, 10) !== '0000-00-00') {
-					$dateStr = date('m/d/Y', strtotime($rows->event_start));
-				}
-				$label = $rows->event_name;
-				if ($abbr)    $label .= ' ' . $abbr;
-				if ($dateStr) $label .= ' - ' . $dateStr;
-				$results[] = [
-					'EcdId'     => (int)$rows->event_calendardetail_id,
-					'Label'     => $label,
-					'EventName' => $rows->event_name,
-				];
-			}
-		}
-		echo json_encode($results);
+		$this->load_model('Tournament');
+		$r = $this->Tournament->search_events($q);
+		echo json_encode(($r['Status'] == 0) ? ($r['Detail'] ?? []) : []);
 		exit;
 	}
 

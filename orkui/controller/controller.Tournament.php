@@ -46,6 +46,7 @@ class Controller_Tournament extends Controller {
 			if (!isset($this->session->user_id)) {
 				header( 'Location: '.UIR.'Login/login/Tournament/worksheet' );
 			} else {
+				$r = null;
 				switch ($this->request->Action) {
 					case 'addbracket':
 						$r = $this->Tournament->add_bracket(array(
@@ -60,11 +61,11 @@ class Controller_Tournament extends Controller {
 							));
 						break;
 				}
-				if ($r['Status'] == 0) {
+				if (isset($r) && $r['Status'] == 0) {
 					$this->request->clear('Tournament_worksheet');
-				} else if($r['Status'] == 5) {
+				} else if(isset($r) && $r['Status'] == 5) {
 					header( 'Location: '.UIR.'Login/login/Tournament/worksheet' );
-				} else {
+				} else if (isset($r)) {
 					$this->data['Error'] = $r['Error'].':<p>'.$r['Detail'];
 				}
 			}
@@ -79,11 +80,12 @@ class Controller_Tournament extends Controller {
 			if (!isset($this->session->user_id)) {
 				header( 'Location: '.UIR.'Login/login/Tournament/create' );
 			} else {
+				$r = null;
 				switch ($post) {
 					case 'create':
 						$r = $this->Tournament->create_tournament(array(
 								'Token' => $this->session->token,
-								'KingdomId' => $this->request->Tournament_create->MundaneId,
+								'KingdomId' => $this->request->Tournament_create->KingdomId,
 								'ParkId' => $this->request->Tournament_create->ParkId,
 								'EventCalendarDetailId' => $this->request->Tournament_create->EventCalendarDetailId,
 								'Name' => $this->request->Tournament_create->Name,
@@ -93,12 +95,11 @@ class Controller_Tournament extends Controller {
 							));
 						break;
 				}
-				if ($r['Status'] == 0) {
+				if (isset($r) && $r['Status'] == 0) {
 					$this->request->clear('Tournament_create');
-//					$this->data['Message'] = "Player is ".($this->request->Tournament_create->Ban?"banned.":"free.");
-				} else if($r['Status'] == 5) {
+				} else if(isset($r) && $r['Status'] == 5) {
 					header( 'Location: '.UIR.'Login/login/Tournament/create' );
-				} else {
+				} else if (isset($r)) {
 					$this->data['Error'] = $r['Error'].':<p>'.$r['Detail'];
 				}
 			}
@@ -140,43 +141,13 @@ class Controller_Tournament extends Controller {
 		// Build formatted event label for Edit modal pre-fill
 		$this->data['tournament_event_label'] = '';
 		if (valid_id($tournament['EventCalendarDetailId'])) {
-			global $DB;
-			$_ecd = (int)$tournament['EventCalendarDetailId'];
-			$DB->Clear();
-			$_elr = $DB->query(
-				'SELECT k.abbreviation AS kabbr, p.abbreviation AS pabbr, d.event_start '
-				. 'FROM ork_event_calendardetail d '
-				. 'LEFT JOIN ork_event e ON e.event_id = d.event_id '
-				. 'LEFT JOIN ork_kingdom k ON k.kingdom_id = e.kingdom_id '
-				. 'LEFT JOIN ork_park p ON p.park_id = e.park_id '
-				. "WHERE d.event_calendardetail_id = $_ecd"
-			);
-			if ($_elr && $_elr->next()) {
-				$_abbr = '';
-				if ($_elr->kabbr) $_abbr = $_elr->kabbr;
-				if ($_elr->pabbr) $_abbr .= ($_abbr ? ':' : '') . $_elr->pabbr;
-				$_ds = ($_elr->event_start && substr($_elr->event_start, 0, 10) !== '0000-00-00')
-					? date('m/d/Y', strtotime($_elr->event_start)) : '';
-				$_lbl = $tournament['EventName'] ?? '';
-				if ($_abbr) $_lbl .= ' ' . $_abbr;
-				if ($_ds)   $_lbl .= ' - ' . $_ds;
-				$this->data['tournament_event_label'] = $_lbl;
-			} else {
-				$this->data['tournament_event_label'] = $tournament['EventName'] ?? '';
-			}
+			$_elr = $this->Tournament->get_tournament_event_label($tournament_id);
+			$this->data['tournament_event_label'] = $_elr['Detail'] ?? ($tournament['EventName'] ?? '');
 		}
 
-		// Load standings points config (direct query, bypasses TournamentReport cache)
-		global $DB;
-		$DB->Clear();
-		$_spRow = $DB->query('SELECT standings_points FROM ork_tournament WHERE tournament_id = ' . $tournament_id);
-		$_spDefault = [5,4,3,2,1,0,0,0];
-		if ($_spRow && $_spRow->next() && !empty($_spRow->standings_points)) {
-			$_spParsed = json_decode($_spRow->standings_points, true);
-			$this->data['standings_points'] = (is_array($_spParsed) && count($_spParsed) === 8) ? $_spParsed : $_spDefault;
-		} else {
-			$this->data['standings_points'] = $_spDefault;
-		}
+		// Load standings points config (bypasses TournamentReport cache)
+		$_spr = $this->Tournament->get_standings_points($tournament_id);
+		$this->data['standings_points'] = $_spr['Detail'] ?? [5,4,3,2,1,0,0,0];
 
 		// Auth: kingdom > park level edit
 		$_uid      = isset($this->session->user_id) ? (int)$this->session->user_id : 0;
@@ -197,16 +168,27 @@ class Controller_Tournament extends Controller {
 		$brackets       = $bracketsResult['Detail'] ?? [];
 		$this->data['brackets'] = $brackets;
 
+		// Load all participants and matches for the tournament in one query each,
+		// then partition by bracket_id in PHP (avoids 2N per-bracket round-trips).
+		$allParts = $this->Tournament->get_participants(['TournamentId' => $tournament_id]);
+		$allMtchs = $this->Tournament->get_matches(['TournamentId' => $tournament_id]);
+		$partsByBracket = [];
+		foreach (($allParts['Detail'] ?? []) as $_p) {
+			$partsByBracket[(int)$_p['BracketId']][] = $_p;
+		}
+		$mtchsByBracket = [];
+		foreach (($allMtchs['Detail'] ?? []) as $_m) {
+			$mtchsByBracket[(int)$_m['BracketId']][] = $_m;
+		}
+
 		// Load per-bracket participants and matches
 		$bracketData       = [];
 		$totalParticipants = 0;
 		$totalMatches      = 0;
 		foreach ($brackets as $b) {
 			$bid   = (int)$b['BracketId'];
-			$parts = $this->Tournament->get_participants(['TournamentId' => $tournament_id, 'BracketId' => $bid]);
-			$mtchs = $this->Tournament->get_matches(['TournamentId' => $tournament_id, 'BracketId' => $bid]);
-			$pList = $parts['Detail'] ?? [];
-			$mList = $mtchs['Detail'] ?? [];
+			$pList = $partsByBracket[$bid] ?? [];
+			$mList = $mtchsByBracket[$bid] ?? [];
 			$bracketData[$bid] = [
 				'Bracket'      => $b,
 				'Participants' => $pList,
