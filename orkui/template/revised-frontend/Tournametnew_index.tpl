@@ -36,20 +36,20 @@ if (!function_exists('tnParticipantPills')) {
 		$html = '';
 		if (($p['WarriorCount'] ?? 0) > 0) {
 			$wc = min((int)$p['WarriorCount'], 10);
-			$html .= '<span class="tn-pill tn-pill-warrior" title="Order of the Warrior x' . (int)$p['WarriorCount'] . '">' . $wc . '</span>';
+			$html .= '<span class="tn-pill tn-pill-warrior" data-tip="Order of the Warrior x' . (int)$p['WarriorCount'] . '">' . $wc . '</span>';
 		}
 		if (!empty($p['IsWarlord']))
-			$html .= '<span class="tn-pill tn-pill-warlord" title="Warlord">W</span>';
+			$html .= '<span class="tn-pill tn-pill-warlord" data-tip="Warlord">W</span>';
 		if (!empty($p['IsKnightSword']))
-			$html .= '<span class="tn-pill tn-pill-knight" title="Knight of the Sword">K</span>';
+			$html .= '<span class="tn-pill tn-pill-knight" data-tip="Knight of the Sword">K</span>';
 		return $html ? '<span style="display:inline-flex;gap:3px;margin-left:4px;vertical-align:middle">' . $html . '</span>' : '';
 	}
 }
 if (!function_exists('tnOrdinal')) {
 	function tnOrdinal(int $n): string {
-		$s = ['th','st','nd','rd'];
-		$v = $n % 100;
-		return $n . ($s[($v - 20) % 10] ?? $s[min($v, 3)] ?? 'th');
+		$v = abs($n) % 100;
+		if ($v >= 11 && $v <= 13) return $n . 'th';
+		return $n . (['th','st','nd','rd'][$v % 10] ?? 'th');
 	}
 }
 
@@ -87,6 +87,14 @@ $heroStyles = array_keys($heroStyles);
 <style>
 /* ---- Tournament Profile (tn-) ---- */
 :root { --tn-accent: #276749; --tn-accent-light: #f0fff4; }
+
+/* In-product tooltips (project convention: no native data-tip="" tooltips) */
+[data-tip] { position:relative; cursor:help; }
+[data-tip]::after { content:attr(data-tip); position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%); background:#2d3748; color:#fff; font-size:11px; padding:4px 10px; border-radius:4px; white-space:nowrap; pointer-events:none; opacity:0; transition:opacity 0.05s; z-index:500; }
+[data-tip]::before { content:''; position:absolute; bottom:calc(100% + 2px); left:50%; transform:translateX(-50%); border:4px solid transparent; border-top-color:#2d3748; pointer-events:none; opacity:0; transition:opacity 0.05s; z-index:500; }
+[data-tip]:hover::after, [data-tip]:hover::before { opacity:1; }
+html[data-theme="dark"] [data-tip]::after { background:#1a202c; color:#e2e8f0; }
+html[data-theme="dark"] [data-tip]::before { border-top-color:#1a202c; }
 
 /* Hero */
 .tn-hero { position:relative; background:linear-gradient(135deg,#1a202c 0%,#2d3748 100%); color:#fff; padding:28px 24px 22px; border-radius:0 0 12px 12px; margin-bottom:0; overflow:hidden; }
@@ -140,7 +148,8 @@ $heroStyles = array_keys($heroStyles);
 
 /* Tabs */
 .tn-tabs { background:#fff; border:1px solid #e2e8f0; border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,0.05); overflow:hidden; }
-.tn-tab-nav { list-style:none; margin:0; padding:0; display:flex; border-bottom:1px solid #e2e8f0; overflow-x:auto; }
+.tn-tab-nav { list-style:none; margin:0; padding:0; display:flex; flex-wrap:wrap; border-bottom:1px solid #e2e8f0; overflow:hidden; }
+.tn-tab-nav::-webkit-scrollbar { display:none; }
 .tn-tab-nav li { padding:11px 16px; font-size:13px; font-weight:600; color:#718096; cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap; display:flex; align-items:center; gap:5px; }
 .tn-tab-nav li:hover { color:#276749; background:#f7fafc; }
 .tn-tab-active { color:#276749!important; border-bottom-color:#276749!important; background:#fff!important; }
@@ -170,6 +179,8 @@ $heroStyles = array_keys($heroStyles);
 .tn-remove-participant:hover { color:#e53e3e; }
 .tn-pill { display:inline-flex; align-items:center; justify-content:center; font-size:9px; font-weight:700; border-radius:10px; padding:1px 5px; line-height:1.4; letter-spacing:0.3px; flex-shrink:0; }
 .tn-pill-warrior { background:#ebf8ff; color:#2b6cb0; border:1px solid #bee3f8; }
+.tn-team-member-tag { display:inline-flex; align-items:center; gap:4px; background:#ebf8ff; color:#2b6cb0; border:1px solid #bee3f8; border-radius:12px; padding:3px 10px; font-size:12px; font-weight:600; margin:2px 4px 2px 0; }
+.tn-team-member-remove { background:none; border:none; color:#2b6cb0; cursor:pointer; font-size:14px; line-height:1; padding:0 0 0 4px; }
 .tn-pill-warlord { background:#fff8e1; color:#b45309; border:1px solid #fcd34d; }
 .tn-pill-knight  { background:#f0fff4; color:#276749; border:1px solid #9ae6b4; }
 .tn-pill-complete { background:#f0fff4; color:#276749; border:1px solid #9ae6b4; font-size:11px; font-weight:600; padding:2px 8px; border-radius:10px; display:inline-flex; align-items:center; gap:4px; }
@@ -338,7 +349,6 @@ $heroStyles = array_keys($heroStyles);
 .tn-bv-round-btn.tn-bv-round-btn-tb.active { background:#dd6b20; color:#fff; border-color:#dd6b20; }
 @keyframes tn-pill-pulse { 0%,100% { box-shadow:0 0 0 0 rgba(49,130,206,0); } 50% { box-shadow:0 0 0 5px rgba(49,130,206,0.38); } }
 .tn-bv-round-btn.tn-rr-next-pulse { animation:tn-pill-pulse 1.4s ease-in-out 3; }
-.tn-bv-round-section { }
 .tn-bv-section-label { font-size:11px; font-weight:700; color:#718096; text-transform:uppercase; letter-spacing:0.5px; margin:14px 0 8px; padding-bottom:4px; border-bottom:1px solid #e2e8f0; }
 .tn-bv-generate-bar { display:flex; align-items:center; gap:10px; padding:12px 14px; background:#f7fafc; border:1px dashed #e2e8f0; border-radius:8px; margin-bottom:14px; }
 .tn-bv-status-badge { font-size:11px; font-weight:700; padding:2px 8px; border-radius:10px; }
@@ -705,7 +715,7 @@ $heroStyles = array_keys($heroStyles);
 	.tn-stats-row { gap:8px; }
 	.tn-stat-card { min-width:calc(50% - 4px); }
 	.tn-field-row { grid-template-columns:1fr; }
-	.tn-tab-nav { overflow-x:auto; -webkit-overflow-scrolling:touch; scroll-snap-type:x mandatory; }
+	.tn-tab-nav { flex-wrap:wrap; overflow:hidden; }
 	.tn-tab-btn { scroll-snap-align:start; }
 	.tn-bv-round { min-width:150px; padding:0 8px; }
 	.tn-rr-round-body .tn-bv-match { min-width:100%; flex:1 1 100%; }
@@ -805,6 +815,11 @@ $heroStyles = array_keys($heroStyles);
 /* DnD reorder */
 .tn-dnd-over { background:#f0fff4!important; outline:2px dashed #276749; border-radius:6px; }
 .tn-dnd-handle { color:#cbd5e0; margin-right:4px; cursor:grab; font-size:11px; }
+.tn-dnd-list.tn-dnd-error { position:relative; }
+.tn-dnd-list.tn-dnd-error::before { content:attr(data-error); display:block; background:#fed7d7; color:#742a2a; padding:6px 10px; border-radius:4px; margin-bottom:6px; font-size:12px; font-weight:600; }
+html[data-theme="dark"] .tn-dnd-list.tn-dnd-error::before { background:#742a2a; color:#fed7d7; }
+.tn-bv-stale-warning { background:#fed7d7; color:#742a2a; padding:8px 12px; border-radius:4px; margin-bottom:8px; font-size:13px; }
+html[data-theme="dark"] .tn-bv-stale-warning { background:#742a2a; color:#fed7d7; }
 
 /* Autocomplete dropdown */
 .tn-ac-results { display:none; position:absolute; top:100%; left:0; right:0; background:#fff; border:1px solid #e2e8f0; border-top:none; border-radius:0 0 6px 6px; box-shadow:0 4px 12px rgba(0,0,0,.1); z-index:20; max-height:200px; overflow-y:auto; }
@@ -868,6 +883,8 @@ html[data-theme="dark"] .tn-remove-participant:hover { color:#fc8181; }
 
 /* Pills (warrior/warlord/knight/complete) — darken backgrounds, keep colored text legible */
 html[data-theme="dark"] .tn-pill-warrior { background:rgba(49,130,206,0.2); color:#90cdf4; border-color:rgba(49,130,206,0.4); }
+html[data-theme="dark"] .tn-team-member-tag { background:rgba(49,130,206,0.2); color:#90cdf4; border-color:rgba(49,130,206,0.4); }
+html[data-theme="dark"] .tn-team-member-remove { color:#90cdf4; }
 html[data-theme="dark"] .tn-pill-warlord { background:rgba(180,83,9,0.25); color:#fbd38d; border-color:rgba(252,211,77,0.45); }
 html[data-theme="dark"] .tn-pill-knight  { background:rgba(56,161,105,0.2); color:#9ae6b4; border-color:rgba(154,230,180,0.4); }
 html[data-theme="dark"] .tn-pill-complete { background:rgba(56,161,105,0.2); color:#9ae6b4; border-color:rgba(154,230,180,0.4); }
@@ -1127,8 +1144,6 @@ html[data-theme="dark"] [style*="color:#2d3748"] { color:#cbd5e0 !important; }
 html[data-theme="dark"] [style*="color:#4a5568"] { color:#cbd5e0 !important; }
 /* Trophy-gold and hero icon colors stay (they're warm highlights on dark gradients) */
 /* Modal title icons (#276749, #3182ce) flip via the rules above */
-/* Run Tourney button — white bg + dark green text on hero */
-html[data-theme="dark"] .tn-hero .tn-btn-primary[style*="background:#fff"] { background:#1a202c !important; color:#9ae6b4 !important; border:1px solid #68d391; }
 /* Help-text light boxes */
 html[data-theme="dark"] [style*="background:#f7fafc"] { background:#1a202c !important; border-color:#4a5568 !important; }
 html[data-theme="dark"] [style*="background:#fff5f5"] { background:rgba(229,62,62,0.15) !important; }
@@ -1136,11 +1151,39 @@ html[data-theme="dark"] [style*="background:#fff5f5"] { background:rgba(229,62,6
 html[data-theme="dark"] .tn-bv-podium-card[style*="background:#f7fafc"] { background:#2d3748 !important; color:#a0aec0 !important; border-color:#4a5568 !important; }
 
 /* Bracket-method left-border accents for cards already work in dark mode (color-only) */
+
+/* ===== Focus Mode (full-screen running view) ===== */
+.tn-focus-toggle { margin-left:auto; color:#276749 !important; gap:6px; font-weight:700; }
+.tn-focus-toggle:hover { color:#276749 !important; background:#f0fff4 !important; }
+.tn-focus-bar { display:none; position:sticky; top:0; z-index:50; align-items:center; justify-content:space-between; gap:12px; background:linear-gradient(135deg,#1a202c 0%,#2d3748 100%); color:#fff; padding:10px 16px; border-radius:0 0 12px 12px; margin-bottom:14px; box-shadow:0 2px 10px rgba(0,0,0,0.28); }
+.tn-focus-bar-title { font-size:1.05rem; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.tn-focus-bar-title i { color:#f6e05e; margin-right:8px; }
+.tn-focus-exit { flex-shrink:0; background:rgba(255,255,255,0.12); color:#fff; border:1px solid rgba(255,255,255,0.32); border-radius:6px; padding:6px 12px; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:6px; }
+.tn-focus-exit:hover { background:rgba(255,255,255,0.22); }
+#tn-root.tn-focus .tn-hero,
+#tn-root.tn-focus .tn-playtest-warn,
+#tn-root.tn-focus .tn-stats-row,
+#tn-root.tn-focus .tn-sidebar { display:none !important; }
+#tn-root.tn-focus .tn-focus-bar { display:flex; }
+#tn-root.tn-focus .tn-bv-wrap { min-height:calc(100vh - 230px); }
+/* Focus mode dark */
+html[data-theme="dark"] .tn-focus-toggle,
+html[data-theme="dark"] .tn-focus-toggle:hover { color:#9ae6b4 !important; }
+html[data-theme="dark"] .tn-focus-toggle:hover { background:#2d3748 !important; }
+html[data-theme="dark"] .tn-focus-bar { background:linear-gradient(135deg,#0f1419 0%,#1a202c 100%); box-shadow:0 2px 10px rgba(0,0,0,0.55); }
 </style>
 
 <!-- =============================================
      ZONE 1: Hero
      ============================================= -->
+<div id="tn-root">
+
+<!-- Focus-mode slim bar (hidden unless focus mode active) -->
+<div class="tn-focus-bar">
+	<div class="tn-focus-bar-title"><i class="fas fa-trophy"></i><?= htmlspecialchars($tName) ?></div>
+	<button class="tn-focus-exit" onclick="tnToggleFocus()"><i class="fas fa-compress"></i> Exit focus</button>
+</div>
+
 <div class="tn-hero">
 	<div class="tn-hero-content">
 		<!-- Trophy icon -->
@@ -1191,11 +1234,6 @@ html[data-theme="dark"] .tn-bv-podium-card[style*="background:#f7fafc"] { backgr
 				<button class="tn-btn tn-btn-outline" style="color:#fff;border-color:rgba(255,255,255,0.4)" onclick="tnOpenAddBracketModal()">
 					<i class="fas fa-plus"></i> Add Bracket
 				</button>
-				<?php if ($totalMatches > 0): ?>
-				<button class="tn-btn tn-btn-primary" style="background:#fff;color:#276749;font-weight:700" onclick="tnActivateTab('bracketviz')">
-					<i class="fas fa-play"></i> Run Tourney
-				</button>
-				<?php endif; ?>
 			</div>
 		</div>
 		<?php endif; ?>
@@ -1323,6 +1361,9 @@ html[data-theme="dark"] .tn-bv-podium-card[style*="background:#f7fafc"] { backgr
 				<li data-tntab="bracketviz" onclick="tnActivateTab('bracketviz')">
 					<i class="fas fa-project-diagram"></i> Run Tournament
 				</li>
+				<li class="tn-focus-toggle" onclick="tnToggleFocus()" data-tip="Hide everything but the bracket">
+					<i class="fas fa-expand"></i> Focus
+				</li>
 				<?php if (!empty($standingsData)): ?>
 				<li data-tntab="standings" onclick="tnActivateTab('standings')">
 					<i class="fas fa-medal"></i> Standings
@@ -1377,7 +1418,7 @@ html[data-theme="dark"] .tn-bv-podium-card[style*="background:#f7fafc"] { backgr
 					<?php $b = $bd['Bracket']; $pList = $bd['Participants']; $mList = $bd['Matches']; ?>
 					<div class="tn-bracket-card" id="tn-bracket-<?= $bid ?>" data-method="<?= htmlspecialchars($b['Method']) ?>" data-status="<?= htmlspecialchars($b['Status'] ?: 'setup') ?>">
 						<div class="tn-bracket-header">
-							<button class="tn-bracket-toggle" onclick="tnToggleBracket(<?= $bid ?>)" title="Collapse/expand"><i class="fas fa-chevron-down"></i></button>
+							<button class="tn-bracket-toggle" onclick="tnToggleBracket(<?= $bid ?>)" data-tip="Collapse/expand"><i class="fas fa-chevron-down"></i></button>
 							<div style="flex:1">
 								<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
 							<h4 style="margin:0"><?= htmlspecialchars($styleLabelMap[$b['Style']] ?? $b['Style']) ?></h4>
@@ -1401,10 +1442,10 @@ html[data-theme="dark"] .tn-bv-podium-card[style*="background:#f7fafc"] { backgr
 										$_teamCount = count($_teamIds);
 										$_memberCount = count($pList);
 									?>
-									<span title="Teams"><i class="fas fa-users" style="color:#3182ce"></i> <?= $_teamCount ?></span>
-									<span title="Individual Members"><i class="fas fa-user" style="color:#805ad5"></i> <?= $_memberCount ?></span>
+									<span data-tip="Teams"><i class="fas fa-users" style="color:#3182ce"></i> <?= $_teamCount ?></span>
+									<span data-tip="Individual Members"><i class="fas fa-user" style="color:#805ad5"></i> <?= $_memberCount ?></span>
 									<?php else: ?>
-									<span title="Individual Participants"><i class="fas fa-user" style="color:#805ad5"></i> <?= count($pList) ?></span>
+									<span data-tip="Individual Participants"><i class="fas fa-user" style="color:#805ad5"></i> <?= count($pList) ?></span>
 									<?php endif; ?>
 									<?php if ((int)$b['Rings'] > 1): ?>
 									<span><i class="fas fa-circle"></i> <?= (int)$b['Rings'] ?> rings</span>
@@ -1419,10 +1460,10 @@ html[data-theme="dark"] .tn-bv-podium-card[style*="background:#f7fafc"] { backgr
 							</div>
 							<?php if ($canManage): ?>
 							<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-								<button class="tn-btn tn-btn-outline tn-btn-sm" onclick="tnOpenEditBracketModal(<?= $bid ?>, <?= htmlspecialchars(json_encode(['style'=>$b['Style'],'styleNote'=>$b['StyleNote'],'method'=>$b['Method'],'rings'=>(int)$b['Rings'],'participants'=>$b['Participants'],'seeding'=>$b['Seeding'],'durationMinutes'=>(int)($b['DurationMinutes']??0),'bestOf'=>(int)($b['BestOf']??1)]), ENT_QUOTES) ?>)">
+								<button class="tn-btn tn-btn-outline tn-btn-sm" onclick="tnOpenEditBracketModal(<?= $bid ?>, <?= htmlspecialchars(json_encode(['style'=>$b['Style'],'styleNote'=>$b['StyleNote'],'method'=>$b['Method'],'rings'=>(int)$b['Rings'],'participants'=>$b['Participants'],'seeding'=>$b['Seeding'],'durationMinutes'=>(int)($b['DurationMinutes']??0),'bestOf'=>(int)($b['BestOf']??1)], JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT), ENT_QUOTES) ?>)">
 									<i class="fas fa-pencil-alt"></i> Edit
 								</button>
-								<button class="tn-btn tn-btn-outline tn-btn-sm" onclick="tnCopyBracket(<?= $bid ?>, <?= $tid ?>)" title="Duplicate this bracket with its participants">
+								<button class="tn-btn tn-btn-outline tn-btn-sm" onclick="tnCopyBracket(<?= $bid ?>, <?= $tid ?>)" data-tip="Duplicate this bracket with its participants">
 									<i class="fas fa-copy"></i> Copy
 								</button>
 								<?php if (($b['Participants'] ?? 'individual') === 'team'): ?>
@@ -1433,7 +1474,7 @@ html[data-theme="dark"] .tn-bv-podium-card[style*="background:#f7fafc"] { backgr
 								<button class="tn-btn tn-btn-outline tn-btn-sm" onclick="tnOpenAddParticipantModal(<?= $bid ?>, <?= $tid ?>)">
 									<i class="fas fa-user-plus"></i> Add Participant
 								</button>
-								<button class="tn-btn tn-btn-outline tn-btn-sm" onclick="tnOpenBulkAddModal(<?= $bid ?>, <?= $tid ?>)" title="Paste a list of aliases, one per line">
+								<button class="tn-btn tn-btn-outline tn-btn-sm" onclick="tnOpenBulkAddModal(<?= $bid ?>, <?= $tid ?>)" data-tip="Paste a list of aliases, one per line">
 									<i class="fas fa-clipboard-list"></i> Paste Roster
 								</button>
 								<?php endif; ?>
@@ -1445,14 +1486,14 @@ html[data-theme="dark"] .tn-bv-podium-card[style*="background:#f7fafc"] { backgr
 									<i class="fas fa-play"></i> <?= $_isRegen ? 'Re-generate' : 'Generate' ?>
 								</button>
 								<?php endif; ?>
-								<button class="tn-btn tn-btn-danger tn-btn-sm" onclick="tnDeleteBracket(<?= $bid ?>, <?= $tid ?>)" title="Delete bracket">
+								<button class="tn-btn tn-btn-danger tn-btn-sm" onclick="tnDeleteBracket(<?= $bid ?>, <?= $tid ?>)" data-tip="Delete bracket">
 									<i class="fas fa-times"></i>
 								</button>
 							</div>
 							<?php endif; ?>
 							<?php if (count($mList) > 0): ?>
 							<button class="tn-btn tn-btn-primary tn-btn-sm" onclick="tnGoToBracket(<?= $bid ?>)" style="margin-left:auto">
-								<i class="fas fa-play"></i> Run Tourney
+								<i class="fas fa-play"></i> Run Bracket
 							</button>
 							<?php endif; ?>
 						</div>
@@ -1498,7 +1539,7 @@ html[data-theme="dark"] .tn-bv-podium-card[style*="background:#f7fafc"] { backgr
 								<?php endforeach; ?>
 							</ul>
 							<?php else: ?>
-<?php $isDnd = $canManage && in_array($b['Seeding'] ?? '', ['manual','random-manual']); ?>
+<?php $isDnd = $canManage && in_array($b['Seeding'] ?? '', ['manual','random-manual','glicko2-manual']); ?>
 							<ul class="tn-participant-list<?= $isDnd ? ' tn-dnd-list' : '' ?>"<?= $isDnd ? ' data-bracket-id="' . $bid . '"' : '' ?>>
 								<?php foreach ($pList as $i => $p): ?>
 								<?php $_pStatus = $p['Status'] ?? 'active'; $_pStatusClass = ($_pStatus !== 'active') ? ' tn-pstatus-' . htmlspecialchars($_pStatus) : ''; ?>
@@ -1522,8 +1563,8 @@ html[data-theme="dark"] .tn-bv-podium-card[style*="background:#f7fafc"] { backgr
 									<span style="font-size:11px;color:#a0aec0"><?= htmlspecialchars($p['ParkName']) ?></span>
 									<?php endif; ?>
 									<?php if ($canManage): ?>
-									<span class="tn-status-wrap"><button class="tn-status-btn" onclick="tnToggleParticipantMenu(this)" title="Set status">&#8942;</button><div class="tn-status-menu"><div class="tn-status-menu-item<?= $_pStatus==='active'?' tn-sm-active':'' ?>" onclick="tnSetParticipantStatus(<?= (int)$p['ParticipantId'] ?>, 'active', <?= $bid ?>, this)"><span class="tn-sm-dot tn-sm-dot-active"></span>Active</div><div class="tn-status-menu-item<?= $_pStatus==='withdrawn'?' tn-sm-active':'' ?>" onclick="tnSetParticipantStatus(<?= (int)$p['ParticipantId'] ?>, 'withdrawn', <?= $bid ?>, this)"><span class="tn-sm-dot tn-sm-dot-withdrawn"></span>Withdrawn</div><div class="tn-status-menu-item<?= $_pStatus==='disqualified'?' tn-sm-active':'' ?>" onclick="tnSetParticipantStatus(<?= (int)$p['ParticipantId'] ?>, 'disqualified', <?= $bid ?>, this)"><span class="tn-sm-dot tn-sm-dot-disqualified"></span>Disqualified</div></div></span>
-									<button class="tn-remove-participant" data-pid="<?= (int)$p['ParticipantId'] ?>" data-bid="<?= $bid ?>" data-tid="<?= $tid ?>" title="Remove participant" onclick="tnRemoveParticipant(this)">&times;</button>
+									<span class="tn-status-wrap"><button class="tn-status-btn" onclick="tnToggleParticipantMenu(this)" data-tip="Set status">&#8942;</button><div class="tn-status-menu"><div class="tn-status-menu-item<?= $_pStatus==='active'?' tn-sm-active':'' ?>" onclick="tnSetParticipantStatus(<?= (int)$p['ParticipantId'] ?>, 'active', <?= $bid ?>, this)"><span class="tn-sm-dot tn-sm-dot-active"></span>Active</div><div class="tn-status-menu-item<?= $_pStatus==='withdrawn'?' tn-sm-active':'' ?>" onclick="tnSetParticipantStatus(<?= (int)$p['ParticipantId'] ?>, 'withdrawn', <?= $bid ?>, this)"><span class="tn-sm-dot tn-sm-dot-withdrawn"></span>Withdrawn</div><div class="tn-status-menu-item<?= $_pStatus==='disqualified'?' tn-sm-active':'' ?>" onclick="tnSetParticipantStatus(<?= (int)$p['ParticipantId'] ?>, 'disqualified', <?= $bid ?>, this)"><span class="tn-sm-dot tn-sm-dot-disqualified"></span>Disqualified</div></div></span>
+									<button class="tn-remove-participant" data-pid="<?= (int)$p['ParticipantId'] ?>" data-bid="<?= $bid ?>" data-tid="<?= $tid ?>" data-tip="Remove participant" onclick="tnRemoveParticipant(this)">&times;</button>
 									<?php endif; ?>
 								</li>
 								<?php endforeach; ?>
@@ -1536,7 +1577,7 @@ html[data-theme="dark"] .tn-bv-podium-card[style*="background:#f7fafc"] { backgr
 								<div style="display:flex;align-items:center;gap:6px<?= $_isIronman ? '' : ';margin-bottom:8px' ?>">
 									<span style="font-size:12px;font-weight:700;color:#718096;text-transform:uppercase;letter-spacing:0.5px;flex:1"><?= $_isIronman ? 'Match Sequence' : 'Match Results' ?></span>
 									<?php if ($_isIronman): ?>
-									<button onclick="tnToggleSeq('<?= $_seqId ?>')" style="background:none;border:none;color:#a0aec0;cursor:pointer;padding:2px 5px;font-size:11px;line-height:1" title="Expand/collapse sequence">
+									<button onclick="tnToggleSeq('<?= $_seqId ?>')" style="background:none;border:none;color:#a0aec0;cursor:pointer;padding:2px 5px;font-size:11px;line-height:1" data-tip="Expand/collapse sequence">
 										<i class="fas fa-chevron-down" id="<?= $_seqId ?>-icon" style="transform:rotate(-90deg);transition:transform .2s"></i>
 									</button>
 									<?php endif; ?>
@@ -1666,7 +1707,7 @@ foreach ($bracketData as $_bid => $_bd) {
 						<?php endforeach; ?>
 					</div>
 					<?php if ($canManage): ?>
-					<button class="tn-btn tn-btn-ghost tn-btn-sm" onclick="tnOpenConfigStandingsModal()" title="Configure standings points" style="padding:6px 10px;flex-shrink:0">
+					<button class="tn-btn tn-btn-ghost tn-btn-sm" onclick="tnOpenConfigStandingsModal()" data-tip="Configure standings points" style="padding:6px 10px;flex-shrink:0">
 						<i class="fas fa-cog"></i>
 					</button>
 					<?php endif; ?>
@@ -1766,6 +1807,8 @@ foreach ($bracketData as $_bid => $_bd) {
 	</div><!-- /.tn-main -->
 
 </div><!-- /.tn-layout -->
+
+</div><!-- /#tn-root -->
 
 
 <?php if ($canManage): ?>
@@ -2160,7 +2203,7 @@ foreach ($bracketData as $_bid => $_bd) {
 			<div style="display:flex;gap:14px">
 				<div class="tn-field" style="flex:1">
 					<label for="tn-et-date">DATE</label>
-					<input type="date" id="tn-et-date">
+					<input type="text" id="tn-et-date" placeholder="Select a date">
 				</div>
 				<div class="tn-field" style="flex:1">
 					<label for="tn-et-url">URL</label>
@@ -2274,27 +2317,27 @@ foreach ($bracketData as $_bid => $_bd) {
      ============================================= -->
 <script>
 var TnConfig = {
-	uir:                  '<?= UIR ?>',
-	httpService:          '<?= HTTP_SERVICE ?>',
+	uir:                  <?= json_encode(UIR, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>,
+	httpService:          <?= json_encode(HTTP_SERVICE, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>,
 	tournamentId:         <?= $tid ?>,
 	kingdomId:            <?= $tKingdomId ?>,
-	kingdomName:          <?= json_encode($tKingdomName) ?>,
+	kingdomName:          <?= json_encode($tKingdomName, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>,
 	parkId:               <?= $tParkId ?>,
-	parkName:             <?= json_encode($tParkName) ?>,
-	tournamentName:       <?= json_encode($tName) ?>,
-	tournamentDescription:<?= json_encode($tDescription) ?>,
-	tournamentDate:       <?= json_encode(($tDate && substr($tDate,0,10) !== '0000-00-00') ? substr($tDate,0,10) : '') ?>,
-	tournamentUrl:        <?= json_encode($tUrl) ?>,
+	parkName:             <?= json_encode($tParkName, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>,
+	tournamentName:       <?= json_encode($tName, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>,
+	tournamentDescription:<?= json_encode($tDescription, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>,
+	tournamentDate:       <?= json_encode(($tDate && substr($tDate,0,10) !== '0000-00-00') ? substr($tDate,0,10) : '', JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>,
+	tournamentUrl:        <?= json_encode($tUrl, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>,
 	ecdId:                <?= $tECDId ?>,
-	eventLabel:           <?= json_encode($tEventLabel) ?>,
-	eventName:            <?= json_encode($tEventName) ?>,
+	eventLabel:           <?= json_encode($tEventLabel, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>,
+	eventName:            <?= json_encode($tEventName, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>,
 	canManage:            <?= $canManage ? 'true' : 'false' ?>,
 	loggedIn:             <?= $loggedIn ? 'true' : 'false' ?>,
-	bracketData:          <?= json_encode($bracketData) ?>,
-	methodLabels:         <?= json_encode($methodLabelMap) ?>,
-	styleLabels:          <?= json_encode($styleLabelMap) ?>,
-	standingsData:        <?= json_encode($standingsData) ?>,
-	standingsPoints:      <?= json_encode($standingsPoints) ?>,
+	bracketData:          <?= json_encode($bracketData, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>,
+	methodLabels:         <?= json_encode($methodLabelMap, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>,
+	styleLabels:          <?= json_encode($styleLabelMap, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>,
+	standingsData:        <?= json_encode($standingsData, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>,
+	standingsPoints:      <?= json_encode($standingsPoints, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>,
 };
 document.title = 'ORK 3: <?= htmlspecialchars($tName, ENT_QUOTES) ?>';
 </script>
@@ -2302,12 +2345,45 @@ document.title = 'ORK 3: <?= htmlspecialchars($tName, ENT_QUOTES) ?>';
 <script src="<?= HTTP_TEMPLATE ?>revised-frontend/script/revised.js?v=<?= filemtime(__DIR__ . '/script/revised.js') ?>"></script>
 
 <script>
+// ---- Lazy Flatpickr loader ----
+// Flatpickr is only needed when a manager opens the Edit Tournament modal, so
+// we load the CDN assets on first use rather than on every (often read-only)
+// page view. Subsequent calls invoke the callback immediately.
+var _tnFpState = 'idle'; // idle | loading | ready
+var _tnFpQueue = [];
+function tnEnsureFlatpickr(cb) {
+	if (_tnFpState === 'ready' || typeof flatpickr === 'function') { _tnFpState = 'ready'; cb(); return; }
+	_tnFpQueue.push(cb);
+	if (_tnFpState === 'loading') return;
+	_tnFpState = 'loading';
+	var link = document.createElement('link');
+	link.rel = 'stylesheet';
+	link.href = 'https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css';
+	document.head.appendChild(link);
+	var scr = document.createElement('script');
+	scr.src = 'https://cdn.jsdelivr.net/npm/flatpickr';
+	scr.onload = function() {
+		_tnFpState = 'ready';
+		_tnFpQueue.forEach(function(fn) { fn(); });
+		_tnFpQueue = [];
+	};
+	scr.onerror = function() {
+		// Leave the raw date input usable if the CDN fails.
+		_tnFpState = 'idle';
+		_tnFpQueue = [];
+	};
+	document.head.appendChild(scr);
+}
+
 // ---- Tab switching ----
+var _tnTabNav = null, _tnTabPanels = null;
 function tnActivateTab(name) {
-	document.querySelectorAll('#tn-tab-nav li').forEach(function(li) {
+	if (!_tnTabNav)    _tnTabNav    = document.querySelectorAll('#tn-tab-nav li');
+	if (!_tnTabPanels) _tnTabPanels = document.querySelectorAll('.tn-tab-panel');
+	_tnTabNav.forEach(function(li) {
 		li.classList.toggle('tn-tab-active', li.dataset.tntab === name);
 	});
-	document.querySelectorAll('.tn-tab-panel').forEach(function(p) {
+	_tnTabPanels.forEach(function(p) {
 		p.style.display = p.id === 'tn-tab-' + name ? '' : 'none';
 	});
 }
@@ -2337,6 +2413,21 @@ function tnToggleBracket(bid) {
 	var state = JSON.parse(sessionStorage.getItem(key) || '{}');
 	state[bid] = card.classList.contains('tn-collapsed');
 	sessionStorage.setItem(key, JSON.stringify(state));
+}
+
+// ---- Focus mode (full-screen running view) ----
+function tnSetFocus(on) {
+	var root = document.getElementById('tn-root');
+	if (!root) return;
+	root.classList.toggle('tn-focus', on);
+	var li = document.querySelector('.tn-focus-toggle i');
+	if (li) li.className = on ? 'fas fa-compress' : 'fas fa-expand';
+	if (on) sessionStorage.setItem('tnFocusMode', '1');
+	else    sessionStorage.removeItem('tnFocusMode');
+}
+function tnToggleFocus() {
+	var root = document.getElementById('tn-root');
+	tnSetFocus(!(root && root.classList.contains('tn-focus')));
 }
 
 function tnDeleteBracket(bid, tid) {
@@ -2451,6 +2542,10 @@ function tnOpenModal(id) {
 function tnCloseModal(id) {
 	var ov = document.getElementById(id);
 	if (ov) ov.classList.remove('tn-open');
+	// Autocomplete dropdowns are appended to <body> (see tnFixedAcPosition), so
+	// they aren't hidden by the modal closing — close any open ones explicitly.
+	document.querySelectorAll('.tn-ac-results.tn-ac-open, .kn-ac-results.kn-ac-open')
+		.forEach(function(d) { d.classList.remove('tn-ac-open', 'kn-ac-open'); });
 }
 function tnShowFeedback(elId, msg, ok) {
 	var el = document.getElementById(elId);
@@ -2539,8 +2634,8 @@ function tnRenderLeaderboard() {
 			+ rankCell
 			+ '<td>' + nameCell + '</td>'
 			+ '<td style="color:#718096">' + tnEsc(e.ParkName || '—') + '</td>'
-			+ '<td style="text-align:center;color:#718096;font-size:12px">' + e.BracketCount + '</td>'
-			+ '<td style="text-align:right;font-weight:800;color:#276749;font-size:15px">' + e.Points + '</td>'
+			+ '<td style="text-align:center;color:#718096;font-size:12px">' + tnEsc(String(e.BracketCount)) + '</td>'
+			+ '<td style="text-align:right;font-weight:800;color:#276749;font-size:15px">' + tnEsc(String(e.Points)) + '</td>'
 			+ '</tr>';
 	});
 	tbody.innerHTML = rows;
@@ -2709,6 +2804,30 @@ function tnUpdatePlacePtsCols() {
 		var _edFld = document.getElementById('tn-editbracket-duration-field');
 		if (_edur) _edur.value = data.durationMinutes || 0;
 		if (_edFld) _edFld.style.display = (data.method === 'ironman') ? '' : 'none';
+		// Auto-expand the advanced section when any field is in a non-default
+		// state. Run synchronously here (fields are already populated above).
+		(function(){
+			var pv = document.getElementById('tn-editbracket-participants');
+			var rv = document.getElementById('tn-editbracket-rings');
+			var sv = document.getElementById('tn-editbracket-seeding');
+			var nv = document.getElementById('tn-editbracket-stylenote');
+			var bo = document.getElementById('tn-editbracket-bestof');
+			var nonDefault =
+				(pv && pv.value && pv.value !== 'individual') ||
+				(rv && rv.value && parseInt(rv.value, 10) > 1) ||
+				(sv && sv.value && sv.value !== 'random') ||
+				(nv && nv.value && nv.value.trim() !== '') ||
+				(bo && bo.value && parseInt(bo.value, 10) > 1);
+			var adv = document.getElementById('tn-editbracket-advanced');
+			var btn = document.querySelector('.tn-advanced-toggle[data-target="tn-editbracket-advanced"]');
+			if (adv){
+				adv.style.display = nonDefault ? '' : 'none';
+				if (btn){
+					var icon = btn.querySelector('i');
+					if (icon) icon.style.transform = nonDefault ? 'rotate(90deg)' : '';
+				}
+			}
+		})();
 		tnOpenModal(OVERLAY);
 	};
 
@@ -2769,12 +2888,19 @@ function tnUpdatePlacePtsCols() {
 
 // Helper: position an autocomplete dropdown with fixed coords (breaks out of modal)
 function tnFixedAcPosition(inputEl, dropdownEl) {
+	// Move the dropdown to <body> so position:fixed resolves against the
+	// viewport. Inside the modals, .tn-modal-box has a transform, which makes
+	// it the containing block for fixed descendants (and .tn-modal-body clips
+	// via overflow); appending to body escapes both.
+	if (dropdownEl.parentNode !== document.body) {
+		document.body.appendChild(dropdownEl);
+	}
 	var rect = inputEl.getBoundingClientRect();
 	dropdownEl.style.position = 'fixed';
 	dropdownEl.style.left     = rect.left + 'px';
 	dropdownEl.style.width    = rect.width + 'px';
 	dropdownEl.style.top      = (rect.bottom + 4) + 'px';
-	dropdownEl.style.right    = '';
+	dropdownEl.style.right    = 'auto';
 	dropdownEl.style.zIndex   = '9999';
 }
 
@@ -2799,6 +2925,20 @@ function tnFixedAcPosition(inputEl, dropdownEl) {
 		if (nameEl)   nameEl.value  = TnConfig.tournamentName        || '';
 		if (descEl)   descEl.value  = TnConfig.tournamentDescription || '';
 		if (dateEl)   dateEl.value  = TnConfig.tournamentDate        || '';
+		// Human-readable date display via Flatpickr (project convention: no
+		// raw ISO visible). Flatpickr is lazy-loaded on first modal open so it
+		// is not fetched on read-only page views. The hidden ISO value stays
+		// on #tn-et-date.
+		if (dateEl) {
+			tnEnsureFlatpickr(function() {
+				if (typeof flatpickr !== 'function') return;
+				if (!dateEl._tnFp) {
+					dateEl._tnFp = flatpickr(dateEl, { dateFormat: 'Y-m-d', altInput: true, altFormat: 'F j, Y' });
+				}
+				if (TnConfig.tournamentDate) dateEl._tnFp.setDate(TnConfig.tournamentDate, false);
+				else dateEl._tnFp.clear();
+			});
+		}
 		if (urlEl)    urlEl.value   = TnConfig.tournamentUrl         || '';
 		if (parkTx)   parkTx.value  = TnConfig.parkName              || '';
 		if (parkId)   parkId.value  = TnConfig.parkId                || 0;
@@ -3036,7 +3176,7 @@ function tnFixedAcPosition(inputEl, dropdownEl) {
 			var nameEl = document.createElement('span');
 			nameEl.className = 'tn-quickadd-name';
 			nameEl.textContent = p.Alias || p.Persona || '—';
-			if (p.Persona && p.Alias && p.Alias !== p.Persona) nameEl.title = p.Persona;
+			if (p.Persona && p.Alias && p.Alias !== p.Persona) nameEl.setAttribute('data-tip', p.Persona);
 			var btn = document.createElement('button');
 			btn.className = 'tn-btn tn-btn-outline tn-btn-sm';
 			btn.style.cssText = 'padding:2px 10px;flex-shrink:0';
@@ -3073,7 +3213,25 @@ function tnFixedAcPosition(inputEl, dropdownEl) {
 						if (!ul) { ul = document.createElement('ul'); ul.className = 'tn-participant-list'; var body = card.querySelector('.tn-bracket-body'); if (body) body.insertBefore(ul, body.firstChild); }
 						var num = ul.querySelectorAll('li').length + 1;
 						var li  = document.createElement('li');
-						li.innerHTML = '<span class="tn-participant-seed">' + num + '</span><span style="flex:1">' + tnEsc(alias) + '</span>' + (TnConfig.canManage ? '<button class="tn-remove-participant" data-pid="' + (d.participantId||0) + '" data-bid="' + bracketId + '" data-tid="' + TnConfig.tournamentId + '" title="Remove participant" onclick="tnRemoveParticipant(this)">&times;</button>' : '');
+						var seedSpan = document.createElement('span');
+						seedSpan.className = 'tn-participant-seed';
+						seedSpan.textContent = num;
+						li.appendChild(seedSpan);
+						var aliasSpan = document.createElement('span');
+						aliasSpan.style.flex = '1';
+						aliasSpan.textContent = alias;
+						li.appendChild(aliasSpan);
+						if (TnConfig.canManage) {
+							var rmBtn = document.createElement('button');
+							rmBtn.className = 'tn-remove-participant';
+							rmBtn.setAttribute('data-pid', String(d.participantId || 0));
+							rmBtn.setAttribute('data-bid', String(bracketId));
+							rmBtn.setAttribute('data-tid', String(TnConfig.tournamentId));
+							rmBtn.setAttribute('data-tip', 'Remove participant');
+							rmBtn.innerHTML = '&times;';
+							rmBtn.addEventListener('click', function() { tnRemoveParticipant(this); });
+							li.appendChild(rmBtn);
+						}
 						ul.appendChild(li);
 						var hdr = card.querySelector('.tn-bracket-header');
 						if (hdr) hdr.querySelectorAll('span').forEach(function(s){ if(/\d+ participant/.test(s.textContent)) s.textContent = num + ' participant' + (num !== 1 ? 's' : ''); });
@@ -3112,6 +3270,7 @@ function tnFixedAcPosition(inputEl, dropdownEl) {
 		resultsEl.innerHTML = '';
 		if (!players || !players.length) {
 			resultsEl.innerHTML = '<div class="tn-ac-item tn-ac-empty">No players found</div>';
+			if (playerInput) tnFixedAcPosition(playerInput, resultsEl);
 			resultsEl.classList.add('tn-ac-open');
 			return;
 		}
@@ -3134,6 +3293,7 @@ function tnFixedAcPosition(inputEl, dropdownEl) {
 			});
 			resultsEl.appendChild(item);
 		});
+		if (playerInput) tnFixedAcPosition(playerInput, resultsEl);
 		resultsEl.classList.add('tn-ac-open');
 	}
 
@@ -3229,7 +3389,25 @@ function tnFixedAcPosition(inputEl, dropdownEl) {
 							}
 							var num = ul.querySelectorAll('li').length + 1;
 							var li = document.createElement('li');
-							li.innerHTML = '<span class="tn-participant-seed">' + num + '</span><span style="flex:1">' + tnEsc(alias) + '</span>' + (TnConfig.canManage ? '<button class="tn-remove-participant" data-pid="' + (d.participantId || 0) + '" data-bid="' + bracketId + '" data-tid="' + TnConfig.tournamentId + '" title="Remove participant" onclick="tnRemoveParticipant(this)">&times;</button>' : '');
+							var seedSpan2 = document.createElement('span');
+							seedSpan2.className = 'tn-participant-seed';
+							seedSpan2.textContent = num;
+							li.appendChild(seedSpan2);
+							var aliasSpan2 = document.createElement('span');
+							aliasSpan2.style.flex = '1';
+							aliasSpan2.textContent = alias;
+							li.appendChild(aliasSpan2);
+							if (TnConfig.canManage) {
+								var rmBtn2 = document.createElement('button');
+								rmBtn2.className = 'tn-remove-participant';
+								rmBtn2.setAttribute('data-pid', String(d.participantId || 0));
+								rmBtn2.setAttribute('data-bid', String(bracketId));
+								rmBtn2.setAttribute('data-tid', String(TnConfig.tournamentId));
+								rmBtn2.setAttribute('data-tip', 'Remove participant');
+								rmBtn2.innerHTML = '&times;';
+								rmBtn2.addEventListener('click', function() { tnRemoveParticipant(this); });
+								li.appendChild(rmBtn2);
+							}
 							ul.appendChild(li);
 							var hdr = card.querySelector('.tn-bracket-header');
 							if (hdr) { hdr.querySelectorAll('span').forEach(function(s) { if (/\d+ participant/.test(s.textContent)) s.textContent = num + ' participant' + (num !== 1 ? 's' : ''); }); }
@@ -3382,12 +3560,12 @@ function tnFixedAcPosition(inputEl, dropdownEl) {
 		}
 		_teamMembers.forEach(function(m) {
 			var tag = document.createElement('span');
-			tag.style.cssText = 'display:inline-flex;align-items:center;gap:4px;background:#ebf8ff;color:#2b6cb0;border:1px solid #bee3f8;border-radius:12px;padding:3px 10px;font-size:12px;font-weight:600;margin:2px 4px 2px 0';
+			tag.className = 'tn-team-member-tag';
 			tag.innerHTML = '<i class="fas fa-user" style="font-size:10px"></i> ' + tnEsc(m.Persona);
 			var x = document.createElement('button');
-			x.style.cssText = 'background:none;border:none;color:#2b6cb0;cursor:pointer;font-size:14px;line-height:1;padding:0 0 0 4px';
+			x.className = 'tn-team-member-remove';
 			x.innerHTML = '&times;';
-			x.title = 'Remove';
+			x.setAttribute('data-tip', 'Remove');
 			x.addEventListener('click', function() { tnRemoveTeamMember(m.MundaneId); });
 			tag.appendChild(x);
 			container.appendChild(tag);
@@ -3417,6 +3595,7 @@ function tnFixedAcPosition(inputEl, dropdownEl) {
 
 		if (!filtered.length) {
 			teamResultsEl.innerHTML = '<div class="tn-ac-item tn-ac-empty">No players found</div>';
+			if (teamPlayerInput) tnFixedAcPosition(teamPlayerInput, teamResultsEl);
 			teamResultsEl.classList.add('tn-ac-open');
 			return;
 		}
@@ -3437,6 +3616,7 @@ function tnFixedAcPosition(inputEl, dropdownEl) {
 			});
 			teamResultsEl.appendChild(item);
 		});
+		if (teamPlayerInput) tnFixedAcPosition(teamPlayerInput, teamResultsEl);
 		teamResultsEl.classList.add('tn-ac-open');
 	}
 
@@ -3587,7 +3767,15 @@ window.tnSortTable = function(tableId, colIndex, numeric) {
 	var tbl = document.getElementById(tableId);
 	if (!tbl) return;
 	var tbody = tbl.querySelector('tbody');
-	var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+	var allRows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+	// Separate rank-group spacer rows; they only make sense in the default
+	// rank-grouped order, so drop them once a custom sort is applied.
+	var spacerRows = [], rows = [];
+	allRows.forEach(function(r) {
+		if (r.classList.contains('tn-standings-spacer')) spacerRows.push(r);
+		else rows.push(r);
+	});
+	spacerRows.forEach(function(r) { if (r.parentNode) r.parentNode.removeChild(r); });
 	var asc = tbl.dataset.sortCol == colIndex && tbl.dataset.sortDir !== 'asc';
 	tbl.dataset.sortCol = colIndex;
 	tbl.dataset.sortDir = asc ? 'asc' : 'desc';
@@ -3635,26 +3823,38 @@ window.tnSortTable = function(tableId, colIndex, numeric) {
 				e.preventDefault();
 				li.classList.remove('tn-dnd-over');
 				if (!dragSrc || dragSrc === li) return;
+				// Snapshot current order so we can revert if the save fails.
+				var prevOrder = Array.prototype.slice.call(list.querySelectorAll('li[data-pid]'));
 				// Insert dragSrc before this element
-				var allItems = Array.prototype.slice.call(list.querySelectorAll('li[data-pid]'));
+				var allItems = prevOrder.slice();
 				var srcIdx = allItems.indexOf(dragSrc);
 				var dstIdx = allItems.indexOf(li);
 				if (srcIdx < dstIdx) list.insertBefore(dragSrc, li.nextSibling);
 				else                 list.insertBefore(dragSrc, li);
 				// Update seed number badges
 				var newOrder = [];
-				list.querySelectorAll('li[data-pid]').forEach(function(item, idx) {
-					var seedEl = item.querySelector('.tn-seed-enhanced') || item.querySelector('.tn-participant-seed'); if (seedEl) seedEl.textContent = idx + 1;
-					newOrder.push(item.dataset.pid);
-				});
+				function renumber() {
+					list.querySelectorAll('li[data-pid]').forEach(function(item, idx) {
+						var seedEl = item.querySelector('.tn-seed-enhanced') || item.querySelector('.tn-participant-seed'); if (seedEl) seedEl.textContent = idx + 1;
+					});
+				}
+				list.querySelectorAll('li[data-pid]').forEach(function(item) { newOrder.push(item.dataset.pid); });
+				renumber();
+				function restoreOrder() {
+					prevOrder.forEach(function(item) { list.appendChild(item); });
+					renumber();
+					list.setAttribute('data-error', 'Reorder save failed — restored previous order');
+					list.classList.add('tn-dnd-error');
+					setTimeout(function() { list.classList.remove('tn-dnd-error'); list.removeAttribute('data-error'); }, 4000);
+				}
 				// Save new order
 				var url = TnConfig.uir + 'TournamentAjax/bracket/' + bracketId + '/reorder';
 				var fd  = new FormData();
 				fd.append('Order', JSON.stringify(newOrder));
 					fd.append('TournamentId', TnConfig.tournamentId);
 				fetch(url, { method:'POST', body:fd }).then(function(r) { return r.json(); }).then(function(d) {
-					if (!d || d.status !== 0) console.warn('Reorder save failed', d);
-				}).catch(function(e) { console.warn('Reorder error', e); });
+					if (!d || d.status !== 0) { console.warn('Reorder save failed', d); restoreOrder(); }
+				}).catch(function(e) { console.warn('Reorder error', e); restoreOrder(); });
 			});
 		});
 	}
@@ -3733,14 +3933,17 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 // Bracket Visualization
 // ============================================================
 (function() {
+	// Module-level refs for currently-open quick-result bar (closed by ref instead of
+	// document-wide querySelectorAll on every match-card click).
+	var _openQrBar = null, _openQrBox = null;
 	// Find first bracket id with matches, or first bracket
 	function firstBracketId() {
 		var bd = TnConfig.bracketData;
 		// prefer one with matches
-		for (var bid in bd) {
-			if (bd.hasOwnProperty(bid) && bd[bid].Matches && bd[bid].Matches.length > 0) return parseInt(bid);
+		for (var bidA in bd) {
+			if (bd.hasOwnProperty(bidA) && bd[bidA].Matches && bd[bidA].Matches.length > 0) return parseInt(bidA);
 		}
-		for (var bid in bd) { if (bd.hasOwnProperty(bid)) return parseInt(bid); }
+		for (var bidB in bd) { if (bd.hasOwnProperty(bidB)) return parseInt(bidB); }
 		return 0;
 	}
 
@@ -3748,15 +3951,20 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 		var tid = TnConfig.tournamentId;
 		Promise.all([
 			fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bracketId + '/matches').then(function(r){ return r.json(); }),
-			fetch(TnConfig.uir + 'TournamentAjax/tournament/' + tid + '/brackets').then(function(r){ return r.json(); })
+			fetch(TnConfig.uir + 'TournamentAjax/tournament/' + tid + '/brackets').then(function(r){ return r.json(); }),
+			fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bracketId + '/participants').then(function(r){ return r.json(); })
 		]).then(function(results) {
-			var mData = results[0], bData = results[1];
+			var mData = results[0], bData = results[1], pData = results[2];
 			if (mData.status === 0 && TnConfig.bracketData[bracketId]) {
 				TnConfig.bracketData[bracketId].Matches = mData.matches || [];
 			}
 			if (bData.status === 0 && bData.brackets && TnConfig.bracketData[bracketId]) {
 				var br = bData.brackets.find(function(b) { return parseInt(b.BracketId) === parseInt(bracketId); });
 				if (br) TnConfig.bracketData[bracketId].Bracket = br;
+			}
+			// Keep Participants fresh too (e.g. added in another tab).
+			if (pData && pData.status === 0 && TnConfig.bracketData[bracketId]) {
+				TnConfig.bracketData[bracketId].Participants = pData.participants || [];
 			}
 			tnRenderBracketViz(bracketId);
 		}).catch(function(){ tnRenderBracketViz(bracketId); });
@@ -3766,7 +3974,6 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 		var container = document.getElementById('tn-bv-container');
 		if (!container) return;
 		container.innerHTML = '';
-		tnBoutLabelShown = false;
 
 		var bd = TnConfig.bracketData[bracketId];
 		if (!bd) { container.innerHTML = '<div class="tn-bv-empty">Bracket not found.</div>'; return; }
@@ -3809,7 +4016,7 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 				genBtn.innerHTML = '<i class="fas fa-play"></i> ' + (isRegenerate ? 'Regenerate' : 'Generate Matches');
 				if (hasCompleted) {
 					genBtn.disabled = true;
-					genBtn.title = 'Cannot regenerate: ' + resolved + ' match' + (resolved === 1 ? '' : 'es') + ' already completed. Reset completed matches first.';
+					genBtn.setAttribute('data-tip', 'Cannot regenerate: ' + resolved + ' match' + (resolved === 1 ? '' : 'es') + ' already completed. Reset completed matches first.');
 				} else {
 					genBtn.onclick = function() { tnGenerateMatches(bracketId, TnConfig.tournamentId); };
 				}
@@ -3849,11 +4056,11 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 		var zoomWrap = document.createElement('div');
 		zoomWrap.className = 'tn-bv-zoom-controls';
 		var zoomOut = document.createElement('button');
-		zoomOut.className = 'tn-bv-zoom-btn'; zoomOut.innerHTML = '&minus;'; zoomOut.title = 'Zoom out';
+		zoomOut.className = 'tn-bv-zoom-btn'; zoomOut.innerHTML = '&minus;'; zoomOut.setAttribute('data-tip', 'Zoom out');
 		var zoomIn = document.createElement('button');
-		zoomIn.className = 'tn-bv-zoom-btn'; zoomIn.innerHTML = '&plus;'; zoomIn.title = 'Zoom in';
+		zoomIn.className = 'tn-bv-zoom-btn'; zoomIn.innerHTML = '&plus;'; zoomIn.setAttribute('data-tip', 'Zoom in');
 		var zoomReset = document.createElement('button');
-		zoomReset.className = 'tn-bv-zoom-btn'; zoomReset.innerHTML = '<i class="fas fa-compress-arrows-alt" style="font-size:11px"></i>'; zoomReset.title = 'Reset zoom';
+		zoomReset.className = 'tn-bv-zoom-btn'; zoomReset.innerHTML = '<i class="fas fa-compress-arrows-alt" style="font-size:11px"></i>'; zoomReset.setAttribute('data-tip', 'Reset zoom');
 		var zoomLabel = document.createElement('span');
 		zoomLabel.className = 'tn-bv-zoom-level'; zoomLabel.textContent = '100%';
 		function applyZoom() {
@@ -3997,7 +4204,7 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 						.then(function(d) {
 							if (d.status === 0) {
 								if (TnConfig.bracketData[bracketId] && TnConfig.bracketData[bracketId].Bracket) {
-									TnConfig.bracketData[bracketId].Bracket.Status = 'finalized';
+									TnConfig.bracketData[bracketId].Bracket.Status = 'complete';
 								}
 								tnRenderBracketViz(bracketId);
 							} else {
@@ -4081,7 +4288,7 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 						.then(function(d) {
 							if (d.status === 0) {
 								if (TnConfig.bracketData[bracketId] && TnConfig.bracketData[bracketId].Bracket) {
-									TnConfig.bracketData[bracketId].Bracket.Status = 'finalized';
+									TnConfig.bracketData[bracketId].Bracket.Status = 'complete';
 								}
 								tnRenderBracketViz(bracketId);
 							} else {
@@ -4115,6 +4322,13 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 			var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
 			svg.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:0';
 
+			// One-pass index of matchId → element to avoid O(matches) attribute-selector queries per pair
+			var matchBoxByMid = {};
+			tree.querySelectorAll('[data-matchid]').forEach(function(el) { matchBoxByMid[el.getAttribute('data-matchid')] = el; });
+
+			// PASS 1 — gather all pairs and read every getBoundingClientRect
+			// up front so the path-building pass triggers zero forced reflows.
+			var pairs = [];
 			for (var r = 1; r < maxRound; r++) {
 				var srcRound = (rounds[r] || []).slice().sort(function(a,b){ return (a.Order||0)-(b.Order||0); });
 				var dstRound = (rounds[r+1] || []).slice().sort(function(a,b){ return (a.Order||0)-(b.Order||0); });
@@ -4123,13 +4337,26 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 					var m2   = srcRound[i+1] || null;
 					var mDst = dstRound[Math.floor(i/2)] || null;
 					if (!mDst) continue;
-					var box1   = tree.querySelector('[data-matchid="' + m1.MatchId + '"]');
-					var box2   = m2  ? tree.querySelector('[data-matchid="' + m2.MatchId  + '"]') : null;
-					var boxDst = tree.querySelector('[data-matchid="' + mDst.MatchId + '"]');
+					var box1   = matchBoxByMid[m1.MatchId];
+					var box2   = m2  ? matchBoxByMid[m2.MatchId]  : null;
+					var boxDst = matchBoxByMid[mDst.MatchId];
 					if (!box1 || !boxDst) continue;
+					pairs.push({
+						m1: m1, m2: m2, mDst: mDst,
+						r1: box1.getBoundingClientRect(),
+						r2: box2 ? box2.getBoundingClientRect() : null,
+						rDst: boxDst.getBoundingClientRect()
+					});
+				}
+			}
 
-					var r1   = box1.getBoundingClientRect();
-					var rDst = boxDst.getBoundingClientRect();
+			// PASS 2 — build SVG paths from the cached rects (no layout reads)
+			pairs.forEach(function(pr) {
+					var m1   = pr.m1;
+					var m2   = pr.m2;
+					var r1   = pr.r1;
+					var rDst = pr.rDst;
+					var box2 = pr.r2;
 					var x1   = r1.right   - treeRect.left;
 					var y1   = r1.top     - treeRect.top  + r1.height / 2;
 					var xDst = rDst.left  - treeRect.left;
@@ -4140,7 +4367,7 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 					var m2Resolved = m2 && m2.Result && m2.Result !== '';
 
 					if (box2) {
-						var r2 = box2.getBoundingClientRect();
+						var r2 = box2;
 						var x2 = r2.right - treeRect.left;
 						var y2 = r2.top - treeRect.top + r2.height / 2;
 						var yMid = (y1 + y2) / 2;
@@ -4173,8 +4400,7 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 						pS.setAttribute('fill', 'none'); pS.setAttribute('stroke-linecap', 'round');
 						svg.appendChild(pS);
 					}
-				}
-			}
+			});
 			tree.insertBefore(svg, tree.firstChild);
 		});
 	}
@@ -4183,10 +4409,14 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 		var bd  = TnConfig.bracketData[bid];
 		var method = bd && bd.Bracket ? bd.Bracket.Method : '';
 		if (method !== 'single' && method !== 'double') return true;
+		// Use the FULL bracket's matches (not the section-local list) so a
+		// downstream match in another DE section (e.g. loser routed to LB)
+		// is visible and correctly blocks reset.
+		var fullMatches = (bd && bd.Matches) ? bd.Matches : allMatches;
 		var p1 = parseInt(m.Participant1Id) || 0;
 		var p2 = parseInt(m.Participant2Id) || 0;
 		var r  = parseInt(m.Round);
-		return !allMatches.some(function(dm) {
+		return !fullMatches.some(function(dm) {
 			if (parseInt(dm.Round) <= r) return false;
 			if (!dm.Result) return false;
 			var d1 = parseInt(dm.Participant1Id) || 0;
@@ -4267,6 +4497,10 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 		var p2Id = parseInt(m.Participant2Id) || 0;
 		var p1   = p1Id ? (pMap[p1Id] || null) : null;
 		var p2   = p2Id ? (pMap[p2Id] || null) : null;
+		// Only show the seed badge if at least one participant in this bracket is
+		// actually seeded — otherwise it's just a column of "?" noise.
+		var anySeed = false;
+		for (var _spid in pMap) { if (pMap[_spid] && (parseInt(pMap[_spid].Seed) || 0) > 0) { anySeed = true; break; } }
 		var hasResult = m.Result && m.Result !== '';
 		var isClickable = !hasResult && p1 && p2 && TnConfig.canManage;
 
@@ -4310,10 +4544,10 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 
 			if (!info.pid) {
 				slot.classList.add('tn-bv-bye');
-				slot.innerHTML = '<span class="tn-bv-seed">—</span><span>Bye</span>';
+				slot.innerHTML = (anySeed ? '<span class="tn-bv-seed">—</span>' : '') + '<span>Bye</span>';
 			} else if (!info.p) {
 				var awaitLabel = parseInt(m.Round) > 1 ? 'Awaiting Rd ' + (parseInt(m.Round) - 1) : 'TBD';
-				slot.innerHTML = '<span class="tn-bv-seed">?</span><span class="tn-bv-tbd-label">' + awaitLabel + '</span>';
+				slot.innerHTML = (anySeed ? '<span class="tn-bv-seed">?</span>' : '') + '<span class="tn-bv-tbd-label">' + awaitLabel + '</span>';
 			} else {
 				var displayName = info.p.Alias || info.p.Persona || '—';
 				var av = document.createElement('span');
@@ -4322,10 +4556,12 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 				av.textContent = tnInitials(displayName);
 				slot.appendChild(av);
 
-				var seed = document.createElement('span');
-				seed.className = 'tn-bv-seed';
-				seed.textContent = info.p.Seed || '?';
-				slot.appendChild(seed);
+				if (anySeed) {
+					var seed = document.createElement('span');
+					seed.className = 'tn-bv-seed';
+					seed.textContent = info.p.Seed || '?';
+					slot.appendChild(seed);
+				}
 				var name = document.createElement('span');
 				name.textContent = displayName;
 				slot.appendChild(name);
@@ -4395,7 +4631,7 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 				var scorePill = document.createElement('span');
 				scorePill.className = 'tn-bout-score-pill';
 				scorePill.textContent = winBouts + '-' + loseBouts;
-				scorePill.title = 'Bout score (winner-loser)';
+				scorePill.setAttribute('data-tip', 'Bout score (winner-loser)');
 				boutRow.appendChild(scorePill);
 				// Also show bout dots
 				boutsArr.forEach(function(b) {
@@ -4412,7 +4648,7 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 				var scorePill = document.createElement('span');
 				scorePill.className = 'tn-bout-score-pill';
 				scorePill.textContent = m.Score;
-				scorePill.title = 'Match score';
+				scorePill.setAttribute('data-tip', 'Match score');
 				scoreRow.appendChild(scorePill);
 				box.appendChild(scoreRow);
 			}
@@ -4426,11 +4662,12 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 				if (existing) {
 					existing.remove();
 					box.classList.remove('tn-qr-expanded');
+					if (_openQrBar === existing) { _openQrBar = null; _openQrBox = null; }
 					return;
 				}
-				// Close other expanded quick-result bars
-				document.querySelectorAll('.tn-qr-bar').forEach(function(b) { b.remove(); });
-				document.querySelectorAll('.tn-qr-expanded').forEach(function(b) { b.classList.remove('tn-qr-expanded'); });
+				// Close previously open bar by reference instead of querying the whole document
+				if (_openQrBar) { _openQrBar.remove(); _openQrBar = null; }
+				if (_openQrBox) { _openQrBox.classList.remove('tn-qr-expanded'); _openQrBox = null; }
 				var qrBar = document.createElement('div');
 				qrBar.className = 'tn-qr-bar';
 				var p1Label = p1 ? (p1.Alias || p1.Persona || 'P1') : 'P1';
@@ -4460,6 +4697,8 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 				qrBar.appendChild(moreLink);
 				box.appendChild(qrBar);
 				box.classList.add('tn-qr-expanded');
+				_openQrBar = qrBar;
+				_openQrBox = box;
 			});
 		}
 
@@ -4468,7 +4707,7 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 			var resetBtn = document.createElement('button');
 			resetBtn.className = 'tn-bv-reset-btn';
 			resetBtn.innerHTML = '&#9851;';
-			resetBtn.title = canReset ? 'Reset this match' : 'Cannot reset: a later match has been played';
+			resetBtn.setAttribute('data-tip', canReset ? 'Reset this match' : 'Cannot reset: a later match has been played');
 			if (!canReset) resetBtn.disabled = true;
 			var tnResetConfirmed = false;
 			var tnResetTimer = null;
@@ -4478,12 +4717,12 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 					tnResetConfirmed = true;
 					resetBtn.classList.add('tn-bv-reset-confirm');
 					resetBtn.innerHTML = 'Confirm?';
-					resetBtn.title = 'Click again to confirm reset';
+					resetBtn.setAttribute('data-tip', 'Click again to confirm reset');
 					tnResetTimer = setTimeout(function() {
 						tnResetConfirmed = false;
 						resetBtn.classList.remove('tn-bv-reset-confirm');
 						resetBtn.innerHTML = '&#9851;';
-						resetBtn.title = 'Reset this match';
+						resetBtn.setAttribute('data-tip', 'Reset this match');
 					}, 3000);
 				} else {
 					clearTimeout(tnResetTimer);
@@ -4508,7 +4747,7 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 											if (br) TnConfig.bracketData[bid].Bracket = br;
 										}
 										tnRenderBracketViz(bid);
-									});
+									}).catch(function(err) { console.warn('[tn] refresh failed', err); if (window.tnShowStaleWarning) tnShowStaleWarning(); });
 								}
 							} else {
 								alert((d && d.error) ? d.error : 'Reset failed.');
@@ -4679,6 +4918,29 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 					};
 				}
 				timerBar.appendChild(startBtn);
+			}
+
+			// Expired/ENDED: offer recovery so an organizer is never stuck.
+			// Restart runs a fresh full-duration clock; +1m reopens with a short extension.
+			if (_timerExpired && TnConfig.canManage) {
+				var restartBtn = document.createElement('button');
+				restartBtn.className = 'tn-im-timer-btn start';
+				restartBtn.innerHTML = '<i class="fas fa-redo"></i> Restart Timer';
+				restartBtn.onclick = function() {
+					try { localStorage.setItem(_timerKey, JSON.stringify({ startedAt: Date.now(), endedAt: null })); } catch(e) {}
+					tnRenderBracketViz(bracketId);
+				};
+				timerBar.appendChild(restartBtn);
+
+				var addEndedBtn = document.createElement('button');
+				addEndedBtn.className = 'tn-im-timer-btn add';
+				addEndedBtn.textContent = '+1m';
+				addEndedBtn.onclick = function() {
+					// Reopen with ~1 minute on the clock (clears the ended state).
+					try { localStorage.setItem(_timerKey, JSON.stringify({ startedAt: Date.now() - Math.max(0, _durationMs - 60000), endedAt: null })); } catch(e) {}
+					tnRenderBracketViz(bracketId);
+				};
+				timerBar.appendChild(addEndedBtn);
 			}
 
 			if (_inGrace && TnConfig.canManage) {
@@ -4884,7 +5146,13 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 		var pNumMap = {};
 		participants.forEach(function(participant) {
 			var num = parseInt(participant.ParticipantNumber) || parseInt(participant.Seed) || 0;
-			if (num) pNumMap[num] = parseInt(participant.ParticipantId) || 0;
+			if (!num) return;
+			var pid = parseInt(participant.ParticipantId) || 0;
+			if (pNumMap[num] !== undefined && pNumMap[num] !== pid) {
+				console.warn('Ironman QE collision at number ' + num + '; participants ' + pNumMap[num] + ' and ' + pid);
+				return; // keep the first participant assigned to this number
+			}
+			pNumMap[num] = pid;
 		});
 
 		// ── Rings wrapper ──
@@ -4995,6 +5263,10 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 										return;
 									}
 									window['_tnLastWinner_' + bracketId + '_r' + ringN] = winnerName;
+									// Re-enable before re-render (the re-render destroys this
+									// input anyway, so this is safe and avoids leaving a stale
+									// disabled input if the render path changes).
+									inputEl.disabled = false;
 									tnRefreshAndRender(bracketId);
 								})
 								.catch(function(){
@@ -5046,7 +5318,7 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 						+ (isKingElsewhere ? ' tn-im-card-blocked' : '');
 					if (isKing) card.style.borderColor = ringColor;
 					card.innerHTML = (isKing ? '<i class="fas fa-crown tn-im-card-crown"></i>' : '')
-						+ (isKingElsewhere ? '<i class="fas fa-shield-alt tn-im-card-crown" style="color:#a0aec0" title="King of Ring ' + allKingRing[pid] + '"></i>' : '')
+						+ (isKingElsewhere ? '<i class="fas fa-shield-alt tn-im-card-crown" style="color:#a0aec0" data-tip="King of Ring ' + allKingRing[pid] + '"></i>' : '')
 						+ '<div class="tn-im-avatar" style="background:' + color + '">' + seedNum + '</div>'
 						+ '<div class="tn-im-card-name">' + tnEsc(name) + '</div>'
 						+ '<div class="tn-im-card-wins"><i class="fas fa-trophy"></i> ' + wins + '</div>';
@@ -5192,7 +5464,7 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 			var nameSpan = document.createElement('span');
 			nameSpan.className = 'tn-rr-mx-col-name';
 			nameSpan.textContent = truncate(displayName(p), 8);
-			nameSpan.title = displayName(p);
+			nameSpan.setAttribute('data-tip', displayName(p));
 			th.appendChild(nameSpan);
 			headerRow.appendChild(th);
 		});
@@ -5258,13 +5530,11 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 	}
 
 	// ── Enhanced standings table (Round Robin) ──
-	function renderEnhancedStandings(container, matches, pMap, onPlayerClick) {
-		var pids = Object.keys(pMap);
-		var totalPossible = pids.length > 1 ? (pids.length * (pids.length - 1)) / 2 : 0;
-		var maxMatchesPerPlayer = pids.length > 1 ? pids.length - 1 : 0;
+	// Shared W/L/T/played tally for a round-robin bracket. Returns
+	// { stats: {pid -> {w,l,t,played}}, completedMatches: n }.
+	function computeRRStats(matches, pids) {
 		var stats = {};
 		pids.forEach(function(pid) { stats[pid] = { w: 0, l: 0, t: 0, played: 0 }; });
-
 		var completedMatches = 0;
 		matches.forEach(function(m) {
 			if (!m.Result || m.Result === '') return;
@@ -5283,6 +5553,16 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 				if (stats[p2]) stats[p2].t++;
 			}
 		});
+		return { stats: stats, completedMatches: completedMatches };
+	}
+
+	function renderEnhancedStandings(container, matches, pMap, onPlayerClick, precomputed) {
+		var pids = Object.keys(pMap);
+		var totalPossible = pids.length > 1 ? (pids.length * (pids.length - 1)) / 2 : 0;
+		var maxMatchesPerPlayer = pids.length > 1 ? pids.length - 1 : 0;
+		var _rr = precomputed || computeRRStats(matches, pids);
+		var stats = _rr.stats;
+		var completedMatches = _rr.completedMatches;
 
 		var rows = [];
 		pids.forEach(function(pid) {
@@ -5528,7 +5808,7 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 			var badge = document.createElement('span');
 			badge.className = 'tn-rr-card-record';
 			badge.textContent = '(' + st.w + '-' + st.l + (st.t > 0 ? '-' + st.t : '') + ')';
-			badge.title = st.w + 'W ' + st.l + 'L' + (st.t > 0 ? ' ' + st.t + 'T' : '');
+			badge.setAttribute('data-tip', st.w + 'W ' + st.l + 'L' + (st.t > 0 ? ' ' + st.t + 'T' : ''));
 			var pill = slot.querySelector('.tn-bv-result-pill');
 			if (pill) slot.insertBefore(badge, pill);
 			else slot.appendChild(badge);
@@ -5537,26 +5817,12 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 
 	// ── Round-table renderer (Swiss / Round Robin) — Enhanced ──
 	function renderRoundTable(container, matches, pMap, bracketId) {
-		// Compute shared stats
+		// Compute shared stats once (reused by renderEnhancedStandings below)
 		var pids = Object.keys(pMap);
 		var totalPossible = pids.length > 1 ? (pids.length * (pids.length - 1)) / 2 : 0;
-		var rrStats = {};
-		pids.forEach(function(pid) { rrStats[pid] = { w: 0, l: 0, t: 0, played: 0 }; });
-		var completedMatches = 0;
-		matches.forEach(function(m) {
-			if (!m.Result || m.Result === '') return;
-			completedMatches++;
-			var p1 = String(m.Participant1Id), p2 = String(m.Participant2Id);
-			if (rrStats[p1]) rrStats[p1].played++;
-			if (rrStats[p2]) rrStats[p2].played++;
-			if (m.Result === '1-wins' || m.Result === 'forfeit' || m.Result === 'disqualified') {
-				if (rrStats[p1]) rrStats[p1].w++; if (rrStats[p2]) rrStats[p2].l++;
-			} else if (m.Result === '2-wins') {
-				if (rrStats[p2]) rrStats[p2].w++; if (rrStats[p1]) rrStats[p1].l++;
-			} else if (m.Result === 'tie') {
-				if (rrStats[p1]) rrStats[p1].t++; if (rrStats[p2]) rrStats[p2].t++;
-			}
-		});
+		var _rrComputed = computeRRStats(matches, pids);
+		var rrStats = _rrComputed.stats;
+		var completedMatches = _rrComputed.completedMatches;
 
 		// Group by round
 		var rounds = {};
@@ -5629,16 +5895,22 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 
 		var standingsContainer = null;
 		var focusedPlayer = null;
+		// Lazily-cached node lists so we don't re-scan the whole container on
+		// every standings row click. Rebuilt only when the view re-renders
+		// (this closure is recreated by each renderRoundTable call).
+		var _focusMatchEls = null, _focusMatrixRows = null;
 
 		function setPlayerFocus(pid) {
 			focusedPlayer = pid;
+			if (_focusMatchEls === null) _focusMatchEls = container.querySelectorAll('.tn-bv-match');
+			if (_focusMatrixRows === null) _focusMatrixRows = container.querySelectorAll('.tn-rr-matrix tbody tr');
 			if (pid) {
 				container.classList.add('tn-rr-focus-active');
 				var pInfo = pMap[pid];
 				focusBanner.querySelector('.tn-rr-focus-banner-name').textContent = pInfo ? (pInfo.Alias || pInfo.Persona || '?') : '?';
 				focusBanner.style.display = '';
 				// Highlight matching match cards
-				container.querySelectorAll('.tn-bv-match').forEach(function(card) {
+				_focusMatchEls.forEach(function(card) {
 					var mid = card.dataset.matchid;
 					var m = matches.find(function(mm) { return String(mm.MatchId) === mid; });
 					if (m && (String(m.Participant1Id) === String(pid) || String(m.Participant2Id) === String(pid))) {
@@ -5648,7 +5920,7 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 					}
 				});
 				// Highlight matching matrix rows
-				container.querySelectorAll('.tn-rr-matrix tbody tr').forEach(function(tr) {
+				_focusMatrixRows.forEach(function(tr) {
 					if (tr.dataset.pid === String(pid)) tr.classList.add('tn-rr-focus-row');
 					else tr.classList.remove('tn-rr-focus-row');
 				});
@@ -5785,7 +6057,7 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 			standingsContainer = document.createElement('div');
 			var stdRows = renderEnhancedStandings(standingsContainer, matches, pMap, function(pid) {
 				setPlayerFocus(pid);
-			});
+			}, _rrComputed);
 			container.appendChild(standingsContainer);
 
 			// Champion banner (if bracket is complete/finalized)
@@ -5811,18 +6083,20 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 				if (!declined && topTied.length >= 2) {
 					var tbBanner = document.createElement('div');
 					tbBanner.className = 'tn-gf-confirm-banner';
-					var nameList = topTied.map(function(s) {
+					var nameListPlain = topTied.map(function(s) {
 						var pi = pMap[s.p];
-						return tnEsc(pi ? (pi.Alias || pi.Persona || ('#' + s.p)) : ('#' + s.p));
+						return pi ? (pi.Alias || pi.Persona || ('#' + s.p)) : ('#' + s.p);
 					}).join(', ');
 					tbBanner.innerHTML =
 						'<div class="tn-gf-confirm-text"><i class="fas fa-medal"></i> ' +
-							'<strong>' + topTied.length + ' players are tied for 1st place</strong> (' + nameList + '). ' +
+							'<strong>' + topTied.length + ' players are tied for 1st place</strong> (<span class="tn-tb-namelist"></span>). ' +
 							'Run a tiebreaker round?</div>' +
 						'<div class="tn-gf-confirm-btns">' +
 							'<button class="tn-gf-confirm-yes"><i class="fas fa-check-circle"></i> Yes, Run Tiebreaker</button>' +
 							'<button class="tn-gf-confirm-no"><i class="fas fa-handshake"></i> No, Joint Winners</button>' +
 						'</div>';
+					var nameListSpan = tbBanner.querySelector('.tn-tb-namelist');
+					if (nameListSpan) nameListSpan.textContent = nameListPlain;
 					container.insertBefore(tbBanner, container.firstChild);
 
 					var tidRR = TnConfig.tournamentId;
@@ -5885,6 +6159,16 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 		if (tabToOpen) { sessionStorage.removeItem('tnOpenTab'); tnActivateTab(tabToOpen); }
 		var firstId = firstBracketId();
 		if (firstId) tnRenderBracketViz(firstId);
+
+		// Restore focus mode across reloads (e.g. mid-tournament refresh)
+		if (sessionStorage.getItem('tnFocusMode') === '1') tnSetFocus(true);
+
+		// Esc exits focus mode (only when active, so modals keep their own Esc)
+		document.addEventListener('keydown', function(e) {
+			if (e.key !== 'Escape') return;
+			var root = document.getElementById('tn-root');
+			if (root && root.classList.contains('tn-focus')) { tnSetFocus(false); }
+		});
 	});
 
 	// Also render when tab is clicked
@@ -5904,15 +6188,28 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 // ============================================================
 (function() {
 	var OVERLAY = 'tn-recordresult-overlay';
-	var tnBoutLabelShown = false;
 	var bouts = [null, null, null, null, null, null, null, null, null]; // null | '1' | '2' per bout (up to best-of-9)
 	var p1Name = '—', p2Name = '—';
+	// Cached pip elements — populated lazily on first renderPips() call.
+	var _pipCache1 = null, _pipCache2 = null;
+	function ensurePipCache() {
+		if (_pipCache1 && _pipCache1.length === 9) return;
+		_pipCache1 = []; _pipCache2 = [];
+		var c1 = document.getElementById('tn-rr-pips-1');
+		var c2 = document.getElementById('tn-rr-pips-2');
+		if (!c1 || !c2) { _pipCache1 = null; _pipCache2 = null; return; }
+		for (var i = 0; i < 9; i++) {
+			_pipCache1.push(c1.querySelector('[data-idx="' + i + '"]'));
+			_pipCache2.push(c2.querySelector('[data-idx="' + i + '"]'));
+		}
+	}
 
 	// ---- Pip rendering ----
 	function renderPips() {
+		ensurePipCache();
+		if (!_pipCache1) return;
 		for (var i = 0; i < 9; i++) {
-			var pip1 = document.querySelector('#tn-rr-pips-1 [data-idx="' + i + '"]');
-			var pip2 = document.querySelector('#tn-rr-pips-2 [data-idx="' + i + '"]');
+			var pip1 = _pipCache1[i], pip2 = _pipCache2[i];
 			if (!pip1 || !pip2) continue;
 			pip1.className = 'tn-bout-pip';
 			pip2.className = 'tn-bout-pip';
@@ -6044,7 +6341,7 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 										if (br) TnConfig.bracketData[bid].Bracket = br;
 									}
 									tnRenderBracketViz(bid);
-								});
+								}).catch(function(err) { console.warn('[tn] refresh failed', err); if (window.tnShowStaleWarning) tnShowStaleWarning(); });
 							}
 						}, 400);
 					} else {
@@ -6130,8 +6427,21 @@ document.addEventListener('click', function(e) {
 	}
 });
 
+// Shows a small non-blocking stale-data warning at the top of the bracket viz.
+window.tnShowStaleWarning = function() {
+	var cont = document.getElementById('tn-bv-container');
+	if (!cont) return;
+	if (cont.querySelector('.tn-bv-stale-warning')) return;
+	var w = document.createElement('div');
+	w.className = 'tn-bv-stale-warning';
+	w.textContent = 'Refresh failed — reload page if data looks wrong';
+	cont.insertBefore(w, cont.firstChild);
+};
+
 window.tnSubmitQuickResult = function(matchId, result, event) {
 	if (event) event.stopPropagation();
+	var btn = (event && event.currentTarget) ? event.currentTarget : ((event && event.target) ? event.target : null);
+	if (btn) btn.disabled = true;
 	var tid = TnConfig.tournamentId;
 	var fd = new FormData();
 	fd.append('Result', result);
@@ -6157,13 +6467,15 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 							if (br) TnConfig.bracketData[bid].Bracket = br;
 						}
 						tnRenderBracketViz(bid);
-					});
+					}).catch(function(err) { console.warn('[tn] refresh failed', err); tnShowStaleWarning(); });
+					// On success the re-render replaces this button entirely.
 				}
 			} else {
+				if (btn) btn.disabled = false;
 				alert((d && d.error) ? d.error : 'Failed to save result.');
 			}
 		})
-		.catch(function() { alert('Network error recording result.'); });
+		.catch(function() { if (btn) btn.disabled = false; alert('Network error recording result.'); });
 };
 
 })();
@@ -6223,6 +6535,8 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 .tn-nu-btn-end.tn-nu-btn-end-show { display:inline-flex; }
 .tn-nu-btn-more { color:#a0aec0; font-size:11px; font-weight:600; padding:7px 8px; }
 .tn-nu-empty { font-size:12px; font-style:italic; color:#a0aec0; padding:4px 0; }
+.tn-nu-card.tn-nu-card-error { animation:tnNuCardErr 1.2s ease; }
+@keyframes tnNuCardErr { 0%,100% { box-shadow:none; } 20% { box-shadow:0 0 0 2px #e53e3e; background:#fff5f5; } }
 @media (max-width: 720px) {
 	.tn-nu-card { flex-direction:column; align-items:stretch; }
 	.tn-nu-actions { justify-content:stretch; }
@@ -6262,9 +6576,6 @@ html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 (function(){
 	'use strict';
 	function $(id){ return document.getElementById(id); }
-	function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
-	function openOv(id){ var el=$(id); if(el) el.classList.add('tn-open'); }
-	function closeOv(id){ var el=$(id); if(el) el.classList.remove('tn-open'); }
 
 	// ================================================================
 	// TASK 11 · PASTE ROSTER
@@ -6280,10 +6591,10 @@ html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 		$('tn-bulkadd-feedback').style.display = 'none';
 		$('tn-bulkadd-progress').style.display = 'none';
 		$('tn-bulkadd-submit').disabled = false;
-		openOv('tn-bulkadd-overlay');
+		tnOpenModal('tn-bulkadd-overlay');
 		setTimeout(function(){ var t = $('tn-bulkadd-text'); if (t) t.focus(); }, 80);
 	};
-	function closeBulkAdd(){ closeOv('tn-bulkadd-overlay'); }
+	function closeBulkAdd(){ tnCloseModal('tn-bulkadd-overlay'); }
 	['tn-bulkadd-close','tn-bulkadd-cancel'].forEach(function(id){
 		var el = $(id); if (el) el.addEventListener('click', closeBulkAdd);
 	});
@@ -6312,52 +6623,8 @@ html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 			});
 		});
 
-		// Auto-expand Edit Bracket advanced section when non-default state
-		// is loaded. We watch the bracket-id hidden input for changes made
-		// by tnOpenEditBracketModal — it populates the fields synchronously
-		// before showing the modal, so a MutationObserver on bracket-id is
-		// the cleanest trigger.
-		var editBid = $('tn-editbracket-bid');
-		if (editBid){
-			var mo = new MutationObserver(function(){
-				// fires when tnOpenEditBracketModal sets the hidden input
-				setTimeout(function(){
-					var pv = $('tn-editbracket-participants');
-					var rv = $('tn-editbracket-rings');
-					var sv = $('tn-editbracket-seeding');
-					var nv = $('tn-editbracket-stylenote');
-					var bo = $('tn-editbracket-bestof');
-					var nonDefault =
-						(pv && pv.value && pv.value !== 'individual') ||
-						(rv && rv.value && parseInt(rv.value, 10) > 1) ||
-						(sv && sv.value && sv.value !== 'random') ||
-						(nv && nv.value && nv.value.trim() !== '') ||
-						(bo && bo.value && parseInt(bo.value, 10) > 1);
-					var adv = $('tn-editbracket-advanced');
-					var btn = document.querySelector('.tn-advanced-toggle[data-target="tn-editbracket-advanced"]');
-					if (adv){
-						adv.style.display = nonDefault ? '' : 'none';
-						if (btn){
-							var icon = btn.querySelector('i');
-							if (icon) icon.style.transform = nonDefault ? 'rotate(90deg)' : '';
-						}
-					}
-				}, 0);
-			});
-			mo.observe(editBid, { attributes: true, attributeFilter: ['value'] });
-
-			// Some JS assigns .value directly which doesn't fire attribute
-			// mutations — also listen to a property set via a shim.
-			var origDesc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
-			Object.defineProperty(editBid, 'value', {
-				set: function(v){
-					origDesc.set.call(this, v);
-					this.setAttribute('value', v);
-				},
-				get: function(){ return origDesc.get.call(this); },
-				configurable: true
-			});
-		}
+		// (Auto-expand of the Edit Bracket advanced section now runs
+		// synchronously inside tnOpenEditBracketModal — no observer needed.)
 	})();
 
 	// ================================================================
@@ -6467,7 +6734,7 @@ html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 		}
 
 		function headLine(m, posLabel){
-			var side = (m._side && m._side !== 'winners') ? ' &middot; ' + esc(m._side) : '';
+			var side = (m._side && m._side !== 'winners') ? ' &middot; ' + tnEsc(m._side) : '';
 			return '<span class="tn-nu-pos-label ' + (posLabel === 'NOW' ? 'tn-nu-now' : 'tn-nu-deck') + '">' + posLabel + '</span>' +
 				'<span class="tn-nu-match-num">Round ' + m._round + ' &middot; Match ' + m._order + side + '</span>';
 		}
@@ -6475,8 +6742,8 @@ html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 		function quickCardHTML(m, pMap, posLabel){
 			var p1 = pMap[m.Participant1Id] || {};
 			var p2 = pMap[m.Participant2Id] || {};
-			var p1Name = esc(m.Participant1Alias || p1.Alias || p1.Persona || '—');
-			var p2Name = esc(m.Participant2Alias || p2.Alias || p2.Persona || '—');
+			var p1Name = tnEsc(m.Participant1Alias || p1.Alias || p1.Persona || '—');
+			var p2Name = tnEsc(m.Participant2Alias || p2.Alias || p2.Persona || '—');
 			var p1Seed = p1.Seed ? '<span class="tn-nu-p-seed">' + p1.Seed + '</span>' : '';
 			var p2Seed = p2.Seed ? '<span class="tn-nu-p-seed">' + p2.Seed + '</span>' : '';
 			return (
@@ -6487,10 +6754,10 @@ html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 					'</div>' +
 					(TnConfig.canManage
 						? '<div class="tn-nu-actions">' +
-							'<button class="tn-nu-btn tn-nu-btn-p1" data-mid="' + m.MatchId + '" data-r="1-wins" title="' + p1Name + ' wins">' + p1Name + ' wins</button>' +
-							'<button class="tn-nu-btn tn-nu-btn-p2" data-mid="' + m.MatchId + '" data-r="2-wins" title="' + p2Name + ' wins">' + p2Name + ' wins</button>' +
+							'<button class="tn-nu-btn tn-nu-btn-p1" data-mid="' + m.MatchId + '" data-r="1-wins" data-tip="' + p1Name + ' wins">' + p1Name + ' wins</button>' +
+							'<button class="tn-nu-btn tn-nu-btn-p2" data-mid="' + m.MatchId + '" data-r="2-wins" data-tip="' + p2Name + ' wins">' + p2Name + ' wins</button>' +
 							'<button class="tn-nu-btn tn-nu-btn-tie" data-mid="' + m.MatchId + '" data-r="tie">Tie</button>' +
-							'<button class="tn-nu-btn tn-nu-btn-more" data-mid="' + m.MatchId + '" data-more="1" title="Bouts / forfeit / DQ">⋯</button>' +
+							'<button class="tn-nu-btn tn-nu-btn-more" data-mid="' + m.MatchId + '" data-more="1" data-tip="Bouts / forfeit / DQ">⋯</button>' +
 						'</div>'
 						: '') +
 				'</div>'
@@ -6500,8 +6767,8 @@ html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 		function trackCardHTML(m, pMap, posLabel){
 			var p1 = pMap[m.Participant1Id] || {};
 			var p2 = pMap[m.Participant2Id] || {};
-			var p1Name = esc(m.Participant1Alias || p1.Alias || p1.Persona || '—');
-			var p2Name = esc(m.Participant2Alias || p2.Alias || p2.Persona || '—');
+			var p1Name = tnEsc(m.Participant1Alias || p1.Alias || p1.Persona || '—');
+			var p2Name = tnEsc(m.Participant2Alias || p2.Alias || p2.Persona || '—');
 			var p1Seed = p1.Seed ? '<span class="tn-nu-p-seed">' + p1.Seed + '</span>' : '';
 			var p2Seed = p2.Seed ? '<span class="tn-nu-p-seed">' + p2.Seed + '</span>' : '';
 			return (
@@ -6514,7 +6781,7 @@ html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 					'<div class="tn-nu-mini-name tn-nu-mini-name-2">' + p2Seed + '<span>' + p2Name + '</span></div>' +
 					(TnConfig.canManage
 						? '<button class="tn-nu-btn tn-nu-btn-end" data-mid="' + m.MatchId + '" data-end="1">End</button>' +
-						  '<button class="tn-nu-btn tn-nu-btn-more" data-mid="' + m.MatchId + '" data-more="1" title="Bouts / forfeit / DQ · tap a pip to record a bout">⋯</button>'
+						  '<button class="tn-nu-btn tn-nu-btn-more" data-mid="' + m.MatchId + '" data-more="1" data-tip="Bouts / forfeit / DQ · tap a pip to record a bout">⋯</button>'
 						: '') +
 				'</div>'
 			);
@@ -6597,22 +6864,33 @@ html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 
 		function submitWithBouts(matchId, result){
 			var bouts = trackState[matchId] || [];
+			// Preserve a snapshot; do NOT delete trackState until the server
+			// confirms — a failed save would otherwise lose the bout pips.
+			var savedBouts = bouts.slice();
 			var compact = bouts.filter(function(b){ return b !== null; });
-			delete trackState[matchId];
 			var fd = new FormData();
 			fd.append('Result', result);
 			fd.append('Score', '');
 			fd.append('Bouts', JSON.stringify(compact));
+			function restoreBouts(){
+				trackState[matchId] = savedBouts;
+				repaintCardPips(matchId);
+				if (nuHost){
+					var card = nuHost.querySelector('.tn-nu-card-track[data-mid="' + matchId + '"]');
+					if (card){ card.classList.add('tn-nu-card-error'); setTimeout(function(){ card.classList.remove('tn-nu-card-error'); }, 1200); }
+				}
+			}
 			fetch(TnConfig.uir + 'TournamentAjax/match/' + matchId + '/' + TnConfig.tournamentId, { method:'POST', body: fd })
 				.then(function(r){ return r.json(); })
 				.then(function(d){
 					if (d && d.status === 0){
+						delete trackState[matchId];
 						refreshBracket();
 					} else {
-						alert((d && d.error) || 'Failed to save result.');
+						restoreBouts();
 					}
 				})
-				.catch(function(){ alert('Network error recording result.'); });
+				.catch(function(){ restoreBouts(); });
 		}
 
 		function refreshBracket(){
@@ -6635,7 +6913,7 @@ html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 				} else {
 					window.tnRenderNextUp(bid);
 				}
-			});
+			}).catch(function(err){ console.warn('[tn] refresh failed', err); if (window.tnShowStaleWarning) tnShowStaleWarning(); });
 		}
 
 		function handlePipClick(ev){
@@ -6841,21 +7119,36 @@ html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 			scoreEl.dataset.tnAutocommit = '1';
 			scoreEl.style.color = '#276749';
 			var remaining = 2;
-			function paint(){
-				scoreEl.innerHTML = '<strong>' + winnerLabel + '</strong> &middot; saving in ' + remaining + 's &middot; <a href="#" id="tn-rr-cancel-commit" style="color:#e53e3e;text-decoration:underline">cancel</a>';
-				var c = $('tn-rr-cancel-commit');
-				if (c) c.addEventListener('click', function(e){ e.preventDefault(); cancelCommit(); });
-			}
-			paint();
+			// Build stable DOM ONCE so the cancel link doesn't race user clicks.
+			scoreEl.innerHTML = '';
+			var winStrong = document.createElement('strong');
+			winStrong.textContent = winnerLabel;
+			scoreEl.appendChild(winStrong);
+			scoreEl.appendChild(document.createTextNode(' · saving in '));
+			var numSpan = document.createElement('span');
+			numSpan.className = 'tn-rr-countdown-num';
+			numSpan.textContent = String(remaining);
+			scoreEl.appendChild(numSpan);
+			scoreEl.appendChild(document.createTextNode('s · '));
+			var cancelLink = document.createElement('a');
+			cancelLink.href = '#';
+			cancelLink.id = 'tn-rr-cancel-commit';
+			cancelLink.style.color = '#e53e3e';
+			cancelLink.style.textDecoration = 'underline';
+			cancelLink.textContent = 'cancel';
+			cancelLink.addEventListener('click', function(e){ e.preventDefault(); cancelCommit(); });
+			scoreEl.appendChild(cancelLink);
 			countdownTimer = setInterval(function(){
 				remaining--;
 				if (remaining <= 0){ clearInterval(countdownTimer); countdownTimer = null; return; }
-				paint();
+				numSpan.textContent = String(remaining);
 			}, 1000);
 			commitTimer = setTimeout(function(){
 				commitTimer = null;
 				scoreEl.dataset.tnAutocommit = '';
 				scoreEl.style.color = '';
+				// Abort if modal was closed mid-countdown.
+				if (!rrOverlay.classList.contains('tn-open')) return;
 				var sb = $('tn-recordresult-submit');
 				if (sb && !sb.disabled) sb.click();
 			}, 2000);
@@ -6925,7 +7218,11 @@ html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 		}
 
 		function commit(bid, tid){
+			// Capture the button before disarm() clears the reference, then
+			// disable it so a double-click can't fire a second clear+generate.
+			var cBtn = armedBtn;
 			disarm();
+			if (cBtn) cBtn.disabled = true;
 			// Chain: clearmatches (also resets bracket status to 'setup')
 			// → generate. Direct fetch so we don't trip the old
 			// tnGenerateMatches confirm() dialog on top of our undo-toast.
@@ -6945,6 +7242,7 @@ html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 					window.location.reload();
 				})
 				.catch(function(err){
+					if (cBtn) cBtn.disabled = false;
 					alert('Re-generate failed: ' + (err && err.message ? err.message : err));
 				});
 		}
@@ -7008,25 +7306,27 @@ html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 		_bulkBtn.disabled = true;
 		fb.style.display = 'none';
 		prog.style.display = '';
-		var i = 0, ok = 0, fail = 0;
-		function step(){
-			if (i >= lines.length){
-				prog.textContent = 'Done — added ' + ok + (fail ? ', ' + fail + ' failed' : '') + '.';
-				setTimeout(function(){ closeBulkAdd(); window.location.reload(); }, fail ? 1400 : 500);
-				return;
-			}
-			var alias = lines[i];
-			prog.textContent = 'Adding ' + (i+1) + ' of ' + lines.length + ' — ' + alias;
+		var ok = 0, fail = 0, done = 0;
+		var total = lines.length;
+		function addOne(alias){
 			var fd = new FormData();
 			fd.append('Alias', alias);
 			fd.append('TournamentId', tid);
-			fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bid + '/addparticipant', { method:'POST', body: fd })
+			return fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bid + '/addparticipant', { method:'POST', body: fd })
 				.then(function(r){ return r.json(); })
 				.then(function(d){ if (d && d.status === 0) ok++; else fail++; })
 				.catch(function(){ fail++; })
-				.finally(function(){ i++; step(); });
+				.finally(function(){ done++; prog.textContent = 'Adding ' + done + ' of ' + total + '…'; });
 		}
-		step();
+		// Batch in groups of 5 to bound concurrency while staying fast.
+		var groups = [];
+		for (var gi = 0; gi < lines.length; gi += 5) groups.push(lines.slice(gi, gi + 5));
+		groups.reduce(function(p, g){
+			return p.then(function(){ return Promise.all(g.map(addOne)); });
+		}, Promise.resolve()).then(function(){
+			prog.textContent = 'Done — added ' + ok + (fail ? ', ' + fail + ' failed' : '') + '.';
+			setTimeout(function(){ closeBulkAdd(); window.location.reload(); }, fail ? 1400 : 500);
+		});
 	});
 
 })();

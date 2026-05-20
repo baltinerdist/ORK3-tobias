@@ -108,6 +108,34 @@ class Model_Tournament extends Model {
 		return $this->Tournament->CheckAuth($request);
 	}
 
+	function save_standings_points($request) {
+		return $this->Tournament->SaveStandingsPoints($request);
+	}
+
+	function reorder_seeds($request) {
+		return $this->Tournament->ReorderSeeds($request);
+	}
+
+	function update_participant_status($request) {
+		return $this->Tournament->UpdateParticipantStatus($request);
+	}
+
+	function search_parks($query) {
+		return $this->Tournament->SearchParks($query);
+	}
+
+	function search_events($query) {
+		return $this->Tournament->SearchEvents($query);
+	}
+
+	function get_tournament_event_label($tournament_id) {
+		return $this->Tournament->GetTournamentEventLabel($tournament_id);
+	}
+
+	function get_standings_points($tournament_id) {
+		return $this->Tournament->GetStandingsPoints($tournament_id);
+	}
+
 	function get_standings($bracket_id) {
 		return $this->Tournament->GetStandings(['BracketId' => $bracket_id]);
 	}
