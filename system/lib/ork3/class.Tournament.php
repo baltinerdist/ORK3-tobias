@@ -1663,6 +1663,97 @@ class Tournament extends Ork3 {
 
 
 	/**
+	 * PoolsToBracket($request)
+	 * Create a new single/double-elimination "playoff" bracket from the top X of an
+	 * Ironman bracket's standings. Reuses AddBracket (create) and GenerateMatches
+	 * (seed + build) rather than re-implementing them.
+	 *
+	 * Request: Token, TournamentId, BracketId (source ironman), Method (single|double),
+	 *          TopX (int >= 2), SeedMethod (standing|warrior|glicko2|random)
+	 */
+	public function PoolsToBracket($request) {
+		if (!$this->check_auth($request)) return NoAuthorization();
+
+		$tid        = (int)($request['TournamentId'] ?? 0);
+		$src        = (int)($request['BracketId']    ?? 0);
+		$method     = (string)($request['Method']    ?? '');
+		$topX       = (int)($request['TopX']         ?? 0);
+		$seedMethod = (string)($request['SeedMethod'] ?? 'standing');
+
+		if (!valid_id($tid)) return InvalidParameter('TournamentId required');
+		if (!valid_id($src)) return InvalidParameter('Source bracket required');
+		if (!in_array($method, ['single', 'double'], true)) return InvalidParameter('Choose Single or Double Elimination');
+		if ($topX < 2) return InvalidParameter('Top X must be at least 2');
+
+		// Source must be an ironman bracket in this tournament.
+		$sb = $this->db->query("SELECT style, method FROM " . DB_PREFIX . "bracket WHERE bracket_id = $src AND tournament_id = $tid");
+		if (!$sb || !$sb->next()) return InvalidParameter('Source bracket not found');
+		if ($sb->method !== 'ironman') return InvalidParameter('Pools to Brackets is only available for Ironman brackets');
+		$srcStyle = $sb->style;
+
+		// Ranked pool standings (ironman ranks by Wins then Max Streak).
+		$st = $this->GetStandings(['BracketId' => $src, 'TournamentId' => $tid]);
+		if ($st['Status'] != 0) return $st;
+		$rows = $st['Detail'];
+		usort($rows, function($a, $b) { return ((int)($a['Rank'] ?? 9999)) - ((int)($b['Rank'] ?? 9999)); });
+		$pids = [];
+		foreach ($rows as $r) { if ((int)$r['ParticipantId'] > 0) $pids[] = (int)$r['ParticipantId']; }
+		if (count($pids) < 2) return InvalidParameter('Not enough participants in the pool');
+		$pids = array_slice($pids, 0, min($topX, count($pids)));
+		if ($method === 'double' && count($pids) < 3) return InvalidParameter('Double elimination needs at least 3 players');
+
+		$seedingMap = ['standing' => 'manual', 'warrior' => 'warrior', 'glicko2' => 'glicko2', 'random' => 'random'];
+		$seeding    = $seedingMap[$seedMethod] ?? 'manual';
+
+		// Create the new (empty) bracket via the existing path.
+		$br = $this->AddBracket([
+			'Token'           => $request['Token'] ?? '',
+			'TournamentId'    => $tid,
+			'Style'           => $srcStyle,
+			'StyleNote'       => 'Top ' . count($pids) . ' from Ironman',
+			'Method'          => $method,
+			'Participants'    => 'individual',
+			'Rings'           => 1,
+			'Seeding'         => $seeding,
+			'DurationMinutes' => 0,
+			'BestOf'          => 1,
+		]);
+		if ($br['Status'] != 0) return $br;
+		$new_bid = (int)$br['Detail'];
+
+		// Copy the selected participants (+ mundane links) into the new bracket.
+		$this->db->query('START TRANSACTION');
+		try {
+			$i = 0;
+			foreach ($pids as $pid) {
+				$i++;
+				$seedVal = ($seeding === 'manual') ? $i : 0;
+				$this->db->query("INSERT INTO " . DB_PREFIX . "participant
+					(tournament_id, bracket_id, alias, unit_id, park_id, kingdom_id, participant_number, seed)
+					SELECT tournament_id, $new_bid, alias, unit_id, park_id, kingdom_id, participant_number, $seedVal
+					FROM " . DB_PREFIX . "participant WHERE participant_id = $pid AND tournament_id = $tid");
+				$new_pid = (int)$this->db->GetLastInsertId();
+				if ($new_pid > 0) {
+					$this->db->query("INSERT INTO " . DB_PREFIX . "participant_mundane (participant_id, mundane_id, tournament_id, bracket_id)
+						SELECT $new_pid, mundane_id, tournament_id, $new_bid
+						FROM " . DB_PREFIX . "participant_mundane WHERE participant_id = $pid");
+				}
+			}
+			$this->db->query('COMMIT');
+		} catch (\Throwable $e) {
+			$this->db->query('ROLLBACK');
+			throw $e;
+		}
+
+		// Generate the elimination matches (applies the seeding sort).
+		$g = $this->GenerateMatches(['Token' => $request['Token'] ?? '', 'TournamentId' => $tid, 'BracketId' => $new_bid]);
+		if ($g['Status'] != 0) return $g;
+
+		return Success($new_bid);
+	}
+
+
+	/**
 	 * CreateTiebreakerMatch($request)
 	 * In single-elimination, when the bracket is complete, creates a 3rd-place
 	 * tiebreaker match between the two semifinal losers.
