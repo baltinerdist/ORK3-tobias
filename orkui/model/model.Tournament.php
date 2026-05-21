@@ -104,6 +104,10 @@ class Model_Tournament extends Model {
 		return $this->Tournament->ClearBracketMatches($request);
 	}
 
+	function pools_to_bracket($request) {
+		return $this->Tournament->PoolsToBracket($request);
+	}
+
 	function auth_check($request) {
 		return $this->Tournament->CheckAuth($request);
 	}

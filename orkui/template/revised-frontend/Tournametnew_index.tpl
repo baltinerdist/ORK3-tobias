@@ -295,6 +295,8 @@ html[data-theme="dark"] [data-tip]::before { border-top-color:#1a202c; }
 .tn-im-card-name { font-size:11px; font-weight:700; color:#1a202c; line-height:1.2; word-break:break-word; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.2px; }
 .tn-im-card-wins { font-size:11px; color:#718096; }
 .tn-im-card-wins i { font-size:10px; margin-right:2px; }
+.tn-im-card-streak { font-size:11px; color:#dd6b20; font-weight:700; }
+.tn-im-card-streak i { font-size:10px; margin-right:2px; }
 .tn-im-section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:#718096; margin-bottom:8px; }
 .tn-im-history { margin-top:4px; }
 .tn-im-history-row { display:flex; justify-content:space-between; align-items:center; padding:5px 8px; border-radius:4px; font-size:12px; }
@@ -328,6 +330,8 @@ html[data-theme="dark"] [data-tip]::before { border-top-color:#1a202c; }
 .tn-im-timer-btn.end:hover { background:#fc8181; color:#fff; }
 .tn-im-timer-btn.pause { background:#2d3748; color:#ecc94b; border:1px solid #4a5568; }
 .tn-im-timer-btn.pause:hover { background:#4a5568; color:#fefcbf; }
+.tn-im-timer-btn.standings { background:#3182ce; color:#fff; margin-left:auto; }
+.tn-im-timer-btn.standings:hover { background:#2c5282; }
 .tn-im-timer-display.paused { color:#ecc94b; }
 .tn-im-timer-locked { font-size:11px; color:#a0aec0; margin-left:auto; }
 .tn-im-rings-wrap { display:flex; flex-direction:column; gap:18px; }
@@ -972,6 +976,7 @@ html[data-theme="dark"] .tn-im-card.tn-im-card-btn:hover { box-shadow:0 4px 12px
 html[data-theme="dark"] .tn-im-card.tn-im-card-btn.tn-im-card-king:hover { background:rgba(49,130,206,0.3); }
 html[data-theme="dark"] .tn-im-card-name { color:#f7fafc; }
 html[data-theme="dark"] .tn-im-card-wins { color:#a0aec0; }
+html[data-theme="dark"] .tn-im-card-streak { color:#f6ad55; }
 html[data-theme="dark"] .tn-im-section-title { color:#a0aec0; }
 html[data-theme="dark"] .tn-im-history-row:nth-child(odd) { background:#1a202c; }
 html[data-theme="dark"] .tn-im-history-fight { color:#718096; }
@@ -1738,6 +1743,13 @@ foreach ($bracketData as $_bid => $_bd) {
 				<?php foreach ($standingsData as $stBid => $stRows): ?>
 				<?php $_stBracket = $bracketData[$stBid]['Bracket'] ?? []; $_stIsIronman = (($_stBracket['Method'] ?? '') === 'ironman'); ?>
 				<div class="tn-standings-section" data-stbid="<?= $stBid ?>" style="display:none">
+					<?php if ($canManage && $_stIsIronman && !empty($stRows)): ?>
+					<div style="margin-bottom:12px">
+						<button class="tn-btn tn-btn-primary tn-btn-sm" onclick="tnOpenPoolsToBracketsModal(<?= (int)$stBid ?>, <?= count($stRows) ?>)">
+							<i class="fas fa-sitemap"></i> Pools to Brackets
+						</button>
+					</div>
+					<?php endif; ?>
 					<?php if (empty($stRows)): ?>
 					<div class="tn-empty">No standings yet.</div>
 					<?php else: ?>
@@ -2173,6 +2185,47 @@ foreach ($bracketData as $_bid => $_bd) {
 			<button class="tn-btn tn-btn-ghost" id="tn-cs-cancel">Cancel</button>
 			<button class="tn-btn tn-btn-primary" id="tn-cs-submit">
 				<i class="fas fa-save"></i> Save
+			</button>
+		</div>
+	</div>
+</div>
+
+<!-- Pools to Brackets modal -->
+<div class="tn-overlay" id="tn-poolstobrackets-overlay">
+	<div class="tn-modal-box" style="width:420px;max-width:calc(100vw - 40px)">
+		<div class="tn-modal-header">
+			<h3 class="tn-modal-title"><i class="fas fa-sitemap" style="margin-right:8px;color:#276749"></i>Pools to Brackets</h3>
+			<button class="tn-modal-close" id="tn-p2b-close">&times;</button>
+		</div>
+		<div class="tn-modal-body">
+			<div id="tn-p2b-feedback" class="tn-feedback"></div>
+			<p style="font-size:13px;color:#718096;margin:0 0 16px">Create a new elimination bracket seeded from the top finishers of this Ironman pool.</p>
+			<input type="hidden" id="tn-p2b-source-bid" value="">
+			<div class="tn-field">
+				<label>Bracket Type</label>
+				<select id="tn-p2b-method">
+					<option value="single">Single Elimination</option>
+					<option value="double">Double Elimination</option>
+				</select>
+			</div>
+			<div class="tn-field">
+				<label>Take Top <span id="tn-p2b-pool-note" style="color:#a0aec0;font-size:11px;font-weight:400"></span></label>
+				<input type="number" id="tn-p2b-topx" min="2" value="8" style="text-align:center">
+			</div>
+			<div class="tn-field">
+				<label>Seed By</label>
+				<select id="tn-p2b-seed">
+					<option value="standing">Ironman Standing</option>
+					<option value="warrior">Orders of the Warrior</option>
+					<option value="glicko2">Performance Score</option>
+					<option value="random">Random</option>
+				</select>
+			</div>
+		</div>
+		<div class="tn-modal-footer">
+			<button class="tn-btn tn-btn-ghost" id="tn-p2b-cancel">Cancel</button>
+			<button class="tn-btn tn-btn-primary" id="tn-p2b-submit">
+				<i class="fas fa-sitemap"></i> Create Bracket
 			</button>
 		</div>
 	</div>
@@ -2700,6 +2753,69 @@ document.addEventListener('DOMContentLoaded', function() {
 					}
 				})
 				.catch(function() { btn.disabled=false; tnShowFeedback('tn-cs-feedback','Request failed.',false); });
+		});
+	}
+})();
+
+(function() {
+	if (!TnConfig.canManage) return;
+	var OVERLAY = 'tn-poolstobrackets-overlay';
+
+	window.tnOpenPoolsToBracketsModal = function(srcBid, poolSize) {
+		tnHideFeedback('tn-p2b-feedback');
+		document.getElementById('tn-p2b-source-bid').value = srcBid;
+		var ps = Math.max(2, parseInt(poolSize) || 2);
+		var topx = document.getElementById('tn-p2b-topx');
+		topx.max = ps;
+		topx.value = Math.min(8, ps);
+		var note = document.getElementById('tn-p2b-pool-note');
+		if (note) note.textContent = '(of ' + ps + ' in pool)';
+		document.getElementById('tn-p2b-method').value = 'single';
+		document.getElementById('tn-p2b-seed').value = 'standing';
+		tnOpenModal(OVERLAY);
+	};
+
+	['tn-p2b-close','tn-p2b-cancel'].forEach(function(id) {
+		var el = document.getElementById(id);
+		if (el) el.addEventListener('click', function() { tnCloseModal(OVERLAY); });
+	});
+	var ov = document.getElementById(OVERLAY);
+	if (ov) ov.addEventListener('click', function(e) { if (e.target === ov) tnCloseModal(OVERLAY); });
+	document.addEventListener('keydown', function(e) {
+		if (e.key === 'Escape' && ov && ov.classList.contains('tn-open')) tnCloseModal(OVERLAY);
+	});
+
+	var submitBtn = document.getElementById('tn-p2b-submit');
+	if (submitBtn) {
+		submitBtn.addEventListener('click', function() {
+			var btn = this;
+			var srcBid = parseInt(document.getElementById('tn-p2b-source-bid').value) || 0;
+			var method = document.getElementById('tn-p2b-method').value;
+			var topx   = parseInt(document.getElementById('tn-p2b-topx').value) || 0;
+			var seed   = document.getElementById('tn-p2b-seed').value;
+			if (!srcBid)  { tnShowFeedback('tn-p2b-feedback','Missing source bracket.',false); return; }
+			if (topx < 2) { tnShowFeedback('tn-p2b-feedback','Take at least 2 players.',false); return; }
+			if (method === 'double' && topx < 3) { tnShowFeedback('tn-p2b-feedback','Double elimination needs at least 3 players.',false); return; }
+			btn.disabled = true;
+			tnShowFeedback('tn-p2b-feedback','Creating bracket\u2026',true);
+			var fd = new FormData();
+			fd.append('TournamentId', TnConfig.tournamentId);
+			fd.append('Method', method);
+			fd.append('TopX', topx);
+			fd.append('SeedMethod', seed);
+			fetch(TnConfig.uir + 'TournamentAjax/bracket/' + srcBid + '/poolstobrackets', {method:'POST',body:fd})
+				.then(function(r) { return r.json(); })
+				.then(function(d) {
+					if (d && d.status === 0) {
+						tnShowFeedback('tn-p2b-feedback','Bracket created!',true);
+						sessionStorage.setItem('tnOpenTab','brackets');
+						setTimeout(function() { window.location.reload(); }, 500);
+					} else {
+						btn.disabled = false;
+						tnShowFeedback('tn-p2b-feedback',(d&&d.error)?d.error:'Failed to create bracket.',false);
+					}
+				})
+				.catch(function() { btn.disabled=false; tnShowFeedback('tn-p2b-feedback','Request failed.',false); });
 		});
 	}
 })();
@@ -3763,6 +3879,17 @@ window.tnShowStandings = function(bracketId) {
 	});
 };
 
+// Jump to the Standings tab with a specific bracket pre-selected (used by the
+// "View Standings" button on a completed ironman's timer row).
+window.tnViewIronmanStandings = function(bracketId) {
+	var panel = document.getElementById('tn-tab-standings');
+	if (!panel) return; // no standings tab rendered (no standings data at load)
+	tnActivateTab('standings');
+	var pill = panel.querySelector('.tn-bk-pill[data-bid="' + bracketId + '"]');
+	if (pill) tnStandingsPillClick(pill, bracketId);
+	else if (typeof tnShowStandings === 'function') tnShowStandings(bracketId);
+};
+
 window.tnSortTable = function(tableId, colIndex, numeric) {
 	var tbl = document.getElementById(tableId);
 	if (!tbl) return;
@@ -4790,6 +4917,26 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 		return { wins: wins, maxStreak: maxStreak, currentKingId: currentKingId, currentStreak: currentStreak };
 	}
 
+	// Global (cross-ring) stats matching the server's denormalized columns: total wins
+	// and CURRENT streak per fighter. Streak resets when a fighter is dethroned (a
+	// different winner appears on the hill they held); it never carries across rings on
+	// its own because a ring change only follows a defeat. One pass per full render.
+	function computeIronmanGlobalStats(completedMatches) {
+		var wins = {}, streak = {}, maxStreak = {}, king = {};
+		completedMatches.forEach(function(m) {
+			var w = getIronmanWinnerId(m);
+			if (!w) return;
+			var ring = parseInt(m.RingNumber) || 1;
+			var pk = king[ring] || 0;
+			if (pk && pk !== w) streak[pk] = 0;
+			wins[w]   = (wins[w] || 0) + 1;
+			streak[w] = (streak[w] || 0) + 1;
+			if (!maxStreak[w] || streak[w] > maxStreak[w]) maxStreak[w] = streak[w];
+			king[ring] = w;
+		});
+		return { wins: wins, streak: streak, maxStreak: maxStreak };
+	}
+
 	function computeIronmanQueue(completedMatches, pMap, excludeIds) {
 		var lastLossIdx = {}, appeared = {};
 		completedMatches.forEach(function(m, idx) {
@@ -4820,9 +4967,53 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 	// Ring color palette (border + label bg) for up to 8 rings
 	var TN_RING_COLORS = ['','#3182ce','#38a169','#e53e3e','#805ad5','#dd6b20','#d69e2e','#d53f8c','#744210'];
 
+	// Apply a recorded ironman win to the DOM. Fast path (king held the hill — the
+	// common rapid-streak case) patches numbers in place: no rebuild, no lost focus.
+	// A king change is structural, so fall back to a full refresh + render.
+	function tnIronmanApplyWin(bracketId, d, ringN, winnerName, inputEl, statusEl) {
+		if (!d || d.KingChanged) {
+			if (winnerName) window['_tnLastWinner_' + bracketId + '_r' + ringN] = winnerName;
+			tnRefreshAndRender(bracketId);
+			return;
+		}
+		var root = document.getElementById('tn-bv-container');
+		if (!root) { tnRefreshAndRender(bracketId); return; }
+		// Winner's wins + streak, on every ring's card for this fighter.
+		root.querySelectorAll('.tn-im-card[data-pid="' + d.WinnerId + '"]').forEach(function(card) {
+			var winsEl = card.querySelector('.tn-im-card-wins');
+			if (winsEl) winsEl.innerHTML = '<i class="fas fa-trophy"></i> ' + d.WinnerWins;
+			var stEl = card.querySelector('.tn-im-card-streak');
+			if (d.WinnerStreak >= 2) {
+				if (!stEl) { stEl = document.createElement('div'); stEl.className = 'tn-im-card-streak'; card.appendChild(stEl); }
+				stEl.innerHTML = '<i class="fas fa-link"></i> ' + d.WinnerStreak;
+			} else if (stEl) {
+				stEl.parentNode.removeChild(stEl);
+			}
+		});
+		// Ring-local: fight counter + king badge streak.
+		var ring = root.querySelector('.tn-im-ring[data-ring="' + ringN + '"]');
+		if (ring) {
+			var fn = ring.querySelector('.tn-im-fight-num');
+			if (fn) { var mch = fn.textContent.match(/(\d+)/); fn.textContent = 'Fight #' + ((mch ? parseInt(mch[1]) : 1) + 1); }
+			var kb = ring.querySelector('.tn-im-king-badge');
+			if (kb) {
+				var ks = kb.querySelector('.tn-im-king-badge-streak');
+				if (d.WinnerStreak > 1) {
+					if (!ks) { ks = document.createElement('span'); ks.className = 'tn-im-king-badge-streak'; kb.appendChild(ks); }
+					ks.textContent = d.WinnerStreak;
+				} else if (ks) { ks.parentNode.removeChild(ks); }
+			}
+		}
+		if (inputEl)  { inputEl.value = ''; inputEl.disabled = false; setTimeout(function(){ inputEl.focus(); }, 0); }
+		if (statusEl) { statusEl.className = 'tn-im-qe-status ok'; statusEl.textContent = '\u2713 ' + (winnerName || '') + ' won'; }
+	}
+
 	function renderIronmanView(container, matches, pMap, participants, bracketId) {
 		var sorted    = matches.slice().sort(function(a,b){ return (parseInt(a.Order)||0)-(parseInt(b.Order)||0); });
 		var completed = sorted.filter(function(m){ return m.Result && m.Result !== ''; });
+
+		// Global wins + current streak per fighter (same numbers on every ring).
+		var globalStats = computeIronmanGlobalStats(completed);
 
 		var seedSorted = participants.slice().sort(function(a,b){
 			var an = parseInt(a.ParticipantNumber) || parseInt(a.Seed) || 0;
@@ -4941,6 +5132,15 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 					tnRenderBracketViz(bracketId);
 				};
 				timerBar.appendChild(addEndedBtn);
+			}
+
+			// Completed ironman (timer ended): anyone can jump to its standings.
+			if (_timerExpired) {
+				var standingsBtn = document.createElement('button');
+				standingsBtn.className = 'tn-im-timer-btn standings';
+				standingsBtn.innerHTML = '<i class="fas fa-medal"></i> View Standings';
+				standingsBtn.onclick = function() { tnViewIronmanStandings(bracketId); };
+				timerBar.appendChild(standingsBtn);
 			}
 
 			if (_inGrace && TnConfig.canManage) {
@@ -5173,6 +5373,7 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 				var ringDiv = document.createElement('div');
 				ringDiv.className = 'tn-im-ring';
 				ringDiv.style.borderColor = ringColor;
+				ringDiv.dataset.ring = rNum;
 
 				// Ring header: label + fight# + king badge
 				var rHeader = document.createElement('div');
@@ -5262,12 +5463,8 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 										inputEl.focus();
 										return;
 									}
-									window['_tnLastWinner_' + bracketId + '_r' + ringN] = winnerName;
-									// Re-enable before re-render (the re-render destroys this
-									// input anyway, so this is safe and avoids leaving a stale
-									// disabled input if the render path changes).
 									inputEl.disabled = false;
-									tnRefreshAndRender(bracketId);
+									tnIronmanApplyWin(bracketId, d, ringN, winnerName, inputEl, statusEl);
 								})
 								.catch(function(){
 									statusEl.className = 'tn-im-qe-status err';
@@ -5288,8 +5485,8 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 					kb.innerHTML = '<i class="fas fa-crown tn-im-king-badge-crown"></i>'
 						+ '<span class="tn-im-king-badge-label">' + (ringCount > 1 ? 'King of Ring ' + rNum : 'King') + '</span>'
 						+ '<span class="tn-im-king-badge-name">' + tnEsc(kName) + '</span>'
-						+ (rStats.currentStreak > 1
-							? '<span class="tn-im-king-badge-streak">' + rStats.currentStreak + '</span>'
+						+ ((globalStats.streak[kingId] || 0) > 1
+							? '<span class="tn-im-king-badge-streak">' + (globalStats.streak[kingId] || 0) + '</span>'
 							: '');
 					rHeader.appendChild(kb);
 				}
@@ -5304,7 +5501,8 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 				seedSorted.forEach(function(participant, idx) {
 					var pid    = parseInt(participant.ParticipantId) || 0;
 					var name   = participant.Alias || participant.Persona || '?';
-					var wins   = rStats.wins[pid] || 0;
+					var wins   = globalStats.wins[pid] || 0;
+					var streak = globalStats.streak[pid] || 0;
 					var isKing = (pid === kingId);
 					var color  = _avatarColors[idx % _avatarColors.length];
 					var seedNum = parseInt(participant.ParticipantNumber) || parseInt(participant.Seed) || (idx + 1);
@@ -5313,6 +5511,7 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 					var isKingElsewhere = (!isKing && allKingRing[pid] !== undefined);
 
 					var card = document.createElement('div');
+					card.dataset.pid = pid;
 					card.className = 'tn-im-card'
 						+ (isKing ? ' tn-im-card-king' : '')
 						+ (isKingElsewhere ? ' tn-im-card-blocked' : '');
@@ -5321,7 +5520,8 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 						+ (isKingElsewhere ? '<i class="fas fa-shield-alt tn-im-card-crown" style="color:#a0aec0" data-tip="King of Ring ' + allKingRing[pid] + '"></i>' : '')
 						+ '<div class="tn-im-avatar" style="background:' + color + '">' + seedNum + '</div>'
 						+ '<div class="tn-im-card-name">' + tnEsc(name) + '</div>'
-						+ '<div class="tn-im-card-wins"><i class="fas fa-trophy"></i> ' + wins + '</div>';
+						+ '<div class="tn-im-card-wins"><i class="fas fa-trophy"></i> ' + wins + '</div>'
+						+ (streak >= 2 ? '<div class="tn-im-card-streak"><i class="fas fa-link"></i> ' + streak + '</div>' : '');
 
 					if (TnConfig.canManage && pid && _timerUnlocked && !isKingElsewhere) {
 						card.classList.add('tn-im-card-btn');
@@ -5338,10 +5538,11 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 								fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bracketId + '/ironmanwin', {method:'POST', body:fd})
 									.then(function(r){ return r.json(); })
 									.then(function(d){
-										if (d.status !== 0) { alert('Error: ' + (d.error || 'Unknown')); }
-										tnRefreshAndRender(bracketId);
+										grid.style.opacity = ''; grid.style.pointerEvents = ''; delete card.dataset.pending;
+										if (d.status !== 0) { alert('Error: ' + (d.error || 'Unknown')); tnRefreshAndRender(bracketId); return; }
+										tnIronmanApplyWin(bracketId, d, ringN, null, null, null);
 									})
-									.catch(function(){ tnRefreshAndRender(bracketId); });
+									.catch(function(){ grid.style.opacity = ''; grid.style.pointerEvents = ''; delete card.dataset.pending; tnRefreshAndRender(bracketId); });
 							};
 						})(pid, rNum);
 					}
@@ -5374,7 +5575,7 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 					if (_allRows.length > _showMax) {
 						var _expandRow = document.createElement('div');
 						_expandRow.className = 'tn-im-history-expand';
-						_expandRow.innerHTML = '<span>&#9660; ' + (_allRows.length - _showMax) + ' more fights</span>';
+						_expandRow.innerHTML = '<span>&#9660; Show last ' + (_allRows.length - _showMax) + ' fights</span>';
 						_expandRow.addEventListener('click', function() {
 							hList.querySelectorAll('.tn-im-history-row').forEach(function(r) { r.style.display = ''; });
 							_expandRow.remove();

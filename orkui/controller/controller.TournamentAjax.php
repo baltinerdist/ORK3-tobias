@@ -379,6 +379,24 @@ class Controller_TournamentAjax extends Controller {
 				? json_encode(array_merge(['status' => 0], is_array($r['Detail']) ? $r['Detail'] : ['FightNum' => (int)($r['Detail'] ?? 0)]))
 				: $this->modelError($r);
 
+		} elseif ($action === 'poolstobrackets') {
+			// Create a single/double-elim playoff from the top X of this Ironman's pool.
+			$tid = (int)($_POST['TournamentId'] ?? 0);
+			if (!valid_id($tid)) {
+				echo json_encode(['status' => 1, 'error' => 'TournamentId required.']); exit;
+			}
+			$r = $this->Tournament->pools_to_bracket([
+				'Token'        => $this->session->token,
+				'TournamentId' => $tid,
+				'BracketId'    => $bracket_id,
+				'Method'       => trim($_POST['Method'] ?? ''),
+				'TopX'         => (int)($_POST['TopX'] ?? 0),
+				'SeedMethod'   => trim($_POST['SeedMethod'] ?? 'standing'),
+			]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0, 'bracketId' => (int)($r['Detail'] ?? 0)])
+				: $this->modelError($r);
+
 		} elseif ($action === 'reorder') {
 			// Update seed order for participants (Phase 7 — drag-drop)
 			$tid = (int)($_POST['TournamentId'] ?? 0);
