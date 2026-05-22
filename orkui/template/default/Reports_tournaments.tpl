@@ -1,5 +1,5 @@
 <?php /* Tournament Report — Overview / Fighters / Awards / Parks */ ?>
-<link rel="stylesheet" href="<?= UIR ?>template/default/style/reports.css">
+<link rel="stylesheet" href="<?=HTTP_TEMPLATE?>default/style/reports.css?v=<?=filemtime(__DIR__.'/style/reports.css')?>">
 <div class="tnr-report" id="tnr-report"
      data-scope="<?= htmlspecialchars($this->data['ScopeType']) ?>"
      data-id="<?= (int)$this->data['ScopeId'] ?>">
