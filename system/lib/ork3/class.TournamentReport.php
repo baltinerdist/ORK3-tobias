@@ -391,4 +391,49 @@ class TournamentReport extends Ork3 {
 		return ['Candidates' => $cands, 'Status' => Success()];
 	}
 
+	/** Per-park comparison within a kingdom: tournaments hosted, participants, championships, avg warrior level. */
+	public function GetTournamentParkComparison($request) {
+		if (!valid_id($request['KingdomId'] ?? 0)) return ['Parks' => [], 'Status' => InvalidParameter('KingdomId required')];
+		$where = $this->scopeWhere(['KingdomId'=>$request['KingdomId'], 'DateFrom'=>$request['DateFrom']??null, 'DateTo'=>$request['DateTo']??null], 't');
+
+		$sql = "SELECT pk.park_id, pk.name AS park_name,
+		           COUNT(DISTINCT t.tournament_id) AS hosted,
+		           COUNT(DISTINCT pm.mundane_id) AS participants,
+		           AVG(NULLIF(p.warrior_level,0)) AS avg_wl
+		        FROM " . DB_PREFIX . "tournament t
+		          JOIN " . DB_PREFIX . "park pk ON pk.park_id = t.park_id
+		          LEFT JOIN " . DB_PREFIX . "participant p ON p.tournament_id = t.tournament_id
+		          LEFT JOIN " . DB_PREFIX . "participant_mundane pm ON pm.participant_id = p.participant_id
+		        WHERE t.park_id > 0 $where
+		        GROUP BY pk.park_id, pk.name ORDER BY hosted DESC";
+		$parks = [];
+		$r = $this->db->query($sql);
+		if ($r !== false) {
+			while ($r->next()) {
+				$parks[(int)$r->park_id] = [
+					'ParkId' => (int)$r->park_id, 'ParkName' => $r->park_name,
+					'TournamentsHosted' => (int)$r->hosted, 'Participants' => (int)$r->participants,
+					'AvgWarriorLevel' => round((float)$r->avg_wl,1), 'Championships' => 0, 'TopFighter' => '',
+				];
+			}
+		}
+
+		$bsql = "SELECT b.bracket_id FROM " . DB_PREFIX . "bracket b
+		          JOIN " . DB_PREFIX . "tournament t ON t.tournament_id=b.tournament_id
+		          WHERE b.participants='individual' AND b.status IN ('complete','finalized') $where";
+		$br = $this->db->query($bsql);
+		if ($br !== false) {
+			while ($br->next()) {
+				$pl = $this->GetBracketPlacements(['BracketId'=>(int)$br->bracket_id]);
+				foreach ($pl['Placements'] as $place) {
+					if ($place['Place'] !== 1) continue;
+					$prow = $this->db->query("SELECT park_id FROM " . DB_PREFIX . "participant WHERE participant_id = " . (int)$place['ParticipantId']);
+					if ($prow !== false && $prow->size() > 0) { $prow->next(); $pkid=(int)$prow->park_id; if (isset($parks[$pkid])) $parks[$pkid]['Championships']++; }
+				}
+			}
+		}
+
+		return ['Parks' => array_values($parks), 'Status' => Success()];
+	}
+
 }
