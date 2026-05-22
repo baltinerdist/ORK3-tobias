@@ -1,115 +1,184 @@
-<?php /* Tournament Report — Overview / Fighters / Awards / Parks */ ?>
+<?php /* Tournament Report — rp- shell (header / context / stats) + tabbed detail views */ ?>
 <link rel="stylesheet" href="<?=HTTP_TEMPLATE?>default/style/reports.css?v=<?=filemtime(__DIR__.'/style/reports.css')?>">
-<div class="tnr-report" id="tnr-report"
-     data-scope="<?= htmlspecialchars($this->data['ScopeType']) ?>"
-     data-id="<?= (int)$this->data['ScopeId'] ?>">
+<?php
+	$T          = $this->data['ProgramStats']['Totals'] ?? [];
+	$scopeType  = $this->data['ScopeType'];                       // 'kingdom' | 'park' | ''
+	$scopeName  = $this->data['ScopeName'] ?? '';
+	$scopeIcon  = $this->data['ScopeIcon'] ?? 'fa-globe';
+	$scopeLink  = $this->data['ScopeLink'] ?? '';
+	$scopeNoun  = $scopeType === 'park' ? 'park' : ($scopeType === 'kingdom' ? 'kingdom' : 'scope');
+	$dateFrom   = $this->data['DateFrom'];
+	$dateTo     = $this->data['DateTo'];
+	$periodLbl  = '';
+	if ($dateFrom && $dateTo)      $periodLbl = $dateFrom . ' – ' . $dateTo;
+	elseif ($dateFrom)             $periodLbl = 'Since ' . $dateFrom;
+	elseif ($dateTo)               $periodLbl = 'Through ' . $dateTo;
+	$scopeParam = $scopeType === 'park' ? 'ParkId' : 'KingdomId';
+?>
+<div class="rp-root" id="tnr-report" data-scope="<?=htmlspecialchars($scopeType)?>" data-id="<?=(int)$this->data['ScopeId']?>">
 
-  <div class="tnr-head">
-    <h2 class="tnr-title"><?= htmlspecialchars($this->data['page_title']) ?></h2>
-    <form class="tnr-filter" method="get" id="tnr-filter">
-      <input type="hidden" name="<?= $this->data['ScopeType']==='park' ? 'ParkId' : 'KingdomId' ?>" value="<?= (int)$this->data['ScopeId'] ?>">
-      <label>From <input type="text" class="tnr-date" name="DateFrom" value="<?= htmlspecialchars($this->data['DateFrom']) ?>"></label>
-      <label>To <input type="text" class="tnr-date" name="DateTo" value="<?= htmlspecialchars($this->data['DateTo']) ?>"></label>
-      <button type="submit" class="tnr-btn">Apply</button>
-      <?php if ($this->data['DateFrom'] || $this->data['DateTo']): ?>
-        <a class="tnr-btn tnr-btn-ghost" href="<?= UIR ?>Reports/tournaments&<?= $this->data['ScopeType']==='park' ? 'ParkId' : 'KingdomId' ?>=<?= (int)$this->data['ScopeId'] ?>">All time</a>
-      <?php endif; ?>
-    </form>
-  </div>
+	<!-- Header -->
+	<div class="rp-header">
+		<div class="rp-header-left">
+			<div class="rp-header-icon-title">
+				<i class="fas fa-trophy rp-header-icon"></i>
+				<h1 class="rp-header-title">Tournament Report</h1>
+<?php if ($periodLbl): ?>
+				<span style="display:inline-flex;align-items:center;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.25);border-radius:20px;padding:3px 11px;font-size:0.78rem;font-weight:600;color:rgba(255,255,255,0.9);white-space:nowrap;"><?=htmlspecialchars($periodLbl)?></span>
+<?php endif; ?>
+			</div>
+<?php if ($scopeName): ?>
+			<div class="rp-header-scope">
+				<span class="rp-scope-chip-label">Scope:</span>
+<?php if ($scopeLink): ?>
+				<a href="<?=$scopeLink?>" class="rp-scope-chip"><i class="fas <?=htmlspecialchars($scopeIcon)?>"></i> <?=htmlspecialchars($scopeName)?></a>
+<?php else: ?>
+				<span class="rp-scope-chip"><i class="fas <?=htmlspecialchars($scopeIcon)?>"></i> <?=htmlspecialchars($scopeName)?></span>
+<?php endif; ?>
+			</div>
+<?php endif; ?>
+		</div>
+		<div class="rp-header-actions">
+			<form class="tnr-filter" method="get" id="tnr-filter">
+				<input type="hidden" name="<?=$scopeParam?>" value="<?=(int)$this->data['ScopeId']?>">
+				<input type="text" class="tnr-date" name="DateFrom" placeholder="From" value="<?=htmlspecialchars($dateFrom)?>">
+				<input type="text" class="tnr-date" name="DateTo" placeholder="To" value="<?=htmlspecialchars($dateTo)?>">
+				<button type="submit" class="rp-btn-ghost"><i class="fas fa-filter"></i> Apply</button>
+<?php if ($dateFrom || $dateTo): ?>
+				<a class="rp-btn-ghost" href="<?=UIR?>Reports/tournaments&<?=$scopeParam?>=<?=(int)$this->data['ScopeId']?>"><i class="fas fa-times"></i> All time</a>
+<?php endif; ?>
+			</form>
+		</div>
+	</div>
 
-  <nav class="tnr-tabs" role="tablist">
-    <button class="tnr-tab tnr-active" data-tnrtab="overview"><i class="fas fa-chart-line"></i> Overview</button>
-    <button class="tnr-tab" data-tnrtab="fighters"><i class="fas fa-khanda"></i> Fighters</button>
-    <button class="tnr-tab" data-tnrtab="awards"><i class="fas fa-medal"></i> Awards</button>
-    <?php if ($this->data['ScopeType']==='kingdom'): ?>
-      <button class="tnr-tab" data-tnrtab="parks"><i class="fas fa-map-marked-alt"></i> Parks</button>
-    <?php endif; ?>
-  </nav>
+	<!-- Context strip -->
+	<div class="rp-context">
+		<i class="fas fa-info-circle rp-context-icon"></i>
+		<span>Tournament results<?php if ($scopeNoun !== 'scope'): ?> for this <?=$scopeNoun?><?php endif; ?><?php if ($periodLbl): ?> over the selected date range<?php endif; ?>. Championships count per-bracket wins; <strong>Warrior level</strong> (0–12) reflects each fighter's Order of the Warrior ranking. Upsets are wins over opponents ranked 3+ Warrior levels higher.</span>
+	</div>
 
-  <div class="tnr-panel tnr-active" id="tnr-tab-overview">
-    <?php $T = $this->data['ProgramStats']['Totals'] ?? []; ?>
-    <div class="tnr-stat-row">
-      <div class="tnr-stat"><div class="tnr-stat-num"><?= (int)($T['Total']??0) ?></div><div class="tnr-stat-lbl">Tournaments</div></div>
-      <div class="tnr-stat"><div class="tnr-stat-num"><?= (int)($T['UniqueParticipants']??0) ?></div><div class="tnr-stat-lbl">Unique Fighters</div></div>
-      <div class="tnr-stat"><div class="tnr-stat-num"><?= (int)($T['CompletionRate']??0) ?>%</div><div class="tnr-stat-lbl">Completion Rate</div></div>
-      <div class="tnr-stat"><div class="tnr-stat-num"><?= htmlspecialchars($T['AvgWarriorLevel']??0) ?></div><div class="tnr-stat-lbl">Avg Warrior Level</div></div>
-    </div>
-    <div class="tnr-grid2">
-      <div class="tnr-card"><h4 class="tnr-h">By Style</h4>
-        <?php foreach (($this->data['ProgramStats']['ByStyle']??[]) as $s): ?>
-          <div class="tnr-bar-row"><span><?= htmlspecialchars($s['Key']) ?></span><b><?= (int)$s['Count'] ?></b></div>
-        <?php endforeach; ?>
-      </div>
-      <div class="tnr-card"><h4 class="tnr-h">By Method</h4>
-        <?php foreach (($this->data['ProgramStats']['ByMethod']??[]) as $s): ?>
-          <div class="tnr-bar-row"><span><?= htmlspecialchars($s['Key']) ?></span><b><?= (int)$s['Count'] ?></b></div>
-        <?php endforeach; ?>
-      </div>
-    </div>
-    <div class="tnr-card"><h4 class="tnr-h">Activity Over Time</h4>
-      <svg id="tnr-trend" class="tnr-trend" viewBox="0 0 600 160" preserveAspectRatio="none"></svg>
-    </div>
-    <script>window.__tnrTrend = <?= json_encode($this->data['ProgramStats']['Trend'] ?? []) ?>;</script>
-  </div>
+	<!-- Stats row -->
+	<div class="rp-stats-row">
+		<div class="rp-stat-card">
+			<div class="rp-stat-tip"><span class="rp-stat-tip-icon" data-tip="Total tournaments held in this scope and date range.">?</span></div>
+			<div class="rp-stat-icon"><i class="fas fa-trophy"></i></div>
+			<div class="rp-stat-number"><?=(int)($T['Total']??0)?></div>
+			<div class="rp-stat-label">Tournaments</div>
+		</div>
+		<div class="rp-stat-card">
+			<div class="rp-stat-tip"><span class="rp-stat-tip-icon" data-tip="Distinct players who competed.">?</span></div>
+			<div class="rp-stat-icon"><i class="fas fa-users"></i></div>
+			<div class="rp-stat-number"><?=number_format((int)($T['UniqueParticipants']??0))?></div>
+			<div class="rp-stat-label">Unique Fighters</div>
+		</div>
+		<div class="rp-stat-card">
+			<div class="rp-stat-tip"><span class="rp-stat-tip-icon" data-tip="Share of tournaments marked complete.">?</span></div>
+			<div class="rp-stat-icon"><i class="fas fa-flag-checkered"></i></div>
+			<div class="rp-stat-number"><?=(int)($T['CompletionRate']??0)?>%</div>
+			<div class="rp-stat-label">Completion Rate</div>
+		</div>
+		<div class="rp-stat-card">
+			<div class="rp-stat-tip"><span class="rp-stat-tip-icon" data-tip="Average Order-of-the-Warrior level (0–12) of participants at time of competition.">?</span></div>
+			<div class="rp-stat-icon"><i class="fas fa-khanda"></i></div>
+			<div class="rp-stat-number"><?=htmlspecialchars($T['AvgWarriorLevel']??0)?></div>
+			<div class="rp-stat-label">Avg Warrior Level</div>
+		</div>
+	</div>
 
-  <div class="tnr-panel" id="tnr-tab-fighters">
-    <table class="tnr-table tnr-sortable" id="tnr-fighters">
-      <thead><tr>
-        <th data-sort="text">Fighter</th>
-        <th data-sort="num" data-tip="Order of the Warrior 0-12">Warrior</th>
-        <th data-sort="num">Tournaments</th>
-        <th data-sort="num">W</th><th data-sort="num">L</th><th data-sort="num">Win %</th>
-        <th data-sort="num">Championships</th><th data-sort="num">Podiums</th>
-        <th data-sort="num">Streak</th><th data-sort="num" data-tip="Wins vs fighters 3+ Warrior levels higher">Upsets</th>
-      </tr></thead>
-      <tbody>
-      <?php foreach (($this->data['Leaderboard']['Fighters']??[]) as $f): ?>
-        <tr>
-          <td><a href="<?= UIR ?>Player/profile/<?= (int)$f['MundaneId'] ?>"><?= htmlspecialchars($f['Persona']) ?></a></td>
-          <td><?= (int)$f['WarriorLevel'] ?></td>
-          <td><?= (int)$f['TournamentsEntered'] ?></td>
-          <td><?= (int)$f['Wins'] ?></td><td><?= (int)$f['Losses'] ?></td><td><?= (int)$f['WinPct'] ?>%</td>
-          <td><?= (int)$f['Championships'] ?></td><td><?= (int)$f['Podiums'] ?></td>
-          <td><?= (int)$f['MaxStreak'] ?></td><td><?= (int)$f['UpsetWins'] ?></td>
-        </tr>
-      <?php endforeach; ?>
-      </tbody>
-    </table>
-    <?php if (empty($this->data['Leaderboard']['Fighters'])): ?><div class="tnr-empty">No individual-bracket results in range.</div><?php endif; ?>
-  </div>
+	<!-- Tabs -->
+	<nav class="tnr-tabs" role="tablist">
+		<button class="tnr-tab tnr-active" data-tnrtab="overview"><i class="fas fa-chart-line"></i> Overview</button>
+		<button class="tnr-tab" data-tnrtab="fighters"><i class="fas fa-khanda"></i> Fighters</button>
+		<button class="tnr-tab" data-tnrtab="awards"><i class="fas fa-medal"></i> Awards</button>
+<?php if ($scopeType === 'kingdom'): ?>
+		<button class="tnr-tab" data-tnrtab="parks"><i class="fas fa-map-marked-alt"></i> Parks</button>
+<?php endif; ?>
+	</nav>
 
-  <div class="tnr-panel" id="tnr-tab-awards">
-    <?php foreach (($this->data['AwardCandidates']['Candidates']??[]) as $c): ?>
-      <div class="tnr-cand <?= $c['OotWCandidate'] ? 'tnr-cand-ootw' : '' ?>">
-        <div class="tnr-cand-main">
-          <a class="tnr-cand-name" href="<?= UIR ?>Player/profile/<?= (int)$c['MundaneId'] ?>"><?= htmlspecialchars($c['Persona']) ?></a>
-          <span class="tnr-cand-wl">Warrior <?= (int)$c['WarriorLevel'] ?></span>
-          <?php if ($c['OotWCandidate']): ?><span class="tnr-pill">Order of the Warrior candidate</span><?php endif; ?>
-          <div class="tnr-cand-note"><?= htmlspecialchars($c['EvidenceNote']) ?></div>
-        </div>
-        <a class="tnr-btn" href="<?= UIR ?>Player/profile/<?= (int)$c['MundaneId'] ?>" data-tip="Open this fighter's profile to make an award recommendation">Recommend</a>
-      </div>
-    <?php endforeach; ?>
-    <?php if (empty($this->data['AwardCandidates']['Candidates'])): ?><div class="tnr-empty">No recognition candidates meet the thresholds in range.</div><?php endif; ?>
-  </div>
+	<!-- Overview: breakdowns + trend -->
+	<div class="tnr-panel tnr-active" id="tnr-tab-overview">
+		<div class="tnr-grid2">
+			<div class="tnr-card"><h4 class="tnr-h">By Style</h4>
+<?php foreach (($this->data['ProgramStats']['ByStyle']??[]) as $s): ?>
+				<div class="tnr-bar-row"><span><?=htmlspecialchars($s['Key'])?></span><b><?=(int)$s['Count']?></b></div>
+<?php endforeach; ?>
+<?php if (empty($this->data['ProgramStats']['ByStyle'])): ?><div class="tnr-empty">No tournaments in range.</div><?php endif; ?>
+			</div>
+			<div class="tnr-card"><h4 class="tnr-h">By Method</h4>
+<?php foreach (($this->data['ProgramStats']['ByMethod']??[]) as $s): ?>
+				<div class="tnr-bar-row"><span><?=htmlspecialchars($s['Key'])?></span><b><?=(int)$s['Count']?></b></div>
+<?php endforeach; ?>
+<?php if (empty($this->data['ProgramStats']['ByMethod'])): ?><div class="tnr-empty">No tournaments in range.</div><?php endif; ?>
+			</div>
+		</div>
+		<div class="tnr-card"><h4 class="tnr-h">Activity Over Time</h4>
+			<svg id="tnr-trend" class="tnr-trend" viewBox="0 0 600 160" preserveAspectRatio="none"></svg>
+			<div class="tnr-legend"><span class="tnr-key tnr-key-t"></span> Tournaments &nbsp; <span class="tnr-key tnr-key-p"></span> Participants</div>
+		</div>
+		<script>window.__tnrTrend = <?=json_encode($this->data['ProgramStats']['Trend'] ?? [])?>;</script>
+	</div>
 
-  <?php if ($this->data['ScopeType']==='kingdom'): ?>
-    <div class="tnr-panel" id="tnr-tab-parks">
-      <table class="tnr-table tnr-sortable" id="tnr-parks">
-        <thead><tr><th data-sort="text">Park</th><th data-sort="num">Tournaments Hosted</th><th data-sort="num">Participants</th><th data-sort="num">Championships</th><th data-sort="num">Avg Warrior</th></tr></thead>
-        <tbody>
-        <?php foreach (($this->data['ParkComparison']['Parks']??[]) as $p): ?>
-          <tr>
-            <td><a href="<?= UIR ?>Park/profile/<?= (int)$p['ParkId'] ?>"><?= htmlspecialchars($p['ParkName']) ?></a></td>
-            <td><?= (int)$p['TournamentsHosted'] ?></td><td><?= (int)$p['Participants'] ?></td>
-            <td><?= (int)$p['Championships'] ?></td><td><?= htmlspecialchars($p['AvgWarriorLevel']) ?></td>
-          </tr>
-        <?php endforeach; ?>
-        </tbody>
-      </table>
-      <?php if (empty($this->data['ParkComparison']['Parks'])): ?><div class="tnr-empty">No park-hosted tournaments in range.</div><?php endif; ?>
-    </div>
-  <?php endif; ?>
+	<!-- Fighters leaderboard -->
+	<div class="tnr-panel" id="tnr-tab-fighters">
+		<table class="tnr-table tnr-sortable" id="tnr-fighters">
+			<thead><tr>
+				<th data-sort="text">Fighter</th>
+				<th data-sort="num" data-tip="Order of the Warrior 0-12">Warrior</th>
+				<th data-sort="num">Tournaments</th>
+				<th data-sort="num">W</th><th data-sort="num">L</th><th data-sort="num">Win %</th>
+				<th data-sort="num">Championships</th><th data-sort="num">Podiums</th>
+				<th data-sort="num">Streak</th><th data-sort="num" data-tip="Wins vs fighters 3+ Warrior levels higher">Upsets</th>
+			</tr></thead>
+			<tbody>
+<?php foreach (($this->data['Leaderboard']['Fighters']??[]) as $f): ?>
+				<tr>
+					<td><a href="<?=UIR?>Player/profile/<?=(int)$f['MundaneId']?>"><?=htmlspecialchars($f['Persona'])?></a></td>
+					<td><?=(int)$f['WarriorLevel']?></td>
+					<td><?=(int)$f['TournamentsEntered']?></td>
+					<td><?=(int)$f['Wins']?></td><td><?=(int)$f['Losses']?></td><td><?=(int)$f['WinPct']?>%</td>
+					<td><?=(int)$f['Championships']?></td><td><?=(int)$f['Podiums']?></td>
+					<td><?=(int)$f['MaxStreak']?></td><td><?=(int)$f['UpsetWins']?></td>
+				</tr>
+<?php endforeach; ?>
+			</tbody>
+		</table>
+<?php if (empty($this->data['Leaderboard']['Fighters'])): ?><div class="tnr-empty">No individual-bracket results in range.</div><?php endif; ?>
+	</div>
+
+	<!-- Award candidates -->
+	<div class="tnr-panel" id="tnr-tab-awards">
+<?php foreach (($this->data['AwardCandidates']['Candidates']??[]) as $c): ?>
+		<div class="tnr-cand <?=$c['OotWCandidate'] ? 'tnr-cand-ootw' : ''?>">
+			<div class="tnr-cand-main">
+				<a class="tnr-cand-name" href="<?=UIR?>Player/profile/<?=(int)$c['MundaneId']?>"><?=htmlspecialchars($c['Persona'])?></a>
+				<span class="tnr-cand-wl">Warrior <?=(int)$c['WarriorLevel']?></span>
+<?php if ($c['OotWCandidate']): ?><span class="tnr-pill">Order of the Warrior candidate</span><?php endif; ?>
+				<div class="tnr-cand-note"><?=htmlspecialchars($c['EvidenceNote'])?></div>
+			</div>
+			<a class="rp-btn-ghost tnr-cand-btn" href="<?=UIR?>Player/profile/<?=(int)$c['MundaneId']?>" data-tip="Open this fighter's profile to make an award recommendation"><i class="fas fa-star"></i> Recommend</a>
+		</div>
+<?php endforeach; ?>
+<?php if (empty($this->data['AwardCandidates']['Candidates'])): ?><div class="tnr-empty">No recognition candidates meet the thresholds in range.</div><?php endif; ?>
+	</div>
+
+<?php if ($scopeType === 'kingdom'): ?>
+	<!-- Park comparison -->
+	<div class="tnr-panel" id="tnr-tab-parks">
+		<table class="tnr-table tnr-sortable" id="tnr-parks">
+			<thead><tr><th data-sort="text">Park</th><th data-sort="num">Tournaments Hosted</th><th data-sort="num">Participants</th><th data-sort="num">Championships</th><th data-sort="num">Avg Warrior</th></tr></thead>
+			<tbody>
+<?php foreach (($this->data['ParkComparison']['Parks']??[]) as $p): ?>
+				<tr>
+					<td><a href="<?=UIR?>Park/profile/<?=(int)$p['ParkId']?>"><?=htmlspecialchars($p['ParkName'])?></a></td>
+					<td><?=(int)$p['TournamentsHosted']?></td><td><?=(int)$p['Participants']?></td>
+					<td><?=(int)$p['Championships']?></td><td><?=htmlspecialchars($p['AvgWarriorLevel'])?></td>
+				</tr>
+<?php endforeach; ?>
+			</tbody>
+		</table>
+<?php if (empty($this->data['ParkComparison']['Parks'])): ?><div class="tnr-empty">No park-hosted tournaments in range.</div><?php endif; ?>
+	</div>
+<?php endif; ?>
 
 </div>
 <script>

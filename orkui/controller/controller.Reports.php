@@ -148,6 +148,20 @@ class Controller_Reports extends Controller {
 
 		$this->data['ScopeType']    = strtolower($type);
 		$this->data['ScopeId']      = $id;
+		// Scope chip (name + profile link) for the rp- report header.
+		$scopeName = ''; $scopeIcon = 'fa-globe'; $scopeLink = '';
+		if ($type === 'Kingdom') {
+			$scopeName = $this->Kingdom->get_kingdom_name($id);
+			$scopeIcon = 'fa-flag';
+			$scopeLink = UIR . 'Kingdom/profile/' . $id;
+		} elseif ($type === 'Park') {
+			$scopeName = $this->Park->get_park_name($id);
+			$scopeIcon = 'fa-tree';
+			$scopeLink = UIR . 'Park/profile/' . $id;
+		}
+		$this->data['ScopeName'] = $scopeName;
+		$this->data['ScopeIcon'] = $scopeIcon;
+		$this->data['ScopeLink'] = $scopeLink;
 		$this->data['DateFrom']     = $dateFrom;
 		$this->data['DateTo']       = $dateTo;
 		$this->data['ProgramStats'] = $this->Reports->tournament_program_stats($scope);
