@@ -1,14 +1,14 @@
 <?php /* Tournament Report — rp- shell (header / context / stats) + tabbed detail views */ ?>
 <link rel="stylesheet" href="<?=HTTP_TEMPLATE?>default/style/reports.css?v=<?=filemtime(__DIR__.'/style/reports.css')?>">
 <?php
-	$T          = $this->data['ProgramStats']['Totals'] ?? [];
-	$scopeType  = $this->data['ScopeType'];                       // 'kingdom' | 'park' | ''
-	$scopeName  = $this->data['ScopeName'] ?? '';
-	$scopeIcon  = $this->data['ScopeIcon'] ?? 'fa-globe';
-	$scopeLink  = $this->data['ScopeLink'] ?? '';
+	$T          = $ProgramStats['Totals'] ?? [];
+	$scopeType  = $ScopeType;                       // 'kingdom' | 'park' | ''
+	$scopeName  = $ScopeName ?? '';
+	$scopeIcon  = $ScopeIcon ?? 'fa-globe';
+	$scopeLink  = $ScopeLink ?? '';
 	$scopeNoun  = $scopeType === 'park' ? 'park' : ($scopeType === 'kingdom' ? 'kingdom' : 'scope');
-	$dateFrom   = $this->data['DateFrom'];
-	$dateTo     = $this->data['DateTo'];
+	$dateFrom   = $DateFrom;
+	$dateTo     = $DateTo;
 	$fmtDate    = function($d){ return $d ? date('M j, Y', strtotime($d)) : ''; };
 	$periodLbl  = '';
 	if ($dateFrom && $dateTo)      $periodLbl = $fmtDate($dateFrom) . ' – ' . $fmtDate($dateTo);
@@ -16,7 +16,7 @@
 	elseif ($dateTo)               $periodLbl = 'Through ' . $fmtDate($dateTo);
 	$scopeParam = $scopeType === 'park' ? 'ParkId' : 'KingdomId';
 ?>
-<div class="rp-root" id="tnr-report" data-scope="<?=htmlspecialchars($scopeType)?>" data-id="<?=(int)$this->data['ScopeId']?>">
+<div class="rp-root" id="tnr-report" data-scope="<?=htmlspecialchars($scopeType)?>" data-id="<?=(int)$ScopeId?>">
 
 	<!-- Header -->
 	<div class="rp-header">
@@ -41,12 +41,12 @@
 		</div>
 		<div class="rp-header-actions">
 			<form class="tnr-filter" method="get" id="tnr-filter">
-				<input type="hidden" name="<?=$scopeParam?>" value="<?=(int)$this->data['ScopeId']?>">
+				<input type="hidden" name="<?=$scopeParam?>" value="<?=(int)$ScopeId?>">
 				<input type="text" class="tnr-date" name="DateFrom" placeholder="From" value="<?=htmlspecialchars($dateFrom)?>">
 				<input type="text" class="tnr-date" name="DateTo" placeholder="To" value="<?=htmlspecialchars($dateTo)?>">
 				<button type="submit" class="rp-btn-ghost"><i class="fas fa-filter"></i> Apply</button>
 <?php if ($dateFrom || $dateTo): ?>
-				<a class="rp-btn-ghost" href="<?=UIR?>Reports/tournaments&<?=$scopeParam?>=<?=(int)$this->data['ScopeId']?>&AllTime=1"><i class="fas fa-times"></i> All time</a>
+				<a class="rp-btn-ghost" href="<?=UIR?>Reports/tournaments&<?=$scopeParam?>=<?=(int)$ScopeId?>&AllTime=1"><i class="fas fa-times"></i> All time</a>
 <?php endif; ?>
 			</form>
 		</div>
@@ -100,23 +100,23 @@
 	<div class="tnr-panel tnr-active" id="tnr-tab-overview">
 		<div class="tnr-grid2">
 			<div class="tnr-card"><h4 class="tnr-h">By Style</h4>
-<?php foreach (($this->data['ProgramStats']['ByStyle']??[]) as $s): ?>
+<?php foreach (($ProgramStats['ByStyle']??[]) as $s): ?>
 				<div class="tnr-bar-row"><span><?=htmlspecialchars($s['Key'])?></span><b><?=(int)$s['Count']?></b></div>
 <?php endforeach; ?>
-<?php if (empty($this->data['ProgramStats']['ByStyle'])): ?><div class="tnr-empty">No tournaments in range.</div><?php endif; ?>
+<?php if (empty($ProgramStats['ByStyle'])): ?><div class="tnr-empty">No tournaments in range.</div><?php endif; ?>
 			</div>
 			<div class="tnr-card"><h4 class="tnr-h">By Method</h4>
-<?php foreach (($this->data['ProgramStats']['ByMethod']??[]) as $s): ?>
+<?php foreach (($ProgramStats['ByMethod']??[]) as $s): ?>
 				<div class="tnr-bar-row"><span><?=htmlspecialchars($s['Key'])?></span><b><?=(int)$s['Count']?></b></div>
 <?php endforeach; ?>
-<?php if (empty($this->data['ProgramStats']['ByMethod'])): ?><div class="tnr-empty">No tournaments in range.</div><?php endif; ?>
+<?php if (empty($ProgramStats['ByMethod'])): ?><div class="tnr-empty">No tournaments in range.</div><?php endif; ?>
 			</div>
 		</div>
 		<div class="tnr-card"><h4 class="tnr-h">Activity Over Time</h4>
 			<svg id="tnr-trend" class="tnr-trend" viewBox="0 0 600 160" preserveAspectRatio="none"></svg>
 			<div class="tnr-legend"><span class="tnr-key tnr-key-t"></span> Tournaments &nbsp; <span class="tnr-key tnr-key-p"></span> Participants</div>
 		</div>
-		<script>window.__tnrTrend = <?=json_encode($this->data['ProgramStats']['Trend'] ?? [])?>;</script>
+		<script>window.__tnrTrend = <?=json_encode($ProgramStats['Trend'] ?? [])?>;</script>
 	</div>
 
 	<!-- Fighters leaderboard -->
@@ -131,7 +131,7 @@
 				<th data-sort="num">Streak</th><th data-sort="num" data-tip="Wins vs fighters 3+ Warrior levels higher">Upsets</th>
 			</tr></thead>
 			<tbody>
-<?php foreach (($this->data['Leaderboard']['Fighters']??[]) as $f): ?>
+<?php foreach (($Leaderboard['Fighters']??[]) as $f): ?>
 				<tr>
 					<td><a href="<?=UIR?>Player/profile/<?=(int)$f['MundaneId']?>"><?=htmlspecialchars($f['Persona'])?></a></td>
 					<td><?=(int)$f['WarriorLevel']?></td>
@@ -143,12 +143,12 @@
 <?php endforeach; ?>
 			</tbody>
 		</table>
-<?php if (empty($this->data['Leaderboard']['Fighters'])): ?><div class="tnr-empty">No individual-bracket results in range.</div><?php endif; ?>
+<?php if (empty($Leaderboard['Fighters'])): ?><div class="tnr-empty">No individual-bracket results in range.</div><?php endif; ?>
 	</div>
 
 	<!-- Award candidates -->
 	<div class="tnr-panel" id="tnr-tab-awards">
-<?php foreach (($this->data['AwardCandidates']['Candidates']??[]) as $c): ?>
+<?php foreach (($AwardCandidates['Candidates']??[]) as $c): ?>
 		<div class="tnr-cand <?=$c['OotWCandidate'] ? 'tnr-cand-ootw' : ''?>">
 			<div class="tnr-cand-main">
 				<a class="tnr-cand-name" href="<?=UIR?>Player/profile/<?=(int)$c['MundaneId']?>"><?=htmlspecialchars($c['Persona'])?></a>
@@ -159,7 +159,7 @@
 			<a class="rp-btn-ghost tnr-cand-btn" href="<?=UIR?>Player/profile/<?=(int)$c['MundaneId']?>" data-tip="Open this fighter's profile to make an award recommendation"><i class="fas fa-star"></i> Recommend</a>
 		</div>
 <?php endforeach; ?>
-<?php if (empty($this->data['AwardCandidates']['Candidates'])): ?><div class="tnr-empty">No recognition candidates meet the thresholds in range.</div><?php endif; ?>
+<?php if (empty($AwardCandidates['Candidates'])): ?><div class="tnr-empty">No recognition candidates meet the thresholds in range.</div><?php endif; ?>
 	</div>
 
 <?php if ($scopeType === 'kingdom'): ?>
@@ -168,7 +168,7 @@
 		<table class="tnr-table tnr-sortable" id="tnr-parks">
 			<thead><tr><th data-sort="text">Park</th><th data-sort="num">Tournaments Hosted</th><th data-sort="num">Participants</th><th data-sort="num">Championships</th><th data-sort="num">Avg Warrior</th></tr></thead>
 			<tbody>
-<?php foreach (($this->data['ParkComparison']['Parks']??[]) as $p): ?>
+<?php foreach (($ParkComparison['Parks']??[]) as $p): ?>
 				<tr>
 					<td><a href="<?=UIR?>Park/profile/<?=(int)$p['ParkId']?>"><?=htmlspecialchars($p['ParkName'])?></a></td>
 					<td><?=(int)$p['TournamentsHosted']?></td><td><?=(int)$p['Participants']?></td>
@@ -177,7 +177,7 @@
 <?php endforeach; ?>
 			</tbody>
 		</table>
-<?php if (empty($this->data['ParkComparison']['Parks'])): ?><div class="tnr-empty">No park-hosted tournaments in range.</div><?php endif; ?>
+<?php if (empty($ParkComparison['Parks'])): ?><div class="tnr-empty">No park-hosted tournaments in range.</div><?php endif; ?>
 	</div>
 <?php endif; ?>
 
