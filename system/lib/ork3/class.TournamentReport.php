@@ -189,9 +189,6 @@ class TournamentReport extends Ork3 {
 	}
 
 	public function GetTournamentProgramStats($request) {
-		$key = Ork3::$Lib->ghettocache->key($request);
-		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 1800)) !== false) return $cache;
-
 		$where = $this->scopeWhere($request, 't');
 
 		$row = $this->db->query(
@@ -238,13 +235,10 @@ class TournamentReport extends Ork3 {
 			'Trend' => $trend,
 			'Status' => Success(),
 		];
-		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
+		return $response;
 	}
 
 	public function GetFighterLeaderboard($request) {
-		$key = Ork3::$Lib->ghettocache->key($request);
-		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 1800)) !== false) return $cache;
-
 		$where = $this->scopeWhere($request, 't');
 
 		// Assumes one participant row per mundane per individual bracket (the normal case); duplicate entries in a single bracket would inflate W/L.
@@ -326,7 +320,7 @@ class TournamentReport extends Ork3 {
 		usort($list, fn($a,$b) => $b['Championships'] <=> $a['Championships'] ?: ($b['WinPct'] <=> $a['WinPct']) ?: ($b['Wins'] <=> $a['Wins']));
 
 		$response = ['Fighters' => $list, 'Status' => Success()];
-		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
+		return $response;
 	}
 
 	/** Live OotW level (0-12) per mundane: award 27=rank, 12=Warlord(11), 20=Sword Knight(12). */
