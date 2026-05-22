@@ -130,6 +130,35 @@ class Controller_Reports extends Controller {
 		$this->data['Guilds'] = $this->Reports->guilds(array('KingdomId'=>'Kingdom'==$type?$id:0, 'ParkId'=>'Park'==$type?$id:0, 'ReportFromDate'=>date('Y-m-d'), 'PerMonths'=>1, 'Periods'=>6, 'MinimumAttendanceRequirement'=>1));
 	}
 
+	public function tournaments($params=null) {
+		$this->data['page_title'] = "Tournament Report";
+		$type = ''; $id = 0;
+		if (isset($this->request->KingdomId)) { $type = 'Kingdom'; $id = (int)$this->request->KingdomId; $this->data['page_title'] = "Kingdom Tournament Report"; }
+		if (isset($this->request->ParkId))    { $type = 'Park';    $id = (int)$this->request->ParkId;    $this->data['page_title'] = "Park Tournament Report"; }
+
+		$dateFrom = isset($this->request->DateFrom) ? preg_replace('/[^0-9-]/','',$this->request->DateFrom) : '';
+		$dateTo   = isset($this->request->DateTo)   ? preg_replace('/[^0-9-]/','',$this->request->DateTo)   : '';
+
+		$scope = [
+			'KingdomId' => $type==='Kingdom' ? $id : 0,
+			'ParkId'    => $type==='Park'    ? $id : 0,
+			'DateFrom'  => $dateFrom,
+			'DateTo'    => $dateTo,
+		];
+
+		$this->data['ScopeType']    = strtolower($type);
+		$this->data['ScopeId']      = $id;
+		$this->data['DateFrom']     = $dateFrom;
+		$this->data['DateTo']       = $dateTo;
+		$this->data['ProgramStats'] = $this->Reports->tournament_program_stats($scope);
+		$this->data['Leaderboard']  = $this->Reports->tournament_fighter_leaderboard($scope);
+		$this->data['AwardCandidates'] = $this->Reports->tournament_award_candidates($scope);
+		$this->data['ParkComparison']  = $type==='Kingdom'
+			? $this->Reports->tournament_park_comparison(['KingdomId'=>$id, 'DateFrom'=>$dateFrom, 'DateTo'=>$dateTo])
+			: ['Parks'=>[]];
+		$this->template = 'Reports_tournaments.tpl';
+	}
+
 	public function player_awards($params=null) {
 		$this->data[ 'page_title' ] = "All Awards";
 		if (isset($this->request->KingdomId)) {
