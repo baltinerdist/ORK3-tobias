@@ -246,6 +246,7 @@ class TournamentReport extends Ork3 {
 
 		$where = $this->scopeWhere($request, 't');
 
+		// Assumes one participant row per mundane per individual bracket (the normal case); duplicate entries in a single bracket would inflate W/L.
 		$sql = "SELECT pm.mundane_id, mn.persona,
 		           COUNT(DISTINCT p.tournament_id) AS tournaments_entered,
 		           COUNT(DISTINCT p.bracket_id)    AS brackets_entered,
@@ -305,13 +306,13 @@ class TournamentReport extends Ork3 {
 		         FROM " . DB_PREFIX . "match m
 		           JOIN " . DB_PREFIX . "bracket b ON b.bracket_id=m.bracket_id AND b.participants='individual'
 		           JOIN " . DB_PREFIX . "tournament t ON t.tournament_id=b.tournament_id
-		           JOIN " . DB_PREFIX . "participant pw ON pw.participant_id = (CASE WHEN m.result='1-wins' THEN m.participant_1_id WHEN m.result='2-wins' THEN m.participant_2_id END)
-		           JOIN " . DB_PREFIX . "participant pl ON pl.participant_id = (CASE WHEN m.result='1-wins' THEN m.participant_2_id WHEN m.result='2-wins' THEN m.participant_1_id END)
+		           JOIN " . DB_PREFIX . "participant pw ON pw.participant_id = (CASE WHEN m.result='1-wins' THEN m.participant_1_id WHEN m.result IN ('2-wins','forfeit','disqualified') THEN m.participant_2_id END)
+		           JOIN " . DB_PREFIX . "participant pl ON pl.participant_id = (CASE WHEN m.result='1-wins' THEN m.participant_2_id WHEN m.result IN ('2-wins','forfeit','disqualified') THEN m.participant_1_id END)
 		           JOIN " . DB_PREFIX . "participant_mundane pm ON pm.participant_id = pw.participant_id
-		         WHERE m.result IN ('1-wins','2-wins') AND pl.warrior_level >= pw.warrior_level + 3 AND 1 $where
+		         WHERE m.result IN ('1-wins','2-wins','forfeit','disqualified') AND pl.warrior_level >= pw.warrior_level + 3 AND 1 $where
 		         GROUP BY pm.mundane_id";
 		$ur = $this->db->query($usql);
-		if ($ur !== false) { while ($ur->next()) { $m=(int)$ur->mundane_id; if (isset($rows[$m])) $rows[$m]['UpsetWins']=(int)$ur->upsets; } }
+		if ($ur !== false) { while ($ur->next()) { $mid=(int)$ur->mundane_id; if (isset($rows[$mid])) $rows[$mid]['UpsetWins']=(int)$ur->upsets; } }
 
 		// Current warrior level (live, from awards) — the ranking column.
 		if (!empty($mids)) {
@@ -328,7 +329,7 @@ class TournamentReport extends Ork3 {
 	}
 
 	/** Live OotW level (0-12) per mundane: award 27=rank, 12=Warlord(11), 20=Sword Knight(12). */
-	public function warriorLevels(array $mundane_ids) {
+	private function warriorLevels(array $mundane_ids) {
 		$ids = array_filter(array_map('intval', $mundane_ids), fn($x)=>$x>0);
 		$out = [];
 		if (empty($ids)) return $out;
