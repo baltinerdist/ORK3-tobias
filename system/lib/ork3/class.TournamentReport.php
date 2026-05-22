@@ -240,4 +240,117 @@ class TournamentReport extends Ork3 {
 		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
 	}
 
+	public function GetFighterLeaderboard($request) {
+		$key = Ork3::$Lib->ghettocache->key($request);
+		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 1800)) !== false) return $cache;
+
+		$where = $this->scopeWhere($request, 't');
+
+		$sql = "SELECT pm.mundane_id, mn.persona,
+		           COUNT(DISTINCT p.tournament_id) AS tournaments_entered,
+		           COUNT(DISTINCT p.bracket_id)    AS brackets_entered,
+		           SUM((m.participant_1_id=p.participant_id AND m.result='1-wins')
+		             OR (m.participant_2_id=p.participant_id AND m.result IN ('2-wins','forfeit','disqualified'))) AS wins,
+		           SUM((m.participant_1_id=p.participant_id AND m.result IN ('2-wins','forfeit','disqualified'))
+		             OR (m.participant_2_id=p.participant_id AND m.result='1-wins')) AS losses,
+		           MAX(p.im_max_streak) AS max_streak
+		       FROM " . DB_PREFIX . "participant p
+		         JOIN " . DB_PREFIX . "tournament t ON t.tournament_id = p.tournament_id
+		         JOIN " . DB_PREFIX . "bracket b ON b.bracket_id = p.bracket_id AND b.participants = 'individual'
+		         JOIN " . DB_PREFIX . "participant_mundane pm ON pm.participant_id = p.participant_id
+		         LEFT JOIN " . DB_PREFIX . "mundane mn ON mn.mundane_id = pm.mundane_id
+		         LEFT JOIN " . DB_PREFIX . "match m ON (m.participant_1_id=p.participant_id OR m.participant_2_id=p.participant_id) AND m.bracket_id=p.bracket_id
+		       WHERE 1 $where
+		       GROUP BY pm.mundane_id, mn.persona";
+		$rows = []; $mids = [];
+		$r = $this->db->query($sql);
+		if ($r !== false) {
+			while ($r->next()) {
+				$mid = (int)$r->mundane_id; if ($mid < 1) continue;
+				$mids[$mid] = true;
+				$wins = (int)$r->wins; $losses = (int)$r->losses;
+				$rows[$mid] = [
+					'MundaneId' => $mid,
+					'Persona' => $r->persona,
+					'TournamentsEntered' => (int)$r->tournaments_entered,
+					'BracketsEntered' => (int)$r->brackets_entered,
+					'Wins' => $wins, 'Losses' => $losses,
+					'WinPct' => ($wins+$losses)>0 ? round(100*$wins/($wins+$losses)) : 0,
+					'MaxStreak' => (int)$r->max_streak,
+					'Championships' => 0, 'Podiums' => 0, 'UpsetWins' => 0,
+					'WarriorLevel' => 0, 'Rating' => null,
+				];
+			}
+		}
+
+		// Championships / podiums via GetBracketPlacements over completed individual brackets in scope.
+		$bsql = "SELECT b.bracket_id FROM " . DB_PREFIX . "bracket b
+		          JOIN " . DB_PREFIX . "tournament t ON t.tournament_id=b.tournament_id
+		          WHERE b.participants='individual' AND b.status IN ('complete','finalized') AND 1 $where";
+		$br = $this->db->query($bsql);
+		if ($br !== false) {
+			while ($br->next()) {
+				$pl = $this->GetBracketPlacements(['BracketId' => (int)$br->bracket_id]);
+				foreach ($pl['Placements'] as $place) {
+					$mid = (int)$place['MundaneId'];
+					if ($mid < 1 || !isset($rows[$mid])) continue;
+					if ($place['Place'] === 1) $rows[$mid]['Championships']++;
+					if ($place['Place'] <= 3)  $rows[$mid]['Podiums']++;
+				}
+			}
+		}
+
+		// Upset wins: won a match where opponent's snapshot warrior_level >= mine + 3.
+		$usql = "SELECT pm.mundane_id, COUNT(*) AS upsets
+		         FROM " . DB_PREFIX . "match m
+		           JOIN " . DB_PREFIX . "bracket b ON b.bracket_id=m.bracket_id AND b.participants='individual'
+		           JOIN " . DB_PREFIX . "tournament t ON t.tournament_id=b.tournament_id
+		           JOIN " . DB_PREFIX . "participant pw ON pw.participant_id = (CASE WHEN m.result='1-wins' THEN m.participant_1_id WHEN m.result='2-wins' THEN m.participant_2_id END)
+		           JOIN " . DB_PREFIX . "participant pl ON pl.participant_id = (CASE WHEN m.result='1-wins' THEN m.participant_2_id WHEN m.result='2-wins' THEN m.participant_1_id END)
+		           JOIN " . DB_PREFIX . "participant_mundane pm ON pm.participant_id = pw.participant_id
+		         WHERE m.result IN ('1-wins','2-wins') AND pl.warrior_level >= pw.warrior_level + 3 AND 1 $where
+		         GROUP BY pm.mundane_id";
+		$ur = $this->db->query($usql);
+		if ($ur !== false) { while ($ur->next()) { $m=(int)$ur->mundane_id; if (isset($rows[$m])) $rows[$m]['UpsetWins']=(int)$ur->upsets; } }
+
+		// Current warrior level (live, from awards) — the ranking column.
+		if (!empty($mids)) {
+			$levels = $this->warriorLevels(array_keys($mids));
+			foreach ($rows as $mid => &$row) { $row['WarriorLevel'] = $levels[$mid] ?? 0; $row['Rating'] = $this->GetFighterRating(['MundaneId'=>$mid]); }
+			unset($row);
+		}
+
+		$list = array_values($rows);
+		usort($list, fn($a,$b) => $b['Championships'] <=> $a['Championships'] ?: ($b['WinPct'] <=> $a['WinPct']) ?: ($b['Wins'] <=> $a['Wins']));
+
+		$response = ['Fighters' => $list, 'Status' => Success()];
+		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
+	}
+
+	/** Live OotW level (0-12) per mundane: award 27=rank, 12=Warlord(11), 20=Sword Knight(12). */
+	public function warriorLevels(array $mundane_ids) {
+		$ids = array_filter(array_map('intval', $mundane_ids), fn($x)=>$x>0);
+		$out = [];
+		if (empty($ids)) return $out;
+		$idlist = implode(',', array_unique($ids));
+		$r = $this->db->query(
+			"SELECT mundane_id, award_id, IFNULL(MAX(`rank`),0) rnk, COUNT(*) cnt
+			 FROM " . DB_PREFIX . "awards WHERE mundane_id IN ($idlist) AND award_id IN (12,20,27) AND revoked=0
+			 GROUP BY mundane_id, award_id"
+		);
+		$acc = [];
+		if ($r !== false) { while ($r->next()) { $m=(int)$r->mundane_id; $acc[$m][(int)$r->award_id]=['rnk'=>(int)$r->rnk,'cnt'=>(int)$r->cnt]; } }
+		foreach ($acc as $m => $a) {
+			if (!empty($a[20]['cnt'])) $out[$m] = 12;
+			elseif (!empty($a[12]['cnt'])) $out[$m] = 11;
+			else $out[$m] = min(10, max(0, $a[27]['rnk'] ?? 0));
+		}
+		return $out;
+	}
+
+	/** Pluggable skill-rating hook. Returns null until a Glicko2/Elo pipeline exists. */
+	public function GetFighterRating($request) {
+		return null;
+	}
+
 }
