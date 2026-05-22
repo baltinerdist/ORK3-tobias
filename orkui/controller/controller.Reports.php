@@ -138,6 +138,12 @@ class Controller_Reports extends Controller {
 
 		$dateFrom = isset($this->request->DateFrom) ? preg_replace('/[^0-9-]/','',$this->request->DateFrom) : '';
 		$dateTo   = isset($this->request->DateTo)   ? preg_replace('/[^0-9-]/','',$this->request->DateTo)   : '';
+		// Default to the last six months on a fresh load. An explicit AllTime flag
+		// (set by the "All time" link) opts out so the full history can be shown.
+		if (!isset($this->request->AllTime) && $dateFrom === '' && $dateTo === '') {
+			$dateFrom = date('Y-m-d', strtotime('-6 months'));
+			$dateTo   = date('Y-m-d');
+		}
 
 		$scope = [
 			'KingdomId' => $type==='Kingdom' ? $id : 0,
