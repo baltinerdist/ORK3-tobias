@@ -165,4 +165,79 @@ class TournamentReport extends Ork3 {
 		if ($result === '2-wins' || $result === 'forfeit' || $result === 'disqualified') return (int)$p2;
 		return 0; // tie or unknown — no clear winner
 	}
+
+	/**
+	 * Builds the shared scope + date WHERE fragment for tournament queries.
+	 * $alias is the ork_tournament alias (e.g. 't'). Scope matches tournament.kingdom_id/park_id.
+	 * Dates are sanitized to digits/hyphen (Y-m-d) — there is no db->escape() in this wrapper.
+	 */
+	private function scopeWhere($request, $alias = 't') {
+		$w = '';
+		if (valid_id($request['KingdomId'] ?? 0)) $w .= " AND $alias.kingdom_id = " . (int)$request['KingdomId'];
+		if (valid_id($request['ParkId'] ?? 0))    $w .= " AND $alias.park_id = "    . (int)$request['ParkId'];
+		if (!empty($request['DateFrom'])) { $df = preg_replace('/[^0-9-]/', '', $request['DateFrom']); $w .= " AND $alias.date_time >= '" . $df . "'"; }
+		if (!empty($request['DateTo']))   { $dt = preg_replace('/[^0-9-]/', '', $request['DateTo']);   $w .= " AND $alias.date_time <= '" . $dt . " 23:59:59'"; }
+		return $w;
+	}
+
+	/** helper: run a "k,c" grouped count query into [['Key'=>..,'Count'=>..], ...] */
+	private function groupCount($sql) {
+		$out = []; $r = $this->db->query($sql);
+		if ($r !== false) { while ($r->next()) { $out[] = ['Key'=>$r->k, 'Count'=>(int)$r->c]; } }
+		return $out;
+	}
+
+	public function GetTournamentProgramStats($request) {
+		$key = Ork3::$Lib->ghettocache->key($request);
+		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 1800)) !== false) return $cache;
+
+		$where = $this->scopeWhere($request, 't');
+
+		$row = $this->db->query(
+			"SELECT COUNT(*) AS total,
+			        SUM(t.status='setup')    AS setup,
+			        SUM(t.status='active')   AS active,
+			        SUM(t.status='complete') AS complete
+			 FROM " . DB_PREFIX . "tournament t WHERE 1 $where"
+		);
+		$total = $setup = $active = $complete = 0;
+		if ($row !== false && $row->size() > 0) { $row->next(); $total=(int)$row->total; $setup=(int)$row->setup; $active=(int)$row->active; $complete=(int)$row->complete; }
+
+		$prow = $this->db->query(
+			"SELECT COUNT(DISTINCT pm.mundane_id) AS uniq, AVG(NULLIF(p.warrior_level,0)) AS avg_wl, COUNT(p.participant_id) AS part_rows
+			 FROM " . DB_PREFIX . "participant p
+			 JOIN " . DB_PREFIX . "tournament t ON t.tournament_id = p.tournament_id
+			 LEFT JOIN " . DB_PREFIX . "participant_mundane pm ON pm.participant_id = p.participant_id
+			 WHERE 1 $where"
+		);
+		$uniq = 0; $avg_wl = 0.0; $part_rows = 0;
+		if ($prow !== false && $prow->size() > 0) { $prow->next(); $uniq=(int)$prow->uniq; $avg_wl=round((float)$prow->avg_wl,1); $part_rows=(int)$prow->part_rows; }
+
+		$byStyle  = $this->groupCount("SELECT b.style AS k, COUNT(*) AS c FROM " . DB_PREFIX . "bracket b JOIN " . DB_PREFIX . "tournament t ON t.tournament_id=b.tournament_id WHERE 1 $where GROUP BY b.style ORDER BY c DESC");
+		$byMethod = $this->groupCount("SELECT b.method AS k, COUNT(*) AS c FROM " . DB_PREFIX . "bracket b JOIN " . DB_PREFIX . "tournament t ON t.tournament_id=b.tournament_id WHERE 1 $where GROUP BY b.method ORDER BY c DESC");
+
+		$trend = [];
+		$tr = $this->db->query(
+			"SELECT DATE_FORMAT(t.date_time,'%Y-%m') AS ym, COUNT(DISTINCT t.tournament_id) AS tcount,
+			        COUNT(DISTINCT pm.mundane_id) AS pcount
+			 FROM " . DB_PREFIX . "tournament t
+			 LEFT JOIN " . DB_PREFIX . "participant_mundane pm ON pm.tournament_id = t.tournament_id
+			 WHERE 1 $where GROUP BY ym ORDER BY ym"
+		);
+		if ($tr !== false) { while ($tr->next()) { $trend[] = ['Month'=>$tr->ym, 'Tournaments'=>(int)$tr->tcount, 'Participants'=>(int)$tr->pcount]; } }
+
+		$response = [
+			'Totals' => ['Total'=>$total, 'Setup'=>$setup, 'Active'=>$active, 'Complete'=>$complete,
+			             'CompletionRate'=> $total>0 ? round(100*$complete/$total) : 0,
+			             'UniqueParticipants'=>$uniq,
+			             'AvgParticipantsPerTournament'=> $total>0 ? round($part_rows/$total,1) : 0,
+			             'AvgWarriorLevel'=>$avg_wl],
+			'ByStyle' => $byStyle,
+			'ByMethod' => $byMethod,
+			'Trend' => $trend,
+			'Status' => Success(),
+		];
+		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
+	}
+
 }
