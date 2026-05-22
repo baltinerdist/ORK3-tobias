@@ -134,14 +134,14 @@ class TournamentReport extends Ork3 {
 		$idlist = implode(',', array_map('intval', $orderedPids));
 		$lookup = [];
 		$r = $this->db->query(
-			"SELECT p.participant_id, p.alias, pm.mundane_id
+			"SELECT p.participant_id, p.alias, p.park_id, pm.mundane_id
 			 FROM " . DB_PREFIX . "participant p
 			 LEFT JOIN " . DB_PREFIX . "participant_mundane pm ON pm.participant_id = p.participant_id
 			 WHERE p.participant_id IN ($idlist)"
 		);
 		if ($r !== false) {
 			while ($r->next()) {
-				$lookup[(int)$r->participant_id] = ['Alias' => $r->alias, 'MundaneId' => (int)$r->mundane_id];
+				$lookup[(int)$r->participant_id] = ['Alias' => $r->alias, 'MundaneId' => (int)$r->mundane_id, 'ParkId' => (int)$r->park_id];
 			}
 		}
 
@@ -153,6 +153,7 @@ class TournamentReport extends Ork3 {
 				'ParticipantId' => (int)$pid,
 				'MundaneId'     => $lookup[$pid]['MundaneId'] ?? 0,
 				'Alias'         => $lookup[$pid]['Alias'] ?? '',
+				'ParkId'        => $lookup[$pid]['ParkId'] ?? 0,
 			];
 		}
 		return $out;
@@ -420,15 +421,15 @@ class TournamentReport extends Ork3 {
 
 		$bsql = "SELECT b.bracket_id FROM " . DB_PREFIX . "bracket b
 		          JOIN " . DB_PREFIX . "tournament t ON t.tournament_id=b.tournament_id
-		          WHERE b.participants='individual' AND b.status IN ('complete','finalized') $where";
+		          WHERE 1 AND b.participants='individual' AND b.status IN ('complete','finalized') $where";
 		$br = $this->db->query($bsql);
 		if ($br !== false) {
 			while ($br->next()) {
 				$pl = $this->GetBracketPlacements(['BracketId'=>(int)$br->bracket_id]);
 				foreach ($pl['Placements'] as $place) {
 					if ($place['Place'] !== 1) continue;
-					$prow = $this->db->query("SELECT park_id FROM " . DB_PREFIX . "participant WHERE participant_id = " . (int)$place['ParticipantId']);
-					if ($prow !== false && $prow->size() > 0) { $prow->next(); $pkid=(int)$prow->park_id; if (isset($parks[$pkid])) $parks[$pkid]['Championships']++; }
+					$pkid = (int)($place['ParkId'] ?? 0);
+					if ($pkid > 0 && isset($parks[$pkid])) $parks[$pkid]['Championships']++;
 				}
 			}
 		}
