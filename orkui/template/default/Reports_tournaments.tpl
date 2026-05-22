@@ -9,10 +9,11 @@
 	$scopeNoun  = $scopeType === 'park' ? 'park' : ($scopeType === 'kingdom' ? 'kingdom' : 'scope');
 	$dateFrom   = $this->data['DateFrom'];
 	$dateTo     = $this->data['DateTo'];
+	$fmtDate    = function($d){ return $d ? date('M j, Y', strtotime($d)) : ''; };
 	$periodLbl  = '';
-	if ($dateFrom && $dateTo)      $periodLbl = $dateFrom . ' – ' . $dateTo;
-	elseif ($dateFrom)             $periodLbl = 'Since ' . $dateFrom;
-	elseif ($dateTo)               $periodLbl = 'Through ' . $dateTo;
+	if ($dateFrom && $dateTo)      $periodLbl = $fmtDate($dateFrom) . ' – ' . $fmtDate($dateTo);
+	elseif ($dateFrom)             $periodLbl = 'Since ' . $fmtDate($dateFrom);
+	elseif ($dateTo)               $periodLbl = 'Through ' . $fmtDate($dateTo);
 	$scopeParam = $scopeType === 'park' ? 'ParkId' : 'KingdomId';
 ?>
 <div class="rp-root" id="tnr-report" data-scope="<?=htmlspecialchars($scopeType)?>" data-id="<?=(int)$this->data['ScopeId']?>">
