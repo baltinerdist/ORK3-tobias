@@ -5,6 +5,7 @@ class Model_Reports extends Model {
 	function __construct() {
 		parent::__construct();
 		$this->Report = new APIModel('Report');
+		$this->TournamentReport = new APIModel('TournamentReport');
 	}
 
 	function get_tournaments($limit=10, $kingdom_id=null, $park_id=null, $event_id=null, $event_calendardetail_id=null) {
@@ -15,6 +16,19 @@ class Model_Reports extends Model {
 			'EventCalendarDetailId' => $event_calendardetail_id,
 			'Limit' => $limit
 		));
+	}
+
+	function tournament_program_stats($request) {
+		return $this->TournamentReport->GetTournamentProgramStats($request);
+	}
+	function tournament_fighter_leaderboard($request) {
+		return $this->TournamentReport->GetFighterLeaderboard($request);
+	}
+	function tournament_award_candidates($request) {
+		return $this->TournamentReport->GetTournamentAwardCandidates($request);
+	}
+	function tournament_park_comparison($request) {
+		return $this->TournamentReport->GetTournamentParkComparison($request);
 	}
 
 	function get_heraldry_report($request) {
