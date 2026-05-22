@@ -151,10 +151,12 @@ class Controller_Reports extends Controller {
 		// Scope chip (name + profile link) for the rp- report header.
 		$scopeName = ''; $scopeIcon = 'fa-globe'; $scopeLink = '';
 		if ($type === 'Kingdom') {
+			$this->load_model('Kingdom');
 			$scopeName = $this->Kingdom->get_kingdom_name($id);
 			$scopeIcon = 'fa-flag';
 			$scopeLink = UIR . 'Kingdom/profile/' . $id;
 		} elseif ($type === 'Park') {
+			$this->load_model('Park');
 			$scopeName = $this->Park->get_park_name($id);
 			$scopeIcon = 'fa-tree';
 			$scopeLink = UIR . 'Park/profile/' . $id;
