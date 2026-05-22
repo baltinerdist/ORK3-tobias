@@ -14,24 +14,34 @@
 
 This codebase has **no PHPUnit/composer test harness** and debugs via the browser console / `die(json_encode(...))` per project convention. Classic xUnit TDD is therefore replaced by **DB-cross-check verification**: for each data-layer method you (1) run a raw SQL query against the live Docker DB to compute the expected aggregate, then (2) invoke the method through a one-off CLI probe and confirm the returned JSON matches. This preserves real red→green discipline using the tools that actually exist here.
 
-**CLI probe pattern** (used throughout). The ork3 lib bootstraps through the app entry point, so the reliable probe is a temporary controller hit OR this CLI harness that loads the same bootstrap the JSON service uses:
+### PINNED FACTS (Task 0 already done — use these everywhere)
+
+- **App container:** `ork3-php8-app`
+- **DB container:** `ork3-php8-db`
+- **Code root in app container:** `/var/www/ork.amtgard.com`
+- **Bootstrap:** `startup.php` (needs `$_SERVER['HTTP_HOST']` set in CLI)
+
+**CLI probe command (copy-paste, swap the method + args):**
 
 ```bash
-# Run a PHP snippet inside the app container with the full ork3 bootstrap loaded.
-docker exec -i ork3-php8 php -r '
-  require "/var/www/html/orkservice/bootstrap.php";   // adjust to actual bootstrap path discovered in Task 0
-  $r = (new TournamentReport())->GetBracketPlacements(["BracketId"=>1]);
-  echo json_encode($r, JSON_PRETTY_PRINT);
-'
+docker exec -i ork3-php8-app php -r '$_SERVER["HTTP_HOST"]="localhost"; chdir("/var/www/ork.amtgard.com"); require "/var/www/ork.amtgard.com/startup.php"; echo "\n===\n"; echo json_encode((new TournamentReport())->GetBracketPlacements(["BracketId"=>14]), JSON_PRETTY_PRINT);' 2>/dev/null | tail -40
 ```
 
-**Task 0 below pins the exact container name and bootstrap path** so every later probe is copy-pasteable. Do Task 0 first.
-
-**DB query pattern:**
+**DB query command:**
 
 ```bash
 docker exec -i ork3-php8-db mariadb -u root -proot ork -e "SELECT ..."
 ```
+
+### PINNED TEST DATA (only one kingdom has real tournament data)
+
+- **Test scope: `KingdomId = 17`** — tournament 154 "Testing Tourney" is the only tournament with brackets/matches/participants. All other tournaments are `kingdom_id=0` with no brackets. Park scope has no data (park_id=0) — verify empty-state handling there, not numbers.
+- **Elimination test bracket: `bracket_id = 14`** (method `single`, status `complete`, 8 matches).
+- **Standings test bracket: `bracket_id = 15`** (method `ironman`, status `finalized`). Expected placements: **1st = Tobi (mundane 90697), 2nd = Abraxos Junhawk (117252), 3rd = Foil (153303)**.
+- **`GetStandings` return shape (verified):** `Success($rows)` →
+  `{"Status":0,"Error":"Success","Detail":[ {"ParticipantId":..,"MundaneId":..,"Rank":1,..}, ... ]}`.
+  The ranked rows are under the **`Detail`** key and each already carries a competition `Rank` field.
+- **Note on warrior_level / upsets:** the new `ork_participant.warrior_level` column is 0 for all existing rows (greenfield, no backfill). Upset-win counts will therefore be 0 until participants are added *after* Task 3 — that is correct, not a bug.
 
 ---
 
@@ -63,37 +73,9 @@ docker exec -i ork3-php8-db mariadb -u root -proot ork -e "SELECT ..."
 
 ---
 
-## Task 0: Pin container + bootstrap path
+## Task 0: Discovery — ALREADY DONE (facts pinned above)
 
-**Files:** none (discovery only)
-
-- [ ] **Step 1: Confirm container names**
-
-Run:
-```bash
-docker ps --format '{{.Names}}' | grep ork3
-```
-Expected: an app container (e.g. `ork3-php8`) and `ork3-php8-db`. Record the app container name as `<APP>`.
-
-- [ ] **Step 2: Find the bootstrap that loads ork3 lib + DB**
-
-Run:
-```bash
-docker exec -i <APP> sh -lc 'ls /var/www/html/orkservice/ 2>/dev/null; grep -rln "Ork3::\$Lib" /var/www/html/orkservice/*.php /var/www/html/index.php 2>/dev/null | head'
-```
-Expected: a bootstrap/index file that defines `DB`, `Ork3::$Lib`, and `DB_PREFIX`. Record its absolute in-container path as `<BOOT>`.
-
-- [ ] **Step 3: Smoke-test the probe harness against an existing method**
-
-Run (substitute `<APP>`/`<BOOT>`):
-```bash
-docker exec -i <APP> php -r 'require "<BOOT>"; echo json_encode((new Tournament())->GetStandings(["BracketId"=>1]));'
-```
-Expected: JSON with a `standings`/array payload (or an empty array), NOT a fatal error. If it fatals on missing globals, the correct `<BOOT>` is whichever file the JSON service requires first — inspect `system/lib/system/class.JsonServer.php` for the include chain and use that.
-
-- [ ] **Step 4: Record findings**
-
-Append a short note (container, bootstrap path, working probe command) to the top of `class.TournamentReport.php`'s file header comment when you create it in Task 2, so later tasks reuse the exact command.
+Container names, code root, bootstrap path, the working probe command, the `GetStandings` return shape, and the test data (KID=17, brackets 14/15) are all pinned in the "Verification Approach" section above. No discovery work remains — use those facts directly.
 
 ---
 
@@ -253,8 +235,9 @@ class TournamentReport extends Ork3 {
 	/** RR/Swiss/Ironman: lean on the existing ranked standings. */
 	private function placementsFromStandings($bracket_id) {
 		$res = Ork3::$Lib->tournament->GetStandings(['BracketId' => $bracket_id]);
-		$rows = is_array($res) && isset($res['Standings']) ? $res['Standings'] : (is_array($res) ? $res : []);
-		// GetStandings returns wins-desc, losses-asc; take participant ids in order.
+		// GetStandings returns Success($rows): { Status, Error, Detail:[ {ParticipantId, MundaneId, Rank, ...} ] }
+		// already ordered by competition Rank (wins-desc, losses-asc).
+		$rows = (is_array($res) && isset($res['Detail']) && is_array($res['Detail'])) ? $res['Detail'] : [];
 		$ordered = [];
 		foreach ($rows as $row) {
 			$pid = (int)($row['ParticipantId'] ?? 0);
