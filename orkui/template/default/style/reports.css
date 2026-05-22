@@ -1320,3 +1320,37 @@ html[data-theme="dark"] .apexcharts-tooltip-text-y-label,
 html[data-theme="dark"] .apexcharts-tooltip-text-y-value {
 	color: var(--ork-text, #e2e8f0) !important;
 }
+
+/* ===== Tournament Report ===== */
+.tnr-report { max-width: 1100px; margin: 0 auto; }
+.tnr-head { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; }
+.tnr-title { background:transparent; border:none; padding:0; border-radius:0; text-shadow:none; }
+.tnr-filter { display:flex; gap:8px; align-items:center; }
+.tnr-tabs { display:flex; gap:4px; border-bottom:1px solid var(--ork-border,#ccc); margin:12px 0; }
+.tnr-tab { background:transparent; border:none; padding:8px 14px; cursor:pointer; color:var(--ork-text-muted,#555); font-weight:600; }
+.tnr-tab.tnr-active { color:var(--ork-text,#1a202c); border-bottom:2px solid var(--ork-accent,#276749); }
+.tnr-panel { display:none; } .tnr-panel.tnr-active { display:block; }
+.tnr-stat-row { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+.tnr-stat { background:var(--ork-card-bg,#f7fafc); border:1px solid var(--ork-border,#e2e8f0); border-radius:8px; padding:14px; text-align:center; }
+.tnr-stat-num { font-size:26px; font-weight:800; color:var(--ork-text,#1a202c); }
+.tnr-stat-lbl { font-size:12px; color:var(--ork-text-muted,#718096); }
+.tnr-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:14px 0; }
+.tnr-card { background:var(--ork-card-bg,#fff); border:1px solid var(--ork-border,#e2e8f0); border-radius:8px; padding:14px; }
+.tnr-h { background:transparent; border:none; padding:0 0 8px; text-shadow:none; border-radius:0; font-size:14px; color:var(--ork-text,#2d3748); }
+.tnr-bar-row { display:flex; justify-content:space-between; padding:3px 0; color:var(--ork-text,#2d3748); }
+.tnr-table { width:100%; border-collapse:collapse; }
+.tnr-table th, .tnr-table td { padding:7px 9px; border-bottom:1px solid var(--ork-border,#edf2f7); text-align:left; color:var(--ork-text,#2d3748); }
+.tnr-table th { font-size:12px; text-transform:uppercase; color:var(--ork-text-muted,#718096); }
+.tnr-table a { color:var(--ork-link,#2b6cb0); }
+.tnr-empty { padding:24px; text-align:center; color:var(--ork-text-muted,#a0aec0); }
+.tnr-btn { background:var(--ork-accent,#276749); color:#fff; border:none; border-radius:5px; padding:6px 12px; font-weight:600; cursor:pointer; text-decoration:none; }
+.tnr-btn-ghost { background:transparent; color:var(--ork-text,#4a5568); border:1px solid var(--ork-border,#cbd5e0); }
+.tnr-cand { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px; border:1px solid var(--ork-border,#e2e8f0); border-radius:8px; margin-bottom:8px; background:var(--ork-card-bg,#fff); }
+.tnr-cand-ootw { border-color:var(--ork-accent,#276749); box-shadow:0 0 0 1px var(--ork-accent,#276749) inset; }
+.tnr-cand-name { font-weight:700; color:var(--ork-text,#1a202c); margin-right:8px; }
+.tnr-cand-wl { font-size:12px; color:var(--ork-text-muted,#718096); }
+.tnr-cand-note { font-size:13px; color:var(--ork-text-secondary,#4a5568); margin-top:4px; }
+.tnr-pill { display:inline-block; background:var(--ork-accent,#276749); color:#fff; font-size:11px; padding:2px 8px; border-radius:10px; }
+.tnr-trend { width:100%; height:160px; }
+.tnr-bar-t { fill:var(--ork-accent,#276749); } .tnr-bar-p { fill:var(--ork-link,#90cdf4); }
+@media (max-width:700px){ .tnr-stat-row{grid-template-columns:repeat(2,1fr);} .tnr-grid2{grid-template-columns:1fr;} .tnr-table{display:block;overflow-x:auto;} }
