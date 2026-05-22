@@ -354,4 +354,41 @@ class TournamentReport extends Ork3 {
 		return null;
 	}
 
+	/**
+	 * Recognition candidates. A fighter qualifies when they meet championship/podium
+	 * thresholds in range. Headline reason flags those dominating fields above their
+	 * current Warrior rank (Order of the Warrior candidates).
+	 */
+	public function GetTournamentAwardCandidates($request) {
+		$minChamp  = (int)($request['MinChampionships'] ?? 1);
+		$minPodium = (int)($request['MinPodiums'] ?? 2);
+
+		$board = $this->GetFighterLeaderboard($request);
+		$cands = [];
+		foreach ($board['Fighters'] as $f) {
+			if ($f['Championships'] < $minChamp && $f['Podiums'] < $minPodium) continue;
+
+			$reasons = [];
+			if ($f['Championships'] > 0) $reasons[] = $f['Championships'] . ' tournament championship' . ($f['Championships']>1?'s':'');
+			if ($f['Podiums'] > 0)       $reasons[] = $f['Podiums'] . ' podium finish' . ($f['Podiums']>1?'es':'');
+			if ($f['UpsetWins'] > 0)     $reasons[] = $f['UpsetWins'] . ' upset win' . ($f['UpsetWins']>1?'s':'') . ' over higher-ranked fighters';
+
+			$ootwCandidate = ($f['Championships'] >= 1 || $f['UpsetWins'] >= 2) && $f['WarriorLevel'] < 10;
+
+			$cands[] = [
+				'MundaneId' => $f['MundaneId'],
+				'Persona' => $f['Persona'],
+				'WarriorLevel' => $f['WarriorLevel'],
+				'Championships' => $f['Championships'],
+				'Podiums' => $f['Podiums'],
+				'UpsetWins' => $f['UpsetWins'],
+				'WinPct' => $f['WinPct'],
+				'OotWCandidate' => $ootwCandidate,
+				'EvidenceNote' => implode('; ', $reasons),
+			];
+		}
+		usort($cands, fn($a,$b)=> ($b['OotWCandidate']<=>$a['OotWCandidate']) ?: ($b['Championships']<=>$a['Championships']));
+		return ['Candidates' => $cands, 'Status' => Success()];
+	}
+
 }
