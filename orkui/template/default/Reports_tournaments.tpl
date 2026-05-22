@@ -12,7 +12,7 @@
       <label>To <input type="text" class="tnr-date" name="DateTo" value="<?= htmlspecialchars($this->data['DateTo']) ?>"></label>
       <button type="submit" class="tnr-btn">Apply</button>
       <?php if ($this->data['DateFrom'] || $this->data['DateTo']): ?>
-        <a class="tnr-btn tnr-btn-ghost" href="<?= UIR ?>Reports/tournaments/<?= ucfirst($this->data['ScopeType']) ?>&id=<?= (int)$this->data['ScopeId'] ?>">All time</a>
+        <a class="tnr-btn tnr-btn-ghost" href="<?= UIR ?>Reports/tournaments&<?= $this->data['ScopeType']==='park' ? 'ParkId' : 'KingdomId' ?>=<?= (int)$this->data['ScopeId'] ?>">All time</a>
       <?php endif; ?>
     </form>
   </div>
