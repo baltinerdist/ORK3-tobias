@@ -371,6 +371,19 @@ class Tournament extends Ork3 {
 				$this->Player->tournament_id  = $request['TournamentId'];
 				$this->Player->bracket_id     = $request['BracketId'];
 				$this->Player->save();
+				// Snapshot Order-of-the-Warrior level (0-12) at time of competition.
+				$awards_map = $this->fetchAwardsForMundanes([(int)$request['MundaneId']]);
+				$lvl = 0;
+				if (isset($awards_map[(int)$request['MundaneId']])) {
+					$a = $awards_map[(int)$request['MundaneId']];
+					$lvl = !empty($a['is_knight_sword']) ? 12
+						 : (!empty($a['is_warlord']) ? 11
+						 : min(10, max(0, (int)$a['warrior_rank'])));
+				}
+				$this->db->query(
+					"UPDATE " . DB_PREFIX . "participant SET warrior_level = :lvl WHERE participant_id = :pid",
+					[':lvl' => (int)$lvl, ':pid' => (int)$_pid]
+				);
 			} elseif (!empty($request['Members'])) {
 				// Team participant — create durable team record then link members
 				$_tid2  = (int)$this->Participant->tournament_id;
