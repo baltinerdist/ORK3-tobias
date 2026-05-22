@@ -45,7 +45,7 @@
 				<input type="text" class="tnr-date" name="DateTo" placeholder="To" value="<?=htmlspecialchars($dateTo)?>">
 				<button type="submit" class="rp-btn-ghost"><i class="fas fa-filter"></i> Apply</button>
 <?php if ($dateFrom || $dateTo): ?>
-				<a class="rp-btn-ghost" href="<?=UIR?>Reports/tournaments&<?=$scopeParam?>=<?=(int)$this->data['ScopeId']?>"><i class="fas fa-times"></i> All time</a>
+				<a class="rp-btn-ghost" href="<?=UIR?>Reports/tournaments&<?=$scopeParam?>=<?=(int)$this->data['ScopeId']?>&AllTime=1"><i class="fas fa-times"></i> All time</a>
 <?php endif; ?>
 			</form>
 		</div>
