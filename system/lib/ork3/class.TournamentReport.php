@@ -28,7 +28,7 @@ class TournamentReport extends Ork3 {
 		$bracket_id = (int)($request['BracketId'] ?? 0);
 		if (!valid_id($bracket_id)) return ['Placements' => [], 'Status' => InvalidParameter('BracketId required')];
 
-		$brow = $this->db->query("SELECT method, status FROM " . DB_PREFIX . "bracket WHERE bracket_id = $bracket_id");
+		$brow = $this->db->query("SELECT method FROM " . DB_PREFIX . "bracket WHERE bracket_id = $bracket_id");
 		if ($brow === false || $brow->size() === 0) return ['Placements' => [], 'Status' => InvalidParameter('Bracket not found')];
 		$brow->next();
 		$method = $brow->method;
@@ -65,11 +65,12 @@ class TournamentReport extends Ork3 {
 		$p1     = (int)$r->participant_1_id;
 		$p2     = (int)$r->participant_2_id;
 		$winner = $this->matchWinner($p1, $p2, $r->result);
-		$loser  = ($winner === $p1) ? $p2 : $p1;
-
 		$ordered = [];
-		if ($winner > 0) $ordered[] = $winner;
-		if ($loser  > 0) $ordered[] = $loser;
+		if ($winner > 0) {
+			$loser = ($winner === $p1) ? $p2 : $p1;
+			$ordered[] = $winner;
+			if ($loser > 0) $ordered[] = $loser;
+		}
 
 		// 3rd place: check for an explicit tiebreaker-3rd match first
 		$t3 = $this->db->query(
@@ -85,10 +86,12 @@ class TournamentReport extends Ork3 {
 			$w3 = $this->matchWinner($a, $b, $t3->result);
 			if ($w3 > 0 && !in_array($w3, $ordered, true)) $ordered[] = $w3;
 		} else {
-			// Fallback: losers of the semifinals (round before the final)
+			// Fallback: losers of the semifinals (round before the final).
+			// 'tiebreaker-3rd' match is the reliable path; this arithmetic is best-effort
+			// for single-elim only — double-elim grand-final rounds may not be sequential.
 			$final_round = (int)$r->round;
 			$semi_round  = $final_round - 1;
-			if ($semi_round >= 1) {
+			if ($semi_round >= 1) { // guard: skip if round arithmetic yields a nonsensical value
 				$semis = $this->db->query(
 					"SELECT participant_1_id, participant_2_id, result FROM " . DB_PREFIX . "match
 					 WHERE bracket_id = $bracket_id AND CAST(round AS UNSIGNED) = $semi_round
@@ -155,22 +158,11 @@ class TournamentReport extends Ork3 {
 		return $out;
 	}
 
-	/** Resolve a match winner participant_id from the result enum. 0 if no clear winner. */
+	/** Resolve a match winner participant_id from the result enum. 0 if no clear winner.
+	 * Mirrors class.Tournament::resolveWinnerLoser — the canonical source of truth. */
 	private function matchWinner($p1, $p2, $result) {
-		switch ($result) {
-			case '1-wins':
-			case '2-forfeits':
-			case '2-is-disqualified':
-			case '2-is-bye':
-				return (int)$p1;
-			case '2-wins':
-			case '1-forfeits':
-			case '1-is-disqualified':
-			case '1-is-bye':
-				return (int)$p2;
-			default:
-				// 'tie', 'forfeit', 'disqualified', 'score' — ambiguous, no clear winner
-				return 0;
-		}
+		if ($result === '1-wins') return (int)$p1;
+		if ($result === '2-wins' || $result === 'forfeit' || $result === 'disqualified') return (int)$p2;
+		return 0; // tie or unknown — no clear winner
 	}
 }
