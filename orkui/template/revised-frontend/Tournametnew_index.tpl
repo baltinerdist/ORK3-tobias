@@ -854,6 +854,50 @@ html[data-theme="dark"] [data-tip]::before { border-top-color:#1a202c; }
 .tn-pstatus-pill-withdrawn { background:#fefcbf; color:#b45309; border:1px solid #fcd34d; }
 .tn-pstatus-pill-disqualified { background:#fff5f5; color:#e53e3e; border:1px solid #fc8181; }
 
+/* --- G2: participant-list mobile two-line reflow (CSS only — no markup change) --- */
+.tn-mobile .tn-participant-list li {
+	flex-wrap:wrap;
+	row-gap:2px;
+	min-height:52px;
+	padding:10px 8px;
+	font-size:14px;
+	align-items:center;
+}
+/* Line-1 ordering: handle, seed, name-block, then status/remove pushed right */
+.tn-mobile .tn-participant-list li > .tn-dnd-handle { order:0; }
+.tn-mobile .tn-participant-list li > .tn-participant-seed,
+.tn-mobile .tn-participant-list li > .tn-seed-enhanced { order:1; }
+.tn-mobile .tn-participant-list li > span[style*="flex:1"] { order:2; flex:1 1 auto; min-width:0; font-size:14px; }
+.tn-mobile .tn-participant-list li > .tn-status-wrap { order:8; margin-left:auto; }
+.tn-mobile .tn-participant-list li > .tn-remove-participant { order:9; }
+/* Park / persona name (the muted 11px direct-child span) drops to its own full-width line 2 */
+.tn-mobile .tn-participant-list li > span[style*="font-size:11px"] {
+	order:10;
+	flex:0 0 100%;
+	width:100%;
+	margin-left:28px;
+	font-size:11px;
+}
+/* Bigger touch targets for the per-row controls */
+.tn-mobile .tn-participant-list li .tn-status-btn {
+	min-width:44px;
+	min-height:44px;
+	display:inline-flex;
+	align-items:center;
+	justify-content:center;
+	font-size:18px;
+}
+.tn-mobile .tn-participant-list li .tn-remove-participant {
+	min-width:36px;
+	min-height:44px;
+	display:inline-flex;
+	align-items:center;
+	justify-content:center;
+	font-size:18px;
+}
+/* Keep the absolute desktop status menu out of the mobile flow (action sheet replaces it) */
+.tn-mobile .tn-participant-list li .tn-status-menu { display:none !important; }
+
 /* ── Bracket Preview Modal ── */
 
 /* ── Quick Result Entry (inline on bracket viz) ── */
@@ -7870,6 +7914,43 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 window.tnToggleParticipantMenu = function(btn) {
 	var menu = btn.parentNode.querySelector('.tn-status-menu');
 	if (!menu) return;
+	// G2: on mobile, replace the absolute dropdown with a bottom action sheet.
+	// Reuse the SAME per-row menu items + remove button so the existing
+	// tnSetParticipantStatus / tnRemoveParticipant logic (and its DOM updates)
+	// run unchanged.
+	if (window.TnMobile && TnMobile.sheet && TnMobile.viewMode
+		&& TnMobile.viewMode.isMobile && TnMobile.viewMode.isMobile()) {
+		var li = btn.closest('li');
+		if (!li) return;
+		var statusOf = function(s) { return menu.querySelector('.tn-status-menu-item .tn-sm-dot-' + s); };
+		var itemFor = function(s) { var d = statusOf(s); return d ? d.parentNode : null; };
+		var removeBtn = li.querySelector('.tn-remove-participant');
+		var items = [];
+		[['active','Active'], ['withdrawn','Withdrawn'], ['disqualified','Disqualified']].forEach(function(pair) {
+			var menuItem = itemFor(pair[0]);
+			if (!menuItem) return;
+			var onclick = menuItem.getAttribute('onclick') || '';
+			// Pull pid + bid out of the existing inline handler so we reuse the
+			// exact same arguments the desktop dropdown uses; pass the real menu
+			// item element as the 4th arg (menuItemEl) — tnSetParticipantStatus
+			// needs it for .closest('li') / menu-state updates.
+			var m = onclick.match(/tnSetParticipantStatus\(\s*(\d+)\s*,\s*'([a-z]+)'\s*,\s*(\d+)/);
+			items.push({
+				label: pair[1] + (menuItem.classList.contains('tn-sm-active') ? '  \u2713' : ''),
+				onTap: function() {
+					if (m) {
+						tnSetParticipantStatus(parseInt(m[1], 10), m[2], parseInt(m[3], 10), menuItem);
+					}
+				}
+			});
+		});
+		if (removeBtn) {
+			items.push({ label: 'Remove from bracket', danger: true, onTap: function() { tnRemoveParticipant(removeBtn); } });
+		}
+		TnMobile.sheet.actionSheet(items);
+		return;
+	}
+	// Desktop: existing absolute dropdown, unchanged.
 	// Close all other open menus first
 	document.querySelectorAll('.tn-status-menu.tn-status-open').forEach(function(m) {
 		if (m !== menu) m.classList.remove('tn-status-open');
