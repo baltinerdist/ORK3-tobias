@@ -7851,6 +7851,8 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 .tn-nu-header { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
 .tn-nu-title { font-size:11px; font-weight:800; color:#4a5568; letter-spacing:0.6px; text-transform:uppercase; }
 .tn-nu-sub { font-size:11px; color:#a0aec0; }
+.tn-nu-header .tn-boutlist-trigger { margin-left:auto; }
+.tn-nu-header .tn-boutlist-trigger + .tn-nu-toggle { margin-left:8px; }
 .tn-nu-header .tn-nu-toggle { margin-left:auto; }
 .tn-nu-toggle { display:inline-flex; border:1px solid #e2e8f0; border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0; }
 .tn-nu-toggle-btn { padding:6px 12px; font-size:10px; font-weight:700; color:#718096; background:#fff; border:none; cursor:pointer; border-right:1px solid #e2e8f0; text-transform:uppercase; letter-spacing:0.6px; }
@@ -7926,6 +7928,101 @@ html[data-theme="dark"] .tn-nu-btn-end.tn-nu-btn-end-tie { background:#4a5568; b
 html[data-theme="dark"] .tn-nu-btn-end.tn-nu-btn-end-tie:hover { background:#718096; border-color:#718096; color:#fff; }
 html[data-theme="dark"] .tn-nu-btn-more { color:#a0aec0; }
 html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
+
+/* =============================================================
+   Track R2 — mobile Bout List jump sheet. A scrollable list of EVERY
+   bout (from tnSequencedBouts) in true fought order, with per-bout
+   status (done / current / on-deck / upcoming / not-ready). Tapping a
+   ready row jumps the Match Deck to lead with that bout (tnDeckFocus).
+   Surfaced via a "Bout List" pill in the mobile deck header.
+   ============================================================= */
+.tn-boutlist-trigger {
+	flex-shrink:0; display:inline-flex; align-items:center; gap:6px;
+	padding:6px 12px; font-size:10px; font-weight:800; letter-spacing:0.6px;
+	text-transform:uppercase; border-radius:6px; cursor:pointer;
+	background:#fff; color:#276749; border:1px solid #c6f6d5;
+}
+.tn-boutlist-trigger:hover { background:#f0fff4; }
+/* Only meaningful on mobile (the deck is mobile-only); hide on desktop. */
+.tn-boutlist-trigger { display:none; }
+.tn-mobile .tn-boutlist-trigger { display:inline-flex; min-height:var(--tn-touch, 44px); }
+
+.tn-boutlist-count { font-size:12px; font-weight:700; color:#718096; }
+.tn-boutlist-list { display:flex; flex-direction:column; }
+.tn-boutlist-row {
+	display:flex; align-items:center; gap:10px;
+	padding:11px 6px; min-height:var(--tn-touch, 44px);
+	border-bottom:1px solid #edf2f7; border-left:3px solid transparent;
+	text-align:left; width:100%; background:none; cursor:pointer;
+	font-size:14px; color:#2d3748;
+}
+.tn-boutlist-row:last-child { border-bottom:none; }
+.tn-boutlist-glyph { flex-shrink:0; width:16px; text-align:center; font-size:13px; }
+.tn-boutlist-side {
+	flex-shrink:0; min-width:42px; padding:2px 7px; border-radius:9px;
+	font-size:10px; font-weight:800; letter-spacing:0.4px; text-align:center;
+	background:#edf2f7; color:#718096;
+}
+.tn-boutlist-bout { flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
+.tn-boutlist-names { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.tn-boutlist-vs { color:#a0aec0; font-weight:600; margin:0 5px; font-size:12px; }
+.tn-boutlist-seed {
+	display:inline-block; min-width:15px; height:15px; line-height:15px;
+	text-align:center; font-size:9px; font-weight:800; border-radius:8px;
+	background:#edf2f7; color:#718096; margin-right:4px; padding:0 3px;
+}
+.tn-boutlist-trail { flex-shrink:0; display:flex; align-items:center; gap:6px; }
+.tn-boutlist-statuspill {
+	font-size:9px; font-weight:800; letter-spacing:0.4px; text-transform:uppercase;
+	padding:2px 8px; border-radius:9px; white-space:nowrap;
+}
+/* status: done */
+.tn-boutlist-row--done { color:#718096; }
+.tn-boutlist-row--done .tn-boutlist-glyph { color:#38a169; }
+.tn-boutlist-scorepill {
+	font-size:10px; font-weight:800; padding:2px 8px; border-radius:10px;
+	background:#c6f6d5; color:#276749; white-space:nowrap;
+}
+/* status: current */
+.tn-boutlist-row--current { border-left-color:#38a169; background:#f0fff4; }
+.tn-boutlist-row--current .tn-boutlist-glyph { color:#38a169; }
+.tn-boutlist-row--current .tn-boutlist-statuspill { background:#276749; color:#fff; }
+/* status: on-deck */
+.tn-boutlist-row--ondeck .tn-boutlist-glyph { color:#d69e2e; }
+.tn-boutlist-row--ondeck .tn-boutlist-statuspill { background:#fefcbf; color:#975a16; }
+/* status: upcoming */
+.tn-boutlist-row--upcoming .tn-boutlist-glyph { color:#a0aec0; }
+.tn-boutlist-row--upcoming .tn-boutlist-statuspill { background:#edf2f7; color:#718096; }
+/* status: not-ready (non-actionable) */
+.tn-boutlist-row--notready { color:#a0aec0; cursor:default; pointer-events:none; font-style:italic; }
+.tn-boutlist-row--notready .tn-boutlist-glyph { color:#cbd5e0; }
+.tn-boutlist-row--notready .tn-boutlist-side { background:#f7fafc; color:#cbd5e0; }
+.tn-boutlist-tbd { color:#a0aec0; font-style:italic; }
+.tn-boutlist-empty { padding:24px 12px; text-align:center; color:#a0aec0; font-size:14px; }
+
+/* Dark-mode parity */
+html[data-theme="dark"] .tn-boutlist-trigger { background:#1a202c; color:#9ae6b4; border-color:#2f5540; }
+html[data-theme="dark"] .tn-boutlist-trigger:hover { background:#22543d; }
+html[data-theme="dark"] .tn-boutlist-count { color:#a0aec0; }
+html[data-theme="dark"] .tn-boutlist-row { border-bottom-color:#2d3748; color:#e2e8f0; }
+html[data-theme="dark"] .tn-boutlist-side { background:#2d3748; color:#a0aec0; }
+html[data-theme="dark"] .tn-boutlist-vs { color:#718096; }
+html[data-theme="dark"] .tn-boutlist-seed { background:#2d3748; color:#a0aec0; }
+html[data-theme="dark"] .tn-boutlist-row--done { color:#a0aec0; }
+html[data-theme="dark"] .tn-boutlist-row--done .tn-boutlist-glyph { color:#68d391; }
+html[data-theme="dark"] .tn-boutlist-scorepill { background:rgba(56,161,105,0.25); color:#9ae6b4; }
+html[data-theme="dark"] .tn-boutlist-row--current { border-left-color:#68d391; background:#22543d; }
+html[data-theme="dark"] .tn-boutlist-row--current .tn-boutlist-glyph { color:#68d391; }
+html[data-theme="dark"] .tn-boutlist-row--current .tn-boutlist-statuspill { background:#38a169; color:#fff; }
+html[data-theme="dark"] .tn-boutlist-row--ondeck .tn-boutlist-glyph { color:#ecc94b; }
+html[data-theme="dark"] .tn-boutlist-row--ondeck .tn-boutlist-statuspill { background:#5f4c12; color:#faf089; }
+html[data-theme="dark"] .tn-boutlist-row--upcoming .tn-boutlist-glyph { color:#718096; }
+html[data-theme="dark"] .tn-boutlist-row--upcoming .tn-boutlist-statuspill { background:#2d3748; color:#a0aec0; }
+html[data-theme="dark"] .tn-boutlist-row--notready { color:#718096; }
+html[data-theme="dark"] .tn-boutlist-row--notready .tn-boutlist-glyph { color:#4a5568; }
+html[data-theme="dark"] .tn-boutlist-row--notready .tn-boutlist-side { background:#1a202c; color:#4a5568; }
+html[data-theme="dark"] .tn-boutlist-tbd { color:#718096; }
+html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
 </style>
 <script>
 (function(){
@@ -8134,6 +8231,193 @@ html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 			var map = {};
 			(bd && bd.Participants || []).forEach(function(p){ map[p.ParticipantId] = p; });
 			return map;
+		}
+
+		// ========================================================================
+		// Track R2 · Bout List jump sheet
+		// A scrollable list of EVERY bout from tnSequencedBouts(bd) (true fought
+		// order — the SAME source of truth the deck uses), each row tagged with a
+		// status derived from nextUnresolved(bd): index 0 = current (deck lead),
+		// 1..2 = on-deck, rest of the ready set = upcoming, matches with an empty
+		// participant slot = not-ready, matches with a Result = done. Tapping a
+		// ready row jumps the deck to lead with that bout (tnDeckFocus) and closes
+		// the sheet; done rows re-open the Record Result modal; not-ready rows are
+		// inert. Rebuilt from the live bd on every open so it can never go stale.
+		// ========================================================================
+
+		// tnDeckFocus(matchId) — Bout-List contract: make `matchId` the deck's
+		// current lead (NOW). The tapped bout may sit beyond the current 3-item
+		// window, so we re-window nextUnresolved() to lead with it (pin tapped as
+		// NOW, then the next canonical ready bouts) and re-render the deck, then
+		// setLead to guarantee it is the full lead. Exposed on window so the sheet
+		// (built outside this IIFE's render closures) can reach the live handle.
+		window.tnDeckFocus = function(matchId){
+			if (!isMobileView()) return;
+			var bid = deckBid;
+			if (!bid || !TnConfig.bracketData || !TnConfig.bracketData[bid]) return;
+			var bd = TnConfig.bracketData[bid];
+			var ready = nextUnresolved(bd);
+			var lead = null, rest = [];
+			ready.forEach(function(m){
+				if (String(m.MatchId) === String(matchId)) lead = m;
+				else rest.push(m);
+			});
+			if (!lead) return;                       // not a ready bout -> ignore
+			var pMap = participantLookup(bd);
+			renderNextUpDeck(bid, bd, pMap, [lead].concat(rest).slice(0, 3));
+			if (deckHandle) deckHandle.setLead(matchId);
+		};
+
+		// Winner/loser names + bout score for a resolved match (done rows).
+		function tnBoutListResult(m, pMap){
+			var p1 = pMap[m.Participant1Id] || {};
+			var p2 = pMap[m.Participant2Id] || {};
+			var p1Name = m.Participant1Alias || p1.Alias || p1.Persona || '\u2014';
+			var p2Name = m.Participant2Alias || p2.Alias || p2.Persona || '\u2014';
+			var r = m.Result;
+			var winName, loseName, verb = 'def.';
+			if (r === '1-wins')      { winName = p1Name; loseName = p2Name; }
+			else if (r === '2-wins') { winName = p2Name; loseName = p1Name; }
+			else if (r === 'forfeit'){ winName = p2Name; loseName = p1Name; verb = 'def. (FF)'; }
+			else if (r === 'disqualified'){ winName = p2Name; loseName = p1Name; verb = 'def. (DQ)'; }
+			else if (r === 'tie')    { winName = p1Name; loseName = p2Name; verb = 'tied'; }
+			else { winName = p1Name; loseName = p2Name; }
+			var score = '';
+			try {
+				var ba = (m.Bouts && m.Bouts !== '[]') ? JSON.parse(m.Bouts) : [];
+				if (ba.length){
+					var w1 = ba.filter(function(b){ return b === '1'; }).length;
+					var w2 = ba.filter(function(b){ return b === '2'; }).length;
+					var winW = (r === '1-wins') ? w1 : (r === '2-wins' || r === 'forfeit' || r === 'disqualified') ? w2 : w1;
+					var loseW = (r === '1-wins') ? w2 : (r === '2-wins' || r === 'forfeit' || r === 'disqualified') ? w1 : w2;
+					score = winW + '-' + loseW;
+				}
+			} catch(e){}
+			return { winName: winName, loseName: loseName, verb: verb, score: score };
+		}
+
+		// Seed pill + name (reusing the deck's seed lookup pattern).
+		function tnBoutListName(name, seed){
+			var s = seed ? '<span class="tn-boutlist-seed">' + seed + '</span>' : '';
+			return s + tnEsc(name);
+		}
+
+		// Build (fresh, every open) the Bout List sheet overlay element from the
+		// current bracket's bd. Returns the overlay; caller opens via TnMobile.sheet.
+		function buildBoutListSheet(bid, bd){
+			var all = tnSequencedBouts(bd);
+			var ready = nextUnresolved(bd);
+			var readyIds = ready.map(function(m){ return String(m.MatchId); });
+			var pMap = participantLookup(bd);
+
+			var rows = all.map(function(m){
+				var side = tnEsc(tnDeckSideLabel(m));
+				var p1 = pMap[m.Participant1Id] || {};
+				var p2 = pMap[m.Participant2Id] || {};
+				var hasP1 = !!m.Participant1Id, hasP2 = !!m.Participant2Id;
+				var status, glyph, statusPill = '', trailing = '', tappable = false;
+
+				if (m.Result){
+					status = 'done';
+					glyph = '\u2713';                                   // check
+					var res = tnBoutListResult(m, pMap);
+					var namesHTML = '<span>' + tnEsc(res.winName) + '</span>' +
+						'<span class="tn-boutlist-vs">' + res.verb + '</span>' +
+						'<span>' + tnEsc(res.loseName) + '</span>';
+					if (res.score) trailing = '<span class="tn-boutlist-scorepill" data-tip="Bout score (winner-loser)">' + tnEsc(res.score) + '</span>';
+					tappable = true;                                    // re-open result
+					return rowHTML(m, 'done', glyph, side, namesHTML, trailing, '', tappable);
+				}
+
+				if (!hasP1 || !hasP2){
+					status = 'notready';
+					glyph = '\u25cb';                                   // hollow circle
+					var n1 = hasP1 ? tnBoutListName(m.Participant1Alias || p1.Alias || p1.Persona || '\u2014', p1.Seed) : '<span class="tn-boutlist-tbd">TBD</span>';
+					var n2 = hasP2 ? tnBoutListName(m.Participant2Alias || p2.Alias || p2.Persona || '\u2014', p2.Seed) : '<span class="tn-boutlist-tbd">TBD</span>';
+					var namesNR = '<span>' + n1 + '</span><span class="tn-boutlist-vs">vs</span><span>' + n2 + '</span>';
+					return rowHTML(m, 'notready', glyph, side, namesNR, '', '', false);
+				}
+
+				// Ready (both participants, no result) — current / on-deck / upcoming.
+				var idx = readyIds.indexOf(String(m.MatchId));
+				if (idx === 0){ status = 'current'; glyph = '\u25b6'; statusPill = '<span class="tn-boutlist-statuspill">\u25cf Now</span>'; }
+				else if (idx === 1 || idx === 2){ status = 'ondeck'; glyph = '\u25f7'; statusPill = '<span class="tn-boutlist-statuspill">On deck</span>'; }
+				else { status = 'upcoming'; glyph = '\u25f7'; statusPill = '<span class="tn-boutlist-statuspill">Upcoming</span>'; }
+				var rn1 = tnBoutListName(m.Participant1Alias || p1.Alias || p1.Persona || '\u2014', p1.Seed);
+				var rn2 = tnBoutListName(m.Participant2Alias || p2.Alias || p2.Persona || '\u2014', p2.Seed);
+				var namesR = '<span>' + rn1 + '</span><span class="tn-boutlist-vs">vs</span><span>' + rn2 + '</span>';
+				return rowHTML(m, status, glyph, side, namesR, statusPill, '', true);
+			}).join('');
+
+			if (!rows) rows = '<div class="tn-boutlist-empty">No bouts in this bracket yet.</div>';
+
+			var overlay = document.createElement('div');
+			overlay.className = 'tn-overlay tn-sheet';
+			overlay.innerHTML =
+				'<div class="tn-modal-box" style="width:520px;max-width:calc(100vw - 40px)">' +
+					'<div class="tn-modal-header">' +
+						'<span class="tn-modal-title">Bout List <span class="tn-boutlist-count">' + all.length + ' bout' + (all.length === 1 ? '' : 's') + '</span></span>' +
+						'<button type="button" class="tn-modal-close" data-tn-boutlist-close="1">&times;</button>' +
+					'</div>' +
+					'<div class="tn-modal-body">' +
+						'<div class="tn-boutlist-list">' + rows + '</div>' +
+					'</div>' +
+				'</div>';
+
+			// Close button.
+			var closeBtn = overlay.querySelector('[data-tn-boutlist-close]');
+			if (closeBtn) closeBtn.addEventListener('click', function(){ TnMobile.sheet.close(overlay); });
+
+			// Row taps. Ready rows -> tnDeckFocus + close; done rows -> re-open
+			// Record Result modal (after close so the sheet's teardown runs).
+			overlay.querySelectorAll('.tn-boutlist-row[data-mid]').forEach(function(row){
+				if (row.classList.contains('tn-boutlist-row--notready')) return;
+				row.addEventListener('click', function(){
+					var mid = row.getAttribute('data-mid');
+					var st  = row.getAttribute('data-status');
+					if (st === 'done'){
+						TnMobile.sheet.close(overlay);
+						var mo = (bd.Matches || []).find(function(mm){ return String(mm.MatchId) === String(mid); });
+						if (mo && typeof window.tnOpenRecordResult === 'function'){
+							if (mo.BracketId == null) mo.BracketId = bid; // ensure modal can resolve best-of/method
+							window.tnOpenRecordResult(mo, pMap[mo.Participant1Id], pMap[mo.Participant2Id]);
+						}
+						return;
+					}
+					if (typeof window.tnDeckFocus === 'function') window.tnDeckFocus(mid);
+					TnMobile.sheet.close(overlay);
+				});
+			});
+
+			return overlay;
+		}
+
+		// Single Bout List row builder. status drives the modifier class + glyph
+		// styling; tappable rows get role/tabindex for keyboard access.
+		function rowHTML(m, status, glyph, side, namesHTML, trailing, _unused, tappable){
+			var trailWrap = trailing ? '<span class="tn-boutlist-trail">' + trailing + '</span>' : '';
+			return '<button type="button" class="tn-boutlist-row tn-boutlist-row--' + status + '"' +
+				' data-mid="' + tnEsc(String(m.MatchId)) + '" data-status="' + status + '"' +
+				(tappable ? '' : ' tabindex="-1" disabled') + '>' +
+				'<span class="tn-boutlist-glyph">' + glyph + '</span>' +
+				'<span class="tn-boutlist-side">' + side + '</span>' +
+				'<span class="tn-boutlist-bout"><span class="tn-boutlist-names">' + namesHTML + '</span></span>' +
+				trailWrap +
+			'</button>';
+		}
+
+		// Open the Bout List for the deck's current bracket. Rebuilds from live bd.
+		function openBoutListSheet(){
+			var bid = deckBid;
+			if (!bid || !TnConfig.bracketData || !TnConfig.bracketData[bid]) return;
+			var bd = TnConfig.bracketData[bid];
+			if (!window.TnMobile || !TnMobile.sheet) return;
+			var overlay = buildBoutListSheet(bid, bd);
+			document.body.appendChild(overlay);
+			void overlay.offsetWidth;                  // reflow for slide-up
+			TnMobile.sheet.open(overlay, { onDismiss: function(){
+				if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+			}});
 		}
 
 		function pipRowHTML(side, matchId){
@@ -8563,13 +8847,17 @@ html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 					'<button class="tn-nu-toggle-btn' + (mode === 'quick' ? ' tn-nu-toggle-on' : '') + '" data-mode="quick" role="tab" aria-selected="' + (mode === 'quick') + '">Quick Win</button>' +
 					'<button class="tn-nu-toggle-btn' + (mode === 'track' ? ' tn-nu-toggle-on' : '') + '" data-mode="track" role="tab" aria-selected="' + (mode === 'track') + '">Track Fights</button>' +
 				'</div>';
+			// Bout List pill — mobile-only "where am I" jump sheet trigger.
+			var boutListBtn = '<button type="button" class="tn-boutlist-trigger" data-tn-boutlist-open="1" aria-label="Open bout list">List \u2261</button>';
 			nuHost.innerHTML =
 				'<div class="tn-nu-wrap">' +
 					'<div class="tn-nu-header"><span class="tn-nu-title">Next up</span>' +
-					'<span class="tn-nu-sub">&mdash; swipe for on-deck</span>' + toggleHTML + '</div>' +
+					'<span class="tn-nu-sub">&mdash; swipe for on-deck</span>' + boutListBtn + toggleHTML + '</div>' +
 					'<div id="tn-deck-host"></div>' +
 				'</div>';
 			bindToggle(bid);
+			var blBtn = nuHost.querySelector('[data-tn-boutlist-open]');
+			if (blBtn) blBtn.addEventListener('click', function(ev){ ev.preventDefault(); openBoutListSheet(); });
 			host = $('tn-deck-host');
 			deckHandle = TnMobile.deck.mount(host, {
 				items: deckItems,
