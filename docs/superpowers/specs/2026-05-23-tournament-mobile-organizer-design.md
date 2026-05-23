@@ -94,7 +94,17 @@ This is the contract that keeps the three workflow tracks from diverging. It mus
 **Bracket map:** the existing horizontal tree stays one tap away as an overview; not the primary running surface on mobile.
 
 #### 4.1.1 Canonical bout ordering (single source of truth)
-A single JS comparator produces the ordered bout array consumed by **both** the deck (filtered to ready/current) and the Bout List (all bouts). Sort key: `round ASC`, then `side` weight (`winners`=0, `losers`=1, `grand-final`=2, `tiebreaker-3rd`=3, ''=0), then `match`/`order` ASC. This guarantees the deck and the list never disagree about sequence.
+A single JS sequencer produces the ordered bout array consumed by **both** the deck (filtered to ready/current) and the Bout List (all bouts), so they never disagree about sequence.
+
+**Single elim / swiss / round-robin:** a field sort suffices — `round ASC → match/order ASC` (all on `bracket_side`=''/'winners').
+
+**Double elim — TRUE INTERLEAVED FOUGHT ORDER (corrected; supersedes the earlier naive sort idea).** A naive `round ASC → side → match` sort is WRONG here: generation stores the grand-final as `round = 1`, and winners vs losers rounds use separate, non-aligned numbering — so raw round numbers are not globally comparable. The Losers Bracket opens as soon as Winners Round 1 concludes and the brackets advance in lockstep:
+
+```
+WB R1 → LB R1 → WB R2 → LB R2 → LB R3 → WB R3 → LB R4 → LB R5 → … → WB final → LB final → Grand Final → (GF reset, if needed) → 3rd-place tiebreaker
+```
+
+This requires a **chronological sequencer** that assigns each match a global "stage" derived from the generation round-numbering in `class.Tournament.php` (WB R1 losers → LB R1; WB round r≥2 losers → LB round `(r-1)*2` [major], odd LB rounds are internal [minor]). Byes, the optional grand-final reset game, and the 3rd-place tiebreaker must land in the positions shown. This sequencer is a **Track R2 deliverable**, verified against actually-generated brackets (single/double elim of varied sizes incl. non-power-of-2). The C0 `sideRank` map remains as a within-stage tiebreaker; the existing desktop side-first order is retained until R2 ships the sequencer.
 
 ### 4.2 Fighter registration
 
