@@ -144,6 +144,26 @@ class Model_Tournament extends Model {
 		return $this->Tournament->GetStandings(['BracketId' => $bracket_id]);
 	}
 
+	function get_reeves($request) {
+		return $this->Tournament->GetReeves($request);
+	}
+
+	function add_reeve($request) {
+		return $this->Tournament->AddReeve($request);
+	}
+
+	function remove_reeve($request) {
+		return $this->Tournament->RemoveReeve($request);
+	}
+
+	function get_version($request) {
+		return $this->Tournament->GetVersion($request);
+	}
+
+	function get_reeve_role($request) {
+		return $this->Tournament->GetReeveRole($request);
+	}
+
 	function get_player_history($mundane_id) {
 		$report = $this->Report->GetPlayerTournamentHistory(['MundaneId' => $mundane_id]);
 		$rows = is_array($report['Detail']) ? $report['Detail'] : [];

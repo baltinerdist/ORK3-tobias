@@ -126,14 +126,61 @@ class Tournament extends Ork3 {
 		$this->Tournament->tournament_id = $TournamentId;
 		if (!$this->Tournament->find()) return false;
 
+		$has_edit = false;
 		if (valid_id($this->Tournament->kingdom_id)) {
-			return Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_KINGDOM, $this->Tournament->kingdom_id, AUTH_EDIT);
+			$has_edit = Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_KINGDOM, $this->Tournament->kingdom_id, AUTH_EDIT);
 		} elseif (valid_id($this->Tournament->park_id)) {
-			return Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_PARK, $this->Tournament->park_id, AUTH_EDIT);
+			$has_edit = Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_PARK, $this->Tournament->park_id, AUTH_EDIT);
 		} elseif (valid_id($this->Tournament->event_id)) {
-			return Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_EVENT, $this->Tournament->event_id, AUTH_EDIT);
+			$has_edit = Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_EVENT, $this->Tournament->event_id, AUTH_EDIT);
 		}
-		return false;
+		if ($has_edit) return true;
+
+		// Organizer reeves get full manage rights, scoped to this tournament only.
+		return $this->get_reeve_role($mundane_id, (int)$this->Tournament->tournament_id) === 'organizer';
+	}
+
+	/**
+	 * Returns the reeve role ('organizer' | 'bracket_runner') the given mundane holds
+	 * for the given tournament, or null if they are not a reeve.
+	 */
+	private function get_reeve_role($mundane_id, $tournament_id) {
+		$mundane_id    = (int)$mundane_id;
+		$tournament_id = (int)$tournament_id;
+		if ($mundane_id <= 0 || $tournament_id <= 0) return null;
+
+		$r = $this->db->query(
+			"SELECT role FROM " . DB_PREFIX . "tournament_reeve WHERE tournament_id = :tid AND mundane_id = :mid LIMIT 1",
+			[':tid' => $tournament_id, ':mid' => $mundane_id]
+		);
+		if ($r && $r->size() > 0 && $r->next()) {
+			return $r->role;
+		}
+		return null;
+	}
+
+	/**
+	 * Result-entry auth gate. True when check_auth() passes (edit auth OR organizer
+	 * reeve) OR the resolved mundane is a 'bracket_runner' reeve for this tournament.
+	 * Used by PostMatchResult / ResetMatch / RecordIronmanWin only — bracket runners may record results
+	 * but cannot edit brackets, participants, or reeves.
+	 */
+	private function can_run_brackets(array $request) {
+		if ($this->check_auth($request)) return true;
+
+		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token'] ?? '');
+		if (!valid_id($mundane_id)) return false;
+
+		// Resolve the tournament id: prefer the request, else derive from the match.
+		$tournament_id = (int)($request['TournamentId'] ?? 0);
+		if (!valid_id($tournament_id) && valid_id($request['MatchId'] ?? 0)) {
+			$mid = (int)$request['MatchId'];
+			$mr  = $this->db->query("SELECT tournament_id FROM " . DB_PREFIX . "match WHERE match_id = $mid LIMIT 1");
+			if ($mr && $mr->size() > 0 && $mr->next()) $tournament_id = (int)$mr->tournament_id;
+		}
+		if (!valid_id($tournament_id)) return false;
+
+		return $this->get_reeve_role($mundane_id, $tournament_id) === 'bracket_runner';
 	}
 
 
@@ -144,6 +191,13 @@ class Tournament extends Ork3 {
 			$bust_request['ParkId'] = $this->Tournament->park_id;
 			$bust_request['KingdomId'] = null;
 			Ork3::$Lib->ghettocache->bust('Report.TournamentReport', Ork3::$Lib->ghettocache->key($bust_request));
+		}
+		// The single-tournament profile reads TournamentReport keyed by TournamentId only;
+		// bust that entry too or edits (date/name/etc.) appear to "do nothing" until the
+		// cache expires. GhettoCache::key() is implode('.', $request), so this matches the
+		// profile's get_tournies(['TournamentId' => $id]) key exactly.
+		if (valid_id($this->Tournament->tournament_id)) {
+			Ork3::$Lib->ghettocache->bust('Report.TournamentReport', Ork3::$Lib->ghettocache->key(['TournamentId' => (int)$this->Tournament->tournament_id]));
 		}
 	}
 
@@ -719,7 +773,7 @@ class Tournament extends Ork3 {
 	 * Request: Token, TournamentId, MatchId, Result (1-wins|2-wins|tie|forfeit|disqualified), Score
 	 */
 	public function PostMatchResult($request) {
-		if (!$this->check_auth($request)) return NoAuthorization();
+		if (!$this->can_run_brackets($request)) return NoAuthorization();
 
 		$match_id      = (int)$request['MatchId'];
 		$tournament_id = (int)$request['TournamentId'];
@@ -929,7 +983,7 @@ class Tournament extends Ork3 {
 	 * Request: Token, TournamentId, MatchId
 	 */
 	public function ResetMatch($request) {
-		if (!$this->check_auth($request)) return NoAuthorization();
+		if (!$this->can_run_brackets($request)) return NoAuthorization();
 
 		$match_id      = (int)($request['MatchId']      ?? 0);
 		$tournament_id = (int)($request['TournamentId'] ?? 0);
@@ -1585,7 +1639,7 @@ class Tournament extends Ork3 {
 	 * Request: Token, TournamentId, BracketId, WinnerId, [LoserId optional], [RingNumber]
 	 */
 	public function RecordIronmanWin($request) {
-		if (!$this->check_auth($request)) return NoAuthorization();
+		if (!$this->can_run_brackets($request)) return NoAuthorization();
 
 		$bracket_id    = (int)($request['BracketId']    ?? 0);
 		$tournament_id = (int)($request['TournamentId'] ?? 0);
@@ -2233,6 +2287,134 @@ class Tournament extends Ork3 {
 			if (is_array($parsed) && count($parsed) === 8) return Success($parsed);
 		}
 		return Success($default);
+	}
+
+	/**
+	 * List reeves for a tournament. Requires manage-level auth (check_auth).
+	 * Returns rows: { MundaneId, Persona, Role }.
+	 */
+	public function GetReeves($request) {
+		if (!$this->check_auth($request)) return NoAuthorization();
+
+		$tournament_id = (int)($request['TournamentId'] ?? 0);
+		if (!valid_id($tournament_id)) return InvalidParameter('TournamentId required');
+
+		$sql = "SELECT r.mundane_id, r.role, m.persona
+				FROM " . DB_PREFIX . "tournament_reeve r
+				LEFT JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = r.mundane_id
+				WHERE r.tournament_id = $tournament_id
+				ORDER BY r.role ASC, m.persona ASC";
+		$r = $this->db->query($sql);
+		$reeves = [];
+		if ($r !== false && $r->size() > 0) {
+			while ($r->next()) {
+				$reeves[] = [
+					'MundaneId' => (int)$r->mundane_id,
+					'Persona'   => $r->persona,
+					'Role'      => $r->role,
+				];
+			}
+		}
+		return Success($reeves);
+	}
+
+	/**
+	 * Add or update a reeve for a tournament. Organizer-level only (check_auth).
+	 * Upserts on (tournament_id, mundane_id) — re-adding a person updates their role.
+	 * Params: TournamentId, MundaneId, Role ('organizer' | 'bracket_runner').
+	 */
+	public function AddReeve($request) {
+		if (!$this->check_auth($request)) return NoAuthorization();
+
+		$tournament_id = (int)($request['TournamentId'] ?? 0);
+		$mundane_id    = (int)($request['MundaneId'] ?? 0);
+		$role          = trim($request['Role'] ?? '');
+
+		if (!valid_id($tournament_id)) return InvalidParameter('TournamentId required');
+		if (!valid_id($mundane_id))    return InvalidParameter('MundaneId required');
+		if (!in_array($role, ['organizer', 'bracket_runner'], true)) {
+			return InvalidParameter('Invalid role');
+		}
+
+		// Verify the mundane exists.
+		$mr = $this->db->query("SELECT mundane_id FROM " . DB_PREFIX . "mundane WHERE mundane_id = $mundane_id LIMIT 1");
+		if (!$mr || $mr->size() === 0) return InvalidParameter('Player not found');
+
+		$this->db->query(
+			"INSERT INTO " . DB_PREFIX . "tournament_reeve (tournament_id, mundane_id, role)
+				VALUES (:tid, :mid, :role)
+				ON DUPLICATE KEY UPDATE role = :role2",
+			[':tid' => $tournament_id, ':mid' => $mundane_id, ':role' => $role, ':role2' => $role]
+		);
+		return Success(['MundaneId' => $mundane_id, 'Role' => $role]);
+	}
+
+	/**
+	 * Remove a reeve from a tournament. Organizer-level only (check_auth).
+	 * Params: TournamentId, MundaneId.
+	 */
+	public function RemoveReeve($request) {
+		if (!$this->check_auth($request)) return NoAuthorization();
+
+		$tournament_id = (int)($request['TournamentId'] ?? 0);
+		$mundane_id    = (int)($request['MundaneId'] ?? 0);
+		if (!valid_id($tournament_id)) return InvalidParameter('TournamentId required');
+		if (!valid_id($mundane_id))    return InvalidParameter('MundaneId required');
+
+		$this->db->query(
+			"DELETE FROM " . DB_PREFIX . "tournament_reeve WHERE tournament_id = :tid AND mundane_id = :mid",
+			[':tid' => $tournament_id, ':mid' => $mundane_id]
+		);
+		return Success(['MundaneId' => $mundane_id]);
+	}
+
+	/**
+	 * Returns the caller's own reeve role for a tournament (token-resolved).
+	 * No manage gate — a user may always see their own role. Returns
+	 * Success(['Role' => 'organizer'|'bracket_runner'|null]).
+	 */
+	public function GetReeveRole($request) {
+		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token'] ?? '');
+		$tournament_id = (int)($request['TournamentId'] ?? 0);
+		if (!valid_id($mundane_id) || !valid_id($tournament_id)) {
+			return Success(['Role' => null]);
+		}
+		return Success(['Role' => $this->get_reeve_role($mundane_id, $tournament_id)]);
+	}
+
+	/**
+	 * PUBLIC — no auth. Cheap aggregate version signature for spectator polling.
+	 * Changes whenever any match result/score, bracket status/set, or participant
+	 * roster / live state (eliminated / bracket_side / ironman streak) changes.
+	 * Param: TournamentId. Returns Success(['Version' => md5(...)]).
+	 */
+	public function GetVersion($request) {
+		$tournament_id = (int)($request['TournamentId'] ?? 0);
+		if (!valid_id($tournament_id)) return InvalidParameter('TournamentId required');
+
+		// Match-state component (result/score edits, resets, new matches).
+		$mc = 0; $msum = 0;
+		$mr = $this->db->query(
+			"SELECT COUNT(*) AS mc, COALESCE(SUM(CRC32(CONCAT_WS(':', match_id, result, score))),0) AS msum
+				FROM " . DB_PREFIX . "match WHERE tournament_id = $tournament_id");
+		if ($mr && $mr->next()) { $mc = (int)$mr->mc; $msum = (string)$mr->msum; }
+
+		// Bracket-state component (status changes, add/delete bracket).
+		$bsig = '';
+		$br = $this->db->query(
+			"SELECT GROUP_CONCAT(CONCAT(bracket_id,':',status) ORDER BY bracket_id) AS bsig
+				FROM " . DB_PREFIX . "bracket WHERE tournament_id = $tournament_id");
+		if ($br && $br->next()) { $bsig = (string)$br->bsig; }
+
+		// Participant-set component (roster + live elimination / ironman streak changes).
+		$pc = 0; $psum = 0;
+		$pr = $this->db->query(
+			"SELECT COUNT(*) AS pc, COALESCE(SUM(CRC32(CONCAT_WS(':', participant_id, eliminated, bracket_side, im_wins, im_current_streak))),0) AS psum
+				FROM " . DB_PREFIX . "participant WHERE tournament_id = $tournament_id");
+		if ($pr && $pr->next()) { $pc = (int)$pr->pc; $psum = (string)$pr->psum; }
+
+		$sig = md5("{$mc}:{$msum}|{$bsig}|{$pc}:{$psum}");
+		return Success(['Version' => $sig]);
 	}
 
 }

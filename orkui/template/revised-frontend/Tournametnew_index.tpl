@@ -9,6 +9,18 @@ $totalParticipants = (int)($TotalParticipants ?? 0);
 $totalMatches      = (int)($TotalMatches      ?? 0);
 $canManage         = !empty($CanManageTournament);
 $loggedIn          = !empty($LoggedIn);
+$canManageReeves   = !empty($CanManageReeves);
+$isOrganizerReeve  = !empty($IsOrganizerReeve);
+$isBracketRunner   = !empty($IsBracketRunner);
+$hasActiveBracket  = !empty($HasActiveBracket);
+$isSpectator       = !empty($Spectator);
+$reeves            = $Reeves ?? [];
+// Current logged-in user's MundaneId (recommendation "recommended by" + reeve self-exclusion)
+$tCurrentUserId    = isset($this->__session->user_id) ? (int)$this->__session->user_id : 0;
+// Staff who may issue award recommendations from the standings table
+$canRecommend      = $canManage || $isBracketRunner;
+// Role display labels for reeve badges
+$reeveRoleLabels   = ['organizer' => 'Organizer', 'bracket_runner' => 'Bracket Runner'];
 
 $tid          = (int)($tournament['TournamentId']          ?? 0);
 $tName        = $tournament['Name']                        ?? 'Tournament';
@@ -120,6 +132,56 @@ html[data-theme="dark"] [data-tip]::before { border-top-color:#1a202c; }
 .tn-playtest-warn-icon { font-size:16px; color:#dd6b20; flex-shrink:0; margin-top:2px; }
 .tn-playtest-warn-text { flex:1; }
 .tn-playtest-warn-text strong { color:#7b341e; font-weight:700; }
+
+/* ---- Spectator Mode banner (Feature 1) ---- */
+.tn-spectator-bar { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:9px 16px; background:#fff5f5; border:1px solid #feb2b2; border-left:4px solid #e53e3e; border-radius:8px; margin:0 0 14px; color:#742a2a; font-size:13px; }
+.tn-spectator-bar.tn-spectator-hidden { display:none; }
+.tn-spectator-msg { display:inline-flex; align-items:center; gap:8px; }
+.tn-spectator-msg strong { color:#742a2a; font-weight:700; }
+.tn-spectator-dot { width:9px; height:9px; border-radius:50%; background:#e53e3e; box-shadow:0 0 0 0 rgba(229,62,62,0.6); animation:tnSpectatorPulse 1.6s infinite; flex-shrink:0; }
+@keyframes tnSpectatorPulse { 0% { box-shadow:0 0 0 0 rgba(229,62,62,0.55); } 70% { box-shadow:0 0 0 7px rgba(229,62,62,0); } 100% { box-shadow:0 0 0 0 rgba(229,62,62,0); } }
+.tn-spectator-sync { color:#9b2c2c; font-size:11px; font-weight:500; }
+.tn-spectator-sync.tn-spectator-flash { color:#276749; }
+.tn-spectator-dismiss { background:transparent; border:none; color:#9b2c2c; cursor:pointer; font-size:14px; padding:2px 6px; border-radius:4px; line-height:1; }
+.tn-spectator-dismiss:hover { background:rgba(229,62,62,0.12); color:#742a2a; }
+@media (prefers-reduced-motion: reduce) { .tn-spectator-dot { animation:none; } }
+
+/* ---- Tournament Reeves panel (Feature 2) ---- */
+.tn-reeves-card { margin-top:18px; padding:14px 16px; background:#f7fafc; border:1px solid #e2e8f0; border-radius:8px; }
+.tn-reeves-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.tn-reeves-title { margin:0; font-size:14px; font-weight:700; color:#2d3748; background:transparent; border:none; padding:0; border-radius:0; text-shadow:none; }
+.tn-reeves-title i { color:#276749; margin-right:5px; }
+.tn-reeves-sub { margin:8px 0 12px; font-size:12px; color:#718096; line-height:1.5; }
+.tn-reeves-sub strong { color:#4a5568; }
+.tn-reeves-list { list-style:none; margin:0; padding:0; }
+.tn-reeves-empty { padding:10px 4px; font-size:13px; color:#a0aec0; }
+.tn-reeve-row { display:flex; align-items:center; gap:10px; padding:8px 4px; border-bottom:1px solid #edf2f7; }
+.tn-reeve-row:last-child { border-bottom:none; }
+.tn-reeve-persona { flex:1; font-size:13px; font-weight:600; }
+.tn-reeve-persona a { color:#276749; text-decoration:none; }
+.tn-reeve-persona a:hover { text-decoration:underline; }
+.tn-reeve-badge { font-size:11px; font-weight:700; padding:2px 9px; border-radius:11px; white-space:nowrap; }
+.tn-reeve-badge-organizer { background:#e9d8fd; color:#553c9a; }
+.tn-reeve-badge-bracket_runner { background:#c6f6d5; color:#22543d; }
+.tn-reeve-remove { background:transparent; border:none; color:#cbd5e0; cursor:pointer; font-size:13px; padding:3px 7px; border-radius:4px; line-height:1; }
+.tn-reeve-remove:hover { background:#fed7d7; color:#c53030; }
+.tn-reeve-remove.tn-reeve-confirm { background:#fed7d7; color:#c53030; font-size:11px; font-weight:700; }
+
+/* ---- Recommend column + modal (Feature 3) ---- */
+.tn-rec-actions { display:inline-flex; gap:6px; white-space:nowrap; }
+.tn-rec-btn { display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:600; padding:3px 9px; border-radius:13px; border:1px solid #e2e8f0; background:#fff; color:#4a5568; cursor:pointer; }
+.tn-rec-btn i { color:#d69e2e; }
+.tn-rec-btn:hover { background:#fffaf0; border-color:#f6e05e; color:#744210; }
+.tn-rec-target { font-size:13px; color:#4a5568; line-height:1.5; margin:0 0 12px; }
+.tn-rec-target strong { color:#1a202c; }
+.tn-rank-pills { display:flex; flex-wrap:wrap; gap:6px; }
+.tn-rank-pill { width:30px; height:30px; display:inline-flex; align-items:center; justify-content:center; border:1px solid #e2e8f0; border-radius:6px; font-size:13px; font-weight:600; color:#4a5568; cursor:pointer; user-select:none; }
+.tn-rank-pill:hover { border-color:#276749; }
+.tn-rank-pill.tn-rank-selected { background:#276749; border-color:#276749; color:#fff; }
+.tn-rec-standing { font-size:12px; color:#4a5568; margin:0 0 8px; min-height:16px; }
+.tn-rec-standing-topped { color:#c05621; font-weight:600; }
+.tn-char-count { display:block; margin-top:5px; font-size:11px; color:#a0aec0; }
+.tn-char-count.tn-char-warn { color:#dd6b20; }
 
 /* Stats row */
 .tn-stats-row { display:flex; gap:12px; padding:14px 0; flex-wrap:wrap; }
@@ -254,7 +316,8 @@ html[data-theme="dark"] [data-tip]::before { border-top-color:#1a202c; }
 .tn-field-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 
 /* Bracket visualization */
-.tn-bv-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:8px; }
+.tn-bv-viewport { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.tn-bv-wrap { padding-bottom:8px; }
 .tn-bv-tree { display:flex; gap:0; align-items:stretch; min-width:max-content; position:relative; }
 .tn-bv-round { display:flex; flex-direction:column; min-width:190px; padding:0 14px; }
 .tn-bv-round-body { display:flex; flex-direction:column; justify-content:space-around; flex:1; }
@@ -850,6 +913,39 @@ html[data-theme="dark"] .tn-hero-icon { background:rgba(255,255,255,0.08); borde
 html[data-theme="dark"] .tn-playtest-warn { background:rgba(221,107,32,0.15); border-color:rgba(221,107,32,0.5); border-left-color:#dd6b20; color:#fbd38d; }
 html[data-theme="dark"] .tn-playtest-warn-icon { color:#f6ad55; }
 html[data-theme="dark"] .tn-playtest-warn-text strong { color:#fbd38d; }
+html[data-theme="dark"] .tn-spectator-bar { background:rgba(229,62,62,0.14); border-color:rgba(229,62,62,0.5); border-left-color:#e53e3e; color:#feb2b2; }
+html[data-theme="dark"] .tn-spectator-bar strong { color:#fc8181; }
+html[data-theme="dark"] .tn-spectator-sync { color:#fc8181; }
+html[data-theme="dark"] .tn-spectator-sync.tn-spectator-flash { color:#68d391; }
+html[data-theme="dark"] .tn-spectator-dismiss { color:#fc8181; }
+html[data-theme="dark"] .tn-spectator-dismiss:hover { background:rgba(229,62,62,0.2); color:#feb2b2; }
+/* Reeves panel (dark) */
+html[data-theme="dark"] .tn-reeves-card { background:#1a202c; border-color:#4a5568; }
+html[data-theme="dark"] .tn-reeves-title { color:#f7fafc; }
+html[data-theme="dark"] .tn-reeves-title i { color:#68d391; }
+html[data-theme="dark"] .tn-reeves-sub { color:#a0aec0; }
+html[data-theme="dark"] .tn-reeves-sub strong { color:#cbd5e0; }
+html[data-theme="dark"] .tn-reeves-empty { color:#718096; }
+html[data-theme="dark"] .tn-reeve-row { border-bottom-color:#2d3748; }
+html[data-theme="dark"] .tn-reeve-persona a { color:#68d391; }
+html[data-theme="dark"] .tn-reeve-badge-organizer { background:#44337a; color:#d6bcfa; }
+html[data-theme="dark"] .tn-reeve-badge-bracket_runner { background:#22543d; color:#9ae6b4; }
+html[data-theme="dark"] .tn-reeve-remove { color:#718096; }
+html[data-theme="dark"] .tn-reeve-remove:hover { background:#742a2a; color:#feb2b2; }
+html[data-theme="dark"] .tn-reeve-remove.tn-reeve-confirm { background:#742a2a; color:#feb2b2; }
+/* Recommend column + modal (dark) */
+html[data-theme="dark"] .tn-rec-btn { background:#2d3748; border-color:#4a5568; color:#cbd5e0; }
+html[data-theme="dark"] .tn-rec-btn i { color:#f6e05e; }
+html[data-theme="dark"] .tn-rec-btn:hover { background:#1a202c; border-color:#d69e2e; color:#fbd38d; }
+html[data-theme="dark"] .tn-rec-target { color:#cbd5e0; }
+html[data-theme="dark"] .tn-rec-target strong { color:#f7fafc; }
+html[data-theme="dark"] .tn-rank-pill { background:#2d3748; border-color:#4a5568; color:#cbd5e0; }
+html[data-theme="dark"] .tn-rank-pill:hover { border-color:#68d391; }
+html[data-theme="dark"] .tn-rank-pill.tn-rank-selected { background:#276749; border-color:#68d391; color:#fff; }
+html[data-theme="dark"] .tn-rec-standing { color:#a0aec0; }
+html[data-theme="dark"] .tn-rec-standing-topped { color:#f6ad55; }
+html[data-theme="dark"] .tn-char-count { color:#718096; }
+html[data-theme="dark"] .tn-char-count.tn-char-warn { color:#f6ad55; }
 
 /* Stats row */
 html[data-theme="dark"] .tn-stat-card { background:#2d3748; border-color:#4a5568; box-shadow:0 1px 3px rgba(0,0,0,0.3); }
@@ -1170,7 +1266,7 @@ html[data-theme="dark"] .tn-bv-podium-card[style*="background:#f7fafc"] { backgr
 #tn-root.tn-focus .tn-stats-row,
 #tn-root.tn-focus .tn-sidebar { display:none !important; }
 #tn-root.tn-focus .tn-focus-bar { display:flex; }
-#tn-root.tn-focus .tn-bv-wrap { min-height:calc(100vh - 230px); }
+#tn-root.tn-focus .tn-bv-viewport { min-height:calc(100vh - 230px); }
 /* Focus mode dark */
 html[data-theme="dark"] .tn-focus-toggle,
 html[data-theme="dark"] .tn-focus-toggle:hover { color:#9ae6b4 !important; }
@@ -1182,6 +1278,20 @@ html[data-theme="dark"] .tn-focus-bar { background:linear-gradient(135deg,#0f141
      ZONE 1: Hero
      ============================================= -->
 <div id="tn-root">
+
+<?php if ($isSpectator): ?>
+<!-- Spectator Mode banner (Feature 1) — auto-updates via /version poll loop -->
+<div class="tn-spectator-bar" id="tn-spectator-bar">
+	<span class="tn-spectator-msg">
+		<span class="tn-spectator-dot" aria-hidden="true"></span>
+		<strong>Spectator Mode</strong> — Live updates
+		<span class="tn-spectator-sync" id="tn-spectator-sync"></span>
+	</span>
+	<button type="button" class="tn-spectator-dismiss" id="tn-spectator-dismiss" data-tip="Hide this bar (updates keep running)">
+		<i class="fas fa-times"></i>
+	</button>
+</div>
+<?php endif; ?>
 
 <!-- Focus-mode slim bar (hidden unless focus mode active) -->
 <div class="tn-focus-bar">
@@ -1391,6 +1501,31 @@ html[data-theme="dark"] .tn-focus-bar { background:linear-gradient(135deg,#0f141
 					<a href="<?= htmlspecialchars($tUrl) ?>" target="_blank" rel="noopener noreferrer" class="tn-btn tn-btn-outline tn-btn-sm">
 						<i class="fas fa-external-link-alt"></i> Tournament Website
 					</a>
+				</div>
+				<?php endif; ?>
+
+				<?php if ($canManageReeves): ?>
+				<!-- Tournament Reeves panel (Feature 2) -->
+				<div class="tn-reeves-card" id="tn-reeves-card">
+					<div class="tn-reeves-head">
+						<h4 class="tn-reeves-title"><i class="fas fa-user-shield"></i> Tournament Reeves</h4>
+						<button type="button" class="tn-btn tn-btn-primary tn-btn-sm" id="tn-reeve-add-btn">
+							<i class="fas fa-plus"></i> Add Reeve
+						</button>
+					</div>
+					<p class="tn-reeves-sub">Reeves help run this tournament. <strong>Organizers</strong> can do everything you can; <strong>Bracket Runners</strong> can only record match results.</p>
+					<ul class="tn-reeves-list" id="tn-reeves-list">
+						<?php if (empty($reeves)): ?>
+						<li class="tn-reeves-empty" id="tn-reeves-empty">No reeves assigned yet.</li>
+						<?php else: foreach ($reeves as $_rv): ?>
+						<?php $_rvRole = $_rv['Role'] ?? 'bracket_runner'; ?>
+						<li class="tn-reeve-row" data-mundane-id="<?= (int)$_rv['MundaneId'] ?>">
+							<span class="tn-reeve-persona"><a href="<?= UIR ?>Player/profile/<?= (int)$_rv['MundaneId'] ?>"><?= htmlspecialchars($_rv['Persona'] ?? ('#' . (int)$_rv['MundaneId'])) ?></a></span>
+							<span class="tn-reeve-badge tn-reeve-badge-<?= htmlspecialchars($_rvRole) ?>"><?= htmlspecialchars($reeveRoleLabels[$_rvRole] ?? $_rvRole) ?></span>
+							<button type="button" class="tn-reeve-remove" data-mundane-id="<?= (int)$_rv['MundaneId'] ?>" data-persona="<?= htmlspecialchars($_rv['Persona'] ?? '') ?>" data-tip="Remove reeve"><i class="fas fa-times"></i></button>
+						</li>
+						<?php endforeach; endif; ?>
+					</ul>
 				</div>
 				<?php endif; ?>
 			</div>
@@ -1693,7 +1828,7 @@ foreach ($bracketData as $_bid => $_bd) {
 					<?php $bvFirst = false; endforeach; ?>
 				</div>
 				<?php endif; ?>
-				<div id="tn-nextup"></div>
+				<?php if ($canManage): ?><div id="tn-nextup"></div><?php endif; ?>
 				<div id="tn-bv-container"></div>
 				<?php endif; ?>
 			</div>
@@ -1731,10 +1866,13 @@ foreach ($bracketData as $_bid => $_bd) {
 								<th onclick="tnSortTable('tn-leaderboard-table',2,false)" style="cursor:pointer">Park</th>
 								<th onclick="tnSortTable('tn-leaderboard-table',3,true)" style="cursor:pointer;text-align:center">Brackets</th>
 								<th onclick="tnSortTable('tn-leaderboard-table',4,true)" style="cursor:pointer;text-align:right">Total Pts</th>
+								<?php if ($canRecommend): ?>
+								<th style="text-align:center">Recommend for&hellip;</th>
+								<?php endif; ?>
 							</tr>
 						</thead>
 						<tbody id="tn-leaderboard-body">
-							<tr><td colspan="5" style="text-align:center;color:#a0aec0;padding:20px">Computing leaderboard…</td></tr>
+							<tr><td colspan="<?= $canRecommend ? 6 : 5 ?>" style="text-align:center;color:#a0aec0;padding:20px">Computing leaderboard…</td></tr>
 						</tbody>
 					</table>
 				</div>
@@ -1771,6 +1909,9 @@ foreach ($bracketData as $_bid => $_bd) {
 								<th style="cursor:pointer;text-align:center" onclick="tnSortTable('tn-standings-table-<?= $stBid ?>',7,true)">Pts</th>
 								<th style="cursor:pointer;text-align:right" onclick="tnSortTable('tn-standings-table-<?= $stBid ?>',8,true)">Place Pts</th>
 								<?php endif; ?>
+								<?php if ($canRecommend): ?>
+								<th style="text-align:center">Recommend for&hellip;</th>
+								<?php endif; ?>
 							</tr>
 						</thead>
 						<tbody>
@@ -1781,7 +1922,7 @@ foreach ($bracketData as $_bid => $_bd) {
 								$_stRank    = (int)$stRow['Rank'];
 								$_placePts  = ($_stRank >= 1 && $_stRank <= 8) ? (int)($standingsPoints[$_stRank - 1] ?? 0) : 0;
 								if ($_stPrev !== null && $stRow['Rank'] !== $_stPrev['Rank'] && isset($_stTieCount) && $_stTieCount > 1):
-									$_colspan = $_stIsIronman ? 7 : 9;
+									$_colspan = ($_stIsIronman ? 7 : 9) + ($canRecommend ? 1 : 0);
 									for ($_si = 0; $_si < $_stTieCount - 1; $_si++): ?>
 							<tr class="tn-standings-spacer"><td colspan="<?= $_colspan ?>"></td></tr>
 								<?php endfor;
@@ -1805,6 +1946,19 @@ foreach ($bracketData as $_bid => $_bd) {
 								<td style="text-align:center;font-weight:800;color:#1a202c"><?= (int)$stRow['Points'] ?></td>
 								<?php endif; ?>
 								<td style="text-align:right;font-weight:800;color:#276749" data-place-rank="<?= $_stRank ?>"><?= $_placePts ?></td>
+								<?php if ($canRecommend): ?>
+								<td style="text-align:center">
+									<?php $_recMid = (int)($stRow['MundaneId'] ?? 0); $_recPersona = $stRow['Alias'] ?? ''; ?>
+									<?php if ($_recMid > 0): ?>
+									<span class="tn-rec-actions">
+										<button type="button" class="tn-rec-btn" onclick="tnOpenRecModal(<?= $_recMid ?>, <?= htmlspecialchars(json_encode($_recPersona), ENT_QUOTES) ?>, 27)"><i class="fas fa-star"></i> Warrior</button>
+										<button type="button" class="tn-rec-btn" onclick="tnOpenRecModal(<?= $_recMid ?>, <?= htmlspecialchars(json_encode($_recPersona), ENT_QUOTES) ?>, 33)"><i class="fas fa-star"></i> Griffin</button>
+									</span>
+									<?php else: ?>
+									<span style="color:#cbd5e0;font-size:11px">&mdash;</span>
+									<?php endif; ?>
+								</td>
+								<?php endif; ?>
 							</tr>
 							<?php endforeach; ?>
 						</tbody>
@@ -2293,8 +2447,46 @@ foreach ($bracketData as $_bid => $_bd) {
 
 
 <!-- =============================================
+     Add Reeve Modal (Feature 2)
+     ============================================= -->
+<?php if ($canManageReeves): ?>
+<div class="tn-overlay" id="tn-addreeve-overlay">
+	<div class="tn-modal-box" style="width:460px;max-width:calc(100vw - 40px)">
+		<div class="tn-modal-header">
+			<h3 class="tn-modal-title"><i class="fas fa-user-shield" style="margin-right:8px;color:#276749"></i>Add Reeve</h3>
+			<button class="tn-modal-close" id="tn-addreeve-close">&times;</button>
+		</div>
+		<div class="tn-modal-body">
+			<div id="tn-addreeve-feedback" class="tn-feedback"></div>
+			<div class="tn-field" style="position:relative">
+				<label for="tn-addreeve-player-text">PLAYER <span style="color:#e53e3e">*</span></label>
+				<input type="text" id="tn-addreeve-player-text" autocomplete="off" placeholder="Search by persona...">
+				<input type="hidden" id="tn-addreeve-player-id" value="0">
+				<div id="tn-addreeve-results" class="tn-ac-results"></div>
+			</div>
+			<div class="tn-field">
+				<label for="tn-addreeve-role">ROLE</label>
+				<select id="tn-addreeve-role">
+					<option value="bracket_runner">Bracket Runner &mdash; record match results only</option>
+					<option value="organizer">Organizer &mdash; full tournament management</option>
+				</select>
+			</div>
+		</div>
+		<div class="tn-modal-footer">
+			<button class="tn-btn tn-btn-ghost" id="tn-addreeve-cancel">Cancel</button>
+			<button class="tn-btn tn-btn-primary" id="tn-addreeve-submit" disabled>
+				<i class="fas fa-plus"></i> Add Reeve
+			</button>
+		</div>
+	</div>
+</div>
+<?php endif; ?>
+
+
+<!-- =============================================
      Record Result Modal
      ============================================= -->
+<?php if ($canManage): ?>
 <div class="tn-overlay" id="tn-recordresult-overlay">
 	<div class="tn-modal-box" style="width:460px;max-width:calc(100vw - 40px)">
 		<div class="tn-modal-header">
@@ -2360,9 +2552,44 @@ foreach ($bracketData as $_bid => $_bd) {
 		</div>
 	</div>
 </div>
+<?php endif; ?>
 
 
-
+<?php if ($canRecommend): ?>
+<!-- =============================================
+     Recommend Award Modal (Feature 3)
+     ============================================= -->
+<div class="tn-overlay" id="tn-rec-overlay">
+	<div class="tn-modal-box" style="width:460px;max-width:calc(100vw - 40px)">
+		<div class="tn-modal-header">
+			<h3 class="tn-modal-title"><i class="fas fa-star" style="margin-right:8px;color:#d69e2e"></i>Recommend an Award</h3>
+			<button class="tn-modal-close" id="tn-rec-close">&times;</button>
+		</div>
+		<div class="tn-modal-body">
+			<div id="tn-rec-feedback" class="tn-feedback"></div>
+			<form id="tn-rec-form" method="post" action="">
+				<input type="hidden" name="AwardId" id="tn-rec-award-id" value="">
+				<p class="tn-rec-target">Recommending <strong id="tn-rec-persona"></strong> for <strong id="tn-rec-award-name"></strong>.</p>
+				<div class="tn-field" id="tn-rec-rank-row">
+					<label>Rank <span style="color:#a0aec0;font-weight:400;font-size:11px">&mdash; click to select</span></label>
+					<div class="tn-rec-standing" id="tn-rec-standing"></div>
+					<div class="tn-rank-pills" id="tn-rec-rank-pills"></div>
+					<input type="hidden" name="Rank" id="tn-rec-rank-val" value="">
+				</div>
+				<div class="tn-field">
+					<label for="tn-rec-reason">Reason <span style="color:#e53e3e">*</span></label>
+					<input type="text" name="Reason" id="tn-rec-reason" maxlength="400" placeholder="Why should this player receive this award?">
+					<span class="tn-char-count" id="tn-rec-char-count">400 characters remaining</span>
+				</div>
+			</form>
+		</div>
+		<div class="tn-modal-footer">
+			<button class="tn-btn tn-btn-ghost" id="tn-rec-cancel" type="button">Cancel</button>
+			<button class="tn-btn tn-btn-primary" id="tn-rec-submit" type="button"><i class="fas fa-paper-plane"></i> Submit Recommendation</button>
+		</div>
+	</div>
+</div>
+<?php endif; ?>
 
 
 <!-- =============================================
@@ -2385,6 +2612,13 @@ var TnConfig = {
 	eventLabel:           <?= json_encode($tEventLabel, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>,
 	eventName:            <?= json_encode($tEventName, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>,
 	canManage:            <?= $canManage ? 'true' : 'false' ?>,
+	canManageReeves:      <?= $canManageReeves ? 'true' : 'false' ?>,
+	isOrganizerReeve:     <?= $isOrganizerReeve ? 'true' : 'false' ?>,
+	isBracketRunner:      <?= $isBracketRunner ? 'true' : 'false' ?>,
+	canRecommend:         <?= $canRecommend ? 'true' : 'false' ?>,
+	hasActiveBracket:     <?= $hasActiveBracket ? 'true' : 'false' ?>,
+	spectator:            <?= $isSpectator ? 'true' : 'false' ?>,
+	currentUserId:        <?= $tCurrentUserId ?>,
 	loggedIn:             <?= $loggedIn ? 'true' : 'false' ?>,
 	bracketData:          <?= json_encode($bracketData, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>,
 	methodLabels:         <?= json_encode($methodLabelMap, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>,
@@ -2670,7 +2904,7 @@ function tnRenderLeaderboard() {
 	}
 	var entries = tnComputeLeaderboard();
 	if (!entries.length) {
-		tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#a0aec0;padding:20px">No standings data yet.</td></tr>';
+		tbody.innerHTML = '<tr><td colspan="' + (TnConfig.canRecommend ? 6 : 5) + '" style="text-align:center;color:#a0aec0;padding:20px">No standings data yet.</td></tr>';
 		return;
 	}
 	var rows = '';
@@ -2683,12 +2917,25 @@ function tnRenderLeaderboard() {
 		var nameCell = e.MundaneId > 0
 			? '<a href="' + TnConfig.uir + 'Player/profile/' + e.MundaneId + '" style="color:#276749;text-decoration:none;font-weight:600">' + tnEsc(e.Alias) + '</a>'
 			: '<span style="font-weight:600">' + tnEsc(e.Alias) + '</span>';
+		var recCell = '';
+		if (TnConfig.canRecommend) {
+			if (e.MundaneId > 0) {
+				var pa = tnEsc(e.Alias || '');
+				recCell = '<td style="text-align:center"><span class="tn-rec-actions">'
+					+ '<button type="button" class="tn-rec-btn tn-rec-trigger" data-mundane-id="' + e.MundaneId + '" data-persona="' + pa + '" data-award="27"><i class="fas fa-star"></i> Warrior</button>'
+					+ '<button type="button" class="tn-rec-btn tn-rec-trigger" data-mundane-id="' + e.MundaneId + '" data-persona="' + pa + '" data-award="33"><i class="fas fa-star"></i> Griffin</button>'
+					+ '</span></td>';
+			} else {
+				recCell = '<td style="text-align:center;color:#cbd5e0;font-size:11px">—</td>';
+			}
+		}
 		rows += '<tr>'
 			+ rankCell
 			+ '<td>' + nameCell + '</td>'
 			+ '<td style="color:#718096">' + tnEsc(e.ParkName || '—') + '</td>'
 			+ '<td style="text-align:center;color:#718096;font-size:12px">' + tnEsc(String(e.BracketCount)) + '</td>'
 			+ '<td style="text-align:right;font-weight:800;color:#276749;font-size:15px">' + tnEsc(String(e.Points)) + '</td>'
+			+ recCell
 			+ '</tr>';
 	});
 	tbody.innerHTML = rows;
@@ -4174,9 +4421,13 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 
 	// ── Elimination tree renderer ──
 	function renderElimTree(container, matches, pMap, method, bracketId) {
+		// Fixed scroll viewport; the inner wrap is what we zoom so more bouts fit.
+		var viewport = document.createElement('div');
+		viewport.className = 'tn-bv-viewport';
+		container.appendChild(viewport);
 		var wrap = document.createElement('div');
 		wrap.className = 'tn-bv-wrap';
-		container.appendChild(wrap);
+		viewport.appendChild(wrap);
 
 		// Zoom controls
 		var zoomLevel = 100;
@@ -4192,8 +4443,9 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 		zoomLabel.className = 'tn-bv-zoom-level'; zoomLabel.textContent = '100%';
 		function applyZoom() {
 			zoomLabel.textContent = zoomLevel + '%';
-			wrap.style.transform = 'scale(' + (zoomLevel / 100) + ')';
-			wrap.style.transformOrigin = 'top left';
+			// CSS zoom shrinks the content's layout box, so the fixed viewport shows
+			// more of the bracket (transform:scale only shrinks visually, not layout).
+			wrap.style.zoom = (zoomLevel / 100);
 		}
 		zoomOut.onclick = function() { zoomLevel = Math.max(40, zoomLevel - 10); applyZoom(); };
 		zoomIn.onclick = function() { zoomLevel = Math.min(150, zoomLevel + 10); applyZoom(); };
@@ -4202,7 +4454,7 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 		zoomWrap.appendChild(zoomLabel);
 		zoomWrap.appendChild(zoomIn);
 		zoomWrap.appendChild(zoomReset);
-		container.insertBefore(zoomWrap, wrap);
+		container.insertBefore(zoomWrap, viewport);
 
 		// Separate sections: winners, losers, grand-final
 		var sections = [
@@ -6456,6 +6708,7 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 
 	// ---- Open modal ----
 	window.tnOpenRecordResult = function(match, p1, p2) {
+		if (!TnConfig.canManage) return;
 		bouts = [null, null, null, null, null, null, null, null, null];
 		p1Name = p1 ? (p1.Alias || p1.Persona || '—') : '—';
 		p2Name = p2 ? (p2.Alias || p2.Persona || '—') : '—';
@@ -7174,6 +7427,8 @@ html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 		window.tnRenderNextUp = function(bracketId){
 			nuHost = nuHost || $('tn-nextup');
 			if (!nuHost) return;
+			// Result-entry tool: hidden entirely from spectators / non-managers.
+			if (!TnConfig.canManage) { nuHost.innerHTML = ''; return; }
 			var bid = parseInt(bracketId, 10);
 			if (!bid || !TnConfig.bracketData || !TnConfig.bracketData[bid]){
 				nuHost.innerHTML = '';
@@ -7530,5 +7785,459 @@ html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 		});
 	});
 
+})();
+</script>
+
+<!-- =============================================
+     Tournament features: Spectator poll, Reeves panel, Recommend modal
+     ============================================= -->
+<script>
+// ============================================================
+// Feature 1 — Spectator Mode: adaptive version polling
+// ============================================================
+(function() {
+	if (!TnConfig.spectator) return;
+
+	var bar     = document.getElementById('tn-spectator-bar');
+	var dismiss = document.getElementById('tn-spectator-dismiss');
+	var syncEl  = document.getElementById('tn-spectator-sync');
+	if (dismiss && bar) {
+		dismiss.addEventListener('click', function() {
+			bar.classList.add('tn-spectator-hidden');
+		});
+	}
+
+	var lastVersion = null;
+	var timer = null;
+	var paused = false;
+
+	function anyActive() {
+		var bd = TnConfig.bracketData || {};
+		for (var k in bd) {
+			if (bd[k] && bd[k].Bracket && bd[k].Bracket.Status === 'active') return true;
+		}
+		return false;
+	}
+
+	function flashSync(msg) {
+		if (!syncEl) return;
+		syncEl.textContent = msg;
+		syncEl.classList.add('tn-spectator-flash');
+		setTimeout(function() { syncEl.classList.remove('tn-spectator-flash'); }, 2500);
+	}
+
+	// Refresh all brackets' data and re-render the currently-shown bracket viz.
+	// Mirrors the post-result refresh path (Promise.all matches + brackets).
+	function refreshAll() {
+		var bd = TnConfig.bracketData || {};
+		var bids = Object.keys(bd);
+		if (!bids.length) return Promise.resolve();
+		var calls = [
+			fetch(TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/brackets').then(function(r) { return r.json(); })
+		];
+		bids.forEach(function(bid) {
+			calls.push(
+				fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bid + '/matches')
+					.then(function(r) { return r.json(); })
+					.then(function(md) { return { bid: bid, md: md }; })
+			);
+		});
+		return Promise.all(calls).then(function(res) {
+			var brResp = res[0];
+			if (brResp && brResp.status === 0 && brResp.brackets) {
+				brResp.brackets.forEach(function(br) {
+					var id = parseInt(br.BracketId);
+					if (TnConfig.bracketData[id]) TnConfig.bracketData[id].Bracket = br;
+				});
+			}
+			for (var i = 1; i < res.length; i++) {
+				var item = res[i];
+				if (item.md && item.md.status === 0 && TnConfig.bracketData[item.bid]) {
+					TnConfig.bracketData[item.bid].Matches = item.md.matches;
+				}
+			}
+			// Re-render the currently-selected bracket viz, if present.
+			var sel = document.getElementById('tn-bv-bracket-select');
+			var curBid = sel ? parseInt(sel.value) : 0;
+			if (curBid && TnConfig.bracketData[curBid] && typeof tnRenderBracketViz === 'function') {
+				tnRenderBracketViz(curBid);
+			}
+			// Refresh the standings leaderboard if that fn exists.
+			if (typeof tnRenderLeaderboard === 'function') tnRenderLeaderboard();
+		}).catch(function(err) {
+			console.warn('[tn-spectator] refresh failed', err);
+			if (window.tnShowStaleWarning) tnShowStaleWarning();
+		});
+	}
+
+	function poll() {
+		if (paused) return;
+		fetch(TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/version')
+			.then(function(r) { return r.json(); })
+			.then(function(d) {
+				if (!d || d.status !== 0) return;
+				if (lastVersion === null) { lastVersion = d.version; return; }
+				if (d.version !== lastVersion) {
+					lastVersion = d.version;
+					flashSync('Updating…');
+					refreshAll().then(function() { flashSync('Updated just now'); });
+				}
+			})
+			.catch(function(err) { console.warn('[tn-spectator] version poll failed', err); });
+	}
+
+	function schedule() {
+		if (timer) clearTimeout(timer);
+		if (paused) return;
+		var interval = anyActive() ? 5000 : 20000;
+		timer = setTimeout(function() { poll(); schedule(); }, interval);
+	}
+
+	document.addEventListener('visibilitychange', function() {
+		if (document.hidden) {
+			paused = true;
+			if (timer) { clearTimeout(timer); timer = null; }
+		} else {
+			paused = false;
+			poll();       // immediate refresh on return
+			schedule();
+		}
+	});
+
+	// Seed the baseline version then begin the loop.
+	fetch(TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/version')
+		.then(function(r) { return r.json(); })
+		.then(function(d) { if (d && d.status === 0) lastVersion = d.version; })
+		.catch(function() {})
+		.finally(function() { schedule(); });
+})();
+
+
+// ============================================================
+// Feature 2 — Reeves Panel (Add / Remove)
+// ============================================================
+(function() {
+	if (!TnConfig.canManageReeves) return;
+
+	var OVERLAY     = 'tn-addreeve-overlay';
+	var addBtn      = document.getElementById('tn-reeve-add-btn');
+	var listEl      = document.getElementById('tn-reeves-list');
+	var playerInput = document.getElementById('tn-addreeve-player-text');
+	var playerIdEl  = document.getElementById('tn-addreeve-player-id');
+	var roleSel     = document.getElementById('tn-addreeve-role');
+	var resultsEl   = document.getElementById('tn-addreeve-results');
+	var submitBtn   = document.getElementById('tn-addreeve-submit');
+	var searchTimer = null;
+
+	var ROLE_LABELS = { organizer: 'Organizer', bracket_runner: 'Bracket Runner' };
+
+	function acClose() {
+		if (!resultsEl) return;
+		resultsEl.classList.remove('tn-ac-open');
+		resultsEl.innerHTML = '';
+	}
+
+	function syncSubmitState() {
+		if (submitBtn) submitBtn.disabled = !(parseInt(playerIdEl.value) > 0);
+	}
+
+	function acRender(players) {
+		resultsEl.innerHTML = '';
+		if (!players || !players.length) {
+			resultsEl.innerHTML = '<div class="tn-ac-item tn-ac-empty">No players found</div>';
+			tnFixedAcPosition(playerInput, resultsEl);
+			resultsEl.classList.add('tn-ac-open');
+			return;
+		}
+		players.forEach(function(pl) {
+			var item = document.createElement('div');
+			item.className = 'tn-ac-item';
+			item.tabIndex = -1;
+			var label = tnEsc(pl.Persona || pl.Name || '');
+			var sub   = pl.KAbbr ? (' <span style="color:#a0aec0;font-size:11px">(' + tnEsc(pl.KAbbr) + (pl.PAbbr ? ':' + tnEsc(pl.PAbbr) : '') + ')</span>') : '';
+			item.innerHTML = label + sub;
+			item.addEventListener('mousedown', function(e) {
+				e.preventDefault();
+				playerInput.value = pl.Persona || pl.Name || '';
+				playerIdEl.value  = pl.MundaneId || pl.mundane_id || 0;
+				syncSubmitState();
+				acClose();
+			});
+			resultsEl.appendChild(item);
+		});
+		tnFixedAcPosition(playerInput, resultsEl);
+		resultsEl.classList.add('tn-ac-open');
+	}
+
+	// Merge own + exclude scope, dedupe by MundaneId (project player-search rule)
+	function search(term) {
+		if (TnConfig.kingdomId <= 0) { acClose(); return; }
+		var base = TnConfig.uir + 'KingdomAjax/playersearch/' + TnConfig.kingdomId;
+		Promise.all([
+			fetch(base + '&scope=own&q='     + encodeURIComponent(term)).then(function(r){ return r.json(); }).catch(function(){ return []; }),
+			fetch(base + '&scope=exclude&q=' + encodeURIComponent(term)).then(function(r){ return r.json(); }).catch(function(){ return []; })
+		]).then(function(res) {
+			var seen = {}, merged = [];
+			[].concat(res[0] || [], res[1] || []).forEach(function(pl) {
+				var mid = pl.MundaneId || pl.mundane_id || 0;
+				if (mid && !seen[mid]) { seen[mid] = true; merged.push(pl); }
+			});
+			acRender(merged);
+		}).catch(function(err) { console.warn('[tn-reeve] search failed', err); acClose(); });
+	}
+
+	if (playerInput) {
+		playerInput.addEventListener('input', function() {
+			var term = this.value.trim();
+			playerIdEl.value = '0';
+			syncSubmitState();
+			clearTimeout(searchTimer);
+			if (term.length < 2) { acClose(); return; }
+			searchTimer = setTimeout(function() { search(term); }, 280);
+		});
+		playerInput.addEventListener('blur', function() { setTimeout(acClose, 200); });
+	}
+
+	function resetForm() {
+		if (playerInput) playerInput.value = '';
+		if (playerIdEl)  playerIdEl.value = '0';
+		if (roleSel)     roleSel.value = 'bracket_runner';
+		tnHideFeedback('tn-addreeve-feedback');
+		acClose();
+		syncSubmitState();
+	}
+
+	if (addBtn) addBtn.addEventListener('click', function() {
+		resetForm();
+		tnOpenModal(OVERLAY);
+		setTimeout(function() { if (playerInput) playerInput.focus(); }, 60);
+	});
+	['tn-addreeve-close','tn-addreeve-cancel'].forEach(function(id) {
+		var el = document.getElementById(id);
+		if (el) el.addEventListener('click', function() { tnCloseModal(OVERLAY); });
+	});
+	var ov = document.getElementById(OVERLAY);
+	if (ov) ov.addEventListener('click', function(e) { if (e.target === ov) tnCloseModal(OVERLAY); });
+	document.addEventListener('keydown', function(e) {
+		if (e.key === 'Escape' && ov && ov.classList.contains('tn-open')) tnCloseModal(OVERLAY);
+	});
+
+	function renderReeveRow(mid, persona, role) {
+		var li = document.createElement('li');
+		li.className = 'tn-reeve-row';
+		li.dataset.mundaneId = mid;
+		var roleLabel = ROLE_LABELS[role] || role;
+		li.innerHTML =
+			'<span class="tn-reeve-persona"><a href="' + TnConfig.uir + 'Player/profile/' + mid + '">' + tnEsc(persona || ('#' + mid)) + '</a></span>'
+			+ '<span class="tn-reeve-badge tn-reeve-badge-' + role + '">' + tnEsc(roleLabel) + '</span>'
+			+ '<button type="button" class="tn-reeve-remove" data-mundane-id="' + mid + '" data-persona="' + tnEsc(persona || '') + '" data-tip="Remove reeve"><i class="fas fa-times"></i></button>';
+		return li;
+	}
+
+	function upsertReeve(mid, persona, role) {
+		var empty = document.getElementById('tn-reeves-empty');
+		if (empty) empty.remove();
+		var existing = listEl.querySelector('.tn-reeve-row[data-mundane-id="' + mid + '"]');
+		var row = renderReeveRow(mid, persona, role);
+		if (existing) existing.replaceWith(row);
+		else listEl.appendChild(row);
+	}
+
+	if (submitBtn) submitBtn.addEventListener('click', function() {
+		var mid  = parseInt(playerIdEl.value) || 0;
+		var role = roleSel ? roleSel.value : 'bracket_runner';
+		var persona = playerInput ? playerInput.value.trim() : '';
+		if (mid <= 0) { tnShowFeedback('tn-addreeve-feedback', 'Please select a player.', false); return; }
+		submitBtn.disabled = true;
+		var fd = new FormData();
+		fd.append('MundaneId', mid);
+		fd.append('Role', role);
+		fetch(TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/addreeve', { method:'POST', body:fd })
+			.then(function(r) { return r.json(); })
+			.then(function(d) {
+				submitBtn.disabled = false;
+				if (d && d.status === 0) {
+					upsertReeve(mid, persona, d.role || role);
+					tnCloseModal(OVERLAY);
+				} else {
+					tnShowFeedback('tn-addreeve-feedback', (d && d.error) ? d.error : 'Could not add reeve.', false);
+				}
+			})
+			.catch(function() { submitBtn.disabled = false; tnShowFeedback('tn-addreeve-feedback', 'Request failed.', false); });
+	});
+
+	// Inline-confirm remove via event delegation on the list.
+	if (listEl) listEl.addEventListener('click', function(e) {
+		var btn = e.target.closest ? e.target.closest('.tn-reeve-remove') : null;
+		if (!btn) return;
+		var mid = parseInt(btn.dataset.mundaneId) || 0;
+		if (!btn.classList.contains('tn-reeve-confirm')) {
+			btn.classList.add('tn-reeve-confirm');
+			btn.innerHTML = 'Remove?';
+			var revert = setTimeout(function() {
+				btn.classList.remove('tn-reeve-confirm');
+				btn.innerHTML = '<i class="fas fa-times"></i>';
+			}, 3000);
+			btn._tnRevert = revert;
+			return;
+		}
+		if (btn._tnRevert) clearTimeout(btn._tnRevert);
+		btn.disabled = true;
+		var fd = new FormData();
+		fd.append('MundaneId', mid);
+		fetch(TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/removereeve', { method:'POST', body:fd })
+			.then(function(r) { return r.json(); })
+			.then(function(d) {
+				if (d && d.status === 0) {
+					var row = btn.closest('.tn-reeve-row');
+					if (row) row.remove();
+					if (listEl && !listEl.querySelector('.tn-reeve-row')) {
+						var li = document.createElement('li');
+						li.className = 'tn-reeves-empty';
+						li.id = 'tn-reeves-empty';
+						li.textContent = 'No reeves assigned yet.';
+						listEl.appendChild(li);
+					}
+				} else {
+					btn.disabled = false;
+					btn.classList.remove('tn-reeve-confirm');
+					btn.innerHTML = '<i class="fas fa-times"></i>';
+					alert((d && d.error) ? d.error : 'Could not remove reeve.');
+				}
+			})
+			.catch(function() {
+				btn.disabled = false;
+				btn.classList.remove('tn-reeve-confirm');
+				btn.innerHTML = '<i class="fas fa-times"></i>';
+				alert('Request failed.');
+			});
+	});
+})();
+
+
+// ============================================================
+// Feature 3 — Standings "Recommend for…" modal
+// ============================================================
+(function() {
+	if (!TnConfig.canRecommend) return;
+
+	var OVERLAY  = 'tn-rec-overlay';
+	var AWARD_NAMES = { 27: 'Order of the Warrior', 33: 'Order of the Griffin' };
+	var MAX_RANK = 10;
+	var form        = document.getElementById('tn-rec-form');
+	var personaEl   = document.getElementById('tn-rec-persona');
+	var awardNameEl = document.getElementById('tn-rec-award-name');
+	var awardIdEl   = document.getElementById('tn-rec-award-id');
+	var rankPills   = document.getElementById('tn-rec-rank-pills');
+	var rankVal     = document.getElementById('tn-rec-rank-val');
+	var reasonEl    = document.getElementById('tn-rec-reason');
+	var charCount   = document.getElementById('tn-rec-char-count');
+	var submitBtn   = document.getElementById('tn-rec-submit');
+	var standingEl  = document.getElementById('tn-rec-standing');
+
+	function buildRankPills(maxRank, selectRank) {
+		if (!rankPills) return;
+		maxRank = parseInt(maxRank) || MAX_RANK;
+		rankPills.innerHTML = '';
+		rankVal.value = '';
+		for (var r = 1; r <= maxRank; r++) {
+			var pill = document.createElement('div');
+			pill.className = 'tn-rank-pill';
+			pill.textContent = r;
+			pill.dataset.rank = r;
+			if (selectRank && r === selectRank) {
+				pill.classList.add('tn-rank-selected');
+				rankVal.value = r;
+			}
+			rankPills.appendChild(pill);
+		}
+	}
+
+	if (rankPills) rankPills.addEventListener('click', function(e) {
+		var p = e.target.closest ? e.target.closest('.tn-rank-pill') : null;
+		if (!p) return;
+		rankPills.querySelectorAll('.tn-rank-pill').forEach(function(x) { x.classList.remove('tn-rank-selected'); });
+		p.classList.add('tn-rank-selected');
+		rankVal.value = p.dataset.rank;
+	});
+
+	if (reasonEl && charCount) reasonEl.addEventListener('input', function() {
+		var remaining = 400 - this.value.length;
+		charCount.textContent = remaining + ' character' + (remaining !== 1 ? 's' : '') + ' remaining';
+		charCount.classList.toggle('tn-char-warn', remaining < 50);
+	});
+
+	// Global entry point used by server-rendered standings rows + delegated triggers.
+	window.tnOpenRecModal = function(mundaneId, persona, awardId) {
+		mundaneId = parseInt(mundaneId) || 0;
+		awardId   = parseInt(awardId) || 0;
+		if (mundaneId <= 0 || !awardId) return;
+		tnHideFeedback('tn-rec-feedback');
+		if (form) form.action = TnConfig.uir + 'Player/profile/' + mundaneId + '/addrecommendation';
+		if (awardIdEl)   awardIdEl.value = awardId;
+		if (personaEl)   personaEl.textContent = persona || ('Player #' + mundaneId);
+		if (awardNameEl) awardNameEl.textContent = AWARD_NAMES[awardId] || ('Award #' + awardId);
+		if (reasonEl)  reasonEl.value = '';
+		if (charCount) { charCount.textContent = '400 characters remaining'; charCount.classList.remove('tn-char-warn'); }
+		if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Recommendation'; }
+		// Default pills until the standing lookup returns; none preselected yet.
+		buildRankPills(MAX_RANK, 0);
+		if (standingEl) { standingEl.textContent = 'Checking current standing\u2026'; standingEl.className = 'tn-rec-standing'; }
+		tnOpenModal(OVERLAY);
+		setTimeout(function() { if (reasonEl) reasonEl.focus(); }, 60);
+
+		// Look up the recipient's current ladder rank and pre-select the nearest one up.
+		var who = persona || ('Player #' + mundaneId);
+		fetch(TnConfig.uir + 'PlayerAjax/ladderstanding&MundaneId=' + mundaneId + '&AwardId=' + awardId, { credentials: 'same-origin' })
+			.then(function(r) { return r.json(); })
+			.then(function(d) {
+				if (!d || d.status !== 0) { if (standingEl) standingEl.textContent = ''; return; }
+				var maxRank = parseInt(d.MaxRank) || MAX_RANK;
+				var current = parseInt(d.CurrentRank) || 0;
+				var next    = parseInt(d.NextRank) || 1;
+				if (d.ToppedOut) {
+					buildRankPills(maxRank, 0);
+					if (standingEl) {
+						standingEl.textContent = who + ' has already reached the top of ' + (d.LadderName || 'this ladder') + '.';
+						standingEl.className = 'tn-rec-standing tn-rec-standing-topped';
+					}
+					if (submitBtn) submitBtn.disabled = true;
+					return;
+				}
+				buildRankPills(maxRank, next);
+				if (standingEl) {
+					standingEl.textContent = current > 0
+						? ('Currently rank ' + current + ' of ' + maxRank + ' \u2014 recommending for rank ' + next + '.')
+						: ('No rank held yet \u2014 recommending for rank ' + next + '.');
+					standingEl.className = 'tn-rec-standing';
+				}
+			})
+			.catch(function() { if (standingEl) standingEl.textContent = ''; });
+	};
+
+	['tn-rec-close','tn-rec-cancel'].forEach(function(id) {
+		var el = document.getElementById(id);
+		if (el) el.addEventListener('click', function() { tnCloseModal(OVERLAY); });
+	});
+	var ov = document.getElementById(OVERLAY);
+	if (ov) ov.addEventListener('click', function(e) { if (e.target === ov) tnCloseModal(OVERLAY); });
+	document.addEventListener('keydown', function(e) {
+		if (e.key === 'Escape' && ov && ov.classList.contains('tn-open')) tnCloseModal(OVERLAY);
+	});
+
+	if (submitBtn) submitBtn.addEventListener('click', function() {
+		var reason = reasonEl ? reasonEl.value.trim() : '';
+		if (!reason) { tnShowFeedback('tn-rec-feedback', 'Please provide a reason.', false); return; }
+		submitBtn.disabled = true;
+		submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting…';
+		form.submit();
+	});
+
+	// Delegated trigger for JS-rendered leaderboard buttons.
+	document.addEventListener('click', function(e) {
+		var btn = e.target.closest ? e.target.closest('.tn-rec-trigger') : null;
+		if (!btn) return;
+		tnOpenRecModal(btn.dataset.mundaneId, btn.dataset.persona, btn.dataset.award);
+	});
 })();
 </script>
