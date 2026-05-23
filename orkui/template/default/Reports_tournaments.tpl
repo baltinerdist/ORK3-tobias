@@ -89,6 +89,7 @@
 	<!-- Tabs -->
 	<nav class="tnr-tabs" role="tablist">
 		<button class="tnr-tab tnr-active" data-tnrtab="overview"><i class="fas fa-chart-line"></i> Overview</button>
+		<button class="tnr-tab" data-tnrtab="tournaments"><i class="fas fa-trophy"></i> Tournaments</button>
 		<button class="tnr-tab" data-tnrtab="fighters"><i class="fas fa-khanda"></i> Fighters</button>
 		<button class="tnr-tab" data-tnrtab="awards"><i class="fas fa-medal"></i> Awards</button>
 <?php if ($scopeType === 'kingdom'): ?>
@@ -117,6 +118,38 @@
 			<div class="tnr-legend">Bar height = participants per month &middot; number on each bar = tournaments held</div>
 		</div>
 		<script>window.__tnrTrend = <?=json_encode($ProgramStats['Trend'] ?? [])?>;</script>
+	</div>
+
+	<!-- Tournaments: per-tournament collective standings + warrior field stats -->
+	<div class="tnr-panel" id="tnr-tab-tournaments">
+<?php foreach (($TournamentList['Tournaments'] ?? []) as $tour): $w = $tour['WarriorStats']; ?>
+		<div class="tnr-tcard">
+			<a class="tnr-tcard-name" href="<?=UIR?>Tournament/profile/<?=(int)$tour['TournamentId']?>"><?=htmlspecialchars($tour['Name'])?></a>
+			<div class="tnr-tcard-meta"><?=date('M j, Y', strtotime($tour['DateTime']))?><?php if ($scopeType==='kingdom' && $tour['ParkName']): ?> &middot; <?=htmlspecialchars($tour['ParkName'])?><?php endif; ?> &middot; <?=(int)$tour['BracketCount']?> bracket<?=$tour['BracketCount']==1?'':'s'?> &middot; <?=(int)$tour['ParticipantCount']?> fighters</div>
+			<div class="tnr-warstats">
+				<span class="tnr-warstat" data-tip="Average Order-of-the-Warrior level of the field"><b><?=htmlspecialchars($w['AvgLevel'])?></b> avg Warrior</span>
+				<span class="tnr-warstat" data-tip="Median Order-of-the-Warrior level of the field"><b><?=htmlspecialchars($w['MedianLevel'])?></b> median</span>
+				<span class="tnr-warstat"><b><?=(int)$w['Warlords']?></b> Warlord<?=$w['Warlords']==1?'':'s'?></span>
+				<span class="tnr-warstat"><b><?=(int)$w['SwordKnights']?></b> Sword Knight<?=$w['SwordKnights']==1?'':'s'?></span>
+			</div>
+			<table class="tnr-table tnr-tstandings">
+				<thead><tr><th>#</th><th>Fighter</th><th>W</th><th>L</th><th>Win %</th><th data-tip="Order of the Warrior 0-12">Warrior</th></tr></thead>
+				<tbody>
+<?php foreach ($tour['TopParticipants'] as $i => $p): ?>
+					<tr class="<?=$i >= 4 ? 'tnr-thidden' : ''?>">
+						<td><?=$i+1?></td>
+						<td><a href="<?=UIR?>Player/profile/<?=(int)$p['MundaneId']?>"><?=htmlspecialchars($p['Persona'])?></a></td>
+						<td><?=(int)$p['Wins']?></td><td><?=(int)$p['Losses']?></td><td><?=(int)$p['WinPct']?>%</td><td><?=(int)$p['WarriorLevel']?></td>
+					</tr>
+<?php endforeach; ?>
+				</tbody>
+			</table>
+<?php if (count($tour['TopParticipants']) > 4): ?>
+			<button type="button" class="tnr-showmore">Show more</button>
+<?php endif; ?>
+		</div>
+<?php endforeach; ?>
+<?php if (empty($TournamentList['Tournaments'])): ?><div class="tnr-empty">No tournaments in range.</div><?php endif; ?>
 	</div>
 
 	<!-- Fighters leaderboard -->
@@ -211,6 +244,14 @@
       flatpickr(el,{altInput:true,altFormat:'F j, Y',dateFormat:'Y-m-d'});
     });
   }
+  // Tournaments tab: show more / less of the collective standings (rows 5-8)
+  root.querySelectorAll('.tnr-showmore').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var card=btn.closest('.tnr-tcard');
+      var open=card.classList.toggle('tnr-show-all');
+      btn.textContent = open ? 'Show less' : 'Show more';
+    });
+  });
   var data=window.__tnrTrend||[], svg=document.getElementById('tnr-trend');
   if(svg){
     if(!data.length){ svg.insertAdjacentHTML('afterend','<div class="tnr-empty">No activity in range.</div>'); svg.remove(); return; }
