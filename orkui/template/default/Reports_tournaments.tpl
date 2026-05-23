@@ -10,6 +10,15 @@
 	$dateFrom   = $DateFrom;
 	$dateTo     = $DateTo;
 	$fmtDate    = function($d){ return $d ? date('M j, Y', strtotime($d)) : ''; };
+	// Order of the Warrior level (0-12) -> display label: 12=Sword Knight, 11=Warlord, 1-10=ordinal, 0=Unranked.
+	$warriorLabel = function($lvl){
+		$lvl = (int)$lvl;
+		if ($lvl >= 12) return 'Sword Knight';
+		if ($lvl === 11) return 'Warlord';
+		if ($lvl <= 0)  return 'Unranked';
+		$suffix = ($lvl === 1) ? 'st' : (($lvl === 2) ? 'nd' : (($lvl === 3) ? 'rd' : 'th'));
+		return $lvl . $suffix;
+	};
 	$periodLbl  = '';
 	if ($dateFrom && $dateTo)      $periodLbl = $fmtDate($dateFrom) . ' – ' . $fmtDate($dateTo);
 	elseif ($dateFrom)             $periodLbl = 'Since ' . $fmtDate($dateFrom);
@@ -127,10 +136,19 @@
 			<a class="tnr-tcard-name" href="<?=UIR?>Tournament/profile/<?=(int)$tour['TournamentId']?>"><?=htmlspecialchars($tour['Name'])?></a>
 			<div class="tnr-tcard-meta"><?=date('M j, Y', strtotime($tour['DateTime']))?><?php if ($scopeType==='kingdom' && $tour['ParkName']): ?> &middot; <?=htmlspecialchars($tour['ParkName'])?><?php endif; ?> &middot; <?=(int)$tour['BracketCount']?> bracket<?=$tour['BracketCount']==1?'':'s'?> &middot; <?=(int)$tour['ParticipantCount']?> fighters</div>
 			<div class="tnr-warstats">
+				<span class="tnr-warstat tnr-warstat-hi" data-tip="Highest Order of the Warrior in the field">Highest: <b><?=htmlspecialchars($warriorLabel($w['HighestLevel'] ?? 0))?></b></span>
 				<span class="tnr-warstat" data-tip="Average Order-of-the-Warrior level of the field"><b><?=htmlspecialchars($w['AvgLevel'])?></b> avg Warrior</span>
 				<span class="tnr-warstat" data-tip="Median Order-of-the-Warrior level of the field"><b><?=htmlspecialchars($w['MedianLevel'])?></b> median</span>
-				<span class="tnr-warstat"><b><?=(int)$w['Warlords']?></b> Warlord<?=$w['Warlords']==1?'':'s'?></span>
-				<span class="tnr-warstat"><b><?=(int)$w['SwordKnights']?></b> Sword Knight<?=$w['SwordKnights']==1?'':'s'?></span>
+			</div>
+<?php $dist = $w['Distribution'] ?? []; $maxc = 1; foreach (($dist ?: []) as $c) { if ($c > $maxc) $maxc = $c; } ?>
+			<div class="tnr-rankdist" data-tip="Participants by Order of the Warrior rank (W = Warlord, K = Sword Knight)">
+<?php for ($lvl = 1; $lvl <= 12; $lvl++): $c = (int)($dist[$lvl] ?? 0); $lab = $lvl <= 10 ? $lvl : ($lvl == 11 ? 'W' : 'K'); ?>
+				<div class="tnr-rankcol<?=$lvl >= 11 ? ' tnr-rankcol-elite' : ''?>">
+					<span class="tnr-rankcount<?=$c > 0 ? ' tnr-rankcount-has' : ''?>"><?=$c?></span>
+					<span class="tnr-rankbar-wrap"><span class="tnr-rankbar" style="height:<?=$c > 0 ? max(3, (int)round(32 * $c / $maxc)) : 0?>px"></span></span>
+					<span class="tnr-ranklabel"><?=$lab?></span>
+				</div>
+<?php endfor; ?>
 			</div>
 			<table class="tnr-table tnr-tstandings">
 				<thead><tr><th>#</th><th>Fighter</th><th>W</th><th>L</th><th>Win %</th><th data-tip="Order of the Warrior 0-12">Warrior</th></tr></thead>
