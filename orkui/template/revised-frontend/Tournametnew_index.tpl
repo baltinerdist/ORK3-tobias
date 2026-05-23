@@ -2775,6 +2775,120 @@ window.TnMobile = window.TnMobile || {};
 		TnMobile.viewMode.init();
 	}
 })();
+
+// =============================================
+// Swipe utility (PHASE C0 Task 2) — TnMobile.swipe.
+//
+//   var destroy = TnMobile.swipe(el, {
+//       onLeft, onRight, onUp, onDown,   // all optional
+//       threshold: 40,                   // min primary-axis distance to fire
+//       restraint: 60                    // max cross-axis drift allowed
+//   });
+//   destroy();                           // detach listeners (re-mount-safe)
+//
+// Behavior:
+//   - touchstart records the origin (x, y, time).
+//   - touchmove axis-LOCKS to the dominant axis once |dx| OR |dy| first
+//     exceeds START_DELTA (10px); once locked it stays that axis for the
+//     whole gesture, so vertical scroll never masquerades as a horizontal
+//     swipe (and vice-versa).
+//   - touchend fires the matching callback ONLY when the primary-axis travel
+//     is >= threshold AND the cross-axis drift is <= restraint.
+//
+// GESTURE-ARBITRATION CONTRACT (critical — C1 consumers rely on this):
+// the swipe is fully SUPPRESSED (no callback, no interference with native
+// scroll) when EITHER:
+//   (a) the touchstart target is, or is inside, an element matching
+//       [data-tn-no-swipe] (drag handles, sliders, etc.), OR
+//   (b) TnMobile.dragActive === true (set by the touch-DnD reorder while a
+//       drag is live). NOTE: dragActive is intentionally only READ here; a
+//       later task owns setting it. An undefined property reads falsy, which
+//       is the correct default.
+//
+// Listeners are registered {passive:true} — this utility NEVER calls
+// preventDefault, so it stays scroll-friendly and lets the browser optimize.
+// =============================================
+(function() {
+	TnMobile.swipe = function(el, opts) {
+		if (!el) return function() {};
+		opts = opts || {};
+		var threshold = (typeof opts.threshold === 'number') ? opts.threshold : 40;
+		var restraint = (typeof opts.restraint === 'number') ? opts.restraint : 60;
+		var START_DELTA = 10; // px before we commit to an axis
+
+		var startX = 0, startY = 0;
+		var axis = null;        // null | 'x' | 'y' — locked once set
+		var tracking = false;   // false when the gesture is suppressed
+		var PASSIVE = { passive: true };
+
+		function suppressed(target) {
+			// (b) a live touch-DnD drag wins over any swipe.
+			if (TnMobile.dragActive) return true;
+			// (a) gesture starting on / inside an opt-out element.
+			if (target && target.closest && target.closest('[data-tn-no-swipe]')) return true;
+			return false;
+		}
+
+		function onStart(e) {
+			var t = e.touches && e.touches[0];
+			if (!t) { tracking = false; return; }
+			if (suppressed(e.target)) { tracking = false; return; }
+			tracking = true;
+			axis = null;
+			startX = t.clientX;
+			startY = t.clientY;
+		}
+
+		function onMove(e) {
+			if (!tracking) return;
+			// dragActive can flip mid-gesture; respect it immediately.
+			if (TnMobile.dragActive) { tracking = false; return; }
+			var t = e.touches && e.touches[0];
+			if (!t) return;
+			if (axis) return; // already locked
+			var dx = Math.abs(t.clientX - startX);
+			var dy = Math.abs(t.clientY - startY);
+			if (dx > START_DELTA || dy > START_DELTA) {
+				axis = (dx >= dy) ? 'x' : 'y';
+			}
+		}
+
+		function onEnd(e) {
+			if (!tracking) return;
+			tracking = false;
+			if (TnMobile.dragActive) return;
+			var t = (e.changedTouches && e.changedTouches[0]);
+			if (!t) return;
+			var dx = t.clientX - startX;
+			var dy = t.clientY - startY;
+			if (axis === 'x') {
+				if (Math.abs(dx) >= threshold && Math.abs(dy) <= restraint) {
+					if (dx < 0) { if (opts.onLeft)  opts.onLeft(e);  }
+					else        { if (opts.onRight) opts.onRight(e); }
+				}
+			} else if (axis === 'y') {
+				if (Math.abs(dy) >= threshold && Math.abs(dx) <= restraint) {
+					if (dy < 0) { if (opts.onUp)   opts.onUp(e);   }
+					else        { if (opts.onDown) opts.onDown(e); }
+				}
+			}
+		}
+
+		function onCancel() { tracking = false; axis = null; }
+
+		el.addEventListener('touchstart',  onStart,  PASSIVE);
+		el.addEventListener('touchmove',   onMove,   PASSIVE);
+		el.addEventListener('touchend',    onEnd,    PASSIVE);
+		el.addEventListener('touchcancel', onCancel, PASSIVE);
+
+		return function destroy() {
+			el.removeEventListener('touchstart',  onStart,  PASSIVE);
+			el.removeEventListener('touchmove',   onMove,   PASSIVE);
+			el.removeEventListener('touchend',    onEnd,    PASSIVE);
+			el.removeEventListener('touchcancel', onCancel, PASSIVE);
+		};
+	};
+})();
 </script>
 
 <script src="<?= HTTP_TEMPLATE ?>revised-frontend/script/revised.js?v=<?= filemtime(__DIR__ . '/script/revised.js') ?>"></script>
