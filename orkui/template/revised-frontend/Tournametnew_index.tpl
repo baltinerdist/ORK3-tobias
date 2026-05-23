@@ -5061,6 +5061,7 @@ function tnFixedAcPosition(inputEl, dropdownEl) {
 				tnAddTeamMember(mid, name);
 				teamPlayerInput.value = '';
 				tnTeamAcClose();
+				teamPlayerInput.focus();
 			});
 			teamResultsEl.appendChild(item);
 		});
