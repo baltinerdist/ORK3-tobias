@@ -113,8 +113,8 @@
 			</div>
 		</div>
 		<div class="tnr-card"><h4 class="tnr-h">Activity Over Time</h4>
-			<svg id="tnr-trend" class="tnr-trend" viewBox="0 0 600 160" preserveAspectRatio="none"></svg>
-			<div class="tnr-legend"><span class="tnr-key tnr-key-t"></span> Tournaments &nbsp; <span class="tnr-key tnr-key-p"></span> Participants</div>
+			<svg id="tnr-trend" class="tnr-trend" viewBox="0 0 720 220" preserveAspectRatio="xMidYMid meet"></svg>
+			<div class="tnr-legend">Bar height = participants per month &middot; number on each bar = tournaments held</div>
 		</div>
 		<script>window.__tnrTrend = <?=json_encode($ProgramStats['Trend'] ?? [])?>;</script>
 	</div>
@@ -212,18 +212,36 @@
     });
   }
   var data=window.__tnrTrend||[], svg=document.getElementById('tnr-trend');
-  if(svg && data.length){
-    var W=600,H=160,pad=20,n=data.length,bw=(W-pad*2)/n;
-    var maxT=Math.max.apply(null,data.map(d=>d.Tournaments).concat([1]));
-    var maxP=Math.max.apply(null,data.map(d=>d.Participants).concat([1]));
-    var html='';
-    data.forEach(function(d,i){
-      var x=pad+i*bw;
-      var th=(H-pad)*d.Tournaments/maxT, ph=(H-pad)*d.Participants/maxP;
-      html+='<rect x="'+(x+2)+'" y="'+(H-th)+'" width="'+(bw/2-3)+'" height="'+th+'" class="tnr-bar-t"></rect>';
-      html+='<rect x="'+(x+bw/2)+'" y="'+(H-ph)+'" width="'+(bw/2-3)+'" height="'+ph+'" class="tnr-bar-p"></rect>';
+  if(svg){
+    if(!data.length){ svg.insertAdjacentHTML('afterend','<div class="tnr-empty">No activity in range.</div>'); svg.remove(); return; }
+    var W=720,H=220, ml=42, mr=14, mt=22, mb=30;
+    var pw=W-ml-mr, ph=H-mt-mb, n=data.length;
+    var rawMax=Math.max.apply(null,data.map(function(d){return d.Participants;}).concat([1]));
+    function niceMax(v){ if(v<=5)return 5; var p=Math.pow(10,Math.floor(Math.log10(v))); var f=v/p; var nf=f<=1?1:f<=2?2:f<=5?5:10; return nf*p; }
+    var maxP=niceMax(rawMax);
+    var step=pw/n, gap=Math.min(14, step*0.25), bw=step-gap;
+    var labelEvery=Math.ceil(n/12); // thin month labels when the range is long
+    function monShort(ym){ var s=ym.split('-'); var m=['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(s[1],10)]; return m+" '"+s[0].slice(2); }
+    var g='';
+    // y gridlines + value labels (0, mid, max)
+    [0,0.5,1].forEach(function(f){
+      var y=mt+ph-ph*f;
+      g+='<line x1="'+ml+'" y1="'+y+'" x2="'+(W-mr)+'" y2="'+y+'" class="tnr-grid"/>';
+      g+='<text x="'+(ml-7)+'" y="'+(y+4)+'" class="tnr-axis tnr-axis-y">'+Math.round(maxP*f)+'</text>';
     });
-    svg.innerHTML=html;
+    data.forEach(function(d,i){
+      var x=ml+i*step+gap/2;
+      var bh=ph*(d.Participants/maxP), y=mt+ph-bh;
+      g+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+Math.max(0,bh).toFixed(1)+'" rx="2" class="tnr-bar-p"></rect>';
+      if(d.Tournaments>0){
+        var inside=bh>18, ty=inside?(y+14):(y-5);
+        g+='<text x="'+(x+bw/2).toFixed(1)+'" y="'+ty.toFixed(1)+'" class="tnr-bar-lbl'+(inside?' tnr-bar-lbl-in':'')+'">'+d.Tournaments+'</text>';
+      }
+      if(i%labelEvery===0){
+        g+='<text x="'+(x+bw/2).toFixed(1)+'" y="'+(mt+ph+16)+'" class="tnr-axis tnr-axis-x">'+monShort(d.Month)+'</text>';
+      }
+    });
+    svg.innerHTML=g;
   }
 })();
 </script>
