@@ -1391,6 +1391,8 @@ html[data-theme="dark"] .tnr-h {
 
 /* Tournaments tab cards */
 .tnr-tcard { background:var(--rp-bg-light); border:1px solid var(--rp-border); border-radius:8px; padding:14px 16px; margin-bottom:12px; }
+.tnr-tcard-top { display:flex; justify-content:space-between; align-items:flex-start; gap:20px; flex-wrap:wrap; }
+.tnr-tcard-info { flex:1 1 auto; min-width:0; }
 .tnr-tcard-name { font-weight:700; font-size:15px; color:var(--rp-accent); text-decoration:none; }
 .tnr-tcard-name:hover { text-decoration:underline; }
 .tnr-tcard-meta { font-size:12px; color:var(--rp-text-muted); margin-top:2px; }
@@ -1401,7 +1403,7 @@ html[data-theme="dark"] .tnr-h {
 .tnr-warstat-hi b { color:var(--rp-accent); }
 
 /* Per-rank participant distribution (Order of the Warrior 1-10, W=Warlord, K=Sword Knight) */
-.tnr-rankdist { display:flex; align-items:flex-end; gap:3px; margin:6px 0 4px; overflow-x:auto; }
+.tnr-rankdist { display:flex; align-items:flex-end; gap:3px; margin:0; flex:0 0 auto; }
 .tnr-rankcol { display:flex; flex-direction:column; align-items:center; width:24px; flex:0 0 auto; }
 .tnr-rankcount { font-size:11px; font-weight:700; color:var(--rp-text-hint); line-height:1; margin-bottom:3px; }
 .tnr-rankcount-has { color:var(--rp-text); }
