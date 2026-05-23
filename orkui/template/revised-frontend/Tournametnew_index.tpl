@@ -1430,6 +1430,67 @@ html[data-theme="dark"] .tn-sheet-action-item:active { background:#2d3748; }
 html[data-theme="dark"] .tn-sheet-action-item.tn-sheet-action--danger { color:#fc8181; }
 html[data-theme="dark"] .tn-sheet-action-item.tn-sheet-action--danger:active { background:#3b2222; }
 html[data-theme="dark"] .tn-sheet-action-cancel { border-top-color:#2d3748; color:#a0aec0; }
+
+/* =============================================================
+   PHASE C0 Task 4 — Card-deck primitive (`tn-deck`).
+   A vertical stack rendered by TnMobile.deck: item 0 is the FULL lead
+   card (`.tn-deck-card--full`); items 1..n are COMPACT cards
+   (`.tn-deck-card--compact`). Promotion (compact -> full) animates
+   height/opacity. The layout is gated under `.tn-mobile` (the deck is a
+   mobile presentation); on desktop these rules don't apply and the
+   container is laid out by its consumer. >=44px tap targets via
+   --tn-touch. Dark-mode variants at the bottom.
+   ============================================================= */
+.tn-mobile .tn-deck { display:flex; flex-direction:column; gap:var(--tn-deck-gap); }
+
+/* Shared card chrome. */
+.tn-mobile .tn-deck-card {
+	box-sizing:border-box;
+	border:1px solid #e2e8f0;
+	border-radius:12px;
+	background:#fff;
+	-webkit-tap-highlight-color:transparent;
+	/* Promotion animation: compact<->full smoothly grows/fades. */
+	transition: opacity .22s ease, max-height .28s ease, padding .22s ease, background-color .2s ease;
+	overflow:hidden;
+}
+
+/* FULL lead card — generous padding; holds the action surface. */
+.tn-mobile .tn-deck-card--full {
+	padding:16px;
+	max-height:2000px;            /* large cap so content is never clipped */
+	opacity:1;
+	box-shadow:0 2px 10px rgba(0,0,0,0.06);
+}
+
+/* COMPACT on-deck cards — single dense row, tappable to promote. */
+.tn-mobile .tn-deck-card--compact {
+	display:flex;
+	align-items:center;
+	gap:8px;
+	min-height:var(--tn-touch);   /* >=44px tap target */
+	padding:8px 14px;
+	cursor:pointer;
+	opacity:.92;
+	background:#f7fafc;
+	font-size:14px;
+}
+.tn-mobile .tn-deck-card--compact:active { background:#edf2f7; }
+.tn-mobile .tn-deck-card--compact:hover  { opacity:1; }
+
+/* 3-dot deck position indicator (consumer-optional; rendered by consumer
+   markup, styled here for convenience). */
+.tn-mobile .tn-deck-dots { display:flex; justify-content:center; gap:7px; padding:4px 0 2px; }
+.tn-mobile .tn-deck-dot { width:7px; height:7px; border-radius:50%; background:#cbd5e0; }
+.tn-mobile .tn-deck-dot.tn-deck-dot--on { background:#38a169; }
+
+/* ---- Dark-mode variants ---- */
+html[data-theme="dark"] .tn-mobile .tn-deck-card { border-color:#2d3748; background:#1a202c; }
+html[data-theme="dark"] .tn-mobile .tn-deck-card--full { box-shadow:0 2px 10px rgba(0,0,0,0.5); }
+html[data-theme="dark"] .tn-mobile .tn-deck-card--compact { background:#222b38; }
+html[data-theme="dark"] .tn-mobile .tn-deck-card--compact:active { background:#2d3748; }
+html[data-theme="dark"] .tn-mobile .tn-deck-dot { background:#4a5568; }
+html[data-theme="dark"] .tn-mobile .tn-deck-dot.tn-deck-dot--on { background:#48bb78; }
 </style>
 
 <!-- =============================================
@@ -3227,6 +3288,157 @@ window.TnMobile = window.TnMobile || {};
 			});
 		});
 	})();
+})();
+
+// =============================================
+// Card-deck primitive (PHASE C0 Task 4) — TnMobile.deck.
+//
+// API (Track R depends on these EXACT names):
+//   var handle = TnMobile.deck.mount(container, {
+//       items,           // array of objects, each with a stable `id` (string|number)
+//       renderFull,      // fn(item) -> HTML STRING for the lead (full) card body
+//       renderCompact,   // fn(item) -> HTML STRING for a compact on-deck card body
+//       onLeadChange     // fn(leadId) — optional; fired whenever the lead changes
+//   });
+//   handle.setLead(id)   // jump: make item with `id` the full lead (Bout-List contract)
+//   handle.update(items) // re-render with a new array, preserving current lead by id
+//   handle.getLeadId()   // current lead id (convenience)
+//   handle.destroy()     // tear down swipe + clear container
+//
+// RENDER CONTRACT: renderFull/renderCompact return HTML STRINGS (matching this
+//   file's templating conventions). The primitive wraps each in the
+//   `.tn-deck-card--full` / `.tn-deck-card--compact` chrome.
+//
+// WINDOWING: the primitive renders the lead FULL + the REST compact for whatever
+//   array it is given. It does NOT slice/window internally — the CONSUMER passes a
+//   pre-sliced array (e.g. Track R passes current + next 2 = 3 items). This keeps
+//   the "current + next N" policy out of the primitive.
+//
+// GESTURES: swipe-left = advance lead (next item), swipe-right = previous item,
+//   clamped to [0, items.length-1]; tapping a compact card promotes it to lead.
+//   Uses TnMobile.swipe, so it honors [data-tn-no-swipe] + TnMobile.dragActive.
+//
+// onLeadChange fires only when the lead id ACTUALLY changes (no redundant calls).
+// =============================================
+(function() {
+	function idOf(item) { return (item && item.id != null) ? item.id : null; }
+
+	// Find the array index of a given id; -1 if absent. Loose-ish compare so a
+	// numeric id and its string form match (HTML data attrs round-trip as strings).
+	function indexOfId(items, id) {
+		if (id == null) return -1;
+		for (var i = 0; i < items.length; i++) {
+			var iid = idOf(items[i]);
+			if (iid === id || String(iid) === String(id)) return i;
+		}
+		return -1;
+	}
+
+	function clamp(n, lo, hi) { return n < lo ? lo : (n > hi ? hi : n); }
+
+	TnMobile.deck = {
+		mount: function(container, opts) {
+			if (!container) return null;
+			opts = opts || {};
+			var items        = Array.isArray(opts.items) ? opts.items.slice() : [];
+			var renderFull   = opts.renderFull   || function() { return ''; };
+			var renderCompact= opts.renderCompact || function() { return ''; };
+			var onLeadChange = opts.onLeadChange || null;
+
+			var leadIndex = 0;        // index into `items` that is the FULL lead
+			var lastLeadId = undefined; // last id we announced via onLeadChange
+			var destroySwipe = null;
+
+			function currentLeadId() {
+				return items.length ? idOf(items[leadIndex]) : null;
+			}
+
+			// Announce a lead change, but only if the id actually moved.
+			function announce() {
+				var id = currentLeadId();
+				if (id === lastLeadId) return;
+				lastLeadId = id;
+				if (onLeadChange) onLeadChange(id);
+			}
+
+			function render() {
+				// Build fresh DOM; full re-render is fine for these small lists.
+				container.classList.add('tn-deck');
+				container.innerHTML = '';
+				leadIndex = clamp(leadIndex, 0, Math.max(0, items.length - 1));
+
+				items.forEach(function(item, i) {
+					var card = document.createElement('div');
+					if (i === leadIndex) {
+						card.className = 'tn-deck-card tn-deck-card--full';
+						card.innerHTML = renderFull(item);
+					} else {
+						card.className = 'tn-deck-card tn-deck-card--compact';
+						card.setAttribute('data-tn-deck-id', String(idOf(item)));
+						card.innerHTML = renderCompact(item);
+						// Tap-to-promote. (closure binds the item's id at render time)
+						(function(promoteId) {
+							card.addEventListener('click', function() { setLead(promoteId); });
+						})(idOf(item));
+					}
+					container.appendChild(card);
+				});
+			}
+
+			// --- Lead movement helpers (all funnel through here) ---
+			function setLeadIndex(nextIndex) {
+				if (!items.length) return;
+				var clamped = clamp(nextIndex, 0, items.length - 1);
+				if (clamped === leadIndex) return; // no-op: lead unchanged
+				leadIndex = clamped;
+				render();
+				announce();
+			}
+
+			function setLead(id) {
+				var idx = indexOfId(items, id);
+				if (idx === -1) return;            // unknown id -> no-op
+				setLeadIndex(idx);
+			}
+
+			function advance()  { setLeadIndex(leadIndex + 1); }
+			function previous() { setLeadIndex(leadIndex - 1); }
+
+			// --- Re-render with a new array, preserving the current lead by id ---
+			function update(nextItems) {
+				var prevLeadId = currentLeadId();
+				items = Array.isArray(nextItems) ? nextItems.slice() : [];
+				var keep = indexOfId(items, prevLeadId);
+				leadIndex = (keep !== -1) ? keep : 0; // fall back to index 0 if gone
+				render();
+				announce();
+			}
+
+			function destroy() {
+				if (destroySwipe) { destroySwipe(); destroySwipe = null; }
+				container.innerHTML = '';
+				container.classList.remove('tn-deck');
+			}
+
+			// Initial paint + swipe binding. Bind swipe ONCE on the container; it
+			// reads the live `advance`/`previous` closures, so re-renders (which
+			// replace child nodes) never leak listeners.
+			render();
+			destroySwipe = TnMobile.swipe(container, {
+				onLeft:  function() { advance();  },
+				onRight: function() { previous(); }
+			});
+			// Seed lastLeadId so the first real change announces (don't fire on mount).
+			lastLeadId = currentLeadId();
+
+			return {
+				setLead:   setLead,
+				update:    update,
+				getLeadId: currentLeadId,
+				destroy:   destroy
+			};
+		}
+	};
 })();
 </script>
 
