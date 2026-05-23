@@ -1397,6 +1397,19 @@ html[data-theme="dark"] .tnr-h {
 .tnr-warstats { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; }
 .tnr-warstat { border:1px solid var(--rp-border); border-radius:6px; padding:4px 10px; font-size:12px; color:var(--rp-text-muted); }
 .tnr-warstat b { color:var(--rp-text); font-size:13px; font-weight:700; }
+.tnr-warstat-hi { border-color:var(--rp-accent); color:var(--rp-accent); }
+.tnr-warstat-hi b { color:var(--rp-accent); }
+
+/* Per-rank participant distribution (Order of the Warrior 1-10, W=Warlord, K=Sword Knight) */
+.tnr-rankdist { display:flex; align-items:flex-end; gap:3px; margin:6px 0 4px; overflow-x:auto; }
+.tnr-rankcol { display:flex; flex-direction:column; align-items:center; width:24px; flex:0 0 auto; }
+.tnr-rankcount { font-size:11px; font-weight:700; color:var(--rp-text-hint); line-height:1; margin-bottom:3px; }
+.tnr-rankcount-has { color:var(--rp-text); }
+.tnr-rankbar-wrap { height:32px; display:flex; align-items:flex-end; }
+.tnr-rankbar { width:16px; background:var(--rp-accent); border-radius:2px 2px 0 0; }
+.tnr-rankcol-elite .tnr-rankbar { background:var(--rp-accent-mid); }
+.tnr-ranklabel { font-size:10px; color:var(--rp-text-muted); margin-top:3px; padding-top:3px; border-top:1px solid var(--rp-border); width:100%; text-align:center; }
+.tnr-rankcol-elite .tnr-ranklabel { color:var(--rp-accent); font-weight:700; }
 .tnr-tstandings { margin-top:4px; }
 .tnr-tstandings th, .tnr-tstandings td { padding:5px 8px; }
 .tnr-tcard .tnr-thidden { display:none; }

@@ -519,20 +519,26 @@ class TournamentReport extends Ork3 {
 		return ['Tournaments' => $out, 'Status' => Success()];
 	}
 
-	/** Field warrior-level summary: avg, median, #Warlords (11), #Sword Knights (12). */
+	/** Field warrior-level summary: avg, median, highest, #Warlords (11), #Sword Knights (12). */
 	private function warriorFieldStats(array $levels) {
 		$n = count($levels);
-		if ($n === 0) return ['AvgLevel'=>0, 'MedianLevel'=>0, 'Warlords'=>0, 'SwordKnights'=>0, 'Count'=>0];
+		if ($n === 0) return ['AvgLevel'=>0, 'MedianLevel'=>0, 'HighestLevel'=>0, 'Warlords'=>0, 'SwordKnights'=>0, 'Count'=>0];
 		sort($levels);
 		$mid = intdiv($n, 2);
 		$median = ($n % 2) ? $levels[$mid] : ($levels[$mid-1] + $levels[$mid]) / 2;
 		$warlords = 0; $knights = 0;
-		foreach ($levels as $l) { if ($l === 12) $knights++; elseif ($l === 11) $warlords++; }
+		$dist = array_fill(1, 12, 0); // count of participants per OotW rank (1-10, 11=Warlord, 12=Sword Knight)
+		foreach ($levels as $l) {
+			if ($l >= 1 && $l <= 12) $dist[$l]++;
+			if ($l === 12) $knights++; elseif ($l === 11) $warlords++;
+		}
 		return [
 			'AvgLevel'    => round(array_sum($levels) / $n, 1),
 			'MedianLevel' => round($median, 1),
+			'HighestLevel'=> (int)max($levels),
 			'Warlords'    => $warlords,
 			'SwordKnights'=> $knights,
+			'Distribution'=> $dist,
 			'Count'       => $n,
 		];
 	}
