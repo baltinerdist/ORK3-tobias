@@ -1331,6 +1331,105 @@ html[data-theme="dark"] .tn-mq-toggle:hover { background:#2d3748; }
 	border-radius:0;
 	text-shadow:none;
 }
+
+/* =============================================================
+   PHASE C0 Task 3 — Bottom-sheet + action-sheet primitive.
+   NO DOM DUPLICATION: existing `.tn-overlay`/`.tn-modal-box` markup is
+   RE-STYLED into a bottom sheet only while `.tn-mobile` is active. On
+   desktop these rules don't apply, so the existing centered-overlay
+   behavior (lines 299-308) is preserved verbatim. `TnMobile.sheet.open`
+   reuses the same `.tn-open` class as `tnOpenModal`, so the open/close
+   transitions defined above carry over.
+   The keyboard-safe footer is driven by --tn-vvh (visualViewport height,
+   set in JS) so the sheet's height tracks the visible viewport above the
+   soft keyboard; falls back to 100vh / 100dvh when JS hasn't set it.
+   ============================================================= */
+
+/* Bottom-anchor the overlay flex container under mobile. */
+.tn-mobile .tn-overlay { align-items:flex-end; justify-content:center; }
+
+/* The existing modal box becomes a bottom sheet: full-width, top-rounded,
+   height capped to the visible viewport (above the keyboard). */
+.tn-mobile .tn-overlay .tn-modal-box {
+	width:100%;
+	max-width:100%;
+	border-radius:var(--tn-sheet-radius) var(--tn-sheet-radius) 0 0;
+	/* Track the visible viewport (var set by JS); fall back gracefully. */
+	max-height:92vh;
+	max-height:92dvh;
+	max-height:calc(var(--tn-vvh, 92vh) - 24px);
+}
+/* Sheets slide fully up from the bottom edge when closed (overrides the
+   subtle 8px lift used by centered overlays) for a clear "sheet" motion. */
+.tn-mobile .tn-overlay:not(.tn-open) .tn-modal-box { transform:translateY(100%); }
+.tn-mobile .tn-overlay.tn-open .tn-modal-box { transform:translateY(0); }
+
+/* Grab handle affordance at the top of every mobile sheet. */
+.tn-mobile .tn-overlay .tn-modal-box::before {
+	content:'';
+	position:absolute;
+	top:8px; left:50%;
+	width:38px; height:4px;
+	margin-left:-19px;
+	border-radius:2px;
+	background:#cbd5e0;
+	pointer-events:none;
+}
+.tn-mobile .tn-overlay .tn-modal-header { position:sticky; top:0; z-index:2; background:#fff; padding-top:20px; }
+/* Footer: sticky, pinned to bottom, full-width primary action, safe-area aware. */
+.tn-mobile .tn-overlay .tn-modal-footer {
+	position:sticky;
+	bottom:0;
+	z-index:2;
+	background:#fff;
+	padding-bottom:calc(14px + env(safe-area-inset-bottom, 0px));
+	flex-wrap:wrap;
+}
+.tn-mobile .tn-overlay .tn-modal-footer .tn-btn-primary { flex:1 1 100%; order:-1; min-height:var(--tn-touch); text-align:center; }
+.tn-mobile .tn-overlay .tn-modal-footer .tn-btn { min-height:var(--tn-touch); }
+/* The scrollable region. .tn-modal-body already has overflow-y:auto + flex:1. */
+.tn-mobile .tn-overlay .tn-modal-body { -webkit-overflow-scrolling:touch; }
+
+/* Larger, touch-friendly autocomplete rows inside a sheet (registration §3). */
+.tn-mobile .tn-ac-results { max-height:min(50vh, 320px); }
+.tn-mobile .tn-ac-item { padding:13px 14px; font-size:15px; min-height:var(--tn-touch); display:flex; align-items:center; }
+
+/* --- Action-sheet variant: content-sized (auto-height) menu of options. --- */
+.tn-mobile .tn-overlay.tn-sheet--action .tn-modal-box { max-height:80vh; max-height:80dvh; }
+.tn-sheet-action-list { display:flex; flex-direction:column; padding:8px 0 calc(8px + env(safe-area-inset-bottom, 0px)); }
+.tn-sheet-action-item {
+	display:flex; align-items:center; gap:10px;
+	width:100%;
+	min-height:48px;
+	padding:0 20px;
+	border:none;
+	background:none;
+	font-size:16px;
+	font-weight:600;
+	color:#2d3748;
+	text-align:left;
+	cursor:pointer;
+	-webkit-tap-highlight-color:transparent;
+}
+.tn-sheet-action-item:active { background:#f0fff4; }
+.tn-sheet-action-item.tn-sheet-action--danger { color:#c53030; }
+.tn-sheet-action-item.tn-sheet-action--danger:active { background:#fff5f5; }
+.tn-sheet-action-cancel { border-top:1px solid #e2e8f0; color:#718096; font-weight:700; }
+
+/* z-index: an OPEN sheet must cover the .tn-mq-toggle pill (z-index:1200). The
+   base .tn-overlay is z-index:1100; raise it above the pill only when open and
+   in mobile mode so the pill never pokes through a sheet. */
+.tn-mobile .tn-overlay.tn-open { z-index:1300; }
+
+/* ---- Dark-mode variants for the sheet surfaces ---- */
+html[data-theme="dark"] .tn-mobile .tn-overlay .tn-modal-box::before { background:#4a5568; }
+html[data-theme="dark"] .tn-mobile .tn-overlay .tn-modal-header { background:#1a202c; }
+html[data-theme="dark"] .tn-mobile .tn-overlay .tn-modal-footer { background:#1a202c; }
+html[data-theme="dark"] .tn-sheet-action-item { color:#e2e8f0; }
+html[data-theme="dark"] .tn-sheet-action-item:active { background:#2d3748; }
+html[data-theme="dark"] .tn-sheet-action-item.tn-sheet-action--danger { color:#fc8181; }
+html[data-theme="dark"] .tn-sheet-action-item.tn-sheet-action--danger:active { background:#3b2222; }
+html[data-theme="dark"] .tn-sheet-action-cancel { border-top-color:#2d3748; color:#a0aec0; }
 </style>
 
 <!-- =============================================
@@ -2889,6 +2988,246 @@ window.TnMobile = window.TnMobile || {};
 		};
 	};
 })();
+
+// =============================================
+// Bottom-sheet + action-sheet primitive (PHASE C0 Task 3) — TnMobile.sheet.
+//
+// API (C1 tracks depend on these EXACT names):
+//   TnMobile.sheet.open(el, { variant, onDismiss })
+//   TnMobile.sheet.close(el)
+//   TnMobile.sheet.actionSheet([{ label, danger, onTap }, ...])  -> element
+//
+// NO DOM DUPLICATION CONTRACT:
+//   A sheet is a `.tn-mobile`-only PRESENTATION of an EXISTING `.tn-overlay`
+//   element. `open(el)`/`close(el)` simply add/remove the same `.tn-open`
+//   class the existing tnOpenModal/tnCloseModal use, so the existing
+//   open/close transitions and DESKTOP centered-overlay behavior are
+//   untouched. Under `.tn-mobile`, CSS re-styles that same markup into a
+//   bottom sheet; on desktop it stays a centered overlay. The only extra
+//   behavior `open` layers on is: backdrop-tap dismiss + swipe-down dismiss +
+//   keyboard-safe height tracking — all of which are harmless on desktop
+//   (swipe is touch-only; backdrop-tap matches the existing overlay UX).
+//
+//   `actionSheet(items)` is the ONE case that builds fresh DOM (there is no
+//   existing markup for a generic option menu); it builds a `.tn-overlay`
+//   styled with the `tn-sheet--action` auto-height variant and opens it via
+//   the same `open()` path, then removes itself from the DOM on close.
+//
+// KEYBOARD-SAFE HEIGHT: while a sheet is open we set `--tn-vvh` on #tn-root to
+// the visualViewport height (px) so the sheet's `max-height` (and thus its
+// sticky footer) tracks the area above the soft keyboard. When
+// `window.visualViewport` is undefined the var is left unset and the CSS falls
+// back to its `92dvh`/`92vh` declarations.
+// =============================================
+(function() {
+	function rootEl() { return document.getElementById('tn-root'); }
+	function isMobile() {
+		return !!(TnMobile.viewMode && TnMobile.viewMode.isMobile && TnMobile.viewMode.isMobile());
+	}
+
+	// --- visualViewport height tracking (shared by all open sheets) ---
+	var _vvCount = 0;          // number of currently-open sheets needing the var
+	function applyVvh() {
+		var root = rootEl();
+		if (!root) return;
+		var vv = window.visualViewport;
+		if (vv) root.style.setProperty('--tn-vvh', vv.height + 'px');
+		// No fallback assignment: CSS handles the undefined case via dvh/vh.
+	}
+	function onVvResize() { if (_vvCount > 0) applyVvh(); }
+	if (window.visualViewport) {
+		window.visualViewport.addEventListener('resize', onVvResize);
+		window.visualViewport.addEventListener('scroll', onVvResize);
+	}
+	function startVvTracking() {
+		_vvCount++;
+		applyVvh();
+	}
+	function stopVvTracking() {
+		_vvCount = Math.max(0, _vvCount - 1);
+		if (_vvCount === 0) {
+			var root = rootEl();
+			if (root) root.style.removeProperty('--tn-vvh');
+		}
+	}
+
+	// --- Focus trap (lightweight) ---
+	var FOCUSABLE = 'a[href],area[href],input:not([disabled]),select:not([disabled]),' +
+		'textarea:not([disabled]),button:not([disabled]),[tabindex]:not([tabindex="-1"])';
+	function trapFocus(box, e) {
+		if (e.key !== 'Tab') return;
+		var nodes = box.querySelectorAll(FOCUSABLE);
+		if (!nodes.length) return;
+		var first = nodes[0], last = nodes[nodes.length - 1];
+		if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+		else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+	}
+
+	TnMobile.sheet = {
+		// open(el, opts): present an existing .tn-overlay element as a sheet
+		// (mobile) or centered overlay (desktop). opts.variant === 'action'
+		// applies the auto-height action-sheet style. opts.onDismiss runs on
+		// backdrop-tap / swipe-down / Esc dismissal.
+		open: function(el, opts) {
+			if (!el) return;
+			opts = opts || {};
+			var box = el.querySelector('.tn-modal-box');
+
+			if (opts.variant === 'action') el.classList.add('tn-sheet--action');
+
+			// Reuse the existing overlay open transition.
+			el.classList.add('tn-open');
+
+			// Everything below is the mobile sheet layer. On desktop the element
+			// is just a normal centered overlay — skip the sheet-only bindings so
+			// desktop behavior is identical to tnOpenModal.
+			if (!isMobile()) {
+				el._tnSheet = { opts: opts, mobile: false };
+				return el;
+			}
+
+			startVvTracking();
+
+			// Backdrop-tap to dismiss (tap on the overlay itself, not the box).
+			var onBackdrop = function(ev) {
+				if (ev.target === el) TnMobile.sheet.close(el);
+			};
+			el.addEventListener('click', onBackdrop);
+
+			// Swipe-down on the box dismisses (per the foundation swipe util).
+			var destroySwipe = box
+				? TnMobile.swipe(box, { onDown: function() { TnMobile.sheet.close(el); }, threshold: 50 })
+				: function() {};
+
+			// Esc to dismiss + focus trap.
+			var onKey = function(ev) {
+				if (ev.key === 'Escape') { ev.preventDefault(); TnMobile.sheet.close(el); return; }
+				if (box) trapFocus(box, ev);
+			};
+			document.addEventListener('keydown', onKey);
+
+			el._tnSheet = {
+				opts: opts,
+				mobile: true,
+				onBackdrop: onBackdrop,
+				destroySwipe: destroySwipe,
+				onKey: onKey
+			};
+
+			// Move focus into the sheet (first focusable, else the box).
+			if (box) {
+				var f = box.querySelector(FOCUSABLE);
+				if (f) { try { f.focus(); } catch (e) {} }
+			}
+			return el;
+		},
+
+		// close(el): reverse the open animation and fire onDismiss. Tears down
+		// every listener/tracker open() attached so there is no leak.
+		close: function(el) {
+			if (!el) return;
+			var st = el._tnSheet || null;
+			el.classList.remove('tn-open');
+
+			if (st && st.mobile) {
+				el.removeEventListener('click', st.onBackdrop);
+				if (st.destroySwipe) st.destroySwipe();
+				document.removeEventListener('keydown', st.onKey);
+				stopVvTracking();
+			}
+
+			// Close any autocomplete dropdowns this sheet opened (they live on
+			// <body>; their re-anchor listeners self-tear-down on close).
+			document.querySelectorAll('.tn-ac-results.tn-ac-open, .kn-ac-results.kn-ac-open')
+				.forEach(function(d) { d.classList.remove('tn-ac-open', 'kn-ac-open'); });
+
+			var onDismiss = st && st.opts && st.opts.onDismiss;
+
+			// Action sheets are freshly built; remove from DOM after the
+			// transition so they don't accumulate. Match the .2s overlay anim.
+			if (el.classList.contains('tn-sheet--action')) {
+				setTimeout(function() {
+					if (el.parentNode) el.parentNode.removeChild(el);
+				}, 250);
+			}
+			el._tnSheet = null;
+			if (typeof onDismiss === 'function') onDismiss();
+		},
+
+		// actionSheet(items): build + open a content-sized action menu.
+		// items: [{ label, danger?, onTap }]. Returns the overlay element.
+		actionSheet: function(items) {
+			items = items || [];
+			var el = document.createElement('div');
+			el.className = 'tn-overlay';
+			var box = document.createElement('div');
+			box.className = 'tn-modal-box';
+			box.style.width = '100%';
+			var list = document.createElement('div');
+			list.className = 'tn-sheet-action-list';
+
+			items.forEach(function(it) {
+				var b = document.createElement('button');
+				b.type = 'button';
+				b.className = 'tn-sheet-action-item' + (it.danger ? ' tn-sheet-action--danger' : '');
+				b.textContent = it.label || '';
+				b.addEventListener('click', function() {
+					TnMobile.sheet.close(el);
+					if (typeof it.onTap === 'function') it.onTap();
+				});
+				list.appendChild(b);
+			});
+
+			// Always offer a cancel row.
+			var cancel = document.createElement('button');
+			cancel.type = 'button';
+			cancel.className = 'tn-sheet-action-item tn-sheet-action-cancel';
+			cancel.textContent = 'Cancel';
+			cancel.addEventListener('click', function() { TnMobile.sheet.close(el); });
+			list.appendChild(cancel);
+
+			box.appendChild(list);
+			el.appendChild(box);
+			document.body.appendChild(el);
+
+			// Force reflow so the slide-up transition runs from the closed state.
+			void el.offsetWidth;
+			TnMobile.sheet.open(el, { variant: 'action' });
+			return el;
+		}
+	};
+
+	// On switch to DESKTOP, any open sheet reverts to centered-overlay behavior:
+	// drop the sheet-only listeners/trackers and the action variant marker, but
+	// keep the overlay OPEN (it's still a valid centered modal on desktop). The
+	// CSS sheet rules are gated on `.tn-mobile`, so removing that class (done by
+	// viewMode) is what visually reverts it; here we just clean up the JS layer.
+	(function bindViewModeRevert() {
+		var root = rootEl();
+		if (!root) {
+			document.addEventListener('DOMContentLoaded', bindViewModeRevert);
+			return;
+		}
+		root.addEventListener('tn:viewmodechange', function(ev) {
+			if (ev.detail && ev.detail.isMobile) return; // only on -> desktop
+			document.querySelectorAll('.tn-overlay.tn-open').forEach(function(el) {
+				var st = el._tnSheet;
+				if (!st || !st.mobile) return;
+				el.removeEventListener('click', st.onBackdrop);
+				if (st.destroySwipe) st.destroySwipe();
+				document.removeEventListener('keydown', st.onKey);
+				stopVvTracking();
+				// Freshly-built action sheets have no desktop home — close them.
+				if (el.classList.contains('tn-sheet--action')) {
+					TnMobile.sheet.close(el);
+				} else {
+					// Existing overlay: keep open as a centered modal.
+					st.mobile = false;
+				}
+			});
+		});
+	})();
+})();
 </script>
 
 <script src="<?= HTTP_TEMPLATE ?>revised-frontend/script/revised.js?v=<?= filemtime(__DIR__ . '/script/revised.js') ?>"></script>
@@ -3527,6 +3866,48 @@ function tnFixedAcPosition(inputEl, dropdownEl) {
 	dropdownEl.style.top      = (rect.bottom + 4) + 'px';
 	dropdownEl.style.right    = 'auto';
 	dropdownEl.style.zIndex   = '9999';
+
+	// --- Re-anchor while open (PHASE C0 Task 3) ---------------------------
+	// The snapshot above is correct at call time, but inside a bottom sheet the
+	// body scrolls and the soft keyboard resizes the viewport, so the fixed
+	// dropdown drifts from its input. While the dropdown is OPEN, listen for
+	// scroll (capture: catches the sheet body's inner scroll too) and
+	// visualViewport/window resize, and re-snapshot. Listeners are attached
+	// once per dropdown and torn down automatically the moment the dropdown is
+	// no longer open (class removed) or detached from the DOM — so no leak and
+	// DESKTOP is unaffected: on desktop the dropdown closes the same way and
+	// the listeners self-remove; while open, a re-snapshot is a harmless no-op
+	// (the input doesn't move on a non-scrolling desktop modal).
+	if (!dropdownEl._tnAcReanchor) {
+		var vv = window.visualViewport || null;
+		var reposition = function() {
+			// Stop + clean up once the dropdown is closed or removed.
+			var open = dropdownEl.parentNode &&
+				(dropdownEl.classList.contains('tn-ac-open') ||
+				 dropdownEl.classList.contains('kn-ac-open'));
+			if (!open) { teardown(); return; }
+			var r = inputEl.getBoundingClientRect();
+			dropdownEl.style.left  = r.left + 'px';
+			dropdownEl.style.width = r.width + 'px';
+			dropdownEl.style.top   = (r.bottom + 4) + 'px';
+		};
+		var teardown = function() {
+			window.removeEventListener('scroll', reposition, true);
+			window.removeEventListener('resize', reposition);
+			if (vv) {
+				vv.removeEventListener('resize', reposition);
+				vv.removeEventListener('scroll', reposition);
+			}
+			dropdownEl._tnAcReanchor = null;
+		};
+		window.addEventListener('scroll', reposition, true); // capture: inner scrollers too
+		window.addEventListener('resize', reposition);
+		if (vv) {
+			vv.addEventListener('resize', reposition);
+			vv.addEventListener('scroll', reposition);
+		}
+		dropdownEl._tnAcReanchor = teardown;
+	}
 }
 
 // ---- Edit Tournament Modal ----
