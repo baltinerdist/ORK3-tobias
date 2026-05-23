@@ -160,13 +160,51 @@ class Controller_Tournament extends Controller {
 				$canManage = Ork3::$Lib->authorization->HasAuthority($_uid, AUTH_PARK, (int)$tournament['ParkId'], AUTH_EDIT);
 			}
 		}
+		// Resolve this user's tournament-scoped reeve role (organizer / bracket_runner / null)
+		$isOrganizerReeve = false;
+		$isBracketRunner  = false;
+		if ($_uid > 0 && isset($this->session->token)) {
+			$_rr   = $this->Tournament->get_reeve_role([
+				'Token'        => $this->session->token,
+				'TournamentId' => $tournament_id,
+			]);
+			$_role = $_rr['Detail']['Role'] ?? null;
+			$isOrganizerReeve = ($_role === 'organizer');
+			$isBracketRunner  = ($_role === 'bracket_runner');
+		}
+
+		// Organizer reeves get full manage rights so existing manage UI lights up.
+		if ($isOrganizerReeve) $canManage = true;
+
 		$this->data['CanManageTournament'] = $canManage;
+		$this->data['IsOrganizerReeve']    = $isOrganizerReeve;
+		$this->data['IsBracketRunner']     = $isBracketRunner;
+		$this->data['CanManageReeves']     = $canManage; // edit-auth OR organizer reeve (folded into $canManage above)
 		$this->data['LoggedIn']            = isset($this->session->user_id);
+
+		// Reeve list for initial server render (only meaningful for managers)
+		$this->data['Reeves'] = [];
+		if ($canManage && isset($this->session->token)) {
+			$_reeves = $this->Tournament->get_reeves([
+				'Token'        => $this->session->token,
+				'TournamentId' => $tournament_id,
+			]);
+			$this->data['Reeves'] = $_reeves['Detail'] ?? [];
+		}
 
 		// Load brackets
 		$bracketsResult = $this->Tournament->get_brackets($tournament_id);
 		$brackets       = $bracketsResult['Detail'] ?? [];
 		$this->data['brackets'] = $brackets;
+
+		// Spectator state: any bracket currently 'active'; a spectator is a non-staff
+		// viewer of a live tournament (not manager, not bracket runner, has an active bracket).
+		$hasActiveBracket = false;
+		foreach ($brackets as $_b) {
+			if (($_b['Status'] ?? '') === 'active') { $hasActiveBracket = true; break; }
+		}
+		$this->data['HasActiveBracket'] = $hasActiveBracket;
+		$this->data['Spectator']        = (!$canManage && !$isBracketRunner && $hasActiveBracket);
 
 		// Load all participants and matches for the tournament in one query each,
 		// then partition by bracket_id in PHP (avoids 2N per-bracket round-trips).

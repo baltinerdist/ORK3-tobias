@@ -312,6 +312,7 @@ class Controller_Player extends Controller {
 						$r = $this->Player->add_player_recommendation([
 							'Token'          => $this->session->token,
 							'MundaneId'      => $id,
+							'AwardId'        => $this->request->Player_profile->AwardId,
 							'KingdomAwardId' => $this->request->Player_profile->KingdomAwardId,
 							'Rank'           => $this->request->Player_profile->Rank,
 							'Reason'         => $this->request->Player_profile->Reason,

@@ -22,11 +22,6 @@ class Controller_TournamentAjax extends Controller {
 		$tournament_id = (int)preg_replace('/[^0-9]/', '', $parts[0] ?? '');
 		$action        = $parts[1] ?? '';
 
-		if (!isset($this->session->user_id)) {
-			echo json_encode(['status' => 5, 'error' => 'Not logged in']);
-			exit;
-		}
-
 		if (!valid_id($tournament_id)) {
 			echo json_encode(['status' => 1, 'error' => 'Invalid tournament ID']);
 			exit;
@@ -34,10 +29,69 @@ class Controller_TournamentAjax extends Controller {
 
 		$this->load_model('Tournament');
 
-		if ($action === 'brackets') {
+		// ── Public, read-only actions (spectator) — no session required ──
+		// These expose read-only data only; no mutation is reachable here.
+		if ($action === 'version') {
+			$r = $this->Tournament->get_version(['TournamentId' => $tournament_id]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0, 'version' => $r['Detail']['Version'] ?? ''])
+				: $this->modelError($r);
+			exit;
+
+		} elseif ($action === 'brackets') {
 			$r = $this->Tournament->get_brackets($tournament_id);
 			echo ($r['Status'] == 0)
 				? json_encode(['status' => 0, 'brackets' => $r['Detail'] ?? []])
+				: $this->modelError($r);
+			exit;
+		}
+
+		// ── All other tournament actions require a logged-in session ──
+		if (!isset($this->session->user_id)) {
+			echo json_encode(['status' => 5, 'error' => 'Not logged in']);
+			exit;
+		}
+
+		if ($action === 'reeves') {
+			$r = $this->Tournament->get_reeves([
+				'Token'        => $this->session->token,
+				'TournamentId' => $tournament_id,
+			]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0, 'reeves' => $r['Detail'] ?? []])
+				: $this->modelError($r);
+
+		} elseif ($action === 'addreeve') {
+			$mundaneId = (int)($_POST['MundaneId'] ?? 0);
+			$role      = trim($_POST['Role'] ?? '');
+			if (!valid_id($mundaneId)) {
+				echo json_encode(['status' => 1, 'error' => 'MundaneId required.']); exit;
+			}
+			if (!in_array($role, ['organizer', 'bracket_runner'], true)) {
+				echo json_encode(['status' => 1, 'error' => 'Invalid role.']); exit;
+			}
+			$r = $this->Tournament->add_reeve([
+				'Token'        => $this->session->token,
+				'TournamentId' => $tournament_id,
+				'MundaneId'    => $mundaneId,
+				'Role'         => $role,
+			]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0, 'mundaneId' => $mundaneId, 'role' => $role])
+				: $this->modelError($r);
+
+		} elseif ($action === 'removereeve') {
+			$mundaneId = (int)($_POST['MundaneId'] ?? 0);
+			if (!valid_id($mundaneId)) {
+				echo json_encode(['status' => 1, 'error' => 'MundaneId required.']); exit;
+			}
+			$r = $this->Tournament->remove_reeve([
+				'Token'        => $this->session->token,
+				'TournamentId' => $tournament_id,
+				'MundaneId'    => $mundaneId,
+			]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0, 'mundaneId' => $mundaneId])
 				: $this->modelError($r);
 
 		} elseif ($action === 'addbracket') {
@@ -265,11 +319,6 @@ class Controller_TournamentAjax extends Controller {
 		$bracket_id = (int)preg_replace('/[^0-9]/', '', $parts[0] ?? '');
 		$action     = $parts[1] ?? '';
 
-		if (!isset($this->session->user_id)) {
-			echo json_encode(['status' => 5, 'error' => 'Not logged in']);
-			exit;
-		}
-
 		if (!valid_id($bracket_id)) {
 			echo json_encode(['status' => 1, 'error' => 'Invalid bracket ID']);
 			exit;
@@ -277,19 +326,30 @@ class Controller_TournamentAjax extends Controller {
 
 		$this->load_model('Tournament');
 
+		// ── Public, read-only actions (spectator) — no session required ──
+		// These expose read-only data only; no mutation is reachable here.
 		if ($action === 'participants') {
 			$r = $this->Tournament->get_participants(['BracketId' => $bracket_id]);
 			echo ($r['Status'] == 0)
 				? json_encode(['status' => 0, 'participants' => $r['Detail'] ?? []])
 				: $this->modelError($r);
+			exit;
 
 		} elseif ($action === 'matches') {
 			$r = $this->Tournament->get_matches(['BracketId' => $bracket_id]);
 			echo ($r['Status'] == 0)
 				? json_encode(['status' => 0, 'matches' => $r['Detail'] ?? []])
 				: $this->modelError($r);
+			exit;
+		}
 
-		} elseif ($action === 'addparticipant') {
+		// ── All other bracket actions require a logged-in session ──
+		if (!isset($this->session->user_id)) {
+			echo json_encode(['status' => 5, 'error' => 'Not logged in']);
+			exit;
+		}
+
+		if ($action === 'addparticipant') {
 			$alias     = trim($_POST['Alias']        ?? '');
 			$mundaneId = (int)($_POST['MundaneId']   ?? 0);
 			$tid       = (int)($_POST['TournamentId'] ?? 0);
