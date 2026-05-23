@@ -1323,7 +1323,7 @@ html[data-theme="dark"] .tn-focus-bar { background:linear-gradient(135deg,#0f141
    (viewport-seeded, sessionStorage-persisted) — never bare media queries — so
    it is forceable and QA-able on desktop.
    ============================================= */
-#tn-root {
+:root {
 	--tn-touch: 44px;                                  /* min touch-target size */
 	--tn-sheet-radius: 16px;                           /* bottom/action sheet top corners */
 	--tn-deck-gap: 12px;                               /* gap between card-deck cards */
@@ -3192,9 +3192,11 @@ window.TnMobile = window.TnMobile || {};
 
 	function applyClass(isMobile) {
 		_mobile = !!isMobile;
+		// Toggle on <body>, NOT #tn-root: the modal overlays/sheets are siblings of
+		// #tn-root, so a class on #tn-root can't match `.tn-mobile .tn-overlay` rules.
+		document.body.classList.toggle('tn-mobile', _mobile);
 		var root = rootEl();
 		if (root) {
-			root.classList.toggle('tn-mobile', _mobile);
 			root.dispatchEvent(new CustomEvent('tn:viewmodechange', {
 				bubbles: true,
 				detail: { mode: _mobile ? 'mobile' : 'desktop', isMobile: _mobile }
