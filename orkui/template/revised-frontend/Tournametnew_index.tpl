@@ -1272,6 +1272,64 @@ html[data-theme="dark"] .tn-focus-toggle,
 html[data-theme="dark"] .tn-focus-toggle:hover { color:#9ae6b4 !important; }
 html[data-theme="dark"] .tn-focus-toggle:hover { background:#2d3748 !important; }
 html[data-theme="dark"] .tn-focus-bar { background:linear-gradient(135deg,#0f1419 0%,#1a202c 100%); box-shadow:0 2px 10px rgba(0,0,0,0.55); }
+
+/* =============================================
+   Mobile foundation (PHASE C0) — shared tokens + view-mode toggle.
+   Mobile presentation keys off the JS-toggled `.tn-mobile` class on #tn-root
+   (viewport-seeded, sessionStorage-persisted) — never bare media queries — so
+   it is forceable and QA-able on desktop.
+   ============================================= */
+#tn-root {
+	--tn-touch: 44px;                                  /* min touch-target size */
+	--tn-sheet-radius: 16px;                           /* bottom/action sheet top corners */
+	--tn-deck-gap: 12px;                               /* gap between card-deck cards */
+	--tn-safe-bottom: env(safe-area-inset-bottom, 0px);
+	--tn-safe-top: env(safe-area-inset-top, 0px);
+}
+
+/* Floating mobile/desktop toggle pill — persistent control, bottom-right. */
+.tn-mq-toggle {
+	position:fixed;
+	right:16px;
+	bottom:calc(16px + var(--tn-safe-bottom, 0px));
+	z-index:1200;                                      /* above page content; below open sheets (which use higher) */
+	display:inline-flex;
+	align-items:center;
+	gap:6px;
+	min-height:var(--tn-touch);
+	padding:0 16px;
+	border:1px solid #cbd5e0;
+	border-radius:999px;
+	background:#fff;
+	color:#276749;
+	font-size:13px;
+	font-weight:700;
+	cursor:pointer;
+	box-shadow:0 3px 12px rgba(0,0,0,0.18);
+	-webkit-tap-highlight-color:transparent;
+}
+.tn-mq-toggle:hover { background:#f0fff4; }
+.tn-mq-toggle i { font-size:14px; }
+html[data-theme="dark"] .tn-mq-toggle {
+	background:#1a202c;
+	color:#9ae6b4;
+	border-color:#4a5568;
+	box-shadow:0 3px 12px rgba(0,0,0,0.5);
+}
+html[data-theme="dark"] .tn-mq-toggle:hover { background:#2d3748; }
+
+/* Global h1-h6 gray-box trap reset for any heading inside a sheet (foundation
+   for later sheet tasks; .tn-sheet does not exist yet — intentional). */
+.tn-mobile .tn-sheet h1,
+.tn-mobile .tn-sheet h2,
+.tn-mobile .tn-sheet h3,
+.tn-mobile .tn-sheet h4 {
+	background:transparent;
+	border:none;
+	padding:0;
+	border-radius:0;
+	text-shadow:none;
+}
 </style>
 
 <!-- =============================================
@@ -2627,6 +2685,96 @@ var TnConfig = {
 	standingsPoints:      <?= json_encode($standingsPoints, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>,
 };
 document.title = 'ORK 3: <?= htmlspecialchars($tName, ENT_QUOTES) ?>';
+
+// =============================================
+// Mobile foundation (PHASE C0) — TnMobile namespace.
+// Created with the `|| {}` idiom so sibling foundation tasks (swipe, sheet,
+// deck) can extend it without clobbering. Other tasks depend on the EXACT
+// names below: TnMobile.viewMode.init()/.set('mobile'|'desktop')/.isMobile(),
+// the `tn:viewmodechange` event, the `tn-mobile` class on #tn-root, and the
+// sessionStorage key `tnViewMode_<tournamentId>`.
+// =============================================
+window.TnMobile = window.TnMobile || {};
+(function() {
+	var MQ_QUERY  = '(max-width:768px)';
+	var STORE_KEY = 'tnViewMode_' + TnConfig.tournamentId;
+
+	function rootEl()  { return document.getElementById('tn-root'); }
+	function stored()  { try { return sessionStorage.getItem(STORE_KEY); } catch (e) { return null; } }
+	function persist(v) { try { sessionStorage.setItem(STORE_KEY, v); } catch (e) {} }
+
+	var _mobile = false;   // current resolved state
+	var _pill   = null;    // floating toggle pill element
+
+	function applyClass(isMobile) {
+		_mobile = !!isMobile;
+		var root = rootEl();
+		if (root) root.classList.toggle('tn-mobile', _mobile);
+		updatePill();
+	}
+
+	function updatePill() {
+		if (!_pill) return;
+		// Pill shows the mode you'd switch TO.
+		var toDesktop = _mobile;
+		var label = toDesktop ? 'Desktop view' : 'Mobile view';
+		var icon  = toDesktop ? 'fa-desktop'   : 'fa-mobile-alt';
+		_pill.innerHTML = '<i class="fas ' + icon + '"></i><span>' + label + '</span>';
+		_pill.setAttribute('data-tip', label);
+		_pill.setAttribute('aria-label', label);
+	}
+
+	function renderPill() {
+		if (_pill) return;
+		_pill = document.createElement('button');
+		_pill.type = 'button';
+		_pill.className = 'tn-mq-toggle';
+		_pill.addEventListener('click', function() {
+			TnMobile.viewMode.set(_mobile ? 'desktop' : 'mobile');
+		});
+		document.body.appendChild(_pill);
+		updatePill();
+	}
+
+	TnMobile.viewMode = {
+		init: function() {
+			renderPill();
+			var override = stored();
+			if (override === 'mobile' || override === 'desktop') {
+				applyClass(override === 'mobile');
+			} else {
+				applyClass(window.matchMedia(MQ_QUERY).matches);
+			}
+			// React to viewport changes ONLY when there is no manual override.
+			var mql = window.matchMedia(MQ_QUERY);
+			var onChange = function(e) {
+				if (stored()) return; // manual choice wins
+				applyClass(e.matches);
+			};
+			if (mql.addEventListener)    mql.addEventListener('change', onChange);
+			else if (mql.addListener)    mql.addListener(onChange); // legacy Safari
+		},
+		set: function(mode) {
+			var isMobile = (mode === 'mobile');
+			applyClass(isMobile);
+			persist(isMobile ? 'mobile' : 'desktop'); // manual override
+			var root = rootEl();
+			if (root) {
+				root.dispatchEvent(new CustomEvent('tn:viewmodechange', {
+					bubbles: true,
+					detail: { mode: isMobile ? 'mobile' : 'desktop', isMobile: isMobile }
+				}));
+			}
+		},
+		isMobile: function() { return _mobile; }
+	};
+
+	if (document.readyState === 'loading') {
+		document.addEventListener('DOMContentLoaded', function() { TnMobile.viewMode.init(); });
+	} else {
+		TnMobile.viewMode.init();
+	}
+})();
 </script>
 
 <script src="<?= HTTP_TEMPLATE ?>revised-frontend/script/revised.js?v=<?= filemtime(__DIR__ . '/script/revised.js') ?>"></script>
