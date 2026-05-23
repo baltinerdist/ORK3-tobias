@@ -1319,12 +1319,14 @@ html[data-theme="dark"] .tn-mq-toggle {
 }
 html[data-theme="dark"] .tn-mq-toggle:hover { background:#2d3748; }
 
-/* Global h1-h6 gray-box trap reset for any heading inside a sheet (foundation
-   for later sheet tasks; .tn-sheet does not exist yet — intentional). */
-.tn-mobile .tn-sheet h1,
-.tn-mobile .tn-sheet h2,
-.tn-mobile .tn-sheet h3,
-.tn-mobile .tn-sheet h4 {
+/* Global h1-h6 gray-box trap reset for any heading inside a mobile sheet/overlay.
+   Keyed off .tn-overlay (every sheet presents an existing .tn-overlay element);
+   page headings are outside overlays so they are correctly unaffected, and
+   .tn-modal-title already self-resets with !important. */
+.tn-mobile .tn-overlay h1,
+.tn-mobile .tn-overlay h2,
+.tn-mobile .tn-overlay h3,
+.tn-mobile .tn-overlay h4 {
 	background:transparent;
 	border:none;
 	padding:0;
