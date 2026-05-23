@@ -1291,7 +1291,7 @@ html[data-theme="dark"] .tn-focus-bar { background:linear-gradient(135deg,#0f141
 .tn-mq-toggle {
 	position:fixed;
 	right:16px;
-	bottom:calc(16px + var(--tn-safe-bottom, 0px));
+	bottom: calc(16px + env(safe-area-inset-bottom, 0px));
 	z-index:1200;                                      /* above page content; below open sheets (which use higher) */
 	display:inline-flex;
 	align-items:center;
@@ -1309,6 +1309,7 @@ html[data-theme="dark"] .tn-focus-bar { background:linear-gradient(135deg,#0f141
 	-webkit-tap-highlight-color:transparent;
 }
 .tn-mq-toggle:hover { background:#f0fff4; }
+.tn-mq-toggle[data-tip] { cursor:pointer; }
 .tn-mq-toggle i { font-size:14px; }
 html[data-theme="dark"] .tn-mq-toggle {
 	background:#1a202c;
@@ -2709,7 +2710,13 @@ window.TnMobile = window.TnMobile || {};
 	function applyClass(isMobile) {
 		_mobile = !!isMobile;
 		var root = rootEl();
-		if (root) root.classList.toggle('tn-mobile', _mobile);
+		if (root) {
+			root.classList.toggle('tn-mobile', _mobile);
+			root.dispatchEvent(new CustomEvent('tn:viewmodechange', {
+				bubbles: true,
+				detail: { mode: _mobile ? 'mobile' : 'desktop', isMobile: _mobile }
+			}));
+		}
 		updatePill();
 	}
 
@@ -2756,15 +2763,8 @@ window.TnMobile = window.TnMobile || {};
 		},
 		set: function(mode) {
 			var isMobile = (mode === 'mobile');
-			applyClass(isMobile);
 			persist(isMobile ? 'mobile' : 'desktop'); // manual override
-			var root = rootEl();
-			if (root) {
-				root.dispatchEvent(new CustomEvent('tn:viewmodechange', {
-					bubbles: true,
-					detail: { mode: isMobile ? 'mobile' : 'desktop', isMobile: isMobile }
-				}));
-			}
+			applyClass(isMobile); // applyClass dispatches tn:viewmodechange
 		},
 		isMobile: function() { return _mobile; }
 	};
