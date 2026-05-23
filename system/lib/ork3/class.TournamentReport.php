@@ -214,7 +214,8 @@ class TournamentReport extends Ork3 {
 		$byStyle  = $this->groupCount("SELECT b.style AS k, COUNT(*) AS c FROM " . DB_PREFIX . "bracket b JOIN " . DB_PREFIX . "tournament t ON t.tournament_id=b.tournament_id WHERE 1 $where GROUP BY b.style ORDER BY c DESC");
 		$byMethod = $this->groupCount("SELECT b.method AS k, COUNT(*) AS c FROM " . DB_PREFIX . "bracket b JOIN " . DB_PREFIX . "tournament t ON t.tournament_id=b.tournament_id WHERE 1 $where GROUP BY b.method ORDER BY c DESC");
 
-		$trend = [];
+		// Monthly tournaments + participants, zero-filled across a continuous month axis.
+		$raw = [];
 		$tr = $this->db->query(
 			"SELECT DATE_FORMAT(t.date_time,'%Y-%m') AS ym, COUNT(DISTINCT t.tournament_id) AS tcount,
 			        COUNT(DISTINCT pm.mundane_id) AS pcount
@@ -222,7 +223,20 @@ class TournamentReport extends Ork3 {
 			 LEFT JOIN " . DB_PREFIX . "participant_mundane pm ON pm.tournament_id = t.tournament_id
 			 WHERE 1 $where GROUP BY ym ORDER BY ym"
 		);
-		if ($tr !== false) { while ($tr->next()) { $trend[] = ['Month'=>$tr->ym, 'Tournaments'=>(int)$tr->tcount, 'Participants'=>(int)$tr->pcount]; } }
+		if ($tr !== false) { while ($tr->next()) { $raw[$tr->ym] = ['t'=>(int)$tr->tcount, 'p'=>(int)$tr->pcount]; } }
+
+		// Range: explicit date filter when set, else span the data's own months.
+		$startYm = !empty($request['DateFrom']) ? substr($request['DateFrom'], 0, 7) : (count($raw) ? min(array_keys($raw)) : null);
+		$endYm   = !empty($request['DateTo'])   ? substr($request['DateTo'],   0, 7) : (count($raw) ? max(array_keys($raw)) : null);
+		$trend = [];
+		if ($startYm && $endYm && $startYm <= $endYm) {
+			$cur = $startYm . '-01'; $end = $endYm . '-01'; $guard = 0;
+			while ($cur <= $end && $guard++ < 120) {
+				$ym = substr($cur, 0, 7);
+				$trend[] = ['Month'=>$ym, 'Tournaments'=>$raw[$ym]['t'] ?? 0, 'Participants'=>$raw[$ym]['p'] ?? 0];
+				$cur = date('Y-m-d', strtotime($cur . ' +1 month'));
+			}
+		}
 
 		$response = [
 			'Totals' => ['Total'=>$total, 'Setup'=>$setup, 'Active'=>$active, 'Complete'=>$complete,
