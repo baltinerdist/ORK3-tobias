@@ -1462,6 +1462,15 @@ html[data-theme="dark"] .tn-sheet-action-cancel { border-top-color:#2d3748; colo
 	opacity:1;
 	box-shadow:0 2px 10px rgba(0,0,0,0.06);
 }
+/* The deck chrome already provides the card surface; shed the inner
+   .tn-nu-card's own border/shadow/bg so the lead isn't a card-in-card.
+   Stack its contents (names above the actions) for a touch layout. */
+.tn-mobile .tn-deck-card--full .tn-nu-card {
+	background:transparent; border:0; box-shadow:none; padding:0;
+	flex-wrap:wrap;
+}
+.tn-mobile .tn-deck-card--full .tn-nu-actions { width:100%; justify-content:flex-start; }
+.tn-mobile .tn-deck-card--full .tn-nu-btn { min-height:var(--tn-touch); }
 
 /* COMPACT on-deck cards — single dense row, tappable to promote. */
 .tn-mobile .tn-deck-card--compact {
@@ -1478,6 +1487,32 @@ html[data-theme="dark"] .tn-sheet-action-cancel { border-top-color:#2d3748; colo
 .tn-mobile .tn-deck-card--compact:active { background:#edf2f7; }
 .tn-mobile .tn-deck-card--compact:hover  { opacity:1; }
 
+/* Inner one-line row for the Match Deck compact card: side label + names. */
+.tn-mobile .tn-deck-compact-row {
+	display:flex; align-items:center; gap:10px;
+	width:100%; min-width:0;
+}
+.tn-mobile .tn-deck-compact-side {
+	flex:0 0 auto;
+	font-size:11px; font-weight:700; letter-spacing:.03em;
+	color:#4a5568; background:#e2e8f0;
+	padding:2px 7px; border-radius:9px; white-space:nowrap;
+}
+.tn-mobile .tn-deck-compact-vs {
+	flex:1 1 auto; min-width:0;
+	display:flex; align-items:center; gap:7px;
+	overflow:hidden;
+}
+.tn-mobile .tn-deck-compact-p {
+	min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+	font-weight:600; color:#2d3748;
+}
+.tn-mobile .tn-deck-compact-x { flex:0 0 auto; color:#a0aec0; font-size:12px; }
+.tn-mobile .tn-deck-compact-row .tn-nu-p-seed {
+	display:inline-block; margin-right:4px; font-size:11px; font-weight:700;
+	color:#718096;
+}
+
 /* 3-dot deck position indicator (consumer-optional; rendered by consumer
    markup, styled here for convenience). */
 .tn-mobile .tn-deck-dots { display:flex; justify-content:center; gap:7px; padding:4px 0 2px; }
@@ -1489,6 +1524,10 @@ html[data-theme="dark"] .tn-mobile .tn-deck-card { border-color:#2d3748; backgro
 html[data-theme="dark"] .tn-mobile .tn-deck-card--full { box-shadow:0 2px 10px rgba(0,0,0,0.5); }
 html[data-theme="dark"] .tn-mobile .tn-deck-card--compact { background:#222b38; }
 html[data-theme="dark"] .tn-mobile .tn-deck-card--compact:active { background:#2d3748; }
+html[data-theme="dark"] .tn-mobile .tn-deck-compact-side { color:#cbd5e0; background:#2d3748; }
+html[data-theme="dark"] .tn-mobile .tn-deck-compact-p { color:#e2e8f0; }
+html[data-theme="dark"] .tn-mobile .tn-deck-compact-x { color:#718096; }
+html[data-theme="dark"] .tn-mobile .tn-deck-compact-row .tn-nu-p-seed { color:#a0aec0; }
 html[data-theme="dark"] .tn-mobile .tn-deck-dot { background:#4a5568; }
 html[data-theme="dark"] .tn-mobile .tn-deck-dot.tn-deck-dot--on { background:#48bb78; }
 </style>
@@ -7987,6 +8026,36 @@ html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 		var activeBestOf = 1;          // effective best-of for the currently rendered bracket
 		var MODE_KEY = 'tn_nu_mode_' + (TnConfig.tournamentId || 0);
 
+		// --- Mobile Match Deck (Track R) ---------------------------------------
+		// On mobile, the Next-Up flow is presented through the TnMobile.deck
+		// primitive: a 3-item window (current fight + next 2 on-deck). The deck
+		// mounts INTO the SAME #tn-nextup host (nuHost), so the existing card
+		// builders (quickCardHTML / trackCardHTML), pip handlers, repaintCardPips
+		// and updateEndButton all keep working unchanged (they query nuHost and
+		// match on data-mid). Only ONE rendering ever occupies #tn-nextup at a
+		// time — the desktop grid OR the mobile deck — so there is no data-mid
+		// collision. The deck handle is torn down whenever we leave mobile.
+		var deckHandle = null;          // TnMobile.deck.mount() return, or null when desktop
+		var deckBid = 0;                // bracket id the deck is currently rendering
+		function isMobileView(){
+			return !!(window.TnMobile && TnMobile.viewMode && TnMobile.viewMode.isMobile && TnMobile.viewMode.isMobile());
+		}
+		function destroyDeck(){
+			if (deckHandle){ try { deckHandle.destroy(); } catch(e){} deckHandle = null; }
+		}
+		// Side label for compact on-deck cards: R{n}W / R{n}L for double-elim,
+		// GF for grand-final, 3rd for the third-place tiebreaker, plain R{n} else.
+		// (_side is already lowercased by the sequencer.)
+		function tnDeckSideLabel(m){
+			var side = (m && m._side) || '';
+			var r = (m && m._round) || 0;
+			if (side === 'grand-final') return 'GF';
+			if (side === 'tiebreaker-3rd') return '3rd';
+			if (side === 'winners') return 'R' + r + 'W';
+			if (side === 'losers')  return 'R' + r + 'L';
+			return 'R' + r;
+		}
+
 		function bestOfForBracket(bd){
 			var n = parseInt((bd && bd.Bracket && bd.Bracket.BestOf) || 1, 10);
 			return ([1,3,5,7,9].indexOf(n) !== -1) ? n : 1;
@@ -8130,6 +8199,26 @@ html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 						? '<button class="tn-nu-btn tn-nu-btn-end" data-mid="' + m.MatchId + '" data-end="1">End</button>' +
 						  '<button class="tn-nu-btn tn-nu-btn-more" data-mid="' + m.MatchId + '" data-more="1" data-tip="Bouts / forfeit / DQ · tap a pip to record a bout">⋯</button>'
 						: '') +
+				'</div>'
+			);
+		}
+
+		// Compact on-deck card for the mobile deck: a dense one-line row of
+		// fighter names + seeds + a side label (R2W / R1L / GF / 3rd). Tapping it
+		// is wired by the deck primitive (data-tn-deck-id) to promote-to-lead.
+		function deckCompactHTML(m, pMap){
+			var p1 = pMap[m.Participant1Id] || {};
+			var p2 = pMap[m.Participant2Id] || {};
+			var p1Name = tnEsc(m.Participant1Alias || p1.Alias || p1.Persona || '\u2014');
+			var p2Name = tnEsc(m.Participant2Alias || p2.Alias || p2.Persona || '\u2014');
+			var p1Seed = p1.Seed ? '<span class="tn-nu-p-seed">' + p1.Seed + '</span>' : '';
+			var p2Seed = p2.Seed ? '<span class="tn-nu-p-seed">' + p2.Seed + '</span>' : '';
+			return (
+				'<div class="tn-deck-compact-row" data-mid="' + m.MatchId + '">' +
+					'<span class="tn-deck-compact-side">' + tnEsc(tnDeckSideLabel(m)) + '</span>' +
+					'<span class="tn-deck-compact-vs"><span class="tn-deck-compact-p">' + p1Seed + p1Name + '</span>' +
+					'<span class="tn-deck-compact-x">vs</span>' +
+					'<span class="tn-deck-compact-p">' + p2Seed + p2Name + '</span></span>' +
 				'</div>'
 			);
 		}
@@ -8321,18 +8410,18 @@ html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 			nuHost = nuHost || $('tn-nextup');
 			if (!nuHost) return;
 			// Result-entry tool: hidden entirely from spectators / non-managers.
-			if (!TnConfig.canManage) { nuHost.innerHTML = ''; return; }
+			if (!TnConfig.canManage) { destroyDeck(); nuHost.innerHTML = ''; return; }
 			var bid = parseInt(bracketId, 10);
 			if (!bid || !TnConfig.bracketData || !TnConfig.bracketData[bid]){
-				nuHost.innerHTML = '';
+				destroyDeck(); nuHost.innerHTML = '';
 				return;
 			}
 			var bd = TnConfig.bracketData[bid];
 			var method = (bd.Bracket && bd.Bracket.Method) || '';
-			if (method === 'ironman'){ nuHost.innerHTML = ''; return; }
+			if (method === 'ironman'){ destroyDeck(); nuHost.innerHTML = ''; return; }
 			var status = (bd.Bracket && bd.Bracket.Status) || '';
 			if (status === 'setup' || status === 'complete' || status === 'finalized'){
-				nuHost.innerHTML = '';
+				destroyDeck(); nuHost.innerHTML = '';
 				return;
 			}
 			activeBestOf = bestOfForBracket(bd);
@@ -8351,6 +8440,7 @@ html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 				'</div>';
 
 			if (!unresolved.length){
+				destroyDeck();
 				nuHost.innerHTML =
 					'<div class="tn-nu-wrap"><div class="tn-nu-header">' +
 					'<span class="tn-nu-title">Next up</span>' +
@@ -8361,9 +8451,19 @@ html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 				return;
 			}
 
-			var show = unresolved.slice(0, 2);
 			var pMap = participantLookup(bd);
 			var cardFn = (mode === 'track') ? trackCardHTML : quickCardHTML;
+
+			// ---- Mobile: swipeable Match Deck -------------------------------
+			// current fight (full) + next 2 on-deck (compact), windowed HERE to 3.
+			if (isMobileView() && window.TnMobile && TnMobile.deck){
+				renderNextUpDeck(bid, bd, pMap, unresolved.slice(0, 3));
+				return;
+			}
+			// Leaving mobile (or never mobile): make sure no stale deck lingers.
+			destroyDeck();
+
+			var show = unresolved.slice(0, 2);
 			var labels = ['NOW', 'ON DECK'];
 
 			nuHost.innerHTML =
@@ -8379,7 +8479,16 @@ html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 				'</div>';
 
 			bindToggle(bid);
+			bindNuCardHandlers(bid, bd, pMap);
+		};
 
+		// Wire the per-card recording handlers (pips / End / ⋯ more / quick-win
+		// buttons) on whatever .tn-nu-card markup is currently inside nuHost.
+		// Shared by the desktop grid render AND the mobile deck render — the deck
+		// mounts its FULL card into nuHost (same data-mid scoping), so the exact
+		// same handlers and the exact same submit path apply in both layouts.
+		function bindNuCardHandlers(bid, bd, pMap){
+			if (!nuHost) return;
 			if (mode === 'track'){
 				nuHost.querySelectorAll('.tn-nu-card-track .tn-bout-pip').forEach(function(pip){
 					pip.addEventListener('click', handlePipClick);
@@ -8408,7 +8517,75 @@ html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 			} else {
 				bindQuickButtons(bd, pMap);
 			}
-		};
+		}
+
+		// Live data the mounted deck's render closures read. Updated on every
+		// renderNextUpDeck() call so deckHandle.update() re-renders with current
+		// participants without needing a remount. deckMode tracks the Quick/Track
+		// mode the deck was mounted with — a mode flip forces a remount.
+		var deckBd = null, deckPMap = null, deckMode = null;
+
+		// Mount-or-update the mobile Match Deck. items = pre-sliced window (current
+		// + next 2). A Quick/Track toggle header (same markup + bindToggle as
+		// desktop) sits above a #tn-deck-host child of nuHost; the deck mounts INTO
+		// that child. Because the host stays a descendant of nuHost, every existing
+		// nuHost.querySelector('.tn-nu-card-track[data-mid=...]') (repaintCardPips,
+		// updateEndButton, the pip/End/more bindings) keeps matching. The FULL lead
+		// card reuses the SAME builder as desktop (quickCardHTML / trackCardHTML),
+		// so recording, bout pips and the submit path are byte-identical; compact
+		// cards use deckCompactHTML.
+		function renderNextUpDeck(bid, bd, pMap, items){
+			deckBd = bd; deckPMap = pMap;
+			var deckItems = items.map(function(m){ return Object.assign({ id: m.MatchId }, m); });
+
+			// Re-bind the per-card recording handlers + repaint pips after each deck
+			// (re)render. The deck rebuilds DOM on mount / setLead / update, so the
+			// FULL card's pip/End/more/quick listeners must be re-attached.
+			function afterRender(){
+				if (deckBd && deckPMap) bindNuCardHandlers(deckBid, deckBd, deckPMap);
+			}
+
+			// Same bracket AND same mode -> just refresh the deck (preserves lead).
+			var host = $('tn-deck-host');
+			if (deckHandle && host && deckBid === bid && deckMode === mode){
+				deckHandle.update(deckItems);
+				afterRender();
+				return;
+			}
+
+			// Fresh mount (first time / bracket changed / mode toggled). Render the
+			// mode toggle header + an empty deck host, then mount the deck into it.
+			destroyDeck();
+			deckBid = bid;
+			deckMode = mode;
+			var toggleHTML =
+				'<div class="tn-nu-toggle" role="tablist" aria-label="Next Up mode">' +
+					'<button class="tn-nu-toggle-btn' + (mode === 'quick' ? ' tn-nu-toggle-on' : '') + '" data-mode="quick" role="tab" aria-selected="' + (mode === 'quick') + '">Quick Win</button>' +
+					'<button class="tn-nu-toggle-btn' + (mode === 'track' ? ' tn-nu-toggle-on' : '') + '" data-mode="track" role="tab" aria-selected="' + (mode === 'track') + '">Track Fights</button>' +
+				'</div>';
+			nuHost.innerHTML =
+				'<div class="tn-nu-wrap">' +
+					'<div class="tn-nu-header"><span class="tn-nu-title">Next up</span>' +
+					'<span class="tn-nu-sub">&mdash; swipe for on-deck</span>' + toggleHTML + '</div>' +
+					'<div id="tn-deck-host"></div>' +
+				'</div>';
+			bindToggle(bid);
+			host = $('tn-deck-host');
+			deckHandle = TnMobile.deck.mount(host, {
+				items: deckItems,
+				renderFull: function(item){
+					var fn = (deckMode === 'track') ? trackCardHTML : quickCardHTML;
+					return fn(item, deckPMap || pMap, 'NOW');
+				},
+				renderCompact: function(item){
+					return deckCompactHTML(item, deckPMap || pMap);
+				},
+				// Fires on swipe / tap-to-promote (lead actually moved) — re-bind so
+				// the newly-promoted full card's recording handlers work.
+				onLeadChange: function(){ afterRender(); }
+			});
+			afterRender();
+		}
 
 		// Wrap the base bracket viz renderer so Next-Up repaints on every
 		// refresh (initial render + every match submit).
@@ -8428,6 +8605,22 @@ html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 			}
 			if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', attempt);
 			else attempt();
+		})();
+
+		// Switch Next-Up between the desktop grid and the mobile Match Deck when
+		// the view mode flips. tnRenderNextUp re-enters the correct branch:
+		// mobile -> mount/refresh the deck; desktop -> destroyDeck() then the grid.
+		// We re-render against the currently selected bracket.
+		(function bindViewModeSwitch(){
+			var root = document.getElementById('tn-root');
+			if (!root) return;
+			root.addEventListener('tn:viewmodechange', function(){
+				var sel = $('tn-bv-bracket-select');
+				if (sel && sel.value){
+					try { window.tnRenderNextUp(parseInt(sel.value, 10)); }
+					catch(e){ console.warn('[tn-nextup] viewmode re-render failed', e); }
+				}
+			});
 		})();
 	})();
 
