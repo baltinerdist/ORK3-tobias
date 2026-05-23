@@ -173,6 +173,7 @@ class Controller_Reports extends Controller {
 		$this->data['DateFrom']     = $dateFrom;
 		$this->data['DateTo']       = $dateTo;
 		$this->data['ProgramStats'] = $this->Reports->tournament_program_stats($scope);
+		$this->data['TournamentList'] = $this->Reports->tournament_list($scope);
 		$this->data['Leaderboard']  = $this->Reports->tournament_fighter_leaderboard($scope);
 		$this->data['AwardCandidates'] = $this->Reports->tournament_award_candidates($scope);
 		$this->data['ParkComparison']  = $type==='Kingdom'

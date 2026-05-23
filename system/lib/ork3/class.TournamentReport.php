@@ -445,4 +445,96 @@ class TournamentReport extends Ork3 {
 		return ['Parks' => array_values($parks), 'Status' => Success()];
 	}
 
+	/**
+	 * Per-tournament list for the Tournaments tab: each tournament with its roster
+	 * ranked by collective standings (aggregate W/L across all the tournament's
+	 * brackets) and a Warrior-level field summary (avg, median, #Warlords, #Sword Knights).
+	 * Returns up to 8 ranked participants per tournament (UI shows 4, expands to 8).
+	 */
+	public function GetTournamentList($request) {
+		$where = $this->scopeWhere($request, 't');
+
+		// Per tournament, per mundane: collective wins/losses across all brackets + warrior level.
+		$sql = "SELECT t.tournament_id, t.name, t.date_time, COALESCE(pk.name,'') AS park_name,
+		           pm.mundane_id, mn.persona, MAX(p.warrior_level) AS wl,
+		           SUM((m.participant_1_id=p.participant_id AND m.result='1-wins')
+		             OR (m.participant_2_id=p.participant_id AND m.result IN ('2-wins','forfeit','disqualified'))) AS wins,
+		           SUM((m.participant_1_id=p.participant_id AND m.result IN ('2-wins','forfeit','disqualified'))
+		             OR (m.participant_2_id=p.participant_id AND m.result='1-wins')) AS losses
+		       FROM " . DB_PREFIX . "tournament t
+		         LEFT JOIN " . DB_PREFIX . "park pk ON pk.park_id = t.park_id
+		         JOIN " . DB_PREFIX . "participant p ON p.tournament_id = t.tournament_id
+		         JOIN " . DB_PREFIX . "participant_mundane pm ON pm.participant_id = p.participant_id
+		         LEFT JOIN " . DB_PREFIX . "mundane mn ON mn.mundane_id = pm.mundane_id
+		         LEFT JOIN " . DB_PREFIX . "match m ON (m.participant_1_id=p.participant_id OR m.participant_2_id=p.participant_id) AND m.bracket_id=p.bracket_id
+		       WHERE 1 $where
+		       GROUP BY t.tournament_id, t.name, t.date_time, park_name, pm.mundane_id, mn.persona
+		       ORDER BY t.date_time DESC, t.tournament_id DESC, wins DESC, losses ASC";
+
+		$tours = [];   // tournament_id => meta + rows
+		$r = $this->db->query($sql);
+		if ($r !== false) {
+			while ($r->next()) {
+				$tid = (int)$r->tournament_id;
+				if (!isset($tours[$tid])) {
+					$tours[$tid] = [
+						'TournamentId' => $tid, 'Name' => $r->name, 'DateTime' => $r->date_time,
+						'ParkName' => $r->park_name, 'BracketCount' => 0,
+						'_rows' => [], '_levels' => [],
+					];
+				}
+				$mid = (int)$r->mundane_id; if ($mid < 1) continue;
+				$wins = (int)$r->wins; $losses = (int)$r->losses; $wl = (int)$r->wl;
+				$tours[$tid]['_rows'][] = [
+					'MundaneId' => $mid, 'Persona' => $r->persona,
+					'Wins' => $wins, 'Losses' => $losses,
+					'WinPct' => ($wins+$losses) > 0 ? round(100*$wins/($wins+$losses)) : 0,
+					'WarriorLevel' => $wl,
+				];
+				$tours[$tid]['_levels'][] = $wl;
+			}
+		}
+
+		if (empty($tours)) return ['Tournaments' => [], 'Status' => Success()];
+
+		// Bracket counts per tournament.
+		$ids = implode(',', array_map('intval', array_keys($tours)));
+		$bc = $this->db->query("SELECT tournament_id, COUNT(*) AS c FROM " . DB_PREFIX . "bracket WHERE tournament_id IN ($ids) GROUP BY tournament_id");
+		if ($bc !== false) { while ($bc->next()) { $tid=(int)$bc->tournament_id; if (isset($tours[$tid])) $tours[$tid]['BracketCount'] = (int)$bc->c; } }
+
+		$out = [];
+		foreach ($tours as $t) {
+			$levels = $t['_levels'];
+			$out[] = [
+				'TournamentId' => $t['TournamentId'],
+				'Name' => $t['Name'],
+				'DateTime' => $t['DateTime'],
+				'ParkName' => $t['ParkName'],
+				'BracketCount' => $t['BracketCount'],
+				'ParticipantCount' => count($t['_rows']),
+				'TopParticipants' => array_slice($t['_rows'], 0, 8),
+				'WarriorStats' => $this->warriorFieldStats($levels),
+			];
+		}
+		return ['Tournaments' => $out, 'Status' => Success()];
+	}
+
+	/** Field warrior-level summary: avg, median, #Warlords (11), #Sword Knights (12). */
+	private function warriorFieldStats(array $levels) {
+		$n = count($levels);
+		if ($n === 0) return ['AvgLevel'=>0, 'MedianLevel'=>0, 'Warlords'=>0, 'SwordKnights'=>0, 'Count'=>0];
+		sort($levels);
+		$mid = intdiv($n, 2);
+		$median = ($n % 2) ? $levels[$mid] : ($levels[$mid-1] + $levels[$mid]) / 2;
+		$warlords = 0; $knights = 0;
+		foreach ($levels as $l) { if ($l === 12) $knights++; elseif ($l === 11) $warlords++; }
+		return [
+			'AvgLevel'    => round(array_sum($levels) / $n, 1),
+			'MedianLevel' => round($median, 1),
+			'Warlords'    => $warlords,
+			'SwordKnights'=> $knights,
+			'Count'       => $n,
+		];
+	}
+
 }
