@@ -1389,6 +1389,11 @@ html[data-theme="dark"] .tn-mq-toggle:hover { background:#2d3748; }
 .tn-mobile .tn-overlay .tn-modal-footer .tn-btn { min-height:var(--tn-touch); }
 /* The scrollable region. .tn-modal-body already has overflow-y:auto + flex:1. */
 .tn-mobile .tn-overlay .tn-modal-body { -webkit-overflow-scrolling:touch; }
+/* Bout pips >=32px tappable inside a sheet, regardless of viewport width
+   (the 480px media-query rule doesn't fire under forced .tn-mobile).
+   Sizing only; win/loss coloring + tap-toggle remain class-driven. */
+.tn-mobile .tn-overlay .tn-bout-pip { width:32px; height:32px; }
+.tn-mobile .tn-overlay .tn-bout-pips { gap:10px; }
 
 /* Larger, touch-friendly autocomplete rows inside a sheet (registration §3). */
 .tn-mobile .tn-ac-results { max-height:min(50vh, 320px); }
@@ -7754,7 +7759,15 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 		document.getElementById('tn-rr-bout-score').textContent = '';
 		renderPips();
 		tnHideFeedback('tn-recordresult-feedback');
-		tnOpenModal(OVERLAY);
+		// Present as a true bottom sheet on mobile (swipe-down dismiss, focus trap,
+		// keyboard-safe footer via visualViewport). On desktop fall through to the
+		// legacy centered-overlay open so behavior is byte-identical to before.
+		// tnCloseModal already routes _tnSheet overlays through TnMobile.sheet.close,
+		// so the submit-success + cancel/close paths tear down cleanly either way.
+		var _mobileSheet = !!(window.TnMobile && TnMobile.sheet && TnMobile.viewMode
+			&& TnMobile.viewMode.isMobile && TnMobile.viewMode.isMobile());
+		if (_mobileSheet) { TnMobile.sheet.open(_ov || document.getElementById(OVERLAY), {}); }
+		else { tnOpenModal(OVERLAY); }
 	};
 
 	['tn-recordresult-close','tn-recordresult-cancel'].forEach(function(id) {
