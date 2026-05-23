@@ -3429,7 +3429,14 @@ function tnOpenModal(id) {
 }
 function tnCloseModal(id) {
 	var ov = document.getElementById(id);
-	if (ov) ov.classList.remove('tn-open');
+	if (!ov) return;
+	// Sheet-managed overlays (opened via TnMobile.sheet.open) must close through
+	// TnMobile.sheet.close so its teardown runs — otherwise the backdrop/keydown/
+	// swipe listeners and visualViewport refcount leak. sheet.close handles the
+	// desktop-opened case (_tnSheet.mobile === false) identically to the legacy
+	// path below, plus fires onDismiss, so desktop behavior is preserved.
+	if (ov._tnSheet && window.TnMobile && TnMobile.sheet) { TnMobile.sheet.close(ov); return; }
+	ov.classList.remove('tn-open');
 	// Autocomplete dropdowns are appended to <body> (see tnFixedAcPosition), so
 	// they aren't hidden by the modal closing — close any open ones explicitly.
 	document.querySelectorAll('.tn-ac-results.tn-ac-open, .kn-ac-results.kn-ac-open')
