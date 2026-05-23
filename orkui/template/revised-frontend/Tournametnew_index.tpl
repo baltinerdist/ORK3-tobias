@@ -1401,6 +1401,22 @@ html[data-theme="dark"] .tn-mq-toggle:hover { background:#2d3748; }
 .tn-mobile .tn-ac-results { max-height:min(50vh, 320px); }
 .tn-mobile .tn-ac-item { padding:13px 14px; font-size:15px; min-height:var(--tn-touch); display:flex; align-items:center; }
 
+/* --- Bulk Add (Paste Roster): near-full-height sheet, textarea fills body.
+   The body becomes a flex column so the .tn-field wrapping the textarea (and
+   the textarea itself) can flex to consume all remaining height — replacing
+   the desktop fixed rows=N. Desktop is untouched (rules are .tn-mobile-scoped). */
+.tn-mobile #tn-bulkadd-overlay .tn-modal-box { max-height:96vh; max-height:96dvh; max-height:calc(var(--tn-vvh, 96vh) - 12px); }
+.tn-mobile #tn-bulkadd-overlay .tn-modal-body { display:flex; flex-direction:column; }
+.tn-mobile #tn-bulkadd-overlay .tn-modal-body .tn-field:has(#tn-bulkadd-text) { flex:1; margin-bottom:0; min-height:0; }
+.tn-mobile #tn-bulkadd-overlay #tn-bulkadd-text { flex:1; height:auto; min-height:140px; resize:none; }
+
+/* --- Add Team: bigger member chips + larger remove target on mobile (§5).
+   The member-tag container wraps; the body scrolls so a long roster doesn't
+   push the sticky footer off-screen (body already overflow-y:auto + flex:1). */
+.tn-mobile #tn-addteam-members { display:flex; flex-wrap:wrap; gap:8px; }
+.tn-mobile #tn-addteam-members .tn-team-member-tag { font-size:14px; padding:6px 12px; min-height:36px; margin:0; }
+.tn-mobile #tn-addteam-members .tn-team-member-remove { padding:6px 8px; min-width:32px; font-size:16px; }
+
 /* --- Action-sheet variant: content-sized (auto-height) menu of options. --- */
 .tn-mobile .tn-overlay.tn-sheet--action .tn-modal-box { max-height:80vh; max-height:80dvh; }
 .tn-sheet-action-list { display:flex; flex-direction:column; padding:8px 0 calc(8px + env(safe-area-inset-bottom, 0px)); }
@@ -4492,7 +4508,16 @@ function tnFixedAcPosition(inputEl, dropdownEl) {
 		tnAcClose();
 		tnHideFeedback('tn-addparticipant-feedback');
 		tnBuildQuickAddList(bracketId, tournamentId);
-		tnOpenModal(OVERLAY);
+		// Mobile: present as a bottom sheet (swipe-down dismiss, sticky footer,
+		// keyboard-safe height); desktop falls through to the legacy centered
+		// overlay so behavior is byte-identical. tnCloseModal routes the
+		// _tnSheet overlay back through TnMobile.sheet.close on teardown.
+		if (window.TnMobile && TnMobile.sheet && TnMobile.viewMode
+			&& TnMobile.viewMode.isMobile && TnMobile.viewMode.isMobile()) {
+			TnMobile.sheet.open(document.getElementById(OVERLAY), {});
+		} else {
+			tnOpenModal(OVERLAY);
+		}
 	};
 
 	// Quick Add list — participants from other brackets not yet in target bracket
@@ -4824,7 +4849,13 @@ function tnFixedAcPosition(inputEl, dropdownEl) {
 		document.getElementById('tn-addteam-submit').style.display = 'none';
 		document.getElementById('tn-teamquickadd-section').style.display = 'none';
 		tnTeamAcClose();
-		tnOpenModal(OVERLAY);
+		// Mobile: bottom sheet; desktop: legacy centered overlay (unchanged).
+		if (window.TnMobile && TnMobile.sheet && TnMobile.viewMode
+			&& TnMobile.viewMode.isMobile && TnMobile.viewMode.isMobile()) {
+			TnMobile.sheet.open(document.getElementById(OVERLAY), {});
+		} else {
+			tnOpenModal(OVERLAY);
+		}
 		setTimeout(function(){ document.getElementById('tn-addteam-name').focus(); }, 50);
 	};
 
@@ -8171,10 +8202,29 @@ html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
 		$('tn-bulkadd-feedback').style.display = 'none';
 		$('tn-bulkadd-progress').style.display = 'none';
 		$('tn-bulkadd-submit').disabled = false;
-		tnOpenModal('tn-bulkadd-overlay');
+		tnUpdateBulkCount();
+		// Mobile: near-full-height bottom sheet (textarea flex:1, sticky footer);
+		// desktop: legacy centered overlay (unchanged).
+		if (window.TnMobile && TnMobile.sheet && TnMobile.viewMode
+			&& TnMobile.viewMode.isMobile && TnMobile.viewMode.isMobile()) {
+			TnMobile.sheet.open($('tn-bulkadd-overlay'), {});
+		} else {
+			tnOpenModal('tn-bulkadd-overlay');
+		}
 		setTimeout(function(){ var t = $('tn-bulkadd-text'); if (t) t.focus(); }, 80);
 	};
 	function closeBulkAdd(){ tnCloseModal('tn-bulkadd-overlay'); }
+	// Live line-count -> Add button label ("Add 12 fighters"). Counts only
+	// non-blank lines (matches the submit-time filter at the bulk handler).
+	window.tnUpdateBulkCount = function(){
+		var ta = $('tn-bulkadd-text'); var btn = $('tn-bulkadd-submit');
+		if (!ta || !btn) return;
+		var n = (ta.value || '').split(/\r?\n/).filter(function(l){ return l.trim().length > 0; }).length;
+		var label = n > 0 ? ('Add ' + n + ' fighter' + (n === 1 ? '' : 's')) : 'Add All';
+		btn.innerHTML = '<i class="fas fa-users"></i> ' + label;
+	};
+	var _bulkTa = $('tn-bulkadd-text');
+	if (_bulkTa) _bulkTa.addEventListener('input', window.tnUpdateBulkCount);
 	['tn-bulkadd-close','tn-bulkadd-cancel'].forEach(function(id){
 		var el = $(id); if (el) el.addEventListener('click', closeBulkAdd);
 	});
