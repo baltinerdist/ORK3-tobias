@@ -8006,24 +8006,55 @@ html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 			return { round: r, order: o };
 		}
 
-		function nextUnresolved(bd){
+		// tnBoutStage — assigns each match a global integer "stage" reflecting the
+		// REAL fought order of a double-elimination tournament, where the Losers
+		// Bracket opens after Winners R1 and both brackets advance in lockstep:
+		//   WB1=1, WB2=3, WB3=6, WB4=9 ...          (winners / '' / single-elim)
+		//   LB1=2, LB2=4, LB3=5, LB4=7, LB5=8, LB6=10 ...   (losers)
+		//   grand-final after everything (game then reset), then 3rd-place TB last.
+		// Verified against generate_double_elim() round numbering and the WR-loser
+		// routing in PostMatchResult (WR1 losers -> LB1; WR round r>=2 -> LB (r-1)*2).
+		function tnBoutStage(side, round){
+			side = String(side || '').toLowerCase();
+			var r = parseInt(round, 10) || 0;
+			if (side === 'grand-final')   return 1e6 + r;
+			if (side === 'tiebreaker-3rd') return 2e6 + r;
+			if (side === 'losers'){
+				if (r === 1) return 2;
+				return 3 * Math.floor(r / 2) + 1 + (r % 2 === 1 ? 1 : 0);
+			}
+			if (side === 'winners' || side === ''){
+				return (r === 1) ? 1 : 3 * (r - 1);
+			}
+			return 3e6 + r; // defensive: round-robin 'tiebreaker' / unknown sides
+		}
+
+		// tnSequencedBouts — SINGLE SOURCE OF TRUTH for bout ordering. Returns ALL of
+		// the bracket's matches (mapped with the same _round/_order/_side fields the
+		// deck/next-up consume) sorted by (stage ASC, then match order ASC).
+		function tnSequencedBouts(bd){
 			var matches = (bd && bd.Matches) || [];
 			var ms = matches.map(function(m){
 				var ro = parseRoundOrder(m.Match);
+				var round = m.Round || ro.round;
+				var side = (m.BracketSide || '').toLowerCase();
 				return Object.assign({}, m, {
-					_round: m.Round || ro.round,
+					_round: round,
 					_order: ro.order,
-					_side:  (m.BracketSide || '').toLowerCase()
+					_side:  side,
+					_stage: tnBoutStage(side, round)
 				});
 			});
-			var sideRank = { winners:0, '':0, losers:1, 'grand-final':2, 'tiebreaker-3rd':3 };
-			ms.sort(function(a,b){
-				var sa = sideRank[a._side] || 0, sb = sideRank[b._side] || 0;
-				if (sa !== sb) return sa - sb;
-				if (a._round !== b._round) return a._round - b._round;
+			ms.sort(function(a, b){
+				if (a._stage !== b._stage) return a._stage - b._stage;
 				return a._order - b._order;
 			});
-			return ms.filter(function(m){
+			return ms;
+		}
+
+		// Ready matches (no result, both participants present) in true fought order.
+		function nextUnresolved(bd){
+			return tnSequencedBouts(bd).filter(function(m){
 				if (m.Result) return false;
 				if (!m.Participant1Id || !m.Participant2Id) return false;
 				return true;
