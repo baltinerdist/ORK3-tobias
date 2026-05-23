@@ -8016,7 +8016,7 @@ html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 					_side:  (m.BracketSide || '').toLowerCase()
 				});
 			});
-			var sideRank = { winners:0, '':0, losers:1, 'grand-final':2 };
+			var sideRank = { winners:0, '':0, losers:1, 'grand-final':2, 'tiebreaker-3rd':3 };
 			ms.sort(function(a,b){
 				var sa = sideRank[a._side] || 0, sb = sideRank[b._side] || 0;
 				if (sa !== sb) return sa - sb;
