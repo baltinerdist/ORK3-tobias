@@ -1530,6 +1530,108 @@ html[data-theme="dark"] .tn-mobile .tn-deck-compact-x { color:#718096; }
 html[data-theme="dark"] .tn-mobile .tn-deck-compact-row .tn-nu-p-seed { color:#a0aec0; }
 html[data-theme="dark"] .tn-mobile .tn-deck-dot { background:#4a5568; }
 html[data-theme="dark"] .tn-mobile .tn-deck-dot.tn-deck-dot--on { background:#48bb78; }
+
+/* =============================================
+   MOBILE IRONMAN / KING-OF-THE-HILL DECK (Track R3)
+   Dedicated mobile card for ironman: a focused "king vs next challenger"
+   lead for the SELECTED ring, plus a ring selector and a compact on-deck
+   queue. Rendered into #tn-nextup (above the desktop rings grid, which
+   stays as the roster/standings + timer view). NOT the TnMobile.deck
+   primitive: the ironman flow has a single recordable fight (king vs
+   head-of-queue), so swipe-through-bouts does not apply — ring switching
+   is the navigation instead. Gated under .tn-mobile. Dark-mode parity below.
+   ============================================= */
+.tn-mobile .tn-imd-wrap { display:flex; flex-direction:column; gap:10px; }
+.tn-mobile .tn-imd-header { display:flex; align-items:center; gap:8px; }
+.tn-mobile .tn-imd-title { font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#1a202c; }
+.tn-mobile .tn-imd-sub { font-size:12px; color:#718096; flex:1; }
+/* Ring selector — segmented control (few rings) */
+.tn-mobile .tn-imd-rings { display:flex; gap:6px; flex-wrap:wrap; }
+.tn-mobile .tn-imd-ring-btn {
+	flex:1 1 auto; min-height:var(--tn-touch); min-width:64px;
+	border:2px solid #e2e8f0; background:#fff; border-radius:10px;
+	font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.03em;
+	color:#4a5568; cursor:pointer; padding:6px 8px;
+	-webkit-tap-highlight-color:transparent; transition:background .15s,border-color .15s,color .15s;
+}
+.tn-mobile .tn-imd-ring-btn.tn-imd-ring-on { color:#fff; }
+/* Lead card: king vs next challenger for the focused ring */
+.tn-mobile .tn-imd-lead {
+	border:2px solid #e2e8f0; border-radius:14px; background:#fff; padding:14px;
+	box-shadow:0 2px 10px rgba(0,0,0,0.06); display:flex; flex-direction:column; gap:12px;
+}
+.tn-mobile .tn-imd-lead-top { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; }
+.tn-mobile .tn-imd-fight { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#718096; }
+.tn-mobile .tn-imd-king-badge { display:flex; align-items:center; gap:6px; background:#f0fff4; border:1px solid #9ae6b4; border-radius:20px; padding:4px 11px; }
+.tn-mobile .tn-imd-king-crown { color:#d69e2e; font-size:12px; }
+.tn-mobile .tn-imd-king-label { font-size:10px; font-weight:700; text-transform:uppercase; color:#276749; letter-spacing:.04em; }
+.tn-mobile .tn-imd-king-name { font-size:13px; font-weight:800; color:#1a202c; }
+.tn-mobile .tn-imd-king-streak { font-size:11px; font-weight:700; color:#276749; background:#c6f6d5; border-radius:10px; padding:1px 7px; }
+.tn-mobile .tn-imd-vs { display:flex; align-items:stretch; gap:10px; }
+.tn-mobile .tn-imd-fighter {
+	flex:1 1 0; min-width:0; border:2px solid #e2e8f0; border-radius:12px; padding:12px 8px;
+	text-align:center; background:#fbfcfe;
+}
+.tn-mobile .tn-imd-fighter.tn-imd-fighter-king { border-color:#3182ce; background:#ebf8ff; }
+.tn-mobile .tn-imd-avatar { width:42px; height:42px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:800; color:#fff; margin:0 auto 8px; }
+.tn-mobile .tn-imd-fname { font-size:13px; font-weight:800; color:#1a202c; line-height:1.2; word-break:break-word; text-transform:uppercase; letter-spacing:.02em; }
+.tn-mobile .tn-imd-frole { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#718096; margin-top:3px; }
+.tn-mobile .tn-imd-fwins { font-size:11px; color:#718096; margin-top:4px; }
+.tn-mobile .tn-imd-vs-sep { flex:0 0 auto; display:flex; align-items:center; font-size:12px; font-weight:800; color:#a0aec0; }
+.tn-mobile .tn-imd-win-btns { display:flex; gap:8px; }
+.tn-mobile .tn-imd-win-btn {
+	flex:1 1 0; min-height:var(--tn-touch); border:none; border-radius:10px;
+	font-size:13px; font-weight:800; color:#fff; cursor:pointer; padding:10px 8px;
+	-webkit-tap-highlight-color:transparent; transition:opacity .15s, transform .1s;
+	overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.tn-mobile .tn-imd-win-btn:active { transform:scale(0.98); }
+.tn-mobile .tn-imd-win-btn:disabled { opacity:.5; cursor:default; }
+.tn-mobile .tn-imd-win-btn-king { background:#3182ce; }
+.tn-mobile .tn-imd-win-btn-chal { background:#276749; }
+.tn-mobile .tn-imd-status { font-size:12px; min-height:16px; color:#718096; text-align:center; }
+.tn-mobile .tn-imd-status.ok { color:#276749; font-weight:700; }
+.tn-mobile .tn-imd-status.err { color:#e53e3e; font-weight:700; }
+.tn-mobile .tn-imd-locked { font-size:12px; color:#a0aec0; text-align:center; padding:6px; }
+/* On-deck queue */
+.tn-mobile .tn-imd-ondeck-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#718096; margin-top:2px; }
+.tn-mobile .tn-imd-ondeck { display:flex; flex-direction:column; gap:6px; }
+.tn-mobile .tn-imd-chip {
+	display:flex; align-items:center; gap:9px; min-height:38px;
+	border:1px solid #e2e8f0; border-radius:10px; background:#f7fafc; padding:6px 12px;
+}
+.tn-mobile .tn-imd-chip-pos { flex:0 0 auto; font-size:11px; font-weight:800; color:#a0aec0; min-width:18px; }
+.tn-mobile .tn-imd-chip-seed { flex:0 0 auto; font-size:11px; font-weight:700; color:#718096; }
+.tn-mobile .tn-imd-chip-name { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; color:#2d3748; font-size:13px; }
+.tn-mobile .tn-imd-empty { font-size:12px; color:#a0aec0; text-align:center; padding:8px; }
+
+/* ---- Dark-mode parity ---- */
+html[data-theme="dark"] .tn-mobile .tn-imd-title { color:#f7fafc; }
+html[data-theme="dark"] .tn-mobile .tn-imd-sub { color:#a0aec0; }
+html[data-theme="dark"] .tn-mobile .tn-imd-ring-btn { background:#2d3748; border-color:#4a5568; color:#cbd5e0; }
+html[data-theme="dark"] .tn-mobile .tn-imd-lead { background:#1a202c; border-color:#2d3748; box-shadow:0 2px 10px rgba(0,0,0,0.5); }
+html[data-theme="dark"] .tn-mobile .tn-imd-fight { color:#a0aec0; }
+html[data-theme="dark"] .tn-mobile .tn-imd-king-badge { background:rgba(56,161,105,0.18); border-color:rgba(154,230,180,0.4); }
+html[data-theme="dark"] .tn-mobile .tn-imd-king-crown { color:#ecc94b; }
+html[data-theme="dark"] .tn-mobile .tn-imd-king-label { color:#9ae6b4; }
+html[data-theme="dark"] .tn-mobile .tn-imd-king-name { color:#f7fafc; }
+html[data-theme="dark"] .tn-mobile .tn-imd-king-streak { color:#9ae6b4; background:rgba(56,161,105,0.3); }
+html[data-theme="dark"] .tn-mobile .tn-imd-fighter { background:#222b38; border-color:#4a5568; }
+html[data-theme="dark"] .tn-mobile .tn-imd-fighter.tn-imd-fighter-king { background:rgba(49,130,206,0.18); border-color:#3182ce; }
+html[data-theme="dark"] .tn-mobile .tn-imd-fname { color:#f7fafc; }
+html[data-theme="dark"] .tn-mobile .tn-imd-frole { color:#a0aec0; }
+html[data-theme="dark"] .tn-mobile .tn-imd-fwins { color:#a0aec0; }
+html[data-theme="dark"] .tn-mobile .tn-imd-vs-sep { color:#718096; }
+html[data-theme="dark"] .tn-mobile .tn-imd-status { color:#a0aec0; }
+html[data-theme="dark"] .tn-mobile .tn-imd-status.ok { color:#9ae6b4; }
+html[data-theme="dark"] .tn-mobile .tn-imd-status.err { color:#fc8181; }
+html[data-theme="dark"] .tn-mobile .tn-imd-locked { color:#718096; }
+html[data-theme="dark"] .tn-mobile .tn-imd-ondeck-title { color:#a0aec0; }
+html[data-theme="dark"] .tn-mobile .tn-imd-chip { background:#222b38; border-color:#4a5568; }
+html[data-theme="dark"] .tn-mobile .tn-imd-chip-pos { color:#718096; }
+html[data-theme="dark"] .tn-mobile .tn-imd-chip-seed { color:#a0aec0; }
+html[data-theme="dark"] .tn-mobile .tn-imd-chip-name { color:#e2e8f0; }
+html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 </style>
 
 <!-- =============================================
@@ -6119,6 +6221,17 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 
 	// Ring color palette (border + label bg) for up to 8 rings
 	var TN_RING_COLORS = ['','#3182ce','#38a169','#e53e3e','#805ad5','#dd6b20','#d69e2e','#d53f8c','#744210'];
+	// Exported for the mobile ironman deck (Track R3, separate <script> IIFE).
+	// REUSE — these are the SAME functions the desktop renderIronmanView uses;
+	// the deck does NOT reimplement king/queue/win logic.
+	window.tnIronmanHelpers = {
+		getWinnerId: getIronmanWinnerId,
+		computeStats: computeIronmanStats,
+		computeGlobalStats: computeIronmanGlobalStats,
+		computeQueue: computeIronmanQueue,
+		ringColors: TN_RING_COLORS
+	};
+	window.tnRefreshAndRender = tnRefreshAndRender;
 
 	// Apply a recorded ironman win to the DOM. Fast path (king held the hill — the
 	// common rapid-streak case) patches numbers in place: no rebuild, no lost focus.
@@ -8134,6 +8247,14 @@ html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
 		// collision. The deck handle is torn down whenever we leave mobile.
 		var deckHandle = null;          // TnMobile.deck.mount() return, or null when desktop
 		var deckBid = 0;                // bracket id the deck is currently rendering
+		// Mobile ironman (king-of-the-hill) deck state. A DEDICATED card layout
+		// (not TnMobile.deck): ironman has a single recordable fight per ring
+		// (king vs head-of-queue), so swipe-through-bouts does not apply — ring
+		// switching is the navigation. _imDeckRing persists the selected ring
+		// across re-renders so a win doesn't bounce the organizer back to ring 1.
+		var _imDeckMounted = false;     // true while a mobile ironman deck owns nuHost
+		var _imDeckRing = 1;            // currently selected ring for the deck
+		function destroyIronmanDeck(){ _imDeckMounted = false; }
 		function isMobileView(){
 			return !!(window.TnMobile && TnMobile.viewMode && TnMobile.viewMode.isMobile && TnMobile.viewMode.isMobile());
 		}
@@ -8690,22 +8811,284 @@ html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
 			});
 		}
 
+		// ====================================================================
+		// MOBILE IRONMAN / KING-OF-THE-HILL DECK (Track R3)
+		// Dedicated mobile card (NOT TnMobile.deck): a focused "king vs next
+		// challenger" lead for the SELECTED ring, a ring selector, and a compact
+		// on-deck challenger queue. ALL data + win logic is REUSED from the
+		// desktop ironman view via window.tnIronmanHelpers (computeStats /
+		// computeGlobalStats / computeQueue / getWinnerId) — no duplication. A
+		// win posts to the SAME TournamentAjax .../ironmanwin endpoint and then
+		// refreshes via window.tnRefreshAndRender (the desktop refetch+render
+		// path), which re-invokes tnRenderNextUp and rebuilds this deck with the
+		// advanced king/queue. Rendered into #tn-nextup, above the desktop rings
+		// grid in #tn-bv-container (which stays as roster/standings + timer).
+		// ====================================================================
+		var _imAvatarColors = ['#e53e3e','#38a169','#3182ce','#d69e2e','#805ad5','#dd6b20','#00b5d8','#d53f8c','#2d3748','#319795'];
+
+		// Read the ironman timer lock state from the SAME localStorage key the
+		// desktop renderIronmanView uses. Unlocked => fights can be recorded.
+		function imTimerUnlocked(bid, bd){
+			var durMs = (parseInt((bd.Bracket && bd.Bracket.DurationMinutes) || 0, 10) || 0) * 60000;
+			if (durMs === 0) return true; // no timer configured => always open
+			var st = null;
+			try { st = JSON.parse(localStorage.getItem('tn_im_timer_' + bid) || 'null'); } catch(e){}
+			if (!st || !st.startedAt) return false;		  // not started => locked
+			if (st.endedAt) return false;					 // ended => locked
+			if (st.graceStartedAt){						   // in grace => still open briefly
+				return (Date.now() - st.graceStartedAt) < 10000;
+			}
+			if (st.pausedAt) return true;					 // paused => recording still allowed
+			return true;									  // running
+		}
+
+		function renderIronmanDeck(bid, bd){
+			var H = window.tnIronmanHelpers;
+			if (!H){ destroyIronmanDeck(); nuHost.innerHTML = ''; return; } // helpers not yet loaded
+			var matches	  = (bd.Matches || []).slice().sort(function(a,b){ return (parseInt(a.Order)||0)-(parseInt(b.Order)||0); });
+			var completed	= matches.filter(function(m){ return m.Result && m.Result !== ''; });
+			var participants = bd.Participants || [];
+			var pMap = {};
+			participants.forEach(function(p){ pMap[p.ParticipantId] = p; });
+
+			var ringCount = Math.max(1, Math.min(8, parseInt((bd.Bracket && bd.Bracket.Rings) || 1, 10) || 1));
+			if (_imDeckRing < 1 || _imDeckRing > ringCount) _imDeckRing = 1;
+
+			// Per-ring real kings (fight-history only) for cross-ring blocking — same
+			// rule as desktop: a fighter who is the real king of another ring can't
+			// be entered here.
+			var seedSorted = participants.slice().sort(function(a,b){
+				return (parseInt(a.ParticipantNumber)||parseInt(a.Seed)||0) - (parseInt(b.ParticipantNumber)||parseInt(b.Seed)||0);
+			});
+			var allKingRing = {};
+			for (var ri = 1; ri <= ringCount; ri++){
+				var rk = H.computeStats(completed, ri).currentKingId;
+				if (rk) allKingRing[rk] = ri;
+			}
+
+			var globalStats = H.computeGlobalStats(completed);
+			var unlocked	= imTimerUnlocked(bid, bd);
+			var ringColor   = H.ringColors[_imDeckRing] || '#718096';
+
+			_imDeckMounted = true;
+			destroyDeck(); // ensure no elim deck handle lingers
+
+			var wrap = document.createElement('div');
+			wrap.className = 'tn-imd-wrap';
+
+			// Header
+			var header = document.createElement('div');
+			header.className = 'tn-imd-header';
+			header.innerHTML = '<span class="tn-imd-title">King of the Hill</span>'
+				+ '<span class="tn-imd-sub">&mdash; tap the winner of each fight</span>';
+			wrap.appendChild(header);
+
+			// Ring selector (segmented). Only shown when >1 ring.
+			if (ringCount > 1){
+				var rings = document.createElement('div');
+				rings.className = 'tn-imd-rings';
+				for (var rn = 1; rn <= ringCount; rn++){
+					(function(rNum){
+						var btn = document.createElement('button');
+						btn.type = 'button';
+						btn.className = 'tn-imd-ring-btn' + (rNum === _imDeckRing ? ' tn-imd-ring-on' : '');
+						var rc = H.ringColors[rNum] || '#718096';
+						if (rNum === _imDeckRing){ btn.style.background = rc; btn.style.borderColor = rc; }
+						btn.textContent = 'Ring ' + rNum;
+						btn.onclick = function(){ _imDeckRing = rNum; renderIronmanDeck(bid, bd); };
+						rings.appendChild(btn);
+					})(rn);
+				}
+				wrap.appendChild(rings);
+			}
+
+			// --- Selected ring's king + challenger queue (REUSED helpers) ---
+			var rStats	 = H.computeStats(completed, _imDeckRing);
+			var kingId	 = rStats.currentKingId;
+			var rCompleted = completed.filter(function(m){ return (parseInt(m.RingNumber)||1) === _imDeckRing; });
+			var fightNum   = rCompleted.length + 1;
+
+			// Display king default (Nth seed) when no fights yet — mirrors desktop.
+			if (!kingId && seedSorted.length > 0){
+				kingId = parseInt(seedSorted[(_imDeckRing - 1) % seedSorted.length].ParticipantId) || 0;
+			}
+
+			// Challenger queue for this ring: order from computeQueue, then drop
+			// anyone who is the king of a DIFFERENT ring (can't fight here), and the
+			// current king. Same exclusion intent as desktop's cross-ring blocking.
+			var excludeIds = kingId ? [kingId] : [];
+			var queue = H.computeQueue(completed, pMap, excludeIds).filter(function(pidv){
+				return !(allKingRing[pidv] !== undefined && allKingRing[pidv] !== _imDeckRing);
+			});
+			var nextChallengerId = queue.length ? queue[0] : 0;
+
+			// Lead card
+			var lead = document.createElement('div');
+			lead.className = 'tn-imd-lead';
+			lead.style.borderColor = ringColor;
+
+			var top = document.createElement('div');
+			top.className = 'tn-imd-lead-top';
+			top.innerHTML = '<span class="tn-imd-fight">' + (ringCount > 1 ? 'Ring ' + _imDeckRing + ' &middot; ' : '') + 'Fight #' + fightNum + '</span>';
+			if (kingId && pMap[kingId]){
+				var kName = pMap[kingId].Alias || pMap[kingId].Persona || '?';
+				var kStreak = globalStats.streak[kingId] || 0;
+				top.innerHTML += '<span class="tn-imd-king-badge">'
+					+ '<i class="fas fa-crown tn-imd-king-crown"></i>'
+					+ '<span class="tn-imd-king-label">King</span>'
+					+ '<span class="tn-imd-king-name">' + tnEsc(kName) + '</span>'
+					+ (kStreak > 1 ? '<span class="tn-imd-king-streak">' + kStreak + '</span>' : '')
+					+ '</span>';
+			}
+			lead.appendChild(top);
+
+			function fighterCardHTML(pid, isKing){
+				var p = pMap[pid] || {};
+				var name = p.Alias || p.Persona || '?';
+				var seedNum = parseInt(p.ParticipantNumber) || parseInt(p.Seed) || '';
+				var wins = globalStats.wins[pid] || 0;
+				var color = _imAvatarColors[(seedSorted.findIndex(function(x){ return (parseInt(x.ParticipantId)||0) === pid; }) + _imDeckRing) % _imAvatarColors.length] || '#718096';
+				return '<div class="tn-imd-fighter' + (isKing ? ' tn-imd-fighter-king' : '') + '">'
+					+ '<div class="tn-imd-avatar" style="background:' + color + '">' + (seedNum || '?') + '</div>'
+					+ '<div class="tn-imd-fname">' + tnEsc(name) + '</div>'
+					+ '<div class="tn-imd-frole">' + (isKing ? 'On the Hill' : 'Challenger') + '</div>'
+					+ '<div class="tn-imd-fwins"><i class="fas fa-trophy"></i> ' + wins + '</div>'
+					+ '</div>';
+			}
+
+			if (kingId && nextChallengerId){
+				var vs = document.createElement('div');
+				vs.className = 'tn-imd-vs';
+				vs.innerHTML = fighterCardHTML(kingId, true)
+					+ '<div class="tn-imd-vs-sep">VS</div>'
+					+ fighterCardHTML(nextChallengerId, false);
+				lead.appendChild(vs);
+
+				var status = document.createElement('div');
+				status.className = 'tn-imd-status';
+				lead.appendChild(status);
+
+				if (TnConfig.canManage && unlocked){
+					var btns = document.createElement('div');
+					btns.className = 'tn-imd-win-btns';
+					var kingName = (pMap[kingId].Alias || pMap[kingId].Persona || 'King');
+					var chalName = (pMap[nextChallengerId].Alias || pMap[nextChallengerId].Persona || 'Challenger');
+
+					function makeWinBtn(winnerId, label, cls){
+						var b = document.createElement('button');
+						b.type = 'button';
+						b.className = 'tn-imd-win-btn ' + cls;
+						b.innerHTML = '<i class="fas fa-trophy"></i> ' + tnEsc(label) + ' won';
+						b.onclick = function(){
+							if (b.dataset.pending) return;
+							b.dataset.pending = '1';
+							btns.querySelectorAll('button').forEach(function(x){ x.disabled = true; });
+							status.className = 'tn-imd-status';
+							status.textContent = 'Recording…';
+							// SAME endpoint + payload as the desktop ironman quick-entry.
+							var fd = new FormData();
+							fd.append('WinnerId',	 winnerId);
+							fd.append('TournamentId', TnConfig.tournamentId);
+							fd.append('RingNumber',   _imDeckRing);
+							fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bid + '/ironmanwin', { method:'POST', body:fd })
+								.then(function(r){ return r.json(); })
+								.then(function(d){
+									if (d.status !== 0){
+										status.className = 'tn-imd-status err';
+										status.textContent = d.error || 'Error';
+										btns.querySelectorAll('button').forEach(function(x){ x.disabled = false; });
+										delete b.dataset.pending;
+										return;
+									}
+									// Refresh via the desktop refetch+render path; it re-invokes
+									// tnRenderNextUp, which rebuilds this deck with the advanced
+									// king/queue. _imDeckRing persists, so we stay on this ring.
+									if (typeof window.tnRefreshAndRender === 'function') window.tnRefreshAndRender(bid);
+									else if (typeof window.tnRenderBracketViz === 'function') window.tnRenderBracketViz(bid);
+								})
+								.catch(function(){
+									status.className = 'tn-imd-status err';
+									status.textContent = 'Network error';
+									btns.querySelectorAll('button').forEach(function(x){ x.disabled = false; });
+									delete b.dataset.pending;
+								});
+						};
+						return b;
+					}
+					btns.appendChild(makeWinBtn(kingId, kingName, 'tn-imd-win-btn-king'));
+					btns.appendChild(makeWinBtn(nextChallengerId, chalName, 'tn-imd-win-btn-chal'));
+					lead.appendChild(btns);
+				} else if (!unlocked){
+					var lk = document.createElement('div');
+					lk.className = 'tn-imd-locked';
+					lk.innerHTML = '<i class="fas fa-lock"></i> Start the timer to record fights';
+					lead.appendChild(lk);
+				}
+			} else {
+				var empty = document.createElement('div');
+				empty.className = 'tn-imd-empty';
+				empty.textContent = (participants.length < 1)
+					? 'Add fighters to begin.'
+					: (kingId ? 'No challenger available for this ring yet.' : 'No fighters seeded for this ring.');
+				lead.appendChild(empty);
+			}
+			wrap.appendChild(lead);
+
+			// On-deck challenger queue (next up to 3 after the current challenger).
+			var onDeckIds = queue.slice(1, 4);
+			if (onDeckIds.length){
+				var odTitle = document.createElement('div');
+				odTitle.className = 'tn-imd-ondeck-title';
+				odTitle.textContent = 'On Deck';
+				wrap.appendChild(odTitle);
+
+				var od = document.createElement('div');
+				od.className = 'tn-imd-ondeck';
+				onDeckIds.forEach(function(pid, i){
+					var p = pMap[pid] || {};
+					var name = p.Alias || p.Persona || '?';
+					var seedNum = parseInt(p.ParticipantNumber) || parseInt(p.Seed) || '';
+					var chip = document.createElement('div');
+					chip.className = 'tn-imd-chip';
+					chip.innerHTML = '<span class="tn-imd-chip-pos">' + (i + 2) + '</span>'
+						+ (seedNum ? '<span class="tn-imd-chip-seed">#' + seedNum + '</span>' : '')
+						+ '<span class="tn-imd-chip-name">' + tnEsc(name) + '</span>';
+					od.appendChild(chip);
+				});
+				wrap.appendChild(od);
+			}
+
+			nuHost.innerHTML = '';
+			nuHost.appendChild(wrap);
+		}
+
 		window.tnRenderNextUp = function(bracketId){
 			nuHost = nuHost || $('tn-nextup');
 			if (!nuHost) return;
 			// Result-entry tool: hidden entirely from spectators / non-managers.
-			if (!TnConfig.canManage) { destroyDeck(); nuHost.innerHTML = ''; return; }
+			if (!TnConfig.canManage) { destroyDeck(); destroyIronmanDeck(); nuHost.innerHTML = ''; return; }
 			var bid = parseInt(bracketId, 10);
 			if (!bid || !TnConfig.bracketData || !TnConfig.bracketData[bid]){
-				destroyDeck(); nuHost.innerHTML = '';
+				destroyDeck(); destroyIronmanDeck(); nuHost.innerHTML = '';
 				return;
 			}
 			var bd = TnConfig.bracketData[bid];
 			var method = (bd.Bracket && bd.Bracket.Method) || '';
-			if (method === 'ironman'){ destroyDeck(); nuHost.innerHTML = ''; return; }
+			if (method === 'ironman'){
+				// Mobile: focused king-vs-challenger deck (Track R3). Desktop: the
+				// full rings grid + timer lives in #tn-bv-container (renderIronmanView),
+				// so #tn-nextup stays empty there — no double render.
+				if (isMobileView()){
+					var imStatus = (bd.Bracket && bd.Bracket.Status) || '';
+					if (imStatus === 'complete' || imStatus === 'finalized'){ destroyIronmanDeck(); nuHost.innerHTML = ''; return; }
+					renderIronmanDeck(bid, bd);
+					return;
+				}
+				destroyDeck(); destroyIronmanDeck(); nuHost.innerHTML = ''; return;
+			}
 			var status = (bd.Bracket && bd.Bracket.Status) || '';
 			if (status === 'setup' || status === 'complete' || status === 'finalized'){
-				destroyDeck(); nuHost.innerHTML = '';
+				destroyDeck(); destroyIronmanDeck(); nuHost.innerHTML = '';
 				return;
 			}
 			activeBestOf = bestOfForBracket(bd);
@@ -8740,6 +9123,7 @@ html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
 
 			// ---- Mobile: swipeable Match Deck -------------------------------
 			// current fight (full) + next 2 on-deck (compact), windowed HERE to 3.
+			destroyIronmanDeck();
 			if (isMobileView() && window.TnMobile && TnMobile.deck){
 				renderNextUpDeck(bid, bd, pMap, unresolved.slice(0, 3));
 				return;
