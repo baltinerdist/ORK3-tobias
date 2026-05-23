@@ -1499,6 +1499,121 @@ html[data-theme="dark"] .tn-sheet-action-item.tn-sheet-action--danger:active { b
 html[data-theme="dark"] .tn-sheet-action-cancel { border-top-color:#2d3748; color:#a0aec0; }
 
 /* =============================================================
+   B1 — Bracket generation step-wizard (mobile only).
+   The wizard is a presentation layer injected into the EXISTING
+   Add/Edit Bracket overlays by JS at open-time. It reads/writes the
+   SAME hidden inputs (#tn-addbracket-style, …-method, …-participants,
+   …-rings, …-seeding, …-bestof, …-duration, …-stylenote) and triggers
+   the EXISTING submit button. All rules are .tn-mobile-scoped so the
+   desktop modal (all fields at once) is byte-identical to before.
+   ============================================================= */
+/* When the wizard is active on mobile, hide the desktop field layout and
+   the legacy footer (the wizard injects its own footer + steps). */
+.tn-mobile .tn-overlay.tn-wiz-active .tn-field-row,
+.tn-mobile .tn-overlay.tn-wiz-active .tn-advanced-toggle,
+.tn-mobile .tn-overlay.tn-wiz-active #tn-addbracket-advanced,
+.tn-mobile .tn-overlay.tn-wiz-active #tn-editbracket-advanced,
+.tn-mobile .tn-overlay.tn-wiz-active .tn-modal-footer { display:none !important; }
+
+/* Progress: counter + dot bar, sits under the sticky header. */
+.tn-mobile .tn-wiz-progress { padding:4px 0 10px; }
+.tn-mobile .tn-wiz-count { font-size:12px; font-weight:700; color:#718096; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px; }
+.tn-mobile .tn-wiz-dots { display:flex; gap:6px; align-items:center; }
+.tn-mobile .tn-wiz-dot { flex:1 1 0; height:5px; border-radius:3px; background:#e2e8f0; transition:background .15s; }
+.tn-mobile .tn-wiz-dot.tn-wiz-dot--done { background:#68d391; }
+.tn-mobile .tn-wiz-dot.tn-wiz-dot--cur { background:#276749; }
+
+/* A step panel — only one visible at a time. */
+.tn-mobile .tn-wiz-step { display:none; }
+.tn-mobile .tn-wiz-step.tn-wiz-step--active { display:block; }
+.tn-mobile .tn-wiz-step-title { font-size:13px; font-weight:700; color:#4a5568; text-transform:uppercase; letter-spacing:0.5px; margin:4px 0 6px; }
+.tn-mobile .tn-wiz-step-hint { font-size:13px; color:#718096; margin:0 0 12px; line-height:1.4; }
+
+/* Large radio rows (replace native selects for high-value decisions). */
+.tn-mobile .tn-wiz-opts { display:flex; flex-direction:column; gap:8px; }
+.tn-mobile .tn-wiz-opt {
+	display:flex; align-items:center; gap:12px;
+	width:100%; min-height:var(--tn-touch); padding:12px 14px;
+	border:1px solid #e2e8f0; border-radius:10px; background:#fff;
+	font-size:15px; color:#1a202c; text-align:left; cursor:pointer;
+	-webkit-tap-highlight-color:transparent;
+}
+.tn-mobile .tn-wiz-opt:active { background:#f0fff4; }
+.tn-mobile .tn-wiz-opt.tn-wiz-opt--sel { border-color:#276749; box-shadow:0 0 0 2px rgba(39,103,73,0.15); background:#f0fff4; }
+.tn-mobile .tn-wiz-opt-main { flex:1 1 auto; min-width:0; }
+.tn-mobile .tn-wiz-opt-label { font-weight:600; }
+.tn-mobile .tn-wiz-opt-sub { display:block; font-size:12px; color:#718096; font-weight:400; margin-top:2px; }
+.tn-mobile .tn-wiz-opt-radio { flex:0 0 auto; width:20px; height:20px; border-radius:50%; border:2px solid #cbd5e0; position:relative; }
+.tn-mobile .tn-wiz-opt--sel .tn-wiz-opt-radio { border-color:#276749; }
+.tn-mobile .tn-wiz-opt--sel .tn-wiz-opt-radio::after { content:''; position:absolute; top:3px; left:3px; width:10px; height:10px; border-radius:50%; background:#276749; }
+
+/* Numeric stepper (rings / custom duration). */
+.tn-mobile .tn-wiz-stepper { display:flex; align-items:center; justify-content:center; gap:18px; margin:8px 0 4px; }
+.tn-mobile .tn-wiz-stepper-btn { width:52px; height:52px; border-radius:12px; border:1px solid #cbd5e0; background:#fff; font-size:26px; line-height:1; color:#276749; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.tn-mobile .tn-wiz-stepper-btn:active { background:#f0fff4; }
+.tn-mobile .tn-wiz-stepper-btn:disabled { opacity:0.4; cursor:default; }
+.tn-mobile .tn-wiz-stepper-val { min-width:64px; text-align:center; font-size:28px; font-weight:700; color:#1a202c; }
+
+/* Chip presets (duration). */
+.tn-mobile .tn-wiz-chips { display:flex; flex-wrap:wrap; gap:8px; margin:4px 0 10px; }
+.tn-mobile .tn-wiz-chip { min-height:40px; padding:8px 16px; border:1px solid #cbd5e0; border-radius:20px; background:#fff; font-size:14px; font-weight:600; color:#2d3748; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.tn-mobile .tn-wiz-chip.tn-wiz-chip--sel { border-color:#276749; background:#f0fff4; color:#276749; }
+
+/* Info box (e.g. "Ironman adds a Duration step"). */
+.tn-mobile .tn-wiz-info { display:flex; gap:8px; align-items:flex-start; padding:10px 12px; border-radius:8px; background:#ebf8ff; color:#2c5282; font-size:13px; line-height:1.4; margin-top:12px; }
+.tn-mobile .tn-wiz-info i { margin-top:2px; }
+
+/* Review summary card. */
+.tn-mobile .tn-wiz-review { padding:14px; border:1px solid #e2e8f0; border-radius:10px; background:#f7fafc; }
+.tn-mobile .tn-wiz-review-line { font-size:14px; color:#2d3748; margin-bottom:6px; }
+.tn-mobile .tn-wiz-review-line strong { color:#1a202c; }
+.tn-mobile .tn-wiz-review-line:last-child { margin-bottom:0; }
+
+/* Wizard chrome only renders inside an active wizard on mobile. The footer
+   and step root live permanently in the DOM (built once), so they must be
+   hidden on desktop and whenever the wizard is not engaged — otherwise a
+   stray unstyled Back/Next bar would show on the desktop modal. */
+.tn-bracket-wizard,
+.tn-wiz-footer { display:none; }
+.tn-mobile .tn-overlay.tn-wiz-active .tn-bracket-wizard { display:block; }
+.tn-mobile .tn-overlay.tn-wiz-active .tn-wiz-footer { display:flex; }
+
+/* Wizard footer (injected): sticky Back / Next | Generate. */
+.tn-mobile .tn-wiz-footer {
+	position:sticky; bottom:0; z-index:2; background:#fff;
+	display:flex; gap:10px; padding:14px 20px;
+	padding-bottom:calc(14px + env(safe-area-inset-bottom, 0px));
+	border-top:1px solid #e2e8f0;
+}
+.tn-mobile .tn-wiz-footer .tn-wiz-back { flex:0 0 auto; }
+.tn-mobile .tn-wiz-footer .tn-wiz-next { flex:1 1 auto; min-height:var(--tn-touch); }
+
+/* ---- Dark-mode parity for the wizard chrome ---- */
+html[data-theme="dark"] .tn-mobile .tn-wiz-count { color:#a0aec0; }
+html[data-theme="dark"] .tn-mobile .tn-wiz-dot { background:#4a5568; }
+html[data-theme="dark"] .tn-mobile .tn-wiz-dot.tn-wiz-dot--done { background:#48bb78; }
+html[data-theme="dark"] .tn-mobile .tn-wiz-dot.tn-wiz-dot--cur { background:#68d391; }
+html[data-theme="dark"] .tn-mobile .tn-wiz-step-title { color:#cbd5e0; }
+html[data-theme="dark"] .tn-mobile .tn-wiz-step-hint { color:#a0aec0; }
+html[data-theme="dark"] .tn-mobile .tn-wiz-opt { background:#2d3748; border-color:#4a5568; color:#f7fafc; }
+html[data-theme="dark"] .tn-mobile .tn-wiz-opt:active,
+html[data-theme="dark"] .tn-mobile .tn-wiz-opt.tn-wiz-opt--sel { background:#22432f; border-color:#68d391; }
+html[data-theme="dark"] .tn-mobile .tn-wiz-opt-sub { color:#a0aec0; }
+html[data-theme="dark"] .tn-mobile .tn-wiz-opt-radio { border-color:#718096; }
+html[data-theme="dark"] .tn-mobile .tn-wiz-opt--sel .tn-wiz-opt-radio { border-color:#68d391; }
+html[data-theme="dark"] .tn-mobile .tn-wiz-opt--sel .tn-wiz-opt-radio::after { background:#68d391; }
+html[data-theme="dark"] .tn-mobile .tn-wiz-stepper-btn { background:#2d3748; border-color:#4a5568; color:#68d391; }
+html[data-theme="dark"] .tn-mobile .tn-wiz-stepper-btn:active { background:#22432f; }
+html[data-theme="dark"] .tn-mobile .tn-wiz-stepper-val { color:#f7fafc; }
+html[data-theme="dark"] .tn-mobile .tn-wiz-chip { background:#2d3748; border-color:#4a5568; color:#e2e8f0; }
+html[data-theme="dark"] .tn-mobile .tn-wiz-chip.tn-wiz-chip--sel { background:#22432f; border-color:#68d391; color:#68d391; }
+html[data-theme="dark"] .tn-mobile .tn-wiz-info { background:#1c3a4f; color:#bee3f8; }
+html[data-theme="dark"] .tn-mobile .tn-wiz-review { background:#2d3748; border-color:#4a5568; }
+html[data-theme="dark"] .tn-mobile .tn-wiz-review-line { color:#e2e8f0; }
+html[data-theme="dark"] .tn-mobile .tn-wiz-review-line strong { color:#f7fafc; }
+html[data-theme="dark"] .tn-mobile .tn-wiz-footer { background:#1a202c; border-top-color:#2d3748; }
+
+/* =============================================================
    PHASE C0 Task 4 — Card-deck primitive (`tn-deck`).
    A vertical stack rendered by TnMobile.deck: item 0 is the FULL lead
    card (`.tn-deck-card--full`); items 1..n are COMPACT cards
@@ -4116,7 +4231,16 @@ function tnUpdatePlacePtsCols() {
 		var mSel = document.getElementById('tn-addbracket-method');
 		var dFld = document.getElementById('tn-addbracket-duration-field');
 		if (dFld && mSel) dFld.style.display = (mSel.value === 'ironman') ? '' : 'none';
-		tnOpenModal(OVERLAY);
+		// Mobile: present as a bottom sheet (swipe-down dismiss, sticky footer,
+		// leak teardown via the foundation); desktop falls through to the legacy
+		// centered overlay so behavior is byte-identical. The B1 wizard layers
+		// its step UI on top after this returns (see the wizard module).
+		if (window.TnMobile && TnMobile.sheet && TnMobile.viewMode
+			&& TnMobile.viewMode.isMobile && TnMobile.viewMode.isMobile()) {
+			TnMobile.sheet.open(document.getElementById(OVERLAY), {});
+		} else {
+			tnOpenModal(OVERLAY);
+		}
 	};
 
 	(function() {
@@ -4219,7 +4343,15 @@ function tnUpdatePlacePtsCols() {
 				}
 			}
 		})();
-		tnOpenModal(OVERLAY);
+		// Mobile: present as a bottom sheet (foundation handles dismiss/teardown);
+		// desktop falls through to the legacy centered overlay unchanged. The B1
+		// wizard layers its step UI on top after this returns.
+		if (window.TnMobile && TnMobile.sheet && TnMobile.viewMode
+			&& TnMobile.viewMode.isMobile && TnMobile.viewMode.isMobile()) {
+			TnMobile.sheet.open(document.getElementById(OVERLAY), {});
+		} else {
+			tnOpenModal(OVERLAY);
+		}
 	};
 
 	(function() {
@@ -4275,6 +4407,443 @@ function tnUpdatePlacePtsCols() {
 				.catch(function() { btn.disabled = false; tnShowFeedback('tn-editbracket-feedback', 'Request failed. Please try again.', false); });
 		});
 	}
+})();
+
+// =============================================================
+// B1 — Bracket generation step-wizard (mobile only).
+// A presentation layer over the EXISTING Add/Edit Bracket overlays.
+// It does NOT introduce a new submit path or endpoint: every wizard
+// control reads/writes the SAME hidden inputs the desktop modal uses
+// (#tn-{add,edit}bracket-style / -method / -participants / -rings /
+// -seeding / -bestof / -duration / -stylenote), and the final
+// "Generate" button clicks the EXISTING submit button
+// (#tn-addbracket-submit / #tn-editbracket-submit), so the existing
+// click handlers (addbracket / updatebracket fetch) run UNCHANGED.
+//
+// On desktop, and whenever .tn-mobile is not active, the wizard never
+// engages — tnOpenAddBracketModal / tnOpenEditBracketModal fall through
+// to their original behavior (all fields shown at once). Guarded on
+// TnConfig.canManage + the runtime mobile check, never on element
+// presence (the overlays are server-rendered, so this file's load
+// order is irrelevant).
+// =============================================================
+(function() {
+	if (!window.TnConfig || !TnConfig.canManage) return;
+
+	function isMobileNow() {
+		return !!(window.TnMobile && TnMobile.viewMode
+			&& TnMobile.viewMode.isMobile && TnMobile.viewMode.isMobile());
+	}
+
+	// Per-overlay field id prefix ("tn-addbracket" | "tn-editbracket").
+	function fld(prefix, name) { return document.getElementById(prefix + '-' + name); }
+
+	// Option metadata (label + one-line helper) for the radio-row steps.
+	var STYLE_OPTS = [
+		['Single Sword','Single Sword'], ['Florentine','Florentine'],
+		['Sword and Shield','Sword & Shield'], ['Great Weapon','Great Weapon'],
+		['Missile','Missile'], ['Jugging','Jugging'], ['Battlegame','Battlegame'],
+		['Quest','Quest'], ['Other','Other / Open']
+	];
+	var METHOD_OPTS = [
+		['single','Single Elimination','One loss and you are out'],
+		['double','Double Elimination','Two losses to be eliminated'],
+		['swiss','Swiss','Fixed rounds, paired by record'],
+		['round-robin','Round Robin','Everyone fights everyone'],
+		['ironman','Ironman','Last fighter standing, timed'],
+		['score','Score','Scored format']
+	];
+	var PARTICIPANT_OPTS = [
+		['individual','Individual','One fighter per slot'],
+		['team','Team','Teams compete as a unit']
+	];
+	var SEEDING_OPTS = [
+		['random','Random','Shuffle the field'],
+		['manual','Manual','Arrange every seed by hand'],
+		['warrior','Orders of the Warrior','Seed by Warrior rank'],
+		['glicko2','Performance Score','Seed by rating'],
+		['random-manual','Random + Manual Adjust','Shuffle, then tweak'],
+		['glicko2-manual','Performance + Manual Adjust','Rate, then tweak']
+	];
+	var BESTOF_OPTS = [
+		['1','Single bout'], ['3','Best of 3'], ['5','Best of 5'],
+		['7','Best of 7'], ['9','Best of 9']
+	];
+	var DURATION_CHIPS = [5,10,15,20,30];
+
+	function methodLabel(v) { for (var i=0;i<METHOD_OPTS.length;i++) if (METHOD_OPTS[i][0]===v) return METHOD_OPTS[i][1]; return v; }
+	function styleLabel(v) { for (var i=0;i<STYLE_OPTS.length;i++) if (STYLE_OPTS[i][0]===v) return STYLE_OPTS[i][1]; return v; }
+	function seedingLabel(v) { for (var i=0;i<SEEDING_OPTS.length;i++) if (SEEDING_OPTS[i][0]===v) return SEEDING_OPTS[i][1]; return v; }
+	function durationLabel(min) { min = parseInt(min,10)||0; return min <= 0 ? 'Unlimited' : (min + ' min'); }
+	function bestOfLabel(v) { v = parseInt(v,10)||1; return v <= 1 ? 'Single bout' : ('Best of ' + v); }
+
+	// Build the wizard DOM for one overlay (lazily, once). Stores controllers
+	// on the overlay element so re-opens reuse the same nodes (and the same
+	// hidden-input writes).
+	function buildWizard(prefix, overlayId, submitBtnId) {
+		var overlay = document.getElementById(overlayId);
+		if (!overlay || overlay._tnWiz) return overlay && overlay._tnWiz;
+		var body = overlay.querySelector('.tn-modal-body');
+		if (!body) return null;
+
+		var root = document.createElement('div');
+		root.className = 'tn-bracket-wizard';
+
+		// Progress header.
+		var progress = document.createElement('div');
+		progress.className = 'tn-wiz-progress';
+		var count = document.createElement('div'); count.className = 'tn-wiz-count';
+		var dots = document.createElement('div'); dots.className = 'tn-wiz-dots';
+		progress.appendChild(count); progress.appendChild(dots);
+		root.appendChild(progress);
+
+		var stepsWrap = document.createElement('div');
+		root.appendChild(stepsWrap);
+		body.appendChild(root);
+
+		// Footer (injected once, sibling of the legacy .tn-modal-footer which is
+		// CSS-hidden while the wizard is active).
+		var footer = document.createElement('div');
+		footer.className = 'tn-wiz-footer';
+		var backBtn = document.createElement('button');
+		backBtn.type = 'button'; backBtn.className = 'tn-btn tn-btn-ghost tn-wiz-back'; backBtn.textContent = 'Back';
+		var nextBtn = document.createElement('button');
+		nextBtn.type = 'button'; nextBtn.className = 'tn-btn tn-btn-primary tn-wiz-next';
+		footer.appendChild(backBtn); footer.appendChild(nextBtn);
+		var modalBox = overlay.querySelector('.tn-modal-box');
+		modalBox.appendChild(footer);
+
+		var ctrl = {
+			overlay: overlay, prefix: prefix, submitBtnId: submitBtnId,
+			root: root, count: count, dots: dots, stepsWrap: stepsWrap,
+			footer: footer, backBtn: backBtn, nextBtn: nextBtn,
+			steps: [], stepEls: {}, idx: 0
+		};
+
+		// ---- Step builders. Each returns a panel element and wires its
+		//      controls to write the EXISTING hidden inputs. ----
+		function radioStep(key, title, hint, opts, inputName, withSub) {
+			var panel = document.createElement('div');
+			panel.className = 'tn-wiz-step';
+			var h = document.createElement('div'); h.className = 'tn-wiz-step-title'; h.textContent = title;
+			panel.appendChild(h);
+			if (hint) { var ht = document.createElement('p'); ht.className = 'tn-wiz-step-hint'; ht.textContent = hint; panel.appendChild(ht); }
+			var list = document.createElement('div'); list.className = 'tn-wiz-opts';
+			var input = fld(prefix, inputName);
+			opts.forEach(function(o) {
+				var btn = document.createElement('button');
+				btn.type = 'button'; btn.className = 'tn-wiz-opt'; btn.setAttribute('data-val', o[0]);
+				var main = document.createElement('span'); main.className = 'tn-wiz-opt-main';
+				var lbl = document.createElement('span'); lbl.className = 'tn-wiz-opt-label'; lbl.textContent = o[1];
+				main.appendChild(lbl);
+				if (withSub && o[2]) { var sub = document.createElement('span'); sub.className = 'tn-wiz-opt-sub'; sub.textContent = o[2]; main.appendChild(sub); }
+				var radio = document.createElement('span'); radio.className = 'tn-wiz-opt-radio';
+				btn.appendChild(main); btn.appendChild(radio);
+				btn.addEventListener('click', function() {
+					if (input) input.value = o[0];
+					list.querySelectorAll('.tn-wiz-opt').forEach(function(x) { x.classList.remove('tn-wiz-opt--sel'); });
+					btn.classList.add('tn-wiz-opt--sel');
+					if (typeof panel._onPick === 'function') panel._onPick(o[0]);
+				});
+				list.appendChild(btn);
+			});
+			panel.appendChild(list);
+			// Reflect-from-input on (re)entry.
+			panel._sync = function() {
+				var v = input ? input.value : '';
+				list.querySelectorAll('.tn-wiz-opt').forEach(function(x) {
+					x.classList.toggle('tn-wiz-opt--sel', x.getAttribute('data-val') === v);
+				});
+			};
+			panel._extra = function() {};
+			return panel;
+		}
+
+		// Style.
+		ctrl.stepEls.style = radioStep('style','Weapon Style','Choose the weapon form for this bracket.', STYLE_OPTS, 'style', false);
+
+		// Format/Method (drives the conditional Duration step). Includes an info
+		// box (data-tip pattern, NOT title=) that appears for ironman.
+		ctrl.stepEls.method = (function() {
+			var panel = radioStep('method','Format','Pick the tournament format.', METHOD_OPTS, 'method', true);
+			var info = document.createElement('div');
+			info.className = 'tn-wiz-info'; info.style.display = 'none';
+			info.innerHTML = '<i class="fas fa-info-circle"></i><span>Ironman adds a Duration step before Review.</span>';
+			panel.appendChild(info);
+			panel._onPick = function(v) {
+				info.style.display = (v === 'ironman') ? '' : 'none';
+				rebuildSteps();   // re-map step list; preserves all entered values
+			};
+			var origSync = panel._sync;
+			panel._sync = function() {
+				origSync();
+				var input = fld(prefix,'method');
+				info.style.display = (input && input.value === 'ironman') ? '' : 'none';
+			};
+			return panel;
+		})();
+
+		// Participants.
+		ctrl.stepEls.participants = radioStep('participants','Participants','Who competes in this bracket?', PARTICIPANT_OPTS, 'participants', true);
+
+		// Seeding.
+		ctrl.stepEls.seeding = radioStep('seeding','Seeding','How are fighters placed in the bracket?', SEEDING_OPTS, 'seeding', true);
+
+		// Rings (± stepper writing the existing number input).
+		ctrl.stepEls.rings = (function() {
+			var input = fld(prefix,'rings');
+			var panel = document.createElement('div'); panel.className = 'tn-wiz-step';
+			panel.innerHTML = '<div class="tn-wiz-step-title">Concurrent Rings</div>'
+				+ '<p class="tn-wiz-step-hint">How many matches run at once? Swiss / Round Robin round counts derive from this.</p>';
+			var wrap = document.createElement('div'); wrap.className = 'tn-wiz-stepper';
+			var minus = document.createElement('button'); minus.type='button'; minus.className='tn-wiz-stepper-btn'; minus.textContent='\u2212';
+			var val = document.createElement('div'); val.className = 'tn-wiz-stepper-val';
+			var plus = document.createElement('button'); plus.type='button'; plus.className='tn-wiz-stepper-btn'; plus.textContent='+';
+			wrap.appendChild(minus); wrap.appendChild(val); wrap.appendChild(plus);
+			panel.appendChild(wrap);
+			var MIN = 1, MAX = 20;
+			function render() {
+				var v = parseInt(input && input.value, 10); if (isNaN(v) || v < MIN) v = MIN; if (v > MAX) v = MAX;
+				if (input) input.value = v;
+				val.textContent = v;
+				minus.disabled = (v <= MIN); plus.disabled = (v >= MAX);
+			}
+			minus.addEventListener('click', function() { var v = parseInt(input.value,10)||1; input.value = Math.max(MIN, v-1); render(); });
+			plus.addEventListener('click', function() { var v = parseInt(input.value,10)||1; input.value = Math.min(MAX, v+1); render(); });
+			panel._sync = render;
+			panel._extra = function() {};
+			return panel;
+		})();
+
+		// Best-of (radio rows over the existing select).
+		ctrl.stepEls.bestof = radioStep('bestof','Bouts per Match','Number of bouts to decide each match. Less meaningful for Ironman / Score.', BESTOF_OPTS, 'bestof', false);
+
+		// Duration (IRONMAN ONLY): chip presets + custom stepper, writing the
+		// existing minutes input. 0 = Unlimited (human-readable label).
+		ctrl.stepEls.duration = (function() {
+			var input = fld(prefix,'duration');
+			var panel = document.createElement('div'); panel.className = 'tn-wiz-step';
+			panel.innerHTML = '<div class="tn-wiz-step-title">Max Duration</div>'
+				+ '<p class="tn-wiz-step-hint">Time cap per ironman ring. 0 = Unlimited.</p>';
+			var chips = document.createElement('div'); chips.className = 'tn-wiz-chips';
+			var customChip;
+			var stepperWrap = document.createElement('div'); stepperWrap.className = 'tn-wiz-stepper'; stepperWrap.style.display = 'none';
+			var minus = document.createElement('button'); minus.type='button'; minus.className='tn-wiz-stepper-btn'; minus.textContent='\u2212';
+			var sval = document.createElement('div'); sval.className='tn-wiz-stepper-val';
+			var plus = document.createElement('button'); plus.type='button'; plus.className='tn-wiz-stepper-btn'; plus.textContent='+';
+			stepperWrap.appendChild(minus); stepperWrap.appendChild(sval); stepperWrap.appendChild(plus);
+			var readout = document.createElement('p'); readout.className = 'tn-wiz-step-hint'; readout.style.marginTop = '10px';
+			function setVal(min) {
+				min = parseInt(min,10); if (isNaN(min) || min < 0) min = 0; if (min > 480) min = 480;
+				if (input) input.value = min;
+				render();
+			}
+			function render() {
+				var v = parseInt(input && input.value,10)||0;
+				var preset = DURATION_CHIPS.indexOf(v) !== -1 || v === 0;
+				chips.querySelectorAll('.tn-wiz-chip').forEach(function(c) {
+					var cv = c.getAttribute('data-min');
+					c.classList.toggle('tn-wiz-chip--sel', cv !== null && parseInt(cv,10) === v);
+				});
+				if (customChip) customChip.classList.toggle('tn-wiz-chip--sel', !preset);
+				stepperWrap.style.display = preset ? 'none' : '';
+				sval.textContent = v;
+				readout.textContent = 'Selected: ' + durationLabel(v);
+			}
+			// Unlimited chip (0) first, then presets, then Custom.
+			[[0,'Unlimited']].concat(DURATION_CHIPS.map(function(m){return [m, m+' min'];})).forEach(function(o) {
+				var c = document.createElement('button'); c.type='button'; c.className='tn-wiz-chip'; c.setAttribute('data-min', o[0]); c.textContent = o[1];
+				c.addEventListener('click', function() { setVal(o[0]); });
+				chips.appendChild(c);
+			});
+			customChip = document.createElement('button'); customChip.type='button'; customChip.className='tn-wiz-chip'; customChip.textContent='Custom';
+			customChip.addEventListener('click', function() {
+				var v = parseInt(input && input.value,10)||0;
+				if (DURATION_CHIPS.indexOf(v) !== -1 || v === 0) setVal(25); // jump to an off-preset start
+				else render();
+			});
+			chips.appendChild(customChip);
+			minus.addEventListener('click', function() { setVal((parseInt(input.value,10)||0) - 5); });
+			plus.addEventListener('click', function() { setVal((parseInt(input.value,10)||0) + 5); });
+			panel.appendChild(chips); panel.appendChild(stepperWrap); panel.appendChild(readout);
+			panel._sync = render;
+			panel._extra = function() {};
+			return panel;
+		})();
+
+		// Review/Generate.
+		ctrl.stepEls.review = (function() {
+			var panel = document.createElement('div'); panel.className = 'tn-wiz-step';
+			panel.innerHTML = '<div class="tn-wiz-step-title">Review</div>';
+			var card = document.createElement('div'); card.className = 'tn-wiz-review';
+			panel.appendChild(card);
+			var note = document.createElement('div'); note.className = 'tn-wiz-info'; note.style.display = 'none';
+			note.innerHTML = '<i class="fas fa-hand-pointer"></i><span>You will arrange seeds by dragging after creating the bracket.</span>';
+			panel.appendChild(note);
+			panel._sync = function() {
+				var style = fld(prefix,'style').value;
+				var method = fld(prefix,'method').value;
+				var parts = fld(prefix,'participants').value;
+				var seeding = fld(prefix,'seeding').value;
+				var rings = fld(prefix,'rings').value;
+				var bestof = fld(prefix,'bestof').value;
+				var dur = fld(prefix,'duration').value;
+				var snEl = fld(prefix,'stylenote'); var sn = snEl ? snEl.value.trim() : '';
+				var lines = [];
+				lines.push('<div class="tn-wiz-review-line"><strong>' + styleLabel(style) + '</strong> \u00b7 ' + methodLabel(method) + '</div>');
+				lines.push('<div class="tn-wiz-review-line">' + (parts === 'team' ? 'Team' : 'Individual') + ' \u00b7 ' + seedingLabel(seeding) + ' seeding</div>');
+				var ringTxt = rings + (parseInt(rings,10) === 1 ? ' ring' : ' rings');
+				lines.push('<div class="tn-wiz-review-line">' + ringTxt + ' \u00b7 ' + bestOfLabel(bestof) + (method === 'ironman' ? (' \u00b7 ' + durationLabel(dur)) : '') + '</div>');
+				if (sn) lines.push('<div class="tn-wiz-review-line">Style note: \u201c' + sn.replace(/</g,'&lt;') + '\u201d</div>');
+				card.innerHTML = lines.join('');
+				var isManual = (seeding === 'manual' || seeding === 'random-manual' || seeding === 'glicko2-manual');
+				note.style.display = isManual ? '' : 'none';
+			};
+			panel._extra = function() {};
+			return panel;
+		})();
+
+		// Compute the active step list given the current Method (dynamic).
+		function activeStepKeys() {
+			var keys = ['style','method','participants','seeding','rings','bestof'];
+			var mEl = fld(prefix,'method');
+			if (mEl && mEl.value === 'ironman') keys.push('duration');
+			keys.push('review');
+			return keys;
+		}
+
+		// (Re)build the step sequence WITHOUT losing entered values (values live
+		// in the persistent hidden inputs; we only re-attach the panels and
+		// re-clamp idx). Called on Method change.
+		function rebuildSteps() {
+			var keys = activeStepKeys();
+			// Preserve the key the user is currently on if it still exists.
+			var curKey = ctrl.steps[ctrl.idx];
+			ctrl.steps = keys;
+			// Re-attach panels in order.
+			ctrl.stepsWrap.innerHTML = '';
+			keys.forEach(function(k) { ctrl.stepsWrap.appendChild(ctrl.stepEls[k]); });
+			var newIdx = keys.indexOf(curKey);
+			ctrl.idx = (newIdx === -1) ? Math.min(ctrl.idx, keys.length - 1) : newIdx;
+			renderStep();
+		}
+
+		function renderDots() {
+			ctrl.dots.innerHTML = '';
+			ctrl.count.textContent = 'Step ' + (ctrl.idx + 1) + ' of ' + ctrl.steps.length;
+			for (var i = 0; i < ctrl.steps.length; i++) {
+				var d = document.createElement('div');
+				d.className = 'tn-wiz-dot' + (i < ctrl.idx ? ' tn-wiz-dot--done' : (i === ctrl.idx ? ' tn-wiz-dot--cur' : ''));
+				ctrl.dots.appendChild(d);
+			}
+		}
+
+		function renderStep() {
+			ctrl.steps.forEach(function(k, i) {
+				ctrl.stepEls[k].classList.toggle('tn-wiz-step--active', i === ctrl.idx);
+			});
+			var panel = ctrl.stepEls[ctrl.steps[ctrl.idx]];
+			if (panel && typeof panel._sync === 'function') panel._sync();
+			renderDots();
+			ctrl.backBtn.style.visibility = (ctrl.idx === 0) ? 'hidden' : '';
+			var isLast = (ctrl.idx === ctrl.steps.length - 1);
+			if (isLast) {
+				ctrl.nextBtn.innerHTML = (prefix === 'tn-editbracket')
+					? '<i class="fas fa-save"></i> Save Bracket'
+					: '<i class="fas fa-check"></i> Create Bracket';
+			} else {
+				ctrl.nextBtn.innerHTML = 'Next <i class="fas fa-arrow-right"></i>';
+			}
+			// Scroll the body to top so the new step starts at the top.
+			var b = overlay.querySelector('.tn-modal-body'); if (b) b.scrollTop = 0;
+		}
+
+		function validateCurrent() {
+			var k = ctrl.steps[ctrl.idx];
+			if (k === 'style' && !fld(prefix,'style').value) return false;
+			if (k === 'method' && !fld(prefix,'method').value) return false;
+			return true;
+		}
+
+		ctrl.nextBtn.addEventListener('click', function() {
+			if (ctrl.idx === ctrl.steps.length - 1) {
+				// Final step → invoke the EXISTING submit handler/button.
+				var sb = document.getElementById(submitBtnId);
+				if (sb) sb.click();
+				return;
+			}
+			if (!validateCurrent()) return;
+			ctrl.idx++;
+			renderStep();
+		});
+		ctrl.backBtn.addEventListener('click', function() {
+			if (ctrl.idx > 0) { ctrl.idx--; renderStep(); }
+		});
+
+		// Swipe accelerators (foundation): left = Next (if valid), right = Back.
+		if (window.TnMobile && TnMobile.swipe) {
+			TnMobile.swipe(root, {
+				onLeft: function() { if (ctrl.idx < ctrl.steps.length - 1 && validateCurrent()) { ctrl.idx++; renderStep(); } },
+				onRight: function() { if (ctrl.idx > 0) { ctrl.idx--; renderStep(); } },
+				threshold: 50
+			});
+		}
+
+		ctrl.start = function() {
+			ctrl.idx = 0;
+			ctrl.steps = activeStepKeys();
+			ctrl.stepsWrap.innerHTML = '';
+			ctrl.steps.forEach(function(k) { ctrl.stepsWrap.appendChild(ctrl.stepEls[k]); });
+			renderStep();
+		};
+		ctrl._rebuild = rebuildSteps;
+
+		overlay._tnWiz = ctrl;
+		return ctrl;
+	}
+
+	// Engage the wizard on an already-open overlay (called from the wrapped
+	// open functions, AFTER they have populated the hidden inputs).
+	function engage(prefix, overlayId, submitBtnId) {
+		var overlay = document.getElementById(overlayId);
+		if (!overlay) return;
+		var ctrl = buildWizard(prefix, overlayId, submitBtnId);
+		if (!ctrl) return;
+		overlay.classList.add('tn-wiz-active');
+		ctrl.start();
+	}
+
+	// Tear the wizard chrome down so the desktop modal renders normally if the
+	// same overlay is later opened on desktop / after a view-mode flip.
+	function disengage(overlayId) {
+		var overlay = document.getElementById(overlayId);
+		if (overlay) overlay.classList.remove('tn-wiz-active');
+	}
+
+	// ---- Wrap the existing open functions. The originals populate the hidden
+	//      inputs and open the modal/sheet; we then layer the wizard on top
+	//      (mobile only). Desktop falls through untouched. ----
+	function wrap(fnName, prefix, overlayId, submitBtnId) {
+		var orig = window[fnName];
+		if (typeof orig !== 'function') return;
+		window[fnName] = function() {
+			var r = orig.apply(this, arguments);
+			if (isMobileNow()) engage(prefix, overlayId, submitBtnId);
+			else disengage(overlayId);
+			return r;
+		};
+	}
+	wrap('tnOpenAddBracketModal',  'tn-addbracket',  'tn-addbracket-overlay',  'tn-addbracket-submit');
+	wrap('tnOpenEditBracketModal', 'tn-editbracket', 'tn-editbracket-overlay', 'tn-editbracket-submit');
+
+	// On view-mode flip, drop the wizard chrome from any open bracket overlay so
+	// it does not linger as a half-state when switching to desktop. The sheet
+	// foundation handles the overlay's own sheet/centered reversion.
+	document.addEventListener('tn:viewmodechange', function(e) {
+		if (e.detail && e.detail.isMobile) return;
+		disengage('tn-addbracket-overlay');
+		disengage('tn-editbracket-overlay');
+	});
 })();
 
 // Helper: position an autocomplete dropdown with fixed coords (breaks out of modal)
