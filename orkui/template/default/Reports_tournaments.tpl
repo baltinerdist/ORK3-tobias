@@ -104,6 +104,9 @@
 <?php if ($scopeType === 'kingdom'): ?>
 		<button class="tnr-tab" data-tnrtab="parks"><i class="fas fa-map-marked-alt"></i> Parks</button>
 <?php endif; ?>
+<?php if (!empty($TeamChampions)): ?>
+		<button class="tnr-tab" data-tnrtab="teams"><i class="fas fa-users"></i> Team Champions</button>
+<?php endif; ?>
 	</nav>
 
 	<!-- Overview: breakdowns + trend -->
@@ -233,6 +236,51 @@
 			</tbody>
 		</table>
 <?php if (empty($ParkComparison['Parks'])): ?><div class="tnr-empty">No park-hosted tournaments in range.</div><?php endif; ?>
+	</div>
+<?php endif; ?>
+
+<?php if (!empty($TeamChampions)): ?>
+	<!-- Team Champions -->
+	<div class="tnr-panel" id="tnr-tab-teams">
+		<p class="tnr-context">Team brackets that have concluded &mdash; champion and runner-up teams with their member rosters.</p>
+<?php foreach ($TeamChampions as $tc): ?>
+		<div class="tnr-tcard tnr-tc-card">
+			<div class="tnr-tcard-top">
+				<div class="tnr-tcard-info">
+					<a class="tnr-tcard-name" href="<?=UIR?>Tournament/profile/<?=(int)$tc['TournamentId']?>"><?=htmlspecialchars($tc['TournamentName'])?></a>
+					<div class="tnr-tcard-meta"><?=date('M j, Y', strtotime($tc['TournamentDate']))?><?php if ($scopeType==='kingdom' && $tc['ParkName']): ?> &middot; <?=htmlspecialchars($tc['ParkName'])?><?php endif; ?> &middot; <?=htmlspecialchars(ucfirst($tc['Style']??''))?> &middot; <?=htmlspecialchars(ucfirst($tc['Method']??''))?></div>
+				</div>
+			</div>
+			<div class="tnr-tc-podium">
+				<!-- Champion -->
+				<div class="tnr-tc-place tnr-tc-first">
+					<div class="tnr-tc-badge"><i class="fas fa-trophy"></i> Champion</div>
+					<div class="tnr-tc-teamname"><?=htmlspecialchars($tc['Champion']['TeamName'])?></div>
+<?php if (!empty($tc['Champion']['Members'])): ?>
+					<ul class="tnr-tc-roster">
+<?php foreach ($tc['Champion']['Members'] as $m): ?>
+						<li><a href="<?=UIR?>Player/profile/<?=(int)$m['MundaneId']?>"><?=htmlspecialchars($m['Persona'])?></a></li>
+<?php endforeach; ?>
+					</ul>
+<?php endif; ?>
+				</div>
+<?php if ($tc['RunnerUp'] !== null): ?>
+				<!-- Runner-up -->
+				<div class="tnr-tc-place tnr-tc-second">
+					<div class="tnr-tc-badge"><i class="fas fa-medal"></i> Runner-up</div>
+					<div class="tnr-tc-teamname"><?=htmlspecialchars($tc['RunnerUp']['TeamName'])?></div>
+<?php if (!empty($tc['RunnerUp']['Members'])): ?>
+					<ul class="tnr-tc-roster">
+<?php foreach ($tc['RunnerUp']['Members'] as $m): ?>
+						<li><a href="<?=UIR?>Player/profile/<?=(int)$m['MundaneId']?>"><?=htmlspecialchars($m['Persona'])?></a></li>
+<?php endforeach; ?>
+					</ul>
+<?php endif; ?>
+				</div>
+<?php endif; ?>
+			</div>
+		</div>
+<?php endforeach; ?>
 	</div>
 <?php endif; ?>
 

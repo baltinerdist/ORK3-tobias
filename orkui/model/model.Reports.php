@@ -33,6 +33,9 @@ class Model_Reports extends Model {
 	function tournament_list($request) {
 		return $this->TournamentReport->GetTournamentList($request);
 	}
+	function team_champions($request) {
+		return $this->TournamentReport->GetTeamChampions($request);
+	}
 
 	function get_heraldry_report($request) {
 		return $this->Report->HeraldryReport($request);

@@ -1441,3 +1441,20 @@ html[data-theme="dark"] .tnr-h {
 	.tnr-table { display:block; overflow-x:auto; }
 	.rp-header .tnr-date { width:84px; }
 }
+
+/* Team Champions tab */
+.tnr-tc-card .tnr-tcard-top { margin-bottom:12px; }
+.tnr-tc-podium { display:flex; gap:16px; flex-wrap:wrap; }
+.tnr-tc-place { flex:1 1 200px; border:1px solid var(--rp-border); border-radius:8px; padding:12px 14px; background:var(--rp-bg); }
+.tnr-tc-first { border-color:var(--rp-accent); background:color-mix(in srgb, var(--rp-accent) 6%, var(--rp-bg)); }
+.tnr-tc-badge { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--rp-text-muted); margin-bottom:6px; }
+.tnr-tc-first .tnr-tc-badge { color:var(--rp-accent); }
+.tnr-tc-teamname { font-size:16px; font-weight:700; color:var(--rp-text); margin-bottom:8px; }
+.tnr-tc-first .tnr-tc-teamname { color:var(--rp-accent); }
+.tnr-tc-roster { margin:0; padding:0 0 0 14px; list-style:disc; }
+.tnr-tc-roster li { font-size:13px; color:var(--rp-text-body); padding:2px 0; }
+.tnr-tc-roster a { color:var(--rp-accent); text-decoration:none; font-weight:500; }
+.tnr-tc-roster a:hover { text-decoration:underline; }
+.tnr-context { font-size:13px; color:var(--rp-text-muted); padding:8px 0 14px; }
+html[data-theme="dark"] .tnr-tc-place { background:var(--rp-bg-light); }
+html[data-theme="dark"] .tnr-tc-first { background:color-mix(in srgb, var(--rp-accent) 10%, var(--rp-bg-light)); }
