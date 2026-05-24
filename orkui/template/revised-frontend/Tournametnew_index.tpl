@@ -9785,6 +9785,16 @@ html[data-theme="dark"] .tn-team-chip { background:#2a4a6b; color:#90cdf4; }
 			TnMobile.sheet.open(overlay, { onDismiss: function(){
 				if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
 			}});
+			// Land on the current bout, not the top of a long list. The rect delta
+			// is invariant under the sheet's slide-up transform; double rAF lets
+			// layout settle first.
+			requestAnimationFrame(function(){ requestAnimationFrame(function(){
+				var body = overlay.querySelector('.tn-modal-body');
+				var cur  = overlay.querySelector('.tn-boutlist-row--current');
+				if (!body || !cur) return;
+				var bodyRect = body.getBoundingClientRect(), curRect = cur.getBoundingClientRect();
+				body.scrollTop += (curRect.top - bodyRect.top) - (body.clientHeight / 2) + (curRect.height / 2);
+			}); });
 		}
 
 		function pipRowHTML(side, matchId){
