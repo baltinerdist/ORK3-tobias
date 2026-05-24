@@ -9018,7 +9018,7 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 .tn-nu-card.tn-nu-card-error { animation:tnNuCardErr 1.2s ease; }
 @keyframes tnNuCardErr { 0%,100% { box-shadow:none; } 20% { box-shadow:0 0 0 2px #e53e3e; background:#fff5f5; } }
 @media (max-width: 720px) {
-	.tn-nu-card { flex-direction:column; align-items:stretch; }
+	.tn-nu-card:not(.tn-nu-card-track) { flex-direction:column; align-items:stretch; }
 	.tn-nu-actions { justify-content:stretch; }
 	.tn-nu-btn { flex:1; text-align:center; padding:10px 8px; }
 }
