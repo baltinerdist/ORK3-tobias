@@ -591,7 +591,7 @@ class Tournament extends Ork3 {
 	/**
 	 * teamRoster($bracketId)
 	 * Returns a map of participant_id => Members[] for all teams in a bracket.
-	 * Members[] contains MundaneId, Persona, ParkName.
+	 * Members[] contains MundaneId, Persona, ParkName, WarriorLevel.
 	 * Shared by GetParticipants and GetStandings to avoid duplicating the join.
 	 */
 	private function teamRoster(int $bracketId): array {
