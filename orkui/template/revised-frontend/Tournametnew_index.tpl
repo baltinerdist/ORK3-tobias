@@ -331,11 +331,12 @@ html[data-theme="dark"] [data-tip]::before { border-top-color:#1a202c; }
 .tn-bv-match.tn-bv-clickable { cursor:pointer; border-color:#276749; }
 .tn-bv-match.tn-bv-clickable:hover { box-shadow:0 2px 8px rgba(39,103,73,0.18); background:#f0fff4; }
 .tn-bv-match.tn-bv-resolved { border-color:#c6f6d5; background:#f0fff4; }
-.tn-bv-slot { display:flex; align-items:center; gap:6px; padding:7px 10px; font-size:13px; min-height:34px; }
+.tn-bv-slot { display:flex; align-items:center; gap:6px; padding:6px 10px; font-size:13px; min-height:32px; box-sizing:border-box; }
 .tn-bv-slot:first-child { border-bottom:1px solid #e2e8f0; }
 .tn-bv-slot.tn-bv-winner { font-weight:700; color:#276749; }
 .tn-bv-slot.tn-bv-loser  { color:#a0aec0; text-decoration:line-through; }
 .tn-bv-slot.tn-bv-bye    { color:#cbd5e0; font-style:italic; font-size:12px; }
+.tn-mobile .tn-bv-slot { min-height:28px; padding:4px 8px; }
 .tn-bv-seed { width:18px; height:18px; border-radius:50%; background:#e2e8f0; display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:700; color:#718096; flex-shrink:0; }
 .tn-bv-result-pill { font-size:10px; font-weight:700; padding:1px 6px; border-radius:10px; background:#c6f6d5; color:#276749; margin-left:auto; flex-shrink:0; }
 .tn-bv-reset-btn { position:absolute; top:4px; right:4px; background:none; border:none; padding:3px 5px; border-radius:4px; color:#cbd5e0; cursor:pointer; font-size:13px; line-height:1; opacity:0; transition:opacity .15s,color .15s,background .15s; }
