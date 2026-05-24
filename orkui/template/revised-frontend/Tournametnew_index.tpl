@@ -259,6 +259,8 @@ html[data-theme="dark"] .tn-seedling { color:#9ae6b4; }
 .tn-alias-edit:focus { opacity:1; outline:none; }
 .tn-alias-edit:hover { color:#276749; }
 .tn-alias-input { font-size:13px; font-weight:600; padding:1px 5px; border:1px solid #276749; border-radius:4px; min-width:120px; max-width:220px; }
+.tn-alias-warn { margin-top:6px; padding:7px 10px; font-size:12px; line-height:1.4; background:#fefcbf; border:1px solid #f6e05e; border-radius:6px; color:#975a16; }
+html[data-theme="dark"] .tn-alias-warn { background:#3b3214; border-color:#9c7a1a; color:#f6e05e; }
 html[data-theme="dark"] .tn-alias-edit { color:#718096; }
 html[data-theme="dark"] .tn-alias-edit:hover { color:#9ae6b4; }
 html[data-theme="dark"] .tn-alias-input { background:#1a202c; color:#e2e8f0; border-color:#38a169; }
@@ -2943,6 +2945,7 @@ foreach ($bracketData as $_bid => $_bd) {
 			<div class="tn-field">
 				<label for="tn-addparticipant-alias">Alias / Fighter Name <span style="color:#e53e3e">*</span></label>
 				<input type="text" id="tn-addparticipant-alias" placeholder="Name as it appears in the bracket" maxlength="100">
+				<div id="tn-addparticipant-alias-warn" class="tn-alias-warn" style="display:none">For best display, we recommend choosing a shorter alias for this player. Don't worry, they will still be tied to the correct ORK persona.</div>
 			</div>
 		</div>
 		<div id="tn-quickadd-section" style="display:none;margin-top:0;border-top:1px solid #e2e8f0;padding:12px 20px 4px">
@@ -5425,6 +5428,7 @@ function tnFixedAcPosition(inputEl, dropdownEl) {
 		document.getElementById('tn-addparticipant-bracket-id').value    = bracketId;
 		document.getElementById('tn-addparticipant-tournament-id').value = tournamentId;
 		document.getElementById('tn-addparticipant-alias').value         = '';
+		tnApAliasWarn();
 		document.getElementById('tn-addparticipant-player-text').value   = '';
 		document.getElementById('tn-addparticipant-player-id').value     = '0';
 		tnAcClose();
@@ -5603,7 +5607,7 @@ function tnFixedAcPosition(inputEl, dropdownEl) {
 				playerIdEl.value  = pl.MundaneId || pl.mundane_id || 0;
 				// Always auto-fill alias (user can adjust)
 				var aliasEl = document.getElementById('tn-addparticipant-alias');
-				if (aliasEl) { aliasEl.value = name; }
+				if (aliasEl) { aliasEl.value = name; tnApAliasWarn(); }
 				tnAcClose();
 			});
 			resultsEl.appendChild(item);
@@ -5647,8 +5651,19 @@ function tnFixedAcPosition(inputEl, dropdownEl) {
 		});
 	}
 
+	// Long-alias advisory: ORK personas can be long; a >20-char alias renders
+	// poorly in brackets/standings. Warn (non-blocking) so the marshal can shorten it.
+	function tnApAliasWarn() {
+		var a = document.getElementById('tn-addparticipant-alias');
+		var w = document.getElementById('tn-addparticipant-alias-warn');
+		if (!a || !w) return;
+		w.style.display = (a.value.trim().length > 20) ? '' : 'none';
+	}
+	var _tnApAliasEl = document.getElementById('tn-addparticipant-alias');
+	if (_tnApAliasEl) _tnApAliasEl.addEventListener('input', tnApAliasWarn);
 	function tnResetAddParticipantForm() {
 		document.getElementById('tn-addparticipant-alias').value       = '';
+		tnApAliasWarn();
 		document.getElementById('tn-addparticipant-player-text').value = '';
 		document.getElementById('tn-addparticipant-player-id').value   = '0';
 		tnAcClose();
