@@ -160,6 +160,7 @@ class Controller_TournamentAjax extends Controller {
 				'Seeding'         => trim($_POST['Seeding']         ?? 'random'),
 				'DurationMinutes' => max(0, (int)($_POST['DurationMinutes'] ?? 0)),
 				'BestOf'          => (int)($_POST['BestOf'] ?? 1),
+				'FirstRoundMode'  => trim($_POST['FirstRoundMode'] ?? 'byes'),
 			]);
 			echo ($r['Status'] == 0)
 				? json_encode(['status' => 0, 'bracketId' => (int)($r['Detail'] ?? 0)])
