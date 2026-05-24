@@ -6857,12 +6857,15 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 
 	function tnDrawBracketConnectors(tree, rounds, maxRound) {
 		if (maxRound < 2) return;
-		requestAnimationFrame(function() {
+		function draw() {
+			var _old = tree.querySelector(':scope > svg.tn-bv-connectors');
+			if (_old && _old.parentNode) _old.parentNode.removeChild(_old);
 			var treeRect = tree.getBoundingClientRect();
 			if (!treeRect.width) return;
 
 			var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
 			svg.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:0';
+			svg.classList.add('tn-bv-connectors');
 
 			// One-pass index of matchId → element to avoid O(matches) attribute-selector queries per pair
 			var matchBoxByMid = {};
@@ -6957,7 +6960,23 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 					}
 			});
 			tree.insertBefore(svg, tree.firstChild);
-		});
+		}
+		requestAnimationFrame(draw);
+		// Reactive connectors: a one-shot draw goes stale the moment the layout
+		// reflows (window/container resize, sidebar, zoom reflow, late font load),
+		// which is the classic 'connectors drift' bug. Bind the redraw to the live
+		// layout via ResizeObserver so the SVG link layer always tracks the boxes.
+		if (window.ResizeObserver) {
+			if (tree._tnConnObs) tree._tnConnObs.disconnect();
+			var _pending = false;
+			tree._tnConnObs = new ResizeObserver(function() {
+				if (_pending) return; _pending = true;
+				requestAnimationFrame(function() { _pending = false; draw(); });
+			});
+			tree._tnConnObs.observe(tree);
+			var _vp = tree.closest('.tn-bv-viewport');
+			if (_vp) tree._tnConnObs.observe(_vp);
+		}
 	}
 	function isMatchResettable(m, allMatches) {
 		var bid = m.BracketId;
