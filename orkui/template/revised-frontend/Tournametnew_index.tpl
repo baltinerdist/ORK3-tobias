@@ -2178,7 +2178,7 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 									<?php if (($b['Participants'] ?? 'individual') === 'team'):
 										$_teamIds = array_unique(array_column($pList, 'ParticipantId'));
 										$_teamCount = count($_teamIds);
-										$_memberCount = count($pList);
+										$_memberCount = array_sum(array_map(fn($p) => count($p['Members'] ?? []), $pList));
 									?>
 									<span data-tip="Teams"><i class="fas fa-users" style="color:#3182ce"></i> <?= $_teamCount ?></span>
 									<span data-tip="Individual Members"><i class="fas fa-user" style="color:#805ad5"></i> <?= $_memberCount ?></span>
@@ -5700,6 +5700,7 @@ function tnFixedAcPosition(inputEl, dropdownEl) {
 		if (bd && bd.Participants) {
 			bd.Participants.forEach(function(p) {
 				if (p.MundaneId > 0) assigned[p.MundaneId] = true;
+				if (p.IsTeam && p.Members) p.Members.forEach(function(m){ if (m.MundaneId > 0) assigned[m.MundaneId] = true; });
 			});
 		}
 		return assigned;
