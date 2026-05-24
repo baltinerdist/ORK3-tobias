@@ -7160,6 +7160,7 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 						sp.removeAttribute('data-matchid');
 						sp.style.visibility = 'hidden';
 						sp.style.pointerEvents = 'none';
+						sp.setAttribute('aria-hidden', 'true');
 						body.appendChild(sp);
 						return;
 					}
