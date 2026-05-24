@@ -7101,6 +7101,25 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 			if (r > maxRound) maxRound = r;
 		});
 
+		// Play-in presentation: only for single/double-elim winners side, when the
+		// bracket's FirstRoundMode is 'play-in' AND round 1 actually has bye matches.
+		var _playIn = false;
+		(function(){
+			if (side !== null && side !== 'winners') return;
+			var bid = matches.length ? matches[0].BracketId : null;
+			var bd = (TnConfig.bracketData || {})[bid];
+			if (!bd || !bd.Bracket) return;
+			var method = bd.Bracket.Method;
+			if (method !== 'single' && method !== 'double') return;
+			if (bd.Bracket.FirstRoundMode !== 'play-in') return;
+			var r1 = (rounds[1] || []);
+			var hasBye = r1.some(function(m){
+				var a = parseInt(m.Participant1Id) || 0, b = parseInt(m.Participant2Id) || 0;
+				return (!a && b) || (a && !b);
+			});
+			_playIn = hasBye;
+		})();
+
 		var tree = document.createElement('div');
 		tree.className = 'tn-bv-tree';
 
@@ -7111,7 +7130,9 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 			col.className = 'tn-bv-round';
 			var lbl = document.createElement('div');
 			lbl.className = 'tn-bv-round-label';
-			if (side === 'grand-final') {
+			if (_playIn && r === 1) {
+				lbl.textContent = 'Play-In';
+			} else if (side === 'grand-final') {
 				lbl.textContent = 'Grand Final';
 			} else if (maxRound === 1) {
 				lbl.textContent = 'Final';
@@ -7129,6 +7150,19 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 			var body = document.createElement('div');
 			body.className = 'tn-bv-round-body';
 			rMatches.forEach(function(m) {
+				if (_playIn && r === 1) {
+					var a = parseInt(m.Participant1Id) || 0, b = parseInt(m.Participant2Id) || 0;
+					if ((!a && b) || (a && !b)) {
+						// Bye match: render an invisible spacer that preserves the slot
+						// position (and thus connector alignment) without drawing a box
+						// or a connector line (no data-matchid -> connector skips it).
+						var sp = buildMatchBox(m, pMap, matches);
+						sp.removeAttribute('data-matchid');
+						sp.style.visibility = 'hidden';
+						body.appendChild(sp);
+						return;
+					}
+				}
 				body.appendChild(buildMatchBox(m, pMap, matches));
 			});
 			col.appendChild(body);
