@@ -259,6 +259,11 @@ html[data-theme="dark"] [data-tip]::before { border-top-color:#1a202c; }
 .tn-placement-num { font-weight:700; color:#276749; min-width:34px; font-size:12px; flex-shrink:0; }
 .tn-placement-spacer { height:6px; border-bottom:none !important; }
 .tn-standings-spacer td { height:6px; padding:0; border-bottom:none !important; }
+.tn-pill-team-wl { background:#e9d8fd; color:#553c9a; border:1px solid #d6bcfa; }
+.tn-team-roster-btn { background:none; border:none; color:#276749; cursor:pointer; font-size:11px; font-weight:600; padding:0 4px; white-space:nowrap; text-decoration:none; display:inline-flex; align-items:center; gap:3px; }
+.tn-team-roster-btn:hover { text-decoration:underline; }
+.tn-team-roster-row td { background:#f7fafc; padding:4px 10px 8px 30px !important; border-bottom:1px solid #e2e8f0; font-size:12px; }
+.tn-roster-member { display:inline-flex; align-items:center; gap:4px; margin:2px 8px 2px 0; color:#4a5568; }
 .tn-bout-pips { display:flex; gap:7px; justify-content:center; margin-top:8px; }
 .tn-bout-pip { width:24px; height:24px; border-radius:50%; border:2px solid #cbd5e0; background:#fff; cursor:pointer; padding:0; transition:background .15s, border-color .15s, transform .1s; flex-shrink:0; }
 .tn-bout-pip:hover { border-color:#718096; transform:scale(1.15); }
@@ -1070,6 +1075,11 @@ html[data-theme="dark"] .tn-bracket-actions { border-top-color:#2d3748; }
 /* Tables */
 html[data-theme="dark"] .tn-table th { background:#1a202c; color:#a0aec0; border-bottom-color:#4a5568; }
 html[data-theme="dark"] .tn-table td { color:#cbd5e0; border-bottom-color:#2d3748; }
+/* Team UI */
+html[data-theme="dark"] .tn-pill-team-wl { background:#44337a; color:#e9d8fd; border-color:#805ad5; }
+html[data-theme="dark"] .tn-team-roster-btn { color:#9ae6b4; }
+html[data-theme="dark"] .tn-team-roster-row td { background:#1a202c !important; border-bottom-color:#2d3748; }
+html[data-theme="dark"] .tn-roster-member { color:#cbd5e0; }
 
 /* Modals */
 html[data-theme="dark"] .tn-overlay { background:rgba(0,0,0,0.7); }
@@ -2277,12 +2287,28 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 								<?php else: $_pd = $_row['data']; $_pp = $_pLookup[(int)$_pd['ParticipantId']] ?? []; ?>
 								<li>
 									<span class="tn-placement-num"><?= tnOrdinal($_row['pl']) ?></span>
+									<?php if ($_pd['IsTeam'] ?? false): ?>
+									<span style="flex:1"><?= htmlspecialchars($_pd['Alias'] ?? '—') ?>
+										<span style="display:inline-flex;gap:3px;margin-left:4px;vertical-align:middle"><span class="tn-pill tn-pill-team-wl" data-tip="Team warrior level">⚔ <?= (int)($_pd['TeamWarriorLevel'] ?? 0) ?></span></span>
+									</span>
+									<?php if (!empty($_pd['Members'])): ?>
+									<button class="tn-team-roster-btn" onclick="tnToggleRoster(this)" data-tip="Show/hide team roster">&#9658; <?= count($_pd['Members']) ?></button>
+									<?php endif; ?>
+									<?php else: ?>
 									<span style="flex:1"><?= htmlspecialchars($_pd['Alias'] ?? '—') ?><?= !empty($_pp) ? tnParticipantPills($_pp) : '' ?></span>
 									<?php $_parkDisp = $_pp['ParkName'] ?? $_pd['ParkName'] ?? ''; ?>
 									<?php if (!empty($_parkDisp)): ?>
 									<span style="font-size:11px;color:#a0aec0"><?= htmlspecialchars($_parkDisp) ?></span>
 									<?php endif; ?>
+									<?php endif; ?>
 								</li>
+								<?php if (($_pd['IsTeam'] ?? false) && !empty($_pd['Members'])): ?>
+								<li class="tn-team-roster-sub" style="display:none;flex-wrap:wrap;padding:4px 6px 6px 42px;gap:0">
+									<?php foreach ($_pd['Members'] as $_tm): ?>
+									<span class="tn-roster-member"><?= htmlspecialchars($_tm['Persona'] ?? '') ?><span class="tn-pill tn-pill-team-wl" data-tip="Warrior level" style="margin-left:3px">⚔<?= (int)$_tm['WarriorLevel'] ?></span></span>
+									<?php endforeach; ?>
+								</li>
+								<?php endif; ?>
 								<?php endif; ?>
 								<?php endforeach; ?>
 							</ul>
@@ -2294,6 +2320,18 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 								<li class="<?= $_pStatusClass ?>"<?= $isDnd ? ' data-pid="' . (int)$p['ParticipantId'] . '"' : '' ?> data-participant-id="<?= (int)$p['ParticipantId'] ?>" data-status="<?= htmlspecialchars($_pStatus) ?>">
 																		<?php if ($isDnd): ?><span class="tn-dnd-handle" data-tn-no-swipe><i class="fas fa-grip-lines"></i></span><?php endif; ?>
 									<span class="<?= $isDnd ? 'tn-seed-enhanced' : 'tn-participant-seed' ?>"><?= $i + 1 ?></span>
+								<?php if ($p['IsTeam'] ?? false): ?>
+									<span style="flex:1"><?= htmlspecialchars($p['Alias'] ?: '—') ?>
+										<span style="display:inline-flex;gap:3px;margin-left:4px;vertical-align:middle"><span class="tn-pill tn-pill-team-wl" data-tip="Team warrior level">⚔ <?= (int)($p['WarriorLevel'] ?? 0) ?></span></span>
+									</span>
+									<?php if (!empty($p['Members'])): ?>
+									<button class="tn-team-roster-btn" onclick="tnToggleRoster(this)" data-tip="Show/hide team roster">&#9658; <?= count($p['Members']) ?></button>
+									<?php endif; ?>
+									<?php if ($canManage): ?>
+									<span class="tn-status-wrap"><button class="tn-status-btn" onclick="tnToggleParticipantMenu(this)" data-tip="Set status">&#8942;</button><div class="tn-status-menu"><div class="tn-status-menu-item<?= $_pStatus==='active'?' tn-sm-active':'' ?>" onclick="tnSetParticipantStatus(<?= (int)$p['ParticipantId'] ?>, 'active', <?= $bid ?>, this)"><span class="tn-sm-dot tn-sm-dot-active"></span>Active</div><div class="tn-status-menu-item<?= $_pStatus==='withdrawn'?' tn-sm-active':'' ?>" onclick="tnSetParticipantStatus(<?= (int)$p['ParticipantId'] ?>, 'withdrawn', <?= $bid ?>, this)"><span class="tn-sm-dot tn-sm-dot-withdrawn"></span>Withdrawn</div><div class="tn-status-menu-item<?= $_pStatus==='disqualified'?' tn-sm-active':'' ?>" onclick="tnSetParticipantStatus(<?= (int)$p['ParticipantId'] ?>, 'disqualified', <?= $bid ?>, this)"><span class="tn-sm-dot tn-sm-dot-disqualified"></span>Disqualified</div></div></span>
+									<button class="tn-remove-participant" data-pid="<?= (int)$p['ParticipantId'] ?>" data-bid="<?= $bid ?>" data-tid="<?= $tid ?>" data-tip="Remove participant" onclick="tnRemoveParticipant(this)">&times;</button>
+									<?php endif; ?>
+								<?php else: ?>
 									<span style="flex:1">
 										<?php if (!empty($p['Persona'])): ?>
 											<?php if ($p['MundaneId'] > 0): ?><a href="<?= UIR ?>Player/profile/<?= $p['MundaneId'] ?>" style="color:#276749;text-decoration:none"><?= htmlspecialchars($p['Alias'] ?: $p['Persona']) ?></a><?php else: ?><?= htmlspecialchars($p['Alias'] ?: $p['Persona']) ?><?php endif; ?>
@@ -2306,7 +2344,7 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 										<?php endif; ?>
 										<?php if ($_pStatus === 'withdrawn'): ?><span class="tn-pstatus-pill tn-pstatus-pill-withdrawn">WD</span><?php endif; ?>
 										<?php if ($_pStatus === 'disqualified'): ?><span class="tn-pstatus-pill tn-pstatus-pill-disqualified">DQ</span><?php endif; ?>
-																			</span>
+									</span>
 									<?php if (!empty($p['ParkName'])): ?>
 									<span style="font-size:11px;color:#a0aec0"><?= htmlspecialchars($p['ParkName']) ?></span>
 									<?php endif; ?>
@@ -2314,7 +2352,15 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 									<span class="tn-status-wrap"><button class="tn-status-btn" onclick="tnToggleParticipantMenu(this)" data-tip="Set status">&#8942;</button><div class="tn-status-menu"><div class="tn-status-menu-item<?= $_pStatus==='active'?' tn-sm-active':'' ?>" onclick="tnSetParticipantStatus(<?= (int)$p['ParticipantId'] ?>, 'active', <?= $bid ?>, this)"><span class="tn-sm-dot tn-sm-dot-active"></span>Active</div><div class="tn-status-menu-item<?= $_pStatus==='withdrawn'?' tn-sm-active':'' ?>" onclick="tnSetParticipantStatus(<?= (int)$p['ParticipantId'] ?>, 'withdrawn', <?= $bid ?>, this)"><span class="tn-sm-dot tn-sm-dot-withdrawn"></span>Withdrawn</div><div class="tn-status-menu-item<?= $_pStatus==='disqualified'?' tn-sm-active':'' ?>" onclick="tnSetParticipantStatus(<?= (int)$p['ParticipantId'] ?>, 'disqualified', <?= $bid ?>, this)"><span class="tn-sm-dot tn-sm-dot-disqualified"></span>Disqualified</div></div></span>
 									<button class="tn-remove-participant" data-pid="<?= (int)$p['ParticipantId'] ?>" data-bid="<?= $bid ?>" data-tid="<?= $tid ?>" data-tip="Remove participant" onclick="tnRemoveParticipant(this)">&times;</button>
 									<?php endif; ?>
+								<?php endif; ?>
 								</li>
+								<?php if (($p['IsTeam'] ?? false) && !empty($p['Members'])): ?>
+								<li class="tn-team-roster-sub" style="display:none;flex-wrap:wrap;padding:4px 6px 6px 46px;gap:0">
+									<?php foreach ($p['Members'] as $_pm): ?>
+									<span class="tn-roster-member"><?= htmlspecialchars($_pm['Persona'] ?? '') ?><span class="tn-pill tn-pill-team-wl" data-tip="Warrior level" style="margin-left:3px">⚔<?= (int)$_pm['WarriorLevel'] ?></span></span>
+									<?php endforeach; ?>
+								</li>
+								<?php endif; ?>
 								<?php endforeach; ?>
 							</ul>
 							<?php endif; ?>
@@ -2331,13 +2377,14 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 									<?php endif; ?>
 								</div>
 								<div id="<?= $_seqId ?>"<?= $_isIronman ? ' style="display:none;margin-top:8px"' : '' ?>>
+								<?php $_isTeamBracket = ($b['Participants'] ?? 'individual') === 'team'; ?>
 								<table class="tn-table">
 									<thead>
 										<tr>
 											<th><?= $_isIronman ? 'Fight' : 'Round' ?></th>
-											<th>Participant 1</th>
+											<th><?= $_isTeamBracket ? 'Team 1' : 'Participant 1' ?></th>
 											<th>Result</th>
-											<th>Participant 2</th>
+											<th><?= $_isTeamBracket ? 'Team 2' : 'Participant 2' ?></th>
 										</tr>
 									</thead>
 									<tbody>
@@ -2404,19 +2451,39 @@ foreach ($bracketData as $_bid => $_bd) {
 					</thead>
 					<tbody>
 						<?php foreach ($_distParts as $_p): ?>
+						<?php $_pIsTeam = $_p['IsTeam'] ?? false; ?>
 						<tr>
 							<td style="font-weight:600"><?= htmlspecialchars($_p['Alias'] ?: '—') ?></td>
 							<td>
-								<?php if (!empty($_p['Persona']) && (int)$_p['MundaneId'] > 0): ?>
+								<?php if ($_pIsTeam): ?>
+								<?php if (!empty($_p['Members'])): ?>
+								<span style="font-size:12px;color:#718096"><?= count($_p['Members']) ?> member<?= count($_p['Members']) !== 1 ? 's' : '' ?></span>
+								<?php else: ?><span style="color:#a0aec0">Team</span><?php endif; ?>
+								<?php elseif (!empty($_p['Persona']) && (int)$_p['MundaneId'] > 0): ?>
 								<a href="<?= UIR ?>Player/profile/<?= (int)$_p['MundaneId'] ?>" style="color:#276749;text-decoration:none"><?= htmlspecialchars($_p['Persona']) ?></a>
 								<?php elseif (!empty($_p['Persona'])): ?>
 								<?= htmlspecialchars($_p['Persona']) ?>
 								<?php else: ?><span style="color:#a0aec0">—</span><?php endif; ?>
 							</td>
-							<td style="color:#718096"><?= htmlspecialchars(!empty($_p['ParkName']) ? $_p['ParkName'] : '—') ?></td>
-							<td><?= tnParticipantPills($_p) ?: '<span style="color:#a0aec0">—</span>' ?></td>
+							<td style="color:#718096"><?= $_pIsTeam ? '—' : htmlspecialchars(!empty($_p['ParkName']) ? $_p['ParkName'] : '—') ?></td>
+							<td>
+								<?php if ($_pIsTeam): ?>
+								<span style="display:inline-flex;gap:3px"><span class="tn-pill tn-pill-team-wl" data-tip="Team warrior level">⚔ <?= (int)($_p['WarriorLevel'] ?? 0) ?></span></span>
+								<?php else: ?>
+								<?= tnParticipantPills($_p) ?: '<span style="color:#a0aec0">—</span>' ?>
+								<?php endif; ?>
+							</td>
 							<td style="color:#718096;font-size:12px"><?= htmlspecialchars(implode(', ', $_p['_brackets'])) ?></td>
 						</tr>
+						<?php if ($_pIsTeam && !empty($_p['Members'])): ?>
+						<tr class="tn-team-roster-row">
+							<td colspan="5">
+								<?php foreach ($_p['Members'] as $_gm): ?>
+								<span class="tn-roster-member"><?= htmlspecialchars($_gm['Persona'] ?? '') ?><span class="tn-pill tn-pill-team-wl" data-tip="Warrior level" style="margin-left:3px">⚔<?= (int)$_gm['WarriorLevel'] ?></span></span>
+								<?php endforeach; ?>
+							</td>
+						</tr>
+						<?php endif; ?>
 						<?php endforeach; ?>
 					</tbody>
 				</table>
@@ -2539,10 +2606,21 @@ foreach ($bracketData as $_bid => $_bd) {
 								$_stTieCount++;
 								$_stPrev = $stRow;
 							?>
+							<?php $_stIsTeam = $stRow['IsTeam'] ?? false; ?>
 							<tr>
 								<td style="color:#a0aec0;font-weight:700"><?= $_stRank ?></td>
-								<td style="font-weight:600"><?= htmlspecialchars($stRow['Alias'] ?? '—') ?><?= tnParticipantPills($stRow) ?></td>
-								<td style="color:#718096"><?= htmlspecialchars($stRow['ParkName'] ?? '') ?: '—' ?></td>
+								<td style="font-weight:600">
+									<?= htmlspecialchars($stRow['Alias'] ?? '—') ?>
+									<?php if ($_stIsTeam): ?>
+									<span style="display:inline-flex;gap:3px;margin-left:4px;vertical-align:middle"><span class="tn-pill tn-pill-team-wl" data-tip="Team warrior level">⚔ <?= (int)($stRow['TeamWarriorLevel'] ?? 0) ?></span></span>
+									<?php if (!empty($stRow['Members'])): ?>
+									<button class="tn-team-roster-btn" onclick="tnToggleRoster(this)" data-tip="Show/hide team roster">&#9658; <?= count($stRow['Members']) ?></button>
+									<?php endif; ?>
+									<?php else: ?>
+									<?= tnParticipantPills($stRow) ?>
+									<?php endif; ?>
+								</td>
+								<td style="color:#718096"><?= $_stIsTeam ? '—' : (htmlspecialchars($stRow['ParkName'] ?? '') ?: '—') ?></td>
 								<td style="text-align:center;color:#276749;font-weight:700"><?= (int)$stRow['Wins'] ?></td>
 								<?php if ($_stIsIronman): ?>
 								<td style="text-align:center;font-weight:700;color:#d69e2e"><?= (int)($stRow['MaxStreak'] ?? 0) ?></td>
@@ -2568,6 +2646,15 @@ foreach ($bracketData as $_bid => $_bd) {
 								</td>
 								<?php endif; ?>
 							</tr>
+							<?php if ($_stIsTeam && !empty($stRow['Members'])): ?>
+							<tr class="tn-team-roster-row" style="display:none">
+								<td colspan="<?= ($_stIsIronman ? 7 : 9) + ($canRecommend ? 1 : 0) + 1 ?>" style="padding:4px 10px 8px 30px">
+									<?php foreach ($stRow['Members'] as $_sm): ?>
+									<span class="tn-roster-member"><?= htmlspecialchars($_sm['Persona'] ?? '') ?><span class="tn-pill tn-pill-team-wl" data-tip="Warrior level" style="margin-left:3px">⚔<?= (int)$_sm['WarriorLevel'] ?></span></span>
+									<?php endforeach; ?>
+								</td>
+							</tr>
+							<?php endif; ?>
 							<?php endforeach; ?>
 						</tbody>
 					</table>
@@ -3897,6 +3984,24 @@ function tnToggleSeq(id) {
 	var open = el.style.display === 'none';
 	el.style.display = open ? '' : 'none';
 	if (icon) icon.style.transform = open ? '' : 'rotate(-90deg)';
+}
+
+// Toggle roster sub-row for a team participant. Works in ul-li lists and table rows.
+// Button HTML: &#9658; (▸ closed) / &#9660; (▾ open) + member count.
+function tnToggleRoster(btn) {
+	var parent = btn.closest('li') || btn.closest('tr');
+	if (!parent) return;
+	var sub = parent.nextElementSibling;
+	if (!sub || (!sub.classList.contains('tn-team-roster-sub') && !sub.classList.contains('tn-team-roster-row'))) return;
+	var isHidden = sub.style.display === 'none';
+	var count = btn.getAttribute('data-roster-count') || btn.textContent.trim().replace(/[^0-9]/g, '');
+	if (!btn.getAttribute('data-roster-count')) btn.setAttribute('data-roster-count', count);
+	if (sub.tagName === 'LI') {
+		sub.style.display = isHidden ? 'flex' : 'none';
+	} else {
+		sub.style.display = isHidden ? '' : 'none';
+	}
+	btn.innerHTML = (isHidden ? '&#9660;' : '&#9658;') + ' ' + count;
 }
 
 function tnToggleBracket(bid) {
