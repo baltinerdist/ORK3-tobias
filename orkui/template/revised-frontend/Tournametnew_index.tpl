@@ -1376,6 +1376,8 @@ html[data-theme="dark"] .tn-mq-toggle {
 	box-shadow:0 3px 12px rgba(0,0,0,0.5);
 }
 html[data-theme="dark"] .tn-mq-toggle:hover { background:#2d3748; }
+/* Only offer the mobile/desktop view toggle at mobile width. */
+@media (min-width: 769px) { .tn-mq-toggle { display:none !important; } }
 
 /* Global h1-h6 gray-box trap reset for any heading inside a mobile sheet/overlay.
    Keyed off .tn-overlay (every sheet presents an existing .tn-overlay element);
@@ -3388,18 +3390,15 @@ TnMobile.isMobile = function() { return !!(TnMobile.viewMode && TnMobile.viewMod
 	TnMobile.viewMode = {
 		init: function() {
 			renderPill();
-			var override = stored();
-			if (override === 'mobile' || override === 'desktop') {
-				applyClass(override === 'mobile');
-			} else {
-				applyClass(window.matchMedia(MQ_QUERY).matches);
-			}
-			// React to viewport changes ONLY when there is no manual override.
+			// Desktop width always renders desktop; the view override (and the
+			// toggle pill, hidden by CSS above 768px) only apply at mobile width.
 			var mql = window.matchMedia(MQ_QUERY);
-			var onChange = function(e) {
-				if (stored()) return; // manual choice wins
-				applyClass(e.matches);
-			};
+			function resolve() {
+				if (!mql.matches) { applyClass(false); return; }   // desktop width -> desktop
+				applyClass(stored() !== 'desktop');                // mobile width -> mobile unless user chose desktop
+			}
+			resolve();
+			var onChange = function() { resolve(); };
 			if (mql.addEventListener)    mql.addEventListener('change', onChange);
 			else if (mql.addListener)    mql.addListener(onChange); // legacy Safari
 		},
