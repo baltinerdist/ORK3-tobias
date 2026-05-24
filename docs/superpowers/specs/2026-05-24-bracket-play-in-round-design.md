@@ -68,9 +68,20 @@ examples (single/double elim):
 
 When the field is not surfaced, the stored value stays `byes` (no behavior change).
 
-The check is computed live in the config UI from the current participant count, and
-also enforced server-side at save time (a `play-in` value submitted for a
-non-triggering / non-elim bracket is coerced back to `byes`).
+**Where it lives:** the trigger needs the participant count, which only exists once
+participants are assigned to the bracket. The Add-Bracket modal runs before any
+participants exist, so the field lives in the **Edit-Bracket modal**, where the
+count is `TnConfig.bracketData[bid].Participants.length`. Because the flag is
+display-only, it stays editable even after the bracket is generated (organizer can
+flip the presentation at any time).
+
+**Defense in depth:** the UI only *offers* the option when the trigger holds, but the
+authority for whether play-in presentation is *applied* is the visualization itself:
+it renders play-in only when the flag is `play-in` AND the section is the winners
+side of a single/double elim bracket AND round 1 actually contains at least one bye
+match. This means a stale or over-eager flag can never produce a broken view, and we
+do not need to re-count participants server-side. The server simply whitelists the
+value to `byes | play-in`.
 
 ## Components
 
@@ -89,43 +100,47 @@ ALTER TABLE ork_bracket
 
 ### 2. Data layer — `system/lib/ork3/class.Tournament.php`
 
-- **AddBracket** (and the edit/update bracket path, if present): set
-  `$this->Bracket->first_round_mode = $request['FirstRoundMode']` with validation:
-  accept only `byes` | `play-in`; coerce to `byes` unless
-  `method ∈ {single, double}` AND the trigger condition holds for the current
-  participant count. Default `byes` when absent.
-- **GetBrackets** mapping: include `FirstRoundMode => $row->first_round_mode` so it
-  surfaces in `TnConfig.bracketData[bid].Bracket.FirstRoundMode`.
+- **UpdateBracket** (line ~286): add `first_round_mode` to the **always-editable**
+  (cosmetic) group — *not* the `$is_setup`-gated structural group — since it is
+  display-only: `if (isset($request['FirstRoundMode'])) $this->Bracket->first_round_mode = (in_array($request['FirstRoundMode'], ['byes','play-in'], true) ? $request['FirstRoundMode'] : 'byes');`
+- **AddBracket**: no change needed — the `ork_bracket.first_round_mode` DB default
+  (`byes`) sets new brackets correctly, and the Add modal never offers the field.
+- **GetBrackets** (line ~331): add `'FirstRoundMode' => $r->first_round_mode,` to the
+  mapping so it surfaces in `TnConfig.bracketData[bid].Bracket.FirstRoundMode`.
 - No change to `generate_single_elim` / `generate_double_elim` / advancement.
 
 ### 3. AJAX controller — `orkui/controller/controller.TournamentAjax.php`
 
-- `addbracket` action (and `updatebracket` if it exists): read
-  `$_POST['FirstRoundMode']`, whitelist to `['byes','play-in']` (default `byes`),
-  pass through to the model. Server-side coercion (above) is the source of truth;
-  the controller just forwards a clean value.
+- `updatebracket` action (line ~151): add
+  `'FirstRoundMode' => trim($_POST['FirstRoundMode'] ?? 'byes'),` to the
+  `update_bracket(...)` request array. The model whitelists the value; the
+  controller just forwards it. `addbracket` is left unchanged.
 
 ### 4. Config UI — `orkui/template/revised-frontend/Tournametnew_index.tpl`
 
-In the Add/Edit Bracket modal (around the existing method/seeding fields):
+In the **Edit-Bracket modal** (`#tn-editbracket-*`, around the existing method/seeding
+fields, e.g. inside the advanced section), add a field group **"How to handle the
+first round?"**:
 
-- Add a field group **"How to handle the first round?"** with two choices
-  (segmented control or radio, matching existing modal styling, dark-mode safe):
+- Two choices (segmented control / radio matching existing modal styling, dark-mode
+  safe), with hidden-input or radio value:
   - **Play-In for First Round Position** → value `play-in`
   - **Assign Byes for First Round** → value `byes`
-- A small helper line explaining the choice (e.g. "This bracket would otherwise
-  show N byes in round 1.").
+- A small helper line (e.g. "This bracket would otherwise show N byes in round 1.").
 - **Visibility:** a JS helper `tnShouldOfferPlayIn(method, participantCount)`
-  implements the trigger condition. The field group is shown/hidden live as the
-  organizer changes method or participant count; hidden ⇒ submitted value `byes`.
-- **Default when shown:** `play-in` (pre-selected).
-- Append `FirstRoundMode` to the `FormData` in the add-bracket submit handler
-  (and edit handler if present).
+  implements the trigger condition. In `openEditBracket(bracketId, data)` the field
+  group is shown only when `tnShouldOfferPlayIn(data.method, (TnConfig.bracketData[bid].Participants||[]).length)`
+  is true; otherwise hidden and treated as `byes`.
+- **Default when shown:** `play-in` (pre-selected), unless the bracket already has a
+  saved `FirstRoundMode` (then reflect the saved value).
+- Append `FirstRoundMode` to the `FormData` in the edit-bracket submit handler.
 
 ### 5. Visualization — `renderSection` + connectors in `Tournametnew_index.tpl`
 
-In `renderSection(wrap, matches, pMap, side)`, for `side` that is a single/double
-elimination **winners** section whose bracket has `FirstRoundMode === 'play-in'`:
+In `renderSection(wrap, matches, pMap, side)`, play-in presentation is applied only
+when ALL of: the bracket's `FirstRoundMode === 'play-in'`, the bracket `Method` is
+`single` or `double`, `side` is the winners side, AND round 1 contains at least one
+bye match (a match with one zero participant). When applied:
 
 - **Round-1 label:** render `"Play-In"` instead of `"Round 1"`. (Final / Semifinal /
   Quarterfinal labels are anchored to `maxRound` and remain correct, because the
@@ -152,15 +167,16 @@ option and their rendering paths are untouched).
 ## Data flow
 
 ```
-Config modal (method + participant count)
+Edit-bracket modal (method + bracket's participant count)
   → tnShouldOfferPlayIn() decides field visibility, default play-in
   → submit: FormData.FirstRoundMode
-  → controller.TournamentAjax addbracket: whitelist value
-  → class.Tournament AddBracket: validate/coerce, save first_round_mode
+  → controller.TournamentAjax updatebracket: forward value
+  → class.Tournament UpdateBracket: whitelist + save first_round_mode (always-editable)
   → ork_bracket.first_round_mode persisted
   → controller.Tournament builds bracketData (GetBrackets includes FirstRoundMode)
   → TnConfig.bracketData[bid].Bracket.FirstRoundMode in JS
-  → renderSection: if play-in, relabel round 1 "Play-In" + omit bye boxes
+  → renderSection: if play-in + single/double winners + byes present,
+                   relabel round 1 "Play-In" + omit bye boxes
 ```
 
 ## Out of scope / non-goals
