@@ -551,7 +551,7 @@ class Tournament extends Ork3 {
 
 		// Team brackets: collapse N duplicate rows (one per member from the LEFT JOIN
 		// on ork_participant_mundane) into one row per participant, then attach a
-		// Members[] roster fetched from ork_participant_teams + ork_participant_team_members.
+		// Members[] roster via the shared teamRoster() helper.
 		if ($bracketParticipants === 'team') {
 			$byPid = [];
 			foreach ($participants as $row) {
@@ -563,35 +563,46 @@ class Tournament extends Ork3 {
 					$byPid[$pid] = $row;
 				}
 			}
-			// Fetch the full roster for every team in this bracket via the teams tables.
-			$roster_r = $this->db->query(
-				"SELECT pt.participant_id AS participant_id, ptm.mundane_id AS mundane_id,
-				        mn.persona AS persona, p.warrior_level AS warrior_level,
-				        mpark.name AS park_name
-				 FROM " . DB_PREFIX . "participant_teams pt
-				 JOIN " . DB_PREFIX . "participant_team_members ptm ON ptm.team_id = pt.team_id
-				 JOIN " . DB_PREFIX . "mundane mn ON mn.mundane_id = ptm.mundane_id
-				 LEFT JOIN " . DB_PREFIX . "participant p ON p.participant_id = pt.participant_id
-				 LEFT JOIN " . DB_PREFIX . "park mpark ON mpark.park_id = mn.park_id
-				 WHERE pt.bracket_id = $bracket_id"
-			);
-			if ($roster_r && $roster_r->size() > 0) {
-				while ($roster_r->next()) {
-					$pid = (int)$roster_r->participant_id;
-					if (isset($byPid[$pid])) {
-						$byPid[$pid]['Members'][] = [
-							'MundaneId'    => (int)$roster_r->mundane_id,
-							'Persona'      => $roster_r->persona,
-							'WarriorLevel' => (int)$roster_r->warrior_level,
-							'ParkName'     => $roster_r->park_name,
-						];
-					}
-				}
+			// Populate Members[] from the shared teamRoster() helper.
+			$roster = $this->teamRoster($bracket_id);
+			foreach ($byPid as $pid => &$teamRow) {
+				$teamRow['Members'] = $roster[$pid] ?? [];
 			}
+			unset($teamRow);
 			$participants = array_values($byPid);
 		}
 
 		return Success($participants);
+	}
+
+	/**
+	 * teamRoster($bracketId)
+	 * Returns a map of participant_id => Members[] for all teams in a bracket.
+	 * Members[] contains MundaneId, Persona, ParkName.
+	 * Shared by GetParticipants and GetStandings to avoid duplicating the join.
+	 */
+	private function teamRoster(int $bracketId): array {
+		$r = $this->db->query(
+			"SELECT pt.participant_id AS participant_id, ptm.mundane_id AS mundane_id,
+			        mn.persona AS persona, mpark.name AS park_name
+			 FROM " . DB_PREFIX . "participant_teams pt
+			 JOIN " . DB_PREFIX . "participant_team_members ptm ON ptm.team_id = pt.team_id
+			 JOIN " . DB_PREFIX . "mundane mn ON mn.mundane_id = ptm.mundane_id
+			 LEFT JOIN " . DB_PREFIX . "park mpark ON mpark.park_id = mn.park_id
+			 WHERE pt.bracket_id = $bracketId"
+		);
+		$byPid = [];
+		if ($r && $r->size() > 0) {
+			while ($r->next()) {
+				$pid = (int)$r->participant_id;
+				$byPid[$pid][] = [
+					'MundaneId' => (int)$r->mundane_id,
+					'Persona'   => $r->persona,
+					'ParkName'  => $r->park_name,
+				];
+			}
+		}
+		return $byPid;
 	}
 
 	/**
@@ -1201,7 +1212,64 @@ class Tournament extends Ork3 {
 		$bracket_id = (int)($request['BracketId'] ?? 0);
 		if (!valid_id($bracket_id)) return InvalidParameter('BracketId required');
 
-		$sql = "SELECT
+		// Look up bracket participants type (team vs individual) to branch standings logic.
+		$bpRow = $this->db->query("SELECT participants FROM " . DB_PREFIX . "bracket WHERE bracket_id = $bracket_id LIMIT 1");
+		$bracketParticipants = ($bpRow && $bpRow->next()) ? $bpRow->participants : 'individual';
+
+		if ($bracketParticipants === 'team') {
+			// Team brackets: group only by participant (not by mundane_id) so each team
+			// yields exactly one standings row. No per-member award decoration.
+			$sql = "SELECT
+					p.participant_id,
+					p.alias,
+					p.park_id,
+					pk.name AS park_name,
+					p.warrior_level,
+					COUNT(CASE WHEN (m.participant_1_id = p.participant_id AND m.result = '1-wins') OR (m.participant_2_id = p.participant_id AND m.result IN ('2-wins','forfeit','disqualified')) THEN 1 END) AS wins,
+					COUNT(CASE WHEN (m.participant_1_id = p.participant_id AND m.result IN ('2-wins','forfeit','disqualified')) OR (m.participant_2_id = p.participant_id AND m.result = '1-wins') THEN 1 END) AS losses,
+					COUNT(CASE WHEN (m.participant_1_id = p.participant_id OR m.participant_2_id = p.participant_id) AND m.result = 'tie' THEN 1 END) AS ties,
+					COUNT(CASE WHEN m.participant_1_id = p.participant_id AND m.participant_2_id = 0 THEN 1
+					            WHEN m.participant_2_id = p.participant_id AND m.participant_1_id = 0 THEN 1 END) AS byes,
+					p.im_wins, p.im_current_streak, p.im_max_streak
+				FROM " . DB_PREFIX . "participant p
+					LEFT JOIN " . DB_PREFIX . "match m ON (m.participant_1_id = p.participant_id OR m.participant_2_id = p.participant_id) AND m.bracket_id = $bracket_id
+					LEFT JOIN " . DB_PREFIX . "park pk ON pk.park_id = p.park_id
+				WHERE p.bracket_id = $bracket_id
+				GROUP BY p.participant_id, p.alias, p.park_id, p.warrior_level, pk.name
+				ORDER BY wins DESC, losses ASC";
+
+			$r = $this->db->query($sql);
+			$standings = [];
+			$roster = $this->teamRoster($bracket_id);
+			if ($r !== false && $r->size() > 0) {
+				while ($r->next()) {
+					$wins   = (int)$r->wins;
+					$losses = (int)$r->losses;
+					$ties   = (int)$r->ties;
+					$pid    = (int)$r->participant_id;
+					$standings[] = [
+						'ParticipantId'    => $pid,
+						'Alias'            => $r->alias,
+						'ParkId'           => (int)$r->park_id,
+						'ParkName'         => $r->park_name,
+						'MundaneId'        => 0,
+						'IsTeam'           => true,
+						'TeamWarriorLevel' => (int)$r->warrior_level,
+						'Members'          => $roster[$pid] ?? [],
+						'Wins'             => $wins,
+						'Losses'           => $losses,
+						'Ties'             => $ties,
+						'Byes'             => (int)$r->byes,
+						'Points'           => ($wins * 3) + ($ties * 1),
+						'ImWins'           => (int)$r->im_wins,
+						'ImCurStreak'      => (int)$r->im_current_streak,
+						'ImMaxStreak'      => (int)$r->im_max_streak,
+					];
+				}
+			}
+		} else {
+			// Individual bracket path (unchanged)
+			$sql = "SELECT
 					p.participant_id,
 					p.alias,
 					p.park_id,
@@ -1223,51 +1291,52 @@ class Tournament extends Ork3 {
 				GROUP BY p.participant_id, p.alias, p.park_id, pm.mundane_id, park_name
 				ORDER BY wins DESC, losses ASC";
 
-		$r = $this->db->query($sql);
-		$standings = [];
-		$std_mids = [];
-		if ($r !== false && $r->size() > 0) {
-			while ($r->next()) {
-				$wins   = (int)$r->wins;
-				$losses = (int)$r->losses;
-				$ties   = (int)$r->ties;
-				$mid = (int)$r->mundane_id;
-				if ($mid > 0) $std_mids[$mid] = true;
-				$standings[] = [
-					'ParticipantId' => (int)$r->participant_id,
-					'Alias'         => $r->alias,
-					'ParkId'        => (int)$r->park_id,
-					'ParkName'      => $r->park_name,
-					'MundaneId'     => $mid,
-					'WarriorCount'  => 0,
-					'WarriorRank'   => 0,
-					'IsWarlord'     => false,
-					'IsKnightSword' => false,
-					'Wins'          => $wins,
-					'Losses'        => $losses,
-					'Ties'          => $ties,
-					'Byes'          => (int)$r->byes,
-					'Points'        => ($wins * 3) + ($ties * 1),
-					'ImWins'        => (int)$r->im_wins,
-					'ImCurStreak'   => (int)$r->im_current_streak,
-					'ImMaxStreak'   => (int)$r->im_max_streak,
-				];
-			}
-		}
-
-		// Batched award decoration (replaces 4 correlated subqueries per row)
-		if (!empty($std_mids)) {
-			$awards_map = $this->fetchAwardsForMundanes(array_keys($std_mids));
-			foreach ($standings as &$s) {
-				$mid = (int)$s['MundaneId'];
-				if ($mid > 0 && isset($awards_map[$mid])) {
-					$s['WarriorCount']  = $awards_map[$mid]['warrior_count'];
-					$s['WarriorRank']   = $awards_map[$mid]['warrior_rank'];
-					$s['IsWarlord']     = $awards_map[$mid]['is_warlord'];
-					$s['IsKnightSword'] = $awards_map[$mid]['is_knight_sword'];
+			$r = $this->db->query($sql);
+			$standings = [];
+			$std_mids = [];
+			if ($r !== false && $r->size() > 0) {
+				while ($r->next()) {
+					$wins   = (int)$r->wins;
+					$losses = (int)$r->losses;
+					$ties   = (int)$r->ties;
+					$mid = (int)$r->mundane_id;
+					if ($mid > 0) $std_mids[$mid] = true;
+					$standings[] = [
+						'ParticipantId' => (int)$r->participant_id,
+						'Alias'         => $r->alias,
+						'ParkId'        => (int)$r->park_id,
+						'ParkName'      => $r->park_name,
+						'MundaneId'     => $mid,
+						'WarriorCount'  => 0,
+						'WarriorRank'   => 0,
+						'IsWarlord'     => false,
+						'IsKnightSword' => false,
+						'Wins'          => $wins,
+						'Losses'        => $losses,
+						'Ties'          => $ties,
+						'Byes'          => (int)$r->byes,
+						'Points'        => ($wins * 3) + ($ties * 1),
+						'ImWins'        => (int)$r->im_wins,
+						'ImCurStreak'   => (int)$r->im_current_streak,
+						'ImMaxStreak'   => (int)$r->im_max_streak,
+					];
 				}
 			}
-			unset($s);
+
+			// Batched award decoration (replaces 4 correlated subqueries per row)
+			if (!empty($std_mids)) {
+				$awards_map = $this->fetchAwardsForMundanes(array_keys($std_mids));
+				foreach ($standings as &$s) {
+					$mid = (int)$s['MundaneId'];
+					if ($mid > 0 && isset($awards_map[$mid])) {
+						$s['WarriorCount']  = $awards_map[$mid]['warrior_count'];
+						$s['WarriorRank']   = $awards_map[$mid]['warrior_rank'];
+						$s['IsWarlord']     = $awards_map[$mid]['is_warlord'];
+						$s['IsKnightSword'] = $awards_map[$mid]['is_knight_sword'];
+					}
+				}
+				unset($s);
+			}
 		}
 
 		// Assign competition ranking: tied participants share a rank, next rank skips
