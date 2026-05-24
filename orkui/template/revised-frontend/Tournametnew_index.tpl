@@ -6999,6 +6999,21 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 		});
 	}
 
+	// Should the 'Play-In' first-round option be offered for this bracket?
+	// True only for single/double elim where the field is not a power of two AND
+	// contested round-1 matches (N - P/2) are fewer than half the round-1 slots
+	// (P/4) -- i.e. byes outnumber real matches at least 2:1. See spec table.
+	// Attached to window so the edit-bracket modal code (a separate IIFE) can call it.
+	window.tnShouldOfferPlayIn = function(method, n) {
+		n = parseInt(n) || 0;
+		if (method !== 'single' && method !== 'double') return false;
+		if (n < 3) return false;
+		var P = 1; while (P < n) P *= 2;          // next power of two >= n
+		if (P === n) return false;                 // power of two -> no byes
+		var contested = n - P / 2;
+		return contested < P / 4;
+	};
+
 	function renderSection(wrap, matches, pMap, side) {
 		// Group by round
 		var rounds = {};
