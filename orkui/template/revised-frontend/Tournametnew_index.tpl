@@ -7147,7 +7147,9 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 					}
 				});
 				if (hasResult) {
-					var resultLabel = m.Result === '1-wins' ? 'Player 1 wins' : m.Result === '2-wins' ? 'Player 2 wins' : m.Result === 'tie' ? 'Tie' : m.Result;
+					var resultLabel = m.Result === '1-wins' ? tnEscHtml((p1 && (p1.Alias || p1.Persona)) || 'Side 1') + ' wins'
+							: m.Result === '2-wins' ? tnEscHtml((p2 && (p2.Alias || p2.Persona)) || 'Side 2') + ' wins'
+							: m.Result === 'tie' ? 'Tie' : m.Result;
 					lines.push('<div class="tn-bv-tooltip-bouts">Result: ' + resultLabel + '</div>');
 					try {
 						var ba = (m.Bouts && m.Bouts !== '[]') ? JSON.parse(m.Bouts) : [];
