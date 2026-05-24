@@ -3245,11 +3245,15 @@ document.title = 'ORK 3: <?= htmlspecialchars($tName, ENT_QUOTES) ?>';
 // sessionStorage key `tnViewMode_<tournamentId>`.
 // =============================================
 window.TnMobile = window.TnMobile || {};
+// Shared helpers (de-duped): single source for #tn-root lookup and the
+// mobile-view predicate. Local wrappers across the IIFEs delegate here.
+TnMobile._rootEl = function() { return document.getElementById('tn-root'); };
+TnMobile.isMobile = function() { return !!(TnMobile.viewMode && TnMobile.viewMode.isMobile && TnMobile.viewMode.isMobile()); };
 (function() {
 	var MQ_QUERY  = '(max-width:768px)';
 	var STORE_KEY = 'tnViewMode_' + TnConfig.tournamentId;
 
-	function rootEl()  { return document.getElementById('tn-root'); }
+	function rootEl()  { return TnMobile._rootEl(); }
 	function stored()  { try { return sessionStorage.getItem(STORE_KEY); } catch (e) { return null; } }
 	function persist(v) { try { sessionStorage.setItem(STORE_KEY, v); } catch (e) {} }
 
@@ -3472,10 +3476,8 @@ window.TnMobile = window.TnMobile || {};
 // back to its `92dvh`/`92vh` declarations.
 // =============================================
 (function() {
-	function rootEl() { return document.getElementById('tn-root'); }
-	function isMobile() {
-		return !!(TnMobile.viewMode && TnMobile.viewMode.isMobile && TnMobile.viewMode.isMobile());
-	}
+	function rootEl() { return TnMobile._rootEl(); }
+	function isMobile() { return TnMobile.isMobile(); }
 
 	// --- visualViewport height tracking (shared by all open sheets) ---
 	var _vvCount = 0;          // number of currently-open sheets needing the var
@@ -4288,6 +4290,19 @@ function tnUpdatePlacePtsCols() {
 	});
 }
 
+// Shared opener (de-duped): on mobile present the overlay as a bottom sheet
+// via the foundation; otherwise fall through to the legacy centered modal.
+// Reachable from every modal opener (defined on window, outside the
+// canManage PHP guard so the separate bulk-add <script> can use it too).
+window.tnOpenAsSheet = function(overlayId, opts) {
+	var el = document.getElementById(overlayId);
+	if (window.TnMobile && TnMobile.sheet && TnMobile.viewMode && TnMobile.viewMode.isMobile && TnMobile.viewMode.isMobile()) {
+		TnMobile.sheet.open(el, opts || {});
+	} else {
+		tnOpenModal(overlayId);
+	}
+};
+
 <?php if ($canManage): ?>
 // ---- Add Bracket Modal ----
 (function() {
@@ -4304,12 +4319,7 @@ function tnUpdatePlacePtsCols() {
 		// leak teardown via the foundation); desktop falls through to the legacy
 		// centered overlay so behavior is byte-identical. The B1 wizard layers
 		// its step UI on top after this returns (see the wizard module).
-		if (window.TnMobile && TnMobile.sheet && TnMobile.viewMode
-			&& TnMobile.viewMode.isMobile && TnMobile.viewMode.isMobile()) {
-			TnMobile.sheet.open(document.getElementById(OVERLAY), {});
-		} else {
-			tnOpenModal(OVERLAY);
-		}
+		tnOpenAsSheet(OVERLAY, {});
 	};
 
 	(function() {
@@ -4415,12 +4425,7 @@ function tnUpdatePlacePtsCols() {
 		// Mobile: present as a bottom sheet (foundation handles dismiss/teardown);
 		// desktop falls through to the legacy centered overlay unchanged. The B1
 		// wizard layers its step UI on top after this returns.
-		if (window.TnMobile && TnMobile.sheet && TnMobile.viewMode
-			&& TnMobile.viewMode.isMobile && TnMobile.viewMode.isMobile()) {
-			TnMobile.sheet.open(document.getElementById(OVERLAY), {});
-		} else {
-			tnOpenModal(OVERLAY);
-		}
+		tnOpenAsSheet(OVERLAY, {});
 	};
 
 	(function() {
@@ -4499,10 +4504,7 @@ function tnUpdatePlacePtsCols() {
 (function() {
 	if (!window.TnConfig || !TnConfig.canManage) return;
 
-	function isMobileNow() {
-		return !!(window.TnMobile && TnMobile.viewMode
-			&& TnMobile.viewMode.isMobile && TnMobile.viewMode.isMobile());
-	}
+	function isMobileNow() { return !!(window.TnMobile && TnMobile.isMobile()); }
 
 	// Per-overlay field id prefix ("tn-addbracket" | "tn-editbracket").
 	function fld(prefix, name) { return document.getElementById(prefix + '-' + name); }
@@ -5194,12 +5196,7 @@ function tnFixedAcPosition(inputEl, dropdownEl) {
 		// keyboard-safe height); desktop falls through to the legacy centered
 		// overlay so behavior is byte-identical. tnCloseModal routes the
 		// _tnSheet overlay back through TnMobile.sheet.close on teardown.
-		if (window.TnMobile && TnMobile.sheet && TnMobile.viewMode
-			&& TnMobile.viewMode.isMobile && TnMobile.viewMode.isMobile()) {
-			TnMobile.sheet.open(document.getElementById(OVERLAY), {});
-		} else {
-			tnOpenModal(OVERLAY);
-		}
+		tnOpenAsSheet(OVERLAY, {});
 	};
 
 	// Quick Add list — participants from other brackets not yet in target bracket
@@ -5532,12 +5529,7 @@ function tnFixedAcPosition(inputEl, dropdownEl) {
 		document.getElementById('tn-teamquickadd-section').style.display = 'none';
 		tnTeamAcClose();
 		// Mobile: bottom sheet; desktop: legacy centered overlay (unchanged).
-		if (window.TnMobile && TnMobile.sheet && TnMobile.viewMode
-			&& TnMobile.viewMode.isMobile && TnMobile.viewMode.isMobile()) {
-			TnMobile.sheet.open(document.getElementById(OVERLAY), {});
-		} else {
-			tnOpenModal(OVERLAY);
-		}
+		tnOpenAsSheet(OVERLAY, {});
 		setTimeout(function(){ document.getElementById('tn-addteam-name').focus(); }, 50);
 	};
 
@@ -6168,6 +6160,25 @@ window.tnSortTable = function(tableId, colIndex, numeric) {
 // ============================================================
 // Bracket Generation
 // ============================================================
+// Pure byes/rounds computation. Single source of truth shared by
+// tnGenerateMatches and tnMobileGenerate (math copied verbatim from the
+// canonical tnGenerateMatches path).
+function tnComputeByesAndRounds(method, pCount, bracket) {
+	var byes = 0, rounds = 0;
+	if (method === 'single' || method === 'double') {
+		var slots = 1;
+		while (slots < pCount) slots *= 2;
+		byes = slots - pCount;
+		rounds = Math.round(Math.log2(slots));
+		if (method === 'double') rounds = rounds + ' WR + ' + ((rounds - 1) * 2) + ' LR + GF';
+	} else if (method === 'swiss') {
+		var rings = Math.max(1, parseInt(bracket.Rings) || 1);
+		rounds = rings > 1 ? rings : Math.ceil(Math.log2(pCount));
+	} else if (method === 'round-robin') {
+		rounds = pCount % 2 === 0 ? pCount - 1 : pCount;
+	}
+	return { byes: byes, rounds: rounds };
+}
 window.tnGenerateMatches = function(bracketId, tournamentId, skipConfirm) {
 	if (!TnConfig.canManage) return;
 
@@ -6183,19 +6194,8 @@ window.tnGenerateMatches = function(bracketId, tournamentId, skipConfirm) {
 	var hasMatches = (bd.Matches || []).length > 0;
 
 	// Calculate byes and rounds
-	var byes = 0, rounds = 0;
-	if (method === 'single' || method === 'double') {
-		var slots = 1;
-		while (slots < pCount) slots *= 2;
-		byes = slots - pCount;
-		rounds = Math.round(Math.log2(slots));
-		if (method === 'double') rounds = rounds + ' WR + ' + ((rounds - 1) * 2) + ' LR + GF';
-	} else if (method === 'swiss') {
-		var rings = Math.max(1, parseInt(bracket.Rings) || 1);
-		rounds = rings > 1 ? rings : Math.ceil(Math.log2(pCount));
-	} else if (method === 'round-robin') {
-		rounds = pCount % 2 === 0 ? pCount - 1 : pCount;
-	}
+	var _br = tnComputeByesAndRounds(method, pCount, bracket);
+	var byes = _br.byes, rounds = _br.rounds;
 
 	// Build confirmation message
 	var msg = styleLabel + ' \u2014 ' + methodLabel + '\n\n';
@@ -6256,17 +6256,9 @@ window.tnMobileGenerate = function(bracketId, tournamentId, isRegen, matchCount)
 		var method = bracket.Method || 'single';
 		methodLabel = TnConfig.methodLabels[method] || method;
 		styleLabel = TnConfig.styleLabels[bracket.Style] || bracket.Style;
-		// Same byes/rounds math as tnGenerateMatches.
-		if (method === 'single' || method === 'double') {
-			var slots = 1; while (slots < pCount) slots *= 2;
-			byes = slots - pCount; rounds = Math.round(Math.log2(slots));
-			if (method === 'double') rounds = rounds + ' WR + ' + ((rounds - 1) * 2) + ' LR + GF';
-		} else if (method === 'swiss') {
-			var rings = Math.max(1, parseInt(bracket.Rings) || 1);
-			rounds = rings > 1 ? rings : Math.ceil(Math.log2(pCount));
-		} else if (method === 'round-robin') {
-			rounds = pCount % 2 === 0 ? pCount - 1 : pCount;
-		}
+		// Same byes/rounds math as tnGenerateMatches (shared helper).
+		var _br = tnComputeByesAndRounds(method, pCount, bracket);
+		byes = _br.byes; rounds = _br.rounds;
 	}
 	var items = [];
 	if (isRegen) {
@@ -9106,6 +9098,10 @@ html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 /* Only meaningful on mobile (the deck is mobile-only); hide on desktop. */
 .tn-boutlist-trigger { display:none; }
 .tn-mobile .tn-boutlist-trigger { display:inline-flex; min-height:var(--tn-touch, 44px); }
+/* Desktop width for the Bout List sheet box (moved off the inline style so the
+   `.tn-mobile .tn-overlay .tn-modal-box { width:100%; max-width:100% }` rule — higher
+   specificity — wins on mobile and the sheet goes full-width like the others). */
+.tn-boutlist-box { width:520px; max-width:calc(100vw - 40px); }
 
 .tn-boutlist-count { font-size:12px; font-weight:700; color:#718096; }
 .tn-boutlist-list { display:flex; flex-direction:column; }
@@ -9206,12 +9202,7 @@ html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
 		tnUpdateBulkCount();
 		// Mobile: near-full-height bottom sheet (textarea flex:1, sticky footer);
 		// desktop: legacy centered overlay (unchanged).
-		if (window.TnMobile && TnMobile.sheet && TnMobile.viewMode
-			&& TnMobile.viewMode.isMobile && TnMobile.viewMode.isMobile()) {
-			TnMobile.sheet.open($('tn-bulkadd-overlay'), {});
-		} else {
-			tnOpenModal('tn-bulkadd-overlay');
-		}
+		tnOpenAsSheet('tn-bulkadd-overlay', {});
 		setTimeout(function(){ var t = $('tn-bulkadd-text'); if (t) t.focus(); }, 80);
 	};
 	function closeBulkAdd(){ tnCloseModal('tn-bulkadd-overlay'); }
@@ -9321,9 +9312,7 @@ html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
 		var _imDeckMounted = false;     // true while a mobile ironman deck owns nuHost
 		var _imDeckRing = 1;            // currently selected ring for the deck
 		function destroyIronmanDeck(){ _imDeckMounted = false; }
-		function isMobileView(){
-			return !!(window.TnMobile && TnMobile.viewMode && TnMobile.viewMode.isMobile && TnMobile.viewMode.isMobile());
-		}
+		function isMobileView(){ return !!(window.TnMobile && TnMobile.isMobile()); }
 		function destroyDeck(){
 			if (deckHandle){ try { deckHandle.destroy(); } catch(e){} deckHandle = null; }
 		}
@@ -9493,8 +9482,14 @@ html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
 		// current bracket's bd. Returns the overlay; caller opens via TnMobile.sheet.
 		function buildBoutListSheet(bid, bd){
 			var all = tnSequencedBouts(bd);
-			var ready = nextUnresolved(bd);
-			var readyIds = ready.map(function(m){ return String(m.MatchId); });
+			// `ready` is the unresolved subset of `all` — identical to
+			// nextUnresolved(bd) (same filter, same order) but reuses the
+			// already-computed `all` instead of re-sequencing.
+			var readyIds = all.filter(function(m){
+				if (m.Result) return false;
+				if (!m.Participant1Id || !m.Participant2Id) return false;
+				return true;
+			}).map(function(m){ return String(m.MatchId); });
 			var pMap = participantLookup(bd);
 
 			var rows = all.map(function(m){
@@ -9513,7 +9508,7 @@ html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
 						'<span>' + tnEsc(res.loseName) + '</span>';
 					if (res.score) trailing = '<span class="tn-boutlist-scorepill" data-tip="Bout score (winner-loser)">' + tnEsc(res.score) + '</span>';
 					tappable = true;                                    // re-open result
-					return rowHTML(m, 'done', glyph, side, namesHTML, trailing, '', tappable);
+					return rowHTML(m, 'done', glyph, side, namesHTML, trailing, tappable);
 				}
 
 				if (!hasP1 || !hasP2){
@@ -9522,7 +9517,7 @@ html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
 					var n1 = hasP1 ? tnBoutListName(m.Participant1Alias || p1.Alias || p1.Persona || '\u2014', p1.Seed) : '<span class="tn-boutlist-tbd">TBD</span>';
 					var n2 = hasP2 ? tnBoutListName(m.Participant2Alias || p2.Alias || p2.Persona || '\u2014', p2.Seed) : '<span class="tn-boutlist-tbd">TBD</span>';
 					var namesNR = '<span>' + n1 + '</span><span class="tn-boutlist-vs">vs</span><span>' + n2 + '</span>';
-					return rowHTML(m, 'notready', glyph, side, namesNR, '', '', false);
+					return rowHTML(m, 'notready', glyph, side, namesNR, '', false);
 				}
 
 				// Ready (both participants, no result) — current / on-deck / upcoming.
@@ -9533,7 +9528,7 @@ html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
 				var rn1 = tnBoutListName(m.Participant1Alias || p1.Alias || p1.Persona || '\u2014', p1.Seed);
 				var rn2 = tnBoutListName(m.Participant2Alias || p2.Alias || p2.Persona || '\u2014', p2.Seed);
 				var namesR = '<span>' + rn1 + '</span><span class="tn-boutlist-vs">vs</span><span>' + rn2 + '</span>';
-				return rowHTML(m, status, glyph, side, namesR, statusPill, '', true);
+				return rowHTML(m, status, glyph, side, namesR, statusPill, true);
 			}).join('');
 
 			if (!rows) rows = '<div class="tn-boutlist-empty">No bouts in this bracket yet.</div>';
@@ -9541,7 +9536,7 @@ html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
 			var overlay = document.createElement('div');
 			overlay.className = 'tn-overlay tn-sheet';
 			overlay.innerHTML =
-				'<div class="tn-modal-box" style="width:520px;max-width:calc(100vw - 40px)">' +
+				'<div class="tn-modal-box tn-boutlist-box">' +
 					'<div class="tn-modal-header">' +
 						'<span class="tn-modal-title">Bout List <span class="tn-boutlist-count">' + all.length + ' bout' + (all.length === 1 ? '' : 's') + '</span></span>' +
 						'<button type="button" class="tn-modal-close" data-tn-boutlist-close="1">&times;</button>' +
@@ -9581,7 +9576,7 @@ html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
 
 		// Single Bout List row builder. status drives the modifier class + glyph
 		// styling; tappable rows get role/tabindex for keyboard access.
-		function rowHTML(m, status, glyph, side, namesHTML, trailing, _unused, tappable){
+		function rowHTML(m, status, glyph, side, namesHTML, trailing, tappable){
 			var trailWrap = trailing ? '<span class="tn-boutlist-trail">' + trailing + '</span>' : '';
 			return '<button type="button" class="tn-boutlist-row tn-boutlist-row--' + status + '"' +
 				' data-mid="' + tnEsc(String(m.MatchId)) + '" data-status="' + status + '"' +
@@ -10472,6 +10467,34 @@ html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
 		mo.observe(rrOverlay, { attributes: true, attributeFilter: ['class'] });
 	})();
 
+	// Shared clear+generate chain (de-duped) used by both the desktop
+	// undo-toast auto-commit and the mobile confirm-sheet commit. Chain:
+	// clearmatches (also resets bracket status to 'setup') -> generate.
+	// Direct fetch so we don't trip the tnGenerateMatches confirm() dialog
+	// on top. `onError` runs in .catch BEFORE the shared alert (lets the
+	// desktop caller re-enable its armed button).
+	window.tnRegenFetch = function(bid, tid, onError){
+		var fd1 = new FormData();
+		fd1.append('TournamentId', tid);
+		fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bid + '/clearmatches', { method: 'POST', body: fd1 })
+			.then(function(r){ return r.json(); })
+			.then(function(d){
+				if (!d || d.status !== 0) throw new Error((d && d.error) || 'Clear failed');
+				var fd2 = new FormData();
+				fd2.append('BracketId', bid);
+				return fetch(TnConfig.uir + 'TournamentAjax/tournament/' + tid + '/generate', { method: 'POST', body: fd2 });
+			})
+			.then(function(r){ return r.json(); })
+			.then(function(d){
+				if (!d || d.status !== 0) throw new Error((d && d.error) || 'Generate failed');
+				window.location.reload();
+			})
+			.catch(function(err){
+				if (typeof onError === 'function') onError(err);
+				alert('Re-generate failed: ' + (err && err.message ? err.message : err));
+			});
+	};
+
 	// ================================================================
 	// TASK 12 · UNDO-TOAST Re-generate
 	// Clicking Re-generate arms a 4s countdown on the button itself.
@@ -10503,52 +10526,15 @@ html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
 			var cBtn = armedBtn;
 			disarm();
 			if (cBtn) cBtn.disabled = true;
-			// Chain: clearmatches (also resets bracket status to 'setup')
-			// → generate. Direct fetch so we don't trip the old
-			// tnGenerateMatches confirm() dialog on top of our undo-toast.
-			var fd1 = new FormData();
-			fd1.append('TournamentId', tid);
-			fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bid + '/clearmatches', { method: 'POST', body: fd1 })
-				.then(function(r){ return r.json(); })
-				.then(function(d){
-					if (!d || d.status !== 0) throw new Error((d && d.error) || 'Clear failed');
-					var fd2 = new FormData();
-					fd2.append('BracketId', bid);
-					return fetch(TnConfig.uir + 'TournamentAjax/tournament/' + tid + '/generate', { method: 'POST', body: fd2 });
-				})
-				.then(function(r){ return r.json(); })
-				.then(function(d){
-					if (!d || d.status !== 0) throw new Error((d && d.error) || 'Generate failed');
-					window.location.reload();
-				})
-				.catch(function(err){
-					if (cBtn) cBtn.disabled = false;
-					alert('Re-generate failed: ' + (err && err.message ? err.message : err));
-				});
+			// Shared clear+generate chain; on error re-enable the armed button.
+			window.tnRegenFetch(bid, tid, function(){ if (cBtn) cBtn.disabled = false; });
 		}
 
 		// Mobile path: a styled confirm sheet calls this directly (no armed
 		// button, no countdown). Same clear+generate commit chain as desktop's
 		// auto-commit (see commit() above); only the countdown UI is bypassed on touch.
 		window.tnRegenCommit = function(bid, tid){
-			var fd1 = new FormData();
-			fd1.append('TournamentId', tid);
-			fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bid + '/clearmatches', { method: 'POST', body: fd1 })
-				.then(function(r){ return r.json(); })
-				.then(function(d){
-					if (!d || d.status !== 0) throw new Error((d && d.error) || 'Clear failed');
-					var fd2 = new FormData();
-					fd2.append('BracketId', bid);
-					return fetch(TnConfig.uir + 'TournamentAjax/tournament/' + tid + '/generate', { method: 'POST', body: fd2 });
-				})
-				.then(function(r){ return r.json(); })
-				.then(function(d){
-					if (!d || d.status !== 0) throw new Error((d && d.error) || 'Generate failed');
-					window.location.reload();
-				})
-				.catch(function(err){
-					alert('Re-generate failed: ' + (err && err.message ? err.message : err));
-				});
+			window.tnRegenFetch(bid, tid);
 		};
 
 		window.tnRegenArm = function(btn, ev){
