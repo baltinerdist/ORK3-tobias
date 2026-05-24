@@ -10,7 +10,6 @@ class Tournament extends Ork3 {
 		$this->Participant = new yapo($this->db, DB_PREFIX . 'participant');
 		$this->Player      = new yapo($this->db, DB_PREFIX . 'participant_mundane');
 		$this->Tournament  = new yapo($this->db, DB_PREFIX . 'tournament');
-		$this->Team        = new yapo($this->db, DB_PREFIX . 'team');
 	}
 
 	public function CreateTournament($request) {
@@ -78,17 +77,6 @@ class Tournament extends Ork3 {
 		$this->Tournament->save();
 		$this->bustTournamentReportCache();
 		return Success($this->Tournament->tournament_id);
-	}
-
-	public function CreateTeam($request) {
-		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
-		if (!valid_id($mundane_id)) return NoAuthorization();
-
-		$this->Team->clear();
-		$this->Team->name = $request['Name'];
-		$this->Team->save();
-
-		return Success($this->Team->team_id);
 	}
 
 	/**
@@ -1432,6 +1420,14 @@ class Tournament extends Ork3 {
 				$i = $j;
 			}
 		} else {
+			// Order by points then fewest losses so the competition-ranking loop
+			// below (which groups consecutive equal Points+Losses) sees the array
+			// in the order it assumes. The SQL ORDER BY (wins DESC) diverges from
+			// points order when ties exist, so re-sort here.
+			usort($standings, function($a, $b) {
+				if ($b['Points'] !== $a['Points']) return $b['Points'] - $a['Points'];
+				return $a['Losses'] - $b['Losses'];
+			});
 			$rank = 1;
 			$count = count($standings);
 			for ($i = 0; $i < $count; ) {
