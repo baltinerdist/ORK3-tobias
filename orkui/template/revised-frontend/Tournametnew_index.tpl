@@ -5893,12 +5893,15 @@ window.tnSortTable = function(tableId, colIndex, numeric) {
 	//     DOM child order, renumbers the seed circles, and POSTs to the
 	//     existing reorder endpoint; reverts to `prevOrder` on failure.
 	//     `prevOrder` is the snapshot taken BEFORE the move (Array of <li>).
+	// Shared seed-label renumber (used by commitReorder + the touch cancel path).
+	function renumberList(list) {
+		list.querySelectorAll('li[data-pid]').forEach(function(item, idx) {
+			var seedEl = item.querySelector('.tn-seed-enhanced') || item.querySelector('.tn-participant-seed');
+			if (seedEl) seedEl.textContent = idx + 1;
+		});
+	}
 	function commitReorder(list, bracketId, prevOrder) {
-		function renumber() {
-			list.querySelectorAll('li[data-pid]').forEach(function(item, idx) {
-				var seedEl = item.querySelector('.tn-seed-enhanced') || item.querySelector('.tn-participant-seed'); if (seedEl) seedEl.textContent = idx + 1;
-			});
-		}
+		function renumber() { renumberList(list); }
 		var newOrder = [];
 		list.querySelectorAll('li[data-pid]').forEach(function(item) { newOrder.push(item.dataset.pid); });
 		renumber();
@@ -6045,12 +6048,7 @@ window.tnSortTable = function(tableId, colIndex, numeric) {
 		}
 
 		// Renumber visible seed labels to match current DOM order (mirrors commitReorder.renumber).
-		function renumberSeeds() {
-			list.querySelectorAll('li[data-pid]').forEach(function(item, idx) {
-				var seedEl = item.querySelector('.tn-seed-enhanced') || item.querySelector('.tn-participant-seed');
-				if (seedEl) seedEl.textContent = idx + 1;
-			});
-		}
+		function renumberSeeds() { renumberList(list); }
 
 		function moveLifted(clientY) {
 			// Position the fixed lifted row to follow the finger.
@@ -6147,6 +6145,13 @@ window.tnSortTable = function(tableId, colIndex, numeric) {
 
 		list.addEventListener('touchend', function() { if (lifted) dropRow(); }, { passive: true });
 		list.addEventListener('touchcancel', function() { if (lifted) cancelLift(); }, { passive: true });
+		// Backstop: if `list` is detached mid-drag (bracket delete / re-render) its
+		// own touchend/touchcancel never fire and TnMobile.dragActive would wedge
+		// true, silently killing every swipe gesture until reload. Document-level
+		// guards clean up; they no-op normally (this list's handler nulls `lifted`
+		// first; other lists' `lifted` is already null).
+		document.addEventListener('touchend',    function() { if (lifted) cancelLift(); }, { passive: true });
+		document.addEventListener('touchcancel', function() { if (lifted) cancelLift(); }, { passive: true });
 	}
 
 	document.addEventListener('DOMContentLoaded', function() {
@@ -6256,7 +6261,7 @@ window.tnMobileGenerate = function(bracketId, tournamentId, isRegen, matchCount)
 		var method = bracket.Method || 'single';
 		methodLabel = TnConfig.methodLabels[method] || method;
 		styleLabel = TnConfig.styleLabels[bracket.Style] || bracket.Style;
-		// Same byes/rounds math as tnGenerateMatches (shared helper).
+		// Byes/rounds via the shared helper (also used by tnGenerateMatches).
 		var _br = tnComputeByesAndRounds(method, pCount, bracket);
 		byes = _br.byes; rounds = _br.rounds;
 	}
@@ -8753,10 +8758,7 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 		// legacy centered-overlay open so behavior is byte-identical to before.
 		// tnCloseModal already routes _tnSheet overlays through TnMobile.sheet.close,
 		// so the submit-success + cancel/close paths tear down cleanly either way.
-		var _mobileSheet = !!(window.TnMobile && TnMobile.sheet && TnMobile.viewMode
-			&& TnMobile.viewMode.isMobile && TnMobile.viewMode.isMobile());
-		if (_mobileSheet) { TnMobile.sheet.open(_ov || document.getElementById(OVERLAY), {}); }
-		else { tnOpenModal(OVERLAY); }
+		tnOpenAsSheet(OVERLAY, {});
 	};
 
 	['tn-recordresult-close','tn-recordresult-cancel'].forEach(function(id) {
@@ -9629,17 +9631,17 @@ html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
 			var p1Seed = p1.Seed ? '<span class="tn-nu-p-seed">' + parseInt(p1.Seed, 10) + '</span>' : '';
 			var p2Seed = p2.Seed ? '<span class="tn-nu-p-seed">' + parseInt(p2.Seed, 10) + '</span>' : '';
 			return (
-				'<div class="tn-nu-card" data-mid="' + m.MatchId + '">' +
+				'<div class="tn-nu-card" data-mid="' + parseInt(m.MatchId, 10) + '">' +
 					headLine(m, posLabel) +
 					'<div style="min-width:0;flex:1">' +
 						'<div class="tn-nu-players"><span class="tn-nu-p">' + p1Seed + p1Name + '</span><span class="tn-nu-vs">vs</span><span class="tn-nu-p">' + p2Seed + p2Name + '</span></div>' +
 					'</div>' +
 					(TnConfig.canManage
 						? '<div class="tn-nu-actions">' +
-							'<button class="tn-nu-btn tn-nu-btn-p1" data-mid="' + m.MatchId + '" data-r="1-wins" data-tip="' + p1Name + ' wins">' + p1Name + ' wins</button>' +
-							'<button class="tn-nu-btn tn-nu-btn-p2" data-mid="' + m.MatchId + '" data-r="2-wins" data-tip="' + p2Name + ' wins">' + p2Name + ' wins</button>' +
-							'<button class="tn-nu-btn tn-nu-btn-tie" data-mid="' + m.MatchId + '" data-r="tie">Tie</button>' +
-							'<button class="tn-nu-btn tn-nu-btn-more" data-mid="' + m.MatchId + '" data-more="1" data-tip="Bouts / forfeit / DQ">⋯</button>' +
+							'<button class="tn-nu-btn tn-nu-btn-p1" data-mid="' + parseInt(m.MatchId, 10) + '" data-r="1-wins" data-tip="' + p1Name + ' wins">' + p1Name + ' wins</button>' +
+							'<button class="tn-nu-btn tn-nu-btn-p2" data-mid="' + parseInt(m.MatchId, 10) + '" data-r="2-wins" data-tip="' + p2Name + ' wins">' + p2Name + ' wins</button>' +
+							'<button class="tn-nu-btn tn-nu-btn-tie" data-mid="' + parseInt(m.MatchId, 10) + '" data-r="tie">Tie</button>' +
+							'<button class="tn-nu-btn tn-nu-btn-more" data-mid="' + parseInt(m.MatchId, 10) + '" data-more="1" data-tip="Bouts / forfeit / DQ">⋯</button>' +
 						'</div>'
 						: '') +
 				'</div>'
@@ -9654,7 +9656,7 @@ html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
 			var p1Seed = p1.Seed ? '<span class="tn-nu-p-seed">' + parseInt(p1.Seed, 10) + '</span>' : '';
 			var p2Seed = p2.Seed ? '<span class="tn-nu-p-seed">' + parseInt(p2.Seed, 10) + '</span>' : '';
 			return (
-				'<div class="tn-nu-card tn-nu-card-track" data-mid="' + m.MatchId + '" data-p1-name="' + p1Name + '" data-p2-name="' + p2Name + '">' +
+				'<div class="tn-nu-card tn-nu-card-track" data-mid="' + parseInt(m.MatchId, 10) + '" data-p1-name="' + p1Name + '" data-p2-name="' + p2Name + '">' +
 					headLine(m, posLabel) +
 					'<div class="tn-nu-mini-name tn-nu-mini-name-1">' + p1Seed + '<span>' + p1Name + '</span></div>' +
 					pipRowHTML('1', m.MatchId) +
@@ -9662,8 +9664,8 @@ html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
 					pipRowHTML('2', m.MatchId) +
 					'<div class="tn-nu-mini-name tn-nu-mini-name-2">' + p2Seed + '<span>' + p2Name + '</span></div>' +
 					(TnConfig.canManage
-						? '<button class="tn-nu-btn tn-nu-btn-end" data-mid="' + m.MatchId + '" data-end="1">End</button>' +
-						  '<button class="tn-nu-btn tn-nu-btn-more" data-mid="' + m.MatchId + '" data-more="1" data-tip="Bouts / forfeit / DQ · tap a pip to record a bout">⋯</button>'
+						? '<button class="tn-nu-btn tn-nu-btn-end" data-mid="' + parseInt(m.MatchId, 10) + '" data-end="1">End</button>' +
+						  '<button class="tn-nu-btn tn-nu-btn-more" data-mid="' + parseInt(m.MatchId, 10) + '" data-more="1" data-tip="Bouts / forfeit / DQ · tap a pip to record a bout">⋯</button>'
 						: '') +
 				'</div>'
 			);
@@ -9680,7 +9682,7 @@ html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
 			var p1Seed = p1.Seed ? '<span class="tn-nu-p-seed">' + parseInt(p1.Seed, 10) + '</span>' : '';
 			var p2Seed = p2.Seed ? '<span class="tn-nu-p-seed">' + parseInt(p2.Seed, 10) + '</span>' : '';
 			return (
-				'<div class="tn-deck-compact-row" data-mid="' + m.MatchId + '">' +
+				'<div class="tn-deck-compact-row" data-mid="' + parseInt(m.MatchId, 10) + '">' +
 					'<span class="tn-deck-compact-side">' + tnEsc(tnDeckSideLabel(m)) + '</span>' +
 					'<span class="tn-deck-compact-vs"><span class="tn-deck-compact-p">' + p1Seed + p1Name + '</span>' +
 					'<span class="tn-deck-compact-x">vs</span>' +
