@@ -9346,6 +9346,14 @@ html[data-theme="dark"] .tn-boutlist-row--notready .tn-boutlist-glyph { color:#4
 html[data-theme="dark"] .tn-boutlist-row--notready .tn-boutlist-side { background:#1a202c; color:#4a5568; }
 html[data-theme="dark"] .tn-boutlist-tbd { color:#718096; }
 html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
+/* Team member-count chip (deck cards + bout list) */
+.tn-team-chip {
+	display:inline-block; min-width:15px; height:15px; line-height:15px;
+	text-align:center; font-size:9px; font-weight:800; border-radius:8px;
+	background:#bee3f8; color:#2b6cb0; margin-left:4px; padding:0 3px;
+	vertical-align:middle; cursor:help;
+}
+html[data-theme="dark"] .tn-team-chip { background:#2a4a6b; color:#90cdf4; }
 </style>
 <script>
 (function(){
@@ -9639,10 +9647,18 @@ html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
 			return { winName: winName, loseName: loseName, verb: verb, score: score };
 		}
 
+		// Team member-count chip with roster tooltip (data-tip, never title=).
+		function tnTeamChip(p){
+			if (!p || !p.IsTeam || !p.Members || !p.Members.length) return '';
+			var names = p.Members.map(function(m){ return tnEsc(m.Persona || ''); }).filter(Boolean).join(', ');
+			return '<span class="tn-team-chip" data-tip="Members: ' + names + '">' + p.Members.length + '</span>';
+		}
+
 		// Seed pill + name (reusing the deck's seed lookup pattern).
-		function tnBoutListName(name, seed){
+		function tnBoutListName(name, seed, members){
 			var s = seed ? '<span class="tn-boutlist-seed">' + parseInt(seed, 10) + '</span>' : '';
-			return s + tnEsc(name);
+			var chip = (members && members.IsTeam) ? tnTeamChip(members) : '';
+			return s + tnEsc(name) + chip;
 		}
 
 		// Build (fresh, every open) the Bout List sheet overlay element from the
@@ -9681,8 +9697,8 @@ html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
 				if (!hasP1 || !hasP2){
 					status = 'notready';
 					glyph = '\u25cb';                                   // hollow circle
-					var n1 = hasP1 ? tnBoutListName(m.Participant1Alias || p1.Alias || p1.Persona || '\u2014', p1.Seed) : '<span class="tn-boutlist-tbd">TBD</span>';
-					var n2 = hasP2 ? tnBoutListName(m.Participant2Alias || p2.Alias || p2.Persona || '\u2014', p2.Seed) : '<span class="tn-boutlist-tbd">TBD</span>';
+					var n1 = hasP1 ? tnBoutListName(m.Participant1Alias || p1.Alias || p1.Persona || '\u2014', p1.Seed, p1) : '<span class="tn-boutlist-tbd">TBD</span>';
+					var n2 = hasP2 ? tnBoutListName(m.Participant2Alias || p2.Alias || p2.Persona || '\u2014', p2.Seed, p2) : '<span class="tn-boutlist-tbd">TBD</span>';
 					var namesNR = '<span>' + n1 + '</span><span class="tn-boutlist-vs">vs</span><span>' + n2 + '</span>';
 					return rowHTML(m, 'notready', glyph, side, namesNR, '', false);
 				}
@@ -9692,8 +9708,8 @@ html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
 				if (idx === 0){ status = 'current'; glyph = '\u25b6'; statusPill = '<span class="tn-boutlist-statuspill">\u25cf Now</span>'; }
 				else if (idx === 1 || idx === 2){ status = 'ondeck'; glyph = '\u25f7'; statusPill = '<span class="tn-boutlist-statuspill">On deck</span>'; }
 				else { status = 'upcoming'; glyph = '\u25f7'; statusPill = '<span class="tn-boutlist-statuspill">Upcoming</span>'; }
-				var rn1 = tnBoutListName(m.Participant1Alias || p1.Alias || p1.Persona || '\u2014', p1.Seed);
-				var rn2 = tnBoutListName(m.Participant2Alias || p2.Alias || p2.Persona || '\u2014', p2.Seed);
+				var rn1 = tnBoutListName(m.Participant1Alias || p1.Alias || p1.Persona || '\u2014', p1.Seed, p1);
+				var rn2 = tnBoutListName(m.Participant2Alias || p2.Alias || p2.Persona || '\u2014', p2.Seed, p2);
 				var namesR = '<span>' + rn1 + '</span><span class="tn-boutlist-vs">vs</span><span>' + rn2 + '</span>';
 				return rowHTML(m, status, glyph, side, namesR, statusPill, true);
 			}).join('');
@@ -9795,11 +9811,13 @@ html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
 			var p2Name = tnEsc(m.Participant2Alias || p2.Alias || p2.Persona || '—');
 			var p1Seed = p1.Seed ? '<span class="tn-nu-p-seed">' + parseInt(p1.Seed, 10) + '</span>' : '';
 			var p2Seed = p2.Seed ? '<span class="tn-nu-p-seed">' + parseInt(p2.Seed, 10) + '</span>' : '';
+			var p1Chip = tnTeamChip(p1);
+			var p2Chip = tnTeamChip(p2);
 			return (
 				'<div class="tn-nu-card" data-mid="' + parseInt(m.MatchId, 10) + '">' +
 					headLine(m, posLabel) +
 					'<div style="min-width:0;flex:1">' +
-						'<div class="tn-nu-players"><span class="tn-nu-p">' + p1Seed + p1Name + '</span><span class="tn-nu-vs">vs</span><span class="tn-nu-p">' + p2Seed + p2Name + '</span></div>' +
+						'<div class="tn-nu-players"><span class="tn-nu-p">' + p1Seed + p1Name + p1Chip + '</span><span class="tn-nu-vs">vs</span><span class="tn-nu-p">' + p2Seed + p2Name + p2Chip + '</span></div>' +
 					'</div>' +
 					(TnConfig.canManage
 						? '<div class="tn-nu-actions">' +
@@ -9820,14 +9838,16 @@ html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
 			var p2Name = tnEsc(m.Participant2Alias || p2.Alias || p2.Persona || '—');
 			var p1Seed = p1.Seed ? '<span class="tn-nu-p-seed">' + parseInt(p1.Seed, 10) + '</span>' : '';
 			var p2Seed = p2.Seed ? '<span class="tn-nu-p-seed">' + parseInt(p2.Seed, 10) + '</span>' : '';
+			var p1Chip = tnTeamChip(p1);
+			var p2Chip = tnTeamChip(p2);
 			return (
 				'<div class="tn-nu-card tn-nu-card-track" data-mid="' + parseInt(m.MatchId, 10) + '" data-p1-name="' + p1Name + '" data-p2-name="' + p2Name + '">' +
 					headLine(m, posLabel) +
-					'<div class="tn-nu-mini-name tn-nu-mini-name-1">' + p1Seed + '<span>' + p1Name + '</span></div>' +
+					'<div class="tn-nu-mini-name tn-nu-mini-name-1">' + p1Seed + '<span>' + p1Name + '</span>' + p1Chip + '</div>' +
 					pipRowHTML('1', m.MatchId) +
 					'<span class="tn-nu-mini-vs">vs</span>' +
 					pipRowHTML('2', m.MatchId) +
-					'<div class="tn-nu-mini-name tn-nu-mini-name-2">' + p2Seed + '<span>' + p2Name + '</span></div>' +
+					'<div class="tn-nu-mini-name tn-nu-mini-name-2">' + p2Seed + '<span>' + p2Name + '</span>' + p2Chip + '</div>' +
 					(TnConfig.canManage
 						? '<button class="tn-nu-btn tn-nu-btn-end" data-mid="' + parseInt(m.MatchId, 10) + '" data-end="1">End</button>' +
 						  '<button class="tn-nu-btn tn-nu-btn-more" data-mid="' + parseInt(m.MatchId, 10) + '" data-more="1" data-tip="Bouts / forfeit / DQ · tap a pip to record a bout">⋯</button>'
@@ -9846,12 +9866,14 @@ html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
 			var p2Name = tnEsc(m.Participant2Alias || p2.Alias || p2.Persona || '\u2014');
 			var p1Seed = p1.Seed ? '<span class="tn-nu-p-seed">' + parseInt(p1.Seed, 10) + '</span>' : '';
 			var p2Seed = p2.Seed ? '<span class="tn-nu-p-seed">' + parseInt(p2.Seed, 10) + '</span>' : '';
+			var p1Chip = tnTeamChip(p1);
+			var p2Chip = tnTeamChip(p2);
 			return (
 				'<div class="tn-deck-compact-row" data-mid="' + parseInt(m.MatchId, 10) + '">' +
 					'<span class="tn-deck-compact-side">' + tnEsc(tnDeckSideLabel(m)) + '</span>' +
-					'<span class="tn-deck-compact-vs"><span class="tn-deck-compact-p">' + p1Seed + p1Name + '</span>' +
+					'<span class="tn-deck-compact-vs"><span class="tn-deck-compact-p">' + p1Seed + p1Name + p1Chip + '</span>' +
 					'<span class="tn-deck-compact-x">vs</span>' +
-					'<span class="tn-deck-compact-p">' + p2Seed + p2Name + '</span></span>' +
+					'<span class="tn-deck-compact-p">' + p2Seed + p2Name + p2Chip + '</span></span>' +
 				'</div>'
 			);
 		}
