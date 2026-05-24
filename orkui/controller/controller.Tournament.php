@@ -235,11 +235,15 @@ class Controller_Tournament extends Controller {
 			$totalParticipants += count($pList);
 			$totalMatches      += count($mList);
 		}
-		// Compute distinct participant count (by MundaneId, or alias for unlinked)
+		// Compute distinct participant count (by MundaneId/alias for individual brackets,
+		// or by ParticipantId for team brackets — a team counts as one participant)
 		$_seen = [];
 		foreach ($bracketData as $_bd) {
+			$_isTeam = (($_bd['Bracket']['Participants'] ?? 'individual') === 'team');
 			foreach ($_bd['Participants'] as $_p) {
-				$_key = (int)$_p['MundaneId'] > 0 ? 'mid:' . (int)$_p['MundaneId'] : 'alias:' . strtolower(trim($_p['Alias']));
+				$_key = $_isTeam
+					? 'pid:' . (int)$_p['ParticipantId']
+					: ((int)$_p['MundaneId'] > 0 ? 'mid:' . (int)$_p['MundaneId'] : 'alias:' . strtolower(trim($_p['Alias'])));
 				$_seen[$_key] = true;
 			}
 		}
