@@ -255,6 +255,7 @@ html[data-theme="dark"] .tn-seedling { color:#9ae6b4; }
 /* Inline alias editor */
 .tn-alias-edit { background:none; border:none; padding:0 4px; margin-left:2px; cursor:pointer; color:#a0aec0; font-size:11px; opacity:0; transition:opacity .12s,color .12s; }
 .tn-participant-list li:hover .tn-alias-edit { opacity:1; }
+.tn-table tr:hover .tn-alias-edit { opacity:1; }
 .tn-alias-edit:focus { opacity:1; outline:none; }
 .tn-alias-edit:hover { color:#276749; }
 .tn-alias-input { font-size:13px; font-weight:600; padding:1px 5px; border:1px solid #276749; border-radius:4px; min-width:120px; max-width:220px; }
@@ -2467,6 +2468,7 @@ foreach ($bracketData as $_bid => $_bd) {
 		if (!isset($_distParts[$_key])) {
 			$_distParts[$_key] = $_p;
 			$_distParts[$_key]['_brackets'] = [$_entry];
+			$_distParts[$_key]['_bid'] = $_bid;
 		} else {
 			$_distParts[$_key]['_brackets'][] = $_entry;
 		}
@@ -2490,7 +2492,7 @@ foreach ($bracketData as $_bid => $_bd) {
 						<?php foreach ($_distParts as $_p): ?>
 						<?php $_pIsTeam = $_p['IsTeam'] ?? false; ?>
 						<tr>
-							<td style="font-weight:600"><?= htmlspecialchars($_p['Alias'] ?: '—') ?></td>
+							<td style="font-weight:600"><span class="tn-alias-text" data-alias="<?= htmlspecialchars($_p['Alias'] ?? '', ENT_QUOTES) ?>"><?= htmlspecialchars($_p['Alias'] ?: '—') ?></span><?php if ($canManage): ?><button class="tn-alias-edit" data-pid="<?= (int)$_p['ParticipantId'] ?>" data-bid="<?= (int)($_p['_bid'] ?? 0) ?>" data-tip="Edit name" onclick="tnEditAlias(this)"><i class="fas fa-pen"></i></button><?php endif; ?></td>
 							<td>
 								<?php if ($_pIsTeam): ?>
 								<?php if (!empty($_p['Members'])): ?>
@@ -9201,8 +9203,8 @@ window.tnToggleParticipantMenu = function(btn) {
 };
 
 window.tnEditAlias = function(btn){
-			var li = btn.closest('li'); if (!li) return;
-			var span = li.querySelector('.tn-alias-text'); if (!span || span.dataset.editing === '1') return;
+			var host = btn.closest('li, tr'); if (!host) return;
+			var span = host.querySelector('.tn-alias-text'); if (!span || span.dataset.editing === '1') return;
 			var pid = btn.getAttribute('data-pid'), bid = btn.getAttribute('data-bid');
 			var current = span.getAttribute('data-alias') || span.textContent.trim();
 			var originalHTML = span.innerHTML;
