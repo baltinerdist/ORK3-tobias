@@ -1661,6 +1661,17 @@ html[data-theme="dark"] .tn-mobile .tn-wiz-footer { background:#1a202c; border-t
    container is laid out by its consumer. >=44px tap targets via
    --tn-touch. Dark-mode variants at the bottom.
    ============================================================= */
+/* Mobile horizontal-overflow containment: the column layout used
+   align-items:flex-start, which sized .tn-main to its widest content and
+   leaked horizontal scroll to the whole page. Clamp main to the viewport,
+   let the deck header controls wrap, and break the Track Fights card meta
+   (NOW / ROUND Â· MATCH) onto its own line so fighter names keep full width
+   instead of collapsing to a single-letter ellipsis. */
+.tn-mobile .tn-layout { align-items:stretch; }
+.tn-mobile .tn-nu-header { flex-wrap:wrap; }
+.tn-mobile .tn-nu-card-track .tn-nu-pos-label { order:-2; }
+.tn-mobile .tn-nu-card-track .tn-nu-match-num { flex-basis:100%; order:-1; }
+
 .tn-mobile .tn-deck { display:flex; flex-direction:column; gap:var(--tn-deck-gap); }
 
 /* Shared card chrome. */
