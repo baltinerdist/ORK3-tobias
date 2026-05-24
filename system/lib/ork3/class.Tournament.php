@@ -304,6 +304,7 @@ class Tournament extends Ork3 {
 		if (isset($request['StyleNote']))       $this->Bracket->style_note       = $request['StyleNote'];
 		if (isset($request['DurationMinutes'])) $this->Bracket->duration_minutes = max(0, (int)$request['DurationMinutes']);
 		if (isset($request['BestOf']))          $this->Bracket->best_of          = self::normalize_best_of($request['BestOf']);
+		if (isset($request['FirstRoundMode'])) $this->Bracket->first_round_mode = (in_array($request['FirstRoundMode'], ['byes','play-in'], true) ? $request['FirstRoundMode'] : 'byes');
 
 		// Structural fields — only editable while bracket is still in setup
 		if ($is_setup) {
@@ -341,6 +342,7 @@ class Tournament extends Ork3 {
 					'DurationMinutes' => (int)$r->duration_minutes,
 					'BestOf'          => (int)$r->best_of,
 					'TiebreakerDeclined' => (int)$r->tiebreaker_declined,
+					'FirstRoundMode' => $r->first_round_mode,
 				];
 			}
 		}
@@ -530,6 +532,7 @@ class Tournament extends Ork3 {
 					'Eliminated'    => (int)$r->eliminated,
 					'BracketSide'   => $r->bracket_side,
 					'WarriorLevel'  => (int)$r->warrior_level,
+					'Status'        => $r->status,
 				];
 			}
 		}
