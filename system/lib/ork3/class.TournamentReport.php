@@ -128,20 +128,47 @@ class TournamentReport extends Ork3 {
 		return $this->decoratePlacements($bracket_id, array_slice($ordered, 0, 3));
 	}
 
-	/** Given an ordered list of participant_ids, attach Place/MundaneId/Alias. */
+	/** Given an ordered list of participant_ids, attach Place/MundaneId/Alias.
+	 * For team brackets the LEFT JOIN on participant_mundane would fan out one row per
+	 * member and the array-key overwrite would keep an arbitrary member. Instead, for
+	 * team brackets we do NOT join participant_mundane: we return the team alias with
+	 * MundaneId=0, which is the correct display for a team podium row. */
 	private function decoratePlacements($bracket_id, array $orderedPids) {
 		if (empty($orderedPids)) return [];
 		$idlist = implode(',', array_map('intval', $orderedPids));
-		$lookup = [];
-		$r = $this->db->query(
-			"SELECT p.participant_id, p.alias, p.park_id, pm.mundane_id
-			 FROM " . DB_PREFIX . "participant p
-			 LEFT JOIN " . DB_PREFIX . "participant_mundane pm ON pm.participant_id = p.participant_id
-			 WHERE p.participant_id IN ($idlist)"
+
+		// Determine whether this bracket is a team bracket.
+		$brow = $this->db->query(
+			"SELECT participants FROM " . DB_PREFIX . "bracket WHERE bracket_id = " . (int)$bracket_id
 		);
-		if ($r !== false) {
-			while ($r->next()) {
-				$lookup[(int)$r->participant_id] = ['Alias' => $r->alias, 'MundaneId' => (int)$r->mundane_id, 'ParkId' => (int)$r->park_id];
+		$isTeam = false;
+		if ($brow !== false && $brow->size() > 0) { $brow->next(); $isTeam = ($brow->participants === 'team'); }
+
+		$lookup = [];
+		if ($isTeam) {
+			// Team bracket: use the team alias directly; MundaneId=0 (team, not a person).
+			$r = $this->db->query(
+				"SELECT p.participant_id, p.alias, p.park_id
+				 FROM " . DB_PREFIX . "participant p
+				 WHERE p.participant_id IN ($idlist)"
+			);
+			if ($r !== false) {
+				while ($r->next()) {
+					$lookup[(int)$r->participant_id] = ['Alias' => $r->alias, 'MundaneId' => 0, 'ParkId' => (int)$r->park_id];
+				}
+			}
+		} else {
+			// Individual bracket: the original join is correct (one mundane per participant).
+			$r = $this->db->query(
+				"SELECT p.participant_id, p.alias, p.park_id, pm.mundane_id
+				 FROM " . DB_PREFIX . "participant p
+				 LEFT JOIN " . DB_PREFIX . "participant_mundane pm ON pm.participant_id = p.participant_id
+				 WHERE p.participant_id IN ($idlist)"
+			);
+			if ($r !== false) {
+				while ($r->next()) {
+					$lookup[(int)$r->participant_id] = ['Alias' => $r->alias, 'MundaneId' => (int)$r->mundane_id, 'ParkId' => (int)$r->park_id];
+				}
 			}
 		}
 
@@ -454,7 +481,9 @@ class TournamentReport extends Ork3 {
 	public function GetTournamentList($request) {
 		$where = $this->scopeWhere($request, 't');
 
-		// Per tournament, per mundane: collective wins/losses across all brackets + warrior level.
+		// Per tournament, per mundane: collective wins/losses across individual brackets only + warrior level.
+		// The bracket JOIN with participants='individual' mirrors GetFighterLeaderboard and prevents
+		// team members from being fanned out as separate fighters each credited with the team's W/L.
 		$sql = "SELECT t.tournament_id, t.name, t.date_time, COALESCE(pk.name,'') AS park_name,
 		           pm.mundane_id, mn.persona, MAX(p.warrior_level) AS wl,
 		           SUM((m.participant_1_id=p.participant_id AND m.result='1-wins')
@@ -464,6 +493,7 @@ class TournamentReport extends Ork3 {
 		       FROM " . DB_PREFIX . "tournament t
 		         LEFT JOIN " . DB_PREFIX . "park pk ON pk.park_id = t.park_id
 		         JOIN " . DB_PREFIX . "participant p ON p.tournament_id = t.tournament_id
+		         JOIN " . DB_PREFIX . "bracket b ON b.bracket_id = p.bracket_id AND b.participants = 'individual'
 		         JOIN " . DB_PREFIX . "participant_mundane pm ON pm.participant_id = p.participant_id
 		         LEFT JOIN " . DB_PREFIX . "mundane mn ON mn.mundane_id = pm.mundane_id
 		         LEFT JOIN " . DB_PREFIX . "match m ON (m.participant_1_id=p.participant_id OR m.participant_2_id=p.participant_id) AND m.bracket_id=p.bracket_id
