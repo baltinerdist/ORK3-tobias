@@ -116,6 +116,10 @@ class Model_Tournament extends Model {
 		return $this->Tournament->UpdateParticipantStatus($request);
 	}
 
+	function update_alias($request) {
+		return $this->Tournament->UpdateAlias($request);
+	}
+
 	function search_parks($query) {
 		return $this->Tournament->SearchParks($query);
 	}
