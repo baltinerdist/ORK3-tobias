@@ -783,7 +783,6 @@ html[data-theme="dark"] [data-tip]::before { border-top-color:#1a202c; }
 	.tn-stat-card { min-width:calc(50% - 4px); }
 	.tn-field-row { grid-template-columns:1fr; }
 	.tn-tab-nav { flex-wrap:wrap; overflow:hidden; }
-	.tn-tab-btn { scroll-snap-align:start; }
 	.tn-bv-round { min-width:150px; padding:0 8px; }
 	.tn-rr-round-body .tn-bv-match { min-width:100%; flex:1 1 100%; }
 	.tn-rr-standings th, .tn-rr-standings td { padding:5px 8px; font-size:12px; }
@@ -897,8 +896,6 @@ html[data-theme="dark"] [data-tip]::before { border-top-color:#1a202c; }
 }
 /* Keep the absolute desktop status menu out of the mobile flow (action sheet replaces it) */
 .tn-mobile .tn-participant-list li .tn-status-menu { display:none !important; }
-
-/* ── Bracket Preview Modal ── */
 
 /* ── Quick Result Entry (inline on bracket viz) ── */
 .tn-qr-bar { display:flex; align-items:center; gap:6px; padding:6px 10px; border-top:1px solid #e2e8f0; background:#f7fafc; }
@@ -3525,6 +3522,7 @@ window.TnMobile = window.TnMobile || {};
 		// backdrop-tap / swipe-down / Esc dismissal.
 		open: function(el, opts) {
 			if (!el) return;
+			if (el._tnSheet) return el; // already open — avoid duplicate listeners / _vvCount drift
 			opts = opts || {};
 			var box = el.querySelector('.tn-modal-box');
 
@@ -5987,6 +5985,7 @@ window.tnSortTable = function(tableId, colIndex, numeric) {
 		var rowH = 0;
 		var rafId = null, edgeDir = 0;
 		var scroller = null;       // nearest scrollable ancestor (or null → window)
+		var dragSiblings = null;   // cached non-lifted rows for this drag (avoids per-move querySelectorAll)
 
 		function findScroller(el) {
 			var n = el.parentElement;
@@ -6037,33 +6036,58 @@ window.tnSortTable = function(tableId, colIndex, numeric) {
 			li.style.top = rect.top + 'px';
 			lifted = li;
 			TnMobile.dragActive = true;
+			// Cache the sibling set once (rebuilt when the placeholder moves) so
+			// moveLifted doesn't re-query the DOM on every touchmove.
+			refreshDragSiblings();
+			// Non-passive list touchmove only exists while a drag is live (registered
+			// here, removed in dropRow/cancelLift) so idle scrolling stays smooth.
+			list.addEventListener('touchmove', onListTouchMove, { passive: false });
 			if (navigator.vibrate) { try { navigator.vibrate(15); } catch (e) {} }
 			moveLifted(clientY);
+		}
+
+		// Rebuild the cached non-lifted sibling set (called at lift and whenever the
+		// placeholder is repositioned, since that changes DOM order).
+		function refreshDragSiblings() {
+			dragSiblings = Array.prototype.slice.call(list.querySelectorAll('li[data-pid]:not(.tn-dnd-lifted)'));
+		}
+
+		// Renumber visible seed labels to match current DOM order (mirrors commitReorder.renumber).
+		function renumberSeeds() {
+			list.querySelectorAll('li[data-pid]').forEach(function(item, idx) {
+				var seedEl = item.querySelector('.tn-seed-enhanced') || item.querySelector('.tn-participant-seed');
+				if (seedEl) seedEl.textContent = idx + 1;
+			});
 		}
 
 		function moveLifted(clientY) {
 			// Position the fixed lifted row to follow the finger.
 			lifted.style.top = (clientY - grabOffsetY) + 'px';
 			// Find the sibling whose midpoint we've crossed and move the placeholder.
-			var siblings = list.querySelectorAll('li[data-pid]:not(.tn-dnd-lifted)');
+			// Uses the cached sibling set (refreshed only when the placeholder moves).
+			var siblings = dragSiblings || [];
 			var target = null;
 			for (var i = 0; i < siblings.length; i++) {
 				var r = siblings[i].getBoundingClientRect();
 				if (clientY < r.top + r.height / 2) { target = siblings[i]; break; }
 			}
-			if (target) { if (placeholder.nextSibling !== target) list.insertBefore(placeholder, target); }
-			else        { list.appendChild(placeholder); }
+			if (target) {
+				if (placeholder.nextSibling !== target) { list.insertBefore(placeholder, target); refreshDragSiblings(); }
+			} else {
+				if (placeholder !== list.lastElementChild) { list.appendChild(placeholder); refreshDragSiblings(); }
+			}
 		}
 
 		function dropRow() {
 			if (!lifted) return;
 			// Drop the row into the placeholder slot (same DOM move as desktop drop).
+			list.removeEventListener('touchmove', onListTouchMove, { passive: false });
 			list.insertBefore(lifted, placeholder);
 			if (placeholder && placeholder.parentNode) placeholder.parentNode.removeChild(placeholder);
 			lifted.classList.remove('tn-dnd-lifted');
 			lifted.style.width = ''; lifted.style.left = ''; lifted.style.top = '';
 			var movedList = list, movedBid = bracketId, snapshot = prevOrder;
-			lifted = null; placeholder = null; prevOrder = null;
+			lifted = null; placeholder = null; prevOrder = null; dragSiblings = null;
 			stopAutoscroll();
 			TnMobile.dragActive = false;
 			commitReorder(movedList, movedBid, snapshot);
@@ -6071,14 +6095,33 @@ window.tnSortTable = function(tableId, colIndex, numeric) {
 
 		function cancelLift() {
 			if (!lifted) return;
-			// Restore to original slot (placeholder marks where it was lifted from).
-			list.insertBefore(lifted, placeholder);
+			list.removeEventListener('touchmove', onListTouchMove, { passive: false });
+			// Clear the lifted row's styling before restoring DOM order. The
+			// placeholder no longer marks the original slot (moveLifted dragged it
+			// to follow the finger), so restore from the prevOrder snapshot instead.
 			if (placeholder && placeholder.parentNode) placeholder.parentNode.removeChild(placeholder);
 			lifted.classList.remove('tn-dnd-lifted');
 			lifted.style.width = ''; lifted.style.left = ''; lifted.style.top = '';
-			lifted = null; placeholder = null; prevOrder = null;
+			if (prevOrder) { prevOrder.forEach(function(item) { list.appendChild(item); }); renumberSeeds(); }
+			lifted = null; placeholder = null; prevOrder = null; dragSiblings = null;
 			stopAutoscroll();
 			TnMobile.dragActive = false;
+		}
+
+		// Named so it can be add/removed per-drag (registered in liftRow, removed in
+		// dropRow/cancelLift). Non-passive so it can preventDefault the page scroll.
+		function onListTouchMove(e) {
+			if (!lifted) return;
+			var t = e.touches && e.touches[0];
+			if (!t) return;
+			e.preventDefault(); // only fires when a lift is engaged
+			moveLifted(t.clientY);
+			// Edge autoscroll vs the live scroll-container edges (cheap: this rect
+			// read piggybacks on the layout moveLifted already forced this frame).
+			var scEdge = scroller ? scroller.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
+			if (t.clientY < scEdge.top + EDGE_ZONE)      startAutoscroll(-1);
+			else if (t.clientY > scEdge.bottom - EDGE_ZONE) startAutoscroll(1);
+			else                                          startAutoscroll(0);
 		}
 
 		list.querySelectorAll('li[data-pid]').forEach(function(li) {
@@ -6109,23 +6152,6 @@ window.tnSortTable = function(tableId, colIndex, numeric) {
 			handle.addEventListener('touchend', clearPress, { passive: true });
 			handle.addEventListener('touchcancel', clearPress, { passive: true });
 		});
-
-		// While lifted, drive move/autoscroll from the list (non-passive so we
-		// can preventDefault and stop the page scrolling during an active drag).
-		list.addEventListener('touchmove', function(e) {
-			if (!lifted) return;
-			var t = e.touches && e.touches[0];
-			if (!t) return;
-			e.preventDefault(); // only fires when a lift is engaged
-			moveLifted(t.clientY);
-			// Edge autoscroll relative to the scroll container (or viewport).
-			var topEdge, botEdge;
-			if (scroller) { var sr = scroller.getBoundingClientRect(); topEdge = sr.top; botEdge = sr.bottom; }
-			else          { topEdge = 0; botEdge = window.innerHeight; }
-			if (t.clientY < topEdge + EDGE_ZONE)      startAutoscroll(-1);
-			else if (t.clientY > botEdge - EDGE_ZONE) startAutoscroll(1);
-			else                                      startAutoscroll(0);
-		}, { passive: false });
 
 		list.addEventListener('touchend', function() { if (lifted) dropRow(); }, { passive: true });
 		list.addEventListener('touchcancel', function() { if (lifted) cancelLift(); }, { passive: true });
@@ -6320,7 +6346,7 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 				TnConfig.bracketData[bracketId].Participants = pData.participants || [];
 			}
 			tnRenderBracketViz(bracketId);
-		}).catch(function(){ tnRenderBracketViz(bracketId); });
+		}).catch(function(err){ console.warn('[tn] refresh failed', err); tnRenderBracketViz(bracketId); if (window.tnShowStaleWarning) tnShowStaleWarning(); });
 	}
 
 	window.tnRenderBracketViz = function(bracketId) {
@@ -9366,8 +9392,8 @@ html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
 				var round = m.Round || ro.round;
 				var side = (m.BracketSide || '').toLowerCase();
 				return Object.assign({}, m, {
-					_round: round,
-					_order: ro.order,
+					_round: parseInt(round, 10) || 0,
+					_order: parseInt(ro.order, 10) || 0,
 					_side:  side,
 					_stage: tnBoutStage(side, round)
 				});
@@ -9459,7 +9485,7 @@ html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
 
 		// Seed pill + name (reusing the deck's seed lookup pattern).
 		function tnBoutListName(name, seed){
-			var s = seed ? '<span class="tn-boutlist-seed">' + seed + '</span>' : '';
+			var s = seed ? '<span class="tn-boutlist-seed">' + parseInt(seed, 10) + '</span>' : '';
 			return s + tnEsc(name);
 		}
 
@@ -9605,8 +9631,8 @@ html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
 			var p2 = pMap[m.Participant2Id] || {};
 			var p1Name = tnEsc(m.Participant1Alias || p1.Alias || p1.Persona || '—');
 			var p2Name = tnEsc(m.Participant2Alias || p2.Alias || p2.Persona || '—');
-			var p1Seed = p1.Seed ? '<span class="tn-nu-p-seed">' + p1.Seed + '</span>' : '';
-			var p2Seed = p2.Seed ? '<span class="tn-nu-p-seed">' + p2.Seed + '</span>' : '';
+			var p1Seed = p1.Seed ? '<span class="tn-nu-p-seed">' + parseInt(p1.Seed, 10) + '</span>' : '';
+			var p2Seed = p2.Seed ? '<span class="tn-nu-p-seed">' + parseInt(p2.Seed, 10) + '</span>' : '';
 			return (
 				'<div class="tn-nu-card" data-mid="' + m.MatchId + '">' +
 					headLine(m, posLabel) +
@@ -9630,8 +9656,8 @@ html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
 			var p2 = pMap[m.Participant2Id] || {};
 			var p1Name = tnEsc(m.Participant1Alias || p1.Alias || p1.Persona || '—');
 			var p2Name = tnEsc(m.Participant2Alias || p2.Alias || p2.Persona || '—');
-			var p1Seed = p1.Seed ? '<span class="tn-nu-p-seed">' + p1.Seed + '</span>' : '';
-			var p2Seed = p2.Seed ? '<span class="tn-nu-p-seed">' + p2.Seed + '</span>' : '';
+			var p1Seed = p1.Seed ? '<span class="tn-nu-p-seed">' + parseInt(p1.Seed, 10) + '</span>' : '';
+			var p2Seed = p2.Seed ? '<span class="tn-nu-p-seed">' + parseInt(p2.Seed, 10) + '</span>' : '';
 			return (
 				'<div class="tn-nu-card tn-nu-card-track" data-mid="' + m.MatchId + '" data-p1-name="' + p1Name + '" data-p2-name="' + p2Name + '">' +
 					headLine(m, posLabel) +
@@ -9656,8 +9682,8 @@ html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
 			var p2 = pMap[m.Participant2Id] || {};
 			var p1Name = tnEsc(m.Participant1Alias || p1.Alias || p1.Persona || '\u2014');
 			var p2Name = tnEsc(m.Participant2Alias || p2.Alias || p2.Persona || '\u2014');
-			var p1Seed = p1.Seed ? '<span class="tn-nu-p-seed">' + p1.Seed + '</span>' : '';
-			var p2Seed = p2.Seed ? '<span class="tn-nu-p-seed">' + p2.Seed + '</span>' : '';
+			var p1Seed = p1.Seed ? '<span class="tn-nu-p-seed">' + parseInt(p1.Seed, 10) + '</span>' : '';
+			var p2Seed = p2.Seed ? '<span class="tn-nu-p-seed">' + parseInt(p2.Seed, 10) + '</span>' : '';
 			return (
 				'<div class="tn-deck-compact-row" data-mid="' + m.MatchId + '">' +
 					'<span class="tn-deck-compact-side">' + tnEsc(tnDeckSideLabel(m)) + '</span>' +
