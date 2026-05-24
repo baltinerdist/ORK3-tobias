@@ -427,6 +427,115 @@ class TournamentReport extends Ork3 {
 		return ['Candidates' => $cands, 'Status' => Success()];
 	}
 
+
+	/**
+	 * Team Champions: completed/finalized team brackets in scope, with champion + runner-up
+	 * team names and their member rosters.
+	 *
+	 * Returns: ['Status'=>Success(), 'Detail'=>[
+	 *   {TournamentId, TournamentName, TournamentDate, ParkName, BracketId, Style, Method,
+	 *    Champion:{TeamName, Members:[{Persona, MundaneId}, ...]},
+	 *    RunnerUp:{TeamName, Members:[...]} or null}
+	 *   ...
+	 * ]]
+	 */
+	public function GetTeamChampions($request) {
+		$where = $this->scopeWhere($request, 't');
+
+		// Fetch all completed/finalized team brackets in scope, ordered by tournament date desc.
+		$sql = "SELECT b.bracket_id, b.style, b.method, t.tournament_id,
+				        t.name AS tournament_name, t.date_time, COALESCE(pk.name,'') AS park_name
+				 FROM " . DB_PREFIX . "bracket b
+				   JOIN " . DB_PREFIX . "tournament t ON t.tournament_id = b.tournament_id
+				   LEFT JOIN " . DB_PREFIX . "park pk ON pk.park_id = t.park_id
+				 WHERE b.participants = 'team' AND b.status IN ('complete','finalized') AND 1 $where
+				 ORDER BY t.date_time DESC, b.bracket_id DESC";
+		$brows = []; $bids = [];
+		$r = $this->db->query($sql);
+		if ($r !== false) {
+			while ($r->next()) {
+				$bid = (int)$r->bracket_id;
+				$brows[$bid] = [
+					'BracketId'      => $bid,
+					'TournamentId'   => (int)$r->tournament_id,
+					'TournamentName' => $r->tournament_name,
+					'TournamentDate' => $r->date_time,
+					'ParkName'       => $r->park_name,
+					'Style'          => $r->style,
+					'Method'         => $r->method,
+				];
+				$bids[] = $bid;
+			}
+		}
+
+		if (empty($bids)) return ['Status' => Success(), 'Detail' => []];
+
+		// Build roster lookup: bracket_id -> participant_id -> [member personas].
+		// One query for all brackets at once (participant_teams + participant_team_members + mundane).
+		$allBidList = implode(',', array_map('intval', $bids));
+		$rosterQ = $this->db->query(
+			"SELECT pt.bracket_id, pt.participant_id, ptm.mundane_id, mn.persona
+			  FROM " . DB_PREFIX . "participant_teams pt
+			  JOIN " . DB_PREFIX . "participant_team_members ptm ON ptm.team_id = pt.team_id
+			  JOIN " . DB_PREFIX . "mundane mn ON mn.mundane_id = ptm.mundane_id
+			 WHERE pt.bracket_id IN ($allBidList)
+			 ORDER BY pt.bracket_id, pt.participant_id, mn.persona"
+		);
+		// rosterByBracket[bracket_id][participant_id] = [{Persona, MundaneId}, ...]
+		$rosterByBracket = [];
+		if ($rosterQ !== false) {
+			while ($rosterQ->next()) {
+				$bid = (int)$rosterQ->bracket_id;
+				$pid = (int)$rosterQ->participant_id;
+				$rosterByBracket[$bid][$pid][] = [
+					'Persona'   => $rosterQ->persona,
+					'MundaneId' => (int)$rosterQ->mundane_id,
+				];
+			}
+		}
+
+		$detail = [];
+		foreach ($brows as $bid => $brow) {
+			// Get placements for this bracket (reuses existing logic).
+			$pl = $this->GetBracketPlacements(['BracketId' => $bid]);
+			$placements = $pl['Placements'] ?? [];
+
+			// Extract champion (Place=1) and runner-up (Place=2) participant rows.
+			$champion  = null;
+			$runnerUp  = null;
+			foreach ($placements as $place) {
+				if ($place['Place'] === 1) $champion  = $place;
+				if ($place['Place'] === 2) $runnerUp  = $place;
+			}
+			// Skip bracket if no champion found (incomplete data).
+			if ($champion === null) continue;
+
+			$bracketRoster = $rosterByBracket[$bid] ?? [];
+			$champPid      = (int)$champion['ParticipantId'];
+			$ruPid         = $runnerUp ? (int)$runnerUp['ParticipantId'] : 0;
+
+			$detail[] = [
+				'TournamentId'   => $brow['TournamentId'],
+				'TournamentName' => $brow['TournamentName'],
+				'TournamentDate' => $brow['TournamentDate'],
+				'ParkName'       => $brow['ParkName'],
+				'BracketId'      => $bid,
+				'Style'          => $brow['Style'],
+				'Method'         => $brow['Method'],
+				'Champion' => [
+					'TeamName' => $champion['Alias'],
+					'Members'  => $bracketRoster[$champPid] ?? [],
+				],
+				'RunnerUp' => $runnerUp ? [
+					'TeamName' => $runnerUp['Alias'],
+					'Members'  => $bracketRoster[$ruPid] ?? [],
+				] : null,
+			];
+		}
+
+		return ['Status' => Success(), 'Detail' => $detail];
+	}
+
 	/** Per-park comparison within a kingdom: tournaments hosted, participants, championships, avg warrior level. */
 	public function GetTournamentParkComparison($request) {
 		if (!valid_id($request['KingdomId'] ?? 0)) return ['Parks' => [], 'Status' => InvalidParameter('KingdomId required')];

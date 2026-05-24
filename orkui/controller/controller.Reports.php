@@ -179,6 +179,7 @@ class Controller_Reports extends Controller {
 		$this->data['ParkComparison']  = $type==='Kingdom'
 			? $this->Reports->tournament_park_comparison(['KingdomId'=>$id, 'DateFrom'=>$dateFrom, 'DateTo'=>$dateTo])
 			: ['Parks'=>[]];
+		$this->data['TeamChampions'] = $this->Reports->team_champions($scope)['Detail'] ?? [];
 		$this->template = 'Reports_tournaments.tpl';
 	}
 
