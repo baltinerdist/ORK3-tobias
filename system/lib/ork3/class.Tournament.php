@@ -814,11 +814,16 @@ class Tournament extends Ork3 {
 		if ($seeding === 'manual' || $seeding === 'glicko2-manual') {
 			usort($participants, function($a, $b) { return (int)$a['Seed'] - (int)$b['Seed']; });
 		} elseif ($seeding === 'warrior') {
-			// Order of the Warrior seeding: 0=unranked (weakest) … 12=Sword Knight (strongest)
-			// Sort descending so strongest gets seed position 1 (top of bracket)
-			usort($participants, function($a, $b) {
-				return $this->warrior_seed_rank($b) - $this->warrior_seed_rank($a);
-			});
+			// Order of the Warrior seeding.
+			// Teams: sorted by cumulative WarriorLevel descending (higher = seed 1).
+			// Individuals: sorted by warrior_seed_rank() descending (12=Sword Knight, 0=unranked).
+			if ($this->Bracket->participants === 'team') {
+				usort($participants, fn($a, $b) => (int)$b['WarriorLevel'] <=> (int)$a['WarriorLevel']);
+			} else {
+				usort($participants, function($a, $b) {
+					return $this->warrior_seed_rank($b) - $this->warrior_seed_rank($a);
+				});
+			}
 		} else {
 			// glicko2, random, random-manual, and any unknown seeding mode: randomize
 			shuffle($participants);
