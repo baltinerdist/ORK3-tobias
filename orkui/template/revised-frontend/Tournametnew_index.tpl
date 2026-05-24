@@ -929,6 +929,13 @@ html[data-theme="dark"] [data-tip]::before { border-top-color:#1a202c; }
 .tn-dnd-list.tn-dnd-error { position:relative; }
 .tn-dnd-list.tn-dnd-error::before { content:attr(data-error); display:block; background:#fed7d7; color:#742a2a; padding:6px 10px; border-radius:4px; margin-bottom:6px; font-size:12px; font-weight:600; }
 html[data-theme="dark"] .tn-dnd-list.tn-dnd-error::before { background:#742a2a; color:#fed7d7; }
+/* Touch reorder (B2): lifted row follows the finger; placeholder marks drop slot. */
+.tn-dnd-list li.tn-dnd-lifted { position:fixed; z-index:10000; margin:0; list-style:none; background:#fff; box-shadow:0 8px 24px rgba(0,0,0,0.28); border-radius:8px; transform:scale(1.03); pointer-events:none; transition:none; }
+.tn-dnd-list li.tn-dnd-placeholder { list-style:none; background:repeating-linear-gradient(45deg,#f0fff4,#f0fff4 6px,#e6fffa 6px,#e6fffa 12px); border:2px dashed #276749; border-radius:6px; box-sizing:border-box; }
+html[data-theme="dark"] .tn-dnd-list li.tn-dnd-lifted { background:#1a202c; box-shadow:0 8px 24px rgba(0,0,0,0.6); }
+html[data-theme="dark"] .tn-dnd-list li.tn-dnd-placeholder { background:rgba(56,161,105,0.18); border-color:#68d391; }
+/* Bigger touch target for the grip on mobile (spec §3.2). */
+.tn-mobile .tn-dnd-list .tn-dnd-handle { min-width:24px; padding:8px 6px; font-size:14px; touch-action:none; }
 .tn-bv-stale-warning { background:#fed7d7; color:#742a2a; padding:8px 12px; border-radius:4px; margin-bottom:8px; font-size:13px; }
 html[data-theme="dark"] .tn-bv-stale-warning { background:#742a2a; color:#fed7d7; }
 
@@ -2226,7 +2233,7 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 								<?php foreach ($pList as $i => $p): ?>
 								<?php $_pStatus = $p['Status'] ?? 'active'; $_pStatusClass = ($_pStatus !== 'active') ? ' tn-pstatus-' . htmlspecialchars($_pStatus) : ''; ?>
 								<li class="<?= $_pStatusClass ?>"<?= $isDnd ? ' data-pid="' . (int)$p['ParticipantId'] . '"' : '' ?> data-participant-id="<?= (int)$p['ParticipantId'] ?>" data-status="<?= htmlspecialchars($_pStatus) ?>">
-																		<?php if ($isDnd): ?><span class="tn-dnd-handle"><i class="fas fa-grip-lines"></i></span><?php endif; ?>
+																		<?php if ($isDnd): ?><span class="tn-dnd-handle" data-tn-no-swipe><i class="fas fa-grip-lines"></i></span><?php endif; ?>
 									<span class="<?= $isDnd ? 'tn-seed-enhanced' : 'tn-participant-seed' ?>"><?= $i + 1 ?></span>
 									<span style="flex:1">
 										<?php if (!empty($p['Persona'])): ?>
@@ -5829,6 +5836,37 @@ window.tnSortTable = function(tableId, colIndex, numeric) {
 (function() {
 	var dragSrc = null;
 
+	// --- Shared persistence + DOM-renumber, used by BOTH desktop HTML5 DnD
+	//     and the touch long-press reorder (B2). Reads the list's current
+	//     DOM child order, renumbers the seed circles, and POSTs to the
+	//     existing reorder endpoint; reverts to `prevOrder` on failure.
+	//     `prevOrder` is the snapshot taken BEFORE the move (Array of <li>).
+	function commitReorder(list, bracketId, prevOrder) {
+		function renumber() {
+			list.querySelectorAll('li[data-pid]').forEach(function(item, idx) {
+				var seedEl = item.querySelector('.tn-seed-enhanced') || item.querySelector('.tn-participant-seed'); if (seedEl) seedEl.textContent = idx + 1;
+			});
+		}
+		var newOrder = [];
+		list.querySelectorAll('li[data-pid]').forEach(function(item) { newOrder.push(item.dataset.pid); });
+		renumber();
+		function restoreOrder() {
+			prevOrder.forEach(function(item) { list.appendChild(item); });
+			renumber();
+			list.setAttribute('data-error', 'Reorder save failed — restored previous order');
+			list.classList.add('tn-dnd-error');
+			setTimeout(function() { list.classList.remove('tn-dnd-error'); list.removeAttribute('data-error'); }, 4000);
+		}
+		// Save new order (same endpoint + payload for desktop & touch).
+		var url = TnConfig.uir + 'TournamentAjax/bracket/' + bracketId + '/reorder';
+		var fd  = new FormData();
+		fd.append('Order', JSON.stringify(newOrder));
+		fd.append('TournamentId', TnConfig.tournamentId);
+		fetch(url, { method:'POST', body:fd }).then(function(r) { return r.json(); }).then(function(d) {
+			if (!d || d.status !== 0) { console.warn('Reorder save failed', d); restoreOrder(); }
+		}).catch(function(e) { console.warn('Reorder error', e); restoreOrder(); });
+	}
+
 	function initDnd(list, bracketId) {
 		var items = list.querySelectorAll('li[data-pid]');
 		items.forEach(function(li) {
@@ -5857,37 +5895,178 @@ window.tnSortTable = function(tableId, colIndex, numeric) {
 				// Snapshot current order so we can revert if the save fails.
 				var prevOrder = Array.prototype.slice.call(list.querySelectorAll('li[data-pid]'));
 				// Insert dragSrc before this element
-				var allItems = prevOrder.slice();
-				var srcIdx = allItems.indexOf(dragSrc);
-				var dstIdx = allItems.indexOf(li);
+				var srcIdx = prevOrder.indexOf(dragSrc);
+				var dstIdx = prevOrder.indexOf(li);
 				if (srcIdx < dstIdx) list.insertBefore(dragSrc, li.nextSibling);
 				else                 list.insertBefore(dragSrc, li);
-				// Update seed number badges
-				var newOrder = [];
-				function renumber() {
-					list.querySelectorAll('li[data-pid]').forEach(function(item, idx) {
-						var seedEl = item.querySelector('.tn-seed-enhanced') || item.querySelector('.tn-participant-seed'); if (seedEl) seedEl.textContent = idx + 1;
-					});
-				}
-				list.querySelectorAll('li[data-pid]').forEach(function(item) { newOrder.push(item.dataset.pid); });
-				renumber();
-				function restoreOrder() {
-					prevOrder.forEach(function(item) { list.appendChild(item); });
-					renumber();
-					list.setAttribute('data-error', 'Reorder save failed — restored previous order');
-					list.classList.add('tn-dnd-error');
-					setTimeout(function() { list.classList.remove('tn-dnd-error'); list.removeAttribute('data-error'); }, 4000);
-				}
-				// Save new order
-				var url = TnConfig.uir + 'TournamentAjax/bracket/' + bracketId + '/reorder';
-				var fd  = new FormData();
-				fd.append('Order', JSON.stringify(newOrder));
-					fd.append('TournamentId', TnConfig.tournamentId);
-				fetch(url, { method:'POST', body:fd }).then(function(r) { return r.json(); }).then(function(d) {
-					if (!d || d.status !== 0) { console.warn('Reorder save failed', d); restoreOrder(); }
-				}).catch(function(e) { console.warn('Reorder error', e); restoreOrder(); });
+				commitReorder(list, bracketId, prevOrder);
 			});
 		});
+
+		initTouchDnd(list, bracketId);
+	}
+
+	// --- Touch long-press reorder (B2). HTML5 DnD does not fire on touch,
+	//     so this is an additive path that drives the SAME commitReorder.
+	//     Sets TnMobile.dragActive while a lift is live so TnMobile.swipe
+	//     consumers (row swipe, deck) stand down (arbitration contract).
+	function initTouchDnd(list, bracketId) {
+		var LONG_PRESS_MS = 320;   // hold before lifting
+		var MOVE_CANCEL   = 10;    // px of finger travel that cancels a pending lift (= scroll)
+		var EDGE_ZONE     = 60;    // px from container edge that triggers autoscroll
+		var EDGE_SPEED    = 10;    // px per frame autoscroll
+
+		var pressTimer = null;
+		var lifted     = null;     // the <li> currently lifted
+		var placeholder = null;    // gap element marking the drop slot
+		var prevOrder  = null;     // snapshot for revert
+		var startY = 0, startX = 0;
+		var grabOffsetY = 0;       // touch.clientY - row top at lift
+		var rowH = 0;
+		var rafId = null, edgeDir = 0;
+		var scroller = null;       // nearest scrollable ancestor (or null → window)
+
+		function findScroller(el) {
+			var n = el.parentElement;
+			while (n && n !== document.body) {
+				var oy = getComputedStyle(n).overflowY;
+				if ((oy === 'auto' || oy === 'scroll') && n.scrollHeight > n.clientHeight) return n;
+				n = n.parentElement;
+			}
+			return null;
+		}
+
+		function clearPress() {
+			if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+		}
+
+		function stopAutoscroll() {
+			edgeDir = 0;
+			if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+		}
+
+		function autoscrollStep() {
+			if (!edgeDir) { rafId = null; return; }
+			if (scroller) scroller.scrollTop += edgeDir * EDGE_SPEED;
+			else          window.scrollBy(0, edgeDir * EDGE_SPEED);
+			rafId = requestAnimationFrame(autoscrollStep);
+		}
+
+		function startAutoscroll(dir) {
+			if (edgeDir === dir) return;
+			edgeDir = dir;
+			if (dir && !rafId) rafId = requestAnimationFrame(autoscrollStep);
+		}
+
+		function liftRow(li, clientY) {
+			prevOrder = Array.prototype.slice.call(list.querySelectorAll('li[data-pid]'));
+			scroller = findScroller(list);
+			var rect = li.getBoundingClientRect();
+			rowH = rect.height;
+			grabOffsetY = clientY - rect.top;
+			// Placeholder gap holds the slot height so the list doesn't collapse.
+			placeholder = document.createElement('li');
+			placeholder.className = 'tn-dnd-placeholder';
+			placeholder.style.height = rowH + 'px';
+			li.parentNode.insertBefore(placeholder, li.nextSibling);
+			li.classList.add('tn-dnd-lifted');
+			li.style.width = rect.width + 'px';
+			li.style.left = rect.left + 'px';
+			li.style.top = rect.top + 'px';
+			lifted = li;
+			TnMobile.dragActive = true;
+			if (navigator.vibrate) { try { navigator.vibrate(15); } catch (e) {} }
+			moveLifted(clientY);
+		}
+
+		function moveLifted(clientY) {
+			// Position the fixed lifted row to follow the finger.
+			lifted.style.top = (clientY - grabOffsetY) + 'px';
+			// Find the sibling whose midpoint we've crossed and move the placeholder.
+			var siblings = list.querySelectorAll('li[data-pid]:not(.tn-dnd-lifted)');
+			var target = null;
+			for (var i = 0; i < siblings.length; i++) {
+				var r = siblings[i].getBoundingClientRect();
+				if (clientY < r.top + r.height / 2) { target = siblings[i]; break; }
+			}
+			if (target) { if (placeholder.nextSibling !== target) list.insertBefore(placeholder, target); }
+			else        { list.appendChild(placeholder); }
+		}
+
+		function dropRow() {
+			if (!lifted) return;
+			// Drop the row into the placeholder slot (same DOM move as desktop drop).
+			list.insertBefore(lifted, placeholder);
+			if (placeholder && placeholder.parentNode) placeholder.parentNode.removeChild(placeholder);
+			lifted.classList.remove('tn-dnd-lifted');
+			lifted.style.width = ''; lifted.style.left = ''; lifted.style.top = '';
+			var movedList = list, movedBid = bracketId, snapshot = prevOrder;
+			lifted = null; placeholder = null; prevOrder = null;
+			stopAutoscroll();
+			TnMobile.dragActive = false;
+			commitReorder(movedList, movedBid, snapshot);
+		}
+
+		function cancelLift() {
+			if (!lifted) return;
+			// Restore to original slot (placeholder marks where it was lifted from).
+			list.insertBefore(lifted, placeholder);
+			if (placeholder && placeholder.parentNode) placeholder.parentNode.removeChild(placeholder);
+			lifted.classList.remove('tn-dnd-lifted');
+			lifted.style.width = ''; lifted.style.left = ''; lifted.style.top = '';
+			lifted = null; placeholder = null; prevOrder = null;
+			stopAutoscroll();
+			TnMobile.dragActive = false;
+		}
+
+		list.querySelectorAll('li[data-pid]').forEach(function(li) {
+			var handle = li.querySelector('.tn-dnd-handle') || li;
+
+			handle.addEventListener('touchstart', function(e) {
+				if (lifted) return;
+				var t = e.touches && e.touches[0];
+				if (!t) return;
+				startX = t.clientX; startY = t.clientY;
+				clearPress();
+				pressTimer = setTimeout(function() {
+					pressTimer = null;
+					liftRow(li, startY);
+				}, LONG_PRESS_MS);
+			}, { passive: true });
+
+			// touchmove BEFORE lift only watches for scroll-cancel (passive, no preventDefault).
+			handle.addEventListener('touchmove', function(e) {
+				if (lifted) return; // post-lift moves are handled on the list listener below
+				var t = e.touches && e.touches[0];
+				if (!t) return;
+				if (pressTimer && (Math.abs(t.clientX - startX) > MOVE_CANCEL || Math.abs(t.clientY - startY) > MOVE_CANCEL)) {
+					clearPress(); // finger moved → it's a scroll, abandon the pending lift
+				}
+			}, { passive: true });
+
+			handle.addEventListener('touchend', clearPress, { passive: true });
+			handle.addEventListener('touchcancel', clearPress, { passive: true });
+		});
+
+		// While lifted, drive move/autoscroll from the list (non-passive so we
+		// can preventDefault and stop the page scrolling during an active drag).
+		list.addEventListener('touchmove', function(e) {
+			if (!lifted) return;
+			var t = e.touches && e.touches[0];
+			if (!t) return;
+			e.preventDefault(); // only fires when a lift is engaged
+			moveLifted(t.clientY);
+			// Edge autoscroll relative to the scroll container (or viewport).
+			var topEdge, botEdge;
+			if (scroller) { var sr = scroller.getBoundingClientRect(); topEdge = sr.top; botEdge = sr.bottom; }
+			else          { topEdge = 0; botEdge = window.innerHeight; }
+			if (t.clientY < topEdge + EDGE_ZONE)      startAutoscroll(-1);
+			else if (t.clientY > botEdge - EDGE_ZONE) startAutoscroll(1);
+			else                                      startAutoscroll(0);
+		}, { passive: false });
+
+		list.addEventListener('touchend', function() { if (lifted) dropRow(); }, { passive: true });
+		list.addEventListener('touchcancel', function() { if (lifted) cancelLift(); }, { passive: true });
 	}
 
 	document.addEventListener('DOMContentLoaded', function() {
