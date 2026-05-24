@@ -148,7 +148,7 @@ class Controller_TournamentAjax extends Controller {
 			if (!in_array($method, $allowed_methods, true)) {
 				echo json_encode(['status' => 1, 'error' => 'Invalid bracket method.']); exit;
 			}
-			$r = $this->Tournament->update_bracket([
+			$r = $this->Tournament->update_bracket(array_merge([
 				'Token'        => $this->session->token,
 				'TournamentId' => $tournament_id,
 				'BracketId'    => $bracket_id,
@@ -160,8 +160,9 @@ class Controller_TournamentAjax extends Controller {
 				'Seeding'         => trim($_POST['Seeding']         ?? 'random'),
 				'DurationMinutes' => max(0, (int)($_POST['DurationMinutes'] ?? 0)),
 				'BestOf'          => (int)($_POST['BestOf'] ?? 1),
-				'FirstRoundMode'  => trim($_POST['FirstRoundMode'] ?? 'byes'),
-			]);
+			// Only forward FirstRoundMode when the client actually sent it, so an edit
+			// that didn't offer the control leaves the stored value untouched.
+			], isset($_POST['FirstRoundMode']) ? ['FirstRoundMode' => trim($_POST['FirstRoundMode'])] : []));
 			echo ($r['Status'] == 0)
 				? json_encode(['status' => 0, 'bracketId' => (int)($r['Detail'] ?? 0)])
 				: $this->modelError($r);
@@ -383,9 +384,14 @@ class Controller_TournamentAjax extends Controller {
 			}
 
 			$r = $this->Tournament->add_participant($params);
-			echo ($r['Status'] == 0)
-				? json_encode(['status' => 0, 'participantId' => (int)($r['Detail'] ?? 0)])
-				: $this->modelError($r);
+			if ($r['Status'] == 0) {
+				$detail = $r['Detail'];
+				$new_pid  = is_array($detail) ? (int)($detail['ParticipantId'] ?? 0) : (int)$detail;
+				$new_pnum = is_array($detail) ? (int)($detail['ParticipantNumber'] ?? 0) : 0;
+				echo json_encode(['status' => 0, 'participantId' => $new_pid, 'participantNumber' => $new_pnum]);
+			} else {
+				echo $this->modelError($r);
+			}
 
 		} elseif ($action === 'removeparticipant') {
 			$participant_id = (int)($_POST['ParticipantId'] ?? 0);
@@ -494,6 +500,26 @@ class Controller_TournamentAjax extends Controller {
 			]);
 			echo ($r['Status'] == 0)
 				? json_encode(['status' => 0, 'participantId' => (int)($r['Detail']['ParticipantId'] ?? $participant_id), 'newStatus' => $r['Detail']['Status'] ?? ''])
+				: $this->modelError($r);
+
+		} elseif ($action === 'updatealias') {
+			$tid = (int)($_POST['TournamentId'] ?? 0);
+			if (!valid_id($tid)) {
+				echo json_encode(['status' => 1, 'error' => 'TournamentId required.']); exit;
+			}
+			$participant_id = (int)($_POST['ParticipantId'] ?? 0);
+			if (!valid_id($participant_id)) {
+				echo json_encode(['status' => 1, 'error' => 'ParticipantId required.']); exit;
+			}
+			$r = $this->Tournament->update_alias([
+				'Token'         => $this->session->token,
+				'TournamentId'  => $tid,
+				'BracketId'     => $bracket_id,
+				'ParticipantId' => $participant_id,
+				'Alias'         => trim($_POST['Alias'] ?? ''),
+			]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0, 'participantId' => (int)($r['Detail']['ParticipantId'] ?? $participant_id), 'alias' => $r['Detail']['Alias'] ?? ''])
 				: $this->modelError($r);
 
 		} else {
