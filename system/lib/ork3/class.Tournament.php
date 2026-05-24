@@ -389,6 +389,20 @@ class Tournament extends Ork3 {
 						 WHERE p.tournament_id = $_tid AND pm.mundane_id = $_mid AND p.participant_number > 0 LIMIT 1"
 					);
 					if ($_ex && $_ex->next()) $_pnum = (int)$_ex->participant_number;
+				} else {
+					// Alias-only participant: reuse the number of an existing alias-only
+					// row with the same alias text in this tournament (person-stable by
+					// name when there is no linked account).
+					$_alias = trim($request['Alias'] ?? '');
+					if ($_alias !== '') {
+						$_exa = $this->db->query(
+							"SELECT p.participant_number FROM " . DB_PREFIX . "participant p
+							 LEFT JOIN " . DB_PREFIX . "participant_mundane pm ON pm.participant_id = p.participant_id
+							 WHERE p.tournament_id = $_tid AND pm.mundane_id IS NULL AND p.participant_number > 0 AND p.alias = :a LIMIT 1",
+							[':a' => $_alias]
+						);
+						if ($_exa && $_exa->next()) $_pnum = (int)$_exa->participant_number;
+					}
 				}
 				if (!$_pnum) {
 					$_max = $this->db->query("SELECT MAX(participant_number) AS m FROM " . DB_PREFIX . "participant WHERE tournament_id = $_tid");
@@ -470,7 +484,7 @@ class Tournament extends Ork3 {
 				);
 			}
 			$this->bustTournamentReportCache();
-			return Success($this->Participant->participant_id);
+			return Success(['ParticipantId' => (int)$this->Participant->participant_id, 'ParticipantNumber' => (int)$_pnum]);
 		}
 	}
 
@@ -1268,6 +1282,7 @@ class Tournament extends Ork3 {
 			// yields exactly one standings row. No per-member award decoration.
 			$sql = "SELECT
 					p.participant_id,
+					p.participant_number,
 					p.alias,
 					p.park_id,
 					pk.name AS park_name,
@@ -1282,7 +1297,7 @@ class Tournament extends Ork3 {
 					LEFT JOIN " . DB_PREFIX . "match m ON (m.participant_1_id = p.participant_id OR m.participant_2_id = p.participant_id) AND m.bracket_id = $bracket_id
 					LEFT JOIN " . DB_PREFIX . "park pk ON pk.park_id = p.park_id
 				WHERE p.bracket_id = $bracket_id
-				GROUP BY p.participant_id, p.alias, p.park_id, p.warrior_level, pk.name
+				GROUP BY p.participant_id, p.participant_number, p.alias, p.park_id, p.warrior_level, pk.name
 				ORDER BY wins DESC, losses ASC";
 
 			$r = $this->db->query($sql);
@@ -1296,6 +1311,7 @@ class Tournament extends Ork3 {
 					$pid    = (int)$r->participant_id;
 					$standings[] = [
 						'ParticipantId'    => $pid,
+						'ParticipantNumber' => (int)$r->participant_number,
 						'Alias'            => $r->alias,
 						'ParkId'           => (int)$r->park_id,
 						'ParkName'         => $r->park_name,
@@ -1318,6 +1334,7 @@ class Tournament extends Ork3 {
 			// Individual bracket path (unchanged)
 			$sql = "SELECT
 					p.participant_id,
+					p.participant_number,
 					p.alias,
 					p.park_id,
 					COALESCE(pk.name, mpark.name) AS park_name,
@@ -1335,7 +1352,7 @@ class Tournament extends Ork3 {
 					LEFT JOIN " . DB_PREFIX . "match m ON (m.participant_1_id = p.participant_id OR m.participant_2_id = p.participant_id) AND m.bracket_id = $bracket_id
 					LEFT JOIN " . DB_PREFIX . "park pk ON pk.park_id = p.park_id
 				WHERE p.bracket_id = $bracket_id
-				GROUP BY p.participant_id, p.alias, p.park_id, pm.mundane_id, park_name
+				GROUP BY p.participant_id, p.participant_number, p.alias, p.park_id, pm.mundane_id, park_name
 				ORDER BY wins DESC, losses ASC";
 
 			$r = $this->db->query($sql);
@@ -1350,6 +1367,7 @@ class Tournament extends Ork3 {
 					if ($mid > 0) $std_mids[$mid] = true;
 					$standings[] = [
 						'ParticipantId' => (int)$r->participant_id,
+						'ParticipantNumber' => (int)$r->participant_number,
 						'Alias'         => $r->alias,
 						'ParkId'        => (int)$r->park_id,
 						'ParkName'      => $r->park_name,
@@ -2332,6 +2350,58 @@ class Tournament extends Ork3 {
 		);
 
 		return Success(['ParticipantId' => $participant_id, 'Status' => $status]);
+	}
+
+	/**
+	 * UpdateAlias($request)
+	 * Renames a participant's alias. Because each bracket keeps its own copy of a
+	 * participant row, the rename propagates to every row sharing this person's
+	 * tournament-wide participant_number, so the alias stays consistent across all
+	 * brackets. Falls back to the single row when no stable number is assigned.
+	 * Request: Token, TournamentId, BracketId, ParticipantId, Alias
+	 */
+	public function UpdateAlias($request) {
+		if (!$this->check_auth($request)) return NoAuthorization();
+
+		$tournament_id  = (int)($request['TournamentId'] ?? 0);
+		$bracket_id     = (int)($request['BracketId'] ?? 0);
+		$participant_id = (int)($request['ParticipantId'] ?? 0);
+		if (!valid_id($tournament_id))  return InvalidParameter('TournamentId required');
+		if (!valid_id($bracket_id))     return InvalidParameter('BracketId required');
+		if (!valid_id($participant_id)) return InvalidParameter('ParticipantId required');
+
+		$alias = trim($request['Alias'] ?? '');
+		if ($alias === '')           return InvalidParameter('Alias cannot be empty.');
+		if (mb_strlen($alias) > 100) $alias = mb_substr($alias, 0, 100);
+
+		// Confirm the participant belongs to this bracket/tournament and grab its
+		// tournament-wide participant_number (stable per person across brackets).
+		$row = $this->db->query(
+			"SELECT participant_number FROM " . DB_PREFIX . "participant
+			 WHERE participant_id = :pid AND bracket_id = :bid AND tournament_id = :tid LIMIT 1",
+			[':pid' => $participant_id, ':bid' => $bracket_id, ':tid' => $tournament_id]
+		);
+		if (!$row || !$row->next()) return InvalidParameter('Participant not found in this bracket.');
+		$pnum = (int)$row->participant_number;
+
+		// Rename every row sharing this participant_number in the tournament so the
+		// alias stays consistent across brackets. Fall back to the single row when no
+		// stable number is assigned (legacy/edge rows with participant_number = 0).
+		if ($pnum > 0) {
+			$this->db->query(
+				"UPDATE " . DB_PREFIX . "participant SET alias = :alias
+				 WHERE tournament_id = :tid AND participant_number = :pnum",
+				[':alias' => $alias, ':tid' => $tournament_id, ':pnum' => $pnum]
+			);
+		} else {
+			$this->db->query(
+				"UPDATE " . DB_PREFIX . "participant SET alias = :alias WHERE participant_id = :pid",
+				[':alias' => $alias, ':pid' => $participant_id]
+			);
+		}
+
+		$this->bustTournamentReportCache();
+		return Success(['ParticipantId' => $participant_id, 'Alias' => $alias]);
 	}
 
 	/**
