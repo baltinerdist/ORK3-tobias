@@ -57,6 +57,14 @@ if (!function_exists('tnParticipantPills')) {
 		return $html ? '<span style="display:inline-flex;gap:3px;margin-left:4px;vertical-align:middle">' . $html . '</span>' : '';
 	}
 }
+if (!function_exists('tnPidShield')) {
+	// Stable per-person player number, rendered as a distinctive shield badge.
+	function tnPidShield($n): string {
+		$n = (int)$n;
+		if ($n <= 0) return '';
+		return '<span class="tn-pid" data-tip="Player #' . $n . ' — same number across every bracket">' . $n . '</span>';
+	}
+}
 if (!function_exists('tnOrdinal')) {
 	function tnOrdinal(int $n): string {
 		$v = abs($n) % 100;
@@ -236,6 +244,23 @@ html[data-theme="dark"] [data-tip]::before { border-top-color:#1a202c; }
 .tn-participant-list li { display:flex; align-items:center; gap:8px; padding:5px 0; font-size:13px; color:#4a5568; border-bottom:1px solid #f0f4f8; }
 .tn-participant-list li:last-child { border-bottom:none; }
 .tn-participant-seed { width:20px; height:20px; background:#e2e8f0; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; color:#718096; flex-shrink:0; }
+/* Stable player-ID shield (same number across every bracket) + seed marker */
+.tn-pid { display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:21px; padding:0 5px 3px; margin-right:4px; font-size:10px; font-weight:800; line-height:1; color:#fff; background:linear-gradient(135deg,#4c51bf,#5a67d8); -webkit-clip-path:polygon(0 0,100% 0,100% 60%,50% 100%,0 60%); clip-path:polygon(0 0,100% 0,100% 60%,50% 100%,0 60%); flex-shrink:0; box-shadow:0 1px 2px rgba(0,0,0,0.18); }
+td .tn-pid { vertical-align:middle; }
+.tn-bv-tree .tn-pid { height:18px; min-width:15px; font-size:9px; padding:0 4px 2px; margin-right:3px; }
+.tn-seedling { color:#68a063; }
+.tn-boutlist-seed .tn-seedling, .tn-bv-seed .tn-seedling { margin-right:2px; opacity:0.9; }
+html[data-theme="dark"] .tn-pid { background:linear-gradient(135deg,#667eea,#7f9cf5); color:#fff; }
+html[data-theme="dark"] .tn-seedling { color:#9ae6b4; }
+/* Inline alias editor */
+.tn-alias-edit { background:none; border:none; padding:0 4px; margin-left:2px; cursor:pointer; color:#a0aec0; font-size:11px; opacity:0; transition:opacity .12s,color .12s; }
+.tn-participant-list li:hover .tn-alias-edit { opacity:1; }
+.tn-alias-edit:focus { opacity:1; outline:none; }
+.tn-alias-edit:hover { color:#276749; }
+.tn-alias-input { font-size:13px; font-weight:600; padding:1px 5px; border:1px solid #276749; border-radius:4px; min-width:120px; max-width:220px; }
+html[data-theme="dark"] .tn-alias-edit { color:#718096; }
+html[data-theme="dark"] .tn-alias-edit:hover { color:#9ae6b4; }
+html[data-theme="dark"] .tn-alias-input { background:#1a202c; color:#e2e8f0; border-color:#38a169; }
 .tn-empty { color:#a0aec0; font-size:13px; font-style:italic; padding:8px 0; }
 .tn-remove-participant { background:none; border:none; color:#cbd5e0; cursor:pointer; font-size:15px; padding:0 2px; line-height:1; flex-shrink:0; }
 .tn-remove-participant:hover { color:#e53e3e; }
@@ -858,8 +883,8 @@ html[data-theme="dark"] [data-tip]::before { border-top-color:#1a202c; }
 .tn-sm-dot-withdrawn { background:#d69e2e; }
 .tn-sm-dot-disqualified { background:#e53e3e; }
 /* Visual states on participant row */
-.tn-participant-list li.tn-pstatus-withdrawn span:not(.tn-participant-seed):not(.tn-status-wrap):not(.tn-status-btn) { text-decoration:line-through; color:#d69e2e; }
-.tn-participant-list li.tn-pstatus-disqualified span:not(.tn-participant-seed):not(.tn-status-wrap):not(.tn-status-btn) { text-decoration:line-through; color:#e53e3e; }
+.tn-participant-list li.tn-pstatus-withdrawn span:not(.tn-participant-seed):not(.tn-pid):not(.tn-status-wrap):not(.tn-status-btn) { text-decoration:line-through; color:#d69e2e; }
+.tn-participant-list li.tn-pstatus-disqualified span:not(.tn-participant-seed):not(.tn-pid):not(.tn-status-wrap):not(.tn-status-btn) { text-decoration:line-through; color:#e53e3e; }
 .tn-pstatus-pill { font-size:9px; font-weight:700; padding:1px 6px; border-radius:10px; margin-left:4px; text-decoration:none !important; }
 .tn-pstatus-pill-withdrawn { background:#fefcbf; color:#b45309; border:1px solid #fcd34d; }
 .tn-pstatus-pill-disqualified { background:#fff5f5; color:#e53e3e; border:1px solid #fc8181; }
@@ -2331,9 +2356,9 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 								<?php $_pStatus = $p['Status'] ?? 'active'; $_pStatusClass = ($_pStatus !== 'active') ? ' tn-pstatus-' . htmlspecialchars($_pStatus) : ''; ?>
 								<li class="<?= $_pStatusClass ?>"<?= $isDnd ? ' data-pid="' . (int)$p['ParticipantId'] . '"' : '' ?> data-participant-id="<?= (int)$p['ParticipantId'] ?>" data-status="<?= htmlspecialchars($_pStatus) ?>">
 																		<?php if ($isDnd): ?><span class="tn-dnd-handle" data-tn-no-swipe><i class="fas fa-grip-lines"></i></span><?php endif; ?>
-									<span class="<?= $isDnd ? 'tn-seed-enhanced' : 'tn-participant-seed' ?>"><?= $i + 1 ?></span>
+									<?php $_pidBadge = tnPidShield((int)($p['ParticipantNumber'] ?? 0)); ?><?= $_pidBadge !== '' ? $_pidBadge : '<span class="' . ($isDnd ? 'tn-seed-enhanced' : 'tn-participant-seed') . '">' . ($i + 1) . '</span>' ?>
 								<?php if ($p['IsTeam'] ?? false): ?>
-									<span style="flex:1"><?= htmlspecialchars($p['Alias'] ?: '—') ?>
+									<span style="flex:1"><span class="tn-alias-text" data-alias="<?= htmlspecialchars($p['Alias'] ?? '', ENT_QUOTES) ?>"><?= htmlspecialchars($p['Alias'] ?: '—') ?></span><?php if ($canManage): ?><button class="tn-alias-edit" data-pid="<?= (int)$p['ParticipantId'] ?>" data-bid="<?= $bid ?>" data-tip="Edit name" onclick="tnEditAlias(this)"><i class="fas fa-pen"></i></button><?php endif; ?>
 										<span style="display:inline-flex;gap:3px;margin-left:4px;vertical-align:middle"><span class="tn-pill tn-pill-team-wl" data-tip="Team warrior level">⚔ <?= (int)($p['WarriorLevel'] ?? 0) ?></span></span>
 									</span>
 									<?php if (!empty($p['Members'])): ?>
@@ -2346,13 +2371,13 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 								<?php else: ?>
 									<span style="flex:1">
 										<?php if (!empty($p['Persona'])): ?>
-											<?php if ($p['MundaneId'] > 0): ?><a href="<?= UIR ?>Player/profile/<?= $p['MundaneId'] ?>" style="color:#276749;text-decoration:none"><?= htmlspecialchars($p['Alias'] ?: $p['Persona']) ?></a><?php else: ?><?= htmlspecialchars($p['Alias'] ?: $p['Persona']) ?><?php endif; ?>
+											<?php if ($p['MundaneId'] > 0): ?><span class="tn-alias-text" data-alias="<?= htmlspecialchars($p['Alias'] ?? '', ENT_QUOTES) ?>"><a href="<?= UIR ?>Player/profile/<?= $p['MundaneId'] ?>" style="color:#276749;text-decoration:none"><?= htmlspecialchars($p['Alias'] ?: $p['Persona']) ?></a></span><?php else: ?><span class="tn-alias-text" data-alias="<?= htmlspecialchars($p['Alias'] ?? '', ENT_QUOTES) ?>"><?= htmlspecialchars($p['Alias'] ?: $p['Persona']) ?></span><?php endif; ?><?php if ($canManage): ?><button class="tn-alias-edit" data-pid="<?= (int)$p['ParticipantId'] ?>" data-bid="<?= $bid ?>" data-tip="Edit name" onclick="tnEditAlias(this)"><i class="fas fa-pen"></i></button><?php endif; ?>
 											<?= tnParticipantPills($p) ?>
 											<?php if ($p['Alias'] && $p['Alias'] !== $p['Persona']): ?>
 												<span style="color:#a0aec0;font-size:11px">(<?= htmlspecialchars($p['Persona']) ?>)</span>
 											<?php endif; ?>
 										<?php else: ?>
-											<?= htmlspecialchars($p['Alias'] ?: '—') ?><?= tnParticipantPills($p) ?>
+											<span class="tn-alias-text" data-alias="<?= htmlspecialchars($p['Alias'] ?? '', ENT_QUOTES) ?>"><?= htmlspecialchars($p['Alias'] ?: '—') ?></span><?php if ($canManage): ?><button class="tn-alias-edit" data-pid="<?= (int)$p['ParticipantId'] ?>" data-bid="<?= $bid ?>" data-tip="Edit name" onclick="tnEditAlias(this)"><i class="fas fa-pen"></i></button><?php endif; ?><?= tnParticipantPills($p) ?>
 										<?php endif; ?>
 										<?php if ($_pStatus === 'withdrawn'): ?><span class="tn-pstatus-pill tn-pstatus-pill-withdrawn">WD</span><?php endif; ?>
 										<?php if ($_pStatus === 'disqualified'): ?><span class="tn-pstatus-pill tn-pstatus-pill-disqualified">DQ</span><?php endif; ?>
@@ -2622,7 +2647,7 @@ foreach ($bracketData as $_bid => $_bd) {
 							<tr>
 								<td style="color:#a0aec0;font-weight:700"><?= $_stRank ?></td>
 								<td style="font-weight:600">
-									<?= htmlspecialchars($stRow['Alias'] ?? '—') ?>
+									<?= tnPidShield((int)($stRow['ParticipantNumber'] ?? 0)) ?><?= htmlspecialchars($stRow['Alias'] ?? '—') ?>
 									<?php if ($_stIsTeam): ?>
 									<span style="display:inline-flex;gap:3px;margin-left:4px;vertical-align:middle"><span class="tn-pill tn-pill-team-wl" data-tip="Team warrior level">⚔ <?= (int)($stRow['TeamWarriorLevel'] ?? 0) ?></span></span>
 									<?php if (!empty($stRow['Members'])): ?>
@@ -2875,7 +2900,7 @@ foreach ($bracketData as $_bid => $_bd) {
 				</div>
 				<div class="tn-field" id="tn-editbracket-firstround-field" style="display:none">
 					<label>How to handle the first round?</label>
-					<div class="tn-seg" id="tn-editbracket-firstround" role="radiogroup">
+					<div class="tn-seg" id="tn-editbracket-firstround">
 						<button type="button" class="tn-seg-btn" data-val="play-in">Play-In for First Round Position</button>
 						<button type="button" class="tn-seg-btn" data-val="byes">Assign Byes for First Round</button>
 					</div>
@@ -4539,7 +4564,10 @@ window.tnOpenAsSheet = function(overlayId, opts) {
 			if (!fld || !seg) return;
 			var bd = (TnConfig.bracketData || {})[bracketId];
 			var n = (bd && bd.Participants) ? bd.Participants.length : 0;
-			if (!tnShouldOfferPlayIn(data.method, n)) { fld.style.display = 'none'; return; }
+			if (!tnShouldOfferPlayIn(data.method, n)) {
+				Array.prototype.forEach.call(seg.querySelectorAll('.tn-seg-btn'), function(x){ x.classList.remove('tn-seg-active'); });
+				fld.style.display = 'none'; return;
+			}
 			fld.style.display = '';
 			var P = 1; while (P < n) P *= 2;
 			var byes = P - n;
@@ -4640,8 +4668,10 @@ window.tnOpenAsSheet = function(overlayId, opts) {
 			fd.append('StyleNote',    document.getElementById('tn-editbracket-stylenote').value);
 			fd.append('DurationMinutes', document.getElementById('tn-editbracket-duration').value || 0);
 			fd.append('BestOf',       document.getElementById('tn-editbracket-bestof').value || 1);
+			// Only send FirstRoundMode when the control was actually offered (a segment
+			// is active); otherwise omit it so the server preserves the existing value.
 			var _fr = document.querySelector('#tn-editbracket-firstround .tn-seg-btn.tn-seg-active');
-			fd.append('FirstRoundMode', _fr ? _fr.getAttribute('data-val') : 'byes');
+			if (_fr) fd.append('FirstRoundMode', _fr.getAttribute('data-val'));
 
 			fetch(EDIT_URL, { method:'POST', body:fd })
 				.then(function(r) { return r.json(); })
@@ -5497,8 +5527,8 @@ function tnFixedAcPosition(inputEl, dropdownEl) {
 						var num = ul.querySelectorAll('li').length + 1;
 						var li  = document.createElement('li');
 						var seedSpan = document.createElement('span');
-						seedSpan.className = 'tn-participant-seed';
-						seedSpan.textContent = num;
+						seedSpan.className = d.participantNumber ? 'tn-pid' : 'tn-participant-seed';
+						seedSpan.textContent = d.participantNumber || num; if (d.participantNumber) seedSpan.setAttribute('data-tip', 'Player #' + d.participantNumber + ' — same number across every bracket');
 						li.appendChild(seedSpan);
 						var aliasSpan = document.createElement('span');
 						aliasSpan.style.flex = '1';
@@ -5673,8 +5703,8 @@ function tnFixedAcPosition(inputEl, dropdownEl) {
 							var num = ul.querySelectorAll('li').length + 1;
 							var li = document.createElement('li');
 							var seedSpan2 = document.createElement('span');
-							seedSpan2.className = 'tn-participant-seed';
-							seedSpan2.textContent = num;
+							seedSpan2.className = d.participantNumber ? 'tn-pid' : 'tn-participant-seed';
+							seedSpan2.textContent = d.participantNumber || num; if (d.participantNumber) seedSpan2.setAttribute('data-tip', 'Player #' + d.participantNumber + ' — same number across every bracket');
 							li.appendChild(seedSpan2);
 							var aliasSpan2 = document.createElement('span');
 							aliasSpan2.style.flex = '1';
@@ -7183,11 +7213,19 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 				av.style.background = tnAvatarColor(info.pid);
 				av.textContent = tnInitials(displayName);
 				slot.appendChild(av);
+					var _pidn = parseInt(info.p.ParticipantNumber, 10) || 0;
+					if (_pidn > 0) {
+						var pidEl = document.createElement('span');
+						pidEl.className = 'tn-pid';
+						pidEl.textContent = _pidn;
+						pidEl.setAttribute('data-tip', 'Player #' + _pidn + ' — same number across every bracket');
+						slot.appendChild(pidEl);
+					}
 
 				if (anySeed) {
 					var seed = document.createElement('span');
 					seed.className = 'tn-bv-seed';
-					seed.textContent = info.p.Seed || '?';
+					seed.setAttribute('data-tip', 'Seed'); seed.innerHTML = '<i class="fas fa-seedling tn-seedling"></i>' + (info.p.Seed || '?');
 					slot.appendChild(seed);
 				}
 				var name = document.createElement('span');
@@ -9126,7 +9164,44 @@ window.tnToggleParticipantMenu = function(btn) {
 	menu.classList.toggle('tn-status-open');
 };
 
-window.tnSetParticipantStatus = function(pid, status, bid, menuItemEl) {
+window.tnEditAlias = function(btn){
+			var li = btn.closest('li'); if (!li) return;
+			var span = li.querySelector('.tn-alias-text'); if (!span || span.dataset.editing === '1') return;
+			var pid = btn.getAttribute('data-pid'), bid = btn.getAttribute('data-bid');
+			var current = span.getAttribute('data-alias') || span.textContent.trim();
+			var originalHTML = span.innerHTML;
+			span.dataset.editing = '1';
+			var input = document.createElement('input');
+			input.type = 'text'; input.className = 'tn-alias-input'; input.maxLength = 100; input.value = current;
+			span.innerHTML = ''; span.appendChild(input);
+			input.focus(); input.select();
+			var done = false;
+			function finish(save){
+				if (done) return; done = true;
+				var val = input.value.trim();
+				if (!save || !val || val === current){ span.innerHTML = originalHTML; delete span.dataset.editing; return; }
+				var fd = new FormData();
+				fd.append('ParticipantId', pid); fd.append('TournamentId', TnConfig.tournamentId); fd.append('Alias', val);
+				fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bid + '/updatealias', {method:'POST', body:fd})
+					.then(function(r){ if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+					.then(function(d){
+						span.innerHTML = originalHTML; delete span.dataset.editing;
+						if (d && d.status === 0){
+							var nm = d.alias || val; var link = span.querySelector('a');
+							if (link) link.textContent = nm; else span.textContent = nm;
+							span.setAttribute('data-alias', nm);
+						} else { alert((d && d.error) ? d.error : 'Failed to update name.'); }
+					})
+					.catch(function(){ span.innerHTML = originalHTML; delete span.dataset.editing; alert('Network error updating name.'); });
+			}
+			input.addEventListener('keydown', function(e){
+				if (e.key === 'Enter'){ e.preventDefault(); finish(true); }
+				else if (e.key === 'Escape'){ e.preventDefault(); finish(false); }
+			});
+			input.addEventListener('blur', function(){ finish(true); });
+		};
+
+		window.tnSetParticipantStatus = function(pid, status, bid, menuItemEl) {
 	var fd = new FormData();
 	fd.append('ParticipantId', pid);
 	fd.append('Status', status);
@@ -9744,10 +9819,18 @@ html[data-theme="dark"] .tn-team-chip { background:#2a4a6b; color:#90cdf4; }
 		}
 
 		// Seed pill + name (reusing the deck's seed lookup pattern).
-		function tnBoutListName(name, seed, members){
-			var s = seed ? '<span class="tn-boutlist-seed">' + parseInt(seed, 10) + '</span>' : '';
+		function tnPidShieldHTML(n){
+				n = parseInt(n, 10) || 0;
+				if (n <= 0) return '';
+				return '<span class="tn-pid" data-tip="Player #' + n + ' — same number across every bracket">' + n + '</span>';
+			}
+
+			function tnBoutListName(name, seed, members){
+			var pidn = (members && members.ParticipantNumber) ? parseInt(members.ParticipantNumber, 10) : 0;
+				var shield = pidn ? tnPidShieldHTML(pidn) : '';
+				var s = seed ? '<span class="tn-boutlist-seed" data-tip="Seed"><i class="fas fa-seedling tn-seedling"></i>' + parseInt(seed, 10) + '</span>' : '';
 			var chip = (members && members.IsTeam) ? tnTeamChip(members) : '';
-			return s + tnEsc(name) + chip;
+			return shield + s + tnEsc(name) + chip;
 		}
 
 		// Build (fresh, every open) the Bout List sheet overlay element from the
