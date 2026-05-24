@@ -6892,6 +6892,19 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 				}
 			}
 
+			// Orthogonal connector arm: horizontal stub from (fx,fy) to column x=cx,
+			// a rounded corner, then a straight vertical to y=ty. Reads as a clean
+			// bracket line at any vertical span (curvy beziers looked like glitches
+			// on the long later-round arms).
+			function elbow(fx, fy, cx, ty) {
+				var dx = cx - fx, dy = ty - fy;
+				if (Math.abs(dy) < 0.5) return 'M' + fx + ',' + fy + ' L' + cx + ',' + ty;
+				var r = Math.min(8, Math.abs(dx), Math.abs(dy));
+				var hs = dx >= 0 ? 1 : -1, vs = dy >= 0 ? 1 : -1;
+				return 'M' + fx + ',' + fy + ' L' + (cx - hs*r) + ',' + fy +
+				       ' Q' + cx + ',' + fy + ' ' + cx + ',' + (fy + vs*r) + ' L' + cx + ',' + ty;
+			}
+
 			// PASS 2 — build SVG paths from the cached rects (no layout reads)
 			pairs.forEach(function(pr) {
 					var m1   = pr.m1;
@@ -6916,28 +6929,28 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 
 						var color1 = m1Resolved ? '#48bb78' : '#cbd5e0';
 						var p1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-						p1.setAttribute('d', 'M'+x1+','+y1+' C'+xMid+','+y1+' '+xMid+','+yMid+' '+xMid+','+yMid);
+						p1.setAttribute('d', elbow(x1, y1, xMid, yMid));
 						p1.setAttribute('stroke', color1); p1.setAttribute('stroke-width', m1Resolved ? '2.5' : '1.5');
 						p1.setAttribute('fill', 'none'); p1.setAttribute('stroke-linecap', 'round');
 						svg.appendChild(p1);
 
 						var color2 = m2Resolved ? '#48bb78' : '#cbd5e0';
 						var p2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-						p2.setAttribute('d', 'M'+x2+','+y2+' C'+xMid+','+y2+' '+xMid+','+yMid+' '+xMid+','+yMid);
+						p2.setAttribute('d', elbow(x2, y2, xMid, yMid));
 						p2.setAttribute('stroke', color2); p2.setAttribute('stroke-width', m2Resolved ? '2.5' : '1.5');
 						p2.setAttribute('fill', 'none'); p2.setAttribute('stroke-linecap', 'round');
 						svg.appendChild(p2);
 
 						var colorC = (m1Resolved && m2Resolved) ? '#48bb78' : '#cbd5e0';
 						var pC = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-						pC.setAttribute('d', 'M'+xMid+','+yMid+' C'+((xMid+xDst)/2)+','+yMid+' '+((xMid+xDst)/2)+','+yDst+' '+xDst+','+yDst);
+						pC.setAttribute('d', 'M'+xMid+','+yMid+' L'+xDst+','+yDst);
 						pC.setAttribute('stroke', colorC); pC.setAttribute('stroke-width', (m1Resolved && m2Resolved) ? '2.5' : '1.5');
 						pC.setAttribute('fill', 'none'); pC.setAttribute('stroke-linecap', 'round');
 						svg.appendChild(pC);
 					} else {
 						var colorS = m1Resolved ? '#48bb78' : '#cbd5e0';
 						var pS = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-						pS.setAttribute('d', 'M'+x1+','+y1+' C'+xMid+','+y1+' '+xMid+','+yDst+' '+xDst+','+yDst);
+						pS.setAttribute('d', elbow(x1, y1, xMid, yDst) + ' L'+xDst+','+yDst);
 						pS.setAttribute('stroke', colorS); pS.setAttribute('stroke-width', m1Resolved ? '2.5' : '1.5');
 						pS.setAttribute('fill', 'none'); pS.setAttribute('stroke-linecap', 'round');
 						svg.appendChild(pS);
@@ -7056,13 +7069,6 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 		if (isBye && !hasResult) box.className += ' tn-bv-bye-match';
 		if (!hasResult && p1 && p2) box.className += ' tn-bv-next-playable';
 
-		// Match number badge
-		if (m.MatchId) {
-			var matchNum = document.createElement('span');
-			matchNum.className = 'tn-bv-match-num';
-			matchNum.textContent = '#' + m.MatchId;
-			box.appendChild(matchNum);
-		}
 			if (m.BracketSide === 'tiebreaker-3rd') {
 			var tbLabel = document.createElement('span');
 			tbLabel.className = 'tn-bv-match-num';
