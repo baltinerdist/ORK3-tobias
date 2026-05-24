@@ -319,6 +319,11 @@ html[data-theme="dark"] [data-tip]::before { border-top-color:#1a202c; }
 .tn-feedback-err { color:#c53030; }
 .tn-feedback-ok  { color:#276749; }
 .tn-field-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.tn-seg { display:flex; gap:6px; flex-wrap:wrap; }
+.tn-seg-btn { flex:1 1 0; min-width:120px; padding:8px 10px; font-size:12px; font-weight:600; line-height:1.2; text-align:center; border:1px solid #e2e8f0; border-radius:6px; background:#fff; color:#2d3748; cursor:pointer; transition:border-color .15s,background .15s,color .15s; }
+.tn-seg-btn:hover { border-color:#276749; }
+.tn-seg-btn.tn-seg-active { background:#276749; border-color:#276749; color:#fff; }
+.tn-field-hint { font-size:11px; color:#718096; margin-top:6px; }
 
 /* Bracket visualization */
 .tn-bv-viewport { overflow-x:auto; -webkit-overflow-scrolling:touch; }
@@ -1099,6 +1104,10 @@ html[data-theme="dark"] .tn-field textarea::placeholder { color:#718096; }
 html[data-theme="dark"] .tn-field input:focus,
 html[data-theme="dark"] .tn-field select:focus,
 html[data-theme="dark"] .tn-field textarea:focus { border-color:#68d391; box-shadow:0 0 0 2px rgba(104,211,145,0.2); }
+html[data-theme="dark"] .tn-seg-btn { background:#2d3748; border-color:#4a5568; color:#f7fafc; }
+html[data-theme="dark"] .tn-seg-btn:hover { border-color:#68d391; }
+html[data-theme="dark"] .tn-seg-btn.tn-seg-active { background:#276749; border-color:#68d391; color:#fff; }
+html[data-theme="dark"] .tn-field-hint { color:#a0aec0; }
 html[data-theme="dark"] .tn-feedback-err { color:#fc8181; }
 html[data-theme="dark"] .tn-feedback-ok  { color:#9ae6b4; }
 
@@ -2864,6 +2873,14 @@ foreach ($bracketData as $_bid => $_bd) {
 					<label for="tn-editbracket-stylenote">Style Note <span style="color:#a0aec0;font-size:11px;font-weight:400">(optional)</span></label>
 					<input type="text" id="tn-editbracket-stylenote" placeholder="e.g. No shields allowed, florentine only…" maxlength="255">
 				</div>
+				<div class="tn-field" id="tn-editbracket-firstround-field" style="display:none">
+					<label>How to handle the first round?</label>
+					<div class="tn-seg" id="tn-editbracket-firstround" role="radiogroup">
+						<button type="button" class="tn-seg-btn" data-val="play-in">Play-In for First Round Position</button>
+						<button type="button" class="tn-seg-btn" data-val="byes">Assign Byes for First Round</button>
+					</div>
+					<div class="tn-field-hint" id="tn-editbracket-firstround-hint"></div>
+				</div>
 			</div>
 		</div>
 		<div class="tn-modal-footer">
@@ -4514,6 +4531,24 @@ window.tnOpenAsSheet = function(overlayId, opts) {
 		var _edFld = document.getElementById('tn-editbracket-duration-field');
 		if (_edur) _edur.value = data.durationMinutes || 0;
 		if (_edFld) _edFld.style.display = (data.method === 'ironman') ? '' : 'none';
+		// First-round mode (play-in vs byes): offer only when byes would dominate.
+		(function(){
+			var fld = document.getElementById('tn-editbracket-firstround-field');
+			var seg = document.getElementById('tn-editbracket-firstround');
+			var hint = document.getElementById('tn-editbracket-firstround-hint');
+			if (!fld || !seg) return;
+			var bd = (TnConfig.bracketData || {})[bracketId];
+			var n = (bd && bd.Participants) ? bd.Participants.length : 0;
+			if (!tnShouldOfferPlayIn(data.method, n)) { fld.style.display = 'none'; return; }
+			fld.style.display = '';
+			var P = 1; while (P < n) P *= 2;
+			var byes = P - n;
+			if (hint) hint.textContent = 'This bracket would otherwise show ' + byes + ' byes in round 1.';
+			var saved = (bd && bd.Bracket && bd.Bracket.FirstRoundMode) ? bd.Bracket.FirstRoundMode : 'play-in';
+			Array.prototype.forEach.call(seg.querySelectorAll('.tn-seg-btn'), function(b){
+				b.classList.toggle('tn-seg-active', b.getAttribute('data-val') === saved);
+			});
+		})();
 		// Trigger change so the ironman/team gate re-evaluates for the loaded data.
 		var _emSel = document.getElementById('tn-editbracket-method');
 		if (_emSel) _emSel.dispatchEvent(new Event('change'));
@@ -4577,6 +4612,15 @@ window.tnOpenAsSheet = function(overlayId, opts) {
 		if (e.key === 'Escape' && ov && ov.classList.contains('tn-open')) tnCloseModal(OVERLAY);
 	});
 
+	(function(){
+		var seg = document.getElementById('tn-editbracket-firstround');
+		if (!seg) return;
+		seg.addEventListener('click', function(e){
+			var b = e.target.closest('.tn-seg-btn'); if (!b) return;
+			Array.prototype.forEach.call(seg.querySelectorAll('.tn-seg-btn'), function(x){ x.classList.remove('tn-seg-active'); });
+			b.classList.add('tn-seg-active');
+		});
+	})();
 	var submitBtn = document.getElementById('tn-editbracket-submit');
 	if (submitBtn) {
 		submitBtn.addEventListener('click', function() {
@@ -4596,6 +4640,8 @@ window.tnOpenAsSheet = function(overlayId, opts) {
 			fd.append('StyleNote',    document.getElementById('tn-editbracket-stylenote').value);
 			fd.append('DurationMinutes', document.getElementById('tn-editbracket-duration').value || 0);
 			fd.append('BestOf',       document.getElementById('tn-editbracket-bestof').value || 1);
+			var _fr = document.querySelector('#tn-editbracket-firstround .tn-seg-btn.tn-seg-active');
+			fd.append('FirstRoundMode', _fr ? _fr.getAttribute('data-val') : 'byes');
 
 			fetch(EDIT_URL, { method:'POST', body:fd })
 				.then(function(r) { return r.json(); })
