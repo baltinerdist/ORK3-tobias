@@ -268,6 +268,10 @@ class Tournament extends Ork3 {
 			$this->bustTournamentReportCache();
 			return Success($bracket_id);
 		} else {
+			// Gate: Ironman brackets do not support team participants.
+			if (($request['Method'] ?? '') === 'ironman' && ($request['Participants'] ?? '') === 'team') {
+				return InvalidParameter(null, 'Team mode is not supported for Ironman brackets.');
+			}
 			$this->Bracket->clear();
 			$this->Bracket->tournament_id = $request['TournamentId'];
 			$this->Bracket->style         = $request['Style'];
@@ -296,6 +300,10 @@ class Tournament extends Ork3 {
 
 		$bracket_id = (int)($request['BracketId'] ?? 0);
 		if (!valid_id($bracket_id)) return InvalidParameter('BracketId required');
+		// Gate: Ironman brackets do not support team participants.
+		if (($request['Method'] ?? '') === 'ironman' && ($request['Participants'] ?? '') === 'team') {
+			return InvalidParameter(null, 'Team mode is not supported for Ironman brackets.');
+		}
 
 		$this->Bracket->clear();
 		$this->Bracket->bracket_id = $bracket_id;

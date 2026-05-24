@@ -4325,7 +4325,18 @@ window.tnOpenAsSheet = function(overlayId, opts) {
 	(function() {
 		var mSel = document.getElementById('tn-addbracket-method');
 		var dFld = document.getElementById('tn-addbracket-duration-field');
-		function tnToggleAddDuration() { if (dFld) dFld.style.display = (mSel && mSel.value === 'ironman') ? '' : 'none'; }
+		var pSel = document.getElementById('tn-addbracket-participants');
+		var pTeamOpt = pSel ? pSel.querySelector('option[value="team"]') : null;
+		function tnGateAddTeam(isIronman) {
+			if (!pTeamOpt) return;
+			pTeamOpt.disabled = isIronman;
+			if (isIronman && pSel.value === 'team') pSel.value = 'individual';
+		}
+		function tnToggleAddDuration() {
+			var isIronman = !!(mSel && mSel.value === 'ironman');
+			if (dFld) dFld.style.display = isIronman ? '' : 'none';
+			tnGateAddTeam(isIronman);
+		}
 		if (mSel) mSel.addEventListener('change', tnToggleAddDuration);
 		tnToggleAddDuration();
 	})();
@@ -4398,6 +4409,9 @@ window.tnOpenAsSheet = function(overlayId, opts) {
 		var _edFld = document.getElementById('tn-editbracket-duration-field');
 		if (_edur) _edur.value = data.durationMinutes || 0;
 		if (_edFld) _edFld.style.display = (data.method === 'ironman') ? '' : 'none';
+		// Trigger change so the ironman/team gate re-evaluates for the loaded data.
+		var _emSel = document.getElementById('tn-editbracket-method');
+		if (_emSel) _emSel.dispatchEvent(new Event('change'));
 		// Auto-expand the advanced section when any field is in a non-default
 		// state. Run synchronously here (fields are already populated above).
 		(function(){
@@ -4431,7 +4445,18 @@ window.tnOpenAsSheet = function(overlayId, opts) {
 	(function() {
 		var mSel = document.getElementById('tn-editbracket-method');
 		var dFld = document.getElementById('tn-editbracket-duration-field');
-		if (mSel) mSel.addEventListener('change', function() { if (dFld) dFld.style.display = (mSel.value === 'ironman') ? '' : 'none'; });
+		var pSel = document.getElementById('tn-editbracket-participants');
+		var pTeamOpt = pSel ? pSel.querySelector('option[value="team"]') : null;
+		function tnGateEditTeam(isIronman) {
+			if (!pTeamOpt) return;
+			pTeamOpt.disabled = isIronman;
+			if (isIronman && pSel.value === 'team') pSel.value = 'individual';
+		}
+		if (mSel) mSel.addEventListener('change', function() {
+			var isIronman = (mSel.value === 'ironman');
+			if (dFld) dFld.style.display = isIronman ? '' : 'none';
+			tnGateEditTeam(isIronman);
+		});
 	})();
 	['tn-editbracket-close', 'tn-editbracket-cancel'].forEach(function(id) {
 		var el = document.getElementById(id);
@@ -4505,6 +4530,24 @@ window.tnOpenAsSheet = function(overlayId, opts) {
 	if (!window.TnConfig || !TnConfig.canManage) return;
 
 	function isMobileNow() { return !!(window.TnMobile && TnMobile.isMobile()); }
+
+	// Disable/re-enable the Team wizard button and hidden input when ironman is active.
+	function tnWizGateParticipants(ctrl, prefix, isIronman) {
+		var panel = ctrl.stepEls.participants;
+		if (!panel) return;
+		var teamBtn = panel.querySelector('.tn-wiz-opt[data-val="team"]');
+		if (teamBtn) {
+			teamBtn.disabled = isIronman;
+			teamBtn.classList.toggle('tn-wiz-opt--disabled', isIronman);
+			if (isIronman && teamBtn.classList.contains('tn-wiz-opt--sel')) {
+				teamBtn.classList.remove('tn-wiz-opt--sel');
+				var indiBtn = panel.querySelector('.tn-wiz-opt[data-val="individual"]');
+				if (indiBtn) indiBtn.classList.add('tn-wiz-opt--sel');
+				var inp = document.getElementById(prefix + '-participants');
+				if (inp) inp.value = 'individual';
+			}
+		}
+	}
 
 	// Per-overlay field id prefix ("tn-addbracket" | "tn-editbracket").
 	function fld(prefix, name) { return document.getElementById(prefix + '-' + name); }
@@ -4644,6 +4687,8 @@ window.tnOpenAsSheet = function(overlayId, opts) {
 			panel._onPick = function(v) {
 				info.style.display = (v === 'ironman') ? '' : 'none';
 				rebuildSteps();   // re-map step list; preserves all entered values
+				// Gate: disable Team option in participants step when ironman selected.
+				tnWizGateParticipants(ctrl, prefix, v === 'ironman');
 			};
 			var origSync = panel._sync;
 			panel._sync = function() {
@@ -4655,7 +4700,17 @@ window.tnOpenAsSheet = function(overlayId, opts) {
 		})();
 
 		// Participants.
-		ctrl.stepEls.participants = radioStep('participants','Participants','Who competes in this bracket?', PARTICIPANT_OPTS, 'participants', true);
+		ctrl.stepEls.participants = (function() {
+			var panel = radioStep('participants','Participants','Who competes in this bracket?', PARTICIPANT_OPTS, 'participants', true);
+			var origSync = panel._sync;
+			panel._sync = function() {
+				origSync();
+				// Re-apply ironman gate each time the step is rendered.
+				var mEl = fld(prefix, 'method');
+				tnWizGateParticipants(ctrl, prefix, !!(mEl && mEl.value === 'ironman'));
+			};
+			return panel;
+		})();
 
 		// Seeding.
 		ctrl.stepEls.seeding = radioStep('seeding','Seeding','How are fighters placed in the bracket?', SEEDING_OPTS, 'seeding', true);
