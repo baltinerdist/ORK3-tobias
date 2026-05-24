@@ -213,6 +213,7 @@ CREATE TABLE IF NOT EXISTS `ork_bracket` (
   `rings` int(11) NOT NULL,
   `participants` enum('individual','team') NOT NULL,
   `seeding` enum('manual','glicko2','random','glicko2-manual','random-manual') NOT NULL,
+  `first_round_mode` enum('byes','play-in') NOT NULL DEFAULT 'byes',
   PRIMARY KEY (`bracket_id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8 AUTO_INCREMENT=1 ;
 
