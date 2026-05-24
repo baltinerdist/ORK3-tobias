@@ -817,6 +817,15 @@ class Tournament extends Ork3 {
 			return InvalidParameter('Double elimination requires at least 3 participants');
 		}
 
+		// Guard: for team brackets, every team must have at least one member
+		if ($this->Bracket->participants === 'team') {
+			foreach ($participants as $tp) {
+				if (empty($tp['Members'])) {
+					return InvalidParameter(null, 'Every team must have at least one member before generating.');
+				}
+			}
+		}
+
 		// Seeding
 		$seeding = $this->Bracket->seeding;
 		if ($seeding === 'manual' || $seeding === 'glicko2-manual') {
