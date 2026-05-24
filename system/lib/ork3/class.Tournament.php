@@ -427,13 +427,8 @@ class Tournament extends Ork3 {
 				$this->Player->save();
 				// Snapshot Order-of-the-Warrior level (0-12) at time of competition.
 				$awards_map = $this->fetchAwardsForMundanes([(int)$request['MundaneId']]);
-				$lvl = 0;
-				if (isset($awards_map[(int)$request['MundaneId']])) {
-					$a = $awards_map[(int)$request['MundaneId']];
-					$lvl = !empty($a['is_knight_sword']) ? 12
-						 : (!empty($a['is_warlord']) ? 11
-						 : min(10, max(0, (int)$a['warrior_rank'])));
-				}
+				$mid = (int)$request['MundaneId'];
+				$lvl = isset($awards_map[$mid]) ? $this->warriorLevelFromAwards($awards_map[$mid]) : 0;
 				$this->db->query(
 					"UPDATE " . DB_PREFIX . "participant SET warrior_level = :lvl WHERE participant_id = :pid",
 					[':lvl' => (int)$lvl, ':pid' => (int)$_pid]
@@ -465,6 +460,16 @@ class Tournament extends Ork3 {
 					$this->Player->bracket_id     = $_bid2;
 					$this->Player->save();
 				}
+				// Snapshot team warrior_level as sum of member levels at time of registration.
+				$memberMids = array_map(fn($m) => (int)$m['MundaneId'], $request['Members']);
+				$memberAwards = $this->fetchAwardsForMundanes($memberMids);
+				$teamWL = 0;
+				foreach ($memberMids as $wmid) {
+					$teamWL += isset($memberAwards[$wmid]) ? $this->warriorLevelFromAwards($memberAwards[$wmid]) : 0;
+				}
+				$this->db->query(
+					"UPDATE " . DB_PREFIX . "participant SET warrior_level = $teamWL WHERE participant_id = $_pid2"
+				);
 			}
 			$this->bustTournamentReportCache();
 			return Success($this->Participant->participant_id);
@@ -596,13 +601,42 @@ class Tournament extends Ork3 {
 			while ($r->next()) {
 				$pid = (int)$r->participant_id;
 				$byPid[$pid][] = [
-					'MundaneId' => (int)$r->mundane_id,
-					'Persona'   => $r->persona,
-					'ParkName'  => $r->park_name,
+					'MundaneId'    => (int)$r->mundane_id,
+					'Persona'      => $r->persona,
+					'ParkName'     => $r->park_name,
+					'WarriorLevel' => 0, // placeholder; filled below
 				];
 			}
 		}
+		// Decorate each member with their individual WarriorLevel.
+		$allMids = [];
+		foreach ($byPid as $members) {
+			foreach ($members as $m) { $allMids[] = $m['MundaneId']; }
+		}
+		$allMids = array_values(array_unique($allMids));
+		$rosterAwards = !empty($allMids) ? $this->fetchAwardsForMundanes($allMids) : [];
+		foreach ($byPid as $pid => &$members) {
+			foreach ($members as &$m) {
+				$rmid = $m['MundaneId'];
+				$m['WarriorLevel'] = isset($rosterAwards[$rmid])
+					? $this->warriorLevelFromAwards($rosterAwards[$rmid]) : 0;
+			}
+			unset($m);
+		}
+		unset($members);
 		return $byPid;
+	}
+
+	/**
+	 * Maps a single award-row (from fetchAwardsForMundanes) to the 0–12
+	 * warrior level used for seeding. Extracted to avoid repeating the
+	 * mapping in AddParticipant (individual), AddParticipant (team), and
+	 * teamRoster().
+	 */
+	private function warriorLevelFromAwards(array $a): int {
+		if (!empty($a['is_knight_sword'])) return 12;
+		if (!empty($a['is_warlord']))      return 11;
+		return min(10, (int)($a['warrior_rank'] ?? 0));
 	}
 
 	/**
