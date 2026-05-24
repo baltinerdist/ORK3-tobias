@@ -6677,7 +6677,7 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 					championBanner.appendChild(crownIcon);
 					var champInfo = document.createElement('div');
 					champInfo.className = 'tn-bv-champion-info';
-					champInfo.innerHTML = '<div class="tn-bv-champion-label">Champion</div><div class="tn-bv-champion-name">' + tnEscHtml(champ.Alias || champ.Persona || 'Unknown') + '</div>' + (champ.ParkName ? '<div class="tn-bv-champion-park">' + tnEscHtml(champ.ParkName) + '</div>' : '');
+					champInfo.innerHTML = '<div class="tn-bv-champion-label">Champion</div>' + '<div class="tn-bv-champion-name">' + tnEscHtml(champ.Alias || champ.Persona || 'Unknown') + '</div>' + (!champ.IsTeam && champ.ParkName ? '<div class="tn-bv-champion-park">' + tnEscHtml(champ.ParkName) + '</div>' : '');
 					championBanner.appendChild(champInfo);
 					var podium = document.createElement('div');
 					podium.className = 'tn-bv-podium';
@@ -7136,9 +7136,14 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 				[p1, p2].forEach(function(pp, idx) {
 					if (!pp) return;
 					var pName = pp.Alias || pp.Persona || 'Unknown';
-					var pPark = pp.ParkName || '';
 					lines.push('<div class="tn-bv-tooltip-name">' + (idx+1) + '. ' + tnEscHtml(pName) + '</div>');
-					if (pPark) lines.push('<div class="tn-bv-tooltip-park">' + tnEscHtml(pPark) + '</div>');
+					if (pp.IsTeam && pp.Members && pp.Members.length) {
+						var memberList = pp.Members.map(function(m) { return tnEscHtml(m.Persona || m.MundaneId || "?"); }).join(", ");
+						lines.push('<div class="tn-bv-tooltip-park">' + memberList + '</div>');
+					} else {
+						var pPark = pp.ParkName || '';
+						if (pPark) lines.push('<div class="tn-bv-tooltip-park">' + tnEscHtml(pPark) + '</div>');
+					}
 				});
 				if (hasResult) {
 					var resultLabel = m.Result === '1-wins' ? 'Player 1 wins' : m.Result === '2-wins' ? 'Player 2 wins' : m.Result === 'tie' ? 'Tie' : m.Result;
