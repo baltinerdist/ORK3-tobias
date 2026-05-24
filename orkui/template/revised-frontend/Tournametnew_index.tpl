@@ -1506,6 +1506,37 @@ html[data-theme="dark"] .tn-sheet-action-item.tn-sheet-action--danger:active { b
 html[data-theme="dark"] .tn-sheet-action-cancel { border-top-color:#2d3748; color:#a0aec0; }
 
 /* =============================================================
+   B3 — Mobile bracket-card actions: prominent Generate + "More" sheet.
+   Desktop keeps its inline 6-button cluster (.tn-bracket-actions-desktop);
+   the mobile bar (.tn-bracket-actions-mobile) is hidden off-mobile. Under
+   .tn-mobile we swap: hide the cluster, show a full-width prominent Generate
+   plus a compact "More" overflow button. Presentation only — both call the
+   EXISTING action functions. Dark-mode parity at the bottom.
+   ============================================================= */
+.tn-bracket-actions-mobile { display:none; }
+.tn-mobile .tn-bracket-actions-desktop { display:none !important; }
+.tn-mobile .tn-bracket-actions-mobile {
+	display:flex;
+	gap:8px;
+	align-items:stretch;
+	width:100%;
+	flex-wrap:nowrap;
+}
+.tn-mobile .tn-bracket-gen-mobile {
+	flex:1 1 auto;
+	min-height:var(--tn-touch, 44px);
+	font-size:15px;
+	font-weight:700;
+	justify-content:center;
+}
+.tn-mobile .tn-bracket-more-mobile {
+	flex:0 0 auto;
+	min-width:var(--tn-touch, 44px);
+	min-height:var(--tn-touch, 44px);
+	justify-content:center;
+}
+
+/* =============================================================
    B1 — Bracket generation step-wizard (mobile only).
    The wizard is a presentation layer injected into the EXISTING
    Add/Edit Bracket overlays by JS at open-time. It reads/writes the
@@ -2148,7 +2179,7 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 								</div>
 							</div>
 							<?php if ($canManage): ?>
-							<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+							<div class="tn-bracket-actions-desktop" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
 								<button class="tn-btn tn-btn-outline tn-btn-sm" onclick="tnOpenEditBracketModal(<?= $bid ?>, <?= htmlspecialchars(json_encode(['style'=>$b['Style'],'styleNote'=>$b['StyleNote'],'method'=>$b['Method'],'rings'=>(int)$b['Rings'],'participants'=>$b['Participants'],'seeding'=>$b['Seeding'],'durationMinutes'=>(int)($b['DurationMinutes']??0),'bestOf'=>(int)($b['BestOf']??1)], JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT), ENT_QUOTES) ?>)">
 									<i class="fas fa-pencil-alt"></i> Edit
 								</button>
@@ -2177,6 +2208,26 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 								<?php endif; ?>
 								<button class="tn-btn tn-btn-danger tn-btn-sm" onclick="tnDeleteBracket(<?= $bid ?>, <?= $tid ?>)" data-tip="Delete bracket">
 									<i class="fas fa-times"></i>
+								</button>
+							</div>
+							<?php
+								// --- Mobile (.tn-mobile) action bar: prominent Generate + "More" sheet. ---
+								// Desktop cluster above is hidden under .tn-mobile; this bar is shown.
+								$_mIsTeam = ($b['Participants'] ?? 'individual') === 'team';
+								$_mCanGen = count($pList) >= 2 && !in_array($b['Status'], ['complete', 'finalized']);
+								$_mIsRegen = $b['Status'] === 'active' && count($mList) > 0;
+								$_mEditJson = htmlspecialchars(json_encode(['style'=>$b['Style'],'styleNote'=>$b['StyleNote'],'method'=>$b['Method'],'rings'=>(int)$b['Rings'],'participants'=>$b['Participants'],'seeding'=>$b['Seeding'],'durationMinutes'=>(int)($b['DurationMinutes']??0),'bestOf'=>(int)($b['BestOf']??1)], JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT), ENT_QUOTES); // JS object literal for tnOpenEditBracketModal
+							?>
+							<div class="tn-bracket-actions-mobile">
+								<?php if ($_mCanGen): ?>
+								<button type="button" class="tn-btn tn-btn-primary tn-bracket-gen-mobile"
+									onclick="tnMobileGenerate(<?= $bid ?>, <?= $tid ?>, <?= $_mIsRegen ? 'true' : 'false' ?>, <?= count($mList) ?>)">
+									<i class="fas fa-play"></i> <?= $_mIsRegen ? 'Re-generate' : 'Generate' ?>
+								</button>
+								<?php endif; ?>
+								<button type="button" class="tn-btn tn-btn-outline tn-bracket-more-mobile"
+									onclick="tnMobileBracketMore(<?= $bid ?>, <?= $tid ?>, <?= $_mIsTeam ? 'true' : 'false' ?>, <?= $_mEditJson ?>)" aria-label="More bracket actions">
+									<i class="fas fa-ellipsis-h"></i>
 								</button>
 							</div>
 							<?php endif; ?>
@@ -6080,7 +6131,7 @@ window.tnSortTable = function(tableId, colIndex, numeric) {
 // ============================================================
 // Bracket Generation
 // ============================================================
-window.tnGenerateMatches = function(bracketId, tournamentId) {
+window.tnGenerateMatches = function(bracketId, tournamentId, skipConfirm) {
 	if (!TnConfig.canManage) return;
 
 	// Build pre-generate stats from TnConfig data
@@ -6121,7 +6172,7 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 	}
 	msg += 'Generate matches now?';
 
-	if (!confirm(msg)) return;
+	if (!skipConfirm && !confirm(msg)) return;
 
 	var url = TnConfig.uir + 'TournamentAjax/tournament/' + tournamentId + '/generate';
 	var fd  = new FormData();
@@ -6137,6 +6188,87 @@ window.tnGenerateMatches = function(bracketId, tournamentId) {
 			}
 		})
 		.catch(function() { alert('Request failed. Please try again.'); });
+};
+
+// ============================================================
+// B3 — Mobile bracket-card actions (presentation only).
+//   tnMobileGenerate:    styled confirm sheet -> EXISTING generate path.
+//                        First-gen calls tnGenerateMatches(...,true) (skips
+//                        the native confirm()); regen calls tnRegenCommit
+//                        (the SAME clear+generate chain desktop's countdown
+//                        commits, minus the countdown UI).
+//   tnMobileBracketMore: "More" action sheet wiring the secondary card
+//                        actions (Edit/Copy/Add/Paste/Delete) to their
+//                        EXISTING functions. No new endpoints.
+// Guarded on TnConfig.canManage + the .tn-mobile runtime check (never on
+// element presence).
+// ============================================================
+window.tnMobileGenerate = function(bracketId, tournamentId, isRegen, matchCount) {
+	if (!TnConfig.canManage) return;
+	if (!(window.TnMobile && TnMobile.sheet && TnMobile.viewMode
+		&& TnMobile.viewMode.isMobile && TnMobile.viewMode.isMobile())) {
+		// Not mobile (e.g. flipped to desktop): fall back to the desktop path.
+		tnGenerateMatches(bracketId, tournamentId);
+		return;
+	}
+	var bd = TnConfig.bracketData[bracketId];
+	var styleLabel = '', methodLabel = '', pCount = 0, byes = 0, rounds = 0;
+	if (bd && bd.Bracket) {
+		var bracket = bd.Bracket;
+		pCount = (bd.Participants || []).length;
+		var method = bracket.Method || 'single';
+		methodLabel = TnConfig.methodLabels[method] || method;
+		styleLabel = TnConfig.styleLabels[bracket.Style] || bracket.Style;
+		// Same byes/rounds math as tnGenerateMatches.
+		if (method === 'single' || method === 'double') {
+			var slots = 1; while (slots < pCount) slots *= 2;
+			byes = slots - pCount; rounds = Math.round(Math.log2(slots));
+			if (method === 'double') rounds = rounds + ' WR + ' + ((rounds - 1) * 2) + ' LR + GF';
+		} else if (method === 'swiss') {
+			var rings = Math.max(1, parseInt(bracket.Rings) || 1);
+			rounds = rings > 1 ? rings : Math.ceil(Math.log2(pCount));
+		} else if (method === 'round-robin') {
+			rounds = pCount % 2 === 0 ? pCount - 1 : pCount;
+		}
+	}
+	var items = [];
+	if (isRegen) {
+		// Destructive: warn, then commit via the EXISTING tnRegenCommit chain.
+		items.push({
+			label: 'Regenerate — clears ' + matchCount + ' match' + (matchCount === 1 ? '' : 'es') + ' & results',
+			danger: true,
+			onTap: function() { tnRegenCommit(bracketId, tournamentId); }
+		});
+	} else {
+		// First generation: informational; surfaces byes/rounds like the desktop
+		// confirm() would. Calls tnGenerateMatches with skipConfirm=true.
+		var sub = pCount + ' fighters';
+		if (byes > 0) sub += ' → ' + byes + ' bye' + (byes === 1 ? '' : 's');
+		if (rounds) sub += ' · ' + rounds + (typeof rounds === 'number' ? ' rounds' : '');
+		items.push({
+			label: 'Generate matches (' + sub + ')',
+			onTap: function() { tnGenerateMatches(bracketId, tournamentId, true); }
+		});
+	}
+	TnMobile.sheet.actionSheet(items);
+};
+
+window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData) {
+	if (!TnConfig.canManage) return;
+	if (!(window.TnMobile && TnMobile.sheet && TnMobile.viewMode
+		&& TnMobile.viewMode.isMobile && TnMobile.viewMode.isMobile())) return;
+	var items = [];
+	// Edit opens the (B1) sheet-ified edit wizard via the existing opener.
+	items.push({ label: 'Edit bracket', onTap: function() { tnOpenEditBracketModal(bracketId, editData); } });
+	items.push({ label: 'Duplicate bracket', onTap: function() { tnCopyBracket(bracketId, tournamentId); } });
+	if (isTeam) {
+		items.push({ label: 'Add team', onTap: function() { tnOpenAddTeamModal(bracketId, tournamentId); } });
+	} else {
+		items.push({ label: 'Add participant', onTap: function() { tnOpenAddParticipantModal(bracketId, tournamentId); } });
+		items.push({ label: 'Paste roster', onTap: function() { tnOpenBulkAddModal(bracketId, tournamentId); } });
+	}
+	items.push({ label: 'Delete bracket', danger: true, onTap: function() { tnDeleteBracket(bracketId, tournamentId); } });
+	TnMobile.sheet.actionSheet(items);
 };
 
 // ============================================================
@@ -10357,6 +10489,30 @@ html[data-theme="dark"] .tn-boutlist-empty { color:#718096; }
 					alert('Re-generate failed: ' + (err && err.message ? err.message : err));
 				});
 		}
+
+		// Mobile path: a styled confirm sheet calls this directly (no armed
+		// button, no countdown). Same clear+generate commit chain as desktop's
+		// auto-commit (see commit() above); only the countdown UI is bypassed on touch.
+		window.tnRegenCommit = function(bid, tid){
+			var fd1 = new FormData();
+			fd1.append('TournamentId', tid);
+			fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bid + '/clearmatches', { method: 'POST', body: fd1 })
+				.then(function(r){ return r.json(); })
+				.then(function(d){
+					if (!d || d.status !== 0) throw new Error((d && d.error) || 'Clear failed');
+					var fd2 = new FormData();
+					fd2.append('BracketId', bid);
+					return fetch(TnConfig.uir + 'TournamentAjax/tournament/' + tid + '/generate', { method: 'POST', body: fd2 });
+				})
+				.then(function(r){ return r.json(); })
+				.then(function(d){
+					if (!d || d.status !== 0) throw new Error((d && d.error) || 'Generate failed');
+					window.location.reload();
+				})
+				.catch(function(err){
+					alert('Re-generate failed: ' + (err && err.message ? err.message : err));
+				});
+		};
 
 		window.tnRegenArm = function(btn, ev){
 			if (ev) { ev.preventDefault(); ev.stopPropagation(); }
