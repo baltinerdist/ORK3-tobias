@@ -474,7 +474,20 @@ class Tournament extends Ork3 {
 	public function GetParticipants($request) {
 		$where = $this->buildFilterWhere($request, 'p');
 
-		// Main row query — no correlated award subqueries; awards batched below
+		// Determine bracket type (team vs individual) so we can collapse rows correctly.
+		$bracketParticipants = 'individual';
+		$bracket_id = (int)($request['BracketId'] ?? 0);
+		if (valid_id($bracket_id)) {
+			$br = $this->db->query(
+				"SELECT participants FROM " . DB_PREFIX . "bracket WHERE bracket_id = $bracket_id LIMIT 1"
+			);
+			if ($br && $br->size() > 0 && $br->next()) {
+				$bracketParticipants = $br->participants;
+			}
+		}
+
+		// Main row query — no correlated award subqueries; awards batched below.
+		// p.* includes warrior_level (used for seeding on team brackets too).
 		$sql = "SELECT p.*, m.persona, pm.mundane_id, k.name AS kingdom_name,
 					COALESCE(park.name, mpark.name) AS park_name,
 					u.name AS unit_name
@@ -515,6 +528,7 @@ class Tournament extends Ork3 {
 					'ParticipantNumber' => (int)$r->participant_number,
 					'Eliminated'    => (int)$r->eliminated,
 					'BracketSide'   => $r->bracket_side,
+					'WarriorLevel'  => (int)$r->warrior_level,
 				];
 			}
 		}
@@ -533,6 +547,48 @@ class Tournament extends Ork3 {
 				}
 			}
 			unset($participant);
+		}
+
+		// Team brackets: collapse N duplicate rows (one per member from the LEFT JOIN
+		// on ork_participant_mundane) into one row per participant, then attach a
+		// Members[] roster fetched from ork_participant_teams + ork_participant_team_members.
+		if ($bracketParticipants === 'team') {
+			$byPid = [];
+			foreach ($participants as $row) {
+				$pid = (int)$row['ParticipantId'];
+				if (!isset($byPid[$pid])) {
+					$row['IsTeam']    = true;
+					$row['MundaneId'] = 0;
+					$row['Members']   = [];
+					$byPid[$pid] = $row;
+				}
+			}
+			// Fetch the full roster for every team in this bracket via the teams tables.
+			$roster_r = $this->db->query(
+				"SELECT pt.participant_id AS participant_id, ptm.mundane_id AS mundane_id,
+				        mn.persona AS persona, p.warrior_level AS warrior_level,
+				        mpark.name AS park_name
+				 FROM " . DB_PREFIX . "participant_teams pt
+				 JOIN " . DB_PREFIX . "participant_team_members ptm ON ptm.team_id = pt.team_id
+				 JOIN " . DB_PREFIX . "mundane mn ON mn.mundane_id = ptm.mundane_id
+				 LEFT JOIN " . DB_PREFIX . "participant p ON p.participant_id = pt.participant_id
+				 LEFT JOIN " . DB_PREFIX . "park mpark ON mpark.park_id = mn.park_id
+				 WHERE pt.bracket_id = $bracket_id"
+			);
+			if ($roster_r && $roster_r->size() > 0) {
+				while ($roster_r->next()) {
+					$pid = (int)$roster_r->participant_id;
+					if (isset($byPid[$pid])) {
+						$byPid[$pid]['Members'][] = [
+							'MundaneId'    => (int)$roster_r->mundane_id,
+							'Persona'      => $roster_r->persona,
+							'WarriorLevel' => (int)$roster_r->warrior_level,
+							'ParkName'     => $roster_r->park_name,
+						];
+					}
+				}
+			}
+			$participants = array_values($byPid);
 		}
 
 		return Success($participants);
