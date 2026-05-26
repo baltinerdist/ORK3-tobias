@@ -112,7 +112,8 @@
 						Action: 'Search/Player',
 						type: 'all',
 						search: request.term,
-						kingdom_id: <?=$KingdomId ?>,
+						// Award giver is intentionally global (cross-kingdom): a noble from
+						// another kingdom can grant a custom award, so do not scope by kingdom.
 						limit: 6
 					},
 					function( data ) {
