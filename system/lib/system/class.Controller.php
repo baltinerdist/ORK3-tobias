@@ -35,8 +35,11 @@ class Controller
 		}
 		$this->data['LoggedIn'] = isset($this->session->user_id);
 
-		// Proactive stale-session check: if the session token no longer matches the DB,
-		// the user logged in on another device — clear session and redirect to login.
+		// Proactive stale-session check: a session stays valid while its token still
+		// occupies either the desktop (`token`) or phone (`token_mobile`) slot. A new
+		// login only overwrites its own device class's slot, so one desktop and one
+		// mobile session can coexist; logging in again on the same class evicts only
+		// that class. A token in neither slot means it was replaced — log out.
 		$_skipTokenCheck = in_array(get_class($this), [
 			'Controller_Login',
 			'Controller_SearchAjax',
@@ -53,8 +56,8 @@ class Controller
 			$DB->Clear();
 			$_uid_check = (int)$this->session->user_id;
 			$_tok_check = $this->session->token;
-			$_rs = $DB->DataSet("SELECT token FROM " . DB_PREFIX . "mundane WHERE mundane_id = {$_uid_check} LIMIT 1");
-			if (!$_rs || !$_rs->Next() || $_rs->token !== $_tok_check) {
+			$_rs = $DB->DataSet("SELECT token, token_mobile FROM " . DB_PREFIX . "mundane WHERE mundane_id = {$_uid_check} LIMIT 1");
+			if (!$_rs || !$_rs->Next() || ($_rs->token !== $_tok_check && $_rs->token_mobile !== $_tok_check)) {
 				$_returnRoute = trim($_GET['Route'] ?? '');
 				unset($_SESSION['is_authorized_mundane_id']);
 				session_unset();

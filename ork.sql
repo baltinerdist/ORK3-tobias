@@ -534,6 +534,7 @@ CREATE TABLE IF NOT EXISTS `ork_mundane` (
   `park_id` int(11) NOT NULL,
   `kingdom_id` int(11) NOT NULL,
   `token` varchar(35) NOT NULL,
+  `token_mobile` varchar(35) NOT NULL DEFAULT '',
   `modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `restricted` tinyint(1) NOT NULL DEFAULT '0',
   `waivered` tinyint(1) NOT NULL DEFAULT '0',
@@ -542,6 +543,7 @@ CREATE TABLE IF NOT EXISTS `ork_mundane` (
   `has_image` tinyint(1) NOT NULL DEFAULT '0',
   `company_id` int(11) NOT NULL DEFAULT '0',
   `token_expires` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `token_mobile_expires` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
   `password_expires` datetime NOT NULL,
   `password_salt` varchar(35) NOT NULL,
   `xtoken` varchar(35) NOT NULL,
@@ -558,6 +560,7 @@ CREATE TABLE IF NOT EXISTS `ork_mundane` (
   KEY `persona` (`persona`),
   KEY `surname` (`surname`),
   KEY `token` (`token`),
+  KEY `token_mobile` (`token_mobile`),
   KEY `waivered` (`waivered`)
 ) ENGINE=MyISAM  DEFAULT CHARSET=latin1 AUTO_INCREMENT=71313 ;
 

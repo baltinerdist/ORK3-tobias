@@ -313,6 +313,31 @@ class Authorization extends Ork3
 		return $response;
 	}
 
+	// Phone browsers get their own session slot so they don't evict a desktop
+	// login (and vice versa). Tablets report as desktop, which matches the
+	// "phone vs desktop" split we want.
+	public static function IsMobileRequest()
+	{
+		$ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+		return (bool)preg_match('/(android|iphone|ipod|iemobile|blackberry|opera mini|mobile)/i', $ua);
+	}
+
+	// Generates a fresh session token and stores it in the slot for the
+	// requesting device class, leaving the other class's session intact.
+	private function issueSessionToken()
+	{
+		$token = md5(openssl_random_pseudo_bytes(16) . microtime());
+		$expires = date('Y-m-d H:i:s', time() + LOGIN_TIMEOUT);
+		if (self::IsMobileRequest()) {
+			$this->mundane->token_mobile = $token;
+			$this->mundane->token_mobile_expires = $expires;
+		} else {
+			$this->mundane->token = $token;
+			$this->mundane->token_expires = $expires;
+		}
+		return $token;
+	}
+
 	public function Authorize_h($request)
 	{
 		$response = array();
@@ -330,13 +355,12 @@ class Authorization extends Ork3
 					if ($this->mundane->penalty_box == 1 || $this->mundane->suspended == 1) {
 						$response['Status'] = NoAuthorization('Your access to the ORK has been restricted.');
 					} else {
-						$this->mundane->token = md5(openssl_random_pseudo_bytes(16) . microtime());
-						$this->mundane->token_expires = date('Y:m:d H:i:s', time() + LOGIN_TIMEOUT);
+						$token = $this->issueSessionToken();
 						$this->mundane->save();
 						$response['Status'] = Success();
-						$response['Token'] = $this->mundane->token;
+						$response['Token'] = $token;
 						$response['UserId'] = $mundane_id;
-						$response['Timeout'] = $this->mundane->token_expires;
+						$response['Timeout'] = self::IsMobileRequest() ? $this->mundane->token_mobile_expires : $this->mundane->token_expires;
 						$response['PasswordExpires'] = $this->mundane->password_expires;
 					}
 				} else {
@@ -417,8 +441,7 @@ class Authorization extends Ork3
 			return ['Status' => NoAuthorization('Your access to the ORK has been restricted.')];
 		}
 
-		$this->mundane->token = md5(openssl_random_pseudo_bytes(16) . microtime());
-		$this->mundane->token_expires = date('Y-m-d H:i:s', time() + LOGIN_TIMEOUT);
+		$token = $this->issueSessionToken();
 		$this->mundane->save();
 		error_log("AuthorizeIdp: Updated mundane token.");
 
@@ -431,10 +454,10 @@ class Authorization extends Ork3
 
 		return [
 			'Status' => Success(),
-			'Token' => $this->mundane->token,
+			'Token' => $token,
 			'UserId' => $this->mundane->mundane_id,
 			'UserName' => $this->mundane->username,
-			'Timeout' => $this->mundane->token_expires
+			'Timeout' => self::IsMobileRequest() ? $this->mundane->token_mobile_expires : $this->mundane->token_expires
 		];
 	}
 
@@ -477,17 +500,16 @@ class Authorization extends Ork3
 		$this->idp_auth->save();
 		error_log("AuthorizeIdp: IDP link created.");
 
-		$this->mundane->token = md5(openssl_random_pseudo_bytes(16) . microtime());
-		$this->mundane->token_expires = date('Y-m-d H:i:s', time() + LOGIN_TIMEOUT);
+		$token = $this->issueSessionToken();
 		$this->mundane->save();
 		error_log("AuthorizeIdp: Mundane token updated.");
 
 		return [
 			'Status' => Success(),
-			'Token' => $this->mundane->token,
+			'Token' => $token,
 			'UserId' => $this->mundane->mundane_id,
 			'UserName' => $this->mundane->username,
-			'Timeout' => $this->mundane->token_expires
+			'Timeout' => self::IsMobileRequest() ? $this->mundane->token_mobile_expires : $this->mundane->token_expires
 		];
 	}
 
@@ -839,7 +861,14 @@ class Authorization extends Ork3
 			return 0;
 		$this->mundane->clear();
 		$this->mundane->token = $token;
-		if ($this->mundane->find()) {
+		$found = $this->mundane->find();
+		if (!$found) {
+			// Phone-browser sessions live in the mobile slot.
+			$this->mundane->clear();
+			$this->mundane->token_mobile = $token;
+			$found = $this->mundane->find();
+		}
+		if ($found) {
 			if ($this->mundane->penalty_box == 1)
 				return 0;
 			logtrace("IsAuthorized(): authorized", null);
