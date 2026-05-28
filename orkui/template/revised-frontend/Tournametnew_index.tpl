@@ -7089,7 +7089,6 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 		// Ribbon
 		var ribbon = document.createElement('div');
 		ribbon.className = 'tn-points-ribbon';
-		ribbon.id = 'tn-points-ribbon-' + bracketId;
 		var topN = 0;
 		var ribbonHtml = '';
 		for (var k = 0; k < standings.length && topN < 5; k++) {
@@ -12022,10 +12021,13 @@ html[data-theme="dark"] .tn-team-chip { background:#2a4a6b; color:#90cdf4; }
 	}
 
 	function renderStandings(bid, standings) {
-		var wrap = document.querySelector('.tn-points-wrap[data-bid="' + bid + '"]');
+		// Scope to the active bracket viewer container; the per-bracket card
+		// in tn-bracket-body also renders a (currently-hidden) grid with the
+		// same data-bid, and updates must not land on that copy.
+		var wrap = document.querySelector('#tn-bv-container .tn-points-wrap[data-bid="' + bid + '"]')
+		        || document.querySelector('.tn-points-wrap[data-bid="' + bid + '"]');
 		if (!wrap) return;
-		// Update ribbon
-		var ribbon = document.getElementById('tn-points-ribbon-' + bid);
+		var ribbon = wrap.querySelector('.tn-points-ribbon');
 		if (ribbon) {
 			var html = '';
 			var i = 0;
@@ -12190,7 +12192,8 @@ html[data-theme="dark"] .tn-team-chip { background:#2a4a6b; color:#90cdf4; }
 // in place — no full re-render needed.
 // =============================================
 window.tnPointsAddRound = function(bid) {
-	var wrap = document.querySelector('.tn-points-wrap[data-bid="' + bid + '"]');
+	var wrap = document.querySelector('#tn-bv-container .tn-points-wrap[data-bid="' + bid + '"]')
+	        || document.querySelector('.tn-points-wrap[data-bid="' + bid + '"]');
 	if (!wrap) return;
 	var btn = wrap.querySelector('.tn-points-col-add button');
 	if (btn) btn.disabled = true;
