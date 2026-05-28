@@ -100,7 +100,7 @@ class Controller_TournamentAjax extends Controller {
 			if (!strlen($style) || !strlen($method)) {
 				echo json_encode(['status' => 1, 'error' => 'Style and method are required.']); exit;
 			}
-			$allowed_methods = ['single','double','swiss','round-robin','ironman','score','points'];
+			$allowed_methods = ['single','double','swiss','round-robin','ironman','points'];
 			if (!in_array($method, $allowed_methods, true)) {
 				echo json_encode(['status' => 1, 'error' => 'Invalid bracket method.']); exit;
 			}
@@ -147,7 +147,7 @@ class Controller_TournamentAjax extends Controller {
 			if (!strlen($style) || !strlen($method)) {
 				echo json_encode(['status' => 1, 'error' => 'Style and method are required.']); exit;
 			}
-			$allowed_methods = ['single','double','swiss','round-robin','ironman','score','points'];
+			$allowed_methods = ['single','double','swiss','round-robin','ironman','points'];
 			if (!in_array($method, $allowed_methods, true)) {
 				echo json_encode(['status' => 1, 'error' => 'Invalid bracket method.']); exit;
 			}

@@ -92,7 +92,6 @@ $methodLabelMap = [
 	'round-robin' => 'Round Robin',
 	'ironman'     => 'Ironman',
 	'points'      => 'Points',
-	'score'       => 'Score',
 ];
 
 // Unique styles across all brackets for hero badges
@@ -234,7 +233,6 @@ html[data-theme="dark"] [data-tip]::before { border-top-color:#1a202c; }
 .tn-bracket-card[data-method="swiss"] { border-left-color:#d69e2e; }
 .tn-bracket-card[data-method="round-robin"] { border-left-color:#9f7aea; }
 .tn-bracket-card[data-method="ironman"] { border-left-color:#e53e3e; }
-.tn-bracket-card[data-method="score"] { border-left-color:#718096; }
 .tn-bracket-card[data-method="points"] { border-left-color:#0bc5ea; }
 /* Points-bracket pip styles (Fixed mode pips and AddBracket preview) */
 .tn-pip {
@@ -2906,7 +2904,6 @@ foreach ($bracketData as $_bid => $_bd) {
 						<option value="swiss">Swiss</option>
 						<option value="round-robin">Round Robin</option>
 						<option value="ironman">Ironman</option>
-						<option value="score">Score</option>
 						<option value="points">Points</option>
 					</select>
 				</div>
@@ -3033,7 +3030,6 @@ foreach ($bracketData as $_bid => $_bd) {
 						<option value="swiss">Swiss</option>
 						<option value="round-robin">Round Robin</option>
 						<option value="ironman">Ironman</option>
-						<option value="score">Score</option>
 						<option value="points">Points</option>
 					</select>
 				</div>
@@ -5143,7 +5139,7 @@ window.tnOpenAsSheet = function(overlayId, opts) {
 		['swiss','Swiss','Fixed rounds, paired by record'],
 		['round-robin','Round Robin','Everyone fights everyone'],
 		['ironman','Ironman','Last fighter standing, timed'],
-		['score','Score','Scored format']
+		['points','Points','Score per round, totals win']
 	];
 	var PARTICIPANT_OPTS = [
 		['individual','Individual','One fighter per slot'],
@@ -7047,7 +7043,7 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 			container.appendChild(bar);
 		}
 
-		if (matches.length === 0 && method !== 'ironman') {
+		if (matches.length === 0 && method !== 'ironman' && method !== 'points') {
 			var empty = document.createElement('div');
 			empty.className = 'tn-bv-empty';
 			empty.textContent = participants.length < 2
@@ -7062,10 +7058,124 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 			renderElimTree(container, matches, pMap, method, bracketId);
 		} else if (method === 'ironman') {
 			renderIronmanView(container, matches, pMap, participants, bracketId);
+		} else if (method === 'points') {
+			renderPointsView(container, bd, bracketId);
 		} else {
 			renderRoundTable(container, matches, pMap, bracketId);
 		}
 	};
+
+	// -- Points-bracket renderer --
+	// Builds the same grid the PHP fallback renders (see template branch for Method===points),
+	// so the delegated pip-click and input-blur handlers attach without changes.
+	function renderPointsView(container, bd, bracketId) {
+		var bracket = bd.Bracket || {};
+		var pmode   = bracket.PointMode || 'fixed';
+		var rounds  = parseInt(bracket.PointRounds || 0, 10) || 0;
+		var scaleRaw = String(bracket.PointScale || '');
+		var scale   = (pmode === 'fixed' && scaleRaw)
+			? scaleRaw.split(',').map(function(s){ return s.trim(); }).filter(Boolean)
+			: [];
+		var standings = bd.PointStandings || [];
+		var canEdit = !!(TnConfig.canManage || TnConfig.isBracketRunner || TnConfig.isOrganizerReeve);
+		var isActive = (bracket.Status || 'setup') === 'active';
+
+		var wrap = document.createElement('div');
+		wrap.className = 'tn-points-wrap';
+		wrap.dataset.bid = bracketId;
+		wrap.dataset.mode = pmode;
+		wrap.dataset.scale = scaleRaw;
+		wrap.dataset.rounds = rounds;
+
+		// Ribbon
+		var ribbon = document.createElement('div');
+		ribbon.className = 'tn-points-ribbon';
+		ribbon.id = 'tn-points-ribbon-' + bracketId;
+		var topN = 0;
+		var ribbonHtml = '';
+		for (var k = 0; k < standings.length && topN < 5; k++) {
+			var row = standings[k];
+			if (row.Status !== 'active' && row.Status !== '') continue;
+			ribbonHtml += '<span class="tn-points-rib-item"><strong>' +
+				(row.Tied ? 'T-' : '') + (row.Place == null ? '' : row.Place) + '</strong> ' +
+				escapeHtml(row.Alias) + ' (' + escapeHtml(row.Total) + ')</span>';
+			topN++;
+		}
+		if (topN === 0) ribbonHtml = '<span style="color:#a0aec0;font-size:13px">No scores yet.</span>';
+		ribbon.innerHTML = ribbonHtml;
+		wrap.appendChild(ribbon);
+
+		// Table
+		var scroll = document.createElement('div');
+		scroll.className = 'tn-points-grid-scroll';
+		var table = document.createElement('table');
+		table.className = 'tn-points-grid';
+
+		// Header
+		var thead = document.createElement('thead');
+		var trh = document.createElement('tr');
+		trh.innerHTML = '<th class="tn-points-col-player">Player</th>';
+		for (var r = 1; r <= rounds; r++) {
+			trh.innerHTML += '<th class="tn-points-col-round">R' + r + '</th>';
+		}
+		var addColShown = canEdit && isActive;
+		if (addColShown) {
+			trh.innerHTML += '<th class="tn-points-col-add"><button type="button" class="tn-btn tn-btn-sm tn-btn-outline" onclick="tnPointsAddRound(' + bracketId + ')" data-tip="Add another round">+</button></th>';
+		}
+		trh.innerHTML += '<th class="tn-points-col-total">Total</th>';
+		thead.appendChild(trh);
+		table.appendChild(thead);
+
+		// Body
+		var tbody = document.createElement('tbody');
+		if (standings.length === 0) {
+			var tr = document.createElement('tr');
+			var colspan = 2 + rounds + (addColShown ? 1 : 0);
+			tr.innerHTML = '<td colspan="' + colspan + '" style="text-align:center;color:#a0aec0;padding:16px">No participants yet.</td>';
+			tbody.appendChild(tr);
+		} else {
+			standings.forEach(function(row){
+				var inactive = (row.Status !== 'active' && row.Status !== '');
+				var tr = document.createElement('tr');
+				tr.dataset.pid = row.ParticipantId;
+				if (inactive) tr.className = 'tn-points-row-inactive';
+
+				var html = '<td class="tn-points-col-player">#' + (row.ParticipantNumber || '') + ' ' + escapeHtml(row.Alias) + '</td>';
+				for (var r = 1; r <= rounds; r++) {
+					var val = (row.RoundScores && row.RoundScores[r-1] != null) ? String(row.RoundScores[r-1]) : '';
+					html += '<td class="tn-points-cell" data-pid="' + row.ParticipantId + '" data-round="' + r + '" data-value="' + escapeHtml(val) + '">';
+					if (!canEdit) {
+						html += '<span class="tn-points-readonly">' + (val !== '' ? escapeHtml(val) : '-') + '</span>';
+					} else if (pmode === 'fixed') {
+						html += '<div class="tn-pips">';
+						scale.forEach(function(sv){
+							var selected = (val !== '' && parseFloat(val) === parseFloat(sv));
+							html += '<span class="tn-pip' + (selected ? ' tn-pip-selected' : '') + '" data-val="' + escapeHtml(sv) + '">' + escapeHtml(sv) + '</span>';
+						});
+						html += '</div>';
+					} else {
+						html += '<input type="text" class="tn-points-input" inputmode="decimal" maxlength="5" value="' + escapeHtml(val) + '">';
+					}
+					html += '<span class="tn-points-status" aria-hidden="true"></span></td>';
+				}
+				if (addColShown) html += '<td class="tn-points-col-add">&nbsp;</td>';
+				html += '<td class="tn-points-col-total">' + escapeHtml(row.Total || '0.00') + '</td>';
+				tr.innerHTML = html;
+				tbody.appendChild(tr);
+			});
+		}
+		table.appendChild(tbody);
+		scroll.appendChild(table);
+		wrap.appendChild(scroll);
+
+		container.appendChild(wrap);
+	}
+
+	function escapeHtml(s) {
+		return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+			return ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[c];
+		});
+	}
 
 	// ── Elimination tree renderer ──
 	function renderElimTree(container, matches, pMap, method, bracketId) {
