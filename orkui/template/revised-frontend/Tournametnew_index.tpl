@@ -11890,4 +11890,112 @@ html[data-theme="dark"] .tn-team-chip { background:#2a4a6b; color:#90cdf4; }
 		tnOpenRecModal(btn.dataset.mundaneId, btn.dataset.persona, btn.dataset.award);
 	});
 })();
+
+// =============================================
+// Task 10 — Points-bracket Fixed-mode pip click + auto-save
+// Delegated click handler for .tn-pip elements. POSTs to
+// TournamentAjax/tournament/{tid}/savepointscore, then updates
+// the Total column and standings ribbon live from the response.
+// Exposes window.tnPointsPostSave and window.tnPointsRenderStandings
+// for reuse by Task 11 (Open-mode) and Task 12 (Add Round).
+// =============================================
+(function(){
+	function escapeHtml(s) {
+		return String(s).replace(/[&<>"']/g, function(c){
+			return ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;' })[c];
+		});
+	}
+
+	function setCellStatus(cell, cls) {
+		var s = cell.querySelector('.tn-points-status');
+		if (!s) return;
+		s.className = 'tn-points-status' + (cls ? ' ' + cls : '');
+	}
+
+	function renderStandings(bid, standings) {
+		var wrap = document.querySelector('.tn-points-wrap[data-bid="' + bid + '"]');
+		if (!wrap) return;
+		// Update ribbon
+		var ribbon = document.getElementById('tn-points-ribbon-' + bid);
+		if (ribbon) {
+			var html = '';
+			var i = 0;
+			for (var k = 0; k < standings.length && i < 5; k++) {
+				var row = standings[k];
+				if (row.Status !== 'active' && row.Status !== '') continue;
+				html += '<span class="tn-points-rib-item"><strong>' +
+					(row.Tied ? 'T-' : '') + (row.Place == null ? '' : row.Place) + '</strong> ' +
+					escapeHtml(row.Alias) + ' (' + escapeHtml(row.Total) + ')</span>';
+				i++;
+			}
+			if (i === 0) html = '<span style="color:#a0aec0;font-size:13px">No scores yet.</span>';
+			ribbon.innerHTML = html;
+		}
+		// Update each row's Total column
+		standings.forEach(function(row){
+			var tr = wrap.querySelector('tr[data-pid="' + row.ParticipantId + '"]');
+			if (!tr) return;
+			var tot = tr.querySelector('.tn-points-col-total');
+			if (tot) tot.textContent = row.Total;
+		});
+	}
+
+	function postSave(bid, pid, round, value, cellEl) {
+		setCellStatus(cellEl, 'tn-saving');
+		var fd = new FormData();
+		fd.append('BracketId', bid);
+		fd.append('ParticipantId', pid);
+		fd.append('Round', round);
+		if (value !== null && value !== undefined) fd.append('Points', value);
+
+		var url = TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/savepointscore';
+		fetch(url, { method:'POST', body:fd, credentials:'same-origin' })
+			.then(function(r){ return r.json(); })
+			.then(function(j){
+				if (j.status !== 0) throw new Error(j.error || 'Save failed');
+				var pts = (j.detail && j.detail.Cell) ? j.detail.Cell.Points : null;
+				cellEl.dataset.value = (pts === null || pts === undefined) ? '' : pts;
+				setCellStatus(cellEl, 'tn-saved');
+				setTimeout(function(){
+					var s = cellEl.querySelector('.tn-points-status');
+					if (s && s.classList.contains('tn-saved')) s.className = 'tn-points-status';
+				}, 800);
+				if (j.detail && j.detail.Standings) renderStandings(bid, j.detail.Standings);
+			})
+			.catch(function(e){
+				setCellStatus(cellEl, 'tn-error');
+				var s = cellEl.querySelector('.tn-points-status');
+				if (s) s.setAttribute('data-tip', String(e.message || e));
+				console.log('[points] save failed', e);
+			});
+	}
+
+	document.addEventListener('click', function(ev){
+		var pip = ev.target.closest('.tn-pip:not(.tn-pip-preview)');
+		if (!pip) return;
+		var cell = pip.closest('.tn-points-cell');
+		if (!cell) return;
+		var wrap = cell.closest('.tn-points-wrap');
+		if (!wrap) return;
+		// Only fixed-mode cells have pips, but guard anyway
+		if (wrap.dataset.mode !== 'fixed') return;
+
+		var bid    = wrap.dataset.bid;
+		var pid    = cell.dataset.pid;
+		var round  = cell.dataset.round;
+		var clickedVal  = pip.dataset.val;
+		var currentVal  = cell.dataset.value || '';
+		var willClear   = (currentVal !== '' && parseFloat(currentVal) === parseFloat(clickedVal));
+
+		// Optimistic UI: update selection immediately
+		cell.querySelectorAll('.tn-pip').forEach(function(s){ s.classList.remove('tn-pip-selected'); });
+		if (!willClear) pip.classList.add('tn-pip-selected');
+
+		postSave(bid, pid, round, willClear ? null : clickedVal, cell);
+	});
+
+	// Expose helpers for Task 11 (open-mode input) and Task 12 (Add Round)
+	window.tnPointsPostSave = postSave;
+	window.tnPointsRenderStandings = renderStandings;
+})();
 </script>
