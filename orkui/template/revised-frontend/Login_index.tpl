@@ -408,12 +408,15 @@ html[data-theme="dark"] .lg-session-notice { background: #1a365d; border-color: 
 		</button>
 
 		<div class="lg-links">
-			<a href="<?= UIR ?>Login/forgotpassword"><i class="fas fa-key" style="margin-right:4px;opacity:0.6"></i>Forgot your password?</a>
+			<button type="button" class="lg-btn-oauth" onclick="window.location='<?= UIR ?>Login/loginhelp'" style="margin-top:8px;">
+				<i class="fas fa-life-ring" style="color:#dd6b20"></i>
+				Help, I cannot login!
+			</button>
 		</div>
 
 		<?php if (strlen($error) > 0): ?>
 			<div class="lg-error">
-				Login failed. If you cannot remember your password, use the <strong>Forgot your password?</strong> link above.
+				Login failed. If you're having trouble accessing your account, click <strong>Help, I cannot login!</strong> above.
 			</div>
 		<?php endif; ?>
 

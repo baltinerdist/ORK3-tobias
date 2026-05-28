@@ -56,6 +56,10 @@ class Controller_Login extends Controller {
 		}
 	}
 
+	public function loginhelp() {
+		$this->template = '../revised-frontend/Login_help.tpl';
+	}
+
 	public function forgotpassword($recover = null) {
 		$this->template = '../revised-frontend/Login_forgotpassword.tpl';
 		if ($recover == 'recover') {
