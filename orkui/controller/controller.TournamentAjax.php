@@ -100,7 +100,7 @@ class Controller_TournamentAjax extends Controller {
 			if (!strlen($style) || !strlen($method)) {
 				echo json_encode(['status' => 1, 'error' => 'Style and method are required.']); exit;
 			}
-			$allowed_methods = ['single','double','swiss','round-robin','ironman','score'];
+			$allowed_methods = ['single','double','swiss','round-robin','ironman','score','points'];
 			if (!in_array($method, $allowed_methods, true)) {
 				echo json_encode(['status' => 1, 'error' => 'Invalid bracket method.']); exit;
 			}
@@ -115,6 +115,9 @@ class Controller_TournamentAjax extends Controller {
 				'Seeding'         => trim($_POST['Seeding']         ?? 'random'),
 				'DurationMinutes' => max(0, (int)($_POST['DurationMinutes'] ?? 0)),
 				'BestOf'          => (int)($_POST['BestOf'] ?? 1),
+				'PointRounds'    => (int)($_POST['PointRounds'] ?? 0),
+				'PointMode'      => trim($_POST['PointMode'] ?? ''),
+				'PointScale'     => trim($_POST['PointScale'] ?? ''),
 			]);
 			echo ($r['Status'] == 0)
 				? json_encode(['status' => 0, 'bracketId' => (int)($r['Detail'] ?? 0)])
@@ -144,7 +147,7 @@ class Controller_TournamentAjax extends Controller {
 			if (!strlen($style) || !strlen($method)) {
 				echo json_encode(['status' => 1, 'error' => 'Style and method are required.']); exit;
 			}
-			$allowed_methods = ['single','double','swiss','round-robin','ironman','score'];
+			$allowed_methods = ['single','double','swiss','round-robin','ironman','score','points'];
 			if (!in_array($method, $allowed_methods, true)) {
 				echo json_encode(['status' => 1, 'error' => 'Invalid bracket method.']); exit;
 			}
@@ -160,6 +163,9 @@ class Controller_TournamentAjax extends Controller {
 				'Seeding'         => trim($_POST['Seeding']         ?? 'random'),
 				'DurationMinutes' => max(0, (int)($_POST['DurationMinutes'] ?? 0)),
 				'BestOf'          => (int)($_POST['BestOf'] ?? 1),
+				'PointRounds'    => (int)($_POST['PointRounds'] ?? 0),
+				'PointMode'      => trim($_POST['PointMode'] ?? ''),
+				'PointScale'     => trim($_POST['PointScale'] ?? ''),
 			// Only forward FirstRoundMode when the client actually sent it, so an edit
 			// that didn't offer the control leaves the stored value untouched.
 			], isset($_POST['FirstRoundMode']) ? ['FirstRoundMode' => trim($_POST['FirstRoundMode'])] : []));
@@ -265,6 +271,36 @@ class Controller_TournamentAjax extends Controller {
 			]);
 			echo ($r['Status'] == 0)
 				? json_encode(['status' => 0, 'points' => $r['Detail'] ?? []])
+				: $this->modelError($r);
+
+		} elseif ($action === 'savepointscore') {
+			$bracket_id = (int)($_POST['BracketId'] ?? 0);
+			if (!valid_id($bracket_id)) { echo json_encode(['status' => 1, 'error' => 'BracketId required.']); exit; }
+			$participant_id = (int)($_POST['ParticipantId'] ?? 0);
+			$round = (int)($_POST['Round'] ?? 0);
+			$points = (isset($_POST['Points']) && $_POST['Points'] !== '') ? trim($_POST['Points']) : null;
+			$r = $this->Tournament->save_point_score([
+				'Token'         => $this->session->token,
+				'TournamentId'  => $tournament_id,
+				'BracketId'     => $bracket_id,
+				'ParticipantId' => $participant_id,
+				'Round'         => $round,
+				'Points'        => $points,
+			]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0, 'detail' => $r['Detail']])
+				: $this->modelError($r);
+
+		} elseif ($action === 'addpointsround') {
+			$bracket_id = (int)($_POST['BracketId'] ?? 0);
+			if (!valid_id($bracket_id)) { echo json_encode(['status' => 1, 'error' => 'BracketId required.']); exit; }
+			$r = $this->Tournament->add_points_round([
+				'Token'        => $this->session->token,
+				'TournamentId' => $tournament_id,
+				'BracketId'    => $bracket_id,
+			]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0, 'detail' => $r['Detail']])
 				: $this->modelError($r);
 
 		} elseif ($action === 'updatetournament') {
