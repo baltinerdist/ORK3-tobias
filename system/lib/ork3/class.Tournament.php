@@ -891,7 +891,8 @@ class Tournament extends Ork3 {
 		$pr = $this->GetParticipants(['BracketId' => $bracket_id, 'TournamentId' => $tournament_id]);
 		if ($pr['Status'] != 0) return $pr;
 		$participants = $pr['Detail'];
-		if (count($participants) < 2) return InvalidParameter('Need at least 2 participants');
+		$min_participants = ($this->Bracket->method === 'points') ? 1 : 2;
+		if (count($participants) < $min_participants) return InvalidParameter('Need at least ' . $min_participants . ' participant(s)');
 		if ($this->Bracket->method === 'double' && count($participants) < 3) {
 			return InvalidParameter('Double elimination requires at least 3 participants');
 		}
@@ -951,6 +952,8 @@ class Tournament extends Ork3 {
 				$this->generate_round_robin($bracket_id, $tournament_id, $participants);
 			} elseif ($method === 'ironman') {
 				$this->generate_ironman($bracket_id, $tournament_id, $participants, $rings);
+			} elseif ($method === 'points') {
+				$this->generate_points($bracket_id, $tournament_id, $participants);
 			} else {
 				// score or unknown: single elim as fallback
 				$this->generate_single_elim($bracket_id, $tournament_id, $participants);
@@ -1841,6 +1844,16 @@ class Tournament extends Ork3 {
 	 */
 	private function generate_ironman($bracket_id, $tournament_id, $participants, $rings) {
 		// Ironman fights are recorded live via RecordIronmanWin — no pre-generated matches.
+	}
+
+	/**
+	 * Points bracket: no matches are written. The scoring grid is built from
+	 * ork_point_score rows keyed (bracket_id, participant_id, round). The bracket
+	 * just needs to exist with status=active so the grid renders. The caller
+	 * (GenerateMatches) flips status to 'active' after this returns.
+	 */
+	private function generate_points($bracket_id, $tournament_id, $participants) {
+		// Intentionally empty. ork_match stays empty for Points brackets.
 	}
 
 	// Ironman bracket advancement is driven by the front-end (per-fight POST via RecordIronmanWin).
