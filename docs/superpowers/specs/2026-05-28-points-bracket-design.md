@@ -234,7 +234,7 @@ In the existing AddBracket modal:
 
 ## Migrations
 
-Single SQL file: `system/db/migrations/2026-05-28-points-bracket.sql`
+Single SQL file: `db-migrations/2026-05-28-points-bracket.sql`
 
 ```sql
 ALTER TABLE ork_bracket
@@ -263,7 +263,7 @@ CREATE TABLE ork_point_score (
 
 Run via project convention:
 ```
-docker exec -i ork3-php8-db mariadb -u root -proot ork < system/db/migrations/2026-05-28-points-bracket.sql
+docker exec -i ork3-php8-db mariadb -u root -proot ork < db-migrations/2026-05-28-points-bracket.sql
 ```
 
 ## Test Plan
@@ -294,7 +294,7 @@ None — all configuration choices have been resolved.
 
 | File                                                             | Change            |
 | ---------------------------------------------------------------- | ----------------- |
-| `system/db/migrations/2026-05-28-points-bracket.sql`             | new               |
+| `db-migrations/2026-05-28-points-bracket.sql`             | new               |
 | `system/lib/ork3/class.Tournament.php`                           | +methods, dispatch |
 | `system/lib/ork3/class.TournamentReport.php`                     | placement branch  |
 | `orkui/model/model.Tournament.php`                               | (likely no-op via __call) |
