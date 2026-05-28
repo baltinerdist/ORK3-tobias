@@ -2754,6 +2754,108 @@ class Tournament extends Ork3 {
 		return Success(['Version' => $sig]);
 	}
 
+
+	/**
+	 * Upsert a single grid cell for a Points bracket. $request['Points'] may be
+	 * null to clear. Returns Success({ Cell, Standings }) so the client can
+	 * update Total + standings ribbon in a single round trip.
+	 */
+	public function SavePointScore($request) {
+		if (!$this->can_run_brackets($request)) return NoAuthorization();
+
+		$bracket_id     = (int)($request['BracketId'] ?? 0);
+		$participant_id = (int)($request['ParticipantId'] ?? 0);
+		$round          = (int)($request['Round'] ?? 0);
+		$rawPoints      = $request['Points'] ?? null;
+
+		if (!valid_id($bracket_id) || !valid_id($participant_id) || $round < 1) {
+			return InvalidParameter('BracketId, ParticipantId, Round required.');
+		}
+
+		$this->Bracket->clear();
+		$this->Bracket->bracket_id = $bracket_id;
+		if (!$this->Bracket->find()) return InvalidParameter('Bracket not found.');
+		if ($this->Bracket->method !== 'points') return InvalidParameter('Bracket is not a Points bracket.');
+		if ($this->Bracket->status === 'finalized') return InvalidParameter('Bracket is finalized.');
+		$maxRound = (int)$this->Bracket->point_rounds;
+		if ($round > $maxRound) return InvalidParameter("Round $round exceeds configured $maxRound.");
+
+		$ok = false;
+		$r = $this->db->query("SELECT 1 FROM " . DB_PREFIX . "participant WHERE participant_id = $participant_id AND bracket_id = $bracket_id LIMIT 1");
+		if ($r && $r->next()) $ok = true;
+		if (!$ok) return InvalidParameter('Participant not in this bracket.');
+
+		$pointsValue = null;
+		if ($rawPoints !== null && $rawPoints !== '') {
+			if (!preg_match('/^\d+(\.\d{1,2})?$/', (string)$rawPoints)) {
+				return InvalidParameter('Points must be a non-negative decimal with up to 2 decimal places.');
+			}
+			$f = (float)$rawPoints;
+			if ($f < 0 || $f > 999.99) return InvalidParameter('Points out of range (0-999.99).');
+
+			if ($this->Bracket->point_mode === 'fixed') {
+				$scaleRaw = (string)$this->Bracket->point_scale;
+				$scale = array_map('trim', explode(',', $scaleRaw));
+				$allowedKeys = array_map(fn($v) => number_format((float)$v, 2, '.', ''), $scale);
+				$thisKey = number_format($f, 2, '.', '');
+				if (!in_array($thisKey, $allowedKeys, true)) {
+					return InvalidParameter("Points value not in the bracket's fixed scale.");
+				}
+			}
+			$pointsValue = number_format($f, 2, '.', '');
+		}
+
+		$scoredBy = (int)($this->session->player_id ?? 0);
+		$scoredByClause = $scoredBy > 0 ? $scoredBy : 'NULL';
+		$pointsClause = ($pointsValue === null) ? 'NULL' : "'$pointsValue'";
+
+		$this->db->Clear();
+		$sql = "INSERT INTO " . DB_PREFIX . "point_score
+				(bracket_id, participant_id, round, points, scored_at, scored_by)
+				VALUES ($bracket_id, $participant_id, $round, $pointsClause, NOW(), $scoredByClause)
+				ON DUPLICATE KEY UPDATE
+				points = $pointsClause,
+				scored_at = NOW(),
+				scored_by = $scoredByClause";
+		$this->db->query($sql);
+
+		$standings = $this->GetPointStandings(['BracketId' => $bracket_id]);
+		$detail = [
+			'Cell' => [
+				'ParticipantId' => $participant_id,
+				'Round'         => $round,
+				'Points'        => $pointsValue,
+			],
+			'Standings' => $standings['Detail'] ?? [],
+		];
+		$this->bustTournamentReportCache();
+		return Success($detail);
+	}
+
+	/**
+	 * Append a new round (increments point_rounds by 1). Capped at 32.
+	 */
+	public function AddPointsRound($request) {
+		if (!$this->check_auth($request)) return NoAuthorization();
+		$bracket_id = (int)($request['BracketId'] ?? 0);
+		if (!valid_id($bracket_id)) return InvalidParameter('BracketId required.');
+
+		$this->Bracket->clear();
+		$this->Bracket->bracket_id = $bracket_id;
+		if (!$this->Bracket->find()) return InvalidParameter('Bracket not found.');
+		if ($this->Bracket->method !== 'points') return InvalidParameter('Not a Points bracket.');
+		if ($this->Bracket->status === 'finalized') return InvalidParameter('Bracket is finalized.');
+
+		$new = ((int)$this->Bracket->point_rounds) + 1;
+		if ($new > 32) return InvalidParameter('Max 32 rounds.');
+
+		$this->db->Clear();
+		$this->db->query("UPDATE " . DB_PREFIX . "bracket SET point_rounds = $new WHERE bracket_id = $bracket_id");
+
+		$this->bustTournamentReportCache();
+		return Success(['PointRounds' => $new]);
+	}
+
 }
 
 ?>
