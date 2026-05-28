@@ -254,6 +254,15 @@ class Controller_Tournament extends Controller {
 				$_seen[$_key] = true;
 			}
 		}
+		// Hydrate PointStandings for Points-method brackets (must run BEFORE
+		// bracketData is copied into $this->data — PHP arrays are by-value).
+		foreach ($brackets as $b) {
+			$bid = (int)$b['BracketId'];
+			if (($b['Method'] ?? '') === 'points') {
+				$_ps = $this->Tournament->get_point_standings(['BracketId' => $bid]);
+				$bracketData[$bid]['PointStandings'] = ($_ps['Status'] == 0) ? $_ps['Detail'] : [];
+			}
+		}
 		$this->data['bracket_data']      = $bracketData;
 		$this->data['TotalBrackets']     = count($brackets);
 		$this->data['TotalParticipants'] = count($_seen);
@@ -269,15 +278,6 @@ class Controller_Tournament extends Controller {
 			}
 		}
 		$this->data['standings_data'] = $standingsData;
-
-		// Hydrate PointStandings for Points-method brackets
-		foreach ($brackets as $b) {
-			$bid = (int)$b['BracketId'];
-			if (($b['Method'] ?? '') === 'points') {
-				$_ps = $this->Tournament->get_point_standings(['BracketId' => $bid]);
-				$bracketData[$bid]['PointStandings'] = ($_ps['Status'] == 0) ? $_ps['Detail'] : [];
-			}
-		}
 
 		// Breadcrumb / nav menu
 		if (valid_id($tournament['KingdomId'])) {
