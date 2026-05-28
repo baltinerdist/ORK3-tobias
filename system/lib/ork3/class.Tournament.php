@@ -303,7 +303,7 @@ class Tournament extends Ork3 {
 	 */
 	private function validate_points_config($r, $allowScaleAndMode = true) {
 		$rounds = (int)($r['PointRounds'] ?? 0);
-		if ($rounds < 1 || $rounds > 32) return 'PointRounds must be 1â32.';
+		if ($rounds < 1 || $rounds > 32) return 'PointRounds must be 1-32.';
 		if ($allowScaleAndMode) {
 			$mode = $r['PointMode'] ?? '';
 			if ($mode !== 'fixed' && $mode !== 'open') return 'PointMode must be fixed or open.';
@@ -311,12 +311,12 @@ class Tournament extends Ork3 {
 				$raw = trim((string)($r['PointScale'] ?? ''));
 				if ($raw === '') return 'PointScale CSV required for fixed mode.';
 				$parts = array_map('trim', explode(',', $raw));
-				if (count($parts) < 1 || count($parts) > 16) return 'PointScale must have 1â16 values.';
+				if (count($parts) < 1 || count($parts) > 16) return 'PointScale must have 1-16 values.';
 				$seen = [];
 				foreach ($parts as $p) {
-					if (!preg_match('/^\\d+(\\.\\d{1,2})?$/', $p)) return "PointScale value \"$p\" invalid (non-neg decimal, â¤2 dp).";
+					if (!preg_match('/^\\d+(\\.\\d{1,2})?$/', $p)) return "PointScale value \"$p\" invalid (non-neg decimal, <=2 dp).";
 					$f = (float)$p;
-					if ($f < 0 || $f > 999.99) return "PointScale value \"$p\" out of range (0â999.99).";
+					if ($f < 0 || $f > 999.99) return "PointScale value \"$p\" out of range (0-999.99).";
 					$key = number_format($f, 2, '.', '');
 					if (isset($seen[$key])) return "PointScale has duplicate value \"$p\".";
 					$seen[$key] = true;
