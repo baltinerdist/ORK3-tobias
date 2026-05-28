@@ -152,6 +152,18 @@ class Model_Tournament extends Model {
 		return $this->Tournament->RemoveReeve($request);
 	}
 
+	function save_point_score($request) {
+		return $this->Tournament->SavePointScore($request);
+	}
+
+	function add_points_round($request) {
+		return $this->Tournament->AddPointsRound($request);
+	}
+
+	function get_point_standings($request) {
+		return $this->Tournament->GetPointStandings($request);
+	}
+
 	function get_version($request) {
 		return $this->Tournament->GetVersion($request);
 	}
