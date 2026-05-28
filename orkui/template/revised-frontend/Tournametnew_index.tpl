@@ -12172,4 +12172,78 @@ html[data-theme="dark"] .tn-team-chip { background:#2a4a6b; color:#90cdf4; }
 		if (cleaned !== t.value) t.value = cleaned;
 	});
 })();
+
+// =============================================
+// Task 12 — Points-bracket Add Round button
+// POSTs addpointsround; on success appends a new round column header
+// + a matching blank cell (pips or input) to every participant row,
+// in place — no full re-render needed.
+// =============================================
+window.tnPointsAddRound = function(bid) {
+	var wrap = document.querySelector('.tn-points-wrap[data-bid="' + bid + '"]');
+	if (!wrap) return;
+	var btn = wrap.querySelector('.tn-points-col-add button');
+	if (btn) btn.disabled = true;
+
+	var fd = new FormData();
+	fd.append('BracketId', bid);
+	var url = TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/addpointsround';
+
+	fetch(url, { method:'POST', body:fd, credentials:'same-origin' })
+		.then(function(r){ return r.json(); })
+		.then(function(j){
+			if (j.status !== 0) throw new Error(j.error || 'Add round failed');
+			var newRound = (j.detail && j.detail.PointRounds) ? j.detail.PointRounds : null;
+			if (!newRound) return;
+
+			wrap.dataset.rounds = newRound;
+			var mode  = wrap.dataset.mode || 'fixed';
+			var scale = String(wrap.dataset.scale || '').split(',')
+				.map(function(s){ return s.trim(); })
+				.filter(Boolean);
+
+			var headRow = wrap.querySelector('thead tr');
+			var addColTh = headRow.querySelector('.tn-points-col-add')
+				|| headRow.querySelector('.tn-points-col-total');
+			var newTh = document.createElement('th');
+			newTh.className = 'tn-points-col-round';
+			newTh.textContent = 'R' + newRound;
+			headRow.insertBefore(newTh, addColTh);
+
+			wrap.querySelectorAll('tbody tr').forEach(function(tr){
+				var pid = tr.dataset.pid;
+				if (!pid) return;
+				var td = document.createElement('td');
+				td.className = 'tn-points-cell';
+				td.dataset.pid = pid;
+				td.dataset.round = newRound;
+				td.dataset.value = '';
+				if (mode === 'fixed') {
+					var pipsHtml = '<div class="tn-pips">' + scale.map(function(v){
+						return '<span class="tn-pip" data-val="' + v + '">' + v + '</span>';
+					}).join('') + '</div>';
+					td.innerHTML = pipsHtml + '<span class="tn-points-status" aria-hidden="true"></span>';
+				} else {
+					td.innerHTML = '<input type="text" class="tn-points-input" inputmode="decimal" maxlength="5">'
+						+ '<span class="tn-points-status" aria-hidden="true"></span>';
+				}
+				var addColTd = tr.querySelector('.tn-points-col-add')
+					|| tr.querySelector('.tn-points-col-total');
+				tr.insertBefore(td, addColTd);
+			});
+
+			try {
+				if (TnConfig.bracketData[bid] && TnConfig.bracketData[bid].Bracket) {
+					TnConfig.bracketData[bid].Bracket.PointRounds = newRound;
+				}
+			} catch (e) { /* non-fatal */ }
+		})
+		.catch(function(e){
+			console.log('[points] add round failed', e);
+			alert('Could not add a round: ' + (e && e.message ? e.message : e));
+		})
+		.finally(function(){
+			if (btn) btn.disabled = false;
+		});
+};
 </script>
