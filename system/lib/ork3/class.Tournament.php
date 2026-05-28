@@ -1350,9 +1350,15 @@ class Tournament extends Ork3 {
 		$bracket_id = (int)($request['BracketId'] ?? 0);
 		if (!valid_id($bracket_id)) return InvalidParameter('BracketId required');
 
-		// Look up bracket participants type (team vs individual) to branch standings logic.
-		$bpRow = $this->db->query("SELECT participants FROM " . DB_PREFIX . "bracket WHERE bracket_id = $bracket_id LIMIT 1");
-		$bracketParticipants = ($bpRow && $bpRow->next()) ? $bpRow->participants : 'individual';
+		// Look up bracket type (method, participants) to branch standings logic.
+		$bpRow = $this->db->query("SELECT participants, method FROM " . DB_PREFIX . "bracket WHERE bracket_id = $bracket_id LIMIT 1");
+		$bpRow && $bpRow->next();
+		$bracketParticipants = $bpRow ? (string)$bpRow->participants : 'individual';
+		$bracketMethodGs     = $bpRow ? (string)$bpRow->method     : '';
+
+		if ($bracketMethodGs === 'points') {
+			return $this->GetPointStandings(['BracketId' => $bracket_id]);
+		}
 
 		if ($bracketParticipants === 'team') {
 			// Team brackets: group only by participant (not by mundane_id) so each team
@@ -2854,6 +2860,90 @@ class Tournament extends Ork3 {
 
 		$this->bustTournamentReportCache();
 		return Success(['PointRounds' => $new]);
+	}
+
+	/**
+	 * Standings for a Points bracket. Returns rows ordered by total DESC, alias ASC
+	 * (alias is for stable display only - not a placement tiebreaker; ties share a place).
+	 *
+	 * Detail row shape: {
+	 *   ParticipantId, Alias, ParticipantNumber, Status,
+	 *   RoundScores: [string|null, ...],
+	 *   Total: string (formatted "0.00"),
+	 *   Place: int|null,
+	 *   Tied: bool
+	 * }
+	 */
+	public function GetPointStandings($request) {
+		$bracket_id = (int)($request['BracketId'] ?? 0);
+		if (!valid_id($bracket_id)) return InvalidParameter('BracketId required.');
+
+		$this->Bracket->clear();
+		$this->Bracket->bracket_id = $bracket_id;
+		if (!$this->Bracket->find()) return InvalidParameter('Bracket not found.');
+		$rounds = max(0, (int)$this->Bracket->point_rounds);
+
+		$participants = [];
+		$pr = $this->db->query("SELECT participant_id, alias, participant_number, status, seed
+			FROM " . DB_PREFIX . "participant
+			WHERE bracket_id = $bracket_id
+			ORDER BY seed ASC, participant_id ASC");
+		if ($pr) while ($pr->next()) {
+			$participants[(int)$pr->participant_id] = [
+				'ParticipantId'     => (int)$pr->participant_id,
+				'Alias'             => (string)$pr->alias,
+				'ParticipantNumber' => (int)$pr->participant_number,
+				'Status'            => (string)$pr->status,
+				'RoundScores'       => array_fill(0, $rounds, null),
+				'Total'             => 0.0,
+			];
+		}
+
+		$sr = $this->db->query("SELECT participant_id, round, points
+			FROM " . DB_PREFIX . "point_score
+			WHERE bracket_id = $bracket_id");
+		if ($sr) while ($sr->next()) {
+			$pid = (int)$sr->participant_id;
+			$rnd = (int)$sr->round;
+			if (!isset($participants[$pid]) || $rnd < 1 || $rnd > $rounds) continue;
+			$val = ($sr->points === null) ? null : (float)$sr->points;
+			$participants[$pid]['RoundScores'][$rnd - 1] = ($val === null) ? null : number_format($val, 2, '.', '');
+			if ($val !== null) $participants[$pid]['Total'] += $val;
+		}
+
+		$active   = [];
+		$inactive = [];
+		foreach ($participants as $row) {
+			$row['Total'] = number_format($row['Total'], 2, '.', '');
+			if ($row['Status'] === 'active' || $row['Status'] === '') $active[] = $row;
+			else $inactive[] = $row;
+		}
+		usort($active, function($a, $b) {
+			$cmp = ((float)$b['Total']) <=> ((float)$a['Total']);
+			return $cmp !== 0 ? $cmp : strcasecmp($a['Alias'], $b['Alias']);
+		});
+
+		$lastTotal = null;
+		$lastPlace = 0;
+		foreach ($active as $i => &$row) {
+			$pos = $i + 1;
+			if ($lastTotal !== null && (float)$row['Total'] === (float)$lastTotal) {
+				$row['Place'] = $lastPlace;
+				$row['Tied']  = true;
+				$active[$i - 1]['Tied'] = true;
+			} else {
+				$row['Place'] = $pos;
+				$row['Tied']  = false;
+				$lastPlace = $pos;
+			}
+			$lastTotal = $row['Total'];
+		}
+		unset($row);
+
+		foreach ($inactive as &$row) { $row['Place'] = null; $row['Tied'] = false; }
+		unset($row);
+
+		return Success(array_values(array_merge($active, $inactive)));
 	}
 
 }
