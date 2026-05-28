@@ -33,6 +33,13 @@ $server->register(
 		array('return' => 'tns:StatusType'),
 		$namespace
 	);
+
+$server->register(
+		'Authorization.RecoverUsername',
+		array('RecoverUsernameRequest'=>'tns:RecoverUsernameRequest'),
+		array('return' => 'tns:StatusType'),
+		$namespace
+	);
 	
 $server->register(
 		'Authorization.GetAuthorizations',

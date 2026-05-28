@@ -48,6 +48,15 @@ class Model_Login extends Model {
 			return true;
 		}
 	}
+
+	function recover_username($email) {
+		$r = $this->Authorization->RecoverUsername(array( 'Email' => $email ));
+		if ($r['Status'] != 0) {
+			return $r;
+		} else {
+			return true;
+		}
+	}
 }
 
 ?>

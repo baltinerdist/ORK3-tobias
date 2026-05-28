@@ -25,6 +25,11 @@ function ResetPassword($request) {
 	return $A->ResetPassword($request);
 }
 
+function RecoverUsername($request) {
+	$A = new Authorization();
+	return $A->RecoverUsername($request);
+}
+
 function GetAuthorizations($request) {
 	$A = new Authorization();
 	return $A->GetAuthorizations($request);

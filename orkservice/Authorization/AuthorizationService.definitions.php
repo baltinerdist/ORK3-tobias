@@ -50,6 +50,19 @@ $server->wsdl->addComplexType(
 			)
 	);
 
+/// RecoverUsername()
+
+$server->wsdl->addComplexType(
+		'RecoverUsernameRequest',
+		'complexType',
+		'struct',
+		'all',
+		'',
+		array(
+				'Email'=>array('name'=>'Email','type'=>'xsd:string')
+			)
+	);
+
 /// XSiteAuthorize()
 	
 $server->wsdl->addComplexType(

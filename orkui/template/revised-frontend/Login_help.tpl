@@ -179,15 +179,15 @@ html[data-theme="dark"] .lh-footer-link { color: #90cdf4; }
 				<i class="fas fa-user-slash"></i>
 				I don't have an ORK account.
 			</button>
-			<button type="button" class="lh-option-btn" onclick="lhShow('lh-step-email', 'username')">
+			<button type="button" class="lh-option-btn" onclick="lhPickBranch('username')">
 				<i class="fas fa-user-question"></i>
 				I have an ORK account, but I can't remember my username.
 			</button>
-			<button type="button" class="lh-option-btn" onclick="lhShow('lh-step-email', 'password')">
+			<button type="button" class="lh-option-btn" onclick="lhPickBranch('password')">
 				<i class="fas fa-key"></i>
 				I have an ORK account, but I can't remember my password.
 			</button>
-			<button type="button" class="lh-option-btn" onclick="lhShow('lh-step-email', 'expired')">
+			<button type="button" class="lh-option-btn" onclick="lhPickBranch('expired')">
 				<i class="fas fa-exclamation-triangle"></i>
 				I have an ORK account, but my password isn't working or is expired.
 			</button>
@@ -212,7 +212,7 @@ html[data-theme="dark"] .lh-footer-link { color: #90cdf4; }
 		<p class="lh-subheading">We can only send a reset if your profile has an email address on file.</p>
 
 		<div class="lh-options">
-			<button type="button" class="lh-option-btn" onclick="window.location='<?= UIR ?>Login/forgotpassword'">
+			<button type="button" class="lh-option-btn" onclick="lhYesEmail()">
 				<i class="fas fa-check-circle"></i>
 				Yes, I do!
 			</button>
@@ -249,6 +249,10 @@ html[data-theme="dark"] .lh-footer-link { color: #90cdf4; }
 </div>
 
 <script>
+var lhBranch = null;
+var LH_URL_FORGOT_PASSWORD = '<?= UIR ?>Login/forgotpassword';
+var LH_URL_FORGOT_USERNAME = '<?= UIR ?>Login/forgotusername';
+
 function lhShow(stepId) {
 	document.querySelectorAll('.lh-step').forEach(function(el) {
 		el.classList.remove('active');
@@ -259,5 +263,12 @@ function lhShow(stepId) {
 }
 function lhBack(stepId) {
 	lhShow(stepId);
+}
+function lhPickBranch(branch) {
+	lhBranch = branch;
+	lhShow('lh-step-email');
+}
+function lhYesEmail() {
+	window.location = (lhBranch === 'username') ? LH_URL_FORGOT_USERNAME : LH_URL_FORGOT_PASSWORD;
 }
 </script>

@@ -60,6 +60,19 @@ class Controller_Login extends Controller {
 		$this->template = '../revised-frontend/Login_help.tpl';
 	}
 
+	public function forgotusername($recover = null) {
+		$this->template = '../revised-frontend/Login_forgotusername.tpl';
+		if ($recover == 'recover') {
+			if (($r = $this->Login->recover_username($_POST['email'])) === true) {
+				$this->data["error"] = "If an ORK account is associated with that email address, your username has been sent to it.";
+				$this->data["detail"] = "";
+			} else {
+				$this->data["error"] = "If an ORK account is associated with that email address, your username has been sent to it.";
+				$this->data["detail"] = "";
+			}
+		}
+	}
+
 	public function forgotpassword($recover = null) {
 		$this->template = '../revised-frontend/Login_forgotpassword.tpl';
 		if ($recover == 'recover') {

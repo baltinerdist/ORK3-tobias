@@ -147,6 +147,50 @@ class Authorization extends Ork3
 		return $response;
 	}
 
+	public function RecoverUsername($request)
+	{
+		$email = trim($request['Email'] ?? '');
+		if ($email === '') {
+			return InvalidParameter(null, 'An email address is required.');
+		}
+
+		$this->mundane->clear();
+		$this->mundane->like('email', $email);
+		if (!$this->mundane->find()) {
+			return InvalidParameter(null, 'No account was found for that email address.');
+		}
+
+		$usernames = array();
+		do {
+			$u = trim($this->mundane->username);
+			if (strlen($u) > 0) {
+				$usernames[] = $u;
+			}
+		} while ($this->mundane->next());
+
+		if (count($usernames) === 0) {
+			return InvalidParameter(null, 'No account was found for that email address.');
+		}
+
+		$list_html = '<ul>';
+		foreach ($usernames as $u) {
+			$list_html .= '<li>' . htmlspecialchars($u) . '</li>';
+		}
+		$list_html .= '</ul>';
+
+		$m = new Mail('smtp', AMAZON_SES_HOST, AMAZON_SES_USERNAME, AMAZON_SES_PASSWORD, 587);
+		$m->setTo($email);
+		$m->setFrom('ork3@amtgard.com');
+		$m->setSubject('Your ORK Username' . (count($usernames) > 1 ? 's' : ''));
+		$m->setHtml('<h2>ORK Username Reminder</h2>The following ORK username' . (count($usernames) > 1 ? 's are' : ' is') . ' associated with this email address:<p>' . $list_html . '<p>If you need to reset your password, return to the login page and use the <b>Help, I cannot login!</b> option.<p>Regards,<p>-ORK Team');
+		$m->setSender('ork3@amtgard.com');
+		$m->send();
+
+		$response = Success();
+		$this->log->Write('RecoverUsername Email', 0, LOG_EDIT, array($response));
+		return $response;
+	}
+
 	public function GetAuthorizations($request)
 	{
 		if (is_array($request)) {
