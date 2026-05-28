@@ -270,6 +270,15 @@ class Controller_Tournament extends Controller {
 		}
 		$this->data['standings_data'] = $standingsData;
 
+		// Hydrate PointStandings for Points-method brackets
+		foreach ($brackets as $b) {
+			$bid = (int)$b['BracketId'];
+			if (($b['Method'] ?? '') === 'points') {
+				$_ps = $this->Tournament->get_point_standings(['BracketId' => $bid]);
+				$bracketData[$bid]['PointStandings'] = ($_ps['Status'] == 0) ? $_ps['Detail'] : [];
+			}
+		}
+
 		// Breadcrumb / nav menu
 		if (valid_id($tournament['KingdomId'])) {
 			$this->data['menu']['kingdom'] = [

@@ -417,6 +417,9 @@ class Tournament extends Ork3 {
 					'BestOf'          => (int)$r->best_of,
 					'TiebreakerDeclined' => (int)$r->tiebreaker_declined,
 					'FirstRoundMode' => $r->first_round_mode,
+					'PointRounds'    => (int)$r->point_rounds,
+					'PointMode'      => (string)$r->point_mode,
+					'PointScale'     => (string)$r->point_scale,
 				];
 			}
 		}
