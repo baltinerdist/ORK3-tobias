@@ -91,6 +91,7 @@ $methodLabelMap = [
 	'swiss'       => 'Swiss',
 	'round-robin' => 'Round Robin',
 	'ironman'     => 'Ironman',
+	'points'      => 'Points',
 	'score'       => 'Score',
 ];
 
@@ -234,6 +235,26 @@ html[data-theme="dark"] [data-tip]::before { border-top-color:#1a202c; }
 .tn-bracket-card[data-method="round-robin"] { border-left-color:#9f7aea; }
 .tn-bracket-card[data-method="ironman"] { border-left-color:#e53e3e; }
 .tn-bracket-card[data-method="score"] { border-left-color:#718096; }
+.tn-bracket-card[data-method="points"] { border-left-color:#0bc5ea; }
+/* Points-bracket pip styles (Fixed mode pips and AddBracket preview) */
+.tn-pip {
+	display:inline-flex; align-items:center; justify-content:center;
+	min-width:32px; height:28px; padding:0 10px;
+	border:1px solid #cbd5e0; border-radius:14px;
+	background:#fff; color:#2d3748;
+	font-weight:600; font-size:13px; cursor:pointer;
+	user-select:none;
+	transition:background-color .1s, color .1s, border-color .1s;
+}
+.tn-pip:hover { border-color:#4a5568; }
+.tn-pip.tn-pip-selected { background:#2b6cb0; color:#fff; border-color:#2b6cb0; }
+.tn-pip-preview { cursor:default; }
+body.dark-mode .tn-pip,
+.dark-mode .tn-pip { background:#2d3748; color:#e2e8f0; border-color:#4a5568; }
+body.dark-mode .tn-pip:hover,
+.dark-mode .tn-pip:hover { border-color:#a0aec0; }
+body.dark-mode .tn-pip.tn-pip-selected,
+.dark-mode .tn-pip.tn-pip-selected { background:#3182ce; color:#fff; border-color:#3182ce; }
 .tn-bracket-card:last-child { margin-bottom:0; }
 .tn-bracket-header { background:#f7fafc; padding:12px 14px; display:flex; align-items:center; gap:10px; border-bottom:1px solid #e2e8f0; }
 .tn-bracket-header h4 { margin:0; font-size:14px; font-weight:700; color:#1a202c; background:transparent!important; border:none!important; padding:0!important; border-radius:0!important; text-shadow:none!important; }
@@ -2238,7 +2259,7 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 							</div>
 							<?php if ($canManage): ?>
 							<div class="tn-bracket-actions-desktop" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-								<button class="tn-btn tn-btn-outline tn-btn-sm" onclick="tnOpenEditBracketModal(<?= $bid ?>, <?= htmlspecialchars(json_encode(['style'=>$b['Style'],'styleNote'=>$b['StyleNote'],'method'=>$b['Method'],'rings'=>(int)$b['Rings'],'participants'=>$b['Participants'],'seeding'=>$b['Seeding'],'durationMinutes'=>(int)($b['DurationMinutes']??0),'bestOf'=>(int)($b['BestOf']??1)], JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT), ENT_QUOTES) ?>)">
+								<button class="tn-btn tn-btn-outline tn-btn-sm" onclick="tnOpenEditBracketModal(<?= $bid ?>, <?= htmlspecialchars(json_encode(['style'=>$b['Style'],'styleNote'=>$b['StyleNote'],'method'=>$b['Method'],'rings'=>(int)$b['Rings'],'participants'=>$b['Participants'],'seeding'=>$b['Seeding'],'durationMinutes'=>(int)($b['DurationMinutes']??0),'bestOf'=>(int)($b['BestOf']??1),'pointRounds'=>(int)($b['PointRounds']??3),'pointMode'=>($b['PointMode']??'fixed'),'pointScale'=>($b['PointScale']??'5,3,1,0')], JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT), ENT_QUOTES) ?>)">
 									<i class="fas fa-pencil-alt"></i> Edit
 								</button>
 								<button class="tn-btn tn-btn-outline tn-btn-sm" onclick="tnCopyBracket(<?= $bid ?>, <?= $tid ?>)" data-tip="Duplicate this bracket with its participants">
@@ -2274,7 +2295,7 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 								$_mIsTeam = ($b['Participants'] ?? 'individual') === 'team';
 								$_mCanGen = count($pList) >= 2 && !in_array($b['Status'], ['complete', 'finalized']);
 								$_mIsRegen = $b['Status'] === 'active' && count($mList) > 0;
-								$_mEditJson = htmlspecialchars(json_encode(['style'=>$b['Style'],'styleNote'=>$b['StyleNote'],'method'=>$b['Method'],'rings'=>(int)$b['Rings'],'participants'=>$b['Participants'],'seeding'=>$b['Seeding'],'durationMinutes'=>(int)($b['DurationMinutes']??0),'bestOf'=>(int)($b['BestOf']??1)], JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT), ENT_QUOTES); // JS object literal for tnOpenEditBracketModal
+								$_mEditJson = htmlspecialchars(json_encode(['style'=>$b['Style'],'styleNote'=>$b['StyleNote'],'method'=>$b['Method'],'rings'=>(int)$b['Rings'],'participants'=>$b['Participants'],'seeding'=>$b['Seeding'],'durationMinutes'=>(int)($b['DurationMinutes']??0),'bestOf'=>(int)($b['BestOf']??1),'pointRounds'=>(int)($b['PointRounds']??3),'pointMode'=>($b['PointMode']??'fixed'),'pointScale'=>($b['PointScale']??'5,3,1,0')], JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT), ENT_QUOTES); // JS object literal for tnOpenEditBracketModal
 							?>
 							<div class="tn-bracket-actions-mobile">
 								<?php if ($_mCanGen): ?>
@@ -2749,10 +2770,37 @@ foreach ($bracketData as $_bid => $_bd) {
 						<option value="round-robin">Round Robin</option>
 						<option value="ironman">Ironman</option>
 						<option value="score">Score</option>
+						<option value="points">Points</option>
 					</select>
 				</div>
 			</div>
-			<button type="button" class="tn-advanced-toggle" data-target="tn-addbracket-advanced" style="background:none;border:none;color:#718096;cursor:pointer;padding:4px 0;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:4px">
+			<div id="tn-addbracket-points-config" class="tn-field-row" style="display:none">
+				<div class="tn-field">
+					<label for="tn-addbracket-point-rounds">Rounds <span style="color:#e53e3e">*</span></label>
+					<input type="number" id="tn-addbracket-point-rounds" value="3" min="1" max="32">
+				</div>
+				<div class="tn-field">
+					<label>Point Mode <span style="color:#e53e3e">*</span></label>
+					<div style="display:flex;gap:12px;align-items:center;padding-top:6px">
+						<label style="display:flex;gap:4px;align-items:center;font-weight:400;cursor:pointer">
+							<input type="radio" name="tn-addbracket-point-mode" value="fixed" checked> Fixed Points
+						</label>
+						<label style="display:flex;gap:4px;align-items:center;font-weight:400;cursor:pointer">
+							<input type="radio" name="tn-addbracket-point-mode" value="open"> Open Points
+						</label>
+					</div>
+				</div>
+			</div>
+			<div id="tn-addbracket-point-scale-row" class="tn-field-row" style="display:none">
+				<div class="tn-field" style="flex:1">
+					<label for="tn-addbracket-point-scale">Point Scale <span style="color:#e53e3e">*</span></label>
+					<input type="text" id="tn-addbracket-point-scale" value="5,3,1,0" placeholder="e.g. 5,3,1,0">
+					<div style="font-size:11px;color:#718096;margin-top:4px">Comma-separated values shown as clickable pips. First value is highest.</div>
+					<div id="tn-addbracket-point-scale-preview" style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"></div>
+					<div id="tn-addbracket-point-scale-err" style="display:none;color:#e53e3e;font-size:12px;margin-top:4px"></div>
+				</div>
+			</div>
+						<button type="button" class="tn-advanced-toggle" data-target="tn-addbracket-advanced" style="background:none;border:none;color:#718096;cursor:pointer;padding:4px 0;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:4px">
 				<i class="fas fa-chevron-right" style="transition:transform .15s;font-size:10px"></i>
 				Advanced options
 				<span style="color:#a0aec0;font-weight:400;font-size:11px">(participants, rings, seeding, note)</span>
@@ -2849,10 +2897,37 @@ foreach ($bracketData as $_bid => $_bd) {
 						<option value="round-robin">Round Robin</option>
 						<option value="ironman">Ironman</option>
 						<option value="score">Score</option>
+						<option value="points">Points</option>
 					</select>
 				</div>
 			</div>
-			<button type="button" class="tn-advanced-toggle" data-target="tn-editbracket-advanced" style="background:none;border:none;color:#718096;cursor:pointer;padding:4px 0;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:4px">
+			<div id="tn-editbracket-points-config" class="tn-field-row" style="display:none">
+				<div class="tn-field">
+					<label for="tn-editbracket-point-rounds">Rounds <span style="color:#e53e3e">*</span></label>
+					<input type="number" id="tn-editbracket-point-rounds" value="3" min="1" max="32">
+				</div>
+				<div class="tn-field">
+					<label>Point Mode <span style="color:#e53e3e">*</span></label>
+					<div style="display:flex;gap:12px;align-items:center;padding-top:6px">
+						<label style="display:flex;gap:4px;align-items:center;font-weight:400;cursor:pointer">
+							<input type="radio" name="tn-editbracket-point-mode" value="fixed" checked> Fixed Points
+						</label>
+						<label style="display:flex;gap:4px;align-items:center;font-weight:400;cursor:pointer">
+							<input type="radio" name="tn-editbracket-point-mode" value="open"> Open Points
+						</label>
+					</div>
+				</div>
+			</div>
+			<div id="tn-editbracket-point-scale-row" class="tn-field-row" style="display:none">
+				<div class="tn-field" style="flex:1">
+					<label for="tn-editbracket-point-scale">Point Scale <span style="color:#e53e3e">*</span></label>
+					<input type="text" id="tn-editbracket-point-scale" value="5,3,1,0" placeholder="e.g. 5,3,1,0">
+					<div style="font-size:11px;color:#718096;margin-top:4px">Comma-separated values shown as clickable pips. First value is highest.</div>
+					<div id="tn-editbracket-point-scale-preview" style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"></div>
+					<div id="tn-editbracket-point-scale-err" style="display:none;color:#e53e3e;font-size:12px;margin-top:4px"></div>
+				</div>
+			</div>
+						<button type="button" class="tn-advanced-toggle" data-target="tn-editbracket-advanced" style="background:none;border:none;color:#718096;cursor:pointer;padding:4px 0;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:4px">
 				<i class="fas fa-chevron-right" style="transition:transform .15s;font-size:10px"></i>
 				Advanced options
 				<span style="color:#a0aec0;font-weight:400;font-size:11px">(participants, rings, seeding, note)</span>
@@ -4524,6 +4599,9 @@ window.tnOpenAsSheet = function(overlayId, opts) {
 			fd.append('StyleNote',    document.getElementById('tn-addbracket-stylenote').value);
 			fd.append('DurationMinutes', document.getElementById('tn-addbracket-duration').value || 0);
 			fd.append('BestOf',       document.getElementById('tn-addbracket-bestof').value || 1);
+				if (window.tnAddBracketIsPoints && window.tnAddBracketIsPoints()) {
+					window.tnAddBracketAppendPointsFields(fd);
+				}
 
 			fetch(ADD_URL, { method:'POST', body:fd })
 				.then(function(r) { return r.json(); })
@@ -4539,6 +4617,88 @@ window.tnOpenAsSheet = function(overlayId, opts) {
 				.catch(function() { btn.disabled = false; tnShowFeedback('tn-addbracket-feedback', 'Request failed. Please try again.', false); });
 		});
 	}
+// ---- Points Bracket Config (visibility + pip preview + form hooks) ----
+(function(){
+	function tnPtsById(id) { return document.getElementById(id); }
+	function tnPtsModeRadio() {
+		var r = document.querySelector('input[name="tn-addbracket-point-mode"]:checked');
+		return r ? r.value : 'fixed';
+	}
+	function tnSyncPointsVisibility() {
+		var sel = tnPtsById('tn-addbracket-method');
+		if (!sel) return;
+		var isPoints = (sel.value === 'points');
+		var cfg   = tnPtsById('tn-addbracket-points-config');
+		var scale = tnPtsById('tn-addbracket-point-scale-row');
+		if (cfg)   cfg.style.display   = isPoints ? '' : 'none';
+		if (scale) scale.style.display = (isPoints && tnPtsModeRadio() === 'fixed') ? '' : 'none';
+	}
+	function tnRenderScalePreview() {
+		var prev = tnPtsById('tn-addbracket-point-scale-preview');
+		var err  = tnPtsById('tn-addbracket-point-scale-err');
+		var inp  = tnPtsById('tn-addbracket-point-scale');
+		if (!prev || !inp) return;
+		prev.innerHTML = '';
+		if (err) err.style.display = 'none';
+		var raw = (inp.value || '').trim();
+		if (!raw) return;
+		var parts = raw.split(',').map(function(s){ return s.trim(); });
+		var seen = {};
+		for (var i = 0; i < parts.length; i++) {
+			var v = parts[i];
+			if (!/^\d+(\.\d{1,2})?$/.test(v) || +v < 0 || +v > 999.99) {
+				if (err) { err.textContent = 'Invalid value: "' + v + '"'; err.style.display = ''; }
+				return;
+			}
+			var k = (+v).toFixed(2);
+			if (seen[k]) {
+				if (err) { err.textContent = 'Duplicate value: "' + v + '"'; err.style.display = ''; }
+				return;
+			}
+			seen[k] = true;
+		}
+		if (parts.length < 1 || parts.length > 16) {
+			if (err) { err.textContent = 'Must have 1-16 values'; err.style.display = ''; }
+			return;
+		}
+		parts.forEach(function(v){
+			var s = document.createElement('span');
+			s.className = 'tn-pip tn-pip-preview';
+			s.textContent = v;
+			prev.appendChild(s);
+		});
+	}
+
+	// Bind via DOMContentLoaded — the modal HTML is present at page load, just hidden.
+	// (getElementById is safe inside event handlers, not as IIFE-load guards.)
+	document.addEventListener('DOMContentLoaded', function(){
+		var sel = tnPtsById('tn-addbracket-method');
+		if (!sel) return;
+		sel.addEventListener('change', tnSyncPointsVisibility);
+		document.querySelectorAll('input[name="tn-addbracket-point-mode"]').forEach(function(r){
+			r.addEventListener('change', tnSyncPointsVisibility);
+		});
+		var scale = tnPtsById('tn-addbracket-point-scale');
+		if (scale) scale.addEventListener('input', tnRenderScalePreview);
+		tnSyncPointsVisibility();
+		tnRenderScalePreview();
+	});
+
+	// Expose for form-submit augmentation (used inside the addbracket submit listener)
+	window.tnAddBracketIsPoints = function(){
+		var sel = tnPtsById('tn-addbracket-method');
+		return sel && sel.value === 'points';
+	};
+	window.tnAddBracketAppendPointsFields = function(fd){
+		fd.append('PointRounds', (tnPtsById('tn-addbracket-point-rounds') || {}).value || '0');
+		var mode = (document.querySelector('input[name="tn-addbracket-point-mode"]:checked') || {}).value || 'fixed';
+		fd.append('PointMode', mode);
+		if (mode === 'fixed') {
+			fd.append('PointScale', (tnPtsById('tn-addbracket-point-scale') || {}).value || '');
+		}
+	};
+})();
+
 })();
 
 // ---- Edit Bracket Modal ----
@@ -4585,6 +4745,18 @@ window.tnOpenAsSheet = function(overlayId, opts) {
 		// Trigger change so the ironman/team gate re-evaluates for the loaded data.
 		var _emSel = document.getElementById('tn-editbracket-method');
 		if (_emSel) _emSel.dispatchEvent(new Event('change'));
+		// Populate Points fields and sync visibility for existing Points brackets
+		(function(){
+			var pr = document.getElementById('tn-editbracket-point-rounds');
+			var ps = document.getElementById('tn-editbracket-point-scale');
+			var pm = document.querySelectorAll('input[name="tn-editbracket-point-mode"]');
+			if (pr) pr.value = data.pointRounds || 3;
+			if (ps) ps.value = data.pointScale  || '5,3,1,0';
+			var modeVal = data.pointMode || 'fixed';
+			pm.forEach(function(r){ r.checked = (r.value === modeVal); });
+			if (window.tnSyncEditPointsVisibility) tnSyncEditPointsVisibility();
+			if (window.tnRenderEditScalePreview) tnRenderEditScalePreview();
+		})();
 		// Auto-expand the advanced section when any field is in a non-default
 		// state. Run synchronously here (fields are already populated above).
 		(function(){
@@ -4673,6 +4845,9 @@ window.tnOpenAsSheet = function(overlayId, opts) {
 			fd.append('StyleNote',    document.getElementById('tn-editbracket-stylenote').value);
 			fd.append('DurationMinutes', document.getElementById('tn-editbracket-duration').value || 0);
 			fd.append('BestOf',       document.getElementById('tn-editbracket-bestof').value || 1);
+				if (window.tnEditBracketIsPoints && window.tnEditBracketIsPoints()) {
+					window.tnEditBracketAppendPointsFields(fd);
+				}
 			// Only send FirstRoundMode when the control was actually offered (a segment
 			// is active); otherwise omit it so the server preserves the existing value.
 			var _fr = document.querySelector('#tn-editbracket-firstround .tn-seg-btn.tn-seg-active');
@@ -4692,6 +4867,86 @@ window.tnOpenAsSheet = function(overlayId, opts) {
 				.catch(function() { btn.disabled = false; tnShowFeedback('tn-editbracket-feedback', 'Request failed. Please try again.', false); });
 		});
 	}
+// ---- Points Bracket Config — Edit Modal ----
+(function(){
+	function tnEPtsById(id) { return document.getElementById(id); }
+	function tnEPtsModeRadio() {
+		var r = document.querySelector('input[name="tn-editbracket-point-mode"]:checked');
+		return r ? r.value : 'fixed';
+	}
+	function tnSyncEditPointsVisibility() {
+		var sel = tnEPtsById('tn-editbracket-method');
+		if (!sel) return;
+		var isPoints = (sel.value === 'points');
+		var cfg   = tnEPtsById('tn-editbracket-points-config');
+		var scale = tnEPtsById('tn-editbracket-point-scale-row');
+		if (cfg)   cfg.style.display   = isPoints ? '' : 'none';
+		if (scale) scale.style.display = (isPoints && tnEPtsModeRadio() === 'fixed') ? '' : 'none';
+	}
+	function tnRenderEditScalePreview() {
+		var prev = tnEPtsById('tn-editbracket-point-scale-preview');
+		var err  = tnEPtsById('tn-editbracket-point-scale-err');
+		var inp  = tnEPtsById('tn-editbracket-point-scale');
+		if (!prev || !inp) return;
+		prev.innerHTML = '';
+		if (err) err.style.display = 'none';
+		var raw = (inp.value || '').trim();
+		if (!raw) return;
+		var parts = raw.split(',').map(function(s){ return s.trim(); });
+		var seen = {};
+		for (var i = 0; i < parts.length; i++) {
+			var v = parts[i];
+			if (!/^\d+(\.\d{1,2})?$/.test(v) || +v < 0 || +v > 999.99) {
+				if (err) { err.textContent = 'Invalid value: "' + v + '"'; err.style.display = ''; }
+				return;
+			}
+			var k = (+v).toFixed(2);
+			if (seen[k]) {
+				if (err) { err.textContent = 'Duplicate value: "' + v + '"'; err.style.display = ''; }
+				return;
+			}
+			seen[k] = true;
+		}
+		if (parts.length < 1 || parts.length > 16) {
+			if (err) { err.textContent = 'Must have 1-16 values'; err.style.display = ''; }
+			return;
+		}
+		parts.forEach(function(v){
+			var s = document.createElement('span');
+			s.className = 'tn-pip tn-pip-preview';
+			s.textContent = v;
+			prev.appendChild(s);
+		});
+	}
+
+	document.addEventListener('DOMContentLoaded', function(){
+		var sel = tnEPtsById('tn-editbracket-method');
+		if (!sel) return;
+		sel.addEventListener('change', tnSyncEditPointsVisibility);
+		document.querySelectorAll('input[name="tn-editbracket-point-mode"]').forEach(function(r){
+			r.addEventListener('change', tnSyncEditPointsVisibility);
+		});
+		var scale = tnEPtsById('tn-editbracket-point-scale');
+		if (scale) scale.addEventListener('input', tnRenderEditScalePreview);
+	});
+
+	window.tnEditBracketIsPoints = function(){
+		var sel = tnEPtsById('tn-editbracket-method');
+		return sel && sel.value === 'points';
+	};
+	window.tnEditBracketAppendPointsFields = function(fd){
+		fd.append('PointRounds', (tnEPtsById('tn-editbracket-point-rounds') || {}).value || '0');
+		var mode = (document.querySelector('input[name="tn-editbracket-point-mode"]:checked') || {}).value || 'fixed';
+		fd.append('PointMode', mode);
+		if (mode === 'fixed') {
+			fd.append('PointScale', (tnEPtsById('tn-editbracket-point-scale') || {}).value || '');
+		}
+	};
+	// Also sync when tnOpenEditBracketModal populates the form
+	window.tnSyncEditPointsVisibility = tnSyncEditPointsVisibility;
+	window.tnRenderEditScalePreview = tnRenderEditScalePreview;
+})();
+
 })();
 
 // =============================================================
