@@ -958,7 +958,7 @@ class Tournament extends Ork3 {
 			} elseif ($method === 'points') {
 				$this->generate_points($bracket_id, $tournament_id, $participants);
 			} else {
-				// score or unknown: single elim as fallback
+				// unknown: single elim as fallback
 				$this->generate_single_elim($bracket_id, $tournament_id, $participants);
 			}
 
