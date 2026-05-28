@@ -304,6 +304,16 @@ html[data-theme="dark"] .tn-points-grid td.tn-points-col-player { background:#1a
 html[data-theme="dark"] .tn-points-grid td.tn-points-col-total { background:#1a202c; }
 html[data-theme="dark"] .tn-points-input { background:#2d3748; color:#e2e8f0; border-color:#4a5568; }
 html[data-theme="dark"] .tn-points-readonly { color:#a0aec0; }
+
+/* Points-bracket mobile sizing: finger-friendly pips + inputs under .tn-mobile. */
+.tn-mobile .tn-points-grid { min-width:380px; }
+.tn-mobile .tn-points-grid th,
+.tn-mobile .tn-points-grid td { padding:8px 6px; }
+.tn-mobile .tn-points-grid td.tn-points-col-player { min-width:120px; font-size:13px; }
+.tn-mobile .tn-pip { min-width:36px; height:32px; font-size:14px; }
+.tn-mobile .tn-points-input { width:54px; height:32px; font-size:14px; }
+.tn-mobile .tn-points-ribbon { font-size:12px; gap:10px; }
+
 .tn-bracket-card:last-child { margin-bottom:0; }
 .tn-bracket-header { background:#f7fafc; padding:12px 14px; display:flex; align-items:center; gap:10px; border-bottom:1px solid #e2e8f0; }
 .tn-bracket-header h4 { margin:0; font-size:14px; font-weight:700; color:#1a202c; background:transparent!important; border:none!important; padding:0!important; border-radius:0!important; text-shadow:none!important; }
