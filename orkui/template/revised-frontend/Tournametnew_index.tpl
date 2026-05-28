@@ -255,6 +255,68 @@ body.dark-mode .tn-pip:hover,
 .dark-mode .tn-pip:hover { border-color:#a0aec0; }
 body.dark-mode .tn-pip.tn-pip-selected,
 .dark-mode .tn-pip.tn-pip-selected { background:#3182ce; color:#fff; border-color:#3182ce; }
+/* Points-bracket grid */
+.tn-points-wrap { margin:8px 0; }
+.tn-points-ribbon {
+	display:flex; flex-wrap:wrap; gap:14px; padding:8px 12px; margin-bottom:8px;
+	background:#f7fafc; border:1px solid #e2e8f0; border-radius:6px;
+	font-size:13px;
+}
+.tn-points-rib-item strong { color:#2b6cb0; margin-right:4px; }
+.tn-points-grid-scroll { overflow-x:auto; }
+.tn-points-grid {
+	border-collapse:separate; border-spacing:0;
+	width:100%; min-width:520px;
+	background:transparent;
+}
+.tn-points-grid th, .tn-points-grid td {
+	padding:6px 8px; border-bottom:1px solid #edf2f7; vertical-align:middle;
+}
+.tn-points-grid th {
+	background:#edf2f7; color:#2d3748;
+	font-size:12px; font-weight:600; text-align:center;
+	border:none; padding:6px 8px; border-radius:0;
+}
+.tn-points-grid th.tn-points-col-player,
+.tn-points-grid td.tn-points-col-player {
+	text-align:left; position:sticky; left:0; background:inherit; z-index:1; min-width:160px;
+}
+.tn-points-grid th.tn-points-col-total,
+.tn-points-grid td.tn-points-col-total {
+	text-align:right; font-weight:700; position:sticky; right:0; background:inherit; z-index:1; min-width:60px;
+}
+.tn-points-cell { text-align:center; }
+.tn-points-row-inactive { opacity:.55; }
+.tn-points-input {
+	width:48px; padding:4px; text-align:center;
+	border:1px solid #cbd5e0; border-radius:4px;
+	font-size:13px; background:#fff; color:#2d3748;
+}
+.tn-points-input:focus { outline:none; border-color:#3182ce; box-shadow:0 0 0 2px rgba(49,130,206,.25); }
+.tn-points-input.tn-points-err { border-color:#e53e3e; }
+.tn-points-readonly { color:#4a5568; }
+.tn-points-status {
+	display:inline-block; width:14px; height:14px; margin-left:4px; vertical-align:middle;
+}
+.tn-points-status.tn-saving::before { content:'...'; color:#a0aec0; }
+.tn-points-status.tn-saved::before  { content:'OK'; color:#48bb78; font-size:10px; font-weight:700; }
+.tn-points-status.tn-error::before  { content:'!'; color:#e53e3e; font-weight:700; }
+body.dark-mode .tn-points-ribbon,
+.dark-mode .tn-points-ribbon { background:#2d3748; border-color:#4a5568; color:#e2e8f0; }
+body.dark-mode .tn-points-rib-item strong,
+.dark-mode .tn-points-rib-item strong { color:#63b3ed; }
+body.dark-mode .tn-points-grid th,
+.dark-mode .tn-points-grid th { background:#2d3748; color:#e2e8f0; }
+body.dark-mode .tn-points-grid td,
+.dark-mode .tn-points-grid td { border-color:#4a5568; color:#e2e8f0; }
+body.dark-mode .tn-points-grid td.tn-points-col-player,
+.dark-mode .tn-points-grid td.tn-points-col-player { background:#1a202c; }
+body.dark-mode .tn-points-grid td.tn-points-col-total,
+.dark-mode .tn-points-grid td.tn-points-col-total { background:#1a202c; }
+body.dark-mode .tn-points-input,
+.dark-mode .tn-points-input { background:#2d3748; color:#e2e8f0; border-color:#4a5568; }
+body.dark-mode .tn-points-readonly,
+.dark-mode .tn-points-readonly { color:#a0aec0; }
 .tn-bracket-card:last-child { margin-bottom:0; }
 .tn-bracket-header { background:#f7fafc; padding:12px 14px; display:flex; align-items:center; gap:10px; border-bottom:1px solid #e2e8f0; }
 .tn-bracket-header h4 { margin:0; font-size:14px; font-weight:700; color:#1a202c; background:transparent!important; border:none!important; padding:0!important; border-radius:0!important; text-shadow:none!important; }
@@ -2426,7 +2488,82 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 							</ul>
 							<?php endif; ?>
 
-							<?php if (count($mList) > 0): ?>
+							<?php if (($b['Method'] ?? '') === 'points'): ?>
+							<?php
+								$pmode   = $b['PointMode'] ?? 'fixed';
+								$pscale  = ($pmode === 'fixed') ? array_map('trim', explode(',', (string)($b['PointScale'] ?? ''))) : [];
+								$prounds = (int)($b['PointRounds'] ?? 0);
+								$pstand  = $bd['PointStandings'] ?? [];
+							?>
+							<div class="tn-points-wrap" data-bid="<?= $bid ?>"
+								data-mode="<?= htmlspecialchars($pmode) ?>"
+								data-scale="<?= htmlspecialchars((string)($b['PointScale'] ?? '')) ?>"
+								data-rounds="<?= $prounds ?>">
+
+								<div class="tn-points-ribbon" id="tn-points-ribbon-<?= $bid ?>">
+									<?php $__i = 0; foreach ($pstand as $__row): if ($__row['Status'] !== 'active' && $__row['Status'] !== '') continue; if ($__i++ >= 5) break; ?>
+										<span class="tn-points-rib-item">
+											<strong><?= $__row['Tied'] ? 'T-' : '' ?><?= htmlspecialchars((string)$__row['Place']) ?></strong>
+											<?= htmlspecialchars($__row['Alias']) ?> (<?= htmlspecialchars($__row['Total']) ?>)
+										</span>
+									<?php endforeach; ?>
+									<?php if (empty($pstand)): ?>
+										<span style="color:#a0aec0;font-size:13px">No scores yet.</span>
+									<?php endif; ?>
+								</div>
+
+								<div class="tn-points-grid-scroll">
+									<table class="tn-points-grid">
+										<thead>
+											<tr>
+												<th class="tn-points-col-player">Player</th>
+												<?php for ($__r = 1; $__r <= $prounds; $__r++): ?>
+													<th class="tn-points-col-round">R<?= $__r ?></th>
+												<?php endfor; ?>
+												<?php if ($canManage && ($b['Status'] ?? '') === 'active'): ?>
+													<th class="tn-points-col-add">
+														<button type="button" class="tn-btn tn-btn-sm tn-btn-outline" onclick="tnPointsAddRound(<?= $bid ?>)" data-tip="Add another round">+</button>
+													</th>
+												<?php endif; ?>
+												<th class="tn-points-col-total">Total</th>
+											</tr>
+										</thead>
+										<tbody>
+											<?php foreach ($pstand as $__row): $__pid = (int)$__row['ParticipantId']; ?>
+												<tr data-pid="<?= $__pid ?>" class="<?= ($__row['Status'] !== 'active' && $__row['Status'] !== '') ? 'tn-points-row-inactive' : '' ?>">
+													<td class="tn-points-col-player">#<?= $__row['ParticipantNumber'] ?> <?= htmlspecialchars($__row['Alias']) ?></td>
+													<?php for ($__r = 1; $__r <= $prounds; $__r++): $__val = $__row['RoundScores'][$__r-1] ?? null; ?>
+														<td class="tn-points-cell" data-pid="<?= $__pid ?>" data-round="<?= $__r ?>" data-value="<?= htmlspecialchars((string)($__val ?? '')) ?>">
+															<?php if (!$canManage): ?>
+																<span class="tn-points-readonly"><?= $__val !== null ? htmlspecialchars((string)$__val) : '-' ?></span>
+															<?php elseif ($pmode === 'fixed'): ?>
+																<div class="tn-pips">
+																	<?php foreach ($pscale as $__sv): $__sel = ($__val !== null && (float)$__val === (float)$__sv); ?>
+																		<span class="tn-pip <?= $__sel ? 'tn-pip-selected' : '' ?>" data-val="<?= htmlspecialchars($__sv) ?>"><?= htmlspecialchars($__sv) ?></span>
+																	<?php endforeach; ?>
+																</div>
+															<?php else: ?>
+																<input type="text" class="tn-points-input" inputmode="decimal" maxlength="5" value="<?= htmlspecialchars((string)($__val ?? '')) ?>">
+															<?php endif; ?>
+															<span class="tn-points-status" aria-hidden="true"></span>
+														</td>
+													<?php endfor; ?>
+													<?php if ($canManage && ($b['Status'] ?? '') === 'active'): ?>
+														<td class="tn-points-col-add">&nbsp;</td>
+													<?php endif; ?>
+													<td class="tn-points-col-total"><?= htmlspecialchars((string)$__row['Total']) ?></td>
+												</tr>
+											<?php endforeach; ?>
+											<?php if (empty($pstand)): ?>
+												<tr><td colspan="<?= 2 + $prounds + ($canManage && ($b['Status'] ?? '') === 'active' ? 1 : 0) ?>" style="text-align:center;color:#a0aec0;padding:16px">No participants yet.</td></tr>
+											<?php endif; ?>
+										</tbody>
+									</table>
+								</div>
+							</div>
+							<?php endif; /* method === points */?>
+
+							<?php if (($b['Method'] ?? '') !== 'points' && count($mList) > 0): ?>
 <?php $_isIronman = ($b['Method'] === 'ironman'); $_seqId = 'tn-seq-' . $bid; ?>
 							<div style="margin-top:12px;border-top:1px solid #f0f4f8;padding-top:10px">
 								<div style="display:flex;align-items:center;gap:6px<?= $_isIronman ? '' : ';margin-bottom:8px' ?>">
@@ -2461,7 +2598,7 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 								</table>
 								</div>
 							</div>
-							<?php elseif (count($pList) > 0): ?>
+							<?php elseif (count($pList) > 0 && ($b['Method'] ?? '') !== 'points'): ?>
 							<div class="tn-empty" style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f4f8">
 								No matches generated yet. Use "Generate" to create the bracket draw.
 							</div>
