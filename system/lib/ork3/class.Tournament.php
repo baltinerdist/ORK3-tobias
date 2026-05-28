@@ -260,6 +260,10 @@ class Tournament extends Ork3 {
 			if (($request['Method'] ?? '') === 'ironman' && ($request['Participants'] ?? '') === 'team') {
 				return InvalidParameter(null, 'Team mode is not supported for Ironman brackets.');
 			}
+			if (($request['Method'] ?? '') === 'points') {
+				$err = $this->validate_points_config($request, true);
+				if ($err !== null) return InvalidParameter(null, $err);
+			}
 			$this->Bracket->clear();
 			$this->Bracket->tournament_id = $request['TournamentId'];
 			$this->Bracket->style         = $request['Style'];
@@ -270,6 +274,13 @@ class Tournament extends Ork3 {
 			$this->Bracket->seeding          = $request['Seeding'];
 			$this->Bracket->duration_minutes = max(0, (int)($request['DurationMinutes'] ?? 0));
 			$this->Bracket->best_of          = self::normalize_best_of($request['BestOf'] ?? 1);
+			if (($request['Method'] ?? '') === 'points') {
+				$this->Bracket->point_rounds = (int)$request['PointRounds'];
+				$this->Bracket->point_mode   = $request['PointMode'];
+				$this->Bracket->point_scale  = ($request['PointMode'] === 'fixed')
+					? $this->normalize_point_scale($request['PointScale'] ?? '')
+					: null;
+			}
 			$this->Bracket->save();
 			$this->bustTournamentReportCache();
 			return Success($this->Bracket->bracket_id);
@@ -281,6 +292,46 @@ class Tournament extends Ork3 {
 		$n = (int)$v;
 		$allowed = [1, 3, 5, 7, 9];
 		return in_array($n, $allowed, true) ? $n : 1;
+	}
+
+	/**
+	 * Validate Points-bracket config. Returns null on success, an error string on failure.
+	 * @param array $r Request payload (PointRounds, PointMode, PointScale).
+	 * @param bool $allowScaleAndMode If false, callers (mid-run edits with scoring already
+	 *                                started) skip mode/scale validation since those fields
+	 *                                are locked.
+	 */
+	private function validate_points_config($r, $allowScaleAndMode = true) {
+		$rounds = (int)($r['PointRounds'] ?? 0);
+		if ($rounds < 1 || $rounds > 32) return 'PointRounds must be 1â32.';
+		if ($allowScaleAndMode) {
+			$mode = $r['PointMode'] ?? '';
+			if ($mode !== 'fixed' && $mode !== 'open') return 'PointMode must be fixed or open.';
+			if ($mode === 'fixed') {
+				$raw = trim((string)($r['PointScale'] ?? ''));
+				if ($raw === '') return 'PointScale CSV required for fixed mode.';
+				$parts = array_map('trim', explode(',', $raw));
+				if (count($parts) < 1 || count($parts) > 16) return 'PointScale must have 1â16 values.';
+				$seen = [];
+				foreach ($parts as $p) {
+					if (!preg_match('/^\\d+(\\.\\d{1,2})?$/', $p)) return "PointScale value \"$p\" invalid (non-neg decimal, â¤2 dp).";
+					$f = (float)$p;
+					if ($f < 0 || $f > 999.99) return "PointScale value \"$p\" out of range (0â999.99).";
+					$key = number_format($f, 2, '.', '');
+					if (isset($seen[$key])) return "PointScale has duplicate value \"$p\".";
+					$seen[$key] = true;
+				}
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Normalize a PointScale CSV for storage: comma-joined, trimmed, no spaces.
+	 */
+	private function normalize_point_scale($raw) {
+		$parts = array_map('trim', explode(',', (string)$raw));
+		return implode(',', $parts);
 	}
 
 	public function UpdateBracket($request) {
@@ -312,6 +363,29 @@ class Tournament extends Ork3 {
 			if (isset($request['Rings']))        $this->Bracket->rings        = (int)$request['Rings'];
 			if (isset($request['Participants'])) $this->Bracket->participants = $request['Participants'];
 			if (isset($request['Seeding']))      $this->Bracket->seeding      = $request['Seeding'];
+		}
+
+		if (($request['Method'] ?? $this->Bracket->method) === 'points') {
+			// Determine if any cells are already scored — locks mode + scale.
+			$hasScores = false;
+			$r = $this->db->query("SELECT COUNT(*) AS n FROM " . DB_PREFIX . "point_score WHERE bracket_id = $bracket_id AND points IS NOT NULL");
+			if ($r && $r->next()) $hasScores = ((int)$r->n > 0);
+
+			$err = $this->validate_points_config($request, !$hasScores);
+			if ($err !== null) return InvalidParameter(null, $err);
+
+			$newRounds = (int)$request['PointRounds'];
+			$curRounds = (int)($this->Bracket->point_rounds ?? 0);
+			if ($this->Bracket->status === 'active' && $newRounds < $curRounds) {
+				return InvalidParameter(null, 'Cannot reduce rounds after bracket is active. Reset bracket first.');
+			}
+			$this->Bracket->point_rounds = $newRounds;
+			if (!$hasScores) {
+				$this->Bracket->point_mode  = $request['PointMode'];
+				$this->Bracket->point_scale = ($request['PointMode'] === 'fixed')
+					? $this->normalize_point_scale($request['PointScale'] ?? '')
+					: null;
+			}
 		}
 
 		$this->Bracket->save();
