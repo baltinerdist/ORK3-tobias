@@ -12097,4 +12097,79 @@ html[data-theme="dark"] .tn-team-chip { background:#2a4a6b; color:#90cdf4; }
 	window.tnPointsPostSave = postSave;
 	window.tnPointsRenderStandings = renderStandings;
 })();
+
+// =============================================
+// Task 11 -- Points-bracket Open-mode input + auto-save
+// Commits the cell value on blur/Enter; validates non-negative decimal
+// (<= 2 dp, <= 999.99); flashes red border + reverts on invalid input.
+// Reuses window.tnPointsPostSave from Task 10.
+// =============================================
+(function(){
+	function validateOpen(v) {
+		if (v === '' || v === null) return { ok:true, value:null };
+		if (!/^\d+(\.\d{1,2})?$/.test(v)) return { ok:false, error:'Use non-negative decimal (<=2 dp).' };
+		var f = parseFloat(v);
+		if (f < 0 || f > 999.99) return { ok:false, error:'Out of range (0-999.99).' };
+		return { ok:true, value:f.toFixed(2) };
+	}
+
+	function commit(input) {
+		var cell = input.closest('.tn-points-cell');
+		if (!cell) return;
+		var wrap = cell.closest('.tn-points-wrap');
+		if (!wrap) return;
+		var bid   = wrap.dataset.bid;
+		var pid   = cell.dataset.pid;
+		var round = cell.dataset.round;
+		var raw   = (input.value || '').trim();
+		var prev  = cell.dataset.value || '';
+
+		var prevNum = (prev === '') ? null : parseFloat(prev);
+		var rawNum  = (raw === '')  ? null : parseFloat(raw);
+		if (prevNum === rawNum) return;
+		if (prevNum === null && rawNum === null) return;
+
+		var v = validateOpen(raw);
+		if (!v.ok) {
+			input.classList.add('tn-points-err');
+			input.value = prev;
+			setTimeout(function(){ input.classList.remove('tn-points-err'); }, 800);
+			return;
+		}
+		input.classList.remove('tn-points-err');
+
+		if (typeof window.tnPointsPostSave === 'function') {
+			window.tnPointsPostSave(bid, pid, round, v.value, cell);
+		} else {
+			console.log('[points] tnPointsPostSave not available');
+		}
+	}
+
+	document.addEventListener('blur', function(ev){
+		var t = ev.target;
+		if (t && t.classList && t.classList.contains('tn-points-input')) {
+			commit(t);
+		}
+	}, true);
+
+	document.addEventListener('keydown', function(ev){
+		if (ev.key !== 'Enter') return;
+		var t = ev.target;
+		if (t && t.classList && t.classList.contains('tn-points-input')) {
+			ev.preventDefault();
+			t.blur();
+		}
+	});
+
+	document.addEventListener('input', function(ev){
+		var t = ev.target;
+		if (!(t && t.classList && t.classList.contains('tn-points-input'))) return;
+		var cleaned = (t.value || '').replace(/[^\d.]/g, '');
+		var firstDot = cleaned.indexOf('.');
+		if (firstDot !== -1) {
+			cleaned = cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, '');
+		}
+		if (cleaned !== t.value) t.value = cleaned;
+	});
+})();
 </script>
