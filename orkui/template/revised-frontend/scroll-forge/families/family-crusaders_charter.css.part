@@ -1,0 +1,770 @@
+/* ============================================================================
+   THE LETTERED SCROLL — families/family-crusaders_charter.css.part
+   ----------------------------------------------------------------------------
+   FAMILY:  Crusader's Charter   (data-family="crusaders_charter")
+   ROLE:    Letters-Patent of a martial knightly order — the peerage /
+            knighting register. A formal accolade scroll granted to a new
+            knight of the order: bold gules-and-argent livery bar border (the
+            heraldic rule of tincture honoured), cross-pattée corner bosses,
+            torse-flanked heater shields, a banderole (ribbon scroll) motto
+            beneath the title, and a GREEN (charter / perpetual) pendant wax
+            seal. Register: knightly accolade — Letters Patent of Knighthood.
+
+   THROUGHLINE — MARTIAL HERALDRY, not a garden. Where Forest Reverie is
+   foliate and Imperial Edict is imperial, Crusader's Charter is ARMOURY: the
+   ornament vocabulary is the cross-pattée, the heater shield, the torse
+   (wreath of livery colours), and the banderole. The two-colour gules+argent
+   livery bar — alternating heraldic red and silver-white blocks — is the
+   family's instant tell. The seal is GREEN on purpose: green wax meant a
+   perpetual / standing grant (a charter in fee), which is exactly what a
+   patent of knighthood is.
+
+   CONTRACT (per sf-tokens.css.part — obeyed exactly):
+     • RE-SETS ONLY the permitted per-family tokens: substrate trio (+
+       grime/foxing/ruling), --ink / --ink-muted / --rubric, the --gold* ramp,
+       --border, --rule-fine, --accent[-soft], --initial-ground, --wax* /
+       --ribbon-*, --escutcheon, --arms-rim / --arms-keyline, the --ff-* font
+       aliases, --ls-title, and the --motif data hook.
+     • MUST NOT touch z-index, --sheet-*, spacing/--gap-*, the shadow/gild
+       helper recipes, or the motion (--t-*) tokens — those stay shared.
+     • Every rule is scoped under .sc2-scroll[data-family="crusaders_charter"]
+       so the app dark-mode chrome can never bleed into the vellum and this
+       family can never leak onto its neighbours.
+     • Ornament selectors bind to the locked sc2-* DOM hooks only; they
+       DECORATE the shared layers and never re-flow the document or redefine
+       geometry. Raw CSS, no <style> wrapper.
+
+   PALETTE (authoritative for this family):
+     vellum #f4e8c8 / hi #faf0d6 / lo (derived warm tan)
+     ink #1c1810 · rubric #8b0000 (gules)
+     gold #d4af37 hi #fff4c2 deep #a9760a keyline #5a3d0c
+     border / accent #8b0000 (gules) · initial-ground #8b0000
+     wax #1e5631 (green=perpetual) hi #3a7a4e lo #103a1f
+     ribbon-a #8b0000 (gules) · ribbon-b #f2f2f0 (argent)
+   ============================================================================ */
+
+
+/* ============================================================================
+   1. TOKEN OVERRIDES  —  scoped to the family
+   ----------------------------------------------------------------------------
+   These re-set the shared CSS variables to the Crusader's Charter livery.
+   This partial loads AFTER sf-tokens.css.part at equal specificity, so these
+   values win over the baseline per the locked load order.
+   ============================================================================ */
+.sc2-scroll[data-family="crusaders_charter"] {
+
+	/* ── SUBSTRATE / VELLUM ──────────────────────────────────────────────────
+	   Warm, prepared chancery calf — a patent meant to be kept and displayed,
+	   so it is clean and golden rather than scorched or weathered. The radial
+	   centre is the palest catch; the edge ages to a soft saddle tan. */
+	--vellum:            #f4e8c8;   /* base parchment body                        */
+	--vellum-hi:         #faf0d6;   /* lightest centre (radial top)               */
+	--vellum-lo:         #ddc79a;   /* aged saddle-tan edge                       */
+	--grime:             rgba(74,46,20,.30);   /* edge-grime vignette (warm)      */
+	--foxing:            #b58c54;   /* stain / foxing blobs (used 8–18% alpha)    */
+	--ruling:            #9c8156;   /* faint chancery ruling + pricking           */
+	--curl-shadow:       rgba(64,40,16,.34);   /* cast shadow under any curl      */
+
+	/* ── INK ──────────────────────────────────────────────────────────────────
+	   Near-black warm sepia for the legal text; the muted tone carries the
+	   gules toward sanguine so titles/labels read martial, not merely brown. */
+	--ink:               #1c1810;   /* body ink — NEVER #000, but the darkest     */
+	--ink-muted:         #5a2a22;   /* intitulation / signature titles (sanguine) */
+	--rubric:            #8b0000;   /* gules: knight's name + dispositive openers */
+
+	/* ── GILDING — bright order-gold; the cross-pattée + bar keylines ramp ────
+	   Honours: never a flat #ffd700 fill — always the shared raised-gilt recipe
+	   (--gild-gradient / --gild-text-stroke / --gild-drop) on any meaningful
+	   surface; the ramp below only re-tints those composites. */
+	--gold:              #d4af37;   /* mid body gold                              */
+	--gold-hi:           #fff4c2;   /* specular hotspot                           */
+	--gold-deep:         #a9760a;   /* lower gold shade                           */
+	--gold-shadow:       #6e4d08;   /* darkest gold stop                          */
+	--gold-keyline:      #5a3d0c;   /* thin dark recess line — sells "raised"     */
+
+	/* ── BORDER / FRAME — the gules of the livery bar ─────────────────────────
+	   The bar alternates this gules with argent (see the bar ornament below);
+	   the rule of tincture (metal never on metal, colour never on colour) is
+	   honoured by always laying a gilt keyline BETWEEN the two. */
+	--border:            #8b0000;   /* gules livery field                         */
+	--rule-fine:         #6b2a18;   /* sanguine-brown hairline outer rule         */
+	--initial-ground:    #8b0000;   /* drop-cap decorated-box ground = gules      */
+
+	/* ── ACCENT (secondary) — reads as the same heraldic gules ───────────────*/
+	--accent:            #8b0000;
+	--accent-soft:       rgba(139,0,0,.24);    /* washed gules (banderole field)  */
+
+	/* ── WAX SEAL — GREEN (charter / perpetual grant) ─────────────────────────
+	   Green sealing wax marked a standing grant in fee — exactly a knighting
+	   patent. Pressed hard, gilt-rimmed, with a hot upper-left catch-light. */
+	--wax:               #1e5631;   /* green wax body                             */
+	--wax-hi:            #3a7a4e;   /* upper-left catch-light                      */
+	--wax-lo:            #103a1f;   /* pooled centre / rim                        */
+
+	/* ── LIVERY RIBBON TAILS — gules + argent (the order's colours) ──────────*/
+	--ribbon-a:          #8b0000;   /* gules ribbon tail                          */
+	--ribbon-b:          #f2f2f0;   /* argent ribbon tail                         */
+
+	/* ── HERALDRY — heater shield (the martial escutcheon), gilt rim ─────────
+	   --escutcheon maps to the clipPath id hook #sc2-escutcheon-heater the
+	   markup already provides; gilt rim, deep sanguine keyline. */
+	--escutcheon:        heater;
+	--arms-rim:          var(--gold);
+	--arms-keyline:      #3a1410;
+
+	/* ── TYPOGRAPHY ──────────────────────────────────────────────────────────
+	   Title: UnifrakturMaguntia (the baseline --ff-title default — kept), the
+	   grand textura of a formal patent. Body: EB Garamond (humanist chancery).
+	   Signatures: EB Garamond ITALIC. The versal is textura to match the title. */
+	--ff-title:          "UnifrakturMaguntia","UnifrakturCook","Pirata One","Times New Roman",serif;
+	--ff-body:           "EB Garamond","Cardo","IM Fell English",Garamond,Georgia,serif;
+	--ff-sign:           "EB Garamond","Cardo","IM Fell English",serif;   /* render italic */
+	--ff-versal:         "UnifrakturMaguntia","EB Garamond",serif;
+	--ls-title:          .01em;     /* never track blackletter wide               */
+
+	/* ── MOTIF DATA HOOK ──────────────────────────────────────────────────────
+	   Read by the illumination engine to pick the inline-SVG motif. */
+	--motif:             "crusader-cross";
+}
+
+
+/* ============================================================================
+   2. ILLUMINATION BORDER — gules+argent livery bar, cross-pattée corner bosses
+   ----------------------------------------------------------------------------
+   The border SVG (viewBox 0 0 850 1100) exposes:
+     .sc2-border__rule    — the fine outer hairline rule
+     .sc2-border__bar     — the bold field bar
+     .sc2-border__band[data-sc2-band]    — the decorated band track
+     .sc2-border__corners[data-sc2-corners] — the four corner ornament slots
+   We colour the bar as a GULES+ARGENT alternation (the family tell), edge it
+   in gilt to honour the rule of tincture, and drop a cross-pattée boss into
+   each corner slot. We never redraw the band geometry — only paint it.
+   ============================================================================ */
+
+/* Drive any stroke="currentColor" geometry in the border to the gules field. */
+.sc2-scroll[data-family="crusaders_charter"] .sc2-border {
+	color: var(--border);
+	filter: drop-shadow(0 1px 1px rgba(40,12,8,.35));
+}
+
+/* Fine outer rule — a single bright gilt hairline, raised. */
+.sc2-scroll[data-family="crusaders_charter"] .sc2-border__rule {
+	fill: none;
+	stroke: var(--gold);
+	stroke-width: 1.25;
+	filter: drop-shadow(0 .5px .5px rgba(60,24,8,.5));
+}
+
+/* The BAR — bold gules ground. The argent halves of the livery alternation
+   are painted as a repeating overlay on the band track (see [data-sc2-band]
+   below); the bar itself carries the gules and the dark keyline that keeps
+   metal off metal where argent meets gilt. */
+.sc2-scroll[data-family="crusaders_charter"] .sc2-border__bar {
+	fill: var(--border);
+	stroke: var(--gold-keyline);
+	stroke-width: .6;
+}
+
+/* LIVERY ALTERNATION — the gules+argent striped bar.
+   The band track [data-sc2-band] runs the full frame; we fill it with a
+   hard-edged repeating gradient that alternates gules and argent blocks,
+   honouring the rule of tincture by inserting a thin gilt keyline at every
+   colour↔metal join. This is the family's signature treatment. (SVG fills via
+   `fill`; HTML strips via `background-image` — both declared so either build
+   shows the livery.) */
+.sc2-scroll[data-family="crusaders_charter"] .sc2-border__band[data-sc2-band] {
+	fill: var(--border);
+}
+.sc2-scroll[data-family="crusaders_charter"] .sc2-border__band[data-sc2-band="top"],
+.sc2-scroll[data-family="crusaders_charter"] .sc2-border__band[data-sc2-band="bottom"] {
+	background-image: repeating-linear-gradient(90deg,
+		var(--border)       0,    var(--border)       30px,
+		var(--gold-deep)    30px, var(--gold-deep)    32px,
+		var(--ribbon-b)     32px, var(--ribbon-b)     62px,
+		var(--gold-deep)    62px, var(--gold-deep)    64px);
+}
+.sc2-scroll[data-family="crusaders_charter"] .sc2-border__band[data-sc2-band="left"],
+.sc2-scroll[data-family="crusaders_charter"] .sc2-border__band[data-sc2-band="right"] {
+	background-image: repeating-linear-gradient(180deg,
+		var(--border)       0,    var(--border)       30px,
+		var(--gold-deep)    30px, var(--gold-deep)    32px,
+		var(--ribbon-b)     32px, var(--ribbon-b)     62px,
+		var(--gold-deep)    62px, var(--gold-deep)    64px);
+}
+
+/* Fallback for builds where the band is an HTML strip rather than an SVG fill:
+   carry the gilt top catch-light / sanguine recess / gilt keyline framing. */
+.sc2-scroll[data-family="crusaders_charter"] .sc2-illum .sc2-border__band {
+	background-color: var(--border);
+	box-shadow:
+		inset 0  .75px 0 rgba(255,244,194,.45),   /* gilt top catch-light        */
+		inset 0 -.75px 0 rgba(40,12,8,.5),        /* sanguine bottom recess       */
+		0 0 0 .75px var(--gold-keyline);          /* gilt outer keyline           */
+}
+
+/* CROSS-PATTÉE CORNER BOSSES — the four .sc2-border__corners slots.
+   The defining motif: a gilt cross-pattée (arms flaring to the tips) on a
+   gules disc boss. Painted SVG when present; the CSS fallback below synthesises
+   the same cross from masks so it survives builds without the SVG glyph. */
+.sc2-scroll[data-family="crusaders_charter"] .sc2-border__corners[data-sc2-corners] .sc2-cross-pattee,
+.sc2-scroll[data-family="crusaders_charter"] .sc2-border__corners[data-sc2-corners] path {
+	fill: var(--gold);
+	stroke: var(--gold-keyline);
+	stroke-width: .6;
+	filter: var(--gild-drop);
+}
+.sc2-scroll[data-family="crusaders_charter"] .sc2-border__corners[data-sc2-corners] .sc2-cross-boss {
+	fill: var(--initial-ground);      /* gules disc behind the cross            */
+	stroke: var(--gold);
+	stroke-width: 1;
+}
+.sc2-scroll[data-family="crusaders_charter"] .sc2-border__corners[data-sc2-corners] .sc2-cross-pip {
+	fill: var(--gold-hi);             /* tiny gilt centre pip                    */
+}
+
+/* CSS-synthesised cross-pattée for the .sc2-illum corner slots (no-op if the
+   SVG glyph already fills them). A gules disc carrying a gilt cross whose arms
+   flare to the edge — built from four conic-masked flares around a centre. */
+.sc2-scroll[data-family="crusaders_charter"] .sc2-illum .sc2-corner {
+	background: none;
+}
+.sc2-scroll[data-family="crusaders_charter"] .sc2-illum .sc2-corner::before {
+	content: "";
+	position: absolute;
+	width: 38px;
+	height: 38px;
+	border-radius: 50%;
+	/* gules boss disc with a raised gilt rim */
+	background:
+		radial-gradient(circle at 38% 32%,
+			color-mix(in srgb, var(--initial-ground) 82%, #fff 18%) 0%,
+			var(--initial-ground) 46%,
+			color-mix(in srgb, var(--initial-ground) 78%, #000 22%) 100%);
+	box-shadow:
+		inset 0 0 0 1.5px var(--gold),
+		inset 0 0 0 2.6px var(--gold-keyline),
+		0 1px 2px rgba(40,12,8,.45);
+}
+.sc2-scroll[data-family="crusaders_charter"] .sc2-illum .sc2-corner::after {
+	content: "";
+	position: absolute;
+	width: 26px;
+	height: 26px;
+	pointer-events: none;
+	/* gilt cross-pattée: two crossed bars whose ends flare via conic masks */
+	background:
+		linear-gradient(135deg,
+			var(--gold-shadow) 0%, var(--gold) 28%, var(--gold-hi) 50%,
+			var(--gold) 72%, var(--gold-deep) 100%);
+	-webkit-mask:
+		conic-gradient(from -45deg  at 50% 0,    #000 0 90deg, transparent 0) 50% 0    / 64% 50% no-repeat,
+		conic-gradient(from 135deg  at 50% 100%, #000 0 90deg, transparent 0) 50% 100% / 64% 50% no-repeat,
+		conic-gradient(from 45deg   at 0 50%,    #000 0 90deg, transparent 0) 0 50%    / 50% 64% no-repeat,
+		conic-gradient(from -135deg at 100% 50%, #000 0 90deg, transparent 0) 100% 50% / 50% 64% no-repeat,
+		linear-gradient(#000 0 0) 50% 50% / 38% 38% no-repeat;
+	        mask:
+		conic-gradient(from -45deg  at 50% 0,    #000 0 90deg, transparent 0) 50% 0    / 64% 50% no-repeat,
+		conic-gradient(from 135deg  at 50% 100%, #000 0 90deg, transparent 0) 50% 100% / 64% 50% no-repeat,
+		conic-gradient(from 45deg   at 0 50%,    #000 0 90deg, transparent 0) 0 50%    / 50% 64% no-repeat,
+		conic-gradient(from -135deg at 100% 50%, #000 0 90deg, transparent 0) 100% 50% / 50% 64% no-repeat,
+		linear-gradient(#000 0 0) 50% 50% / 38% 38% no-repeat;
+	filter: drop-shadow(0 1px 1px rgba(40,12,8,.55));
+}
+/* Anchor each cross-pattée boss to its corner. */
+.sc2-scroll[data-family="crusaders_charter"] .sc2-illum .sc2-corner--tl::before { top: 7px;     left: 7px;  }
+.sc2-scroll[data-family="crusaders_charter"] .sc2-illum .sc2-corner--tr::before { top: 7px;     right: 7px; }
+.sc2-scroll[data-family="crusaders_charter"] .sc2-illum .sc2-corner--bl::before { bottom: 7px;  left: 7px;  }
+.sc2-scroll[data-family="crusaders_charter"] .sc2-illum .sc2-corner--br::before { bottom: 7px;  right: 7px; }
+.sc2-scroll[data-family="crusaders_charter"] .sc2-illum .sc2-corner--tl::after  { top: 13px;    left: 13px; }
+.sc2-scroll[data-family="crusaders_charter"] .sc2-illum .sc2-corner--tr::after  { top: 13px;    right: 13px;}
+.sc2-scroll[data-family="crusaders_charter"] .sc2-illum .sc2-corner--bl::after  { bottom: 13px; left: 13px; }
+.sc2-scroll[data-family="crusaders_charter"] .sc2-illum .sc2-corner--br::after  { bottom: 13px; right: 13px;}
+
+
+/* ============================================================================
+   2b. WRITING PANEL — argent/vellum card behind the prose (CONTRAST FIX)
+   ----------------------------------------------------------------------------
+   The gules livery is intentional and rich, but it reads dark and threatens to
+   swallow the body prose (defect img6: body/intitulation/datum/signatures
+   nearly invisible — dark ink on a dark-red read). Rather than dilute the
+   gules, we seat the writing column on a light argent/vellum PARCHMENT CARD so
+   the existing dark ink reads crisply, while the gules continues to show in the
+   border, bar, corners and margins around it. ONE approach, applied once, here.
+
+   The card is painted on .sc2-content's own ::before so it needs no new markup
+   and never re-flows the document; .sc2-content is z-index:4 (above vellum/
+   illum), so its children — title, body, grant, datum, signatures — all sit on
+   the light ground. A gilt keyline + soft inner light frames it as an inlaid
+   patent panel honouring the order-gold ramp. */
+.sc2-scroll[data-family="crusaders_charter"] .sc2-content {
+	position: relative;
+}
+.sc2-scroll[data-family="crusaders_charter"] .sc2-content::before {
+	content: "";
+	position: absolute;
+	inset: -1.1em -1.4em;            /* bleed just past the text column edge      */
+	z-index: -1;                      /* behind the prose, above the gules layers  */
+	pointer-events: none;
+	border-radius: 4px;
+	/* warm argent/vellum parchment card */
+	background:
+		radial-gradient(120% 140% at 50% 0%,
+			var(--vellum-hi) 0%,
+			var(--vellum)    48%,
+			color-mix(in srgb, var(--vellum) 88%, var(--vellum-lo) 12%) 100%);
+	box-shadow:
+		inset 0 0 0 1px rgba(255,244,194,.55),       /* inner gilt catch-light    */
+		inset 0 0 0 2.25px var(--gold-deep),         /* gilt keyline frame        */
+		inset 0 0 0 3px var(--gold-keyline),         /* dark recess sells "raised"*/
+		0 1px 3px rgba(40,12,8,.30);                 /* lift off the gules ground */
+}
+/* No-color-mix fallback: flat warm vellum card. */
+@supports not (background: color-mix(in srgb, red 50%, blue)) {
+	.sc2-scroll[data-family="crusaders_charter"] .sc2-content::before {
+		background: var(--vellum);
+	}
+}
+
+
+/* ============================================================================
+   3. TYPOGRAPHY — knightly accolade hierarchy
+   ----------------------------------------------------------------------------
+   Grand textura title carrying a BANDEROLE motto beneath it; gules invocation;
+   gules knight's-name rubric; justified humanist body with a gules-grounded
+   illuminated versal; centred dispositive accolade clause; italic signatures.
+   ALL prose below sits on the light argent writing card (§2b), so the dark warm
+   inks read crisply against parchment while the gules frames the page.
+   ============================================================================ */
+
+/* TITLE — grand gilt textura, the locked gilt-text recipe (raised gold, never
+   flat), tightest tracking the spec permits, sanguine drop so it reads pressed
+   into the patent. */
+.sc2-scroll[data-family="crusaders_charter"] .sc2-title {
+	font-family: var(--ff-title);
+	letter-spacing: var(--ls-title);
+	line-height: .96;
+	position: relative;
+	background: var(--gild-gradient);
+	-webkit-background-clip: text;
+	        background-clip: text;
+	color: transparent;
+	-webkit-text-fill-color: transparent;
+	-webkit-text-stroke: var(--gild-text-stroke);
+	filter:
+		drop-shadow(0 1px 0 var(--gold-hi))
+		drop-shadow(0 2px 2px rgba(40,12,8,.4));
+}
+
+/* BANDEROLE MOTTO — a ribbon scroll strip slung beneath the title.
+   Built CSS-only via ::after on the title so it needs no new markup: a gules
+   field strip with an argent-tinted top light, its short ends cut into
+   swallow-tail forks (the classic banderole). The order's motto rides on the
+   strip; the engine sets it through the --sc2-motto custom property when a
+   motto exists, otherwise the strip shows as a blank ribbon ornament. */
+.sc2-scroll[data-family="crusaders_charter"] .sc2-title::after {
+	content: var(--sc2-motto, "");
+	display: block;
+	width: min(70%, 34ch);
+	margin: .42em auto 0;
+	padding: .18em 2.4em;
+	box-sizing: border-box;
+	font-family: var(--ff-body);
+	font-style: italic;
+	font-size: .30em;                 /* relative to the large title em          */
+	letter-spacing: .16em;
+	text-transform: uppercase;
+	text-align: center;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	color: var(--vellum-hi);
+	-webkit-text-fill-color: var(--vellum-hi);
+	-webkit-text-stroke: 0;
+	/* the gules banderole field: argent-tinted top light → gules → sanguine */
+	background:
+		linear-gradient(180deg,
+			color-mix(in srgb, var(--border) 70%, #fff 30%) 0%,
+			var(--border) 28%,
+			color-mix(in srgb, var(--border) 80%, #000 20%) 100%);
+	box-shadow:
+		inset 0  1px 0 rgba(255,255,255,.28),
+		inset 0 -2px 3px rgba(40,12,8,.5),
+		0 0 0 1px var(--gold-keyline),
+		0 1px 2px rgba(40,12,8,.4);
+	/* swallow-tail forked ends: notch a triangle out of each short edge */
+	-webkit-clip-path: polygon(0 0, 6% 50%, 0 100%, 100% 100%, 94% 50%, 100% 0);
+	        clip-path: polygon(0 0, 6% 50%, 0 100%, 100% 100%, 94% 50%, 100% 0);
+}
+/* Folded-back ribbon returns behind the banderole — a darker gules tab that
+   reads as the scroll curling behind the title block. */
+.sc2-scroll[data-family="crusaders_charter"] .sc2-title::before {
+	content: "";
+	position: absolute;
+	left: 50%;
+	bottom: -.10em;
+	transform: translateX(-50%);
+	width: min(78%, 38ch);
+	height: .26em;
+	z-index: -1;
+	pointer-events: none;
+	background:
+		linear-gradient(180deg,
+			color-mix(in srgb, var(--border) 78%, #000 22%),
+			color-mix(in srgb, var(--border) 60%, #000 40%));
+	box-shadow: 0 1px 2px rgba(40,12,8,.45);
+	border-radius: 1px;
+}
+
+/* INVOCATION — the rubricated accolade opener ("Know all men by these presents
+   that We, of Our grace, have girded with the belt of knighthood…"). */
+.sc2-scroll[data-family="crusaders_charter"] .sc2-invocation {
+	font-family: var(--ff-body);
+	color: var(--rubric);
+	letter-spacing: var(--ls-invocation);
+	font-variant: small-caps;
+	text-transform: uppercase;
+}
+/* Cross-pattée fleurons bracketing the invocation — the order's mark. */
+.sc2-scroll[data-family="crusaders_charter"] .sc2-invocation::before,
+.sc2-scroll[data-family="crusaders_charter"] .sc2-invocation::after {
+	content: "✠";                     /* cross-pattée glyph                       */
+	color: var(--gold-deep);
+	margin: 0 .55em;
+	font-size: .95em;
+	-webkit-text-stroke: .3px var(--gold-keyline);
+	vertical-align: -.02em;
+}
+
+/* INTITULATION — sanguine small-caps gravitas, old-style figures. */
+.sc2-scroll[data-family="crusaders_charter"] .sc2-intitulation {
+	font-family: var(--ff-body);
+	color: var(--ink-muted);
+	font-variant: small-caps;
+	letter-spacing: var(--ls-intitulation);
+	font-feature-settings: "smcp" 1, "onum" 1;
+}
+
+/* BODY — justified humanist chancery with ligatures + old-style figures. */
+.sc2-scroll[data-family="crusaders_charter"] .sc2-body {
+	font-family: var(--ff-body);
+	color: var(--ink);
+	text-align: justify;
+	text-justify: inter-word;
+	hyphens: auto;
+	font-feature-settings: "liga" 1, "onum" 1, "kern" 1;
+}
+
+/* KNIGHT'S NAME — the central gules rubric, the eye's anchor. */
+.sc2-scroll[data-family="crusaders_charter"] .sc2-rubric,
+.sc2-scroll[data-family="crusaders_charter"] .sc2-recipient,
+.sc2-scroll[data-family="crusaders_charter"] .sc2-body .sc2-rubric {
+	color: var(--rubric);
+	font-weight: 600;
+	text-shadow: var(--rubric-shadow);
+	font-feature-settings: "onum" 1, "liga" 1;
+}
+
+/* ILLUMINATED VERSAL — gilt textura initial on a gules ground box.
+   Target the ::first-letter ONLY (the [data-sc2-versal] hook is on the whole
+   first <p>; styling that paragraph would gild the entire body text). */
+.sc2-scroll[data-family="crusaders_charter"] .sc2-body > p:first-of-type::first-letter {
+	font-family: var(--ff-versal);
+	color: var(--gold-hi);
+	-webkit-text-fill-color: var(--gold-hi);
+	background:
+		linear-gradient(135deg,
+			color-mix(in srgb, var(--initial-ground) 86%, #000 14%) 0%,
+			var(--initial-ground) 54%,
+			color-mix(in srgb, var(--initial-ground) 76%, #000 24%) 100%);
+	text-shadow:
+		0 1px 0 var(--gold-shadow),
+		0 0 6px rgba(255,238,180,.35);
+	box-shadow:
+		inset 0 0 0 1.5px var(--gold),
+		inset 0 0 0 3px   var(--initial-ground),
+		inset 0 0 0 3.75px var(--gold-keyline),
+		0 1px 2px rgba(40,12,8,.42);
+}
+
+/* GRANT / DISPOSITIVE CLAUSE — the operative accolade words, centred chancery
+   ("…and do hereby admit and create him a Knight of this Order, with all the
+   rights, honours, and dignities thereunto belonging."). */
+.sc2-scroll[data-family="crusaders_charter"] .sc2-grant {
+	font-family: var(--ff-body);
+	font-style: italic;
+	text-align: center;
+	color: var(--ink);
+	font-size: var(--fs-grant);
+	font-feature-settings: "onum" 1, "liga" 1;
+}
+.sc2-scroll[data-family="crusaders_charter"] .sc2-grant .sc2-grant__verb {
+	font-variant: small-caps;
+	font-style: normal;
+	letter-spacing: .06em;
+	color: var(--rubric);
+}
+.sc2-scroll[data-family="crusaders_charter"] .sc2-grant .sc2-grant__award {
+	color: var(--rubric);
+	font-weight: 600;
+}
+
+/* DATUM — "Given under Our hand and seal", period form, sanguine italic. */
+.sc2-scroll[data-family="crusaders_charter"] .sc2-datum {
+	font-family: var(--ff-body);
+	font-style: italic;
+	letter-spacing: .03em;
+	color: var(--ink-muted);
+	text-align: center;
+	font-feature-settings: "onum" 1;
+}
+
+/* ATTESTATION / SIGNATURES — chancery italic over a gilt sig-rule. */
+.sc2-scroll[data-family="crusaders_charter"] .sc2-attest,
+.sc2-scroll[data-family="crusaders_charter"] .sc2-sig {
+	font-family: var(--ff-sign);
+	font-style: italic;
+	color: var(--ink);
+}
+.sc2-scroll[data-family="crusaders_charter"] .sc2-sig__name {
+	font-style: italic;
+	font-size: var(--fs-attest);
+	color: var(--ink);
+}
+.sc2-scroll[data-family="crusaders_charter"] .sc2-sig__line {
+	border-top: 1px solid var(--gold-deep);   /* gilt ruled signature line       */
+	box-shadow: 0 1px 0 rgba(255,244,194,.4);
+}
+.sc2-scroll[data-family="crusaders_charter"] .sc2-sig__title {
+	font-family: var(--ff-body);
+	font-style: normal;
+	font-variant: small-caps;
+	letter-spacing: .12em;
+	color: var(--ink-muted);
+	text-transform: uppercase;
+	font-feature-settings: "smcp" 1;
+}
+
+
+/* ============================================================================
+   4. HERALDRY — torse-flanked heater shields
+   ----------------------------------------------------------------------------
+   The arms sit in heater shields (via the --escutcheon hook → the markup's
+   #sc2-escutcheon-heater clipPath), each crowned by a TORSE: a twisted wreath
+   of the two livery colours (gules + argent) draped over the top edge. Kingdom
+   arms flank one side, park arms the other, per the shared crown layout.
+   ============================================================================ */
+
+.sc2-scroll[data-family="crusaders_charter"] .sc2-arms {
+	position: relative;
+	filter: drop-shadow(0 2px 3px rgba(40,12,8,.42));
+}
+/* Heater-clipped escutcheon with a gilt rim + sanguine keyline, on light
+   vellum so the borne arms read crisp. */
+.sc2-scroll[data-family="crusaders_charter"] .sc2-arms-field,
+.sc2-scroll[data-family="crusaders_charter"] .sc2-arms img,
+.sc2-scroll[data-family="crusaders_charter"] .sc2-arms svg {
+	-webkit-clip-path: url(#sc2-escutcheon-heater);
+	        clip-path: url(#sc2-escutcheon-heater);
+	background: var(--vellum-hi);
+	box-shadow:
+		inset 0 0 0 1px rgba(255,244,194,.5),
+		0 1px 2px rgba(40,12,8,.4);
+}
+/* Gilt rim tracing the heater outline (drawn by the markup's rim path). */
+.sc2-scroll[data-family="crusaders_charter"] .sc2-arms .sc2-arms__rim {
+	fill: none;
+	stroke: var(--arms-rim);
+	stroke-width: 2.5;
+	filter: drop-shadow(0 0 1px var(--arms-keyline));
+}
+
+/* THE TORSE — a twisted wreath of gules + argent draped over each shield's top
+   edge. CSS-only via ::before so it needs no extra markup: a repeating
+   diagonal gules/argent twist (the heraldic torse), arched into a shallow bar
+   that sits on the shield's chief. */
+.sc2-scroll[data-family="crusaders_charter"] .sc2-arms::before {
+	content: "";
+	position: absolute;
+	left: 50%;
+	top: -0.34em;
+	transform: translateX(-50%);
+	width: 96%;
+	height: 0.5em;
+	z-index: 1;
+	pointer-events: none;
+	border-radius: .28em / .5em;
+	/* the twist: alternating gules and argent diagonal segments */
+	background:
+		repeating-linear-gradient(58deg,
+			var(--ribbon-a) 0,    var(--ribbon-a) 7px,
+			var(--ribbon-b) 7px,  var(--ribbon-b) 14px);
+	box-shadow:
+		inset 0  1px 0 rgba(255,255,255,.4),
+		inset 0 -1px 2px rgba(40,12,8,.5),
+		0 0 0 .75px var(--gold-keyline),
+		0 1px 2px rgba(40,12,8,.4);
+}
+/* Park arms ride a touch quieter as the supporter on the flank. */
+.sc2-scroll[data-family="crusaders_charter"] .sc2-arms--park {
+	opacity: .97;
+}
+/* ARMS LABEL — sits up near the crown, OVER the gules ground (outside the
+   §2b writing card), so the base ink-dark label rule is unreadable here. Switch
+   the label ink to argent/parchment with a gilt fleuron divider so it reads
+   bright against the red. Defensive h-pill reset + fixed label slot per the
+   shared label contract (a 1- vs 2-line caption must not shove a shield off
+   the baseline). */
+.sc2-scroll[data-family="crusaders_charter"] .sc2-arms__label {
+	font-family: var(--ff-smallcaps, var(--ff-body));
+	font-variant: small-caps;
+	letter-spacing: .08em;
+	/* Field is light vellum (not a gules ground): gules rubric reads strong &
+	   on-theme; a faint light halo keeps it crisp over any foxing.            */
+	color: var(--rubric);
+	-webkit-text-fill-color: var(--rubric);
+	text-align: center;
+	max-width: 14ch;
+	min-height: 2.4em;
+	margin-top: .4em;
+	text-wrap: balance;
+	overflow-wrap: anywhere;
+	text-shadow: 0 1px 0 rgba(255,248,225,.7);   /* legibility lift on vellum     */
+	/* defensive reset of the global orkui h1–h6 grey pill, in case the markup
+	   ever renders the label inside a heading element */
+	background: transparent;
+	border: none;
+	padding: 0;
+	border-radius: 0;
+}
+/* Gilt fleuron divider above the label. */
+.sc2-scroll[data-family="crusaders_charter"] .sc2-arms__label::before {
+	content: "❧";
+	display: block;
+	margin: 0 auto .1em;
+	color: var(--gold);
+	-webkit-text-fill-color: var(--gold);
+	font-size: .82em;
+	line-height: 1;
+	text-shadow: 0 1px 0 var(--gold-keyline);
+}
+
+
+/* ============================================================================
+   5. WAX SEAL — GREEN pendant seal (charter / perpetual), gules+argent ribbons
+   ----------------------------------------------------------------------------
+   Green wax signalled a standing grant in fee — the right register for a
+   patent of knighthood. Pressed hard, gilt-rimmed, with a hot upper-left
+   catch-light and a pooled dark-green centre. Ribbon tails are the order's
+   gules + argent livery.
+   ============================================================================ */
+
+.sc2-scroll[data-family="crusaders_charter"] .sc2-seal-wrap {
+	filter:
+		drop-shadow(0 3px 5px rgba(8,24,12,.5))
+		drop-shadow(0 0 1px rgba(0,0,0,.4));
+}
+
+/* The wax disc — SVG <fill> hook if present. */
+.sc2-scroll[data-family="crusaders_charter"] .sc2-seal-disc .sc2-wax-body,
+.sc2-scroll[data-family="crusaders_charter"] .sc2-seal .sc2-wax-body {
+	fill: var(--wax);
+}
+.sc2-scroll[data-family="crusaders_charter"] .sc2-seal .sc2-wax-rim {
+	fill: none;
+	stroke: var(--gold-deep);
+	stroke-width: 2;
+	filter: drop-shadow(0 1px 0 rgba(255,244,194,.45));
+}
+/* CSS-rendered disc fallback: green radial with gilt rim + pooled-green centre. */
+.sc2-scroll[data-family="crusaders_charter"] .sc2-seal-disc {
+	background:
+		radial-gradient(circle at 38% 32%,
+			var(--wax-hi) 0%,
+			var(--wax)    36%,
+			var(--wax-lo) 80%,
+			#0a2814       100%);
+	box-shadow:
+		inset 0  2px 3px rgba(120,200,150,.32),     /* hot upper catch-light      */
+		inset 0 -3px 6px rgba(0,0,0,.55),           /* pooled-centre shadow       */
+		0 0 0 1.5px var(--gold-deep),               /* gilt pressed rim           */
+		0 0 0 2.25px var(--gold-keyline),
+		0 4px 6px rgba(8,24,12,.5);                 /* cast shadow on the sheet   */
+}
+
+/* The pressed sigil — embossed: lit upper-left, shadowed lower-right against
+   the pooled green wax. */
+.sc2-scroll[data-family="crusaders_charter"] .sc2-seal-sigil {
+	fill: var(--wax-lo);
+	color: var(--wax-lo);
+	filter:
+		drop-shadow(-.5px -.5px .5px rgba(150,220,175,.5))
+		drop-shadow(.5px .8px .8px rgba(0,0,0,.55));
+}
+
+/* RIBBON TAILS — gules + argent livery cords pendant from the seal. */
+.sc2-scroll[data-family="crusaders_charter"] .sc2-ribbon-tail--a {
+	background: var(--ribbon-a);
+	fill: var(--ribbon-a);
+}
+.sc2-scroll[data-family="crusaders_charter"] .sc2-ribbon-tail--b {
+	/* argent tail: a hair of grey shading so pure-white reads as folded silk */
+	background: linear-gradient(180deg, var(--ribbon-b) 0%, #d7d7d2 100%);
+	fill: var(--ribbon-b);
+	box-shadow: inset 0 0 0 .75px rgba(40,12,8,.18);
+}
+.sc2-scroll[data-family="crusaders_charter"] .sc2-seal-ribbon {
+	box-shadow: inset 0 0 6px rgba(8,24,12,.4);
+}
+
+
+/* ============================================================================
+   6. EXPORT / PRINT FLATTENING  (texture/gilt only — never structural)
+   ----------------------------------------------------------------------------
+   html2canvas drops background-clip:text and mask/clip-path; some PDF engines
+   wobble on conic-gradient masks and color-mix. Under .sc2-export / @media
+   print we fall the gilt-text title back to a SOLID order-gold (so the title
+   never vanishes), drop the mask-built cross-pattée to a plain gilt pip, and
+   keep all LIVERY colours. Nothing structural is touched (per the contract).
+   ============================================================================ */
+.sc2-scroll.sc2-export[data-family="crusaders_charter"] .sc2-title,
+.sc2-export .sc2-scroll[data-family="crusaders_charter"] .sc2-title {
+	background: none;
+	-webkit-text-fill-color: var(--gold);
+	color: var(--gold);
+	-webkit-text-stroke: 0;
+	text-shadow: 0 1px 0 var(--gold-keyline);
+	filter: drop-shadow(0 1px 1px rgba(40,12,8,.4));
+}
+.sc2-scroll.sc2-export[data-family="crusaders_charter"] .sc2-illum .sc2-corner::after,
+.sc2-export .sc2-scroll[data-family="crusaders_charter"] .sc2-illum .sc2-corner::after {
+	-webkit-mask: none;
+	        mask: none;
+	border-radius: 2px;             /* fall the masked cross to a small gilt pip */
+	width: 16px;
+	height: 16px;
+}
+
+@media print {
+	.sc2-scroll[data-family="crusaders_charter"] .sc2-title {
+		background: none;
+		-webkit-text-fill-color: var(--gold);
+		color: var(--gold);
+		-webkit-text-stroke: 0;
+		text-shadow: 0 1px 0 var(--gold-keyline);
+		filter: drop-shadow(0 1px 1px rgba(40,12,8,.4));
+	}
+	.sc2-scroll[data-family="crusaders_charter"] .sc2-illum .sc2-corner::after {
+		-webkit-mask: none;
+		        mask: none;
+		border-radius: 2px;
+		width: 16px;
+		height: 16px;
+	}
+	/* Ensure the livery bar, gules ground, and green seal actually ink. */
+	.sc2-scroll[data-family="crusaders_charter"] .sc2-illum .sc2-border__band,
+	.sc2-scroll[data-family="crusaders_charter"] .sc2-seal-disc,
+	.sc2-scroll[data-family="crusaders_charter"] .sc2-arms-field {
+		-webkit-print-color-adjust: exact;
+		print-color-adjust: exact;
+	}
+}

@@ -1,0 +1,340 @@
+<?php
+	/* ============================================================================
+	   THE LETTERED SCROLL  ·  sf-scroll-markup.html.part   (PHP / ORK3 view)
+	   ----------------------------------------------------------------------------
+	   ORK3 renders this template as PLAIN PHP via extract()+include (NOT Smarty).
+	   The controller's data is in scope as $player, $award, $kingdom_name, … and
+	   the backup top of Scroll_builder.tpl normalizes them into $sg* locals +
+	   $sgConfig. This fragment OWNS only the scroll markup + the data-* hooks the
+	   client renderer (sf-app.js) binds to (it reads window.SgConfig live).
+
+	   MEDIUM IS LOCKED: semantic HTML + CSS + inline SVG. No <canvas>.
+
+	   BINDING STRATEGY (defensive, dual-source):
+	     • Server-rendered seeds give a meaningful first paint (and the no-JS /
+	       @media print path). Every value is guarded so a blank/missing datum
+	       never paints an empty surface or a raw ISO date.
+	     • Every dynamic surface ALSO carries data-sc2-bind="<key>" so sf-app.js
+	       re-letters it live from window.SgConfig as the controls change.
+
+	   PROJECT RULES honored: TAB indentation; NO native title="" tooltips (hints
+	   use data-tip); the typography partial resets the global orkui h1 pill on
+	   .sc2-title.
+	   ============================================================================ */
+
+	// ── Resolve safe server-side seeds (mirror of SgConfig; see integration contract) ──
+	$sc2_persona      = ($sgPlayer && !empty($sgPlayer['Persona'])) ? $sgPlayer['Persona'] : 'the Bearer of this Scroll';
+	$sc2_award        = $sgAwardName ?: ($sgAward['Name'] ?? 'a Token of Esteem');
+	$sc2_kingdom      = $sgKingdomName ?: 'the Kingdom';
+	$sc2_place        = $sgParkName ?: 'Our realm';
+	$sc2_reason       = (!empty($sgAward['Note'])) ? $sgAward['Note'] : 'service to Our realm';
+	$sc2_kingdom_arms = $sgKingdomHeraldry ?? '';
+	$sc2_park_arms    = $sgParkHeraldry ?? '';
+	$sc2_player_arms  = $sgPlayerHeraldry ?? '';
+	$sc2_given_by     = $sgAward['GivenBy'] ?? '';
+
+	// Officer seeds for the attestation. $sgPreloadOfficers is ordered
+	// Monarch-then-Regent (Kingdom before Park); take the first two verbatim.
+	// sf-app.js does the precise Role-based mapping live from SgConfig regardless.
+	$sc2_off1_name = '';
+	$sc2_off1_role = '';
+	$sc2_off2_name = '';
+	$sc2_off2_role = '';
+	if (is_array($sgPreloadOfficers)) {
+		if (isset($sgPreloadOfficers[0])) {
+			$sc2_off1_name = $sgPreloadOfficers[0]['Persona'] ?? '';
+			$sc2_off1_role = $sgPreloadOfficers[0]['Role'] ?? '';
+		}
+		if (isset($sgPreloadOfficers[1])) {
+			$sc2_off2_name = $sgPreloadOfficers[1]['Persona'] ?? '';
+			$sc2_off2_role = $sgPreloadOfficers[1]['Role'] ?? '';
+		}
+	}
+	// Prefer the explicit giver as primary signer when no officer roster resolved.
+	if ($sc2_off1_name === '') { $sc2_off1_name = $sc2_given_by ?: 'the Crown'; }
+	if ($sc2_off1_role === '') { $sc2_off1_role = 'Sovereign of ' . $sc2_kingdom; }
+
+	// Auto family pick (A=knight/crimson, C=title/northern, B/default=hibernian).
+	$sc2_family = 'hibernian_knotwork';
+	if (($sgAutoTemplate ?? 'B') === 'A')      { $sc2_family = 'crimson_decree'; }
+	elseif (($sgAutoTemplate ?? 'B') === 'C')  { $sc2_family = 'northern_gothic'; }
+
+	// Recipient monogram (first letter) for the wax sigil fallback.
+	$sc2_monogram = mb_strtoupper(mb_substr($sc2_persona, 0, 1) ?: 'S');
+
+	$h = function ($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); };
+?>
+
+<main class="sc2-stage" id="sc2Stage" aria-label="Scroll preview">
+
+	<article class="sc2-scroll"
+	         id="sc2Scroll"
+	         data-family="<?= $h($sc2_family) ?>"
+	         data-orientation="portrait"
+	         data-intensity="balanced"
+	         lang="en"
+	         aria-roledescription="award scroll"
+	         aria-label="Illuminated award scroll for <?= $h($sc2_persona) ?>">
+
+		<!-- ===================================================================
+		     SVG DEFS — ONE per scroll. Filters, gradients, clipPaths, masks the
+		     substrate / illumination / heraldry-seal partials reference by id.
+		     The illumination/substrate JS may inject the family motif into
+		     #sc2-defs-motif. aria-hidden: purely decorative.
+		     =================================================================== -->
+		<svg class="sc2-defs" width="0" height="0" aria-hidden="true" focusable="false"
+		     style="position:absolute;width:0;height:0;overflow:hidden" data-sc2-defs>
+			<defs>
+
+				<!-- SUBSTRATE-OWNED DEFS (single source: sf-substrate.css.part §7).
+				     The deckle filter+mask (#sc2-deckle-fx / #sc2-deckle) are authored
+				     canonically by the substrate engineer; the finalizer injects them
+				     immediately below. We do NOT redeclare — duplicate SVG ids break
+				     url(#…) resolution. -->
+				<!--SF:SUBSTRATE-DEFS-->
+
+				<!-- Raised-gilding gradient (bands / boxes / rim) per locked recipe -->
+				<linearGradient id="sc2-gild" x1="0%" y1="0%" x2="100%" y2="100%">
+					<stop offset="0%"   stop-color="var(--gold-shadow)"/>
+					<stop offset="35%"  stop-color="var(--gold)"/>
+					<stop offset="55%"  stop-color="var(--gold-hi)"/>
+					<stop offset="70%"  stop-color="var(--gold)"/>
+					<stop offset="100%" stop-color="var(--gold-deep)"/>
+				</linearGradient>
+
+				<!-- Emboss / raised relief for corner bosses & seal sigil -->
+				<filter id="sc2-emboss" x="-20%" y="-20%" width="140%" height="140%">
+					<feGaussianBlur in="SourceAlpha" stdDeviation="1.2" result="blur"/>
+					<feSpecularLighting in="blur" surfaceScale="3" specularConstant="0.9" specularExponent="18"
+						lighting-color="#fff6d8" result="spec">
+						<feDistantLight azimuth="225" elevation="55"/>
+					</feSpecularLighting>
+					<feComposite in="spec" in2="SourceAlpha" operator="in" result="specClip"/>
+					<feComposite in="SourceGraphic" in2="specClip" operator="arithmetic" k1="0" k2="1" k3="1" k4="0"/>
+				</filter>
+
+				<!-- Wax radial body for the pendant seal -->
+				<radialGradient id="sc2-wax" cx="38%" cy="34%" r="72%">
+					<stop offset="0%"   stop-color="var(--wax-hi)"/>
+					<stop offset="48%"  stop-color="var(--wax)"/>
+					<stop offset="100%" stop-color="var(--wax-lo)"/>
+				</radialGradient>
+
+				<!-- Escutcheon (heater shield) clipPath for heraldry arms -->
+				<clipPath id="sc2-escutcheon-heater" clipPathUnits="objectBoundingBox">
+					<path d="M0.04,0.02 H0.96 V0.46
+					         C0.96,0.74 0.78,0.92 0.50,1.00
+					         C0.22,0.92 0.04,0.74 0.04,0.46 Z"/>
+				</clipPath>
+				<!-- Round/roundel device clip (used by some families & the seal device) -->
+				<clipPath id="sc2-escutcheon-round" clipPathUnits="objectBoundingBox">
+					<circle cx="0.5" cy="0.5" r="0.48"/>
+				</clipPath>
+
+				<!-- Per-family ornament motif injection point (illumination JS fills this) -->
+				<g id="sc2-defs-motif" data-sc2-motif></g>
+
+			</defs>
+		</svg>
+
+		<!-- ===================================================================
+		     SUBSTRATE (z-vellum:0 + z-ruling:1) — owned by sf-substrate.css.part.
+		     =================================================================== -->
+		<div class="sc2-vellum" aria-hidden="true" data-sc2-vellum></div>
+		<div class="sc2-ruling" aria-hidden="true" data-sc2-ruling></div>
+
+		<!-- Rolled-curl strips (intensity=ornate only; CSS hides them otherwise) -->
+		<div class="sc2-curl sc2-curl--top"    aria-hidden="true"></div>
+		<div class="sc2-curl sc2-curl--bottom" aria-hidden="true"></div>
+
+		<!-- ===================================================================
+		     EDGE (z-edge:3) — deckle/curl/vignette overlay.
+		     =================================================================== -->
+		<div class="sc2-edge" aria-hidden="true" data-sc2-edge></div>
+
+		<!-- ===================================================================
+		     ILLUMINATION (z-illum:2) — concentric border zones + corners.
+		     =================================================================== -->
+		<div class="sc2-illum" aria-hidden="true" data-sc2-illum>
+			<svg class="sc2-border"
+			     viewBox="0 0 850 1100"
+			     preserveAspectRatio="none"
+			     xmlns="http://www.w3.org/2000/svg"
+			     aria-hidden="true" focusable="false"
+			     data-sc2-border>
+				<rect class="sc2-border__rule" x="10" y="10" width="830" height="1080"
+				      fill="none" stroke="var(--rule-fine)" stroke-width="0.75"/>
+				<rect class="sc2-border__bar" x="24" y="24" width="802" height="1052"
+				      fill="none" stroke="var(--border)" stroke-width="9"/>
+				<!-- decorative inner band line(s). First line: balanced + ornate (CSS hides
+				     for plain). Second concentric line: ornate ONLY (the richer frame). -->
+				<g class="sc2-border__band"    data-sc2-band>
+					<rect x="40" y="40" width="770" height="1020" rx="2"
+					      fill="none" stroke="var(--gold-hi, #d4af37)" stroke-width="3"/>
+					<rect class="sc2-border__band-inner" x="52" y="52" width="746" height="996" rx="2"
+					      fill="none" stroke="var(--gold-hi, #d4af37)" stroke-width="1.25" opacity="0.85"/>
+				</g>
+				<!-- gilt corner besants on the inner band corners (ornate only) -->
+				<g class="sc2-border__corners" data-sc2-corners>
+					<g class="sc2-border__corner"><circle cx="46"  cy="46"   r="13" fill="var(--gold-hi, #d4af37)" stroke="var(--gold-deep, #9a7b1f)" stroke-width="1.5"/><circle cx="46"  cy="46"   r="5" fill="var(--border, #7c1d1d)"/></g>
+					<g class="sc2-border__corner"><circle cx="804" cy="46"   r="13" fill="var(--gold-hi, #d4af37)" stroke="var(--gold-deep, #9a7b1f)" stroke-width="1.5"/><circle cx="804" cy="46"   r="5" fill="var(--border, #7c1d1d)"/></g>
+					<g class="sc2-border__corner"><circle cx="804" cy="1054" r="13" fill="var(--gold-hi, #d4af37)" stroke="var(--gold-deep, #9a7b1f)" stroke-width="1.5"/><circle cx="804" cy="1054" r="5" fill="var(--border, #7c1d1d)"/></g>
+					<g class="sc2-border__corner"><circle cx="46"  cy="1054" r="13" fill="var(--gold-hi, #d4af37)" stroke="var(--gold-deep, #9a7b1f)" stroke-width="1.5"/><circle cx="46"  cy="1054" r="5" fill="var(--border, #7c1d1d)"/></g>
+				</g>
+			</svg>
+		</div>
+
+		<!-- ===================================================================
+		     PAGE — the flow group (crown + content + seal). Scaled as ONE unit
+		     by sf-app.js fitPage() to fit the fixed Letter writing area, so a
+		     long proclamation shrinks to fit instead of overflowing the deckle.
+		     =================================================================== -->
+		<div class="sc2-page" data-sc2-page>
+
+		<!-- ===================================================================
+		     CROWN (z-crown:5) — heraldic achievements flanking the title.
+		     Kingdom arms = dexter (left), Park arms = sinister (right).
+		     =================================================================== -->
+		<header class="sc2-crown" data-sc2-crown>
+
+			<!-- KINGDOM ARMS — dexter (heraldic right = viewer's left) -->
+			<figure class="sc2-arms sc2-arms--kingdom" data-sc2-arms="kingdom"<?= $sc2_kingdom_arms === '' ? ' hidden' : '' ?>>
+				<span class="sc2-arms-field">
+					<img src="<?= $h($sc2_kingdom_arms) ?>"
+					     alt="Arms of <?= $h($sc2_kingdom) ?>"
+					     data-sc2-bind="kingdomHeraldry"
+					     loading="lazy" decoding="async"
+					     onerror="this.closest('.sc2-arms').classList.add('is-broken')">
+				</span>
+				<figcaption class="sc2-arms__label" data-sc2-bind="kingdomName"><?= $h($sc2_kingdom) ?></figcaption>
+			</figure>
+
+			<!-- PARK ARMS — sinister (heraldic left = viewer's right) -->
+			<figure class="sc2-arms sc2-arms--park" data-sc2-arms="park"<?= $sc2_park_arms === '' ? ' hidden' : '' ?>>
+				<span class="sc2-arms-field">
+					<img src="<?= $h($sc2_park_arms) ?>"
+					     alt="Arms of <?= $h($sc2_place) ?>"
+					     data-sc2-bind="parkHeraldry"
+					     loading="lazy" decoding="async"
+					     onerror="this.closest('.sc2-arms').classList.add('is-broken')">
+				</span>
+				<figcaption class="sc2-arms__label" data-sc2-bind="parkName"><?= $h($sc2_place) ?></figcaption>
+			</figure>
+
+		</header>
+
+		<!-- ===================================================================
+		     CONTENT (z-content:4) — the ONLY text layer. Medieval document order.
+		     =================================================================== -->
+		<section class="sc2-content" data-sc2-content>
+
+			<!-- INVOCATION -->
+			<p class="sc2-invocation" data-sc2-bind="invocation">
+				In the name of all that is honorable and true,
+			</p>
+
+			<!-- GRAND ILLUMINATED TITLE — the award name -->
+			<h1 class="sc2-title" data-sc2-bind="awardName"><?= $h($sc2_award) ?></h1>
+
+			<!-- INTITULATION — small-caps "We, X, Sovereign of Y" -->
+			<p class="sc2-intitulation" data-sc2-bind="intitulation">
+				Know all by these presents that We,
+				<span class="sc2-rubric" data-sc2-bind="officer1Name"><?= $h($sc2_off1_name) ?></span>,
+				<span data-sc2-bind="officer1Role"><?= $h($sc2_off1_role) ?></span><?php if ($sc2_off2_name !== ''): ?>, and
+				<span class="sc2-rubric" data-sc2-bind="officer2Name"><?= $h($sc2_off2_name) ?></span><?php if ($sc2_off2_role !== ''): ?>,
+				<span data-sc2-bind="officer2Role"><?= $h($sc2_off2_role) ?></span><?php endif; ?><?php endif; ?>,
+				sovereigns of <span data-sc2-bind="kingdomName"><?= $h($sc2_kingdom) ?></span>,
+			</p>
+
+			<!-- BODY — justified; illuminated versal opens the first paragraph -->
+			<div class="sc2-body" data-sc2-bind="narration">
+				<p data-sc2-versal>Having weighed well the long and faithful labors of Our
+				well-beloved
+				<span class="sc2-rubric" data-sc2-bind="persona"><?= $h($sc2_persona) ?></span>,
+				and finding <span data-sc2-bind="pronounThem">them</span> of singular merit in
+				<span data-sc2-bind="reason"><?= $h($sc2_reason) ?></span>, We are moved to set
+				down this Our charter for the lasting memory of the realm and the honor of all
+				who come after.</p>
+			</div>
+
+			<!-- GRANT / DISPOSITIVE CLAUSE -->
+			<p class="sc2-grant" data-sc2-bind="disposition">
+				Do by this Our charter and of Our certain knowledge
+				<strong class="sc2-grant__verb" data-sc2-bind="grantVerb">award and proclaim</strong>
+				unto <span class="sc2-rubric" data-sc2-bind="persona"><?= $h($sc2_persona) ?></span>
+				the <span class="sc2-grant__award" data-sc2-bind="awardName"><?= $h($sc2_award) ?></span>,
+				with all the honors, rights, and privileges thereunto belonging, to be held and
+				enjoyed throughout all Our lands.
+			</p>
+
+			<!-- DATUM — corroboration + date WRITTEN OUT + place -->
+			<p class="sc2-datum" data-sc2-bind="dateClause">
+				<span class="sc2-datum__corrob" data-sc2-bind="corroboration">Given under Our hand and seal</span>
+				at <span class="sc2-datum__place" data-sc2-bind="parkName"><?= $h($sc2_place) ?></span>,
+				<span class="sc2-datum__date" data-sc2-bind="dateWritten">in this present year of grace</span>.
+			</p>
+
+			<!-- ATTESTATION — chancery-italic signatures over a ruled line -->
+			<div class="sc2-attest" data-sc2-attest>
+
+				<div class="sc2-sig">
+					<span class="sc2-sig-name" data-sc2-bind="officer1Name"><?= $h($sc2_off1_name) ?></span>
+					<span class="sc2-sig-rule" aria-hidden="true"></span>
+					<span class="sc2-sig-title" data-sc2-bind="officer1Role"><?= $h($sc2_off1_role) ?></span>
+				</div>
+
+				<div class="sc2-sig sc2-sig--second"<?= $sc2_off2_name === '' ? ' hidden' : '' ?> data-sc2-sig="second">
+					<span class="sc2-sig-name" data-sc2-bind="officer2Name"><?= $h($sc2_off2_name) ?></span>
+					<span class="sc2-sig-rule" aria-hidden="true"></span>
+					<span class="sc2-sig-title" data-sc2-bind="officer2Role"><?= $h($sc2_off2_role) ?></span>
+				</div>
+
+			</div>
+
+		</section>
+
+		<!-- ===================================================================
+		     SEAL (z-seal:6) — pendant wax seal + ribbon in the bas-de-page.
+		     CSS-disc contract (hand-poured .sc2-seal-disc with recessed pan,
+		     milled rim, embossed .sc2-seal-sigil); livery ribbon tails behind.
+		     =================================================================== -->
+		<footer class="sc2-seal-wrap" data-sc2-seal-wrap>
+
+			<!-- Livery ribbon tails — behind the disc, in the realm's two colours -->
+			<div class="sc2-seal-ribbon" aria-hidden="true">
+				<span class="sc2-ribbon-tail sc2-ribbon-tail--a"></span>
+				<span class="sc2-ribbon-tail sc2-ribbon-tail--b"></span>
+			</div>
+
+			<!-- The pressed-wax disc. data-tip (never native title) labels it. -->
+			<div class="sc2-seal-disc" data-sc2-seal role="img"
+			     aria-label="Pressed wax seal of <?= $h($sc2_kingdom) ?>"
+			     data-tip="The seal of <?= $h($sc2_kingdom) ?>">
+				<?php if ($sc2_player_arms !== ''): ?>
+					<!-- Player device pressed into the wax. onerror → bare wax. -->
+					<div class="sc2-seal-sigil" data-sc2-seal-sigil>
+						<img src="<?= $h($sc2_player_arms) ?>"
+						     alt="Device of <?= $h($sc2_persona) ?>"
+						     data-sc2-bind="playerHeraldry"
+						     loading="lazy" decoding="async"
+						     onerror="this.closest('.sc2-seal-sigil').classList.add('is-broken')">
+					</div>
+				<?php else: ?>
+					<!-- No device → embossed monogram from the recipient's initial. -->
+					<div class="sc2-seal-sigil"
+					     data-sc2-seal-sigil
+					     data-monogram="<?= $h($sc2_monogram) ?>"
+					     data-sc2-bind="playerHeraldry"></div>
+				<?php endif; ?>
+			</div>
+
+			<!-- Where it was sealed — small-caps caption beneath the wax. -->
+			<p class="sc2-seal-caption" data-sc2-bind="parkName">Sealed at <?= $h($sc2_place) ?></p>
+
+		</footer>
+
+		</div><!-- /.sc2-page -->
+
+	</article>
+
+</main>

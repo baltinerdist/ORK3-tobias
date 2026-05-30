@@ -1,0 +1,870 @@
+/* ============================================================================
+   THE LETTERED SCROLL — sf-panel.css.part
+   ----------------------------------------------------------------------------
+   CONTROL-PANEL CHROME ONLY (.sc2-panel and the floating .sc2-panel-reopen).
+   Raw CSS partial — inlined into a <style> block in Scroll_builder.tpl.
+
+   SCOPING CONTRACT (locked):
+     • EVERY rule is scoped under .sc2-panel / .sc2-forge / .sc2-panel-reopen.
+       Nothing here may reach the legacy .sc- builder or the .sc2-scroll sheet
+       (that vellum is owned by the other partials and tokenised to .sc2-scroll).
+     • The panel defines its OWN neutral chrome tokens — it does NOT borrow the
+       vellum palette tokens (those are warm parchment, wrong for tool chrome).
+     • Dark mode: html[data-theme="dark"] .sc2-panel ... overrides every surface.
+       Light mode is the default and mirrors the legacy builder's palette so the
+       reinvented panel feels native (card #fff, subtle #f7fafc, borders #e2e8f0
+       / #cbd5e0, text #2d3748, muted #718096/#a0aec0, accent #3182ce; dark bg
+       ~#1f1f1f, cards #2a2a2a, borders #444, text #e8e8e8, muted #999).
+     • NO native title attributes — hints render via the scoped [data-tip] CSS
+       tooltip defined at the foot of this file.
+   ============================================================================ */
+
+/* ── PANEL CHROME TOKENS (neutral; light = default) ─────────────────────────
+   Local to .sc2-panel / reopen tab so the app's dark theme overrides cleanly
+   and nothing leaks to the vellum or the legacy builder.                      */
+.sc2-panel,
+.sc2-panel-reopen {
+	--sf-bg:          #ffffff;   /* panel body background          */
+	--sf-bg-sub:      #f7fafc;   /* subtle wells / heads           */
+	--sf-bg-sub2:     #f8fafc;   /* faintest fill                  */
+	--sf-card:        #ffffff;   /* swatch / field cards           */
+	--sf-card-hover:  #f0f6ff;   /* card hover wash                */
+	--sf-border:      #e2e8f0;   /* default hairline               */
+	--sf-border-2:    #cbd5e0;   /* heavier border / inputs        */
+	--sf-text:        #2d3748;   /* primary ink                    */
+	--sf-text-soft:   #4a5568;   /* secondary ink                  */
+	--sf-muted:       #718096;   /* muted labels                   */
+	--sf-muted-2:     #a0aec0;   /* faintest captions              */
+	--sf-accent:      #3182ce;   /* interactive accent             */
+	--sf-accent-hi:   #ebf4ff;   /* accent wash                    */
+	--sf-accent-edge: #90cdf4;   /* accent hover edge              */
+	--sf-gold:        #b8862b;   /* heraldic gold (primary btn)    */
+	--sf-gold-hi:     #d4af37;
+	--sf-gold-lo:     #8b6914;
+	--sf-gold-ink:    #1a1a1a;   /* text on gold                   */
+	--sf-shadow:      rgba(45,55,72,.12);
+	--sf-tip-bg:      #2d3748;   /* tooltip bubble                 */
+	--sf-tip-text:    #f7fafc;
+	--sf-radius:      10px;
+	--sf-radius-sm:   6px;
+}
+
+/* ── PANEL SHELL ────────────────────────────────────────────────────────────
+   Flex column; the layout layer sets a FIXED height (calc(100vh - 28px)). Head
+   + foot stay put, body scrolls (flex:1; overflow:auto).
+   NO max-height here: a percentage max-height resolves against the grid cell,
+   which is coupled to the stage/row — so any transient that shrinks the cell
+   (e.g. fitScroll during an illumination click) would clamp the panel down and
+   the toolbox would "minimise itself". The fixed height owns sizing outright.  */
+.sc2-panel {
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	box-sizing: border-box;
+	background: var(--sf-bg);
+	color: var(--sf-text);
+	border: 1px solid var(--sf-border);
+	border-radius: var(--sf-radius);
+	box-shadow: 0 1px 3px var(--sf-shadow);
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+	font-size: 14px;
+	line-height: 1.45;
+	overflow: hidden;
+}
+.sc2-panel *,
+.sc2-panel *::before,
+.sc2-panel *::after {
+	box-sizing: border-box;
+}
+
+/* Constrain EVERY panel SVG — intrinsic size would blow up to ~360px. */
+.sc2-panel svg,
+.sc2-panel-reopen svg {
+	width: 18px;
+	height: 18px;
+	display: block;
+	flex: 0 0 auto;
+}
+
+/* ── HEADER (sticky feel; does not scroll) ──────────────────────────────── */
+.sc2-panel__head {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 10px;
+	padding: 14px 16px;
+	background: var(--sf-bg-sub);
+	border-bottom: 1px solid var(--sf-border);
+}
+.sc2-panel__brand {
+	display: flex;
+	align-items: center;
+	gap: 11px;
+	min-width: 0;
+}
+.sc2-panel__mark {
+	width: 26px !important;
+	height: 26px !important;
+	color: var(--sf-gold);
+	flex: 0 0 auto;
+}
+.sc2-panel__titles {
+	min-width: 0;
+}
+.sc2-panel__title {
+	margin: 0;
+	font-size: 16px;
+	font-weight: 700;
+	letter-spacing: .2px;
+	color: var(--sf-text);
+	line-height: 1.2;
+}
+.sc2-panel__sub {
+	margin: 1px 0 0;
+	font-size: 12px;
+	color: var(--sf-muted);
+	line-height: 1.3;
+}
+.sc2-panel__collapse {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 30px;
+	height: 30px;
+	padding: 0;
+	background: transparent;
+	border: 1px solid var(--sf-border);
+	border-radius: var(--sf-radius-sm);
+	color: var(--sf-muted);
+	cursor: pointer;
+	transition: background .15s, border-color .15s, color .15s;
+}
+.sc2-panel__collapse:hover {
+	background: var(--sf-card-hover);
+	border-color: var(--sf-accent-edge);
+	color: var(--sf-accent);
+}
+.sc2-panel__collapse:focus-visible {
+	outline: 2px solid var(--sf-accent);
+	outline-offset: 2px;
+}
+
+/* ── BODY (the only scrolling region) ────────────────────────────────────── */
+.sc2-panel__body {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	overflow-x: hidden;
+	padding: 16px;
+	display: flex;
+	flex-direction: column;
+	gap: 18px;
+	-webkit-overflow-scrolling: touch;
+}
+.sc2-panel__body::-webkit-scrollbar { width: 10px; }
+.sc2-panel__body::-webkit-scrollbar-thumb {
+	background: var(--sf-border-2);
+	border-radius: 6px;
+	border: 2px solid var(--sf-bg);
+}
+.sc2-panel__body::-webkit-scrollbar-track { background: transparent; }
+
+/* ── HEADING PILL RESET (CRITICAL) ──────────────────────────────────────────
+   orkui.css gives ALL h1–h6 a grey box + border + shadow. Every panel heading
+   carries .sc2-h and depends on this reset.                                   */
+.sc2-panel .sc2-h {
+	background: transparent !important;
+	background-color: transparent !important;
+	border: none !important;
+	padding: 0 !important;
+	border-radius: 0 !important;
+	text-shadow: none !important;
+	box-shadow: none !important;
+	margin: 0;
+	font-weight: 700;
+	color: inherit;
+}
+
+/* ── GROUPS (sections) ───────────────────────────────────────────────────── */
+.sc2-group {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	padding: 14px;
+	background: var(--sf-bg-sub2);
+	border: 1px solid var(--sf-border);
+	border-radius: var(--sf-radius);
+}
+.sc2-group__head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.sc2-group__title {
+	font-size: 12px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: .6px;
+	color: var(--sf-text-soft);
+}
+.sc2-group__hint {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--sf-muted-2);
+	cursor: help;
+	flex: 0 0 auto;
+}
+.sc2-group__hint svg { width: 18px; height: 18px; }
+.sc2-group__hint:hover { color: var(--sf-accent); }
+.sc2-group__reset {
+	margin-left: auto;
+	padding: 3px 8px;
+	font-size: 11px;
+	font-weight: 600;
+	background: transparent;
+	border: 1px solid transparent;
+	border-radius: 5px;
+	color: var(--sf-accent);
+	cursor: pointer;
+	transition: background .15s, border-color .15s;
+}
+.sc2-group__reset:hover {
+	background: var(--sf-accent-hi);
+	border-color: var(--sf-accent-edge);
+}
+.sc2-group__reset:focus-visible {
+	outline: 2px solid var(--sf-accent);
+	outline-offset: 1px;
+}
+
+/* ── FAMILY PICKER (2-col selectable card grid) ──────────────────────────── */
+.sc2-fam {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 10px;
+}
+.sc2-fam__swatch {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	gap: 7px;
+	padding: 10px;
+	text-align: left;
+	background: var(--sf-card);
+	border: 1px solid var(--sf-border-2);
+	border-radius: var(--sf-radius-sm);
+	cursor: pointer;
+	transition: border-color .15s, box-shadow .15s, transform .12s, background .15s;
+}
+.sc2-fam__swatch:hover {
+	border-color: var(--sf-accent-edge);
+	box-shadow: 0 3px 10px var(--sf-shadow);
+	transform: translateY(-1px);
+}
+.sc2-fam__swatch:focus-visible {
+	outline: 2px solid var(--sf-accent);
+	outline-offset: 2px;
+}
+.sc2-fam__swatch[aria-checked="true"] {
+	border-color: var(--sf-gold);
+	box-shadow: 0 0 0 2px var(--sf-gold), 0 3px 10px var(--sf-shadow);
+	background: var(--sf-card);
+}
+.sc2-fam__chip {
+	position: relative;
+	display: flex;
+	height: 30px;
+	border-radius: 4px;
+	overflow: hidden;
+	border: 1px solid rgba(0,0,0,.12);
+}
+.sc2-fam__band {
+	flex: 1 1 0;
+	display: block;
+	height: 100%;
+}
+/* Neutral placeholder bands — sf-app.js recolors these per family. */
+.sc2-fam__band--1 { background: #d8c9a3; }
+.sc2-fam__band--2 { background: #b8862b; }
+.sc2-fam__band--3 { background: #6b4a2b; }
+.sc2-fam__band--4 { background: #2d2017; }
+.sc2-fam__check {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 16px !important;
+	height: 16px !important;
+	transform: translate(-50%, -50%) scale(.6);
+	color: #fff;
+	opacity: 0;
+	filter: drop-shadow(0 1px 2px rgba(0,0,0,.55));
+	transition: opacity .15s, transform .15s;
+	pointer-events: none;
+}
+.sc2-fam__swatch[aria-checked="true"] .sc2-fam__check {
+	opacity: 1;
+	transform: translate(-50%, -50%) scale(1);
+}
+.sc2-fam__label {
+	font-size: 12.5px;
+	font-weight: 600;
+	color: var(--sf-text);
+	line-height: 1.2;
+}
+.sc2-fam__motif {
+	font-size: 10px;
+	text-transform: uppercase;
+	letter-spacing: .4px;
+	color: var(--sf-muted-2);
+	line-height: 1.2;
+}
+
+/* ── FIELDS (text / date / textarea) ─────────────────────────────────────── */
+.sc2-field {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+}
+.sc2-field--2col {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 12px;
+}
+.sc2-field--2col > div {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+	min-width: 0;
+}
+.sc2-field__lbl {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--sf-text-soft);
+}
+.sc2-field__in {
+	width: 100%;
+	padding: 8px 10px;
+	font-size: 13.5px;
+	font-family: inherit;
+	color: var(--sf-text);
+	background: var(--sf-bg);
+	border: 1px solid var(--sf-border-2);
+	border-radius: var(--sf-radius-sm);
+	transition: border-color .15s, box-shadow .15s;
+}
+.sc2-field__in::placeholder { color: var(--sf-muted-2); }
+.sc2-field__in:hover { border-color: var(--sf-accent-edge); }
+.sc2-field__in:focus {
+	outline: none;
+	border-color: var(--sf-accent);
+	box-shadow: 0 0 0 3px var(--sf-accent-hi);
+}
+.sc2-field__in--date {
+	min-height: 36px;
+}
+.sc2-field__ta {
+	resize: vertical;
+	min-height: 56px;
+	line-height: 1.4;
+}
+.sc2-field__note {
+	font-size: 11px;
+	color: var(--sf-muted);
+	line-height: 1.35;
+}
+
+/* ── AUTOCOMPLETE ────────────────────────────────────────────────────────────
+   .kn-ac-results already has global styling in revised.css; only ensure the
+   wrapper positions the dropdown and the dropdown spans the input width.       */
+.sc2-ac {
+	position: relative;
+}
+.sc2-panel .sc2-ac__results {
+	left: 0;
+	right: 0;
+	width: 100%;
+}
+
+/* ── OPTIONS ─────────────────────────────────────────────────────────────── */
+.sc2-opt {
+	display: flex;
+	flex-direction: column;
+	gap: 7px;
+}
+.sc2-opt__lbl {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--sf-text-soft);
+}
+
+/* Segmented control */
+.sc2-seg {
+	display: grid;
+	grid-template-columns: repeat(2, 1fr);
+	gap: 0;
+	padding: 3px;
+	background: var(--sf-bg-sub);
+	border: 1px solid var(--sf-border);
+	border-radius: 8px;
+	/* Contain the visually-hidden radios (below) so focusing one on a label
+	   click can't scroll the page to a far-off static position. */
+	position: relative;
+}
+.sc2-seg--3 {
+	grid-template-columns: repeat(3, 1fr);
+}
+.sc2-seg__in {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	border: 0;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+}
+.sc2-seg__pill {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 6px 8px;
+	font-size: 12.5px;
+	font-weight: 600;
+	text-align: center;
+	color: var(--sf-muted);
+	background: transparent;
+	border-radius: 6px;
+	cursor: pointer;
+	transition: background .15s, color .15s, box-shadow .15s;
+	user-select: none;
+}
+.sc2-seg__pill:hover {
+	color: var(--sf-text);
+}
+.sc2-seg__in:checked + .sc2-seg__pill {
+	color: var(--sf-accent);
+	background: var(--sf-bg);
+	box-shadow: 0 1px 3px var(--sf-shadow);
+}
+.sc2-seg__in:focus-visible + .sc2-seg__pill {
+	outline: 2px solid var(--sf-accent);
+	outline-offset: 1px;
+}
+
+/* Switch (.sc2-opt--switch row) */
+.sc2-opt--switch {
+	display: block;
+}
+.sc2-switch {
+	display: flex;
+	align-items: flex-start;
+	gap: 11px;
+	cursor: pointer;
+	/* Contain the visually-hidden checkbox so toggling it can't scroll the page. */
+	position: relative;
+}
+.sc2-switch__in {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	border: 0;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+}
+.sc2-switch__track {
+	position: relative;
+	flex: 0 0 auto;
+	width: 38px;
+	height: 22px;
+	margin-top: 1px;
+	background: var(--sf-border-2);
+	border-radius: 999px;
+	transition: background .18s;
+}
+.sc2-switch__thumb {
+	position: absolute;
+	top: 2px;
+	left: 2px;
+	width: 18px;
+	height: 18px;
+	background: #fff;
+	border-radius: 50%;
+	box-shadow: 0 1px 2px rgba(0,0,0,.3);
+	transition: transform .18s;
+}
+.sc2-switch__in:checked + .sc2-switch__track {
+	background: var(--sf-accent);
+}
+.sc2-switch__in:checked + .sc2-switch__track .sc2-switch__thumb {
+	transform: translateX(16px);
+}
+.sc2-switch__in:focus-visible + .sc2-switch__track {
+	outline: 2px solid var(--sf-accent);
+	outline-offset: 2px;
+}
+.sc2-switch__text {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	min-width: 0;
+}
+.sc2-switch__name {
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--sf-text);
+	line-height: 1.25;
+}
+.sc2-switch__desc {
+	font-size: 11px;
+	color: var(--sf-muted);
+	line-height: 1.3;
+}
+
+/* Wax-seal colour picker (round dots) */
+.sc2-wax {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 9px;
+	/* Contain the visually-hidden wax radios so focusing one can't scroll the page. */
+	position: relative;
+}
+.sc2-wax__in {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	border: 0;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+}
+.sc2-wax__dot {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	border-radius: 50%;
+	cursor: pointer;
+	background: var(--sc2-wax-preview, #8c1d1b);
+	box-shadow: inset 0 1px 1px rgba(255,255,255,.25), inset 0 -2px 3px rgba(0,0,0,.35);
+	transition: transform .12s, box-shadow .12s;
+}
+.sc2-wax__dot:hover {
+	transform: scale(1.08);
+}
+/* "Use family wax" — distinct multi-colour conic look. */
+.sc2-wax__dot--family {
+	background: conic-gradient(from 220deg,
+		#8c1d1b 0deg, #b8862b 70deg, #1f4d2e 140deg,
+		#1e3a6e 210deg, #43286e 280deg, #8c1d1b 360deg);
+}
+.sc2-wax__inner {
+	display: block;
+	width: 100%;
+	height: 100%;
+	border-radius: 50%;
+	pointer-events: none;
+}
+.sc2-wax__in:checked + .sc2-wax__dot {
+	box-shadow: 0 0 0 2px var(--sf-bg), 0 0 0 4px var(--sf-gold),
+		inset 0 -2px 3px rgba(0,0,0,.35);
+	transform: scale(1.06);
+}
+.sc2-wax__in:focus-visible + .sc2-wax__dot {
+	box-shadow: 0 0 0 2px var(--sf-bg), 0 0 0 4px var(--sf-accent);
+}
+
+/* ── FOOTER / EXPORT RAIL (pinned; does not scroll) ──────────────────────── */
+.sc2-panel__foot {
+	flex: 0 0 auto;
+	padding: 14px 16px;
+	background: var(--sf-bg-sub);
+	border-top: 1px solid var(--sf-border);
+}
+.sc2-panel__foot-note {
+	margin: 8px 0 0;
+	min-height: 1em;
+	font-size: 11.5px;
+	color: var(--sf-muted);
+	line-height: 1.35;
+	text-align: center;
+}
+.sc2-export {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 10px;
+}
+.sc2-export--locked {
+	grid-template-columns: 1fr;
+}
+
+/* ── BUTTONS ─────────────────────────────────────────────────────────────── */
+.sc2-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	padding: 9px 14px;
+	font-size: 13.5px;
+	font-weight: 600;
+	font-family: inherit;
+	line-height: 1.1;
+	border-radius: var(--sf-radius-sm);
+	border: 1px solid transparent;
+	cursor: pointer;
+	transition: background .15s, border-color .15s, color .15s, box-shadow .15s, opacity .15s;
+}
+.sc2-btn svg { width: 18px; height: 18px; }
+.sc2-btn:focus-visible {
+	outline: 2px solid var(--sf-accent);
+	outline-offset: 2px;
+}
+.sc2-btn:disabled,
+.sc2-btn[aria-disabled="true"] {
+	opacity: .6;
+	cursor: not-allowed;
+}
+
+.sc2-btn--ghost {
+	background: var(--sf-bg);
+	border-color: var(--sf-border-2);
+	color: var(--sf-text-soft);
+}
+.sc2-btn--ghost:not(:disabled):hover {
+	background: var(--sf-card-hover);
+	border-color: var(--sf-accent-edge);
+	color: var(--sf-accent);
+}
+
+.sc2-btn--gold {
+	color: var(--sf-gold-ink);
+	background: linear-gradient(135deg, #e6c25a 0%, var(--sf-gold-hi) 45%, var(--sf-gold) 100%);
+	border-color: var(--sf-gold-lo);
+	box-shadow: 0 1px 3px rgba(0,0,0,.18);
+}
+.sc2-btn--gold:not(:disabled):hover {
+	background: linear-gradient(135deg, #f0cd6a 0%, #e0bc46 45%, #c4922f 100%);
+	box-shadow: 0 2px 7px rgba(140,100,20,.35);
+}
+.sc2-btn--gold:not(:disabled):active {
+	transform: translateY(1px);
+}
+
+/* Loading spinner inside a button — hidden until JS adds .is-busy. */
+.sc2-btn__spin {
+	display: none;
+	width: 15px;
+	height: 15px;
+	border: 2px solid rgba(0,0,0,.25);
+	border-top-color: var(--sf-gold-ink);
+	border-radius: 50%;
+	animation: sc2-spin .7s linear infinite;
+}
+.sc2-btn.is-busy .sc2-btn__spin {
+	display: inline-block;
+}
+.sc2-btn.is-busy {
+	cursor: progress;
+}
+@keyframes sc2-spin {
+	to { transform: rotate(360deg); }
+}
+
+/* ── FLOATING RE-OPEN TAB (visible only when panel collapsed) ────────────── */
+.sc2-panel-reopen {
+	position: fixed;
+	top: 50%;
+	left: 0;
+	transform: translateY(-50%);
+	z-index: 60;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 34px;
+	height: 56px;
+	padding: 0;
+	background: var(--sf-bg);
+	color: var(--sf-accent);
+	border: 1px solid var(--sf-border);
+	border-left: none;
+	border-radius: 0 var(--sf-radius-sm) var(--sf-radius-sm) 0;
+	box-shadow: 2px 2px 8px var(--sf-shadow);
+	cursor: pointer;
+	transition: background .15s, color .15s, width .15s;
+}
+.sc2-panel-reopen[hidden] {
+	display: none;
+}
+.sc2-panel-reopen:hover {
+	background: var(--sf-card-hover);
+	width: 38px;
+}
+.sc2-panel-reopen:focus-visible {
+	outline: 2px solid var(--sf-accent);
+	outline-offset: 2px;
+}
+
+/* ── VISUALLY-HIDDEN UTILITY (scoped) ────────────────────────────────────── */
+.sc2-panel .sc2-vh {
+	position: absolute !important;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	border: 0;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+}
+
+/* ============================================================================
+   CSS TOOLTIPS  ·  [data-tip]  (scoped under panel + reopen tab)
+   No native title="". Instant appearance, dark bubble, high z-index.
+   ============================================================================ */
+.sc2-panel [data-tip],
+.sc2-panel-reopen[data-tip] {
+	position: relative;
+}
+.sc2-panel [data-tip]::after,
+.sc2-panel-reopen[data-tip]::after {
+	content: attr(data-tip);
+	position: absolute;
+	bottom: calc(100% + 8px);
+	left: 50%;
+	transform: translateX(-50%) translateY(3px);
+	z-index: 200;
+	min-width: max-content;
+	max-width: 220px;
+	width: max-content;
+	padding: 6px 9px;
+	font-size: 11.5px;
+	font-weight: 500;
+	line-height: 1.35;
+	text-align: left;
+	white-space: normal;
+	color: var(--sf-tip-text);
+	background: var(--sf-tip-bg);
+	border-radius: 6px;
+	box-shadow: 0 4px 14px rgba(0,0,0,.28);
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity .1s ease, transform .1s ease;
+}
+.sc2-panel [data-tip]::before,
+.sc2-panel-reopen[data-tip]::before {
+	content: "";
+	position: absolute;
+	bottom: calc(100% + 3px);
+	left: 50%;
+	z-index: 200;
+	transform: translateX(-50%) translateY(3px);
+	border: 5px solid transparent;
+	border-top-color: var(--sf-tip-bg);
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity .1s ease, transform .1s ease;
+}
+.sc2-panel [data-tip]:hover::after,
+.sc2-panel [data-tip]:focus-visible::after,
+.sc2-panel-reopen[data-tip]:hover::after,
+.sc2-panel-reopen[data-tip]:focus-visible::after,
+.sc2-panel [data-tip]:hover::before,
+.sc2-panel [data-tip]:focus-visible::before,
+.sc2-panel-reopen[data-tip]:hover::before,
+.sc2-panel-reopen[data-tip]:focus-visible::before {
+	opacity: 1;
+	transform: translateX(-50%) translateY(0);
+}
+/* Reopen tab sits at screen edge — float its tip to the right instead. */
+.sc2-panel-reopen[data-tip]::after {
+	bottom: auto;
+	top: 50%;
+	left: calc(100% + 8px);
+	transform: translateY(-50%) translateX(-3px);
+}
+.sc2-panel-reopen[data-tip]::before {
+	bottom: auto;
+	top: 50%;
+	left: calc(100% + 3px);
+	transform: translateY(-50%) translateX(-3px);
+	border-top-color: transparent;
+	border-right-color: var(--sf-tip-bg);
+}
+.sc2-panel-reopen[data-tip]:hover::after,
+.sc2-panel-reopen[data-tip]:focus-visible::after {
+	transform: translateY(-50%) translateX(0);
+}
+.sc2-panel-reopen[data-tip]:hover::before,
+.sc2-panel-reopen[data-tip]:focus-visible::before {
+	transform: translateY(-50%) translateX(0);
+}
+
+/* ============================================================================
+   DARK MODE  ·  html[data-theme="dark"] .sc2-panel …
+   Mirrors the legacy builder's dark palette (bg ~#1f1f1f, cards #2a2a2a,
+   borders #444, text #e8e8e8, muted #999).
+   ============================================================================ */
+html[data-theme="dark"] .sc2-panel,
+html[data-theme="dark"] .sc2-panel-reopen {
+	--sf-bg:          #1f1f1f;
+	--sf-bg-sub:      #181818;
+	--sf-bg-sub2:     #232323;
+	--sf-card:        #2a2a2a;
+	--sf-card-hover:  #323232;
+	--sf-border:      #444444;
+	--sf-border-2:    #555555;
+	--sf-text:        #e8e8e8;
+	--sf-text-soft:   #dddddd;
+	--sf-muted:       #999999;
+	--sf-muted-2:     #888888;
+	--sf-accent:      #63b3ed;
+	--sf-accent-hi:   rgba(99,179,237,.16);
+	--sf-accent-edge: #4a90c2;
+	--sf-shadow:      rgba(0,0,0,.5);
+	--sf-tip-bg:      #0f0f0f;
+	--sf-tip-text:    #e8e8e8;
+}
+html[data-theme="dark"] .sc2-panel {
+	box-shadow: 0 1px 4px rgba(0,0,0,.55);
+}
+html[data-theme="dark"] .sc2-panel__mark {
+	color: var(--sf-gold-hi);
+}
+html[data-theme="dark"] .sc2-fam__chip {
+	border-color: rgba(255,255,255,.12);
+}
+html[data-theme="dark"] .sc2-fam__swatch[aria-checked="true"],
+html[data-theme="dark"] .sc2-wax__in:checked + .sc2-wax__dot {
+	border-color: var(--sf-gold-hi);
+}
+html[data-theme="dark"] .sc2-switch__thumb {
+	background: #e8e8e8;
+}
+html[data-theme="dark"] .sc2-btn--gold {
+	color: #1a1a1a;
+	border-color: #6b5310;
+}
+html[data-theme="dark"] .sc2-btn__spin {
+	border-color: rgba(0,0,0,.3);
+	border-top-color: #1a1a1a;
+}
+html[data-theme="dark"] .sc2-panel__body::-webkit-scrollbar-thumb {
+	border-color: var(--sf-bg);
+}

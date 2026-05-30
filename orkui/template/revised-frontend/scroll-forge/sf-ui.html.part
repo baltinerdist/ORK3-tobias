@@ -1,0 +1,333 @@
+<?php
+	/* ============================================================================
+	   THE LETTERED SCROLL — sf-ui.html.part   (PHP / ORK3 view)
+	   ----------------------------------------------------------------------------
+	   THE CONTROL PANEL (.sc2-panel) — UI chrome ONLY. SIBLING of the stage
+	   (.sc2-stage), never a parent, so print/export can isolate the sheet.
+	   Owns: family swatch picker, live text fields, option toggles, Export rail.
+
+	   ORK3 renders this as PLAIN PHP (extract()+include), NOT Smarty. Controller
+	   data is in scope ($player, $award, …) plus the $sg* locals from the backup
+	   top. sf-app.js re-reads window.SgConfig at init, so these server seeds only
+	   feed the initial paint.
+
+	   HARD RULES honored: dark-mode-safe chrome (theme tokens in panel CSS; no
+	   inline colours here); NO native title="" (hints use data-tip); global orkui
+	   h1–h6 pill reset on every panel heading via .sc2-h; defensive defaults so a
+	   missing award/player never paints a blank field or a raw ISO date.
+	   ============================================================================ */
+
+	$sfPersona     = ($sgPlayer && !empty($sgPlayer['Persona'])) ? $sgPlayer['Persona'] : 'the Bearer of this Scroll';
+	$sfAwardName   = $sgAwardName ?: ($sgAward['Name'] ?? 'a Token of Esteem');
+	$sfKingdomName = $sgKingdomName ?: 'the Kingdom';
+	$sfParkName    = $sgParkName ?: 'Our realm';
+	$sfNote        = $sgAward['Note'] ?? '';
+	$sfGivenBy     = $sgAward['GivenBy'] ?? '';
+	$sfDate        = $sgAward['Date'] ?? '';
+	$sfCanGenerate = !empty($sgCanGenerate);
+
+	if (!isset($h)) { $h = function ($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }; }
+
+	// key | display label | one-word motif tag — JS overrides label/swatch from JSON
+	$sfFamilies = [
+		['hibernian_knotwork', 'Hibernian Knotwork', 'Celtic interlace'],
+		['northern_gothic',    'Northern Gothic',    'Gothic tracery'],
+		['provencal_bestiary', 'Provençal Bestiary', 'Foliate drollery'],
+		['crimson_decree',     'Crimson Decree',     'Royal acanthus'],
+		['forest_reverie',     'Forest Reverie',     'Fae rinceaux'],
+		['charred_edict',      'Charred Edict',      'Scorched rule'],
+		['imperial_edict',     'Imperial Edict',     'Laurel &amp; eagle'],
+		['scholars_hand',      "Scholar's Hand",     'Plain diploma'],
+		['crusaders_charter',  "Crusader's Charter", 'Cross &amp; chevron'],
+		['astral_codex',       'Astral Codex',       'Star-grain'],
+	];
+
+	// key | label | preview hex ('' = family wax)
+	$sfWaxes = [
+		['family',  'Family',  ''],
+		['crimson', 'Crimson', '#8c1d1b'],
+		['oxblood', 'Oxblood', '#5a0f0f'],
+		['forest',  'Forest',  '#1f4d2e'],
+		['azure',   'Azure',   '#1e3a6e'],
+		['violet',  'Violet',  '#43286e'],
+		['gold',    'Gilt',    '#b8862b'],
+		['sable',   'Sable',   '#241c15'],
+	];
+?>
+
+<aside class="sc2-panel" id="sc2Panel" data-theme-scope aria-label="Scroll design controls">
+
+	<!-- PANEL HEADER -->
+	<header class="sc2-panel__head">
+		<div class="sc2-panel__brand">
+			<svg class="sc2-panel__mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+				<path d="M7 5h15a3 3 0 0 1 3 3v16a3 3 0 0 0 3 3H10a3 3 0 0 1-3-3V5z"
+				      fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+				<path d="M7 5a3 3 0 0 0-3 3 3 3 0 0 0 3 3h2V5H7zM22 27a3 3 0 0 0 3-3v-2h-2v5h-1z"
+				      fill="currentColor" opacity=".55"/>
+				<path d="M11 12h10M11 16h10M11 20h7" stroke="currentColor" stroke-width="1.3"
+				      stroke-linecap="round" opacity=".7"/>
+			</svg>
+			<div class="sc2-panel__titles">
+				<h2 class="sc2-h sc2-panel__title">Scroll Forge</h2>
+				<p class="sc2-panel__sub">Letter an illuminated award scroll</p>
+			</div>
+		</div>
+		<button type="button" class="sc2-panel__collapse" id="sc2PanelCollapse"
+		        data-tip="Hide controls" aria-label="Hide controls" aria-expanded="true">
+			<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+				<path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2"
+				      stroke-linecap="round" stroke-linejoin="round"/>
+			</svg>
+		</button>
+	</header>
+
+	<!-- Scrollable body so the export rail (footer) can stay pinned -->
+	<div class="sc2-panel__body" id="sc2PanelBody">
+
+		<!-- 1 · STYLE FAMILY (visual swatch grid; JS paints palettes from SC_FAMILIES) -->
+		<section class="sc2-group" aria-labelledby="sc2GrpFamily">
+			<div class="sc2-group__head">
+				<h3 class="sc2-h sc2-group__title" id="sc2GrpFamily">Style Family</h3>
+				<span class="sc2-group__hint" data-tip="The visual tradition: substrate tint, border motif, gilding, seal &amp; type pairing all shift per family.">
+					<svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="8.2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10 9v5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="10" cy="6" r="1.05" fill="currentColor"/></svg>
+				</span>
+			</div>
+
+			<div class="sc2-fam" id="sc2FamilyGrid" role="radiogroup" aria-label="Scroll style family">
+				<?php foreach ($sfFamilies as $fam): ?>
+					<button type="button"
+					        class="sc2-fam__swatch"
+					        id="sc2Fam-<?= $h($fam[0]) ?>"
+					        data-family="<?= $h($fam[0]) ?>"
+					        role="radio"
+					        aria-checked="false"
+					        data-tip="<?= $fam[1] ?> — <?= $fam[2] ?>">
+						<span class="sc2-fam__chip" aria-hidden="true" data-fam-chip="<?= $h($fam[0]) ?>">
+							<i class="sc2-fam__band sc2-fam__band--1"></i>
+							<i class="sc2-fam__band sc2-fam__band--2"></i>
+							<i class="sc2-fam__band sc2-fam__band--3"></i>
+							<i class="sc2-fam__band sc2-fam__band--4"></i>
+							<svg class="sc2-fam__check" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+								<path d="M5 12.5l4.2 4.2L19 6.5" fill="none" stroke="currentColor"
+								      stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+							</svg>
+						</span>
+						<span class="sc2-fam__label" data-fam-label="<?= $h($fam[0]) ?>"><?= $fam[1] ?></span>
+						<span class="sc2-fam__motif" data-fam-motif="<?= $h($fam[0]) ?>"><?= $fam[2] ?></span>
+					</button>
+				<?php endforeach; ?>
+			</div>
+		</section>
+
+		<!-- 2 · WORDING (live text fields; each input carries data-sc2-field="<bind>") -->
+		<section class="sc2-group" aria-labelledby="sc2GrpWording">
+			<div class="sc2-group__head">
+				<h3 class="sc2-h sc2-group__title" id="sc2GrpWording">Wording</h3>
+				<button type="button" class="sc2-group__reset" id="sc2WordingReset"
+				        data-tip="Restore the auto-written proclamation from the award record">
+					Restore auto-text
+				</button>
+			</div>
+
+			<div class="sc2-field">
+				<label class="sc2-field__lbl" for="sc2fPersona">Recipient</label>
+				<input class="sc2-field__in" id="sc2fPersona" type="text"
+				       data-sc2-field="persona"
+				       value="<?= $h($sfPersona) ?>"
+				       placeholder="the Bearer of this Scroll"
+				       autocomplete="off" spellcheck="false">
+				<small class="sc2-field__note">Rubricated in vermilion on the scroll.</small>
+			</div>
+
+			<div class="sc2-field">
+				<label class="sc2-field__lbl" for="sc2fAward">Award title</label>
+				<input class="sc2-field__in" id="sc2fAward" type="text"
+				       data-sc2-field="awardName"
+				       value="<?= $h($sfAwardName) ?>"
+				       placeholder="a Token of Esteem"
+				       autocomplete="off" spellcheck="false">
+				<small class="sc2-field__note">Set in the grand display blackletter title.</small>
+			</div>
+
+			<div class="sc2-field sc2-field--2col">
+				<div>
+					<label class="sc2-field__lbl" for="sc2fKingdom">Kingdom</label>
+					<input class="sc2-field__in" id="sc2fKingdom" type="text"
+					       data-sc2-field="kingdomName"
+					       value="<?= $h($sfKingdomName) ?>"
+					       placeholder="the Kingdom"
+					       autocomplete="off" spellcheck="false">
+				</div>
+				<div>
+					<label class="sc2-field__lbl" for="sc2fPark">Park / place</label>
+					<input class="sc2-field__in" id="sc2fPark" type="text"
+					       data-sc2-field="parkName"
+					       value="<?= $h($sfParkName) ?>"
+					       placeholder="Our realm"
+					       autocomplete="off" spellcheck="false">
+				</div>
+			</div>
+
+			<div class="sc2-field">
+				<label class="sc2-field__lbl" for="sc2fDate">Date granted</label>
+				<input class="sc2-field__in sc2-field__in--date" id="sc2fDate" type="date"
+				       data-sc2-field="date"
+				       value="<?= $h($sfDate) ?>">
+				<small class="sc2-field__note">Written out in full on the scroll (e.g. &ldquo;the twelfth day of May&rdquo;).</small>
+			</div>
+
+			<div class="sc2-field">
+				<label class="sc2-field__lbl" for="sc2fReason">For / reason</label>
+				<textarea class="sc2-field__in sc2-field__ta" id="sc2fReason" rows="2"
+				          data-sc2-field="note"
+				          placeholder="service to Our realm"
+				          spellcheck="true"><?= $h($sfNote) ?></textarea>
+				<small class="sc2-field__note">Woven into the narration. Blank &rarr; &ldquo;service to Our realm&rdquo;.</small>
+			</div>
+
+			<div class="sc2-field">
+				<label class="sc2-field__lbl" for="sc2fGivenBy">Attested by</label>
+				<!-- Giver search is GLOBAL/unscoped (project memory). JS wires the custom
+				     kn-ac-results dropdown to SgConfig.httpService with &q= (never ?q=). -->
+				<div class="sc2-ac">
+					<input class="sc2-field__in" id="sc2fGivenBy" type="text"
+					       data-sc2-field="givenBy"
+					       value="<?= $h($sfGivenBy) ?>"
+					       placeholder="signing officer&rsquo;s persona"
+					       autocomplete="off" spellcheck="false"
+					       aria-autocomplete="list" aria-controls="sc2GivenByAc">
+					<ul class="kn-ac-results sc2-ac__results" id="sc2GivenByAc" role="listbox" aria-label="Officer search results"></ul>
+				</div>
+				<small class="sc2-field__note">Searches all realms &mdash; an officer abroad may attest.</small>
+			</div>
+		</section>
+
+		<!-- 3 · OPTIONS (toggles drive data-* on .sc2-scroll or a token swap) -->
+		<section class="sc2-group" aria-labelledby="sc2GrpOptions">
+			<div class="sc2-group__head">
+				<h3 class="sc2-h sc2-group__title" id="sc2GrpOptions">Presentation</h3>
+			</div>
+
+			<!-- Orientation -->
+			<div class="sc2-opt">
+				<span class="sc2-opt__lbl">Orientation</span>
+				<div class="sc2-seg" role="radiogroup" aria-label="Orientation" data-sc2-seg="orientation">
+					<input class="sc2-seg__in" type="radio" name="sc2Orientation" id="sc2OriPortrait" value="portrait" checked>
+					<label class="sc2-seg__pill" for="sc2OriPortrait" data-tip="Tall sheet (8.5 &times; 11)">Portrait</label>
+					<input class="sc2-seg__in" type="radio" name="sc2Orientation" id="sc2OriLandscape" value="landscape">
+					<label class="sc2-seg__pill" for="sc2OriLandscape" data-tip="Wide sheet (11 &times; 8.5)">Landscape</label>
+				</div>
+			</div>
+
+			<!-- Illumination intensity -->
+			<div class="sc2-opt">
+				<span class="sc2-opt__lbl">Illumination</span>
+				<div class="sc2-seg sc2-seg--3" role="radiogroup" aria-label="Illumination intensity" data-sc2-seg="intensity">
+					<input class="sc2-seg__in" type="radio" name="sc2Intensity" id="sc2IntPlain" value="plain">
+					<label class="sc2-seg__pill" for="sc2IntPlain" data-tip="Restrained: bar border, no ruling, no curl">Plain</label>
+					<input class="sc2-seg__in" type="radio" name="sc2Intensity" id="sc2IntBalanced" value="balanced" checked>
+					<label class="sc2-seg__pill" for="sc2IntBalanced" data-tip="Decorated band, ruling &amp; pricking">Balanced</label>
+					<input class="sc2-seg__in" type="radio" name="sc2Intensity" id="sc2IntOrnate" value="ornate">
+					<label class="sc2-seg__pill" for="sc2IntOrnate" data-tip="Full: corner bosses, rolled curls, bas-de-page">Ornate</label>
+				</div>
+			</div>
+
+			<!-- Heraldry on/off -->
+			<div class="sc2-opt sc2-opt--switch">
+				<label class="sc2-switch" for="sc2OptHeraldry">
+					<input class="sc2-switch__in" type="checkbox" id="sc2OptHeraldry"
+					       data-sc2-toggle="heraldry" checked>
+					<span class="sc2-switch__track" aria-hidden="true"><span class="sc2-switch__thumb"></span></span>
+					<span class="sc2-switch__text">
+						<span class="sc2-switch__name">Heraldry</span>
+						<span class="sc2-switch__desc">Kingdom &amp; park arms crowning the title</span>
+					</span>
+				</label>
+			</div>
+
+			<!-- Rolled curls on/off -->
+			<div class="sc2-opt sc2-opt--switch">
+				<label class="sc2-switch" for="sc2OptCurl">
+					<input class="sc2-switch__in" type="checkbox" id="sc2OptCurl"
+					       data-sc2-toggle="curl">
+					<span class="sc2-switch__track" aria-hidden="true"><span class="sc2-switch__thumb"></span></span>
+					<span class="sc2-switch__text">
+						<span class="sc2-switch__name">Rolled curls</span>
+						<span class="sc2-switch__desc">Top &amp; bottom of the sheet roll with cast shadow</span>
+					</span>
+				</label>
+			</div>
+
+			<!-- Wax seal colour -->
+			<div class="sc2-opt">
+				<span class="sc2-opt__lbl">Seal wax</span>
+				<div class="sc2-wax" role="radiogroup" aria-label="Wax seal colour" data-sc2-seg="seal">
+					<?php foreach ($sfWaxes as $wax): ?>
+						<input class="sc2-wax__in" type="radio" name="sc2Seal"
+						       id="sc2Wax-<?= $h($wax[0]) ?>" value="<?= $h($wax[0]) ?>"<?= $wax[0] === 'family' ? ' checked' : '' ?>>
+						<label class="sc2-wax__dot<?= $wax[0] === 'family' ? ' sc2-wax__dot--family' : '' ?>"
+						       for="sc2Wax-<?= $h($wax[0]) ?>"
+						       data-tip="<?= $h($wax[1]) ?> wax"
+						       <?= $wax[2] !== '' ? 'style="--sc2-wax-preview:' . $h($wax[2]) . '"' : '' ?>>
+							<span class="sc2-wax__inner" aria-hidden="true"></span>
+							<span class="sc2-vh"><?= $h($wax[1]) ?></span>
+						</label>
+					<?php endforeach; ?>
+				</div>
+				<small class="sc2-field__note">&ldquo;Family&rdquo; uses each style&rsquo;s liveried wax.</small>
+			</div>
+		</section>
+
+	</div><!-- /.sc2-panel__body -->
+
+	<!-- EXPORT RAIL (pinned footer); gated on $sfCanGenerate -->
+	<footer class="sc2-panel__foot">
+		<?php if ($sfCanGenerate): ?>
+			<div class="sc2-export" id="sc2Export">
+				<button type="button" class="sc2-btn sc2-btn--ghost" id="sc2ExportPrint"
+				        data-tip="Open the print dialog — choose &ldquo;Save as PDF&rdquo; for a vector file">
+					<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+						<path d="M7 9V4h10v5M7 18H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2M7 14h10v6H7z"
+						      fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+					</svg>
+					<span>Print / PDF</span>
+				</button>
+				<button type="button" class="sc2-btn sc2-btn--gold" id="sc2ExportPng"
+				        data-tip="Render the scroll exactly as shown to a high-resolution PNG image">
+					<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+						<path d="M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"
+						      fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+						<circle cx="8.5" cy="9.5" r="1.6" fill="none" stroke="currentColor" stroke-width="1.5"/>
+						<path d="M3 16l5-4 4 3 3-2 6 5" fill="none" stroke="currentColor" stroke-width="1.7"
+						      stroke-linecap="round" stroke-linejoin="round"/>
+					</svg>
+					<span>Save PNG</span>
+					<i class="sc2-btn__spin" aria-hidden="true"></i>
+				</button>
+			</div>
+		<?php else: ?>
+			<div class="sc2-export sc2-export--locked">
+				<button type="button" class="sc2-btn sc2-btn--ghost" disabled aria-disabled="true"
+				        data-tip="You don&rsquo;t have rights to generate this scroll. The preview is still yours to admire.">
+					<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+						<path d="M7 11V8a5 5 0 0 1 10 0v3M6 11h12a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z"
+						      fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+					</svg>
+					<span>Export locked</span>
+				</button>
+			</div>
+		<?php endif; ?>
+		<p class="sc2-panel__foot-note" aria-live="polite" id="sc2ExportStatus"></p>
+	</footer>
+
+</aside><!-- /.sc2-panel -->
+
+<!-- Floating re-open tab (visible only when the panel is collapsed) -->
+<button type="button" class="sc2-panel-reopen" id="sc2PanelReopen"
+        data-tip="Show controls" aria-label="Show controls" hidden>
+	<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+		<path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2"
+		      stroke-linecap="round" stroke-linejoin="round"/>
+	</svg>
+</button>

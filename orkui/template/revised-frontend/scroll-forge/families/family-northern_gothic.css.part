@@ -1,0 +1,454 @@
+/* ============================================================================
+   THE LETTERED SCROLL — family-northern_gothic.css.part
+   ----------------------------------------------------------------------------
+   FAMILY: Northern Gothic  ·  key: northern_gothic
+   ----------------------------------------------------------------------------
+   THE CANONICAL "real medieval charter." A heavy royal decree: blackletter
+   textura title in raised gilt, an iconic LAPIS bar border that sprouts
+   marginal hedera (ivy) — wavy hairline tendrils carrying small cordate
+   leaves alternating gold/green, dotted with gold spangles (besants). Dense
+   foliate clusters in every corner. This is the auto-pick for TITLE awards.
+
+   This partial OWNS the look of the scroll only when [data-family="northern_gothic"].
+   It RE-SETS shared tokens (substrate trio, ink/rubric, full --gold ramp,
+   --border lapis, --rule-fine, --initial-ground, --wax*, --ribbon-*,
+   --escutcheon, --ff-title, --accent, the --motif hook) and adds
+   family-specific ornament selectors. Per the scoping contract it MUST NOT
+   touch z-index, layout, spacing, shadow helpers, or motion tokens — those
+   stay owned by sf-tokens / the structural partials.
+   ============================================================================ */
+
+/* ===========================================================================
+   1. TOKEN OVERRIDES  ·  scoped to the family so dark-mode can never reach in
+   =========================================================================== */
+.sc2-scroll[data-family="northern_gothic"] {
+
+  /* ── SUBSTRATE / VELLUM ──────────────────────────────────────────────────
+     A cool, well-prepared northern calf-skin: a touch greyer/cooler than the
+     warm Crimson Decree baseline so the lapis border sings against it.       */
+  --vellum:            #f3e7c6;
+  --vellum-hi:         #faf0d6;
+  --vellum-lo:         #d8bf8d;
+  --grime:             rgba(46,38,22,.34);   /* cooler edge grime             */
+  --foxing:            #a98a55;              /* used at 8–18% alpha            */
+  --ruling:            #8d8369;              /* faint scribal ruling/pricking  */
+  --curl-shadow:       rgba(40,32,14,.36);
+
+  /* ── INK ─────────────────────────────────────────────────────────────────
+     Near-black iron-gall, very dark for a formal charter — but NEVER #000.   */
+  --ink:               #1c1810;
+  --ink-muted:         #4a3a24;              /* labels / intitulation / titles */
+  --rubric:            #b71c2a;              /* vivid vermilion rubric         */
+
+  /* ── GILDING (raised gold — always the gradient recipe, never flat) ──────
+     A rich, slightly deep medieval leaf-gold ramp.                          */
+  --gold:              #d4af37;
+  --gold-hi:           #fff4c2;
+  --gold-deep:         #a9760a;
+  --gold-shadow:       #6e4d08;
+  --gold-keyline:      #5a3d0c;
+
+  /* ── BORDER / FRAME — the signature LAPIS bar ────────────────────────────
+     Lapis lazuli ultramarine: the most expensive medieval pigment, reserved
+     for the grandest charters. This is what makes Northern Gothic read as a
+     true royal decree on sight.                                              */
+  --border:            #2a4b8d;
+  --rule-fine:         #1d3666;              /* deep lapis hairline outer rule */
+  --initial-ground:    #2a4b8d;             /* lapis ground behind the versal */
+
+  /* ── ACCENT — the ivy GREEN that alternates with gold on the marginal vine */
+  --accent:            #2e6b3a;              /* verdigris / sap-green leaf      */
+  --accent-soft:       rgba(46,107,58,.26); /* washed green tendril fill       */
+
+  /* Family-private hedera tokens (consumed only by the ornament selectors
+     in §2 below — kept here so the whole palette lives in one block).        */
+  --ng-lapis:          #2a4b8d;
+  --ng-lapis-hi:       #4f74bf;             /* lapis catch-light / azurite      */
+  --ng-lapis-lo:       #1b3263;             /* lapis recess                     */
+  --ng-leaf-gold:      #d8b13f;
+  --ng-leaf-green:     #2e6b3a;
+  --ng-leaf-green-hi:  #4f9657;
+  --ng-besant:         #e9c64a;             /* gold spangle dot                 */
+  --ng-tendril:        #6e4d08;             /* hairline vine stroke (dark gold) */
+
+  /* ── WAX SEAL — oxblood charter wax on a livery ribbon ───────────────────*/
+  --wax:               #8c1d1b;
+  --wax-hi:            #b73a2c;
+  --wax-lo:            #54100f;
+  --ribbon-a:          #2a4b8d;             /* lapis livery ribbon tail         */
+  --ribbon-b:          #d4af37;             /* gilt metal ribbon tail           */
+
+  /* ── HERALDRY ────────────────────────────────────────────────────────────
+     Classic English heater shield for the canonical charter look.           */
+  --escutcheon:        heater;
+  --arms-rim:          var(--gold);
+  --arms-keyline:      #16244a;             /* lapis-dark shield keyline        */
+
+  /* ── TYPOGRAPHY — TITLE FACE ONLY (body/sign stay shared serifs) ─────────
+     UnifrakturMaguntia = textura quadrata, the canonical charter blackletter.
+     Single-weight trap respected: NEVER request a bold for it.              */
+  --ff-title:          "UnifrakturMaguntia","UnifrakturCook","Pirata One","Times New Roman",serif;
+  /* body (EB Garamond) + signature (EB Garamond italic) inherit shared
+     stacks — no override needed; the brief specifies exactly those.         */
+
+  /* ── MOTIF HOOK — the structural border partial reads this to switch the
+     <pattern>/<path> set it paints into .sc2-border. Locked informational
+     contract; value names this family's motif.                             */
+  --motif:             "gothic-bar-ivy";
+}
+
+/* ===========================================================================
+   2. FAMILY ORNAMENT  ·  the bar-and-ivy illumination
+   ---------------------------------------------------------------------------
+   The shared illumination partial provides the concentric zones (fine rule →
+   bar border → decorated band → corner pieces → bas-de-page). Here we DRESS
+   those zones for Northern Gothic: lapis bars that sprout a gilt/green hedera
+   vine with besant spangles, and heavy foliate corner clusters.
+   =========================================================================== */
+
+/* --- 2a. The lapis BAR border gets dimensional pigment, not a flat fill ---
+   A vertical lapis gradient (azurite highlight → ultramarine body → recess)
+   sells hand-ground mineral pigment laid thick. A thin gilt keyline on the
+   inner edge separates it from the vellum like real applied gold leaf.      */
+.sc2-scroll[data-family="northern_gothic"] .sc2-illum .sc2-bar,
+.sc2-scroll[data-family="northern_gothic"] .sc2-border .ng-bar {
+  fill: var(--ng-lapis);
+  --bar-grad: linear-gradient(
+      90deg,
+      var(--ng-lapis-lo)  0%,
+      var(--ng-lapis)     22%,
+      var(--ng-lapis-hi)  50%,
+      var(--ng-lapis)     78%,
+      var(--ng-lapis-lo) 100%);
+  background: var(--bar-grad);
+  box-shadow:
+      inset 0 0 0 1px rgba(11,20,46,.55),                 /* recessed keyline */
+      inset 0 1px 0 rgba(120,150,220,.45),                /* top catch-light  */
+      inset 0 -1px 1px rgba(8,16,38,.55);                 /* bottom shade     */
+}
+
+/* SVG twin of the bar gradient for the inline <linearGradient id> the border
+   SVG references (sf paints id="sc2-bar-grad" when --motif resolves here).   */
+.sc2-scroll[data-family="northern_gothic"] .sc2-border .ng-bar-stop-0  { stop-color: var(--ng-lapis-lo); }
+.sc2-scroll[data-family="northern_gothic"] .sc2-border .ng-bar-stop-1  { stop-color: var(--ng-lapis);    }
+.sc2-scroll[data-family="northern_gothic"] .sc2-border .ng-bar-stop-2  { stop-color: var(--ng-lapis-hi); }
+.sc2-scroll[data-family="northern_gothic"] .sc2-border .ng-bar-stop-3  { stop-color: var(--ng-lapis);    }
+.sc2-scroll[data-family="northern_gothic"] .sc2-border .ng-bar-stop-4  { stop-color: var(--ng-lapis-lo); }
+
+/* Thin applied-gold keyline running the inner edge of the lapis bar. */
+.sc2-scroll[data-family="northern_gothic"] .sc2-border .ng-bar-gilt-rule {
+  fill: none;
+  stroke: url(#sc2-gild);
+  stroke-width: 1.25;
+  stroke-opacity: .9;
+}
+
+/* --- 2b. The marginal HEDERA (ivy) vine -----------------------------------
+   Wavy hairline tendril stroked in dark gold; cordate (heart) leaves
+   alternate gold and sap-green; gold besant spangles punctuate the line.
+   These selectors style whatever <path>/<circle> nodes the border partial
+   emits with these classes for the "gothic-bar-ivy" motif.                  */
+
+/* the sinuous vine stroke itself — thin, hand-inked, slightly translucent */
+.sc2-scroll[data-family="northern_gothic"] .sc2-border .ng-vine {
+  fill: none;
+  stroke: var(--ng-tendril);
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-opacity: .85;
+}
+/* fine hairline branchlets feathering off the main vine */
+.sc2-scroll[data-family="northern_gothic"] .sc2-border .ng-vine--hair {
+  stroke-width: .8;
+  stroke-opacity: .7;
+}
+
+/* cordate leaves — every other one gold, the rest green, both with a gilt
+   keyline so they read as illuminated rather than printed.                  */
+.sc2-scroll[data-family="northern_gothic"] .sc2-border .ng-leaf {
+  stroke: var(--gold-keyline);
+  stroke-width: .6;
+  stroke-opacity: .55;
+}
+.sc2-scroll[data-family="northern_gothic"] .sc2-border .ng-leaf--gold {
+  fill: var(--ng-leaf-gold);
+}
+.sc2-scroll[data-family="northern_gothic"] .sc2-border .ng-leaf--green {
+  fill: var(--ng-leaf-green);
+}
+/* a slim raised midrib + highlighted lobe to give each leaf body */
+.sc2-scroll[data-family="northern_gothic"] .sc2-border .ng-leaf-midrib {
+  fill: none;
+  stroke: var(--gold-keyline);
+  stroke-width: .5;
+  stroke-opacity: .4;
+}
+.sc2-scroll[data-family="northern_gothic"] .sc2-border .ng-leaf--green .ng-leaf-hi {
+  fill: var(--ng-leaf-green-hi);
+  opacity: .5;
+}
+.sc2-scroll[data-family="northern_gothic"] .sc2-border .ng-leaf--gold .ng-leaf-hi {
+  fill: var(--gold-hi);
+  opacity: .55;
+}
+
+/* gold besant spangles dotted along the vine — raised gilt beads */
+.sc2-scroll[data-family="northern_gothic"] .sc2-border .ng-besant {
+  fill: var(--ng-besant);
+  stroke: var(--gold-keyline);
+  stroke-width: .5;
+  stroke-opacity: .65;
+}
+.sc2-scroll[data-family="northern_gothic"] .sc2-border .ng-besant-hi {
+  fill: var(--gold-hi);
+  opacity: .7;
+}
+
+/* --- 2c. Heavy foliate CORNER clusters ------------------------------------
+   The densest ornament: a balled-up knot of acanthus/hedera at each corner,
+   lapis ground with gilt foliage so the corners anchor the whole frame.     */
+.sc2-scroll[data-family="northern_gothic"] .sc2-border .ng-corner {
+  /* corner cluster wrapper — purely so transforms/opacity can target it */
+  transform-box: fill-box;
+}
+.sc2-scroll[data-family="northern_gothic"] .sc2-border .ng-corner-ground {
+  fill: var(--ng-lapis);
+  stroke: var(--gold-keyline);
+  stroke-width: 1;
+  stroke-opacity: .8;
+  filter: drop-shadow(0 1px 1px rgba(8,16,38,.5));
+}
+.sc2-scroll[data-family="northern_gothic"] .sc2-border .ng-corner-leaf {
+  fill: url(#sc2-gild);                       /* gilt acanthus on lapis        */
+  stroke: var(--gold-keyline);
+  stroke-width: .5;
+  stroke-opacity: .5;
+}
+.sc2-scroll[data-family="northern_gothic"] .sc2-border .ng-corner-leaf--green {
+  fill: var(--ng-leaf-green);
+}
+.sc2-scroll[data-family="northern_gothic"] .sc2-border .ng-corner-boss {
+  /* central gilded boss/jewel of the corner knot */
+  fill: var(--ng-besant);
+  stroke: var(--gold-keyline);
+  stroke-width: .75;
+  filter: drop-shadow(0 1px 1px rgba(40,20,0,.4));
+}
+
+/* ===========================================================================
+   3. TITLE — raised gilt blackletter textura
+   ---------------------------------------------------------------------------
+   The grand display line. UnifrakturMaguntia in the LOCKED gilt-TEXT recipe:
+   the gold gradient clipped to glyphs, dark keyline stroke, layered drop-
+   shadows so the letters read as raised tooled gold leaf. Never tracked wide
+   (blackletter must stay tight to remain legible).
+   =========================================================================== */
+.sc2-scroll[data-family="northern_gothic"] .sc2-title {
+  /* reset the global orkui h1 grey pill — this heading is illuminated gold   */
+  background: linear-gradient(
+      135deg,
+      var(--gold-shadow)  0%,
+      var(--gold)        18%,
+      var(--gold-hi)     38%,
+      var(--gold)        58%,
+      var(--gold-deep)   82%,
+      var(--gold-shadow)100%);
+  -webkit-background-clip: text;
+          background-clip: text;
+  color: transparent;
+  -webkit-text-stroke: .75px var(--gold-keyline);
+  border: none;
+  padding: 0;
+  border-radius: 0;
+  text-shadow: none;
+  filter:
+      drop-shadow(0 1px 0 var(--gold-hi))
+      drop-shadow(0 2px 2px rgba(40,20,0,.35));
+
+  font-family: var(--ff-title);
+  font-weight: 400;                /* UnifrakturMaguntia is 400-only          */
+  letter-spacing: var(--ls-title); /* tight — never widen blackletter         */
+  line-height: 1.04;
+  text-align: center;
+}
+
+/* A thin vermilion underscore-rule beneath the title, the way a charter
+   scribe would rule off the grand line from the body — drawn with the
+   field's rubric so it ties title → border → seal together.                 */
+.sc2-scroll[data-family="northern_gothic"] .sc2-title::after {
+  content: "";
+  display: block;
+  width: 46%;
+  height: 2px;
+  margin: .42em auto 0;
+  background:
+      linear-gradient(90deg,
+        transparent 0%,
+        var(--rubric) 20%,
+        var(--rubric) 80%,
+        transparent 100%);
+  opacity: .8;
+}
+
+/* ===========================================================================
+   4. VERSAL DROP-CAP — illuminated initial on a LAPIS ground
+   ---------------------------------------------------------------------------
+   The opening word's first letter sits in a square lapis-ground initial box
+   with a gilt keyline and corner besants — the hallmark of a textura charter.
+   The letter itself is gilt; tiny white-line (bianchi girari) flourishes are
+   suggested by the inner highlight.
+   =========================================================================== */
+.sc2-scroll[data-family="northern_gothic"] .sc2-body > p:first-of-type::first-letter,
+.sc2-scroll[data-family="northern_gothic"] .sc2-versal {
+  font-family: var(--ff-versal);
+  font-weight: 400;
+  color: transparent;
+  background: linear-gradient(
+      150deg,
+      var(--gold-hi)    0%,
+      var(--gold)      40%,
+      var(--gold-deep) 78%,
+      var(--gold-shadow)100%);
+  -webkit-background-clip: text;
+          background-clip: text;
+  -webkit-text-stroke: .6px var(--gold-keyline);
+}
+
+/* the decorated initial BOX (rendered by typography partial as .sc2-versal-box) */
+.sc2-scroll[data-family="northern_gothic"] .sc2-versal-box {
+  background:
+      /* corner besants suggested as tiny radial spangles */
+      radial-gradient(circle at 10% 10%, var(--ng-besant) 0 2.2px, transparent 2.6px),
+      radial-gradient(circle at 90% 10%, var(--ng-besant) 0 2.2px, transparent 2.6px),
+      radial-gradient(circle at 10% 90%, var(--ng-besant) 0 2.2px, transparent 2.6px),
+      radial-gradient(circle at 90% 90%, var(--ng-besant) 0 2.2px, transparent 2.6px),
+      /* lapis ground with a subtle azurite catch-light upper-left */
+      radial-gradient(120% 120% at 28% 22%,
+        var(--ng-lapis-hi) 0%, var(--ng-lapis) 45%, var(--ng-lapis-lo) 100%);
+  box-shadow:
+      inset 0 0 0 1.5px var(--gold-keyline),              /* gilt keyline      */
+      inset 0 0 0 2.5px rgba(255,244,194,.35),            /* inner gold glow   */
+      0 1px 2px rgba(8,16,38,.45);                        /* slight lift       */
+  border-radius: 2px;
+}
+
+/* ===========================================================================
+   5. RUBRIC & SECTION ACCENTS
+   ---------------------------------------------------------------------------
+   The recipient's name and section openers in vermilion, per the manuscript
+   rubrication convention. Intitulation small-caps tinted with lapis ink for
+   the royal-decree register.
+   =========================================================================== */
+.sc2-scroll[data-family="northern_gothic"] .sc2-rubric,
+.sc2-scroll[data-family="northern_gothic"] .sc2-recipient {
+  color: var(--rubric);
+}
+
+/* the intitulation ("Know all by these presents…") opener — lapis small-caps,
+   the grand cool counterpoint to the warm gilt title.                       */
+.sc2-scroll[data-family="northern_gothic"] .sc2-intitulation {
+  color: var(--ng-lapis);
+  font-family: var(--ff-smallcaps);
+  font-variant: small-caps;
+  letter-spacing: var(--ls-intitulation);
+}
+
+/* the dispositive GRANT clause sits a hair larger, justified, with a small
+   gilt paraph mark to open it (drawn by typography partial as ::before).    */
+.sc2-scroll[data-family="northern_gothic"] .sc2-grant {
+  color: var(--ink);
+}
+.sc2-scroll[data-family="northern_gothic"] .sc2-grant::before {
+  color: var(--gold-deep);
+}
+
+/* ===========================================================================
+   6. WAX SEAL — pendant oxblood charter seal on a lapis/gilt livery ribbon
+   ---------------------------------------------------------------------------
+   The seal partial draws the geometry; here we only tint the SVG fills via
+   the family --wax* / --ribbon-* tokens already set in §1, plus a small
+   embossed-sigil tint so the impressed device reads as struck wax.
+   =========================================================================== */
+.sc2-scroll[data-family="northern_gothic"] .sc2-seal .sc2-wax-body {
+  fill: var(--wax);
+}
+.sc2-scroll[data-family="northern_gothic"] .sc2-seal .sc2-wax-rim {
+  fill: var(--wax-lo);
+}
+.sc2-scroll[data-family="northern_gothic"] .sc2-seal .sc2-wax-hi {
+  fill: var(--wax-hi);
+  opacity: .55;
+}
+/* impressed sigil — darker pooled wax in the recesses of the device */
+.sc2-scroll[data-family="northern_gothic"] .sc2-seal .sc2-wax-sigil {
+  fill: var(--wax-lo);
+  opacity: .85;
+}
+.sc2-scroll[data-family="northern_gothic"] .sc2-seal .sc2-ribbon--a {
+  fill: var(--ribbon-a);
+}
+.sc2-scroll[data-family="northern_gothic"] .sc2-seal .sc2-ribbon--b {
+  fill: var(--ribbon-b);
+}
+
+/* ===========================================================================
+   7. INTENSITY MODULATION
+   ---------------------------------------------------------------------------
+   Honor the [data-intensity] hook without touching structural tokens.
+   minimal  → mute the marginal ivy so only the lapis bar + corners remain.
+   ornate   → richer foxing + fuller vine + gilt spangles at full strength.
+   =========================================================================== */
+.sc2-scroll[data-family="northern_gothic"][data-intensity="minimal"] .sc2-border .ng-vine,
+.sc2-scroll[data-family="northern_gothic"][data-intensity="minimal"] .sc2-border .ng-leaf,
+.sc2-scroll[data-family="northern_gothic"][data-intensity="minimal"] .sc2-border .ng-besant {
+  opacity: .35;
+}
+.sc2-scroll[data-family="northern_gothic"][data-intensity="ornate"] .sc2-border .ng-besant {
+  filter: drop-shadow(0 1px 1px rgba(40,20,0,.45));
+}
+.sc2-scroll[data-family="northern_gothic"][data-intensity="ornate"] .sc2-title {
+  filter:
+      drop-shadow(0 1px 0 var(--gold-hi))
+      drop-shadow(0 2px 2px rgba(40,20,0,.4))
+      drop-shadow(0 0 6px rgba(212,175,55,.18));   /* faint gilt aura         */
+}
+
+/* ===========================================================================
+   8. EXPORT / PRINT FLATTENING
+   ---------------------------------------------------------------------------
+   Per the export contract, .sc2-export / @media print may flatten texture/gilt
+   but NOTHING structural. Background-clip:text is unreliable in html2canvas,
+   so under export we fall back to a solid gilt colour for the title/versal
+   while keeping the keyline so the letters still read as gold.
+   =========================================================================== */
+.sc2-scroll[data-family="northern_gothic"].sc2-export .sc2-title,
+.sc2-scroll[data-family="northern_gothic"].sc2-export .sc2-versal,
+.sc2-scroll[data-family="northern_gothic"].sc2-export .sc2-body > p:first-of-type::first-letter {
+  background: none;
+  -webkit-background-clip: border-box;
+          background-clip: border-box;
+  color: var(--gold);
+  -webkit-text-stroke: .6px var(--gold-keyline);
+}
+
+@media print {
+  .sc2-scroll[data-family="northern_gothic"] .sc2-title,
+  .sc2-scroll[data-family="northern_gothic"] .sc2-versal,
+  .sc2-scroll[data-family="northern_gothic"] .sc2-body > p:first-of-type::first-letter {
+    background: none;
+    -webkit-background-clip: border-box;
+            background-clip: border-box;
+    color: var(--gold-deep);
+    -webkit-text-stroke: .5px var(--gold-keyline);
+    -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+  }
+  /* ensure the lapis bar + ivy keep their colour in PDF engines */
+  .sc2-scroll[data-family="northern_gothic"] .sc2-illum .sc2-bar,
+  .sc2-scroll[data-family="northern_gothic"] .sc2-border,
+  .sc2-scroll[data-family="northern_gothic"] .sc2-seal {
+    -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+  }
+}

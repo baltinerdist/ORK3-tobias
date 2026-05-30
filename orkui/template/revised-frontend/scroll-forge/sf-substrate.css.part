@@ -1,0 +1,445 @@
+/* ============================================================================
+   THE LETTERED SCROLL — sf-substrate.css.part
+   ----------------------------------------------------------------------------
+   THE VELLUM / PARCHMENT SUBSTRATE. This is the bottom of the scroll's
+   z-stack: the physical sheet itself — its warm body colour, its uneven
+   aging, its fibrous skin, its stains and foxing, its grime-darkened edges,
+   its torn deckle outline, and (at the highest intensity) the curled top &
+   bottom of a rolled sheet.
+
+   MEDIUM IS LOCKED: pure CSS + inline SVG filters. No <canvas>. No tiled
+   photo textures (one inline-SVG feTurbulence data-URI is the ONLY raster-ish
+   source, and it is generated, not a JPEG). Never #fff — the lightest the
+   sheet ever gets is var(--vellum-hi).
+
+   CONSUMES (defined in sf-tokens.css.part — never redeclared here):
+     --vellum --vellum-hi --vellum-lo   substrate colour trio
+     --grime                            edge-grime vignette colour (rgba)
+     --foxing                           stain / foxing blob hue
+     --ruling                           faint ruling + pricking line colour
+     --curl-shadow                      cast shadow under a rolled curl
+     --z-vellum --z-ruling --z-edge     z-index contract (0 / 1 / 3)
+     --margin-frame                     inner content inset (for ruling rhythm)
+
+   Families re-tint ONLY the trio + --foxing + --grime + --ruling via
+   .sc2-scroll[data-family="…"] blocks in the tokens partial; this partial is
+   family-agnostic and reads whatever those tokens resolve to. Astral Codex
+   (dark substrate) therefore works with zero changes here — its mottle just
+   reads as faint star-grain because its tokens invert.
+
+   DEFENSIVE: every layer is an aria-hidden decorative element. If the markup
+   omits .sc2-vellum / .sc2-edge / .sc2-ruling the sheet still shows a sane
+   base (a fallback background is set on .sc2-scroll itself). If a browser
+   lacks mask / mix-blend-mode support, the @supports guards degrade to a
+   clean rounded rectangle on plain parchment rather than a black box.
+   ============================================================================ */
+
+
+/* ════════════════════════════════════════════════════════════════════════════
+   0 · THE SHEET ITSELF  (.sc2-scroll)
+   The substrate engineer owns ONLY the substrate concerns of this element:
+   its fallback fill, its deckle mask, and its grime vignette (::after).
+   Geometry / position:relative / aspect-ratio are owned by the layout layer;
+   we defensively assert position:relative so our absolutely-positioned child
+   layers anchor correctly even if loaded standalone.
+   ════════════════════════════════════════════════════════════════════════════ */
+.sc2-scroll {
+	position: relative;            /* defensive anchor for absolute child layers */
+	isolation: isolate;           /* contains mix-blend-mode to the sheet only   */
+
+	/* Fallback substrate so the sheet is NEVER #fff / transparent even before
+	   .sc2-vellum paints. Uses the same radial recipe at low fidelity.        */
+	background-color: var(--vellum, #f4e8c8);
+	background-image: radial-gradient(
+		120% 140% at 50% 0%,
+		var(--vellum-hi, #faf0d6) 0%,
+		var(--vellum,    #f4e8c8) 45%,
+		var(--vellum-lo, #ddc593) 100%
+	);
+
+	/* The physical sheet casts a soft drop shadow onto the felt stage. The
+	   border-radius is the "machine-cut" baseline; the deckle mask below
+	   chews it into an organic torn edge on capable browsers.                 */
+	border-radius: 6px;
+	box-shadow:
+		0 1px 1px   rgba(0,0,0,.10),
+		0 10px 24px rgba(40,28,10,.28),
+		0 30px 60px rgba(40,28,10,.22);
+}
+
+/* ── DECKLE / TORN EDGE ──────────────────────────────────────────────────────
+   The sheet's silhouette is masked by an SVG turbulence-displaced rounded rect
+   (#sc2-deckle, defined in the inline <defs> at the bottom of this file). This
+   replaces the crisp rectangle with a hand-torn deckle. Guarded by @supports:
+   if mask is unavailable the sheet keeps its border-radius and reads fine.
+   PRINT / EXPORT fallback (see §6) swaps to a flattened path-based mask because
+   feDisplacementMap masks rasterize unreliably (html2canvas drops them).      */
+@supports ((-webkit-mask: url(#x)) or (mask: url(#x))) {
+	.sc2-scroll {
+		/* Use the BAKED path deckle (defined in §6 as --sc2-deckle-baked) on
+		   screen too. The live feDisplacementMap mask (#sc2-deckle) operates in
+		   objectBoundingBox (0–1) units where scale="9" is enormous and shreds
+		   the sheet edge — the baked path under-bites safely and renders
+		   identically on screen, print, and html2canvas export.               */
+		-webkit-mask: var(--sc2-deckle-baked);
+		mask: var(--sc2-deckle-baked);
+		-webkit-mask-size: 100% 100%;
+		mask-size: 100% 100%;
+		-webkit-mask-repeat: no-repeat;
+		mask-repeat: no-repeat;
+	}
+}
+
+/* ── EDGE-GRIME VIGNETTE  (.sc2-scroll::after) ───────────────────────────────
+   Layer §2.2 of the substrate brief. A multiply-blended radial darkening +
+   an inset box-shadow that grimes the four edges. Sits at the edge z-tier so
+   it darkens substrate + ruling + foxing but stays BELOW the illumination
+   band and all text. pointer-events:none so it never eats clicks.            */
+.sc2-scroll::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: var(--z-edge, 3);
+	pointer-events: none;
+	border-radius: inherit;
+	background: radial-gradient(
+		135% 135% at 50% 45%,
+		transparent 55%,
+		var(--grime, rgba(74,52,24,.35)) 100%
+	);
+	box-shadow: inset 0 0 70px 14px var(--grime, rgba(74,52,24,.35));
+	mix-blend-mode: multiply;
+}
+@supports not (mix-blend-mode: multiply) {
+	.sc2-scroll::after { opacity: .55; }   /* graceful: just a soft vignette */
+}
+
+
+/* ════════════════════════════════════════════════════════════════════════════
+   1 · VELLUM BODY  (.sc2-vellum)
+   The substrate proper, painted bottom→top in a SINGLE element using a stacked
+   background list plus one ::after for the SVG fibre mottle. Order per brief:
+     (a) base radial body          (this element, last/bottom-most bg layer)
+     (b) foxing / stain blobs      (this element, upper bg layers, multiply)
+     (c) fibre mottle              (::after, feTurbulence data-URI, multiply)
+   Edge-grime vignette is on .sc2-scroll::after (above) so it can darken these.
+   ════════════════════════════════════════════════════════════════════════════ */
+.sc2-vellum {
+	position: absolute;
+	inset: 0;
+	z-index: var(--z-vellum, 0);
+	pointer-events: none;
+	border-radius: inherit;
+	overflow: hidden;             /* keep mottle ::after inside the deckle      */
+
+	/* Background list, TOP layer first (CSS paints first listed on top).
+	   1) Foxing / stain blobs — 6 asymmetric, SCATTERED, never centered.
+	      color-mix lets each blob carry its own low alpha off the single
+	      --foxing hue; @supports fallback below for older engines.            */
+	background-color: var(--vellum, #f4e8c8);
+	background-image:
+		radial-gradient(18px 22px at 18% 22%, color-mix(in srgb, var(--foxing,#b58f5b) 18%, transparent) 0%, transparent 70%),
+		radial-gradient(26px 20px at 71% 14%, color-mix(in srgb, var(--foxing,#b58f5b) 13%, transparent) 0%, transparent 72%),
+		radial-gradient(34px 30px at 44% 63%, color-mix(in srgb, var(--foxing,#b58f5b) 10%, transparent) 0%, transparent 75%),
+		radial-gradient(22px 26px at 88% 79%, color-mix(in srgb, var(--foxing,#b58f5b) 15%, transparent) 0%, transparent 70%),
+		radial-gradient(30px 24px at 9%  84%, color-mix(in srgb, var(--foxing,#b58f5b)  9%, transparent) 0%, transparent 74%),
+		radial-gradient(16px 18px at 60% 38%, color-mix(in srgb, var(--foxing,#b58f5b) 11%, transparent) 0%, transparent 68%),
+		/* base radial body — lightest at the top-center, aging toward edges */
+		radial-gradient(
+			120% 140% at 50% 0%,
+			var(--vellum-hi, #faf0d6) 0%,
+			var(--vellum,    #f4e8c8) 45%,
+			var(--vellum-lo, #ddc593) 100%
+		);
+	background-repeat: no-repeat;
+	background-blend-mode: multiply, multiply, multiply, multiply, multiply, multiply, normal;
+}
+
+/* Fallback for engines without color-mix(): plain semi-opaque foxing hue.
+   The base radial body always survives because it's the last bg layer.       */
+@supports not (background-color: color-mix(in srgb, red 50%, blue)) {
+	.sc2-vellum {
+		background-image:
+			radial-gradient(18px 22px at 18% 22%, rgba(181,143,91,.18) 0%, transparent 70%),
+			radial-gradient(26px 20px at 71% 14%, rgba(181,143,91,.13) 0%, transparent 72%),
+			radial-gradient(34px 30px at 44% 63%, rgba(181,143,91,.10) 0%, transparent 75%),
+			radial-gradient(22px 26px at 88% 79%, rgba(181,143,91,.15) 0%, transparent 70%),
+			radial-gradient(30px 24px at 9%  84%, rgba(181,143,91,.09) 0%, transparent 74%),
+			radial-gradient(16px 18px at 60% 38%, rgba(181,143,91,.11) 0%, transparent 68%),
+			radial-gradient(120% 140% at 50% 0%, var(--vellum-hi,#faf0d6) 0%, var(--vellum,#f4e8c8) 45%, var(--vellum-lo,#ddc593) 100%);
+	}
+}
+
+/* ── FIBRE MOTTLE  (.sc2-vellum::after) ──────────────────────────────────────
+   The skin texture. An inline-SVG feTurbulence (fractalNoise, anisotropic
+   baseFrequency with Y>X to mimic dermal fibre direction) baked as a data-URI
+   background, multiply-blended at low opacity so it never muddies the ink.
+   Because it is a data-URI it tiles seamlessly (stitchTiles) and needs no
+   external request. opacity ~.5 per the brief.                               */
+.sc2-vellum::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	mix-blend-mode: multiply;
+	opacity: .5;
+	background-image: url("data:image/svg+xml;utf8,\
+<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'>\
+<filter id='m' x='0' y='0' width='100%25' height='100%25'>\
+<feTurbulence type='fractalNoise' baseFrequency='0.012 0.016' numOctaves='4' seed='7' stitchTiles='stitch' result='n'/>\
+<feColorMatrix in='n' type='matrix' values='0 0 0 0 0.36  0 0 0 0 0.27  0 0 0 0 0.16  0 0 0 0.9 0'/>\
+</filter>\
+<rect width='100%25' height='100%25' filter='url(%23m)'/>\
+</svg>");
+	background-size: 240px 240px;
+	background-repeat: repeat;
+}
+@supports not (mix-blend-mode: multiply) {
+	.sc2-vellum::after { opacity: .22; }   /* avoid a flat grey wash */
+}
+
+
+/* ════════════════════════════════════════════════════════════════════════════
+   2 · RULING + PRICKING  (.sc2-ruling)
+   Faint horizontal guide-lines a scribe would rule before lettering, plus the
+   column of pricked dots near the edge that those lines were struck between.
+   Sits at z-ruling (1) — above vellum, below illumination & text. Only shown
+   at intensity ≥ balanced (the markup/layout layer toggles via the
+   [data-intensity] attribute; we provide the visual + the gate here).
+   ════════════════════════════════════════════════════════════════════════════ */
+.sc2-ruling {
+	position: absolute;
+	/* inset to roughly the writing block so ruling doesn't run under the band */
+	inset: var(--margin-frame, 7.5%);
+	z-index: var(--z-ruling, 1);
+	pointer-events: none;
+	opacity: .14;
+	/* Horizontal ruling at the body line-height rhythm (~28px). The pricking
+	   column is a second, narrow repeating-gradient pinned to the left edge.  */
+	background-image:
+		repeating-linear-gradient(
+			to bottom,
+			transparent 0,
+			transparent 27px,
+			var(--ruling, #9a8f78) 27px,
+			var(--ruling, #9a8f78) 28px
+		);
+	background-repeat: no-repeat;
+}
+/* Pricking dots — a 1.2px dotted column just inside each vertical edge, struck
+   at the same 28px interval as the ruling.                                    */
+.sc2-ruling::before,
+.sc2-ruling::after {
+	content: "";
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	width: 1.2px;
+	background-image: radial-gradient(
+		var(--ruling, #9a8f78) 0 .6px,
+		transparent .7px
+	);
+	background-size: 1.2px 28px;
+	background-repeat: repeat-y;
+	opacity: .8;
+}
+.sc2-ruling::before { left:  -3px; }
+.sc2-ruling::after  { right: -3px; }
+
+/* Intensity gate: ruling is OFF for the lightest setting, ON otherwise.
+   Defensive — works whether the attribute lives on .sc2-scroll or an ancestor.*/
+.sc2-scroll[data-intensity="plain"]   .sc2-ruling,
+.sc2-scroll[data-intensity="minimal"] .sc2-ruling { display: none; }
+
+
+/* ════════════════════════════════════════════════════════════════════════════
+   3 · ROLLED CURL  (.sc2-edge top & bottom strips)
+   intensity = ornate ONLY. A thin gradient strip along the top and bottom long
+   edges that reads as the sheet curling back on itself, with a shadow cast
+   INWARD onto the body. .sc2-edge is the overlay element the markup places at
+   z-edge; we paint its ::before (top curl) and ::after (bottom curl).
+   ════════════════════════════════════════════════════════════════════════════ */
+.sc2-edge {
+	position: absolute;
+	inset: 0;
+	z-index: var(--z-edge, 3);
+	pointer-events: none;
+	border-radius: inherit;
+}
+/* Curls are hidden by default and only revealed at ornate intensity.         */
+.sc2-edge::before,
+.sc2-edge::after { content: none; }
+
+.sc2-scroll[data-intensity="ornate"] .sc2-edge::before,
+.sc2-scroll[data-intensity="ornate"] .sc2-edge::after {
+	content: "";
+	position: absolute;
+	left: 0;
+	right: 0;
+	height: 28px;
+	background: linear-gradient(
+		to bottom,
+		var(--vellum-hi, #faf0d6) 0%,
+		var(--vellum,    #f4e8c8) 45%,
+		var(--vellum-lo, #ddc593) 100%
+	);
+}
+/* Top curl: rounded along its top long edge, shadow cast DOWN/inward.        */
+.sc2-scroll[data-intensity="ornate"] .sc2-edge::before {
+	top: 0;
+	border-radius: 6px 6px 14px 14px / 6px 6px 22px 22px;
+	box-shadow: 0 8px 14px var(--curl-shadow, rgba(60,40,15,.35));
+}
+/* Bottom curl: rounded along its bottom long edge, shadow cast UP/inward.    */
+.sc2-scroll[data-intensity="ornate"] .sc2-edge::after {
+	bottom: 0;
+	border-radius: 14px 14px 6px 6px / 22px 22px 6px 6px;
+	box-shadow: 0 -8px 14px var(--curl-shadow, rgba(60,40,15,.35));
+}
+
+
+/* ════════════════════════════════════════════════════════════════════════════
+   4 · ASTRAL CODEX SAFETY NET
+   The dark-substrate family inverts the trio in tokens, so multiply blending
+   would crush the mottle to near-invisibility. Lighten the fibre + foxing on
+   that family so the texture reads as faint star-grain on a night ground.
+   Family detection is by data-family ONLY (no hard-coded colours here).
+   ════════════════════════════════════════════════════════════════════════════ */
+.sc2-scroll[data-family="astral_codex"] .sc2-vellum::after {
+	mix-blend-mode: screen;
+	opacity: .35;
+}
+.sc2-scroll[data-family="astral_codex"] .sc2-vellum {
+	background-blend-mode: screen, screen, screen, screen, screen, screen, normal;
+}
+.sc2-scroll[data-family="astral_codex"]::after {
+	/* grime over a dark sheet should ADD glow at the rim, not multiply to mud */
+	mix-blend-mode: screen;
+}
+
+
+/* ════════════════════════════════════════════════════════════════════════════
+   5 · REDUCED MOTION / DATA-SAVER COURTESY
+   Nothing here animates, but if a UA hints at data-saving we drop the mottle
+   data-URI paint (it's the only texture cost). The base radial + foxing keep
+   the sheet convincing.
+   ════════════════════════════════════════════════════════════════════════════ */
+@media (prefers-reduced-data: reduce) {
+	.sc2-vellum::after { background-image: none; opacity: 0; }
+}
+
+
+/* ════════════════════════════════════════════════════════════════════════════
+   6 · PRINT / EXPORT FLATTENING
+   feDisplacementMap masks rasterize unreliably (html2canvas drops them; some
+   PDF engines wobble). For print AND for the explicit export-mode class we:
+     • swap the deckle mask to a baked, flattened SVG <path> data-URI (jittered
+       points, no live filter) so the torn edge survives rasterization;
+     • drop mix-blend-mode reliance (print color management is inconsistent) by
+       compositing the vignette with plain alpha;
+     • keep the radial body + foxing + a low-cost mottle for fidelity.
+   The .sc2-export class is applied by the export engineer just before capture.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* Baked path deckle — a flattened, jittered rounded outline as a data-URI
+   mask. ~52 points around the perimeter give a hand-torn read without any
+   live SVG filter. Reused for both export class and print.                   */
+.sc2-export .sc2-scroll,
+.sc2-scroll.sc2-export {
+	-webkit-mask: var(--sc2-deckle-baked);
+	mask: var(--sc2-deckle-baked);
+	-webkit-mask-size: 100% 100%;
+	mask-size: 100% 100%;
+}
+.sc2-export .sc2-scroll::after,
+.sc2-scroll.sc2-export::after {
+	mix-blend-mode: normal;       /* print-safe: composite grime with alpha    */
+	opacity: .9;
+}
+.sc2-export .sc2-vellum::after,
+.sc2-scroll.sc2-export .sc2-vellum::after {
+	mix-blend-mode: normal;
+	opacity: .14;                 /* keep a whisper of grain, print-safe       */
+}
+.sc2-export .sc2-vellum,
+.sc2-scroll.sc2-export .sc2-vellum {
+	background-blend-mode: normal, normal, normal, normal, normal, normal, normal;
+}
+
+@media print {
+	.sc2-scroll {
+		/* Swap to the baked path mask; live filter masks wobble in PDF.      */
+		-webkit-mask: var(--sc2-deckle-baked);
+		mask: var(--sc2-deckle-baked);
+		-webkit-mask-size: 100% 100%;
+		mask-size: 100% 100%;
+		/* A real sheet on white paper still wants a faint contact shadow.    */
+		box-shadow: 0 2px 6px rgba(40,28,10,.18);
+		-webkit-print-color-adjust: exact;
+		print-color-adjust: exact;
+	}
+	.sc2-scroll::after {
+		mix-blend-mode: normal;
+		opacity: .9;
+	}
+	.sc2-vellum::after {
+		mix-blend-mode: normal;
+		opacity: .14;
+	}
+	.sc2-vellum {
+		background-blend-mode: normal, normal, normal, normal, normal, normal, normal;
+		-webkit-print-color-adjust: exact;
+		print-color-adjust: exact;
+	}
+}
+
+/* The baked deckle outline, declared as a token-style data-URI so both the
+   export class and @media print reference one source. A rounded near-rect with
+   ~13 jittered control points per long edge / ~10 per short edge, traced as a
+   smooth path. It deliberately under-bites (small amplitude) so text margins
+   stay safe even after rasterization.                                        */
+.sc2-scroll {
+	--sc2-deckle-baked: url("data:image/svg+xml;utf8,\
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1000 1294' preserveAspectRatio='none'>\
+<path fill='%23fff' d='\
+M14,20 L70,12 L150,18 L240,11 L330,17 L420,10 L510,16 L600,11 L690,17 L780,12 L860,18 L930,12 L986,20 \
+L990,80 L984,180 L991,290 L985,400 L992,510 L984,620 L991,730 L985,840 L992,950 L984,1060 L991,1170 L986,1274 \
+L930,1282 L850,1276 L760,1283 L670,1277 L580,1284 L490,1278 L400,1283 L310,1277 L220,1283 L140,1277 L70,1283 L14,1274 \
+L10,1170 L17,1060 L9,950 L16,840 L8,730 L17,620 L9,510 L16,400 L8,290 L17,180 L9,80 Z'/>\
+</svg>");
+}
+
+
+/* ════════════════════════════════════════════════════════════════════════════
+   7 · INLINE SVG <defs> the substrate classes reference
+   --------------------------------------------------------------------------
+   These filters/masks must exist in the DOM for the LIVE (screen) deckle &
+   any future filtered substrate effects. The markup engineer renders ONE copy
+   per scroll inside <svg class="sc2-defs">. This block is the CANONICAL source
+   for the substrate-owned defs; it is reproduced here as an HTML comment so the
+   finalizer / markup engineer can paste it verbatim. (CSS cannot emit SVG, so
+   it lives as documentation adjacent to the CSS that depends on it.)
+   --------------------------------------------------------------------------
+   <svg class="sc2-defs" aria-hidden="true" focusable="false"
+        width="0" height="0" style="position:absolute;width:0;height:0;overflow:hidden">
+     <defs>
+
+       <!-- LIVE deckle: turbulence-displaced rounded rect. The mask is sized
+            to the sheet via maskContentUnits/maskUnits=objectBoundingBox so it
+            scales to any portrait/landscape sheet. -->
+       <filter id="sc2-deckle-fx" x="-5%" y="-5%" width="110%" height="110%">
+         <feTurbulence type="fractalNoise" baseFrequency="0.02 0.04"
+                       numOctaves="3" seed="11" result="noise"/>
+         <feDisplacementMap in="SourceGraphic" in2="noise" scale="9"
+                            xChannelSelector="R" yChannelSelector="G"/>
+       </filter>
+       <mask id="sc2-deckle" maskUnits="objectBoundingBox"
+             maskContentUnits="objectBoundingBox"
+             x="0" y="0" width="1" height="1">
+         <rect x="0.004" y="0.004" width="0.992" height="0.992" rx="0.008"
+               fill="#fff" filter="url(#sc2-deckle-fx)"/>
+       </mask>
+
+     </defs>
+   </svg>
+   ════════════════════════════════════════════════════════════════════════════ */

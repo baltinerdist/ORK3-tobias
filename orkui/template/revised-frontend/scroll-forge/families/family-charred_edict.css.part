@@ -1,0 +1,481 @@
+/* ============================================================================
+   THE LETTERED SCROLL — families/family-charred_edict.css.part
+   ----------------------------------------------------------------------------
+   FAMILY:  Charred Edict   (data-family="charred_edict")
+   ROLE:    A battle-scarred martial commendation / valor citation. Scorched,
+            darker vellum; heavy foxing and burnt corners; the blackest
+            blackletter title in the fleet (Grenze Gotisch 800); near-black
+            sanguine wax; inky IM Fell English body. Register: grim, concise
+            valor citation read aloud over a muster field.
+
+   THROUGHLINE — this is the GRIM family. It is deliberately the LEAST
+   ornamented of the ten: austerity reads as authority. Drama comes from the
+   SUBSTRATE (scorch + soot + burnt corners) and the near-black type, NOT from
+   foliate filigree. Every scrap of gilt is tarnished and fire-dulled.
+
+   CONTRACT (locked — see sf-tokens.css.part header):
+     • This partial RE-SETS ONLY the permitted family tokens (substrate trio,
+       --ink / --ink-muted / --rubric, the --gold* ramp, --border, --rule-fine,
+       --initial-ground, --accent[-soft], --wax*, --ribbon-*, --escutcheon,
+       --arms-*, --ff-title and the body/sign/versal font aliases, --ls-title,
+       and the --motif data hook). It MUST NOT touch z-index, layout, spacing,
+       the shadow/gilding helper recipes, or the motion tokens.
+     • Everything is scoped to .sc2-scroll[data-family="charred_edict"] so the
+       app dark-mode theme can never bleed into the vellum, and so this family
+       cannot leak onto its neighbours.
+     • Family-specific ORNAMENT selectors (burn-bloom, soot, charred corners,
+       austere single charcoal rule, iron-bracket corners) live in this file
+       only — they bind to the locked sc2-* DOM hooks, never redefine geometry.
+     • .sc2-export and @media print may flatten texture/gilt but NOTHING
+       structural (§7).
+
+   PALETTE (authoritative for this family):
+     vellum #c2a672 / hi #d4ba85 / lo #8a6f44 · ink #1c1810 · rubric #5c0e1a
+     gold(tarnished) #a98445 hi #d8b878 deep #7a5e30 keyline #4a3208
+     border charcoal #3d2418 · accent sanguine #5c0e1a · initial-ground #3d2418
+     wax #5c0e1a (near-black sanguine) lo #2a0808 · foxing(heavy) #6b4a28
+     grime rgba(30,18,8,.5)
+   ============================================================================ */
+
+
+/* ============================================================================
+   1. TOKEN OVERRIDES  —  scoped to the family
+   ----------------------------------------------------------------------------
+   These re-set the shared CSS variables to the Charred Edict palette. Because
+   this family partial loads AFTER sf-tokens.css.part at equal specificity,
+   these values win over the baseline per the locked load order.
+   ============================================================================ */
+.sc2-scroll[data-family="charred_edict"] {
+
+	/* ── SUBSTRATE / VELLUM ──────────────────────────────────────────────────
+	   Scorched, dirty parchment: noticeably darker & browner than the warm
+	   Crimson baseline. The radial centre is the least-burnt patch; the edges
+	   char toward near-soot. */
+	--vellum:            #c2a672;   /* scorched parchment body                     */
+	--vellum-hi:         #d4ba85;   /* least-burnt centre (tea-stained)            */
+	--vellum-lo:         #8a6f44;   /* charred toward the edge                      */
+	--grime:             rgba(30,18,8,.5);     /* heavy soot vignette (darker)     */
+	--foxing:            #6b4a28;   /* HEAVY foxing / burn-bloom (used 10–22%)     */
+	--ruling:            #6b5736;   /* faint scorched ruling line                   */
+	--curl-shadow:       rgba(18,10,4,.5);     /* deep cast shadow on any curl     */
+
+	/* ── INK ─────────────────────────────────────────────────────────────────
+	   Iron-gall: the blackest body ink of the fleet, but never pure #000.
+	   Muted titles/labels go a smoked brown so the hierarchy still reads. */
+	--ink:               #1c1810;   /* near-black iron-gall body ink                */
+	--ink-muted:         #4a3a26;   /* smoked brown — labels / signature titles     */
+	--rubric:            #5c0e1a;   /* dried-blood sanguine (darker than vermilion)  */
+
+	/* ── GILDING — TARNISHED / FIRE-DULLED ───────────────────────────────────
+	   Minimal, dull leaf. Still uses the shared raised-gilt recipe (gradient +
+	   highlight + keyline) but every stop is pulled down/greyed so it reads as
+	   soot-dulled rather than fresh florin. */
+	--gold:              #a98445;   /* dull tarnished mid                           */
+	--gold-hi:           #d8b878;   /* muted specular (no bright hotspot)           */
+	--gold-deep:         #7a5e30;   /* deep tarnish shade                          */
+	--gold-shadow:       #4a3208;   /* sooty darkest stop                          */
+	--gold-keyline:      #2a1c04;   /* charcoal recess line                        */
+
+	/* ── BORDER / FRAME ──────────────────────────────────────────────────────
+	   A single austere charcoal bar with only a thin tarnished-gold keyline —
+	   no wide decorated foliate band. Grim. */
+	--border:            #3d2418;   /* charred charcoal-brown bar                   */
+	--rule-fine:         #2a1810;   /* near-black hairline outer rule               */
+	--initial-ground:    #3d2418;   /* drop-cap box ground = the charred bar        */
+
+	/* ── ACCENT (secondary) — sanguine, used sparingly ───────────────────────*/
+	--accent:            #5c0e1a;   /* sanguine accent for the scant ornament       */
+	--accent-soft:       rgba(92,14,26,.22);   /* washed sanguine fill             */
+
+	/* ── WAX SEAL — near-black sanguine ──────────────────────────────────────
+	   Almost-black blood-wax: very little catch-light, pooled black centre. */
+	--wax:               #5c0e1a;   /* near-black sanguine wax body                 */
+	--wax-hi:            #8a1f24;   /* dim upper-left catch-light                   */
+	--wax-lo:            #2a0808;   /* black pooled centre / rim                    */
+	--ribbon-a:          #3d2418;   /* charred ribbon tail (livery field)          */
+	--ribbon-b:          #5c0e1a;   /* sanguine ribbon tail (livery accent)        */
+
+	/* ── HERALDRY ────────────────────────────────────────────────────────────
+	   War-shield: square-bottomed heater reads martial; rim goes dull-gold,
+	   keyline near-black. */
+	--escutcheon:        heater;             /* clipPath id hook                    */
+	--arms-rim:          var(--gold);
+	--arms-keyline:      #1c1208;
+
+	/* ── TYPOGRAPHY ──────────────────────────────────────────────────────────
+	   Title: Grenze Gotisch at its blackest (800) — heavy, condensed, martial
+	   blackletter. Body: IM Fell English (inky, irregular hand-press
+	   impression). Signatures: IM Fell English ITALIC. Only --ff-title is a
+	   "palette" reset; the body/sign/versal aliases exist in tokens and are
+	   re-pointed here so this family reads inky end-to-end. */
+	--ff-title:          "Grenze Gotisch","UnifrakturCook","Times New Roman",serif;
+	--ff-body:           "IM Fell English","EB Garamond",Georgia,serif;
+	--ff-body-alt:       "IM Fell English","EB Garamond",Georgia,serif;
+	--ff-smallcaps:      "IM Fell English SC","IM Fell English","Cardo",serif;
+	--ff-sign:           "IM Fell English","EB Garamond",serif;   /* render italic */
+	--ff-versal:         "Grenze Gotisch","IM Fell English",serif;
+
+	/* Tighten title tracking — heavy condensed blackletter wants to MASS, not
+	   spread. Still NEVER tracked wide. */
+	--ls-title:          0em;
+
+	/* ── DECORATION / MOTIF HOOK ─────────────────────────────────────────────
+	   Read by the illumination engine. This family is "austere": minimal band
+	   ornament, maximal scorch. */
+	--motif:             "ember-scroll";
+}
+
+
+/* ============================================================================
+   2. SUBSTRATE — extra scorch ON TOP of the shared vellum stack
+   ----------------------------------------------------------------------------
+   The shared substrate engine already paints base radial + foxing + soot
+   mottle from the tokens above. Here we ADD only what is unique to "charred":
+   a stronger, very-asymmetric burn-bloom wash biased to the corners (where a
+   real sheet chars first), and a heavier soot fibre feel. We layer extra
+   backgrounds on the family's vellum element WITHOUT re-declaring shared
+   structure, so the shared engine keeps owning geometry.
+   ============================================================================ */
+
+/* Extra burn-bloom: large, deliberately asymmetric scorch clouds that hug the
+   corners/edges. Multiply-blended so they DARKEN the parchment rather than
+   paint over it — irregularity is throughline #1. */
+.sc2-scroll[data-family="charred_edict"] .sc2-vellum::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: 0;
+	pointer-events: none;
+	mix-blend-mode: multiply;
+	opacity: .9;
+	background:
+		radial-gradient(38% 30% at 6% 4%,   rgba(30,16,6,.55) 0%, rgba(30,16,6,0) 70%),
+		radial-gradient(34% 28% at 96% 7%,  rgba(24,12,4,.48) 0%, rgba(24,12,4,0) 72%),
+		radial-gradient(40% 34% at 4% 97%,  rgba(20,10,4,.52) 0%, rgba(20,10,4,0) 74%),
+		radial-gradient(30% 26% at 92% 95%, rgba(28,14,5,.46) 0%, rgba(28,14,5,0) 70%),
+		radial-gradient(26% 20% at 71% 14%, rgba(107,74,40,.30) 0%, rgba(107,74,40,0) 75%),
+		radial-gradient(22% 18% at 18% 62%, rgba(107,74,40,.26) 0%, rgba(107,74,40,0) 78%),
+		radial-gradient(18% 16% at 47% 41%, rgba(92,14,26,.10) 0%, rgba(92,14,26,0) 80%);
+}
+
+/* Faint, half-burnt ruling — grim & spare. (The shared engine still paints the
+   line geometry from --ruling; we only knock its presence down for this
+   family.) */
+.sc2-scroll[data-family="charred_edict"] .sc2-ruling {
+	opacity: .10;
+}
+
+
+/* ============================================================================
+   3. EDGE — BURNT / CHARRED corners over the deckle
+   ----------------------------------------------------------------------------
+   The shared .sc2-edge owns the deckle mask + base vignette. We darken the
+   vignette dramatically and add a charred-corner overlay so the sheet looks
+   pulled from a fire. The inner box-shadow deepens the soot ring.
+   ============================================================================ */
+.sc2-scroll[data-family="charred_edict"] .sc2-edge {
+	box-shadow:
+		inset 0 0 90px 22px rgba(20,10,4,.5),     /* deep soot ring                */
+		inset 0 0 30px  6px rgba(8,4,2,.35);      /* tight char close to the edge  */
+}
+
+/* Charred corners: four asymmetric near-black scorch blooms anchored to the
+   corners, stronger than the substrate burn so the corners read as ACTUALLY
+   burnt — not merely shadowed. */
+.sc2-scroll[data-family="charred_edict"] .sc2-edge::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	mix-blend-mode: multiply;
+	background:
+		radial-gradient(circle at 0% 0%,     rgba(10,5,2,.62) 0%, rgba(10,5,2,0) 16%),
+		radial-gradient(circle at 100% 0%,   rgba(10,5,2,.58) 0%, rgba(10,5,2,0) 15%),
+		radial-gradient(circle at 0% 100%,   rgba(10,5,2,.60) 0%, rgba(10,5,2,0) 17%),
+		radial-gradient(circle at 100% 100%, rgba(10,5,2,.56) 0%, rgba(10,5,2,0) 14%);
+}
+
+
+/* ============================================================================
+   4. ILLUMINATION — AUSTERE single charcoal rule, no foliate band
+   ----------------------------------------------------------------------------
+   Charred Edict is the least-ornamented family by design. Instead of the wide
+   decorated band it shows a stark double rule: a thick charred bar carrying a
+   single thin tarnished-gold keyline. Grim, military, restrained. We bind to
+   the shared illum hooks; if a sub-element doesn't exist on a given build the
+   selector simply matches nothing (harmless).
+   ============================================================================ */
+
+/* Drive the border SVG strokes sooty wherever the engine reads currentColor. */
+.sc2-scroll[data-family="charred_edict"] .sc2-border {
+	color: var(--border);
+}
+
+/* Collapse the decorated band visually: keep the band element but render it as
+   a flat charred bar (no pattern fill) framed by a thin tarnished keyline. */
+.sc2-scroll[data-family="charred_edict"] .sc2-illum {
+	--band-fill:    var(--border);
+	--band-keyline: var(--gold);
+}
+.sc2-scroll[data-family="charred_edict"] .sc2-illum .sc2-band {
+	background: var(--border);
+	box-shadow:
+		inset 0  0.75px 0 rgba(216,184,120,.35),   /* faint tarnished top keyline   */
+		inset 0 -0.75px 0 rgba(0,0,0,.55),         /* hard charcoal bottom recess   */
+		0 0 0 0.75px var(--gold-keyline);          /* near-black outer keyline      */
+}
+
+/* Suppress any pattern / filigree / rinceaux the shared illumination might
+   paint — this family wants BARE bars. (No-ops if these elements are absent.) */
+.sc2-scroll[data-family="charred_edict"] .sc2-illum .sc2-rinceaux,
+.sc2-scroll[data-family="charred_edict"] .sc2-illum .sc2-filigree,
+.sc2-scroll[data-family="charred_edict"] .sc2-illum .sc2-band-pattern {
+	display: none;
+}
+
+/* Corner pieces: replace any dense knot/foliate cluster with a stark IRON
+   BRACKET — a small tarnished-gold L-rule in each corner. Armoury, not garden. */
+.sc2-scroll[data-family="charred_edict"] .sc2-illum .sc2-corner {
+	background: none;
+}
+.sc2-scroll[data-family="charred_edict"] .sc2-illum .sc2-corner::before {
+	content: "";
+	position: absolute;
+	width: 30px;
+	height: 30px;
+	border-color: var(--gold);
+	border-style: solid;
+	border-width: 0;
+	opacity: .85;
+	filter:
+		drop-shadow(0 1px 0 var(--gold-hi))
+		drop-shadow(0 1px 1px rgba(8,4,2,.6));
+}
+/* Orient each iron bracket to its corner. */
+.sc2-scroll[data-family="charred_edict"] .sc2-illum .sc2-corner--tl::before { top: 6px;    left: 6px;    border-top-width: 2px;    border-left-width: 2px;    }
+.sc2-scroll[data-family="charred_edict"] .sc2-illum .sc2-corner--tr::before { top: 6px;    right: 6px;   border-top-width: 2px;    border-right-width: 2px;   }
+.sc2-scroll[data-family="charred_edict"] .sc2-illum .sc2-corner--bl::before { bottom: 6px; left: 6px;    border-bottom-width: 2px; border-left-width: 2px;    }
+.sc2-scroll[data-family="charred_edict"] .sc2-illum .sc2-corner--br::before { bottom: 6px; right: 6px;   border-bottom-width: 2px; border-right-width: 2px;   }
+
+
+/* ============================================================================
+   5. TYPOGRAPHY — grim hierarchy
+   ----------------------------------------------------------------------------
+   Blackest title, inky justified body, sanguine rubric, italic signatures.
+   The title gets a deliberately MINIMAL gilt — mostly dark iron-gall ink with
+   only a thin tarnished sheen — so it reads "charcoal-on-vellum", not
+   "treasure". Restraint IS the family.
+   ============================================================================ */
+
+/* Title: heavy Grenze Gotisch, near-black ink with only a whisper of tarnished
+   gild via -webkit-text-stroke; massed, condensed, martial. */
+.sc2-scroll[data-family="charred_edict"] .sc2-title {
+	font-family: var(--ff-title);
+	font-weight: 800;
+	letter-spacing: var(--ls-title);
+	color: var(--ink);
+	/* No bright gilt fill — an inky face with a tarnished keyline edge and a
+	   hard cast shadow, like soot-blackened relief lettering. */
+	background: none;
+	-webkit-text-fill-color: var(--ink);
+	-webkit-text-stroke: .4px var(--gold-keyline);
+	text-shadow:
+		0 1px 0 var(--gold-deep),
+		0 2px 2px rgba(8,4,2,.45);
+}
+
+/* A single sanguine accent rule under the title — a sword-cut underline, not a
+   flourish. */
+.sc2-scroll[data-family="charred_edict"] .sc2-title::after {
+	content: "";
+	display: block;
+	width: 44%;
+	height: 2px;
+	margin: .35em auto 0;
+	background: linear-gradient(90deg,
+		rgba(92,14,26,0)  0%,
+		var(--accent)     22%,
+		var(--gold-deep)  50%,
+		var(--accent)     78%,
+		rgba(92,14,26,0)  100%);
+	box-shadow: 0 1px 0 rgba(8,4,2,.5);
+}
+
+/* Invocation — smoked, restrained, italic. */
+.sc2-scroll[data-family="charred_edict"] .sc2-invocation {
+	font-family: var(--ff-body);
+	color: var(--ink-muted);
+	letter-spacing: var(--ls-invocation);
+	font-style: italic;
+}
+
+/* Intitulation — smoked small-caps. */
+.sc2-scroll[data-family="charred_edict"] .sc2-intitulation {
+	font-family: var(--ff-smallcaps);
+	color: var(--ink-muted);
+}
+
+/* Body: inky IM Fell English, justified, with real ligatures + old-style
+   figures. The irregular IM Fell impression already reads "hand-pressed". */
+.sc2-scroll[data-family="charred_edict"] .sc2-body,
+.sc2-scroll[data-family="charred_edict"] .sc2-body p {
+	font-family: var(--ff-body);
+	color: var(--ink);
+	text-align: justify;
+	font-feature-settings: "liga" 1, "dlig" 1, "onum" 1, "kern" 1;
+}
+
+/* Recipient rubric — dried-blood sanguine, slightly heavier; the one warm note
+   on an otherwise charcoal sheet. */
+.sc2-scroll[data-family="charred_edict"] .sc2-rubric,
+.sc2-scroll[data-family="charred_edict"] .sc2-recipient {
+	color: var(--rubric);
+	font-weight: 600;
+	letter-spacing: .01em;
+}
+
+/* Grant / dispositive clause — slightly larger via the shared scale, still
+   inky, martial. */
+.sc2-scroll[data-family="charred_edict"] .sc2-grant {
+	font-family: var(--ff-body);
+	color: var(--ink);
+}
+
+/* Versal drop-cap: a charred initial box (the bar colour) with a tarnished-gold
+   keyline and a near-black Grenze Gotisch letter — a branded iron stamp.
+   Both the explicit .sc2-versal element and the ::first-letter float fallback
+   are themed so whichever the engine uses, it reads charred. */
+.sc2-scroll[data-family="charred_edict"] .sc2-versal,
+.sc2-scroll[data-family="charred_edict"] .sc2-body > p:first-of-type::first-letter {
+	font-family: var(--ff-versal);
+	font-weight: 800;
+	color: var(--gold-hi);
+	-webkit-text-fill-color: var(--gold-hi);
+	-webkit-text-stroke: .5px var(--gold-keyline);
+	background:
+		linear-gradient(150deg,
+			var(--initial-ground) 0%,
+			#2a1810               55%,
+			#160c06               100%);
+	box-shadow:
+		inset 0  1px 0 rgba(216,184,120,.25),
+		inset 0 -2px 4px rgba(0,0,0,.55),
+		0 0 0 1px var(--gold-keyline),
+		0 2px 4px rgba(8,4,2,.5);
+}
+
+/* Signatures: IM Fell English ITALIC, inky; titles beneath in smoked muted. */
+.sc2-scroll[data-family="charred_edict"] .sc2-attest,
+.sc2-scroll[data-family="charred_edict"] .sc2-sign {
+	font-family: var(--ff-sign);
+	font-style: italic;
+	color: var(--ink);
+}
+.sc2-scroll[data-family="charred_edict"] .sc2-attest .sc2-sign-title,
+.sc2-scroll[data-family="charred_edict"] .sc2-sign-title {
+	font-style: normal;
+	color: var(--ink-muted);
+	letter-spacing: .04em;
+}
+
+/* Date & place — period form, smoked brown, quiet but set apart. */
+.sc2-scroll[data-family="charred_edict"] .sc2-datum {
+	font-family: var(--ff-body);
+	color: var(--ink-muted);
+	font-style: italic;
+}
+
+
+/* ============================================================================
+   6. HERALDRY & SEAL
+   ----------------------------------------------------------------------------
+   War-shields with a dull-gold rim + near-black keyline; a near-black sanguine
+   pressed wax seal with very little catch-light and a black pooled centre.
+   ============================================================================ */
+
+/* Arms: dull tarnished rim, sooty keyline, hard cast shadow so they sit on the
+   scorched sheet like riveted metal. */
+.sc2-scroll[data-family="charred_edict"] .sc2-arms {
+	filter: drop-shadow(0 2px 3px rgba(8,4,2,.55));
+}
+.sc2-scroll[data-family="charred_edict"] .sc2-arms img,
+.sc2-scroll[data-family="charred_edict"] .sc2-arms svg {
+	box-shadow:
+		0 0 0 2px var(--arms-rim),
+		0 0 0 3px var(--arms-keyline),
+		inset 0 0 12px rgba(8,4,2,.4);
+}
+
+/* Wax seal — near-black sanguine. The SVG <fill> hooks: */
+.sc2-scroll[data-family="charred_edict"] .sc2-seal {
+	filter:
+		drop-shadow(0 3px 5px rgba(8,4,2,.6))
+		drop-shadow(0 1px 0 rgba(138,31,36,.3));
+}
+.sc2-scroll[data-family="charred_edict"] .sc2-seal .sc2-wax-body {
+	fill: var(--wax);
+}
+/* If the seal disc is rendered via CSS rather than SVG <fill>, this paints it
+   with the same near-black sanguine radial: dim upper catch-light, deep pooled
+   black centre, hard black rim. */
+.sc2-scroll[data-family="charred_edict"] .sc2-seal-disc {
+	background:
+		radial-gradient(circle at 38% 32%,
+			var(--wax-hi) 0%,
+			var(--wax)    34%,
+			var(--wax-lo) 78%,
+			#160404       100%);
+	box-shadow:
+		inset 0  2px 3px rgba(138,31,36,.35),       /* dim upper catch-light         */
+		inset 0 -3px 6px rgba(0,0,0,.7),            /* deep pooled-centre shadow     */
+		0 0 0 1px rgba(8,4,2,.7),                   /* hard black rim                */
+		0 4px 6px rgba(8,4,2,.55);                  /* cast shadow on the sheet      */
+}
+/* Embossed sigil highlight/recess for the pressed brand. */
+.sc2-scroll[data-family="charred_edict"] .sc2-seal-sigil {
+	color: var(--wax-lo);
+	filter:
+		drop-shadow(0 1px 0 rgba(138,31,36,.4))
+		drop-shadow(0 -1px 0 rgba(0,0,0,.6));
+}
+
+/* Ribbon tails — charred field + sanguine accent, scorched at the cut ends. */
+.sc2-scroll[data-family="charred_edict"] .sc2-ribbon--a { background: var(--ribbon-a); }
+.sc2-scroll[data-family="charred_edict"] .sc2-ribbon--b { background: var(--ribbon-b); }
+.sc2-scroll[data-family="charred_edict"] .sc2-ribbon {
+	box-shadow: inset 0 0 6px rgba(8,4,2,.5);
+}
+
+
+/* ============================================================================
+   7. EXPORT / PRINT FLATTENING  (texture/gilt only — never structural)
+   ----------------------------------------------------------------------------
+   html2canvas drops mix-blend-mode and several filters; PDF engines wobble on
+   feDisplacement. Under .sc2-export / @media print we flatten the soot blends
+   to plain dark washes so the scorched look survives the raster — WITHOUT
+   touching structure (per the contract).
+   ============================================================================ */
+.sc2-scroll[data-family="charred_edict"].sc2-export .sc2-vellum::before,
+.sc2-scroll[data-family="charred_edict"].sc2-export .sc2-edge::after {
+	mix-blend-mode: normal;
+	opacity: .55;
+}
+.sc2-scroll[data-family="charred_edict"].sc2-export .sc2-title {
+	text-shadow: 0 1px 1px rgba(8,4,2,.5);
+}
+
+@media print {
+	.sc2-scroll[data-family="charred_edict"] .sc2-vellum::before,
+	.sc2-scroll[data-family="charred_edict"] .sc2-edge::after {
+		mix-blend-mode: normal;
+		opacity: .5;
+	}
+	/* Ensure the scorched substrate + soot vignette + charred bar actually ink
+	   on paper. */
+	.sc2-scroll[data-family="charred_edict"] .sc2-vellum,
+	.sc2-scroll[data-family="charred_edict"] .sc2-edge,
+	.sc2-scroll[data-family="charred_edict"] .sc2-illum .sc2-band {
+		-webkit-print-color-adjust: exact;
+		print-color-adjust: exact;
+	}
+}

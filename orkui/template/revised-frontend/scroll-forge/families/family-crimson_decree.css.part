@@ -1,0 +1,338 @@
+/* ============================================================================
+   THE LETTERED SCROLL — family-crimson_decree.css.part
+   ----------------------------------------------------------------------------
+   FAMILY: Crimson Decree   ·   KEY: crimson_decree
+   ROLE:   System baseline + KNIGHT auto-pick. Royal decree, top-tier severity.
+
+   "Know all by these presents… do by this Our charter and of Our certain
+    knowledge award and proclaim…"
+
+   THE LOOK
+     A gules (heraldic crimson) field framed by a single gilt rule and
+     restrained acanthus corners. The grand textura title sits beneath a Gothic
+     pointed-arch tracery header. Vermilion rubric for the recipient's name.
+     A deep sanguine wax seal pressed hard into the bas-de-page. Severe,
+     authoritative, peerage-grade — the most formal scroll in the fleet.
+
+   SCOPING CONTRACT (per sf-tokens.css.part — obeyed exactly)
+     • This partial RE-SETS ONLY the permitted per-family tokens: the substrate
+       trio, --ink / --ink-muted / --rubric, the --gold* ramp, --border,
+       --rule-fine, --initial-ground, --accent*, --wax*, --ribbon-*,
+       --escutcheon, --ff-title / --ff-versal / --ff-sign, and the --motif hook.
+     • It MUST NOT touch z-index, layout, spacing, shadow helpers, motion, or
+       the global type SCALE — those are owned by sf-tokens.css.part.
+     • Crimson Decree is the spiritual default, but the spec hexes (a warmer,
+       lighter, cleaner courtly vellum + darker ink than the generic baseline)
+       are stated EXPLICITLY at family scope so the look is locked even if the
+       shared baseline later drifts.
+     • Component selectors reuse the locked composite tokens
+       (--gild-gradient, --shadow-emboss, --gild-shadow, etc.) verbatim rather
+       than re-deriving raised-gold shadows.
+
+   Everything below is scoped to [data-family="crimson_decree"]; every ornament
+   selector is nested under .sc2-scroll[data-family="crimson_decree"] so it can
+   never leak into another family or into the app chrome / dark-mode panel.
+   ============================================================================ */
+
+/* ── TOKEN OVERRIDES ─────────────────────────────────────────────────────── */
+.sc2-scroll[data-family="crimson_decree"] {
+
+  /* ── SUBSTRATE / VELLUM — clean, formal, courtly parchment ─────────────
+     Lighter & less mottled than the rustic families: a decree is fresh-pressed
+     chancery vellum, not a weathered field-charter. */
+  --vellum:            #f8f4e3;   /* base parchment body                       */
+  --vellum-hi:         #fdf9ee;   /* lightest center (radial top)              */
+  --vellum-lo:         #e7d9b4;   /* aged edge — restrained, not deep-tanned   */
+  --grime:             rgba(74,40,28,.30);   /* edge-grime vignette (warm red) */
+  --foxing:            #b98a5a;   /* stain / foxing blobs (used 8–18% alpha)   */
+  --ruling:            #9c7d5a;   /* faint ruling + pricking (sanguine-brown)  */
+  --curl-shadow:       rgba(70,28,24,.34);   /* cast shadow under rolled curl  */
+
+  /* ── INK — near-black warm sepia; decree gravitas wants the darkest ink ── */
+  --ink:               #1c1810;   /* body ink — NEVER #000, but the darkest    */
+  --ink-muted:         #5a3526;   /* intitulation, signature titles (sanguine) */
+  --rubric:            #7b1f2a;   /* vermilion gules: recipient name + openers */
+
+  /* ── GILDING — bright courtly gold, single-rule gilt ───────────────────── */
+  --gold:              #d4af37;
+  --gold-hi:           #fff4c2;
+  --gold-deep:         #a9760a;
+  --gold-shadow:       #6e4d08;
+  --gold-keyline:      #5a3d0c;
+
+  /* ── BORDER / FRAME — the gules field colour ───────────────────────────── */
+  --border:            #7b1f2a;   /* bar-border = heraldic gules               */
+  --rule-fine:         #6e3a1e;   /* hairline outer rule (sanguine-brown ink)  */
+  --initial-ground:    #6b1f2a;   /* drop-cap decorated-box ground (deep gules)*/
+
+  /* ── ACCENT — secondary ornament reads as the same royal gules ─────────── */
+  --accent:            #7b1f2a;
+  --accent-soft:       rgba(123,31,42,.26);   /* washed gules (tracery fill)   */
+
+  /* ── WAX SEAL — deep sanguine, pressed hard ────────────────────────────── */
+  --wax:               #8c1d1b;   /* wax body                                  */
+  --wax-hi:            #c0392b;   /* upper-left catch-light                     */
+  --wax-lo:            #5a0f0f;   /* pooled center / rim                        */
+  --ribbon-a:          #7b1f2a;   /* livery colour ribbon tail (gules)         */
+  --ribbon-b:          #d4af37;   /* livery metal ribbon tail (or)             */
+
+  /* ── HERALDRY — formal heater shield, gilt rim, dark keyline ───────────── */
+  --escutcheon:        heater;    /* clipPath id hook (informational)          */
+  --arms-rim:          var(--gold);
+  --arms-keyline:      #3a1810;
+
+  /* ── TYPOGRAPHY — grand textura blackletter title; humanist body ───────── */
+  --ff-title:          "UnifrakturMaguntia","UnifrakturCook","Pirata One","Times New Roman",serif;
+  --ff-sign:           "EB Garamond","Cardo","IM Fell English",serif; /* italic */
+  --ff-versal:         "UnifrakturMaguntia","EB Garamond",serif;
+
+  /* ── MOTIF HOOK — drives the illumination layer's pattern choice ───────── */
+  --motif:             "gothic-tracery";
+}
+
+/* ============================================================================
+   FAMILY ORNAMENT  ·  Gothic tracery cartouche, restrained acanthus corners,
+   pointed-arch title header, deep-pressed sanguine seal.
+   All nested under the family scope so nothing leaks.
+   ============================================================================ */
+
+/* ── TITLE — austere, monumental, gilt textura under a pointed arch ──────────
+   The decree title is the most severe in the fleet: the locked gilt-text recipe
+   (raised gold, never flat), the tightest tracking the spec permits, and a
+   heavier sanguine drop so it reads as pressed into the gules header. */
+.sc2-scroll[data-family="crimson_decree"] .sc2-title {
+  font-family: var(--ff-title);
+  letter-spacing: var(--ls-title);
+  line-height: .96;
+  /* Gilt-text recipe (locked) — reuse the shared gradient + stroke tokens */
+  background: var(--gild-gradient);
+  -webkit-background-clip: text;
+          background-clip: text;
+  color: transparent;
+  -webkit-text-stroke: var(--gild-text-stroke);
+  filter:
+    drop-shadow(0 1px 0 var(--gold-hi))
+    drop-shadow(0 2px 2px rgba(40,12,0,.38));
+}
+
+/* The pointed-arch tracery header sits ABOVE the title. The illumination layer
+   injects an inline <svg class="sc2-arch"> as the title's leading sibling;
+   here we give the arch its gilt stroke, gules tympanum wash, and spacing. */
+.sc2-scroll[data-family="crimson_decree"] .sc2-arch {
+  display: block;
+  width: clamp(150px, 34%, 300px);
+  margin: 0 auto .35rem;
+  color: var(--gold);                 /* drives `stroke="currentColor"` */
+  filter: drop-shadow(0 1px 1px rgba(60,24,8,.5));
+}
+.sc2-scroll[data-family="crimson_decree"] .sc2-arch .sc2-arch-stroke {
+  fill: none;
+  stroke: var(--gold);
+  stroke-width: 2.25;
+  stroke-linejoin: round;
+}
+.sc2-scroll[data-family="crimson_decree"] .sc2-arch .sc2-arch-tympanum {
+  fill: var(--accent-soft);           /* faint gules wash in the arch field   */
+}
+.sc2-scroll[data-family="crimson_decree"] .sc2-arch .sc2-arch-cusp {
+  fill: var(--gold);                  /* gilt trefoil cusps / finials          */
+  stroke: var(--gold-keyline);
+  stroke-width: .6;
+}
+
+/* ── INVOCATION — courtly small-caps proclamation opener, rubricated ───────── */
+.sc2-scroll[data-family="crimson_decree"] .sc2-invocation {
+  font-family: var(--ff-smallcaps);
+  letter-spacing: var(--ls-invocation);
+  color: var(--rubric);               /* rubricated "Know all by these presents" */
+  text-transform: uppercase;
+}
+
+/* ── INTITULATION — small-caps gravitas, old-style figures ──────────────────── */
+.sc2-scroll[data-family="crimson_decree"] .sc2-intitulation {
+  font-family: var(--ff-smallcaps);
+  letter-spacing: var(--ls-intitulation);
+  color: var(--ink-muted);
+  font-feature-settings: "smcp" 1, "onum" 1;
+}
+
+/* ── RECIPIENT NAME — the central rubric, vermilion, the eye's anchor ──────── */
+.sc2-scroll[data-family="crimson_decree"] .sc2-rubric,
+.sc2-scroll[data-family="crimson_decree"] .sc2-recipient {
+  color: var(--rubric);
+  text-shadow: var(--rubric-shadow);
+  font-feature-settings: "onum" 1, "liga" 1;
+}
+
+/* ── BODY — justified humanist with ligatures & old-style figures ──────────── */
+.sc2-scroll[data-family="crimson_decree"] .sc2-body {
+  font-family: var(--ff-body);
+  text-align: justify;
+  text-justify: inter-word;
+  hyphens: auto;
+  font-feature-settings: "liga" 1, "onum" 1, "kern" 1;
+}
+
+/* ── ILLUMINATED VERSAL — gilt textura initial on a deep-gules ground box ────
+   Whether the markup uses a floated .sc2-versal element OR ::first-letter, the
+   same decorated-initial treatment applies: deep-gules ground, gilt double
+   keyline, hot-gold letter. */
+.sc2-scroll[data-family="crimson_decree"] .sc2-body > p:first-of-type::first-letter,
+.sc2-scroll[data-family="crimson_decree"] .sc2-versal {
+  font-family: var(--ff-versal);
+  color: var(--gold-hi);
+  -webkit-text-fill-color: var(--gold-hi);
+  /* The decorated initial BOX: deep gules ground, gilt double keyline. */
+  background:
+    linear-gradient(135deg,
+      color-mix(in srgb, var(--initial-ground) 88%, #000 12%) 0%,
+      var(--initial-ground) 55%,
+      color-mix(in srgb, var(--initial-ground) 78%, #000 22%) 100%);
+  text-shadow:
+    0 1px 0 var(--gold-shadow),
+    0 0 6px rgba(255,238,180,.35);
+  box-shadow:
+    inset 0 0 0 1.5px var(--gold),
+    inset 0 0 0 3px var(--initial-ground),
+    inset 0 0 0 3.75px var(--gold-keyline),
+    0 1px 2px rgba(40,12,0,.4);
+}
+
+/* ── GRANT / DISPOSITIVE CLAUSE — the operative words, centred chancery ─────── */
+.sc2-scroll[data-family="crimson_decree"] .sc2-grant {
+  font-family: var(--ff-body);
+  font-style: italic;
+  text-align: center;
+  color: var(--ink);
+  font-feature-settings: "onum" 1, "liga" 1;
+}
+
+/* ── DATUM (date & place) — period form, muted sanguine small-caps ──────────── */
+.sc2-scroll[data-family="crimson_decree"] .sc2-datum {
+  font-family: var(--ff-smallcaps);
+  letter-spacing: .04em;
+  color: var(--ink-muted);
+  text-align: center;
+  font-feature-settings: "smcp" 1, "onum" 1;
+}
+
+/* ── ATTESTATION / SIGNATURES — chancery italic over a gilt sig-rule ────────── */
+.sc2-scroll[data-family="crimson_decree"] .sc2-attest {
+  font-family: var(--ff-sign);
+  font-style: italic;
+  color: var(--ink);
+}
+.sc2-scroll[data-family="crimson_decree"] .sc2-attest .sc2-sigline {
+  /* the ruled line a signatory's name rests upon — gilt, thin, hand-inked */
+  border-top: 1px solid var(--gold-deep);
+  box-shadow: 0 1px 0 rgba(255,244,194,.4);
+}
+.sc2-scroll[data-family="crimson_decree"] .sc2-attest .sc2-sigtitle {
+  font-family: var(--ff-smallcaps);
+  font-style: normal;
+  letter-spacing: .12em;
+  color: var(--ink-muted);
+  text-transform: uppercase;
+  font-feature-settings: "smcp" 1;
+}
+
+/* ── ILLUMINATION BORDER — single gilt rule + gules bar + acanthus corners ───
+   Crimson Decree's frame is deliberately RESTRAINED: not a dense interlace
+   band like Hibernian, but a clean heraldic bar in gules edged by one bright
+   gilt rule, with ornament concentrated only at the corners (acanthus bosses).
+   The illumination engineer draws the band geometry; these rules colour it. */
+.sc2-scroll[data-family="crimson_decree"] .sc2-border .sc2-rule-fine {
+  stroke: var(--gold);
+  stroke-width: 1.25;
+  fill: none;
+  filter: drop-shadow(0 .5px .5px rgba(60,24,8,.55));
+}
+.sc2-scroll[data-family="crimson_decree"] .sc2-border .sc2-bar {
+  /* the gules field bar */
+  fill: var(--border);
+  stroke: var(--gold-keyline);
+  stroke-width: .5;
+}
+.sc2-scroll[data-family="crimson_decree"] .sc2-border .sc2-band {
+  /* decorated band kept narrow & quiet — let the gules read as the field */
+  fill: var(--accent-soft);
+}
+
+/* Acanthus corner clusters — gilt leaf with a sanguine core boss + gilt pip. */
+.sc2-scroll[data-family="crimson_decree"] .sc2-border .sc2-corner-leaf {
+  fill: var(--gold);
+  stroke: var(--gold-keyline);
+  stroke-width: .5;
+  filter: var(--gild-drop);
+}
+.sc2-scroll[data-family="crimson_decree"] .sc2-border .sc2-corner-boss {
+  fill: var(--initial-ground);        /* deep-gules central boss               */
+  stroke: var(--gold);
+  stroke-width: 1;
+}
+.sc2-scroll[data-family="crimson_decree"] .sc2-border .sc2-corner-boss-pip {
+  fill: var(--gold-hi);               /* tiny gilt highlight pip on the boss   */
+}
+
+/* ── HERALDRY CROWN — heater shields flanking the title, gilt-rimmed ───────── */
+.sc2-scroll[data-family="crimson_decree"] .sc2-arms {
+  filter: drop-shadow(0 2px 3px rgba(40,12,0,.4));
+}
+.sc2-scroll[data-family="crimson_decree"] .sc2-arms img,
+.sc2-scroll[data-family="crimson_decree"] .sc2-arms svg {
+  border: 2.5px solid var(--arms-rim);
+  outline: 1px solid var(--arms-keyline);
+  box-shadow:
+    inset 0 0 0 1px rgba(255,244,194,.5),
+    0 1px 2px rgba(40,12,0,.35);
+  background: var(--vellum-hi);
+}
+
+/* ── WAX SEAL — deep sanguine, pressed hard, gilt rim, livery ribbons ──────── */
+.sc2-scroll[data-family="crimson_decree"] .sc2-seal {
+  filter:
+    drop-shadow(0 2px 3px rgba(30,6,6,.45))
+    drop-shadow(0 0 1px rgba(0,0,0,.4));
+}
+.sc2-scroll[data-family="crimson_decree"] .sc2-seal .sc2-wax-body {
+  fill: var(--wax);
+}
+.sc2-scroll[data-family="crimson_decree"] .sc2-seal .sc2-wax-rim {
+  fill: none;
+  stroke: var(--gold-deep);
+  stroke-width: 2;
+  filter: drop-shadow(0 1px 0 rgba(255,244,194,.45));
+}
+.sc2-scroll[data-family="crimson_decree"] .sc2-seal .sc2-wax-emboss {
+  /* embossed sigil: lit upper-left, shadowed lower-right against pooled wax */
+  fill: var(--wax-lo);
+  filter:
+    drop-shadow(-.5px -.5px .5px rgba(255,180,170,.5))
+    drop-shadow(.5px .8px .8px rgba(0,0,0,.5));
+}
+.sc2-scroll[data-family="crimson_decree"] .sc2-seal .sc2-ribbon-a { fill: var(--ribbon-a); }
+.sc2-scroll[data-family="crimson_decree"] .sc2-seal .sc2-ribbon-b { fill: var(--ribbon-b); }
+
+/* ── EXPORT / PRINT — flatten gilt-text sheen to ink-safe gold; keep gules ───
+   Under .sc2-export / @media print the renderer flattens texture/gilt
+   (background-clip:text drops to transparent in html2canvas and some PDF
+   engines). Fall the title back to a solid courtly gold + keyline shadow so
+   PNG/PDF never lose the title. Structural tokens untouched. */
+.sc2-scroll.sc2-export[data-family="crimson_decree"] .sc2-title {
+  background: none;
+  -webkit-text-fill-color: var(--gold);
+  color: var(--gold);
+  -webkit-text-stroke: 0;
+  text-shadow: 0 1px 0 var(--gold-keyline);
+  filter: drop-shadow(0 1px 1px rgba(40,12,0,.4));
+}
+@media print {
+  .sc2-scroll[data-family="crimson_decree"] .sc2-title {
+    background: none;
+    -webkit-text-fill-color: var(--gold);
+    color: var(--gold);
+    -webkit-text-stroke: 0;
+    text-shadow: 0 1px 0 var(--gold-keyline);
+    filter: drop-shadow(0 1px 1px rgba(40,12,0,.4));
+  }
+}

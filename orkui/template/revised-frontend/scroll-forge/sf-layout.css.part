@@ -1,0 +1,232 @@
+/* ============================================================================
+   THE LETTERED SCROLL — sf-layout.css.part   (THE LAYOUT LAYER)
+   ----------------------------------------------------------------------------
+   The substrate/illumination/typography/heraldry partials each declared that
+   "geometry is owned by the layout layer." THIS is that layer. It owns ONLY
+   the shell composition + the physical sheet's outer geometry — never palette,
+   ornament, or type. Scoped to the `.sc2-forge` wrapper + the locked scroll
+   hooks so it cannot leak into the legacy `sc-` builder beside it.
+
+   Owns:
+     • .sc2-forge          → the 2-column shell (control panel + felt stage).
+     • .sc2-stage          → the "felt desk" the sheet rests on (backdrop).
+     • .sc2-scroll OUTER    → sheet width (var(--sheet-w)) + min aspect-ratio +
+                              the internal margin that the band/content live in.
+     • .sc2-content/.sc2-crown/.sc2-seal-wrap flow padding (the parchment
+       writing area inset from the illuminated border).
+
+   It deliberately does NOT touch: the sheet's background/shadow/deckle
+   (substrate), z-index stack (tokens), ornament (illumination/families), or
+   text (typography). Geometry only.
+   ============================================================================ */
+
+/* ── THE SHELL ────────────────────────────────────────────────────────────────
+   Panel (controls) on the left, felt stage (the scroll) on the right. Collapses
+   to a single column on narrow screens. The panel is sticky so the controls
+   stay in view while the (tall) scroll scrolls past on small screens.         */
+.sc2-forge {
+	display: grid;
+	grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+	gap: 22px;
+	align-items: start;
+	margin: 18px 0 32px;
+}
+@media (max-width: 900px) {
+	.sc2-forge {
+		grid-template-columns: 1fr;
+		gap: 16px;
+	}
+}
+
+/* ── TOOLBOX COLLAPSED ────────────────────────────────────────────────────────
+   The header chevron (#sc2PanelCollapse) minimises the WHOLE toolbox: the grid
+   drops to a single column and the panel is removed from flow so the felt stage
+   takes the full width (sf-app.js scheduleFit() then re-fits the sheet larger).
+   A floating .sc2-panel-reopen tab (fixed-position, in sf-panel) restores it.
+   Both hooks are set by bindPanelCollapse(): .is-panel-collapsed on the grid,
+   .is-collapsed on the panel. Either one hides the panel — belt and braces.    */
+.sc2-forge.is-panel-collapsed {
+	grid-template-columns: 1fr;
+}
+.sc2-forge.is-panel-collapsed > .sc2-panel,
+.sc2-forge .sc2-panel.is-collapsed {
+	display: none;
+}
+
+/* The control panel column — sticky on wide screens so it tracks the sheet. */
+.sc2-forge .sc2-panel {
+	position: sticky;
+	top: 14px;
+	align-self: start;
+	/* FIXED viewport height (not max-height): the two grid columns must be the
+	   SAME height or a dark void opens below the shorter one. max-height fails
+	   here because an auto grid row is still sized from the items' CONTENT, so
+	   the row (and the taller stage) overshoots the capped panel. An explicit
+	   height pins both columns to the viewport; the body (flex:1, min-height:0)
+	   scrolls internally when the controls overflow. */
+	height: calc(100vh - 28px);
+	/* Lock the floor too: height + min-height both pinned, max-height absent, so
+	   NO grid-track / flex / percentage pressure can ever shrink the toolbox
+	   vertically. (The body, flex:1 + its own min-height:0, scrolls inside.) */
+	min-height: calc(100vh - 28px);
+	display: flex;
+	flex-direction: column;
+}
+@media (max-width: 900px) {
+	.sc2-forge .sc2-panel {
+		position: static;
+		height: auto;
+		min-height: 0;
+	}
+}
+
+/* ── THE FELT STAGE ───────────────────────────────────────────────────────────
+   A muted "desk" the parchment rests on, so the lit sheet reads as a physical
+   object. Dark-mode aware (the STAGE backdrop may darken — the SHEET never does,
+   it carries its own vellum). Centres the sheet and gives it breathing room.   */
+.sc2-forge .sc2-stage {
+	display: flex;
+	align-items: flex-start;
+	justify-content: center;
+	/* border-box so the fixed height below INCLUDES the padding — otherwise the
+	   stage = height + 2×padding and overshoots the panel, reopening the void. */
+	box-sizing: border-box;
+	padding: clamp(18px, 3vw, 44px);
+	border-radius: 12px;
+	background:
+		radial-gradient(120% 90% at 50% 0%, rgba(255,255,255,.05), transparent 60%),
+		linear-gradient(160deg, #6b6258 0%, #564e45 48%, #433d36 100%);
+	box-shadow: inset 0 1px 0 rgba(255,255,255,.06), inset 0 0 60px rgba(0,0,0,.35);
+	min-height: 320px;
+	overflow: hidden;
+	/* The stage tracks the sticky panel and is capped to the viewport, then
+	   STRETCHES to the grid row height. Without this the felt desk is sized by
+	   the sheet's natural height (~1072px) while the panel is viewport-capped —
+	   on any window shorter than the sheet a tall dark void opens BELOW the panel
+	   in its grid column and reads as a "broken sidebar". Capping the stage means
+	   fitScroll() (reads STAGE.clientHeight) shrinks the sheet to fit on short
+	   windows; stretching means no void on tall windows either. */
+	position: sticky;
+	top: 14px;
+	align-self: start;
+	/* Same FIXED viewport height as the panel so the two columns match exactly
+	   (no void either side). fitScroll() reads STAGE.clientHeight and scales the
+	   sheet to fit, so a short window shrinks the preview rather than clipping. */
+	height: calc(100vh - 28px);
+}
+@media (max-width: 900px) {
+	.sc2-forge .sc2-stage {
+		position: static;
+		align-self: auto;
+		height: auto;
+		max-height: none;
+	}
+}
+html[data-theme="dark"] .sc2-forge .sc2-stage,
+.dark .sc2-forge .sc2-stage {
+	background:
+		radial-gradient(120% 90% at 50% 0%, rgba(255,255,255,.04), transparent 60%),
+		linear-gradient(160deg, #2b2722 0%, #211d19 50%, #181512 100%);
+}
+
+/* ── THE PHYSICAL SHEET (outer geometry) ──────────────────────────────────────
+   Width is capped to --sheet-w (tokens default min(760px,92vw)); aspect-ratio
+   gives the sheet its letter proportion as a FLOOR while real content can push
+   it taller (the proclamation must never be clipped). The internal padding is
+   the writing area: it clears the illuminated border band so text never sits
+   under the ornament (the locked z-stack rule).                               */
+.sc2-forge .sc2-scroll {
+	width: var(--sheet-w, min(760px, 92vw));
+	max-width: 100%;
+	box-sizing: border-box;
+	/* FIXED Letter page: the sheet is a deterministic 8.5×11 rectangle, NEVER
+	   content-grown. aspect-ratio (read from the shared --aspect token so screen
+	   and print AGREE — sf-print.css.part reads the same var) sets the height
+	   from the width; min-height:0 removes any floor. The existing fitScroll()
+	   in sf-app.js.part scales the whole sheet to fit the stage — content fits
+	   the fixed page, the page never grows to fit the content.                  */
+	aspect-ratio: var(--aspect, 8.5 / 11);
+	min-height: 0;
+	/* No padding here: the writing-area inset is owned by .sc2-page's `inset`
+	   (above) so the page group can be measured + scaled to fit precisely. */
+	padding: 0;
+	/* Clip every decorative layer (astral constellation, forest sprig, imperial
+	   coronet, ornate curls, deckle) to the sheet so ornament can never paint
+	   onto the felt stage. The deckle/curl edge is designed to sit inside the
+	   margin, so clipping at the sheet edge is safe. */
+	overflow: hidden;
+}
+
+/* Landscape orientation flips the proportion to a WIDE page (ratio 11/8.5 ≈
+   1.294). The base rule's aspect-ratio reads --aspect, so flipping the token
+   flips the shape automatically; the sheet also widens. No min-height floor. */
+.sc2-forge .sc2-scroll[data-orientation="landscape"] {
+	--aspect: 11 / 8.5;
+	width: var(--sheet-w-land, min(1040px, 96vw));
+}
+
+/* ── WRITING-AREA FLOW ────────────────────────────────────────────────────────
+   The decorative layers (vellum/ruling/illum/edge) are absolutely positioned
+   fills (z 0–3). The flow children — crown (z5), content (z4), seal (z6) —
+   stack in document order inside the padded writing area. We make the content
+   the flexible middle so the seal sits at the foot and the crown crowns the
+   title, on sheets of any height.                                            */
+/* ── THE PAGE (flow group) ────────────────────────────────────────────────────
+   crown + content + seal live inside .sc2-page, a single absolutely-positioned
+   group filling the writing area (the sheet padding). sf-app.js fitPage()
+   measures its natural height against the writing-area height and applies one
+   transform:scale() so a long proclamation shrinks to FIT the fixed Letter page
+   (content fits the page; the page never grows). transform-origin top center
+   keeps the composition anchored under the crown. */
+.sc2-forge .sc2-scroll > .sc2-page {
+	position: absolute;
+	inset: calc(var(--margin-frame, 34px) + var(--band-w, 26px));
+	z-index: var(--z-content, 4);
+	display: flex;
+	flex-direction: column;
+	transform-origin: top center;
+	will-change: transform;
+}
+.sc2-forge .sc2-scroll > .sc2-page > .sc2-crown {
+	position: relative;
+	z-index: var(--z-crown, 5);
+	flex: 0 0 auto;
+	margin-bottom: clamp(8px, 1.6vw, 18px);
+}
+.sc2-forge .sc2-scroll > .sc2-page > .sc2-content {
+	position: relative;
+	z-index: var(--z-content, 4);
+	flex: 1 1 auto;
+	display: flex;
+	flex-direction: column;
+	gap: var(--gap-section, 1.15rem);
+	justify-content: flex-start;
+}
+.sc2-forge .sc2-scroll > .sc2-page > .sc2-seal-wrap {
+	position: relative;
+	z-index: var(--z-seal, 6);
+	flex: 0 0 auto;
+}
+
+/* The absolutely-positioned decorative layers must fill the padded box edge to
+   edge (they live behind the writing area, not inside the padding). */
+.sc2-forge .sc2-scroll > .sc2-vellum,
+.sc2-forge .sc2-scroll > .sc2-ruling,
+.sc2-forge .sc2-scroll > .sc2-edge,
+.sc2-forge .sc2-scroll > .sc2-illum,
+.sc2-forge .sc2-scroll > .sc2-curl {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+}
+/* Decorative layers sit BELOW the flow content (crown/content/seal) per the
+   locked z-stack. Each is positioned, so without an explicit z-index it would
+   form a stacking context above the auto-level content and hide the text. */
+.sc2-forge .sc2-scroll > .sc2-vellum { z-index: var(--z-vellum, 0); }
+.sc2-forge .sc2-scroll > .sc2-ruling { z-index: var(--z-ruling, 1); }
+.sc2-forge .sc2-scroll > .sc2-illum  { z-index: var(--z-illum, 2); }
+.sc2-forge .sc2-scroll > .sc2-edge   { z-index: var(--z-edge, 3); }
+.sc2-forge .sc2-scroll > .sc2-curl   { z-index: var(--z-edge, 3); }
+
+/* The defs SVG must never occupy layout space. */
+.sc2-forge .sc2-scroll > .sc2-defs { position: absolute; width: 0; height: 0; }

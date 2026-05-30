@@ -1,0 +1,1154 @@
+/* ============================================================================
+   THE LETTERED SCROLL — sf-app.js.part
+   ----------------------------------------------------------------------------
+   Live application controller for the HTML/CSS/inline-SVG scroll renderer
+   ("scroll-forge"). This partial is inlined RAW (no <script> wrapper) into
+   orkui/template/revised-frontend/Scroll_builder.tpl by the finalizer.
+
+   OWNS:
+     • Two-way live binding: control-panel fields  ->  scroll text surfaces.
+     • Family switching: writes [data-family] on .sc2-scroll and re-themes.
+     • Heraldry: image href wiring + graceful fallback (kingdom/park/player).
+     • Auto-fit: scales .sc2-scroll into .sc2-stage on resize / family change.
+     • Export: window.print() (PDF) + PNG via window.html2canvas (lazy CDN),
+       both honoring the .sf-export-mode class on .sc2-scroll.
+     • Period proclamation copy assembly from SgConfig + live overrides.
+
+   MEDIUM IS LOCKED: this script never touches <canvas>; it only mutates DOM
+   text/attributes that the CSS + inline-SVG partials render.
+
+   DEFENSIVE CONTRACT (locked):
+     • IIFE guard is a CONFIG FLAG / feature check — NEVER getElementById at the
+       top (external/inlined script may run before late modal markup exists).
+     • Every DOM lookup is null-guarded; every SgConfig key is optional with a
+       sane fallback (never a blank surface, never a raw ISO date).
+     • Never throws if optional elements/data are missing.
+     • No native title tooltips (UI uses data-tip elsewhere); this file adds
+       none.
+   ============================================================================ */
+(function () {
+	"use strict";
+
+	/* ── 0. GUARD ────────────────────────────────────────────────────────────
+	   Run only when the scroll-forge config is present. SgConfig is emitted by
+	   the .tpl regardless of late modal markup, so it is a SAFE guard — unlike
+	   getElementById, which would fail when this inlined script executes before
+	   DOM nodes defined further down the template exist.                      */
+	var SG = (typeof window !== "undefined" && window.SgConfig) ? window.SgConfig : null;
+	if (!SG) { return; }
+
+	/* Re-entrancy guard: the finalizer may inline this block more than once if
+	   the template is edited carelessly. Initialize at most once.            */
+	if (window.__SF_APP_BOOTED__) { return; }
+	window.__SF_APP_BOOTED__ = true;
+
+	/* ── 1. TINY DOM HELPERS (all null-safe) ─────────────────────────────── */
+	function $(sel, root) {
+		try { return (root || document).querySelector(sel); }
+		catch (e) { return null; }
+	}
+	function $all(sel, root) {
+		try { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+		catch (e) { return []; }
+	}
+	function on(el, evt, fn, opts) {
+		if (el && el.addEventListener) { el.addEventListener(evt, fn, opts || false); }
+	}
+	function setText(el, txt) {
+		if (el) { el.textContent = (txt == null ? "" : String(txt)); }
+	}
+	function setHTML(el, html) {
+		if (el) { el.innerHTML = (html == null ? "" : String(html)); }
+	}
+	function attr(el, name, val) {
+		if (!el) { return null; }
+		if (typeof val === "undefined") { return el.getAttribute(name); }
+		el.setAttribute(name, val == null ? "" : String(val));
+		return val;
+	}
+	function addClass(el, c) { if (el && el.classList) { el.classList.add(c); } }
+	function rmClass(el, c) { if (el && el.classList) { el.classList.remove(c); } }
+	function hasClass(el, c) { return !!(el && el.classList && el.classList.contains(c)); }
+	function val(el) {
+		if (!el) { return ""; }
+		return (typeof el.value === "string") ? el.value : "";
+	}
+	function pick(/* ...candidates */) {
+		for (var i = 0; i < arguments.length; i++) {
+			var v = arguments[i];
+			if (v != null && String(v).trim() !== "") { return String(v).trim(); }
+		}
+		return "";
+	}
+	function debounce(fn, ms) {
+		var t = null;
+		return function () {
+			var ctx = this, args = arguments;
+			if (t) { clearTimeout(t); }
+			t = setTimeout(function () { t = null; fn.apply(ctx, args); }, ms || 80);
+		};
+	}
+	function esc(s) {
+		return String(s == null ? "" : s)
+			.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+			.replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+	}
+	function dbg() {
+		/* Debug -> browser console only (never error_log). Silent unless flag. */
+		if (window.__SF_DEBUG__ && window.console && console.log) {
+			try { console.log.apply(console, ["[scroll-forge]"].concat([].slice.call(arguments))); }
+			catch (e) {}
+		}
+	}
+
+	/* ── 2. ROOTS (resolved lazily so we never hard-fail at parse time) ───── */
+	var APP = null, PANEL = null, STAGE = null, SCROLL = null;
+	function resolveRoots() {
+		APP = $(".sc2-app");
+		PANEL = $(".sc2-panel");
+		STAGE = $(".sc2-stage");
+		SCROLL = $(".sc2-scroll");
+		return !!SCROLL; /* the sheet is the one element we truly require */
+	}
+
+	/* ── 3. FAMILY MODEL ─────────────────────────────────────────────────── */
+	var FAMILY_KEYS = [
+		"hibernian_knotwork", "northern_gothic", "provencal_bestiary",
+		"crimson_decree", "forest_reverie", "charred_edict",
+		"imperial_edict", "scholars_hand", "crusaders_charter", "astral_codex"
+	];
+	function isFamilyKey(k) { return FAMILY_KEYS.indexOf(k) !== -1; }
+
+	/* Knight award ids -> crimson_decree (matches legacy auto-pick logic).   */
+	var KNIGHT_AWARD_IDS = [17, 18, 19, 20, 245];
+
+	function families() {
+		/* Reuse the SAME families JSON the legacy path inlines; never fork it. */
+		var f = window.SC_FAMILIES;
+		if (typeof f === "string") { try { f = JSON.parse(f); } catch (e) { f = null; } }
+		return (f && typeof f === "object") ? f : {};
+	}
+	function familyMeta(key) {
+		var all = families();
+		return (all && all[key]) ? all[key] : null;
+	}
+
+	/* Resolve the initial family from explicit config, then award id, then the
+	   A/B/C autoTemplate, then a safe order default.                         */
+	function initialFamily() {
+		var explicit = pick(SG.family, attr(SCROLL, "data-family"));
+		if (isFamilyKey(explicit)) { return explicit; }
+
+		var aid = parseInt(SG.awardsId, 10);
+		if (!isNaN(aid) && KNIGHT_AWARD_IDS.indexOf(aid) !== -1) { return "crimson_decree"; }
+
+		if (SG.isTitle === true) { return "northern_gothic"; }
+		if (SG.isLadder === true) { return "hibernian_knotwork"; }
+
+		switch (String(SG.autoTemplate || "").toUpperCase()) {
+			case "A": return "crimson_decree";     /* knight  */
+			case "C": return "northern_gothic";    /* title   */
+			case "B": return "hibernian_knotwork"; /* order   */
+			default:  return "hibernian_knotwork";
+		}
+	}
+
+	/* ── 4. STATE (single source of truth for live text) ─────────────────── */
+	var state = {
+		family:      "hibernian_knotwork",
+		orientation: pick(SG.orientation, attr(SCROLL, "data-orientation"), "portrait"),
+		intensity:   pick(SG.intensity, attr(SCROLL, "data-intensity"), "balanced"),
+		persona:     pick(SG.persona, "the Bearer of this Scroll"),
+		awardName:   pick(SG.awardName, "a Token of Esteem"),
+		rank:        parseInt(SG.rank, 10) || 0,
+		date:        pick(SG.date, ""),                 /* YYYY-MM-DD */
+		givenBy:     pick(SG.givenBy, firstOfficerName("Monarch"), firstOfficerName(), ""),
+		givenByRole: pick(firstOfficerRole(SG.givenBy), "Crown"),
+		parkName:    pick(SG.parkName, "Our realm"),
+		kingdomName: pick(SG.kingdomName, "the Kingdom"),
+		note:        pick(SG.note, "service to Our realm"),
+		isTitle:     SG.isTitle === true,
+		isLadder:    SG.isLadder === true
+	};
+
+	function firstOfficerName(roleSubstr) {
+		var list = (SG.preloadOfficers && SG.preloadOfficers.length) ? SG.preloadOfficers : [];
+		for (var i = 0; i < list.length; i++) {
+			var o = list[i] || {};
+			if (!roleSubstr) { if (o.Persona) { return o.Persona; } continue; }
+			if (o.Role && String(o.Role).indexOf(roleSubstr) !== -1 && o.Persona) { return o.Persona; }
+		}
+		return "";
+	}
+	function firstOfficerRole(persona) {
+		var list = (SG.preloadOfficers && SG.preloadOfficers.length) ? SG.preloadOfficers : [];
+		for (var i = 0; i < list.length; i++) {
+			var o = list[i] || {};
+			if (persona && o.Persona === persona && o.Role) { return o.Role; }
+		}
+		var first = list[0] || {};
+		return first.Role || "";
+	}
+
+	/* ── 5. DATE: write the date out in words (NEVER show raw ISO) ────────── */
+	var MONTHS = ["January", "February", "March", "April", "May", "June", "July",
+		"August", "September", "October", "November", "December"];
+
+	function ordinal(n) {
+		var s = ["th", "st", "nd", "rd"], v = n % 100;
+		return n + (s[(v - 20) % 10] || s[v] || s[0]);
+	}
+	function ordinalWords(n) {
+		var ONES = ["", "first", "second", "third", "fourth", "fifth", "sixth",
+			"seventh", "eighth", "ninth", "tenth", "eleventh", "twelfth",
+			"thirteenth", "fourteenth", "fifteenth", "sixteenth", "seventeenth",
+			"eighteenth", "nineteenth", "twentieth"];
+		var TENS = ["", "", "twentieth", "thirtieth"];
+		var TENS_C = ["", "", "twenty", "thirty"];
+		if (n <= 20) { return ONES[n] || ordinal(n); }
+		var t = Math.floor(n / 10), o = n % 10;
+		if (o === 0) { return TENS[t] || ordinal(n); }
+		return (TENS_C[t] ? TENS_C[t] + "-" + (ONES[o] || "") : ordinal(n));
+	}
+	function parseISO(iso) {
+		if (!iso) { return null; }
+		var m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+		if (!m) {
+			var d = new Date(iso);
+			return isNaN(d.getTime()) ? null : d;
+		}
+		var dt = new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+		return isNaN(dt.getTime()) ? null : dt;
+	}
+	function dateWrittenOut(iso) {
+		var d = parseISO(iso) || new Date();
+		var day = ordinalWords(d.getDate());
+		var month = MONTHS[d.getMonth()] || "";
+		var year = d.getFullYear();
+		/* period register: "the {ordinal} day of {Month}, in the year of our
+		   reckoning {year}". Capitalize the leading ordinal word.            */
+		var dayCap = day.charAt(0).toUpperCase() + day.slice(1);
+		return "the " + dayCap + " day of " + month +
+			", in the year of our reckoning " + year;
+	}
+	function dateShort(iso) {
+		var d = parseISO(iso) || new Date();
+		return ordinal(d.getDate()) + " " + (MONTHS[d.getMonth()] || "") + " " + d.getFullYear();
+	}
+
+	/* ── 6. PROCLAMATION COPY (period register; subtle per-family tone) ───── */
+	/* Tone profiles: register flips between royal decree, fae charter, and
+	   scholarly diploma depending on the chosen family. Always defensive —
+	   blanks resolve to sane period phrasing, never empty strings.           */
+	var TONES = {
+		crimson_decree:    "royal",
+		imperial_edict:    "royal",
+		northern_gothic:   "royal",
+		crusaders_charter: "royal",
+		charred_edict:     "royal",
+		forest_reverie:    "fae",
+		provencal_bestiary:"fae",
+		hibernian_knotwork:"fae",
+		astral_codex:      "scholar",
+		scholars_hand:     "scholar"
+	};
+	function toneOf(key) { return TONES[key] || "royal"; }
+
+	function grantVerb() {
+		if (state.isTitle) { return "do confer and bestow"; }
+		if (state.isLadder) { return "do advance and elevate"; }
+		return "do grant and award";
+	}
+
+	function rankPhrase() {
+		if (!state.rank || state.rank <= 0) { return ""; }
+		return " of the " + ordinalWords(state.rank) + " rank";
+	}
+
+	function buildCopy() {
+		var tone = toneOf(state.family);
+		var persona = pick(state.persona, "the Bearer of this Scroll");
+		var award = pick(state.awardName, "a Token of Esteem");
+		var kingdom = pick(state.kingdomName, "the Kingdom");
+		var park = pick(state.parkName, "Our realm");
+		var note = pick(state.note, "service to Our realm");
+		var giver = pick(state.givenBy, "the Crown");
+		var giverRole = pick(state.givenByRole, "Crown");
+
+		var c = {};
+
+		/* INVOCATION — the opening flourish above the title.                  */
+		if (tone === "fae") {
+			c.invocation = "By leaf and by light, let it be sung —";
+		} else if (tone === "scholar") {
+			c.invocation = "Know all who read these letters —";
+		} else {
+			c.invocation = "Know all by these presents —";
+		}
+
+		/* TITLE — the award itself.                                          */
+		c.title = award;
+
+		/* INTITULATION — small-caps line of the granting authority.          */
+		if (tone === "fae") {
+			c.intitulation = "the Court and Conclave of " + kingdom;
+		} else if (tone === "scholar") {
+			c.intitulation = "the Fellowship and Faculty of " + kingdom;
+		} else {
+			c.intitulation = "the Crown and Realm of " + kingdom;
+		}
+
+		/* BODY — versal opens here. {persona} is rubricated (wrapped in a
+		   <span class="sc2-rubric">).                                         */
+		var personaSpan = '<span class="sc2-rubric">' + esc(persona) + "</span>";
+		if (tone === "fae") {
+			c.bodyHTML =
+				"Hearken, gentlefolk and wanderers of the wood, for upon this leaf is " +
+				"bound a true telling. Whereas " + personaSpan + " has walked among us with " +
+				"open hand and steadfast heart, and whereas the deeds of the same — namely " +
+				esc(note) + " — have not gone unmarked beneath the canopy of " +
+				esc(park) + ", we are moved to set down this remembrance for all the seasons to come.";
+		} else if (tone === "scholar") {
+			c.bodyHTML =
+				"Be it known and recorded that " + personaSpan + ", having demonstrated " +
+				"diligence, learning, and merit in full measure, and whereas the works of the " +
+				"same — namely " + esc(note) + " — have been examined and found worthy within " +
+				"the halls of " + esc(park) + ", we do herein attest and certify the same.";
+		} else {
+			c.bodyHTML =
+				"Be it known to all true folk of high and low estate that " + personaSpan +
+				", having rendered unto " + esc(park) + " faithful and exemplary " +
+				"service — namely " + esc(note) + " — and having borne themselves with honour " +
+				"in the sight of the Crown, has merited the regard and gratitude of the Realm.";
+		}
+
+		/* GRANT — dispositive clause; award name accented.                    */
+		var awardSpan = '<span class="sc2-grant-award">' + esc(award) + "</span>";
+		c.grantHTML = "Wherefore We " + grantVerb() + " unto the same the honour of " +
+			awardSpan + rankPhrase() + ", with all rights, styles, and privileges thereunto belonging.";
+
+		/* DATUM — date written out + place, period form.                     */
+		c.datum = "Given under our hand and seal at " + park + ", " +
+			dateWrittenOut(state.date) + ".";
+
+		/* ATTESTATION — signature name + title line.                          */
+		c.signName = giver;
+		c.signTitle = giverRole ? (giverRole + " of " + kingdom) : ("for " + kingdom);
+
+		return c;
+	}
+
+	/* ── 7. RENDER COPY -> DOM ───────────────────────────────────────────── */
+	function renderCopy() {
+		if (!SCROLL) { return; }
+		var c = buildCopy();
+		setText($(".sc2-invocation", SCROLL), c.invocation);
+		setText($(".sc2-title", SCROLL), c.title);
+		setText($(".sc2-intitulation", SCROLL), c.intitulation);
+
+		/* body uses the first <p> for the versal drop-cap; keep it as the
+		   first-of-type paragraph so ::first-letter targets the right glyph. */
+		var bodyWrap = $(".sc2-body", SCROLL);
+		if (bodyWrap) {
+			var p = $("p", bodyWrap);
+			if (!p) { p = document.createElement("p"); bodyWrap.appendChild(p); }
+			setHTML(p, c.bodyHTML);
+		}
+
+		setHTML($(".sc2-grant", SCROLL), c.grantHTML);
+		setText($(".sc2-datum", SCROLL), c.datum);
+
+		/* attestation: write the primary signer's name + title into the first
+		   .sc2-sig block (markup/CSS contract: .sc2-sig__name / .sc2-sig__title
+		   over a .sc2-sig__line). We populate sig #1 from the live copy and
+		   leave any server-seeded sig #2 (a second officer) untouched. */
+		var attest = $(".sc2-attest", SCROLL);
+		if (attest) {
+			var firstSig = $(".sc2-sig", attest);
+			if (firstSig) {
+				setText($(".sc2-sig-name", firstSig), c.signName);
+				setText($(".sc2-sig-title", firstSig), c.signTitle);
+			}
+		}
+	}
+
+	/* ── 8. FAMILY APPLY ─────────────────────────────────────────────────── */
+	function applyFamily(key, opts) {
+		if (!isFamilyKey(key)) { key = "hibernian_knotwork"; }
+		state.family = key;
+		if (SCROLL) {
+			attr(SCROLL, "data-family", key);
+			/* orientation may be family-driven (landscape diplomas etc.).
+			   Only adopt the family default when the caller did not ask us to
+			   preserve the current orientation (keepOrientation).            */
+			var keepOrient = !!(opts && opts.keepOrientation);
+			var meta = familyMeta(key);
+			if (!keepOrient && meta && meta.orientation) {
+				state.orientation = (meta.orientation === "landscape") ? "landscape" : "portrait";
+			}
+			attr(SCROLL, "data-orientation", state.orientation);
+			attr(SCROLL, "data-intensity", state.intensity);
+		}
+		/* re-letter (tone shifts) + re-fit (geometry may change) + reseat arms */
+		renderCopy();
+		wireHeraldry();
+		scheduleFit();
+		/* reflect active state in any family chooser chips/select */
+		reflectFamilyControls(key);
+		dbg("family ->", key, "tone", toneOf(key), "orient", state.orientation);
+	}
+
+	function reflectFamilyControls(key) {
+		/* Family chooser is a radiogroup of .sc2-fam__swatch[data-family] buttons.
+		   Reflect the active state via aria-checked (true on the match, false on
+		   the rest); also toggle an is-active class for any CSS that wants it.   */
+		$all(".sc2-fam__swatch[data-family]").forEach(function (el) {
+			var isActive = (el.getAttribute("data-family") === key);
+			if (el.classList) { el.classList.toggle("is-active", isActive); }
+			el.setAttribute("aria-checked", isActive ? "true" : "false");
+		});
+	}
+
+	/* Paint each family chip's 4 preview bands from its true palette so every
+	   swatch previews its own family rather than the shared hardcoded fallback
+	   in sf-panel.css.part. Static per chip — call once at init, NOT inside
+	   applyFamily. Inline backgroundColor beats the panel CSS; the hardcoded
+	   bands remain a no-JS fallback. Fully null-safe / guarded on SC_FAMILIES.  */
+	function recolorFamilySwatches() {
+		if (!window.SC_FAMILIES) { return; }
+		var all = families();
+		$all(".sc2-fam__swatch[data-family]").forEach(function (el) {
+			var key = el.getAttribute("data-family");
+			if (!key) { return; }
+			var fam = all && all[key];
+			var p = fam && fam.palette;
+			if (!p) { return; }
+			var bands = el.querySelectorAll ? el.querySelectorAll(".sc2-fam__band") : null;
+			if (!bands || !bands.length) { return; }
+			/* fixed order: band1 vellum bg, band2 gold, band3 accent (or border),
+			   band4 wax. Guard each index so a short band list never throws.     */
+			var colors = [p.bg, p.gold, (p.accent || p.border), p.wax];
+			for (var i = 0; i < 4 && i < bands.length; i++) {
+				if (bands[i] && colors[i]) { bands[i].style.backgroundColor = colors[i]; }
+			}
+		});
+	}
+
+	/* ── 9. HERALDRY (href wiring + graceful fallback) ───────────────────── */
+	function padId(id, width) {
+		var s = String(parseInt(id, 10) || 0);
+		while (s.length < width) { s = "0" + s; }
+		return s;
+	}
+	function reconstructHeraldry(kind) {
+		/* Rebuild a heraldry URL from the *Base + padded id (used on toggle). */
+		var base, id, w;
+		if (kind === "kingdom") { base = SG.heraldryKingdomBase; id = SG.kingdomId; w = 4; }
+		else if (kind === "park") { base = SG.heraldryParkBase; id = SG.parkId; w = 5; }
+		else { base = SG.heraldryPlayerBase; id = SG.mundaneId; w = 6; }
+		if (!base) { return ""; }
+		return base + padId(id, w) + ".jpg";
+	}
+	function fallbackHeraldry(kind) {
+		if (kind === "kingdom") {
+			return (SG.heraldryKingdomBase || "") + "0000.jpg";
+		} else if (kind === "park") {
+			return (SG.heraldryParkBase || "") + "00000.jpg";
+		}
+		return (SG.heraldryPlayerBase || "") + "000000.jpg";
+	}
+	function setImageHref(node, url) {
+		if (!node || !url) { return; }
+		var tag = (node.tagName || "").toLowerCase();
+		if (tag === "image") {
+			try { node.setAttributeNS("http://www.w3.org/1999/xlink", "href", url); } catch (e) {}
+			node.setAttribute("href", url);
+		} else {
+			node.setAttribute("src", url);
+			node.setAttribute("alt", ""); /* decorative; no title tooltip */
+		}
+	}
+	function wireOneArms(figSel, primaryUrl, kind) {
+		var fig = $(figSel, SCROLL);
+		if (!fig) { return; }
+		var url = pick(primaryUrl, reconstructHeraldry(kind), fallbackHeraldry(kind));
+		if (!url) { addClass(fig, "sc2-arms--empty"); return; }
+
+		/* prefer an inline-SVG <image> (illumination layer draws the shield);
+		   fall back to a plain <img> if the markup uses one.                  */
+		var svgImg = fig.querySelector ? fig.querySelector("image") : null;
+		var htmlImg = fig.querySelector ? fig.querySelector("img") : null;
+
+		var applied = false;
+		if (svgImg) { setImageHref(svgImg, url); applied = true; }
+		if (htmlImg) {
+			setImageHref(htmlImg, url);
+			classifyArmsBg(htmlImg, fig);
+			/* graceful fallback chain on error */
+			htmlImg.onerror = (function (kindLocal, imgEl) {
+				var stage = 0;
+				return function () {
+					stage++;
+					if (stage === 1) {
+						var r = reconstructHeraldry(kindLocal);
+						if (r && r !== imgEl.getAttribute("src")) { imgEl.setAttribute("src", r); return; }
+						stage++; /* fall through to fallback */
+					}
+					if (stage === 2) {
+						var fb = fallbackHeraldry(kindLocal);
+						if (fb && fb !== imgEl.getAttribute("src")) { imgEl.setAttribute("src", fb); return; }
+					}
+					imgEl.onerror = null;
+					addClass(imgEl.closest ? imgEl.closest("figure") : null, "sc2-arms--empty");
+				};
+			})(kind, htmlImg);
+			applied = true;
+		}
+		if (applied) { rmClass(fig, "sc2-arms--empty"); }
+	}
+	function wireHeraldry() {
+		if (!SCROLL) { return; }
+		wireOneArms(".sc2-arms--kingdom", SG.kingdomHeraldry, "kingdom");
+		wireOneArms(".sc2-arms--park", SG.parkHeraldry, "park");
+		/* optional player device in the seal / center */
+		var sealDevice = $(".sc2-seal-device image", SCROLL) || $(".sc2-seal-device img", SCROLL);
+		if (sealDevice) {
+			var purl = pick(SG.playerHeraldry, reconstructHeraldry("player"), fallbackHeraldry("player"));
+			setImageHref(sealDevice, purl);
+		}
+	}
+
+	/* Remove a WHITE background from a raster device by editing the IMAGE DATA:
+	   sample the corners; if it's a white-bg raster (no transparent corner + at
+	   least two opaque-white corners — heater shields touch the TOP corners with
+	   shield colour, white only at the bottom), repaint it with near-white pixels
+	   turned transparent and swap in the result as a transparent PNG. The device
+	   then sits on ANY family ground with no square, no patch, no clip, no blend
+	   — and identically to a real transparent PNG, so it's consistent everywhere.
+	   Same-origin canvas; on any failure (CORS taint / not decoded) we leave the
+	   image untouched. Idempotent via the data-sf-dewhite marker. */
+	function classifyArmsBg(img, fig) {
+		if (!img) { return; }
+		function run() {
+			/* already de-whited (src is a data: URL) — don't reprocess. A family
+			   switch re-wires the ORIGINAL http src, which correctly re-triggers
+			   this (so the white never comes back). */
+			if (img.src.lastIndexOf("data:", 0) === 0) { return; }
+			try {
+				var w = img.naturalWidth, h = img.naturalHeight;
+				if (!w || !h) { return; }
+				/* cheap corner probe first */
+				var n = 10, sc = document.createElement("canvas");
+				sc.width = n; sc.height = n;
+				var sx = sc.getContext("2d");
+				if (!sx) { return; }
+				sx.drawImage(img, 0, 0, n, n);
+				var sd = sx.getImageData(0, 0, n, n).data;
+				var corners = [0, (n - 1) * 4, n * (n - 1) * 4, (n * n - 1) * 4];
+				var white = 0, clear = 0;
+				for (var i = 0; i < corners.length; i++) {
+					var p = corners[i];
+					if (sd[p + 3] < 28) { clear++; }
+					else if (sd[p] > 238 && sd[p + 1] > 238 && sd[p + 2] > 238) { white++; }
+				}
+				if (!(clear === 0 && white >= 2)) { return; }   /* transparent/coloured → leave */
+				/* white-bg → knock near-white pixels out to transparent, full-res */
+				var cv = document.createElement("canvas");
+				cv.width = w; cv.height = h;
+				var cx = cv.getContext("2d");
+				cx.drawImage(img, 0, 0);
+				var id = cx.getImageData(0, 0, w, h), d = id.data;
+				for (var j = 0; j < d.length; j += 4) {
+					if (d[j] > 238 && d[j + 1] > 238 && d[j + 2] > 238) { d[j + 3] = 0; }
+				}
+				cx.putImageData(id, 0, 0);
+				img.removeAttribute("crossorigin");
+				img.src = cv.toDataURL("image/png");   /* src now data: → run() returns next time */
+			} catch (e) { /* tainted/undecodable — leave the image as-is */ }
+		}
+		/* Trigger on EVERY src load + watch the src attribute. A family switch
+		   re-wires the original http src (undoing the de-white); the load listener
+		   AND the MutationObserver both catch that and re-process, so the white can
+		   never persist on one shield while the other is clean. decode() covers the
+		   `complete-but-not-decoded` race. Wired once per element (it's reused). */
+		function trigger() {
+			if (img.complete && img.naturalWidth) { run(); }
+			else if (img.decode) { img.decode().then(run).catch(function () {}); }
+		}
+		if (!img.__sfDewhiteWired) {
+			img.__sfDewhiteWired = true;
+			on(img, "load", run);
+			if (window.MutationObserver) {
+				try {
+					var mo = new MutationObserver(trigger);
+					mo.observe(img, { attributes: true, attributeFilter: ["src"] });
+				} catch (e) {}
+			}
+		}
+		trigger();
+	}
+
+	/* Re-run de-whiting across all arms — idempotent (skips already-marked). Called
+	   on a short delay after boot to catch any image not decoded when first wired. */
+	function reclassifyArms() {
+		if (!SCROLL) { return; }
+		$all(".sc2-arms .sc2-arms-field > img", SCROLL).forEach(function (img) {
+			var fig = img.closest ? img.closest(".sc2-arms") : null;
+			if (fig) { classifyArmsBg(img, fig); }
+		});
+	}
+
+	/* ── 10. AUTO-FIT (scale the sheet into the stage) ───────────────────── */
+	var fitRAF = null;
+	var fitTimer = null;
+	function runFit() {
+		if (fitRAF && window.cancelAnimationFrame) { try { window.cancelAnimationFrame(fitRAF); } catch (e) {} }
+		fitRAF = null;
+		if (fitTimer) { clearTimeout(fitTimer); fitTimer = null; }
+		fitPage();
+		fitScroll();
+	}
+	function scheduleFit() {
+		/* Schedule via rAF (smooth) AND a setTimeout fallback. rAF is PAUSED in
+		   background/hidden tabs, so a rAF-only scheduler would get stuck with
+		   fitRAF never clearing (the page would never fit if it inits while
+		   backgrounded). The timer guarantees the fit runs either way; whichever
+		   fires first clears the other. */
+		if (fitRAF || fitTimer) { return; }
+		if (window.requestAnimationFrame) {
+			fitRAF = window.requestAnimationFrame(runFit);
+		}
+		fitTimer = setTimeout(runFit, 80);
+	}
+
+	/* ── CONTENT-FIT ──────────────────────────────────────────────────────────
+	   The sheet is a FIXED Letter page; a long proclamation would overflow the
+	   writing area (and get clipped by overflow:hidden). fitPage() scales the
+	   .sc2-page flow group down (never up) so the whole composition fits the
+	   fixed page. It scales by HEIGHT (the limiting axis) about the top so the
+	   crown stays put. Width also constrained so a wide line can't bleed.       */
+	function fitPage() {
+		if (!SCROLL) { return; }
+		var page = $(".sc2-page", SCROLL);
+		if (!page) { return; }
+		/* Reset transform before measuring so each run measures honestly. */
+		page.style.removeProperty("transform");
+		/* The writing area is the .sc2-page box (fixed by its `inset`):
+		   clientHeight = available height, scrollHeight = natural content height. */
+		var availH = page.clientHeight || 1;
+		var natH = page.scrollHeight || availH;
+		var scale = Math.min(availH / natH, 1);   /* height is limiting; never upscale */
+		if (!isFinite(scale) || scale <= 0) { scale = 1; }
+		if (scale < 0.999) {
+			/* Scale the fixed-width writing block about its TOP CENTRE. The box
+			   keeps its writing-area width, so scaling shrinks it symmetrically —
+			   the composition stays horizontally centred and anchored at the top
+			   (crown stays put). NO width compensation: widening a left+right
+			   anchored absolute box drifts it sideways under a centre origin. */
+			page.style.transform = "scale(" + scale.toFixed(4) + ")";
+		}
+		dbg("fitPage", { availH: availH, natH: natH, scale: scale });
+	}
+	function fitScroll() {
+		if (!STAGE || !SCROLL) { return; }
+		/* During export we render at natural/print scale — never down-fit. */
+		if (hasClass(SCROLL, "sf-export-mode")) {
+			SCROLL.style.removeProperty("transform");
+			return;
+		}
+		/* Reset transform to measure the sheet's natural size honestly. */
+		SCROLL.style.transform = "none";
+
+		var sw = SCROLL.offsetWidth || 1;
+		var sh = SCROLL.offsetHeight || 1;
+
+		/* available area inside the stage, minus a little breathing padding */
+		var pad = 28;
+		var aw = (STAGE.clientWidth || sw) - pad * 2;
+		var ah = (STAGE.clientHeight || sh) - pad * 2;
+		if (aw <= 0) { aw = sw; }
+		if (ah <= 0) { ah = sh; }
+
+		var scale = Math.min(aw / sw, ah / sh, 1); /* never upscale past 1:1 */
+		if (!isFinite(scale) || scale <= 0) { scale = 1; }
+
+		if (scale >= 0.999) {
+			SCROLL.style.removeProperty("transform");
+			SCROLL.style.removeProperty("transform-origin");
+		} else {
+			SCROLL.style.transformOrigin = "top center";
+			SCROLL.style.transform = "scale(" + scale.toFixed(4) + ")";
+		}
+		/* expose the scale so the stage CSS can reserve scaled height if needed. */
+		try { STAGE.style.setProperty("--sf-fit-scale", String(scale)); }
+		catch (e) {}
+		dbg("fit", { sw: sw, sh: sh, aw: aw, ah: ah, scale: scale });
+	}
+
+	/* ── 11. CONTROL BINDING (two-way: panel -> state -> scroll) ─────────── */
+	/* The control panel (sf-ui.html.part) is the source of truth for selectors:
+	     • text fields   -> [data-sc2-field="<stateKey>"]
+	     • family swatch -> .sc2-fam__swatch[data-family]
+	     • segmented     -> [data-sc2-seg="orientation|intensity|seal"] > input[radio]
+	     • toggles       -> [data-sc2-toggle="heraldry|curl"] (checkbox)
+	   No legacy data-sf-* / id-based hooks remain in the markup, so bind here.  */
+
+	var liveUpdate = debounce(function () { renderCopy(); scheduleFit(); }, 60);
+
+	/* Preset wax palettes for the seal group. Only --wax is authoritative; we
+	   derive a light/dark pair so the SVG seal gradient still reads correctly
+	   when a preset overrides the family wax. "family" removes the overrides.  */
+	var WAX_PRESETS = {
+		crimson: "#8c1d1b",
+		oxblood: "#5a0f0f",
+		forest:  "#1f4d2e",
+		azure:   "#1e3a6e",
+		violet:  "#43286e",
+		gold:    "#b8862b",
+		sable:   "#241c15"
+	};
+	function clampByte(n) { return n < 0 ? 0 : (n > 255 ? 255 : Math.round(n)); }
+	function shiftHex(hex, amt) {
+		var m = /^#?([0-9a-f]{6})$/i.exec(String(hex || ""));
+		if (!m) { return hex; }
+		var n = parseInt(m[1], 16);
+		var r = clampByte(((n >> 16) & 0xff) + amt);
+		var g = clampByte(((n >> 8) & 0xff) + amt);
+		var b = clampByte((n & 0xff) + amt);
+		var out = ((r << 16) | (g << 8) | b).toString(16);
+		while (out.length < 6) { out = "0" + out; }
+		return "#" + out;
+	}
+	function applySealWax(value) {
+		if (!SCROLL) { return; }
+		attr(SCROLL, "data-seal-wax", value || "family");
+		if (value && value !== "family" && WAX_PRESETS[value]) {
+			var base = WAX_PRESETS[value];
+			try {
+				SCROLL.style.setProperty("--wax", base);
+				SCROLL.style.setProperty("--wax-hi", shiftHex(base, 40));
+				SCROLL.style.setProperty("--wax-lo", shiftHex(base, -40));
+			} catch (e) {}
+		} else {
+			/* "family" — drop inline overrides so the family CSS wax wins. */
+			try {
+				SCROLL.style.removeProperty("--wax");
+				SCROLL.style.removeProperty("--wax-hi");
+				SCROLL.style.removeProperty("--wax-lo");
+			} catch (e) {}
+		}
+	}
+
+	/* read the checked radio value within a [data-sc2-seg="<name>"] wrapper */
+	function checkedSegValue(name) {
+		var radios = $all('[data-sc2-seg="' + name + '"] input[type="radio"]');
+		for (var i = 0; i < radios.length; i++) {
+			if (radios[i].checked) { return radios[i].value; }
+		}
+		return "";
+	}
+
+	function bindControls() {
+		/* ── text fields: live two-way binding via [data-sc2-field] ───────── */
+		$all("[data-sc2-field]").forEach(function (el) {
+			var key = el.getAttribute("data-sc2-field");
+			if (!key) { return; }
+			/* seed the field's value from state only when the markup left it
+			   empty (never clobber a server-seeded value).                    */
+			if (typeof el.value === "string" && el.value === "" && state[key] != null) {
+				el.value = String(state[key]);
+			}
+			var handler = function () {
+				var raw = val(el);
+				state[key] = raw;
+				/* keep givenByRole synced when the giver matches a known officer */
+				if (key === "givenBy") {
+					var role = firstOfficerRole(raw);
+					if (role) { state.givenByRole = role; }
+				}
+				liveUpdate();
+			};
+			on(el, "input", handler);
+			on(el, "change", handler);
+		});
+
+		/* ── family chooser: .sc2-fam__swatch[data-family] radiogroup ─────── */
+		$all(".sc2-fam__swatch[data-family]").forEach(function (swatch) {
+			on(swatch, "click", function (e) {
+				if (e && e.preventDefault) { e.preventDefault(); }
+				applyFamily(swatch.getAttribute("data-family"), { keepOrientation: false });
+			});
+		});
+
+		/* ── orientation segmented radios ─────────────────────────────────── */
+		$all('[data-sc2-seg="orientation"] input[type="radio"]').forEach(function (radio) {
+			on(radio, "change", function () {
+				if (!radio.checked) { return; }
+				state.orientation = (radio.value === "landscape") ? "landscape" : "portrait";
+				attr(SCROLL, "data-orientation", state.orientation);
+				scheduleFit();
+			});
+		});
+
+		/* ── intensity segmented radios (plain | balanced | ornate) ───────── */
+		$all('[data-sc2-seg="intensity"] input[type="radio"]').forEach(function (radio) {
+			on(radio, "change", function () {
+				if (!radio.checked) { return; }
+				var lvl = radio.value;
+				/* markup + CSS key off plain/balanced/ornate verbatim */
+				state.intensity = (["plain", "balanced", "ornate"].indexOf(lvl) !== -1) ? lvl : "balanced";
+				attr(SCROLL, "data-intensity", state.intensity);
+				scheduleFit();
+			});
+		});
+
+		/* ── seal wax segmented radios ────────────────────────────────────── */
+		$all('[data-sc2-seg="seal"] input[type="radio"]').forEach(function (radio) {
+			on(radio, "change", function () {
+				if (!radio.checked) { return; }
+				applySealWax(radio.value);
+			});
+		});
+
+		/* ── heraldry toggle ──────────────────────────────────────────────── */
+		var heraldryToggle = $('[data-sc2-toggle="heraldry"]');
+		if (heraldryToggle) {
+			on(heraldryToggle, "change", function () {
+				var on_ = !!heraldryToggle.checked;
+				attr(SCROLL, "data-heraldry", on_ ? "on" : "off");
+				var crown = $(".sc2-crown", SCROLL);
+				if (crown) {
+					if (on_) { crown.removeAttribute("hidden"); }
+					else { crown.setAttribute("hidden", "hidden"); }
+				}
+			});
+		}
+
+		/* ── rolled-curl toggle ───────────────────────────────────────────── */
+		var curlToggle = $('[data-sc2-toggle="curl"]');
+		if (curlToggle) {
+			on(curlToggle, "change", function () {
+				attr(SCROLL, "data-curl", curlToggle.checked ? "on" : "off");
+			});
+		}
+
+		/* ── wording reset: restore SgConfig-derived defaults ─────────────── */
+		var wordingReset = $("#sc2WordingReset");
+		if (wordingReset) {
+			on(wordingReset, "click", function (e) {
+				if (e && e.preventDefault) { e.preventDefault(); }
+				resetWording();
+			});
+		}
+
+		/* ── panel collapse / reopen ──────────────────────────────────────── */
+		bindPanelCollapse();
+	}
+
+	/* Restore the auto-written copy from SgConfig (mirrors the boot() seeds),
+	   re-populate the input fields, then re-render. Null-safe throughout.     */
+	function resetWording() {
+		state.persona     = pick(SG.persona, "the Bearer of this Scroll");
+		state.awardName   = pick(SG.awardName, "a Token of Esteem");
+		state.kingdomName = pick(SG.kingdomName, "the Kingdom");
+		state.parkName    = pick(SG.parkName, "Our realm");
+		state.date        = pick(SG.date, "");
+		state.note        = pick(SG.note, "service to Our realm");
+		state.givenBy     = pick(SG.givenBy, firstOfficerName("Monarch"), firstOfficerName(), "");
+		state.givenByRole = pick(firstOfficerRole(SG.givenBy), "Crown");
+
+		$all("[data-sc2-field]").forEach(function (el) {
+			var key = el.getAttribute("data-sc2-field");
+			if (key && typeof el.value === "string" && state[key] != null) {
+				el.value = String(state[key]);
+			}
+		});
+		renderCopy();
+	}
+
+	/* Reflect the initial state (from SgConfig/markup attrs) onto the option
+	   controls so the panel matches the scroll on first paint. Only checks a
+	   radio if one with the matching value exists; otherwise leaves the markup
+	   default. Null-safe. */
+	function syncOptionControls() {
+		function checkSeg(name, value) {
+			if (!value) { return; }
+			var radio = $('[data-sc2-seg="' + name + '"] input[type="radio"][value="' + value + '"]');
+			if (radio && !radio.checked) { radio.checked = true; }
+		}
+		checkSeg("orientation", state.orientation);
+		checkSeg("intensity", state.intensity);
+
+		/* heraldry/curl toggles drive the scroll attrs from their initial state */
+		var heraldryToggle = $('[data-sc2-toggle="heraldry"]');
+		if (heraldryToggle) {
+			attr(SCROLL, "data-heraldry", heraldryToggle.checked ? "on" : "off");
+			var crown = $(".sc2-crown", SCROLL);
+			if (crown && !heraldryToggle.checked) { crown.setAttribute("hidden", "hidden"); }
+		}
+		var curlToggle = $('[data-sc2-toggle="curl"]');
+		if (curlToggle) { attr(SCROLL, "data-curl", curlToggle.checked ? "on" : "off"); }
+
+		/* seal wax starts at whatever radio is checked (markup default = family) */
+		var seal = checkedSegValue("seal");
+		if (seal) { applySealWax(seal); }
+	}
+
+	function bindPanelCollapse() {
+		var panel = $("#sc2Panel");
+		var forge = $("#sc2Forge");
+		var collapseBtn = $("#sc2PanelCollapse");
+		var reopenBtn = $("#sc2PanelReopen");
+		/* The grid wrapper carries .is-panel-collapsed (drops to a single column +
+		   hides the toolbox); the panel keeps .is-collapsed for any panel-local
+		   styling. Toggling BOTH is what actually minimises the toolbox — without
+		   the grid class the empty 360px track survives and the sheet can't grow. */
+		if (collapseBtn) {
+			on(collapseBtn, "click", function (e) {
+				if (e && e.preventDefault) { e.preventDefault(); }
+				if (panel) { addClass(panel, "is-collapsed"); }
+				if (forge) { addClass(forge, "is-panel-collapsed"); }
+				collapseBtn.setAttribute("aria-expanded", "false");
+				if (reopenBtn) { reopenBtn.removeAttribute("hidden"); }
+				scheduleFit();
+			});
+		}
+		if (reopenBtn) {
+			on(reopenBtn, "click", function (e) {
+				if (e && e.preventDefault) { e.preventDefault(); }
+				if (panel) { rmClass(panel, "is-collapsed"); }
+				if (forge) { rmClass(forge, "is-panel-collapsed"); }
+				if (collapseBtn) { collapseBtn.setAttribute("aria-expanded", "true"); }
+				reopenBtn.setAttribute("hidden", "hidden");
+				scheduleFit();
+			});
+		}
+	}
+
+	/* ── 12. EXPORT ──────────────────────────────────────────────────────── */
+	function enterExportMode() {
+		addClass(SCROLL, "sf-export-mode");
+		/* legacy spec also reads .sc2-export for token flattening */
+		addClass(SCROLL, "sc2-export");
+		addClass(document.body, "sf-exporting");
+		/* clear the SHEET auto-fit transform so the page captures at its true
+		   Letter size (the @page / print CSS sizes the sheet to 8.5×11in). */
+		SCROLL.style.removeProperty("transform");
+		SCROLL.style.removeProperty("transform-origin");
+		/* Re-fit the CONTENT (.sc2-page) against the export/print sheet box so a
+		   long proclamation still fits the physical page — the scale is measured
+		   fresh now that the sheet is at print dimensions, not screen px. */
+		fitPage();
+	}
+	function exitExportMode() {
+		rmClass(SCROLL, "sf-export-mode");
+		rmClass(SCROLL, "sc2-export");
+		rmClass(document.body, "sf-exporting");
+		scheduleFit();
+	}
+
+	/* PDF: rely on @media print CSS (panel hidden, sheet at Letter size). */
+	function exportPDF() {
+		if (SG.canGenerate === false) { dbg("export gated server-side (canGenerate=false) — client print still allowed"); }
+		if (!SCROLL) { return; }
+		enterExportMode();
+		var cleaned = false;
+		var cleanup = function () {
+			if (cleaned) { return; }
+			cleaned = true;
+			window.removeEventListener("afterprint", cleanup);
+			exitExportMode();
+		};
+		window.addEventListener("afterprint", cleanup);
+		/* give layout one tick to settle before invoking the print dialog */
+		setTimeout(function () {
+			try { window.print(); }
+			catch (e) { dbg("print failed", e); cleanup(); return; }
+			/* Safari/Firefox may not fire afterprint reliably — safety timer. */
+			setTimeout(cleanup, 2000);
+		}, 60);
+	}
+
+	var H2C_SRC = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+	function ensureHtml2Canvas(cb) {
+		if (window.html2canvas) { cb(window.html2canvas); return; }
+		/* avoid double-injecting */
+		if (window.__SF_H2C_LOADING__) {
+			var tries = 0;
+			var poll = setInterval(function () {
+				tries++;
+				if (window.html2canvas) { clearInterval(poll); cb(window.html2canvas); }
+				else if (tries > 120) { clearInterval(poll); cb(null); }
+			}, 50);
+			return;
+		}
+		window.__SF_H2C_LOADING__ = true;
+		var s = document.createElement("script");
+		s.src = H2C_SRC;
+		s.async = true;
+		s.onload = function () { window.__SF_H2C_LOADING__ = false; cb(window.html2canvas || null); };
+		s.onerror = function () { window.__SF_H2C_LOADING__ = false; cb(null); };
+		(document.head || document.documentElement).appendChild(s);
+	}
+
+	function exportPNG(btn) {
+		if (!SCROLL) { return; }
+		if (btn) { btn.setAttribute("aria-busy", "true"); btn.disabled = true; }
+		var restoreBtn = function () { if (btn) { btn.removeAttribute("aria-busy"); btn.disabled = false; } };
+
+		ensureHtml2Canvas(function (h2c) {
+			if (!h2c) {
+				dbg("html2canvas unavailable — falling back to print");
+				restoreBtn();
+				exportPDF();
+				return;
+			}
+			enterExportMode();
+			/* allow webfonts + export-mode CSS to settle */
+			var go = function () {
+				var scale = Math.min(3, (window.devicePixelRatio || 1) * 2); /* crisp ~print */
+				h2c(SCROLL, {
+					backgroundColor: null,
+					scale: scale,
+					useCORS: true,
+					allowTaint: false,
+					logging: false,
+					/* capture at the element's full natural box */
+					width: SCROLL.offsetWidth,
+					height: SCROLL.offsetHeight,
+					windowWidth: document.documentElement.scrollWidth,
+					windowHeight: document.documentElement.scrollHeight
+				}).then(function (canvas) {
+					exitExportMode();
+					restoreBtn();
+					triggerDownload(canvas);
+				}).catch(function (err) {
+					dbg("html2canvas error", err);
+					exitExportMode();
+					restoreBtn();
+				});
+			};
+			if (document.fonts && document.fonts.ready && document.fonts.ready.then) {
+				document.fonts.ready.then(function () { setTimeout(go, 80); });
+			} else {
+				setTimeout(go, 180);
+			}
+		});
+	}
+
+	function safeSlug(s, max) {
+		return pick(s, "").replace(/[^\w\- ]+/g, "").replace(/\s+/g, "_").slice(0, max || 48);
+	}
+	function exportFileName(ext) {
+		var who = safeSlug(state.persona, 48) || "scroll";
+		var what = safeSlug(state.awardName, 48) || "award";
+		return ("scroll_" + who + "_" + what + "." + ext).replace(/_+/g, "_").replace(/^_+/, "");
+	}
+	function triggerDownload(canvas) {
+		var name = exportFileName("png");
+		try {
+			if (canvas.toBlob) {
+				canvas.toBlob(function (blob) {
+					if (!blob) { dataURLDownload(canvas, name); return; }
+					var url = URL.createObjectURL(blob);
+					clickLink(url, name);
+					setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+				}, "image/png");
+			} else {
+				dataURLDownload(canvas, name);
+			}
+		} catch (e) {
+			dbg("download failed", e);
+			dataURLDownload(canvas, name);
+		}
+	}
+	function dataURLDownload(canvas, name) {
+		try { clickLink(canvas.toDataURL("image/png"), name); }
+		catch (e) { dbg("dataURL download failed", e); }
+	}
+	function clickLink(href, name) {
+		var a = document.createElement("a");
+		a.href = href;
+		a.download = name;
+		a.rel = "noopener";
+		(document.body || document.documentElement).appendChild(a);
+		a.click();
+		setTimeout(function () { if (a.parentNode) { a.parentNode.removeChild(a); } }, 0);
+	}
+
+	function bindExport() {
+		/* Export rail buttons live in the panel footer (sf-ui.html.part):
+		   #sc2ExportPrint -> Print/PDF, #sc2ExportPng -> Save PNG. They only
+		   exist when the server gate ($sfCanGenerate) is true, so guard each.  */
+		var printBtn = $("#sc2ExportPrint");
+		if (printBtn) {
+			on(printBtn, "click", function (e) { if (e && e.preventDefault) { e.preventDefault(); } exportPDF(); });
+		}
+		var pngBtn = $("#sc2ExportPng");
+		if (pngBtn) {
+			on(pngBtn, "click", function (e) { if (e && e.preventDefault) { e.preventDefault(); } exportPNG(pngBtn); });
+		}
+	}
+
+	/* ── 13. BOOT ────────────────────────────────────────────────────────── */
+	function boot() {
+		if (!resolveRoots()) {
+			dbg("no .sc2-scroll in DOM yet — scroll-forge inactive");
+			return;
+		}
+
+		/* seed orientation/intensity from config before first paint */
+		attr(SCROLL, "data-orientation", state.orientation);
+		attr(SCROLL, "data-intensity", state.intensity);
+
+		state.family = initialFamily();
+		applyFamily(state.family, { keepOrientation: true });
+
+		bindControls();
+		bindExport();
+		syncOptionControls();
+
+		/* responsive auto-fit */
+		on(window, "resize", debounce(scheduleFit, 80));
+		if (window.ResizeObserver && STAGE) {
+			try {
+				var ro = new ResizeObserver(debounce(scheduleFit, 60));
+				ro.observe(STAGE);
+			} catch (e) {}
+		}
+		/* re-fit once fonts load (metrics change -> height changes) */
+		if (document.fonts && document.fonts.ready && document.fonts.ready.then) {
+			document.fonts.ready.then(function () { scheduleFit(); });
+		}
+
+		renderCopy();
+		wireHeraldry();
+		/* belt-and-braces: re-classify once images have had a tick to decode, so a
+		   white-bg shield never lingers unclipped (showing its white box) while its
+		   neighbour is already clean. */
+		setTimeout(reclassifyArms, 300);
+		recolorFamilySwatches();
+		scheduleFit();
+
+		/* tiny public surface for debugging / external nudges (single
+		   namespaced object — no other globals leaked).                       */
+		window.ScrollForge = {
+			setFamily: function (k) { applyFamily(k, { keepOrientation: false }); },
+			refresh: function () { renderCopy(); scheduleFit(); },
+			fit: scheduleFit,
+			exportPDF: exportPDF,
+			exportPNG: function () { exportPNG(null); },
+			state: function () { var c = {}; for (var k in state) { if (state.hasOwnProperty(k)) { c[k] = state[k]; } } return c; }
+		};
+
+		dbg("booted", { family: state.family, orientation: state.orientation, intensity: state.intensity });
+	}
+
+	if (document.readyState === "loading") {
+		document.addEventListener("DOMContentLoaded", boot);
+	} else {
+		/* DOM already parsed (script inlined late) — boot on next tick so any
+		   sibling partials inlined after us have a chance to define markup.   */
+		setTimeout(boot, 0);
+	}
+})();
