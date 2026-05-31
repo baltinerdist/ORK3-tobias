@@ -4840,7 +4840,8 @@ window.tnOpenAsSheet = function(overlayId, opts) {
 					btn.disabled = false;
 					if (d && d.status === 0) {
 						tnShowFeedback('tn-addbracket-feedback', 'Bracket added!', true);
-						setTimeout(function() { tnCloseModal(OVERLAY); sessionStorage.setItem('tnOpenTab','brackets'); window.location.reload(); }, 800);
+						var _newBid = (d && d.bracketId) ? d.bracketId : 0;
+						setTimeout(function() { tnCloseModal(OVERLAY); sessionStorage.setItem('tnOpenTab','brackets'); if (_newBid) sessionStorage.setItem('tnScrollBracket', _newBid); window.location.reload(); }, 800);
 					} else {
 						tnShowFeedback('tn-addbracket-feedback', (d && d.error) ? d.error : 'Failed to add bracket.', false);
 					}
@@ -9591,7 +9592,32 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 		});
 
 		var tabToOpen = sessionStorage.getItem('tnOpenTab');
-		if (tabToOpen) { sessionStorage.removeItem('tnOpenTab'); tnActivateTab(tabToOpen); }
+		if (tabToOpen) { sessionStorage.removeItem('tnOpenTab'); window._tnTabExplicit = true; tnActivateTab(tabToOpen); }
+		// A just-added bracket: jump straight to it (expand + scroll) instead of
+		// leaving the user at the top of the Brackets tab.
+		var scrollBid = sessionStorage.getItem('tnScrollBracket');
+		if (scrollBid) {
+			sessionStorage.removeItem('tnScrollBracket');
+			// Disable the browser's scroll restoration so it can't yank us back to
+			// the top, then (after load) jump to the new bracket — re-asserting
+			// across the window where restoration / late reflow may still fire.
+			// Restoration is restored only well after everything settles; setting
+			// it back to 'auto' at that point does not itself scroll.
+			var _prevSR = ('scrollRestoration' in history) ? history.scrollRestoration : null;
+			if (_prevSR !== null) history.scrollRestoration = 'manual';
+			var _jumpToBracket = function() {
+				var card = document.getElementById('tn-bracket-' + scrollBid);
+				if (!card) return;
+				card.classList.remove('tn-collapsed');
+				card.scrollIntoView({block:'start'});
+			};
+			var _runJump = function() {
+				[0, 250, 600, 1000].forEach(function(d) { setTimeout(_jumpToBracket, d); });
+				if (_prevSR !== null) setTimeout(function() { history.scrollRestoration = _prevSR; }, 2500);
+			};
+			if (document.readyState === 'complete') _runJump();
+			else window.addEventListener('load', _runJump);
+		}
 		var firstId = firstBracketId();
 		if (firstId) tnRenderBracketViz(firstId);
 
@@ -10287,6 +10313,9 @@ html[data-theme="dark"] .tn-team-chip { background:#2a4a6b; color:#90cdf4; }
 		}
 		if (!anyMatches) return;
 		function activate(){
+			// An explicit post-action navigation (e.g. just added a bracket) wins
+			// over the "default to Run Tournament" heuristic.
+			if (window._tnTabExplicit) return;
 			if (typeof window.tnActivateTab === 'function') window.tnActivateTab('bracketviz');
 		}
 		if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', activate);
