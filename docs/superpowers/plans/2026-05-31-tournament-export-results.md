@@ -4,7 +4,7 @@
 
 **Goal:** Add an "Export Results" button to the Tournament Standings page that downloads a multi-tab `.xlsx` workbook (Summary & Standings tab first, then one tab per bracket, formatted by tournament type).
 
-**Architecture:** A new self-contained single-file `.xlsx` writer (`SimpleXlsx`, built on PHP's `ZipArchive`) lives in `system/lib/vendor/`. A new read-only builder class `TournamentExport` (in `system/lib/ork3/`) gathers data via existing `Tournament` / `TournamentReport` / `Report` library methods and composes the workbook. A thin model pass-through and a controller download endpoint (mirroring the existing `.ics` export pattern) wire it to a public route. The Standings template gets a download link.
+**Architecture:** A new self-contained single-file `.xlsx` writer (`SimpleXlsx`, using a pure-PHP stored-ZIP packer — no `ext-zip`) lives in `system/lib/vendor/`. A new read-only builder class `TournamentExport` (in `system/lib/ork3/`) gathers data via existing `Tournament` / `TournamentReport` / `Report` library methods and composes the workbook. A thin model pass-through and a controller download endpoint (mirroring the existing `.ics` export pattern) wire it to a public route. The Standings template gets a download link.
 
 **Tech Stack:** PHP 8 (Docker container `ork3-php8-app`, app mounted at `/var/www/html`), MariaDB (`ork3-php8-db`), the `ext-zip` extension, the existing `Ork3::$Lib` lazy-loading autoloader, and the `APIModel` magic-forwarding model layer.
 
@@ -12,33 +12,24 @@
 
 ## Testing note (read first)
 
-This repo has **no PHP unit-test framework** (no PHPUnit, no Composer). The established verification practice — documented in the header of `system/lib/ork3/class.TournamentReport.php` — is **CLI smoke checks** run inside the Docker container:
+This repo has **no PHP unit-test framework** (no PHPUnit, no Composer). The established verification practice — documented in the header of `system/lib/ork3/class.TournamentReport.php` — is **CLI smoke checks** run inside the Docker container.
 
-```
-docker exec -i ork3-php8-app php -r 'require "/var/www/html/system/startup.php"; ...'
-```
+**Confirmed environment (pre-flight already run):**
+- Container `ork3-php8-app` is up; app root is **`/var/www/ork.amtgard.com`** (this is the bind-mounted repo; both `/var/www/ork.amtgard.com` and `/var/www/html` resolve to it). DB container is `ork3-php8-db` (MariaDB, `root`/`root`, db `ork`).
+- **CLI bootstrap incantation** (builds `Ork3::$Lib`):
+  ```
+  docker exec -i ork3-php8-app php -r 'chdir("/var/www/ork.amtgard.com"); require "/var/www/ork.amtgard.com/startup.php"; ...'
+  ```
+- **The container has NO `ext-zip`** (`ZipArchive` is unavailable) — this is why `SimpleXlsx` uses its own pure-PHP stored-ZIP writer (`buildZip()`). `crc32()` is core and always present. Do NOT reintroduce `ZipArchive`.
+- **Seed data (use these `$TID` values):**
+  - `162` → single + double + ironman + points (7 brackets) — the primary multi-type fixture.
+  - `173` → round-robin (6 brackets).
+  - `161` / `160` → single + double + round-robin mix.
+  Substitute the real integer for `$TID` in commands below.
 
-So every task below replaces "write a failing unit test" with a concrete **CLI verification command and its expected output**. This is the codebase reality and overrides the writing-plans skill's default pytest/TDD shape. Commit after each task passes its verification.
+So every task replaces "write a failing unit test" with a concrete **CLI verification command and its expected output**. This is the codebase reality and overrides the writing-plans skill's default pytest/TDD shape. Commit after each task passes its verification.
 
-**Pre-flight (run once before Task 1):**
-
-First discover the container's app root + bootstrap file (the CLI smoke checks below `require` it; the path differs between prod and local Docker). The web routes in Tasks 5–7 go through the web server and do NOT need this:
-
-```bash
-docker exec ork3-php8-app sh -c 'ls -d /var/www/* 2>/dev/null; echo "---"; find /var/www -maxdepth 2 -name startup.php 2>/dev/null'
-```
-
-Use the discovered path in place of `/var/www/html` and `system/startup.php` in every `docker exec ... php -r 'require "..."'` command below (the repo's `system/startup.php` is the bootstrap that builds `Ork3::$Lib`; confirm whether the container also needs a `chdir()` + root `startup.php` as the `class.TournamentReport.php` header probe shows for prod).
-
-```bash
-docker exec ork3-php8-app php -m | grep -i zip      # expect: zip
-docker exec -i ork3-php8-db mariadb -u root -proot ork -e \
-  "SELECT t.tournament_id, COUNT(b.bracket_id) brackets, GROUP_CONCAT(DISTINCT b.method) methods \
-   FROM ork_tournament t JOIN ork_bracket b ON b.tournament_id=t.tournament_id \
-   GROUP BY t.tournament_id ORDER BY brackets DESC LIMIT 10;"
-```
-
-Record a `TournamentId` that has several brackets with varied `methods` (ideally including `single`/`double`, `round-robin`, `points`, `ironman`). Call it **`$TID`** in the steps below (substitute the real integer). If a points or team bracket isn't available in the data, note it and verify those code paths by reading the output of the per-method builders against a bracket of that type when one exists.
+To inspect a generated workbook from the host, write it into the mounted repo root (e.g. `copy($r["Path"], "/var/www/ork.amtgard.com/tnexport_test.xlsx")`) — it appears in the repo working dir on the host as `tnexport_test.xlsx`. Always `rm` these scratch files before committing (and never `git add` them).
 
 ---
 
@@ -68,7 +59,7 @@ Create `system/lib/vendor/SimpleXlsx.php` with exactly this content:
 /**
  * SimpleXlsx — minimal, zero-dependency .xlsx writer (single self-contained file).
  *
- * No Composer; just `require_once`. Uses PHP's built-in ZipArchive (ext-zip).
+ * No Composer; just `require_once`. Packs the .xlsx ZIP in pure PHP (crc32 + pack), no ext-zip.
  * Supports: multiple worksheets, string/number cells, a small fixed style palette
  * (bold header, podium gold/silver/bronze, 2-decimal number, title, bold label),
  * per-column widths, frozen top N rows, and a single auto-filter range per sheet.
@@ -104,23 +95,55 @@ class SimpleXlsx {
 
     /** Write the workbook to $path. Returns $path. Throws on failure. */
     public function writeToFile($path) {
-        if (!class_exists('ZipArchive')) {
-            throw new RuntimeException('ZipArchive (ext-zip) is required for xlsx export');
-        }
-        $zip = new ZipArchive();
-        if ($zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
-            throw new RuntimeException('Cannot create xlsx at ' . $path);
-        }
-        $zip->addFromString('[Content_Types].xml', $this->contentTypes());
-        $zip->addFromString('_rels/.rels', $this->rootRels());
-        $zip->addFromString('xl/workbook.xml', $this->workbookXml());
-        $zip->addFromString('xl/_rels/workbook.xml.rels', $this->workbookRels());
-        $zip->addFromString('xl/styles.xml', $this->stylesXml());
+        $parts = [];
+        $parts['[Content_Types].xml']        = $this->contentTypes();
+        $parts['_rels/.rels']                = $this->rootRels();
+        $parts['xl/workbook.xml']            = $this->workbookXml();
+        $parts['xl/_rels/workbook.xml.rels'] = $this->workbookRels();
+        $parts['xl/styles.xml']              = $this->stylesXml();
         foreach ($this->sheets as $i => $s) {
-            $zip->addFromString('xl/worksheets/sheet' . ($i + 1) . '.xml', $this->sheetXml($s));
+            $parts['xl/worksheets/sheet' . ($i + 1) . '.xml'] = $this->sheetXml($s);
         }
-        $zip->close();
+        if (file_put_contents($path, $this->buildZip($parts)) === false) {
+            throw new RuntimeException('Cannot write xlsx to ' . $path);
+        }
         return $path;
+    }
+
+    /**
+     * Build a ZIP archive from [name => data] using STORE (no compression).
+     * Pure PHP — no ext-zip required (the container lacks ZipArchive). xlsx with
+     * stored entries is fully valid and opens in Excel / LibreOffice / Sheets.
+     */
+    private function buildZip(array $parts) {
+        $local = '';
+        $central = '';
+        $offset = 0;
+        foreach ($parts as $name => $data) {
+            $crc = crc32($data);
+            $len = strlen($data);
+            $nameLen = strlen($name);
+
+            $lf  = pack('V', 0x04034b50) . pack('v', 20) . pack('v', 0) . pack('v', 0)
+                 . pack('v', 0) . pack('v', 0)
+                 . pack('V', $crc) . pack('V', $len) . pack('V', $len)
+                 . pack('v', $nameLen) . pack('v', 0) . $name . $data;
+            $local .= $lf;
+
+            $central .= pack('V', 0x02014b50) . pack('v', 20) . pack('v', 20) . pack('v', 0)
+                 . pack('v', 0) . pack('v', 0) . pack('v', 0)
+                 . pack('V', $crc) . pack('V', $len) . pack('V', $len)
+                 . pack('v', $nameLen) . pack('v', 0) . pack('v', 0)
+                 . pack('v', 0) . pack('v', 0) . pack('V', 0)
+                 . pack('V', $offset) . $name;
+
+            $offset += strlen($lf);
+        }
+        $eocd = pack('V', 0x06054b50) . pack('v', 0) . pack('v', 0)
+              . pack('v', count($parts)) . pack('v', count($parts))
+              . pack('V', strlen($central)) . pack('V', strlen($local)) . pack('v', 0);
+
+        return $local . $central . $eocd;
     }
 
     /** Public so callers can build A1-style refs (e.g. for autoFilterRef). 1 => 'A'. */
@@ -317,7 +340,7 @@ Run (writes a 2-sheet workbook into the mounted repo root so the host can inspec
 
 ```bash
 docker exec -i ork3-php8-app php -r '
-require "/var/www/html/system/lib/vendor/SimpleXlsx.php";
+require "/var/www/ork.amtgard.com/system/lib/vendor/SimpleXlsx.php";
 $x = new SimpleXlsx();
 $x->addSheet("Summary", [
   [["v"=>"Demo Tournament","s"=>SimpleXlsx::S_TITLE]],
@@ -330,7 +353,7 @@ $x->addSheet("Open Longsword", [
   [["v"=>"Rank","s"=>SimpleXlsx::S_HEADER],["v"=>"Competitor","s"=>SimpleXlsx::S_HEADER],["v"=>"Points","s"=>SimpleXlsx::S_HEADER]],
   [1,"Sir Test",["v"=>9.5,"s"=>SimpleXlsx::S_NUM2,"t"=>"n"]],
 ], ["freezeRow"=>1, "autoFilterRef"=>"A1:C2", "colWidths"=>[8,24,10]]);
-$x->writeToFile("/var/www/html/simplexlsx_smoke.xlsx");
+$x->writeToFile("/var/www/ork.amtgard.com/simplexlsx_smoke.xlsx");
 echo "wrote\n";'
 ```
 
@@ -393,7 +416,7 @@ Create `system/lib/ork3/class.TournamentExport.php` with this content:
  *   Ork3::$Lib->tournamentreport->GetBracketPlacements(['BracketId'=>..]) -> podium 1/2/3
  *
  * Quick CLI check (from anywhere):
- *   docker exec -i ork3-php8-app php -r 'require "/var/www/html/system/startup.php";
+ *   docker exec -i ork3-php8-app php -r 'chdir("/var/www/ork.amtgard.com"); require "/var/www/ork.amtgard.com/startup.php";
  *     $r=(new TournamentExport())->BuildWorkbook(["TournamentId"=>14]);
  *     echo $r["Path"]."\n".$r["Filename"]."\n";'
  */
@@ -658,7 +681,7 @@ class TournamentExport {
 This confirms `Ork3::$Lib->tournamentexport` resolves `class.TournamentExport.php` (the same lowercase-property mechanism `APIModel` uses), which the controller/model will rely on:
 
 ```bash
-docker exec -i ork3-php8-app php -r 'require "/var/www/html/system/startup.php";
+docker exec -i ork3-php8-app php -r 'chdir("/var/www/ork.amtgard.com"); require "/var/www/ork.amtgard.com/startup.php";
   $o = Ork3::$Lib->tournamentexport;
   echo get_class($o) . "\n";'
 ```
@@ -668,10 +691,10 @@ Expected: prints `TournamentExport`. If it errors with "class not found", the au
 - [ ] **Step 3: Build a workbook for a real tournament (CLI)**
 
 ```bash
-docker exec -i ork3-php8-app php -r 'require "/var/www/html/system/startup.php";
+docker exec -i ork3-php8-app php -r 'chdir("/var/www/ork.amtgard.com"); require "/var/www/ork.amtgard.com/startup.php";
   $r = (new TournamentExport())->BuildWorkbook(["TournamentId"=>$TID]);
   echo $r["Filename"] . "\n";
-  copy($r["Path"], "/var/www/html/tnexport_test.xlsx");
+  copy($r["Path"], "/var/www/ork.amtgard.com/tnexport_test.xlsx");
   @unlink($r["Path"]);
   echo "ok\n";'
 ```
@@ -692,7 +715,7 @@ Expected: `sheet1.xml` (Summary) plus one `sheetN.xml` per bracket in `$TID`. Co
 docker exec -i ork3-php8-db mariadb -u root -proot ork -e \
   "SELECT bracket_id FROM ork_bracket WHERE participants='team' LIMIT 1;"
 # if one exists, with BID = that id:
-docker exec -i ork3-php8-app php -r 'require "/var/www/html/system/startup.php";
+docker exec -i ork3-php8-app php -r 'chdir("/var/www/ork.amtgard.com"); require "/var/www/ork.amtgard.com/startup.php";
   $r = Ork3::$Lib->tournament->GetStandings(["BracketId"=>BID]);
   echo json_encode($r["Detail"][0]["Members"] ?? "none") . "\n";'
 ```
@@ -936,9 +959,9 @@ In `class.TournamentExport.php`, immediately AFTER the `buildStandingsRows()` me
 - [ ] **Step 3: Rebuild and validate per-method formatting (CLI)**
 
 ```bash
-docker exec -i ork3-php8-app php -r 'require "/var/www/html/system/startup.php";
+docker exec -i ork3-php8-app php -r 'chdir("/var/www/ork.amtgard.com"); require "/var/www/ork.amtgard.com/startup.php";
   $r = (new TournamentExport())->BuildWorkbook(["TournamentId"=>$TID]);
-  copy($r["Path"], "/var/www/html/tnexport_test.xlsx"); @unlink($r["Path"]); echo "ok\n";'
+  copy($r["Path"], "/var/www/ork.amtgard.com/tnexport_test.xlsx"); @unlink($r["Path"]); echo "ok\n";'
 mkdir -p /tmp/xlsxchk2 && unzip -o tnexport_test.xlsx -d /tmp/xlsxchk2 >/dev/null && \
   for f in $(find /tmp/xlsxchk2 -name '*.xml'); do xmllint --noout "$f" || echo "BAD $f"; done && echo "xml-ok"
 ```
@@ -1016,7 +1039,7 @@ In the same file, add this method next to the other `get_*` pass-throughs (e.g. 
 Because the model layer needs more bootstrap than the lib, verify via the controller route in Task 5 instead. For now just lint the file:
 
 ```bash
-docker exec -i ork3-php8-app php -l /var/www/html/orkui/model/model.Tournament.php
+docker exec -i ork3-php8-app php -l /var/www/ork.amtgard.com/orkui/model/model.Tournament.php
 ```
 
 Expected: `No syntax errors detected`.
@@ -1073,7 +1096,7 @@ In `orkui/controller/controller.Tournament.php`, add this method after `profile(
 - [ ] **Step 2: Lint the controller**
 
 ```bash
-docker exec -i ork3-php8-app php -l /var/www/html/orkui/controller/controller.Tournament.php
+docker exec -i ork3-php8-app php -l /var/www/ork.amtgard.com/orkui/controller/controller.Tournament.php
 ```
 
 Expected: `No syntax errors detected`.
