@@ -437,6 +437,81 @@ class Tournament extends Ork3 {
 		return Success($brackets);
 	}
 
+	/**
+	 * Find-or-create the tournament-level registration row (bracket_id IS NULL)
+	 * for a person, keyed by the tournament-stable participant_number. Shared by
+	 * AddParticipant (per-bracket auto-register) and RegisterParticipant.
+	 * $person: ['MundaneId'=>int, 'Alias'=>string, 'UnitId'=>int, 'ParkId'=>int, 'KingdomId'=>int]
+	 * Returns ['ParticipantNumber'=>int, 'RegistrationId'=>int]. Caller wraps in a transaction.
+	 */
+	private function ensureRegistrant(int $tournament_id, array $person): array {
+		$mid = (int)($person['MundaneId'] ?? 0);
+		$pnum = 0;
+		if (valid_id($mid)) {
+			$ex = $this->db->query(
+				"SELECT p.participant_number FROM " . DB_PREFIX . "participant p
+				 JOIN " . DB_PREFIX . "participant_mundane pm ON pm.participant_id = p.participant_id
+				 WHERE p.tournament_id = $tournament_id AND pm.mundane_id = $mid AND p.participant_number > 0 LIMIT 1"
+			);
+			if ($ex && $ex->next()) $pnum = (int)$ex->participant_number;
+		} else {
+			$alias = trim($person['Alias'] ?? '');
+			if ($alias !== '') {
+				$exa = $this->db->query(
+					"SELECT p.participant_number FROM " . DB_PREFIX . "participant p
+					 LEFT JOIN " . DB_PREFIX . "participant_mundane pm ON pm.participant_id = p.participant_id
+					 WHERE p.tournament_id = $tournament_id AND pm.mundane_id IS NULL AND p.participant_number > 0 AND p.alias = :a LIMIT 1",
+					[':a' => $alias]
+				);
+				if ($exa && $exa->next()) $pnum = (int)$exa->participant_number;
+			}
+		}
+		if (!$pnum) {
+			$max = $this->db->query("SELECT MAX(participant_number) AS m FROM " . DB_PREFIX . "participant WHERE tournament_id = $tournament_id");
+			$pnum = ($max && $max->next() && $max->m > 0) ? (int)$max->m + 1 : 1;
+		}
+
+		// Already have a registration row (bracket_id IS NULL) for this number?
+		$reg = $this->db->query(
+			"SELECT participant_id FROM " . DB_PREFIX . "participant
+			 WHERE tournament_id = $tournament_id AND participant_number = $pnum AND bracket_id IS NULL LIMIT 1"
+		);
+		if ($reg && $reg->next() && valid_id($reg->participant_id)) {
+			return ['ParticipantNumber' => $pnum, 'RegistrationId' => (int)$reg->participant_id];
+		}
+
+		// Create the registration row (bracket_id NULL).
+		$this->Participant->clear();
+		$this->Participant->tournament_id      = $tournament_id;
+		$this->Participant->alias              = $person['Alias'] ?? '';
+		$this->Participant->unit_id            = (int)($person['UnitId'] ?? 0);
+		$this->Participant->park_id            = (int)($person['ParkId'] ?? 0);
+		$this->Participant->kingdom_id         = (int)($person['KingdomId'] ?? 0);
+		$this->Participant->participant_number = $pnum;
+		$this->Participant->save();
+		$reg_id = (int)$this->Participant->participant_id;
+		if (!valid_id($reg_id)) {
+			throw new \RuntimeException('Registration row save failed — check sql_mode/constraints');
+		}
+		// yapo drops null fields; force bracket_id NULL explicitly.
+		$this->db->query("UPDATE " . DB_PREFIX . "participant SET bracket_id = NULL WHERE participant_id = $reg_id");
+		if (valid_id($mid)) {
+			$this->Player->clear();
+			$this->Player->participant_id = $reg_id;
+			$this->Player->mundane_id     = $mid;
+			$this->Player->tournament_id  = $tournament_id;
+			$this->Player->save();
+			$this->db->query("UPDATE " . DB_PREFIX . "participant_mundane SET bracket_id = NULL WHERE participant_id = $reg_id");
+			$awards_map = $this->fetchAwardsForMundanes([$mid]);
+			$lvl = isset($awards_map[$mid]) ? $this->warriorLevelFromAwards($awards_map[$mid]) : 0;
+			$this->db->query(
+				"UPDATE " . DB_PREFIX . "participant SET warrior_level = :lvl WHERE participant_id = :pid",
+				[':lvl' => (int)$lvl, ':pid' => $reg_id]
+			);
+		}
+		return ['ParticipantNumber' => $pnum, 'RegistrationId' => $reg_id];
+	}
+
 	public function AddParticipant($request) {
 		if (!$this->check_auth($request)) return NoAuthorization();
 
@@ -486,33 +561,16 @@ class Tournament extends Ork3 {
 			$_mid  = (int)($request['MundaneId'] ?? 0);
 			$this->db->query('START TRANSACTION');
 			try {
-				$_pnum = 0;
-				if (valid_id($_mid)) {
-					$_ex = $this->db->query(
-						"SELECT p.participant_number FROM " . DB_PREFIX . "participant p
-						 JOIN " . DB_PREFIX . "participant_mundane pm ON pm.participant_id = p.participant_id
-						 WHERE p.tournament_id = $_tid AND pm.mundane_id = $_mid AND p.participant_number > 0 LIMIT 1"
-					);
-					if ($_ex && $_ex->next()) $_pnum = (int)$_ex->participant_number;
-				} else {
-					// Alias-only participant: reuse the number of an existing alias-only
-					// row with the same alias text in this tournament (person-stable by
-					// name when there is no linked account).
-					$_alias = trim($request['Alias'] ?? '');
-					if ($_alias !== '') {
-						$_exa = $this->db->query(
-							"SELECT p.participant_number FROM " . DB_PREFIX . "participant p
-							 LEFT JOIN " . DB_PREFIX . "participant_mundane pm ON pm.participant_id = p.participant_id
-							 WHERE p.tournament_id = $_tid AND pm.mundane_id IS NULL AND p.participant_number > 0 AND p.alias = :a LIMIT 1",
-							[':a' => $_alias]
-						);
-						if ($_exa && $_exa->next()) $_pnum = (int)$_exa->participant_number;
-					}
-				}
-				if (!$_pnum) {
-					$_max = $this->db->query("SELECT MAX(participant_number) AS m FROM " . DB_PREFIX . "participant WHERE tournament_id = $_tid");
-					$_pnum = ($_max && $_max->next() && $_max->m > 0) ? (int)$_max->m + 1 : 1;
-				}
+				// Ensure a tournament-level registration row exists (bracket_id IS NULL),
+				// then reuse its tournament-stable participant_number for the entrant row.
+				$reg = $this->ensureRegistrant($_tid, [
+					'MundaneId' => $_mid,
+					'Alias'     => $request['Alias'] ?? '',
+					'UnitId'    => (int)($request['UnitId'] ?? 0),
+					'ParkId'    => (int)($request['ParkId'] ?? 0),
+					'KingdomId' => (int)($request['KingdomId'] ?? 0),
+				]);
+				$_pnum = $reg['ParticipantNumber'];
 
 				$this->Participant->clear();
 				$this->Participant->tournament_id      = (int)$request['TournamentId'];
