@@ -425,6 +425,7 @@ html[data-theme="dark"] .tn-alias-input { background:#1a202c; color:#e2e8f0; bor
 .tn-field input:focus, .tn-field select:focus, .tn-field textarea:focus { outline:none; border-color:#276749; box-shadow:0 0 0 2px rgba(39,103,73,0.12); }
 .tn-feedback { font-size:13px; font-weight:600; margin-bottom:12px; display:none; }
 .tn-feedback-err { color:#c53030; }
+.tn-confirm-warn { margin:12px 0 0; color:#c53030; font-weight:600; }
 .tn-feedback-ok  { color:#276749; }
 .tn-field-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 .tn-seg { display:flex; gap:6px; flex-wrap:wrap; }
@@ -1193,6 +1194,7 @@ html[data-theme="dark"] .tn-table td { color:#cbd5e0; border-bottom-color:#2d374
 html[data-theme="dark"] .tn-pill-team-wl { background:#44337a; color:#e9d8fd; border-color:#805ad5; }
 html[data-theme="dark"] .tn-team-roster-btn { color:#9ae6b4; }
 html[data-theme="dark"] .tn-team-roster-row td { background:#1a202c !important; border-bottom-color:#2d3748; }
+html[data-theme="dark"] .tn-addteam-label { color:#f7fafc; }
 html[data-theme="dark"] .tn-roster-member { color:#cbd5e0; }
 
 /* Modals */
@@ -1203,6 +1205,7 @@ html[data-theme="dark"] .tn-modal-title { color:#f7fafc; }
 html[data-theme="dark"] .tn-modal-close { color:#718096; }
 html[data-theme="dark"] .tn-modal-close:hover { color:#cbd5e0; }
 html[data-theme="dark"] .tn-modal-footer { border-top-color:#2d3748; }
+html[data-theme="dark"] .tn-confirm-warn { color:#fc8181; }
 html[data-theme="dark"] .tn-field label { color:#cbd5e0; }
 html[data-theme="dark"] .tn-field input,
 html[data-theme="dark"] .tn-field select,
@@ -1591,6 +1594,7 @@ html[data-theme="dark"] .tn-mq-toggle:hover { background:#2d3748; }
 /* --- Add Team: bigger member chips + larger remove target on mobile (§5).
    The member-tag container wraps; the body scrolls so a long roster doesn't
    push the sticky footer off-screen (body already overflow-y:auto + flex:1). */
+.tn-addteam-label { color:#2d3748; }
 .tn-mobile #tn-addteam-members { display:flex; flex-wrap:wrap; gap:8px; }
 .tn-mobile #tn-addteam-members .tn-team-member-tag { font-size:14px; padding:6px 12px; min-height:36px; margin:0; }
 .tn-mobile #tn-addteam-members .tn-team-member-remove { padding:6px 8px; min-width:32px; font-size:16px; }
@@ -3228,7 +3232,7 @@ foreach ($bracketData as $_bid => $_bd) {
 			<!-- Step 2: Add Members (hidden until team name set) -->
 			<div id="tn-addteam-step2" style="display:none">
 				<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-					<span style="font-size:13px;font-weight:700;color:#2d3748" id="tn-addteam-label"></span>
+					<span style="font-size:13px;font-weight:700" class="tn-addteam-label" id="tn-addteam-label"></span>
 					<span style="font-size:11px;color:#a0aec0">&mdash; add members below</span>
 				</div>
 				<div id="tn-addteam-members" style="margin-bottom:12px"></div>
@@ -4284,38 +4288,52 @@ function tnToggleFocus() {
 }
 
 function tnDeleteBracket(bid, tid) {
-	if (!confirm('Are you sure you want to delete this bracket? If the bracket has match data associated to it, including a completed bracket, it will be completely wiped. This cannot be undone. Continue?')) return;
-	var fd = new FormData();
-	fd.append('BracketId', bid);
-	fetch(TnConfig.uir + 'TournamentAjax/tournament/' + tid + '/deletebracket', { method:'POST', body:fd })
-		.then(function(r) { return r.json(); })
-		.then(function(d) {
-			if (d && d.status === 0) {
-				sessionStorage.setItem('tnOpenTab', 'brackets');
-				window.location.reload();
-			} else {
-				alert((d && d.error) ? d.error : 'Failed to delete bracket.');
-			}
-		})
-		.catch(function() { alert('Request failed. Please try again.'); });
+	tnConfirm({
+		title: 'Delete bracket?',
+		body: 'If the bracket has match data associated to it, including a completed bracket, it will be completely wiped. <strong>This cannot be undone.</strong>',
+		confirmLabel: 'Delete',
+		danger: true,
+		onConfirm: function() {
+			var fd = new FormData();
+			fd.append('BracketId', bid);
+			fetch(TnConfig.uir + 'TournamentAjax/tournament/' + tid + '/deletebracket', { method:'POST', body:fd })
+				.then(function(r) { return r.json(); })
+				.then(function(d) {
+					if (d && d.status === 0) {
+						sessionStorage.setItem('tnOpenTab', 'brackets');
+						window.location.reload();
+					} else {
+						alert((d && d.error) ? d.error : 'Failed to delete bracket.');
+					}
+				})
+				.catch(function() { alert('Request failed. Please try again.'); });
+		}
+	});
 }
 
 // ---- Copy Bracket ----
 function tnCopyBracket(bid, tid) {
-	if (!confirm('Copy this bracket? This will duplicate the bracket settings and all participants into a new bracket.')) return;
-	var fd = new FormData();
-	fd.append('BracketId', bid);
-	fetch(TnConfig.uir + 'TournamentAjax/tournament/' + tid + '/copybracket', { method:'POST', body:fd })
-		.then(function(r) { return r.json(); })
-		.then(function(d) {
-			if (d && d.status === 0) {
-				sessionStorage.setItem('tnOpenTab', 'brackets');
-				window.location.reload();
-			} else {
-				alert((d && d.error) ? d.error : 'Failed to copy bracket.');
-			}
-		})
-		.catch(function() { alert('Request failed. Please try again.'); });
+	tnConfirm({
+		title: 'Copy bracket?',
+		body: 'This will duplicate the bracket settings and all participants into a new bracket.',
+		confirmLabel: 'Copy',
+		danger: false,
+		onConfirm: function() {
+			var fd = new FormData();
+			fd.append('BracketId', bid);
+			fetch(TnConfig.uir + 'TournamentAjax/tournament/' + tid + '/copybracket', { method:'POST', body:fd })
+				.then(function(r) { return r.json(); })
+				.then(function(d) {
+					if (d && d.status === 0) {
+						sessionStorage.setItem('tnOpenTab', 'brackets');
+						window.location.reload();
+					} else {
+						alert((d && d.error) ? d.error : 'Failed to copy bracket.');
+					}
+				})
+				.catch(function() { alert('Request failed. Please try again.'); });
+		}
+	});
 }
 
 // ---- Collapse/Expand All Brackets ----
@@ -4354,7 +4372,15 @@ function tnToggleAllBrackets() {
 }
 
 function tnRemoveParticipant(btn) {
-	if (!confirm('Remove this participant?')) return;
+	tnConfirm({
+		title: 'Remove participant?',
+		body: 'Remove this participant from the bracket?',
+		confirmLabel: 'Remove',
+		danger: true,
+		onConfirm: function() { _tnRemoveParticipantConfirmed(btn); }
+	});
+}
+function _tnRemoveParticipantConfirmed(btn) {
 	var pid = btn.dataset.pid;
 	var bid = btn.dataset.bid;
 	var tid = btn.dataset.tid;
@@ -4417,6 +4443,79 @@ function tnShowFeedback(elId, msg, ok) {
 function tnHideFeedback(elId) {
 	var el = document.getElementById(elId);
 	if (el) el.style.display = 'none';
+}
+
+// ============================================================
+// tnConfirm — reusable in-product confirmation modal (replaces
+// native confirm()). Reuses the existing .tn-overlay/.tn-modal-*
+// chrome so dark mode + styling come for free.
+//   tnConfirm({ title, body, confirmLabel, cancelLabel, danger, onConfirm })
+//   body is an HTML string. onConfirm fires only on confirm.
+// ============================================================
+var _tnConfirmState = { onConfirm: null, keyHandler: null };
+function _tnEnsureConfirmModal() {
+	var ov = document.getElementById('tn-confirm-overlay');
+	if (ov) return ov;
+	ov = document.createElement('div');
+	ov.className = 'tn-overlay';
+	ov.id = 'tn-confirm-overlay';
+	ov.innerHTML =
+		'<div class="tn-modal-box" style="width:440px;max-width:92vw" role="dialog" aria-modal="true">' +
+			'<div class="tn-modal-header">' +
+				'<h3 class="tn-modal-title" id="tn-confirm-title">Confirm</h3>' +
+				'<button type="button" class="tn-modal-close" id="tn-confirm-x" aria-label="Close">&times;</button>' +
+			'</div>' +
+			'<div class="tn-modal-body" id="tn-confirm-body"></div>' +
+			'<div class="tn-modal-footer">' +
+				'<button type="button" class="tn-btn tn-btn-outline" id="tn-confirm-cancel">Cancel</button>' +
+				'<button type="button" class="tn-btn tn-btn-primary" id="tn-confirm-ok">Confirm</button>' +
+			'</div>' +
+		'</div>';
+	document.body.appendChild(ov);
+	// Static teardown wiring (these never call onConfirm).
+	var cancel = function() { _tnCloseConfirm(); };
+	ov.querySelector('#tn-confirm-x').addEventListener('click', cancel);
+	ov.querySelector('#tn-confirm-cancel').addEventListener('click', cancel);
+	ov.addEventListener('click', function(e) { if (e.target === ov) cancel(); });
+	return ov;
+}
+function _tnCloseConfirm() {
+	var ov = document.getElementById('tn-confirm-overlay');
+	if (ov) ov.classList.remove('tn-open');
+	if (_tnConfirmState.keyHandler) {
+		document.removeEventListener('keydown', _tnConfirmState.keyHandler, true);
+		_tnConfirmState.keyHandler = null;
+	}
+	_tnConfirmState.onConfirm = null;
+}
+function tnConfirm(opts) {
+	opts = opts || {};
+	var ov = _tnEnsureConfirmModal();
+	ov.querySelector('#tn-confirm-title').textContent = opts.title || 'Confirm';
+	ov.querySelector('#tn-confirm-body').innerHTML = opts.body || '';
+	var cancelBtn = ov.querySelector('#tn-confirm-cancel');
+	cancelBtn.textContent = opts.cancelLabel || 'Cancel';
+	var okBtn = ov.querySelector('#tn-confirm-ok');
+	okBtn.textContent = opts.confirmLabel || 'Confirm';
+	okBtn.className = 'tn-btn ' + (opts.danger ? 'tn-btn-danger' : 'tn-btn-primary');
+	// Fresh confirm binding (replace node to drop any prior handler so listeners
+	// never stack across opens).
+	var freshOk = okBtn.cloneNode(true);
+	okBtn.parentNode.replaceChild(freshOk, okBtn);
+	_tnConfirmState.onConfirm = (typeof opts.onConfirm === 'function') ? opts.onConfirm : null;
+	freshOk.addEventListener('click', function() {
+		var cb = _tnConfirmState.onConfirm;
+		_tnCloseConfirm();
+		if (cb) cb();
+	});
+	// Esc cancels, Enter confirms — bound per-open, removed on close.
+	_tnConfirmState.keyHandler = function(e) {
+		if (e.key === 'Escape') { e.preventDefault(); _tnCloseConfirm(); }
+		else if (e.key === 'Enter') { e.preventDefault(); freshOk.click(); }
+	};
+	document.addEventListener('keydown', _tnConfirmState.keyHandler, true);
+	tnOpenModal('tn-confirm-overlay');
+	setTimeout(function() { freshOk.focus(); }, 0);
 }
 
 // ============================================================
@@ -6400,13 +6499,22 @@ function tnFixedAcPosition(inputEl, dropdownEl) {
 			.then(function(d){
 				btn.disabled = false;
 				if (d && d.status === 0) {
+					// Hide submit immediately so a fast double-click can't resubmit the
+					// (now-cleared) roster during the step-1 reset + refocus window.
+					document.getElementById('tn-addteam-submit').style.display = 'none';
 					_addedTeams++;
 					tnShowFeedback('tn-addteam-feedback', 'Team "' + tnEsc(teamName) + '" saved! (' + _addedTeams + ' team' + (_addedTeams !== 1 ? 's' : '') + ' added) — add another or close when done.', true);
 					// Update local bracketData so assigned IDs are tracked for subsequent adds
 					if (TnConfig.bracketData[bracketId]) {
 						if (!TnConfig.bracketData[bracketId].Participants) TnConfig.bracketData[bracketId].Participants = [];
-						_teamMembers.forEach(function(m) {
-							TnConfig.bracketData[bracketId].Participants.push({MundaneId: m.MundaneId, Persona: m.Persona, Alias: teamName, ParticipantId: d.participantId || 0});
+						// Push a single team-shaped entry matching the server return shape so
+						// tnGetAssignedMundaneIds()/tnBuildTeamQuickAdd() see the team correctly.
+						TnConfig.bracketData[bracketId].Participants.push({
+							IsTeam: true,
+							ParticipantId: d.participantId || 0,
+							Alias: teamName,
+							MundaneId: 0,
+							Members: _teamMembers.map(function(m) { return {MundaneId: m.MundaneId, Persona: m.Persona}; })
 						});
 					}
 					// Reset for next team
@@ -6843,19 +6951,28 @@ window.tnGenerateMatches = function(bracketId, tournamentId, skipConfirm) {
 	var _br = tnComputeByesAndRounds(method, pCount, bracket);
 	var byes = _br.byes, rounds = _br.rounds;
 
-	// Build confirmation message
-	var msg = styleLabel + ' \u2014 ' + methodLabel + '\n\n';
-	msg += '\u2022 Participants: ' + pCount + '\n';
-	if (byes > 0) msg += '\u2022 First-round byes: ' + byes + '\n';
-	if (rounds) msg += '\u2022 Rounds: ' + rounds + '\n';
-	if (parseInt(bracket.Rings) > 1) msg += '\u2022 Concurrent rings: ' + bracket.Rings + '\n';
-	msg += '\n';
-	if (status === 'active' && hasMatches) {
-		msg += '\u26a0\ufe0f WARNING: This bracket is currently ACTIVE with existing match data. Re-generating will DELETE all current matches and results.\n\n';
+	// Build confirmation body (HTML, rendered in the tnConfirm modal).
+	if (!skipConfirm) {
+		var body = '<p style="margin:0 0 10px;font-weight:600">' + styleLabel + ' \u2014 ' + methodLabel + '</p>';
+		body += '<ul style="margin:0;padding-left:18px">';
+		body += '<li>Participants: ' + pCount + '</li>';
+		if (byes > 0) body += '<li>First-round byes: ' + byes + '</li>';
+		if (rounds) body += '<li>Rounds: ' + rounds + '</li>';
+		if (parseInt(bracket.Rings) > 1) body += '<li>Concurrent rings: ' + bracket.Rings + '</li>';
+		body += '</ul>';
+		var isRegen = (status === 'active' && hasMatches);
+		if (isRegen) {
+			body += '<p class="tn-confirm-warn">\u26a0\ufe0f This bracket is currently ACTIVE with existing match data. Re-generating will DELETE all current matches and results.</p>';
+		}
+		tnConfirm({
+			title: 'Generate matches?',
+			body: body,
+			confirmLabel: 'Generate',
+			danger: false,
+			onConfirm: function() { tnGenerateMatches(bracketId, tournamentId, true); }
+		});
+		return;
 	}
-	msg += 'Generate matches now?';
-
-	if (!skipConfirm && !confirm(msg)) return;
 
 	var url = TnConfig.uir + 'TournamentAjax/tournament/' + tournamentId + '/generate';
 	var fd  = new FormData();
@@ -9438,15 +9555,22 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 					};
 
 					tbBanner.querySelector('.tn-gf-confirm-no').onclick = function() {
-						if (!confirm('Accept ' + topTied.length + ' joint winners at 1st place? Next ranked player will be at ' + (topTied.length + 1) + 'th. This cannot be undone from the UI.')) return;
-						var fd = new FormData();
-						fd.append('BracketId', bracketId);
-						fetch(TnConfig.uir + 'TournamentAjax/tournament/' + tidRR + '/roundrobindecline', { method:'POST', body:fd })
-							.then(function(r) { return r.json(); })
-							.then(function(d) {
-								if (d.status === 0) refreshTb();
-								else alert('Error: ' + (d.error || 'Unknown error'));
-							}).catch(function(err) { alert('Request failed: ' + err); });
+						tnConfirm({
+							title: 'Accept joint winners?',
+							body: 'Accept <strong>' + topTied.length + '</strong> joint winners at 1st place? The next ranked player will be at ' + (topTied.length + 1) + 'th. <strong>This cannot be undone from the UI.</strong>',
+							confirmLabel: 'Accept',
+							danger: true,
+							onConfirm: function() {
+								var fd = new FormData();
+								fd.append('BracketId', bracketId);
+								fetch(TnConfig.uir + 'TournamentAjax/tournament/' + tidRR + '/roundrobindecline', { method:'POST', body:fd })
+									.then(function(r) { return r.json(); })
+									.then(function(d) {
+										if (d.status === 0) refreshTb();
+										else alert('Error: ' + (d.error || 'Unknown error'));
+									}).catch(function(err) { alert('Request failed: ' + err); });
+							}
+						});
 					};
 				}
 			}
