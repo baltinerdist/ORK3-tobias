@@ -4,7 +4,7 @@
 
 **Goal:** Let organizers register participants at the tournament level (Participants tab) and assign them to one or more brackets later, while keeping the existing per-bracket quick-add working.
 
-**Architecture:** A registration is an `ork_participant` row with `bracket_id IS NULL`, keyed by the already-tournament-stable `participant_number`. Assigning to a bracket creates a per-bracket `ork_participant` row (the existing unit that matches/seeds/standings reference) sharing that `participant_number`. No new join table; no rewiring of downstream bracket code. A single `ensureRegistrant()` helper backs both the explicit register action and the per-bracket auto-register path.
+**Architecture:** A registration is an `ork_participant` row with `bracket_id IS NULL`, keyed by the already-tournament-stable `participant_number`. (NOTE: `ork_participant.bracket_id` and `ork_participant_mundane.bracket_id` were `NOT NULL` in the live schema — Task 1 makes them nullable so registration rows can exist.) Assigning to a bracket creates a per-bracket `ork_participant` row (the existing unit that matches/seeds/standings reference) sharing that `participant_number`. No new join table; no rewiring of downstream bracket code. A single `ensureRegistrant()` helper backs both the explicit register action and the per-bracket auto-register path.
 
 **Tech Stack:** PHP 8 (DB layer `system/lib/ork3/`, MVC `orkui/`), MariaDB, plain-PHP `.tpl` templates, vanilla JS. App at `http://localhost:19080/orkui/`. DB via `docker exec -i ork3-php8-db mariadb -u root -proot ork`.
 

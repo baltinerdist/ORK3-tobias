@@ -58,8 +58,9 @@ The stable identity is `participant_number` (already tournament-wide).
   row (`bracket_id` set) is created, sharing the registrant's `participant_number`. **These rows are
   exactly what matches / seeds / standings already reference — unchanged.**
 
-> **Schema impact is minimal.** `ork_participant.bracket_id` is already `DEFAULT NULL`, and
-> `ork_participant_mundane.bracket_id` likewise. No new join table is introduced: the per-bracket
+> **Schema impact is minimal.** `ork_participant.bracket_id` and `ork_participant_mundane.bracket_id`
+> are `NOT NULL` in the live schema; the migration makes them nullable so a registration row can be
+> `bracket_id IS NULL`. No new join table is introduced: the per-bracket
 > `ork_participant` row *is* the assignment record (it already carries `seed`/`status`/`eliminated`/
 > `bracket_side`), and `participant_number` is the link back to the registration row. This realizes the
 > approved "registration + assignment" model without a redundant table or rewiring downstream code.

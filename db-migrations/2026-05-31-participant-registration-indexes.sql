@@ -1,8 +1,5 @@
 -- Registration/assignment support: speed up registrant lookups by stable number,
--- and roster/assignment scans. bracket_id is NOT NULL on both tables (existing schema);
--- no column change is needed here — nullability will be addressed in a separate migration
--- if/when the registration-vs-assignment split is introduced.
--- status is varchar(20) (not an enum), so no MODIFY is needed.
+-- and roster/assignment scans.
 
 -- Stable-identity lookups (ensureRegistrant, GetRegistrants assignment join):
 ALTER TABLE ork_participant
@@ -11,3 +8,8 @@ ALTER TABLE ork_participant
 -- Roster scan (bracket_id IS NULL) and per-bracket entrant scan:
 ALTER TABLE ork_participant
   ADD INDEX idx_participant_tourn_bracket (tournament_id, bracket_id);
+
+-- Registration rows live as ork_participant with bracket_id IS NULL
+-- (registered to the tournament, not yet assigned to any bracket).
+ALTER TABLE ork_participant         MODIFY bracket_id INT(11) NULL DEFAULT NULL;
+ALTER TABLE ork_participant_mundane MODIFY bracket_id INT(11) NULL DEFAULT NULL;
