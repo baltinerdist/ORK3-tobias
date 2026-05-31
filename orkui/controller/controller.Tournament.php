@@ -228,7 +228,7 @@ class Controller_Tournament extends Controller {
 			// For team brackets, use a per-bracket fetch so GetParticipants can
 			// de-duplicate by participant_id and attach IsTeam + Members[].
 			if (($b['Participants'] ?? 'individual') === 'team') {
-				$_teamParts = $this->Tournament->get_participants(['BracketId' => $bid, 'TournamentId' => $tournament_id]);
+				$_teamParts = $this->Tournament->get_participants(['BracketId' => $bid, 'TournamentId' => $tournament_id, 'BracketType' => 'team']);
 				$pList = $_teamParts['Detail'] ?? [];
 			} else {
 				$pList = $partsByBracket[$bid] ?? [];

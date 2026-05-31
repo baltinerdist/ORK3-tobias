@@ -208,49 +208,60 @@ class Tournament extends Ork3 {
 			$opr = $this->db->query("SELECT participant_id FROM " . DB_PREFIX . "participant WHERE bracket_id = $copy_id ORDER BY participant_id ASC");
 			if ($opr) { while ($opr->next()) $old_pids[] = (int)$opr->participant_id; }
 
-			$sql = "INSERT INTO " . DB_PREFIX . "participant (tournament_id, bracket_id, alias, unit_id, park_id, kingdom_id, participant_number, seed)
-						SELECT tournament_id, $bracket_id, alias, unit_id, park_id, kingdom_id, participant_number, seed
-						FROM " . DB_PREFIX . "participant WHERE bracket_id = $copy_id ORDER BY participant_id ASC";
-			$this->db->query($sql);
+			$this->db->query('START TRANSACTION');
+			try {
+				$sql = "INSERT INTO " . DB_PREFIX . "participant (tournament_id, bracket_id, alias, unit_id, park_id, kingdom_id, participant_number, seed)
+							SELECT tournament_id, $bracket_id, alias, unit_id, park_id, kingdom_id, participant_number, seed
+							FROM " . DB_PREFIX . "participant WHERE bracket_id = $copy_id ORDER BY participant_id ASC";
+				$this->db->query($sql);
 
-			// Fetch new participant IDs in order (same insertion order as old)
-			$new_pids = [];
-			$npr = $this->db->query("SELECT participant_id FROM " . DB_PREFIX . "participant WHERE bracket_id = $bracket_id ORDER BY participant_id ASC");
-			if ($npr) { while ($npr->next()) $new_pids[] = (int)$npr->participant_id; }
+				// Fetch new participant IDs in order (same insertion order as old)
+				$new_pids = [];
+				$npr = $this->db->query("SELECT participant_id FROM " . DB_PREFIX . "participant WHERE bracket_id = $bracket_id ORDER BY participant_id ASC");
+				if ($npr) { while ($npr->next()) $new_pids[] = (int)$npr->participant_id; }
 
-			// Build explicit old→new participant_id mapping (safe for duplicate aliases)
-			$pid_map = [];
-			for ($i = 0; $i < count($old_pids) && $i < count($new_pids); $i++) {
-				$pid_map[$old_pids[$i]] = $new_pids[$i];
-			}
+				// Build explicit old→new participant_id mapping (safe for duplicate aliases)
+				$pid_map = [];
+				for ($i = 0; $i < count($old_pids) && $i < count($new_pids); $i++) {
+					$pid_map[$old_pids[$i]] = $new_pids[$i];
+				}
 
-			// Copy participant_mundane links using explicit mapping
-			foreach ($pid_map as $old_pid => $new_pid) {
-				$this->db->query("INSERT INTO " . DB_PREFIX . "participant_mundane (participant_id, mundane_id, tournament_id, bracket_id)
-					SELECT $new_pid, mundane_id, tournament_id, $bracket_id
-					FROM " . DB_PREFIX . "participant_mundane WHERE participant_id = $old_pid");
-			}
+				// Copy participant_mundane links using explicit mapping
+				foreach ($pid_map as $old_pid => $new_pid) {
+					$this->db->query("INSERT INTO " . DB_PREFIX . "participant_mundane (participant_id, mundane_id, tournament_id, bracket_id)
+						SELECT $new_pid, mundane_id, tournament_id, $bracket_id
+						FROM " . DB_PREFIX . "participant_mundane WHERE participant_id = $old_pid");
+				}
 
-			// Copy team records using explicit mapping
-			foreach ($pid_map as $old_pid => $new_pid) {
-				$this->db->query("INSERT INTO " . DB_PREFIX . "participant_teams (tournament_id, bracket_id, participant_id, name)
-					SELECT tournament_id, $bracket_id, $new_pid, name
-					FROM " . DB_PREFIX . "participant_teams WHERE participant_id = $old_pid AND bracket_id = $copy_id");
-			}
+				// Copy team records using explicit mapping
+				foreach ($pid_map as $old_pid => $new_pid) {
+					$this->db->query("INSERT INTO " . DB_PREFIX . "participant_teams (tournament_id, bracket_id, participant_id, name)
+						SELECT tournament_id, $bracket_id, $new_pid, name
+						FROM " . DB_PREFIX . "participant_teams WHERE participant_id = $old_pid AND bracket_id = $copy_id");
+				}
 
-			// Copy team members: map old team_ids to new team_ids
-			$old_teams = $this->db->query("SELECT team_id, participant_id FROM " . DB_PREFIX . "participant_teams WHERE bracket_id = $copy_id ORDER BY team_id");
-			$new_teams = $this->db->query("SELECT team_id, participant_id FROM " . DB_PREFIX . "participant_teams WHERE bracket_id = $bracket_id ORDER BY team_id");
-			$team_map = [];
-			if ($old_teams && $new_teams) {
-				$ot = []; while ($old_teams->next()) $ot[] = (int)$old_teams->team_id;
-				$nt = []; while ($new_teams->next()) $nt[] = (int)$new_teams->team_id;
-				for ($i = 0; $i < count($ot) && $i < count($nt); $i++) $team_map[$ot[$i]] = $nt[$i];
-			}
-			foreach ($team_map as $old_tid => $new_tid) {
-				$this->db->query("INSERT INTO " . DB_PREFIX . "participant_team_members (team_id, mundane_id, tournament_id)
-					SELECT $new_tid, mundane_id, tournament_id
-					FROM " . DB_PREFIX . "participant_team_members WHERE team_id = $old_tid");
+				// Copy team members: map old team_ids to new team_ids via participant_id
+				// (positional zipping is fragile; join on the mapped participant_id instead).
+				$old_teams = $this->db->query("SELECT team_id, participant_id FROM " . DB_PREFIX . "participant_teams WHERE bracket_id = $copy_id ORDER BY team_id");
+				$new_teams = $this->db->query("SELECT team_id, participant_id FROM " . DB_PREFIX . "participant_teams WHERE bracket_id = $bracket_id ORDER BY team_id");
+				$team_map = [];
+				if ($old_teams && $new_teams) {
+					$oldTeamByPid = []; while ($old_teams->next()) $oldTeamByPid[(int)$old_teams->participant_id] = (int)$old_teams->team_id;
+					$newTeamByPid = []; while ($new_teams->next()) $newTeamByPid[(int)$new_teams->participant_id] = (int)$new_teams->team_id;
+					foreach ($oldTeamByPid as $old_participant_id => $old_team_id) {
+						$mapped_pid = $pid_map[$old_participant_id] ?? 0;
+						if (isset($newTeamByPid[$mapped_pid])) $team_map[$old_team_id] = $newTeamByPid[$mapped_pid];
+					}
+				}
+				foreach ($team_map as $old_tid => $new_tid) {
+					$this->db->query("INSERT INTO " . DB_PREFIX . "participant_team_members (team_id, mundane_id, tournament_id)
+						SELECT $new_tid, mundane_id, tournament_id
+						FROM " . DB_PREFIX . "participant_team_members WHERE team_id = $old_tid");
+				}
+				$this->db->query('COMMIT');
+			} catch (\Throwable $e) {
+				$this->db->query('ROLLBACK');
+				throw $e;
 			}
 
 			$this->bustTournamentReportCache();
@@ -429,8 +440,25 @@ class Tournament extends Ork3 {
 	public function AddParticipant($request) {
 		if (!$this->check_auth($request)) return NoAuthorization();
 
+		// IDOR guard: the target bracket must belong to the claimed tournament.
+		$_bidChk = (int)($request['BracketId'] ?? 0);
+		$_tidChk = (int)($request['TournamentId'] ?? 0);
+		if (valid_id($_bidChk)) {
+			$_bchk = $this->db->query(
+				"SELECT tournament_id FROM " . DB_PREFIX . "bracket WHERE bracket_id = :bid LIMIT 1",
+				[':bid' => $_bidChk]
+			);
+			if (!$_bchk || !$_bchk->next() || (int)$_bchk->tournament_id !== $_tidChk) {
+				return InvalidParameter(null, 'Bracket does not belong to this tournament.');
+			}
+		}
+
 		if (valid_id($request['ParticipantId'])) {
-			// Copy an existing participant into a new bracket
+			// Copy an existing participant into a new bracket.
+			// NOTE: copies only the participant row; participant_mundane/team rows are
+			// NOT copied. Not currently reached for team brackets (no caller passes
+			// ParticipantId for teams). Extend with id-mapped participant_mundane +
+			// participant_teams/participant_team_members copies if a caller needs full copy.
 			$bid           = (int)$request['BracketId'];
 			$pid           = (int)$request['ParticipantId'];
 			$tournament_id = (int)($request['TournamentId'] ?? 0);
@@ -499,67 +527,73 @@ class Tournament extends Ork3 {
 					$this->db->query('ROLLBACK');
 					return InvalidParameter('Participant save failed — check DB sql_mode and table constraints');
 				}
-				$this->db->query('COMMIT');
-			} catch (\Throwable $e) {
-				$this->db->query('ROLLBACK');
-				throw $e;
-			}
-			$_pid  = (int)$this->Participant->participant_id;
+				$_pid  = (int)$this->Participant->participant_id;
 
-			if (valid_id($request['MundaneId'])) {
-				// Individual participant — link single player
-				$this->Player->clear();
-				$this->Player->participant_id = $this->Participant->participant_id;
-				$this->Player->mundane_id     = $request['MundaneId'];
-				$this->Player->tournament_id  = $request['TournamentId'];
-				$this->Player->bracket_id     = $request['BracketId'];
-				$this->Player->save();
-				// Snapshot Order-of-the-Warrior level (0-12) at time of competition.
-				$awards_map = $this->fetchAwardsForMundanes([(int)$request['MundaneId']]);
-				$mid = (int)$request['MundaneId'];
-				$lvl = isset($awards_map[$mid]) ? $this->warriorLevelFromAwards($awards_map[$mid]) : 0;
-				$this->db->query(
-					"UPDATE " . DB_PREFIX . "participant SET warrior_level = :lvl WHERE participant_id = :pid",
-					[':lvl' => (int)$lvl, ':pid' => (int)$_pid]
-				);
-			} elseif (!empty($request['Members'])) {
-				// Team participant — create durable team record then link members
-				$_tid2  = (int)$this->Participant->tournament_id;
-				$_bid2  = (int)$this->Participant->bracket_id;
-				$_pid2  = (int)$this->Participant->participant_id;
-				$this->db->query(
-					"INSERT INTO " . DB_PREFIX . "participant_teams (tournament_id, bracket_id, participant_id, name)"
-					. " VALUES (:tid2, :bid2, :pid2, :tname)",
-					[':tid2' => $_tid2, ':bid2' => $_bid2, ':pid2' => $_pid2, ':tname' => $this->Participant->alias]
-				);
-				$_team_id = (int)$this->db->GetLastInsertId();
-				foreach ($request['Members'] as $member) {
-					$_mid2 = (int)$member['MundaneId'];
-					// Roster row in new team tables
-					$this->db->query(
-						"INSERT IGNORE INTO " . DB_PREFIX . "participant_team_members (team_id, mundane_id, tournament_id)"
-						. " VALUES (:team_id, :mid2, :tid2)",
-						[":team_id" => $_team_id, ":mid2" => $_mid2, ":tid2" => $_tid2]
-					);
-					// Also keep ork_participant_mundane populated for backwards-compat queries
+				if (valid_id($request['MundaneId'])) {
+					// Individual participant — link single player
 					$this->Player->clear();
-					$this->Player->participant_id = $_pid2;
-					$this->Player->mundane_id     = $_mid2;
-					$this->Player->tournament_id  = $_tid2;
-					$this->Player->bracket_id     = $_bid2;
+					$this->Player->participant_id = $this->Participant->participant_id;
+					$this->Player->mundane_id     = $request['MundaneId'];
+					$this->Player->tournament_id  = $request['TournamentId'];
+					$this->Player->bracket_id     = $request['BracketId'];
 					$this->Player->save();
+					// Snapshot Order-of-the-Warrior level (0-12) at time of competition.
+					$awards_map = $this->fetchAwardsForMundanes([(int)$request['MundaneId']]);
+					$mid = (int)$request['MundaneId'];
+					$lvl = isset($awards_map[$mid]) ? $this->warriorLevelFromAwards($awards_map[$mid]) : 0;
+					$this->db->query(
+						"UPDATE " . DB_PREFIX . "participant SET warrior_level = :lvl WHERE participant_id = :pid",
+						[':lvl' => (int)$lvl, ':pid' => (int)$_pid]
+					);
+				} elseif (!empty($request['Members'])) {
+					// Team participant — create durable team record then link members
+					$_tid2  = (int)$this->Participant->tournament_id;
+					$_bid2  = (int)$this->Participant->bracket_id;
+					$_pid2  = (int)$this->Participant->participant_id;
+					$this->db->query(
+						"INSERT INTO " . DB_PREFIX . "participant_teams (tournament_id, bracket_id, participant_id, name)"
+						. " VALUES (:tid2, :bid2, :pid2, :tname)",
+						[':tid2' => $_tid2, ':bid2' => $_bid2, ':pid2' => $_pid2, ':tname' => $this->Participant->alias]
+					);
+					$_team_id = (int)$this->db->GetLastInsertId();
+					if (!valid_id($_team_id)) {
+						$this->db->query('ROLLBACK');
+						return InvalidParameter(null, 'Team record could not be created.');
+					}
+					foreach ($request['Members'] as $member) {
+						$_mid2 = (int)$member['MundaneId'];
+						if (!valid_id($_mid2)) continue;
+						// Roster row in new team tables
+						$this->db->query(
+							"INSERT IGNORE INTO " . DB_PREFIX . "participant_team_members (team_id, mundane_id, tournament_id)"
+							. " VALUES (:team_id, :mid2, :tid2)",
+							[":team_id" => $_team_id, ":mid2" => $_mid2, ":tid2" => $_tid2]
+						);
+						// Also keep ork_participant_mundane populated for backwards-compat queries
+						$this->Player->clear();
+						$this->Player->participant_id = $_pid2;
+						$this->Player->mundane_id     = $_mid2;
+						$this->Player->tournament_id  = $_tid2;
+						$this->Player->bracket_id     = $_bid2;
+						$this->Player->save();
+					}
+					// Snapshot team warrior_level as sum of member levels at time of registration.
+					$memberMids = array_map(fn($m) => (int)$m['MundaneId'], $request['Members']);
+					$memberAwards = $this->fetchAwardsForMundanes($memberMids);
+					$teamWL = 0;
+					foreach ($memberMids as $wmid) {
+						$teamWL += isset($memberAwards[$wmid]) ? $this->warriorLevelFromAwards($memberAwards[$wmid]) : 0;
+					}
+					$this->db->query(
+						"UPDATE " . DB_PREFIX . "participant SET warrior_level = :lvl WHERE participant_id = :pid",
+						[':lvl' => (int)$teamWL, ':pid' => (int)$_pid2]
+					);
 				}
-				// Snapshot team warrior_level as sum of member levels at time of registration.
-				$memberMids = array_map(fn($m) => (int)$m['MundaneId'], $request['Members']);
-				$memberAwards = $this->fetchAwardsForMundanes($memberMids);
-				$teamWL = 0;
-				foreach ($memberMids as $wmid) {
-					$teamWL += isset($memberAwards[$wmid]) ? $this->warriorLevelFromAwards($memberAwards[$wmid]) : 0;
+				$this->db->query('COMMIT');
+				} catch (\Throwable $e) {
+					$this->db->query('ROLLBACK');
+					throw $e;
 				}
-				$this->db->query(
-					"UPDATE " . DB_PREFIX . "participant SET warrior_level = $teamWL WHERE participant_id = $_pid2"
-				);
-			}
 			$this->bustTournamentReportCache();
 			return Success(['ParticipantId' => (int)$this->Participant->participant_id, 'ParticipantNumber' => (int)$_pnum]);
 		}
@@ -569,9 +603,12 @@ class Tournament extends Ork3 {
 		$where = $this->buildFilterWhere($request, 'p');
 
 		// Determine bracket type (team vs individual) so we can collapse rows correctly.
+		// Callers that already know the type can pass BracketType to skip this lookup.
 		$bracketParticipants = 'individual';
 		$bracket_id = (int)($request['BracketId'] ?? 0);
-		if (valid_id($bracket_id)) {
+		if (!empty($request['BracketType'])) {
+			$bracketParticipants = $request['BracketType'];
+		} elseif (valid_id($bracket_id)) {
 			$br = $this->db->query(
 				"SELECT participants FROM " . DB_PREFIX . "bracket WHERE bracket_id = $bracket_id LIMIT 1"
 			);
@@ -630,7 +667,10 @@ class Tournament extends Ork3 {
 
 		// Batched award lookup: one query for all mundane_ids on the page,
 		// joined back into the participant rows in PHP.
-		if (!empty($mids)) {
+		// Skipped for team brackets: those rows are collapsed below and use the
+		// team's warrior_level snapshot / per-member teamRoster levels, never these
+		// individual award fields (all tnParticipantPills() reads are guarded by !IsTeam).
+		if ($bracketParticipants !== 'team' && !empty($mids)) {
 			$awards_map = $this->fetchAwardsForMundanes(array_keys($mids));
 			foreach ($participants as &$participant) {
 				$mid = (int)$participant['MundaneId'];
@@ -682,9 +722,10 @@ class Tournament extends Ork3 {
 			        mn.persona AS persona, mpark.name AS park_name
 			 FROM " . DB_PREFIX . "participant_teams pt
 			 JOIN " . DB_PREFIX . "participant_team_members ptm ON ptm.team_id = pt.team_id
-			 JOIN " . DB_PREFIX . "mundane mn ON mn.mundane_id = ptm.mundane_id
+			 LEFT JOIN " . DB_PREFIX . "mundane mn ON mn.mundane_id = ptm.mundane_id
 			 LEFT JOIN " . DB_PREFIX . "park mpark ON mpark.park_id = mn.park_id
-			 WHERE pt.bracket_id = $bracketId"
+			 WHERE pt.bracket_id = :bid",
+			[':bid' => $bracketId]
 		);
 		$byPid = [];
 		if ($r && $r->size() > 0) {
@@ -692,8 +733,8 @@ class Tournament extends Ork3 {
 				$pid = (int)$r->participant_id;
 				$byPid[$pid][] = [
 					'MundaneId'    => (int)$r->mundane_id,
-					'Persona'      => $r->persona,
-					'ParkName'     => $r->park_name,
+					'Persona'      => $r->persona ?? '',
+					'ParkName'     => $r->park_name ?? '',
 					'WarriorLevel' => 0, // placeholder; filled below
 				];
 			}
@@ -772,6 +813,18 @@ class Tournament extends Ork3 {
 		return $out;
 	}
 
+	/**
+	 * deleteTeamRows($whereColumn, $id)
+	 * Removes participant_team_members (via join) and participant_teams rows for a
+	 * given owning column. $whereColumn is a fixed internal literal; $id is an int.
+	 */
+	private function deleteTeamRows(string $whereColumn, int $id): void {
+		$this->db->query('DELETE ptm FROM ' . DB_PREFIX . 'participant_team_members ptm'
+			. ' INNER JOIN ' . DB_PREFIX . 'participant_teams pt ON ptm.team_id = pt.team_id'
+			. ' WHERE pt.' . $whereColumn . ' = ' . $id);
+		$this->db->query('DELETE FROM ' . DB_PREFIX . 'participant_teams WHERE ' . $whereColumn . ' = ' . $id);
+	}
+
 	public function RemoveParticipant($request) {
 		if (!$this->check_auth($request)) return NoAuthorization();
 
@@ -784,12 +837,16 @@ class Tournament extends Ork3 {
 		$check = $this->db->query('SELECT participant_id FROM ' . DB_PREFIX . 'participant WHERE participant_id = ' . $participant_id . ' AND tournament_id = ' . $tournament_id);
 		if (!$check || $check->size() === 0) return InvalidParameter('Participant not found in this tournament');
 
-		$this->db->query('DELETE ptm FROM ' . DB_PREFIX . 'participant_team_members ptm'
-			. ' INNER JOIN ' . DB_PREFIX . 'participant_teams pt ON ptm.team_id = pt.team_id'
-			. ' WHERE pt.participant_id = ' . $participant_id);
-		$this->db->query('DELETE FROM ' . DB_PREFIX . 'participant_teams WHERE participant_id = ' . $participant_id);
-		$this->db->query("DELETE FROM " . DB_PREFIX . "participant_mundane WHERE participant_id = $participant_id");
-		$this->db->query("DELETE FROM " . DB_PREFIX . "participant WHERE participant_id = $participant_id AND tournament_id = $tournament_id");
+		$this->db->query('START TRANSACTION');
+		try {
+			$this->deleteTeamRows('participant_id', $participant_id);
+			$this->db->query("DELETE FROM " . DB_PREFIX . "participant_mundane WHERE participant_id = $participant_id");
+			$this->db->query("DELETE FROM " . DB_PREFIX . "participant WHERE participant_id = $participant_id AND tournament_id = $tournament_id");
+			$this->db->query('COMMIT');
+		} catch (\Throwable $e) {
+			$this->db->query('ROLLBACK');
+			throw $e;
+		}
 
 		$this->bustTournamentReportCache();
 		return Success($participant_id);
@@ -817,16 +874,19 @@ class Tournament extends Ork3 {
 
 		// Cascade-delete child rows before removing the tournament itself
 		$tid = (int)$tournament_id;
-		$this->db->query('DELETE ptm FROM ' . DB_PREFIX . 'participant_team_members ptm'
-			. ' INNER JOIN ' . DB_PREFIX . 'participant_teams pt ON ptm.team_id = pt.team_id'
-			. ' WHERE pt.tournament_id = ' . $tid);
-		$this->db->query('DELETE FROM ' . DB_PREFIX . 'participant_teams   WHERE tournament_id = ' . $tid);
-		$this->db->query('DELETE FROM ' . DB_PREFIX . 'match               WHERE tournament_id = ' . $tid);
-		$this->db->query('DELETE FROM ' . DB_PREFIX . 'participant_mundane WHERE tournament_id = ' . $tid);
-		$this->db->query('DELETE FROM ' . DB_PREFIX . 'participant         WHERE tournament_id = ' . $tid);
-		$this->db->query('DELETE FROM ' . DB_PREFIX . 'bracket             WHERE tournament_id = ' . $tid);
-
-		$this->Tournament->delete();
+		$this->db->query('START TRANSACTION');
+		try {
+			$this->deleteTeamRows('tournament_id', $tid);
+			$this->db->query('DELETE FROM ' . DB_PREFIX . 'match               WHERE tournament_id = ' . $tid);
+			$this->db->query('DELETE FROM ' . DB_PREFIX . 'participant_mundane WHERE tournament_id = ' . $tid);
+			$this->db->query('DELETE FROM ' . DB_PREFIX . 'participant         WHERE tournament_id = ' . $tid);
+			$this->db->query('DELETE FROM ' . DB_PREFIX . 'bracket             WHERE tournament_id = ' . $tid);
+			$this->Tournament->delete();
+			$this->db->query('COMMIT');
+		} catch (\Throwable $e) {
+			$this->db->query('ROLLBACK');
+			throw $e;
+		}
 
 		$this->bustTournamentReportCache();
 
@@ -909,6 +969,11 @@ class Tournament extends Ork3 {
 			}
 		}
 
+		// Block re-generation if bracket is already active/complete to prevent data loss
+		if (!in_array($this->Bracket->status, ['setup', '', null])) {
+			return InvalidParameter('Cannot regenerate matches for an active bracket');
+		}
+
 		// Seeding
 		$seeding = $this->Bracket->seeding;
 		if ($seeding === 'manual' || $seeding === 'glicko2-manual') {
@@ -927,11 +992,6 @@ class Tournament extends Ork3 {
 		} else {
 			// glicko2, random, random-manual, and any unknown seeding mode: randomize
 			shuffle($participants);
-		}
-
-		// Block re-generation if bracket is already active/complete to prevent data loss
-		if (!in_array($this->Bracket->status, ['setup', '', null])) {
-			return InvalidParameter('Cannot regenerate matches for an active bracket');
 		}
 
 		// Wrap the destructive DELETE + regeneration + status flip in a transaction so
@@ -1347,7 +1407,7 @@ class Tournament extends Ork3 {
 	/**
 	 * GetStandings($request)
 	 * Aggregates wins/losses/byes/points per participant from ork_match.
-	 * Request: BracketId (required), TournamentId (optional)
+	 * Request: BracketId (required)
 	 */
 	public function GetStandings($request) {
 		$bracket_id = (int)($request['BracketId'] ?? 0);
@@ -1496,8 +1556,9 @@ class Tournament extends Ork3 {
 		// Look up the bracket method by id. $this->Bracket may have no active record
 		// in this call path (e.g. standings for a tournament with no participants),
 		// and reading its fields would throw "no active record set".
-		$bmRow = $this->db->query("SELECT method FROM " . DB_PREFIX . "bracket WHERE bracket_id = $bracket_id");
-		$bracketMethod = ($bmRow && $bmRow->next()) ? $bmRow->method : '';
+		// Reuse the bracket method already loaded at the top of GetStandings
+		// ($bracketMethodGs) instead of re-querying the same bracket row.
+		$bracketMethod = $bracketMethodGs;
 
 		if ($bracketMethod === 'ironman') {
 			// Wins and streaks are denormalized onto ork_participant (maintained
@@ -1567,18 +1628,22 @@ class Tournament extends Ork3 {
 		if (!$chk || !$chk->next()) return InvalidParameter('Bracket not found in this tournament');
 
 		// Delete all related data in dependency order
-		$this->db->query('DELETE ptm FROM ' . DB_PREFIX . 'participant_team_members ptm'
-			. ' INNER JOIN ' . DB_PREFIX . 'participant_teams pt ON ptm.team_id = pt.team_id'
-			. ' WHERE pt.bracket_id = ' . $bracket_id);
-		$this->db->query('DELETE FROM ' . DB_PREFIX . 'participant_teams WHERE bracket_id = ' . $bracket_id);
-		$this->db->query('DELETE pm FROM ' . DB_PREFIX . 'participant_mundane pm'
-			. ' INNER JOIN ' . DB_PREFIX . 'participant p ON pm.participant_id = p.participant_id'
-			. ' WHERE p.bracket_id = ' . $bracket_id);
-		$this->db->query('DELETE FROM ' . DB_PREFIX . 'match              WHERE bracket_id = ' . $bracket_id);
-		$this->db->query('DELETE FROM ' . DB_PREFIX . 'participant        WHERE bracket_id = ' . $bracket_id);
-		$this->db->query('DELETE FROM ' . DB_PREFIX . 'bracket_officiant  WHERE bracket_id = ' . $bracket_id);
-		$this->db->query('DELETE FROM ' . DB_PREFIX . 'seed               WHERE bracket_id = ' . $bracket_id);
-		$this->db->query('DELETE FROM ' . DB_PREFIX . 'bracket            WHERE bracket_id = ' . $bracket_id);
+		$this->db->query('START TRANSACTION');
+		try {
+			$this->deleteTeamRows('bracket_id', $bracket_id);
+			$this->db->query('DELETE pm FROM ' . DB_PREFIX . 'participant_mundane pm'
+				. ' INNER JOIN ' . DB_PREFIX . 'participant p ON pm.participant_id = p.participant_id'
+				. ' WHERE p.bracket_id = ' . $bracket_id);
+			$this->db->query('DELETE FROM ' . DB_PREFIX . 'match              WHERE bracket_id = ' . $bracket_id);
+			$this->db->query('DELETE FROM ' . DB_PREFIX . 'participant        WHERE bracket_id = ' . $bracket_id);
+			$this->db->query('DELETE FROM ' . DB_PREFIX . 'bracket_officiant  WHERE bracket_id = ' . $bracket_id);
+			$this->db->query('DELETE FROM ' . DB_PREFIX . 'seed               WHERE bracket_id = ' . $bracket_id);
+			$this->db->query('DELETE FROM ' . DB_PREFIX . 'bracket            WHERE bracket_id = ' . $bracket_id);
+			$this->db->query('COMMIT');
+		} catch (\Throwable $e) {
+			$this->db->query('ROLLBACK');
+			throw $e;
+		}
 
 		$this->bustTournamentReportCache();
 		return Success($bracket_id);

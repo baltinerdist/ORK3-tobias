@@ -177,10 +177,15 @@ class Model_Tournament extends Model {
 		$rows = is_array($report['Detail']) ? $report['Detail'] : [];
 		if (empty($rows)) return [];
 
+		// Perf: memoize standings per BracketId so each bracket is fetched at most once.
+		// GetStandings() issues 2-3 queries; remaining cost is O(distinct brackets) per
+		// player history (the player appears once per bracket, so the memo only collapses
+		// the rare same-bracket dup). A true O(1)-query path would need a batched
+		// GetStandingsForBrackets([bid,...]) in class.Tournament.php (out of scope here).
 		$bracketStandings = [];
 		foreach ($rows as &$row) {
 			$bid = $row['BracketId'];
-			if (!isset($bracketStandings[$bid])) {
+			if (!array_key_exists($bid, $bracketStandings)) {
 				$s = $this->Tournament->GetStandings(['BracketId' => $bid]);
 				$bracketStandings[$bid] = is_array($s['Detail']) ? $s['Detail'] : [];
 			}

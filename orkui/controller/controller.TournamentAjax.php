@@ -415,7 +415,20 @@ class Controller_TournamentAjax extends Controller {
 			if ($membersJson !== '') {
 				$members = json_decode($membersJson, true);
 				if (is_array($members) && count($members) > 0) {
-					$params['Members'] = $members;
+					// Safety cap on roster size (NOT a game rule, just an abuse bound).
+					if (count($members) > 64) {
+						echo json_encode(['status' => 1, 'error' => 'Too many team members.']); exit;
+					}
+					$cleanMembers = [];
+					foreach ($members as $m) {
+						if (is_array($m) && valid_id($m['MundaneId'] ?? 0)) {
+							$cleanMembers[] = ['MundaneId' => (int)$m['MundaneId']];
+						}
+					}
+					if (count($cleanMembers) === 0) {
+						echo json_encode(['status' => 1, 'error' => 'No valid team members.']); exit;
+					}
+					$params['Members'] = $cleanMembers;
 				}
 			}
 
