@@ -279,6 +279,10 @@ class Controller_Tournament extends Controller {
 		}
 		$this->data['standings_data'] = $standingsData;
 
+		// Tournament-level registrants (roster: registered, with their bracket assignments)
+		$_regs = $this->Tournament->get_registrants(['TournamentId' => $tournament_id]);
+		$this->data['registrants'] = ($_regs['Status'] == 0) ? ($_regs['Detail'] ?? []) : [];
+
 		// Breadcrumb / nav menu
 		if (valid_id($tournament['KingdomId'])) {
 			$this->data['menu']['kingdom'] = [
