@@ -699,10 +699,15 @@ class Tournament extends Ork3 {
 					$_tid2  = (int)$this->Participant->tournament_id;
 					$_bid2  = (int)$this->Participant->bracket_id;
 					$_pid2  = (int)$this->Participant->participant_id;
+					// Auto-register the team at the tournament level (find-or-create the
+					// registration team) and reuse its tournament-stable team_number so the
+					// per-bracket "Add Team" flow coexists with tournament-level team management.
+					$_treg = $this->ensureTeam($_tid2, ['Name' => $this->Participant->alias, 'Members' => $request['Members']]);
+					$_tnum2 = (int)$_treg['TeamNumber'];
 					$this->db->query(
-						"INSERT INTO " . DB_PREFIX . "participant_teams (tournament_id, bracket_id, participant_id, name)"
-						. " VALUES (:tid2, :bid2, :pid2, :tname)",
-						[':tid2' => $_tid2, ':bid2' => $_bid2, ':pid2' => $_pid2, ':tname' => $this->Participant->alias]
+						"INSERT INTO " . DB_PREFIX . "participant_teams (tournament_id, bracket_id, participant_id, name, team_number)"
+						. " VALUES (:tid2, :bid2, :pid2, :tname, :tnum2)",
+						[':tid2' => $_tid2, ':bid2' => $_bid2, ':pid2' => $_pid2, ':tname' => $this->Participant->alias, ':tnum2' => $_tnum2]
 					);
 					$_team_id = (int)$this->db->GetLastInsertId();
 					if (!valid_id($_team_id)) {
