@@ -22,8 +22,14 @@ require_once(__DIR__ . '/../vendor/SimpleXlsx.php');
 
 class TournamentExport extends Ork3 {
 
-    /** Mundane-id => "KCG:AR" abbreviation map, built per workbook for member/persona decoration. */
-    private $abbrMap = [];
+    /**
+     * Mundane-id => home info, built once per workbook:
+     *   [mundane_id => ['kingdom'=>name, 'park'=>name, 'abbr'=>"KCG:AR"]]
+     * Used for team-member "(KINGDOM:PARK)" decoration and the Participants tab's
+     * Home Kingdom / Home Park columns (which must reflect the person's HOME, not the
+     * tournament-host kingdom that GetParticipants reports).
+     */
+    private $homeMap = [];
 
     /** Friendly labels for bracket methods. */
     private static $METHOD_LABELS = [
@@ -91,11 +97,20 @@ class TournamentExport extends Ork3 {
         foreach ($participants as $p) {
             if ((int)($p['MundaneId'] ?? 0) > 0) $memberMids[] = (int)$p['MundaneId'];
         }
-        $this->abbrMap = $this->mundaneAbbrMap($memberMids);
+        $this->homeMap = $this->mundaneHomeMap($memberMids);
+
+        // Team bracket-ids: a team's GetParticipants rows attach the team's SUMMED
+        // snapshot + host kingdom to each member via the participant_mundane join, so
+        // the Participants sheet must not read individual snapshots from them — those
+        // people come through the dedicated team-member roster instead.
+        $teamBracketIds = [];
+        foreach ($bundles as $bn) {
+            if ($bn['IsTeam']) $teamBracketIds[(int)$bn['Bracket']['BracketId']] = true;
+        }
 
         $xlsx = new SimpleXlsx();
         $this->addSummarySheet($xlsx, $t, $bundles);
-        $this->addParticipantsSheet($xlsx, $t, $participants);
+        $this->addParticipantsSheet($xlsx, $t, $participants, $teamBracketIds);
         foreach ($bundles as $bundle) {
             $this->addBracketSheet($xlsx, $bundle);
         }
@@ -154,34 +169,67 @@ class TournamentExport extends Ork3 {
 
     /**
      * Tournament-wide roster: one row per distinct person (deduped by mundane_id;
-     * alias-only entrants kept individually). Warrior/Griffon "on Date" come from
-     * the registration-time snapshot (warrior_level/griffon_level); "Today" is the
-     * live ladder level computed from ork_awards. Active rows first, then withdrawn,
-     * then disqualified — each group alpha by persona.
+     * alias-only entrants kept individually). Team-bracket entrants are expanded to
+     * their individual members. Warrior/Griffon "on Date" come from the
+     * registration-time snapshot (warrior_level/griffon_level); "Today" is the live
+     * ladder level computed from ork_awards. Active rows first, then withdrawn, then
+     * disqualified — each group alpha by persona.
      */
-    private function addParticipantsSheet($xlsx, $t, $participants) {
+    private function addParticipantsSheet($xlsx, $t, $participants, $teamBracketIds = []) {
         // Collapse to distinct people; a person in multiple brackets is one row.
         // Status precedence: a person is "active" if ANY of their entries is active.
         $byKey = [];
-        foreach ($participants as $p) {
-            $mid = (int)($p['MundaneId'] ?? 0);
-            $key = $mid > 0 ? ('m' . $mid) : ('a' . strtolower(trim((string)($p['Alias'] ?? ''))));
-            $name = trim((string)($p['Persona'] ?? '')) !== '' ? (string)$p['Persona'] : (string)($p['Alias'] ?? '');
-            $status = strtolower(trim((string)($p['Status'] ?? ''))) ?: 'active';
+        $upsert = function ($mid, $name, $kingdom, $park, $wSnap, $gSnap, $status) use (&$byKey) {
+            $mid    = (int)$mid;
+            $status = strtolower(trim((string)$status)) ?: 'active';
+            $key    = $mid > 0 ? ('m' . $mid) : ('a' . strtolower(trim((string)$name)));
             if (!isset($byKey[$key])) {
                 $byKey[$key] = [
-                    'MundaneId'    => $mid,
-                    'Name'         => $name,
-                    'KingdomName'  => (string)($p['KingdomName'] ?? ''),
-                    'ParkName'     => (string)($p['ParkName'] ?? ''),
-                    'WarriorSnap'  => (int)($p['WarriorLevel'] ?? 0),
-                    'GriffonSnap'  => (int)($p['GriffonLevel'] ?? 0),
-                    'Status'       => $status,
+                    'MundaneId'   => $mid,
+                    'Name'        => (string)$name,
+                    'KingdomName' => (string)$kingdom,
+                    'ParkName'    => (string)$park,
+                    'WarriorSnap' => (int)$wSnap,
+                    'GriffonSnap' => (int)$gSnap,
+                    'Status'      => $status,
                 ];
             } else {
-                // Keep the most "active" status; snapshot levels are stable per person.
+                // Most-active status wins; fill any home/snapshot fields a prior
+                // (e.g. team-member) row left blank.
                 if ($status === 'active') $byKey[$key]['Status'] = 'active';
+                if ($byKey[$key]['KingdomName'] === '' && $kingdom !== '') $byKey[$key]['KingdomName'] = (string)$kingdom;
+                if ($byKey[$key]['ParkName'] === '' && $park !== '')       $byKey[$key]['ParkName']    = (string)$park;
+                if ($byKey[$key]['WarriorSnap'] === 0 && (int)$wSnap > 0)  $byKey[$key]['WarriorSnap'] = (int)$wSnap;
+                if ($byKey[$key]['GriffonSnap'] === 0 && (int)$gSnap > 0)  $byKey[$key]['GriffonSnap'] = (int)$gSnap;
             }
+        };
+
+        foreach ($participants as $p) {
+            // Skip any row from a team bracket: the team's collapsed row (MundaneId=0,
+            // team alias) AND its members (which carry the team's SUMMED snapshot + host
+            // kingdom via the participant_mundane join). Team members are folded in
+            // cleanly below from teamMemberRoster. Individual + alias-only entrants pass.
+            if (!empty($teamBracketIds[(int)($p['BracketId'] ?? 0)])) continue;
+            $isTeamRow = (int)($p['MundaneId'] ?? 0) <= 0 && trim((string)($p['Persona'] ?? '')) === '';
+            if ($isTeamRow) continue;
+            $name = trim((string)($p['Persona'] ?? '')) !== '' ? (string)$p['Persona'] : (string)($p['Alias'] ?? '');
+            $upsert(
+                (int)($p['MundaneId'] ?? 0), $name,
+                (string)($p['KingdomName'] ?? ''), (string)($p['ParkName'] ?? ''),
+                (int)($p['WarriorLevel'] ?? 0), (int)($p['GriffonLevel'] ?? 0),
+                (string)($p['Status'] ?? '')
+            );
+        }
+
+        // Expand team-bracket entrants into their individual members. Members have no
+        // per-member snapshot (the team row carries the summed snapshot), so on-Date
+        // shows 0 for them; Today is computed live like everyone else.
+        foreach ($this->teamMemberRoster((int)($t['TournamentId'] ?? 0)) as $mem) {
+            $upsert(
+                (int)$mem['mundane_id'], (string)$mem['persona'],
+                (string)$mem['kingdom_name'], (string)$mem['park_name'],
+                0, 0, (string)$mem['status']
+            );
         }
 
         // Live "today" ladder levels for everyone with a mundane_id.
@@ -211,10 +259,15 @@ class TournamentExport extends Ork3 {
             $mid = $row['MundaneId'];
             $wToday = isset($live[$mid]) ? $live[$mid]['warrior'] : 0;
             $gToday = isset($live[$mid]) ? $live[$mid]['griffon'] : 0;
+            // Prefer the mundane's HOME kingdom/park (GetParticipants reports the
+            // tournament-host kingdom for entrants with no park of their own).
+            $home    = $this->homeMap[$mid] ?? null;
+            $kingdom = ($home && $home['kingdom'] !== '') ? $home['kingdom'] : (string)$row['KingdomName'];
+            $park    = ($home && $home['park'] !== '')    ? $home['park']    : (string)$row['ParkName'];
             $rows[] = [
                 (string)$row['Name'],
-                (string)$row['KingdomName'],
-                (string)$row['ParkName'],
+                $kingdom,
+                $park,
                 $this->fmtLevel($row['WarriorSnap'], true),
                 $this->fmtLevel($wToday, true),
                 $this->fmtLevel($row['GriffonSnap'], false),
@@ -231,6 +284,43 @@ class TournamentExport extends Ork3 {
             $opts['autoFilterRef'] = 'A' . $headerRow . ':' . SimpleXlsx::colName(count($header)) . count($rows);
         }
         $xlsx->addSheet('Participants', $rows, $opts);
+    }
+
+    /**
+     * Individual members of every team in a tournament, with home kingdom/park names
+     * and the team's tournament status. One row per (team, member). The Participants
+     * sheet dedupes these by mundane_id against individual-bracket entrants.
+     * @return array of ['mundane_id','persona','kingdom_name','park_name','status']
+     */
+    private function teamMemberRoster($tournamentId) {
+        $tid = (int)$tournamentId;
+        $out = [];
+        if ($tid <= 0) return $out;
+        $r = $this->db->query(
+            "SELECT ptm.mundane_id AS mundane_id, m.persona AS persona,
+                    k.name AS kingdom_name, pk.name AS park_name, p.status AS status
+             FROM " . DB_PREFIX . "participant_teams pt
+                JOIN " . DB_PREFIX . "participant_team_members ptm ON ptm.team_id = pt.team_id
+                JOIN " . DB_PREFIX . "participant p ON p.participant_id = pt.participant_id
+                LEFT JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = ptm.mundane_id
+                LEFT JOIN " . DB_PREFIX . "kingdom k ON k.kingdom_id = m.kingdom_id
+                LEFT JOIN " . DB_PREFIX . "park pk ON pk.park_id = m.park_id
+             WHERE pt.tournament_id = $tid",
+            []
+        );
+        if ($r && $r->size() > 0) {
+            while ($r->next()) {
+                if ((int)$r->mundane_id <= 0) continue;
+                $out[] = [
+                    'mundane_id'   => (int)$r->mundane_id,
+                    'persona'      => (string)($r->persona ?? ''),
+                    'kingdom_name' => (string)($r->kingdom_name ?? ''),
+                    'park_name'    => (string)($r->park_name ?? ''),
+                    'status'       => (string)($r->status ?? ''),
+                ];
+            }
+        }
+        return $out;
     }
 
     /**
@@ -576,7 +666,7 @@ class TournamentExport extends Ork3 {
             if (is_array($mem)) {
                 $persona = trim((string)($mem['Persona'] ?? ''));
                 if ($persona === '') continue;
-                $abbr = $this->abbrMap[(int)($mem['MundaneId'] ?? 0)] ?? '';
+                $abbr = $this->abbrFor((int)($mem['MundaneId'] ?? 0));
                 $names[] = ($abbr !== '') ? ($persona . ' (' . $abbr . ')') : $persona;
             } else {
                 $names[] = (string)$mem;
@@ -586,16 +676,19 @@ class TournamentExport extends Ork3 {
     }
 
     /**
-     * Batched mundane_id => "KINGABBR:PARKABBR" map. Either side is omitted when
-     * blank; an empty string is stored when neither is known.
+     * Batched mundane_id => home info: kingdom name, park name, and the
+     * "KINGABBR:PARKABBR" abbreviation (either side omitted when blank; abbr is ''
+     * when neither is known). One query for every mundane referenced in the workbook.
      */
-    private function mundaneAbbrMap(array $mundaneIds) {
+    private function mundaneHomeMap(array $mundaneIds) {
         $ids = array_values(array_unique(array_filter(array_map('intval', $mundaneIds), fn($x) => $x > 0)));
         $out = [];
         if (empty($ids)) return $out;
         $idList = implode(',', $ids);
         $r = $this->db->query(
-            "SELECT m.mundane_id AS mundane_id, k.abbreviation AS kabbr, p.abbreviation AS pabbr
+            "SELECT m.mundane_id AS mundane_id,
+                    k.name AS kname, p.name AS pname,
+                    k.abbreviation AS kabbr, p.abbreviation AS pabbr
              FROM " . DB_PREFIX . "mundane m
                 LEFT JOIN " . DB_PREFIX . "kingdom k ON k.kingdom_id = m.kingdom_id
                 LEFT JOIN " . DB_PREFIX . "park p ON p.park_id = m.park_id
@@ -603,16 +696,25 @@ class TournamentExport extends Ork3 {
         );
         if ($r && $r->size() > 0) {
             while ($r->next()) {
-                $k = trim((string)($r->kabbr ?? ''));
-                $p = trim((string)($r->pabbr ?? ''));
-                if ($k !== '' && $p !== '')      $abbr = $k . ':' . $p;
-                elseif ($k !== '')               $abbr = $k;
-                elseif ($p !== '')               $abbr = $p;
-                else                             $abbr = '';
-                $out[(int)$r->mundane_id] = $abbr;
+                $ka = trim((string)($r->kabbr ?? ''));
+                $pa = trim((string)($r->pabbr ?? ''));
+                if ($ka !== '' && $pa !== '')      $abbr = $ka . ':' . $pa;
+                elseif ($ka !== '')                $abbr = $ka;
+                elseif ($pa !== '')                $abbr = $pa;
+                else                               $abbr = '';
+                $out[(int)$r->mundane_id] = [
+                    'kingdom' => trim((string)($r->kname ?? '')),
+                    'park'    => trim((string)($r->pname ?? '')),
+                    'abbr'    => $abbr,
+                ];
             }
         }
         return $out;
+    }
+
+    /** "KINGDOM:PARK" abbreviation for a mundane, or '' if unknown. */
+    private function abbrFor($mundaneId) {
+        return $this->homeMap[(int)$mundaneId]['abbr'] ?? '';
     }
 
     private function bracketLabel($bk) {
