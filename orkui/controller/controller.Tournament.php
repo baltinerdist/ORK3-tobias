@@ -298,5 +298,32 @@ class Controller_Tournament extends Controller {
 		];
 	}
 
+	public function export($tournament_id) {
+		$tournament_id = (int)preg_replace('/[^0-9]/', '', $tournament_id ?? '');
+		if (!valid_id($tournament_id)) {
+			http_response_code(404);
+			echo 'Tournament not found.';
+			exit;
+		}
+
+		$res   = $this->Tournament->export_workbook($tournament_id);
+		$path  = $res['Path'] ?? null;
+		$fname = $res['Filename'] ?? 'tournament-results.xlsx';
+
+		if (!$path || !file_exists($path)) {
+			http_response_code(500);
+			echo 'Unable to generate export.';
+			exit;
+		}
+
+		header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+		header('Content-Disposition: attachment; filename="' . $fname . '"');
+		header('Content-Length: ' . filesize($path));
+		header('Cache-Control: no-cache, must-revalidate');
+		readfile($path);
+		@unlink($path);
+		exit;
+	}
+
 }
 ?>
