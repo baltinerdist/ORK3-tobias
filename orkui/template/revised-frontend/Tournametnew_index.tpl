@@ -455,6 +455,8 @@ html[data-theme="dark"] .tn-createteam-reglist .tn-createteam-regempty { color:#
 .tn-assign-meta { font-size:11px; font-weight:600; color:#a0aec0; text-transform:uppercase; letter-spacing:0.4px; }
 .tn-assign-meta.tn-assign-meta-locked { color:#c05621; }
 .tn-assign-empty { color:#a0aec0; font-size:13px; font-style:italic; padding:8px 2px; }
+.tn-btn.tn-team-act-danger { color:#e53e3e; border-color:#fed7d7; }
+.tn-btn.tn-team-act-danger:hover { background:#e53e3e; border-color:#e53e3e; color:#fff; }
 /* Assign Participants (bulk) modal */
 .tn-assignparts-filter { flex:1; min-width:0; padding:7px 10px; border:1px solid #cbd5e0; border-radius:6px; font-size:13px; color:#2d3748; background:#fff; }
 .tn-assignparts-filter::placeholder { color:#a0aec0; }
@@ -1276,6 +1278,8 @@ html[data-theme="dark"] .tn-assign-row label { color:#e2e8f0; }
 html[data-theme="dark"] .tn-assign-meta { color:#718096; }
 html[data-theme="dark"] .tn-assign-meta.tn-assign-meta-locked { color:#f6ad55; }
 html[data-theme="dark"] .tn-assign-empty { color:#718096; }
+html[data-theme="dark"] .tn-btn.tn-team-act-danger { color:#fc8181; border-color:#742a2a; }
+html[data-theme="dark"] .tn-btn.tn-team-act-danger:hover { background:#c53030; border-color:#c53030; color:#fff; }
 html[data-theme="dark"] .tn-assignparts-filter { background:#2d3748; border-color:#3a4658; color:#e2e8f0; }
 html[data-theme="dark"] .tn-assignparts-filter::placeholder { color:#718096; }
 html[data-theme="dark"] .tn-assignparts-filter:focus { border-color:#48bb78; box-shadow:0 0 0 2px rgba(72,187,120,0.2); }
@@ -3370,6 +3374,29 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 		<div class="tn-modal-footer">
 			<button class="tn-btn tn-btn-ghost" id="tn-assign-cancel">Cancel</button>
 			<button class="tn-btn tn-btn-primary" id="tn-assign-submit">
+				<i class="fas fa-check"></i> Save
+			</button>
+		</div>
+	</div>
+</div>
+
+<!-- =============================================
+     Assign Team to Brackets Modal — team-level
+     ============================================= -->
+<div class="tn-overlay" id="tn-teamassign-overlay">
+	<div class="tn-modal-box" style="width:480px;max-width:calc(100vw - 40px)">
+		<div class="tn-modal-header">
+			<h3 class="tn-modal-title"><i class="fas fa-sitemap" style="margin-right:8px;color:#276749"></i>Assign Team to Brackets</h3>
+			<button class="tn-modal-close" id="tn-teamassign-close">&times;</button>
+		</div>
+		<div class="tn-modal-body">
+			<div id="tn-teamassign-feedback" class="tn-feedback"></div>
+			<div id="tn-teamassign-subtitle" style="font-size:13px;color:#718096;margin-bottom:12px"></div>
+			<div class="tn-assign-list" id="tn-teamassign-list"></div>
+		</div>
+		<div class="tn-modal-footer">
+			<button class="tn-btn tn-btn-ghost" id="tn-teamassign-cancel">Cancel</button>
+			<button class="tn-btn tn-btn-primary" id="tn-teamassign-submit">
 				<i class="fas fa-check"></i> Save
 			</button>
 		</div>
@@ -6618,6 +6645,20 @@ function tnRenderTeamActions() {
 		btn.innerHTML = '<i class="fas fa-pen"></i> Edit';
 		btn.addEventListener('click', function() { tnOpenEditTeamModal(tnum); });
 		cell.appendChild(btn);
+
+		var assignBtn = document.createElement('button');
+		assignBtn.className = 'tn-btn tn-btn-outline tn-btn-sm';
+		assignBtn.setAttribute('data-tip', 'Assign to brackets');
+		assignBtn.innerHTML = '<i class="fas fa-sitemap"></i> Assign';
+		assignBtn.addEventListener('click', function() { tnOpenTeamAssignModal(tnum); });
+		cell.appendChild(assignBtn);
+
+		var removeBtn = document.createElement('button');
+		removeBtn.className = 'tn-btn tn-btn-outline tn-btn-sm tn-team-act-danger';
+		removeBtn.setAttribute('data-tip', 'Remove team');
+		removeBtn.innerHTML = '<i class="fas fa-trash"></i> Remove';
+		removeBtn.addEventListener('click', function() { tnRemoveTeam(tnum); });
+		cell.appendChild(removeBtn);
 	});
 }
 
@@ -7370,6 +7411,210 @@ function tnRenderRoster() {
 					})
 					.catch(function(err) {
 						console.error('[RemoveRegistrant] fetch failed:', err);
+						tnConfirm({ title: 'Error', body: 'Request failed. Please try again.', confirmLabel: 'OK', cancelLabel: 'Close' });
+					});
+			}
+		});
+	};
+})();
+<?php endif; ?>
+
+// ============================================================
+// Team roster actions: assign-to-brackets modal + remove team.
+// Mirrors the individual per-registrant assign IIFE above, but
+// filters to TEAM brackets and uses the team assign/unassign and
+// removeteam endpoints. Manager-only.
+// ============================================================
+<?php if ($canManage): ?>
+(function() {
+	var TEAMASSIGN_OVERLAY = 'tn-teamassign-overlay';
+	var _teamAssignTnum = 0;
+
+	// Find a team object in TnConfig.registeredTeams by TeamNumber.
+	function teamByTnum(tnum) {
+		tnum = parseInt(tnum, 10) || 0;
+		var teams = TnConfig.registeredTeams || [];
+		for (var i = 0; i < teams.length; i++) {
+			if ((parseInt(teams[i].TeamNumber, 10) || 0) === tnum) return teams[i];
+		}
+		return null;
+	}
+
+	// Re-fetch the registered teams from the server, update TnConfig, re-render.
+	function refreshTeams() {
+		return fetch(TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/registeredteams')
+			.then(function(r) { return r.json(); })
+			.then(function(rd) {
+				if (rd && rd.status === 0) {
+					TnConfig.registeredTeams = rd.teams || [];
+					tnRenderTeamsRoster();
+					tnRenderTeamActions();
+				}
+				return rd;
+			});
+	}
+
+	// ---- Assign team to brackets modal ----
+	window.tnOpenTeamAssignModal = function(tnum) {
+		_teamAssignTnum = parseInt(tnum, 10) || 0;
+		var t = teamByTnum(_teamAssignTnum);
+		if (!t) return;
+		tnHideFeedback('tn-teamassign-feedback');
+
+		var sub = document.getElementById('tn-teamassign-subtitle');
+		if (sub) sub.innerHTML = 'Assigning <strong>' + tnEsc(t.Name || ('Team #' + _teamAssignTnum)) + '</strong> to team brackets.';
+
+		// Set of bracket ids this team is currently in.
+		var current = {};
+		(t.Brackets || []).forEach(function(b) { current[parseInt(b.BracketId, 10) || 0] = true; });
+
+		var styleLabels = TnConfig.styleLabels || {};
+		var bd = TnConfig.bracketData || {};
+		var rows = '';
+		Object.keys(bd).forEach(function(key) {
+			var br = (bd[key] && bd[key].Bracket) ? bd[key].Bracket : null;
+			if (!br) return;
+			if (br.Participants !== 'team') return; // team brackets only
+			var bid    = parseInt(br.BracketId, 10) || 0;
+			var status = br.Status || 'setup';
+			var label  = styleLabels[br.Style] || br.Style || ('Bracket #' + bid);
+			var checked = !!current[bid];
+
+			// Only SETUP team brackets are toggleable; others shown DISABLED.
+			var disabled = (status !== 'setup');
+			var tip = '';
+			var meta = '';
+			if (disabled) {
+				tip = 'Teams are locked once the bracket starts.';
+				meta = '<span class="tn-assign-meta tn-assign-meta-locked">' + tnEsc(status) + '</span>';
+			} else {
+				meta = '<span class="tn-assign-meta">Setup</span>';
+			}
+
+			rows += '<div class="tn-assign-row' + (disabled ? ' tn-assign-disabled' : '') + '"'
+				+ (tip ? ' data-tip="' + tnEsc(tip) + '"' : '') + '>'
+				+ '<input type="checkbox" id="tn-teamassign-cb-' + bid + '" data-bid="' + bid + '" '
+				+ 'data-was="' + (checked ? '1' : '0') + '"'
+				+ (checked ? ' checked' : '') + (disabled ? ' disabled' : '') + '>'
+				+ '<label for="tn-teamassign-cb-' + bid + '">' + tnEsc(label) + '</label>'
+				+ meta
+				+ '</div>';
+		});
+
+		var list = document.getElementById('tn-teamassign-list');
+		if (list) list.innerHTML = rows || '<div class="tn-assign-empty">No team brackets in this tournament yet.</div>';
+
+		tnOpenModal(TEAMASSIGN_OVERLAY);
+	};
+
+	window.tnSubmitTeamAssign = function(tnum) {
+		var btn = document.getElementById('tn-teamassign-submit');
+		var tn = parseInt(tnum, 10) || _teamAssignTnum;
+		var list = document.getElementById('tn-teamassign-list');
+		if (!list) return;
+
+		// Diff checked-vs-was over enabled (setup team) checkboxes only.
+		var toAssign = [], toUnassign = [];
+		list.querySelectorAll('input[type=checkbox]').forEach(function(cb) {
+			if (cb.disabled) return;
+			var bid = parseInt(cb.getAttribute('data-bid'), 10) || 0;
+			var was = cb.getAttribute('data-was') === '1';
+			if (cb.checked && !was) toAssign.push(bid);
+			else if (!cb.checked && was) toUnassign.push(bid);
+		});
+
+		if (!toAssign.length && !toUnassign.length) {
+			tnCloseModal(TEAMASSIGN_OVERLAY);
+			return;
+		}
+
+		btn.disabled = true;
+
+		// assign/unassign are PER-BRACKET endpoints (bid in URL), so loop brackets.
+		function callBracket(action, bid) {
+			var fd = new FormData();
+			fd.append('TournamentId', TnConfig.tournamentId);
+			fd.append('TeamNumbers', JSON.stringify([tn]));
+			return fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bid + '/' + action, { method: 'POST', body: fd })
+				.then(function(res) { return res.json(); })
+				.then(function(d) { return { bid: bid, action: action, d: d }; });
+		}
+
+		var ops = [];
+		toAssign.forEach(function(bid)   { ops.push(callBracket('assignteams', bid)); });
+		toUnassign.forEach(function(bid) { ops.push(callBracket('unassignteams', bid)); });
+
+		Promise.all(ops).then(function(results) {
+			var errors = [];
+			results.forEach(function(r) {
+				if (!r.d || r.d.status !== 0) {
+					errors.push((r.d && r.d.error) ? r.d.error : ('Failed to ' + r.action + ' bracket #' + r.bid));
+				}
+			});
+			if (errors.length) {
+				btn.disabled = false;
+				tnShowFeedback('tn-teamassign-feedback', errors.join(' '), false);
+				return;
+			}
+			// All succeeded: refresh roster, then reload so bracket cards reflect changes.
+			refreshTeams().then(function() {
+				tnShowFeedback('tn-teamassign-feedback', 'Saved.', true);
+				setTimeout(function() { window.location.reload(); }, 600);
+			});
+		}).catch(function(err) {
+			console.error('[TeamAssign] failed:', err);
+			btn.disabled = false;
+			tnShowFeedback('tn-teamassign-feedback', 'Request failed. Please try again.', false);
+		});
+	};
+
+	['tn-teamassign-close', 'tn-teamassign-cancel'].forEach(function(id) {
+		var el = document.getElementById(id);
+		if (el) el.addEventListener('click', function() { tnCloseModal(TEAMASSIGN_OVERLAY); });
+	});
+	var taOv = document.getElementById(TEAMASSIGN_OVERLAY);
+	if (taOv) taOv.addEventListener('click', function(e) { if (e.target === taOv) tnCloseModal(TEAMASSIGN_OVERLAY); });
+	document.addEventListener('keydown', function(e) {
+		if (e.key === 'Escape' && taOv && taOv.classList.contains('tn-open')) tnCloseModal(TEAMASSIGN_OVERLAY);
+	});
+	var taSubmit = document.getElementById('tn-teamassign-submit');
+	if (taSubmit) taSubmit.addEventListener('click', function() { tnSubmitTeamAssign(_teamAssignTnum); });
+
+	// ---- Remove team ----
+	window.tnRemoveTeam = function(tnum) {
+		var t = teamByTnum(tnum);
+		if (!t) return;
+		var name = t.Name || ('Team #' + tnum);
+		tnConfirm({
+			danger: true,
+			title: 'Remove team',
+			body: 'Remove <strong>' + tnEsc(name) + '</strong> from the tournament?',
+			confirmLabel: 'Remove',
+			cancelLabel: 'Cancel',
+			onConfirm: function() {
+				var fd = new FormData();
+				fd.append('TeamNumber', tnum);
+				fetch(TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/removeteam', { method: 'POST', body: fd })
+					.then(function(res) { return res.json(); })
+					.then(function(d) {
+						if (d && d.status === 0) {
+							TnConfig.registeredTeams = (TnConfig.registeredTeams || []).filter(function(x) {
+								return (parseInt(x.TeamNumber, 10) || 0) !== (parseInt(tnum, 10) || 0);
+							});
+							tnRenderTeamsRoster();
+							tnRenderTeamActions();
+						} else {
+							// Surface server error (e.g. in a started bracket) without removing.
+							tnConfirm({
+								title: 'Cannot remove',
+								body: tnEsc((d && d.error) ? d.error : 'This team could not be removed.'),
+								confirmLabel: 'OK',
+								cancelLabel: 'Close'
+							});
+						}
+					})
+					.catch(function(err) {
+						console.error('[RemoveTeam] fetch failed:', err);
 						tnConfirm({ title: 'Error', body: 'Request failed. Please try again.', confirmLabel: 'OK', cancelLabel: 'Close' });
 					});
 			}
