@@ -510,10 +510,11 @@ class Tournament extends Ork3 {
 			$this->Player->save();
 			$this->db->query("UPDATE " . DB_PREFIX . "participant_mundane SET bracket_id = NULL WHERE participant_id = $reg_id");
 			$awards_map = $this->fetchAwardsForMundanes([$mid]);
-			$lvl = isset($awards_map[$mid]) ? $this->warriorLevelFromAwards($awards_map[$mid]) : 0;
+			$lvl  = isset($awards_map[$mid]) ? $this->warriorLevelFromAwards($awards_map[$mid]) : 0;
+			$glvl = isset($awards_map[$mid]) ? $this->griffonLevelFromAwards($awards_map[$mid]) : 0;
 			$this->db->query(
-				"UPDATE " . DB_PREFIX . "participant SET warrior_level = :lvl WHERE participant_id = :pid",
-				[':lvl' => (int)$lvl, ':pid' => $reg_id]
+				"UPDATE " . DB_PREFIX . "participant SET warrior_level = :lvl, griffon_level = :glvl WHERE participant_id = :pid",
+				[':lvl' => (int)$lvl, ':glvl' => (int)$glvl, ':pid' => $reg_id]
 			);
 		}
 		return ['ParticipantNumber' => $pnum, 'RegistrationId' => $reg_id];
@@ -605,10 +606,11 @@ class Tournament extends Ork3 {
 					// Snapshot Order-of-the-Warrior level (0-12) at time of competition.
 					$awards_map = $this->fetchAwardsForMundanes([(int)$request['MundaneId']]);
 					$mid = (int)$request['MundaneId'];
-					$lvl = isset($awards_map[$mid]) ? $this->warriorLevelFromAwards($awards_map[$mid]) : 0;
+					$lvl  = isset($awards_map[$mid]) ? $this->warriorLevelFromAwards($awards_map[$mid]) : 0;
+					$glvl = isset($awards_map[$mid]) ? $this->griffonLevelFromAwards($awards_map[$mid]) : 0;
 					$this->db->query(
-						"UPDATE " . DB_PREFIX . "participant SET warrior_level = :lvl WHERE participant_id = :pid",
-						[':lvl' => (int)$lvl, ':pid' => (int)$_pid]
+						"UPDATE " . DB_PREFIX . "participant SET warrior_level = :lvl, griffon_level = :glvl WHERE participant_id = :pid",
+						[':lvl' => (int)$lvl, ':glvl' => (int)$glvl, ':pid' => (int)$_pid]
 					);
 				} elseif (!empty($request['Members'])) {
 					// Team participant — create durable team record then link members
@@ -642,16 +644,19 @@ class Tournament extends Ork3 {
 						$this->Player->bracket_id     = $_bid2;
 						$this->Player->save();
 					}
-					// Snapshot team warrior_level as sum of member levels at time of registration.
+					// Snapshot team warrior_level / griffon_level as the sum of member
+					// levels at time of registration.
 					$memberMids = array_map(fn($m) => (int)$m['MundaneId'], $request['Members']);
 					$memberAwards = $this->fetchAwardsForMundanes($memberMids);
 					$teamWL = 0;
+					$teamGL = 0;
 					foreach ($memberMids as $wmid) {
 						$teamWL += isset($memberAwards[$wmid]) ? $this->warriorLevelFromAwards($memberAwards[$wmid]) : 0;
+						$teamGL += isset($memberAwards[$wmid]) ? $this->griffonLevelFromAwards($memberAwards[$wmid]) : 0;
 					}
 					$this->db->query(
-						"UPDATE " . DB_PREFIX . "participant SET warrior_level = :lvl WHERE participant_id = :pid",
-						[':lvl' => (int)$teamWL, ':pid' => (int)$_pid2]
+						"UPDATE " . DB_PREFIX . "participant SET warrior_level = :lvl, griffon_level = :glvl WHERE participant_id = :pid",
+						[':lvl' => (int)$teamWL, ':glvl' => (int)$teamGL, ':pid' => (int)$_pid2]
 					);
 				}
 				$this->db->query('COMMIT');
@@ -725,6 +730,7 @@ class Tournament extends Ork3 {
 					'Eliminated'    => (int)$r->eliminated,
 					'BracketSide'   => $r->bracket_side,
 					'WarriorLevel'  => (int)$r->warrior_level,
+					'GriffonLevel'  => (int)$r->griffon_level,
 					'Status'        => $r->status,
 				];
 			}
@@ -817,6 +823,7 @@ class Tournament extends Ork3 {
 					'ParkName'          => $r->park_name,
 					'UnitName'          => $r->unit_name,
 					'WarriorLevel'      => (int)$r->warrior_level,
+					'GriffonLevel'      => (int)$r->griffon_level,
 					'WarriorCount'      => 0, 'WarriorRank' => 0,
 					'IsWarlord'         => false, 'IsKnightSword' => false,
 					'Status'            => $r->status,
@@ -919,6 +926,16 @@ class Tournament extends Ork3 {
 	}
 
 	/**
+	 * Maps a single award-row (from fetchAwardsForMundanes) to the 0–11
+	 * griffon level. Mirrors warriorLevelFromAwards but the Griffin ladder
+	 * has no Knight-of-the-Sword equivalent, so it tops out at Master Griffin (11).
+	 */
+	private function griffonLevelFromAwards(array $a): int {
+		if (!empty($a['is_master_griffin'])) return 11;
+		return min(10, (int)($a['griffon_rank'] ?? 0));
+	}
+
+	/**
 	 * Batched award decoration: returns a map keyed by mundane_id with
 	 * warrior_count, warrior_rank, is_warlord, is_knight_sword. Replaces
 	 * the per-row correlated subqueries that GetParticipants/GetStandings
@@ -930,12 +947,13 @@ class Tournament extends Ork3 {
 		$out = [];
 		if (empty($ids)) return $out;
 		$id_list = implode(',', $ids);
-		// award_id 27 = Order of the Warrior (rank/count), 12 = Warlord, 20 = Sword Knight
+		// Warrior ladder: 27 = Order of the Warrior (rank/count), 12 = Warlord, 20 = Sword Knight.
+		// Griffin ladder: 33 = Order of the Griffin (rank/count), 11 = Master Griffin.
 		$r = $this->db->query(
 			"SELECT mundane_id, award_id, IFNULL(MAX(`rank`), 0) AS rnk, COUNT(*) AS cnt
 			 FROM " . DB_PREFIX . "awards
 			 WHERE mundane_id IN ($id_list)
-			   AND award_id IN (12, 20, 27)
+			   AND award_id IN (11, 12, 20, 27, 33)
 			   AND revoked = 0
 			 GROUP BY mundane_id, award_id"
 		);
@@ -943,7 +961,10 @@ class Tournament extends Ork3 {
 			while ($r->next()) {
 				$mid = (int)$r->mundane_id;
 				if (!isset($out[$mid])) {
-					$out[$mid] = ['warrior_count' => 0, 'warrior_rank' => 0, 'is_warlord' => false, 'is_knight_sword' => false];
+					$out[$mid] = [
+						'warrior_count' => 0, 'warrior_rank' => 0, 'is_warlord' => false, 'is_knight_sword' => false,
+						'griffon_count' => 0, 'griffon_rank' => 0, 'is_master_griffin' => false,
+					];
 				}
 				$aid = (int)$r->award_id;
 				$cnt = (int)$r->cnt;
@@ -955,6 +976,11 @@ class Tournament extends Ork3 {
 					$out[$mid]['is_warlord'] = $cnt > 0;
 				} elseif ($aid === 20) {
 					$out[$mid]['is_knight_sword'] = $cnt > 0;
+				} elseif ($aid === 33) {
+					$out[$mid]['griffon_count'] = $cnt;
+					$out[$mid]['griffon_rank']  = $rnk;
+				} elseif ($aid === 11) {
+					$out[$mid]['is_master_griffin'] = $cnt > 0;
 				}
 			}
 		}
