@@ -520,6 +520,88 @@ class Tournament extends Ork3 {
 		return ['ParticipantNumber' => $pnum, 'RegistrationId' => $reg_id];
 	}
 
+	/**
+	 * Find-or-create the tournament-level registration rows for a team:
+	 *  - a registration ork_participant row (the team identity, bracket_id IS NULL, alias=name,
+	 *    participant_number 0 so it is NOT counted as an individual registrant)
+	 *  - an ork_participant_teams row (bracket_id IS NULL, participant_id -> that row, team_number)
+	 *  - ork_participant_team_members rows for each member (and ensureRegistrant per member).
+	 * Keyed by the tournament-stable team_number. Reuses an existing registration team when
+	 * $team['TeamNumber'] is supplied (edit) or a registration row already exists.
+	 * $team: ['Name'=>string, 'Members'=>[['MundaneId'=>int],...], 'TeamNumber'=>int(optional)].
+	 * Returns ['TeamNumber'=>int, 'TeamId'=>int, 'ParticipantId'=>int]. Caller wraps in a transaction.
+	 */
+	private function ensureTeam(int $tournament_id, array $team): array {
+		$name    = trim($team['Name'] ?? '');
+		$members = is_array($team['Members'] ?? null) ? $team['Members'] : [];
+		$tnum    = (int)($team['TeamNumber'] ?? 0);
+
+		// Resolve team_number: explicit (edit), else MAX+1.
+		if ($tnum <= 0) {
+			$max = $this->db->query("SELECT MAX(team_number) AS m FROM " . DB_PREFIX . "participant_teams WHERE tournament_id = $tournament_id");
+			$tnum = ($max && $max->next() && $max->m > 0) ? (int)$max->m + 1 : 1;
+		}
+
+		// Existing registration team (bracket_id IS NULL) for this number?
+		$reg = $this->db->query(
+			"SELECT team_id, participant_id FROM " . DB_PREFIX . "participant_teams
+			 WHERE tournament_id = $tournament_id AND team_number = $tnum AND bracket_id IS NULL LIMIT 1"
+		);
+		if ($reg && $reg->next() && valid_id($reg->team_id)) {
+			$team_id = (int)$reg->team_id;
+			$pid     = (int)$reg->participant_id;
+			$this->db->query("UPDATE " . DB_PREFIX . "participant SET alias = :a WHERE participant_id = :p", [':a' => $name, ':p' => $pid]);
+			$this->db->query("UPDATE " . DB_PREFIX . "participant_teams SET name = :a WHERE team_id = :t", [':a' => $name, ':t' => $team_id]);
+		} else {
+			// Create the registration participant identity row (bracket_id NULL, participant_number 0).
+			$this->Participant->clear();
+			$this->Participant->tournament_id      = $tournament_id;
+			$this->Participant->alias              = $name;
+			$this->Participant->participant_number = 0;
+			$this->Participant->save();
+			$pid = (int)$this->Participant->participant_id;
+			if (!valid_id($pid)) throw new \RuntimeException('Team identity row save failed');
+			$this->db->query("UPDATE " . DB_PREFIX . "participant SET bracket_id = NULL WHERE participant_id = $pid");
+			// Create the registration team row (bracket_id NULL).
+			$this->db->query(
+				"INSERT INTO " . DB_PREFIX . "participant_teams (tournament_id, bracket_id, participant_id, name, team_number)
+				 VALUES (:tid, NULL, :pid, :name, :tnum)",
+				[':tid' => $tournament_id, ':pid' => $pid, ':name' => $name, ':tnum' => $tnum]
+			);
+			$team_id = (int)$this->db->GetLastInsertId();
+			if (!valid_id($team_id)) throw new \RuntimeException('Team registration row save failed');
+		}
+
+		// Replace the member roster for this registration team.
+		$this->db->query("DELETE FROM " . DB_PREFIX . "participant_team_members WHERE team_id = $team_id");
+		$memberMids = [];
+		foreach ($members as $m) {
+			$mid = (int)($m['MundaneId'] ?? 0);
+			if (!valid_id($mid)) continue;
+			$memberMids[] = $mid;
+			$this->db->query(
+				"INSERT IGNORE INTO " . DB_PREFIX . "participant_team_members (team_id, mundane_id, tournament_id) VALUES (:t, :m, :tid)",
+				[':t' => $team_id, ':m' => $mid, ':tid' => $tournament_id]
+			);
+			// Ensure each member is a registered individual too.
+			$this->ensureRegistrant($tournament_id, ['MundaneId' => $mid, 'Alias' => '']);
+		}
+
+		// Snapshot summed warrior/griffon level on the team identity row.
+		$awards = !empty($memberMids) ? $this->fetchAwardsForMundanes($memberMids) : [];
+		$teamWL = 0; $teamGL = 0;
+		foreach ($memberMids as $mid) {
+			$teamWL += isset($awards[$mid]) ? $this->warriorLevelFromAwards($awards[$mid]) : 0;
+			$teamGL += isset($awards[$mid]) ? $this->griffonLevelFromAwards($awards[$mid]) : 0;
+		}
+		$this->db->query(
+			"UPDATE " . DB_PREFIX . "participant SET warrior_level = :wl, griffon_level = :gl WHERE participant_id = :p",
+			[':wl' => (int)$teamWL, ':gl' => (int)$teamGL, ':p' => $pid]
+		);
+
+		return ['TeamNumber' => $tnum, 'TeamId' => $team_id, 'ParticipantId' => $pid];
+	}
+
 	public function AddParticipant($request) {
 		if (!$this->check_auth($request)) return NoAuthorization();
 
