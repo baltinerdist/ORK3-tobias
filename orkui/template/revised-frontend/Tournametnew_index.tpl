@@ -3926,6 +3926,15 @@ function tnSegSet(id, val) {
 (function() {
 	['tn-addbracket-participants', 'tn-editbracket-participants'].forEach(function(id) {
 		var seg = document.getElementById(id); if (!seg) return;
+		// Make the .tn-seg behave like a form control with a .value, so the mobile
+		// wizard (radioStep) and the desktop toggle share one source of truth.
+		try {
+			Object.defineProperty(seg, 'value', {
+				configurable: true,
+				get: function() { return tnSegGet(id); },
+				set: function(v) { tnSegSet(id, v); }
+			});
+		} catch (e) { /* already defined */ }
 		seg.addEventListener('click', function(e) {
 			var b = e.target.closest('.tn-seg-btn'); if (!b || b.disabled) return;
 			Array.prototype.forEach.call(seg.querySelectorAll('.tn-seg-btn'), function(x) { x.classList.remove('tn-seg-active'); });
