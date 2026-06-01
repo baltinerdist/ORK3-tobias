@@ -86,7 +86,14 @@ class Tournament extends Ork3 {
 	private function buildFilterWhere(array $request, string $alias): string {
 		$w = '';
 		if (valid_id($request['TournamentId'] ?? 0)) $w .= " AND {$alias}.tournament_id = " . (int)$request['TournamentId'];
-		if (valid_id($request['BracketId']    ?? 0)) $w .= " AND {$alias}.bracket_id = "    . (int)$request['BracketId'];
+		if (valid_id($request['BracketId']    ?? 0)) {
+			$w .= " AND {$alias}.bracket_id = " . (int)$request['BracketId'];
+		} elseif (valid_id($request['TournamentId'] ?? 0)) {
+			// Exclude tournament-level registration rows (bracket_id IS NULL) from
+			// participant/match queries. Use GetRegistrants() for the roster of
+			// registered-but-unassigned participants.
+			$w .= " AND {$alias}.bracket_id IS NOT NULL";
+		}
 		return $w;
 	}
 
