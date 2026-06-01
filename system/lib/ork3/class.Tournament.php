@@ -3239,6 +3239,7 @@ class Tournament extends Ork3 {
 
 		$bracket_id     = (int)($request['BracketId'] ?? 0);
 		$participant_id = (int)($request['ParticipantId'] ?? 0);
+		$tournament_id  = (int)($request['TournamentId'] ?? 0);
 		if (!valid_id($bracket_id))     return InvalidParameter('BracketId required');
 		if (!valid_id($participant_id)) return InvalidParameter('ParticipantId required');
 
@@ -3254,12 +3255,117 @@ class Tournament extends Ork3 {
 			return InvalidParameter('Invalid status. Allowed: ' . implode(', ', $allowed));
 		}
 
-		$this->db->query(
-			"UPDATE " . DB_PREFIX . "participant SET status = :st WHERE participant_id = :pid AND bracket_id = :bid",
-			[':st' => $status, ':pid' => $participant_id, ':bid' => $bracket_id]
-		);
+		// Withdrawal resolution mode (round-robin only): 'forfeit' | 'annul'.
+		$mode = trim($request['Mode'] ?? '');
+		if (!in_array($mode, ['forfeit', 'annul'], true)) $mode = '';
 
-		return Success(['ParticipantId' => $participant_id, 'Status' => $status]);
+		// Look up the bracket method for resolution dispatch.
+		$brow = $this->db->query("SELECT tournament_id, method FROM " . DB_PREFIX . "bracket WHERE bracket_id = $bracket_id LIMIT 1");
+		$brow && $brow->next();
+		$b_tid  = $brow ? (int)$brow->tournament_id : $tournament_id;
+		$method = $brow ? (string)$brow->method : '';
+
+		$this->db->query('START TRANSACTION');
+		try {
+			if ($status === 'active') {
+				$this->db->query(
+					"UPDATE " . DB_PREFIX . "participant SET status = 'active', withdraw_mode = NULL WHERE participant_id = $participant_id AND bracket_id = $bracket_id"
+				);
+			} else {
+				$mode_sql = ($method === 'round-robin' && $mode !== '') ? "'" . $mode . "'" : 'NULL';
+				$this->db->query(
+					"UPDATE " . DB_PREFIX . "participant SET status = '" . $status . "', withdraw_mode = $mode_sql WHERE participant_id = $participant_id AND bracket_id = $bracket_id"
+				);
+			}
+
+			// Round-robin: recompute match voiding/forfeits from current state so the
+			// bracket can complete without a manual regenerate.
+			if ($method === 'round-robin') {
+				$this->resolveRoundRobinWithdrawals($bracket_id, $b_tid);
+			}
+
+			$this->db->query('COMMIT');
+		} catch (\Throwable $e) {
+			$this->db->query('ROLLBACK');
+			throw $e;
+		}
+
+		$this->bustTournamentReportCache();
+		return Success(['ParticipantId' => $participant_id, 'Status' => $status, 'Mode' => $mode]);
+	}
+
+	/**
+	 * Recompute round-robin match resolution from the current withdrawn set.
+	 * Idempotent: derives every match's state from participant status/withdraw_mode,
+	 * so it is safe to call on each status change (multiple withdrawals, re-activation).
+	 *
+	 *  - annul-withdrawn participant: ALL their matches voided=1 (excluded everywhere).
+	 *  - forfeit-withdrawn participant: their UNPLAYED matches vs an ACTIVE opponent get
+	 *    the opponent-win result written (auto_resolved=1); already-played matches stay.
+	 *  - a match between two non-active participants is voided (no rightful winner).
+	 *  - re-activation: prior auto-written forfeits revert to unplayed; voids fall away
+	 *    because everything is recomputed from scratch each call.
+	 */
+	private function resolveRoundRobinWithdrawals(int $bracket_id, int $tournament_id) {
+		// 1) Reset derived state: clear all voids; revert ONLY auto-written results.
+		$this->db->query("UPDATE " . DB_PREFIX . "match SET voided = 0 WHERE bracket_id = $bracket_id");
+		$this->db->query("UPDATE " . DB_PREFIX . "match SET result = NULL, score = NULL, auto_resolved = 0 WHERE bracket_id = $bracket_id AND auto_resolved = 1");
+
+		// 2) Current non-active participants by mode.
+		$pr = $this->db->query("SELECT participant_id, status, withdraw_mode FROM " . DB_PREFIX . "participant WHERE bracket_id = $bracket_id AND status NOT IN ('active','')");
+		$annul = []; $forfeit = [];
+		if ($pr) {
+			while ($pr->next()) {
+				$pid = (int)$pr->participant_id;
+				$wm  = (string)$pr->withdraw_mode;
+				if ($wm === 'annul') $annul[] = $pid;
+				else                 $forfeit[] = $pid; // default (incl. disqualified / no mode) = forfeit
+			}
+		}
+
+		// 3) Annul: void every match touching an annulled participant (played + unplayed).
+		if (!empty($annul)) {
+			$list = implode(',', array_map('intval', $annul));
+			$this->db->query("UPDATE " . DB_PREFIX . "match SET voided = 1
+				WHERE bracket_id = $bracket_id AND (participant_1_id IN ($list) OR participant_2_id IN ($list))");
+		}
+
+		// 4) Void UNPLAYED matches between two non-active participants (no rightful winner).
+		//    MUST run before the forfeit-win pass so those matches are excluded from it.
+		$nonActive = array_merge($annul, $forfeit);
+		if (!empty($nonActive)) {
+			$na = implode(',', array_map('intval', $nonActive));
+			$this->db->query("UPDATE " . DB_PREFIX . "match SET voided = 1
+				WHERE bracket_id = $bracket_id AND (result IS NULL OR result = '')
+				  AND participant_1_id IN ($na) AND participant_2_id IN ($na)");
+		}
+
+		// 5) Forfeit: write opponent-win on each forfeited participant's UNPLAYED,
+		//    non-voided matches (opponent is now guaranteed active).
+		foreach ($forfeit as $pid) {
+			$ms = $this->db->query("SELECT match_id, participant_1_id, participant_2_id FROM " . DB_PREFIX . "match
+				WHERE bracket_id = $bracket_id AND voided = 0 AND (result IS NULL OR result = '')
+				  AND (participant_1_id = $pid OR participant_2_id = $pid)
+				  AND participant_1_id > 0 AND participant_2_id > 0");
+			$rows = [];
+			if ($ms) { while ($ms->next()) { $rows[] = [(int)$ms->match_id, (int)$ms->participant_1_id, (int)$ms->participant_2_id]; } }
+			foreach ($rows as $row) {
+				[$mid, $p1, $p2] = $row;
+				$res = ($p1 === $pid) ? '2-wins' : '1-wins'; // the OTHER side (opponent) wins
+				$this->db->query("UPDATE " . DB_PREFIX . "match SET result = '$res', auto_resolved = 1
+					WHERE match_id = $mid AND (result IS NULL OR result = '')");
+			}
+		}
+
+		// 6) Completion / reopen based on remaining non-voided, unplayed real matches.
+		$unresolved = $this->db->query("SELECT COUNT(*) AS cnt FROM " . DB_PREFIX . "match
+			WHERE bracket_id = $bracket_id AND (result IS NULL OR result = '') AND participant_1_id > 0 AND participant_2_id > 0 AND voided = 0");
+		if ($unresolved && $unresolved->next() && (int)$unresolved->cnt === 0) {
+			$this->db->query("UPDATE " . DB_PREFIX . "bracket SET status = 'complete' WHERE bracket_id = $bracket_id AND status NOT IN ('finalized','setup')");
+		} else {
+			// Re-activation may have re-opened matches -> bring a completed bracket back to active.
+			$this->db->query("UPDATE " . DB_PREFIX . "bracket SET status = 'active' WHERE bracket_id = $bracket_id AND status = 'complete'");
+		}
 	}
 
 	/**
