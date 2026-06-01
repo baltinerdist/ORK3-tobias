@@ -1868,23 +1868,64 @@ class Tournament extends Ork3 {
 			return InvalidParameter('Match result has already been recorded');
 		}
 
-		// Load bracket to determine style
+		// Run the shared bracket-advancement engine for the recorded result.
+		$advErr = $this->applyAdvancement($bracket_id, $tournament_id, $match_id);
+		if ($advErr !== null) { $this->db->query('ROLLBACK'); return InvalidParameter($advErr); }
+
+		// Elimination/Swiss: cascade walkovers when an advancement lands a player
+		// opposite a withdrawn participant.
+		$bm      = $this->db->query("SELECT method FROM " . DB_PREFIX . "bracket WHERE bracket_id = $bracket_id LIMIT 1");
+		$bmethod = ($bm && $bm->next()) ? (string)$bm->method : '';
+		if (in_array($bmethod, ['single', 'double', 'swiss'], true)) {
+			$wErr = $this->resolveEliminationWalkovers($bracket_id, $tournament_id);
+			if ($wErr !== null) { $this->db->query('ROLLBACK'); return InvalidParameter($wErr); }
+		}
+
+			$this->db->query('COMMIT');
+		} catch (\Throwable $e) {
+			$this->db->query('ROLLBACK');
+			throw $e;
+		}
+
+		return Success($match_id);
+	}
+
+	/**
+	 * applyAdvancement($bracket_id, $tournament_id, $match_id)
+	 * Runs winner advancement, loser routing/elimination, bracket completion, and
+	 * Swiss next-round population for a match that ALREADY has a result recorded.
+	 * Shared by PostMatchResult and resolveEliminationWalkovers so the bracket engine
+	 * lives in one place. Returns null on success, or an error-message string on a
+	 * double-elimination routing failure (caller should ROLLBACK and surface it).
+	 * Assumes it runs inside a transaction managed by the caller.
+	 */
+	private function applyAdvancement($bracket_id, $tournament_id, $match_id) {
+		$mr = $this->db->query("SELECT participant_1_id, participant_2_id, round, `match`, bracket_side, result
+			FROM " . DB_PREFIX . "match WHERE match_id = $match_id LIMIT 1");
+		if (!$mr || !$mr->next()) return null;
+		$p1_id        = (int)$mr->participant_1_id;
+		$p2_id        = (int)$mr->participant_2_id;
+		$round        = (int)$mr->round;
+		$match_num    = (int)$mr->match;
+		$bracket_side = (string)$mr->bracket_side;
+		$result       = (string)$mr->result;
+
+		[$winner_id, $loser_id] = $this->resolveWinnerLoser($result, $p1_id, $p2_id);
+
 		$this->Bracket->clear();
 		$this->Bracket->bracket_id = $bracket_id;
 		$this->Bracket->find();
 		$method = $this->Bracket->method;
 
-		// Bracket size from WR round 1 match count
 		$wr1_r     = $this->db->query("SELECT COUNT(*) AS cnt FROM " . DB_PREFIX . "match WHERE bracket_id = $bracket_id AND bracket_side = 'winners' AND round = 1");
 		$wr1_count = ($wr1_r && $wr1_r->next()) ? (int)$wr1_r->cnt : 1;
 		$wr_rounds = (int)log($wr1_count * 2, 2); // slots = wr1_count*2
 
-		// ── Winners bracket advancement ─────────────────────────────────────────
+		// -- Winners bracket advancement --
 		if ($winner_id > 0 && ($method === 'single' || $method === 'double') && $bracket_side === 'winners') {
 			$max_wr_r   = $this->db->query("SELECT MAX(round) AS r FROM " . DB_PREFIX . "match WHERE bracket_id = $bracket_id AND bracket_side = 'winners'");
 			$max_wr_rnd = ($max_wr_r && $max_wr_r->next()) ? (int)$max_wr_r->r : 0;
 			if ($round < $max_wr_rnd) {
-				// Advance to next WR round: ceil(match/2), odd→p1, even→p2
 				$next_round = $round + 1;
 				$next_match = (int)ceil($match_num / 2);
 				$next_slot  = ($match_num % 2 === 1) ? 'participant_1_id' : 'participant_2_id';
@@ -1892,18 +1933,15 @@ class Tournament extends Ork3 {
 					SET $next_slot = $winner_id
 					WHERE bracket_id = $bracket_id AND round = $next_round AND `match` = $next_match AND bracket_side = 'winners'");
 			} elseif ($method === 'double') {
-				// WB Final winner → Grand Final slot 1
 				$this->db->query("UPDATE " . DB_PREFIX . "match
 					SET participant_1_id = $winner_id
 					WHERE bracket_id = $bracket_id AND bracket_side = 'grand-final'");
 			}
 		}
 
-		// ── WR loser → Losers bracket ────────────────────────────────────────────
+		// -- WR loser â Losers bracket --
 		if ($method === 'double' && $loser_id > 0 && $bracket_side === 'winners') {
 			if ($round === 1) {
-				// Cross-seed WR1 losers into LBR1: fold top-half vs bottom-half
-				// M1..M(wr1/2) → p1 of LBR1 M(same); M(wr1/2+1)..M(wr1) → p2 reversed
 				$half = (int)($wr1_count / 2);
 				if ($match_num <= $half) {
 					$lr_match = $match_num;
@@ -1913,35 +1951,31 @@ class Tournament extends Ork3 {
 					$lr_slot  = 'participant_2_id';
 				}
 				$slot_chk_1 = $this->db->query("SELECT match_id FROM " . DB_PREFIX . "match WHERE bracket_id = $bracket_id AND round = 1 AND `match` = $lr_match AND bracket_side = 'losers'");
-				if (!$slot_chk_1 || !$slot_chk_1->next()) { $this->db->query('ROLLBACK'); return InvalidParameter("Double-elimination routing error: no losers bracket slot found for round 1 match $lr_match"); }
+				if (!$slot_chk_1 || !$slot_chk_1->next()) { return "Double-elimination routing error: no losers bracket slot found for round 1 match $lr_match"; }
 				$this->db->query("UPDATE " . DB_PREFIX . "match
 					SET $lr_slot = $loser_id
 					WHERE bracket_id = $bracket_id AND round = 1 AND `match` = $lr_match AND bracket_side = 'losers'");
 			} else {
-				// WR round r≥2 loser → LB even round (r-1)*2, cross-seeded (reversed within round)
 				$lb_round         = ($round - 1) * 2;
 				$lb_round_matches = max(1, (int)($wr1_count / pow(2, $round - 1)));
 				$lr_match         = max(1, $lb_round_matches - $match_num + 1);
 				$slot_chk_2 = $this->db->query("SELECT match_id FROM " . DB_PREFIX . "match WHERE bracket_id = $bracket_id AND round = $lb_round AND `match` = $lr_match AND bracket_side = 'losers'");
-				if (!$slot_chk_2 || !$slot_chk_2->next()) { $this->db->query('ROLLBACK'); return InvalidParameter("Double-elimination routing error: no losers bracket slot found for round $lb_round match $lr_match"); }
+				if (!$slot_chk_2 || !$slot_chk_2->next()) { return "Double-elimination routing error: no losers bracket slot found for round $lb_round match $lr_match"; }
 				$this->db->query("UPDATE " . DB_PREFIX . "match
 					SET participant_2_id = $loser_id
 					WHERE bracket_id = $bracket_id AND round = $lb_round AND `match` = $lr_match AND bracket_side = 'losers'");
 			}
 		}
 
-		// ── LB winner advancement ────────────────────────────────────────────────
+		// -- LB winner advancement --
 		if ($method === 'double' && $winner_id > 0 && $bracket_side === 'losers') {
 			$lb_total_rounds = ($wr_rounds - 1) * 2;
 			if ($round < $lb_total_rounds) {
 				if ($round % 2 === 1) {
-					// Odd LB round: advance to next even round, same match, slot p1
-					// (WR losers will arrive as p2 via the WR loser routing above)
 					$this->db->query("UPDATE " . DB_PREFIX . "match
 						SET participant_1_id = $winner_id
 						WHERE bracket_id = $bracket_id AND round = " . ($round + 1) . " AND `match` = $match_num AND bracket_side = 'losers'");
 				} else {
-					// Even LB round: survivors play each other → halving, ceil(match/2), odd→p1, even→p2
 					$next_match = (int)ceil($match_num / 2);
 					$next_slot  = ($match_num % 2 === 1) ? 'participant_1_id' : 'participant_2_id';
 					$this->db->query("UPDATE " . DB_PREFIX . "match
@@ -1949,14 +1983,13 @@ class Tournament extends Ork3 {
 						WHERE bracket_id = $bracket_id AND round = " . ($round + 1) . " AND `match` = $next_match AND bracket_side = 'losers'");
 				}
 			} else {
-				// LB Final winner → Grand Final slot 2
 				$this->db->query("UPDATE " . DB_PREFIX . "match
 					SET participant_2_id = $winner_id
 					WHERE bracket_id = $bracket_id AND bracket_side = 'grand-final'");
 			}
 		}
 
-		// ── Eliminations ─────────────────────────────────────────────────────────
+		// -- Eliminations --
 		$shouldEliminate = $loser_id > 0 && (
 			$method === 'single' ||
 			($method === 'double' && in_array($bracket_side, ['losers', 'grand-final']))
@@ -1965,7 +1998,7 @@ class Tournament extends Ork3 {
 			$this->db->query("UPDATE " . DB_PREFIX . "participant SET eliminated = 1 WHERE participant_id = $loser_id");
 		}
 
-		// Check if all matches resolved → mark bracket complete
+		// Check if all matches resolved â mark bracket complete
 		$unresolved = $this->db->query("SELECT COUNT(*) AS cnt FROM " . DB_PREFIX . "match
 			WHERE bracket_id = $bracket_id AND (result IS NULL OR result = '') AND participant_1_id > 0 AND participant_2_id > 0 AND voided = 0");
 		if ($unresolved && $unresolved->next() && (int)$unresolved->cnt === 0) {
@@ -1982,13 +2015,78 @@ class Tournament extends Ork3 {
 			}
 		}
 
-			$this->db->query('COMMIT');
-		} catch (\Throwable $e) {
-			$this->db->query('ROLLBACK');
-			throw $e;
-		}
+		return null;
+	}
 
-		return Success($match_id);
+	/**
+	 * resolveEliminationWalkovers($bracket_id, $tournament_id)
+	 * For single/double-elim and Swiss: repeatedly finds a pending match where exactly
+	 * one participant is non-active (withdrawn/disqualified) and the other is active,
+	 * and auto-resolves it as a forfeit win for the active opponent (auto_resolved=1),
+	 * running the shared advancement engine. The loop re-scans after each resolution so
+	 * walkovers cascade forward (e.g. when an advancing player lands opposite a withdrawn
+	 * participant in a later round). Returns null on success or an error string.
+	 * Assumes it runs inside a transaction managed by the caller.
+	 */
+	private function resolveEliminationWalkovers($bracket_id, $tournament_id) {
+		$guard = 0;
+		while ($guard++ < 500) {
+			$r = $this->db->query("SELECT m.match_id, p1.status AS s1, p2.status AS s2
+				FROM " . DB_PREFIX . "match m
+				LEFT JOIN " . DB_PREFIX . "participant p1 ON p1.participant_id = m.participant_1_id
+				LEFT JOIN " . DB_PREFIX . "participant p2 ON p2.participant_id = m.participant_2_id
+				WHERE m.bracket_id = $bracket_id
+				  AND (m.result IS NULL OR m.result = '')
+				  AND m.voided = 0
+				  AND m.participant_1_id > 0 AND m.participant_2_id > 0
+				LIMIT 300");
+			$target_mid = 0; $withdrawn_side = 0;
+			if ($r) {
+				while ($r->next()) {
+					$s1 = (string)$r->s1; $s2 = (string)$r->s2;
+					$w1 = !($s1 === 'active' || $s1 === '');
+					$w2 = !($s2 === 'active' || $s2 === '');
+					if ($w1 xor $w2) { $target_mid = (int)$r->match_id; $withdrawn_side = $w1 ? 1 : 2; break; }
+				}
+			}
+			if ($target_mid === 0) break;
+			// Opponent of the withdrawn participant wins by forfeit.
+			$res = ($withdrawn_side === 1) ? '2-wins' : '1-wins';
+			$this->db->query("UPDATE " . DB_PREFIX . "match SET result = '$res', auto_resolved = 1
+				WHERE match_id = $target_mid AND (result IS NULL OR result = '')");
+			$advErr = $this->applyAdvancement($bracket_id, $tournament_id, $target_mid);
+			if ($advErr !== null) return $advErr;
+		}
+		return null;
+	}
+
+	/**
+	 * reverseEliminationWithdrawal($bracket_id, $tournament_id, $participant_id, $request)
+	 * Single-level undo for an elimination/Swiss reactivation: resets each auto-resolved
+	 * walkover this participant forfeited (reversing the opponent's advancement via
+	 * ResetMatch). Returns null on success, or an error string if a downstream match has
+	 * already been played (organizer must Reset those first). Runs in the caller's transaction.
+	 */
+	private function reverseEliminationWithdrawal($bracket_id, $tournament_id, $participant_id, $request) {
+		$r = $this->db->query("SELECT match_id FROM " . DB_PREFIX . "match
+			WHERE bracket_id = $bracket_id AND auto_resolved = 1
+			  AND (result IS NOT NULL AND result != '')
+			  AND (participant_1_id = $participant_id OR participant_2_id = $participant_id)
+			ORDER BY round DESC, `match` DESC");
+		$mids = [];
+		if ($r) { while ($r->next()) $mids[] = (int)$r->match_id; }
+		foreach ($mids as $mid) {
+			$resp = $this->ResetMatch([
+				'Token'        => $request['Token'] ?? '',
+				'TournamentId' => $tournament_id,
+				'MatchId'      => $mid,
+			]);
+			if (!is_array($resp) || ($resp['Status'] ?? 1) != 0) {
+				return 'Cannot reactivate: a match this participant forfeited has downstream results. Reset those matches first, then reactivate.';
+			}
+			$this->db->query("UPDATE " . DB_PREFIX . "match SET auto_resolved = 0 WHERE match_id = $mid");
+		}
+		return null;
 	}
 
 	/**
@@ -3268,20 +3366,32 @@ class Tournament extends Ork3 {
 		$this->db->query('START TRANSACTION');
 		try {
 			if ($status === 'active') {
+				// Reactivate: clear withdrawn state and un-eliminate.
 				$this->db->query(
-					"UPDATE " . DB_PREFIX . "participant SET status = 'active', withdraw_mode = NULL WHERE participant_id = $participant_id AND bracket_id = $bracket_id"
+					"UPDATE " . DB_PREFIX . "participant SET status = 'active', withdraw_mode = NULL, eliminated = 0 WHERE participant_id = $participant_id AND bracket_id = $bracket_id"
 				);
+				if ($method === 'round-robin') {
+					$this->resolveRoundRobinWithdrawals($bracket_id, $b_tid);
+				} elseif (in_array($method, ['single', 'double', 'swiss'], true)) {
+					$revErr = $this->reverseEliminationWithdrawal($bracket_id, $b_tid, $participant_id, $request);
+					if ($revErr !== null) { $this->db->query('ROLLBACK'); return InvalidParameter($revErr); }
+				}
 			} else {
 				$mode_sql = ($method === 'round-robin' && $mode !== '') ? "'" . $mode . "'" : 'NULL';
 				$this->db->query(
 					"UPDATE " . DB_PREFIX . "participant SET status = '" . $status . "', withdraw_mode = $mode_sql WHERE participant_id = $participant_id AND bracket_id = $bracket_id"
 				);
-			}
-
-			// Round-robin: recompute match voiding/forfeits from current state so the
-			// bracket can complete without a manual regenerate.
-			if ($method === 'round-robin') {
-				$this->resolveRoundRobinWithdrawals($bracket_id, $b_tid);
+				if ($method === 'round-robin') {
+					// Recompute match voiding/forfeits so the bracket can complete in place.
+					$this->resolveRoundRobinWithdrawals($bracket_id, $b_tid);
+				} elseif (in_array($method, ['single', 'double', 'swiss'], true)) {
+					// Elimination/Swiss: the withdrawn player is out; their pending match
+					// becomes a walkover for the opponent, cascading forward.
+					$this->db->query("UPDATE " . DB_PREFIX . "participant SET eliminated = 1 WHERE participant_id = $participant_id AND bracket_id = $bracket_id");
+					$wErr = $this->resolveEliminationWalkovers($bracket_id, $b_tid);
+					if ($wErr !== null) { $this->db->query('ROLLBACK'); return InvalidParameter($wErr); }
+				}
+				// Points: standings exclude non-active participants (annul). Ironman: status only.
 			}
 
 			$this->db->query('COMMIT');
