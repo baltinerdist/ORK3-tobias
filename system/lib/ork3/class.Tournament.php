@@ -1967,7 +1967,7 @@ class Tournament extends Ork3 {
 
 		// Check if all matches resolved → mark bracket complete
 		$unresolved = $this->db->query("SELECT COUNT(*) AS cnt FROM " . DB_PREFIX . "match
-			WHERE bracket_id = $bracket_id AND (result IS NULL OR result = '') AND participant_1_id > 0 AND participant_2_id > 0");
+			WHERE bracket_id = $bracket_id AND (result IS NULL OR result = '') AND participant_1_id > 0 AND participant_2_id > 0 AND voided = 0");
 		if ($unresolved && $unresolved->next() && (int)$unresolved->cnt === 0) {
 			$this->db->query("UPDATE " . DB_PREFIX . "bracket SET status = 'complete' WHERE bracket_id = $bracket_id AND status != 'finalized' AND method != 'swiss'");
 		}
@@ -2189,7 +2189,7 @@ class Tournament extends Ork3 {
 					            WHEN m.participant_2_id = p.participant_id AND m.participant_1_id = 0 THEN 1 END) AS byes,
 					p.im_wins, p.im_current_streak, p.im_max_streak
 				FROM " . DB_PREFIX . "participant p
-					LEFT JOIN " . DB_PREFIX . "match m ON (m.participant_1_id = p.participant_id OR m.participant_2_id = p.participant_id) AND m.bracket_id = $bracket_id
+					LEFT JOIN " . DB_PREFIX . "match m ON (m.participant_1_id = p.participant_id OR m.participant_2_id = p.participant_id) AND m.bracket_id = $bracket_id AND m.voided = 0
 					LEFT JOIN " . DB_PREFIX . "park pk ON pk.park_id = p.park_id
 				WHERE p.bracket_id = $bracket_id
 				GROUP BY p.participant_id, p.participant_number, p.alias, p.park_id, p.warrior_level, pk.name
@@ -2244,7 +2244,7 @@ class Tournament extends Ork3 {
 					LEFT JOIN " . DB_PREFIX . "participant_mundane pm ON pm.participant_id = p.participant_id
 						LEFT JOIN " . DB_PREFIX . "mundane mn ON mn.mundane_id = pm.mundane_id
 							LEFT JOIN " . DB_PREFIX . "park mpark ON mpark.park_id = mn.park_id
-					LEFT JOIN " . DB_PREFIX . "match m ON (m.participant_1_id = p.participant_id OR m.participant_2_id = p.participant_id) AND m.bracket_id = $bracket_id
+					LEFT JOIN " . DB_PREFIX . "match m ON (m.participant_1_id = p.participant_id OR m.participant_2_id = p.participant_id) AND m.bracket_id = $bracket_id AND m.voided = 0
 					LEFT JOIN " . DB_PREFIX . "park pk ON pk.park_id = p.park_id
 				WHERE p.bracket_id = $bracket_id
 				GROUP BY p.participant_id, p.participant_number, p.alias, p.park_id, pm.mundane_id, park_name
