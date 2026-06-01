@@ -368,15 +368,16 @@ class TournamentExport extends Ork3 {
     }
 
     /**
-     * Render a 0–12 ladder level as the display token: 0–10 numerically, 11 => "M"
-     * (Master/Warlord), 12 => "K" (Knight of the Sword, warrior ladder only).
-     * Griffon never reaches 12.
+     * Render a 0–12 ladder level as a cell. 0–10 are emitted as real NUMBER cells
+     * (so Excel doesn't flag "number stored as text"); 11 => "M" (Master/Warlord)
+     * and 12 => "K" (Knight of the Sword, warrior ladder only) are text. Griffon
+     * never reaches 12.
      */
     private function fmtLevel($level, $isWarrior) {
         $level = (int)$level;
         if ($isWarrior && $level >= 12) return 'K';
         if ($level >= 11) return 'M';
-        return (string)max(0, $level);
+        return ['v' => max(0, $level), 't' => 'n'];
     }
 
     // ---- Per-bracket dispatch (by method) --------------------------------
