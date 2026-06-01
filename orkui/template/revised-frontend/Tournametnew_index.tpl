@@ -5134,12 +5134,13 @@ window.tnOpenAsSheet = function(overlayId, opts) {
 	(function() {
 		var mSel = document.getElementById('tn-addbracket-method');
 		var dFld = document.getElementById('tn-addbracket-duration-field');
-		var pSel = document.getElementById('tn-addbracket-participants');
-		var pTeamOpt = pSel ? pSel.querySelector('option[value="team"]') : null;
 		function tnGateAddTeam(isIronman) {
-			if (!pTeamOpt) return;
-			pTeamOpt.disabled = isIronman;
-			if (isIronman && pSel.value === 'team') pSel.value = 'individual';
+			var seg = document.getElementById('tn-addbracket-participants'); if (!seg) return;
+			var teamBtn = seg.querySelector('.tn-seg-btn[data-val="team"]'); if (!teamBtn) return;
+			teamBtn.disabled = isIronman;
+			teamBtn.style.opacity = isIronman ? '0.4' : '';
+			teamBtn.style.cursor  = isIronman ? 'not-allowed' : '';
+			if (isIronman && tnSegGet('tn-addbracket-participants') === 'team') tnSegSet('tn-addbracket-participants', 'individual');
 		}
 		function tnToggleAddDuration() {
 			var isIronman = !!(mSel && mSel.value === 'ironman');
@@ -5175,7 +5176,7 @@ window.tnOpenAsSheet = function(overlayId, opts) {
 			var fd = new FormData();
 			fd.append('Style',        style);
 			fd.append('Method',       method);
-			fd.append('Participants', document.getElementById('tn-addbracket-participants').value);
+			fd.append('Participants', tnSegGet('tn-addbracket-participants') || 'individual');
 			fd.append('Rings',        document.getElementById('tn-addbracket-rings').value);
 			fd.append('Seeding',      document.getElementById('tn-addbracket-seeding').value);
 			fd.append('StyleNote',    document.getElementById('tn-addbracket-stylenote').value);
@@ -5294,7 +5295,7 @@ window.tnOpenAsSheet = function(overlayId, opts) {
 		document.getElementById('tn-editbracket-bid').value = bracketId;
 		document.getElementById('tn-editbracket-style').value        = data.style        || '';
 		document.getElementById('tn-editbracket-method').value       = data.method       || 'single';
-		document.getElementById('tn-editbracket-participants').value  = data.participants || 'individual';
+		tnSegSet('tn-editbracket-participants', data.participants || 'individual');
 		document.getElementById('tn-editbracket-rings').value         = data.rings        || 1;
 		document.getElementById('tn-editbracket-seeding').value       = data.seeding      || 'random';
 		document.getElementById('tn-editbracket-stylenote').value     = data.styleNote    || '';
@@ -5340,30 +5341,6 @@ window.tnOpenAsSheet = function(overlayId, opts) {
 			if (window.tnSyncEditPointsVisibility) tnSyncEditPointsVisibility();
 			if (window.tnRenderEditScalePreview) tnRenderEditScalePreview();
 		})();
-		// Auto-expand the advanced section when any field is in a non-default
-		// state. Run synchronously here (fields are already populated above).
-		(function(){
-			var pv = document.getElementById('tn-editbracket-participants');
-			var rv = document.getElementById('tn-editbracket-rings');
-			var sv = document.getElementById('tn-editbracket-seeding');
-			var nv = document.getElementById('tn-editbracket-stylenote');
-			var bo = document.getElementById('tn-editbracket-bestof');
-			var nonDefault =
-				(pv && pv.value && pv.value !== 'individual') ||
-				(rv && rv.value && parseInt(rv.value, 10) > 1) ||
-				(sv && sv.value && sv.value !== 'random') ||
-				(nv && nv.value && nv.value.trim() !== '') ||
-				(bo && bo.value && parseInt(bo.value, 10) > 1);
-			var adv = document.getElementById('tn-editbracket-advanced');
-			var btn = document.querySelector('.tn-advanced-toggle[data-target="tn-editbracket-advanced"]');
-			if (adv){
-				adv.style.display = nonDefault ? '' : 'none';
-				if (btn){
-					var icon = btn.querySelector('i');
-					if (icon) icon.style.transform = nonDefault ? 'rotate(90deg)' : '';
-				}
-			}
-		})();
 		// Mobile: present as a bottom sheet (foundation handles dismiss/teardown);
 		// desktop falls through to the legacy centered overlay unchanged. The B1
 		// wizard layers its step UI on top after this returns.
@@ -5373,12 +5350,13 @@ window.tnOpenAsSheet = function(overlayId, opts) {
 	(function() {
 		var mSel = document.getElementById('tn-editbracket-method');
 		var dFld = document.getElementById('tn-editbracket-duration-field');
-		var pSel = document.getElementById('tn-editbracket-participants');
-		var pTeamOpt = pSel ? pSel.querySelector('option[value="team"]') : null;
 		function tnGateEditTeam(isIronman) {
-			if (!pTeamOpt) return;
-			pTeamOpt.disabled = isIronman;
-			if (isIronman && pSel.value === 'team') pSel.value = 'individual';
+			var seg = document.getElementById('tn-editbracket-participants'); if (!seg) return;
+			var teamBtn = seg.querySelector('.tn-seg-btn[data-val="team"]'); if (!teamBtn) return;
+			teamBtn.disabled = isIronman;
+			teamBtn.style.opacity = isIronman ? '0.4' : '';
+			teamBtn.style.cursor  = isIronman ? 'not-allowed' : '';
+			if (isIronman && tnSegGet('tn-editbracket-participants') === 'team') tnSegSet('tn-editbracket-participants', 'individual');
 		}
 		if (mSel) mSel.addEventListener('change', function() {
 			var isIronman = (mSel.value === 'ironman');
@@ -5422,7 +5400,7 @@ window.tnOpenAsSheet = function(overlayId, opts) {
 			fd.append('BracketId',    document.getElementById('tn-editbracket-bid').value);
 			fd.append('Style',        style);
 			fd.append('Method',       method);
-			fd.append('Participants', document.getElementById('tn-editbracket-participants').value);
+			fd.append('Participants', tnSegGet('tn-editbracket-participants') || 'individual');
 			fd.append('Rings',        document.getElementById('tn-editbracket-rings').value);
 			fd.append('Seeding',      document.getElementById('tn-editbracket-seeding').value);
 			fd.append('StyleNote',    document.getElementById('tn-editbracket-stylenote').value);
@@ -12071,32 +12049,6 @@ html[data-theme="dark"] .tn-team-chip { background:#2a4a6b; color:#90cdf4; }
 	});
 	var _bulkOv = $('tn-bulkadd-overlay');
 	if (_bulkOv) _bulkOv.addEventListener('click', function(e){ if (e.target === _bulkOv) closeBulkAdd(); });
-
-	// ================================================================
-	// TASK 16 · Advanced-options disclosure on Add/Edit Bracket
-	// The bracket modal used to ask six questions for what is usually
-	// a two-decision action (style + format). The four secondary
-	// fields (participants type, rings, seeding, style note) are now
-	// hidden behind a disclosure. Edit Bracket auto-expands if any of
-	// those fields differs from their defaults, so existing state is
-	// never hidden from the user.
-	// ================================================================
-	(function(){
-		document.querySelectorAll('.tn-advanced-toggle').forEach(function(btn){
-			btn.addEventListener('click', function(){
-				var targetId = btn.getAttribute('data-target');
-				var target = $(targetId);
-				if (!target) return;
-				var open = target.style.display !== 'none';
-				target.style.display = open ? 'none' : '';
-				var icon = btn.querySelector('i');
-				if (icon) icon.style.transform = open ? '' : 'rotate(90deg)';
-			});
-		});
-
-		// (Auto-expand of the Edit Bracket advanced section now runs
-		// synchronously inside tnOpenEditBracketModal — no observer needed.)
-	})();
 
 	// ================================================================
 	// TASK 15 · DEFAULT to Run Tournament tab when matches exist
