@@ -407,6 +407,12 @@ html[data-theme="dark"] .tn-alias-input { background:#1a202c; color:#e2e8f0; bor
 .tn-table th { background:#f7fafc; padding:8px 10px; text-align:left; font-size:11px; font-weight:700; color:#718096; text-transform:uppercase; letter-spacing:0.5px; border-bottom:2px solid #e2e8f0; }
 .tn-table td { padding:8px 10px; border-bottom:1px solid #f0f4f8; color:#4a5568; }
 .tn-table tr:last-child td { border-bottom:none; }
+/* Participants roster (registration surface) */
+.tn-roster-bar { display:flex; justify-content:flex-end; margin-bottom:10px; }
+.tn-reg-chip { display:inline-block; background:#ebf8ff; color:#2b6cb0; border:1px solid #bee3f8; border-radius:10px; padding:1px 8px; font-size:11px; font-weight:600; margin:0 4px 4px 0; }
+.tn-reg-unassigned { color:#a0aec0; font-size:12px; font-style:italic; }
+.tn-reg-withdrawn td { opacity:0.55; }
+.tn-reg-wd-badge { display:inline-block; background:#fed7d7; color:#9b2c2c; border-radius:8px; padding:0 7px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; vertical-align:middle; }
 
 /* Modals */
 .tn-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:1100; opacity:0; pointer-events:none; transition:opacity 0.2s; }
@@ -1190,6 +1196,9 @@ html[data-theme="dark"] .tn-bracket-actions { border-top-color:#2d3748; }
 /* Tables */
 html[data-theme="dark"] .tn-table th { background:#1a202c; color:#a0aec0; border-bottom-color:#4a5568; }
 html[data-theme="dark"] .tn-table td { color:#cbd5e0; border-bottom-color:#2d3748; }
+html[data-theme="dark"] .tn-reg-chip { background:#2a4365; color:#90cdf4; border-color:#2c5282; }
+html[data-theme="dark"] .tn-reg-unassigned { color:#718096; }
+html[data-theme="dark"] .tn-reg-wd-badge { background:#742a2a; color:#feb2b2; }
 /* Team UI */
 html[data-theme="dark"] .tn-pill-team-wl { background:#44337a; color:#e9d8fd; border-color:#805ad5; }
 html[data-theme="dark"] .tn-team-roster-btn { color:#9ae6b4; }
@@ -2612,82 +2621,56 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 
 			<!-- Participants Tab -->
 			<div class="tn-tab-panel" id="tn-tab-participants" style="display:none">
-<?php
-// Build merged distinct participant list across all brackets
-$_distParts = [];
-foreach ($bracketData as $_bid => $_bd) {
-	$_bracketLabel = $styleLabelMap[$_bd['Bracket']['Style']] ?? $_bd['Bracket']['Style'];
-	$_isComplete   = in_array($_bd['Bracket']['Status'] ?? '', ['complete', 'finalized']);
-	$_stLookup     = [];
-	foreach ($standingsData[$_bid] ?? [] as $_sr) $_stLookup[(int)$_sr['ParticipantId']] = $_sr;
-	foreach ($_bd['Participants'] as $_p) {
-		$_key = (int)$_p['MundaneId'] > 0 ? 'mid:' . (int)$_p['MundaneId'] : 'alias:' . strtolower(trim($_p['Alias']));
-		$_entry = $_bracketLabel;
-		if ($_isComplete && isset($_stLookup[(int)$_p['ParticipantId']])) {
-			$_entry .= ' (' . tnOrdinal((int)$_stLookup[(int)$_p['ParticipantId']]['Rank']) . ')';
-		}
-		if (!isset($_distParts[$_key])) {
-			$_distParts[$_key] = $_p;
-			$_distParts[$_key]['_brackets'] = [$_entry];
-			$_distParts[$_key]['_bid'] = $_bid;
-		} else {
-			$_distParts[$_key]['_brackets'][] = $_entry;
-		}
-	}
-}
-?>
-				<?php if (empty($_distParts)): ?>
-				<div class="tn-empty">No participants yet.</div>
-				<?php else: ?>
-				<table class="tn-table">
-					<thead>
-						<tr>
-							<th>Alias</th>
-							<th>Player</th>
-							<th>Park</th>
-							<th>Warriors</th>
-							<th>Brackets</th>
-						</tr>
-					</thead>
-					<tbody>
-						<?php foreach ($_distParts as $_p): ?>
-						<?php $_pIsTeam = $_p['IsTeam'] ?? false; ?>
-						<tr>
-							<td style="font-weight:600"><span class="tn-alias-text" data-alias="<?= htmlspecialchars($_p['Alias'] ?? '', ENT_QUOTES) ?>"><?= htmlspecialchars($_p['Alias'] ?: '—') ?></span><?php if ($canManage): ?><button class="tn-alias-edit" data-pid="<?= (int)$_p['ParticipantId'] ?>" data-bid="<?= (int)($_p['_bid'] ?? 0) ?>" data-tip="Edit name" onclick="tnEditAlias(this)"><i class="fas fa-pen"></i></button><?php endif; ?></td>
-							<td>
-								<?php if ($_pIsTeam): ?>
-								<?php if (!empty($_p['Members'])): ?>
-								<span style="font-size:12px;color:#718096"><?= count($_p['Members']) ?> member<?= count($_p['Members']) !== 1 ? 's' : '' ?></span>
-								<?php else: ?><span style="color:#a0aec0">Team</span><?php endif; ?>
-								<?php elseif (!empty($_p['Persona']) && (int)$_p['MundaneId'] > 0): ?>
-								<a href="<?= UIR ?>Player/profile/<?= (int)$_p['MundaneId'] ?>" style="color:#276749;text-decoration:none"><?= htmlspecialchars($_p['Persona']) ?></a>
-								<?php elseif (!empty($_p['Persona'])): ?>
-								<?= htmlspecialchars($_p['Persona']) ?>
-								<?php else: ?><span style="color:#a0aec0">—</span><?php endif; ?>
-							</td>
-							<td style="color:#718096"><?= $_pIsTeam ? '—' : htmlspecialchars(!empty($_p['ParkName']) ? $_p['ParkName'] : '—') ?></td>
-							<td>
-								<?php if ($_pIsTeam): ?>
-								<span style="display:inline-flex;gap:3px"><span class="tn-pill tn-pill-team-wl" data-tip="Team warrior level">⚔ <?= (int)($_p['WarriorLevel'] ?? 0) ?></span></span>
-								<?php else: ?>
-								<?= tnParticipantPills($_p) ?: '<span style="color:#a0aec0">—</span>' ?>
-								<?php endif; ?>
-							</td>
-							<td style="color:#718096;font-size:12px"><?= htmlspecialchars(implode(', ', $_p['_brackets'])) ?></td>
-						</tr>
-						<?php if ($_pIsTeam && !empty($_p['Members'])): ?>
-						<tr class="tn-team-roster-row">
-							<td colspan="5">
-								<?php foreach ($_p['Members'] as $_gm): ?>
-								<span class="tn-roster-member"><?= htmlspecialchars($_gm['Persona'] ?? '') ?><span class="tn-pill tn-pill-team-wl" data-tip="Warrior level" style="margin-left:3px">⚔<?= (int)$_gm['WarriorLevel'] ?></span></span>
-								<?php endforeach; ?>
-							</td>
-						</tr>
-						<?php endif; ?>
-						<?php endforeach; ?>
-					</tbody>
-				</table>
-				<?php endif; ?>
+<?php if ($canManage): ?>
+				<div class="tn-roster-bar">
+					<button class="tn-btn tn-btn-primary" onclick="tnOpenRegisterModal()"><i class="fas fa-user-plus"></i> Register Participant</button>
+				</div>
+<?php endif; ?>
+				<div id="tn-roster-table-wrap">
+<?php if (empty($registrants)): ?>
+					<div class="tn-empty">No participants registered yet.</div>
+<?php else: ?>
+					<table class="tn-table" id="tn-roster-table">
+						<thead>
+							<tr>
+								<th>Alias</th>
+								<th>Player</th>
+								<th>Park</th>
+								<th>Warriors</th>
+								<th>Brackets</th>
+<?php if ($canManage): ?>								<th></th>
+<?php endif; ?>							</tr>
+						</thead>
+						<tbody>
+<?php foreach ($registrants as $_r): ?>
+<?php $_withdrawn = (($_r['Status'] ?? '') === 'withdrawn'); ?>
+							<tr data-pnum="<?= (int)($_r['ParticipantNumber'] ?? 0) ?>"<?= $_withdrawn ? ' class="tn-reg-withdrawn"' : '' ?>>
+								<td style="font-weight:600"><?= htmlspecialchars($_r['Alias'] ?? '') ?: '&mdash;' ?><?php if ($_withdrawn): ?> <span class="tn-reg-wd-badge">Withdrawn</span><?php endif; ?></td>
+								<td>
+<?php if (!empty($_r['Persona']) && (int)($_r['MundaneId'] ?? 0) > 0): ?>
+									<a href="<?= UIR ?>Player/profile/<?= (int)$_r['MundaneId'] ?>" style="color:#276749;text-decoration:none"><?= htmlspecialchars($_r['Persona']) ?></a>
+<?php elseif (!empty($_r['Persona'])): ?>
+									<?= htmlspecialchars($_r['Persona']) ?>
+<?php else: ?>
+									<span style="color:#a0aec0">&mdash;</span>
+<?php endif; ?>
+								</td>
+								<td style="color:#718096"><?= htmlspecialchars(!empty($_r['ParkName']) ? $_r['ParkName'] : '') ?: '&mdash;' ?></td>
+								<td><?= tnParticipantPills($_r) ?: '<span style="color:#a0aec0">&mdash;</span>' ?></td>
+								<td>
+<?php if (!empty($_r['Brackets'])): ?>
+<?php foreach ($_r['Brackets'] as $_b): ?><span class="tn-reg-chip"><?= htmlspecialchars($styleLabelMap[$_b['BracketStyle']] ?? $_b['BracketStyle']) ?></span><?php endforeach; ?>
+<?php else: ?>
+									<span class="tn-reg-unassigned">Unassigned</span>
+<?php endif; ?>
+								</td>
+<?php if ($canManage): ?>								<td><div class="tn-reg-actions" data-pnum="<?= (int)($_r['ParticipantNumber'] ?? 0) ?>"></div></td>
+<?php endif; ?>							</tr>
+<?php endforeach; ?>
+						</tbody>
+					</table>
+<?php endif; ?>
+				</div>
 			</div>
 
 			<!-- Run Tournament Tab -->
@@ -3180,6 +3163,41 @@ foreach ($bracketData as $_bid => $_bd) {
 </div>
 
 <!-- =============================================
+     Register Participant Modal (tournament-level roster)
+     ============================================= -->
+<?php if ($canManage): ?>
+<div class="tn-overlay" id="tn-register-overlay">
+	<div class="tn-modal-box" style="width:480px;max-width:calc(100vw - 40px)">
+		<div class="tn-modal-header">
+			<h3 class="tn-modal-title"><i class="fas fa-user-plus" style="margin-right:8px;color:#276749"></i>Register Participant</h3>
+			<button class="tn-modal-close" id="tn-register-close">&times;</button>
+		</div>
+		<div class="tn-modal-body">
+			<div id="tn-register-feedback" class="tn-feedback"></div>
+			<div class="tn-field">
+				<label>Player <span style="color:#a0aec0;font-size:11px;font-weight:400">(search to auto-fill name)</span></label>
+				<div style="position:relative">
+					<input type="text" id="tn-register-player-text" placeholder="Search by persona…" autocomplete="off">
+					<input type="hidden" id="tn-register-player-id" value="0">
+					<div id="tn-register-player-results" class="tn-ac-results"></div>
+				</div>
+			</div>
+			<div class="tn-field">
+				<label for="tn-register-alias">Alias / Fighter Name <span style="color:#e53e3e">*</span></label>
+				<input type="text" id="tn-register-alias" placeholder="Name as it appears in standings" maxlength="100">
+			</div>
+		</div>
+		<div class="tn-modal-footer">
+			<button class="tn-btn tn-btn-ghost" id="tn-register-cancel">Cancel</button>
+			<button class="tn-btn tn-btn-primary" id="tn-register-submit">
+				<i class="fas fa-user-plus"></i> Register
+			</button>
+		</div>
+	</div>
+</div>
+<?php endif; ?>
+
+<!-- =============================================
      Bulk Add (Paste Roster) Modal — one alias per line
      ============================================= -->
 <div class="tn-overlay" id="tn-bulkadd-overlay">
@@ -3585,6 +3603,7 @@ var TnConfig = {
 	styleLabels:          <?= json_encode($styleLabelMap, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>,
 	standingsData:        <?= json_encode($standingsData, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>,
 	standingsPoints:      <?= json_encode($standingsPoints, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>,
+	registrants:          <?= json_encode($registrants ?? [], JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>,
 };
 document.title = 'ORK 3: <?= htmlspecialchars($tName, ENT_QUOTES) ?>';
 
@@ -6246,6 +6265,227 @@ function tnFixedAcPosition(inputEl, dropdownEl) {
 				});
 		});
 	}
+})();
+<?php endif; ?>
+
+// ---- Participants Roster: render + Register modal ----
+// tnRenderRoster() rebuilds the Participants table from TnConfig.registrants.
+// Defined unconditionally so later tasks (assign-to-bracket, bulk modal) can
+// call it to refresh the roster without a full page reload.
+function tnRenderRoster() {
+	var wrap = document.getElementById('tn-roster-table-wrap');
+	if (!wrap) return;
+	var regs = TnConfig.registrants || [];
+	var canManage = !!TnConfig.canManage;
+	var styleLabels = TnConfig.styleLabels || {};
+
+	if (!regs.length) {
+		wrap.innerHTML = '<div class="tn-empty">No participants registered yet.</div>';
+		return;
+	}
+
+	var html = '<table class="tn-table" id="tn-roster-table"><thead><tr>'
+		+ '<th>Alias</th><th>Player</th><th>Park</th><th>Warriors</th><th>Brackets</th>'
+		+ (canManage ? '<th></th>' : '')
+		+ '</tr></thead><tbody>';
+
+	regs.forEach(function(r) {
+		var pnum = parseInt(r.ParticipantNumber, 10) || 0;
+		var withdrawn = (r.Status === 'withdrawn');
+
+		// Warrior/award pills (mirror PHP tnParticipantPills)
+		var pills = '';
+		var wc = parseInt(r.WarriorCount, 10) || 0;
+		if (wc > 0) {
+			var wcShow = Math.min(wc, 10);
+			pills += '<span class="tn-pill tn-pill-warrior" data-tip="Order of the Warrior x' + wc + '">' + wcShow + '</span>';
+		}
+		if (r.IsWarlord) pills += '<span class="tn-pill tn-pill-warlord" data-tip="Warlord">W</span>';
+		if (r.IsKnightSword) pills += '<span class="tn-pill tn-pill-knight" data-tip="Knight of the Sword">K</span>';
+		var pillsCell = pills
+			? '<span style="display:inline-flex;gap:3px;margin-left:4px;vertical-align:middle">' + pills + '</span>'
+			: '<span style="color:#a0aec0">&mdash;</span>';
+
+		// Player cell
+		var mid = parseInt(r.MundaneId, 10) || 0;
+		var playerCell;
+		if (r.Persona && mid > 0) {
+			playerCell = '<a href="' + TnConfig.uir + 'Player/profile/' + mid + '" style="color:#276749;text-decoration:none">' + tnEsc(r.Persona) + '</a>';
+		} else if (r.Persona) {
+			playerCell = tnEsc(r.Persona);
+		} else {
+			playerCell = '<span style="color:#a0aec0">&mdash;</span>';
+		}
+
+		// Brackets cell
+		var bracketsCell;
+		if (r.Brackets && r.Brackets.length) {
+			bracketsCell = r.Brackets.map(function(b) {
+				var label = styleLabels[b.BracketStyle] || b.BracketStyle || '';
+				return '<span class="tn-reg-chip">' + tnEsc(label) + '</span>';
+			}).join('');
+		} else {
+			bracketsCell = '<span class="tn-reg-unassigned">Unassigned</span>';
+		}
+
+		var aliasCell = (r.Alias ? tnEsc(r.Alias) : '&mdash;')
+			+ (withdrawn ? ' <span class="tn-reg-wd-badge">Withdrawn</span>' : '');
+
+		html += '<tr data-pnum="' + pnum + '"' + (withdrawn ? ' class="tn-reg-withdrawn"' : '') + '>'
+			+ '<td style="font-weight:600">' + aliasCell + '</td>'
+			+ '<td>' + playerCell + '</td>'
+			+ '<td style="color:#718096">' + (r.ParkName ? tnEsc(r.ParkName) : '&mdash;') + '</td>'
+			+ '<td>' + pillsCell + '</td>'
+			+ '<td>' + bracketsCell + '</td>'
+			+ (canManage ? '<td><div class="tn-reg-actions" data-pnum="' + pnum + '"></div></td>' : '')
+			+ '</tr>';
+	});
+
+	html += '</tbody></table>';
+	wrap.innerHTML = html;
+}
+
+<?php if ($canManage): ?>
+(function() {
+	var OVERLAY = 'tn-register-overlay';
+	var playerTimer;
+
+	var playerInput = document.getElementById('tn-register-player-text');
+	var playerIdEl  = document.getElementById('tn-register-player-id');
+	var resultsEl   = document.getElementById('tn-register-player-results');
+
+	function regAcClose() {
+		if (!resultsEl) return;
+		resultsEl.classList.remove('tn-ac-open');
+		resultsEl.innerHTML = '';
+	}
+
+	function regAcRender(players) {
+		resultsEl.innerHTML = '';
+		if (!players || !players.length) {
+			resultsEl.innerHTML = '<div class="tn-ac-item tn-ac-empty">No players found</div>';
+			if (playerInput) tnFixedAcPosition(playerInput, resultsEl);
+			resultsEl.classList.add('tn-ac-open');
+			return;
+		}
+		players.forEach(function(pl) {
+			var item = document.createElement('div');
+			item.className = 'tn-ac-item';
+			item.tabIndex = -1;
+			var label = tnEsc(pl.Persona || pl.Name || '');
+			var sub   = pl.KAbbr ? (' <span style="color:#a0aec0;font-size:11px">(' + tnEsc(pl.KAbbr) + (pl.PAbbr ? ':' + tnEsc(pl.PAbbr) : '') + ')</span>') : '';
+			item.innerHTML = label + sub;
+			item.addEventListener('mousedown', function(e) {
+				e.preventDefault();
+				var name = pl.Persona || pl.Name || '';
+				playerInput.value = name;
+				playerIdEl.value  = pl.MundaneId || pl.mundane_id || 0;
+				var aliasEl = document.getElementById('tn-register-alias');
+				if (aliasEl) aliasEl.value = name;
+				regAcClose();
+			});
+			resultsEl.appendChild(item);
+		});
+		if (playerInput) tnFixedAcPosition(playerInput, resultsEl);
+		resultsEl.classList.add('tn-ac-open');
+	}
+
+	if (playerInput && resultsEl) {
+		playerInput.addEventListener('input', function() {
+			var term = this.value.trim();
+			playerIdEl.value = '0';
+			clearTimeout(playerTimer);
+			if (term.length < 2) { regAcClose(); return; }
+			playerTimer = setTimeout(function() {
+				if (TnConfig.kingdomId > 0) {
+					var url = TnConfig.uir + 'KingdomAjax/playersearch/' + TnConfig.kingdomId + '&q=' + encodeURIComponent(term);
+					fetch(url)
+						.then(function(r) { return r.json(); })
+						.then(function(data) { regAcRender(data); })
+						.catch(function(err) { console.error('[Register] kingdom search failed:', err); regAcClose(); });
+				} else {
+					var url = TnConfig.httpService + 'Search/SearchService.php?Action=Search%2FPlayer&type=PERSONA&search=' + encodeURIComponent(term) + '&limit=10';
+					fetch(url)
+						.then(function(r) { return r.json(); })
+						.then(function(data) { regAcRender(data.Players || data.Results || []); })
+						.catch(function(err) { console.error('[Register] global search failed:', err); regAcClose(); });
+				}
+			}, 280);
+		});
+		playerInput.addEventListener('blur', function() {
+			setTimeout(regAcClose, 200);
+		});
+	}
+
+	window.tnOpenRegisterModal = function() {
+		if (playerInput) playerInput.value = '';
+		if (playerIdEl)  playerIdEl.value = '0';
+		var aliasEl = document.getElementById('tn-register-alias');
+		if (aliasEl) aliasEl.value = '';
+		regAcClose();
+		tnHideFeedback('tn-register-feedback');
+		tnOpenModal(OVERLAY);
+		if (playerInput) setTimeout(function() { playerInput.focus(); }, 50);
+	};
+
+	['tn-register-close', 'tn-register-cancel'].forEach(function(id) {
+		var el = document.getElementById(id);
+		if (el) el.addEventListener('click', function() { tnCloseModal(OVERLAY); });
+	});
+	var ov = document.getElementById(OVERLAY);
+	if (ov) ov.addEventListener('click', function(e) { if (e.target === ov) tnCloseModal(OVERLAY); });
+
+	window.tnSubmitRegister = function() {
+		var btn      = document.getElementById('tn-register-submit');
+		var alias    = (document.getElementById('tn-register-alias').value || '').trim();
+		var mundaneId = document.getElementById('tn-register-player-id').value || '0';
+
+		// Require at least one of alias / selected player
+		if (!alias && (!mundaneId || mundaneId === '0')) {
+			tnShowFeedback('tn-register-feedback', 'Enter an alias or search and select a player.', false);
+			return;
+		}
+
+		var REG_URL = TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/register';
+		btn.disabled = true;
+		var fd = new FormData();
+		fd.append('Alias',     alias);
+		fd.append('MundaneId', mundaneId);
+
+		fetch(REG_URL, { method: 'POST', body: fd })
+			.then(function(r) { return r.json(); })
+			.then(function(d) {
+				btn.disabled = false;
+				if (d && d.status === 0) {
+					tnShowFeedback('tn-register-feedback', 'Registered!', true);
+					// Re-fetch the roster, update TnConfig, re-render the table.
+					fetch(TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/registrants')
+						.then(function(r) { return r.json(); })
+						.then(function(rd) {
+							if (rd && rd.status === 0) {
+								TnConfig.registrants = rd.registrants || [];
+								tnRenderRoster();
+							}
+							tnCloseModal(OVERLAY);
+						})
+						.catch(function(err) {
+							console.error('[Register] roster refresh failed:', err);
+							window.location.reload();
+						});
+				} else {
+					console.error('[Register] server error:', d);
+					tnShowFeedback('tn-register-feedback', (d && d.error) ? d.error : 'Failed to register participant.', false);
+				}
+			})
+			.catch(function(err) {
+				btn.disabled = false;
+				console.error('[Register] fetch failed:', err);
+				tnShowFeedback('tn-register-feedback', 'Request failed. Please try again.', false);
+			});
+	};
+
+	var submitBtn = document.getElementById('tn-register-submit');
+	if (submitBtn) submitBtn.addEventListener('click', tnSubmitRegister);
 })();
 <?php endif; ?>
 
