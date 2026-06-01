@@ -77,6 +77,30 @@ class Model_Tournament extends Model {
 		return $this->Tournament->RemoveRegistrant($request);
 	}
 
+	function register_team($request) {
+		return $this->Tournament->RegisterTeam($request);
+	}
+
+	function get_registered_teams($request) {
+		return $this->Tournament->GetRegisteredTeams($request);
+	}
+
+	function update_team($request) {
+		return $this->Tournament->UpdateTeam($request);
+	}
+
+	function remove_registered_team($request) {
+		return $this->Tournament->RemoveRegisteredTeam($request);
+	}
+
+	function assign_team_to_bracket($request) {
+		return $this->Tournament->AssignTeamToBracket($request);
+	}
+
+	function unassign_team_from_bracket($request) {
+		return $this->Tournament->UnassignTeamFromBracket($request);
+	}
+
 	function generate_matches($request) {
 		return $this->Tournament->GenerateMatches($request);
 	}
