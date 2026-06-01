@@ -2571,7 +2571,7 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 									<button class="tn-team-roster-btn" onclick="tnToggleRoster(this)" data-tip="Show/hide team roster">&#9658; <?= count($p['Members']) ?></button>
 									<?php endif; ?>
 									<?php if ($canManage): ?>
-									<span class="tn-status-wrap"><button class="tn-status-btn" onclick="tnToggleParticipantMenu(this)" data-tip="Set status">&#8942;</button><div class="tn-status-menu"><div class="tn-status-menu-item<?= $_pStatus==='active'?' tn-sm-active':'' ?>" onclick="tnSetParticipantStatus(<?= (int)$p['ParticipantId'] ?>, 'active', <?= $bid ?>, this)"><span class="tn-sm-dot tn-sm-dot-active"></span>Active</div><div class="tn-status-menu-item<?= $_pStatus==='withdrawn'?' tn-sm-active':'' ?>" onclick="tnSetParticipantStatus(<?= (int)$p['ParticipantId'] ?>, 'withdrawn', <?= $bid ?>, this)"><span class="tn-sm-dot tn-sm-dot-withdrawn"></span>Withdrawn</div><div class="tn-status-menu-item<?= $_pStatus==='disqualified'?' tn-sm-active':'' ?>" onclick="tnSetParticipantStatus(<?= (int)$p['ParticipantId'] ?>, 'disqualified', <?= $bid ?>, this)"><span class="tn-sm-dot tn-sm-dot-disqualified"></span>Disqualified</div></div></span>
+									<span class="tn-status-wrap"><button class="tn-status-btn" onclick="tnToggleParticipantMenu(this)" data-tip="Set status">&#8942;</button><div class="tn-status-menu"><div class="tn-status-menu-item<?= $_pStatus==='active'?' tn-sm-active':'' ?>" onclick="tnSetParticipantStatus(<?= (int)$p['ParticipantId'] ?>, 'active', <?= $bid ?>, this)"><span class="tn-sm-dot tn-sm-dot-active"></span>Active</div><div class="tn-status-menu-item<?= $_pStatus==='withdrawn'?' tn-sm-active':'' ?>" onclick="tnWithdrawIntent(<?= (int)$p['ParticipantId'] ?>, 'withdrawn', <?= $bid ?>, this)"><span class="tn-sm-dot tn-sm-dot-withdrawn"></span>Withdrawn</div><div class="tn-status-menu-item<?= $_pStatus==='disqualified'?' tn-sm-active':'' ?>" onclick="tnWithdrawIntent(<?= (int)$p['ParticipantId'] ?>, 'disqualified', <?= $bid ?>, this)"><span class="tn-sm-dot tn-sm-dot-disqualified"></span>Disqualified</div></div></span>
 									<button class="tn-remove-participant" data-pid="<?= (int)$p['ParticipantId'] ?>" data-bid="<?= $bid ?>" data-tid="<?= $tid ?>" data-tip="Remove participant" onclick="tnRemoveParticipant(this)">&times;</button>
 									<?php endif; ?>
 								<?php else: ?>
@@ -2592,7 +2592,7 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 									<span style="font-size:11px;color:#a0aec0"><?= htmlspecialchars($p['ParkName']) ?></span>
 									<?php endif; ?>
 									<?php if ($canManage): ?>
-									<span class="tn-status-wrap"><button class="tn-status-btn" onclick="tnToggleParticipantMenu(this)" data-tip="Set status">&#8942;</button><div class="tn-status-menu"><div class="tn-status-menu-item<?= $_pStatus==='active'?' tn-sm-active':'' ?>" onclick="tnSetParticipantStatus(<?= (int)$p['ParticipantId'] ?>, 'active', <?= $bid ?>, this)"><span class="tn-sm-dot tn-sm-dot-active"></span>Active</div><div class="tn-status-menu-item<?= $_pStatus==='withdrawn'?' tn-sm-active':'' ?>" onclick="tnSetParticipantStatus(<?= (int)$p['ParticipantId'] ?>, 'withdrawn', <?= $bid ?>, this)"><span class="tn-sm-dot tn-sm-dot-withdrawn"></span>Withdrawn</div><div class="tn-status-menu-item<?= $_pStatus==='disqualified'?' tn-sm-active':'' ?>" onclick="tnSetParticipantStatus(<?= (int)$p['ParticipantId'] ?>, 'disqualified', <?= $bid ?>, this)"><span class="tn-sm-dot tn-sm-dot-disqualified"></span>Disqualified</div></div></span>
+									<span class="tn-status-wrap"><button class="tn-status-btn" onclick="tnToggleParticipantMenu(this)" data-tip="Set status">&#8942;</button><div class="tn-status-menu"><div class="tn-status-menu-item<?= $_pStatus==='active'?' tn-sm-active':'' ?>" onclick="tnSetParticipantStatus(<?= (int)$p['ParticipantId'] ?>, 'active', <?= $bid ?>, this)"><span class="tn-sm-dot tn-sm-dot-active"></span>Active</div><div class="tn-status-menu-item<?= $_pStatus==='withdrawn'?' tn-sm-active':'' ?>" onclick="tnWithdrawIntent(<?= (int)$p['ParticipantId'] ?>, 'withdrawn', <?= $bid ?>, this)"><span class="tn-sm-dot tn-sm-dot-withdrawn"></span>Withdrawn</div><div class="tn-status-menu-item<?= $_pStatus==='disqualified'?' tn-sm-active':'' ?>" onclick="tnWithdrawIntent(<?= (int)$p['ParticipantId'] ?>, 'disqualified', <?= $bid ?>, this)"><span class="tn-sm-dot tn-sm-dot-disqualified"></span>Disqualified</div></div></span>
 									<button class="tn-remove-participant" data-pid="<?= (int)$p['ParticipantId'] ?>" data-bid="<?= $bid ?>" data-tid="<?= $tid ?>" data-tip="Remove participant" onclick="tnRemoveParticipant(this)">&times;</button>
 									<?php endif; ?>
 								<?php endif; ?>
@@ -11637,12 +11637,12 @@ window.tnToggleParticipantMenu = function(btn) {
 			// exact same arguments the desktop dropdown uses; pass the real menu
 			// item element as the 4th arg (menuItemEl) — tnSetParticipantStatus
 			// needs it for .closest('li') / menu-state updates.
-			var m = onclick.match(/tnSetParticipantStatus\(\s*(\d+)\s*,\s*'([a-z]+)'\s*,\s*(\d+)/);
+			var m = onclick.match(/(tnSetParticipantStatus|tnWithdrawIntent)\(\s*(\d+)\s*,\s*'([a-z]+)'\s*,\s*(\d+)/);
 			items.push({
 				label: pair[1] + (menuItem.classList.contains('tn-sm-active') ? '  \u2713' : ''),
 				onTap: function() {
 					if (m) {
-						tnSetParticipantStatus(parseInt(m[1], 10), m[2], parseInt(m[3], 10), menuItem);
+						window[m[1]](parseInt(m[2], 10), m[3], parseInt(m[4], 10), menuItem);
 					}
 				}
 			});
@@ -11698,11 +11698,50 @@ window.tnEditAlias = function(btn){
 			input.addEventListener('blur', function(){ finish(true); });
 		};
 
-		window.tnSetParticipantStatus = function(pid, status, bid, menuItemEl) {
+	// Issue 3: for round-robin brackets, let the organizer choose how to resolve a
+	// withdrawal/DQ (forfeit vs annul) before applying status. Other formats apply directly.
+	window.tnWithdrawIntent = function(pid, status, bid, menuItemEl) {
+		var li = menuItemEl && menuItemEl.closest ? menuItemEl.closest('li') : null;
+		var card = li && li.closest ? li.closest('.tn-bracket-card') : null;
+		var method = card ? card.getAttribute('data-method') : '';
+		// Only round-robin needs the forfeit/annul choice; others apply status directly.
+		if (method !== 'round-robin') { window.tnSetParticipantStatus(pid, status, bid, menuItemEl, ''); return; }
+		// Best-effort FIDE-style default: <50% of this participant's matches played -> annul, else forfeit.
+		var defMode = 'forfeit';
+		try {
+			if (card) {
+				var total = 0, played = 0;
+				card.querySelectorAll('[data-match-row]').forEach(function(mr){
+					var p1 = mr.getAttribute('data-p1'), p2 = mr.getAttribute('data-p2');
+					if (String(pid) === p1 || String(pid) === p2) {
+						total++;
+						if ((mr.getAttribute('data-result') || '').trim() !== '') played++;
+					}
+				});
+				if (total > 0) defMode = (played / total < 0.5) ? 'annul' : 'forfeit';
+			}
+		} catch (e) { defMode = 'forfeit'; }
+		var verb = (status === 'disqualified') ? 'Disqualify' : 'Withdraw';
+		tnConfirm({
+			title: verb + ' participant',
+			body:
+				'<p style="margin:0 0 10px">How should this round-robin participant\u2019s matches be resolved?</p>' +
+				'<label style="display:block;margin-bottom:8px;cursor:pointer"><input type="radio" name="tn-wd-mode" value="forfeit"' + (defMode === 'forfeit' ? ' checked' : '') + '> <strong>Forfeit</strong> \u2014 already-fought matches stand; remaining matches become wins for their opponents.</label>' +
+				'<label style="display:block;cursor:pointer"><input type="radio" name="tn-wd-mode" value="annul"' + (defMode === 'annul' ? ' checked' : '') + '> <strong>Annul</strong> \u2014 all of their matches stop counting toward everyone\u2019s standings.</label>',
+			confirmLabel: verb,
+			danger: true,
+			onConfirm: function() {
+				var sel = document.querySelector('input[name="tn-wd-mode"]:checked');
+				window.tnSetParticipantStatus(pid, status, bid, menuItemEl, sel ? sel.value : defMode);
+			}
+		});
+	};
+		window.tnSetParticipantStatus = function(pid, status, bid, menuItemEl, mode) {
 	var fd = new FormData();
 	fd.append('ParticipantId', pid);
 	fd.append('Status', status);
 	fd.append('TournamentId', TnConfig.tournamentId);
+	if (mode) fd.append('Mode', mode);
 	fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bid + '/updateparticipantstatus', {method:'POST', body:fd})
 		.then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
 		.then(function(d) {
