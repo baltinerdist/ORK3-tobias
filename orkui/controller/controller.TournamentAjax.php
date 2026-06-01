@@ -404,6 +404,61 @@ class Controller_TournamentAjax extends Controller {
 				? json_encode(['status' => 0, 'participantNumber' => $participant_number])
 				: $this->modelError($r);
 
+		} elseif ($action === 'registeredteams') {
+			// Tournament-level team roster: registered teams (bracket_id IS NULL),
+			// each with members and the brackets they are assigned to.
+			$r = $this->Tournament->get_registered_teams([
+				'Token'        => $this->session->token,
+				'TournamentId' => $tournament_id,
+			]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0, 'teams' => $r['Detail'] ?? []])
+				: $this->modelError($r);
+
+		} elseif ($action === 'createteam' || $action === 'updateteam') {
+			$name = trim($_POST['Name'] ?? '');
+			if (!strlen($name)) { echo json_encode(['status' => 1, 'error' => 'Team name required.']); exit; }
+			$membersJson = $_POST['Members'] ?? '';
+			$members = [];
+			if ($membersJson !== '') {
+				$decoded = json_decode($membersJson, true);
+				if (is_array($decoded)) {
+					if (count($decoded) > 64) { echo json_encode(['status' => 1, 'error' => 'Too many team members.']); exit; }
+					foreach ($decoded as $m) {
+						if (is_array($m) && valid_id($m['MundaneId'] ?? 0)) $members[] = ['MundaneId' => (int)$m['MundaneId']];
+					}
+				}
+			}
+			$params = [
+				'Token'        => $this->session->token,
+				'TournamentId' => $tournament_id,
+				'Name'         => $name,
+				'Members'      => $members,
+			];
+			if ($action === 'updateteam') {
+				$tn = (int)($_POST['TeamNumber'] ?? 0);
+				if ($tn <= 0) { echo json_encode(['status' => 1, 'error' => 'TeamNumber required.']); exit; }
+				$params['TeamNumber'] = $tn;
+				$r = $this->Tournament->update_team($params);
+			} else {
+				$r = $this->Tournament->register_team($params);
+			}
+			echo ($r['Status'] == 0)
+				? json_encode(array_merge(['status' => 0], is_array($r['Detail']) ? $r['Detail'] : []))
+				: $this->modelError($r);
+
+		} elseif ($action === 'removeteam') {
+			$tn = (int)($_POST['TeamNumber'] ?? 0);
+			if ($tn <= 0) { echo json_encode(['status' => 1, 'error' => 'TeamNumber required.']); exit; }
+			$r = $this->Tournament->remove_registered_team([
+				'Token'        => $this->session->token,
+				'TournamentId' => $tournament_id,
+				'TeamNumber'   => $tn,
+			]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0, 'teamNumber' => $tn])
+				: $this->modelError($r);
+
 		} else {
 			echo json_encode(['status' => 1, 'error' => 'Unknown action']);
 		}
@@ -681,6 +736,35 @@ class Controller_TournamentAjax extends Controller {
 			echo ($r['Status'] == 0)
 				? json_encode(['status' => 0])
 				: $this->modelError($r);
+
+		} elseif ($action === 'assignteams' || $action === 'unassignteams') {
+			// Bulk-assign/remove registered teams to/from this team bracket (setup only).
+			$tid = (int)($_POST['TournamentId'] ?? 0);
+			if (!valid_id($tid)) {
+				echo json_encode(['status' => 1, 'error' => 'TournamentId required.']); exit;
+			}
+			$nums_arr = json_decode(trim($_POST['TeamNumbers'] ?? ''), true);
+			if (!is_array($nums_arr) || count($nums_arr) === 0) {
+				echo json_encode(['status' => 1, 'error' => 'TeamNumbers required.']); exit;
+			}
+			$nums_arr = array_values(array_filter(array_map('intval', $nums_arr), fn($n) => $n > 0));
+			$payload = [
+				'Token'        => $this->session->token,
+				'TournamentId' => $tid,
+				'BracketId'    => $bracket_id,
+				'TeamNumbers'  => $nums_arr,
+			];
+			if ($action === 'assignteams') {
+				$r = $this->Tournament->assign_team_to_bracket($payload);
+				echo ($r['Status'] == 0)
+					? json_encode(['status' => 0, 'assigned' => $r['Detail']['Assigned'] ?? []])
+					: $this->modelError($r);
+			} else {
+				$r = $this->Tournament->unassign_team_from_bracket($payload);
+				echo ($r['Status'] == 0)
+					? json_encode(['status' => 0])
+					: $this->modelError($r);
+			}
 
 		} else {
 			echo json_encode(['status' => 1, 'error' => 'Unknown action']);
