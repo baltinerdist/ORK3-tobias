@@ -2721,6 +2721,10 @@ foreach ($bracketData as $_bid => $_bd) {
 						<button class="tn-bk-pill" data-bid="<?= $stBid ?>" onclick="tnStandingsPillClick(this,<?= $stBid ?>)"><?= htmlspecialchars($styleLabelMap[$stB['Style']] ?? $stB['Style'] ?? '') ?> &mdash; <?= htmlspecialchars($methodLabelMap[$stB['Method']] ?? $stB['Method'] ?? '') ?></button>
 						<?php endforeach; ?>
 					</div>
+					<a class="tn-btn tn-btn-ghost tn-btn-sm" href="<?= UIR ?>Tournament/export/<?= (int)$tournament['TournamentId'] ?>" data-tip="Download an .xlsx workbook of every bracket" style="flex-shrink:0;display:inline-flex;align-items:center;gap:6px;text-decoration:none">
+						<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+						Export Results
+					</a>
 					<?php if ($canManage): ?>
 					<button class="tn-btn tn-btn-ghost tn-btn-sm" onclick="tnOpenConfigStandingsModal()" data-tip="Configure standings points" style="padding:6px 10px;flex-shrink:0">
 						<i class="fas fa-cog"></i>
