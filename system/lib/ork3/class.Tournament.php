@@ -3008,7 +3008,7 @@ class Tournament extends Ork3 {
 		$bracket_id = (int)($request['BracketId'] ?? 0);
 		if (!valid_id($bracket_id)) return InvalidParameter('BracketId required');
 
-		$unresolved = $this->db->query("SELECT COUNT(*) AS cnt FROM " . DB_PREFIX . "match WHERE bracket_id = $bracket_id AND (result IS NULL OR result = '') AND participant_1_id > 0 AND participant_2_id > 0");
+		$unresolved = $this->db->query("SELECT COUNT(*) AS cnt FROM " . DB_PREFIX . "match WHERE bracket_id = $bracket_id AND (result IS NULL OR result = '') AND participant_1_id > 0 AND participant_2_id > 0 AND voided = 0");
 		if ($unresolved && $unresolved->next() && (int)$unresolved->cnt > 0) {
 			return InvalidParameter('Cannot finalize bracket with unresolved matches (' . (int)$unresolved->cnt . ' remaining)');
 		}
@@ -3077,7 +3077,7 @@ class Tournament extends Ork3 {
 
 		// All matches must be resolved (no in-progress matches anywhere in the bracket)
 		$unresolved = $this->db->query("SELECT COUNT(*) AS cnt FROM " . DB_PREFIX . "match
-			WHERE bracket_id = $bracket_id AND (result IS NULL OR result = '') AND participant_1_id > 0 AND participant_2_id > 0");
+			WHERE bracket_id = $bracket_id AND (result IS NULL OR result = '') AND participant_1_id > 0 AND participant_2_id > 0 AND voided = 0");
 		if ($unresolved && $unresolved->next() && (int)$unresolved->cnt > 0) {
 			return InvalidParameter('Cannot start tiebreaker — ' . (int)$unresolved->cnt . ' match(es) still unresolved');
 		}
@@ -3134,7 +3134,7 @@ class Tournament extends Ork3 {
 
 		// All matches must be resolved before declining
 		$unresolved = $this->db->query("SELECT COUNT(*) AS cnt FROM " . DB_PREFIX . "match
-			WHERE bracket_id = $bracket_id AND (result IS NULL OR result = '') AND participant_1_id > 0 AND participant_2_id > 0");
+			WHERE bracket_id = $bracket_id AND (result IS NULL OR result = '') AND participant_1_id > 0 AND participant_2_id > 0 AND voided = 0");
 		if ($unresolved && $unresolved->next() && (int)$unresolved->cnt > 0) {
 			return InvalidParameter('Cannot decline tiebreaker with unresolved matches (' . (int)$unresolved->cnt . ' remaining)');
 		}
