@@ -11699,42 +11699,58 @@ window.tnEditAlias = function(btn){
 		};
 
 	// Issue 3: for round-robin brackets, let the organizer choose how to resolve a
-	// withdrawal/DQ (forfeit vs annul) before applying status. Other formats apply directly.
+	// withdrawal/DQ (forfeit vs annul). Default per FIDE: <50% of this participant's
+	// matches played -> annul; else forfeit. Other formats apply status directly.
 	window.tnWithdrawIntent = function(pid, status, bid, menuItemEl) {
 		var li = menuItemEl && menuItemEl.closest ? menuItemEl.closest('li') : null;
 		var card = li && li.closest ? li.closest('.tn-bracket-card') : null;
 		var method = card ? card.getAttribute('data-method') : '';
 		// Only round-robin needs the forfeit/annul choice; others apply status directly.
 		if (method !== 'round-robin') { window.tnSetParticipantStatus(pid, status, bid, menuItemEl, ''); return; }
-		// Best-effort FIDE-style default: <50% of this participant's matches played -> annul, else forfeit.
-		var defMode = 'forfeit';
-		try {
-			if (card) {
-				var total = 0, played = 0;
-				card.querySelectorAll('[data-match-row]').forEach(function(mr){
-					var p1 = mr.getAttribute('data-p1'), p2 = mr.getAttribute('data-p2');
-					if (String(pid) === p1 || String(pid) === p2) {
-						total++;
-						if ((mr.getAttribute('data-result') || '').trim() !== '') played++;
-					}
-				});
-				if (total > 0) defMode = (played / total < 0.5) ? 'annul' : 'forfeit';
-			}
-		} catch (e) { defMode = 'forfeit'; }
+
 		var verb = (status === 'disqualified') ? 'Disqualify' : 'Withdraw';
-		tnConfirm({
-			title: verb + ' participant',
-			body:
-				'<p style="margin:0 0 10px">How should this round-robin participant\u2019s matches be resolved?</p>' +
-				'<label style="display:block;margin-bottom:8px;cursor:pointer"><input type="radio" name="tn-wd-mode" value="forfeit"' + (defMode === 'forfeit' ? ' checked' : '') + '> <strong>Forfeit</strong> \u2014 already-fought matches stand; remaining matches become wins for their opponents.</label>' +
-				'<label style="display:block;cursor:pointer"><input type="radio" name="tn-wd-mode" value="annul"' + (defMode === 'annul' ? ' checked' : '') + '> <strong>Annul</strong> \u2014 all of their matches stop counting toward everyone\u2019s standings.</label>',
-			confirmLabel: verb,
-			danger: true,
-			onConfirm: function() {
-				var sel = document.querySelector('input[name="tn-wd-mode"]:checked');
-				window.tnSetParticipantStatus(pid, status, bid, menuItemEl, sel ? sel.value : defMode);
-			}
-		});
+		function openModal(defMode) {
+			tnConfirm({
+				title: verb + ' participant',
+				body:
+					'<p style="margin:0 0 10px">How should this round-robin participant\u2019s matches be resolved?</p>' +
+					'<label style="display:block;margin-bottom:8px;cursor:pointer"><input type="radio" name="tn-wd-mode" value="forfeit"' + (defMode === 'forfeit' ? ' checked' : '') + '> <strong>Forfeit</strong> \u2014 already-fought matches stand; remaining matches become wins for their opponents.</label>' +
+					'<label style="display:block;cursor:pointer"><input type="radio" name="tn-wd-mode" value="annul"' + (defMode === 'annul' ? ' checked' : '') + '> <strong>Annul</strong> \u2014 all of their matches stop counting toward everyone\u2019s standings.</label>',
+				confirmLabel: verb,
+				danger: true,
+				onConfirm: function() {
+					var sel = document.querySelector('input[name="tn-wd-mode"]:checked');
+					window.tnSetParticipantStatus(pid, status, bid, menuItemEl, sel ? sel.value : defMode);
+				}
+			});
+		}
+
+		// FIDE default from this participant's played fraction.
+		function defaultFrom(matches) {
+			var total = 0, played = 0;
+			(matches || []).forEach(function(m) {
+				var p1 = parseInt(m.Participant1Id, 10), p2 = parseInt(m.Participant2Id, 10);
+				if (p1 === pid || p2 === pid) {
+					if (p1 > 0 && p2 > 0) { // ignore bye/placeholder slots
+						total++;
+						if ((m.Result || '').toString().trim() !== '') played++;
+					}
+				}
+			});
+			if (total === 0) return 'forfeit';
+			return (played / total < 0.5) ? 'annul' : 'forfeit';
+		}
+
+		// Prefer cached matches; otherwise fetch; on any failure default to forfeit.
+		var cached = (window.TnConfig && TnConfig.bracketData && TnConfig.bracketData[bid]) ? TnConfig.bracketData[bid].Matches : null;
+		if (cached && cached.length) {
+			openModal(defaultFrom(cached));
+		} else {
+			fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bid + '/matches')
+				.then(function(r) { return r.json(); })
+				.then(function(d) { openModal(defaultFrom(d && d.status === 0 ? d.matches : [])); })
+				.catch(function() { openModal('forfeit'); });
+		}
 	};
 		window.tnSetParticipantStatus = function(pid, status, bid, menuItemEl, mode) {
 	var fd = new FormData();
