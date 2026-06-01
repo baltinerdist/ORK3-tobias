@@ -254,7 +254,7 @@ sim_log("Tournament created: id=$tournament_id");
 
 // ── Plan brackets (3–5, with ≥1 single + ≥1 double) ─────────────────────────
 
-$all_styles  = ['Single Sword', 'Florentine', 'Sword and Shield', 'Great Weapon', 'Missile', 'Other'];
+$all_styles  = ['Single Sword', 'Florentine', 'Sword and Shield', 'Great Weapon', 'Missile', 'Other', 'Open Weapons'];
 $all_methods = ['single', 'double', 'round-robin'];  // swiss excluded per spec unless robust
 $seedings    = ['random', 'warrior'];
 
