@@ -3921,6 +3921,28 @@ var TnConfig = {
 	registrants:          <?= json_encode($registrants ?? [], JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>,
 	registeredTeams:      <?= json_encode($registered_teams ?? [], JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>,
 };
+// Issue 2: Individual/Team segmented-control helpers (mirrors tn-...-firstround).
+function tnSegGet(id) {
+	var el = document.getElementById(id); if (!el) return '';
+	var a = el.querySelector('.tn-seg-btn.tn-seg-active');
+	return a ? a.getAttribute('data-val') : '';
+}
+function tnSegSet(id, val) {
+	var el = document.getElementById(id); if (!el) return;
+	Array.prototype.forEach.call(el.querySelectorAll('.tn-seg-btn'), function(b) {
+		b.classList.toggle('tn-seg-active', b.getAttribute('data-val') === val);
+	});
+}
+(function() {
+	['tn-addbracket-participants', 'tn-editbracket-participants'].forEach(function(id) {
+		var seg = document.getElementById(id); if (!seg) return;
+		seg.addEventListener('click', function(e) {
+			var b = e.target.closest('.tn-seg-btn'); if (!b || b.disabled) return;
+			Array.prototype.forEach.call(seg.querySelectorAll('.tn-seg-btn'), function(x) { x.classList.remove('tn-seg-active'); });
+			b.classList.add('tn-seg-active');
+		});
+	});
+})();
 document.title = 'ORK 3: <?= htmlspecialchars($tName, ENT_QUOTES) ?>';
 
 // =============================================
