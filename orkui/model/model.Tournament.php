@@ -52,6 +52,30 @@ class Model_Tournament extends Model {
 		return $this->Tournament->RemoveParticipant($request);
 	}
 
+	function register_participant($request) {
+		return $this->Tournament->RegisterParticipant($request);
+	}
+
+	function get_registrants($request) {
+		return $this->Tournament->GetRegistrants($request);
+	}
+
+	function assign_to_bracket($request) {
+		return $this->Tournament->AssignToBracket($request);
+	}
+
+	function unassign_from_bracket($request) {
+		return $this->Tournament->UnassignFromBracket($request);
+	}
+
+	function update_registration_status($request) {
+		return $this->Tournament->UpdateRegistrationStatus($request);
+	}
+
+	function remove_registrant($request) {
+		return $this->Tournament->RemoveRegistrant($request);
+	}
+
 	function generate_matches($request) {
 		return $this->Tournament->GenerateMatches($request);
 	}
