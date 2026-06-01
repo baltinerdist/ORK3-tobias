@@ -413,6 +413,28 @@ html[data-theme="dark"] .tn-alias-input { background:#1a202c; color:#e2e8f0; bor
 .tn-reg-unassigned { color:#a0aec0; font-size:12px; font-style:italic; }
 .tn-reg-withdrawn td { opacity:0.55; }
 .tn-reg-wd-badge { display:inline-block; background:#fed7d7; color:#9b2c2c; border-radius:8px; padding:0 7px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; vertical-align:middle; }
+/* Per-registrant row action buttons */
+.tn-reg-actions { display:flex; gap:4px; justify-content:flex-end; align-items:center; }
+.tn-reg-act-btn { background:#fff; border:1px solid #e2e8f0; color:#4a5568; border-radius:6px; width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; font-size:12px; padding:0; transition:background .15s,border-color .15s,color .15s; }
+.tn-reg-act-btn:hover { background:#f7fafc; border-color:#cbd5e0; color:#2d3748; }
+.tn-reg-act-btn:disabled { opacity:0.5; cursor:default; }
+.tn-reg-act-btn.tn-reg-act-danger { color:#e53e3e; border-color:#fed7d7; }
+.tn-reg-act-btn.tn-reg-act-danger:hover { background:#e53e3e; border-color:#e53e3e; color:#fff; }
+.tn-reg-act-btn.tn-reg-act-wd { color:#dd6b20; border-color:#feebc8; }
+.tn-reg-act-btn.tn-reg-act-wd:hover { background:#dd6b20; border-color:#dd6b20; color:#fff; }
+.tn-reg-act-btn.tn-reg-act-reactivate { color:#276749; border-color:#c6f6d5; }
+.tn-reg-act-btn.tn-reg-act-reactivate:hover { background:#276749; border-color:#276749; color:#fff; }
+/* Assign-to-brackets modal checkbox list */
+.tn-assign-list { display:flex; flex-direction:column; gap:2px; max-height:340px; overflow-y:auto; }
+.tn-assign-row { display:flex; align-items:center; gap:10px; padding:9px 10px; border:1px solid #edf2f7; border-radius:8px; background:#fff; }
+.tn-assign-row.tn-assign-disabled { opacity:0.6; background:#f7fafc; }
+.tn-assign-row input[type=checkbox] { width:16px; height:16px; flex-shrink:0; accent-color:#276749; cursor:pointer; }
+.tn-assign-row.tn-assign-disabled input[type=checkbox] { cursor:default; }
+.tn-assign-row label { flex:1; font-size:13px; font-weight:600; color:#2d3748; cursor:pointer; margin:0; text-transform:none; letter-spacing:0; }
+.tn-assign-row.tn-assign-disabled label { cursor:default; }
+.tn-assign-meta { font-size:11px; font-weight:600; color:#a0aec0; text-transform:uppercase; letter-spacing:0.4px; }
+.tn-assign-meta.tn-assign-meta-locked { color:#c05621; }
+.tn-assign-empty { color:#a0aec0; font-size:13px; font-style:italic; padding:8px 2px; }
 
 /* Modals */
 .tn-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:1100; opacity:0; pointer-events:none; transition:opacity 0.2s; }
@@ -1199,6 +1221,20 @@ html[data-theme="dark"] .tn-table td { color:#cbd5e0; border-bottom-color:#2d374
 html[data-theme="dark"] .tn-reg-chip { background:#2a4365; color:#90cdf4; border-color:#2c5282; }
 html[data-theme="dark"] .tn-reg-unassigned { color:#718096; }
 html[data-theme="dark"] .tn-reg-wd-badge { background:#742a2a; color:#feb2b2; }
+html[data-theme="dark"] .tn-reg-act-btn { background:#2d3748; border-color:#4a5568; color:#cbd5e0; }
+html[data-theme="dark"] .tn-reg-act-btn:hover { background:#374151; border-color:#718096; color:#f7fafc; }
+html[data-theme="dark"] .tn-reg-act-btn.tn-reg-act-danger { color:#fc8181; border-color:#742a2a; }
+html[data-theme="dark"] .tn-reg-act-btn.tn-reg-act-danger:hover { background:#c53030; border-color:#c53030; color:#fff; }
+html[data-theme="dark"] .tn-reg-act-btn.tn-reg-act-wd { color:#f6ad55; border-color:#7b341e; }
+html[data-theme="dark"] .tn-reg-act-btn.tn-reg-act-wd:hover { background:#c05621; border-color:#c05621; color:#fff; }
+html[data-theme="dark"] .tn-reg-act-btn.tn-reg-act-reactivate { color:#9ae6b4; border-color:#22543d; }
+html[data-theme="dark"] .tn-reg-act-btn.tn-reg-act-reactivate:hover { background:#276749; border-color:#276749; color:#fff; }
+html[data-theme="dark"] .tn-assign-row { background:#2d3748; border-color:#3a4658; }
+html[data-theme="dark"] .tn-assign-row.tn-assign-disabled { background:#252d3a; }
+html[data-theme="dark"] .tn-assign-row label { color:#e2e8f0; }
+html[data-theme="dark"] .tn-assign-meta { color:#718096; }
+html[data-theme="dark"] .tn-assign-meta.tn-assign-meta-locked { color:#f6ad55; }
+html[data-theme="dark"] .tn-assign-empty { color:#718096; }
 /* Team UI */
 html[data-theme="dark"] .tn-pill-team-wl { background:#44337a; color:#e9d8fd; border-color:#805ad5; }
 html[data-theme="dark"] .tn-team-roster-btn { color:#9ae6b4; }
@@ -3191,6 +3227,29 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 			<button class="tn-btn tn-btn-ghost" id="tn-register-cancel">Cancel</button>
 			<button class="tn-btn tn-btn-primary" id="tn-register-submit">
 				<i class="fas fa-user-plus"></i> Register
+			</button>
+		</div>
+	</div>
+</div>
+
+<!-- =============================================
+     Assign Registrant to Brackets Modal (tournament-level roster)
+     ============================================= -->
+<div class="tn-overlay" id="tn-assign-overlay">
+	<div class="tn-modal-box" style="width:480px;max-width:calc(100vw - 40px)">
+		<div class="tn-modal-header">
+			<h3 class="tn-modal-title"><i class="fas fa-sitemap" style="margin-right:8px;color:#276749"></i>Assign to Brackets</h3>
+			<button class="tn-modal-close" id="tn-assign-close">&times;</button>
+		</div>
+		<div class="tn-modal-body">
+			<div id="tn-assign-feedback" class="tn-feedback"></div>
+			<div id="tn-assign-subtitle" style="font-size:13px;color:#718096;margin-bottom:12px"></div>
+			<div class="tn-assign-list" id="tn-assign-list"></div>
+		</div>
+		<div class="tn-modal-footer">
+			<button class="tn-btn tn-btn-ghost" id="tn-assign-cancel">Cancel</button>
+			<button class="tn-btn tn-btn-primary" id="tn-assign-submit">
+				<i class="fas fa-check"></i> Save
 			</button>
 		</div>
 	</div>
@@ -6337,7 +6396,7 @@ function tnRenderRoster() {
 			+ '<td style="color:#718096">' + (r.ParkName ? tnEsc(r.ParkName) : '&mdash;') + '</td>'
 			+ '<td>' + pillsCell + '</td>'
 			+ '<td>' + bracketsCell + '</td>'
-			+ (canManage ? '<td><div class="tn-reg-actions" data-pnum="' + pnum + '"></div></td>' : '')
+			+ (canManage ? '<td>' + tnRegActionsHtml(r) + '</td>' : '')
 			+ '</tr>';
 	});
 
@@ -6486,6 +6545,280 @@ function tnRenderRoster() {
 
 	var submitBtn = document.getElementById('tn-register-submit');
 	if (submitBtn) submitBtn.addEventListener('click', tnSubmitRegister);
+})();
+
+// ============================================================
+// Per-registrant roster actions (Assign to brackets / Withdraw /
+// Reactivate / Remove). Buttons are emitted by tnRenderRoster()
+// via tnRegActionsHtml(r) so they survive a roster refresh.
+// Edit-alias is intentionally NOT offered here: a tournament-level
+// registrant has no single bracket_id, and the updatealias endpoint
+// is per-bracket (needs data-pid/data-bid). Alias edits remain on the
+// per-bracket participant lists. (Task 11)
+// ============================================================
+(function() {
+	var ASSIGN_OVERLAY = 'tn-assign-overlay';
+
+	// Find a registrant object in TnConfig.registrants by ParticipantNumber.
+	function regByPnum(pnum) {
+		pnum = parseInt(pnum, 10) || 0;
+		var regs = TnConfig.registrants || [];
+		for (var i = 0; i < regs.length; i++) {
+			if ((parseInt(regs[i].ParticipantNumber, 10) || 0) === pnum) return regs[i];
+		}
+		return null;
+	}
+
+	// Build the action-button HTML for one registrant row. Exposed globally so
+	// tnRenderRoster() can call it; also used by the on-load population pass for
+	// the server-rendered (empty) .tn-reg-actions cells.
+	window.tnRegActionsHtml = function(r) {
+		var pnum = parseInt(r.ParticipantNumber, 10) || 0;
+		var withdrawn = (r.Status === 'withdrawn');
+		var html = '<div class="tn-reg-actions" data-pnum="' + pnum + '">';
+		html += '<button type="button" class="tn-reg-act-btn" data-tip="Assign to brackets" '
+			+ 'onclick="tnOpenAssignModal(' + pnum + ')"><i class="fas fa-sitemap"></i></button>';
+		if (withdrawn) {
+			html += '<button type="button" class="tn-reg-act-btn tn-reg-act-reactivate" data-tip="Reactivate" '
+				+ 'onclick="tnToggleRegStatus(' + pnum + ', this)"><i class="fas fa-undo"></i></button>';
+		} else {
+			html += '<button type="button" class="tn-reg-act-btn tn-reg-act-wd" data-tip="Withdraw" '
+				+ 'onclick="tnToggleRegStatus(' + pnum + ', this)"><i class="fas fa-user-slash"></i></button>';
+		}
+		html += '<button type="button" class="tn-reg-act-btn tn-reg-act-danger" data-tip="Remove" '
+			+ 'onclick="tnRemoveRegistrant(' + pnum + ')"><i class="fas fa-trash"></i></button>';
+		html += '</div>';
+		return html;
+	};
+
+	// Populate the server-rendered (initially empty) .tn-reg-actions cells once on
+	// load. After this, refreshes go through tnRenderRoster() which emits buttons.
+	function populateInitialActions() {
+		document.querySelectorAll('#tn-roster-table-wrap .tn-reg-actions').forEach(function(cell) {
+			if (cell.children.length) return; // already populated
+			var r = regByPnum(cell.getAttribute('data-pnum'));
+			if (!r) return;
+			cell.outerHTML = window.tnRegActionsHtml(r);
+		});
+	}
+	if (document.readyState === 'loading') {
+		document.addEventListener('DOMContentLoaded', populateInitialActions);
+	} else {
+		populateInitialActions();
+	}
+
+	// Re-fetch the roster from the server, update TnConfig, re-render. Returns a
+	// promise so callers can chain UI updates (close modal, etc.).
+	function refreshRoster() {
+		return fetch(TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/registrants')
+			.then(function(r) { return r.json(); })
+			.then(function(rd) {
+				if (rd && rd.status === 0) {
+					TnConfig.registrants = rd.registrants || [];
+					tnRenderRoster();
+				}
+				return rd;
+			});
+	}
+
+	// ---- Assign to brackets modal ----
+	var _assignPnum = 0;
+
+	window.tnOpenAssignModal = function(pnum) {
+		_assignPnum = parseInt(pnum, 10) || 0;
+		var r = regByPnum(_assignPnum);
+		if (!r) return;
+		tnHideFeedback('tn-assign-feedback');
+
+		var sub = document.getElementById('tn-assign-subtitle');
+		if (sub) sub.innerHTML = 'Assigning <strong>' + tnEsc(r.Alias || ('#' + _assignPnum)) + '</strong> to brackets.';
+
+		// Set of bracket ids this registrant is currently in.
+		var current = {};
+		(r.Brackets || []).forEach(function(b) { current[parseInt(b.BracketId, 10) || 0] = true; });
+
+		var styleLabels = TnConfig.styleLabels || {};
+		var bd = TnConfig.bracketData || {};
+		var rows = '';
+		Object.keys(bd).forEach(function(key) {
+			var br = (bd[key] && bd[key].Bracket) ? bd[key].Bracket : null;
+			if (!br) return;
+			var bid    = parseInt(br.BracketId, 10) || 0;
+			var status = br.Status || 'setup';
+			var isTeam = (br.Participants === 'team');
+			var label  = styleLabels[br.Style] || br.Style || ('Bracket #' + bid);
+			var checked = !!current[bid];
+
+			// Team brackets are shown DISABLED (assignment here is individual-only).
+			// Non-setup individual brackets are shown DISABLED (participants locked).
+			var disabled = isTeam || (status !== 'setup');
+			var tip = '';
+			var meta = '';
+			if (isTeam) {
+				tip = 'Assignment is for individual brackets.';
+				meta = '<span class="tn-assign-meta">Team</span>';
+			} else if (status !== 'setup') {
+				tip = 'Bracket has started — participants are locked.';
+				meta = '<span class="tn-assign-meta tn-assign-meta-locked">' + tnEsc(status) + '</span>';
+			} else {
+				meta = '<span class="tn-assign-meta">Setup</span>';
+			}
+
+			rows += '<div class="tn-assign-row' + (disabled ? ' tn-assign-disabled' : '') + '"'
+				+ (tip ? ' data-tip="' + tnEsc(tip) + '"' : '') + '>'
+				+ '<input type="checkbox" id="tn-assign-cb-' + bid + '" data-bid="' + bid + '" '
+				+ 'data-was="' + (checked ? '1' : '0') + '"'
+				+ (checked ? ' checked' : '') + (disabled ? ' disabled' : '') + '>'
+				+ '<label for="tn-assign-cb-' + bid + '">' + tnEsc(label) + '</label>'
+				+ meta
+				+ '</div>';
+		});
+
+		var list = document.getElementById('tn-assign-list');
+		if (list) list.innerHTML = rows || '<div class="tn-assign-empty">No brackets in this tournament yet.</div>';
+
+		tnOpenModal(ASSIGN_OVERLAY);
+	};
+
+	window.tnSubmitAssign = function() {
+		var btn = document.getElementById('tn-assign-submit');
+		var pnum = _assignPnum;
+		var list = document.getElementById('tn-assign-list');
+		if (!list) return;
+
+		// Diff checked-vs-was over enabled (setup individual) checkboxes only.
+		var toAssign = [], toUnassign = [];
+		list.querySelectorAll('input[type=checkbox]').forEach(function(cb) {
+			if (cb.disabled) return;
+			var bid = parseInt(cb.getAttribute('data-bid'), 10) || 0;
+			var was = cb.getAttribute('data-was') === '1';
+			if (cb.checked && !was) toAssign.push(bid);
+			else if (!cb.checked && was) toUnassign.push(bid);
+		});
+
+		if (!toAssign.length && !toUnassign.length) {
+			tnCloseModal(ASSIGN_OVERLAY);
+			return;
+		}
+
+		btn.disabled = true;
+
+		function callBracket(action, bid) {
+			var fd = new FormData();
+			fd.append('TournamentId', TnConfig.tournamentId);
+			fd.append('ParticipantNumbers', JSON.stringify([pnum]));
+			return fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bid + '/' + action, { method: 'POST', body: fd })
+				.then(function(res) { return res.json(); })
+				.then(function(d) { return { bid: bid, action: action, d: d }; });
+		}
+
+		var ops = [];
+		toAssign.forEach(function(bid)   { ops.push(['assign', bid]); });
+		toUnassign.forEach(function(bid) { ops.push(['unassign', bid]); });
+
+		// Run sequentially so one failure doesn't race the others.
+		var errors = [];
+		var chain = Promise.resolve();
+		ops.forEach(function(op) {
+			chain = chain.then(function() {
+				return callBracket(op[0], op[1]).then(function(r) {
+					if (!r.d || r.d.status !== 0) {
+						errors.push((r.d && r.d.error) ? r.d.error : ('Failed to ' + r.action + ' bracket #' + r.bid));
+					}
+				});
+			});
+		});
+
+		chain.then(function() {
+			return refreshRoster();
+		}).then(function() {
+			btn.disabled = false;
+			if (errors.length) {
+				tnShowFeedback('tn-assign-feedback', errors.join(' '), false);
+			} else {
+				tnCloseModal(ASSIGN_OVERLAY);
+			}
+		}).catch(function(err) {
+			console.error('[Assign] failed:', err);
+			btn.disabled = false;
+			tnShowFeedback('tn-assign-feedback', 'Request failed. Please try again.', false);
+		});
+	};
+
+	['tn-assign-close', 'tn-assign-cancel'].forEach(function(id) {
+		var el = document.getElementById(id);
+		if (el) el.addEventListener('click', function() { tnCloseModal(ASSIGN_OVERLAY); });
+	});
+	var assignOv = document.getElementById(ASSIGN_OVERLAY);
+	if (assignOv) assignOv.addEventListener('click', function(e) { if (e.target === assignOv) tnCloseModal(ASSIGN_OVERLAY); });
+	var assignSubmit = document.getElementById('tn-assign-submit');
+	if (assignSubmit) assignSubmit.addEventListener('click', tnSubmitAssign);
+
+	// ---- Withdraw / Reactivate toggle ----
+	window.tnToggleRegStatus = function(pnum, btn) {
+		var r = regByPnum(pnum);
+		if (!r) return;
+		var newStatus = (r.Status === 'withdrawn') ? 'active' : 'withdrawn';
+		if (btn) btn.disabled = true;
+		var fd = new FormData();
+		fd.append('ParticipantNumber', pnum);
+		fd.append('Status', newStatus);
+		fetch(TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/registrationstatus', { method: 'POST', body: fd })
+			.then(function(res) { return res.json(); })
+			.then(function(d) {
+				if (d && d.status === 0) {
+					r.Status = newStatus;
+					tnRenderRoster();
+				} else {
+					if (btn) btn.disabled = false;
+					console.error('[RegStatus] server error:', d);
+				}
+			})
+			.catch(function(err) {
+				if (btn) btn.disabled = false;
+				console.error('[RegStatus] fetch failed:', err);
+			});
+	};
+
+	// ---- Remove registrant ----
+	window.tnRemoveRegistrant = function(pnum) {
+		var r = regByPnum(pnum);
+		if (!r) return;
+		var name = r.Alias || ('participant #' + pnum);
+		tnConfirm({
+			danger: true,
+			title: 'Remove registrant',
+			body: 'Remove <strong>' + tnEsc(name) + '</strong> from this tournament? This also removes them from any setup brackets they are in.',
+			confirmLabel: 'Remove',
+			cancelLabel: 'Cancel',
+			onConfirm: function() {
+				var fd = new FormData();
+				fd.append('ParticipantNumber', pnum);
+				fetch(TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/removeregistrant', { method: 'POST', body: fd })
+					.then(function(res) { return res.json(); })
+					.then(function(d) {
+						if (d && d.status === 0) {
+							TnConfig.registrants = (TnConfig.registrants || []).filter(function(x) {
+								return (parseInt(x.ParticipantNumber, 10) || 0) !== (parseInt(pnum, 10) || 0);
+							});
+							tnRenderRoster();
+						} else {
+							// Surface server error (e.g. in a started bracket) without removing.
+							tnConfirm({
+								title: 'Cannot remove',
+								body: tnEsc((d && d.error) ? d.error : 'This participant could not be removed.'),
+								confirmLabel: 'OK',
+								cancelLabel: 'Close'
+							});
+						}
+					})
+					.catch(function(err) {
+						console.error('[RemoveRegistrant] fetch failed:', err);
+						tnConfirm({ title: 'Error', body: 'Request failed. Please try again.', confirmLabel: 'OK', cancelLabel: 'Close' });
+					});
+			}
+		});
+	};
 })();
 <?php endif; ?>
 
