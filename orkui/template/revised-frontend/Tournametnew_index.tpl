@@ -11801,6 +11801,9 @@ window.tnEditAlias = function(btn){
 				// Close the menu
 				var menuWrap = menuItemEl.closest('.tn-status-menu');
 				if (menuWrap) menuWrap.classList.remove('tn-status-open');
+
+				// Reflect bracket changes (walkover advancement / completion) immediately.
+				if (typeof window.tnRefreshAndRender === 'function') window.tnRefreshAndRender(bid);
 			} else {
 				alert((d && d.error) ? d.error : 'Failed to update status.');
 			}
