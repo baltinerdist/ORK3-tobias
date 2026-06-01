@@ -994,6 +994,105 @@ class Tournament extends Ork3 {
 	}
 
 	/**
+	 * Bulk-assign tournament registrants to a bracket. Each registrant is identified
+	 * by its tournament-stable participant_number; for each one not already in the
+	 * bracket, clone the registration row into a per-bracket entrant row (carrying the
+	 * warrior_level snapshot) and copy its individual player link. Allowed only while
+	 * the bracket is in 'setup'. Teams are not handled here (team brackets use their
+	 * own per-bracket roster flow).
+	 */
+	public function AssignToBracket($request) {
+		if (!$this->check_auth($request)) return NoAuthorization();
+		$tid  = (int)($request['TournamentId'] ?? 0);
+		$bid  = (int)($request['BracketId'] ?? 0);
+		$nums = $request['ParticipantNumbers'] ?? [];
+		if (!valid_id($tid) || !valid_id($bid)) return InvalidParameter('TournamentId and BracketId required');
+		if (!is_array($nums) || empty($nums)) return InvalidParameter('ParticipantNumbers required');
+
+		$b = $this->db->query("SELECT tournament_id, status FROM " . DB_PREFIX . "bracket WHERE bracket_id = $bid LIMIT 1");
+		if (!$b || !$b->next() || (int)$b->tournament_id !== $tid) return InvalidParameter('Bracket does not belong to this tournament.');
+		if ($b->status !== 'setup') return InvalidParameter('Participants can only be assigned while the bracket is in setup.');
+
+		$assigned = [];
+		$this->db->query('START TRANSACTION');
+		try {
+			foreach ($nums as $num) {
+				$num = (int)$num;
+				if ($num <= 0) continue;
+				// Skip if already in this bracket.
+				$ex = $this->db->query("SELECT participant_id FROM " . DB_PREFIX . "participant WHERE tournament_id = $tid AND bracket_id = $bid AND participant_number = $num LIMIT 1");
+				if ($ex && $ex->next() && valid_id($ex->participant_id)) continue;
+				// Source = registration row (bracket_id IS NULL preferred) for this number.
+				$src = $this->db->query("SELECT participant_id FROM " . DB_PREFIX . "participant WHERE tournament_id = $tid AND participant_number = $num ORDER BY (bracket_id IS NOT NULL) ASC LIMIT 1");
+				if (!$src || !$src->next() || !valid_id($src->participant_id)) continue;
+				$srcId = (int)$src->participant_id;
+				// Clone into the bracket (carry warrior_level snapshot).
+				$this->db->query(
+					"INSERT INTO " . DB_PREFIX . "participant (tournament_id, bracket_id, alias, unit_id, park_id, kingdom_id, participant_number, warrior_level)
+					 SELECT tournament_id, $bid, alias, unit_id, park_id, kingdom_id, participant_number, warrior_level
+					 FROM " . DB_PREFIX . "participant WHERE participant_id = $srcId"
+				);
+				$newPid = (int)$this->db->GetLastInsertId();
+				if (!valid_id($newPid)) { $this->db->query('ROLLBACK'); return InvalidParameter('Assignment failed.'); }
+				// Copy the individual player link (mundane). Team rosters are not handled here.
+				$this->db->query(
+					"INSERT INTO " . DB_PREFIX . "participant_mundane (participant_id, mundane_id, tournament_id, bracket_id)
+					 SELECT $newPid, mundane_id, $tid, $bid FROM " . DB_PREFIX . "participant_mundane WHERE participant_id = $srcId"
+				);
+				$assigned[] = ['ParticipantNumber' => $num, 'ParticipantId' => $newPid];
+			}
+			$this->db->query('COMMIT');
+		} catch (\Throwable $e) {
+			$this->db->query('ROLLBACK');
+			throw $e;
+		}
+		$this->bustTournamentReportCache();
+		return Success(['Assigned' => $assigned]);
+	}
+
+	/**
+	 * Bulk-remove registrants from a bracket by participant_number. Deletes the
+	 * per-bracket entrant rows (and their player links / team rows) but leaves the
+	 * tournament-level registration row intact. Allowed only while the bracket is
+	 * in 'setup'.
+	 */
+	public function UnassignFromBracket($request) {
+		if (!$this->check_auth($request)) return NoAuthorization();
+		$tid  = (int)($request['TournamentId'] ?? 0);
+		$bid  = (int)($request['BracketId'] ?? 0);
+		$nums = $request['ParticipantNumbers'] ?? [];
+		if (!valid_id($tid) || !valid_id($bid)) return InvalidParameter('TournamentId and BracketId required');
+		if (!is_array($nums) || empty($nums)) return InvalidParameter('ParticipantNumbers required');
+
+		$b = $this->db->query("SELECT tournament_id, status FROM " . DB_PREFIX . "bracket WHERE bracket_id = $bid LIMIT 1");
+		if (!$b || !$b->next() || (int)$b->tournament_id !== $tid) return InvalidParameter('Bracket does not belong to this tournament.');
+		if ($b->status !== 'setup') return InvalidParameter('Participants can only be removed while the bracket is in setup.');
+
+		$this->db->query('START TRANSACTION');
+		try {
+			foreach ($nums as $num) {
+				$num = (int)$num;
+				if ($num <= 0) continue;
+				$pids = [];
+				$rows = $this->db->query("SELECT participant_id FROM " . DB_PREFIX . "participant WHERE tournament_id = $tid AND bracket_id = $bid AND participant_number = $num");
+				if ($rows && $rows->size() > 0) { while ($rows->next()) $pids[] = (int)$rows->participant_id; }
+				foreach ($pids as $pid) {
+					if (!valid_id($pid)) continue;
+					$this->deleteTeamRows('participant_id', $pid);
+					$this->db->query("DELETE FROM " . DB_PREFIX . "participant_mundane WHERE participant_id = $pid");
+					$this->db->query("DELETE FROM " . DB_PREFIX . "participant WHERE participant_id = $pid AND tournament_id = $tid");
+				}
+			}
+			$this->db->query('COMMIT');
+		} catch (\Throwable $e) {
+			$this->db->query('ROLLBACK');
+			throw $e;
+		}
+		$this->bustTournamentReportCache();
+		return Success(true);
+	}
+
+	/**
 	 * Tournament-level registration (individual). Creates the registration row
 	 * (bracket_id IS NULL) via ensureRegistrant; re-registering the same person
 	 * reuses the existing registration rather than creating a duplicate.
