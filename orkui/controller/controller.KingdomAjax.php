@@ -797,8 +797,9 @@ class Controller_KingdomAjax extends Controller {
 		}
 
 		$q                = trim($_GET['q']               ?? '');
-		$scope            = trim($_GET['scope']           ?? 'own'); // 'own' | 'exclude'
+		$scope            = trim($_GET['scope']           ?? 'own'); // 'own' | 'exclude' | 'all' | 'tiered'
 		$park_id          = (int)($_GET['park_id']        ?? 0);
+		$tier_park        = (int)($_GET['ParkId']         ?? 0); // tiered-scope park ranking
 		$include_inactive  = !empty($_GET['include_inactive']);
 		$include_suspended = !empty($_GET['include_suspended']);
 		if (strlen($q) < 2) {
@@ -840,12 +841,21 @@ class Controller_KingdomAjax extends Controller {
 		} elseif ($scope === 'all') {
 			$kingdom_clause = '';
 			$park_clause    = '';
+		} elseif ($scope === 'tiered') {
+			// Non-exclusionary: include every kingdom, but rank by proximity to the
+			// event (same-park first when supplied, then same-kingdom, then everyone).
+			$kingdom_clause = '';
+			$park_clause    = '';
 		} else {
 			// Own-kingdom scope ALWAYS includes child principalities (family), not toggle-gated.
 			$familyIds      = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetFamilyKingdomIds($kid)));
 			$kingdom_clause = "AND m.kingdom_id IN ({$familyIds})";
 			$park_clause    = valid_id($park_id) ? "AND m.park_id = {$park_id}" : '';
 		}
+
+		$park_tier_order = ($scope === 'tiered' && $tier_park > 0)
+			? "CASE WHEN m.park_id = {$tier_park} THEN 0 ELSE 1 END, "
+			: '';
 
 		$sql = "
 			SELECT m.mundane_id, m.persona, p.park_id, k.kingdom_id,
@@ -864,7 +874,7 @@ class Controller_KingdomAjax extends Controller {
 			    OR m.given_name LIKE '%{$term}%'
 			    OR m.surname LIKE '%{$term}%'
 			    OR m.username LIKE '%{$term}%')
-			ORDER BY m.suspended ASC, m.active DESC, CASE WHEN m.kingdom_id = {$kid} THEN 0 ELSE 1 END, m.persona
+			ORDER BY m.suspended ASC, m.active DESC, {$park_tier_order}CASE WHEN m.kingdom_id = {$kid} THEN 0 ELSE 1 END, m.persona
 			LIMIT 15";
 
 		$DB->Clear();
