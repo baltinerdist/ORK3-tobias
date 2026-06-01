@@ -1408,6 +1408,101 @@ class Tournament extends Ork3 {
 		return Success(true);
 	}
 
+	public function UpdateTeam($request) {
+		if (!$this->check_auth($request)) return NoAuthorization();
+		$tid  = (int)($request['TournamentId'] ?? 0);
+		$num  = (int)($request['TeamNumber'] ?? 0);
+		$name = trim($request['Name'] ?? '');
+		$members = is_array($request['Members'] ?? null) ? $request['Members'] : [];
+		if (!valid_id($tid) || $num <= 0) return InvalidParameter('TournamentId and TeamNumber required');
+		if ($name === '') return InvalidParameter('Team name required');
+		// Roster edits blocked when the team is in a non-setup bracket; rename always allowed.
+		$lock = $this->db->query(
+			"SELECT COUNT(*) AS c FROM " . DB_PREFIX . "participant_teams pt
+			 JOIN " . DB_PREFIX . "bracket b ON b.bracket_id = pt.bracket_id
+			 WHERE pt.tournament_id = $tid AND pt.team_number = $num AND b.status <> 'setup'"
+		);
+		$locked = ($lock && $lock->next() && (int)$lock->c > 0);
+		$this->db->query('START TRANSACTION');
+		try {
+			if ($locked) {
+				$this->db->query("UPDATE " . DB_PREFIX . "participant_teams SET name = :n WHERE tournament_id = :t AND team_number = :num", [':n' => $name, ':t' => $tid, ':num' => $num]);
+				$this->db->query(
+					"UPDATE " . DB_PREFIX . "participant p
+					 JOIN " . DB_PREFIX . "participant_teams pt ON pt.participant_id = p.participant_id
+					 SET p.alias = :n WHERE pt.tournament_id = :t AND pt.team_number = :num",
+					[':n' => $name, ':t' => $tid, ':num' => $num]
+				);
+				$this->db->query('COMMIT');
+				$this->bustTournamentReportCache();
+				return Success(['TeamNumber' => $num, 'RosterLocked' => true]);
+			}
+			// Not locked: re-run ensureTeam (updates name + replaces registration roster).
+			$this->ensureTeam($tid, ['Name' => $name, 'Members' => $members, 'TeamNumber' => $num]);
+			// Propagate name + roster to setup-bracket entrant team rows for this number.
+			$setupRows = $this->db->query(
+				"SELECT pt.team_id, pt.participant_id, pt.bracket_id FROM " . DB_PREFIX . "participant_teams pt
+				 JOIN " . DB_PREFIX . "bracket b ON b.bracket_id = pt.bracket_id
+				 WHERE pt.tournament_id = $tid AND pt.team_number = $num AND b.status = 'setup'"
+			);
+			$targets = [];
+			if ($setupRows && $setupRows->size() > 0) { while ($setupRows->next()) $targets[] = [(int)$setupRows->team_id, (int)$setupRows->participant_id, (int)$setupRows->bracket_id]; }
+			$srcMids = [];
+			foreach ($members as $m) { $mid = (int)($m['MundaneId'] ?? 0); if (valid_id($mid)) $srcMids[] = $mid; }
+			foreach ($targets as $tg) {
+				list($teamId, $pid, $bid) = $tg;
+				$this->db->query("UPDATE " . DB_PREFIX . "participant SET alias = :n WHERE participant_id = :p", [':n' => $name, ':p' => $pid]);
+				$this->db->query("UPDATE " . DB_PREFIX . "participant_teams SET name = :n WHERE team_id = :t", [':n' => $name, ':t' => $teamId]);
+				$this->db->query("DELETE FROM " . DB_PREFIX . "participant_team_members WHERE team_id = $teamId");
+				$this->db->query("DELETE FROM " . DB_PREFIX . "participant_mundane WHERE participant_id = $pid");
+				foreach ($srcMids as $mid) {
+					$this->db->query("INSERT IGNORE INTO " . DB_PREFIX . "participant_team_members (team_id, mundane_id, tournament_id) VALUES (:t,:m,:tid)", [':t' => $teamId, ':m' => $mid, ':tid' => $tid]);
+					$this->Player->clear();
+					$this->Player->participant_id = $pid; $this->Player->mundane_id = $mid;
+					$this->Player->tournament_id = $tid; $this->Player->bracket_id = $bid;
+					$this->Player->save();
+				}
+			}
+			$this->db->query('COMMIT');
+		} catch (\Throwable $e) { $this->db->query('ROLLBACK'); throw $e; }
+		$this->bustTournamentReportCache();
+		return Success(['TeamNumber' => $num, 'RosterLocked' => false]);
+	}
+
+	public function RemoveRegisteredTeam($request) {
+		if (!$this->check_auth($request)) return NoAuthorization();
+		$tid = (int)($request['TournamentId'] ?? 0);
+		$num = (int)($request['TeamNumber'] ?? 0);
+		if (!valid_id($tid) || $num <= 0) return InvalidParameter('TournamentId and TeamNumber required');
+		// Block if in any non-setup bracket.
+		$lock = $this->db->query(
+			"SELECT COUNT(*) AS c FROM " . DB_PREFIX . "participant_teams pt
+			 JOIN " . DB_PREFIX . "bracket b ON b.bracket_id = pt.bracket_id
+			 WHERE pt.tournament_id = $tid AND pt.team_number = $num AND b.status <> 'setup'"
+		);
+		if ($lock && $lock->next() && (int)$lock->c > 0) {
+			return InvalidParameter('This team is in a bracket that has started. Remove it from that bracket first.');
+		}
+		$this->db->query('START TRANSACTION');
+		try {
+			$rows = $this->db->query("SELECT team_id, participant_id FROM " . DB_PREFIX . "participant_teams WHERE tournament_id=$tid AND team_number=$num");
+			$pairs = [];
+			if ($rows && $rows->size() > 0) { while ($rows->next()) $pairs[] = [(int)$rows->team_id, (int)$rows->participant_id]; }
+			foreach ($pairs as $pr) {
+				list($teamId, $pid) = $pr;
+				$this->db->query("DELETE FROM " . DB_PREFIX . "participant_team_members WHERE team_id = $teamId");
+				$this->db->query("DELETE FROM " . DB_PREFIX . "participant_teams WHERE team_id = $teamId");
+				if (valid_id($pid)) {
+					$this->db->query("DELETE FROM " . DB_PREFIX . "participant_mundane WHERE participant_id = $pid");
+					$this->db->query("DELETE FROM " . DB_PREFIX . "participant WHERE participant_id = $pid AND tournament_id = $tid");
+				}
+			}
+			$this->db->query('COMMIT');
+		} catch (\Throwable $e) { $this->db->query('ROLLBACK'); throw $e; }
+		$this->bustTournamentReportCache();
+		return Success(true);
+	}
+
 	/**
 	 * Tournament-level registration (individual). Creates the registration row
 	 * (bracket_id IS NULL) via ensureRegistrant; re-registering the same person
