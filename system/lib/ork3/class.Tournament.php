@@ -993,6 +993,99 @@ class Tournament extends Ork3 {
 		return Success($participant_id);
 	}
 
+	/**
+	 * Tournament-level registration (individual). Creates the registration row
+	 * (bracket_id IS NULL) via ensureRegistrant; re-registering the same person
+	 * reuses the existing registration rather than creating a duplicate.
+	 */
+	public function RegisterParticipant($request) {
+		if (!$this->check_auth($request)) return NoAuthorization();
+		$tid = (int)($request['TournamentId'] ?? 0);
+		if (!valid_id($tid)) return InvalidParameter('TournamentId required');
+		$hasAlias   = strlen(trim($request['Alias'] ?? '')) > 0;
+		$hasMundane = valid_id($request['MundaneId'] ?? 0);
+		if (!$hasAlias && !$hasMundane) return InvalidParameter('Registration requires an Alias or MundaneId');
+		$this->db->query('START TRANSACTION');
+		try {
+			$reg = $this->ensureRegistrant($tid, [
+				'MundaneId' => (int)($request['MundaneId'] ?? 0),
+				'Alias'     => $request['Alias'] ?? '',
+				'UnitId'    => (int)($request['UnitId'] ?? 0),
+				'ParkId'    => (int)($request['ParkId'] ?? 0),
+				'KingdomId' => (int)($request['KingdomId'] ?? 0),
+			]);
+			$this->db->query('COMMIT');
+		} catch (\Throwable $e) {
+			$this->db->query('ROLLBACK');
+			throw $e;
+		}
+		$this->bustTournamentReportCache();
+		return Success($reg);
+	}
+
+	/**
+	 * Set a registrant's status to 'active' or 'withdrawn'. Updates every
+	 * participant row (registration + any bracket rows) sharing the number.
+	 */
+	public function UpdateRegistrationStatus($request) {
+		if (!$this->check_auth($request)) return NoAuthorization();
+		$tid    = (int)($request['TournamentId'] ?? 0);
+		$num    = (int)($request['ParticipantNumber'] ?? 0);
+		$status = $request['Status'] ?? '';
+		if (!valid_id($tid) || $num <= 0) return InvalidParameter('TournamentId and ParticipantNumber required');
+		if (!in_array($status, ['active', 'withdrawn'], true)) return InvalidParameter('Invalid status');
+		$this->db->query(
+			"UPDATE " . DB_PREFIX . "participant SET status = :s WHERE tournament_id = :t AND participant_number = :n",
+			[':s' => $status, ':t' => $tid, ':n' => $num]
+		);
+		$this->bustTournamentReportCache();
+		return Success(true);
+	}
+
+	/**
+	 * Remove a registrant entirely (registration row plus any bracket rows
+	 * sharing the participant_number). Blocked if the person is in any bracket
+	 * that has left 'setup' (active/complete/finalized) -- they must be removed
+	 * from that bracket first. Mirrors RemoveParticipant's multi-table cleanup
+	 * (deleteTeamRows + participant_mundane + participant) for each row.
+	 */
+	public function RemoveRegistrant($request) {
+		if (!$this->check_auth($request)) return NoAuthorization();
+		$tid = (int)($request['TournamentId'] ?? 0);
+		$num = (int)($request['ParticipantNumber'] ?? 0);
+		if (!valid_id($tid) || $num <= 0) return InvalidParameter('TournamentId and ParticipantNumber required');
+
+		// Block if the person is in any non-setup bracket.
+		$lock = $this->db->query(
+			"SELECT COUNT(*) AS c FROM " . DB_PREFIX . "participant p
+			 JOIN " . DB_PREFIX . "bracket b ON b.bracket_id = p.bracket_id
+			 WHERE p.tournament_id = $tid AND p.participant_number = $num AND b.status <> 'setup'"
+		);
+		if ($lock && $lock->next() && (int)$lock->c > 0) {
+			return InvalidParameter('This participant is in a bracket that has started. Remove them from that bracket first.');
+		}
+
+		$this->db->query('START TRANSACTION');
+		try {
+			$pids = [];
+			$rows = $this->db->query("SELECT participant_id FROM " . DB_PREFIX . "participant WHERE tournament_id = $tid AND participant_number = $num");
+			if ($rows && $rows->size() > 0) { while ($rows->next()) $pids[] = (int)$rows->participant_id; }
+			foreach ($pids as $pid) {
+				if (!valid_id($pid)) continue;
+				// Mirror RemoveParticipant cleanup for each row sharing this number.
+				$this->deleteTeamRows('participant_id', $pid);
+				$this->db->query("DELETE FROM " . DB_PREFIX . "participant_mundane WHERE participant_id = $pid");
+				$this->db->query("DELETE FROM " . DB_PREFIX . "participant WHERE participant_id = $pid AND tournament_id = $tid");
+			}
+			$this->db->query('COMMIT');
+		} catch (\Throwable $e) {
+			$this->db->query('ROLLBACK');
+			throw $e;
+		}
+		$this->bustTournamentReportCache();
+		return Success(true);
+	}
+
 
 	public function DeleteTournament($request) {
 		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
