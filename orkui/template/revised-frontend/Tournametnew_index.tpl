@@ -6450,13 +6450,16 @@ function tnFixedAcPosition(inputEl, dropdownEl) {
 			if (term.length < 2) { tnAcClose(); return; }
 			playerTimer = setTimeout(function() {
 				if (TnConfig.kingdomId > 0) {
-					// Kingdom-scoped search (same endpoint as award modals)
-					var url = TnConfig.uir + 'KingdomAjax/playersearch/' + TnConfig.kingdomId + '&q=' + encodeURIComponent(term);
+					// Tiered, non-exclusionary search: same-park -> same-kingdom -> everyone.
+					var url = TnConfig.uir + 'KingdomAjax/playersearch/' + TnConfig.kingdomId
+						+ '&scope=tiered'
+						+ (TnConfig.parkId > 0 ? '&ParkId=' + TnConfig.parkId : '')
+						+ '&q=' + encodeURIComponent(term);
 					fetch(url)
 						.then(function(r) { return r.json(); })
 						.then(function(data) { tnAcRender(data); })
 						.catch(function(err) {
-							console.error('[AddParticipant] kingdom search failed:', err);
+							console.error('[AddParticipant] tiered search failed:', err);
 							tnAcClose();
 						});
 				} else {
