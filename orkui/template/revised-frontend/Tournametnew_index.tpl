@@ -435,6 +435,22 @@ html[data-theme="dark"] .tn-alias-input { background:#1a202c; color:#e2e8f0; bor
 .tn-assign-meta { font-size:11px; font-weight:600; color:#a0aec0; text-transform:uppercase; letter-spacing:0.4px; }
 .tn-assign-meta.tn-assign-meta-locked { color:#c05621; }
 .tn-assign-empty { color:#a0aec0; font-size:13px; font-style:italic; padding:8px 2px; }
+/* Assign Participants (bulk) modal */
+.tn-assignparts-filter { flex:1; min-width:0; padding:7px 10px; border:1px solid #cbd5e0; border-radius:6px; font-size:13px; color:#2d3748; background:#fff; }
+.tn-assignparts-filter::placeholder { color:#a0aec0; }
+.tn-assignparts-filter:focus { outline:none; border-color:#276749; box-shadow:0 0 0 2px rgba(39,103,73,0.15); }
+.tn-assignparts-list { display:flex; flex-direction:column; gap:2px; max-height:360px; overflow-y:auto; }
+.tn-assignparts-row { display:flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid #edf2f7; border-radius:8px; background:#fff; cursor:pointer; }
+.tn-assignparts-row:hover { background:#f7fafc; }
+.tn-assignparts-row.tn-assignparts-hidden { display:none; }
+.tn-assignparts-row input[type=checkbox] { width:16px; height:16px; flex-shrink:0; accent-color:#276749; cursor:pointer; }
+.tn-assignparts-main { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+.tn-assignparts-alias { font-size:13px; font-weight:600; color:#2d3748; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.tn-assignparts-sub { font-size:11px; color:#718096; }
+.tn-assignparts-row.tn-assignparts-wd { opacity:0.6; }
+.tn-assignparts-row.tn-assignparts-wd .tn-assignparts-alias { text-decoration:line-through; color:#d69e2e; }
+.tn-assignparts-empty { color:#a0aec0; font-size:13px; font-style:italic; padding:12px 4px; text-align:center; }
+.tn-assignparts-empty a { color:#276749; font-weight:600; cursor:pointer; text-decoration:underline; font-style:normal; }
 
 /* Modals */
 .tn-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:1100; opacity:0; pointer-events:none; transition:opacity 0.2s; }
@@ -1235,6 +1251,16 @@ html[data-theme="dark"] .tn-assign-row label { color:#e2e8f0; }
 html[data-theme="dark"] .tn-assign-meta { color:#718096; }
 html[data-theme="dark"] .tn-assign-meta.tn-assign-meta-locked { color:#f6ad55; }
 html[data-theme="dark"] .tn-assign-empty { color:#718096; }
+html[data-theme="dark"] .tn-assignparts-filter { background:#2d3748; border-color:#3a4658; color:#e2e8f0; }
+html[data-theme="dark"] .tn-assignparts-filter::placeholder { color:#718096; }
+html[data-theme="dark"] .tn-assignparts-filter:focus { border-color:#48bb78; box-shadow:0 0 0 2px rgba(72,187,120,0.2); }
+html[data-theme="dark"] .tn-assignparts-row { background:#2d3748; border-color:#3a4658; }
+html[data-theme="dark"] .tn-assignparts-row:hover { background:#323d4f; }
+html[data-theme="dark"] .tn-assignparts-alias { color:#e2e8f0; }
+html[data-theme="dark"] .tn-assignparts-sub { color:#a0aec0; }
+html[data-theme="dark"] .tn-assignparts-row.tn-assignparts-wd .tn-assignparts-alias { color:#f6ad55; }
+html[data-theme="dark"] .tn-assignparts-empty { color:#718096; }
+html[data-theme="dark"] .tn-assignparts-empty a { color:#48bb78; }
 /* Team UI */
 html[data-theme="dark"] .tn-pill-team-wl { background:#44337a; color:#e9d8fd; border-color:#805ad5; }
 html[data-theme="dark"] .tn-team-roster-btn { color:#9ae6b4; }
@@ -2384,6 +2410,15 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 								<button class="tn-btn tn-btn-outline tn-btn-sm" onclick="tnOpenBulkAddModal(<?= $bid ?>, <?= $tid ?>)" data-tip="Paste a list of aliases, one per line">
 									<i class="fas fa-clipboard-list"></i> Paste Roster
 								</button>
+								<?php if ($b['Status'] === 'setup'): ?>
+								<button class="tn-btn tn-btn-outline tn-btn-sm" onclick="tnOpenAssignParticipantsModal(<?= $bid ?>)" data-tip="Assign registered participants to this bracket">
+									<i class="fas fa-user-check"></i> Assign Participants
+								</button>
+								<?php else: ?>
+								<button class="tn-btn tn-btn-outline tn-btn-sm" disabled data-tip="Participants are locked once the bracket starts.">
+									<i class="fas fa-user-check"></i> Assign Participants
+								</button>
+								<?php endif; ?>
 								<?php endif; ?>
 								<?php if (count($pList) >= 2 && !in_array($b['Status'], ['complete', 'finalized'])): ?>
 								<?php $_isRegen = $b['Status'] === 'active' && count($mList) > 0; ?>
@@ -3249,6 +3284,34 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 		<div class="tn-modal-footer">
 			<button class="tn-btn tn-btn-ghost" id="tn-assign-cancel">Cancel</button>
 			<button class="tn-btn tn-btn-primary" id="tn-assign-submit">
+				<i class="fas fa-check"></i> Save
+			</button>
+		</div>
+	</div>
+</div>
+
+<!-- =============================================
+     Assign Participants (bulk) Modal — bracket-level
+     ============================================= -->
+<div class="tn-overlay" id="tn-assignparts-overlay">
+	<div class="tn-modal-box" style="width:520px;max-width:calc(100vw - 40px)">
+		<div class="tn-modal-header">
+			<h3 class="tn-modal-title"><i class="fas fa-user-check" style="margin-right:8px;color:#276749"></i>Assign Participants</h3>
+			<button class="tn-modal-close" id="tn-assignparts-close">&times;</button>
+		</div>
+		<div class="tn-modal-body">
+			<div id="tn-assignparts-feedback" class="tn-feedback"></div>
+			<div id="tn-assignparts-subtitle" style="font-size:13px;color:#718096;margin-bottom:10px"></div>
+			<div id="tn-assignparts-controls" style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+				<input type="text" id="tn-assignparts-filter" class="tn-assignparts-filter" placeholder="Filter by alias or persona…" autocomplete="off">
+				<button type="button" class="tn-btn tn-btn-ghost tn-btn-sm" id="tn-assignparts-selectall">Select all</button>
+				<button type="button" class="tn-btn tn-btn-ghost tn-btn-sm" id="tn-assignparts-clear">Clear</button>
+			</div>
+			<div class="tn-assignparts-list" id="tn-assignparts-list"></div>
+		</div>
+		<div class="tn-modal-footer">
+			<button class="tn-btn tn-btn-ghost" id="tn-assignparts-cancel">Cancel</button>
+			<button class="tn-btn tn-btn-primary" id="tn-assignparts-submit">
 				<i class="fas fa-check"></i> Save
 			</button>
 		</div>
@@ -6819,6 +6882,194 @@ function tnRenderRoster() {
 			}
 		});
 	};
+})();
+<?php endif; ?>
+
+// ---- Assign Participants (bulk) Modal — bracket-level ----
+<?php if ($canManage): ?>
+(function() {
+	var OVERLAY = 'tn-assignparts-overlay';
+	var _bid = 0;
+
+	function el(id) { return document.getElementById(id); }
+
+	// Build warrior/award pills for a registrant (mirrors tnRenderRoster / tnParticipantPills).
+	function regPills(r) {
+		var pills = '';
+		var wc = parseInt(r.WarriorCount, 10) || 0;
+		if (wc > 0) {
+			pills += '<span class="tn-pill tn-pill-warrior" data-tip="Order of the Warrior x' + wc + '">' + Math.min(wc, 10) + '</span>';
+		}
+		if (r.IsWarlord) pills += '<span class="tn-pill tn-pill-warlord" data-tip="Warlord">W</span>';
+		if (r.IsKnightSword) pills += '<span class="tn-pill tn-pill-knight" data-tip="Knight of the Sword">K</span>';
+		return pills ? '<span style="display:inline-flex;gap:3px;vertical-align:middle">' + pills + '</span>' : '';
+	}
+
+	function rowMatches(row, term) {
+		if (!term) return true;
+		var hay = (row.getAttribute('data-search') || '');
+		return hay.indexOf(term) !== -1;
+	}
+
+	function applyFilter() {
+		var term = ((el('tn-assignparts-filter') || {}).value || '').trim().toLowerCase();
+		var list = el('tn-assignparts-list');
+		if (!list) return;
+		list.querySelectorAll('.tn-assignparts-row').forEach(function(row) {
+			if (rowMatches(row, term)) row.classList.remove('tn-assignparts-hidden');
+			else row.classList.add('tn-assignparts-hidden');
+		});
+	}
+
+	window.tnOpenAssignParticipantsModal = function(bid) {
+		_bid = parseInt(bid, 10) || 0;
+		tnHideFeedback('tn-assignparts-feedback');
+		var filter = el('tn-assignparts-filter');
+		if (filter) filter.value = '';
+
+		var br = (TnConfig.bracketData && TnConfig.bracketData[_bid] && TnConfig.bracketData[_bid].Bracket) ? TnConfig.bracketData[_bid].Bracket : null;
+		var styleLabels = TnConfig.styleLabels || {};
+		var label = br ? (styleLabels[br.Style] || br.Style || ('Bracket #' + _bid)) : ('Bracket #' + _bid);
+		var sub = el('tn-assignparts-subtitle');
+		if (sub) sub.innerHTML = 'Select participants for <strong>' + tnEsc(label) + '</strong>.';
+
+		var regs = TnConfig.registrants || [];
+		var list = el('tn-assignparts-list');
+		if (!list) return;
+
+		if (!regs.length) {
+			list.innerHTML = '<div class="tn-assignparts-empty">No participants registered yet. '
+				+ '<a onclick="tnActivateTab(\'participants\')">Register participants first</a>.</div>';
+			tnOpenModal(OVERLAY);
+			return;
+		}
+
+		var rows = '';
+		regs.forEach(function(r) {
+			var pnum = parseInt(r.ParticipantNumber, 10) || 0;
+			if (!pnum) return;
+			var withdrawn = (r.Status === 'withdrawn');
+			// Pre-check if this registrant is already in THIS bracket; withdrawn default unchecked.
+			var inBracket = false;
+			(r.Brackets || []).forEach(function(b) { if ((parseInt(b.BracketId, 10) || 0) === _bid) inBracket = true; });
+			var checked = inBracket && !withdrawn;
+
+			var alias = r.Alias || ('#' + pnum);
+			var persona = r.Persona || '';
+			var park = r.ParkName || '';
+			var subBits = [];
+			if (persona) subBits.push(tnEsc(persona));
+			if (park) subBits.push(tnEsc(park));
+			var subLine = subBits.join(' \u00b7 ');
+
+			var search = (alias + ' ' + persona + ' ' + park).toLowerCase();
+
+			rows += '<label class="tn-assignparts-row' + (withdrawn ? ' tn-assignparts-wd' : '') + '" '
+				+ 'data-search="' + tnEsc(search) + '">'
+				+ '<input type="checkbox" data-pnum="' + pnum + '" data-was="' + (checked ? '1' : '0') + '"' + (checked ? ' checked' : '') + '>'
+				+ '<span class="tn-assignparts-main">'
+				+ '<span class="tn-assignparts-alias">' + tnEsc(alias)
+				+ (withdrawn ? ' <span class="tn-reg-wd-badge">Withdrawn</span>' : '')
+				+ regPills(r) + '</span>'
+				+ (subLine ? '<span class="tn-assignparts-sub">' + subLine + '</span>' : '')
+				+ '</span>'
+				+ '</label>';
+		});
+		list.innerHTML = rows || '<div class="tn-assignparts-empty">No participants registered yet.</div>';
+		applyFilter();
+		tnOpenModal(OVERLAY);
+	};
+
+	window.tnSubmitAssignParticipants = function() {
+		var btn = el('tn-assignparts-submit');
+		var list = el('tn-assignparts-list');
+		if (!list) return;
+
+		var addArr = [], removeArr = [];
+		list.querySelectorAll('input[type=checkbox]').forEach(function(cb) {
+			var pnum = parseInt(cb.getAttribute('data-pnum'), 10) || 0;
+			if (!pnum) return;
+			var was = cb.getAttribute('data-was') === '1';
+			if (cb.checked && !was) addArr.push(pnum);
+			else if (!cb.checked && was) removeArr.push(pnum);
+		});
+
+		if (!addArr.length && !removeArr.length) {
+			tnCloseModal(OVERLAY);
+			return;
+		}
+
+		if (btn) btn.disabled = true;
+		var base = TnConfig.uir + 'TournamentAjax/bracket/' + _bid + '/';
+
+		function call(action, arr) {
+			if (!arr.length) return Promise.resolve(null);
+			var fd = new FormData();
+			fd.append('TournamentId', TnConfig.tournamentId);
+			fd.append('ParticipantNumbers', JSON.stringify(arr));
+			return fetch(base + action, { method: 'POST', body: fd }).then(function(res) { return res.json(); });
+		}
+
+		var errors = [];
+		call('assign', addArr)
+			.then(function(d) {
+				if (d && d.status === 1) errors.push((d.error) ? d.error : 'Failed to assign participants.');
+				return call('unassign', removeArr);
+			})
+			.then(function(d) {
+				if (d && d.status === 1) errors.push((d.error) ? d.error : 'Failed to remove participants.');
+				if (errors.length) {
+					if (btn) btn.disabled = false;
+					tnShowFeedback('tn-assignparts-feedback', errors.join(' '), false);
+					return;
+				}
+				// Success: refresh roster chips, then reload so the bracket card list
+				// reflects the bulk add/remove reliably.
+				tnShowFeedback('tn-assignparts-feedback', 'Saved!', true);
+				fetch(TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/registrants')
+					.then(function(r) { return r.json(); })
+					.then(function(rd) {
+						if (rd && rd.status === 0) {
+							TnConfig.registrants = rd.registrants || [];
+							if (typeof tnRenderRoster === 'function') tnRenderRoster();
+						}
+					})
+					.catch(function() {})
+					.then(function() {
+						setTimeout(function() { window.location.reload(); }, 500);
+					});
+			})
+			.catch(function(err) {
+				console.error('[AssignParts] failed:', err);
+				if (btn) btn.disabled = false;
+				tnShowFeedback('tn-assignparts-feedback', 'Request failed. Please try again.', false);
+			});
+	};
+
+	var filterEl = el('tn-assignparts-filter');
+	if (filterEl) filterEl.addEventListener('input', applyFilter);
+
+	var selectAll = el('tn-assignparts-selectall');
+	if (selectAll) selectAll.addEventListener('click', function() {
+		var list = el('tn-assignparts-list');
+		if (!list) return;
+		list.querySelectorAll('.tn-assignparts-row:not(.tn-assignparts-hidden) input[type=checkbox]').forEach(function(cb) { cb.checked = true; });
+	});
+	var clearBtn = el('tn-assignparts-clear');
+	if (clearBtn) clearBtn.addEventListener('click', function() {
+		var list = el('tn-assignparts-list');
+		if (!list) return;
+		list.querySelectorAll('.tn-assignparts-row:not(.tn-assignparts-hidden) input[type=checkbox]').forEach(function(cb) { cb.checked = false; });
+	});
+
+	['tn-assignparts-close', 'tn-assignparts-cancel'].forEach(function(id) {
+		var e = el(id);
+		if (e) e.addEventListener('click', function() { tnCloseModal(OVERLAY); });
+	});
+	var ov = el(OVERLAY);
+	if (ov) ov.addEventListener('click', function(e) { if (e.target === ov) tnCloseModal(OVERLAY); });
+	var submit = el('tn-assignparts-submit');
+	if (submit) submit.addEventListener('click', tnSubmitAssignParticipants);
 })();
 <?php endif; ?>
 
