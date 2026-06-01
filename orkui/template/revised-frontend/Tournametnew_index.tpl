@@ -351,6 +351,19 @@ html[data-theme="dark"] .tn-alias-input { background:#1a202c; color:#e2e8f0; bor
 .tn-pill-warrior { background:#ebf8ff; color:#2b6cb0; border:1px solid #bee3f8; }
 .tn-team-member-tag { display:inline-flex; align-items:center; gap:4px; background:#ebf8ff; color:#2b6cb0; border:1px solid #bee3f8; border-radius:12px; padding:3px 10px; font-size:12px; font-weight:600; margin:2px 4px 2px 0; }
 .tn-team-member-remove { background:none; border:none; color:#2b6cb0; cursor:pointer; font-size:14px; line-height:1; padding:0 0 0 4px; }
+.tn-createteam-reglist { display:flex; flex-wrap:wrap; gap:6px; max-height:160px; overflow-y:auto; }
+.tn-createteam-regchip { display:inline-flex; align-items:center; gap:5px; background:#f7fafc; color:#2d3748; border:1px solid #e2e8f0; border-radius:14px; padding:3px 10px; font-size:12px; font-weight:600; cursor:pointer; user-select:none; }
+.tn-createteam-regchip:hover { background:#ebf8ff; border-color:#bee3f8; color:#2b6cb0; }
+.tn-createteam-regchip i { font-size:10px; color:#718096; }
+.tn-createteam-regchip:hover i { color:#2b6cb0; }
+.tn-createteam-regchip.tn-createteam-regchip-added { background:#ebf8ff; color:#a0aec0; border-color:#bee3f8; cursor:default; opacity:0.6; }
+.tn-createteam-reglist .tn-createteam-regempty { font-size:12px; color:#a0aec0; padding:2px 0; }
+html[data-theme="dark"] .tn-createteam-regchip { background:rgba(255,255,255,0.04); color:#cbd5e0; border-color:rgba(255,255,255,0.12); }
+html[data-theme="dark"] .tn-createteam-regchip:hover { background:rgba(49,130,206,0.2); color:#90cdf4; border-color:rgba(49,130,206,0.4); }
+html[data-theme="dark"] .tn-createteam-regchip i { color:#a0aec0; }
+html[data-theme="dark"] .tn-createteam-regchip:hover i { color:#90cdf4; }
+html[data-theme="dark"] .tn-createteam-regchip.tn-createteam-regchip-added { background:rgba(49,130,206,0.12); color:#718096; border-color:rgba(49,130,206,0.25); }
+html[data-theme="dark"] .tn-createteam-reglist .tn-createteam-regempty { color:#718096; }
 .tn-pill-warlord { background:#fff8e1; color:#b45309; border:1px solid #fcd34d; }
 .tn-pill-knight  { background:#f0fff4; color:#276749; border:1px solid #9ae6b4; }
 .tn-pill-complete { background:#f0fff4; color:#276749; border:1px solid #9ae6b4; font-size:11px; font-weight:600; padding:2px 8px; border-radius:10px; display:inline-flex; align-items:center; gap:4px; }
@@ -3482,6 +3495,46 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 </div>
 <?php endif; ?>
 
+<!-- =============================================
+     Create / Edit Team Modal (tournament-level roster)
+     ============================================= -->
+<?php if ($canManage): ?>
+<div class="tn-overlay" id="tn-createteam-overlay">
+	<div class="tn-modal-box" style="width:520px;max-width:calc(100vw - 40px)">
+		<div class="tn-modal-header">
+			<h3 class="tn-modal-title" id="tn-createteam-title"><i class="fas fa-users" style="margin-right:8px;color:#3182ce"></i>Create Team</h3>
+			<button class="tn-modal-close" id="tn-createteam-close">&times;</button>
+		</div>
+		<div class="tn-modal-body">
+			<div id="tn-createteam-feedback" class="tn-feedback"></div>
+			<input type="hidden" id="tn-createteam-number" value="">
+			<div class="tn-field">
+				<label for="tn-createteam-name">Team Name <span style="color:#e53e3e">*</span></label>
+				<input type="text" id="tn-createteam-name" placeholder="Enter team name" maxlength="100" autocomplete="off">
+			</div>
+			<div class="tn-field" style="margin-bottom:8px">
+				<label>Members <span style="color:#a0aec0;font-size:11px;font-weight:400">(at least one required)</span></label>
+				<div id="tn-createteam-members" style="margin-bottom:10px"></div>
+				<div style="position:relative">
+					<input type="text" id="tn-createteam-player-text" placeholder="Search by persona…" autocomplete="off">
+					<div id="tn-createteam-player-results" class="tn-ac-results"></div>
+				</div>
+			</div>
+			<div id="tn-createteam-regsection" style="margin-top:4px">
+				<div style="font-size:11px;font-weight:700;color:#718096;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Add from registered individuals</div>
+				<div id="tn-createteam-reglist" class="tn-createteam-reglist"></div>
+			</div>
+		</div>
+		<div class="tn-modal-footer">
+			<button class="tn-btn tn-btn-ghost" id="tn-createteam-cancel">Cancel</button>
+			<button class="tn-btn tn-btn-primary" id="tn-createteam-submit">
+				<i class="fas fa-check"></i> Save Team
+			</button>
+		</div>
+	</div>
+</div>
+<?php endif; ?>
+
 
 <!-- =============================================
      Configure Standings Modal
@@ -6547,13 +6600,288 @@ function tnRenderTeamsRoster() {
 
 	html += '</tbody></table>';
 	wrap.innerHTML = html;
+	tnRenderTeamActions();
 }
 
-// Stub so the Create Team button doesn't throw before Task 10 defines the real
-// modal opener. Uses ||= idiom so Task 10 can override without clobbering.
-window.tnOpenCreateTeamModal = window.tnOpenCreateTeamModal || function() {
-	console.log('Create Team modal — Task 10');
-};
+// Populate the per-row team action cells (.tn-team-actions) with an Edit button.
+// Runs after tnRenderTeamsRoster() rebuilds the table and once on page load for
+// the server-rendered rows. Manager-only (cells only exist when canManage).
+function tnRenderTeamActions() {
+	if (!TnConfig.canManage) return;
+	document.querySelectorAll('.tn-team-actions').forEach(function(cell) {
+		var tnum = parseInt(cell.dataset.tnum, 10) || 0;
+		if (!tnum || cell.dataset.tnWired === '1') return;
+		cell.dataset.tnWired = '1';
+		var btn = document.createElement('button');
+		btn.className = 'tn-btn tn-btn-outline tn-btn-sm';
+		btn.setAttribute('data-tip', 'Edit team');
+		btn.innerHTML = '<i class="fas fa-pen"></i> Edit';
+		btn.addEventListener('click', function() { tnOpenEditTeamModal(tnum); });
+		cell.appendChild(btn);
+	});
+}
+
+// ============================================================
+// Create / Edit Team modal (tournament-level roster).
+// Mirrors the per-bracket "Add Team" member-builder + kingdom-scoped
+// player search, plus a "pick from registered individuals" picker.
+// OVERRIDES the Task 9 stub via direct assignment (not ||=).
+// ============================================================
+<?php if ($canManage): ?>
+(function() {
+	var OVERLAY = 'tn-createteam-overlay';
+	var _ctMembers = [];   // [{MundaneId, Persona}]
+	var _ctTimer;
+
+	var nameEl    = document.getElementById('tn-createteam-name');
+	var numberEl  = document.getElementById('tn-createteam-number');
+	var titleEl   = document.getElementById('tn-createteam-title');
+	var membersEl = document.getElementById('tn-createteam-members');
+	var playerInput = document.getElementById('tn-createteam-player-text');
+	var resultsEl   = document.getElementById('tn-createteam-player-results');
+	var submitBtn   = document.getElementById('tn-createteam-submit');
+
+	function ctMemberHas(mid) {
+		for (var i = 0; i < _ctMembers.length; i++) {
+			if (_ctMembers[i].MundaneId == mid) return true;
+		}
+		return false;
+	}
+
+	function tnAddCreateTeamMember(mundaneId, persona) {
+		mundaneId = parseInt(mundaneId, 10) || 0;
+		if (mundaneId <= 0 || ctMemberHas(mundaneId)) return;
+		_ctMembers.push({MundaneId: mundaneId, Persona: persona || ''});
+		tnRenderCreateTeamMembers();
+		tnRenderCreateTeamRegList();
+	}
+
+	function tnRemoveCreateTeamMember(mundaneId) {
+		_ctMembers = _ctMembers.filter(function(m) { return m.MundaneId != mundaneId; });
+		tnRenderCreateTeamMembers();
+		tnRenderCreateTeamRegList();
+	}
+
+	function tnRenderCreateTeamMembers() {
+		if (!membersEl) return;
+		membersEl.innerHTML = '';
+		if (_ctMembers.length === 0) {
+			membersEl.innerHTML = '<div style="font-size:12px;color:#a0aec0;padding:4px 0">No members added yet</div>';
+			return;
+		}
+		_ctMembers.forEach(function(m) {
+			var tag = document.createElement('span');
+			tag.className = 'tn-team-member-tag';
+			tag.innerHTML = '<i class="fas fa-user" style="font-size:10px"></i> ' + tnEsc(m.Persona);
+			var x = document.createElement('button');
+			x.className = 'tn-team-member-remove';
+			x.innerHTML = '&times;';
+			x.setAttribute('data-tip', 'Remove');
+			x.addEventListener('click', function() { tnRemoveCreateTeamMember(m.MundaneId); });
+			tag.appendChild(x);
+			membersEl.appendChild(tag);
+		});
+	}
+
+	// "Pick from registered individuals": render TnConfig.registrants as
+	// clickable add-chips; clicking adds that registrant as a member (deduped).
+	function tnRenderCreateTeamRegList() {
+		var listEl = document.getElementById('tn-createteam-reglist');
+		if (!listEl) return;
+		listEl.innerHTML = '';
+		var regs = (TnConfig.registrants || []).filter(function(r) {
+			return (parseInt(r.MundaneId, 10) || 0) > 0 && r.Status !== 'withdrawn';
+		});
+		if (!regs.length) {
+			listEl.innerHTML = '<div class="tn-createteam-regempty">No registered individuals to add.</div>';
+			return;
+		}
+		regs.forEach(function(r) {
+			var mid = parseInt(r.MundaneId, 10) || 0;
+			var added = ctMemberHas(mid);
+			var chip = document.createElement('span');
+			chip.className = 'tn-createteam-regchip' + (added ? ' tn-createteam-regchip-added' : '');
+			var label = r.Persona || r.Alias || '—';
+			chip.innerHTML = '<i class="fas fa-' + (added ? 'check' : 'plus') + '"></i>' + tnEsc(label);
+			if (!added) {
+				chip.addEventListener('click', function() {
+					tnAddCreateTeamMember(mid, r.Persona || r.Alias || '');
+				});
+			}
+			listEl.appendChild(chip);
+		});
+	}
+
+	// ---- kingdom-scoped player search (mirror Add Team exactly) ----
+	function ctAcClose() {
+		if (!resultsEl) return;
+		resultsEl.classList.remove('tn-ac-open');
+		resultsEl.innerHTML = '';
+	}
+
+	function ctAcRender(players) {
+		resultsEl.innerHTML = '';
+		var filtered = (players || []).filter(function(pl) {
+			var mid = pl.MundaneId || pl.mundane_id || 0;
+			return mid > 0 && !ctMemberHas(mid);
+		});
+		if (!filtered.length) {
+			resultsEl.innerHTML = '<div class="tn-ac-item tn-ac-empty">No players found</div>';
+			if (playerInput) tnFixedAcPosition(playerInput, resultsEl);
+			resultsEl.classList.add('tn-ac-open');
+			return;
+		}
+		filtered.forEach(function(pl) {
+			var item = document.createElement('div');
+			item.className = 'tn-ac-item';
+			item.tabIndex = -1;
+			var label = tnEsc(pl.Persona || pl.Name || '');
+			var sub   = pl.KAbbr ? (' <span style="color:#a0aec0;font-size:11px">(' + tnEsc(pl.KAbbr) + (pl.PAbbr ? ':' + tnEsc(pl.PAbbr) : '') + ')</span>') : '';
+			item.innerHTML = label + sub;
+			item.addEventListener('mousedown', function(e) {
+				e.preventDefault();
+				var mid  = pl.MundaneId || pl.mundane_id || 0;
+				var name = pl.Persona || pl.Name || '';
+				tnAddCreateTeamMember(mid, name);
+				playerInput.value = '';
+				ctAcClose();
+				playerInput.focus();
+			});
+			resultsEl.appendChild(item);
+		});
+		if (playerInput) tnFixedAcPosition(playerInput, resultsEl);
+		resultsEl.classList.add('tn-ac-open');
+	}
+
+	if (playerInput && resultsEl) {
+		playerInput.addEventListener('input', function() {
+			var term = this.value.trim();
+			clearTimeout(_ctTimer);
+			if (term.length < 2) { ctAcClose(); return; }
+			_ctTimer = setTimeout(function() {
+				if (TnConfig.kingdomId > 0) {
+					fetch(TnConfig.uir + 'KingdomAjax/playersearch/' + TnConfig.kingdomId + '&q=' + encodeURIComponent(term))
+						.then(function(r) { return r.json(); })
+						.then(function(data) { ctAcRender(data); })
+						.catch(function() { ctAcClose(); });
+				} else {
+					fetch(TnConfig.httpService + 'Search/SearchService.php?Action=Search%2FPlayer&type=PERSONA&search=' + encodeURIComponent(term) + '&limit=10')
+						.then(function(r) { return r.json(); })
+						.then(function(data) { ctAcRender(data.Players || data.Results || []); })
+						.catch(function() { ctAcClose(); });
+				}
+			}, 280);
+		});
+		playerInput.addEventListener('blur', function() { setTimeout(ctAcClose, 200); });
+	}
+
+	function ctReset() {
+		_ctMembers = [];
+		if (numberEl)  numberEl.value = '';
+		if (nameEl)    nameEl.value = '';
+		if (playerInput) playerInput.value = '';
+		tnHideFeedback('tn-createteam-feedback');
+		ctAcClose();
+		tnRenderCreateTeamMembers();
+		tnRenderCreateTeamRegList();
+		if (submitBtn) submitBtn.disabled = false;
+	}
+
+	window.tnOpenCreateTeamModal = function() {
+		ctReset();
+		if (titleEl) titleEl.innerHTML = '<i class="fas fa-users" style="margin-right:8px;color:#3182ce"></i>Create Team';
+		tnOpenAsSheet(OVERLAY, {});
+		setTimeout(function() { if (nameEl) nameEl.focus(); }, 50);
+	};
+
+	window.tnOpenEditTeamModal = function(teamNumber) {
+		teamNumber = parseInt(teamNumber, 10) || 0;
+		ctReset();
+		var team = null;
+		(TnConfig.registeredTeams || []).forEach(function(t) {
+			if ((parseInt(t.TeamNumber, 10) || 0) === teamNumber) team = t;
+		});
+		if (!team) { return; }
+		if (numberEl) numberEl.value = teamNumber;
+		if (nameEl)   nameEl.value = team.Name || '';
+		_ctMembers = (team.Members || []).map(function(m) {
+			return {MundaneId: parseInt(m.MundaneId, 10) || 0, Persona: m.Persona || ''};
+		}).filter(function(m) { return m.MundaneId > 0; });
+		if (titleEl) titleEl.innerHTML = '<i class="fas fa-users" style="margin-right:8px;color:#3182ce"></i>Edit Team';
+		tnRenderCreateTeamMembers();
+		tnRenderCreateTeamRegList();
+		tnOpenAsSheet(OVERLAY, {});
+		setTimeout(function() { if (nameEl) nameEl.focus(); }, 50);
+	};
+
+	function tnSubmitTeam() {
+		var name = (nameEl ? nameEl.value.trim() : '');
+		var teamNumber = parseInt(numberEl ? numberEl.value : '', 10) || 0;
+		if (!name) { tnShowFeedback('tn-createteam-feedback', 'Team name is required.', false); return; }
+		if (_ctMembers.length === 0) { tnShowFeedback('tn-createteam-feedback', 'Add at least one member to the team.', false); return; }
+
+		if (submitBtn) submitBtn.disabled = true;
+		var fd = new FormData();
+		fd.append('Name', name);
+		fd.append('Members', JSON.stringify(_ctMembers.map(function(m) { return {MundaneId: m.MundaneId}; })));
+		var action = teamNumber > 0 ? 'updateteam' : 'createteam';
+		if (teamNumber > 0) fd.append('TeamNumber', teamNumber);
+
+		fetch(TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/' + action, {method:'POST', body:fd})
+			.then(function(r) { return r.json(); })
+			.then(function(d) {
+				if (submitBtn) submitBtn.disabled = false;
+				if (d && d.status === 0) {
+					var msg = teamNumber > 0
+						? ('Team "' + tnEsc(name) + '" updated.' + (d.RosterLocked ? ' (Roster locked — only the name was changed.)' : ''))
+						: ('Team "' + tnEsc(name) + '" created.');
+					// Re-fetch the teams roster and re-render in place.
+					fetch(TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/registeredteams')
+						.then(function(r) { return r.json(); })
+						.then(function(resp) {
+							if (resp && resp.status === 0 && resp.teams) {
+								TnConfig.registeredTeams = resp.teams;
+								tnRenderTeamsRoster();
+							}
+							tnCloseModal(OVERLAY);
+							tnShowFeedback('tn-createteam-feedback', msg, true);
+						})
+						.catch(function() {
+							tnCloseModal(OVERLAY);
+							window.location.reload();
+						});
+				} else {
+					tnShowFeedback('tn-createteam-feedback', (d && d.error) ? d.error : 'Failed to save team.', false);
+				}
+			})
+			.catch(function() {
+				if (submitBtn) submitBtn.disabled = false;
+				tnShowFeedback('tn-createteam-feedback', 'Request failed.', false);
+			});
+	}
+
+	if (submitBtn) submitBtn.addEventListener('click', tnSubmitTeam);
+
+	// Close / cancel / overlay-click / Escape
+	var ov = document.getElementById(OVERLAY);
+	if (ov) {
+		ov.addEventListener('click', function(e) { if (e.target === ov) tnCloseModal(OVERLAY); });
+	}
+	['tn-createteam-close','tn-createteam-cancel'].forEach(function(id) {
+		var el = document.getElementById(id);
+		if (el) el.addEventListener('click', function() { tnCloseModal(OVERLAY); });
+	});
+	document.addEventListener('keydown', function(e) {
+		if (e.key === 'Escape' && ov && ov.classList.contains('tn-open')) tnCloseModal(OVERLAY);
+	});
+
+	// Wire the server-rendered team rows' Edit buttons on load.
+	tnRenderTeamActions();
+})();
+<?php else: ?>
+window.tnOpenCreateTeamModal = function() {};
+window.tnOpenEditTeamModal   = function() {};
+<?php endif; ?>
 
 // ---- Participants Roster: render + Register modal ----
 // tnRenderRoster() rebuilds the Participants table from TnConfig.registrants.
