@@ -3096,19 +3096,14 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 					<div id="tn-addbracket-point-scale-err" style="display:none;color:#e53e3e;font-size:12px;margin-top:4px"></div>
 				</div>
 			</div>
-						<button type="button" class="tn-advanced-toggle" data-target="tn-addbracket-advanced" style="background:none;border:none;color:#718096;cursor:pointer;padding:4px 0;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:4px">
-				<i class="fas fa-chevron-right" style="transition:transform .15s;font-size:10px"></i>
-				Advanced options
-				<span style="color:#a0aec0;font-weight:400;font-size:11px">(participants, rings, seeding, note)</span>
-			</button>
-			<div id="tn-addbracket-advanced" style="display:none">
+			<div id="tn-addbracket-advanced">
 				<div class="tn-field-row">
 					<div class="tn-field">
 						<label for="tn-addbracket-participants">Participants</label>
-						<select id="tn-addbracket-participants">
-							<option value="individual">Individual</option>
-							<option value="team">Team</option>
-						</select>
+						<div class="tn-seg" id="tn-addbracket-participants">
+							<button type="button" class="tn-seg-btn tn-seg-active" data-val="individual">Individual</button>
+							<button type="button" class="tn-seg-btn" data-val="team">Team</button>
+						</div>
 					</div>
 					<div class="tn-field">
 						<label for="tn-addbracket-rings">Rings (concurrent)</label>
@@ -3223,19 +3218,14 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 					<div id="tn-editbracket-point-scale-err" style="display:none;color:#e53e3e;font-size:12px;margin-top:4px"></div>
 				</div>
 			</div>
-						<button type="button" class="tn-advanced-toggle" data-target="tn-editbracket-advanced" style="background:none;border:none;color:#718096;cursor:pointer;padding:4px 0;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:4px">
-				<i class="fas fa-chevron-right" style="transition:transform .15s;font-size:10px"></i>
-				Advanced options
-				<span style="color:#a0aec0;font-weight:400;font-size:11px">(participants, rings, seeding, note)</span>
-			</button>
-			<div id="tn-editbracket-advanced" style="display:none">
+			<div id="tn-editbracket-advanced">
 				<div class="tn-field-row">
 					<div class="tn-field">
 						<label for="tn-editbracket-participants">Participants</label>
-						<select id="tn-editbracket-participants">
-							<option value="individual">Individual</option>
-							<option value="team">Team</option>
-						</select>
+						<div class="tn-seg" id="tn-editbracket-participants">
+							<button type="button" class="tn-seg-btn tn-seg-active" data-val="individual">Individual</button>
+							<button type="button" class="tn-seg-btn" data-val="team">Team</button>
+						</div>
 					</div>
 					<div class="tn-field">
 						<label for="tn-editbracket-rings">Rings (concurrent)</label>
