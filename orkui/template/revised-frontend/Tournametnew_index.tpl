@@ -7002,22 +7002,26 @@ function tnRenderRoster() {
 		if (btn) btn.disabled = true;
 		var base = TnConfig.uir + 'TournamentAjax/bracket/' + _bid + '/';
 
-		function call(action, arr) {
+		var errors = [];
+		// Assign and unassign are independent operations — run them in parallel and
+		// collect failures from each, so a failure in one does not silently drop the
+		// other (e.g. an unchecked-bracket removal isn't lost when an add fails).
+		function call(action, arr, failMsg) {
 			if (!arr.length) return Promise.resolve(null);
 			var fd = new FormData();
 			fd.append('TournamentId', TnConfig.tournamentId);
 			fd.append('ParticipantNumbers', JSON.stringify(arr));
-			return fetch(base + action, { method: 'POST', body: fd }).then(function(res) { return res.json(); });
+			return fetch(base + action, { method: 'POST', body: fd })
+				.then(function(res) { return res.json(); })
+				.then(function(d) { if (d && d.status === 1) errors.push((d.error) ? d.error : failMsg); })
+				.catch(function() { errors.push(failMsg); });
 		}
 
-		var errors = [];
-		call('assign', addArr)
-			.then(function(d) {
-				if (d && d.status === 1) errors.push((d.error) ? d.error : 'Failed to assign participants.');
-				return call('unassign', removeArr);
-			})
-			.then(function(d) {
-				if (d && d.status === 1) errors.push((d.error) ? d.error : 'Failed to remove participants.');
+		Promise.all([
+			call('assign', addArr, 'Failed to assign participants.'),
+			call('unassign', removeArr, 'Failed to remove participants.')
+		])
+			.then(function() {
 				if (errors.length) {
 					if (btn) btn.disabled = false;
 					tnShowFeedback('tn-assignparts-feedback', errors.join(' '), false);
