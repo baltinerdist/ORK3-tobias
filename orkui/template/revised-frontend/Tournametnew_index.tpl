@@ -80,7 +80,8 @@ $styleLabelMap = [
 	'Sword and Shield'=> 'Sword & Shield',
 	'Great Weapon'    => 'Great Weapon',
 	'Missile'         => 'Missile',
-	'Other'           => 'Open',
+	'Other'           => 'Other',
+	'Open Weapons'    => 'Open Weapons',
 	'Jugging'         => 'Jugging',
 	'Battlegame'      => 'Battlegame',
 	'Quest'           => 'Quest',
@@ -3053,7 +3054,8 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 						<option value="Jugging">Jugging</option>
 						<option value="Battlegame">Battlegame</option>
 						<option value="Quest">Quest</option>
-						<option value="Other">Other / Open</option>
+						<option value="Open Weapons">Open Weapons</option>
+						<option value="Other">Other</option>
 					</select>
 				</div>
 				<div class="tn-field">
@@ -3179,7 +3181,8 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 						<option value="Jugging">Jugging</option>
 						<option value="Battlegame">Battlegame</option>
 						<option value="Quest">Quest</option>
-						<option value="Other">Other / Open</option>
+						<option value="Open Weapons">Open Weapons</option>
+						<option value="Other">Other</option>
 					</select>
 				</div>
 				<div class="tn-field">
@@ -5566,7 +5569,7 @@ window.tnOpenAsSheet = function(overlayId, opts) {
 		['Single Sword','Single Sword'], ['Florentine','Florentine'],
 		['Sword and Shield','Sword & Shield'], ['Great Weapon','Great Weapon'],
 		['Missile','Missile'], ['Jugging','Jugging'], ['Battlegame','Battlegame'],
-		['Quest','Quest'], ['Other','Other / Open']
+		['Quest','Quest'], ['Open Weapons','Open Weapons'], ['Other','Other']
 	];
 	var METHOD_OPTS = [
 		['single','Single Elimination','One loss and you are out'],
