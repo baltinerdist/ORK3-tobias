@@ -506,6 +506,8 @@ CREATE TABLE IF NOT EXISTS `ork_match` (
   `participant_1_id` int(11) NOT NULL,
   `participant_2_id` int(11) NOT NULL,
   `result` enum('1-wins','2-wins','tie','1-forfeits','2-forfeits','1-is-disqualified','2-is-disqualified','1-is-bye','2-is-bye','score') NOT NULL,
+  `voided` tinyint(1) NOT NULL DEFAULT 0,
+  `auto_resolved` tinyint(1) NOT NULL DEFAULT 0,
   `tournament_id` int(11) NOT NULL,
   `bracket_id` int(11) NOT NULL,
   `round` varchar(20) NOT NULL,
@@ -699,6 +701,7 @@ CREATE TABLE IF NOT EXISTS `ork_participant` (
   `unit_id` int(11) NOT NULL,
   `park_id` int(11) NOT NULL,
   `kingdom_id` int(11) NOT NULL,
+  `withdraw_mode` enum('forfeit','annul') NULL DEFAULT NULL,
   PRIMARY KEY (`participant_id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8 AUTO_INCREMENT=1 ;
 
