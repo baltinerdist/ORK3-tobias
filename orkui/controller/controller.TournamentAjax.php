@@ -668,6 +668,7 @@ class Controller_TournamentAjax extends Controller {
 				'BracketId'     => $bracket_id,
 				'ParticipantId' => $participant_id,
 				'Status'        => trim($_POST['Status'] ?? ''),
+				'Mode'          => trim($_POST['Mode'] ?? ''),
 			]);
 			echo ($r['Status'] == 0)
 				? json_encode(['status' => 0, 'participantId' => (int)($r['Detail']['ParticipantId'] ?? $participant_id), 'newStatus' => $r['Detail']['Status'] ?? ''])
