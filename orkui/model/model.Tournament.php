@@ -4,8 +4,9 @@ class Model_Tournament extends Model {
 
 	function __construct() {
 		parent::__construct();
-		$this->Report     = new APIModel('Report');
-		$this->Tournament = new APIModel('Tournament');
+		$this->Report          = new APIModel('Report');
+		$this->Tournament      = new APIModel('Tournament');
+		$this->TournamentExport = new APIModel('TournamentExport');
 	}
 
 	function get_tournies($request) {
@@ -162,6 +163,10 @@ class Model_Tournament extends Model {
 
 	function get_standings($bracket_id) {
 		return $this->Tournament->GetStandings(['BracketId' => $bracket_id]);
+	}
+
+	function export_workbook($tournament_id) {
+		return $this->TournamentExport->BuildWorkbook(['TournamentId' => (int)$tournament_id]);
 	}
 
 	function get_reeves($request) {
