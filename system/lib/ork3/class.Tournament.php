@@ -769,6 +769,89 @@ class Tournament extends Ork3 {
 	}
 
 	/**
+	 * GetRegistrants($request)
+	 * Returns the tournament roster: one row per registration (ork_participant
+	 * rows with bracket_id IS NULL), decorated with award/warrior pills and a
+	 * Brackets[] list of which brackets each registrant is assigned to (matched
+	 * by the tournament-stable participant_number).
+	 */
+	public function GetRegistrants($request) {
+		$tid = (int)($request['TournamentId'] ?? 0);
+		if (!valid_id($tid)) return InvalidParameter('TournamentId required');
+
+		$sql = "SELECT p.*, m.persona, pm.mundane_id, k.name AS kingdom_name,
+					COALESCE(park.name, mpark.name) AS park_name, u.name AS unit_name
+				FROM " . DB_PREFIX . "participant p
+					LEFT JOIN " . DB_PREFIX . "participant_mundane pm ON pm.participant_id = p.participant_id
+					LEFT JOIN " . DB_PREFIX . "mundane m ON pm.mundane_id = m.mundane_id
+					LEFT JOIN " . DB_PREFIX . "park mpark ON mpark.park_id = m.park_id
+					LEFT JOIN " . DB_PREFIX . "unit u ON p.unit_id = u.unit_id
+					LEFT JOIN " . DB_PREFIX . "park park ON p.park_id = park.park_id
+					LEFT JOIN " . DB_PREFIX . "kingdom k ON k.kingdom_id = p.kingdom_id
+				WHERE p.tournament_id = $tid AND p.bracket_id IS NULL
+				ORDER BY p.participant_number";
+		$r = $this->db->query($sql);
+		$regs = []; $byNum = []; $mids = [];
+		if ($r !== false && $r->size() > 0) {
+			while ($r->next()) {
+				$mid = (int)$r->mundane_id;
+				if ($mid > 0) $mids[$mid] = true;
+				$row = [
+					'ParticipantId'     => (int)$r->participant_id,
+					'TournamentId'      => (int)$r->tournament_id,
+					'ParticipantNumber' => (int)$r->participant_number,
+					'Alias'             => $r->alias,
+					'UnitId'            => (int)$r->unit_id,
+					'ParkId'            => (int)$r->park_id,
+					'KingdomId'         => (int)$r->kingdom_id,
+					'Persona'           => $r->persona,
+					'MundaneId'         => $mid,
+					'KingdomName'       => $r->kingdom_name,
+					'ParkName'          => $r->park_name,
+					'UnitName'          => $r->unit_name,
+					'WarriorLevel'      => (int)$r->warrior_level,
+					'WarriorCount'      => 0, 'WarriorRank' => 0,
+					'IsWarlord'         => false, 'IsKnightSword' => false,
+					'Status'            => $r->status,
+					'Brackets'          => [],
+				];
+				$regs[] = $row;
+				$byNum[(int)$r->participant_number] = count($regs) - 1;
+			}
+		}
+		if (!empty($mids)) {
+			$awards_map = $this->fetchAwardsForMundanes(array_keys($mids));
+			foreach ($regs as &$rg) {
+				$mid = (int)$rg['MundaneId'];
+				if ($mid > 0 && isset($awards_map[$mid])) {
+					$rg['WarriorCount']  = $awards_map[$mid]['warrior_count'];
+					$rg['WarriorRank']   = $awards_map[$mid]['warrior_rank'];
+					$rg['IsWarlord']     = $awards_map[$mid]['is_warlord'];
+					$rg['IsKnightSword'] = $awards_map[$mid]['is_knight_sword'];
+				}
+			}
+			unset($rg);
+		}
+		if (!empty($byNum)) {
+			$br = $this->db->query(
+				"SELECT p.participant_number AS num, b.bracket_id AS bid, b.style AS style
+				 FROM " . DB_PREFIX . "participant p
+				 JOIN " . DB_PREFIX . "bracket b ON b.bracket_id = p.bracket_id
+				 WHERE p.tournament_id = $tid AND p.bracket_id IS NOT NULL"
+			);
+			if ($br && $br->size() > 0) {
+				while ($br->next()) {
+					$num = (int)$br->num;
+					if (isset($byNum[$num])) {
+						$regs[$byNum[$num]]['Brackets'][] = ['BracketId' => (int)$br->bid, 'BracketStyle' => $br->style];
+					}
+				}
+			}
+		}
+		return Success($regs);
+	}
+
+	/**
 	 * teamRoster($bracketId)
 	 * Returns a map of participant_id => Members[] for all teams in a bracket.
 	 * Members[] contains MundaneId, Persona, ParkName, WarriorLevel.
