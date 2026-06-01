@@ -883,7 +883,7 @@ class Tournament extends Ork3 {
 					LEFT JOIN " . DB_PREFIX . "unit u ON p.unit_id = u.unit_id
 					LEFT JOIN " . DB_PREFIX . "park park ON p.park_id = park.park_id
 					LEFT JOIN " . DB_PREFIX . "kingdom k ON k.kingdom_id = p.kingdom_id
-				WHERE p.tournament_id = $tid AND p.bracket_id IS NULL
+				WHERE p.tournament_id = $tid AND p.bracket_id IS NULL AND p.participant_number > 0
 				ORDER BY p.participant_number";
 		$r = $this->db->query($sql);
 		$regs = []; $byNum = []; $mids = [];
@@ -1203,6 +1203,207 @@ class Tournament extends Ork3 {
 			$this->db->query('ROLLBACK');
 			throw $e;
 		}
+		$this->bustTournamentReportCache();
+		return Success(true);
+	}
+
+	public function RegisterTeam($request) {
+		if (!$this->check_auth($request)) return NoAuthorization();
+		$tid  = (int)($request['TournamentId'] ?? 0);
+		$name = trim($request['Name'] ?? '');
+		$members = is_array($request['Members'] ?? null) ? $request['Members'] : [];
+		if (!valid_id($tid)) return InvalidParameter('TournamentId required');
+		if ($name === '') return InvalidParameter('Team name required');
+		$hasMember = false;
+		foreach ($members as $m) { if (valid_id($m['MundaneId'] ?? 0)) { $hasMember = true; break; } }
+		if (!$hasMember) return InvalidParameter('A team needs at least one member');
+		$this->db->query('START TRANSACTION');
+		try {
+			$res = $this->ensureTeam($tid, ['Name' => $name, 'Members' => $members]);
+			$this->db->query('COMMIT');
+		} catch (\Throwable $e) { $this->db->query('ROLLBACK'); throw $e; }
+		$this->bustTournamentReportCache();
+		return Success($res);
+	}
+
+	public function GetRegisteredTeams($request) {
+		$tid = (int)($request['TournamentId'] ?? 0);
+		if (!valid_id($tid)) return InvalidParameter('TournamentId required');
+
+		// Registration teams (bracket_id IS NULL), with their identity participant row.
+		$r = $this->db->query(
+			"SELECT pt.team_id, pt.team_number, pt.participant_id, pt.name,
+			        p.warrior_level, p.griffon_level
+			 FROM " . DB_PREFIX . "participant_teams pt
+			 LEFT JOIN " . DB_PREFIX . "participant p ON p.participant_id = pt.participant_id
+			 WHERE pt.tournament_id = $tid AND pt.bracket_id IS NULL
+			 ORDER BY pt.team_number"
+		);
+		$teams = []; $byNum = []; $teamIdToIdx = [];
+		if ($r !== false && $r->size() > 0) {
+			while ($r->next()) {
+				$row = [
+					'TeamId'        => (int)$r->team_id,
+					'TeamNumber'    => (int)$r->team_number,
+					'ParticipantId' => (int)$r->participant_id,
+					'Name'          => $r->name,
+					'WarriorLevel'  => (int)$r->warrior_level,
+					'GriffonLevel'  => (int)$r->griffon_level,
+					'Members'       => [],
+					'Brackets'      => [],
+				];
+				$teams[] = $row;
+				$byNum[(int)$r->team_number] = count($teams) - 1;
+				$teamIdToIdx[(int)$r->team_id] = count($teams) - 1;
+			}
+		}
+		if (empty($teams)) return Success([]);
+
+		// Members per registration team.
+		$teamIds = array_map(fn($t) => $t['TeamId'], $teams);
+		$inIds   = implode(',', array_map('intval', $teamIds));
+		$mids = [];
+		$rosterByTeam = [];
+		$mr = $this->db->query(
+			"SELECT ptm.team_id, ptm.mundane_id, mn.persona, mpark.name AS park_name
+			 FROM " . DB_PREFIX . "participant_team_members ptm
+			 LEFT JOIN " . DB_PREFIX . "mundane mn ON mn.mundane_id = ptm.mundane_id
+			 LEFT JOIN " . DB_PREFIX . "park mpark ON mpark.park_id = mn.park_id
+			 WHERE ptm.team_id IN ($inIds)"
+		);
+		if ($mr && $mr->size() > 0) {
+			while ($mr->next()) {
+				$mid = (int)$mr->mundane_id;
+				if ($mid > 0) $mids[$mid] = true;
+				$rosterByTeam[(int)$mr->team_id][] = [
+					'MundaneId' => $mid, 'Persona' => $mr->persona ?? '',
+					'ParkName' => $mr->park_name ?? '', 'WarriorLevel' => 0,
+				];
+			}
+		}
+		$awards = !empty($mids) ? $this->fetchAwardsForMundanes(array_keys($mids)) : [];
+		foreach ($rosterByTeam as $teamId => $mList) {
+			foreach ($mList as $idx => $m) {
+				$mid = $m['MundaneId'];
+				$mList[$idx]['WarriorLevel'] = isset($awards[$mid]) ? $this->warriorLevelFromAwards($awards[$mid]) : 0;
+			}
+			if (isset($teamIdToIdx[$teamId])) $teams[$teamIdToIdx[$teamId]]['Members'] = $mList;
+		}
+
+		// Bracket assignments per team_number (non-null bracket team rows joined to bracket).
+		$br = $this->db->query(
+			"SELECT pt.team_number AS num, b.bracket_id AS bid, b.style AS style
+			 FROM " . DB_PREFIX . "participant_teams pt
+			 JOIN " . DB_PREFIX . "bracket b ON b.bracket_id = pt.bracket_id
+			 WHERE pt.tournament_id = $tid AND pt.bracket_id IS NOT NULL"
+		);
+		if ($br && $br->size() > 0) {
+			while ($br->next()) {
+				$num = (int)$br->num;
+				if (isset($byNum[$num])) $teams[$byNum[$num]]['Brackets'][] = ['BracketId' => (int)$br->bid, 'BracketStyle' => $br->style];
+			}
+		}
+		return Success($teams);
+	}
+
+	public function AssignTeamToBracket($request) {
+		if (!$this->check_auth($request)) return NoAuthorization();
+		$tid  = (int)($request['TournamentId'] ?? 0);
+		$bid  = (int)($request['BracketId'] ?? 0);
+		$nums = $request['TeamNumbers'] ?? [];
+		if (!valid_id($tid) || !valid_id($bid)) return InvalidParameter('TournamentId and BracketId required');
+		if (!is_array($nums) || empty($nums)) return InvalidParameter('TeamNumbers required');
+
+		$b = $this->db->query("SELECT tournament_id, status, participants FROM " . DB_PREFIX . "bracket WHERE bracket_id = $bid LIMIT 1");
+		if (!$b || !$b->next() || (int)$b->tournament_id !== $tid) return InvalidParameter('Bracket does not belong to this tournament.');
+		if ($b->participants !== 'team') return InvalidParameter('This bracket is not a team bracket.');
+		if ($b->status !== 'setup') return InvalidParameter('Teams can only be assigned while the bracket is in setup.');
+
+		$assigned = [];
+		$this->db->query('START TRANSACTION');
+		try {
+			foreach ($nums as $num) {
+				$num = (int)$num;
+				if ($num <= 0) continue;
+				$ex = $this->db->query("SELECT team_id FROM " . DB_PREFIX . "participant_teams WHERE tournament_id=$tid AND bracket_id=$bid AND team_number=$num LIMIT 1");
+				if ($ex && $ex->next() && valid_id($ex->team_id)) continue;
+				$src = $this->db->query("SELECT team_id, participant_id, name FROM " . DB_PREFIX . "participant_teams WHERE tournament_id=$tid AND team_number=$num AND bracket_id IS NULL LIMIT 1");
+				if (!$src || !$src->next() || !valid_id($src->team_id)) continue;
+				$srcTeamId = (int)$src->team_id;
+				$srcPid    = (int)$src->participant_id;
+				$teamName  = $src->name;
+				$this->db->query(
+					"INSERT INTO " . DB_PREFIX . "participant (tournament_id, bracket_id, alias, unit_id, park_id, kingdom_id, participant_number, warrior_level, griffon_level)
+					 SELECT tournament_id, $bid, alias, unit_id, park_id, kingdom_id, participant_number, warrior_level, griffon_level
+					 FROM " . DB_PREFIX . "participant WHERE participant_id = $srcPid"
+				);
+				$newPid = (int)$this->db->GetLastInsertId();
+				if (!valid_id($newPid)) { $this->db->query('ROLLBACK'); return InvalidParameter('Team assignment failed.'); }
+				$this->db->query(
+					"INSERT INTO " . DB_PREFIX . "participant_teams (tournament_id, bracket_id, participant_id, name, team_number)
+					 VALUES (:tid, :bid, :pid, :name, :num)",
+					[':tid' => $tid, ':bid' => $bid, ':pid' => $newPid, ':name' => $teamName, ':num' => $num]
+				);
+				$newTeamId = (int)$this->db->GetLastInsertId();
+				if (!valid_id($newTeamId)) { $this->db->query('ROLLBACK'); return InvalidParameter('Team assignment failed.'); }
+				$rows = $this->db->query("SELECT mundane_id FROM " . DB_PREFIX . "participant_team_members WHERE team_id = $srcTeamId");
+				if ($rows && $rows->size() > 0) {
+					$mids = [];
+					while ($rows->next()) $mids[] = (int)$rows->mundane_id;
+					foreach ($mids as $mid) {
+						if (!valid_id($mid)) continue;
+						$this->db->query(
+							"INSERT IGNORE INTO " . DB_PREFIX . "participant_team_members (team_id, mundane_id, tournament_id) VALUES (:t, :m, :tid)",
+							[':t' => $newTeamId, ':m' => $mid, ':tid' => $tid]
+						);
+						$this->Player->clear();
+						$this->Player->participant_id = $newPid;
+						$this->Player->mundane_id     = $mid;
+						$this->Player->tournament_id  = $tid;
+						$this->Player->bracket_id     = $bid;
+						$this->Player->save();
+					}
+				}
+				$assigned[] = ['TeamNumber' => $num, 'TeamId' => $newTeamId, 'ParticipantId' => $newPid];
+			}
+			$this->db->query('COMMIT');
+		} catch (\Throwable $e) { $this->db->query('ROLLBACK'); throw $e; }
+		$this->bustTournamentReportCache();
+		return Success(['Assigned' => $assigned]);
+	}
+
+	public function UnassignTeamFromBracket($request) {
+		if (!$this->check_auth($request)) return NoAuthorization();
+		$tid  = (int)($request['TournamentId'] ?? 0);
+		$bid  = (int)($request['BracketId'] ?? 0);
+		$nums = $request['TeamNumbers'] ?? [];
+		if (!valid_id($tid) || !valid_id($bid)) return InvalidParameter('TournamentId and BracketId required');
+		if (!is_array($nums) || empty($nums)) return InvalidParameter('TeamNumbers required');
+		$b = $this->db->query("SELECT tournament_id, status FROM " . DB_PREFIX . "bracket WHERE bracket_id = $bid LIMIT 1");
+		if (!$b || !$b->next() || (int)$b->tournament_id !== $tid) return InvalidParameter('Bracket does not belong to this tournament.');
+		if ($b->status !== 'setup') return InvalidParameter('Teams can only be removed while the bracket is in setup.');
+		$this->db->query('START TRANSACTION');
+		try {
+			foreach ($nums as $num) {
+				$num = (int)$num;
+				if ($num <= 0) continue;
+				$rows = $this->db->query("SELECT team_id, participant_id FROM " . DB_PREFIX . "participant_teams WHERE tournament_id=$tid AND bracket_id=$bid AND team_number=$num");
+				if ($rows && $rows->size() > 0) {
+					$pairs = [];
+					while ($rows->next()) $pairs[] = [(int)$rows->team_id, (int)$rows->participant_id];
+					foreach ($pairs as $pr) {
+						list($teamId, $pid) = $pr;
+						$this->db->query("DELETE FROM " . DB_PREFIX . "participant_team_members WHERE team_id = $teamId");
+						$this->db->query("DELETE FROM " . DB_PREFIX . "participant_teams WHERE team_id = $teamId");
+						if (valid_id($pid)) {
+							$this->db->query("DELETE FROM " . DB_PREFIX . "participant_mundane WHERE participant_id = $pid");
+							$this->db->query("DELETE FROM " . DB_PREFIX . "participant WHERE participant_id = $pid AND tournament_id = $tid");
+						}
+					}
+				}
+			}
+			$this->db->query('COMMIT');
+		} catch (\Throwable $e) { $this->db->query('ROLLBACK'); throw $e; }
 		$this->bustTournamentReportCache();
 		return Success(true);
 	}
