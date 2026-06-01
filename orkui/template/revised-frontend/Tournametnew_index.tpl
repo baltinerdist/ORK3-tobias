@@ -409,6 +409,13 @@ html[data-theme="dark"] .tn-alias-input { background:#1a202c; color:#e2e8f0; bor
 .tn-table tr:last-child td { border-bottom:none; }
 /* Participants roster (registration surface) */
 .tn-roster-bar { display:flex; justify-content:flex-end; margin-bottom:10px; }
+.tn-roster-bar-split { justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+.tn-subtabs { display:inline-flex; gap:2px; background:#edf2f7; border:1px solid #e2e8f0; border-radius:8px; padding:2px; }
+.tn-subtab { border:none; background:transparent; color:#718096; font-size:12px; font-weight:600; padding:5px 14px; border-radius:6px; cursor:pointer; transition:background .15s,color .15s; }
+.tn-subtab:hover { color:#2d3748; }
+.tn-subtab-active { background:#fff; color:#276749; box-shadow:0 1px 2px rgba(0,0,0,0.08); }
+.tn-roster-actions { display:inline-flex; gap:6px; align-items:center; }
+.tn-team-chip { display:inline-block; background:#ebf8ff; color:#2b6cb0; border:1px solid #bee3f8; border-radius:10px; padding:1px 8px; font-size:11px; font-weight:600; margin:0 4px 4px 0; }
 .tn-reg-chip { display:inline-block; background:#ebf8ff; color:#2b6cb0; border:1px solid #bee3f8; border-radius:10px; padding:1px 8px; font-size:11px; font-weight:600; margin:0 4px 4px 0; }
 .tn-reg-unassigned { color:#a0aec0; font-size:12px; font-style:italic; }
 .tn-reg-withdrawn td { opacity:0.55; }
@@ -1235,7 +1242,12 @@ html[data-theme="dark"] .tn-bracket-actions { border-top-color:#2d3748; }
 html[data-theme="dark"] .tn-table th { background:#1a202c; color:#a0aec0; border-bottom-color:#4a5568; }
 html[data-theme="dark"] .tn-table td { color:#cbd5e0; border-bottom-color:#2d3748; }
 html[data-theme="dark"] .tn-reg-chip { background:#2a4365; color:#90cdf4; border-color:#2c5282; }
+html[data-theme="dark"] .tn-team-chip { background:#2a4365; color:#90cdf4; border-color:#2c5282; }
 html[data-theme="dark"] .tn-reg-unassigned { color:#718096; }
+html[data-theme="dark"] .tn-subtabs { background:#2d3748; border-color:#4a5568; }
+html[data-theme="dark"] .tn-subtab { color:#a0aec0; }
+html[data-theme="dark"] .tn-subtab:hover { color:#f7fafc; }
+html[data-theme="dark"] .tn-subtab-active { background:#1a202c; color:#9ae6b4; box-shadow:0 1px 2px rgba(0,0,0,0.4); }
 html[data-theme="dark"] .tn-reg-wd-badge { background:#742a2a; color:#feb2b2; }
 html[data-theme="dark"] .tn-reg-act-btn { background:#2d3748; border-color:#4a5568; color:#cbd5e0; }
 html[data-theme="dark"] .tn-reg-act-btn:hover { background:#374151; border-color:#718096; color:#f7fafc; }
@@ -2692,11 +2704,19 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 
 			<!-- Participants Tab -->
 			<div class="tn-tab-panel" id="tn-tab-participants" style="display:none">
+				<div class="tn-roster-bar tn-roster-bar-split">
+					<div class="tn-subtabs" role="tablist">
+						<button type="button" class="tn-subtab tn-subtab-active" id="tn-subtab-individuals" onclick="tnParticipantsSubtab('individuals')">Individuals</button>
+						<button type="button" class="tn-subtab" id="tn-subtab-teams" onclick="tnParticipantsSubtab('teams')">Teams</button>
+					</div>
 <?php if ($canManage): ?>
-				<div class="tn-roster-bar">
-					<button class="tn-btn tn-btn-primary" onclick="tnOpenRegisterModal()"><i class="fas fa-user-plus"></i> Register Participant</button>
-				</div>
+					<div class="tn-roster-actions">
+						<button class="tn-btn tn-btn-primary" id="tn-roster-action-individuals" onclick="tnOpenRegisterModal()"><i class="fas fa-user-plus"></i> Register Participant</button>
+						<button class="tn-btn tn-btn-primary" id="tn-roster-action-teams" style="display:none" onclick="tnOpenCreateTeamModal()"><i class="fas fa-users"></i> Create Team</button>
+					</div>
 <?php endif; ?>
+				</div>
+				<div id="tn-subpanel-individuals">
 				<div id="tn-roster-table-wrap">
 <?php if (empty($registrants)): ?>
 					<div class="tn-empty">No participants registered yet.</div>
@@ -2741,6 +2761,59 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 						</tbody>
 					</table>
 <?php endif; ?>
+				</div>
+				</div>
+				<div id="tn-subpanel-teams" style="display:none">
+					<div id="tn-teams-table-wrap">
+<?php if (empty($registered_teams)): ?>
+						<div class="tn-empty">No teams yet.</div>
+<?php else: ?>
+						<table class="tn-table" id="tn-teams-table">
+							<thead>
+								<tr>
+									<th>Team</th>
+									<th>Members</th>
+									<th>Brackets</th>
+<?php if ($canManage): ?>								<th></th>
+<?php endif; ?>							</tr>
+							</thead>
+							<tbody>
+<?php foreach ($registered_teams as $_t): ?>
+<?php $_tnum = (int)($_t['TeamNumber'] ?? 0); $_members = $_t['Members'] ?? []; $_mcount = count($_members); ?>
+								<tr data-tnum="<?= $_tnum ?>">
+									<td style="font-weight:600"><?= htmlspecialchars($_t['Name'] ?? '') ?: '&mdash;' ?>
+										<span style="display:inline-flex;gap:3px;margin-left:4px;vertical-align:middle"><span class="tn-pill tn-pill-team-wl" data-tip="Team warrior level">⚔ <?= (int)($_t['WarriorLevel'] ?? 0) ?></span></span>
+									</td>
+									<td>
+<?php if ($_mcount): ?>
+										<button class="tn-team-roster-btn" onclick="tnToggleRoster(this)" data-tip="Show/hide team roster">&#9658; <?= $_mcount ?></button>
+<?php else: ?>
+										<span style="color:#a0aec0">&mdash;</span>
+<?php endif; ?>
+									</td>
+									<td>
+<?php if (!empty($_t['Brackets'])): ?>
+<?php foreach ($_t['Brackets'] as $_b): ?><span class="tn-team-chip"><?= htmlspecialchars($styleLabelMap[$_b['BracketStyle']] ?? $_b['BracketStyle']) ?></span><?php endforeach; ?>
+<?php else: ?>
+										<span class="tn-reg-unassigned">Unassigned</span>
+<?php endif; ?>
+									</td>
+<?php if ($canManage): ?>								<td><div class="tn-team-actions" data-tnum="<?= $_tnum ?>"></div></td>
+<?php endif; ?>							</tr>
+<?php if ($_mcount): ?>
+								<tr class="tn-team-roster-row" style="display:none">
+									<td colspan="<?= $canManage ? 4 : 3 ?>" style="padding:4px 10px 8px 30px">
+<?php foreach ($_members as $_tm): ?>
+										<span class="tn-roster-member"><?= htmlspecialchars($_tm['Persona'] ?? '') ?><span class="tn-pill tn-pill-team-wl" data-tip="Warrior level" style="margin-left:3px">⚔<?= (int)($_tm['WarriorLevel'] ?? 0) ?></span></span>
+<?php endforeach; ?>
+									</td>
+								</tr>
+<?php endif; ?>
+<?php endforeach; ?>
+							</tbody>
+						</table>
+<?php endif; ?>
+					</div>
 				</div>
 			</div>
 
@@ -3726,6 +3799,7 @@ var TnConfig = {
 	standingsData:        <?= json_encode($standingsData, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>,
 	standingsPoints:      <?= json_encode($standingsPoints, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>,
 	registrants:          <?= json_encode($registrants ?? [], JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>,
+	registeredTeams:      <?= json_encode($registered_teams ?? [], JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>,
 };
 document.title = 'ORK 3: <?= htmlspecialchars($tName, ENT_QUOTES) ?>';
 
@@ -6389,6 +6463,97 @@ function tnFixedAcPosition(inputEl, dropdownEl) {
 	}
 })();
 <?php endif; ?>
+
+// ---- Participants sub-tabs (Individuals | Teams) ----
+// Defined unconditionally so later tasks can call them. Toggles the two
+// subpanels, the active class on the toggle buttons, and (when present) the
+// swapping action buttons.
+function tnParticipantsSubtab(which) {
+	var isTeams = (which === 'teams');
+	var pInd = document.getElementById('tn-subpanel-individuals');
+	var pTeam = document.getElementById('tn-subpanel-teams');
+	if (pInd)  pInd.style.display  = isTeams ? 'none' : '';
+	if (pTeam) pTeam.style.display = isTeams ? '' : 'none';
+	var bInd = document.getElementById('tn-subtab-individuals');
+	var bTeam = document.getElementById('tn-subtab-teams');
+	if (bInd)  bInd.classList.toggle('tn-subtab-active', !isTeams);
+	if (bTeam) bTeam.classList.toggle('tn-subtab-active', isTeams);
+	var aInd = document.getElementById('tn-roster-action-individuals');
+	var aTeam = document.getElementById('tn-roster-action-teams');
+	if (aInd)  aInd.style.display  = isTeams ? 'none' : '';
+	if (aTeam) aTeam.style.display = isTeams ? '' : 'none';
+}
+
+// tnRenderTeamsRoster() rebuilds the Teams table from TnConfig.registeredTeams.
+// Defined unconditionally (mirror of tnRenderRoster) so later tasks can refresh
+// the teams roster after create/edit without a full page reload.
+function tnRenderTeamsRoster() {
+	var wrap = document.getElementById('tn-teams-table-wrap');
+	if (!wrap) return;
+	var teams = TnConfig.registeredTeams || [];
+	var canManage = !!TnConfig.canManage;
+	var styleLabels = TnConfig.styleLabels || {};
+
+	if (!teams.length) {
+		wrap.innerHTML = '<div class="tn-empty">No teams yet.</div>';
+		return;
+	}
+
+	var html = '<table class="tn-table" id="tn-teams-table"><thead><tr>'
+		+ '<th>Team</th><th>Members</th><th>Brackets</th>'
+		+ (canManage ? '<th></th>' : '')
+		+ '</tr></thead><tbody>';
+
+	teams.forEach(function(t) {
+		var tnum = parseInt(t.TeamNumber, 10) || 0;
+		var members = t.Members || [];
+
+		var nameCell = (t.Name ? tnEsc(t.Name) : '&mdash;')
+			+ '<span style="display:inline-flex;gap:3px;margin-left:4px;vertical-align:middle">'
+			+ '<span class="tn-pill tn-pill-team-wl" data-tip="Team warrior level">⚔ '
+			+ (parseInt(t.WarriorLevel, 10) || 0) + '</span></span>';
+
+		var membersCell, rosterRow = '';
+		if (members.length) {
+			membersCell = '<button class="tn-team-roster-btn" onclick="tnToggleRoster(this)" data-tip="Show/hide team roster">▸ ' + members.length + '</button>';
+			var memberSpans = members.map(function(m) {
+				return '<span class="tn-roster-member">' + tnEsc(m.Persona || '')
+					+ '<span class="tn-pill tn-pill-team-wl" data-tip="Warrior level" style="margin-left:3px">⚔'
+					+ (parseInt(m.WarriorLevel, 10) || 0) + '</span></span>';
+			}).join('');
+			rosterRow = '<tr class="tn-team-roster-row" style="display:none"><td colspan="'
+				+ (canManage ? 4 : 3) + '" style="padding:4px 10px 8px 30px">' + memberSpans + '</td></tr>';
+		} else {
+			membersCell = '<span style="color:#a0aec0">&mdash;</span>';
+		}
+
+		var bracketsCell;
+		if (t.Brackets && t.Brackets.length) {
+			bracketsCell = t.Brackets.map(function(b) {
+				var label = styleLabels[b.BracketStyle] || b.BracketStyle || '';
+				return '<span class="tn-team-chip">' + tnEsc(label) + '</span>';
+			}).join('');
+		} else {
+			bracketsCell = '<span class="tn-reg-unassigned">Unassigned</span>';
+		}
+
+		html += '<tr data-tnum="' + tnum + '">'
+			+ '<td style="font-weight:600">' + nameCell + '</td>'
+			+ '<td>' + membersCell + '</td>'
+			+ '<td>' + bracketsCell + '</td>'
+			+ (canManage ? '<td><div class="tn-team-actions" data-tnum="' + tnum + '"></div></td>' : '')
+			+ '</tr>' + rosterRow;
+	});
+
+	html += '</tbody></table>';
+	wrap.innerHTML = html;
+}
+
+// Stub so the Create Team button doesn't throw before Task 10 defines the real
+// modal opener. Uses ||= idiom so Task 10 can override without clobbering.
+window.tnOpenCreateTeamModal = window.tnOpenCreateTeamModal || function() {
+	console.log('Create Team modal — Task 10');
+};
 
 // ---- Participants Roster: render + Register modal ----
 // tnRenderRoster() rebuilds the Participants table from TnConfig.registrants.
