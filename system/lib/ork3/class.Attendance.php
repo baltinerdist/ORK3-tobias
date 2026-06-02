@@ -93,6 +93,29 @@ class Attendance extends Ork3
             return InvalidParameter();
         }
 
+        // Guest/class cross-validation. A guest may only ever receive Guest-class
+        // attendance, and only in a kingdom that has opted in; a real player may
+        // never be given the Guest class.
+        $gcid = self::GuestClassId();
+        $target = new yapo($this->db, DB_PREFIX . 'mundane');
+        $target->clear();
+        $target->mundane_id = $request['MundaneId'];
+        $isGuestTarget = $target->find() ? ((int)$target->is_guest === 1) : false;
+        if ($isGuestTarget) {
+            if ((int)$request['ClassId'] !== $gcid) {
+                return InvalidParameter('Guests may only receive Guest attendance.');
+            }
+            $kid = (int)$target->kingdom_id;
+            $k = new yapo($this->db, DB_PREFIX . 'kingdom');
+            $k->clear();
+            $k->kingdom_id = $kid;
+            if (!$k->find() || (int)$k->guest_attendance_enabled !== 1) {
+                return NoAuthorization('Guest attendance is not enabled for this kingdom.');
+            }
+        } elseif ((int)$request['ClassId'] === $gcid) {
+            return InvalidParameter('Guest class cannot be assigned to a full player.');
+        }
+
         $this->attendance->clear();
         $this->attendance->park_id = 0;
         $this->attendance->kingdom_id = 0;
