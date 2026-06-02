@@ -126,7 +126,8 @@ class Controller_AttendanceAjax extends Controller
                     exit;
                 }
                 $gerrMsg = is_string($gr['Error'] ?? null) ? $gr['Error'] : 'Could not create guest';
-                echo json_encode(['status' => $gr['Status'] ?? 1, 'error' => $gerrMsg . ': ' . ($gr['Detail'] ?? '')]);
+                $gerrDetail = (string)($gr['Detail'] ?? '');
+                echo json_encode(['status' => $gr['Status'] ?? 1, 'error' => $gerrMsg . (($gerrDetail !== '') ? (': ' . $gerrDetail) : '')]);
                 exit;
             }
             $mundaneId = (int)($gr['Detail'] ?? 0);
@@ -145,7 +146,7 @@ class Controller_AttendanceAjax extends Controller
                 // officer can retry marking present (the guest still exists).
                 echo json_encode([
                     'status'    => $ar['Status'] ?? 1,
-                    'error'     => ($ar['Error'] ?? 'Guest created but attendance failed') . ': ' . ($ar['Detail'] ?? ''),
+                    'error'     => ($ar['Error'] ?? 'Guest created but attendance failed') . ((($ar['Detail'] ?? '') !== '') ? (': ' . $ar['Detail']) : ''),
                     'mundaneId' => $mundaneId,
                 ]);
                 exit;

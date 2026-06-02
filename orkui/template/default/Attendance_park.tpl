@@ -580,6 +580,10 @@ html[data-theme="dark"] .att-qa-empty { color: var(--ork-text-muted); }
 	width: 100%; padding: 8px 10px; font-size: 0.88rem;
 	border: 1px solid #d1d5db; border-radius: 6px; background: #fff; color: #111827;
 }
+.att-confirm-no-class-msg {
+	margin: 4px 0 0; padding: 6px 10px; font-size: 0.82rem;
+	color: #92400e; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 4px;
+}
 
 /* Dark mode — guest modal, dedupe dropdown, confirm modal */
 html[data-theme="dark"] .att-guest-open-btn { background: var(--ork-bg-secondary); color: #5eead4; border-color: var(--ork-border); }
@@ -608,6 +612,7 @@ html[data-theme="dark"] .att-confirm-btn-cancel { background: var(--ork-bg-secon
 html[data-theme="dark"] .att-confirm-btn-cancel:hover { background: var(--ork-bg-tertiary); }
 html[data-theme="dark"] .att-confirm-class-label { color: var(--ork-text-muted); }
 html[data-theme="dark"] .att-confirm-class-select { background: var(--ork-input-bg); border-color: var(--ork-input-border); color: var(--ork-text); }
+html[data-theme="dark"] .att-confirm-no-class-msg { color: #fcd34d; background: #451a03; border-color: #78350f; }
 
 /* ── In-product tooltips (data-tip) ───────────────── */
 /* template/default has no global [data-tip] CSS, so self-contain it here.
@@ -979,6 +984,7 @@ html[data-theme="dark"] [data-tip]:hover::before { border-top-color: var(--ork-t
 				<option value="<?=(int)$class['ClassId']?>"><?=htmlspecialchars($class['Name'])?></option>
 <?php endforeach; ?>
 			</select>
+			<p class="att-confirm-no-class-msg" id="att-confirm-no-class-msg" style="display:none;">No classes available — add one first.</p>
 		</div>
 		<div class="att-confirm-footer">
 			<button class="att-confirm-btn-cancel" id="att-confirm-cancel" type="button">No, different person</button>
@@ -1396,18 +1402,30 @@ $(function() {
 		}
 		function hideFb() { fbEl.style.display = 'none'; }
 
+		// iOS-safe scroll lock (matches email-gate pattern in default.theme).
+		var guestSavedScrollY = 0;
 		function openGuest() {
 			firstEl.value = ''; lastEl.value = ''; emailEl.value = ''; phoneEl.value = '';
 			hideFb();
 			saveBtn.disabled = false; saveBtn.textContent = 'Add & Mark Present';
 			closeDedupe();
-			overlay.classList.add('att-guest-open');
+			guestSavedScrollY = window.scrollY || window.pageYOffset || 0;
+			document.documentElement.style.overflow = 'hidden';
 			document.body.style.overflow = 'hidden';
+			document.body.style.position = 'fixed';
+			document.body.style.top = (-guestSavedScrollY) + 'px';
+			document.body.style.width = '100%';
+			overlay.classList.add('att-guest-open');
 			setTimeout(function() { firstEl.focus(); }, 30);
 		}
 		function closeGuest() {
 			overlay.classList.remove('att-guest-open');
+			document.documentElement.style.overflow = '';
 			document.body.style.overflow = '';
+			document.body.style.position = '';
+			document.body.style.top = '';
+			document.body.style.width = '';
+			window.scrollTo(0, guestSavedScrollY);
 			closeDedupe();
 		}
 
@@ -1588,12 +1606,32 @@ $(function() {
 						confirmClassSel.value = (sidebar && sidebar.value) ? sidebar.value : '';
 						confirmClassSel.style.borderColor = '';
 					}
+					var noClassMsg2 = document.getElementById('att-confirm-no-class-msg');
+					if (noClassMsg2) noClassMsg2.style.display = 'none';
 					confirmClassWrap.style.display = '';
 				}
 			}
+			guestSavedScrollY = window.scrollY || window.pageYOffset || 0;
+			document.documentElement.style.overflow = 'hidden';
+			document.body.style.overflow = 'hidden';
+			document.body.style.position = 'fixed';
+			document.body.style.top = (-guestSavedScrollY) + 'px';
+			document.body.style.width = '100%';
 			confirmOverlay.classList.add('att-confirm-open');
 		}
-		function closeConfirm() { confirmOverlay.classList.remove('att-confirm-open'); }
+		function closeConfirm() {
+			confirmOverlay.classList.remove('att-confirm-open');
+			// Only release the scroll lock when the guest add modal is also closed;
+			// if it's still open (dedupe confirm path) the lock must stay in place.
+			if (!overlay.classList.contains('att-guest-open')) {
+				document.documentElement.style.overflow = '';
+				document.body.style.overflow = '';
+				document.body.style.position = '';
+				document.body.style.top = '';
+				document.body.style.width = '';
+				window.scrollTo(0, guestSavedScrollY);
+			}
+		}
 		document.getElementById('att-confirm-cancel').addEventListener('click', function() {
 			// "Different person" — let the officer change/clear the email and retry.
 			closeConfirm();
@@ -1604,6 +1642,13 @@ $(function() {
 			if (pendingOwnerId <= 0) { closeConfirm(); return; }
 			var chosenClass = null;
 			if (!pendingIsGuest) {
+				// Guard: if no non-Guest classes exist, show inline message instead of
+				// looping forever turning the select red (empty-options edge case).
+				if (confirmClassSel && confirmClassSel.options.length === 0) {
+					var noClassMsg = document.getElementById('att-confirm-no-class-msg');
+					if (noClassMsg) noClassMsg.style.display = '';
+					return;
+				}
 				chosenClass = confirmClassSel ? confirmClassSel.value : '';
 				if (!chosenClass) {
 					// Keep the modal open and flag the picker — a class is required.
