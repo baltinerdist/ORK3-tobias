@@ -830,16 +830,35 @@ endif;
   var suggUse    = document.getElementById('emp-suggestion-use');
   var suggDismiss = document.getElementById('emp-suggestion-dismiss');
 
+  // iOS-safe scroll lock: position:fixed on body (overflow:hidden alone does
+  // not stop scroll on iOS Safari). Saved scrollY is restored on close.
+  var savedScrollY = 0;
+  // Named focusin handler so it can be removed on close (was leaking before).
+  function trapFocus(e) {
+    if (overlay.classList.contains('emp-open') && !overlay.contains(e.target)) {
+      input.focus();
+    }
+  }
   function open()  {
     overlay.classList.add('emp-open');
+    savedScrollY = window.scrollY || window.pageYOffset || 0;
     document.documentElement.style.overflow = 'hidden';
     document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.top = (-savedScrollY) + 'px';
+    document.body.style.width = '100%';
+    document.addEventListener('focusin', trapFocus);
     setTimeout(function(){ input.focus(); }, 50);
   }
   function close() {
     overlay.classList.remove('emp-open');
+    document.removeEventListener('focusin', trapFocus);
     document.documentElement.style.overflow = '';
     document.body.style.overflow = '';
+    document.body.style.position = '';
+    document.body.style.top = '';
+    document.body.style.width = '';
+    window.scrollTo(0, savedScrollY);
   }
   function showErr(msg) { errEl.textContent = msg; errEl.style.display = 'block'; }
   function clearErr()   { errEl.style.display = 'none'; }
@@ -852,18 +871,19 @@ endif;
   overlay.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); return; }
     if (e.key !== 'Tab') return;
-    var focusables = overlay.querySelectorAll('input, button');
+    // Only visible focusables — skip display:none suggestion buttons so Tab
+    // doesn't land on a hidden control (offsetParent is null when hidden).
+    var focusables = Array.prototype.filter.call(
+      overlay.querySelectorAll('input, button'),
+      function(el) { return el.offsetParent !== null; }
+    );
     if (!focusables.length) return;
     var first = focusables[0], last = focusables[focusables.length - 1];
     if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
     else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
   });
-  // Block focus from reaching the page behind the gate.
-  document.addEventListener('focusin', function(e) {
-    if (overlay.classList.contains('emp-open') && !overlay.contains(e.target)) {
-      input.focus();
-    }
-  });
+  // Focus is trapped via the named trapFocus handler, attached in open() and
+  // removed in close() (see above) so it never leaks after the gate closes.
 
   saveBtn.addEventListener('click', function() {
     clearErr();
