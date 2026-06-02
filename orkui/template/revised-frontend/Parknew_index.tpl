@@ -84,6 +84,11 @@
 	// Fallback: if no customized about_text yet, keep showing the legacy description.
 	if (trim($aboutText) === '') { $aboutText = $description; }
 
+	// Opt-in gating: the new Mask-II About design is shown publicly only when the park
+	// has enabled it. Managers always see the new design (with an "Unpublished" badge while off).
+	$pkAboutEnabled = (int)($parkInfo['AboutEnabled'] ?? 0);
+	$pkShowNewAbout = ($pkAboutEnabled === 1) || !empty($CanAdminPark);
+
 	$pkColorPrimary   = trim((string)($parkInfo['ColorPrimary']   ?? ''));
 	$pkColorAccent    = trim((string)($parkInfo['ColorAccent']    ?? ''));
 	$pkColorSecondary = trim((string)($parkInfo['ColorSecondary'] ?? ''));
@@ -425,9 +430,9 @@ html[data-theme="dark"] .pk-timeline-section { border-top-color: var(--ork-borde
 	display: flex; align-items: center; gap: 8px;
 }
 html[data-theme="dark"] .pk-timeline-heading { color: var(--ork-text-secondary); }
-.pk-timeline { position: relative; padding-left: 32px; }
+.pk-timeline { position: relative; padding-left: 36px; }
 .pk-timeline::before {
-	content: ''; position: absolute; left: 11px; top: 4px; bottom: 4px; width: 2px;
+	content: ''; position: absolute; left: 13px; top: 4px; bottom: 4px; width: 2px;
 	background: linear-gradient(to bottom, #cbd5e0, #cbd5e0 60%, transparent);
 }
 html[data-theme="dark"] .pk-timeline::before { background: linear-gradient(to bottom, var(--ork-border), var(--ork-border) 60%, transparent); }
@@ -436,7 +441,7 @@ html[data-theme="dark"] .pk-timeline::before { background: linear-gradient(to bo
 	margin-bottom: 14px; min-height: 24px;
 }
 .pk-timeline-dot {
-	position: absolute; left: -25px; top: 50%; transform: translateY(-50%);
+	position: absolute; left: -36px; top: 50%; transform: translateY(-50%);
 	width: 24px; height: 24px; border-radius: 50%;
 	background: #ebf8ff; color: #2b6cb0; display: flex; align-items: center; justify-content: center;
 	font-size: 11px; border: 2px solid #fff; box-shadow: 0 0 0 1px #cbd5e0;
@@ -768,7 +773,7 @@ html[data-theme="dark"] .pk-timeline-row.pk-ms-derived .pk-timeline-desc { color
 				</li>
 				<?php endif; ?>
 			</ul>
-			<?php if ($pkHasSocial || !empty($CanAdminPark)): ?>
+			<?php if ($pkShowNewAbout && ($pkHasSocial || !empty($CanAdminPark))): ?>
 			<div class="pk-connect-block">
 				<div class="pk-connect-subhead">
 					<span><i class="fas fa-share-alt"></i> Connect</span>
@@ -848,8 +853,14 @@ html[data-theme="dark"] .pk-timeline-row.pk-ms-derived .pk-timeline-desc { color
 					$_addrFull  = implode(', ', array_filter([$_addrLine1, $_addrLine2]));
 				?>
 				<div class="pk-about-grid">
+					<?php if ($pkShowNewAbout): ?>
 					<?php if (!empty($aboutText) || !empty($CanAdminPark)): ?>
 					<div class="pk-about-section">
+						<?php if (!empty($CanAdminPark) && $pkAboutEnabled !== 1): ?>
+						<div class="pk-unpublished-badge">
+							<i class="fas fa-eye-slash"></i> Unpublished &mdash; only managers can see this
+						</div>
+						<?php endif; ?>
 						<div class="pk-about-section-head">
 							<div class="pk-about-label">About</div>
 							<?php if (!empty($CanAdminPark)): ?>
@@ -866,6 +877,14 @@ html[data-theme="dark"] .pk-timeline-row.pk-ms-derived .pk-timeline-desc { color
 						</div>
 						<?php endif; ?>
 					</div>
+					<?php endif; ?>
+					<?php else: ?>
+					<?php if (!empty($description)): ?>
+					<div class="pk-about-section">
+						<div class="pk-about-label">About</div>
+						<div class="pk-about-text kn-description-body"><?= pk_markdown($description) ?></div>
+					</div>
+					<?php endif; ?>
 					<?php endif; ?>
 
 					<?php if (!empty($directions) || !empty($_addrFull)): ?>
@@ -884,7 +903,7 @@ html[data-theme="dark"] .pk-timeline-row.pk-ms-derived .pk-timeline-desc { color
 					<?php endif; ?>
 				</div>
 
-				<?php if (!empty($ourHistoryText) || !empty($CanAdminPark)): ?>
+				<?php if ($pkShowNewAbout && (!empty($ourHistoryText) || !empty($CanAdminPark))): ?>
 				<div class="pk-about-section pk-history-section">
 					<div class="pk-about-section-head">
 						<div class="pk-about-label"><i class="fas fa-scroll" style="margin-right:6px;color:#a0aec0"></i>Our History</div>
@@ -922,7 +941,7 @@ html[data-theme="dark"] .pk-timeline-row.pk-ms-derived .pk-timeline-desc { color
 				<?php endif; ?>
 
 				<!-- Milestones timeline (derived + custom) -->
-				<?php if ($pkHasMilestones || !empty($CanAdminPark)): ?>
+				<?php if ($pkShowNewAbout && ($pkHasMilestones || !empty($CanAdminPark))): ?>
 				<div class="pk-about-section pk-timeline-section">
 					<div class="pk-about-section-head">
 						<h3 class="pk-timeline-heading"><i class="fas fa-stream"></i> Milestones</h3>
@@ -2786,6 +2805,49 @@ html[data-theme="dark"] .pk-dm-tab.pk-active {
 }
 .pk-dm-panel { display: none; }
 .pk-dm-panel.pk-active { display: block; }
+
+/* About opt-in toggle bar (above the design-modal tabs) */
+.pk-dm-about-toggle {
+	margin-bottom: 14px; padding: 12px 14px; border: 1px solid #cbd5e0;
+	border-radius: 8px; background: #f7fafc;
+}
+html[data-theme="dark"] .pk-dm-about-toggle {
+	background: var(--ork-bg-tertiary); border-color: var(--ork-border);
+}
+.pk-dm-about-switch {
+	display: flex; align-items: flex-start; gap: 12px; cursor: pointer; margin: 0;
+}
+.pk-dm-about-switch input[type="checkbox"] { position: absolute; opacity: 0; width: 0; height: 0; }
+.pk-dm-about-slider {
+	position: relative; flex: 0 0 auto; width: 40px; height: 22px; margin-top: 2px;
+	background: #cbd5e0; border-radius: 22px; transition: background 0.15s;
+}
+.pk-dm-about-slider::before {
+	content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px;
+	background: #fff; border-radius: 50%; transition: transform 0.15s;
+	box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+}
+.pk-dm-about-switch input:checked + .pk-dm-about-slider { background: #48bb78; }
+.pk-dm-about-switch input:checked + .pk-dm-about-slider::before { transform: translateX(18px); }
+.pk-dm-about-switch input:focus-visible + .pk-dm-about-slider { box-shadow: 0 0 0 3px rgba(66,153,225,0.5); }
+html[data-theme="dark"] .pk-dm-about-slider { background: var(--ork-border); }
+.pk-dm-about-switch-text { display: flex; flex-direction: column; gap: 3px; }
+.pk-dm-about-switch-label {
+	font-size: 14px; font-weight: 700; color: #2d3748;
+}
+html[data-theme="dark"] .pk-dm-about-switch-label { color: var(--ork-text); }
+.pk-dm-about-switch-hint { font-size: 12px; color: #718096; line-height: 1.4; }
+html[data-theme="dark"] .pk-dm-about-switch-hint { color: var(--ork-text-muted); }
+
+/* "Unpublished" badge shown to managers while the new About is OFF */
+.pk-unpublished-badge {
+	display: inline-flex; align-items: center; gap: 6px; margin-bottom: 10px;
+	padding: 4px 10px; border-radius: 12px; font-size: 11.5px; font-weight: 700;
+	background: #fffaf0; color: #975a16; border: 1px solid #f6ad55;
+}
+html[data-theme="dark"] .pk-unpublished-badge {
+	background: rgba(246,173,85,0.12); color: #f6ad55; border-color: rgba(246,173,85,0.4);
+}
 .pk-dm-error {
 	display: none; background: #fff5f5; border: 1px solid #fc8181; color: #9b2c2c;
 	border-radius: 6px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px;
@@ -2981,16 +3043,26 @@ html[data-theme="dark"] .pk-dm-social-clear[data-tip]::after { background: var(-
 			<h3 class="pk-dm-title"><i class="fas fa-palette"></i>Design <?= htmlspecialchars($park_name) ?></h3>
 			<button class="pk-dm-close" id="pk-dm-close" aria-label="Close">&times;</button>
 		</div>
-		<div class="pk-dm-tabs">
-			<button class="pk-dm-tab pk-active" data-pktab-dm="header"><i class="fas fa-image"></i> Header</button>
-			<button class="pk-dm-tab" data-pktab-dm="about"><i class="fas fa-scroll"></i> About</button>
-			<button class="pk-dm-tab" data-pktab-dm="milestones"><i class="fas fa-stream"></i> Milestones</button>
-		</div>
 		<div class="pk-dm-body">
+			<div class="pk-dm-about-toggle">
+				<label class="pk-dm-about-switch">
+					<input type="checkbox" id="pk-dm-about-enabled" <?= $pkAboutEnabled === 1 ? 'checked' : '' ?> />
+					<span class="pk-dm-about-slider"></span>
+					<span class="pk-dm-about-switch-text">
+						<span class="pk-dm-about-switch-label">Enable the New About Design</span>
+						<span class="pk-dm-about-switch-hint">While off, visitors see your current About page. Turn it on to publish the new design (custom About, History, Connect, Milestones). Hero colors &amp; tagline always apply.</span>
+					</span>
+				</label>
+			</div>
+			<div class="pk-dm-tabs">
+				<button class="pk-dm-tab pk-active" data-pktab-dm="about"><i class="fas fa-scroll"></i> About</button>
+				<button class="pk-dm-tab" data-pktab-dm="header"><i class="fas fa-image"></i> Header</button>
+				<button class="pk-dm-tab" data-pktab-dm="milestones"><i class="fas fa-stream"></i> Milestones</button>
+			</div>
 			<div class="pk-dm-error" id="pk-dm-error"></div>
 
 			<!-- Header Panel -->
-			<div class="pk-dm-panel pk-active" id="pk-dm-panel-header">
+			<div class="pk-dm-panel" id="pk-dm-panel-header">
 				<div class="pk-dm-hint" style="margin-bottom:12px"><i class="fas fa-moon" style="margin-right:6px"></i><strong>Dark mode viewers</strong> see your hero with a slight darkening filter so colors stay readable. Preview both themes with the moon icon in the site header before saving.</div>
 
 				<div class="pk-dm-field">
@@ -3097,7 +3169,7 @@ html[data-theme="dark"] .pk-dm-social-clear[data-tip]::after { background: var(-
 			</div>
 
 			<!-- About Panel -->
-			<div class="pk-dm-panel" id="pk-dm-panel-about">
+			<div class="pk-dm-panel pk-active" id="pk-dm-panel-about">
 				<div class="pk-dm-hint" style="margin-bottom:14px"><i class="fas fa-info-circle" style="margin-right:6px"></i>Both fields support <strong>Markdown</strong>. Use <em>About</em> for a current snapshot of the park; use <em>Our History</em> for the founding story, past elevations, and notable moments.</div>
 
 				<div class="pk-dm-field">
@@ -3511,6 +3583,7 @@ html[data-theme="dark"] .pk-dm-social-clear[data-tip]::after { background: var(-
 		var errEl = gid('pk-dm-error'); errEl.style.display = 'none';
 		var fd = new FormData();
 		fd.append('AboutText', gid('pk-dm-about-text').value);
+		fd.append('AboutEnabled', gid('pk-dm-about-enabled') && gid('pk-dm-about-enabled').checked ? '1' : '0');
 		fd.append('OurHistory', gid('pk-dm-history-text').value);
 		fd.append('ColorPrimary', gid('pk-dm-color-primary').value);
 		fd.append('ColorAccent', gid('pk-dm-color-accent').value);

@@ -133,6 +133,8 @@ $_unRecruitMeta = [
 	'closed' => ['label'=>'Closed',      'icon'=>'fa-lock',      'bg'=>'#718096', 'bgDark'=>'#2d3748'],
 ];
 $_unHowToJoin = (string)($_unit['HowToJoin'] ?? '');
+$_unAboutEnabled = (int)($_unit['AboutEnabled'] ?? 0);
+$_unShowNewAbout = ($_unAboutEnabled === 1) || $_can_edit;
 ?>
 <link rel="stylesheet" href="<?=HTTP_TEMPLATE?>revised-frontend/style/revised.css?v=<?=filemtime(DIR_TEMPLATE.'revised-frontend/style/revised.css')?>">
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
@@ -506,9 +508,9 @@ html[data-theme="dark"] .un-fullwidth-section { background: var(--ork-card-bg); 
 html[data-theme="dark"] .un-fullwidth-title { color: var(--ork-text-secondary); }
 
 /* Milestones timeline */
-.un-timeline { position: relative; padding-left: 32px; margin-top: 6px; }
+.un-timeline { position: relative; padding-left: 36px; margin-top: 6px; }
 .un-timeline::before {
-	content: ''; position: absolute; left: 11px; top: 4px; bottom: 4px; width: 2px;
+	content: ''; position: absolute; left: 13px; top: 4px; bottom: 4px; width: 2px;
 	background: linear-gradient(to bottom, #cbd5e0, #cbd5e0 60%, transparent);
 }
 html[data-theme="dark"] .un-timeline::before { background: linear-gradient(to bottom, var(--ork-border), var(--ork-border) 60%, transparent); }
@@ -517,7 +519,7 @@ html[data-theme="dark"] .un-timeline::before { background: linear-gradient(to bo
 	margin-bottom: 14px; min-height: 24px;
 }
 .un-timeline-dot {
-	position: absolute; left: -25px; top: 50%; transform: translateY(-50%);
+	position: absolute; left: -36px; top: 50%; transform: translateY(-50%);
 	width: 24px; height: 24px; border-radius: 50%;
 	background: #ebf8ff; color: #2b6cb0; display: flex; align-items: center; justify-content: center;
 	font-size: 11px; border: 2px solid #fff; box-shadow: 0 0 0 1px #cbd5e0;
@@ -872,6 +874,7 @@ html[data-theme="dark"] .un-dm-section-title { color: var(--ork-text-muted); bor
 	</div>
 </div>
 
+<?php if ($_unShowNewAbout): ?>
 <!-- ── Tabs ─────────────────────────────────────────────── -->
 <div class="un-tabs">
 
@@ -882,6 +885,12 @@ html[data-theme="dark"] .un-dm-section-title { color: var(--ork-text-muted); bor
 
 	<!-- ── About tab ─────────────────────────────────────── -->
 	<div class="un-tab-panel un-tab-active" id="un-tab-about">
+
+<?php if ($_can_edit && $_unAboutEnabled !== 1): ?>
+		<div class="un-unpublished-badge" data-tip="Only managers can see this. Enable the New About Design in this modal to publish.">
+			<i class="fas fa-eye-slash"></i> Unpublished &mdash; only managers can see this
+		</div>
+<?php endif; ?>
 
 <?php if ($_is_retired): ?>
 		<div class="un-fullwidth-section un-retired-card">
@@ -1233,6 +1242,212 @@ if ($_can_edit || count($_auths) > 0):
 	</div><!-- /un-tab-members -->
 
 </div><!-- /un-tabs -->
+
+<?php else: /* OFF: master sidebar body verbatim */ ?>
+
+<!-- ── Sidebar + Main ────────────────────────────────────── -->
+<div class="pn-layout">
+
+	<!-- Sidebar -->
+	<aside class="pn-sidebar">
+
+<?php if (trimlen($_desc) > 0 || $_can_edit): ?>
+		<div class="pn-card">
+			<h4 style="display:flex;align-items:center;justify-content:space-between;">
+				<span><i class="fas fa-align-left"></i> About</span>
+				<?php if ($_can_edit): ?>
+				<button class="pn-card-edit-btn" onclick="unOpenModal('un-modal-details')" title="Edit details">
+					<i class="fas fa-pen"></i>
+				</button>
+				<?php endif; ?>
+			</h4>
+			<div class="kn-description-body" style="font-size:13px;color:var(--ork-text-secondary);">
+				<?=un_markdown($_desc)?>
+			</div>
+		</div>
+<?php endif; ?>
+
+<?php if (trimlen($_history) > 0 || $_can_edit): ?>
+		<div class="pn-card">
+			<h4 style="display:flex;align-items:center;justify-content:space-between;">
+				<span><i class="fas fa-scroll"></i> History</span>
+				<?php if ($_can_edit): ?>
+				<button class="pn-card-edit-btn" onclick="unOpenModal('un-modal-details')" title="Edit details">
+					<i class="fas fa-pen"></i>
+				</button>
+				<?php endif; ?>
+			</h4>
+			<div class="kn-description-body" style="font-size:13px;color:var(--ork-text-secondary);">
+				<?=un_markdown($_history)?>
+			</div>
+		</div>
+<?php endif; ?>
+
+<?php
+$_auths = $Unit['Authorizations']['Authorizations'] ?? [];
+if ($_can_edit && (count($_auths) > 0 || true)):
+?>
+		<div class="pn-card">
+			<h4 style="display:flex;align-items:center;justify-content:space-between;">
+				<span><i class="fas fa-user-shield"></i> Managers</span>
+				<button class="pn-card-edit-btn" onclick="unOpenModal('un-modal-add-manager')" title="Add manager">
+					<i class="fas fa-plus"></i>
+				</button>
+			</h4>
+<?php if (count($_auths) > 0): ?>
+			<ul class="kn-officer-list">
+<?php foreach ($_auths as $_auth):
+	$__aid      = (int)$_auth['AuthorizationId'];
+	$__mgr_js   = addslashes($_auth['Persona'] ?: $_auth['UserName']);
+?>
+				<li>
+					<span class="kn-officer-role" style="font-size:10px;">Manager</span>
+					<span class="kn-officer-name" style="display:flex;align-items:center;justify-content:space-between;">
+						<a href="<?=UIR?>Player/profile/<?=(int)$_auth['MundaneId']?>">
+							<?=htmlspecialchars($_auth['Persona'] ?: $_auth['UserName'])?>
+						</a>
+						<form method="post" action="<?=htmlspecialchars($_base_url)?>" id="un-mgr-form-<?=$__aid?>" style="display:none">
+							<input type="hidden" name="Action" value="deleteauth">
+							<input type="hidden" name="AuthorizationId" value="<?=$__aid?>">
+						</form>
+						<button class="pn-btn pn-btn-ghost pn-btn-sm"
+							onclick="pnConfirm({title:'Remove Manager',message:'Remove <?=$__mgr_js?> as a manager?',confirmText:'Remove',danger:true},function(){document.getElementById('un-mgr-form-<?=$__aid?>').submit()})"
+							title="Remove manager" style="color:#e53e3e;">
+							<i class="fas fa-times"></i>
+						</button>
+					</span>
+				</li>
+<?php endforeach; ?>
+			</ul>
+<?php else: ?>
+			<p style="font-size:12px;color:var(--ork-text-muted);font-style:italic;margin:0;">No managers assigned.</p>
+<?php endif; ?>
+		</div>
+<?php endif; ?>
+
+	</aside>
+
+	<!-- Main: roster -->
+	<div class="pn-main">
+
+		<div class="un-section-header">
+			<div class="un-section-title">
+				<i class="fas fa-users"></i> Members
+			</div>
+<?php if ($_can_edit): ?>
+			<button class="pn-btn pn-btn-primary pn-btn-sm" onclick="unOpenModal('un-modal-add-member')">
+				<i class="fas fa-plus"></i><span class="un-btn-label"> Add Member</span>
+			</button>
+<?php endif; ?>
+		</div>
+
+		<div class="un-roster-card">
+<?php if ($_total === 0): ?>
+			<div class="pn-empty">
+				<i class="fas fa-users" style="font-size:24px;display:block;margin-bottom:8px;opacity:0.25;"></i>
+				No members found.
+			</div>
+<?php else: ?>
+			<table id="un-roster-table" class="display" style="width:100%">
+				<thead>
+					<tr>
+						<th>Persona</th>
+						<th>Park</th>
+						<th>Kingdom</th>
+						<th>Role</th>
+						<th>Title</th>
+						<th>Last Sign-in</th>
+<?php if ($_can_edit): ?>
+						<th></th>
+<?php endif; ?>
+					</tr>
+				</thead>
+				<tbody>
+<?php foreach ($_members as $_m):
+	$_persona     = trimlen($_m['Persona']) > 0 ? $_m['Persona'] : '(No Persona)';
+	$_um_id       = (int)($_m['UnitMundaneId'] ?? 0);
+	$_role_esc    = htmlspecialchars($_m['UnitRole']  ?? '', ENT_QUOTES);
+	$_title_esc   = htmlspecialchars($_m['UnitTitle'] ?? '', ENT_QUOTES);
+	$_persona_js  = addslashes($_persona);
+	$_last_signin = $_m['LastSignIn'] ?? '';
+	$_is_active   = !empty($_last_signin) && $_last_signin >= $_cutoff;
+?>
+				<tr>
+					<td>
+						<a href="<?=UIR?>Player/profile/<?=(int)$_m['MundaneId']?>"
+							style="color:var(--ork-link);text-decoration:none;font-weight:500;">
+							<?=htmlspecialchars($_persona)?>
+						</a>
+						<?php if (!$_is_active && !empty($_last_signin)): ?>
+						<span style="font-size:10px;color:var(--ork-text-lighter);margin-left:4px;">(inactive)</span>
+						<?php endif; ?>
+					</td>
+					<td>
+						<?php if (!empty($_m['ParkId'])): ?>
+						<a href="<?=UIR?>Park/profile/<?=(int)$_m['ParkId']?>"
+							style="color:var(--ork-text-secondary);text-decoration:none;">
+							<?=htmlspecialchars($_m['ParkName'] ?? '')?>
+						</a>
+						<?php else: ?>
+						<?=htmlspecialchars($_m['ParkName'] ?? '')?>
+						<?php endif; ?>
+					</td>
+					<td>
+						<?php if (!empty($_m['KingdomId'])): ?>
+						<a href="<?=UIR?>Kingdom/profile/<?=(int)$_m['KingdomId']?>"
+							style="color:var(--ork-text-secondary);text-decoration:none;">
+							<?=htmlspecialchars($_m['KingdomName'] ?? '')?>
+						</a>
+						<?php else: ?>
+						<?=htmlspecialchars($_m['KingdomName'] ?? '')?>
+						<?php endif; ?>
+					</td>
+					<td><?=htmlspecialchars(ucfirst($_m['UnitRole'] ?? ''))?></td>
+					<td><?=htmlspecialchars($_m['UnitTitle'] ?? '')?></td>
+					<td data-order="<?=htmlspecialchars($_last_signin)?>">
+						<?=htmlspecialchars($_last_signin ?: '—')?>
+					</td>
+<?php if ($_can_edit): ?>
+					<td style="white-space:nowrap;">
+						<form method="post" action="<?=htmlspecialchars($_base_url)?>" id="un-retire-form-<?=$_um_id?>" style="display:none">
+							<input type="hidden" name="Action" value="retire_member">
+							<input type="hidden" name="UnitMundaneId" value="<?=$_um_id?>">
+						</form>
+						<form method="post" action="<?=htmlspecialchars($_base_url)?>" id="un-remove-form-<?=$_um_id?>" style="display:none">
+							<input type="hidden" name="Action" value="remove_member">
+							<input type="hidden" name="UnitMundaneId" value="<?=$_um_id?>">
+						</form>
+						<div class="un-action-btns">
+							<button class="pn-btn pn-btn-ghost pn-btn-sm"
+								onclick="unOpenEditMember(<?=$_um_id?>, '<?=$_role_esc?>', '<?=$_title_esc?>')"
+								title="Edit role / title">
+								<i class="fas fa-pen"></i>
+							</button>
+							<button class="pn-btn pn-btn-ghost pn-btn-sm"
+								onclick="pnConfirm({title:'Retire Member',message:'Retire <?=$_persona_js?> from the unit?',confirmText:'Retire',danger:true},function(){document.getElementById('un-retire-form-<?=$_um_id?>').submit()})"
+								title="Retire member" style="color:#c05621;">
+								<i class="fas fa-user-minus"></i>
+							</button>
+							<button class="pn-btn pn-btn-ghost pn-btn-sm"
+								onclick="pnConfirm({title:'Remove Member',message:'Permanently remove <?=$_persona_js?> from the unit?',confirmText:'Remove',danger:true},function(){document.getElementById('un-remove-form-<?=$_um_id?>').submit()})"
+								title="Remove member" style="color:#e53e3e;">
+								<i class="fas fa-times"></i>
+							</button>
+						</div>
+					</td>
+<?php endif; ?>
+				</tr>
+<?php endforeach; ?>
+				</tbody>
+			</table>
+<?php endif; ?>
+		</div><!-- /un-roster-card -->
+
+	</div><!-- /pn-main -->
+
+</div><!-- /pn-layout -->
+
+<?php endif; /* /$_unShowNewAbout */ ?>
 
 
 
@@ -2141,6 +2356,42 @@ html[data-theme="dark"] .un-dm-title { color: var(--ork-text); }
 .un-dm-close:hover { background: #f7fafc; color: #2d3748; }
 html[data-theme="dark"] .un-dm-close { color: var(--ork-text-muted); }
 html[data-theme="dark"] .un-dm-close:hover { background: var(--ork-bg-tertiary); color: var(--ork-text); }
+/* Unpublished badge (manager-only, while opt-in is off) */
+.un-unpublished-badge {
+	display: inline-flex; align-items: center; gap: 7px;
+	margin: 0 0 14px 0; padding: 7px 12px;
+	background: #fffbeb; border: 1px solid #f6e05e; border-radius: 6px;
+	font-size: 12px; font-weight: 600; color: #975a16;
+}
+html[data-theme="dark"] .un-unpublished-badge {
+	background: rgba(214,158,46,0.14); border-color: rgba(214,158,46,0.5); color: #f6e05e;
+}
+/* Opt-in toggle bar */
+.un-dm-optin {
+	display: flex; align-items: flex-start; gap: 12px;
+	padding: 12px 16px; background: #ebf5ff; border-bottom: 1px solid #cfe2f6;
+}
+html[data-theme="dark"] .un-dm-optin { background: rgba(43,108,176,0.14); border-color: var(--ork-border); }
+.un-dm-optin-switch { position: relative; display: inline-flex; flex: none; cursor: pointer; margin-top: 2px; }
+.un-dm-optin-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.un-dm-optin-track {
+	display: inline-block; width: 40px; height: 22px; border-radius: 11px;
+	background: #cbd5e0; transition: background .15s ease; position: relative;
+}
+html[data-theme="dark"] .un-dm-optin-track { background: var(--ork-border); }
+.un-dm-optin-thumb {
+	position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%;
+	background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.25); transition: transform .15s ease;
+}
+.un-dm-optin-switch input:checked + .un-dm-optin-track { background: #2b6cb0; }
+html[data-theme="dark"] .un-dm-optin-switch input:checked + .un-dm-optin-track { background: var(--ork-link); }
+.un-dm-optin-switch input:checked + .un-dm-optin-track .un-dm-optin-thumb { transform: translateX(18px); }
+.un-dm-optin-switch input:focus-visible + .un-dm-optin-track { outline: 2px solid #2b6cb0; outline-offset: 2px; }
+.un-dm-optin-copy { line-height: 1.35; }
+.un-dm-optin-label { font-size: 13px; font-weight: 700; color: #2c5282; }
+html[data-theme="dark"] .un-dm-optin-label { color: var(--ork-text); }
+.un-dm-optin-hint { font-size: 11.5px; color: #5a7290; margin-top: 2px; }
+html[data-theme="dark"] .un-dm-optin-hint { color: var(--ork-text-secondary); }
 .un-dm-tabs {
 	display: flex; gap: 4px; padding: 6px 10px 0 10px; background: #f7fafc; border-bottom: 1px solid #e2e8f0;
 }
@@ -2314,16 +2565,26 @@ html[data-theme="dark"] .un-dm-ms-icon-opt.un-active { background: var(--ork-lin
 			<h3 class="un-dm-title"><i class="fas fa-palette"></i>Design <?= htmlspecialchars($_name) ?></h3>
 			<button class="un-dm-close" id="un-dm-close" aria-label="Close">&times;</button>
 		</div>
+		<div class="un-dm-optin">
+			<label class="un-dm-optin-switch" data-tip="When off, visitors see your current unit page">
+				<input type="checkbox" id="un-dm-about-enabled"<?= $_unAboutEnabled === 1 ? ' checked' : '' ?>>
+				<span class="un-dm-optin-track"><span class="un-dm-optin-thumb"></span></span>
+			</label>
+			<div class="un-dm-optin-copy">
+				<div class="un-dm-optin-label">Enable the New About Design</div>
+				<div class="un-dm-optin-hint">While off, visitors see your current About page. Turn it on to publish the new design (custom About, History, Connect, Milestones). Hero colors &amp; tagline always apply.</div>
+			</div>
+		</div>
 		<div class="un-dm-tabs">
-			<button class="un-dm-tab un-active" data-untab-dm="header"><i class="fas fa-image"></i> Header</button>
-			<button class="un-dm-tab" data-untab-dm="about"><i class="fas fa-scroll"></i> About</button>
+			<button class="un-dm-tab un-active" data-untab-dm="about"><i class="fas fa-scroll"></i> About</button>
+			<button class="un-dm-tab" data-untab-dm="header"><i class="fas fa-image"></i> Header</button>
 			<button class="un-dm-tab" data-untab-dm="milestones"><i class="fas fa-stream"></i> Milestones</button>
 		</div>
 		<div class="un-dm-body">
 			<div class="un-dm-error" id="un-dm-error"></div>
 
 			<!-- Header Panel -->
-			<div class="un-dm-panel un-active" id="un-dm-panel-header">
+			<div class="un-dm-panel" id="un-dm-panel-header">
 				<div class="un-dm-hint" style="margin-bottom:12px"><i class="fas fa-moon" style="margin-right:6px"></i><strong>Dark mode viewers</strong> see your hero with a slight darkening filter so colors stay readable.</div>
 
 				<div class="un-dm-field">
@@ -2447,7 +2708,7 @@ html[data-theme="dark"] .un-dm-ms-icon-opt.un-active { background: var(--ork-lin
 			</div>
 
 			<!-- About Panel -->
-			<div class="un-dm-panel" id="un-dm-panel-about">
+			<div class="un-dm-panel un-active" id="un-dm-panel-about">
 				<div class="un-dm-hint" style="margin-bottom:14px"><i class="fas fa-info-circle" style="margin-right:6px"></i>Both fields support <strong>Markdown</strong>. Use <em>About</em> for a current snapshot of the unit; use <em>Our History</em> for the founding story and notable moments.</div>
 
 				<div class="un-dm-field">
@@ -2855,6 +3116,7 @@ html[data-theme="dark"] .un-dm-ms-icon-opt.un-active { background: var(--ork-lin
 		fd.append('AnnouncementUntil', gid('un-dm-announcement-until') ? gid('un-dm-announcement-until').value : '');
 		fd.append('RecruitmentStatus', gid('un-dm-recruitment-status') ? gid('un-dm-recruitment-status').value : '');
 		fd.append('HowToJoin', gid('un-dm-howto-text') ? gid('un-dm-howto-text').value : '');
+		fd.append('AboutEnabled', (gid('un-dm-about-enabled') && gid('un-dm-about-enabled').checked) ? '1' : '0');
 		var social = {};
 		document.querySelectorAll('[data-un-social]').forEach(function(inp){
 			var v = inp.value.trim();

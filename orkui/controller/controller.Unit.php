@@ -205,7 +205,7 @@ class Controller_Unit extends Controller {
 						'Token'           => $this->session->token,
 						'UnitId'          => $unit_id_int,
 					);
-					foreach (['AboutText','OurHistory','ColorPrimary','ColorAccent','ColorSecondary','HeroOverlay','NameFont','MilestoneConfig','Tagline','SocialLinks','Announcement','AnnouncementUntil','RecruitmentStatus','HowToJoin'] as $_f) {
+					foreach (['AboutText','OurHistory','ColorPrimary','ColorAccent','ColorSecondary','HeroOverlay','NameFont','MilestoneConfig','Tagline','SocialLinks','Announcement','AnnouncementUntil','RecruitmentStatus','HowToJoin','AboutEnabled'] as $_f) {
 						if (isset($_POST[$_f])) $req[$_f] = (string)$_POST[$_f];
 					}
 					$r2 = $this->Unit->set_unit_design($req);

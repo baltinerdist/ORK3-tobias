@@ -441,7 +441,7 @@ class Controller_ParkAjax extends Controller {
 
 		} elseif ($action === 'savedesign') {
 			$payload = ['Token' => $this->session->token, 'ParkId' => $park_id];
-			foreach (['AboutText','OurHistory','ColorPrimary','ColorAccent','ColorSecondary','HeroOverlay','NameFont','MilestoneConfig','Tagline','SocialLinks','Announcement','AnnouncementUntil'] as $f) {
+			foreach (['AboutText','AboutEnabled','OurHistory','ColorPrimary','ColorAccent','ColorSecondary','HeroOverlay','NameFont','MilestoneConfig','Tagline','SocialLinks','Announcement','AnnouncementUntil'] as $f) {
 				if (array_key_exists($f, $_POST)) $payload[$f] = (string)$_POST[$f];
 			}
 			$r = $this->Park->set_park_design($payload);

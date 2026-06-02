@@ -202,6 +202,7 @@ class Unit extends Ork3 {
 			$response['Unit']['AnnouncementUntil']  = $design->announcement_until;
 			$response['Unit']['RecruitmentStatus']  = (string)$design->recruitment_status;
 			$response['Unit']['HowToJoin']          = (string)$design->how_to_join;
+			$response['Unit']['AboutEnabled']        = (int)$design->about_enabled;
 		} else {
 			$response['Status'] = InvalidParameter();
 		}
@@ -763,6 +764,9 @@ class Unit extends Ork3 {
 				return InvalidParameter('HowToJoin is limited to 5,000 characters.');
 			}
 			$design->how_to_join = trim($hj) === '' ? null : $hj;
+		}
+		if (array_key_exists('AboutEnabled', $request)) {
+			$design->about_enabled = (!empty($request['AboutEnabled']) && (string)$request['AboutEnabled'] !== '0') ? 1 : 0;
 		}
 		$design->save();
 		return Success($unit_id);

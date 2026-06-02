@@ -28,8 +28,10 @@
 	// Extract Monarch & Regent for hero display
 	$monarch = null; $regent = null;
 	foreach ($officerList as $o) {
-		if ($o['OfficerRole'] === 'Monarch') $monarch = $o;
-		if ($o['OfficerRole'] === 'Regent')  $regent  = $o;
+		// officer role is stored lowercase in ork_officer.role; compare case-insensitively
+		$_oRole = strtolower(trim((string)($o['OfficerRole'] ?? '')));
+		if ($_oRole === 'monarch') $monarch = $o;
+		if ($_oRole === 'regent')  $regent  = $o;
 	}
 
 	// Players loaded via AJAX (players_json) — not available at render time
@@ -164,6 +166,10 @@
 	$knReignLore           = (string)($_kInfo['ReignLore'] ?? '');
 	$knHasReignContent     = ($monarch && !empty($monarch['MundaneId'])) || ($regent && !empty($regent['MundaneId'])) || trim($knReignLore) !== '';
 
+	// --- Opt-in: new About design gating ---
+	$knAboutEnabled  = (int)($_kInfo['AboutEnabled'] ?? 0);
+	$knShowNewAbout  = ($knAboutEnabled === 1) || ($CanManageKingdom ?? false);
+
 	if (!function_exists('kn_reign_avatar_url')) {
 		function kn_reign_avatar_url($mundaneId): string {
 			if ((int)$mundaneId <= 0) return '';
@@ -175,6 +181,18 @@
 		function kn_markdown(string $text): string {
 			$html = (new Parsedown())->setSafeMode(true)->setBreaksEnabled(true)->text($text);
 			return preg_replace('/<img[^>]*>/i', '', $html);
+		}
+	}
+
+	if (!function_exists('kn_officer_role_label')) {
+		// ork_officer.role is stored as a lowercase slug (e.g. prime_minister, gmr);
+		// render a human-readable label for display.
+		function kn_officer_role_label($role): string {
+			$r = strtolower(trim((string)$role));
+			if ($r === '') return '';
+			$special = ['gmr' => 'GMR'];
+			if (isset($special[$r])) return $special[$r];
+			return ucwords(str_replace('_', ' ', $r));
 		}
 	}
 ?>
@@ -273,9 +291,9 @@ html[data-theme="dark"] .kn-about-edit-btn[data-tip]::after { background: var(--
 	display: flex; align-items: center; gap: 8px;
 }
 html[data-theme="dark"] .kn-timeline-heading { color: var(--ork-text-secondary); }
-.kn-timeline { position: relative; padding-left: 32px; }
+.kn-timeline { position: relative; padding-left: 36px; }
 .kn-timeline::before {
-	content: ''; position: absolute; left: 11px; top: 4px; bottom: 4px; width: 2px;
+	content: ''; position: absolute; left: 13px; top: 4px; bottom: 4px; width: 2px;
 	background: linear-gradient(to bottom, #cbd5e0, #cbd5e0 60%, transparent);
 }
 html[data-theme="dark"] .kn-timeline::before { background: linear-gradient(to bottom, var(--ork-border), var(--ork-border) 60%, transparent); }
@@ -284,7 +302,7 @@ html[data-theme="dark"] .kn-timeline::before { background: linear-gradient(to bo
 	margin-bottom: 14px; min-height: 24px;
 }
 .kn-timeline-dot {
-	position: absolute; left: -25px; top: 50%; transform: translateY(-50%);
+	position: absolute; left: -36px; top: 50%; transform: translateY(-50%);
 	width: 24px; height: 24px; border-radius: 50%;
 	background: #ebf8ff; color: #2b6cb0; display: flex; align-items: center; justify-content: center;
 	font-size: 11px; border: 2px solid #fff; box-shadow: 0 0 0 1px #cbd5e0;
@@ -681,7 +699,7 @@ html[data-theme="dark"] .kn-dm-counter { color: var(--ork-text-muted); }
 			<ul class="kn-officer-list">
 				<?php foreach ($officerList as $o): ?>
 				<li>
-					<span class="kn-officer-role"><?= htmlspecialchars($o['OfficerRole']) ?></span>
+					<span class="kn-officer-role"><?= htmlspecialchars(kn_officer_role_label($o['OfficerRole'])) ?></span>
 					<span class="kn-officer-name">
 						<?php if (!empty($o['MundaneId']) && $o['MundaneId'] > 0): ?>
 							<a href="<?= UIR ?>Player/profile/<?= $o['MundaneId'] ?>"><?= htmlspecialchars($o['Persona']) ?></a>
@@ -796,6 +814,12 @@ html[data-theme="dark"] .kn-dm-counter { color: var(--ork-text-muted); }
 
 			<!-- About Tab -->
 			<div class="kn-tab-panel" id="kn-tab-about">
+				<?php if ($knShowNewAbout): ?>
+				<?php if (($CanManageKingdom ?? false) && $knAboutEnabled !== 1): ?>
+				<div class="kn-about-unpublished" data-tip="Only managers can see this. Enable the About Page in Customize to publish it.">
+					<i class="fas fa-eye-slash"></i> Unpublished — only managers can see this
+				</div>
+				<?php endif; ?>
 				<?php if ($knHasReignContent || ($CanManageKingdom ?? false)): ?>
 				<?php if ($knHasReignContent): ?>
 				<div class="kn-reign-banner">
@@ -897,6 +921,13 @@ html[data-theme="dark"] .kn-dm-counter { color: var(--ork-text-muted); }
 					<?php endif; ?>
 				</div>
 				<?php endif; ?>
+				<?php else: // $knShowNewAbout false: public, not opted in ?>
+				<?php if (trim($_knLegacyDesc) !== ''): ?>
+				<div class="kn-about-section">
+					<div class="kn-about-text kn-description-body"><?= kn_markdown($_knLegacyDesc) ?></div>
+				</div>
+				<?php endif; ?>
+				<?php endif; // /$knShowNewAbout ?>
 
 				<?php
 					$_knWebsiteUrl = trim((string)($_kInfo['Url'] ?? ''));
@@ -920,7 +951,7 @@ html[data-theme="dark"] .kn-dm-counter { color: var(--ork-text-muted); }
 				</div>
 				<?php endif; ?>
 
-				<?php if ($knHasMilestones || ($CanManageKingdom ?? false)): ?>
+				<?php if ($knShowNewAbout && ($knHasMilestones || ($CanManageKingdom ?? false))): ?>
 				<div class="kn-about-section kn-timeline-section">
 					<div class="kn-about-section-head">
 						<h3 class="kn-timeline-heading"><i class="fas fa-stream"></i> Milestones</h3>
@@ -3213,6 +3244,43 @@ html[data-theme="dark"] .kn-dm-tab.kn-active {
 	border-bottom-color: var(--ork-card-bg);
 }
 .kn-dm-body { padding: 18px; overflow-y: auto; flex: 1; }
+/* Opt-in toggle bar */
+.kn-dm-optin {
+	display: flex; align-items: flex-start; gap: 12px;
+	background: #ebf8ff; border: 1px solid #bee3f8; border-radius: 8px;
+	padding: 12px 14px; margin-bottom: 14px;
+}
+html[data-theme="dark"] .kn-dm-optin { background: rgba(43,108,176,0.12); border-color: var(--ork-border); }
+.kn-dm-optin-switch { position: relative; display: inline-block; width: 42px; height: 24px; flex: 0 0 auto; margin-top: 2px; cursor: pointer; }
+.kn-dm-optin-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.kn-dm-optin-slider {
+	position: absolute; inset: 0; background: #cbd5e0; border-radius: 999px;
+	transition: background .15s ease;
+}
+.kn-dm-optin-slider::before {
+	content: ''; position: absolute; height: 18px; width: 18px; left: 3px; top: 3px;
+	background: #fff; border-radius: 50%; transition: transform .15s ease;
+	box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+}
+.kn-dm-optin-switch input:checked + .kn-dm-optin-slider { background: #2b6cb0; }
+.kn-dm-optin-switch input:checked + .kn-dm-optin-slider::before { transform: translateX(18px); }
+.kn-dm-optin-switch input:focus-visible + .kn-dm-optin-slider { box-shadow: 0 0 0 2px #2b6cb0; }
+html[data-theme="dark"] .kn-dm-optin-slider { background: var(--ork-border); }
+html[data-theme="dark"] .kn-dm-optin-switch input:checked + .kn-dm-optin-slider { background: var(--ork-link); }
+.kn-dm-optin-text { flex: 1; }
+.kn-dm-optin-label { font-size: 13px; font-weight: 700; color: #2c5282; background: transparent; border: none; padding: 0; border-radius: 0; margin: 0; }
+.kn-dm-optin-hint { font-size: 12px; color: #4a5568; margin-top: 3px; line-height: 1.4; }
+html[data-theme="dark"] .kn-dm-optin-label { color: var(--ork-link); }
+html[data-theme="dark"] .kn-dm-optin-hint { color: var(--ork-text-secondary); }
+/* Unpublished badge (manager-only, About not yet enabled) */
+.kn-about-unpublished {
+	display: inline-flex; align-items: center; gap: 6px;
+	background: #fffaf0; border: 1px solid #f6e05e; color: #975a16;
+	border-radius: 6px; padding: 6px 12px; font-size: 12px; font-weight: 600;
+	margin-bottom: 14px;
+}
+.kn-about-unpublished i { font-size: 11px; }
+html[data-theme="dark"] .kn-about-unpublished { background: rgba(246,224,94,0.12); border-color: rgba(246,224,94,0.4); color: #f6e05e; }
 .kn-dm-panel { display: none; }
 .kn-dm-panel.kn-active { display: block; }
 .kn-dm-error {
@@ -3375,14 +3443,24 @@ html[data-theme="dark"] .kn-dm-ms-icon-opt.kn-active { background: var(--ork-lin
 			<button class="kn-dm-close" id="kn-dm-close" aria-label="Close">&times;</button>
 		</div>
 		<div class="kn-dm-tabs">
-			<button class="kn-dm-tab kn-active" data-kntab-dm="header"><i class="fas fa-image"></i> Header</button>
-			<button class="kn-dm-tab" data-kntab-dm="about"><i class="fas fa-scroll"></i> About</button>
+			<button class="kn-dm-tab kn-active" data-kntab-dm="about"><i class="fas fa-scroll"></i> About</button>
+			<button class="kn-dm-tab" data-kntab-dm="header"><i class="fas fa-image"></i> Header</button>
 			<button class="kn-dm-tab" data-kntab-dm="milestones"><i class="fas fa-stream"></i> Milestones</button>
 		</div>
 		<div class="kn-dm-body">
+			<div class="kn-dm-optin">
+				<label class="kn-dm-optin-switch" data-tip="While off, visitors see your current About page.">
+					<input type="checkbox" id="kn-dm-about-enabled"<?= $knAboutEnabled === 1 ? ' checked' : '' ?> />
+					<span class="kn-dm-optin-slider"></span>
+				</label>
+				<div class="kn-dm-optin-text">
+					<div class="kn-dm-optin-label">Enable the About Page</div>
+					<div class="kn-dm-optin-hint">While off, visitors see your current About page. Turn it on to publish the new design (custom About, History, Reign, Milestones). Hero colors &amp; tagline always apply.</div>
+				</div>
+			</div>
 			<div class="kn-dm-error" id="kn-dm-error"></div>
 
-			<div class="kn-dm-panel kn-active" id="kn-dm-panel-header">
+			<div class="kn-dm-panel" id="kn-dm-panel-header">
 				<div class="kn-dm-hint" style="margin-bottom:12px"><i class="fas fa-moon" style="margin-right:6px"></i><strong>Dark mode viewers</strong> see your hero with a slight darkening filter so colors stay readable. Preview both themes with the moon icon in the site header before saving.</div>
 
 				<div class="kn-dm-field">
@@ -3489,6 +3567,9 @@ html[data-theme="dark"] .kn-dm-ms-icon-opt.kn-active { background: var(--ork-lin
 					</div>
 				</div>
 
+			</div>
+
+			<div class="kn-dm-panel kn-active" id="kn-dm-panel-about">
 				<div class="kn-dm-field">
 					<label>Reign Banner</label>
 					<div class="kn-dm-hint" style="margin-bottom:8px">Personae are derived from current Monarch &amp; Regent on the Officers list. Set reign-start dates and add optional lore (Markdown supported, 2,000 char max).</div>
@@ -3509,13 +3590,10 @@ html[data-theme="dark"] .kn-dm-ms-icon-opt.kn-active { background: var(--ork-lin
 							<button type="button" data-knmd-target="preview" data-knmd-field="reign">Preview</button>
 						</div>
 					</div>
-					<textarea id="kn-dm-reign-text" maxlength="2000" placeholder="e.g. Their Royal Majesties were crowned at Spring Coronation after a hard-fought Crown List..." style="width:100%;min-height:120px"><?= htmlspecialchars($knReignLore) ?></textarea>
+					<textarea id="kn-dm-reign-text" maxlength="2000" placeholder="Our Monarchy welcomes you to our kingdom! The theme for this reign is..." style="width:100%;min-height:120px"><?= htmlspecialchars($knReignLore) ?></textarea>
 					<div class="kn-dm-md-preview" id="kn-dm-reign-preview" style="display:none"></div>
 					<div class="kn-dm-counter" id="kn-dm-reign-counter">0 / 2,000</div>
 				</div>
-			</div>
-
-			<div class="kn-dm-panel" id="kn-dm-panel-about">
 				<div class="kn-dm-field">
 					<label>Social Links</label>
 					<div class="kn-dm-hint" style="margin-bottom:8px">Add any platforms your kingdom uses. Empty fields aren't shown. We'll add <code>https://</code> automatically if you omit it.</div>
@@ -3986,6 +4064,9 @@ html[data-theme="dark"] .kn-dm-ms-icon-opt.kn-active { background: var(--ork-lin
 			if (v) socialPayload[inp.dataset.knsoc] = v;
 		});
 		fd.append('SocialLinks', JSON.stringify(socialPayload));
+
+		var aboutEnabledEl = gid('kn-dm-about-enabled');
+		fd.append('AboutEnabled', (aboutEnabledEl && aboutEnabledEl.checked) ? '1' : '0');
 
 		fetch(BASE_UIR + 'KingdomAjax/kingdom/' + KINGDOM_ID + '/savedesign', { method: 'POST', body: fd })
 			.then(function(r) { return r.json(); })

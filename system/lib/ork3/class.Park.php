@@ -514,6 +514,7 @@ class Park extends Ork3
 				$design->find();
 			}
 			$response[ 'AboutText' ]       = (string)$design->about_text;
+			$response[ 'AboutEnabled' ]    = (int)$design->about_enabled;
 			$response[ 'OurHistory' ]      = (string)$design->our_history;
 			$response[ 'ColorPrimary' ]    = $design->color_primary;
 			$response[ 'ColorAccent' ]     = $design->color_accent;
@@ -1115,6 +1116,9 @@ class Park extends Ork3
 				}
 				$design->$col = $v;
 			}
+		}
+		if ( array_key_exists( 'AboutEnabled', $request ) ) {
+			$design->about_enabled = ( !empty( $request[ 'AboutEnabled' ] ) && (string)$request[ 'AboutEnabled' ] !== '0' ) ? 1 : 0;
 		}
 		$hexCols = [ 'ColorPrimary' => 'color_primary', 'ColorAccent' => 'color_accent', 'ColorSecondary' => 'color_secondary' ];
 		foreach ( $hexCols as $req => $col ) {

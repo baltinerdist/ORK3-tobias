@@ -657,7 +657,7 @@ class Controller_KingdomAjax extends Controller {
 		} elseif ($action === 'savedesign') {
 			$this->load_model('Kingdom');
 			$payload = ['Token' => $this->session->token, 'KingdomId' => $kingdom_id];
-			foreach (['AboutText','OurHistory','ColorPrimary','ColorAccent','ColorSecondary','HeroOverlay','NameFont','MilestoneConfig','Tagline','SocialLinks','Announcement','AnnouncementUntil','MonarchReignStarted','RegentReignStarted','ReignLore'] as $f) {
+			foreach (['AboutText','OurHistory','ColorPrimary','ColorAccent','ColorSecondary','HeroOverlay','NameFont','MilestoneConfig','Tagline','SocialLinks','Announcement','AnnouncementUntil','MonarchReignStarted','RegentReignStarted','ReignLore','AboutEnabled'] as $f) {
 				if (array_key_exists($f, $_POST)) $payload[$f] = (string)$_POST[$f];
 			}
 			$r = $this->Kingdom->set_kingdom_design($payload);

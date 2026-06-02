@@ -73,6 +73,7 @@ class Kingdom  extends Ork3 {
 			$response['KingdomInfo']['MonarchReignStarted'] = $design->monarch_reign_started;
 			$response['KingdomInfo']['RegentReignStarted']  = $design->regent_reign_started;
 			$response['KingdomInfo']['ReignLore']           = (string)$design->reign_lore;
+			$response['KingdomInfo']['AboutEnabled']        = (int)$design->about_enabled;
 		} else {
 			$response['Status'] = InvalidParameter();
 		}
@@ -351,6 +352,7 @@ class Kingdom  extends Ork3 {
 			$response['KingdomInfo']['MonarchReignStarted'] = $design->monarch_reign_started;
 			$response['KingdomInfo']['RegentReignStarted']  = $design->regent_reign_started;
 			$response['KingdomInfo']['ReignLore']           = (string)$design->reign_lore;
+			$response['KingdomInfo']['AboutEnabled']        = (int)$design->about_enabled;
 
 			// Fetch configs
 			$response['KingdomConfiguration'] = Common::get_configs($request['KingdomId']);
@@ -1087,6 +1089,10 @@ class Kingdom  extends Ork3 {
 				return InvalidParameter('ReignLore', ProfanityFilter::ERROR_MESSAGE);
 			}
 			$design->reign_lore = trim($rl) === '' ? null : $rl;
+		}
+
+		if (array_key_exists('AboutEnabled', $request)) {
+			$design->about_enabled = (!empty($request['AboutEnabled']) && (string)$request['AboutEnabled'] !== '0') ? 1 : 0;
 		}
 
 		$design->save();
