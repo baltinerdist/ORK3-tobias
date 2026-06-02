@@ -63,6 +63,8 @@ class Controller_AttendanceAjax extends Controller
             $phone = trim($_POST['Phone']     ?? '');
             $date  = $_POST['AttendanceDate'] ?? date('Y-m-d');
             $credits = (float)($_POST['Credits'] ?? 1);
+            // Optional event provenance — recorded on the guest as guest_source_event_id.
+            $eventId = (int)($_POST['EventId'] ?? 0);
 
             if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
                 echo json_encode(['status' => 1, 'error' => 'Invalid date']);
@@ -78,8 +80,12 @@ class Controller_AttendanceAjax extends Controller
             if ($email !== '') {
                 $avail = $this->Player->email_available($email);
                 if (is_array($avail) && empty($avail['available'])) {
+                    // NON-zero sentinel (status 2) so the UI never mistakes a
+                    // collision for a successful create (status 0). The UI keys off
+                    // the `collision` field regardless of status, but the distinct
+                    // status keeps the two paths unambiguous.
                     echo json_encode([
-                        'status'    => 0,
+                        'status'    => 2,
                         'collision' => !empty($avail['ownerIsGuest']) ? 'guest' : 'player',
                         'ownerId'   => (int)($avail['ownerId'] ?? 0),
                         'ownerName' => (string)($avail['ownerName'] ?? ''),
@@ -101,9 +107,26 @@ class Controller_AttendanceAjax extends Controller
                 'Surname'   => $last,
                 'Email'     => $email,
                 'Phone'     => $phone,
+                'EventId'   => $eventId,
             ]);
             if (!isset($gr['Status']) || $gr['Status'] != 0) {
-                echo json_encode(['status' => $gr['Status'] ?? 1, 'error' => ($gr['Error'] ?? 'Could not create guest') . ': ' . ($gr['Detail'] ?? '')]);
+                // Tolerate a hardened-backend race collision: CreateGuest returns an
+                // InvalidParameter whose Error payload carries the email owner
+                // (ownerId/ownerName/ownerIsGuest from EmailIsAvailable). When that
+                // shape is present, surface it down the SAME collision UI path
+                // (status 2 + collision fields) rather than reporting a hard error.
+                $gerr = (is_array($gr['Error'] ?? null)) ? $gr['Error'] : null;
+                if ($gerr !== null && (int)($gerr['ownerId'] ?? 0) > 0) {
+                    echo json_encode([
+                        'status'    => 2,
+                        'collision' => !empty($gerr['ownerIsGuest']) ? 'guest' : 'player',
+                        'ownerId'   => (int)$gerr['ownerId'],
+                        'ownerName' => (string)($gerr['ownerName'] ?? ''),
+                    ]);
+                    exit;
+                }
+                $gerrMsg = is_string($gr['Error'] ?? null) ? $gr['Error'] : 'Could not create guest';
+                echo json_encode(['status' => $gr['Status'] ?? 1, 'error' => $gerrMsg . ': ' . ($gr['Detail'] ?? '')]);
                 exit;
             }
             $mundaneId = (int)($gr['Detail'] ?? 0);

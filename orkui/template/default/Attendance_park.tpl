@@ -571,6 +571,15 @@ html[data-theme="dark"] .att-qa-empty { color: var(--ork-text-muted); }
 	border: none; border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer;
 }
 .att-confirm-btn-ok:hover { background: #3730a3; }
+.att-confirm-class { padding: 0 20px 4px; }
+.att-confirm-class-label {
+	display: block; font-size: 0.74rem; font-weight: 700; text-transform: uppercase;
+	letter-spacing: 0.03em; color: #6b7280; margin-bottom: 4px;
+}
+.att-confirm-class-select {
+	width: 100%; padding: 8px 10px; font-size: 0.88rem;
+	border: 1px solid #d1d5db; border-radius: 6px; background: #fff; color: #111827;
+}
 
 /* Dark mode — guest modal, dedupe dropdown, confirm modal */
 html[data-theme="dark"] .att-guest-open-btn { background: var(--ork-bg-secondary); color: #5eead4; border-color: var(--ork-border); }
@@ -597,6 +606,31 @@ html[data-theme="dark"] .att-confirm-body { color: var(--ork-text); }
 html[data-theme="dark"] .att-confirm-footer { border-top-color: var(--ork-border); }
 html[data-theme="dark"] .att-confirm-btn-cancel { background: var(--ork-bg-secondary); color: var(--ork-text); border-color: var(--ork-border); }
 html[data-theme="dark"] .att-confirm-btn-cancel:hover { background: var(--ork-bg-tertiary); }
+html[data-theme="dark"] .att-confirm-class-label { color: var(--ork-text-muted); }
+html[data-theme="dark"] .att-confirm-class-select { background: var(--ork-input-bg); border-color: var(--ork-input-border); color: var(--ork-text); }
+
+/* ── In-product tooltips (data-tip) ───────────────── */
+/* template/default has no global [data-tip] CSS, so self-contain it here.
+   Instant-show CSS tooltip — never native title. Matches the app's
+   established #2d3748 dark-pill tooltip style. */
+[data-tip] { position: relative; }
+[data-tip]:hover::after {
+	content: attr(data-tip);
+	position: absolute; bottom: calc(100% + 6px); left: 50%;
+	transform: translateX(-50%);
+	background: #2d3748; color: #fff; padding: 4px 8px;
+	border-radius: 4px; font-size: 11px; font-weight: 600;
+	white-space: nowrap; pointer-events: none; z-index: 10020;
+	box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}
+[data-tip]:hover::before {
+	content: ''; position: absolute; bottom: 100%; left: 50%;
+	transform: translateX(-50%);
+	border: 4px solid transparent; border-top-color: #2d3748;
+	pointer-events: none; z-index: 10020;
+}
+html[data-theme="dark"] [data-tip]:hover::after { background: var(--ork-text); color: var(--ork-card-bg); }
+html[data-theme="dark"] [data-tip]:hover::before { border-top-color: var(--ork-text); }
 </style>
 
 <div class="rp-root">
@@ -744,6 +778,13 @@ html[data-theme="dark"] .att-confirm-btn-cancel:hover { background: var(--ork-bg
 							value="<?=valid_id($Attendance_park['ParkId'])?$Attendance_park['ParkId']:$DefaultParkId?>">
 						<input type="hidden" id="MundaneId" name="MundaneId"
 							value="<?=$Attendance_park['MundaneId']?>">
+						<!-- Event provenance for guest quick-add. The park attendance
+						     screen has no single event context (Attendance->park()
+						     never sets EventId), so this is 0 here; the field exists
+						     so any caller that DOES carry an event id can pass it to
+						     create_guest (which records guest_source_event_id). -->
+						<input type="hidden" id="EventId" name="EventId"
+								value="<?=(int)($EventId ?? 0)?>">
 					</form>
 				</div>
 			</div>
@@ -927,6 +968,18 @@ html[data-theme="dark"] .att-confirm-btn-cancel:hover { background: var(--ork-bg
 	<div class="att-confirm-modal">
 		<div class="att-confirm-header"><h3 id="att-confirm-title">Already on file</h3></div>
 		<div class="att-confirm-body" id="att-confirm-body"></div>
+		<!-- Real-player owner: a class is required server-side. Shown only when
+		     the matched owner is NOT a guest (Guest class is implicit for guests).
+		     Populated from the page's class list, excluding the Guest class. -->
+		<div class="att-confirm-class" id="att-confirm-class-wrap" style="display:none;">
+			<label class="att-confirm-class-label" for="att-confirm-class">Class for this player</label>
+			<select class="att-confirm-class-select" id="att-confirm-class">
+				<option value="">— select one —</option>
+<?php foreach ($Classes['Classes'] as $class) : if ((int)$class['ClassId'] === (int)($GuestClassId ?? 0)) continue; ?>
+				<option value="<?=(int)$class['ClassId']?>"><?=htmlspecialchars($class['Name'])?></option>
+<?php endforeach; ?>
+			</select>
+		</div>
 		<div class="att-confirm-footer">
 			<button class="att-confirm-btn-cancel" id="att-confirm-cancel" type="button">No, different person</button>
 			<button class="att-confirm-btn-ok" id="att-confirm-ok" type="button">Mark present</button>
@@ -1382,6 +1435,9 @@ $(function() {
 			var last = lastEl.value.trim();
 			// Only soft-match when there's a last name and NO email yet.
 			if (last.length < 2 || emailEl.value.trim() !== '') { closeDedupe(); return; }
+				// Never fire an UNSCOPED cross-kingdom search. If the page has no
+				// kingdom scope (PARK_KID === 0), suppress the soft-dedupe entirely.
+				if (PARK_KID === 0) { closeDedupe(); return; }
 			var term = (firstEl.value.trim() + ' ' + last).trim();
 			$.getJSON(SVC_URL, {
 				Action: 'Search/Player', type: 'mundane', search: term,
@@ -1410,7 +1466,13 @@ $(function() {
 				item.appendChild(left); item.appendChild(right);
 				item.addEventListener('click', function() {
 					closeDedupe();
-					markExisting(row.MundaneId, !!row.IsGuest, label);
+					if (row.IsGuest) {
+						markExisting(row.MundaneId, true, label, null);
+					} else {
+						// Real player: route through the confirm modal so the officer
+						// picks a class before we mark them present.
+						openConfirm('player', row.MundaneId, label);
+					}
 				});
 				dd.appendChild(item);
 			});
@@ -1445,10 +1507,15 @@ $(function() {
 					GivenName: first, Surname: last,
 					Email: emailEl.value.trim(), Phone: phoneEl.value.trim(),
 					AttendanceDate: document.getElementById('AttendanceDate').value,
+					EventId: (document.getElementById('EventId') ? document.getElementById('EventId').value : 0),
 					Credits: 1
 				}, dataType: 'json',
 				success: function(res) {
-					if (res && res.status === 0 && res.collision) {
+					// A collision is keyed off the `collision` field, INDEPENDENT of
+					// status — the backend returns a non-zero sentinel (status 2) on a
+					// collision, and a hardened CreateGuest can surface a race collision
+					// the same way. Never treat a collision as a successful create.
+					if (res && res.collision) {
 						// Email already on file — offer to mark the owner present.
 						saveBtn.disabled = false; saveBtn.textContent = 'Add & Mark Present';
 						openConfirm(res.collision, res.ownerId, res.ownerName);
@@ -1470,22 +1537,21 @@ $(function() {
 		}
 		saveBtn.addEventListener('click', submitGuest);
 
-		function markExisting(mundaneId, isGuest, label) {
+		// classId is required only for a real player (guests are forced onto the
+		// Guest class server-side). The collision-confirm modal supplies it via
+		// its own class picker; guests pass null.
+		function markExisting(mundaneId, isGuest, label, classId) {
 			var data = {
 				MundaneId: mundaneId,
 				AttendanceDate: document.getElementById('AttendanceDate').value,
 				Credits: 1
 			};
-			// A real player needs a class; default to Guest only when isGuest.
 			if (!isGuest) {
-				// Without a class picker here, reuse the sidebar class if chosen;
-				// otherwise tell the officer to use the normal Add form.
-				var sidebarClass = document.getElementById('ClassId') ? document.getElementById('ClassId').value : '';
-				if (!sidebarClass) {
-					showFb('Choose a class in the Add Attendance form, then use it to mark ' + (label || 'this player') + ' present.', false);
+				if (!classId) {
+					showFb('Choose a class for ' + (label || 'this player') + '.', false);
 					return;
 				}
-				data.ClassId = sidebarClass;
+				data.ClassId = classId;
 			}
 			$.ajax({
 				url: MARK_URL, type: 'POST', data: data, dataType: 'json',
@@ -1500,6 +1566,8 @@ $(function() {
 		/* ── Collision confirm modal ───────────────────────── */
 		var confirmOverlay = document.getElementById('att-confirm-overlay');
 		var pendingOwnerId = 0, pendingIsGuest = false, pendingLabel = '';
+		var confirmClassWrap = document.getElementById('att-confirm-class-wrap');
+		var confirmClassSel  = document.getElementById('att-confirm-class');
 		function openConfirm(kind, ownerId, ownerName) {
 			pendingOwnerId = parseInt(ownerId, 10) || 0;
 			pendingIsGuest = (kind === 'guest');
@@ -1507,8 +1575,22 @@ $(function() {
 			document.getElementById('att-confirm-title').textContent =
 				pendingIsGuest ? 'Guest already on file' : 'Player already on file';
 			document.getElementById('att-confirm-body').innerHTML =
-				'We already have <strong>' + $('<span>').text(pendingLabel).html() + '</strong> (' + kind +
+				'We already have <strong>' + $('<span>').text(pendingLabel).html() + '</strong> (' +
+				(pendingIsGuest ? 'guest' : 'player') +
 				') with this email. Mark them present instead of creating a duplicate?';
+			// Real player needs an explicit class; guests are forced onto Guest.
+			if (confirmClassWrap) {
+				if (pendingIsGuest) {
+					confirmClassWrap.style.display = 'none';
+				} else {
+					if (confirmClassSel) {
+						var sidebar = document.getElementById('ClassId');
+						confirmClassSel.value = (sidebar && sidebar.value) ? sidebar.value : '';
+						confirmClassSel.style.borderColor = '';
+					}
+					confirmClassWrap.style.display = '';
+				}
+			}
 			confirmOverlay.classList.add('att-confirm-open');
 		}
 		function closeConfirm() { confirmOverlay.classList.remove('att-confirm-open'); }
@@ -1519,8 +1601,18 @@ $(function() {
 			emailEl.focus();
 		});
 		document.getElementById('att-confirm-ok').addEventListener('click', function() {
+			if (pendingOwnerId <= 0) { closeConfirm(); return; }
+			var chosenClass = null;
+			if (!pendingIsGuest) {
+				chosenClass = confirmClassSel ? confirmClassSel.value : '';
+				if (!chosenClass) {
+					// Keep the modal open and flag the picker — a class is required.
+					if (confirmClassSel) confirmClassSel.style.borderColor = '#ef4444';
+					return;
+				}
+			}
 			closeConfirm();
-			if (pendingOwnerId > 0) markExisting(pendingOwnerId, pendingIsGuest, pendingLabel);
+			markExisting(pendingOwnerId, pendingIsGuest, pendingLabel, chosenClass);
 		});
 		confirmOverlay.addEventListener('click', function(e) { if (e.target === confirmOverlay) closeConfirm(); });
 	})();
