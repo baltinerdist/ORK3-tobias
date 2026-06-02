@@ -728,32 +728,44 @@ document.getElementById('wn-overlay').addEventListener('click', function(e) {
 
 
 <?php
-// ── Email prompt modal ──────────────────────────────────────────────────────
-// Show once per browser session (sessionStorage) to players with no email.
+// ── Email re-collection gate (BLOCKING) ─────────────────────────────────────
+// The §2 cleanup migration nulled blank/junk/duplicate emails for ~147k rows.
+// A real player (is_guest=0) with a NULL email must provide a valid, unique
+// email before using the app. Guests (is_guest=1) never log in and are exempt
+// (checked defensively here). When email is present, NOTHING renders below —
+// zero behavior change for the overwhelming majority of users.
+$__showEmailPrompt = false;
 if ($this->__session->token != null):
 	$__empUid = (int)$this->__session->user_id;
 	$DB->Clear();
-	$__empRow = $DB->DataSet("SELECT email FROM ork_mundane WHERE mundane_id = $__empUid LIMIT 1");
-	$__showEmailPrompt = $__empRow && $__empRow->Next() && empty(trim($__empRow->email ?? ''));
+	$__empRow = $DB->DataSet("SELECT email, is_guest FROM ork_mundane WHERE mundane_id = $__empUid LIMIT 1");
+	if ($__empRow && $__empRow->Next()) {
+		$__empNoEmail  = empty(trim($__empRow->email ?? ''));
+		$__empIsGuest  = ((int)($__empRow->is_guest ?? 0) === 1);
+		$__showEmailPrompt = $__empNoEmail && !$__empIsGuest;
+	}
 endif;
 ?>
 <?php if (!empty($__showEmailPrompt)): ?>
 <style>
-.emp-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:10100; align-items:center; justify-content:center; }
+/* Blocking email re-collection gate. Backdrop is opaque + covers everything;
+   no dismiss path — the user must submit a valid, unique email to proceed.
+   Dark-mode-aware via [data-theme="dark"] overrides at the bottom. */
+.emp-overlay { display:none; position:fixed; inset:0; background:rgba(15,23,42,0.82); z-index:2147483600; align-items:center; justify-content:center; padding:16px; box-sizing:border-box; -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px); }
 .emp-overlay.emp-open { display:flex; }
-.emp-modal { background:#fff; border-radius:12px; padding:28px 28px 22px; max-width:440px; width:92%; box-shadow:0 8px 40px rgba(0,0,0,0.28); font-family:inherit; }
+.emp-modal { background:#fff; border-radius:12px; padding:28px 28px 22px; max-width:460px; width:100%; box-shadow:0 12px 48px rgba(0,0,0,0.45); font-family:inherit; }
 .emp-header { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
 .emp-header-icon { font-size:26px; color:#4299e1; flex-shrink:0; }
-.emp-title { font-size:17px; font-weight:700; color:#2d3748; background:transparent; border:none; padding:0; border-radius:0; text-shadow:none; margin:0; }
+/* Reset orkui.css global h1–h6 pill-box styling on the title. */
+.emp-title, h1.emp-title, h2.emp-title { font-size:18px; font-weight:700; color:#2d3748; background:transparent; border:none; padding:0; border-radius:0; text-shadow:none; margin:0; }
 .emp-body { font-size:13px; color:#4a5568; line-height:1.6; margin-bottom:14px; }
 .emp-field { margin-bottom:12px; }
 .emp-field label { display:block; font-size:12px; font-weight:600; color:#4a5568; margin-bottom:4px; }
-.emp-field input[type="email"] { width:100%; box-sizing:border-box; padding:8px 10px; border:1px solid #e2e8f0; border-radius:5px; font-size:14px; color:#2d3748; }
+.emp-field input[type="email"] { width:100%; box-sizing:border-box; padding:9px 10px; border:1px solid #e2e8f0; border-radius:5px; font-size:14px; color:#2d3748; background:#fff; }
+.emp-field input[type="email"]::placeholder { color:#a0aec0; }
 .emp-field input[type="email"]:focus { outline:none; border-color:#4299e1; box-shadow:0 0 0 3px rgba(66,153,225,.15); }
 .emp-error { display:none; color:#e53e3e; font-size:12px; margin-top:4px; }
 .emp-actions { display:flex; justify-content:flex-end; align-items:center; gap:10px; margin-top:4px; }
-.emp-skip { background:none; border:none; color:#a0aec0; font-size:13px; cursor:pointer; padding:4px 8px; }
-.emp-skip:hover { color:#718096; }
 .emp-save { background:#4299e1; color:#fff; border:none; border-radius:6px; padding:9px 22px; font-size:14px; font-weight:600; cursor:pointer; transition:background .15s; }
 .emp-save:hover:not(:disabled) { background:#2b6cb0; }
 .emp-save:disabled { opacity:.6; cursor:not-allowed; }
@@ -766,14 +778,29 @@ endif;
 .emp-suggestion-use:hover { background:#2b6cb0; }
 .emp-suggestion-dismiss { background:none; border:none; color:#90cdf4; font-size:16px; line-height:1; cursor:pointer; padding:0 2px; flex-shrink:0; }
 .emp-suggestion-dismiss:hover { color:#4299e1; }
+/* ── Dark mode ── */
+[data-theme="dark"] .emp-modal { background:#1e293b; box-shadow:0 12px 48px rgba(0,0,0,0.6); }
+[data-theme="dark"] .emp-title, [data-theme="dark"] h1.emp-title, [data-theme="dark"] h2.emp-title { color:#f1f5f9; }
+[data-theme="dark"] .emp-body { color:#cbd5e1; }
+[data-theme="dark"] .emp-field label { color:#cbd5e1; }
+[data-theme="dark"] .emp-field input[type="email"] { background:#0f172a; border-color:#334155; color:#f1f5f9; }
+[data-theme="dark"] .emp-field input[type="email"]::placeholder { color:#64748b; }
+[data-theme="dark"] .emp-field input[type="email"]:focus { border-color:#4299e1; box-shadow:0 0 0 3px rgba(66,153,225,.25); }
+[data-theme="dark"] .emp-error { color:#fc8181; }
+[data-theme="dark"] .emp-save { background:#3182ce; }
+[data-theme="dark"] .emp-save:hover:not(:disabled) { background:#4299e1; }
+[data-theme="dark"] .emp-suggestion { background:#1e3a5f; border-color:#2c5282; color:#90cdf4; }
+[data-theme="dark"] .emp-suggestion i { color:#63b3ed; }
+[data-theme="dark"] .emp-suggestion-use { background:#3182ce; }
+[data-theme="dark"] .emp-suggestion-use:hover { background:#4299e1; }
 </style>
 <div class="emp-overlay" id="emp-overlay">
   <div class="emp-modal" role="dialog" aria-modal="true" aria-labelledby="emp-title">
     <div class="emp-header">
       <i class="fas fa-envelope emp-header-icon"></i>
-      <span class="emp-title" id="emp-title">Add a recovery email</span>
+      <span class="emp-title" id="emp-title">A valid email is required</span>
     </div>
-    <p class="emp-body">It looks like you don't have a recovery email address on file. If you ever forget your username or password, we can help. Please enter your email address below to continue using the ORK.</p>
+    <p class="emp-body">We don't have a valid email address on file for your account. To keep your account secure and recoverable, please provide a working email address to continue using the ORK. This is a one-time step.</p>
     <div class="emp-field">
       <label for="emp-email">Email address</label>
       <input type="email" id="emp-email" name="emp-email" placeholder="you@example.com" autocomplete="email">
@@ -786,36 +813,57 @@ endif;
       <div class="emp-error" id="emp-error"></div>
     </div>
     <div class="emp-actions">
-      <button class="emp-skip" id="emp-skip" type="button">Skip for now</button>
-      <button class="emp-save" id="emp-save" type="button">Save email</button>
+      <button class="emp-save" id="emp-save" type="button">Save email &amp; continue</button>
     </div>
   </div>
 </div>
 <script>
 (function() {
-  var SKIP_KEY = 'emp_skipped';
-  if (sessionStorage.getItem(SKIP_KEY)) return;
-
+  // BLOCKING gate: no skip, no dismiss. The user must submit a valid, unique
+  // email. Page scroll is locked while the gate is open.
   var overlay    = document.getElementById('emp-overlay');
   var input      = document.getElementById('emp-email');
   var saveBtn    = document.getElementById('emp-save');
-  var skipBtn    = document.getElementById('emp-skip');
   var errEl      = document.getElementById('emp-error');
   var suggBox    = document.getElementById('emp-suggestion');
   var suggVal    = document.getElementById('emp-suggestion-val');
   var suggUse    = document.getElementById('emp-suggestion-use');
   var suggDismiss = document.getElementById('emp-suggestion-dismiss');
 
-  function open()  { overlay.classList.add('emp-open'); setTimeout(function(){ input.focus(); }, 50); }
-  function close() { overlay.classList.remove('emp-open'); }
+  function open()  {
+    overlay.classList.add('emp-open');
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+    setTimeout(function(){ input.focus(); }, 50);
+  }
+  function close() {
+    overlay.classList.remove('emp-open');
+    document.documentElement.style.overflow = '';
+    document.body.style.overflow = '';
+  }
   function showErr(msg) { errEl.textContent = msg; errEl.style.display = 'block'; }
   function clearErr()   { errEl.style.display = 'none'; }
   function hideSugg()   { suggBox.classList.remove('emp-suggestion-visible'); }
 
-  setTimeout(open, 400);
+  open();
 
-  overlay.addEventListener('click', function(e) { if (e.target === overlay) { sessionStorage.setItem(SKIP_KEY, '1'); close(); } });
-  skipBtn.addEventListener('click', function() { sessionStorage.setItem(SKIP_KEY, '1'); close(); });
+  // Keep focus trapped inside the gate — Tab/Shift+Tab can't escape to the page,
+  // and Escape is suppressed (no dismiss path).
+  overlay.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); return; }
+    if (e.key !== 'Tab') return;
+    var focusables = overlay.querySelectorAll('input, button');
+    if (!focusables.length) return;
+    var first = focusables[0], last = focusables[focusables.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
+  // Block focus from reaching the page behind the gate.
+  document.addEventListener('focusin', function(e) {
+    if (overlay.classList.contains('emp-open') && !overlay.contains(e.target)) {
+      input.focus();
+    }
+  });
 
   saveBtn.addEventListener('click', function() {
     clearErr();
@@ -833,13 +881,14 @@ endif;
         } else {
           showErr(data.error || 'Something went wrong. Please try again.');
           saveBtn.disabled = false;
-          saveBtn.textContent = 'Save email';
+          saveBtn.textContent = 'Save email & continue';
+          input.focus();
         }
       })
       .catch(function() {
         showErr('Network error. Please try again.');
         saveBtn.disabled = false;
-        saveBtn.textContent = 'Save email';
+        saveBtn.textContent = 'Save email & continue';
       });
   });
 

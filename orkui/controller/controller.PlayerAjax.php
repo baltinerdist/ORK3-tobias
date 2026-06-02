@@ -715,14 +715,26 @@ class Controller_PlayerAjax extends Controller
             echo json_encode(['status' => 1, 'error' => 'Email address is required.']);
             exit;
         }
-        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        // Normalize + format-validate via the shared GuestValidator (mirrors the
+        // cleanup migration so we never re-save junk the migration would null).
+        // GuestValidator is autoloaded at bootstrap (startup.php scans DIR_ORK3).
+        $norm = GuestValidator::normalizeEmail($email);
+        if ($norm === '') {
             echo json_encode(['status' => 1, 'error' => 'Please enter a valid email address.']);
             exit;
         }
         $mundane_id = (int)$this->session->user_id;
+        // Uniqueness check (case-insensitive, excludes self) — friendly message
+        // before the DB UNIQUE index would hard-fail the save.
+        $this->load_model('Player');
+        $avail = $this->Player->email_available($norm, $mundane_id);
+        if (empty($avail['available'])) {
+            echo json_encode(['status' => 1, 'error' => 'That email address is already in use by another account. Please use a different one.']);
+            exit;
+        }
         global $DB;
         $DB->Clear();
-        $DB->email = $email;
+        $DB->email = $norm;
         $DB->Execute("UPDATE ork_mundane SET email = :email WHERE mundane_id = $mundane_id");
         echo json_encode(['status' => 0]);
         exit;
