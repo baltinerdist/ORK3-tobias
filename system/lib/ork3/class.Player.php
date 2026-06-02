@@ -648,7 +648,7 @@ class Player extends Ork3
 									ssa.mundane_id = '" . mysql_real_escape_string($request['MundaneId']) . "'
 								group by ssa.class_id, ssa.date) a on a.class_id = c.class_id
 						left join " . DB_PREFIX . "class_reconciliation cr on cr.class_id = c.class_id and cr.mundane_id = '" . mysql_real_escape_string($request['MundaneId']) . "'
-                    where c.active = 1
+                    where c.active = 1 and c.is_guest = 0
 					group by c.class_id
 				";
         //echo $sql;
