@@ -770,7 +770,8 @@ class Player extends Ork3
         $this->mundane->reeve_qualified_until = '0000-00-00';
         $this->mundane->modified              = date('Y-m-d H:i:s');
         $this->mundane->active                = 1;
-        $this->mundane->guest_captured_at     = date('Y-m-d H:i:s');
+        $capturedAt = date('Y-m-d H:i:s');
+        $this->mundane->guest_captured_at     = $capturedAt;
         $this->mundane->guest_created_by_id   = $creatorId;
         if (valid_id($request['EventId'] ?? 0)) {
             $this->mundane->guest_source_event_id = (int)$request['EventId'];
@@ -778,18 +779,42 @@ class Player extends Ork3
         $this->mundane->save();
         $newId = (int)$this->mundane->mundane_id;
 
-        // TOCTOU guard: under ERRMODE_WARNING a duplicate-key INSERT does NOT throw and
-        // lastInsertId() returns 0. If a concurrent caller grabbed this email between our
-        // EmailIsAvailable() check above and the save, the INSERT silently failed. Detect
-        // the missing id, surface the collision (same shape as the pre-detected case), and
-        // leave no half-created row behind.
-        if ($newId <= 0) {
-            if ($email !== '') {
-                $avail = $this->EmailIsAvailable($email);
-                if (!$avail['available']) {
-                    return InvalidParameter('That email is already on file.', $avail);
-                }
+        // TOCTOU guard (RELIABLE). Under ERRMODE_WARNING a duplicate-key INSERT does NOT throw.
+        // It is NOT safe to trust lastInsertId(): on a dup-key failure PDO returns the STALE id
+        // of the previous successful insert on this connection, so a `$newId <= 0` check is
+        // bypassed whenever any prior INSERT ran in the same request — yapo then refetches a
+        // DIFFERENT person's row and we'd "succeed" with the wrong mundane_id.
+        //
+        // Robust signal: read the email's GLOBAL owner back (email is UNIQUE) and confirm THAT
+        // row is the one WE just wrote by matching the identity fields we set this call
+        // (guest_created_by_id + guest_captured_at). If the owner is someone else, our INSERT
+        // lost the race and was silently rejected -> surface the collision, leave no orphan.
+        if ($email !== '') {
+            $this->db->Clear();
+            $rb = $this->db->query("SELECT mundane_id, guest_created_by_id, guest_captured_at FROM " . DB_PREFIX . "mundane "
+                . "WHERE email = '" . mysql_real_escape_string($email) . "' LIMIT 1");
+            $ours = false;
+            $ownerId = 0;
+            if ($rb && $rb->next()) {
+                $ownerId = (int)$rb->mundane_id;
+                $ours = ((int)$rb->guest_created_by_id === (int)$creatorId
+                    && (string)$rb->guest_captured_at === (string)$capturedAt);
             }
+            if (!$ours) {
+                // Our insert did not persist (race lost). Belt-and-suspenders: if yapo DID land
+                // a half row under a different/empty key, drop it so no orphan survives.
+                if ($newId > 0 && $newId !== $ownerId) {
+                    $this->db->Clear();
+                    $this->db->query("DELETE FROM " . DB_PREFIX . "mundane WHERE mundane_id = " . $newId . " AND email <> '" . mysql_real_escape_string($email) . "'");
+                }
+                $avail = $this->EmailIsAvailable($email);
+                return InvalidParameter('That email is already on file.', $avail);
+            }
+            // Our row is the owner; trust the authoritative id over the (possibly stale) lastInsertId.
+            $newId = $ownerId;
+        } elseif ($newId <= 0) {
+            // NULL-email guest can't collide on the UNIQUE index, so the only failure mode is a
+            // genuinely failed insert -> no id.
             return InvalidParameter('The guest could not be created. Please try again.');
         }
 
@@ -826,6 +851,11 @@ class Player extends Ork3
         }
         if ((int)$this->mundane->is_guest !== 1) {
             return InvalidParameter('This profile is not a guest.');
+        }
+        // Already-merged/retired guard: a linked guest is is_guest=1, active=0 but still reachable
+        // by id; without this an officer could re-convert (and re-mint a login for) a retired row.
+        if ((int)$this->mundane->active !== 1) {
+            return InvalidParameter('This guest has already been merged/retired.');
         }
         $guestParkId   = (int)$this->mundane->park_id;
         // Capture the guest's email NOW: unique_username() below mutates $this->mundane.
@@ -882,11 +912,17 @@ class Player extends Ork3
         $this->mundane->modified         = date('Y-m-d H:i:s');
         $this->mundane->password_expires = date('Y-m-d H:i:s', time() + 60 * 60 * 24 * 365);
         $this->mundane->password_salt    = md5(rand() . microtime());
+        // A converted guest is a live player: never leave it inactive.
+        $this->mundane->active           = 1;
         if (empty($this->mundane->park_member_since) || $this->mundane->park_member_since === '0000-00-00') {
             $this->mundane->park_member_since = date('Y-m-d');
         }
         $this->mundane->save();
 
+        // $DB->Clear() before the raw credential INSERT in SaltPassword: yapo->save() above leaves
+        // stale PDO bindings on the shared $DB, which can silently no-op the INSERT -> the converted
+        // player would have no working password row in ork_credential.
+        $this->db->Clear();
         Authorization::SaltPassword($this->mundane->password_salt, strtoupper(trim($this->mundane->username)) . trim($password), $this->mundane->password_expires);
 
         // Ensure a paired design row exists (guests created one, but be defensive).
@@ -921,26 +957,18 @@ class Player extends Ork3
             $gm = new yapo($this->db, DB_PREFIX . 'mundane');
             $gm->clear();
             $gm->mundane_id = $exclude;
-            if ($gm->find()) {
-                $parkId = (int)$gm->park_id;
+            // IT4: a MundaneId was supplied but no such row -> do NOT silently fall back to the
+            // client-supplied ParkId (which could point at an unrelated park the caller can CREATE
+            // in). Refuse instead.
+            if (!$gm->find()) {
+                return InvalidParameter('No such guest.');
             }
+            $parkId = (int)$gm->park_id;
         }
         $uid = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
         if (!(valid_id($uid) && valid_id($parkId)
                 && Ork3::$Lib->authorization->HasAuthority($uid, AUTH_PARK, $parkId, AUTH_CREATE))) {
             return NoAuthorization();
-        }
-
-        // Resolve the park's kingdom so we can scope the email/name lookup. ORK admins
-        // may match globally (they merge cross-kingdom); everyone else is kingdom-scoped
-        // to avoid a global PII enumeration of every player by exact email.
-        $isAdmin = Ork3::$Lib->authorization->HasAuthority($uid, AUTH_ADMIN, 0, AUTH_EDIT) ? true : false;
-        $kingdomId = 0;
-        $pk = new yapo($this->db, DB_PREFIX . 'park');
-        $pk->clear();
-        $pk->park_id = $parkId;
-        if ($pk->find()) {
-            $kingdomId = (int)$pk->kingdom_id;
         }
 
         $matches = [];
@@ -963,14 +991,17 @@ class Player extends Ork3
             ];
         };
 
-        // 1) Exact email match. Compare against the raw column (collation already
-        // case/accent-folds, matching the UNIQUE index). Scoped to the park's kingdom
-        // unless the caller is an ORK admin, so officers can't enumerate other kingdoms.
+        // 1) Exact email match -- GLOBAL (cross-kingdom). email is UNIQUE app-wide, so an exact
+        // match returns at most the single global owner of an address the officer already had to
+        // type in full; it is NOT a PII enumeration vector. Scoping it to the park's kingdom would
+        // produce a FALSE NEGATIVE for a player who moved kingdoms and returned (a duplicate guest
+        // would then be created, defeating dedup). Compare against the raw column (collation already
+        // case/accent-folds, matching the UNIQUE index). The auth gate above still requires
+        // AUTH_PARK CREATE to reach this code at all.
         if ($email !== '') {
             $sql = "SELECT m.mundane_id, m.given_name, m.surname, m.persona, m.username, m.email, p.name AS park_name "
                  . "FROM " . DB_PREFIX . "mundane m LEFT JOIN " . DB_PREFIX . "park p ON p.park_id = m.park_id "
                  . "WHERE m.is_guest = 0 AND m.email = '" . mysql_real_escape_string($email) . "'"
-                 . ((!$isAdmin && $kingdomId > 0) ? " AND m.kingdom_id = " . $kingdomId : "")
                  . ($exclude > 0 ? " AND m.mundane_id <> " . $exclude : "") . " LIMIT 5";
             $r = $this->db->query($sql);
             while ($r && $r->next()) {
@@ -978,7 +1009,9 @@ class Player extends Ork3
             }
         }
 
-        // 2) Fuzzy name match within the same park (given+surname).
+        // 2) Fuzzy name match within the same park (given+surname). Name is the real enumeration
+        // surface, so it stays park-scoped (tighter than kingdom) for everyone -- including
+        // non-admins -- exactly as before.
         if ($first !== '' && $last !== '' && valid_id($parkId)) {
             $sql = "SELECT m.mundane_id, m.given_name, m.surname, m.persona, m.username, m.email, p.name AS park_name "
                  . "FROM " . DB_PREFIX . "mundane m LEFT JOIN " . DB_PREFIX . "park p ON p.park_id = m.park_id "
@@ -1014,6 +1047,11 @@ class Player extends Ork3
         }
         if ((int)$src->is_guest !== 1) {
             return InvalidParameter('Source profile is not a guest.');
+        }
+        // Already-merged/retired guard: a linked guest is is_guest=1, active=0 but still reachable
+        // by id; without this the same guest could be re-linked, double-re-pointing rows.
+        if ((int)$src->active !== 1) {
+            return InvalidParameter('This guest has already been merged/retired.');
         }
         $guestParkId    = (int)$src->park_id;
         $guestKingdomId = (int)$src->kingdom_id;
@@ -1213,24 +1251,46 @@ class Player extends Ork3
                 $this->mundane->password_expires = date("Y-m-d H:i:s", time() + 60 * 60 * 24 * 365);
                 $this->mundane->password_salt = md5(rand().microtime());
                 $this->mundane->park_member_since = date('Y-m-d');
-                $this->mundane->token                = md5(uniqid(rand(), true));
+                $createToken = md5(uniqid(rand(), true));
+                $this->mundane->token                = $createToken;
                 $this->mundane->xtoken               = md5(uniqid(rand(), true));
                 $this->mundane->waiver_ext           = '';
                 $this->mundane->reeve_qualified_until = '0000-00-00';
                 $this->mundane->save();
                 $new_mundane_id = (int)$this->mundane->mundane_id;
 
-                // TOCTOU guard: under ERRMODE_WARNING a duplicate-key INSERT does NOT throw and
-                // lastInsertId() returns 0. If a concurrent caller grabbed this email between the
-                // EmailIsAvailable() check above and this save, the INSERT silently failed. Detect
-                // the missing id, surface the collision, and never half-create a player.
-                if ($new_mundane_id <= 0) {
-                    if ($normEmail !== '') {
-                        $avail = $this->EmailIsAvailable($normEmail);
-                        if (!$avail['available']) {
-                            return InvalidParameter('That email address is already in use by another account.', $avail);
-                        }
+                // TOCTOU guard (RELIABLE). Under ERRMODE_WARNING a duplicate-key INSERT does NOT
+                // throw, and lastInsertId() is NOT 0 on failure -- it returns the STALE id of the
+                // previous successful insert on this connection. So a `$new_mundane_id <= 0` check
+                // is bypassed whenever a prior INSERT ran in the same request, and yapo refetches
+                // a DIFFERENT person's row (wrong-id Success). Robust signal: read the email's
+                // GLOBAL owner back (email is UNIQUE) and confirm that row is the one WE just
+                // wrote by matching the unique token we set this call. If the owner is someone
+                // else, our INSERT lost the race -> surface the collision and leave no orphan.
+                if ($normEmail !== '') {
+                    $this->db->Clear();
+                    $rb = $this->db->query("SELECT mundane_id, token FROM " . DB_PREFIX . "mundane "
+                        . "WHERE email = '" . mysql_real_escape_string($normEmail) . "' LIMIT 1");
+                    $ours = false;
+                    $ownerId = 0;
+                    if ($rb && $rb->next()) {
+                        $ownerId = (int)$rb->mundane_id;
+                        $ours = ((string)$rb->token === (string)$createToken);
                     }
+                    if (!$ours) {
+                        if ($new_mundane_id > 0 && $new_mundane_id !== $ownerId) {
+                            $this->db->Clear();
+                            $this->db->query("DELETE FROM " . DB_PREFIX . "mundane WHERE mundane_id = " . $new_mundane_id . " AND email <> '" . mysql_real_escape_string($normEmail) . "'");
+                        }
+                        $avail = $this->EmailIsAvailable($normEmail);
+                        return InvalidParameter('That email address is already in use by another account.', $avail);
+                    }
+                    // Trust the authoritative id over the (possibly stale) lastInsertId.
+                    $new_mundane_id = $ownerId;
+                    $this->mundane->mundane_id = $new_mundane_id;
+                } elseif ($new_mundane_id <= 0) {
+                    // NULL-email player can't collide on the UNIQUE index, so the only failure
+                    // mode here is a genuinely failed insert -> no id.
                     return InvalidParameter('The player could not be created. Please try again.');
                 }
 
