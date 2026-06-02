@@ -1611,12 +1611,17 @@ $(function() {
 					confirmClassWrap.style.display = '';
 				}
 			}
-			guestSavedScrollY = window.scrollY || window.pageYOffset || 0;
-			document.documentElement.style.overflow = 'hidden';
-			document.body.style.overflow = 'hidden';
-			document.body.style.position = 'fixed';
-			document.body.style.top = (-guestSavedScrollY) + 'px';
-			document.body.style.width = '100%';
+			// Only acquire the scroll lock (and capture scrollY) if the guest add modal
+			// isn't already open — otherwise it already locked the body and window.scrollY
+			// is 0, which would clobber the saved position and jump the page to top on close.
+			if (!overlay.classList.contains('att-guest-open')) {
+				guestSavedScrollY = window.scrollY || window.pageYOffset || 0;
+				document.documentElement.style.overflow = 'hidden';
+				document.body.style.overflow = 'hidden';
+				document.body.style.position = 'fixed';
+				document.body.style.top = (-guestSavedScrollY) + 'px';
+				document.body.style.width = '100%';
+			}
 			confirmOverlay.classList.add('att-confirm-open');
 		}
 		function closeConfirm() {
