@@ -458,7 +458,7 @@ class Controller_EventAjax extends Controller
 				 FROM " . DB_PREFIX . "mundane m
 				 LEFT JOIN " . DB_PREFIX . "kingdom k ON k.kingdom_id = m.kingdom_id
 				 LEFT JOIN " . DB_PREFIX . "park p ON p.park_id = m.park_id
-				 WHERE m.suspended = 0 AND m.active = 1 AND LENGTH(m.persona) > 0
+				 WHERE m.suspended = 0 AND m.active = 1 AND m.is_guest = 0 AND LENGTH(m.persona) > 0
 				   AND (m.persona LIKE '%{$term}%'
 				     OR m.given_name LIKE '%{$term}%'
 				     OR m.surname LIKE '%{$term}%'
