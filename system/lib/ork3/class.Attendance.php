@@ -13,7 +13,7 @@ class Attendance extends Ork3
     private static $_guestClassId = null;
     public static function GuestClassId()
     {
-        if (self::$_guestClassId !== null) {
+        if (self::$_guestClassId !== null && self::$_guestClassId > 0) {
             return self::$_guestClassId;
         }
         $row = $GLOBALS["DB"]->query("SELECT class_id FROM " . DB_PREFIX . "class WHERE is_guest = 1 LIMIT 1");
