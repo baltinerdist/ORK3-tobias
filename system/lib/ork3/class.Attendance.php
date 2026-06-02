@@ -16,6 +16,9 @@ class Attendance extends Ork3
         if (self::$_guestClassId !== null && self::$_guestClassId > 0) {
             return self::$_guestClassId;
         }
+        // $DB->Clear() first: a prior yapo/model call may have left stale PDO bindings
+        // on the shared $DB, which could otherwise silently break this raw query.
+        $GLOBALS['DB']->Clear();
         $row = $GLOBALS["DB"]->query("SELECT class_id FROM " . DB_PREFIX . "class WHERE is_guest = 1 LIMIT 1");
         self::$_guestClassId = ($row && $row->next()) ? (int)$row->class_id : 0;
         return self::$_guestClassId;
@@ -102,6 +105,11 @@ class Attendance extends Ork3
         $target->mundane_id = $request['MundaneId'];
         $isGuestTarget = $target->find() ? ((int)$target->is_guest === 1) : false;
         if ($isGuestTarget) {
+            // If no Guest class is configured, $gcid is 0 and the comparison below would
+            // always fire with a misleading message. Surface the real cause instead.
+            if ($gcid <= 0) {
+                return InvalidParameter('Guest class is not configured for this environment.');
+            }
             if ((int)$request['ClassId'] !== $gcid) {
                 return InvalidParameter('Guests may only receive Guest attendance.');
             }

@@ -33,15 +33,22 @@ class Report extends Ork3
         if ($gcid <= 0) {
             return '';
         }
-        $counts = 0;
         $kid = (int)$kingdomId;
-        if ($kid > 0) {
-            $r = $this->db->query("SELECT guest_attendance_counts FROM " . DB_PREFIX . "kingdom WHERE kingdom_id = " . $kid . " LIMIT 1");
-            if ($r && $r->next()) {
-                $counts = (int)$r->guest_attendance_counts;
+        // Per-kingdom static cache: callers like ParkAttendanceSinglePark invoke this
+        // twice for the same kingdom, and it ran a guest_attendance_counts lookup each
+        // time. Cache the toggle by kingdom_id to avoid the redundant round-trip.
+        static $_countsByKingdom = [];
+        if (!array_key_exists($kid, $_countsByKingdom)) {
+            $counts = 0;
+            if ($kid > 0) {
+                $r = $this->db->query("SELECT guest_attendance_counts FROM " . DB_PREFIX . "kingdom WHERE kingdom_id = " . $kid . " LIMIT 1");
+                if ($r && $r->next()) {
+                    $counts = (int)$r->guest_attendance_counts;
+                }
             }
+            $_countsByKingdom[$kid] = $counts;
         }
-        return $counts === 1 ? '' : (' AND ' . $attAlias . '.class_id <> ' . $gcid);
+        return $_countsByKingdom[$kid] === 1 ? '' : (' AND ' . $attAlias . '.class_id <> ' . $gcid);
     }
 
     // Cross-kingdom aggregates that already join ork_kingdom: branch per-row so
