@@ -183,6 +183,20 @@ class Controller_Attendance extends Controller {
 		$this->data['CanAddAttendance'] = $_uid > 0
 			&& Ork3::$Lib->authorization->HasAuthority($_uid, AUTH_PARK, (int)$id, AUTH_EDIT);
 
+		// Guest quick-add is gated on the park's kingdom enabling guest attendance.
+		$this->data['GuestAttendanceEnabled'] = 0;
+		$_pid = (int)$id;
+		if ($_pid > 0) {
+			global $DB;
+			$DB->Clear();
+			$_grow = $DB->DataSet("SELECT k.guest_attendance_enabled AS en FROM " . DB_PREFIX . "park p JOIN " . DB_PREFIX . "kingdom k ON k.kingdom_id = p.kingdom_id WHERE p.park_id = {$_pid} LIMIT 1");
+			if ($_grow && $_grow->Size() > 0 && $_grow->Next()) {
+				$this->data['GuestAttendanceEnabled'] = (int)$_grow->en === 1 ? 1 : 0;
+			}
+		}
+		// Resolve the dynamic Guest class id once for the template (never hard-coded).
+		$this->data['GuestClassId'] = (int)$this->Attendance->guest_class_id();
+
 		if (strlen($action) > 0) {
 			$this->request->save('Attendance_park', true);
 			$r = array('Status'=>0);
