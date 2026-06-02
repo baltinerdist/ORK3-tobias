@@ -136,7 +136,7 @@ class Controller_SearchAjax extends Controller {
 		$mundaneClause  = $isOrkAdmin
 			? "OR " . $foldText('m.given_name') . " LIKE '%{$term}%' OR " . $foldText('m.surname') . " LIKE '%{$term}%'"
 			: "OR (m.restricted = 0 AND (" . $foldText('m.given_name') . " LIKE '%{$term}%' OR " . $foldText('m.surname') . " LIKE '%{$term}%'))";
-		$playerWhere = "{$suspendedClause} AND {$activeClause} AND LENGTH(m.persona) > 0
+		$playerWhere = "{$suspendedClause} AND {$activeClause} AND m.is_guest = 0 AND LENGTH(m.persona) > 0
 			  AND (" . $foldText('m.persona') . " LIKE '%{$term}%'
 			    OR m.username LIKE '%{$term}%'
 			    {$mundaneClause})";

@@ -387,6 +387,9 @@ class Player extends Ork3
                             'BeltDisplay' => $design->belt_display,
                         'BasicFonts' => (int)$this->mundane->basic_fonts,
                         'DyslexiaFonts' => (int)$this->mundane->dyslexia_fonts,
+                        'IsGuest' => (int)$this->mundane->is_guest,
+                        'GuestCapturedAt' => $this->mundane->guest_captured_at,
+                        'GuestSourceEventId' => $this->mundane->guest_source_event_id,
                 );
             $unit = Ork3::$Lib->report->UnitSummary(array( 'MundaneId' => $this->mundane->mundane_id, 'IncludeCompanies' => 1, 'ActiveOnly' => 1 ));
             if ($unit['Status']['Status'] != 0) {

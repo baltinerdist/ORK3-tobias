@@ -1549,6 +1549,8 @@ class Report extends Ork3
                 $restrict_clause[] = " um.unit_id = '" . mysql_real_escape_string($request['Id']) . "' and " . (valid_id($request['IncludeRetiredUnitMembers']) ? "" : "um.active = 'Active'");
                 break;
         }
+        // Always exclude guest rows from rosters/reports — guests are not real players.
+        $restrict_clause[] = 'm.is_guest = 0';
         $select_list = array_merge(
             $select_list,
             array(
@@ -2274,7 +2276,8 @@ class Report extends Ork3
 						left join " . DB_PREFIX . "kingdom k on m.kingdom_id = k.kingdom_id
 						left join " . DB_PREFIX . "park p on m.park_id = p.park_id
 					where
-						m.suspended = 0 
+						m.suspended = 0
+						and m.is_guest = 0
 						and m.reeve_qualified = 1
 						and m.reeve_qualified_until >= CAST(CURRENT_TIMESTAMP AS DATE) 
 						$where
@@ -2318,7 +2321,8 @@ class Report extends Ork3
 						left join " . DB_PREFIX . "kingdom k on m.kingdom_id = k.kingdom_id
 						left join " . DB_PREFIX . "park p on m.park_id = p.park_id
 					where
-						m.suspended = 0 
+						m.suspended = 0
+						and m.is_guest = 0
 						and m.corpora_qualified = 1
 						and m.corpora_qualified_until >= CAST(CURRENT_TIMESTAMP AS DATE) 
 						$where
@@ -3400,7 +3404,7 @@ class Report extends Ork3
 					AND a.date >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
 				LEFT JOIN " . DB_PREFIX . "park p ON p.park_id = m.park_id
 				LEFT JOIN " . DB_PREFIX . "kingdom k ON k.kingdom_id = m.kingdom_id
-			WHERE m.active = 0 AND m.suspended = 0 AND m.persona IS NOT NULL AND m.persona != '' $location
+			WHERE m.active = 0 AND m.suspended = 0 AND m.is_guest = 0 AND m.persona IS NOT NULL AND m.persona != '' $location
 			GROUP BY m.mundane_id
 			ORDER BY p.name, m.persona";
 
@@ -3434,7 +3438,7 @@ class Report extends Ork3
 			FROM " . DB_PREFIX . "mundane m
 				LEFT JOIN " . DB_PREFIX . "park p ON p.park_id = m.park_id
 				LEFT JOIN " . DB_PREFIX . "kingdom k ON k.kingdom_id = m.kingdom_id
-			WHERE m.active = 1 AND m.suspended = 0 AND m.persona IS NOT NULL AND m.persona != '' $location
+			WHERE m.active = 1 AND m.suspended = 0 AND m.is_guest = 0 AND m.persona IS NOT NULL AND m.persona != '' $location
 				AND (m.park_member_since IS NULL OR m.park_member_since < DATE_SUB(CURDATE(), INTERVAL 24 MONTH))
 				AND NOT EXISTS (
 					SELECT 1 FROM " . DB_PREFIX . "attendance a
@@ -3844,6 +3848,7 @@ class Report extends Ork3
 				$event_count_join
 			WHERE m.kingdom_id = $kingdom_id
 			  AND m.active = 1
+			  AND m.is_guest = 0
 			  AND p.active = 'Active'
 			  $park_clause
 			  $mundane_clause

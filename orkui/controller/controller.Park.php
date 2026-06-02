@@ -381,6 +381,7 @@ class Controller_Park extends Controller
 			WHERE m.park_id = {$pid}
 			  AND m.suspended = 0
 			  AND m.active = 1
+			  AND m.is_guest = 0
 			GROUP BY m.mundane_id
 			ORDER BY m.persona";
             $DB->Clear();

@@ -391,7 +391,7 @@ class Controller_Kingdom extends Controller
 			   AND la.kingdom_id = {$kid}
 			LEFT JOIN ork_class c ON la.class_id = c.class_id
 			LEFT JOIN ork_officer o ON o.mundane_id = m.mundane_id AND o.park_id = m.park_id
-			WHERE m.suspended = 0 AND m.active = 1
+			WHERE m.suspended = 0 AND m.active = 1 AND m.is_guest = 0
 			GROUP BY m.mundane_id
 			ORDER BY m.persona";
         $DB->Clear();

@@ -1162,6 +1162,7 @@ class Controller_Reports extends Controller
 			         JOIN ork_kingdomaward ka ON ka.kingdomaward_id = ma.kingdomaward_id
 			         JOIN ork_award a ON a.award_id = ka.award_id
 			         WHERE m.active = 1
+			           AND m.is_guest = 0
 			           AND a.is_ladder = 1
 			           AND a.award_id IN ({$awardIds})
 			           AND (ma.revoked = 0 OR ma.revoked IS NULL)

@@ -238,6 +238,7 @@ class Controller_ParkAjax extends Controller
 				LEFT JOIN ork_kingdom k ON k.kingdom_id = m.kingdom_id
 				LEFT JOIN ork_park p ON p.park_id = m.park_id
 				WHERE LENGTH(m.persona) > 0
+				  AND m.is_guest = 0
 				  " . ($include_suspended ? "" : "AND m.suspended = 0") . "
 				  " . ($include_inactive ? "" : "AND m.active = 1")    . "
 				  {$park_clause}
