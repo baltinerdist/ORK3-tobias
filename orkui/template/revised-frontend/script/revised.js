@@ -1938,6 +1938,183 @@ if (PnConfig.recError) {
         });
     })();
 
+    // ---- Convert Guest -> Full Player Modal (officer-only) ----
+    (function() {
+        // Guard on config flags (NOT getElementById) -- modal HTML is rendered after
+        // this external script\'s <script src> tag, so the DOM check would race.
+        if (typeof PnConfig === 'undefined' || !PnConfig.canEditAdmin || !PnConfig.isGuest) return;
+
+        function gid(id) { return document.getElementById(id); }
+        function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        }); }
+
+        var overlay = gid('pn-convert-overlay');
+        if (!overlay) return; // defensive: modal not rendered
+
+        var MATCH_URL   = PnConfig.uir + 'PlayerAjax/player/' + PnConfig.playerId + '/findplayermatch';
+        var CONVERT_URL = PnConfig.uir + 'PlayerAjax/player/' + PnConfig.playerId + '/convertguest';
+        var LINK_URL    = PnConfig.uir + 'PlayerAjax/player/' + PnConfig.playerId + '/linkguest';
+
+        function showStep(which) {
+            ['pn-convert-checking', 'pn-convert-match', 'pn-convert-form'].forEach(function(id) {
+                var el = gid(id);
+                if (el) el.style.display = (id === which) ? '' : 'none';
+            });
+            // Save button only on the form step.
+            gid('pn-convert-save').style.display = (which === 'pn-convert-form') ? '' : 'none';
+        }
+
+        function clearError() {
+            var e = gid('pn-convert-error');
+            e.style.display = 'none';
+            e.textContent = '';
+        }
+        function showError(msg) {
+            var e = gid('pn-convert-error');
+            e.textContent = msg || 'Something went wrong.';
+            e.style.display = 'block';
+        }
+
+        function renderForm() {
+            showStep('pn-convert-form');
+            // Prefill a suggested username from the guest\'s name; carry email if present.
+            var u = gid('pn-convert-username');
+            if (u && !u.value) {
+                var base = (String(PnConfig.guestGivenName || '') + String(PnConfig.guestSurname || ''))
+                    .toLowerCase().replace(/[^a-z0-9]/g, '');
+                if (base.length >= 4) u.value = base;
+            }
+            var em = gid('pn-convert-email');
+            if (em && !em.value && PnConfig.guestEmail) em.value = PnConfig.guestEmail;
+        }
+
+        function renderMatches(matches) {
+            var box = gid('pn-convert-match-list');
+            box.innerHTML = '';
+            matches.forEach(function(m) {
+                var name = (m.Persona && m.Persona.length) ? m.Persona
+                    : ((m.GivenName || '') + ' ' + (m.Surname || '')).trim();
+                var sub = [];
+                if (m.GivenName || m.Surname) sub.push(((m.GivenName || '') + ' ' + (m.Surname || '')).trim());
+                if (m.ParkName) sub.push(m.ParkName);
+                if (m.Email) sub.push(m.Email);
+                var row = document.createElement('div');
+                row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;margin-bottom:8px;';
+                row.innerHTML =
+                    '<div style="min-width:0;">'
+                    + '<div style="font-weight:700;color:#2d3748;">This looks like ' + esc(name) + '</div>'
+                    + '<div style="font-size:12px;color:#718096;">' + esc(sub.join(' \u00b7 ')) + '</div>'
+                    + '</div>'
+                    + '<button class="pn-btn pn-btn-primary pn-convert-link-btn" data-pid="' + (parseInt(m.MundaneId) || 0) + '" type="button"><i class="fas fa-link"></i> Link instead</button>';
+                box.appendChild(row);
+            });
+            box.querySelectorAll('.pn-convert-link-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() { doLink(parseInt(btn.dataset.pid) || 0, btn); });
+            });
+            showStep('pn-convert-match');
+        }
+
+        function doLink(playerId, btn) {
+            if (!playerId) return;
+            clearError();
+            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Linking\u2026'; }
+            var fd = new FormData();
+            fd.append('PlayerId', playerId);
+            fetch(LINK_URL, { method: 'POST', body: fd })
+                .then(function(r) { return r.json(); })
+                .then(function(j) {
+                    if (j.status === 0) {
+                        window.location.href = PnConfig.uir + 'Player/profile/' + playerId;
+                    } else {
+                        showError(j.error || 'Could not link this guest.');
+                        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-link"></i> Link instead'; }
+                    }
+                })
+                .catch(function(err) {
+                    showError('Link failed: ' + err.message);
+                    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-link"></i> Link instead'; }
+                });
+        }
+
+        window.pnOpenConvertModal = function() {
+            clearError();
+            showStep('pn-convert-checking');
+            gid('pn-convert-save').style.display = 'none';
+            overlay.classList.add('pn-open');
+            document.body.style.overflow = 'hidden';
+
+            var fd = new FormData();
+            fd.append('GivenName', PnConfig.guestGivenName || '');
+            fd.append('Surname',   PnConfig.guestSurname || '');
+            fd.append('Email',     PnConfig.guestEmail || '');
+            fd.append('ParkId',    PnConfig.parkId || 0);
+            fetch(MATCH_URL, { method: 'POST', body: fd })
+                .then(function(r) { return r.json(); })
+                .then(function(j) {
+                    if (j.status === 0 && j.matches && j.matches.length) {
+                        renderMatches(j.matches);
+                    } else {
+                        renderForm();
+                    }
+                })
+                .catch(function() {
+                    // On any lookup failure, fall through to the create form (officer can proceed).
+                    renderForm();
+                });
+        };
+
+        function closeModal() {
+            overlay.classList.remove('pn-open');
+            document.body.style.overflow = '';
+        }
+        window.pnCloseConvertModal = closeModal;
+
+        gid('pn-convert-close-btn').addEventListener('click', closeModal);
+        gid('pn-convert-cancel').addEventListener('click', closeModal);
+        overlay.addEventListener('click', function(e) { if (e.target === overlay) closeModal(); });
+        document.addEventListener('keydown', function(e) {
+            if ((e.key === 'Escape' || e.keyCode === 27) && overlay.classList.contains('pn-open')) closeModal();
+        });
+
+        gid('pn-convert-newinstead').addEventListener('click', renderForm);
+
+        gid('pn-convert-save').addEventListener('click', function() {
+            clearError();
+            var userName = (gid('pn-convert-username').value || '').trim();
+            var password = gid('pn-convert-password').value || '';
+            var email    = (gid('pn-convert-email').value || '').trim();
+            if (userName.length < 4) { showError('Username must be at least 4 characters.'); return; }
+            if (!password.length)    { showError('A password is required.'); return; }
+            if (!email.length)       { showError('A valid email is required.'); return; }
+
+            var btn = gid('pn-convert-save');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating\u2026';
+
+            var fd = new FormData();
+            fd.append('UserName', userName);
+            fd.append('Password', password);
+            fd.append('Email', email);
+            fetch(CONVERT_URL, { method: 'POST', body: fd })
+                .then(function(r) { return r.json(); })
+                .then(function(j) {
+                    if (j.status === 0) {
+                        window.location.reload();
+                    } else {
+                        showError(j.error || 'Could not convert this guest.');
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fas fa-user-check"></i> Create Player';
+                    }
+                })
+                .catch(function(err) {
+                    showError('Convert failed: ' + err.message);
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-user-check"></i> Create Player';
+                });
+        });
+    })();
+
     // ---- Add Award / Add Title Modal ----
     (function() {
         if (!PnConfig.canManageAwards) return;

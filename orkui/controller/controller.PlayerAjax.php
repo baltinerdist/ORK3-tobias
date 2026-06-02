@@ -515,6 +515,58 @@ class Controller_PlayerAjax extends Controller
                 ? json_encode(['status' => 0])
                 : json_encode(['status' => $r['Status'], 'error' => rtrim(($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? ''), ': ')]);
 
+        } elseif ($action === 'findplayermatch') {
+            // Merge-detection before converting a guest: returns candidate existing players.
+            $r = $this->Player->find_player_match([
+                'Token'     => $this->session->token,
+                'MundaneId' => $player_id,
+                'GivenName' => trim($_POST['GivenName'] ?? ''),
+                'Surname'   => trim($_POST['Surname']   ?? ''),
+                'Email'     => trim($_POST['Email']     ?? ''),
+                'ParkId'    => (int)($_POST['ParkId']   ?? 0),
+            ]);
+            echo ($r['Status'] == 0)
+                ? json_encode(['status' => 0, 'matches' => array_values($r['Detail'] ?? [])])
+                : json_encode(['status' => $r['Status'], 'error' => rtrim(($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? ''), ': ')]);
+
+        } elseif ($action === 'convertguest') {
+            $userName = trim($_POST['UserName'] ?? '');
+            $password = $_POST['Password'] ?? '';
+            $email    = trim($_POST['Email'] ?? '');
+            if (strlen($userName) < 4) {
+                echo json_encode(['status' => 1, 'error' => 'Username must be at least 4 characters.']);
+                exit;
+            }
+            if (trimlen($password) < 1) {
+                echo json_encode(['status' => 1, 'error' => 'A password is required.']);
+                exit;
+            }
+            $r = $this->Player->convert_guest([
+                'Token'     => $this->session->token,
+                'MundaneId' => $player_id,
+                'UserName'  => $userName,
+                'Password'  => $password,
+                'Email'     => $email,
+            ]);
+            echo ($r['Status'] == 0)
+                ? json_encode(['status' => 0, 'mundaneId' => (int)($r['Detail'] ?? $player_id)])
+                : json_encode(['status' => $r['Status'], 'error' => rtrim(($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? ''), ': ')]);
+
+        } elseif ($action === 'linkguest') {
+            $targetId = (int)($_POST['PlayerId'] ?? 0);
+            if (!valid_id($targetId)) {
+                echo json_encode(['status' => 1, 'error' => 'A target player is required.']);
+                exit;
+            }
+            $r = $this->Player->link_guest([
+                'Token'     => $this->session->token,
+                'MundaneId' => $player_id,
+                'PlayerId'  => $targetId,
+            ]);
+            echo ($r['Status'] == 0)
+                ? json_encode(['status' => 0, 'playerId' => (int)($r['Detail'] ?? $targetId)])
+                : json_encode(['status' => $r['Status'], 'error' => rtrim(($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? ''), ': ')]);
+
         } else {
             echo json_encode(['status' => 1, 'error' => 'Unknown action']);
         }

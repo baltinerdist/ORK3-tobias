@@ -1231,7 +1231,10 @@ html[data-theme="dark"] .pn-badge-guest{background:#5c3108!important;color:#fbd3
 				<div class="pn-guest-banner-body">
 					<strong>Guest profile</strong> &mdash; no login, no class credits.
 					<?php if (!empty($Player['GuestCapturedAt'])): ?>
-					<div class="pn-guest-meta">Captured <?= htmlspecialchars(date('M j, Y', strtotime($Player['GuestCapturedAt']))) ?><?php if (!empty($Player['GuestSourceEventId'])): ?> at event #<?= (int)$Player['GuestSourceEventId'] ?><?php endif; ?></div>
+					<div class="pn-guest-meta">Captured <?= htmlspecialchars(date('M j, Y', strtotime($Player['GuestCapturedAt']))) ?><?php if (!empty($Player['GuestSourceEventId'])): ?> at event #<?= (int)$Player['GuestSourceEventId'] ?><?php endif; ?>
+						<?php if ($canEditAdmin): ?>
+						<div style="margin-top:8px"><button class="pn-btn pn-btn-white" id="pn-convert-guest-btn" onclick="pnOpenConvertModal()"><i class="fas fa-user-check"></i> Convert to full player</button></div>
+						<?php endif; ?></div>
 					<?php endif; ?>
 				</div>
 			</div>
@@ -3066,6 +3069,60 @@ html[data-theme="dark"] .pn-badge-guest{background:#5c3108!important;color:#fbd3
 <?php endif; ?>
 
 <!-- =============================================
+     Convert Guest -> Full Player Modal (officer-only, guest profiles)
+     ============================================= -->
+<?php if ($canEditAdmin && $isGuest): ?>
+<div class="pn-overlay" id="pn-convert-overlay">
+	<div class="pn-modal-box" style="width:520px;max-width:calc(100vw - 40px);">
+		<div class="pn-modal-header">
+			<h3 class="pn-modal-title"><i class="fas fa-user-check pn-modal-title-icon"></i>Convert to Full Player</h3>
+			<button class="pn-modal-close-btn" id="pn-convert-close-btn" aria-label="Close">&times;</button>
+		</div>
+
+		<div class="pn-acct-modal-body">
+			<div class="pn-form-error" id="pn-convert-error"></div>
+
+			<!-- Step: checking for an existing match -->
+			<div id="pn-convert-checking" style="display:none;text-align:center;padding:18px 0;color:#718096;font-size:14px;">
+				<i class="fas fa-spinner fa-spin"></i> Checking for an existing player&hellip;
+			</div>
+
+			<!-- Step: merge candidates found -->
+			<div id="pn-convert-match" style="display:none;">
+				<div style="font-size:14px;color:#4a5568;margin-bottom:10px;">This guest looks like an existing player. Link the guest's attendance and notes to that player instead of creating a duplicate.</div>
+				<div id="pn-convert-match-list"></div>
+				<div style="margin-top:12px;text-align:center;">
+					<button class="pn-btn pn-btn-secondary" id="pn-convert-newinstead" type="button"><i class="fas fa-user-plus"></i> No, this is a new person &mdash; create a player</button>
+				</div>
+			</div>
+
+			<!-- Step: convert form -->
+			<div id="pn-convert-form" style="display:none;">
+				<div class="pn-acct-field">
+					<label for="pn-convert-username">Username <span class="required-indicator">*</span></label>
+					<input type="text" id="pn-convert-username" name="UserName" autocomplete="off" placeholder="At least 4 characters" />
+				</div>
+				<div class="pn-acct-field">
+					<label for="pn-convert-password">Password <span class="required-indicator">*</span></label>
+					<input type="password" id="pn-convert-password" name="Password" autocomplete="new-password" placeholder="Set a login password" />
+				</div>
+				<div class="pn-acct-field">
+					<label for="pn-convert-email">Email <span class="required-indicator">*</span></label>
+					<input type="email" id="pn-convert-email" name="Email" autocomplete="off" placeholder="player@example.com" />
+					<div style="font-size:12px;color:#718096;margin-top:4px;">A logging-in player needs a unique email on file.</div>
+				</div>
+			</div>
+		</div>
+
+		<div class="pn-modal-footer">
+			<button class="pn-btn pn-btn-secondary" id="pn-convert-cancel" type="button">Cancel</button>
+			<button class="pn-btn pn-btn-primary" id="pn-convert-save" type="button" style="display:none;"><i class="fas fa-user-check"></i> Create Player</button>
+		</div>
+	</div>
+</div>
+<?php endif; ?>
+
+<!-- =============================================
      Add Award / Add Title Modal
      ============================================= -->
 <?php if ($canManageAwards): ?>
@@ -4025,6 +4082,10 @@ var PnConfig = {
 	httpService:    '<?= HTTP_SERVICE ?>',
 	playerId:       <?= (int)($Player['MundaneId'] ?? 0) ?>,
 	parkId:         <?= (int)($Player['ParkId'] ?? 0) ?>,
+	isGuest:        <?= !empty($isGuest) ? 'true' : 'false' ?>,
+	guestGivenName: <?= json_encode($Player['GivenName'] ?? '') ?>,
+	guestSurname:   <?= json_encode($Player['Surname'] ?? '') ?>,
+	guestEmail:     <?= json_encode($Player['Email'] ?? '') ?>,
 	parkName:       <?= json_encode($this->__session->park_name ?? '') ?>,
 	kingdomId:      <?= (int)($KingdomId ?? 0) ?>,
 	recError:       <?= !empty($recError) ? 'true' : 'false' ?>,

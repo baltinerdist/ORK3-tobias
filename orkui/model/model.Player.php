@@ -164,6 +164,15 @@ class Model_Player extends Model {
 	function create_guest($request) {
 		return $this->Player->CreateGuest($request);
 	}
+	function convert_guest($request) {
+		return $this->Player->ConvertGuest($request);
+	}
+	function find_player_match($request) {
+		return $this->Player->FindPlayerMatch($request);
+	}
+	function link_guest($request) {
+		return $this->Player->LinkGuestToPlayer($request);
+	}
 	function email_available($email, $exclude_mundane_id = null) {
 		return $this->Player->EmailIsAvailable($email, $exclude_mundane_id);
 	}
