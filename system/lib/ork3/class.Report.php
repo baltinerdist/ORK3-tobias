@@ -17,6 +17,55 @@ class Report extends Ork3
         parent::__construct();
     }
 
+    // ---- Guest-attendance reporting helpers -----------------------------
+    // Guest-class attendance ($gcid) is excluded from official report totals
+    // unless the relevant kingdom has guest_attendance_counts = 1. The Guest
+    // class id is resolved at query-build time via Attendance::GuestClassId()
+    // so it is never hard-coded. Voting eligibility ALWAYS excludes guests
+    // (use guestAttendanceAlwaysExclude regardless of the kingdom toggle).
+
+    // Single-kingdom queries: returns '' when that kingdom counts guests,
+    // else "AND <alias>.class_id <> <gcid>". $attAlias is the attendance
+    // table alias (default 'a').
+    private function guestAttendanceClauseForKingdom($kingdomId, $attAlias = 'a')
+    {
+        $gcid = (int)Attendance::GuestClassId();
+        if ($gcid <= 0) {
+            return '';
+        }
+        $counts = 0;
+        $kid = (int)$kingdomId;
+        if ($kid > 0) {
+            $r = $this->db->query("SELECT guest_attendance_counts FROM " . DB_PREFIX . "kingdom WHERE kingdom_id = " . $kid . " LIMIT 1");
+            if ($r && $r->next()) {
+                $counts = (int)$r->guest_attendance_counts;
+            }
+        }
+        return $counts === 1 ? '' : (' AND ' . $attAlias . '.class_id <> ' . $gcid);
+    }
+
+    // Cross-kingdom aggregates that already join ork_kingdom: branch per-row so
+    // each kingdom's own toggle applies. $kAlias = kingdom alias, $attAlias =
+    // attendance alias.
+    private function guestAttendanceClauseCrossKingdom($kAlias = 'k', $attAlias = 'a')
+    {
+        $gcid = (int)Attendance::GuestClassId();
+        if ($gcid <= 0) {
+            return '';
+        }
+        return ' AND (' . $kAlias . '.guest_attendance_counts = 1 OR ' . $attAlias . '.class_id <> ' . $gcid . ')';
+    }
+
+    // Always-exclude guest attendance (eligibility/voting must never count guests).
+    private function guestAttendanceAlwaysExclude($attAlias = 'a')
+    {
+        $gcid = (int)Attendance::GuestClassId();
+        if ($gcid <= 0) {
+            return '';
+        }
+        return ' AND ' . $attAlias . '.class_id <> ' . $gcid;
+    }
+
     public function HeraldryReport($request)
     {
         // WithMissingHeraldries [No, Yes, Only]
@@ -1077,6 +1126,7 @@ class Report extends Ork3
 
     public function AttendanceSummary($request)
     {
+        $where = '';
         if (valid_id($request['EventId'])) {
             $where = "where ssa.event_id = '" . mysql_real_escape_string($request['EventId']) . "'";
         }
@@ -1129,6 +1179,18 @@ class Report extends Ork3
         }
 
 
+        // Append the per-kingdom guest-attendance branch to the inner WHERE.
+        // guestAttendanceClauseCrossKingdom returns a leading " AND (...)"; if
+        // $where is empty there is no WHERE yet, so promote it to a WHERE.
+        $guest_clause = $this->guestAttendanceClauseCrossKingdom('ssk', 'ssa');
+        if (strlen(trim($where)) > 0) {
+            $where_with_guest = $where . $guest_clause;
+        } elseif ($guest_clause !== '') {
+            $where_with_guest = 'where ' . preg_replace('/^\s*AND\s+/i', '', trim($guest_clause));
+        } else {
+            $where_with_guest = $where;
+        }
+
         $sql = "select max(a.date) as `date`, count(a.mundane_id) as attendees, count(DISTINCT a.mundane_id) as distinct_players, a.event_start, a.event_end, a.event_id, a.event_calendardetail_id, a.event_id, e.name as event_name,
 					ifnull(a.park_id, ep.park_id) as park_id, ifnull(p.name, ep.name) as park_name, year(a.date) as year, week(a.date, 3) as week,
 					ifnull(k.kingdom_id, ek.kingdom_id) as kingdom_id, ifnull(k.name, ek.name) as kingdom_name, ifnull(k.parent_kingdom_id, ek.parent_kingdom_id) as parent_kingdom_id
@@ -1138,8 +1200,9 @@ class Report extends Ork3
 							from " . DB_PREFIX . "attendance ssa
 								left join " . DB_PREFIX . "event_calendardetail ssd on ssa.event_calendardetail_id = ssd.event_calendardetail_id
 								left join " . DB_PREFIX . "park p on ssa.park_id = p.park_id
+								left join " . DB_PREFIX . "kingdom ssk on p.kingdom_id = ssk.kingdom_id
 								left join " . DB_PREFIX . "mundane m on ssa.mundane_id = m.mundane_id
-							$where
+							$where_with_guest
 							group by ssa.park_id, $by_period, ssd.event_start, ssd.event_end, mundane_id) a
 						left join " . DB_PREFIX . "park p on a.park_id = p.park_id
 							left join " . DB_PREFIX . "kingdom k on p.kingdom_id = k.kingdom_id
@@ -1905,14 +1968,17 @@ class Report extends Ork3
             $per_period = date('Y-m-d', strtotime("$report_to -{$request['Periods']} day"));
         }
 
+        $guest_clause = $this->guestAttendanceClauseCrossKingdom('k', 'a');
+        $guest_join = $guest_clause !== '' ? (" LEFT JOIN " . DB_PREFIX . "kingdom k ON a.kingdom_id = k.kingdom_id") : '';
+
         $sql_total = "SELECT COUNT(DISTINCT a.mundane_id) AS total_distinct
-			FROM " . DB_PREFIX . "attendance a
-			WHERE a.date > '$per_period' AND a.date <= '$report_to' AND a.mundane_id > 0 $where";
+			FROM " . DB_PREFIX . "attendance a$guest_join
+			WHERE a.date > '$per_period' AND a.date <= '$report_to' AND a.mundane_id > 0 $where$guest_clause";
 
         $sql_avg = "SELECT AVG(weekly_unique) AS avg_per_week FROM (
 			SELECT COUNT(DISTINCT a.mundane_id) AS weekly_unique
-			FROM " . DB_PREFIX . "attendance a
-			WHERE a.date > '$per_period' AND a.date <= '$report_to' AND a.mundane_id > 0 $where
+			FROM " . DB_PREFIX . "attendance a$guest_join
+			WHERE a.date > '$per_period' AND a.date <= '$report_to' AND a.mundane_id > 0 $where$guest_clause
 			GROUP BY a.date_year, a.date_week3
 		) sub";
 
@@ -2099,8 +2165,9 @@ class Report extends Ork3
                                         a.date_week3 as week, a.date_year as year, a.kingdom_id, a.park_id, max(credits) as credits_earned, m.waivered
         							from " . DB_PREFIX . "attendance a
         								left join " . DB_PREFIX . "mundane m on a.mundane_id = m.mundane_id
+        								left join " . DB_PREFIX . "kingdom gk on a.kingdom_id = gk.kingdom_id
         							where
-												m.suspended = 0 and date > '$per_period' $park_comparator $activity_location $waiver_clause
+												m.suspended = 0 and date > '$per_period' $park_comparator $activity_location $waiver_clause " . $this->guestAttendanceClauseCrossKingdom('gk', 'a') . "
         							group by date_week3, date_year, mundane_id) attendance_summary
         					left join " . DB_PREFIX . "mundane mundane on mundane.mundane_id = attendance_summary.mundane_id
         						left join " . DB_PREFIX . "kingdom kingdom on kingdom.kingdom_id = mundane.kingdom_id
@@ -2967,7 +3034,14 @@ class Report extends Ork3
         if (!valid_id($park_id)) {
             return ['Status' => InvalidParameter(), 'Attendees' => []];
         }
-        $sql = "SELECT a.mundane_id, m.persona,
+        // Resolve this park's kingdom so the guest-attendance count toggle applies.
+        $park_kingdom_id = 0;
+        $pk = $this->db->query("SELECT kingdom_id FROM " . DB_PREFIX . "park WHERE park_id = " . $park_id . " LIMIT 1");
+        if ($pk && $pk->next()) {
+            $park_kingdom_id = (int)$pk->kingdom_id;
+        }
+        $guest_clause = $this->guestAttendanceClauseForKingdom($park_kingdom_id, 'a');
+        $sql = "SELECT a.mundane_id, m.persona, m.is_guest,
 					MAX(a.date) AS last_signin,
 					SUBSTRING_INDEX(GROUP_CONCAT(a.class_id ORDER BY a.date DESC, a.attendance_id DESC SEPARATOR ','), ',', 1) AS class_id,
 					SUBSTRING_INDEX(GROUP_CONCAT(c.name    ORDER BY a.date DESC, a.attendance_id DESC SEPARATOR ','), ',', 1) AS class_name
@@ -2977,8 +3051,8 @@ class Report extends Ork3
 				WHERE a.park_id = $park_id
 				  AND a.date >= DATE_SUB(NOW(), INTERVAL 90 DAY)
 				  AND a.mundane_id > 0
-				  AND m.mundane_id IS NOT NULL
-				GROUP BY a.mundane_id, m.persona
+				  AND m.mundane_id IS NOT NULL$guest_clause
+				GROUP BY a.mundane_id, m.persona, m.is_guest
 				ORDER BY m.persona";
         $r = $this->db->query($sql);
         $attendees = [];
@@ -2990,6 +3064,7 @@ class Report extends Ork3
                     'ClassId'    => (int)$r->class_id,
                     'ClassName'  => $r->class_name,
                     'LastSignIn' => $r->last_signin,
+                    'IsGuest'    => (int)$r->is_guest,
                 ];
             }
         }
@@ -3503,6 +3578,11 @@ class Report extends Ork3
         // kingdom-wide report.
         $single_att_clause = $mundane_id ? " AND a.mundane_id = $mundane_id" : '';
 
+        // Voting eligibility must NEVER count Guest-class attendance, regardless of
+        // the kingdom's guest_attendance_counts toggle. Appended to every attendance
+        // subquery alongside $single_att_clause.
+        $guest_exclude_clause = $this->guestAttendanceAlwaysExclude('a');
+
         // Online exclusion: LEFT JOIN event + park inside attendance subqueries, filter out
         // rows where the event name or park name contains 'Online' (case-insensitive).
         // ExcludeEvents: restrict attendance to park-day sign-ins only (event_id = 0 or NULL).
@@ -3593,6 +3673,7 @@ class Report extends Ork3
 					    WHERE a.event_id IS NOT NULL AND a.event_id != 0
 					      AND a.date >= '$start_date'
 					      $single_att_clause
+					      $guest_exclude_clause
 					    GROUP BY a.mundane_id, a.event_id, a.kingdom_id
 					    UNION ALL
 					    SELECT a.mundane_id,
@@ -3602,6 +3683,7 @@ class Report extends Ork3
 					    WHERE (a.event_id = 0 OR a.event_id IS NULL)
 					      AND a.date >= '$start_date'
 					      $single_att_clause
+					      $guest_exclude_clause
 					) att_inner
 					GROUP BY mundane_id
 				) att ON att.mundane_id = m.mundane_id";
@@ -3622,6 +3704,7 @@ class Report extends Ork3
 					WHERE $_att_where_kw
 					  AND a.date >= '$start_date'
 					  $single_att_clause
+					  $guest_exclude_clause
 					  $online_clause
 					  $events_clause
 					GROUP BY a.mundane_id
@@ -3641,6 +3724,7 @@ class Report extends Ork3
 					WHERE " . ($all_kingdoms ? "1=1" : "a.kingdom_id = $kingdom_id") . "
 					  AND a.date >= '$start_date'
 					  $single_att_clause
+					  $guest_exclude_clause
 					  $online_clause
 					GROUP BY a.mundane_id
 				) patt ON patt.mundane_id = m.mundane_id
@@ -3662,6 +3746,7 @@ class Report extends Ork3
 					WHERE a.kingdom_id = $kingdom_id
 					  AND a.date >= '$start_date'
 					  $single_att_clause
+					  $guest_exclude_clause
 					  AND (_oe.name LIKE '%Online%' OR _op.name LIKE '%Online%')
 					GROUP BY a.mundane_id
 				) oatt ON oatt.mundane_id = m.mundane_id
@@ -3681,6 +3766,7 @@ class Report extends Ork3
 					WHERE a.kingdom_id = $kingdom_id
 					  AND a.date >= '$start_date'
 					  $single_att_clause
+					  $guest_exclude_clause
 					  AND a.event_id IS NOT NULL AND a.event_id != 0
 					GROUP BY a.mundane_id
 				) evatt ON evatt.mundane_id = m.mundane_id
@@ -3701,6 +3787,7 @@ class Report extends Ork3
 					WHERE " . ($all_kingdoms ? "1=1" : "a.kingdom_id = $kingdom_id") . "
 					  AND a.date >= '$start_date'
 					  $single_att_clause
+					  $guest_exclude_clause
 					  $online_clause
 					GROUP BY a.mundane_id
 				) katt ON katt.mundane_id = m.mundane_id
@@ -3729,7 +3816,7 @@ class Report extends Ork3
 				$online_count_select
 				$event_count_select
 				" . ($home_park_only && $kingdom_evt_bonus ? ", COALESCE(att.kingdom_evt_credit, 0) AS kingdom_evt_credit" : "") . "
-				" . ($membership_mode === 'first_attendance' ? ", (SELECT MIN(a.date) FROM " . DB_PREFIX . "attendance a WHERE a.mundane_id = m.mundane_id AND a.kingdom_id = $kingdom_id) AS first_att_date" : "") . "
+				" . ($membership_mode === 'first_attendance' ? ", (SELECT MIN(a.date) FROM " . DB_PREFIX . "attendance a WHERE a.mundane_id = m.mundane_id AND a.kingdom_id = $kingdom_id" . $guest_exclude_clause . ") AS first_att_date" : "") . "
 				$province_select
 				$knight_select,
 				CASE WHEN EXISTS (
