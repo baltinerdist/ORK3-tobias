@@ -788,6 +788,16 @@ class Controller_PlayerAjax extends Controller
         $DB->Clear();
         $DB->email = $norm;
         $DB->Execute("UPDATE ork_mundane SET email = :email WHERE mundane_id = $mundane_id");
+        // Post-write read-back: confirm the email actually landed on THIS user's row. A duplicate
+        // that slipped past the friendly pre-check (concurrent claim) would hit the UNIQUE index and
+        // be silently rejected under ERRMODE_WARNING -- never report success in that case.
+        $DB->Clear();
+        $rb = $DB->DataSet("SELECT email FROM ork_mundane WHERE mundane_id = $mundane_id LIMIT 1");
+        $landed = ($rb && $rb->Next() && (string)$rb->email === (string)$norm);
+        if (!$landed) {
+            echo json_encode(['status' => 1, 'error' => 'That email address could not be saved -- it may already be in use. Please try again.']);
+            exit;
+        }
         echo json_encode(['status' => 0]);
         exit;
     }
