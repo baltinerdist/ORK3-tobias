@@ -788,6 +788,204 @@ class Player extends Ork3
         return Success($newId);
     }
 
+    // Convert a guest (is_guest=1) into a full login-capable player. Same mundane_id;
+    // attendance/awards/notes are preserved. Mirrors CreatePlayer's salt/expiry/token setup.
+    public function ConvertGuest($request)
+    {
+        require_once(__DIR__ . '/class.GuestValidator.php');
+        $mundaneId = (int)($request['MundaneId'] ?? 0);
+        if (!valid_id($mundaneId)) {
+            return InvalidParameter('A guest is required.');
+        }
+
+        // Load the guest row.
+        $this->mundane->clear();
+        $this->mundane->mundane_id = $mundaneId;
+        if (!$this->mundane->find()) {
+            return InvalidParameter('No such profile.');
+        }
+        if ((int)$this->mundane->is_guest !== 1) {
+            return InvalidParameter('This profile is not a guest.');
+        }
+        $guestParkId   = (int)$this->mundane->park_id;
+        // Capture the guest's email NOW: unique_username() below mutates $this->mundane.
+        $existingEmail = GuestValidator::normalizeEmail($this->mundane->email);
+
+        // Auth: AUTH_PARK CREATE on the guest's park.
+        $creatorId = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+        if (!(valid_id($creatorId) && Ork3::$Lib->authorization->HasAuthority($creatorId, AUTH_PARK, $guestParkId, AUTH_CREATE))) {
+            return NoAuthorization();
+        }
+
+        // Username: require a usable handle, then run uniqueness/disambiguation.
+        $rawUser = trim((string)($request['UserName'] ?? ''));
+        if (strlen($rawUser) < 4) {
+            return InvalidParameter('UserNames must be at least 4 characters long.');
+        }
+        $username = $this->unique_username($rawUser, 4);
+        if ($username === false) {
+            return InvalidParameter('No UserName could be generated for this player.  Please try again.');
+        }
+
+        // Password required to mint login material.
+        $password = (string)($request['Password'] ?? '');
+        if (trimlen($password) < 1) {
+            return InvalidParameter('A password is required.');
+        }
+
+        // Email: carry the existing one (captured above) or require a fresh unique address.
+        $reqEmail = GuestValidator::normalizeEmail($request['Email'] ?? '');
+        $email = ($reqEmail !== '') ? $reqEmail : $existingEmail;
+        if ($email === '') {
+            return InvalidParameter('A valid email is required to convert a guest to a full player.');
+        }
+        $avail = $this->EmailIsAvailable($email, $mundaneId);
+        if (!$avail['available']) {
+            return InvalidParameter('That email is already on file.');
+        }
+
+        // Re-load + set login material (mirror CreatePlayer).
+        $this->mundane->clear();
+        $this->mundane->mundane_id = $mundaneId;
+        if (!$this->mundane->find()) {
+            return InvalidParameter('No such profile.');
+        }
+        $this->mundane->username         = $username;
+        $this->mundane->email            = $email;
+        $this->mundane->is_guest         = 0;
+        $this->mundane->converted_at     = date('Y-m-d H:i:s');
+        $this->mundane->modified         = date('Y-m-d H:i:s');
+        $this->mundane->password_expires = date('Y-m-d H:i:s', time() + 60 * 60 * 24 * 365);
+        $this->mundane->password_salt    = md5(rand() . microtime());
+        if (empty($this->mundane->park_member_since) || $this->mundane->park_member_since === '0000-00-00') {
+            $this->mundane->park_member_since = date('Y-m-d');
+        }
+        $this->mundane->save();
+
+        Authorization::SaltPassword($this->mundane->password_salt, strtoupper(trim($username)) . trim($password), $this->mundane->password_expires);
+
+        // Ensure a paired design row exists (guests created one, but be defensive).
+        $design = new yapo($this->db, DB_PREFIX . 'mundane_design');
+        $design->clear();
+        $design->mundane_id = $mundaneId;
+        if (!($design->find() > 0)) {
+            $design->clear();
+            $design->mundane_id = $mundaneId;
+            $design->save();
+        }
+
+        return Success($mundaneId);
+    }
+
+    // Merge-detection: candidate EXISTING players (is_guest=0) that look like this guest
+    // (email-exact OR fuzzy-name in the same park). Used to offer "link instead of create".
+    public function FindPlayerMatch($request)
+    {
+        require_once(__DIR__ . '/class.GuestValidator.php');
+        $first   = GuestValidator::normalizeName($request['GivenName'] ?? '');
+        $last    = GuestValidator::normalizeName($request['Surname'] ?? '');
+        $email   = GuestValidator::normalizeEmail($request['Email'] ?? '');
+        $parkId  = (int)($request['ParkId'] ?? 0);
+        $exclude = (int)($request['MundaneId'] ?? 0);
+
+        $matches = [];
+        $seen    = [];
+
+        $addRow = function ($r) use (&$matches, &$seen) {
+            $id = (int)$r->mundane_id;
+            if (isset($seen[$id])) {
+                return;
+            }
+            $seen[$id] = true;
+            $matches[] = [
+                'MundaneId' => $id,
+                'GivenName' => $r->given_name,
+                'Surname'   => $r->surname,
+                'Persona'   => $r->persona,
+                'UserName'  => $r->username,
+                'ParkName'  => $r->park_name ?? '',
+                'Email'     => $r->email,
+            ];
+        };
+
+        // 1) Exact email match against any existing player (global — email is unique).
+        if ($email !== '') {
+            $sql = "SELECT m.mundane_id, m.given_name, m.surname, m.persona, m.username, m.email, p.name AS park_name "
+                 . "FROM " . DB_PREFIX . "mundane m LEFT JOIN " . DB_PREFIX . "park p ON p.park_id = m.park_id "
+                 . "WHERE m.is_guest = 0 AND LOWER(m.email) = '" . mysql_real_escape_string($email) . "'"
+                 . ($exclude > 0 ? " AND m.mundane_id <> " . $exclude : "") . " LIMIT 5";
+            $r = $this->db->query($sql);
+            while ($r && $r->next()) {
+                $addRow($r);
+            }
+        }
+
+        // 2) Fuzzy name match within the same park (given+surname).
+        if ($first !== '' && $last !== '' && valid_id($parkId)) {
+            $sql = "SELECT m.mundane_id, m.given_name, m.surname, m.persona, m.username, m.email, p.name AS park_name "
+                 . "FROM " . DB_PREFIX . "mundane m LEFT JOIN " . DB_PREFIX . "park p ON p.park_id = m.park_id "
+                 . "WHERE m.is_guest = 0 AND m.park_id = " . $parkId . " "
+                 . "AND LOWER(TRIM(m.given_name)) = '" . mysql_real_escape_string(strtolower($first)) . "' "
+                 . "AND LOWER(TRIM(m.surname)) = '" . mysql_real_escape_string(strtolower($last)) . "'"
+                 . ($exclude > 0 ? " AND m.mundane_id <> " . $exclude : "") . " LIMIT 5";
+            $r = $this->db->query($sql);
+            while ($r && $r->next()) {
+                $addRow($r);
+            }
+        }
+
+        return Success($matches);
+    }
+
+    // Link a guest to an existing player: re-point the guest's attendance + notes to the
+    // real player, then retire the guest row (active=0). No data destroyed.
+    public function LinkGuestToPlayer($request)
+    {
+        $guestId  = (int)($request['MundaneId'] ?? $request['GuestId'] ?? 0);
+        $playerId = (int)($request['PlayerId'] ?? 0);
+        if (!valid_id($guestId) || !valid_id($playerId) || $guestId === $playerId) {
+            return InvalidParameter('A distinct guest and target player are required.');
+        }
+
+        // Source must be a guest.
+        $src = new yapo($this->db, DB_PREFIX . 'mundane');
+        $src->clear();
+        $src->mundane_id = $guestId;
+        if (!$src->find()) {
+            return InvalidParameter('No such guest.');
+        }
+        if ((int)$src->is_guest !== 1) {
+            return InvalidParameter('Source profile is not a guest.');
+        }
+        $guestParkId = (int)$src->park_id;
+
+        // Target must be a real player.
+        $tgt = new yapo($this->db, DB_PREFIX . 'mundane');
+        $tgt->clear();
+        $tgt->mundane_id = $playerId;
+        if (!$tgt->find()) {
+            return InvalidParameter('No such target player.');
+        }
+        if ((int)$tgt->is_guest === 1) {
+            return InvalidParameter('Target must be a full player, not a guest.');
+        }
+
+        // Auth: AUTH_PARK CREATE on the guest's park.
+        $creatorId = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+        if (!(valid_id($creatorId) && Ork3::$Lib->authorization->HasAuthority($creatorId, AUTH_PARK, $guestParkId, AUTH_CREATE))) {
+            return NoAuthorization();
+        }
+
+        // Re-point attendance.
+        $this->db->query("UPDATE " . DB_PREFIX . "attendance SET mundane_id = " . $playerId . " WHERE mundane_id = " . $guestId);
+        // Re-point notes.
+        $this->db->query("UPDATE " . DB_PREFIX . "mundane_note SET mundane_id = " . $playerId . " WHERE mundane_id = " . $guestId);
+        // Retire the guest row.
+        $this->db->query("UPDATE " . DB_PREFIX . "mundane SET active = 0, modified = '" . date('Y-m-d H:i:s') . "' WHERE mundane_id = " . $guestId);
+
+        return Success($playerId);
+    }
+
     public function CreatePlayer($request)
     {
         if (strlen($request['UserName']) < 4) {
