@@ -665,7 +665,7 @@
 		pi3h.textContent  = src ? (src.h3  || 0) : 0;
 		pi30m.textContent = src ? (src.m30 || 0) : 0;
 		const gh3 = src ? (src.gh3 || 0) : 0;
-		piGuestNum.textContent = gh3;
+		piGuestNum.textContent = gh3.toLocaleString();
 		piGuests.style.display = gh3 > 0 ? '' : 'none';
 		renderWeather(src && src.weather);
 	}
