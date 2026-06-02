@@ -873,10 +873,12 @@ class Controller_Reports extends Controller
             $this->data['mode'] = 'single_park';
 
             if (is_array($result)) {
+                $sp_rows = $result['Attendance'] ?? array();
+                $this->data['guest_signins'] = (int)($result['Summary']['GuestSignins'] ?? 0);
                 $pivoted = array();
                 // Pre-generate all expected period columns from the date range
                 $all_periods = $this->_generatePeriodLabels($rounded_start, $rounded_end, $period);
-                foreach ($result as $row) {
+                foreach ($sp_rows as $row) {
                     if (empty($row['PeriodLabel']) || empty($row['Persona'])) {
                         continue;
                     }
@@ -923,6 +925,7 @@ class Controller_Reports extends Controller
                     'TotalSignins' => 0,
                     'UniquePlayers' => (int)($kingdom_summary['UniquePlayers'] ?? 0),
                     'UniqueMembers' => (int)($kingdom_summary['UniqueMembers'] ?? 0),
+                    'GuestSignins' => (int)($kingdom_summary['GuestSignins'] ?? 0),
                     'Members2Plus' => 0,
                     'Members3Plus' => 0,
                     'Members4Plus' => 0,

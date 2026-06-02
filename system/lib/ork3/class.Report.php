@@ -66,14 +66,25 @@ class Report extends Ork3
         return ' AND ' . $attAlias . '.class_id <> ' . $gcid;
     }
 
+    // Guest-ONLY clause for the dedicated guest-turnout readout. Counts only
+    // Guest-class attendance, unconditionally (independent of the kingdom
+    // guest_attendance_counts policy — that policy governs whether guests fold
+    // into MEMBER totals; this readout is the separate guest figure). Returns a
+    // boolean SQL expression usable inside SUM(CASE WHEN ...) or a WHERE, or the
+    // literal '0' when no Guest class exists so callers degrade to a zero count.
+    private function guestOnlyExpr($attAlias = 'a')
+    {
+        $gcid = (int)Attendance::GuestClassId();
+        if ($gcid <= 0) {
+            return '0';
+        }
+        return $attAlias . '.class_id = ' . $gcid;
+    }
+
     public function HeraldryReport($request)
     {
         // WithMissingHeraldries [No, Yes, Only]
         $response = array();
-
-        // Unified handling for all heraldry types
-        $table = strtolower($request['Type']);
-        $$table = new yapo($this->db, DB_PREFIX . $table);
 
         if ($request['WithMissingHeraldries'] == 'No') {
             $$table->has_heraldry = 1;
@@ -2509,6 +2520,9 @@ class Report extends Ork3
 
         // Per-kingdom guest policy: exclude Guest-class attendance unless this kingdom counts it.
         $paap_guest_clause = $this->guestAttendanceClauseForKingdom($request['KingdomId'], 'a');
+        // Guest-turnout readout: count Guest-class attendance separately, always
+        // (independent of the count-in-reports policy above).
+        $paap_guest_only = $this->guestOnlyExpr('a');
 
         // Main query: per-park per-period aggregates
         $sql = "SELECT
@@ -2518,6 +2532,7 @@ class Report extends Ork3
 					COUNT(*) as total_signins,
 					COUNT(DISTINCT a.mundane_id) as unique_players,
 					COUNT(DISTINCT CASE WHEN m.park_id = a.park_id THEN a.mundane_id END) as unique_members,
+					SUM(CASE WHEN $paap_guest_only THEN 1 ELSE 0 END) as guest_signins,
 					COUNT(DISTINCT CONCAT(a.date_year, '-', a.date_week3)) as weeks_in_period,
 					COUNT(DISTINCT CONCAT(a.date_year, '-', a.date_month)) as months_in_period
 				FROM " . DB_PREFIX . "attendance a
@@ -2545,6 +2560,7 @@ class Report extends Ork3
                     'TotalSignins' => $r->total_signins,
                     'UniquePlayers' => $r->unique_players,
                     'UniqueMembers' => $r->unique_members,
+                    'GuestSignins' => (int)$r->guest_signins,
                     'WeeksInPeriod' => $r->weeks_in_period,
                     'MonthsInPeriod' => $r->months_in_period
                 );
@@ -2571,6 +2587,25 @@ class Report extends Ork3
             $r_kw->next(); // DataSet() pre-fetches, but guard against edge cases where it doesn't
             $kingdom_unique_players = (int)($r_kw->kingdom_unique_players ?? 0);
             $kingdom_unique_members = (int)($r_kw->kingdom_unique_members ?? 0);
+        }
+
+        // Kingdom-wide guest turnout — counted unconditionally (no policy clause), so the
+        // guest figure is always accurate regardless of guest_attendance_counts.
+        $kingdom_guest_signins = 0;
+        $sql_kg = "SELECT SUM(CASE WHEN $paap_guest_only THEN 1 ELSE 0 END) as kingdom_guest_signins
+				FROM " . DB_PREFIX . "attendance a
+					INNER JOIN " . DB_PREFIX . "park p ON a.park_id = p.park_id
+					LEFT JOIN " . DB_PREFIX . "mundane m ON a.mundane_id = m.mundane_id
+				WHERE a.kingdom_id = '$kingdom_id'
+					AND a.date >= '$start_date'
+					AND a.date <= '$end_date'
+					AND a.park_id > 0
+					AND p.active = 'Active'"
+                    . ($local_only ? " AND m.park_id = a.park_id" : '');
+        $r_kg = $this->db->query($sql_kg);
+        if ($r_kg !== false) {
+            $r_kg->next();
+            $kingdom_guest_signins = (int)($r_kg->kingdom_guest_signins ?? 0);
         }
 
         // Second query: count of park members with 2+/3+/4+ sign-ins per park per period
@@ -2620,6 +2655,7 @@ class Report extends Ork3
         $response['Summary'] = array(
             'UniquePlayers' => $kingdom_unique_players,
             'UniqueMembers' => $kingdom_unique_members,
+            'GuestSignins' => $kingdom_guest_signins,
         );
 
         logtrace("Report->ParkAttendanceAllParks()", array($this->db->lastSql, $request));
@@ -2916,6 +2952,8 @@ class Report extends Ork3
         }
         $pasp_guest_clause  = $this->guestAttendanceClauseForKingdom($pasp_kingdom_id, 'a');
         $pasp_guest_clause2 = $this->guestAttendanceClauseForKingdom($pasp_kingdom_id, 'a2');
+        // Guest turnout for this park/range, counted unconditionally (separate readout).
+        $pasp_guest_only = $this->guestOnlyExpr('a');
 
         $min_filter = '';
         if ($min_signins > 0) {
@@ -2979,6 +3017,23 @@ class Report extends Ork3
                 );
             } while ($r->next());
         }
+
+        // Guest turnout: count Guest-class sign-ins in this park/range, always (policy-independent).
+        $pasp_guests = 0;
+        $pasp_gr = $this->db->query(
+            "SELECT SUM(CASE WHEN $pasp_guest_only THEN 1 ELSE 0 END) as guest_signins
+			FROM " . DB_PREFIX . "attendance a
+			WHERE a.park_id = '$park_id'
+				AND a.kingdom_id = '$kingdom_id'
+				AND a.date >= '$start_date'
+				AND a.date <= '$end_date'
+				AND a.mundane_id > 0"
+        );
+        if ($pasp_gr !== false) {
+            $pasp_gr->next();
+            $pasp_guests = (int)($pasp_gr->guest_signins ?? 0);
+        }
+        $response['Summary'] = array('GuestSignins' => $pasp_guests);
 
         logtrace("Report->ParkAttendanceSinglePark()", array($this->db->lastSql, $request));
         return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
@@ -3277,6 +3332,8 @@ class Report extends Ork3
 
         // Exclude Guest-class attendance from the per-event count unless this kingdom counts it.
         $ear_guest_clause = $this->guestAttendanceClauseForKingdom($ear_kingdom_id, 'a');
+        // Guest turnout: count Guest-class sign-ins per event, always (policy-independent readout).
+        $ear_guest_only = $this->guestOnlyExpr('a');
 
         $sql = "SELECT
 					e.event_id,
@@ -3293,6 +3350,8 @@ class Report extends Ork3
 					cd.province,
 					(SELECT COUNT(*) FROM " . DB_PREFIX . "attendance a
 						WHERE a.event_calendardetail_id = cd.event_calendardetail_id$ear_guest_clause) AS attendance_count,
+					(SELECT COUNT(*) FROM " . DB_PREFIX . "attendance a
+						WHERE a.event_calendardetail_id = cd.event_calendardetail_id AND $ear_guest_only) AS guest_count,
 					(SELECT COUNT(*) FROM " . DB_PREFIX . "event_rsvp r
 						WHERE r.event_calendardetail_id = cd.event_calendardetail_id) AS rsvp_count
 				FROM " . DB_PREFIX . "event e
@@ -3322,6 +3381,7 @@ class Report extends Ork3
                         'City'            => $r->city,
                         'Province'        => $r->province,
                         'AttendanceCount' => (int)$r->attendance_count,
+                        'GuestCount'      => (int)$r->guest_count,
                         'RsvpCount'       => (int)$r->rsvp_count,
                     );
                 }

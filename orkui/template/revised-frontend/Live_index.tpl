@@ -33,6 +33,7 @@
 @keyframes lv-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
 .lv-subhead { display: flex; gap: 16px; font-size: 12px; color: var(--ork-text-muted); }
 .lv-subhead b { color: var(--ork-text); font-weight: 600; }
+.lv-subhead .lv-guests b { color: var(--ork-link-bright); }
 .lv-headline { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 .lv-headline .lv-big { font-size: 36px; font-weight: 800; color: #48bb78; line-height: 1; }
 .lv-headline .lv-label { font-size: 11px; color: var(--ork-text-muted); text-transform: uppercase; letter-spacing: .1em; line-height: 1.3; }
@@ -89,6 +90,8 @@
 .lv-pi-stat { text-align: center; padding: 6px 4px; background: var(--ork-bg-secondary); border-radius: 4px; }
 .lv-pi-stat .lv-num { font-size: 20px; font-weight: 700; color: #48bb78; line-height: 1; }
 .lv-pi-stat .lv-lbl { font-size: 9px; color: var(--ork-text-muted); text-transform: uppercase; letter-spacing: .06em; margin-top: 4px; }
+.lv-pi-guests { margin-top: 6px; padding: 5px 8px; font-size: 11px; text-align: center; color: var(--ork-text-muted); background: var(--ork-bg-secondary); border-radius: 4px; }
+.lv-pi-guests b { color: var(--ork-link-bright); font-weight: 700; }
 .lv-pi-weather { margin-top: 10px; padding: 8px 10px; background: var(--ork-bg-secondary); border-radius: 4px; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ork-text); }
 .lv-pi-weather .lv-wx-now { font-weight: 600; }
 .lv-pi-weather .lv-wx-meta { color: var(--ork-text-muted); flex: 1; }
@@ -139,6 +142,7 @@
 			<span>past <b>24h</b></span>
 			<span><b id="lv-park-count">—</b> parks</span>
 			<span><b id="lv-signin-count">—</b> sign-ins</span>
+			<span class="lv-guests" id="lv-guests-wrap" style="display:none"><b id="lv-guests-count">0</b> guests</span>
 		</div>
 		<div class="lv-headline">
 			<div class="lv-big" id="lv-active-now">0</div>
@@ -181,6 +185,7 @@
 				<div class="lv-pi-stat"><div class="lv-num" id="lv-pi-3h">0</div><div class="lv-lbl">past 3h</div></div>
 				<div class="lv-pi-stat"><div class="lv-num" id="lv-pi-30m">0</div><div class="lv-lbl">past 30m</div></div>
 			</div>
+			<div class="lv-pi-guests" id="lv-pi-guests" style="display:none"><b id="lv-pi-guest-num">0</b> guests in the past 3h</div>
 			<div class="lv-pi-weather" id="lv-pi-weather" style="display:none">
 				<span class="lv-wx-now" id="lv-wx-now">—</span>
 				<span class="lv-wx-meta" id="lv-wx-meta">—</span>
@@ -238,12 +243,16 @@
 	const activeNowEl   = document.getElementById('lv-active-now');
 	const parkCountEl   = document.getElementById('lv-park-count');
 	const signinCountEl = document.getElementById('lv-signin-count');
+	const guestsCountEl = document.getElementById('lv-guests-count');
+	const guestsWrapEl  = document.getElementById('lv-guests-wrap');
 	const piPanel       = document.getElementById('lv-park-info');
 	const piName        = document.getElementById('lv-pi-name');
 	const piLoc         = document.getElementById('lv-pi-loc');
 	const piDay         = document.getElementById('lv-pi-day');
 	const pi3h          = document.getElementById('lv-pi-3h');
 	const pi30m         = document.getElementById('lv-pi-30m');
+	const piGuests      = document.getElementById('lv-pi-guests');
+	const piGuestNum    = document.getElementById('lv-pi-guest-num');
 	const piExternal    = document.getElementById('lv-pi-external');
 	const toasts        = document.getElementById('lv-toasts');
 	const searchInput   = document.getElementById('lv-search');
@@ -379,6 +388,9 @@
 			parksMeta  = d.parks  || {};
 			eventsMeta = d.events || {};
 			activeNowEl.textContent = (d.active_3h || 0).toLocaleString();
+			const guests3h = d.guests_3h || 0;
+			guestsCountEl.textContent = guests3h.toLocaleString();
+			guestsWrapEl.style.display = guests3h > 0 ? '' : 'none';
 			rebuildMapLayers(d);
 			parkCountEl.textContent = Object.keys(parksMeta).length;
 			signinCountEl.textContent = Object.values(parksMeta).reduce((s, p) => s + (p.day || 0), 0) +
@@ -652,6 +664,9 @@
 		piDay.textContent = src ? (src.day || 0) : 0;
 		pi3h.textContent  = src ? (src.h3  || 0) : 0;
 		pi30m.textContent = src ? (src.m30 || 0) : 0;
+		const gh3 = src ? (src.gh3 || 0) : 0;
+		piGuestNum.textContent = gh3;
+		piGuests.style.display = gh3 > 0 ? '' : 'none';
 		renderWeather(src && src.weather);
 	}
 	// WMO weather code → emoji + label.

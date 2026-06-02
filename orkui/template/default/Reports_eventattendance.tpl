@@ -7,9 +7,11 @@ $prefilter    = $filter ?? '';
 $total_events     = count($events);
 $total_attendance = 0;
 $total_rsvp       = 0;
+$total_guests     = 0;
 foreach ($events as $ev) {
 	$total_attendance += (int)$ev['AttendanceCount'];
 	$total_rsvp       += (int)$ev['RsvpCount'];
+	$total_guests     += (int)($ev['GuestCount'] ?? 0);
 }
 $avg_attendance = $total_events > 0 ? round($total_attendance / $total_events, 1) : 0;
 ?>
@@ -114,6 +116,11 @@ html[data-theme="dark"] .rp-main table.dataTable tbody tr.even > td { background
 			<div class="rp-stat-number"><?=number_format($total_rsvp)?></div>
 			<div class="rp-stat-label">Total RSVPs</div>
 		</div>
+		<div class="rp-stat-card">
+			<div class="rp-stat-icon"><i class="fas fa-user-friends"></i></div>
+			<div class="rp-stat-number"><?=number_format($total_guests)?></div>
+			<div class="rp-stat-label">Guests</div>
+		</div>
 	</div>
 
 	<!-- ── Table ──────────────────────────────────────────────── -->
@@ -135,6 +142,7 @@ html[data-theme="dark"] .rp-main table.dataTable tbody tr.even > td { background
 						<th>End</th>
 						<th>Location</th>
 						<th>Attendance</th>
+						<th>Guests</th>
 						<th>RSVPs</th>
 						<th>Price</th>
 					</tr>
@@ -164,6 +172,7 @@ html[data-theme="dark"] .rp-main table.dataTable tbody tr.even > td { background
 						</td>
 						<td><?=htmlspecialchars($location)?></td>
 						<td class="rp-num"><?=(int)$ev['AttendanceCount']?></td>
+						<td class="rp-num"><?=(int)($ev['GuestCount'] ?? 0)?></td>
 						<td class="rp-num"><?=(int)$ev['RsvpCount']?></td>
 						<td class="rp-num"><?=($price > 0) ? '$' . number_format((float)$price, 2) : '—'?></td>
 					</tr>
