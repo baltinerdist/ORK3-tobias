@@ -1307,10 +1307,12 @@ html[data-theme="dark"] .pn-badge-guest{background:#5c3108!important;color:#fbd3
 				<span class="pn-detail-value"><?= htmlspecialchars($Player['Surname']) ?></span>
 			</div>
 			<?php endif; ?>
+			<?php if (!empty($Player['Persona'])): ?>
 			<div class="pn-detail-row">
 				<span class="pn-detail-label">Persona</span>
 				<span class="pn-detail-value"><?= htmlspecialchars($Player['Persona']) ?></span>
 			</div>
+			<?php endif; ?>
 			<?php if (!$isGuest): ?>
 			<div class="pn-detail-row">
 				<span class="pn-detail-label">Username</span>
