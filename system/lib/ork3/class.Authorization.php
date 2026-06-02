@@ -124,10 +124,11 @@ class Authorization extends Ork3
 			$this->mundane->like('email', $email);
 		}
 		if ($this->mundane->find()) {
-			// No email supplied, or the matched account has no email on file: we
-			// cannot deliver a reset link. Tell the user clearly instead of a
-			// generic not-found.
-			if ($email === '' || trimlen($this->mundane->email) == 0) {
+			// We can only deliver a reset link if the MATCHED account actually has an
+			// email on file. Whether the request supplied an email is irrelevant — an
+			// omitted request email just means we didn't narrow by it, not that the
+			// account lacks one. Fire this branch solely on the stored value.
+			if (trimlen($this->mundane->email) == 0) {
 				return InvalidParameter('No email is on file for this account — please contact an officer.');
 			}
 			$password = substr(md5(microtime()), 2, 11);
