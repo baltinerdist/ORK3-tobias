@@ -976,12 +976,105 @@ class Player extends Ork3
             return NoAuthorization();
         }
 
-        // Re-point attendance.
-        $this->db->query("UPDATE " . DB_PREFIX . "attendance SET mundane_id = " . $playerId . " WHERE mundane_id = " . $guestId);
-        // Re-point notes.
-        $this->db->query("UPDATE " . DB_PREFIX . "mundane_note SET mundane_id = " . $playerId . " WHERE mundane_id = " . $guestId);
+        // Re-point every table a guest could plausibly own from the retired guest row to
+        // the real player. The guest's mundane_id is going away (active=0), so anything not
+        // re-pointed here is orphaned. Mirrors MergePlayer's table set; $DB->Clear() before
+        // each raw statement so stale PDO bindings can't silently no-op the UPDATE.
+        $g = (int)$guestId;
+        $p = (int)$playerId;
+
+        // attendance: de-dupe same-day rows the player already has, then transfer the rest.
+        $this->db->Clear();
+        $this->db->query("DELETE FROM " . DB_PREFIX . "attendance WHERE mundane_id = " . $g
+            . " AND date IN (SELECT date FROM (SELECT DISTINCT date FROM " . DB_PREFIX . "attendance WHERE mundane_id = " . $p . ") AS d)");
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "attendance SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+
+        // notes.
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "mundane_note SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+
+        // awards: recipient and giver.
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "awards SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "awards SET given_by_id = " . $p . " WHERE given_by_id = " . $g);
+
+        // unit membership and unit ownership.
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "unit_mundane SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "unit SET owner_id = " . $p . " WHERE owner_id = " . $g);
+
+        // authorizations / officer roles (rare for a guest, but transfer for parity with MergePlayer).
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "authorization SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "officer SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+
+        // events owned, splits, transactions.
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "event SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "split SET src_mundane_id = " . $p . " WHERE src_mundane_id = " . $g);
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "transaction SET recorded_by = " . $p . " WHERE recorded_by = " . $g);
+
+        // event_rsvp: unique key (mundane_id, event_calendardetail_id) — drop colliding guest rows first.
+        $this->db->Clear();
+        $this->db->query("DELETE FROM " . DB_PREFIX . "event_rsvp WHERE mundane_id = " . $g
+            . " AND event_calendardetail_id IN (SELECT event_calendardetail_id FROM (SELECT event_calendardetail_id FROM " . DB_PREFIX . "event_rsvp WHERE mundane_id = " . $p . ") AS existing)");
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "event_rsvp SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+
+        // class_reconciliation: unique key (class_id, mundane_id) — de-dupe first.
+        $this->db->Clear();
+        $this->db->query("DELETE FROM " . DB_PREFIX . "class_reconciliation WHERE mundane_id = " . $g
+            . " AND class_id IN (SELECT class_id FROM (SELECT class_id FROM " . DB_PREFIX . "class_reconciliation WHERE mundane_id = " . $p . ") AS existing)");
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "class_reconciliation SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+
+        // recommendations: recipient and recommender.
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "recommendations SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "recommendations SET recommended_by_id = " . $p . " WHERE recommended_by_id = " . $g);
+
+        // recommendation_seconds: unique (recommendations_id, supporter_mundane_id) — soft-delete colliders first.
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "recommendation_seconds fr "
+            . "JOIN " . DB_PREFIX . "recommendation_seconds toR ON toR.recommendations_id = fr.recommendations_id AND toR.supporter_mundane_id = " . $p . " "
+            . "SET fr.deleted_at = NOW(), fr.deleted_by = " . $p . " "
+            . "WHERE fr.supporter_mundane_id = " . $g . " AND fr.deleted_at IS NULL");
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "recommendation_seconds SET supporter_mundane_id = " . $p . " WHERE supporter_mundane_id = " . $g . " AND deleted_at IS NULL");
+
+        // dues, tournament officiant/participant, game logs, applications.
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "dues SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "bracket_officiant SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "participant_mundane SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "game SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "application SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+
+        // whats_new_seen: unique key (mundane_id, version) — de-dupe first.
+        $this->db->Clear();
+        $this->db->query("DELETE FROM " . DB_PREFIX . "whats_new_seen WHERE mundane_id = " . $g
+            . " AND version IN (SELECT version FROM (SELECT version FROM " . DB_PREFIX . "whats_new_seen WHERE mundane_id = " . $p . ") AS existing)");
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "whats_new_seen SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+
+        // The retired guest keeps no paired design row (target keeps its own).
+        $this->db->Clear();
+        $this->db->query("DELETE FROM " . DB_PREFIX . "mundane_design WHERE mundane_id = " . $g);
+
         // Retire the guest row.
-        $this->db->query("UPDATE " . DB_PREFIX . "mundane SET active = 0, modified = '" . date('Y-m-d H:i:s') . "' WHERE mundane_id = " . $guestId);
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "mundane SET active = 0, modified = '" . date('Y-m-d H:i:s') . "' WHERE mundane_id = " . $g);
 
         return Success($playerId);
     }
