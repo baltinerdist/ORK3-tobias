@@ -1695,6 +1695,9 @@ class Report extends Ork3
             ? "left join " . DB_PREFIX . "mundane m on a.mundane_id = m.mundane_id"
             : "";
 
+        // Exclude guest-class attendance unless this kingdom counts it.
+        $kpa_guest_clause = $this->guestAttendanceClauseForKingdom($request['KingdomId'], 'a');
+
         $sql = "select
 						count(mundanesbyweek.mundane_id) attendance_count, p.park_id, p.name, p.has_heraldry,
 						pt.title, p.parktitle_id
@@ -1711,7 +1714,7 @@ class Report extends Ork3
 										$waivered_peeps
 										a.kingdom_id IN ($kidList)
 										and date >= '$per_period'
-										and a.mundane_id > 0
+										and a.mundane_id > 0$kpa_guest_clause
 									group by date_year, date_week3, mundane_id, a.park_id) mundanesbyweek
 								on p.park_id = mundanesbyweek.park_id
 					where p.kingdom_id IN ($kidList) and p.active = 'Active'
@@ -1749,6 +1752,9 @@ class Report extends Ork3
         $escaped_kingdom_id = mysql_real_escape_string($request['KingdomId']);
         $kidList = (int)$request['KingdomId']; // park-LIST display stays parent-only; principalities shown in their own sections + aggregates roll up elsewhere
 
+        // Exclude guest-class attendance unless this kingdom counts it.
+        $kpma_guest_clause = $this->guestAttendanceClauseForKingdom($request['KingdomId'], 'a');
+
         // AVG(distinct players per month) per park — matches the Park page hero stat formula.
         // Divides by the number of months with actual attendance, not a fixed 12,
         // so parks with seasonal gaps report their active-period average.
@@ -1759,7 +1765,7 @@ class Report extends Ork3
 						FROM " . DB_PREFIX . "attendance a
 						WHERE a.kingdom_id IN ($kidList)
 						  AND a.date > '$monthly_period'
-						  AND a.mundane_id > 0
+						  AND a.mundane_id > 0$kpma_guest_clause
 						GROUP BY a.date_year, a.date_month, a.park_id
 					) sub
 					GROUP BY park_id";
@@ -1879,6 +1885,11 @@ class Report extends Ork3
         }
         $wk_start = date("Y-m-d", strtotime("-6 month"));
         $mo_start = date("Y-m-d", strtotime("-1 year"));
+        // Per-kingdom guest-attendance branch; each subquery joins ork_kingdom (alias gk*) so each kingdom's own toggle applies.
+        $gas_guest_wk  = $this->guestAttendanceClauseCrossKingdom('gkw', 'a');
+        $gas_guest_mo  = $this->guestAttendanceClauseCrossKingdom('gkm', 'a');
+        $gas_guest_avg = $this->guestAttendanceClauseCrossKingdom('gka', 'a');
+        $gas_guest_ap  = $this->guestAttendanceClauseCrossKingdom('gkp', 'a');
         $sql = "SELECT k.name, k.kingdom_id, k.parent_kingdom_id, pcount.park_count, ifnull(attendance_count,0) attendance, ifnull(monthly_attendance_count,0) monthly, ifnull(avg_monthly_att.avg_monthly,0) avg_monthly, ifnull(activeparks.parkcount,0) active_parks
 					FROM `" . DB_PREFIX . "kingdom` k
 					left join
@@ -1891,16 +1902,18 @@ class Report extends Ork3
 										a.mundane_id, a.date_year, a.date_week3 as week, p.kingdom_id
 									from " . DB_PREFIX . "attendance a
 									inner join " . DB_PREFIX . "park p on p.park_id = a.park_id
-									where a.date >= '$wk_start' and a.mundane_id > 0 group by a.date_year, a.date_week3, a.mundane_id, p.kingdom_id)
+									inner join " . DB_PREFIX . "kingdom gkw on gkw.kingdom_id = p.kingdom_id
+									where a.date >= '$wk_start' and a.mundane_id > 0$gas_guest_wk group by a.date_year, a.date_week3, a.mundane_id, p.kingdom_id)
 									mundanesbyweek group by kingdom_id) total_attendance on total_attendance.kingdom_id = k.kingdom_id
 					left join
 						(select
 								count(mundanesbymonth.mundane_id) monthly_attendance_count, mundanesbymonth.kingdom_id
 							from
 								(select
-										mundane_id, date_month as month, kingdom_id
-									from " . DB_PREFIX . "attendance
-									where date > '$mo_start' and mundane_id > 0 group by date_month, mundane_id, kingdom_id)
+										a.mundane_id, a.date_month as month, a.kingdom_id
+									from " . DB_PREFIX . "attendance a
+									inner join " . DB_PREFIX . "kingdom gkm on gkm.kingdom_id = a.kingdom_id
+									where a.date > '$mo_start' and a.mundane_id > 0$gas_guest_mo group by a.date_month, a.mundane_id, a.kingdom_id)
 									mundanesbymonth group by kingdom_id) monthly_attendance on monthly_attendance.kingdom_id = k.kingdom_id
 					left join
 						(select kingdom_id, AVG(monthly_unique) AS avg_monthly
@@ -1908,7 +1921,8 @@ class Report extends Ork3
 								select a.date_year, a.date_month, p2.kingdom_id, COUNT(DISTINCT a.mundane_id) AS monthly_unique
 								from " . DB_PREFIX . "attendance a
 								inner join " . DB_PREFIX . "park p2 on p2.park_id = a.park_id
-								where a.date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) and a.mundane_id > 0
+								inner join " . DB_PREFIX . "kingdom gka on gka.kingdom_id = p2.kingdom_id
+								where a.date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) and a.mundane_id > 0$gas_guest_avg
 								group by a.date_year, a.date_month, p2.kingdom_id
 							) mo_sub
 							group by kingdom_id) avg_monthly_att on avg_monthly_att.kingdom_id = k.kingdom_id
@@ -1920,9 +1934,10 @@ class Report extends Ork3
 										mundanesbyweek.kingdom_id
 									from
 										(select
-												kingdom_id, park_id
-											from " . DB_PREFIX . "attendance
-											where date > '" . date("Y-m-d", strtotime("-$request[ParkAttendanceWithin] week")) . "' group by date_week3, mundane_id) mundanesbyweek
+												a.kingdom_id, a.park_id
+											from " . DB_PREFIX . "attendance a
+											inner join " . DB_PREFIX . "kingdom gkp on gkp.kingdom_id = a.kingdom_id
+											where a.date > '" . date("Y-m-d", strtotime("-$request[ParkAttendanceWithin] week")) . "'$gas_guest_ap group by a.date_week3, a.mundane_id) mundanesbyweek
 									group by kingdom_id, park_id) parkcount
 							group by kingdom_id) activeparks on activeparks.kingdom_id = k.kingdom_id
 					where active = 'Active'
@@ -2027,9 +2042,12 @@ class Report extends Ork3
             $per_period = date('Y-m-d', strtotime("$report_to -{$request['Periods']} day"));
         }
 
+        $guest_clause = $this->guestAttendanceClauseCrossKingdom('k', 'a');
+        $guest_join = $guest_clause !== '' ? (" LEFT JOIN " . DB_PREFIX . "kingdom k ON a.kingdom_id = k.kingdom_id") : '';
+
         $sql = "SELECT a.date_year, a.date_month, COUNT(DISTINCT a.mundane_id) AS monthly_unique
-			FROM " . DB_PREFIX . "attendance a
-			WHERE a.date > '$per_period' AND a.date <= '$report_to' AND a.mundane_id > 0 $where
+			FROM " . DB_PREFIX . "attendance a$guest_join
+			WHERE a.date > '$per_period' AND a.date <= '$report_to' AND a.mundane_id > 0 $where$guest_clause
 			GROUP BY a.date_year, a.date_month
 			ORDER BY a.date_year, a.date_month";
 
@@ -2054,7 +2072,9 @@ class Report extends Ork3
             return $cache;
         }
         $since = date('Y-m-d', strtotime("-{$weeks} week"));
-        $sql = "SELECT COUNT(DISTINCT mundane_id) AS player_count FROM `" . DB_PREFIX . "attendance` WHERE date > '{$since}' AND mundane_id > 0";
+        $guest_clause = $this->guestAttendanceClauseCrossKingdom('k', 'a');
+        $guest_join = $guest_clause !== '' ? (" LEFT JOIN " . DB_PREFIX . "kingdom k ON a.kingdom_id = k.kingdom_id") : '';
+        $sql = "SELECT COUNT(DISTINCT a.mundane_id) AS player_count FROM `" . DB_PREFIX . "attendance` a$guest_join WHERE a.date > '{$since}' AND a.mundane_id > 0$guest_clause";
         $r = $this->db->query($sql);
         $count = 0;
         if ($r && $r->next()) {
