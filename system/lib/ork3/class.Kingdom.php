@@ -300,6 +300,8 @@ class Kingdom  extends Ork3 {
 			$response['KingdomInfo']['ParentKingdomId'] = $this->kingdom->parent_kingdom_id;
 			$response['KingdomInfo']['Description'] = $this->kingdom->description ?? '';
 			$response['KingdomInfo']['Url'] = $this->kingdom->url ?? '';
+			$response['KingdomInfo']['GuestAttendanceEnabled'] = (int)$this->kingdom->guest_attendance_enabled;
+			$response['KingdomInfo']['GuestAttendanceCounts'] = (int)$this->kingdom->guest_attendance_counts;
 			
 			// Fetch configs
 			$response['KingdomConfiguration'] = Common::get_configs($request['KingdomId']);
@@ -566,6 +568,26 @@ class Kingdom  extends Ork3 {
 			$response = NoAuthorization(null, $mundane_id);
 		}
 		return $response;
+	}
+
+	// Save the two kingdom-only guest-attendance policy toggles.
+	// Manager-gated (AUTH_KINGDOM EDIT). $DB->Clear() before the raw save so
+	// stale PDO bindings from prior model calls can't silently drop the write.
+	public function SetGuestAttendanceSettings($request) {
+		if (($mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token'])) > 0
+				&& Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_KINGDOM, $request['KingdomId'], AUTH_EDIT)) {
+			$kid = (int)$request['KingdomId'];
+			$enabled = !empty($request['GuestAttendanceEnabled']) ? 1 : 0;
+			$counts  = !empty($request['GuestAttendanceCounts'])  ? 1 : 0;
+			// Counting requires tracking: can't count what you don't track.
+			if (!$enabled) $counts = 0;
+			$this->log->Write('Kingdom', $mundane_id, LOG_EDIT, $request);
+			global $DB;
+			$DB->Clear();
+			$DB->Execute('UPDATE ' . DB_PREFIX . 'kingdom SET guest_attendance_enabled = ' . $enabled . ', guest_attendance_counts = ' . $counts . ', modified = NOW() WHERE kingdom_id = ' . $kid);
+			return Success();
+		}
+		return NoAuthorization();
 	}
 
 	public function SetKingdomParent($request) {

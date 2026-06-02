@@ -75,7 +75,11 @@ class Model_Kingdom extends Model {
 
 	function set_kingdom_parent($request) {
 		return $this->Kingdom->SetKingdomParent($request);
-	}	
+	}
+
+	function set_guest_attendance_settings($request) {
+		return $this->Kingdom->SetGuestAttendanceSettings($request);
+	}
 	
 	function set_kingdom_parktitles($request) {
 		$r = $this->Kingdom->SetKingdomParkTitles($request);

@@ -1639,7 +1639,41 @@ var KnBannerConfig = {
 				</div>
 			</div>
 
-			<!-- ── Panel: Park Titles ── -->
+			<!-- ── Panel: Guest Attendance ── -->
+				<div class="kn-admin-panel">
+					<button class="kn-admin-panel-hdr" id="kn-admin-hdr-guest" aria-expanded="false">
+						<span><i class="fas fa-user-plus" style="margin-right:6px;color:#a0aec0"></i>Guest Attendance</span>
+						<i class="fas fa-chevron-down kn-admin-chevron" id="kn-admin-chev-guest"></i>
+					</button>
+					<div class="kn-admin-panel-body" id="kn-admin-body-guest" style="display:none">
+						<div id="kn-admin-guest-feedback" class="kn-admin-feedback" style="display:none"></div>
+						<div class="kn-admin-field" style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid var(--ork-border,#e2e8f0);margin-bottom:12px">
+							<div>
+								<div style="font-size:13px;font-weight:600;color:var(--ork-text,#2d3748)">Track guest attendance</div>
+								<div style="font-size:12px;color:var(--ork-text-muted,#718096);margin-top:3px">When On, officers can sign in walk-up guests at demos and events. Guests never receive class levels.</div>
+							</div>
+							<select id="kn-admin-guest-enabled" style="font-size:13px;border:1.5px solid var(--ork-border,#e2e8f0);border-radius:6px;padding:5px 8px;flex-shrink:0;background:var(--ork-card,#fff);color:var(--ork-text,#2d3748)">
+								<option value="1" <?= !empty($AdminInfo['GuestAttendanceEnabled']) ? 'selected' : '' ?>>On</option>
+								<option value="0" <?= empty($AdminInfo['GuestAttendanceEnabled']) ? 'selected' : '' ?>>Off</option>
+							</select>
+						</div>
+						<div class="kn-admin-field" id="kn-admin-guest-counts-row" style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:10px 0">
+							<div>
+								<div style="font-size:13px;font-weight:600;color:var(--ork-text,#2d3748)">Count guest attendance in reports</div>
+								<div style="font-size:12px;color:var(--ork-text-muted,#718096);margin-top:3px">When On, guest turnout is included in official attendance report totals. When Off, guests are tracked but excluded from totals.</div>
+							</div>
+							<select id="kn-admin-guest-counts" style="font-size:13px;border:1.5px solid var(--ork-border,#e2e8f0);border-radius:6px;padding:5px 8px;flex-shrink:0;background:var(--ork-card,#fff);color:var(--ork-text,#2d3748)">
+								<option value="1" <?= !empty($AdminInfo['GuestAttendanceCounts']) ? 'selected' : '' ?>>On</option>
+								<option value="0" <?= empty($AdminInfo['GuestAttendanceCounts']) ? 'selected' : '' ?>>Off</option>
+							</select>
+						</div>
+						<button class="kn-admin-save-btn" id="kn-admin-guest-save">
+							<i class="fas fa-save"></i> Save Guest Settings
+						</button>
+					</div>
+				</div>
+
+				<!-- ── Panel: Park Titles ── -->
 			<div class="kn-admin-panel">
 				<button class="kn-admin-panel-hdr" id="kn-admin-hdr-titles" aria-expanded="false">
 					<span><i class="fas fa-flag" style="margin-right:6px;color:#a0aec0"></i>Park Titles</span>

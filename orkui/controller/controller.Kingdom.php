@@ -1032,6 +1032,8 @@ class Controller_Kingdom extends Controller
                 'ParentKingdomId'  => $parentKingdomId,
                 'ParentKingdomName' => $parentKingdomName,
                 'Active'           => $kd['KingdomInfo']['Active'] ?? 'Active',
+                'GuestAttendanceEnabled' => (int)($kd['KingdomInfo']['GuestAttendanceEnabled'] ?? 0),
+                'GuestAttendanceCounts'  => (int)($kd['KingdomInfo']['GuestAttendanceCounts']  ?? 0),
             ];
 
             $adminConfig = [];

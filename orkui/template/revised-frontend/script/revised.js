@@ -4865,6 +4865,7 @@ $(document).ready(function() {
     var _knPanelNames = {
         'kn-admin-body-details': 'Kingdom Details',
         'kn-admin-body-config':  'Configuration',
+        'kn-admin-body-guest':   'Guest Attendance',
         'kn-admin-body-titles':  'Park Titles',
         'kn-admin-body-awards':  'Awards',
         'kn-admin-body-parks':   'Parks',
@@ -4873,6 +4874,7 @@ $(document).ready(function() {
     var _knPanelSaveBtn = {
         'kn-admin-body-details': 'kn-admin-details-save',
         'kn-admin-body-config':  'kn-admin-config-save',
+        'kn-admin-body-guest':   'kn-admin-guest-save',
         'kn-admin-body-titles':  'kn-admin-titles-save',
         'kn-admin-body-parks':   'kn-admin-parks-save',
     };
@@ -5182,6 +5184,43 @@ $(document).ready(function() {
                     else feedback('kn-admin-config-feedback', err, false);
                 });
             }
+        });
+    }
+
+    // ── Section: Guest Attendance ────────────────────────────
+    function syncGuestCountsRow() {
+        var en  = gid('kn-admin-guest-enabled');
+        var cnt = gid('kn-admin-guest-counts');
+        var row = gid('kn-admin-guest-counts-row');
+        if (!en || !cnt || !row) return;
+        var on = en.value === '1';
+        cnt.disabled = !on;
+        row.style.opacity = on ? '' : '0.5';
+        if (!on) cnt.value = '0';
+    }
+    function wireGuest() {
+        var en  = gid('kn-admin-guest-enabled');
+        if (en) { en.addEventListener('change', syncGuestCountsRow); syncGuestCountsRow(); }
+        var btn = gid('kn-admin-guest-save');
+        if (!btn) return;
+        btn.addEventListener('click', function() {
+            clearFeedback('kn-admin-guest-feedback');
+            var enabled = (gid('kn-admin-guest-enabled') || {}).value === '1' ? 1 : 0;
+            var counts  = (gid('kn-admin-guest-counts')  || {}).value === '1' ? 1 : 0;
+            if (!enabled) counts = 0;
+            btn.disabled = true;
+            $.post(BASE_URL + 'setguestattendance',
+                { GuestAttendanceEnabled: enabled, GuestAttendanceCounts: counts },
+                function(r) {
+                    btn.disabled = false;
+                    if (r && r.status === 0) {
+                        knClearPending('kn-admin-body-guest');
+                        feedback('kn-admin-guest-feedback', 'Guest settings saved!', true);
+                    } else {
+                        feedback('kn-admin-guest-feedback', (r && r.error) ? r.error : 'Save failed.', false);
+                    }
+                }, 'json'
+            ).fail(function() { btn.disabled = false; feedback('kn-admin-guest-feedback', 'Request failed.', false); });
         });
     }
 
@@ -6085,6 +6124,7 @@ $(document).ready(function() {
     $(document).ready(function() {
         wireToggle('kn-admin-hdr-details', 'kn-admin-body-details', 'kn-admin-chev-details');
         wireToggle('kn-admin-hdr-config',  'kn-admin-body-config',  'kn-admin-chev-config');
+        wireToggle('kn-admin-hdr-guest',   'kn-admin-body-guest',   'kn-admin-chev-guest');
         wireToggle('kn-admin-hdr-titles',  'kn-admin-body-titles',  'kn-admin-chev-titles');
         wireToggle('kn-admin-hdr-awards',  'kn-admin-body-awards',  'kn-admin-chev-awards');
         wireToggle('kn-admin-hdr-parks',      'kn-admin-body-parks',      'kn-admin-chev-parks');
@@ -6095,6 +6135,7 @@ $(document).ready(function() {
         wirePrinz();
         wireStatus();
         wireConfig();
+        wireGuest();
         wireTitles();
         wireAwards();
         wireOps();
