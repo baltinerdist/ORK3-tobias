@@ -585,6 +585,46 @@ End-to-end demo: enable guest attendance on a test kingdom → on the event/park
 ## Deferred (post-prototype, per spec §H)
 IDP `is_guest` guard; unit-membership guest guard; full report-audit tail (`GetActiveKingdomsSummary`, `GetKingdomParkAverages`, `GetKingdomParkMonthlyAverages`, `GetMonthlyChartData`, `GetDistinctActivePlayerCount`, Admin year-over-year); transfer-guest-credits tool; demo-ROI funnel report; lifecycle `status` enum.
 
+## Phase 9 — report consistency + guest-turnout readout (follow-on)
+
+Decision: NO per-view include/exclude toggles. The kingdom `guest_attendance_counts`
+policy is the toggle. Finish wiring the surfaces that still count guests
+unconditionally, then add ONE dedicated guest-turnout readout for the demo use case.
+
+**9A — `class.Report.php` remaining surfaces.** Use existing helpers
+(`guestAttendanceClauseForKingdom($kingdomId,$aAlias)`,
+`guestAttendanceClauseCrossKingdom($kAlias,$aAlias)`,
+`guestAttendanceAlwaysExclude($aAlias)`; guest class via `Attendance::GuestClassId()`).
+- **Honor policy** (aggregate counts/averages/leaderboards): `GetTopParksByAttendance`
+  (cross-kingdom), `ParkAttendanceAllParks` (per-kingdom), `ParkAttendanceSinglePark`
+  (resolve park→kingdom), `EventAttendanceReport` (resolve event→kingdom).
+- **Detail attendee listings** (`AttendanceForEvent`, `AttendanceForDate`): keep guest
+  rows VISIBLE but select `m.is_guest` so the UI can badge them; aggregate counts in
+  those methods honor policy. (Officers should see who signed in; the turnout readout
+  gives the separate number.)
+- **Always exclude** (official-status integrity — guests are never members): `GetInactiveKingdoms`,
+  `GetInactiveParks` (activity detection), `GetNewPlayerAttendance`,
+  `GetNewPlayerAttendanceByKingdom` (cohort), `GetDuesPaidList`, `UnitSummary`.
+
+**9B — controllers + Live.** Make these honor policy (resolve the relevant kingdom's
+`guest_attendance_counts`): Kingdom profile hero stats (`controller.Kingdom.php`),
+Park profile hero stats (`controller.Park.php`), Admin trend dashboard
+(`controller.Admin.php`), and `Live::stats()` (`class.Live.php`) "active in 3h/30m"
+counts.
+
+**9C — guest-turnout readout.** Add a distinct guest count (guests only:
+`AND a.class_id = <GuestClassId>`) surfaced alongside the policy-respecting member
+numbers, with templates updated to display it:
+- Park attendance reports (`ParkAttendanceAllParks`/`SinglePark`) → "Guests" column.
+- Event attendance (`EventAttendanceReport`) → guest count in the summary.
+- Live dashboard → a "guests" figure beside the active counts.
+This is the ONLY new guest-visibility surface; `RecentParkAttendees` already badges guests.
+
+Each sub-phase: lint, curl/DB-verify (seed guest attendance in a test kingdom, confirm
+honor-policy surfaces move with the toggle, always-exclude surfaces never move, and the
+turnout readout shows the guest number), `$DB->Clear()` before raw queries, stage only
+named files, never touch `class.Authorization.php`, commit per sub-phase.
+
 ## Self-Review notes
 - Spec coverage: §1 schema→Task2; §2 cleanup/gate→Task3+Task16; §3 class/settings/report→Tasks4,8,9,14,15; §4 quick-add/dedupe→Tasks10–13; §5 convert/merge→Tasks17–18; review-incorporation A–G mapped (A→Tasks7,16; B→Tasks4,8; C→Task9; D→Task15; E→Task10; F→Tasks6,19,Task3 cache; G→Tasks6,11,12,17,18,2/6 columns).
 - Guest class id never hard-coded (Task4 lookup; reports embed the resolved id at query-build time).
