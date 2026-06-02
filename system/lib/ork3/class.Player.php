@@ -696,6 +696,26 @@ class Player extends Ork3
         return $username;
     }
 
+    public function EmailIsAvailable($email, $excludeMundaneId = null)
+    {
+        require_once(__DIR__ . '/class.GuestValidator.php');
+        $norm = GuestValidator::normalizeEmail($email);
+        if ($norm === '') {
+            return ['available' => true, 'ownerId' => null, 'ownerIsGuest' => false]; // NULL is always ok
+        }
+        $ex = (int)$excludeMundaneId;
+        $sql = "SELECT mundane_id, given_name, surname, is_guest FROM " . DB_PREFIX . "mundane "
+             . "WHERE LOWER(email) = '" . mysql_real_escape_string($norm) . "'"
+             . ($ex > 0 ? " AND mundane_id <> " . $ex : "") . " LIMIT 1";
+        $r = $this->db->query($sql);
+        if ($r && $r->next()) {
+            return ['available' => false, 'ownerId' => (int)$r->mundane_id,
+                    'ownerName' => trim($r->given_name . ' ' . $r->surname),
+                    'ownerIsGuest' => (int)$r->is_guest === 1];
+        }
+        return ['available' => true, 'ownerId' => null, 'ownerIsGuest' => false];
+    }
+
     public function CreatePlayer($request)
     {
         if (strlen($request['UserName']) < 4) {
