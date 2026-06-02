@@ -1085,6 +1085,17 @@ class Player extends Ork3
             return InvalidParameter('UserNames must be at least 4 characters long.');
         }
 
+        // Normalize the email and reject duplicates BEFORE creating any row,
+        // so a collision (now blocked by the UNIQUE index) never half-creates a player.
+        require_once(__DIR__ . '/class.GuestValidator.php');
+        $normEmail = GuestValidator::normalizeEmail($request['Email'] ?? '');
+        if ($normEmail !== '') {
+            $avail = $this->EmailIsAvailable($normEmail);
+            if (!$avail['available']) {
+                return InvalidParameter('That email address is already in use by another account.', $avail);
+            }
+        }
+
         if (($mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token'])) > 0
                 && Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_PARK, $request['ParkId'], AUTH_CREATE)) {
             $park = new yapo($this->db, DB_PREFIX . 'park');
@@ -1103,7 +1114,7 @@ class Player extends Ork3
                 $this->mundane->other_name = $request['OtherName'];
                 $this->mundane->username = trim($request['UserName']);
                 $this->mundane->persona = trim($request['Persona']);
-                $this->mundane->email = $request['Email'];
+                $this->mundane->email = ($normEmail !== '') ? $normEmail : null;
                 $this->mundane->park_id = $request['ParkId'];
                 $this->mundane->kingdom_id = $park->kingdom_id;
                 $this->mundane->modified = date('Y-m-d H:i:s', time());
@@ -1127,6 +1138,11 @@ class Player extends Ork3
                 $this->mundane->reeve_qualified_until = '0000-00-00';
                 $this->mundane->save();
                 $new_mundane_id = (int)$this->mundane->mundane_id;
+
+                // yapo drops null on INSERT; ensure a blank email lands as NULL not '' (UNIQUE index).
+                if ($normEmail === '') {
+                    $this->db->query("UPDATE " . DB_PREFIX . "mundane SET email = NULL WHERE mundane_id = " . $new_mundane_id . " AND (email = '' OR email IS NULL)");
+                }
 
                 // Paired design-preferences row (one per mundane, all schema defaults at creation).
                 $design = new yapo($this->db, DB_PREFIX . 'mundane_design');
