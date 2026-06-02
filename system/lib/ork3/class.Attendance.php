@@ -10,9 +10,23 @@ class Attendance extends Ork3
         $this->attendance_link = new yapo($this->db, DB_PREFIX . 'attendance_link');
     }
 
+    private static $_guestClassId = null;
+    public static function GuestClassId()
+    {
+        if (self::$_guestClassId !== null) {
+            return self::$_guestClassId;
+        }
+        $row = Ork3::$Lib->db->query("SELECT class_id FROM " . DB_PREFIX . "class WHERE is_guest = 1 LIMIT 1");
+        self::$_guestClassId = ($row && $row->next()) ? (int)$row->class_id : 0;
+        return self::$_guestClassId;
+    }
+
     public function GetClasses($request)
     {
         $this->class->clear();
+        if (empty($request['IncludeGuest'])) {
+            $this->class->is_guest = 0;
+        }
         if (is_numeric($request['Active'])) {
             $this->class->active = $request['Active'];
         }
