@@ -2011,7 +2011,23 @@ class Player extends Ork3
                 }
                 $this->mundane->save();
                 logtrace("Mundane DB 1", $this->mundane);
-                $this->mundane->email = is_null($request['Email']) ? $this->mundane->email : $request['Email'];
+                // Email: normalize (junk/blank -> '') and enforce global uniqueness.
+                // Keep-on-null semantics: a null request Email leaves the existing value untouched.
+                require_once(__DIR__ . '/class.GuestValidator.php');
+                $_emailToNull = false;
+                if (!is_null($request['Email'])) {
+                    $_normEmail = GuestValidator::normalizeEmail($request['Email']);
+                    if ($_normEmail === '') {
+                        $this->mundane->email = null; // yapo drops null on save -> clear explicitly post-save
+                        $_emailToNull = true;
+                    } else {
+                        $_avail = $this->EmailIsAvailable($_normEmail, (int)$request['MundaneId']);
+                        if (!$_avail['available']) {
+                            return InvalidParameter('That email is already on file.', $_avail);
+                        }
+                        $this->mundane->email = $_normEmail;
+                    }
+                }
                 if (trimlen($request['Password']) > 0) {
                     logtrace("Update password", $request['Password']);
                     $this->mundane->password_expires = date("Y-m-d H:i:s", time() + 60 * 60 * 24 * 365 * 2);
@@ -2054,6 +2070,11 @@ class Player extends Ork3
                 }
                 logtrace("Player Updated", array($request, $this->mundane->lastSql()));
                 $this->mundane->save();
+                if ($_emailToNull) {
+                    // yapo skips null on save; force NULL so legacy '' callers can't reintroduce
+                    // empty-string emails or break the unique index.
+                    $this->db->query("UPDATE " . DB_PREFIX . "mundane SET email = NULL WHERE mundane_id = " . (int)$request['MundaneId']);
+                }
                 $post_player = $this->GetPlayer(['MundaneId' => $request['MundaneId']]);
                 $_audit_req = $request;
                 $_audit_req['PasswordChanged'] = trimlen($request['Password'] ?? '') > 0 ? 1 : 0;
