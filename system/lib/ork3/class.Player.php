@@ -716,6 +716,75 @@ class Player extends Ork3
         return ['available' => true, 'ownerId' => null, 'ownerIsGuest' => false];
     }
 
+    public function CreateGuest($request)
+    {
+        require_once(__DIR__ . '/class.GuestValidator.php');
+        $creatorId = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+        if (!(valid_id($creatorId) && Ork3::$Lib->authorization->HasAuthority($creatorId, AUTH_PARK, $request['ParkId'], AUTH_CREATE))) {
+            return NoAuthorization();
+        }
+
+        $first = GuestValidator::normalizeName($request['GivenName']);
+        $last  = GuestValidator::normalizeName($request['Surname']);
+        if ($first === '' || $last === '') {
+            return InvalidParameter('A first and last name are required.');
+        }
+
+        $email = GuestValidator::normalizeEmail($request['Email'] ?? '');
+        if ($email !== '') {
+            $avail = $this->EmailIsAvailable($email);
+            if (!$avail['available']) {
+                return InvalidParameter('That email is already on file.', $avail);
+            }
+        }
+
+        $park = new yapo($this->db, DB_PREFIX . 'park');
+        $park->clear();
+        $park->park_id = $request['ParkId'];
+        if (!$park->find()) {
+            return InvalidParameter('Invalid park.');
+        }
+
+        $this->mundane->clear();
+        $this->mundane->given_name = $first;
+        $this->mundane->surname    = $last;
+        $this->mundane->other_name = '';
+        $this->mundane->persona    = '';
+        $this->mundane->email      = ($email !== '') ? $email : null;
+        $this->mundane->phone      = $request['Phone'] ?? null;
+        $this->mundane->park_id    = $request['ParkId'];
+        $this->mundane->kingdom_id = $park->kingdom_id;
+        $this->mundane->is_guest   = 1;
+        // username intentionally left unset/NULL (no login).
+        $this->mundane->token                 = md5(uniqid(rand(), true));
+        $this->mundane->xtoken                = md5(uniqid(rand(), true));
+        $this->mundane->password_salt         = '';
+        $this->mundane->password_expires      = date('Y-m-d H:i:s');
+        $this->mundane->waiver_ext            = '';
+        $this->mundane->reeve_qualified_until = '0000-00-00';
+        $this->mundane->modified              = date('Y-m-d H:i:s');
+        $this->mundane->active                = 1;
+        $this->mundane->guest_captured_at     = date('Y-m-d H:i:s');
+        $this->mundane->guest_created_by_id   = $creatorId;
+        if (valid_id($request['EventId'] ?? 0)) {
+            $this->mundane->guest_source_event_id = (int)$request['EventId'];
+        }
+        $this->mundane->save();
+        $newId = (int)$this->mundane->mundane_id;
+
+        // Fix: yapo drops null on INSERT; ensure email=NULL not empty string when no email supplied
+        if ($email === '') {
+            $this->db->query("UPDATE " . DB_PREFIX . "mundane SET email = NULL WHERE mundane_id = " . $newId . " AND (email = '' OR email IS NULL)");
+        }
+
+        $design = new yapo($this->db, DB_PREFIX . 'mundane_design');
+        $design->clear();
+        $design->mundane_id = $newId;
+        $design->save();
+
+        return Success($newId);
+    }
+
     public function CreatePlayer($request)
     {
         if (strlen($request['UserName']) < 4) {
