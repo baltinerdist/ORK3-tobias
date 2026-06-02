@@ -86,7 +86,9 @@ $server->Register(
 						array( 'kingdom_id','request',true,'int',true ),
 						array( 'park_id','request',true,'int',true ),
 						array( 'waivered','request',true,'int',true ),
-						array( 'token','request',true,'string',true )
+						array( 'token','request',true,'string',true ),
+						array( 'persona_required','request',true,'int',true ),
+						array( 'include_guests','request',true,'int',true )
 					)
 			)
 	);

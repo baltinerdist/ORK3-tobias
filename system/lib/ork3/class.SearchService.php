@@ -326,7 +326,12 @@ class SearchService extends Ork3 {
 			$overrode_park    ? $p_id : $park_id );
 	}
   
-	public function Player($type, $search, $limit=15, $kingdom_id = null, $park_id = null, $waivered = null, $token = null, $persona_required = true) {
+	public function Player($type, $search, $limit=15, $kingdom_id = null, $park_id = null, $waivered = null, $token = null, $persona_required = true, $include_guests = 0) {
+    	// persona_required is registered as an optional service param; an omitted
+    	// param arrives as null. Preserve the historical default (persona required)
+    	// when the caller doesn't explicitly pass 0/false.
+    	if ($persona_required === null) $persona_required = true;
+    	$persona_required = (bool)$persona_required;
     	list($search, $kingdom_id, $park_id) = $this->magic_search($search, $kingdom_id, $park_id);
 
 		// ORK admins may search by mundane info regardless of a player's restricted flag.
@@ -380,7 +385,7 @@ class SearchService extends Ork3 {
 				or " . $_rg_open . "`given_name` like '%" . mysql_real_escape_string($search) . "%' or `surname` like '%" . mysql_real_escape_string($search) . "%' or concat(`given_name`,' ',`surname`) like '%" . mysql_real_escape_string($search) . "%'" . $_rg_close . ")";
 			break;
 		}
-        if ($persona_required === true) {
+        if ($persona_required) {
             $opt[] = "length(`persona`) > 0";
         }
 		if (is_numeric($kingdom_id) && $kingdom_id > 0) {
@@ -393,6 +398,11 @@ class SearchService extends Ork3 {
 			$opt[] = "waivered =".($waivered?1:0);
 		}
 		$opt[] = "(m.kingdom_id != 15 AND (p.kingdom_id IS NULL OR p.kingdom_id != 15))";
+		// Exclude guest profiles from normal player searches unless the caller opts in
+		// (e.g. the attendance guest quick-add dedupe, which passes IncludeGuests=1).
+		if (empty($include_guests)) {
+			$opt[] = "m.is_guest = 0";
+		}
 		$order = $order ?? 'order by m.active DESC, persona';
 		// Relevance ranking: float exact and prefix persona matches to the top so a short,
 		// common token (e.g. "Silent") surfaces its exact match before the row limit truncates
@@ -406,7 +416,7 @@ class SearchService extends Ork3 {
 			$order);
 		$sql = "select 
 						`mundane_id`, m.`active`, `given_name`, `surname`, `other_name`, concat(`given_name`,' ',`surname`) as `mundane`, `username`, `persona`, p.park_id, k.kingdom_id, 
-						`restricted`, `suspended`, `suspended_at`, `suspended_until`, `waivered`, `company_id`, `penalty_box`, k.name as kingdom_name, p.name as park_name, p.abbreviation as p_abbr, k.abbreviation as k_abbr
+						`restricted`, `suspended`, `suspended_at`, `suspended_until`, `waivered`, `company_id`, `penalty_box`, m.`is_guest`, k.name as kingdom_name, p.name as park_name, p.abbreviation as p_abbr, k.abbreviation as k_abbr
 					from " . DB_PREFIX . "mundane m
 						left join " . DB_PREFIX . "kingdom k on k.kingdom_id = m.kingdom_id
 						left join " . DB_PREFIX . "park p on p.park_id = m.park_id
@@ -425,6 +435,9 @@ class SearchService extends Ork3 {
 						'Mundane' => '',//$q->mundane,
 						'UserName' => $q->username,
 						'Persona' => $q->persona,
+						'IsGuest' => (int)$q->is_guest,
+						// Guests have no persona; surface their name so the dedupe UI can label them.
+						'GuestName' => ((int)$q->is_guest === 1) ? trim($q->given_name . ' ' . $q->surname) : '',
 						'Restricted' => $q->restricted,
 						'KingdomId' => $q->kingdom_id,
 						'ParkId' => $q->park_id,
