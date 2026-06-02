@@ -244,6 +244,124 @@ player). Phase 8 is post-prototype.
 - Auto-merge of duplicate player rows.
 - Bulk guest import.
 
+---
+
+## Review Incorporation (v2 — senior architect + CRM expert)
+
+Two specialist agents reviewed v1 against the real code and CRM lifecycle
+practice. Findings folded in below. Locked brainstorming decisions (hard global
+`UNIQUE` email; "null all rows in a dup cluster" + login re-collection) are
+**kept as chosen**; the collision UX is added so the hard constraint is usable.
+
+### A. Auth / login correctness (BLOCKERS — must ship in prototype)
+- **A1. Username lookups must exclude guests.** `Authorization::Authorize_h`
+  (~`class.Authorization.php:322`) and `ResetPassword` (~:120) match by
+  `like('username', …)`. With nullable username, add `AND is_guest = 0` to both
+  so a guest row can never satisfy a login/reset.
+- **A2. `ResetPassword` breaks for nulled-email players.** It matches on
+  `like('email', …)`; after the §2 nulling, those rows won't match. Fix: when no
+  email is supplied or the row's email is NULL, match by username alone and
+  return a clear "no email on file — contact an officer" message instead of a
+  false "not found".
+- **A3. Login email-gate lives in the view/front-controller layer, NOT
+  `class.Authorization.php`** (which has no per-request HTTP hook). Implement the
+  blocking gate in `default.theme` (upgrade the existing **non-blocking** email
+  nudge at ~`default.theme:578` to a blocking full-page step) and reuse the
+  existing `PlayerAjax/save_email` endpoint (~`controller.PlayerAjax.php:660`)
+  for submit. Guests are exempt (`is_guest=1` never logs in). Note: the local
+  `true ||` login bypass does not interact with the gate (gate fires post-auth).
+
+### B. Class isolation (BLOCKERS)
+- **B1. Single choke-point for hiding the Guest class.** Add the `is_guest=0`
+  filter inside `Attendance::GetClasses` (`class.Attendance.php:11`) so all six
+  picker call sites inherit it automatically (controllers Attendance/Park/Event).
+- **B2. `Player::GetPlayerClasses` (`class.Player.php:553`) must add
+  `AND c.is_guest = 0`** so Guest-class credits never enter ladder/level math —
+  including for converted players (their Guest rows stay invisible to the ladder
+  until the transfer tool reassigns them; this is intended).
+- **B3. `Report::Guilds` (`class.Report.php:777`) joins `ork_class`** — add the
+  same `is_guest=0` filter or the Guest class shows up as a guild.
+
+### C. Attendance guards (SHOULD-FIX — in prototype)
+- `AddAttendance` only does `valid_id(ClassId)`. Add two guards:
+  (1) if mundane `is_guest=1`, `ClassId` **must** equal `GuestClassId()` **and**
+  the kingdom must have `guest_attendance_enabled=1`; (2) if mundane is a real
+  player, `ClassId` must **not** equal `GuestClassId()`.
+
+### D. Reporting audit (SHOULD-FIX — explicit method list)
+Guest attendance is included only when that kingdom's `guest_attendance_counts=1`,
+**except `GetVotingEligible` which ALWAYS excludes Guest attendance** (eligibility
+must never be guest-driven). Methods to branch (`class.Report.php` unless noted):
+`GetVotingEligible` (~3236, always-exclude), `GetActivePlayers` (~1793),
+`GetDistinctActivePlayerCount` (~1707), `GetActiveKingdomsSummary` (~1562),
+`GetKingdomParkAverages` (~1394), `GetKingdomParkMonthlyAverages` (~1494),
+`AttendanceSummary` (~946), `GetMonthlyChartData` (~1682), `GetAttendanceTotals`
+(~1636), `RecentParkAttendees` (~2626, also badge guests), and the year-over-year
+counts in `controller.Admin.php:48`. **Prototype scope:** wire the
+`guest_attendance_counts` branch through a shared helper and apply to
+`GetActivePlayers`, `AttendanceSummary`, `GetAttendanceTotals`,
+`RecentParkAttendees`, plus the always-exclude in `GetVotingEligible` and
+`Guilds`; the remaining count surfaces use the same helper and are completed in
+the polish phase.
+
+### E. Search & roster filtering (SHOULD-FIX)
+- `SearchService` (`class.SearchService.php:395`) gains an `IncludeGuests` param
+  (default **false** → `AND is_guest=0`). Normal player searches, member counts,
+  award/unit search all get guests excluded by default. The guest quick-add
+  search passes `IncludeGuests=true` so returning walk-ups are found (dedupe).
+
+### F. CreateGuest / data-write correctness (SHOULD-FIX)
+- `CreateGuest` must `$DB->Clear()` first, set required `NOT NULL` sentinels
+  explicitly (audit `ork_mundane` DDL: e.g. `password_salt=''`, `token=''`,
+  `xtoken=''`, `waiver_ext=''`, `reeve_qualified_until='0000-00-00'`), set
+  `is_guest=1`, leave `username` NULL, create the paired `mundane_design` row.
+- `UpdatePlayer` (`class.Player.php:~1300`) must normalize incoming `email=''`
+  → `NULL` so legacy callers don't reintroduce empty-string emails.
+- **GhettoCache:** flush after the migration (Guest class + nulled emails), and
+  give `GuestClassId()` a short TTL with a bust on class reconfigure.
+
+### G. CRM lifecycle additions (additive — taken)
+- **G1. Email-collision UX in quick-add** (makes the hard `UNIQUE` usable):
+  - Email already on an **existing guest** → "We already have this guest —
+    mark them present?" → attach attendance to that row, create no duplicate.
+  - Email already on an **existing player** → "This email belongs to player
+    {name} — mark them present?" → attendance on the real player, no guest row.
+  - Officer can always choose "different person" → proceed with email left NULL.
+- **G2. No-email soft dedupe.** On quick-add with no email, soft-match on
+  normalized name within the same park (+ recent window); show a non-blocking
+  "Is this one of these? [pick] / [No, new guest]" list. Never hard-block.
+  Add an **optional `phone`** field to `ork_mundane` as a better booth dedupe key.
+- **G3. Merge-detection at conversion.** Before minting login material, match
+  email-exact + fuzzy-name + park against existing **players**; if a candidate is
+  found, offer **"This looks like {name} — link instead of creating new"**, which
+  re-points the guest's attendance/notes to the existing player and retires the
+  guest (`active=0`) rather than creating a duplicate. (Full auto-merge stays out
+  of scope; detection + manual link is in.)
+- **G4. Provenance + lifecycle columns on `ork_mundane`** (cheap, un-backfillable):
+  `guest_captured_at DATETIME NULL`, `guest_source_event_id INT NULL`,
+  `guest_created_by_id INT NULL`, `converted_at DATETIME NULL`. Set at
+  `CreateGuest` / conversion. Enables the captured→returned→converted funnel
+  later. `is_guest` stays the primary flag; `converted_at` marks the transition.
+- **G5. Capture-time normalization (shared with §2).** Factor the §2 email
+  junk-denylist + format check into a shared validator used by both the cleanup
+  migration and `CreateGuest`/`EmailIsAvailable`, so guests can't recreate the
+  mess: `trim`+`lowercase` email before store and compare; trim/collapse/reject
+  obvious-junk names (`asdf`, `test`, single-char).
+
+### H. Deferred (noted, not in prototype)
+- IDP-link `is_guest` guard (`linkIdpAuthorization`); unit-membership guest
+  guard; demo-ROI funnel report; full report-audit tail (§D remainder);
+  transfer-guest-credits tool; lifecycle `status` enum (kept as boolean+timestamps
+  for now).
+
+### Build-order updates
+Insert into the phased plan: **Phase 0** = shared validators (G5) + schema for
+provenance/phone (G4) folded into the §1 schema migration. The auth blockers
+(A1–A3, B1–B3) ride with **Phase 1–2**. Collision/dedupe UX (G1–G2) is part of
+**Phase 3** (quick-add). Merge-detection (G3) is part of **Phase 7** (conversion).
+
+---
+
 ## Testing / Verification
 
 - Migration: row-null counts per step; unique index builds; spot-check that no
