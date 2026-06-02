@@ -40,15 +40,18 @@ class Controller_Admin extends Controller {
 		$prev1yrStart  = date('Y-m-d', strtotime('-2 years'));
 		$prev1yrEnd    = date('Y-m-d', strtotime('-1 year'));
 		global $DB;
+		// Guest-attendance policy (cross-kingdom): exclude Guest-class rows for any
+		// kingdom that does NOT count guests; kingdoms that do count keep them.
+		$gcid = (int)Attendance::GuestClassId();
 		$DB->Clear();
 		$rs = $DB->DataSet(
 			"SELECT
 			  (SELECT COUNT(*) FROM " . DB_PREFIX . "awards WHERE entered_at >= '$thisYearStart' AND entered_at < '$now1yr') AS awards_cur,
 			  (SELECT COUNT(*) FROM " . DB_PREFIX . "awards WHERE entered_at >= '$lastYearStart' AND entered_at < '$lastYearEnd') AS awards_prev,
-			  (SELECT COUNT(*) FROM " . DB_PREFIX . "attendance WHERE date >= '$thisYearStart' AND date < '$now1yr' AND mundane_id > 0) AS att_cur,
-			  (SELECT COUNT(*) FROM " . DB_PREFIX . "attendance WHERE date >= '$lastYearStart' AND date < '$lastYearEnd' AND mundane_id > 0) AS att_prev,
-			  (SELECT COUNT(DISTINCT mundane_id) FROM " . DB_PREFIX . "attendance WHERE date >= '$prev1yrEnd' AND date < '$now1yr' AND mundane_id > 0) AS players_cur,
-			  (SELECT COUNT(DISTINCT mundane_id) FROM " . DB_PREFIX . "attendance WHERE date >= '$prev1yrStart' AND date < '$prev1yrEnd' AND mundane_id > 0) AS players_prev,
+			  (SELECT COUNT(*) FROM " . DB_PREFIX . "attendance a LEFT JOIN " . DB_PREFIX . "kingdom k ON k.kingdom_id = a.kingdom_id WHERE a.date >= '$thisYearStart' AND a.date < '$now1yr' AND a.mundane_id > 0 AND (k.guest_attendance_counts = 1 OR a.class_id <> $gcid)) AS att_cur,
+			  (SELECT COUNT(*) FROM " . DB_PREFIX . "attendance a LEFT JOIN " . DB_PREFIX . "kingdom k ON k.kingdom_id = a.kingdom_id WHERE a.date >= '$lastYearStart' AND a.date < '$lastYearEnd' AND a.mundane_id > 0 AND (k.guest_attendance_counts = 1 OR a.class_id <> $gcid)) AS att_prev,
+			  (SELECT COUNT(DISTINCT a.mundane_id) FROM " . DB_PREFIX . "attendance a LEFT JOIN " . DB_PREFIX . "kingdom k ON k.kingdom_id = a.kingdom_id WHERE a.date >= '$prev1yrEnd' AND a.date < '$now1yr' AND a.mundane_id > 0 AND (k.guest_attendance_counts = 1 OR a.class_id <> $gcid)) AS players_cur,
+			  (SELECT COUNT(DISTINCT a.mundane_id) FROM " . DB_PREFIX . "attendance a LEFT JOIN " . DB_PREFIX . "kingdom k ON k.kingdom_id = a.kingdom_id WHERE a.date >= '$prev1yrStart' AND a.date < '$prev1yrEnd' AND a.mundane_id > 0 AND (k.guest_attendance_counts = 1 OR a.class_id <> $gcid)) AS players_prev,
 			  (SELECT COUNT(*) FROM " . DB_PREFIX . "recommendations WHERE date_recommended >= '$thisYearStart' AND date_recommended < '$now1yr' AND deleted_at IS NULL) AS recs_cur,
 			  (SELECT COUNT(*) FROM " . DB_PREFIX . "recommendations WHERE date_recommended >= '$lastYearStart' AND date_recommended < '$lastYearEnd' AND deleted_at IS NULL) AS recs_prev"
 		);
@@ -63,12 +66,14 @@ class Controller_Admin extends Controller {
 		$prevWkRs = $DB->DataSet(
 			"SELECT COUNT(mw.mundane_id) AS att, mw.kingdom_id
 			 FROM (
-			     SELECT mundane_id, date_year, date_week3, kingdom_id
-			     FROM " . DB_PREFIX . "attendance
-			     WHERE date >  DATE_SUB(CURDATE(), INTERVAL 52 WEEK)
-			       AND date <= DATE_SUB(CURDATE(), INTERVAL 26 WEEK)
-			       AND mundane_id > 0
-			     GROUP BY date_year, date_week3, mundane_id, kingdom_id
+			     SELECT a.mundane_id, a.date_year, a.date_week3, a.kingdom_id
+			     FROM " . DB_PREFIX . "attendance a
+			     LEFT JOIN " . DB_PREFIX . "kingdom k ON k.kingdom_id = a.kingdom_id
+			     WHERE a.date >  DATE_SUB(CURDATE(), INTERVAL 52 WEEK)
+			       AND a.date <= DATE_SUB(CURDATE(), INTERVAL 26 WEEK)
+			       AND a.mundane_id > 0
+			       AND (k.guest_attendance_counts = 1 OR a.class_id <> $gcid)
+			     GROUP BY a.date_year, a.date_week3, a.mundane_id, a.kingdom_id
 			 ) mw
 			 GROUP BY mw.kingdom_id"
 		);
@@ -80,12 +85,14 @@ class Controller_Admin extends Controller {
 		$prevMoRs = $DB->DataSet(
 			"SELECT COUNT(mm.mundane_id) AS mo, mm.kingdom_id
 			 FROM (
-			     SELECT mundane_id, date_year, date_month, kingdom_id
-			     FROM " . DB_PREFIX . "attendance
-			     WHERE date >= DATE_SUB(CURDATE(), INTERVAL 24 MONTH)
-			       AND date <  DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
-			       AND mundane_id > 0
-			     GROUP BY date_year, date_month, mundane_id, kingdom_id
+			     SELECT a.mundane_id, a.date_year, a.date_month, a.kingdom_id
+			     FROM " . DB_PREFIX . "attendance a
+			     LEFT JOIN " . DB_PREFIX . "kingdom k ON k.kingdom_id = a.kingdom_id
+			     WHERE a.date >= DATE_SUB(CURDATE(), INTERVAL 24 MONTH)
+			       AND a.date <  DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+			       AND a.mundane_id > 0
+			       AND (k.guest_attendance_counts = 1 OR a.class_id <> $gcid)
+			     GROUP BY a.date_year, a.date_month, a.mundane_id, a.kingdom_id
 			 ) mm
 			 GROUP BY mm.kingdom_id"
 		);

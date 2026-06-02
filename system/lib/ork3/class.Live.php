@@ -57,16 +57,19 @@ class Live extends Ork3 {
 
 		// Aggregate per (park_id, event_id). park_id=0 with an event_id rolls up
 		// into events; park_id>0 rolls up into parks.
+		$gcid = (int)Attendance::GuestClassId();
+		$keep = "(k.guest_attendance_counts = 1 OR a.class_id <> " . $gcid . ")";
 		$sql = "SELECT
-			park_id,
-			event_id,
-			MAX(event_calendardetail_id) AS calendar_detail_id,
-			COUNT(*)                                            AS day_count,
-			SUM(CASE WHEN entered_at >= '" . $cutoff_3h  . "' THEN 1 ELSE 0 END) AS h3_count,
-			SUM(CASE WHEN entered_at >= '" . $cutoff_30m . "' THEN 1 ELSE 0 END) AS m30_count
-		FROM " . DB_PREFIX . "attendance
-		WHERE date >= '" . $date_floor . "' AND entered_at >= '" . $cutoff_24h . "'
-		GROUP BY park_id, event_id";
+			a.park_id,
+			a.event_id,
+			MAX(a.event_calendardetail_id) AS calendar_detail_id,
+			SUM(CASE WHEN " . $keep . " THEN 1 ELSE 0 END) AS day_count,
+			SUM(CASE WHEN a.entered_at >= '" . $cutoff_3h  . "' AND " . $keep . " THEN 1 ELSE 0 END) AS h3_count,
+			SUM(CASE WHEN a.entered_at >= '" . $cutoff_30m . "' AND " . $keep . " THEN 1 ELSE 0 END) AS m30_count
+		FROM " . DB_PREFIX . "attendance a
+		LEFT JOIN " . DB_PREFIX . "kingdom k ON k.kingdom_id = a.kingdom_id
+		WHERE a.date >= '" . $date_floor . "' AND a.entered_at >= '" . $cutoff_24h . "'
+		GROUP BY a.park_id, a.event_id";
 
 		$rs = $this->db->DataSet($sql);
 		$park_ids  = array();
