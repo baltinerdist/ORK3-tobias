@@ -1273,7 +1273,7 @@ class Report extends Ork3
             $unit_phrase = "u.name as unit_name, ";
         }
 
-        $sql = "select a.*, k.name as kingdom_name, p.park_id, p.name as park_name, k.abbreviation as k_abbr, p.abbreviation as p_abbr, k.parent_kingdom_id, m.persona, m.is_guest, $unit_phrase c.name as class_name
+        $sql = "select a.*, k.name as kingdom_name, p.park_id, p.name as park_name, k.abbreviation as k_abbr, p.abbreviation as p_abbr, k.parent_kingdom_id, m.persona, m.is_guest, m.given_name, m.surname, $unit_phrase c.name as class_name
 					from " . DB_PREFIX . "attendance a
 						LEFT JOIN " . DB_PREFIX . "mundane m on a.mundane_id = m.mundane_id
 							LEFT JOIN " . DB_PREFIX . "kingdom k on m.kingdom_id = k.kingdom_id
@@ -1324,7 +1324,7 @@ class Report extends Ork3
                         'KAbbr' => $r->k_abbr,
                         'PAbbr' => $r->p_abbr,
                         'UnitName' => $r->unit_name,
-                        'Persona' => $r->persona,
+                        'Persona' => ($r->persona !== null && $r->persona !== '') ? $r->persona : trim($r->given_name . ' ' . $r->surname),
                         'ClassName' => $r->class_name,
                         'IsGuest' => (int)$r->is_guest,
                     );
@@ -1348,7 +1348,7 @@ class Report extends Ork3
         $sql = "select a.*, a.persona as attendance_persona,
 					k.name as kingdom_name, k.parent_kingdom_id, mk.kingdom_id as from_kingdom_id, mk.name as from_kingdom_name, mk.parent_kingdom_id as from_parent_kingdom_id,
 					p.name as park_name, p.park_id as park_id, mp.name as from_park_name, mp.park_id as from_park_id,
-					m.persona, m.is_guest, bwm.mundane_id as by_whom_id, bwm.persona as by_whom_persona,
+					m.persona, m.is_guest, m.given_name, m.surname, bwm.mundane_id as by_whom_id, bwm.persona as by_whom_persona,
 					$unit_phrase c.name as class_name, e.event_id, d.event_calendardetail_id, e.name as event_name, d.event_start, d.event_end
 					from " . DB_PREFIX . "attendance a
 						LEFT JOIN " . DB_PREFIX . "mundane m on a.mundane_id = m.mundane_id
@@ -1414,7 +1414,7 @@ class Report extends Ork3
                         'EnteredBy' => $r->by_whom_persona,
                         'EnteredById' => $r->by_whom_id,
                         'EnteredAt' => $r->entered_at,
-                        'Persona' => $r->persona,
+                        'Persona' => ($r->persona !== null && $r->persona !== '') ? $r->persona : trim($r->given_name . ' ' . $r->surname),
                         'ClassName' => $r->class_name,
                         'IsGuest' => (int)$r->is_guest,
                         'AttendancePersona' => $r->attendance_persona,
@@ -3163,7 +3163,7 @@ class Report extends Ork3
             $park_kingdom_id = (int)$pk->kingdom_id;
         }
         $guest_clause = $this->guestAttendanceClauseForKingdom($park_kingdom_id, 'a');
-        $sql = "SELECT a.mundane_id, m.persona, m.is_guest,
+        $sql = "SELECT a.mundane_id, m.persona, m.is_guest, m.given_name, m.surname,
 					MAX(a.date) AS last_signin,
 					SUBSTRING_INDEX(GROUP_CONCAT(a.class_id ORDER BY a.date DESC, a.attendance_id DESC SEPARATOR ','), ',', 1) AS class_id,
 					SUBSTRING_INDEX(GROUP_CONCAT(c.name    ORDER BY a.date DESC, a.attendance_id DESC SEPARATOR ','), ',', 1) AS class_name
@@ -3174,7 +3174,7 @@ class Report extends Ork3
 				  AND a.date >= DATE_SUB(NOW(), INTERVAL 90 DAY)
 				  AND a.mundane_id > 0
 				  AND m.mundane_id IS NOT NULL$guest_clause
-				GROUP BY a.mundane_id, m.persona, m.is_guest
+				GROUP BY a.mundane_id, m.persona, m.is_guest, m.given_name, m.surname
 				ORDER BY m.persona";
         $r = $this->db->query($sql);
         $attendees = [];
@@ -3182,7 +3182,7 @@ class Report extends Ork3
             while ($r->next()) {
                 $attendees[] = [
                     'MundaneId'  => (int)$r->mundane_id,
-                    'Persona'    => $r->persona,
+                    'Persona'    => ($r->persona !== null && $r->persona !== '') ? $r->persona : trim($r->given_name . ' ' . $r->surname),
                     'ClassId'    => (int)$r->class_id,
                     'ClassName'  => $r->class_name,
                     'LastSignIn' => $r->last_signin,
