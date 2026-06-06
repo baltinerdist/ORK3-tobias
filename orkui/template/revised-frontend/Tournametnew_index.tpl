@@ -11576,16 +11576,21 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 
 			var url = TnConfig.uir + 'TournamentAjax/match/' + matchId + '/' + tid;
 			btn.disabled = true;
+			var actionId = window.tnNewActionId ? window.tnNewActionId() : '';
+			if (window.tnRegisterAction) window.tnRegisterAction(actionId);
+			if (window.tnCollabNudge) window.tnCollabNudge();
 			var fd = new FormData();
 			fd.append('Result', result);
 			fd.append('Score',  score);
 			fd.append('Bouts',  JSON.stringify(bouts.filter(function(b) { return b !== null; })));
+			fd.append('ActionId', actionId);
 
 			fetch(url, { method:'POST', body:fd })
 				.then(function(r) { return r.json(); })
 				.then(function(d) {
 					btn.disabled = false;
 					if (d && d.status === 0) {
+						if (typeof d.seq === 'number' && window.tnCollabBumpSeq) window.tnCollabBumpSeq(d.seq);
 						tnShowFeedback('tn-recordresult-feedback', 'Result saved!', true);
 						setTimeout(function() {
 							tnCloseModal(OVERLAY);
@@ -11759,10 +11764,15 @@ window.tnEditAlias = function(btn){
 	fd.append('Status', status);
 	fd.append('TournamentId', TnConfig.tournamentId);
 	if (mode) fd.append('Mode', mode);
+	var actionId = window.tnNewActionId ? window.tnNewActionId() : '';
+	if (window.tnRegisterAction) window.tnRegisterAction(actionId);
+	if (window.tnCollabNudge) window.tnCollabNudge();
+	fd.append('ActionId', actionId);
 	fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bid + '/updateparticipantstatus', {method:'POST', body:fd})
 		.then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
 		.then(function(d) {
 			if (d && d.status === 0) {
+				if (typeof d.seq === 'number' && window.tnCollabBumpSeq) window.tnCollabBumpSeq(d.seq);
 				var li = menuItemEl.closest('li');
 				if (li) {
 					// Clear all status classes
