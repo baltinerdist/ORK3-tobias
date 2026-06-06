@@ -3759,6 +3759,75 @@ class Tournament extends Ork3 {
 	}
 
 	/**
+	 * Append a change-log event and advance the tournament's seq cursor.
+	 * MUST be called inside a transaction owned by the caller — the cursor bump
+	 * and the event insert commit atomically with the mutation they describe.
+	 * Returns the new seq (int). Caller should refresh the Memcache mirror AFTER
+	 * its COMMIT via tnPublishSeq().
+	 *
+	 * $payload is an associative array (json-encoded here). $action_id is the
+	 * client-supplied UUID for echo-dedup/idempotency, or null.
+	 */
+	private function tnEmitEvent($tournament_id, $bracket_id, $type, array $payload, $actor_id = 0, $action_id = null) {
+		$this->db->query(
+			"INSERT INTO " . DB_PREFIX . "tournament_seq (tournament_id, last_seq)
+			 VALUES (:tid, 1)
+			 ON DUPLICATE KEY UPDATE last_seq = last_seq + 1",
+			[':tid' => $tournament_id]
+		);
+		$sr  = $this->db->query("SELECT last_seq FROM " . DB_PREFIX . "tournament_seq WHERE tournament_id = :tid", [':tid' => $tournament_id]);
+		$seq = ($sr && $sr->next()) ? (int)$sr->last_seq : 0;
+
+		$actor_name = $actor_id > 0 ? $this->tnActorName($actor_id) : '';
+
+		try {
+			$this->db->query(
+				"INSERT INTO " . DB_PREFIX . "tournament_event
+				   (tournament_id, bracket_id, seq, type, payload, actor_id, actor_name, action_id, created)
+				 VALUES (:tid, :bid, :seq, :type, :payload, :aid, :aname, :actionid, NOW())",
+				[
+					':tid'      => $tournament_id,
+					':bid'      => $bracket_id > 0 ? $bracket_id : null,
+					':seq'      => $seq,
+					':type'     => $type,
+					':payload'  => json_encode($payload) ?: '{}',
+					':aid'      => $actor_id > 0 ? $actor_id : null,
+					':aname'    => $actor_name,
+					':actionid' => $action_id,
+				]
+			);
+		} catch (\Throwable $e) {
+			// Duplicate action_id (a retried request) — the cursor already moved;
+			// peers will fetch and find nothing new for this seq, which is harmless.
+		}
+		return $seq;
+	}
+
+	/** Mirror the current cursor to Memcache (call AFTER COMMIT). Best-effort. */
+	private function tnPublishSeq($tournament_id, $seq) {
+		try {
+			if (isset(Ork3::$Lib->ghettocache)) {
+				Ork3::$Lib->ghettocache->counterSet('tnseq.' . (int)$tournament_id, (int)$seq, 60);
+			}
+		} catch (\Throwable $e) { /* cache is an accelerator; DB is source of truth */ }
+	}
+
+	/**
+	 * Best-effort display name for an actor (mundane) id, for change-log toasts.
+	 * ork_mundane has no 'mundane' column; prefers persona, falls back to given_name + surname.
+	 */
+	private function tnActorName($mundane_id) {
+		$r = $this->db->query("SELECT persona, given_name, surname FROM " . DB_PREFIX . "mundane WHERE mundane_id = " . (int)$mundane_id . " LIMIT 1");
+		if ($r && $r->next()) {
+			$p = trim((string)$r->persona);
+			if ($p !== '') return $p;
+			$full = trim(trim((string)$r->given_name) . ' ' . trim((string)$r->surname));
+			if ($full !== '') return $full;
+		}
+		return '';
+	}
+
+	/**
 	 * PUBLIC — no auth. Cheap aggregate version signature for spectator polling.
 	 * Changes whenever any match result/score, bracket status/set, or participant
 	 * roster / live state (eliminated / bracket_side / ironman streak) changes.
