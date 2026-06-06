@@ -3799,26 +3799,24 @@ class Tournament extends Ork3 {
 
 		$actor_name = $actor_id > 0 ? $this->tnActorName($actor_id) : '';
 
-		try {
-			$this->db->query(
-				"INSERT INTO " . DB_PREFIX . "tournament_event
-				   (tournament_id, bracket_id, seq, type, payload, actor_id, actor_name, action_id, created)
-				 VALUES (:tid, :bid, :seq, :type, :payload, :aid, :aname, :actionid, NOW())",
-				[
-					':tid'      => $tournament_id,
-					':bid'      => $bracket_id > 0 ? $bracket_id : null,
-					':seq'      => $seq,
-					':type'     => $type,
-					':payload'  => json_encode($payload) ?: '{}',
-					':aid'      => $actor_id > 0 ? $actor_id : null,
-					':aname'    => $actor_name,
-					':actionid' => $action_id,
-				]
-			);
-		} catch (\Throwable $e) {
-			// Duplicate action_id (a retried request) — the cursor already moved;
-			// peers will fetch and find nothing new for this seq, which is harmless.
-		}
+		// INSERT IGNORE: a retried request reuses its action_id; the (tournament_id,
+		// action_id) unique key makes the duplicate a silent no-op. The cursor has
+		// already advanced, so peers simply fetch and find nothing new for this seq.
+		$this->db->query(
+			"INSERT IGNORE INTO " . DB_PREFIX . "tournament_event
+			   (tournament_id, bracket_id, seq, type, payload, actor_id, actor_name, action_id, created)
+			 VALUES (:tid, :bid, :seq, :type, :payload, :aid, :aname, :actionid, NOW())",
+			[
+				':tid'      => $tournament_id,
+				':bid'      => $bracket_id > 0 ? $bracket_id : null,
+				':seq'      => $seq,
+				':type'     => $type,
+				':payload'  => json_encode($payload) ?: '{}',
+				':aid'      => $actor_id > 0 ? $actor_id : null,
+				':aname'    => $actor_name,
+				':actionid' => $action_id,
+			]
+		);
 		return $seq;
 	}
 

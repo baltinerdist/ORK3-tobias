@@ -49,11 +49,18 @@ class Controller_TournamentAjax extends Controller {
 			$since = (int)preg_replace('/[^0-9]/', '', $_GET['since'] ?? '0');
 			$r = $this->Tournament->get_changes(['TournamentId' => $tournament_id, 'Since' => $since]);
 			if ($r['Status'] != 0) { echo $this->modelError($r); exit; }
+			$events = $r['Detail']['Events'] ?? [];
+			// Actor attribution (persona) is exposed only to logged-in callers; the
+			// public spectator delta feed stays anonymous.
+			if (!isset($this->session->user_id)) {
+				foreach ($events as &$ev) { $ev['ActorName'] = ''; $ev['ActorId'] = null; }
+				unset($ev);
+			}
 			echo json_encode([
 				'status' => 0,
 				'resync' => !empty($r['Detail']['Resync']),
 				'seq'    => (int)($r['Detail']['Seq'] ?? 0),
-				'events' => $r['Detail']['Events'] ?? [],
+				'events' => $events,
 			]);
 			exit;
 
