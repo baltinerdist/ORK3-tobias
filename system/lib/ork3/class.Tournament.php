@@ -3350,6 +3350,9 @@ class Tournament extends Ork3 {
 		if (!valid_id($bracket_id))     return InvalidParameter('BracketId required');
 		if (!valid_id($participant_id)) return InvalidParameter('ParticipantId required');
 
+		$action_id = substr(trim($request['ActionId'] ?? ''), 0, 36);
+		$actor_id  = (int)Ork3::$Lib->authorization->IsAuthorized($request['Token'] ?? '');
+
 		$exists = $this->db->query(
 			"SELECT participant_id FROM " . DB_PREFIX . "participant WHERE participant_id = :pid AND bracket_id = :bid",
 			[':pid' => $participant_id, ':bid' => $bracket_id]
@@ -3403,6 +3406,12 @@ class Tournament extends Ork3 {
 				// Points: standings exclude non-active participants (annul). Ironman: status only.
 			}
 
+			$seq = $this->tnEmitEvent($b_tid, $bracket_id, 'participant_status', [
+				'participant_id' => $participant_id,
+				'status'         => $status,
+				'mode'           => $mode,
+			], $actor_id, $action_id !== '' ? $action_id : null);
+
 			$this->db->query('COMMIT');
 		} catch (\Throwable $e) {
 			$this->db->query('ROLLBACK');
@@ -3410,7 +3419,8 @@ class Tournament extends Ork3 {
 		}
 
 		$this->bustTournamentReportCache();
-		return Success(['ParticipantId' => $participant_id, 'Status' => $status, 'Mode' => $mode]);
+		$this->tnPublishSeq($b_tid, $seq);
+		return Success(['ParticipantId' => $participant_id, 'Status' => $status, 'Mode' => $mode, 'Seq' => $seq]);
 	}
 
 	/**
