@@ -221,6 +221,14 @@ class Model_Tournament extends Model {
 		return $this->Tournament->GetVersion($request);
 	}
 
+	function get_seq($request) {
+		return $this->Tournament->GetSeq($request);
+	}
+
+	function get_changes($request) {
+		return $this->Tournament->GetChanges($request);
+	}
+
 	function get_reeve_role($request) {
 		return $this->Tournament->GetReeveRole($request);
 	}

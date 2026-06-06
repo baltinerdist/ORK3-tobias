@@ -38,6 +38,25 @@ class Controller_TournamentAjax extends Controller {
 				: $this->modelError($r);
 			exit;
 
+		} elseif ($action === 'seq') {
+			$r = $this->Tournament->get_seq(['TournamentId' => $tournament_id]);
+			echo ($r['Status'] == 0)
+				? json_encode(['status' => 0, 'seq' => (int)($r['Detail']['Seq'] ?? 0)])
+				: $this->modelError($r);
+			exit;
+
+		} elseif ($action === 'changes') {
+			$since = (int)preg_replace('/[^0-9]/', '', $_GET['since'] ?? '0');
+			$r = $this->Tournament->get_changes(['TournamentId' => $tournament_id, 'Since' => $since]);
+			if ($r['Status'] != 0) { echo $this->modelError($r); exit; }
+			echo json_encode([
+				'status' => 0,
+				'resync' => !empty($r['Detail']['Resync']),
+				'seq'    => (int)($r['Detail']['Seq'] ?? 0),
+				'events' => $r['Detail']['Events'] ?? [],
+			]);
+			exit;
+
 		} elseif ($action === 'brackets') {
 			$r = $this->Tournament->get_brackets($tournament_id);
 			echo ($r['Status'] == 0)
@@ -662,6 +681,7 @@ class Controller_TournamentAjax extends Controller {
 			if (!valid_id($participant_id)) {
 				echo json_encode(['status' => 1, 'error' => 'ParticipantId required.']); exit;
 			}
+			$actionId = trim($_POST['ActionId'] ?? '');
 			$r = $this->Tournament->update_participant_status([
 				'Token'         => $this->session->token,
 				'TournamentId'  => $tid,
@@ -669,9 +689,10 @@ class Controller_TournamentAjax extends Controller {
 				'ParticipantId' => $participant_id,
 				'Status'        => trim($_POST['Status'] ?? ''),
 				'Mode'          => trim($_POST['Mode'] ?? ''),
+				'ActionId'      => $actionId,
 			]);
 			echo ($r['Status'] == 0)
-				? json_encode(['status' => 0, 'participantId' => (int)($r['Detail']['ParticipantId'] ?? $participant_id), 'newStatus' => $r['Detail']['Status'] ?? ''])
+				? json_encode(['status' => 0, 'participantId' => (int)($r['Detail']['ParticipantId'] ?? $participant_id), 'newStatus' => $r['Detail']['Status'] ?? '', 'seq' => (int)($r['Detail']['Seq'] ?? 0)])
 				: $this->modelError($r);
 
 		} elseif ($action === 'updatealias') {
@@ -812,7 +833,8 @@ class Controller_TournamentAjax extends Controller {
 
 		$result = trim($_POST['Result'] ?? '');
 		$score  = trim($_POST['Score']  ?? '');
-		$bouts  = trim($_POST['Bouts']  ?? '[]');
+		$bouts    = trim($_POST['Bouts']    ?? '[]');
+		$actionId = trim($_POST['ActionId'] ?? '');
 
 		$allowed_results = ['1-wins', '2-wins', 'tie', 'forfeit', 'disqualified'];
 		if (!in_array($result, $allowed_results)) {
@@ -826,9 +848,10 @@ class Controller_TournamentAjax extends Controller {
 			'Result'       => $result,
 			'Score'        => $score,
 			'Bouts'        => $bouts,
+			'ActionId'     => $actionId,
 		]);
 		echo ($r['Status'] == 0)
-			? json_encode(['status' => 0, 'matchId' => $match_id])
+			? json_encode(['status' => 0, 'matchId' => $match_id, 'seq' => (int)($r['Detail']['Seq'] ?? 0)])
 			: $this->modelError($r);
 		exit;
 	}
