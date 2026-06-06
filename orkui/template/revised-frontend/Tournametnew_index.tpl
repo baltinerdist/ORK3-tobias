@@ -9643,6 +9643,7 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 		if (hasResult)   box.className += ' tn-bv-resolved';
 		if (isBye && !hasResult) box.className += ' tn-bv-bye-match';
 		if (!hasResult && p1 && p2) box.className += ' tn-bv-next-playable';
+		if (m._pending) box.className += ' tn-match-pending';
 
 			if (m.BracketSide === 'tiebreaker-3rd') {
 			var tbLabel = document.createElement('span');
@@ -11836,22 +11837,42 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 	var btn = (event && event.currentTarget) ? event.currentTarget : ((event && event.target) ? event.target : null);
 	if (btn) btn.disabled = true;
 	var tid = TnConfig.tournamentId;
+
+	var actionId = window.tnNewActionId ? window.tnNewActionId() : '';
+	if (window.tnRegisterAction) window.tnRegisterAction(actionId);
+
+	// Optimistic: mark the match result locally + show a pending state immediately.
+	var sel = document.getElementById('tn-bv-bracket-select');
+	var bid = sel ? parseInt(sel.value) : 0;
+	var prevResult = null, matchObj = null;
+	if (bid && TnConfig.bracketData[bid]) {
+		(TnConfig.bracketData[bid].Matches || []).forEach(function(m) {
+			if (parseInt(m.MatchId) === parseInt(matchId)) { matchObj = m; }
+		});
+		if (matchObj) {
+			prevResult = matchObj.Result;
+			matchObj.Result = result;
+			matchObj._pending = true;
+			if (typeof tnRenderBracketViz === 'function') tnRenderBracketViz(bid);
+		}
+	}
+	if (window.tnCollabNudge) window.tnCollabNudge();
+
 	var fd = new FormData();
 	fd.append('Result', result);
 	fd.append('Score', '');
 	fd.append('Bouts', '[]');
+	fd.append('ActionId', actionId);
 
 	fetch(TnConfig.uir + 'TournamentAjax/match/' + matchId + '/' + tid, {method:'POST', body:fd})
 		.then(function(r) { return r.json(); })
 		.then(function(d) {
 			if (d && d.status === 0) {
-				var sel = document.getElementById('tn-bv-bracket-select');
-				var bid = sel ? parseInt(sel.value) : 0;
+				if (typeof d.seq === 'number' && window.tnCollabBumpSeq) window.tnCollabBumpSeq(d.seq);
 				if (bid && TnConfig.bracketData[bid]) {
-					var _tid = TnConfig.tournamentId;
 					Promise.all([
 						fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bid + '/matches').then(function(r) { return r.json(); }),
-						fetch(TnConfig.uir + 'TournamentAjax/tournament/' + _tid + '/brackets').then(function(r) { return r.json(); })
+						fetch(TnConfig.uir + 'TournamentAjax/tournament/' + tid + '/brackets').then(function(r) { return r.json(); })
 					]).then(function(results) {
 						var md = results[0], bd = results[1];
 						if (md && md.status === 0) TnConfig.bracketData[bid].Matches = md.matches;
@@ -11861,14 +11882,19 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 						}
 						tnRenderBracketViz(bid);
 					}).catch(function(err) { console.warn('[tn] refresh failed', err); tnShowStaleWarning(); });
-					// On success the re-render replaces this button entirely.
 				}
 			} else {
+				// Reject — roll back the optimistic change and tell the reeve why.
+				if (matchObj) { matchObj.Result = prevResult; delete matchObj._pending; if (typeof tnRenderBracketViz === 'function') tnRenderBracketViz(bid); }
 				if (btn) btn.disabled = false;
-				alert((d && d.error) ? d.error : 'Failed to save result.');
+				if (window.tnToast) window.tnToast((d && d.error) ? d.error : 'Result not saved — it may have just been recorded by someone else.');
 			}
 		})
-		.catch(function() { if (btn) btn.disabled = false; alert('Network error recording result.'); });
+		.catch(function() {
+			if (matchObj) { matchObj.Result = prevResult; delete matchObj._pending; if (typeof tnRenderBracketViz === 'function') tnRenderBracketViz(bid); }
+			if (btn) btn.disabled = false;
+			if (window.tnToast) window.tnToast('Network error recording result.');
+		});
 };
 
 })();
@@ -13533,6 +13559,8 @@ html[data-theme="dark"] .tn-team-chip { background:#2a4a6b; color:#90cdf4; }
 .tn-toast { background: #1f2937; color: #f9fafb; border: 1px solid #374151; border-radius: 8px; padding: 9px 14px; font-size: 13px; box-shadow: 0 4px 14px rgba(0,0,0,.25); opacity: 0; transform: translateY(8px); transition: opacity .18s, transform .18s; max-width: 88vw; }
 .tn-toast.tn-toast-show { opacity: 1; transform: translateY(0); }
 @media (prefers-color-scheme: dark) { .tn-toast { background: #e5e7eb; color: #111827; border-color: #d1d5db; } }
+.tn-match-pending { animation: tnPendingPulse 1s ease-in-out infinite; }
+@keyframes tnPendingPulse { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
 </style>
 <script>
 window.tnToast = function(msg, ms) {
