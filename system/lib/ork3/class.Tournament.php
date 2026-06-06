@@ -1796,6 +1796,8 @@ class Tournament extends Ork3 {
 		$tournament_id = (int)$request['TournamentId'];
 		$result        = trim($request['Result'] ?? '');
 		$score         = substr(trim($request['Score']  ?? ''), 0, 64);
+		$action_id = substr(trim($request['ActionId'] ?? ''), 0, 36);
+		$actor_id  = (int)Ork3::$Lib->authorization->IsAuthorized($request['Token'] ?? '');
 
 		if (!in_array($result, ['1-wins', '2-wins', 'tie', 'forfeit', 'disqualified'])) {
 			return InvalidParameter('Invalid result value');
@@ -1881,13 +1883,20 @@ class Tournament extends Ork3 {
 			if ($wErr !== null) { $this->db->query('ROLLBACK'); return InvalidParameter($wErr); }
 		}
 
+			$seq = $this->tnEmitEvent($tournament_id, $bracket_id, 'match_result', [
+				'match_id' => $match_id,
+				'result'   => $result,
+				'score'    => $score,
+			], $actor_id, $action_id !== '' ? $action_id : null);
+
 			$this->db->query('COMMIT');
 		} catch (\Throwable $e) {
 			$this->db->query('ROLLBACK');
 			throw $e;
 		}
 
-		return Success($match_id);
+		$this->tnPublishSeq($tournament_id, $seq);
+		return Success(['MatchId' => $match_id, 'Seq' => $seq]);
 	}
 
 	/**
