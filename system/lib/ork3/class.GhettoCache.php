@@ -43,6 +43,21 @@ class Ghettocache {
 		$this->memcache->delete("{$this->prefix}.$call.$key");
 	}
 
+	/**
+	 * Raw prefixed get for simple scalar counters (e.g. the tournament seq
+	 * cursor). Returns the stored value, or false on miss. Distinct from get(),
+	 * which is a memoization wrapper with inverted-lifetime bookkeeping.
+	 */
+	function counterGet($name) {
+		return $this->memcache->get("{$this->prefix}.counter.$name");
+	}
+
+	/** Raw prefixed set for simple scalar counters, with explicit TTL seconds. */
+	function counterSet($name, $value, $ttl) {
+		$this->memcache->set("{$this->prefix}.counter.$name", $value, $ttl);
+		return $value;
+	}
+
 	function key($request) {
 		if (!is_array($request))
 			return '';
