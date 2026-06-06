@@ -13528,6 +13528,41 @@ html[data-theme="dark"] .tn-team-chip { background:#2a4a6b; color:#90cdf4; }
 <!-- =============================================
      Tournament features: Spectator poll, Reeves panel, Recommend modal
      ============================================= -->
+<style>
+.tn-toast-wrap { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.tn-toast { background: #1f2937; color: #f9fafb; border: 1px solid #374151; border-radius: 8px; padding: 9px 14px; font-size: 13px; box-shadow: 0 4px 14px rgba(0,0,0,.25); opacity: 0; transform: translateY(8px); transition: opacity .18s, transform .18s; max-width: 88vw; }
+.tn-toast.tn-toast-show { opacity: 1; transform: translateY(0); }
+@media (prefers-color-scheme: dark) { .tn-toast { background: #e5e7eb; color: #111827; border-color: #d1d5db; } }
+</style>
+<script>
+window.tnToast = function(msg, ms) {
+	var wrap = document.getElementById('tn-toast-wrap');
+	if (!wrap) { wrap = document.createElement('div'); wrap.id = 'tn-toast-wrap'; wrap.className = 'tn-toast-wrap'; document.body.appendChild(wrap); }
+	var t = document.createElement('div');
+	t.className = 'tn-toast';
+	t.textContent = msg;
+	wrap.appendChild(t);
+	requestAnimationFrame(function() { t.classList.add('tn-toast-show'); });
+	setTimeout(function() {
+		t.classList.remove('tn-toast-show');
+		setTimeout(function() { if (t.parentNode) t.parentNode.removeChild(t); }, 220);
+	}, ms || 3200);
+};
+
+// Registry of action_ids this client originated, with timestamps for pruning.
+// Used to drop our own changes when they echo back in the delta feed.
+window.TnOwnActions = window.TnOwnActions || {};
+window.tnRegisterAction = function(id) { if (id) window.TnOwnActions[id] = Date.now(); };
+window.tnIsOwnAction = function(id) {
+	if (!id) return false;
+	var now = Date.now();
+	for (var k in window.TnOwnActions) { if (now - window.TnOwnActions[k] > 60000) delete window.TnOwnActions[k]; }
+	return !!window.TnOwnActions[id];
+};
+window.tnNewActionId = function() {
+	return 'a-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+};
+</script>
 <script>
 // ============================================================
 // Feature 1 — Spectator Mode: adaptive version polling
