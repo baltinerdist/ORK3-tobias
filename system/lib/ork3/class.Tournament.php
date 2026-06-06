@@ -3881,6 +3881,69 @@ class Tournament extends Ork3 {
 		return Success(['Version' => $sig]);
 	}
 
+	/**
+	 * PUBLIC — no auth. Cheap heartbeat: the current per-tournament seq cursor.
+	 * Reads Memcache first; on miss, reads ork_tournament_seq and repopulates.
+	 * Param: TournamentId. Returns Success(['Seq' => int]).
+	 */
+	public function GetSeq($request) {
+		$tournament_id = (int)($request['TournamentId'] ?? 0);
+		if (!valid_id($tournament_id)) return InvalidParameter('TournamentId required');
+
+		$seq = Ork3::$Lib->ghettocache->counterGet('tnseq.' . $tournament_id);
+		if ($seq === false || $seq === null) {
+			$sr  = $this->db->query("SELECT last_seq FROM " . DB_PREFIX . "tournament_seq WHERE tournament_id = $tournament_id");
+			$seq = ($sr && $sr->next()) ? (int)$sr->last_seq : 0;
+			Ork3::$Lib->ghettocache->counterSet('tnseq.' . $tournament_id, $seq, 60);
+		}
+		return Success(['Seq' => (int)$seq]);
+	}
+
+	/**
+	 * PUBLIC — no auth (read-only delta feed). Ordered events with seq > Since.
+	 * If Since is ahead of the high-water mark, or behind the oldest retained
+	 * event, returns ['Resync' => true] so the client falls back to a full refresh.
+	 * Params: TournamentId, Since. Returns Success(['Events' => [...], 'Seq' => int]).
+	 */
+	public function GetChanges($request) {
+		$tournament_id = (int)($request['TournamentId'] ?? 0);
+		$since         = (int)($request['Since'] ?? 0);
+		if (!valid_id($tournament_id)) return InvalidParameter('TournamentId required');
+
+		$sr   = $this->db->query("SELECT last_seq FROM " . DB_PREFIX . "tournament_seq WHERE tournament_id = $tournament_id");
+		$high = ($sr && $sr->next()) ? (int)$sr->last_seq : 0;
+
+		if ($since > $high) return Success(['Resync' => true, 'Seq' => $high]);
+
+		$mr     = $this->db->query("SELECT MIN(seq) AS m FROM " . DB_PREFIX . "tournament_event WHERE tournament_id = $tournament_id");
+		$minSeq = ($mr && $mr->next() && $mr->m !== null) ? (int)$mr->m : 0;
+		if ($since > 0 && $minSeq > 0 && $since < $minSeq - 1) {
+			return Success(['Resync' => true, 'Seq' => $high]);
+		}
+
+		$rows = $this->db->query(
+			"SELECT seq, bracket_id, type, payload, actor_id, actor_name, action_id
+			   FROM " . DB_PREFIX . "tournament_event
+			  WHERE tournament_id = $tournament_id AND seq > $since
+			  ORDER BY seq ASC LIMIT 500"
+		);
+		$events = [];
+		if ($rows) {
+			while ($rows->next()) {
+				$events[] = [
+					'Seq'       => (int)$rows->seq,
+					'BracketId' => $rows->bracket_id !== null ? (int)$rows->bracket_id : null,
+					'Type'      => (string)$rows->type,
+					'Payload'   => json_decode((string)$rows->payload, true),
+					'ActorId'   => $rows->actor_id !== null ? (int)$rows->actor_id : null,
+					'ActorName' => (string)$rows->actor_name,
+					'ActionId'  => (string)$rows->action_id,
+				];
+			}
+		}
+		return Success(['Events' => $events, 'Seq' => $high]);
+	}
+
 
 	/**
 	 * Upsert a single grid cell for a Points bracket. $request['Points'] may be
