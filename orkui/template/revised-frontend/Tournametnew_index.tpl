@@ -13686,6 +13686,113 @@ window.tnNewActionId = function() {
 
 
 // ============================================================
+// Reeve live collaboration — seq heartbeat + per-bracket delta sync
+// ============================================================
+(function() {
+	// Reeves only; spectators already have their own version loop.
+	if (TnConfig.spectator || !TnConfig.loggedIn) return;
+	if (!(TnConfig.canManage || TnConfig.isOrganizerReeve || TnConfig.isBracketRunner)) return;
+
+	var clientSeq = null;
+	var timer = null;
+	var paused = false;
+	var nudgeUntil = 0;
+
+	function anyActive() {
+		var bd = TnConfig.bracketData || {};
+		for (var k in bd) { if (bd[k] && bd[k].Bracket && bd[k].Bracket.Status === 'active') return true; }
+		return false;
+	}
+
+	// Refetch a single bracket's matches + meta, then re-render if it's on screen.
+	function refetchBracket(bid) {
+		if (!bid || !TnConfig.bracketData[bid]) return Promise.resolve();
+		var tid = TnConfig.tournamentId;
+		return Promise.all([
+			fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bid + '/matches').then(function(r) { return r.json(); }),
+			fetch(TnConfig.uir + 'TournamentAjax/tournament/' + tid + '/brackets').then(function(r) { return r.json(); })
+		]).then(function(res) {
+			var md = res[0], bd = res[1];
+			if (md && md.status === 0) TnConfig.bracketData[bid].Matches = md.matches;
+			if (bd && bd.status === 0 && bd.brackets) {
+				var br = bd.brackets.find(function(b) { return parseInt(b.BracketId) === parseInt(bid); });
+				if (br) TnConfig.bracketData[bid].Bracket = br;
+			}
+			var sel = document.getElementById('tn-bv-bracket-select');
+			var curBid = sel ? parseInt(sel.value) : 0;
+			if (parseInt(bid) === curBid && typeof tnRenderBracketViz === 'function') tnRenderBracketViz(bid);
+			if (typeof tnRenderLeaderboard === 'function') tnRenderLeaderboard();
+		}).catch(function(err) { console.warn('[tn-collab] bracket refetch failed', err); if (window.tnShowStaleWarning) tnShowStaleWarning(); });
+	}
+
+	// Full resync: refetch every known bracket (used when the delta feed reports resync).
+	function fullResync() {
+		var bids = Object.keys(TnConfig.bracketData || {});
+		if (!bids.length) return Promise.resolve();
+		return Promise.all(bids.map(function(b) { return refetchBracket(parseInt(b)); }));
+	}
+
+	function applyDeltas(data) {
+		if (data.resync) { return fullResync().then(function() { clientSeq = data.seq; }); }
+		var events = data.events || [];
+		var bracketsToRefetch = {};
+		var lastActor = '';
+		events.forEach(function(ev) {
+			if (window.tnIsOwnAction && window.tnIsOwnAction(ev.ActionId)) return; // echo — already applied locally
+			if (ev.BracketId) bracketsToRefetch[ev.BracketId] = true;
+			if (ev.ActorName) lastActor = ev.ActorName;
+		});
+		var bids = Object.keys(bracketsToRefetch);
+		clientSeq = data.seq;
+		if (!bids.length) return Promise.resolve();
+		return Promise.all(bids.map(function(b) { return refetchBracket(parseInt(b)); })).then(function() {
+			if (window.tnToast) window.tnToast(lastActor ? ('Updated by ' + lastActor) : 'Bracket updated');
+		});
+	}
+
+	function poll() {
+		if (paused) return;
+		fetch(TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/seq')
+			.then(function(r) { return r.json(); })
+			.then(function(d) {
+				if (!d || d.status !== 0) return;
+				if (clientSeq === null) { clientSeq = d.seq; return; }
+				if (d.seq > clientSeq) {
+					return fetch(TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/changes&since=' + clientSeq)
+						.then(function(r) { return r.json(); })
+						.then(function(cd) { if (cd && cd.status === 0) return applyDeltas(cd); });
+				}
+			})
+			.catch(function(err) { console.warn('[tn-collab] seq poll failed', err); });
+	}
+
+	function schedule() {
+		if (timer) clearTimeout(timer);
+		if (paused) return;
+		var interval = (Date.now() < nudgeUntil) ? 750 : (anyActive() ? 1000 : 5000);
+		timer = setTimeout(function() { poll(); schedule(); }, interval);
+	}
+
+	// Other client code calls this after a local edit to poll faster briefly.
+	window.tnCollabNudge = function() { nudgeUntil = Date.now() + 4000; schedule(); };
+	// Allow optimistic handlers to keep our cursor ahead of our own writes.
+	window.tnCollabBumpSeq = function(seq) { if (typeof seq === 'number' && seq > (clientSeq || 0)) clientSeq = seq; };
+
+	document.addEventListener('visibilitychange', function() {
+		if (document.hidden) { paused = true; if (timer) { clearTimeout(timer); timer = null; } }
+		else { paused = false; poll(); schedule(); }
+	});
+
+	// Seed cursor, then start.
+	fetch(TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/seq')
+		.then(function(r) { return r.json(); })
+		.then(function(d) { if (d && d.status === 0) clientSeq = d.seq; })
+		.catch(function() {})
+		.finally(function() { schedule(); });
+})();
+
+
+// ============================================================
 // Feature 2 — Reeves Panel (Add / Remove)
 // ============================================================
 (function() {
