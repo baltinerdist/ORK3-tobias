@@ -11,6 +11,7 @@
 		<li><a href='<?=UIR ?>Admin/setkingdomofficers&KingdomId=<?=$KingdomInfo['KingdomId'] ?>'>Set <?=$IsPrinz?'Principality':'Kingdom' ?> Officers</a></li>
 		<li><a href='<?=UIR ?>Admin/editkingdom/<?=$KingdomInfo['KingdomId'] ?>'>Configure <?=$IsPrinz?'Principality':'Kingdom' ?></a></li>
 		<li><a href='<?=UIR ?>Admin/editparks/<?=$KingdomInfo['KingdomId'] ?>'>Configure Parks</a></li>
+		<li><a href='<?=UIR ?>Treasury/kingdom/<?=$this->__session->kingdom_id ?>'>Treasury <i class="fas fa-coins"></i></a></li>
 	</ul>
 </div>
 <div class='info-container'>
