@@ -832,6 +832,7 @@
 					<h5><i class="fas fa-cog"></i> Kingdom</h5>
 					<ul>
 						<li><a href="<?= UIR ?>Admin/permissions/Kingdom/<?= $kingdom_id ?>">Roles &amp; Permissions</a></li>
+						<li><a href="<?= UIR ?>Treasury/kingdom/<?= $kingdom_id ?>">Treasury</a></li>
 						<li><a href="#" onclick="knOpenClaimParkModal();return false;">Claim Park</a></li>
 					</ul>
 				</div>

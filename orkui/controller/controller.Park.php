@@ -39,7 +39,6 @@ class Controller_Park extends Controller
 			$this->data[ 'menulist' ][ 'admin' ] = [
 				[ 'url' => UIR . 'Admin/park/' . $this->session->park_id, 'display' => 'Park' ],
 				[ 'url' => UIR . 'Admin/kingdom/' . $this->session->kingdom_id, 'display' => 'Kingdom' ],
-				[ 'url' => UIR . 'Treasury/park/' . $this->session->park_id, 'display' => 'Treasury' ],
 			];
 		}
 		$this->data[ 'menu' ][ 'kingdom' ] = [ 'url' => UIR . 'Kingdom/profile/' . $this->session->kingdom_id, 'display' => $this->session->kingdom_name ];

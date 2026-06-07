@@ -9,7 +9,6 @@
 	<ul>
 		<li><a href='<?=UIR ?>Admin/setparkofficers&ParkId=<?=$ParkInfo['ParkId'] ?>'>Set Park Officers</a></li>
 		<li><a href='<?=UIR ?>Admin/editpark/<?=$ParkInfo['ParkId'] ?>'>Configure Park</a></li>
-		<li><a href='<?=UIR ?>Treasury/park/<?=$this->__session->park_id ?>'>Treasury <i class="fas fa-coins"></i></a></li>
 	</ul>
 </div>
 <div class='info-container'>
