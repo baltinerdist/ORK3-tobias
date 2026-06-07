@@ -190,6 +190,7 @@ class Inventory extends Ork3
      *  unit_value, location, held_by, held_by_player_id, acquired_date, notes. */
     public function SaveItem($token, $data)
     {
+        global $DB;
         $mundane_id = $this->authFor($token, $data['owner_type'] ?? '', $data['owner_id'] ?? 0);
         if (!$mundane_id) { return NoAuthorization(); }
 
@@ -242,6 +243,14 @@ class Inventory extends Ork3
         $this->item->save();
 
         $id = (int)$this->item->id;
+        // yapo drops a `null` SET from UPDATE (isset() is false for null), so clearing
+        // acquired_date through yapo silently leaves the old date. Null it via a raw UPDATE
+        // on edit (mirrors the removed_at workaround in RestoreItem).
+        if ($isEdit && $acquired === '') {
+            $DB->Clear();
+            $DB->Execute("UPDATE " . DB_PREFIX . "inventory_item SET acquired_date = NULL WHERE id = " . (int)$id);
+            $this->item->acquired_date = null;
+        }
         $this->writeAudit($id, $isEdit ? 'edit' : 'create', $mundane_id, $before, $this->itemToArray());
         return Success(['Id' => $id]);
     }
