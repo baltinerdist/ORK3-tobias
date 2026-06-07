@@ -615,14 +615,15 @@ window.TrConfig = {
     }
 
     function loadLedger() {
-        return fetch(cfg.ajax + 'ledger?' + filterQuery(), { credentials: 'same-origin' })
+        // cfg.ajax already ends in '?Route=...'; append params with '&' (a 2nd '?' breaks routing).
+        return fetch(cfg.ajax + 'ledger&' + filterQuery(), { credentials: 'same-origin' })
             .then(function (r) { return r.json(); })
             .then(function (j) { if (j.status === 0) { renderRows(j.detail); } return j; });
     }
 
     /* Refresh the summary cards (Current Balance, Total In/Out, Entries). */
     function refreshSummary() {
-        return fetch(cfg.ajax + 'summary?from=' + encodeURIComponent(state.from) + '&to=' + encodeURIComponent(state.to), { credentials: 'same-origin' })
+        return fetch(cfg.ajax + 'summary&from=' + encodeURIComponent(state.from) + '&to=' + encodeURIComponent(state.to), { credentials: 'same-origin' })
             .then(function (r) { return r.json(); })
             .then(function (j) {
                 if (j.status !== 0) { return j; }
@@ -640,7 +641,42 @@ window.TrConfig = {
     function refreshAll() {
         return Promise.all([loadLedger(), refreshSummary()]).then(function () {
             app.dispatchEvent(new CustomEvent('tr:datachanged', { bubbles: true }));
+            // Re-baseline the poll so this (our own) change doesn't trigger a second refetch.
+            return syncRevision();
         });
+    }
+
+    /* ---- live auto-refresh: poll a cheap revision token; only refetch on a real change ---- */
+    var TR_POLL_MS = 25000;
+    var lastRev = null;
+    var pollTimer = null;
+    function anyModalOpen() { return !!document.querySelector('.tr-modal-overlay.tr-open'); }
+    function syncRevision() {
+        return fetch(cfg.ajax + 'rev', { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (j) { if (j.status === 0 && j.detail) { lastRev = j.detail.Rev; } })
+            .catch(function () {});
+    }
+    function checkRevision() {
+        if (document.hidden || anyModalOpen()) { return; }   // don't refetch under an open editor or hidden tab
+        fetch(cfg.ajax + 'rev', { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                if (j.status !== 0 || !j.detail) { return; }
+                if (lastRev === null) { lastRev = j.detail.Rev; return; }
+                if (j.detail.Rev !== lastRev && !anyModalOpen()) {
+                    lastRev = j.detail.Rev;
+                    refreshAll();
+                }
+            })
+            .catch(function () {});
+    }
+    function startPolling() {
+        if (pollTimer) { return; }
+        pollTimer = setInterval(checkRevision, TR_POLL_MS);
+        document.addEventListener('visibilitychange', function () { if (!document.hidden) { checkRevision(); } });
+        window.addEventListener('focus', checkRevision);
+        syncRevision();   // establish the baseline from the server-rendered initial state
     }
 
     /* ---- filters ---- */
@@ -662,7 +698,7 @@ window.TrConfig = {
         var exp = document.getElementById('tr-export');
         if (exp) {
             exp.addEventListener('click', function () {
-                exp.href = cfg.ajax + 'export?' + filterQuery({ page: 1, per: 100000 });
+                exp.href = cfg.ajax + 'export&' + filterQuery({ page: 1, per: 100000 });
             });
         }
     }
@@ -902,7 +938,7 @@ window.TrConfig = {
     function openEdit(id) {
         resetForm();
         openModal(true);
-        fetch(cfg.ajax + 'getentry?id=' + encodeURIComponent(id), { credentials: 'same-origin' })
+        fetch(cfg.ajax + 'getentry&id=' + encodeURIComponent(id), { credentials: 'same-origin' })
             .then(function (r) { return r.json(); })
             .then(function (j) {
                 if (j.status === 0 && j.detail) { fillForm(j.detail); }
@@ -1037,6 +1073,7 @@ window.TrConfig = {
     bindModal();
     if (cfg.initialLedger && cfg.initialLedger.Rows) { renderRows(cfg.initialLedger); }
     else { loadLedger(); }
+    startPolling();
 })();
 </script>
 
@@ -1170,7 +1207,7 @@ window.TrConfig = {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(asOf)) { cb(null); return; }
         var token = ++computeToken;
         var q = new URLSearchParams({ to: asOf, per: 1, page: 1 });
-        fetch(cfg.ajax + 'ledger?' + q.toString(), { credentials: 'same-origin' })
+        fetch(cfg.ajax + 'ledger&' + q.toString(), { credentials: 'same-origin' })
             .then(function (r) { return r.json(); })
             .then(function (j) {
                 if (token !== computeToken) { return; }  // stale response

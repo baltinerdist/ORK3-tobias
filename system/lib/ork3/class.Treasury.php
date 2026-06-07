@@ -101,6 +101,27 @@ class Treasury extends Ork3 {
 		return Success(array('HasOpening' => $this->openingRecon($owner_type, $owner_id) !== null));
 	}
 
+	/** Cheap change-signal for polling: a small token that changes on any insert/edit/delete
+	 *  (entries) or insert/delete (reconciliations). Two indexed COUNT/MAX queries, no full scan. */
+	public function GetRevision($token, $owner_type, $owner_id) {
+		if (!$this->authFor($token, $owner_type, $owner_id)) { return NoAuthorization(); }
+		global $DB;
+		$owner_type = $this->normType($owner_type);
+		$owner_id = (int)$owner_id;
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT COUNT(*) n, COALESCE(MAX(id),0) mx,
+			COALESCE(UNIX_TIMESTAMP(MAX(GREATEST(created_at, COALESCE(updated_at, created_at), COALESCE(deleted_at, created_at)))),0) ts
+			FROM " . DB_PREFIX . "treasury_entry WHERE owner_type='$owner_type' AND owner_id=$owner_id");
+		$en = 0; $emx = 0; $ets = 0;
+		if ($rs && $rs->Next()) { $en = (int)$rs->n; $emx = (int)$rs->mx; $ets = (int)$rs->ts; }
+		$DB->Clear();
+		$rs2 = $DB->DataSet("SELECT COUNT(*) n, COALESCE(MAX(id),0) mx
+			FROM " . DB_PREFIX . "treasury_reconciliation WHERE owner_type='$owner_type' AND owner_id=$owner_id");
+		$rn = 0; $rmx = 0;
+		if ($rs2 && $rs2->Next()) { $rn = (int)$rs2->n; $rmx = (int)$rs2->mx; }
+		return Success(array('Rev' => $en . '-' . $emx . '-' . $ets . '.' . $rn . '-' . $rmx));
+	}
+
 	/** Display name of the org (park/kingdom) by id; page is already auth-gated. */
 	public function GetOwnerName($token, $owner_type, $owner_id) {
 		if (!$this->authFor($token, $owner_type, $owner_id)) { return NoAuthorization(); }

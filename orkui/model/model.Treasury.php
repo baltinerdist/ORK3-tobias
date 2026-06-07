@@ -10,6 +10,7 @@ class Model_Treasury extends Model
 
     public function has_opening($token, $ot, $oid)            { return $this->Treasury->HasOpeningBalance($token, $ot, $oid); }
     public function get_owner_name($token, $ot, $oid)         { return $this->Treasury->GetOwnerName($token, $ot, $oid); }
+    public function get_revision($token, $ot, $oid)           { return $this->Treasury->GetRevision($token, $ot, $oid); }
     public function get_ledger($token, $ot, $oid, $filters)   { return $this->Treasury->GetLedger($token, $ot, $oid, $filters); }
     public function get_entry($token, $ot, $oid, $id)         { return $this->Treasury->GetEntry($token, $ot, $oid, $id); }
     public function save_entry($token, $data)                 { return $this->Treasury->SaveEntry($token, $data); }

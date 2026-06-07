@@ -36,6 +36,8 @@ class Controller_TreasuryAjax extends Controller
                 return $this->out($this->Treasury->get_series($tok, $owner_type, $owner_id));
             case 'reconciliations':
                 return $this->out($this->Treasury->get_reconciliations($tok, $owner_type, $owner_id));
+            case 'rev':
+                return $this->out($this->Treasury->get_revision($tok, $owner_type, $owner_id));
             case 'getentry':
                 return $this->out($this->Treasury->get_entry($tok, $owner_type, $owner_id, (int)($_GET['id'] ?? 0)));
             case 'addentry':
