@@ -7,6 +7,98 @@ class Treasury extends Ork3 {
 		$this->split = new yapo($this->db, DB_PREFIX . 'split');
 		$this->account = new yapo($this->db, DB_PREFIX . 'account');
 		$this->transaction = new yapo($this->db, DB_PREFIX . 'transaction');
+		// Treasury module (per-org ledger) yapo objects
+		$this->entry = new yapo($this->db, DB_PREFIX . 'treasury_entry');
+		$this->recon = new yapo($this->db, DB_PREFIX . 'treasury_reconciliation');
+		$this->audit = new yapo($this->db, DB_PREFIX . 'treasury_audit');
+	}
+
+	/* =========================================================================
+	 * Treasury module: per-org (Kingdom/Park) financial ledger.
+	 * Officer-only; running balance is always computed from the opening anchor.
+	 * (Coexists with the legacy double-entry methods above on the same class so
+	 *  startup.php's autoloader keeps Ork3::$Lib->treasury / APIModel('Treasury').)
+	 * ========================================================================= */
+
+	public static $CATEGORIES = array(
+		'income' => array(
+			'dues'          => 'Dues',
+			'fundraiser'    => 'Fundraiser',
+			'donation'      => 'Donation',
+			'event_revenue' => 'Event Revenue',
+			'income_other'  => 'Other Income',
+		),
+		'expense' => array(
+			'supplies'       => 'Supplies',
+			'equipment'      => 'Equipment',
+			'site_rental'    => 'Site / Rental',
+			'awards_regalia' => 'Awards / Regalia',
+			'reimbursement'  => 'Reimbursement',
+			'expense_other'  => 'Other Expense',
+		),
+	);
+
+	/** Resolve auth; returns mundane_id (>0) or 0 if unauthorized for this org. */
+	private function authFor($token, $owner_type, $owner_id) {
+		$owner_type = ($owner_type === 'park') ? 'park' : 'kingdom';
+		$authType   = ($owner_type === 'park') ? AUTH_PARK : AUTH_KINGDOM;
+		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($token);
+		if ($mundane_id > 0
+			&& Ork3::$Lib->authorization->HasAuthority($mundane_id, $authType, (int)$owner_id, AUTH_EDIT)) {
+			return (int)$mundane_id;
+		}
+		return 0;
+	}
+
+	private function normType($t) {
+		return ($t === 'park') ? 'park' : 'kingdom';
+	}
+
+	/** Opening baseline: array(as_of_date, actual_balance) or null if none. */
+	private function openingRecon($owner_type, $owner_id) {
+		global $DB;
+		$owner_type = $this->normType($owner_type);
+		$owner_id   = (int)$owner_id;
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT as_of_date, actual_balance FROM " . DB_PREFIX . "treasury_reconciliation
+			WHERE owner_type='$owner_type' AND owner_id=$owner_id AND is_opening=1 AND deleted_at IS NULL
+			ORDER BY id ASC LIMIT 1");
+		// $DB is YapoMysql, whose DataSet() returns the result un-advanced; Next() fetches
+		// the (only) row and populates the column properties.
+		if ($rs && $rs->Next()) {
+			return array('as_of_date' => $rs->as_of_date, 'actual_balance' => (float)$rs->actual_balance);
+		}
+		return null;
+	}
+
+	/** Running balance over non-deleted entries up to (and including) $upToDate (null = all). */
+	public function ComputeBalanceAsOf($owner_type, $owner_id, $upToDate = null) {
+		global $DB;
+		$owner_type = $this->normType($owner_type);
+		$owner_id   = (int)$owner_id;
+		$open       = $this->openingRecon($owner_type, $owner_id);
+		$base       = $open ? $open['actual_balance'] : 0.0;
+		$fromDate   = $open ? $open['as_of_date'] : null;
+
+		$where = "owner_type='$owner_type' AND owner_id=$owner_id AND deleted_at IS NULL";
+		if ($fromDate) { $where .= " AND entry_date >= '" . addslashes($fromDate) . "'"; }
+		if ($upToDate) { $where .= " AND entry_date <= '" . addslashes($upToDate) . "'"; }
+
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT
+			COALESCE(SUM(CASE WHEN direction='credit' THEN amount ELSE 0 END),0) AS credits,
+			COALESCE(SUM(CASE WHEN direction='debit'  THEN amount ELSE 0 END),0) AS debits
+			FROM " . DB_PREFIX . "treasury_entry WHERE $where");
+		$credits = 0.0; $debits = 0.0;
+		// $DB is YapoMysql: DataSet() returns un-advanced; Next() fetches the single aggregate row.
+		if ($rs && $rs->Next()) { $credits = (float)$rs->credits; $debits = (float)$rs->debits; }
+		// round to cents to avoid float drift
+		return round($base + $credits - $debits, 2);
+	}
+
+	public function HasOpeningBalance($token, $owner_type, $owner_id) {
+		if (!$this->authFor($token, $owner_type, $owner_id)) { return NoAuthorization(); }
+		return Success(array('HasOpening' => $this->openingRecon($owner_type, $owner_id) !== null));
 	}
 	
 	public function RecordTransaction($request) {
