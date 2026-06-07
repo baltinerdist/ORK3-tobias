@@ -428,6 +428,14 @@ window.InvConfig = {
     }
     function condLabel(c) { return (cfg.conditionLabels && cfg.conditionLabels[c]) || c || ''; }
     function catLabel(c) { return (cfg.categories && cfg.categories[c]) || c || ''; }
+    // "2026-06-07 12:34:56" -> "Jun 7, 2026" (date-only, parsed as local so no TZ drift).
+    function fmtDate(s) {
+        if (!s) { return ''; }
+        var m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (!m) { return String(s); }
+        var d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
     function postForm(action, data) {
         var fd = new URLSearchParams();
         Object.keys(data).forEach(function (k) { fd.append(k, data[k] == null ? '' : data[k]); });
@@ -511,9 +519,12 @@ window.InvConfig = {
         rows.forEach(function (r) {
             var tr = document.createElement('tr');
             var nameCell = escapeHtml(r.Name || '');
-            if (removed && r.RemovalReason) {
-                var rlabel = (cfg.removalReasons && cfg.removalReasons[r.RemovalReason]) || r.RemovalReason;
-                nameCell += ' <span class="inv-badge inv-badge-reason">' + escapeHtml(rlabel) + '</span>';
+            if (removed && (r.RemovalReason || r.RemovedAt)) {
+                if (r.RemovalReason) {
+                    var rlabel = (cfg.removalReasons && cfg.removalReasons[r.RemovalReason]) || r.RemovalReason;
+                    nameCell += ' <span class="inv-badge inv-badge-reason">' + escapeHtml(rlabel) + '</span>';
+                }
+                if (r.RemovedAt) { nameCell += '<span class="inv-reason-note">Removed ' + escapeHtml(fmtDate(r.RemovedAt)) + '</span>'; }
                 if (r.RemovalNote) { nameCell += '<span class="inv-reason-note">' + escapeHtml(r.RemovalNote) + '</span>'; }
             }
             tr.innerHTML =
