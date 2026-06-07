@@ -1195,3 +1195,206 @@ window.TrConfig = {
     renderHistory(cfg.reconciliations || []);
 })();
 </script>
+
+<script>
+/* =====================================================
+   Treasury — charts (Task 11)
+   • Balance Over Time: line chart from cfg.series (Month → Balance).
+   • By Category: pie from cfg.byCategory (key → total), labelled via
+     cfg.categories, coloured green for income / red for expense.
+   Both re-render after any CRUD by listening for the 'tr:datachanged'
+   event (dispatched by TrApp.refreshAll in Task 9) — on which they
+   refetch the `series` + `summary` endpoints so the charts stay in
+   sync with the ledger. Dark-mode-aware via the _isDark pattern.
+   ===================================================== */
+(function () {
+    'use strict';
+
+    var app = document.getElementById('tr-app');
+    if (!app) { return; }
+    if (typeof Highcharts === 'undefined') { return; } // CDN unavailable → skip silently
+    var cfg = window.TrConfig || {};
+
+    var balanceChart = null;
+    var catsChart    = null;
+
+    function isDark() {
+        return document.documentElement.getAttribute('data-theme') === 'dark';
+    }
+    function tooltipOpts() {
+        var dark = isDark();
+        return {
+            backgroundColor: dark ? '#1e293b' : undefined,
+            borderColor:     dark ? '#334155' : undefined,
+            style:           { color: dark ? '#e2e8f0' : '#333333' }
+        };
+    }
+    function axisColors() {
+        var dark = isDark();
+        return {
+            label: dark ? '#94a3b8' : '#666666',
+            line:  dark ? '#334155' : '#e5e7eb',
+            grid:  dark ? '#293548' : '#f0f0f0'
+        };
+    }
+    function money(n) {
+        return '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    /* Pretty month label: 'YYYY-MM' → 'Mon YYYY'. */
+    var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    function monthLabel(ym) {
+        var m = /^(\d{4})-(\d{2})$/.exec(ym || '');
+        if (!m) { return ym || ''; }
+        return MONTHS[(parseInt(m[2], 10) - 1) % 12] + ' ' + m[1];
+    }
+
+    /* Is a category key an income (credit) category? Defaults to expense. */
+    function isIncomeCat(key) {
+        var groups = cfg.categoryGroups || {};
+        return !!(groups.income && Object.prototype.hasOwnProperty.call(groups.income, key));
+    }
+
+    function renderBalanceChart(points) {
+        points = points || [];
+        var categories = points.map(function (p) { return monthLabel(p.Month); });
+        var data       = points.map(function (p) { return Number(p.Balance) || 0; });
+        var dark = isDark();
+        var ax   = axisColors();
+        var hostEl = document.getElementById('tr-chart-balance');
+        if (!hostEl) { return; }
+
+        if (!points.length) {
+            if (balanceChart) { balanceChart.destroy(); balanceChart = null; }
+            hostEl.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center;color:var(--ork-text-muted);font-size:0.85rem;">No balance history yet.</div>';
+            return;
+        }
+
+        if (balanceChart) {
+            balanceChart.update({ tooltip: tooltipOpts() }, false);
+            balanceChart.xAxis[0].update({ categories: categories }, false);
+            balanceChart.series[0].setData(data, false);
+            balanceChart.redraw();
+            return;
+        }
+
+        balanceChart = new Highcharts.Chart({
+            chart: { renderTo: 'tr-chart-balance', type: 'areaspline', backgroundColor: 'transparent', style: { fontFamily: 'inherit' } },
+            title: { text: null },
+            xAxis: {
+                categories: categories,
+                lineColor: ax.line, tickColor: ax.line,
+                labels: { style: { color: ax.label, fontSize: '11px' } }
+            },
+            yAxis: {
+                title: { text: null }, gridLineColor: ax.grid,
+                labels: { style: { color: ax.label, fontSize: '11px' }, formatter: function () { return money(this.value); } }
+            },
+            series: [{
+                name: 'Balance', data: data, color: '#4338ca',
+                fillColor: {
+                    linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
+                    stops: [[0, 'rgba(67,56,202,0.30)'], [1, 'rgba(67,56,202,0.02)']]
+                },
+                marker: { enabled: true, radius: 3 }
+            }],
+            legend: { enabled: false },
+            credits: { enabled: false },
+            tooltip: Object.assign({
+                headerFormat: '<b>{point.key}</b><br/>',
+                pointFormatter: function () { return 'Balance: <b>' + money(this.y) + '</b>'; }
+            }, tooltipOpts())
+        });
+    }
+
+    function renderCatsChart(byCategory) {
+        byCategory = byCategory || {};
+        var labels = cfg.categories || {};
+        var data = [];
+        Object.keys(byCategory).forEach(function (key) {
+            var val = Math.abs(Number(byCategory[key]) || 0);
+            if (val <= 0) { return; }
+            data.push({
+                name: labels[key] || key,
+                y: val,
+                color: isIncomeCat(key) ? '#2f855a' : '#c53030'
+            });
+        });
+        var hostEl = document.getElementById('tr-chart-cats');
+        if (!hostEl) { return; }
+
+        if (!data.length) {
+            if (catsChart) { catsChart.destroy(); catsChart = null; }
+            hostEl.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center;color:var(--ork-text-muted);font-size:0.85rem;">No category activity yet.</div>';
+            return;
+        }
+
+        var dark = isDark();
+        if (catsChart) {
+            catsChart.update({ tooltip: tooltipOpts() }, false);
+            catsChart.series[0].update({
+                dataLabels: { style: { color: dark ? '#e2e8f0' : '#333333' } }
+            }, false);
+            catsChart.series[0].setData(data, false);
+            catsChart.redraw();
+            return;
+        }
+
+        catsChart = new Highcharts.Chart({
+            chart: { renderTo: 'tr-chart-cats', type: 'pie', backgroundColor: 'transparent', style: { fontFamily: 'inherit' } },
+            title: { text: null },
+            series: [{
+                name: 'Total', data: data, innerSize: '55%',
+                dataLabels: {
+                    enabled: true,
+                    formatter: function () { return this.point.name + ': ' + money(this.y); },
+                    style: { color: dark ? '#e2e8f0' : '#333333', fontSize: '11px', textOutline: 'none' }
+                }
+            }],
+            legend: { enabled: false },
+            credits: { enabled: false },
+            tooltip: Object.assign({
+                headerFormat: '',
+                pointFormatter: function () { return '<b>' + this.name + '</b>: ' + money(this.y); }
+            }, tooltipOpts())
+        });
+    }
+
+    function renderAll() {
+        renderBalanceChart(cfg.series || []);
+        renderCatsChart(cfg.byCategory || {});
+    }
+
+    /* Refetch the data the charts depend on, then re-render. Called after any
+       CRUD (entry add/edit/delete, reconciliation) via 'tr:datachanged'. */
+    function refetchAndRender() {
+        var seriesP = fetch(cfg.ajax + 'series', { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                if (j.status === 0 && j.detail && j.detail.Points) { cfg.series = j.detail.Points; }
+            }).catch(function () {});
+        // refreshSummary() (Task 9) already updates cfg.byCategory on a datachanged cycle,
+        // but fetch it here too so the chart is correct even if charts load independently.
+        var sumP = fetch(cfg.ajax + 'summary', { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                if (j.status === 0 && j.detail) { cfg.byCategory = j.detail.ByCategory || {}; }
+            }).catch(function () {});
+        Promise.all([seriesP, sumP]).then(renderAll);
+    }
+
+    /* Re-theme charts when dark mode is toggled (re-render picks up colours). */
+    var themeObserver = new MutationObserver(function (muts) {
+        for (var i = 0; i < muts.length; i++) {
+            if (muts[i].attributeName === 'data-theme') { renderAll(); break; }
+        }
+    });
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+    /* ---- wiring ---- */
+    app.addEventListener('tr:datachanged', refetchAndRender);
+
+    /* ---- init ---- */
+    renderAll();
+})();
+</script>
