@@ -350,20 +350,20 @@ class Inventory extends Ork3
         $page = max(1, (int)($filters['page'] ?? 1));
         $off  = ($page - 1) * $per;
 
-        // LEFT JOIN mundane for the held-by display name (only when a player id is set).
         $DB->Clear();
         $rs = $DB->DataSet("SELECT i.id, i.name, i.category, i.quantity, i.`condition` AS cond,
             i.unit_value, i.location, i.held_by, i.held_by_player_id,
-            i.acquired_date, i.notes, i.removed_at, i.removal_reason, i.removal_note,
-            TRIM(CONCAT(COALESCE(m.given_name,''),' ',COALESCE(m.surname,''))) AS player_name
+            i.acquired_date, i.notes, i.removed_at, i.removal_reason, i.removal_note
             FROM " . DB_PREFIX . "inventory_item i
-            LEFT JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = i.held_by_player_id AND i.held_by_player_id > 0
             WHERE $where ORDER BY $sortCol $dir, i.id ASC LIMIT $off, $per");
 
         $rows = [];
         while ($rs && $rs->Next()) {
-            $heldName = $rs->held_by_player_id > 0 && trim($rs->player_name) !== ''
-                ? $rs->player_name : (string)$rs->held_by;
+            // Display the held-by label exactly as stored (the persona/name the officer picked or
+            // typed), mirroring Treasury's counterparty handling. held_by_player_id drives the
+            // profile link; we do NOT re-resolve to the mundane legal name, which would replace the
+            // selected persona (e.g. picked "Tobias" -> shown "Kirsten Ward").
+            $heldName = (string)$rs->held_by;
             $rows[] = [
                 'Id'             => (int)$rs->id,
                 'Name'           => $rs->name,
