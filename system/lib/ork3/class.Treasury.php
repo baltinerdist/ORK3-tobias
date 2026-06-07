@@ -100,7 +100,112 @@ class Treasury extends Ork3 {
 		if (!$this->authFor($token, $owner_type, $owner_id)) { return NoAuthorization(); }
 		return Success(array('HasOpening' => $this->openingRecon($owner_type, $owner_id) !== null));
 	}
-	
+
+	/* ---- Treasury module: entry CRUD + audit ---- */
+
+	private static $VALID_METHODS = array('cash', 'check', 'digital');
+
+	private function validCategory($cat) {
+		return isset(self::$CATEGORIES['income'][$cat]) || isset(self::$CATEGORIES['expense'][$cat]);
+	}
+
+	private function writeAudit($entry_id, $action, $mundane_id, $before, $after) {
+		$this->audit->clear();
+		$this->audit->entry_id    = (int)$entry_id;
+		$this->audit->action      = $action;
+		$this->audit->changed_by  = (int)$mundane_id;
+		$this->audit->changed_at  = date('Y-m-d H:i:s');
+		// yapo drops null fields from INSERT; '' clears the column instead of leaving it stale.
+		$this->audit->before_json = $before === null ? '' : json_encode($before);
+		$this->audit->after_json  = $after  === null ? '' : json_encode($after);
+		$this->audit->save();
+	}
+
+	private function entryToArray() {
+		return array(
+			'id'             => $this->entry->id,
+			'owner_type'     => $this->entry->owner_type,
+			'owner_id'       => $this->entry->owner_id,
+			'entry_date'     => $this->entry->entry_date,
+			'direction'      => $this->entry->direction,
+			'amount'         => $this->entry->amount,
+			'category'       => $this->entry->category,
+			'payment_method' => $this->entry->payment_method,
+			'description'    => $this->entry->description,
+			'counterparty'   => $this->entry->counterparty,
+			'reference_no'   => $this->entry->reference_no,
+			'deleted_at'     => $this->entry->deleted_at,
+		);
+	}
+
+	/** Create or edit. $data: owner_type, owner_id, [id], entry_date, direction, amount,
+	 *  category, payment_method, description, counterparty, reference_no. */
+	public function SaveEntry($token, $data) {
+		$mundane_id = $this->authFor($token, $data['owner_type'] ?? '', $data['owner_id'] ?? 0);
+		if (!$mundane_id) { return NoAuthorization(); }
+
+		$direction = ($data['direction'] ?? '') === 'debit' ? 'debit' : 'credit';
+		$amount    = round((float)($data['amount'] ?? 0), 2);
+		$cat       = (string)($data['category'] ?? '');
+		$method    = (string)($data['payment_method'] ?? '');
+		$entryDate = (string)($data['entry_date'] ?? '');
+
+		if ($amount <= 0) { return InvalidParameter('Amount must be greater than zero.'); }
+		if (!$this->validCategory($cat)) { return InvalidParameter('Unknown category.'); }
+		if (!in_array($method, self::$VALID_METHODS, true)) { return InvalidParameter('Payment method is required.'); }
+		if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $entryDate)) { return InvalidParameter('Invalid date.'); }
+
+		$isEdit = !empty($data['id']);
+		$before = null;
+		$this->entry->clear();
+		if ($isEdit) {
+			$this->entry->id = (int)$data['id'];
+			if (!$this->entry->find() || $this->entry->deleted_at !== null
+				|| $this->entry->owner_type !== $this->normType($data['owner_type'])
+				|| (int)$this->entry->owner_id !== (int)$data['owner_id']) {
+				return InvalidParameter('Entry not found.');
+			}
+			$before = $this->entryToArray();
+		} else {
+			$this->entry->owner_type = $this->normType($data['owner_type']);
+			$this->entry->owner_id   = (int)$data['owner_id'];
+			$this->entry->created_by = $mundane_id;
+			$this->entry->created_at = date('Y-m-d H:i:s');
+		}
+		$this->entry->entry_date     = $entryDate;
+		$this->entry->direction      = $direction;
+		$this->entry->amount         = $amount;
+		$this->entry->category       = $cat;
+		$this->entry->payment_method = $method;
+		$this->entry->description    = (string)($data['description'] ?? '');
+		// yapo drops null fields; assign '' to clear an optional column rather than leave it stale.
+		$this->entry->counterparty   = ($data['counterparty'] ?? '') !== '' ? $data['counterparty'] : '';
+		$this->entry->reference_no   = ($data['reference_no'] ?? '') !== '' ? $data['reference_no'] : '';
+		if ($isEdit) { $this->entry->updated_at = date('Y-m-d H:i:s'); }
+		$this->entry->save();
+
+		$id = (int)$this->entry->id;
+		$this->writeAudit($id, $isEdit ? 'edit' : 'create', $mundane_id, $before, $this->entryToArray());
+		return Success(array('Id' => $id));
+	}
+
+	public function DeleteEntry($token, $owner_type, $owner_id, $id) {
+		$mundane_id = $this->authFor($token, $owner_type, $owner_id);
+		if (!$mundane_id) { return NoAuthorization(); }
+		$this->entry->clear();
+		$this->entry->id = (int)$id;
+		if (!$this->entry->find() || $this->entry->deleted_at !== null
+			|| (int)$this->entry->owner_id !== (int)$owner_id
+			|| $this->entry->owner_type !== $this->normType($owner_type)) {
+			return InvalidParameter('Entry not found.');
+		}
+		$before = $this->entryToArray();
+		$this->entry->deleted_at = date('Y-m-d H:i:s');
+		$this->entry->save();
+		$this->writeAudit((int)$id, 'delete', $mundane_id, $before, null);
+		return Success();
+	}
+
 	public function RecordTransaction($request) {
 		if (($mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token'])) > 0) {
 			$request['SplitOne']['MundaneId'] = $mundane_id;
