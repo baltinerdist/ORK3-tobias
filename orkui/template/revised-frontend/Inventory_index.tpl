@@ -1051,3 +1051,238 @@ window.InvConfig = {
     updateSortIndicators();
 })();
 </script>
+
+<script>
+/* =====================================================
+   Inventory — charts + live auto-refresh heartbeat
+   • Value by Category : donut/pie from cfg.summary.ByCategory (key → value),
+     labelled via cfg.categories.
+   • Items by Condition: column chart from cfg.summary.ByCondition (cond → count),
+     labelled via cfg.conditionLabels, in fixed order (new → needs_repair).
+   Both re-render after any CRUD by listening for the 'inv:datachanged' event
+   (dispatched by InvApp.refreshAll, which has already refetched the summary
+   into cfg.summary). A cheap `rev` poll (every ~25s + on focus) refetches
+   items + summary when the server-side data changes — paused while a modal is
+   open or the tab is hidden. Dark-mode-aware via the isDark() pattern.
+   ===================================================== */
+(function () {
+    'use strict';
+
+    var app = document.getElementById('inv-app');
+    if (!app) { return; }
+    var cfg = window.InvConfig || {};
+    var InvApp = window.InvApp || {};
+
+    /* Fixed condition order for the column chart (matches the lib's FIELD() sort). */
+    var COND_ORDER = ['new', 'good', 'fair', 'poor', 'needs_repair'];
+    /* Per-condition colours (green → amber → red as condition worsens). */
+    var COND_COLORS = {
+        'new': '#2f855a', 'good': '#38a169', 'fair': '#d69e2e',
+        'poor': '#dd6b20', 'needs_repair': '#c53030'
+    };
+    /* Distinct slices for the category donut. */
+    var CAT_PALETTE = ['#4338ca', '#6366f1', '#0891b2', '#0d9488', '#7c3aed',
+        '#db2777', '#ea580c', '#ca8a04', '#16a34a', '#475569'];
+
+    function isDark() {
+        return document.documentElement.getAttribute('data-theme') === 'dark';
+    }
+    function tooltipOpts() {
+        var dark = isDark();
+        return {
+            backgroundColor: dark ? '#1e293b' : undefined,
+            borderColor:     dark ? '#334155' : undefined,
+            style:           { color: dark ? '#e2e8f0' : '#333333' }
+        };
+    }
+    function axisColors() {
+        var dark = isDark();
+        return {
+            label: dark ? '#94a3b8' : '#666666',
+            line:  dark ? '#334155' : '#e5e7eb',
+            grid:  dark ? '#293548' : '#f0f0f0'
+        };
+    }
+    function money(n) {
+        return '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    function catLabel(k) { return (cfg.categories && cfg.categories[k]) || k; }
+    function condLabel(k) { return (cfg.conditionLabels && cfg.conditionLabels[k]) || k; }
+
+    var catChart  = null;
+    var condChart = null;
+
+    /* ---- Value by Category (donut) ---- */
+    function renderCategoryChart(byCategory) {
+        if (typeof Highcharts === 'undefined') { return; }
+        byCategory = byCategory || {};
+        var data = [];
+        Object.keys(byCategory).forEach(function (key) {
+            var val = Math.abs(Number(byCategory[key]) || 0);
+            if (val <= 0) { return; }
+            data.push({ name: catLabel(key), y: val, color: CAT_PALETTE[data.length % CAT_PALETTE.length] });
+        });
+        var hostEl = document.getElementById('inv-chart-category');
+        if (!hostEl) { return; }
+
+        if (!data.length) {
+            if (catChart) { catChart.destroy(); catChart = null; }
+            hostEl.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center;color:var(--ork-text-muted);font-size:0.85rem;">No item value yet.</div>';
+            return;
+        }
+
+        var dark = isDark();
+        if (catChart) {
+            catChart.update({ tooltip: tooltipOpts() }, false);
+            catChart.series[0].update({ dataLabels: { style: { color: dark ? '#e2e8f0' : '#333333' } } }, false);
+            catChart.series[0].setData(data, false);
+            catChart.redraw();
+            return;
+        }
+
+        catChart = new Highcharts.Chart({
+            chart: { renderTo: 'inv-chart-category', type: 'pie', backgroundColor: 'transparent', style: { fontFamily: 'inherit' } },
+            title: { text: null },
+            series: [{
+                name: 'Value', data: data, innerSize: '55%',
+                dataLabels: {
+                    enabled: true,
+                    formatter: function () { return this.point.name + ': ' + money(this.y); },
+                    style: { color: dark ? '#e2e8f0' : '#333333', fontSize: '11px', textOutline: 'none' }
+                }
+            }],
+            legend: { enabled: false },
+            credits: { enabled: false },
+            tooltip: Object.assign({
+                headerFormat: '',
+                pointFormatter: function () { return '<b>' + this.name + '</b>: ' + money(this.y); }
+            }, tooltipOpts())
+        });
+    }
+
+    /* ---- Items by Condition (column) ---- */
+    function renderConditionChart(byCondition) {
+        if (typeof Highcharts === 'undefined') { return; }
+        byCondition = byCondition || {};
+        var categories = COND_ORDER.map(condLabel);
+        var data = COND_ORDER.map(function (k) {
+            return { y: Number(byCondition[k]) || 0, color: COND_COLORS[k] || '#4338ca' };
+        });
+        var ax = axisColors();
+        var hostEl = document.getElementById('inv-chart-condition');
+        if (!hostEl) { return; }
+
+        var anyData = data.some(function (p) { return p.y > 0; });
+        if (!anyData) {
+            if (condChart) { condChart.destroy(); condChart = null; }
+            hostEl.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center;color:var(--ork-text-muted);font-size:0.85rem;">No items yet.</div>';
+            return;
+        }
+
+        if (condChart) {
+            condChart.update({ tooltip: tooltipOpts() }, false);
+            condChart.xAxis[0].update({ categories: categories }, false);
+            condChart.series[0].setData(data, false);
+            condChart.redraw();
+            return;
+        }
+
+        condChart = new Highcharts.Chart({
+            chart: { renderTo: 'inv-chart-condition', type: 'column', backgroundColor: 'transparent', style: { fontFamily: 'inherit' } },
+            title: { text: null },
+            xAxis: {
+                categories: categories,
+                lineColor: ax.line, tickColor: ax.line,
+                labels: { style: { color: ax.label, fontSize: '11px' } }
+            },
+            yAxis: {
+                title: { text: null }, gridLineColor: ax.grid, allowDecimals: false, min: 0,
+                labels: { style: { color: ax.label, fontSize: '11px' } }
+            },
+            plotOptions: { column: { borderRadius: 2, borderWidth: 0, maxPointWidth: 56, colorByPoint: true, pointPadding: 0.05, groupPadding: 0.08 } },
+            series: [{ name: 'Items', data: data }],
+            legend: { enabled: false },
+            credits: { enabled: false },
+            tooltip: Object.assign({
+                headerFormat: '<b>{point.key}</b><br/>',
+                pointFormatter: function () { return 'Items: <b>' + (Number(this.y) || 0) + '</b>'; }
+            }, tooltipOpts())
+        });
+    }
+
+    function renderAll() {
+        var s = cfg.summary || {};
+        renderCategoryChart(s.ByCategory || {});
+        renderConditionChart(s.ByCondition || {});
+    }
+
+    /* Refetch the summary the charts depend on, then re-render. InvApp.loadSummary
+       already updates cfg.summary on a datachanged cycle, but refetch here too so
+       the charts are correct even if this section loads independently. */
+    function refetchAndRender() {
+        var st = InvApp.state || {};
+        var url = cfg.ajax + 'summary&category=' + encodeURIComponent(st.category || '') +
+            '&condition=' + encodeURIComponent(st.condition || '') + '&q=' + encodeURIComponent(st.q || '');
+        fetch(url, { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                if (j.status === 0 && j.detail) { cfg.summary = j.detail; }
+                renderAll();
+            })
+            .catch(function () { renderAll(); });
+    }
+
+    /* Re-theme charts when dark mode is toggled (re-render picks up colours). */
+    var themeObserver = new MutationObserver(function (muts) {
+        for (var i = 0; i < muts.length; i++) {
+            if (muts[i].attributeName === 'data-theme') { renderAll(); break; }
+        }
+    });
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+    /* =====================================================
+       Live auto-refresh: poll a cheap revision token; only refetch on a real change.
+       ===================================================== */
+    var INV_POLL_MS = 25000;
+    var lastRev = null;
+    var pollTimer = null;
+    function anyModalOpen() { return !!document.querySelector('.inv-modal-overlay.inv-open'); }
+    function syncRevision() {
+        return fetch(cfg.ajax + 'rev', { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (j) { if (j.status === 0 && j.detail) { lastRev = j.detail.Rev; } })
+            .catch(function () {});
+    }
+    function checkRevision() {
+        if (document.hidden || anyModalOpen()) { return; }   // don't refetch under an open editor or hidden tab
+        fetch(cfg.ajax + 'rev', { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                if (j.status !== 0 || !j.detail) { return; }
+                if (lastRev === null) { lastRev = j.detail.Rev; return; }
+                if (j.detail.Rev !== lastRev && !anyModalOpen()) {
+                    lastRev = j.detail.Rev;
+                    if (InvApp.refreshAll) { InvApp.refreshAll(); }   // reloads items + summary, then fires inv:datachanged
+                }
+            })
+            .catch(function () {});
+    }
+    function startPolling() {
+        if (pollTimer) { return; }
+        pollTimer = setInterval(checkRevision, INV_POLL_MS);
+        document.addEventListener('visibilitychange', function () { if (!document.hidden) { checkRevision(); } });
+        window.addEventListener('focus', checkRevision);
+        syncRevision();   // establish the baseline from the server-rendered initial state
+    }
+
+    /* ---- wiring ---- */
+    // Charts re-render whenever a CRUD op (add/edit/remove/restore/delete or a
+    // poll-triggered refresh) fires inv:datachanged. refetchAndRender re-reads the
+    // summary so the charts are correct even if this section loaded independently.
+    app.addEventListener('inv:datachanged', refetchAndRender);
+
+    /* ---- init ---- */
+    renderAll();
+    startPolling();
+})();
+</script>
