@@ -346,6 +346,45 @@ html[data-theme="dark"] .inv-seg button.inv-seg-on { background: #6366f1; }
     </div>
 </div>
 
+<!-- Remove-from-inventory modal (reason + optional note) -->
+<div class="inv-modal-overlay" id="inv-remove-overlay" aria-hidden="true">
+    <div class="inv-modal inv-confirm-box" role="dialog" aria-modal="true" aria-labelledby="inv-remove-title">
+        <div class="inv-modal-head">
+            <h2 id="inv-remove-title">Remove from Inventory</h2>
+            <button class="inv-modal-close" type="button" data-inv-remove-close aria-label="Close">&times;</button>
+        </div>
+        <form id="inv-remove-form" autocomplete="off">
+            <div class="inv-modal-body">
+                <input type="hidden" name="id" id="inv-r-id" value="">
+                <p style="margin:0 0 14px;color:var(--ork-text-muted);font-size:0.85rem;">
+                    Mark this item as no longer owned by the org. It moves to the Removed list
+                    and is excluded from active totals (the record and its audit trail are kept).
+                </p>
+                <div class="inv-field">
+                    <label class="inv-label" for="inv-r-reason">Reason</label>
+                    <select class="inv-select" id="inv-r-reason" name="removal_reason">
+                        <option value="">Select a reason&hellip;</option>
+                        <?php foreach ($removal_reasons as $k => $lbl): ?>
+                        <option value="<?= htmlspecialchars($k) ?>"><?= htmlspecialchars($lbl) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <div class="inv-field-err" data-err="removal_reason">Choose a reason for removal.</div>
+                </div>
+                <div class="inv-field">
+                    <label class="inv-label" for="inv-r-note">Note <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--ork-text-muted);">(optional)</span></label>
+                    <textarea class="inv-textarea" id="inv-r-note" name="removal_note" maxlength="1000" placeholder="e.g. damaged at June war, disposed of on-site"></textarea>
+                </div>
+                <div class="inv-field-err" data-err="_form" style="text-align:center;"></div>
+            </div>
+            <div class="inv-modal-foot">
+                <button class="inv-btn" type="button" data-inv-remove-close>Cancel</button>
+                <button class="inv-btn inv-btn-primary" type="submit" id="inv-r-save"
+                        style="background:#c53030;border-color:#c53030;">Remove Item</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
 window.InvConfig = {
     ajax:            '<?= $ajaxBase ?>',
@@ -823,20 +862,93 @@ window.InvConfig = {
         });
     }
 
-    /* ---- remove / restore / delete (refined in the remove-reason modal section) ---- */
+    /* =====================================================
+       Remove / restore / delete flows
+       ----------------------------------------------------
+       Remove  : opens a modal (required reason + optional note) → POST removeitem.
+       Restore : tnConfirm → POST restoreitem (shown when the status filter = Removed).
+       Delete  : danger tnConfirm → POST deleteitem (quiet mis-entry correction).
+       ===================================================== */
+    var removeOverlay = document.getElementById('inv-remove-overlay');
+    var removeForm    = document.getElementById('inv-remove-form');
+    var removeIdEl    = document.getElementById('inv-r-id');
+    var removeReason  = document.getElementById('inv-r-reason');
+    var removeNote    = document.getElementById('inv-r-note');
+
+    function clearRemoveErrors() {
+        if (!removeForm) { return; }
+        Array.prototype.forEach.call(removeForm.querySelectorAll('.inv-field.inv-has-err'), function (f) { f.classList.remove('inv-has-err'); });
+        var fe = removeForm.querySelector('[data-err="_form"]');
+        if (fe) { fe.textContent = ''; fe.style.display = 'none'; }
+    }
+    function markRemoveError(field, msg) {
+        if (!removeForm) { return; }
+        if (field === '_form') {
+            var fe = removeForm.querySelector('[data-err="_form"]');
+            if (fe) { fe.textContent = msg; fe.style.display = 'block'; }
+            return;
+        }
+        var errEl = removeForm.querySelector('[data-err="' + field + '"]');
+        if (errEl) {
+            if (msg) { errEl.textContent = msg; }
+            var wrap = errEl.closest('.inv-field');
+            if (wrap) { wrap.classList.add('inv-has-err'); }
+        }
+    }
+    function closeRemoveModal() {
+        if (!removeOverlay) { return; }
+        removeOverlay.classList.remove('inv-open');
+        removeOverlay.setAttribute('aria-hidden', 'true');
+    }
     function removeItem(id) {
-        // Minimal reason prompt placeholder; the remove-reason modal section enhances this.
-        invConfirm({
-            title: 'Remove from Inventory',
-            body: 'Mark this item as no longer owned? It moves to the Removed list and is excluded from active totals.',
-            confirmLabel: 'Remove',
-            onConfirm: function () {
-                postForm('removeitem', { id: id, removal_reason: 'removal_other', removal_note: '' }).then(function (j) {
-                    if (j.status === 0) { refreshAll(); }
-                    else { invConfirm({ title: 'Remove failed', body: (j.error || 'Could not remove this item.'), confirmLabel: 'OK', cancelLabel: 'Close' }); }
-                });
-            }
+        if (!removeOverlay) { return; }
+        clearRemoveErrors();
+        if (removeForm) { removeForm.reset(); }
+        if (removeIdEl) { removeIdEl.value = id; }
+        if (removeReason) { removeReason.value = ''; }
+        if (removeNote) { removeNote.value = ''; }
+        removeOverlay.classList.add('inv-open');
+        removeOverlay.setAttribute('aria-hidden', 'false');
+        if (removeReason) { removeReason.focus(); }
+    }
+    function submitRemove(ev) {
+        ev.preventDefault();
+        clearRemoveErrors();
+        var id     = removeIdEl ? removeIdEl.value : '';
+        var reason = removeReason ? removeReason.value : '';
+        var note   = removeNote ? removeNote.value : '';
+        if (!reason) { markRemoveError('removal_reason'); return; }   // block submit with no reason
+
+        var saveBtn = document.getElementById('inv-r-save');
+        if (saveBtn) { saveBtn.disabled = true; }
+        postForm('removeitem', { id: id, removal_reason: reason, removal_note: note }).then(function (j) {
+            if (saveBtn) { saveBtn.disabled = false; }
+            if (j.status === 0) { closeRemoveModal(); refreshAll(); }
+            else { markRemoveError('_form', j.error || 'Could not remove this item.'); }
+        }).catch(function () {
+            if (saveBtn) { saveBtn.disabled = false; }
+            markRemoveError('_form', 'Network error — please try again.');
         });
+    }
+    function bindRemoveModal() {
+        if (!removeOverlay) { return; }
+        Array.prototype.forEach.call(removeOverlay.querySelectorAll('[data-inv-remove-close]'), function (b) {
+            b.addEventListener('click', closeRemoveModal);
+        });
+        removeOverlay.addEventListener('click', function (e) { if (e.target === removeOverlay) { closeRemoveModal(); } });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && removeOverlay.classList.contains('inv-open')) { closeRemoveModal(); }
+        });
+        if (removeForm) { removeForm.addEventListener('submit', submitRemove); }
+        // Clear the reason error as soon as a reason is chosen.
+        if (removeReason) {
+            removeReason.addEventListener('change', function () {
+                if (removeReason.value) {
+                    var wrap = removeReason.closest('.inv-field');
+                    if (wrap) { wrap.classList.remove('inv-has-err'); }
+                }
+            });
+        }
     }
     function restoreItem(id) {
         invConfirm({
@@ -933,6 +1045,7 @@ window.InvConfig = {
     /* ---- init ---- */
     bindFilters();
     bindModal();
+    bindRemoveModal();
     if (cfg.initialItems && cfg.initialItems.Rows) { renderRows(cfg.initialItems); }
     else { loadItems(); }
     updateSortIndicators();
