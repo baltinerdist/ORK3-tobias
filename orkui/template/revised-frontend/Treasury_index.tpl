@@ -67,6 +67,7 @@ html[data-theme="dark"] .tr-card.tr-card-out .tr-card-val { color: #feb2b2; }
 
 /* Charts */
 .tr-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px; }
+.tr-charts .tr-chart-full { grid-column: 1 / -1; }
 .tr-chart-card {
     background: var(--ork-card-bg); border: 1px solid var(--ork-border);
     border-radius: 10px; padding: 8px 12px 12px;
@@ -282,13 +283,17 @@ html[data-theme="dark"] .tr-badge-opening { background: #6366f1; }
     </div>
 
     <div class="tr-charts">
-        <div class="tr-chart-card">
+        <div class="tr-chart-card tr-chart-full">
             <div class="tr-chart-title">Balance Over Time</div>
-            <div id="tr-chart-balance" style="height:240px"></div>
+            <div id="tr-chart-balance" style="height:120px"></div>
         </div>
         <div class="tr-chart-card">
-            <div class="tr-chart-title">By Category</div>
-            <div id="tr-chart-cats" style="height:240px"></div>
+            <div class="tr-chart-title">Income by Category</div>
+            <div id="tr-chart-income" style="height:240px"></div>
+        </div>
+        <div class="tr-chart-card">
+            <div class="tr-chart-title">Expenses by Category</div>
+            <div id="tr-chart-expense" style="height:240px"></div>
         </div>
     </div>
 
@@ -1408,10 +1413,10 @@ window.TrConfig = {
 <script>
 /* =====================================================
    Treasury — charts
-   • Balance Over Time: line chart from cfg.series (Month → Balance).
-   • By Category: pie from cfg.byCategory (key → total), labelled via
-     cfg.categories, coloured green for income / red for expense.
-   Both re-render after any CRUD by listening for the 'tr:datachanged'
+   • Balance Over Time: full-width column (bar) chart from cfg.series (Month → Balance).
+   • Two donuts from cfg.byCategory (key → total), split by group: Income
+     (green palette) and Expenses (red/orange palette), labelled via cfg.categories.
+   All re-render after any CRUD by listening for the 'tr:datachanged'
    event (dispatched by TrApp.refreshAll) — on which they
    refetch the `series` + `summary` endpoints so the charts stay in
    sync with the ledger. Dark-mode-aware via the _isDark pattern.
@@ -1425,7 +1430,12 @@ window.TrConfig = {
     var cfg = window.TrConfig || {};
 
     var balanceChart = null;
-    var catsChart    = null;
+    var catCharts    = { income: null, expense: null };
+    // Distinct slices within each donut (greens for income, reds/oranges for expense).
+    var CAT_PALETTE = {
+        income:  ['#2f855a', '#38a169', '#48bb78', '#68d391', '#276749', '#9ae6b4'],
+        expense: ['#c53030', '#e53e3e', '#dd6b20', '#ed8936', '#9b2c2c', '#f6ad55']
+    };
 
     function isDark() {
         return document.documentElement.getAttribute('data-theme') === 'dark';
@@ -1458,12 +1468,6 @@ window.TrConfig = {
         return MONTHS[(parseInt(m[2], 10) - 1) % 12] + ' ' + m[1];
     }
 
-    /* Is a category key an income (credit) category? Defaults to expense. */
-    function isIncomeCat(key) {
-        var groups = cfg.categoryGroups || {};
-        return !!(groups.income && Object.prototype.hasOwnProperty.call(groups.income, key));
-    }
-
     function renderBalanceChart(points) {
         points = points || [];
         var categories = points.map(function (p) { return monthLabel(p.Month); });
@@ -1488,7 +1492,7 @@ window.TrConfig = {
         }
 
         balanceChart = new Highcharts.Chart({
-            chart: { renderTo: 'tr-chart-balance', type: 'areaspline', backgroundColor: 'transparent', style: { fontFamily: 'inherit' } },
+            chart: { renderTo: 'tr-chart-balance', type: 'column', backgroundColor: 'transparent', style: { fontFamily: 'inherit' } },
             title: { text: null },
             xAxis: {
                 categories: categories,
@@ -1499,14 +1503,8 @@ window.TrConfig = {
                 title: { text: null }, gridLineColor: ax.grid,
                 labels: { style: { color: ax.label, fontSize: '11px' }, formatter: function () { return money(this.value); } }
             },
-            series: [{
-                name: 'Balance', data: data, color: '#4338ca',
-                fillColor: {
-                    linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
-                    stops: [[0, 'rgba(67,56,202,0.30)'], [1, 'rgba(67,56,202,0.02)']]
-                },
-                marker: { enabled: true, radius: 3 }
-            }],
+            plotOptions: { column: { borderRadius: 2, borderWidth: 0, maxPointWidth: 48, pointPadding: 0.05, groupPadding: 0.08 } },
+            series: [{ name: 'Balance', data: data, color: '#4338ca' }],
             legend: { enabled: false },
             credits: { enabled: false },
             tooltip: Object.assign({
@@ -1516,44 +1514,42 @@ window.TrConfig = {
         });
     }
 
-    function renderCatsChart(byCategory) {
+    /* Render one donut for a single group ('income' or 'expense') from byCategory. */
+    function renderCatChart(group, hostId, byCategory) {
         byCategory = byCategory || {};
         var labels = cfg.categories || {};
+        var groupKeys = (cfg.categoryGroups && cfg.categoryGroups[group]) || {};
+        var palette = CAT_PALETTE[group] || ['#4338ca'];
         var data = [];
         Object.keys(byCategory).forEach(function (key) {
+            if (!Object.prototype.hasOwnProperty.call(groupKeys, key)) { return; }
             var val = Math.abs(Number(byCategory[key]) || 0);
             if (val <= 0) { return; }
-            data.push({
-                name: labels[key] || key,
-                y: val,
-                color: isIncomeCat(key) ? '#2f855a' : '#c53030'
-            });
+            data.push({ name: labels[key] || key, y: val, color: palette[data.length % palette.length] });
         });
-        var hostEl = document.getElementById('tr-chart-cats');
+        var hostEl = document.getElementById(hostId);
         if (!hostEl) { return; }
 
         if (!data.length) {
-            if (catsChart) { catsChart.destroy(); catsChart = null; }
-            hostEl.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center;color:var(--ork-text-muted);font-size:0.85rem;">No category activity yet.</div>';
+            if (catCharts[group]) { catCharts[group].destroy(); catCharts[group] = null; }
+            hostEl.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center;color:var(--ork-text-muted);font-size:0.85rem;">No ' + group + ' yet.</div>';
             return;
         }
 
         var dark = isDark();
-        if (catsChart) {
-            catsChart.update({ tooltip: tooltipOpts() }, false);
-            catsChart.series[0].update({
-                dataLabels: { style: { color: dark ? '#e2e8f0' : '#333333' } }
-            }, false);
-            catsChart.series[0].setData(data, false);
-            catsChart.redraw();
+        if (catCharts[group]) {
+            catCharts[group].update({ tooltip: tooltipOpts() }, false);
+            catCharts[group].series[0].update({ dataLabels: { style: { color: dark ? '#e2e8f0' : '#333333' } } }, false);
+            catCharts[group].series[0].setData(data, false);
+            catCharts[group].redraw();
             return;
         }
 
-        catsChart = new Highcharts.Chart({
-            chart: { renderTo: 'tr-chart-cats', type: 'pie', backgroundColor: 'transparent', style: { fontFamily: 'inherit' } },
+        catCharts[group] = new Highcharts.Chart({
+            chart: { renderTo: hostId, type: 'pie', backgroundColor: 'transparent', style: { fontFamily: 'inherit' } },
             title: { text: null },
             series: [{
-                name: 'Total', data: data, innerSize: '55%',
+                name: group === 'income' ? 'Income' : 'Expenses', data: data, innerSize: '55%',
                 dataLabels: {
                     enabled: true,
                     formatter: function () { return this.point.name + ': ' + money(this.y); },
@@ -1571,7 +1567,8 @@ window.TrConfig = {
 
     function renderAll() {
         renderBalanceChart(cfg.series || []);
-        renderCatsChart(cfg.byCategory || {});
+        renderCatChart('income', 'tr-chart-income', cfg.byCategory || {});
+        renderCatChart('expense', 'tr-chart-expense', cfg.byCategory || {});
     }
 
     /* Refetch the data the charts depend on, then re-render. Called after any
