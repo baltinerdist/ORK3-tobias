@@ -623,7 +623,8 @@ window.TrConfig = {
         // cfg.ajax already ends in '?Route=...'; append params with '&' (a 2nd '?' breaks routing).
         return fetch(cfg.ajax + 'ledger&' + filterQuery(), { credentials: 'same-origin' })
             .then(function (r) { return r.json(); })
-            .then(function (j) { if (j.status === 0) { renderRows(j.detail); } return j; });
+            .then(function (j) { if (j.status === 0) { renderRows(j.detail); } return j; })
+            .catch(function (e) { console.log('[Treasury] loadLedger failed', e); });
     }
 
     /* Refresh the summary cards (Current Balance, Total In/Out, Entries). */
@@ -639,7 +640,8 @@ window.TrConfig = {
                 set('tr-out', s.TotalOut);
                 cfg.byCategory = s.ByCategory || {};
                 return j;
-            });
+            })
+            .catch(function (e) { console.log('[Treasury] refreshSummary failed', e); });
     }
 
     /* Reload everything affected by a CRUD operation; charts listen for tr:datachanged. */

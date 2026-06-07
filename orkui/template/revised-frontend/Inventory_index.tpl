@@ -585,7 +585,8 @@ window.InvConfig = {
         // cfg.ajax already ends in '?Route=...'; append params with '&' (a 2nd '?' breaks routing).
         return fetch(cfg.ajax + 'items&' + itemsQuery(), { credentials: 'same-origin' })
             .then(function (r) { return r.json(); })
-            .then(function (j) { if (j.status === 0) { renderRows(j.detail); } return j; });
+            .then(function (j) { if (j.status === 0) { renderRows(j.detail); } return j; })
+            .catch(function (e) { console.log('[Inventory] loadItems failed', e); });
     }
 
     /* Refresh the four summary cards (Total Value / Units / Line Items / Needs Repair). */
@@ -604,7 +605,8 @@ window.InvConfig = {
                 setTxt('inv-needs-repair', Number(s.NeedsRepair) || 0);
                 cfg.summary = s;
                 return j;
-            });
+            })
+            .catch(function (e) { console.log('[Inventory] loadSummary failed', e); });
     }
 
     /* Reload everything affected by a CRUD operation; charts listen for inv:datachanged. */

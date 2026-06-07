@@ -72,7 +72,7 @@ class Treasury extends Ork3 {
 	}
 
 	/** Running balance over non-deleted entries up to (and including) $upToDate (null = all). */
-	public function ComputeBalanceAsOf($owner_type, $owner_id, $upToDate = null) {
+	private function ComputeBalanceAsOf($owner_type, $owner_id, $upToDate = null) {
 		global $DB;
 		$owner_type = $this->normType($owner_type);
 		$owner_id   = (int)$owner_id;
@@ -341,6 +341,10 @@ class Treasury extends Ork3 {
 		$where = "owner_type='$owner_type' AND owner_id=$owner_id AND deleted_at IS NULL";
 		if ($from) { $where .= " AND entry_date >= '" . addslashes($from) . "'"; }
 		if ($to)   { $where .= " AND entry_date <= '" . addslashes($to) . "'"; }
+		// Anchor to the opening baseline so period totals stay consistent with CurrentBalance,
+		// which excludes pre-opening entries (mirrors ComputeBalanceAsOf/GetLedger/GetBalanceSeries).
+		$open = $this->openingRecon($owner_type, $owner_id);
+		if ($open) { $where .= " AND entry_date >= '" . addslashes($open['as_of_date']) . "'"; }
 		$DB->Clear();
 		$rs = $DB->DataSet("SELECT direction, category,
 			COALESCE(SUM(amount),0) AS total
