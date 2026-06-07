@@ -136,4 +136,122 @@ class Inventory extends Ork3
             'ByCondition' => $byCond,
         ]);
     }
+
+    private function writeAudit($item_id, $action, $mundane_id, $before, $after)
+    {
+        $this->audit->clear();
+        $this->audit->item_id    = (int)$item_id;
+        $this->audit->action     = $action;
+        $this->audit->changed_by = (int)$mundane_id;
+        $this->audit->changed_at = date('Y-m-d H:i:s');
+        // yapo drops null fields from INSERT; '' clears the column instead of leaving it stale.
+        $this->audit->before_json = $before === null ? '' : json_encode($before);
+        $this->audit->after_json  = $after  === null ? '' : json_encode($after);
+        $this->audit->save();
+    }
+
+    private function itemToArray()
+    {
+        return [
+            'id'                => $this->item->id,
+            'owner_type'        => $this->item->owner_type,
+            'owner_id'          => $this->item->owner_id,
+            'name'              => $this->item->name,
+            'category'          => $this->item->category,
+            'quantity'          => $this->item->quantity,
+            'condition'         => $this->item->condition,
+            'unit_value'        => $this->item->unit_value,
+            'location'          => $this->item->location,
+            'held_by'           => $this->item->held_by,
+            'held_by_player_id' => $this->item->held_by_player_id,
+            'acquired_date'     => $this->item->acquired_date,
+            'notes'             => $this->item->notes,
+            'removed_at'        => $this->item->removed_at,
+            'removal_reason'    => $this->item->removal_reason,
+            'removal_note'      => $this->item->removal_note,
+            'deleted_at'        => $this->item->deleted_at,
+        ];
+    }
+
+    /** Load an owned, non-deleted item into $this->item; false if not found / not owned. */
+    private function loadOwnedItem($id, $owner_type, $owner_id)
+    {
+        $this->item->clear();
+        $this->item->id = (int)$id;
+        if (!$this->item->find() || $this->item->deleted_at !== null
+            || (int)$this->item->owner_id !== (int)$owner_id
+            || $this->item->owner_type !== $this->normType($owner_type)) {
+            return false;
+        }
+        return true;
+    }
+
+    /** Create or edit. $data: owner_type, owner_id, [id], name, category, quantity, condition,
+     *  unit_value, location, held_by, held_by_player_id, acquired_date, notes. */
+    public function SaveItem($token, $data)
+    {
+        $mundane_id = $this->authFor($token, $data['owner_type'] ?? '', $data['owner_id'] ?? 0);
+        if (!$mundane_id) { return NoAuthorization(); }
+
+        $name      = trim((string)($data['name'] ?? ''));
+        $cat       = (string)($data['category'] ?? '');
+        $qty       = (int)($data['quantity'] ?? 0);
+        $cond      = (string)($data['condition'] ?? 'good');
+        $unitValue = round((float)($data['unit_value'] ?? 0), 2);
+        $acquired  = (string)($data['acquired_date'] ?? '');
+
+        if ($name === '')                  { return InvalidParameter('Name is required.'); }
+        if (!$this->validCategory($cat))   { return InvalidParameter('Unknown category.'); }
+        if ($qty < 1)                      { return InvalidParameter('Quantity must be at least 1.'); }
+        if (!$this->validCondition($cond)) { return InvalidParameter('Unknown condition.'); }
+        if ($acquired !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $acquired)) {
+            return InvalidParameter('Invalid acquired date.');
+        }
+
+        $isEdit = !empty($data['id']);
+        $before = null;
+        if ($isEdit) {
+            if (!$this->loadOwnedItem($data['id'], $data['owner_type'], $data['owner_id'])) {
+                return InvalidParameter('Item not found.');
+            }
+            $before = $this->itemToArray();
+        } else {
+            $this->item->clear();
+            $this->item->owner_type = $this->normType($data['owner_type']);
+            $this->item->owner_id   = (int)$data['owner_id'];
+            $this->item->created_by = $mundane_id;
+            $this->item->created_at = date('Y-m-d H:i:s');
+            // new items start active
+            $this->item->removal_reason = '';
+            $this->item->removal_note   = '';
+        }
+        $this->item->name       = $name;
+        $this->item->category   = $cat;
+        $this->item->quantity   = $qty;
+        $this->item->condition  = $cond;
+        $this->item->unit_value = $unitValue;
+        // yapo drops null fields; assign '' / 0 to clear an optional column rather than leave it stale.
+        $this->item->location   = (string)($data['location'] ?? '');
+        $this->item->held_by    = (string)($data['held_by'] ?? '');
+        $this->item->held_by_player_id = (isset($data['held_by_player_id']) && (int)$data['held_by_player_id'] > 0)
+            ? (int)$data['held_by_player_id'] : 0;
+        $this->item->notes      = (string)($data['notes'] ?? '');
+        // acquired_date is genuinely nullable in the schema; '' must become NULL.
+        $this->item->acquired_date = $acquired !== '' ? $acquired : null;
+        if ($isEdit) { $this->item->updated_at = date('Y-m-d H:i:s'); }
+        $this->item->save();
+
+        $id = (int)$this->item->id;
+        $this->writeAudit($id, $isEdit ? 'edit' : 'create', $mundane_id, $before, $this->itemToArray());
+        return Success(['Id' => $id]);
+    }
+
+    public function GetItem($token, $owner_type, $owner_id, $id)
+    {
+        if (!$this->authFor($token, $owner_type, $owner_id)) { return NoAuthorization(); }
+        if (!$this->loadOwnedItem($id, $owner_type, $owner_id)) {
+            return InvalidParameter('Item not found.');
+        }
+        return Success($this->itemToArray());
+    }
 }
