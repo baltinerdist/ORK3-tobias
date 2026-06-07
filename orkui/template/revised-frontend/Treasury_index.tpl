@@ -295,7 +295,7 @@ html[data-theme="dark"] .tr-badge-opening { background: #6366f1; }
                 <th class="tr-num">In</th><th class="tr-num">Out</th><th class="tr-num">Balance</th><th></th>
             </tr>
         </thead>
-        <tbody id="tr-ledger-body"><!-- rendered by JS (Task 9) --></tbody>
+        <tbody id="tr-ledger-body"><!-- rendered by JS --></tbody>
     </table>
     <div class="tr-pager" id="tr-pager"></div>
 
@@ -312,7 +312,7 @@ html[data-theme="dark"] .tr-badge-opening { background: #6366f1; }
                     <th>Recorded</th>
                 </tr>
             </thead>
-            <tbody id="tr-recon-body"><!-- rendered by JS (Task 10) --></tbody>
+            <tbody id="tr-recon-body"><!-- rendered by JS --></tbody>
         </table>
     </div>
 </div>
@@ -454,7 +454,7 @@ window.TrConfig = {
 
 <script>
 /* =====================================================
-   Treasury — ledger render, add/edit modal, delete (Task 9)
+   Treasury — ledger render, add/edit modal, delete
    Exposes window.TrApp so later sections (reconcile, charts)
    can trigger refreshes via TrApp / the 'tr:datachanged' event.
    ===================================================== */
@@ -604,7 +604,7 @@ window.TrConfig = {
             });
     }
 
-    /* Reload everything affected by a CRUD operation; charts (Task 11) listen for tr:datachanged. */
+    /* Reload everything affected by a CRUD operation; charts listen for tr:datachanged. */
     function refreshAll() {
         return Promise.all([loadLedger(), refreshSummary()]).then(function () {
             app.dispatchEvent(new CustomEvent('tr:datachanged', { bubbles: true }));
@@ -870,11 +870,11 @@ window.TrConfig = {
 
 <script>
 /* =====================================================
-   Treasury — reconciliation panel + opening-balance flow (Task 10)
+   Treasury — reconciliation panel + opening-balance flow
    "Reconcile" records a snapshot of the real-world balance and compares
    it against the computed balance as of the chosen date. The first
    reconciliation (no opening yet) seeds the opening baseline.
-   Relies on window.TrApp (Task 9) for shared helpers/refresh.
+   Relies on window.TrApp for shared helpers/refresh.
    ===================================================== */
 (function () {
     'use strict';
@@ -1198,12 +1198,12 @@ window.TrConfig = {
 
 <script>
 /* =====================================================
-   Treasury — charts (Task 11)
+   Treasury — charts
    • Balance Over Time: line chart from cfg.series (Month → Balance).
    • By Category: pie from cfg.byCategory (key → total), labelled via
      cfg.categories, coloured green for income / red for expense.
    Both re-render after any CRUD by listening for the 'tr:datachanged'
-   event (dispatched by TrApp.refreshAll in Task 9) — on which they
+   event (dispatched by TrApp.refreshAll) — on which they
    refetch the `series` + `summary` endpoints so the charts stay in
    sync with the ledger. Dark-mode-aware via the _isDark pattern.
    ===================================================== */
@@ -1373,7 +1373,7 @@ window.TrConfig = {
             .then(function (j) {
                 if (j.status === 0 && j.detail && j.detail.Points) { cfg.series = j.detail.Points; }
             }).catch(function () {});
-        // refreshSummary() (Task 9) already updates cfg.byCategory on a datachanged cycle,
+        // refreshSummary() already updates cfg.byCategory on a datachanged cycle,
         // but fetch it here too so the chart is correct even if charts load independently.
         var sumP = fetch(cfg.ajax + 'summary', { credentials: 'same-origin' })
             .then(function (r) { return r.json(); })
