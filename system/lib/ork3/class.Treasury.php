@@ -107,13 +107,17 @@ class Treasury extends Ork3 {
 		global $DB;
 		$owner_type = $this->normType($owner_type);
 		$owner_id = (int)$owner_id;
-		$table = $owner_type === 'park' ? DB_PREFIX . 'park' : DB_PREFIX . 'kingdom';
-		$idcol = $owner_type === 'park' ? 'park_id' : 'kingdom_id';
 		$DB->Clear();
-		$rs = $DB->DataSet("SELECT name FROM $table WHERE $idcol=$owner_id LIMIT 1");
 		$name = '';
-		if ($rs && $rs->Next()) { $name = $rs->name; }
-		return Success(array('Name' => $name));
+		$kingdom_id = $owner_id;
+		if ($owner_type === 'park') {
+			$rs = $DB->DataSet("SELECT name, kingdom_id FROM " . DB_PREFIX . "park WHERE park_id=$owner_id LIMIT 1");
+			if ($rs && $rs->Next()) { $name = $rs->name; $kingdom_id = (int)$rs->kingdom_id; }
+		} else {
+			$rs = $DB->DataSet("SELECT name FROM " . DB_PREFIX . "kingdom WHERE kingdom_id=$owner_id LIMIT 1");
+			if ($rs && $rs->Next()) { $name = $rs->name; }
+		}
+		return Success(array('Name' => $name, 'KingdomId' => (int)$kingdom_id));
 	}
 
 	/* ---- Treasury module: entry CRUD + audit ---- */
@@ -148,6 +152,7 @@ class Treasury extends Ork3 {
 			'payment_method' => $this->entry->payment_method,
 			'description'    => $this->entry->description,
 			'counterparty'   => $this->entry->counterparty,
+			'counterparty_player_id' => $this->entry->counterparty_player_id,
 			'reference_no'   => $this->entry->reference_no,
 			'deleted_at'     => $this->entry->deleted_at,
 		);
@@ -196,6 +201,7 @@ class Treasury extends Ork3 {
 		// yapo drops null fields; assign '' to clear an optional column rather than leave it stale.
 		$this->entry->counterparty   = ($data['counterparty'] ?? '') !== '' ? $data['counterparty'] : '';
 		$this->entry->reference_no   = ($data['reference_no'] ?? '') !== '' ? $data['reference_no'] : '';
+		$this->entry->counterparty_player_id = (isset($data['counterparty_player_id']) && (int)$data['counterparty_player_id'] > 0) ? (int)$data['counterparty_player_id'] : 0;
 		if ($isEdit) { $this->entry->updated_at = date('Y-m-d H:i:s'); }
 		$this->entry->save();
 
@@ -244,7 +250,7 @@ class Treasury extends Ork3 {
 		if ($openDate) { $balWhere .= " AND entry_date >= '" . addslashes($openDate) . "'"; }
 		$DB->Clear();
 		$rs = $DB->DataSet("SELECT id, entry_date, direction, amount, category, payment_method,
-			description, counterparty, reference_no
+			description, counterparty, counterparty_player_id, reference_no
 			FROM " . DB_PREFIX . "treasury_entry WHERE $balWhere
 			ORDER BY entry_date ASC, id ASC");
 
@@ -273,6 +279,7 @@ class Treasury extends Ork3 {
 				'PaymentMethod'  => $rs->payment_method,
 				'Description'    => $rs->description,
 				'Counterparty'   => $rs->counterparty,
+				'CounterpartyPlayerId' => (int)$rs->counterparty_player_id,
 				'ReferenceNo'    => $rs->reference_no,
 				'RunningBalance' => $bal,
 			);

@@ -173,6 +173,30 @@ html[data-theme="dark"] .tr-seg button.tr-seg-on { background: #6366f1; }
 html[data-theme="dark"] .tr-seg.tr-seg-credit button.tr-seg-on { background: #38a169; }
 html[data-theme="dark"] .tr-seg.tr-seg-debit button.tr-seg-on { background: #e53e3e; }
 
+/* Blue inline hint (e.g. negative-amount notice) */
+.tr-hint { display: none; margin-top: 5px; font-size: 0.78rem; color: #2b6cb0; }
+.tr-hint.tr-hint-show { display: block; }
+html[data-theme="dark"] .tr-hint { color: #63b3ed; }
+
+/* To/From player checkbox */
+.tr-check { display: inline-flex; align-items: center; gap: 6px; font-size: 0.78rem; font-weight: 600; color: var(--ork-text-secondary); cursor: pointer; text-transform: none; letter-spacing: 0; margin: 0 0 5px; }
+.tr-check input { margin: 0; cursor: pointer; }
+
+/* Player-search autocomplete (scoped) — absolute within a relative field, above modal */
+.tr-ac-wrap { position: relative; }
+.tr-ac-results {
+    position: absolute; left: 0; right: 0; top: 100%; z-index: 10001;
+    margin-top: 4px; max-height: 220px; overflow-y: auto; display: none;
+    background: var(--ork-card-bg); border: 1px solid var(--ork-input-border);
+    border-radius: 6px; box-shadow: 0 6px 18px rgba(0,0,0,.28);
+}
+.tr-ac-results.tr-ac-open { display: block; }
+.tr-ac-item { padding: 8px 11px; font-size: 0.84rem; cursor: pointer; color: var(--ork-text); border-bottom: 1px solid var(--ork-border); }
+.tr-ac-item:last-child { border-bottom: none; }
+.tr-ac-item:hover, .tr-ac-item.tr-ac-focused { background: rgba(99,102,241,.16); }
+.tr-ac-item.tr-ac-empty { color: var(--ork-text-muted); cursor: default; }
+.tr-ac-item .tr-ac-meta { color: var(--ork-text-muted); font-size: 0.72rem; }
+
 /* tnConfirm fallback dialog (when Tournament helper not present) */
 .tr-confirm-box { max-width: 420px; }
 .tr-confirm-box .tr-modal-body { font-size: 0.9rem; color: var(--ork-text); }
@@ -343,8 +367,9 @@ html[data-theme="dark"] .tr-badge-opening { background: #6366f1; }
                     </div>
                     <div class="tr-field">
                         <label class="tr-label" for="tr-e-amount">Amount</label>
-                        <input class="tr-input" type="number" step="0.01" min="0.01" id="tr-e-amount" name="amount" placeholder="0.00">
+                        <input class="tr-input" type="text" inputmode="decimal" id="tr-e-amount" name="amount" placeholder="0.00" autocomplete="off">
                         <div class="tr-field-err" data-err="amount">Enter an amount greater than zero.</div>
+                        <div class="tr-hint" id="tr-e-amount-hint">No need to enter it as a negative, Money Out takes care of that.</div>
                     </div>
                 </div>
                 <div class="tr-field">
@@ -367,9 +392,14 @@ html[data-theme="dark"] .tr-badge-opening { background: #6366f1; }
                     <input class="tr-input" type="text" id="tr-e-description" name="description" maxlength="255" placeholder="What was this for?">
                 </div>
                 <div class="tr-field-row">
-                    <div class="tr-field">
-                        <label class="tr-label" for="tr-e-counterparty">Counterparty</label>
+                    <div class="tr-field tr-ac-wrap" id="tr-e-cp-field">
+                        <label class="tr-label" id="tr-e-cp-label" for="tr-e-counterparty">Counterparty</label>
+                        <label class="tr-check"><input type="checkbox" id="tr-e-toplayer"> To / From a player?</label>
                         <input class="tr-input" type="text" id="tr-e-counterparty" name="counterparty" maxlength="255" placeholder="Paid to / received from">
+                        <input class="tr-input" type="text" id="tr-e-player-text" placeholder="Search players&hellip;" autocomplete="off" style="display:none">
+                        <input type="hidden" id="tr-e-counterparty-player-id" name="counterparty_player_id" value="0">
+                        <div class="tr-ac-results" id="tr-e-player-results"></div>
+                        <div class="tr-field-err" data-err="counterparty_player_id">Select a player from the list.</div>
                     </div>
                     <div class="tr-field">
                         <label class="tr-label" for="tr-e-reference">Reference #</label>
@@ -440,8 +470,10 @@ html[data-theme="dark"] .tr-badge-opening { background: #6366f1; }
 <script>
 window.TrConfig = {
     ajax:           '<?= $ajaxBase ?>',
+    uir:            '<?= UIR ?>',
     ownerType:      '<?= $owner_type === 'park' ? 'park' : 'kingdom' ?>',
     ownerId:        <?= (int)$owner_id ?>,
+    kingdomId:      <?= (int)($kingdom_id ?? 0) ?>,
     categories:     <?= json_encode($catFlat) ?>,
     categoryGroups: <?= json_encode($categories) ?>,
     hasOpening:     <?= $has_opening ? 'true' : 'false' ?>,
@@ -541,7 +573,7 @@ window.TrConfig = {
                     '<td>' + escapeHtml(cfg.categories[r.Category] || r.Category) + '</td>' +
                     '<td>' + escapeHtml(methodLabel(r.PaymentMethod)) + '</td>' +
                     '<td>' + escapeHtml(r.Description || '') + '</td>' +
-                    '<td>' + escapeHtml(r.Counterparty || '') + '</td>' +
+                    '<td>' + cpCell(r) + '</td>' +
                     '<td class="tr-num">' + (r.Direction === 'credit' ? money(r.Amount) : '') + '</td>' +
                     '<td class="tr-num">' + (r.Direction === 'debit' ? money(r.Amount) : '') + '</td>' +
                     '<td class="tr-num">' + money(r.RunningBalance) + '</td>' +
@@ -649,24 +681,127 @@ window.TrConfig = {
     var dateInput = document.getElementById('tr-e-date');
     var fpEntry   = null;
 
-    /* Build the grouped category <select> from the config (income/expense optgroups). */
-    function buildCategoryOptions() {
+    /* Amount field — strip signs/parens and nudge on Money Out. */
+    var amountInput = document.getElementById('tr-e-amount');
+    var amountHint  = document.getElementById('tr-e-amount-hint');
+    function hideAmountHint() { if (amountHint) { amountHint.classList.remove('tr-hint-show'); } }
+    function handleAmountInput() {
+        if (!amountInput) { return; }
+        var raw = amountInput.value;
+        var hadSign = /[-()]/.test(raw);
+        var cleaned = raw.replace(/[^0-9.]/g, '');
+        if (cleaned !== raw) {
+            var drop = raw.length - cleaned.length;
+            var pos  = (amountInput.selectionStart || 0) - drop;
+            amountInput.value = cleaned;
+            try { amountInput.setSelectionRange(Math.max(0, pos), Math.max(0, pos)); } catch (e) {}
+        }
+        if (hadSign && dirHidden.value === 'debit' && amountHint) { amountHint.classList.add('tr-hint-show'); }
+    }
+
+    /* Counterparty / player-picker (scoped player search inside the modal). */
+    var cpLabel    = document.getElementById('tr-e-cp-label');
+    var cpText     = document.getElementById('tr-e-counterparty');
+    var toPlayerCb = document.getElementById('tr-e-toplayer');
+    var playerText = document.getElementById('tr-e-player-text');
+    var playerId   = document.getElementById('tr-e-counterparty-player-id');
+    var playerRes  = document.getElementById('tr-e-player-results');
+    var playerTimer = null;
+
+    function closePlayerResults() { if (playerRes) { playerRes.classList.remove('tr-ac-open'); playerRes.innerHTML = ''; } }
+    function setPlayerMode(on) {
+        if (!toPlayerCb) { return; }
+        toPlayerCb.checked = !!on;
+        if (on) {
+            cpLabel.textContent = 'Player';
+            cpText.style.display = 'none';
+            playerText.style.display = '';
+        } else {
+            cpLabel.textContent = 'Counterparty';
+            cpText.style.display = '';
+            playerText.style.display = 'none';
+            if (playerId) { playerId.value = '0'; }
+            closePlayerResults();
+        }
+    }
+    function runPlayerSearch() {
+        if (playerId) { playerId.value = '0'; }   // typing invalidates a prior pick
+        var term = playerText.value.trim();
+        if (term.length < 2) { closePlayerResults(); return; }
+        clearTimeout(playerTimer);
+        playerTimer = setTimeout(function () {
+            // UIR already ends in '?Route=', so query params use '&' (a 2nd '?' empties $_GET['q']).
+            var url = cfg.uir + 'KingdomAjax/playersearch/' + (cfg.kingdomId || 0) +
+                '&scope=own&include_inactive=1&q=' + encodeURIComponent(term);
+            fetch(url, { credentials: 'same-origin' })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (!Array.isArray(data) || !data.length) {
+                        playerRes.innerHTML = '<div class="tr-ac-item tr-ac-empty">No players found</div>';
+                        playerRes.classList.add('tr-ac-open');
+                        return;
+                    }
+                    playerRes.innerHTML = data.map(function (p) {
+                        var meta = (p.KAbbr || '') + (p.PAbbr ? ':' + p.PAbbr : '');
+                        return '<div class="tr-ac-item" tabindex="-1" data-id="' + p.MundaneId +
+                            '" data-name="' + encodeURIComponent(p.Persona || '') + '">' +
+                            escapeHtml(p.Persona || '') + ' <span class="tr-ac-meta">(' + escapeHtml(meta) + ')</span>' +
+                            (p.Active === 0 ? ' <span class="tr-ac-meta">&mdash; inactive</span>' : '') + '</div>';
+                    }).join('');
+                    playerRes.classList.add('tr-ac-open');
+                })
+                .catch(function () { closePlayerResults(); });
+        }, 250);
+    }
+    function choosePlayer(item) {
+        if (!item) { return; }
+        playerText.value = decodeURIComponent(item.getAttribute('data-name') || '');
+        if (playerId) { playerId.value = item.getAttribute('data-id') || '0'; }
+        closePlayerResults();
+    }
+    function playerKeyNav(e) {
+        if (!playerRes) { return; }
+        var items = playerRes.querySelectorAll('.tr-ac-item[data-id]');
+        if (!items.length) { return; }
+        var cur = playerRes.querySelector('.tr-ac-item.tr-ac-focused');
+        var idx = -1;
+        for (var i = 0; i < items.length; i++) { if (items[i] === cur) { idx = i; break; } }
+        if (e.key === 'ArrowDown') { e.preventDefault(); if (cur) { cur.classList.remove('tr-ac-focused'); } idx = Math.min(idx + 1, items.length - 1); items[idx].classList.add('tr-ac-focused'); items[idx].scrollIntoView({ block: 'nearest' }); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); if (cur) { cur.classList.remove('tr-ac-focused'); } idx = Math.max(idx - 1, 0); items[idx].classList.add('tr-ac-focused'); items[idx].scrollIntoView({ block: 'nearest' }); }
+        else if (e.key === 'Enter' && cur) { e.preventDefault(); choosePlayer(cur); }
+        else if (e.key === 'Escape') { closePlayerResults(); }
+    }
+
+    /* Counterparty cell — link to the player profile when one is attached. */
+    function cpCell(r) {
+        var name = escapeHtml(r.Counterparty || '');
+        if (name && r.CounterpartyPlayerId && r.CounterpartyPlayerId > 0) {
+            return '<a href="' + cfg.uir + 'Playernew/index/' + r.CounterpartyPlayerId + '">' + name + '</a>';
+        }
+        return name;
+    }
+
+    /* Build the category <select> for the active direction (Money In => Income, Money Out => Expense). */
+    function buildCategoryOptions(dir) {
         if (!catSelect) { return; }
+        var prev = catSelect.value;
+        dir = (dir === 'debit') ? 'debit' : (dirHidden ? dirHidden.value : 'credit');
+        var wantGroup  = (dir === 'debit') ? 'expense' : 'income';
+        var groups     = cfg.categoryGroups || {};
+        var groupLabel = (wantGroup === 'expense') ? 'Expense' : 'Income';
+        var items      = groups[wantGroup] || {};
         catSelect.innerHTML = '<option value="">Select…</option>';
-        var groups = cfg.categoryGroups || {};
-        var groupLabels = { income: 'Income', expense: 'Expense' };
-        Object.keys(groups).forEach(function (g) {
-            var og = document.createElement('optgroup');
-            og.label = groupLabels[g] || g;
-            var items = groups[g] || {};
-            Object.keys(items).forEach(function (k) {
-                var opt = document.createElement('option');
-                opt.value = k; opt.textContent = items[k];
-                opt.setAttribute('data-group', g);
-                og.appendChild(opt);
-            });
-            catSelect.appendChild(og);
+        var og = document.createElement('optgroup');
+        og.label = groupLabel;
+        Object.keys(items).forEach(function (k) {
+            var opt = document.createElement('option');
+            opt.value = k; opt.textContent = items[k];
+            opt.setAttribute('data-group', wantGroup);
+            og.appendChild(opt);
         });
+        catSelect.appendChild(og);
+        // Keep the selection only if it belongs to this direction's category set.
+        catSelect.value = (prev && items[prev]) ? prev : '';
     }
 
     function setDirection(dir) {
@@ -676,6 +811,8 @@ window.TrConfig = {
         Array.prototype.forEach.call(dirSeg.querySelectorAll('button'), function (b) {
             b.classList.toggle('tr-seg-on', b.getAttribute('data-dir') === dir);
         });
+        buildCategoryOptions(dir);
+        if (dir !== 'debit') { hideAmountHint(); }
     }
     function setMethod(method) {
         methodHid.value = method || '';
@@ -723,6 +860,9 @@ window.TrConfig = {
         document.getElementById('tr-e-id').value = '';
         setDirection('credit');
         setMethod('');
+        if (playerText) { playerText.value = ''; }
+        setPlayerMode(false);
+        hideAmountHint();
         if (fpEntry) { fpEntry.clear(); }
         else { dateInput.value = ''; }
         clearErrors();
@@ -735,7 +875,16 @@ window.TrConfig = {
         catSelect.value = e.category || '';
         setMethod(e.payment_method || '');
         document.getElementById('tr-e-description').value = e.description || '';
-        document.getElementById('tr-e-counterparty').value = e.counterparty || '';
+        var cpPid = parseInt(e.counterparty_player_id || 0, 10);
+        if (cpPid > 0) {
+            setPlayerMode(true);
+            playerText.value = e.counterparty || '';
+            cpText.value = '';
+            if (playerId) { playerId.value = String(cpPid); }
+        } else {
+            setPlayerMode(false);
+            cpText.value = e.counterparty || '';
+        }
         document.getElementById('tr-e-reference').value = e.reference_no || '';
         var d = e.entry_date || '';
         if (fpEntry) { fpEntry.setDate(d, true); } else { dateInput.value = d; }
@@ -766,6 +915,7 @@ window.TrConfig = {
         clearErrors();
         var id     = document.getElementById('tr-e-id').value;
         var isEdit = !!id;
+        var usingPlayer = !!(toPlayerCb && toPlayerCb.checked);
         var data = {
             entry_date:     dateInput.value || (fpEntry && fpEntry.input ? fpEntry.input.value : ''),
             direction:      dirHidden.value,
@@ -773,7 +923,8 @@ window.TrConfig = {
             category:       catSelect.value,
             payment_method: methodHid.value,
             description:    document.getElementById('tr-e-description').value,
-            counterparty:   document.getElementById('tr-e-counterparty').value,
+            counterparty:   usingPlayer ? playerText.value : cpText.value,
+            counterparty_player_id: usingPlayer ? (playerId.value || '0') : '0',
             reference_no:   document.getElementById('tr-e-reference').value
         };
 
@@ -783,6 +934,7 @@ window.TrConfig = {
         if (!(parseFloat(data.amount) > 0))               { markError('amount'); ok = false; }
         if (!data.category)                               { markError('category'); ok = false; }
         if (['cash', 'check', 'digital'].indexOf(data.payment_method) === -1) { markError('payment_method'); ok = false; }
+        if (usingPlayer && !(parseInt(data.counterparty_player_id, 10) > 0)) { markError('counterparty_player_id'); ok = false; }
         if (!ok) { return; }
 
         var saveBtn = document.getElementById('tr-e-save');
@@ -830,6 +982,26 @@ window.TrConfig = {
         });
         methodSeg.addEventListener('click', function (e) {
             var b = e.target.closest('button[data-method]'); if (b) { setMethod(b.getAttribute('data-method')); }
+        });
+        // Amount: strip signs/parens, hint on Money Out.
+        if (amountInput) { amountInput.addEventListener('input', handleAmountInput); }
+        // To/From player toggle + scoped player search.
+        if (toPlayerCb) {
+            toPlayerCb.addEventListener('change', function () { setPlayerMode(this.checked); if (this.checked) { playerText.focus(); } });
+        }
+        if (playerText) {
+            playerText.addEventListener('input', runPlayerSearch);
+            playerText.addEventListener('keydown', playerKeyNav);
+        }
+        if (playerRes) {
+            playerRes.addEventListener('click', function (e) {
+                var item = e.target.closest('.tr-ac-item[data-id]');
+                if (item) { choosePlayer(item); }
+            });
+        }
+        // Close the player dropdown on an outside click.
+        document.addEventListener('click', function (e) {
+            if (playerRes && !playerRes.contains(e.target) && e.target !== playerText) { closePlayerResults(); }
         });
         // Close handlers.
         Array.prototype.forEach.call(overlay.querySelectorAll('[data-tr-close]'), function (b) {

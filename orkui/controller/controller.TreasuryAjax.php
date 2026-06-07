@@ -69,6 +69,7 @@ class Controller_TreasuryAjax extends Controller
             'amount' => $_POST['amount'] ?? 0, 'category' => $_POST['category'] ?? '',
             'payment_method' => $_POST['payment_method'] ?? '', 'description' => $_POST['description'] ?? '',
             'counterparty' => $_POST['counterparty'] ?? '', 'reference_no' => $_POST['reference_no'] ?? '',
+            'counterparty_player_id' => $_POST['counterparty_player_id'] ?? 0,
         ];
     }
 

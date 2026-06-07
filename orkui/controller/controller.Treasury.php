@@ -33,7 +33,8 @@ class Controller_Treasury extends Controller
         $this->data['owner_id']   = $owner_id;
         $this->data['categories'] = Treasury::$CATEGORIES;
         $nameRes = $this->Treasury->get_owner_name($tok, $owner_type, $owner_id);
-        $this->data['org_name'] = ($nameRes['Status'] ?? 4) === 0 ? $nameRes['Detail']['Name'] : '';
+        $this->data['org_name']   = ($nameRes['Status'] ?? 4) === 0 ? $nameRes['Detail']['Name'] : '';
+        $this->data['kingdom_id'] = ($nameRes['Status'] ?? 4) === 0 ? (int)$nameRes['Detail']['KingdomId'] : 0;
 
         $hasOpen = $this->Treasury->has_opening($tok, $owner_type, $owner_id);
         $this->data['has_opening'] = ($hasOpen['Status'] ?? 4) === 0 ? (bool)$hasOpen['Detail']['HasOpening'] : false;
