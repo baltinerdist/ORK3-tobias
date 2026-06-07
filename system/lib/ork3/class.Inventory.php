@@ -254,4 +254,125 @@ class Inventory extends Ork3
         }
         return Success($this->itemToArray());
     }
+
+    /** Disposal: mark no longer owned, with a required reason + optional note. */
+    public function RemoveItem($token, $owner_type, $owner_id, $id, $reason, $note = '')
+    {
+        $mundane_id = $this->authFor($token, $owner_type, $owner_id);
+        if (!$mundane_id) { return NoAuthorization(); }
+        if (!$this->validReason($reason)) { return InvalidParameter('A removal reason is required.'); }
+        if (!$this->loadOwnedItem($id, $owner_type, $owner_id)) { return InvalidParameter('Item not found.'); }
+        if ($this->item->removed_at !== null) { return InvalidParameter('Item is already removed.'); }
+        $before = $this->itemToArray();
+        $this->item->removed_at     = date('Y-m-d H:i:s');
+        $this->item->removal_reason = $reason;
+        $this->item->removal_note   = trim((string)$note) !== '' ? trim((string)$note) : '';
+        $this->item->save();
+        $this->writeAudit((int)$id, 'remove', $mundane_id, $before, $this->itemToArray());
+        return Success();
+    }
+
+    /** Un-remove: return a disposed item to active inventory. */
+    public function RestoreItem($token, $owner_type, $owner_id, $id)
+    {
+        global $DB;
+        $mundane_id = $this->authFor($token, $owner_type, $owner_id);
+        if (!$mundane_id) { return NoAuthorization(); }
+        if (!$this->loadOwnedItem($id, $owner_type, $owner_id)) { return InvalidParameter('Item not found.'); }
+        if ($this->item->removed_at === null) { return InvalidParameter('Item is not removed.'); }
+        $before = $this->itemToArray();
+        // yapo drops a `null` SET from UPDATE (isset() is false for null), so removed_at would
+        // stay populated and the item never returns to active. Null it via a raw UPDATE; the
+        // reason/note (NOT NULL columns) clear correctly with '' through yapo.
+        $this->item->removal_reason = '';
+        $this->item->removal_note   = '';
+        $this->item->save();
+        $DB->Clear();
+        $DB->Execute("UPDATE " . DB_PREFIX . "inventory_item SET removed_at = NULL WHERE id = " . (int)$id);
+        $this->item->removed_at = null;
+        $this->writeAudit((int)$id, 'restore', $mundane_id, $before, $this->itemToArray());
+        return Success();
+    }
+
+    /** Soft-delete (mis-entry correction): remove from all views. */
+    public function DeleteItem($token, $owner_type, $owner_id, $id)
+    {
+        $mundane_id = $this->authFor($token, $owner_type, $owner_id);
+        if (!$mundane_id) { return NoAuthorization(); }
+        if (!$this->loadOwnedItem($id, $owner_type, $owner_id)) { return InvalidParameter('Item not found.'); }
+        $before = $this->itemToArray();
+        $this->item->deleted_at = date('Y-m-d H:i:s');
+        $this->item->save();
+        $this->writeAudit((int)$id, 'delete', $mundane_id, $before, null);
+        return Success();
+    }
+
+    /** Paged/filtered item list. $filters: category, condition, q, status(active|removed),
+     *  sort, dir, page, per. Active by default. */
+    public function GetItems($token, $owner_type, $owner_id, $filters = [])
+    {
+        global $DB;
+        if (!$this->authFor($token, $owner_type, $owner_id)) { return NoAuthorization(); }
+        $owner_type = $this->normType($owner_type); $owner_id = (int)$owner_id;
+
+        $status = ($filters['status'] ?? 'active') === 'removed' ? 'removed' : 'active';
+        $where  = "i.owner_type='$owner_type' AND i.owner_id=$owner_id AND i.deleted_at IS NULL";
+        $where .= $status === 'removed' ? " AND i.removed_at IS NOT NULL" : " AND i.removed_at IS NULL";
+        if (!empty($filters['category']))  { $where .= " AND i.category = '" . addslashes($filters['category']) . "'"; }
+        if (!empty($filters['condition'])) { $where .= " AND i.`condition` = '" . addslashes($filters['condition']) . "'"; }
+        if (!empty($filters['q']))         { $where .= " AND i.name LIKE '%" . addslashes($filters['q']) . "%'"; }
+
+        // Whitelist sortable columns; default name ASC.
+        $sortMap = [
+            'name' => 'i.name', 'category' => 'i.category', 'quantity' => 'i.quantity',
+            'condition' => "FIELD(i.`condition`,'new','good','fair','poor','needs_repair')",
+            'unit_value' => 'i.unit_value', 'total_value' => '(i.quantity*i.unit_value)',
+            'location' => 'i.location',
+        ];
+        $sortKey = $filters['sort'] ?? 'name';
+        $sortCol = $sortMap[$sortKey] ?? 'i.name';
+        $dir     = (strtolower($filters['dir'] ?? 'asc') === 'desc') ? 'DESC' : 'ASC';
+
+        $DB->Clear();
+        $cnt = $DB->DataSet("SELECT COUNT(*) AS n FROM " . DB_PREFIX . "inventory_item i WHERE $where");
+        $total = ($cnt && $cnt->Next()) ? (int)$cnt->n : 0;
+
+        $per  = max(1, (int)($filters['per'] ?? 25));
+        $page = max(1, (int)($filters['page'] ?? 1));
+        $off  = ($page - 1) * $per;
+
+        // LEFT JOIN mundane for the held-by display name (only when a player id is set).
+        $DB->Clear();
+        $rs = $DB->DataSet("SELECT i.id, i.name, i.category, i.quantity, i.`condition` AS cond,
+            i.unit_value, i.location, i.held_by, i.held_by_player_id,
+            i.acquired_date, i.notes, i.removed_at, i.removal_reason, i.removal_note,
+            TRIM(CONCAT(COALESCE(m.given_name,''),' ',COALESCE(m.surname,''))) AS player_name
+            FROM " . DB_PREFIX . "inventory_item i
+            LEFT JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = i.held_by_player_id AND i.held_by_player_id > 0
+            WHERE $where ORDER BY $sortCol $dir, i.id ASC LIMIT $off, $per");
+
+        $rows = [];
+        while ($rs && $rs->Next()) {
+            $heldName = $rs->held_by_player_id > 0 && trim($rs->player_name) !== ''
+                ? $rs->player_name : (string)$rs->held_by;
+            $rows[] = [
+                'Id'             => (int)$rs->id,
+                'Name'           => $rs->name,
+                'Category'       => $rs->category,
+                'Quantity'       => (int)$rs->quantity,
+                'Condition'      => $rs->cond,
+                'UnitValue'      => (float)$rs->unit_value,
+                'TotalValue'     => round((float)$rs->unit_value * (int)$rs->quantity, 2),
+                'Location'       => $rs->location,
+                'HeldBy'         => $heldName,
+                'HeldByPlayerId' => (int)$rs->held_by_player_id,
+                'AcquiredDate'   => $rs->acquired_date,
+                'Notes'          => $rs->notes,
+                'RemovedAt'      => $rs->removed_at,
+                'RemovalReason'  => $rs->removal_reason,
+                'RemovalNote'    => $rs->removal_note,
+            ];
+        }
+        return Success(['Rows' => $rows, 'Total' => $total, 'Page' => $page, 'Per' => $per, 'Status' => $status]);
+    }
 }
