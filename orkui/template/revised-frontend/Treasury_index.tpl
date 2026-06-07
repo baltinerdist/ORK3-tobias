@@ -28,6 +28,8 @@ $series          = is_array($series ?? null) ? $series : [];
 $summary += ['CurrentBalance' => 0, 'TotalIn' => 0, 'TotalOut' => 0, 'ByCategory' => []];
 ?>
 <script src="https://code.highcharts.com/highcharts.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <style>
 /* =====================================================
    Treasury tool — .tr-* (light defaults; dark via --ork-* + overrides)
@@ -114,6 +116,67 @@ html[data-theme="dark"] .tr-btn.tr-btn-primary:hover { background: #818cf8; }
 }
 .tr-pager button:disabled { opacity: .45; cursor: default; }
 
+/* Modal (in-product; no native dialogs) */
+.tr-modal-overlay {
+    position: fixed; inset: 0; background: rgba(15, 23, 42, .55);
+    display: none; align-items: flex-start; justify-content: center;
+    z-index: 10000; padding: 40px 16px; overflow-y: auto;
+}
+.tr-modal-overlay.tr-open { display: flex; }
+.tr-modal {
+    background: var(--ork-card-bg); color: var(--ork-text);
+    border: 1px solid var(--ork-border); border-radius: 12px;
+    width: 100%; max-width: 520px; box-shadow: 0 12px 40px rgba(0,0,0,.35);
+}
+.tr-modal-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px; border-bottom: 1px solid var(--ork-border);
+}
+.tr-modal-head h2 {
+    background: transparent; border: none; padding: 0; border-radius: 0; text-shadow: none;
+    margin: 0; font-size: 1.05rem; font-weight: 700; color: var(--ork-text);
+}
+.tr-modal-close { background: none; border: none; color: var(--ork-text-muted); font-size: 1.3rem; cursor: pointer; line-height: 1; padding: 0 2px; }
+.tr-modal-close:hover { color: var(--ork-text); }
+.tr-modal-body { padding: 16px 18px; }
+.tr-modal-foot { display: flex; gap: 8px; justify-content: flex-end; padding: 12px 18px 16px; border-top: 1px solid var(--ork-border); }
+
+/* Form fields */
+.tr-field { margin-bottom: 13px; }
+.tr-field-row { display: flex; gap: 12px; }
+.tr-field-row > .tr-field { flex: 1 1 0; margin-bottom: 13px; }
+.tr-label { display: block; font-size: 0.76rem; font-weight: 600; color: var(--ork-text-secondary); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .03em; }
+.tr-input, .tr-select, .tr-textarea {
+    width: 100%; box-sizing: border-box;
+    background: var(--ork-input-bg); border: 1px solid var(--ork-input-border); color: var(--ork-text);
+    border-radius: 6px; padding: 8px 10px; font-size: 0.88rem; font-family: inherit;
+}
+.tr-textarea { resize: vertical; min-height: 56px; }
+.tr-input:focus, .tr-select:focus, .tr-textarea:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99,102,241,.25); }
+.tr-field-err { color: #c53030; font-size: 0.78rem; margin-top: 5px; display: none; }
+html[data-theme="dark"] .tr-field-err { color: #feb2b2; }
+.tr-field.tr-has-err .tr-input, .tr-field.tr-has-err .tr-select { border-color: #c53030; }
+.tr-field.tr-has-err .tr-field-err { display: block; }
+
+/* Segmented control (direction + payment method) */
+.tr-seg { display: inline-flex; border: 1px solid var(--ork-input-border); border-radius: 7px; overflow: hidden; }
+.tr-seg button {
+    background: var(--ork-input-bg); color: var(--ork-text-secondary); border: none;
+    padding: 7px 14px; font-size: 0.84rem; font-weight: 600; cursor: pointer;
+    border-right: 1px solid var(--ork-input-border); line-height: 1.2;
+}
+.tr-seg button:last-child { border-right: none; }
+.tr-seg button.tr-seg-on { background: #4338ca; color: #fff; }
+html[data-theme="dark"] .tr-seg button.tr-seg-on { background: #6366f1; }
+.tr-seg.tr-seg-credit button.tr-seg-on { background: #2f855a; }
+.tr-seg.tr-seg-debit button.tr-seg-on { background: #c53030; }
+html[data-theme="dark"] .tr-seg.tr-seg-credit button.tr-seg-on { background: #38a169; }
+html[data-theme="dark"] .tr-seg.tr-seg-debit button.tr-seg-on { background: #e53e3e; }
+
+/* tnConfirm fallback dialog (when Tournament helper not present) */
+.tr-confirm-box { max-width: 420px; }
+.tr-confirm-box .tr-modal-body { font-size: 0.9rem; color: var(--ork-text); }
+
 @media (max-width: 820px) {
     .tr-cards { grid-template-columns: repeat(2, 1fr); }
     .tr-charts { grid-template-columns: 1fr; }
@@ -198,6 +261,75 @@ html[data-theme="dark"] .tr-btn.tr-btn-primary:hover { background: #818cf8; }
     <div class="tr-pager" id="tr-pager"></div>
 </div>
 
+<!-- Add / Edit entry modal (built/populated by JS) -->
+<div class="tr-modal-overlay" id="tr-entry-overlay" aria-hidden="true">
+    <div class="tr-modal" role="dialog" aria-modal="true" aria-labelledby="tr-entry-title">
+        <div class="tr-modal-head">
+            <h2 id="tr-entry-title">Add Entry</h2>
+            <button class="tr-modal-close" type="button" data-tr-close aria-label="Close">&times;</button>
+        </div>
+        <form id="tr-entry-form" autocomplete="off">
+            <div class="tr-modal-body">
+                <input type="hidden" name="id" id="tr-e-id" value="">
+                <input type="hidden" name="direction" id="tr-e-direction" value="credit">
+                <div class="tr-field">
+                    <label class="tr-label">Type</label>
+                    <div class="tr-seg tr-seg-credit" id="tr-e-dir-seg">
+                        <button type="button" data-dir="credit" class="tr-seg-on">Money In</button>
+                        <button type="button" data-dir="debit">Money Out</button>
+                    </div>
+                </div>
+                <div class="tr-field-row">
+                    <div class="tr-field">
+                        <label class="tr-label" for="tr-e-date">Date</label>
+                        <input class="tr-input" type="text" id="tr-e-date" name="entry_date" placeholder="Select date">
+                        <div class="tr-field-err" data-err="entry_date">A date is required.</div>
+                    </div>
+                    <div class="tr-field">
+                        <label class="tr-label" for="tr-e-amount">Amount</label>
+                        <input class="tr-input" type="number" step="0.01" min="0.01" id="tr-e-amount" name="amount" placeholder="0.00">
+                        <div class="tr-field-err" data-err="amount">Enter an amount greater than zero.</div>
+                    </div>
+                </div>
+                <div class="tr-field">
+                    <label class="tr-label" for="tr-e-category">Category</label>
+                    <select class="tr-select" id="tr-e-category" name="category"></select>
+                    <div class="tr-field-err" data-err="category">Choose a category.</div>
+                </div>
+                <div class="tr-field">
+                    <label class="tr-label">Payment Method</label>
+                    <div class="tr-seg" id="tr-e-method-seg">
+                        <button type="button" data-method="cash">Cash</button>
+                        <button type="button" data-method="check">Check</button>
+                        <button type="button" data-method="digital">Digital</button>
+                    </div>
+                    <input type="hidden" name="payment_method" id="tr-e-method" value="">
+                    <div class="tr-field-err" data-err="payment_method">Select a payment method.</div>
+                </div>
+                <div class="tr-field">
+                    <label class="tr-label" for="tr-e-description">Description</label>
+                    <input class="tr-input" type="text" id="tr-e-description" name="description" maxlength="255" placeholder="What was this for?">
+                </div>
+                <div class="tr-field-row">
+                    <div class="tr-field">
+                        <label class="tr-label" for="tr-e-counterparty">Counterparty</label>
+                        <input class="tr-input" type="text" id="tr-e-counterparty" name="counterparty" maxlength="255" placeholder="Paid to / received from">
+                    </div>
+                    <div class="tr-field">
+                        <label class="tr-label" for="tr-e-reference">Reference #</label>
+                        <input class="tr-input" type="text" id="tr-e-reference" name="reference_no" maxlength="64" placeholder="Check / receipt #">
+                    </div>
+                </div>
+                <div class="tr-field-err" data-err="_form" style="text-align:center;"></div>
+            </div>
+            <div class="tr-modal-foot">
+                <button class="tr-btn" type="button" data-tr-close>Cancel</button>
+                <button class="tr-btn tr-btn-primary" type="submit" id="tr-e-save">Save Entry</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
 window.TrConfig = {
     ajax:           '<?= $ajaxBase ?>',
@@ -210,4 +342,420 @@ window.TrConfig = {
     byCategory:     <?= json_encode($summary['ByCategory']) ?>,
     initialLedger:  <?= json_encode($ledger) ?>
 };
+</script>
+
+<script>
+/* =====================================================
+   Treasury — ledger render, add/edit modal, delete (Task 9)
+   Exposes window.TrApp so later sections (reconcile, charts)
+   can trigger refreshes via TrApp / the 'tr:datachanged' event.
+   ===================================================== */
+(function () {
+    'use strict';
+
+    var app = document.getElementById('tr-app');
+    if (!app) { return; }
+    var cfg = window.TrConfig || {};
+
+    var body   = document.getElementById('tr-ledger-body');
+    var pager  = document.getElementById('tr-pager');
+    var state  = { page: 1, per: 25, from: '', to: '', category: '', direction: '' };
+
+    /* ---- helpers ---- */
+    function money(n) {
+        return '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    function escapeHtml(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+    function methodLabel(m) {
+        return { cash: 'Cash', check: 'Check', digital: 'Digital' }[m] || (m || '');
+    }
+    function postForm(action, data) {
+        var fd = new URLSearchParams();
+        Object.keys(data).forEach(function (k) { fd.append(k, data[k] == null ? '' : data[k]); });
+        return fetch(cfg.ajax + action, {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: fd.toString()
+        }).then(function (r) { return r.json(); });
+    }
+
+    /* ---- in-product confirm (tnConfirm if Tournament helper is loaded; else local fallback) ---- */
+    function trConfirm(opts) {
+        if (typeof window.tnConfirm === 'function') { window.tnConfirm(opts); return; }
+        // Self-contained fallback modal (no native confirm()).
+        var ov = document.createElement('div');
+        ov.className = 'tr-modal-overlay tr-open';
+        ov.innerHTML =
+            '<div class="tr-modal tr-confirm-box" role="dialog" aria-modal="true">' +
+            '<div class="tr-modal-head"><h2></h2>' +
+            '<button class="tr-modal-close" type="button" data-c="x" aria-label="Close">&times;</button></div>' +
+            '<div class="tr-modal-body"></div>' +
+            '<div class="tr-modal-foot">' +
+            '<button class="tr-btn" type="button" data-c="cancel"></button>' +
+            '<button class="tr-btn" type="button" data-c="ok"></button></div></div>';
+        ov.querySelector('h2').textContent = opts.title || 'Confirm';
+        ov.querySelector('.tr-modal-body').textContent = opts.body || '';
+        var okBtn = ov.querySelector('[data-c="ok"]');
+        var cancelBtn = ov.querySelector('[data-c="cancel"]');
+        okBtn.textContent = opts.confirmLabel || 'Confirm';
+        cancelBtn.textContent = opts.cancelLabel || 'Cancel';
+        okBtn.className = 'tr-btn ' + (opts.danger ? 'tr-btn-danger' : 'tr-btn-primary');
+        if (opts.danger) { okBtn.style.background = '#c53030'; okBtn.style.borderColor = '#c53030'; okBtn.style.color = '#fff'; }
+        function close() { if (ov.parentNode) { ov.parentNode.removeChild(ov); } }
+        ov.addEventListener('click', function (e) {
+            var c = e.target.getAttribute && e.target.getAttribute('data-c');
+            if (e.target === ov || c === 'x' || c === 'cancel') { close(); }
+            else if (c === 'ok') { close(); if (typeof opts.onConfirm === 'function') { opts.onConfirm(); } }
+        });
+        document.body.appendChild(ov);
+        okBtn.focus();
+    }
+
+    /* ---- ledger rendering ---- */
+    function renderRows(d) {
+        d = d || {};
+        body.innerHTML = '';
+        var rows = d.Rows || [];
+        if (!rows.length) {
+            var er = document.createElement('tr');
+            er.className = 'tr-empty';
+            er.innerHTML = '<td colspan="9">No entries yet.</td>';
+            body.appendChild(er);
+        } else {
+            rows.forEach(function (r) {
+                var tr = document.createElement('tr');
+                tr.innerHTML =
+                    '<td>' + escapeHtml(r.Date) + '</td>' +
+                    '<td>' + escapeHtml(cfg.categories[r.Category] || r.Category) + '</td>' +
+                    '<td>' + escapeHtml(methodLabel(r.PaymentMethod)) + '</td>' +
+                    '<td>' + escapeHtml(r.Description || '') + '</td>' +
+                    '<td>' + escapeHtml(r.Counterparty || '') + '</td>' +
+                    '<td class="tr-num">' + (r.Direction === 'credit' ? money(r.Amount) : '') + '</td>' +
+                    '<td class="tr-num">' + (r.Direction === 'debit' ? money(r.Amount) : '') + '</td>' +
+                    '<td class="tr-num">' + money(r.RunningBalance) + '</td>' +
+                    '<td><button class="tr-link" type="button" data-edit="' + r.Id + '">Edit</button> ' +
+                    '<button class="tr-link" type="button" data-del="' + r.Id + '">Delete</button></td>';
+                body.appendChild(tr);
+            });
+        }
+        if (typeof d.CurrentBalance !== 'undefined') {
+            var balEl = document.getElementById('tr-bal');
+            if (balEl) { balEl.textContent = money(d.CurrentBalance); }
+        }
+        renderPager(d);
+    }
+
+    function renderPager(d) {
+        pager.innerHTML = '';
+        var total = d.Total || 0, per = d.Per || state.per, page = d.Page || state.page;
+        var pages = Math.max(1, Math.ceil(total / per));
+        if (total === 0) { return; }
+        var prev = document.createElement('button');
+        prev.type = 'button'; prev.textContent = 'Prev'; prev.disabled = page <= 1;
+        prev.addEventListener('click', function () { if (state.page > 1) { state.page--; loadLedger(); } });
+        var info = document.createElement('span');
+        info.textContent = 'Page ' + page + ' of ' + pages + ' · ' + total + ' entr' + (total === 1 ? 'y' : 'ies');
+        var next = document.createElement('button');
+        next.type = 'button'; next.textContent = 'Next'; next.disabled = page >= pages;
+        next.addEventListener('click', function () { if (state.page < pages) { state.page++; loadLedger(); } });
+        pager.appendChild(prev); pager.appendChild(info); pager.appendChild(next);
+    }
+
+    function filterQuery(extra) {
+        var q = new URLSearchParams({
+            page: state.page, per: state.per, from: state.from, to: state.to,
+            category: state.category, direction: state.direction
+        });
+        if (extra) { Object.keys(extra).forEach(function (k) { q.set(k, extra[k]); }); }
+        return q.toString();
+    }
+
+    function loadLedger() {
+        return fetch(cfg.ajax + 'ledger?' + filterQuery(), { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (j) { if (j.status === 0) { renderRows(j.detail); } return j; });
+    }
+
+    /* Refresh the summary cards (Current Balance, Total In/Out, Entries). */
+    function refreshSummary() {
+        return fetch(cfg.ajax + 'summary?from=' + encodeURIComponent(state.from) + '&to=' + encodeURIComponent(state.to), { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                if (j.status !== 0) { return j; }
+                var s = j.detail || {};
+                var set = function (id, val) { var el = document.getElementById(id); if (el) { el.textContent = money(val); } };
+                set('tr-bal', s.CurrentBalance);
+                set('tr-in', s.TotalIn);
+                set('tr-out', s.TotalOut);
+                cfg.byCategory = s.ByCategory || {};
+                return j;
+            });
+    }
+
+    /* Reload everything affected by a CRUD operation; charts (Task 11) listen for tr:datachanged. */
+    function refreshAll() {
+        return Promise.all([loadLedger(), refreshSummary()]).then(function () {
+            app.dispatchEvent(new CustomEvent('tr:datachanged', { bubbles: true }));
+        });
+    }
+
+    /* ---- filters ---- */
+    function bindFilters() {
+        var catSel = document.getElementById('tr-f-cat');
+        var dirSel = document.getElementById('tr-f-dir');
+        if (catSel) { catSel.addEventListener('change', function () { state.category = catSel.value; state.page = 1; loadLedger(); }); }
+        if (dirSel) { dirSel.addEventListener('change', function () { state.direction = dirSel.value; state.page = 1; loadLedger(); }); }
+        var fpOpts = { dateFormat: 'Y-m-d', altInput: true, altFormat: 'F j, Y', allowInput: false };
+        if (window.flatpickr) {
+            flatpickr('#tr-f-from', Object.assign({}, fpOpts, {
+                onChange: function (sel, str) { state.from = str || ''; state.page = 1; loadLedger(); refreshSummary(); }
+            }));
+            flatpickr('#tr-f-to', Object.assign({}, fpOpts, {
+                onChange: function (sel, str) { state.to = str || ''; state.page = 1; loadLedger(); refreshSummary(); }
+            }));
+        }
+        // Keep the export link in sync with active filters.
+        var exp = document.getElementById('tr-export');
+        if (exp) {
+            exp.addEventListener('click', function () {
+                exp.href = cfg.ajax + 'export?' + filterQuery({ page: 1, per: 100000 });
+            });
+        }
+    }
+
+    /* =====================================================
+       Add / Edit entry modal
+       ===================================================== */
+    var overlay   = document.getElementById('tr-entry-overlay');
+    var form      = document.getElementById('tr-entry-form');
+    var titleEl   = document.getElementById('tr-entry-title');
+    var dirSeg    = document.getElementById('tr-e-dir-seg');
+    var dirHidden = document.getElementById('tr-e-direction');
+    var methodSeg = document.getElementById('tr-e-method-seg');
+    var methodHid = document.getElementById('tr-e-method');
+    var catSelect = document.getElementById('tr-e-category');
+    var dateInput = document.getElementById('tr-e-date');
+    var fpEntry   = null;
+
+    /* Build the grouped category <select> from the config (income/expense optgroups). */
+    function buildCategoryOptions() {
+        if (!catSelect) { return; }
+        catSelect.innerHTML = '<option value="">Select…</option>';
+        var groups = cfg.categoryGroups || {};
+        var groupLabels = { income: 'Income', expense: 'Expense' };
+        Object.keys(groups).forEach(function (g) {
+            var og = document.createElement('optgroup');
+            og.label = groupLabels[g] || g;
+            var items = groups[g] || {};
+            Object.keys(items).forEach(function (k) {
+                var opt = document.createElement('option');
+                opt.value = k; opt.textContent = items[k];
+                opt.setAttribute('data-group', g);
+                og.appendChild(opt);
+            });
+            catSelect.appendChild(og);
+        });
+    }
+
+    function setDirection(dir) {
+        dir = (dir === 'debit') ? 'debit' : 'credit';
+        dirHidden.value = dir;
+        dirSeg.className = 'tr-seg ' + (dir === 'debit' ? 'tr-seg-debit' : 'tr-seg-credit');
+        Array.prototype.forEach.call(dirSeg.querySelectorAll('button'), function (b) {
+            b.classList.toggle('tr-seg-on', b.getAttribute('data-dir') === dir);
+        });
+    }
+    function setMethod(method) {
+        methodHid.value = method || '';
+        Array.prototype.forEach.call(methodSeg.querySelectorAll('button'), function (b) {
+            b.classList.toggle('tr-seg-on', b.getAttribute('data-method') === method);
+        });
+    }
+
+    function clearErrors() {
+        Array.prototype.forEach.call(form.querySelectorAll('.tr-field.tr-has-err'), function (f) { f.classList.remove('tr-has-err'); });
+        var fe = form.querySelector('[data-err="_form"]');
+        if (fe) { fe.textContent = ''; fe.style.display = 'none'; }
+    }
+    function markError(field, msg) {
+        if (field === '_form') {
+            var fe = form.querySelector('[data-err="_form"]');
+            if (fe) { fe.textContent = msg; fe.style.display = 'block'; }
+            return;
+        }
+        var errEl = form.querySelector('[data-err="' + field + '"]');
+        if (errEl) {
+            if (msg) { errEl.textContent = msg; }
+            var wrap = errEl.closest('.tr-field');
+            if (wrap) { wrap.classList.add('tr-has-err'); }
+        }
+    }
+
+    function openModal(isEdit) {
+        clearErrors();
+        titleEl.textContent = isEdit ? 'Edit Entry' : 'Add Entry';
+        document.getElementById('tr-e-save').textContent = isEdit ? 'Save Changes' : 'Save Entry';
+        overlay.classList.add('tr-open');
+        overlay.setAttribute('aria-hidden', 'false');
+        if (!fpEntry && window.flatpickr) {
+            fpEntry = flatpickr(dateInput, { dateFormat: 'Y-m-d', altInput: true, altFormat: 'F j, Y', allowInput: false });
+        }
+    }
+    function closeModal() {
+        overlay.classList.remove('tr-open');
+        overlay.setAttribute('aria-hidden', 'true');
+    }
+
+    function resetForm() {
+        form.reset();
+        document.getElementById('tr-e-id').value = '';
+        setDirection('credit');
+        setMethod('');
+        if (fpEntry) { fpEntry.clear(); }
+        else { dateInput.value = ''; }
+        clearErrors();
+    }
+
+    function fillForm(e) {
+        document.getElementById('tr-e-id').value = e.id || '';
+        setDirection(e.direction);
+        document.getElementById('tr-e-amount').value = (e.amount != null) ? Number(e.amount).toFixed(2) : '';
+        catSelect.value = e.category || '';
+        setMethod(e.payment_method || '');
+        document.getElementById('tr-e-description').value = e.description || '';
+        document.getElementById('tr-e-counterparty').value = e.counterparty || '';
+        document.getElementById('tr-e-reference').value = e.reference_no || '';
+        var d = e.entry_date || '';
+        if (fpEntry) { fpEntry.setDate(d, true); } else { dateInput.value = d; }
+    }
+
+    function openAdd() {
+        resetForm();
+        // Default the date to today for convenience.
+        var today = new Date();
+        var iso = today.getFullYear() + '-' + ('0' + (today.getMonth() + 1)).slice(-2) + '-' + ('0' + today.getDate()).slice(-2);
+        openModal(false);
+        if (fpEntry) { fpEntry.setDate(iso, true); } else { dateInput.value = iso; }
+    }
+
+    function openEdit(id) {
+        resetForm();
+        openModal(true);
+        fetch(cfg.ajax + 'getentry?id=' + encodeURIComponent(id), { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                if (j.status === 0 && j.detail) { fillForm(j.detail); }
+                else { markError('_form', (j.error || 'Could not load this entry.')); }
+            });
+    }
+
+    function submitEntry(ev) {
+        ev.preventDefault();
+        clearErrors();
+        var id     = document.getElementById('tr-e-id').value;
+        var isEdit = !!id;
+        var data = {
+            entry_date:     dateInput.value || (fpEntry && fpEntry.input ? fpEntry.input.value : ''),
+            direction:      dirHidden.value,
+            amount:         document.getElementById('tr-e-amount').value,
+            category:       catSelect.value,
+            payment_method: methodHid.value,
+            description:    document.getElementById('tr-e-description').value,
+            counterparty:   document.getElementById('tr-e-counterparty').value,
+            reference_no:   document.getElementById('tr-e-reference').value
+        };
+
+        // Client-side guards mirroring the lib's validation (server re-validates regardless).
+        var ok = true;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(data.entry_date)) { markError('entry_date'); ok = false; }
+        if (!(parseFloat(data.amount) > 0))               { markError('amount'); ok = false; }
+        if (!data.category)                               { markError('category'); ok = false; }
+        if (['cash', 'check', 'digital'].indexOf(data.payment_method) === -1) { markError('payment_method'); ok = false; }
+        if (!ok) { return; }
+
+        var saveBtn = document.getElementById('tr-e-save');
+        saveBtn.disabled = true;
+        var action = isEdit ? 'editentry' : 'addentry';
+        if (isEdit) { data.id = id; }
+        postForm(action, data).then(function (j) {
+            saveBtn.disabled = false;
+            if (j.status === 0) {
+                closeModal();
+                if (!isEdit) { state.page = 1; }
+                refreshAll();
+            } else {
+                markError('_form', j.error || 'Could not save this entry.');
+            }
+        }).catch(function () {
+            saveBtn.disabled = false;
+            markError('_form', 'Network error — please try again.');
+        });
+    }
+
+    function deleteEntry(id) {
+        trConfirm({
+            title: 'Delete entry?',
+            body: 'This removes the entry from the ledger. The record and its audit trail are retained.',
+            confirmLabel: 'Delete',
+            danger: true,
+            onConfirm: function () {
+                postForm('deleteentry', { id: id }).then(function (j) {
+                    if (j.status === 0) { refreshAll(); }
+                    else { trConfirm({ title: 'Delete failed', body: (j.error || 'Could not delete this entry.'), confirmLabel: 'OK', cancelLabel: 'Close' }); }
+                });
+            }
+        });
+    }
+
+    /* ---- wiring ---- */
+    function bindModal() {
+        buildCategoryOptions();
+        var addBtn = document.getElementById('tr-add');
+        if (addBtn) { addBtn.addEventListener('click', openAdd); }
+        // Direction + method segmented controls.
+        dirSeg.addEventListener('click', function (e) {
+            var b = e.target.closest('button[data-dir]'); if (b) { setDirection(b.getAttribute('data-dir')); }
+        });
+        methodSeg.addEventListener('click', function (e) {
+            var b = e.target.closest('button[data-method]'); if (b) { setMethod(b.getAttribute('data-method')); }
+        });
+        // Close handlers.
+        Array.prototype.forEach.call(overlay.querySelectorAll('[data-tr-close]'), function (b) {
+            b.addEventListener('click', closeModal);
+        });
+        overlay.addEventListener('click', function (e) { if (e.target === overlay) { closeModal(); } });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && overlay.classList.contains('tr-open')) { closeModal(); }
+        });
+        form.addEventListener('submit', submitEntry);
+    }
+
+    /* Delegated edit/delete buttons in the ledger body. */
+    body.addEventListener('click', function (e) {
+        var ed = e.target.closest('[data-edit]');
+        if (ed) { openEdit(ed.getAttribute('data-edit')); return; }
+        var dl = e.target.closest('[data-del]');
+        if (dl) { deleteEntry(dl.getAttribute('data-del')); }
+    });
+
+    /* ---- public surface for later sections (reconcile/charts) ---- */
+    window.TrApp = {
+        loadLedger: loadLedger,
+        refreshSummary: refreshSummary,
+        refreshAll: refreshAll,
+        money: money,
+        confirm: trConfirm,
+        state: state
+    };
+
+    /* ---- init ---- */
+    bindFilters();
+    bindModal();
+    if (cfg.initialLedger && cfg.initialLedger.Rows) { renderRows(cfg.initialLedger); }
+    else { loadLedger(); }
+})();
 </script>
