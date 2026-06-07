@@ -177,6 +177,45 @@ html[data-theme="dark"] .tr-seg.tr-seg-debit button.tr-seg-on { background: #e53
 .tr-confirm-box { max-width: 420px; }
 .tr-confirm-box .tr-modal-body { font-size: 0.9rem; color: var(--ork-text); }
 
+/* Reconciliation — live compare panel inside the reconcile modal */
+.tr-recon-compare {
+    border: 1px solid var(--ork-border); border-radius: 8px; padding: 12px 14px;
+    background: var(--ork-bg-secondary); margin-bottom: 13px; font-size: 0.86rem;
+}
+.tr-recon-row { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; }
+.tr-recon-row .tr-recon-lbl { color: var(--ork-text-muted); }
+.tr-recon-row .tr-recon-val { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--ork-text); }
+.tr-recon-status { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--ork-border); font-weight: 700; display: flex; align-items: center; gap: 6px; }
+.tr-recon-status.tr-recon-match    { color: #2f855a; }
+.tr-recon-status.tr-recon-mismatch { color: #c53030; }
+html[data-theme="dark"] .tr-recon-status.tr-recon-match    { color: #9ae6b4; }
+html[data-theme="dark"] .tr-recon-status.tr-recon-mismatch { color: #feb2b2; }
+.tr-recon-var { font-variant-numeric: tabular-nums; }
+
+/* Reconciliation history (below the ledger) */
+.tr-recon-history { margin-top: 28px; }
+.tr-recon-history h2 {
+    background: transparent; border: none; padding: 0; border-radius: 0; text-shadow: none;
+    margin: 0 0 10px; font-size: 1.05rem; font-weight: 700; color: var(--ork-text);
+}
+.tr-recon-table { width: 100%; border-collapse: collapse; background: var(--ork-card-bg); border: 1px solid var(--ork-border); border-radius: 10px; overflow: hidden; }
+.tr-recon-table thead th {
+    text-align: left; font-size: 0.72rem; text-transform: uppercase; letter-spacing: .03em;
+    color: var(--ork-text-muted); background: var(--ork-bg-secondary);
+    padding: 9px 12px; border-bottom: 1px solid var(--ork-border);
+}
+.tr-recon-table tbody td { padding: 9px 12px; font-size: 0.86rem; color: var(--ork-text); border-bottom: 1px solid var(--ork-border); }
+.tr-recon-table tbody tr:last-child td { border-bottom: none; }
+.tr-recon-table .tr-num { text-align: right; font-variant-numeric: tabular-nums; }
+.tr-recon-table .tr-empty td { text-align: center; color: var(--ork-text-muted); padding: 22px 12px; font-style: italic; }
+.tr-var-pos { color: #2f855a; } .tr-var-neg { color: #c53030; }
+html[data-theme="dark"] .tr-var-pos { color: #9ae6b4; } html[data-theme="dark"] .tr-var-neg { color: #feb2b2; }
+.tr-badge-opening {
+    display: inline-block; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+    background: #4338ca; color: #fff; border-radius: 999px; padding: 2px 8px; margin-left: 6px;
+}
+html[data-theme="dark"] .tr-badge-opening { background: #6366f1; }
+
 @media (max-width: 820px) {
     .tr-cards { grid-template-columns: repeat(2, 1fr); }
     .tr-charts { grid-template-columns: 1fr; }
@@ -259,6 +298,23 @@ html[data-theme="dark"] .tr-seg.tr-seg-debit button.tr-seg-on { background: #e53
         <tbody id="tr-ledger-body"><!-- rendered by JS (Task 9) --></tbody>
     </table>
     <div class="tr-pager" id="tr-pager"></div>
+
+    <div class="tr-recon-history" id="tr-recon-history">
+        <h2>Reconciliation History</h2>
+        <table class="tr-recon-table" id="tr-recon-table">
+            <thead>
+                <tr>
+                    <th>As Of</th>
+                    <th class="tr-num">Actual</th>
+                    <th class="tr-num">Computed</th>
+                    <th class="tr-num">Variance</th>
+                    <th>Explanation</th>
+                    <th>Recorded</th>
+                </tr>
+            </thead>
+            <tbody id="tr-recon-body"><!-- rendered by JS (Task 10) --></tbody>
+        </table>
+    </div>
 </div>
 
 <!-- Add / Edit entry modal (built/populated by JS) -->
@@ -330,6 +386,57 @@ html[data-theme="dark"] .tr-seg.tr-seg-debit button.tr-seg-on { background: #e53
     </div>
 </div>
 
+<!-- Reconcile / opening-balance modal (built/populated by JS) -->
+<div class="tr-modal-overlay" id="tr-recon-overlay" aria-hidden="true">
+    <div class="tr-modal" role="dialog" aria-modal="true" aria-labelledby="tr-recon-title">
+        <div class="tr-modal-head">
+            <h2 id="tr-recon-title">Reconcile</h2>
+            <button class="tr-modal-close" type="button" data-tr-rclose aria-label="Close">&times;</button>
+        </div>
+        <form id="tr-recon-form" autocomplete="off">
+            <div class="tr-modal-body">
+                <p class="tr-recon-intro" id="tr-recon-intro" style="margin:0 0 14px;font-size:0.88rem;color:var(--ork-text-secondary);"></p>
+                <div class="tr-field-row">
+                    <div class="tr-field">
+                        <label class="tr-label" for="tr-r-date">As Of Date</label>
+                        <input class="tr-input" type="text" id="tr-r-date" name="as_of_date" placeholder="Select date">
+                        <div class="tr-field-err" data-err="as_of_date">A date is required.</div>
+                    </div>
+                    <div class="tr-field">
+                        <label class="tr-label" for="tr-r-actual" id="tr-r-actual-label">Actual Balance</label>
+                        <input class="tr-input" type="number" step="0.01" id="tr-r-actual" name="actual_balance" placeholder="0.00">
+                        <div class="tr-field-err" data-err="actual_balance">Enter the real-world balance.</div>
+                    </div>
+                </div>
+                <div class="tr-recon-compare" id="tr-recon-compare">
+                    <div class="tr-recon-row">
+                        <span class="tr-recon-lbl">Computed balance</span>
+                        <span class="tr-recon-val" id="tr-r-computed">&mdash;</span>
+                    </div>
+                    <div class="tr-recon-row">
+                        <span class="tr-recon-lbl">Your actual balance</span>
+                        <span class="tr-recon-val" id="tr-r-actual-echo">&mdash;</span>
+                    </div>
+                    <div class="tr-recon-status" id="tr-r-status">
+                        <span id="tr-r-status-text">Enter an actual balance to compare.</span>
+                        <span class="tr-recon-var" id="tr-r-variance"></span>
+                    </div>
+                </div>
+                <div class="tr-field" id="tr-r-expl-field" style="display:none;">
+                    <label class="tr-label" for="tr-r-explanation">Explanation <span style="color:#c53030;">(required &mdash; balances don&rsquo;t match)</span></label>
+                    <textarea class="tr-textarea" id="tr-r-explanation" name="explanation" maxlength="500" placeholder="Why does the actual balance differ from the computed balance?"></textarea>
+                    <div class="tr-field-err" data-err="explanation">An explanation is required when the balances don&rsquo;t match.</div>
+                </div>
+                <div class="tr-field-err" data-err="_form" style="text-align:center;"></div>
+            </div>
+            <div class="tr-modal-foot">
+                <button class="tr-btn" type="button" data-tr-rclose>Cancel</button>
+                <button class="tr-btn tr-btn-primary" type="submit" id="tr-r-save">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
 window.TrConfig = {
     ajax:           '<?= $ajaxBase ?>',
@@ -340,7 +447,8 @@ window.TrConfig = {
     hasOpening:     <?= $has_opening ? 'true' : 'false' ?>,
     series:         <?= json_encode($series) ?>,
     byCategory:     <?= json_encode($summary['ByCategory']) ?>,
-    initialLedger:  <?= json_encode($ledger) ?>
+    initialLedger:  <?= json_encode($ledger) ?>,
+    reconciliations: <?= json_encode(array_values($reconciliations)) ?>
 };
 </script>
 
@@ -757,5 +865,333 @@ window.TrConfig = {
     bindModal();
     if (cfg.initialLedger && cfg.initialLedger.Rows) { renderRows(cfg.initialLedger); }
     else { loadLedger(); }
+})();
+</script>
+
+<script>
+/* =====================================================
+   Treasury — reconciliation panel + opening-balance flow (Task 10)
+   "Reconcile" records a snapshot of the real-world balance and compares
+   it against the computed balance as of the chosen date. The first
+   reconciliation (no opening yet) seeds the opening baseline.
+   Relies on window.TrApp (Task 9) for shared helpers/refresh.
+   ===================================================== */
+(function () {
+    'use strict';
+
+    var app = document.getElementById('tr-app');
+    if (!app) { return; }
+    var cfg = window.TrConfig || {};
+    var TrApp = window.TrApp || {};
+    var money = TrApp.money || function (n) {
+        return '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
+
+    var overlay   = document.getElementById('tr-recon-overlay');
+    var form      = document.getElementById('tr-recon-form');
+    var titleEl   = document.getElementById('tr-recon-title');
+    var introEl   = document.getElementById('tr-recon-intro');
+    var dateInput = document.getElementById('tr-r-date');
+    var actualInp = document.getElementById('tr-r-actual');
+    var actualLbl = document.getElementById('tr-r-actual-label');
+    var computedEl = document.getElementById('tr-r-computed');
+    var actualEcho = document.getElementById('tr-r-actual-echo');
+    var statusEl   = document.getElementById('tr-r-status');
+    var statusText = document.getElementById('tr-r-status-text');
+    var varianceEl = document.getElementById('tr-r-variance');
+    var compareBox = document.getElementById('tr-recon-compare');
+    var explField  = document.getElementById('tr-r-expl-field');
+    var explInput  = document.getElementById('tr-r-explanation');
+    var saveBtn    = document.getElementById('tr-r-save');
+    var reconBody  = document.getElementById('tr-recon-body');
+
+    var fpRecon   = null;
+    var isOpening = false;          // current modal mode
+    var computedAsOf = 0;           // computed balance for the chosen as-of date
+    var computeToken = 0;           // guards against out-of-order async compute responses
+
+    function escapeHtml(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+
+    /* The opening baseline = the actual balance of the is_opening reconciliation.
+       It anchors ComputeBalanceAsOf: any date before the first entry resolves to
+       this base (matches the server). Returns 0 when no opening exists yet. */
+    function openingBase() {
+        var rows = cfg.reconciliations || [];
+        for (var i = 0; i < rows.length; i++) {
+            if (Number(rows[i].IsOpening) === 1) { return Number(rows[i].ActualBalance) || 0; }
+        }
+        return 0;
+    }
+
+    /* ---- field error helpers (mirror the entry modal) ---- */
+    function clearErrors() {
+        Array.prototype.forEach.call(form.querySelectorAll('.tr-field.tr-has-err'), function (f) { f.classList.remove('tr-has-err'); });
+        var fe = form.querySelector('[data-err="_form"]');
+        if (fe) { fe.textContent = ''; fe.style.display = 'none'; }
+    }
+    function markError(field, msg) {
+        if (field === '_form') {
+            var fe = form.querySelector('[data-err="_form"]');
+            if (fe) { fe.textContent = msg; fe.style.display = 'block'; }
+            return;
+        }
+        var errEl = form.querySelector('[data-err="' + field + '"]');
+        if (errEl) {
+            if (msg) { errEl.textContent = msg; }
+            var wrap = errEl.closest('.tr-field');
+            if (wrap) { wrap.classList.add('tr-has-err'); }
+        }
+    }
+
+    /* ---- reconciliation history rendering ---- */
+    function varianceCell(v) {
+        v = Number(v) || 0;
+        if (Math.abs(v) < 0.005) { return money(0); }
+        var cls = v > 0 ? 'tr-var-pos' : 'tr-var-neg';
+        var sign = v > 0 ? '+' : '−'; // minus sign
+        return '<span class="' + cls + '">' + sign + money(Math.abs(v)) + '</span>';
+    }
+    function renderHistory(rows) {
+        rows = rows || [];
+        reconBody.innerHTML = '';
+        if (!rows.length) {
+            var er = document.createElement('tr');
+            er.className = 'tr-empty';
+            er.innerHTML = '<td colspan="6">No reconciliations recorded yet.</td>';
+            reconBody.appendChild(er);
+            return;
+        }
+        rows.forEach(function (r) {
+            var tr = document.createElement('tr');
+            var opening = Number(r.IsOpening) === 1;
+            tr.innerHTML =
+                '<td>' + escapeHtml(r.AsOfDate) + (opening ? '<span class="tr-badge-opening">Opening</span>' : '') + '</td>' +
+                '<td class="tr-num">' + money(r.ActualBalance) + '</td>' +
+                '<td class="tr-num">' + money(r.ComputedBalance) + '</td>' +
+                '<td class="tr-num">' + (opening ? money(0) : varianceCell(r.Variance)) + '</td>' +
+                '<td>' + escapeHtml(r.Explanation || '') + '</td>' +
+                '<td>' + escapeHtml((r.CreatedAt || '').replace('T', ' ').slice(0, 16)) + '</td>';
+            reconBody.appendChild(tr);
+        });
+    }
+    function refreshHistory() {
+        return fetch(cfg.ajax + 'reconciliations', { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                if (j.status === 0 && j.detail && j.detail.Rows) {
+                    cfg.reconciliations = j.detail.Rows;
+                    renderHistory(j.detail.Rows);
+                }
+                return j;
+            });
+    }
+
+    /* ---- live compare ---- */
+    /* Fetch the computed balance as of the chosen date (anchored to opening).
+       Uses the ledger endpoint filtered by `to`; the newest shown row's
+       RunningBalance is the computed balance through that date. */
+    function fetchComputedAsOf(asOf, cb) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(asOf)) { cb(null); return; }
+        var token = ++computeToken;
+        var q = new URLSearchParams({ to: asOf, per: 1, page: 1 });
+        fetch(cfg.ajax + 'ledger?' + q.toString(), { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                if (token !== computeToken) { return; }  // stale response
+                if (j.status !== 0 || !j.detail) { cb(null); return; }
+                var rows = j.detail.Rows || [];
+                if (rows.length) {
+                    // Rows are newest-first; the first row through `to` carries the as-of balance.
+                    cb(Number(rows[0].RunningBalance) || 0);
+                } else {
+                    // No entries on/before the date → balance is the opening baseline (or 0).
+                    cb(openingBase());
+                }
+            })
+            .catch(function () { if (token === computeToken) { cb(null); } });
+    }
+
+    function updateCompare() {
+        if (isOpening) { return; } // opening mode: no comparison
+        var actualRaw = actualInp.value;
+        var hasActual = actualRaw !== '' && !isNaN(parseFloat(actualRaw));
+        computedEl.textContent = money(computedAsOf);
+        actualEcho.textContent = hasActual ? money(parseFloat(actualRaw)) : '—';
+        statusEl.classList.remove('tr-recon-match', 'tr-recon-mismatch');
+        varianceEl.textContent = '';
+        if (!hasActual) {
+            statusText.textContent = 'Enter an actual balance to compare.';
+            explField.style.display = 'none';
+            return;
+        }
+        var variance = Math.round((parseFloat(actualRaw) - computedAsOf) * 100) / 100;
+        if (Math.abs(variance) < 0.01) {
+            statusEl.classList.add('tr-recon-match');
+            statusText.textContent = '✓ Balances match';
+            explField.style.display = 'none';
+        } else {
+            statusEl.classList.add('tr-recon-mismatch');
+            statusText.textContent = '✗ Off by';
+            varianceEl.textContent = (variance > 0 ? '+' : '−') + money(Math.abs(variance));
+            explField.style.display = '';
+        }
+    }
+
+    function recomputeForDate() {
+        var asOf = dateInput.value;
+        if (isOpening) { return; }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(asOf)) {
+            computedAsOf = 0;
+            computedEl.textContent = '—';
+            updateCompare();
+            return;
+        }
+        computedEl.textContent = '…';
+        fetchComputedAsOf(asOf, function (bal) {
+            computedAsOf = (bal == null) ? 0 : bal;
+            updateCompare();
+        });
+    }
+
+    /* ---- modal open/close ---- */
+    function openModal(opening) {
+        isOpening = !!opening;
+        clearErrors();
+        form.reset();
+        explField.style.display = 'none';
+        statusEl.classList.remove('tr-recon-match', 'tr-recon-mismatch');
+        varianceEl.textContent = '';
+
+        if (isOpening) {
+            titleEl.textContent = 'Set Opening Balance';
+            actualLbl.textContent = 'Opening Balance';
+            introEl.textContent = 'Enter the current real-world balance and the date it is accurate as of. This becomes the starting point for all future tracking.';
+            saveBtn.textContent = 'Set Opening Balance';
+            compareBox.style.display = 'none';
+        } else {
+            titleEl.textContent = 'Reconcile';
+            actualLbl.textContent = 'Actual Balance';
+            introEl.textContent = 'Record the real-world balance as of a date and compare it against the computed balance. Differences require an explanation.';
+            saveBtn.textContent = 'Save Reconciliation';
+            compareBox.style.display = '';
+            computedEl.textContent = '—';
+            actualEcho.textContent = '—';
+            statusText.textContent = 'Enter an actual balance to compare.';
+        }
+
+        overlay.classList.add('tr-open');
+        overlay.setAttribute('aria-hidden', 'false');
+
+        if (!fpRecon && window.flatpickr) {
+            fpRecon = flatpickr(dateInput, {
+                dateFormat: 'Y-m-d', altInput: true, altFormat: 'F j, Y', allowInput: false,
+                onChange: function () { recomputeForDate(); }
+            });
+        }
+        // Default the as-of date to today.
+        var today = new Date();
+        var iso = today.getFullYear() + '-' + ('0' + (today.getMonth() + 1)).slice(-2) + '-' + ('0' + today.getDate()).slice(-2);
+        if (fpRecon) { fpRecon.setDate(iso, true); } else { dateInput.value = iso; }
+        if (!isOpening) { recomputeForDate(); }
+        setTimeout(function () { actualInp.focus(); }, 30);
+    }
+    function closeModal() {
+        overlay.classList.remove('tr-open');
+        overlay.setAttribute('aria-hidden', 'true');
+    }
+
+    /* ---- submit ---- */
+    function submit(ev) {
+        ev.preventDefault();
+        clearErrors();
+        var asOf   = dateInput.value || (fpRecon && fpRecon.input ? fpRecon.input.value : '');
+        var actual = actualInp.value;
+        var expl   = explInput.value.trim();
+
+        var ok = true;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(asOf)) { markError('as_of_date'); ok = false; }
+        if (actual === '' || isNaN(parseFloat(actual))) { markError('actual_balance'); ok = false; }
+        // Mirror the lib: explanation required on a mismatch (non-opening only).
+        if (ok && !isOpening) {
+            var variance = Math.round((parseFloat(actual) - computedAsOf) * 100) / 100;
+            if (Math.abs(variance) >= 0.01 && expl === '') {
+                explField.style.display = '';
+                markError('explanation'); ok = false;
+            }
+        }
+        if (!ok) { return; }
+
+        saveBtn.disabled = true;
+        var fd = new URLSearchParams();
+        fd.append('as_of_date', asOf);
+        fd.append('actual_balance', actual);
+        fd.append('explanation', isOpening ? '' : expl);
+        fetch(cfg.ajax + 'addreconciliation', {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: fd.toString()
+        }).then(function (r) { return r.json(); }).then(function (j) {
+            saveBtn.disabled = false;
+            if (j.status !== 0) {
+                markError('_form', j.error || 'Could not save this reconciliation.');
+                return;
+            }
+            var wasOpening = j.detail && j.detail.IsOpening;
+            closeModal();
+            if (wasOpening) {
+                // Opening just set: drop the first-run banner and flip the flag.
+                cfg.hasOpening = true;
+                var fr = document.getElementById('tr-firstrun');
+                if (fr && fr.parentNode) { fr.parentNode.removeChild(fr); }
+            }
+            // The opening anchor changes running balances; refresh ledger + summary + charts.
+            if (TrApp.refreshAll) { TrApp.refreshAll(); }
+            refreshHistory();
+        }).catch(function () {
+            saveBtn.disabled = false;
+            markError('_form', 'Network error — please try again.');
+        });
+    }
+
+    /* ---- wiring ---- */
+    actualInp.addEventListener('input', updateCompare);
+    explInput.addEventListener('input', function () {
+        if (explInput.value.trim() !== '') {
+            var wrap = explInput.closest('.tr-field');
+            if (wrap) { wrap.classList.remove('tr-has-err'); }
+        }
+    });
+    form.addEventListener('submit', submit);
+
+    Array.prototype.forEach.call(overlay.querySelectorAll('[data-tr-rclose]'), function (b) {
+        b.addEventListener('click', closeModal);
+    });
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) { closeModal(); } });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && overlay.classList.contains('tr-open')) { closeModal(); }
+    });
+
+    var reconcileBtn = document.getElementById('tr-reconcile');
+    if (reconcileBtn) {
+        reconcileBtn.addEventListener('click', function () {
+            // If there is no opening yet, route "Reconcile" into the opening flow too.
+            openModal(!cfg.hasOpening);
+        });
+    }
+    var openingBtn = document.getElementById('tr-set-opening');
+    if (openingBtn) {
+        openingBtn.addEventListener('click', function () { openModal(true); });
+    }
+
+    /* When the ledger/summary refresh (e.g. after an entry edit) the history is
+       unaffected, but keep it consistent if another section requests a full refresh. */
+    app.addEventListener('tr:reconchanged', refreshHistory);
+
+    /* ---- init ---- */
+    renderHistory(cfg.reconciliations || []);
 })();
 </script>
