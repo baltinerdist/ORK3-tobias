@@ -101,6 +101,21 @@ class Treasury extends Ork3 {
 		return Success(array('HasOpening' => $this->openingRecon($owner_type, $owner_id) !== null));
 	}
 
+	/** Display name of the org (park/kingdom) by id; page is already auth-gated. */
+	public function GetOwnerName($token, $owner_type, $owner_id) {
+		if (!$this->authFor($token, $owner_type, $owner_id)) { return NoAuthorization(); }
+		global $DB;
+		$owner_type = $this->normType($owner_type);
+		$owner_id = (int)$owner_id;
+		$table = $owner_type === 'park' ? DB_PREFIX . 'park' : DB_PREFIX . 'kingdom';
+		$idcol = $owner_type === 'park' ? 'park_id' : 'kingdom_id';
+		$DB->Clear();
+		$rs = $DB->DataSet("SELECT name FROM $table WHERE $idcol=$owner_id LIMIT 1");
+		$name = '';
+		if ($rs && $rs->Next()) { $name = $rs->name; }
+		return Success(array('Name' => $name));
+	}
+
 	/* ---- Treasury module: entry CRUD + audit ---- */
 
 	private static $VALID_METHODS = array('cash', 'check', 'digital');
