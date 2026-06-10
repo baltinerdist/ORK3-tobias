@@ -73,6 +73,22 @@ class Model_Reports extends Model {
 		return false;
 	}
 
+	function court_report($request) {
+		$r = $this->Report->CourtReport($request);
+		if (isset($r['Status']['Status']) && $r['Status']['Status'] == 0) {
+			return $r['Awards'];
+		}
+		return array();
+	}
+
+	function court_events($request) {
+		$r = $this->Report->CourtEvents($request);
+		if (isset($r['Status']['Status']) && $r['Status']['Status'] == 0) {
+			return $r['Events'];
+		}
+		return array();
+	}
+
 	function crown_qualed($request) {
 		logtrace("crown_qualed($kingdom_id, $park_id)", null);
 		$r = $this->Report->CrownQualed($request['KingdomId']);

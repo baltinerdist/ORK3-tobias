@@ -141,6 +141,7 @@ jQuery(document).ready(function($) {
 				<li><a href='<?=UIR ?>Reports/class_masters&KingdomId=<?=$kingdom_id ?>'>Class Masters/Paragons</a></li>
 				<li><a href='<?=UIR ?>Reports/guilds&KingdomId=<?=$kingdom_id ?>'><?=$IsPrinz?'Principality':'Kingdom' ?> Guilds</a></li>
 				<li><a href='<?=UIR ?>Reports/custom_awards&KingdomId=<?=$kingdom_id ?>'>Custom Awards</a></li>
+				<li><a href='<?=UIR ?>Reports/court&KingdomId=<?=$kingdom_id ?>'>Court Report</a></li>
 			</ul>
 		</li>
 		<li>

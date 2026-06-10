@@ -174,6 +174,101 @@ class Controller_Reports extends Controller {
 		$this->data['scope_name']  = $this->_resolve_scope_name($type ?? null, $id ?? null);
 	}
 
+	const COURT_PAGE_SIZE = 100;
+
+	// Resolves the Court Report scope from the request. ParkId wins over KingdomId
+	// (Park profile links carry both), mirroring player_awards/custom_awards.
+	private function _court_scope() {
+		$park_id    = valid_id($this->request->ParkId)    ? (int)$this->request->ParkId    : 0;
+		$kingdom_id = valid_id($this->request->KingdomId) ? (int)$this->request->KingdomId : 0;
+		if ($park_id > 0) {
+			return array('Type' => 'Park', 'Id' => $park_id, 'KingdomId' => $kingdom_id, 'ParkId' => $park_id);
+		}
+		if ($kingdom_id > 0) {
+			return array('Type' => 'Kingdom', 'Id' => $kingdom_id, 'KingdomId' => $kingdom_id, 'ParkId' => 0);
+		}
+		return null;
+	}
+
+	// Pulls Offset/StartDate/EndDate/ParkFilter off the request into a normalized
+	// query array shared by the page load and the Load More endpoint.
+	private function _court_query($scope) {
+		$offset     = isset($this->request->Offset) ? max(0, (int)$this->request->Offset) : 0;
+		$start_date = isset($this->request->StartDate) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $this->request->StartDate)
+					? $this->request->StartDate : '';
+		$end_date   = isset($this->request->EndDate) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $this->request->EndDate)
+					? $this->request->EndDate : '';
+		// ParkFilter only narrows a Kingdom-scoped report.
+		$park_filter = ($scope['Type'] === 'Kingdom' && valid_id($this->request->ParkFilter))
+					? (int)$this->request->ParkFilter : 0;
+		return array(
+			'KingdomId'  => $scope['Type'] === 'Kingdom' ? $scope['Id'] : 0,
+			'ParkId'     => $scope['Type'] === 'Park'    ? $scope['Id'] : 0,
+			'ParkFilter' => $park_filter,
+			'StartDate'  => $start_date,
+			'EndDate'    => $end_date,
+			'Offset'     => $offset,
+			'Limit'      => self::COURT_PAGE_SIZE,
+		);
+	}
+
+	public function court($params=null) {
+		$scope = $this->_court_scope();
+		if ($scope === null) {
+			header('Location: ' . UIR);
+			exit;
+		}
+		$this->template = 'Reports_court.tpl';
+
+		$query = $this->_court_query($scope);
+		$this->data['Awards']    = $this->Reports->court_report($query);
+		$this->data['Events']    = $this->Reports->court_events(array(
+			'KingdomId' => $query['KingdomId'],
+			'ParkId'    => $query['ParkId'],
+		));
+		$this->data['HasMore']   = count($this->data['Awards']) === self::COURT_PAGE_SIZE;
+		$this->data['PageSize']  = self::COURT_PAGE_SIZE;
+		$this->data['ScopeType'] = $scope['Type'];
+		$this->data['ScopeId']   = $scope['Id'];
+		$this->data['ScopeName'] = $this->_resolve_scope_name($scope['Type'], $scope['Id']);
+		$this->data['ParkFilter'] = $query['ParkFilter'];
+		$this->data['StartDate']  = $query['StartDate'];
+		$this->data['EndDate']    = $query['EndDate'];
+
+		if ($scope['Type'] === 'Kingdom') {
+			$parks = $this->Reports->get_kingdom_parks($scope['Id']);
+			if (is_array($parks)) {
+				usort($parks, function($a, $b) { return strcasecmp($a['Name'] ?? '', $b['Name'] ?? ''); });
+			}
+			$this->data['Parks'] = $parks;
+			$this->data['page_title'] = ($this->data['ScopeName'] ?: 'Kingdom') . ' Court Report';
+			$this->data['menu']['reports']['url'] = UIR . 'Kingdom/profile/' . (int)$scope['Id'] . '&tab=reports';
+		} else {
+			$this->data['Parks'] = array();
+			$this->data['page_title'] = ($this->data['ScopeName'] ?: 'Park') . ' Court Report';
+			$this->data['menu']['reports']['url'] = UIR . 'Park/profile/' . (int)$scope['Id'] . '&tab=reports';
+		}
+	}
+
+	// Load More endpoint: returns the next page of court awards as JSON. Queries
+	// only the requested window (Offset/Limit) rather than the full history.
+	public function court_data($params=null) {
+		header('Content-Type: application/json');
+		$scope = $this->_court_scope();
+		if ($scope === null) {
+			echo json_encode(array('status' => 1, 'error' => 'Invalid scope'));
+			exit;
+		}
+		$query  = $this->_court_query($scope);
+		$awards = $this->Reports->court_report($query);
+		echo json_encode(array(
+			'status'  => 0,
+			'awards'  => $awards,
+			'hasMore' => count($awards) === self::COURT_PAGE_SIZE,
+		));
+		exit;
+	}
+
 	public function player_award_recommendations($params=null) {
 		$_uid = isset($this->session->user_id) ? (int)$this->session->user_id : 0;
 		if (isset($this->request->KingdomId)) {
