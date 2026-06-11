@@ -428,8 +428,19 @@ class Report  extends Ork3 {
 		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
 	}
 
+	// Escapes a user search term for inclusion in a LIKE literal. The codebase's
+	// mysql_real_escape_string shim is a no-op (see startup.php), so we must
+	// neutralize quotes/backslashes and LIKE wildcards ourselves.
+	private function _courtEscapeLike($raw) {
+		return str_replace(
+			array('\\', "'", '%', '_'),
+			array('\\\\', "\\'", '\\%', '\\_'),
+			$raw
+		);
+	}
+
 	/**
-	 * Court Report — every award handed out within a scope, paginated by date.
+	 * Court Report — every award handed out within a scope.
 	 *
 	 * "Within scope" deliberately spans two directions:
 	 *   - awards received BY a scope member (recipient's home park/kingdom), and
@@ -437,21 +448,21 @@ class Report  extends Ork3 {
 	 * The second case captures e.g. a local Monarch knighting a visitor from a
 	 * neighboring group — the recipient isn't "ours" but the act of court is.
 	 *
-	 * Paginated via Limit/Offset so the caller can lazily Load More rather than
-	 * pulling every award up front. Ordered date DESC (newest first); awards_id
-	 * is the tiebreaker so the cursor is stable across pages on a given day.
+	 * Kingdom scope rolls up child principalities via GetStatsKingdomIds when the
+	 * kingdom is configured to include them, so a principality's awards surface on
+	 * the parent's report (and a principality run on its own id stays self-scoped).
+	 *
+	 * Drives a DataTables server-side table: honors Start/Length/Search/OrderColumn/
+	 * OrderDir and returns RecordsTotal (scope) + RecordsFiltered (scope+search) so
+	 * only one page is queried at a time. Pass Length = -1 to stream every row (CSV
+	 * export). Ordered date DESC by default; awards_id breaks ties for a stable cursor.
 	 */
 	public function CourtReport($request) {
 
-		$limit  = isset($request['Limit'])  ? max(1, min(500, (int)$request['Limit'])) : 100;
-		$offset = isset($request['Offset']) ? max(0, (int)$request['Offset'])          : 0;
-
-		// Resolve scope target. Park scope matches on home park; Kingdom scope on
-		// home kingdom. At Kingdom level an optional ParkFilter narrows to a single
-		// park (still bi-directional: to-or-by that park's members).
-		$parkFilter   = valid_id($request['ParkFilter'] ?? null) ? (int)$request['ParkFilter'] : 0;
-		$scopeParkId    = 0;
-		$scopeKingdomId = 0;
+		// ── Scope clause (bi-directional: to OR by) ──────────────────
+		$parkFilter  = valid_id($request['ParkFilter'] ?? null) ? (int)$request['ParkFilter'] : 0;
+		$scopeParkId = 0;
+		$scopeKidList = array();
 		if (valid_id($request['ParkId'] ?? null)) {
 			$scopeParkId = (int)$request['ParkId'];
 			$scope = "(m.park_id = $scopeParkId OR gb.park_id = $scopeParkId)";
@@ -460,15 +471,15 @@ class Report  extends Ork3 {
 				$scopeParkId = $parkFilter;
 				$scope = "(m.park_id = $parkFilter OR gb.park_id = $parkFilter)";
 			} else {
-				$scopeKingdomId = (int)$request['KingdomId'];
-				$scope = "(m.kingdom_id = $scopeKingdomId OR gb.kingdom_id = $scopeKingdomId)";
+				$scopeKidList = array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds((int)$request['KingdomId']));
+				$in = implode(',', $scopeKidList);
+				$scope = "(m.kingdom_id IN ($in) OR gb.kingdom_id IN ($in))";
 			}
 		} else {
-			return array('Status' => InvalidParameter(), 'Awards' => array());
+			return array('Status' => InvalidParameter(), 'Awards' => array(), 'RecordsTotal' => 0, 'RecordsFiltered' => 0);
 		}
 
-		// Optional event-derived date window. Awards aren't tagged to events, so the
-		// caller infers a window from an event's crossover dates and passes it here.
+		// ── Optional event-derived date window ───────────────────────
 		$date_clause = '';
 		$s = $request['StartDate'] ?? '';
 		$e = $request['EndDate']   ?? '';
@@ -476,18 +487,9 @@ class Report  extends Ork3 {
 			$date_clause = " AND ma.date BETWEEN '$s' AND '$e'";
 		}
 
-		$sql = "SELECT
-				ma.awards_id, ma.date, ma.rank, ma.note, ma.at_event_id,
-				COALESCE(NULLIF(ma.custom_name,''), ka.name, alias.name, a.name) AS award_name,
-				COALESCE(alias.peerage, a.peerage) AS peerage,
-				m.mundane_id AS recipient_id, m.persona AS recipient_persona,
-				m.park_id AS recipient_park_id, m.kingdom_id AS recipient_kingdom_id,
-				rp.name AS recipient_park_name, rk.name AS recipient_kingdom_name,
-				gb.mundane_id AS giver_id, gb.persona AS giver_persona,
-				gb.park_id AS giver_park_id, gb.kingdom_id AS giver_kingdom_id,
-				gp.name AS giver_park_name, gk.name AS giver_kingdom_name,
-				ev.name AS event_name
-			FROM " . DB_PREFIX . "awards ma
+		$award_name_expr = "COALESCE(NULLIF(ma.custom_name,''), ka.name, alias.name, a.name)";
+
+		$from = "FROM " . DB_PREFIX . "awards ma
 				LEFT JOIN " . DB_PREFIX . "kingdomaward ka ON ka.kingdomaward_id = ma.kingdomaward_id
 				LEFT JOIN " . DB_PREFIX . "award a ON a.award_id = ka.award_id
 				LEFT JOIN " . DB_PREFIX . "award alias ON alias.award_id = ma.alias_award_id
@@ -497,23 +499,91 @@ class Report  extends Ork3 {
 				LEFT JOIN " . DB_PREFIX . "mundane gb ON gb.mundane_id = ma.given_by_id
 				LEFT JOIN " . DB_PREFIX . "park gp ON gp.park_id = gb.park_id
 				LEFT JOIN " . DB_PREFIX . "kingdom gk ON gk.kingdom_id = gb.kingdom_id
-				LEFT JOIN " . DB_PREFIX . "event ev ON ev.event_id = ma.at_event_id
-			WHERE (ma.revoked = 0 OR ma.revoked IS NULL)
+				LEFT JOIN " . DB_PREFIX . "mundane ebm ON ebm.mundane_id = ma.by_whom_id
+				LEFT JOIN " . DB_PREFIX . "event ev ON ev.event_id = ma.at_event_id";
+
+		$base_where = "WHERE (ma.revoked = 0 OR ma.revoked IS NULL)
 				AND ma.date IS NOT NULL AND ma.date != '0000-00-00'
 				AND $scope
-				$date_clause
-			ORDER BY ma.date DESC, ma.awards_id DESC
-			LIMIT $limit OFFSET $offset";
+				$date_clause";
+
+		// ── Search clause (DataTables global search) ─────────────────
+		$search_clause = '';
+		$searchRaw = trim($request['Search'] ?? '');
+		if ($searchRaw !== '') {
+			$like = "'%" . $this->_courtEscapeLike($searchRaw) . "%'";
+			$search_clause = " AND (m.persona LIKE $like OR gb.persona LIKE $like OR ebm.persona LIKE $like"
+				. " OR $award_name_expr LIKE $like OR ev.name LIKE $like OR ma.note LIKE $like)";
+		}
+
+		// ── Counts (total = scope; filtered = scope + search) ────────
+		$recordsTotal = 0;
+		$tc = $this->db->query("SELECT COUNT(*) AS cnt $from $base_where");
+		if ($tc !== false && $tc->next()) $recordsTotal = (int)$tc->cnt;
+		if ($search_clause === '') {
+			$recordsFiltered = $recordsTotal;
+		} else {
+			$recordsFiltered = 0;
+			$fc = $this->db->query("SELECT COUNT(*) AS cnt $from $base_where $search_clause");
+			if ($fc !== false && $fc->next()) $recordsFiltered = (int)$fc->cnt;
+		}
+
+		// ── Ordering ─────────────────────────────────────────────────
+		$orderCols = array(
+			0 => 'ma.date',
+			1 => 'm.persona',
+			2 => $award_name_expr,
+			3 => 'gb.persona',
+			4 => 'ebm.persona',
+			5 => 'ev.name',
+		);
+		$oc = isset($request['OrderColumn']) ? (int)$request['OrderColumn'] : 0;
+		$od = (isset($request['OrderDir']) && strtolower($request['OrderDir']) === 'asc') ? 'ASC' : 'DESC';
+		$expr = $orderCols[$oc] ?? 'ma.date';
+		$order_by = ($expr === 'ma.date')
+			? "ma.date $od, ma.awards_id DESC"
+			: "$expr $od, ma.date DESC, ma.awards_id DESC";
+
+		// ── Pagination (Length = -1 → all rows, for CSV export) ──────
+		$length = isset($request['Length']) ? (int)$request['Length'] : 100;
+		$start  = isset($request['Start'])  ? max(0, (int)$request['Start']) : 0;
+		if ($length < 0) {
+			$limit_clause = '';
+		} else {
+			$length = max(1, min(500, $length));
+			$limit_clause = "LIMIT $length OFFSET $start";
+		}
+
+		$sql = "SELECT
+				ma.awards_id, ma.date, ma.rank, ma.note, ma.at_event_id,
+				$award_name_expr AS award_name,
+				COALESCE(alias.peerage, a.peerage) AS peerage,
+				m.mundane_id AS recipient_id, m.persona AS recipient_persona,
+				m.park_id AS recipient_park_id, m.kingdom_id AS recipient_kingdom_id,
+				rp.name AS recipient_park_name, rk.name AS recipient_kingdom_name,
+				gb.mundane_id AS giver_id, gb.persona AS giver_persona,
+				gb.park_id AS giver_park_id, gb.kingdom_id AS giver_kingdom_id,
+				gp.name AS giver_park_name, gk.name AS giver_kingdom_name,
+				ebm.mundane_id AS enteredby_id, ebm.persona AS enteredby_persona,
+				ev.name AS event_name
+			$from
+			$base_where
+			$search_clause
+			ORDER BY $order_by
+			$limit_clause";
 
 		logtrace("CourtReport", $sql);
 		$r = $this->db->query($sql);
-		$response = array('Awards' => array());
+		$response = array('Awards' => array(), 'RecordsTotal' => $recordsTotal, 'RecordsFiltered' => $recordsFiltered);
 		if ($r !== false) {
 			while ($r->next()) {
-				$recvInScope  = $scopeParkId ? ((int)$r->recipient_park_id === $scopeParkId)
-				                             : ((int)$r->recipient_kingdom_id === $scopeKingdomId);
-				$givenInScope = $scopeParkId ? ((int)$r->giver_park_id === $scopeParkId)
-				                             : ((int)$r->giver_kingdom_id === $scopeKingdomId);
+				if ($scopeParkId) {
+					$recvInScope  = ((int)$r->recipient_park_id === $scopeParkId);
+					$givenInScope = ((int)$r->giver_park_id === $scopeParkId);
+				} else {
+					$recvInScope  = in_array((int)$r->recipient_kingdom_id, $scopeKidList, true);
+					$givenInScope = in_array((int)$r->giver_kingdom_id, $scopeKidList, true);
+				}
 				$response['Awards'][] = array(
 					'AwardsId'             => (int)$r->awards_id,
 					'Date'                 => $r->date,
@@ -533,6 +603,8 @@ class Report  extends Ork3 {
 					'GiverParkId'          => (int)$r->giver_park_id,
 					'GiverParkName'        => $r->giver_park_name,
 					'GiverKingdomName'     => $r->giver_kingdom_name,
+					'EnteredById'          => (int)$r->enteredby_id,
+					'EnteredByPersona'     => $r->enteredby_persona,
 					'ReceivedInScope'      => $recvInScope  ? 1 : 0,
 					'GivenInScope'         => $givenInScope ? 1 : 0,
 				);
@@ -561,8 +633,10 @@ class Report  extends Ork3 {
 			if ($kid > 0) $where .= " OR (e.kingdom_id = $kid AND (e.park_id = 0 OR e.park_id IS NULL))";
 			$where .= ")";
 		} elseif (valid_id($request['KingdomId'] ?? null)) {
-			$kid   = (int)$request['KingdomId'];
-			$where = "e.kingdom_id = $kid";
+			// Roll up child principalities so their events appear on the parent's
+			// dropdown (and a principality run on its own id stays self-scoped).
+			$kids  = array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds((int)$request['KingdomId']));
+			$where = "e.kingdom_id IN (" . implode(',', $kids) . ")";
 		} else {
 			return array('Status' => InvalidParameter(), 'Events' => array());
 		}

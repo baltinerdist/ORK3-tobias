@@ -2,23 +2,24 @@
 /* ── Court Report ──────────────────────────────────────────────
  * Every award handed out within the scope — counting both awards
  * received BY scope members and awards given BY scope members.
- * Rows are date-subsectioned, newest first, and lazily paginated:
- * the first page is rendered from embedded JSON, subsequent pages
- * are fetched on demand from Reports/court_data.
+ * The table is a DataTables server-side grid: one page (100) is
+ * queried at a time from Reports/court_data, grouped into date
+ * subsections (RowGroup), with search/sort and a full CSV export.
  * ───────────────────────────────────────────────────────────── */
 
-$scope_is_park = ($ScopeType === 'Park');
-$scope_link    = $scope_is_park
+$scope_is_park   = ($ScopeType === 'Park');
+$scope_is_kingly = ($ScopeType === 'Kingdom' || $ScopeType === 'Principality');
+$scope_noun      = $scope_is_park ? 'park' : ($ScopeType === 'Principality' ? 'principality' : 'kingdom');
+$scope_link      = $scope_is_park
 	? UIR . 'Park/profile/'    . (int)$ScopeId
-	: UIR . 'Kingdom/profile/' . (int)$ScopeId;
-$scope_icon    = $scope_is_park ? 'fa-tree' : 'fa-chess-rook';
+	: ($ScopeType === 'Principality'
+		? UIR . 'Principality/index/' . (int)$ScopeId
+		: UIR . 'Kingdom/profile/' . (int)$ScopeId);
+$scope_icon = $scope_is_park ? 'fa-tree' : ($ScopeType === 'Principality' ? 'fa-chess-bishop' : 'fa-chess-rook');
 
-// Filter state threaded back into URLs built client-side.
 $court_state = array(
 	'ScopeType'  => $ScopeType,
 	'ScopeId'    => (int)$ScopeId,
-	'KingdomId'  => $scope_is_park ? 0 : (int)$ScopeId,
-	'ParkId'     => $scope_is_park ? (int)$ScopeId : 0,
 	'ParkFilter' => (int)($ParkFilter ?? 0),
 	'StartDate'  => $StartDate ?? '',
 	'EndDate'    => $EndDate ?? '',
@@ -26,6 +27,8 @@ $court_state = array(
 );
 ?>
 
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+<link rel="stylesheet" href="https://cdn.datatables.net/rowgroup/1.4.1/css/rowGroup.dataTables.min.css">
 <link rel="stylesheet" href="<?=HTTP_TEMPLATE?>default/style/reports.css?v=<?=filemtime(__DIR__.'/style/reports.css')?>">
 
 <div class="rp-root">
@@ -47,6 +50,7 @@ $court_state = array(
 <?php endif; ?>
 		</div>
 		<div class="rp-header-actions">
+			<button class="rp-btn-ghost rp-btn-export"><i class="fas fa-download"></i> Export CSV</button>
 			<button class="rp-btn-ghost rp-btn-print"><i class="fas fa-print"></i> Print</button>
 		</div>
 	</div>
@@ -55,9 +59,9 @@ $court_state = array(
 	<div class="rp-context">
 		<i class="fas fa-info-circle rp-context-icon"></i>
 		<span>Every award handed out in court within
-			<?=!empty($ScopeName) ? htmlspecialchars($ScopeName) : ('this ' . ($scope_is_park ? 'park' : 'kingdom'))?>.
-			This counts awards <strong>received by</strong> <?=$scope_is_park ? 'park' : 'kingdom'?> members
-			as well as awards <strong>given by</strong> <?=$scope_is_park ? 'park' : 'kingdom'?> members
+			<?=!empty($ScopeName) ? htmlspecialchars($ScopeName) : ('this ' . $scope_noun)?>.
+			This counts awards <strong>received by</strong> <?=$scope_noun?> members
+			as well as awards <strong>given by</strong> <?=$scope_noun?> members
 			(e.g. a local officer bestowing an award on a visitor). Newest first.</span>
 	</div>
 
@@ -123,7 +127,7 @@ $_render_event_opts = function($events) use ($StartDate, $EndDate) {
 						<input type="date" id="court-end" class="rp-input" value="<?=htmlspecialchars($EndDate ?? '')?>">
 					</div>
 
-<?php if (!$scope_is_park) : ?>
+<?php if ($scope_is_kingly) : ?>
 					<div class="rp-field">
 						<label class="rp-field-label" for="court-park">Park</label>
 						<select id="court-park" class="rp-input">
@@ -160,6 +164,10 @@ $_render_event_opts = function($events) use ($StartDate, $EndDate) {
 						<span class="rp-col-guide-desc">The officer who bestowed it, and their home group.</span>
 					</div>
 					<div class="rp-col-guide-item">
+						<span class="rp-col-guide-name">Entered By</span>
+						<span class="rp-col-guide-desc">The officer who keyed the record into the ORK.</span>
+					</div>
+					<div class="rp-col-guide-item">
 						<span class="rp-col-guide-name">Scope</span>
 						<span class="rp-col-guide-desc">Whether this award is counted because it was given <em>to</em> a member, <em>by</em> a member, or both.</span>
 					</div>
@@ -170,183 +178,149 @@ $_render_event_opts = function($events) use ($StartDate, $EndDate) {
 
 		<!-- Table area -->
 		<div class="rp-table-area">
-			<div id="court-empty" class="rp-empty" style="display:none;">
-				<i class="fas fa-crown"></i>
-				<p>No awards found for the selected filters.</p>
-			</div>
-			<div id="court-table-wrap" style="overflow-x:auto;">
-			<table id="court-table" class="rp-court-table" style="width:100%">
+			<table id="court-table" class="display rp-court-table" style="width:100%">
 				<thead>
 					<tr>
+						<th>Date</th>
 						<th>Recipient</th>
 						<th>Award</th>
 						<th>Given By</th>
+						<th>Entered By</th>
 						<th>At Event</th>
 						<th>Scope</th>
 					</tr>
 				</thead>
-				<tbody id="court-tbody"></tbody>
+				<tbody></tbody>
 			</table>
-			</div>
-
-			<div class="rp-loadmore-wrap">
-				<button type="button" id="court-loadmore" class="rp-btn-loadmore" style="display:none;">
-					<i class="fas fa-angle-down"></i> Load More&hellip;
-				</button>
-				<div id="court-loadmore-spin" style="display:none;text-align:center;padding:16px 0;">
-					<i class="fas fa-spinner fa-spin fa-lg" style="color:#999;"></i>
-				</div>
-			</div>
 		</div><!-- /rp-table-area -->
 
 	</div><!-- /rp-body -->
 
 </div><!-- /rp-root -->
 
+<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/rowgroup/1.4.1/js/dataTables.rowGroup.min.js"></script>
+
 <script>
-var COURT_STATE   = <?=json_encode($court_state)?>;
-var COURT_INITIAL = <?=json_encode(is_array($Awards) ? $Awards : array())?>;
-var COURT_HASMORE = <?=!empty($HasMore) ? 'true' : 'false'?>;
-var COURT_UIR     = <?=json_encode(UIR)?>;
-var COURT_PLAYER  = COURT_UIR + 'Player/profile/';
-var COURT_PARK    = COURT_UIR + 'Park/profile/';
+var COURT_STATE = <?=json_encode($court_state)?>;
+var COURT_UIR   = <?=json_encode(UIR)?>;
+var COURT_PLAYER = COURT_UIR + 'Player/profile/';
+var COURT_PARK   = COURT_UIR + 'Park/profile/';
 
-(function() {
-	var offset = COURT_INITIAL.length;
-	var lastDateKey = null;
-	var $tbody = document.getElementById('court-tbody');
-
+$(function() {
 	function esc(s) {
 		if (s === null || s === undefined) return '';
 		return String(s).replace(/[&<>"']/g, function(c) {
 			return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c];
 		});
 	}
-
 	function fmtDate(d) {
 		if (!d) return '';
 		var parts = String(d).split('-');
 		if (parts.length !== 3) return d;
 		var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-		var m = parseInt(parts[1], 10);
-		return (months[m - 1] || parts[1]) + ' ' + parseInt(parts[2], 10) + ', ' + parts[0];
+		return (months[parseInt(parts[1],10) - 1] || parts[1]) + ' ' + parseInt(parts[2],10) + ', ' + parts[0];
 	}
-
-	// "Home group" subtext: park name, falling back to kingdom name.
 	function homeGroup(parkId, parkName, kingdomName) {
-		if (parkName && parkId) {
-			return '<a class="rp-court-sub" href="' + COURT_PARK + parkId + '">' + esc(parkName) + '</a>';
-		}
+		if (parkName && parkId) return '<a class="rp-court-sub" href="' + COURT_PARK + parkId + '">' + esc(parkName) + '</a>';
 		if (kingdomName) return '<span class="rp-court-sub">' + esc(kingdomName) + '</span>';
 		return '';
 	}
 
-	function scopeBadge(a) {
-		var to = a.ReceivedInScope == 1, by = a.GivenInScope == 1;
-		if (to && by) return '<span class="rp-badge rp-badge-both">To &amp; By</span>';
-		if (to)       return '<span class="rp-badge rp-badge-to">To</span>';
-		if (by)       return '<span class="rp-badge rp-badge-by">By</span>';
-		return '';
+	// Scope param name depends on what we're scoped to.
+	function scopeParam() {
+		if (COURT_STATE.ScopeType === 'Park')          return { ParkId: COURT_STATE.ScopeId };
+		if (COURT_STATE.ScopeType === 'Principality')  return { PrincipalityId: COURT_STATE.ScopeId };
+		return { KingdomId: COURT_STATE.ScopeId };
 	}
 
-	function appendDateHeader(dateStr) {
-		var tr = document.createElement('tr');
-		tr.className = 'rp-court-datehead';
-		tr.innerHTML = '<td colspan="5"><i class="fas fa-calendar-day"></i> ' + esc(fmtDate(dateStr)) + '</td>';
-		$tbody.appendChild(tr);
-	}
-
-	function appendAward(a) {
-		var tr = document.createElement('tr');
-
-		var recipient = a.RecipientId
-			? '<a href="' + COURT_PLAYER + a.RecipientId + '">' + esc(a.RecipientPersona) + '</a>'
-			: esc(a.RecipientPersona || '—');
-		recipient += '<div>' + homeGroup(a.RecipientParkId, a.RecipientParkName, a.RecipientKingdomName) + '</div>';
-
-		var award = '<span class="rp-court-award">' + esc(a.AwardName || '') + '</span>';
-		if (a.Rank && parseInt(a.Rank, 10) > 0) award += ' <span class="rp-court-rank">#' + esc(a.Rank) + '</span>';
-		if (a.Peerage) award += '<div class="rp-court-sub">' + esc(a.Peerage) + '</div>';
-		if (a.Note) award += '<div class="rp-court-note">' + esc(a.Note) + '</div>';
-
-		var giver = a.GiverId
-			? '<a href="' + COURT_PLAYER + a.GiverId + '">' + esc(a.GiverPersona) + '</a>'
-			: (a.GiverPersona ? esc(a.GiverPersona) : '<span class="rp-court-sub">—</span>');
-		if (a.GiverId) giver += '<div>' + homeGroup(a.GiverParkId, a.GiverParkName, a.GiverKingdomName) + '</div>';
-
-		var atEvent = a.EventName ? esc(a.EventName) : '<span class="rp-court-sub">—</span>';
-
-		tr.innerHTML =
-			'<td>' + recipient + '</td>' +
-			'<td>' + award + '</td>' +
-			'<td>' + giver + '</td>' +
-			'<td>' + atEvent + '</td>' +
-			'<td>' + scopeBadge(a) + '</td>';
-		$tbody.appendChild(tr);
-	}
-
-	function renderAwards(awards) {
-		for (var i = 0; i < awards.length; i++) {
-			var a = awards[i];
-			var key = a.Date || '';
-			if (key !== lastDateKey) {
-				appendDateHeader(key);
-				lastDateKey = key;
-			}
-			appendAward(a);
-		}
-	}
-
-	// Builds a Route URL carrying scope + active filters (+ optional overrides).
-	function buildUrl(route, extra) {
-		var p = [];
-		if (COURT_STATE.KingdomId)  p.push('KingdomId=' + COURT_STATE.KingdomId);
-		if (COURT_STATE.ParkId)     p.push('ParkId=' + COURT_STATE.ParkId);
-		if (COURT_STATE.ParkFilter) p.push('ParkFilter=' + COURT_STATE.ParkFilter);
-		if (COURT_STATE.StartDate)  p.push('StartDate=' + encodeURIComponent(COURT_STATE.StartDate));
-		if (COURT_STATE.EndDate)    p.push('EndDate=' + encodeURIComponent(COURT_STATE.EndDate));
-		extra = extra || {};
-		for (var k in extra) { if (extra.hasOwnProperty(k)) p.push(k + '=' + encodeURIComponent(extra[k])); }
-		return COURT_UIR + route + (p.length ? '&' + p.join('&') : '');
-	}
-
-	var $loadmore = document.getElementById('court-loadmore');
-	var $spin     = document.getElementById('court-loadmore-spin');
-
-	function setHasMore(has) {
-		$loadmore.style.display = has ? '' : 'none';
-	}
-
-	$loadmore.addEventListener('click', function() {
-		$loadmore.style.display = 'none';
-		$spin.style.display = 'block';
-		var xhr = new XMLHttpRequest();
-		xhr.open('GET', buildUrl('Reports/court_data', { Offset: offset }), true);
-		xhr.onreadystatechange = function() {
-			if (xhr.readyState !== 4) return;
-			$spin.style.display = 'none';
-			try {
-				var res = JSON.parse(xhr.responseText);
-				if (res.status === 0 && res.awards) {
-					renderAwards(res.awards);
-					offset += res.awards.length;
-					setHasMore(!!res.hasMore);
-				} else {
-					setHasMore(false);
-				}
-			} catch (e) {
-				setHasMore(false);
-			}
-		};
-		xhr.send();
-	});
-
-	// ── Filter controls ──────────────────────────────────
 	var $event = document.getElementById('court-event');
 	var $start = document.getElementById('court-start');
 	var $end   = document.getElementById('court-end');
 	var $park  = document.getElementById('court-park');
 
+	// Current filter values folded into every server request.
+	function activeFilters() {
+		var f = {};
+		var sp = scopeParam();
+		for (var k in sp) if (sp.hasOwnProperty(k)) f[k] = sp[k];
+		if ($start && $start.value) f.StartDate = $start.value;
+		if ($end && $end.value)     f.EndDate   = $end.value;
+		if ($park && parseInt($park.value, 10) > 0) f.ParkFilter = $park.value;
+		return f;
+	}
+
+	var table = $('#court-table').DataTable({
+		serverSide  : true,
+		processing  : true,
+		searching   : true,
+		lengthChange: false,
+		pageLength  : COURT_STATE.PageSize,
+		ajax: {
+			url: COURT_UIR + 'Reports/court_data',
+			data: function(d) {
+				var f = activeFilters();
+				for (var k in f) if (f.hasOwnProperty(k)) d[k] = f[k];
+			}
+		},
+		order: [[0, 'desc']],
+		columnDefs: [{ targets: 0, visible: false }],
+		columns: [
+			{ data: 'Date' },
+			{ data: 'RecipientPersona', render: function(v, t, row) {
+				if (t !== 'display') return v || '';
+				var html = row.RecipientId
+					? '<a href="' + COURT_PLAYER + row.RecipientId + '">' + esc(v) + '</a>'
+					: esc(v || '—');
+				return html + '<div>' + homeGroup(row.RecipientParkId, row.RecipientParkName, row.RecipientKingdomName) + '</div>';
+			}},
+			{ data: 'AwardName', render: function(v, t, row) {
+				if (t !== 'display') return v || '';
+				var html = '<span class="rp-court-award">' + esc(v || '') + '</span>';
+				if (row.Rank && parseInt(row.Rank, 10) > 0) html += ' <span class="rp-court-rank">#' + esc(row.Rank) + '</span>';
+				if (row.Peerage) html += '<div class="rp-court-sub">' + esc(row.Peerage) + '</div>';
+				if (row.Note)    html += '<div class="rp-court-note">' + esc(row.Note) + '</div>';
+				return html;
+			}},
+			{ data: 'GiverPersona', render: function(v, t, row) {
+				if (t !== 'display') return v || '';
+				if (!row.GiverId) return '<span class="rp-court-sub">—</span>';
+				return '<a href="' + COURT_PLAYER + row.GiverId + '">' + esc(v) + '</a>'
+					+ '<div>' + homeGroup(row.GiverParkId, row.GiverParkName, row.GiverKingdomName) + '</div>';
+			}},
+			{ data: 'EnteredByPersona', render: function(v, t, row) {
+				if (t !== 'display') return v || '';
+				if (!row.EnteredById) return '<span class="rp-court-sub">—</span>';
+				return '<a href="' + COURT_PLAYER + row.EnteredById + '">' + esc(v) + '</a>';
+			}},
+			{ data: 'EventName', render: function(v, t) {
+				if (t !== 'display') return v || '';
+				return v ? esc(v) : '<span class="rp-court-sub">—</span>';
+			}},
+			{ data: null, orderable: false, searchable: false, render: function(d, t, row) {
+				var to = row.ReceivedInScope == 1, by = row.GivenInScope == 1;
+				if (to && by) return '<span class="rp-badge rp-badge-both">To &amp; By</span>';
+				if (to)       return '<span class="rp-badge rp-badge-to">To</span>';
+				if (by)       return '<span class="rp-badge rp-badge-by">By</span>';
+				return '';
+			}}
+		],
+		rowGroup: {
+			dataSrc: 'Date',
+			startRender: function(rows, group) {
+				return $('<tr class="rp-court-datehead"><td colspan="6"><i class="fas fa-calendar-day"></i> '
+					+ esc(fmtDate(group)) + '</td></tr>');
+			}
+		},
+		dom: 'frtip',
+		language: {
+			search: 'Search awards:',
+			emptyTable: 'No awards found for the selected filters.',
+			zeroRecords: 'No awards match your search.'
+		}
+	});
+
+	// ── Event dropdown fills the date window ──────────────
 	if ($event) {
 		$event.addEventListener('change', function() {
 			if (this.value) {
@@ -357,30 +331,26 @@ var COURT_PARK    = COURT_UIR + 'Park/profile/';
 		});
 	}
 
-	document.getElementById('court-apply').addEventListener('click', function() {
-		var extra = {};
-		if ($start.value) extra.StartDate = $start.value;
-		if ($end.value)   extra.EndDate   = $end.value;
-		if ($park && parseInt($park.value, 10) > 0) extra.ParkFilter = $park.value;
-		// Reset filter state so buildUrl uses only the chosen overrides.
-		COURT_STATE.StartDate = ''; COURT_STATE.EndDate = ''; COURT_STATE.ParkFilter = 0;
-		window.location = buildUrl('Reports/court', extra);
-	});
-
+	document.getElementById('court-apply').addEventListener('click', function() { table.ajax.reload(); });
 	document.getElementById('court-clear').addEventListener('click', function() {
-		COURT_STATE.StartDate = ''; COURT_STATE.EndDate = ''; COURT_STATE.ParkFilter = 0;
-		window.location = buildUrl('Reports/court', {});
+		if ($event) $event.value = '';
+		if ($start) $start.value = '';
+		if ($end)   $end.value   = '';
+		if ($park)  $park.value  = '0';
+		table.ajax.reload();
 	});
 
-	document.querySelector('.rp-btn-print').addEventListener('click', function() { window.print(); });
-
-	// ── Initial paint ────────────────────────────────────
-	if (COURT_INITIAL.length === 0) {
-		document.getElementById('court-table-wrap').style.display = 'none';
-		document.getElementById('court-empty').style.display = 'block';
-	} else {
-		renderAwards(COURT_INITIAL);
+	// ── Export CSV: full filtered set, server-side ────────
+	function csvUrl() {
+		var parts = [];
+		var f = activeFilters();
+		f.Format = 'csv';
+		var search = table.search();
+		if (search) f['search[value]'] = search;
+		for (var k in f) if (f.hasOwnProperty(k)) parts.push(encodeURIComponent(k) + '=' + encodeURIComponent(f[k]));
+		return COURT_UIR + 'Reports/court_data&' + parts.join('&');
 	}
-	setHasMore(COURT_HASMORE);
-})();
+	$('.rp-btn-export').on('click', function() { window.location = csvUrl(); });
+	$('.rp-btn-print').on('click', function() { window.print(); });
+});
 </script>
