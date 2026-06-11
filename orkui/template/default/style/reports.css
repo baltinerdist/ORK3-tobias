@@ -1320,3 +1320,172 @@ html[data-theme="dark"] .apexcharts-tooltip-text-y-label,
 html[data-theme="dark"] .apexcharts-tooltip-text-y-value {
 	color: var(--ork-text, #e2e8f0) !important;
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   Court Report
+   ═══════════════════════════════════════════════════════════════ */
+
+.rp-field { margin-bottom: 12px; }
+.rp-field:last-child { margin-bottom: 0; }
+
+.rp-field-label {
+	display      : block;
+	font-size    : 12px;
+	font-weight  : 600;
+	color        : var(--rp-text-body);
+	margin-bottom: 4px;
+}
+
+.rp-input {
+	width        : 100%;
+	box-sizing   : border-box;
+	padding      : 6px 8px;
+	font-size    : 13px;
+	color        : var(--rp-text);
+	background   : var(--rp-card-bg, #fff);
+	border       : 1px solid var(--rp-border);
+	border-radius: 5px;
+}
+.rp-input:focus { outline: none; border-color: var(--rp-accent-mid); }
+
+/* Inline (?) help with hover/focus tooltip */
+.rp-help {
+	position    : relative;
+	cursor      : help;
+	font-size   : 11px;
+	font-weight : 600;
+	color       : var(--rp-accent);
+	margin-left : 4px;
+}
+.rp-help-tip {
+	display       : none;
+	position      : absolute;
+	left          : 0;
+	top           : 140%;
+	z-index       : 20;
+	width         : 240px;
+	padding       : 8px 10px;
+	font-size     : 11px;
+	font-weight   : 400;
+	line-height   : 1.45;
+	color         : #fff;
+	background    : var(--rp-accent-dark);
+	border-radius : 6px;
+	box-shadow    : 0 4px 14px rgba(0,0,0,.25);
+}
+.rp-help:hover .rp-help-tip,
+.rp-help:focus .rp-help-tip { display: block; }
+
+.rp-field-actions { display: flex; gap: 8px; margin-top: 4px; }
+
+.rp-btn-apply, .rp-btn-clear {
+	flex         : 1;
+	padding      : 7px 10px;
+	font-size    : 13px;
+	font-weight  : 600;
+	border-radius: 5px;
+	cursor       : pointer;
+	border       : 1px solid var(--rp-border);
+}
+.rp-btn-apply {
+	color       : #fff;
+	background  : var(--rp-accent);
+	border-color: var(--rp-accent);
+}
+.rp-btn-apply:hover { background: var(--rp-accent-mid); border-color: var(--rp-accent-mid); }
+.rp-btn-clear {
+	color      : var(--rp-text-body);
+	background : var(--rp-bg-light);
+}
+.rp-btn-clear:hover { color: var(--rp-text); }
+
+/* Court table */
+.rp-court-table {
+	border-collapse: collapse;
+	background     : var(--rp-bg-table, #fff);
+	border         : 1px solid var(--rp-border);
+	border-radius  : 8px;
+	overflow       : hidden;
+}
+.rp-court-table thead th {
+	text-align    : left;
+	padding       : 10px 14px;
+	font-size     : 12px;
+	text-transform: uppercase;
+	letter-spacing: .04em;
+	color         : var(--rp-text-muted);
+	background    : var(--rp-bg-light);
+	border-bottom : 1px solid var(--rp-border);
+}
+.rp-court-table tbody td {
+	padding      : 10px 14px;
+	font-size    : 13px;
+	color        : var(--rp-text-body);
+	border-bottom: 1px solid var(--rp-border);
+	vertical-align: top;
+}
+.rp-court-table tbody tr:hover > td { background: var(--rp-bg-light); }
+.rp-court-table a { color: var(--rp-accent); text-decoration: none; font-weight: 600; }
+.rp-court-table a:hover { text-decoration: underline; }
+
+/* Date subsection header rows */
+.rp-court-datehead > td {
+	background    : var(--rp-accent-dark) !important;
+	color         : #fff;
+	font-weight   : 700;
+	font-size     : 13px;
+	padding       : 8px 14px;
+	letter-spacing: .02em;
+}
+.rp-court-datehead i { margin-right: 6px; opacity: .85; }
+
+.rp-court-sub  { display: inline-block; font-size: 11px; color: var(--rp-text-muted); font-weight: 400; }
+a.rp-court-sub { color: var(--rp-text-muted); font-weight: 400; }
+.rp-court-award { font-weight: 600; color: var(--rp-text); }
+.rp-court-rank  { font-size: 11px; font-weight: 700; color: var(--rp-accent); }
+.rp-court-note  { font-size: 11px; font-style: italic; color: var(--rp-text-muted); margin-top: 2px; }
+
+/* Scope direction badges */
+.rp-badge {
+	display      : inline-block;
+	padding      : 2px 8px;
+	font-size    : 11px;
+	font-weight  : 700;
+	border-radius: 999px;
+	white-space  : nowrap;
+}
+.rp-badge-to   { color: #1e6f3a; background: #d8f3e0; }
+.rp-badge-by   { color: #1d4ed8; background: #dbe6fe; }
+.rp-badge-both { color: #6b21a8; background: #ede0fb; }
+
+/* Load More */
+.rp-loadmore-wrap { text-align: center; margin: 18px 0 4px; }
+.rp-btn-loadmore {
+	padding      : 9px 22px;
+	font-size    : 13px;
+	font-weight  : 600;
+	color        : var(--rp-accent);
+	background    : var(--rp-bg-light);
+	border       : 1px solid var(--rp-border);
+	border-radius: 6px;
+	cursor       : pointer;
+}
+.rp-btn-loadmore:hover { background: #fff; border-color: var(--rp-accent-mid); }
+.rp-btn-loadmore i { margin-right: 6px; }
+
+.rp-empty { text-align: center; padding: 48px 20px; color: var(--rp-text-muted); }
+.rp-empty i { font-size: 32px; color: var(--rp-text-hint); margin-bottom: 10px; }
+.rp-empty p { margin: 0; font-size: 14px; }
+
+/* Dark theme */
+html[data-theme="dark"] .rp-input {
+	background  : var(--ork-bg-secondary, #2d3748);
+	color       : var(--ork-text, #e2e8f0);
+	border-color: var(--ork-border, #4a5568);
+}
+html[data-theme="dark"] .rp-court-table tbody td { color: var(--ork-text, #e2e8f0); }
+html[data-theme="dark"] .rp-btn-clear,
+html[data-theme="dark"] .rp-btn-loadmore { background: var(--ork-bg-secondary, #2d3748); color: var(--ork-text, #e2e8f0); }
+html[data-theme="dark"] .rp-badge-to   { color: #d8f3e0; background: #1e6f3a; }
+html[data-theme="dark"] .rp-badge-by   { color: #dbe6fe; background: #1d4ed8; }
+html[data-theme="dark"] .rp-badge-both { color: #ede0fb; background: #6b21a8; }

@@ -428,7 +428,259 @@ class Report  extends Ork3 {
 		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
 	}
 
+	// Escapes a user search term for inclusion in a LIKE literal. The codebase's
+	// mysql_real_escape_string shim is a no-op (see startup.php), so we must
+	// neutralize quotes/backslashes and LIKE wildcards ourselves.
+	private function _courtEscapeLike($raw) {
+		return str_replace(
+			array('\\', "'", '%', '_'),
+			array('\\\\', "\\'", '\\%', '\\_'),
+			$raw
+		);
+	}
+
+	/**
+	 * Court Report — every award handed out within a scope.
+	 *
+	 * "Within scope" deliberately spans two directions:
+	 *   - awards received BY a scope member (recipient's home park/kingdom), and
+	 *   - awards given BY a scope member (the bestowing officer's home park/kingdom).
+	 * The second case captures e.g. a local Monarch knighting a visitor from a
+	 * neighboring group — the recipient isn't "ours" but the act of court is.
+	 *
+	 * Kingdom scope rolls up child principalities via GetStatsKingdomIds when the
+	 * kingdom is configured to include them, so a principality's awards surface on
+	 * the parent's report (and a principality run on its own id stays self-scoped).
+	 *
+	 * Drives a DataTables server-side table: honors Start/Length/Search/OrderColumn/
+	 * OrderDir and returns RecordsTotal (scope) + RecordsFiltered (scope+search) so
+	 * only one page is queried at a time. Pass Length = -1 to stream every row (CSV
+	 * export). Ordered date DESC by default; awards_id breaks ties for a stable cursor.
+	 */
+	public function CourtReport($request) {
+
+		// ── Scope clause (bi-directional: to OR by) ──────────────────
+		$parkFilter  = valid_id($request['ParkFilter'] ?? null) ? (int)$request['ParkFilter'] : 0;
+		$scopeParkId = 0;
+		$scopeKidList = array();
+		if (valid_id($request['ParkId'] ?? null)) {
+			$scopeParkId = (int)$request['ParkId'];
+			$scope = "(m.park_id = $scopeParkId OR gb.park_id = $scopeParkId)";
+		} elseif (valid_id($request['KingdomId'] ?? null)) {
+			if ($parkFilter > 0) {
+				$scopeParkId = $parkFilter;
+				$scope = "(m.park_id = $parkFilter OR gb.park_id = $parkFilter)";
+			} else {
+				$scopeKidList = array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds((int)$request['KingdomId']));
+				$in = implode(',', $scopeKidList);
+				$scope = "(m.kingdom_id IN ($in) OR gb.kingdom_id IN ($in))";
+			}
+		} else {
+			return array('Status' => InvalidParameter(), 'Awards' => array(), 'RecordsTotal' => 0, 'RecordsFiltered' => 0);
+		}
+
+		// ── Optional event-derived date window ───────────────────────
+		$date_clause = '';
+		$s = $request['StartDate'] ?? '';
+		$e = $request['EndDate']   ?? '';
+		if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $s) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $e)) {
+			$date_clause = " AND ma.date BETWEEN '$s' AND '$e'";
+		}
+
+		$award_name_expr = "COALESCE(NULLIF(ma.custom_name,''), ka.name, alias.name, a.name)";
+
+		$from = "FROM " . DB_PREFIX . "awards ma
+				LEFT JOIN " . DB_PREFIX . "kingdomaward ka ON ka.kingdomaward_id = ma.kingdomaward_id
+				LEFT JOIN " . DB_PREFIX . "award a ON a.award_id = ka.award_id
+				LEFT JOIN " . DB_PREFIX . "award alias ON alias.award_id = ma.alias_award_id
+				LEFT JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = ma.mundane_id
+				LEFT JOIN " . DB_PREFIX . "park rp ON rp.park_id = m.park_id
+				LEFT JOIN " . DB_PREFIX . "kingdom rk ON rk.kingdom_id = m.kingdom_id
+				LEFT JOIN " . DB_PREFIX . "mundane gb ON gb.mundane_id = ma.given_by_id
+				LEFT JOIN " . DB_PREFIX . "park gp ON gp.park_id = gb.park_id
+				LEFT JOIN " . DB_PREFIX . "kingdom gk ON gk.kingdom_id = gb.kingdom_id
+				LEFT JOIN " . DB_PREFIX . "mundane ebm ON ebm.mundane_id = ma.by_whom_id
+				LEFT JOIN " . DB_PREFIX . "event ev ON ev.event_id = ma.at_event_id";
+
+		$base_where = "WHERE (ma.revoked = 0 OR ma.revoked IS NULL)
+				AND ma.date IS NOT NULL AND ma.date != '0000-00-00'
+				AND $scope
+				$date_clause";
+
+		// ── Search clause (DataTables global search) ─────────────────
+		$search_clause = '';
+		$searchRaw = trim($request['Search'] ?? '');
+		if ($searchRaw !== '') {
+			$like = "'%" . $this->_courtEscapeLike($searchRaw) . "%'";
+			$search_clause = " AND (m.persona LIKE $like OR gb.persona LIKE $like OR ebm.persona LIKE $like"
+				. " OR $award_name_expr LIKE $like OR ev.name LIKE $like OR ma.note LIKE $like)";
+		}
+
+		// ── Counts (total = scope; filtered = scope + search) ────────
+		$recordsTotal = 0;
+		$tc = $this->db->query("SELECT COUNT(*) AS cnt $from $base_where");
+		if ($tc !== false && $tc->next()) $recordsTotal = (int)$tc->cnt;
+		if ($search_clause === '') {
+			$recordsFiltered = $recordsTotal;
+		} else {
+			$recordsFiltered = 0;
+			$fc = $this->db->query("SELECT COUNT(*) AS cnt $from $base_where $search_clause");
+			if ($fc !== false && $fc->next()) $recordsFiltered = (int)$fc->cnt;
+		}
+
+		// ── Ordering ─────────────────────────────────────────────────
+		$orderCols = array(
+			0 => 'ma.date',
+			1 => 'm.persona',
+			2 => $award_name_expr,
+			3 => 'gb.persona',
+			4 => 'ebm.persona',
+			5 => 'ev.name',
+		);
+		$oc = isset($request['OrderColumn']) ? (int)$request['OrderColumn'] : 0;
+		$od = (isset($request['OrderDir']) && strtolower($request['OrderDir']) === 'asc') ? 'ASC' : 'DESC';
+		$expr = $orderCols[$oc] ?? 'ma.date';
+		$order_by = ($expr === 'ma.date')
+			? "ma.date $od, ma.awards_id DESC"
+			: "$expr $od, ma.date DESC, ma.awards_id DESC";
+
+		// ── Pagination (Length = -1 → all rows, for CSV export) ──────
+		$length = isset($request['Length']) ? (int)$request['Length'] : 100;
+		$start  = isset($request['Start'])  ? max(0, (int)$request['Start']) : 0;
+		if ($length < 0) {
+			$limit_clause = '';
+		} else {
+			$length = max(1, min(500, $length));
+			$limit_clause = "LIMIT $length OFFSET $start";
+		}
+
+		$sql = "SELECT
+				ma.awards_id, ma.date, ma.rank, ma.note, ma.at_event_id,
+				$award_name_expr AS award_name,
+				COALESCE(alias.peerage, a.peerage) AS peerage,
+				m.mundane_id AS recipient_id, m.persona AS recipient_persona,
+				m.park_id AS recipient_park_id, m.kingdom_id AS recipient_kingdom_id,
+				rp.name AS recipient_park_name, rk.name AS recipient_kingdom_name,
+				gb.mundane_id AS giver_id, gb.persona AS giver_persona,
+				gb.park_id AS giver_park_id, gb.kingdom_id AS giver_kingdom_id,
+				gp.name AS giver_park_name, gk.name AS giver_kingdom_name,
+				ebm.mundane_id AS enteredby_id, ebm.persona AS enteredby_persona,
+				ev.name AS event_name
+			$from
+			$base_where
+			$search_clause
+			ORDER BY $order_by
+			$limit_clause";
+
+		logtrace("CourtReport", $sql);
+		$r = $this->db->query($sql);
+		$response = array('Awards' => array(), 'RecordsTotal' => $recordsTotal, 'RecordsFiltered' => $recordsFiltered);
+		if ($r !== false) {
+			while ($r->next()) {
+				if ($scopeParkId) {
+					$recvInScope  = ((int)$r->recipient_park_id === $scopeParkId);
+					$givenInScope = ((int)$r->giver_park_id === $scopeParkId);
+				} else {
+					$recvInScope  = in_array((int)$r->recipient_kingdom_id, $scopeKidList, true);
+					$givenInScope = in_array((int)$r->giver_kingdom_id, $scopeKidList, true);
+				}
+				$response['Awards'][] = array(
+					'AwardsId'             => (int)$r->awards_id,
+					'Date'                 => $r->date,
+					'Rank'                 => $r->rank,
+					'Note'                 => $r->note,
+					'AwardName'            => $r->award_name,
+					'Peerage'              => $r->peerage,
+					'EventId'              => (int)$r->at_event_id,
+					'EventName'            => $r->event_name,
+					'RecipientId'          => (int)$r->recipient_id,
+					'RecipientPersona'     => $r->recipient_persona,
+					'RecipientParkId'      => (int)$r->recipient_park_id,
+					'RecipientParkName'    => $r->recipient_park_name,
+					'RecipientKingdomName' => $r->recipient_kingdom_name,
+					'GiverId'              => (int)$r->giver_id,
+					'GiverPersona'         => $r->giver_persona,
+					'GiverParkId'          => (int)$r->giver_park_id,
+					'GiverParkName'        => $r->giver_park_name,
+					'GiverKingdomName'     => $r->giver_kingdom_name,
+					'EnteredById'          => (int)$r->enteredby_id,
+					'EnteredByPersona'     => $r->enteredby_persona,
+					'ReceivedInScope'      => $recvInScope  ? 1 : 0,
+					'GivenInScope'         => $givenInScope ? 1 : 0,
+				);
+			}
+			$response['Status'] = Success();
+		} else {
+			$response['Status'] = InvalidParameter();
+		}
+		return $response;
+	}
+
+	/**
+	 * Events available to the Court Report's date-window dropdown: kingdom-level
+	 * and park-level events within scope, each collapsed to its full crossover
+	 * window (earliest start / latest end across calendar details). Dates only —
+	 * award rows carry a date, not a timestamp.
+	 */
+	public function CourtEvents($request) {
+
+		if (valid_id($request['ParkId'] ?? null)) {
+			$pid = (int)$request['ParkId'];
+			$kq  = $this->db->query("SELECT kingdom_id FROM " . DB_PREFIX . "park WHERE park_id = $pid LIMIT 1");
+			$kid = ($kq !== false && $kq->next()) ? (int)$kq->kingdom_id : 0;
+			// This park's own events, plus its kingdom's kingdom-level events.
+			$where = "(e.park_id = $pid";
+			if ($kid > 0) $where .= " OR (e.kingdom_id = $kid AND (e.park_id = 0 OR e.park_id IS NULL))";
+			$where .= ")";
+		} elseif (valid_id($request['KingdomId'] ?? null)) {
+			// Roll up child principalities so their events appear on the parent's
+			// dropdown (and a principality run on its own id stays self-scoped).
+			$kids  = array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds((int)$request['KingdomId']));
+			$where = "e.kingdom_id IN (" . implode(',', $kids) . ")";
+		} else {
+			return array('Status' => InvalidParameter(), 'Events' => array());
+		}
+
+		$sql = "SELECT e.event_id, e.name AS event_name, e.park_id,
+					p.name AS park_name, p.abbreviation AS park_abbr,
+					MIN(cd.event_start) AS event_start, MAX(cd.event_end) AS event_end
+				FROM " . DB_PREFIX . "event e
+					LEFT JOIN " . DB_PREFIX . "park p ON p.park_id = e.park_id
+					JOIN " . DB_PREFIX . "event_calendardetail cd ON cd.event_id = e.event_id
+				WHERE $where
+				GROUP BY e.event_id, e.name, e.park_id, p.name, p.abbreviation
+				ORDER BY event_start DESC
+				LIMIT 500";
+
+		logtrace("CourtEvents", $sql);
+		$r = $this->db->query($sql);
+		$response = array('Events' => array());
+		if ($r !== false) {
+			while ($r->next()) {
+				$start = $r->event_start ? date('Y-m-d', strtotime($r->event_start)) : '';
+				$end   = $r->event_end   ? date('Y-m-d', strtotime($r->event_end))   : '';
+				if (!$start || !$end) continue;
+				$isPark = ((int)$r->park_id) > 0;
+				$response['Events'][] = array(
+					'EventId'   => (int)$r->event_id,
+					'EventName' => $r->event_name,
+					'Scope'     => $isPark ? 'Park' : 'Kingdom',
+					'ParkName'  => $r->park_name,
+					'ParkAbbr'  => $r->park_abbr,
+					'Start'     => $start,
+					'End'       => $end,
+				);
+			}
+			$response['Status'] = Success();
+		} else {
+			$response['Status'] = InvalidParameter();
+		}
+		return $response;
+	}
+
 	public function PlayerAwardRecommendations($request) {
+
+		// Cache keyed to the player being viewed — shared across all viewers.
 
 		// Cache keyed to the player being viewed — shared across all viewers.
 		// Viewer-specific flags (ViewerCanSecond, ViewerCanEditReason, IsMine) are

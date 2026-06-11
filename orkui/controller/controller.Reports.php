@@ -174,6 +174,171 @@ class Controller_Reports extends Controller {
 		$this->data['scope_name']  = $this->_resolve_scope_name($type ?? null, $id ?? null);
 	}
 
+	const COURT_PAGE_SIZE = 100;
+
+	// Resolves the Court Report scope from the request. ParkId wins, then
+	// PrincipalityId, then KingdomId. A Principality is a kingdom row, so it is
+	// queried as a Kingdom (its own id) — GetStatsKingdomIds keeps it self-scoped
+	// while a parent Kingdom rolls its principalities in.
+	private function _court_scope() {
+		$park_id         = valid_id($this->request->ParkId)         ? (int)$this->request->ParkId         : 0;
+		$principality_id = valid_id($this->request->PrincipalityId) ? (int)$this->request->PrincipalityId : 0;
+		$kingdom_id      = valid_id($this->request->KingdomId)      ? (int)$this->request->KingdomId      : 0;
+		if ($park_id > 0) {
+			return array('Type' => 'Park', 'Id' => $park_id, 'KingdomId' => 0, 'ParkId' => $park_id);
+		}
+		if ($principality_id > 0) {
+			return array('Type' => 'Principality', 'Id' => $principality_id, 'KingdomId' => $principality_id, 'ParkId' => 0);
+		}
+		if ($kingdom_id > 0) {
+			return array('Type' => 'Kingdom', 'Id' => $kingdom_id, 'KingdomId' => $kingdom_id, 'ParkId' => 0);
+		}
+		return null;
+	}
+
+	// Normalizes scope + filter (date window, park narrowing) and the DataTables
+	// server-side params (Start/Length/Search/Order) into a single query array.
+	private function _court_query($scope) {
+		$is_kingdomish = ($scope['Type'] === 'Kingdom' || $scope['Type'] === 'Principality');
+
+		$start_date = isset($this->request->StartDate) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $this->request->StartDate)
+					? $this->request->StartDate : '';
+		$end_date   = isset($this->request->EndDate) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $this->request->EndDate)
+					? $this->request->EndDate : '';
+		// ParkFilter only narrows a Kingdom/Principality-scoped report.
+		$park_filter = ($is_kingdomish && valid_id($this->request->ParkFilter))
+					? (int)$this->request->ParkFilter : 0;
+
+		// DataTables nested params arrive as arrays; read them straight off $_GET.
+		$length = isset($_GET['length']) ? (int)$_GET['length'] : self::COURT_PAGE_SIZE;
+		$start  = isset($_GET['start'])  ? max(0, (int)$_GET['start']) : 0;
+		$search = isset($_GET['search']['value']) ? (string)$_GET['search']['value'] : '';
+		$order_col = isset($_GET['order'][0]['column']) ? (int)$_GET['order'][0]['column'] : 0;
+		$order_dir = isset($_GET['order'][0]['dir'])    ? (string)$_GET['order'][0]['dir'] : 'desc';
+
+		return array(
+			'KingdomId'   => $is_kingdomish ? $scope['Id'] : 0,
+			'ParkId'      => $scope['Type'] === 'Park' ? $scope['Id'] : 0,
+			'ParkFilter'  => $park_filter,
+			'StartDate'   => $start_date,
+			'EndDate'     => $end_date,
+			'Start'       => $start,
+			'Length'      => $length,
+			'Search'      => $search,
+			'OrderColumn' => $order_col,
+			'OrderDir'    => $order_dir,
+		);
+	}
+
+	// Parks for the Kingdom/Principality park-filter dropdown, rolled up across the
+	// scope's stats kingdoms (so a parent kingdom lists its principalities' parks).
+	private function _court_scope_parks($scope) {
+		if ($scope['Type'] !== 'Kingdom' && $scope['Type'] !== 'Principality') return array();
+		$ids = Ork3::$Lib->kingdom->GetStatsKingdomIds((int)$scope['Id']);
+		$parks = array();
+		$seen  = array();
+		foreach ($ids as $kid) {
+			foreach ((array)$this->Reports->get_kingdom_parks((int)$kid) as $p) {
+				$pid = (int)($p['ParkId'] ?? 0);
+				if ($pid > 0 && !isset($seen[$pid])) { $seen[$pid] = true; $parks[] = $p; }
+			}
+		}
+		usort($parks, function($a, $b) { return strcasecmp($a['Name'] ?? '', $b['Name'] ?? ''); });
+		return $parks;
+	}
+
+	public function court($params=null) {
+		$scope = $this->_court_scope();
+		if ($scope === null) {
+			header('Location: ' . UIR);
+			exit;
+		}
+		$this->template = 'Reports_court.tpl';
+
+		// Shell only — DataTables fetches page 1 itself via court_data, so no awards
+		// are queried up front. We only load the filter scaffolding here.
+		$this->data['Events'] = $this->Reports->court_events(array(
+			'KingdomId' => $scope['KingdomId'],
+			'ParkId'    => $scope['ParkId'],
+		));
+		$this->data['Parks']      = $this->_court_scope_parks($scope);
+		$this->data['PageSize']   = self::COURT_PAGE_SIZE;
+		$this->data['ScopeType']  = $scope['Type'];
+		$this->data['ScopeId']    = $scope['Id'];
+		$this->data['ScopeName']  = $this->_resolve_scope_name(
+			$scope['Type'] === 'Principality' ? 'Kingdom' : $scope['Type'], $scope['Id']);
+		$this->data['ParkFilter'] = ($scope['Type'] !== 'Park' && valid_id($this->request->ParkFilter))
+								   ? (int)$this->request->ParkFilter : 0;
+		$this->data['StartDate']  = (isset($this->request->StartDate) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $this->request->StartDate))
+								   ? $this->request->StartDate : '';
+		$this->data['EndDate']    = (isset($this->request->EndDate) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $this->request->EndDate))
+								   ? $this->request->EndDate : '';
+
+		$scope_noun = $scope['Type'] === 'Park' ? 'Park' : ($scope['Type'] === 'Principality' ? 'Principality' : 'Kingdom');
+		$this->data['page_title'] = ($this->data['ScopeName'] ?: $scope_noun) . ' Court Report';
+		if ($scope['Type'] === 'Park') {
+			$this->data['menu']['reports']['url'] = UIR . 'Park/profile/' . (int)$scope['Id'] . '&tab=reports';
+		} elseif ($scope['Type'] === 'Principality') {
+			$this->data['menu']['reports']['url'] = UIR . 'Principality/index/' . (int)$scope['Id'];
+		} else {
+			$this->data['menu']['reports']['url'] = UIR . 'Kingdom/profile/' . (int)$scope['Id'] . '&tab=reports';
+		}
+	}
+
+	// DataTables server-side endpoint. Returns one page as {draw, recordsTotal,
+	// recordsFiltered, data}; with Format=csv it streams every filtered row as a
+	// CSV download instead (server-side processing means the client only ever
+	// holds one page, so export must come from the server).
+	public function court_data($params=null) {
+		$scope = $this->_court_scope();
+		if ($scope === null) {
+			header('Content-Type: application/json');
+			echo json_encode(array('draw' => 0, 'recordsTotal' => 0, 'recordsFiltered' => 0, 'data' => array(), 'error' => 'Invalid scope'));
+			exit;
+		}
+		$query = $this->_court_query($scope);
+		$is_csv = (isset($this->request->Format) && strtolower($this->request->Format) === 'csv');
+		if ($is_csv) {
+			$query['Length'] = -1; // all rows
+			$this->_court_export_csv($scope, $this->Reports->court_report($query));
+			exit;
+		}
+
+		$result = $this->Reports->court_report($query);
+		header('Content-Type: application/json');
+		echo json_encode(array(
+			'draw'            => isset($_GET['draw']) ? (int)$_GET['draw'] : 0,
+			'recordsTotal'    => (int)$result['RecordsTotal'],
+			'recordsFiltered' => (int)$result['RecordsFiltered'],
+			'data'            => $result['Awards'],
+		));
+		exit;
+	}
+
+	// Streams the full filtered award set as a CSV attachment.
+	private function _court_export_csv($scope, $result) {
+		$name = preg_replace('/[^A-Za-z0-9]+/', '_', $this->_resolve_scope_name(
+			$scope['Type'] === 'Principality' ? 'Kingdom' : $scope['Type'], $scope['Id']) ?: 'court');
+		header('Content-Type: text/csv; charset=utf-8');
+		header('Content-Disposition: attachment; filename="' . $name . '_court_report.csv"');
+		$out = fopen('php://output', 'w');
+		fputcsv($out, array('Date', 'Recipient', 'Recipient Group', 'Award', 'Rank', 'Peerage',
+			'Given By', 'Given By Group', 'Entered By', 'At Event', 'Scope', 'Note'));
+		foreach ($result['Awards'] as $a) {
+			$recvGroup  = $a['RecipientParkName'] ?: $a['RecipientKingdomName'];
+			$giverGroup = $a['GiverParkName']     ?: $a['GiverKingdomName'];
+			$scopeTag   = ($a['ReceivedInScope'] && $a['GivenInScope']) ? 'To & By'
+						: ($a['ReceivedInScope'] ? 'To' : ($a['GivenInScope'] ? 'By' : ''));
+			fputcsv($out, array(
+				$a['Date'], $a['RecipientPersona'], $recvGroup, $a['AwardName'],
+				($a['Rank'] > 0 ? $a['Rank'] : ''), $a['Peerage'],
+				$a['GiverPersona'], $giverGroup, $a['EnteredByPersona'],
+				$a['EventName'], $scopeTag, $a['Note'],
+			));
+		}
+		fclose($out);
+	}
+
 	public function player_award_recommendations($params=null) {
 		$_uid = isset($this->session->user_id) ? (int)$this->session->user_id : 0;
 		if (isset($this->request->KingdomId)) {
