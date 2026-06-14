@@ -174,7 +174,9 @@ Build the full vertical slice once, end-to-end, to establish the reference templ
 attribute conventions, `PlayerService` + Player DTOs (strangler over `class.Player`),
 `bin/openapi-gen.php`, Scalar portal, `ork_api_developer` migration + Authorized-Developers tool.
 Player **reads first** (`GET /players/{id}`, `GET /players`), then **writes**
-(`POST`, `PATCH`, `DELETE`), all under test.
+(`POST`, `PATCH`), all under test. (No hard `DELETE` — `class.Player` has no delete path.)
+Also ships `POST /api/v2/sessions` (token acquisition) and the shared base (envelope mapper +
+verb-dispatch controller) so the fan-out template is correct from the start.
 
 ### Phase 2 — Parallel fan-out
 One agent per remaining resource, each following the Player template (service + DTOs + controller +
@@ -188,28 +190,91 @@ legacy-vs-v2 documentation.
 ## Decisions Locked
 
 - **OpenAPI 3.1** (not 3.0).
-- **`zircote/swagger-php`** as the attribute→spec generator.
-- **Scalar** as the FOSS docs UI.
-- **Code-first** documentation (spec generated from attributes + DTOs; overlay for the rest).
+- **`zircote/swagger-php` `^5.0`** as the attribute→spec generator — **v4 emits only 3.0; 3.1 needs v5**
+  (v5 requires PHP 8.1+, which we have). The generator must verify the emitted `openapi` field is
+  `3.1.0` and fail otherwise.
+- **Scalar** as the FOSS docs UI (version **pinned**, not floating `latest`).
+- **Code-first** documentation (spec generated from attributes; overlay for the rest). **OpenAPI
+  attributes live in the `orkapi/` transport layer (dedicated schema classes), NOT on the
+  `system/lib/app/` DTOs** — the seam stays pure domain; the transport owns its documentation.
 - **Application-service seam (strangler fig)** — not a thin adapter over `class.*`, not a full
   domain rewrite.
-- **Pilot (Player) → parallel fan-out** rollout.
+- **Pilot (Player) → parallel fan-out** rollout, **with a shared base extracted before fan-out**
+  (legacy-envelope→exception mapper + verb-dispatch base controller), so 17 resources inherit one
+  correct implementation rather than cloning bugs.
 - **Path-based versioning** (`/api/v2/`); legacy untouched as v1.
-- **Auth at the boundary** via `Identity`; **credential/key issuance deferred** (out of scope today).
-- Developer portal gated to **ORK Admins + `ork_api_developer` allowlist**.
+- **Stateless, session-independent Bearer auth.** The v2 tier never starts a PHP session and does
+  NOT call the legacy `Authorization::IsAuthorized()` (which short-circuits on
+  `$_SESSION['is_authorized_mundane_id']` and ignores `token_expires`). `AuthMiddleware` validates
+  the token directly against `ork_mundane` with **expiry + penalty-box enforcement**, then builds an
+  `Identity` for scope checks.
+- **A v2 token-acquisition endpoint ships in Phase 1:** `POST /api/v2/sessions` wraps the *existing*
+  token issuance so a tokenless client (e.g. mobile) can authenticate without screen-scraping the
+  web session or reading the DB. (This exposes existing capability; it is NOT the deferred
+  PAT/API-key system.)
+- **REST conventions (template-defining):**
+  - Verbs: `GET` (200/404), `POST` (201), `PATCH` (200, partial update). **`PUT` returns 405** with
+    an `Allow` header (legacy `UpdatePlayer` is partial-merge; we do not fake full-replacement).
+    **Unsupported verb on a known resource → 405**, unknown resource → 404.
+  - **Success envelope convention:** collections return `{ "data": [...], "meta": { limit, offset,
+    count, hasMore } }` (a named, codegen-friendly schema, pagination-ready); single resources
+    return the bare object. This is documented and applied uniformly across all resources.
+  - **Error envelope:** `{ "error": { "code", "message", "details } }`, modeled as a reusable
+    `ApiError` component schema with `code` as an **enum** of the known values, `$ref`'d by every
+    non-2xx response. (We consciously use this over RFC 9457 Problem Details for a simpler machine
+    `code` and no `+json` negotiation.) Malformed/unparseable request bodies → **400**;
+    well-formed-but-rejected → **422**.
+- Developer portal gated to **ORK Admins + `ork_api_developer` allowlist**. The generated
+  `openapi.json` is served **publicly** (normal for a public API); "auth-gated" applies to the
+  portal UI and to the live API calls, not to the spec document.
 
 ## Out of Scope (today)
 
-- API key / Personal Access Token issuance and management (future phase; v2 reuses existing
-  token/session auth for now).
+- API key / Personal Access Token issuance and management (future phase; Phase 1 reuses existing
+  player tokens, now mintable via `POST /api/v2/sessions`).
+- **Hard delete of players** — `class.Player` has no delete method and we do not invent destructive
+  behavior (per the no-destructive-changes rule). `DELETE` is omitted from the Player pilot;
+  deactivation (soft) is a future, deliberately-designed capability.
+- Full pagination beyond `limit`/`offset` (cursor paging) — but the list envelope reserves `meta`
+  so adding it later is non-breaking.
+- ETags/conditional requests, response caching, rate limiting, content negotiation beyond JSON,
+  sparse fieldsets / `expand` — deferred (named so they are intentional, not forgotten). Rate
+  limiting is tied to the future key-issuance phase.
+- Token refresh/rotation contract surfaced to clients, and `Deprecation`/`Sunset` signaling —
+  roadmap (convention documented in Task 18 now).
 - Retrofitting OpenAPI onto the legacy SOAP/JSON-RPC surfaces.
 - Rewriting `class.*` business logic into a pure domain layer (strangled incrementally instead).
 - OAuth2 third-party app registration.
 
 ## Testing Strategy
 
-- Each application service is unit-tested independently of transport (typed in, typed out).
-- Each REST controller is integration-tested over HTTP (status codes, envelope shape, auth gating).
-- The generated `openapi.json` is validated against OpenAPI 3.1 in CI.
-- Player pilot is curl-tested end-to-end (auth, reads, writes, error paths) before fan-out begins.
+- Pure units (RestRequest, ApiResponse, Identity-with-fake-authz, exceptions, the legacy-envelope
+  mapper) are tested framework-free; service/controller tests are integration-grade (they boot the
+  legacy runtime + live DB) and labeled as such.
+- Each REST controller is integration-tested over HTTP (status codes, envelope shape, auth gating,
+  400-vs-422, 405). A **through-nginx parse assertion** runs early (right after routing exists) so
+  the PATH_INFO/clean-path routing can't silently misparse the resource.
+- A **spec smoke test runs right after the first controller** (not only at the end): scan must emit
+  `openapi: 3.1.0` and ≥1 documented path, so an empty/3.0 spec fails loudly before the portal task.
+- The generated `openapi.json` is structurally validated against OpenAPI 3.1 in CI (Phase 3); Phase 1
+  asserts version + path/schema/securityScheme presence and operation count.
+- Player pilot is curl-tested end-to-end (auth, reads, create/update, error paths, 401/403/404/422)
+  before fan-out begins.
 - Authorized-Developers player search is curl-tested to return rows before "done" (project rule).
+
+## Review Revisions (2026-06-13)
+
+This design was reviewed by a Senior Software Architect, an API/OpenAPI expert, and an
+API-to-Mobile Integration specialist. All blocker claims were re-verified against the real code
+before adoption. Adopted: swagger-php v5 for true 3.1; public-only operation methods for scanning;
+stateless token validation with expiry (the legacy `IsAuthorized_h` session short-circuit is real);
+centralized SQL escaping (no `$DB->Escape()` exists; `mysql_real_escape_string` is a no-op; PDO
+handle is private); `POST /api/v2/sessions` login; named list envelope + pagination-ready `meta`;
+typed/enumerated `ApiError` schema; DTO `required`/nullable/date-format + `imageUrl`/`heraldryUrl`;
+PATCH-only with 405 for PUT; 400-vs-422; shared envelope-mapper + verb-dispatch base before fan-out;
+nginx PATH_INFO fix; CORS/OPTIONS preflight. **Rejected after verification:** the claim that the
+success envelope is misread and that NoAuthorization is code 3 — `class.Player` uses the *global*
+`Success()`/`ServiceErrorIds` system (`Status:0(int)`, `InvalidParameter=4`, `NoAuthorization=5`),
+so the original detection was correct; the `Errors::` class (`Status:bool`, `NO_AUTH=3`) is used only
+by the JsonServer bridge, not by the business classes. **Newly found:** `class.Player` has no
+`DeletePlayer`, so hard-DELETE is removed from the pilot.
