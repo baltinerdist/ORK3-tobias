@@ -416,7 +416,7 @@
 		});
 	}
 	// Expose for any legacy inline handlers that may still reference it.
-	window.odDeleteMilestone = deleteMilestone;
+	/* odDeleteMilestone export removed — no callers */;
 
 	/* --- Save -------------------------------------------------------------- */
 	gid('od-dm-save').addEventListener('click', function () {

@@ -967,8 +967,6 @@ class Kingdom extends Ork3
             'fk'               => 'kingdom_id',
             'milestone_table'  => 'kingdom_milestones',
             'auth'             => AUTH_KINGDOM,
-            'profanity_fields' => ['AboutText', 'OurHistory', 'Tagline', 'Announcement', 'ReignLore'],
-            'char_limits'      => ['AboutText' => 10000, 'OurHistory' => 10000, 'Tagline' => 160, 'Announcement' => 280, 'ReignLore' => 2000],
             'derived'          => [$this, 'getDerivedKingdomMilestoneRows'],
         ];
     }

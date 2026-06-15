@@ -23,7 +23,11 @@ if (!function_exists('org_design_markdown')) {
         if (!class_exists('Parsedown')) {
             require_once(DIR_LIB . 'Parsedown.php');
         }
-        $html = (new Parsedown())->setSafeMode(true)->setBreaksEnabled(true)->text($text);
+        static $pd = null;
+        if ($pd === null) {
+            $pd = (new Parsedown())->setSafeMode(true)->setBreaksEnabled(true);
+        }
+        $html = $pd->text($text);
         return preg_replace('/<img[^>]*>/i', '', $html);
     }
 }

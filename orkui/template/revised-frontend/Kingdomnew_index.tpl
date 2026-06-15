@@ -513,7 +513,7 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
 						<i class="fas fa-crown"></i>
 						<span>Current Reign</span>
 						<?php if ($CanManageKingdom ?? false): ?>
-						<button class="od-about-edit-btn" type="button" onclick="odOpenDesignModal('header')" data-tip="Edit Reign" style="margin-left:auto;background:transparent;border:0;color:#744210;cursor:pointer;font-size:11px">
+						<button class="od-about-edit-btn" type="button" onclick="odOpenDesignModal('about')" data-tip="Edit Reign" style="margin-left:auto;background:transparent;border:0;color:#744210;cursor:pointer;font-size:11px">
 							<i class="fas fa-pencil-alt"></i> Edit
 						</button>
 						<?php endif; ?>
@@ -560,7 +560,7 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
 				<div class="od-reign-banner">
 					<div class="od-reign-head"><i class="fas fa-crown"></i><span>Current Reign</span></div>
 					<div class="od-reign-empty">
-						Showcase the current Monarch &amp; Regent. <a href="#" onclick="event.preventDefault();odOpenDesignModal('header')" style="color:#744210;text-decoration:underline">Set reign-start dates</a> or add lore.
+						Showcase the current Monarch &amp; Regent. <a href="#" onclick="event.preventDefault();odOpenDesignModal('about')" style="color:#744210;text-decoration:underline">Set reign-start dates</a> or add lore.
 					</div>
 				</div>
 				<?php endif; ?>

@@ -2,7 +2,7 @@
 
 /**
  * Shared profile-design + milestone engine for org library classes
- * (Kingdom, Park, Unit) and Player. Behavior-identical extraction of the
+ * (Kingdom, Park, Unit). Behavior-identical extraction of the
  * design-row seeding, field validators, custom-milestone CRUD, and
  * derived-milestone orchestration that were previously copy-pasted per org.
  *
@@ -295,66 +295,9 @@ trait OrgDesign
         $ms->description    = $desc;
         $ms->milestone_date = date('Y-m-d', $ts);
         $ms->save();
-        return Success((int)$ms->milestone_id);
-    }
-
-    /**
-     * Edit an existing custom milestone (auth + profanity + date + icon
-     * validation). Provided generically for Player; orgs do not expose it.
-     *
-     * @param int   $id
-     * @param array $request
-     * @return mixed Success((int)$milestone_id) or an error response
-     */
-    protected function UpdateDesignMilestone($id, $request)
-    {
-        $cfg          = $this->getDesignConfig();
-        $fk           = $cfg['fk'];
-        $id           = (int)$id;
-        $milestone_id = (int)($request['MilestoneId'] ?? 0);
-        if ($id <= 0 || $milestone_id <= 0) {
-            return InvalidParameter($this->fkLabel($fk) . ' and MilestoneId required.');
+        if ((int)$ms->milestone_id <= 0) {
+            return ProcessingError('Failed to save milestone.');
         }
-        $mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
-        if (!($mundane_id > 0) || !Ork3::$Lib->authorization->HasAuthority($mundane_id, $cfg['auth'], $id, AUTH_EDIT)) {
-            return NoAuthorization();
-        }
-        require_once(__DIR__ . '/class.ProfanityFilter.php');
-        $pf = new ProfanityFilter();
-        $desc = trim((string)($request['Description'] ?? ''));
-        if ($desc === '') {
-            return InvalidParameter('Description is required.');
-        }
-        if (strlen($desc) > 500) {
-            $desc = substr($desc, 0, 500);
-        }
-        if ($pf->containsProfanity($desc)) {
-            return InvalidParameter('Description', ProfanityFilter::ERROR_MESSAGE);
-        }
-        $dateRaw = trim((string)($request['MilestoneDate'] ?? ''));
-        if ($dateRaw === '') {
-            return InvalidParameter('Date is required.');
-        }
-        $ts = strtotime($dateRaw);
-        if ($ts === false) {
-            return InvalidParameter('Invalid date.');
-        }
-        $icon = trim((string)($request['Icon'] ?? 'fa-star'));
-        if (!preg_match('/^fa-[a-z0-9-]+$/', $icon)) {
-            $icon = 'fa-star';
-        }
-        $this->db->Clear();
-        $ms = new yapo($this->db, DB_PREFIX . $cfg['milestone_table']);
-        $ms->clear();
-        $ms->milestone_id = $milestone_id;
-        $ms->$fk          = $id;
-        if (!$ms->find()) {
-            return InvalidParameter('Milestone not found.');
-        }
-        $ms->icon           = $icon;
-        $ms->description    = $desc;
-        $ms->milestone_date = date('Y-m-d', $ts);
-        $ms->save();
         return Success((int)$ms->milestone_id);
     }
 
@@ -411,7 +354,7 @@ trait OrgDesign
         $cfg = $this->getDesignConfig();
         $id  = (int)$id;
         if ($id <= 0) {
-            return ['Status' => InvalidParameter($this->fkLabel($cfg['fk']) . ' is required.'), 'Milestones' => []];
+            return InvalidParameter($this->fkLabel($cfg['fk']) . ' is required.');
         }
         $key = Ork3::$Lib->ghettocache->key([$this->fkLabel($cfg['fk']) => $id]);
         if (($cache = Ork3::$Lib->ghettocache->get($cacheClass . '.' . $cacheFunction, $key, 300)) !== false) {

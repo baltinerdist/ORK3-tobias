@@ -717,8 +717,6 @@ class Unit extends Ork3
             'fk'               => 'unit_id',
             'milestone_table'  => 'unit_milestones',
             'auth'             => AUTH_UNIT,
-            'profanity_fields' => ['AboutText', 'OurHistory', 'Tagline', 'Announcement', 'HowToJoin'],
-            'char_limits'      => ['AboutText' => 10000, 'OurHistory' => 10000, 'Tagline' => 160, 'Announcement' => 280, 'HowToJoin' => 5000],
             'derived'          => [$this, 'getDerivedUnitMilestoneRows'],
         ];
     }

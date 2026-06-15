@@ -505,21 +505,7 @@ class Park extends Ork3
             $response[ 'GoogleGeocode' ] = $this->park->google_geocode;
             $response[ 'Location' ] = $this->park->location;
             // --- Park design (1:1 supplemental, always-present row) ---
-            $this->db->Clear();
-            $design = new yapo($this->db, DB_PREFIX . 'park_design');
-            $design->clear();
-            $design->park_id = $this->park->park_id;
-            if (!$design->find()) {
-                // Defensive: seed missing row (migration backfills, but new parks pre-seed code may not yet exist on a fresh prod DB)
-                $design->clear();
-                $design->park_id     = $this->park->park_id;
-                $design->hero_overlay = 'med';
-                $design->save();
-                $design->clear();
-                $this->db->Clear();
-                $design->park_id = $this->park->park_id;
-                $design->find();
-            }
+            $design = $this->seedDesignRow($this->park->park_id);
             $response[ 'AboutText' ]       = (string)$design->about_text;
             $response[ 'AboutEnabled' ]    = (int)$design->about_enabled;
             $response[ 'OurHistory' ]      = (string)$design->our_history;
@@ -1119,8 +1105,6 @@ class Park extends Ork3
             'fk'               => 'park_id',
             'milestone_table'  => 'park_milestones',
             'auth'             => AUTH_PARK,
-            'profanity_fields' => [ 'AboutText', 'OurHistory', 'Tagline', 'Announcement' ],
-            'char_limits'      => [ 'AboutText' => 10000, 'OurHistory' => 10000, 'Tagline' => 160, 'Announcement' => 280 ],
             'derived'          => [ $this, 'getDerivedParkMilestoneRows' ],
         ];
     }

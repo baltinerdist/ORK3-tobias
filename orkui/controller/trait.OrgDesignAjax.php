@@ -115,9 +115,6 @@ trait OrgDesignAjax
             $idField      => $orgId,
             'MilestoneId' => $milestone_id,
         ]);
-        echo ($r['Status'] == 0)
-            ? json_encode(['status' => 0])
-            : json_encode(['status' => $r['Status'], 'error' => rtrim(($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? ''), ': '), 'field' => '']);
-        exit;
+        $this->org_design_emit($r);
     }
 }

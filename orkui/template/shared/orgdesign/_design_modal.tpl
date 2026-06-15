@@ -108,7 +108,7 @@ $_odIcons = ['fa-star', 'fa-trophy', 'fa-flag', 'fa-chess-rook', 'fa-crown', 'fa
 		<div class="od-dm-body">
 			<?php if ($_odHasOptIn): ?>
 			<div class="od-dm-optin">
-				<label class="od-dm-optin-switch" data-tip="While off, visitors see your current About page.">
+				<label class="od-dm-optin-switch">
 					<input type="checkbox" id="od-dm-about-enabled"<?= $_odAboutOn ? ' checked' : '' ?> />
 					<span class="od-dm-optin-slider"></span>
 				</label>
@@ -332,7 +332,7 @@ $_odIcons = ['fa-star', 'fa-trophy', 'fa-flag', 'fa-chess-rook', 'fa-crown', 'fa
 							<button type="button" data-odmd-target="preview" data-odmd-field="join">Preview</button>
 						</div>
 					</div>
-					<textarea id="od-dm-join-text" maxlength="10000" placeholder="How prospective members can get involved... (Markdown supported)"><?= htmlspecialchars($_odHowToJoin) ?></textarea>
+					<textarea id="od-dm-join-text" maxlength="5000" placeholder="How prospective members can get involved... (Markdown supported)"><?= htmlspecialchars($_odHowToJoin) ?></textarea>
 					<div class="od-dm-md-preview" id="od-dm-join-preview" style="display:none"></div>
 				</div>
 				<?php endif; ?>

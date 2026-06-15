@@ -733,7 +733,7 @@ html[data-theme="dark"] .pk-history-section { border-top-color: var(--ork-border
 							<?php endif; ?>
 						</div>
 						<?php if (!empty($aboutText)): ?>
-						<div class="od-about-text pk-about-text kn-description-body"><?= org_design_markdown($aboutText) ?></div>
+						<div class="od-about-text pk-about-text"><?= org_design_markdown($aboutText) ?></div>
 						<?php elseif (!empty($CanAdminPark)): ?>
 						<div class="pk-empty" style="text-align:left;font-size:13px;color:#a0aec0">
 							No About content yet. <a href="#" onclick="event.preventDefault();odOpenDesignModal('about')">Add some</a> to introduce <?= htmlspecialchars($park_name) ?> to visitors.
@@ -745,7 +745,7 @@ html[data-theme="dark"] .pk-history-section { border-top-color: var(--ork-border
 					<?php if (!empty($description)): ?>
 					<div class="pk-about-section">
 						<div class="pk-about-label">About</div>
-						<div class="od-about-text pk-about-text kn-description-body"><?= org_design_markdown($description) ?></div>
+						<div class="od-about-text pk-about-text"><?= org_design_markdown($description) ?></div>
 					</div>
 					<?php endif; ?>
 					<?php endif; ?>
@@ -760,7 +760,7 @@ html[data-theme="dark"] .pk-history-section { border-top-color: var(--ork-border
 						</div>
 						<?php endif; ?>
 						<?php if (!empty($directions)): ?>
-						<div class="od-about-text pk-about-text kn-description-body"><?= org_design_markdown($directions) ?></div>
+						<div class="od-about-text pk-about-text"><?= org_design_markdown($directions) ?></div>
 						<?php endif; ?>
 					</div>
 					<?php endif; ?>
@@ -777,7 +777,7 @@ html[data-theme="dark"] .pk-history-section { border-top-color: var(--ork-border
 						<?php endif; ?>
 					</div>
 					<?php if (!empty($ourHistoryText)): ?>
-					<div class="od-about-text pk-about-text kn-description-body"><?= org_design_markdown($ourHistoryText) ?></div>
+					<div class="od-about-text pk-about-text"><?= org_design_markdown($ourHistoryText) ?></div>
 					<?php elseif (!empty($CanAdminPark)): ?>
 					<div class="pk-empty" style="text-align:left;font-size:13px;color:#a0aec0">
 						Share the founding story, past officers, or notable moments. <a href="#" onclick="event.preventDefault();odOpenDesignModal('about')">Add Our History</a>.
