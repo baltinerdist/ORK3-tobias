@@ -1,63 +1,66 @@
 <?php
 
 if (getenv('ENVIRONMENT') == 'DEV') {
-	include_once(dirname(__FILE__) . '/config.dev.php');
+    include_once(dirname(__FILE__) . '/config.dev.php');
 } else {
-	include_once(dirname(__FILE__) . '/config.php');
+    include_once(dirname(__FILE__) . '/config.php');
 }
 
 function mysql_real_escape_string($str)
 {
-	return $str;
+    return $str;
 }
 
 // System Setup
 
-if (isset($LOG))
-	return;
+if (isset($LOG)) {
+    return;
+}
 
 $LOG;
 $DB;
 
 if (!isset($DB)) {
-	$DB = new YapoMysql(DB_HOSTNAME, DB_DATABASE, DB_USERNAME, DB_PASSWORD);
+    $DB = new YapoMysql(DB_HOSTNAME, DB_DATABASE, DB_USERNAME, DB_PASSWORD);
 }
 
 if (!DO_SETUP) {
-	if (!isset($LOG)) {
-		$LOG = new Log();
-	}
+    if (!isset($LOG)) {
+        $LOG = new Log();
+    }
 
-	$classes = scandir(DIR_SYSTEMLIB);
-	foreach ($classes as $k => $file) {
-		$path_parts = pathinfo($file);
-		if ('php' === ($path_parts['extension'] ?? '')) {
-			require_once(DIR_SYSTEMLIB . $path_parts['basename']);
-		}
-	}
+    $classes = scandir(DIR_SYSTEMLIB);
+    foreach ($classes as $k => $file) {
+        $path_parts = pathinfo($file);
+        if ('php' === ($path_parts['extension'] ?? '')) {
+            require_once(DIR_SYSTEMLIB . $path_parts['basename']);
+        }
+    }
 
-	$classes = scandir(DIR_ORK3);
-	$GLOBALS['ORK3_SYSTEM'] = [];
-	require_once(DIR_ORK3 . 'class.Ork3.php');
-	$ORK3 = new Ork3();
-	$LIB = new Ork3LibContainer();
-	foreach ($classes as $k => $file) {
-		$path_parts = pathinfo($file);
-		if ('php' === ($path_parts['extension'] ?? '')) {
-			require_once(DIR_ORK3 . $path_parts['basename']);
-		}
-	}
-	foreach ($classes as $k => $file) {
-		$path_parts = pathinfo($file);
-		if ('php' === ($path_parts['extension'] ?? '')) {
-			$class = explode('.', $path_parts['basename']);
-			$class_name = $class[1];
-			$chad_name = strtolower($class_name);
-			if ('php' != $class_name && 'Ork3' != $class_name) {
-				$LIB->$chad_name = new $class_name();
-			}
-		}
-	}
-	Ork3::$Lib = $LIB;
-	Ork3::$Lib->Log = $LOG;
+    $classes = scandir(DIR_ORK3);
+    $GLOBALS['ORK3_SYSTEM'] = [];
+    require_once(DIR_ORK3 . 'class.Ork3.php');
+    $ORK3 = new Ork3();
+    $LIB = new Ork3LibContainer();
+    foreach ($classes as $k => $file) {
+        $path_parts = pathinfo($file);
+        if ('php' === ($path_parts['extension'] ?? '')) {
+            require_once(DIR_ORK3 . $path_parts['basename']);
+        }
+    }
+    foreach ($classes as $k => $file) {
+        $path_parts = pathinfo($file);
+        if ('php' === ($path_parts['extension'] ?? '')) {
+            $class = explode('.', $path_parts['basename']);
+            $class_name = $class[1];
+            $chad_name = strtolower($class_name);
+            // Only auto-instantiate concrete classes (class.X.php). Trait files
+            // (trait.X.php) are required above for composition but cannot be `new`'d.
+            if ('class' === ($class[0] ?? '') && 'php' != $class_name && 'Ork3' != $class_name) {
+                $LIB->$chad_name = new $class_name();
+            }
+        }
+    }
+    Ork3::$Lib = $LIB;
+    Ork3::$Lib->Log = $LOG;
 }

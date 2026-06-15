@@ -1,9 +1,9 @@
 <?php
 require_once(DIR_LIB . 'Parsedown.php');
-function un_markdown(string $text): string {
-	$html = (new Parsedown())->setSafeMode(true)->setBreaksEnabled(true)->text($text);
-	return preg_replace('/<img[^>]*>/i', '', $html);
-}
+// Shared Org Design helpers: org_design_markdown(), $OD_SOCIAL_PLATFORMS, $OD_FONTS, $OD_SNIPPETS.
+// Unit_index.tpl lives in template/default/; the shared partials live in template/shared/orgdesign/.
+require_once(DIR_TEMPLATE . 'shared/orgdesign/_helpers.php');
+// org_design_markdown() replaces the old un_markdown() (moved to _helpers.php).
 
 /* ── Data prep ─────────────────────────────────────────── */
 $_unit     = $Unit['Details']['Unit'] ?? [];
@@ -111,18 +111,9 @@ if ($_unSocialRaw !== '') {
 		}
 	}
 }
-$_unSocialPlatforms = [
-	'discord'   => ['label'=>'Discord',   'icon'=>'fab fa-discord',         'bg'=>'#5865f2', 'placeholder'=>'https://discord.gg/...'],
-	'facebook'  => ['label'=>'Facebook',  'icon'=>'fab fa-facebook',        'bg'=>'#1877f2', 'placeholder'=>'https://facebook.com/...'],
-	'instagram' => ['label'=>'Instagram', 'icon'=>'fab fa-instagram',       'bg'=>'#e4405f', 'placeholder'=>'https://instagram.com/...'],
-	'threads'   => ['label'=>'Threads',   'icon'=>'fab fa-square-threads',  'bg'=>'#000000', 'placeholder'=>'https://threads.net/@...'],
-	'bluesky'   => ['label'=>'Bluesky',   'icon'=>'fas fa-cloud',           'bg'=>'#1185fe', 'placeholder'=>'https://bsky.app/profile/...'],
-	'twitter'   => ['label'=>'Twitter',   'icon'=>'fab fa-twitter',         'bg'=>'#1da1f2', 'placeholder'=>'https://twitter.com/...'],
-	'youtube'   => ['label'=>'YouTube',   'icon'=>'fab fa-youtube',         'bg'=>'#ff0000', 'placeholder'=>'https://youtube.com/@...'],
-	'amtwiki'   => ['label'=>'Amtwiki',   'icon'=>'fas fa-book',            'bg'=>'#4a5568', 'placeholder'=>'https://amtwiki.net/...'],
-];
+// Social platform metadata now lives in shared/orgdesign/_helpers.php ($OD_SOCIAL_PLATFORMS).
 $_unHasSocial = false;
-foreach ($_unSocialPlatforms as $_slug => $_meta) {
+foreach ($OD_SOCIAL_PLATFORMS as $_slug => $_meta) {
 	if (!empty($_unSocialLinks[$_slug])) { $_unHasSocial = true; break; }
 }
 $_unRecruitmentStatus = strtolower(trim((string)($_unit['RecruitmentStatus'] ?? '')));
@@ -135,8 +126,41 @@ $_unRecruitMeta = [
 $_unHowToJoin = (string)($_unit['HowToJoin'] ?? '');
 $_unAboutEnabled = (int)($_unit['AboutEnabled'] ?? 0);
 $_unShowNewAbout = ($_unAboutEnabled === 1) || $_can_edit;
+
+// --- Shared Org Design $ctx contract (helpers already required at top) --------
+// Build the $ctx array the shared design partials read. Derived from this page's
+// existing Unit design variables; org='unit', recruitment + how_to_join on (no reign).
+$_odCustomMilestones = array_values(array_filter($_un_all_ms, function ($m) {
+	return empty($m['IsDerived']);
+}));
+$ctx = [
+	'org'                => 'unit',
+	'id'                 => (int)$_unit_id,
+	'ajax'               => 'UnitAjax/unit',
+	'org_name'           => $_name,
+	'can_manage'         => (bool)$_can_edit,
+	'about_text'         => $_about_text,
+	'our_history'        => $_our_history,
+	'color_primary'      => $_un_color_primary,
+	'color_accent'       => $_un_color_accent,
+	'color_secondary'    => $_un_color_secondary,
+	'overlay'            => $_un_overlay,
+	'name_font'          => $_un_name_font,
+	'tagline'            => $_unTagline,
+	'announcement'       => $_unAnnouncement,
+	'announcement_until' => $_unAnnouncementUntil,
+	'social_links'       => $_unSocialLinks,
+	'about_enabled'      => $_unAboutEnabled,
+	'milestone_config'   => $_un_milestone_cfg,
+	'milestones'         => $_un_visible_ms,
+	'custom_milestones'  => $_odCustomMilestones,
+	'features'           => ['recruitment' => true, 'how_to_join' => true],
+	'recruitment'        => ['status' => $_unRecruitmentStatus],
+	'how_to_join'        => $_unHowToJoin,
+];
 ?>
 <link rel="stylesheet" href="<?=HTTP_TEMPLATE?>revised-frontend/style/revised.css?v=<?=filemtime(DIR_TEMPLATE.'revised-frontend/style/revised.css')?>">
+<link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>shared/orgdesign/orgdesign.css?v=<?= filemtime(DIR_TEMPLATE . 'shared/orgdesign/orgdesign.css') ?>">
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
 <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.dataTables.min.css">
 
@@ -445,7 +469,7 @@ html[data-theme="dark"] .un-hero {
 }
 <?php endif; ?>
 <?php if ($_un_color_accent): ?>
-:root { --un-accent: <?= htmlspecialchars($_un_color_accent) ?>; }
+:root { --un-accent: <?= htmlspecialchars($_un_color_accent) ?>; --od-accent: <?= htmlspecialchars($_un_color_accent) ?>; }
 .un-type-badge { border-color: <?= htmlspecialchars($_un_color_accent) ?>; color: <?= htmlspecialchars($_un_color_accent) ?>; background: rgba(255,255,255,0.95); }
 .un-about-edit-btn:hover, .un-card-edit-btn:hover { color: <?= htmlspecialchars($_un_color_accent) ?>; }
 <?php endif; ?>
@@ -460,16 +484,8 @@ html[data-theme="dark"] .un-hero {
 .un-hero-name { font-family: <?= $_un_hero_font_css ?>, 'Cinzel', serif !important; letter-spacing: 0.02em; }
 <?php endif; ?>
 
-/* ── Unit design: About markdown + Our History + Milestones ── */
-.un-about-text { line-height: 1.6; font-size: 13px; color: var(--ork-text-secondary); }
-.un-about-text h1, .un-about-text h2, .un-about-text h3, .un-about-text h4 {
-	margin-top: 1.1em; margin-bottom: 0.4em;
-	background: transparent; border: none; padding: 0; border-radius: 0; text-shadow: none;
-}
-.un-about-section-head {
-	display: flex; align-items: center; justify-content: space-between;
-	gap: 8px; margin-bottom: 6px;
-}
+/* ── Unit design: About edit button (markdown bodies + timeline now use shared
+   orgdesign.css od-* classes; only the un-about-edit-btn is still Unit-local) ── */
 .un-about-edit-btn {
 	background: transparent; border: 1px solid transparent; color: #a0aec0;
 	padding: 4px 8px; border-radius: 6px; cursor: pointer; font-size: 12px;
@@ -507,39 +523,8 @@ html[data-theme="dark"] .un-fullwidth-section { background: var(--ork-card-bg); 
 }
 html[data-theme="dark"] .un-fullwidth-title { color: var(--ork-text-secondary); }
 
-/* Milestones timeline */
-.un-timeline { position: relative; padding-left: 36px; margin-top: 6px; }
-.un-timeline::before {
-	content: ''; position: absolute; left: 13px; top: 4px; bottom: 4px; width: 2px;
-	background: linear-gradient(to bottom, #cbd5e0, #cbd5e0 60%, transparent);
-}
-html[data-theme="dark"] .un-timeline::before { background: linear-gradient(to bottom, var(--ork-border), var(--ork-border) 60%, transparent); }
-.un-timeline-row {
-	position: relative; display: flex; align-items: center; gap: 12px;
-	margin-bottom: 14px; min-height: 24px;
-}
-.un-timeline-dot {
-	position: absolute; left: -36px; top: 50%; transform: translateY(-50%);
-	width: 24px; height: 24px; border-radius: 50%;
-	background: #ebf8ff; color: #2b6cb0; display: flex; align-items: center; justify-content: center;
-	font-size: 11px; border: 2px solid #fff; box-shadow: 0 0 0 1px #cbd5e0;
-}
-.un-timeline-row.un-ms-derived .un-timeline-dot { background: #faf5ff; color: #6b46c1; box-shadow: 0 0 0 1px #d6bcfa; }
-html[data-theme="dark"] .un-timeline-dot { background: var(--ork-bg-tertiary); color: var(--ork-link); border-color: var(--ork-card-bg); box-shadow: 0 0 0 1px var(--ork-border); }
-.un-timeline-content {
-	flex: 1; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
-	font-size: 13px;
-}
-.un-timeline-date { color: #718096; font-size: 11px; font-weight: 600; min-width: 80px; }
-html[data-theme="dark"] .un-timeline-date { color: var(--ork-text-muted); }
-.un-timeline-desc { color: #2d3748; }
-html[data-theme="dark"] .un-timeline-desc { color: var(--ork-text); }
-.un-timeline-row.un-ms-derived .un-timeline-desc { color: #553c9a; }
-html[data-theme="dark"] .un-timeline-row.un-ms-derived .un-timeline-desc { color: hsl(265, 60%, 75%); }
-.un-timeline-empty {
-	font-size: 12px; color: #a0aec0; font-style: italic;
-	padding: 6px 0;
-}
+/* Milestones timeline + empty-state styling now provided by shared orgdesign.css
+   (.od-timeline*, .od-timeline-empty). */
 
 /* ── Tabs (About / Members) ──────────────────────────────── */
 .un-tabs {
@@ -631,42 +616,8 @@ html[data-theme="dark"] .un-mgr-role { color: var(--ork-text-muted); }
 	.un-tab-nav li { padding: 10px 14px; font-size: 12px; }
 }
 
-/* ── Phase 2: Tagline ─────────────────────────────────── */
-.un-tagline {
-	margin: 6px 0 0;
-	font-size: 14px;
-	font-style: italic;
-	color: rgba(255,255,255,0.92);
-	text-shadow: 0 1px 2px rgba(0,0,0,0.35);
-	line-height: 1.35;
-	max-width: 100%;
-}
-@media (max-width: 768px) {
-	.un-tagline { font-size: 13px; }
-}
-
-/* ── Phase 2: Announcement Banner ─────────────────────── */
-.un-announcement {
-	display: flex; align-items: flex-start; gap: 10px;
-	background: #fef3c7;
-	border: 1px solid #fcd34d;
-	border-left: 4px solid #d97706;
-	color: #92400e;
-	padding: 12px 16px;
-	border-radius: 8px;
-	margin-bottom: 12px;
-	font-size: 13.5px;
-	line-height: 1.45;
-}
-.un-announcement i { color: #d97706; flex-shrink: 0; font-size: 16px; margin-top: 2px; }
-.un-announcement .un-ann-text { flex: 1; word-break: break-word; white-space: pre-wrap; }
-html[data-theme="dark"] .un-announcement {
-	background: rgba(217,119,6,0.12);
-	border-color: rgba(217,119,6,0.45);
-	border-left-color: #f59e0b;
-	color: #fde68a;
-}
-html[data-theme="dark"] .un-announcement i { color: #f59e0b; }
+/* Tagline (.od-tagline) and Announcement banner (.od-announce) now come from
+   shared orgdesign.css. */
 
 /* ── Phase 2: Recruitment Pill ────────────────────────── */
 .un-recruit-pill {
@@ -686,104 +637,14 @@ html[data-theme="dark"] .un-recruit-open   { background: #22543d; border-color: 
 html[data-theme="dark"] .un-recruit-invite { background: #7b341e; border-color: rgba(255,255,255,0.12); }
 html[data-theme="dark"] .un-recruit-closed { background: #2d3748; border-color: rgba(255,255,255,0.12); }
 
-/* ── Phase 2: Connect — compact strip in About tab ───── */
-.un-connect-block {
-	display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-	margin-bottom: 18px; padding: 10px 14px;
-	background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 8px;
-}
-html[data-theme="dark"] .un-connect-block { background: var(--ork-bg-secondary); border-color: var(--ork-border); }
-.un-connect-subhead {
-	display: flex; align-items: center; gap: 8px;
-	font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
-	color: #718096; font-weight: 600;
-}
-html[data-theme="dark"] .un-connect-subhead { color: var(--ork-text-muted); }
-.un-connect-subhead i { opacity: 0.7; }
-.un-connect-edit {
-	background: transparent; border: 0; cursor: pointer; color: #a0aec0; font-size: 11px; padding: 2px 6px; border-radius: 4px;
-}
-.un-connect-edit:hover { background: rgba(49,130,206,0.08); color: #2b6cb0; }
-html[data-theme="dark"] .un-connect-edit:hover { background: var(--ork-bg-tertiary); color: var(--ork-link); }
-.un-connect-pills { display: flex; flex-wrap: wrap; gap: 8px; }
-.un-connect-pill {
-	width: 32px; height: 32px; border-radius: 50%;
-	display: inline-flex; align-items: center; justify-content: center;
-	color: #fff !important; text-decoration: none !important;
-	font-size: 13px; line-height: 1;
-	background: var(--un-accent, #4a5568);
-	transition: transform 0.12s, box-shadow 0.12s;
-	position: relative;
-}
-.un-connect-pill:hover { transform: scale(1.08); box-shadow: 0 3px 10px rgba(0,0,0,0.18); }
-.un-connect-pill[data-tip]::after {
-	content: attr(data-tip); position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
-	background: #2d3748; color: #fff; font-size: 11px; white-space: nowrap;
-	padding: 3px 8px; border-radius: 4px; pointer-events: none; opacity: 0;
-	transition: opacity 0.12s; z-index: 600;
-}
-.un-connect-pill[data-tip]:hover::after { opacity: 1; transition-delay: 0.3s; }
-html[data-theme="dark"] .un-connect-pill[data-tip]::after {
-	background: var(--ork-bg-tertiary); color: var(--ork-text); border: 1px solid var(--ork-border);
-}
-.un-connect-empty {
-	display: inline-flex; font-size: 11px; color: #a0aec0; text-decoration: none;
-	padding: 4px 8px; border: 1px dashed #cbd5e0; border-radius: 999px;
-}
-.un-connect-empty:hover { color: #2b6cb0; border-color: #2b6cb0; }
-html[data-theme="dark"] .un-connect-empty { color: var(--ork-text-muted); border-color: var(--ork-border); }
+/* Connect pills (.od-connect-*) now come from shared orgdesign.css. */
 
 /* ── Phase 2: How to Join section ─────────────────────── */
 .un-howto-section .un-fullwidth-title i { color: #38a169; }
 html[data-theme="dark"] .un-howto-section .un-fullwidth-title i { color: #68d391; }
 
-/* ── Phase 2: Design modal — social inputs ────────────── */
-.un-dm-social-list { display: flex; flex-direction: column; gap: 8px; }
-.un-dm-social-row {
-	display: grid;
-	grid-template-columns: 120px 1fr;
-	gap: 10px;
-	align-items: center;
-}
-.un-dm-social-label {
-	display: inline-flex; align-items: center; gap: 8px;
-	font-size: 12px; font-weight: 600; color: #4a5568;
-}
-html[data-theme="dark"] .un-dm-social-label { color: var(--ork-text-secondary); }
-.un-dm-social-icon {
-	display: inline-flex; align-items: center; justify-content: center;
-	width: 22px; height: 22px; border-radius: 50%;
-	color: #fff; font-size: 11px;
-}
-@media (max-width: 600px) {
-	.un-dm-social-row { grid-template-columns: 1fr; gap: 4px; }
-}
-
-/* ── Phase 2: Design modal — recruitment radio row ────── */
-.un-dm-recruit-row { display: flex; flex-wrap: wrap; gap: 6px; }
-.un-dm-recruit-opt {
-	display: inline-flex; align-items: center; gap: 6px;
-	padding: 7px 12px;
-	border: 1px solid #e2e8f0;
-	border-radius: 6px;
-	background: #fff;
-	font-size: 12px; font-weight: 600;
-	color: #4a5568; cursor: pointer;
-	transition: background 0.12s, border-color 0.12s, color 0.12s;
-}
-.un-dm-recruit-opt:hover { border-color: #cbd5e0; }
-.un-dm-recruit-opt.un-active { background: #2b6cb0; color: #fff; border-color: #2b6cb0; }
-html[data-theme="dark"] .un-dm-recruit-opt { background: var(--ork-bg-tertiary); border-color: var(--ork-border); color: var(--ork-text-secondary); }
-html[data-theme="dark"] .un-dm-recruit-opt.un-active { background: var(--ork-link); color: var(--ork-bg-secondary); border-color: var(--ork-link); }
-
-/* ── Phase 2: Design modal — section divider ──────────── */
-.un-dm-section-title {
-	font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
-	color: #718096; margin: 18px 0 8px; padding-top: 14px;
-	border-top: 1px solid #edf2f7;
-}
-.un-dm-section-title:first-child { margin-top: 0; padding-top: 0; border-top: none; }
-html[data-theme="dark"] .un-dm-section-title { color: var(--ork-text-muted); border-top-color: var(--ork-border); }
+/* Design-modal styling (social inputs, recruitment radio, section dividers,
+   overlay/panels/fields) now comes from shared orgdesign.css (.od-dm-*). */
 
 </style>
 
@@ -795,9 +656,12 @@ html[data-theme="dark"] .un-dm-section-title { color: var(--ork-text-muted); bor
 <?php endif; ?>
 
 <?php if ($_unShowAnnouncement): ?>
-<div class="un-announcement" role="status">
-	<i class="fas fa-bullhorn"></i>
-	<div class="un-ann-text"><?= htmlspecialchars($_unAnnouncement) ?></div>
+<div class="od-announce" role="status">
+	<i class="fas fa-bullhorn od-announce-icon"></i>
+	<div class="od-announce-body"><strong>Announcement:</strong><?= htmlspecialchars($_unAnnouncement) ?></div>
+	<?php if ($_unAnnouncementUntil !== '' && $_unAnnouncementUntil !== '0000-00-00'): ?>
+	<div class="od-announce-until">Until <?= date('M j, Y', strtotime($_unAnnouncementUntil)) ?></div>
+	<?php endif; ?>
 </div>
 <?php endif; ?>
 
@@ -836,7 +700,7 @@ html[data-theme="dark"] .un-dm-section-title { color: var(--ork-text-muted); bor
 			</div>
 			<h1 class="un-hero-name"><?=htmlspecialchars($_name)?></h1>
 <?php if ($_unTagline !== ''): ?>
-			<p class="un-tagline"><?= htmlspecialchars($_unTagline) ?></p>
+			<p class="od-tagline"><?= htmlspecialchars($_unTagline) ?></p>
 <?php endif; ?>
 		</div>
 
@@ -851,7 +715,7 @@ html[data-theme="dark"] .un-dm-section-title { color: var(--ork-text-muted); bor
 			<button class="pn-btn pn-btn-white" onclick="unOpenModal('un-modal-details')">
 				<i class="fas fa-pen"></i><span class="un-btn-label"> Edit Details</span>
 			</button>
-			<button class="pn-btn pn-btn-white" onclick="unOpenDesignModal()">
+			<button class="pn-btn pn-btn-white" onclick="odOpenDesignModal()">
 				<i class="fas fa-palette"></i><span class="un-btn-label"> Design</span>
 			</button>
 <?php endif; ?>
@@ -911,47 +775,25 @@ html[data-theme="dark"] .un-dm-section-title { color: var(--ork-text-muted); bor
 		</div>
 <?php endif; ?>
 
-<?php if ($_unHasSocial || $_can_edit): ?>
-		<div class="un-connect-block">
-			<div class="un-connect-subhead">
-				<span><i class="fas fa-share-alt"></i> Connect</span>
-				<?php if ($_can_edit): ?>
-				<button class="un-connect-edit" type="button" onclick="unOpenDesignModal('about')" data-tip="Edit social links"><i class="fas fa-pencil-alt"></i></button>
-				<?php endif; ?>
-			</div>
-			<?php if ($_unHasSocial): ?>
-			<div class="un-connect-pills">
-				<?php foreach ($_unSocialPlatforms as $_slug => $_meta):
-					if (empty($_unSocialLinks[$_slug])) continue;
-				?>
-				<a class="un-connect-pill" href="<?= htmlspecialchars($_unSocialLinks[$_slug]) ?>" target="_blank" rel="noopener noreferrer" data-tip="<?= htmlspecialchars($_meta['label']) ?>">
-					<i class="<?= htmlspecialchars($_meta['icon']) ?>"></i>
-				</a>
-				<?php endforeach; ?>
-			</div>
-			<?php elseif ($_can_edit): ?>
-			<a href="#" class="un-connect-empty" onclick="event.preventDefault();unOpenDesignModal('about')">+ Add</a>
-			<?php endif; ?>
-		</div>
-<?php endif; ?>
+<?php include DIR_TEMPLATE . 'shared/orgdesign/_connect_block.tpl'; ?>
 
 <?php if (trim($_about_text) !== '' || $_can_edit): ?>
 		<div class="un-about-section">
 			<div class="un-fullwidth-head">
 				<h3 class="un-fullwidth-title"><i class="fas fa-align-left"></i> About</h3>
 				<?php if ($_can_edit): ?>
-				<button class="un-about-edit-btn" onclick="unOpenDesignModal('about')" data-tip="Edit About">
+				<button class="un-about-edit-btn" onclick="odOpenDesignModal('about')" data-tip="Edit About">
 					<i class="fas fa-pencil-alt"></i> Edit
 				</button>
 				<?php endif; ?>
 			</div>
 			<?php if (trim($_about_text) !== ''): ?>
-			<div class="un-about-text kn-description-body">
-				<?= un_markdown($_about_text) ?>
+			<div class="od-about-text kn-description-body">
+				<?= org_design_markdown($_about_text) ?>
 			</div>
 			<?php elseif ($_can_edit): ?>
-			<div class="un-timeline-empty" style="text-align:left">
-				No About content yet. <a href="#" onclick="event.preventDefault();unOpenDesignModal('about')">Add some</a>.
+			<div class="od-timeline-empty" style="text-align:left">
+				No About content yet. <a href="#" onclick="event.preventDefault();odOpenDesignModal('about')">Add some</a>.
 			</div>
 			<?php endif; ?>
 		</div>
@@ -962,16 +804,16 @@ html[data-theme="dark"] .un-dm-section-title { color: var(--ork-text-muted); bor
 			<div class="un-fullwidth-head">
 				<h3 class="un-fullwidth-title"><i class="fas fa-handshake"></i> How to Join</h3>
 				<?php if ($_can_edit): ?>
-				<button class="un-about-edit-btn" onclick="unOpenDesignModal('about')" data-tip="Edit How to Join">
+				<button class="un-about-edit-btn" onclick="odOpenDesignModal('about')" data-tip="Edit How to Join">
 					<i class="fas fa-pencil-alt"></i> Edit
 				</button>
 				<?php endif; ?>
 			</div>
 			<?php if (trim($_unHowToJoin) !== ''): ?>
-			<div class="un-about-text kn-description-body"><?= un_markdown($_unHowToJoin) ?></div>
+			<div class="od-about-text kn-description-body"><?= org_design_markdown($_unHowToJoin) ?></div>
 			<?php elseif ($_can_edit): ?>
-			<div class="un-timeline-empty" style="text-align:left">
-				No how-to-join info yet. <a href="#" onclick="event.preventDefault();unOpenDesignModal('about')">Add some</a> to help prospective members understand the process.
+			<div class="od-timeline-empty" style="text-align:left">
+				No how-to-join info yet. <a href="#" onclick="event.preventDefault();odOpenDesignModal('about')">Add some</a> to help prospective members understand the process.
 			</div>
 			<?php endif; ?>
 		</div>
@@ -983,52 +825,23 @@ html[data-theme="dark"] .un-dm-section-title { color: var(--ork-text-muted); bor
 			<div class="un-fullwidth-head">
 				<h3 class="un-fullwidth-title"><i class="fas fa-scroll"></i> Our History</h3>
 				<?php if ($_can_edit): ?>
-				<button class="un-about-edit-btn" onclick="unOpenDesignModal('about')" data-tip="Edit Our History">
+				<button class="un-about-edit-btn" onclick="odOpenDesignModal('about')" data-tip="Edit Our History">
 					<i class="fas fa-pencil-alt"></i> Edit
 				</button>
 				<?php endif; ?>
 			</div>
 			<?php if (trim($_our_history) !== ''): ?>
-			<div class="un-about-text kn-description-body"><?= un_markdown($_our_history) ?></div>
+			<div class="od-about-text kn-description-body"><?= org_design_markdown($_our_history) ?></div>
 			<?php elseif ($_can_edit): ?>
-			<div class="un-timeline-empty">
-				Share the founding story, past officers, or notable moments. <a href="#" onclick="event.preventDefault();unOpenDesignModal('about')">Add Our History</a>.
+			<div class="od-timeline-empty">
+				Share the founding story, past officers, or notable moments. <a href="#" onclick="event.preventDefault();odOpenDesignModal('about')">Add Our History</a>.
 			</div>
 			<?php endif; ?>
 		</div>
 <?php endif; ?>
 
 <?php if ($_un_has_ms || $_can_edit): ?>
-		<!-- Milestones -->
-		<div class="un-fullwidth-section">
-			<div class="un-fullwidth-head">
-				<h3 class="un-fullwidth-title"><i class="fas fa-stream"></i> Milestones</h3>
-				<?php if ($_can_edit): ?>
-				<button class="un-about-edit-btn" onclick="unOpenDesignModal('milestones')" data-tip="Manage milestones">
-					<i class="fas fa-pencil-alt"></i> Manage
-				</button>
-				<?php endif; ?>
-			</div>
-			<?php if ($_un_has_ms): ?>
-			<div class="un-timeline">
-				<?php foreach ($_un_visible_ms as $_msr): ?>
-				<div class="un-timeline-row<?= !empty($_msr['IsDerived']) ? ' un-ms-derived' : '' ?>">
-					<div class="un-timeline-dot">
-						<i class="fas <?= htmlspecialchars(preg_replace('/[^a-z0-9-]/','', (string)($_msr['Icon'] ?? 'fa-star')) ?: 'fa-star') ?>"></i>
-					</div>
-					<div class="un-timeline-content">
-						<span class="un-timeline-date"><?= !empty($_msr['MilestoneDate']) && $_msr['MilestoneDate'] !== '0000-00-00' ? date('M j, Y', strtotime($_msr['MilestoneDate'])) : '' ?></span>
-						<span class="un-timeline-desc"><?= htmlspecialchars((string)($_msr['Description'] ?? '')) ?></span>
-					</div>
-				</div>
-				<?php endforeach; ?>
-			</div>
-			<?php elseif ($_can_edit): ?>
-			<div class="un-timeline-empty">
-				No milestones yet. <a href="#" onclick="event.preventDefault();unOpenDesignModal('milestones')">Add the first one</a> — founding date, leadership changes, notable events.
-			</div>
-			<?php endif; ?>
-		</div>
+		<?php include DIR_TEMPLATE . 'shared/orgdesign/_milestones_timeline.tpl'; ?>
 <?php endif; ?>
 
 <?php
@@ -1262,7 +1075,7 @@ if ($_can_edit || count($_auths) > 0):
 				<?php endif; ?>
 			</h4>
 			<div class="kn-description-body" style="font-size:13px;color:var(--ork-text-secondary);">
-				<?=un_markdown($_desc)?>
+				<?=org_design_markdown($_desc)?>
 			</div>
 		</div>
 <?php endif; ?>
@@ -1278,7 +1091,7 @@ if ($_can_edit || count($_auths) > 0):
 				<?php endif; ?>
 			</h4>
 			<div class="kn-description-body" style="font-size:13px;color:var(--ork-text-secondary);">
-				<?=un_markdown($_history)?>
+				<?=org_design_markdown($_history)?>
 			</div>
 		</div>
 <?php endif; ?>
@@ -2325,826 +2138,16 @@ html[data-theme="dark"] .un-retire-note {
 }
 </style>
 
-<?php if ($_can_edit): ?>
-<!-- ── Design Modal ─────────────────────────────────────── -->
-<style>
-.un-dm-overlay {
-	display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 1000;
-	align-items: center; justify-content: center; padding: 20px;
-}
-.un-dm-overlay.un-open { display: flex; }
-.un-dm-modal {
-	background: #fff; border-radius: 10px; width: 100%; max-width: 720px; max-height: 90vh;
-	display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,0.35); color: #1a202c;
-}
-html[data-theme="dark"] .un-dm-modal { background: var(--ork-card-bg); color: var(--ork-text); }
-.un-dm-header {
-	display: flex; align-items: center; justify-content: space-between;
-	padding: 14px 18px; border-bottom: 1px solid #e2e8f0; background: #f7fafc; border-radius: 10px 10px 0 0;
-}
-html[data-theme="dark"] .un-dm-header { border-color: var(--ork-border); background: var(--ork-bg-secondary); }
-.un-dm-title {
-	margin: 0; font-size: 17px; font-weight: 700; color: #2d3748;
-	display: flex; align-items: center; gap: 8px;
-	background: transparent; border: none; padding: 0; border-radius: 0; text-shadow: none;
-}
-html[data-theme="dark"] .un-dm-title { color: var(--ork-text); }
-.un-dm-close {
-	background: transparent; border: 0; cursor: pointer; font-size: 24px; color: #718096; line-height: 1;
-	padding: 4px 10px; border-radius: 6px;
-}
-.un-dm-close:hover { background: #f7fafc; color: #2d3748; }
-html[data-theme="dark"] .un-dm-close { color: var(--ork-text-muted); }
-html[data-theme="dark"] .un-dm-close:hover { background: var(--ork-bg-tertiary); color: var(--ork-text); }
-/* Unpublished badge (manager-only, while opt-in is off) */
-.un-unpublished-badge {
-	display: inline-flex; align-items: center; gap: 7px;
-	margin: 0 0 14px 0; padding: 7px 12px;
-	background: #fffbeb; border: 1px solid #f6e05e; border-radius: 6px;
-	font-size: 12px; font-weight: 600; color: #975a16;
-}
-html[data-theme="dark"] .un-unpublished-badge {
-	background: rgba(214,158,46,0.14); border-color: rgba(214,158,46,0.5); color: #f6e05e;
-}
-/* Opt-in toggle bar */
-.un-dm-optin {
-	display: flex; align-items: flex-start; gap: 12px;
-	padding: 12px 16px; background: #ebf5ff; border-bottom: 1px solid #cfe2f6;
-}
-html[data-theme="dark"] .un-dm-optin { background: rgba(43,108,176,0.14); border-color: var(--ork-border); }
-.un-dm-optin-switch { position: relative; display: inline-flex; flex: none; cursor: pointer; margin-top: 2px; }
-.un-dm-optin-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
-.un-dm-optin-track {
-	display: inline-block; width: 40px; height: 22px; border-radius: 11px;
-	background: #cbd5e0; transition: background .15s ease; position: relative;
-}
-html[data-theme="dark"] .un-dm-optin-track { background: var(--ork-border); }
-.un-dm-optin-thumb {
-	position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%;
-	background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.25); transition: transform .15s ease;
-}
-.un-dm-optin-switch input:checked + .un-dm-optin-track { background: #2b6cb0; }
-html[data-theme="dark"] .un-dm-optin-switch input:checked + .un-dm-optin-track { background: var(--ork-link); }
-.un-dm-optin-switch input:checked + .un-dm-optin-track .un-dm-optin-thumb { transform: translateX(18px); }
-.un-dm-optin-switch input:focus-visible + .un-dm-optin-track { outline: 2px solid #2b6cb0; outline-offset: 2px; }
-.un-dm-optin-copy { line-height: 1.35; }
-.un-dm-optin-label { font-size: 13px; font-weight: 700; color: #2c5282; }
-html[data-theme="dark"] .un-dm-optin-label { color: var(--ork-text); }
-.un-dm-optin-hint { font-size: 11.5px; color: #5a7290; margin-top: 2px; }
-html[data-theme="dark"] .un-dm-optin-hint { color: var(--ork-text-secondary); }
-.un-dm-tabs {
-	display: flex; gap: 4px; padding: 6px 10px 0 10px; background: #f7fafc; border-bottom: 1px solid #e2e8f0;
-}
-html[data-theme="dark"] .un-dm-tabs { background: var(--ork-bg-secondary); border-color: var(--ork-border); }
-.un-dm-tab {
-	background: transparent; border: 0; padding: 9px 14px; cursor: pointer;
-	font-size: 13px; font-weight: 600; color: #718096; border-bottom: 2px solid transparent;
-	display: inline-flex; align-items: center; gap: 6px;
-}
-.un-dm-tab.un-active {
-	color: #2b6cb0; border-bottom-color: #2b6cb0;
-}
-html[data-theme="dark"] .un-dm-tab { color: var(--ork-text-secondary); }
-html[data-theme="dark"] .un-dm-tab.un-active {
-	color: var(--ork-link); border-bottom-color: var(--ork-link);
-}
-.un-dm-body {
-	padding: 18px 22px; overflow-y: auto; flex: 1;
-}
-.un-dm-panel { display: none; }
-.un-dm-panel.un-active { display: block; }
-.un-dm-error {
-	display: none; background: #fff5f5; color: #c53030; border: 1px solid #feb2b2;
-	border-radius: 6px; padding: 10px 12px; margin-bottom: 12px; font-size: 13px;
-}
-html[data-theme="dark"] .un-dm-error { background: rgba(252,129,129,0.1); color: #fc8181; }
-.un-dm-field { margin-bottom: 14px; }
-.un-dm-field label {
-	display: block; font-size: 11px; font-weight: 700; color: #4a5568;
-	text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;
-}
-html[data-theme="dark"] .un-dm-field label { color: var(--ork-text-secondary); }
-.un-dm-field input[type="text"],
-.un-dm-field input[type="date"],
-.un-dm-field textarea,
-.un-dm-field select {
-	width: 100%; padding: 8px 10px; font-size: 14px;
-	border: 1px solid #cbd5e0; border-radius: 6px;
-	background: #fff; color: #2d3748; font-family: inherit;
-}
-html[data-theme="dark"] .un-dm-field input,
-html[data-theme="dark"] .un-dm-field textarea,
-html[data-theme="dark"] .un-dm-field select {
-	background: var(--ork-bg-secondary); border-color: var(--ork-border); color: var(--ork-text);
-}
-.un-dm-field textarea { min-height: 140px; resize: vertical; line-height: 1.5; }
-.un-dm-hint {
-	font-size: 12px; color: #718096;
-}
-html[data-theme="dark"] .un-dm-hint { color: var(--ork-text-muted); }
-.un-dm-footer {
-	display: flex; gap: 8px; justify-content: flex-end; padding: 12px 18px;
-	border-top: 1px solid #e2e8f0; background: #f7fafc; border-radius: 0 0 10px 10px;
-}
-html[data-theme="dark"] .un-dm-footer { background: var(--ork-bg-secondary); border-color: var(--ork-border); }
-.un-dm-btn {
-	background: #fff; border: 1px solid #cbd5e0; color: #4a5568;
-	padding: 8px 14px; font-size: 13px; font-weight: 600; border-radius: 6px; cursor: pointer;
-	display: inline-flex; align-items: center; gap: 5px;
-}
-html[data-theme="dark"] .un-dm-btn { background: var(--ork-bg-tertiary); border-color: var(--ork-border); color: var(--ork-text); }
-.un-dm-btn-primary { background: #3182ce; color: #fff; border-color: #3182ce; }
-.un-dm-btn-primary:hover { background: #2c5282; border-color: #2c5282; }
-.un-dm-btn:disabled { opacity: 0.55; cursor: not-allowed; }
-
-.un-dm-preset-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; }
-.un-dm-swatch {
-	height: 36px; border-radius: 6px; cursor: pointer;
-	border: 2px solid transparent; transition: transform 0.12s, box-shadow 0.12s;
-}
-.un-dm-swatch.un-selected { border-color: #2b6cb0; transform: scale(1.06); box-shadow: 0 0 0 2px #fff, 0 0 0 4px #2b6cb0; }
-html[data-theme="dark"] .un-dm-swatch.un-selected { box-shadow: 0 0 0 2px var(--ork-card-bg), 0 0 0 4px var(--ork-link); }
-.un-dm-color-row { display: flex; gap: 12px; flex-wrap: wrap; }
-.un-dm-color-col { flex: 1; min-width: 180px; }
-.un-dm-color-input { display: flex; align-items: center; gap: 6px; }
-.un-dm-color-input input[type="color"] {
-	width: 38px; height: 36px; border: 1px solid #cbd5e0; border-radius: 6px;
-	padding: 0; background: transparent; cursor: pointer;
-}
-.un-dm-color-input input[type="text"] { flex: 1; }
-.un-dm-overlay-btns { display: flex; gap: 6px; flex-wrap: wrap; }
-.un-dm-overlay-btn {
-	flex: 1; min-width: 80px; padding: 8px 10px; font-size: 12px; font-weight: 600;
-	border: 1px solid #cbd5e0; border-radius: 6px; background: #fff; color: #4a5568; cursor: pointer;
-}
-.un-dm-overlay-btn.un-active { background: #2b6cb0; color: #fff; border-color: #2b6cb0; }
-html[data-theme="dark"] .un-dm-overlay-btn { background: var(--ork-bg-tertiary); border-color: var(--ork-border); color: var(--ork-text-secondary); }
-html[data-theme="dark"] .un-dm-overlay-btn.un-active { background: var(--ork-link); color: var(--ork-bg-secondary); border-color: var(--ork-link); }
-
-.un-dm-font-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
-.un-dm-font-card {
-	border: 1px solid #cbd5e0; border-radius: 8px; padding: 10px 8px; cursor: pointer;
-	text-align: center; background: #fff;
-}
-.un-dm-font-card.un-active { border-color: #2b6cb0; background: #ebf8ff; box-shadow: 0 0 0 1px #2b6cb0; }
-html[data-theme="dark"] .un-dm-font-card { background: var(--ork-bg-tertiary); border-color: var(--ork-border); }
-html[data-theme="dark"] .un-dm-font-card.un-active { background: rgba(43,108,176,0.15); border-color: var(--ork-link); box-shadow: 0 0 0 1px var(--ork-link); }
-.un-dm-font-sample { font-size: 19px; font-weight: 600; color: #2d3748; line-height: 1.2; margin-bottom: 4px; }
-html[data-theme="dark"] .un-dm-font-sample { color: var(--ork-text); }
-.un-dm-font-label { font-size: 11px; color: #718096; }
-html[data-theme="dark"] .un-dm-font-label { color: var(--ork-text-muted); }
-
-.un-dm-md-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
-.un-dm-md-toggle { display: inline-flex; background: #edf2f7; border-radius: 6px; padding: 3px; gap: 3px; }
-.un-dm-md-toggle button {
-	background: transparent; border: 0; padding: 5px 10px; font-size: 12px; font-weight: 600;
-	cursor: pointer; border-radius: 4px; color: #718096;
-}
-.un-dm-md-toggle button.un-active { background: #fff; color: #2b6cb0; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
-html[data-theme="dark"] .un-dm-md-toggle { background: var(--ork-bg-tertiary); }
-html[data-theme="dark"] .un-dm-md-toggle button.un-active { background: var(--ork-card-bg); color: var(--ork-link); }
-.un-dm-md-preview {
-	border: 1px solid #cbd5e0; border-radius: 6px; padding: 12px 14px;
-	min-height: 140px; background: #fafafa; font-size: 14px; line-height: 1.55; color: #2d3748;
-}
-html[data-theme="dark"] .un-dm-md-preview { background: var(--ork-bg-secondary); border-color: var(--ork-border); color: var(--ork-text); }
-.un-dm-md-preview h1, .un-dm-md-preview h2, .un-dm-md-preview h3, .un-dm-md-preview h4 {
-	background: transparent; border: none; padding: 0; border-radius: 0; text-shadow: none;
-	margin-top: 0.9em; margin-bottom: 0.3em;
-}
-
-.un-dm-ms-toggles { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-bottom: 14px; }
-.un-dm-ms-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #4a5568; }
-html[data-theme="dark"] .un-dm-ms-toggle { color: var(--ork-text-secondary); }
-.un-dm-ms-list { border: 1px solid #e2e8f0; border-radius: 6px; margin-bottom: 12px; max-height: 200px; overflow-y: auto; }
-html[data-theme="dark"] .un-dm-ms-list { border-color: var(--ork-border); background: var(--ork-bg-secondary); }
-.un-dm-ms-row {
-	display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #edf2f7;
-	font-size: 13px;
-}
-html[data-theme="dark"] .un-dm-ms-row { border-color: var(--ork-border); }
-.un-dm-ms-row:last-child { border-bottom: none; }
-.un-dm-ms-row > i { color: #2b6cb0; width: 18px; text-align: center; }
-.un-dm-ms-row .un-dm-ms-desc { flex: 1; color: #2d3748; }
-html[data-theme="dark"] .un-dm-ms-row .un-dm-ms-desc { color: var(--ork-text); }
-.un-dm-ms-row .un-dm-ms-date { color: #718096; font-size: 11px; min-width: 90px; }
-html[data-theme="dark"] .un-dm-ms-row .un-dm-ms-date { color: var(--ork-text-muted); }
-html[data-theme="dark"] .un-dm-ms-row > i { color: var(--ork-link); }
-html[data-theme="dark"] .un-dm-ms-row button { color: #fc8181; }
-html[data-theme="dark"] .un-dm-ms-row button:hover { background: var(--ork-bg-tertiary); }
-.un-dm-ms-row button {
-	background: transparent; border: 0; color: #e53e3e; cursor: pointer; padding: 4px 6px;
-}
-.un-dm-ms-row button[data-tip] { position: relative; }
-.un-dm-ms-row button[data-tip]::after {
-	content: attr(data-tip); position: absolute; bottom: calc(100% + 4px); right: 0;
-	background: #2d3748; color: #fff; font-size: 11px; white-space: nowrap;
-	padding: 3px 8px; border-radius: 4px; pointer-events: none; opacity: 0;
-	transition: opacity 0.12s; z-index: 600;
-}
-.un-dm-ms-row button[data-tip]:hover::after { opacity: 1; transition-delay: 0.3s; }
-html[data-theme="dark"] .un-dm-ms-row button[data-tip]::after {
-	background: var(--ork-bg-tertiary); color: var(--ork-text); border: 1px solid var(--ork-border);
-}
-.un-dm-ms-add { display: grid; grid-template-columns: 1fr 140px 90px; gap: 8px; align-items: end; }
-@media (max-width: 600px) { .un-dm-ms-add { grid-template-columns: 1fr; } }
-.un-dm-ms-icons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
-.un-dm-ms-icon-opt {
-	width: 28px; height: 28px; border: 1px solid #cbd5e0; border-radius: 6px;
-	display: flex; align-items: center; justify-content: center; cursor: pointer;
-	background: #fff; color: #4a5568;
-}
-.un-dm-ms-icon-opt.un-active { background: #2b6cb0; color: #fff; border-color: #2b6cb0; }
-html[data-theme="dark"] .un-dm-ms-icon-opt { background: var(--ork-bg-tertiary); border-color: var(--ork-border); color: var(--ork-text-secondary); }
-html[data-theme="dark"] .un-dm-ms-icon-opt.un-active { background: var(--ork-link); color: var(--ork-bg-secondary); border-color: var(--ork-link); }
-</style>
-
-<div class="un-dm-overlay" id="un-dm-overlay">
-	<div class="un-dm-modal">
-		<div class="un-dm-header">
-			<h3 class="un-dm-title"><i class="fas fa-palette"></i>Design <?= htmlspecialchars($_name) ?></h3>
-			<button class="un-dm-close" id="un-dm-close" aria-label="Close">&times;</button>
-		</div>
-		<div class="un-dm-optin">
-			<label class="un-dm-optin-switch" data-tip="When off, visitors see your current unit page">
-				<input type="checkbox" id="un-dm-about-enabled"<?= $_unAboutEnabled === 1 ? ' checked' : '' ?>>
-				<span class="un-dm-optin-track"><span class="un-dm-optin-thumb"></span></span>
-			</label>
-			<div class="un-dm-optin-copy">
-				<div class="un-dm-optin-label">Enable the New About Design</div>
-				<div class="un-dm-optin-hint">While off, visitors see your current About page. Turn it on to publish the new design (custom About, History, Connect, Milestones). Hero colors &amp; tagline always apply.</div>
-			</div>
-		</div>
-		<div class="un-dm-tabs">
-			<button class="un-dm-tab un-active" data-untab-dm="about"><i class="fas fa-scroll"></i> About</button>
-			<button class="un-dm-tab" data-untab-dm="header"><i class="fas fa-image"></i> Header</button>
-			<button class="un-dm-tab" data-untab-dm="milestones"><i class="fas fa-stream"></i> Milestones</button>
-		</div>
-		<div class="un-dm-body">
-			<div class="un-dm-error" id="un-dm-error"></div>
-
-			<!-- Header Panel -->
-			<div class="un-dm-panel" id="un-dm-panel-header">
-				<div class="un-dm-hint" style="margin-bottom:12px"><i class="fas fa-moon" style="margin-right:6px"></i><strong>Dark mode viewers</strong> see your hero with a slight darkening filter so colors stay readable.</div>
-
-				<div class="un-dm-field">
-					<label>Color Presets</label>
-					<div class="un-dm-preset-grid" id="un-dm-presets">
-						<div class="un-dm-swatch" data-primary="#2c5282" data-accent="#4299e1" style="background:#2c5282"></div>
-						<div class="un-dm-swatch" data-primary="#276749" data-accent="#48bb78" style="background:#276749"></div>
-						<div class="un-dm-swatch" data-primary="#9b2c2c" data-accent="#fc8181" style="background:#9b2c2c"></div>
-						<div class="un-dm-swatch" data-primary="#553c9a" data-accent="#9f7aea" style="background:#553c9a"></div>
-						<div class="un-dm-swatch" data-primary="#975a16" data-accent="#ecc94b" style="background:#975a16"></div>
-						<div class="un-dm-swatch" data-primary="#2d3748" data-accent="#a0aec0" style="background:#2d3748"></div>
-						<div class="un-dm-swatch" data-primary="#285e61" data-accent="#38b2ac" style="background:#285e61"></div>
-						<div class="un-dm-swatch" data-primary="#744210" data-accent="#ed8936" style="background:#744210"></div>
-					</div>
-				</div>
-
-				<div class="un-dm-field">
-					<label>Gradient Presets</label>
-					<div class="un-dm-preset-grid" id="un-dm-gradient-presets">
-						<div class="un-dm-swatch" data-primary="#1a365d" data-accent="#4299e1" data-secondary="#553c9a" style="background:linear-gradient(135deg,#1a365d,#553c9a)"></div>
-						<div class="un-dm-swatch" data-primary="#1a4731" data-accent="#48bb78" data-secondary="#2c5282" style="background:linear-gradient(135deg,#1a4731,#2c5282)"></div>
-						<div class="un-dm-swatch" data-primary="#742a2a" data-accent="#fc8181" data-secondary="#975a16" style="background:linear-gradient(135deg,#742a2a,#975a16)"></div>
-						<div class="un-dm-swatch" data-primary="#44337a" data-accent="#d6bcfa" data-secondary="#97266d" style="background:linear-gradient(135deg,#44337a,#97266d)"></div>
-						<div class="un-dm-swatch" data-primary="#234e52" data-accent="#38b2ac" data-secondary="#276749" style="background:linear-gradient(135deg,#234e52,#276749)"></div>
-						<div class="un-dm-swatch" data-primary="#2c5282" data-accent="#4299e1" data-secondary="#285e61" style="background:linear-gradient(135deg,#2c5282,#285e61)"></div>
-						<div class="un-dm-swatch" data-primary="#744210" data-accent="#ecc94b" data-secondary="#9b2c2c" style="background:linear-gradient(135deg,#744210,#9b2c2c)"></div>
-						<div class="un-dm-swatch" data-primary="#1a202c" data-accent="#a0aec0" data-secondary="#2d3748" style="background:linear-gradient(135deg,#1a202c,#2d3748)"></div>
-					</div>
-				</div>
-
-				<div class="un-dm-field">
-					<label>Custom Colors</label>
-					<div class="un-dm-color-row">
-						<div class="un-dm-color-col">
-							<div class="un-dm-hint" style="margin-bottom:4px">Primary (hero background)</div>
-							<div class="un-dm-color-input">
-								<input type="color" id="un-dm-color-primary" value="<?= htmlspecialchars($_un_color_primary ?: '#2c5282') ?>" />
-								<input type="text" id="un-dm-color-primary-hex" value="<?= htmlspecialchars($_un_color_primary ?: '#2c5282') ?>" maxlength="7" />
-							</div>
-						</div>
-						<div class="un-dm-color-col">
-							<div class="un-dm-hint" style="margin-bottom:4px">Accent (badges &amp; pencils)</div>
-							<div class="un-dm-color-input">
-								<input type="color" id="un-dm-color-accent" value="<?= htmlspecialchars($_un_color_accent ?: '#4299e1') ?>" />
-								<input type="text" id="un-dm-color-accent-hex" value="<?= htmlspecialchars($_un_color_accent ?: '#4299e1') ?>" maxlength="7" />
-							</div>
-						</div>
-					</div>
-				</div>
-
-				<div class="un-dm-field">
-					<label>Gradient (Optional)</label>
-					<div class="un-dm-color-row">
-						<div class="un-dm-color-col">
-							<div class="un-dm-hint" style="margin-bottom:4px">Secondary color</div>
-							<div class="un-dm-color-input">
-								<input type="color" id="un-dm-color-secondary" value="<?= htmlspecialchars($_un_color_secondary ?: ($_un_color_primary ?: '#2c5282')) ?>" />
-								<input type="text" id="un-dm-color-secondary-hex" value="<?= htmlspecialchars($_un_color_secondary) ?>" maxlength="7" placeholder="None" />
-							</div>
-						</div>
-						<div class="un-dm-color-col" style="display:flex;align-items:center;padding-top:18px">
-							<label style="text-transform:none;letter-spacing:0;display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:500;color:#4a5568;font-size:13px;margin-bottom:0">
-								<input type="checkbox" id="un-dm-gradient-enabled" <?= $_un_color_secondary !== '' ? 'checked' : '' ?> />
-								Enable gradient
-							</label>
-						</div>
-					</div>
-				</div>
-
-				<div class="un-dm-field">
-					<label>Heraldry Overlay Strength</label>
-					<div class="un-dm-hint" style="margin-bottom:6px">Controls how much the unit heraldry shows through the hero background.</div>
-					<div class="un-dm-overlay-btns">
-						<button type="button" class="un-dm-overlay-btn<?= $_un_overlay === 'low' ? ' un-active' : '' ?>" data-overlay="low">Low</button>
-						<button type="button" class="un-dm-overlay-btn<?= $_un_overlay === 'med' ? ' un-active' : '' ?>" data-overlay="med">Medium</button>
-						<button type="button" class="un-dm-overlay-btn<?= $_un_overlay === 'high' ? ' un-active' : '' ?>" data-overlay="high">High</button>
-						<button type="button" class="un-dm-overlay-btn<?= $_un_overlay === 'vignette' ? ' un-active' : '' ?>" data-overlay="vignette">Vignette</button>
-					</div>
-					<input type="hidden" id="un-dm-hero-overlay" value="<?= htmlspecialchars($_un_overlay) ?>" />
-				</div>
-
-				<div class="un-dm-field">
-					<label>Name Font</label>
-					<div class="un-dm-hint" style="margin-bottom:6px">A decorative font for the unit name in the hero.</div>
-					<div class="un-dm-font-picker" id="un-dm-font-picker"></div>
-				</div>
-
-				<div class="un-dm-section-title">Tagline</div>
-				<div class="un-dm-field">
-					<label>Tagline</label>
-					<div class="un-dm-hint" style="margin-bottom:6px">A short phrase shown under the unit name. Max 160 characters.</div>
-					<input type="text" id="un-dm-tagline" maxlength="160" value="<?= htmlspecialchars($_unTagline) ?>" placeholder="e.g. Forging warriors since 2003." />
-					<div class="un-dm-hint" style="margin-top:4px"><span id="un-dm-tagline-count"><?= strlen($_unTagline) ?></span>/160</div>
-				</div>
-
-				<div class="un-dm-section-title">Announcement Banner</div>
-				<div class="un-dm-field">
-					<label>Announcement</label>
-					<div class="un-dm-hint" style="margin-bottom:6px">Shown as an amber banner above the hero. Plain text, max 280 characters.</div>
-					<textarea id="un-dm-announcement" maxlength="280" placeholder="e.g. New member orientation this Saturday at 10 AM." style="min-height:70px"><?= htmlspecialchars($_unAnnouncement) ?></textarea>
-					<div class="un-dm-hint" style="margin-top:4px"><span id="un-dm-announcement-count"><?= strlen($_unAnnouncement) ?></span>/280</div>
-				</div>
-				<div class="un-dm-field">
-					<label>Show until (optional)</label>
-					<div class="un-dm-hint" style="margin-bottom:6px">Banner auto-hides after this date. Leave blank to show indefinitely.</div>
-					<input type="date" id="un-dm-announcement-until" value="<?= htmlspecialchars($_unAnnouncementUntil && $_unAnnouncementUntil !== '0000-00-00' ? $_unAnnouncementUntil : '') ?>" />
-				</div>
-
-				<div class="un-dm-section-title">Recruitment Status</div>
-				<div class="un-dm-field">
-					<label>Recruitment Status</label>
-					<div class="un-dm-hint" style="margin-bottom:6px">Show recruitment status as a pill in the hero. &ldquo;Not Set&rdquo; hides the pill.</div>
-					<div class="un-dm-recruit-row" id="un-dm-recruit-row">
-						<button type="button" class="un-dm-recruit-opt<?= $_unRecruitmentStatus === 'open' ? ' un-active' : '' ?>" data-recruit="open"><i class="fas fa-door-open"></i> Recruiting</button>
-						<button type="button" class="un-dm-recruit-opt<?= $_unRecruitmentStatus === 'invite' ? ' un-active' : '' ?>" data-recruit="invite"><i class="fas fa-envelope"></i> Invite Only</button>
-						<button type="button" class="un-dm-recruit-opt<?= $_unRecruitmentStatus === 'closed' ? ' un-active' : '' ?>" data-recruit="closed"><i class="fas fa-lock"></i> Closed</button>
-						<button type="button" class="un-dm-recruit-opt<?= $_unRecruitmentStatus === '' ? ' un-active' : '' ?>" data-recruit="">Not Set</button>
-					</div>
-					<input type="hidden" id="un-dm-recruitment-status" value="<?= htmlspecialchars($_unRecruitmentStatus) ?>" />
-				</div>
-			</div>
-
-			<!-- About Panel -->
-			<div class="un-dm-panel un-active" id="un-dm-panel-about">
-				<div class="un-dm-hint" style="margin-bottom:14px"><i class="fas fa-info-circle" style="margin-right:6px"></i>Both fields support <strong>Markdown</strong>. Use <em>About</em> for a current snapshot of the unit; use <em>Our History</em> for the founding story and notable moments.</div>
-
-				<div class="un-dm-field">
-					<div class="un-dm-md-toolbar">
-						<label style="margin-bottom:0">About <?= htmlspecialchars($_name) ?></label>
-						<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-							<div class="un-dm-md-toggle">
-								<button type="button" class="un-active" data-unmd-target="edit" data-unmd-field="about">Write</button>
-								<button type="button" data-unmd-target="preview" data-unmd-field="about">Preview</button>
-							</div>
-						</div>
-					</div>
-					<textarea id="un-dm-about-text" maxlength="10000" placeholder="Welcome to the unit... (Markdown supported)"><?= htmlspecialchars($_about_text) ?></textarea>
-					<div class="un-dm-md-preview" id="un-dm-about-preview" style="display:none"></div>
-				</div>
-
-				<div class="un-dm-field">
-					<div class="un-dm-md-toolbar">
-						<label style="margin-bottom:0">Our History</label>
-						<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-							<div class="un-dm-md-toggle">
-								<button type="button" class="un-active" data-unmd-target="edit" data-unmd-field="history">Write</button>
-								<button type="button" data-unmd-target="preview" data-unmd-field="history">Preview</button>
-							</div>
-						</div>
-					</div>
-					<textarea id="un-dm-history-text" maxlength="10000" placeholder="The unit was founded in... (Markdown supported)"><?= htmlspecialchars($_our_history) ?></textarea>
-					<div class="un-dm-md-preview" id="un-dm-history-preview" style="display:none"></div>
-				</div>
-
-				<div class="un-dm-section-title">How to Join</div>
-				<div class="un-dm-field">
-					<div class="un-dm-md-toolbar">
-						<label style="margin-bottom:0">How to Join</label>
-						<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-							<div class="un-dm-md-toggle">
-								<button type="button" class="un-active" data-unmd-target="edit" data-unmd-field="howto">Write</button>
-								<button type="button" data-unmd-target="preview" data-unmd-field="howto">Preview</button>
-							</div>
-						</div>
-					</div>
-					<textarea id="un-dm-howto-text" maxlength="5000" placeholder="Reach out to our captain on Discord, then come to a fighter practice... (Markdown supported)"><?= htmlspecialchars($_unHowToJoin) ?></textarea>
-					<div class="un-dm-md-preview" id="un-dm-howto-preview" style="display:none"></div>
-					<div class="un-dm-hint" style="margin-top:4px">Optional. Markdown supported. Visible to anyone viewing the unit profile.</div>
-				</div>
-
-				<div class="un-dm-section-title">Social Links</div>
-				<div class="un-dm-field">
-					<div class="un-dm-hint" style="margin-bottom:8px">Add full URLs (https://...). Leave blank to hide a platform.</div>
-					<div class="un-dm-social-list">
-<?php foreach ($_unSocialPlatforms as $_slug => $_meta): ?>
-						<div class="un-dm-social-row">
-							<span class="un-dm-social-label">
-								<span class="un-dm-social-icon" style="background:<?= htmlspecialchars($_meta['bg']) ?>"><i class="<?= htmlspecialchars($_meta['icon']) ?>"></i></span>
-								<?= htmlspecialchars($_meta['label']) ?>
-							</span>
-							<input type="url" data-un-social="<?= htmlspecialchars($_slug) ?>" maxlength="500" placeholder="<?= htmlspecialchars($_meta['placeholder']) ?>" value="<?= htmlspecialchars($_unSocialLinks[$_slug] ?? '') ?>" />
-						</div>
-<?php endforeach; ?>
-					</div>
-				</div>
-			</div>
-
-			<!-- Milestones Panel -->
-			<div class="un-dm-panel" id="un-dm-panel-milestones">
-				<div class="un-dm-hint" style="margin-bottom:10px">Milestones appear on the unit profile in date order. The single derived milestone (first recorded member activity) comes from attendance data; the rest are custom entries you add below.</div>
-
-				<div class="un-dm-field">
-					<label>Visible Milestone Types</label>
-					<div class="un-dm-ms-toggles" id="un-dm-ms-toggles">
-						<label class="un-dm-ms-toggle"><input type="checkbox" data-unms-type="first_member_activity" <?= $_un_ms_visible('first_member_activity') ? 'checked' : '' ?> /> <i class="fas fa-door-open"></i> First Member Activity</label>
-						<label class="un-dm-ms-toggle"><input type="checkbox" data-unms-type="custom" <?= $_un_ms_visible('custom') ? 'checked' : '' ?> /> <i class="fas fa-pen"></i> Custom Milestones</label>
-					</div>
-					<label class="un-dm-ms-toggle" style="margin-top:4px">
-						<input type="checkbox" id="un-dm-ms-newest-first" <?= $_un_ms_newest_first ? 'checked' : '' ?> />
-						Show newest first
-					</label>
-				</div>
-
-				<div class="un-dm-field">
-					<label>Custom Milestones</label>
-					<div class="un-dm-ms-list" id="un-dm-ms-list"></div>
-					<div class="un-dm-ms-add">
-						<div><input type="text" id="un-dm-ms-add-desc" placeholder="What happened?" maxlength="500" /></div>
-						<div><input type="date" id="un-dm-ms-add-date" /></div>
-						<div><button type="button" class="un-dm-btn un-dm-btn-primary" id="un-dm-ms-add-btn" style="width:100%"><i class="fas fa-plus"></i> Add</button></div>
-					</div>
-					<div class="un-dm-ms-icons" id="un-dm-ms-icons" style="margin-top:8px">
-						<?php $_unIcons = ['fa-star','fa-trophy','fa-flag','fa-chess-rook','fa-crown','fa-medal','fa-shield-alt','fa-fire','fa-bolt','fa-scroll','fa-users','fa-dragon','fa-hammer','fa-heart','fa-home','fa-anchor']; ?>
-						<?php foreach ($_unIcons as $_ic): ?>
-						<div class="un-dm-ms-icon-opt<?= $_ic === 'fa-star' ? ' un-active' : '' ?>" data-icon="<?= htmlspecialchars($_ic) ?>"><i class="fas <?= htmlspecialchars($_ic) ?>"></i></div>
-						<?php endforeach; ?>
-					</div>
-					<div class="un-dm-hint" id="un-dm-ms-add-err" style="color:#c53030;display:none;margin-top:6px"></div>
-				</div>
-			</div>
-		</div>
-		<div class="un-dm-footer">
-			<button class="un-dm-btn" id="un-dm-cancel">Cancel</button>
-			<button class="un-dm-btn un-dm-btn-primary" id="un-dm-save"><i class="fas fa-save"></i> Save Changes</button>
-		</div>
-	</div>
-</div>
-
+<?php
+	// --- Shared Org Design modal + assets (managers only) ---------------------
+	// $ctx was built near the top of this template. The modal partial renders
+	// nothing for non-managers (it returns early on empty $ctx['can_manage']).
+	if ($ctx['can_manage']) {
+		include DIR_TEMPLATE . 'shared/orgdesign/_design_modal.tpl';
+	}
+?>
+<?php if ($ctx['can_manage']): ?>
 <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-<script>
-(function() {
-	var UNIT_ID = <?= (int)$_unit_id ?>;
-	var BASE_URL = '<?= htmlspecialchars($_base_url) ?>';
-	var UN_FONTS = [
-		{ key:'', label:'Default', family:'inherit' },
-		{ key:'Cinzel', label:'Cinzel', family:'Cinzel' },
-		{ key:'Cinzel Decorative', label:'Cinzel Deco', family:"'Cinzel Decorative'" },
-		{ key:'IM Fell English', label:'IM Fell English', family:"'IM Fell English'" },
-		{ key:'UnifrakturMaguntia', label:'Unifraktur', family:'UnifrakturMaguntia' },
-		{ key:'Metamorphous', label:'Metamorphous', family:'Metamorphous' },
-		{ key:'Uncial Antiqua', label:'Uncial Antiqua', family:"'Uncial Antiqua'" },
-		{ key:'Pirata One', label:'Pirata One', family:"'Pirata One'" },
-		{ key:'Almendra', label:'Almendra', family:'Almendra' },
-		{ key:'Pinyon Script', label:'Pinyon Script', family:"'Pinyon Script'" },
-		{ key:'Great Vibes', label:'Great Vibes', family:"'Great Vibes'" }
-	];
-	var INITIAL_CUSTOM_MS = <?php
-		$customOnly = array_values(array_filter($_un_all_ms, function($m){ return empty($m['IsDerived']); }));
-		echo json_encode(array_map(function($m){
-			return [
-				'MilestoneId'   => (int)$m['MilestoneId'],
-				'Icon'          => $m['Icon'],
-				'Description'   => $m['Description'],
-				'MilestoneDate' => $m['MilestoneDate'],
-			];
-		}, $customOnly));
-	?>;
-	var unSelectedFont = <?= json_encode($_un_name_font) ?>;
-	var unSelectedIcon = 'fa-star';
-	var customMs = INITIAL_CUSTOM_MS.slice();
-
-	function gid(id) { return document.getElementById(id); }
-	function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) { return ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[c]; }); }
-
-	window.unOpenDesignModal = function(panel) {
-		gid('un-dm-overlay').classList.add('un-open');
-		document.body.style.overflow = 'hidden';
-		if (panel) unSwitchDmPanel(panel);
-		renderCustomMsList();
-	};
-	function close() {
-		gid('un-dm-overlay').classList.remove('un-open');
-		document.body.style.overflow = '';
-	}
-	gid('un-dm-close').addEventListener('click', close);
-	gid('un-dm-cancel').addEventListener('click', close);
-	gid('un-dm-overlay').addEventListener('click', function(e) {
-		if (e.target === this) close();
-	});
-	document.addEventListener('keydown', function(e) {
-		if ((e.key === 'Escape' || e.keyCode === 27) && gid('un-dm-overlay').classList.contains('un-open')) close();
-	});
-
-	function unSwitchDmPanel(name) {
-		document.querySelectorAll('.un-dm-tab').forEach(function(t) { t.classList.remove('un-active'); });
-		document.querySelectorAll('.un-dm-panel').forEach(function(p) { p.classList.remove('un-active'); });
-		var tab = document.querySelector('.un-dm-tab[data-untab-dm="' + name + '"]');
-		var panel = gid('un-dm-panel-' + name);
-		if (tab) tab.classList.add('un-active');
-		if (panel) panel.classList.add('un-active');
-	}
-	document.querySelectorAll('.un-dm-tab').forEach(function(t) {
-		t.addEventListener('click', function() { unSwitchDmPanel(t.dataset.untabDm); });
-	});
-
-	var swatches = document.querySelectorAll('.un-dm-swatch');
-	swatches.forEach(function(sw) {
-		sw.addEventListener('click', function() {
-			swatches.forEach(function(s) { s.classList.remove('un-selected'); });
-			sw.classList.add('un-selected');
-			gid('un-dm-color-primary').value     = sw.dataset.primary;
-			gid('un-dm-color-primary-hex').value = sw.dataset.primary;
-			gid('un-dm-color-accent').value      = sw.dataset.accent;
-			gid('un-dm-color-accent-hex').value  = sw.dataset.accent;
-			if (sw.dataset.secondary) {
-				gid('un-dm-color-secondary').value     = sw.dataset.secondary;
-				gid('un-dm-color-secondary-hex').value = sw.dataset.secondary;
-				gid('un-dm-gradient-enabled').checked  = true;
-			} else {
-				gid('un-dm-color-secondary-hex').value = '';
-				gid('un-dm-gradient-enabled').checked  = false;
-			}
-		});
-	});
-	function syncHex(colorId, hexId) {
-		gid(colorId).addEventListener('input', function() { gid(hexId).value = this.value; });
-		gid(hexId).addEventListener('input', function() {
-			if (/^#[0-9a-f]{6}$/i.test(this.value)) { gid(colorId).value = this.value; }
-		});
-	}
-	syncHex('un-dm-color-primary',   'un-dm-color-primary-hex');
-	syncHex('un-dm-color-accent',    'un-dm-color-accent-hex');
-	syncHex('un-dm-color-secondary', 'un-dm-color-secondary-hex');
-
-	document.querySelectorAll('.un-dm-overlay-btn').forEach(function(btn) {
-		btn.addEventListener('click', function() {
-			document.querySelectorAll('.un-dm-overlay-btn').forEach(function(b) { b.classList.remove('un-active'); });
-			btn.classList.add('un-active');
-			gid('un-dm-hero-overlay').value = btn.dataset.overlay;
-		});
-	});
-
-	function unLoadFont(key) {
-		if (!key) return;
-		if (document.querySelector('link[data-un-font="' + key + '"]')) return;
-		var link = document.createElement('link');
-		link.rel = 'stylesheet';
-		link.href = 'https://fonts.googleapis.com/css2?family=' + key.replace(/ /g, '+') + '&display=swap';
-		link.setAttribute('data-un-font', key);
-		document.head.appendChild(link);
-	}
-	function unRenderFontPicker() {
-		var container = gid('un-dm-font-picker');
-		var sample = <?= json_encode($_name) ?>;
-		var html = '';
-		for (var i = 0; i < UN_FONTS.length; i++) {
-			var f = UN_FONTS[i];
-			var active = f.key === unSelectedFont;
-			html += '<div class="un-dm-font-card' + (active ? ' un-active' : '') + '" data-font-key="' + esc(f.key) + '">'
-				 +    '<div class="un-dm-font-sample" style="font-family:' + f.family + '">' + esc(sample) + '</div>'
-				 +    '<div class="un-dm-font-label">' + esc(f.label) + '</div>'
-				 + '</div>';
-			unLoadFont(f.key);
-		}
-		container.innerHTML = html;
-		container.addEventListener('click', function(e) {
-			var card = e.target.closest('.un-dm-font-card');
-			if (!card) return;
-			unSelectedFont = card.dataset.fontKey;
-			container.querySelectorAll('.un-dm-font-card').forEach(function(c) {
-				c.classList.toggle('un-active', c === card);
-			});
-		});
-	}
-	unRenderFontPicker();
-
-	document.querySelectorAll('[data-unmd-target]').forEach(function(btn) {
-		btn.addEventListener('click', function() {
-			var field  = btn.dataset.unmdField;
-			var target = btn.dataset.unmdTarget;
-			var taId   = field === 'about' ? 'un-dm-about-text' : (field === 'history' ? 'un-dm-history-text' : 'un-dm-howto-text');
-			var ta     = gid(taId);
-			var pv     = gid('un-dm-' + field + '-preview');
-			btn.parentElement.querySelectorAll('button').forEach(function(b) { b.classList.remove('un-active'); });
-			btn.classList.add('un-active');
-			if (target === 'preview') {
-				ta.style.display = 'none';
-				pv.style.display = '';
-				if (typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined') {
-					pv.innerHTML = DOMPurify.sanitize(marked.parse(ta.value || ''));
-				} else {
-					pv.textContent = ta.value;
-				}
-			} else {
-				ta.style.display = '';
-				pv.style.display = 'none';
-			}
-		});
-	});
-
-	function renderCustomMsList() {
-		var list = gid('un-dm-ms-list');
-		if (!list) return;
-		var newestFirst = gid('un-dm-ms-newest-first').checked;
-		customMs.sort(function(a, b) {
-			var ad = a.MilestoneDate || '', bd = b.MilestoneDate || '';
-			return newestFirst ? bd.localeCompare(ad) : ad.localeCompare(bd);
-		});
-		if (customMs.length === 0) {
-			list.innerHTML = '<div style="padding:14px;font-size:12px;color:#a0aec0">No custom milestones yet.</div>';
-			return;
-		}
-		var html = '';
-		for (var i = 0; i < customMs.length; i++) {
-			var m = customMs[i];
-			var dateStr = m.MilestoneDate || '';
-			if (dateStr && dateStr !== '0000-00-00') {
-				var d = new Date(dateStr + 'T00:00:00');
-				if (!isNaN(d.getTime())) dateStr = d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
-			}
-			var icon = (m.Icon || 'fa-star').replace(/[^a-z0-9-]/g, '');
-			html += '<div class="un-dm-ms-row" data-ms-id="' + m.MilestoneId + '">'
-				 +    '<i class="fas ' + icon + '"></i>'
-				 +    '<span class="un-dm-ms-desc">' + esc(m.Description) + '</span>'
-				 +    '<span class="un-dm-ms-date">' + dateStr + '</span>'
-				 +    '<button type="button" data-tip="Delete" onclick="unDeleteUnitMilestone(' + m.MilestoneId + ')"><i class="fas fa-trash"></i></button>'
-				 + '</div>';
-		}
-		list.innerHTML = html;
-	}
-	gid('un-dm-ms-newest-first').addEventListener('change', renderCustomMsList);
-
-	var iconGrid = gid('un-dm-ms-icons');
-	iconGrid.addEventListener('click', function(e) {
-		var opt = e.target.closest('.un-dm-ms-icon-opt');
-		if (!opt) return;
-		iconGrid.querySelectorAll('.un-dm-ms-icon-opt').forEach(function(o) { o.classList.remove('un-active'); });
-		opt.classList.add('un-active');
-		unSelectedIcon = opt.dataset.icon;
-	});
-
-	gid('un-dm-ms-add-btn').addEventListener('click', function() {
-		var desc = gid('un-dm-ms-add-desc').value.trim();
-		var date = gid('un-dm-ms-add-date').value;
-		var err  = gid('un-dm-ms-add-err');
-		err.style.display = 'none';
-		if (!desc) { err.textContent = 'Description is required.'; err.style.display = ''; return; }
-		if (!date) { err.textContent = 'Date is required.'; err.style.display = ''; return; }
-		var btn = this; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-		var fd = new FormData();
-		fd.append('Action', 'add_milestone');
-		fd.append('Description', desc);
-		fd.append('MilestoneDate', date);
-		fd.append('Icon', unSelectedIcon);
-		fetch(BASE_URL, { method: 'POST', body: fd })
-			.then(function(r) { return r.json(); })
-			.then(function(result) {
-				if (result && result.status === 0) {
-					customMs.push({
-						MilestoneId: result.milestoneId,
-						Icon: unSelectedIcon,
-						Description: desc,
-						MilestoneDate: date
-					});
-					renderCustomMsList();
-					gid('un-dm-ms-add-desc').value = '';
-					gid('un-dm-ms-add-date').value = '';
-					iconGrid.querySelectorAll('.un-dm-ms-icon-opt').forEach(function(o) { o.classList.remove('un-active'); });
-					iconGrid.querySelector('[data-icon="fa-star"]').classList.add('un-active');
-					unSelectedIcon = 'fa-star';
-				} else {
-					err.textContent = (result && result.error) || 'Failed to add milestone.';
-					err.style.display = '';
-				}
-			})
-			.catch(function() { err.textContent = 'Request failed.'; err.style.display = ''; })
-			.finally(function() {
-				btn.disabled = false;
-				btn.innerHTML = '<i class="fas fa-plus"></i> Add';
-			});
-	});
-
-	window.unDeleteUnitMilestone = function(id) {
-		if (!confirm('Delete this milestone?')) return;
-		var fd = new FormData();
-		fd.append('Action', 'delete_milestone');
-		fd.append('MilestoneId', id);
-		fetch(BASE_URL, { method: 'POST', body: fd })
-			.then(function(r) { return r.json(); })
-			.then(function(result) {
-				if (result && result.status === 0) {
-					customMs = customMs.filter(function(m) { return m.MilestoneId !== id; });
-					renderCustomMsList();
-				} else {
-					alert((result && result.error) || 'Failed to delete milestone.');
-				}
-			})
-			.catch(function() { alert('Request failed.'); });
-	};
-
-	(function(){
-		var taglineEl = gid('un-dm-tagline'), tCount = gid('un-dm-tagline-count');
-		if (taglineEl && tCount) taglineEl.addEventListener('input', function(){ tCount.textContent = taglineEl.value.length; });
-		var annEl = gid('un-dm-announcement'), aCount = gid('un-dm-announcement-count');
-		if (annEl && aCount) annEl.addEventListener('input', function(){ aCount.textContent = annEl.value.length; });
-		var recruitRow = gid('un-dm-recruit-row');
-		if (recruitRow) {
-			recruitRow.addEventListener('click', function(e){
-				var btn = e.target.closest('.un-dm-recruit-opt');
-				if (!btn) return;
-				recruitRow.querySelectorAll('.un-dm-recruit-opt').forEach(function(b){ b.classList.remove('un-active'); });
-				btn.classList.add('un-active');
-				gid('un-dm-recruitment-status').value = btn.dataset.recruit || '';
-			});
-		}
-	})();
-
-	gid('un-dm-save').addEventListener('click', function() {
-		var btn = this; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
-		var errEl = gid('un-dm-error'); errEl.style.display = 'none';
-		var fd = new FormData();
-		fd.append('Action', 'save_design');
-		fd.append('AboutText', gid('un-dm-about-text').value);
-		fd.append('OurHistory', gid('un-dm-history-text').value);
-		fd.append('ColorPrimary', gid('un-dm-color-primary').value);
-		fd.append('ColorAccent', gid('un-dm-color-accent').value);
-		fd.append('ColorSecondary', gid('un-dm-gradient-enabled').checked ? gid('un-dm-color-secondary').value : '');
-		fd.append('HeroOverlay', gid('un-dm-hero-overlay').value);
-		fd.append('NameFont', unSelectedFont || '');
-		var msConfig = {};
-		document.querySelectorAll('#un-dm-ms-toggles input[data-unms-type]').forEach(function(t) {
-			msConfig[t.dataset.unmsType] = t.checked ? 1 : 0;
-		});
-		msConfig['newest_first'] = gid('un-dm-ms-newest-first').checked ? 1 : 0;
-		fd.append('MilestoneConfig', JSON.stringify(msConfig));
-		fd.append('Tagline', gid('un-dm-tagline') ? gid('un-dm-tagline').value : '');
-		fd.append('Announcement', gid('un-dm-announcement') ? gid('un-dm-announcement').value : '');
-		fd.append('AnnouncementUntil', gid('un-dm-announcement-until') ? gid('un-dm-announcement-until').value : '');
-		fd.append('RecruitmentStatus', gid('un-dm-recruitment-status') ? gid('un-dm-recruitment-status').value : '');
-		fd.append('HowToJoin', gid('un-dm-howto-text') ? gid('un-dm-howto-text').value : '');
-		fd.append('AboutEnabled', (gid('un-dm-about-enabled') && gid('un-dm-about-enabled').checked) ? '1' : '0');
-		var social = {};
-		document.querySelectorAll('[data-un-social]').forEach(function(inp){
-			var v = inp.value.trim();
-			if (v !== '') social[inp.dataset.unSocial] = v;
-		});
-		fd.append('SocialLinks', JSON.stringify(social));
-
-		fetch(BASE_URL, { method: 'POST', body: fd })
-			.then(function(r) { return r.json(); })
-			.then(function(result) {
-				if (result && result.status === 0) {
-					window.location.reload();
-				} else {
-					errEl.textContent = (result && result.error) || 'Save failed.';
-					errEl.style.display = 'block';
-					btn.disabled = false;
-					btn.innerHTML = '<i class="fas fa-save"></i> Save Changes';
-				}
-			})
-			.catch(function(e) {
-				errEl.textContent = 'Request failed: ' + e.message;
-				errEl.style.display = 'block';
-				btn.disabled = false;
-				btn.innerHTML = '<i class="fas fa-save"></i> Save Changes';
-			});
-	});
-
-	renderCustomMsList();
-})();
-</script>
+<script src="<?= HTTP_TEMPLATE ?>shared/orgdesign/orgdesign.js?v=<?= filemtime(DIR_TEMPLATE . 'shared/orgdesign/orgdesign.js') ?>"></script>
 <?php endif; ?>

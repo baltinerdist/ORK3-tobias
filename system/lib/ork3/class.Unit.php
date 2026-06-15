@@ -1,7 +1,11 @@
 <?php
 
+require_once(__DIR__ . '/trait.OrgDesign.php');
+
 class Unit extends Ork3
 {
+    use OrgDesign;
+
     public function __construct()
     {
         parent::__construct();
@@ -200,20 +204,8 @@ class Unit extends Ork3
                     'History' => $this->unit->history,
                     'Active' => $this->unit->active
                 );
-            $this->db->Clear();
-            $design = new yapo($this->db, DB_PREFIX . 'unit_design');
-            $design->clear();
-            $design->unit_id = $this->unit->unit_id;
-            if (!$design->find()) {
-                $design->clear();
-                $design->unit_id      = $this->unit->unit_id;
-                $design->hero_overlay = 'med';
-                $design->save();
-                $design->clear();
-                $this->db->Clear();
-                $design->unit_id = $this->unit->unit_id;
-                $design->find();
-            }
+            // --- Unit design (1:1 supplemental, always-present row) ---
+            $design = $this->seedDesignRow($this->unit->unit_id);
             $response['Unit']['AboutText']       = (string)$design->about_text;
             $response['Unit']['OurHistory']      = (string)$design->our_history;
             $response['Unit']['ColorPrimary']    = $design->color_primary;
@@ -711,6 +703,34 @@ class Unit extends Ork3
         return Success();
     }
 
+    /**
+     * Per-org design contract consumed by trait OrgDesign. Unit-specific
+     * tables/FK/auth, the field lists the shared validators reference, and the
+     * derived-milestone callable (verbatim Unit member-activity query — Unit's
+     * derived set is only a single "first recorded member activity" milestone,
+     * with no count/member threshold arrays).
+     */
+    public function getDesignConfig()
+    {
+        return [
+            'design_table'     => 'unit_design',
+            'fk'               => 'unit_id',
+            'milestone_table'  => 'unit_milestones',
+            'auth'             => AUTH_UNIT,
+            'profanity_fields' => ['AboutText', 'OurHistory', 'Tagline', 'Announcement', 'HowToJoin'],
+            'char_limits'      => ['AboutText' => 10000, 'OurHistory' => 10000, 'Tagline' => 160, 'Announcement' => 280, 'HowToJoin' => 5000],
+            'derived'          => [$this, 'getDerivedUnitMilestoneRows'],
+        ];
+    }
+
+    /**
+     * Save unit profile design. Uses AUTH_UNIT/AUTH_EDIT.
+     *
+     * Thin wrapper mirroring SetKingdomDesign: auth -> profanity gate on the
+     * org's profanity_fields -> seed row -> shared common-field validators
+     * (trait applyCommonDesignFields) -> Unit-specific extra fields
+     * (RecruitmentStatus + HowToJoin) -> about_enabled opt-in -> save.
+     */
     public function SetUnitDesign($request)
     {
         $unit_id = (int)($request['UnitId'] ?? 0);
@@ -723,130 +743,21 @@ class Unit extends Ork3
         }
         require_once(__DIR__ . '/class.ProfanityFilter.php');
         $pf = new ProfanityFilter();
-        foreach (['AboutText' => 'AboutText', 'OurHistory' => 'OurHistory', 'Tagline' => 'Tagline', 'Announcement' => 'Announcement', 'HowToJoin' => 'HowToJoin'] as $field => $label) {
+        foreach (['AboutText' => 'AboutText', 'OurHistory' => 'OurHistory'] as $field => $label) {
             if (isset($request[$field]) && trim((string)$request[$field]) !== '') {
                 if ($pf->containsProfanity((string)$request[$field])) {
                     return InvalidParameter($label, ProfanityFilter::ERROR_MESSAGE);
                 }
             }
         }
-        $this->db->Clear();
-        $design = new yapo($this->db, DB_PREFIX . 'unit_design');
-        $design->clear();
-        $design->unit_id = $unit_id;
-        if (!$design->find()) {
-            $design->clear();
-            $design->unit_id      = $unit_id;
-            $design->hero_overlay = 'med';
-            $design->save();
-            $design->clear();
-            $this->db->Clear();
-            $design->unit_id = $unit_id;
-            $design->find();
+        $design = $this->seedDesignRow($unit_id);
+
+        $err = $this->applyCommonDesignFields($design, $request, $pf);
+        if ($err !== null) {
+            return $err;
         }
-        $ABOUT_LIMIT = 10000;
-        foreach (['AboutText' => 'about_text', 'OurHistory' => 'our_history'] as $req => $col) {
-            if (isset($request[$req])) {
-                $v = (string)$request[$req];
-                if (strlen($v) > $ABOUT_LIMIT) {
-                    return InvalidParameter($req . ' is limited to ' . number_format($ABOUT_LIMIT) . ' characters.');
-                }
-                $design->$col = $v;
-            }
-        }
-        $hexCols = ['ColorPrimary' => 'color_primary', 'ColorAccent' => 'color_accent', 'ColorSecondary' => 'color_secondary'];
-        foreach ($hexCols as $req => $col) {
-            if (!array_key_exists($req, $request)) {
-                continue;
-            }
-            $v = trim((string)$request[$req]);
-            if ($v === '') {
-                $design->$col = null;
-                continue;
-            }
-            if (!preg_match('/^#[0-9a-fA-F]{6}$/', $v)) {
-                return InvalidParameter($req . ' must be a 6-digit hex color (e.g. #2c5282).');
-            }
-            $design->$col = strtolower($v);
-        }
-        if (array_key_exists('HeroOverlay', $request)) {
-            $ho = strtolower(trim((string)$request['HeroOverlay']));
-            if (!in_array($ho, ['low','med','high','vignette'], true)) {
-                $ho = 'med';
-            }
-            $design->hero_overlay = $ho;
-        }
-        if (array_key_exists('NameFont', $request)) {
-            $nf = trim((string)$request['NameFont']);
-            if ($nf !== '' && !preg_match('/^[A-Za-z0-9 ]{1,100}$/', $nf)) {
-                return InvalidParameter('Font name contains unexpected characters.');
-            }
-            $design->name_font = $nf === '' ? null : $nf;
-        }
-        if (array_key_exists('MilestoneConfig', $request)) {
-            $mc = (string)$request['MilestoneConfig'];
-            if ($mc !== '') {
-                $decoded = json_decode($mc, true);
-                if (!is_array($decoded)) {
-                    return InvalidParameter('Milestone config must be valid JSON.');
-                }
-            }
-            $design->milestone_config = $mc === '' ? null : $mc;
-        }
-        if (array_key_exists('Tagline', $request)) {
-            $tg = trim((string)$request['Tagline']);
-            if (strlen($tg) > 160) {
-                return InvalidParameter('Tagline is limited to 160 characters.');
-            }
-            $design->tagline = $tg === '' ? null : $tg;
-        }
-        if (array_key_exists('SocialLinks', $request)) {
-            $sl = trim((string)$request['SocialLinks']);
-            if ($sl === '') {
-                $design->social_links = null;
-            } else {
-                $decoded = json_decode($sl, true);
-                if (!is_array($decoded)) {
-                    return InvalidParameter('Social links must be valid JSON.');
-                }
-                $clean = [];
-                foreach ($decoded as $platform => $url) {
-                    $url = trim((string)$url);
-                    if ($url === '') {
-                        continue;
-                    }
-                    if (preg_match('#^http://#i', $url)) {
-                        $url = 'https://' . substr($url, 7);
-                    } elseif (!preg_match('#^https://#i', $url)) {
-                        $url = 'https://' . ltrim($url, '/');
-                    }
-                    if (strlen($url) > 500) {
-                        return InvalidParameter('Social link for ' . $platform . ' must be 500 characters or fewer.');
-                    }
-                    $clean[(string)$platform] = $url;
-                }
-                $design->social_links = empty($clean) ? null : json_encode($clean);
-            }
-        }
-        if (array_key_exists('Announcement', $request)) {
-            $an = trim((string)$request['Announcement']);
-            if (strlen($an) > 280) {
-                return InvalidParameter('Announcement is limited to 280 characters.');
-            }
-            $design->announcement = $an === '' ? null : $an;
-        }
-        if (array_key_exists('AnnouncementUntil', $request)) {
-            $au = trim((string)$request['AnnouncementUntil']);
-            if ($au === '') {
-                $design->announcement_until = null;
-            } else {
-                $ts = strtotime($au);
-                if ($ts === false) {
-                    return InvalidParameter('Announcement "Show until" must be a valid date.');
-                }
-                $design->announcement_until = date('Y-m-d', $ts);
-            }
-        }
+
+        // Unit-specific extra fields.
         if (array_key_exists('RecruitmentStatus', $request)) {
             $rs = strtolower(trim((string)$request['RecruitmentStatus']));
             if ($rs === '' || $rs === 'none' || $rs === 'unset') {
@@ -862,6 +773,9 @@ class Unit extends Ork3
             if (strlen($hj) > 5000) {
                 return InvalidParameter('HowToJoin is limited to 5,000 characters.');
             }
+            if (trim($hj) !== '' && $pf->containsProfanity($hj)) {
+                return InvalidParameter('HowToJoin', ProfanityFilter::ERROR_MESSAGE);
+            }
             $design->how_to_join = trim($hj) === '' ? null : $hj;
         }
         if (array_key_exists('AboutEnabled', $request)) {
@@ -873,107 +787,41 @@ class Unit extends Ork3
 
     public function GetUnitMilestones($request)
     {
-        $unit_id = (int)($request['UnitId'] ?? 0);
-        if ($unit_id <= 0) {
-            return InvalidParameter('UnitId is required.');
-        }
-        $this->db->Clear();
-        $ms = new yapo($this->db, DB_PREFIX . 'unit_milestones');
-        $ms->clear();
-        $ms->unit_id = $unit_id;
-        $rows = [];
-        if ($ms->find()) {
-            do {
-                $rows[] = [
-                    'MilestoneId'   => (int)$ms->milestone_id,
-                    'UnitId'        => (int)$ms->unit_id,
-                    'Icon'          => $ms->icon,
-                    'Description'   => $ms->description,
-                    'MilestoneDate' => $ms->milestone_date,
-                ];
-            } while ($ms->next());
-        }
-        return ['Status' => Success(), 'Milestones' => $rows];
+        return $this->GetDesignMilestones((int)($request['UnitId'] ?? 0));
     }
 
     public function AddUnitMilestone($request)
     {
-        $unit_id = (int)($request['UnitId'] ?? 0);
-        if ($unit_id <= 0) {
-            return InvalidParameter('UnitId is required.');
-        }
-        $mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
-        if (!($mundane_id > 0) || !Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_UNIT, $unit_id, AUTH_EDIT)) {
-            return NoAuthorization();
-        }
-        require_once(__DIR__ . '/class.ProfanityFilter.php');
-        $pf = new ProfanityFilter();
-        $desc = trim((string)($request['Description'] ?? ''));
-        if ($desc === '') {
-            return InvalidParameter('Description is required.');
-        }
-        if (strlen($desc) > 500) {
-            $desc = substr($desc, 0, 500);
-        }
-        if ($pf->containsProfanity($desc)) {
-            return InvalidParameter('Description', ProfanityFilter::ERROR_MESSAGE);
-        }
-        $dateRaw = trim((string)($request['MilestoneDate'] ?? ''));
-        if ($dateRaw === '') {
-            return InvalidParameter('Date is required.');
-        }
-        $ts = strtotime($dateRaw);
-        if ($ts === false) {
-            return InvalidParameter('Invalid date.');
-        }
-        $icon = trim((string)($request['Icon'] ?? 'fa-star'));
-        if (!preg_match('/^fa-[a-z0-9-]+$/', $icon)) {
-            $icon = 'fa-star';
-        }
-        $this->db->Clear();
-        $ms = new yapo($this->db, DB_PREFIX . 'unit_milestones');
-        $ms->clear();
-        $ms->unit_id        = $unit_id;
-        $ms->icon           = $icon;
-        $ms->description    = $desc;
-        $ms->milestone_date = date('Y-m-d', $ts);
-        $ms->save();
-        return Success((int)$ms->milestone_id);
+        return $this->AddDesignMilestone((int)($request['UnitId'] ?? 0), $request);
     }
 
     public function DeleteUnitMilestone($request)
     {
-        $unit_id      = (int)($request['UnitId']      ?? 0);
-        $milestone_id = (int)($request['MilestoneId'] ?? 0);
-        if ($unit_id <= 0 || $milestone_id <= 0) {
-            return InvalidParameter('UnitId and MilestoneId required.');
-        }
-        $mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
-        if (!($mundane_id > 0) || !Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_UNIT, $unit_id, AUTH_EDIT)) {
-            return NoAuthorization();
-        }
-        $this->db->Clear();
-        $ms = new yapo($this->db, DB_PREFIX . 'unit_milestones');
-        $ms->clear();
-        $ms->milestone_id = $milestone_id;
-        $ms->unit_id      = $unit_id;
-        if (!$ms->find()) {
-            return InvalidParameter('Milestone not found.');
-        }
-        $ms->delete();
-        return Success();
+        return $this->DeleteDesignMilestone((int)($request['UnitId'] ?? 0), $request);
     }
 
+    /**
+     * Derived unit milestones — computed from member attendance activity. Cached
+     * at 300s TTL. Caching orchestration lives in trait OrgDesign; the cache
+     * namespace is passed explicitly as literals to preserve the original bucket
+     * (Unit.GetDerivedUnitMilestones).
+     */
     public function GetDerivedUnitMilestones($request)
     {
         $unit_id = (int)(is_array($request) ? ($request['UnitId'] ?? 0) : $request);
-        if ($unit_id <= 0) {
-            return ['Status' => InvalidParameter('UnitId is required.'), 'Milestones' => []];
-        }
-        $key = Ork3::$Lib->ghettocache->key(['UnitId' => $unit_id]);
-        if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 300)) !== false) {
-            return $cache;
-        }
+        return $this->GetDerivedDesignMilestones($unit_id, 'Unit', 'GetDerivedUnitMilestones');
+    }
+
+    /**
+     * Unit's derived-milestone rows. Verbatim member-activity query from the
+     * original GetDerivedUnitMilestones; invoked via the config's `derived`
+     * callable. Unit only computes the single "first recorded member activity"
+     * milestone (no count/member threshold arrays). Returns rows in computation
+     * order (no sort).
+     */
+    public function getDerivedUnitMilestoneRows($unit_id)
+    {
+        $unit_id = (int)$unit_id;
         $out = [];
         $this->db->Clear();
         $r = $this->db->query("SELECT MIN(a.date) AS first_date FROM " . DB_PREFIX . "attendance a JOIN " . DB_PREFIX . "unit_mundane um ON um.mundane_id = a.mundane_id WHERE um.unit_id = $unit_id AND a.date >= '1988-01-01'");
@@ -990,8 +838,7 @@ class Unit extends Ork3
                 ];
             }
         }
-        $response = ['Status' => Success(), 'Milestones' => $out];
-        return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
+        return $out;
     }
 
 }

@@ -1,7 +1,11 @@
 <?php
 
+require_once(__DIR__ . '/trait.OrgDesign.php');
+
 class Kingdom extends Ork3
 {
+    use OrgDesign;
+
     // Per-request memo caches for the principality-rollup helpers. These are read
     // dozens of times per kingdom-scoped report page; the Kingdom lib is a single
     // instance per request (see startup.php), so caching here is safe and avoids
@@ -48,20 +52,7 @@ class Kingdom extends Ork3
             $response['KingdomInfo']['Description'] = $this->kingdom->description ?? '';
             $response['KingdomInfo']['Url'] = $this->kingdom->url ?? '';
             // --- Kingdom design (1:1 supplemental, always-present row) ---
-            $this->db->Clear();
-            $design = new yapo($this->db, DB_PREFIX . 'kingdom_design');
-            $design->clear();
-            $design->kingdom_id = $this->kingdom->kingdom_id;
-            if (!$design->find()) {
-                $design->clear();
-                $design->kingdom_id   = $this->kingdom->kingdom_id;
-                $design->hero_overlay = 'med';
-                $design->save();
-                $design->clear();
-                $this->db->Clear();
-                $design->kingdom_id = $this->kingdom->kingdom_id;
-                $design->find();
-            }
+            $design = $this->seedDesignRow($this->kingdom->kingdom_id);
             $response['KingdomInfo']['AboutText']       = (string)$design->about_text;
             $response['KingdomInfo']['OurHistory']      = (string)$design->our_history;
             $response['KingdomInfo']['ColorPrimary']    = $design->color_primary;
@@ -337,20 +328,7 @@ class Kingdom extends Ork3
             $response['KingdomInfo']['Url'] = $this->kingdom->url ?? '';
 
             // --- Kingdom design (1:1 supplemental, always-present row) ---
-            $this->db->Clear();
-            $design = new yapo($this->db, DB_PREFIX . 'kingdom_design');
-            $design->clear();
-            $design->kingdom_id = $this->kingdom->kingdom_id;
-            if (!$design->find()) {
-                $design->clear();
-                $design->kingdom_id   = $this->kingdom->kingdom_id;
-                $design->hero_overlay = 'med';
-                $design->save();
-                $design->clear();
-                $this->db->Clear();
-                $design->kingdom_id = $this->kingdom->kingdom_id;
-                $design->find();
-            }
+            $design = $this->seedDesignRow($this->kingdom->kingdom_id);
             $response['KingdomInfo']['AboutText']       = (string)$design->about_text;
             $response['KingdomInfo']['OurHistory']      = (string)$design->our_history;
             $response['KingdomInfo']['ColorPrimary']    = $design->color_primary;
@@ -425,12 +403,7 @@ class Kingdom extends Ork3
             $this->kingdom->save();
             $_new_kingdom_id = (int)$this->kingdom->kingdom_id;
             // Always-present design row so reads don't need PHP-side defaults.
-            $this->db->Clear();
-            $_design_seed = new yapo($this->db, DB_PREFIX . 'kingdom_design');
-            $_design_seed->clear();
-            $_design_seed->kingdom_id   = $_new_kingdom_id;
-            $_design_seed->hero_overlay = 'med';
-            $_design_seed->save();
+            $this->seedDesignRow($_new_kingdom_id);
 
             $c = new Common();
             $c->add_config(
@@ -982,8 +955,31 @@ class Kingdom extends Ork3
     }
 
     /**
+     * Per-org design contract consumed by trait OrgDesign. Kingdom-specific
+     * tables/FK/auth, the field lists the shared validators reference, and the
+     * derived-milestone callable (verbatim Kingdom attendance query + its exact
+     * threshold arrays).
+     */
+    public function getDesignConfig()
+    {
+        return [
+            'design_table'     => 'kingdom_design',
+            'fk'               => 'kingdom_id',
+            'milestone_table'  => 'kingdom_milestones',
+            'auth'             => AUTH_KINGDOM,
+            'profanity_fields' => ['AboutText', 'OurHistory', 'Tagline', 'Announcement', 'ReignLore'],
+            'char_limits'      => ['AboutText' => 10000, 'OurHistory' => 10000, 'Tagline' => 160, 'Announcement' => 280, 'ReignLore' => 2000],
+            'derived'          => [$this, 'getDerivedKingdomMilestoneRows'],
+        ];
+    }
+
+    /**
      * Save kingdom profile design (header colors/font/overlay, about + our history markdown,
      * milestone visibility config). Uses AUTH_KINGDOM/AUTH_EDIT.
+     *
+     * Thin wrapper: auth -> profanity gate on About/History -> seed row ->
+     * shared common-field validators (trait) -> Kingdom-specific extra fields
+     * (reign dates + reign lore) -> about_enabled opt-in -> save.
      */
     public function SetKingdomDesign($request)
     {
@@ -1004,139 +1000,14 @@ class Kingdom extends Ork3
                 }
             }
         }
-        $this->db->Clear();
-        $design = new yapo($this->db, DB_PREFIX . 'kingdom_design');
-        $design->clear();
-        $design->kingdom_id = $kingdom_id;
-        if (!$design->find()) {
-            $design->clear();
-            $design->kingdom_id   = $kingdom_id;
-            $design->hero_overlay = 'med';
-            $design->save();
-            $design->clear();
-            $this->db->Clear();
-            $design->kingdom_id = $kingdom_id;
-            $design->find();
-        }
-        $ABOUT_LIMIT = 10000;
-        foreach (['AboutText' => 'about_text', 'OurHistory' => 'our_history'] as $req => $col) {
-            if (isset($request[$req])) {
-                $v = (string)$request[$req];
-                if (strlen($v) > $ABOUT_LIMIT) {
-                    return InvalidParameter($req . ' is limited to ' . number_format($ABOUT_LIMIT) . ' characters.');
-                }
-                $design->$col = $v;
-            }
-        }
-        $hexCols = ['ColorPrimary' => 'color_primary', 'ColorAccent' => 'color_accent', 'ColorSecondary' => 'color_secondary'];
-        foreach ($hexCols as $req => $col) {
-            if (!array_key_exists($req, $request)) {
-                continue;
-            }
-            $v = trim((string)$request[$req]);
-            if ($v === '') {
-                $design->$col = null;
-                continue;
-            }
-            if (!preg_match('/^#[0-9a-fA-F]{6}$/', $v)) {
-                return InvalidParameter($req . ' must be a 6-digit hex color (e.g. #2c5282).');
-            }
-            $design->$col = strtolower($v);
-        }
-        if (array_key_exists('HeroOverlay', $request)) {
-            $ho = strtolower(trim((string)$request['HeroOverlay']));
-            if (!in_array($ho, ['low','med','high','vignette'], true)) {
-                $ho = 'med';
-            }
-            $design->hero_overlay = $ho;
-        }
-        if (array_key_exists('NameFont', $request)) {
-            $nf = trim((string)$request['NameFont']);
-            if ($nf !== '' && !preg_match('/^[A-Za-z0-9 ]{1,100}$/', $nf)) {
-                return InvalidParameter('Font name contains unexpected characters.');
-            }
-            $design->name_font = $nf === '' ? null : $nf;
-        }
-        if (array_key_exists('MilestoneConfig', $request)) {
-            $mc = (string)$request['MilestoneConfig'];
-            if ($mc !== '') {
-                $decoded = json_decode($mc, true);
-                if (!is_array($decoded)) {
-                    return InvalidParameter('Milestone config must be valid JSON.');
-                }
-            }
-            $design->milestone_config = $mc === '' ? null : $mc;
+        $design = $this->seedDesignRow($kingdom_id);
+
+        $err = $this->applyCommonDesignFields($design, $request, $pf);
+        if ($err !== null) {
+            return $err;
         }
 
-        if (array_key_exists('Tagline', $request)) {
-            $tg = trim((string)$request['Tagline']);
-            if (strlen($tg) > 160) {
-                return InvalidParameter('Tagline is limited to 160 characters.');
-            }
-            if ($tg !== '' && $pf->containsProfanity($tg)) {
-                return InvalidParameter('Tagline', ProfanityFilter::ERROR_MESSAGE);
-            }
-            $design->tagline = $tg === '' ? null : $tg;
-        }
-
-        if (array_key_exists('SocialLinks', $request)) {
-            $sl = trim((string)$request['SocialLinks']);
-            $cleanLinks = [];
-            if ($sl !== '') {
-                $decoded = json_decode($sl, true);
-                if (!is_array($decoded)) {
-                    return InvalidParameter('SocialLinks must be valid JSON.');
-                }
-                $allowed = ['discord','facebook','instagram','threads','bluesky','twitter','youtube','amtwiki'];
-                foreach ($decoded as $slug => $url) {
-                    if (!in_array($slug, $allowed, true)) {
-                        continue;
-                    }
-                    $url = trim((string)$url);
-                    if ($url === '') {
-                        continue;
-                    }
-                    if (preg_match('#^http://#i', $url)) {
-                        $url = 'https://' . substr($url, 7);
-                    } elseif (!preg_match('#^https://#i', $url)) {
-                        $url = 'https://' . ltrim($url, '/');
-                    }
-                    if (strlen($url) > 500) {
-                        return InvalidParameter('SocialLinks.' . $slug . ' URL too long.');
-                    }
-                    if (!filter_var($url, FILTER_VALIDATE_URL)) {
-                        return InvalidParameter('SocialLinks.' . $slug . ' is not a valid URL.');
-                    }
-                    $cleanLinks[$slug] = $url;
-                }
-            }
-            $design->social_links = empty($cleanLinks) ? null : json_encode($cleanLinks);
-        }
-
-        if (array_key_exists('Announcement', $request)) {
-            $an = trim((string)$request['Announcement']);
-            if (strlen($an) > 280) {
-                return InvalidParameter('Announcement is limited to 280 characters.');
-            }
-            if ($an !== '' && $pf->containsProfanity($an)) {
-                return InvalidParameter('Announcement', ProfanityFilter::ERROR_MESSAGE);
-            }
-            $design->announcement = $an === '' ? null : $an;
-        }
-
-        if (array_key_exists('AnnouncementUntil', $request)) {
-            $au = trim((string)$request['AnnouncementUntil']);
-            if ($au === '') {
-                $design->announcement_until = null;
-            } else {
-                $ts = strtotime($au);
-                if ($ts === false) {
-                    return InvalidParameter('AnnouncementUntil must be a valid date.');
-                }
-                $design->announcement_until = date('Y-m-d', $ts);
-            }
-        }
-
+        // Kingdom-specific extra fields.
         foreach (['MonarchReignStarted' => 'monarch_reign_started', 'RegentReignStarted' => 'regent_reign_started'] as $req => $col) {
             if (!array_key_exists($req, $request)) {
                 continue;
@@ -1174,111 +1045,39 @@ class Kingdom extends Ork3
 
     public function GetKingdomMilestones($request)
     {
-        $kingdom_id = (int)($request['KingdomId'] ?? 0);
-        if ($kingdom_id <= 0) {
-            return InvalidParameter('KingdomId is required.');
-        }
-        $this->db->Clear();
-        $ms = new yapo($this->db, DB_PREFIX . 'kingdom_milestones');
-        $ms->clear();
-        $ms->kingdom_id = $kingdom_id;
-        $rows = [];
-        if ($ms->find()) {
-            do {
-                $rows[] = [
-                    'MilestoneId'   => (int)$ms->milestone_id,
-                    'KingdomId'     => (int)$ms->kingdom_id,
-                    'Icon'          => $ms->icon,
-                    'Description'   => $ms->description,
-                    'MilestoneDate' => $ms->milestone_date,
-                ];
-            } while ($ms->next());
-        }
-        return ['Status' => Success(), 'Milestones' => $rows];
+        return $this->GetDesignMilestones((int)($request['KingdomId'] ?? 0));
     }
 
     public function AddKingdomMilestone($request)
     {
-        $kingdom_id = (int)($request['KingdomId'] ?? 0);
-        if ($kingdom_id <= 0) {
-            return InvalidParameter('KingdomId is required.');
-        }
-        $mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
-        if (!($mundane_id > 0) || !Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_KINGDOM, $kingdom_id, AUTH_EDIT)) {
-            return NoAuthorization();
-        }
-        require_once(__DIR__ . '/class.ProfanityFilter.php');
-        $pf = new ProfanityFilter();
-        $desc = trim((string)($request['Description'] ?? ''));
-        if ($desc === '') {
-            return InvalidParameter('Description is required.');
-        }
-        if (strlen($desc) > 500) {
-            $desc = substr($desc, 0, 500);
-        }
-        if ($pf->containsProfanity($desc)) {
-            return InvalidParameter('Description', ProfanityFilter::ERROR_MESSAGE);
-        }
-        $dateRaw = trim((string)($request['MilestoneDate'] ?? ''));
-        if ($dateRaw === '') {
-            return InvalidParameter('Date is required.');
-        }
-        $ts = strtotime($dateRaw);
-        if ($ts === false) {
-            return InvalidParameter('Invalid date.');
-        }
-        $icon = trim((string)($request['Icon'] ?? 'fa-star'));
-        if (!preg_match('/^fa-[a-z0-9-]+$/', $icon)) {
-            $icon = 'fa-star';
-        }
-        $this->db->Clear();
-        $ms = new yapo($this->db, DB_PREFIX . 'kingdom_milestones');
-        $ms->clear();
-        $ms->kingdom_id     = $kingdom_id;
-        $ms->icon           = $icon;
-        $ms->description    = $desc;
-        $ms->milestone_date = date('Y-m-d', $ts);
-        $ms->save();
-        return Success((int)$ms->milestone_id);
+        return $this->AddDesignMilestone((int)($request['KingdomId'] ?? 0), $request);
     }
 
     public function DeleteKingdomMilestone($request)
     {
-        $kingdom_id   = (int)($request['KingdomId']   ?? 0);
-        $milestone_id = (int)($request['MilestoneId'] ?? 0);
-        if ($kingdom_id <= 0 || $milestone_id <= 0) {
-            return InvalidParameter('KingdomId and MilestoneId required.');
-        }
-        $mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
-        if (!($mundane_id > 0) || !Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_KINGDOM, $kingdom_id, AUTH_EDIT)) {
-            return NoAuthorization();
-        }
-        $this->db->Clear();
-        $ms = new yapo($this->db, DB_PREFIX . 'kingdom_milestones');
-        $ms->clear();
-        $ms->milestone_id = $milestone_id;
-        $ms->kingdom_id   = $kingdom_id;
-        if (!$ms->find()) {
-            return InvalidParameter('Milestone not found.');
-        }
-        $ms->delete();
-        return Success();
+        return $this->DeleteDesignMilestone((int)($request['KingdomId'] ?? 0), $request);
     }
 
     /**
      * Derived kingdom milestones — computed from attendance data scoped by kingdom_id.
-     * Cached at 300s TTL.
+     * Cached at 300s TTL. Caching orchestration lives in trait OrgDesign; the
+     * cache namespace is passed explicitly to preserve the original bucket
+     * (Kingdom.GetDerivedKingdomMilestones).
      */
     public function GetDerivedKingdomMilestones($request)
     {
         $kingdom_id = (int)(is_array($request) ? ($request['KingdomId'] ?? 0) : $request);
-        if ($kingdom_id <= 0) {
-            return ['Status' => InvalidParameter('KingdomId is required.'), 'Milestones' => []];
-        }
-        $key = Ork3::$Lib->ghettocache->key(['KingdomId' => $kingdom_id]);
-        if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 300)) !== false) {
-            return $cache;
-        }
+        return $this->GetDerivedDesignMilestones($kingdom_id, 'Kingdom', 'GetDerivedKingdomMilestones');
+    }
+
+    /**
+     * Kingdom's derived-milestone rows. Verbatim attendance query + threshold
+     * arrays from the original GetDerivedKingdomMilestones; invoked via the
+     * config's `derived` callable. Returns rows in computation order (no sort).
+     */
+    public function getDerivedKingdomMilestoneRows($kingdom_id)
+    {
+        $kingdom_id = (int)$kingdom_id;
         $out = [];
         // 1) First recorded attendance anywhere in the kingdom.
         $this->db->Clear();
@@ -1356,8 +1155,6 @@ class Kingdom extends Ork3
                 }
             }
         }
-        $response = ['Status' => Success(), 'Milestones' => $out];
-        return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
+        return $out;
     }
-
 }
