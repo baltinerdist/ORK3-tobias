@@ -315,13 +315,6 @@ class Player extends Ork3
             $_exposeFirst  = !$fetchprivate || ($_isLoggedIn && !$_isRestricted && (int)$design->show_mundane_first === 1);
             $_exposeLast   = !$fetchprivate || ($_isLoggedIn && !$_isRestricted && (int)$design->show_mundane_last  === 1);
             $_exposeEmail  = !$fetchprivate || ($_isLoggedIn && !$_isRestricted && (int)$design->show_email         === 1);
-            $subject = $this->pronoun->subject;
-            $pronoun_custom = $this->mundane->pronoun_custom;
-            $pronountext = isset($subject) ? $this->pronoun->subject . '[' . $this->pronoun->object . ']' : '';
-            $pronouncustomArr = (isset($pronoun_custom) && json_decode($this->mundane->pronoun_custom)) ? $this->Pronoun->fetch_custom_pronoun_display($this->mundane->pronoun_custom) : false;
-            //$pronouncustomtext = json_encode($pronouncustomArr);
-            $pronouncustomtext = (isset($pronouncustomArr) && $pronouncustomArr) ? implode('/', $pronouncustomArr['subjective']) . ' [' . implode('/', $pronouncustomArr['objective']) . ' ' . implode('/', $pronouncustomArr['possessive']) . ' ' . implode('/', $pronouncustomArr['possessivepronoun']) . ' ' . implode('/', $pronouncustomArr['reflexive']) . ']' : '';
-
             $response['Player'] = array(
                     'MundaneId' => $this->mundane->mundane_id,
                     'GivenName' => $_exposeFirst ? $this->mundane->given_name : "",
@@ -330,8 +323,8 @@ class Player extends Ork3
                     'UserName' => $this->mundane->username,
                     'PronounId' => $this->mundane->pronoun_id,
                     'PronounCustom' => $this->mundane->pronoun_custom,
-                    'PronounText' => $pronountext,
-                    'PronounCustomText' => $pronouncustomtext,
+                    'PronounText' => $this->mundane->pronoun_freetext,
+                    'PronounCustomText' => '',
                     'Persona' => $this->mundane->persona,
                     'Suspended' => $this->mundane->suspended,
                     'SuspendedAt' => $this->mundane->suspended_at,
