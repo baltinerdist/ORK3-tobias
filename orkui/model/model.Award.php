@@ -1,21 +1,25 @@
 <?php
 
-class Model_Award extends Model {
-
-    function __construct() {
+class Model_Award extends Model
+{
+    public function __construct()
+    {
         parent::__construct();
         $this->Award = new APIModel('Award');
         $this->Kingdom = new APIModel('Kingdom');
     }
 
-    private static function compareAwardsByName($a, $b) {
+    private static function compareAwardsByName($a, $b)
+    {
         return strcmp($a["KingdomAwardName"], $b["KingdomAwardName"]);
     }
 
-    function fetch_award_option_list($kingdom_id = 0, $officer_role = null) {
+    public function fetch_award_option_list($kingdom_id = 0, $officer_role = null)
+    {
         $cacheKey = Ork3::$Lib->ghettocache->key(['KingdomId' => (int)$kingdom_id, 'OfficerRole' => $officer_role]);
-        if (($cached = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $cacheKey, 1200)) !== false)
+        if (($cached = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $cacheKey, 1200)) !== false) {
             return $cached;
+        }
         if (valid_id($kingdom_id)) {
             $awards = $this->Kingdom->GetAwardList(array(
                     'IsLadder' => null,
@@ -58,7 +62,7 @@ class Model_Award extends Model {
                 } elseif (($award['Peerage'] ?? '') === 'Master'
                           || (!empty($award['IsTitle']) && ($award['TitleClass'] ?? 0) == 10)) {
                     $masterhoods[] = $award;
-                } elseif (in_array($award['Peerage'] ?? '', ['Squire','Man-At-Arms','Page','Lords-Page'])
+                } elseif (in_array($award['Peerage'] ?? '', Award::ProtegePeerages())
                           || $sysName === 'Apprentice') {
                     $associates[] = $award;
                 } elseif ((!empty($award['IsTitle']) && ($award['TitleClass'] ?? 0) >= 30)
@@ -99,7 +103,9 @@ class Model_Award extends Model {
                 'Other' => $other,
             ];
             foreach ($groups as $label => $items) {
-                if (empty($items)) continue;
+                if (empty($items)) {
+                    continue;
+                }
                 $options .= "<optgroup label='" . htmlspecialchars($label, ENT_QUOTES) . "'>";
                 foreach ($items as $award) {
                     $extra = '';
@@ -118,5 +124,3 @@ class Model_Award extends Model {
 
 
 }
-
-?>
