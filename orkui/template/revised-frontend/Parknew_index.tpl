@@ -1761,7 +1761,9 @@ var PkConfig = {
 					<label>Pronouns <span class="plr-hint">(optional — e.g. she/her, they/them)</span></label>
 					<div class="pn-pronoun-chips">
 						<button type="button" class="pn-pronoun-chip" data-pronoun-chip-for="pk-addplayer-pronouns" data-val="he/him">he/him</button>
+						<button type="button" class="pn-pronoun-chip" data-pronoun-chip-for="pk-addplayer-pronouns" data-val="he/they">he/they</button>
 						<button type="button" class="pn-pronoun-chip" data-pronoun-chip-for="pk-addplayer-pronouns" data-val="she/her">she/her</button>
+						<button type="button" class="pn-pronoun-chip" data-pronoun-chip-for="pk-addplayer-pronouns" data-val="she/they">she/they</button>
 						<button type="button" class="pn-pronoun-chip" data-pronoun-chip-for="pk-addplayer-pronouns" data-val="they/them">they/them</button>
 					</div>
 					<input type="text" id="pk-addplayer-pronouns" maxlength="40" placeholder="Optional">

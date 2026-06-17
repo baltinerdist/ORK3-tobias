@@ -3268,7 +3268,9 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 					<label for="pn-design-pronouns">Pronouns</label>
 					<div class="pn-pronoun-chips">
 						<button type="button" class="pn-pronoun-chip" data-pronoun-chip-for="pn-design-pronouns" data-val="he/him">he/him</button>
+						<button type="button" class="pn-pronoun-chip" data-pronoun-chip-for="pn-design-pronouns" data-val="he/they">he/they</button>
 						<button type="button" class="pn-pronoun-chip" data-pronoun-chip-for="pn-design-pronouns" data-val="she/her">she/her</button>
+						<button type="button" class="pn-pronoun-chip" data-pronoun-chip-for="pn-design-pronouns" data-val="she/they">she/they</button>
 						<button type="button" class="pn-pronoun-chip" data-pronoun-chip-for="pn-design-pronouns" data-val="they/them">they/them</button>
 					</div>
 					<input type="text" id="pn-design-pronouns" maxlength="40" placeholder="e.g. she/her, they/them" value="<?= htmlspecialchars($Player['PronounText'] ?? '') ?>" />
