@@ -7,7 +7,6 @@ class Controller_Player extends Controller
         parent::__construct($call, $id);
 
         $this->load_model('Park');
-        $this->load_model('Pronoun');
         $this->load_model('Award');
         $this->load_model('Reports');
         $params = explode('/', $id);

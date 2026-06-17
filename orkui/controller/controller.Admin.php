@@ -1113,7 +1113,6 @@ class Controller_Admin extends Controller
         $this->load_model('Player');
         $this->load_model('Award');
         $this->load_model('Unit');
-        $this->load_model('Pronoun');
 
         $params = explode('/', $id);
         $id = (int) $params[0];
