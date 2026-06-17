@@ -8612,6 +8612,21 @@ $(document).ready(function() {
     }());
 });
 
+// ---- Shared: pronoun quick-fill chips ----
+// Each chip carries data-pronoun-chip-for="<inputId>" and data-val; clicking it
+// fills the target input. Idempotent + safe if the input is absent.
+function pnSetupPronounChips(inputId) {
+    var input = document.getElementById(inputId);
+    if (!input) return;
+    var chips = document.querySelectorAll('[data-pronoun-chip-for="' + inputId + '"]');
+    Array.prototype.forEach.call(chips, function(chip) {
+        chip.addEventListener('click', function() {
+            input.value = chip.getAttribute('data-val') || '';
+            input.focus();
+        });
+    });
+}
+
 // ---- Add Player Modal (Kingdomnew) ----
 (function() {
     if (typeof KnConfig === 'undefined' || !KnConfig.canManage) return;
