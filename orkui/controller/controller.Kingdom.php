@@ -453,7 +453,6 @@ class Controller_Kingdom extends Controller
         }
         $this->load_model('Award');
         $this->load_model('Reports');
-        $this->load_model('Pronoun');
         $this->load_model('Recap');
         $this->data['week_recap'] = $this->Recap->get();
 

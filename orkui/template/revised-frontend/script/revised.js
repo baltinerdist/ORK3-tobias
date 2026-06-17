@@ -8650,6 +8650,7 @@ function pnSetupPronounChips(inputId) {
         gid('kn-addplayer-email').value    = '';
         gid('kn-addplayer-username').value = '';
         gid('kn-addplayer-password').value = '';
+        if (gid('kn-addplayer-pronouns')) gid('kn-addplayer-pronouns').value = '';
         gid('kn-addplayer-waiver-row').style.display = 'none';
         ov.querySelectorAll('input[type=radio]').forEach(function(r) { if (r.value === '0') r.checked = true; });
         hideFeedback(gid('kn-addplayer-feedback'));

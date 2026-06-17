@@ -67,7 +67,6 @@ class Controller_Park extends Controller
         $this->load_model('Award');
         $this->load_model('Attendance');
         $this->load_model('Reports');
-        $this->load_model('Pronoun');
 
         $this->data['kingdom_name'] = $this->session->kingdom_name;
         $this->data['menu']['kingdom'] = [
