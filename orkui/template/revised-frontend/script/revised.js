@@ -8690,6 +8690,8 @@ function pnSetupPronounChips(inputId) {
                 knCloseAddPlayerModal();
         });
 
+        pnSetupPronounChips('kn-addplayer-pronouns');
+
         gid('kn-addplayer-submit').addEventListener('click', function() {
             var feedback = gid('kn-addplayer-feedback');
             var parkId   = gid('kn-addplayer-park').value;
@@ -8717,6 +8719,8 @@ function pnSetupPronounChips(inputId) {
             fd.append('Waivered',   waivered   ? waivered.value   : '0');
             var waiverFile = gid('kn-addplayer-waiver');
             if (waiverFile && waiverFile.files[0]) fd.append('Waiver', waiverFile.files[0]);
+            var knPronouns = gid('kn-addplayer-pronouns');
+            fd.append('Pronouns', knPronouns ? knPronouns.value.trim() : '');
 
             $.ajax({
                 url:         CREATE_URL + parkId + '/create',
@@ -8766,6 +8770,7 @@ function pnSetupPronounChips(inputId) {
         gid('pk-addplayer-email').value    = '';
         gid('pk-addplayer-username').value = '';
         gid('pk-addplayer-password').value = '';
+        if (gid('pk-addplayer-pronouns')) gid('pk-addplayer-pronouns').value = '';
         gid('pk-addplayer-waiver-row').style.display = 'none';
         ov.querySelectorAll('input[type=radio]').forEach(function(r) { if (r.value === '0') r.checked = true; });
         hideFeedback(gid('pk-addplayer-feedback'));
@@ -8793,6 +8798,8 @@ function pnSetupPronounChips(inputId) {
                 pkCloseAddPlayerModal();
         });
 
+        pnSetupPronounChips('pk-addplayer-pronouns');
+
         gid('pk-addplayer-submit').addEventListener('click', function() {
             var feedback = gid('pk-addplayer-feedback');
             var persona  = gid('pk-addplayer-persona').value.trim();
@@ -8818,6 +8825,8 @@ function pnSetupPronounChips(inputId) {
             fd.append('Waivered',   waivered   ? waivered.value   : '0');
             var waiverFile = gid('pk-addplayer-waiver');
             if (waiverFile && waiverFile.files[0]) fd.append('Waiver', waiverFile.files[0]);
+            var pkPronouns = gid('pk-addplayer-pronouns');
+            fd.append('Pronouns', pkPronouns ? pkPronouns.value.trim() : '');
 
             $.ajax({
                 url:         CREATE_URL,

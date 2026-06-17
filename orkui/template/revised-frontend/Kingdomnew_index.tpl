@@ -1760,6 +1760,17 @@ var KnConfig = {
 					</div>
 				</div>
 			</div>
+			<div class="plr-field-row">
+				<div class="plr-field plr-field-grow">
+					<label>Pronouns <span class="plr-hint">(optional — e.g. she/her, they/them)</span></label>
+					<div class="pn-pronoun-chips">
+						<button type="button" class="pn-pronoun-chip" data-pronoun-chip-for="kn-addplayer-pronouns" data-val="he/him">he/him</button>
+						<button type="button" class="pn-pronoun-chip" data-pronoun-chip-for="kn-addplayer-pronouns" data-val="she/her">she/her</button>
+						<button type="button" class="pn-pronoun-chip" data-pronoun-chip-for="kn-addplayer-pronouns" data-val="they/them">they/them</button>
+					</div>
+					<input type="text" id="kn-addplayer-pronouns" maxlength="40" placeholder="Optional">
+				</div>
+			</div>
 			<div class="plr-field-row" id="kn-addplayer-waiver-row" style="display:none">
 				<div class="plr-field plr-field-grow">
 					<label>Waiver File <span class="plr-hint">(PDF, PNG, JPG, or GIF)</span></label>
