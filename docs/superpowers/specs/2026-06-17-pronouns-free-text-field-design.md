@@ -43,27 +43,33 @@ storage; the app enforces a 40-char user limit (headroom avoids truncation surpr
 The legacy `mundane.pronoun_id` and `mundane.pronoun_custom` columns are **left in place**
 (not read by the new flow, not dropped) so the change is reversible.
 
-### Backfill (ships with the migration)
+### Backfill — pure SQL (ships in the same migration file)
 
-A one-time **PHP backfill** writes each affected player's current computed pronoun display
-string into `pronoun_freetext`, reusing existing tested logic. Only ~3,075 `mundane` rows have
-any pronoun set, so the backfill targets just those (`WHERE pronoun_id IS NOT NULL OR (pronoun_custom
-IS NOT NULL AND pronoun_custom <> '')`) and completes in well under a second:
+Only ~3,075 `mundane` rows have any pronoun set, and MariaDB exposes `JSON_EXTRACT` /
+`JSON_VALID` (there is an existing pure-SQL+JSON backfill precedent at
+`db-migrations/2026-04-21-danger-audit-schema-and-backfill.sql`). So the backfill is **pure SQL**
+in the same `db-migrations/*.sql` file as the `ALTER TABLE`, run through the standard
+`docker exec ork3-php8-db mariadb -u root -proot ork < file.sql` flow — no PHP/CLI bootstrap.
 
-- If `pronoun_custom` holds valid JSON → use `model.Pronoun::fetch_custom_pronoun_display()`
-  and join the parts exactly as `class.Player.php` does today
-  (`subjective [objective possessive possessivepronoun reflexive]`).
-- Else if `pronoun_id` is set → `"<subject> [<object>]"` from the `pronoun` table.
+Output format is the new `subject/object` convention (matches the quick-fill chips), e.g.
+`he/him`. Two statements, **custom first so it takes precedence** (mirrors today's display where
+`PronounCustomText` wins over `PronounText`):
 
-PHP (not pure SQL) because the custom-JSON → string rendering already lives in PHP and is
-painful to reproduce in SQL; one pass handles both the standard and custom cases. Result is
-`substr`'d to 40 chars. Idempotent: only writes rows where `pronoun_freetext = ''`.
+1. **Custom** (`pronoun_custom` is valid non-empty JSON of the form `{"s":[id…],"o":[id…],…}`):
+   resolve the **first** subject id (`$.s[0]`) and first object id (`$.o[0]`) against `ork_pronoun`
+   → `CONCAT(ps.subject,'/',po.object)`.
+2. **Standard** (`pronoun_id` set, row still blank): join `ork_pronoun` → `CONCAT(subject,'/',object)`.
 
-**The backfill is a complete, one-time migration** — it covers every affected row, so there is
-**no read-time fallback** (see below). It MUST run as part of the same migration/deploy step:
-the column defaults to `''`, so during the deploy window the ~3k affected players would show
-blank pronouns until the backfill completes (the other ~99% with no pronoun set show blank
-regardless). Run the `ALTER TABLE` + backfill together before/with shipping the code.
+Both guard `WHERE pronoun_freetext = ''` (idempotent). Accepted tradeoff: a custom entry with
+**multiple** values per category is reduced to its first subject/object pair (e.g. `he/him`); the
+tiny affected population can re-enter a richer string in the new free-text field. Rows where the
+first-id join finds no match (e.g. a `[0]` sentinel for an empty category) stay blank.
+
+`substr`/`LEFT(...,64)` keeps values within the column. **The migration is complete and
+one-time**, so there is **no read-time fallback** (see below). The `ALTER TABLE` + both backfill
+UPDATEs live in one file and run as a single deploy step: the column defaults to `''`, so during
+the deploy window the ~3k affected players show blank pronouns until the UPDATEs run (the other
+~99% show blank regardless).
 
 ## Architecture / layer separation
 
@@ -78,10 +84,9 @@ This change must respect the project's layer boundaries:
 - **`controller.PlayerAjax.php` only orchestrates request/response** — it extracts the
   `Pronouns` POST param and hands it to the lib via the request array. No `$DB`, no profanity
   logic in the controller.
-- **The backfill instantiates the lib** (or a small CLI bootstrap that loads `class.Player` /
-  `model.Pronoun`) and reuses the existing display-rendering methods to compute the string. The
-  only raw SQL is the `ALTER TABLE` and a single bulk `UPDATE` per row driven by lib-computed
-  values — kept out of any controller/model.
+- **The backfill is pure SQL** in a `db-migrations/*.sql` file (no PHP/lib bootstrap), consistent
+  with existing JSON backfill migrations in that directory. It is operational data tooling, not
+  application code, so it does not touch the lib/model/controller layers.
 
 ## Backend
 
