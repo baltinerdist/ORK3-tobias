@@ -1439,8 +1439,6 @@ class Controller_Admin extends Controller
             }
         }
         $this->data['PreloadOfficers'] = $preloadOfficers;
-        $this->data['PronounOptions'] = $this->Pronoun->fetch_pronoun_option_list($this->data['Player']['PronounId']);
-        $this->data['PronounList'] = $this->Pronoun->fetch_pronoun_list();
         $this->data['Details'] = $this->Player->fetch_player_details($id);
         $this->data['Notes'] = $this->Player->get_notes($id);
         $this->data['Dues'] = $this->Player->get_dues($id);
