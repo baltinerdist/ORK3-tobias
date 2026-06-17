@@ -588,6 +588,8 @@ class Player extends Ork3
      * profile beltline cards. $peerageExpr is the resolved-peerage SQL
      * expression (handles custom-title aliases). Includes the legacy
      * woman-at-arms custom-name match. Source list: Award::ProtegePeerages().
+     * Callers must always pass the alias-coalesced peerage form
+     * ("COALESCE(alias.peerage, a.peerage)") so custom-title aliases resolve.
      */
     private function beltlinePeerageWhere($peerageExpr)
     {
@@ -618,6 +620,9 @@ class Player extends Ork3
     public function GetBeltlinePeers($mundane_id)
     {
         $mundane_id = (int)$mundane_id;
+        if ($mundane_id <= 0) {
+            return array();
+        }
         $peerageExpr = "COALESCE(alias.peerage, a.peerage)";
         $sql = "SELECT m.mundane_id AS PeerId, m.persona AS Persona,
 				COALESCE(NULLIF(ma.custom_name,''), ka.name, a.name) AS TitleName,
@@ -656,6 +661,9 @@ class Player extends Ork3
     public function GetBeltlineAssociates($giver_id)
     {
         $giver_id = (int)$giver_id;
+        if ($giver_id <= 0) {
+            return array();
+        }
         $peerageExpr = "COALESCE(alias.peerage, a.peerage)";
         $sql = "SELECT ma.mundane_id AS RecipientId, m.persona AS Persona,
 				COALESCE(NULLIF(ma.custom_name,''), ka.name, a.name) AS TitleName,
