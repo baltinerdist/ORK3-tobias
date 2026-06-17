@@ -1617,16 +1617,6 @@ if (PnConfig.recError) {
                 });
         });
 
-        setupPronounPicker({
-            toggleId: 'pn-pronoun-custom-btn',  panelId: 'pn-pronoun-picker',
-            previewId: 'pn-pronoun-preview',     applyId: 'pn-pronoun-apply',
-            clearId:   'pn-pronoun-clear',       hiddenId: 'pn-pronoun-custom-val',
-            standardSelId: 'pn-acct-pronouns',
-            subjectId: 'pn-p-subject', objectId: 'pn-p-object', possId: 'pn-p-possessive',
-            posspId: 'pn-p-possessivepronoun', reflexId: 'pn-p-reflexive',
-            existingJson: (function() { var el = document.getElementById('pn-pronoun-custom-val'); return el ? el.value : ''; })(),
-        });
-
         // Help-tip bubbles inside the modal (position:fixed so modal overflow doesn't clip them)
         var helpBubble = null;
         function ensureBubble() {
@@ -8622,100 +8612,19 @@ $(document).ready(function() {
     }());
 });
 
-// ---- Shared: pronoun picker helper ----
-function setupPronounPicker(cfg) {
-    // cfg: { toggleId, panelId, previewId, applyId, clearId, hiddenId, standardSelId,
-    //        subjectId, objectId, possId, posspId, reflexId, existingJson }
-    var gid = function(id) { return document.getElementById(id); };
-    var toggleBtn   = gid(cfg.toggleId);
-    var panel       = gid(cfg.panelId);
-    var preview     = gid(cfg.previewId);
-    var applyBtn    = gid(cfg.applyId);
-    var clearBtn    = gid(cfg.clearId);
-    var hiddenInput = gid(cfg.hiddenId);
-    var standardSel = gid(cfg.standardSelId);
-    if (!toggleBtn || !panel || !hiddenInput) return;
-
-    function getSelText(selId) {
-        var sel = gid(selId);
-        return sel ? Array.prototype.slice.call(sel.selectedOptions || sel.querySelectorAll('option:checked')).map(function(o) { return o.textContent; }) : [];
-    }
-    function getSelVals(selId) {
-        var sel = gid(selId);
-        return sel ? Array.prototype.slice.call(sel.selectedOptions || sel.querySelectorAll('option:checked')).map(function(o) { return parseInt(o.value, 10); }) : [];
-    }
-    function updatePreview() {
-        var s = getSelText(cfg.subjectId), o = getSelText(cfg.objectId),
-            p = getSelText(cfg.possId),   pp = getSelText(cfg.posspId), r = getSelText(cfg.reflexId);
-        var any = [s,o,p,pp,r].some(function(a) { return a.length > 0; });
-        if (preview) preview.textContent = any ? s.join('/') + ' [' + o.join('/') + ' ' + p.join('/') + ' ' + pp.join('/') + ' ' + r.join('/') + ']' : '';
-    }
-    function clearSelections() {
-        [cfg.subjectId, cfg.objectId, cfg.possId, cfg.posspId, cfg.reflexId].forEach(function(sid) {
-            var sel = gid(sid);
-            if (sel) Array.prototype.slice.call(sel.options).forEach(function(opt) { opt.selected = false; });
+// ---- Shared: pronoun quick-fill chips ----
+// Each chip carries data-pronoun-chip-for="<inputId>" and data-val; clicking it
+// fills the target input. Idempotent + safe if the input is absent.
+function pnSetupPronounChips(inputId) {
+    var input = document.getElementById(inputId);
+    if (!input) return;
+    var chips = document.querySelectorAll('[data-pronoun-chip-for="' + inputId + '"]');
+    Array.prototype.forEach.call(chips, function(chip) {
+        chip.addEventListener('click', function() {
+            input.value = chip.getAttribute('data-val') || '';
+            input.focus();
         });
-        hiddenInput.value = '';
-        if (preview) preview.textContent = '';
-    }
-    function populateFromJson(json) {
-        if (!json) return;
-        var data; try { data = JSON.parse(json); } catch(e) { return; }
-        var mapping = [[cfg.subjectId, data.s],[cfg.objectId, data.o],[cfg.possId, data.p],[cfg.posspId, data.pp],[cfg.reflexId, data.r]];
-        mapping.forEach(function(pair) {
-            var sel = gid(pair[0]), vals = pair[1] || [];
-            if (!sel) return;
-            Array.prototype.slice.call(sel.options).forEach(function(opt) {
-                opt.selected = vals.indexOf(parseInt(opt.value, 10)) !== -1;
-            });
-        });
-        updatePreview();
-    }
-
-    toggleBtn.addEventListener('click', function() {
-        if (panel.style.display === 'none') {
-            if (hiddenInput.value) populateFromJson(hiddenInput.value);
-            panel.style.display = '';
-        } else {
-            panel.style.display = 'none';
-        }
     });
-
-    if (standardSel) {
-        standardSel.addEventListener('change', function() {
-            if (standardSel.value) clearSelections();
-        });
-    }
-
-    if (applyBtn) applyBtn.addEventListener('click', function() {
-        var s = getSelVals(cfg.subjectId), o = getSelVals(cfg.objectId),
-            p = getSelVals(cfg.possId),   pp = getSelVals(cfg.posspId), r = getSelVals(cfg.reflexId);
-        var any = [s,o,p,pp,r].some(function(a) { return a.length > 0; });
-        if (any) {
-            hiddenInput.value = JSON.stringify({
-                s:  s.length  ? s  : [0], o:  o.length  ? o  : [0],
-                p:  p.length  ? p  : [0], pp: pp.length ? pp : [0], r: r.length ? r : [0]
-            });
-            if (standardSel) standardSel.value = '';
-            updatePreview();
-        }
-        panel.style.display = 'none';
-    });
-
-    if (clearBtn) clearBtn.addEventListener('click', function() {
-        clearSelections();
-        panel.style.display = 'none';
-    });
-
-    [cfg.subjectId, cfg.objectId, cfg.possId, cfg.posspId, cfg.reflexId].forEach(function(sid) {
-        var sel = gid(sid);
-        if (sel) sel.addEventListener('change', updatePreview);
-    });
-
-    // Pre-populate preview from existing value
-    if (cfg.existingJson) populateFromJson(cfg.existingJson);
-
-    return { reset: function() { clearSelections(); if (standardSel) standardSel.value = ''; } };
 }
 
 // ---- Add Player Modal (Kingdomnew) ----
@@ -8741,6 +8650,7 @@ function setupPronounPicker(cfg) {
         gid('kn-addplayer-email').value    = '';
         gid('kn-addplayer-username').value = '';
         gid('kn-addplayer-password').value = '';
+        if (gid('kn-addplayer-pronouns')) gid('kn-addplayer-pronouns').value = '';
         gid('kn-addplayer-waiver-row').style.display = 'none';
         ov.querySelectorAll('input[type=radio]').forEach(function(r) { if (r.value === '0') r.checked = true; });
         hideFeedback(gid('kn-addplayer-feedback'));
@@ -8781,6 +8691,8 @@ function setupPronounPicker(cfg) {
                 knCloseAddPlayerModal();
         });
 
+        pnSetupPronounChips('kn-addplayer-pronouns');
+
         gid('kn-addplayer-submit').addEventListener('click', function() {
             var feedback = gid('kn-addplayer-feedback');
             var parkId   = gid('kn-addplayer-park').value;
@@ -8808,6 +8720,8 @@ function setupPronounPicker(cfg) {
             fd.append('Waivered',   waivered   ? waivered.value   : '0');
             var waiverFile = gid('kn-addplayer-waiver');
             if (waiverFile && waiverFile.files[0]) fd.append('Waiver', waiverFile.files[0]);
+            var knPronouns = gid('kn-addplayer-pronouns');
+            fd.append('Pronouns', knPronouns ? knPronouns.value.trim() : '');
 
             $.ajax({
                 url:         CREATE_URL + parkId + '/create',
@@ -8857,6 +8771,7 @@ function setupPronounPicker(cfg) {
         gid('pk-addplayer-email').value    = '';
         gid('pk-addplayer-username').value = '';
         gid('pk-addplayer-password').value = '';
+        if (gid('pk-addplayer-pronouns')) gid('pk-addplayer-pronouns').value = '';
         gid('pk-addplayer-waiver-row').style.display = 'none';
         ov.querySelectorAll('input[type=radio]').forEach(function(r) { if (r.value === '0') r.checked = true; });
         hideFeedback(gid('pk-addplayer-feedback'));
@@ -8884,6 +8799,8 @@ function setupPronounPicker(cfg) {
                 pkCloseAddPlayerModal();
         });
 
+        pnSetupPronounChips('pk-addplayer-pronouns');
+
         gid('pk-addplayer-submit').addEventListener('click', function() {
             var feedback = gid('pk-addplayer-feedback');
             var persona  = gid('pk-addplayer-persona').value.trim();
@@ -8909,6 +8826,8 @@ function setupPronounPicker(cfg) {
             fd.append('Waivered',   waivered   ? waivered.value   : '0');
             var waiverFile = gid('pk-addplayer-waiver');
             if (waiverFile && waiverFile.files[0]) fd.append('Waiver', waiverFile.files[0]);
+            var pkPronouns = gid('pk-addplayer-pronouns');
+            fd.append('Pronouns', pkPronouns ? pkPronouns.value.trim() : '');
 
             $.ajax({
                 url:         CREATE_URL,

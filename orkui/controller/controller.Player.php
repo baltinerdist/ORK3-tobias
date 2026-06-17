@@ -7,7 +7,6 @@ class Controller_Player extends Controller
         parent::__construct($call, $id);
 
         $this->load_model('Park');
-        $this->load_model('Pronoun');
         $this->load_model('Award');
         $this->load_model('Reports');
         $params = explode('/', $id);
@@ -227,8 +226,6 @@ class Controller_Player extends Controller
                 }
             }
         }
-        $this->data['PronounOptions'] = $this->Pronoun->fetch_pronoun_option_list($this->data['Player']['PronounId']);
-        $this->data['PronounList']    = $this->Pronoun->fetch_pronoun_list();
         $this->data['Details'] = $this->Player->fetch_player_details($id);
         $this->data['Notes'] = $this->Player->get_notes($id);
         $this->data['Dues'] = $this->Player->get_dues($id, 1, true);
@@ -385,8 +382,6 @@ class Controller_Player extends Controller
         }
         $this->data['CustomTitleAwardId'] = $_ctid;
         $this->data['CustomTitleAliasOptions'] = $this->Award->fetch_custom_title_alias_options();
-        $this->data['PronounOptions'] = $this->Pronoun->fetch_pronoun_option_list($this->data['Player']['PronounId']);
-        $this->data['PronounList']    = $this->Pronoun->fetch_pronoun_list();
         $this->data['Details']       = $this->Player->fetch_player_details($id);
         $this->data['Notes']         = [];  // loaded via AJAX on Notes tab click
         // Count-only check so the Notes tab visibility (and the infobox copy)

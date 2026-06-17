@@ -315,13 +315,6 @@ class Player extends Ork3
             $_exposeFirst  = !$fetchprivate || ($_isLoggedIn && !$_isRestricted && (int)$design->show_mundane_first === 1);
             $_exposeLast   = !$fetchprivate || ($_isLoggedIn && !$_isRestricted && (int)$design->show_mundane_last  === 1);
             $_exposeEmail  = !$fetchprivate || ($_isLoggedIn && !$_isRestricted && (int)$design->show_email         === 1);
-            $subject = $this->pronoun->subject;
-            $pronoun_custom = $this->mundane->pronoun_custom;
-            $pronountext = isset($subject) ? $this->pronoun->subject . '[' . $this->pronoun->object . ']' : '';
-            $pronouncustomArr = (isset($pronoun_custom) && json_decode($this->mundane->pronoun_custom)) ? $this->Pronoun->fetch_custom_pronoun_display($this->mundane->pronoun_custom) : false;
-            //$pronouncustomtext = json_encode($pronouncustomArr);
-            $pronouncustomtext = (isset($pronouncustomArr) && $pronouncustomArr) ? implode('/', $pronouncustomArr['subjective']) . ' [' . implode('/', $pronouncustomArr['objective']) . ' ' . implode('/', $pronouncustomArr['possessive']) . ' ' . implode('/', $pronouncustomArr['possessivepronoun']) . ' ' . implode('/', $pronouncustomArr['reflexive']) . ']' : '';
-
             $response['Player'] = array(
                     'MundaneId' => $this->mundane->mundane_id,
                     'GivenName' => $_exposeFirst ? $this->mundane->given_name : "",
@@ -330,8 +323,8 @@ class Player extends Ork3
                     'UserName' => $this->mundane->username,
                     'PronounId' => $this->mundane->pronoun_id,
                     'PronounCustom' => $this->mundane->pronoun_custom,
-                    'PronounText' => $pronountext,
-                    'PronounCustomText' => $pronouncustomtext,
+                    'PronounText' => $this->mundane->pronoun_freetext,
+                    'PronounCustomText' => '',
                     'Persona' => $this->mundane->persona,
                     'Suspended' => $this->mundane->suspended,
                     'SuspendedAt' => $this->mundane->suspended_at,
@@ -710,12 +703,17 @@ class Player extends Ork3
                 $this->mundane->restricted = $request['Restricted'] ? 1 : 0;
                 $this->mundane->waivered = $request['Waivered'] ? 1 : 0;
                 $this->mundane->has_image = $request['HasImage'] ? 1 : 0;
-                if (!empty($request['PronounId'])) {
-                    $this->mundane->pronoun_id     = (int)$request['PronounId'];
+                // Pronouns — free-text, profanity-checked, 40-char cap. Returns
+                // before save() so a rejected entry creates no partial row.
+                $_pronouns = isset($request['Pronouns']) ? substr(trim((string)$request['Pronouns']), 0, 40) : '';
+                if ($_pronouns !== '') {
+                    require_once(__DIR__ . '/class.ProfanityFilter.php');
+                    $_pf = new ProfanityFilter();
+                    if ($_pf->containsProfanity($_pronouns)) {
+                        return InvalidParameter('Pronouns', ProfanityFilter::ERROR_MESSAGE);
+                    }
                 }
-                if (!empty($request['PronounCustom'])) {
-                    $this->mundane->pronoun_custom = $request['PronounCustom'];
-                }
+                $this->mundane->pronoun_freetext = $_pronouns;
                 $this->mundane->penalty_box = 0;
                 $this->mundane->active = $request['IsActive'];
                 $this->mundane->password_expires = date("Y-m-d H:i:s", time() + 60 * 60 * 24 * 365);
@@ -1313,6 +1311,17 @@ class Player extends Ork3
                 $this->mundane->persona = is_null($request['Persona']) ? $this->mundane->persona : trim($request['Persona']);
                 $this->mundane->pronoun_id = is_null($request['PronounId']) ? $this->mundane->pronoun_id : $request['PronounId'];
                 $this->mundane->pronoun_custom = is_null($request['PronounCustom']) ? $this->mundane->pronoun_custom : $request['PronounCustom'];
+                // Pronouns — authoritative free-text display value (40-char cap),
+                // profanity-checked. null = field not sent (preserve); '' = cleared.
+                if (!is_null($request['Pronouns'])) {
+                    require_once(__DIR__ . '/class.ProfanityFilter.php');
+                    $_pf = new ProfanityFilter();
+                    $_pronouns = substr(trim((string)$request['Pronouns']), 0, 40);
+                    if ($_pronouns !== '' && $_pf->containsProfanity($_pronouns)) {
+                        return InvalidParameter('Pronouns', ProfanityFilter::ERROR_MESSAGE);
+                    }
+                    $this->mundane->pronoun_freetext = $_pronouns;
+                }
 
                 // Profile customization fields — own profile or ORK admin.
                 // Stored in ork_mundane_design (paired 1:1 row) since 2026-04-23.

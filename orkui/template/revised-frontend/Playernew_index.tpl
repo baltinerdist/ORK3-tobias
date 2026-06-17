@@ -2432,57 +2432,6 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 				</div>
 			</div>
 			<div class="pn-acct-field">
-				<label for="pn-acct-pronouns">Pronouns</label>
-				<div class="pronoun-row">
-					<select id="pn-acct-pronouns" name="PronounId">
-						<option value="">None / unspecified</option>
-						<?= $PronounOptions ?>
-					</select>
-					<button type="button" class="pronoun-custom-btn" id="pn-pronoun-custom-btn"><i class="fas fa-sliders-h"></i> Custom&hellip;</button>
-				</div>
-				<input type="hidden" name="PronounCustom" id="pn-pronoun-custom-val" value="<?= htmlspecialchars($Player['PronounCustom'] ?? '') ?>" />
-				<div class="pronoun-picker-panel" id="pn-pronoun-picker" style="display:none">
-					<div class="pronoun-picker-preview" id="pn-pronoun-preview"></div>
-					<div class="pronoun-picker-grid">
-						<div class="pronoun-picker-col">
-							<label>Subjective</label>
-							<select multiple id="pn-p-subject" size="4">
-								<?php if (!empty($PronounList['subjective'])): foreach ($PronounList['subjective'] as $p): ?><option value="<?= (int)$p['value'] ?>"><?= htmlspecialchars($p['display']) ?></option><?php endforeach; endif; ?>
-							</select>
-						</div>
-						<div class="pronoun-picker-col">
-							<label>Objective</label>
-							<select multiple id="pn-p-object" size="4">
-								<?php if (!empty($PronounList['objective'])): foreach ($PronounList['objective'] as $p): ?><option value="<?= (int)$p['value'] ?>"><?= htmlspecialchars($p['display']) ?></option><?php endforeach; endif; ?>
-							</select>
-						</div>
-						<div class="pronoun-picker-col">
-							<label>Possessive</label>
-							<select multiple id="pn-p-possessive" size="4">
-								<?php if (!empty($PronounList['possessive'])): foreach ($PronounList['possessive'] as $p): ?><option value="<?= (int)$p['value'] ?>"><?= htmlspecialchars($p['display']) ?></option><?php endforeach; endif; ?>
-							</select>
-						</div>
-						<div class="pronoun-picker-col">
-							<label>Poss.&nbsp;Pronoun</label>
-							<select multiple id="pn-p-possessivepronoun" size="4">
-								<?php if (!empty($PronounList['possessivepronoun'])): foreach ($PronounList['possessivepronoun'] as $p): ?><option value="<?= (int)$p['value'] ?>"><?= htmlspecialchars($p['display']) ?></option><?php endforeach; endif; ?>
-							</select>
-						</div>
-						<div class="pronoun-picker-col">
-							<label>Reflexive</label>
-							<select multiple id="pn-p-reflexive" size="4">
-								<?php if (!empty($PronounList['reflexive'])): foreach ($PronounList['reflexive'] as $p): ?><option value="<?= (int)$p['value'] ?>"><?= htmlspecialchars($p['display']) ?></option><?php endforeach; endif; ?>
-							</select>
-						</div>
-					</div>
-					<div class="pronoun-picker-actions">
-						<button type="button" class="pronoun-clear-btn" id="pn-pronoun-clear">Clear</button>
-						<button type="button" class="pronoun-apply-btn" id="pn-pronoun-apply">Apply</button>
-					</div>
-				</div>
-			</div>
-
-			<div class="pn-acct-field">
 				<label>
 					<input type="checkbox" name="Restricted" value="Restricted" <?= $Player['Restricted'] == 1 ? 'checked' : '' ?> style="margin-right:6px" />
 					Restrict Mundane Name Visibility
@@ -3316,6 +3265,18 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 					<div class="pn-design-hint">Help others pronounce your persona name correctly. Shown in parentheses under your name.</div>
 				</div>
 				<div class="pn-design-field" style="margin-top:16px">
+					<label for="pn-design-pronouns">Pronouns</label>
+					<div class="pn-pronoun-chips">
+						<button type="button" class="pn-pronoun-chip" data-pronoun-chip-for="pn-design-pronouns" data-val="he/him">he/him</button>
+						<button type="button" class="pn-pronoun-chip" data-pronoun-chip-for="pn-design-pronouns" data-val="he/they">he/they</button>
+						<button type="button" class="pn-pronoun-chip" data-pronoun-chip-for="pn-design-pronouns" data-val="she/her">she/her</button>
+						<button type="button" class="pn-pronoun-chip" data-pronoun-chip-for="pn-design-pronouns" data-val="she/they">she/they</button>
+						<button type="button" class="pn-pronoun-chip" data-pronoun-chip-for="pn-design-pronouns" data-val="they/them">they/them</button>
+					</div>
+					<input type="text" id="pn-design-pronouns" maxlength="40" placeholder="e.g. she/her, they/them" value="<?= htmlspecialchars($Player['PronounText'] ?? '') ?>" />
+					<div class="pn-design-hint">How you'd like to be referred to. Leave blank to omit.</div>
+				</div>
+				<div class="pn-design-field" style="margin-top:16px">
 					<label>Name Font</label>
 					<div class="pn-design-hint" style="margin-bottom:8px">Choose a decorative font for your persona name in the hero header. If a user has simple or reading-friendly fonts enabled, this custom font will not be shown.</div>
 					<div class="pn-font-picker" id="pn-font-picker"></div>
@@ -4105,6 +4066,7 @@ if (typeof nsKid !== 'undefined' && nsKid === 0 && PnConfig.kingdomId) nsKid = P
 	var prefixCustom = gid('pn-name-prefix-custom');
 	var suffixCustom = gid('pn-name-suffix-custom');
 	var coreInput = gid('pn-name-core');
+	pnSetupPronounChips('pn-design-pronouns');
 	function updateNamePreview() {
 		var prefix = '';
 		if (prefixSel.value === '__custom__') { prefix = prefixCustom.value.trim(); }
@@ -4438,6 +4400,7 @@ if (typeof nsKid !== 'undefined' && nsKid === 0 && PnConfig.kingdomId) nsKid = P
 		fd.append('PhotoFocusSize', gid('pn-focus-size') ? gid('pn-focus-size').value : PnConfig.photoFocusSize);
 		fd.append('ShowBeltline', gid('pn-design-show-beltline').checked ? 1 : 0);
 		fd.append('PronunciationGuide', gid('pn-design-pronunciation').value);
+		fd.append('Pronouns', gid('pn-design-pronouns') ? gid('pn-design-pronouns').value.trim() : '');
 		fd.append('ShowMundaneFirst', gid('pn-design-show-first').checked ? 1 : 0);
 		fd.append('ShowMundaneLast', gid('pn-design-show-last').checked ? 1 : 0);
 		fd.append('ShowEmail', gid('pn-design-show-email').checked ? 1 : 0);
@@ -4472,6 +4435,7 @@ if (typeof nsKid !== 'undefined' && nsKid === 0 && PnConfig.kingdomId) nsKid = P
 				'NamePrefix':         { fieldId: 'pn-name-prefix-custom',     tabPanel: 'name'  },
 				'NameSuffix':         { fieldId: 'pn-name-suffix-custom',     tabPanel: 'name'  },
 				'PronunciationGuide': { fieldId: 'pn-design-pronunciation',   tabPanel: 'name'  },
+				'Pronouns':           { fieldId: 'pn-design-pronouns',        tabPanel: 'name'  },
 			};
 			var spec = fieldMap[fieldName];
 			if (!spec) return false;
