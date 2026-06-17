@@ -1306,6 +1306,17 @@ class Player extends Ork3
                 $this->mundane->persona = is_null($request['Persona']) ? $this->mundane->persona : trim($request['Persona']);
                 $this->mundane->pronoun_id = is_null($request['PronounId']) ? $this->mundane->pronoun_id : $request['PronounId'];
                 $this->mundane->pronoun_custom = is_null($request['PronounCustom']) ? $this->mundane->pronoun_custom : $request['PronounCustom'];
+                // Pronouns — authoritative free-text display value (40-char cap),
+                // profanity-checked. null = field not sent (preserve); '' = cleared.
+                if (!is_null($request['Pronouns'])) {
+                    require_once(__DIR__ . '/class.ProfanityFilter.php');
+                    $_pf = new ProfanityFilter();
+                    $_pronouns = substr(trim((string)$request['Pronouns']), 0, 40);
+                    if ($_pronouns !== '' && $_pf->containsProfanity($_pronouns)) {
+                        return InvalidParameter('Pronouns', ProfanityFilter::ERROR_MESSAGE);
+                    }
+                    $this->mundane->pronoun_freetext = $_pronouns;
+                }
 
                 // Profile customization fields — own profile or ORK admin.
                 // Stored in ork_mundane_design (paired 1:1 row) since 2026-04-23.
