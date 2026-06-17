@@ -6030,6 +6030,28 @@ html[data-theme="dark"] .plr-merge-scope-note i { color:rgba(66,153,225,0.9); }
 /* ---- Shared: pronoun picker (pn, pk, kn) ---- */
 .pronoun-row { display: flex; align-items: center; gap: 8px; }
 .pronoun-row select { flex: 1; min-width: 0; }
+
+/* Pronouns free-text field — Design modal Name tab + Create Player modals */
+.pn-pronoun-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.pn-pronoun-chip {
+  padding: 4px 12px;
+  border: 1px solid var(--ork-border, #cbd5e0);
+  border-radius: 999px;
+  background: var(--ork-bg-secondary, #f7fafc);
+  color: var(--ork-text, #2d3748);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background .12s, border-color .12s;
+}
+.pn-pronoun-chip:hover {
+  background: var(--ork-bg-tertiary, #edf2f7);
+  border-color: var(--ork-border-dark, #a0aec0);
+}
+html[data-theme="dark"] .pn-pronoun-chip {
+  background: var(--ork-bg-tertiary, #2d3748);
+  border-color: var(--ork-border-dark, #374151);
+  color: var(--ork-text, #e2e8f0);
+}
 .pronoun-custom-btn {
     font-size: 12px; padding: 5px 10px; border-radius: 4px; flex-shrink: 0;
     border: 1px solid var(--ork-border, #e2e8f0); background: var(--ork-bg-secondary, #f7fafc); color: var(--ork-text-secondary, #4a5568); cursor: pointer;
