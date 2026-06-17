@@ -586,105 +586,12 @@ class Controller_Player extends Controller
         $this->data['Player']['ParkName'] = $this->session->park_name;
 
 
-        // Beltline: My Peers (who gave this player peerage awards)
-        $DB->Clear();
-        $__peerSql = "SELECT m.mundane_id AS PeerId, m.persona AS Persona,
-			COALESCE(NULLIF(ma.custom_name,''), ka.name, a.name) AS TitleName,
-			COALESCE(alias.peerage, a.peerage) AS Peerage, ma.date AS Date
-			FROM ork_awards ma
-			JOIN ork_award a ON a.award_id = ma.award_id
-			LEFT JOIN ork_award alias ON alias.award_id = ma.alias_award_id
-			LEFT JOIN ork_kingdomaward ka ON ka.kingdomaward_id = ma.kingdomaward_id
-			JOIN ork_mundane m ON m.mundane_id = ma.given_by_id
-			WHERE ma.mundane_id = " . (int)$id . "
-				AND (COALESCE(alias.peerage, a.peerage) IN ('Squire','Man-At-Arms','Page','Lords-Page')
-					OR LOWER(COALESCE(NULLIF(ma.custom_name,''), ka.name, a.name)) LIKE '%woman%at%arms%')
-				AND (ma.revoked = 0 OR ma.revoked IS NULL)
-				AND ma.given_by_id > 0
-			ORDER BY CASE COALESCE(alias.peerage, a.peerage)
-				WHEN 'Squire' THEN 1 WHEN 'Man-At-Arms' THEN 2
-				WHEN 'Lords-Page' THEN 3 WHEN 'Page' THEN 4 ELSE 5 END, m.persona ASC";
-        $__peerResult = $DB->DataSet($__peerSql);
-        $__peers = [];
-        if ($__peerResult) {
-            while ($__peerResult->Next()) {
-                $__peers[] = [
-                    'PeerId'    => (int)$__peerResult->PeerId,
-                    'Persona'   => $__peerResult->Persona,
-                    'TitleName' => $__peerResult->TitleName,
-                    'Peerage'   => $__peerResult->Peerage,
-                    'Date'      => $__peerResult->Date,
-                ];
-            }
-        }
-        $DB->Clear();
-        $this->data['BeltlinePeers'] = $__peers;
-
-        // Beltline: My Associates (who this player gave peerage awards to)
-        $DB->Clear();
-        $__blAssocSql = "SELECT ma.mundane_id AS RecipientId, m.persona AS Persona,
-			COALESCE(NULLIF(ma.custom_name,''), ka.name, a.name) AS TitleName,
-			COALESCE(alias.peerage, a.peerage) AS Peerage, ma.date AS Date
-			FROM ork_awards ma
-			JOIN ork_award a ON a.award_id = ma.award_id
-			LEFT JOIN ork_award alias ON alias.award_id = ma.alias_award_id
-			LEFT JOIN ork_kingdomaward ka ON ka.kingdomaward_id = ma.kingdomaward_id
-			JOIN ork_mundane m ON m.mundane_id = ma.mundane_id
-			WHERE ma.given_by_id = " . (int)$id . "
-				AND (COALESCE(alias.peerage, a.peerage) IN ('Squire','Man-At-Arms','Page','Lords-Page')
-					OR LOWER(COALESCE(NULLIF(ma.custom_name,''), ka.name, a.name)) LIKE '%woman%at%arms%')
-				AND (ma.revoked = 0 OR ma.revoked IS NULL)
-			ORDER BY CASE COALESCE(alias.peerage, a.peerage)
-				WHEN 'Squire' THEN 1 WHEN 'Man-At-Arms' THEN 2
-				WHEN 'Lords-Page' THEN 3 WHEN 'Page' THEN 4 ELSE 5 END, m.persona ASC";
-        $__blAssocResult = $DB->DataSet($__blAssocSql);
-        $__blAssocs = [];
-        if ($__blAssocResult) {
-            while ($__blAssocResult->Next()) {
-                $__blAssocs[] = [
-                    'RecipientId' => (int)$__blAssocResult->RecipientId,
-                    'Persona'     => $__blAssocResult->Persona,
-                    'TitleName'   => $__blAssocResult->TitleName,
-                    'Peerage'     => $__blAssocResult->Peerage,
-                    'Date'        => $__blAssocResult->Date,
-                ];
-            }
-        }
-        $DB->Clear();
-        $this->data['BeltlineAssociates'] = $__blAssocs;
-
+        // Beltline cards (My Peers / My Associates). DB work lives in the lib layer
+        // (class.Player.php); the protégé-peerage set comes from Award::ProtegePeerages().
+        $this->data['BeltlinePeers']      = $this->Player->GetBeltlinePeers((int)$id);
+        $this->data['BeltlineAssociates'] = $this->Player->GetBeltlineAssociates((int)$id);
         if ($uid === (int)$id) {
-            $DB->Clear();
-            $__assocSql = "SELECT ma.mundane_id AS RecipientId, m.persona AS Persona,
-				COALESCE(NULLIF(ma.custom_name,''), ka.name, a.name) AS TitleName,
-				COALESCE(alias.peerage, a.peerage) AS Peerage, ma.date AS Date
-				FROM ork_awards ma
-				JOIN ork_award a ON a.award_id = ma.award_id
-				LEFT JOIN ork_award alias ON alias.award_id = ma.alias_award_id
-				LEFT JOIN ork_kingdomaward ka ON ka.kingdomaward_id = ma.kingdomaward_id
-				JOIN ork_mundane m ON m.mundane_id = ma.mundane_id
-				WHERE ma.given_by_id = $uid
-					AND (COALESCE(alias.peerage, a.peerage) IN ('Squire','Man-At-Arms','Page','Lords-Page')
-						OR LOWER(COALESCE(NULLIF(ma.custom_name,''), ka.name, a.name)) LIKE '%woman%at%arms%')
-					AND (ma.revoked = 0 OR ma.revoked IS NULL)
-				ORDER BY CASE COALESCE(alias.peerage, a.peerage)
-					WHEN 'Squire' THEN 1 WHEN 'Man-At-Arms' THEN 2
-					WHEN 'Lords-Page' THEN 3 WHEN 'Page' THEN 4 ELSE 5 END, m.persona ASC";
-            $__assocResult = $DB->DataSet($__assocSql);
-            $__assocs = [];
-            if ($__assocResult) {
-                while ($__assocResult->Next()) {
-                    $__assocs[] = [
-                        'RecipientId' => (int)$__assocResult->RecipientId,
-                        'Persona'     => $__assocResult->Persona,
-                        'TitleName'   => $__assocResult->TitleName,
-                        'Peerage'     => $__assocResult->Peerage,
-                        'Date'        => $__assocResult->Date,
-                    ];
-                }
-            }
-            $DB->Clear();
-            $this->data['MyAssociates'] = $__assocs;
+            $this->data['MyAssociates'] = $this->Player->GetBeltlineAssociates($uid);
         }
 
         // Player titles for the design modal's prefix/suffix dropdowns. Belongs
