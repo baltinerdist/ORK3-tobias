@@ -1617,16 +1617,6 @@ if (PnConfig.recError) {
                 });
         });
 
-        setupPronounPicker({
-            toggleId: 'pn-pronoun-custom-btn',  panelId: 'pn-pronoun-picker',
-            previewId: 'pn-pronoun-preview',     applyId: 'pn-pronoun-apply',
-            clearId:   'pn-pronoun-clear',       hiddenId: 'pn-pronoun-custom-val',
-            standardSelId: 'pn-acct-pronouns',
-            subjectId: 'pn-p-subject', objectId: 'pn-p-object', possId: 'pn-p-possessive',
-            posspId: 'pn-p-possessivepronoun', reflexId: 'pn-p-reflexive',
-            existingJson: (function() { var el = document.getElementById('pn-pronoun-custom-val'); return el ? el.value : ''; })(),
-        });
-
         // Help-tip bubbles inside the modal (position:fixed so modal overflow doesn't clip them)
         var helpBubble = null;
         function ensureBubble() {
@@ -8621,102 +8611,6 @@ $(document).ready(function() {
         }, true);
     }());
 });
-
-// ---- Shared: pronoun picker helper ----
-function setupPronounPicker(cfg) {
-    // cfg: { toggleId, panelId, previewId, applyId, clearId, hiddenId, standardSelId,
-    //        subjectId, objectId, possId, posspId, reflexId, existingJson }
-    var gid = function(id) { return document.getElementById(id); };
-    var toggleBtn   = gid(cfg.toggleId);
-    var panel       = gid(cfg.panelId);
-    var preview     = gid(cfg.previewId);
-    var applyBtn    = gid(cfg.applyId);
-    var clearBtn    = gid(cfg.clearId);
-    var hiddenInput = gid(cfg.hiddenId);
-    var standardSel = gid(cfg.standardSelId);
-    if (!toggleBtn || !panel || !hiddenInput) return;
-
-    function getSelText(selId) {
-        var sel = gid(selId);
-        return sel ? Array.prototype.slice.call(sel.selectedOptions || sel.querySelectorAll('option:checked')).map(function(o) { return o.textContent; }) : [];
-    }
-    function getSelVals(selId) {
-        var sel = gid(selId);
-        return sel ? Array.prototype.slice.call(sel.selectedOptions || sel.querySelectorAll('option:checked')).map(function(o) { return parseInt(o.value, 10); }) : [];
-    }
-    function updatePreview() {
-        var s = getSelText(cfg.subjectId), o = getSelText(cfg.objectId),
-            p = getSelText(cfg.possId),   pp = getSelText(cfg.posspId), r = getSelText(cfg.reflexId);
-        var any = [s,o,p,pp,r].some(function(a) { return a.length > 0; });
-        if (preview) preview.textContent = any ? s.join('/') + ' [' + o.join('/') + ' ' + p.join('/') + ' ' + pp.join('/') + ' ' + r.join('/') + ']' : '';
-    }
-    function clearSelections() {
-        [cfg.subjectId, cfg.objectId, cfg.possId, cfg.posspId, cfg.reflexId].forEach(function(sid) {
-            var sel = gid(sid);
-            if (sel) Array.prototype.slice.call(sel.options).forEach(function(opt) { opt.selected = false; });
-        });
-        hiddenInput.value = '';
-        if (preview) preview.textContent = '';
-    }
-    function populateFromJson(json) {
-        if (!json) return;
-        var data; try { data = JSON.parse(json); } catch(e) { return; }
-        var mapping = [[cfg.subjectId, data.s],[cfg.objectId, data.o],[cfg.possId, data.p],[cfg.posspId, data.pp],[cfg.reflexId, data.r]];
-        mapping.forEach(function(pair) {
-            var sel = gid(pair[0]), vals = pair[1] || [];
-            if (!sel) return;
-            Array.prototype.slice.call(sel.options).forEach(function(opt) {
-                opt.selected = vals.indexOf(parseInt(opt.value, 10)) !== -1;
-            });
-        });
-        updatePreview();
-    }
-
-    toggleBtn.addEventListener('click', function() {
-        if (panel.style.display === 'none') {
-            if (hiddenInput.value) populateFromJson(hiddenInput.value);
-            panel.style.display = '';
-        } else {
-            panel.style.display = 'none';
-        }
-    });
-
-    if (standardSel) {
-        standardSel.addEventListener('change', function() {
-            if (standardSel.value) clearSelections();
-        });
-    }
-
-    if (applyBtn) applyBtn.addEventListener('click', function() {
-        var s = getSelVals(cfg.subjectId), o = getSelVals(cfg.objectId),
-            p = getSelVals(cfg.possId),   pp = getSelVals(cfg.posspId), r = getSelVals(cfg.reflexId);
-        var any = [s,o,p,pp,r].some(function(a) { return a.length > 0; });
-        if (any) {
-            hiddenInput.value = JSON.stringify({
-                s:  s.length  ? s  : [0], o:  o.length  ? o  : [0],
-                p:  p.length  ? p  : [0], pp: pp.length ? pp : [0], r: r.length ? r : [0]
-            });
-            if (standardSel) standardSel.value = '';
-            updatePreview();
-        }
-        panel.style.display = 'none';
-    });
-
-    if (clearBtn) clearBtn.addEventListener('click', function() {
-        clearSelections();
-        panel.style.display = 'none';
-    });
-
-    [cfg.subjectId, cfg.objectId, cfg.possId, cfg.posspId, cfg.reflexId].forEach(function(sid) {
-        var sel = gid(sid);
-        if (sel) sel.addEventListener('change', updatePreview);
-    });
-
-    // Pre-populate preview from existing value
-    if (cfg.existingJson) populateFromJson(cfg.existingJson);
-
-    return { reset: function() { clearSelections(); if (standardSel) standardSel.value = ''; } };
-}
 
 // ---- Add Player Modal (Kingdomnew) ----
 (function() {
