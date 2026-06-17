@@ -35,6 +35,20 @@ class Award extends Ork3
         ];
     }
 
+    /**
+     * Canonical, display-ordered list of protégé/association peerage ranks
+     * surfaced in the player-profile "My Peers" / "My Associates" cards and the
+     * award modals. Single source of truth — consumed by class.Player.php's
+     * beltline queries and model.Award.php's grant-modal optgroup routing.
+     *
+     * NOTE: the Beltline Explorer (Report::BeltlineData) intentionally uses a
+     * narrower classic-only list and does NOT include 'Apprentice' (yet).
+     */
+    public static function ProtegePeerages()
+    {
+        return ['Squire', 'Man-At-Arms', 'Lords-Page', 'Page', 'Apprentice'];
+    }
+
     public function LookupAward($request)
     {
         if (valid_id($request['KingdomId']) && valid_id($request['AwardId'])) {
@@ -127,8 +141,8 @@ class Award extends Ork3
 			WHERE officer_role = 'none'
 			  AND name <> 'Custom Title'
 			  AND name <> 'Custom Award'
-			  AND (peerage IN ('Page','Lords-Page','Squire','Man-At-Arms','Master','Knight') OR is_title = 1)
-			ORDER BY FIELD(peerage,'Knight','Master','Squire','Man-At-Arms','Lords-Page','Page') DESC, is_title DESC, name ASC";
+			  AND (peerage IN ('Page','Lords-Page','Squire','Man-At-Arms','Master','Knight','Apprentice') OR is_title = 1)
+			ORDER BY FIELD(peerage,'Knight','Master','Squire','Man-At-Arms','Lords-Page','Page','Apprentice') DESC, is_title DESC, name ASC";
         $r = $this->db->query($sql);
         $peerage = [];
         $titles = [];
@@ -139,7 +153,7 @@ class Award extends Ork3
                     'Name'    => $r->name,
                     'Peerage' => $r->peerage,
                 ];
-                if (in_array($r->peerage, ['Page','Lords-Page','Squire','Man-At-Arms','Master','Knight'], true)) {
+                if (in_array($r->peerage, ['Page','Lords-Page','Squire','Man-At-Arms','Master','Knight','Apprentice'], true)) {
                     $peerage[] = $row;
                 } elseif ((int)$r->is_title === 1) {
                     $titles[] = $row;
