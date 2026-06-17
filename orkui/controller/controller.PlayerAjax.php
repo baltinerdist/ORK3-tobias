@@ -29,8 +29,7 @@ class Controller_PlayerAjax extends Controller
             $password   = $_POST['Password'] ?? '';
             $restricted    = (int)($_POST['Restricted']   ?? 0);
             $waivered      = (int)($_POST['Waivered']     ?? 0);
-            $pronounId     = (int)($_POST['PronounId']    ?? 0);
-            $pronounCustom = trim($_POST['PronounCustom'] ?? '');
+            $pronouns      = substr(trim($_POST['Pronouns'] ?? ''), 0, 40);
 
             if (!strlen($persona)) {
                 echo json_encode(['status' => 1, 'error' => 'Persona is required.']);
@@ -59,8 +58,7 @@ class Controller_PlayerAjax extends Controller
                 'HasImage'      => 0,
                 'Image'         => '',
                 'IsActive'      => 1,
-                'PronounId'     => $pronounId > 0 ? $pronounId : null,
-                'PronounCustom' => strlen($pronounCustom) ? $pronounCustom : null,
+                'Pronouns'      => $pronouns,
             ];
 
             if (!empty($_FILES['Waiver']['tmp_name']) && is_uploaded_file($_FILES['Waiver']['tmp_name'])) {
@@ -75,6 +73,8 @@ class Controller_PlayerAjax extends Controller
             $r = $this->Player->create_player($request);
             if ($r['Status'] == 0) {
                 echo json_encode(['status' => 0, 'mundaneId' => (int)($r['Detail'] ?? 0)]);
+            } elseif (($r['Error'] ?? '') === ProfanityFilter::ERROR_MESSAGE) {
+                echo json_encode(['status' => $r['Status'], 'error' => $r['Error']]);
             } else {
                 echo json_encode(['status' => $r['Status'], 'error' => rtrim(($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? ''), ': ')]);
             }
