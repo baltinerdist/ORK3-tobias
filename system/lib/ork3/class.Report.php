@@ -3196,6 +3196,11 @@ class Report extends Ork3
             return array('Status' => InvalidParameter('KingdomId required'), 'Relationships' => array(), 'Knights' => array());
         }
 
+        // NOTE on the WHERE peerage filter below: classic belt ranks only —
+        // 'Apprentice' (Paragon→Apprentice chain) is intentionally EXCLUDED
+        // from the Beltline Explorer for now. The player profile cards include
+        // it; this report does not. Keep in sync with Award::ProtegePeerages()
+        // only if/when Apprentice is added to the explorer.
         $sql = "SELECT
 				ma.mundane_id AS recipient_id,
 				m.persona AS recipient_persona,

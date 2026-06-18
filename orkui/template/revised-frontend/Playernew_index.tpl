@@ -1616,7 +1616,7 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 							<div class="pna-card-title"><i class="fas fa-user-friends"></i> <?= $isOwnProfile ? 'My' : htmlspecialchars($Player['Persona'] ?? 'Their') . "'s" ?> Associates</div>
 							<?php
 							$_maCurPeerage = null;
-							$_maPeerageLabels = ['Squire' => 'Squires', 'Man-At-Arms' => 'Men/Women-at-Arms', 'Lords-Page' => 'Lords-Pages', 'Page' => 'Pages'];
+							$_maPeerageLabels = ['Squire' => 'Squires', 'Man-At-Arms' => 'Men/Women-at-Arms', 'Lords-Page' => 'Lords-Pages', 'Page' => 'Pages', 'Apprentice' => 'Apprentices'];
 							?>
 							<?php foreach ($MyAssociates as $_as): ?>
 							<?php if ($_as['Peerage'] !== $_maCurPeerage): ?>
@@ -1709,7 +1709,7 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 								<div class="pn-belt-card-title"><i class="fas fa-shield-alt"></i> <?= $isOwnProfile ? 'My' : htmlspecialchars($Player['Persona'] ?? 'Their') . "'s" ?> Peer<?= count($BeltlinePeers) > 1 ? 's' : '' ?></div>
 								<?php
 								$_blCurPeerage = null;
-								$_blPeerLabels = ['Squire' => 'Squire to', 'Man-At-Arms' => 'Person-at-Arms to', 'Lords-Page' => "Lord's Page to", 'Page' => 'Page to'];
+								$_blPeerLabels = ['Squire' => 'Squire to', 'Man-At-Arms' => 'Person-at-Arms to', 'Lords-Page' => "Lord's Page to", 'Page' => 'Page to', 'Apprentice' => 'Apprentice to'];
 								?>
 								<?php foreach ($BeltlinePeers as $_bp): ?>
 								<?php if ($_bp['Peerage'] !== $_blCurPeerage): ?>
@@ -1727,7 +1727,7 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 								<div class="pn-belt-card-title"><i class="fas fa-user-friends"></i> <?= $isOwnProfile ? 'My' : htmlspecialchars($Player['Persona'] ?? 'Their') . "'s" ?> Associate<?= count($BeltlineAssociates) > 1 ? 's' : '' ?></div>
 								<?php
 								$_blaCurPeerage = null;
-								$_blAssocLabels = ['Squire' => 'Squires', 'Man-At-Arms' => 'People-at-Arms', 'Lords-Page' => "Lords-Pages", 'Page' => 'Pages'];
+								$_blAssocLabels = ['Squire' => 'Squires', 'Man-At-Arms' => 'People-at-Arms', 'Lords-Page' => "Lords-Pages", 'Page' => 'Pages', 'Apprentice' => 'Apprentices'];
 								?>
 								<?php foreach ($BeltlineAssociates as $_ba): ?>
 								<?php if ($_ba['Peerage'] !== $_blaCurPeerage): ?>
@@ -2120,7 +2120,7 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 									<td class="pn-col-nowrap"><?= strtotime($detail['Date']) > 0 ? $detail['Date'] : '' ?></td>
 									<td class="pn-col-nowrap">
 										<?php
-											$_isPeerageTitleRow = in_array($detail['Peerage'] ?? '', ['Squire', 'Man-At-Arms', 'Lords-Page', 'Page']);
+											$_isPeerageTitleRow = in_array($detail['Peerage'] ?? '', ['Squire', 'Man-At-Arms', 'Lords-Page', 'Page', 'Apprentice']);
 											$_givenByMissing = $_isPeerageTitleRow && !trimlen($detail['GivenBy']);
 										?>
 										<?php if (!$_givenByMissing): ?>
