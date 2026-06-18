@@ -703,7 +703,7 @@ class Controller_Player extends Controller
             // For Custom Titles aliased to a beltline peerage (Page/Squire/etc.),
             // suppress this — the 'became_associate' milestone already covers it.
             if ($__isTitle === 1 && in_array($__officerRole, ['none', null]) && !in_array($__aid, $__paragonIds) && !in_array($__aid, $__knightIds)
-                && !in_array($__aliasPeerage, ['Page', 'Lords-Page', 'Squire', 'Man-At-Arms'])) {
+                && !in_array($__aliasPeerage, Award::ProtegePeerages())) {
                 $__milestones[] = ['type' => 'title', 'date' => $__awDate, 'icon' => 'fa-crown', 'description' => 'Earned the title ' . $__awName];
             }
 
@@ -714,7 +714,7 @@ class Controller_Player extends Controller
         }
 
         // 7. Became Associate (peerage awards given TO this player - from BeltlinePeers data)
-        $__blPeerLabels = ['Squire' => 'Squire', 'Man-At-Arms' => 'Person-at-Arms', 'Lords-Page' => "Lord's Page", 'Page' => 'Page'];
+        $__blPeerLabels = ['Squire' => 'Squire', 'Man-At-Arms' => 'Person-at-Arms', 'Lords-Page' => "Lord's Page", 'Page' => 'Page', 'Apprentice' => 'Apprentice'];
         if (!empty($this->data['BeltlinePeers'])) {
             foreach ($this->data['BeltlinePeers'] as $__bp) {
                 $__peerDate = $__bp['Date'] ?? '';
@@ -761,7 +761,7 @@ class Controller_Player extends Controller
                 $__masterMsNames[] = strtolower(preg_replace('/^Earned (?:Master )?/', '', $__m['description']));
             }
         }
-        $__peerageTerms = ['squire', 'man-at-arms', 'person-at-arms', "lord's page", 'page'];
+        $__peerageTerms = ['squire', 'man-at-arms', 'person-at-arms', "lord's page", 'page', 'apprentice'];
         $__milestones = array_values(array_filter($__milestones, function ($m) use ($__masterMsNames, $__peerageTerms) {
             if ($m['type'] !== 'title') {
                 return true;
