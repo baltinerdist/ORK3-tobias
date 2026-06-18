@@ -679,11 +679,11 @@ html[data-theme="dark"] .ka-mo-close:hover { color: var(--ork-text); }
 			<div class="ka-section">
 				<div class="ka-section-title"><i class="fas fa-award"></i> Awards</div>
 				<div class="ka-action-tiles">
-					<button class="ka-action-card" onclick="kaOpenModal('ka-awards-overlay')">
+					<a class="ka-action-card" href="<?= UIR ?>Admin/awards/<?= $kid ?>">
 						<div class="ka-action-icon ka-action-icon-purple"><i class="fas fa-medal"></i></div>
 						<div class="ka-action-label">Manage Awards</div>
 						<div class="ka-action-desc">Award aliases and kingdom-specific awards</div>
-					</button>
+					</a>
 				</div>
 			</div>
 
