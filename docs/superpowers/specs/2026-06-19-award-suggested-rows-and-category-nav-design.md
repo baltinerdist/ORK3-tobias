@@ -34,6 +34,26 @@ Across all 38 kingdoms (data analysis 2026-06-18):
 These two are the clearest cases of a standard award that kingdoms want but frequently
 have not formally activated. Surfacing them with a one-click Activate closes that gap.
 
+## Addendum (2026-06-19) — unified ghost model + Other Ladder orders
+
+The suggested-row feature was generalized after the initial build:
+
+- **Unified trigger:** a ghost row appears for a standardized award whenever the kingdom
+  does not have it **active** (enabled). If a **disabled** row for it exists, **Activate**
+  re-enables it (`setawardstatus`, `Disabled:0`); if **no row** exists, Activate creates a
+  reference (`setaward`, as before). This replaces "disabled-but-present counts as has-it"
+  — it now applies to Dragonmaster/Weaponmaster too (the "Re-activate" case).
+- **Other Ladder Awards suggestions:** the seven standardized system orders outside the
+  canonical nine are surfaced as ghosts in the renamed **"Other Ladder Awards"** group
+  (section two): Jovius (28), Mask (29), Zodiac (30), Walker in the Middle (31),
+  Hydra (32), Griffin (33), Flame (34).
+- **Data model:** each `SUGGESTED_AWARDS` entry declares its `group`; `ghostsForGroup(name)`
+  returns the missing/disabled suggestions for that group; the empty-group render guard is
+  generalized so any group renders when it has ghosts to offer.
+- **Section two rename:** "Kingdom and Other Ladder Awards" → "Other Ladder Awards".
+
+Still template-only — both endpoints (`setaward`, `setawardstatus`) already exist.
+
 ## Part 1 — Suggested-award rows
 
 ### Classification pin
