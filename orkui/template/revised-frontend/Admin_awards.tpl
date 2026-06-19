@@ -672,7 +672,7 @@ var AwConfig = {
         if (aw.IsLadder) {
             return CANONICAL_LADDER_AWARD_IDS.indexOf(parseInt(aw.AwardId, 10)) >= 0
                 ? 'Ladder Awards (Award Standardization)'
-                : 'Kingdom and Other Ladder Awards';
+                : 'Other Ladder Awards';
         }
         if (sysName === 'Defender' || sysName === 'Master') return 'Noble Titles';
         if (aw.Peerage === 'Knight' || /^knight of\b/i.test(sysName)) return 'Knighthoods';
@@ -686,13 +686,13 @@ var AwConfig = {
     }
 
     var GROUP_ORDER = [
-        'Ladder Awards (Award Standardization)', 'Kingdom and Other Ladder Awards',
+        'Ladder Awards (Award Standardization)', 'Other Ladder Awards',
         'Knighthoods', 'Masterhoods', 'Paragons',
         'Noble Titles', 'Associate Titles', 'Kingdom Awards & Orders'
     ];
     var GROUP_BLURB = {
         'Ladder Awards (Award Standardization)': 'the nine standardized orders — lead to Masterhoods, then Knighthoods',
-        'Kingdom and Other Ladder Awards': 'other system orders and kingdom-created leveled awards',
+        'Other Ladder Awards': 'other system orders and kingdom-created leveled awards',
         'Knighthoods': 'the knightly peerages',
         'Masterhoods': 'master-level peerages and capstones',
         'Paragons': 'the highest recognitions of skill',
