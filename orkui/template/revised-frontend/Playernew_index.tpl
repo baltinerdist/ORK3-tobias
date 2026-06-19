@@ -970,6 +970,9 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>revised-frontend/style/revised.css?v=<?= filemtime(DIR_TEMPLATE . 'revised-frontend/style/revised.css') ?>">
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
 
+<!-- Voting banner — only renders for own profile when there's an active eligible event -->
+<div id="pn-voting-banner" style="display:none; max-width:1200px; margin: 0 auto 12px auto;"></div>
+
 <!-- =============================================
      ZONE 1: Profile Hero Header
      ============================================= -->
@@ -3687,6 +3690,42 @@ var PnConfig = {
 };
 // Use the viewed player's kingdom for nav search prioritization if the user has no home kingdom
 if (typeof nsKid !== 'undefined' && nsKid === 0 && PnConfig.kingdomId) nsKid = PnConfig.kingdomId;
+
+// ─── Voting banner for own profile ──────────────────────────────────────
+(function(){
+	if (!PnConfig.isOwnProfile || !PnConfig.playerId) return;
+	var host = document.getElementById('pn-voting-banner');
+	if (!host) return;
+	fetch(PnConfig.uir + 'VotingAjax/banner/' + PnConfig.playerId, { credentials:'same-origin' })
+		.then(function(r){ return r.json(); })
+		.then(function(j){
+			if (!j || j.status !== 0 || !j.events || !j.events.length) return;
+			var html = '';
+			j.events.forEach(function(e){
+				var endDate = new Date(e.end_date);
+				var endStr  = endDate.toLocaleString(undefined, { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+				var isRevote = e.pending_revote && e.pending_race_count > 0;
+				var headline = isRevote
+					? 'Re-vote needed: ' + escapeHtml(e.title)
+					: 'Voting open: ' + escapeHtml(e.title);
+				var subline = isRevote
+					? 'Configuration changed — please re-vote on ' + e.pending_race_count + ' race' + (e.pending_race_count === 1 ? '' : 's') + ' · Closes ' + escapeHtml(endStr)
+					: 'Closes ' + escapeHtml(endStr) + ' · Click to vote';
+				var bg = isRevote
+					? 'linear-gradient(90deg,#d69e2e,#975a16)'
+					: 'linear-gradient(90deg,#3182ce,#2c5282)';
+				html += '<a href="' + PnConfig.uir + 'Voting/event/' + e.voting_event_id + '" style="display:flex;align-items:center;gap:14px;padding:14px 18px;background:' + bg + ';color:#fff;border-radius:10px;text-decoration:none;margin-bottom:10px;box-shadow:0 2px 6px rgba(49,130,206,0.25);">'
+					 + '<i class="fas ' + (isRevote ? 'fa-exclamation-circle' : 'fa-vote-yea') + '" style="font-size:22px;"></i>'
+					 + '<div style="flex:1;"><div style="font-weight:600;font-size:15px;">' + headline + '</div>'
+					 + '<div style="font-size:12px;opacity:0.9;">' + subline + '</div></div>'
+					 + '<i class="fas fa-arrow-right" style="opacity:0.85;"></i></a>';
+			});
+			host.innerHTML = html;
+			host.style.display = 'block';
+		})
+		.catch(function(){});
+	function escapeHtml(s){ return String(s).replace(/[&<>"']/g, function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+})();
 </script>
 <script src="<?= HTTP_TEMPLATE ?>revised-frontend/script/email-spell-checker.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
