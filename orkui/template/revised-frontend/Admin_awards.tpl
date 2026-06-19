@@ -438,6 +438,16 @@ html[data-theme="dark"] .aw-badge-alias    { background: #2c5282; color: #bee3f8
             <label for="aw-edit-istitle">Confers a title?</label>
         </div>
 
+        <div class="aw-toggle-row" id="aw-edit-ladder-row" style="display:none">
+            <input type="checkbox" id="aw-edit-isladder">
+            <label for="aw-edit-isladder">Track as levels (Order)?</label>
+        </div>
+        <div class="aw-field" id="aw-edit-maxlevel-field" style="display:none">
+            <label>Max level</label>
+            <input type="number" id="aw-edit-maxlevel" min="1" max="20" value="10" style="width:110px">
+            <div class="aw-field-help">Recipients are granted a level from 1 to this max (like the system Orders, but kingdom-defined; no Master capstone).</div>
+        </div>
+
         <div class="aw-pointer">
             Where this ranks among titles is set in <strong>Order of Precedence</strong> (coming soon).
         </div>
@@ -581,9 +591,16 @@ var AwConfig = {
     // Classify by attributes. Works for both kingdom awards (aw.AwardId may be 0 for
     // kingdom-original) and system awards (always have an AwardId). Knighthoods & Paragons
     // are Amtgard-controlled; everything else can hold kingdom-original entries.
+    // Amtgard "Award Standardization" — the nine Order→Master→Knight ladders, by system award_id.
+    var CANONICAL_LADDER_AWARD_IDS = [21, 22, 23, 239, 24, 25, 26, 27, 243];
+
     function classifyAward(aw) {
         var sysName = aw.AwardName || aw.Name || aw.KingdomAwardName || '';
-        if (aw.IsLadder) return 'Ladder Awards (Orders)';
+        if (aw.IsLadder) {
+            return CANONICAL_LADDER_AWARD_IDS.indexOf(parseInt(aw.AwardId, 10)) >= 0
+                ? 'Ladder Awards (Award Standardization)'
+                : 'Kingdom and Other Ladder Awards';
+        }
         if (sysName === 'Defender' || sysName === 'Master') return 'Noble Titles';
         if (aw.Peerage === 'Knight' || /^knight of\b/i.test(sysName)) return 'Knighthoods';
         if (aw.Peerage === 'Paragon') return 'Paragons';
@@ -596,11 +613,13 @@ var AwConfig = {
     }
 
     var GROUP_ORDER = [
-        'Ladder Awards (Orders)', 'Knighthoods', 'Masterhoods', 'Paragons',
+        'Ladder Awards (Award Standardization)', 'Kingdom and Other Ladder Awards',
+        'Knighthoods', 'Masterhoods', 'Paragons',
         'Noble Titles', 'Associate Titles', 'Kingdom Awards & Orders'
     ];
     var GROUP_BLURB = {
-        'Ladder Awards (Orders)': 'rank-based; climb rungs toward a Master',
+        'Ladder Awards (Award Standardization)': 'the nine standardized orders — lead to Masterhoods, then Knighthoods',
+        'Kingdom and Other Ladder Awards': 'other system orders and kingdom-created leveled awards',
         'Knighthoods': 'the knightly peerages',
         'Masterhoods': 'master-level peerages and capstones',
         'Paragons': 'the highest recognitions of skill',
@@ -613,7 +632,6 @@ var AwConfig = {
     // titleClass is the bucket-determining default for a NEW custom title in that group;
     // fine ordering is handled later by Order of Precedence.
     var ADDABLE = {
-        'Ladder Awards (Orders)':  { singular: 'Order',          isTitle: 0, titleClass: 0  },
         'Masterhoods':             { singular: 'Masterhood',     isTitle: 1, titleClass: 10 },
         'Noble Titles':            { singular: 'Noble Title',    isTitle: 1, titleClass: 30 },
         'Associate Titles':        { singular: 'Associate Title',isTitle: 1, titleClass: 15 },
@@ -623,7 +641,10 @@ var AwConfig = {
     /* ---- Per-group "What this is" explainer text ---- */
     var ENTITY_LC = <?= json_encode(strtolower($entityLabel)) ?>;
     function explainerFor(group, aw) {
-        if (group === 'Ladder Awards (Orders)' || aw.IsLadder) {
+        if (aw.IsLadder && (!aw.AwardId || aw.AwardId === 0)) {
+            return '<strong>Kingdom Order (leveled).</strong> Recipients are granted a level from 1 to the maximum you set. It tracks progression like the standardized Orders, but it is kingdom-defined — no Master capstone.';
+        }
+        if (aw.IsLadder) {
             return '<strong>Ladder award.</strong> Players climb rungs of this order over time, progressing toward a Master-level capstone. The rungs and capstone are configured by the system.';
         }
         if (group === 'Kingdom-Specific' || aw.AwardId === 0) {
@@ -879,6 +900,17 @@ var AwConfig = {
             var aliasList = document.getElementById('aw-edit-alias-list');
             if (aliasList) aliasList.innerHTML = '';
         }
+        // Leveled "Order" tracking is offered only on custom (kingdom-original) awards.
+        var ladderRow = document.getElementById('aw-edit-ladder-row');
+        var maxField  = document.getElementById('aw-edit-maxlevel-field');
+        var isCustom  = !aw.AwardId || aw.AwardId === 0;
+        if (ladderRow) {
+            ladderRow.style.display = isCustom ? '' : 'none';
+            var isLadder = parseInt(aw.IsLadder, 10) === 1;
+            document.getElementById('aw-edit-isladder').checked = isLadder;
+            maxField.style.display = (isCustom && isLadder) ? '' : 'none';
+            document.getElementById('aw-edit-maxlevel').value = (aw.MaxLevel && aw.MaxLevel > 0) ? aw.MaxLevel : 10;
+        }
         openDrawer('aw-edit-drawer');
     }
 
@@ -904,6 +936,10 @@ var AwConfig = {
     }
 
     if (AwConfig.canEdit) {
+        var isLadderChk = document.getElementById('aw-edit-isladder');
+        if (isLadderChk) isLadderChk.addEventListener('change', function() {
+            document.getElementById('aw-edit-maxlevel-field').style.display = this.checked ? '' : 'none';
+        });
         // Save
         var saveBtn = document.getElementById('aw-edit-save');
         if (saveBtn) saveBtn.addEventListener('click', function() {
@@ -917,7 +953,9 @@ var AwConfig = {
                 ReignLimit: elReign.value,
                 MonthLimit: elMonth.value,
                 IsTitle: elIsTitle.checked ? 1 : 0,
-                TitleClass: elTClass.value
+                TitleClass: elTClass.value,
+                IsLadder: document.getElementById('aw-edit-isladder').checked ? 1 : 0,
+                MaxLevel: document.getElementById('aw-edit-maxlevel').value || 10
             }, function() {
                 saveBtn.disabled = false;
                 // update local model + row
@@ -927,6 +965,8 @@ var AwConfig = {
                     aw.ReignLimit = elReign.value;
                     aw.MonthLimit = elMonth.value;
                     aw.IsTitle = elIsTitle.checked ? 1 : 0;
+                    aw.IsLadder = document.getElementById('aw-edit-isladder').checked ? 1 : 0;
+                    aw.MaxLevel = parseInt(document.getElementById('aw-edit-maxlevel').value, 10) || 0;
                     // TitleClass is a hidden passthrough (not editable here), but keep the
                     // local model in sync with what was sent so classifyAward stays correct.
                     aw.TitleClass = parseInt(elTClass.value, 10) || 0;
@@ -1047,7 +1087,7 @@ var AwConfig = {
         document.getElementById('aw-add-month').value = '0';
 
         var nameInput = document.getElementById('aw-add-name');
-        nameInput.placeholder = (groupName === 'Ladder Awards (Orders)' || groupName === 'Kingdom Awards & Orders')
+        nameInput.placeholder = (groupName === 'Kingdom Awards & Orders')
             ? 'e.g. Order of the Hunter'
             : 'e.g. a new ' + cfg.singular.toLowerCase();
 
