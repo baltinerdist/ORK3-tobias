@@ -60,7 +60,48 @@ $canEdit      = !empty($CanManageKingdom);
 .aw-hero-back:hover { color: #fff; }
 
 /* Layout */
-.aw-layout { max-width: 1100px; margin: 0 auto; }
+.aw-layout { max-width: 1320px; margin: 0 auto; }
+.aw-shell { display: flex; gap: 24px; align-items: flex-start; }
+.aw-main { flex: 1; min-width: 0; max-width: 1100px; }
+
+/* Category nav sidebar */
+.aw-nav {
+    position: sticky; top: 60px; width: 210px; flex-shrink: 0; align-self: flex-start;
+    border: 1px solid #e2e8f0; border-radius: 10px; background: #fff;
+    padding: 10px; font-size: 13px;
+}
+.aw-nav-title {
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+    color: #a0aec0; padding: 4px 8px 8px;
+}
+.aw-nav-link {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 7px 10px; border-radius: 7px; color: #4a5568; cursor: pointer;
+    text-decoration: none; transition: background 0.12s, color 0.12s;
+}
+.aw-nav-link:hover { background: #faf5ff; color: #6b46c1; }
+.aw-nav-link.aw-nav-active { background: #f0e6ff; color: #553c9a; font-weight: 700; }
+.aw-nav-count { font-size: 11px; color: #a0aec0; }
+.aw-nav-link.aw-nav-active .aw-nav-count { color: #6b46c1; }
+.aw-nav-sep { height: 1px; background: #e2e8f0; margin: 8px 4px; }
+.aw-nav-top {
+    display: flex; align-items: center; gap: 6px; padding: 7px 10px; border-radius: 7px;
+    color: #718096; cursor: pointer; background: none; border: none; font: inherit; width: 100%;
+}
+.aw-nav-top:hover { background: #f7fafc; color: #4a5568; }
+
+/* Group anchor offset so jumps clear the fixed app nav (48px) */
+.aw-group { scroll-margin-top: 56px; }
+
+@media (max-width: 900px) { .aw-nav { display: none; } }
+
+html[data-theme="dark"] .aw-nav { background: #2d3748; border-color: #4a5568; }
+html[data-theme="dark"] .aw-nav-link { color: #cbd5e0; }
+html[data-theme="dark"] .aw-nav-link:hover { background: #353f50; color: #d6bcfa; }
+html[data-theme="dark"] .aw-nav-link.aw-nav-active { background: #44337a; color: #e9d8fd; }
+html[data-theme="dark"] .aw-nav-active .aw-nav-count { color: #d6bcfa; }
+html[data-theme="dark"] .aw-nav-sep { background: #4a5568; }
+html[data-theme="dark"] .aw-nav-top:hover { background: #252d3a; color: #cbd5e0; }
 
 /* Toolbar */
 .aw-toolbar {
@@ -385,26 +426,33 @@ html[data-theme="dark"] .aw-badge-alias    { background: #2c5282; color: #bee3f8
 </div>
 
 <div class="aw-layout">
+  <div class="aw-shell">
 
-    <!-- Toolbar -->
-    <div class="aw-toolbar">
-        <div class="aw-search-wrap">
-            <i class="fas fa-search"></i>
-            <input type="text" class="aw-search" id="aw-search" placeholder="Search awards by name&hellip;" autocomplete="off">
+    <!-- Category nav (built by JS after the catalog renders) -->
+    <nav class="aw-nav" id="aw-nav" aria-label="Award categories"></nav>
+
+    <div class="aw-main">
+        <!-- Toolbar -->
+        <div class="aw-toolbar">
+            <div class="aw-search-wrap">
+                <i class="fas fa-search"></i>
+                <input type="text" class="aw-search" id="aw-search" placeholder="Search awards by name&hellip;" autocomplete="off">
+            </div>
+            <div class="aw-seg" id="aw-status-seg">
+                <button data-status="active" class="aw-seg-active">Active</button>
+                <button data-status="disabled">Disabled</button>
+                <button data-status="all">All</button>
+            </div>
+            <?php if ($canEdit): ?>
+            <button class="aw-btn aw-btn-primary" id="aw-add-btn"><i class="fas fa-plus"></i> Add Award</button>
+            <?php endif; ?>
         </div>
-        <div class="aw-seg" id="aw-status-seg">
-            <button data-status="active" class="aw-seg-active">Active</button>
-            <button data-status="disabled">Disabled</button>
-            <button data-status="all">All</button>
-        </div>
-        <?php if ($canEdit): ?>
-        <button class="aw-btn aw-btn-primary" id="aw-add-btn"><i class="fas fa-plus"></i> Add Award</button>
-        <?php endif; ?>
+
+        <!-- Catalog (built by JS) -->
+        <div id="aw-catalog"></div>
     </div>
 
-    <!-- Catalog (built by JS) -->
-    <div id="aw-catalog"></div>
-
+  </div><!-- /.aw-shell -->
 </div><!-- /.aw-layout -->
 
 <!-- =============================================
@@ -769,6 +817,7 @@ var AwConfig = {
             var groupEl = document.createElement('div');
             groupEl.className = 'aw-group';
             groupEl.dataset.group = groupName;
+            groupEl.id = 'awgrp-' + groupName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
             var hdr = document.createElement('div');
             hdr.className = 'aw-group-hdr';
