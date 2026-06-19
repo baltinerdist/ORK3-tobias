@@ -150,6 +150,18 @@ $canEdit      = !empty($CanManageKingdom);
 .aw-row-chev { color: #cbd5e0; font-size: 12px; }
 .aw-group-empty { padding: 16px 18px; font-size: 12px; color: #a0aec0; border-top: 1px solid #edf2f7; }
 
+/* Suggested ("ghost") rows — an award the kingdom could activate but hasn't */
+.aw-ghost-row {
+    display: flex; align-items: center; gap: 10px; padding: 11px 18px;
+    border-top: 1px solid #edf2f7; background: #fcfcfd;
+}
+.aw-ghost-name { font-size: 13px; font-style: italic; color: #a0aec0; font-weight: 600; }
+.aw-ghost-hint { font-size: 12px; font-style: italic; color: #b8c2cc; }
+.aw-ghost-spacer { flex: 1; }
+html[data-theme="dark"] .aw-ghost-row { background: #232b37; border-color: #3a4554; }
+html[data-theme="dark"] .aw-ghost-name { color: #718096; }
+html[data-theme="dark"] .aw-ghost-hint { color: #5a6677; }
+
 /* Catalog empty */
 .aw-empty { padding: 40px; text-align: center; color: #a0aec0; font-size: 14px; }
 
@@ -797,6 +809,25 @@ var AwConfig = {
                 body.appendChild(row);
             });
 
+            // Suggested ("ghost") rows: only in Kingdom Awards & Orders, only for managers.
+            if (AwConfig.canEdit && groupName === 'Kingdom Awards & Orders') {
+                missingSuggestions().forEach(function(sug) {
+                    var g = document.createElement('div');
+                    g.className = 'aw-ghost-row';
+                    g.dataset.ghost = sug.awardId;
+                    g.innerHTML =
+                        '<span class="aw-ghost-name">' + escHtml(sug.name) + '</span>' +
+                        '<span class="aw-ghost-hint">(not currently available &mdash; activate it?)</span>' +
+                        '<span class="aw-ghost-spacer"></span>';
+                    var btn = document.createElement('button');
+                    btn.className = 'aw-btn aw-btn-outline aw-btn-sm';
+                    btn.innerHTML = '<i class="fas fa-bolt"></i> Activate';
+                    btn.onclick = function() { activateSuggestion(sug, btn); };
+                    g.appendChild(btn);
+                    body.appendChild(g);
+                });
+            }
+
             // Empty-after-filter placeholder
             var emptyEl = document.createElement('div');
             emptyEl.className = 'aw-group-empty';
@@ -1119,6 +1150,25 @@ var AwConfig = {
             : 'e.g. a new ' + cfg.singular.toLowerCase();
 
         openDrawer('aw-add-drawer');
+    }
+
+    /* ---- Activate a suggested standard award (one click, non-destructive) ---- */
+    function activateSuggestion(sug, btn) {
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Activating'; }
+        awPost('setaward', {
+            KingdomAwardId: 0,
+            AwardId: sug.awardId,
+            KingdomAwardName: sug.name,
+            ReignLimit: 0,
+            MonthLimit: 0,
+            IsTitle: sug.isTitle,
+            TitleClass: 0
+        }, function() {
+            awToast(sug.name + ' activated.');
+            setTimeout(function() { location.reload(); }, 600);
+        }).then(function() {
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-bolt"></i> Activate'; }
+        });
     }
 
     function submitAdd(awardId, name, isTitle, titleClass) {
