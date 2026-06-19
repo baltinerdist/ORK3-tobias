@@ -660,8 +660,17 @@ var AwConfig = {
     // "-master" name (the Order of the Battle capstone is Battlemaster); Weaponmaster's
     // title_class=10 would otherwise mis-route it into Masterhoods.
     var SUGGESTED_AWARDS = [
-        { awardId: 207, name: 'Dragonmaster', isTitle: 1, nameRx: /dragon\s*master/i },
-        { awardId: 36,  name: 'Weaponmaster', isTitle: 1, nameRx: /weapon\s*master/i }
+        // Kingdom Awards & Orders — pinned standard titles.
+        { awardId: 207, name: 'Dragonmaster', group: 'Kingdom Awards & Orders', isTitle: 1, nameRx: /dragon\s*master/i },
+        { awardId: 36,  name: 'Weaponmaster', group: 'Kingdom Awards & Orders', isTitle: 1, nameRx: /weapon\s*master/i },
+        // Other Ladder Awards — the standardized system orders outside the canonical nine.
+        { awardId: 28, name: 'Order of the Jovius',               group: 'Other Ladder Awards', isTitle: 0 },
+        { awardId: 29, name: 'Order of the Mask',                 group: 'Other Ladder Awards', isTitle: 0 },
+        { awardId: 30, name: 'Order of the Zodiac',               group: 'Other Ladder Awards', isTitle: 0 },
+        { awardId: 31, name: 'Order of the Walker in the Middle', group: 'Other Ladder Awards', isTitle: 0 },
+        { awardId: 32, name: 'Order of the Hydra',                group: 'Other Ladder Awards', isTitle: 0 },
+        { awardId: 33, name: 'Order of the Griffin',              group: 'Other Ladder Awards', isTitle: 0 },
+        { awardId: 34, name: 'Order of the Flame',                group: 'Other Ladder Awards', isTitle: 0 }
     ];
     var PINNED_TO_KAO = [207, 36];
 
@@ -738,16 +747,34 @@ var AwConfig = {
     // A kingdom "has" a suggested award if any row references the standard award_id OR
     // its name matches the variant regex (covers "Dragon Master", "Kingdom Dragon Master",
     // and the orphan award_ids 187/129). Disabled-but-present still counts as "has it".
-    function kingdomHasSuggestion(sug) {
-        return awards.some(function(a) {
-            if (parseInt(a.AwardId, 10) === sug.awardId) return true;
-            if (sug.nameRx.test(a.KingdomAwardName || '')) return true;
-            if (sug.nameRx.test(a.AwardName || '')) return true;
-            return false;
-        });
+    // First award row matching a test fn, or null (avoids Array.find for older engines).
+    function firstAward(test) {
+        for (var i = 0; i < awards.length; i++) { if (test(awards[i])) return awards[i]; }
+        return null;
     }
-    function missingSuggestions() {
-        return SUGGESTED_AWARDS.filter(function(s) { return !kingdomHasSuggestion(s); });
+    // Ghost state for one suggestion. null => the kingdom already has it ACTIVE (enabled).
+    // Otherwise {sug, mode:'reenable', kaid} when only a disabled row exists, else {sug, mode:'create'}.
+    function suggestionGhost(sug) {
+        function matches(a) {
+            if (parseInt(a.AwardId, 10) === sug.awardId) return true;
+            if (sug.nameRx && (sug.nameRx.test(a.KingdomAwardName || '') || sug.nameRx.test(a.AwardName || ''))) return true;
+            return false;
+        }
+        var enabled = firstAward(function(a) { return matches(a) && parseInt(a.Disabled, 10) !== 1; });
+        if (enabled) return null;
+        var disabled = firstAward(function(a) { return matches(a) && parseInt(a.Disabled, 10) === 1; });
+        if (disabled) return { sug: sug, mode: 'reenable', kaid: parseInt(disabled.KingdomAwardId, 10) };
+        return { sug: sug, mode: 'create' };
+    }
+    // Ghost descriptors for suggestions that belong to a given catalog group.
+    function ghostsForGroup(groupName) {
+        var out = [];
+        SUGGESTED_AWARDS.forEach(function(s) {
+            if (s.group !== groupName) return;
+            var gh = suggestionGhost(s);
+            if (gh) out.push(gh);
+        });
+        return out;
     }
     var awardsById = {};
     awards.forEach(function(a) { awardsById[String(a.KingdomAwardId)] = a; });
@@ -812,9 +839,9 @@ var AwConfig = {
 
         GROUP_ORDER.forEach(function(groupName) {
             var items = groups[groupName];
-            // Kingdom Awards & Orders still renders when it has no real awards, so long as
-            // there are ghost (suggested) rows to offer.
-            var hasGhosts = AwConfig.canEdit && groupName === 'Kingdom Awards & Orders' && missingSuggestions().length > 0;
+            // A group still renders when it has no real awards, so long as there are
+            // ghost (suggested) rows to offer for it.
+            var hasGhosts = AwConfig.canEdit && ghostsForGroup(groupName).length > 0;
             if ((!items || !items.length) && !hasGhosts) return;
             anyRendered = true;
 
@@ -862,20 +889,25 @@ var AwConfig = {
                 body.appendChild(row);
             });
 
-            // Suggested ("ghost") rows: only in Kingdom Awards & Orders, only for managers.
-            if (AwConfig.canEdit && groupName === 'Kingdom Awards & Orders') {
-                missingSuggestions().forEach(function(sug) {
+            // Suggested ("ghost") rows for this group: standardized awards the kingdom
+            // hasn't activated, or has disabled. Managers only.
+            if (AwConfig.canEdit) {
+                ghostsForGroup(groupName).forEach(function(gh) {
+                    var sug = gh.sug;
+                    var reenable = gh.mode === 'reenable';
                     var g = document.createElement('div');
                     g.className = 'aw-ghost-row';
                     g.dataset.ghost = sug.awardId;
                     g.innerHTML =
                         '<span class="aw-ghost-name">' + escHtml(sug.name) + '</span>' +
-                        '<span class="aw-ghost-hint">(not currently available &mdash; activate it?)</span>' +
+                        '<span class="aw-ghost-hint">' +
+                            (reenable ? '(disabled &mdash; re-activate it?)' : '(not currently available &mdash; activate it?)') +
+                        '</span>' +
                         '<span class="aw-ghost-spacer"></span>';
                     var btn = document.createElement('button');
                     btn.className = 'aw-btn aw-btn-outline aw-btn-sm';
-                    btn.innerHTML = '<i class="fas fa-bolt"></i> Activate';
-                    btn.onclick = function() { activateSuggestion(sug, btn); };
+                    btn.innerHTML = '<i class="fas fa-bolt"></i> ' + (reenable ? 'Re-activate' : 'Activate');
+                    btn.onclick = function() { activateSuggestion(gh, btn); };
                     g.appendChild(btn);
                     body.appendChild(g);
                 });
@@ -1216,27 +1248,36 @@ var AwConfig = {
     }
 
     /* ---- Activate a suggested standard award (one click, non-destructive) ---- */
-    function activateSuggestion(sug, btn) {
+    /* ---- Activate a suggested standard award (one click, non-destructive).
+            mode 'create' adds a reference to the standard award; mode 'reenable'
+            clears the disabled flag on the kingdom's existing (disabled) row. ---- */
+    function activateSuggestion(gh, btn) {
+        var sug = gh.sug;
+        var orig = btn ? btn.innerHTML : '';
         if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Activating'; }
         var ok = false;
-        awPost('setaward', {
-            KingdomAwardId: 0,
-            AwardId: sug.awardId,
-            KingdomAwardName: sug.name,
-            ReignLimit: 0,
-            MonthLimit: 0,
-            IsTitle: sug.isTitle,
-            TitleClass: 0
-        }, function() {
+        var onOk = function() {
             ok = true;
             if (btn) btn.innerHTML = '<i class="fas fa-check-circle"></i> Activated';
             awToast(sug.name + ' activated.');
             setTimeout(function() { location.reload(); }, 600);
-        }).then(function() {
-            // Re-enable only if the request failed — on success the page reloads, so the
-            // button stays disabled to prevent a duplicate Activate in the 600ms window.
-            if (!ok && btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-bolt"></i> Activate'; }
-        });
+        };
+        // Re-enable only if the request failed — on success the page reloads, so the
+        // button stays disabled to prevent a duplicate Activate in the 600ms window.
+        var restore = function() { if (!ok && btn) { btn.disabled = false; btn.innerHTML = orig; } };
+        if (gh.mode === 'reenable') {
+            awPost('setawardstatus', { KingdomAwardId: gh.kaid, Disabled: 0 }, onOk).then(restore);
+        } else {
+            awPost('setaward', {
+                KingdomAwardId: 0,
+                AwardId: sug.awardId,
+                KingdomAwardName: sug.name,
+                ReignLimit: 0,
+                MonthLimit: 0,
+                IsTitle: sug.isTitle,
+                TitleClass: 0
+            }, onOk).then(restore);
+        }
     }
 
     function submitAdd(awardId, name, isTitle, titleClass) {
