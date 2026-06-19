@@ -1,21 +1,25 @@
 <?php
 
-class Model_Award extends Model {
-
-    function __construct() {
+class Model_Award extends Model
+{
+    public function __construct()
+    {
         parent::__construct();
         $this->Award = new APIModel('Award');
         $this->Kingdom = new APIModel('Kingdom');
     }
 
-    private static function compareAwardsByName($a, $b) {
+    private static function compareAwardsByName($a, $b)
+    {
         return strcmp($a["KingdomAwardName"], $b["KingdomAwardName"]);
     }
 
-    function fetch_award_option_list($kingdom_id = 0, $officer_role = null) {
+    public function fetch_award_option_list($kingdom_id = 0, $officer_role = null)
+    {
         $cacheKey = Ork3::$Lib->ghettocache->key(['KingdomId' => (int)$kingdom_id, 'OfficerRole' => $officer_role]);
-        if (($cached = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $cacheKey, 1200)) !== false)
+        if (($cached = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $cacheKey, 1200)) !== false) {
             return $cached;
+        }
         if (valid_id($kingdom_id)) {
             $awards = $this->Kingdom->GetAwardList(array(
                     'IsLadder' => null,
@@ -34,16 +38,10 @@ class Model_Award extends Model {
         if ($awards['Status']['Status'] == 0) {
             uasort($awards['Awards'], array('Model_Award','compareAwardsByName'));
 
-            $pseudoLadderIds = [7067,7249,6628,5813,6045,6050,6430,6283,7055,
-                            6403,6297,7273,7070,6311,6310,7277,6411,6771,
-                            6577,94,7084,6171,6574,7254];
             $custom = $ladder = $knighthoods = $masterhoods = $paragons = $associates = $nobles = $other = [];
             foreach ($awards['Awards'] as $award) {
                 $sysName = $award['AwardName'] ?? $award['KingdomAwardName'];
-                $isPseudoLadder = in_array((int)($award['KingdomAwardId'] ?? 0), $pseudoLadderIds);
-                if ($isPseudoLadder) {
-                    $ladder[] = $award;
-                } elseif ($sysName === 'Custom Award' || $sysName === 'Custom Title') {
+                if ($sysName === 'Custom Award' || $sysName === 'Custom Title') {
                     $custom[] = $award;
                 } elseif (!empty($award['IsLadder'])) {
                     $ladder[] = $award;
@@ -73,9 +71,13 @@ class Model_Award extends Model {
             if (!empty($ladder)) {
                 $options .= "<optgroup label='Ladder Awards'>";
                 foreach ($ladder as $award) {
-                    $isPseudo = in_array((int)($award['KingdomAwardId'] ?? 0), $pseudoLadderIds);
-                    $awardId = $isPseudo ? 0 : ($award['AwardId'] ?? 0);
-                    $options .= "<option value='" . htmlspecialchars($award['KingdomAwardId'], ENT_QUOTES) . "' data-is-ladder='1' data-award-id='" . htmlspecialchars($awardId, ENT_QUOTES) . "'>" . htmlspecialchars($award['KingdomAwardName'], ENT_QUOTES) . "</option>";
+                    $isKingdomLadder = !empty($award['IsLadder']) && (int)($award['AwardId'] ?? 0) === 0;
+                    $awardId = $isKingdomLadder ? 0 : ($award['AwardId'] ?? 0);
+                    $maxLevel = $isKingdomLadder ? max(1, (int)($award['MaxLevel'] ?? 10)) : 0;
+                    $options .= "<option value='" . htmlspecialchars($award['KingdomAwardId'], ENT_QUOTES)
+                        . "' data-is-ladder='1' data-award-id='" . htmlspecialchars($awardId, ENT_QUOTES) . "'"
+                        . ($maxLevel > 0 ? " data-max-level='" . (int)$maxLevel . "'" : "")
+                        . ">" . htmlspecialchars($award['KingdomAwardName'], ENT_QUOTES) . "</option>";
                 }
                 $options .= "</optgroup>";
             }
@@ -99,7 +101,9 @@ class Model_Award extends Model {
                 'Other' => $other,
             ];
             foreach ($groups as $label => $items) {
-                if (empty($items)) continue;
+                if (empty($items)) {
+                    continue;
+                }
                 $options .= "<optgroup label='" . htmlspecialchars($label, ENT_QUOTES) . "'>";
                 foreach ($items as $award) {
                     $extra = '';
@@ -118,5 +122,3 @@ class Model_Award extends Model {
 
 
 }
-
-?>

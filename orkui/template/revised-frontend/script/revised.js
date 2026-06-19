@@ -2056,8 +2056,11 @@ if (PnConfig.recError) {
 
         // ---- Rank Pills ----
         function buildRankPills(awardId) {
+            var sel      = gid('pn-award-select');
+            var selOpt   = sel ? sel.options[sel.selectedIndex] : null;
+            var dml      = selOpt ? parseInt(selOpt.getAttribute('data-max-level'), 10) : 0;
             var opt      = document.querySelector('#pn-award-select option[data-award-id="' + awardId + '"]');
-            var maxRank  = /zodiac/i.test(opt ? opt.textContent : '') ? 12 : 10;
+            var maxRank  = (dml && dml > 0) ? dml : (/zodiac/i.test(opt ? opt.textContent : '') ? 12 : 10);
             var held      = playerRanks[awardId] || 0;
             var suggested = Math.min(held + 1, maxRank);
             var hint = gid('pn-rank-hint');

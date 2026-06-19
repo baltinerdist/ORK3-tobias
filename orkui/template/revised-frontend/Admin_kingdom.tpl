@@ -262,21 +262,7 @@ $totalAttendance = $TotalAttendance ?? 0;
 .ka-admin-table select { padding: 4px 4px; border: 1px solid #e2e8f0; border-radius: 4px; font-size: 12px; }
 .ka-admin-table .ka-tdel { background: none; border: none; color: #e53e3e; cursor: pointer; font-size: 12px; padding: 4px; opacity: 0.6; }
 .ka-admin-table .ka-tdel:hover { opacity: 1; }
-.ka-admin-table .ka-tsave { background: none; border: none; color: #3182ce; cursor: pointer; font-size: 12px; padding: 4px; opacity: 0.6; }
-.ka-admin-table .ka-tsave:hover { opacity: 1; }
 .ka-admin-table-wrap { overflow-x: auto; }
-/* Award group headers */
-.ka-award-group-hdr td {
-	background: #f7fafc; font-size: 11px; font-weight: 700; text-transform: uppercase;
-	letter-spacing: 0.05em; color: #4a5568; padding: 8px 6px !important;
-	border-bottom: 1.5px solid #e2e8f0; cursor: pointer; user-select: none;
-}
-.ka-award-group-hdr td:hover { background: #edf2f7; }
-.ka-award-group-chev {
-	display: inline-block; transition: transform 0.15s; font-size: 10px; margin-right: 6px; color: #a0aec0;
-}
-.ka-award-group-hdr.ka-collapsed .ka-award-group-chev { transform: rotate(-90deg); }
-.ka-award-group-count { font-weight: 400; color: #a0aec0; margin-left: 4px; font-size: 10px; text-transform: none; letter-spacing: 0; }
 .ka-admin-park-retired { opacity: 0.45; }
 
 /* Toggle switch */
@@ -324,9 +310,6 @@ $totalAttendance = $TotalAttendance ?? 0;
 @media (max-width: 480px) {
 	.ka-ops-row { flex-direction: column; align-items: stretch; }
 	.ka-ops-btn { justify-content: center; }
-	.ka-award-row-fields { flex-direction: column; }
-	.ka-award-row-fields .ka-field { width: 100%; }
-	.ka-award-row-fields input[style*="width:64px"] { width: 100% !important; }
 }
 
 /* Warning box */
@@ -336,42 +319,6 @@ $totalAttendance = $TotalAttendance ?? 0;
 /* Radio group */
 .ka-radio-group { display: flex; gap: 16px; }
 .ka-radio-group label { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
-
-/* Alias dropdown */
-.ka-alias-picker-wrap { position: relative; }
-.ka-alias-trigger {
-	display: flex; align-items: center; justify-content: space-between;
-	width: 100%; padding: 7px 10px; border: 1.5px solid #e2e8f0; border-radius: 6px;
-	font-size: 13px; color: #2d3748; background: #fff; cursor: pointer; text-align: left;
-}
-.ka-alias-trigger:hover { border-color: #cbd5e0; }
-.ka-alias-dropdown {
-	position: absolute; top: 100%; left: 0; right: 0; z-index: 99;
-	background: #fff; border: 1px solid #e2e8f0; border-radius: 6px;
-	box-shadow: 0 4px 16px rgba(0,0,0,0.1); max-height: 250px; overflow-y: auto;
-}
-.ka-alias-search { width: 100%; padding: 8px 10px; border: none; border-bottom: 1px solid #edf2f7; font-size: 13px; box-sizing: border-box; outline: none; }
-.ka-alias-list { max-height: 200px; overflow-y: auto; }
-.ka-alias-item { padding: 8px 12px; cursor: pointer; font-size: 13px; }
-.ka-alias-item:hover { background: #ebf8ff; }
-.ka-alias-empty { padding: 12px; color: #a0aec0; font-size: 12px; text-align: center; }
-.ka-alias-hint { color: #a0aec0; font-size: 10px; margin-left: 4px; cursor: help; }
-
-/* Award add buttons row */
-.ka-award-add-btns { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
-.ka-add-btn {
-	display: inline-flex; align-items: center; gap: 5px;
-	padding: 6px 12px; border: 1.5px dashed #cbd5e0; border-radius: 6px;
-	background: transparent; font-size: 12px; font-weight: 600; color: #4a5568;
-	cursor: pointer; transition: border-color 0.15s, background 0.15s;
-}
-.ka-add-btn:hover { border-color: #90cdf4; background: #ebf8ff; color: #2b6cb0; }
-.ka-add-award-wrap { margin-top: 14px; padding: 14px; background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 8px; }
-.ka-add-award-title { font-size: 13px; font-weight: 700; color: #2d3748; margin-bottom: 8px; }
-.ka-form-hint { font-size: 12px; color: #718096; margin: 0 0 10px; line-height: 1.5; }
-.ka-award-row-fields { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
-.ka-field-grow { flex: 1; min-width: 140px; }
-.ka-field-center { text-align: center; }
 
 /* Confirm overlay */
 .ka-confirm-overlay {
@@ -450,10 +397,6 @@ html[data-theme="dark"] .ka-admin-table th { color: var(--ork-text-secondary); b
 html[data-theme="dark"] .ka-admin-table td { border-bottom-color: var(--ork-border-dark); }
 html[data-theme="dark"] .ka-admin-table input[type=text], html[data-theme="dark"] .ka-admin-table input[type=number],
 html[data-theme="dark"] .ka-admin-table select { background: var(--ork-input-bg); border-color: var(--ork-input-border); color: var(--ork-text); }
-html[data-theme="dark"] .ka-award-group-hdr td { background: var(--ork-bg-tertiary); color: var(--ork-text-secondary); border-bottom-color: var(--ork-border); }
-html[data-theme="dark"] .ka-award-group-hdr td:hover { background: var(--ork-bg); }
-html[data-theme="dark"] .ka-award-group-chev { color: var(--ork-text-muted); }
-html[data-theme="dark"] .ka-award-group-count { color: var(--ork-text-muted); }
 
 /* Toggle */
 html[data-theme="dark"] .ka-toggle-track { background: var(--ork-bg-tertiary); }
@@ -473,23 +416,6 @@ html[data-theme="dark"] .ka-warning { background: var(--ork-alert-warning-bg); b
 
 /* Radio group */
 html[data-theme="dark"] .ka-radio-group label { color: var(--ork-text); }
-
-/* Alias dropdown */
-html[data-theme="dark"] .ka-alias-trigger { background: var(--ork-input-bg); border-color: var(--ork-input-border); color: var(--ork-text); }
-html[data-theme="dark"] .ka-alias-trigger:hover { border-color: var(--ork-border-dark); }
-html[data-theme="dark"] .ka-alias-dropdown { background: var(--ork-bg-secondary); border-color: var(--ork-border); box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
-html[data-theme="dark"] .ka-alias-search { background: var(--ork-input-bg); color: var(--ork-text); border-bottom-color: var(--ork-border-dark); }
-html[data-theme="dark"] .ka-alias-item { color: var(--ork-text); }
-html[data-theme="dark"] .ka-alias-item:hover { background: var(--ork-bg-tertiary); }
-html[data-theme="dark"] .ka-alias-empty { color: var(--ork-text-muted); }
-html[data-theme="dark"] .ka-alias-hint { color: var(--ork-text-muted); }
-
-/* Save button stays accented (fine in dark); add/dashed buttons */
-html[data-theme="dark"] .ka-add-btn { color: var(--ork-text-secondary); border-color: var(--ork-border-dark); }
-html[data-theme="dark"] .ka-add-btn:hover { background: var(--ork-bg-tertiary); border-color: #4299e1; color: #90cdf4; }
-html[data-theme="dark"] .ka-add-award-wrap { background: var(--ork-bg-tertiary); border-color: var(--ork-border); }
-html[data-theme="dark"] .ka-add-award-title { color: var(--ork-text); }
-html[data-theme="dark"] .ka-form-hint { color: var(--ork-text-secondary); }
 
 /* =============================================
    MANAGE OFFICERS HOST MODAL (.ka-mo-*)
@@ -679,11 +605,11 @@ html[data-theme="dark"] .ka-mo-close:hover { color: var(--ork-text); }
 			<div class="ka-section">
 				<div class="ka-section-title"><i class="fas fa-award"></i> Awards</div>
 				<div class="ka-action-tiles">
-					<button class="ka-action-card" onclick="kaOpenModal('ka-awards-overlay')">
+					<a class="ka-action-card" href="<?= UIR ?>Admin/awards/<?= $kid ?>">
 						<div class="ka-action-icon ka-action-icon-purple"><i class="fas fa-medal"></i></div>
 						<div class="ka-action-label">Manage Awards</div>
 						<div class="ka-action-desc">Award aliases and kingdom-specific awards</div>
-					</button>
+					</a>
 				</div>
 			</div>
 
@@ -981,119 +907,6 @@ html[data-theme="dark"] .ka-mo-close:hover { color: var(--ork-text); }
 		<div class="ka-modal-footer">
 			<button class="adm-btn adm-btn-ghost" onclick="kaCloseModal('ka-editparks-overlay')">Cancel</button>
 			<button class="adm-btn adm-btn-primary" id="ka-parks-save"><i class="fas fa-save"></i> Save Parks</button>
-		</div>
-	</div>
-</div>
-
-<!-- ---- Awards ---- -->
-<div class="ka-overlay" id="ka-awards-overlay">
-	<div class="ka-modal-box" style="width:760px;max-width:calc(100vw - 32px)">
-		<div class="ka-modal-header">
-			<h3 class="ka-modal-title"><i class="fas fa-medal" style="margin-right:8px;color:#6b46c1"></i>Manage Awards</h3>
-			<button class="ka-modal-close" onclick="kaCloseModal('ka-awards-overlay')">&times;</button>
-		</div>
-		<div class="ka-modal-body">
-			<div class="ka-feedback" id="ka-awards-feedback"></div>
-			<div class="ka-admin-table-wrap">
-				<table class="ka-admin-table">
-					<thead>
-						<tr>
-							<th>Award Name</th>
-							<th>Reign</th>
-							<th>Month</th>
-							<th>Title?</th>
-							<th>Class</th>
-							<th></th>
-						</tr>
-					</thead>
-					<tbody id="ka-awards-tbody">
-						<!-- Built by JS -->
-					</tbody>
-				</table>
-			</div>
-			<!-- Add Award Alias form -->
-			<div id="ka-add-award-wrap" style="display:none" class="ka-add-award-wrap">
-				<div class="ka-add-award-title">Add Award Alias</div>
-				<p class="ka-form-hint">An award alias lets you create additional variations on existing system awards and titles.</p>
-				<div class="ka-field">
-					<label>System Award</label>
-					<div class="ka-alias-picker-wrap">
-						<input type="hidden" id="ka-new-award-id">
-						<button type="button" class="ka-alias-trigger" id="ka-alias-trigger">
-							<span class="ka-alias-label" id="ka-alias-label">Select a system award&hellip;</span>
-							<i class="fas fa-chevron-down" style="font-size:11px;opacity:.5"></i>
-						</button>
-						<div class="ka-alias-dropdown" id="ka-alias-dropdown" style="display:none">
-							<input type="text" class="ka-alias-search" id="ka-alias-search" placeholder="Search awards..." autocomplete="off">
-							<div class="ka-alias-list" id="ka-alias-list"></div>
-						</div>
-					</div>
-				</div>
-				<div class="ka-award-row-fields">
-					<div class="ka-field ka-field-grow">
-						<label>Kingdom Name <span class="ka-hint">(your kingdom&rsquo;s name for this award)</span></label>
-						<input type="text" id="ka-new-award-name" placeholder="e.g. Order of the Warrior">
-					</div>
-					<div class="ka-field">
-						<label>Reign Limit</label>
-						<input type="number" id="ka-new-reign" min="0" value="0" style="width:64px">
-					</div>
-					<div class="ka-field">
-						<label>Month Limit</label>
-						<input type="number" id="ka-new-month" min="0" value="0" style="width:64px">
-					</div>
-					<div class="ka-field ka-field-center">
-						<label>Title?</label>
-						<input type="checkbox" id="ka-new-istitle">
-					</div>
-					<div class="ka-field">
-						<label>Title Class</label>
-						<input type="number" id="ka-new-tclass" min="0" value="0" style="width:64px" disabled>
-					</div>
-				</div>
-				<div style="display:flex;gap:8px;margin-top:10px">
-					<button class="ka-save-btn" id="ka-new-award-save"><i class="fas fa-plus"></i> Add Award Alias</button>
-					<button class="adm-btn adm-btn-ghost" id="ka-new-award-cancel" style="font-size:13px">Cancel</button>
-				</div>
-			</div>
-			<!-- Add Kingdom-Specific Award form -->
-			<div id="ka-add-custom-wrap" style="display:none" class="ka-add-award-wrap">
-				<div class="ka-add-award-title">Add Kingdom-Specific Award</div>
-				<p class="ka-form-hint">A kingdom-specific award allows you to add awards only given out in your kingdom.</p>
-				<div class="ka-award-row-fields">
-					<div class="ka-field ka-field-grow">
-						<label>Award Name</label>
-						<input type="text" id="ka-custom-name" placeholder="e.g. Kingdom Spotlight">
-					</div>
-					<div class="ka-field">
-						<label>Reign Limit</label>
-						<input type="number" id="ka-custom-reign" min="0" value="0" style="width:64px">
-					</div>
-					<div class="ka-field">
-						<label>Month Limit</label>
-						<input type="number" id="ka-custom-month" min="0" value="0" style="width:64px">
-					</div>
-					<div class="ka-field ka-field-center">
-						<label>Title?</label>
-						<input type="checkbox" id="ka-custom-istitle">
-					</div>
-					<div class="ka-field">
-						<label>Title Class</label>
-						<input type="number" id="ka-custom-tclass" min="0" value="0" style="width:64px" disabled>
-					</div>
-				</div>
-				<div style="display:flex;gap:8px;margin-top:10px">
-					<button class="ka-save-btn" id="ka-custom-save"><i class="fas fa-plus"></i> Add Award</button>
-					<button class="adm-btn adm-btn-ghost" id="ka-custom-cancel" style="font-size:13px">Cancel</button>
-				</div>
-			</div>
-			<div class="ka-award-add-btns" id="ka-award-add-btns">
-				<button class="ka-add-btn" id="ka-awards-add-btn"><i class="fas fa-plus"></i> Add Award Alias</button>
-				<button class="ka-add-btn" id="ka-custom-add-btn"><i class="fas fa-plus"></i> Add Kingdom-Specific Award</button>
-			</div>
-		</div>
-		<div class="ka-modal-footer">
-			<button class="adm-btn adm-btn-ghost" onclick="kaCloseModal('ka-awards-overlay')">Done</button>
 		</div>
 	</div>
 </div>
@@ -1405,8 +1218,6 @@ var KaConfig = {
 	parkEditLookup:   <?= json_encode(array_values($park_edit_lookup ?? []), JSON_HEX_TAG | JSON_HEX_AMP) ?>,
 	adminConfig:      <?= json_encode($AdminConfig ?? [], JSON_HEX_TAG | JSON_HEX_AMP) ?>,
 	adminParkTitles:  <?= json_encode($AdminParkTitles ?? [], JSON_HEX_TAG | JSON_HEX_AMP) ?>,
-	adminAwards:      <?= json_encode($AdminAwards ?? [], JSON_HEX_TAG | JSON_HEX_AMP) ?>,
-	systemAwards:     <?= json_encode($SystemAwards ?? [], JSON_HEX_TAG | JSON_HEX_AMP) ?>,
 	adminInfo:        <?= json_encode($AdminInfo ?? [], JSON_HEX_TAG | JSON_HEX_AMP) ?>,
 };
 </script>
@@ -2028,242 +1839,6 @@ var KaConfig = {
 					else kaFeedback('ka-parks-feedback', (r && r.error) ? r.error : 'Save failed.', false);
 				})
 				.catch(function() { btn.disabled = false; kaFeedback('ka-parks-feedback', 'Request failed.', false); });
-			});
-		}
-	})();
-
-	/* ══════════════════════════════════════════════
-	   AWARDS
-	   ══════════════════════════════════════════════ */
-	(function() {
-		var tbody = gid('ka-awards-tbody');
-		if (!tbody) return;
-
-		function makeAwardRow(aw) {
-			var tr = document.createElement('tr');
-			function ntd(isText, val) {
-				var td = document.createElement('td');
-				var inp = document.createElement('input');
-				inp.type = isText ? 'text' : 'number';
-				inp.style.cssText = isText ? 'width:100%;padding:4px 6px;border:1px solid #e2e8f0;border-radius:4px;font-size:12px' : 'width:56px;padding:4px;border:1px solid #e2e8f0;border-radius:4px;font-size:12px;text-align:center';
-				inp.value = val;
-				if (!isText) inp.min = '0';
-				td.appendChild(inp);
-				return { td: td, inp: inp };
-			}
-			var nameCell = ntd(true, aw.KingdomAwardName);
-			var sysName = aw.AwardName || '';
-			if (sysName && sysName !== aw.KingdomAwardName) {
-				var hint = document.createElement('span');
-				hint.className = 'ka-alias-hint';
-				hint.innerHTML = '<i class="fas fa-question-circle"></i>';
-				hint.title = 'Alias for system award: ' + sysName;
-				nameCell.td.appendChild(hint);
-			}
-			var reignCell = ntd(false, aw.ReignLimit);
-			var monthCell = ntd(false, aw.MonthLimit);
-			var titleTd = document.createElement('td');
-			titleTd.style.textAlign = 'center';
-			var titleCb = document.createElement('input');
-			titleCb.type = 'checkbox';
-			titleCb.checked = (aw.IsTitle === 1);
-			titleTd.appendChild(titleCb);
-			var classCell = ntd(false, aw.TitleClass);
-			classCell.inp.disabled = !titleCb.checked;
-			titleCb.addEventListener('change', function() { classCell.inp.disabled = !this.checked; });
-
-			var actionsTd = document.createElement('td');
-			actionsTd.style.whiteSpace = 'nowrap';
-			var saveBtn = document.createElement('button');
-			saveBtn.className = 'ka-tsave';
-			saveBtn.innerHTML = '<i class="fas fa-save"></i>';
-			saveBtn.title = 'Save';
-			saveBtn.style.marginRight = '4px';
-			(function(btn, nc, rc, mc, cb, cc, kawId) {
-				btn.addEventListener('click', function() {
-					kaClearFeedback('ka-awards-feedback');
-					btn.disabled = true;
-					kaPost(BASE_URL + 'setaward', {
-						KingdomAwardId: kawId, KingdomAwardName: nc.value.trim(),
-						ReignLimit: rc.value, MonthLimit: mc.value,
-						IsTitle: cb.checked ? 1 : 0, TitleClass: cc.value
-					}, null, 'ka-awards-feedback', function() {
-						btn.disabled = false;
-						kaFeedback('ka-awards-feedback', 'Award saved!', true);
-					});
-				});
-			})(saveBtn, nameCell.inp, reignCell.inp, monthCell.inp, titleCb, classCell.inp, aw.KingdomAwardId);
-
-			var delBtn = document.createElement('button');
-			delBtn.className = 'ka-tdel';
-			delBtn.innerHTML = '<i class="fas fa-trash"></i>';
-			delBtn.title = 'Delete';
-			(function(btn, row, kawId, awName) {
-				btn.addEventListener('click', function() {
-					kaConfirm('Delete award "' + awName + '"? This cannot be undone.', function() {
-						btn.disabled = true;
-						kaPost(BASE_URL + 'deleteaward', { KingdomAwardId: kawId }, null, 'ka-awards-feedback', function() {
-							row.parentNode && row.parentNode.removeChild(row);
-							kaFeedback('ka-awards-feedback', 'Award deleted.', true);
-						});
-					}, 'Delete Award');
-				});
-			})(delBtn, tr, aw.KingdomAwardId, aw.KingdomAwardName);
-
-			actionsTd.appendChild(saveBtn);
-			actionsTd.appendChild(delBtn);
-			tr.appendChild(nameCell.td);
-			tr.appendChild(reignCell.td);
-			tr.appendChild(monthCell.td);
-			tr.appendChild(titleTd);
-			tr.appendChild(classCell.td);
-			tr.appendChild(actionsTd);
-			return tr;
-		}
-
-		// Group awards using same logic as model.Award.php
-		function classifyAward(aw) {
-			var sysName = aw.AwardName || aw.KingdomAwardName || '';
-			if (aw.AwardId === 0) return 'Kingdom-Specific';
-			if (sysName === 'Custom Award') return 'Kingdom-Specific';
-			if (aw.IsLadder) return 'Ladder Awards';
-			if (sysName === 'Defender' || sysName === 'Master') return 'Noble Titles';
-			if (sysName === 'Weaponmaster') return 'Offices & Other';
-			if (aw.Peerage === 'Knight') return 'Knighthoods';
-			if (aw.Peerage === 'Paragon') return 'Paragons';
-			if (aw.Peerage === 'Master' || (aw.IsTitle && aw.TitleClass === 10)) return 'Masterhoods';
-			if (['Squire','Man-At-Arms','Page','Lords-Page'].indexOf(aw.Peerage) >= 0 || sysName === 'Apprentice') return 'Associate Titles';
-			if ((aw.IsTitle && aw.TitleClass >= 30) || sysName === 'Esquire') return 'Noble Titles';
-			return 'Offices & Other';
-		}
-
-		var groupOrder = ['Ladder Awards','Kingdom-Specific','Knighthoods','Masterhoods','Paragons','Noble Titles','Associate Titles','Offices & Other'];
-		var groups = {};
-		groupOrder.forEach(function(g) { groups[g] = []; });
-		(KaConfig.adminAwards || []).forEach(function(aw) {
-			var g = classifyAward(aw);
-			if (!groups[g]) groups[g] = [];
-			groups[g].push(aw);
-		});
-
-		groupOrder.forEach(function(groupName) {
-			var items = groups[groupName];
-			if (!items || !items.length) return;
-			// Group header row
-			var hdr = document.createElement('tr');
-			hdr.className = 'ka-award-group-hdr';
-			var hdrTd = document.createElement('td');
-			hdrTd.colSpan = 6;
-			hdrTd.innerHTML = '<i class="fas fa-chevron-down ka-award-group-chev"></i>' + groupName + '<span class="ka-award-group-count">(' + items.length + ')</span>';
-			hdr.appendChild(hdrTd);
-			tbody.appendChild(hdr);
-			// Award rows for this group
-			var rowEls = [];
-			items.forEach(function(aw) {
-				var row = makeAwardRow(aw);
-				tbody.appendChild(row);
-				rowEls.push(row);
-			});
-			// Toggle collapse
-			hdr.addEventListener('click', function() {
-				var collapsed = hdr.classList.toggle('ka-collapsed');
-				rowEls.forEach(function(r) { r.style.display = collapsed ? 'none' : ''; });
-			});
-		});
-
-		// Award alias / custom add forms
-		var addBtn = gid('ka-awards-add-btn'), addWrap = gid('ka-add-award-wrap'), addCancel = gid('ka-new-award-cancel');
-		var customBtn = gid('ka-custom-add-btn'), customWrap = gid('ka-add-custom-wrap'), customCancel = gid('ka-custom-cancel');
-		var btnRow = gid('ka-award-add-btns');
-
-		function showAliasForm() { if (addWrap) addWrap.style.display = ''; if (customWrap) customWrap.style.display = 'none'; if (btnRow) btnRow.style.display = 'none'; }
-		function showCustomForm() { if (customWrap) customWrap.style.display = ''; if (addWrap) addWrap.style.display = 'none'; if (btnRow) btnRow.style.display = 'none'; }
-		function showButtons() { if (addWrap) addWrap.style.display = 'none'; if (customWrap) customWrap.style.display = 'none'; if (btnRow) btnRow.style.display = ''; }
-
-		if (addBtn) addBtn.addEventListener('click', showAliasForm);
-		if (customBtn) customBtn.addEventListener('click', showCustomForm);
-		if (addCancel) addCancel.addEventListener('click', showButtons);
-		if (customCancel) customCancel.addEventListener('click', showButtons);
-
-		// Title checkbox toggles
-		var newIsTitleCb = gid('ka-new-istitle'), newTClassInp = gid('ka-new-tclass');
-		if (newIsTitleCb && newTClassInp) newIsTitleCb.addEventListener('change', function() { newTClassInp.disabled = !this.checked; });
-		var customIsTitleCb = gid('ka-custom-istitle'), customTClassInp = gid('ka-custom-tclass');
-		if (customIsTitleCb && customTClassInp) customIsTitleCb.addEventListener('change', function() { customTClassInp.disabled = !this.checked; });
-
-		// System award alias dropdown
-		var trigger = gid('ka-alias-trigger'), dropdown = gid('ka-alias-dropdown'), searchInp = gid('ka-alias-search');
-		var listEl = gid('ka-alias-list'), hiddenInp = gid('ka-new-award-id'), nameInp = gid('ka-new-award-name');
-		var labelSpan = gid('ka-alias-label');
-		var sysAwards = KaConfig.systemAwards || [];
-		var aliasOpen = false;
-
-		function buildAliasList(filter) {
-			if (!listEl) return;
-			listEl.innerHTML = '';
-			var lc = (filter || '').toLowerCase(), count = 0;
-			sysAwards.forEach(function(sa) {
-				if (lc && sa.Name.toLowerCase().indexOf(lc) === -1) return;
-				var div = document.createElement('div');
-				div.className = 'ka-alias-item';
-				div.textContent = sa.Name;
-				div.addEventListener('click', function() { selectAlias(sa.AwardId, sa.Name); });
-				listEl.appendChild(div);
-				count++;
-			});
-			if (!count) { var empty = document.createElement('div'); empty.className = 'ka-alias-empty'; empty.textContent = 'No matching awards'; listEl.appendChild(empty); }
-		}
-		function selectAlias(id, name) {
-			if (hiddenInp) hiddenInp.value = id;
-			if (labelSpan) { labelSpan.textContent = name; }
-			if (nameInp && !nameInp.value.trim()) nameInp.value = name;
-			closeAlias();
-		}
-		function openAlias() { if (!dropdown || aliasOpen) return; aliasOpen = true; dropdown.style.display = ''; buildAliasList(''); if (searchInp) { searchInp.value = ''; searchInp.focus(); } }
-		function closeAlias() { if (!dropdown) return; aliasOpen = false; dropdown.style.display = 'none'; }
-		if (trigger) trigger.addEventListener('click', function(e) { e.preventDefault(); aliasOpen ? closeAlias() : openAlias(); });
-		if (searchInp) { searchInp.addEventListener('input', function() { buildAliasList(this.value); }); searchInp.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeAlias(); }); }
-		document.addEventListener('click', function(e) { if (aliasOpen && trigger && dropdown && !trigger.contains(e.target) && !dropdown.contains(e.target)) closeAlias(); });
-
-		// Save new alias
-		var saveNewBtn = gid('ka-new-award-save');
-		if (saveNewBtn) {
-			saveNewBtn.addEventListener('click', function() {
-				kaClearFeedback('ka-awards-feedback');
-				var awardId = parseInt((hiddenInp ? hiddenInp.value : '0') || '0', 10);
-				var name = (nameInp ? nameInp.value : '').trim();
-				if (!awardId) { kaFeedback('ka-awards-feedback', 'Please select a system award.', false); return; }
-				if (!name) { kaFeedback('ka-awards-feedback', 'Award name is required.', false); return; }
-				saveNewBtn.disabled = true;
-				kaPost(BASE_URL + 'setaward', {
-					KingdomAwardId: 0, AwardId: awardId, KingdomAwardName: name,
-					ReignLimit: gid('ka-new-reign').value, MonthLimit: gid('ka-new-month').value,
-					IsTitle: gid('ka-new-istitle').checked ? 1 : 0, TitleClass: gid('ka-new-tclass').value
-				}, null, 'ka-awards-feedback', function() {
-					saveNewBtn.disabled = false;
-					kaFeedback('ka-awards-feedback', 'Award alias created!', true);
-					setTimeout(function() { location.reload(); }, 900);
-				});
-			});
-		}
-
-		// Save custom award
-		var saveCustomBtn = gid('ka-custom-save');
-		if (saveCustomBtn) {
-			saveCustomBtn.addEventListener('click', function() {
-				kaClearFeedback('ka-awards-feedback');
-				var name = (gid('ka-custom-name').value || '').trim();
-				if (!name) { kaFeedback('ka-awards-feedback', 'Award name is required.', false); return; }
-				saveCustomBtn.disabled = true;
-				kaPost(BASE_URL + 'setaward', {
-					KingdomAwardId: 0, AwardId: 0, KingdomAwardName: name,
-					ReignLimit: gid('ka-custom-reign').value, MonthLimit: gid('ka-custom-month').value,
-					IsTitle: gid('ka-custom-istitle').checked ? 1 : 0, TitleClass: gid('ka-custom-tclass').value
-				}, null, 'ka-awards-feedback', function() {
-					saveCustomBtn.disabled = false;
-					kaFeedback('ka-awards-feedback', 'Kingdom-specific award created!', true);
-					setTimeout(function() { location.reload(); }, 900);
-				});
 			});
 		}
 	})();
