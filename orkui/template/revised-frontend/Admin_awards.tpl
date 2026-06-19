@@ -594,7 +594,19 @@ var AwConfig = {
     // Amtgard "Award Standardization" — the nine Order→Master→Knight ladders, by system award_id.
     var CANONICAL_LADDER_AWARD_IDS = [21, 22, 23, 239, 24, 25, 26, 27, 243];
 
+    // Awards we proactively surface in "Kingdom Awards & Orders" for every kingdom.
+    // 207 = Dragonmaster, 36 = Weaponmaster. Neither is a Masterhood despite the
+    // "-master" name (the Order of the Battle capstone is Battlemaster); Weaponmaster's
+    // title_class=10 would otherwise mis-route it into Masterhoods.
+    var SUGGESTED_AWARDS = [
+        { awardId: 207, name: 'Dragonmaster', isTitle: 1, nameRx: /dragon\s*master/i },
+        { awardId: 36,  name: 'Weaponmaster', isTitle: 1, nameRx: /weapon\s*master/i }
+    ];
+    var PINNED_TO_KAO = [207, 36];
+
     function classifyAward(aw) {
+        // Pinned awards always land in the kingdom catch-all regardless of title_class.
+        if (PINNED_TO_KAO.indexOf(parseInt(aw.AwardId, 10)) >= 0) return 'Kingdom Awards & Orders';
         var sysName = aw.AwardName || aw.Name || aw.KingdomAwardName || '';
         if (aw.IsLadder) {
             return CANONICAL_LADDER_AWARD_IDS.indexOf(parseInt(aw.AwardId, 10)) >= 0
@@ -661,6 +673,21 @@ var AwConfig = {
 
     /* ---- Build catalog ---- */
     var awards = AwConfig.awards || [];
+
+    // A kingdom "has" a suggested award if any row references the standard award_id OR
+    // its name matches the variant regex (covers "Dragon Master", "Kingdom Dragon Master",
+    // and the orphan award_ids 187/129). Disabled-but-present still counts as "has it".
+    function kingdomHasSuggestion(sug) {
+        return awards.some(function(a) {
+            if (parseInt(a.AwardId, 10) === sug.awardId) return true;
+            if (sug.nameRx.test(a.KingdomAwardName || '')) return true;
+            if (sug.nameRx.test(a.AwardName || '')) return true;
+            return false;
+        });
+    }
+    function missingSuggestions() {
+        return SUGGESTED_AWARDS.filter(function(s) { return !kingdomHasSuggestion(s); });
+    }
     var awardsById = {};
     awards.forEach(function(a) { awardsById[String(a.KingdomAwardId)] = a; });
 
