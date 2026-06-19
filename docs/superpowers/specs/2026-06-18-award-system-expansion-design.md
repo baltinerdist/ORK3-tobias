@@ -1,8 +1,19 @@
 # Award System Expansion — Definitions, Custom Awards/Titles/Orders & Frictionless One-off Grants
 
 **Date:** 2026-06-18
-**Status:** Approved (design) — pending implementation plan
+**Status:** Phase A **built** (uncommitted at time of writing); corrected below to match what actually shipped.
 **Builds on:** `2026-06-18-award-management-redesign-design.md` (the dedicated Award Management page, already shipped)
+
+## As-built corrections (read this first)
+
+Implementation surfaced facts that changed the design. The body below is the original reasoning; these corrections override it where they conflict:
+
+1. **One-off custom grants already exist.** The original spec's §6 ("frictionless one-off grants") was **already shipped on this branch** via migration `2026-04-14-custom-titles.sql` (`ork_awards.custom_name` + `alias_award_id`) — `class.Player.php::AddAward` persists them and the grant UI is wired. **Not rebuilt.** (A parallel workflow attempt to re-implement it was discarded.) This is the third tier from the model; it's done, not pending.
+2. **No "add a standard" picker.** Data check: of 35 real kingdoms (freeholds / Þe Olde / a 9-award test group excluded), **34 are missing zero core-standard awards**; one is missing two. So "add a standard you're missing" solved a non-problem and was **dropped**. Per-subsection **"+ Add" is create-only** (create a kingdom-original award in that category). This also removed the confusing surfacing of niche national awards (Autocrat/Olympian/etc., used by only 4–7 kingdoms — *not* "standard").
+3. **Badge flags the exception, not the norm.** No "Standard" badge (an opaque word on 98% of rows). Only **kingdom-created** awards get a **"Custom"** pill (hover: "Created by your kingdom — not a standard Amtgard award"). Standard awards are unbadged.
+4. **Aliases = shared `award_id`, no schema change.** Confirmed from data: an alias is simply another `ork_kingdomaward` row sharing one system `award_id` (e.g. 35 kingdoms have "Woman-at-Arms" sharing `award_id 14` with "Man-at-Arms"). A **"+ Create Alias"** control in the edit drawer (standard awards only) creates sibling rows; they render with an **"Alias"** badge tooltipped **"Alias of [parent]"**. Aliasing custom awards is explicitly **not** supported (no shared id). No new column.
+5. **Catch-all merged** into one **"Kingdom Awards & Orders"** group (the old "Offices & Other" + "Kingdom-Specific"); the Custom/no-badge distinction disambiguates within it.
+6. **Phasing as it actually stands:** **A** (per-subsection create-only add + `classifyAward` honoring custom attributes + Custom badge + aliases) is **built**. **B** (one-off grants) **pre-existed** — done. **C** (kingdom ladders) is still future. **D** (promote one-off → definition) still optional.
 
 ## Problem
 

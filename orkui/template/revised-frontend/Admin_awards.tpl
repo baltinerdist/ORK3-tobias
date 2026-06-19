@@ -15,7 +15,6 @@ $heraldryUrl = $hasHeraldry
     : HTTP_KINGDOM_HERALDRY . '0000.jpg';
 
 $adminAwards  = is_array($AdminAwards ?? null) ? $AdminAwards : [];
-$systemAwards = is_array($SystemAwards ?? null) ? $SystemAwards : [];
 $canEdit      = !empty($CanManageKingdom);
 ?>
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>revised-frontend/style/revised.css?v=<?= filemtime(DIR_TEMPLATE . 'revised-frontend/style/revised.css') ?>">
@@ -113,6 +112,8 @@ $canEdit      = !empty($CanManageKingdom);
     cursor: pointer; background: #f7fafc; user-select: none; transition: background 0.15s;
 }
 .aw-group-hdr:hover { background: #edf2f7; }
+.aw-group-hdr { position: relative; }
+.aw-group-add { margin-left: auto; flex-shrink: 0; }
 .aw-group-chev { color: #a0aec0; font-size: 13px; margin-top: 3px; transition: transform 0.18s; flex-shrink: 0; }
 .aw-group.aw-collapsed .aw-group-chev { transform: rotate(-90deg); }
 .aw-group-meta { flex: 1; min-width: 0; }
@@ -143,6 +144,8 @@ $canEdit      = !empty($CanManageKingdom);
 }
 .aw-badge-title { background: #fefcbf; color: #975a16; }
 .aw-badge-ladder { background: #c6f6d5; color: #276749; }
+.aw-badge-kingdom  { background: #e9d8fd; color: #553c9a; }
+.aw-badge-alias    { background: #bee3f8; color: #2c5282; }
 .aw-badge-disabled { background: #fed7d7; color: #c53030; }
 .aw-row-chev { color: #cbd5e0; font-size: 12px; }
 .aw-group-empty { padding: 16px 18px; font-size: 12px; color: #a0aec0; border-top: 1px solid #edf2f7; }
@@ -259,9 +262,19 @@ $canEdit      = !empty($CanManageKingdom);
     width: 100%; padding: 9px 11px; border: none; border-bottom: 1px solid #e2e8f0;
     font-size: 13px; box-sizing: border-box; outline: none;
 }
-.aw-alias-list { max-height: 220px; overflow-y: auto; }
-.aw-alias-item { padding: 8px 11px; font-size: 13px; color: #2d3748; cursor: pointer; }
-.aw-alias-item:hover { background: #faf5ff; }
+.aw-alias-list { max-height: 220px; overflow-y: auto; display: flex; flex-wrap: wrap; gap: 6px; }
+.aw-alias-item {
+    padding: 7px 12px; font-size: 13px; color: #2d3748; cursor: pointer; font: inherit;
+    background: #fff; border: 1px solid #cbd5e0; border-radius: 6px;
+}
+.aw-alias-item:hover { background: #faf5ff; border-color: #b794f4; }
+.aw-alias-input-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+.aw-alias-input-row input[type="text"] { flex: 1; width: auto; margin: 0; }
+.aw-alias-remove {
+    border: none; background: #fed7d7; color: #c53030; cursor: pointer;
+    width: 30px; height: 30px; border-radius: 6px; font-size: 16px; line-height: 1; flex-shrink: 0;
+}
+.aw-alias-remove:hover { background: #feb2b2; }
 .aw-alias-empty { padding: 10px 11px; font-size: 12px; color: #a0aec0; }
 
 /* In-product confirm dialog */
@@ -300,6 +313,9 @@ html[data-theme="dark"] .aw-confirm-body { color: #cbd5e0; }
     white-space: normal; width: max-content; max-width: 240px; line-height: 1.4;
     box-shadow: 0 4px 12px rgba(0,0,0,0.2);
 }
+/* Badge tooltips sit at the right edge of a row — right-anchor so they open
+   leftward and never clip off-screen. */
+.aw-badge.aw-tip[data-tip]:hover::after { left: auto; right: 0; }
 
 /* DARK MODE */
 html[data-theme="dark"] .aw-search,
@@ -316,11 +332,13 @@ html[data-theme="dark"] .aw-group-name,
 html[data-theme="dark"] .aw-row-name,
 html[data-theme="dark"] .aw-drawer-title,
 html[data-theme="dark"] .aw-toggle-row label,
-html[data-theme="dark"] .aw-alias-trigger,
-html[data-theme="dark"] .aw-alias-item { color: #e2e8f0; }
+html[data-theme="dark"] .aw-alias-trigger { color: #e2e8f0; }
+html[data-theme="dark"] .aw-alias-item { color: #e2e8f0; background: #2d3748; border-color: #4a5568; }
 html[data-theme="dark"] .aw-row { border-color: #3a4554; }
-html[data-theme="dark"] .aw-row:hover,
-html[data-theme="dark"] .aw-alias-item:hover { background: #353f50; }
+html[data-theme="dark"] .aw-row:hover { background: #353f50; }
+html[data-theme="dark"] .aw-alias-item:hover { background: #353f50; border-color: #6b46c1; }
+html[data-theme="dark"] .aw-alias-remove { background: #5b2a2a; color: #feb2b2; }
+html[data-theme="dark"] .aw-alias-remove:hover { background: #742a2a; }
 html[data-theme="dark"] .aw-seg button { color: #cbd5e0; border-color: #4a5568; }
 html[data-theme="dark"] .aw-btn-outline { color: #cbd5e0; border-color: #4a5568; }
 html[data-theme="dark"] .aw-explainer { background: #322659; border-color: #553c9a; color: #d6bcfa; }
@@ -333,6 +351,8 @@ html[data-theme="dark"] .aw-field > label,
 html[data-theme="dark"] .aw-field-help { color: #a0aec0; }
 html[data-theme="dark"] .aw-toggle-row { border-color: #3a4554; }
 html[data-theme="dark"] .aw-alias-search { background: #2d3748; color: #e2e8f0; border-color: #4a5568; }
+html[data-theme="dark"] .aw-badge-kingdom  { background: #44337a; color: #e9d8fd; }
+html[data-theme="dark"] .aw-badge-alias    { background: #2c5282; color: #bee3f8; }
 </style>
 
 <!-- =============================================
@@ -426,6 +446,15 @@ html[data-theme="dark"] .aw-alias-search { background: #2d3748; color: #e2e8f0; 
             <span class="aw-dyk-icon">&#128161;</span>
             <div><strong>Did you know?</strong> To change who can <em>grant</em> this award, go to Officers &rarr; Permissions. Ladder rungs &amp; the Master capstone are configured by the system.</div>
         </div>
+
+        <?php if ($canEdit): ?>
+        <div class="aw-field" id="aw-edit-alias-section" style="display:none;margin-top:16px">
+            <label>Aliases</label>
+            <div class="aw-field-help" style="margin-top:-2px;margin-bottom:8px">Alternate names for this same award (e.g. &ldquo;Woman-at-Arms&rdquo; for &ldquo;Man-at-Arms&rdquo;). Each grants the same underlying award.</div>
+            <div id="aw-edit-alias-list"></div>
+            <button type="button" class="aw-btn aw-btn-outline aw-btn-sm" id="aw-edit-add-alias"><i class="fas fa-plus"></i> Create Alias</button>
+        </div>
+        <?php endif; ?>
     </div>
     <?php if ($canEdit): ?>
     <div class="aw-drawer-footer">
@@ -442,60 +471,24 @@ html[data-theme="dark"] .aw-alias-search { background: #2d3748; color: #e2e8f0; 
     <div class="aw-drawer-header">
         <div>
             <div class="aw-drawer-eyebrow">New</div>
-            <h2 class="aw-drawer-title">Add Award</h2>
+            <h2 class="aw-drawer-title" id="aw-add-title">Add Award</h2>
         </div>
         <button class="aw-drawer-close" data-close-drawer="aw-add-drawer">&times;</button>
     </div>
     <div class="aw-drawer-body">
-        <div class="aw-seg" id="aw-add-seg" style="display:flex;margin-bottom:14px">
-            <button data-mode="alias" class="aw-seg-active" style="flex:1">Award Alias</button>
-            <button data-mode="custom" style="flex:1">Kingdom-Specific</button>
-        </div>
-
-        <div class="aw-add-help" id="aw-add-help-alias">Search existing awards/titles to add a <?= strtolower($entityLabel) ?> variation.</div>
-        <div class="aw-add-help" id="aw-add-help-custom" style="display:none">Create an award given only in your <?= strtolower($entityLabel) ?>.</div>
-
-        <input type="hidden" id="aw-add-awardid" value="0">
-
-        <!-- Alias picker (hidden in custom mode) -->
-        <div class="aw-field" id="aw-add-picker-field">
-            <label>System award</label>
-            <div class="aw-alias-wrap">
-                <button type="button" class="aw-alias-trigger" id="aw-add-alias-trigger">
-                    <span class="aw-alias-label-text" id="aw-add-alias-label">Select a system award&hellip;</span>
-                    <i class="fas fa-chevron-down" style="font-size:11px;opacity:.5"></i>
-                </button>
-                <div class="aw-alias-dropdown" id="aw-add-alias-dropdown" style="display:none">
-                    <input type="text" class="aw-alias-search" id="aw-add-alias-search" placeholder="Search awards&hellip;" autocomplete="off">
-                    <div class="aw-alias-list" id="aw-add-alias-list"></div>
-                </div>
-            </div>
-        </div>
-
         <div class="aw-field">
-            <label>Name</label>
-            <input type="text" id="aw-add-name" autocomplete="off" placeholder="e.g. Order of the Warrior">
+            <div class="label">Name</div>
+            <input type="text" id="aw-add-name" autocomplete="off" placeholder="e.g. Order of the Hunter">
         </div>
-
-        <div class="aw-field-grid">
-            <div class="aw-field">
-                <label>Per reign <span class="aw-ref-badge aw-tip" data-tip="The system does not block awards based on this number. It is shown for reference only.">Reference only</span></label>
-                <input type="number" id="aw-add-reign" min="0" value="0">
-            </div>
-            <div class="aw-field">
-                <label>Per month <span class="aw-ref-badge aw-tip" data-tip="The system does not block awards based on this number. It is shown for reference only.">Reference only</span></label>
-                <input type="number" id="aw-add-month" min="0" value="0">
-            </div>
+        <div style="display:flex;gap:12px">
+            <div class="aw-field" style="flex:1"><div class="label">Per reign</div><input type="number" id="aw-add-reign" min="0" value="0"></div>
+            <div class="aw-field" style="flex:1"><div class="label">Per month</div><input type="number" id="aw-add-month" min="0" value="0"></div>
         </div>
-
-        <div class="aw-toggle-row">
-            <input type="checkbox" id="aw-add-istitle">
-            <label for="aw-add-istitle">Confers a title?</label>
+        <div class="aw-add-help">Reign/month limits are reference-only (not enforced).</div>
+        <div class="aw-drawer-footer">
+            <button class="aw-btn aw-btn-primary" id="aw-add-create"><i class="fas fa-plus"></i> Create</button>
+            <button class="aw-btn aw-btn-outline" data-close-drawer="aw-add-drawer">Cancel</button>
         </div>
-    </div>
-    <div class="aw-drawer-footer">
-        <button class="aw-btn aw-btn-primary" id="aw-add-save"><i class="fas fa-plus"></i> Add Award</button>
-        <button class="aw-btn aw-btn-outline" data-close-drawer="aw-add-drawer">Cancel</button>
     </div>
 </div>
 
@@ -521,7 +514,6 @@ var AwConfig = {
   kid: <?= (int)($kingdom_id ?? 0) ?>,
   uir: '<?= UIR ?>',
   awards: <?= json_encode($AdminAwards ?? [], JSON_HEX_TAG | JSON_HEX_AMP) ?>,
-  systemAwards: <?= json_encode($SystemAwards ?? [], JSON_HEX_TAG | JSON_HEX_AMP) ?>,
   canEdit: <?= !empty($CanManageKingdom) ? 'true' : 'false' ?>
 };
 </script>
@@ -586,25 +578,26 @@ var AwConfig = {
     }
 
     /* ---- Award classifier (ported from Admin_kingdom.tpl classifyAward) ---- */
+    // Classify by attributes. Works for both kingdom awards (aw.AwardId may be 0 for
+    // kingdom-original) and system awards (always have an AwardId). Knighthoods & Paragons
+    // are Amtgard-controlled; everything else can hold kingdom-original entries.
     function classifyAward(aw) {
-        var sysName = aw.AwardName || aw.KingdomAwardName || '';
-        if (aw.AwardId === 0) return 'Kingdom-Specific';
-        if (sysName === 'Custom Award') return 'Kingdom-Specific';
+        var sysName = aw.AwardName || aw.Name || aw.KingdomAwardName || '';
         if (aw.IsLadder) return 'Ladder Awards (Orders)';
         if (sysName === 'Defender' || sysName === 'Master') return 'Noble Titles';
-        if (sysName === 'Weaponmaster') return 'Offices & Other';
-        // Peerage may be absent from the contract — fall back to name "Knight of ..."
         if (aw.Peerage === 'Knight' || /^knight of\b/i.test(sysName)) return 'Knighthoods';
         if (aw.Peerage === 'Paragon') return 'Paragons';
         if (aw.Peerage === 'Master' || (aw.IsTitle && aw.TitleClass === 10)) return 'Masterhoods';
         if (['Squire', 'Man-At-Arms', 'Page', 'Lords-Page'].indexOf(aw.Peerage) >= 0 || sysName === 'Apprentice') return 'Associate Titles';
         if ((aw.IsTitle && aw.TitleClass >= 30) || sysName === 'Esquire') return 'Noble Titles';
-        return 'Offices & Other';
+        // Everything else — non-title custom recognitions, offices, "Order of X" customs,
+        // and the legacy "Custom Award"/"Weaponmaster" names — lands in the kingdom catch-all.
+        return 'Kingdom Awards & Orders';
     }
 
     var GROUP_ORDER = [
         'Ladder Awards (Orders)', 'Knighthoods', 'Masterhoods', 'Paragons',
-        'Noble Titles', 'Associate Titles', 'Kingdom-Specific', 'Offices & Other'
+        'Noble Titles', 'Associate Titles', 'Kingdom Awards & Orders'
     ];
     var GROUP_BLURB = {
         'Ladder Awards (Orders)': 'rank-based; climb rungs toward a Master',
@@ -613,8 +606,18 @@ var AwConfig = {
         'Paragons': 'the highest recognitions of skill',
         'Noble Titles': 'court / land titles',
         'Associate Titles': 'squire / page / man-at-arms paths',
-        'Kingdom-Specific': 'custom to your kingdom',
-        'Offices & Other': 'offices and everything else'
+        'Kingdom Awards & Orders': 'recognitions unique to your kingdom (and anything uncategorized)'
+    };
+
+    // Subsections kingdoms may extend. Knighthoods & Paragons are Amtgard-controlled (omitted).
+    // titleClass is the bucket-determining default for a NEW custom title in that group;
+    // fine ordering is handled later by Order of Precedence.
+    var ADDABLE = {
+        'Ladder Awards (Orders)':  { singular: 'Order',          isTitle: 0, titleClass: 0  },
+        'Masterhoods':             { singular: 'Masterhood',     isTitle: 1, titleClass: 10 },
+        'Noble Titles':            { singular: 'Noble Title',    isTitle: 1, titleClass: 30 },
+        'Associate Titles':        { singular: 'Associate Title',isTitle: 1, titleClass: 15 },
+        'Kingdom Awards & Orders': { singular: 'Award',          isTitle: 0, titleClass: 0  }
     };
 
     /* ---- Per-group "What this is" explainer text ---- */
@@ -640,10 +643,47 @@ var AwConfig = {
     var awardsById = {};
     awards.forEach(function(a) { awardsById[String(a.KingdomAwardId)] = a; });
 
+    // Alias map: when a kingdom has >1 row sharing one system award_id, the non-primary
+    // rows are aliases (e.g. "Woman-at-Arms" sharing award_id 14 with "Man-at-Arms").
+    // primary = the row whose name matches the system award name, else the lowest id.
+    var aliasParentName = {}; // kingdomAwardId -> parent (primary) display name
+    (function computeAliases() {
+        var byAwardId = {};
+        awards.forEach(function(a) {
+            if (a.AwardId && a.AwardId > 0) {
+                (byAwardId[a.AwardId] = byAwardId[a.AwardId] || []).push(a);
+            }
+        });
+        Object.keys(byAwardId).forEach(function(aid) {
+            var grp = byAwardId[aid];
+            if (grp.length < 2) return;
+            var primary = null;
+            grp.forEach(function(a) { if (!primary && a.KingdomAwardName === a.AwardName) primary = a; });
+            if (!primary) {
+                primary = grp.slice().sort(function(a, b) { return a.KingdomAwardId - b.KingdomAwardId; })[0];
+            }
+            grp.forEach(function(a) {
+                if (a.KingdomAwardId !== primary.KingdomAwardId) {
+                    aliasParentName[a.KingdomAwardId] = primary.KingdomAwardName;
+                }
+            });
+        });
+    })();
+
     var catalog = document.getElementById('aw-catalog');
 
     function badgesHtml(aw) {
         var h = '';
+        // Only flag the exception — awards your kingdom created. The ~98% that are
+        // standard Amtgard awards get no badge (they're the unremarkable default).
+        var isCustom = !aw.AwardId || aw.AwardId === 0;
+        if (isCustom) {
+            h += '<span class="aw-badge aw-badge-kingdom aw-tip" data-tip="Created by your ' + ENTITY_LC + ' — not a standard Amtgard award.">Custom</span>';
+        }
+        var parent = aliasParentName[aw.KingdomAwardId];
+        if (parent) {
+            h += '<span class="aw-badge aw-badge-alias aw-tip" data-tip="Alias of ' + escHtml(parent) + '">Alias</span>';
+        }
         if (aw.IsTitle) h += '<span class="aw-badge aw-badge-title">Title</span>';
         if (aw.IsLadder) h += '<span class="aw-badge aw-badge-ladder">Ladder</span>';
         return h;
@@ -679,6 +719,13 @@ var AwConfig = {
                     '<span class="aw-group-count" data-count></span>' +
                     '<div class="aw-group-blurb">' + escHtml(GROUP_BLURB[groupName] || '') + '</div>' +
                 '</div>';
+            if (AwConfig.canEdit && ADDABLE[groupName]) {
+                var addBtn = document.createElement('button');
+                addBtn.className = 'aw-btn aw-btn-outline aw-btn-sm aw-group-add';
+                addBtn.innerHTML = '<i class="fas fa-plus"></i> Add ' + escHtml(ADDABLE[groupName].singular);
+                addBtn.onclick = function(e) { e.stopPropagation(); openAddForGroup(groupName); };
+                hdr.appendChild(addBtn);
+            }
             hdr.addEventListener('click', function() { groupEl.classList.toggle('aw-collapsed'); });
             groupEl.appendChild(hdr);
 
@@ -824,7 +871,36 @@ var AwConfig = {
                 ? '<i class="fas fa-check-circle"></i> Enable'
                 : '<i class="fas fa-ban"></i> Disable';
         }
+        // Aliases can only hang off a standard award (a shared system award_id).
+        // Custom/kingdom-original awards (award_id 0) have nothing to share, so hide it.
+        var aliasSection = document.getElementById('aw-edit-alias-section');
+        if (aliasSection) {
+            aliasSection.style.display = (aw.AwardId && aw.AwardId > 0) ? '' : 'none';
+            var aliasList = document.getElementById('aw-edit-alias-list');
+            if (aliasList) aliasList.innerHTML = '';
+        }
         openDrawer('aw-edit-drawer');
+    }
+
+    function addAliasInput() {
+        var list = document.getElementById('aw-edit-alias-list');
+        if (!list) return;
+        var row = document.createElement('div');
+        row.className = 'aw-alias-input-row';
+        var inp = document.createElement('input');
+        inp.type = 'text';
+        inp.className = 'aw-edit-alias-input';
+        inp.placeholder = 'Alias name (e.g. Woman-at-Arms)';
+        var rm = document.createElement('button');
+        rm.type = 'button';
+        rm.className = 'aw-alias-remove aw-tip';
+        rm.setAttribute('data-tip', 'Remove');
+        rm.innerHTML = '&times;';
+        rm.onclick = function() { if (row.parentNode) row.parentNode.removeChild(row); };
+        row.appendChild(inp);
+        row.appendChild(rm);
+        list.appendChild(row);
+        inp.focus();
     }
 
     if (AwConfig.canEdit) {
@@ -857,9 +933,42 @@ var AwConfig = {
                 }
                 refreshRow(kaid);
                 elTitle.textContent = name;
-                awToast('Award saved!');
+
+                // Create any new aliases — sibling rows sharing this award's system award_id.
+                var aliasNames = [];
+                document.querySelectorAll('#aw-edit-alias-list .aw-edit-alias-input').forEach(function(i) {
+                    var v = i.value.trim();
+                    if (v) { aliasNames.push(v); }
+                });
+                var parentAwardId = aw ? (parseInt(aw.AwardId, 10) || 0) : 0;
+                if (aliasNames.length && parentAwardId > 0) {
+                    var pending = aliasNames.length;
+                    aliasNames.forEach(function(an) {
+                        awPost('setaward', {
+                            KingdomAwardId: 0,
+                            AwardId: parentAwardId,
+                            KingdomAwardName: an,
+                            ReignLimit: elReign.value,
+                            MonthLimit: elMonth.value,
+                            IsTitle: elIsTitle.checked ? 1 : 0,
+                            TitleClass: elTClass.value
+                        }, function() {
+                            pending--;
+                            if (pending === 0) {
+                                awToast('Saved — added ' + aliasNames.length + ' alias' + (aliasNames.length > 1 ? 'es' : '') + '.');
+                                setTimeout(function() { location.reload(); }, 600);
+                            }
+                        });
+                    });
+                } else {
+                    awToast('Award saved!');
+                }
             }).then(function() { saveBtn.disabled = false; });
         });
+
+        // Create Alias (reveals another alias-name field each tap)
+        var addAliasBtn = document.getElementById('aw-edit-add-alias');
+        if (addAliasBtn) addAliasBtn.onclick = function() { addAliasInput(); };
 
         // Disable / Enable toggle
         if (elToggleStatus) elToggleStatus.addEventListener('click', function() {
@@ -923,135 +1032,55 @@ var AwConfig = {
         applyFilter();
     }
 
-    /* ---- ADD FLOW ---- */
+    /* ---- ADD FLOW (create a kingdom-original award in this category) ---- */
+    var addGroup = null;
+    function openAddForGroup(groupName) {
+        addGroup = groupName;
+        var cfg = ADDABLE[groupName];
+
+        var titleEl = document.getElementById('aw-add-title');
+        if (titleEl) titleEl.textContent = 'Add ' + cfg.singular;
+
+        // Reset the create fields
+        document.getElementById('aw-add-name').value = '';
+        document.getElementById('aw-add-reign').value = '0';
+        document.getElementById('aw-add-month').value = '0';
+
+        var nameInput = document.getElementById('aw-add-name');
+        nameInput.placeholder = (groupName === 'Ladder Awards (Orders)' || groupName === 'Kingdom Awards & Orders')
+            ? 'e.g. Order of the Hunter'
+            : 'e.g. a new ' + cfg.singular.toLowerCase();
+
+        openDrawer('aw-add-drawer');
+    }
+
+    function submitAdd(awardId, name, isTitle, titleClass) {
+        if (!name || !name.trim()) { awToast('Name is required.', true); return; }
+        awPost('setaward', {
+            KingdomAwardId: 0,
+            AwardId: awardId,            // >0 = alias a standard award; 0 = kingdom-original
+            KingdomAwardName: name.trim(),
+            ReignLimit: document.getElementById('aw-add-reign').value,
+            MonthLimit: document.getElementById('aw-add-month').value,
+            IsTitle: isTitle,
+            TitleClass: titleClass
+        }, function() {
+            awToast('Added.');
+            setTimeout(function() { location.reload(); }, 600);
+        });
+    }
+
     if (AwConfig.canEdit) {
+        var addCreateBtn = document.getElementById('aw-add-create');
+        if (addCreateBtn) addCreateBtn.onclick = function() {
+            var cfg = ADDABLE[addGroup] || { isTitle: 0, titleClass: 0 };
+            submitAdd(0, document.getElementById('aw-add-name').value, cfg.isTitle, cfg.titleClass);
+        };
+
+        // Page-level "Add Award" button → general kingdom catch-all add.
         var addBtn = document.getElementById('aw-add-btn');
-        var addMode = 'alias';
-        var addPickerField = document.getElementById('aw-add-picker-field');
-        var addAwardIdInp = document.getElementById('aw-add-awardid');
-        var addNameInp = document.getElementById('aw-add-name');
-        var addReign = document.getElementById('aw-add-reign');
-        var addMonth = document.getElementById('aw-add-month');
-        var addIsTitle = document.getElementById('aw-add-istitle');
-        var addAliasLabel = document.getElementById('aw-add-alias-label');
-        var addAliasTrigger = document.getElementById('aw-add-alias-trigger');
-        var helpAlias = document.getElementById('aw-add-help-alias');
-        var helpCustom = document.getElementById('aw-add-help-custom');
-
-        function resetAddForm() {
-            addMode = 'alias';
-            setAddMode('alias');
-            addAwardIdInp.value = '0';
-            addNameInp.value = '';
-            addReign.value = '0';
-            addMonth.value = '0';
-            addIsTitle.checked = false;
-            if (addAliasLabel) { addAliasLabel.textContent = 'Select a system award…'; }
-            if (addAliasTrigger) addAliasTrigger.classList.remove('aw-has-val');
-        }
-
-        function setAddMode(mode) {
-            addMode = mode;
-            document.querySelectorAll('#aw-add-seg button').forEach(function(b) {
-                b.classList.toggle('aw-seg-active', b.dataset.mode === mode);
-            });
-            if (mode === 'custom') {
-                addPickerField.style.display = 'none';
-                helpAlias.style.display = 'none';
-                helpCustom.style.display = '';
-                addAwardIdInp.value = '0';
-            } else {
-                addPickerField.style.display = '';
-                helpAlias.style.display = '';
-                helpCustom.style.display = 'none';
-            }
-        }
-
         if (addBtn) addBtn.addEventListener('click', function() {
-            resetAddForm();
-            openDrawer('aw-add-drawer');
-        });
-
-        var addSeg = document.getElementById('aw-add-seg');
-        if (addSeg) addSeg.addEventListener('click', function(e) {
-            var b = e.target.closest('button[data-mode]');
-            if (b) setAddMode(b.dataset.mode);
-        });
-
-        // Alias picker dropdown (ported pattern)
-        var aDropdown = document.getElementById('aw-add-alias-dropdown');
-        var aSearch = document.getElementById('aw-add-alias-search');
-        var aList = document.getElementById('aw-add-alias-list');
-        var sysAwards = AwConfig.systemAwards || [];
-        var aliasOpen = false;
-
-        function buildAliasList(filter) {
-            if (!aList) return;
-            aList.innerHTML = '';
-            var lc = (filter || '').toLowerCase(), count = 0;
-            sysAwards.forEach(function(sa) {
-                if (lc && (sa.Name || '').toLowerCase().indexOf(lc) === -1) return;
-                var div = document.createElement('div');
-                div.className = 'aw-alias-item';
-                div.textContent = sa.Name;
-                div.addEventListener('click', function() { selectAlias(sa.AwardId, sa.Name); });
-                aList.appendChild(div);
-                count++;
-            });
-            if (!count) {
-                var empty = document.createElement('div');
-                empty.className = 'aw-alias-empty';
-                empty.textContent = 'No matching awards';
-                aList.appendChild(empty);
-            }
-        }
-        function selectAlias(id, name) {
-            addAwardIdInp.value = id;
-            if (addAliasLabel) addAliasLabel.textContent = name;
-            if (addAliasTrigger) addAliasTrigger.classList.add('aw-has-val');
-            if (addNameInp && !addNameInp.value.trim()) addNameInp.value = name;
-            closeAlias();
-        }
-        function openAlias() {
-            if (!aDropdown || aliasOpen) return;
-            aliasOpen = true; aDropdown.style.display = '';
-            buildAliasList('');
-            if (aSearch) { aSearch.value = ''; aSearch.focus(); }
-        }
-        function closeAlias() { if (!aDropdown) return; aliasOpen = false; aDropdown.style.display = 'none'; }
-        if (addAliasTrigger) addAliasTrigger.addEventListener('click', function(e) {
-            e.preventDefault();
-            aliasOpen ? closeAlias() : openAlias();
-        });
-        if (aSearch) {
-            aSearch.addEventListener('input', function() { buildAliasList(this.value); });
-            aSearch.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeAlias(); });
-        }
-        document.addEventListener('click', function(e) {
-            if (aliasOpen && addAliasTrigger && aDropdown &&
-                !addAliasTrigger.contains(e.target) && !aDropdown.contains(e.target)) closeAlias();
-        });
-
-        // Save new award
-        var addSave = document.getElementById('aw-add-save');
-        if (addSave) addSave.addEventListener('click', function() {
-            var name = addNameInp.value.trim();
-            var awardId = parseInt(addAwardIdInp.value || '0', 10);
-            if (addMode === 'alias' && !awardId) { awToast('Please select a system award.', true); return; }
-            if (!name) { awToast('Award name is required.', true); return; }
-            addSave.disabled = true;
-            awPost('setaward', {
-                KingdomAwardId: 0,
-                AwardId: addMode === 'alias' ? awardId : 0,
-                KingdomAwardName: name,
-                ReignLimit: addReign.value,
-                MonthLimit: addMonth.value,
-                IsTitle: addIsTitle.checked ? 1 : 0,
-                TitleClass: 0
-            }, function() {
-                awToast('Award added!');
-                setTimeout(function() { location.reload(); }, 800);
-            }).then(function() { addSave.disabled = false; });
+            openAddForGroup('Kingdom Awards & Orders');
         });
     }
 

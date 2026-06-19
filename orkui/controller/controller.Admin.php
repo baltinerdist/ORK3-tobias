@@ -1315,6 +1315,7 @@ class Controller_Admin extends Controller
                                 'RecipientId' => $id,
                                 'KingdomAwardId' => $this->request->Admin_player->KingdomAwardId,
                                 'CustomName' => $this->request->Admin_player->AwardName,
+                                'CustomIsTitle' => $this->request->Admin_player->CustomIsTitle ?? 0,
                                 'AliasAwardId' => $this->request->Admin_player->AliasAwardId ?? 0,
                                 'Rank' => $this->request->Admin_player->Rank,
                                 'Date' => $this->request->Admin_player->Date,
@@ -2270,23 +2271,6 @@ class Controller_Admin extends Controller
             }
         }
         $this->data['AdminAwards'] = $adminAwards;
-
-        // System awards for the alias picker
-        $sysAwardResult = $this->Award->GetAwardList(['IsLadder' => null, 'IsTitle' => null, 'OfficerRole' => 'Awards']);
-        $sysAwards = [];
-        if (($sysAwardResult['Status']['Status'] ?? 1) == 0) {
-            foreach ($sysAwardResult['Awards'] as $sa) {
-                $name = $sa['AwardName'] ?? $sa['KingdomAwardName'] ?? '';
-                if ($name === '') {
-                    continue; // skip nameless system awards — they can't be picked meaningfully
-                }
-                $sysAwards[] = ['AwardId' => (int)$sa['AwardId'], 'Name' => $name];
-            }
-            usort($sysAwards, function ($a, $b) {
-                return strcasecmp($a['Name'], $b['Name']);
-            });
-        }
-        $this->data['SystemAwards'] = $sysAwards;
 
         $this->template = '../revised-frontend/Admin_awards.tpl';
     }
