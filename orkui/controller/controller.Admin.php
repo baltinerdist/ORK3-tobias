@@ -2143,7 +2143,6 @@ class Controller_Admin extends Controller
         $this->data['AdminInfo']       = [];
         $this->data['AdminConfig']     = [];
         $this->data['AdminParkTitles'] = [];
-        $this->data['AdminAwards']     = [];
         if ($this->data['CanManageKingdom']) {
             $parentKingdomId   = (int)($kd['KingdomInfo']['ParentKingdomId'] ?? 0);
             $parentKingdomName = '';
@@ -2168,36 +2167,6 @@ class Controller_Admin extends Controller
             }
             $this->data['AdminConfig']     = $adminConfig;
             $this->data['AdminParkTitles'] = array_values($kd['ParkTitles'] ?? []);
-
-            $rawAwards   = $kd['Awards']['Awards'] ?? [];
-            $adminAwards = [];
-            foreach ($rawAwards as $kawId => $aw) {
-                $adminAwards[] = [
-                    'KingdomAwardId'   => (int)$kawId,
-                    'KingdomAwardName' => $aw['KingdomAwardName']  ?? '',
-                    'AwardId'          => (int)($aw['AwardId']     ?? 0),
-                    'AwardName'        => $aw['AwardName']         ?? '',
-                    'IsLadder'         => (int)($aw['IsLadder']    ?? 0),
-                    'ReignLimit'       => (int)($aw['ReignLimit']  ?? 0),
-                    'MonthLimit'       => (int)($aw['MonthLimit']  ?? 0),
-                    'IsTitle'          => (int)($aw['IsTitle']     ?? 0),
-                    'TitleClass'       => (int)($aw['TitleClass']  ?? 0),
-                ];
-            }
-            $this->data['AdminAwards'] = $adminAwards;
-
-            $this->load_model('Award');
-            $sysAwardResult = $this->Award->GetAwardList(['IsLadder' => null, 'IsTitle' => null, 'OfficerRole' => 'Awards']);
-            $sysAwards = [];
-            if (($sysAwardResult['Status']['Status'] ?? 1) == 0) {
-                foreach ($sysAwardResult['Awards'] as $sa) {
-                    $sysAwards[] = ['AwardId' => (int)$sa['AwardId'], 'Name' => $sa['AwardName'] ?? $sa['KingdomAwardName']];
-                }
-                usort($sysAwards, function ($a, $b) {
-                    return strcasecmp($a['Name'], $b['Name']);
-                });
-            }
-            $this->data['SystemAwards'] = $sysAwards;
         }
 
         $this->template = '../revised-frontend/Admin_kingdom.tpl';
