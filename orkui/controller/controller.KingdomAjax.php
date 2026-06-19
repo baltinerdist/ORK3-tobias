@@ -235,6 +235,8 @@ class Controller_KingdomAjax extends Controller
                     'MonthLimit'     => $month,
                     'IsTitle'        => $isTitle,
                     'TitleClass'     => $tClass,
+                    'IsLadder'       => !empty($_POST['IsLadder']) ? 1 : 0,
+                    'MaxLevel'       => (int)($_POST['MaxLevel'] ?? 0),
                 ]);
             } else {
                 $awardId = (int)($_POST['AwardId'] ?? 0);
@@ -247,6 +249,8 @@ class Controller_KingdomAjax extends Controller
                     'MonthLimit' => $month,
                     'IsTitle'    => $isTitle,
                     'TitleClass' => $tClass,
+                    'IsLadder'   => !empty($_POST['IsLadder']) ? 1 : 0,
+                    'MaxLevel'   => (int)($_POST['MaxLevel'] ?? 0),
                 ]);
             }
 

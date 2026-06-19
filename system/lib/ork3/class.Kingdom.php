@@ -139,7 +139,7 @@ class Kingdom extends Ork3
             $disabled_clause = ' AND ka.disabled = 0';
         }
         $sql = "select kingdomaward_id, ifnull(ka.name, a.name) as kingdom_awardname, ka.reign_limit, ka.month_limit, a.name as award_name,
-						a.award_id, a.is_ladder, ka.is_title as is_title, ka.title_class as title_class, ka.disabled as disabled,
+						a.award_id, a.is_ladder as sys_is_ladder, ka.is_ladder as ka_is_ladder, ka.max_level as max_level, ka.is_title as is_title, ka.title_class as title_class, ka.disabled as disabled,
             a.officer_role, a.peerage
 					from " . DB_PREFIX . "kingdomaward ka
 						left join " . DB_PREFIX . "award a on ka.award_id = a.award_id and ka.kingdom_id = '" . (int)$request['KingdomId'] . "'
@@ -149,7 +149,7 @@ class Kingdom extends Ork3
 						$disabled_clause
 
 						and ka.kingdom_id = '" . (int)$request['KingdomId'] . "'
-					order by is_ladder, ka.is_title, ka.title_class desc, ka.name, a.name";
+					order by sys_is_ladder, ka.is_title, ka.title_class desc, ka.name, a.name";
         $r = $this->db->query($sql);
 
         logtrace('GetAwardList', array($sql, $request));
@@ -178,7 +178,8 @@ class Kingdom extends Ork3
                     'MonthLimit' => $r->month_limit,
                     'AwardName' => $r->award_name,
                     'AwardId' => $r->award_id,
-                    'IsLadder' => $r->is_ladder,
+                    'IsLadder' => ((int)$r->sys_is_ladder === 1 || (int)$r->ka_is_ladder === 1) ? 1 : 0,
+                    'MaxLevel' => (int)$r->max_level,
                     'IsTitle' => $r->is_title,
                     'TitleClass' => $r->title_class,
                     'OfficerRole' => $r->officer_role,
@@ -206,6 +207,11 @@ class Kingdom extends Ork3
             $this->kingdomaward->month_limit = $request['MonthLimit'];
             $this->kingdomaward->is_title = $request['IsTitle'];
             $this->kingdomaward->title_class = $request['TitleClass'];
+            // Leveled "Order" tracking — kingdom-original awards only (award_id 0).
+            if ((int)$request['AwardId'] === 0) {
+                $this->kingdomaward->is_ladder = !empty($request['IsLadder']) ? 1 : 0;
+                $this->kingdomaward->max_level = !empty($request['IsLadder']) ? max(1, min(20, (int)($request['MaxLevel'] ?? 10))) : 0;
+            }
             $this->kingdomaward->save();
 
         } else {
@@ -227,6 +233,10 @@ class Kingdom extends Ork3
                 $this->kingdomaward->month_limit = $request['MonthLimit'];
                 $this->kingdomaward->is_title = $request['IsTitle'];
                 $this->kingdomaward->title_class = $request['TitleClass'];
+                if ((int)$this->kingdomaward->award_id === 0) {
+                    $this->kingdomaward->is_ladder = !empty($request['IsLadder']) ? 1 : 0;
+                    $this->kingdomaward->max_level = !empty($request['IsLadder']) ? max(1, min(20, (int)($request['MaxLevel'] ?? 10))) : 0;
+                }
                 $this->kingdomaward->save();
             } else {
                 return InvalidParameter();

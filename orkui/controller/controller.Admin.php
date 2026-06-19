@@ -2230,6 +2230,7 @@ class Controller_Admin extends Controller
                     'AwardId'          => (int)($aw['AwardId']     ?? 0),
                     'AwardName'        => $aw['AwardName']         ?? '',
                     'IsLadder'         => (int)($aw['IsLadder']    ?? 0),
+                    'MaxLevel'         => (int)($aw['MaxLevel']    ?? 0),
                     'ReignLimit'       => (int)($aw['ReignLimit']  ?? 0),
                     'MonthLimit'       => (int)($aw['MonthLimit']  ?? 0),
                     'IsTitle'          => (int)($aw['IsTitle']     ?? 0),
