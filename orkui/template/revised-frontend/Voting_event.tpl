@@ -39,16 +39,10 @@
 	.vtv-btn-primary:hover { background:#2c5282; }
 	.vtv-btn-primary:disabled { opacity:0.5; cursor:not-allowed; }
 	.vtv-btn-ghost { background:transparent; color:var(--vtv-text,#1a202c); border:1px solid var(--vtv-card-border,#cbd5e0); border-radius:6px; padding:10px 20px; font-size:14px; cursor:pointer; text-decoration:none; }
-	@media (prefers-color-scheme: dark) {
-		.vtv-card, .vtv-race, .vtv-radio, .vtv-irv-item { --vtv-card-bg:#1a202c; --vtv-card-border:#2d3748; --vtv-text:#e2e8f0; --vtv-meta:#a0aec0; --vtv-toggle-bg:#2d3748; }
-		.vtv-radio-checked { background:#2c5282 !important; }
-		.vtv-h1, .vtv-race h3 { color:#e2e8f0; }
-		.vtv-sub { color:#a0aec0; }
-	}
-	body.dark-mode .vtv-card, body.dark-mode .vtv-race, body.dark-mode .vtv-radio, body.dark-mode .vtv-irv-item { --vtv-card-bg:#1a202c; --vtv-card-border:#2d3748; --vtv-text:#e2e8f0; --vtv-meta:#a0aec0; --vtv-toggle-bg:#2d3748; }
-	body.dark-mode .vtv-radio-checked { background:#2c5282 !important; }
-	body.dark-mode .vtv-h1, body.dark-mode .vtv-race h3 { color:#e2e8f0; }
-	body.dark-mode .vtv-sub { color:#a0aec0; }
+	html[data-theme="dark"] .vtv-card, html[data-theme="dark"] .vtv-race, html[data-theme="dark"] .vtv-radio, html[data-theme="dark"] .vtv-irv-item { --vtv-card-bg:#1a202c; --vtv-card-border:#2d3748; --vtv-text:#e2e8f0; --vtv-meta:#a0aec0; --vtv-toggle-bg:#2d3748; }
+	html[data-theme="dark"] .vtv-radio-checked { background:#2c5282 !important; }
+	html[data-theme="dark"] .vtv-h1, html[data-theme="dark"] .vtv-race h3 { color:#e2e8f0; }
+	html[data-theme="dark"] .vtv-sub { color:#a0aec0; }
 </style>
 
 <div class="rp-root vt-root">
@@ -169,6 +163,7 @@
 	var eventId = <?= $voting_event_id ?>;
 	function $(s,p){return (p||document).querySelector(s);}
 	function $$(s,p){return Array.from((p||document).querySelectorAll(s));}
+	function escapeHtml(s){ return String(s).replace(/[&<>"']/g, function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
 
 	// Highlight selected radios.
 	document.addEventListener('change', function(e){
@@ -264,7 +259,7 @@
 					box.innerHTML = '<div class="vtv-banner vtv-banner-ok"><i class="fas fa-check"></i> Ballot recorded. You can change your vote until the election closes.</div>';
 					setTimeout(function(){ location.reload(); }, 1200);
 				} else {
-					box.innerHTML = '<div class="vtv-banner vtv-banner-err">' + (j.error || 'Failed') + (j.detail ? ': ' + j.detail : '') + '</div>';
+					box.innerHTML = '<div class="vtv-banner vtv-banner-err">' + escapeHtml(j.error || 'Failed') + (j.detail ? ': ' + escapeHtml(j.detail) : '') + '</div>';
 				}
 			});
 	});

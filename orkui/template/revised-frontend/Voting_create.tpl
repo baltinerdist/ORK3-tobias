@@ -31,14 +31,9 @@
 	.vtc-btn-primary:hover { background:#2c5282; }
 	.vtc-btn-ghost { background:transparent; color:var(--vtc-text,#1a202c); border:1px solid var(--vtc-input-border,#cbd5e0); border-radius:6px; padding:10px 20px; font-size:14px; font-weight:500; cursor:pointer; text-decoration:none; }
 	.vtc-error { padding: 12px; background:#fed7d7; color:#742a2a; border-radius:6px; margin-bottom: 12px; }
-	@media (prefers-color-scheme: dark) {
-		.vtc-card { --vtc-card-bg:#1a202c; --vtc-card-border:#2d3748; --vtc-text:#e2e8f0; --vtc-meta:#a0aec0; --vtc-input-border:#4a5568; --vtc-input-bg:#2d3748; --vtc-toggle-bg:#2d3748; }
-		.vtc-h1, .vtc-row label { color:#e2e8f0; }
-		.vtc-sub { color:#a0aec0; }
-	}
-	body.dark-mode .vtc-card { --vtc-card-bg:#1a202c; --vtc-card-border:#2d3748; --vtc-text:#e2e8f0; --vtc-meta:#a0aec0; --vtc-input-border:#4a5568; --vtc-input-bg:#2d3748; --vtc-toggle-bg:#2d3748; }
-	body.dark-mode .vtc-h1, body.dark-mode .vtc-row label { color:#e2e8f0; }
-	body.dark-mode .vtc-sub { color:#a0aec0; }
+	html[data-theme="dark"] .vtc-card { --vtc-card-bg:#1a202c; --vtc-card-border:#2d3748; --vtc-text:#e2e8f0; --vtc-meta:#a0aec0; --vtc-input-border:#4a5568; --vtc-input-bg:#2d3748; --vtc-toggle-bg:#2d3748; }
+	html[data-theme="dark"] .vtc-h1, html[data-theme="dark"] .vtc-row label { color:#e2e8f0; }
+	html[data-theme="dark"] .vtc-sub { color:#a0aec0; }
 </style>
 
 <div class="rp-root vt-root">

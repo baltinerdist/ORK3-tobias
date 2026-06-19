@@ -50,19 +50,19 @@
 	.vte-status-draft { background:#feebc8; color:#7c2d12; }
 	.vte-status-open { background:#c6f6d5; color:#22543d; }
 	.vte-status-reopened { background:#fefcbf; color:#744210; border:1px solid #f6e05e; }
-	body.dark-mode .vte-status-reopened { background:#3a3322; color:#fbd38d; border-color:#975a16; }
+	html[data-theme="dark"] .vte-status-reopened { background:#3a3322; color:#fbd38d; border-color:#975a16; }
 	.vte-edit-pencil { width:24px; height:24px; border-radius:50%; border:none; background:transparent; color:var(--vte-meta,#a0aec0); cursor:pointer; display:inline-flex; align-items:center; justify-content:center; font-size:11px; transition: background 0.15s, color 0.15s; }
 	.vte-edit-pencil:hover { background:#bee3f8; color:#2c5282; }
-	body.dark-mode .vte-edit-pencil:hover { background:#2c5282; color:#bee3f8; }
+	html[data-theme="dark"] .vte-edit-pencil:hover { background:#2c5282; color:#bee3f8; }
 	.vte-edit-form { margin-top:10px; padding:10px; background:var(--vte-toggle-bg,#f7fafc); border-radius:6px; border:1px solid var(--vte-card-border,#e2e8f0); }
 	.vte-edit-form .vte-row:last-child { margin-bottom:0; }
 	.vte-edit-form-actions { display:flex; gap:8px; margin-top:8px; }
 	.vte-choice-withdrawn { opacity:0.65; }
 	.vte-choice-withdrawn .vte-choice-label { text-decoration:line-through; }
 	.vte-pill-withdrawn { background:#feebc8; color:#7c2d12; }
-	body.dark-mode .vte-pill-withdrawn { background:#553c1f; color:#fbd38d; }
+	html[data-theme="dark"] .vte-pill-withdrawn { background:#553c1f; color:#fbd38d; }
 	.vte-pill-original { background:#e9d8fd; color:#44337a; }
-	body.dark-mode .vte-pill-original { background:#322659; color:#d6bcfa; }
+	html[data-theme="dark"] .vte-pill-original { background:#322659; color:#d6bcfa; }
 	.vte-mod { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:9999; align-items:center; justify-content:center; }
 	.vte-mod.vte-mod-open { display:flex; }
 	.vte-mod-card { background:var(--vte-card-bg,#fff); color:var(--vte-text,#1a202c); border-radius:10px; max-width:560px; width:calc(100% - 32px); padding:22px; box-shadow:0 12px 36px rgba(0,0,0,0.25); }
@@ -72,25 +72,20 @@
 	.vte-mod-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:14px; flex-wrap:wrap; }
 	/* Lightweight CSS tooltip — replaces native title= so dark mode works and there's no browser delay. */
 	[data-tip] { position:relative; }
-	[data-tip]:hover::after { content:attr(data-tip); position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%); background:#2d3748; color:#fff; font-size:11px; white-space:nowrap; padding:4px 8px; border-radius:4px; pointer-events:none; z-index:1000; }
-	body.dark-mode [data-tip]:hover::after { background:#e2e8f0; color:#1a202c; }
+	[data-tip]:hover::after { content:attr(data-tip); position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%); background:#2d3748; color:#fff; font-size:11px; white-space:normal; width:max-content; max-width:240px; padding:4px 8px; border-radius:4px; pointer-events:none; z-index:1000; }
+	html[data-theme="dark"] [data-tip]:hover::after { background:#e2e8f0; color:#1a202c; }
 	.vte-tabs { display:flex; gap:4px; flex-wrap:wrap; margin-bottom:12px; border-bottom:1px solid var(--vte-card-border,#e2e8f0); }
 	.vte-tab { padding:10px 16px; cursor:pointer; font-size:13px; font-weight:600; color:var(--vte-meta,#718096); border-bottom:2px solid transparent; user-select:none; background:transparent; border-top:none; border-left:none; border-right:none; }
 	.vte-tab.active { color:#3182ce; border-bottom-color:#3182ce; }
-	body.dark-mode .vte-tab { color:#a0aec0; }
-	body.dark-mode .vte-tab.active { color:#63b3ed; border-bottom-color:#63b3ed; }
+	html[data-theme="dark"] .vte-tab { color:#a0aec0; }
+	html[data-theme="dark"] .vte-tab.active { color:#63b3ed; border-bottom-color:#63b3ed; }
 	.vte-pane { display:none; }
 	.vte-pane.active { display:block; }
 	.vte-grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 	@media (max-width:640px) { .vte-grid-2 { grid-template-columns:1fr; } }
-	@media (prefers-color-scheme: dark) {
-		.vte-card, .vte-race { --vte-card-bg:#1a202c; --vte-card-border:#2d3748; --vte-text:#e2e8f0; --vte-meta:#a0aec0; --vte-input-border:#4a5568; --vte-input-bg:#2d3748; --vte-toggle-bg:#2d3748; }
-		.vte-h1, .vte-card h2 { color:#e2e8f0; }
-		.vte-sub { color:#a0aec0; }
-	}
-	body.dark-mode .vte-card, body.dark-mode .vte-race { --vte-card-bg:#1a202c; --vte-card-border:#2d3748; --vte-text:#e2e8f0; --vte-meta:#a0aec0; --vte-input-border:#4a5568; --vte-input-bg:#2d3748; --vte-toggle-bg:#2d3748; }
-	body.dark-mode .vte-h1, body.dark-mode .vte-card h2 { color:#e2e8f0; }
-	body.dark-mode .vte-sub { color:#a0aec0; }
+	html[data-theme="dark"] .vte-card, html[data-theme="dark"] .vte-race { --vte-card-bg:#1a202c; --vte-card-border:#2d3748; --vte-text:#e2e8f0; --vte-meta:#a0aec0; --vte-input-border:#4a5568; --vte-input-bg:#2d3748; --vte-toggle-bg:#2d3748; }
+	html[data-theme="dark"] .vte-h1, html[data-theme="dark"] .vte-card h2 { color:#e2e8f0; }
+	html[data-theme="dark"] .vte-sub { color:#a0aec0; }
 </style>
 
 <div class="rp-root vt-root">
@@ -371,6 +366,7 @@
 	</div>
 </div>
 
+<script src="<?= HTTP_TEMPLATE ?>revised-frontend/script/revised.js?v=<?= filemtime(__DIR__ . '/script/revised.js') ?>"></script>
 <script>
 (function(){
 	var eventId = <?= $voting_event_id ?>;
@@ -380,6 +376,13 @@
 
 	function $(s, p){ return (p||document).querySelector(s); }
 	function $$(s, p){ return Array.from((p||document).querySelectorAll(s)); }
+	function escapeHtml(s){ return String(s).replace(/[&<>"']/g, function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+	// Surface a failure into the nearest inline message node (mirrors the add-race handler).
+	function vteErr(j){
+		var node = $('#vte-race-msg') || $('#vte-open-msg');
+		if (!node) return;
+		node.innerHTML = '<div class="vte-error">' + escapeHtml(j && j.error || 'Failed') + (j && j.detail ? ': ' + escapeHtml(j.detail) : '') + '</div>';
+	}
 
 	// Toggle race-type-dependent UI in the add-race form.
 	var rt = $('#vte-rt');
@@ -409,7 +412,7 @@
 		fetch('<?= UIR ?>VotingAjax/add_race/' + eventId, { method:'POST', body:data, credentials:'same-origin' })
 			.then(r => r.json()).then(function(j){
 				if (j.status === 0) { location.reload(); }
-				else { msg.innerHTML = '<div class="vte-error">' + (j.error || 'Failed') + '</div>'; }
+				else { msg.innerHTML = '<div class="vte-error">' + escapeHtml(j.error || 'Failed') + '</div>'; }
 			});
 	});
 
@@ -457,7 +460,7 @@
 			fetch('<?= UIR ?>VotingAjax/add_candidate/' + btn.dataset.raceId, { method:'POST', body:data, credentials:'same-origin' })
 				.then(r => r.json()).then(function(j){
 					if (j.status === 0) location.reload();
-					else alert('Failed: ' + (j.error || 'unknown'));
+					else vteErr(j);
 				});
 		});
 	});
@@ -466,13 +469,14 @@
 	$$('.vte-choice-remove').forEach(function(btn){
 		btn.addEventListener('click', function(){
 			var label = btn.dataset.label || 'this choice';
-			if (!confirm('Remove ' + label + '?')) return;
-			btn.disabled = true;
-			fetch('<?= UIR ?>VotingAjax/remove_choice/' + btn.dataset.choiceId, { method:'POST', credentials:'same-origin' })
-				.then(r => r.json()).then(function(j){
-					if (j.status === 0) location.reload();
-					else { btn.disabled = false; alert('Failed: ' + (j.error || 'unknown') + (j.detail ? ': ' + j.detail : '')); }
-				});
+			pnConfirm({ title:'Remove Choice?', message:'Remove ' + label + '?', confirmText:'Remove', danger:true }, function(){
+				btn.disabled = true;
+				fetch('<?= UIR ?>VotingAjax/remove_choice/' + btn.dataset.choiceId, { method:'POST', credentials:'same-origin' })
+					.then(r => r.json()).then(function(j){
+						if (j.status === 0) location.reload();
+						else { btn.disabled = false; vteErr(j); }
+					});
+			});
 		});
 	});
 
@@ -487,7 +491,7 @@
 			fetch('<?= UIR ?>VotingAjax/add_option/' + btn.dataset.raceId, { method:'POST', body:data, credentials:'same-origin' })
 				.then(r => r.json()).then(function(j){
 					if (j.status === 0) location.reload();
-					else alert('Failed: ' + (j.error || 'unknown'));
+					else vteErr(j);
 				});
 		});
 	});
@@ -498,7 +502,7 @@
 		fetch('<?= UIR ?>VotingAjax/open_event/' + eventId, { method:'POST', credentials:'same-origin' })
 			.then(r => r.json()).then(function(j){
 				if (j.status === 0) location.reload();
-				else $('#vte-open-msg').innerHTML = '<div class="vte-error">' + (j.error || 'Failed') + (j.detail ? ': ' + j.detail : '') + '</div>';
+				else $('#vte-open-msg').innerHTML = '<div class="vte-error">' + escapeHtml(j.error || 'Failed') + (j.detail ? ': ' + escapeHtml(j.detail) : '') + '</div>';
 			});
 	});
 
@@ -511,19 +515,18 @@
 			.then(r => r.json()).then(function(j){
 				if (j.status === 0) { location.reload(); return; }
 				if (j.error === 'confirm_required') {
-					if (!confirm('Changing the configuration of this voting event may invalidate current votes. Continue?')) {
-						reopenBtn.disabled = false;
-						return;
-					}
-					var d2 = new FormData(); d2.append('Confirm', 1);
-					fetch('<?= UIR ?>VotingAjax/reopen_event/' + eventId, { method:'POST', body:d2, credentials:'same-origin' })
-						.then(r => r.json()).then(function(k){
-							if (k.status === 0) location.reload();
-							else { reopenBtn.disabled = false; alert('Failed: ' + (k.error || 'unknown')); }
-						});
+					pnConfirm({ title:'Reopen Configuration?', message:'Changing the configuration of this voting event may invalidate current votes. Continue?', confirmText:'Continue', danger:true }, function(){
+						var d2 = new FormData(); d2.append('Confirm', 1);
+						fetch('<?= UIR ?>VotingAjax/reopen_event/' + eventId, { method:'POST', body:d2, credentials:'same-origin' })
+							.then(r => r.json()).then(function(k){
+								if (k.status === 0) location.reload();
+								else { reopenBtn.disabled = false; vteErr(k); }
+							});
+					});
+					reopenBtn.disabled = false;
 				} else {
 					reopenBtn.disabled = false;
-					alert('Failed: ' + (j.error || 'unknown'));
+					vteErr(j);
 				}
 			});
 	});
@@ -552,26 +555,52 @@
 			fetch('<?= UIR ?>VotingAjax/edit_race/' + btn.dataset.raceId, { method:'POST', body:data, credentials:'same-origin' })
 				.then(r => r.json()).then(function(j){
 					if (j.status === 0) location.reload();
-					else alert('Failed: ' + (j.error || 'unknown'));
+					else vteErr(j);
 				});
 		});
 	});
 
-	// Edit choice label (multichoice).
+	// Edit choice label (multichoice) — inline edit, mirrors the race-wording edit pattern.
 	$$('.vte-edit-choice-btn').forEach(function(btn){
 		btn.addEventListener('click', function(){
+			var row = btn.closest('.vte-choice');
+			if (!row || row.querySelector('.vte-edit-choice-form')) return; // already editing
+			var labelSpan = row.querySelector('.vte-choice-label');
 			var current = btn.dataset.label || '';
-			var next = prompt('Edit option label:', current);
-			if (next === null) return;
-			next = next.trim();
-			if (!next || next === current) return;
-			var data = new FormData();
-			data.append('Label', next);
-			fetch('<?= UIR ?>VotingAjax/edit_choice/' + btn.dataset.choiceId, { method:'POST', body:data, credentials:'same-origin' })
-				.then(r => r.json()).then(function(j){
-					if (j.status === 0) location.reload();
-					else alert('Failed: ' + (j.error || 'unknown'));
-				});
+			var form = document.createElement('span');
+			form.className = 'vte-edit-choice-form';
+			form.style.cssText = 'flex:1;display:flex;gap:8px;align-items:center;';
+			var input = document.createElement('input');
+			input.type = 'text';
+			input.className = 'vte-edit-choice-input';
+			input.style.cssText = 'flex:1;';
+			input.value = current;
+			var save = document.createElement('button');
+			save.className = 'vte-btn vte-btn-primary';
+			save.textContent = 'Save';
+			var cancel = document.createElement('button');
+			cancel.className = 'vte-btn vte-btn-ghost';
+			cancel.textContent = 'Cancel';
+			form.appendChild(input); form.appendChild(save); form.appendChild(cancel);
+			if (labelSpan) labelSpan.style.display = 'none';
+			btn.style.display = 'none';
+			(labelSpan || row).parentNode.insertBefore(form, labelSpan ? labelSpan.nextSibling : null);
+			input.focus(); input.select();
+			function close(){ form.remove(); if (labelSpan) labelSpan.style.display = ''; btn.style.display = ''; }
+			cancel.addEventListener('click', close);
+			input.addEventListener('keydown', function(e){ if (e.key === 'Escape') close(); });
+			save.addEventListener('click', function(){
+				var next = input.value.trim();
+				if (!next || next === current) { close(); return; }
+				save.disabled = true;
+				var data = new FormData();
+				data.append('Label', next);
+				fetch('<?= UIR ?>VotingAjax/edit_choice/' + btn.dataset.choiceId, { method:'POST', body:data, credentials:'same-origin' })
+					.then(r => r.json()).then(function(j){
+						if (j.status === 0) location.reload();
+						else { save.disabled = false; vteErr(j); }
+					});
+			});
 		});
 	});
 
@@ -582,7 +611,7 @@
 			fetch('<?= UIR ?>VotingAjax/restore_choice/' + btn.dataset.choiceId, { method:'POST', body:data, credentials:'same-origin' })
 				.then(r => r.json()).then(function(j){
 					if (j.status === 0) location.reload();
-					else alert('Failed: ' + (j.error || 'unknown'));
+					else vteErr(j);
 				});
 		});
 	});
@@ -590,13 +619,14 @@
 	// Remove empty race.
 	$$('.vte-remove-race-btn').forEach(function(btn){
 		btn.addEventListener('click', function(){
-			if (!confirm('Remove this race?')) return;
-			var data = new FormData();
-			fetch('<?= UIR ?>VotingAjax/remove_race/' + btn.dataset.raceId, { method:'POST', body:data, credentials:'same-origin' })
-				.then(r => r.json()).then(function(j){
-					if (j.status === 0) location.reload();
-					else alert('Failed: ' + (j.error || 'unknown') + (j.detail ? ': ' + j.detail : ''));
-				});
+			pnConfirm({ title:'Remove Race?', message:'Remove this race?', confirmText:'Remove', danger:true }, function(){
+				var data = new FormData();
+				fetch('<?= UIR ?>VotingAjax/remove_race/' + btn.dataset.raceId, { method:'POST', body:data, credentials:'same-origin' })
+					.then(r => r.json()).then(function(j){
+						if (j.status === 0) location.reload();
+						else vteErr(j);
+					});
+			});
 		});
 	});
 
@@ -610,16 +640,16 @@
 			var li = document.createElement('li');
 			var txt = '';
 			if (imp.kind === 'choice_withdrawn') {
-				txt = 'Withdrew <strong>' + imp.label + '</strong> from <em>' + imp.race_title + '</em> (had ' + imp.vote_count + ' vote' + (imp.vote_count === 1 ? '' : 's') + ')';
+				txt = 'Withdrew <strong>' + escapeHtml(imp.label) + '</strong> from <em>' + escapeHtml(imp.race_title) + '</em> (had ' + imp.vote_count + ' vote' + (imp.vote_count === 1 ? '' : 's') + ')';
 			} else if (imp.kind === 'choice_label_edited') {
-				txt = 'Edited <strong>' + imp.from + '</strong> &rarr; <strong>' + imp.to + '</strong> on <em>' + imp.race_title + '</em> (had ' + imp.vote_count + ' vote' + (imp.vote_count === 1 ? '' : 's') + ')';
+				txt = 'Edited <strong>' + escapeHtml(imp.from) + '</strong> &rarr; <strong>' + escapeHtml(imp.to) + '</strong> on <em>' + escapeHtml(imp.race_title) + '</em> (had ' + imp.vote_count + ' vote' + (imp.vote_count === 1 ? '' : 's') + ')';
 			} else if (imp.kind === 'race_wording_edited') {
-				txt = 'Edited wording on <em>' + (imp.original_title || imp.race_title) + '</em>';
+				txt = 'Edited wording on <em>' + escapeHtml(imp.original_title || imp.race_title) + '</em>';
 				if (imp.original_title && imp.current_title && imp.original_title !== imp.current_title) {
-					txt += ': <strong>' + imp.original_title + '</strong> &rarr; <strong>' + imp.current_title + '</strong>';
+					txt += ': <strong>' + escapeHtml(imp.original_title) + '</strong> &rarr; <strong>' + escapeHtml(imp.current_title) + '</strong>';
 				}
 			} else if (imp.kind === 'choice_added') {
-				txt = 'Added <strong>' + imp.label + '</strong> to <em>' + imp.race_title + '</em>';
+				txt = 'Added <strong>' + escapeHtml(imp.label) + '</strong> to <em>' + escapeHtml(imp.race_title) + '</em>';
 			}
 			li.innerHTML = txt;
 			ul.appendChild(li);
@@ -633,14 +663,14 @@
 				if (j.status === 0) location.reload();
 				else {
 					var msg = $('#vte-decision-msg') || $('#vte-open-msg');
-					if (msg) msg.innerHTML = '<div class="vte-error">' + (j.error || 'Failed') + (j.detail ? ': ' + j.detail : '') + '</div>';
+					if (msg) msg.innerHTML = '<div class="vte-error">' + escapeHtml(j.error || 'Failed') + (j.detail ? ': ' + escapeHtml(j.detail) : '') + '</div>';
 				}
 			});
 	}
 	if (resumeBtn) resumeBtn.addEventListener('click', function(){
 		fetch('<?= UIR ?>VotingAjax/preview_resume/' + eventId, { credentials:'same-origin' })
 			.then(r => r.json()).then(function(j){
-				if (j.status !== 0) { alert('Failed: ' + (j.error || 'unknown')); return; }
+				if (j.status !== 0) { vteErr(j); return; }
 				if (!j.requires_decision) { submitResume('keep'); return; }
 				renderImpacts(j.impacts || []);
 				mod.classList.add('vte-mod-open');
@@ -650,8 +680,9 @@
 		$('#vte-decision-cancel').addEventListener('click', function(){ mod.classList.remove('vte-mod-open'); });
 		$('#vte-decision-keep').addEventListener('click', function(){ submitResume('keep'); });
 		$('#vte-decision-discard').addEventListener('click', function(){
-			if (!confirm('Discard votes for impacted races? Voters will need to re-vote on those races.')) return;
-			submitResume('discard');
+			pnConfirm({ title:'Discard Impacted Votes?', message:'Discard votes for impacted races? Voters will need to re-vote on those races.', confirmText:'Discard', danger:true }, function(){
+				submitResume('discard');
+			});
 		});
 		mod.addEventListener('click', function(e){ if (e.target === mod) mod.classList.remove('vte-mod-open'); });
 	}

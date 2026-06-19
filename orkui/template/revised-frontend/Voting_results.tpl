@@ -30,16 +30,10 @@
 	.vtp-irv-round:last-child { border-bottom:none; }
 	.vtp-irv-round-head { font-weight:600; color:var(--vtp-text,#1a202c); margin-bottom:6px; }
 	.vtp-rationale { color:var(--vtp-meta,#718096); margin-bottom: 10px; font-size:13px; }
-	@media (prefers-color-scheme: dark) {
-		.vtp-card, .vtp-error { --vtp-card-bg:#1a202c; --vtp-card-border:#2d3748; --vtp-text:#e2e8f0; --vtp-meta:#a0aec0; --vtp-toggle-bg:#2d3748; }
-		.vtp-h1, .vtp-race-title { color:#e2e8f0; }
-		.vtp-sub { color:#a0aec0; }
-		.vtp-bar-label, .vtp-bar-count { color:#e2e8f0; }
-	}
-	body.dark-mode .vtp-card, body.dark-mode .vtp-error { --vtp-card-bg:#1a202c; --vtp-card-border:#2d3748; --vtp-text:#e2e8f0; --vtp-meta:#a0aec0; --vtp-toggle-bg:#2d3748; }
-	body.dark-mode .vtp-h1, body.dark-mode .vtp-race-title { color:#e2e8f0; }
-	body.dark-mode .vtp-sub { color:#a0aec0; }
-	body.dark-mode .vtp-bar-label, body.dark-mode .vtp-bar-count { color:#e2e8f0; }
+	html[data-theme="dark"] .vtp-card, html[data-theme="dark"] .vtp-error { --vtp-card-bg:#1a202c; --vtp-card-border:#2d3748; --vtp-text:#e2e8f0; --vtp-meta:#a0aec0; --vtp-toggle-bg:#2d3748; }
+	html[data-theme="dark"] .vtp-h1, html[data-theme="dark"] .vtp-race-title { color:#e2e8f0; }
+	html[data-theme="dark"] .vtp-sub { color:#a0aec0; }
+	html[data-theme="dark"] .vtp-bar-label, html[data-theme="dark"] .vtp-bar-count { color:#e2e8f0; }
 </style>
 
 <div class="rp-root vt-root">
@@ -162,7 +156,7 @@
 					<?php elseif ($result['outcome'] === 'win_resolved'): ?>
 						<div class="vtp-winner-banner"><i class="fas fa-gavel"></i> Tie resolved: <?= $render_choice_label_results($result['winner_choice_id']) ?></div>
 					<?php else: ?>
-						<div class="vtp-tie-banner"><i class="fas fa-equals"></i> <?= htmlspecialchars($result['outcome']) ?></div>
+						<div class="vtp-tie-banner"><i class="fas fa-equals"></i> <?php $o = $result['outcome']; echo htmlspecialchars(['no_votes' => 'No votes cast', 'no_majority' => 'No majority', 'tie' => 'Tied — runner has not yet resolved.', 'tie_at_final' => 'Final-round tie', 'tie_at_elimination' => 'Elimination tie'][$o] ?? ucfirst(str_replace('_', ' ', $o))); ?></div>
 					<?php endif; ?>
 
 				<?php else:
@@ -186,7 +180,7 @@
 					<?php elseif ($result['outcome'] === 'win_resolved'): ?>
 						<div class="vtp-winner-banner"><i class="fas fa-gavel"></i> Tie resolved: <?= $render_choice_label_results($result['winner_choice_id']) ?></div>
 					<?php else: ?>
-						<div class="vtp-tie-banner"><i class="fas fa-equals"></i> <?= htmlspecialchars($result['outcome']) ?></div>
+						<div class="vtp-tie-banner"><i class="fas fa-equals"></i> <?php $o = $result['outcome']; echo htmlspecialchars(['no_votes' => 'No votes cast', 'no_majority' => 'No majority', 'tie' => 'Tied — runner has not yet resolved.', 'tie_at_final' => 'Final-round tie', 'tie_at_elimination' => 'Elimination tie'][$o] ?? ucfirst(str_replace('_', ' ', $o))); ?></div>
 				<?php endif; endif; ?>
 			</div>
 		<?php endforeach; ?>

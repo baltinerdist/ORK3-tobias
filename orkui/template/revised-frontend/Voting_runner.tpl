@@ -55,18 +55,11 @@
 	.vtr-pie-legend { display:flex; gap:12px; flex-wrap:wrap; justify-content:center; font-size:12px; }
 	.vtr-pie-swatch { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:4px; vertical-align:middle; }
 
-	@media (prefers-color-scheme: dark) {
-		.vtr-card, .vtr-stat, .vtr-race-result { --vtr-card-bg:#1a202c; --vtr-card-border:#2d3748; --vtr-text:#e2e8f0; --vtr-meta:#a0aec0; --vtr-toggle-bg:#2d3748; }
-		.vtr-h1, .vtr-card h2, .vtr-race-title { color:#e2e8f0; }
-		.vtr-sub { color:#a0aec0; }
-		.vtr-stat-value { color:#e2e8f0; }
-		.vtr-bar-label, .vtr-bar-count { color:#e2e8f0; }
-	}
-	body.dark-mode .vtr-card, body.dark-mode .vtr-stat, body.dark-mode .vtr-race-result { --vtr-card-bg:#1a202c; --vtr-card-border:#2d3748; --vtr-text:#e2e8f0; --vtr-meta:#a0aec0; --vtr-toggle-bg:#2d3748; }
-	body.dark-mode .vtr-h1, body.dark-mode .vtr-card h2, body.dark-mode .vtr-race-title { color:#e2e8f0; }
-	body.dark-mode .vtr-sub { color:#a0aec0; }
-	body.dark-mode .vtr-stat-value { color:#e2e8f0; }
-	body.dark-mode .vtr-bar-label, body.dark-mode .vtr-bar-count { color:#e2e8f0; }
+	html[data-theme="dark"] .vtr-card, html[data-theme="dark"] .vtr-stat, html[data-theme="dark"] .vtr-race-result { --vtr-card-bg:#1a202c; --vtr-card-border:#2d3748; --vtr-text:#e2e8f0; --vtr-meta:#a0aec0; --vtr-toggle-bg:#2d3748; }
+	html[data-theme="dark"] .vtr-h1, html[data-theme="dark"] .vtr-card h2, html[data-theme="dark"] .vtr-race-title { color:#e2e8f0; }
+	html[data-theme="dark"] .vtr-sub { color:#a0aec0; }
+	html[data-theme="dark"] .vtr-stat-value { color:#e2e8f0; }
+	html[data-theme="dark"] .vtr-bar-label, html[data-theme="dark"] .vtr-bar-count { color:#e2e8f0; }
 </style>
 
 <div class="rp-root vt-root">
@@ -164,6 +157,7 @@
 </div>
 </div><!-- /rp-root -->
 
+<script src="<?= HTTP_TEMPLATE ?>revised-frontend/script/revised.js?v=<?= filemtime(__DIR__ . '/script/revised.js') ?>"></script>
 <script>
 (function(){
 	var eventId = <?= $voting_event_id ?>;
@@ -209,7 +203,7 @@
 				if (result.abstain) html += renderBar('Abstain', result.abstain, total, '');
 				if (result.nota) html += renderBar('NOTA', result.nota, total, '');
 				html += '<div style="margin-top:8px;">';
-				html += '<span class="vtr-pill ' + (result.outcome === 'pass' ? 'vtr-pill-win' : (result.outcome === 'tie' ? 'vtr-pill-tie' : 'vtr-pill-fail')) + '">' + result.outcome + '</span>';
+				html += '<span class="vtr-pill ' + (result.outcome === 'pass' ? 'vtr-pill-win' : (result.outcome === 'tie' ? 'vtr-pill-tie' : 'vtr-pill-fail')) + '">' + escapeHtml(outcomeLabel(result.outcome)) + '</span>';
 				html += '</div>';
 			} else if (Array.isArray(result.rounds) && result.rounds.length) {
 				// IRV
@@ -236,7 +230,7 @@
 				});
 				html += '</div>';
 				html += '<div style="margin-top:8px;">';
-				html += '<span class="vtr-pill ' + (result.outcome === 'win' ? 'vtr-pill-win' : 'vtr-pill-tie') + '">' + result.outcome + '</span>';
+				html += '<span class="vtr-pill ' + (result.outcome === 'win' ? 'vtr-pill-win' : 'vtr-pill-tie') + '">' + escapeHtml(outcomeLabel(result.outcome)) + '</span>';
 				if (result.abstained) html += ' <span class="vtr-pill">' + result.abstained + ' abstained</span>';
 				html += '</div>';
 			} else {
@@ -250,7 +244,7 @@
 				if (result.abstain) html += renderBar('Abstain', result.abstain, grand, '');
 				if (result.nota) html += renderBar('NOTA', result.nota, grand, '');
 				html += '<div style="margin-top:8px;">';
-				html += '<span class="vtr-pill ' + (result.outcome === 'win' ? 'vtr-pill-win' : 'vtr-pill-tie') + '">' + result.outcome + '</span>';
+				html += '<span class="vtr-pill ' + (result.outcome === 'win' ? 'vtr-pill-win' : 'vtr-pill-tie') + '">' + escapeHtml(outcomeLabel(result.outcome)) + '</span>';
 				html += '</div>';
 			}
 			html += '</div>';
@@ -263,6 +257,7 @@
 		return '<div class="vtr-bar"><div class="vtr-bar-label">' + escapeHtml(label) + '</div><div class="vtr-bar-track"><div class="vtr-bar-fill ' + (cls||'') + '" style="width:' + pct + '%"></div></div><div class="vtr-bar-count">' + count + ' (' + pct + '%)</div></div>';
 	}
 	function escapeHtml(s){ return String(s).replace(/[&<>"']/g, function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+	function outcomeLabel(o){ return ({win:'Win', win_resolved:'Win (resolved)', tie:'Tie', tie_at_final:'Final-round tie', tie_at_elimination:'Elimination tie', no_votes:'No votes cast', no_majority:'No majority', pass:'Pass', fail:'Fail'})[o] || String(o).replace(/_/g,' '); }
 
 	function poll(){
 		if (suppress) return;
@@ -321,7 +316,7 @@
 	if (extBtn) extBtn.addEventListener('click', function(){
 		var vid = parseInt(extId.value, 10);
 		if (!vid) return;
-		extMsg.innerHTML = '<div class="vtr-banner vtr-banner-info">External ballot entry is in stub form for the prototype. The voter you selected (id ' + vid + ') would receive a runner-keyed ballot. Full UI lands in a follow-up.</div>';
+		extMsg.innerHTML = '<div class="vtr-banner vtr-banner-info">External ballot entry is in stub form for the prototype. The voter you selected (id ' + escapeHtml(String(vid)) + ') would receive a runner-keyed ballot. Full UI lands in a follow-up.</div>';
 	});
 
 	var pubBtn = $('#vtr-publish');
@@ -334,13 +329,18 @@
 	});
 	var unpubBtn = $('#vtr-unpublish');
 	if (unpubBtn) unpubBtn.addEventListener('click', function(){
-		if (!confirm('Unpublish results? The public page will show "Results temporarily withdrawn."')) return;
-		fetch('<?= UIR ?>VotingAjax/unpublish/' + eventId, { method:'POST', credentials:'same-origin' })
-			.then(r => r.json()).then(function(j){ if (j.status === 0) location.reload(); else alert(j.error||'Failed'); });
+		pnConfirm({ title:'Unpublish Results?', message:'The public page will show "Results temporarily withdrawn."', confirmText:'Unpublish', danger:true }, function(){
+			fetch('<?= UIR ?>VotingAjax/unpublish/' + eventId, { method:'POST', credentials:'same-origin' })
+				.then(r => r.json()).then(function(j){
+					if (j.status === 0) location.reload();
+					else { var m = $('#vtr-publish-msg'); if (m) m.innerHTML = '<div class="vtr-banner vtr-banner-warn">' + escapeHtml(j.error || 'Failed') + '</div>'; }
+				});
+		});
 	});
 	var closeBtn = $('#vtr-close-now');
 	if (closeBtn) closeBtn.addEventListener('click', function(){
-		alert('To close immediately, set the event end_date to a past time. Status auto-flips on cron sweep or next page load.');
+		var m = $('#vtr-reopen-msg');
+		if (m) m.innerHTML = '<div class="vtr-banner vtr-banner-info">To close immediately, set the event end_date to a past time. Status auto-flips on cron sweep or next page load.</div>';
 	});
 
 	var reopenBtn = $('#vtr-reopen-config');
@@ -352,20 +352,19 @@
 			.then(r => r.json()).then(function(j){
 				if (j.status === 0) { window.location.href = '<?= UIR ?>Voting/edit/' + eventId; return; }
 				if (j.error === 'confirm_required') {
-					if (!confirm('Changing the configuration of this voting event may invalidate current votes. Continue?')) {
-						reopenBtn.disabled = false;
-						return;
-					}
-					var d2 = new FormData(); d2.append('Confirm', 1);
-					fetch('<?= UIR ?>VotingAjax/reopen_event/' + eventId, { method:'POST', body:d2, credentials:'same-origin' })
-						.then(r => r.json()).then(function(k){
-							if (k.status === 0) { window.location.href = '<?= UIR ?>Voting/edit/' + eventId; return; }
-							reopenBtn.disabled = false;
-							if (msg) msg.innerHTML = '<div style="color:#c53030">Failed: ' + (k.error || 'unknown') + '</div>';
-						});
+					pnConfirm({ title:'Reopen Configuration?', message:'Changing the configuration of this voting event may invalidate current votes. Continue?', confirmText:'Continue', danger:true }, function(){
+						var d2 = new FormData(); d2.append('Confirm', 1);
+						fetch('<?= UIR ?>VotingAjax/reopen_event/' + eventId, { method:'POST', body:d2, credentials:'same-origin' })
+							.then(r => r.json()).then(function(k){
+								if (k.status === 0) { window.location.href = '<?= UIR ?>Voting/edit/' + eventId; return; }
+								reopenBtn.disabled = false;
+								if (msg) msg.innerHTML = '<div style="color:#c53030">Failed: ' + escapeHtml(k.error || 'unknown') + '</div>';
+							});
+					});
+					reopenBtn.disabled = false;
 				} else {
 					reopenBtn.disabled = false;
-					if (msg) msg.innerHTML = '<div style="color:#c53030">Failed: ' + (j.error || 'unknown') + '</div>';
+					if (msg) msg.innerHTML = '<div style="color:#c53030">Failed: ' + escapeHtml(j.error || 'unknown') + '</div>';
 				}
 			});
 	});

@@ -9,12 +9,8 @@
 	.vta-table th { background:var(--vta-toggle-bg,#f7fafc); font-weight:600; font-size:12px; text-transform:uppercase; color:var(--vta-meta,#4a5568); }
 	.vta-action-pill { display:inline-block; padding:2px 8px; background:#edf2f7; color:#4a5568; border-radius:999px; font-size:11px; font-weight:600; }
 	.vta-detail { font-family:monospace; font-size:11px; color:var(--vta-meta,#718096); white-space:pre-wrap; word-break:break-all; max-width:500px; }
-	@media (prefers-color-scheme: dark) {
-		.vta-table { --vta-card-bg:#1a202c; --vta-card-border:#2d3748; --vta-text:#e2e8f0; --vta-meta:#a0aec0; --vta-toggle-bg:#2d3748; }
-		.vta-h1 { color:#e2e8f0; }
-	}
-	body.dark-mode .vta-table { --vta-card-bg:#1a202c; --vta-card-border:#2d3748; --vta-text:#e2e8f0; --vta-meta:#a0aec0; --vta-toggle-bg:#2d3748; }
-	body.dark-mode .vta-h1 { color:#e2e8f0; }
+	html[data-theme="dark"] .vta-table { --vta-card-bg:#1a202c; --vta-card-border:#2d3748; --vta-text:#e2e8f0; --vta-meta:#a0aec0; --vta-toggle-bg:#2d3748; }
+	html[data-theme="dark"] .vta-h1 { color:#e2e8f0; }
 </style>
 <div class="rp-root vt-root">
 	<div class="rp-header">
