@@ -96,6 +96,7 @@ $canEdit      = !empty($CanManageKingdom);
 @media (max-width: 900px) { .aw-nav { display: none; } }
 
 html[data-theme="dark"] .aw-nav { background: #2d3748; border-color: #4a5568; }
+html[data-theme="dark"] .aw-nav-title { color: #718096; }
 html[data-theme="dark"] .aw-nav-link { color: #cbd5e0; }
 html[data-theme="dark"] .aw-nav-link:hover { background: #353f50; color: #d6bcfa; }
 html[data-theme="dark"] .aw-nav-link.aw-nav-active { background: #44337a; color: #e9d8fd; }
@@ -811,7 +812,10 @@ var AwConfig = {
 
         GROUP_ORDER.forEach(function(groupName) {
             var items = groups[groupName];
-            if (!items || !items.length) return;
+            // Kingdom Awards & Orders still renders when it has no real awards, so long as
+            // there are ghost (suggested) rows to offer.
+            var hasGhosts = AwConfig.canEdit && groupName === 'Kingdom Awards & Orders' && missingSuggestions().length > 0;
+            if ((!items || !items.length) && !hasGhosts) return;
             anyRendered = true;
 
             var groupEl = document.createElement('div');
@@ -1214,6 +1218,7 @@ var AwConfig = {
     /* ---- Activate a suggested standard award (one click, non-destructive) ---- */
     function activateSuggestion(sug, btn) {
         if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Activating'; }
+        var ok = false;
         awPost('setaward', {
             KingdomAwardId: 0,
             AwardId: sug.awardId,
@@ -1223,10 +1228,14 @@ var AwConfig = {
             IsTitle: sug.isTitle,
             TitleClass: 0
         }, function() {
+            ok = true;
+            if (btn) btn.innerHTML = '<i class="fas fa-check-circle"></i> Activated';
             awToast(sug.name + ' activated.');
             setTimeout(function() { location.reload(); }, 600);
         }).then(function() {
-            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-bolt"></i> Activate'; }
+            // Re-enable only if the request failed — on success the page reloads, so the
+            // button stays disabled to prevent a duplicate Activate in the 600ms window.
+            if (!ok && btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-bolt"></i> Activate'; }
         });
     }
 
@@ -1315,6 +1324,7 @@ var AwConfig = {
             var g = document.getElementById(link.dataset.target);
             var hidden = g && g.style.display === 'none';
             link.style.display = hidden ? 'none' : '';
+            if (hidden) link.classList.remove('aw-nav-active');
             var count = g ? ((g.querySelector('[data-count]') || {}).textContent || '') : '';
             var cEl = link.querySelector('.aw-nav-count');
             if (cEl) cEl.textContent = count;
