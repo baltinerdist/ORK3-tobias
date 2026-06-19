@@ -913,6 +913,9 @@ var AwConfig = {
     }
 
     function applyFilter() {
+        // Ghost (suggested) rows are visible only in the unfiltered Active/All browse views,
+        // not while searching and not under the Disabled filter.
+        var ghostsVisible = (curStatus !== 'disabled') && !curSearch;
         document.querySelectorAll('.aw-group').forEach(function(groupEl) {
             var shown = 0;
             groupEl.querySelectorAll('.aw-row').forEach(function(row) {
@@ -920,14 +923,21 @@ var AwConfig = {
                 row.style.display = ok ? '' : 'none';
                 if (ok) shown++;
             });
-            // update count to reflect active filter
+            var ghosts = 0;
+            groupEl.querySelectorAll('.aw-ghost-row').forEach(function(g) {
+                g.style.display = ghostsVisible ? '' : 'none';
+                if (ghostsVisible) ghosts++;
+            });
+            // update count to reflect active filter (real rows only; ghosts aren't awards)
             var countEl = groupEl.querySelector('[data-count]');
             if (countEl) countEl.textContent = '(' + shown + ')';
-            // empty placeholder + hide group entirely if nothing matches
+            // empty placeholder shows only when no real rows AND no ghosts are visible
             var emptyEl = groupEl.querySelector('.aw-group-empty');
-            if (emptyEl) emptyEl.style.display = shown === 0 ? '' : 'none';
-            groupEl.style.display = shown === 0 ? 'none' : '';
+            if (emptyEl) emptyEl.style.display = (shown === 0 && ghosts === 0) ? '' : 'none';
+            // keep the group visible if it has visible real rows OR visible ghost rows
+            groupEl.style.display = (shown === 0 && ghosts === 0) ? 'none' : '';
         });
+        syncNav();
     }
 
     // Search box
@@ -1250,8 +1260,70 @@ var AwConfig = {
         });
     }
 
+    /* ---- Category nav (built from the groups that actually rendered) ---- */
+    var navObserver = null;
+    function buildNav() {
+        var nav = document.getElementById('aw-nav');
+        if (!nav) return;
+        var groupEls = Array.prototype.slice.call(document.querySelectorAll('.aw-group'));
+        if (!groupEls.length) { nav.innerHTML = ''; return; }
+
+        var html = '<div class="aw-nav-title">Categories</div>';
+        groupEls.forEach(function(g) {
+            var name = g.dataset.group || '';
+            var count = (g.querySelector('[data-count]') || {}).textContent || '';
+            html += '<a class="aw-nav-link" data-target="' + g.id + '">' +
+                        '<span>' + escHtml(name) + '</span>' +
+                        '<span class="aw-nav-count">' + escHtml(count) + '</span>' +
+                    '</a>';
+        });
+        html += '<div class="aw-nav-sep"></div>' +
+                '<button type="button" class="aw-nav-top" id="aw-nav-top"><i class="fas fa-arrow-up"></i> Back to top</button>';
+        nav.innerHTML = html;
+
+        nav.querySelectorAll('.aw-nav-link').forEach(function(link) {
+            link.addEventListener('click', function() {
+                var target = document.getElementById(link.dataset.target);
+                if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+        });
+        var topBtn = document.getElementById('aw-nav-top');
+        if (topBtn) topBtn.addEventListener('click', function() {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+
+        // Highlight the section currently in view.
+        if (navObserver) navObserver.disconnect();
+        if ('IntersectionObserver' in window) {
+            navObserver = new IntersectionObserver(function(entries) {
+                entries.forEach(function(en) {
+                    if (!en.isIntersecting) return;
+                    nav.querySelectorAll('.aw-nav-link').forEach(function(l) {
+                        l.classList.toggle('aw-nav-active', l.dataset.target === en.target.id);
+                    });
+                });
+            }, { rootMargin: '-56px 0px -65% 0px', threshold: 0 });
+            groupEls.forEach(function(g) { navObserver.observe(g); });
+        }
+    }
+
+    // Keep nav items in sync with which groups are visible after filtering.
+    function syncNav() {
+        var nav = document.getElementById('aw-nav');
+        if (!nav) return;
+        nav.querySelectorAll('.aw-nav-link').forEach(function(link) {
+            var g = document.getElementById(link.dataset.target);
+            var hidden = g && g.style.display === 'none';
+            link.style.display = hidden ? 'none' : '';
+            var count = g ? ((g.querySelector('[data-count]') || {}).textContent || '') : '';
+            var cEl = link.querySelector('.aw-nav-count');
+            if (cEl) cEl.textContent = count;
+        });
+    }
+
     // Initial render. This is a manager-only page (the controller redirects non-editors),
     // so the canEdit guard above always passes here.
     renderCatalog();
+    buildNav();
 })();
 </script>
