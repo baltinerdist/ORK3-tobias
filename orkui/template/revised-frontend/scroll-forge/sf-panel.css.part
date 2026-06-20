@@ -868,3 +868,116 @@ html[data-theme="dark"] .sc2-btn__spin {
 html[data-theme="dark"] .sc2-panel__body::-webkit-scrollbar-thumb {
 	border-color: var(--sf-bg);
 }
+
+/* ============ In-builder artwork (sc2-art) ============ */
+/* Overlay layer injected inside .sc2-scroll; captured by html2canvas/print */
+.sc2-art-layer { position: absolute; inset: 0; pointer-events: none; }
+.sc2-art-img   { position: absolute; display: block; width: 100%; height: 100%;
+                 object-fit: fill; }
+/* per-zone positioning is set inline from the % table (Task 2 markup is empty;
+   JS injects positioned imgs). Keep this layer above sc2 content for capture. */
+.sc2-scroll .sc2-art-layer { z-index: 40; }
+
+/* Panel control section */
+.sc2-art-panel { margin-top: 14px; }
+.sc2-art-panel h3 { background: transparent; border: none; padding: 0; margin: 0 0 8px;
+                    border-radius: 0; text-shadow: none; font-size: 14px; font-weight: 700; }
+.sc2-art-zonegrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.sc2-art-zonebtn { display: flex; align-items: center; gap: 6px; justify-content: space-between;
+                   padding: 6px 8px; border: 1px solid #cbd5e0; border-radius: 6px;
+                   background: #f7fafc; color: #2d3748; font-size: 12px; cursor: pointer;
+                   text-align: left; }
+.sc2-art-zonebtn:hover { border-color: #5a67d8; background: rgba(90,103,216,.10); }
+.sc2-art-zonebtn.has-img { border-color: #38a169; background: rgba(56,161,105,.10); }
+.sc2-art-zonebtn .sc2-art-dot { width: 8px; height: 8px; border-radius: 50%;
+                   background: #cbd5e0; flex: 0 0 auto; }
+.sc2-art-zonebtn.has-img .sc2-art-dot { background: #38a169; }
+
+/* Modal */
+.sc2-art-modal { position: fixed; inset: 0; z-index: 9000; display: none;
+                 align-items: center; justify-content: center; background: rgba(0,0,0,.55); }
+.sc2-art-modal.is-open { display: flex; }
+.sc2-art-dialog { background: #fff; color: #1a202c; width: min(640px, 94vw);
+                  max-height: 92vh; overflow: auto; border-radius: 10px;
+                  box-shadow: 0 18px 50px rgba(0,0,0,.4); }
+.sc2-art-head { display: flex; align-items: center; justify-content: space-between;
+                padding: 14px 18px; border-bottom: 1px solid #e2e8f0; }
+.sc2-art-head h2 { background: transparent; border: none; padding: 0; margin: 0;
+                   border-radius: 0; text-shadow: none; font-size: 17px; }
+.sc2-art-close { background: none; border: none; font-size: 22px; line-height: 1;
+                 cursor: pointer; color: #4a5568; }
+.sc2-art-body { padding: 18px; }
+.sc2-art-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+.sc2-art-tab { flex: 1; padding: 8px; border: 1px solid #cbd5e0; background: #f7fafc;
+               border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600;
+               color: #2d3748; }
+.sc2-art-tab.is-active { background: #5a67d8; border-color: #5a67d8; color: #fff; }
+.sc2-art-pane { display: none; }
+.sc2-art-pane.is-active { display: block; }
+
+/* Browse grid */
+.sc2-art-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.sc2-art-card { border: 1px solid #e2e8f0; border-radius: 6px; padding: 6px; cursor: pointer;
+                background: #fff; text-align: center; }
+.sc2-art-card:hover { border-color: #5a67d8; }
+.sc2-art-card img { width: 100%; height: 86px; object-fit: contain; }
+.sc2-art-card span { display: block; font-size: 11px; margin-top: 4px; color: #4a5568;
+                     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Upload form */
+.sc2-art-field { margin-bottom: 12px; }
+.sc2-art-field label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px;
+                       color: #2d3748; }
+.sc2-art-field input[type=text], .sc2-art-field textarea, .sc2-art-field select {
+                 width: 100%; padding: 7px 9px; border: 1px solid #cbd5e0; border-radius: 6px;
+                 font-size: 13px; box-sizing: border-box; }
+.sc2-art-preview { max-width: 100%; max-height: 180px; display: none; margin: 8px 0;
+                   border: 1px solid #e2e8f0; border-radius: 6px; }
+.sc2-art-share { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #cbd5e0; }
+.sc2-art-share-reveal { display: none; margin-top: 10px; }
+.sc2-art-share-reveal.is-open { display: block; }
+/* Amtgard|Kingdom toggle */
+.sc2-art-tier { display: inline-flex; border: 1px solid #cbd5e0; border-radius: 999px;
+                overflow: hidden; }
+.sc2-art-tier button { border: none; background: #f7fafc; color: #2d3748; padding: 6px 16px;
+                       font-size: 12px; font-weight: 600; cursor: pointer; }
+.sc2-art-tier button.is-active { background: #5a67d8; color: #fff; }
+.sc2-art-license { font-size: 11px; line-height: 1.45; max-height: 120px; overflow: auto;
+                   background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 6px;
+                   padding: 8px; margin: 8px 0; color: #2d3748; }
+.sc2-art-foot { display: flex; align-items: center; justify-content: space-between;
+                gap: 10px; padding: 14px 18px; border-top: 1px solid #e2e8f0; }
+.sc2-art-status { font-size: 12px; }
+.sc2-art-status.warn { color: #c05621; }
+.sc2-art-status.err  { color: #c53030; }
+.sc2-art-status.ok   { color: #2f855a; }
+.sc2-art-btn { padding: 8px 16px; border-radius: 6px; border: 1px solid #5a67d8;
+               background: #5a67d8; color: #fff; font-size: 13px; font-weight: 600;
+               cursor: pointer; }
+.sc2-art-btn[disabled] { opacity: .5; cursor: not-allowed; }
+.sc2-art-btn.ghost { background: #fff; color: #4a5568; border-color: #cbd5e0; }
+
+/* Dark mode */
+html[data-theme="dark"] .sc2-art-zonebtn { background: #2d3748; border-color: #4a5568; color: #e2e8f0; }
+html[data-theme="dark"] .sc2-art-zonebtn:hover { background: rgba(129,140,248,.18); border-color: #818cf8; }
+html[data-theme="dark"] .sc2-art-zonebtn.has-img { background: rgba(56,161,105,.20); border-color: #38a169; }
+html[data-theme="dark"] .sc2-art-dialog { background: #1a202c; color: #e2e8f0; }
+html[data-theme="dark"] .sc2-art-head,
+html[data-theme="dark"] .sc2-art-foot { border-color: #2d3748; }
+html[data-theme="dark"] .sc2-art-head h2,
+html[data-theme="dark"] .sc2-art-panel h3 { color: #e2e8f0; }
+html[data-theme="dark"] .sc2-art-close { color: #a0aec0; }
+html[data-theme="dark"] .sc2-art-tab,
+html[data-theme="dark"] .sc2-art-tier button { background: #2d3748; border-color: #4a5568; color: #e2e8f0; }
+html[data-theme="dark"] .sc2-art-tab.is-active,
+html[data-theme="dark"] .sc2-art-tier button.is-active { background: #5a67d8; border-color: #5a67d8; color: #fff; }
+html[data-theme="dark"] .sc2-art-card { background: #2d3748; border-color: #4a5568; }
+html[data-theme="dark"] .sc2-art-card span { color: #a0aec0; }
+html[data-theme="dark"] .sc2-art-field label { color: #e2e8f0; }
+html[data-theme="dark"] .sc2-art-field input[type=text],
+html[data-theme="dark"] .sc2-art-field textarea,
+html[data-theme="dark"] .sc2-art-field select { background: #2d3748; border-color: #4a5568; color: #e2e8f0; }
+html[data-theme="dark"] .sc2-art-license { background: #2d3748; border-color: #4a5568; color: #cbd5e0; }
+html[data-theme="dark"] .sc2-art-btn.ghost { background: #2d3748; color: #e2e8f0; border-color: #4a5568; }
+html[data-theme="dark"] .sc2-art-preview { border-color: #4a5568; }
+html[data-theme="dark"] .sc2-art-share { border-color: #4a5568; }

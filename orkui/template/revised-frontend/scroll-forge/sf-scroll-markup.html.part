@@ -335,6 +335,8 @@
 
 		</div><!-- /.sc2-page -->
 
+		<div class="sc2-art-layer" id="sc2ArtLayer" aria-hidden="true"></div>
+
 	</article>
 
 </main>

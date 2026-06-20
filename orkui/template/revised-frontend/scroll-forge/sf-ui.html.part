@@ -279,6 +279,20 @@
 			</div>
 		</section>
 
+		<section class="sc2-art-panel" id="sc2ArtPanel">
+			<h3>Artwork</h3>
+			<div class="sc2-art-zonegrid" id="sc2ArtZoneGrid">
+				<button type="button" class="sc2-art-zonebtn" data-zone="full_border"><span>Full Border</span><span class="sc2-art-dot"></span></button>
+				<button type="button" class="sc2-art-zonebtn" data-zone="border_top"><span>Top Border</span><span class="sc2-art-dot"></span></button>
+				<button type="button" class="sc2-art-zonebtn" data-zone="border_bottom"><span>Bottom Border</span><span class="sc2-art-dot"></span></button>
+				<button type="button" class="sc2-art-zonebtn" data-zone="border_left"><span>Left Border</span><span class="sc2-art-dot"></span></button>
+				<button type="button" class="sc2-art-zonebtn" data-zone="border_right"><span>Right Border</span><span class="sc2-art-dot"></span></button>
+				<button type="button" class="sc2-art-zonebtn" data-zone="top_graphic"><span>Top Graphic</span><span class="sc2-art-dot"></span></button>
+				<button type="button" class="sc2-art-zonebtn" data-zone="center_image"><span>Center Image</span><span class="sc2-art-dot"></span></button>
+				<button type="button" class="sc2-art-zonebtn" data-zone="watermark"><span>Watermark</span><span class="sc2-art-dot"></span></button>
+			</div>
+		</section>
+
 	</div><!-- /.sc2-panel__body -->
 
 	<!-- EXPORT RAIL (pinned footer); gated on $sfCanGenerate -->
@@ -331,3 +345,78 @@
 		      stroke-linecap="round" stroke-linejoin="round"/>
 	</svg>
 </button>
+
+<!-- ============================================================
+     IN-BUILDER ARTWORK modal (sc2-art). Browse the shared library or
+     upload your own image for any of the 8 fixed scroll zones.
+     ============================================================ -->
+<div class="sc2-art-modal" id="sc2ArtModal" role="dialog" aria-modal="true" aria-labelledby="sc2ArtTitle">
+  <div class="sc2-art-dialog">
+    <div class="sc2-art-head">
+      <h2 id="sc2ArtTitle">Artwork — <span id="sc2ArtZoneLabel">Zone</span></h2>
+      <button type="button" class="sc2-art-close" id="sc2ArtCloseX" aria-label="Close">&times;</button>
+    </div>
+    <div class="sc2-art-body">
+      <div class="sc2-art-tabs">
+        <button type="button" class="sc2-art-tab is-active" data-pane="browse">Browse Library</button>
+        <button type="button" class="sc2-art-tab" data-pane="upload">Upload Your Own</button>
+      </div>
+
+      <!-- Browse pane -->
+      <div class="sc2-art-pane is-active" data-pane="browse">
+        <div class="sc2-art-grid" id="sc2ArtGrid"></div>
+        <p class="sc2-art-status" id="sc2ArtBrowseStatus"></p>
+      </div>
+
+      <!-- Upload pane -->
+      <div class="sc2-art-pane" data-pane="upload">
+        <div class="sc2-art-field">
+          <label for="sc2ArtFile">Choose an image (PNG, JPEG, or GIF; max 2 MB)</label>
+          <input type="file" id="sc2ArtFile" accept="image/png,image/jpeg,image/gif">
+        </div>
+        <img class="sc2-art-preview" id="sc2ArtPreview" alt="Preview">
+
+        <div class="sc2-art-share">
+          <label><input type="checkbox" id="sc2ArtShareChk"> Share this with the Amtgard Graphics Library</label>
+          <div class="sc2-art-share-reveal" id="sc2ArtShareReveal">
+            <div class="sc2-art-field">
+              <label>Is this design intended for Amtgard-wide use, or is it Kingdom-specific?</label>
+              <div class="sc2-art-tier" id="sc2ArtTier" role="group" aria-label="Sharing tier">
+                <button type="button" data-tier="global" class="is-active">Amtgard</button>
+                <button type="button" data-tier="kingdom">Kingdom</button>
+              </div>
+              <p class="sc2-art-status" id="sc2ArtTierNote">Amtgard-wide submissions are reviewed by ORK admins.</p>
+            </div>
+            <div class="sc2-art-field">
+              <label for="sc2ArtName">Name</label>
+              <input type="text" id="sc2ArtName" maxlength="120" placeholder="e.g. Celtic knot border">
+            </div>
+            <div class="sc2-art-field">
+              <label for="sc2ArtTags">Tags (comma-separated)</label>
+              <input type="text" id="sc2ArtTags" maxlength="240" placeholder="e.g. celtic, border, gold">
+            </div>
+            <div class="sc2-art-field">
+              <label for="sc2ArtCategory">Category (optional)</label>
+              <select id="sc2ArtCategory"><option value="">— None —</option></select>
+            </div>
+            <div class="sc2-art-license" id="sc2ArtLicense"></div>
+            <div class="sc2-art-field">
+              <label><input type="checkbox" id="sc2ArtAgree"> I have read and agree to the license terms above.</label>
+            </div>
+            <div class="sc2-art-field">
+              <label for="sc2ArtSigner">Type your full legal name as your electronic signature</label>
+              <input type="text" id="sc2ArtSigner" maxlength="120" placeholder="Full legal name">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="sc2-art-foot">
+      <span class="sc2-art-status" id="sc2ArtFootStatus"></span>
+      <span>
+        <button type="button" class="sc2-art-btn ghost" id="sc2ArtClearBtn">Remove from Zone</button>
+        <button type="button" class="sc2-art-btn" id="sc2ArtUseBtn" disabled>Use on My Scroll</button>
+      </span>
+    </div>
+  </div>
+</div>
