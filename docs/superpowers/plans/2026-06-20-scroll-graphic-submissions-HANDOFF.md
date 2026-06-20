@@ -7,7 +7,28 @@
 This file lets a new (post-compaction) session resume without re-deriving context. Read this, the spec, and the plan; then continue.
 
 - **Spec:** `docs/superpowers/specs/2026-06-19-scroll-graphic-submissions-design.md`
-- **Plan:** `docs/superpowers/plans/2026-06-19-scroll-graphic-submissions.md`
+- **Plan (module):** `docs/superpowers/plans/2026-06-19-scroll-graphic-submissions.md`
+- **Plan (in-builder share, Option B):** `docs/superpowers/plans/2026-06-20-in-builder-share-option-b.md`
+
+---
+
+## UPDATE 2026-06-20 — In-builder share phase: **DONE** (verified end-to-end)
+
+The in-builder "upload + opt-in share" phase is complete and committed to PR #6 (commits `492c2574` … `d5427115`), verified live in Chrome + authed curl.
+
+**Decision taken:** revive the **full 8-zone placement** in the rebuilt sc2 builder (user-chosen over the lighter options). Each zone (watermark, full_border, border_top/bottom/left/right, top_graphic, center_image) gets a panel button → modal with **Browse Library** + **Upload Your Own** tabs.
+
+**Architecture (Option B, adapted to the real post-rebuild builder):** the live builder exports **client-side** (html2canvas → `.sc2-scroll`; `window.print()`). So artwork is injected as **percentage-positioned `<img>` overlays inside `#sc2ArtLayer`** (last child of `<article class="sc2-scroll" id="sc2Scroll">`), captured automatically by both export paths. Geometry/opacity/z-order derived from `ScrollArtwork::SLOT_DIMENSIONS` (watermark 10%, center_image 15%, others 100%). **No server-side `ScrollAjax/generate` / `sgDownload` / `_raw` POST** — the plan's old Task 4.2 wording was stale; the server-side `artwork_<slot>_raw` path remains latent infra, unused here. Base64 `data:` URLs and same-origin library `Url`s don't taint the html2canvas canvas.
+
+**Files:** all runtime changes in `orkui/template/revised-frontend/Scroll_builder.tpl` (CSS `sc2-art*`, overlay markup, panel section, `#sc2ArtModal`, `state.artwork`, `ART_ZONES`, render/modal/browse/upload-share JS); `artLicense` added to `$sgConfig` (read as `SG.artLicense`). Mirrored into `scroll-forge/{sf-scroll-markup.html,sf-ui.html,sf-app.js,sf-panel.css}.part`.
+
+**AJAX:** reuses the live endpoints — browse (GET, `data.Artwork`), categories (GET, `data.Categories`/`{CategoryId,Label}`), upload (POST FormData, `data.Status===0`).
+
+**Verified:** zone panel + modal + tabs; Browse empty-state routes correctly; file→preview→ephemeral overlay (correct % position + opacity + z-order); share reveal + Amtgard|Kingdom toggle (real kingdom name) + license + signature gating; "Use on My Scroll" ↔ "Use & Submit to Library" label; dark-mode modal legible; overlay inside the export target with no `data-print` hide; **authed share POST creates a `pending` row** (status/visibility/layout_location/signer/signed_at all correct) — test row cleaned up. On share failure the image still stays on the scroll (resilient).
+
+**⚠️ Bonus bug fixed (pre-existing, whole module):** every dynamic page in the standalone module built `<action>?<params>` after `SG.uir` (which ends in `?Route=`), producing a **double-`?` → HTTP 500** on browse/search/my_uploads/pending. The original curl-only verification used hand-built `&` URLs and never exercised the page JS, so it shipped broken. Fixed all four (`browse&`, `search&`, `my_uploads&`, `pending&`) in `ScrollGraphics_{index,mine,moderate}.tpl` (commit `ab93c934`) + the new in-builder browse (`81a17116`). Verified via authed curl (`?`→500, `&`→200). **This is the same class as the documented playersearch `&q=` not `?q=` rule.**
+
+**Remaining (optional follow-ups, unchanged from below):** license legal review; `moderatable_kingdom_ids()` multi-kingdom; stale docblocks; `get()` CategoryLabel null; category slug race. NOT pushed yet — local commits only.
 
 ---
 
