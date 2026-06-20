@@ -69,6 +69,7 @@
 		'heraldryKingdomBase' => HTTP_KINGDOM_HERALDRY,
 		'token'               => $sgSessionToken,
 		'isOrkAdmin'          => $sgIsOrkAdmin,
+		'artLicense'          => (class_exists('ScrollArtwork') ? ScrollArtwork::SCROLL_ARTWORK_LICENSE : ''),
 	];
 ?>
 
@@ -12389,6 +12390,22 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
 		}
 	}
 
+	/* ── 1b. IN-BUILDER ARTWORK constants ────────────────────────────────────
+	   Zone geometry as % of .sc2-scroll (derived from
+	   ScrollArtwork::SLOT_DIMENSIONS / 2550x3300). License string is emitted
+	   server-side into SgConfig.artLicense (see $sgConfig).                   */
+	var ART_ZONES = {
+		watermark:    { l:0,      t:0,      w:100,    h:100,    z:1, op:0.10, label:'Watermark' },
+		full_border:  { l:0,      t:0,      w:100,    h:100,    z:2, op:1.00, label:'Full Border' },
+		border_top:   { l:0,      t:0,      w:100,    h:12.121, z:3, op:1.00, label:'Top Border' },
+		border_bottom:{ l:0,      t:87.879, w:100,    h:12.121, z:3, op:1.00, label:'Bottom Border' },
+		border_left:  { l:0,      t:0,      w:11.765, h:100,    z:3, op:1.00, label:'Left Border' },
+		border_right: { l:88.235, t:0,      w:11.765, h:100,    z:3, op:1.00, label:'Right Border' },
+		top_graphic:  { l:34.314, t:1.515,  w:31.373, h:15.152, z:4, op:1.00, label:'Top Graphic' },
+		center_image: { l:26.471, t:31.818, w:47.059, h:36.364, z:5, op:0.15, label:'Center Image' }
+	};
+	var ART_LICENSE = (SG && SG.artLicense) ? SG.artLicense : '';
+
 	/* ── 2. ROOTS (resolved lazily so we never hard-fail at parse time) ───── */
 	var APP = null, PANEL = null, STAGE = null, SCROLL = null;
 	function resolveRoots() {
@@ -12456,7 +12473,8 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
 		kingdomName: pick(SG.kingdomName, "the Kingdom"),
 		note:        pick(SG.note, "service to Our realm"),
 		isTitle:     SG.isTitle === true,
-		isLadder:    SG.isLadder === true
+		isLadder:    SG.isLadder === true,
+		artwork:     {}   // zone -> { id?, url?, raw? }  (raw = data-URL for ephemeral uploads)
 	};
 
 	function firstOfficerName(roleSubstr) {
@@ -13364,6 +13382,84 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
 		setTimeout(function () { if (a.parentNode) { a.parentNode.removeChild(a); } }, 0);
 	}
 
+	/* ── 12b. IN-BUILDER ARTWORK: overlay renderer + modal shell ──────────────
+	   The overlay layer lives inside .sc2-scroll so html2canvas / print capture
+	   it automatically. Browse-library + upload/share handlers are added by
+	   loadArtLibrary()/bindArtUpload() (Tasks 4 + 5).                          */
+	var ART_LAYER = $('#sc2ArtLayer');
+	var ART_MODAL = $('#sc2ArtModal');
+	var artActiveZone = '';
+
+	function artImgSrc(entry) { return entry ? (entry.raw || entry.url || '') : ''; }
+
+	function renderArtwork() {
+		if (!ART_LAYER) return;
+		ART_LAYER.innerHTML = '';
+		Object.keys(ART_ZONES).forEach(function (zone) {
+			var entry = state.artwork[zone];
+			var src = artImgSrc(entry);
+			if (!src) return;
+			var g = ART_ZONES[zone];
+			var img = document.createElement('img');
+			img.className = 'sc2-art-img';
+			img.alt = '';
+			img.src = src;
+			img.style.left = g.l + '%';
+			img.style.top = g.t + '%';
+			img.style.width = g.w + '%';
+			img.style.height = g.h + '%';
+			img.style.zIndex = String(g.z);
+			img.style.opacity = String(g.op);
+			ART_LAYER.appendChild(img);
+		});
+		refreshArtZoneButtons();
+	}
+
+	function refreshArtZoneButtons() {
+		var btns = document.querySelectorAll('.sc2-art-zonebtn');
+		for (var i = 0; i < btns.length; i++) {
+			var z = btns[i].getAttribute('data-zone');
+			btns[i].classList.toggle('has-img', !!artImgSrc(state.artwork[z]));
+		}
+	}
+
+	function openArtModal(zone) {
+		artActiveZone = zone;
+		var g = ART_ZONES[zone];
+		var lbl = $('#sc2ArtZoneLabel'); if (lbl) lbl.textContent = g ? g.label : zone;
+		artSwitchPane('browse');
+		artResetUploadForm();
+		loadArtLibrary(zone);          // defined in Task 4
+		if (ART_MODAL) ART_MODAL.classList.add('is-open');
+	}
+	function closeArtModal() { if (ART_MODAL) ART_MODAL.classList.remove('is-open'); }
+
+	function artSwitchPane(name) {
+		var tabs = document.querySelectorAll('.sc2-art-tab');
+		var panes = document.querySelectorAll('.sc2-art-pane');
+		for (var i = 0; i < tabs.length; i++) tabs[i].classList.toggle('is-active', tabs[i].getAttribute('data-pane') === name);
+		for (var j = 0; j < panes.length; j++) panes[j].classList.toggle('is-active', panes[j].getAttribute('data-pane') === name);
+	}
+
+	function bindArtwork() {
+		if (!ART_MODAL) return;
+		var grid = $('#sc2ArtZoneGrid');
+		if (grid) on(grid, 'click', function (e) {
+			var b = e.target.closest ? e.target.closest('.sc2-art-zonebtn') : null;
+			if (b && b.getAttribute('data-zone')) openArtModal(b.getAttribute('data-zone'));
+		});
+		var cx = $('#sc2ArtCloseX'); if (cx) on(cx, 'click', closeArtModal);
+		on(ART_MODAL, 'click', function (e) { if (e.target === ART_MODAL) closeArtModal(); });
+		var tabs = document.querySelectorAll('.sc2-art-tab');
+		for (var i = 0; i < tabs.length; i++) on(tabs[i], 'click', function (e) { artSwitchPane(e.currentTarget.getAttribute('data-pane')); });
+		var clr = $('#sc2ArtClearBtn'); if (clr) on(clr, 'click', function () {
+			if (artActiveZone) { delete state.artwork[artActiveZone]; renderArtwork(); }
+			closeArtModal();
+		});
+		bindArtUpload();   // defined in Task 5
+		renderArtwork();
+	}
+
 	function bindExport() {
 		/* Export rail buttons live in the panel footer (sf-ui.html.part):
 		   #sc2ExportPrint -> Print/PDF, #sc2ExportPng -> Save PNG. They only
@@ -13394,6 +13490,7 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
 
 		bindControls();
 		bindExport();
+		bindArtwork();
 		syncOptionControls();
 
 		/* responsive auto-fit */
