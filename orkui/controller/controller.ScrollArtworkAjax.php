@@ -55,6 +55,21 @@ class Controller_ScrollArtworkAjax extends Controller {
 		return $mundane_id;
 	}
 
+	/**
+	 * Kingdoms the given user may moderate (their session kingdom if they
+	 * hold AUTH_KINGDOM edit authority there). Returns an array of ids.
+	 */
+	private function moderatable_kingdom_ids($mundane_id) {
+		$ids = array();
+		$kid = isset($this->session->kingdom_id) ? (int)$this->session->kingdom_id : 0;
+		if ($kid > 0 && Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_KINGDOM, $kid, AUTH_EDIT)) {
+			$ids[] = $kid;
+		}
+		global $DB;
+		$DB->Clear();
+		return $ids;
+	}
+
 	// ================================================================
 	//  POST /ScrollArtworkAjax/upload
 	// ================================================================
@@ -79,7 +94,15 @@ class Controller_ScrollArtworkAjax extends Controller {
 			'Tags'              => trim($_POST['tags'] ?? ''),
 			'LayoutLocation'    => trim($_POST['layout_location'] ?? ''),
 			'LicenseSignerName' => trim($_POST['license_signer_name'] ?? ''),
+			'Visibility'        => trim($_POST['visibility'] ?? 'global'),
+			'OwnerKingdomId'    => (int)($_POST['owner_kingdom_id'] ?? 0),
+			'CategoryId'        => (int)($_POST['category_id'] ?? 0),
 		);
+
+		// Default OwnerKingdomId to the submitter's kingdom for provenance.
+		if ($request['OwnerKingdomId'] <= 0 && isset($this->session->kingdom_id)) {
+			$request['OwnerKingdomId'] = (int)$this->session->kingdom_id;
+		}
 
 		$result = $this->sa->upload($request);
 
@@ -106,6 +129,22 @@ class Controller_ScrollArtworkAjax extends Controller {
 	}
 
 	// ================================================================
+	//  GET /ScrollArtworkAjax/categories
+	// ================================================================
+
+	/**
+	 * List active artwork categories for dropdowns/filters.
+	 * Login required.
+	 *
+	 * Returns JSON: {Categories: [...], Status}
+	 */
+	public function categories($id = null) {
+		$this->require_login();
+		$result = $this->sa->list_categories(true);
+		$this->json_response(array('Categories' => $result['Categories'] ?? array(), 'Status' => 0));
+	}
+
+	// ================================================================
 	//  GET /ScrollArtworkAjax/browse
 	// ================================================================
 
@@ -117,11 +156,19 @@ class Controller_ScrollArtworkAjax extends Controller {
 	 * Returns JSON: {Artwork: [...], Total, Page, PerPage, Status}
 	 */
 	public function browse($id = null) {
+		$this->require_login();
+
 		$layout_location = trim($_GET['layout_location'] ?? '');
 		$page = max(1, (int)($_GET['page'] ?? 1));
 		$per_page = max(1, min(100, (int)($_GET['per_page'] ?? 12)));
 
-		$result = $this->sa->browse($layout_location, $page, $per_page);
+		$opts = array(
+			'ViewerKingdomId' => isset($this->session->kingdom_id) ? (int)$this->session->kingdom_id : 0,
+			'Tier'            => in_array($_GET['tier'] ?? 'all', array('all', 'global', 'kingdom')) ? $_GET['tier'] : 'all',
+			'CategoryId'      => (int)($_GET['category_id'] ?? 0),
+		);
+
+		$result = $this->sa->browse($layout_location, $page, $per_page, $opts);
 
 		$this->json_response(array(
 			'Artwork' => $result['Artwork'] ?? array(),
@@ -144,12 +191,20 @@ class Controller_ScrollArtworkAjax extends Controller {
 	 * Returns JSON: {Artwork: [...], Total, Page, PerPage, Query, Status}
 	 */
 	public function search($id = null) {
+		$this->require_login();
+
 		$query = trim($_GET['query'] ?? '');
 		$layout_location = trim($_GET['layout_location'] ?? '');
 		$page = max(1, (int)($_GET['page'] ?? 1));
 		$per_page = max(1, min(100, (int)($_GET['per_page'] ?? 12)));
 
-		$result = $this->sa->search($query, $layout_location, $page, $per_page);
+		$opts = array(
+			'ViewerKingdomId' => isset($this->session->kingdom_id) ? (int)$this->session->kingdom_id : 0,
+			'Tier'            => in_array($_GET['tier'] ?? 'all', array('all', 'global', 'kingdom')) ? $_GET['tier'] : 'all',
+			'CategoryId'      => (int)($_GET['category_id'] ?? 0),
+		);
+
+		$result = $this->sa->search($query, $layout_location, $page, $per_page, $opts);
 
 		$this->json_response(array(
 			'Artwork' => $result['Artwork'] ?? array(),
@@ -166,20 +221,40 @@ class Controller_ScrollArtworkAjax extends Controller {
 	// ================================================================
 
 	/**
-	 * Get pending artwork for admin review.
-	 * Admin only (AUTH_ADMIN + AUTH_EDIT).
+	 * Get pending artwork for review. Tier-aware: ORK admins get the global
+	 * queue (default), kingdom officers get their kingdom's queue. The scope
+	 * may be forced via the `scope` GET param ('global'|'kingdom'); a
+	 * non-admin requesting the global queue gets Status:5.
 	 *
-	 * GET params: page (default 1), per_page (default 20)
+	 * GET params: scope (optional), page (default 1), per_page (default 20)
 	 *
 	 * Returns JSON: {Artwork: [...], Total, Page, PerPage, Status}
 	 */
 	public function pending($id = null) {
-		$this->require_admin();
+		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($this->session->token ?? '');
+		if ($mundane_id <= 0) {
+			$this->json_response(array('Status' => 5, 'Message' => 'Not authorized.'));
+		}
+		$is_admin = Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_ADMIN, 0, AUTH_EDIT);
+		global $DB;
+		$DB->Clear();
 
+		$scope = ($_GET['scope'] ?? ($is_admin ? 'global' : 'kingdom'));
 		$page = max(1, (int)($_GET['page'] ?? 1));
 		$per_page = max(1, min(100, (int)($_GET['per_page'] ?? 20)));
 
-		$result = $this->sa->get_pending($page, $per_page);
+		if ($scope === 'global') {
+			if (!$is_admin) {
+				$this->json_response(array('Status' => 5, 'Message' => 'Admin privileges required.'));
+			}
+			$result = $this->sa->get_pending($page, $per_page, array('Scope' => 'global'));
+		} else {
+			$kingdom_ids = $this->moderatable_kingdom_ids($mundane_id);
+			if (count($kingdom_ids) === 0) {
+				$this->json_response(array('Status' => 5, 'Message' => 'No kingdom moderation authority.'));
+			}
+			$result = $this->sa->get_pending($page, $per_page, array('Scope' => 'kingdom', 'KingdomIds' => $kingdom_ids));
+		}
 
 		$this->json_response(array(
 			'Artwork' => $result['Artwork'] ?? array(),
@@ -195,15 +270,15 @@ class Controller_ScrollArtworkAjax extends Controller {
 	// ================================================================
 
 	/**
-	 * Approve a pending artwork.
-	 * Admin only (AUTH_ADMIN + AUTH_EDIT).
+	 * Approve a pending artwork. Tier-aware authorization is handled by the
+	 * lib (ORK admin for global rows, kingdom officer for kingdom rows).
 	 *
 	 * POST params: artwork_id
 	 *
 	 * Returns JSON: {Status, Message}
 	 */
 	public function approve($id = null) {
-		$this->require_admin();
+		$this->require_login();
 
 		$artwork_id = (int)($_POST['artwork_id'] ?? 0);
 		if ($artwork_id <= 0) {
@@ -233,15 +308,16 @@ class Controller_ScrollArtworkAjax extends Controller {
 	// ================================================================
 
 	/**
-	 * Reject a pending artwork with a reason.
-	 * Admin only (AUTH_ADMIN + AUTH_EDIT).
+	 * Reject a pending artwork with a reason. Tier-aware authorization is
+	 * handled by the lib (ORK admin for global rows, kingdom officer for
+	 * kingdom rows).
 	 *
 	 * POST params: artwork_id, reason
 	 *
 	 * Returns JSON: {Status, Message}
 	 */
 	public function reject($id = null) {
-		$this->require_admin();
+		$this->require_login();
 
 		$artwork_id = (int)($_POST['artwork_id'] ?? 0);
 		$reason = trim($_POST['reason'] ?? '');
@@ -340,6 +416,40 @@ class Controller_ScrollArtworkAjax extends Controller {
 			}
 			$this->json_response(array('Status' => 1, 'Message' => $detail));
 		}
+	}
+
+	// ================================================================
+	//  POST /ScrollArtworkAjax/save_category
+	// ================================================================
+
+	/**
+	 * Create or update a thematic artwork category.
+	 * Admin only (AUTH_ADMIN + AUTH_EDIT).
+	 * Retiring a category = save with active=0 (no hard delete).
+	 *
+	 * POST params: category_id (0 = create), label, sort_order, active
+	 *
+	 * Returns JSON: {Status, CategoryId, Message}
+	 */
+	public function save_category($id = null) {
+		$this->require_admin();
+
+		$request = array(
+			'Token'      => $this->session->token,
+			'CategoryId' => (int)($_POST['category_id'] ?? 0),
+			'Label'      => trim($_POST['label'] ?? ''),
+			'SortOrder'  => (int)($_POST['sort_order'] ?? 0),
+			'Active'     => !empty($_POST['active']) ? 1 : 0,
+		);
+
+		$result = $this->sa->save_category($request);
+
+		if (is_array($result['Status']) && isset($result['Status']['Status']) && $result['Status']['Status'] == 0) {
+			$this->json_response(array('Status' => 0, 'CategoryId' => $result['CategoryId'] ?? 0, 'Message' => 'Category saved.'));
+		}
+
+		$detail = is_array($result['Status']) ? ($result['Status']['Detail'] ?? $result['Status']['Error'] ?? 'Save failed.') : 'Save failed.';
+		$this->json_response(array('Status' => 1, 'Message' => $detail));
 	}
 
 	// ================================================================
