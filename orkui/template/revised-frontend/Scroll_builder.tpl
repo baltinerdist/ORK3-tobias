@@ -13441,6 +13441,42 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
 		for (var j = 0; j < panes.length; j++) panes[j].classList.toggle('is-active', panes[j].getAttribute('data-pane') === name);
 	}
 
+	var ART_AJAX = SG.uir + 'ScrollArtworkAjax/';
+
+	function loadArtLibrary(zone) {
+		var grid = $('#sc2ArtGrid');
+		var status = $('#sc2ArtBrowseStatus');
+		if (!grid) return;
+		grid.innerHTML = '';
+		if (status) { status.textContent = 'Loading\u2026'; status.className = 'sc2-art-status'; }
+		var url = ART_AJAX + 'browse?layout_location=' + encodeURIComponent(zone) + '&tier=&category_id=&page=1';
+		fetch(url, { credentials: 'same-origin' })
+			.then(function (r) { return r.json(); })
+			.then(function (data) {
+				var rows = (data && data.Artwork) || [];
+				if (!rows.length) { if (status) { status.textContent = 'No shared graphics for this zone yet. Try \u201cUpload Your Own.\u201d'; status.className = 'sc2-art-status'; } return; }
+				if (status) status.textContent = '';
+				rows.forEach(function (row) {
+					var card = document.createElement('div');
+					card.className = 'sc2-art-card';
+					var img = document.createElement('img');
+					img.src = row.Url; img.alt = row.Name || '';
+					var span = document.createElement('span');
+					span.textContent = row.Name || '';
+					card.appendChild(img); card.appendChild(span);
+					on(card, 'click', function () { selectLibraryArt(zone, row); });
+					grid.appendChild(card);
+				});
+			})
+			.catch(function () { if (status) { status.textContent = 'Could not load the library.'; status.className = 'sc2-art-status err'; } });
+	}
+
+	function selectLibraryArt(zone, row) {
+		state.artwork[zone] = { url: row.Url };
+		renderArtwork();
+		closeArtModal();
+	}
+
 	function bindArtwork() {
 		if (!ART_MODAL) return;
 		var grid = $('#sc2ArtZoneGrid');
