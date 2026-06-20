@@ -406,31 +406,41 @@ class ScrollArtwork extends Ork3 {
 	 * @param int $per_page Items per page
 	 * @return array Paginated list of pending artwork with uploader persona
 	 */
-	public function get_pending($page = 1, $per_page = 20) {
+	public function get_pending($page = 1, $per_page = 20, $opts = array()) {
 		$page = max(1, intval($page));
 		$per_page = max(1, min(100, intval($per_page)));
 		$offset = ($page - 1) * $per_page;
+		$scope = $opts['Scope'] ?? 'global'; // 'global' or 'kingdom'
+		$kingdom_ids = $opts['KingdomIds'] ?? array(); // ints, for 'kingdom' scope
 
-		// Get total count
-		$this->db->Clear();
-		$count_sql = "SELECT COUNT(*) as total FROM " . DB_PREFIX . "scroll_artwork WHERE status = 'pending'";
-		$cr = $this->db->DataSet($count_sql);
-		$total = ($cr->Size() > 0 && $cr->Next()) ? intval($cr->total) : 0;
+		if ($scope === 'kingdom') {
+			$kingdom_ids = array_values(array_filter(array_map('intval', $kingdom_ids), function ($x) {
+				return $x > 0;
+			}));
+			if (count($kingdom_ids) === 0) {
+				return array('Artwork' => array(), 'Total' => 0, 'Page' => $page, 'PerPage' => $per_page, 'Status' => Success());
+			}
+			$where = "sa.status = 'pending' AND sa.visibility = 'kingdom' AND sa.owner_kingdom_id IN (" . implode(',', $kingdom_ids) . ")";
+		} else {
+			$where = "sa.status = 'pending' AND sa.visibility = 'global'";
+		}
 
-		// Get page of results
-		$this->db->Clear();
-		$sql = "SELECT sa.*, m.persona as uploader_persona
-			FROM " . DB_PREFIX . "scroll_artwork sa
+		$base = "FROM " . DB_PREFIX . "scroll_artwork sa
 			LEFT JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = sa.uploader_mundane_id
-			WHERE sa.status = 'pending'
-			ORDER BY sa.created_at ASC
-			LIMIT " . (int)$per_page . " OFFSET " . (int)$offset . "";
-		$r = $this->db->DataSet($sql);
+			LEFT JOIN " . DB_PREFIX . "scroll_artwork_category c ON c.category_id = sa.category_id
+			WHERE " . $where;
 
+		$this->db->Clear();
+		$sql = "SELECT sa.*, m.persona AS uploader_persona, c.label AS category_label
+			" . $base . " ORDER BY sa.created_at ASC
+			LIMIT " . (int)$per_page . " OFFSET " . (int)$offset;
+		$r = $this->db->DataSet($sql);
 		$artwork = array();
 		while ($r->Next()) {
 			$artwork[] = $this->format_artwork_row($r);
 		}
+		$cr = $this->db->DataSet("SELECT COUNT(*) AS total " . $base);
+		$total = ($cr->Size() > 0 && $cr->Next()) ? intval($cr->total) : 0;
 
 		return array(
 			'Artwork' => $artwork,
@@ -449,7 +459,7 @@ class ScrollArtwork extends Ork3 {
 	 */
 	public function approve($request) {
 		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
-		if ($mundane_id <= 0 || !Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_ADMIN, 0, AUTH_EDIT)) {
+		if ($mundane_id <= 0) {
 			return array('Status' => NoAuthorization());
 		}
 
@@ -458,15 +468,23 @@ class ScrollArtwork extends Ork3 {
 			return array('Status' => InvalidParameter(null, 'Invalid artwork ID.'));
 		}
 
-		// Verify artwork exists and is pending
+		// Load the row first (need visibility/owner_kingdom_id to authorize by tier).
 		$this->db->Clear();
 		$this->db->artwork_id = $artwork_id;
-		$sql = "SELECT scroll_artwork_id, status FROM " . DB_PREFIX . "scroll_artwork WHERE scroll_artwork_id = :artwork_id";
+		$sql = "SELECT scroll_artwork_id, status, visibility, owner_kingdom_id
+			FROM " . DB_PREFIX . "scroll_artwork WHERE scroll_artwork_id = :artwork_id";
 		$r = $this->db->DataSet($sql);
 		if ($r->Size() <= 0 || !$r->Next()) {
 			return array('Status' => InvalidParameter(null, 'Artwork not found.'));
 		}
-		if ($r->status !== 'pending') {
+		$visibility = $r->visibility;
+		$owner_kingdom_id = $r->owner_kingdom_id;
+		$status = $r->status;
+
+		if (!$this->can_moderate($mundane_id, $visibility, $owner_kingdom_id)) {
+			return array('Status' => NoAuthorization());
+		}
+		if ($status !== 'pending') {
 			return array('Status' => InvalidParameter(null, 'Artwork is not in pending status.'));
 		}
 
@@ -493,7 +511,7 @@ class ScrollArtwork extends Ork3 {
 	 */
 	public function reject($request) {
 		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
-		if ($mundane_id <= 0 || !Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_ADMIN, 0, AUTH_EDIT)) {
+		if ($mundane_id <= 0) {
 			return array('Status' => NoAuthorization());
 		}
 
@@ -510,15 +528,23 @@ class ScrollArtwork extends Ork3 {
 			$reason = substr($reason, 0, 500);
 		}
 
-		// Verify artwork exists and is pending
+		// Load the row first (need visibility/owner_kingdom_id to authorize by tier).
 		$this->db->Clear();
 		$this->db->artwork_id = $artwork_id;
-		$sql = "SELECT scroll_artwork_id, status FROM " . DB_PREFIX . "scroll_artwork WHERE scroll_artwork_id = :artwork_id";
+		$sql = "SELECT scroll_artwork_id, status, visibility, owner_kingdom_id
+			FROM " . DB_PREFIX . "scroll_artwork WHERE scroll_artwork_id = :artwork_id";
 		$r = $this->db->DataSet($sql);
 		if ($r->Size() <= 0 || !$r->Next()) {
 			return array('Status' => InvalidParameter(null, 'Artwork not found.'));
 		}
-		if ($r->status !== 'pending') {
+		$visibility = $r->visibility;
+		$owner_kingdom_id = $r->owner_kingdom_id;
+		$status = $r->status;
+
+		if (!$this->can_moderate($mundane_id, $visibility, $owner_kingdom_id)) {
+			return array('Status' => NoAuthorization());
+		}
+		if ($status !== 'pending') {
 			return array('Status' => InvalidParameter(null, 'Artwork is not in pending status.'));
 		}
 
@@ -1085,6 +1111,30 @@ class ScrollArtwork extends Ork3 {
 			VALUES (:slug, :label, :sort_order, :active)";
 		$this->db->Execute($sql);
 		return array('CategoryId' => $this->db->GetLastInsertId(), 'Slug' => $slug, 'Status' => Success());
+	}
+
+	/**
+	 * Determine whether a moderator may act on a row given its tier.
+	 * ORK admins moderate global rows; AUTH_KINGDOM officers moderate their
+	 * kingdom's rows. Clears stale auth-ORM bindings before returning.
+	 *
+	 * @param int    $mundane_id
+	 * @param string $visibility        'global' | 'kingdom'
+	 * @param int    $owner_kingdom_id
+	 * @return bool
+	 */
+	private function can_moderate($mundane_id, $visibility, $owner_kingdom_id) {
+		if (Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_ADMIN, 0, AUTH_EDIT)) {
+			$this->db->Clear();
+			return true;
+		}
+		if ($visibility === 'kingdom' && intval($owner_kingdom_id) > 0
+			&& Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_KINGDOM, intval($owner_kingdom_id), AUTH_EDIT)) {
+			$this->db->Clear();
+			return true;
+		}
+		$this->db->Clear();
+		return false;
 	}
 
 	/**
