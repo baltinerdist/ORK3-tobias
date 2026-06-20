@@ -694,6 +694,11 @@ html[data-theme="dark"] .hm-prinz-card.hm-pinned {
 				<i class="fas fa-trophy"></i> Top Parks by Attendance
 			</a>
 <?php endif; ?>
+<?php if (!empty($LoggedIn)): ?>
+			<a class="hm-find-item" href="<?= UIR ?>ScrollGraphics">
+				<i class="fas fa-palette"></i> Scroll Graphic Submissions
+			</a>
+<?php endif; ?>
 		</div>
 	</div>
 
