@@ -152,6 +152,15 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 	content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
 	border: 6px solid transparent; border-bottom-color: #2d3748; z-index: 1501;
 }
+
+/* Inline create-modal feedback (replaces native alert) */
+.as-create-feedback {
+	display: none; margin-top: 6px;
+	padding: 8px 12px; border-radius: 6px;
+	background: rgba(229,62,62,0.10); border: 1px solid rgba(229,62,62,0.30);
+	color: #c53030; font-size: 0.86em;
+}
+html[data-theme="dark"] .as-create-feedback { background: rgba(229,62,62,0.16); color: #feb2b2; border-color: rgba(252,129,129,0.35); }
 </style>
 
 <div class="as-page">
@@ -243,6 +252,7 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 				</select>
 			</div>
 			<div class="as-field"><label><input type="checkbox" id="as-create-anon"> Anonymous judging (hide entrants from judges)</label></div>
+			<div id="as-create-feedback" class="as-create-feedback"></div>
 		</div>
 		<div class="as-modal-footer">
 			<button class="as-btn" id="as-create-cancel">Cancel</button>
@@ -261,7 +271,9 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 
 	var overlay = document.getElementById('as-create-overlay');
 	var openBtn = document.getElementById('as-create-btn');
-	function open(){ overlay.classList.add('as-open'); document.body.style.overflow='hidden'; setTimeout(function(){ var n=document.getElementById('as-create-name'); if(n)n.focus(); }, 60); }
+	function showFeedback(msg){ var fb = document.getElementById('as-create-feedback'); if (fb) { fb.textContent = msg; fb.style.display = 'block'; } }
+	function clearFeedback(){ var fb = document.getElementById('as-create-feedback'); if (fb) { fb.textContent = ''; fb.style.display = 'none'; } }
+	function open(){ clearFeedback(); overlay.classList.add('as-open'); document.body.style.overflow='hidden'; setTimeout(function(){ var n=document.getElementById('as-create-name'); if(n)n.focus(); }, 60); }
 	function close(){ overlay.classList.remove('as-open'); document.body.style.overflow=''; }
 	if (openBtn) openBtn.addEventListener('click', open);
 	document.getElementById('as-create-close').addEventListener('click', close);
@@ -270,8 +282,9 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 	document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && overlay.classList.contains('as-open')) close(); });
 
 	document.getElementById('as-create-submit').addEventListener('click', function(){
+		clearFeedback();
 		var name = document.getElementById('as-create-name').value.trim();
-		if (!name) { alert('Please enter a name.'); return; }
+		if (!name) { showFeedback('Please enter a name.'); return; }
 		var fd = new FormData();
 		fd.append('KingdomId', KINGDOM_ID);
 		fd.append('Name', name);
@@ -290,10 +303,10 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 				if (j.status === 0 && j.result) {
 					window.location = UIR + 'ArtsComp/' + j.result;
 				} else {
-					alert('Error: ' + (j.error || 'Unknown'));
+					showFeedback('Error: ' + (j.error || 'Unknown'));
 				}
 			})
-			.catch(function(err){ console.error(err); alert('Network error: ' + err); });
+			.catch(function(err){ console.error(err); showFeedback('Network error: ' + err); });
 	});
 })();
 </script>

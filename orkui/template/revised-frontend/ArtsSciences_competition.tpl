@@ -189,8 +189,8 @@ html[data-theme="dark"] .as-tax-badge-inactive { background: rgba(255,255,255,0.
 .as-rec-withdraw.as-rec-withdraw-confirm { background: #c53030; color: #fff; text-decoration: none; border-radius: 4px; padding: 4px 8px; }
 
 /* Dark mode tweaks for held pills (the soft blue is unreadable on dark bg). */
-.dark-mode .as-rec-rank-pill.as-rec-rank-held { background: #2a4365; color: #bee3f8; border-color: #2c5282; }
-.dark-mode .as-rec-section { background: rgba(255,255,255,0.03); }
+html[data-theme="dark"] .as-rec-rank-pill.as-rec-rank-held { background: #2a4365; color: #bee3f8; border-color: #2c5282; }
+html[data-theme="dark"] .as-rec-section { background: rgba(255,255,255,0.03); }
 
 /* Modals */
 .as-modal-overlay {
@@ -316,7 +316,7 @@ html[data-theme="dark"] .as-ac-scope-other   { color: #cbd5e0; }
 .as-guild-h[data-tip]:hover::after {
 	content: attr(data-tip); position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%);
 	background: #2d3748; color: #fff; font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: 0;
-	white-space: nowrap; padding: 4px 10px; border-radius: 4px; z-index: 50; pointer-events: none;
+	white-space: normal; width: max-content; max-width: 240px; padding: 4px 10px; border-radius: 4px; z-index: 50; pointer-events: none;
 }
 .as-guild-c { width: 32px; text-align: center !important; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--ork-text); }
 .as-guild-c.as-guild-master { color: #b7791f; font-weight: 800; }
@@ -335,6 +335,43 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 	content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
 	border: 6px solid transparent; border-bottom-color: #2d3748; z-index: 1501;
 }
+
+/* tnConfirm modal (in-product replacement for native confirm) */
+.tnc-overlay {
+	position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+	display: flex; align-items: center; justify-content: center; z-index: 2000;
+	opacity: 0; pointer-events: none; visibility: hidden;
+	transition: opacity 0.18s, visibility 0s 0.18s;
+}
+.tnc-overlay.tnc-open { opacity: 1; pointer-events: auto; visibility: visible; transition: opacity 0.18s, visibility 0s 0s; }
+.tnc-box {
+	background: var(--ork-card-bg, #fff);
+	border: 1px solid var(--ork-border, #e2e8f0);
+	border-radius: 10px; width: 420px; max-width: calc(100vw - 40px);
+	box-shadow: 0 10px 40px rgba(0,0,0,0.25); overflow: hidden;
+}
+.tnc-header { padding: 14px 18px; border-bottom: 1px solid var(--ork-border); }
+.tnc-header h3 { background: transparent; border: none; padding: 0; border-radius: 0; text-shadow: none; margin: 0; font-size: 1.05em; color: var(--ork-text); }
+.tnc-body { padding: 16px 18px; color: var(--ork-text); font-size: 0.92em; line-height: 1.45; white-space: pre-line; }
+.tnc-footer { padding: 12px 18px; border-top: 1px solid var(--ork-border); display: flex; justify-content: flex-end; gap: 8px; }
+.tnc-btn { padding: 7px 14px; border: 1px solid var(--ork-border); background: var(--ork-card-bg); color: var(--ork-text); border-radius: 6px; cursor: pointer; font-size: 0.88em; }
+.tnc-btn:hover { background: var(--ork-bg-secondary); }
+.tnc-btn-confirm { background: linear-gradient(135deg, #5a67d8, #805ad5); color: #fff; border: none; }
+.tnc-btn-confirm:hover { filter: brightness(1.06); }
+.tnc-btn-danger { background: #c53030; color: #fff; border: none; }
+.tnc-btn-danger:hover { background: #9b2c2c; }
+
+/* Inline toast — non-blocking replacement for native alert */
+.as-toast-wrap { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 2100; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.as-toast {
+	background: var(--ork-card-bg, #fff); color: var(--ork-text);
+	border: 1px solid var(--ork-border, #e2e8f0); border-left: 4px solid #5a67d8;
+	border-radius: 8px; padding: 10px 16px; font-size: 0.9em; max-width: 420px;
+	box-shadow: 0 6px 20px rgba(0,0,0,0.18); pointer-events: auto;
+	opacity: 0; transform: translateY(-8px); transition: opacity 0.2s, transform 0.2s;
+}
+.as-toast.as-toast-show { opacity: 1; transform: translateY(0); }
+.as-toast.as-toast-error { border-left-color: #c53030; }
 </style>
 
 <div class="as-page">
@@ -996,6 +1033,49 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 	});
 	document.addEventListener('keydown', function(e){ if (e.key === 'Escape') document.querySelectorAll('.as-modal-overlay.as-open').forEach(function(m){ m.classList.remove('as-open'); document.body.style.overflow=''; }); });
 
+	// --------- tnConfirm (in-product confirm dialog) ---------
+	// Defined globally + idempotently so other surfaces can reuse it.
+	if (typeof window.tnConfirm !== 'function') {
+		window.tnConfirm = function(opts){
+			opts = opts || {};
+			var prev = document.getElementById('tnc-overlay');
+			if (prev) prev.parentNode.removeChild(prev);
+			var ov = document.createElement('div');
+			ov.id = 'tnc-overlay'; ov.className = 'tnc-overlay';
+			var danger = !!opts.danger;
+			var confirmLabel = opts.confirmLabel || (danger ? 'Delete' : 'Confirm');
+			var box = document.createElement('div'); box.className = 'tnc-box';
+			var hd = document.createElement('div'); hd.className = 'tnc-header';
+			var h3 = document.createElement('h3'); h3.textContent = opts.title || 'Confirm'; hd.appendChild(h3);
+			var bd = document.createElement('div'); bd.className = 'tnc-body'; bd.textContent = opts.body || '';
+			var ft = document.createElement('div'); ft.className = 'tnc-footer';
+			var cancel = document.createElement('button'); cancel.className = 'tnc-btn'; cancel.textContent = opts.cancelLabel || 'Cancel';
+			var ok = document.createElement('button'); ok.className = 'tnc-btn ' + (danger ? 'tnc-btn-danger' : 'tnc-btn-confirm'); ok.textContent = confirmLabel;
+			ft.appendChild(cancel); ft.appendChild(ok);
+			box.appendChild(hd); box.appendChild(bd); box.appendChild(ft);
+			ov.appendChild(box); document.body.appendChild(ov);
+			function close(){ ov.classList.remove('tnc-open'); document.removeEventListener('keydown', onKey); setTimeout(function(){ if (ov.parentNode) ov.parentNode.removeChild(ov); }, 200); }
+			function onKey(e){ if (e.key === 'Escape') close(); }
+			cancel.addEventListener('click', close);
+			ov.addEventListener('click', function(e){ if (e.target === ov) close(); });
+			document.addEventListener('keydown', onKey);
+			ok.addEventListener('click', function(){ close(); if (typeof opts.onConfirm === 'function') opts.onConfirm(); });
+			requestAnimationFrame(function(){ ov.classList.add('tnc-open'); ok.focus(); });
+		};
+	}
+
+	// --------- inline toast (non-blocking replacement for alert) ---------
+	function asToast(msg, isError){
+		var wrap = document.getElementById('as-toast-wrap');
+		if (!wrap) { wrap = document.createElement('div'); wrap.id = 'as-toast-wrap'; wrap.className = 'as-toast-wrap'; document.body.appendChild(wrap); }
+		var t = document.createElement('div');
+		t.className = 'as-toast' + (isError ? ' as-toast-error' : '');
+		t.textContent = String(msg == null ? '' : msg);
+		wrap.appendChild(t);
+		requestAnimationFrame(function(){ t.classList.add('as-toast-show'); });
+		setTimeout(function(){ t.classList.remove('as-toast-show'); setTimeout(function(){ if (t.parentNode) t.parentNode.removeChild(t); }, 250); }, isError ? 5000 : 3200);
+	}
+
 	// --------- autocomplete helper ---------
 	// Modal-friendly: position:fixed lets the dropdown escape the modal's stacking context.
 	function tnFixedAcPosition(inputEl, dropdownEl) {
@@ -1113,9 +1193,10 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 		document.querySelectorAll('[data-tax-edit]').forEach(function(b){ b.addEventListener('click', function(){ openTaxModal(b.getAttribute('data-tax-edit'), null); }); });
 		document.querySelectorAll('[data-tax-delete]').forEach(function(b){
 			b.addEventListener('click', function(){
-				if (!confirm('Delete this taxonomy node and all children? Entries under it will be unassigned.')) return;
-				var fd = new FormData(); fd.append('TaxonomyId', b.getAttribute('data-tax-delete'));
-				ASApi.comp('taxonomy.delete', fd).then(function(j){ if (j.status === 0) loadTaxonomy(); else alert('Error: ' + (j.error || '')); });
+				tnConfirm({ title: 'Delete Field', body: 'Delete this taxonomy node and all children? Entries under it will be unassigned.', danger: true, confirmLabel: 'Delete', onConfirm: function(){
+					var fd = new FormData(); fd.append('TaxonomyId', b.getAttribute('data-tax-delete'));
+					ASApi.comp('taxonomy.delete', fd).then(function(j){ if (j.status === 0) loadTaxonomy(); else asToast('Error: ' + (j.error || ''), true); });
+				}});
 			});
 		});
 		document.querySelectorAll('[data-tax-toggle]').forEach(function(b){
@@ -1129,7 +1210,7 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 				fd.append('Name',        node.Name || '');
 				fd.append('Description', node.Description || '');
 				fd.append('Active',      nowActive ? 0 : 1);
-				ASApi.comp('taxonomy.save', fd).then(function(j){ if (j.status === 0) loadTaxonomy(); else alert('Error: ' + (j.error || '')); });
+				ASApi.comp('taxonomy.save', fd).then(function(j){ if (j.status === 0) loadTaxonomy(); else asToast('Error: ' + (j.error || ''), true); });
 			});
 		});
 		// Drag-and-drop
@@ -1175,7 +1256,7 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 		// Submit
 		var payload = JSON.stringify(serializeTree(roots));
 		var fd = new FormData(); fd.append('Tree', payload);
-		ASApi.comp('taxonomy.reorder', fd).then(function(j){ loadTaxonomy(); if (j.status !== 0) alert('Error: ' + (j.error || '')); });
+		ASApi.comp('taxonomy.reorder', fd).then(function(j){ loadTaxonomy(); if (j.status !== 0) asToast('Error: ' + (j.error || ''), true); });
 	}
 	function isDescendant(maybeChildId, ancestorId) {
 		var node = TAX_FLAT.find(function(n){ return n.TaxonomyId == maybeChildId; });
@@ -1208,7 +1289,7 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 		fd.append('ParentId',    document.getElementById('as-tax-parent').value);
 		fd.append('Name',        document.getElementById('as-tax-name').value.trim());
 		fd.append('Description', document.getElementById('as-tax-desc').value);
-		ASApi.comp('taxonomy.save', fd).then(function(j){ if (j.status === 0) { closeModal('as-tax-modal'); loadTaxonomy(); } else alert('Error: ' + (j.error || '')); });
+		ASApi.comp('taxonomy.save', fd).then(function(j){ if (j.status === 0) { closeModal('as-tax-modal'); loadTaxonomy(); } else asToast('Error: ' + (j.error || ''), true); });
 	});
 
 	// --------- PARTICIPANTS tab ---------
@@ -1236,9 +1317,10 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 			}).join('');
 			body.querySelectorAll('[data-part-edit]').forEach(function(b){ b.addEventListener('click', function(){ openPartModal(b.getAttribute('data-part-edit')); }); });
 			body.querySelectorAll('[data-part-del]').forEach(function(b){ b.addEventListener('click', function(){
-				if (!confirm('Remove this participant and all their entries?')) return;
-				var fd = new FormData(); fd.append('ParticipantId', b.getAttribute('data-part-del'));
-				ASApi.comp('participant.delete', fd).then(function(j){ if (j.status === 0) loadParticipants(); else alert('Error: ' + (j.error || '')); });
+				tnConfirm({ title: 'Remove Participant', body: 'Remove this participant and all their entries?', danger: true, confirmLabel: 'Remove', onConfirm: function(){
+					var fd = new FormData(); fd.append('ParticipantId', b.getAttribute('data-part-del'));
+					ASApi.comp('participant.delete', fd).then(function(j){ if (j.status === 0) loadParticipants(); else asToast('Error: ' + (j.error || ''), true); });
+				}});
 			}); });
 			// Refresh entry participant picker
 			refreshEntryPickers();
@@ -1262,7 +1344,7 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 		fd.append('Persona',       document.getElementById('as-part-persona').value.trim());
 		fd.append('IsNovice',      document.getElementById('as-part-novice').checked ? 1 : 0);
 		fd.append('Notes',         document.getElementById('as-part-notes').value);
-		ASApi.comp('participant.save', fd).then(function(j){ if (j.status === 0) { closeModal('as-part-modal'); loadParticipants(); } else alert('Error: ' + (j.error || '')); });
+		ASApi.comp('participant.save', fd).then(function(j){ if (j.status === 0) { closeModal('as-part-modal'); loadParticipants(); } else asToast('Error: ' + (j.error || ''), true); });
 	});
 
 	// --------- JUDGES tab ---------
@@ -1285,9 +1367,10 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 			}).join('');
 			body.querySelectorAll('[data-judge-edit]').forEach(function(b){ b.addEventListener('click', function(){ openEditJudgeModal(b.getAttribute('data-judge-edit')); }); });
 			body.querySelectorAll('[data-judge-del]').forEach(function(b){ b.addEventListener('click', function(){
-				if (!confirm('Remove this judge and all their scores?')) return;
-				var fd = new FormData(); fd.append('JudgeId', b.getAttribute('data-judge-del'));
-				ASApi.comp('judge.delete', fd).then(function(jj){ if (jj.status === 0) loadJudges(); else alert('Error: ' + (jj.error || '')); });
+				tnConfirm({ title: 'Remove Judge', body: 'Remove this judge and all their scores?', danger: true, confirmLabel: 'Remove', onConfirm: function(){
+					var fd = new FormData(); fd.append('JudgeId', b.getAttribute('data-judge-del'));
+					ASApi.comp('judge.delete', fd).then(function(jj){ if (jj.status === 0) loadJudges(); else asToast('Error: ' + (jj.error || ''), true); });
+				}});
 			}); });
 			refreshJudgePicker();
 		});
@@ -1358,7 +1441,7 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 		fd.append('MundaneId',        document.getElementById('as-judge-mundane').value);
 		fd.append('Persona',          document.getElementById('as-judge-persona').value.trim());
 		fd.append('FieldTaxonomyIds', JSON.stringify(checked));
-		ASApi.comp('judge.save', fd).then(function(j){ if (j.status === 0) { closeModal('as-judge-modal'); loadJudges(); } else alert('Error: ' + (j.error || '')); });
+		ASApi.comp('judge.save', fd).then(function(j){ if (j.status === 0) { closeModal('as-judge-modal'); loadJudges(); } else asToast('Error: ' + (j.error || ''), true); });
 	});
 
 	// --------- ENTRIES tab ---------
@@ -1388,9 +1471,10 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 		}).join('');
 		body.querySelectorAll('[data-entry-edit]').forEach(function(b){ b.addEventListener('click', function(){ openEntryModal(b.getAttribute('data-entry-edit')); }); });
 		body.querySelectorAll('[data-entry-del]').forEach(function(b){ b.addEventListener('click', function(){
-			if (!confirm('Delete this entry and all its scores?')) return;
-			var fd = new FormData(); fd.append('EntryId', b.getAttribute('data-entry-del'));
-			ASApi.comp('entry.delete', fd).then(function(j){ if (j.status === 0) loadEntries(); else alert('Error: ' + (j.error || '')); });
+			tnConfirm({ title: 'Delete Entry', body: 'Delete this entry and all its scores?', danger: true, confirmLabel: 'Delete', onConfirm: function(){
+				var fd = new FormData(); fd.append('EntryId', b.getAttribute('data-entry-del'));
+				ASApi.comp('entry.delete', fd).then(function(j){ if (j.status === 0) loadEntries(); else asToast('Error: ' + (j.error || ''), true); });
+			}});
 		}); });
 	}
 	function refreshEntryPickers() {
@@ -1578,7 +1662,7 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 	bind('as-add-entry-btn', 'click', function(){ openEntryModal(null); });
 	bind('as-entry-save', 'click', function(){
 		var taxId = document.getElementById('as-entry-taxonomy').value;
-		if (!taxId) { alert('Pick a field.'); return; }
+		if (!taxId) { asToast('Pick a field.', true); return; }
 		var fd = new FormData();
 		fd.append('EntryId',       document.getElementById('as-entry-id').value);
 		fd.append('ParticipantId', document.getElementById('as-entry-participant').value);
@@ -1587,7 +1671,7 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 		fd.append('EntryNumber',   document.getElementById('as-entry-number').value);
 		fd.append('Description',   document.getElementById('as-entry-desc').value);
 		fd.append('Documentation', document.getElementById('as-entry-doc').value);
-		ASApi.comp('entry.save', fd).then(function(j){ if (j.status === 0) { closeModal('as-entry-modal'); loadEntries(); } else alert('Error: ' + (j.error || '')); });
+		ASApi.comp('entry.save', fd).then(function(j){ if (j.status === 0) { closeModal('as-entry-modal'); loadEntries(); } else asToast('Error: ' + (j.error || ''), true); });
 	});
 
 	// --------- JUDGING tab ---------
@@ -1658,7 +1742,7 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 					});
 					Promise.all(saves).then(function(rs){
 						var bad = rs.filter(function(j){ return j.status !== 0; });
-						if (bad.length) { alert('Some scores failed to save: ' + (bad[0].error || '')); return; }
+						if (bad.length) { asToast('Some scores failed to save: ' + (bad[0].error || ''), true); return; }
 						var btn = document.getElementById('as-judging-save'); btn.innerHTML = '<i class="fas fa-check"></i> Saved!'; setTimeout(function(){ btn.innerHTML = '<i class="fas fa-save"></i> Save Scores'; }, 1400);
 						// Mark this entry as judged + re-order the picker (just-judged drops to bottom, italicized).
 						JUDGED_ENTRY_IDS[eid] = true;
@@ -1740,7 +1824,7 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 				clearTimeout(wd._t);
 				var fd2 = new FormData(); fd2.append('RecommendationsId', wd.dataset.rid);
 				ASApi.comp('rec.delete', fd2).then(function(j2){
-					if (j2.status !== 0) { alert('Withdraw failed: ' + (j2.error || '')); return; }
+					if (j2.status !== 0) { asToast('Withdraw failed: ' + (j2.error || ''), true); return; }
 					AS_REC_CTX_BY_ENTRY[eid] = null;
 					loadRecSection(eid, entry);
 				});
@@ -1874,12 +1958,13 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 		fd.append('JudgingEndsAt',   document.getElementById('as-set-judge-end').value);
 		fd.append('EventId',         document.getElementById('as-set-event').value);
 		fd.append('AnonymousJudging',  document.getElementById('as-set-anon').checked ? 1 : 0);
-		ASApi.comp('update', fd).then(function(j){ if (j.status === 0) location.reload(); else alert('Error: ' + (j.error || '')); });
+		ASApi.comp('update', fd).then(function(j){ if (j.status === 0) location.reload(); else asToast('Error: ' + (j.error || ''), true); });
 	});
 	bind('as-edit-btn', 'click', function(){ activateTab('setup'); });
 	bind('as-delete-comp-btn', 'click', function(){
-		if (!confirm('Permanently delete this competition and ALL its data? This cannot be undone.')) return;
-		ASApi.comp('delete', {}).then(function(j){ if (j.status === 0) window.location = UIR + 'ArtsSciences/index/' + KINGDOM_ID; else alert('Error: ' + (j.error || '')); });
+		tnConfirm({ title: 'Delete Competition', body: 'Permanently delete this competition and ALL its data? This cannot be undone.', danger: true, confirmLabel: 'Delete', onConfirm: function(){
+			ASApi.comp('delete', {}).then(function(j){ if (j.status === 0) window.location = UIR + 'ArtsSciences/index/' + KINGDOM_ID; else asToast('Error: ' + (j.error || ''), true); });
+		}});
 	});
 
 	// ---------- Setup-tab date/time helpers ----------
@@ -1968,9 +2053,10 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 			}).join('');
 			body.querySelectorAll('[data-crit-edit]').forEach(function(b){ b.addEventListener('click', function(){ openCritModal(b.getAttribute('data-crit-edit')); }); });
 			body.querySelectorAll('[data-crit-del]').forEach(function(b){ b.addEventListener('click', function(){
-				if (!confirm('Delete this criterion (and all scores using it)?')) return;
-				var fd = new FormData(); fd.append('CriterionId', b.getAttribute('data-crit-del'));
-				ASApi.comp('criterion.delete', fd).then(function(j){ if (j.status === 0) loadCriteria(); else alert('Error: ' + (j.error || '')); });
+				tnConfirm({ title: 'Delete Criterion', body: 'Delete this criterion (and all scores using it)?', danger: true, confirmLabel: 'Delete', onConfirm: function(){
+					var fd = new FormData(); fd.append('CriterionId', b.getAttribute('data-crit-del'));
+					ASApi.comp('criterion.delete', fd).then(function(j){ if (j.status === 0) loadCriteria(); else asToast('Error: ' + (j.error || ''), true); });
+				}});
 			}); });
 		});
 	}
@@ -1989,7 +2075,7 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 		fd.append('Name',        document.getElementById('as-crit-name').value.trim());
 		fd.append('Description', document.getElementById('as-crit-desc').value);
 		fd.append('Weight',      document.getElementById('as-crit-weight').value);
-		ASApi.comp('criterion.save', fd).then(function(j){ if (j.status === 0) { closeModal('as-crit-modal'); loadCriteria(); } else alert('Error: ' + (j.error || '')); });
+		ASApi.comp('criterion.save', fd).then(function(j){ if (j.status === 0) { closeModal('as-crit-modal'); loadCriteria(); } else asToast('Error: ' + (j.error || ''), true); });
 	});
 
 	// =========================================================
@@ -2075,9 +2161,10 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 			}).join('');
 			body.querySelectorAll('[data-award-edit]').forEach(function(b){ b.addEventListener('click', function(){ openAwardModal(b.getAttribute('data-award-edit')); }); });
 			body.querySelectorAll('[data-award-del]').forEach(function(b){ b.addEventListener('click', function(){
-				if (!confirm('Delete this award?')) return;
-				var fd = new FormData(); fd.append('AwardId', b.getAttribute('data-award-del'));
-				ASApi.comp('award.delete', fd).then(function(j){ if (j.status === 0) loadAwards(); else alert('Error: ' + (j.error || '')); });
+				tnConfirm({ title: 'Delete Award', body: 'Delete this award?', danger: true, confirmLabel: 'Delete', onConfirm: function(){
+					var fd = new FormData(); fd.append('AwardId', b.getAttribute('data-award-del'));
+					ASApi.comp('award.delete', fd).then(function(j){ if (j.status === 0) loadAwards(); else asToast('Error: ' + (j.error || ''), true); });
+				}});
 			}); });
 		});
 	}
@@ -2437,7 +2524,7 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 	bind('as-award-save', 'click', function(){
 		readStateFromForm();
 		var name = document.getElementById('as-award-name').value.trim();
-		if (!name) { alert('Award name is required.'); return; }
+		if (!name) { asToast('Award name is required.', true); return; }
 		var fd = new FormData();
 		fd.append('AwardId',   document.getElementById('as-award-id').value);
 		fd.append('Name',      name);
@@ -2454,7 +2541,7 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 		var noviceRule = (ruleState.eligibility || []).find(function(e){ return e.kind === 'novice' && e.value === 'only'; });
 		fd.append('NoviceOnly', noviceRule ? 1 : 0);
 		fd.append('Rules', JSON.stringify(ruleState));
-		ASApi.comp('award.save', fd).then(function(j){ if (j.status === 0) { closeModal('as-award-modal'); loadAwards(); } else alert('Error: ' + (j.error || '')); });
+		ASApi.comp('award.save', fd).then(function(j){ if (j.status === 0) { closeModal('as-award-modal'); loadAwards(); } else asToast('Error: ' + (j.error || ''), true); });
 	});
 	<?php endif; ?>
 
@@ -2526,37 +2613,39 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 			var pid = sel.value; if (!pid) return;
 			var fd = new FormData(); fd.append('PresetId', pid); fd.append('Type', type);
 			ASApi.comp('preset.preview', fd).then(function(j){
-				if (j.status !== 0) { alert('Error: ' + (j.error || '')); return; }
+				if (j.status !== 0) { asToast('Error: ' + (j.error || ''), true); return; }
 				var info = j.result || {};
 				var name = info.PresetName || '(unnamed)';
 				var msg;
 				if (type === 'taxonomy') {
-					msg  = 'Load Taxonomy Preset "' + name + '"?\n\n';
-					msg += '• ' + info.PresetCount   + ' fields/categories will be inserted.\n';
+					msg  = '• ' + info.PresetCount   + ' fields/categories will be inserted.\n';
 					msg += '• ' + info.ExistingCount + ' existing taxonomy items will be REPLACED.';
 					if (info.OrphanEntryCount > 0) {
 						msg += '\n• ' + info.OrphanEntryCount + ' existing entries will lose their field assignment and need to be reassigned manually.';
 					}
 				} else {
-					msg  = 'Load Award Preset "' + name + '"?\n\n';
-					msg += '• ' + info.PresetCount   + ' awards will be inserted.\n';
+					msg  = '• ' + info.PresetCount   + ' awards will be inserted.\n';
 					msg += '• ' + info.ExistingCount + ' existing awards will be REPLACED.';
 				}
 				msg += '\n\nThis cannot be undone.';
-				if (!confirm(msg)) return;
-				var fd2 = new FormData(); fd2.append('PresetId', pid);
-				ASApi.comp('preset.load_' + type, fd2).then(function(j2){
-					if (j2.status !== 0) { alert('Error: ' + (j2.error || '')); return; }
-					PRESET_STATE[type].active = PRESET_STATE[type].list.find(function(p){ return p.PresetId == pid; }) || null;
-					refreshPresetButtons(type);
-					if (type === 'taxonomy') {
-						TAX_FLAT = [];
-						loadTaxonomy();
-						loadEntries();
-					} else {
-						loadAwards();
-					}
-				});
+				var title = type === 'taxonomy'
+					? 'Load Taxonomy Preset "' + name + '"?'
+					: 'Load Award Preset "' + name + '"?';
+				tnConfirm({ title: title, body: msg, danger: true, confirmLabel: 'Load Preset', onConfirm: function(){
+					var fd2 = new FormData(); fd2.append('PresetId', pid);
+					ASApi.comp('preset.load_' + type, fd2).then(function(j2){
+						if (j2.status !== 0) { asToast('Error: ' + (j2.error || ''), true); return; }
+						PRESET_STATE[type].active = PRESET_STATE[type].list.find(function(p){ return p.PresetId == pid; }) || null;
+						refreshPresetButtons(type);
+						if (type === 'taxonomy') {
+							TAX_FLAT = [];
+							loadTaxonomy();
+							loadEntries();
+						} else {
+							loadAwards();
+						}
+					});
+				}});
 			});
 		});
 
@@ -2572,29 +2661,31 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 		bar.querySelector('[data-preset-update]').addEventListener('click', function(){
 			var active = PRESET_STATE[type].active; if (!active) return;
 			var what = type === 'taxonomy' ? 'taxonomy tree' : 'awards';
-			if (!confirm('Update preset "' + active.Name + '" with the current ' + what + '? The previous snapshot will be overwritten.')) return;
-			var fd = new FormData();
-			fd.append('KingdomId',   KINGDOM_ID);
-			fd.append('PresetId',    active.PresetId);
-			fd.append('Name',        active.Name);
-			fd.append('Description', active.Description || '');
-			ASApi.comp('preset.save_' + type, fd).then(function(j){
-				if (j.status !== 0) { alert('Error: ' + (j.error || '')); return; }
-				loadPresetList(type);
-			});
+			tnConfirm({ title: 'Update Preset', body: 'Update preset "' + active.Name + '" with the current ' + what + '? The previous snapshot will be overwritten.', danger: true, confirmLabel: 'Update', onConfirm: function(){
+				var fd = new FormData();
+				fd.append('KingdomId',   KINGDOM_ID);
+				fd.append('PresetId',    active.PresetId);
+				fd.append('Name',        active.Name);
+				fd.append('Description', active.Description || '');
+				ASApi.comp('preset.save_' + type, fd).then(function(j){
+					if (j.status !== 0) { asToast('Error: ' + (j.error || ''), true); return; }
+					loadPresetList(type);
+				});
+			}});
 		});
 
 		bar.querySelector('[data-preset-delete]').addEventListener('click', function(){
 			var active = PRESET_STATE[type].active; if (!active) return;
-			if (!confirm('Delete preset "' + active.Name + '"? This only removes the saved template — your competition is unaffected.')) return;
-			var fd = new FormData(); fd.append('PresetId', active.PresetId); fd.append('Type', type);
-			fetch(UIR + 'ArtsSciencesAjax/preset/' + KINGDOM_ID + '/delete', { method: 'POST', body: fd, credentials: 'same-origin' })
-				.then(function(r){ return r.json(); })
-				.then(function(j){
-					if (j.status !== 0) { alert('Error: ' + (j.error || '')); return; }
-					PRESET_STATE[type].active = null;
-					loadPresetList(type);
-				});
+			tnConfirm({ title: 'Delete Preset', body: 'Delete preset "' + active.Name + '"? This only removes the saved template — your competition is unaffected.', danger: true, confirmLabel: 'Delete', onConfirm: function(){
+				var fd = new FormData(); fd.append('PresetId', active.PresetId); fd.append('Type', type);
+				fetch(UIR + 'ArtsSciencesAjax/preset/' + KINGDOM_ID + '/delete', { method: 'POST', body: fd, credentials: 'same-origin' })
+					.then(function(r){ return r.json(); })
+					.then(function(j){
+						if (j.status !== 0) { asToast('Error: ' + (j.error || ''), true); return; }
+						PRESET_STATE[type].active = null;
+						loadPresetList(type);
+					});
+			}});
 		});
 	}
 
@@ -2602,19 +2693,19 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 		var type = document.getElementById('as-preset-save-type').value;
 		var name = document.getElementById('as-preset-save-name').value.trim();
 		var desc = document.getElementById('as-preset-save-desc').value;
-		if (!name) { alert('Name is required.'); return; }
+		if (!name) { asToast('Name is required.', true); return; }
 		var fd = new FormData();
 		fd.append('KingdomId',   KINGDOM_ID);
 		fd.append('PresetId',    '');
 		fd.append('Name',        name);
 		fd.append('Description', desc);
 		ASApi.comp('preset.save_' + type, fd).then(function(j){
-			if (j.status !== 0) { alert('Error: ' + (j.error || '')); return; }
+			if (j.status !== 0) { asToast('Error: ' + (j.error || ''), true); return; }
 			closeModal('as-preset-save-modal');
 			// Result is either an int (taxonomy) or { PresetId, AwardCount, SkippedFieldScoped } (award)
 			var pid = (j.result && typeof j.result === 'object') ? j.result.PresetId : j.result;
 			if (type === 'award' && j.result && j.result.SkippedFieldScoped > 0) {
-				alert('Saved — ' + j.result.SkippedFieldScoped + ' field-scoped award(s) were excluded (Award Presets store only portable awards).');
+				asToast('Saved — ' + j.result.SkippedFieldScoped + ' field-scoped award(s) were excluded (Award Presets store only portable awards).');
 			}
 			loadPresetList(type).then(function(){
 				PRESET_STATE[type].active = PRESET_STATE[type].list.find(function(p){ return p.PresetId == pid; }) || null;
