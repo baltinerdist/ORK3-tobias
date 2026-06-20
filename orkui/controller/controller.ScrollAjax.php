@@ -277,6 +277,19 @@ class Controller_ScrollAjax extends Controller {
 			if ($val > 0) $artwork_ids[$slot] = $val;
 		}
 
+		// ---- Read ephemeral raw artwork (base64, not persisted) ----
+		$artworkRaw = [];
+		foreach ($artwork_slots as $slot) {
+			$b64 = $_POST['artwork_' . $slot . '_raw'] ?? '';
+			if (is_string($b64) && strlen($b64) > 0 && strlen($b64) <= ScrollArtwork::MAX_UPLOAD_BASE64) {
+				$bytes = base64_decode($b64, true);
+				if ($bytes !== false && strlen($bytes) <= ScrollArtwork::MAX_UPLOAD_BYTES) {
+					$res = @imagecreatefromstring($bytes);
+					if ($res !== false) { $artworkRaw[$slot] = $res; }
+				}
+			}
+		}
+
 		// ---- Normalize legacy aliases + validate ----
 		if (isset(self::$TEMPLATE_ALIASES[$template])) {
 			$template = self::$TEMPLATE_ALIASES[$template];
@@ -385,7 +398,11 @@ class Controller_ScrollAjax extends Controller {
 		imagedestroy($vignetteImg);
 
 		// ---- Artwork: watermark (below drawn border) ----
-		if (isset($artworkImages['watermark'])) {
+		if (isset($artworkRaw['watermark'])) {
+			$dims = ScrollArtwork::SLOT_DIMENSIONS['watermark'];
+			$this->compositeArtworkResource($img, $artworkRaw['watermark'], $dims['x'], $dims['y'], $dims['w'], $dims['h'], 10);
+		}
+		if (!isset($artworkRaw['watermark']) && isset($artworkImages['watermark'])) {
 			$dims = ScrollArtwork::SLOT_DIMENSIONS['watermark'];
 			$this->compositeArtwork($img, $artworkImages['watermark'], $dims['x'], $dims['y'], $dims['w'], $dims['h'], 10);
 		}
@@ -394,17 +411,29 @@ class Controller_ScrollAjax extends Controller {
 		$this->drawBorder($img, $cBorder, $cAccent, $pal, $template, $borderStyle, $w, $h);
 
 		// ---- Artwork: full_border + edge borders + top_graphic (above drawn border, below heraldry) ----
-		if (isset($artworkImages['full_border'])) {
+		if (isset($artworkRaw['full_border'])) {
+			$dims = ScrollArtwork::SLOT_DIMENSIONS['full_border'];
+			$this->compositeArtworkResource($img, $artworkRaw['full_border'], $dims['x'], $dims['y'], $dims['w'], $dims['h'], 100);
+		}
+		if (!isset($artworkRaw['full_border']) && isset($artworkImages['full_border'])) {
 			$dims = ScrollArtwork::SLOT_DIMENSIONS['full_border'];
 			$this->compositeArtwork($img, $artworkImages['full_border'], $dims['x'], $dims['y'], $dims['w'], $dims['h'], 100);
 		}
 		foreach (['border_left', 'border_right', 'border_top', 'border_bottom'] as $edgeSlot) {
-			if (isset($artworkImages[$edgeSlot])) {
+			if (isset($artworkRaw[$edgeSlot])) {
+				$dims = ScrollArtwork::SLOT_DIMENSIONS[$edgeSlot];
+				$this->compositeArtworkResource($img, $artworkRaw[$edgeSlot], $dims['x'], $dims['y'], $dims['w'], $dims['h'], 100);
+			}
+			if (!isset($artworkRaw[$edgeSlot]) && isset($artworkImages[$edgeSlot])) {
 				$dims = ScrollArtwork::SLOT_DIMENSIONS[$edgeSlot];
 				$this->compositeArtwork($img, $artworkImages[$edgeSlot], $dims['x'], $dims['y'], $dims['w'], $dims['h'], 100);
 			}
 		}
-		if (isset($artworkImages['top_graphic'])) {
+		if (isset($artworkRaw['top_graphic'])) {
+			$dims = ScrollArtwork::SLOT_DIMENSIONS['top_graphic'];
+			$this->compositeArtworkResource($img, $artworkRaw['top_graphic'], $dims['x'], $dims['y'], $dims['w'], $dims['h'], 100);
+		}
+		if (!isset($artworkRaw['top_graphic']) && isset($artworkImages['top_graphic'])) {
 			$dims = ScrollArtwork::SLOT_DIMENSIONS['top_graphic'];
 			$this->compositeArtwork($img, $artworkImages['top_graphic'], $dims['x'], $dims['y'], $dims['w'], $dims['h'], 100);
 		}
@@ -430,6 +459,7 @@ class Controller_ScrollAjax extends Controller {
 				'player'  => $heraldry_player,
 			],
 			'artworkImages' => $artworkImages,
+			'artworkRaw' => $artworkRaw,
 			'cBg' => $cBg, 'cText' => $cText, 'cAccent' => $cAccent, 'cBorder' => $cBorder,
 		];
 
@@ -473,7 +503,15 @@ class Controller_ScrollAjax extends Controller {
 	private function compositeArtwork($img, $artworkPath, $x, $y, $w, $h, $opacity) {
 		$src = @imagecreatefrompng($artworkPath);
 		if (!$src) return;
+		$this->compositeArtworkResource($img, $src, $x, $y, $w, $h, $opacity);
+	}
 
+	/**
+	 * Composite an already-loaded GD image resource onto the canvas.
+	 * Shared body used by both the approved-by-ID path (compositeArtwork)
+	 * and the ephemeral raw-base64 path. Destroys $src after resampling.
+	 */
+	private function compositeArtworkResource($img, $src, $x, $y, $w, $h, $opacity) {
 		imagesavealpha($src, true);
 		imagealphablending($src, true);
 
@@ -1360,7 +1398,11 @@ class Controller_ScrollAjax extends Controller {
 
 	// --- Center image artwork slot helper ---
 	private function drawCenterImageSlot($state) {
-		if (isset($state['artworkImages']['center_image'])) {
+		if (isset($state['artworkRaw']['center_image'])) {
+			$dims = ScrollArtwork::SLOT_DIMENSIONS['center_image'];
+			$this->compositeArtworkResource($state['img'], $state['artworkRaw']['center_image'], $dims['x'], $dims['y'], $dims['w'], $dims['h'], 15);
+		}
+		if (!isset($state['artworkRaw']['center_image']) && isset($state['artworkImages']['center_image'])) {
 			$dims = ScrollArtwork::SLOT_DIMENSIONS['center_image'];
 			$this->compositeArtwork($state['img'], $state['artworkImages']['center_image'], $dims['x'], $dims['y'], $dims['w'], $dims['h'], 15);
 		}
