@@ -942,6 +942,100 @@ class ScrollArtwork extends Ork3 {
 		}
 	}
 
+	// ---- Categories (admin-managed thematic taxonomy) ----
+
+	/**
+	 * List thematic categories.
+	 *
+	 * @param bool $active_only  When true, only return active categories.
+	 * @return array Categories list with Status.
+	 */
+	public function list_categories($active_only = true) {
+		$this->db->Clear();
+		$where = $active_only ? "WHERE active = 1" : "";
+		$sql = "SELECT category_id, slug, label, sort_order, active
+			FROM " . DB_PREFIX . "scroll_artwork_category
+			" . $where . "
+			ORDER BY sort_order ASC, label ASC";
+		$r = $this->db->DataSet($sql);
+		$cats = array();
+		while ($r->Next()) {
+			$cats[] = array(
+				'CategoryId' => intval($r->category_id),
+				'Slug'       => $r->slug,
+				'Label'      => $r->label,
+				'SortOrder'  => intval($r->sort_order),
+				'Active'     => intval($r->active),
+			);
+		}
+		return array('Categories' => $cats, 'Status' => Success());
+	}
+
+	/**
+	 * Create or update a thematic category. Requires ORK admin authority.
+	 *
+	 * @param array $request Keys: Token, CategoryId (0=new), Label, SortOrder, Active
+	 * @return array Status response with CategoryId (and Slug on create).
+	 */
+	public function save_category($request) {
+		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+		if ($mundane_id <= 0 || !Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_ADMIN, 0, AUTH_EDIT)) {
+			$this->db->Clear();
+			return array('Status' => NoAuthorization());
+		}
+		$this->db->Clear(); // clear stale bindings from HasAuthority
+
+		$label = trim($request['Label'] ?? '');
+		if (strlen($label) === 0 || strlen($label) > 120) {
+			return array('Status' => InvalidParameter(null, 'Label is required (max 120 chars).'));
+		}
+		$sort_order = intval($request['SortOrder'] ?? 0);
+		$active = !empty($request['Active']) ? 1 : 0;
+		$category_id = intval($request['CategoryId'] ?? 0);
+
+		if ($category_id > 0) {
+			$this->db->Clear();
+			$this->db->label = $label;
+			$this->db->sort_order = $sort_order;
+			$this->db->active = $active;
+			$this->db->category_id = $category_id;
+			$sql = "UPDATE " . DB_PREFIX . "scroll_artwork_category
+				SET label = :label, sort_order = :sort_order, active = :active
+				WHERE category_id = :category_id";
+			$this->db->Execute($sql);
+			return array('CategoryId' => $category_id, 'Status' => Success());
+		}
+
+		// New: derive a slug from the label, ensure uniqueness.
+		$base_slug = preg_replace('/[^a-z0-9]+/', '_', strtolower($label));
+		$base_slug = trim($base_slug, '_');
+		if ($base_slug === '') {
+			$base_slug = 'category';
+		}
+		$slug = $base_slug;
+		$n = 2;
+		while (true) {
+			$this->db->Clear();
+			$this->db->slug = $slug;
+			$chk = $this->db->DataSet("SELECT category_id FROM " . DB_PREFIX . "scroll_artwork_category WHERE slug = :slug");
+			if ($chk->Size() <= 0) {
+				break;
+			}
+			$slug = $base_slug . '_' . $n;
+			$n++;
+		}
+
+		$this->db->Clear();
+		$this->db->slug = $slug;
+		$this->db->label = $label;
+		$this->db->sort_order = $sort_order;
+		$this->db->active = $active;
+		$sql = "INSERT INTO " . DB_PREFIX . "scroll_artwork_category (slug, label, sort_order, active)
+			VALUES (:slug, :label, :sort_order, :active)";
+		$this->db->Execute($sql);
+		return array('CategoryId' => $this->db->GetLastInsertId(), 'Slug' => $slug, 'Status' => Success());
+	}
+
 	/**
 	 * Format a result set row into a standardized artwork array.
 	 *
