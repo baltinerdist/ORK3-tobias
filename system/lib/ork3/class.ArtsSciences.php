@@ -227,16 +227,26 @@ class ArtsSciences extends Ork3
             return NoAuthorization();
         }
         $cid = (int)$competition_id;
-        // TODO: no transaction API available on $this->db (YapoDb exposes no Begin/Commit/Rollback); these 8 cascade DELETEs are not atomic.
-        $this->db->Clear();
-        $this->db->query("DELETE s FROM " . DB_PREFIX . "as_score s INNER JOIN " . DB_PREFIX . "as_entry e ON s.entry_id = e.entry_id WHERE e.competition_id = $cid");
-        $this->db->query("DELETE FROM " . DB_PREFIX . "as_entry WHERE competition_id = $cid");
-        $this->db->query("DELETE FROM " . DB_PREFIX . "as_judge WHERE competition_id = $cid");
-        $this->db->query("DELETE FROM " . DB_PREFIX . "as_participant WHERE competition_id = $cid");
-        $this->db->query("DELETE FROM " . DB_PREFIX . "as_taxonomy WHERE competition_id = $cid");
-        $this->db->query("DELETE FROM " . DB_PREFIX . "as_criterion WHERE competition_id = $cid");
-        $this->db->query("DELETE FROM " . DB_PREFIX . "as_award WHERE competition_id = $cid");
-        $this->db->query("DELETE FROM " . DB_PREFIX . "as_competition WHERE competition_id = $cid");
+        $tx = $this->db->Begin();
+        try {
+            $this->db->Clear();
+            $this->db->query("DELETE s FROM " . DB_PREFIX . "as_score s INNER JOIN " . DB_PREFIX . "as_entry e ON s.entry_id = e.entry_id WHERE e.competition_id = $cid");
+            $this->db->query("DELETE FROM " . DB_PREFIX . "as_entry WHERE competition_id = $cid");
+            $this->db->query("DELETE FROM " . DB_PREFIX . "as_judge WHERE competition_id = $cid");
+            $this->db->query("DELETE FROM " . DB_PREFIX . "as_participant WHERE competition_id = $cid");
+            $this->db->query("DELETE FROM " . DB_PREFIX . "as_taxonomy WHERE competition_id = $cid");
+            $this->db->query("DELETE FROM " . DB_PREFIX . "as_criterion WHERE competition_id = $cid");
+            $this->db->query("DELETE FROM " . DB_PREFIX . "as_award WHERE competition_id = $cid");
+            $this->db->query("DELETE FROM " . DB_PREFIX . "as_competition WHERE competition_id = $cid");
+            if ($tx) {
+                $this->db->Commit();
+            }
+        } catch (\Throwable $e) {
+            if ($tx) {
+                $this->db->Rollback();
+            }
+            return ProcessingError('Failed to delete competition');
+        }
         return Success();
     }
 
@@ -2367,12 +2377,6 @@ class ArtsSciences extends Ork3
         $payload = json_decode((string)$rs->payload_json, true) ?: [];
         $nodes = $payload['nodes'] ?? [];
 
-        // Wipe existing taxonomy and detach entries (matches DeleteTaxonomy convention: taxonomy_id = 0).
-        // TODO: no transaction API available on $this->db (YapoDb exposes no Begin/Commit/Rollback); wipe + re-insert loop + ensure_system_fields are not atomic.
-        $this->db->Clear();
-        $this->db->query("UPDATE " . DB_PREFIX . "as_entry SET taxonomy_id = 0 WHERE competition_id = $competition_id");
-        $this->db->query("DELETE FROM " . DB_PREFIX . "as_taxonomy WHERE competition_id = $competition_id");
-
         // Sort nodes shallowest-first so parents are inserted before children.
         usort($nodes, function ($a, $b) {
             return ((int)$a['depth']) - ((int)$b['depth']);
@@ -2384,31 +2388,47 @@ class ArtsSciences extends Ork3
             return json_encode(array_merge((array)$parent_path, [$name]));
         };
 
-        $inserted = 0;
-        foreach ($nodes as $n) {
-            $parent_path = $n['parent_path'] ?? [];
-            $pid = null;
-            if (!empty($parent_path)) {
-                $key = json_encode($parent_path);
-                $pid = $id_by_path[$key] ?? null;
-                if ($pid === null) {
-                    continue;
-                } // orphaned node — skip silently rather than insert a phantom
+        $tx = $this->db->Begin();
+        try {
+            // Wipe existing taxonomy and detach entries (matches DeleteTaxonomy convention: taxonomy_id = 0).
+            $this->db->Clear();
+            $this->db->query("UPDATE " . DB_PREFIX . "as_entry SET taxonomy_id = 0 WHERE competition_id = $competition_id");
+            $this->db->query("DELETE FROM " . DB_PREFIX . "as_taxonomy WHERE competition_id = $competition_id");
+
+            $inserted = 0;
+            foreach ($nodes as $n) {
+                $parent_path = $n['parent_path'] ?? [];
+                $pid = null;
+                if (!empty($parent_path)) {
+                    $key = json_encode($parent_path);
+                    $pid = $id_by_path[$key] ?? null;
+                    if ($pid === null) {
+                        continue;
+                    } // orphaned node — skip silently rather than insert a phantom
+                }
+                $this->Taxonomy->clear();
+                $this->Taxonomy->competition_id = $competition_id;
+                $this->Taxonomy->parent_id      = $pid;
+                $this->Taxonomy->name           = (string)$n['name'];
+                $this->Taxonomy->description    = (string)($n['description'] ?? '');
+                $this->Taxonomy->depth          = min(2, (int)($n['depth'] ?? 0));
+                $this->Taxonomy->sort_order     = (int)($n['sort_order'] ?? 0);
+                $this->Taxonomy->save();
+                $id_by_path[$path_key($parent_path, $n['name'])] = (int)$this->Taxonomy->taxonomy_id;
+                $inserted++;
             }
-            $this->Taxonomy->clear();
-            $this->Taxonomy->competition_id = $competition_id;
-            $this->Taxonomy->parent_id      = $pid;
-            $this->Taxonomy->name           = (string)$n['name'];
-            $this->Taxonomy->description    = (string)($n['description'] ?? '');
-            $this->Taxonomy->depth          = min(2, (int)($n['depth'] ?? 0));
-            $this->Taxonomy->sort_order     = (int)($n['sort_order'] ?? 0);
-            $this->Taxonomy->save();
-            $id_by_path[$path_key($parent_path, $n['name'])] = (int)$this->Taxonomy->taxonomy_id;
-            $inserted++;
+            // Re-establish the locked-in system fields (Owl/Dragon/Smith/Garber) — preset payloads
+            // don't carry the ladder linkage, and the wipe above removed them.
+            $this->ensure_system_fields($competition_id);
+            if ($tx) {
+                $this->db->Commit();
+            }
+        } catch (\Throwable $e) {
+            if ($tx) {
+                $this->db->Rollback();
+            }
+            return ProcessingError('Failed to load taxonomy preset');
         }
-        // Re-establish the locked-in system fields (Owl/Dragon/Smith/Garber) — preset payloads
-        // don't carry the ladder linkage, and the wipe above removed them.
-        $this->ensure_system_fields($competition_id);
         return Success(['Inserted' => $inserted]);
     }
 
@@ -2432,11 +2452,6 @@ class ArtsSciences extends Ork3
         $payload = json_decode((string)$rs->payload_json, true) ?: [];
         $awards  = $payload['awards'] ?? [];
 
-        // Wipe existing awards.
-        // TODO: no transaction API available on $this->db (YapoDb exposes no Begin/Commit/Rollback); wipe + insert loop are not atomic.
-        $this->db->Clear();
-        $this->db->query("DELETE FROM " . DB_PREFIX . "as_award WHERE competition_id = $competition_id");
-
         // Build a single multi-row INSERT (was one INSERT per award via the yapo object).
         // Awards have no parent-child dependency, so this is safe to batch.
         $value_rows = [];
@@ -2459,14 +2474,28 @@ class ArtsSciences extends Ork3
                 . "$top_n, $mdf, $mdc, $novice_only, $sort_order, $rules)";
         }
         $inserted = count($value_rows);
-        if ($inserted > 0) {
+        $tx = $this->db->Begin();
+        try {
+            // Wipe existing awards.
             $this->db->Clear();
-            $this->db->query(
-                "INSERT INTO " . DB_PREFIX . "as_award "
-                . "(competition_id, name, description, award_type, field_taxonomy_id, "
-                . "top_n, min_distinct_fields, min_distinct_categories, novice_only, sort_order, rules) "
-                . "VALUES " . implode(', ', $value_rows)
-            );
+            $this->db->query("DELETE FROM " . DB_PREFIX . "as_award WHERE competition_id = $competition_id");
+            if ($inserted > 0) {
+                $this->db->Clear();
+                $this->db->query(
+                    "INSERT INTO " . DB_PREFIX . "as_award "
+                    . "(competition_id, name, description, award_type, field_taxonomy_id, "
+                    . "top_n, min_distinct_fields, min_distinct_categories, novice_only, sort_order, rules) "
+                    . "VALUES " . implode(', ', $value_rows)
+                );
+            }
+            if ($tx) {
+                $this->db->Commit();
+            }
+        } catch (\Throwable $e) {
+            if ($tx) {
+                $this->db->Rollback();
+            }
+            return ProcessingError('Failed to load award preset');
         }
         return Success(['Inserted' => $inserted]);
     }
