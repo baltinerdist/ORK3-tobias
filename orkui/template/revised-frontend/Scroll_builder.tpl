@@ -1835,6 +1835,8 @@ html[data-theme="dark"] .sc2-art-field textarea,
 html[data-theme="dark"] .sc2-art-field select { background: #2d3748; border-color: #4a5568; color: #e2e8f0; }
 html[data-theme="dark"] .sc2-art-license { background: #2d3748; border-color: #4a5568; color: #cbd5e0; }
 html[data-theme="dark"] .sc2-art-btn.ghost { background: #2d3748; color: #e2e8f0; border-color: #4a5568; }
+html[data-theme="dark"] .sc2-art-preview { border-color: #4a5568; }
+html[data-theme="dark"] .sc2-art-share { border-color: #4a5568; }
 
 /* ================================================================
    Style Family picker (Plan 1 redesign)
@@ -13449,7 +13451,7 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
 		if (!grid) return;
 		grid.innerHTML = '';
 		if (status) { status.textContent = 'Loading\u2026'; status.className = 'sc2-art-status'; }
-		var url = ART_AJAX + 'browse?layout_location=' + encodeURIComponent(zone) + '&tier=&category_id=&page=1';
+		var url = ART_AJAX + 'browse&layout_location=' + encodeURIComponent(zone) + '&tier=&category_id=&page=1';
 		fetch(url, { credentials: 'same-origin' })
 			.then(function (r) { return r.json(); })
 			.then(function (data) {
