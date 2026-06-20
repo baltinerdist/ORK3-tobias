@@ -13477,6 +13477,156 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
 		closeArtModal();
 	}
 
+	/* ── Task 5: Upload Your Own + opt-in Share ───────────────────────────── */
+	var artUpload = { dataUrl: '', mime: '', name: '' };
+
+	function artResetUploadForm() {
+		artUpload = { dataUrl: '', mime: '', name: '' };
+		var ids = ['sc2ArtFile', 'sc2ArtName', 'sc2ArtTags', 'sc2ArtSigner'];
+		ids.forEach(function (id) { var el = $('#' + id); if (el) el.value = ''; });
+		var prev = $('#sc2ArtPreview'); if (prev) { prev.style.display = 'none'; prev.src = ''; }
+		var chk = $('#sc2ArtShareChk'); if (chk) chk.checked = false;
+		var agree = $('#sc2ArtAgree'); if (agree) agree.checked = false;
+		var reveal = $('#sc2ArtShareReveal'); if (reveal) reveal.classList.remove('is-open');
+		var cat = $('#sc2ArtCategory'); if (cat) cat.value = '';
+		artSetTier('global');
+		var lic = $('#sc2ArtLicense'); if (lic) lic.textContent = ART_LICENSE;
+		artSyncUseButton();
+	}
+
+	var artTier = 'global';
+	var artHasKingdom = !!(SG.kingdomId && parseInt(SG.kingdomId, 10) !== 0);
+	function artInitTier() {
+		// Mirror Submit page: no kingdom -> disable Kingdom option; else label it with the kingdom name.
+		var kBtn = document.querySelector('#sc2ArtTier button[data-tier="kingdom"]');
+		if (kBtn) {
+			if (!artHasKingdom) { kBtn.disabled = true; kBtn.style.opacity = '.5'; kBtn.style.cursor = 'not-allowed'; }
+			else if (SG.kingdomName) { kBtn.textContent = SG.kingdomName; }
+		}
+	}
+	function artSetTier(t) {
+		var want = (t === 'kingdom' && artHasKingdom) ? 'kingdom' : 'global';
+		artTier = want;
+		var btns = document.querySelectorAll('#sc2ArtTier button');
+		for (var i = 0; i < btns.length; i++) btns[i].classList.toggle('is-active', btns[i].getAttribute('data-tier') === artTier);
+		var note = $('#sc2ArtTierNote');
+		if (note) note.textContent = artTier === 'kingdom'
+			? 'Kingdom-specific submissions are reviewed by your kingdom’s officers.'
+			: 'Amtgard-wide submissions are reviewed by ORK admins.';
+	}
+
+	function artIsSharing() { var c = $('#sc2ArtShareChk'); return !!(c && c.checked); }
+
+	function artSyncUseButton() {
+		var btn = $('#sc2ArtUseBtn');
+		if (!btn) return;
+		var sharing = artIsSharing();
+		btn.textContent = sharing ? 'Use & Submit to Library' : 'Use on My Scroll';
+		var ok = !!artUpload.dataUrl;
+		if (sharing) {
+			var agree = $('#sc2ArtAgree'); var signer = $('#sc2ArtSigner');
+			ok = ok && !!(agree && agree.checked) && !!(signer && signer.value.trim());
+		}
+		btn.disabled = !ok;
+	}
+
+	function bindArtUpload() {
+		artInitTier();
+		var file = $('#sc2ArtFile');
+		if (file) on(file, 'change', function () {
+			var f = file.files && file.files[0];
+			if (!f) { artUpload = { dataUrl: '', mime: '', name: '' }; artSyncUseButton(); return; }
+			if (f.size > 2097152) { artFoot('That image is larger than 2 MB.', 'err'); file.value = ''; return; }
+			var fr = new FileReader();
+			fr.onload = function () {
+				artUpload.dataUrl = fr.result; artUpload.mime = f.type; artUpload.name = f.name;
+				var prev = $('#sc2ArtPreview'); if (prev) { prev.src = fr.result; prev.style.display = 'block'; }
+				artFoot('', '');
+				artSyncUseButton();
+			};
+			fr.readAsDataURL(f);
+		});
+
+		var chk = $('#sc2ArtShareChk');
+		if (chk) on(chk, 'change', function () {
+			var reveal = $('#sc2ArtShareReveal'); if (reveal) reveal.classList.toggle('is-open', chk.checked);
+			if (chk.checked) loadArtCategories();
+			artSyncUseButton();
+		});
+		var tier = $('#sc2ArtTier');
+		if (tier) on(tier, 'click', function (e) { var b = e.target.closest('button'); if (b) artSetTier(b.getAttribute('data-tier')); });
+		var agree = $('#sc2ArtAgree'); if (agree) on(agree, 'change', artSyncUseButton);
+		var signer = $('#sc2ArtSigner'); if (signer) on(signer, 'input', artSyncUseButton);
+
+		var useBtn = $('#sc2ArtUseBtn'); if (useBtn) on(useBtn, 'click', artUseClicked);
+	}
+
+	function artFoot(msg, cls) {
+		var el = $('#sc2ArtFootStatus'); if (!el) return;
+		el.textContent = msg || ''; el.className = 'sc2-art-status' + (cls ? ' ' + cls : '');
+	}
+
+	var artCategoriesLoaded = false;
+	function loadArtCategories() {
+		if (artCategoriesLoaded) return;
+		var sel = $('#sc2ArtCategory'); if (!sel) return;
+		fetch(ART_AJAX + 'categories', { credentials: 'same-origin' })
+			.then(function (r) { return r.json(); })
+			.then(function (data) {
+				var cats = (data && data.Categories) || [];   // verified key: data.Categories, items {CategoryId, Label}
+				cats.forEach(function (c) {
+					var opt = document.createElement('option');
+					opt.value = c.CategoryId; opt.textContent = c.Label;
+					sel.appendChild(opt);
+				});
+				artCategoriesLoaded = true;
+			}).catch(function () {});
+	}
+
+	function artUseClicked() {
+		if (!artUpload.dataUrl || !artActiveZone) return;
+		var zone = artActiveZone;
+		// Always place on the current scroll (ephemeral raw).
+		state.artwork[zone] = { raw: artUpload.dataUrl };
+		renderArtwork();
+
+		if (!artIsSharing()) { closeArtModal(); return; }
+
+		// Shared: also create a pending library row.
+		var signer = ($('#sc2ArtSigner') || {}).value || '';
+		var nm = ($('#sc2ArtName') || {}).value || artUpload.name || 'Untitled';
+		var tags = ($('#sc2ArtTags') || {}).value || '';
+		var cat = ($('#sc2ArtCategory') || {}).value || '';
+		var b64 = String(artUpload.dataUrl).split(',')[1] || '';
+
+		var fd = new FormData();
+		fd.append('image', b64);
+		fd.append('image_mime', artUpload.mime || 'image/png');
+		fd.append('name', nm);
+		fd.append('description', '');
+		fd.append('tags', tags);
+		fd.append('layout_location', zone);
+		fd.append('license_signer_name', signer.trim());
+		fd.append('visibility', artTier);
+		fd.append('owner_kingdom_id', artTier === 'kingdom' ? String(parseInt(SG.kingdomId, 10) || 0) : '0');
+		fd.append('category_id', cat);
+
+		var btn = $('#sc2ArtUseBtn'); if (btn) btn.disabled = true;
+		artFoot('Submitting to the library…', '');
+		fetch(ART_AJAX + 'upload', { method: 'POST', body: fd, credentials: 'same-origin' })
+			.then(function (r) { return r.json(); })
+			.then(function (data) {
+				if (data && data.Status === 0) {
+					artFoot('Submitted! It will appear in the library after review.', 'ok');
+					setTimeout(closeArtModal, 900);
+				} else {
+					artFoot((data && data.Message) ? data.Message : 'Submission failed, but the image is on your scroll.', 'err');
+					if (btn) btn.disabled = false;
+				}
+			})
+			.catch(function () { artFoot('Submission failed, but the image is on your scroll.', 'err'); if (btn) btn.disabled = false; });
+	}
+
 	function bindArtwork() {
 		if (!ART_MODAL) return;
 		var grid = $('#sc2ArtZoneGrid');
