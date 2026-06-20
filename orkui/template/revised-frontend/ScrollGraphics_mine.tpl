@@ -412,7 +412,7 @@ var SG = <?= json_encode($sg, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS) ?>;
     if (list) list.innerHTML = '<div class="sg-empty"><i class="fas fa-spinner fa-spin"></i> Loading&hellip;</div>';
     var statusFilter = el('sg-mine-status-filter');
     var status = statusFilter ? statusFilter.value : '';
-    var url = AJAX + 'my_uploads?page=' + sgMinePage;
+    var url = AJAX + 'my_uploads&page=' + sgMinePage;
     if (status) url += '&status=' + encodeURIComponent(status);
 
     fetch(url)

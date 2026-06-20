@@ -155,9 +155,9 @@ var SG = <?= json_encode($sg, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS) ?>;
 
     var url;
     if (q) {
-      url = AJAX + 'search?query=' + encodeURIComponent(q) + '&' + params.join('&');
+      url = AJAX + 'search&query=' + encodeURIComponent(q) + '&' + params.join('&');
     } else {
-      url = AJAX + 'browse?' + params.join('&');
+      url = AJAX + 'browse&' + params.join('&');
     }
 
     fetch(url)

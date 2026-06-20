@@ -289,7 +289,7 @@ var SG = <?= json_encode($sg, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS) ?>;
     var self = this;
     var list = el(this.listId);
     if (list) list.innerHTML = '<div class="sc-artwork-loading"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
-    fetch(AJAX + 'pending?scope=' + encodeURIComponent(this.scope) + '&page=' + this.page)
+    fetch(AJAX + 'pending&scope=' + encodeURIComponent(this.scope) + '&page=' + this.page)
       .then(function (r) { return r.json(); })
       .then(function (data) { self.render(data); })
       .catch(function () {
