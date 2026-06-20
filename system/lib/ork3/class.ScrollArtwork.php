@@ -570,7 +570,7 @@ class ScrollArtwork extends Ork3 {
 	 * @param int $per_page    Items per page
 	 * @return array Paginated list of user's artwork
 	 */
-	public function get_user_uploads($mundane_id, $page = 1, $per_page = 20) {
+	public function get_user_uploads($mundane_id, $page = 1, $per_page = 20, $status = '') {
 		$mundane_id = intval($mundane_id);
 		if ($mundane_id <= 0) {
 			return array('Status' => InvalidParameter(null, 'Invalid user ID.'));
@@ -580,20 +580,30 @@ class ScrollArtwork extends Ork3 {
 		$per_page = max(1, min(100, intval($per_page)));
 		$offset = ($page - 1) * $per_page;
 
+		// Optional status filter (pending|approved|rejected); empty/invalid = no filter.
+		$status_filter = in_array($status, array('pending', 'approved', 'rejected'), true) ? $status : '';
+		$status_clause = ($status_filter !== '') ? " AND sa.status = :status" : "";
+
 		// Get total count
 		$this->db->Clear();
 		$this->db->mundane_id = $mundane_id;
-		$count_sql = "SELECT COUNT(*) as total FROM " . DB_PREFIX . "scroll_artwork WHERE uploader_mundane_id = :mundane_id";
+		if ($status_filter !== '') {
+			$this->db->status = $status_filter;
+		}
+		$count_sql = "SELECT COUNT(*) as total FROM " . DB_PREFIX . "scroll_artwork sa WHERE sa.uploader_mundane_id = :mundane_id" . $status_clause;
 		$cr = $this->db->DataSet($count_sql);
 		$total = ($cr->Size() > 0 && $cr->Next()) ? intval($cr->total) : 0;
 
 		// Get page of results
 		$this->db->Clear();
 		$this->db->mundane_id = $mundane_id;
+		if ($status_filter !== '') {
+			$this->db->status = $status_filter;
+		}
 		$sql = "SELECT sa.*, m.persona as uploader_persona
 			FROM " . DB_PREFIX . "scroll_artwork sa
 			LEFT JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = sa.uploader_mundane_id
-			WHERE sa.uploader_mundane_id = :mundane_id
+			WHERE sa.uploader_mundane_id = :mundane_id" . $status_clause . "
 			ORDER BY sa.created_at DESC
 			LIMIT " . (int)$per_page . " OFFSET " . (int)$offset . "";
 		$r = $this->db->DataSet($sql);

@@ -364,13 +364,17 @@ class Controller_ScrollArtworkAjax extends Controller {
 
 		$page = max(1, (int)($_GET['page'] ?? 1));
 		$per_page = max(1, min(100, (int)($_GET['per_page'] ?? 20)));
+		$status = $_GET['status'] ?? '';
+		if (!in_array($status, array('pending', 'approved', 'rejected'), true)) {
+			$status = '';
+		}
 
 		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($this->session->token);
 		if ($mundane_id <= 0) {
 			$this->json_response(array('Status' => 5, 'Message' => 'Authorization failed.'));
 		}
 
-		$result = $this->sa->get_user_uploads($mundane_id, $page, $per_page);
+		$result = $this->sa->get_user_uploads($mundane_id, $page, $per_page, $status);
 
 		$this->json_response(array(
 			'Artwork' => $result['Artwork'] ?? array(),

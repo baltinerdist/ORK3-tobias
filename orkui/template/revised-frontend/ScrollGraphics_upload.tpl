@@ -334,7 +334,7 @@ var SG = <?= json_encode($sg, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS) ?>;
     if (!SG.kingdomId || parseInt(SG.kingdomId, 10) === 0) {
       if (kingdomBtn) { kingdomBtn.disabled = true; }
     } else if (kingdomBtn && SG.kingdomName) {
-      kingdomBtn.textContent = sgEscapeHtml(SG.kingdomName);
+      kingdomBtn.textContent = SG.kingdomName;
     }
 
     seg.addEventListener('click', function (e) {
