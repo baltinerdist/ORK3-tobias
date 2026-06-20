@@ -83,6 +83,22 @@ class ScrollArtwork extends Ork3 {
 			return array('Status' => InvalidParameter(null, 'License signer name must be 200 characters or fewer.'));
 		}
 
+		// Sharing tier + category (new)
+		$visibility = ($request['Visibility'] ?? 'global') === 'kingdom' ? 'kingdom' : 'global';
+		$owner_kingdom_id = intval($request['OwnerKingdomId'] ?? 0);
+		if ($visibility === 'kingdom' && $owner_kingdom_id <= 0) {
+			return array('Status' => InvalidParameter(null, 'Kingdom-specific submissions require a kingdom.'));
+		}
+		$category_id = intval($request['CategoryId'] ?? 0);
+		if ($category_id > 0) {
+			$this->db->Clear();
+			$this->db->category_id = $category_id;
+			$cchk = $this->db->DataSet("SELECT category_id FROM " . DB_PREFIX . "scroll_artwork_category WHERE category_id = :category_id AND active = 1");
+			if ($cchk->Size() <= 0) {
+				$category_id = 0; // ignore invalid/retired
+			}
+		}
+
 		// Validate image data
 		if (strlen($image_data) === 0) {
 			return array('Status' => InvalidParameter(null, 'Image data is required.'));
@@ -147,15 +163,28 @@ class ScrollArtwork extends Ork3 {
 		$this->db->license_signed_at = $now;
 		$this->db->status = 'pending';
 		$this->db->created_at = $now;
+		$this->db->visibility = $visibility;
 
-		$sql = "INSERT INTO " . DB_PREFIX . "scroll_artwork
-			(uploader_mundane_id, name, description, tags, layout_location,
-			 file_name, original_file_name, width, height, file_size,
-			 license_signer_name, license_signed_at, status, created_at)
-			VALUES
-			(:uploader_mundane_id, :name, :description, :tags, :layout_location,
-			 :file_name, :original_file_name, :width, :height, :file_size,
-			 :license_signer_name, :license_signed_at, :status, :created_at)";
+		// Build the column list dynamically so nullable FKs are omitted when null.
+		// (yapo drops null-bound params; omitting the column lets SQL DEFAULT NULL stand.)
+		$cols = array(
+			'uploader_mundane_id', 'name', 'description', 'tags', 'layout_location',
+			'file_name', 'original_file_name', 'width', 'height', 'file_size',
+			'license_signer_name', 'license_signed_at', 'status', 'created_at', 'visibility'
+		);
+		if ($owner_kingdom_id > 0) {
+			$cols[] = 'owner_kingdom_id';
+			$this->db->owner_kingdom_id = $owner_kingdom_id;
+		}
+		if ($category_id > 0) {
+			$cols[] = 'category_id';
+			$this->db->category_id = $category_id;
+		}
+		$placeholders = array_map(function ($c) {
+			return ':' . $c;
+		}, $cols);
+		$sql = "INSERT INTO " . DB_PREFIX . "scroll_artwork (" . implode(', ', $cols) . ")
+			VALUES (" . implode(', ', $placeholders) . ")";
 
 		$this->db->Execute($sql);
 		$artwork_id = $this->db->GetLastInsertId();
@@ -233,43 +262,56 @@ class ScrollArtwork extends Ork3 {
 	 * @param int    $per_page         Items per page (default 20, max 100)
 	 * @return array Paginated list of approved artwork with total count
 	 */
-	public function browse($layout_location = '', $page = 1, $per_page = 20) {
+	public function browse($layout_location = '', $page = 1, $per_page = 20, $opts = array()) {
 		$page = max(1, intval($page));
 		$per_page = max(1, min(100, intval($per_page)));
 		$offset = ($page - 1) * $per_page;
+		$viewer_kingdom_id = intval($opts['ViewerKingdomId'] ?? 0);
+		$tier = $opts['Tier'] ?? 'all'; // all | global | kingdom
+		$category_id = intval($opts['CategoryId'] ?? 0);
 
-		$where = " WHERE sa.status = 'approved'";
+		// Visibility clause: approved global to everyone; approved kingdom only to that kingdom.
+		$vis = "sa.status = 'approved' AND (sa.visibility = 'global'";
+		if ($viewer_kingdom_id > 0) {
+			$vis .= " OR (sa.visibility = 'kingdom' AND sa.owner_kingdom_id = " . (int)$viewer_kingdom_id . ")";
+		}
+		$vis .= ")";
+		if ($tier === 'global') {
+			$vis = "sa.status = 'approved' AND sa.visibility = 'global'";
+		}
+		if ($tier === 'kingdom' && $viewer_kingdom_id > 0) {
+			$vis = "sa.status = 'approved' AND sa.visibility = 'kingdom' AND sa.owner_kingdom_id = " . (int)$viewer_kingdom_id;
+		}
+
+		$filters = "";
+		$this->db->Clear();
 		$layout_location = trim($layout_location);
 		if (strlen($layout_location) > 0 && in_array($layout_location, self::VALID_LOCATIONS)) {
-			$where .= " AND sa.layout_location = :layout_location";
-		}
-
-		// Get total count
-		$this->db->Clear();
-		if (strlen($layout_location) > 0 && in_array($layout_location, self::VALID_LOCATIONS)) {
+			$filters .= " AND sa.layout_location = :layout_location";
 			$this->db->layout_location = $layout_location;
 		}
-		$count_sql = "SELECT COUNT(*) as total FROM " . DB_PREFIX . "scroll_artwork sa" . $where;
-		$cr = $this->db->DataSet($count_sql);
-		$total = ($cr->Size() > 0 && $cr->Next()) ? intval($cr->total) : 0;
-
-		// Get page of results
-		$this->db->Clear();
-		if (strlen($layout_location) > 0 && in_array($layout_location, self::VALID_LOCATIONS)) {
-			$this->db->layout_location = $layout_location;
+		if ($category_id > 0) {
+			$filters .= " AND sa.category_id = :category_id";
+			$this->db->category_id = $category_id;
 		}
-		$sql = "SELECT sa.*, m.persona as uploader_persona
-			FROM " . DB_PREFIX . "scroll_artwork sa
+
+		$base = "FROM " . DB_PREFIX . "scroll_artwork sa
 			LEFT JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = sa.uploader_mundane_id
-			" . $where . "
-			ORDER BY sa.created_at DESC
-			LIMIT " . (int)$per_page . " OFFSET " . (int)$offset . "";
-		$r = $this->db->DataSet($sql);
+			LEFT JOIN " . DB_PREFIX . "scroll_artwork_category c ON c.category_id = sa.category_id
+			WHERE " . $vis . $filters;
 
+		$sql = "SELECT sa.*, m.persona AS uploader_persona, c.label AS category_label
+			" . $base . " ORDER BY sa.created_at DESC
+			LIMIT " . (int)$per_page . " OFFSET " . (int)$offset;
+		$r = $this->db->DataSet($sql);
 		$artwork = array();
 		while ($r->Next()) {
 			$artwork[] = $this->format_artwork_row($r);
 		}
+
+		// Bound :layout_location/:category_id persist across the COUNT (no Clear between).
+		$cr = $this->db->DataSet("SELECT COUNT(*) AS total " . $base);
+		$total = ($cr->Size() > 0 && $cr->Next()) ? intval($cr->total) : 0;
 
 		return array(
 			'Artwork' => $artwork,
@@ -289,54 +331,63 @@ class ScrollArtwork extends Ork3 {
 	 * @param int    $per_page         Items per page
 	 * @return array Paginated search results
 	 */
-	public function search($query, $layout_location = '', $page = 1, $per_page = 20) {
+	public function search($query, $layout_location = '', $page = 1, $per_page = 20, $opts = array()) {
 		$page = max(1, intval($page));
 		$per_page = max(1, min(100, intval($per_page)));
 		$offset = ($page - 1) * $per_page;
 
 		$search_term = trim($query);
 		if (strlen($search_term) === 0) {
-			return $this->browse($layout_location, $page, $per_page);
+			return $this->browse($layout_location, $page, $per_page, $opts);
 		}
 		$like_term = '%' . $search_term . '%';
 
-		$where = " WHERE sa.status = 'approved' AND (sa.name LIKE :search_name OR sa.tags LIKE :search_tags)";
+		$viewer_kingdom_id = intval($opts['ViewerKingdomId'] ?? 0);
+		$tier = $opts['Tier'] ?? 'all'; // all | global | kingdom
+		$category_id = intval($opts['CategoryId'] ?? 0);
+
+		// Visibility clause: approved global to everyone; approved kingdom only to that kingdom.
+		$vis = "sa.status = 'approved' AND (sa.visibility = 'global'";
+		if ($viewer_kingdom_id > 0) {
+			$vis .= " OR (sa.visibility = 'kingdom' AND sa.owner_kingdom_id = " . (int)$viewer_kingdom_id . ")";
+		}
+		$vis .= ")";
+		if ($tier === 'global') {
+			$vis = "sa.status = 'approved' AND sa.visibility = 'global'";
+		}
+		if ($tier === 'kingdom' && $viewer_kingdom_id > 0) {
+			$vis = "sa.status = 'approved' AND sa.visibility = 'kingdom' AND sa.owner_kingdom_id = " . (int)$viewer_kingdom_id;
+		}
+
+		$this->db->Clear();
+		$filters = " AND (sa.name LIKE :q OR sa.tags LIKE :q)";
+		$this->db->q = $like_term;
 		$layout_location = trim($layout_location);
-		$has_location = (strlen($layout_location) > 0 && in_array($layout_location, self::VALID_LOCATIONS));
-		if ($has_location) {
-			$where .= " AND sa.layout_location = :layout_location";
-		}
-
-		// Get total count
-		$this->db->Clear();
-		$this->db->search_name = $like_term;
-		$this->db->search_tags = $like_term;
-		if ($has_location) {
+		if (strlen($layout_location) > 0 && in_array($layout_location, self::VALID_LOCATIONS)) {
+			$filters .= " AND sa.layout_location = :layout_location";
 			$this->db->layout_location = $layout_location;
 		}
-		$count_sql = "SELECT COUNT(*) as total FROM " . DB_PREFIX . "scroll_artwork sa" . $where;
-		$cr = $this->db->DataSet($count_sql);
-		$total = ($cr->Size() > 0 && $cr->Next()) ? intval($cr->total) : 0;
-
-		// Get page of results
-		$this->db->Clear();
-		$this->db->search_name = $like_term;
-		$this->db->search_tags = $like_term;
-		if ($has_location) {
-			$this->db->layout_location = $layout_location;
+		if ($category_id > 0) {
+			$filters .= " AND sa.category_id = :category_id";
+			$this->db->category_id = $category_id;
 		}
-		$sql = "SELECT sa.*, m.persona as uploader_persona
-			FROM " . DB_PREFIX . "scroll_artwork sa
+
+		$base = "FROM " . DB_PREFIX . "scroll_artwork sa
 			LEFT JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = sa.uploader_mundane_id
-			" . $where . "
-			ORDER BY sa.created_at DESC
-			LIMIT " . (int)$per_page . " OFFSET " . (int)$offset . "";
-		$r = $this->db->DataSet($sql);
+			LEFT JOIN " . DB_PREFIX . "scroll_artwork_category c ON c.category_id = sa.category_id
+			WHERE " . $vis . $filters;
 
+		$sql = "SELECT sa.*, m.persona AS uploader_persona, c.label AS category_label
+			" . $base . " ORDER BY sa.created_at DESC
+			LIMIT " . (int)$per_page . " OFFSET " . (int)$offset;
+		$r = $this->db->DataSet($sql);
 		$artwork = array();
 		while ($r->Next()) {
 			$artwork[] = $this->format_artwork_row($r);
 		}
+
+		$cr = $this->db->DataSet("SELECT COUNT(*) AS total " . $base);
+		$total = ($cr->Size() > 0 && $cr->Next()) ? intval($cr->total) : 0;
 
 		return array(
 			'Artwork' => $artwork,
@@ -1064,6 +1115,10 @@ class ScrollArtwork extends Ork3 {
 			'ApprovedAt' => $r->approved_at,
 			'RejectionReason' => $r->rejection_reason,
 			'CreatedAt' => $r->created_at,
+			'Visibility' => isset($r->visibility) ? $r->visibility : 'global',
+			'OwnerKingdomId' => (isset($r->owner_kingdom_id) && $r->owner_kingdom_id) ? intval($r->owner_kingdom_id) : null,
+			'CategoryId' => (isset($r->category_id) && $r->category_id) ? intval($r->category_id) : null,
+			'CategoryLabel' => isset($r->category_label) ? $r->category_label : null,
 			'SlotDimensions' => self::SLOT_DIMENSIONS[$r->layout_location] ?? null,
 		);
 	}
