@@ -16,6 +16,7 @@ $fr_loc = static function (array $p) {
     return htmlspecialchars(implode(' · ', $parts));
 };
 ?>
+<link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>revised-frontend/style/revised.css?v=<?= filemtime(__DIR__ . '/style/revised.css') ?>">
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>default/style/reports.css?v=<?= @filemtime(__DIR__ . '/../default/style/reports.css') ?: '1' ?>">
 <div class="rp-root friends-hub">
   <div class="rp-header">
@@ -59,7 +60,7 @@ $fr_loc = static function (array $p) {
               </span>
             </a>
             <div class="fr-actions">
-              <button class="pn-btn pn-btn-white pn-btn-sm friend-recommend" data-target="<?= $fid ?>" data-name="<?= htmlspecialchars($f['Persona']) ?>"><i class="fas fa-award"></i> Recommend</button>
+              <button class="pn-btn pn-btn-primary pn-btn-sm friend-recommend" data-target="<?= $fid ?>" data-name="<?= htmlspecialchars($f['Persona']) ?>"><i class="fas fa-award"></i> Recommend</button>
               <div class="friend-menu">
                 <button class="pn-btn pn-btn-ghost pn-btn-sm friend-toggle" aria-label="More actions"><i class="fas fa-ellipsis-h"></i></button>
                 <div class="friend-menu-pop">
@@ -94,7 +95,7 @@ $fr_loc = static function (array $p) {
               </a>
               <div class="fr-actions">
                 <button class="pn-btn pn-btn-primary pn-btn-sm friend-action" data-act="accept" data-target="<?= $rid ?>">Accept</button>
-                <button class="pn-btn pn-btn-ghost pn-btn-sm friend-action" data-act="decline" data-target="<?= $rid ?>">Decline</button>
+                <button class="pn-btn pn-btn-secondary pn-btn-sm friend-action" data-act="decline" data-target="<?= $rid ?>">Decline</button>
               </div>
             </div>
           <?php endforeach; ?>
@@ -115,7 +116,7 @@ $fr_loc = static function (array $p) {
               </a>
               <div class="fr-actions">
                 <span class="fr-pending-badge"><i class="far fa-clock"></i> Pending</span>
-                <button class="pn-btn pn-btn-ghost pn-btn-sm friend-action" data-act="cancel" data-target="<?= $sid ?>">Cancel</button>
+                <button class="pn-btn pn-btn-secondary pn-btn-sm friend-action" data-act="cancel" data-target="<?= $sid ?>">Cancel</button>
               </div>
             </div>
           <?php endforeach; ?>
