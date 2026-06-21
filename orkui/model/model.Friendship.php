@@ -65,6 +65,10 @@ class Model_Friendship extends Model
     {
         return $this->Friendship->GetPendingIncoming($userId);
     }
+    public function get_pending_outgoing($userId)
+    {
+        return $this->Friendship->GetPendingOutgoing($userId);
+    }
     public function get_activity_feed($userId, $limit = 30)
     {
         return $this->Friendship->GetActivityFeed($userId, $limit);

@@ -13178,6 +13178,9 @@ window.initEmailSpellCheck = function(inputId, suggestionId) {
   document.addEventListener('click', function (e) {
     var btn = e.target.closest ? e.target.closest('.friend-action') : null;
     if (!btn) { return; }
+    // Hub cards own their own handler (card removal + count updates) — don't
+    // double-fire the profile-button logic for them.
+    if (btn.closest('.friends-hub')) { return; }
     var wrap = btn.closest('#friendBtnWrap') || btn.closest('.friend-btn-wrap');
     var act = btn.getAttribute('data-act');
     var target = btn.getAttribute('data-target');
@@ -13245,19 +13248,77 @@ window.initEmailSpellCheck = function(inputId, suggestionId) {
     if (!hub) { return; }
     var tabs = hub.querySelectorAll('.friends-tab');
     var feedLoaded = false;
-    for (var i = 0; i < tabs.length; i++) {
-      tabs[i].addEventListener('click', function () {
-        var name = this.getAttribute('data-tab');
-        tabs.forEach ? tabs.forEach(clear) : Array.prototype.forEach.call(tabs, clear);
-        this.classList.add('active');
-        ['friends', 'requests', 'feed'].forEach(function (n) {
-          var p = document.getElementById('tab-' + n);
-          if (p) { p.hidden = (n !== name); }
-        });
-        if (name === 'feed' && !feedLoaded) { feedLoaded = true; loadFeed(); }
+
+    function activate(name) {
+      Array.prototype.forEach.call(tabs, function (t) {
+        t.classList.toggle('active', t.getAttribute('data-tab') === name);
       });
+      ['friends', 'requests', 'feed'].forEach(function (n) {
+        var p = document.getElementById('tab-' + n);
+        if (p) { p.hidden = (n !== name); }
+      });
+      if (name === 'feed' && !feedLoaded) { feedLoaded = true; loadFeed(); }
     }
-    function clear(t) { t.classList.remove('active'); }
+
+    Array.prototype.forEach.call(tabs, function (t) {
+      t.addEventListener('click', function () {
+        var name = this.getAttribute('data-tab');
+        // Persist the tab in the hash so a post-action reload returns here.
+        if (window.history && history.replaceState) { history.replaceState(null, '', '#' + name); }
+        else { location.hash = name; }
+        activate(name);
+      });
+    });
+
+    // Restore the active tab from the hash (default: friends).
+    var initial = (location.hash || '').replace('#', '');
+    if (['friends', 'requests', 'feed'].indexOf(initial) === -1) { initial = 'friends'; }
+    activate(initial);
+
+    wireActions(hub);
+  }
+
+  function postAct(action, target) {
+    return fetch('index.php?Route=FriendAjax/' + action, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'target=' + encodeURIComponent(target),
+      credentials: 'same-origin'
+    }).then(function (r) { return r.json(); });
+  }
+
+  // Card actions (accept/decline/cancel/unfriend/block). On success reload so
+  // counts, tab badges, and the Incoming/Sent sections re-render server-side.
+  function wireActions(hub) {
+    hub.addEventListener('click', function (e) {
+      var btn = e.target.closest ? e.target.closest('.friend-action') : null;
+      if (!btn) { return; }
+      var act = btn.getAttribute('data-act');
+      var target = btn.getAttribute('data-target');
+      if (!act || !target) { return; }
+      e.preventDefault();
+
+      function run() {
+        postAct(act, target).then(function (d) {
+          if (d && d.status === 0) { location.reload(); }
+          else if (d && d.error && window.tnToast) { window.tnToast(d.error); }
+        });
+      }
+
+      if (act === 'unfriend' || act === 'block') {
+        if (window.tnConfirm) {
+          window.tnConfirm({
+            title: act === 'unfriend' ? 'Unfriend' : 'Block',
+            body: act === 'unfriend' ? 'Remove this friend?' : 'Block this person from sending you requests?',
+            confirmLabel: act === 'unfriend' ? 'Unfriend' : 'Block',
+            danger: true,
+            onConfirm: run
+          });
+        } else { run(); }
+        return;
+      }
+      run();
+    });
   }
 
   function loadFeed() {

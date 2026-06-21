@@ -20,13 +20,16 @@ class Controller_Friend extends Controller
         }
 
         $this->load_model('Friendship');
-        $friends = $this->Friendship->get_friends($uid);
-        $pending = $this->Friendship->get_pending_incoming($uid);
+        $friends  = $this->Friendship->get_friends($uid);
+        $incoming = $this->Friendship->get_pending_incoming($uid);
+        $outgoing = $this->Friendship->get_pending_outgoing($uid);
 
         $this->data['Friends']      = $friends['Friends'] ?? [];
-        $this->data['Requests']     = $pending['Requests'] ?? [];
+        $this->data['Requests']     = $incoming['Requests'] ?? [];   // incoming
+        $this->data['Sent']         = $outgoing['Requests'] ?? [];   // outgoing
         $this->data['FriendCount']  = $this->Friendship->count_friends($uid);
         $this->data['RequestCount'] = count($this->data['Requests']);
+        $this->data['SentCount']    = count($this->data['Sent']);
         $this->data['Uid']          = $uid;
 
         $this->template = '../revised-frontend/Friendnew_index.tpl';

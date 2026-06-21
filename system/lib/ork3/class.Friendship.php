@@ -306,6 +306,47 @@ class Friendship extends Ork3
      * Accepted friends of $userId with display fields, persona-sorted.
      * @return array ['Status'=>0, 'Friends'=>[ {MundaneId,Persona,ParkAbbr,KingdomAbbr,HasImage,HasHeraldry} ]]
      */
+    /**
+     * Best avatar URL for a player: profile photo, else heraldry, else '' (the UI
+     * renders a monogram when empty). Mirrors the player-image / heraldry URL
+     * conventions in class.Player.php / class.Heraldry.php.
+     */
+    private function avatarUrl($mundaneId, $hasImage, $hasHeraldry, $modified = '')
+    {
+        $mundaneId = (int) $mundaneId;
+        if ($mundaneId <= 0) {
+            return '';
+        }
+        $name = sprintf('%06d', $mundaneId);
+        if ($hasImage && defined('HTTP_PLAYER_IMAGE') && defined('DIR_PLAYER_IMAGE')) {
+            $ext  = file_exists(DIR_PLAYER_IMAGE . $name . '.png') ? 'png' : 'jpg';
+            $bust = $modified !== '' ? ('?' . strtotime($modified)) : '';
+            return HTTP_PLAYER_IMAGE . $name . '.' . $ext . $bust;
+        }
+        if ($hasHeraldry && defined('HTTP_PLAYER_HERALDRY') && defined('DIR_PLAYER_HERALDRY')) {
+            $ext = file_exists(DIR_PLAYER_HERALDRY . $name . '.png') ? 'png' : 'jpg';
+            return HTTP_PLAYER_HERALDRY . $name . '.' . $ext;
+        }
+        return '';
+    }
+
+    /** First letter of a persona for the monogram fallback. */
+    private function initial($persona)
+    {
+        $persona = trim((string) $persona);
+        return $persona === '' ? '?' : strtoupper(mb_substr($persona, 0, 1));
+    }
+
+    /** "May 2026"-style label from a datetime; '' if unknown. */
+    private function sinceLabel($ts)
+    {
+        if (!$ts || $ts === '0000-00-00 00:00:00') {
+            return '';
+        }
+        $t = strtotime($ts);
+        return $t ? date('M Y', $t) : '';
+    }
+
     public function GetFriends($userId, $limit = null, $offset = 0)
     {
         $userId = (int) $userId;
@@ -318,8 +359,10 @@ class Friendship extends Ork3
         }
         $this->db->Clear();
         $r = $this->db->query(
-            'SELECT m.mundane_id, m.persona, m.has_image, m.has_heraldry,'
-            . ' p.abbreviation AS park_abbr, k.abbreviation AS kingdom_abbr'
+            'SELECT m.mundane_id, m.persona, m.has_image, m.has_heraldry, m.modified,'
+            . ' p.abbreviation AS park_abbr, p.name AS park_name,'
+            . ' k.abbreviation AS kingdom_abbr, k.name AS kingdom_name,'
+            . ' f.responded_at AS since'
             . ' FROM ' . DB_PREFIX . 'friendship f'
             . ' JOIN ' . DB_PREFIX . 'mundane m'
             . "   ON m.mundane_id = IF(f.mundane_lo = {$userId}, f.mundane_hi, f.mundane_lo)"
@@ -331,13 +374,19 @@ class Friendship extends Ork3
         $out = [];
         if ($r !== false) {
             while ($r->next()) {
+                $persona = (string) $r->persona;
                 $out[] = [
                     'MundaneId'   => (int) $r->mundane_id,
-                    'Persona'     => (string) $r->persona,
+                    'Persona'     => $persona,
+                    'Initial'     => $this->initial($persona),
                     'ParkAbbr'    => (string) $r->park_abbr,
                     'KingdomAbbr' => (string) $r->kingdom_abbr,
+                    'ParkName'    => (string) $r->park_name,
+                    'KingdomName' => (string) $r->kingdom_name,
                     'HasImage'    => (int) $r->has_image,
                     'HasHeraldry' => (int) $r->has_heraldry,
+                    'Avatar'      => $this->avatarUrl((int) $r->mundane_id, (int) $r->has_image, (int) $r->has_heraldry, (string) $r->modified),
+                    'Since'       => $this->sinceLabel((string) $r->since),
                 ];
             }
         }
@@ -375,8 +424,9 @@ class Friendship extends Ork3
         $this->db->Clear();
         $r = $this->db->query(
             'SELECT f.requested_by AS mundane_id, f.requested_at,'
-            . ' m.persona, m.has_image, m.has_heraldry,'
-            . ' p.abbreviation AS park_abbr, k.abbreviation AS kingdom_abbr'
+            . ' m.persona, m.has_image, m.has_heraldry, m.modified,'
+            . ' p.abbreviation AS park_abbr, p.name AS park_name,'
+            . ' k.abbreviation AS kingdom_abbr, k.name AS kingdom_name'
             . ' FROM ' . DB_PREFIX . 'friendship f'
             . ' JOIN ' . DB_PREFIX . 'mundane m ON m.mundane_id = f.requested_by'
             . ' LEFT JOIN ' . DB_PREFIX . 'park p ON p.park_id = m.park_id'
@@ -385,21 +435,62 @@ class Friendship extends Ork3
             . " AND (f.mundane_lo = {$userId} OR f.mundane_hi = {$userId})"
             . ' ORDER BY f.requested_at DESC'
         );
+        return ['Status' => 0, 'Requests' => $this->collectRequestRows($r)];
+    }
+
+    /**
+     * Outgoing pending requests for $userId (requests THEY sent that are awaiting
+     * the other person's response). Same row shape as GetPendingIncoming so the UI
+     * can render both with one card partial.
+     *
+     * @return array ['Status'=>0, 'Requests'=>[ {MundaneId,Persona,...,RequestedAt} ]]
+     */
+    public function GetPendingOutgoing($userId)
+    {
+        $userId = (int) $userId;
+        if ($userId <= 0) {
+            return ['Status' => 0, 'Requests' => []];
+        }
+        $this->db->Clear();
+        $r = $this->db->query(
+            'SELECT IF(f.mundane_lo = ' . $userId . ', f.mundane_hi, f.mundane_lo) AS mundane_id, f.requested_at,'
+            . ' m.persona, m.has_image, m.has_heraldry, m.modified,'
+            . ' p.abbreviation AS park_abbr, p.name AS park_name,'
+            . ' k.abbreviation AS kingdom_abbr, k.name AS kingdom_name'
+            . ' FROM ' . DB_PREFIX . 'friendship f'
+            . ' JOIN ' . DB_PREFIX . 'mundane m ON m.mundane_id = IF(f.mundane_lo = ' . $userId . ', f.mundane_hi, f.mundane_lo)'
+            . ' LEFT JOIN ' . DB_PREFIX . 'park p ON p.park_id = m.park_id'
+            . ' LEFT JOIN ' . DB_PREFIX . 'kingdom k ON k.kingdom_id = m.kingdom_id'
+            . " WHERE f.status = 'pending' AND f.requested_by = {$userId}"
+            . " AND (f.mundane_lo = {$userId} OR f.mundane_hi = {$userId})"
+            . ' ORDER BY f.requested_at DESC'
+        );
+        return ['Status' => 0, 'Requests' => $this->collectRequestRows($r)];
+    }
+
+    /** Build the shared request-card row array from a result set (incoming/outgoing). */
+    private function collectRequestRows($r)
+    {
         $out = [];
         if ($r !== false) {
             while ($r->next()) {
+                $persona = (string) $r->persona;
                 $out[] = [
                     'MundaneId'   => (int) $r->mundane_id,
-                    'Persona'     => (string) $r->persona,
+                    'Persona'     => $persona,
+                    'Initial'     => $this->initial($persona),
                     'ParkAbbr'    => (string) $r->park_abbr,
                     'KingdomAbbr' => (string) $r->kingdom_abbr,
+                    'ParkName'    => (string) $r->park_name,
+                    'KingdomName' => (string) $r->kingdom_name,
                     'HasImage'    => (int) $r->has_image,
                     'HasHeraldry' => (int) $r->has_heraldry,
+                    'Avatar'      => $this->avatarUrl((int) $r->mundane_id, (int) $r->has_image, (int) $r->has_heraldry, (string) $r->modified),
                     'RequestedAt' => (string) $r->requested_at,
                 ];
             }
         }
-        return ['Status' => 0, 'Requests' => $out];
+        return $out;
     }
 
     /**
