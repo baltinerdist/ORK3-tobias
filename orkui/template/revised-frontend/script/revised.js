@@ -12961,3 +12961,372 @@ window.initEmailSpellCheck = function(inputId, suggestionId) {
         }
     });
 })();
+
+/* ==================================================================
+   Announcement Composer (generic notification sender)
+   ------------------------------------------------------------------
+   The composer modal markup + CSS live in the global chrome
+   (default.theme, nc- namespace), so it is present on every logged-in
+   page before this footer script runs. We expose window.ncOpenComposer
+   so the per-surface "Notify Members" buttons (Kingdom / Park / Admin)
+   can launch it; audience is INFERRED from the launch context
+   (scope = global | kingdom | park, plus scopeId) and submitted to
+   NotificationAjax/send. No IIFE getElementById guard — the modal may
+   be absent (logged-out chrome) and that is handled at call time.
+   ================================================================== */
+(function () {
+    'use strict';
+
+    // Resolve the app base URL from whichever page-config object exists.
+    function ncUir() {
+        if (typeof KnConfig !== 'undefined' && KnConfig.uir) return KnConfig.uir;
+        if (typeof PkConfig !== 'undefined' && PkConfig.uir) return PkConfig.uir;
+        if (window.NcComposerConfig && window.NcComposerConfig.uir) return window.NcComposerConfig.uir;
+        // Admin and other surfaces expose UIR via a global meta hook.
+        var meta = document.querySelector('meta[name="ork-uir"]');
+        if (meta && meta.content) return meta.content;
+        return '';
+    }
+
+    var ncCtx = { scope: '', scopeId: 0, label: '' };
+
+    function ncEl(id) { return document.getElementById(id); }
+
+    function ncShowError(msg) {
+        var e = ncEl('nc-error');
+        if (!e) return;
+        e.textContent = msg;
+        e.style.display = msg ? 'block' : 'none';
+    }
+
+    function ncReset() {
+        ncShowError('');
+        ['nc-input-title', 'nc-input-body', 'nc-input-link'].forEach(function (id) {
+            var f = ncEl(id);
+            if (f) f.value = '';
+        });
+        var tc = ncEl('nc-title-count'); if (tc) tc.textContent = '0';
+        var bc = ncEl('nc-body-count');  if (bc) bc.textContent = '0';
+        var send = ncEl('nc-send');
+        if (send) { send.disabled = false; send.innerHTML = '<i class="fas fa-paper-plane" style="margin-right:6px"></i>Send'; }
+    }
+
+    function ncClose() {
+        var ov = ncEl('nc-overlay');
+        if (ov) ov.classList.remove('nc-open');
+    }
+
+    // Public entry point. scope = global|kingdom|park; scopeId numeric;
+    // label = human audience description shown in the modal pill.
+    function ncOpenComposer(scope, scopeId, label) {
+        var ov = ncEl('nc-overlay');
+        if (!ov) return; // composer chrome not present (e.g. logged out)
+        ncCtx.scope = String(scope || '').toLowerCase();
+        ncCtx.scopeId = parseInt(scopeId, 10) || 0;
+        ncCtx.label = label || 'Members';
+        var lbl = ncEl('nc-audience-label');
+        if (lbl) lbl.textContent = ncCtx.label;
+        ncReset();
+        ov.classList.add('nc-open');
+        var t = ncEl('nc-input-title');
+        if (t) { setTimeout(function () { t.focus(); }, 30); }
+    }
+    window.ncOpenComposer = ncOpenComposer;
+
+    function ncSend() {
+        var sendBtn = ncEl('nc-send');
+        var title = (ncEl('nc-input-title') || {}).value || '';
+        var body  = (ncEl('nc-input-body')  || {}).value || '';
+        var link  = (ncEl('nc-input-link')  || {}).value || '';
+        title = title.trim();
+        body = body.trim();
+        link = link.trim();
+
+        if (!title) { ncShowError('A title is required.'); return; }
+        if (!ncCtx.scope) { ncShowError('No audience selected.'); return; }
+
+        ncShowError('');
+        if (sendBtn) { sendBtn.disabled = true; sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:6px"></i>Sending&hellip;'; }
+
+        var params = new URLSearchParams();
+        params.append('title', title);
+        params.append('body', body);
+        params.append('link', link);
+        params.append('scope', ncCtx.scope);
+        params.append('scope_id', String(ncCtx.scopeId));
+
+        fetch(ncUir() + 'NotificationAjax/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+            credentials: 'same-origin',
+            body: params.toString()
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (d && d.status === 0) {
+                    var n = parseInt(d.count, 10) || 0;
+                    ncClose();
+                    var msg = n === 1
+                        ? 'Announcement sent to 1 member.'
+                        : 'Announcement sent to ' + n + ' members.';
+                    // In-product dialog only — project convention forbids native
+                    // alert()/confirm(). navInfoDialog is defined in default.theme
+                    // for all logged-in chrome, so it is always available here.
+                    if (typeof window.navInfoDialog === 'function') {
+                        window.navInfoDialog(msg);
+                    }
+                } else {
+                    ncShowError((d && d.error) || 'Could not send the announcement.');
+                    if (sendBtn) { sendBtn.disabled = false; sendBtn.innerHTML = '<i class="fas fa-paper-plane" style="margin-right:6px"></i>Send'; }
+                }
+            })
+            .catch(function () {
+                ncShowError('Network error — please try again.');
+                if (sendBtn) { sendBtn.disabled = false; sendBtn.innerHTML = '<i class="fas fa-paper-plane" style="margin-right:6px"></i>Send'; }
+            });
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        var ov = ncEl('nc-overlay');
+        if (!ov) return; // logged-out chrome: nothing to wire
+
+        var closeBtn = ncEl('nc-close');
+        var cancelBtn = ncEl('nc-cancel');
+        var sendBtn = ncEl('nc-send');
+        if (closeBtn) closeBtn.addEventListener('click', ncClose);
+        if (cancelBtn) cancelBtn.addEventListener('click', ncClose);
+        if (sendBtn) sendBtn.addEventListener('click', ncSend);
+
+        // Backdrop click closes.
+        ov.addEventListener('click', function (e) { if (e.target === ov) ncClose(); });
+        // Escape closes.
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && ov.classList.contains('nc-open')) ncClose();
+        });
+
+        // Live character counters.
+        var tInput = ncEl('nc-input-title');
+        var tCount = ncEl('nc-title-count');
+        if (tInput && tCount) tInput.addEventListener('input', function () { tCount.textContent = String(tInput.value.length); });
+        var bInput = ncEl('nc-input-body');
+        var bCount = ncEl('nc-body-count');
+        if (bInput && bCount) bInput.addEventListener('input', function () { bCount.textContent = String(bInput.value.length); });
+
+        // Cmd/Ctrl+Enter submits.
+        [tInput, bInput, ncEl('nc-input-link')].forEach(function (el) {
+            if (!el) return;
+            el.addEventListener('keydown', function (e) {
+                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); ncSend(); }
+            });
+        });
+    });
+})();
+
+/* ===== Friends: profile button + friends list ===== */
+(function () {
+  function postFriend(action, target) {
+    return fetch('index.php?Route=FriendAjax/' + action, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'target=' + encodeURIComponent(target),
+      credentials: 'same-origin'
+    }).then(function (r) { return r.json(); });
+  }
+
+  // Renders the button(s) inside #friendBtnWrap from a state string.
+  function friendRenderButton(wrap) {
+    var target = wrap.getAttribute('data-target');
+    var state = wrap.getAttribute('data-state');
+    var html = '';
+    if (state === 'blocked') {
+      html = '<button class="btn friend-action" data-act="unblock" data-target="' + target + '">Blocked &mdash; Unblock</button>';
+    } else if (state === 'friends') {
+      html = '<div class="friend-menu"><button class="btn friend-toggle">Friends ▾</button>' +
+             '<div class="friend-menu-pop"><button class="friend-action" data-act="unfriend" data-target="' + target + '">Unfriend</button>' +
+             '<button class="friend-action" data-act="block" data-target="' + target + '">Block</button></div></div>';
+    } else if (state === 'pending_out') {
+      html = '<button class="btn friend-action" data-act="cancel" data-target="' + target + '">Request Pending</button>';
+    } else if (state === 'pending_in') {
+      html = '<button class="btn btn-primary friend-action" data-act="accept" data-target="' + target + '">Accept</button>' +
+             '<button class="btn friend-action" data-act="decline" data-target="' + target + '">Decline</button>';
+    } else {
+      html = '<button class="btn btn-primary friend-action" data-act="request" data-target="' + target + '">Add Friend</button>';
+    }
+    wrap.innerHTML = html;
+  }
+
+  function refreshState(wrap, target) {
+    fetch('index.php?Route=FriendAjax/status&target=' + encodeURIComponent(target), { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        wrap.setAttribute('data-state', d.blocked_by_me ? 'blocked' : (d.state || 'none'));
+        friendRenderButton(wrap);
+      });
+  }
+
+  function doAction(act, target, wrap) {
+    postFriend(act, target).then(function (d) {
+      if (d && d.status === 0) {
+        refreshState(wrap, target);
+      } else if (d && d.error) {
+        if (window.tnToast) { window.tnToast(d.error); } // fall back silently if no toast
+      }
+    });
+  }
+
+  // Delegated click handler — survives mid-page script load.
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest ? e.target.closest('.friend-action') : null;
+    if (!btn) { return; }
+    var wrap = btn.closest('#friendBtnWrap') || btn.closest('.friend-btn-wrap');
+    var act = btn.getAttribute('data-act');
+    var target = btn.getAttribute('data-target');
+    if (!act || !target) { return; }
+
+    if (act === 'unfriend' || act === 'block') {
+      var label = act === 'unfriend' ? 'Remove this friend?' : 'Block this person from sending you requests?';
+      if (window.tnConfirm) {
+        window.tnConfirm({
+          title: act === 'unfriend' ? 'Unfriend' : 'Block',
+          body: label,
+          confirmLabel: act === 'unfriend' ? 'Unfriend' : 'Block',
+          danger: true,
+          onConfirm: function () { if (wrap) { doAction(act, target, wrap); } }
+        });
+      } else {
+        if (wrap) { doAction(act, target, wrap); }
+      }
+      return;
+    }
+    if (wrap) { doAction(act, target, wrap); }
+  });
+
+  // Initial render of any friend button on the page.
+  function initFriendButtons() {
+    var wraps = document.querySelectorAll('.friend-btn-wrap, #friendBtnWrap');
+    for (var i = 0; i < wraps.length; i++) { friendRenderButton(wraps[i]); }
+    // Lazy-load the profile friends list, if present.
+    var sec = document.getElementById('profileFriends');
+    if (sec) { friendLoadProfileList(sec); }
+  }
+
+  function friendLoadProfileList(sec) {
+    var owner = sec.getAttribute('data-owner');
+    var list = document.getElementById('profileFriendsList');
+    if (!list) { return; }
+    fetch('index.php?Route=FriendAjax/list&owner=' + encodeURIComponent(owner), { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.friends || !d.friends.length) {
+          list.innerHTML = '<span class="muted">No friends yet.</span>';
+          return;
+        }
+        var h = '';
+        d.friends.forEach(function (f) {
+          h += '<a class="friend-chip" href="index.php?Route=Player/profile/' + f.MundaneId + '">' +
+               (f.Persona ? f.Persona.replace(/[<>&]/g, '') : 'Unknown') +
+               (f.KingdomAbbr ? ' <span class="friend-chip-sub">' + f.KingdomAbbr + '</span>' : '') + '</a>';
+        });
+        list.innerHTML = h;
+      });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initFriendButtons);
+  } else {
+    initFriendButtons();
+  }
+})();
+
+/* ===== Friends hub: tabs + lazy feed ===== */
+(function () {
+  function initHub() {
+    var hub = document.querySelector('.friends-hub');
+    if (!hub) { return; }
+    var tabs = hub.querySelectorAll('.friends-tab');
+    var feedLoaded = false;
+    for (var i = 0; i < tabs.length; i++) {
+      tabs[i].addEventListener('click', function () {
+        var name = this.getAttribute('data-tab');
+        tabs.forEach ? tabs.forEach(clear) : Array.prototype.forEach.call(tabs, clear);
+        this.classList.add('active');
+        ['friends', 'requests', 'feed'].forEach(function (n) {
+          var p = document.getElementById('tab-' + n);
+          if (p) { p.hidden = (n !== name); }
+        });
+        if (name === 'feed' && !feedLoaded) { feedLoaded = true; loadFeed(); }
+      });
+    }
+    function clear(t) { t.classList.remove('active'); }
+  }
+
+  function loadFeed() {
+    var box = document.getElementById('friendsFeed');
+    if (!box) { return; }
+    fetch('index.php?Route=FriendAjax/feed', { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.items || !d.items.length) {
+          box.innerHTML = '<span class="muted">No recent friend activity.</span>';
+          return;
+        }
+        var h = '';
+        d.items.forEach(function (it) {
+          // Only our own lib builds link_url (?Route=... form); allow that + relative/http(s).
+          var safeLink = (it.link_url && /^(\?Route=|\/|https?:\/\/)/.test(it.link_url))
+            ? it.link_url.replace(/"/g, '%22') : '';
+          var inner = '<i class="' + (it.icon || 'fas fa-bell') + '"></i>' +
+               '<span class="feed-text">' + (it.text || '').replace(/[<>]/g, '') + '</span>' +
+               '<span class="feed-ago">' + (it.ago || '') + '</span>';
+          h += safeLink
+            ? '<a class="feed-item feed-item-link" href="' + safeLink + '">' + inner + '</a>'
+            : '<div class="feed-item">' + inner + '</div>';
+        });
+        box.innerHTML = h;
+      });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initHub);
+  } else {
+    initHub();
+  }
+})();
+
+/* ===== Friends: recommend-a-friend shortcut ===== */
+(function () {
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest ? e.target.closest('.friend-recommend') : null;
+    if (!btn) { return; }
+    var target = btn.getAttribute('data-target');
+    if (!target) { return; }
+    // Deep-link to the recipient's profile and auto-open its recommendation form.
+    window.location.href = 'index.php?Route=Player/profile/' + encodeURIComponent(target) + '#recommend';
+  });
+})();
+
+/* ===== Friends: auto-open the profile recommendation modal on #recommend ===== */
+(function () {
+  function openRecOnHash() {
+    if (window.location.hash !== '#recommend') { return; }
+    // The profile's existing recommend trigger is #pn-recommend-btn (opens the
+    // recommendation modal via pnOpenModal). Prefer clicking it; fall back to the
+    // global opener, then to scrolling the trigger into view.
+    var trigger = document.getElementById('pn-recommend-btn');
+    if (trigger) {
+      trigger.click();
+      return;
+    }
+    if (typeof window.pnOpenModal === 'function') {
+      window.pnOpenModal();
+      return;
+    }
+    var recsTab = document.querySelector('[data-tab="recommendations"]');
+    if (recsTab && recsTab.scrollIntoView) { recsTab.scrollIntoView(); }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', openRecOnHash);
+  } else {
+    openRecOnHash();
+  }
+})();

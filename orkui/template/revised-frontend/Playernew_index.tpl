@@ -1086,6 +1086,19 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 			<?php if ($LoggedIn): ?>
 				<button class="pn-btn pn-btn-white" id="pn-recommend-btn"><i class="fas fa-award"></i> Recommend Award</button>
 			<?php endif; ?>
+			<?php
+			// Friend button — only for logged-in viewers looking at someone else's profile.
+			// $FriendState / $FriendBlocked come from the profile controller; default safely
+			// if not yet present. The button markup itself is rendered by friendRenderButton()
+			// in revised.js from the data-state attribute.
+			$__viewerId = isset($this->__session->user_id) ? (int)$this->__session->user_id : 0;
+			$__viewedId = (int)($Player['MundaneId'] ?? 0);
+			if (!empty($LoggedIn) && $__viewerId > 0 && $__viewedId > 0 && $__viewerId !== $__viewedId):
+				$__friendState   = $FriendState ?? 'none';
+				$__friendBlocked = !empty($FriendBlocked);
+			?>
+				<div class="friend-btn-wrap" id="friendBtnWrap" data-target="<?= $__viewedId ?>" data-state="<?= htmlspecialchars($__friendBlocked ? 'blocked' : $__friendState) ?>"></div>
+			<?php endif; ?>
 		</div>
 	</div>
 </div>
@@ -1177,6 +1190,16 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 				<span class="pn-detail-value"><?= $Player['LastSignInDate'] ? htmlspecialchars($Player['LastSignInDate']) : 'N/A' ?></span>
 			</div>
 		</div>
+
+		<!-- Friends -->
+		<?php if (!empty($FriendsVisible)): ?>
+		<section class="pn-card profile-friends" id="profileFriends" data-owner="<?= (int)($Player['MundaneId'] ?? 0) ?>">
+			<h4 class="profile-friends-h"><i class="fas fa-user-friends"></i> Friends<?= isset($FriendCount) ? ' (' . (int)$FriendCount . ')' : '' ?></h4>
+			<div class="profile-friends-list" id="profileFriendsList">
+				<span class="muted">Loading&hellip;</span>
+			</div>
+		</section>
+		<?php endif; ?>
 
 		<!-- Heraldry -->
 		<div class="pn-card">

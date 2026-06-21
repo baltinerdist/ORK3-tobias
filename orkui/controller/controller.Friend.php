@@ -1,0 +1,32 @@
+<?php
+
+/**
+ * Controller_Friend — "My Friends" hub (logged-in only).
+ * Renders Friendnew_index.tpl with three tabs: Friends / Requests / Activity Feed.
+ * First tab data is loaded server-side; tab switches + paging use FriendAjax.
+ * Design: docs/superpowers/specs/2026-06-20-friends-system-design.md
+ */
+class Controller_Friend extends Controller
+{
+    public function index()
+    {
+        $uid = isset($this->session->user_id) ? (int) $this->session->user_id : 0;
+        if ($uid <= 0) {
+            // Not logged in → bounce to login (match app convention for gated pages).
+            header('Location: index.php?Route=Login');
+            exit;
+        }
+
+        $this->load_model('Friendship');
+        $friends = $this->Friendship->get_friends($uid);
+        $pending = $this->Friendship->get_pending_incoming($uid);
+
+        $this->data['Friends']      = $friends['Friends'] ?? [];
+        $this->data['Requests']     = $pending['Requests'] ?? [];
+        $this->data['FriendCount']  = $this->Friendship->count_friends($uid);
+        $this->data['RequestCount'] = count($this->data['Requests']);
+        $this->data['Uid']          = $uid;
+
+        $this->template = '../revised-frontend/Friendnew_index.tpl';
+    }
+}

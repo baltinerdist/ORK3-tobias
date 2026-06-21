@@ -812,6 +812,26 @@ html[data-theme="dark"] .ev-ac-empty { color: var(--ork-text-muted); }
 						<button class="ev-icon-btn" title="Print" onclick="evPrintRsvp()"><i class="fas fa-print"></i></button>
 					</div>
 				</div>
+				<?php
+				// Friends attending: confirmed friends of the viewer who RSVP'd 'going'.
+				// Populated by Controller_Event for the current occurrence (login-gated).
+				$__fg = $RsvpData[$detailId]['FriendsGoing'] ?? [];
+				if (!empty($__fg)):
+				?>
+				<div class="friends-going" data-tip="Friends of yours who RSVP'd 'going'">
+					<i class="fas fa-user-friends"></i>
+					<?= count($__fg) ?> friend<?= count($__fg) === 1 ? '' : 's' ?> going:
+					<?php
+						$__names = array_map(function ($f) {
+							return '<a href="' . UIR . 'Player/profile/' . (int)$f["MundaneId"] . '">' . htmlspecialchars($f["Persona"]) . '</a>';
+						}, array_slice($__fg, 0, 8));
+						echo implode(', ', $__names);
+						if (count($__fg) > 8) {
+							echo ' +' . (count($__fg) - 8) . ' more';
+						}
+					?>
+				</div>
+				<?php endif; ?>
 				<?php if ($loggedIn && count($rsvpList) > 0): ?>
 					<div style="margin-bottom:10px;position:relative;">
 						<i class="fas fa-search" style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:#a0aec0;font-size:12px;pointer-events:none"></i>
