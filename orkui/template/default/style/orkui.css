@@ -8633,30 +8633,35 @@ html[data-theme="dark"] .friend-chip:hover { background: #353535; }
 html[data-theme="dark"] .friend-chip-sub { color: #aaa; }
 
 /* ===== Friends hub (Task 12) ===== */
-.friends-hub { max-width: 900px; margin: 1rem auto; }
+/* The hub is wrapped in .rp-root (Reports framing), so it inherits the --rp-*
+   theme vars + dark mode from reports.css. Colors below reference those vars
+   with light-mode fallbacks so the hub matches the report pages. */
+.friends-hub { max-width: 1080px; margin: 1.25rem auto; }
 .friends-hub-h { background: transparent; border: none; padding: 0; border-radius: 0; text-shadow: none; }
-.friends-tabs { display: flex; gap: .25rem; border-bottom: 1px solid #ddd; margin-bottom: 1rem; }
-.friends-tab { background: none; border: none; padding: .6rem 1rem; cursor: pointer; color: #555; border-bottom: 2px solid transparent; }
-.friends-tab.active { color: #222; border-bottom-color: #555; font-weight: 600; }
+.friends-body {
+  background: var(--rp-bg-table, #fff);
+  border: 1px solid var(--rp-border, #e2e8f0);
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  padding: 18px 20px 22px;
+}
+.friends-tabs { display: flex; gap: .25rem; border-bottom: 1px solid var(--rp-border, #ddd); margin-bottom: 1rem; }
+.friends-tab { background: none; border: none; padding: .6rem 1rem; cursor: pointer; color: var(--rp-text-muted, #555); border-bottom: 2px solid transparent; font-size: .95rem; }
+.friends-tab:hover { color: var(--rp-text, #222); }
+.friends-tab.active { color: var(--rp-accent, #4338ca); border-bottom-color: var(--rp-accent, #4338ca); font-weight: 600; }
 .friends-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: .75rem; }
-.friend-card { border: 1px solid #ddd; border-radius: 8px; padding: .75rem; display: flex; flex-direction: column; gap: .35rem; }
-.friend-card-name { font-weight: 600; text-decoration: none; color: #222; }
-.friend-card-sub { color: #888; font-size: .85rem; }
+.friend-card { border: 1px solid var(--rp-border, #ddd); border-radius: 8px; padding: .75rem; display: flex; flex-direction: column; gap: .35rem; background: var(--rp-bg-light, #fafafa); }
+.friend-card-name { font-weight: 600; text-decoration: none; color: var(--rp-text, #222); }
+.friend-card-name:hover { color: var(--rp-accent, #4338ca); }
+.friend-card-sub { color: var(--rp-text-muted, #888); font-size: .85rem; }
 .friend-card-actions { display: flex; gap: .4rem; margin-top: .25rem; }
-.feed-item { display: flex; align-items: center; gap: .6rem; padding: .5rem 0; border-bottom: 1px solid #eee; }
-.feed-item-link { text-decoration: none; color: inherit; }
-.feed-item-link:hover { background: #f6f6f6; }
+.friends-body .muted { color: var(--rp-text-muted, #888); }
+.feed-item { display: flex; align-items: center; gap: .6rem; padding: .55rem .25rem; border-bottom: 1px solid var(--rp-border, #eee); color: var(--rp-text-body, #444); }
+.feed-item i { color: var(--rp-accent, #4338ca); }
+.feed-item-link { text-decoration: none; color: inherit; border-radius: 6px; }
+.feed-item-link:hover { background: var(--rp-bg-light, #f6f6f6); }
 .feed-text { flex: 1; }
-.feed-ago { color: #999; font-size: .8rem; }
-
-html[data-theme="dark"] .friends-tabs { border-bottom-color: #444; }
-html[data-theme="dark"] .friends-tab { color: #aaa; }
-html[data-theme="dark"] .friends-tab.active { color: #eee; border-bottom-color: #888; }
-html[data-theme="dark"] .friend-card { border-color: #444; }
-html[data-theme="dark"] .friend-card-name { color: #eee; }
-html[data-theme="dark"] .friend-card-sub { color: #aaa; }
-html[data-theme="dark"] .feed-item { border-bottom-color: #383838; }
-html[data-theme="dark"] .feed-item-link:hover { background: #2f2f2f; }
+.feed-ago { color: var(--rp-text-muted, #999); font-size: .8rem; }
 
 /* ===== Friends attending an event (Task 14) ===== */
 .friends-going { margin: .5rem 0; font-size: .9rem; color: #444; display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }

@@ -1,7 +1,23 @@
-<?php /* My Friends hub — plain PHP template. Vars: $Friends, $Requests, $FriendCount, $RequestCount, $Uid */ ?>
-<div class="friends-hub">
-  <h1 class="friends-hub-h">My Friends</h1>
+<?php /* My Friends hub — plain PHP template. Vars: $Friends, $Requests, $FriendCount, $RequestCount, $Uid
+   Reuses the Reports framing (reports.css + .rp-root/.rp-header + --rp-* vars) for header + card + dark mode. */ ?>
+<link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>default/style/reports.css?v=<?= @filemtime(__DIR__ . '/../default/style/reports.css') ?: '1' ?>">
+<div class="rp-root friends-hub">
+  <div class="rp-header">
+    <div class="rp-header-left">
+      <div class="rp-header-icon-title">
+        <i class="fas fa-user-friends rp-header-icon"></i>
+        <h1 class="rp-header-title">My Friends</h1>
+      </div>
+      <div class="rp-header-scope">
+        <span class="rp-scope-chip"><span class="rp-scope-chip-label">Friends</span> <?= (int)$FriendCount ?></span>
+        <?php if ((int)$RequestCount > 0): ?>
+          <span class="rp-scope-chip"><span class="rp-scope-chip-label">Requests</span> <?= (int)$RequestCount ?></span>
+        <?php endif; ?>
+      </div>
+    </div>
+  </div>
 
+  <div class="friends-body">
   <div class="friends-tabs" role="tablist">
     <button class="friends-tab active" data-tab="friends">Friends (<?= (int)$FriendCount ?>)</button>
     <button class="friends-tab" data-tab="requests">Requests<?= $RequestCount > 0 ? ' (' . (int)$RequestCount . ')' : '' ?></button>
@@ -46,4 +62,5 @@
   <div class="friends-panel" id="tab-feed" hidden>
     <div id="friendsFeed"><span class="muted">Loading activity…</span></div>
   </div>
-</div>
+  </div><!-- /.friends-body -->
+</div><!-- /.rp-root -->
