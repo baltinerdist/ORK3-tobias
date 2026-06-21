@@ -8,7 +8,9 @@
  */
 class Controller_Friend extends Controller
 {
-    public function index()
+    // Signature must match base Controller::index($action = null) — PHP fatals on
+    // an incompatible override (the route dispatcher constructs the method via Reflection).
+    public function index($action = null)
     {
         $uid = isset($this->session->user_id) ? (int) $this->session->user_id : 0;
         if ($uid <= 0) {

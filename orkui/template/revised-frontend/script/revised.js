@@ -13139,18 +13139,18 @@ window.initEmailSpellCheck = function(inputId, suggestionId) {
     var state = wrap.getAttribute('data-state');
     var html = '';
     if (state === 'blocked') {
-      html = '<button class="btn friend-action" data-act="unblock" data-target="' + target + '">Blocked &mdash; Unblock</button>';
+      html = '<button class="pn-btn pn-btn-ghost friend-action" data-act="unblock" data-target="' + target + '">Blocked &mdash; Unblock</button>';
     } else if (state === 'friends') {
-      html = '<div class="friend-menu"><button class="btn friend-toggle">Friends ▾</button>' +
+      html = '<div class="friend-menu"><button class="pn-btn pn-btn-white friend-toggle">Friends ▾</button>' +
              '<div class="friend-menu-pop"><button class="friend-action" data-act="unfriend" data-target="' + target + '">Unfriend</button>' +
              '<button class="friend-action" data-act="block" data-target="' + target + '">Block</button></div></div>';
     } else if (state === 'pending_out') {
-      html = '<button class="btn friend-action" data-act="cancel" data-target="' + target + '">Request Pending</button>';
+      html = '<button class="pn-btn pn-btn-ghost friend-action" data-act="cancel" data-target="' + target + '">Request Pending</button>';
     } else if (state === 'pending_in') {
-      html = '<button class="btn btn-primary friend-action" data-act="accept" data-target="' + target + '">Accept</button>' +
-             '<button class="btn friend-action" data-act="decline" data-target="' + target + '">Decline</button>';
+      html = '<button class="pn-btn pn-btn-primary friend-action" data-act="accept" data-target="' + target + '">Accept</button>' +
+             '<button class="pn-btn pn-btn-ghost friend-action" data-act="decline" data-target="' + target + '">Decline</button>';
     } else {
-      html = '<button class="btn btn-primary friend-action" data-act="request" data-target="' + target + '">Add Friend</button>';
+      html = '<button class="pn-btn pn-btn-white friend-action" data-act="request" data-target="' + target + '"><i class="fas fa-user-plus"></i> Add Friend</button>';
     }
     wrap.innerHTML = html;
   }

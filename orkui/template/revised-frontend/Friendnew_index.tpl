@@ -17,7 +17,7 @@
           <div class="friend-card">
             <a class="friend-card-name" href="index.php?Route=Player/profile/<?= (int)$f['MundaneId'] ?>"><?= htmlspecialchars($f['Persona']) ?></a>
             <span class="friend-card-sub"><?= htmlspecialchars(trim(($f['ParkAbbr'] ?? '') . ' ' . ($f['KingdomAbbr'] ?? ''))) ?></span>
-            <button class="btn friend-recommend" data-target="<?= (int)$f['MundaneId'] ?>" data-name="<?= htmlspecialchars($f['Persona']) ?>">Recommend</button>
+            <button class="pn-btn pn-btn-white pn-btn-sm friend-recommend" data-target="<?= (int)$f['MundaneId'] ?>" data-name="<?= htmlspecialchars($f['Persona']) ?>"><i class="fas fa-award"></i> Recommend</button>
           </div>
         <?php endforeach; ?>
       </div>
@@ -34,8 +34,8 @@
             <a class="friend-card-name" href="index.php?Route=Player/profile/<?= (int)$r['MundaneId'] ?>"><?= htmlspecialchars($r['Persona']) ?></a>
             <span class="friend-card-sub"><?= htmlspecialchars(trim(($r['ParkAbbr'] ?? '') . ' ' . ($r['KingdomAbbr'] ?? ''))) ?></span>
             <div class="friend-card-actions">
-              <button class="btn btn-primary friend-action" data-act="accept" data-target="<?= (int)$r['MundaneId'] ?>">Accept</button>
-              <button class="btn friend-action" data-act="decline" data-target="<?= (int)$r['MundaneId'] ?>">Decline</button>
+              <button class="pn-btn pn-btn-primary pn-btn-sm friend-action" data-act="accept" data-target="<?= (int)$r['MundaneId'] ?>">Accept</button>
+              <button class="pn-btn pn-btn-ghost pn-btn-sm friend-action" data-act="decline" data-target="<?= (int)$r['MundaneId'] ?>">Decline</button>
             </div>
           </div>
         <?php endforeach; ?>
