@@ -1,331 +1,472 @@
 <?php
 
-class Event  extends Ork3 {
-
-	public function __construct() {
-		parent::__construct();
-		$this->event = new yapo($this->db, DB_PREFIX . 'event');
-		$this->detail = new yapo($this->db, DB_PREFIX . 'event_calendardetail');
-	}
-	
-	public function CreateEvent($request) {
-		logtrace("CreateEvent()", $request);
-		$log = '';
-		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
-		// Common event setup
-		$this->event->clear();
-		$this->event->kingdom_id = $request['KingdomId'];
-		$this->event->park_id = $request['ParkId'];
-		$this->event->mundane_id = $request['MundaneId'];
-		$this->event->unit_id = $request['UnitId'];
-		$this->event->name = $request['Name'];
-		$this->event->modified = date('Y-m-d H:i:s');
-		
-		if (valid_id($request['MundaneId']) && !valid_id($request['UnitId'])) {
-			$this->event->kingdom_id = 0;
-			$this->event->park_id = 0;
-			$this->event->unit_id = 0;
-			$this->event->save();
-		} else if (valid_id($request['UnitId'])) {
-			$this->event->kingdom_id = 0;
-			$this->event->park_id = 0;
-			$this->event->save();
-		} else if (valid_id($request['ParkId']) && valid_id($request['KingdomId']) && valid_id($mundane_id)
-				&& Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_PARK, $request['ParkId'], AUTH_CREATE)) {
-			$park = new yapo($this->db, DB_PREFIX . 'park');
-			$park->clear();
-			$park->park_id = $request['ParkId'];
-			if ($park->find()) {
-				$this->event->mundane_id = 0;
-				$this->event->unit_id = 0;
-				$this->event->save();
-			} else {
-				return InvalidParameter(NULL, 'Problem processing request.');
-			}
-		} else if (valid_id($request['KingdomId']) && valid_id($mundane_id)
-						&& Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_KINGDOM, $request['KingdomId'], AUTH_CREATE)) {
-			$kingdom = new yapo($this->db, DB_PREFIX . 'kingdom');
-			$kingdom->clear();
-			$kingdom->kingdom_id = $request['KingdomId'];
-			if ($kingdom->find()) {
-				$this->event->park_id = 0;
-				$this->event->mundane_id = 0;
-				$this->event->unit_id = 0;
-				$this->event->save();
-			} else {
-				return InvalidParameter(NULL, 'Problem processing request.');
-			}
-		} else {
-			// Bailout without committing
-			return NoAuthorization();
-		}
-		Ork3::$Lib->heraldry->SetEventHeraldry($request);
-
-		return Success($this->event->event_id);
-	}
-	
-	public function GetEvents($request) {
-		$this->event->clear();
-		if (isset($request['LimitTo']) && $request['LimitTo'] === true) {
-			$this->event->kingdom_id = 0;
-			$this->event->park_id = 0;
-			$this->event->unit_id = 0;
-			$this->event->mundane_id = 0;
-		}
-		
-		if (valid_id($request['KingdomId']))
-			$this->event->kingdom_id = $request['KingdomId'];
-		if (valid_id($request['ParkId']))
-			$this->event->park_id = $request['ParkId'];
-		if (valid_id($request['UnitId']))
-			$this->event->unit_id = $request['UnitId'];
-		if (valid_id($request['MundaneId']))
-			$this->event->mundane_id = $request['MundaneId'];
-		$events = array();
-		if ($this->event->find()) do {
-			$events[] = array(
-				'EventId' => $this->event->event_id,
-				'KingdomId' => $this->event->kingdom_id,
-				'ParkId' => $this->event->park_id,
-				'UnitId' => $this->event->unit_id,
-				'MundaneId' => $this->event->mundane_id,
-				'Name' => $this->event->name
-			);
-		} while ($this->event->next());
-		return $events;
-	}
-	
-	public function GetEvent($request) {
-		$this->event->clear();
-		$this->event->event_id = $request['EventId'];
-		$response = array();
-		if (valid_id($request['EventId']) && $this->event->find()) {
-			$response['KingdomId'] = $this->event->kingdom_id;
-			$response['ParkId'] = $this->event->park_id;
-			$response['MundaneId'] = $this->event->mundane_id;
-			$response['Name'] = $this->event->name;
-			$response['HasHeraldry'] = $this->event->has_heraldry;
-			$response['HeraldryUrl'] = $this->event->has_heraldry?Ork3::$Lib->heraldry->GetHeraldryUrl(array('Type'=>'Event','Id'=>$request['EventId'])):Ork3::$Lib->heraldry->GetHeraldryUrl(array('Type'=>'Event','Id'=>0));
-			$response['Status'] = Success();
-		} else {
-			$response['Status'] = InvalidParameter();
-		}
-		return $response;
-	}
-	
-	public function GetEventDetail($request) {
-		logtrace("GetEventDetail()", $request);
-		$this->detail->clear();
-		$this->detail->event_calendardetail_id = $request['EventCalendarDetailId'];
-		$response = array();
-		if (valid_id($request['EventCalendarDetailId']) && $this->detail->find()) {
-			$response['CalendarEventDetails'] = array();
-			$nr = array();
-			$nr['EventCalendarDetailId'] = $this->detail->event_calendardetail_id;
-			$nr['EventId'] = $this->detail->event_id;
-			$nr['AtParkId'] = $this->detail->at_park_id;
-			$nr['Current'] = $this->detail->current;
-			$nr['Price'] = $this->detail->price;
-			$nr['EventStart'] = $this->detail->event_start;
-			$nr['EventEnd'] = $this->detail->event_end;
-			$nr['Description'] = $this->detail->description;
-			$nr['Url'] = $this->detail->url;
-			$nr['UrlName'] = $this->detail->url_name;
-			$nr['Address'] = $this->detail->address;
-			$nr['Province'] = $this->detail->province;
-			$nr['PostalCode'] = $this->detail->postal_code;
-			$nr['City'] = $this->detail->city;
-			$nr['Country'] = $this->detail->country;
-			$nr['Geocode'] = $this->detail->google_geocode;
-			$nr['Location'] = $this->detail->location;
-			$nr['MapURL'] = $this->detail->map_url;
-			$nr['MapUrlName'] = $this->detail->map_url_name;
-			$nr['Modified'] = $this->detail->modified;
-			$response['CalendarEventDetails'][] = $nr;
-			$response['Status'] = Success();
-		} else {
-			logtrace('Event->GetEventDetail()',array($request, $this->detail, $this->detail->lastSql()));
-			$response['Status'] = InvalidParameter();
-		}
-		return $response;
-	}
-	
-	public function GetEventDetails($request) {
-		$this->detail->clear();
-		$this->detail->event_id = $request['EventId'];
-		if ($request['Current']) $this->detail->current = 1;
-		$response = array();
-		if (valid_id($request['EventId']) && $this->detail->find(array('event_start DESC'),'AND',($request['Current']?1:null))) {
-			$response['CalendarEventDetails'] = array();
-			do {
-				$nr = array();
-				$nr['EventCalendarDetailId'] = $this->detail->event_calendardetail_id;
-				$nr['EventId'] = $this->detail->event_id;
-  				$nr['AtParkId'] = $this->detail->at_park_id;
-				$nr['Current'] = $this->detail->current;
-				$nr['Price'] = $this->detail->price;
-				$nr['EventStart'] = $this->detail->event_start;
-				$nr['EventEnd'] = $this->detail->event_end;
-				$nr['Description'] = $this->detail->description;
-				$nr['Url'] = $this->detail->url;
-				$nr['UrlName'] = $this->detail->url_name;
-				$nr['Address'] = $this->detail->address;
-				$nr['Province'] = $this->detail->province;
-				$nr['PostalCode'] = $this->detail->postal_code;
-				$nr['City'] = $this->detail->city;
-				$nr['Country'] = $this->detail->country;
-				$nr['Geocode'] = $this->detail->google_geocode;
-				$nr['Location'] = $this->detail->location;
-				$nr['MapURL'] = $this->detail->map_url;
-				$nr['MapUrlName'] = $this->detail->map_url_name;
-				$nr['Modified'] = $this->detail->modified;
-				$response['CalendarEventDetails'][] = $nr;
-			} while ($this->detail->next());
-			$response['Status'] = Success();
-		} else {
-			$response['Status'] = InvalidParameter();
-		}
-		return $response;
-	}
-	
-	public function CreateEventDetails($request) {
-		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
-
-		if ($mundane_id > 0 && Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_EVENT, $request['EventId'], AUTH_CREATE)) {
-
-			if (valid_id($request['Current']) && valid_id($request['EventId'])) {
-				$this->detail->clear();
-				$this->detail->event_id = $request['EventId'];
-				if ($this->detail->find()) {
-					$this->detail->current = 0;
-					$this->detail->save();
-				}
-			}
-
-			$details   = Common::Geocode($request['Address'], $request['City'], $request['Province'], $request['PostalCode']);
-			$geocode   = ($details && isset($details['Geocode'])) ? json_decode($details['Geocode']) : null;
-			$latitude  = ($geocode && isset($geocode->results[0])) ? $geocode->results[0]->geometry->location->lat : 0.0;
-			$longitude = ($geocode && isset($geocode->results[0])) ? $geocode->results[0]->geometry->location->lng : 0.0;
-
-			// Use a fresh yapo instance so this is always an INSERT, not an UPDATE
-			$newDetail = new yapo($this->db, DB_PREFIX . 'event_calendardetail');
-			$newDetail->event_id       = $request['EventId'];
-			if (valid_id($request['AtParkId'])) $newDetail->at_park_id = $request['AtParkId'];
-			$newDetail->current        = $request['Current'];
-			$newDetail->price          = $request['Price'];
-			$newDetail->event_start    = $request['EventStart'];
-			$newDetail->event_end      = $request['EventEnd'];
-			$newDetail->description    = trim($request['Description']);
-			$newDetail->url            = $request['Url'];
-			$newDetail->url_name       = $request['UrlName'];
-			$newDetail->address        = isset($details['Address'])    ? $details['Address']    : $request['Address'];
-			$newDetail->province       = isset($details['Province'])   ? $details['Province']   : $request['Province'];
-			$newDetail->postal_code    = isset($details['PostalCode']) ? $details['PostalCode'] : $request['PostalCode'];
-			$newDetail->city           = isset($details['City'])       ? $details['City']       : $request['City'];
-			$newDetail->country        = $request['Country'];
-			$newDetail->map_url        = $request['MapUrl'];
-			$newDetail->map_url_name   = $request['MapUrlName'];
-			$newDetail->modified       = date('Y-m-d H:i:s');
-			$newDetail->google_geocode = $details ? $details['Geocode']  : null;
-			$newDetail->location       = $details ? $details['Location'] : null;
-			$newDetail->latitude       = $latitude;
-			$newDetail->longitude      = $longitude;
-			$newDetail->save();
-			return Success($newDetail->event_calendardetail_id);
-		} else {
-			return NoAuthorization();
-		}
-	}
-
-	public function SetCurrent($request) {
-		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
-		
-		$this->detail->clear();
-		$this->detail->event_calendardetail_id = $request['EventCalendarDetailId'];
-		if (valid_id($request['EventCalendarDetailId']) && $this->detail->find()) {
-			$event_id = $this->detail->event_id;
-		} else {
-			return InvalidParameter();
-		}
-		if ($mundane_id > 0 && Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_EVENT, $event_id, AUTH_CREATE)) {
-			if (valid_id($request['EventCalendarDetailId']) && $this->detail->find()) {
-				$this->db->query('START TRANSACTION');
-				if ($request['Current']) {
-					$sql = 'update ' . DB_PREFIX . 'event_calendardetail set current = 0 where event_id = ' . $event_id;
-					$this->db->query($sql);
-				}
-				
-				$this->detail->clear();
-				$this->detail->event_calendardetail_id = $request['EventCalendarDetailId'];
-				$this->detail->find();
-				$this->detail->current = 1;
-				$saveResult = $this->detail->save();
-				if (!$saveResult) {
-					$this->db->query('ROLLBACK');
-					return ProcessingError('Failed to set current detail.');
-				}
-				$this->db->query('COMMIT');
-				
-				logtrace("SetCurrent()", array($request, $this->detail->lastSql()));
-				
-				return Success($this->detail->event_calendardetail_id);
-			} else {
-				return InvalidParameter();
-			}
-		} else {
-			return NoAuthorization();
-		}
-	}
-	
-	public function DeleteEventDetail($request) {
-		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
-		
-		$this->detail->clear();
-		$this->detail->event_calendardetail_id = $request['EventCalendarDetailId'];
-		if (valid_id($request['EventCalendarDetailId']) && $this->detail->find()) {
-			$event_id = $this->detail->event_id;
-		} else {
-			return InvalidParameter();
-		}
-		if ($mundane_id > 0 && Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_EVENT, $event_id, AUTH_CREATE)) {
-			if (Ork3::$Lib->attendance->HasAttendance(array( 'Filter' => 'Event', 'Value' => $request['EventCalendarDetailId'] )))
-				return InvalidParameter('This event occurrence cannot be deleted because attendance has already been entered for it.');
-			$this->detail->clear();
-			$this->detail->event_calendardetail_id = $request['EventCalendarDetailId'];
-			if ($this->detail->find()) {
-				$this->detail->delete();
-				return Success();
-			} else {
-				return ProcessingError('Event Calendar Detail is missing after it was found.  Race conditions eminent!');
-			}
-		}
-	}
-	
-  public function PlayAmtgard($request) {
-		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token'] ?? '');
-		if (!$mundane_id || $mundane_id <= 0) {
-			return NoAuthorization();
-		}
-
-		$key = Ork3::$Lib->ghettocache->key($request);
-		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 60)) !== false)
-			return $cache;
-
-    $latitude  = (float)($request['latitude']  ?? 0);
-    $longitude = (float)($request['longitude'] ?? 0);
-    $start = isset($request['start']) ? date("Y-m-d", strtotime($request['start'])) : date("Y-m-d");
-    $end = date("Y-m-d", strtotime($request['end'] ?? $request['start'] ?? 'now + 90 days'));
-    // Validate dates are proper Y-m-d format
-    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $start)) {
-        $start = date("Y-m-d");
+class Event extends Ork3
+{
+    public function __construct()
+    {
+        parent::__construct();
+        $this->event = new yapo($this->db, DB_PREFIX . 'event');
+        $this->detail = new yapo($this->db, DB_PREFIX . 'event_calendardetail');
     }
-    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $end)) {
-        $end = date("Y-m-d", strtotime('+90 days'));
+
+    public function CreateEvent($request)
+    {
+        logtrace("CreateEvent()", $request);
+        $log = '';
+        $mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+        // Common event setup
+        $this->event->clear();
+        $this->event->kingdom_id = $request['KingdomId'];
+        $this->event->park_id = $request['ParkId'];
+        $this->event->mundane_id = $request['MundaneId'];
+        $this->event->unit_id = $request['UnitId'];
+        $this->event->name = $request['Name'];
+        $this->event->modified = date('Y-m-d H:i:s');
+
+        if (valid_id($request['MundaneId']) && !valid_id($request['UnitId'])) {
+            $this->event->kingdom_id = 0;
+            $this->event->park_id = 0;
+            $this->event->unit_id = 0;
+            $this->event->save();
+        } elseif (valid_id($request['UnitId'])) {
+            $this->event->kingdom_id = 0;
+            $this->event->park_id = 0;
+            $this->event->save();
+        } elseif (valid_id($request['ParkId']) && valid_id($request['KingdomId']) && valid_id($mundane_id)
+                && Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_PARK, $request['ParkId'], AUTH_CREATE)) {
+            $park = new yapo($this->db, DB_PREFIX . 'park');
+            $park->clear();
+            $park->park_id = $request['ParkId'];
+            if ($park->find()) {
+                $this->event->mundane_id = 0;
+                $this->event->unit_id = 0;
+                $this->event->save();
+            } else {
+                return InvalidParameter(null, 'Problem processing request.');
+            }
+        } elseif (valid_id($request['KingdomId']) && valid_id($mundane_id)
+                        && Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_KINGDOM, $request['KingdomId'], AUTH_CREATE)) {
+            $kingdom = new yapo($this->db, DB_PREFIX . 'kingdom');
+            $kingdom->clear();
+            $kingdom->kingdom_id = $request['KingdomId'];
+            if ($kingdom->find()) {
+                $this->event->park_id = 0;
+                $this->event->mundane_id = 0;
+                $this->event->unit_id = 0;
+                $this->event->save();
+            } else {
+                return InvalidParameter(null, 'Problem processing request.');
+            }
+        } else {
+            // Bailout without committing
+            return NoAuthorization();
+        }
+        Ork3::$Lib->heraldry->SetEventHeraldry($request);
+
+        // Best-effort: notify park/kingdom members that a new event was posted.
+        // Reads the FINAL persisted scope off the yapo object (the branches above
+        // zero out the non-applicable scope columns).
+        $this->NotifyEventPublished(
+            (int) $this->event->event_id,
+            (int) $this->event->park_id,
+            (int) $this->event->kingdom_id,
+            (string) $this->event->name,
+            (int) $mundane_id   // authenticated creator (form MundaneId is the host field, zeroed for park/kingdom events)
+        );
+
+        return Success($this->event->event_id);
     }
-    $distance = max(1, (float)($request['distance'] ?? 25));
-    $limit    = min(100, max(1, (int)($request['limit'] ?? 12)));
-    
-    $sql = "SELECT 
+
+    /**
+     * Notification trigger: a new event was published. Best-effort, fire-and-forget
+     * — a notification failure must NEVER break the event save. Mirrors
+     * Award::NotifyAwardGranted (try/catch \Throwable + isset guard).
+     *
+     * Park events notify the park; kingdom events notify the whole family
+     * (kingdom + child principalities). Personal/unit events notify no one. The
+     * creator is excluded from the recipient set.
+     *
+     * @param int    $eventId   the new event_id
+     * @param int    $parkId    final park_id (0 if not a park event)
+     * @param int    $kingdomId final kingdom_id (0 if not a kingdom event)
+     * @param string $eventName display name of the event
+     * @param int    $creatorId the mundane who created it (excluded + audit)
+     * @return void
+     */
+    private function NotifyEventPublished($eventId, $parkId, $kingdomId, $eventName, $creatorId)
+    {
+        try {
+            $eventId = (int) $eventId;
+            $parkId = (int) $parkId;
+            $kingdomId = (int) $kingdomId;
+            $eventName = trim((string) $eventName);
+            $creatorId = (int) $creatorId;
+
+            if ($eventId <= 0 || $eventName === '') {
+                return;
+            }
+            if (!isset(Ork3::$Lib->notification)) {
+                return;
+            }
+
+            $isPark = ($parkId > 0);
+            if ($isPark) {
+                $recipients = Ork3::$Lib->notification->GetRecipientsForScope('park', $parkId);
+            } elseif ($kingdomId > 0) {
+                $recipients = Ork3::$Lib->notification->GetRecipientsForFamilyKingdom($kingdomId);
+            } else {
+                // Personal/unit event — no broadcast audience.
+                return;
+            }
+
+            // Exclude the creator from their own broadcast.
+            if ($creatorId > 0) {
+                $recipients = array_values(array_filter($recipients, function ($mid) use ($creatorId) {
+                    return (int) $mid !== $creatorId;
+                }));
+            }
+            if (count($recipients) === 0) {
+                return;
+            }
+
+            $fields = [
+                'title'    => 'New event: ' . $eventName,
+                'body'     => 'A new event was posted in your ' . ($isPark ? 'park' : 'kingdom') . '.',
+                'link_url' => '?Route=Event/index/' . $eventId,
+            ];
+            if ($creatorId > 0) {
+                $fields['created_by'] = $creatorId;
+            }
+
+            Ork3::$Lib->notification->CreateBulk($recipients, 'event', $fields);
+        } catch (\Throwable $e) {
+            // Swallow — notifications are best-effort and must never break the save.
+        }
+    }
+
+    /**
+     * Reminder targets: every "going" RSVP for an event occurrence happening
+     * exactly $daysOut days from now (date-granular). Used by the
+     * send-event-reminders cron to fan out "event coming up" notifications.
+     *
+     * @param int $daysOut number of days ahead to match (e.g. 7 or 2)
+     * @return array[] assoc rows: mundane_id, event_id, event_calendardetail_id,
+     *                 event_name, event_start
+     */
+    public function GetEventReminderTargets($daysOut)
+    {
+        $daysOut = (int) $daysOut;
+
+        $this->db->Clear();
+        $r = $this->db->query(
+            'SELECT rs.mundane_id, e.event_id, cd.event_calendardetail_id,'
+            . ' e.name AS event_name, cd.event_start'
+            . ' FROM ' . DB_PREFIX . 'event_rsvp rs'
+            . ' JOIN ' . DB_PREFIX . 'event_calendardetail cd'
+            . ' ON cd.event_calendardetail_id = rs.event_calendardetail_id'
+            . ' JOIN ' . DB_PREFIX . 'event e ON e.event_id = cd.event_id'
+            . " WHERE rs.status = 'going'"
+            . " AND DATE(cd.event_start) = DATE(DATE_ADD(NOW(), INTERVAL {$daysOut} DAY))"
+            . ' ORDER BY cd.event_calendardetail_id'
+        );
+
+        $rows = [];
+        if ($r !== false) {
+            while ($r->next()) {
+                $rows[] = [
+                    'mundane_id'              => (int) $r->mundane_id,
+                    'event_id'                => (int) $r->event_id,
+                    'event_calendardetail_id' => (int) $r->event_calendardetail_id,
+                    'event_name'              => $r->event_name,
+                    'event_start'             => $r->event_start,
+                ];
+            }
+        }
+        return $rows;
+    }
+
+    public function GetEvents($request)
+    {
+        $this->event->clear();
+        if (isset($request['LimitTo']) && $request['LimitTo'] === true) {
+            $this->event->kingdom_id = 0;
+            $this->event->park_id = 0;
+            $this->event->unit_id = 0;
+            $this->event->mundane_id = 0;
+        }
+
+        if (valid_id($request['KingdomId'])) {
+            $this->event->kingdom_id = $request['KingdomId'];
+        }
+        if (valid_id($request['ParkId'])) {
+            $this->event->park_id = $request['ParkId'];
+        }
+        if (valid_id($request['UnitId'])) {
+            $this->event->unit_id = $request['UnitId'];
+        }
+        if (valid_id($request['MundaneId'])) {
+            $this->event->mundane_id = $request['MundaneId'];
+        }
+        $events = array();
+        if ($this->event->find()) {
+            do {
+                $events[] = array(
+                    'EventId' => $this->event->event_id,
+                    'KingdomId' => $this->event->kingdom_id,
+                    'ParkId' => $this->event->park_id,
+                    'UnitId' => $this->event->unit_id,
+                    'MundaneId' => $this->event->mundane_id,
+                    'Name' => $this->event->name
+                );
+            } while ($this->event->next());
+        }
+        return $events;
+    }
+
+    public function GetEvent($request)
+    {
+        $this->event->clear();
+        $this->event->event_id = $request['EventId'];
+        $response = array();
+        if (valid_id($request['EventId']) && $this->event->find()) {
+            $response['KingdomId'] = $this->event->kingdom_id;
+            $response['ParkId'] = $this->event->park_id;
+            $response['MundaneId'] = $this->event->mundane_id;
+            $response['Name'] = $this->event->name;
+            $response['HasHeraldry'] = $this->event->has_heraldry;
+            $response['HeraldryUrl'] = $this->event->has_heraldry ? Ork3::$Lib->heraldry->GetHeraldryUrl(array('Type' => 'Event','Id' => $request['EventId'])) : Ork3::$Lib->heraldry->GetHeraldryUrl(array('Type' => 'Event','Id' => 0));
+            $response['Status'] = Success();
+        } else {
+            $response['Status'] = InvalidParameter();
+        }
+        return $response;
+    }
+
+    public function GetEventDetail($request)
+    {
+        logtrace("GetEventDetail()", $request);
+        $this->detail->clear();
+        $this->detail->event_calendardetail_id = $request['EventCalendarDetailId'];
+        $response = array();
+        if (valid_id($request['EventCalendarDetailId']) && $this->detail->find()) {
+            $response['CalendarEventDetails'] = array();
+            $nr = array();
+            $nr['EventCalendarDetailId'] = $this->detail->event_calendardetail_id;
+            $nr['EventId'] = $this->detail->event_id;
+            $nr['AtParkId'] = $this->detail->at_park_id;
+            $nr['Current'] = $this->detail->current;
+            $nr['Price'] = $this->detail->price;
+            $nr['EventStart'] = $this->detail->event_start;
+            $nr['EventEnd'] = $this->detail->event_end;
+            $nr['Description'] = $this->detail->description;
+            $nr['Url'] = $this->detail->url;
+            $nr['UrlName'] = $this->detail->url_name;
+            $nr['Address'] = $this->detail->address;
+            $nr['Province'] = $this->detail->province;
+            $nr['PostalCode'] = $this->detail->postal_code;
+            $nr['City'] = $this->detail->city;
+            $nr['Country'] = $this->detail->country;
+            $nr['Geocode'] = $this->detail->google_geocode;
+            $nr['Location'] = $this->detail->location;
+            $nr['MapURL'] = $this->detail->map_url;
+            $nr['MapUrlName'] = $this->detail->map_url_name;
+            $nr['Modified'] = $this->detail->modified;
+            $response['CalendarEventDetails'][] = $nr;
+            $response['Status'] = Success();
+        } else {
+            logtrace('Event->GetEventDetail()', array($request, $this->detail, $this->detail->lastSql()));
+            $response['Status'] = InvalidParameter();
+        }
+        return $response;
+    }
+
+    public function GetEventDetails($request)
+    {
+        $this->detail->clear();
+        $this->detail->event_id = $request['EventId'];
+        if ($request['Current']) {
+            $this->detail->current = 1;
+        }
+        $response = array();
+        if (valid_id($request['EventId']) && $this->detail->find(array('event_start DESC'), 'AND', ($request['Current'] ? 1 : null))) {
+            $response['CalendarEventDetails'] = array();
+            do {
+                $nr = array();
+                $nr['EventCalendarDetailId'] = $this->detail->event_calendardetail_id;
+                $nr['EventId'] = $this->detail->event_id;
+                $nr['AtParkId'] = $this->detail->at_park_id;
+                $nr['Current'] = $this->detail->current;
+                $nr['Price'] = $this->detail->price;
+                $nr['EventStart'] = $this->detail->event_start;
+                $nr['EventEnd'] = $this->detail->event_end;
+                $nr['Description'] = $this->detail->description;
+                $nr['Url'] = $this->detail->url;
+                $nr['UrlName'] = $this->detail->url_name;
+                $nr['Address'] = $this->detail->address;
+                $nr['Province'] = $this->detail->province;
+                $nr['PostalCode'] = $this->detail->postal_code;
+                $nr['City'] = $this->detail->city;
+                $nr['Country'] = $this->detail->country;
+                $nr['Geocode'] = $this->detail->google_geocode;
+                $nr['Location'] = $this->detail->location;
+                $nr['MapURL'] = $this->detail->map_url;
+                $nr['MapUrlName'] = $this->detail->map_url_name;
+                $nr['Modified'] = $this->detail->modified;
+                $response['CalendarEventDetails'][] = $nr;
+            } while ($this->detail->next());
+            $response['Status'] = Success();
+        } else {
+            $response['Status'] = InvalidParameter();
+        }
+        return $response;
+    }
+
+    public function CreateEventDetails($request)
+    {
+        $mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+
+        if ($mundane_id > 0 && Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_EVENT, $request['EventId'], AUTH_CREATE)) {
+
+            if (valid_id($request['Current']) && valid_id($request['EventId'])) {
+                $this->detail->clear();
+                $this->detail->event_id = $request['EventId'];
+                if ($this->detail->find()) {
+                    $this->detail->current = 0;
+                    $this->detail->save();
+                }
+            }
+
+            $details   = Common::Geocode($request['Address'], $request['City'], $request['Province'], $request['PostalCode']);
+            $geocode   = ($details && isset($details['Geocode'])) ? json_decode($details['Geocode']) : null;
+            $latitude  = ($geocode && isset($geocode->results[0])) ? $geocode->results[0]->geometry->location->lat : 0.0;
+            $longitude = ($geocode && isset($geocode->results[0])) ? $geocode->results[0]->geometry->location->lng : 0.0;
+
+            // Use a fresh yapo instance so this is always an INSERT, not an UPDATE
+            $newDetail = new yapo($this->db, DB_PREFIX . 'event_calendardetail');
+            $newDetail->event_id       = $request['EventId'];
+            if (valid_id($request['AtParkId'])) {
+                $newDetail->at_park_id = $request['AtParkId'];
+            }
+            $newDetail->current        = $request['Current'];
+            $newDetail->price          = $request['Price'];
+            $newDetail->event_start    = $request['EventStart'];
+            $newDetail->event_end      = $request['EventEnd'];
+            $newDetail->description    = trim($request['Description']);
+            $newDetail->url            = $request['Url'];
+            $newDetail->url_name       = $request['UrlName'];
+            $newDetail->address        = isset($details['Address']) ? $details['Address'] : $request['Address'];
+            $newDetail->province       = isset($details['Province']) ? $details['Province'] : $request['Province'];
+            $newDetail->postal_code    = isset($details['PostalCode']) ? $details['PostalCode'] : $request['PostalCode'];
+            $newDetail->city           = isset($details['City']) ? $details['City'] : $request['City'];
+            $newDetail->country        = $request['Country'];
+            $newDetail->map_url        = $request['MapUrl'];
+            $newDetail->map_url_name   = $request['MapUrlName'];
+            $newDetail->modified       = date('Y-m-d H:i:s');
+            $newDetail->google_geocode = $details ? $details['Geocode'] : null;
+            $newDetail->location       = $details ? $details['Location'] : null;
+            $newDetail->latitude       = $latitude;
+            $newDetail->longitude      = $longitude;
+            $newDetail->save();
+            return Success($newDetail->event_calendardetail_id);
+        } else {
+            return NoAuthorization();
+        }
+    }
+
+    public function SetCurrent($request)
+    {
+        $mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+
+        $this->detail->clear();
+        $this->detail->event_calendardetail_id = $request['EventCalendarDetailId'];
+        if (valid_id($request['EventCalendarDetailId']) && $this->detail->find()) {
+            $event_id = $this->detail->event_id;
+        } else {
+            return InvalidParameter();
+        }
+        if ($mundane_id > 0 && Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_EVENT, $event_id, AUTH_CREATE)) {
+            if (valid_id($request['EventCalendarDetailId']) && $this->detail->find()) {
+                $this->db->query('START TRANSACTION');
+                if ($request['Current']) {
+                    $sql = 'update ' . DB_PREFIX . 'event_calendardetail set current = 0 where event_id = ' . $event_id;
+                    $this->db->query($sql);
+                }
+
+                $this->detail->clear();
+                $this->detail->event_calendardetail_id = $request['EventCalendarDetailId'];
+                $this->detail->find();
+                $this->detail->current = 1;
+                $saveResult = $this->detail->save();
+                if (!$saveResult) {
+                    $this->db->query('ROLLBACK');
+                    return ProcessingError('Failed to set current detail.');
+                }
+                $this->db->query('COMMIT');
+
+                logtrace("SetCurrent()", array($request, $this->detail->lastSql()));
+
+                return Success($this->detail->event_calendardetail_id);
+            } else {
+                return InvalidParameter();
+            }
+        } else {
+            return NoAuthorization();
+        }
+    }
+
+    public function DeleteEventDetail($request)
+    {
+        $mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+
+        $this->detail->clear();
+        $this->detail->event_calendardetail_id = $request['EventCalendarDetailId'];
+        if (valid_id($request['EventCalendarDetailId']) && $this->detail->find()) {
+            $event_id = $this->detail->event_id;
+        } else {
+            return InvalidParameter();
+        }
+        if ($mundane_id > 0 && Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_EVENT, $event_id, AUTH_CREATE)) {
+            if (Ork3::$Lib->attendance->HasAttendance(array( 'Filter' => 'Event', 'Value' => $request['EventCalendarDetailId'] ))) {
+                return InvalidParameter('This event occurrence cannot be deleted because attendance has already been entered for it.');
+            }
+            $this->detail->clear();
+            $this->detail->event_calendardetail_id = $request['EventCalendarDetailId'];
+            if ($this->detail->find()) {
+                $this->detail->delete();
+                return Success();
+            } else {
+                return ProcessingError('Event Calendar Detail is missing after it was found.  Race conditions eminent!');
+            }
+        }
+    }
+
+    public function PlayAmtgard($request)
+    {
+        $mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token'] ?? '');
+        if (!$mundane_id || $mundane_id <= 0) {
+            return NoAuthorization();
+        }
+
+        $key = Ork3::$Lib->ghettocache->key($request);
+        if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 60)) !== false) {
+            return $cache;
+        }
+
+        $latitude  = (float)($request['latitude']  ?? 0);
+        $longitude = (float)($request['longitude'] ?? 0);
+        $start = isset($request['start']) ? date("Y-m-d", strtotime($request['start'])) : date("Y-m-d");
+        $end = date("Y-m-d", strtotime($request['end'] ?? $request['start'] ?? 'now + 90 days'));
+        // Validate dates are proper Y-m-d format
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $start)) {
+            $start = date("Y-m-d");
+        }
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $end)) {
+            $end = date("Y-m-d", strtotime('+90 days'));
+        }
+        $distance = max(1, (float)($request['distance'] ?? 25));
+        $limit    = min(100, max(1, (int)($request['limit'] ?? 12)));
+
+        $sql = "SELECT 
               k.kingdom_id, p.park_id, k.name kingdom_name, p.name park_name, cd.event_id, cd.event_calendardetail_id,
               cd.description, cd.url, cd.url_name, cd.address, cd.province, cd.postal_code, cd.map_url, cd.map_url_name, cd.google_geocode, cd.location, cd.latitude, cd.longitude,
               cd.event_start, cd.event_end,
@@ -343,170 +484,179 @@ class Event  extends Ork3 {
               event_start between '$start' and '$end' and current = 1 
             HAVING distance < $distance
             ORDER BY starts_about asc, distance asc LIMIT $limit";
-    
-    $r = $this->db->query($sql);
-		$response = array();
-		if ($r !== false && $r->size() > 0) {
-			$response['ParkDays'] = array();
-			while ($r->next()) {
-				$response['ParkDays'][] = array(
-						'EventId' => $r->event_id,
-						'DetailId' => $r->event_calendardetail_id,
-						'KingdomId' => $r->kingdom_id,
-						'ParkId' => $r->park_id,
-						'UnitId' => $r->unit_id,
-						'ParkName' => $r->park_name,
-						'KingdomName' => $r->kingdom_name,
-						'UnitName' => $r->unit_name,
-						'Description' => $r->description,
-						'EventName' => $r->event_name,
-						'Url' => $r->url,
-						'UrlName' => $r->url_name,
-						'Address' => $r->address,
-						'Province' => $r->province,
-						'PostalCode' => $r->postal_code,
-						'MapUrl' => $r->map_url,
-						'MapUrlName' => $r->map_url_name,
-						'GoogleGeocode' => $r->google_geocode,
-						'Location' => $r->location,
-						'Latitude' => $r->latitude,
-						'Longitude' => $r->longitude,
-						'Start' => $r->event_start,
-						'End' => $r->event_end,
-						'Distance' => $r->distance,
-						'StartsAbout' => $r->starts_about
-					);
-			}
-			$response['Status'] = Success();
-		} else {
-			$response['Status'] = InvalidParameter();
-		}
-		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
-  }
-  
-	public function SetEventDetails($request) {
-		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
 
-		logtrace("SetEventDetails()",$request);
-		
-		if (valid_id($mundane_id) && Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_EVENT, $request['EventId'], AUTH_EDIT)) {
-		
-			$this->detail->clear();
-			$this->detail->event_id = $request['EventId'];
-			$this->detail->event_calendardetail_id = $request['EventCalendarDetailId'];
-			if (valid_id($request['EventCalendarDetailId']) && $this->detail->find()) {
-			
-				$hasAddress = !empty(trim(($request['Address'] ?? '') . ($request['City'] ?? '') . ($request['Province'] ?? '') . ($request['PostalCode'] ?? '')));
-				$details  = $hasAddress ? Common::Geocode($request['Address'], $request['City'], $request['Province'], $request['PostalCode']) : false;
-				$geocode  = ($details && !empty($details['Geocode'])) ? json_decode($details['Geocode']) : null;
+        $r = $this->db->query($sql);
+        $response = array();
+        if ($r !== false && $r->size() > 0) {
+            $response['ParkDays'] = array();
+            while ($r->next()) {
+                $response['ParkDays'][] = array(
+                        'EventId' => $r->event_id,
+                        'DetailId' => $r->event_calendardetail_id,
+                        'KingdomId' => $r->kingdom_id,
+                        'ParkId' => $r->park_id,
+                        'UnitId' => $r->unit_id,
+                        'ParkName' => $r->park_name,
+                        'KingdomName' => $r->kingdom_name,
+                        'UnitName' => $r->unit_name,
+                        'Description' => $r->description,
+                        'EventName' => $r->event_name,
+                        'Url' => $r->url,
+                        'UrlName' => $r->url_name,
+                        'Address' => $r->address,
+                        'Province' => $r->province,
+                        'PostalCode' => $r->postal_code,
+                        'MapUrl' => $r->map_url,
+                        'MapUrlName' => $r->map_url_name,
+                        'GoogleGeocode' => $r->google_geocode,
+                        'Location' => $r->location,
+                        'Latitude' => $r->latitude,
+                        'Longitude' => $r->longitude,
+                        'Start' => $r->event_start,
+                        'End' => $r->event_end,
+                        'Distance' => $r->distance,
+                        'StartsAbout' => $r->starts_about
+                    );
+            }
+            $response['Status'] = Success();
+        } else {
+            $response['Status'] = InvalidParameter();
+        }
+        return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
+    }
 
-				$this->detail->event_id = $request['EventId'];
-				$this->detail->price = $request['Price'];
-				$this->detail->event_start = $request['EventStart'];
-				$this->detail->event_end = $request['EventEnd'];
-				$this->detail->description = trim($request['Description']);
-				$this->detail->url = $request['Url'];
-				$this->detail->url_name = $request['UrlName'];
-				if ($hasAddress) {
-					$this->detail->address    = isset($details['Address'])    ? $details['Address']    : $request['Address'];
-					$this->detail->province   = isset($details['Province'])   ? $details['Province']   : $request['Province'];
-					$this->detail->postal_code = isset($details['PostalCode']) ? $details['PostalCode'] : $request['PostalCode'];
-					$this->detail->city       = isset($details['City'])       ? $details['City']       : $request['City'];
-					$this->detail->country    = $request['Country'];
-				} else {
-					$this->detail->address     = '';
-					$this->detail->province    = '';
-					$this->detail->postal_code = '';
-					$this->detail->city        = '';
-					$this->detail->country     = '';
-				}
-				$this->detail->map_url = $request['MapUrl'];
-				$this->detail->map_url_name = $request['MapUrlName'];
-				$this->detail->modified = date('Y-m-d H:i:s');
-				$this->detail->google_geocode = $details ? $details['Geocode'] : null;
-				$this->detail->location = $details ? $details['Location'] : null;
-				$this->detail->latitude = ($geocode && isset($geocode->results[0])) ? $geocode->results[0]->geometry->location->lat : null;
-				$this->detail->longitude = ($geocode && isset($geocode->results[0])) ? $geocode->results[0]->geometry->location->lng : null;
-				Ork3::$Lib->heraldry->SetEventHeraldry($request);
-				$this->detail->save();
-				if (valid_id($request['Current'])) {
-					logtrace("SetEventDetails",array( 'Token' => $request['Token'], 'EventId'=> $request['EventId'], 'EventCalendarDetailId' => $request['EventCalendarDetailId'], 'Current' => 1));
-					$this->SetCurrent(array( 'Token' => $request['Token'], 'EventCalendarDetailId' => $request['EventCalendarDetailId'], 'Current' => 1));
-				}
-				logtrace('SetEventDetails', $request);
-				return Success();
-			} else {
-				return InvalidParameter('');
-			}
-		} else {
-			return NoAuthorization();
-		}
-	}
+    public function SetEventDetails($request)
+    {
+        $mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
 
-	public function DeleteEvent($request) {
-		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+        logtrace("SetEventDetails()", $request);
 
-		if (!valid_id($mundane_id)) {
-			return BadToken();
-		}
+        if (valid_id($mundane_id) && Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_EVENT, $request['EventId'], AUTH_EDIT)) {
 
-		$event_id = (int)($request['EventId'] ?? 0);
-		if (!valid_id($event_id)) {
-			return InvalidParameter('EventId is required.');
-		}
+            $this->detail->clear();
+            $this->detail->event_id = $request['EventId'];
+            $this->detail->event_calendardetail_id = $request['EventCalendarDetailId'];
+            if (valid_id($request['EventCalendarDetailId']) && $this->detail->find()) {
 
-		if (!Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_EVENT, $event_id, AUTH_EDIT)) {
-			return NoAuthorization();
-		}
+                $hasAddress = !empty(trim(($request['Address'] ?? '') . ($request['City'] ?? '') . ($request['Province'] ?? '') . ($request['PostalCode'] ?? '')));
+                $details  = $hasAddress ? Common::Geocode($request['Address'], $request['City'], $request['Province'], $request['PostalCode']) : false;
+                $geocode  = ($details && !empty($details['Geocode'])) ? json_decode($details['Geocode']) : null;
 
-		// Refuse if any calendar details exist (event has scheduled occurrences)
-		$this->detail->clear();
-		$this->detail->event_id = $event_id;
-		if ($this->detail->find()) {
-			return InvalidParameter('Cannot delete an event that has scheduled occurrences.');
-		}
+                $this->detail->event_id = $request['EventId'];
+                $this->detail->price = $request['Price'];
+                $this->detail->event_start = $request['EventStart'];
+                $this->detail->event_end = $request['EventEnd'];
+                $this->detail->description = trim($request['Description']);
+                $this->detail->url = $request['Url'];
+                $this->detail->url_name = $request['UrlName'];
+                if ($hasAddress) {
+                    $this->detail->address    = isset($details['Address']) ? $details['Address'] : $request['Address'];
+                    $this->detail->province   = isset($details['Province']) ? $details['Province'] : $request['Province'];
+                    $this->detail->postal_code = isset($details['PostalCode']) ? $details['PostalCode'] : $request['PostalCode'];
+                    $this->detail->city       = isset($details['City']) ? $details['City'] : $request['City'];
+                    $this->detail->country    = $request['Country'];
+                } else {
+                    $this->detail->address     = '';
+                    $this->detail->province    = '';
+                    $this->detail->postal_code = '';
+                    $this->detail->city        = '';
+                    $this->detail->country     = '';
+                }
+                $this->detail->map_url = $request['MapUrl'];
+                $this->detail->map_url_name = $request['MapUrlName'];
+                $this->detail->modified = date('Y-m-d H:i:s');
+                $this->detail->google_geocode = $details ? $details['Geocode'] : null;
+                $this->detail->location = $details ? $details['Location'] : null;
+                $this->detail->latitude = ($geocode && isset($geocode->results[0])) ? $geocode->results[0]->geometry->location->lat : null;
+                $this->detail->longitude = ($geocode && isset($geocode->results[0])) ? $geocode->results[0]->geometry->location->lng : null;
+                Ork3::$Lib->heraldry->SetEventHeraldry($request);
+                $this->detail->save();
+                if (valid_id($request['Current'])) {
+                    logtrace("SetEventDetails", array( 'Token' => $request['Token'], 'EventId' => $request['EventId'], 'EventCalendarDetailId' => $request['EventCalendarDetailId'], 'Current' => 1));
+                    $this->SetCurrent(array( 'Token' => $request['Token'], 'EventCalendarDetailId' => $request['EventCalendarDetailId'], 'Current' => 1));
+                }
+                logtrace('SetEventDetails', $request);
+                return Success();
+            } else {
+                return InvalidParameter('');
+            }
+        } else {
+            return NoAuthorization();
+        }
+    }
 
-		$this->event->clear();
-		$this->event->event_id = $event_id;
-		if ($this->event->find()) {
-			$this->event->delete();
-			return Success();
-		}
-		return InvalidParameter('Event not found.');
-	}
+    public function DeleteEvent($request)
+    {
+        $mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
 
-	public function SetEvent($request) {
-		$mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
-		
-		if (valid_id($mundane_id) && Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_EVENT, $request['EventId'], AUTH_EDIT)) {
-				$this->event->clear();
-				$this->event->event_id = $request['EventId'];
-				$response = array();
-				if (valid_id($request['EventId']) && $this->event->find()) {
-					if (is_numeric($request['KingdomId'])) $this->event->kingdom_id = $request['KingdomId'];
-					if (is_numeric($request['ParkId'])) {
-						$this->event->park_id = $request['ParkId'];
-						$p = Ork3::$Lib->park->GetParkShortInfo(array('ParkId'=>$request['ParkId']));
-						if ($p['Status']['Status'] != 0) {
-							return $p['Status'];
-						} else {
-							$this->event->kingdom_id = $p['KingdomId'];
-						}
-					}
-					if (is_numeric($request['MundaneId'])) $this->event->mundane_id = $request['MundaneId'];
-					if (is_numeric($request['UnitId'])) $this->event->unit_id = $request['UnitId'];
-					if (trimlen($request['Name'])) $this->event->name = $request['Name'];
-					$this->event->save();
-					Ork3::$Lib->heraldry->SetEventHeraldry($request);
-					logtrace("SetEvent", array($request, $this->event));
-					return Success();
-				} else {
-					return InvalidParameter('Event Id is not a valid id.');
-				}
-		} else {
-			return NoAuthorization();
-		}
-	}
+        if (!valid_id($mundane_id)) {
+            return BadToken();
+        }
+
+        $event_id = (int)($request['EventId'] ?? 0);
+        if (!valid_id($event_id)) {
+            return InvalidParameter('EventId is required.');
+        }
+
+        if (!Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_EVENT, $event_id, AUTH_EDIT)) {
+            return NoAuthorization();
+        }
+
+        // Refuse if any calendar details exist (event has scheduled occurrences)
+        $this->detail->clear();
+        $this->detail->event_id = $event_id;
+        if ($this->detail->find()) {
+            return InvalidParameter('Cannot delete an event that has scheduled occurrences.');
+        }
+
+        $this->event->clear();
+        $this->event->event_id = $event_id;
+        if ($this->event->find()) {
+            $this->event->delete();
+            return Success();
+        }
+        return InvalidParameter('Event not found.');
+    }
+
+    public function SetEvent($request)
+    {
+        $mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+
+        if (valid_id($mundane_id) && Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_EVENT, $request['EventId'], AUTH_EDIT)) {
+            $this->event->clear();
+            $this->event->event_id = $request['EventId'];
+            $response = array();
+            if (valid_id($request['EventId']) && $this->event->find()) {
+                if (is_numeric($request['KingdomId'])) {
+                    $this->event->kingdom_id = $request['KingdomId'];
+                }
+                if (is_numeric($request['ParkId'])) {
+                    $this->event->park_id = $request['ParkId'];
+                    $p = Ork3::$Lib->park->GetParkShortInfo(array('ParkId' => $request['ParkId']));
+                    if ($p['Status']['Status'] != 0) {
+                        return $p['Status'];
+                    } else {
+                        $this->event->kingdom_id = $p['KingdomId'];
+                    }
+                }
+                if (is_numeric($request['MundaneId'])) {
+                    $this->event->mundane_id = $request['MundaneId'];
+                }
+                if (is_numeric($request['UnitId'])) {
+                    $this->event->unit_id = $request['UnitId'];
+                }
+                if (trimlen($request['Name'])) {
+                    $this->event->name = $request['Name'];
+                }
+                $this->event->save();
+                Ork3::$Lib->heraldry->SetEventHeraldry($request);
+                logtrace("SetEvent", array($request, $this->event));
+                return Success();
+            } else {
+                return InvalidParameter('Event Id is not a valid id.');
+            }
+        } else {
+            return NoAuthorization();
+        }
+    }
 }
-
-?>

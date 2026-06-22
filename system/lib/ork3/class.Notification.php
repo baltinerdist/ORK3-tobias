@@ -18,6 +18,8 @@ class Notification extends Ork3
         'announcement'   => 'fas fa-bullhorn',
         'friend_request' => 'fas fa-user-plus',
         'friend_accept'  => 'fas fa-user-check',
+        'event'          => 'fas fa-calendar-plus',
+        'event_reminder' => 'fas fa-clock',
     ];
 
     public function __construct()
@@ -370,6 +372,144 @@ class Notification extends Ork3
             }
         }
         return $ids;
+    }
+
+    /**
+     * Resolve active recipient mundane_ids for a kingdom AND its child
+     * principalities (the "family"). Used for kingdom-scoped event notifications,
+     * which intentionally fan out to the whole family.
+     *
+     * @param int $kingdomId parent kingdom_id
+     * @return int[] active recipient mundane_ids across the family
+     */
+    public function GetRecipientsForFamilyKingdom($kingdomId)
+    {
+        $kingdomId = (int) $kingdomId;
+        if ($kingdomId <= 0) {
+            return [];
+        }
+
+        // Resolve family ids (parent + child principalities); fall back to the
+        // parent alone if the kingdom helper is unavailable.
+        $familyIds = [];
+        if (isset(Ork3::$Lib->kingdom) && method_exists(Ork3::$Lib->kingdom, 'GetFamilyKingdomIds')) {
+            $resolved = Ork3::$Lib->kingdom->GetFamilyKingdomIds($kingdomId);
+            if (is_array($resolved)) {
+                foreach ($resolved as $kid) {
+                    $kid = (int) $kid;
+                    if ($kid > 0) {
+                        $familyIds[$kid] = true;
+                    }
+                }
+            }
+        }
+        if (count($familyIds) === 0) {
+            $familyIds[$kingdomId] = true;
+        }
+        $familyIds = array_keys($familyIds);
+
+        // int-cast every id (no string interpolation of untrusted values).
+        $inList = implode(',', array_map('intval', $familyIds));
+
+        $this->db->Clear();
+        $r = $this->db->query(
+            'SELECT mundane_id FROM ' . DB_PREFIX . 'mundane'
+            . " WHERE kingdom_id IN ({$inList}) AND active = 1"
+        );
+
+        $ids = [];
+        if ($r !== false) {
+            while ($r->next()) {
+                $ids[] = (int) $r->mundane_id;
+            }
+        }
+        return $ids;
+    }
+
+    /**
+     * Fan-out exactly once per ($type, $dedupeKey) recipient: any recipient who
+     * already has a notification of this type whose payload contains $dedupeKey is
+     * skipped, so re-runs (e.g. a cron that fires twice) never double-notify.
+     *
+     * $dedupeKey is a short, collision-resistant string (e.g. "evt:123:7d") that
+     * MUST also be embedded in $fields['payload'] by the caller so the LIKE match
+     * can find it.
+     *
+     * @param int[]  $mundaneIds recipients
+     * @param string $type
+     * @param array  $fields     title, body, icon, link_url, payload, created_by
+     * @param string $dedupeKey  short marker also present in $fields['payload']
+     * @return array ['Status' => 0|1, 'Error' => ?, 'Count' => int, 'Skipped' => int]
+     */
+    public function CreateBulkOnce(array $mundaneIds, $type, array $fields, $dedupeKey)
+    {
+        $type      = (string) $type;
+        $dedupeKey = (string) $dedupeKey;
+
+        // Normalize recipients: positive ints, unique.
+        $ids = [];
+        foreach ($mundaneIds as $mid) {
+            $mid = (int) $mid;
+            if ($mid > 0) {
+                $ids[$mid] = true;
+            }
+        }
+        $ids = array_keys($ids);
+
+        if ($type === '' || $dedupeKey === '') {
+            return ['Status' => 1, 'Error' => 'type and dedupeKey are required', 'Count' => 0, 'Skipped' => 0];
+        }
+        if (count($ids) === 0) {
+            return ['Status' => 0, 'Count' => 0, 'Skipped' => 0];
+        }
+
+        // Find recipients who already have this dedupeKey for this type, and drop
+        // them from the send set. NOTE: this DB layer's query() does NOT apply
+        // SetData() bindings (only Execute()/DataSet() consume $this->Data) — the
+        // file's established SELECT pattern is direct interpolation of safe values.
+        // $type and $dedupeKey are app-controlled (type is a fixed slug; dedupeKey
+        // is "evt:{int}:{label}"); sanitize to a strict charset before interpolating.
+        $safeType = preg_replace('/[^A-Za-z0-9_]/', '', $type);
+        $safeKey  = preg_replace('/[^A-Za-z0-9:_-]/', '', (string) $dedupeKey);
+        $inList = implode(',', array_map('intval', $ids));
+        $this->db->Clear();
+        $r = $this->db->query(
+            'SELECT mundane_id FROM ' . DB_PREFIX . 'notification'
+            . " WHERE type = '{$safeType}' AND payload LIKE '%{$safeKey}%'"
+            . " AND mundane_id IN ({$inList})"
+        );
+        $already = [];
+        if ($r !== false) {
+            while ($r->next()) {
+                $already[(int) $r->mundane_id] = true;
+            }
+        }
+        $this->db->Clear();
+
+        $remaining = [];
+        foreach ($ids as $mid) {
+            if (!isset($already[$mid])) {
+                $remaining[] = $mid;
+            }
+        }
+        $skipped = count($ids) - count($remaining);
+
+        if (count($remaining) === 0) {
+            return ['Status' => 0, 'Count' => 0, 'Skipped' => $skipped];
+        }
+
+        $result = $this->CreateBulk($remaining, $type, $fields);
+        $inserted = isset($result['Count']) ? (int) $result['Count'] : 0;
+        if (isset($result['Status']) && (int) $result['Status'] !== 0) {
+            return [
+                'Status'  => 1,
+                'Error'   => $result['Error'] ?? 'Bulk insert failed',
+                'Count'   => $inserted,
+                'Skipped' => $skipped,
+            ];
+        }
+
+        return ['Status' => 0, 'Count' => $inserted, 'Skipped' => $skipped];
     }
 
     /**
