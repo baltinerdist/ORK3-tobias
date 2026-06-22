@@ -303,6 +303,56 @@ class Friendship extends Ork3
     }
 
     /**
+     * Relationship id-sets for $userId, for cheap O(1) badge/button rendering of a
+     * roster (e.g. an event RSVP / attendance list). Uses at most 3 queries: the
+     * accepted-friend ids (GetFriendIds) plus pending-outgoing and pending-incoming
+     * other-side ids derived from light SELECTs.
+     *
+     * @return array ['FriendIds'=>int[], 'PendingOutIds'=>int[], 'PendingInIds'=>int[]]
+     */
+    public function GetRelationshipSets($userId)
+    {
+        $userId = (int) $userId;
+        $out = ['FriendIds' => [], 'PendingOutIds' => [], 'PendingInIds' => []];
+        if ($userId <= 0) {
+            return $out;
+        }
+
+        // Accepted friends (reuses the existing helper — 1 query).
+        $out['FriendIds'] = $this->GetFriendIds($userId);
+
+        // Pending outgoing: requests this user initiated → other side's id.
+        $this->db->Clear();
+        $r = $this->db->query(
+            'SELECT IF(mundane_lo = ' . $userId . ', mundane_hi, mundane_lo) AS oid'
+            . ' FROM ' . DB_PREFIX . 'friendship'
+            . " WHERE status = 'pending' AND requested_by = {$userId}"
+            . " AND (mundane_lo = {$userId} OR mundane_hi = {$userId})"
+        );
+        if ($r !== false) {
+            while ($r->next()) {
+                $out['PendingOutIds'][] = (int) $r->oid;
+            }
+        }
+
+        // Pending incoming: requests someone else initiated → requester's id.
+        $this->db->Clear();
+        $r = $this->db->query(
+            'SELECT requested_by AS oid'
+            . ' FROM ' . DB_PREFIX . 'friendship'
+            . " WHERE status = 'pending' AND requested_by <> {$userId}"
+            . " AND (mundane_lo = {$userId} OR mundane_hi = {$userId})"
+        );
+        if ($r !== false) {
+            while ($r->next()) {
+                $out['PendingInIds'][] = (int) $r->oid;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * Accepted friends of $userId with display fields, persona-sorted.
      * @return array ['Status'=>0, 'Friends'=>[ {MundaneId,Persona,ParkAbbr,KingdomAbbr,HasImage,HasHeraldry} ]]
      */

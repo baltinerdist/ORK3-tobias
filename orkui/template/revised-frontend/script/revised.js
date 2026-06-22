@@ -13391,3 +13391,38 @@ window.initEmailSpellCheck = function(inputId, suggestionId) {
     openRecOnHash();
   }
 })();
+
+/* ===== Friends: inline add-friend icons on event RSVP / attendance rosters ===== */
+(function () {
+  // Delegated click — the icon buttons render mid-page inside roster tables, and
+  // revised.js loads before they exist, so a delegated listener is required.
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest ? e.target.closest('.friend-add-icon') : null;
+    if (!btn || btn.disabled) { return; }
+    e.preventDefault();
+    var target = btn.getAttribute('data-target');
+    if (!target) { return; }
+    btn.disabled = true; // guard against double-submit while the request is in flight
+    fetch('index.php?Route=FriendAjax/request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'target=' + encodeURIComponent(target),
+      credentials: 'same-origin'
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.status === 0) {
+          // Swap to the pending state in place (no reload).
+          btn.classList.remove('friend-add-icon');
+          btn.classList.add('is-pending');
+          btn.setAttribute('data-tip', 'Friend Request Pending');
+          btn.innerHTML = '<i class="fas fa-user-clock"></i>';
+          // stays disabled
+        } else {
+          btn.disabled = false;
+          if (d && d.error && window.tnToast) { window.tnToast(d.error); }
+        }
+      })
+      .catch(function () { btn.disabled = false; });
+  });
+})();

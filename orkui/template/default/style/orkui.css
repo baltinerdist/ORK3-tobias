@@ -8681,3 +8681,78 @@ html[data-theme="dark"] .friend-chip-sub { color: #aaa; }
 .friends-going a:hover { text-decoration: underline; }
 html[data-theme="dark"] .friends-going { color: #ccc; }
 html[data-theme="dark"] .friends-going a { color: #8ab4f8; }
+
+/* ===== Event roster friend icons (RSVP + attendance name cells) ===== */
+.ev-name-cell { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Feature 1: always-visible "friend" badge. */
+.ev-friend-badge { color: #2a5db0; font-size: 0.8rem; line-height: 1; display: inline-flex; align-items: center; }
+.ev-friend-badge[data-tip], .ev-friend-add[data-tip] { position: relative; }
+
+/* Feature 2: hover-revealed add-friend control (button reset, no native chrome). */
+.ev-friend-add {
+    appearance: none;
+    -webkit-appearance: none;
+    background: none;
+    border: none;
+    margin: 0;
+    padding: 1px 3px;
+    font: inherit;
+    font-size: 0.8rem;
+    line-height: 1;
+    color: #2a5db0;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity .12s ease, color .12s ease;
+    display: inline-flex;
+    align-items: center;
+}
+/* Reveal on row hover and keep it visible while focused (keyboard access). */
+tr:hover .ev-friend-add,
+.ev-friend-add:focus,
+.ev-friend-add:focus-visible { opacity: 1; }
+.ev-friend-add:hover { color: #1d4ed8; }
+.ev-friend-add.is-pending {
+    color: #9ca3af;
+    cursor: default;
+    opacity: 1; /* pending state always visible so the user knows a request is out */
+}
+
+/* data-tip tooltip (matches the app's nav-notif convention; wraps + stays on-screen). */
+.ev-friend-badge[data-tip]:hover::after,
+.ev-friend-add[data-tip]:hover::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #2d3748;
+    color: #fff;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: normal;
+    width: max-content;
+    max-width: 240px;
+    pointer-events: none;
+    z-index: 10002;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}
+/* Right-anchor tips near the row edge so they never run off-screen. */
+td:last-child .ev-friend-badge[data-tip]:hover::after,
+td:last-child .ev-friend-add[data-tip]:hover::after {
+    left: auto;
+    right: 0;
+    transform: none;
+}
+
+html[data-theme="dark"] .ev-friend-badge { color: #8ab4f8; }
+html[data-theme="dark"] .ev-friend-add { color: #8ab4f8; }
+html[data-theme="dark"] .ev-friend-add:hover { color: #b3cdfb; }
+html[data-theme="dark"] .ev-friend-add.is-pending { color: #6b7280; }
+html[data-theme="dark"] .ev-friend-badge[data-tip]:hover::after,
+html[data-theme="dark"] .ev-friend-add[data-tip]:hover::after {
+    background: #0f1722;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+}

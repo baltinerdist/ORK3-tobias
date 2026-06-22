@@ -53,6 +53,10 @@ class Model_Friendship extends Model
     {
         return $this->Friendship->GetFriendIds($userId);
     }
+    public function get_relationship_sets($userId)
+    {
+        return $this->Friendship->GetRelationshipSets($userId);
+    }
     public function get_friends($userId, $limit = null, $offset = 0)
     {
         return $this->Friendship->GetFriends($userId, $limit, $offset);

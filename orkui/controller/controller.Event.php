@@ -547,10 +547,18 @@ class Controller_Event extends Controller
         // Friends attending this occurrence: intersect the RSVP list with the
         // viewer's confirmed friends (login-gated). Only friends' personas are
         // exposed via FriendsGoing — never the full list to a non-manager.
+        // Viewer relationship sets (friends + pending-out) for friend badges and
+        // hover "add friend" controls on the RSVP / attendance rosters. Login-gated.
+        $this->data['ViewerId']      = $uid;
+        $this->data['FriendIdSet']   = [];
+        $this->data['PendingOutSet'] = [];
         $friendsGoing = [];
         if ($uid > 0) {
             $this->load_model('Friendship');
-            $friendIds = array_flip($this->Friendship->get_friend_ids($uid));
+            $sets = $this->Friendship->get_relationship_sets($uid);
+            $friendIds = array_flip($sets['FriendIds'] ?? []);
+            $this->data['FriendIdSet']   = $friendIds;
+            $this->data['PendingOutSet'] = array_flip($sets['PendingOutIds'] ?? []);
             if (!empty($friendIds)) {
                 $detailRsvpList = $this->data['RsvpList'] ?: $this->Event->get_rsvp_list($detail_id);
                 foreach ($detailRsvpList as $att) {

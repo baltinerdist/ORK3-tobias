@@ -112,6 +112,28 @@
 	$rsvpCount     = $rsvpCounts['total'];
 	$userAttending = $UserAttending ?? false; // false or 'going' or 'interested'
 	$rsvpList      = $RsvpList ?? [];
+
+	// ---- Friend badge / add-friend control (RSVP + attendance rosters) ----
+	$viewerId      = (int)($ViewerId ?? 0);
+	$friendIdSet   = $FriendIdSet   ?? [];
+	$pendingOutSet = $PendingOutSet ?? [];
+	// Emits a friend badge (already friends) or a hover-revealed add control
+	// (pending = gray/disabled, else active request button). Gated by caller.
+	if (!function_exists('ev_friend_control')) {
+		function ev_friend_control(int $mid, bool $loggedIn, int $viewerId, array $friendIdSet, array $pendingOutSet): string {
+			if (!$loggedIn || $viewerId <= 0 || $mid <= 0 || $mid === $viewerId) {
+				return '';
+			}
+			if (isset($friendIdSet[$mid])) {
+				return ' <span class="ev-friend-badge" data-tip="Friend"><i class="fas fa-user-friends"></i></span>';
+			}
+			if (isset($pendingOutSet[$mid])) {
+				return ' <button type="button" class="ev-friend-add is-pending" data-tip="Friend Request Pending" disabled><i class="fas fa-user-clock"></i></button>';
+			}
+			return ' <button type="button" class="ev-friend-add friend-add-icon" data-target="' . $mid . '" data-tip="Send friend request?"><i class="fas fa-user-plus"></i></button>';
+		}
+	}
+
 	$canManage           = $CanManageEvent ?? false;
 	$canManageAttendance = $CanManageAttendance ?? false;
 	$canDelete           = ($attendeeCount === 0 && $rsvpCount === 0);
@@ -767,7 +789,7 @@ html[data-theme="dark"] .ev-ac-empty { color: var(--ork-text-muted); }
 					<tbody>
 						<?php foreach ($attendanceList as $att): ?>
 						<tr data-att-id="<?= (int)$att['AttendanceId'] ?>" data-mundane-id="<?= (int)$att['MundaneId'] ?>" data-att-class="<?= (int)$att['ClassId'] ?>" data-att-date="<?= htmlspecialchars($att['Date'] ?? '') ?>">
-							<td><a href="<?= UIR ?>Player/profile/<?= (int)$att['MundaneId'] ?>"><?= htmlspecialchars($att['Persona']) ?></a></td>
+							<td><span class="ev-name-cell"><a href="<?= UIR ?>Player/profile/<?= (int)$att['MundaneId'] ?>"><?= htmlspecialchars($att['Persona']) ?></a><?= ev_friend_control((int)$att['MundaneId'], $loggedIn, $viewerId, $friendIdSet, $pendingOutSet) ?></span></td>
 							<td><?php if (!empty($att['KingdomId'])): ?><a href="<?= UIR ?>Kingdom/profile/<?= (int)$att['KingdomId'] ?>"><?= htmlspecialchars($att['KingdomName']) ?></a><?php else: ?><?= htmlspecialchars($att['KingdomName'] ?? '') ?><?php endif; ?></td>
 							<td><?php if (!empty($att['ParkId'])): ?><a href="<?= UIR ?>Park/profile/<?= (int)$att['ParkId'] ?>"><?= htmlspecialchars($att['ParkName']) ?></a><?php else: ?><?= htmlspecialchars($att['ParkName'] ?? '') ?><?php endif; ?></td>
 							<td class="ev-class-cell"><?= htmlspecialchars($att['ClassName']) ?></td>
@@ -863,7 +885,7 @@ html[data-theme="dark"] .ev-ac-empty { color: var(--ork-text-muted); }
 						<tbody>
 							<?php foreach ($rsvpList as $attendee): ?>
 							<tr>
-								<td><a href="<?= UIR ?>Player/profile/<?= $attendee['MundaneId'] ?>"><?= htmlspecialchars($attendee['Persona']) ?></a></td>
+								<td><span class="ev-name-cell"><a href="<?= UIR ?>Player/profile/<?= (int)$attendee['MundaneId'] ?>"><?= htmlspecialchars($attendee['Persona']) ?></a><?= ev_friend_control((int)$attendee['MundaneId'], $loggedIn, $viewerId, $friendIdSet, $pendingOutSet) ?></span></td>
 								<td style="white-space:nowrap"><?= htmlspecialchars($attendee['KingdomAbbr'] ?? '') ?></td>
 								<td style="white-space:nowrap"><?= htmlspecialchars($attendee['ParkAbbr'] ?? '') ?></td>
 								<td style="white-space:nowrap">
