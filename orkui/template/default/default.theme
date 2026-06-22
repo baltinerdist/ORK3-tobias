@@ -276,6 +276,46 @@ $downtime_note  = 'ORK downtime to migrate to the Mask 3.5.2 Release';
 				</div>
 			</div>
 
+<?php if ($this->__session->token != null) : ?>
+<?php
+	// --- Notifications: inline unread COUNT only (list lazy-loaded on open) ---
+	$__notifUid    = (int)$this->__session->user_id;
+	$__notifUnread = 0;
+	try {
+		if (isset(Ork3::$Lib->notification)) {
+			$__notifUnread = (int)Ork3::$Lib->notification->UnreadCount($__notifUid);
+		} else {
+			$DB->Clear();
+			$__notifRow = $DB->DataSet("SELECT COUNT(*) AS c FROM " . DB_PREFIX . "notification WHERE mundane_id = $__notifUid AND read_at IS NULL AND dismissed_at IS NULL");
+			if ($__notifRow && $__notifRow->Next()) {
+				$__notifUnread = (int)$__notifRow->c;
+			}
+		}
+	} catch (\Throwable $__notifErr) {
+		$__notifUnread = 0;
+	}
+?>
+			<a class='nav-icon-btn nav-friends-btn' href='<?=UIR?>Friend/index'
+				aria-label='Friends' data-tip='Friends'>
+				<i class='fas fa-user-friends'></i>
+			</a>
+			<div class='nav-dropdown-wrap' id='nav-notif-wrap'>
+				<button class='nav-icon-btn nav-notif-btn' id='nav-notif-btn' type='button'
+					onclick='notifToggle()' aria-label='Notifications' data-tip='Notifications'>
+					<i class='fas fa-bell'></i>
+					<span class='nav-notif-badge'<?= $__notifUnread > 0 ? '' : " style='display:none'" ?>><?= $__notifUnread > 99 ? '99+' : (int)$__notifUnread ?></span>
+				</button>
+				<div class='nav-notif-panel' id='nav-notif-panel'>
+					<div class='nav-notif-head'>
+						<span class='nav-notif-title'>Notifications</span>
+						<button type='button' class='nav-notif-markall' id='nav-notif-markall' onclick='notifMarkAll()'>Mark all read</button>
+					</div>
+					<div class='nav-notif-list' id='nav-notif-list'>
+						<div class='nav-notif-loading'><i class='fas fa-spinner fa-spin'></i>&ensp;Loading&hellip;</div>
+					</div>
+				</div>
+			</div>
+<?php endif; ?>
 			<button id="ork-theme-toggle" class="nav-theme-toggle" title="Toggle dark mode" aria-label="Toggle dark mode">
 				<!-- SVG injected by JS -->
 			</button>
@@ -346,7 +386,7 @@ $downtime_note  = 'ORK downtime to migrate to the Mask 3.5.2 Release';
 	$(document).ready(function() {
 		// ---- Dropdowns: close on outside click ----
 		$(document).on('click.navDropdowns', function(e) {
-			['nav-avatar-wrap', 'nav-resources-wrap'].forEach(function(id) {
+			['nav-avatar-wrap', 'nav-resources-wrap', 'nav-notif-wrap'].forEach(function(id) {
 				var wrap = document.getElementById(id);
 				if (wrap && !wrap.contains(e.target)) wrap.classList.remove('open');
 			});
@@ -507,6 +547,167 @@ $downtime_note  = 'ORK downtime to migrate to the Mask 3.5.2 Release';
 	});
 	</script>
 
+<?php if ($this->__session->token != null) : ?>
+	<script>
+	// ============================================================
+	//  Notifications bell — lazy list, mark-read-on-open, dismiss
+	// ============================================================
+	(function () {
+		var notifUir    = '<?= UIR ?>';
+		var notifLoaded = false;   // list fetched at least once
+		var notifLoading = false;  // in-flight guard
+		var notifItems  = [];      // last-rendered items (for read-on-open)
+
+		function notifEsc(str) {
+			return $('<span>').text(str == null ? '' : str).html();
+		}
+
+		// Set/clear the unread badge (client-side, after page load).
+		function notifSetBadge(n) {
+			var $b = $('#nav-notif-btn .nav-notif-badge');
+			if (!$b.length) return;
+			n = parseInt(n, 10) || 0;
+			if (n > 0) {
+				$b.text(n > 99 ? '99+' : n).show();
+			} else {
+				$b.text('').hide();
+			}
+		}
+
+		function notifRender(items) {
+			notifItems = items || [];
+			var $list = $('#nav-notif-list');
+			if (!notifItems.length) {
+				$list.html('<div class="nav-notif-empty"><i class="fas fa-check-circle"></i>' +
+					'<span>You&rsquo;re all caught up.</span></div>');
+				return;
+			}
+			var html = '';
+			$.each(notifItems, function (i, n) {
+				var icon = notifEsc(n.icon || 'fas fa-bell');
+				var hasLink = n.link_url && String(n.link_url).length;
+				var cls = 'nav-notif-item' + (n.read ? '' : ' nav-notif-unread') +
+					(hasLink ? ' nav-notif-clickable' : '');
+				html += '<div class="' + cls + '" data-id="' + (parseInt(n.id, 10) || 0) + '"' +
+						(hasLink ? ' data-link="' + notifEsc(n.link_url) + '"' : '') + '>';
+				html += '<span class="nav-notif-item-icon"><i class="' + icon + '"></i></span>';
+				html += '<span class="nav-notif-item-body">';
+				html += '<span class="nav-notif-item-title">' + notifEsc(n.title) + '</span>';
+				if (n.body && String(n.body).length) {
+					html += '<span class="nav-notif-item-text">' + notifEsc(n.body) + '</span>';
+				}
+				html += '<span class="nav-notif-item-ago">' + notifEsc(n.ago) + '</span>';
+				html += '</span>';
+				html += '<button type="button" class="nav-notif-dismiss" data-tip="Dismiss" ' +
+						'aria-label="Dismiss notification"><i class="fas fa-times"></i></button>';
+				html += '</div>';
+			});
+			$list.html(html);
+		}
+
+		// Fetch the list (lazy — only the first open, unless forced).
+		function notifLoad(force) {
+			if (notifLoading) return;
+			if (notifLoaded && !force) return;
+			notifLoading = true;
+			$('#nav-notif-list').html('<div class="nav-notif-loading">' +
+				'<i class="fas fa-spinner fa-spin"></i>&ensp;Loading&hellip;</div>');
+			$.getJSON(notifUir + 'NotificationAjax/list')
+				.done(function (res) {
+					notifLoading = false;
+					notifLoaded = true;
+					if (!res || res.status !== 0) {
+						$('#nav-notif-list').html('<div class="nav-notif-empty">' +
+							'<span>Notifications unavailable.</span></div>');
+						return;
+					}
+					notifRender(res.items || []);
+					notifMarkShownRead();
+				})
+				.fail(function () {
+					notifLoading = false;
+					$('#nav-notif-list').html('<div class="nav-notif-empty">' +
+						'<span>Notifications unavailable.</span></div>');
+				});
+		}
+
+		// Read-on-reading: mark the currently-shown unread items read, clear badge.
+		function notifMarkShownRead() {
+			var ids = [];
+			$.each(notifItems, function (i, n) {
+				if (!n.read) ids.push(parseInt(n.id, 10) || 0);
+			});
+			ids = ids.filter(function (x) { return x > 0; });
+			notifSetBadge(0); // optimistic — they're being read right now
+			if (!ids.length) return;
+			$.post(notifUir + 'NotificationAjax/mark_read', { 'ids[]': ids })
+				.always(function () {
+					// reflect read state locally so a re-render keeps them read
+					$.each(notifItems, function (i, n) { n.read = true; });
+					$('#nav-notif-list .nav-notif-item').removeClass('nav-notif-unread');
+				});
+		}
+
+		// Public: toggle the panel open/closed (called from inline onclick).
+		window.notifToggle = function () {
+			var wrap = document.getElementById('nav-notif-wrap');
+			if (!wrap) return;
+			// Close sibling dropdowns for a clean single-open behaviour.
+			['nav-avatar-wrap', 'nav-resources-wrap'].forEach(function (id) {
+				var w = document.getElementById(id);
+				if (w) w.classList.remove('open');
+			});
+			var nowOpen = wrap.classList.toggle('open');
+			if (nowOpen) notifLoad(false);
+		};
+
+		// Public: mark-all-read action.
+		window.notifMarkAll = function () {
+			notifSetBadge(0);
+			$('#nav-notif-list .nav-notif-item').removeClass('nav-notif-unread');
+			$.each(notifItems, function (i, n) { n.read = true; });
+			$.post(notifUir + 'NotificationAjax/mark_read', { all: 1 });
+		};
+
+		$(document).ready(function () {
+			// Item click → navigate to link (unless the dismiss X was clicked).
+			$('#nav-notif-list').on('click', '.nav-notif-item', function (e) {
+				if ($(e.target).closest('.nav-notif-dismiss').length) return;
+				var link = $(this).attr('data-link');
+				// Defense-in-depth: only navigate to safe schemes (http(s), root-
+				// relative, or the app's own ?Route= form). The server already
+				// validates link_url on send, but never trust it client-side either.
+				if (link && /^(https?:\/\/|\/|\?Route=)/i.test(link)) {
+					window.location.href = link;
+				}
+			});
+
+			// Per-item dismiss.
+			$('#nav-notif-list').on('click', '.nav-notif-dismiss', function (e) {
+				e.stopPropagation();
+				var $item = $(this).closest('.nav-notif-item');
+				var id = parseInt($item.attr('data-id'), 10) || 0;
+				if (id <= 0) return;
+				var wasUnread = $item.hasClass('nav-notif-unread');
+				$item.addClass('nav-notif-removing');
+				$.post(notifUir + 'NotificationAjax/dismiss', { id: id }).always(function () {
+					$item.remove();
+					// Drop from local cache.
+					notifItems = notifItems.filter(function (n) {
+						return (parseInt(n.id, 10) || 0) !== id;
+					});
+					if (!notifItems.length) {
+						$('#nav-notif-list').html('<div class="nav-notif-empty">' +
+							'<i class="fas fa-check-circle"></i>' +
+							'<span>You&rsquo;re all caught up.</span></div>');
+					}
+				});
+			});
+		});
+	})();
+	</script>
+<?php endif; ?>
+
 	<!-- Simple info dialog -->
 	<div id="nav-info-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;align-items:center;justify-content:center;">
 		<div style="background:var(--ork-card-bg,#fff);border-radius:10px;padding:32px 28px;max-width:360px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.22);text-align:center;font-family:inherit;color:var(--ork-text,#2d3748);">
@@ -524,7 +725,257 @@ $downtime_note  = 'ORK downtime to migrate to the Mask 3.5.2 Release';
 	}
 	</script>
 
-	
+<?php if ($this->__session->token != null) : ?>
+	<!-- =============================================
+	     Announcement Composer (generic notification sender)
+	     Audience inferred from launch context (this park /
+	     this kingdom / global). Opened via window.ncOpenComposer
+	     (defined in revised.js). Self-contained nc- namespace.
+	     ============================================= -->
+	<style>
+		.nc-overlay {
+			display: none;
+			position: fixed;
+			inset: 0;
+			background: rgba(0, 0, 0, 0.5);
+			z-index: 10050;
+			align-items: center;
+			justify-content: center;
+			padding: 20px;
+		}
+		.nc-overlay.nc-open { display: flex; }
+		.nc-modal {
+			background: var(--ork-card-bg, #fff);
+			color: var(--ork-text, #2d3748);
+			border-radius: 12px;
+			width: 100%;
+			max-width: 480px;
+			max-height: 90vh;
+			overflow-y: auto;
+			box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+			font-family: inherit;
+		}
+		.nc-head {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			padding: 18px 22px 14px;
+			border-bottom: 1px solid var(--ork-border, #e2e8f0);
+		}
+		.nc-head h3 {
+			/* reset orkui.css global h1-h6 gray box */
+			background: transparent;
+			border: none;
+			padding: 0;
+			border-radius: 0;
+			text-shadow: none;
+			margin: 0;
+			font-size: 18px;
+			font-weight: 700;
+			color: var(--ork-text, #1a202c);
+			display: flex;
+			align-items: center;
+			gap: 9px;
+		}
+		.nc-head h3 i { color: #d69e2e; }
+		.nc-audience {
+			font-size: 12px;
+			font-weight: 500;
+			color: var(--ork-text-secondary, #4a5568);
+			background: var(--ork-bg-soft, #edf2f7);
+			border-radius: 999px;
+			padding: 3px 11px;
+			margin: 12px 22px 0;
+			display: inline-flex;
+			align-items: center;
+			gap: 6px;
+		}
+		.nc-audience i { font-size: 11px; opacity: 0.8; }
+		.nc-close {
+			background: none;
+			border: none;
+			font-size: 26px;
+			line-height: 1;
+			cursor: pointer;
+			color: var(--ork-text-secondary, #718096);
+			padding: 0 4px;
+		}
+		.nc-close:hover { color: var(--ork-text, #2d3748); }
+		.nc-body { padding: 16px 22px 4px; }
+		.nc-field { margin-bottom: 15px; }
+		.nc-field label {
+			display: block;
+			font-size: 13px;
+			font-weight: 600;
+			color: var(--ork-text, #2d3748);
+			margin-bottom: 5px;
+		}
+		.nc-field label .nc-req { color: #e53e3e; }
+		.nc-field label .nc-opt {
+			color: var(--ork-text-lighter, #a0aec0);
+			font-weight: 400;
+			font-size: 11px;
+		}
+		.nc-field input[type="text"],
+		.nc-field input[type="url"],
+		.nc-field textarea {
+			width: 100%;
+			box-sizing: border-box;
+			border: 1px solid var(--ork-border, #cbd5e0);
+			border-radius: 7px;
+			padding: 9px 11px;
+			font-size: 14px;
+			font-family: inherit;
+			background: var(--ork-input-bg, #fff);
+			color: var(--ork-text, #2d3748);
+		}
+		.nc-field textarea { resize: vertical; min-height: 84px; }
+		.nc-field input:focus,
+		.nc-field textarea:focus {
+			outline: none;
+			border-color: #4299e1;
+			box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.18);
+		}
+		.nc-counter {
+			font-size: 11px;
+			color: var(--ork-text-lighter, #a0aec0);
+			text-align: right;
+			margin-top: 3px;
+		}
+		.nc-error {
+			display: none;
+			background: #fff5f5;
+			border: 1px solid #feb2b2;
+			color: #c53030;
+			border-radius: 7px;
+			padding: 9px 12px;
+			font-size: 13px;
+			margin-bottom: 14px;
+		}
+		.nc-foot {
+			display: flex;
+			justify-content: flex-end;
+			gap: 10px;
+			padding: 8px 22px 20px;
+		}
+		.nc-btn {
+			border: none;
+			border-radius: 7px;
+			padding: 9px 20px;
+			font-size: 14px;
+			font-weight: 600;
+			font-family: inherit;
+			cursor: pointer;
+		}
+		.nc-btn-ghost {
+			background: var(--ork-bg-soft, #edf2f7);
+			color: var(--ork-text, #2d3748);
+		}
+		.nc-btn-ghost:hover { background: var(--ork-border, #e2e8f0); }
+		.nc-btn-primary { background: #3182ce; color: #fff; }
+		.nc-btn-primary:hover { background: #2b6cb0; }
+		.nc-btn-primary:disabled { opacity: 0.6; cursor: default; }
+		.nc-hint {
+			font-size: 12px;
+			color: var(--ork-text-secondary, #718096);
+			line-height: 1.45;
+			margin: 0 0 14px;
+		}
+		/* Dark mode */
+		html[data-theme="dark"] .nc-modal {
+			background: #1f2733;
+			color: #e2e8f0;
+		}
+		html[data-theme="dark"] .nc-head { border-bottom-color: #2d3748; }
+		html[data-theme="dark"] .nc-head h3 { color: #f7fafc; }
+		html[data-theme="dark"] .nc-close { color: #a0aec0; }
+		html[data-theme="dark"] .nc-close:hover { color: #f7fafc; }
+		html[data-theme="dark"] .nc-audience {
+			background: #2d3748;
+			color: #cbd5e0;
+		}
+		html[data-theme="dark"] .nc-field label { color: #e2e8f0; }
+		html[data-theme="dark"] .nc-field input[type="text"],
+		html[data-theme="dark"] .nc-field input[type="url"],
+		html[data-theme="dark"] .nc-field textarea {
+			background: #2d3748;
+			border-color: #4a5568;
+			color: #e2e8f0;
+		}
+		html[data-theme="dark"] .nc-field input::placeholder,
+		html[data-theme="dark"] .nc-field textarea::placeholder { color: #718096; }
+		html[data-theme="dark"] .nc-btn-ghost {
+			background: #2d3748;
+			color: #e2e8f0;
+		}
+		html[data-theme="dark"] .nc-btn-ghost:hover { background: #4a5568; }
+		html[data-theme="dark"] .nc-error {
+			background: #3b1f1f;
+			border-color: #9b2c2c;
+			color: #feb2b2;
+		}
+		html[data-theme="dark"] .nc-hint { color: #a0aec0; }
+		/* data-tip CSS tooltip (no native title=) */
+		.nc-tip { position: relative; cursor: help; }
+		.nc-tip::after {
+			content: attr(data-tip);
+			position: absolute;
+			bottom: 130%;
+			left: 50%;
+			transform: translateX(-50%);
+			background: #2d3748;
+			color: #fff;
+			padding: 6px 9px;
+			border-radius: 6px;
+			font-size: 12px;
+			font-weight: 400;
+			white-space: normal;
+			width: max-content;
+			max-width: 240px;
+			line-height: 1.35;
+			opacity: 0;
+			pointer-events: none;
+			transition: opacity 0.12s;
+			z-index: 5;
+		}
+		.nc-tip:hover::after { opacity: 1; }
+	</style>
+	<div class="nc-overlay" id="nc-overlay" role="dialog" aria-modal="true" aria-labelledby="nc-title">
+		<div class="nc-modal">
+			<div class="nc-head">
+				<h3 id="nc-title"><i class="fas fa-bullhorn"></i> Notify Members</h3>
+				<button type="button" class="nc-close" id="nc-close" aria-label="Close">&times;</button>
+			</div>
+			<div class="nc-audience" id="nc-audience"><i class="fas fa-users"></i> <span id="nc-audience-label">Members</span></div>
+			<div class="nc-body">
+				<div class="nc-error" id="nc-error"></div>
+				<p class="nc-hint">Send an in-app notification. Recipients see it in their notifications bell on their next page load.</p>
+				<div class="nc-field">
+					<label for="nc-input-title">Title <span class="nc-req">*</span></label>
+					<input type="text" id="nc-input-title" maxlength="120" placeholder="Short headline&hellip;" autocomplete="off">
+					<div class="nc-counter"><span id="nc-title-count">0</span>/120</div>
+				</div>
+				<div class="nc-field">
+					<label for="nc-input-body">Message <span class="nc-opt">(optional)</span></label>
+					<textarea id="nc-input-body" maxlength="600" placeholder="Add more detail&hellip;"></textarea>
+					<div class="nc-counter"><span id="nc-body-count">0</span>/600</div>
+				</div>
+				<div class="nc-field">
+					<label for="nc-input-link">Link
+						<span class="nc-opt">(optional)</span>
+						<span class="nc-tip" data-tip="If set, the whole notification becomes clickable and opens this URL." aria-label="Help"><i class="fas fa-info-circle" style="font-size:11px;color:#a0aec0"></i></span>
+					</label>
+					<input type="url" id="nc-input-link" maxlength="255" placeholder="https://&hellip;" autocomplete="off">
+				</div>
+			</div>
+			<div class="nc-foot">
+				<button type="button" class="nc-btn nc-btn-ghost" id="nc-cancel">Cancel</button>
+				<button type="button" class="nc-btn nc-btn-primary" id="nc-send"><i class="fas fa-paper-plane" style="margin-right:6px"></i>Send</button>
+			</div>
+		</div>
+	</div>
+<?php endif; ?>
+
 <?php require_once(DIR_UI . 'whats_new_content.php'); ?>
 <?php if ($this->__session->token != null) : ?>
 <?php

@@ -153,6 +153,9 @@
 			<button class="kn-btn kn-btn-outline" onclick="knOpenAdminModal()">
 				<i class="fas fa-cog"></i> Admin
 			</button>
+			<button class="kn-btn kn-btn-outline" onclick="ncOpenComposer('kingdom', <?= (int)$kingdom_id ?>, <?= htmlspecialchars(json_encode($kingdom_name ?? 'this kingdom'), ENT_QUOTES) ?>)">
+				<i class="fas fa-bullhorn"></i> Notify Members
+			</button>
 			<?php endif; ?>
 		</div>
 

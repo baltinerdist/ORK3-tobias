@@ -24,6 +24,7 @@ function cpTrend(int $cur, ?int $prev): string {
 }
 ?>
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>revised-frontend/style/revised.css?v=<?= filemtime(DIR_TEMPLATE . 'revised-frontend/style/revised.css') ?>">
+<meta name="ork-uir" content="<?= UIR ?>">
 
 <!-- =============================================
      HERO
@@ -215,6 +216,18 @@ function _cp_trend($cur, $prev, $fmt = 'number') {
 					<div class="cp-action-desc">Manage system admins &amp; kingdom access</div>
 				</a>
 				</div>
+		</div>
+
+		<!-- Communications -->
+		<div class="cp-section">
+			<div class="cp-section-title"><i class="fas fa-bullhorn"></i> Communications</div>
+			<div class="cp-action-grid">
+				<button class="cp-action-card" onclick="ncOpenComposer('global', 0, 'everyone in the ORK')">
+					<div class="cp-action-icon cp-action-icon-blue"><i class="fas fa-bullhorn"></i></div>
+					<div class="cp-action-label">Notify All Members</div>
+					<div class="cp-action-desc">Send a system-wide in-app announcement</div>
+				</button>
+			</div>
 		</div>
 
 		<!-- Kingdom Overview Table -->
@@ -1527,3 +1540,6 @@ html[data-theme="dark"] .cp-warning { background: #744210; border-color: #975a16
 	cpSort(0); // apply prefix-stripped alphabetical sort on load
 })();
 </script>
+
+<!-- Announcement Composer JS (window.ncOpenComposer). revised.js is self-guarding; only the composer module activates on this page. -->
+<script src="<?= HTTP_TEMPLATE ?>revised-frontend/script/revised.js?v=<?= filemtime(DIR_TEMPLATE . 'revised-frontend/script/revised.js') ?>"></script>

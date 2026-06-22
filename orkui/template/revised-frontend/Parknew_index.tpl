@@ -272,6 +272,9 @@
 					<button class="pk-btn pk-btn-outline" onclick="pkOpenAdminModal()">
 						<i class="fas fa-cog"></i> Admin
 					</button>
+					<button class="pk-btn pk-btn-outline" onclick="ncOpenComposer('park', <?= (int)$park_id ?>, <?= htmlspecialchars(json_encode($park_name ?? 'this park'), ENT_QUOTES) ?>)">
+						<i class="fas fa-bullhorn"></i> Notify Members
+					</button>
 				<?php endif; ?>
 
 			</div>

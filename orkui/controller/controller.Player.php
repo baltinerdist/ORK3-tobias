@@ -296,6 +296,25 @@ class Controller_Player extends Controller
 
         $uid = isset($this->session->user_id) ? (int)$this->session->user_id : 0;
 
+        // ---- Friends: button state + friends-section visibility ----------
+        $this->data['FriendState']    = 'none';   // none|pending_out|pending_in|friends
+        $this->data['FriendBlocked']  = false;
+        $this->data['FriendsVisible'] = false;    // can the viewer see this profile's friends list?
+        $this->data['FriendCount']    = 0;
+        if ($uid > 0) {
+            $this->load_model('Friendship');
+            if ($uid !== (int)$id) {
+                $st = $this->Friendship->get_status($uid, (int)$id);
+                $this->data['FriendState']   = $st['State'] ?? 'none';
+                $this->data['FriendBlocked'] = (bool)($st['BlockedByMe'] ?? false);
+            }
+            $this->data['FriendsVisible'] = ($uid === (int)$id)
+                || $this->Friendship->are_friends($uid, (int)$id);
+            if ($this->data['FriendsVisible']) {
+                $this->data['FriendCount'] = $this->Friendship->count_friends((int)$id);
+            }
+        }
+
         if ($uid > 0 && $uid === (int)$id && isset($this->request->cancel_rsvp_detail_id)) {
             $this->Event->toggle_rsvp((int)$this->request->cancel_rsvp_detail_id, $uid);
             header('Location: ' . UIR . 'Player/profile/' . $id);
