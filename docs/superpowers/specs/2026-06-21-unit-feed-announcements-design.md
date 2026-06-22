@@ -90,8 +90,9 @@ This feature depends on the Reactions feature's `class.Reaction.php` +
 - **Unit announcements = NEW notification type `unit_announcement`.** Distinct
   from the officer/admin `announcement` so recipients can tell a unit post-blast
   from a kingdom/park officer broadcast, and so a future per-type grouping can
-  treat them separately. Icon: `fas fa-users-rectangle` (falls back to the
-  Notification lib's allowlist/default). Gated on unit-management authority.
+  treat them separately. Icon: `fas fa-users` (FA5.8.2-safe — the build pins
+  FontAwesome 5.8.2, so the FA6-only `fa-users-rectangle` must NOT be used).
+  Gated on unit-management authority.
 - **Announcement audience = active roster member mundane_ids.** Resolved in the
   lib (architecture rule: `$DB` lives in the lib, not the controller), mirroring
   `Notification::GetRecipientsForScope` for the existing scopes.
@@ -313,7 +314,7 @@ Park calls `ncOpenComposer('park', <id>, '<name>')` at
    `unit_announcement` default).
 
 Register the new type in `Notification::$DEFAULT_ICONS`:
-`'unit_announcement' => 'fas fa-users-rectangle'`.
+`'unit_announcement' => 'fas fa-users'` (FA5.8.2-safe).
 
 Notification creation is best-effort and never blocks; the composer already
 reports the recipient count back to the sender via `navInfoDialog`.
@@ -419,7 +420,7 @@ block).
 - **Unit announcement:** a manager's `NotificationAjax/send` with `scope=unit` +
   `scope_id` fans out a `unit_announcement` to exactly the active roster
   (`GetActiveMemberIds`), returns the count, and each recipient sees the bell
-  item with the `fa-users-rectangle` icon; a non-manager member is rejected by
+  item with the `fa-users` icon; a non-manager member is rejected by
   the authority gate; an empty roster returns `count:0` without error.
 - **Auth scoping:** a user cannot edit/delete a post in a unit they don't manage
   and didn't author; `scope=unit` send is rejected without `AUTH_UNIT`/`AUTH_CREATE`.
