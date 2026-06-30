@@ -8996,3 +8996,30 @@ html[data-theme="dark"] .kn-prinz-extlink {
 html[data-theme="dark"] a.kn-prinz-head:hover .kn-prinz-extlink {
 	color: var(--ork-link-bright);
 }
+
+/* ── Shortcut Link card ───────────────────────────────────────── */
+.sl-card{background:var(--ork-card-bg,#fff);border:1px solid var(--ork-border,#e2e8f0);
+  border-radius:8px;padding:14px 16px;margin:12px 0}
+.sl-card__url{display:flex;align-items:center;gap:8px;font-size:13px;
+  color:var(--ork-text,#2d3748);margin-bottom:10px;flex-wrap:wrap}
+.sl-card__url code{background:var(--ork-bg-tertiary,#edf2f7);padding:2px 6px;border-radius:4px}
+.sl-input-row{display:flex;align-items:center;gap:0;flex-wrap:wrap}
+.sl-card__prefix{font-size:13px;color:var(--ork-text-secondary,#4a5568);
+  background:var(--ork-bg-tertiary,#edf2f7);border:1px solid var(--ork-border,#e2e8f0);
+  border-right:none;border-radius:6px 0 0 6px;padding:7px 8px;white-space:nowrap}
+.sl-input{font-size:13px;padding:7px 8px;border:1px solid var(--ork-border,#e2e8f0);
+  border-radius:0 6px 6px 0;min-width:140px;color:var(--ork-text,#2d3748);
+  background:var(--ork-input-bg,#fff)}
+.sl-feedback{font-size:12px;margin:6px 0 0;min-height:16px}
+.sl-feedback.ok{color:#2f855a}
+.sl-feedback.bad{color:#c53030}
+.sl-actions{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+.sl-btn{padding:7px 14px;border-radius:6px;border:none;background:#2b6cb0;color:#fff;
+  font-weight:600;font-size:13px;cursor:pointer}
+.sl-btn:disabled{opacity:.5;cursor:not-allowed}
+.sl-btn--ghost{background:transparent;color:var(--ork-text-secondary,#4a5568);
+  border:1px solid var(--ork-border,#e2e8f0)}
+.sl-copy-btn{padding:4px 8px;border:1px solid var(--ork-border,#e2e8f0);border-radius:4px;
+  background:var(--ork-bg-tertiary,#edf2f7);cursor:pointer;color:var(--ork-text-secondary,#4a5568);font-size:12px}
+.sl-copy-btn:hover{background:var(--ork-bg-secondary,#e2e8f0)}
+html[data-theme="dark"] .sl-input{background:var(--ork-bg-secondary,#2d3748)}
