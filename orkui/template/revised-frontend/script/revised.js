@@ -5572,9 +5572,10 @@ $(document).ready(function() {
 
     // ── Wire everything in ready() ────────────────────────────
     $(document).ready(function() {
-        wireToggle('kn-admin-hdr-details', 'kn-admin-body-details', 'kn-admin-chev-details');
-        wireToggle('kn-admin-hdr-config',  'kn-admin-body-config',  'kn-admin-chev-config');
-        wireToggle('kn-admin-hdr-titles',  'kn-admin-body-titles',  'kn-admin-chev-titles');
+        wireToggle('kn-admin-hdr-details',   'kn-admin-body-details',   'kn-admin-chev-details');
+        wireToggle('kn-admin-hdr-config',    'kn-admin-body-config',    'kn-admin-chev-config');
+        wireToggle('kn-admin-hdr-shortlink', 'kn-admin-body-shortlink', 'kn-admin-chev-shortlink');
+        wireToggle('kn-admin-hdr-titles',    'kn-admin-body-titles',    'kn-admin-chev-titles');
         wireToggle('kn-admin-hdr-awards',  'kn-admin-body-awards',  'kn-admin-chev-awards');
         wireToggle('kn-admin-hdr-parks',   'kn-admin-body-parks',   'kn-admin-chev-parks');
         wireToggle('kn-admin-hdr-ops',     'kn-admin-body-ops',     'kn-admin-chev-ops');
