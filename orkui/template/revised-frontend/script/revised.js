@@ -10500,8 +10500,9 @@ function setupPronounPicker(cfg) {
     }
 
     $(document).ready(function() {
-        wireToggle('pk-admin-hdr-details', 'pk-admin-body-details', 'pk-admin-chev-details');
-        wireToggle('pk-admin-hdr-ops',     'pk-admin-body-ops',     'pk-admin-chev-ops');
+        wireToggle('pk-admin-hdr-details',   'pk-admin-body-details',   'pk-admin-chev-details');
+        wireToggle('pk-admin-hdr-shortlink', 'pk-admin-body-shortlink', 'pk-admin-chev-shortlink');
+        wireToggle('pk-admin-hdr-ops',       'pk-admin-body-ops',       'pk-admin-chev-ops');
 
         // Close buttons
         var overlay = gid('pk-admin-overlay');

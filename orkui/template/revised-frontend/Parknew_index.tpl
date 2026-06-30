@@ -2274,6 +2274,34 @@ html[data-theme="dark"] .pk-wx-warning { background:#450a0a; color:#fca5a5; bord
 				</div>
 			</div>
 
+			<!-- ── Panel: Shortcut Link ── -->
+			<?php $slStub = $ShortlinkStub ?? ''; $slDefault = $ShortlinkDefault ?? ''; ?>
+			<div class="kn-admin-panel">
+				<button class="kn-admin-panel-hdr" id="pk-admin-hdr-shortlink" aria-expanded="false">
+					<span><i class="fas fa-link" style="margin-right:6px;color:#a0aec0"></i>Shortcut Link</span>
+					<i class="fas fa-chevron-down kn-admin-chevron" id="pk-admin-chev-shortlink"></i>
+				</button>
+				<div class="kn-admin-panel-body" id="pk-admin-body-shortlink" style="display:none">
+					<div class="sl-card" id="sl-card-park">
+						<div class="sl-card__url">
+							<span>Park link:</span>
+							<code id="sl-url-park">ork.amtgard.com/me/<?= htmlspecialchars($slStub !== '' ? $slStub : $slDefault, ENT_QUOTES) ?></code>
+							<button type="button" class="sl-copy-btn" id="sl-copy-park" data-tip="Copy link"><i class="fas fa-copy"></i></button>
+						</div>
+						<div class="sl-input-row">
+							<span class="sl-card__prefix">ork.amtgard.com/me/</span>
+							<input type="text" class="sl-input" id="sl-input-park" maxlength="30"
+							       placeholder="custom-name" value="<?= htmlspecialchars($slStub, ENT_QUOTES) ?>">
+						</div>
+						<div class="sl-feedback" id="sl-feedback-park"></div>
+						<div class="sl-actions">
+							<button type="button" class="sl-btn" id="sl-save-park" disabled>Save shortcut</button>
+							<button type="button" class="sl-btn sl-btn--ghost" id="sl-reset-park">Reset to default</button>
+						</div>
+					</div>
+				</div>
+			</div>
+
 			<!-- ── Panel: Operations ── -->
 			<div class="kn-admin-panel">
 				<button class="kn-admin-panel-hdr" id="pk-admin-hdr-ops" aria-expanded="false">
@@ -2307,6 +2335,29 @@ html[data-theme="dark"] .pk-wx-warning { background:#450a0a; color:#fca5a5; bord
 <!-- [TOURNAMENTS HIDDEN] add-tournament modal -->
 <script src="<?= HTTP_TEMPLATE ?>revised-frontend/script/email-spell-checker.min.js"></script>
 <script src="<?= HTTP_TEMPLATE ?>revised-frontend/script/revised.js?v=<?= filemtime(__DIR__ . '/script/revised.js') ?>"></script>
+
+<script>
+$(document).ready(function () {
+	if (typeof tnShortlinkInit !== 'function' || !window.PkConfig) { return; }
+	tnShortlinkInit({
+		root:        (PkConfig.uir || '<?= UIR ?>'),
+		prefix:      'ork.amtgard.com/me/',
+		type:        'park',
+		id:          <?= (int)($park_id ?? 0) ?>,
+		defaultStub: <?= json_encode($ShortlinkDefault ?? '') ?>,
+		currentStub: <?= json_encode($ShortlinkStub ?? '') ?>,
+		canEdit:     !!PkConfig.canManage,
+		els: {
+			input:      document.getElementById('sl-input-park'),
+			feedback:   document.getElementById('sl-feedback-park'),
+			saveBtn:    document.getElementById('sl-save-park'),
+			resetBtn:   document.getElementById('sl-reset-park'),
+			copyBtn:    document.getElementById('sl-copy-park'),
+			currentUrl: document.getElementById('sl-url-park')
+		}
+	});
+});
+</script>
 
 <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
 <script>
