@@ -13028,7 +13028,7 @@ window.tnShortlinkInit = function (opts) {
                 lastChecked = slug;
                 lastAvailable = !!d.available;
                 feedback(d.available ? 'ok' : 'bad',
-                    (d.available ? '✓ ' : '✗ ') + escHtmlLocal(d.reason || ''));
+                    (d.available ? '✓ ' : '✗ ') + (d.reason || ''));
                 if (els.saveBtn) { els.saveBtn.disabled = !d.available; }
             }).catch(function () { feedback('bad', 'Could not check availability.'); });
         }, DEBOUNCE);
@@ -13073,6 +13073,7 @@ window.tnShortlinkInit = function (opts) {
                 if (d.status === 0) {
                     opts.currentStub = '';
                     els.input.value = '';
+                    if (els.saveBtn) { els.saveBtn.disabled = true; }
                     setUrl(d.stub);
                     feedback('ok', 'Reset to default: ' + opts.prefix + d.stub);
                 }
