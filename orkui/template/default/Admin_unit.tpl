@@ -264,7 +264,6 @@ $(document).ready(function () {
             fb = document.getElementById('sl-feedback-unit'),
             saveBtn = document.getElementById('sl-save-unit'),
             resetBtn = document.getElementById('sl-reset-unit'),
-            copyBtn = document.getElementById('sl-copy-unit'),
             urlEl = document.getElementById('sl-url-unit');
         var timer, lastChecked = '', lastAvailable = false;
         function fbk(c, m) { fb.style.color = (c === 'ok' ? '#2f855a' : c === 'bad' ? '#c53030' : ''); fb.textContent = m; }
@@ -296,7 +295,7 @@ $(document).ready(function () {
               .then(function (r) { return r.json(); }).then(function (d) {
                 if (d.status === 0) { CUR = d.stub; urlEl.textContent = PREFIX + d.stub; fbk('ok', 'Saved!'); }
                 else { fbk('bad', d.error || 'Could not save.'); saveBtn.disabled = false; }
-            });
+            }).catch(function () { fbk('bad', 'Could not save.'); saveBtn.disabled = false; });
         });
         resetBtn.addEventListener('click', function () {
             fetch(ROOT + 'ShortLinkAjax/save', { method: 'POST',
@@ -304,15 +303,22 @@ $(document).ready(function () {
                 body: 'type=' + TYPE + '&id=' + ID + '&slug=' })
               .then(function (r) { return r.json(); }).then(function (d) {
                 if (d.status === 0) { CUR = ''; input.value = ''; urlEl.textContent = PREFIX + d.stub; fbk('ok', 'Reset to default.'); }
-            });
-        });
-        copyBtn.addEventListener('click', function () {
-            var url = urlEl.textContent, orig = copyBtn.textContent;
-            function done(ok) { copyBtn.textContent = ok ? 'Copied!' : 'Copy failed'; setTimeout(function () { copyBtn.textContent = orig; }, 1400); }
-            if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(url).then(function () { done(true); }, function () { done(false); }); }
-            else { var ta = document.createElement('textarea'); ta.value = url; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); var ok = false; try { ok = document.execCommand('copy'); } catch (e) {} document.body.removeChild(ta); done(ok); }
+            }).catch(function () { fbk('bad', 'Could not reset.'); });
         });
     })();
 });
 </script>
 <?php endif; ?>
+<script>
+(function () {
+    var copyBtn = document.getElementById('sl-copy-unit');
+    var urlEl = document.getElementById('sl-url-unit');
+    if (!copyBtn || !urlEl) { return; }
+    copyBtn.addEventListener('click', function () {
+        var url = urlEl.textContent, orig = copyBtn.textContent;
+        function done(ok) { copyBtn.textContent = ok ? 'Copied!' : 'Copy failed'; setTimeout(function () { copyBtn.textContent = orig; }, 1400); }
+        if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(url).then(function () { done(true); }, function () { done(false); }); }
+        else { var ta = document.createElement('textarea'); ta.value = url; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); var ok = false; try { ok = document.execCommand('copy'); } catch (e) {} document.body.removeChild(ta); done(ok); }
+    });
+})();
+</script>
