@@ -96,6 +96,10 @@ class ShortLink extends Ork3
             $id       = (int)$m[2];
             return $this->EntityExists($type, $id) ? ['type' => $type, 'id' => $id] : false;
         }
+        // Reject anything that can't possibly be a valid custom slug before touching the DB
+        if (!preg_match('/^[a-z][a-z0-9_-]{2,29}$/', $stub)) {
+            return false;
+        }
         // Custom slug lookup
         $safe = mysql_real_escape_string($stub);
         $sql  = "SELECT entity_type, entity_id FROM " . DB_PREFIX . "shortlink"
@@ -117,6 +121,9 @@ class ShortLink extends Ork3
     public function GetStubFor($type, $id)
     {
         $type = strtolower($type);
+        if (!isset(self::ENTITY[$type])) {
+            return null;
+        }
         $safe = mysql_real_escape_string($type);
         $sql  = "SELECT slug FROM " . DB_PREFIX . "shortlink"
               . " WHERE entity_type = '" . $safe . "' AND entity_id = " . (int)$id
