@@ -2515,7 +2515,7 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 				<h4 style="background:transparent;border:none;padding:0;text-shadow:none;border-radius:0;">Shortcut Link</h4>
 				<div class="sl-card__url">
 					<span>Your link:</span>
-					<code id="sl-url-player">ork.amtgard.com/me/<?= $slStub !== '' ? $slStub : $slDefault ?></code>
+					<code id="sl-url-player">ork.amtgard.com/me/<?= htmlspecialchars($slStub !== '' ? $slStub : $slDefault, ENT_QUOTES) ?></code>
 					<button type="button" class="sl-copy-btn" id="sl-copy-player" data-tip="Copy link"><i class="fas fa-copy"></i></button>
 				</div>
 				<div class="sl-input-row">

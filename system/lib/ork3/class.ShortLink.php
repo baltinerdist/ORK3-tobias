@@ -217,6 +217,9 @@ class ShortLink extends Ork3
     public function ReleaseStub($type, $id)
     {
         $type = strtolower($type);
+        if (!isset(self::ENTITY[$type])) {
+            return Success();
+        }
         $this->shortlink->clear();
         $this->shortlink->entity_type = $type;
         $this->shortlink->entity_id   = (int)$id;

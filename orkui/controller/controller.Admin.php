@@ -296,7 +296,10 @@ class Controller_Admin extends Controller
         $_sl_uid = (int)($this->session->user_id ?? 0);
         $this->data['ShortlinkStub']    = $this->ShortLink->get_stub('unit', (int)$unit_id) ?? '';
         $this->data['ShortlinkDefault'] = $this->ShortLink->derived('unit', (int)$unit_id);
-        $this->data['ShortlinkCanEdit'] = (int)($_sl_uid > 0 && Ork3::$Lib->authorization->HasAuthority($_sl_uid, AUTH_UNIT, (int)$unit_id, AUTH_EDIT));
+        $this->data['ShortlinkCanEdit'] = (int)($_sl_uid > 0 && (
+            Ork3::$Lib->authorization->HasAuthority($_sl_uid, AUTH_ADMIN, 0, AUTH_ADMIN)
+            || Ork3::$Lib->authorization->HasAuthority($_sl_uid, AUTH_UNIT, (int)$unit_id, AUTH_EDIT)
+        ));
         $this->data['ShortlinkUnitId']  = (int)$unit_id;
         if ($this->data['LoggedIn']) {
             $this->data['menu']['admin'] = array( 'url' => UIR."Admin/unit/$unit_id", 'display' => 'Admin Panel <i class="fas fa-cog"></i>', 'no-crumb' => 'no-crumb' );
