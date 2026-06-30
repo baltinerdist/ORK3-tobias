@@ -921,10 +921,10 @@ var KnConfig = {
 };
 </script>
 <script>
-(function () {
+$(document).ready(function () {
 	if (typeof tnShortlinkInit !== 'function' || !window.KnConfig) { return; }
 	tnShortlinkInit({
-		root:        KnConfig.uir,
+		root:        (KnConfig.uir || '<?= UIR ?>'),
 		prefix:      'ork.amtgard.com/me/',
 		type:        'kingdom',
 		id:          <?= (int)($kingdom_id ?? 0) ?>,
@@ -940,7 +940,7 @@ var KnConfig = {
 			currentUrl: document.getElementById('sl-url-kingdom')
 		}
 	});
-})();
+});
 </script>
 <?php if ($IsLoggedIn): ?>
 <div id="kn-award-overlay">
