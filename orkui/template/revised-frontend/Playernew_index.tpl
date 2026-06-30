@@ -2509,6 +2509,27 @@ html[data-theme="dark"] .pn-cms-line strong { color: var(--ork-text-muted); }
 				</label>
 			</div>
 
+			<!-- Shortcut Link -->
+			<?php $slStub = $ShortlinkStub ?? ''; $slDefault = $ShortlinkDefault ?? ''; ?>
+			<div class="sl-card" id="sl-card-player">
+				<h4 style="background:transparent;border:none;padding:0;text-shadow:none;border-radius:0;">Shortcut Link</h4>
+				<div class="sl-card__url">
+					<span>Your link:</span>
+					<code id="sl-url-player">ork.amtgard.com/me/<?= htmlspecialchars($slStub !== '' ? $slStub : $slDefault, ENT_QUOTES) ?></code>
+					<button type="button" class="sl-copy-btn" id="sl-copy-player" data-tip="Copy link"><i class="fas fa-copy"></i></button>
+				</div>
+				<div class="sl-input-row">
+					<span class="sl-card__prefix">ork.amtgard.com/me/</span>
+					<input type="text" class="sl-input" id="sl-input-player" maxlength="30"
+					       placeholder="custom-name" value="<?= htmlspecialchars($slStub, ENT_QUOTES) ?>">
+				</div>
+				<div class="sl-feedback" id="sl-feedback-player"></div>
+				<div class="sl-actions">
+					<button type="button" class="sl-btn" id="sl-save-player" disabled>Save shortcut</button>
+					<button type="button" class="sl-btn sl-btn--ghost" id="sl-reset-player">Reset to default</button>
+				</div>
+			</div>
+
 			<?php if ($canEditAdmin): ?>
 			<!-- Admin-only fields -->
 			<div class="pn-acct-section-title"><i class="fas fa-shield-alt" style="margin-right:5px"></i>Administrative</div>
@@ -4753,6 +4774,28 @@ function pnRenderSparkline() {
 	if (mel) mel.innerHTML = mhtml;
 }
 pnRenderSparkline();
+
+// ---- Shortcut Link init ----
+(function () {
+	if (typeof tnShortlinkInit !== 'function') { return; }
+	tnShortlinkInit({
+		root: PnConfig.uir,
+		prefix: 'ork.amtgard.com/me/',
+		type: 'player',
+		id: PnConfig.playerId,
+		defaultStub: <?= json_encode($ShortlinkDefault ?? '') ?>,
+		currentStub: <?= json_encode($ShortlinkStub ?? '') ?>,
+		canEdit: !!PnConfig.canEditAccount,
+		els: {
+			input:      document.getElementById('sl-input-player'),
+			feedback:   document.getElementById('sl-feedback-player'),
+			saveBtn:    document.getElementById('sl-save-player'),
+			resetBtn:   document.getElementById('sl-reset-player'),
+			copyBtn:    document.getElementById('sl-copy-player'),
+			currentUrl: document.getElementById('sl-url-player')
+		}
+	});
+})();
 </script>
 
 <?php if ($canManageAwards): ?>

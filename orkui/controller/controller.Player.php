@@ -894,6 +894,10 @@ class Controller_Player extends Controller
         $this->data['CustomMilestones'] = is_array($__customMs) ? $__customMs : [];
         $this->data['MilestoneConfig'] = $this->data['Player']['MilestoneConfig'] ?? '';
 
+        $this->load_model('ShortLink');
+        $this->data['ShortlinkStub']    = $this->ShortLink->get_stub('player', (int)$id) ?? '';
+        $this->data['ShortlinkDefault'] = $this->ShortLink->derived('player', (int)$id);
+
     }
 
 

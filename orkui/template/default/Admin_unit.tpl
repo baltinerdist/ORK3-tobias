@@ -235,3 +235,90 @@
 		</li>
 	</ul>
 </div>
+
+<?php $slStub = $ShortlinkStub ?? ''; $slDefault = $ShortlinkDefault ?? ''; $slCanEdit = !empty($ShortlinkCanEdit); $slUnitId = (int)($ShortlinkUnitId ?? 0); ?>
+<div class="info-container" id="sl-card-unit">
+    <h3 style="background:transparent;border:none;padding:0;text-shadow:none;border-radius:0;">Shortcut Link</h3>
+    <p>Unit link:
+        <code id="sl-url-unit">ork.amtgard.com/me/<?= $slStub !== '' ? htmlspecialchars($slStub, ENT_QUOTES) : htmlspecialchars($slDefault, ENT_QUOTES) ?></code>
+        <button type="button" id="sl-copy-unit">Copy</button>
+    </p>
+    <?php if ($slCanEdit): ?>
+    <div>
+        <span>ork.amtgard.com/me/</span>
+        <input type="text" id="sl-input-unit" maxlength="30" placeholder="custom-name"
+               value="<?= htmlspecialchars($slStub, ENT_QUOTES) ?>">
+    </div>
+    <div id="sl-feedback-unit" style="font-size:12px;min-height:16px;margin-top:6px;"></div>
+    <button type="button" id="sl-save-unit" disabled>Save shortcut</button>
+    <button type="button" id="sl-reset-unit">Reset to default</button>
+    <?php endif; ?>
+</div>
+<?php if ($slCanEdit): ?>
+<script>
+$(document).ready(function () {
+    (function () {
+        var ROOT = '<?= UIR ?>', TYPE = 'unit', ID = <?= $slUnitId ?>;
+        var PREFIX = 'ork.amtgard.com/me/', CUR = <?= json_encode($slStub) ?>;
+        var input = document.getElementById('sl-input-unit'),
+            fb = document.getElementById('sl-feedback-unit'),
+            saveBtn = document.getElementById('sl-save-unit'),
+            resetBtn = document.getElementById('sl-reset-unit'),
+            urlEl = document.getElementById('sl-url-unit');
+        var timer, lastChecked = '', lastAvailable = false;
+        function fbk(c, m) { fb.style.color = (c === 'ok' ? '#2f855a' : c === 'bad' ? '#c53030' : ''); fb.textContent = m; }
+        input.addEventListener('input', function () {
+            clearTimeout(timer);
+            var slug = this.value.trim().toLowerCase();
+            saveBtn.disabled = true;
+            if (!slug) { fbk('', ''); return; }
+            if (slug === CUR) { fbk('ok', 'Current shortcut.'); return; }
+            fbk('', 'Checking…');
+            timer = setTimeout(function () {
+                fetch(ROOT + 'ShortLinkAjax/check', { method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, credentials: 'same-origin',
+                    body: 'type=' + TYPE + '&id=' + ID + '&slug=' + encodeURIComponent(slug) })
+                  .then(function (r) { return r.json(); }).then(function (d) {
+                    lastChecked = slug; lastAvailable = !!d.available;
+                    fbk(d.available ? 'ok' : 'bad', (d.available ? '✓ ' : '✗ ') + (d.reason || ''));
+                    saveBtn.disabled = !d.available;
+                }).catch(function () { fbk('bad', 'Could not check.'); });
+            }, 250);
+        });
+        saveBtn.addEventListener('click', function () {
+            var slug = input.value.trim().toLowerCase();
+            if (slug !== lastChecked || !lastAvailable) { return; }
+            saveBtn.disabled = true;
+            fetch(ROOT + 'ShortLinkAjax/save', { method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, credentials: 'same-origin',
+                body: 'type=' + TYPE + '&id=' + ID + '&slug=' + encodeURIComponent(slug) })
+              .then(function (r) { return r.json(); }).then(function (d) {
+                if (d.status === 0) { CUR = d.stub; urlEl.textContent = PREFIX + d.stub; fbk('ok', 'Saved!'); }
+                else { fbk('bad', d.error || 'Could not save.'); saveBtn.disabled = false; }
+            }).catch(function () { fbk('bad', 'Could not save.'); saveBtn.disabled = false; });
+        });
+        resetBtn.addEventListener('click', function () {
+            fetch(ROOT + 'ShortLinkAjax/save', { method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, credentials: 'same-origin',
+                body: 'type=' + TYPE + '&id=' + ID + '&slug=' })
+              .then(function (r) { return r.json(); }).then(function (d) {
+                if (d.status === 0) { CUR = ''; input.value = ''; urlEl.textContent = PREFIX + d.stub; fbk('ok', 'Reset to default.'); }
+            }).catch(function () { fbk('bad', 'Could not reset.'); });
+        });
+    })();
+});
+</script>
+<?php endif; ?>
+<script>
+(function () {
+    var copyBtn = document.getElementById('sl-copy-unit');
+    var urlEl = document.getElementById('sl-url-unit');
+    if (!copyBtn || !urlEl) { return; }
+    copyBtn.addEventListener('click', function () {
+        var url = urlEl.textContent, orig = copyBtn.textContent;
+        function done(ok) { copyBtn.textContent = ok ? 'Copied!' : 'Copy failed'; setTimeout(function () { copyBtn.textContent = orig; }, 1400); }
+        if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(url).then(function () { done(true); }, function () { done(false); }); }
+        else { var ta = document.createElement('textarea'); ta.value = url; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); var ok = false; try { ok = document.execCommand('copy'); } catch (e) {} document.body.removeChild(ta); done(ok); }
+    });
+})();
+</script>

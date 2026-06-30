@@ -920,6 +920,28 @@ var KnConfig = {
 	adminRecsPublic: <?= !empty($AwardRecsPublic) ? 'true' : 'false' ?>,
 };
 </script>
+<script>
+$(document).ready(function () {
+	if (typeof tnShortlinkInit !== 'function' || !window.KnConfig) { return; }
+	tnShortlinkInit({
+		root:        (KnConfig.uir || '<?= UIR ?>'),
+		prefix:      'ork.amtgard.com/me/',
+		type:        'kingdom',
+		id:          <?= (int)($kingdom_id ?? 0) ?>,
+		defaultStub: <?= json_encode($ShortlinkDefault ?? '') ?>,
+		currentStub: <?= json_encode($ShortlinkStub ?? '') ?>,
+		canEdit:     !!KnConfig.canEdit,
+		els: {
+			input:      document.getElementById('sl-input-kingdom'),
+			feedback:   document.getElementById('sl-feedback-kingdom'),
+			saveBtn:    document.getElementById('sl-save-kingdom'),
+			resetBtn:   document.getElementById('sl-reset-kingdom'),
+			copyBtn:    document.getElementById('sl-copy-kingdom'),
+			currentUrl: document.getElementById('sl-url-kingdom')
+		}
+	});
+});
+</script>
 <?php if ($IsLoggedIn): ?>
 <div id="kn-award-overlay">
 	<div class="kn-modal-box">
@@ -1392,6 +1414,34 @@ var KnConfig = {
 					<button class="kn-admin-save-btn" id="kn-admin-config-save">
 						<i class="fas fa-save"></i> Save Configuration
 					</button>
+				</div>
+			</div>
+
+			<!-- ── Panel: Shortcut Link ── -->
+			<?php $slStub = $ShortlinkStub ?? ''; $slDefault = $ShortlinkDefault ?? ''; ?>
+			<div class="kn-admin-panel">
+				<button class="kn-admin-panel-hdr" id="kn-admin-hdr-shortlink" aria-expanded="false">
+					<span><i class="fas fa-link" style="margin-right:6px;color:#a0aec0"></i>Shortcut Link</span>
+					<i class="fas fa-chevron-down kn-admin-chevron" id="kn-admin-chev-shortlink"></i>
+				</button>
+				<div class="kn-admin-panel-body" id="kn-admin-body-shortlink" style="display:none">
+					<div class="sl-card" id="sl-card-kingdom">
+						<div class="sl-card__url">
+							<span>Kingdom link:</span>
+							<code id="sl-url-kingdom">ork.amtgard.com/me/<?= $slStub !== '' ? htmlspecialchars($slStub, ENT_QUOTES) : htmlspecialchars($slDefault, ENT_QUOTES) ?></code>
+							<button type="button" class="sl-copy-btn" id="sl-copy-kingdom" data-tip="Copy link"><i class="fas fa-copy"></i></button>
+						</div>
+						<div class="sl-input-row">
+							<span class="sl-card__prefix">ork.amtgard.com/me/</span>
+							<input type="text" class="sl-input" id="sl-input-kingdom" maxlength="30"
+							       placeholder="custom-name" value="<?= htmlspecialchars($slStub, ENT_QUOTES) ?>">
+						</div>
+						<div class="sl-feedback" id="sl-feedback-kingdom"></div>
+						<div class="sl-actions">
+							<button type="button" class="sl-btn" id="sl-save-kingdom" disabled>Save shortcut</button>
+							<button type="button" class="sl-btn sl-btn--ghost" id="sl-reset-kingdom">Reset to default</button>
+						</div>
+					</div>
 				</div>
 			</div>
 

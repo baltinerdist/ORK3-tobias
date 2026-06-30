@@ -5572,9 +5572,10 @@ $(document).ready(function() {
 
     // ── Wire everything in ready() ────────────────────────────
     $(document).ready(function() {
-        wireToggle('kn-admin-hdr-details', 'kn-admin-body-details', 'kn-admin-chev-details');
-        wireToggle('kn-admin-hdr-config',  'kn-admin-body-config',  'kn-admin-chev-config');
-        wireToggle('kn-admin-hdr-titles',  'kn-admin-body-titles',  'kn-admin-chev-titles');
+        wireToggle('kn-admin-hdr-details',   'kn-admin-body-details',   'kn-admin-chev-details');
+        wireToggle('kn-admin-hdr-config',    'kn-admin-body-config',    'kn-admin-chev-config');
+        wireToggle('kn-admin-hdr-shortlink', 'kn-admin-body-shortlink', 'kn-admin-chev-shortlink');
+        wireToggle('kn-admin-hdr-titles',    'kn-admin-body-titles',    'kn-admin-chev-titles');
         wireToggle('kn-admin-hdr-awards',  'kn-admin-body-awards',  'kn-admin-chev-awards');
         wireToggle('kn-admin-hdr-parks',   'kn-admin-body-parks',   'kn-admin-chev-parks');
         wireToggle('kn-admin-hdr-ops',     'kn-admin-body-ops',     'kn-admin-chev-ops');
@@ -10499,8 +10500,9 @@ function setupPronounPicker(cfg) {
     }
 
     $(document).ready(function() {
-        wireToggle('pk-admin-hdr-details', 'pk-admin-body-details', 'pk-admin-chev-details');
-        wireToggle('pk-admin-hdr-ops',     'pk-admin-body-ops',     'pk-admin-chev-ops');
+        wireToggle('pk-admin-hdr-details',   'pk-admin-body-details',   'pk-admin-chev-details');
+        wireToggle('pk-admin-hdr-shortlink', 'pk-admin-body-shortlink', 'pk-admin-chev-shortlink');
+        wireToggle('pk-admin-hdr-ops',       'pk-admin-body-ops',       'pk-admin-chev-ops');
 
         // Close buttons
         var overlay = gid('pk-admin-overlay');
@@ -12961,3 +12963,123 @@ window.initEmailSpellCheck = function(inputId, suggestionId) {
         }
     });
 })();
+
+/* ── Shortcut Link management card (shared by Player/Kingdom/Park) ── */
+window.tnShortlinkInit = function (opts) {
+    var DEBOUNCE = (typeof AUTOCOMPLETE_DEBOUNCE_MS !== 'undefined') ? AUTOCOMPLETE_DEBOUNCE_MS : 250;
+    var els = opts.els || {};
+    if (!els.input) { return; }
+
+    function escHtmlLocal(s) {
+        return String(s).replace(/[&<>"']/g, function (c) {
+            return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+        });
+    }
+    function setUrl(stub) {
+        if (els.currentUrl) { els.currentUrl.textContent = opts.prefix + stub; }
+    }
+    function feedback(cls, msg) {
+        if (!els.feedback) { return; }
+        els.feedback.className = 'sl-feedback ' + cls;
+        els.feedback.textContent = msg;
+    }
+
+    var lastChecked = '', lastAvailable = false, timer;
+
+    // Wire copy button before the canEdit guard so read-only cards still get copy.
+    if (els.copyBtn && els.currentUrl) {
+        els.copyBtn.addEventListener('click', function () {
+            var url = els.currentUrl.textContent;
+            var done = function (ok) {
+                var orig = els.copyBtn.innerHTML;
+                els.copyBtn.innerHTML = ok ? '<i class="fas fa-check"></i> Copied!' : '<i class="fas fa-exclamation-circle"></i>';
+                els.copyBtn.disabled = true;
+                setTimeout(function () { els.copyBtn.innerHTML = orig; els.copyBtn.disabled = false; }, 1400);
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(url).then(function () { done(true); }, function () { done(false); });
+            } else {
+                var ta = document.createElement('textarea');
+                ta.value = url; ta.style.position = 'fixed'; ta.style.opacity = '0';
+                document.body.appendChild(ta); ta.select();
+                var ok = false; try { ok = document.execCommand('copy'); } catch (e) {}
+                document.body.removeChild(ta); done(ok);
+            }
+        });
+    }
+
+    if (!opts.canEdit) { return; } // read-only: card shows the URL + copy only
+
+    els.input.addEventListener('input', function () {
+        clearTimeout(timer);
+        var slug = this.value.trim().toLowerCase();
+        if (els.saveBtn) { els.saveBtn.disabled = true; }
+        if (slug === '') { feedback('', ''); return; }
+        if (slug === opts.currentStub) { feedback('ok', 'This is your current shortcut.'); return; }
+        feedback('', 'Checking…');
+        timer = setTimeout(function () {
+            var body = 'type=' + encodeURIComponent(opts.type) +
+                       '&id=' + encodeURIComponent(opts.id) +
+                       '&slug=' + encodeURIComponent(slug);
+            fetch(opts.root + 'ShortLinkAjax/check', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                credentials: 'same-origin',
+                body: body
+            }).then(function (r) { return r.json(); }).then(function (d) {
+                lastChecked = slug;
+                lastAvailable = !!d.available;
+                feedback(d.available ? 'ok' : 'bad',
+                    (d.available ? '✓ ' : '✗ ') + (d.reason || ''));
+                if (els.saveBtn) { els.saveBtn.disabled = !d.available; }
+            }).catch(function () { feedback('bad', 'Could not check availability.'); });
+        }, DEBOUNCE);
+    });
+
+    if (els.saveBtn) {
+        els.saveBtn.addEventListener('click', function () {
+            var slug = els.input.value.trim().toLowerCase();
+            if (slug !== lastChecked || !lastAvailable) { return; }
+            els.saveBtn.disabled = true;
+            var body = 'type=' + encodeURIComponent(opts.type) +
+                       '&id=' + encodeURIComponent(opts.id) +
+                       '&slug=' + encodeURIComponent(slug);
+            fetch(opts.root + 'ShortLinkAjax/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                credentials: 'same-origin',
+                body: body
+            }).then(function (r) { return r.json(); }).then(function (d) {
+                if (d.status === 0) {
+                    opts.currentStub = d.stub;
+                    setUrl(d.stub);
+                    feedback('ok', 'Saved! Your shortcut is ' + opts.prefix + d.stub);
+                } else {
+                    feedback('bad', d.error || 'Could not save.');
+                    els.saveBtn.disabled = false;
+                }
+            }).catch(function () { feedback('bad', 'Could not save.'); els.saveBtn.disabled = false; });
+        });
+    }
+
+    if (els.resetBtn) {
+        els.resetBtn.addEventListener('click', function () {
+            var body = 'type=' + encodeURIComponent(opts.type) +
+                       '&id=' + encodeURIComponent(opts.id) + '&slug=';
+            fetch(opts.root + 'ShortLinkAjax/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                credentials: 'same-origin',
+                body: body
+            }).then(function (r) { return r.json(); }).then(function (d) {
+                if (d.status === 0) {
+                    opts.currentStub = '';
+                    els.input.value = '';
+                    if (els.saveBtn) { els.saveBtn.disabled = true; }
+                    setUrl(d.stub);
+                    feedback('ok', 'Reset to default: ' + opts.prefix + d.stub);
+                }
+            });
+        });
+    }
+};
