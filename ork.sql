@@ -847,3 +847,23 @@ CREATE TABLE IF NOT EXISTS `ork_unit_mundane` (
   PRIMARY KEY (`unit_mundane_id`),
   UNIQUE KEY `unit_id` (`unit_id`,`mundane_id`)
 ) ENGINE=MyISAM  DEFAULT CHARSET=utf8 AUTO_INCREMENT=10340 ;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `ork_shortlink`
+--
+
+DROP TABLE IF EXISTS `ork_shortlink`;
+CREATE TABLE IF NOT EXISTS `ork_shortlink` (
+  `shortlink_id` int(11)      NOT NULL AUTO_INCREMENT,
+  `slug`         varchar(30)  NOT NULL,
+  `entity_type`  enum('player','kingdom','park','unit') NOT NULL,
+  `entity_id`    int(11)      NOT NULL,
+  `created_by`   int(11)      NOT NULL DEFAULT 0,
+  `created`      timestamp    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified`     timestamp    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`shortlink_id`),
+  UNIQUE KEY `uq_slug` (`slug`),
+  UNIQUE KEY `uq_entity` (`entity_type`, `entity_id`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1;
