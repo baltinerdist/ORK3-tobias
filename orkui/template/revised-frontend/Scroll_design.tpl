@@ -1,0 +1,37 @@
+<?php /* Scroll_design.tpl — layout maker. Plain PHP. */ ?>
+<link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>revised-frontend/style/scroll.css?v=<?= filemtime(DIR_TEMPLATE.'revised-frontend/style/scroll.css') ?>">
+<?php if (empty($authorized)): ?>
+	<div class="sc-panel" style="max-width:520px;margin:4rem auto;padding:2rem;text-align:center;">
+		<h1 style="background:transparent;border:none;padding:0;border-radius:0;text-shadow:none;">Not authorized</h1>
+		<p>You must be a kingdom officer to design scroll templates for this kingdom.</p>
+	</div>
+<?php else: ?>
+	<div class="sc-designer" style="display:grid;grid-template-columns:1fr 340px;gap:1rem;align-items:start;">
+		<div class="sc-stage" id="scStage"><div class="sc-page sc-editing" id="scPage"></div></div>
+		<aside class="sc-panel sc-inspector" id="scInspector" style="padding:1rem;position:sticky;top:14px;">
+			<div class="sc-toolbar">
+				<button type="button" id="scAddZone" class="sc-btn">+ Text zone</button>
+				<button type="button" id="scAddSlot" class="sc-btn">+ Graphic slot</button>
+			</div>
+			<div id="scPageProps"></div>     <!-- name / orientation / background -->
+			<div id="scSelProps"></div>       <!-- selected slot or zone props -->
+			<div class="sc-actions" style="margin-top:1rem;">
+				<input id="scTplName" placeholder="Template name" value="<?= htmlspecialchars($template['name'] ?? '') ?>">
+				<button type="button" id="scSave" class="sc-btn sc-btn-primary">Save</button>
+			</div>
+		</aside>
+	</div>
+	<script>
+	window.SC_DESIGN = {
+		kingdomId: <?= (int)$kingdom_id ?>,
+		template:  <?= json_encode($template ?: null) ?>,
+		packCatalog: <?= json_encode($pack_catalog ?? []) ?>,
+		heraldry:  <?= json_encode($heraldry ?? []) ?>,
+		packBase:  <?= json_encode($pack_base ?? '') ?>,
+		token:     <?= json_encode($session_token ?? '') ?>,
+		saveUrl:   <?= json_encode(UIR.'ScrollTemplateAjax/save') ?>
+	};
+	</script>
+	<script src="<?= HTTP_TEMPLATE ?>revised-frontend/scroll/scroll-render.js?v=<?= filemtime(DIR_TEMPLATE.'revised-frontend/scroll/scroll-render.js') ?>"></script>
+	<script src="<?= HTTP_TEMPLATE ?>revised-frontend/scroll/scroll-design.js?v=1"></script>
+<?php endif; ?>
