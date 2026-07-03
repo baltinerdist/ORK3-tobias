@@ -32,7 +32,21 @@
 			"knotwork_corners"
 		],
 		"layout": "three_zone_vertical",
-		"sigCount": 2
+		"sigCount": 2,
+		"ornament": {
+			"ground": {
+				"type": "parchment"
+			},
+			"frame": {
+				"mode": "none"
+			},
+			"initials": {
+				"set": "none"
+			},
+			"flourish": {
+				"mode": "none"
+			}
+		}
 	},
 	"northern_gothic": {
 		"name": "Northern Gothic",
@@ -69,7 +83,21 @@
 			"gilded_besants"
 		],
 		"layout": "three_zone_vertical",
-		"sigCount": 2
+		"sigCount": 2,
+		"ornament": {
+			"ground": {
+				"type": "parchment"
+			},
+			"frame": {
+				"mode": "none"
+			},
+			"initials": {
+				"set": "none"
+			},
+			"flourish": {
+				"mode": "none"
+			}
+		}
 	},
 	"provencal_bestiary": {
 		"name": "Provençal Bestiary",
@@ -106,7 +134,21 @@
 			"marginalia_grotesque"
 		],
 		"layout": "asymmetric_l_frame",
-		"sigCount": 2
+		"sigCount": 2,
+		"ornament": {
+			"ground": {
+				"type": "white"
+			},
+			"frame": {
+				"mode": "none"
+			},
+			"initials": {
+				"set": "none"
+			},
+			"flourish": {
+				"mode": "none"
+			}
+		}
 	},
 	"crimson_decree": {
 		"name": "Crimson Decree",
@@ -143,7 +185,21 @@
 			"gilded_fleurs"
 		],
 		"layout": "three_zone_vertical",
-		"sigCount": 3
+		"sigCount": 3,
+		"ornament": {
+			"ground": {
+				"type": "parchment"
+			},
+			"frame": {
+				"mode": "none"
+			},
+			"initials": {
+				"set": "none"
+			},
+			"flourish": {
+				"mode": "none"
+			}
+		}
 	},
 	"forest_reverie": {
 		"name": "Forest Reverie",
@@ -179,7 +235,21 @@
 			"vine_break"
 		],
 		"layout": "three_zone_vertical",
-		"sigCount": 2
+		"sigCount": 2,
+		"ornament": {
+			"ground": {
+				"type": "ivory"
+			},
+			"frame": {
+				"mode": "none"
+			},
+			"initials": {
+				"set": "none"
+			},
+			"flourish": {
+				"mode": "none"
+			}
+		}
 	},
 	"charred_edict": {
 		"name": "Charred Edict",
@@ -215,7 +285,21 @@
 			"foxing_heavy"
 		],
 		"layout": "three_zone_vertical",
-		"sigCount": 1
+		"sigCount": 1,
+		"ornament": {
+			"ground": {
+				"type": "parchment"
+			},
+			"frame": {
+				"mode": "none"
+			},
+			"initials": {
+				"set": "none"
+			},
+			"flourish": {
+				"mode": "none"
+			}
+		}
 	},
 	"imperial_edict": {
 		"name": "Imperial Edict",
@@ -251,7 +335,21 @@
 			"axial_symmetric_seal"
 		],
 		"layout": "tympanum_and_base",
-		"sigCount": 2
+		"sigCount": 2,
+		"ornament": {
+			"ground": {
+				"type": "parchment"
+			},
+			"frame": {
+				"mode": "none"
+			},
+			"initials": {
+				"set": "none"
+			},
+			"flourish": {
+				"mode": "none"
+			}
+		}
 	},
 	"scholars_hand": {
 		"name": "Scholar's Hand",
@@ -287,7 +385,21 @@
 			"tri_color_ground"
 		],
 		"layout": "three_zone_vertical",
-		"sigCount": 2
+		"sigCount": 2,
+		"ornament": {
+			"ground": {
+				"type": "white"
+			},
+			"frame": {
+				"mode": "none"
+			},
+			"initials": {
+				"set": "none"
+			},
+			"flourish": {
+				"mode": "none"
+			}
+		}
 	},
 	"crusaders_charter": {
 		"name": "Crusader's Charter",
@@ -324,7 +436,21 @@
 			"triumphal_arch"
 		],
 		"layout": "three_zone_vertical",
-		"sigCount": 2
+		"sigCount": 2,
+		"ornament": {
+			"ground": {
+				"type": "parchment"
+			},
+			"frame": {
+				"mode": "none"
+			},
+			"initials": {
+				"set": "none"
+			},
+			"flourish": {
+				"mode": "none"
+			}
+		}
 	},
 	"astral_codex": {
 		"name": "Astral Codex",
@@ -360,6 +486,24 @@
 			"constellation_diagram"
 		],
 		"layout": "three_zone_vertical",
-		"sigCount": 1
+		"sigCount": 1,
+		"ornament": {
+			"ground": {
+				"type": "ivory"
+			},
+			"frame": {
+				"mode": "none"
+			},
+			"initials": {
+				"set": "none"
+			},
+			"flourish": {
+				"mode": "none"
+			}
+		}
+	},
+	"_motifs": {
+		"map": {},
+		"dir": "/system/assets/scroll/forge/motifs/"
 	}
 }

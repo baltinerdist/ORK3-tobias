@@ -128,7 +128,9 @@ Warrior (crossed swords), Battle, Crown, Jovious (jester), Zodiac, Knighthood
 ## Asset Organization & Specs
 
 - New namespace: `system/assets/scroll/forge/{families,alphabets,motifs,grounds,flourishes}/`
-- Per-family `manifest.json`; **mandatory** ATTRIBUTION.md entry per asset
+- Ornament manifest lives as an `"ornament"` block per family inside
+  `families.json` (single manifest, already emitted to the client);
+  ATTRIBUTION.md remains mandatory per asset
   (library, manuscript shelfmark, license, source URL).
 - Formats: PNG-with-alpha for scans, SVG for tintable line-art/interlace.
 - Resolution targets (~300dpi at placed size): edge strips ~3000px long side,
