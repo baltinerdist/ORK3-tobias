@@ -38,7 +38,9 @@
 				"type": "parchment"
 			},
 			"frame": {
-				"mode": "none"
+				"mode": "svg",
+				"dir": "/system/assets/scroll/forge/families/hibernian_knotwork/",
+				"medallion": true
 			},
 			"initials": {
 				"set": "none"
