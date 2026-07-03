@@ -30,4 +30,24 @@
 	window.addEventListener('resize', function () { if (current) R.fitToStage(page, stage); });
 	if ((B.templates || []).length) select(B.templates[0].scroll_template_id);
 	window.SC_getCurrent = function () { return current; };   // used by PDF export (Task 12)
+
+	// --- direct client-side PDF download (jsPDF + html2canvas) ---
+	var dlBtn = document.getElementById('scDownloadPdf');
+	if (dlBtn) dlBtn.addEventListener('click', function () {
+		if (!current) return;
+		var t0 = page.style.transform; page.style.transform = 'scale(1)';        // export at natural size
+		// re-render non-editable so token chips don't print
+		R.renderPage(page, current, { tokens: B.tokens || {}, heraldry: B.heraldry || {}, packBase: B.packBase, libBase: B.libBase, editable: false });
+		R.autoscaleZones(page);
+		html2canvas(page, { scale: 3, useCORS: true, backgroundColor: null }).then(function (canvas) {
+			var land = (current.orientation === 'landscape');
+			var pdf = new jspdf.jsPDF({ orientation: land ? 'landscape' : 'portrait', unit: 'in', format: 'letter' });
+			var w = land ? 11 : 8.5, h = land ? 8.5 : 11;
+			pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, w, h);
+			var name = ((B.tokens || {}).PlayerName || 'Scroll') + ' - ' + ((B.tokens || {}).AwardName || 'Award');
+			pdf.save('Scroll - ' + name + '.pdf');
+			page.style.transform = t0;                                            // restore preview
+			R.renderPage(page, current, ctx()); R.autoscaleZones(page); R.fitToStage(page, stage);
+		});
+	});
 })();
