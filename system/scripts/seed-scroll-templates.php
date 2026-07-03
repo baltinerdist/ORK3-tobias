@@ -96,22 +96,22 @@ function sc_zone($k, $l, $t, $f, $s, $mn, $mx, $al, $x, $y, $w, $h)
 
 $starters = array(
     array('Illuminated Border (Portrait)', 'portrait', 'color', '#fdfcf7',
-        array(sc_slot('full_border', 2, 2, 96, 96, 'pack', 'borders/scroll_border.png')),
+        array(sc_slot('full_border', 2, 2, 96, 96, 'pack', 'borders/blackwhite.png')),
         array(
-            sc_zone('salutation', 'Salutation', 'Amtgard and {Kingdom} present', 'EB Garamond', 22, 14, 26, 'center', 14, 12, 72, 8),
-            sc_zone('recipient', 'Recipient', '{PlayerName}', 'Cinzel', 54, 28, 60, 'center', 10, 22, 80, 12),
-            sc_zone('award', 'Award', '{AwardName}', 'Cinzel Decorative', 40, 22, 48, 'center', 12, 38, 76, 10),
-            sc_zone('body', 'Body', 'for {Reason}', 'EB Garamond', 24, 12, 28, 'center', 16, 52, 68, 18),
-            sc_zone('date', 'Date', 'Done this {Date}', 'EB Garamond', 18, 12, 22, 'center', 16, 74, 68, 8),
-            sc_zone('signature', 'Signature', '{GivenBy}', 'Great Vibes', 30, 16, 36, 'center', 20, 84, 60, 8),
+            sc_zone('salutation', 'Salutation', 'Amtgard and {Kingdom} present', 'EB Garamond', 20, 12, 24, 'center', 18, 15, 64, 7),
+            sc_zone('recipient', 'Recipient', '{PlayerName}', 'Cinzel', 48, 24, 54, 'center', 16, 24, 68, 11),
+            sc_zone('award', 'Award', '{AwardName}', 'Cinzel Decorative', 36, 18, 44, 'center', 18, 37, 64, 10),
+            sc_zone('body', 'Body', 'for {Reason}', 'EB Garamond', 22, 12, 26, 'center', 20, 50, 60, 16),
+            sc_zone('date', 'Date', 'Done this {Date}', 'EB Garamond', 17, 11, 20, 'center', 20, 70, 60, 7),
+            sc_zone('signature', 'Signature', '{GivenBy}', 'Great Vibes', 28, 14, 34, 'center', 22, 80, 56, 8),
         )),
     array('Rose Trellis (Portrait)', 'portrait', 'texture', 'brown_tea_stained.png',
         array(sc_slot('full_border', 1, 1, 98, 98, 'pack', 'borders/rose_border.png')),
         array(
             sc_zone('recipient', 'Recipient', '{PlayerName}', 'Almendra', 52, 28, 58, 'center', 12, 24, 76, 12),
             sc_zone('award', 'Award', '{AwardName}', 'MedievalSharp', 40, 22, 46, 'center', 14, 40, 72, 10),
-            sc_zone('body', 'Body', 'for {Reason}', 'EB Garamond', 22, 12, 26, 'center', 18, 54, 64, 16),
-            sc_zone('date', 'Date', 'the {Date}', 'EB Garamond', 18, 12, 22, 'left', 14, 80, 40, 10),
+            sc_zone('body', 'Body', 'for {Reason}', 'EB Garamond', 22, 12, 26, 'center', 20, 54, 60, 14),
+            sc_zone('date', 'Date', 'the {Date}', 'EB Garamond', 18, 12, 22, 'center', 22, 70, 56, 8),
         )),
     array('Corner Shields (Landscape)', 'landscape', 'color', '#ffffff',
         array(
@@ -120,9 +120,9 @@ $starters = array(
             sc_slot('center_image', 35, 55, 30, 40, 'pack', 'orders/dragon/gold_dragon.png'),
         ),
         array(
-            sc_zone('body', 'Body', 'In recognition of your service, you, {PlayerName}, shall forever be known as', 'EB Garamond', 22, 12, 26, 'center', 20, 10, 60, 14),
-            sc_zone('award', 'Award', '{AwardName}', 'Cinzel', 34, 20, 40, 'center', 25, 26, 50, 10),
-            sc_zone('date', 'Date', 'Done this {Date}', 'EB Garamond', 18, 12, 22, 'center', 25, 40, 50, 8),
+            sc_zone('body', 'Body', 'In recognition of your service, you, {PlayerName}, shall forever be known as', 'EB Garamond', 22, 12, 26, 'center', 18, 7, 64, 16),
+            sc_zone('award', 'Award', '{AwardName}', 'Cinzel', 34, 16, 40, 'center', 18, 27, 64, 14),
+            sc_zone('date', 'Date', 'Done this {Date}', 'EB Garamond', 18, 12, 22, 'center', 25, 44, 50, 8),
         )),
 );
 foreach ($starters as $s) {
