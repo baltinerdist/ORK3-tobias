@@ -1,0 +1,59 @@
+/* scroll.css — slot-based scroll renderer. Chrome is dark-mode aware; the page surface is always light. */
+:root { --sc-page-w: 816px; }  /* 8.5in @ 96dpi; height derives from aspect-ratio */
+
+/* --- webfonts (all 20+ TTFs in assets/scroll/fonts/; served from repo-root /assets/, four levels up from this file) --- */
+@font-face { font-family:'Almendra';             src:url('../../../../assets/scroll/fonts/Almendra-Regular.ttf') format('truetype'); font-display:swap; }
+@font-face { font-family:'Caudex';               src:url('../../../../assets/scroll/fonts/Caudex-Regular.ttf') format('truetype'); font-display:swap; }
+@font-face { font-family:'Cinzel';               src:url('../../../../assets/scroll/fonts/Cinzel-Regular.ttf') format('truetype'); font-display:swap; }
+@font-face { font-family:'Cinzel Decorative';    src:url('../../../../assets/scroll/fonts/CinzelDecorative-Regular.ttf') format('truetype'); font-display:swap; }
+@font-face { font-family:'Cormorant Garamond';   src:url('../../../../assets/scroll/fonts/CormorantGaramond-Regular.ttf') format('truetype'); font-display:swap; }
+@font-face { font-family:'EB Garamond';          src:url('../../../../assets/scroll/fonts/EBGaramond-Regular.ttf') format('truetype'); font-display:swap; }
+@font-face { font-family:'Eagle Lake';           src:url('../../../../assets/scroll/fonts/EagleLake-Regular.ttf') format('truetype'); font-display:swap; }
+@font-face { font-family:'Fondamento';           src:url('../../../../assets/scroll/fonts/Fondamento-Regular.ttf') format('truetype'); font-display:swap; }
+@font-face { font-family:'Germania One';         src:url('../../../../assets/scroll/fonts/GermaniaOne-Regular.ttf') format('truetype'); font-display:swap; }
+@font-face { font-family:'Goudy Bookletter 1911';src:url('../../../../assets/scroll/fonts/GoudyBookletter1911.ttf') format('truetype'); font-display:swap; }
+@font-face { font-family:'Great Vibes';          src:url('../../../../assets/scroll/fonts/GreatVibes-Regular.ttf') format('truetype'); font-display:swap; }
+@font-face { font-family:'Grenze Gotisch';       src:url('../../../../assets/scroll/fonts/GrenzeGotisch-Regular.ttf') format('truetype'); font-display:swap; }
+@font-face { font-family:'Jim Nightshade';       src:url('../../../../assets/scroll/fonts/JimNightshade-Regular.ttf') format('truetype'); font-display:swap; }
+@font-face { font-family:'MedievalSharp';        src:url('../../../../assets/scroll/fonts/MedievalSharp-Regular.ttf') format('truetype'); font-display:swap; }
+@font-face { font-family:'Metamorphous';         src:url('../../../../assets/scroll/fonts/Metamorphous-Regular.ttf') format('truetype'); font-display:swap; }
+@font-face { font-family:'Pinyon Script';        src:url('../../../../assets/scroll/fonts/PinyonScript-Regular.ttf') format('truetype'); font-display:swap; }
+@font-face { font-family:'Pirata One';           src:url('../../../../assets/scroll/fonts/PirataOne-Regular.ttf') format('truetype'); font-display:swap; }
+@font-face { font-family:'Sorts Mill Goudy';     src:url('../../../../assets/scroll/fonts/SortsMillGoudy-Regular.ttf') format('truetype'); font-display:swap; }
+@font-face { font-family:'Tangerine';            src:url('../../../../assets/scroll/fonts/Tangerine-Regular.ttf') format('truetype'); font-display:swap; }
+@font-face { font-family:'Uncial Antiqua';       src:url('../../../../assets/scroll/fonts/UncialAntiqua-Regular.ttf') format('truetype'); font-display:swap; }
+@font-face { font-family:'UnifrakturMaguntia';   src:url('../../../../assets/scroll/fonts/UnifrakturMaguntia-Book.ttf') format('truetype'); font-display:swap; }
+
+.sc-stage { position:relative; width:100%; display:flex; justify-content:center; align-items:flex-start;
+	overflow:hidden; background:#e9e9ee; padding:16px; box-sizing:border-box; }
+html[data-theme="dark"] .sc-stage { background:#20232a; }
+
+/* the fixed Letter page; JS scales it to fit the stage via transform */
+.sc-page { position:relative; width:var(--sc-page-w); aspect-ratio:8.5/11; transform-origin:top center;
+	background:#fff; box-shadow:0 2px 18px rgba(0,0,0,.35); overflow:hidden; }
+.sc-page[data-orientation="landscape"] { aspect-ratio:11/8.5; }
+
+.sc-bg { position:absolute; inset:0; z-index:0; background-size:cover; background-position:center; }
+.sc-bg[data-bg-type="texture"] { background-repeat:repeat; background-size:auto; }
+
+.sc-slot { position:absolute; z-index:1; }                 /* x/y/w/h set inline as % by JS */
+.sc-slot img { width:100%; height:100%; object-fit:contain; display:block; }
+.sc-slot[data-fit="cover"] img { object-fit:cover; }
+.sc-slot[data-fit="stretch"] img { object-fit:fill; }
+
+.sc-zone { position:absolute; z-index:2; overflow:hidden; box-sizing:border-box;
+	display:flex; flex-direction:column; justify-content:center; }
+.sc-zone[data-align="left"]   { text-align:left; align-items:flex-start; }
+.sc-zone[data-align="center"] { text-align:center; align-items:center; }
+.sc-zone[data-align="right"]  { text-align:right; align-items:flex-end; }
+.sc-zone .sc-token-unfilled { outline:1px dashed #b00; opacity:.6; }  /* editor-only; print hides via .sc-print */
+
+/* editor chrome (designer/filler panels) — dark-mode aware */
+.sc-panel { background:#fff; border:1px solid #ccc; border-radius:6px; }
+html[data-theme="dark"] .sc-panel { background:#2a2e37; border-color:#444; color:#e8e8ea; }
+.sc-inspector label { display:block; font:12px/1.4 system-ui; margin:.4rem 0 .1rem; }
+html[data-theme="dark"] .sc-inspector label { color:#c8c8cc; }
+
+/* designer-only slot/zone handles */
+.sc-editing .sc-slot, .sc-editing .sc-zone { outline:1px solid rgba(40,90,200,.5); cursor:move; }
+.sc-editing .sc-zone[contenteditable] { cursor:text; }
