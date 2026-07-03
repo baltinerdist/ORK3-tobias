@@ -11495,6 +11495,7 @@ C21,416 8,356 15,290 C22,222 9,162 16,96 C20,56 7,40 14,22 Z"/>\
      The SOLE scroll generator; the legacy sc- canvas builder is removed.
      ============================================================ -->
 <div class="sc2-forge" id="sc2Forge">
+<!-- ===== inlined: sf-ui.html.part ===== -->
 <?php
 	/* ============================================================================
 	   THE LETTERED SCROLL — sf-ui.html.part   (PHP / ORK3 view)
@@ -11843,6 +11844,9 @@ C21,416 8,356 15,290 C22,222 9,162 16,96 C20,56 7,40 14,22 Z"/>\
 	</svg>
 </button>
 
+<!-- ===== end: sf-ui.html.part ===== -->
+
+<!-- ===== inlined: sf-scroll-markup.html.part ===== -->
 <?php
 	/* ============================================================================
 	   THE LETTERED SCROLL  ·  sf-scroll-markup.html.part   (PHP / ORK3 view)
@@ -11936,7 +11940,7 @@ C21,416 8,356 15,290 C22,222 9,162 16,96 C20,56 7,40 14,22 Z"/>\
 				     canonically by the substrate engineer; the finalizer injects them
 				     immediately below. We do NOT redeclare — duplicate SVG ids break
 				     url(#…) resolution. -->
-								<filter id="sc2-deckle-fx" x="-5%" y="-5%" width="110%" height="110%">
+				       <filter id="sc2-deckle-fx" x="-5%" y="-5%" width="110%" height="110%">
 				         <feTurbulence type="fractalNoise" baseFrequency="0.02 0.04"
 				                       numOctaves="3" seed="11" result="noise"/>
 				         <feDisplacementMap in="SourceGraphic" in2="noise" scale="9"
@@ -12197,8 +12201,11 @@ C21,416 8,356 15,290 C22,222 9,162 16,96 C20,56 7,40 14,22 Z"/>\
 
 </main>
 
+<!-- ===== end: sf-scroll-markup.html.part ===== -->
+
 </div><!-- /.sc2-forge -->
 
+<!-- ===== inlined: sf-ui.html.part [art-modal] ===== -->
 <!-- ============================================================
      IN-BUILDER ARTWORK modal (sc2-art). Browse the shared library or
      upload your own image for any of the 8 fixed scroll zones.
@@ -12273,6 +12280,8 @@ C21,416 8,356 15,290 C22,222 9,162 16,96 C20,56 7,40 14,22 Z"/>\
     </div>
   </div>
 </div>
+
+<!-- ===== end: sf-ui.html.part [art-modal] ===== -->
 
 
 <!-- ============================================================
