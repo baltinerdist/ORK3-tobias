@@ -4972,6 +4972,34 @@ L10,1170 L17,1060 L9,950 L16,840 L8,730 L17,620 L9,510 L16,400 L8,290 L17,180 L9
 	.sc2-scroll svg.sc2-seal { animation: none !important; transition: none !important; }
 }
 
+
+/* ════════════════════════════════════════════════════════════════════════════
+   7.  AWARD MOTIF (plan Task 7) — duotone family-ink emblem in the bas-de-page.
+   Slot is [data-sc2-motif-slot] inside .sc2-seal-wrap; sf-app.js composeMotif()
+   fills it when SC_FAMILIES._motifs.map matches the award name. The art span
+   paints the family --border ink through the motif PNG's alpha via mask —
+   painted scans become duotone automatically. Hidden (via [hidden]) otherwise.
+   ════════════════════════════════════════════════════════════════════════════ */
+.sc2-motif {
+	position: absolute;
+	left: 50%;
+	bottom: 4%;
+	transform: translateX(-50%);
+	width: 16%;
+	aspect-ratio: 1;
+	z-index: var(--z-illum);
+	pointer-events: none;
+	opacity: .85;
+}
+.sc2-motif__art {
+	display: block;
+	width: 100%;
+	height: 100%;
+	background: var(--border);
+	-webkit-mask: var(--motif-src) center / contain no-repeat;
+	mask: var(--motif-src) center / contain no-repeat;
+}
+
 /* ===== inlined: sf-layout.css.part ===== */
 /* ============================================================================
    THE LETTERED SCROLL — sf-layout.css.part   (THE LAYOUT LAYER)
@@ -12332,6 +12360,12 @@ C21,416 8,356 15,290 C22,222 9,162 16,96 C20,56 7,40 14,22 Z"/>\
 		     =================================================================== -->
 		<footer class="sc2-seal-wrap" data-sc2-seal-wrap>
 
+			<!-- Award motif slot (plan Task 7) — duotone family-ink emblem chosen
+			     by sf-app.js composeMotif() from SC_FAMILIES._motifs (award-name
+			     substring match). Hidden until a motif matches. NOTE: the defs
+			     <g> owns data-sc2-motif; this slot is data-sc2-motif-slot. -->
+			<div class="sc2-motif" aria-hidden="true" data-sc2-motif-slot hidden></div>
+
 			<!-- Livery ribbon tails — behind the disc, in the realm's two colours -->
 			<div class="sc2-seal-ribbon" aria-hidden="true">
 				<span class="sc2-ribbon-tail sc2-ribbon-tail--a"></span>
@@ -12863,6 +12897,9 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
 		/* the versal paragraph's HTML was just rewritten (any plate span was
 		   wiped with it) — re-decorate from the CURRENT narration text.      */
 		applyVersalPlate(state.family);
+
+		/* award name is editable in the Wording panel — re-match the motif */
+		composeMotif();
 	}
 
 	/* ── 8. FAMILY APPLY ─────────────────────────────────────────────────── */
@@ -12874,6 +12911,7 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
 			composeOrnament(key);
 			applyGround(key);
 			applyVersalPlate(key);
+			composeMotif();
 			/* orientation may be family-driven (landscape diplomas etc.).
 			   Only adopt the family default when the caller did not ask us to
 			   preserve the current orientation (keepOrientation).            */
@@ -13112,6 +13150,33 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
 			dbg("versal plate missing", url);   /* drop-cap fallback stands */
 		});
 		img.src = url;
+	}
+
+	/* ── AWARD MOTIF SLOT (plan Task 7) ─────────────────────────────────────
+	   Duotone family-ink emblem in the bas-de-page. Substring-matches
+	   state.awardName (lowercased) against SC_FAMILIES._motifs.map in
+	   insertion order; first hit wins. No match → slot stays hidden. The art
+	   is a mask-tinted span (CSS .sc2-motif__art paints var(--border) through
+	   the PNG's alpha), so any painted motif renders in the family ink.     */
+	function composeMotif() {
+		var slot = $("[data-sc2-motif-slot]", SCROLL);
+		if (!slot) { return; }
+		var conf = (typeof SC_FAMILIES === "object" && SC_FAMILIES._motifs) ? SC_FAMILIES._motifs : null;
+		slot.innerHTML = "";
+		slot.hidden = true;
+		if (!conf) { return; }
+		var name = String(state.awardName || "").toLowerCase();
+		var stem = null;
+		for (var k in conf.map) {
+			if (conf.map.hasOwnProperty(k) && name.indexOf(k) !== -1) { stem = conf.map[k]; break; }
+		}
+		if (!stem) { return; }
+		var url = String(conf.dir || "").replace(/\/$/, "") + "/" + stem + ".png";
+		var tinted = document.createElement("span");
+		tinted.className = "sc2-motif__art";
+		tinted.style.setProperty("--motif-src", "url(\"" + url + "\")");
+		slot.appendChild(tinted);
+		slot.hidden = false;
 	}
 
 	/* ── 9. HERALDRY (href wiring + graceful fallback) ───────────────────── */

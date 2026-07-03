@@ -391,6 +391,9 @@
 		/* the versal paragraph's HTML was just rewritten (any plate span was
 		   wiped with it) — re-decorate from the CURRENT narration text.      */
 		applyVersalPlate(state.family);
+
+		/* award name is editable in the Wording panel — re-match the motif */
+		composeMotif();
 	}
 
 	/* ── 8. FAMILY APPLY ─────────────────────────────────────────────────── */
@@ -402,6 +405,7 @@
 			composeOrnament(key);
 			applyGround(key);
 			applyVersalPlate(key);
+			composeMotif();
 			/* orientation may be family-driven (landscape diplomas etc.).
 			   Only adopt the family default when the caller did not ask us to
 			   preserve the current orientation (keepOrientation).            */
@@ -640,6 +644,33 @@
 			dbg("versal plate missing", url);   /* drop-cap fallback stands */
 		});
 		img.src = url;
+	}
+
+	/* ── AWARD MOTIF SLOT (plan Task 7) ─────────────────────────────────────
+	   Duotone family-ink emblem in the bas-de-page. Substring-matches
+	   state.awardName (lowercased) against SC_FAMILIES._motifs.map in
+	   insertion order; first hit wins. No match → slot stays hidden. The art
+	   is a mask-tinted span (CSS .sc2-motif__art paints var(--border) through
+	   the PNG's alpha), so any painted motif renders in the family ink.     */
+	function composeMotif() {
+		var slot = $("[data-sc2-motif-slot]", SCROLL);
+		if (!slot) { return; }
+		var conf = (typeof SC_FAMILIES === "object" && SC_FAMILIES._motifs) ? SC_FAMILIES._motifs : null;
+		slot.innerHTML = "";
+		slot.hidden = true;
+		if (!conf) { return; }
+		var name = String(state.awardName || "").toLowerCase();
+		var stem = null;
+		for (var k in conf.map) {
+			if (conf.map.hasOwnProperty(k) && name.indexOf(k) !== -1) { stem = conf.map[k]; break; }
+		}
+		if (!stem) { return; }
+		var url = String(conf.dir || "").replace(/\/$/, "") + "/" + stem + ".png";
+		var tinted = document.createElement("span");
+		tinted.className = "sc2-motif__art";
+		tinted.style.setProperty("--motif-src", "url(\"" + url + "\")");
+		slot.appendChild(tinted);
+		slot.hidden = false;
 	}
 
 	/* ── 9. HERALDRY (href wiring + graceful fallback) ───────────────────── */

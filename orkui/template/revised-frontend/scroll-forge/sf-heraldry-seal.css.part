@@ -591,3 +591,31 @@
 	.sc2-scroll .sc2-seal-disc,
 	.sc2-scroll svg.sc2-seal { animation: none !important; transition: none !important; }
 }
+
+
+/* ════════════════════════════════════════════════════════════════════════════
+   7.  AWARD MOTIF (plan Task 7) — duotone family-ink emblem in the bas-de-page.
+   Slot is [data-sc2-motif-slot] inside .sc2-seal-wrap; sf-app.js composeMotif()
+   fills it when SC_FAMILIES._motifs.map matches the award name. The art span
+   paints the family --border ink through the motif PNG's alpha via mask —
+   painted scans become duotone automatically. Hidden (via [hidden]) otherwise.
+   ════════════════════════════════════════════════════════════════════════════ */
+.sc2-motif {
+	position: absolute;
+	left: 50%;
+	bottom: 4%;
+	transform: translateX(-50%);
+	width: 16%;
+	aspect-ratio: 1;
+	z-index: var(--z-illum);
+	pointer-events: none;
+	opacity: .85;
+}
+.sc2-motif__art {
+	display: block;
+	width: 100%;
+	height: 100%;
+	background: var(--border);
+	-webkit-mask: var(--motif-src) center / contain no-repeat;
+	mask: var(--motif-src) center / contain no-repeat;
+}

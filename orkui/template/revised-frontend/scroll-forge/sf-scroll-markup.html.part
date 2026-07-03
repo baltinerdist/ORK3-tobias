@@ -322,6 +322,12 @@
 		     =================================================================== -->
 		<footer class="sc2-seal-wrap" data-sc2-seal-wrap>
 
+			<!-- Award motif slot (plan Task 7) — duotone family-ink emblem chosen
+			     by sf-app.js composeMotif() from SC_FAMILIES._motifs (award-name
+			     substring match). Hidden until a motif matches. NOTE: the defs
+			     <g> owns data-sc2-motif; this slot is data-sc2-motif-slot. -->
+			<div class="sc2-motif" aria-hidden="true" data-sc2-motif-slot hidden></div>
+
 			<!-- Livery ribbon tails — behind the disc, in the realm's two colours -->
 			<div class="sc2-seal-ribbon" aria-hidden="true">
 				<span class="sc2-ribbon-tail sc2-ribbon-tail--a"></span>

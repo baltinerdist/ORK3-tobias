@@ -503,7 +503,9 @@
 		}
 	},
 	"_motifs": {
-		"map": {},
+		"map": {
+			"flame": "_fixture_flame"
+		},
 		"dir": "/system/assets/scroll/forge/motifs/"
 	}
 }
