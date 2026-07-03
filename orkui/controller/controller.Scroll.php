@@ -211,4 +211,32 @@ class Controller_Scroll extends Controller
         }
     }
 
+    public function design($id = null)
+    {
+        $this->template = '../revised-frontend/Scroll_design.tpl';
+
+        $parts      = explode('/', $id ?? '');
+        $kingdomId  = isset($parts[0]) ? (int)$parts[0] : 0;
+        $templateId = isset($parts[1]) ? (int)$parts[1] : 0;
+
+        // Kingdom-officer gate (mirrors the scroll AJAX siblings' session-token auth).
+        $mid = (int)Ork3::$Lib->authorization->IsAuthorized($this->session->token);
+        $this->data['authorized'] = ($mid > 0 && Ork3::$Lib->authorization->HasAuthority($mid, AUTH_KINGDOM, $kingdomId, AUTH_EDIT));
+
+        $this->data['kingdom_id'] = $kingdomId;
+        $this->data['template']   = $templateId ? (Ork3::$Lib->scrolltemplate->get($templateId)['Template'] ?? null) : null;
+        $this->data['templates']  = Ork3::$Lib->scrolltemplate->listForKingdom($kingdomId)['Templates'] ?? array();
+
+        // Built-in art-pack catalog + base URL live under system/assets/scroll/packs/ (matches builder()).
+        $this->data['pack_catalog'] = json_decode(@file_get_contents(DIR_SYSTEM . 'assets/scroll/packs/catalog.json'), true) ?: array();
+        $this->data['pack_base']    = str_replace('/assets/', '/system/assets/scroll/packs/', HTTP_ASSETS);
+
+        $this->data['heraldry']      = array('kingdom' => '', 'park' => '', 'player' => '');
+        $this->data['session_token'] = isset($this->session->token) ? $this->session->token : '';
+
+        // Clear stale PDO bindings after auth checks + lib reads.
+        global $DB;
+        $DB->Clear();
+    }
+
 }
