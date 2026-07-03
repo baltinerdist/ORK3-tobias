@@ -256,9 +256,12 @@ templates.
 ## Assets
 
 - KEEP `assets/scroll/fonts/` (20 TTFs) — per-zone font picker.
-- ADD `system/assets/scroll/textures/` — curated paper/parchment set.
-- ADD built-in decorative packs into `ork_scroll_artwork` as `system_owned=1` rows
-  (borders, corners, dividers) so a scroll looks good with zero uploads.
+- ADD `system/assets/scroll/packs/{borders,backgrounds,orders}/` seeded from **Alona of
+  Two Trees' CC art library** (free personal + commercial use; see
+  `2026-07-02-alona-cc-art-library.md` for folder IDs, license, mappings, re-fetch script).
+  These become the built-in decorative packs as `ork_scroll_artwork` `system_owned=1` rows
+  (borders → `full_border`/side slots; backgrounds → `bg_type=image`/texture; order emblems
+  → `center_image`, name-mapped to `{AwardName}`). Ship an `ATTRIBUTION.md` crediting Alona.
 - DELETE `system/assets/scroll/forge/*` and `system/assets/scroll/families/*`.
 
 ---
@@ -298,5 +301,10 @@ templates.
 - **html2canvas fidelity** — verify texture backgrounds + `object-fit: contain` graphics
   rasterize faithfully; if a specific CSS feature breaks, constrain the renderer to what
   html2canvas supports.
-- **Built-in pack sourcing** — the initial pack art needs licensed/original assets;
-  reuse any still-appropriate curated SVGs before deletion rather than starting empty.
+- **Built-in pack sourcing** — RESOLVED: seeded from Alona of Two Trees' CC library
+  (`2026-07-02-alona-cc-art-library.md`); 62 files retrieved + verified on 2026-07-02.
+  Remaining ingestion follow-ups (empty Orders sub-folders, Heraldry legacy folder,
+  transparency spot-check, curated default subset) tracked in that doc.
+- **Order-emblem name mapping** — the Orders folders are named by award type (Crown,
+  Dragon, Rose, Owl, Smith…), enabling `{AwardName}` → `center_image` emblem suggestion in
+  the filler. Wire this into the token/slot system in the designer + filler phases.
