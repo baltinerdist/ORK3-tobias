@@ -3891,9 +3891,12 @@ L10,1170 L17,1060 L9,950 L16,840 L8,730 L17,620 L9,510 L16,400 L8,290 L17,180 L9
 
 
 /* ── 3 · TITLE · the grand display name of the award ────────────────────────
-   Display face per family (--ff-title), set as raised GILDING via the
-   background-clip:text recipe. Blackletter is NEVER tracked wide. We re-apply
-   the gilt drop-shadows the blanket heading-reset above stripped.            */
+   Display face per family (--ff-title). MATTE GILDED INK (plan Task 5):
+   replaces the retired specular gradient fill (background-clip:text — the
+   WordArt tell). Matte gold ink with a hand-inked edge via the #sc2-handink
+   turbulence displacement filter (defined in .sc2-defs). Print fallback: a
+   UA that drops SVG filters still renders the plain matte fill correctly.
+   Blackletter is NEVER tracked wide.                                         */
 .sc2-scroll .sc2-title {
 	margin: .12em auto .28em;
 	max-width: 14ch;                    /* keep grand titles from sprawling      */
@@ -3906,25 +3909,12 @@ L10,1170 L17,1060 L9,950 L16,840 L8,730 L17,620 L9,510 L16,400 L8,290 L17,180 L9
 	text-wrap: balance;
 	font-feature-settings: "liga" 1, "dlig" 1, "kern" 1;
 
-	/* GILT TEXT recipe (raised gold; never flat). */
-	background-image: linear-gradient(
-		135deg,
-		var(--gold-shadow, #6e4d08) 0%,
-		var(--gold, #d4af37) 18%,
-		var(--gold-hi, #fff4c2) 38%,
-		var(--gold, #d4af37) 58%,
-		var(--gold-deep, #a9760a) 82%,
-		var(--gold-shadow, #6e4d08) 100%);
-	-webkit-background-clip: text;
-	background-clip: text;
-	color: transparent;
-	-webkit-text-fill-color: transparent;
-	-webkit-text-stroke: .75px var(--gold-keyline, #5a3d0c);
-	filter:
-		drop-shadow(0 1px 0 var(--gold-hi, #fff4c2))
-		drop-shadow(0 2px 2px rgba(40, 20, 0, .35));
-	/* solid fallback colour beneath the clip, for engines without text-clip */
-	-moz-text-fill-color: var(--gold, #d4af37);
+	/* MATTE GILDING recipe (layered ink; never specular). */
+	background: none;
+	-webkit-text-fill-color: currentColor;
+	color: var(--gold-deep, #8a6d1f);
+	text-shadow: 0 1px 0 rgba(255,255,255,.25), 0 0 1px rgba(0,0,0,.18);
+	filter: url(#sc2-handink);
 }
 /* Families whose title face carries a real bold may use 700; the rest stay 400.
    Grenze Gotisch (Imperial Edict, Crusader's Charter) is the only display face
@@ -12076,6 +12066,15 @@ C21,416 8,356 15,290 C22,222 9,162 16,96 C20,56 7,40 14,22 Z"/>\
 					</feSpecularLighting>
 					<feComposite in="spec" in2="SourceAlpha" operator="in" result="specClip"/>
 					<feComposite in="SourceGraphic" in2="specClip" operator="arithmetic" k1="0" k2="1" k3="1" k4="0"/>
+				</filter>
+
+				<!-- Hand-inked edge tremor for the matte gilded title (plan Task 5).
+				     Subtle turbulence displacement roughens glyph edges so the gold
+				     reads as brushed ink, not vector type. Referenced by
+				     .sc2-title { filter: url(#sc2-handink); } in sf-typography. -->
+				<filter id="sc2-handink" x="-5%" y="-5%" width="110%" height="110%">
+					<feTurbulence type="fractalNoise" baseFrequency="0.012 0.03" numOctaves="2" seed="11" result="n"/>
+					<feDisplacementMap in="SourceGraphic" in2="n" scale="1.6" xChannelSelector="R" yChannelSelector="G"/>
 				</filter>
 
 				<!-- Wax radial body for the pendant seal -->

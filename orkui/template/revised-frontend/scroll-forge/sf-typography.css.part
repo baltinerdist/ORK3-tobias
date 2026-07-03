@@ -118,9 +118,12 @@
 
 
 /* ── 3 · TITLE · the grand display name of the award ────────────────────────
-   Display face per family (--ff-title), set as raised GILDING via the
-   background-clip:text recipe. Blackletter is NEVER tracked wide. We re-apply
-   the gilt drop-shadows the blanket heading-reset above stripped.            */
+   Display face per family (--ff-title). MATTE GILDED INK (plan Task 5):
+   replaces the retired specular gradient fill (background-clip:text — the
+   WordArt tell). Matte gold ink with a hand-inked edge via the #sc2-handink
+   turbulence displacement filter (defined in .sc2-defs). Print fallback: a
+   UA that drops SVG filters still renders the plain matte fill correctly.
+   Blackletter is NEVER tracked wide.                                         */
 .sc2-scroll .sc2-title {
 	margin: .12em auto .28em;
 	max-width: 14ch;                    /* keep grand titles from sprawling      */
@@ -133,25 +136,12 @@
 	text-wrap: balance;
 	font-feature-settings: "liga" 1, "dlig" 1, "kern" 1;
 
-	/* GILT TEXT recipe (raised gold; never flat). */
-	background-image: linear-gradient(
-		135deg,
-		var(--gold-shadow, #6e4d08) 0%,
-		var(--gold, #d4af37) 18%,
-		var(--gold-hi, #fff4c2) 38%,
-		var(--gold, #d4af37) 58%,
-		var(--gold-deep, #a9760a) 82%,
-		var(--gold-shadow, #6e4d08) 100%);
-	-webkit-background-clip: text;
-	background-clip: text;
-	color: transparent;
-	-webkit-text-fill-color: transparent;
-	-webkit-text-stroke: .75px var(--gold-keyline, #5a3d0c);
-	filter:
-		drop-shadow(0 1px 0 var(--gold-hi, #fff4c2))
-		drop-shadow(0 2px 2px rgba(40, 20, 0, .35));
-	/* solid fallback colour beneath the clip, for engines without text-clip */
-	-moz-text-fill-color: var(--gold, #d4af37);
+	/* MATTE GILDING recipe (layered ink; never specular). */
+	background: none;
+	-webkit-text-fill-color: currentColor;
+	color: var(--gold-deep, #8a6d1f);
+	text-shadow: 0 1px 0 rgba(255,255,255,.25), 0 0 1px rgba(0,0,0,.18);
+	filter: url(#sc2-handink);
 }
 /* Families whose title face carries a real bold may use 700; the rest stay 400.
    Grenze Gotisch (Imperial Edict, Crusader's Charter) is the only display face

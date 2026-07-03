@@ -113,6 +113,15 @@
 					<feComposite in="SourceGraphic" in2="specClip" operator="arithmetic" k1="0" k2="1" k3="1" k4="0"/>
 				</filter>
 
+				<!-- Hand-inked edge tremor for the matte gilded title (plan Task 5).
+				     Subtle turbulence displacement roughens glyph edges so the gold
+				     reads as brushed ink, not vector type. Referenced by
+				     .sc2-title { filter: url(#sc2-handink); } in sf-typography. -->
+				<filter id="sc2-handink" x="-5%" y="-5%" width="110%" height="110%">
+					<feTurbulence type="fractalNoise" baseFrequency="0.012 0.03" numOctaves="2" seed="11" result="n"/>
+					<feDisplacementMap in="SourceGraphic" in2="n" scale="1.6" xChannelSelector="R" yChannelSelector="G"/>
+				</filter>
+
 				<!-- Wax radial body for the pendant seal -->
 				<radialGradient id="sc2-wax" cx="38%" cy="34%" r="72%">
 					<stop offset="0%"   stop-color="var(--wax-hi)"/>
