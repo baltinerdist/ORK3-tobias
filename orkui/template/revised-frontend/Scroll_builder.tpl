@@ -3769,6 +3769,13 @@ L10,1170 L17,1060 L9,950 L16,840 L8,730 L17,620 L9,510 L16,400 L8,290 L17,180 L9
 .sc2-illum:has(.sc2-ornament[data-orn="loaded"]) .sc2-border__band,
 .sc2-illum:has(.sc2-ornament[data-orn="loaded"]) .sc2-border__corners,
 .sc2-illum:has(.sc2-ornament[data-orn="loaded"]) .sc2-border__bar { opacity: 0; }
+/* Family CSS may paint its OWN decorative frame on the .sc2-illum pseudo
+   elements (e.g. Hibernian's 10px inner band on ::after). Those are part of
+   the rect-era frame too — they yield to composed ornament the same way.
+   opacity is otherwise unset on these pseudos, so this single declaration
+   wins regardless of family-part load order. */
+.sc2-illum:has(.sc2-ornament[data-orn="loaded"])::before,
+.sc2-illum:has(.sc2-ornament[data-orn="loaded"])::after { opacity: 0; }
 
 /* ════════════════════════════════════════════════════════════════════════════
    ILLUMINATED INITIAL PLATE (plan Task 6)
