@@ -224,7 +224,9 @@ class Controller_Scroll extends Controller
         $this->data['authorized'] = ($mid > 0 && Ork3::$Lib->authorization->HasAuthority($mid, AUTH_KINGDOM, $kingdomId, AUTH_EDIT));
 
         $this->data['kingdom_id'] = $kingdomId;
-        $this->data['template']   = $templateId ? (Ork3::$Lib->scrolltemplate->get($templateId)['Template'] ?? null) : null;
+        // NOTE: 'template' is a RESERVED View variable (the include path); using it as a
+        // data key is dropped by extract(EXTR_SKIP). Use 'edit_template' instead.
+        $this->data['edit_template'] = $templateId ? (Ork3::$Lib->scrolltemplate->get($templateId)['Template'] ?? null) : null;
         $this->data['templates']  = Ork3::$Lib->scrolltemplate->listForKingdom($kingdomId)['Templates'] ?? array();
 
         // Built-in art-pack catalog + base URL live under system/assets/scroll/packs/ (matches builder()).

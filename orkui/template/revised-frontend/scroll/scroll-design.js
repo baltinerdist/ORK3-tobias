@@ -2,7 +2,10 @@
 (function () {
 	var D = window.SC_DESIGN || {}, R = window.ScrollRender;
 	var page = document.getElementById('scPage'), stage = document.getElementById('scStage');
-	var tpl = D.template || { name: '', orientation: 'portrait', bg_type: 'color', bg_value: '#ffffff', slots: [], zones: [], kingdom_id: D.kingdomId };
+	var tpl = (D.template && typeof D.template === 'object') ? D.template : { name: '', orientation: 'portrait', bg_type: 'color', bg_value: '#ffffff', slots: [], zones: [], kingdom_id: D.kingdomId };
+	if (!Array.isArray(tpl.slots)) { tpl.slots = []; }   // a loaded template may omit these
+	if (!Array.isArray(tpl.zones)) { tpl.zones = []; }
+	if (tpl.kingdom_id == null) { tpl.kingdom_id = D.kingdomId; }
 	var sel = null;                                  // {kind:'slot'|'zone', index}
 
 	// ---- lightweight in-page toast (no native alert(); mirrors sgToast) ----

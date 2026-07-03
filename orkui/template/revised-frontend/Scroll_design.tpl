@@ -16,7 +16,7 @@
 			<div id="scPageProps"></div>     <!-- name / orientation / background -->
 			<div id="scSelProps"></div>       <!-- selected slot or zone props -->
 			<div class="sc-actions" style="margin-top:1rem;">
-				<input id="scTplName" placeholder="Template name" value="<?= htmlspecialchars($template['name'] ?? '') ?>">
+				<input id="scTplName" placeholder="Template name" value="<?= htmlspecialchars($edit_template['name'] ?? '') ?>">
 				<button type="button" id="scSave" class="sc-btn sc-btn-primary">Save</button>
 			</div>
 		</aside>
@@ -24,7 +24,7 @@
 	<script>
 	window.SC_DESIGN = {
 		kingdomId: <?= (int)$kingdom_id ?>,
-		template:  <?= json_encode($template ?: null) ?>,
+		template:  <?= json_encode($edit_template ?: null) ?>,
 		packCatalog: <?= json_encode($pack_catalog ?? []) ?>,
 		heraldry:  <?= json_encode($heraldry ?? []) ?>,
 		packBase:  <?= json_encode($pack_base ?? '') ?>,
