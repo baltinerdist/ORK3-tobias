@@ -3770,6 +3770,61 @@ L10,1170 L17,1060 L9,950 L16,840 L8,730 L17,620 L9,510 L16,400 L8,290 L17,180 L9
 .sc2-illum:has(.sc2-ornament[data-orn="loaded"]) .sc2-border__corners,
 .sc2-illum:has(.sc2-ornament[data-orn="loaded"]) .sc2-border__bar { opacity: 0; }
 
+/* ════════════════════════════════════════════════════════════════════════════
+   ILLUMINATED INITIAL PLATE (plan Task 6)
+   ──────────────────────────────────────────────────────────────────────────
+   Painted alphabet versal plate, injected by sf-app.js applyVersalPlate() as
+   <span class="sc2-versal-plate" aria-hidden="true"><img/></span> prepended
+   to the versal paragraph [data-sc2-versal]. The plate is decorative-leading:
+   the sentence keeps its FULL text (the first letter returns to plain body
+   ink — the medieval versal-plus-repeated-letter convention), so copy/paste
+   and screen readers are untouched. The tint variant mask-tints line-art
+   plates with the family --border ink (JS sets --plate-src).
+   ════════════════════════════════════════════════════════════════════════ */
+.sc2-versal-plate {
+	float: left;
+	width: 5.2em;
+	aspect-ratio: 1;
+	margin: 0 .55em .2em 0;
+	shape-outside: inset(0 round 6%);
+}
+.sc2-versal-plate img {
+	width: 100%;
+	height: 100%;
+	object-fit: contain;
+	display: block;
+}
+.sc2-versal-plate--tint img { display: none; }
+.sc2-versal-plate--tint {
+	background: var(--border);
+	-webkit-mask: var(--plate-src) center / contain no-repeat;
+	mask: var(--plate-src) center / contain no-repeat;
+}
+/* With a plate on, the ::first-letter drop-cap stands down — the letter reads
+   as plain body ink. The tripled attribute selector deliberately outguns the
+   per-family ::first-letter recolors and the gilt variants ((0,5,2) beats
+   their (0,4,2)) regardless of cascade file order. */
+.sc2-scroll .sc2-body > p[data-sc2-versal][data-versal-plate="on"][data-versal-plate]::first-letter {
+	font-family: inherit;
+	font-weight: inherit;
+	font-style: normal;
+	font-size: inherit;
+	line-height: inherit;
+	text-transform: none;
+	letter-spacing: inherit;
+	float: none;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	box-shadow: none;
+	background: none;
+	color: inherit;
+	-webkit-text-fill-color: currentColor;
+	-webkit-text-stroke: 0;
+	text-shadow: none;
+	filter: none;
+}
+
 /* ===== inlined: sf-typography.css.part ===== */
 /* ============================================================================
    THE LETTERED SCROLL — sf-typography.css.part
@@ -12804,6 +12859,10 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
 				setText($(".sc2-sig-title", firstSig), c.signTitle);
 			}
 		}
+
+		/* the versal paragraph's HTML was just rewritten (any plate span was
+		   wiped with it) — re-decorate from the CURRENT narration text.      */
+		applyVersalPlate(state.family);
 	}
 
 	/* ── 8. FAMILY APPLY ─────────────────────────────────────────────────── */
@@ -12814,6 +12873,7 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
 			attr(SCROLL, "data-family", key);
 			composeOrnament(key);
 			applyGround(key);
+			applyVersalPlate(key);
 			/* orientation may be family-driven (landscape diplomas etc.).
 			   Only adopt the family default when the caller did not ask us to
 			   preserve the current orientation (keepOrientation).            */
@@ -12989,6 +13049,69 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
 			img.removeAttribute("src");
 			img.hidden = true;
 		}
+	}
+
+	/* ── ILLUMINATED INITIAL PLATES (plan Task 6) ─────────────────────────────
+	   Reads SC_FAMILIES[key].ornament.initials; decorates the versal paragraph
+	   [data-sc2-versal] with a painted alphabet plate from
+	   /system/assets/scroll/forge/alphabets/<set>/<LETTER>.png.
+	   DECISION (locked in plan): the plate is decorative-leading (float:left);
+	   the sentence KEEPS its full text — the first letter stays selectable and
+	   is restyled back to plain body ink via the [data-versal-plate="on"]
+	   ::first-letter reset (the medieval versal-plus-repeated-letter practice).
+	   The letter comes from the NARRATION text itself (first char of the
+	   paragraph's textContent), never the persona name. set:"none", non-Latin
+	   first letters, and missing letter files all fall back to the CSS
+	   drop-cap (attr removed → drop-cap rules re-apply). */
+	var VERSAL_REQ = 0;   /* async guard: only the latest image load may attach */
+
+	function clearVersalPlate(p) {
+		if (!p) { return; }
+		var old = $(".sc2-versal-plate", p);
+		if (old && old.parentNode) { old.parentNode.removeChild(old); }
+		p.removeAttribute("data-versal-plate");
+	}
+
+	function applyVersalPlate(key) {
+		var p = $("[data-sc2-versal]", SCROLL);
+		if (!p) { return; }
+		var req = ++VERSAL_REQ;
+		clearVersalPlate(p);
+		var fam = familyMeta(key) || {};
+		var orn = fam.ornament || {};
+		var initials = orn.initials || { set: "none" };
+		if (!initials.set || initials.set === "none") { return; }
+
+		/* Versal letter = first character of the narration text (NOT persona);
+		   A–Z only — anything else keeps the CSS drop-cap fallback.          */
+		var letter = String(p.textContent || "").trim().charAt(0).toUpperCase();
+		if (!/^[A-Z]$/.test(letter)) { return; }
+
+		var url = "/system/assets/scroll/forge/alphabets/" +
+			encodeURIComponent(String(initials.set)) + "/" + letter + ".png";
+		var img = document.createElement("img");
+		img.decoding = "async";
+		img.alt = "";   /* decorative — the letter itself remains in the text */
+		on(img, "load", function () {
+			/* stale render (family/narration changed while loading) → drop */
+			if (req !== VERSAL_REQ) { return; }
+			clearVersalPlate(p);   /* belt + braces: never two plates        */
+			var wrap = document.createElement("span");
+			wrap.className = "sc2-versal-plate" +
+				(initials.tint === true ? " sc2-versal-plate--tint" : "");
+			wrap.setAttribute("aria-hidden", "true");
+			if (initials.tint === true) {
+				wrap.style.setProperty("--plate-src", "url(\"" + url + "\")");
+			}
+			wrap.appendChild(img);
+			p.insertBefore(wrap, p.firstChild);
+			attr(p, "data-versal-plate", "on");
+			scheduleFit();   /* float changes flow height — refit the sheet */
+		});
+		on(img, "error", function () {
+			dbg("versal plate missing", url);   /* drop-cap fallback stands */
+		});
+		img.src = url;
 	}
 
 	/* ── 9. HERALDRY (href wiring + graceful fallback) ───────────────────── */

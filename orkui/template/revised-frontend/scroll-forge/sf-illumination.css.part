@@ -884,3 +884,58 @@
 .sc2-illum:has(.sc2-ornament[data-orn="loaded"]) .sc2-border__band,
 .sc2-illum:has(.sc2-ornament[data-orn="loaded"]) .sc2-border__corners,
 .sc2-illum:has(.sc2-ornament[data-orn="loaded"]) .sc2-border__bar { opacity: 0; }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   ILLUMINATED INITIAL PLATE (plan Task 6)
+   ──────────────────────────────────────────────────────────────────────────
+   Painted alphabet versal plate, injected by sf-app.js applyVersalPlate() as
+   <span class="sc2-versal-plate" aria-hidden="true"><img/></span> prepended
+   to the versal paragraph [data-sc2-versal]. The plate is decorative-leading:
+   the sentence keeps its FULL text (the first letter returns to plain body
+   ink — the medieval versal-plus-repeated-letter convention), so copy/paste
+   and screen readers are untouched. The tint variant mask-tints line-art
+   plates with the family --border ink (JS sets --plate-src).
+   ════════════════════════════════════════════════════════════════════════ */
+.sc2-versal-plate {
+	float: left;
+	width: 5.2em;
+	aspect-ratio: 1;
+	margin: 0 .55em .2em 0;
+	shape-outside: inset(0 round 6%);
+}
+.sc2-versal-plate img {
+	width: 100%;
+	height: 100%;
+	object-fit: contain;
+	display: block;
+}
+.sc2-versal-plate--tint img { display: none; }
+.sc2-versal-plate--tint {
+	background: var(--border);
+	-webkit-mask: var(--plate-src) center / contain no-repeat;
+	mask: var(--plate-src) center / contain no-repeat;
+}
+/* With a plate on, the ::first-letter drop-cap stands down — the letter reads
+   as plain body ink. The tripled attribute selector deliberately outguns the
+   per-family ::first-letter recolors and the gilt variants ((0,5,2) beats
+   their (0,4,2)) regardless of cascade file order. */
+.sc2-scroll .sc2-body > p[data-sc2-versal][data-versal-plate="on"][data-versal-plate]::first-letter {
+	font-family: inherit;
+	font-weight: inherit;
+	font-style: normal;
+	font-size: inherit;
+	line-height: inherit;
+	text-transform: none;
+	letter-spacing: inherit;
+	float: none;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	box-shadow: none;
+	background: none;
+	color: inherit;
+	-webkit-text-fill-color: currentColor;
+	-webkit-text-stroke: 0;
+	text-shadow: none;
+	filter: none;
+}
