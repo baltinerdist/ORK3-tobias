@@ -841,3 +841,46 @@
 	}
 	.sc2-basdepage { display: none; }
 }
+/* ── COMPOSED ORNAMENT FRAME (manifest-driven; see plan Task 3) ─────────────
+   Children are injected by sf-app.js composeOrnament(). Corners are 18% of
+   sheet width; edge strips span between corners. SVG children inherit
+   color → family --border tint. Never intercepts pointer events. */
+.sc2-ornament {
+	position: absolute;
+	inset: 0;
+	z-index: var(--z-illum);
+	pointer-events: none;
+	color: var(--border);
+}
+.sc2-orn__corner,
+.sc2-orn__edge,
+.sc2-orn__medallion { position: absolute; }
+.sc2-orn__corner { width: 18%; aspect-ratio: 1; }
+.sc2-orn__corner--nw { top: 1.5%; left: 1.5%; }
+.sc2-orn__corner--ne { top: 1.5%; right: 1.5%; transform: scaleX(-1); }
+.sc2-orn__corner--sw { bottom: 1.5%; left: 1.5%; transform: scaleY(-1); }
+.sc2-orn__corner--se { bottom: 1.5%; right: 1.5%; transform: scale(-1,-1); }
+.sc2-orn__edge--top    { top: 1.5%;    left: 19.5%; right: 19.5%; height: 5%; }
+.sc2-orn__edge--bottom { bottom: 1.5%; left: 19.5%; right: 19.5%; height: 5%; transform: scaleY(-1); }
+.sc2-orn__edge--left   { left: 1.5%;   top: 19.5%;  bottom: 19.5%; width: 5%; }
+.sc2-orn__edge--right  { right: 1.5%;  top: 19.5%;  bottom: 19.5%; width: 5%; transform: scaleX(-1); }
+.sc2-orn__corner svg, .sc2-orn__edge svg,
+.sc2-orn__corner img, .sc2-orn__edge img {
+	width: 100%; height: 100%; display: block;
+}
+/* Vertical edge strips reuse the horizontal artwork rotated into place.
+   JS (composeOrnament sizeVerticalEdges) measures the strip and sets explicit
+   px width/height on the inner element after the rotate, inside a rAF with a
+   setTimeout fallback (hidden-tab pause). */
+.sc2-orn__edge--left  svg, .sc2-orn__edge--left  img,
+.sc2-orn__edge--right svg, .sc2-orn__edge--right img {
+	transform: rotate(90deg) translateY(-100%);
+	transform-origin: top left;
+	width: 0; height: 0; /* replaced by JS-measured px sizing (see composer) */
+}
+/* Once ornament is loaded (and intensity != plain), the rect band/corners
+   yield; only the fine outer hairline (__rule) stays. */
+.sc2-border__band, .sc2-border__corners, .sc2-border__bar { transition: opacity .3s ease; }
+.sc2-illum:has(.sc2-ornament[data-orn="loaded"]) .sc2-border__band,
+.sc2-illum:has(.sc2-ornament[data-orn="loaded"]) .sc2-border__corners,
+.sc2-illum:has(.sc2-ornament[data-orn="loaded"]) .sc2-border__bar { opacity: 0; }

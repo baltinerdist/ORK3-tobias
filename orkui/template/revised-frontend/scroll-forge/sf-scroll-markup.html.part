@@ -182,6 +182,11 @@
 					<g class="sc2-border__corner"><circle cx="46"  cy="1054" r="13" fill="var(--gold-hi, #d4af37)" stroke="var(--gold-deep, #9a7b1f)" stroke-width="1.5"/><circle cx="46"  cy="1054" r="5" fill="var(--border, #7c1d1d)"/></g>
 				</g>
 			</svg>
+			<!-- Composed ornament frame (manifest-driven; sf-app.js composeOrnament()
+			     fills this from SC_FAMILIES[key].ornament.frame). Empty at plain
+			     intensity and for frame.mode:"none" — the rect border above remains
+			     the visible frame in those cases and while assets load. -->
+			<div class="sc2-ornament" aria-hidden="true" data-sc2-ornament></div>
 		</div>
 
 		<!-- ===================================================================

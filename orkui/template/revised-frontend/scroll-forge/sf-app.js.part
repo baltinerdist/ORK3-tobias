@@ -395,6 +395,7 @@
 		state.family = key;
 		if (SCROLL) {
 			attr(SCROLL, "data-family", key);
+			composeOrnament(key);
 			/* orientation may be family-driven (landscape diplomas etc.).
 			   Only adopt the family default when the caller did not ask us to
 			   preserve the current orientation (keepOrientation).            */
@@ -447,6 +448,103 @@
 			var colors = [p.bg, p.gold, (p.accent || p.border), p.wax];
 			for (var i = 0; i < 4 && i < bands.length; i++) {
 				if (bands[i] && colors[i]) { bands[i].style.backgroundColor = colors[i]; }
+			}
+		});
+	}
+
+	/* ── COMPOSED ORNAMENT FRAME (plan Task 3) ────────────────────────────────────
+	   Reads SC_FAMILIES[key].ornament.frame; fills [data-sc2-ornament].
+	   plain intensity OR frame.mode "none" → container stays empty and the
+	   SVG rect border remains the visible frame. SVG mode fetches + inlines
+	   (currentColor tint); scan mode uses plain <img>. Sets data-orn="loaded"
+	   when every piece has resolved. */
+	var ORN_CACHE = {};   /* url -> svg text promise */
+
+	function ornContainer() { return $("[data-sc2-ornament]", SCROLL); }
+
+	function fetchSvg(url) {
+		if (!ORN_CACHE[url]) {
+			ORN_CACHE[url] = fetch(url).then(function (r) {
+				if (!r.ok) { throw new Error("orn " + r.status); }
+				return r.text();
+			});
+		}
+		return ORN_CACHE[url];
+	}
+
+	function sizeVerticalEdges(box) {
+		/* The left/right strips reuse the horizontal artwork rotated 90°
+		   (transform-origin top left + translateY(-100%)), which needs explicit
+		   px sizing: inner width = strip height, inner height = strip width.
+		   rAF-scheduled with a setTimeout fallback (hidden-tab pause).        */
+		var ran = false;
+		var run = function () {
+			if (ran) { return; }
+			ran = true;
+			$all(".sc2-orn__edge--left, .sc2-orn__edge--right", box).forEach(function (wrap) {
+				var inner = $("svg, img", wrap);
+				if (!inner) { return; }
+				var r = wrap.getBoundingClientRect ? wrap.getBoundingClientRect() : null;
+				if (!r || !r.width || !r.height) { return; }
+				inner.style.width  = r.height + "px";
+				inner.style.height = r.width + "px";
+			});
+		};
+		if (window.requestAnimationFrame) { window.requestAnimationFrame(run); }
+		setTimeout(run, 120);
+	}
+
+	function composeOrnament(key) {
+		var box = ornContainer();
+		if (!box) { return; }
+		box.innerHTML = "";
+		box.removeAttribute("data-orn");
+		var fam = familyMeta(key) || {};
+		var orn = fam.ornament || {};
+		var frame = orn.frame || { mode: "none" };
+		if (frame.mode === "none" || state.intensity === "plain") { return; }
+
+		var pieces = [
+			{ cls: "sc2-orn__corner sc2-orn__corner--nw", file: "corner_nw" },
+			{ cls: "sc2-orn__corner sc2-orn__corner--ne", file: "corner_nw" },
+			{ cls: "sc2-orn__corner sc2-orn__corner--sw", file: "corner_nw" },
+			{ cls: "sc2-orn__corner sc2-orn__corner--se", file: "corner_nw" },
+			{ cls: "sc2-orn__edge sc2-orn__edge--top",    file: "edge_top" },
+			{ cls: "sc2-orn__edge sc2-orn__edge--bottom", file: "edge_top" },
+			{ cls: "sc2-orn__edge sc2-orn__edge--left",   file: "edge_top" },
+			{ cls: "sc2-orn__edge sc2-orn__edge--right",  file: "edge_top" }
+		];
+		if (state.intensity === "ornate" && frame.medallion) {
+			pieces.push({ cls: "sc2-orn__medallion", file: "medallion" });
+		}
+
+		var pending = pieces.length;
+		var done = function () {
+			pending -= 1;
+			if (pending === 0) {
+				attr(box, "data-orn", "loaded");
+				sizeVerticalEdges(box);
+			}
+		};
+
+		pieces.forEach(function (p) {
+			var wrap = document.createElement("span");
+			wrap.className = p.cls;
+			box.appendChild(wrap);
+			var ext = frame.mode === "svg" ? ".svg" : ".png";
+			var url = String(frame.dir || "").replace(/\/$/, "") + "/" + p.file + ext;
+			if (frame.mode === "svg") {
+				fetchSvg(url).then(function (txt) {
+					wrap.innerHTML = txt; done();
+				}).catch(function (e) { dbg("ornament svg failed", url, e); done(); });
+			} else {
+				var img = document.createElement("img");
+				img.decoding = "async";
+				img.alt = "";
+				on(img, "load", done);
+				on(img, "error", function () { dbg("ornament png failed", url); done(); });
+				img.src = url;
+				wrap.appendChild(img);
 			}
 		});
 	}
@@ -815,6 +913,7 @@
 				/* markup + CSS key off plain/balanced/ornate verbatim */
 				state.intensity = (["plain", "balanced", "ornate"].indexOf(lvl) !== -1) ? lvl : "balanced";
 				attr(SCROLL, "data-intensity", state.intensity);
+				composeOrnament(state.family);
 				scheduleFit();
 			});
 		});
@@ -1159,13 +1258,13 @@
 		var status = $('#sc2ArtBrowseStatus');
 		if (!grid) return;
 		grid.innerHTML = '';
-		if (status) { status.textContent = 'Loading…'; status.className = 'sc2-art-status'; }
+		if (status) { status.textContent = 'Loading\u2026'; status.className = 'sc2-art-status'; }
 		var url = ART_AJAX + 'browse&layout_location=' + encodeURIComponent(zone) + '&tier=&category_id=&page=1';
 		fetch(url, { credentials: 'same-origin' })
 			.then(function (r) { return r.json(); })
 			.then(function (data) {
 				var rows = (data && data.Artwork) || [];
-				if (!rows.length) { if (status) { status.textContent = 'No shared graphics for this zone yet. Try “Upload Your Own.”'; status.className = 'sc2-art-status'; } return; }
+				if (!rows.length) { if (status) { status.textContent = 'No shared graphics for this zone yet. Try \u201cUpload Your Own.\u201d'; status.className = 'sc2-art-status'; } return; }
 				if (status) status.textContent = '';
 				rows.forEach(function (row) {
 					var card = document.createElement('div');

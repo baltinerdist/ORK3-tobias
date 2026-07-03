@@ -3664,6 +3664,49 @@ L10,1170 L17,1060 L9,950 L16,840 L8,730 L17,620 L9,510 L16,400 L8,290 L17,180 L9
 	}
 	.sc2-basdepage { display: none; }
 }
+/* ── COMPOSED ORNAMENT FRAME (manifest-driven; see plan Task 3) ─────────────
+   Children are injected by sf-app.js composeOrnament(). Corners are 18% of
+   sheet width; edge strips span between corners. SVG children inherit
+   color → family --border tint. Never intercepts pointer events. */
+.sc2-ornament {
+	position: absolute;
+	inset: 0;
+	z-index: var(--z-illum);
+	pointer-events: none;
+	color: var(--border);
+}
+.sc2-orn__corner,
+.sc2-orn__edge,
+.sc2-orn__medallion { position: absolute; }
+.sc2-orn__corner { width: 18%; aspect-ratio: 1; }
+.sc2-orn__corner--nw { top: 1.5%; left: 1.5%; }
+.sc2-orn__corner--ne { top: 1.5%; right: 1.5%; transform: scaleX(-1); }
+.sc2-orn__corner--sw { bottom: 1.5%; left: 1.5%; transform: scaleY(-1); }
+.sc2-orn__corner--se { bottom: 1.5%; right: 1.5%; transform: scale(-1,-1); }
+.sc2-orn__edge--top    { top: 1.5%;    left: 19.5%; right: 19.5%; height: 5%; }
+.sc2-orn__edge--bottom { bottom: 1.5%; left: 19.5%; right: 19.5%; height: 5%; transform: scaleY(-1); }
+.sc2-orn__edge--left   { left: 1.5%;   top: 19.5%;  bottom: 19.5%; width: 5%; }
+.sc2-orn__edge--right  { right: 1.5%;  top: 19.5%;  bottom: 19.5%; width: 5%; transform: scaleX(-1); }
+.sc2-orn__corner svg, .sc2-orn__edge svg,
+.sc2-orn__corner img, .sc2-orn__edge img {
+	width: 100%; height: 100%; display: block;
+}
+/* Vertical edge strips reuse the horizontal artwork rotated into place.
+   JS (composeOrnament sizeVerticalEdges) measures the strip and sets explicit
+   px width/height on the inner element after the rotate, inside a rAF with a
+   setTimeout fallback (hidden-tab pause). */
+.sc2-orn__edge--left  svg, .sc2-orn__edge--left  img,
+.sc2-orn__edge--right svg, .sc2-orn__edge--right img {
+	transform: rotate(90deg) translateY(-100%);
+	transform-origin: top left;
+	width: 0; height: 0; /* replaced by JS-measured px sizing (see composer) */
+}
+/* Once ornament is loaded (and intensity != plain), the rect band/corners
+   yield; only the fine outer hairline (__rule) stays. */
+.sc2-border__band, .sc2-border__corners, .sc2-border__bar { transition: opacity .3s ease; }
+.sc2-illum:has(.sc2-ornament[data-orn="loaded"]) .sc2-border__band,
+.sc2-illum:has(.sc2-ornament[data-orn="loaded"]) .sc2-border__corners,
+.sc2-illum:has(.sc2-ornament[data-orn="loaded"]) .sc2-border__bar { opacity: 0; }
 
 /* ===== inlined: sf-typography.css.part ===== */
 /* ============================================================================
@@ -12042,6 +12085,11 @@ C21,416 8,356 15,290 C22,222 9,162 16,96 C20,56 7,40 14,22 Z"/>\
 					<g class="sc2-border__corner"><circle cx="46"  cy="1054" r="13" fill="var(--gold-hi, #d4af37)" stroke="var(--gold-deep, #9a7b1f)" stroke-width="1.5"/><circle cx="46"  cy="1054" r="5" fill="var(--border, #7c1d1d)"/></g>
 				</g>
 			</svg>
+			<!-- Composed ornament frame (manifest-driven; sf-app.js composeOrnament()
+			     fills this from SC_FAMILIES[key].ornament.frame). Empty at plain
+			     intensity and for frame.mode:"none" — the rect border above remains
+			     the visible frame in those cases and while assets load. -->
+			<div class="sc2-ornament" aria-hidden="true" data-sc2-ornament></div>
 		</div>
 
 		<!-- ===================================================================
@@ -12695,6 +12743,7 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
 		state.family = key;
 		if (SCROLL) {
 			attr(SCROLL, "data-family", key);
+			composeOrnament(key);
 			/* orientation may be family-driven (landscape diplomas etc.).
 			   Only adopt the family default when the caller did not ask us to
 			   preserve the current orientation (keepOrientation).            */
@@ -12747,6 +12796,103 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
 			var colors = [p.bg, p.gold, (p.accent || p.border), p.wax];
 			for (var i = 0; i < 4 && i < bands.length; i++) {
 				if (bands[i] && colors[i]) { bands[i].style.backgroundColor = colors[i]; }
+			}
+		});
+	}
+
+	/* ── COMPOSED ORNAMENT FRAME (plan Task 3) ────────────────────────────────────
+	   Reads SC_FAMILIES[key].ornament.frame; fills [data-sc2-ornament].
+	   plain intensity OR frame.mode "none" → container stays empty and the
+	   SVG rect border remains the visible frame. SVG mode fetches + inlines
+	   (currentColor tint); scan mode uses plain <img>. Sets data-orn="loaded"
+	   when every piece has resolved. */
+	var ORN_CACHE = {};   /* url -> svg text promise */
+
+	function ornContainer() { return $("[data-sc2-ornament]", SCROLL); }
+
+	function fetchSvg(url) {
+		if (!ORN_CACHE[url]) {
+			ORN_CACHE[url] = fetch(url).then(function (r) {
+				if (!r.ok) { throw new Error("orn " + r.status); }
+				return r.text();
+			});
+		}
+		return ORN_CACHE[url];
+	}
+
+	function sizeVerticalEdges(box) {
+		/* The left/right strips reuse the horizontal artwork rotated 90°
+		   (transform-origin top left + translateY(-100%)), which needs explicit
+		   px sizing: inner width = strip height, inner height = strip width.
+		   rAF-scheduled with a setTimeout fallback (hidden-tab pause).        */
+		var ran = false;
+		var run = function () {
+			if (ran) { return; }
+			ran = true;
+			$all(".sc2-orn__edge--left, .sc2-orn__edge--right", box).forEach(function (wrap) {
+				var inner = $("svg, img", wrap);
+				if (!inner) { return; }
+				var r = wrap.getBoundingClientRect ? wrap.getBoundingClientRect() : null;
+				if (!r || !r.width || !r.height) { return; }
+				inner.style.width  = r.height + "px";
+				inner.style.height = r.width + "px";
+			});
+		};
+		if (window.requestAnimationFrame) { window.requestAnimationFrame(run); }
+		setTimeout(run, 120);
+	}
+
+	function composeOrnament(key) {
+		var box = ornContainer();
+		if (!box) { return; }
+		box.innerHTML = "";
+		box.removeAttribute("data-orn");
+		var fam = familyMeta(key) || {};
+		var orn = fam.ornament || {};
+		var frame = orn.frame || { mode: "none" };
+		if (frame.mode === "none" || state.intensity === "plain") { return; }
+
+		var pieces = [
+			{ cls: "sc2-orn__corner sc2-orn__corner--nw", file: "corner_nw" },
+			{ cls: "sc2-orn__corner sc2-orn__corner--ne", file: "corner_nw" },
+			{ cls: "sc2-orn__corner sc2-orn__corner--sw", file: "corner_nw" },
+			{ cls: "sc2-orn__corner sc2-orn__corner--se", file: "corner_nw" },
+			{ cls: "sc2-orn__edge sc2-orn__edge--top",    file: "edge_top" },
+			{ cls: "sc2-orn__edge sc2-orn__edge--bottom", file: "edge_top" },
+			{ cls: "sc2-orn__edge sc2-orn__edge--left",   file: "edge_top" },
+			{ cls: "sc2-orn__edge sc2-orn__edge--right",  file: "edge_top" }
+		];
+		if (state.intensity === "ornate" && frame.medallion) {
+			pieces.push({ cls: "sc2-orn__medallion", file: "medallion" });
+		}
+
+		var pending = pieces.length;
+		var done = function () {
+			pending -= 1;
+			if (pending === 0) {
+				attr(box, "data-orn", "loaded");
+				sizeVerticalEdges(box);
+			}
+		};
+
+		pieces.forEach(function (p) {
+			var wrap = document.createElement("span");
+			wrap.className = p.cls;
+			box.appendChild(wrap);
+			var ext = frame.mode === "svg" ? ".svg" : ".png";
+			var url = String(frame.dir || "").replace(/\/$/, "") + "/" + p.file + ext;
+			if (frame.mode === "svg") {
+				fetchSvg(url).then(function (txt) {
+					wrap.innerHTML = txt; done();
+				}).catch(function (e) { dbg("ornament svg failed", url, e); done(); });
+			} else {
+				var img = document.createElement("img");
+				img.decoding = "async";
+				img.alt = "";
+				on(img, "load", done);
+				on(img, "error", function () { dbg("ornament png failed", url); done(); });
+				img.src = url;
+				wrap.appendChild(img);
 			}
 		});
 	}
@@ -13115,6 +13261,7 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
 				/* markup + CSS key off plain/balanced/ornate verbatim */
 				state.intensity = (["plain", "balanced", "ornate"].indexOf(lvl) !== -1) ? lvl : "balanced";
 				attr(SCROLL, "data-intensity", state.intensity);
+				composeOrnament(state.family);
 				scheduleFit();
 			});
 		});
