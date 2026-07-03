@@ -548,3 +548,32 @@
 @media (prefers-reduced-motion: reduce) {
 	.sc2-scroll .sc2-content * { transition: none !important; animation: none !important; }
 }
+
+
+/* ── 15 · TITLE FLOURISH PLATES (plan Task 8) ───────────────────────────────
+   Two empty spans flank the title inside .sc2-titleblock; composeFlourish()
+   inlines the family's currentColor swash as a REAL inline <svg> (never a
+   CSS background-image — print reliability). Pre swings above the title,
+   post mirrors below via scale(-1,-1). Empty spans collapse entirely, so
+   flourish mode "none" (and plain intensity) keeps today's exact title
+   geometry. fitPage absorbs the added flow height when they render.        */
+.sc2-scroll .sc2-flourish {
+	display: block;
+	height: 1.1em;
+	color: var(--accent, #7a5c2e);
+	opacity: .9;
+	pointer-events: none;
+	user-select: none;
+	-webkit-user-select: none;
+}
+.sc2-scroll .sc2-flourish:empty { display: none; }   /* no phantom gaps */
+.sc2-scroll .sc2-flourish svg {
+	display: block;
+	height: 100%;
+	width: auto;
+	margin: 0 auto;
+}
+.sc2-scroll .sc2-flourish--post {
+	transform: scale(-1, -1);
+	margin-top: -0.2em;                 /* tuck the mirrored swash toward the title */
+}

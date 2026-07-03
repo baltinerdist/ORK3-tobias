@@ -406,6 +406,7 @@
 			applyGround(key);
 			applyVersalPlate(key);
 			composeMotif();
+			composeFlourish(key);
 			/* orientation may be family-driven (landscape diplomas etc.).
 			   Only adopt the family default when the caller did not ask us to
 			   preserve the current orientation (keepOrientation).            */
@@ -671,6 +672,35 @@
 		tinted.style.setProperty("--motif-src", "url(\"" + url + "\")");
 		slot.appendChild(tinted);
 		slot.hidden = false;
+	}
+
+	/* ── TITLE FLOURISH PLATES (plan Task 8) ─────────────────────────────────────────────
+	   Reads SC_FAMILIES[key].ornament.flourish; fills the two empty spans
+	   flanking the title ([data-sc2-flourish="pre"|"post"]). mode "svg" →
+	   fetch + inline the currentColor swash into BOTH spans (the post span is
+	   mirrored purely in CSS via scale(-1,-1)); mode "none" — or plain
+	   intensity, which must load ZERO ornament assets — empties both.
+	   Reuses fetchSvg/ORN_CACHE from the ornament composer (same cache).    */
+	var FLOURISH_REQ = 0;   /* async guard: only the latest fetch may attach */
+
+	function composeFlourish(key) {
+		var pre  = $('[data-sc2-flourish="pre"]', SCROLL);
+		var post = $('[data-sc2-flourish="post"]', SCROLL);
+		if (!pre && !post) { return; }
+		var req = ++FLOURISH_REQ;
+		if (pre)  { pre.innerHTML = ""; }
+		if (post) { post.innerHTML = ""; }
+		var fam = familyMeta(key) || {};
+		var orn = fam.ornament || {};
+		var flourish = orn.flourish || { mode: "none" };
+		if (flourish.mode !== "svg" || !flourish.file || state.intensity === "plain") { return; }
+		fetchSvg(String(flourish.file)).then(function (txt) {
+			/* stale render (family/intensity changed while loading) → drop */
+			if (req !== FLOURISH_REQ) { return; }
+			if (pre)  { pre.innerHTML = txt; }
+			if (post) { post.innerHTML = txt; }
+			scheduleFit();   /* flourishes add flow height — refit the sheet */
+		}).catch(function (e) { dbg("flourish svg failed", flourish.file, e); });
 	}
 
 	/* ── 9. HERALDRY (href wiring + graceful fallback) ───────────────────── */
@@ -1038,6 +1068,7 @@
 				state.intensity = (["plain", "balanced", "ornate"].indexOf(lvl) !== -1) ? lvl : "balanced";
 				attr(SCROLL, "data-intensity", state.intensity);
 				composeOrnament(state.family);
+				composeFlourish(state.family);
 				scheduleFit();
 			});
 		});

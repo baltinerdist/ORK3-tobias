@@ -4377,6 +4377,35 @@ L10,1170 L17,1060 L9,950 L16,840 L8,730 L17,620 L9,510 L16,400 L8,290 L17,180 L9
 	.sc2-scroll .sc2-content * { transition: none !important; animation: none !important; }
 }
 
+
+/* ── 15 · TITLE FLOURISH PLATES (plan Task 8) ───────────────────────────────
+   Two empty spans flank the title inside .sc2-titleblock; composeFlourish()
+   inlines the family's currentColor swash as a REAL inline <svg> (never a
+   CSS background-image — print reliability). Pre swings above the title,
+   post mirrors below via scale(-1,-1). Empty spans collapse entirely, so
+   flourish mode "none" (and plain intensity) keeps today's exact title
+   geometry. fitPage absorbs the added flow height when they render.        */
+.sc2-scroll .sc2-flourish {
+	display: block;
+	height: 1.1em;
+	color: var(--accent, #7a5c2e);
+	opacity: .9;
+	pointer-events: none;
+	user-select: none;
+	-webkit-user-select: none;
+}
+.sc2-scroll .sc2-flourish:empty { display: none; }   /* no phantom gaps */
+.sc2-scroll .sc2-flourish svg {
+	display: block;
+	height: 100%;
+	width: auto;
+	margin: 0 auto;
+}
+.sc2-scroll .sc2-flourish--post {
+	transform: scale(-1, -1);
+	margin-top: -0.2em;                 /* tuck the mirrored swash toward the title */
+}
+
 /* ===== inlined: sf-heraldry-seal.css.part ===== */
 /* ============================================================================
    THE LETTERED SCROLL — sf-heraldry-seal.css.part
@@ -12293,8 +12322,17 @@ C21,416 8,356 15,290 C22,222 9,162 16,96 C20,56 7,40 14,22 Z"/>\
 				In the name of all that is honorable and true,
 			</p>
 
-			<!-- GRAND ILLUMINATED TITLE — the award name -->
-			<h1 class="sc2-title" data-sc2-bind="awardName"><?= $h($sc2_award) ?></h1>
+			<!-- GRAND ILLUMINATED TITLE — the award name, flanked by flourish
+			     plates (plan Task 8). The spans ship EMPTY; composeFlourish()
+			     inlines the family's currentColor swash SVG into both when the
+			     manifest declares ornament.flourish mode "svg" (post span is
+			     mirrored purely in CSS). Empty spans collapse — mode "none"
+			     families keep today's exact title geometry. -->
+			<div class="sc2-titleblock" data-sc2-titleblock>
+				<span class="sc2-flourish sc2-flourish--pre" aria-hidden="true" data-sc2-flourish="pre"></span>
+				<h1 class="sc2-title" data-sc2-bind="awardName"><?= $h($sc2_award) ?></h1>
+				<span class="sc2-flourish sc2-flourish--post" aria-hidden="true" data-sc2-flourish="post"></span>
+			</div>
 
 			<!-- INTITULATION — small-caps "We, X, Sovereign of Y" -->
 			<p class="sc2-intitulation" data-sc2-bind="intitulation">
@@ -12912,6 +12950,7 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
 			applyGround(key);
 			applyVersalPlate(key);
 			composeMotif();
+			composeFlourish(key);
 			/* orientation may be family-driven (landscape diplomas etc.).
 			   Only adopt the family default when the caller did not ask us to
 			   preserve the current orientation (keepOrientation).            */
@@ -13177,6 +13216,35 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
 		tinted.style.setProperty("--motif-src", "url(\"" + url + "\")");
 		slot.appendChild(tinted);
 		slot.hidden = false;
+	}
+
+	/* ── TITLE FLOURISH PLATES (plan Task 8) ─────────────────────────────────────────────
+	   Reads SC_FAMILIES[key].ornament.flourish; fills the two empty spans
+	   flanking the title ([data-sc2-flourish="pre"|"post"]). mode "svg" →
+	   fetch + inline the currentColor swash into BOTH spans (the post span is
+	   mirrored purely in CSS via scale(-1,-1)); mode "none" — or plain
+	   intensity, which must load ZERO ornament assets — empties both.
+	   Reuses fetchSvg/ORN_CACHE from the ornament composer (same cache).    */
+	var FLOURISH_REQ = 0;   /* async guard: only the latest fetch may attach */
+
+	function composeFlourish(key) {
+		var pre  = $('[data-sc2-flourish="pre"]', SCROLL);
+		var post = $('[data-sc2-flourish="post"]', SCROLL);
+		if (!pre && !post) { return; }
+		var req = ++FLOURISH_REQ;
+		if (pre)  { pre.innerHTML = ""; }
+		if (post) { post.innerHTML = ""; }
+		var fam = familyMeta(key) || {};
+		var orn = fam.ornament || {};
+		var flourish = orn.flourish || { mode: "none" };
+		if (flourish.mode !== "svg" || !flourish.file || state.intensity === "plain") { return; }
+		fetchSvg(String(flourish.file)).then(function (txt) {
+			/* stale render (family/intensity changed while loading) → drop */
+			if (req !== FLOURISH_REQ) { return; }
+			if (pre)  { pre.innerHTML = txt; }
+			if (post) { post.innerHTML = txt; }
+			scheduleFit();   /* flourishes add flow height — refit the sheet */
+		}).catch(function (e) { dbg("flourish svg failed", flourish.file, e); });
 	}
 
 	/* ── 9. HERALDRY (href wiring + graceful fallback) ───────────────────── */
@@ -13544,6 +13612,7 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
 				state.intensity = (["plain", "balanced", "ornate"].indexOf(lvl) !== -1) ? lvl : "balanced";
 				attr(SCROLL, "data-intensity", state.intensity);
 				composeOrnament(state.family);
+				composeFlourish(state.family);
 				scheduleFit();
 			});
 		});

@@ -255,8 +255,17 @@
 				In the name of all that is honorable and true,
 			</p>
 
-			<!-- GRAND ILLUMINATED TITLE — the award name -->
-			<h1 class="sc2-title" data-sc2-bind="awardName"><?= $h($sc2_award) ?></h1>
+			<!-- GRAND ILLUMINATED TITLE — the award name, flanked by flourish
+			     plates (plan Task 8). The spans ship EMPTY; composeFlourish()
+			     inlines the family's currentColor swash SVG into both when the
+			     manifest declares ornament.flourish mode "svg" (post span is
+			     mirrored purely in CSS). Empty spans collapse — mode "none"
+			     families keep today's exact title geometry. -->
+			<div class="sc2-titleblock" data-sc2-titleblock>
+				<span class="sc2-flourish sc2-flourish--pre" aria-hidden="true" data-sc2-flourish="pre"></span>
+				<h1 class="sc2-title" data-sc2-bind="awardName"><?= $h($sc2_award) ?></h1>
+				<span class="sc2-flourish sc2-flourish--post" aria-hidden="true" data-sc2-flourish="post"></span>
+			</div>
 
 			<!-- INTITULATION — small-caps "We, X, Sovereign of Y" -->
 			<p class="sc2-intitulation" data-sc2-bind="intitulation">
