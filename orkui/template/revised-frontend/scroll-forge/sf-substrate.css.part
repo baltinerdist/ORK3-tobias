@@ -443,3 +443,65 @@ L10,1170 L17,1060 L9,950 L16,840 L8,730 L17,620 L9,510 L16,400 L8,290 L17,180 L9
      </defs>
    </svg>
    ════════════════════════════════════════════════════════════════════════════ */
+
+
+/* ════════════════════════════════════════════════════════════════════════════
+   8 · REAL GROUNDS  (plan Task 4: parchment tile / ivory / white)
+   --------------------------------------------------------------------------
+   .sc2-ground is a real <img> (never a CSS background — print reliability)
+   sitting at the vellum z-tier, UNDER the procedural vellum layers. It stays
+   hidden until a family's ornament.ground.tile declares a scan; sf-app.js
+   applyGround() sets src + unhides and stamps data-ground on .sc2-scroll.
+
+   Clean-sheet grounds (ivory / white): flat modern stock — flat body colour,
+   fibre mottle dropped to near-nothing, deckle edge + torn-edge mask OFF,
+   grime vignette OFF. Parchment ground (default) changes nothing here.
+   ════════════════════════════════════════════════════════════════════════════ */
+.sc2-ground {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	z-index: var(--z-vellum, 0);
+	pointer-events: none;
+	border-radius: inherit;
+}
+
+/* Flat body colour — background shorthand deliberately wipes the foxing /
+   radial-aging background-image stack on .sc2-vellum.                        */
+[data-ground="ivory"] .sc2-vellum { background: #FBF7EC; }
+[data-ground="white"] .sc2-vellum { background: #FDFDFB; }
+
+/* Fibre mottle (.sc2-vellum::after — feTurbulence data-URI, multiply) drops
+   to a whisper on clean stock.                                               */
+[data-ground="ivory"] .sc2-vellum::after,
+[data-ground="white"] .sc2-vellum::after { opacity: 0.04; }
+
+/* No rolled-curl / deckle edge dressing on a clean modern sheet.             */
+[data-ground="ivory"] .sc2-edge,
+[data-ground="white"] .sc2-edge { display: none; }
+
+/* Torn-deckle silhouette off: overrides the @supports screen mask, the
+   .sc2-export mask AND the @media print mask (attribute selector on the
+   element itself outranks all three .sc2-scroll rules). Keep the machine-cut
+   border-radius; also drop the parchment fallback fill + grime vignette.     */
+.sc2-scroll[data-ground="ivory"],
+.sc2-scroll[data-ground="white"] {
+	-webkit-mask: none;
+	mask: none;
+}
+.sc2-scroll[data-ground="ivory"] { background: #FBF7EC; }
+.sc2-scroll[data-ground="white"] { background: #FDFDFB; }
+.sc2-scroll[data-ground="ivory"]::after,
+.sc2-scroll[data-ground="white"]::after {
+	background: none;
+	box-shadow: none;
+}
+@media print {
+	.sc2-scroll[data-ground="ivory"],
+	.sc2-scroll[data-ground="white"] {
+		-webkit-mask: none;
+		mask: none;
+	}
+}

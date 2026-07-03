@@ -396,6 +396,7 @@
 		if (SCROLL) {
 			attr(SCROLL, "data-family", key);
 			composeOrnament(key);
+			applyGround(key);
 			/* orientation may be family-driven (landscape diplomas etc.).
 			   Only adopt the family default when the caller did not ask us to
 			   preserve the current orientation (keepOrientation).            */
@@ -547,6 +548,30 @@
 				wrap.appendChild(img);
 			}
 		});
+	}
+
+	/* ── REAL GROUNDS (plan Task 4) ───────────────────────────────────────────────
+	   Reads SC_FAMILIES[key].ornament.ground; stamps data-ground on .sc2-scroll
+	   (parchment | ivory | white — CSS keys the clean-sheet overrides off it).
+	   When ground.tile declares a scan, the [data-sc2-ground] <img> gets its
+	   src + unhides; otherwise it stays hidden and parchment families keep the
+	   procedural vellum. Null-safe: missing manifest ⇒ parchment. */
+	function applyGround(key) {
+		if (!SCROLL) { return; }
+		var fam = familyMeta(key) || {};
+		var orn = fam.ornament || {};
+		var ground = orn.ground || {};
+		var type = (ground.type === "ivory" || ground.type === "white") ? ground.type : "parchment";
+		attr(SCROLL, "data-ground", type);
+		var img = $("[data-sc2-ground]", SCROLL);
+		if (!img) { return; }
+		if (ground.tile) {
+			img.src = ground.tile;
+			img.hidden = false;
+		} else {
+			img.removeAttribute("src");
+			img.hidden = true;
+		}
 	}
 
 	/* ── 9. HERALDRY (href wiring + graceful fallback) ───────────────────── */

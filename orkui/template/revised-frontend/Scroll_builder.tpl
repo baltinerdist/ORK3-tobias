@@ -2820,6 +2820,68 @@ L10,1170 L17,1060 L9,950 L16,840 L8,730 L17,620 L9,510 L16,400 L8,290 L17,180 L9
    </svg>
    ════════════════════════════════════════════════════════════════════════════ */
 
+
+/* ════════════════════════════════════════════════════════════════════════════
+   8 · REAL GROUNDS  (plan Task 4: parchment tile / ivory / white)
+   --------------------------------------------------------------------------
+   .sc2-ground is a real <img> (never a CSS background — print reliability)
+   sitting at the vellum z-tier, UNDER the procedural vellum layers. It stays
+   hidden until a family's ornament.ground.tile declares a scan; sf-app.js
+   applyGround() sets src + unhides and stamps data-ground on .sc2-scroll.
+
+   Clean-sheet grounds (ivory / white): flat modern stock — flat body colour,
+   fibre mottle dropped to near-nothing, deckle edge + torn-edge mask OFF,
+   grime vignette OFF. Parchment ground (default) changes nothing here.
+   ════════════════════════════════════════════════════════════════════════════ */
+.sc2-ground {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	z-index: var(--z-vellum, 0);
+	pointer-events: none;
+	border-radius: inherit;
+}
+
+/* Flat body colour — background shorthand deliberately wipes the foxing /
+   radial-aging background-image stack on .sc2-vellum.                        */
+[data-ground="ivory"] .sc2-vellum { background: #FBF7EC; }
+[data-ground="white"] .sc2-vellum { background: #FDFDFB; }
+
+/* Fibre mottle (.sc2-vellum::after — feTurbulence data-URI, multiply) drops
+   to a whisper on clean stock.                                               */
+[data-ground="ivory"] .sc2-vellum::after,
+[data-ground="white"] .sc2-vellum::after { opacity: 0.04; }
+
+/* No rolled-curl / deckle edge dressing on a clean modern sheet.             */
+[data-ground="ivory"] .sc2-edge,
+[data-ground="white"] .sc2-edge { display: none; }
+
+/* Torn-deckle silhouette off: overrides the @supports screen mask, the
+   .sc2-export mask AND the @media print mask (attribute selector on the
+   element itself outranks all three .sc2-scroll rules). Keep the machine-cut
+   border-radius; also drop the parchment fallback fill + grime vignette.     */
+.sc2-scroll[data-ground="ivory"],
+.sc2-scroll[data-ground="white"] {
+	-webkit-mask: none;
+	mask: none;
+}
+.sc2-scroll[data-ground="ivory"] { background: #FBF7EC; }
+.sc2-scroll[data-ground="white"] { background: #FDFDFB; }
+.sc2-scroll[data-ground="ivory"]::after,
+.sc2-scroll[data-ground="white"]::after {
+	background: none;
+	box-shadow: none;
+}
+@media print {
+	.sc2-scroll[data-ground="ivory"],
+	.sc2-scroll[data-ground="white"] {
+		-webkit-mask: none;
+		mask: none;
+	}
+}
+
 /* ===== inlined: sf-illumination.css.part ===== */
 /* ============================================================================
    THE LETTERED SCROLL — sf-illumination.css.part
@@ -12041,6 +12103,14 @@ C21,416 8,356 15,290 C22,222 9,162 16,96 C20,56 7,40 14,22 Z"/>\
 		</svg>
 
 		<!-- ===================================================================
+		     GROUND (z-vellum:0) — real parchment scan tile (plan Task 4).
+		     Hidden until a family manifest declares ornament.ground.tile;
+		     sf-app.js applyGround() sets src + unhides. Never a CSS background
+		     (print reliability). Sits UNDER the procedural vellum layers.
+		     =================================================================== -->
+		<img class="sc2-ground" alt="" aria-hidden="true" data-sc2-ground decoding="async" hidden>
+
+		<!-- ===================================================================
 		     SUBSTRATE (z-vellum:0 + z-ruling:1) — owned by sf-substrate.css.part.
 		     =================================================================== -->
 		<div class="sc2-vellum" aria-hidden="true" data-sc2-vellum></div>
@@ -12744,6 +12814,7 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
 		if (SCROLL) {
 			attr(SCROLL, "data-family", key);
 			composeOrnament(key);
+			applyGround(key);
 			/* orientation may be family-driven (landscape diplomas etc.).
 			   Only adopt the family default when the caller did not ask us to
 			   preserve the current orientation (keepOrientation).            */
@@ -12895,6 +12966,30 @@ var SgConfig = <?= json_encode($sgConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX
 				wrap.appendChild(img);
 			}
 		});
+	}
+
+	/* ── REAL GROUNDS (plan Task 4) ───────────────────────────────────────────────
+	   Reads SC_FAMILIES[key].ornament.ground; stamps data-ground on .sc2-scroll
+	   (parchment | ivory | white — CSS keys the clean-sheet overrides off it).
+	   When ground.tile declares a scan, the [data-sc2-ground] <img> gets its
+	   src + unhides; otherwise it stays hidden and parchment families keep the
+	   procedural vellum. Null-safe: missing manifest ⇒ parchment. */
+	function applyGround(key) {
+		if (!SCROLL) { return; }
+		var fam = familyMeta(key) || {};
+		var orn = fam.ornament || {};
+		var ground = orn.ground || {};
+		var type = (ground.type === "ivory" || ground.type === "white") ? ground.type : "parchment";
+		attr(SCROLL, "data-ground", type);
+		var img = $("[data-sc2-ground]", SCROLL);
+		if (!img) { return; }
+		if (ground.tile) {
+			img.src = ground.tile;
+			img.hidden = false;
+		} else {
+			img.removeAttribute("src");
+			img.hidden = true;
+		}
 	}
 
 	/* ── 9. HERALDRY (href wiring + graceful fallback) ───────────────────── */

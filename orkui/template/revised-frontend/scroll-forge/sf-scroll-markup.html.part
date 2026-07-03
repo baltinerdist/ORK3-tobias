@@ -138,6 +138,14 @@
 		</svg>
 
 		<!-- ===================================================================
+		     GROUND (z-vellum:0) — real parchment scan tile (plan Task 4).
+		     Hidden until a family manifest declares ornament.ground.tile;
+		     sf-app.js applyGround() sets src + unhides. Never a CSS background
+		     (print reliability). Sits UNDER the procedural vellum layers.
+		     =================================================================== -->
+		<img class="sc2-ground" alt="" aria-hidden="true" data-sc2-ground decoding="async" hidden>
+
+		<!-- ===================================================================
 		     SUBSTRATE (z-vellum:0 + z-ruling:1) — owned by sf-substrate.css.part.
 		     =================================================================== -->
 		<div class="sc2-vellum" aria-hidden="true" data-sc2-vellum></div>
