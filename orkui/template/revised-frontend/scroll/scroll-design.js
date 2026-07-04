@@ -9,7 +9,8 @@
 	if (!Array.isArray(tpl.zones)) { tpl.zones = []; }
 	if (tpl.kingdom_id == null) { tpl.kingdom_id = D.kingdomId; }
 	var sel = null;                                  // { kind:'slot'|'zone', index:Number }
-	var groupState = {};                             // remembers the active type per collection
+	var groupState = {};                             // explicit type-chip choice, per collection
+	var lastSelKey = null;                           // identity of the slot the picker last defaulted for
 
 	var TOKENS = ['PlayerName', 'AwardName', 'Kingdom', 'Park', 'Date', 'GivenBy', 'Reason'];
 	var FONTS = ['EB Garamond', 'Cinzel', 'Cinzel Decorative', 'Cormorant Garamond', 'Almendra', 'MedievalSharp',
@@ -152,9 +153,11 @@
 		if (!sel) {
 			head.textContent = 'Nothing selected';
 			box.appendChild(el('p', 'sc-empty', 'Pick an element above (or click one on the page) to edit it. Drag it on the page to move it.'));
+			lastSelKey = null;
 			return;
 		}
 		if (sel.kind === 'zone') {
+			lastSelKey = 'zone' + sel.index;
 			head.textContent = 'Text zone';
 			var z = tpl.zones[sel.index];
 			var ta = el('textarea', 'sc-input'); ta.rows = 3; ta.value = z.text || '';
@@ -176,6 +179,11 @@
 		} else {
 			head.textContent = 'Graphic slot';
 			var s = tpl.slots[sel.index];
+			var coll = collectionForPlacement(s.location);
+			// only re-default the active type when this is a NEW slot/placement, so a
+			// later type-chip click (same slot) is not overridden by the selected art's group.
+			var selKey = 'slot' + sel.index + ':' + s.location;
+			if (selKey !== lastSelKey) { delete groupState[coll]; lastSelKey = selKey; }
 			box.appendChild(field('Placement', select(LOCATIONS.map(function (l) { return { value: l, label: l.replace(/_/g, ' ') }; }), s.location, function (v) {
 				s.location = v; var r = rectFor(v); s.x = r.x; s.y = r.y; s.w = r.w; s.h = r.h; render(); buildElements(); buildSelected();
 			})));
@@ -187,7 +195,7 @@
 			if (s.source_type === 'heraldry') {
 				box.appendChild(field('Heraldry', select(['kingdom', 'park', 'player'], s.source_ref, function (v) { s.source_ref = v; render(); })));
 			} else if (s.source_type === 'pack') {
-				box.appendChild(field('Art', groupedPicker(collectionForPlacement(s.location), s.source_ref,
+				box.appendChild(field('Art', groupedPicker(coll, s.source_ref,
 					function (a) { s.source_type = 'pack'; s.source_ref = a.file; render(); buildSelected(); }, buildSelected)));
 			}
 		}
@@ -200,8 +208,8 @@
 		if (!items.length) { wrap.appendChild(el('p', 'sc-empty', 'No art in this collection yet.')); return wrap; }
 		var groups = orderedGroups(items);
 		var cur = currentFile ? items.filter(function (a) { return a.file === currentFile || baseName(a.file) === baseName(currentFile); })[0] : null;
-		var active = cur ? cur.group : groupState[collection];
-		if (!active || groups.indexOf(active) < 0) { active = groups[0]; }
+		var active = groupState[collection];            // an explicit type-chip choice always wins
+		if (!active || groups.indexOf(active) < 0) { active = cur ? cur.group : groups[0]; }
 		groupState[collection] = active;
 		// type chips
 		var row = el('div', 'sc-type-row');
