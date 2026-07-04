@@ -72,6 +72,28 @@ implementation plan's asset-ingestion phase.
 - **backgrounds/** 7 PNG
 - **orders/** 25 files across Crown, Dragon, Flame, Masterhoods, Rose, Sashes, Warrior
 
+## Completeness pass 2026-07-03 (rasterized the source-only designs)
+
+Re-audited every folder against the full manifest. Confirmed there are **no
+JPG-only designs** and no missed PNG/SVG. Five designs existed ONLY as `.ai`/`.psd`
+(no web export); rasterized them locally (ImageMagick for PSD composite, pdftoppm for
+the PDF-based `.ai`, then white→alpha + trim), giving 5 more usable PNGs (67 total):
+
+- `borders/black_gold_border_celtic.png` (the black Celtic variant, PSD)
+- `borders/knotwork_goldred_1.png` (gold/red knotwork frame, AI)
+- `borders/silver_swirl_side.png` (silver side strip, PSD)
+- `orders/masterhoods/master_crown.png` (crown/phoenix masterhood, PSD)
+- `orders/sashes/amtgard_sash.png` (sash line-art, AI)
+
+**Genuinely unobtainable (left out):**
+- **Heraldry folder** (legacy `0B8…` id) — NOT public ("You need access"); we auto-pull
+  real ORK heraldry, so not needed.
+- **`owl.jpg`, `rose.jpg`** — legacy sign-in-gated ids; duplicative (Master Owl + Rose
+  Circle already captured).
+- 12 empty Orders sub-folders (Garber/Griffon/Hydra/Jovious/Lion/Mask/Paragons/Smith/
+  Titles/Walker/Zodiac) — genuinely empty publicly; Masterhoods covers Lion/Owl/Smith/
+  Garber/Rose/Dragon.
+
 ## Open items for implementation
 
 - Empty Orders sub-folders (Garber, Griffon, Hydra, Jovious, Lion, Mask, Paragons, Smith,
