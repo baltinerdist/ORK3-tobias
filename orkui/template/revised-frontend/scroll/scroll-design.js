@@ -9,6 +9,7 @@
 	if (!Array.isArray(tpl.zones)) { tpl.zones = []; }
 	if (tpl.kingdom_id == null) { tpl.kingdom_id = D.kingdomId; }
 	var sel = null;                                  // { kind:'slot'|'zone', index:Number }
+	var groupState = {};                             // remembers the active type per collection
 
 	var TOKENS = ['PlayerName', 'AwardName', 'Kingdom', 'Park', 'Date', 'GivenBy', 'Reason'];
 	var FONTS = ['EB Garamond', 'Cinzel', 'Cinzel Decorative', 'Cormorant Garamond', 'Almendra', 'MedievalSharp',
@@ -17,11 +18,17 @@
 		'Pirata One', 'Jim Nightshade'];
 	var LOCATIONS = ['full_border', 'center_image', 'top_graphic', 'watermark', 'border_left', 'border_right', 'border_top', 'border_bottom'];
 
-	// which catalog slot kinds suit a given slot placement
-	function allowedPackSlots(loc) {
-		if (loc === 'full_border' || /^border_/.test(loc)) { return ['full_border', 'border_side']; }
-		if (loc === 'watermark') { return ['bg_image']; }
-		return ['center_image', 'shield'];           // center_image, top_graphic
+	// which catalog collection suits a given slot placement
+	function collectionForPlacement(loc) {
+		if (loc === 'full_border' || /^border_/.test(loc)) { return 'borders'; }
+		if (loc === 'watermark') { return 'backgrounds'; }
+		return 'emblems';
+	}
+	// distinct groups in catalog order (catalog is pre-sorted by group order)
+	function orderedGroups(items) {
+		var seen = [], set = {};
+		items.forEach(function (a) { var g = a.group || 'Other'; if (!set[g]) { set[g] = 1; seen.push(g); } });
+		return seen;
 	}
 	// a sensible default rect (percent) for a placement
 	function rectFor(loc) {
@@ -105,10 +112,8 @@
 		if (tpl.bg_type === 'color') {
 			box.appendChild(field('Color', input(tpl.bg_value || '#ffffff', 'color', function (v) { tpl.bg_value = v; render(); })));
 		} else if (tpl.bg_type === 'texture') {
-			var textures = (D.packCatalog || []).filter(function (a) { return a.slot === 'bg_image'; })
-				.map(function (a) { return { value: baseName(a.file), label: a.name }; });
-			if (!textures.length) { textures = [{ value: tpl.bg_value || '', label: '(no textures)' }]; }
-			box.appendChild(field('Texture', select(textures, baseName(tpl.bg_value), function (v) { tpl.bg_value = v; render(); })));
+			box.appendChild(field('Texture', groupedPicker('backgrounds', tpl.bg_value,
+				function (a) { tpl.bg_value = baseName(a.file); render(); buildPage(); }, buildPage)));
 		} else {
 			box.appendChild(field('Image', input(tpl.bg_value, 'text', function (v) { tpl.bg_value = v; render(); })));
 		}
@@ -182,23 +187,42 @@
 			if (s.source_type === 'heraldry') {
 				box.appendChild(field('Heraldry', select(['kingdom', 'park', 'player'], s.source_ref, function (v) { s.source_ref = v; render(); })));
 			} else if (s.source_type === 'pack') {
-				box.appendChild(field('Art', packGrid(s)));
+				box.appendChild(field('Art', groupedPicker(collectionForPlacement(s.location), s.source_ref,
+					function (a) { s.source_type = 'pack'; s.source_ref = a.file; render(); buildSelected(); }, buildSelected)));
 			}
 		}
 	}
-	function packGrid(slot) {
-		var allowed = allowedPackSlots(slot.location);
-		var items = (D.packCatalog || []).filter(function (a) { return allowed.indexOf(a.slot) >= 0; });
-		var g = el('div', 'sc-pack-grid');
-		if (!items.length) { g.appendChild(el('p', 'sc-empty', 'No art for this placement yet.')); return g; }
-		items.forEach(function (a) {
-			var t = el('button', 'sc-pack' + (slot.source_ref === a.file ? ' is-sel' : '')); t.type = 'button'; t.setAttribute('data-tip', a.name);
-			var img = el('img'); img.src = D.packBase + a.file; img.alt = a.name; img.loading = 'lazy';
-			t.appendChild(img);
-			t.onclick = function () { slot.source_type = 'pack'; slot.source_ref = a.file; render(); buildSelected(); };
-			g.appendChild(t);
+	// grouped picker: a Type chip row (border styles / award types / bg tones) + a
+	// thumbnail grid of the active type. Reused for graphic slots and bg textures.
+	function groupedPicker(collection, currentFile, onPick, rebuild) {
+		var items = (D.packCatalog || []).filter(function (a) { return a.collection === collection; });
+		var wrap = el('div', 'sc-picker');
+		if (!items.length) { wrap.appendChild(el('p', 'sc-empty', 'No art in this collection yet.')); return wrap; }
+		var groups = orderedGroups(items);
+		var cur = currentFile ? items.filter(function (a) { return a.file === currentFile || baseName(a.file) === baseName(currentFile); })[0] : null;
+		var active = cur ? cur.group : groupState[collection];
+		if (!active || groups.indexOf(active) < 0) { active = groups[0]; }
+		groupState[collection] = active;
+		// type chips
+		var row = el('div', 'sc-type-row');
+		groups.forEach(function (g) {
+			var n = items.filter(function (a) { return a.group === g; }).length;
+			var c = el('button', 'sc-type' + (g === active ? ' is-sel' : '')); c.type = 'button';
+			c.appendChild(el('span', null, g)); c.appendChild(el('span', 'sc-type__n', String(n)));
+			c.onclick = function () { groupState[collection] = g; rebuild(); };
+			row.appendChild(c);
 		});
-		return g;
+		wrap.appendChild(row);
+		// grid of the active type
+		var grid = el('div', 'sc-pack-grid');
+		items.filter(function (a) { return a.group === active; }).forEach(function (a) {
+			var t = el('button', 'sc-pack' + ((currentFile && a.file === currentFile) ? ' is-sel' : '')); t.type = 'button'; t.setAttribute('data-tip', a.name);
+			var img = el('img'); img.src = D.packBase + a.file; img.alt = a.name; img.loading = 'lazy'; t.appendChild(img);
+			t.onclick = function () { onPick(a); };
+			grid.appendChild(t);
+		});
+		wrap.appendChild(grid);
+		return wrap;
 	}
 
 	function refreshInspector() { buildElements(); buildSelected(); markSelected(); }

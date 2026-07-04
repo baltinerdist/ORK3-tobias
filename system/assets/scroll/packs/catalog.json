@@ -1,172 +1,5 @@
 [
  {
-  "file": "backgrounds/brown_tea_stained.png",
-  "name": "Brown Tea Stained",
-  "category": "backgrounds",
-  "slot": "bg_image",
-  "award_type": null,
-  "format": "png",
-  "width": 689,
-  "height": 921,
-  "tags": [
-   "background",
-   "brown",
-   "stained",
-   "tea"
-  ],
-  "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
- },
- {
-  "file": "backgrounds/dark_corona.png",
-  "name": "Dark Corona",
-  "category": "backgrounds",
-  "slot": "bg_image",
-  "award_type": null,
-  "format": "png",
-  "width": 612,
-  "height": 792,
-  "tags": [
-   "background",
-   "corona",
-   "dark"
-  ],
-  "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
- },
- {
-  "file": "backgrounds/gray_smoke.png",
-  "name": "Gray Smoke",
-  "category": "backgrounds",
-  "slot": "bg_image",
-  "award_type": null,
-  "format": "png",
-  "width": 612,
-  "height": 792,
-  "tags": [
-   "background",
-   "gray",
-   "smoke"
-  ],
-  "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
- },
- {
-  "file": "backgrounds/green_forest.png",
-  "name": "Green Forest",
-  "category": "backgrounds",
-  "slot": "bg_image",
-  "award_type": null,
-  "format": "png",
-  "width": 612,
-  "height": 792,
-  "tags": [
-   "background",
-   "forest",
-   "green"
-  ],
-  "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
- },
- {
-  "file": "backgrounds/purple_lightening.png",
-  "name": "Purple Lightening",
-  "category": "backgrounds",
-  "slot": "bg_image",
-  "award_type": null,
-  "format": "png",
-  "width": 612,
-  "height": 792,
-  "tags": [
-   "background",
-   "lightening",
-   "purple"
-  ],
-  "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
- },
- {
-  "file": "backgrounds/warlord.png",
-  "name": "Warlord",
-  "category": "backgrounds",
-  "slot": "bg_image",
-  "award_type": null,
-  "format": "png",
-  "width": 3600,
-  "height": 5400,
-  "tags": [
-   "background",
-   "warlord"
-  ],
-  "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
- },
- {
-  "file": "backgrounds/white_marble.png",
-  "name": "White Marble",
-  "category": "backgrounds",
-  "slot": "bg_image",
-  "award_type": null,
-  "format": "png",
-  "width": 612,
-  "height": 792,
-  "tags": [
-   "background",
-   "marble",
-   "white"
-  ],
-  "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
- },
- {
-  "file": "borders/2ribbon.png",
-  "name": "2ribbon",
-  "category": "borders",
-  "slot": "full_border",
-  "award_type": null,
-  "format": "png",
-  "width": 509,
-  "height": 650,
-  "tags": [
-   "2ribbon",
-   "border"
-  ],
-  "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
- },
- {
-  "file": "borders/blackwhite.png",
-  "name": "Blackwhite",
-  "category": "borders",
-  "slot": "full_border",
-  "award_type": null,
-  "format": "png",
-  "width": 540,
-  "height": 739,
-  "tags": [
-   "blackwhite",
-   "border"
-  ],
-  "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
- },
- {
-  "file": "borders/blackwhite.svg",
-  "name": "Blackwhite",
-  "category": "borders",
-  "slot": "full_border",
-  "award_type": null,
-  "format": "svg",
-  "width": null,
-  "height": null,
-  "tags": [
-   "blackwhite",
-   "border"
-  ],
-  "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
- },
- {
   "file": "borders/blue_gold_border_celtic.png",
   "name": "Blue Gold Border Celtic",
   "category": "borders",
@@ -182,7 +15,9 @@
    "gold"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Celtic (Gold)"
  },
  {
   "file": "borders/bluegold.png",
@@ -198,7 +33,9 @@
    "border"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Celtic (Gold)"
  },
  {
   "file": "borders/bluegold.svg",
@@ -214,42 +51,9 @@
    "border"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
- },
- {
-  "file": "borders/gold_2ribbon.png",
-  "name": "Gold 2ribbon",
-  "category": "borders",
-  "slot": "full_border",
-  "award_type": null,
-  "format": "png",
-  "width": 648,
-  "height": 792,
-  "tags": [
-   "2ribbon",
-   "border",
-   "gold"
-  ],
-  "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
- },
- {
-  "file": "borders/gold_swirl_side.png",
-  "name": "Gold Swirl Side",
-  "category": "borders",
-  "slot": "border_side",
-  "award_type": null,
-  "format": "png",
-  "width": 144,
-  "height": 864,
-  "tags": [
-   "border",
-   "gold",
-   "side",
-   "swirl"
-  ],
-  "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Celtic (Gold)"
  },
  {
   "file": "borders/green_gold_border_celtic.png",
@@ -267,58 +71,9 @@
    "green"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
- },
- {
-  "file": "borders/knotwork_bw_1.png",
-  "name": "Knotwork_bw_1",
-  "category": "borders",
-  "slot": "full_border",
-  "award_type": null,
-  "format": "png",
-  "width": 599,
-  "height": 771,
-  "tags": [
-   "border",
-   "bw",
-   "knotwork"
-  ],
-  "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
- },
- {
-  "file": "borders/leaf_side.png",
-  "name": "Leaf Side",
-  "category": "borders",
-  "slot": "border_side",
-  "award_type": null,
-  "format": "png",
-  "width": 104,
-  "height": 657,
-  "tags": [
-   "border",
-   "leaf",
-   "side"
-  ],
-  "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
- },
- {
-  "file": "borders/leaf_side.svg",
-  "name": "Leaf Side",
-  "category": "borders",
-  "slot": "border_side",
-  "award_type": null,
-  "format": "svg",
-  "width": null,
-  "height": null,
-  "tags": [
-   "border",
-   "leaf",
-   "side"
-  ],
-  "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Celtic (Gold)"
  },
  {
   "file": "borders/lightgreen_gold_border_celtic.png",
@@ -336,7 +91,9 @@
    "lightgreen"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Celtic (Gold)"
  },
  {
   "file": "borders/orange_gold_border_celtic.png",
@@ -354,7 +111,9 @@
    "orange"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Celtic (Gold)"
  },
  {
   "file": "borders/purple_gold_border_celtic.png",
@@ -372,7 +131,9 @@
    "purple"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Celtic (Gold)"
  },
  {
   "file": "borders/reg_gold_border_celtic.png",
@@ -390,122 +151,9 @@
    "reg"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
- },
- {
-  "file": "borders/rose_border.png",
-  "name": "Rose Border",
-  "category": "borders",
-  "slot": "full_border",
-  "award_type": null,
-  "format": "png",
-  "width": 548,
-  "height": 700,
-  "tags": [
-   "border",
-   "rose"
-  ],
-  "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
- },
- {
-  "file": "borders/rose_border.svg",
-  "name": "Rose Border",
-  "category": "borders",
-  "slot": "full_border",
-  "award_type": null,
-  "format": "svg",
-  "width": null,
-  "height": null,
-  "tags": [
-   "border",
-   "rose"
-  ],
-  "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
- },
- {
-  "file": "borders/rose_circle_border.png",
-  "name": "Rose Circle Border",
-  "category": "borders",
-  "slot": "full_border",
-  "award_type": null,
-  "format": "png",
-  "width": 594,
-  "height": 724,
-  "tags": [
-   "border",
-   "circle",
-   "rose"
-  ],
-  "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
- },
- {
-  "file": "borders/rose_circle_border.svg",
-  "name": "Rose Circle Border",
-  "category": "borders",
-  "slot": "full_border",
-  "award_type": null,
-  "format": "svg",
-  "width": null,
-  "height": null,
-  "tags": [
-   "border",
-   "circle",
-   "rose"
-  ],
-  "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
- },
- {
-  "file": "borders/scroll_border.png",
-  "name": "Scroll Border",
-  "category": "borders",
-  "slot": "full_border",
-  "award_type": null,
-  "format": "png",
-  "width": 510,
-  "height": 96,
-  "tags": [
-   "border",
-   "scroll"
-  ],
-  "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
- },
- {
-  "file": "borders/scroll_border.svg",
-  "name": "Scroll Border",
-  "category": "borders",
-  "slot": "full_border",
-  "award_type": null,
-  "format": "svg",
-  "width": null,
-  "height": null,
-  "tags": [
-   "border",
-   "scroll"
-  ],
-  "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
- },
- {
-  "file": "borders/silver_2ribbon.png",
-  "name": "Silver 2ribbon",
-  "category": "borders",
-  "slot": "full_border",
-  "award_type": null,
-  "format": "png",
-  "width": 648,
-  "height": 792,
-  "tags": [
-   "2ribbon",
-   "border",
-   "silver"
-  ],
-  "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Celtic (Gold)"
  },
  {
   "file": "borders/silver_gold_border_celtic.png",
@@ -523,72 +171,9 @@
    "silver"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
- },
- {
-  "file": "borders/swirl_side.png",
-  "name": "Swirl Side",
-  "category": "borders",
-  "slot": "border_side",
-  "award_type": null,
-  "format": "png",
-  "width": 144,
-  "height": 864,
-  "tags": [
-   "border",
-   "side",
-   "swirl"
-  ],
-  "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
- },
- {
-  "file": "borders/warlord.png",
-  "name": "Warlord",
-  "category": "borders",
-  "slot": "full_border",
-  "award_type": null,
-  "format": "png",
-  "width": 2023,
-  "height": 2931,
-  "tags": [
-   "border",
-   "warlord"
-  ],
-  "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
- },
- {
-  "file": "borders/warlordbw.png",
-  "name": "Warlordbw",
-  "category": "borders",
-  "slot": "full_border",
-  "award_type": null,
-  "format": "png",
-  "width": 758,
-  "height": 1166,
-  "tags": [
-   "border",
-   "warlordbw"
-  ],
-  "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
- },
- {
-  "file": "borders/warlordbw.svg",
-  "name": "Warlordbw",
-  "category": "borders",
-  "slot": "full_border",
-  "award_type": null,
-  "format": "svg",
-  "width": null,
-  "height": null,
-  "tags": [
-   "border",
-   "warlordbw"
-  ],
-  "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Celtic (Gold)"
  },
  {
   "file": "borders/white_gold_border_celtic.png",
@@ -606,7 +191,9 @@
    "white"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Celtic (Gold)"
  },
  {
   "file": "borders/yellow_gold_border_celtic.png",
@@ -624,7 +211,361 @@
    "yellow"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Celtic (Gold)"
+ },
+ {
+  "file": "borders/2ribbon.png",
+  "name": "2ribbon",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 509,
+  "height": 650,
+  "tags": [
+   "2ribbon",
+   "border"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Ribbon"
+ },
+ {
+  "file": "borders/gold_2ribbon.png",
+  "name": "Gold 2ribbon",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 648,
+  "height": 792,
+  "tags": [
+   "2ribbon",
+   "border",
+   "gold"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Ribbon"
+ },
+ {
+  "file": "borders/silver_2ribbon.png",
+  "name": "Silver 2ribbon",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 648,
+  "height": 792,
+  "tags": [
+   "2ribbon",
+   "border",
+   "silver"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Ribbon"
+ },
+ {
+  "file": "borders/rose_border.png",
+  "name": "Rose Border",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 548,
+  "height": 700,
+  "tags": [
+   "border",
+   "rose"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Rose & Vine"
+ },
+ {
+  "file": "borders/rose_border.svg",
+  "name": "Rose Border",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "svg",
+  "width": null,
+  "height": null,
+  "tags": [
+   "border",
+   "rose"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Rose & Vine"
+ },
+ {
+  "file": "borders/rose_circle_border.png",
+  "name": "Rose Circle Border",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 594,
+  "height": 724,
+  "tags": [
+   "border",
+   "circle",
+   "rose"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Rose & Vine"
+ },
+ {
+  "file": "borders/rose_circle_border.svg",
+  "name": "Rose Circle Border",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "svg",
+  "width": null,
+  "height": null,
+  "tags": [
+   "border",
+   "circle",
+   "rose"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Rose & Vine"
+ },
+ {
+  "file": "borders/knotwork_bw_1.png",
+  "name": "Knotwork_bw_1",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 599,
+  "height": 771,
+  "tags": [
+   "border",
+   "bw",
+   "knotwork"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Knotwork"
+ },
+ {
+  "file": "borders/scroll_border.png",
+  "name": "Scroll Border",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 510,
+  "height": 96,
+  "tags": [
+   "border",
+   "scroll"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Scrollwork"
+ },
+ {
+  "file": "borders/scroll_border.svg",
+  "name": "Scroll Border",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "svg",
+  "width": null,
+  "height": null,
+  "tags": [
+   "border",
+   "scroll"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Scrollwork"
+ },
+ {
+  "file": "borders/blackwhite.png",
+  "name": "Blackwhite",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 540,
+  "height": 739,
+  "tags": [
+   "blackwhite",
+   "border"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Ornamental B&W"
+ },
+ {
+  "file": "borders/blackwhite.svg",
+  "name": "Blackwhite",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "svg",
+  "width": null,
+  "height": null,
+  "tags": [
+   "blackwhite",
+   "border"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Ornamental B&W"
+ },
+ {
+  "file": "borders/warlord.png",
+  "name": "Warlord",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 2023,
+  "height": 2931,
+  "tags": [
+   "border",
+   "warlord"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Warlord"
+ },
+ {
+  "file": "borders/warlordbw.png",
+  "name": "Warlordbw",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 758,
+  "height": 1166,
+  "tags": [
+   "border",
+   "warlordbw"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Warlord"
+ },
+ {
+  "file": "borders/warlordbw.svg",
+  "name": "Warlordbw",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "svg",
+  "width": null,
+  "height": null,
+  "tags": [
+   "border",
+   "warlordbw"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Warlord"
+ },
+ {
+  "file": "borders/gold_swirl_side.png",
+  "name": "Gold Swirl Side",
+  "category": "borders",
+  "slot": "border_side",
+  "award_type": null,
+  "format": "png",
+  "width": 144,
+  "height": 864,
+  "tags": [
+   "border",
+   "gold",
+   "side",
+   "swirl"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Side Panels"
+ },
+ {
+  "file": "borders/leaf_side.png",
+  "name": "Leaf Side",
+  "category": "borders",
+  "slot": "border_side",
+  "award_type": null,
+  "format": "png",
+  "width": 104,
+  "height": 657,
+  "tags": [
+   "border",
+   "leaf",
+   "side"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Side Panels"
+ },
+ {
+  "file": "borders/leaf_side.svg",
+  "name": "Leaf Side",
+  "category": "borders",
+  "slot": "border_side",
+  "award_type": null,
+  "format": "svg",
+  "width": null,
+  "height": null,
+  "tags": [
+   "border",
+   "leaf",
+   "side"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Side Panels"
+ },
+ {
+  "file": "borders/swirl_side.png",
+  "name": "Swirl Side",
+  "category": "borders",
+  "slot": "border_side",
+  "award_type": null,
+  "format": "png",
+  "width": 144,
+  "height": 864,
+  "tags": [
+   "border",
+   "side",
+   "swirl"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Side Panels"
  },
  {
   "file": "orders/crown/black_crown.png",
@@ -641,7 +582,9 @@
    "order"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "emblems",
+  "group": "Crown"
  },
  {
   "file": "orders/crown/gold_crown.png",
@@ -658,7 +601,9 @@
    "order"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "emblems",
+  "group": "Crown"
  },
  {
   "file": "orders/crown/silver_crown.png",
@@ -675,7 +620,9 @@
    "silver"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "emblems",
+  "group": "Crown"
  },
  {
   "file": "orders/dragon/dragon_306059.svg",
@@ -691,7 +638,9 @@
    "order"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "emblems",
+  "group": "Dragon"
  },
  {
   "file": "orders/dragon/dragon_green.png",
@@ -708,7 +657,9 @@
    "order"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "emblems",
+  "group": "Dragon"
  },
  {
   "file": "orders/dragon/dragon_green.svg",
@@ -725,7 +676,9 @@
    "order"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "emblems",
+  "group": "Dragon"
  },
  {
   "file": "orders/dragon/dragon_red.png",
@@ -742,7 +695,9 @@
    "red"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "emblems",
+  "group": "Dragon"
  },
  {
   "file": "orders/dragon/dragon_red.svg",
@@ -759,7 +714,9 @@
    "red"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "emblems",
+  "group": "Dragon"
  },
  {
   "file": "orders/dragon/fire_307384.svg",
@@ -776,7 +733,9 @@
    "order"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "emblems",
+  "group": "Dragon"
  },
  {
   "file": "orders/dragon/gold_dragon.png",
@@ -793,7 +752,9 @@
    "order"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "emblems",
+  "group": "Dragon"
  },
  {
   "file": "orders/flame/flame.png",
@@ -809,7 +770,9 @@
    "order"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "emblems",
+  "group": "Flame"
  },
  {
   "file": "orders/flame/flame_effect.png",
@@ -826,7 +789,47 @@
    "order"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "emblems",
+  "group": "Flame"
+ },
+ {
+  "file": "orders/rose/rose.svg",
+  "name": "Rose",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "rose",
+  "format": "svg",
+  "width": null,
+  "height": null,
+  "tags": [
+   "order",
+   "rose"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "emblems",
+  "group": "Rose"
+ },
+ {
+  "file": "orders/rose/rose_circle_border.png",
+  "name": "Rose Circle Border",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "rose",
+  "format": "png",
+  "width": 594,
+  "height": 724,
+  "tags": [
+   "border",
+   "circle",
+   "order",
+   "rose"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "emblems",
+  "group": "Rose"
  },
  {
   "file": "orders/masterhoods/blank_bw_masterhood_phoenix.png",
@@ -846,7 +849,9 @@
    "phoenix"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "emblems",
+  "group": "Masterhoods"
  },
  {
   "file": "orders/masterhoods/master_dragon.png",
@@ -864,7 +869,9 @@
    "order"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "emblems",
+  "group": "Masterhoods"
  },
  {
   "file": "orders/masterhoods/master_garber.png",
@@ -882,7 +889,9 @@
    "order"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "emblems",
+  "group": "Masterhoods"
  },
  {
   "file": "orders/masterhoods/master_lion.png",
@@ -900,7 +909,9 @@
    "order"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "emblems",
+  "group": "Masterhoods"
  },
  {
   "file": "orders/masterhoods/master_owl.png",
@@ -918,7 +929,9 @@
    "owl"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "emblems",
+  "group": "Masterhoods"
  },
  {
   "file": "orders/masterhoods/master_rose.png",
@@ -936,7 +949,9 @@
    "rose"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "emblems",
+  "group": "Masterhoods"
  },
  {
   "file": "orders/masterhoods/master_smith.png",
@@ -954,7 +969,9 @@
    "smith"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "emblems",
+  "group": "Masterhoods"
  },
  {
   "file": "orders/masterhoods/warlord.png",
@@ -971,41 +988,9 @@
    "warlord"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
- },
- {
-  "file": "orders/rose/rose.svg",
-  "name": "Rose",
-  "category": "orders",
-  "slot": "center_image",
-  "award_type": "rose",
-  "format": "svg",
-  "width": null,
-  "height": null,
-  "tags": [
-   "order",
-   "rose"
-  ],
-  "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
- },
- {
-  "file": "orders/rose/rose_circle_border.png",
-  "name": "Rose Circle Border",
-  "category": "orders",
-  "slot": "center_image",
-  "award_type": "rose",
-  "format": "png",
-  "width": 594,
-  "height": 724,
-  "tags": [
-   "border",
-   "circle",
-   "order",
-   "rose"
-  ],
-  "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "emblems",
+  "group": "Masterhoods"
  },
  {
   "file": "orders/sashes/color_sash.png",
@@ -1023,7 +1008,9 @@
    "sashes"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "emblems",
+  "group": "Sashes"
  },
  {
   "file": "orders/warrior/1st_snake.png",
@@ -1041,7 +1028,9 @@
    "warrior"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "emblems",
+  "group": "Warrior"
  },
  {
   "file": "orders/warrior/1st_snake.svg",
@@ -1059,6 +1048,141 @@
    "warrior"
   ],
   "source": "Alona of Two Trees",
-  "license": "CC - free personal & commercial use"
+  "license": "CC - free personal & commercial use",
+  "collection": "emblems",
+  "group": "Warrior"
+ },
+ {
+  "file": "backgrounds/brown_tea_stained.png",
+  "name": "Brown Tea Stained",
+  "category": "backgrounds",
+  "slot": "bg_image",
+  "award_type": null,
+  "format": "png",
+  "width": 689,
+  "height": 921,
+  "tags": [
+   "background",
+   "brown",
+   "stained",
+   "tea"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "backgrounds",
+  "group": "Paper & Stone"
+ },
+ {
+  "file": "backgrounds/gray_smoke.png",
+  "name": "Gray Smoke",
+  "category": "backgrounds",
+  "slot": "bg_image",
+  "award_type": null,
+  "format": "png",
+  "width": 612,
+  "height": 792,
+  "tags": [
+   "background",
+   "gray",
+   "smoke"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "backgrounds",
+  "group": "Paper & Stone"
+ },
+ {
+  "file": "backgrounds/white_marble.png",
+  "name": "White Marble",
+  "category": "backgrounds",
+  "slot": "bg_image",
+  "award_type": null,
+  "format": "png",
+  "width": 612,
+  "height": 792,
+  "tags": [
+   "background",
+   "marble",
+   "white"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "backgrounds",
+  "group": "Paper & Stone"
+ },
+ {
+  "file": "backgrounds/dark_corona.png",
+  "name": "Dark Corona",
+  "category": "backgrounds",
+  "slot": "bg_image",
+  "award_type": null,
+  "format": "png",
+  "width": 612,
+  "height": 792,
+  "tags": [
+   "background",
+   "corona",
+   "dark"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "backgrounds",
+  "group": "Scenic"
+ },
+ {
+  "file": "backgrounds/green_forest.png",
+  "name": "Green Forest",
+  "category": "backgrounds",
+  "slot": "bg_image",
+  "award_type": null,
+  "format": "png",
+  "width": 612,
+  "height": 792,
+  "tags": [
+   "background",
+   "forest",
+   "green"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "backgrounds",
+  "group": "Scenic"
+ },
+ {
+  "file": "backgrounds/purple_lightening.png",
+  "name": "Purple Lightening",
+  "category": "backgrounds",
+  "slot": "bg_image",
+  "award_type": null,
+  "format": "png",
+  "width": 612,
+  "height": 792,
+  "tags": [
+   "background",
+   "lightening",
+   "purple"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "backgrounds",
+  "group": "Scenic"
+ },
+ {
+  "file": "backgrounds/warlord.png",
+  "name": "Warlord",
+  "category": "backgrounds",
+  "slot": "bg_image",
+  "award_type": null,
+  "format": "png",
+  "width": 3600,
+  "height": 5400,
+  "tags": [
+   "background",
+   "warlord"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "backgrounds",
+  "group": "Scenic"
  }
 ]

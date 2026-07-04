@@ -142,6 +142,16 @@ textarea.sc-input { resize:vertical; min-height:52px; }
 .sc-pack:hover { border-color:var(--sc-accent); }
 .sc-pack.is-sel { border-color:var(--sc-accent); box-shadow:inset 0 0 0 2px var(--sc-accent); }
 
+/* grouped picker — a Type chip row above the thumbnail grid */
+.sc-picker { display:flex; flex-direction:column; gap:8px; }
+.sc-type-row { display:flex; flex-wrap:wrap; gap:5px; }
+.sc-type { display:inline-flex; align-items:center; gap:5px; cursor:pointer; background:var(--sc-chip-bg);
+	color:var(--sc-ink); border:1px solid var(--sc-input-line); border-radius:5px; padding:4px 8px; font:600 11px/1 system-ui; }
+.sc-type:hover { border-color:var(--sc-accent); color:var(--sc-accent); }
+.sc-type.is-sel { background:var(--sc-accent); border-color:var(--sc-accent); color:#1c1608; }
+.sc-type__n { font-weight:500; font-size:10px; opacity:.65; }
+.sc-type.is-sel .sc-type__n { opacity:.85; }
+
 .sc-empty { margin:2px 0; color:var(--sc-ink-soft); font-size:12px; font-style:italic; }
 .sc-save { display:flex; flex-direction:column; gap:8px; }
 
