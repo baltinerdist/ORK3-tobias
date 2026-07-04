@@ -23,8 +23,9 @@
 	function collectionForPlacement(loc) {
 		if (loc === 'full_border' || /^border_/.test(loc)) { return 'borders'; }
 		if (loc === 'background' || loc === 'watermark') { return 'backgrounds'; }   // 'watermark' = legacy alias
-		return 'emblems';
+		return 'order_images';
 	}
+	var COLLECTION_LABELS = { borders: 'Borders', order_images: 'Order Images', backgrounds: 'Backgrounds' };
 	// distinct groups in catalog order (catalog is pre-sorted by group order)
 	function orderedGroups(items) {
 		var seen = [], set = {};
@@ -214,6 +215,7 @@
 		var items = (D.packCatalog || []).filter(function (a) { return a.collection === collection; });
 		if (itemFilter) { items = items.filter(itemFilter); }   // e.g. side placements -> only strip art
 		var wrap = el('div', 'sc-picker');
+		wrap.appendChild(el('div', 'sc-collection', COLLECTION_LABELS[collection] || collection));
 		if (!items.length) { wrap.appendChild(el('p', 'sc-empty', 'No art in this collection yet.')); return wrap; }
 		var groups = orderedGroups(items);
 		var cur = currentFile ? items.filter(function (a) { return a.file === currentFile || baseName(a.file) === baseName(currentFile); })[0] : null;

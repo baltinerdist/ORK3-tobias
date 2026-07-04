@@ -33,6 +33,15 @@ global $DB;
 $db = $DB;
 $st = Ork3::$Lib->scrolltemplate;
 
+// --- 0) ensure the "Order Images" library category exists (covers Amtgard orders) ---
+$db->Clear();
+$db->Execute("INSERT INTO " . DB_PREFIX . "scroll_artwork_category (slug, label, sort_order, active)
+    SELECT 'order_images', 'Order Images', 5, 1
+    WHERE NOT EXISTS (SELECT 1 FROM " . DB_PREFIX . "scroll_artwork_category WHERE slug = 'order_images')");
+$db->Clear();
+$catRow = $db->DataSet("SELECT category_id FROM " . DB_PREFIX . "scroll_artwork_category WHERE slug = 'order_images'");
+$orderCategoryId = ($catRow->Size() > 0 && $catRow->Next()) ? (int)$catRow->category_id : 0;
+
 // --- 1) built-in pack rows (system_owned=1); map catalog slot -> layout_location ---
 $slotToLoc = array(
     'full_border'  => 'full_border',
@@ -54,6 +63,9 @@ foreach ($catalog as $a) {
         continue;
     }
 
+    // Order Images collection -> tag with the Order Images library category.
+    $isOrder = (($a['collection'] ?? '') === 'order_images');
+
     $db->Clear();
     $db->uploader_mundane_id  = 0;
     $db->name                 = $a['name'] ?? basename($a['file']);
@@ -65,7 +77,7 @@ foreach ($catalog as $a) {
     $db->width                = (int)($a['width'] ?? 0);
     $db->height               = (int)($a['height'] ?? 0);
     $db->file_size            = 0;
-    $db->license_signer_name  = 'Alona of Two Trees';
+    $db->license_signer_name  = $a['source'] ?? 'Alona of Two Trees';
     $db->license_signed_at    = date('Y-m-d H:i:s');
     $db->status               = 'approved';
     $db->system_owned         = 1;
@@ -77,11 +89,30 @@ foreach ($catalog as $a) {
         'license_signer_name', 'license_signed_at', 'status', 'system_owned',
         'source_attribution', 'source_license',
     );
+    if ($isOrder && $orderCategoryId > 0) {
+        $db->category_id = $orderCategoryId;
+        $cols[] = 'category_id';
+    }
     $ph = array_map(function ($c) {
         return ':' . $c;
     }, $cols);
     $db->Execute("INSERT INTO " . DB_PREFIX . "scroll_artwork (" . implode(', ', $cols) . ") VALUES (" . implode(', ', $ph) . ")");
     $packInserted++;
+}
+
+// Backfill the Order Images category onto any pack rows seeded before it existed.
+if ($orderCategoryId > 0) {
+    $orderFiles = array();
+    foreach ($catalog as $a) {
+        if (($a['collection'] ?? '') === 'order_images') {
+            $orderFiles[] = "'" . addslashes($a['file']) . "'";  // file names are our own controlled slugs
+        }
+    }
+    if ($orderFiles) {
+        $db->Clear();
+        $db->Execute("UPDATE " . DB_PREFIX . "scroll_artwork SET category_id = " . (int)$orderCategoryId
+            . " WHERE system_owned = 1 AND (category_id IS NULL OR category_id = 0) AND file_name IN (" . implode(',', $orderFiles) . ")");
+    }
 }
 
 // --- 2) starter templates (delete existing starters by name, re-insert) ---

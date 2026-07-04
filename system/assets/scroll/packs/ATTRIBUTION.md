@@ -1,9 +1,14 @@
 # Attribution — Scroll Art Packs
 
-All decorative art in this directory (`borders/`, `backgrounds/`, `orders/`) was created by
-**Alona of Two Trees** (Amtgard) and is used with permission under Creative Commons.
+This directory bundles decorative art from two sources (see each catalog entry's `source`
+field for provenance):
 
-**Source:** https://sites.google.com/view/alonatwotrees/awards/editable-awards
+1. **Alona of Two Trees** (Amtgard) — most `borders/`, `backgrounds/`, and the original
+   `orders/` emblems, used with permission under Creative Commons (see below).
+   **Source:** https://sites.google.com/view/alonatwotrees/awards/editable-awards
+2. **Amtgard clipart (user-provided)** — additional order-emblem and border clipart supplied
+   by the ORK maintainer (the "Order Images" for Lion/Rose/Crown/Dragon/Owl/etc. and extra
+   frames). Provided as free clipart for Amtgard use.
 
 ## License
 
