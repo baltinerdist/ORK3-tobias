@@ -195,15 +195,23 @@
 			if (s.source_type === 'heraldry') {
 				box.appendChild(field('Heraldry', select(['kingdom', 'park', 'player'], s.source_ref, function (v) { s.source_ref = v; render(); })));
 			} else if (s.source_type === 'pack') {
+				// side placements get only strip/bar art; full-border gets the rectangular frames
+				var artFilter = null;
+				if (coll === 'borders') {
+					artFilter = /^border_/.test(s.location)
+						? function (a) { return a.slot === 'border_side'; }
+						: function (a) { return a.slot === 'full_border'; };
+				}
 				box.appendChild(field('Art', groupedPicker(coll, s.source_ref,
-					function (a) { s.source_type = 'pack'; s.source_ref = a.file; render(); buildSelected(); }, buildSelected)));
+					function (a) { s.source_type = 'pack'; s.source_ref = a.file; render(); buildSelected(); }, buildSelected, artFilter)));
 			}
 		}
 	}
 	// grouped picker: a Type chip row (border styles / award types / bg tones) + a
 	// thumbnail grid of the active type. Reused for graphic slots and bg textures.
-	function groupedPicker(collection, currentFile, onPick, rebuild) {
+	function groupedPicker(collection, currentFile, onPick, rebuild, itemFilter) {
 		var items = (D.packCatalog || []).filter(function (a) { return a.collection === collection; });
+		if (itemFilter) { items = items.filter(itemFilter); }   // e.g. side placements -> only strip art
 		var wrap = el('div', 'sc-picker');
 		if (!items.length) { wrap.appendChild(el('p', 'sc-empty', 'No art in this collection yet.')); return wrap; }
 		var groups = orderedGroups(items);
@@ -211,16 +219,18 @@
 		var active = groupState[collection];            // an explicit type-chip choice always wins
 		if (!active || groups.indexOf(active) < 0) { active = cur ? cur.group : groups[0]; }
 		groupState[collection] = active;
-		// type chips
-		var row = el('div', 'sc-type-row');
-		groups.forEach(function (g) {
-			var n = items.filter(function (a) { return a.group === g; }).length;
-			var c = el('button', 'sc-type' + (g === active ? ' is-sel' : '')); c.type = 'button';
-			c.appendChild(el('span', null, g)); c.appendChild(el('span', 'sc-type__n', String(n)));
-			c.onclick = function () { groupState[collection] = g; rebuild(); };
-			row.appendChild(c);
-		});
-		wrap.appendChild(row);
+		// type chips (only when there's more than one type to pick from)
+		if (groups.length > 1) {
+			var row = el('div', 'sc-type-row');
+			groups.forEach(function (g) {
+				var n = items.filter(function (a) { return a.group === g; }).length;
+				var c = el('button', 'sc-type' + (g === active ? ' is-sel' : '')); c.type = 'button';
+				c.appendChild(el('span', null, g)); c.appendChild(el('span', 'sc-type__n', String(n)));
+				c.onclick = function () { groupState[collection] = g; rebuild(); };
+				row.appendChild(c);
+			});
+			wrap.appendChild(row);
+		}
 		// grid of the active type
 		var grid = el('div', 'sc-pack-grid');
 		items.filter(function (a) { return a.group === active; }).forEach(function (a) {
