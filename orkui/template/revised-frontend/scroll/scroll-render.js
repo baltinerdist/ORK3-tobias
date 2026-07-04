@@ -12,6 +12,15 @@
 		return '';
 	}
 	function pct(v) { return (Number(v) || 0) + '%'; }
+	// A rotated (top/bottom) strip: give the img the slot's SWAPPED px dims so that after a
+	// 90deg rotation (in CSS) it fills the horizontal bar. Uses layout px (page is fixed-width),
+	// so it also renders correctly under html2canvas for the PDF.
+	function sizeRot90(slotEl) {
+		var img = slotEl.querySelector('img'); if (!img) { return; }
+		var w = slotEl.clientWidth, h = slotEl.clientHeight;
+		if (!w || !h) { return; }
+		img.style.width = h + 'px'; img.style.height = w + 'px';
+	}
 
 	function renderPage(pageEl, tpl, opts) {
 		opts = opts || {}; var tokens = opts.tokens || {};
@@ -29,9 +38,15 @@
 			var el = document.createElement('div');
 			el.className = 'sc-slot'; el.setAttribute('data-location', s.location); el.setAttribute('data-fit', s.fit || 'contain');
 			el.style.left = pct(s.x); el.style.top = pct(s.y); el.style.width = pct(s.w); el.style.height = pct(s.h);
+			// top/bottom borders use the vertical strip art turned on its side
+			var rot90 = (s.location === 'border_top' || s.location === 'border_bottom');
+			if (rot90) { el.classList.add('sc-slot--rot90'); }
 			var src = slotSrc(s, opts);
 			if (src) { var img = document.createElement('img'); img.src = src; img.alt = ''; el.appendChild(img); }
 			el.__slot = s; pageEl.appendChild(el);
+			// size the rotated image in real px (swapped) so it fills the bar after rotation,
+			// which also survives html2canvas/PDF (container-query units would not).
+			if (rot90 && src) { sizeRot90(el); }
 		});
 		// zones
 		(tpl.zones || []).forEach(function (z) {
@@ -56,6 +71,8 @@
 			}
 			el.__zone = z; pageEl.appendChild(el);
 		});
+		// re-size rotated strips once layout has settled (guards a 0-width first paint)
+		setTimeout(function () { pageEl.querySelectorAll('.sc-slot--rot90').forEach(sizeRot90); }, 0);
 	}
 
 	function autoscaleZones(pageEl) {

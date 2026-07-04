@@ -40,6 +40,10 @@ html[data-theme="dark"] .sc-stage { background:#20232a; }
 .sc-slot img { width:100%; height:100%; object-fit:contain; display:block; }
 .sc-slot[data-fit="cover"] img { object-fit:cover; }
 .sc-slot[data-fit="stretch"] img { object-fit:fill; }
+/* top/bottom bars: the vertical strip art rotated 90deg. The img is given the slot's
+   swapped px dims (in JS), then rotated to fill the bar horizontally. */
+.sc-slot--rot90 { display:flex; align-items:center; justify-content:center; overflow:hidden; }
+.sc-slot--rot90 img { width:auto; height:auto; transform:rotate(90deg); object-fit:contain; }
 
 .sc-zone { position:absolute; z-index:2; overflow:hidden; box-sizing:border-box;
 	display:flex; flex-direction:column; justify-content:center; }
