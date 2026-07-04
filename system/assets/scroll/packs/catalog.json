@@ -76,6 +76,26 @@
   "group": "Celtic (Gold)"
  },
  {
+  "file": "borders/gold_celtic_knot_frame.png",
+  "name": "Gold Celtic Knot Frame",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 1594,
+  "height": 2000,
+  "tags": [
+   "border",
+   "celtic",
+   "gold",
+   "knotwork"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "borders",
+  "group": "Celtic (Gold)"
+ },
+ {
   "file": "borders/green_gold_border_celtic.png",
   "name": "Green Gold Border Celtic",
   "category": "borders",
@@ -459,6 +479,60 @@
   "group": "Rose & Vine"
  },
  {
+  "file": "borders/celtic_braid_frame.png",
+  "name": "Celtic Braid Frame",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 1892,
+  "height": 1892,
+  "tags": [
+   "border",
+   "knotwork"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "borders",
+  "group": "Knotwork"
+ },
+ {
+  "file": "borders/celtic_knot_accents.png",
+  "name": "Celtic Knot Accents",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 1320,
+  "height": 1906,
+  "tags": [
+   "border",
+   "knotwork"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "borders",
+  "group": "Knotwork"
+ },
+ {
+  "file": "borders/celtic_knot_corner_frame.png",
+  "name": "Celtic Knot Corner Frame",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 1622,
+  "height": 2000,
+  "tags": [
+   "border",
+   "knotwork"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "borders",
+  "group": "Knotwork"
+ },
+ {
   "file": "borders/celtic_knot_frame.png",
   "name": "Celtic Knot Frame",
   "category": "borders",
@@ -470,6 +544,25 @@
   "tags": [
    "border",
    "knotwork"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "borders",
+  "group": "Knotwork"
+ },
+ {
+  "file": "borders/celtic_knot_ring.png",
+  "name": "Celtic Knot Ring",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 1974,
+  "height": 1974,
+  "tags": [
+   "border",
+   "knotwork",
+   "circle"
   ],
   "source": "Amtgard clipart (user-provided)",
   "license": "CC / free clipart (user-provided)",
@@ -1696,6 +1789,60 @@
   "group": "Flame"
  },
  {
+  "file": "orders/flame/flame_1.png",
+  "name": "Flame 1",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "flame",
+  "format": "png",
+  "width": 657,
+  "height": 800,
+  "tags": [
+   "flame",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Flame"
+ },
+ {
+  "file": "orders/flame/flame_2.png",
+  "name": "Flame 2",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "flame",
+  "format": "png",
+  "width": 527,
+  "height": 800,
+  "tags": [
+   "flame",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Flame"
+ },
+ {
+  "file": "orders/flame/flame_3.png",
+  "name": "Flame 3",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "flame",
+  "format": "png",
+  "width": 602,
+  "height": 800,
+  "tags": [
+   "flame",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Flame"
+ },
+ {
   "file": "orders/flame/flame_effect.png",
   "name": "Flame Effect",
   "category": "orders",
@@ -2057,6 +2204,42 @@
   "license": "CC - free personal & commercial use",
   "collection": "order_images",
   "group": "Sashes"
+ },
+ {
+  "file": "orders/smith/smith_1.png",
+  "name": "Smith 1",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "smith",
+  "format": "png",
+  "width": 1414,
+  "height": 2000,
+  "tags": [
+   "smith",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Smith"
+ },
+ {
+  "file": "orders/smith/smith_2.png",
+  "name": "Smith 2",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "smith",
+  "format": "png",
+  "width": 488,
+  "height": 466,
+  "tags": [
+   "smith",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Smith"
  },
  {
   "file": "logos/amtgard_logo.png",
