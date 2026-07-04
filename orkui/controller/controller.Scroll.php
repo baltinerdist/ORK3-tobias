@@ -220,8 +220,12 @@ class Controller_Scroll extends Controller
         $templateId = isset($parts[1]) ? (int)$parts[1] : 0;
 
         // Kingdom-officer gate (mirrors the scroll AJAX siblings' session-token auth).
+        // ORK admins may design for any kingdom and for shared starters (kingdom 0).
         $mid = (int)Ork3::$Lib->authorization->IsAuthorized($this->session->token);
-        $this->data['authorized'] = ($mid > 0 && Ork3::$Lib->authorization->HasAuthority($mid, AUTH_KINGDOM, $kingdomId, AUTH_EDIT));
+        $isAdmin = ($mid > 0 && Ork3::$Lib->authorization->HasAuthority($mid, AUTH_ADMIN, 0, AUTH_EDIT));
+        $this->data['authorized'] = $isAdmin
+            || ($mid > 0 && $kingdomId > 0 && Ork3::$Lib->authorization->HasAuthority($mid, AUTH_KINGDOM, $kingdomId, AUTH_EDIT));
+        $this->data['is_admin'] = $isAdmin;
 
         $this->data['kingdom_id'] = $kingdomId;
         // NOTE: 'template' is a RESERVED View variable (the include path); using it as a
@@ -233,7 +237,11 @@ class Controller_Scroll extends Controller
         $this->data['pack_catalog'] = json_decode(@file_get_contents(DIR_SYSTEM . 'assets/scroll/packs/catalog.json'), true) ?: array();
         $this->data['pack_base']    = str_replace('/assets/', '/system/assets/scroll/packs/', HTTP_ASSETS);
 
-        $this->data['heraldry']      = array('kingdom' => '', 'park' => '', 'player' => '');
+        // Preview the "Recipient's kingdom" role with this template's own kingdom arms.
+        $kingdomHeraldry = $kingdomId > 0
+            ? Ork3::$Lib->heraldry->GetHeraldryUrl(array('Type' => 'Kingdom', 'Id' => $kingdomId))['Url']
+            : '';
+        $this->data['heraldry']      = array('kingdom' => $kingdomHeraldry, 'park' => '', 'player' => '');
         $this->data['session_token'] = isset($this->session->token) ? $this->session->token : '';
 
         // Clear stale PDO bindings after auth checks + lib reads.

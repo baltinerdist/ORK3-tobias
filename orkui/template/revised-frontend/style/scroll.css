@@ -156,6 +156,19 @@ textarea.sc-input { resize:vertical; min-height:52px; }
 .sc-type__n { font-weight:500; font-size:10px; opacity:.65; }
 .sc-type.is-sel .sc-type__n { opacity:.85; }
 
+/* heraldry autocomplete — dropdown is position:fixed (set in JS) so it escapes
+   the inspector's overflow clipping */
+.sc-ac { position:relative; }
+.kn-ac-results { display:none; z-index:9999; max-height:240px; overflow-y:auto;
+	background:var(--sc-panel-bg); border:1px solid var(--sc-accent); border-radius:6px;
+	box-shadow:0 8px 22px rgba(0,0,0,.28); }
+.kn-ac-results.kn-ac-open { display:block; }
+.kn-ac-item { padding:7px 10px; cursor:pointer; color:var(--sc-ink); font-size:13px; border-bottom:1px solid var(--sc-panel-line); }
+.kn-ac-item:last-child { border-bottom:none; }
+.kn-ac-item:hover { background:var(--sc-accent-soft); }
+.kn-ac-sub { color:var(--sc-ink-soft); font-size:11px; }
+.kn-ac-none { padding:8px 10px; color:var(--sc-ink-soft); font-size:12px; font-style:italic; }
+
 .sc-empty { margin:2px 0; color:var(--sc-ink-soft); font-size:12px; font-style:italic; }
 .sc-save { display:flex; flex-direction:column; gap:8px; }
 

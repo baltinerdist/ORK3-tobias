@@ -8,7 +8,14 @@
 	function slotSrc(slot, ctx) {
 		if (slot.source_type === 'pack')     return slot.source_ref ? ctx.packBase + slot.source_ref : '';
 		if (slot.source_type === 'library')  return slot.source_ref ? ctx.libBase + encodeURIComponent(slot.source_ref) : '';
-		if (slot.source_type === 'heraldry') return (ctx.heraldry && ctx.heraldry[slot.source_ref]) || '';
+		if (slot.source_type === 'heraldry') {
+			// role keyword (kingdom|park|player) = recipient's arms, resolved at fill;
+			// anything else is a specific entity's heraldry URL baked into the template.
+			if (slot.source_ref === 'kingdom' || slot.source_ref === 'park' || slot.source_ref === 'player') {
+				return (ctx.heraldry && ctx.heraldry[slot.source_ref]) || '';
+			}
+			return slot.source_ref || '';
+		}
 		return '';
 	}
 	function pct(v) { return (Number(v) || 0) + '%'; }

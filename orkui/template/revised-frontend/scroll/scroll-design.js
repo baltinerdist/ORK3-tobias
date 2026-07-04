@@ -194,7 +194,7 @@
 				render(); buildSelected();
 			})));
 			if (s.source_type === 'heraldry') {
-				box.appendChild(field('Heraldry', select(['kingdom', 'park', 'player'], s.source_ref, function (v) { s.source_ref = v; render(); })));
+				buildHeraldry(box, s);
 			} else if (s.source_type === 'pack') {
 				// side placements get only strip/bar art; full-border gets the rectangular frames
 				var artFilter = null;
@@ -241,6 +241,130 @@
 			grid.appendChild(t);
 		});
 		wrap.appendChild(grid);
+		return wrap;
+	}
+
+	// ================= heraldry pickers (dynamic recipient + specific entity) =================
+	var heraldryKingdomsCache = null;
+	var acTimer = null;
+	function heraldryUrl(path) { return (D.uir || '') + path; }
+	function scopeKid() { return D.kingdomId || 0; }
+
+	// viewport-safe fixed positioning for an autocomplete dropdown inside the
+	// scrolling inspector (absolute would be clipped by the panel's overflow).
+	function tnFixedAcPosition(input, dd) {
+		var r = input.getBoundingClientRect();
+		dd.style.position = 'fixed';
+		dd.style.left = r.left + 'px';
+		dd.style.top = (r.bottom + 2) + 'px';
+		dd.style.width = r.width + 'px';
+	}
+
+	function buildHeraldry(box, s) {
+		var isRole = (s.source_ref === 'kingdom' || s.source_ref === 'park' || s.source_ref === 'player');
+		var mode = isRole ? s.source_ref : ('pick_' + (s.heraldry_kind || 'kingdom'));
+		var opts = [
+			{ value: 'kingdom', label: "Recipient's kingdom" },
+			{ value: 'park', label: "Recipient's park" },
+			{ value: 'player', label: "Recipient's player" },
+			{ value: 'pick_kingdom', label: 'Pick a kingdom…' },
+			{ value: 'pick_park', label: 'Pick a park…' },
+			{ value: 'pick_player', label: 'Pick a player…' }
+		];
+		box.appendChild(field('Heraldry', select(opts, mode, function (v) {
+			if (v === 'kingdom' || v === 'park' || v === 'player') {
+				s.source_ref = v; delete s.heraldry_kind; delete s.heraldry_label;
+			} else {
+				s.heraldry_kind = v.replace('pick_', '');
+				if (s.source_ref === 'kingdom' || s.source_ref === 'park' || s.source_ref === 'player') { s.source_ref = ''; }
+			}
+			render(); buildSelected();
+		})));
+		if (mode === 'pick_kingdom') { box.appendChild(heraldryKingdomPicker(s)); }
+		else if (mode === 'pick_park') { box.appendChild(heraldryParkPicker(s)); }
+		else if (mode === 'pick_player') { box.appendChild(heraldryPlayerPicker(s)); }
+		if (s.heraldry_label && !isRole) { box.appendChild(el('p', 'sc-empty', 'Selected: ' + s.heraldry_label)); }
+	}
+
+	function heraldryKingdomPicker(s) {
+		var wrap = el('label', 'sc-field');
+		wrap.appendChild(el('span', 'sc-field__label', 'Kingdom'));
+		var sel = el('select', 'sc-input'); sel.appendChild(new Option('Loading…', ''));
+		wrap.appendChild(sel);
+		function fill(list) {
+			sel.innerHTML = ''; sel.appendChild(new Option('— select —', ''));
+			list.forEach(function (k) { var o = new Option(k.name, k.url); if (k.url === s.source_ref) { o.selected = true; } sel.appendChild(o); });
+			sel.onchange = function () {
+				s.source_ref = sel.value;
+				s.heraldry_label = sel.value ? sel.options[sel.selectedIndex].textContent : '';
+				render(); buildSelected();
+			};
+		}
+		if (heraldryKingdomsCache) { fill(heraldryKingdomsCache); }
+		else {
+			fetch(heraldryUrl('ScrollTemplateAjax/heraldrykingdoms&kingdom_id=' + scopeKid()), { credentials: 'same-origin' })
+				.then(function (r) { return r.json(); })
+				.then(function (j) { heraldryKingdomsCache = j.Kingdoms || []; fill(heraldryKingdomsCache); })
+				.catch(function () { sel.innerHTML = ''; sel.appendChild(new Option('(failed to load)', '')); });
+		}
+		return wrap;
+	}
+
+	function heraldryParkPicker(s) {
+		return heraldryAutocomplete('Park', s.heraldry_label, function (q, cb) {
+			fetch(heraldryUrl('ScrollTemplateAjax/heraldryparks&kingdom_id=' + scopeKid() + '&q=' + encodeURIComponent(q)), { credentials: 'same-origin' })
+				.then(function (r) { return r.json(); })
+				.then(function (j) { cb((j.Parks || []).map(function (p) { return { label: p.name, sub: p.kingdom, data: { url: p.url, name: p.name } }; })); })
+				.catch(function () { cb([]); });
+		}, function (item) { s.source_ref = item.data.url; s.heraldry_label = item.data.name; render(); buildSelected(); });
+	}
+
+	function heraldryPlayerPicker(s) {
+		var scope = scopeKid() > 0 ? 'own' : 'all';
+		return heraldryAutocomplete('Player', s.heraldry_label, function (q, cb) {
+			fetch(heraldryUrl('KingdomAjax/playersearch/' + scopeKid() + '&scope=' + scope + '&q=' + encodeURIComponent(q)), { credentials: 'same-origin' })
+				.then(function (r) { return r.json(); })
+				.then(function (data) { cb((data || []).map(function (p) { return { label: p.Persona, sub: (p.KAbbr || '') + (p.PAbbr ? ':' + p.PAbbr : ''), data: { id: p.MundaneId, name: p.Persona } }; })); })
+				.catch(function () { cb([]); });
+		}, function (item) {
+			fetch(heraldryUrl('ScrollTemplateAjax/heraldryresolve&type=player&eid=' + item.data.id), { credentials: 'same-origin' })
+				.then(function (r) { return r.json(); })
+				.then(function (j) { s.source_ref = j.Url || ''; s.heraldry_label = item.data.name; render(); buildSelected(); });
+		});
+	}
+
+	// input + kn-ac-results dropdown; fetchFn(q, cb) -> cb([{label,sub,data}]); onPick(item)
+	function heraldryAutocomplete(labelText, currentLabel, fetchFn, onPick) {
+		var wrap = el('label', 'sc-field');
+		wrap.appendChild(el('span', 'sc-field__label', labelText));
+		var ic = el('div', 'sc-ac');
+		var input = el('input', 'sc-input'); input.type = 'text'; input.placeholder = 'Search…'; input.value = currentLabel || '';
+		var dd = el('div', 'kn-ac-results');
+		ic.appendChild(input); ic.appendChild(dd); wrap.appendChild(ic);
+		function close() { dd.classList.remove('kn-ac-open'); }
+		input.addEventListener('input', function () {
+			clearTimeout(acTimer);
+			var q = input.value.trim();
+			if (q.length < 2) { close(); return; }
+			acTimer = setTimeout(function () {
+				fetchFn(q, function (items) {
+					dd.innerHTML = '';
+					if (!items.length) { dd.appendChild(el('div', 'kn-ac-none', 'No matches')); }
+					else {
+						items.forEach(function (it) {
+							var rowEl = el('div', 'kn-ac-item');
+							rowEl.appendChild(el('span', null, it.label));
+							if (it.sub) { rowEl.appendChild(el('span', 'kn-ac-sub', ' ' + it.sub)); }
+							rowEl.onmousedown = function (e) { e.preventDefault(); input.value = it.label; close(); onPick(it); };
+							dd.appendChild(rowEl);
+						});
+					}
+					tnFixedAcPosition(input, dd);
+					dd.classList.add('kn-ac-open');
+				});
+			}, 220);
+		});
+		input.addEventListener('blur', function () { setTimeout(close, 150); });
 		return wrap;
 	}
 

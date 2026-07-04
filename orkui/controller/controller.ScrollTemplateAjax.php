@@ -67,6 +67,121 @@ class Controller_ScrollTemplateAjax extends Controller
         return $mundane_id;
     }
 
+    /**
+     * Resolve the kingdom-id set a heraldry picker may search within.
+     * - template kingdom_id > 0: officer (or admin) over that kingdom -> the
+     *   kingdom + its child principalities (GetFamilyKingdomIds).
+     * - template kingdom_id 0 (shared starter): ORK admins only, global.
+     * Returns array('global'=>bool, 'ids'=>int[]) or null when unauthorized.
+     */
+    private function heraldryScope($kingdomId)
+    {
+        $mid = $this->mundane();
+        if ($mid <= 0) {
+            return null;
+        }
+        $isAdmin = Ork3::$Lib->authorization->HasAuthority($mid, AUTH_ADMIN, 0, AUTH_EDIT);
+        if ($kingdomId > 0) {
+            if ($isAdmin || Ork3::$Lib->authorization->HasAuthority($mid, AUTH_KINGDOM, $kingdomId, AUTH_EDIT)) {
+                return array('global' => false, 'ids' => array_map('intval', Ork3::$Lib->kingdom->GetFamilyKingdomIds($kingdomId)));
+            }
+            return null;
+        }
+        return $isAdmin ? array('global' => true, 'ids' => array()) : null;
+    }
+
+    /** All active kingdom ids (for global admin park search). */
+    private function allKingdomIds()
+    {
+        $ids = array();
+        foreach (Ork3::$Lib->kingdom->GetKingdoms(array())['Kingdoms'] ?? array() as $k) {
+            $ids[] = (int)$k['KingdomId'];
+        }
+        return $ids;
+    }
+
+    // ================================================================
+    //  GET /ScrollTemplateAjax/heraldrykingdoms&kingdom_id=
+    //  Scoped kingdom list (id, name, heraldry url) for the picker.
+    // ================================================================
+    public function heraldrykingdoms($id = null)
+    {
+        $this->require_login();
+        $scope = $this->heraldryScope((int)($_GET['kingdom_id'] ?? 0));
+        if ($scope === null) {
+            $this->json_response(array('Status' => 5, 'Kingdoms' => array()));
+        }
+        $rows = array();
+        foreach (Ork3::$Lib->kingdom->GetKingdoms(array())['Kingdoms'] ?? array() as $k) {
+            $kid = (int)$k['KingdomId'];
+            if (!$scope['global'] && !in_array($kid, $scope['ids'], true)) {
+                continue;
+            }
+            $rows[] = array(
+                'id'   => $kid,
+                'name' => $k['KingdomName'],
+                'url'  => Ork3::$Lib->heraldry->GetHeraldryUrl(array('Type' => 'Kingdom', 'Id' => $kid))['Url'],
+            );
+        }
+        usort($rows, function ($a, $b) {
+            return strcasecmp($a['name'], $b['name']);
+        });
+        $this->json_response(array('Status' => 0, 'Kingdoms' => $rows));
+    }
+
+    // ================================================================
+    //  GET /ScrollTemplateAjax/heraldryparks&kingdom_id=&q=
+    //  Scoped park name-search (id, name, kingdom, heraldry url).
+    // ================================================================
+    public function heraldryparks($id = null)
+    {
+        $this->require_login();
+        $q = trim($_GET['q'] ?? '');
+        $scope = $this->heraldryScope((int)($_GET['kingdom_id'] ?? 0));
+        if ($scope === null) {
+            $this->json_response(array('Status' => 5, 'Parks' => array()));
+        }
+        $ids = $scope['global'] ? $this->allKingdomIds() : $scope['ids'];
+        if (!count($ids)) {
+            $this->json_response(array('Status' => 0, 'Parks' => array()));
+        }
+        $rows = array();
+        foreach (Ork3::$Lib->kingdom->GetParks(array('KingdomIds' => $ids))['Parks'] ?? array() as $p) {
+            $name = $p['Name'] ?? '';
+            if ($q !== '' && stripos($name, $q) === false) {
+                continue;
+            }
+            $pid = (int)($p['ParkId'] ?? 0);
+            $rows[] = array(
+                'id'      => $pid,
+                'name'    => $name,
+                'kingdom' => $p['KingdomName'] ?? ($p['Kingdom'] ?? ''),
+                'url'     => Ork3::$Lib->heraldry->GetHeraldryUrl(array('Type' => 'Park', 'Id' => $pid))['Url'],
+            );
+            if (count($rows) >= 20) {
+                break;
+            }
+        }
+        $this->json_response(array('Status' => 0, 'Parks' => $rows));
+    }
+
+    // ================================================================
+    //  GET /ScrollTemplateAjax/heraldryresolve&type=&eid=
+    //  Resolve a single entity's heraldry url (used after a player pick,
+    //  reusing KingdomAjax/playersearch for the search itself).
+    // ================================================================
+    public function heraldryresolve($id = null)
+    {
+        $this->require_login();
+        $type = ucfirst(strtolower(trim($_GET['type'] ?? '')));
+        $eid  = (int)($_GET['eid'] ?? 0);
+        if (!in_array($type, array('Kingdom', 'Park', 'Player'), true) || $eid <= 0) {
+            $this->json_response(array('Status' => 1, 'Url' => ''));
+        }
+        $url = Ork3::$Lib->heraldry->GetHeraldryUrl(array('Type' => $type, 'Id' => $eid))['Url'];
+        $this->json_response(array('Status' => 0, 'Url' => $url));
+    }
+
     // ================================================================
     //  GET /ScrollTemplateAjax/list?kingdom_id=
     // ================================================================

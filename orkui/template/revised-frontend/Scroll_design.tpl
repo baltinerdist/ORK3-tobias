@@ -25,6 +25,8 @@
 	<script>
 	window.SC_DESIGN = {
 		kingdomId: <?= (int)$kingdom_id ?>,
+		isAdmin:   <?= json_encode(!empty($is_admin)) ?>,
+		uir:       <?= json_encode(UIR) ?>,
 		template:  <?= json_encode($edit_template ?: null) ?>,
 		packCatalog: <?= json_encode($pack_catalog ?? []) ?>,
 		heraldry:  <?= json_encode($heraldry ?? []) ?>,
