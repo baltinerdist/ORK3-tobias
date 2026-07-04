@@ -14,11 +14,18 @@
 	}
 	function buildEditor() {
 		editor.innerHTML = '';
+		var head = document.createElement('h3'); head.className = 'sc-eyebrow'; head.textContent = 'Wording';
+		editor.appendChild(head);
+		if (!(current.zones || []).length) {
+			var p = document.createElement('p'); p.className = 'sc-empty'; p.textContent = 'This template has no editable text.';
+			editor.appendChild(p); return;
+		}
 		(current.zones || []).forEach(function (z, i) {
-			var wrap = document.createElement('label'); wrap.textContent = z.label || z.key;
-			var ta = document.createElement('textarea'); ta.value = z.text || ''; ta.rows = 2; ta.style.width = '100%';
+			var wrap = document.createElement('label'); wrap.className = 'sc-field';
+			var lab = document.createElement('span'); lab.className = 'sc-field__label'; lab.textContent = z.label || z.key;
+			var ta = document.createElement('textarea'); ta.className = 'sc-input'; ta.value = z.text || ''; ta.rows = 2;
 			ta.addEventListener('input', function () { current.zones[i].text = ta.value; render(); });
-			wrap.appendChild(ta); editor.appendChild(wrap);
+			wrap.appendChild(lab); wrap.appendChild(ta); editor.appendChild(wrap);
 		});
 	}
 	function select(id) {

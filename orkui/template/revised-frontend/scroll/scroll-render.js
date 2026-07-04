@@ -6,8 +6,8 @@
 		});
 	}
 	function slotSrc(slot, ctx) {
-		if (slot.source_type === 'pack')     return ctx.packBase + slot.source_ref;
-		if (slot.source_type === 'library')  return ctx.libBase + encodeURIComponent(slot.source_ref);
+		if (slot.source_type === 'pack')     return slot.source_ref ? ctx.packBase + slot.source_ref : '';
+		if (slot.source_type === 'library')  return slot.source_ref ? ctx.libBase + encodeURIComponent(slot.source_ref) : '';
 		if (slot.source_type === 'heraldry') return (ctx.heraldry && ctx.heraldry[slot.source_ref]) || '';
 		return '';
 	}

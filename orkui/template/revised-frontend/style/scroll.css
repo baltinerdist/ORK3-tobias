@@ -55,8 +55,107 @@ html[data-theme="dark"] .sc-panel { background:#2a2e37; border-color:#444; color
 html[data-theme="dark"] .sc-inspector label { color:#c8c8cc; }
 
 /* designer-only slot/zone handles */
-.sc-editing .sc-slot, .sc-editing .sc-zone { outline:1px solid rgba(40,90,200,.5); cursor:move; }
+.sc-editing .sc-slot, .sc-editing .sc-zone { outline:1px solid rgba(40,90,200,.35); cursor:move; }
 .sc-editing .sc-zone[contenteditable] { cursor:text; }
+.sc-editing .sc-slot.is-sel, .sc-editing .sc-zone.is-sel { outline:2px solid var(--sc-accent) !important; box-shadow:0 0 0 3px var(--sc-accent-soft); }
+
+/* ============================================================
+   Designer + filler control chrome — restrained ORK palette.
+   Light by default; dark via html[data-theme="dark"]. One gold accent.
+   ============================================================ */
+:root {
+	--sc-accent:#b8860b; --sc-accent-soft:rgba(184,134,11,.18);
+	--sc-panel-bg:#ffffff; --sc-panel-line:#dce0e7; --sc-ink:#242832; --sc-ink-soft:#5b6472;
+	--sc-input-bg:#ffffff; --sc-input-line:#c7cdd8; --sc-chip-bg:#f1f3f7;
+}
+html[data-theme="dark"] {
+	--sc-accent:#d4af37; --sc-accent-soft:rgba(212,175,55,.18);
+	--sc-panel-bg:#232833; --sc-panel-line:#3a4150; --sc-ink:#e7e9ee; --sc-ink-soft:#98a1b2;
+	--sc-input-bg:#1a1e26; --sc-input-line:#3a4150; --sc-chip-bg:#2c323d;
+}
+
+/* layout: stage + sticky inspector that scrolls on its own */
+.sc-designer { display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:20px; align-items:start; padding:16px; box-sizing:border-box; }
+@media (max-width:900px){ .sc-designer { grid-template-columns:1fr; } }
+
+.sc-inspector { background:var(--sc-panel-bg); border:1px solid var(--sc-panel-line); border-radius:10px;
+	color:var(--sc-ink); padding:14px; position:sticky; top:14px; max-height:calc(100vh - 28px);
+	overflow-y:auto; font:13px/1.4 system-ui,-apple-system,sans-serif; }
+
+.sc-toolbar { display:flex; gap:8px; margin-bottom:6px; }
+.sc-sec { padding:12px 0; border-top:1px solid var(--sc-panel-line); }
+.sc-sec:first-of-type { border-top:none; padding-top:6px; }
+.sc-eyebrow { margin:0 0 8px; font:600 11px/1 system-ui; letter-spacing:.09em; text-transform:uppercase;
+	color:var(--sc-ink-soft); background:none; border:none; padding:0; text-shadow:none; border-radius:0; }
+
+/* fields */
+.sc-field { display:grid; grid-template-columns:84px minmax(0,1fr); align-items:center; gap:8px; margin:7px 0; }
+.sc-field__label { color:var(--sc-ink-soft); font-size:12px; }
+.sc-field > textarea.sc-input, .sc-field > .sc-chips, .sc-field > .sc-pack-grid { grid-column:1 / -1; }
+.sc-field:has(textarea), .sc-field:has(.sc-chips), .sc-field:has(.sc-pack-grid) { grid-template-columns:1fr; gap:5px; }
+.sc-row { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.sc-row .sc-field { grid-template-columns:44px 1fr; margin:0; }
+
+/* inputs / selects */
+.sc-input { width:100%; box-sizing:border-box; background:var(--sc-input-bg); color:var(--sc-ink);
+	border:1px solid var(--sc-input-line); border-radius:6px; padding:6px 8px; font:inherit; }
+.sc-input:focus { outline:2px solid var(--sc-accent-soft); border-color:var(--sc-accent); }
+select.sc-input { appearance:none; padding-right:22px;
+	background-image:linear-gradient(45deg,transparent 50%,var(--sc-ink-soft) 50%),linear-gradient(135deg,var(--sc-ink-soft) 50%,transparent 50%);
+	background-position:calc(100% - 12px) 55%,calc(100% - 7px) 55%; background-size:5px 5px,5px 5px; background-repeat:no-repeat; }
+input[type=color].sc-input { padding:2px; height:30px; }
+textarea.sc-input { resize:vertical; min-height:52px; }
+
+/* buttons */
+.sc-btn { appearance:none; cursor:pointer; background:var(--sc-input-bg); color:var(--sc-ink);
+	border:1px solid var(--sc-input-line); border-radius:6px; padding:7px 12px; font:600 12px/1 system-ui; }
+.sc-btn:hover { border-color:var(--sc-accent); color:var(--sc-accent); }
+.sc-btn-primary { background:var(--sc-accent); border-color:var(--sc-accent); color:#1c1608; }
+.sc-btn-primary:hover { filter:brightness(1.06); color:#1c1608; }
+.sc-toolbar .sc-btn { flex:1; }
+
+/* elements list */
+.sc-el-list { display:flex; flex-direction:column; gap:4px; }
+.sc-el { display:flex; align-items:stretch; border:1px solid var(--sc-panel-line); border-radius:6px; overflow:hidden; }
+.sc-el.is-sel { border-color:var(--sc-accent); box-shadow:inset 0 0 0 1px var(--sc-accent); }
+.sc-el__pick { flex:1; display:flex; align-items:center; gap:8px; min-width:0; cursor:pointer;
+	background:none; border:none; color:var(--sc-ink); text-align:left; padding:7px 9px; font:inherit; }
+.sc-el__tag { flex:none; font:600 10px/1 system-ui; letter-spacing:.04em; text-transform:uppercase;
+	color:var(--sc-ink-soft); background:var(--sc-chip-bg); border-radius:4px; padding:3px 5px; }
+.sc-el__desc { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sc-el__del { flex:none; width:30px; border:none; border-left:1px solid var(--sc-panel-line);
+	background:none; color:var(--sc-ink-soft); cursor:pointer; font-size:16px; line-height:1; }
+.sc-el__del:hover { background:#c0392b; color:#fff; }
+
+/* token chips */
+.sc-chips { display:flex; flex-wrap:wrap; gap:5px; }
+.sc-chip { cursor:pointer; background:var(--sc-chip-bg); color:var(--sc-ink); border:1px solid var(--sc-input-line);
+	border-radius:5px; padding:4px 7px; font:500 11px/1 ui-monospace,monospace; }
+.sc-chip:hover { border-color:var(--sc-accent); color:var(--sc-accent); }
+
+/* pack thumbnail grid — CONSTRAINED, scrolls within the panel */
+.sc-pack-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; max-height:230px; overflow-y:auto;
+	padding:2px; border:1px solid var(--sc-panel-line); border-radius:6px; }
+.sc-pack { padding:0; border:1px solid var(--sc-panel-line); border-radius:5px; overflow:hidden; cursor:pointer;
+	background:#f4f3ef; aspect-ratio:1; }   /* light tile — pack art is drawn for light paper */
+.sc-pack img { width:100%; height:100%; object-fit:contain; display:block; }
+.sc-pack:hover { border-color:var(--sc-accent); }
+.sc-pack.is-sel { border-color:var(--sc-accent); box-shadow:inset 0 0 0 2px var(--sc-accent); }
+
+.sc-empty { margin:2px 0; color:var(--sc-ink-soft); font-size:12px; font-style:italic; }
+.sc-save { display:flex; flex-direction:column; gap:8px; }
+
+/* filler header + zone editor reuse the same tokens */
+.sc-filler .sc-panel, .sc-inspector.sc-panel { background:var(--sc-panel-bg); }
+.sc-filler { padding:16px; box-sizing:border-box; }
+.sc-filler-head { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px;
+	background:var(--sc-panel-bg); border:1px solid var(--sc-panel-line); border-radius:10px; padding:12px 16px; margin-bottom:14px; color:var(--sc-ink); }
+.sc-filler-title { margin:0; font:600 19px/1.2 system-ui; background:none; border:none; padding:0; border-radius:0; text-shadow:none; color:var(--sc-ink); }
+.sc-filler-controls { display:flex; align-items:center; gap:12px; }
+.sc-field--inline { display:flex; align-items:center; gap:8px; margin:0; }
+.sc-field--inline .sc-input { width:auto; min-width:220px; }
+.sc-filler-editor { max-width:920px; margin:14px auto 0; padding:16px; border-radius:10px; }
+.sc-filler-editor .sc-eyebrow { margin-top:0; }
 
 /* --- print / browser Save-as-PDF fallback (primary path is client-side jsPDF).
    Isolate the scroll page at true Letter size; hide all site + editor chrome.

@@ -1,19 +1,22 @@
 <?php /* Scroll_builder.tpl — filler. Plain PHP template. */ ?>
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>revised-frontend/style/scroll.css?v=<?= filemtime(DIR_TEMPLATE.'revised-frontend/style/scroll.css') ?>">
 <div class="sc-filler">
-	<header class="sc-panel" style="padding:.75rem 1rem;margin-bottom:1rem;">
-		<h1 style="background:transparent;border:none;padding:0;border-radius:0;text-shadow:none;font:600 20px/1.2 system-ui;">Scroll Generator</h1>
-		<label class="sc-inspector">Template
-			<select id="scTemplatePicker">
-				<?php foreach (($templates ?? []) as $t): ?>
-					<option value="<?= (int)$t['scroll_template_id'] ?>"><?= htmlspecialchars($t['name']) ?><?= $t['is_starter'] ? ' (starter)' : '' ?></option>
-				<?php endforeach; ?>
-			</select>
-		</label>
-		<button id="scDownloadPdf" type="button" class="sc-btn">Download PDF</button>
+	<header class="sc-filler-head">
+		<h1 class="sc-filler-title">Scroll Generator</h1>
+		<div class="sc-filler-controls">
+			<label class="sc-field sc-field--inline">
+				<span class="sc-field__label">Template</span>
+				<select id="scTemplatePicker" class="sc-input">
+					<?php foreach (($templates ?? []) as $t): ?>
+						<option value="<?= (int)$t['scroll_template_id'] ?>"><?= htmlspecialchars($t['name']) ?><?= $t['is_starter'] ? ' — starter' : '' ?></option>
+					<?php endforeach; ?>
+				</select>
+			</label>
+			<button id="scDownloadPdf" type="button" class="sc-btn sc-btn-primary">Download PDF</button>
+		</div>
 	</header>
 	<div class="sc-stage" id="scStage"><div class="sc-page" id="scPage"></div></div>
-	<aside class="sc-panel sc-inspector" id="scZoneEditor" style="padding:1rem;margin-top:1rem;"></aside>
+	<aside class="sc-panel sc-filler-editor" id="scZoneEditor"></aside>
 </div>
 <script>
 window.SC_BUILDER = {

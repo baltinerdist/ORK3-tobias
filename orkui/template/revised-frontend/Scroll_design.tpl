@@ -6,19 +6,20 @@
 		<p>You must be a kingdom officer to design scroll templates for this kingdom.</p>
 	</div>
 <?php else: ?>
-	<div class="sc-designer" style="display:grid;grid-template-columns:1fr 340px;gap:1rem;align-items:start;">
+	<div class="sc-designer">
 		<div class="sc-stage" id="scStage"><div class="sc-page sc-editing" id="scPage"></div></div>
-		<aside class="sc-panel sc-inspector" id="scInspector" style="padding:1rem;position:sticky;top:14px;">
+		<aside class="sc-inspector" id="scInspector">
 			<div class="sc-toolbar">
 				<button type="button" id="scAddZone" class="sc-btn">+ Text zone</button>
 				<button type="button" id="scAddSlot" class="sc-btn">+ Graphic slot</button>
 			</div>
-			<div id="scPageProps"></div>     <!-- name / orientation / background -->
-			<div id="scSelProps"></div>       <!-- selected slot or zone props -->
-			<div class="sc-actions" style="margin-top:1rem;">
-				<input id="scTplName" placeholder="Template name" value="<?= htmlspecialchars($edit_template['name'] ?? '') ?>">
-				<button type="button" id="scSave" class="sc-btn sc-btn-primary">Save</button>
-			</div>
+			<section class="sc-sec"><h3 class="sc-eyebrow">Page</h3><div id="scPageProps"></div></section>
+			<section class="sc-sec"><h3 class="sc-eyebrow">Elements</h3><div id="scElements" class="sc-el-list"></div></section>
+			<section class="sc-sec"><h3 class="sc-eyebrow" id="scSelectedHead">Nothing selected</h3><div id="scSelected"></div></section>
+			<section class="sc-sec sc-save">
+				<input id="scTplName" class="sc-input" placeholder="Template name" value="<?= htmlspecialchars($edit_template['name'] ?? '') ?>">
+				<button type="button" id="scSave" class="sc-btn sc-btn-primary">Save template</button>
+			</section>
 		</aside>
 	</div>
 	<script>
