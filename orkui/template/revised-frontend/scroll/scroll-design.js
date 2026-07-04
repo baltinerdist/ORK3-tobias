@@ -17,12 +17,12 @@
 		'UnifrakturMaguntia', 'Great Vibes', 'Pinyon Script', 'Tangerine', 'Uncial Antiqua', 'Goudy Bookletter 1911',
 		'Sorts Mill Goudy', 'Metamorphous', 'Grenze Gotisch', 'Caudex', 'Fondamento', 'Germania One', 'Eagle Lake',
 		'Pirata One', 'Jim Nightshade'];
-	var LOCATIONS = ['full_border', 'center_image', 'top_graphic', 'watermark', 'border_left', 'border_right', 'border_top', 'border_bottom'];
+	var LOCATIONS = ['full_border', 'center_image', 'top_graphic', 'background', 'border_left', 'border_right', 'border_top', 'border_bottom'];
 
 	// which catalog collection suits a given slot placement
 	function collectionForPlacement(loc) {
 		if (loc === 'full_border' || /^border_/.test(loc)) { return 'borders'; }
-		if (loc === 'watermark') { return 'backgrounds'; }
+		if (loc === 'background' || loc === 'watermark') { return 'backgrounds'; }   // 'watermark' = legacy alias
 		return 'emblems';
 	}
 	// distinct groups in catalog order (catalog is pre-sorted by group order)
@@ -39,6 +39,7 @@
 			case 'border_right':  return { x: 85, y: 4, w: 14, h: 92 };
 			case 'border_top':    return { x: 4, y: 1, w: 92, h: 12 };
 			case 'border_bottom': return { x: 4, y: 87, w: 92, h: 12 };
+			case 'background':
 			case 'watermark':     return { x: 0, y: 0, w: 100, h: 100 };
 			case 'top_graphic':   return { x: 6, y: 5, w: 16, h: 20 };
 			default:              return { x: 35, y: 40, w: 30, h: 30 };  // center_image
