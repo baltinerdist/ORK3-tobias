@@ -39,7 +39,7 @@
 			enabled: !!cfg.enabled,
 			pattern: (PATTERNS_OK.indexOf(cfg.pattern) >= 0) ? cfg.pattern : 'plait',
 			band: { inset: num(band.inset, 2), width: num(band.width, 6) },
-			strands: { count: clamp(num(st.count, 3), 2, 4), thickness: num(st.thickness, 0.55), gap: num(st.gap, 0.12), scale: num(st.scale, 1) },
+			strands: { count: clamp(num(st.count, 3), 2, 4), thickness: num(st.thickness, 0.55), scale: num(st.scale, 1) },
 			colors: {
 				strands: (Array.isArray(co.strands) && co.strands.length) ? co.strands.slice(0, 4) : ['#2e7d32', '#f4c542'],
 				outline: o(co.outline, '#1a1a1a')
@@ -327,7 +327,7 @@
 	};
 	patterns.twist = function (L, band, sp, opts) {
 		var closedMode = !!(opts && opts.closed);
-		var sp2 = { count: 2, thickness: clamp(sp.thickness * 1.25, 0.3, 0.9), gap: sp.gap, scale: sp.scale };
+		var sp2 = { count: 2, thickness: clamp(sp.thickness * 1.25, 0.3, 0.9), scale: sp.scale };
 		var lam0 = Math.max(band * 1.15 * sp.scale, 8);
 		var reps = Math.max(1, Math.round(L / lam0)), lam = L / reps;
 		var wf = strandW(band, 2, sp2), amp = Math.max(1, band / 2 - wf / 2 - outlineW(wf) - 1);
@@ -464,7 +464,7 @@
 	// per-crossing hole window for the UNDER strand (true cut gaps replace the old painted-casing
 	// over-arc redraw): halfLen must clear the over strand's full outline footprint plus the gap;
 	// shallow crossing angles need a longer hole, else the cut looks too thin / beads visually.
-	function underWindow(c, polys, wf, gapPx, wOut) {
+	function underWindow(c, polys, wf, wOut) {
 		var underIsA = c.over === 'b';                      // over is the OTHER side -> this side is under
 		var polyIdx = underIsA ? c.a : c.b;
 		var idx = underIsA ? c.ia : c.ib, frac = underIsA ? c.fa : c.fb;
@@ -472,7 +472,7 @@
 		// Near-tangent contact is a FUSION, not an over/under: a medallion landing curve merging
 		// onto a ring (or any glancing overlap) must not cut a hole -- the paths simply merge.
 		if (sinA < 0.25) { return null; }
-		var halfLen = Math.min(wf * 3.5, (wOut / 2 + gapPx) / Math.max(0.35, sinA));
+		var halfLen = Math.min(wf * 3.5, (wOut / 2) / Math.max(0.35, sinA));
 		// Safety cap (Finding: near-tangent fusions, e.g. a medallion landing curve fusing onto a
 		// small ring, drive sinA to its floor and so halfLen to its max -- on a SHORT polyline (a
 		// small ring's total length can be comparable to that max) that can devour the whole shape.
@@ -876,10 +876,10 @@
 	// polylines outline-then-fill in two passes (no third "over-arc redraw" pass -- the hole IS
 	// the gap; page background shows through where paint used to be). paintOfFn differs between
 	// callers (gradient-aware lookup in render(), flat palette lookup in swatch()).
-	function paintCutStrokes(svg, polys, outlineColor, wf, gapPx, wOut, paintOfFn) {
+	function paintCutStrokes(svg, polys, outlineColor, wf, wOut, paintOfFn) {
 		var windowsByIdx = polys.map(function () { return []; });
 		findCrossings(polys, wf * 0.8).forEach(function (c) {
-			var w = underWindow(c, polys, wf, gapPx, wOut);
+			var w = underWindow(c, polys, wf, wOut);
 			if (!w) { return; }                                 // tangent fusion -> no hole
 			windowsByIdx[w.polyIdx].push({ idx: w.idx, frac: w.frac, halfLen: w.halfLen });
 		});
@@ -928,9 +928,9 @@
 			svg.appendChild(defs);
 		}
 		var band = got.layout.band, N = effCount(cfg);
-		var wf = strandW(band, N, cfg.strands) * (cfg.pattern === 'twist' ? 1.25 : 1), wOut = wf + 2 * outlineW(wf), gapPx = cfg.strands.gap * wf;
+		var wf = strandW(band, N, cfg.strands) * (cfg.pattern === 'twist' ? 1.25 : 1), wOut = wf + 2 * outlineW(wf);
 		function paintOf(colorIdx) { return paints[colorIdx % paints.length]; }
-		paintCutStrokes(svg, polys, cfg.colors.outline, wf, gapPx, wOut, paintOf);
+		paintCutStrokes(svg, polys, cfg.colors.outline, wf, wOut, paintOf);
 		return svg;
 	}
 	// small horizontal weave strip for designer pattern thumbnails: straight open two-point
@@ -948,8 +948,8 @@
 		var seg = { s0: 0, s1: len, endA: 'terminal', endB: 'terminal', med: null, medA: null, medB: null };
 		var polys = buildSpineSegmentPolys(seg, cfg, layout, spn);
 		var N = effCount(cfg);
-		var wf = strandW(band, N, cfg.strands) * (cfg.pattern === 'twist' ? 1.25 : 1), wOut = wf + 2 * outlineW(wf), gapPx = cfg.strands.gap * wf;
-		paintCutStrokes(svg, polys, cfg.colors.outline, wf, gapPx, wOut, function (colorIdx) { return cfg.colors.strands[colorIdx % cfg.colors.strands.length]; });
+		var wf = strandW(band, N, cfg.strands) * (cfg.pattern === 'twist' ? 1.25 : 1), wOut = wf + 2 * outlineW(wf);
+		paintCutStrokes(svg, polys, cfg.colors.outline, wf, wOut, function (colorIdx) { return cfg.colors.strands[colorIdx % cfg.colors.strands.length]; });
 		return svg;
 	}
 

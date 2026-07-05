@@ -11,7 +11,7 @@ function near(a, b, eps, msg) { ok(Math.abs(a - b) <= (eps || 1e-6), msg + ' (' 
 // ---- norm(): defaults fill in
 const cfg = G.norm({ enabled: true, pattern: 'plait' });
 ok(cfg.band.inset === 2 && cfg.band.width === 6, 'norm band defaults');
-ok(cfg.strands.count === 3 && cfg.strands.thickness === 0.55 && cfg.strands.gap === 0.12 && cfg.strands.scale === 1, 'norm strand defaults');
+ok(cfg.strands.count === 3 && cfg.strands.thickness === 0.55 && cfg.strands.scale === 1, 'norm strand defaults');
 ok(Array.isArray(cfg.colors.strands) && cfg.colors.strands.length >= 1 && /^#/.test(cfg.colors.outline), 'norm color defaults');
 ok(cfg.gradient.enabled === false && cfg.autoBreak.enabled === true, 'norm gradient/autoBreak defaults');
 
@@ -404,13 +404,14 @@ near(smC[0], msL.inset + msL.band / 2, 0.01, 'small medallion stays on band cent
 // is under at; the over strand stays continuous (unbroken) through every crossing it is over at.
 {
 	const cutPolysSrc = [sine(0), sine(Math.PI)];
-	const wfCut = 10, gapCut = 1.4, wOutCut = wfCut + 2 * G.outlineW(wfCut);
+	const wfCut = 10, wOutCut = wfCut + 2 * G.outlineW(wfCut);
 	const crCut = G.findCrossings(cutPolysSrc, wfCut * 0.8);
 	ok(crCut.length > 0, 'two-sine pair produces crossings to test true cut gaps against');
 	const windowsByIdx = cutPolysSrc.map(function () { return []; });
 	const underCount = { 0: 0, 1: 0 };
 	crCut.forEach(function (c) {
-		const w = G.underWindow(c, cutPolysSrc, wfCut, gapCut, wOutCut);
+		const w = G.underWindow(c, cutPolysSrc, wfCut, wOutCut);
+		if (!w) { return; }                                  // tangent fusion -> no hole
 		windowsByIdx[w.polyIdx].push({ idx: w.idx, frac: w.frac, halfLen: w.halfLen });
 		underCount[w.polyIdx]++;
 	});
