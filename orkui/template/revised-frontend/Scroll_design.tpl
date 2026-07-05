@@ -14,6 +14,7 @@
 				<button type="button" id="scAddSlot" class="sc-btn">+ Graphic slot</button>
 			</div>
 			<section class="sc-sec"><h3 class="sc-eyebrow">Page</h3><div id="scPageProps"></div></section>
+			<section class="sc-sec"><h3 class="sc-eyebrow">Border</h3><div id="scKnot"></div></section>
 			<section class="sc-sec"><h3 class="sc-eyebrow">Elements</h3><div id="scElements" class="sc-el-list"></div></section>
 			<section class="sc-sec"><h3 class="sc-eyebrow" id="scSelectedHead">Nothing selected</h3><div id="scSelected"></div></section>
 			<section class="sc-sec"><h3 class="sc-eyebrow">For awards</h3><div id="scAwardTags"></div></section>

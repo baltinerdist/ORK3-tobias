@@ -21,6 +21,27 @@
 		'Pirata One', 'Jim Nightshade'];
 	var LOCATIONS = ['full_border', 'center_image', 'top_graphic', 'background', 'border_left', 'border_right', 'border_top', 'border_bottom'];
 
+	var KNOT_PRESETS = {
+		Flame: { enabled: true, pattern: 'plait', band: { inset: 1.8, width: 5.5 }, strands: { count: 3, thickness: 0.6, gap: 0.12, scale: 1 },
+			colors: { strands: ['#b3231a', '#e4670f', '#f5a623'], outline: '#2a0c05' },
+			gradient: { enabled: true, angle: 90, stops: [{ at: 0, color: '#a11212' }, { at: 0.55, color: '#e4670f' }, { at: 1, color: '#f7c948' }] },
+			corners: 'hook', medallions: [{ edge: 'left', at: 42, size: 13, shape: 'diamond' }, { edge: 'right', at: 42, size: 13, shape: 'diamond' }],
+			breaks: [{ edge: 'top', at: 50, width: 10 }, { edge: 'bottom', at: 50, width: 26 }], autoBreak: { enabled: true, padding: 2 } },
+		Dragon: { enabled: true, pattern: 'openweave', band: { inset: 2, width: 6.2 }, strands: { count: 4, thickness: 0.55, gap: 0.12, scale: 1 },
+			colors: { strands: ['#2e6b2f', '#e9b840'], outline: '#12240f' }, gradient: { enabled: false, angle: 90, stops: [{ at: 0, color: '#2e6b2f' }, { at: 1, color: '#e9b840' }] },
+			corners: 'woven', medallions: [{ edge: 'left', at: 40, size: 14, shape: 'diamond' }, { edge: 'right', at: 40, size: 14, shape: 'diamond' }],
+			breaks: [{ edge: 'bottom', at: 50, width: 26 }], autoBreak: { enabled: true, padding: 2 } },
+		Crown: { enabled: true, pattern: 'openweave', band: { inset: 2, width: 6 }, strands: { count: 4, thickness: 0.55, gap: 0.12, scale: 1 },
+			colors: { strands: ['#2b2b2e', '#e7b83b'], outline: '#101012' }, gradient: { enabled: false, angle: 90, stops: [{ at: 0, color: '#2b2b2e' }, { at: 1, color: '#e7b83b' }] },
+			corners: 'woven', medallions: [{ edge: 'left', at: 33, size: 13, shape: 'diamond' }, { edge: 'right', at: 33, size: 13, shape: 'diamond' }],
+			breaks: [{ edge: 'bottom', at: 50, width: 30 }], autoBreak: { enabled: true, padding: 2 } },
+		Smith: { enabled: true, pattern: 'twist', band: { inset: 2, width: 5.8 }, strands: { count: 2, thickness: 0.6, gap: 0.14, scale: 1 },
+			colors: { strands: ['#8a6844', '#7b8494'], outline: '#241a10' }, gradient: { enabled: false, angle: 90, stops: [{ at: 0, color: '#8a6844' }, { at: 1, color: '#7b8494' }] },
+			corners: 'woven', medallions: [{ edge: 'left', at: 45, size: 13, shape: 'diamond' }, { edge: 'right', at: 45, size: 13, shape: 'diamond' }],
+			breaks: [{ edge: 'bottom', at: 50, width: 30 }], autoBreak: { enabled: true, padding: 2 } }
+	};
+	var KNOT_PATTERNS = ['plait', 'openweave', 'twist', 'runningknot'];
+
 	// which catalog collection suits a given slot placement
 	function collectionForPlacement(loc) {
 		if (loc === 'full_border' || /^border_/.test(loc)) { return 'borders'; }
@@ -83,7 +104,10 @@
 					obj.y = Math.max(0, Math.min(100, oy + (ev.clientY - sy) / pr.height * 100));
 					elem.style.left = obj.x + '%'; elem.style.top = obj.y + '%';
 				}
-				function up() { document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up); }
+				function up() {
+					document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up);
+					if (kind === 'slot' && obj.break_border && tpl.knot && tpl.knot.enabled) { render(); }
+				}
 				document.addEventListener('mousemove', mv); document.addEventListener('mouseup', up);
 			});
 		});
@@ -163,6 +187,147 @@
 		}
 	}
 
+	// ---- inspector: Border (knotwork) ----
+	function knotCfg() {
+		if (!tpl.knot) { tpl.knot = { enabled: false }; }
+		return tpl.knot;
+	}
+	function checkbox(labelText, val, on) {
+		var wrap = el('label', 'sc-check');
+		var c = el('input'); c.type = 'checkbox'; c.checked = !!val;
+		c.addEventListener('change', function () { on(c.checked); });
+		wrap.appendChild(c); wrap.appendChild(el('span', null, labelText));
+		return wrap;
+	}
+	function slider(labelText, val, min, max, step, on) {
+		var wrap = el('label', 'sc-field');
+		wrap.appendChild(el('span', 'sc-field__label', labelText));
+		var i = el('input', 'sc-input'); i.type = 'range'; i.min = min; i.max = max; i.step = step; i.value = val;
+		i.addEventListener('input', function () { on(+i.value); });
+		wrap.appendChild(i);
+		return wrap;
+	}
+	function buildKnot() {
+		var box = document.getElementById('scKnot'); if (!box) { return; }
+		box.innerHTML = '';
+		var k = knotCfg();
+		// presets
+		var pr = el('div', 'sc-chips');
+		Object.keys(KNOT_PRESETS).forEach(function (name) {
+			var b = el('button', 'sc-chip', name); b.type = 'button';
+			b.onclick = function () { tpl.knot = JSON.parse(JSON.stringify(KNOT_PRESETS[name])); render(); buildKnot(); };
+			pr.appendChild(b);
+		});
+		box.appendChild(field('Presets', pr));
+		box.appendChild(checkbox('Knotwork border', k.enabled, function (v) { k.enabled = v; render(); buildKnot(); }));
+		if (!k.enabled) { return; }
+		// normalize once so sub-objects exist for editing
+		var full = window.ScrollKnot._geom.norm(k);
+		['pattern', 'band', 'strands', 'colors', 'gradient', 'corners', 'medallions', 'breaks', 'autoBreak'].forEach(function (key) {
+			if (k[key] == null) { k[key] = full[key]; }
+		});
+		k.enabled = true;
+		// pattern thumbnails
+		var pats = el('div', 'sc-knot-pats');
+		KNOT_PATTERNS.forEach(function (p) {
+			var b = el('button', 'sc-knot-pat' + (k.pattern === p ? ' is-sel' : '')); b.type = 'button'; b.setAttribute('data-tip', p);
+			var cfg = JSON.parse(JSON.stringify(k)); cfg.pattern = p;
+			b.appendChild(window.ScrollKnot.swatch(cfg, 150, 34));
+			b.onclick = function () { k.pattern = p; render(); buildKnot(); };
+			pats.appendChild(b);
+		});
+		box.appendChild(field('Pattern', pats));
+		var row1 = el('div', 'sc-row');
+		row1.appendChild(slider('Inset', k.band.inset, 0.5, 6, 0.1, function (v) { k.band.inset = v; render(); }));
+		row1.appendChild(slider('Width', k.band.width, 3, 10, 0.1, function (v) { k.band.width = v; render(); }));
+		box.appendChild(row1);
+		var row2 = el('div', 'sc-row');
+		row2.appendChild(slider('Strands', k.strands.count, 2, 4, 1, function (v) { k.strands.count = v; render(); buildKnot(); }));
+		row2.appendChild(slider('Thickness', k.strands.thickness, 0.3, 0.9, 0.05, function (v) { k.strands.thickness = v; render(); }));
+		box.appendChild(row2);
+		var row3 = el('div', 'sc-row');
+		row3.appendChild(slider('Cut gap', k.strands.gap, 0, 0.3, 0.02, function (v) { k.strands.gap = v; render(); }));
+		row3.appendChild(slider('Density', k.strands.scale, 0.6, 1.8, 0.05, function (v) { k.strands.scale = v; render(); }));
+		box.appendChild(row3);
+		// strand colors
+		var cc = el('div', 'sc-chips');
+		k.colors.strands.forEach(function (hex, i) {
+			var swatchWrap = el('span', 'sc-knot-color');
+			var ci = el('input'); ci.type = 'color'; ci.value = hex;
+			ci.addEventListener('input', function () { k.colors.strands[i] = ci.value || hex; render(); });
+			swatchWrap.appendChild(ci);
+			if (k.colors.strands.length > 1) {
+				var x = el('button', 'sc-knot-color__del', '×'); x.type = 'button'; x.setAttribute('data-tip', 'Remove color');
+				x.onclick = function () { k.colors.strands.splice(i, 1); render(); buildKnot(); };
+				swatchWrap.appendChild(x);
+			}
+			cc.appendChild(swatchWrap);
+		});
+		if (k.colors.strands.length < 4) {
+			var add = el('button', 'sc-chip', '+'); add.type = 'button'; add.setAttribute('data-tip', 'Add strand color');
+			add.onclick = function () { k.colors.strands.push('#888888'); render(); buildKnot(); };
+			cc.appendChild(add);
+		}
+		box.appendChild(field('Strand colors', cc));
+		box.appendChild(field('Outline', input(k.colors.outline || '#1a1a1a', 'color', function (v) { k.colors.outline = v || '#1a1a1a'; render(); })));
+		// gradient
+		box.appendChild(checkbox('Gradient tint', k.gradient.enabled, function (v) { k.gradient.enabled = v; render(); buildKnot(); }));
+		if (k.gradient.enabled) {
+			box.appendChild(slider('Angle', k.gradient.angle, 0, 360, 5, function (v) { k.gradient.angle = v; render(); }));
+			var gs = el('div', 'sc-chips');
+			k.gradient.stops.forEach(function (st, i) {
+				var gi = el('input'); gi.type = 'color'; gi.value = st.color;
+				gi.addEventListener('input', function () { st.color = gi.value || st.color; render(); });
+				gs.appendChild(gi);
+			});
+			box.appendChild(field('Gradient colors', gs));
+		}
+		box.appendChild(field('Corners', select(['woven', 'hook'], k.corners, function (v) { k.corners = v; render(); })));
+		// medallions
+		var medBox = el('div');
+		k.medallions.forEach(function (m, i) {
+			var row = el('div', 'sc-knot-feat');
+			row.appendChild(field('Edge', select(['left', 'right', 'top', 'bottom'], m.edge, function (v) { m.edge = v; render(); })));
+			row.appendChild(slider('Position', m.at, 5, 95, 1, function (v) { m.at = v; render(); }));
+			row.appendChild(slider('Size', m.size, 6, 22, 0.5, function (v) { m.size = v; render(); }));
+			var act = el('div', 'sc-chips');
+			var slotBtn = el('button', 'sc-chip', 'Add emblem slot'); slotBtn.type = 'button';
+			slotBtn.onclick = function () {
+				var rects = window.ScrollKnot.medallionInnerRects(k, tpl.orientation === 'landscape' ? 1056 : 816, tpl.orientation === 'landscape' ? 816 : 1056);
+				var r = rects[i]; if (!r) { return; }
+				tpl.slots.push({ location: 'center_image', x: r.x, y: r.y, w: r.w, h: r.h, source_type: 'pack', source_ref: '', fit: 'contain' });
+				sel = { kind: 'slot', index: tpl.slots.length - 1 };
+				render(); refreshInspector();
+			};
+			var del = el('button', 'sc-chip', 'Remove'); del.type = 'button';
+			del.onclick = function () { k.medallions.splice(i, 1); render(); buildKnot(); };
+			act.appendChild(slotBtn); act.appendChild(del);
+			row.appendChild(act);
+			medBox.appendChild(row);
+		});
+		var addMed = el('button', 'sc-chip', '+ Medallion'); addMed.type = 'button';
+		addMed.onclick = function () { k.medallions.push({ edge: 'left', at: 45, size: 13, shape: 'diamond' }); render(); buildKnot(); };
+		medBox.appendChild(addMed);
+		box.appendChild(field('Medallions', medBox));
+		// manual breaks
+		var brBox = el('div');
+		k.breaks.forEach(function (b, i) {
+			var row = el('div', 'sc-knot-feat');
+			row.appendChild(field('Edge', select(['top', 'bottom', 'left', 'right'], b.edge, function (v) { b.edge = v; render(); })));
+			row.appendChild(slider('Position', b.at, 0, 100, 1, function (v) { b.at = v; render(); }));
+			row.appendChild(slider('Width', b.width, 4, 60, 1, function (v) { b.width = v; render(); }));
+			var del = el('button', 'sc-chip', 'Remove'); del.type = 'button';
+			del.onclick = function () { k.breaks.splice(i, 1); render(); buildKnot(); };
+			row.appendChild(del);
+			brBox.appendChild(row);
+		});
+		var addBr = el('button', 'sc-chip', '+ Break'); addBr.type = 'button';
+		addBr.onclick = function () { k.breaks.push({ edge: 'bottom', at: 50, width: 20 }); render(); buildKnot(); };
+		brBox.appendChild(addBr);
+		box.appendChild(field('Breaks', brBox));
+		box.appendChild(checkbox('Art can break the border', k.autoBreak.enabled, function (v) { k.autoBreak.enabled = v; render(); }));
+	}
+
 	// ---- inspector: Elements list ----
 	function buildElements() {
 		var box = document.getElementById('scElements'); box.innerHTML = '';
@@ -235,6 +400,9 @@
 				if (v === 'heraldry' && !/^(kingdom|park|player)$/.test(s.source_ref)) { s.source_ref = 'kingdom'; }
 				render(); buildSelected();
 			})));
+			box.appendChild(checkbox('Border yields to this art', !!s.break_border, function (v) {
+				s.break_border = v; render();
+			}));
 			if (s.source_type === 'heraldry') {
 				buildHeraldry(box, s);
 			} else if (s.source_type === 'pack') {
@@ -462,5 +630,5 @@
 	};
 
 	// ---- boot ----
-	buildPage(); buildAwardTags(); render(); refreshInspector();
+	buildPage(); buildAwardTags(); buildKnot(); render(); refreshInspector();
 })();

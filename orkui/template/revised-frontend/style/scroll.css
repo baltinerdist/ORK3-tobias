@@ -226,3 +226,14 @@ textarea.sc-input { resize:vertical; min-height:52px; }
 	.sc-page .sc-token-unfilled { outline:none !important; opacity:1 !important; }
 	.sc-editing .sc-slot, .sc-editing .sc-zone { outline:none !important; }
 }
+
+/* ---- knotwork Border panel ---- */
+.sc-check { display:flex; align-items:center; gap:8px; margin:8px 0; font-size:.85rem; cursor:pointer; }
+.sc-knot-pats { display:flex; flex-direction:column; gap:6px; }
+.sc-knot-pat { border:1px solid var(--sc-panel-line); border-radius:6px; padding:2px; background:var(--sc-chip-bg); cursor:pointer; }
+.sc-knot-pat.is-sel { outline:2px solid var(--sc-accent); }
+.sc-knot-pat svg { display:block; width:100%; height:34px; }
+.sc-knot-color { position:relative; display:inline-flex; align-items:center; gap:2px; }
+.sc-knot-color input[type=color] { width:34px; height:26px; padding:0; border:1px solid var(--sc-panel-line); border-radius:4px; background:none; cursor:pointer; }
+.sc-knot-color__del { border:none; background:none; cursor:pointer; color:inherit; font-size:.9rem; padding:0 2px; }
+.sc-knot-feat { border:1px solid var(--sc-panel-line); border-radius:6px; padding:6px 8px; margin:6px 0; }
