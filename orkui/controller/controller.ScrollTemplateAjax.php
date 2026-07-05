@@ -230,7 +230,7 @@ class Controller_ScrollTemplateAjax extends Controller
      * edit authority over the target kingdom; shared starters require AUTH_ADMIN.
      *
      * POST body (JSON): id?, kingdom_id, name, orientation, bg_type, bg_value,
-     *                   slots, zones, is_starter
+     *                   slots, zones, knot, is_starter
      *
      * Returns JSON: {Status, TemplateId}
      */
@@ -250,6 +250,7 @@ class Controller_ScrollTemplateAjax extends Controller
             'Slots'       => $body['slots'] ?? array(),
             'Zones'       => $body['zones'] ?? array(),
             'AwardKeys'   => $body['award_keys'] ?? array(),
+            'Knot'        => $body['knot'] ?? null,
             'IsStarter'   => !empty($body['is_starter']) ? 1 : 0,
             'CreatedBy'   => $mundane_id,
         );

@@ -48,9 +48,10 @@ class ScrollTemplate extends Ork3
         $this->db->slots       = json_encode(array_values($req['Slots'] ?? array()));
         $this->db->zones       = json_encode(array_values($req['Zones'] ?? array()));
         $this->db->award_keys  = self::encodeAwardKeys($req['AwardKeys'] ?? array());
+        $this->db->knot        = self::encodeKnot($req['Knot'] ?? null);
         $this->db->is_starter  = !empty($req['IsStarter']) ? 1 : 0;
         $this->db->created_by  = (int)($req['CreatedBy'] ?? 0);
-        $cols = array('kingdom_id', 'name', 'orientation', 'bg_type', 'bg_value', 'slots', 'zones', 'award_keys', 'is_starter', 'created_by');
+        $cols = array('kingdom_id', 'name', 'orientation', 'bg_type', 'bg_value', 'slots', 'zones', 'award_keys', 'knot', 'is_starter', 'created_by');
         $ph = array_map(function ($c) {
             return ':' . $c;
         }, $cols);
@@ -106,8 +107,10 @@ class ScrollTemplate extends Ork3
         $this->db->slots       = json_encode(array_values($req['Slots'] ?? array()));
         $this->db->zones       = json_encode(array_values($req['Zones'] ?? array()));
         $this->db->award_keys  = self::encodeAwardKeys($req['AwardKeys'] ?? array());
+        $this->db->knot        = self::encodeKnot($req['Knot'] ?? null);
         $sql = "UPDATE " . DB_PREFIX . "scroll_template SET name = :name, orientation = :orientation,
-			bg_type = :bg_type, bg_value = :bg_value, slots = :slots, zones = :zones, award_keys = :award_keys
+			bg_type = :bg_type, bg_value = :bg_value, slots = :slots, zones = :zones, award_keys = :award_keys,
+			knot = :knot
 			WHERE scroll_template_id = :scroll_template_id";
         $this->db->Execute($sql);
         return array('Status' => Success());
@@ -140,6 +143,7 @@ class ScrollTemplate extends Ork3
             'slots'       => json_decode($r->slots ?? '[]', true) ?: array(),
             'zones'       => json_decode($r->zones ?? '[]', true) ?: array(),
             'award_keys'  => json_decode($r->award_keys ?? '[]', true) ?: array(),
+            'knot'        => json_decode($r->knot ?? 'null', true),
             'is_starter'  => (int)$r->is_starter,
         );
     }
@@ -155,5 +159,14 @@ class ScrollTemplate extends Ork3
             }
         }
         return json_encode($ids);
+    }
+
+    /** Normalize the knot (border) config to a JSON string, or null if absent. */
+    private static function encodeKnot($knot)
+    {
+        if (!is_array($knot) || empty($knot)) {
+            return null;
+        }
+        return json_encode($knot);
     }
 }
