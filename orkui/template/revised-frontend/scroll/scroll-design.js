@@ -25,7 +25,7 @@
 		Flame: { enabled: true, pattern: 'plait', band: { inset: 1.8, width: 5.5 }, strands: { count: 3, thickness: 0.48, scale: 0.85 },
 			colors: { strands: ['#b3231a', '#e4670f', '#f5a623'], outline: '#2a0c05' },
 			gradient: { enabled: true, angle: 90, stops: [{ at: 0, color: '#a11212' }, { at: 0.55, color: '#e4670f' }, { at: 1, color: '#f7c948' }] },
-			corners: 'hook',
+			corners: 'pointed', terminals: 'hook',
 			breaks: [{ edge: 'top', at: 50, width: 10 }, { edge: 'bottom', at: 50, width: 26 }], autoBreak: { enabled: true, padding: 2 } },
 		Dragon: { enabled: true, pattern: 'openweave', band: { inset: 2, width: 6.2 }, strands: { count: 4, thickness: 0.55, scale: 1 },
 			colors: { strands: ['#2e6b2f', '#e9b840'], outline: '#12240f' }, gradient: { enabled: false, angle: 90, stops: [{ at: 0, color: '#2e6b2f' }, { at: 1, color: '#e9b840' }] },
@@ -224,7 +224,8 @@
 		if (!k.enabled) { return; }
 		// normalize once so sub-objects exist for editing
 		var full = window.ScrollKnot._geom.norm(k);
-		['pattern', 'band', 'strands', 'colors', 'gradient', 'corners', 'breaks', 'autoBreak'].forEach(function (key) {
+		if (k.corners === 'hook') { k.corners = full.corners; }   // legacy value -> pointed (+ hook terminals via norm)
+		['pattern', 'band', 'strands', 'colors', 'gradient', 'corners', 'terminals', 'breaks', 'autoBreak'].forEach(function (key) {
 			if (k[key] == null) { k[key] = full[key]; }
 		});
 		k.enabled = true;
@@ -282,7 +283,12 @@
 			});
 			box.appendChild(field('Gradient colors', gs));
 		}
-		box.appendChild(field('Corners', select(['woven', 'hook'], k.corners, function (v) { k.corners = v; render(); })));
+		var rowEnds = el('div', 'sc-row');
+		rowEnds.appendChild(field('Corners', select([{ value: 'woven', label: 'Woven' }, { value: 'pointed', label: 'Pointed' }],
+			k.corners, function (v) { k.corners = v; render(); })));
+		rowEnds.appendChild(field('Terminals', select([{ value: 'cap', label: 'Rounded caps' }, { value: 'hook', label: 'Rolled hooks' }],
+			k.terminals || 'cap', function (v) { k.terminals = v; render(); })));
+		box.appendChild(rowEnds);
 		// manual breaks
 		var brBox = el('div');
 		k.breaks.forEach(function (b, i) {

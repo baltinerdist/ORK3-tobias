@@ -67,15 +67,18 @@ pinSegs.forEach(function (s, i) {
 	const s0n = ((s.s0 % 2000) + 2000) % 2000, s1n = s0n + (s.s1 - s.s0);
 	ok(s1n <= 100 + 2000 || s0n >= 400, 'pinned segment ' + i + ' does not start inside cleared gap [100,400): s0=' + s.s0 + ' s1=' + s.s1);
 });
-// hook quarter-arc interval straddles the s=0 seam (TL corner) and must still segment cleanly
-const spnHook = G.spine(G.norm({ enabled: true, corners: 'hook' }), 816, 1056);
-const hookFeats = ['tr', 'br', 'bl', 'tl'].map(function (key) {
-	const a0 = spnHook.arcStart[key], a1 = a0 + spnHook.La, margin = spnHook.band * 0.2;
-	return { type: 'hook', s0: a0 - margin, s1: a1 + margin };
+// a break interval straddling the s=0 seam (TL corner arc) must still segment cleanly
+const spnSeam = G.spine(G.norm({ enabled: true }), 816, 1056);
+const seamFeats = ['tr', 'br', 'bl', 'tl'].map(function (key) {
+	const a0 = spnSeam.arcStart[key], a1 = a0 + spnSeam.La, margin = spnSeam.band * 0.2;
+	return { type: 'break', s0: a0 - margin, s1: a1 + margin };
 });
-const hookSegs = G.segmentLoop(spnHook.S, hookFeats);
-ok(hookSegs.length === 4, 'four hook feature intervals (incl. the one straddling s=0) -> four woven segments, got ' + hookSegs.length);
-hookSegs.forEach(function (s) { ok(isFinite(s.s0) && isFinite(s.s1) && s.s1 > s.s0, 'hook segment has finite positive length'); });
+const seamSegs = G.segmentLoop(spnSeam.S, seamFeats);
+ok(seamSegs.length === 4, 'four corner-arc break intervals (incl. the one straddling s=0) -> four woven segments, got ' + seamSegs.length);
+seamSegs.forEach(function (s) {
+	ok(isFinite(s.s0) && isFinite(s.s1) && s.s1 > s.s0, 'seam segment has finite positive length');
+	ok(s.endA === 'terminal' && s.endB === 'terminal', 'all break-cut segment ends are terminal');
+});
 
 // ---- autoBreaks: a flagged slot overlapping the bottom band projects an interval
 const slot = { location: 'center_image', break_border: true, x: 35, y: 88, w: 30, h: 10 };  // % of page
@@ -167,7 +170,7 @@ ok(polysT4.length === 2, 'N=4 single-color double-terminal segment merges into 2
 polysT4.forEach(function (p, i) { ok(p.closed === true, 'N=4 single-color loop ' + i + ' is closed'); });
 
 const cfgT3 = G.norm({ enabled: true, pattern: 'plait', strands: { count: 3 } });
-const segT3 = { s0: 100, s1: 500, endA: 'hook', endB: 'terminal', med: null, medA: null, medB: null };
+const segT3 = { s0: 100, s1: 500, endA: 'terminal', endB: 'terminal', med: null, medA: null, medB: null };
 const polysT3 = G.buildSpineSegmentPolys(segT3, cfgT3, layT, spnT);
 ok(polysT3.length === 2, '3 strands, default 2 colors: outer pair (0,2) shares color -> merges, middle strand curls (2 polylines)');
 
@@ -248,13 +251,102 @@ ok(G.effCount(G.norm({ pattern: 'plait', strands: { count: 3 } })) === 3, 'effCo
 	});
 });
 
-// ---- hook corners: quarter-arc feature intervals segment cleanly through the full pipeline
-const cfgHook = G.norm({ enabled: true, pattern: 'plait', corners: 'hook' });
-const gotHook = G.collectPolys(cfgHook, 816, 1056, []);
-ok(gotHook.polys.length > 4, 'collectPolys(hook) returns polylines (weave + 4 spirals), got ' + gotHook.polys.length);
-gotHook.polys.forEach(function (p, i) {
-	p.pts.forEach(function (pt) { ok(isFinite(pt[0]) && isFinite(pt[1]), 'collectPolys(hook) polyline ' + i + ' coords finite'); });
-});
+// ---- norm(): corners/terminals whitelist + legacy corners:'hook' mapping
+ok(G.norm({}).corners === 'woven' && G.norm({}).terminals === 'cap', 'default corners woven, default terminals cap');
+ok(G.norm({ corners: 'pointed' }).corners === 'pointed', 'pointed corners pass through');
+ok(G.norm({ corners: 'nonsense' }).corners === 'woven', 'unknown corners value falls back to woven');
+ok(G.norm({ terminals: 'nonsense' }).terminals === 'cap', 'unknown terminals value falls back to cap');
+const legacyHook = G.norm({ corners: 'hook' });
+ok(legacyHook.corners === 'pointed' && legacyHook.terminals === 'hook', 'legacy corners:hook -> pointed corners + hook terminals');
+const legacyHookCap = G.norm({ corners: 'hook', terminals: 'cap' });
+ok(legacyHookCap.corners === 'pointed' && legacyHookCap.terminals === 'cap', 'legacy corners:hook with explicit terminals:cap keeps cap');
+
+// ---- pointed spine: R ~ 0 -> total length ~ rectangle perimeter; normals stay unit length
+const cfgPtd = G.norm({ enabled: true, pattern: 'plait', corners: 'pointed' });
+const spnPtd = G.spine(cfgPtd, 816, 1056);
+const cwPtd = spnPtd.cx1 - spnPtd.cx0, chPtd = spnPtd.cy1 - spnPtd.cy0;
+near(spnPtd.S, 2 * (cwPtd + chPtd), 1, 'pointed spine total length ~ centerline rectangle perimeter');
+let badPtdNormal = 0;
+spnPtd.table.forEach(function (p) { if (Math.abs(Math.hypot(p.nx, p.ny) - 1) > 0.02) { badPtdNormal++; } });
+ok(badPtdNormal === 0, 'pointed spine normals are unit length, got ' + badPtdNormal + ' bad of ' + spnPtd.table.length);
+
+// ---- miter unit test: hand-sweep a 2-pt polyline straddling the TR corner at fixed v ->
+// the swept result must contain the miter vertex M = C + d*(n1+n2) = (cx1-d, cy0+d).
+{
+	const bandM = G.frameLayout(cfgPtd, 816, 1056).band;
+	const vM = bandM * 0.2, dM = vM - bandM / 2;                 // outer strand: d < 0
+	const scTR = spnPtd.arcStart.tr + spnPtd.La / 2;
+	const sweptM = G.sweepStrand(spnPtd, 0, [[scTR - 5, vM], [scTR + 5, vM]], bandM);
+	ok(sweptM.length === 3, 'miter sweep inserts one vertex between the straddling pair, got ' + sweptM.length);
+	const MX = spnPtd.cx1 - dM, MY = spnPtd.cy0 + dM;
+	const hasMiter = sweptM.some(function (pt) { return Math.hypot(pt[0] - MX, pt[1] - MY) <= 0.5; });
+	ok(hasMiter, 'swept polyline contains the TR miter vertex within 0.5px of C + d*(n1+n2)');
+	ok(MX > spnPtd.cx1 && MY < spnPtd.cy0, 'outer-strand miter vertex lands OUTSIDE the corner (the sharp point)');
+}
+
+// ---- pointed no-feature plait: full closed-loop pipeline stays finite, in bounds, and closed
+{
+	const cfgPtdLoop = G.norm({ enabled: true, pattern: 'plait', corners: 'pointed', autoBreak: { enabled: false } });
+	const gotPtd = G.collectPolys(cfgPtdLoop, 816, 1056, []);
+	ok(gotPtd.polys.length > 0, 'collectPolys(pointed, no features) returns polylines, got ' + gotPtd.polys.length);
+	gotPtd.polys.forEach(function (p, i) {
+		ok(p.closed === true, 'pointed no-feature polyline ' + i + ' is closed');
+		const first = p.pts[0], last = p.pts[p.pts.length - 1];
+		near(Math.hypot(first[0] - last[0], first[1] - last[1]), 0, 0.5, 'pointed closed strand ' + i + ' closes');
+		p.pts.forEach(function (pt) {
+			ok(isFinite(pt[0]) && isFinite(pt[1]), 'pointed polyline ' + i + ' coords finite');
+			ok(pt[0] >= -2 && pt[0] <= 816 + 2 && pt[1] >= -2 && pt[1] <= 1056 + 2, 'pointed polyline ' + i + ' within page bounds +/-2, got ' + pt);
+		});
+	});
+}
+
+// ---- hook terminals (bottom break, plait): finite/in-bounds, and the roll protrudes into the
+// gap -- at least one OPEN polyline endpoint lies inside the gap's band-strip (the observable
+// difference vs cap mode, whose gap-emptiness probes above stay on default cap).
+{
+	const cfgRoll = G.norm({
+		enabled: true, pattern: 'plait', terminals: 'hook',
+		breaks: [{ edge: 'bottom', at: 50, width: 20 }], autoBreak: { enabled: false }
+	});
+	const rollLayout = G.frameLayout(cfgRoll, 816, 1056);
+	const gotRoll = G.collectPolys(cfgRoll, 816, 1056, []);
+	const rGapHalf = 20 / 100 * rollLayout.edges.bottom.len / 2;
+	const rGapCx = 816 / 2, rGapY0 = 1056 - rollLayout.inset - rollLayout.band, rGapY1 = 1056 - rollLayout.inset;
+	let rollTips = 0;
+	gotRoll.polys.forEach(function (p, i) {
+		p.pts.forEach(function (pt) {
+			ok(isFinite(pt[0]) && isFinite(pt[1]), 'hook-terminal polyline ' + i + ' coords finite');
+			ok(pt[0] >= -2 && pt[0] <= 816 + 2 && pt[1] >= -2 && pt[1] <= 1056 + 2, 'hook-terminal polyline ' + i + ' within page bounds, got ' + pt);
+		});
+		if (p.closed) { return; }
+		[p.pts[0], p.pts[p.pts.length - 1]].forEach(function (pt) {
+			if (Math.abs(pt[0] - rGapCx) < rGapHalf && pt[1] > rGapY0 && pt[1] < rGapY1) { rollTips++; }
+		});
+	});
+	ok(rollTips >= 1, 'at least one open endpoint (roll tip) protrudes into the gap band-strip, got ' + rollTips);
+	// rolls from both sides must not cross the gap midpoint (clearance for symmetric rolls)
+	let midCross = 0;
+	gotRoll.polys.forEach(function (p) {
+		p.pts.forEach(function (pt) {
+			if (Math.abs(pt[0] - rGapCx) < rGapHalf * 0.1 && pt[1] > rGapY0 && pt[1] < rGapY1) { midCross++; }
+		});
+	});
+	ok(midCross === 0, 'no roll point crosses the gap midpoint region, got ' + midCross);
+}
+
+// ---- two-tone rule preserved with hook terminals: Smith-style 2-color config -> both palette
+// color indices present among emitted polys (no color vanishes at any end).
+{
+	const cfgSmithHook = G.norm({
+		enabled: true, pattern: 'twist', terminals: 'hook',
+		colors: { strands: ['#8a6844', '#7b8494'], outline: '#241a10' },
+		breaks: [{ edge: 'bottom', at: 50, width: 30 }], autoBreak: { enabled: false }
+	});
+	const gotSmith = G.collectPolys(cfgSmithHook, 816, 1056, []);
+	const colorSet = {};
+	gotSmith.polys.forEach(function (p) { colorSet[p.color % 2] = true; });
+	ok(colorSet[0] === true && colorSet[1] === true, 'Smith colors + hook terminals: both palette color indices present');
+}
 
 // ---- left-edge manual break clears the weave from its gap.
 const breakOverMedCfg = G.norm({

@@ -3,8 +3,11 @@
    PDF-safe SVG subset only: paths + strokes + userSpaceOnUse linear gradients.
    Assembly model: a single continuous rounded-rectangle SPINE runs clockwise around the
    frame; patterns are generated in local (u,v) then swept along the spine so the weave
-   flows continuously through corners. Breaks/hooks cut the spine into open segments (or
-   leave it as one closed loop when there are no features). */
+   flows continuously through corners. Corners are 'woven' (rounded spine) or 'pointed'
+   (degenerate-radius spine + miter vertices inserted during the sweep, so the braid folds
+   through a sharp 90-degree point). Breaks cut the spine into open segments (or leave it
+   as one closed loop when there are no features); open segment ends finish per
+   cfg.terminals: 'cap' (racetrack rim) or 'hook' (rim continuing into a rolled curl). */
 (function (w) {
 	'use strict';
 	var SVGNS = 'http://www.w3.org/2000/svg';
@@ -35,6 +38,10 @@
 		function num(v, d) { v = +v; return isFinite(v) ? v : d; }
 		var band = cfg.band || {}, st = cfg.strands || {}, co = cfg.colors || {}, gr = cfg.gradient || {}, ab = cfg.autoBreak || {};
 		var PATTERNS_OK = ['plait', 'openweave', 'twist'];   // whitelist protects old saved configs (e.g. removed 'runningknot')
+		// legacy mapping: the removed corners:'hook' option becomes pointed corners, and (only when
+		// the input carries no explicit terminals choice) rolled hook terminals.
+		var cor = cfg.corners, ter = cfg.terminals;
+		if (cor === 'hook') { cor = 'pointed'; if (ter == null) { ter = 'hook'; } }
 		return {
 			enabled: !!cfg.enabled,
 			pattern: (PATTERNS_OK.indexOf(cfg.pattern) >= 0) ? cfg.pattern : 'plait',
@@ -48,7 +55,8 @@
 				enabled: !!gr.enabled, angle: num(gr.angle, 90),
 				stops: (Array.isArray(gr.stops) && gr.stops.length >= 2) ? gr.stops : [{ at: 0, color: '#c62828' }, { at: 1, color: '#f9a825' }]
 			},
-			corners: o(cfg.corners, 'woven'),
+			corners: (cor === 'pointed') ? 'pointed' : 'woven',
+			terminals: (ter === 'hook') ? 'hook' : 'cap',
 			breaks: Array.isArray(cfg.breaks) ? cfg.breaks : [],
 			autoBreak: { enabled: ab.enabled == null ? true : !!ab.enabled, padding: num(ab.padding, 2) }
 		};
@@ -56,9 +64,8 @@
 
 	// ---------- frame layout ----------
 	// Edge-local frame: u along the edge run, v across the band (0..band). toPage maps to page px.
-	// Kept for: autoBreaks' band-strip overlap math, corner box coords (hook spiral placement),
-	// and as the per-edge u-domain that feature intervals are first computed in before being
-	// mapped onto the spine (see edgeIntervalToS).
+	// Kept for: autoBreaks' band-strip overlap math and as the per-edge u-domain that feature
+	// intervals are first computed in before being mapped onto the spine (see edgeIntervalToS).
 	function frameLayout(cfg, W, H) {
 		var S = Math.min(W, H);
 		var inset = cfg.band.inset / 100 * S, band = cfg.band.width / 100 * S;
@@ -92,18 +99,27 @@
 	var INNER_RADIUS_FACTOR = 1.05;        // nested inner cap radius = |gap|/2 * this
 	var INNER_REACH_FACTOR = 0.55;         // nested inner cap bulge depth = radius * this
 	var CURL_RADIUS_FACTOR = 0.18;         // odd-middle-strand curl radius = band * this
-	var HOOK_MARGIN_FACTOR = 0.2;          // hook feature interval = quarter-arc span +/- band*this
+	var POINTED_R = 0.01;                  // px, degenerate spine corner radius in pointed mode (arcs ~zero-length)
+	var HOOK_ROLL_TURNS = 1.6;             // extra roll sweep past the rim semicircle, in units of PI
+	var HOOK_ROLL_DRIFT_FACTOR = 0.52;     // roll center drifts this * band along +u into the gap
+	var HOOK_ROLL_VDRIFT_FACTOR = 0.05;    // roll center drifts this * band toward page-inward (v > band/2)
+	var HOOK_ROLL_MIN_R_FACTOR = 0.2;      // roll radius shrinks to this * band at the tail tip (kept > stroke width so the coil reads open, not a filled dot)
+	var HOOK_ROLL_SAMPLES_PER_PI = 24;     // roll sampling density (points per PI of sweep)
+	var CURL_RADIUS_FACTOR_HOOK = 0.12;    // odd-middle curl radius factor in hook-terminal mode (tucks inside the roll)
+	var INNER_REACH_FACTOR_HOOK = 0.4;     // nested inner cap reach factor in hook-terminal mode
 
 	// ---------- spine (centerline rounded-rect the whole border weaves along) ----------
 	// Walks CLOCKWISE starting where the top run begins (end of the TL corner arc):
 	// top run -> TR arc -> right run -> BR arc -> bottom run (right->left) -> BL arc ->
 	// left run (bottom->top) -> TL arc -> close. (nx,ny) is the unit INWARD normal.
-	function buildSpine(layout) {
+	function buildSpine(layout, pointed) {
 		var band = layout.band;
 		var cx0 = layout.inset + band / 2, cy0 = layout.inset + band / 2;
 		var cx1 = layout.W - layout.inset - band / 2, cy1 = layout.H - layout.inset - band / 2;
 		var cw = cx1 - cx0, ch = cy1 - cy0;
-		var R = clamp(band * R_FACTOR, 6, band || 6);
+		// pointed mode: near-zero radius -> arcs are numerically zero-length and the loop is
+		// effectively a rectangle; sweepStrand inserts the actual miter vertices.
+		var R = pointed ? POINTED_R : clamp(band * R_FACTOR, 6, band || 6);
 		var shorter = Math.min(cw, ch);
 		if (!(shorter > 0) || 2 * R >= shorter) { R = Math.max(0.5, shorter / 3); }
 		var Lt = Math.max(0, cw - 2 * R), Lr = Math.max(0, ch - 2 * R), La = R * Math.PI / 2;
@@ -139,13 +155,13 @@
 		});
 		table.push({ s: S, x: table[0].x, y: table[0].y, nx: table[0].nx, ny: table[0].ny });   // exact closure
 		return {
-			table: table, S: S, R: R, band: band,
+			table: table, S: S, R: R, band: band, pointed: !!pointed,
 			runStart: { top: 0, right: Lt + La, bottom: Lt + La + Lr + La, left: Lt + La + Lr + La + Lt + La },
 			arcStart: { tr: Lt, br: Lt + La + Lr, bl: Lt + La + Lr + La + Lt, tl: S - La },
 			La: La, Lt: Lt, Lr: Lr, cx0: cx0, cy0: cy0, cx1: cx1, cy1: cy1
 		};
 	}
-	function spine(cfg, W, H) { return buildSpine(frameLayout(cfg, W, H)); }
+	function spine(cfg, W, H) { return buildSpine(frameLayout(cfg, W, H), cfg.corners === 'pointed'); }
 	// interpolated {x,y,nx,ny} at arc-length s (wraps mod total length); nx/ny renormalized.
 	function spineAt(table, S, s) {
 		var sN = ((s % S) + S) % S, n = table.length, lo = 0, hi = n - 1;
@@ -158,6 +174,59 @@
 	function sweepPt(spn, sAbs, v, band) {
 		var P = spineAt(spn.table, spn.S, sAbs);
 		return [P.x + P.nx * (v - band / 2), P.y + P.ny * (v - band / 2)];
+	}
+	// ---------- pointed-corner miter sweep ----------
+	// Inward normals of the two runs meeting at each corner, in spine travel order (n1 = run
+	// entered from, n2 = run exited to). Miter vertex M = C + d*(n1+n2), where C is the
+	// centerline-rectangle corner and d = v - band/2 (verify top-right: C=(cx1,cy0), n1=(0,1),
+	// n2=(-1,0) -> M=(cx1-d, cy0+d); an outer strand (d<0) lands OUTSIDE the corner = the point).
+	var MITER_NORMALS = {
+		tr: [[0, 1], [-1, 0]],
+		br: [[-1, 0], [0, -1]],
+		bl: [[0, -1], [1, 0]],
+		tl: [[1, 0], [0, 1]]
+	};
+	function cornerPoint(spn, key) {
+		if (key === 'tr') { return [spn.cx1, spn.cy0]; }
+		if (key === 'br') { return [spn.cx1, spn.cy1]; }
+		if (key === 'bl') { return [spn.cx0, spn.cy1]; }
+		return [spn.cx0, spn.cy0];
+	}
+	// Sweep a pattern polyline (local (u,v), u relative to sBase) to page space. Woven spines:
+	// plain pointwise sweep. Pointed spines: the pointwise sweep chamfers every strand across
+	// each (radius~0) corner, so for every consecutive point pair whose absolute s straddles a
+	// corner s-value (incl. wrapped multiples of S on wrapped segments / closed loops) insert
+	// the miter vertex, with d = v - band/2 linearly interpolated (by s) at the corner.
+	function sweepStrand(spn, sBase, pts, band) {
+		if (!spn.pointed) {
+			return pts.map(function (p) { return sweepPt(spn, sBase + p[0], p[1], band); });
+		}
+		var S = spn.S, keys = ['tr', 'br', 'bl', 'tl'], out = [];
+		for (var i = 0; i < pts.length; i++) {
+			var P = pts[i];
+			out.push(sweepPt(spn, sBase + P[0], P[1], band));
+			if (i + 1 >= pts.length) { break; }
+			var Q = pts[i + 1], sA = sBase + P[0], sB = sBase + Q[0];
+			if (!(sB - sA > 1e-9)) { continue; }
+			var hits = [];
+			for (var k = 0; k < 4; k++) {
+				var sc = spn.arcStart[keys[k]] + spn.La / 2;
+				for (var mm = Math.floor((sA - sc) / S); ; mm++) {
+					var t = sc + mm * S;
+					if (t >= sB - 1e-9) { break; }
+					if (t > sA + 1e-9) { hits.push({ s: t, key: keys[k] }); }
+				}
+			}
+			if (!hits.length) { continue; }
+			hits.sort(function (a, b) { return a.s - b.s; });
+			for (var h = 0; h < hits.length; h++) {
+				var tt = (hits[h].s - sA) / (sB - sA);
+				var d = lerp(P[1], Q[1], tt) - band / 2;
+				var C = cornerPoint(spn, hits[h].key), nn = MITER_NORMALS[hits[h].key];
+				out.push([C[0] + d * (nn[0][0] + nn[1][0]), C[1] + d * (nn[0][1] + nn[1][1])]);
+			}
+		}
+		return out;
 	}
 	// map an edge-local u-interval (today's per-edge coordinate) onto spine s (bottom/left reverse
 	// direction to match the spine's travel sense on those runs).
@@ -179,7 +248,7 @@
 		});
 		return out;
 	}
-	// feats: [{type:'break'|'hook', s0, s1}] on the closed spine loop (s0/s1 may fall outside
+	// feats: [{type:'break', s0, s1}] on the closed spine loop (s0/s1 may fall outside
 	// [0,S) -- wraps are split automatically). No features -> one closed segment (full:true).
 	// Otherwise: rotate to a cut point in an uncovered gap, linear cursor sweep, then re-merge
 	// the rotated domain's two 'weave' ends into one segment wrapping across the seam.
@@ -213,10 +282,9 @@
 			if (u1c <= cursor) { return; }        // fully swallowed by prior coverage: pure no-op, must
 			// not overwrite prevEnd (a feature fully inside earlier coverage must not relabel the
 			// NEXT real segment's end kind).
-			var kind = (f.type === 'hook') ? 'hook' : 'terminal';
-			push(cursor, u0c, prevEnd, kind);
+			push(cursor, u0c, prevEnd, 'terminal');
 			cursor = u1c;
-			prevEnd = kind;
+			prevEnd = 'terminal';
 		});
 		push(cursor, S, prevEnd, 'weave');
 		if (segs.length > 1 && segs[0].endA === 'weave' && segs[segs.length - 1].endB === 'weave') {
@@ -565,9 +633,11 @@
 	}
 	// Nested inner pair(s): smaller, shallower arcs that sit inside the rim (short necks). Also
 	// anchored exactly to (ue,va)/(ue,vb); only the bulge depth (reach) is scaled down, keeping
-	// the v-span exact so it nests without a kink.
-	function innerArc(ue, va, vb, dir) {
-		var mid = (va + vb) / 2, r = Math.abs(vb - va) / 2, reach = r * INNER_RADIUS_FACTOR * INNER_REACH_FACTOR;
+	// the v-span exact so it nests without a kink. reachF (optional) overrides the default
+	// INNER_REACH_FACTOR -- hook-terminal mode passes a smaller one so the nest tucks inside
+	// the roll instead of colliding with it.
+	function innerArc(ue, va, vb, dir, reachF) {
+		var mid = (va + vb) / 2, r = Math.abs(vb - va) / 2, reach = r * INNER_RADIUS_FACTOR * (reachF || INNER_REACH_FACTOR);
 		var sign = (va < vb) ? 1 : -1, pts = [];
 		for (var k = 0; k <= 20; k++) {
 			var th = k / 20 * Math.PI;
@@ -575,19 +645,45 @@
 		}
 		return pts;
 	}
-	// Spiral curl for the middle strand of an odd count.
-	function curl(ue, v, dir, band) {
-		var pts = [], r0 = band * CURL_RADIUS_FACTOR, cx = ue + dir * r0, turns = 1.5 * Math.PI * 2 * 0.75; // 270 deg
+	// Spiral curl for the middle strand of an odd count. rFactor (optional) overrides
+	// CURL_RADIUS_FACTOR (hook-terminal mode shrinks it clear of the roll).
+	function curl(ue, v, dir, band, rFactor) {
+		var pts = [], r0 = band * (rFactor || CURL_RADIUS_FACTOR), cx = ue + dir * r0, turns = 1.5 * Math.PI * 2 * 0.75; // 270 deg
 		for (var k = 0; k <= 24; k++) {
 			var th = k / 24 * turns, r = r0 * (1 - 0.7 * (k / 24));
 			pts.push([cx - dir * Math.cos(th) * r, v + Math.sin(th) * r]);
 		}
 		return pts;
 	}
+	// Rolled hook terminal (terminals:'hook'): the outer-pair path starts as the exact rimArc
+	// semicircle (anchored to (ue,va)/(ue,vb) like the cap, so the pair/two-tone anchoring is
+	// unchanged), then CONTINUES curling for HOOK_ROLL_TURNS*PI more with the radius shrinking
+	// to HOOK_ROLL_MIN_R_FACTOR*band while the curl center drifts into the gap (+u*dir) and
+	// toward page-inward (v > band/2), so the band end reads as a rolled/curled scroll end
+	// occupying the gap. Returned open end (tail tip) protrudes past u=ue into the gap.
+	function hookRoll(ue, va, vb, dir, band) {
+		var mid = (va + vb) / 2, r = Math.abs(vb - va) / 2, reach = r * RIM_RADIUS_FACTOR;
+		var sign = (va < vb) ? 1 : -1, pts = [], k, th;
+		for (k = 0; k <= 20; k++) {                        // rim semicircle, byte-equal to rimArc
+			th = k / 20 * Math.PI;
+			pts.push([ue + dir * Math.sin(th) * reach, mid - Math.cos(th) * r * sign]);
+		}
+		var extra = HOOK_ROLL_TURNS * Math.PI;
+		var nR = Math.max(12, Math.round(HOOK_ROLL_TURNS * HOOK_ROLL_SAMPLES_PER_PI));
+		for (k = 1; k <= nR; k++) {
+			var t = k / nR;
+			th = Math.PI + t * extra;
+			var cu = ue + dir * smooth(t) * HOOK_ROLL_DRIFT_FACTOR * band;
+			var cv = mid + sign * smooth(t) * HOOK_ROLL_VDRIFT_FACTOR * band;
+			var rr = lerp(r * RIM_RADIUS_FACTOR, HOOK_ROLL_MIN_R_FACTOR * band, t);
+			pts.push([cu + dir * Math.sin(th) * rr, cv - Math.cos(th) * rr * sign]);
+		}
+		return pts;
+	}
 
 	// ---------- segment assembly (spine-local u,v -> page via sweepPt) ----------
 	// Build the page-space polylines for one open spine segment, terminals merged in.
-	// seg: {s0,s1,endA,endB} with endA/endB in {'terminal','hook'}.
+	// seg: {s0,s1,endA,endB} with endA/endB always 'terminal' (or 'weave' pre-merge).
 	function buildSpineSegmentPolys(seg, cfg, layout, spn) {
 		var band = layout.band, sp = cfg.strands;
 		var tA = TERM(band), tB = TERM(band);
@@ -606,6 +702,7 @@
 		}
 		var N = res.strands.length;
 		var paletteLen = (cfg.colors.strands && cfg.colors.strands.length) || 1;
+		var hookMode = cfg.terminals === 'hook';
 		// terminal arcs: pair lane i with lane N-1-i (fixed for both A and B passes); odd middle curls.
 		// Each pair (i, N-1-i) is visited once per open end (once by endArcs('A'), once by endArcs('B')).
 		// First visit merges si+sj into one open polyline (owner = si, sj absorbed via sj.merged).
@@ -619,7 +716,17 @@
 				var si = res.strands[i], sj = res.strands[j];
 				if (!si || !sj || si === sj) { continue; }
 				var va = lane(i, N, band), vb = lane(j, N, band);
-				var arc = (i === 0) ? rimArc(ue, va, vb, dir, band) : innerArc(ue, va, vb, dir);
+				if (i === 0 && hookMode) {
+					// Rolled hook terminal: the rim path grows a roll tail dangling past the pair
+					// connection point, so the pair is NEVER merged here -- strand i owns the
+					// rim+roll (at every end it visits), strand j stays a bare polyline whose
+					// endpoint lands exactly on the rim (the outline pass unions them seamlessly;
+					// same rule as the two-tone split, so both colors always reach the end).
+					var roll = hookRoll(ue, va, vb, dir, band);
+					if (isA) { si.pts = roll.slice().reverse().concat(si.pts); } else { si.pts = si.pts.concat(roll); }
+					continue;
+				}
+				var arc = (i === 0) ? rimArc(ue, va, vb, dir, band) : innerArc(ue, va, vb, dir, hookMode ? INNER_REACH_FACTOR_HOOK : 0);
 				var sameColor = (si.color % paletteLen) === (sj.color % paletteLen);
 				if (!sameColor) {
 					// Finding 1: two-tone terminal. Strand i owns the arc at every end it visits;
@@ -644,7 +751,7 @@
 			if (N % 2 === 1) {
 				var m = res.strands[(N - 1) / 2];
 				if (m && !m.merged && !m.closed) {              // m.closed: defensive only, never closed elsewhere
-					var c = curl(ue, lane((N - 1) / 2, N, band), dir, band);
+					var c = curl(ue, lane((N - 1) / 2, N, band), dir, band, hookMode ? CURL_RADIUS_FACTOR_HOOK : 0);
 					if (isA) { m.pts = c.slice().reverse().concat(m.pts); } else { m.pts = m.pts.concat(c); }
 				}
 			}
@@ -653,7 +760,7 @@
 		var out = [];
 		res.strands.forEach(function (s, idx) {
 			if (s.merged) { return; }
-			var pagePts = s.pts.map(function (p) { return sweepPt(spn, seg.s0 + p[0], p[1], band); });
+			var pagePts = sweepStrand(spn, seg.s0, s.pts, band);
 			out.push({ pts: pagePts, color: s.color, closed: !!s.closed, _strandIdx: idx });
 		});
 		return out.map(function (o) { return { pts: o.pts, color: o.color, closed: o.closed }; });
@@ -665,23 +772,11 @@
 		var res = gen(spn.S, band, cfg.strands, { closed: true });
 		var out = [];
 		res.strands.forEach(function (s) {
-			out.push({ pts: s.pts.map(function (p) { return sweepPt(spn, p[0], p[1], band); }), color: s.color, closed: true });
+			out.push({ pts: sweepStrand(spn, 0, s.pts, band), color: s.color, closed: true });
 		});
 		return out;
 	}
 
-	// ---------- hook corners (spiral curl drawn in the corner box; woven connectors DELETED) ----------
-	var HOOK_DIR = { tl: [-1, 0], tr: [1, 0], bl: [-1, 0], br: [1, 0] };
-	function hookPolys(key, layout) {
-		var box = layout.corners[key], cx = box.x + layout.band / 2, cy = box.y + layout.band / 2;
-		var dirA = HOOK_DIR[key], a0 = Math.atan2(dirA[1], dirA[0]) + Math.PI;
-		var pts = [];
-		for (var k = 0; k <= 32; k++) {
-			var th = a0 + k / 32 * 1.5 * Math.PI, r = lerp(layout.band * 0.42, layout.band * 0.12, k / 32);
-			pts.push([cx + Math.cos(th) * r, cy + Math.sin(th) * r]);
-		}
-		return [{ pts: pts, color: 0, closed: false }];
-	}
 	// ---------- SVG ----------
 	var uidCounter = 0;
 	function svgEl(tag) { return document.createElementNS(SVGNS, tag); }
@@ -698,11 +793,10 @@
 		parent.appendChild(p);
 		return p;
 	}
-	// collectPolys: full border -> [{pts,color,closed}] page space (spine-swept weave + hook
-	// spirals).
+	// collectPolys: full border -> [{pts,color,closed}] page space (spine-swept weave).
 	function collectPolys(cfg, W, H, slots) {
 		var layout = frameLayout(cfg, W, H);
-		var spn = buildSpine(layout);
+		var spn = buildSpine(layout, cfg.corners === 'pointed');
 		var ab = autoBreaks(cfg, W, H, slots, layout);
 		var feats = [];
 		['top', 'right', 'bottom', 'left'].forEach(function (name) {
@@ -721,22 +815,12 @@
 		// merge plain breaks first so overlapping intervals don't create phantom segments
 		var merged = mergeIntervals(feats.map(function (f) { return [f.s0, f.s1]; }))
 			.map(function (iv) { return { type: 'break', s0: iv[0], s1: iv[1] }; });
-		var allFeats = merged.slice();
-		if (cfg.corners === 'hook') {
-			['tr', 'br', 'bl', 'tl'].forEach(function (key) {
-				var a0 = spn.arcStart[key], a1 = a0 + spn.La, margin = layout.band * HOOK_MARGIN_FACTOR;
-				allFeats.push({ type: 'hook', s0: a0 - margin, s1: a1 + margin });
-			});
-		}
-		var segs = segmentLoop(spn.S, allFeats);
+		var segs = segmentLoop(spn.S, merged);
 		var polys = [];
 		if (segs.length === 1 && segs[0].full) {
 			buildClosedLoopPolys(cfg, layout, spn).forEach(function (p) { polys.push(p); });
 		} else {
 			segs.forEach(function (seg) { buildSpineSegmentPolys(seg, cfg, layout, spn).forEach(function (p) { polys.push(p); }); });
-		}
-		if (cfg.corners === 'hook') {
-			['tl', 'tr', 'bl', 'br'].forEach(function (key) { hookPolys(key, layout).forEach(function (p) { polys.push(p); }); });
 		}
 		return { layout: layout, polys: polys, spine: spn };
 	}
@@ -830,9 +914,9 @@
 			mergeIntervals: mergeIntervals, segmentLoop: segmentLoop, autoBreaks: autoBreaks,
 			patterns: patterns, findCrossings: findCrossings, blendHex: blendHex, subPolyline: subPolyline,
 			buildSpineSegmentPolys: buildSpineSegmentPolys, buildClosedLoopPolys: buildClosedLoopPolys, collectPolys: collectPolys,
-			curl: curl, rimArc: rimArc, innerArc: innerArc, hookPolys: hookPolys,
+			curl: curl, rimArc: rimArc, innerArc: innerArc, hookRoll: hookRoll,
 			crossingAngleSin: crossingAngleSin, underWindow: underWindow, splitByWindows: splitByWindows,
-			spine: spine, spineAt: spineAt, sweepPt: sweepPt, edgeIntervalToS: edgeIntervalToS,
+			spine: spine, spineAt: spineAt, sweepPt: sweepPt, sweepStrand: sweepStrand, edgeIntervalToS: edgeIntervalToS,
 			STEP: STEP, TERM: TERM, EASE: EASE, clamp: clamp, lerp: lerp, smooth: smooth, effCount: effCount
 		}
 	};
