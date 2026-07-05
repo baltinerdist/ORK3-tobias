@@ -3,8 +3,11 @@
    PDF-safe SVG subset only: paths + strokes + userSpaceOnUse linear gradients.
    Assembly model: a single continuous rounded-rectangle SPINE runs clockwise around the
    frame; patterns are generated in local (u,v) then swept along the spine so the weave
-   flows continuously through corners. Breaks/medallions/hooks cut the spine into open
-   segments (or leave it as one closed loop when there are no features). */
+   flows continuously through corners. Breaks/hooks cut the spine into open segments (or
+   leave it as one closed loop when there are no features); medallions do NOT cut the
+   spine -- the weave runs through medallion zones uninterrupted and the diamond rings are
+   woven over/through it as an inward excursion, interlacing via ordinary over/under
+   alternation (no strand tips to protect there). */
 (function (w) {
 	'use strict';
 	var SVGNS = 'http://www.w3.org/2000/svg';
@@ -93,11 +96,7 @@
 	var INNER_RADIUS_FACTOR = 1.05;        // nested inner cap radius = |gap|/2 * this
 	var INNER_REACH_FACTOR = 0.55;         // nested inner cap bulge depth = radius * this
 	var CURL_RADIUS_FACTOR = 0.18;         // odd-middle-strand curl radius = band * this
-	var MEDALLION_PAD_FACTOR = 0.15;       // medallion feature-interval pad (collectPolys) AND segment-end setback (tA/tB) -- kept as ONE constant so the vertex-funnel overshoot math (which depends on the two matching) can't drift apart
 	var HOOK_MARGIN_FACTOR = 0.2;          // hook feature interval = quarter-arc span +/- band*this
-	var FUNNEL_LEN_FACTOR = 1.1;           // vertex funnel: blend length (x band) over which a medallion-end strand eases into the compressed bundle lane
-	var FUNNEL_COMPRESS = 0.6;              // vertex funnel: bundle lane compression toward centerline (0=full centerline, 1=full lane spread) -- tuned up from spec's 0.22 starting point (see visual acceptance)
-	var FUNNEL_OVERSHOOT_FACTOR = 0.3;    // vertex funnel: extra distance (x band), past the medallion pad, that funneled tips overshoot beyond the near vertex
 
 	// ---------- spine (centerline rounded-rect the whole border weaves along) ----------
 	// Walks CLOCKWISE starting where the top run begins (end of the TL corner arc):
@@ -185,11 +184,14 @@
 		return out;
 	}
 	// feats: [{type:'break'|'medallion'|'hook', s0, s1, med?}] on the closed spine loop (s0/s1 may
-	// fall outside [0,S) -- wraps are split automatically). No features -> one closed segment
-	// (full:true). Otherwise: rotate to a cut point guaranteed to sit in an uncovered gap, run a
-	// linear cursor sweep, then re-merge the two ends of the rotated domain (both still "weave")
-	// into a single segment that wraps back across the cut -- this is the "wrapping across s=0"
-	// segmentation the spine's arbitrary start point requires.
+	// fall outside [0,S) -- wraps are split automatically). Stays fully generic here even though
+	// collectPolys no longer ever produces a 'medallion' feature (medallions don't cut the spine
+	// any more) -- the type-agnostic interval math is what matters, kept for any future feature
+	// kind. No features -> one closed segment (full:true). Otherwise: rotate to a cut point
+	// guaranteed to sit in an uncovered gap, run a linear cursor sweep, then re-merge the two ends
+	// of the rotated domain (both still "weave") into a single segment that wraps back across the
+	// cut -- this is the "wrapping across s=0" segmentation the spine's arbitrary start point
+	// requires.
 	function segmentLoop(S, feats) {
 		if (!feats.length) { return [{ s0: 0, s1: S, full: true }]; }
 		var pieces = [];
@@ -262,54 +264,42 @@
 		return out;
 	}
 
-	// ---------- vertex funnel (medallion-end lane compression, replaces sweep landings) ----------
-	// Compressed bundle lane: every strand's medallion-end lane pulls toward the band centerline
-	// (funnel neck) instead of fanning to its full-width lane. Depends ONLY on band/N/lane index --
-	// never on segment length or side -- so every medallion connection is geometrically identical.
-	function funnelLane(i, N, band) { return band / 2 + (lane(i, N, band) - band / 2) * FUNNEL_COMPRESS; }
-	function funnelLen(band, L) { return Math.min(band * FUNNEL_LEN_FACTOR, L * 0.5); }
 	// Per-point end-easing shared by all pattern generators: blends the raw sinusoid value `vv`
-	// toward whichever end (A at u=0 / B at u=L) is nearer, using that end's own window+target --
-	// a medallion end funnels into the compressed bundle lane over `funnelLen`; a normal end eases
-	// to the full lane center over EASE as before. Only the closer end's window ever applies (the
-	// two windows are always far shorter than L/2 for any real weave run).
-	function endBlend(vv, uu, L, funnelA, funnelB, ease, funnel, laneTarget, funnelTarget) {
-		var dA = uu, dB = L - uu, isA = dA <= dB, d = isA ? dA : dB;
-		var isFunnel = isA ? funnelA : funnelB;
-		var window = isFunnel ? funnel : ease;
-		var target = isFunnel ? funnelTarget : laneTarget;
-		return (window > 0 && d < window) ? lerp(target, vv, smooth(d / window)) : vv;
+	// toward whichever end (A at u=0 / B at u=L) is nearer, easing to that end's lane center over
+	// `ease`. Only the closer end's window ever applies (always far shorter than L/2 for any real
+	// weave run) -- the border weave is continuous through medallion zones, so there is no separate
+	// "medallion end" case any more (removed: vertex-funnel lane compression).
+	function endBlend(vv, uu, L, ease, laneTarget) {
+		var d = Math.min(uu, L - uu);
+		return (ease > 0 && d < ease) ? lerp(laneTarget, vv, smooth(d / ease)) : vv;
 	}
 
 	// ---------- patterns ----------
 	// Contract: gen(L, band, sp, opts) -> {strands:[{pts:[[u,v]..], color:int, closed:bool}]}
 	// Open (opts.closed falsy): strands eased to lane centers over EASE at both ends, whole number
-	// of wave repeats -- UNLESS that end is flagged opts.funnelA/funnelB (a medallion end), in which
-	// case it eases into the compressed funnelLane over `funnelLen` instead (vertex funnel). Closed
-	// (opts.closed true): L = full spine length, reps still whole, but NO end easing -- the sinusoid
-	// just continues seamlessly (reps integral -> wraps exactly).
+	// of wave repeats. Closed (opts.closed true): L = full spine length, reps still whole, but NO
+	// end easing -- the sinusoid just continues seamlessly (reps integral -> wraps exactly).
 	var patterns = {};
 	patterns.plait = function (L, band, sp, opts) {
 		var closedMode = !!(opts && opts.closed);
-		var funnelA = !closedMode && !!(opts && opts.funnelA), funnelB = !closedMode && !!(opts && opts.funnelB);
 		var N = clamp(sp.count, 2, 4);
 		var lam0 = Math.max(band * 1.5 * sp.scale, 8);
 		var reps = Math.max(1, Math.round(L / lam0)), lam = L / reps;
 		var wf = strandW(band, N, sp);
 		var amp = Math.max(1, band / 2 - wf / 2 - outlineW(wf) - 1);
-		var ease = closedMode ? 0 : EASE(lam, L), funnel = funnelLen(band, L), step = STEP(band), strands = [];
+		var ease = closedMode ? 0 : EASE(lam, L), step = STEP(band), strands = [];
 		for (var i = 0; i < N; i++) {
-			var phi = i * Math.PI * 2 / N, pts = [], laneTarget = lane(i, N, band), funnelTarget = funnelLane(i, N, band);
+			var phi = i * Math.PI * 2 / N, pts = [], laneTarget = lane(i, N, band);
 			for (var u = 0; u <= L + 1e-6; u += step) {
 				var uu = Math.min(u, L);
 				var vv = band / 2 + amp * Math.sin(Math.PI * 2 * uu / lam + phi);
-				vv = closedMode ? vv : endBlend(vv, uu, L, funnelA, funnelB, ease, funnel, laneTarget, funnelTarget);
+				vv = closedMode ? vv : endBlend(vv, uu, L, ease, laneTarget);
 				pts.push([uu, vv]);
 				if (uu >= L) { break; }
 			}
 			if (pts[pts.length - 1][0] < L) {
 				var vEnd = band / 2 + amp * Math.sin(Math.PI * 2 * L / lam + phi);
-				vEnd = closedMode ? vEnd : endBlend(vEnd, L, L, funnelA, funnelB, ease, funnel, laneTarget, funnelTarget);
+				vEnd = closedMode ? vEnd : endBlend(vEnd, L, L, ease, laneTarget);
 				pts.push([L, vEnd]);
 			}
 			strands.push({ pts: pts, color: i, closed: closedMode });
@@ -320,24 +310,23 @@
 	// so the two-tone lattice mirrors symmetrically at the segment ports.
 	patterns.openweave = function (L, band, sp, opts) {
 		var closedMode = !!(opts && opts.closed);
-		var funnelA = !closedMode && !!(opts && opts.funnelA), funnelB = !closedMode && !!(opts && opts.funnelB);
 		var lam0 = Math.max(band * 2.6 * sp.scale, 10);
 		var reps = Math.max(1, Math.round(L / lam0)), lam = L / reps;
 		var wf = strandW(band, 4, sp), amp = Math.max(1, band / 2 - wf / 2 - outlineW(wf) - 1);
-		var ease = closedMode ? 0 : EASE(lam, L), funnel = funnelLen(band, L), step = STEP(band), order = [0, 2, 1, 3], strands = [];
+		var ease = closedMode ? 0 : EASE(lam, L), step = STEP(band), order = [0, 2, 1, 3], strands = [];
 		for (var k = 0; k < 4; k++) {
 			var pair = k >> 1, sign = (k & 1) ? -1 : 1, phase = pair * Math.PI / 2, pts = [];
-			var laneTarget = lane(order[k], 4, band), funnelTarget = funnelLane(order[k], 4, band);
+			var laneTarget = lane(order[k], 4, band);
 			for (var u = 0; u <= L + 1e-6; u += step) {
 				var uu = Math.min(u, L);
 				var vv = band / 2 + sign * amp * Math.sin(Math.PI * 2 * uu / lam + phase);
-				vv = closedMode ? vv : endBlend(vv, uu, L, funnelA, funnelB, ease, funnel, laneTarget, funnelTarget);
+				vv = closedMode ? vv : endBlend(vv, uu, L, ease, laneTarget);
 				pts.push([uu, vv]);
 				if (uu >= L) { break; }
 			}
 			if (pts[pts.length - 1][0] < L) {
 				var vEnd = band / 2 + sign * amp * Math.sin(Math.PI * 2 * L / lam + phase);
-				vEnd = closedMode ? vEnd : endBlend(vEnd, L, L, funnelA, funnelB, ease, funnel, laneTarget, funnelTarget);
+				vEnd = closedMode ? vEnd : endBlend(vEnd, L, L, ease, laneTarget);
 				pts.push([L, vEnd]);
 			}
 			strands.push({ pts: pts, color: pair, closed: closedMode, lane: order[k] });
@@ -351,24 +340,23 @@
 	};
 	patterns.twist = function (L, band, sp, opts) {
 		var closedMode = !!(opts && opts.closed);
-		var funnelA = !closedMode && !!(opts && opts.funnelA), funnelB = !closedMode && !!(opts && opts.funnelB);
 		var sp2 = { count: 2, thickness: clamp(sp.thickness * 1.25, 0.3, 0.9), scale: sp.scale };
 		var lam0 = Math.max(band * 1.15 * sp.scale, 8);
 		var reps = Math.max(1, Math.round(L / lam0)), lam = L / reps;
 		var wf = strandW(band, 2, sp2), amp = Math.max(1, band / 2 - wf / 2 - outlineW(wf) - 1);
-		var ease = closedMode ? 0 : EASE(lam, L), funnel = funnelLen(band, L), step = STEP(band), strands = [];
+		var ease = closedMode ? 0 : EASE(lam, L), step = STEP(band), strands = [];
 		for (var k = 0; k < 2; k++) {
-			var sign = k ? -1 : 1, pts = [], laneTarget = lane(k, 2, band), funnelTarget = funnelLane(k, 2, band);
+			var sign = k ? -1 : 1, pts = [], laneTarget = lane(k, 2, band);
 			for (var u = 0; u <= L + 1e-6; u += step) {
 				var uu = Math.min(u, L);
 				var vv = band / 2 + sign * amp * Math.sin(Math.PI * 2 * uu / lam);
-				vv = closedMode ? vv : endBlend(vv, uu, L, funnelA, funnelB, ease, funnel, laneTarget, funnelTarget);
+				vv = closedMode ? vv : endBlend(vv, uu, L, ease, laneTarget);
 				pts.push([uu, vv]);
 				if (uu >= L) { break; }
 			}
 			if (pts[pts.length - 1][0] < L) {
 				var vEnd = band / 2 + sign * amp * Math.sin(Math.PI * 2 * L / lam);
-				vEnd = closedMode ? vEnd : endBlend(vEnd, L, L, funnelA, funnelB, ease, funnel, laneTarget, funnelTarget);
+				vEnd = closedMode ? vEnd : endBlend(vEnd, L, L, ease, laneTarget);
 				pts.push([L, vEnd]);
 			}
 			strands.push({ pts: pts, color: k, closed: closedMode });
@@ -549,8 +537,8 @@
 				else { holes.push([s0n, domainLen]); holes.push([0, s1n - domainLen]); }
 			} else {
 				// Snap-to-end: a hole landing near an OPEN strand's end swallows the leftover nub
-				// (e.g. a funnel tip's remnant past its last ring crossing would otherwise survive
-				// as a detached sliver inside the lozenge).
+				// (e.g. a terminal's remnant past its last crossing would otherwise survive as a
+				// detached sliver).
 				if (s0 < 1.8 * win.halfLen) { s0 = -1; }
 				if (s1 > domainLen - 1.8 * win.halfLen) { s1 = domainLen + 1; }
 				holes.push([clamp(s0, 0, domainLen), clamp(s1, 0, domainLen)]);
@@ -610,32 +598,14 @@
 		return pts;
 	}
 
-	// ---------- vertex funnel: medallion-end straight extension (built in local u,v, BEFORE
-	// sweeping to page space). Every strand at a medallion end has already been blended (by the
-	// pattern generator's funnelA/funnelB easing) so its sample right at the segment end sits
-	// exactly on the compressed funnelLane(i,N,band); this just continues that same v straight out
-	// along u past the segment end so the tip overshoots just past the diamond's near vertex --
-	// the medallion feature-interval reservation (MEDALLION_PAD_FACTOR pad, see collectPolys)
-	// already contains this space. Depends only on band/N/lane -- never on segment length or
-	// side -- so both ends of every medallion connection are identical.
-	function extendMedallionFunnel(strands, N, band, kindA, kindB, Lseg) {
-		if (kindA !== 'medallion' && kindB !== 'medallion') { return; }
-		var overshoot = band * (MEDALLION_PAD_FACTOR + FUNNEL_OVERSHOOT_FACTOR);
-		strands.forEach(function (s, i) {
-			var v = funnelLane(i, N, band);
-			if (kindA === 'medallion') { s.pts.unshift([-overshoot, v]); }
-			if (kindB === 'medallion') { s.pts.push([Lseg + overshoot, v]); }
-		});
-	}
-
 	// ---------- segment assembly (spine-local u,v -> page via sweepPt) ----------
-	// Build the page-space polylines for one open spine segment, terminals/vertex-funnel tips
-	// merged in. seg: {s0,s1,endA,endB,med,medA,medB} with endA/endB in {'terminal','medallion','hook'}.
+	// Build the page-space polylines for one open spine segment, terminals merged in. seg:
+	// {s0,s1,endA,endB,med,medA,medB} with endA/endB in {'terminal','hook'} -- medallions no longer
+	// cut the spine (the weave runs continuously through medallion zones; the rings are woven over
+	// it separately, see medallionPolys/collectPolys), so a 'medallion' end kind can no longer occur.
 	function buildSpineSegmentPolys(seg, cfg, layout, spn) {
 		var band = layout.band, sp = cfg.strands;
-		var kindA = seg.endA, kindB = seg.endB;
-		var tA = (kindA === 'medallion') ? band * MEDALLION_PAD_FACTOR : TERM(band);
-		var tB = (kindB === 'medallion') ? band * MEDALLION_PAD_FACTOR : TERM(band);
+		var tA = TERM(band), tB = TERM(band);
 		var Lseg = seg.s1 - seg.s0;
 		var Lw = Lseg - tA - tB;
 		var gen = patterns[cfg.pattern] || patterns.plait;
@@ -646,48 +616,19 @@
 			res = { strands: [{ pts: pts0, color: 0, closed: false }, { pts: pts1, color: 1, closed: false }] };
 			off = 0;
 		} else {
-			res = gen(Lw, band, sp, { funnelA: kindA === 'medallion', funnelB: kindB === 'medallion' });
+			res = gen(Lw, band, sp, {});
 			res.strands.forEach(function (s) { s.pts = s.pts.map(function (p) { return [p[0] + off, p[1]]; }); });
 		}
 		var N = res.strands.length;
-		extendMedallionFunnel(res.strands, N, band, kindA, kindB, Lseg);
-		// Aim the funnel at the medallion's TRUE center axis: oversized medallions are shifted
-		// page-inward (medallionShift), so the bundle must ramp from the weave centerline onto
-		// that shifted axis or the tips visibly miss the diamond's near vertex. +v is page-inward
-		// everywhere in the spine sweep, so the shift adds directly. Ramp spans the funnel window;
-		// extension tips (beyond the segment ends) carry the full shift.
-		var shiftA = (kindA === 'medallion' && seg.medA) ? medallionShift(seg.medA, layout) : 0;
-		var shiftB = (kindB === 'medallion' && seg.medB) ? medallionShift(seg.medB, layout) : 0;
-		if (shiftA || shiftB) {
-			var fw = funnelLen(band, Math.max(Lw, band));
-			res.strands.forEach(function (s) {
-				s.pts.forEach(function (p) {
-					if (shiftA) {
-						var dA2 = p[0] - tA;
-						if (dA2 <= 0) { p[1] += shiftA; }
-						else if (dA2 < fw) { p[1] += shiftA * (1 - smooth(dA2 / fw)); }
-					}
-					if (shiftB) {
-						var dB2 = (Lseg - tB) - p[0];
-						if (dB2 <= 0) { p[1] += shiftB; }
-						else if (dB2 < fw) { p[1] += shiftB * (1 - smooth(dB2 / fw)); }
-					}
-				});
-			});
-		}
 		var paletteLen = (cfg.colors.strands && cfg.colors.strands.length) || 1;
 		// terminal arcs: pair lane i with lane N-1-i (fixed for both A and B passes); odd middle curls.
 		// Each pair (i, N-1-i) is visited once per open end (once by endArcs('A'), once by endArcs('B')).
 		// First visit merges si+sj into one open polyline (owner = si, sj absorbed via sj.merged).
 		// Second visit (sj already merged) finds si's two free ends now sitting at THIS end and
-		// joins them with an arc, closing the polyline into a loop. At a medallion end there are NO
-		// arcs/caps at all -- every strand funnels instead (extendMedallionFunnel, above) and gets a
-		// plain round stroke-cap tip (SVG stroke-linecap:round, see strokePath).
+		// joins them with an arc, closing the polyline into a loop.
 		function endArcs(atEnd) {
-			var isA = atEnd === 'A', kind = isA ? kindA : kindB;
+			var isA = atEnd === 'A';
 			var ue = isA ? tA : (Lseg - tB), dir = isA ? -1 : 1;
-			var medEnd = kind === 'medallion';
-			if (medEnd) { return; }
 			for (var i = 0; i < Math.floor(N / 2); i++) {
 				var j = N - 1 - i;
 				var si = res.strands[i], sj = res.strands[j];
@@ -785,8 +726,7 @@
 	// Diamond center: on the band centerline, shifted INWARD (into the page) when the
 	// lozenge's across-extent exceeds the page margin, so its outer vertex never clips
 	// the page edge. Matches the reference scrolls, whose lozenges jut into the page.
-	// Inward shift (px) applied to an oversized medallion so its outer vertex clears the page
-	// edge. Also the v-offset the vertex funnel must aim at (the diamond's true center axis).
+	// Inward shift (px) applied to an oversized medallion so its outer vertex clears the page edge.
 	function medallionShift(med, layout) {
 		var hd = (med.size / 100 * layout.S) / 2;
 		var edgeGap = layout.inset + layout.band / 2;        // page edge -> band centerline
@@ -857,13 +797,11 @@
 		// merge plain breaks first so overlapping intervals don't create phantom segments
 		var merged = mergeIntervals(feats.map(function (f) { return [f.s0, f.s1]; }))
 			.map(function (iv) { return { type: 'break', s0: iv[0], s1: iv[1] }; });
+		// Medallions no longer cut the spine: the border weave runs continuously through medallion
+		// zones (no feature interval here); the diamond rings are simply drawn over/through it
+		// below (medallionPolys), interlacing with the ordinary weave via normal over/under
+		// alternation in paintCutStrokes.
 		var allFeats = merged.slice();
-		cfg.medallions.forEach(function (m) {
-			var e = layout.edges[m.edge]; if (!e) { return; }
-			var hd = (m.size / 100 * layout.S) / 2, c = m.at / 100 * e.len, pad = layout.band * MEDALLION_PAD_FACTOR;
-			var civ = edgeIntervalToS(m.edge, c, c, layout, spn);
-			allFeats.push({ type: 'medallion', s0: civ[0] - hd - pad, s1: civ[0] + hd + pad, med: m });
-		});
 		if (cfg.corners === 'hook') {
 			['tr', 'br', 'bl', 'tl'].forEach(function (key) {
 				var a0 = spn.arcStart[key], a1 = a0 + spn.La, margin = layout.band * HOOK_MARGIN_FACTOR;
@@ -894,11 +832,11 @@
 	function paintCutStrokes(svg, polys, outlineColor, wf, wOut, paintOfFn) {
 		var windowsByIdx = polys.map(function () { return []; });
 		findCrossings(polys, wf * 0.8).forEach(function (c) {
-			// Medallion rings deterministically lie OVER the funnel tips (and any other weave
-			// strand): the tip always tucks under the lozenge and can never poke into its
-			// interior. Ring-vs-ring crossings keep normal alternation (mostly tangent-fused).
-			var ringA = !!polys[c.a].ring, ringB = !!polys[c.b].ring;
-			if (ringA !== ringB) { c.over = ringA ? 'a' : 'b'; }
+			// Ordinary alternation (no ring-always-over override): the weave runs continuously
+			// through the medallion zone (no strand tips there), so the ring interlaces the braid
+			// naturally -- some crossings put the ring over the weave, some put the weave over the
+			// ring, exactly like any other two crossing strands. This is what produces the
+			// "woven-through" lozenge look (braid visible crossing over the ring on some sides).
 			var w = underWindow(c, polys, wf, wOut);
 			if (!w) { return; }                                 // tangent fusion -> no hole
 			windowsByIdx[w.polyIdx].push({ idx: w.idx, frac: w.frac, halfLen: w.halfLen });
@@ -986,10 +924,7 @@
 			medallionPolys: medallionPolys, medallionCenter: medallionCenter, medallionShift: medallionShift, cubic: cubic,
 			crossingAngleSin: crossingAngleSin, underWindow: underWindow, splitByWindows: splitByWindows,
 			spine: spine, spineAt: spineAt, sweepPt: sweepPt, edgeIntervalToS: edgeIntervalToS,
-			STEP: STEP, TERM: TERM, EASE: EASE, clamp: clamp, lerp: lerp, smooth: smooth, effCount: effCount,
-			funnelLane: funnelLane, funnelLen: funnelLen,
-			MEDALLION_PAD_FACTOR: MEDALLION_PAD_FACTOR, FUNNEL_LEN_FACTOR: FUNNEL_LEN_FACTOR,
-			FUNNEL_COMPRESS: FUNNEL_COMPRESS, FUNNEL_OVERSHOOT_FACTOR: FUNNEL_OVERSHOOT_FACTOR
+			STEP: STEP, TERM: TERM, EASE: EASE, clamp: clamp, lerp: lerp, smooth: smooth, effCount: effCount
 		}
 	};
 	w.ScrollKnot = K;
