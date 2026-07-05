@@ -7,6 +7,8 @@
 		: { name: '', orientation: 'portrait', bg_type: 'color', bg_value: '#ffffff', slots: [], zones: [], kingdom_id: D.kingdomId };
 	if (!Array.isArray(tpl.slots)) { tpl.slots = []; }
 	if (!Array.isArray(tpl.zones)) { tpl.zones = []; }
+	if (!Array.isArray(tpl.award_keys)) { tpl.award_keys = []; }
+	tpl.award_keys = tpl.award_keys.map(Number);       // ids as numbers for reliable toggling
 	if (tpl.kingdom_id == null) { tpl.kingdom_id = D.kingdomId; }
 	var sel = null;                                  // { kind:'slot'|'zone', index:Number }
 	var groupState = {};                             // explicit type-chip choice, per collection
@@ -409,6 +411,27 @@
 		return wrap;
 	}
 
+	// ---- inspector: "For awards" tags (which ladder awards this template is for) ----
+	function buildAwardTags() {
+		var box = document.getElementById('scAwardTags'); box.innerHTML = '';
+		var awards = D.ladderAwards || [];
+		if (!awards.length) { box.appendChild(el('p', 'sc-empty', 'No ladder awards available.')); return; }
+		box.appendChild(el('p', 'sc-hint', 'Tag the awards this template is for. When someone grants a tagged award, this template is offered first; untagged templates stay available for any award.'));
+		var row = el('div', 'sc-chips');
+		awards.forEach(function (a) {
+			var id = Number(a.AwardId);
+			var on = tpl.award_keys.indexOf(id) >= 0;
+			var c = el('button', 'sc-tag' + (on ? ' is-sel' : ''), a.AwardName); c.type = 'button';
+			c.onclick = function () {
+				var i = tpl.award_keys.indexOf(id);
+				if (i >= 0) { tpl.award_keys.splice(i, 1); } else { tpl.award_keys.push(id); }
+				buildAwardTags();
+			};
+			row.appendChild(c);
+		});
+		box.appendChild(row);
+	}
+
 	function refreshInspector() { buildElements(); buildSelected(); markSelected(); }
 
 	// ---- toolbar actions ----
@@ -439,5 +462,5 @@
 	};
 
 	// ---- boot ----
-	buildPage(); render(); refreshInspector();
+	buildPage(); buildAwardTags(); render(); refreshInspector();
 })();

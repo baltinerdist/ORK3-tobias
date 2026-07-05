@@ -47,9 +47,10 @@ class ScrollTemplate extends Ork3
         $this->db->bg_value    = (string)($req['BgValue'] ?? '#ffffff');
         $this->db->slots       = json_encode(array_values($req['Slots'] ?? array()));
         $this->db->zones       = json_encode(array_values($req['Zones'] ?? array()));
+        $this->db->award_keys  = self::encodeAwardKeys($req['AwardKeys'] ?? array());
         $this->db->is_starter  = !empty($req['IsStarter']) ? 1 : 0;
         $this->db->created_by  = (int)($req['CreatedBy'] ?? 0);
-        $cols = array('kingdom_id', 'name', 'orientation', 'bg_type', 'bg_value', 'slots', 'zones', 'is_starter', 'created_by');
+        $cols = array('kingdom_id', 'name', 'orientation', 'bg_type', 'bg_value', 'slots', 'zones', 'award_keys', 'is_starter', 'created_by');
         $ph = array_map(function ($c) {
             return ':' . $c;
         }, $cols);
@@ -104,8 +105,9 @@ class ScrollTemplate extends Ork3
         $this->db->bg_value    = (string)($req['BgValue'] ?? '#ffffff');
         $this->db->slots       = json_encode(array_values($req['Slots'] ?? array()));
         $this->db->zones       = json_encode(array_values($req['Zones'] ?? array()));
+        $this->db->award_keys  = self::encodeAwardKeys($req['AwardKeys'] ?? array());
         $sql = "UPDATE " . DB_PREFIX . "scroll_template SET name = :name, orientation = :orientation,
-			bg_type = :bg_type, bg_value = :bg_value, slots = :slots, zones = :zones
+			bg_type = :bg_type, bg_value = :bg_value, slots = :slots, zones = :zones, award_keys = :award_keys
 			WHERE scroll_template_id = :scroll_template_id";
         $this->db->Execute($sql);
         return array('Status' => Success());
@@ -137,7 +139,21 @@ class ScrollTemplate extends Ork3
             'bg_value'    => $r->bg_value,
             'slots'       => json_decode($r->slots ?? '[]', true) ?: array(),
             'zones'       => json_decode($r->zones ?? '[]', true) ?: array(),
+            'award_keys'  => json_decode($r->award_keys ?? '[]', true) ?: array(),
             'is_starter'  => (int)$r->is_starter,
         );
+    }
+
+    /** Normalize a list of award ids to a JSON string of unique positive ints. */
+    private static function encodeAwardKeys($keys)
+    {
+        $ids = array();
+        foreach ((array)$keys as $k) {
+            $k = (int)$k;
+            if ($k > 0 && !in_array($k, $ids, true)) {
+                $ids[] = $k;
+            }
+        }
+        return json_encode($ids);
     }
 }

@@ -51,6 +51,7 @@ class Controller_Scroll extends Controller
         $this->data['token_map']         = array();
         $this->data['heraldry']          = array('kingdom' => '', 'park' => '', 'player' => '');
         $this->data['player_kingdom_id'] = 0;
+        $this->data['current_award_id']  = 0;   // base ork_award.award_id being granted (for template tag matching)
         // Built-in art packs live under system/assets/scroll/packs/ (served directly from docroot).
         $this->data['pack_base'] = str_replace('/assets/', '/system/assets/scroll/packs/', HTTP_ASSETS);
         // Uploaded library artwork is served directly by file name from the artwork tree.
@@ -184,6 +185,7 @@ class Controller_Scroll extends Controller
                     'park'    => $this->data['park_heraldry_url'],
                     'player'  => $this->data['player_heraldry_url'],
                 );
+                $this->data['current_award_id'] = is_array($award) ? (int)($award['AwardId'] ?? 0) : 0;
 
                 // Breadcrumbs
                 if (valid_id($kingdom_id)) {
@@ -236,6 +238,9 @@ class Controller_Scroll extends Controller
         // Built-in art-pack catalog + base URL live under system/assets/scroll/packs/ (matches builder()).
         $this->data['pack_catalog'] = json_decode(@file_get_contents(DIR_SYSTEM . 'assets/scroll/packs/catalog.json'), true) ?: array();
         $this->data['pack_base']    = str_replace('/assets/', '/system/assets/scroll/packs/', HTTP_ASSETS);
+
+        // Ladder awards (base ork_award, kingdom-independent) for tagging a template.
+        $this->data['ladder_awards'] = Ork3::$Lib->award->GetAwardList(array('IsLadder' => 'Ladder'))['Awards'] ?? array();
 
         // Preview the "Recipient's kingdom" role with this template's own kingdom arms.
         $kingdomHeraldry = $kingdomId > 0

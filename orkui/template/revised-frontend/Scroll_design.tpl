@@ -16,6 +16,7 @@
 			<section class="sc-sec"><h3 class="sc-eyebrow">Page</h3><div id="scPageProps"></div></section>
 			<section class="sc-sec"><h3 class="sc-eyebrow">Elements</h3><div id="scElements" class="sc-el-list"></div></section>
 			<section class="sc-sec"><h3 class="sc-eyebrow" id="scSelectedHead">Nothing selected</h3><div id="scSelected"></div></section>
+			<section class="sc-sec"><h3 class="sc-eyebrow">For awards</h3><div id="scAwardTags"></div></section>
 			<section class="sc-sec sc-save">
 				<input id="scTplName" class="sc-input" placeholder="Template name" value="<?= htmlspecialchars($edit_template['name'] ?? '') ?>">
 				<button type="button" id="scSave" class="sc-btn sc-btn-primary">Save template</button>
@@ -29,6 +30,7 @@
 		uir:       <?= json_encode(UIR) ?>,
 		template:  <?= json_encode($edit_template ?: null) ?>,
 		packCatalog: <?= json_encode($pack_catalog ?? []) ?>,
+		ladderAwards: <?= json_encode(array_values($ladder_awards ?? [])) ?>,
 		heraldry:  <?= json_encode($heraldry ?? []) ?>,
 		packBase:  <?= json_encode($pack_base ?? '') ?>,
 		token:     <?= json_encode($session_token ?? '') ?>,

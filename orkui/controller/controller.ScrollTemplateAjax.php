@@ -249,6 +249,7 @@ class Controller_ScrollTemplateAjax extends Controller
             'BgValue'     => $body['bg_value'] ?? '#ffffff',
             'Slots'       => $body['slots'] ?? array(),
             'Zones'       => $body['zones'] ?? array(),
+            'AwardKeys'   => $body['award_keys'] ?? array(),
             'IsStarter'   => !empty($body['is_starter']) ? 1 : 0,
             'CreatedBy'   => $mundane_id,
         );

@@ -33,9 +33,31 @@
 		current = JSON.parse(JSON.stringify(t));       // deep copy so edits don't mutate the source list
 		buildEditor(); render();
 	}
+	// Group the picker: templates tagged for the award being granted come first
+	// (under "For <Award>"), the rest under "Other templates"; default to a tagged one.
+	function populatePicker() {
+		if (!picker) { return; }
+		var awardId = B.currentAwardId || 0, all = B.templates || [], matched = [], others = [];
+		all.forEach(function (t) {
+			var keys = (t.award_keys || []).map(Number);
+			if (awardId && keys.indexOf(awardId) >= 0) { matched.push(t); } else { others.push(t); }
+		});
+		function opt(t) { var o = document.createElement('option'); o.value = t.scroll_template_id; o.textContent = t.name + (t.is_starter ? ' — starter' : ''); return o; }
+		function group(label, list) { var g = document.createElement('optgroup'); g.label = label; list.forEach(function (t) { g.appendChild(opt(t)); }); return g; }
+		picker.innerHTML = '';
+		if (matched.length) {
+			var awardName = (B.tokens && B.tokens.AwardName) ? B.tokens.AwardName : 'this award';
+			picker.appendChild(group('For ' + awardName, matched));
+			if (others.length) { picker.appendChild(group('Other templates', others)); }
+		} else {
+			all.forEach(function (t) { picker.appendChild(opt(t)); });
+		}
+		var def = matched.length ? matched[0] : (all[0] || null);
+		if (def) { picker.value = def.scroll_template_id; select(def.scroll_template_id); }
+	}
 	if (picker) picker.addEventListener('change', function () { select(picker.value); });
 	window.addEventListener('resize', function () { if (current) R.fitToStage(page, stage); });
-	if ((B.templates || []).length) select(B.templates[0].scroll_template_id);
+	populatePicker();
 	window.SC_getCurrent = function () { return current; };   // used by PDF export (Task 12)
 
 	// --- direct client-side PDF download (jsPDF + html2canvas) ---

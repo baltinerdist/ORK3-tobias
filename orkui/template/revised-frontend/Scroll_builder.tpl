@@ -21,6 +21,7 @@
 <script>
 window.SC_BUILDER = {
 	templates: <?= json_encode($templates ?? []) ?>,
+	currentAwardId: <?= (int)($current_award_id ?? 0) ?>,
 	tokens:    <?= json_encode($token_map ?? []) ?>,
 	heraldry:  <?= json_encode($heraldry ?? []) ?>,
 	packBase:  <?= json_encode($pack_base ?? '') ?>,

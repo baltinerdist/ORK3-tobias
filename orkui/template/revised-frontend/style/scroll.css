@@ -186,6 +186,13 @@ textarea.sc-input { resize:vertical; min-height:52px; }
 .sc-fontpick__opt:hover { background:var(--sc-accent-soft); }
 .sc-fontpick__opt.is-sel { background:var(--sc-accent-soft); box-shadow:inset 3px 0 0 var(--sc-accent); }
 
+/* "For awards" template tags (toggle chips) */
+.sc-hint { margin:0 0 7px; color:var(--sc-ink-soft); font:12px/1.4 system-ui; }
+.sc-tag { cursor:pointer; background:var(--sc-chip-bg); color:var(--sc-ink); border:1px solid var(--sc-input-line);
+	border-radius:5px; padding:5px 9px; font:600 11px/1.1 system-ui; }
+.sc-tag:hover { border-color:var(--sc-accent); color:var(--sc-accent); }
+.sc-tag.is-sel { background:var(--sc-accent); border-color:var(--sc-accent); color:#1c1608; }
+
 .sc-empty { margin:2px 0; color:var(--sc-ink-soft); font-size:12px; font-style:italic; }
 .sc-save { display:flex; flex-direction:column; gap:8px; }
 
