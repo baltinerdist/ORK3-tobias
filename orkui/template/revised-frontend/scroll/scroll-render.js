@@ -40,6 +40,11 @@
 		else if (tpl.bg_type === 'texture') bg.style.backgroundImage = 'url(' + opts.packBase + 'backgrounds/' + tpl.bg_value + ')';
 		else if (tpl.bg_type === 'image')   bg.style.backgroundImage = 'url(' + (opts.libBase + encodeURIComponent(tpl.bg_value)) + ')';
 		pageEl.appendChild(bg);
+		// knotwork border layer (parametric, drawn between bg and slots)
+		if (tpl.knot && tpl.knot.enabled && w.ScrollKnot) {
+			var kd = (tpl.orientation === 'landscape') ? [1056, 816] : [816, 1056];
+			pageEl.appendChild(w.ScrollKnot.render(tpl.knot, kd[0], kd[1], tpl.slots || []));
+		}
 		// slots
 		(tpl.slots || []).forEach(function (s) {
 			var el = document.createElement('div');

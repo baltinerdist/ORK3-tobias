@@ -37,6 +37,7 @@
 		saveUrl:   <?= json_encode(UIR.'ScrollTemplateAjax/save') ?>
 	};
 	</script>
+	<script src="<?= HTTP_TEMPLATE ?>revised-frontend/scroll/scroll-knot.js?v=<?= filemtime(DIR_TEMPLATE.'revised-frontend/scroll/scroll-knot.js') ?>"></script>
 	<script src="<?= HTTP_TEMPLATE ?>revised-frontend/scroll/scroll-render.js?v=<?= filemtime(DIR_TEMPLATE.'revised-frontend/scroll/scroll-render.js') ?>"></script>
 	<script src="<?= HTTP_TEMPLATE ?>revised-frontend/scroll/scroll-design.js?v=<?= filemtime(DIR_TEMPLATE.'revised-frontend/scroll/scroll-design.js') ?>"></script>
 <?php endif; ?>

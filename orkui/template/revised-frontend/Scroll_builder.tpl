@@ -30,5 +30,6 @@ window.SC_BUILDER = {
 </script>
 <script src="<?= HTTP_TEMPLATE ?>revised-frontend/vendor/html2canvas.min.js?v=<?= filemtime(DIR_TEMPLATE.'revised-frontend/vendor/html2canvas.min.js') ?>"></script>
 <script src="<?= HTTP_TEMPLATE ?>revised-frontend/vendor/jspdf.umd.min.js?v=<?= filemtime(DIR_TEMPLATE.'revised-frontend/vendor/jspdf.umd.min.js') ?>"></script>
+<script src="<?= HTTP_TEMPLATE ?>revised-frontend/scroll/scroll-knot.js?v=<?= filemtime(DIR_TEMPLATE.'revised-frontend/scroll/scroll-knot.js') ?>"></script>
 <script src="<?= HTTP_TEMPLATE ?>revised-frontend/scroll/scroll-render.js?v=<?= filemtime(DIR_TEMPLATE.'revised-frontend/scroll/scroll-render.js') ?>"></script>
 <script src="<?= HTTP_TEMPLATE ?>revised-frontend/scroll/scroll-builder.js?v=<?= filemtime(DIR_TEMPLATE.'revised-frontend/scroll/scroll-builder.js') ?>"></script>

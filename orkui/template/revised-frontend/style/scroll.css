@@ -36,6 +36,8 @@ html[data-theme="dark"] .sc-stage { background:#20232a; }
 .sc-bg { position:absolute; inset:0; z-index:0; background-size:cover; background-position:center; }
 .sc-bg[data-bg-type="texture"] { background-repeat:repeat; background-size:auto; }
 
+.sc-knot { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+
 .sc-slot { position:absolute; z-index:1; }                 /* x/y/w/h set inline as % by JS */
 .sc-slot img { width:100%; height:100%; object-fit:contain; display:block; }
 .sc-slot[data-fit="cover"] img { object-fit:cover; }
