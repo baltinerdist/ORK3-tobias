@@ -64,8 +64,14 @@ Field semantics:
 - `gradient` — when enabled, each strand color's fill becomes a linear gradient whose stops
   are `blend(strandColor, stopColor)` — literal color stops, computed in JS, applied with
   `gradientUnits="userSpaceOnUse"` across the page. `angle` in degrees (90 = top→bottom).
-- `corners` — `woven` (interlace turns the corner) or `hook` (curled open motif as on the
-  reference scroll tops).
+- `corners` — `woven` (rounded spine, interlace turns the corner) or `pointed` (sharp 90°
+  miter — the braid folds through the corner, outer strand forms the point, as on the Flame
+  reference). AMENDED 2026-07-05: the original `hook` corner value was a misreading of the
+  Flame reference (its curled motifs are BREAK-END treatments, not corners) and was replaced;
+  legacy `corners:'hook'` configs normalize to `pointed` + `terminals:'hook'`.
+- `terminals` (added 2026-07-05) — `cap` (rounded racetrack rim end caps, default) or `hook`
+  (the band end rolls into a curled hook occupying the break gap, per the Flame reference's
+  top-center break).
 - `medallions[]` — `edge` ∈ top/right/bottom/left, `at` = percent along that edge,
   `size` = percent of page short dimension (diamond diagonal), `shape` = `diamond` (v1 only).
 - `breaks[]` — manual gaps: `edge`, `at` (center, percent along edge), `width` (percent of
@@ -189,7 +195,7 @@ scrolls:
 
 | Preset | Pattern | Colors | Extras |
 |---|---|---|---|
-| Flame  | plait (3-strand, tight) | reds/oranges + near-black outline | vertical gradient red→gold; diamond medallions mid-left/right; hook corners top; bottom-center break |
+| Flame  | plait (3-strand, tight) | reds/oranges + near-black outline | vertical gradient red→gold; pointed corners; rolled hook terminals; top+bottom-center breaks |
 | Dragon | openweave (2-color) | green + gold, dark outline | diamond medallions mid-left/right; bottom-center break |
 | Crown  | openweave | black + gold | medallions at upper-third left/right; bottom-center break |
 | Smith  | twist (2-strand rope) | brown + slate | diamond medallions mid-left/right; bottom-center break |
