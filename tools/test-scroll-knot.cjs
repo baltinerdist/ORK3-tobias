@@ -295,8 +295,31 @@ gotHookMed.polys.forEach(function (p, i) {
 const hookMedCross = G.findCrossings(gotHookMed.polys, 3);
 hookMedCross.forEach(function (c) { ok(isFinite(c.x) && isFinite(c.y), 'hook+medallion crossing coords finite'); });
 
-// ---- medallion segment ends (spec §7 item 4): the centermost lane(s) at a medallion end must
-// land within ~wf of the medallion's ring paths (sweep landing fuses onto the rings).
+// ---- vertex funnel (replaces sweep landings): medallion-end strands get NO caps/cubics -- every
+// lane funnels toward the compressed bundle lane and overshoots straight past the segment end.
+{
+	// isolated buildSpineSegmentPolys check: exact OVERSHOOT + compression. Both ends 'medallion' so
+	// endArcs no-ops entirely at both ends -- every lane stays a separate open polyline, both raw
+	// tips free to inspect directly (no merging/arc geometry to work around).
+	const cfgF = G.norm({ enabled: true, pattern: 'plait', strands: { count: 3 } });
+	const segF = { s0: 100, s1: 500, endA: 'medallion', endB: 'medallion', med: null, medA: null, medB: null };
+	const polysF = G.buildSpineSegmentPolys(segF, cfgF, layT, spnT);
+	ok(polysF.length === 3, 'both-ends-medallion segment: every lane stays a separate open polyline (no arcs/merging), got ' + polysF.length);
+	const bandF = layT.band, overshootF = bandF * (G.MEDALLION_PAD_FACTOR + G.FUNNEL_OVERSHOOT_FACTOR);
+	const wfF = G.strandW(bandF, 3, cfgF.strands);
+	polysF.forEach(function (p, i) {
+		const vExp = G.funnelLane(i, 3, bandF);
+		ok(Math.abs(vExp - bandF / 2) <= bandF * G.FUNNEL_COMPRESS / 2 + wfF, 'strand ' + i + ' funnel lane sits within the compressed bundle (|v-band/2| <= band*FUNNEL_COMPRESS/2 + wf)');
+		const expA = G.sweepPt(spnT, segF.s0 - overshootF, vExp, bandF);
+		const expB = G.sweepPt(spnT, segF.s1 + overshootF, vExp, bandF);
+		const gotA = p.pts[0], gotB = p.pts[p.pts.length - 1];
+		near(Math.hypot(gotA[0] - expA[0], gotA[1] - expA[1]), 0, 1, 'strand ' + i + ' A-end tip overshoots the segment end by OVERSHOOT +/- 1px');
+		near(Math.hypot(gotB[0] - expB[0], gotB[1] - expB[1]), 0, 1, 'strand ' + i + ' B-end tip overshoots the segment end by OVERSHOOT +/- 1px');
+	});
+}
+
+// ---- vertex funnel through the full pipeline: a real left-edge medallion still lands its weave
+// tips close to the diamond rings (wiring smoke test -- rings interlace the bundle at the vertex).
 const medOnlyCfg = G.norm({ enabled: true, pattern: 'plait', medallions: [{ edge: 'left', at: 45, size: 14 }] });
 const medOnlyLayout = G.frameLayout(medOnlyCfg, 816, 1056);
 const medOnlyGot = G.collectPolys(medOnlyCfg, 816, 1056, []);
@@ -311,10 +334,41 @@ let landedEndpoints = 0;
 medOnlyGot.polys.forEach(function (p) {
 	[p.pts[0], p.pts[p.pts.length - 1]].forEach(function (ep) {
 		const d = Math.min(distToRing(ep, medOnlyRings[0]), distToRing(ep, medOnlyRings[1]));
-		if (d <= wfMed * 2) { landedEndpoints++; }
+		if (d <= wfMed * 4) { landedEndpoints++; }
 	});
 });
-ok(landedEndpoints >= 2, 'medallion sweep landings: at least 2 polyline endpoints land near the medallion rings, got ' + landedEndpoints);
+ok(landedEndpoints >= 2, 'vertex funnel: at least 2 polyline endpoints land near the medallion rings, got ' + landedEndpoints);
+
+// ---- vertex funnel symmetry: a left-edge medallion at 50 (mid straight-run, safely clear of
+// corners) produces two ends whose tips mirror exactly about the medallion center -- the funnel
+// math depends only on band/N/lane, never on segment length or side, so both ends are identical.
+{
+	const symCfg = G.norm({ enabled: true, pattern: 'plait', strands: { count: 3 }, medallions: [{ edge: 'left', at: 50, size: 10 }] });
+	const symLayout = G.frameLayout(symCfg, 816, 1056);
+	const symGot = G.collectPolys(symCfg, 816, 1056, []);
+	const symE = symLayout.edges.left;
+	const symSpn = G.spine(symCfg, 816, 1056);
+	// Reflection axis center: the medallion's "at" position mapped through the SPINE (the frame the
+	// weave is actually swept in), NOT G.medallionCenter (edge-local toPage frame used only for
+	// drawing the diamond rings -- edge-local u and spine s share the same straight run but differ
+	// by a small constant offset near the corners' R-vs-band radius, so they are NOT
+	// interchangeable centers for this symmetry check).
+	const symCivU = symCfg.medallions[0].at / 100 * symE.len;
+	const symCiv = G.edgeIntervalToS('left', symCivU, symCivU, symLayout, symSpn);
+	const symC = G.sweepPt(symSpn, symCiv[0], symLayout.band / 2, symLayout.band);
+	const symWeave = symGot.polys.slice(0, symGot.polys.length - 2);   // drop the 2 appended ring polylines
+	ok(symWeave.length === 3, 'single-medallion loop: 3 separate unmerged lane polylines (both ends medallion), got ' + symWeave.length);
+	function reflect(pt) {
+		const dx = pt[0] - symC[0], dy = pt[1] - symC[1];
+		const dTangent = dx * symE.ux + dy * symE.uy;                  // component along the edge run (tangent)
+		return [pt[0] - 2 * dTangent * symE.ux, pt[1] - 2 * dTangent * symE.uy];
+	}
+	symWeave.forEach(function (p, i) {
+		const tipA = p.pts[0], tipB = p.pts[p.pts.length - 1];
+		const tipAReflected = reflect(tipA);
+		near(Math.hypot(tipAReflected[0] - tipB[0], tipAReflected[1] - tipB[1]), 0, 1, 'lane ' + i + ' tip mirrors across the medallion center (nearest-counterpart distance < 1px)');
+	});
+}
 
 // ---- break-over-medallion: a break wide enough to swallow a medallion leaves no weave in the
 // cleared gap (adapts the segmentLoop cursor-pinning invariant to the full collectPolys pipeline).
