@@ -391,6 +391,83 @@
 		return out;
 	}
 
+	// ---------- corners ----------
+	var CORNER_DEF = {
+		tl: { A: ['top', 0], B: ['left', 0], dirA: [-1, 0], dirB: [0, -1] },
+		tr: { A: ['top', 1], B: ['right', 0], dirA: [1, 0], dirB: [0, -1] },
+		bl: { A: ['bottom', 0], B: ['left', 1], dirA: [-1, 0], dirB: [0, 1] },
+		br: { A: ['bottom', 1], B: ['right', 1], dirA: [1, 0], dirB: [0, 1] }
+	};
+	function cubic(p0, c1, c2, p1, samples) {
+		var pts = [];
+		for (var k = 0; k <= samples; k++) {
+			var t = k / samples, mt = 1 - t;
+			pts.push([
+				mt * mt * mt * p0[0] + 3 * mt * mt * t * c1[0] + 3 * mt * t * t * c2[0] + t * t * t * p1[0],
+				mt * mt * mt * p0[1] + 3 * mt * mt * t * c1[1] + 3 * mt * t * t * c2[1] + t * t * t * p1[1]
+			]);
+		}
+		return pts;
+	}
+	function cornerPolys(key, cfg, layout) {
+		var def = CORNER_DEF[key], N = effCount(cfg), out = [];
+		var eA = layout.edges[def.A[0]], eB = layout.edges[def.B[0]];
+		var uA = def.A[1] ? eA.len : 0, uB = def.B[1] ? eB.len : 0;
+		if (cfg.corners === 'hook') {
+			var box = layout.corners[key], cx = box.x + layout.band / 2, cy = box.y + layout.band / 2;
+			var pts = [], a0 = Math.atan2(def.dirA[1], def.dirA[0]) + Math.PI;   // enter opposite the into-dir
+			for (var k = 0; k <= 32; k++) {
+				var th = a0 + k / 32 * 1.5 * Math.PI, r = lerp(layout.band * 0.42, layout.band * 0.12, k / 32);
+				pts.push([cx + Math.cos(th) * r, cy + Math.sin(th) * r]);
+			}
+			out.push({ pts: pts, color: 0, closed: false });
+			return out;
+		}
+		function perm(i) { return (N % 2 === 0) ? (i + 2) % N : (N - 1 - i); }
+		for (var i = 0; i < N; i++) {
+			var PA = toPage(eA, uA, lane(i, N, layout.band));
+			var PB = toPage(eB, uB, lane(perm(i), N, layout.band));
+			var c1 = [PA[0] + def.dirA[0] * layout.band * 0.45, PA[1] + def.dirA[1] * layout.band * 0.45];
+			var c2 = [PB[0] + def.dirB[0] * layout.band * 0.45, PB[1] + def.dirB[1] * layout.band * 0.45];
+			out.push({ pts: cubic(PA, c1, c2, PB, 24), color: i, closed: false });
+		}
+		return out;
+	}
+	// ---------- medallions ----------
+	function diamond(cx, cy, huU, hvV, e, samples) {
+		// half-diagonals huU (along edge u dir) and hvV (along v dir), in page space via edge axes
+		var ux = e.ux, uy = e.uy, vx = e.vx, vy = e.vy;
+		var V = [
+			[cx - ux * huU, cy - uy * huU], [cx + vx * hvV, cy + vy * hvV],
+			[cx + ux * huU, cy + uy * huU], [cx - vx * hvV, cy - vy * hvV]
+		];
+		var pts = [];
+		for (var s = 0; s < 4; s++) {
+			var A = V[s], B = V[(s + 1) % 4];
+			for (var k = 0; k < samples; k++) { var t = k / samples; pts.push([lerp(A[0], B[0], t), lerp(A[1], B[1], t)]); }
+		}
+		return pts;
+	}
+	function medallionPolys(med, e, layout, cfg) {
+		var hd = (med.size / 100 * layout.S) / 2;
+		var C = toPage(e, med.at / 100 * e.len, layout.band / 2);
+		return [
+			{ pts: diamond(C[0], C[1], hd * 1.0, hd * 0.8, e, 12), color: 0, closed: true },
+			{ pts: diamond(C[0], C[1], hd * 0.8, hd * 1.0, e, 12), color: 1, closed: true }
+		];
+	}
+	function medallionInnerRects(rawCfg, W, H) {
+		var cfg = norm(rawCfg), layout = frameLayout(cfg, W, H), out = [];
+		cfg.medallions.forEach(function (m) {
+			var e = layout.edges[m.edge]; if (!e) { return; }
+			var hd = (m.size / 100 * layout.S) / 2;
+			var C = toPage(e, m.at / 100 * e.len, layout.band / 2);
+			var half = hd * 0.8 / Math.SQRT2 * 0.9;
+			out.push({ edge: m.edge, at: m.at, x: (C[0] - half) / W * 100, y: (C[1] - half) / H * 100, w: 2 * half / W * 100, h: 2 * half / H * 100 });
+		});
+		return out;
+	}
+
 	// ---------- SVG ----------
 	var uidCounter = 0;
 	function svgEl(tag) { return document.createElementNS(SVGNS, tag); }
@@ -434,6 +511,13 @@
 			segmentEdge(e.len, brk.concat(meds), layout.band, cornerEnd).forEach(function (seg) {
 				buildSegmentPolys(e, seg, cfg, layout).forEach(function (p) { polys.push(p); });
 			});
+		});
+		['tl', 'tr', 'bl', 'br'].forEach(function (key) {
+			cornerPolys(key, cfg, layout).forEach(function (p) { polys.push(p); });
+		});
+		cfg.medallions.forEach(function (m) {
+			var e = layout.edges[m.edge]; if (!e) { return; }
+			medallionPolys(m, e, layout, cfg).forEach(function (p) { polys.push(p); });
 		});
 		return { layout: layout, polys: polys };
 	}
@@ -520,11 +604,13 @@
 	var K = {
 		render: render,
 		swatch: swatch,
+		medallionInnerRects: medallionInnerRects,
 		_geom: {
 			norm: norm, frameLayout: frameLayout, toPage: toPage, lane: lane, strandW: strandW, outlineW: outlineW,
 			mergeIntervals: mergeIntervals, segmentEdge: segmentEdge, autoBreaks: autoBreaks,
 			patterns: patterns, findCrossings: findCrossings, blendHex: blendHex, subPolyline: subPolyline,
 			buildSegmentPolys: buildSegmentPolys, collectPolys: collectPolys, uTurn: uTurn, curl: curl,
+			cornerPolys: cornerPolys, medallionPolys: medallionPolys, cubic: cubic,
 			STEP: STEP, TERM: TERM, EASE: EASE, clamp: clamp, lerp: lerp, smooth: smooth, effCount: effCount
 		}
 	};

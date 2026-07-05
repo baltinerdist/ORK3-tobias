@@ -163,5 +163,52 @@ ok(G.effCount(G.norm({ pattern: 'plait', strands: { count: 3 } })) === 3, 'effCo
 	});
 });
 
+// ---- corners: woven corner connects lanes with parity-preserving permutation
+const cp = G.cornerPolys('tl', cfg, L1);
+ok(cp.length === 3, 'woven tl corner emits one connector per lane');
+cp.forEach(function (p) { ok(p.pts.length >= 10, 'corner connector sampled'); });
+// connectors start at top-edge u=0 ports and end at left-edge u=0 ports (page coords sanity)
+const tlBox = L1.corners.tl;
+cp.forEach(function (p) {
+	const a = p.pts[0], z = p.pts[p.pts.length - 1];
+	ok(a[0] >= tlBox.x - 1 && a[1] >= tlBox.y - 1, 'corner connector stays around box start');
+	ok(z[0] >= tlBox.x - 1 && z[1] >= tlBox.y - 1, 'corner connector stays around box end');
+});
+
+// ---- medallion rings + inner rect
+const medCfg = G.norm({ enabled: true, medallions: [{ edge: 'left', at: 45, size: 14 }] });
+const mL = G.frameLayout(medCfg, 816, 1056);
+const rings = G.medallionPolys(medCfg.medallions[0], mL.edges.left, mL, medCfg);
+ok(rings.length === 2 && rings[0].closed && rings[1].closed, 'medallion = two closed rings');
+// Two axis-aligned rhombi sharing a center + the same u/v axes (differing only in aspect,
+// per the brief's exact geometry) cross exactly once per quadrant = 4 crossings, not 8 --
+// 8 would require rotating one ring relative to the other, which the spec does not call for.
+ok(G.findCrossings(rings).length >= 4, 'medallion rings interlace (>=4 crossings), got ' + G.findCrossings(rings).length);
+const inner = K.medallionInnerRects({ enabled: true, medallions: [{ edge: 'left', at: 45, size: 14 }] }, 816, 1056);
+ok(inner.length === 1 && inner[0].edge === 'left', 'medallionInnerRects returns entry');
+ok(inner[0].w > 2 && inner[0].w < 14 && inner[0].h > 1 && inner[0].h < 14, 'inner rect sane');
+const cxPct = inner[0].x + inner[0].w / 2;
+ok(cxPct < 15, 'left-edge medallion sits near left side');
+
+// ---- full render polys include corners + medallions (collectPolys)
+const full = G.collectPolys(medCfg, 816, 1056, []);
+ok(full.polys.length > 8, 'collectPolys includes edges + corners + medallion rings');
+
+// ---- collectPolys: hook corners + medallions exercised through the full pipeline (no NaN)
+const cfgHookMed = G.norm({
+	enabled: true, pattern: 'plait', corners: 'hook',
+	medallions: [{ edge: 'left', at: 45, size: 14 }, { edge: 'right', at: 55, size: 12 }]
+});
+const gotHookMed = G.collectPolys(cfgHookMed, 816, 1056, []);
+ok(gotHookMed.polys.length > 8, 'collectPolys(hook+medallions) returns polylines, got ' + gotHookMed.polys.length);
+gotHookMed.polys.forEach(function (p, i) {
+	ok(p.pts.length >= 2, 'collectPolys(hook+medallions) polyline ' + i + ' has >=2 points');
+	p.pts.forEach(function (pt) {
+		ok(isFinite(pt[0]) && isFinite(pt[1]), 'collectPolys(hook+medallions) polyline ' + i + ' coords finite');
+	});
+});
+const hookMedCross = G.findCrossings(gotHookMed.polys, 3);
+hookMedCross.forEach(function (c) { ok(isFinite(c.x) && isFinite(c.y), 'hook+medallion crossing coords finite'); });
+
 console.log(bad === 0 ? 'ALL PASS (' + n + ' checks)' : (bad + ' of ' + n + ' checks FAILED'));
 process.exit(bad === 0 ? 0 : 1);
