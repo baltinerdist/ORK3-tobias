@@ -22,7 +22,7 @@ frozen to a bitmap.
 |---|---|
 | Integration | Live parametric `knot` layer in template JSON, rendered client-side as SVG |
 | Breaks | Automatic (slots flagged `break_border`) + manual break regions, both with looped strand terminals |
-| Medallions | Engine-drawn diamond lozenges woven into the strands; inner clear rect hosts a normal emblem slot |
+| Medallions | ~~Engine-drawn diamond lozenges~~ REMOVED during iteration (2026-07-06): three connection designs (sweep landings, vertex funnel, overlay) all failed the visual bar; emblems are placed as ordinary slots instead, with `break_border` when a border gap is wanted |
 | Color | Per-strand palette + outline color + optional linear gradient tint (per-strand blended stops) |
 | Patterns | 4 named parametric patterns: `plait`, `openweave`, `twist`, `runningknot` |
 | Architecture | Approach C — procedural tile modules: pattern geometry computed in code, assembled from edge segments + corner/terminal/medallion modules with matching strand ports |

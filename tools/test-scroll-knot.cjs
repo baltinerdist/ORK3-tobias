@@ -58,8 +58,7 @@ near(loopSegs1[0].s1 - loopSegs1[0].s0, 1900, 1e-6, 'wrapped segment length = lo
 ok(G.segmentLoop(2000, [{ type: 'break', s0: 0, s1: 1000 }, { type: 'break', s0: 1000, s1: 2000 }]).length === 0, 'fully-covered loop -> nothing');
 // cursor pinning: a manual break wholly containing a later-sorted (fully-swallowed) interval must
 // not let the cursor walk backward into the cleared gap (no segment may start inside [100,400)).
-// (Generic interval-math coverage: medallions no longer produce spine feature intervals at all, so
-// this uses two plain 'break' features -- the cursor-pinning behavior being tested is type-agnostic.)
+// (Two plain 'break' features; the cursor-pinning behavior being tested is type-agnostic.)
 const pinSegs = G.segmentLoop(2000, [
 	{ type: 'break', s0: 100, s1: 400 },
 	{ type: 'break', s0: 250, s1: 350 }
@@ -232,7 +231,7 @@ ok(G.effCount(G.norm({ pattern: 'openweave' })) === 4, 'effCount openweave');
 ok(G.effCount(G.norm({ pattern: 'plait', strands: { count: 3 } })) === 3, 'effCount plait');
 
 // ---- collectPolys: every pattern runs the full segmentation+terminal path cleanly. With no
-// breaks/medallions and 'woven' corners, this exercises the NO-FEATURES closed-loop path ->
+// breaks and 'woven' corners, this exercises the NO-FEATURES closed-loop path ->
 // every emitted polyline must be closed:true.
 ['plait', 'openweave', 'twist'].forEach(function (patName) {
 	const cfgP = G.norm({ enabled: true, pattern: patName });
@@ -257,123 +256,9 @@ gotHook.polys.forEach(function (p, i) {
 	p.pts.forEach(function (pt) { ok(isFinite(pt[0]) && isFinite(pt[1]), 'collectPolys(hook) polyline ' + i + ' coords finite'); });
 });
 
-// ---- medallion rings + inner rect
-const medCfg = G.norm({ enabled: true, medallions: [{ edge: 'left', at: 45, size: 14 }] });
-const mL = G.frameLayout(medCfg, 816, 1056);
-const rings = G.medallionPolys(medCfg.medallions[0], mL.edges.left, mL, medCfg);
-ok(rings.length === 2 && rings[0].closed && rings[1].closed, 'medallion = two closed rings');
-// Two axis-aligned rhombi sharing a center + the same u/v axes (differing only in aspect,
-// per the brief's exact geometry) cross exactly once per quadrant = 4 crossings, not 8 --
-// 8 would require rotating one ring relative to the other, which the spec does not call for.
-ok(G.findCrossings(rings).length >= 4, 'medallion rings interlace (>=4 crossings), got ' + G.findCrossings(rings).length);
-const inner = K.medallionInnerRects({ enabled: true, medallions: [{ edge: 'left', at: 45, size: 14 }] }, 816, 1056);
-ok(inner.length === 1 && inner[0].edge === 'left', 'medallionInnerRects returns entry');
-ok(inner[0].w > 2 && inner[0].w < 14 && inner[0].h > 1 && inner[0].h < 14, 'inner rect sane');
-const cxPct = inner[0].x + inner[0].w / 2;
-ok(cxPct < 15, 'left-edge medallion sits near left side');
-
-// ---- full render polys include hook spirals / medallion rings (collectPolys)
-const full = G.collectPolys(medCfg, 816, 1056, []);
-// a single medallion no longer cuts the spine -> one closed weave loop (no features) + 2 rings
-ok(full.polys.length >= 4, 'collectPolys includes weave + medallion rings, got ' + full.polys.length);
-
-// ---- collectPolys: hook corners + medallions exercised through the full pipeline (no NaN)
-const cfgHookMed = G.norm({
-	enabled: true, pattern: 'plait', corners: 'hook',
-	medallions: [{ edge: 'left', at: 45, size: 14 }, { edge: 'right', at: 55, size: 12 }]
-});
-const gotHookMed = G.collectPolys(cfgHookMed, 816, 1056, []);
-ok(gotHookMed.polys.length > 8, 'collectPolys(hook+medallions) returns polylines, got ' + gotHookMed.polys.length);
-gotHookMed.polys.forEach(function (p, i) {
-	ok(p.pts.length >= 2, 'collectPolys(hook+medallions) polyline ' + i + ' has >=2 points');
-	p.pts.forEach(function (pt) {
-		ok(isFinite(pt[0]) && isFinite(pt[1]), 'collectPolys(hook+medallions) polyline ' + i + ' coords finite');
-	});
-});
-const hookMedCross = G.findCrossings(gotHookMed.polys, 3);
-hookMedCross.forEach(function (c) { ok(isFinite(c.x) && isFinite(c.y), 'hook+medallion crossing coords finite'); });
-
-// ---- continuous weave through a medallion zone (Change 1): the border weave no longer stops at
-// medallion zones -- a config with a left-edge medallion produces IDENTICAL weave polylines (same
-// count, same total point count, same points) to the same config with no medallion at all; only
-// the two appended ring polylines differ. Hole-cutting happens later at render time, so this
-// compares collectPolys' raw polylines directly.
-{
-	const contWith = G.norm({ enabled: true, pattern: 'plait', medallions: [{ edge: 'left', at: 45, size: 14 }] });
-	const contWithout = G.norm({ enabled: true, pattern: 'plait', medallions: [] });
-	const gotWith = G.collectPolys(contWith, 816, 1056, []);
-	const gotWithout = G.collectPolys(contWithout, 816, 1056, []);
-	const weaveWith = gotWith.polys.slice(0, gotWith.polys.length - 2);   // drop the 2 appended ring polys
-	ok(gotWith.polys.length === gotWithout.polys.length + 2, 'medallion adds exactly 2 ring polylines on top of the unchanged weave, got ' + gotWith.polys.length + ' vs ' + gotWithout.polys.length);
-	ok(weaveWith.length === gotWithout.polys.length, 'medallion presence does not change weave polyline count, got ' + weaveWith.length + ' vs ' + gotWithout.polys.length);
-	let sameShape = true, totalWith = 0, totalWithout = 0;
-	weaveWith.forEach(function (p, i) {
-		totalWith += p.pts.length;
-		const q = gotWithout.polys[i];
-		if (!q || p.pts.length !== q.pts.length || p.closed !== q.closed) { sameShape = false; return; }
-		p.pts.forEach(function (pt, k) {
-			if (Math.abs(pt[0] - q.pts[k][0]) > 1e-9 || Math.abs(pt[1] - q.pts[k][1]) > 1e-9) { sameShape = false; }
-		});
-	});
-	gotWithout.polys.forEach(function (p) { totalWithout += p.pts.length; });
-	ok(totalWith === totalWithout, 'medallion presence does not change total weave point count, got ' + totalWith + ' vs ' + totalWithout);
-	ok(sameShape, 'medallion presence leaves every weave polyline\'s points byte-for-byte unchanged');
-}
-
-// ---- ring/weave interlace (Change 2): the diamond rings cross the continuous weave and, with the
-// ring-always-over override removed, produce genuine (non-fused) crossings -- the "woven-through"
-// look, not a clean tuck-under-only relationship.
-{
-	const interCfg = G.norm({ enabled: true, pattern: 'plait', medallions: [{ edge: 'left', at: 45, size: 14 }] });
-	const interGot = G.collectPolys(interCfg, 816, 1056, []);
-	const interWeave = interGot.polys.slice(0, interGot.polys.length - 2);
-	const interRings = interGot.polys.slice(interGot.polys.length - 2);
-	const interAll = interWeave.concat(interRings);
-	const ringStart = interWeave.length;
-	const interCross = G.findCrossings(interAll, 3);
-	let nonFused = 0;
-	interCross.forEach(function (c) {
-		const aIsRing = c.a >= ringStart, bIsRing = c.b >= ringStart;
-		if (aIsRing === bIsRing) { return; }                 // only ring-vs-weave crossings count here
-		if (G.crossingAngleSin(c, interAll) >= 0.25) { nonFused++; }
-	});
-	ok(nonFused >= 4, 'ring interlaces the weave with at least 4 non-fused crossings, got ' + nonFused);
-}
-
-// ---- emblem clearance (Change 4): the continuous weave never wanders inward past the band into
-// the medallion's emblem area -- every weave point along the medallion's edge stays within the
-// band ring (distance from the page edge <= inset+band+2px).
-{
-	const clearMed = { edge: 'left', at: 45, size: 14 };
-	const clearCfg = G.norm({ enabled: true, pattern: 'plait', medallions: [clearMed] });
-	const clearLayout = G.frameLayout(clearCfg, 816, 1056);
-	const clearGot = G.collectPolys(clearCfg, 816, 1056, []);
-	const clearWeave = clearGot.polys.slice(0, clearGot.polys.length - 2);
-	const leftE = clearLayout.edges.left, maxX = clearLayout.inset + clearLayout.band + 2;
-	// Probe window: a y-band straddling the medallion's own footprint (+2*band margin either
-	// side), well clear of the TL/BL corners (where the spine's true corner radius R differs from
-	// "band" and legitimately bulges past this bound -- not an emblem-clearance issue). Also
-	// restrict to the left half of the page so the right edge's straight run (same y-domain, but
-	// legitimately far past maxX) is never mistaken for an intrusion.
-	const hdMed = (clearMed.size / 100 * clearLayout.S) / 2;
-	const uCenter = clearMed.at / 100 * leftE.len, probeHalf = hdMed + clearLayout.band * 2;
-	const yLo = leftE.oy + Math.max(0, uCenter - probeHalf), yHi = leftE.oy + Math.min(leftE.len, uCenter + probeHalf);
-	const xCut = clearLayout.W / 2;
-	let emblemIntrusions = 0;
-	clearWeave.forEach(function (p) {
-		p.pts.forEach(function (pt) {
-			if (pt[0] < xCut && pt[1] >= yLo && pt[1] <= yHi && pt[0] > maxX) { emblemIntrusions++; }
-		});
-	});
-	ok(emblemIntrusions === 0, 'weave along the medallion edge never wanders past band+2px inward (emblem area stays clear), got ' + emblemIntrusions);
-}
-
-// ---- break-over-medallion: a break wide enough to overlap a medallion leaves no weave in the
-// cleared gap (the break interval is independent of the medallion -- medallions no longer produce
-// their own spine feature -- but the manual break still clears the weave under/around the ring).
+// ---- left-edge manual break clears the weave from its gap.
 const breakOverMedCfg = G.norm({
 	enabled: true, pattern: 'plait',
-	medallions: [{ edge: 'left', at: 45, size: 10 }],
 	breaks: [{ edge: 'left', at: 45, width: 30 }], autoBreak: { enabled: false }
 });
 const bomLayout = G.frameLayout(breakOverMedCfg, 816, 1056);
@@ -385,38 +270,14 @@ const bomC = bomE.len * 0.45, bomH = bomE.len * 0.30 / 2;
 const bomU0 = bomC - bomH * 0.6, bomU1 = bomC + bomH * 0.6;
 const bomY0 = bomE.oy + bomU0, bomY1 = bomE.oy + bomU1;
 const bomX0 = bomE.ox + bomE.vx * (bomLayout.band * 0.15), bomX1 = bomE.ox + bomE.vx * (bomLayout.band * 0.85);
-// exclude the medallion's own ring polylines (always appended last, 2 per medallion): they are
-// legitimately drawn even when their weave connection was swallowed by an overlapping break --
-// this probe only cares about WEAVE points intruding into the cleared gap.
-const bomWeavePolys = bomGot.polys.slice(0, bomGot.polys.length - 2 * breakOverMedCfg.medallions.length);
+const bomWeavePolys = bomGot.polys;
 let bomIntrusions = 0;
 bomWeavePolys.forEach(function (p) {
 	p.pts.forEach(function (pt) {
 		if (pt[0] > Math.min(bomX0, bomX1) && pt[0] < Math.max(bomX0, bomX1) && pt[1] > bomY0 && pt[1] < bomY1) { bomIntrusions++; }
 	});
 });
-ok(bomIntrusions === 0, 'break swallowing a medallion leaves its interior free of weave points, got ' + bomIntrusions);
-
-// ---- medallion inward shift: an oversized lozenge must never clip the page edge
-const medBig = G.norm({ enabled: true, medallions: [{ edge: 'left', at: 45, size: 14 }] });
-const mbL = G.frameLayout(medBig, 816, 1056);
-G.medallionPolys(medBig.medallions[0], mbL.edges.left, mbL, medBig).forEach(function (ring) {
-	ring.pts.forEach(function (p) { ok(p[0] >= 1, 'medallion ring inside left page edge, x=' + p[0].toFixed(1)); });
-});
-G.medallionPolys(medBig.medallions[0], mbL.edges.right, mbL, medBig).forEach(function (ring) {
-	ring.pts.forEach(function (p) { ok(p[0] <= 815, 'medallion ring inside right page edge, x=' + p[0].toFixed(1)); });
-});
-const innerB = K.medallionInnerRects(medBig, 816, 1056)[0];
-ok(innerB.x > 0 && innerB.x + innerB.w < 100 && innerB.y > 0, 'shifted inner rect fully within page');
-// composition rule: the lozenge's outer vertex lands ~35% across the band (tip merges into
-// the braid's inner half; accent space fully inward) whenever the lozenge is bigger than that
-const medSm = G.norm({ enabled: true, band: { inset: 4, width: 8 }, medallions: [{ edge: 'left', at: 45, size: 8 }] });
-const msL = G.frameLayout(medSm, 816, 1056);
-const smC = G.medallionCenter(medSm.medallions[0], msL.edges.left, msL);
-{
-	const hdSm = (8 / 100 * msL.S) / 2;
-	near(smC[0] - hdSm, msL.inset + msL.band * 0.35, 0.01, 'outer vertex lands at 35% across the band');
-}
+ok(bomIntrusions === 0, 'left-edge break gap is free of weave points, got ' + bomIntrusions);
 
 // ---- splitByWindows (Change 1: true cut gaps -- cut holes in under-strand polylines instead of
 // painting a casing arc). RED-first: this geometry helper does not exist yet on the old engine.

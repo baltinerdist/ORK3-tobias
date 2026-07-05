@@ -4,10 +4,7 @@
    Assembly model: a single continuous rounded-rectangle SPINE runs clockwise around the
    frame; patterns are generated in local (u,v) then swept along the spine so the weave
    flows continuously through corners. Breaks/hooks cut the spine into open segments (or
-   leave it as one closed loop when there are no features); medallions do NOT cut the
-   spine -- the weave runs through medallion zones uninterrupted and the diamond rings are
-   woven over/through it as an inward excursion, interlacing via ordinary over/under
-   alternation (no strand tips to protect there). */
+   leave it as one closed loop when there are no features). */
 (function (w) {
 	'use strict';
 	var SVGNS = 'http://www.w3.org/2000/svg';
@@ -52,7 +49,6 @@
 				stops: (Array.isArray(gr.stops) && gr.stops.length >= 2) ? gr.stops : [{ at: 0, color: '#c62828' }, { at: 1, color: '#f9a825' }]
 			},
 			corners: o(cfg.corners, 'woven'),
-			medallions: Array.isArray(cfg.medallions) ? cfg.medallions : [],
 			breaks: Array.isArray(cfg.breaks) ? cfg.breaks : [],
 			autoBreak: { enabled: ab.enabled == null ? true : !!ab.enabled, padding: num(ab.padding, 2) }
 		};
@@ -183,15 +179,10 @@
 		});
 		return out;
 	}
-	// feats: [{type:'break'|'medallion'|'hook', s0, s1, med?}] on the closed spine loop (s0/s1 may
-	// fall outside [0,S) -- wraps are split automatically). Stays fully generic here even though
-	// collectPolys no longer ever produces a 'medallion' feature (medallions don't cut the spine
-	// any more) -- the type-agnostic interval math is what matters, kept for any future feature
-	// kind. No features -> one closed segment (full:true). Otherwise: rotate to a cut point
-	// guaranteed to sit in an uncovered gap, run a linear cursor sweep, then re-merge the two ends
-	// of the rotated domain (both still "weave") into a single segment that wraps back across the
-	// cut -- this is the "wrapping across s=0" segmentation the spine's arbitrary start point
-	// requires.
+	// feats: [{type:'break'|'hook', s0, s1}] on the closed spine loop (s0/s1 may fall outside
+	// [0,S) -- wraps are split automatically). No features -> one closed segment (full:true).
+	// Otherwise: rotate to a cut point in an uncovered gap, linear cursor sweep, then re-merge
+	// the rotated domain's two 'weave' ends into one segment wrapping across the seam.
 	function segmentLoop(S, feats) {
 		if (!feats.length) { return [{ s0: 0, s1: S, full: true }]; }
 		var pieces = [];
@@ -210,31 +201,31 @@
 		cut = ((cut % S) + S) % S;
 		var rotFeats = feats.map(function (f) {
 			var s0n = ((f.s0 - cut) % S + S) % S, len = f.s1 - f.s0;
-			return { type: f.type, med: f.med, u0: s0n, u1: s0n + len };
+			return { type: f.type, u0: s0n, u1: s0n + len };
 		}).sort(function (p, q) { return p.u0 - q.u0; });
-		var segs = [], cursor = 0, prevEnd = 'weave', prevMed = null;
-		function push(u0, u1, endA, endB, medA, medB) {
+		var segs = [], cursor = 0, prevEnd = 'weave';
+		function push(u0, u1, endA, endB) {
 			if (u1 - u0 < 2) { return; }
-			segs.push({ u0: u0, u1: u1, endA: endA, endB: endB, med: medB || medA || null, medA: medA || null, medB: medB || null });
+			segs.push({ u0: u0, u1: u1, endA: endA, endB: endB });
 		}
 		rotFeats.forEach(function (f) {
 			var u0c = clamp(f.u0, 0, S), u1c = clamp(f.u1, 0, S);
 			if (u1c <= cursor) { return; }        // fully swallowed by prior coverage: pure no-op, must
-			// not overwrite prevEnd/prevMed (e.g. a break fully containing a later-sorted medallion
-			// must not leave the NEXT real segment thinking it has a medallion end).
-			var kind = f.type === 'medallion' ? 'medallion' : (f.type === 'hook' ? 'hook' : 'terminal');
-			push(cursor, u0c, prevEnd, kind, prevMed, f.type === 'medallion' ? f.med : null);
+			// not overwrite prevEnd (a feature fully inside earlier coverage must not relabel the
+			// NEXT real segment's end kind).
+			var kind = (f.type === 'hook') ? 'hook' : 'terminal';
+			push(cursor, u0c, prevEnd, kind);
 			cursor = u1c;
-			prevEnd = kind; prevMed = (f.type === 'medallion') ? f.med : null;
+			prevEnd = kind;
 		});
-		push(cursor, S, prevEnd, 'weave', prevMed, null);
+		push(cursor, S, prevEnd, 'weave');
 		if (segs.length > 1 && segs[0].endA === 'weave' && segs[segs.length - 1].endB === 'weave') {
 			var first = segs.shift(), last = segs.pop();
 			var mergedLen = (S - last.u0) + first.u1;
-			segs.push({ u0: last.u0, u1: last.u0 + mergedLen, endA: last.endA, endB: first.endB, med: first.med || last.med, medA: last.medA, medB: first.medB });
+			segs.push({ u0: last.u0, u1: last.u0 + mergedLen, endA: last.endA, endB: first.endB });
 		}
 		return segs.map(function (s) {
-			return { s0: cut + s.u0, s1: cut + s.u1, endA: s.endA, endB: s.endB, med: s.med, medA: s.medA, medB: s.medB };
+			return { s0: cut + s.u0, s1: cut + s.u1, endA: s.endA, endB: s.endB };
 		});
 	}
 	// project padded, break_border-flagged slots onto each edge's band strip (unchanged: still
@@ -266,9 +257,8 @@
 
 	// Per-point end-easing shared by all pattern generators: blends the raw sinusoid value `vv`
 	// toward whichever end (A at u=0 / B at u=L) is nearer, easing to that end's lane center over
-	// `ease`. Only the closer end's window ever applies (always far shorter than L/2 for any real
-	// weave run) -- the border weave is continuous through medallion zones, so there is no separate
-	// "medallion end" case any more (removed: vertex-funnel lane compression).
+	// `ease`. Only the closer end's window ever applies (always far shorter than L/2 for any
+	// real weave run).
 	function endBlend(vv, uu, L, ease, laneTarget) {
 		var d = Math.min(uu, L - uu);
 		return (ease > 0 && d < ease) ? lerp(laneTarget, vv, smooth(d / ease)) : vv;
@@ -481,15 +471,12 @@
 		var polyIdx = underIsA ? c.a : c.b;
 		var idx = underIsA ? c.ia : c.ib, frac = underIsA ? c.fa : c.fb;
 		var sinA = crossingAngleSin(c, polys);
-		// Near-tangent contact is a FUSION, not an over/under: a medallion landing curve merging
-		// onto a ring (or any glancing overlap) must not cut a hole -- the paths simply merge.
+		// Near-tangent contact is a FUSION, not an over/under: glancing overlaps (e.g. a cap arc
+		// grazing a neighboring strand) must not cut a hole -- the paths simply merge.
 		if (sinA < 0.25) { return null; }
 		var halfLen = Math.min(wf * 3.5, (wOut / 2) / Math.max(0.35, sinA));
-		// Safety cap (Finding: near-tangent fusions, e.g. a medallion landing curve fusing onto a
-		// small ring, drive sinA to its floor and so halfLen to its max -- on a SHORT polyline (a
-		// small ring's total length can be comparable to that max) that can devour the whole shape.
-		// Never let one hole exceed ~1/6 of the affected polyline's own length; long weave strands
-		// are always far longer than this bound, so it only guards short closed shapes.
+		// Safety cap: never let one hole exceed ~1/6 of the affected polyline's own length --
+		// long weave strands are far longer than this bound; it only guards short shapes.
 		var underLen = polylineLength(polys[polyIdx].pts, polys[polyIdx].closed);
 		halfLen = Math.min(halfLen, underLen / 12);
 		return { polyIdx: polyIdx, idx: idx, frac: frac, halfLen: halfLen };
@@ -588,7 +575,7 @@
 		}
 		return pts;
 	}
-	// Spiral curl for the middle strand of an odd count (non-medallion ends).
+	// Spiral curl for the middle strand of an odd count.
 	function curl(ue, v, dir, band) {
 		var pts = [], r0 = band * CURL_RADIUS_FACTOR, cx = ue + dir * r0, turns = 1.5 * Math.PI * 2 * 0.75; // 270 deg
 		for (var k = 0; k <= 24; k++) {
@@ -599,10 +586,8 @@
 	}
 
 	// ---------- segment assembly (spine-local u,v -> page via sweepPt) ----------
-	// Build the page-space polylines for one open spine segment, terminals merged in. seg:
-	// {s0,s1,endA,endB,med,medA,medB} with endA/endB in {'terminal','hook'} -- medallions no longer
-	// cut the spine (the weave runs continuously through medallion zones; the rings are woven over
-	// it separately, see medallionPolys/collectPolys), so a 'medallion' end kind can no longer occur.
+	// Build the page-space polylines for one open spine segment, terminals merged in.
+	// seg: {s0,s1,endA,endB} with endA/endB in {'terminal','hook'}.
 	function buildSpineSegmentPolys(seg, cfg, layout, spn) {
 		var band = layout.band, sp = cfg.strands;
 		var tA = TERM(band), tB = TERM(band);
@@ -697,70 +682,6 @@
 		}
 		return [{ pts: pts, color: 0, closed: false }];
 	}
-	function cubic(p0, c1, c2, p1, samples) {
-		var pts = [];
-		for (var k = 0; k <= samples; k++) {
-			var t = k / samples, mt = 1 - t;
-			pts.push([
-				mt * mt * mt * p0[0] + 3 * mt * mt * t * c1[0] + 3 * mt * t * t * c2[0] + t * t * t * p1[0],
-				mt * mt * mt * p0[1] + 3 * mt * mt * t * c1[1] + 3 * mt * t * t * c2[1] + t * t * t * p1[1]
-			]);
-		}
-		return pts;
-	}
-	// ---------- medallions ----------
-	function diamond(cx, cy, huU, hvV, e, samples) {
-		// half-diagonals huU (along edge u dir) and hvV (along v dir), in page space via edge axes
-		var ux = e.ux, uy = e.uy, vx = e.vx, vy = e.vy;
-		var V = [
-			[cx - ux * huU, cy - uy * huU], [cx + vx * hvV, cy + vy * hvV],
-			[cx + ux * huU, cy + uy * huU], [cx - vx * hvV, cy - vy * hvV]
-		];
-		var pts = [];
-		for (var s = 0; s < 4; s++) {
-			var A = V[s], B = V[(s + 1) % 4];
-			for (var k = 0; k < samples; k++) { var t = k / samples; pts.push([lerp(A[0], B[0], t), lerp(A[1], B[1], t)]); }
-		}
-		return pts;
-	}
-	// Diamond center: on the band centerline, shifted INWARD (into the page) when the
-	// lozenge's across-extent exceeds the page margin, so its outer vertex never clips
-	// the page edge. Matches the reference scrolls, whose lozenges jut into the page.
-	// Inward shift (px) applied to an oversized medallion so its outer vertex clears the page edge.
-	function medallionShift(med, layout) {
-		// Compose like the reference art: the lozenge's OUTER vertex reaches only ~35% across
-		// the band (its tip merges into the braid's inner half), and the whole accent space
-		// sits inward of the border. shift positions the center so center - hd lands there.
-		// This is always at least as deep as the old page-edge-clearance rule.
-		var hd = (med.size / 100 * layout.S) / 2;
-		return Math.max(0, hd - layout.band * 0.15);
-	}
-	function medallionCenter(med, e, layout) {
-		var shift = medallionShift(med, layout);
-		// v=0 is the page-outer side on top/left edges; v=band is page-outer on bottom/right
-		var inward = (e.name === 'top' || e.name === 'left') ? 1 : -1;
-		return toPage(e, med.at / 100 * e.len, layout.band / 2 + inward * shift);
-	}
-	function medallionPolys(med, e, layout, cfg) {
-		var hd = (med.size / 100 * layout.S) / 2;
-		var C = medallionCenter(med, e, layout);
-		return [
-			{ pts: diamond(C[0], C[1], hd * 1.0, hd * 0.8, e, 12), color: 0, closed: true, ring: true },
-			{ pts: diamond(C[0], C[1], hd * 0.8, hd * 1.0, e, 12), color: 1, closed: true, ring: true }
-		];
-	}
-	function medallionInnerRects(rawCfg, W, H) {
-		var cfg = norm(rawCfg), layout = frameLayout(cfg, W, H), out = [];
-		cfg.medallions.forEach(function (m) {
-			var e = layout.edges[m.edge]; if (!e) { return; }
-			var hd = (m.size / 100 * layout.S) / 2;
-			var C = medallionCenter(m, e, layout);
-			var half = hd * 0.8 / Math.SQRT2 * 0.9;
-			out.push({ edge: m.edge, at: m.at, x: (C[0] - half) / W * 100, y: (C[1] - half) / H * 100, w: 2 * half / W * 100, h: 2 * half / H * 100 });
-		});
-		return out;
-	}
-
 	// ---------- SVG ----------
 	var uidCounter = 0;
 	function svgEl(tag) { return document.createElementNS(SVGNS, tag); }
@@ -777,8 +698,8 @@
 		parent.appendChild(p);
 		return p;
 	}
-	// collectPolys: full border -> [{pts,color,closed}] page space (spine-swept edges + hook
-	// spirals + medallion rings).
+	// collectPolys: full border -> [{pts,color,closed}] page space (spine-swept weave + hook
+	// spirals).
 	function collectPolys(cfg, W, H, slots) {
 		var layout = frameLayout(cfg, W, H);
 		var spn = buildSpine(layout);
@@ -800,10 +721,6 @@
 		// merge plain breaks first so overlapping intervals don't create phantom segments
 		var merged = mergeIntervals(feats.map(function (f) { return [f.s0, f.s1]; }))
 			.map(function (iv) { return { type: 'break', s0: iv[0], s1: iv[1] }; });
-		// Medallions no longer cut the spine: the border weave runs continuously through medallion
-		// zones (no feature interval here); the diamond rings are simply drawn over/through it
-		// below (medallionPolys), interlacing with the ordinary weave via normal over/under
-		// alternation in paintCutStrokes.
 		var allFeats = merged.slice();
 		if (cfg.corners === 'hook') {
 			['tr', 'br', 'bl', 'tl'].forEach(function (key) {
@@ -821,10 +738,6 @@
 		if (cfg.corners === 'hook') {
 			['tl', 'tr', 'bl', 'br'].forEach(function (key) { hookPolys(key, layout).forEach(function (p) { polys.push(p); }); });
 		}
-		cfg.medallions.forEach(function (m) {
-			var e = layout.edges[m.edge]; if (!e) { return; }
-			medallionPolys(m, e, layout, cfg).forEach(function (p) { polys.push(p); });
-		});
 		return { layout: layout, polys: polys, spine: spn };
 	}
 	// ---------- true-cut assembly + paint (shared by render() and swatch()) ----------
@@ -835,11 +748,6 @@
 	function paintCutStrokes(svg, polys, outlineColor, wf, wOut, paintOfFn) {
 		var windowsByIdx = polys.map(function () { return []; });
 		findCrossings(polys, wf * 0.8).forEach(function (c) {
-			// Ordinary alternation (no ring-always-over override): the weave runs continuously
-			// through the medallion zone (no strand tips there), so the ring interlaces the braid
-			// naturally -- some crossings put the ring over the weave, some put the weave over the
-			// ring, exactly like any other two crossing strands. This is what produces the
-			// "woven-through" lozenge look (braid visible crossing over the ring on some sides).
 			var w = underWindow(c, polys, wf, wOut);
 			if (!w) { return; }                                 // tangent fusion -> no hole
 			windowsByIdx[w.polyIdx].push({ idx: w.idx, frac: w.frac, halfLen: w.halfLen });
@@ -898,7 +806,7 @@
 	// spine (constant normal), so it renders a straight strip with the same new-style end caps.
 	function swatch(rawCfg, wPx, hPx) {
 		var cfg = norm(rawCfg);
-		cfg.enabled = true; cfg.breaks = []; cfg.medallions = []; cfg.autoBreak.enabled = false;
+		cfg.enabled = true; cfg.breaks = []; cfg.autoBreak.enabled = false;
 		var svg = svgEl('svg');
 		svg.setAttribute('class', 'sc-knot-swatch');
 		svg.setAttribute('viewBox', '0 0 ' + wPx + ' ' + hPx);
@@ -917,14 +825,12 @@
 	var K = {
 		render: render,
 		swatch: swatch,
-		medallionInnerRects: medallionInnerRects,
 		_geom: {
 			norm: norm, frameLayout: frameLayout, toPage: toPage, lane: lane, strandW: strandW, outlineW: outlineW,
 			mergeIntervals: mergeIntervals, segmentLoop: segmentLoop, autoBreaks: autoBreaks,
 			patterns: patterns, findCrossings: findCrossings, blendHex: blendHex, subPolyline: subPolyline,
 			buildSpineSegmentPolys: buildSpineSegmentPolys, buildClosedLoopPolys: buildClosedLoopPolys, collectPolys: collectPolys,
 			curl: curl, rimArc: rimArc, innerArc: innerArc, hookPolys: hookPolys,
-			medallionPolys: medallionPolys, medallionCenter: medallionCenter, medallionShift: medallionShift, cubic: cubic,
 			crossingAngleSin: crossingAngleSin, underWindow: underWindow, splitByWindows: splitByWindows,
 			spine: spine, spineAt: spineAt, sweepPt: sweepPt, edgeIntervalToS: edgeIntervalToS,
 			STEP: STEP, TERM: TERM, EASE: EASE, clamp: clamp, lerp: lerp, smooth: smooth, effCount: effCount

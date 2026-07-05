@@ -25,19 +25,19 @@
 		Flame: { enabled: true, pattern: 'plait', band: { inset: 1.8, width: 5.5 }, strands: { count: 3, thickness: 0.48, scale: 0.85 },
 			colors: { strands: ['#b3231a', '#e4670f', '#f5a623'], outline: '#2a0c05' },
 			gradient: { enabled: true, angle: 90, stops: [{ at: 0, color: '#a11212' }, { at: 0.55, color: '#e4670f' }, { at: 1, color: '#f7c948' }] },
-			corners: 'hook', medallions: [{ edge: 'left', at: 42, size: 13, shape: 'diamond' }, { edge: 'right', at: 42, size: 13, shape: 'diamond' }],
+			corners: 'hook',
 			breaks: [{ edge: 'top', at: 50, width: 10 }, { edge: 'bottom', at: 50, width: 26 }], autoBreak: { enabled: true, padding: 2 } },
 		Dragon: { enabled: true, pattern: 'openweave', band: { inset: 2, width: 6.2 }, strands: { count: 4, thickness: 0.55, scale: 1 },
 			colors: { strands: ['#2e6b2f', '#e9b840'], outline: '#12240f' }, gradient: { enabled: false, angle: 90, stops: [{ at: 0, color: '#2e6b2f' }, { at: 1, color: '#e9b840' }] },
-			corners: 'woven', medallions: [{ edge: 'left', at: 40, size: 14, shape: 'diamond' }, { edge: 'right', at: 40, size: 14, shape: 'diamond' }],
+			corners: 'woven',
 			breaks: [{ edge: 'bottom', at: 50, width: 26 }], autoBreak: { enabled: true, padding: 2 } },
 		Crown: { enabled: true, pattern: 'openweave', band: { inset: 2, width: 6 }, strands: { count: 4, thickness: 0.55, scale: 1 },
 			colors: { strands: ['#2b2b2e', '#e7b83b'], outline: '#101012' }, gradient: { enabled: false, angle: 90, stops: [{ at: 0, color: '#2b2b2e' }, { at: 1, color: '#e7b83b' }] },
-			corners: 'woven', medallions: [{ edge: 'left', at: 33, size: 13, shape: 'diamond' }, { edge: 'right', at: 33, size: 13, shape: 'diamond' }],
+			corners: 'woven',
 			breaks: [{ edge: 'bottom', at: 50, width: 30 }], autoBreak: { enabled: true, padding: 2 } },
 		Smith: { enabled: true, pattern: 'twist', band: { inset: 2, width: 5.8 }, strands: { count: 2, thickness: 0.6, scale: 1 },
 			colors: { strands: ['#8a6844', '#7b8494'], outline: '#241a10' }, gradient: { enabled: false, angle: 90, stops: [{ at: 0, color: '#8a6844' }, { at: 1, color: '#7b8494' }] },
-			corners: 'woven', medallions: [{ edge: 'left', at: 45, size: 13, shape: 'diamond' }, { edge: 'right', at: 45, size: 13, shape: 'diamond' }],
+			corners: 'woven',
 			breaks: [{ edge: 'bottom', at: 50, width: 30 }], autoBreak: { enabled: true, padding: 2 } }
 	};
 	var KNOT_PATTERNS = ['plait', 'openweave', 'twist'];
@@ -224,7 +224,7 @@
 		if (!k.enabled) { return; }
 		// normalize once so sub-objects exist for editing
 		var full = window.ScrollKnot._geom.norm(k);
-		['pattern', 'band', 'strands', 'colors', 'gradient', 'corners', 'medallions', 'breaks', 'autoBreak'].forEach(function (key) {
+		['pattern', 'band', 'strands', 'colors', 'gradient', 'corners', 'breaks', 'autoBreak'].forEach(function (key) {
 			if (k[key] == null) { k[key] = full[key]; }
 		});
 		k.enabled = true;
@@ -283,32 +283,6 @@
 			box.appendChild(field('Gradient colors', gs));
 		}
 		box.appendChild(field('Corners', select(['woven', 'hook'], k.corners, function (v) { k.corners = v; render(); })));
-		// medallions
-		var medBox = el('div');
-		k.medallions.forEach(function (m, i) {
-			var row = el('div', 'sc-knot-feat');
-			row.appendChild(field('Edge', select(['left', 'right', 'top', 'bottom'], m.edge, function (v) { m.edge = v; render(); })));
-			row.appendChild(slider('Position', m.at, 5, 95, 1, function (v) { m.at = v; render(); }));
-			row.appendChild(slider('Size', m.size, 6, 22, 0.5, function (v) { m.size = v; render(); }));
-			var act = el('div', 'sc-chips');
-			var slotBtn = el('button', 'sc-chip', 'Add emblem slot'); slotBtn.type = 'button';
-			slotBtn.onclick = function () {
-				var rects = window.ScrollKnot.medallionInnerRects(k, tpl.orientation === 'landscape' ? 1056 : 816, tpl.orientation === 'landscape' ? 816 : 1056);
-				var r = rects[i]; if (!r) { return; }
-				tpl.slots.push({ location: 'center_image', x: r.x, y: r.y, w: r.w, h: r.h, source_type: 'pack', source_ref: '', fit: 'contain' });
-				sel = { kind: 'slot', index: tpl.slots.length - 1 };
-				render(); refreshInspector();
-			};
-			var del = el('button', 'sc-chip', 'Remove'); del.type = 'button';
-			del.onclick = function () { k.medallions.splice(i, 1); render(); buildKnot(); };
-			act.appendChild(slotBtn); act.appendChild(del);
-			row.appendChild(act);
-			medBox.appendChild(row);
-		});
-		var addMed = el('button', 'sc-chip', '+ Medallion'); addMed.type = 'button';
-		addMed.onclick = function () { k.medallions.push({ edge: 'left', at: 45, size: 13, shape: 'diamond' }); render(); buildKnot(); };
-		medBox.appendChild(addMed);
-		box.appendChild(field('Medallions', medBox));
 		// manual breaks
 		var brBox = el('div');
 		k.breaks.forEach(function (b, i) {
