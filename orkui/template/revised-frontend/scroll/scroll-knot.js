@@ -156,6 +156,77 @@
 		}
 		return { strands: strands };
 	};
+	// order = [0,2,1,3]: pair A (k=0,1) sits outer/outer, pair B (k=2,3) inner/inner at the lanes
+	// so the two-tone lattice mirrors symmetrically at the segment ports.
+	patterns.openweave = function (L, band, sp) {
+		var lam0 = Math.max(band * 2.6 * sp.scale, 10);
+		var reps = Math.max(1, Math.round(L / lam0)), lam = L / reps;
+		var wf = strandW(band, 4, sp), amp = Math.max(1, band / 2 - wf / 2 - outlineW(wf) - 1);
+		var ease = EASE(lam, L), step = STEP(band), order = [0, 2, 1, 3], strands = [];
+		for (var k = 0; k < 4; k++) {
+			var pair = k >> 1, sign = (k & 1) ? -1 : 1, phase = pair * Math.PI / 2, pts = [];
+			for (var u = 0; u <= L + 1e-6; u += step) {
+				var uu = Math.min(u, L);
+				var vv = band / 2 + sign * amp * Math.sin(Math.PI * 2 * uu / lam + phase);
+				var d = Math.min(uu, L - uu);
+				if (d < ease) { vv = lerp(lane(order[k], 4, band), vv, smooth(d / ease)); }
+				pts.push([uu, vv]);
+				if (uu >= L) { break; }
+			}
+			if (pts[pts.length - 1][0] < L) { pts.push([L, lane(order[k], 4, band)]); }
+			strands.push({ pts: pts, color: pair, closed: false, lane: order[k] });
+		}
+		// Reorder so array index === lane index (buildSegmentPolys pairs terminals by array
+		// order = lane order). Strand array is emitted [A0,A1,B0,B1] (k order) but lanes are
+		// [0,2,1,3]; sort by the `lane` tag so index 0..3 walks lanes 0..3 in page order.
+		strands.sort(function (a, b) { return a.lane - b.lane; });
+		strands.forEach(function (s) { delete s.lane; });
+		return { strands: strands };
+	};
+	patterns.twist = function (L, band, sp) {
+		var sp2 = { count: 2, thickness: clamp(sp.thickness * 1.25, 0.3, 0.9), gap: sp.gap, scale: sp.scale };
+		var lam0 = Math.max(band * 1.15 * sp.scale, 8);
+		var reps = Math.max(1, Math.round(L / lam0)), lam = L / reps;
+		var wf = strandW(band, 2, sp2), amp = Math.max(1, band / 2 - wf / 2 - outlineW(wf) - 1);
+		var ease = EASE(lam, L), step = STEP(band), strands = [];
+		for (var k = 0; k < 2; k++) {
+			var sign = k ? -1 : 1, pts = [];
+			for (var u = 0; u <= L + 1e-6; u += step) {
+				var uu = Math.min(u, L);
+				var vv = band / 2 + sign * amp * Math.sin(Math.PI * 2 * uu / lam);
+				var d = Math.min(uu, L - uu);
+				if (d < ease) { vv = lerp(lane(k, 2, band), vv, smooth(d / ease)); }
+				pts.push([uu, vv]);
+				if (uu >= L) { break; }
+			}
+			if (pts[pts.length - 1][0] < L) { pts.push([L, lane(k, 2, band)]); }
+			strands.push({ pts: pts, color: k, closed: false });
+		}
+		return { strands: strands };
+	};
+	patterns.runningknot = function (L, band, sp) {
+		var wf = strandW(band, 2, sp), amp = Math.max(2, band / 2 - wf / 2 - outlineW(wf) - 1);
+		var lam0 = Math.min(Math.max(band * 1.8 * sp.scale, 10), band * 2);
+		var reps = Math.max(2, Math.round(L / lam0)), lam = L / reps;
+		var R = lam / (2 * Math.PI), d = Math.max(amp * 0.95, R * 1.35);
+		var vLo = wf / 2 + 1, vHi = band - wf / 2 - 1;
+		var pts = [], T = reps * 2 * Math.PI;
+		for (var t = 0; t <= T + 1e-9; t += 0.12) {
+			var tt = Math.min(t, T);
+			var fade = Math.min(1, Math.min(tt, T - tt) / Math.PI);       // straighten ends over a half-turn
+			var dt = d * lerp(0.25, 1, smooth(fade));
+			var uRaw = R * tt - dt * Math.sin(tt);
+			pts.push([clamp(uRaw / (R * T) * L, 0, L), clamp(band / 2 - dt * Math.cos(tt), vLo, vHi)]);
+			if (tt >= T) { break; }
+		}
+		var rail = [[0, band / 2], [L, band / 2]];
+		return { strands: [{ pts: pts, color: 0, closed: false }, { pts: rail, color: 1, closed: false }] };
+	};
+	function effCount(cfg) {
+		if (cfg.pattern === 'openweave') { return 4; }
+		if (cfg.pattern === 'twist' || cfg.pattern === 'runningknot') { return 2; }
+		return clamp(cfg.strands.count, 2, 4);
+	}
 
 	// ---------- crossings ----------
 	function segInt(p1, p2, p3, p4) {                    // segment intersection -> {t,s,x,y} or null
@@ -399,8 +470,8 @@
 			});
 			svg.appendChild(defs);
 		}
-		var band = got.layout.band, N = clamp(cfg.strands.count, 1, 4);
-		var wf = strandW(band, N, cfg.strands), wOut = wf + 2 * outlineW(wf), gapPx = cfg.strands.gap * wf;
+		var band = got.layout.band, N = effCount(cfg);
+		var wf = strandW(band, N, cfg.strands) * (cfg.pattern === 'twist' ? 1.25 : 1), wOut = wf + 2 * outlineW(wf), gapPx = cfg.strands.gap * wf;
 		function paintOf(colorIdx) { return paints[colorIdx % paints.length]; }
 		var gOutline = svgEl('g'), gFill = svgEl('g'), gCross = svgEl('g');
 		polys.forEach(function (p) { strokePath(gOutline, polyPath(p.pts, p.closed), cfg.colors.outline, wOut); });
@@ -430,8 +501,8 @@
 		var layout = { band: band, S: hPx, W: wPx, H: hPx };
 		var seg = { u0: 0, u1: edge.len, endA: 'terminal', endB: 'terminal', medA: null, medB: null };
 		var polys = buildSegmentPolys(edge, seg, cfg, layout);
-		var N = clamp(cfg.strands.count, 1, 4);
-		var wf = strandW(band, N, cfg.strands), wOut = wf + 2 * outlineW(wf), gapPx = cfg.strands.gap * wf;
+		var N = effCount(cfg);
+		var wf = strandW(band, N, cfg.strands) * (cfg.pattern === 'twist' ? 1.25 : 1), wOut = wf + 2 * outlineW(wf), gapPx = cfg.strands.gap * wf;
 		var g1 = svgEl('g'), g2 = svgEl('g'), g3 = svgEl('g');
 		polys.forEach(function (p) { strokePath(g1, polyPath(p.pts, p.closed), cfg.colors.outline, wOut); });
 		polys.forEach(function (p) { strokePath(g2, polyPath(p.pts, p.closed), cfg.colors.strands[p.color % cfg.colors.strands.length], wf); });
@@ -454,7 +525,7 @@
 			mergeIntervals: mergeIntervals, segmentEdge: segmentEdge, autoBreaks: autoBreaks,
 			patterns: patterns, findCrossings: findCrossings, blendHex: blendHex, subPolyline: subPolyline,
 			buildSegmentPolys: buildSegmentPolys, collectPolys: collectPolys, uTurn: uTurn, curl: curl,
-			STEP: STEP, TERM: TERM, EASE: EASE, clamp: clamp, lerp: lerp, smooth: smooth
+			STEP: STEP, TERM: TERM, EASE: EASE, clamp: clamp, lerp: lerp, smooth: smooth, effCount: effCount
 		}
 	};
 	w.ScrollKnot = K;

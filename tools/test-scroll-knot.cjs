@@ -127,5 +127,41 @@ const fullCross = G.findCrossings(got.polys, 3);
 ok(fullCross.length > 20, 'full border has >20 crossings, got ' + fullCross.length);
 fullCross.forEach(function (c) { ok(isFinite(c.x) && isFinite(c.y), 'crossing coords finite'); });
 
+// ---- openweave: 4 strands, 2 colors, mirror symmetry
+const OW = G.patterns.openweave(520, 48, cfg.strands);
+ok(OW.strands.length === 4, 'openweave emits 4 strands');
+ok(OW.strands.filter(s => s.color === 0).length === 2 && OW.strands.filter(s => s.color === 1).length === 2, 'openweave two color pairs');
+OW.strands.forEach((s, i) => s.pts.forEach(p => ok(p[1] > 0 && p[1] < 48, 'openweave strand ' + i + ' in band')));
+
+// ---- twist: 2 strands, crossings every half-wave
+const TW = G.patterns.twist(400, 48, cfg.strands);
+ok(TW.strands.length === 2, 'twist emits 2 strands');
+const twPolys = TW.strands.map(s => ({ pts: s.pts, closed: false }));
+ok(G.findCrossings(twPolys).length >= 5, 'twist strands cross repeatedly');
+
+// ---- runningknot: loop strand self-crosses once per repeat + rail
+const RK = G.patterns.runningknot(500, 48, cfg.strands);
+ok(RK.strands.length === 2, 'runningknot: loop + rail');
+const rkSelf = G.findCrossings([{ pts: RK.strands[0].pts, closed: false }]);
+ok(rkSelf.length >= 3, 'runningknot loop self-crosses per repeat, got ' + rkSelf.length);
+
+// ---- effCount
+ok(G.effCount(G.norm({ pattern: 'twist' })) === 2, 'effCount twist');
+ok(G.effCount(G.norm({ pattern: 'openweave' })) === 4, 'effCount openweave');
+ok(G.effCount(G.norm({ pattern: 'plait', strands: { count: 3 } })) === 3, 'effCount plait');
+
+// ---- collectPolys: every pattern runs the full segmentation+terminal path cleanly
+['plait', 'openweave', 'twist', 'runningknot'].forEach(function (patName) {
+	const cfgP = G.norm({ enabled: true, pattern: patName });
+	const gotP = G.collectPolys(cfgP, 816, 1056, []);
+	ok(gotP.polys.length > 0, 'collectPolys(' + patName + ') returns polylines, got ' + gotP.polys.length);
+	gotP.polys.forEach(function (p, i) {
+		ok(p.pts.length >= 2, 'collectPolys(' + patName + ') polyline ' + i + ' has >=2 points');
+		p.pts.forEach(function (pt) {
+			ok(isFinite(pt[0]) && isFinite(pt[1]), 'collectPolys(' + patName + ') polyline ' + i + ' coords finite');
+		});
+	});
+});
+
 console.log(bad === 0 ? 'ALL PASS (' + n + ' checks)' : (bad + ' of ' + n + ' checks FAILED'));
 process.exit(bad === 0 ? 0 : 1);
