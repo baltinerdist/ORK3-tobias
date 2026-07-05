@@ -33,7 +33,7 @@
 			enabled: !!cfg.enabled,
 			pattern: o(cfg.pattern, 'plait'),
 			band: { inset: +o(band.inset, 2), width: +o(band.width, 6) },
-			strands: { count: clamp(+o(st.count, 3), 1, 4), thickness: +o(st.thickness, 0.55), gap: +o(st.gap, 0.12), scale: +o(st.scale, 1) },
+			strands: { count: clamp(+o(st.count, 3), 2, 4), thickness: +o(st.thickness, 0.55), gap: +o(st.gap, 0.12), scale: +o(st.scale, 1) },
 			colors: {
 				strands: (Array.isArray(co.strands) && co.strands.length) ? co.strands.slice(0, 4) : ['#2e7d32', '#f4c542'],
 				outline: o(co.outline, '#1a1a1a')
@@ -308,6 +308,20 @@
 		if (!closed) { return out; }
 		return out;
 	}
+	// angle-aware over-arc half-length (Finding 2): shallow crossing angles need a longer
+	// redrawn arc to cover the true visual intersection footprint, else crossings bead.
+	function crossingAngleSin(c, polys) {
+		var A = polys[c.a].pts, B = polys[c.b].pts;
+		var ai = clamp(c.ia, 0, A.length - 2), bi = clamp(c.ib, 0, B.length - 2);
+		var ax = A[ai + 1][0] - A[ai][0], ay = A[ai + 1][1] - A[ai][1];
+		var bx = B[bi + 1][0] - B[bi][0], by = B[bi + 1][1] - B[bi][1];
+		var al = Math.hypot(ax, ay) || 1, bl = Math.hypot(bx, by) || 1;
+		return Math.abs((ax / al) * (by / bl) - (ay / al) * (bx / bl));
+	}
+	function crossingHalfLen(c, polys, wf, gapPx) {
+		var sinA = crossingAngleSin(c, polys);
+		return Math.min(wf * 3, (wf * 0.75 + gapPx) / Math.max(0.35, sinA));
+	}
 
 	// ---------- terminals + segment assembly ----------
 	// Sample a U-turn arc joining (ue, va)->(ue, vb), bulging dir (+1/-1) beyond the segment end.
@@ -352,6 +366,7 @@
 		// First visit merges si+sj into one open polyline (owner = si, sj absorbed via sj.merged).
 		// Second visit (sj already merged) finds si's two free ends now sitting at THIS end and
 		// joins them with an arc, closing the polyline into a loop.
+		var paletteLen = (cfg.colors.strands && cfg.colors.strands.length) || 1;
 		function endArcs(atEnd) {                           // atEnd: 'A'|'B'
 			var isA = atEnd === 'A', kind = isA ? seg.endA : seg.endB;
 			if (kind === 'corner') { return; }
@@ -362,8 +377,19 @@
 				var si = res.strands[i], sj = res.strands[j];
 				if (!si || !sj || si === sj) { continue; }
 				var arc = uTurn(ue, lane(i, N, band), lane(j, N, band), dir, reach * (1 - i * 0.25));
+				var sameColor = (si.color % paletteLen) === (sj.color % paletteLen);
+				if (!sameColor) {
+					// Finding 1: two-tone terminal. Strand i owns the U-turn arc at every end it
+					// visits (its polyline keeps growing across both endArcs('A')/('B') calls);
+					// strand j is left as its own bare, unmerged polyline. si's endpoints land
+					// exactly on sj's endpoints (both sample lane i/lane j at the same ue), so the
+					// outline pass (round caps, equal stroke widths) unions the two seamlessly even
+					// though the fill paints never merge.
+					if (isA) { si.pts = arc.slice().reverse().concat(si.pts); } else { si.pts = si.pts.concat(arc); }
+					continue;
+				}
 				if (sj.merged) {                             // second visit for this pair -> close the loop
-					if (si.merged || si.closed) { continue; }
+					if (si.merged || si.closed) { continue; }   // defensive only: pairing invariants make this unreachable
 					si.pts = si.pts.concat(arc);
 					si.closed = true;
 					continue;
@@ -376,7 +402,7 @@
 			}
 			if (N % 2 === 1) {
 				var m = res.strands[(N - 1) / 2];
-				if (m && !m.merged && !m.closed) {
+				if (m && !m.merged && !m.closed) {              // m.closed: defensive only, the middle strand is never closed elsewhere
 					var c = curl(ue, lane((N - 1) / 2, N, band), dir, band);
 					if (isA) { m.pts = c.slice().reverse().concat(m.pts); } else { m.pts = m.pts.concat(c); }
 				}
@@ -564,7 +590,7 @@
 			var overIdx = (c.over === 'a') ? c.a : c.b;
 			var idx = (c.over === 'a') ? c.ia : c.ib, frac = (c.over === 'a') ? c.fa : c.fb;
 			var p = polys[overIdx];
-			var arc = subPolyline(p.pts, p.closed, idx, frac, wf * 0.75 + gapPx);
+			var arc = subPolyline(p.pts, p.closed, idx, frac, crossingHalfLen(c, polys, wf, gapPx));
 			if (arc.length < 2) { return; }
 			var d = polyPath(arc, false);
 			strokePath(gCross, d, cfg.colors.outline, wOut + 2 * gapPx);
@@ -592,7 +618,7 @@
 		polys.forEach(function (p) { strokePath(g2, polyPath(p.pts, p.closed), cfg.colors.strands[p.color % cfg.colors.strands.length], wf); });
 		findCrossings(polys, wf * 0.8).forEach(function (c) {
 			var overIdx = (c.over === 'a') ? c.a : c.b, idx = (c.over === 'a') ? c.ia : c.ib, frac = (c.over === 'a') ? c.fa : c.fb;
-			var p = polys[overIdx], arc = subPolyline(p.pts, p.closed, idx, frac, wf * 0.75 + gapPx);
+			var p = polys[overIdx], arc = subPolyline(p.pts, p.closed, idx, frac, crossingHalfLen(c, polys, wf, gapPx));
 			if (arc.length < 2) { return; }
 			strokePath(g3, polyPath(arc, false), cfg.colors.outline, wOut + 2 * gapPx);
 			strokePath(g3, polyPath(arc, false), cfg.colors.strands[p.color % cfg.colors.strands.length], wf);
@@ -611,6 +637,7 @@
 			patterns: patterns, findCrossings: findCrossings, blendHex: blendHex, subPolyline: subPolyline,
 			buildSegmentPolys: buildSegmentPolys, collectPolys: collectPolys, uTurn: uTurn, curl: curl,
 			cornerPolys: cornerPolys, medallionPolys: medallionPolys, cubic: cubic,
+			crossingAngleSin: crossingAngleSin, crossingHalfLen: crossingHalfLen,
 			STEP: STEP, TERM: TERM, EASE: EASE, clamp: clamp, lerp: lerp, smooth: smooth, effCount: effCount
 		}
 	};

@@ -22,7 +22,7 @@
 	var LOCATIONS = ['full_border', 'center_image', 'top_graphic', 'background', 'border_left', 'border_right', 'border_top', 'border_bottom'];
 
 	var KNOT_PRESETS = {
-		Flame: { enabled: true, pattern: 'plait', band: { inset: 1.8, width: 5.5 }, strands: { count: 3, thickness: 0.6, gap: 0.12, scale: 1 },
+		Flame: { enabled: true, pattern: 'plait', band: { inset: 1.8, width: 5.5 }, strands: { count: 3, thickness: 0.48, gap: 0.12, scale: 0.85 },
 			colors: { strands: ['#b3231a', '#e4670f', '#f5a623'], outline: '#2a0c05' },
 			gradient: { enabled: true, angle: 90, stops: [{ at: 0, color: '#a11212' }, { at: 0.55, color: '#e4670f' }, { at: 1, color: '#f7c948' }] },
 			corners: 'hook', medallions: [{ edge: 'left', at: 42, size: 13, shape: 'diamond' }, { edge: 'right', at: 42, size: 13, shape: 'diamond' }],

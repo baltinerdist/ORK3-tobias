@@ -102,15 +102,24 @@ for (let a2 = 0; a2 < 64; a2++) { ring.pts.push([Math.cos(a2 / 64 * 2 * Math.PI)
 const sub2 = G.subPolyline(ring.pts, true, 0, 0, 15);
 ok(sub2.length >= 5, 'closed subPolyline wraps the seam');
 
-// ---- buildSegmentPolys: terminals merge strand pairs into continuous polylines
+// ---- buildSegmentPolys: terminals merge (same color) or split two-tone (different colors) - Finding 1
 const cfgT = G.norm({ enabled: true, pattern: 'plait', strands: { count: 2 } });
 const layT = G.frameLayout(cfgT, 816, 1056);
 const segT = { u0: 100, u1: 500, endA: 'terminal', endB: 'terminal', medA: null, medB: null };
 const polysT = G.buildSegmentPolys(layT.edges.top, segT, cfgT, layT);
-ok(polysT.length === 1 && polysT[0].closed === true, '2-strand double-terminal segment closes into one loop, got ' + polysT.length);
+ok(polysT.length === 2, '2-strand double-terminal segment, 2 default colors -> two-tone split (2 polylines), got ' + polysT.length);
+if (polysT.length === 2) {
+	const pA = polysT[0].pts, pB = polysT[1].pts;
+	near(Math.hypot(pA[0][0] - pB[0][0], pA[0][1] - pB[0][1]), 0, 0.1, 'two-tone terminal pair share start endpoint');
+	near(Math.hypot(pA[pA.length - 1][0] - pB[pB.length - 1][0], pA[pA.length - 1][1] - pB[pB.length - 1][1]), 0, 0.1, 'two-tone terminal pair share end endpoint');
+}
+// single-color config: the pair shares one color -> old fully-merged closed-loop behavior still holds
+const cfgT1 = G.norm({ enabled: true, pattern: 'plait', strands: { count: 2 }, colors: { strands: ['#333333'] } });
+const polysT1 = G.buildSegmentPolys(layT.edges.top, segT, cfgT1, layT);
+ok(polysT1.length === 1 && polysT1[0].closed === true, 'single-color 2-strand double-terminal segment still closes into one loop, got ' + polysT1.length);
 const cfgT3 = G.norm({ enabled: true, pattern: 'plait', strands: { count: 3 } });
 const polysT3 = G.buildSegmentPolys(layT.edges.top, { u0: 100, u1: 500, endA: 'corner', endB: 'terminal', medA: null, medB: null }, cfgT3, layT);
-ok(polysT3.length === 2, '3 strands, one terminal end: outer pair merges into one polyline, middle strand curls (2 polylines)');
+ok(polysT3.length === 2, '3 strands, default 2 colors: outer pair (0,2) shares color -> merges, middle strand curls (2 polylines)');
 
 // ---- collectPolys: full-border sanity (permanent geometry invariants for render() smoke path)
 const cfgFull = G.norm({ enabled: true, pattern: 'plait', colors: { strands: ['#b3231a', '#e4670f', '#f5a623'], outline: '#2a0c05' }, breaks: [{ edge: 'bottom', at: 50, width: 26 }] });
@@ -120,7 +129,7 @@ got.polys.forEach(function (p, i) {
 	ok(p.pts.length >= 2, 'polyline ' + i + ' has >=2 points');
 	p.pts.forEach(function (pt) {
 		ok(isFinite(pt[0]) && isFinite(pt[1]), 'polyline ' + i + ' coords finite');
-		ok(pt[0] >= -5 && pt[0] <= 1061 && pt[1] >= -5 && pt[1] <= 1061, 'polyline ' + i + ' coords within page bounds, got ' + pt);
+		ok(pt[0] >= -5 && pt[0] <= 816 + 50 && pt[1] >= -5 && pt[1] <= 1056 + 50, 'polyline ' + i + ' coords within page bounds, got ' + pt);
 	});
 });
 const fullCross = G.findCrossings(got.polys, 3);
