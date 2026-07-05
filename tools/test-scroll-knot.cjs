@@ -221,11 +221,12 @@ ok(TW.strands.length === 2, 'twist emits 2 strands');
 const twPolys = TW.strands.map(s => ({ pts: s.pts, closed: false }));
 ok(G.findCrossings(twPolys).length >= 5, 'twist strands cross repeatedly');
 
-// ---- runningknot: loop strand self-crosses once per repeat + rail
-const RK = G.patterns.runningknot(500, 48, cfg.strands);
-ok(RK.strands.length === 2, 'runningknot: loop + rail');
-const rkSelf = G.findCrossings([{ pts: RK.strands[0].pts, closed: false }]);
-ok(rkSelf.length >= 3, 'runningknot loop self-crosses per repeat, got ' + rkSelf.length);
+// ---- norm(): pattern whitelist (Change 2 -- runningknot removed; anything else -> plait)
+ok(G.norm({ pattern: 'runningknot' }).pattern === 'plait', 'removed runningknot pattern normalizes to plait');
+ok(G.norm({ pattern: 'nonsense' }).pattern === 'plait', 'unknown/garbage pattern normalizes to plait');
+ok(G.norm({ pattern: 'twist' }).pattern === 'twist', 'known pattern (twist) passes through unchanged');
+ok(G.norm({ pattern: 'openweave' }).pattern === 'openweave', 'known pattern (openweave) passes through unchanged');
+ok(G.norm({}).pattern === 'plait', 'default pattern is plait');
 
 // ---- effCount
 ok(G.effCount(G.norm({ pattern: 'twist' })) === 2, 'effCount twist');
@@ -235,7 +236,7 @@ ok(G.effCount(G.norm({ pattern: 'plait', strands: { count: 3 } })) === 3, 'effCo
 // ---- collectPolys: every pattern runs the full segmentation+terminal path cleanly. With no
 // breaks/medallions and 'woven' corners, this exercises the NO-FEATURES closed-loop path ->
 // every emitted polyline must be closed:true.
-['plait', 'openweave', 'twist', 'runningknot'].forEach(function (patName) {
+['plait', 'openweave', 'twist'].forEach(function (patName) {
 	const cfgP = G.norm({ enabled: true, pattern: patName });
 	const gotP = G.collectPolys(cfgP, 816, 1056, []);
 	ok(gotP.polys.length > 0, 'collectPolys(' + patName + ') returns polylines, got ' + gotP.polys.length);
@@ -360,14 +361,79 @@ const msL = G.frameLayout(medSm, 816, 1056);
 const smC = G.medallionCenter(medSm.medallions[0], msL.edges.left, msL);
 near(smC[0], msL.inset + msL.band / 2, 0.01, 'small medallion stays on band centerline');
 
-// ---- continuous-strand rule: crossing fill window extends past the casing window
+// ---- splitByWindows (Change 1: true cut gaps -- cut holes in under-strand polylines instead of
+// painting a casing arc). RED-first: this geometry helper does not exist yet on the old engine.
 {
-	const cwPolys = [sine(0), sine(Math.PI)];
-	const cwc = G.findCrossings(cwPolys)[0];
-	const wfT = 12, gapT = 1.4, wOutT = 12 + 2 * G.outlineW(12);
-	const win = G.crossingWindows(cwc, cwPolys, wfT, gapT, wOutT);
-	ok(win.casing === G.crossingHalfLen(cwc, cwPolys, wfT, gapT), 'casing window matches angle-aware half-length');
-	ok(win.fill >= win.casing + wOutT / 2, 'fill window extends past the casing by at least half the casing width');
+	// open polyline, one central hole -> 2 sub-paths with exact-boundary endpoints
+	const openPts = [];
+	for (let ox = 0; ox <= 100; ox += 5) { openPts.push([ox, 0]); }
+	const splitCentral = G.splitByWindows(openPts, false, [{ idx: 10, frac: 0, halfLen: 10 }]); // center u=50
+	ok(splitCentral.length === 2, 'central hole on open polyline -> 2 sub-paths, got ' + splitCentral.length);
+	if (splitCentral.length === 2) {
+		near(splitCentral[0].pts[0][0], 0, 1e-6, 'first sub-path starts at the open path start');
+		near(splitCentral[0].pts[splitCentral[0].pts.length - 1][0], 40, 1e-6, 'first sub-path ends at the hole boundary');
+		near(splitCentral[1].pts[0][0], 60, 1e-6, 'second sub-path starts at the hole boundary');
+		near(splitCentral[1].pts[splitCentral[1].pts.length - 1][0], 100, 1e-6, 'second sub-path ends at the open path end');
+		ok(splitCentral[0].closed === false && splitCentral[1].closed === false, 'sub-paths from an open polyline are open');
+	}
+	// hole at the very start -> 1 sub-path
+	const splitStart = G.splitByWindows(openPts, false, [{ idx: 0, frac: 0, halfLen: 8 }]);
+	ok(splitStart.length === 1, 'hole at the very start -> 1 sub-path, got ' + splitStart.length);
+	if (splitStart.length === 1) { near(splitStart[0].pts[0][0], 8, 1e-6, 'surviving sub-path starts right after the start hole'); }
+	// no windows -> unchanged (closed stays closed)
+	const ringPts = [];
+	for (let ra = 0; ra < 64; ra++) { ringPts.push([Math.cos(ra / 64 * 2 * Math.PI) * 50, Math.sin(ra / 64 * 2 * Math.PI) * 50]); }
+	const unchanged = G.splitByWindows(ringPts, true, []);
+	ok(unchanged.length === 1 && unchanged[0].closed === true && unchanged[0].pts.length === ringPts.length, 'no windows -> unchanged closed polyline');
+	// closed ring with 2 holes -> 2 open sub-paths whose combined length ~= ring length minus the holes
+	const ringLen = 2 * Math.PI * 50;
+	const twoHoles = G.splitByWindows(ringPts, true, [{ idx: 8, frac: 0, halfLen: 3 }, { idx: 40, frac: 0, halfLen: 3 }]);
+	ok(twoHoles.length === 2, 'closed ring with 2 holes -> 2 open sub-paths, got ' + twoHoles.length);
+	ok(twoHoles.every(function (sp) { return sp.closed === false; }), 'ring sub-paths with holes present are open, not closed');
+	function runLen(sp) { let Lr = 0; for (let q = 1; q < sp.pts.length; q++) { Lr += Math.hypot(sp.pts[q][0] - sp.pts[q - 1][0], sp.pts[q][1] - sp.pts[q - 1][1]); } return Lr; }
+	const combined = twoHoles.reduce(function (s, sp) { return s + runLen(sp); }, 0);
+	near(combined, ringLen - 12, ringLen * 0.03, 'combined sub-path length ~= ring length minus the two holes');
+	// overlapping windows merge into one hole (still just 2 survivors: before + after)
+	const overlap = G.splitByWindows(openPts, false, [{ idx: 8, frac: 0, halfLen: 8 }, { idx: 10, frac: 0, halfLen: 8 }]);
+	ok(overlap.length === 2, 'overlapping windows merge into one hole -> still 2 sub-paths, got ' + overlap.length);
+}
+
+// ---- true cut gaps behavioral test (Change 1): drive findCrossings + underWindow + splitByWindows
+// on a two-sine crossing pair exactly as render()/swatch() now do. Every under strand gets holed;
+// no surviving under-strand point sits inside the over strand's outline footprint at a crossing it
+// is under at; the over strand stays continuous (unbroken) through every crossing it is over at.
+{
+	const cutPolysSrc = [sine(0), sine(Math.PI)];
+	const wfCut = 10, gapCut = 1.4, wOutCut = wfCut + 2 * G.outlineW(wfCut);
+	const crCut = G.findCrossings(cutPolysSrc, wfCut * 0.8);
+	ok(crCut.length > 0, 'two-sine pair produces crossings to test true cut gaps against');
+	const windowsByIdx = cutPolysSrc.map(function () { return []; });
+	const underCount = { 0: 0, 1: 0 };
+	crCut.forEach(function (c) {
+		const w = G.underWindow(c, cutPolysSrc, wfCut, gapCut, wOutCut);
+		windowsByIdx[w.polyIdx].push({ idx: w.idx, frac: w.frac, halfLen: w.halfLen });
+		underCount[w.polyIdx]++;
+	});
+	ok(underCount[0] > 0 && underCount[1] > 0, 'both strands take a turn as the under strand across the alternating crossings');
+	const cutStrand0 = G.splitByWindows(cutPolysSrc[0].pts, false, windowsByIdx[0]);
+	const cutStrand1 = G.splitByWindows(cutPolysSrc[1].pts, false, windowsByIdx[1]);
+	ok(cutStrand0.length > 1, 'under-strand 0 gets split by its holes, got ' + cutStrand0.length + ' sub-paths');
+	ok(cutStrand1.length > 1, 'under-strand 1 gets split by its holes, got ' + cutStrand1.length + ' sub-paths');
+	function nearestDist(subPolys, x, y) {
+		let best = Infinity;
+		subPolys.forEach(function (sp) { sp.pts.forEach(function (pt) { const d = Math.hypot(pt[0] - x, pt[1] - y); if (d < best) { best = d; } }); });
+		return best;
+	}
+	let underIntrusions = 0, overBreaks = 0;
+	crCut.forEach(function (c) {
+		const underIdx = (c.over === 'a') ? 1 : 0, overIdx = (c.over === 'a') ? 0 : 1;
+		const underArr = underIdx === 0 ? cutStrand0 : cutStrand1;
+		const overArr = overIdx === 0 ? cutStrand0 : cutStrand1;
+		if (nearestDist(underArr, c.x, c.y) < wOutCut / 2 - 1e-6) { underIntrusions++; }
+		if (nearestDist(overArr, c.x, c.y) > 2) { overBreaks++; }
+	});
+	ok(underIntrusions === 0, 'no surviving under sub-path point lies within wOut/2 of a crossing it is under at, got ' + underIntrusions);
+	ok(overBreaks === 0, 'over strand remains continuous (unsplit) through every crossing it is over at, got ' + overBreaks);
 }
 
 console.log(bad === 0 ? 'ALL PASS (' + n + ' checks)' : (bad + ' of ' + n + ' checks FAILED'));

@@ -34,9 +34,10 @@
 		function o(v, d) { return (v == null) ? d : v; }
 		function num(v, d) { v = +v; return isFinite(v) ? v : d; }
 		var band = cfg.band || {}, st = cfg.strands || {}, co = cfg.colors || {}, gr = cfg.gradient || {}, ab = cfg.autoBreak || {};
+		var PATTERNS_OK = ['plait', 'openweave', 'twist'];   // whitelist protects old saved configs (e.g. removed 'runningknot')
 		return {
 			enabled: !!cfg.enabled,
-			pattern: o(cfg.pattern, 'plait'),
+			pattern: (PATTERNS_OK.indexOf(cfg.pattern) >= 0) ? cfg.pattern : 'plait',
 			band: { inset: num(band.inset, 2), width: num(band.width, 6) },
 			strands: { count: clamp(num(st.count, 3), 2, 4), thickness: num(st.thickness, 0.55), gap: num(st.gap, 0.12), scale: num(st.scale, 1) },
 			colors: {
@@ -349,30 +350,9 @@
 		}
 		return { strands: strands };
 	};
-	patterns.runningknot = function (L, band, sp, opts) {
-		var closedMode = !!(opts && opts.closed);
-		var wf = strandW(band, 2, sp), amp = Math.max(2, band / 2 - wf / 2 - outlineW(wf) - 1);
-		var lam0 = Math.min(Math.max(band * 1.8 * sp.scale, 10), band * 2);
-		var reps = Math.max(2, Math.round(L / lam0)), lam = L / reps;
-		var R = lam / (2 * Math.PI), d = Math.max(amp * 0.95, R * 1.35);
-		var vLo = wf / 2 + 1, vHi = band - wf / 2 - 1;
-		var pts = [], T = reps * 2 * Math.PI;
-		for (var t = 0; t <= T + 1e-9; t += 0.12) {
-			var tt = Math.min(t, T);
-			// straighten ends over a half-turn (open only -- closed loops need no straightening,
-			// the whole-repeat wrap is already seamless)
-			var fade = closedMode ? 1 : Math.min(1, Math.min(tt, T - tt) / Math.PI);
-			var dt = d * lerp(0.25, 1, smooth(fade));
-			var uRaw = R * tt - dt * Math.sin(tt);
-			pts.push([clamp(uRaw / (R * T) * L, 0, L), clamp(band / 2 - dt * Math.cos(tt), vLo, vHi)]);
-			if (tt >= T) { break; }
-		}
-		var rail = [[0, band / 2], [L, band / 2]];
-		return { strands: [{ pts: pts, color: 0, closed: closedMode }, { pts: rail, color: 1, closed: closedMode }] };
-	};
 	function effCount(cfg) {
 		if (cfg.pattern === 'openweave') { return 4; }
-		if (cfg.pattern === 'twist' || cfg.pattern === 'runningknot') { return 2; }
+		if (cfg.pattern === 'twist') { return 2; }
 		return clamp(cfg.strands.count, 2, 4);
 	}
 	function centerLanes(N) { return (N % 2 === 0) ? [N / 2 - 1, N / 2] : [(N - 1) / 2]; }
@@ -433,7 +413,9 @@
 		return cross;
 	}
 
-	// ---------- sub-polyline extraction (for crossing over-arcs) ----------
+	// ---------- sub-polyline extraction: arc-length window around (idx,frac) ----------
+	// Generic geometry helper (kept as a standalone reusable utility; render()/swatch() no longer
+	// call this directly -- true cut gaps use splitByWindows below instead of an over-arc redraw).
 	function subPolyline(pts, closed, idx, frac, halfLen) {
 		var n = pts.length;
 		function P(i) { return pts[((i % n) + n) % n]; }
@@ -460,8 +442,8 @@
 		if (!closed) { return out; }
 		return out;
 	}
-	// angle-aware over-arc half-length (Finding 2): shallow crossing angles need a longer
-	// redrawn arc to cover the true visual intersection footprint, else crossings bead.
+	// sin of the angle between the two strands at a crossing: shallow crossing angles need a
+	// longer under-strand hole to cover the true visual intersection footprint, else cuts bead.
 	function crossingAngleSin(c, polys) {
 		var A = polys[c.a].pts, B = polys[c.b].pts;
 		var ai = clamp(c.ia, 0, A.length - 2), bi = clamp(c.ib, 0, B.length - 2);
@@ -470,17 +452,94 @@
 		var al = Math.hypot(ax, ay) || 1, bl = Math.hypot(bx, by) || 1;
 		return Math.abs((ax / al) * (by / bl) - (ay / al) * (bx / bl));
 	}
-	function crossingHalfLen(c, polys, wf, gapPx) {
-		var sinA = crossingAngleSin(c, polys);
-		return Math.min(wf * 3, (wf * 0.75 + gapPx) / Math.max(0.35, sinA));
+	// total arc length of a polyline (open: sum of consecutive segments; closed: + the wrap
+	// segment back to pts[0]) -- used both by splitByWindows (domain length) and underWindow
+	// (relative hole-size safety cap on short polylines, see below).
+	function polylineLength(pts, closed) {
+		var n = pts.length, L = 0, i;
+		for (i = 1; i < n; i++) { L += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); }
+		if (closed && n > 1) { L += Math.hypot(pts[0][0] - pts[n - 1][0], pts[0][1] - pts[n - 1][1]); }
+		return L;
 	}
-	// Continuous-strand rule: the crossing redraw's FILL window extends past the dark casing
-	// window, so the casing's protruding round end-caps are swallowed by same-paint fill and
-	// the over strand reads as one continuous ribbon. Dark lines then appear ONLY where an
-	// overlap genuinely interrupts the under strand -- like hand-drawn knotwork.
-	function crossingWindows(c, polys, wf, gapPx, wOut) {
-		var casing = crossingHalfLen(c, polys, wf, gapPx);
-		return { casing: casing, fill: casing + (wOut + 2 * gapPx) / 2 + 1.5 };
+	// per-crossing hole window for the UNDER strand (true cut gaps replace the old painted-casing
+	// over-arc redraw): halfLen must clear the over strand's full outline footprint plus the gap;
+	// shallow crossing angles need a longer hole, else the cut looks too thin / beads visually.
+	function underWindow(c, polys, wf, gapPx, wOut) {
+		var underIsA = c.over === 'b';                      // over is the OTHER side -> this side is under
+		var polyIdx = underIsA ? c.a : c.b;
+		var idx = underIsA ? c.ia : c.ib, frac = underIsA ? c.fa : c.fb;
+		var sinA = crossingAngleSin(c, polys);
+		var halfLen = Math.min(wf * 3.5, (wOut / 2 + gapPx) / Math.max(0.35, sinA));
+		// Safety cap (Finding: near-tangent fusions, e.g. a medallion landing curve fusing onto a
+		// small ring, drive sinA to its floor and so halfLen to its max -- on a SHORT polyline (a
+		// small ring's total length can be comparable to that max) that can devour the whole shape.
+		// Never let one hole exceed ~1/6 of the affected polyline's own length; long weave strands
+		// are always far longer than this bound, so it only guards short closed shapes.
+		var underLen = polylineLength(polys[polyIdx].pts, polys[polyIdx].closed);
+		halfLen = Math.min(halfLen, underLen / 12);
+		return { polyIdx: polyIdx, idx: idx, frac: frac, halfLen: halfLen };
+	}
+	// ---------- true cut gaps: split a polyline into surviving sub-polylines around a set of
+	// under-strand "hole" windows (idx/frac use the same segment-index/fraction-along-segment
+	// convention as findCrossings' ia/ib,fa/fb). No windows -> unchanged (closed stays closed).
+	// A closed polyline with >=1 hole becomes open sub-paths (a stretch wrapping the seam is one
+	// of them); an open polyline's holes never wrap -- they just truncate at its free ends.
+	function splitByWindows(pts, closed, windows) {
+		var n = pts.length;
+		if (!windows || !windows.length || n < 2) { return [{ pts: pts.slice(), closed: !!closed }]; }
+		var cum = [0], i;
+		for (i = 1; i < n; i++) { cum[i] = cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); }
+		var domainLen = polylineLength(pts, closed);
+		if (!(domainLen > 0)) { return [{ pts: pts.slice(), closed: !!closed }]; }
+		// point at arc-length s (0..domainLen); s>=domainLen on a closed path == pts[0] (the wrap).
+		function posAt(s) {
+			if (s <= 0) { return pts[0].slice(); }
+			if (s >= cum[n - 1]) {
+				if (!closed || s >= domainLen - 1e-9) { return (closed ? pts[0] : pts[n - 1]).slice(); }
+				var tw = (s - cum[n - 1]) / (domainLen - cum[n - 1]);
+				return [lerp(pts[n - 1][0], pts[0][0], tw), lerp(pts[n - 1][1], pts[0][1], tw)];
+			}
+			var lo = 0, hi = n - 1;
+			while (hi - lo > 1) { var mid = (lo + hi) >> 1; if (cum[mid] <= s) { lo = mid; } else { hi = mid; } }
+			var span = cum[hi] - cum[lo], t2 = span > 1e-9 ? (s - cum[lo]) / span : 0;
+			return [lerp(pts[lo][0], pts[hi][0], t2), lerp(pts[lo][1], pts[hi][1], t2)];
+		}
+		// interior vertices strictly between s0/s1 plus interpolated exact-boundary endpoints.
+		function extractRun(s0, s1) {
+			var out = [posAt(s0)];
+			for (var k = 0; k < n; k++) { if (cum[k] > s0 + 1e-6 && cum[k] < s1 - 1e-6) { out.push(pts[k].slice()); } }
+			out.push(posAt(s1));
+			return out;
+		}
+		var holes = [];
+		windows.forEach(function (win) {
+			var idx = clamp(win.idx, 0, n - 2), segLen = cum[idx + 1] - cum[idx];
+			var center = cum[idx] + clamp(win.frac, 0, 1) * segLen;
+			var s0 = center - win.halfLen, s1 = center + win.halfLen;
+			if (closed) {                                    // wrap-aware, mirrors segmentLoop's own piece-splitting
+				var len = s1 - s0, s0n = ((s0 % domainLen) + domainLen) % domainLen, s1n = s0n + len;
+				if (s1n <= domainLen + 1e-9) { holes.push([s0n, Math.min(s1n, domainLen)]); }
+				else { holes.push([s0n, domainLen]); holes.push([0, s1n - domainLen]); }
+			} else {
+				holes.push([clamp(s0, 0, domainLen), clamp(s1, 0, domainLen)]);
+			}
+		});
+		var merged = mergeIntervals(holes.filter(function (h) { return h[1] > h[0]; }));
+		if (!merged.length) { return [{ pts: pts.slice(), closed: !!closed }]; }
+		var out = [];
+		function pushRun(s0, s1) { if (s1 - s0 >= 1) { out.push({ pts: extractRun(s0, s1), closed: false }); } }
+		for (i = 0; i < merged.length - 1; i++) { pushRun(merged[i][1], merged[i + 1][0]); }
+		if (closed) {
+			var wrapLen = (domainLen - merged[merged.length - 1][1]) + merged[0][0];
+			if (wrapLen >= 1) {
+				var head = extractRun(merged[merged.length - 1][1], domainLen), tail = extractRun(0, merged[0][0]);
+				out.push({ pts: head.concat(tail.slice(1)), closed: false });
+			}
+		} else {
+			pushRun(0, merged[0][0]);
+			pushRun(merged[merged.length - 1][1], domainLen);
+		}
+		return out;
 	}
 
 	// ---------- terminals (end caps, generated in (u,v) BEFORE sweeping) ----------
@@ -809,6 +868,28 @@
 		});
 		return { layout: layout, polys: polys, spine: spn };
 	}
+	// ---------- true-cut assembly + paint (shared by render() and swatch()) ----------
+	// Holes every polyline's under-strand crossing windows, then strokes ALL resulting sub-
+	// polylines outline-then-fill in two passes (no third "over-arc redraw" pass -- the hole IS
+	// the gap; page background shows through where paint used to be). paintOfFn differs between
+	// callers (gradient-aware lookup in render(), flat palette lookup in swatch()).
+	function paintCutStrokes(svg, polys, outlineColor, wf, gapPx, wOut, paintOfFn) {
+		var windowsByIdx = polys.map(function () { return []; });
+		findCrossings(polys, wf * 0.8).forEach(function (c) {
+			var w = underWindow(c, polys, wf, gapPx, wOut);
+			windowsByIdx[w.polyIdx].push({ idx: w.idx, frac: w.frac, halfLen: w.halfLen });
+		});
+		var cut = [];
+		polys.forEach(function (p, i) {
+			splitByWindows(p.pts, p.closed, windowsByIdx[i]).forEach(function (sp) {
+				cut.push({ pts: sp.pts, closed: sp.closed, color: p.color });
+			});
+		});
+		var gOutline = svgEl('g'), gFill = svgEl('g');
+		cut.forEach(function (p) { strokePath(gOutline, polyPath(p.pts, p.closed), outlineColor, wOut); });
+		cut.forEach(function (p) { strokePath(gFill, polyPath(p.pts, p.closed), paintOfFn(p.color), wf); });
+		svg.appendChild(gOutline); svg.appendChild(gFill);
+	}
 	function render(rawCfg, W, H, slots) {
 		var cfg = norm(rawCfg);
 		var svg = svgEl('svg');
@@ -845,21 +926,7 @@
 		var band = got.layout.band, N = effCount(cfg);
 		var wf = strandW(band, N, cfg.strands) * (cfg.pattern === 'twist' ? 1.25 : 1), wOut = wf + 2 * outlineW(wf), gapPx = cfg.strands.gap * wf;
 		function paintOf(colorIdx) { return paints[colorIdx % paints.length]; }
-		var gOutline = svgEl('g'), gFill = svgEl('g'), gCross = svgEl('g');
-		polys.forEach(function (p) { strokePath(gOutline, polyPath(p.pts, p.closed), cfg.colors.outline, wOut); });
-		polys.forEach(function (p) { strokePath(gFill, polyPath(p.pts, p.closed), paintOf(p.color), wf); });
-		findCrossings(polys, wf * 0.8).forEach(function (c) {
-			var overIdx = (c.over === 'a') ? c.a : c.b;
-			var idx = (c.over === 'a') ? c.ia : c.ib, frac = (c.over === 'a') ? c.fa : c.fb;
-			var p = polys[overIdx];
-			var win = crossingWindows(c, polys, wf, gapPx, wOut);
-			var arcC = subPolyline(p.pts, p.closed, idx, frac, win.casing);
-			var arcF = subPolyline(p.pts, p.closed, idx, frac, win.fill);
-			if (arcC.length < 2 || arcF.length < 2) { return; }
-			strokePath(gCross, polyPath(arcC, false), cfg.colors.outline, wOut + 2 * gapPx);
-			strokePath(gCross, polyPath(arcF, false), paintOf(p.color), wf);
-		});
-		svg.appendChild(gOutline); svg.appendChild(gFill); svg.appendChild(gCross);
+		paintCutStrokes(svg, polys, cfg.colors.outline, wf, gapPx, wOut, paintOf);
 		return svg;
 	}
 	// small horizontal weave strip for designer pattern thumbnails: straight open two-point
@@ -878,19 +945,7 @@
 		var polys = buildSpineSegmentPolys(seg, cfg, layout, spn);
 		var N = effCount(cfg);
 		var wf = strandW(band, N, cfg.strands) * (cfg.pattern === 'twist' ? 1.25 : 1), wOut = wf + 2 * outlineW(wf), gapPx = cfg.strands.gap * wf;
-		var g1 = svgEl('g'), g2 = svgEl('g'), g3 = svgEl('g');
-		polys.forEach(function (p) { strokePath(g1, polyPath(p.pts, p.closed), cfg.colors.outline, wOut); });
-		polys.forEach(function (p) { strokePath(g2, polyPath(p.pts, p.closed), cfg.colors.strands[p.color % cfg.colors.strands.length], wf); });
-		findCrossings(polys, wf * 0.8).forEach(function (c) {
-			var overIdx = (c.over === 'a') ? c.a : c.b, idx = (c.over === 'a') ? c.ia : c.ib, frac = (c.over === 'a') ? c.fa : c.fb;
-			var p = polys[overIdx], win = crossingWindows(c, polys, wf, gapPx, wOut);
-			var arcC = subPolyline(p.pts, p.closed, idx, frac, win.casing);
-			var arcF = subPolyline(p.pts, p.closed, idx, frac, win.fill);
-			if (arcC.length < 2 || arcF.length < 2) { return; }
-			strokePath(g3, polyPath(arcC, false), cfg.colors.outline, wOut + 2 * gapPx);
-			strokePath(g3, polyPath(arcF, false), cfg.colors.strands[p.color % cfg.colors.strands.length], wf);
-		});
-		svg.appendChild(g1); svg.appendChild(g2); svg.appendChild(g3);
+		paintCutStrokes(svg, polys, cfg.colors.outline, wf, gapPx, wOut, function (colorIdx) { return cfg.colors.strands[colorIdx % cfg.colors.strands.length]; });
 		return svg;
 	}
 
@@ -905,7 +960,7 @@
 			buildSpineSegmentPolys: buildSpineSegmentPolys, buildClosedLoopPolys: buildClosedLoopPolys, collectPolys: collectPolys,
 			curl: curl, rimArc: rimArc, innerArc: innerArc, hookPolys: hookPolys,
 			medallionPolys: medallionPolys, medallionCenter: medallionCenter, cubic: cubic,
-			crossingAngleSin: crossingAngleSin, crossingHalfLen: crossingHalfLen, crossingWindows: crossingWindows,
+			crossingAngleSin: crossingAngleSin, underWindow: underWindow, splitByWindows: splitByWindows,
 			spine: spine, spineAt: spineAt, sweepPt: sweepPt, edgeIntervalToS: edgeIntervalToS, centerLanes: centerLanes,
 			STEP: STEP, TERM: TERM, EASE: EASE, clamp: clamp, lerp: lerp, smooth: smooth, effCount: effCount
 		}

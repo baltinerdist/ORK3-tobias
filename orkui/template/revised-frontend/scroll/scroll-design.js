@@ -40,7 +40,7 @@
 			corners: 'woven', medallions: [{ edge: 'left', at: 45, size: 13, shape: 'diamond' }, { edge: 'right', at: 45, size: 13, shape: 'diamond' }],
 			breaks: [{ edge: 'bottom', at: 50, width: 30 }], autoBreak: { enabled: true, padding: 2 } }
 	};
-	var KNOT_PATTERNS = ['plait', 'openweave', 'twist', 'runningknot'];
+	var KNOT_PATTERNS = ['plait', 'openweave', 'twist'];
 
 	// which catalog collection suits a given slot placement
 	function collectionForPlacement(loc) {
