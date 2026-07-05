@@ -1,6 +1,10 @@
 /* scroll-knot.js — parametric Celtic knotwork border engine.
    Geometry core is DOM-free (unit-tested in Node); render()/swatch() build SVG.
-   PDF-safe SVG subset only: paths + strokes + userSpaceOnUse linear gradients. */
+   PDF-safe SVG subset only: paths + strokes + userSpaceOnUse linear gradients.
+   Assembly model: a single continuous rounded-rectangle SPINE runs clockwise around the
+   frame; patterns are generated in local (u,v) then swept along the spine so the weave
+   flows continuously through corners. Breaks/medallions/hooks cut the spine into open
+   segments (or leave it as one closed loop when there are no features). */
 (function (w) {
 	'use strict';
 	var SVGNS = 'http://www.w3.org/2000/svg';
@@ -52,6 +56,9 @@
 
 	// ---------- frame layout ----------
 	// Edge-local frame: u along the edge run, v across the band (0..band). toPage maps to page px.
+	// Kept for: autoBreaks' band-strip overlap math, corner box coords (hook spiral placement),
+	// and as the per-edge u-domain that feature intervals are first computed in before being
+	// mapped onto the spine (see edgeIntervalToS).
 	function frameLayout(cfg, W, H) {
 		var S = Math.min(W, H);
 		var inset = cfg.band.inset / 100 * S, band = cfg.band.width / 100 * S;
@@ -76,7 +83,96 @@
 	function outlineW(wf) { return clamp(wf * 0.16, 1.1, 3); }
 	function STEP(band) { return clamp(band / 16, 1.25, 4); }
 	function TERM(band) { return band * 0.55; }
-	function EASE(lam, L) { return Math.min(lam * 0.6, L * 0.4); }
+	function EASE(lam, L) { return Math.min(lam * 0.35, L * 0.25); }             // shortened (was 0.6/0.4) -- kills long necks
+
+	// ---------- tunable named constants (visual acceptance loop tunes these) ----------
+	var SPINE_STEP = 2;                    // px, spine sample density
+	var R_FACTOR = 0.75;                   // spine corner radius = clamp(band*R_FACTOR, 6, band)
+	var RIM_RADIUS_FACTOR = 1.0;            // outer (lane0/laneN-1) cap: bulge/gap ratio (1 = true circle)
+	var INNER_RADIUS_FACTOR = 1.05;        // nested inner cap radius = |gap|/2 * this
+	var INNER_REACH_FACTOR = 0.55;         // nested inner cap bulge depth = radius * this
+	var CURL_RADIUS_FACTOR = 0.18;         // odd-middle-strand curl radius = band * this
+	var MEDALLION_SETBACK_FACTOR = 0.45;   // port setback at a medallion segment end
+	var HOOK_MARGIN_FACTOR = 0.2;          // hook feature interval = quarter-arc span +/- band*this
+	var SWEEP_RING_OFFSET_FRAC = 0.12;     // medallion landing point = this fraction of ring perimeter from near vertex
+	var SWEEP_CTRL1_FACTOR = 0.7;          // medallion sweep cubic: outgoing control distance (x band)
+	var SWEEP_CTRL2_FACTOR = 0.5;          // medallion sweep cubic: ring-side control distance (x band)
+
+	// ---------- spine (centerline rounded-rect the whole border weaves along) ----------
+	// Walks CLOCKWISE starting where the top run begins (end of the TL corner arc):
+	// top run -> TR arc -> right run -> BR arc -> bottom run (right->left) -> BL arc ->
+	// left run (bottom->top) -> TL arc -> close. (nx,ny) is the unit INWARD normal.
+	function buildSpine(layout) {
+		var band = layout.band;
+		var cx0 = layout.inset + band / 2, cy0 = layout.inset + band / 2;
+		var cx1 = layout.W - layout.inset - band / 2, cy1 = layout.H - layout.inset - band / 2;
+		var cw = cx1 - cx0, ch = cy1 - cy0;
+		var R = clamp(band * R_FACTOR, 6, band || 6);
+		var shorter = Math.min(cw, ch);
+		if (!(shorter > 0) || 2 * R >= shorter) { R = Math.max(0.5, shorter / 3); }
+		var Lt = Math.max(0, cw - 2 * R), Lr = Math.max(0, ch - 2 * R), La = R * Math.PI / 2;
+		var runs = [
+			{ kind: 'line', p0: [cx0 + R, cy0], p1: [cx1 - R, cy0], len: Lt },
+			{ kind: 'arc', c: [cx1 - R, cy0 + R], r: R, a0: -Math.PI / 2, a1: 0, len: La },
+			{ kind: 'line', p0: [cx1, cy0 + R], p1: [cx1, cy1 - R], len: Lr },
+			{ kind: 'arc', c: [cx1 - R, cy1 - R], r: R, a0: 0, a1: Math.PI / 2, len: La },
+			{ kind: 'line', p0: [cx1 - R, cy1], p1: [cx0 + R, cy1], len: Lt },
+			{ kind: 'arc', c: [cx0 + R, cy1 - R], r: R, a0: Math.PI / 2, a1: Math.PI, len: La },
+			{ kind: 'line', p0: [cx0, cy1 - R], p1: [cx0, cy0 + R], len: Lr },
+			{ kind: 'arc', c: [cx0 + R, cy0 + R], r: R, a0: Math.PI, a1: 3 * Math.PI / 2, len: La }
+		];
+		var S = 2 * Lt + 2 * Lr + 4 * La;
+		var table = [], sBase = 0;
+		runs.forEach(function (run, ri) {
+			var n = Math.max(2, Math.ceil(Math.max(run.len, 1e-6) / SPINE_STEP) + 1);
+			var startK = ri === 0 ? 0 : 1;                 // skip k=0: duplicate of previous run's last sample
+			for (var k = startK; k < n; k++) {
+				var t = k / (n - 1), pt, dx, dy;
+				if (run.kind === 'line') {
+					pt = [lerp(run.p0[0], run.p1[0], t), lerp(run.p0[1], run.p1[1], t)];
+					dx = run.p1[0] - run.p0[0]; dy = run.p1[1] - run.p0[1];
+					var dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+				} else {
+					var a = lerp(run.a0, run.a1, t);
+					pt = [run.c[0] + Math.cos(a) * run.r, run.c[1] + Math.sin(a) * run.r];
+					dx = -Math.sin(a); dy = Math.cos(a);
+				}
+				table.push({ s: sBase + t * run.len, x: pt[0], y: pt[1], nx: -dy, ny: dx });
+			}
+			sBase += run.len;
+		});
+		table.push({ s: S, x: table[0].x, y: table[0].y, nx: table[0].nx, ny: table[0].ny });   // exact closure
+		return {
+			table: table, S: S, R: R, band: band,
+			runStart: { top: 0, right: Lt + La, bottom: Lt + La + Lr + La, left: Lt + La + Lr + La + Lt + La },
+			arcStart: { tr: Lt, br: Lt + La + Lr, bl: Lt + La + Lr + La + Lt, tl: S - La },
+			La: La, Lt: Lt, Lr: Lr, cx0: cx0, cy0: cy0, cx1: cx1, cy1: cy1
+		};
+	}
+	function spine(cfg, W, H) { return buildSpine(frameLayout(cfg, W, H)); }
+	// interpolated {x,y,nx,ny} at arc-length s (wraps mod total length); nx/ny renormalized.
+	function spineAt(table, S, s) {
+		var sN = ((s % S) + S) % S, n = table.length, lo = 0, hi = n - 1;
+		while (hi - lo > 1) { var mid = (lo + hi) >> 1; if (table[mid].s <= sN) { lo = mid; } else { hi = mid; } }
+		var A = table[lo], B = table[hi], span = B.s - A.s, t = span > 1e-9 ? (sN - A.s) / span : 0;
+		var nx = lerp(A.nx, B.nx, t), ny = lerp(A.ny, B.ny, t), nl = Math.hypot(nx, ny) || 1;
+		return { x: lerp(A.x, B.x, t), y: lerp(A.y, B.y, t), nx: nx / nl, ny: ny / nl, s: sN };
+	}
+	// sweep a (spine-offset s, v) pattern point to a page point: v>band/2 is page-inward everywhere.
+	function sweepPt(spn, sAbs, v, band) {
+		var P = spineAt(spn.table, spn.S, sAbs);
+		return [P.x + P.nx * (v - band / 2), P.y + P.ny * (v - band / 2)];
+	}
+	// map an edge-local u-interval (today's per-edge coordinate) onto spine s (bottom/left reverse
+	// direction to match the spine's travel sense on those runs).
+	function edgeIntervalToS(name, u0, u1, layout, spn) {
+		var e = layout.edges[name], edgeLen = e.len;
+		if (u0 > u1) { var t = u0; u0 = u1; u1 = t; }
+		if (name === 'top') { return [spn.runStart.top + u0, spn.runStart.top + u1]; }
+		if (name === 'right') { return [spn.runStart.right + u0, spn.runStart.right + u1]; }
+		if (name === 'bottom') { return [spn.runStart.bottom + (edgeLen - u1), spn.runStart.bottom + (edgeLen - u0)]; }
+		return [spn.runStart.left + (edgeLen - u1), spn.runStart.left + (edgeLen - u0)];
+	}
 
 	// ---------- intervals / segmentation ----------
 	function mergeIntervals(list) {
@@ -87,24 +183,59 @@
 		});
 		return out;
 	}
-	// feats: [{type:'break'|'medallion', u0, u1, med?}] -> ordered weave segments with end kinds.
-	function segmentEdge(edgeLen, feats, band, cornerEnd) {
-		var fs = feats.slice().sort(function (p, q) { return p.u0 - q.u0; });
-		var segs = [], cursor = 0, prevEnd = cornerEnd, prevMed = null;
+	// feats: [{type:'break'|'medallion'|'hook', s0, s1, med?}] on the closed spine loop (s0/s1 may
+	// fall outside [0,S) -- wraps are split automatically). No features -> one closed segment
+	// (full:true). Otherwise: rotate to a cut point guaranteed to sit in an uncovered gap, run a
+	// linear cursor sweep, then re-merge the two ends of the rotated domain (both still "weave")
+	// into a single segment that wraps back across the cut -- this is the "wrapping across s=0"
+	// segmentation the spine's arbitrary start point requires.
+	function segmentLoop(S, feats) {
+		if (!feats.length) { return [{ s0: 0, s1: S, full: true }]; }
+		var pieces = [];
+		feats.forEach(function (f) {
+			var s0n = ((f.s0 % S) + S) % S, len = f.s1 - f.s0, s1n = s0n + len;
+			if (s1n <= S + 1e-9) { pieces.push([s0n, Math.min(s1n, S)]); }
+			else { pieces.push([s0n, S]); pieces.push([0, s1n - S]); }
+		});
+		var cover = mergeIntervals(pieces);
+		var best = -1, cut = 0;
+		for (var i = 0; i < cover.length; i++) {
+			var a1 = cover[i][1], b0 = (i + 1 < cover.length) ? cover[i + 1][0] : cover[0][0] + S, g = b0 - a1;
+			if (g > best) { best = g; cut = a1 + g / 2; }
+		}
+		if (best <= 1e-6) { return []; }                     // fully covered -> nothing to weave
+		cut = ((cut % S) + S) % S;
+		var rotFeats = feats.map(function (f) {
+			var s0n = ((f.s0 - cut) % S + S) % S, len = f.s1 - f.s0;
+			return { type: f.type, med: f.med, u0: s0n, u1: s0n + len };
+		}).sort(function (p, q) { return p.u0 - q.u0; });
+		var segs = [], cursor = 0, prevEnd = 'weave', prevMed = null;
 		function push(u0, u1, endA, endB, medA, medB) {
 			if (u1 - u0 < 2) { return; }
 			segs.push({ u0: u0, u1: u1, endA: endA, endB: endB, med: medB || medA || null, medA: medA || null, medB: medB || null });
 		}
-		fs.forEach(function (f) {
-			var kind = f.type === 'medallion' ? 'medallion' : 'terminal';
-			push(cursor, clamp(f.u0, 0, edgeLen), prevEnd, kind, prevMed, f.type === 'medallion' ? f.med : null);
-			cursor = Math.max(cursor, clamp(f.u1, 0, edgeLen));
+		rotFeats.forEach(function (f) {
+			var u0c = clamp(f.u0, 0, S), u1c = clamp(f.u1, 0, S);
+			if (u1c <= cursor) { return; }        // fully swallowed by prior coverage: pure no-op, must
+			// not overwrite prevEnd/prevMed (e.g. a break fully containing a later-sorted medallion
+			// must not leave the NEXT real segment thinking it has a medallion end).
+			var kind = f.type === 'medallion' ? 'medallion' : (f.type === 'hook' ? 'hook' : 'terminal');
+			push(cursor, u0c, prevEnd, kind, prevMed, f.type === 'medallion' ? f.med : null);
+			cursor = u1c;
 			prevEnd = kind; prevMed = (f.type === 'medallion') ? f.med : null;
 		});
-		push(cursor, edgeLen, prevEnd, cornerEnd, prevMed, null);
-		return segs;
+		push(cursor, S, prevEnd, 'weave', prevMed, null);
+		if (segs.length > 1 && segs[0].endA === 'weave' && segs[segs.length - 1].endB === 'weave') {
+			var first = segs.shift(), last = segs.pop();
+			var mergedLen = (S - last.u0) + first.u1;
+			segs.push({ u0: last.u0, u1: last.u0 + mergedLen, endA: last.endA, endB: first.endB, med: first.med || last.med, medA: last.medA, medB: first.medB });
+		}
+		return segs.map(function (s) {
+			return { s0: cut + s.u0, s1: cut + s.u1, endA: s.endA, endB: s.endB, med: s.med, medA: s.medA, medB: s.medB };
+		});
 	}
-	// project padded, break_border-flagged slots onto each edge's band strip.
+	// project padded, break_border-flagged slots onto each edge's band strip (unchanged: still
+	// computed per-edge exactly as before; the result is mapped onto the spine by the caller).
 	function autoBreaks(cfg, W, H, slots, layout) {
 		var out = { top: [], right: [], bottom: [], left: [] };
 		if (!cfg.autoBreak.enabled) { return out; }
@@ -115,7 +246,6 @@
 			var rw = s.w / 100 * W + 2 * pad, rh = s.h / 100 * H + 2 * pad;
 			['top', 'right', 'bottom', 'left'].forEach(function (name) {
 				var e = layout.edges[name];
-				// band strip rect of this edge in page coords
 				var p00 = toPage(e, 0, 0), p11 = toPage(e, e.len, layout.band);
 				var sx0 = Math.min(p00[0], p11[0]), sy0 = Math.min(p00[1], p11[1]);
 				var sx1 = Math.max(p00[0], p11[0]), sy1 = Math.max(p00[1], p11[1]);
@@ -132,16 +262,19 @@
 	}
 
 	// ---------- patterns ----------
-	// Contract: gen(L, band, sp) -> {strands:[{pts:[[u,v]..], color:int, closed:false}]}
-	// Strands eased to lane centers over EASE at both ends; whole number of wave repeats.
+	// Contract: gen(L, band, sp, opts) -> {strands:[{pts:[[u,v]..], color:int, closed:bool}]}
+	// Open (opts.closed falsy): strands eased to lane centers over EASE at both ends, whole number
+	// of wave repeats. Closed (opts.closed true): L = full spine length, reps still whole, but NO
+	// end easing -- the sinusoid just continues seamlessly (reps integral -> wraps exactly).
 	var patterns = {};
-	patterns.plait = function (L, band, sp) {
+	patterns.plait = function (L, band, sp, opts) {
+		var closedMode = !!(opts && opts.closed);
 		var N = clamp(sp.count, 2, 4);
 		var lam0 = Math.max(band * 1.5 * sp.scale, 8);
 		var reps = Math.max(1, Math.round(L / lam0)), lam = L / reps;
 		var wf = strandW(band, N, sp);
 		var amp = Math.max(1, band / 2 - wf / 2 - outlineW(wf) - 1);
-		var ease = EASE(lam, L), step = STEP(band), strands = [];
+		var ease = closedMode ? 0 : EASE(lam, L), step = STEP(band), strands = [];
 		for (var i = 0; i < N; i++) {
 			var phi = i * Math.PI * 2 / N, pts = [];
 			for (var u = 0; u <= L + 1e-6; u += step) {
@@ -152,18 +285,22 @@
 				pts.push([uu, vv]);
 				if (uu >= L) { break; }
 			}
-			if (pts[pts.length - 1][0] < L) { pts.push([L, lane(i, N, band)]); }
-			strands.push({ pts: pts, color: i, closed: false });
+			if (pts[pts.length - 1][0] < L) {
+				var vEnd = band / 2 + amp * Math.sin(Math.PI * 2 * L / lam + phi);
+				pts.push([L, closedMode ? vEnd : lane(i, N, band)]);
+			}
+			strands.push({ pts: pts, color: i, closed: closedMode });
 		}
 		return { strands: strands };
 	};
 	// order = [0,2,1,3]: pair A (k=0,1) sits outer/outer, pair B (k=2,3) inner/inner at the lanes
 	// so the two-tone lattice mirrors symmetrically at the segment ports.
-	patterns.openweave = function (L, band, sp) {
+	patterns.openweave = function (L, band, sp, opts) {
+		var closedMode = !!(opts && opts.closed);
 		var lam0 = Math.max(band * 2.6 * sp.scale, 10);
 		var reps = Math.max(1, Math.round(L / lam0)), lam = L / reps;
 		var wf = strandW(band, 4, sp), amp = Math.max(1, band / 2 - wf / 2 - outlineW(wf) - 1);
-		var ease = EASE(lam, L), step = STEP(band), order = [0, 2, 1, 3], strands = [];
+		var ease = closedMode ? 0 : EASE(lam, L), step = STEP(band), order = [0, 2, 1, 3], strands = [];
 		for (var k = 0; k < 4; k++) {
 			var pair = k >> 1, sign = (k & 1) ? -1 : 1, phase = pair * Math.PI / 2, pts = [];
 			for (var u = 0; u <= L + 1e-6; u += step) {
@@ -174,22 +311,26 @@
 				pts.push([uu, vv]);
 				if (uu >= L) { break; }
 			}
-			if (pts[pts.length - 1][0] < L) { pts.push([L, lane(order[k], 4, band)]); }
-			strands.push({ pts: pts, color: pair, closed: false, lane: order[k] });
+			if (pts[pts.length - 1][0] < L) {
+				var vEnd = band / 2 + sign * amp * Math.sin(Math.PI * 2 * L / lam + phase);
+				pts.push([L, closedMode ? vEnd : lane(order[k], 4, band)]);
+			}
+			strands.push({ pts: pts, color: pair, closed: closedMode, lane: order[k] });
 		}
-		// Reorder so array index === lane index (buildSegmentPolys pairs terminals by array
+		// Reorder so array index === lane index (buildSpineSegmentPolys pairs terminals by array
 		// order = lane order). Strand array is emitted [A0,A1,B0,B1] (k order) but lanes are
 		// [0,2,1,3]; sort by the `lane` tag so index 0..3 walks lanes 0..3 in page order.
 		strands.sort(function (a, b) { return a.lane - b.lane; });
 		strands.forEach(function (s) { delete s.lane; });
 		return { strands: strands };
 	};
-	patterns.twist = function (L, band, sp) {
+	patterns.twist = function (L, band, sp, opts) {
+		var closedMode = !!(opts && opts.closed);
 		var sp2 = { count: 2, thickness: clamp(sp.thickness * 1.25, 0.3, 0.9), gap: sp.gap, scale: sp.scale };
 		var lam0 = Math.max(band * 1.15 * sp.scale, 8);
 		var reps = Math.max(1, Math.round(L / lam0)), lam = L / reps;
 		var wf = strandW(band, 2, sp2), amp = Math.max(1, band / 2 - wf / 2 - outlineW(wf) - 1);
-		var ease = EASE(lam, L), step = STEP(band), strands = [];
+		var ease = closedMode ? 0 : EASE(lam, L), step = STEP(band), strands = [];
 		for (var k = 0; k < 2; k++) {
 			var sign = k ? -1 : 1, pts = [];
 			for (var u = 0; u <= L + 1e-6; u += step) {
@@ -200,12 +341,16 @@
 				pts.push([uu, vv]);
 				if (uu >= L) { break; }
 			}
-			if (pts[pts.length - 1][0] < L) { pts.push([L, lane(k, 2, band)]); }
-			strands.push({ pts: pts, color: k, closed: false });
+			if (pts[pts.length - 1][0] < L) {
+				var vEnd = band / 2 + sign * amp * Math.sin(Math.PI * 2 * L / lam);
+				pts.push([L, closedMode ? vEnd : lane(k, 2, band)]);
+			}
+			strands.push({ pts: pts, color: k, closed: closedMode });
 		}
 		return { strands: strands };
 	};
-	patterns.runningknot = function (L, band, sp) {
+	patterns.runningknot = function (L, band, sp, opts) {
+		var closedMode = !!(opts && opts.closed);
 		var wf = strandW(band, 2, sp), amp = Math.max(2, band / 2 - wf / 2 - outlineW(wf) - 1);
 		var lam0 = Math.min(Math.max(band * 1.8 * sp.scale, 10), band * 2);
 		var reps = Math.max(2, Math.round(L / lam0)), lam = L / reps;
@@ -214,20 +359,23 @@
 		var pts = [], T = reps * 2 * Math.PI;
 		for (var t = 0; t <= T + 1e-9; t += 0.12) {
 			var tt = Math.min(t, T);
-			var fade = Math.min(1, Math.min(tt, T - tt) / Math.PI);       // straighten ends over a half-turn
+			// straighten ends over a half-turn (open only -- closed loops need no straightening,
+			// the whole-repeat wrap is already seamless)
+			var fade = closedMode ? 1 : Math.min(1, Math.min(tt, T - tt) / Math.PI);
 			var dt = d * lerp(0.25, 1, smooth(fade));
 			var uRaw = R * tt - dt * Math.sin(tt);
 			pts.push([clamp(uRaw / (R * T) * L, 0, L), clamp(band / 2 - dt * Math.cos(tt), vLo, vHi)]);
 			if (tt >= T) { break; }
 		}
 		var rail = [[0, band / 2], [L, band / 2]];
-		return { strands: [{ pts: pts, color: 0, closed: false }, { pts: rail, color: 1, closed: false }] };
+		return { strands: [{ pts: pts, color: 0, closed: closedMode }, { pts: rail, color: 1, closed: closedMode }] };
 	};
 	function effCount(cfg) {
 		if (cfg.pattern === 'openweave') { return 4; }
 		if (cfg.pattern === 'twist' || cfg.pattern === 'runningknot') { return 2; }
 		return clamp(cfg.strands.count, 2, 4);
 	}
+	function centerLanes(N) { return (N % 2 === 0) ? [N / 2 - 1, N / 2] : [(N - 1) / 2]; }
 
 	// ---------- crossings ----------
 	function segInt(p1, p2, p3, p4) {                    // segment intersection -> {t,s,x,y} or null
@@ -327,37 +475,115 @@
 		return Math.min(wf * 3, (wf * 0.75 + gapPx) / Math.max(0.35, sinA));
 	}
 
-	// ---------- terminals + segment assembly ----------
-	// Sample a U-turn arc joining (ue, va)->(ue, vb), bulging dir (+1/-1) beyond the segment end.
-	function uTurn(ue, va, vb, dir, reach) {
-		var pts = [], mid = (va + vb) / 2, r = Math.abs(vb - va) / 2;
-		for (var k = 0; k <= 16; k++) {
-			var th = k / 16 * Math.PI;
-			pts.push([ue + dir * Math.sin(th) * Math.max(r, reach), mid - Math.cos(th) * r * (va < vb ? 1 : -1)]);
+	// ---------- terminals (end caps, generated in (u,v) BEFORE sweeping) ----------
+	// Rim pair (outermost lanes): a TRUE (non-squashed) semicircle -- same radius for both axes,
+	// exactly anchored to (ue,va)/(ue,vb) so the two-tone split rule's shared endpoints still land
+	// exactly -- so the outer strand reads as a rounded rim (image 8 style), not a flattened U.
+	// (RIM_RADIUS_FACTOR ~1 keeps it a true circle; nudge slightly >1 for a touch more bulge.)
+	function rimArc(ue, va, vb, dir, band) {
+		var mid = (va + vb) / 2, r = Math.abs(vb - va) / 2, reach = r * RIM_RADIUS_FACTOR;
+		var sign = (va < vb) ? 1 : -1, pts = [];
+		for (var k = 0; k <= 20; k++) {
+			var th = k / 20 * Math.PI;
+			pts.push([ue + dir * Math.sin(th) * reach, mid - Math.cos(th) * r * sign]);
 		}
 		return pts;
 	}
-	// Spiral curl for the middle strand of an odd count.
+	// Nested inner pair(s): smaller, shallower arcs that sit inside the rim (short necks). Also
+	// anchored exactly to (ue,va)/(ue,vb); only the bulge depth (reach) is scaled down, keeping
+	// the v-span exact so it nests without a kink.
+	function innerArc(ue, va, vb, dir) {
+		var mid = (va + vb) / 2, r = Math.abs(vb - va) / 2, reach = r * INNER_RADIUS_FACTOR * INNER_REACH_FACTOR;
+		var sign = (va < vb) ? 1 : -1, pts = [];
+		for (var k = 0; k <= 20; k++) {
+			var th = k / 20 * Math.PI;
+			pts.push([ue + dir * Math.sin(th) * reach, mid - Math.cos(th) * r * sign]);
+		}
+		return pts;
+	}
+	// Spiral curl for the middle strand of an odd count (non-medallion ends).
 	function curl(ue, v, dir, band) {
-		var pts = [], r0 = band * 0.22, cx = ue + dir * r0, turns = 1.5 * Math.PI * 2 * 0.75; // 270 deg
+		var pts = [], r0 = band * CURL_RADIUS_FACTOR, cx = ue + dir * r0, turns = 1.5 * Math.PI * 2 * 0.75; // 270 deg
 		for (var k = 0; k <= 24; k++) {
 			var th = k / 24 * turns, r = r0 * (1 - 0.7 * (k / 24));
 			pts.push([cx - dir * Math.cos(th) * r, v + Math.sin(th) * r]);
 		}
 		return pts;
 	}
-	// Build the page-space polylines for one weave segment, terminals merged in.
-	function buildSegmentPolys(edge, seg, cfg, layout) {
+
+	// ---------- medallion sweep landings (image 7 style, built AFTER sweeping, in page space) ----------
+	function nearestVertexIdx(ringPts, samplesPerSide, pt) {
+		var idxs = [0, samplesPerSide, 2 * samplesPerSide, 3 * samplesPerSide], best = idxs[0], bd = Infinity;
+		idxs.forEach(function (vi) {
+			var dx = ringPts[vi][0] - pt[0], dy = ringPts[vi][1] - pt[1], d = dx * dx + dy * dy;
+			if (d < bd) { bd = d; best = vi; }
+		});
+		return best;
+	}
+	function ringTangentAt(ringPts, idx) {
+		var n = ringPts.length, A = ringPts[(idx - 1 + n) % n], B = ringPts[(idx + 1) % n];
+		var dx = B[0] - A[0], dy = B[1] - A[1], dl = Math.hypot(dx, dy) || 1;
+		return [dx / dl, dy / dl];
+	}
+	// pick a landing point ~12% of the ring perimeter from the near vertex, on whichever side
+	// (offset direction) sits closer to the approaching strand's port.
+	function medallionLandingPoint(ring, portPt) {
+		var samplesPerSide = 12, n = ring.pts.length;             // matches diamond(...,12) in medallionPolys
+		var vi = nearestVertexIdx(ring.pts, samplesPerSide, portPt);
+		var off = Math.max(1, Math.round(SWEEP_RING_OFFSET_FRAC * n));
+		var idxPlus = (vi + off) % n, idxMinus = (vi - off + n) % n;
+		var pPlus = ring.pts[idxPlus], pMinus = ring.pts[idxMinus];
+		var dPlus = (pPlus[0] - portPt[0]) * (pPlus[0] - portPt[0]) + (pPlus[1] - portPt[1]) * (pPlus[1] - portPt[1]);
+		var dMinus = (pMinus[0] - portPt[0]) * (pMinus[0] - portPt[0]) + (pMinus[1] - portPt[1]) * (pMinus[1] - portPt[1]);
+		var idx = dPlus <= dMinus ? idxPlus : idxMinus;
+		return { pt: ring.pts[idx], tangent: ringTangentAt(ring.pts, idx) };
+	}
+	// Extend the centermost lane(s) at a medallion segment end with a cubic that fuses onto the
+	// diamond ring path; start tangent = spine direction at the segment end, end tangent = ring
+	// direction at the landing point.
+	function attachMedallionLanding(out, seg, atEnd, tA, tB, layout, spn, band, centerIdxs) {
+		var isA = atEnd === 'A', med = isA ? seg.medA : seg.medB;
+		if (!med) { return; }
+		var e = layout.edges[med.edge];
+		if (!e) { return; }
+		var rings = medallionPolys(med, e, layout, null);
+		var sAbs = isA ? (seg.s0 + tA) : (seg.s1 - tB);
+		var P = spineAt(spn.table, spn.S, sAbs);
+		var tangent = [P.ny, -P.nx];
+		var outward = isA ? [-tangent[0], -tangent[1]] : tangent;
+		centerIdxs.forEach(function (idx, k) {
+			var entry = null;
+			for (var q = 0; q < out.length; q++) { if (out[q]._strandIdx === idx) { entry = out[q]; break; } }
+			if (!entry || !entry.pts.length) { return; }
+			var portPt = isA ? entry.pts[0] : entry.pts[entry.pts.length - 1];
+			var ring = rings[centerIdxs.length > 1 ? (k % 2) : 0];
+			var landing = medallionLandingPoint(ring, portPt);
+			var rt = landing.tangent;
+			if ((landing.pt[0] - portPt[0]) * rt[0] + (landing.pt[1] - portPt[1]) * rt[1] < 0) { rt = [-rt[0], -rt[1]]; }
+			var ctrl1 = band * SWEEP_CTRL1_FACTOR, ctrl2 = band * SWEEP_CTRL2_FACTOR;
+			var c1 = [portPt[0] + outward[0] * ctrl1, portPt[1] + outward[1] * ctrl1];
+			var c2 = [landing.pt[0] - rt[0] * ctrl2, landing.pt[1] - rt[1] * ctrl2];
+			var curve = cubic(portPt, c1, c2, landing.pt, 20);
+			if (isA) { entry.pts = curve.slice().reverse().slice(0, -1).concat(entry.pts); }
+			else { entry.pts = entry.pts.concat(curve.slice(1)); }
+		});
+	}
+
+	// ---------- segment assembly (spine-local u,v -> page via sweepPt) ----------
+	// Build the page-space polylines for one open spine segment, terminals/medallion landings
+	// merged in. seg: {s0,s1,endA,endB,med,medA,medB} with endA/endB in {'terminal','medallion','hook'}.
+	function buildSpineSegmentPolys(seg, cfg, layout, spn) {
 		var band = layout.band, sp = cfg.strands;
-		var tA = seg.endA === 'corner' ? 0 : TERM(band), tB = seg.endB === 'corner' ? 0 : TERM(band);
-		if (seg.endA === 'medallion') { tA = band * 0.35; }
-		if (seg.endB === 'medallion') { tB = band * 0.35; }
-		var Lw = (seg.u1 - seg.u0) - tA - tB;
+		var kindA = seg.endA, kindB = seg.endB;
+		var tA = (kindA === 'medallion') ? band * MEDALLION_SETBACK_FACTOR : TERM(band);
+		var tB = (kindB === 'medallion') ? band * MEDALLION_SETBACK_FACTOR : TERM(band);
+		var Lseg = seg.s1 - seg.s0;
+		var Lw = Lseg - tA - tB;
 		var gen = patterns[cfg.pattern] || patterns.plait;
-		var res, off = seg.u0 + tA;
+		var res, off = tA;
 		if (Lw < band * 1.1) {                             // degenerate: plain connector strands
-			var pts0 = [[seg.u0 + tA, band * 0.35], [seg.u1 - tB, band * 0.35]];
-			var pts1 = [[seg.u0 + tA, band * 0.65], [seg.u1 - tB, band * 0.65]];
+			var pts0 = [[tA, band * 0.35], [Lseg - tB, band * 0.35]];
+			var pts1 = [[tA, band * 0.65], [Lseg - tB, band * 0.65]];
 			res = { strands: [{ pts: pts0, color: 0, closed: false }, { pts: pts1, color: 1, closed: false }] };
 			off = 0;
 		} else {
@@ -365,30 +591,33 @@
 			res.strands.forEach(function (s) { s.pts = s.pts.map(function (p) { return [p[0] + off, p[1]]; }); });
 		}
 		var N = res.strands.length;
+		var centerIdxs = centerLanes(N);
+		function isCenter(i) { return centerIdxs.indexOf(i) >= 0; }
+		var paletteLen = (cfg.colors.strands && cfg.colors.strands.length) || 1;
 		// terminal arcs: pair lane i with lane N-1-i (fixed for both A and B passes); odd middle curls.
 		// Each pair (i, N-1-i) is visited once per open end (once by endArcs('A'), once by endArcs('B')).
 		// First visit merges si+sj into one open polyline (owner = si, sj absorbed via sj.merged).
 		// Second visit (sj already merged) finds si's two free ends now sitting at THIS end and
-		// joins them with an arc, closing the polyline into a loop.
-		var paletteLen = (cfg.colors.strands && cfg.colors.strands.length) || 1;
-		function endArcs(atEnd) {                           // atEnd: 'A'|'B'
-			var isA = atEnd === 'A', kind = isA ? seg.endA : seg.endB;
-			if (kind === 'corner') { return; }
-			var ue = isA ? (seg.u0 + tA) : (seg.u1 - tB), dir = isA ? -1 : 1;
-			var reach = (kind === 'medallion') ? (isA ? tA : tB) + band * 0.3 : Math.min(TERM(band) * 0.8, band * 0.45);
+		// joins them with an arc, closing the polyline into a loop. At a medallion end, the
+		// centermost pair (or solo, for odd N) is skipped here entirely -- it sweeps into the
+		// ring instead (attachMedallionLanding, after the page-space sweep below).
+		function endArcs(atEnd) {
+			var isA = atEnd === 'A', kind = isA ? kindA : kindB;
+			var ue = isA ? tA : (Lseg - tB), dir = isA ? -1 : 1;
+			var medEnd = kind === 'medallion';
 			for (var i = 0; i < Math.floor(N / 2); i++) {
 				var j = N - 1 - i;
+				if (medEnd && (isCenter(i) || isCenter(j))) { continue; }
 				var si = res.strands[i], sj = res.strands[j];
 				if (!si || !sj || si === sj) { continue; }
-				var arc = uTurn(ue, lane(i, N, band), lane(j, N, band), dir, reach * (1 - i * 0.25));
+				var va = lane(i, N, band), vb = lane(j, N, band);
+				var arc = (i === 0) ? rimArc(ue, va, vb, dir, band) : innerArc(ue, va, vb, dir);
 				var sameColor = (si.color % paletteLen) === (sj.color % paletteLen);
 				if (!sameColor) {
-					// Finding 1: two-tone terminal. Strand i owns the U-turn arc at every end it
-					// visits (its polyline keeps growing across both endArcs('A')/('B') calls);
-					// strand j is left as its own bare, unmerged polyline. si's endpoints land
-					// exactly on sj's endpoints (both sample lane i/lane j at the same ue), so the
-					// outline pass (round caps, equal stroke widths) unions the two seamlessly even
-					// though the fill paints never merge.
+					// Finding 1: two-tone terminal. Strand i owns the arc at every end it visits;
+					// strand j is left as its own bare, unmerged polyline. Endpoints coincide (both
+					// sample lane i/lane j at the same ue) so the outline pass unions them seamlessly
+					// even though the fill paints never merge.
 					if (isA) { si.pts = arc.slice().reverse().concat(si.pts); } else { si.pts = si.pts.concat(arc); }
 					continue;
 				}
@@ -404,9 +633,9 @@
 				else { joined = si.pts.concat(arc, sj.pts.slice().reverse()); }
 				si.pts = joined; sj.merged = true;
 			}
-			if (N % 2 === 1) {
+			if (N % 2 === 1 && !(medEnd && isCenter((N - 1) / 2))) {
 				var m = res.strands[(N - 1) / 2];
-				if (m && !m.merged && !m.closed) {              // m.closed: defensive only, the middle strand is never closed elsewhere
+				if (m && !m.merged && !m.closed) {              // m.closed: defensive only, never closed elsewhere
 					var c = curl(ue, lane((N - 1) / 2, N, band), dir, band);
 					if (isA) { m.pts = c.slice().reverse().concat(m.pts); } else { m.pts = m.pts.concat(c); }
 				}
@@ -414,20 +643,39 @@
 		}
 		endArcs('A'); endArcs('B');
 		var out = [];
-		res.strands.forEach(function (s) {
+		res.strands.forEach(function (s, idx) {
 			if (s.merged) { return; }
-			out.push({ pts: s.pts.map(function (p) { return toPage(edge, p[0], p[1]); }), color: s.color, closed: !!s.closed });
+			var pagePts = s.pts.map(function (p) { return sweepPt(spn, seg.s0 + p[0], p[1], band); });
+			out.push({ pts: pagePts, color: s.color, closed: !!s.closed, _strandIdx: idx });
+		});
+		if (kindA === 'medallion') { attachMedallionLanding(out, seg, 'A', tA, tB, layout, spn, band, centerIdxs); }
+		if (kindB === 'medallion') { attachMedallionLanding(out, seg, 'B', tA, tB, layout, spn, band, centerIdxs); }
+		return out.map(function (o) { return { pts: o.pts, color: o.color, closed: o.closed }; });
+	}
+	// No features anywhere on the loop -> one continuous closed weave (whole spine, integral
+	// repeats, no easing) instead of open segments with terminals.
+	function buildClosedLoopPolys(cfg, layout, spn) {
+		var band = layout.band, gen = patterns[cfg.pattern] || patterns.plait;
+		var res = gen(spn.S, band, cfg.strands, { closed: true });
+		var out = [];
+		res.strands.forEach(function (s) {
+			out.push({ pts: s.pts.map(function (p) { return sweepPt(spn, p[0], p[1], band); }), color: s.color, closed: true });
 		});
 		return out;
 	}
 
-	// ---------- corners ----------
-	var CORNER_DEF = {
-		tl: { A: ['top', 0], B: ['left', 0], dirA: [-1, 0], dirB: [0, -1] },
-		tr: { A: ['top', 1], B: ['right', 0], dirA: [1, 0], dirB: [0, -1] },
-		bl: { A: ['bottom', 0], B: ['left', 1], dirA: [-1, 0], dirB: [0, 1] },
-		br: { A: ['bottom', 1], B: ['right', 1], dirA: [1, 0], dirB: [0, 1] }
-	};
+	// ---------- hook corners (spiral curl drawn in the corner box; woven connectors DELETED) ----------
+	var HOOK_DIR = { tl: [-1, 0], tr: [1, 0], bl: [-1, 0], br: [1, 0] };
+	function hookPolys(key, layout) {
+		var box = layout.corners[key], cx = box.x + layout.band / 2, cy = box.y + layout.band / 2;
+		var dirA = HOOK_DIR[key], a0 = Math.atan2(dirA[1], dirA[0]) + Math.PI;
+		var pts = [];
+		for (var k = 0; k <= 32; k++) {
+			var th = a0 + k / 32 * 1.5 * Math.PI, r = lerp(layout.band * 0.42, layout.band * 0.12, k / 32);
+			pts.push([cx + Math.cos(th) * r, cy + Math.sin(th) * r]);
+		}
+		return [{ pts: pts, color: 0, closed: false }];
+	}
 	function cubic(p0, c1, c2, p1, samples) {
 		var pts = [];
 		for (var k = 0; k <= samples; k++) {
@@ -438,30 +686,6 @@
 			]);
 		}
 		return pts;
-	}
-	function cornerPolys(key, cfg, layout) {
-		var def = CORNER_DEF[key], N = effCount(cfg), out = [];
-		var eA = layout.edges[def.A[0]], eB = layout.edges[def.B[0]];
-		var uA = def.A[1] ? eA.len : 0, uB = def.B[1] ? eB.len : 0;
-		if (cfg.corners === 'hook') {
-			var box = layout.corners[key], cx = box.x + layout.band / 2, cy = box.y + layout.band / 2;
-			var pts = [], a0 = Math.atan2(def.dirA[1], def.dirA[0]) + Math.PI;   // enter opposite the into-dir
-			for (var k = 0; k <= 32; k++) {
-				var th = a0 + k / 32 * 1.5 * Math.PI, r = lerp(layout.band * 0.42, layout.band * 0.12, k / 32);
-				pts.push([cx + Math.cos(th) * r, cy + Math.sin(th) * r]);
-			}
-			out.push({ pts: pts, color: 0, closed: false });
-			return out;
-		}
-		function perm(i) { return (N % 2 === 0) ? (i + 2) % N : (N - 1 - i); }
-		for (var i = 0; i < N; i++) {
-			var PA = toPage(eA, uA, lane(i, N, layout.band));
-			var PB = toPage(eB, uB, lane(perm(i), N, layout.band));
-			var c1 = [PA[0] + def.dirA[0] * layout.band * 0.45, PA[1] + def.dirA[1] * layout.band * 0.45];
-			var c2 = [PB[0] + def.dirB[0] * layout.band * 0.45, PB[1] + def.dirB[1] * layout.band * 0.45];
-			out.push({ pts: cubic(PA, c1, c2, PB, 24), color: i, closed: false });
-		}
-		return out;
 	}
 	// ---------- medallions ----------
 	function diamond(cx, cy, huU, hvV, e, samples) {
@@ -525,42 +749,57 @@
 		parent.appendChild(p);
 		return p;
 	}
-	// collectPolys: full border -> [{pts,color,closed}] page space (corners/medallions join in Tasks 3-4)
+	// collectPolys: full border -> [{pts,color,closed}] page space (spine-swept edges + hook
+	// spirals + medallion rings).
 	function collectPolys(cfg, W, H, slots) {
 		var layout = frameLayout(cfg, W, H);
+		var spn = buildSpine(layout);
 		var ab = autoBreaks(cfg, W, H, slots, layout);
-		var polys = [];
+		var feats = [];
 		['top', 'right', 'bottom', 'left'].forEach(function (name) {
 			var e = layout.edges[name];
-			var feats = [];
 			cfg.breaks.forEach(function (b) {
 				if (b.edge !== name) { return; }
 				var c = b.at / 100 * e.len, h = b.width / 100 * e.len / 2;
-				feats.push({ type: 'break', u0: c - h, u1: c + h });
+				var iv = edgeIntervalToS(name, c - h, c + h, layout, spn);
+				feats.push({ type: 'break', s0: iv[0], s1: iv[1] });
 			});
-			ab[name].forEach(function (iv) { feats.push({ type: 'break', u0: iv[0], u1: iv[1] }); });
-			cfg.medallions.forEach(function (m) {
-				if (m.edge !== name) { return; }
-				var hd = (m.size / 100 * layout.S) / 2, c = m.at / 100 * e.len, pad = layout.band * 0.15;
-				feats.push({ type: 'medallion', u0: c - hd - pad, u1: c + hd + pad, med: m });
-			});
-			// merge plain breaks first so overlapping intervals don't create phantom segments
-			var brk = mergeIntervals(feats.filter(function (f) { return f.type === 'break'; }).map(function (f) { return [f.u0, f.u1]; }))
-				.map(function (iv) { return { type: 'break', u0: iv[0], u1: iv[1] }; });
-			var meds = feats.filter(function (f) { return f.type === 'medallion'; });
-			var cornerEnd = (cfg.corners === 'hook') ? 'terminal' : 'corner';
-			segmentEdge(e.len, brk.concat(meds), layout.band, cornerEnd).forEach(function (seg) {
-				buildSegmentPolys(e, seg, cfg, layout).forEach(function (p) { polys.push(p); });
+			ab[name].forEach(function (ivU) {
+				var iv = edgeIntervalToS(name, ivU[0], ivU[1], layout, spn);
+				feats.push({ type: 'break', s0: iv[0], s1: iv[1] });
 			});
 		});
-		['tl', 'tr', 'bl', 'br'].forEach(function (key) {
-			cornerPolys(key, cfg, layout).forEach(function (p) { polys.push(p); });
+		// merge plain breaks first so overlapping intervals don't create phantom segments
+		var merged = mergeIntervals(feats.map(function (f) { return [f.s0, f.s1]; }))
+			.map(function (iv) { return { type: 'break', s0: iv[0], s1: iv[1] }; });
+		var allFeats = merged.slice();
+		cfg.medallions.forEach(function (m) {
+			var e = layout.edges[m.edge]; if (!e) { return; }
+			var hd = (m.size / 100 * layout.S) / 2, c = m.at / 100 * e.len, pad = layout.band * 0.15;
+			var civ = edgeIntervalToS(m.edge, c, c, layout, spn);
+			allFeats.push({ type: 'medallion', s0: civ[0] - hd - pad, s1: civ[0] + hd + pad, med: m });
 		});
+		if (cfg.corners === 'hook') {
+			['tr', 'br', 'bl', 'tl'].forEach(function (key) {
+				var a0 = spn.arcStart[key], a1 = a0 + spn.La, margin = layout.band * HOOK_MARGIN_FACTOR;
+				allFeats.push({ type: 'hook', s0: a0 - margin, s1: a1 + margin });
+			});
+		}
+		var segs = segmentLoop(spn.S, allFeats);
+		var polys = [];
+		if (segs.length === 1 && segs[0].full) {
+			buildClosedLoopPolys(cfg, layout, spn).forEach(function (p) { polys.push(p); });
+		} else {
+			segs.forEach(function (seg) { buildSpineSegmentPolys(seg, cfg, layout, spn).forEach(function (p) { polys.push(p); }); });
+		}
+		if (cfg.corners === 'hook') {
+			['tl', 'tr', 'bl', 'br'].forEach(function (key) { hookPolys(key, layout).forEach(function (p) { polys.push(p); }); });
+		}
 		cfg.medallions.forEach(function (m) {
 			var e = layout.edges[m.edge]; if (!e) { return; }
 			medallionPolys(m, e, layout, cfg).forEach(function (p) { polys.push(p); });
 		});
-		return { layout: layout, polys: polys };
+		return { layout: layout, polys: polys, spine: spn };
 	}
 	function render(rawCfg, W, H, slots) {
 		var cfg = norm(rawCfg);
@@ -614,18 +853,20 @@
 		svg.appendChild(gOutline); svg.appendChild(gFill); svg.appendChild(gCross);
 		return svg;
 	}
-	// small horizontal weave strip for designer pattern thumbnails
+	// small horizontal weave strip for designer pattern thumbnails: straight open two-point
+	// spine (constant normal), so it renders a straight strip with the same new-style end caps.
 	function swatch(rawCfg, wPx, hPx) {
 		var cfg = norm(rawCfg);
 		cfg.enabled = true; cfg.breaks = []; cfg.medallions = []; cfg.autoBreak.enabled = false;
 		var svg = svgEl('svg');
 		svg.setAttribute('class', 'sc-knot-swatch');
 		svg.setAttribute('viewBox', '0 0 ' + wPx + ' ' + hPx);
-		var band = hPx * 0.8;
-		var edge = { name: 'top', ox: 4, oy: (hPx - band) / 2, ux: 1, uy: 0, vx: 0, vy: 1, len: wPx - 8 };
-		var layout = { band: band, S: hPx, W: wPx, H: hPx };
-		var seg = { u0: 0, u1: edge.len, endA: 'terminal', endB: 'terminal', medA: null, medB: null };
-		var polys = buildSegmentPolys(edge, seg, cfg, layout);
+		var band = hPx * 0.8, len = wPx - 8, sy = hPx / 2;
+		var table = [{ s: 0, x: 4, y: sy, nx: 0, ny: 1 }, { s: len, x: 4 + len, y: sy, nx: 0, ny: 1 }];
+		var spn = { table: table, S: len, band: band };
+		var layout = { band: band, S: hPx, W: wPx, H: hPx, edges: {}, corners: {} };
+		var seg = { s0: 0, s1: len, endA: 'terminal', endB: 'terminal', med: null, medA: null, medB: null };
+		var polys = buildSpineSegmentPolys(seg, cfg, layout, spn);
 		var N = effCount(cfg);
 		var wf = strandW(band, N, cfg.strands) * (cfg.pattern === 'twist' ? 1.25 : 1), wOut = wf + 2 * outlineW(wf), gapPx = cfg.strands.gap * wf;
 		var g1 = svgEl('g'), g2 = svgEl('g'), g3 = svgEl('g');
@@ -648,11 +889,13 @@
 		medallionInnerRects: medallionInnerRects,
 		_geom: {
 			norm: norm, frameLayout: frameLayout, toPage: toPage, lane: lane, strandW: strandW, outlineW: outlineW,
-			mergeIntervals: mergeIntervals, segmentEdge: segmentEdge, autoBreaks: autoBreaks,
+			mergeIntervals: mergeIntervals, segmentLoop: segmentLoop, autoBreaks: autoBreaks,
 			patterns: patterns, findCrossings: findCrossings, blendHex: blendHex, subPolyline: subPolyline,
-			buildSegmentPolys: buildSegmentPolys, collectPolys: collectPolys, uTurn: uTurn, curl: curl,
-			cornerPolys: cornerPolys, medallionPolys: medallionPolys, medallionCenter: medallionCenter, cubic: cubic,
+			buildSpineSegmentPolys: buildSpineSegmentPolys, buildClosedLoopPolys: buildClosedLoopPolys, collectPolys: collectPolys,
+			curl: curl, rimArc: rimArc, innerArc: innerArc, hookPolys: hookPolys,
+			medallionPolys: medallionPolys, medallionCenter: medallionCenter, cubic: cubic,
 			crossingAngleSin: crossingAngleSin, crossingHalfLen: crossingHalfLen,
+			spine: spine, spineAt: spineAt, sweepPt: sweepPt, edgeIntervalToS: edgeIntervalToS, centerLanes: centerLanes,
 			STEP: STEP, TERM: TERM, EASE: EASE, clamp: clamp, lerp: lerp, smooth: smooth, effCount: effCount
 		}
 	};

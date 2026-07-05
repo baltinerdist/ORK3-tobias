@@ -27,33 +27,58 @@ const p0 = G.toPage(L1.edges.top, 0, 0);
 near(p0[0], L1.inset + L1.band, 1e-9, 'top origin x');
 near(p0[1], L1.inset, 1e-9, 'top origin y');
 
+// ---- spine(): centerline rounded-rect table (spec §7 item 1)
+const SPN1 = G.spine(cfg, 816, 1056);
+const cwSpn = SPN1.cx1 - SPN1.cx0, chSpn = SPN1.cy1 - SPN1.cy0;
+near(SPN1.S, 2 * (cwSpn + chSpn) - 8 * SPN1.R + 2 * Math.PI * SPN1.R, 0.5, 'spine total length formula');
+let badNormal = 0;
+SPN1.table.forEach(function (p) { if (Math.abs(Math.hypot(p.nx, p.ny) - 1) > 0.02) { badNormal++; } });
+ok(badNormal === 0, 'spine normals are unit length, got ' + badNormal + ' bad of ' + SPN1.table.length);
+const atMid = G.spineAt(SPN1.table, SPN1.S, SPN1.S * 0.5);
+const atMidWrapped = G.spineAt(SPN1.table, SPN1.S, SPN1.S * 0.5 + SPN1.S * 3);
+near(atMid.x, atMidWrapped.x, 0.5, 's wraps mod total length (x)');
+near(atMid.y, atMidWrapped.y, 0.5, 's wraps mod total length (y)');
+const atZero = G.spineAt(SPN1.table, SPN1.S, 0);
+near(atZero.x, SPN1.cx0 + SPN1.R, 0.5, 'spine s=0 sits at top-run start x');
+near(atZero.y, SPN1.cy0, 0.5, 'spine s=0 sits at top-run start y');
+
 // ---- mergeIntervals
 const m = G.mergeIntervals([[10, 20], [15, 30], [40, 50]]);
 ok(m.length === 2 && m[0][0] === 10 && m[0][1] === 30 && m[1][0] === 40, 'mergeIntervals unions overlaps');
 
-// ---- segmentEdge: plain edge = one segment corner-to-corner
-const segs0 = G.segmentEdge(700, [], L1.band, 'corner');
-ok(segs0.length === 1 && segs0[0].endA === 'corner' && segs0[0].endB === 'corner', 'no features -> single corner segment');
-// one central break -> two segments with terminal ends facing the break
-const segs1 = G.segmentEdge(700, [{ type: 'break', u0: 300, u1: 400 }], L1.band, 'corner');
-ok(segs1.length === 2 && segs1[0].endB === 'terminal' && segs1[1].endA === 'terminal', 'break makes terminal ends');
-near(segs1[0].u1, 300, 1e-9, 'segment stops at break');
+// ---- segmentLoop: circular segmentation on the spine (replaces the old per-edge segmentEdge)
+// no features -> one closed (full) loop marker
+const loopSegs0 = G.segmentLoop(2000, []);
+ok(loopSegs0.length === 1 && loopSegs0[0].full === true, 'no features -> single full-loop segment');
+// one break on the loop -> ONE open segment wrapping almost all the way around, both ends terminal
+const loopSegs1 = G.segmentLoop(2000, [{ type: 'break', s0: 300, s1: 400 }]);
+ok(loopSegs1.length === 1 && loopSegs1[0].endA === 'terminal' && loopSegs1[0].endB === 'terminal', 'single break -> one wrapped open segment, terminal ends');
+near(loopSegs1[0].s1 - loopSegs1[0].s0, 1900, 1e-6, 'wrapped segment length = loop minus the break');
 // medallion feature carries med ref + medallion ends
 const med = { edge: 'left', at: 45, size: 14 };
-const segs2 = G.segmentEdge(700, [{ type: 'medallion', u0: 280, u1: 420, med: med }], L1.band, 'corner');
-ok(segs2.length === 2 && segs2[0].endB === 'medallion' && segs2[1].endA === 'medallion' && segs2[0].med === med, 'medallion ends');
-// break swallowing whole edge -> no segments
-ok(G.segmentEdge(700, [{ type: 'break', u0: -10, u1: 710 }], L1.band, 'corner').length === 0, 'full-edge break -> nothing');
+const loopSegs2 = G.segmentLoop(2000, [{ type: 'medallion', s0: 280, s1: 420, med: med }]);
+ok(loopSegs2.length === 1 && loopSegs2[0].endA === 'medallion' && loopSegs2[0].endB === 'medallion' && loopSegs2[0].med === med, 'single medallion -> wrapped segment with medallion ends + med ref');
+// two breaks tiling the whole loop -> nothing to weave
+ok(G.segmentLoop(2000, [{ type: 'break', s0: 0, s1: 1000 }, { type: 'break', s0: 1000, s1: 2000 }]).length === 0, 'fully-covered loop -> nothing');
 // cursor pinning: a manual break wholly containing a later-sorted medallion footprint must not
 // let the cursor walk backward into the cleared gap (no segment may start inside [100,400)).
-const segsPin = G.segmentEdge(700, [
-	{ type: 'break', u0: 100, u1: 400 },
-	{ type: 'medallion', u0: 250, u1: 350, med: { edge: 'left', at: 45, size: 14 } }
-], L1.band, 'corner');
-segsPin.forEach(function (s, i) {
-	ok(s.u0 >= 400 || s.u1 <= 100, 'pinned segment ' + i + ' does not start inside cleared gap [100,400): u0=' + s.u0 + ' u1=' + s.u1);
+const pinSegs = G.segmentLoop(2000, [
+	{ type: 'break', s0: 100, s1: 400 },
+	{ type: 'medallion', s0: 250, s1: 350, med: { edge: 'left', at: 45, size: 14 } }
+]);
+pinSegs.forEach(function (s, i) {
+	const s0n = ((s.s0 % 2000) + 2000) % 2000, s1n = s0n + (s.s1 - s.s0);
+	ok(s1n <= 100 + 2000 || s0n >= 400, 'pinned segment ' + i + ' does not start inside cleared gap [100,400): s0=' + s.s0 + ' s1=' + s.s1);
 });
-for (let i = 1; i < segsPin.length; i++) { ok(segsPin[i].u0 >= segsPin[i - 1].u1, 'pinned segments monotonically ordered at index ' + i); }
+// hook quarter-arc interval straddles the s=0 seam (TL corner) and must still segment cleanly
+const spnHook = G.spine(G.norm({ enabled: true, corners: 'hook' }), 816, 1056);
+const hookFeats = ['tr', 'br', 'bl', 'tl'].map(function (key) {
+	const a0 = spnHook.arcStart[key], a1 = a0 + spnHook.La, margin = spnHook.band * 0.2;
+	return { type: 'hook', s0: a0 - margin, s1: a1 + margin };
+});
+const hookSegs = G.segmentLoop(spnHook.S, hookFeats);
+ok(hookSegs.length === 4, 'four hook feature intervals (incl. the one straddling s=0) -> four woven segments, got ' + hookSegs.length);
+hookSegs.forEach(function (s) { ok(isFinite(s.s0) && isFinite(s.s1) && s.s1 > s.s0, 'hook segment has finite positive length'); });
 
 // ---- autoBreaks: a flagged slot overlapping the bottom band projects an interval
 const slot = { location: 'center_image', break_border: true, x: 35, y: 88, w: 30, h: 10 };  // % of page
@@ -76,6 +101,13 @@ P.strands.forEach(function (s, i) {
 	near(last[1], G.lane(i, 3, 48), 0.01, 'strand ' + i + ' eased to lane at end');
 	s.pts.forEach(function (p) { ok(p[1] > 0 && p[1] < 48, 'strand ' + i + ' inside band'); });
 	ok(s.color === i, 'strand color index');
+});
+// closed mode: no easing, strand marked closed, seamless wrap (integral repeats)
+const Pc = G.patterns.plait(400, 48, sp, { closed: true });
+Pc.strands.forEach(function (s, i) {
+	ok(s.closed === true, 'closed plait strand ' + i + ' marked closed');
+	const first = s.pts[0], last = s.pts[s.pts.length - 1];
+	near(first[1], last[1], 0.5, 'closed plait strand ' + i + ' wraps seamlessly (v)');
 });
 
 // ---- findCrossings: two crossing sinusoids -> alternating over/under
@@ -112,11 +144,14 @@ for (let a2 = 0; a2 < 64; a2++) { ring.pts.push([Math.cos(a2 / 64 * 2 * Math.PI)
 const sub2 = G.subPolyline(ring.pts, true, 0, 0, 15);
 ok(sub2.length >= 5, 'closed subPolyline wraps the seam');
 
-// ---- buildSegmentPolys: terminals merge (same color) or split two-tone (different colors) - Finding 1
+// ---- buildSpineSegmentPolys: terminals merge (same color) or split two-tone (different colors)
+// Segments placed on the top run (spine s === edge u there, since topRunStart = 0) so the
+// numbers line up 1:1 with what used to be edge-local u0/u1.
 const cfgT = G.norm({ enabled: true, pattern: 'plait', strands: { count: 2 } });
 const layT = G.frameLayout(cfgT, 816, 1056);
-const segT = { u0: 100, u1: 500, endA: 'terminal', endB: 'terminal', medA: null, medB: null };
-const polysT = G.buildSegmentPolys(layT.edges.top, segT, cfgT, layT);
+const spnT = G.spine(cfgT, 816, 1056);
+const segT = { s0: 100, s1: 500, endA: 'terminal', endB: 'terminal', med: null, medA: null, medB: null };
+const polysT = G.buildSpineSegmentPolys(segT, cfgT, layT, spnT);
 ok(polysT.length === 2, '2-strand double-terminal segment, 2 default colors -> two-tone split (2 polylines), got ' + polysT.length);
 if (polysT.length === 2) {
 	const pA = polysT[0].pts, pB = polysT[1].pts;
@@ -125,23 +160,28 @@ if (polysT.length === 2) {
 }
 // single-color config: the pair shares one color -> old fully-merged closed-loop behavior still holds
 const cfgT1 = G.norm({ enabled: true, pattern: 'plait', strands: { count: 2 }, colors: { strands: ['#333333'] } });
-const polysT1 = G.buildSegmentPolys(layT.edges.top, segT, cfgT1, layT);
+const polysT1 = G.buildSpineSegmentPolys(segT, cfgT1, layT, spnT);
 ok(polysT1.length === 1 && polysT1[0].closed === true, 'single-color 2-strand double-terminal segment still closes into one loop, got ' + polysT1.length);
 // N=4 single-color double-terminal segment: pairs (0,3) and (1,2) each merge at end A then
 // close into a loop at end B -> exactly 2 closed polylines, none left bare/unmerged.
 const cfgT4 = G.norm({ enabled: true, pattern: 'plait', strands: { count: 4 }, colors: { strands: ['#333333'] } });
-const polysT4 = G.buildSegmentPolys(layT.edges.top, segT, cfgT4, layT);
+const polysT4 = G.buildSpineSegmentPolys(segT, cfgT4, layT, spnT);
 ok(polysT4.length === 2, 'N=4 single-color double-terminal segment merges into 2 closed loops, got ' + polysT4.length);
 polysT4.forEach(function (p, i) { ok(p.closed === true, 'N=4 single-color loop ' + i + ' is closed'); });
 
 const cfgT3 = G.norm({ enabled: true, pattern: 'plait', strands: { count: 3 } });
-const polysT3 = G.buildSegmentPolys(layT.edges.top, { u0: 100, u1: 500, endA: 'corner', endB: 'terminal', medA: null, medB: null }, cfgT3, layT);
+const segT3 = { s0: 100, s1: 500, endA: 'hook', endB: 'terminal', med: null, medA: null, medB: null };
+const polysT3 = G.buildSpineSegmentPolys(segT3, cfgT3, layT, spnT);
 ok(polysT3.length === 2, '3 strands, default 2 colors: outer pair (0,2) shares color -> merges, middle strand curls (2 polylines)');
 
 // ---- collectPolys: full-border sanity (permanent geometry invariants for render() smoke path)
 const cfgFull = G.norm({ enabled: true, pattern: 'plait', colors: { strands: ['#b3231a', '#e4670f', '#f5a623'], outline: '#2a0c05' }, breaks: [{ edge: 'bottom', at: 50, width: 26 }] });
 const got = G.collectPolys(cfgFull, 816, 1056, []);
-ok(got.polys.length > 6, 'collectPolys returns >6 polylines for a full border, got ' + got.polys.length);
+// (spine-sweep note: a single break now yields ONE continuous wrapped segment -- not a
+// per-edge/per-corner patchwork -- so the polyline count is naturally lower than the old
+// per-edge assembly; the invariant that matters here is "renders a well-formed border",
+// checked below via in-bounds/finite coords and a healthy crossing count.)
+ok(got.polys.length >= 2, 'collectPolys returns polylines for a full border, got ' + got.polys.length);
 got.polys.forEach(function (p, i) {
 	ok(p.pts.length >= 2, 'polyline ' + i + ' has >=2 points');
 	p.pts.forEach(function (pt) {
@@ -152,6 +192,22 @@ got.polys.forEach(function (p, i) {
 const fullCross = G.findCrossings(got.polys, 3);
 ok(fullCross.length > 20, 'full border has >20 crossings, got ' + fullCross.length);
 fullCross.forEach(function (c) { ok(isFinite(c.x) && isFinite(c.y), 'crossing coords finite'); });
+
+// ---- bottom-run mapping: a manual break at bottom at=50 produces a gap centered at page
+// bottom-center; no polyline point should sit inside the gap's central 60% band-strip rect.
+const bottomCfg = G.norm({ enabled: true, pattern: 'plait', breaks: [{ edge: 'bottom', at: 50, width: 20 }], autoBreak: { enabled: false } });
+const bottomLayout = G.frameLayout(bottomCfg, 816, 1056);
+const bottomGot = G.collectPolys(bottomCfg, 816, 1056, []);
+const gapFullW = 20 / 100 * bottomLayout.edges.bottom.len;
+const gapHalfW = gapFullW / 2 * 0.6;                     // central 60% of the gap width
+const gapCx = 816 / 2, gapY0 = 1056 - bottomLayout.inset - bottomLayout.band, gapY1 = 1056 - bottomLayout.inset;
+let gapIntrusions = 0;
+bottomGot.polys.forEach(function (p) {
+	p.pts.forEach(function (pt) {
+		if (Math.abs(pt[0] - gapCx) < gapHalfW && pt[1] > gapY0 && pt[1] < gapY1) { gapIntrusions++; }
+	});
+});
+ok(gapIntrusions === 0, 'bottom-center break leaves the gap free of weave points, got ' + gapIntrusions + ' intrusions');
 
 // ---- openweave: 4 strands, 2 colors, mirror symmetry
 const OW = G.patterns.openweave(520, 48, cfg.strands);
@@ -176,29 +232,30 @@ ok(G.effCount(G.norm({ pattern: 'twist' })) === 2, 'effCount twist');
 ok(G.effCount(G.norm({ pattern: 'openweave' })) === 4, 'effCount openweave');
 ok(G.effCount(G.norm({ pattern: 'plait', strands: { count: 3 } })) === 3, 'effCount plait');
 
-// ---- collectPolys: every pattern runs the full segmentation+terminal path cleanly
+// ---- collectPolys: every pattern runs the full segmentation+terminal path cleanly. With no
+// breaks/medallions and 'woven' corners, this exercises the NO-FEATURES closed-loop path ->
+// every emitted polyline must be closed:true.
 ['plait', 'openweave', 'twist', 'runningknot'].forEach(function (patName) {
 	const cfgP = G.norm({ enabled: true, pattern: patName });
 	const gotP = G.collectPolys(cfgP, 816, 1056, []);
 	ok(gotP.polys.length > 0, 'collectPolys(' + patName + ') returns polylines, got ' + gotP.polys.length);
 	gotP.polys.forEach(function (p, i) {
 		ok(p.pts.length >= 2, 'collectPolys(' + patName + ') polyline ' + i + ' has >=2 points');
+		ok(p.closed === true, 'collectPolys(' + patName + ') polyline ' + i + ' is closed (no-features full loop)');
+		const first = p.pts[0], last = p.pts[p.pts.length - 1];
+		near(Math.hypot(first[0] - last[0], first[1] - last[1]), 0, 0.5, 'collectPolys(' + patName + ') polyline ' + i + ' wraps seamlessly');
 		p.pts.forEach(function (pt) {
 			ok(isFinite(pt[0]) && isFinite(pt[1]), 'collectPolys(' + patName + ') polyline ' + i + ' coords finite');
 		});
 	});
 });
 
-// ---- corners: woven corner connects lanes with parity-preserving permutation
-const cp = G.cornerPolys('tl', cfg, L1);
-ok(cp.length === 3, 'woven tl corner emits one connector per lane');
-cp.forEach(function (p) { ok(p.pts.length >= 10, 'corner connector sampled'); });
-// connectors start at top-edge u=0 ports and end at left-edge u=0 ports (page coords sanity)
-const tlBox = L1.corners.tl;
-cp.forEach(function (p) {
-	const a = p.pts[0], z = p.pts[p.pts.length - 1];
-	ok(a[0] >= tlBox.x - 1 && a[1] >= tlBox.y - 1, 'corner connector stays around box start');
-	ok(z[0] >= tlBox.x - 1 && z[1] >= tlBox.y - 1, 'corner connector stays around box end');
+// ---- hook corners: quarter-arc feature intervals segment cleanly through the full pipeline
+const cfgHook = G.norm({ enabled: true, pattern: 'plait', corners: 'hook' });
+const gotHook = G.collectPolys(cfgHook, 816, 1056, []);
+ok(gotHook.polys.length > 4, 'collectPolys(hook) returns polylines (weave + 4 spirals), got ' + gotHook.polys.length);
+gotHook.polys.forEach(function (p, i) {
+	p.pts.forEach(function (pt) { ok(isFinite(pt[0]) && isFinite(pt[1]), 'collectPolys(hook) polyline ' + i + ' coords finite'); });
 });
 
 // ---- medallion rings + inner rect
@@ -216,9 +273,10 @@ ok(inner[0].w > 2 && inner[0].w < 14 && inner[0].h > 1 && inner[0].h < 14, 'inne
 const cxPct = inner[0].x + inner[0].w / 2;
 ok(cxPct < 15, 'left-edge medallion sits near left side');
 
-// ---- full render polys include corners + medallions (collectPolys)
+// ---- full render polys include hook spirals / medallion rings (collectPolys)
 const full = G.collectPolys(medCfg, 816, 1056, []);
-ok(full.polys.length > 8, 'collectPolys includes edges + corners + medallion rings');
+// a single medallion is one wrapped segment (weave strands merged/landed) + 2 rings
+ok(full.polys.length >= 4, 'collectPolys includes weave + medallion rings, got ' + full.polys.length);
 
 // ---- collectPolys: hook corners + medallions exercised through the full pipeline (no NaN)
 const cfgHookMed = G.norm({
@@ -235,6 +293,55 @@ gotHookMed.polys.forEach(function (p, i) {
 });
 const hookMedCross = G.findCrossings(gotHookMed.polys, 3);
 hookMedCross.forEach(function (c) { ok(isFinite(c.x) && isFinite(c.y), 'hook+medallion crossing coords finite'); });
+
+// ---- medallion segment ends (spec §7 item 4): the centermost lane(s) at a medallion end must
+// land within ~wf of the medallion's ring paths (sweep landing fuses onto the rings).
+const medOnlyCfg = G.norm({ enabled: true, pattern: 'plait', medallions: [{ edge: 'left', at: 45, size: 14 }] });
+const medOnlyLayout = G.frameLayout(medOnlyCfg, 816, 1056);
+const medOnlyGot = G.collectPolys(medOnlyCfg, 816, 1056, []);
+const medOnlyRings = G.medallionPolys(medOnlyCfg.medallions[0], medOnlyLayout.edges.left, medOnlyLayout, medOnlyCfg);
+const wfMed = G.strandW(medOnlyLayout.band, G.effCount(medOnlyCfg), medOnlyCfg.strands);
+function distToRing(pt, ring) {
+	let best = Infinity;
+	ring.pts.forEach(function (rp) { const d = Math.hypot(rp[0] - pt[0], rp[1] - pt[1]); if (d < best) { best = d; } });
+	return best;
+}
+let landedEndpoints = 0;
+medOnlyGot.polys.forEach(function (p) {
+	[p.pts[0], p.pts[p.pts.length - 1]].forEach(function (ep) {
+		const d = Math.min(distToRing(ep, medOnlyRings[0]), distToRing(ep, medOnlyRings[1]));
+		if (d <= wfMed * 2) { landedEndpoints++; }
+	});
+});
+ok(landedEndpoints >= 2, 'medallion sweep landings: at least 2 polyline endpoints land near the medallion rings, got ' + landedEndpoints);
+
+// ---- break-over-medallion: a break wide enough to swallow a medallion leaves no weave in the
+// cleared gap (adapts the segmentLoop cursor-pinning invariant to the full collectPolys pipeline).
+const breakOverMedCfg = G.norm({
+	enabled: true, pattern: 'plait',
+	medallions: [{ edge: 'left', at: 45, size: 10 }],
+	breaks: [{ edge: 'left', at: 45, width: 30 }], autoBreak: { enabled: false }
+});
+const bomLayout = G.frameLayout(breakOverMedCfg, 816, 1056);
+const bomGot = G.collectPolys(breakOverMedCfg, 816, 1056, []);
+const bomE = bomLayout.edges.left;
+const bomC = bomE.len * 0.45, bomH = bomE.len * 0.30 / 2;
+// page-space probe rect: left edge's band strip (x), central 60% of the break's u-span (y),
+// shrunk off the break edges where rim/ring geometry legitimately lives.
+const bomU0 = bomC - bomH * 0.6, bomU1 = bomC + bomH * 0.6;
+const bomY0 = bomE.oy + bomU0, bomY1 = bomE.oy + bomU1;
+const bomX0 = bomE.ox + bomE.vx * (bomLayout.band * 0.15), bomX1 = bomE.ox + bomE.vx * (bomLayout.band * 0.85);
+// exclude the medallion's own ring polylines (always appended last, 2 per medallion): they are
+// legitimately drawn even when their weave connection was swallowed by an overlapping break --
+// this probe only cares about WEAVE points intruding into the cleared gap.
+const bomWeavePolys = bomGot.polys.slice(0, bomGot.polys.length - 2 * breakOverMedCfg.medallions.length);
+let bomIntrusions = 0;
+bomWeavePolys.forEach(function (p) {
+	p.pts.forEach(function (pt) {
+		if (pt[0] > Math.min(bomX0, bomX1) && pt[0] < Math.max(bomX0, bomX1) && pt[1] > bomY0 && pt[1] < bomY1) { bomIntrusions++; }
+	});
+});
+ok(bomIntrusions === 0, 'break swallowing a medallion leaves its interior free of weave points, got ' + bomIntrusions);
 
 // ---- medallion inward shift: an oversized lozenge must never clip the page edge
 const medBig = G.norm({ enabled: true, medallions: [{ edge: 'left', at: 45, size: 14 }] });
