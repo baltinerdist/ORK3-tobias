@@ -213,11 +213,247 @@
 		return cross;
 	}
 
+	// ---------- sub-polyline extraction (for crossing over-arcs) ----------
+	function subPolyline(pts, closed, idx, frac, halfLen) {
+		var n = pts.length;
+		function P(i) { return pts[((i % n) + n) % n]; }
+		function segLen(i) { var A = P(i), B = P(i + 1); return Math.hypot(B[0] - A[0], B[1] - A[1]); }
+		var cx = lerp(P(idx)[0], P(idx + 1)[0], frac), cy = lerp(P(idx)[1], P(idx + 1)[1], frac);
+		var out = [[cx, cy]], acc, i, steps;
+		// walk backward
+		acc = frac * segLen(idx); i = idx; steps = 0;
+		while (acc < halfLen && steps++ < n) {
+			out.unshift(P(i).slice());
+			i--; if (i < 0) { if (!closed) { break; } i += n; }
+			acc += segLen(i);
+		}
+		// walk forward
+		acc = (1 - frac) * segLen(idx); i = idx + 1; steps = 0;
+		while (acc < halfLen && steps++ < n) {
+			out.push(P(i).slice());
+			i++; if (i >= n && !closed) { break; }
+			acc += segLen(i);
+		}
+		if (!closed) { return out; }
+		return out;
+	}
+
+	// ---------- terminals + segment assembly ----------
+	// Sample a U-turn arc joining (ue, va)->(ue, vb), bulging dir (+1/-1) beyond the segment end.
+	function uTurn(ue, va, vb, dir, reach) {
+		var pts = [], mid = (va + vb) / 2, r = Math.abs(vb - va) / 2;
+		for (var k = 0; k <= 16; k++) {
+			var th = k / 16 * Math.PI;
+			pts.push([ue + dir * Math.sin(th) * Math.max(r, reach), mid - Math.cos(th) * r * (va < vb ? 1 : -1)]);
+		}
+		return pts;
+	}
+	// Spiral curl for the middle strand of an odd count.
+	function curl(ue, v, dir, band) {
+		var pts = [], r0 = band * 0.22, cx = ue + dir * r0, turns = 1.5 * Math.PI * 2 * 0.75; // 270 deg
+		for (var k = 0; k <= 24; k++) {
+			var th = k / 24 * turns, r = r0 * (1 - 0.7 * (k / 24));
+			pts.push([cx - dir * Math.cos(th) * r, v + Math.sin(th) * r]);
+		}
+		return pts;
+	}
+	// Build the page-space polylines for one weave segment, terminals merged in.
+	function buildSegmentPolys(edge, seg, cfg, layout) {
+		var band = layout.band, sp = cfg.strands;
+		var tA = seg.endA === 'corner' ? 0 : TERM(band), tB = seg.endB === 'corner' ? 0 : TERM(band);
+		if (seg.endA === 'medallion') { tA = band * 0.35; }
+		if (seg.endB === 'medallion') { tB = band * 0.35; }
+		var Lw = (seg.u1 - seg.u0) - tA - tB;
+		var gen = patterns[cfg.pattern] || patterns.plait;
+		var res, off = seg.u0 + tA;
+		if (Lw < band * 1.1) {                             // degenerate: plain connector strands
+			var pts0 = [[seg.u0 + tA, band * 0.35], [seg.u1 - tB, band * 0.35]];
+			var pts1 = [[seg.u0 + tA, band * 0.65], [seg.u1 - tB, band * 0.65]];
+			res = { strands: [{ pts: pts0, color: 0, closed: false }, { pts: pts1, color: 1, closed: false }] };
+			off = 0;
+		} else {
+			res = gen(Lw, band, sp);
+			res.strands.forEach(function (s) { s.pts = s.pts.map(function (p) { return [p[0] + off, p[1]]; }); });
+		}
+		var N = res.strands.length;
+		// terminal arcs: pair lane i with lane N-1-i (fixed for both A and B passes); odd middle curls.
+		// Each pair (i, N-1-i) is visited once per open end (once by endArcs('A'), once by endArcs('B')).
+		// First visit merges si+sj into one open polyline (owner = si, sj absorbed via sj.merged).
+		// Second visit (sj already merged) finds si's two free ends now sitting at THIS end and
+		// joins them with an arc, closing the polyline into a loop.
+		function endArcs(atEnd) {                           // atEnd: 'A'|'B'
+			var isA = atEnd === 'A', kind = isA ? seg.endA : seg.endB;
+			if (kind === 'corner') { return; }
+			var ue = isA ? (seg.u0 + tA) : (seg.u1 - tB), dir = isA ? -1 : 1;
+			var reach = (kind === 'medallion') ? (isA ? tA : tB) + band * 0.3 : Math.min(TERM(band) * 0.8, band * 0.45);
+			for (var i = 0; i < Math.floor(N / 2); i++) {
+				var j = N - 1 - i;
+				var si = res.strands[i], sj = res.strands[j];
+				if (!si || !sj || si === sj) { continue; }
+				var arc = uTurn(ue, lane(i, N, band), lane(j, N, band), dir, reach * (1 - i * 0.25));
+				if (sj.merged) {                             // second visit for this pair -> close the loop
+					if (si.merged || si.closed) { continue; }
+					si.pts = si.pts.concat(arc);
+					si.closed = true;
+					continue;
+				}
+				// first visit: merge si.pts + arc + reversed sj.pts (orientation depends on end)
+				var joined;
+				if (isA) { joined = sj.pts.slice().reverse().concat(arc.slice().reverse(), si.pts); }
+				else { joined = si.pts.concat(arc, sj.pts.slice().reverse()); }
+				si.pts = joined; sj.merged = true;
+			}
+			if (N % 2 === 1) {
+				var m = res.strands[(N - 1) / 2];
+				if (m && !m.merged && !m.closed) {
+					var c = curl(ue, lane((N - 1) / 2, N, band), dir, band);
+					if (isA) { m.pts = c.slice().reverse().concat(m.pts); } else { m.pts = m.pts.concat(c); }
+				}
+			}
+		}
+		endArcs('A'); endArcs('B');
+		var out = [];
+		res.strands.forEach(function (s) {
+			if (s.merged) { return; }
+			out.push({ pts: s.pts.map(function (p) { return toPage(edge, p[0], p[1]); }), color: s.color, closed: !!s.closed });
+		});
+		return out;
+	}
+
+	// ---------- SVG ----------
+	var uidCounter = 0;
+	function svgEl(tag) { return document.createElementNS(SVGNS, tag); }
+	function polyPath(pts, closed) {
+		var d = 'M' + pts[0][0].toFixed(2) + ' ' + pts[0][1].toFixed(2);
+		for (var i = 1; i < pts.length; i++) { d += 'L' + pts[i][0].toFixed(2) + ' ' + pts[i][1].toFixed(2); }
+		return closed ? d + 'Z' : d;
+	}
+	function strokePath(parent, d, paint, width) {
+		var p = svgEl('path');
+		p.setAttribute('d', d); p.setAttribute('fill', 'none');
+		p.setAttribute('stroke', paint); p.setAttribute('stroke-width', width.toFixed(2));
+		p.setAttribute('stroke-linecap', 'round'); p.setAttribute('stroke-linejoin', 'round');
+		parent.appendChild(p);
+		return p;
+	}
+	// collectPolys: full border -> [{pts,color,closed}] page space (corners/medallions join in Tasks 3-4)
+	function collectPolys(cfg, W, H, slots) {
+		var layout = frameLayout(cfg, W, H);
+		var ab = autoBreaks(cfg, W, H, slots, layout);
+		var polys = [];
+		['top', 'right', 'bottom', 'left'].forEach(function (name) {
+			var e = layout.edges[name];
+			var feats = [];
+			cfg.breaks.forEach(function (b) {
+				if (b.edge !== name) { return; }
+				var c = b.at / 100 * e.len, h = b.width / 100 * e.len / 2;
+				feats.push({ type: 'break', u0: c - h, u1: c + h });
+			});
+			ab[name].forEach(function (iv) { feats.push({ type: 'break', u0: iv[0], u1: iv[1] }); });
+			cfg.medallions.forEach(function (m) {
+				if (m.edge !== name) { return; }
+				var hd = (m.size / 100 * layout.S) / 2, c = m.at / 100 * e.len, pad = layout.band * 0.15;
+				feats.push({ type: 'medallion', u0: c - hd - pad, u1: c + hd + pad, med: m });
+			});
+			// merge plain breaks first so overlapping intervals don't create phantom segments
+			var brk = mergeIntervals(feats.filter(function (f) { return f.type === 'break'; }).map(function (f) { return [f.u0, f.u1]; }))
+				.map(function (iv) { return { type: 'break', u0: iv[0], u1: iv[1] }; });
+			var meds = feats.filter(function (f) { return f.type === 'medallion'; });
+			var cornerEnd = (cfg.corners === 'hook') ? 'terminal' : 'corner';
+			segmentEdge(e.len, brk.concat(meds), layout.band, cornerEnd).forEach(function (seg) {
+				buildSegmentPolys(e, seg, cfg, layout).forEach(function (p) { polys.push(p); });
+			});
+		});
+		return { layout: layout, polys: polys };
+	}
+	function render(rawCfg, W, H, slots) {
+		var cfg = norm(rawCfg);
+		var svg = svgEl('svg');
+		svg.setAttribute('class', 'sc-knot');
+		svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+		svg.setAttribute('preserveAspectRatio', 'none');
+		if (!cfg.enabled) { return svg; }
+		var uid = ++uidCounter;
+		var got = collectPolys(cfg, W, H, slots);
+		var polys = got.polys;
+		// paints
+		var paints = cfg.colors.strands.slice();
+		if (cfg.gradient.enabled) {
+			var defs = svgEl('defs');
+			var rad = cfg.gradient.angle * Math.PI / 180;
+			var dx = Math.cos(rad), dy = Math.sin(rad);
+			var R = (Math.abs(dx) * W + Math.abs(dy) * H) / 2, cx = W / 2, cy = H / 2;
+			cfg.colors.strands.forEach(function (hex, k) {
+				var g = svgEl('linearGradient');
+				g.setAttribute('id', 'skg' + uid + '_' + k); g.setAttribute('gradientUnits', 'userSpaceOnUse');
+				g.setAttribute('x1', (cx - dx * R).toFixed(1)); g.setAttribute('y1', (cy - dy * R).toFixed(1));
+				g.setAttribute('x2', (cx + dx * R).toFixed(1)); g.setAttribute('y2', (cy + dy * R).toFixed(1));
+				cfg.gradient.stops.forEach(function (st) {
+					var s = svgEl('stop');
+					s.setAttribute('offset', (clamp(st.at, 0, 1) * 100) + '%');
+					s.setAttribute('stop-color', blendHex(hex, st.color, 0.8));
+					g.appendChild(s);
+				});
+				defs.appendChild(g);
+				paints[k] = 'url(#skg' + uid + '_' + k + ')';
+			});
+			svg.appendChild(defs);
+		}
+		var band = got.layout.band, N = clamp(cfg.strands.count, 1, 4);
+		var wf = strandW(band, N, cfg.strands), wOut = wf + 2 * outlineW(wf), gapPx = cfg.strands.gap * wf;
+		function paintOf(colorIdx) { return paints[colorIdx % paints.length]; }
+		var gOutline = svgEl('g'), gFill = svgEl('g'), gCross = svgEl('g');
+		polys.forEach(function (p) { strokePath(gOutline, polyPath(p.pts, p.closed), cfg.colors.outline, wOut); });
+		polys.forEach(function (p) { strokePath(gFill, polyPath(p.pts, p.closed), paintOf(p.color), wf); });
+		findCrossings(polys, wf * 0.8).forEach(function (c) {
+			var overIdx = (c.over === 'a') ? c.a : c.b;
+			var idx = (c.over === 'a') ? c.ia : c.ib, frac = (c.over === 'a') ? c.fa : c.fb;
+			var p = polys[overIdx];
+			var arc = subPolyline(p.pts, p.closed, idx, frac, wf * 0.75 + gapPx);
+			if (arc.length < 2) { return; }
+			var d = polyPath(arc, false);
+			strokePath(gCross, d, cfg.colors.outline, wOut + 2 * gapPx);
+			strokePath(gCross, d, paintOf(p.color), wf);
+		});
+		svg.appendChild(gOutline); svg.appendChild(gFill); svg.appendChild(gCross);
+		return svg;
+	}
+	// small horizontal weave strip for designer pattern thumbnails
+	function swatch(rawCfg, wPx, hPx) {
+		var cfg = norm(rawCfg);
+		cfg.enabled = true; cfg.breaks = []; cfg.medallions = []; cfg.autoBreak.enabled = false;
+		var svg = svgEl('svg');
+		svg.setAttribute('class', 'sc-knot-swatch');
+		svg.setAttribute('viewBox', '0 0 ' + wPx + ' ' + hPx);
+		var band = hPx * 0.8;
+		var edge = { name: 'top', ox: 4, oy: (hPx - band) / 2, ux: 1, uy: 0, vx: 0, vy: 1, len: wPx - 8 };
+		var layout = { band: band, S: hPx, W: wPx, H: hPx };
+		var seg = { u0: 0, u1: edge.len, endA: 'terminal', endB: 'terminal', medA: null, medB: null };
+		var polys = buildSegmentPolys(edge, seg, cfg, layout);
+		var N = clamp(cfg.strands.count, 1, 4);
+		var wf = strandW(band, N, cfg.strands), wOut = wf + 2 * outlineW(wf), gapPx = cfg.strands.gap * wf;
+		var g1 = svgEl('g'), g2 = svgEl('g'), g3 = svgEl('g');
+		polys.forEach(function (p) { strokePath(g1, polyPath(p.pts, p.closed), cfg.colors.outline, wOut); });
+		polys.forEach(function (p) { strokePath(g2, polyPath(p.pts, p.closed), cfg.colors.strands[p.color % cfg.colors.strands.length], wf); });
+		findCrossings(polys, wf * 0.8).forEach(function (c) {
+			var overIdx = (c.over === 'a') ? c.a : c.b, idx = (c.over === 'a') ? c.ia : c.ib, frac = (c.over === 'a') ? c.fa : c.fb;
+			var p = polys[overIdx], arc = subPolyline(p.pts, p.closed, idx, frac, wf * 0.75 + gapPx);
+			if (arc.length < 2) { return; }
+			strokePath(g3, polyPath(arc, false), cfg.colors.outline, wOut + 2 * gapPx);
+			strokePath(g3, polyPath(arc, false), cfg.colors.strands[p.color % cfg.colors.strands.length], wf);
+		});
+		svg.appendChild(g1); svg.appendChild(g2); svg.appendChild(g3);
+		return svg;
+	}
+
 	var K = {
+		render: render,
+		swatch: swatch,
 		_geom: {
 			norm: norm, frameLayout: frameLayout, toPage: toPage, lane: lane, strandW: strandW, outlineW: outlineW,
 			mergeIntervals: mergeIntervals, segmentEdge: segmentEdge, autoBreaks: autoBreaks,
-			patterns: patterns, findCrossings: findCrossings, blendHex: blendHex,
+			patterns: patterns, findCrossings: findCrossings, blendHex: blendHex, subPolyline: subPolyline,
+			buildSegmentPolys: buildSegmentPolys, collectPolys: collectPolys, uTurn: uTurn, curl: curl,
 			STEP: STEP, TERM: TERM, EASE: EASE, clamp: clamp, lerp: lerp, smooth: smooth
 		}
 	};

@@ -90,5 +90,42 @@ ok(scr.length === 1, 'cycloid self-crosses once (one full loop interior to range
 ok(G.blendHex('#000000', '#ffffff', 0.5).toLowerCase() === '#808080', 'blendHex midpoint');
 ok(G.blendHex('#ff0000', '#0000ff', 0).toLowerCase() === '#ff0000', 'blendHex t=0');
 
+// ---- subPolyline: arc-length window
+const straight = { pts: [], closed: false };
+for (let u = 0; u <= 100; u += 2) { straight.pts.push([u, 0]); }
+const sub = G.subPolyline(straight.pts, false, 25, 0, 10);   // centered at x=50
+near(sub[0][0], 40, 2.1, 'subPolyline left reach');
+near(sub[sub.length - 1][0], 60, 2.1, 'subPolyline right reach');
+// closed wraparound: window across the seam returns contiguous pts
+const ring = { pts: [], closed: true };
+for (let a2 = 0; a2 < 64; a2++) { ring.pts.push([Math.cos(a2 / 64 * 2 * Math.PI) * 50, Math.sin(a2 / 64 * 2 * Math.PI) * 50]); }
+const sub2 = G.subPolyline(ring.pts, true, 0, 0, 15);
+ok(sub2.length >= 5, 'closed subPolyline wraps the seam');
+
+// ---- buildSegmentPolys: terminals merge strand pairs into continuous polylines
+const cfgT = G.norm({ enabled: true, pattern: 'plait', strands: { count: 2 } });
+const layT = G.frameLayout(cfgT, 816, 1056);
+const segT = { u0: 100, u1: 500, endA: 'terminal', endB: 'terminal', medA: null, medB: null };
+const polysT = G.buildSegmentPolys(layT.edges.top, segT, cfgT, layT);
+ok(polysT.length === 1 && polysT[0].closed === true, '2-strand double-terminal segment closes into one loop, got ' + polysT.length);
+const cfgT3 = G.norm({ enabled: true, pattern: 'plait', strands: { count: 3 } });
+const polysT3 = G.buildSegmentPolys(layT.edges.top, { u0: 100, u1: 500, endA: 'corner', endB: 'terminal', medA: null, medB: null }, cfgT3, layT);
+ok(polysT3.length === 2, '3 strands, one terminal end: outer pair merges into one polyline, middle strand curls (2 polylines)');
+
+// ---- collectPolys: full-border sanity (permanent geometry invariants for render() smoke path)
+const cfgFull = G.norm({ enabled: true, pattern: 'plait', colors: { strands: ['#b3231a', '#e4670f', '#f5a623'], outline: '#2a0c05' }, breaks: [{ edge: 'bottom', at: 50, width: 26 }] });
+const got = G.collectPolys(cfgFull, 816, 1056, []);
+ok(got.polys.length > 6, 'collectPolys returns >6 polylines for a full border, got ' + got.polys.length);
+got.polys.forEach(function (p, i) {
+	ok(p.pts.length >= 2, 'polyline ' + i + ' has >=2 points');
+	p.pts.forEach(function (pt) {
+		ok(isFinite(pt[0]) && isFinite(pt[1]), 'polyline ' + i + ' coords finite');
+		ok(pt[0] >= -5 && pt[0] <= 1061 && pt[1] >= -5 && pt[1] <= 1061, 'polyline ' + i + ' coords within page bounds, got ' + pt);
+	});
+});
+const fullCross = G.findCrossings(got.polys, 3);
+ok(fullCross.length > 20, 'full border has >20 crossings, got ' + fullCross.length);
+fullCross.forEach(function (c) { ok(isFinite(c.x) && isFinite(c.y), 'crossing coords finite'); });
+
 console.log(bad === 0 ? 'ALL PASS (' + n + ' checks)' : (bad + ' of ' + n + ' checks FAILED'));
 process.exit(bad === 0 ? 0 : 1);
