@@ -28,24 +28,25 @@
 	function norm(cfg) {
 		cfg = cfg || {};
 		function o(v, d) { return (v == null) ? d : v; }
+		function num(v, d) { v = +v; return isFinite(v) ? v : d; }
 		var band = cfg.band || {}, st = cfg.strands || {}, co = cfg.colors || {}, gr = cfg.gradient || {}, ab = cfg.autoBreak || {};
 		return {
 			enabled: !!cfg.enabled,
 			pattern: o(cfg.pattern, 'plait'),
-			band: { inset: +o(band.inset, 2), width: +o(band.width, 6) },
-			strands: { count: clamp(+o(st.count, 3), 2, 4), thickness: +o(st.thickness, 0.55), gap: +o(st.gap, 0.12), scale: +o(st.scale, 1) },
+			band: { inset: num(band.inset, 2), width: num(band.width, 6) },
+			strands: { count: clamp(num(st.count, 3), 2, 4), thickness: num(st.thickness, 0.55), gap: num(st.gap, 0.12), scale: num(st.scale, 1) },
 			colors: {
 				strands: (Array.isArray(co.strands) && co.strands.length) ? co.strands.slice(0, 4) : ['#2e7d32', '#f4c542'],
 				outline: o(co.outline, '#1a1a1a')
 			},
 			gradient: {
-				enabled: !!gr.enabled, angle: +o(gr.angle, 90),
+				enabled: !!gr.enabled, angle: num(gr.angle, 90),
 				stops: (Array.isArray(gr.stops) && gr.stops.length >= 2) ? gr.stops : [{ at: 0, color: '#c62828' }, { at: 1, color: '#f9a825' }]
 			},
 			corners: o(cfg.corners, 'woven'),
 			medallions: Array.isArray(cfg.medallions) ? cfg.medallions : [],
 			breaks: Array.isArray(cfg.breaks) ? cfg.breaks : [],
-			autoBreak: { enabled: ab.enabled == null ? true : !!ab.enabled, padding: +o(ab.padding, 2) }
+			autoBreak: { enabled: ab.enabled == null ? true : !!ab.enabled, padding: num(ab.padding, 2) }
 		};
 	}
 
@@ -97,7 +98,7 @@
 		fs.forEach(function (f) {
 			var kind = f.type === 'medallion' ? 'medallion' : 'terminal';
 			push(cursor, clamp(f.u0, 0, edgeLen), prevEnd, kind, prevMed, f.type === 'medallion' ? f.med : null);
-			cursor = clamp(f.u1, 0, edgeLen);
+			cursor = Math.max(cursor, clamp(f.u1, 0, edgeLen));
 			prevEnd = kind; prevMed = (f.type === 'medallion') ? f.med : null;
 		});
 		push(cursor, edgeLen, prevEnd, cornerEnd, prevMed, null);
@@ -302,8 +303,11 @@
 		acc = (1 - frac) * segLen(idx); i = idx + 1; steps = 0;
 		while (acc < halfLen && steps++ < n) {
 			out.push(P(i).slice());
-			i++; if (i >= n && !closed) { break; }
-			acc += segLen(i);
+			i++;
+			if (i >= n) { if (!closed) { break; } i -= n; }
+			// segLen(n-1) on an open polyline reads P(n-1)->P(0), a phantom wrap segment that
+			// isn't part of the path -- only accumulate it when the polyline is actually closed.
+			if (closed || i <= n - 2) { acc += segLen(i); }
 		}
 		if (!closed) { return out; }
 		return out;

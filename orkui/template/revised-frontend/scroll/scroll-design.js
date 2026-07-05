@@ -210,6 +210,7 @@
 	function buildKnot() {
 		var box = document.getElementById('scKnot'); if (!box) { return; }
 		box.innerHTML = '';
+		if (!window.ScrollKnot) { box.appendChild(el('p', 'sc-empty', 'Border engine failed to load.')); return; }
 		var k = knotCfg();
 		// presets
 		var pr = el('div', 'sc-chips');

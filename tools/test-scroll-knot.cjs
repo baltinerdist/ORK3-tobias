@@ -44,6 +44,16 @@ const segs2 = G.segmentEdge(700, [{ type: 'medallion', u0: 280, u1: 420, med: me
 ok(segs2.length === 2 && segs2[0].endB === 'medallion' && segs2[1].endA === 'medallion' && segs2[0].med === med, 'medallion ends');
 // break swallowing whole edge -> no segments
 ok(G.segmentEdge(700, [{ type: 'break', u0: -10, u1: 710 }], L1.band, 'corner').length === 0, 'full-edge break -> nothing');
+// cursor pinning: a manual break wholly containing a later-sorted medallion footprint must not
+// let the cursor walk backward into the cleared gap (no segment may start inside [100,400)).
+const segsPin = G.segmentEdge(700, [
+	{ type: 'break', u0: 100, u1: 400 },
+	{ type: 'medallion', u0: 250, u1: 350, med: { edge: 'left', at: 45, size: 14 } }
+], L1.band, 'corner');
+segsPin.forEach(function (s, i) {
+	ok(s.u0 >= 400 || s.u1 <= 100, 'pinned segment ' + i + ' does not start inside cleared gap [100,400): u0=' + s.u0 + ' u1=' + s.u1);
+});
+for (let i = 1; i < segsPin.length; i++) { ok(segsPin[i].u0 >= segsPin[i - 1].u1, 'pinned segments monotonically ordered at index ' + i); }
 
 // ---- autoBreaks: a flagged slot overlapping the bottom band projects an interval
 const slot = { location: 'center_image', break_border: true, x: 35, y: 88, w: 30, h: 10 };  // % of page
@@ -117,6 +127,13 @@ if (polysT.length === 2) {
 const cfgT1 = G.norm({ enabled: true, pattern: 'plait', strands: { count: 2 }, colors: { strands: ['#333333'] } });
 const polysT1 = G.buildSegmentPolys(layT.edges.top, segT, cfgT1, layT);
 ok(polysT1.length === 1 && polysT1[0].closed === true, 'single-color 2-strand double-terminal segment still closes into one loop, got ' + polysT1.length);
+// N=4 single-color double-terminal segment: pairs (0,3) and (1,2) each merge at end A then
+// close into a loop at end B -> exactly 2 closed polylines, none left bare/unmerged.
+const cfgT4 = G.norm({ enabled: true, pattern: 'plait', strands: { count: 4 }, colors: { strands: ['#333333'] } });
+const polysT4 = G.buildSegmentPolys(layT.edges.top, segT, cfgT4, layT);
+ok(polysT4.length === 2, 'N=4 single-color double-terminal segment merges into 2 closed loops, got ' + polysT4.length);
+polysT4.forEach(function (p, i) { ok(p.closed === true, 'N=4 single-color loop ' + i + ' is closed'); });
+
 const cfgT3 = G.norm({ enabled: true, pattern: 'plait', strands: { count: 3 } });
 const polysT3 = G.buildSegmentPolys(layT.edges.top, { u0: 100, u1: 500, endA: 'corner', endB: 'terminal', medA: null, medB: null }, cfgT3, layT);
 ok(polysT3.length === 2, '3 strands, default 2 colors: outer pair (0,2) shares color -> merges, middle strand curls (2 polylines)');

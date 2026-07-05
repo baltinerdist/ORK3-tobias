@@ -29,8 +29,10 @@ frozen to a bitmap.
 
 ## 1. Data model
 
-New optional top-level key `knot` in the template JSON (no DB schema change —
-`ork_scroll_template` stores the JSON blob as-is):
+New optional top-level key `knot` in the template JSON. Note: this is stale as originally
+written — slots/zones are discrete `ork_scroll_template` columns (not a single JSON blob), and
+persisting `knot` required its own schema change: `db-migrations/2026-07-04-scroll-template-knot.sql`
+adds a `knot JSON NULL` column.
 
 ```json
 "knot": {
