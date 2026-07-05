@@ -728,9 +728,12 @@
 	// the page edge. Matches the reference scrolls, whose lozenges jut into the page.
 	// Inward shift (px) applied to an oversized medallion so its outer vertex clears the page edge.
 	function medallionShift(med, layout) {
+		// Compose like the reference art: the lozenge's OUTER vertex reaches only ~35% across
+		// the band (its tip merges into the braid's inner half), and the whole accent space
+		// sits inward of the border. shift positions the center so center - hd lands there.
+		// This is always at least as deep as the old page-edge-clearance rule.
 		var hd = (med.size / 100 * layout.S) / 2;
-		var edgeGap = layout.inset + layout.band / 2;        // page edge -> band centerline
-		return Math.max(0, hd + Math.max(2, layout.S * 0.005) - edgeGap);
+		return Math.max(0, hd - layout.band * 0.15);
 	}
 	function medallionCenter(med, e, layout) {
 		var shift = medallionShift(med, layout);

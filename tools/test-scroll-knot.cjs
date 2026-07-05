@@ -408,11 +408,15 @@ G.medallionPolys(medBig.medallions[0], mbL.edges.right, mbL, medBig).forEach(fun
 });
 const innerB = K.medallionInnerRects(medBig, 816, 1056)[0];
 ok(innerB.x > 0 && innerB.x + innerB.w < 100 && innerB.y > 0, 'shifted inner rect fully within page');
-// a small medallion that already fits stays centered on the band centerline
+// composition rule: the lozenge's outer vertex lands ~35% across the band (tip merges into
+// the braid's inner half; accent space fully inward) whenever the lozenge is bigger than that
 const medSm = G.norm({ enabled: true, band: { inset: 4, width: 8 }, medallions: [{ edge: 'left', at: 45, size: 8 }] });
 const msL = G.frameLayout(medSm, 816, 1056);
 const smC = G.medallionCenter(medSm.medallions[0], msL.edges.left, msL);
-near(smC[0], msL.inset + msL.band / 2, 0.01, 'small medallion stays on band centerline');
+{
+	const hdSm = (8 / 100 * msL.S) / 2;
+	near(smC[0] - hdSm, msL.inset + msL.band * 0.35, 0.01, 'outer vertex lands at 35% across the band');
+}
 
 // ---- splitByWindows (Change 1: true cut gaps -- cut holes in under-strand polylines instead of
 // painting a casing arc). RED-first: this geometry helper does not exist yet on the old engine.
