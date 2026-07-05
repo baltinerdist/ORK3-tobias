@@ -1735,6 +1735,190 @@
   "group": "Warrior"
  },
  {
+  "file": "orders/warrior/warrior_4.png",
+  "name": "Warrior 4",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "warrior",
+  "format": "png",
+  "width": 778,
+  "height": 736,
+  "tags": [
+   "warrior",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Warrior"
+ },
+ {
+  "file": "orders/archery/archery_1.png",
+  "name": "Archery 1",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "archery",
+  "format": "png",
+  "width": 566,
+  "height": 800,
+  "tags": [
+   "archery",
+   "bow",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Archery"
+ },
+ {
+  "file": "orders/archery/archery_2.png",
+  "name": "Archery 2",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "archery",
+  "format": "png",
+  "width": 570,
+  "height": 800,
+  "tags": [
+   "archery",
+   "bow",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Archery"
+ },
+ {
+  "file": "orders/archery/archery_3.png",
+  "name": "Archery 3",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "archery",
+  "format": "png",
+  "width": 541,
+  "height": 800,
+  "tags": [
+   "archery",
+   "bow",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Archery"
+ },
+ {
+  "file": "orders/archery/archery_4.png",
+  "name": "Archery 4",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "archery",
+  "format": "png",
+  "width": 483,
+  "height": 800,
+  "tags": [
+   "archery",
+   "bow",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Archery"
+ },
+ {
+  "file": "orders/griffon/griffon_1.png",
+  "name": "Griffon 1",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "griffon",
+  "format": "png",
+  "width": 438,
+  "height": 447,
+  "tags": [
+   "griffon",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Griffon"
+ },
+ {
+  "file": "orders/griffon/griffon_2.png",
+  "name": "Griffon 2",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "griffon",
+  "format": "png",
+  "width": 768,
+  "height": 610,
+  "tags": [
+   "griffon",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Griffon"
+ },
+ {
+  "file": "orders/griffon/griffon_3.png",
+  "name": "Griffon 3",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "griffon",
+  "format": "png",
+  "width": 572,
+  "height": 800,
+  "tags": [
+   "griffon",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Griffon"
+ },
+ {
+  "file": "orders/griffon/griffon_4.png",
+  "name": "Griffon 4",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "griffon",
+  "format": "png",
+  "width": 800,
+  "height": 787,
+  "tags": [
+   "griffon",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Griffon"
+ },
+ {
+  "file": "orders/griffon/griffon_5.png",
+  "name": "Griffon 5",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "griffon",
+  "format": "png",
+  "width": 686,
+  "height": 800,
+  "tags": [
+   "griffon",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Griffon"
+ },
+ {
   "file": "orders/hydra/hydra_1.png",
   "name": "Hydra 1",
   "category": "orders",
@@ -2232,6 +2416,24 @@
   "format": "png",
   "width": 488,
   "height": 466,
+  "tags": [
+   "smith",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Smith"
+ },
+ {
+  "file": "orders/smith/smith_3.png",
+  "name": "Smith 3",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "smith",
+  "format": "png",
+  "width": 800,
+  "height": 773,
   "tags": [
    "smith",
    "emblem"

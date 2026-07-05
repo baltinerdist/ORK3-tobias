@@ -21,7 +21,7 @@ CATEGORY_TO_COLLECTION = {'borders': 'borders', 'orders': 'order_images', 'backg
 # order in which groups should appear in each collection's type picker
 GROUP_ORDER = {
     'borders': ['Celtic (Gold)', 'Ribbon', 'Rose & Vine', 'Knotwork', 'Scrollwork', 'Chain & Rope', 'Geometric', 'Ornamental B&W', 'Warlord', 'Side Panels', 'Other'],
-    'order_images': ['Crown', 'Dragon', 'Lion', 'Rose', 'Owl', 'Warrior', 'Griffon', 'Hydra', 'Flame', 'Garber', 'Jovious', 'Masks', 'Masterhoods', 'Sashes', 'Smith', 'Zodiac', 'Logos', 'Other'],
+    'order_images': ['Crown', 'Dragon', 'Lion', 'Rose', 'Owl', 'Warrior', 'Archery', 'Griffon', 'Hydra', 'Flame', 'Garber', 'Jovious', 'Masks', 'Masterhoods', 'Sashes', 'Smith', 'Zodiac', 'Logos', 'Other'],
     'backgrounds': ['Paper & Stone', 'Scenic'],
 }
 
