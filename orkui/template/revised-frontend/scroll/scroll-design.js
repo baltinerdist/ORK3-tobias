@@ -22,20 +22,20 @@
 	var LOCATIONS = ['full_border', 'center_image', 'top_graphic', 'background', 'border_left', 'border_right', 'border_top', 'border_bottom'];
 
 	var KNOT_PRESETS = {
-		Flame: { enabled: true, pattern: 'plait', band: { inset: 1.8, width: 5.5 }, strands: { count: 3, thickness: 0.48, gap: 0.12, scale: 0.85 },
+		Flame: { enabled: true, pattern: 'plait', band: { inset: 1.8, width: 5.5 }, strands: { count: 3, thickness: 0.48, gap: 0.05, scale: 0.85 },
 			colors: { strands: ['#b3231a', '#e4670f', '#f5a623'], outline: '#2a0c05' },
 			gradient: { enabled: true, angle: 90, stops: [{ at: 0, color: '#a11212' }, { at: 0.55, color: '#e4670f' }, { at: 1, color: '#f7c948' }] },
 			corners: 'hook', medallions: [{ edge: 'left', at: 42, size: 13, shape: 'diamond' }, { edge: 'right', at: 42, size: 13, shape: 'diamond' }],
 			breaks: [{ edge: 'top', at: 50, width: 10 }, { edge: 'bottom', at: 50, width: 26 }], autoBreak: { enabled: true, padding: 2 } },
-		Dragon: { enabled: true, pattern: 'openweave', band: { inset: 2, width: 6.2 }, strands: { count: 4, thickness: 0.55, gap: 0.12, scale: 1 },
+		Dragon: { enabled: true, pattern: 'openweave', band: { inset: 2, width: 6.2 }, strands: { count: 4, thickness: 0.55, gap: 0.05, scale: 1 },
 			colors: { strands: ['#2e6b2f', '#e9b840'], outline: '#12240f' }, gradient: { enabled: false, angle: 90, stops: [{ at: 0, color: '#2e6b2f' }, { at: 1, color: '#e9b840' }] },
 			corners: 'woven', medallions: [{ edge: 'left', at: 40, size: 14, shape: 'diamond' }, { edge: 'right', at: 40, size: 14, shape: 'diamond' }],
 			breaks: [{ edge: 'bottom', at: 50, width: 26 }], autoBreak: { enabled: true, padding: 2 } },
-		Crown: { enabled: true, pattern: 'openweave', band: { inset: 2, width: 6 }, strands: { count: 4, thickness: 0.55, gap: 0.12, scale: 1 },
+		Crown: { enabled: true, pattern: 'openweave', band: { inset: 2, width: 6 }, strands: { count: 4, thickness: 0.55, gap: 0.05, scale: 1 },
 			colors: { strands: ['#2b2b2e', '#e7b83b'], outline: '#101012' }, gradient: { enabled: false, angle: 90, stops: [{ at: 0, color: '#2b2b2e' }, { at: 1, color: '#e7b83b' }] },
 			corners: 'woven', medallions: [{ edge: 'left', at: 33, size: 13, shape: 'diamond' }, { edge: 'right', at: 33, size: 13, shape: 'diamond' }],
 			breaks: [{ edge: 'bottom', at: 50, width: 30 }], autoBreak: { enabled: true, padding: 2 } },
-		Smith: { enabled: true, pattern: 'twist', band: { inset: 2, width: 5.8 }, strands: { count: 2, thickness: 0.6, gap: 0.14, scale: 1 },
+		Smith: { enabled: true, pattern: 'twist', band: { inset: 2, width: 5.8 }, strands: { count: 2, thickness: 0.6, gap: 0.06, scale: 1 },
 			colors: { strands: ['#8a6844', '#7b8494'], outline: '#241a10' }, gradient: { enabled: false, angle: 90, stops: [{ at: 0, color: '#8a6844' }, { at: 1, color: '#7b8494' }] },
 			corners: 'woven', medallions: [{ edge: 'left', at: 45, size: 13, shape: 'diamond' }, { edge: 'right', at: 45, size: 13, shape: 'diamond' }],
 			breaks: [{ edge: 'bottom', at: 50, width: 30 }], autoBreak: { enabled: true, padding: 2 } }

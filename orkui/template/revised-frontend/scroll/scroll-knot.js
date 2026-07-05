@@ -81,7 +81,7 @@
 	// ---------- strand metrics ----------
 	function lane(i, N, band) { return band * (i + 0.5) / N; }
 	function strandW(band, N, sp) { return Math.max(2, (band / N) * clamp(sp.thickness, 0.2, 0.95)); }
-	function outlineW(wf) { return clamp(wf * 0.16, 1.1, 3); }
+	function outlineW(wf) { return clamp(wf * 0.22, 1.2, 4.5); }   // bold inked outline (reference weight)
 	function STEP(band) { return clamp(band / 16, 1.25, 4); }
 	function TERM(band) { return band * 0.55; }
 	function EASE(lam, L) { return Math.min(lam * 0.35, L * 0.25); }             // shortened (was 0.6/0.4) -- kills long necks
@@ -469,6 +469,9 @@
 		var polyIdx = underIsA ? c.a : c.b;
 		var idx = underIsA ? c.ia : c.ib, frac = underIsA ? c.fa : c.fb;
 		var sinA = crossingAngleSin(c, polys);
+		// Near-tangent contact is a FUSION, not an over/under: a medallion landing curve merging
+		// onto a ring (or any glancing overlap) must not cut a hole -- the paths simply merge.
+		if (sinA < 0.25) { return null; }
 		var halfLen = Math.min(wf * 3.5, (wOut / 2 + gapPx) / Math.max(0.35, sinA));
 		// Safety cap (Finding: near-tangent fusions, e.g. a medallion landing curve fusing onto a
 		// small ring, drive sinA to its floor and so halfLen to its max -- on a SHORT polyline (a
@@ -877,6 +880,7 @@
 		var windowsByIdx = polys.map(function () { return []; });
 		findCrossings(polys, wf * 0.8).forEach(function (c) {
 			var w = underWindow(c, polys, wf, gapPx, wOut);
+			if (!w) { return; }                                 // tangent fusion -> no hole
 			windowsByIdx[w.polyIdx].push({ idx: w.idx, frac: w.frac, halfLen: w.halfLen });
 		});
 		var cut = [];
