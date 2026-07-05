@@ -97,7 +97,7 @@
 	var HOOK_MARGIN_FACTOR = 0.2;          // hook feature interval = quarter-arc span +/- band*this
 	var FUNNEL_LEN_FACTOR = 1.1;           // vertex funnel: blend length (x band) over which a medallion-end strand eases into the compressed bundle lane
 	var FUNNEL_COMPRESS = 0.6;              // vertex funnel: bundle lane compression toward centerline (0=full centerline, 1=full lane spread) -- tuned up from spec's 0.22 starting point (see visual acceptance)
-	var FUNNEL_OVERSHOOT_FACTOR = 0.25;    // vertex funnel: extra distance (x band), past the medallion pad, that funneled tips overshoot beyond the near vertex
+	var FUNNEL_OVERSHOOT_FACTOR = 0.3;    // vertex funnel: extra distance (x band), past the medallion pad, that funneled tips overshoot beyond the near vertex
 
 	// ---------- spine (centerline rounded-rect the whole border weaves along) ----------
 	// Walks CLOCKWISE starting where the top run begins (end of the TL corner arc):
@@ -548,6 +548,11 @@
 				if (s1n <= domainLen + 1e-9) { holes.push([s0n, Math.min(s1n, domainLen)]); }
 				else { holes.push([s0n, domainLen]); holes.push([0, s1n - domainLen]); }
 			} else {
+				// Snap-to-end: a hole landing near an OPEN strand's end swallows the leftover nub
+				// (e.g. a funnel tip's remnant past its last ring crossing would otherwise survive
+				// as a detached sliver inside the lozenge).
+				if (s0 < 1.8 * win.halfLen) { s0 = -1; }
+				if (s1 > domainLen - 1.8 * win.halfLen) { s1 = domainLen + 1; }
 				holes.push([clamp(s0, 0, domainLen), clamp(s1, 0, domainLen)]);
 			}
 		});
@@ -646,6 +651,30 @@
 		}
 		var N = res.strands.length;
 		extendMedallionFunnel(res.strands, N, band, kindA, kindB, Lseg);
+		// Aim the funnel at the medallion's TRUE center axis: oversized medallions are shifted
+		// page-inward (medallionShift), so the bundle must ramp from the weave centerline onto
+		// that shifted axis or the tips visibly miss the diamond's near vertex. +v is page-inward
+		// everywhere in the spine sweep, so the shift adds directly. Ramp spans the funnel window;
+		// extension tips (beyond the segment ends) carry the full shift.
+		var shiftA = (kindA === 'medallion' && seg.medA) ? medallionShift(seg.medA, layout) : 0;
+		var shiftB = (kindB === 'medallion' && seg.medB) ? medallionShift(seg.medB, layout) : 0;
+		if (shiftA || shiftB) {
+			var fw = funnelLen(band, Math.max(Lw, band));
+			res.strands.forEach(function (s) {
+				s.pts.forEach(function (p) {
+					if (shiftA) {
+						var dA2 = p[0] - tA;
+						if (dA2 <= 0) { p[1] += shiftA; }
+						else if (dA2 < fw) { p[1] += shiftA * (1 - smooth(dA2 / fw)); }
+					}
+					if (shiftB) {
+						var dB2 = (Lseg - tB) - p[0];
+						if (dB2 <= 0) { p[1] += shiftB; }
+						else if (dB2 < fw) { p[1] += shiftB * (1 - smooth(dB2 / fw)); }
+					}
+				});
+			});
+		}
 		var paletteLen = (cfg.colors.strands && cfg.colors.strands.length) || 1;
 		// terminal arcs: pair lane i with lane N-1-i (fixed for both A and B passes); odd middle curls.
 		// Each pair (i, N-1-i) is visited once per open end (once by endArcs('A'), once by endArcs('B')).
@@ -756,10 +785,15 @@
 	// Diamond center: on the band centerline, shifted INWARD (into the page) when the
 	// lozenge's across-extent exceeds the page margin, so its outer vertex never clips
 	// the page edge. Matches the reference scrolls, whose lozenges jut into the page.
-	function medallionCenter(med, e, layout) {
+	// Inward shift (px) applied to an oversized medallion so its outer vertex clears the page
+	// edge. Also the v-offset the vertex funnel must aim at (the diamond's true center axis).
+	function medallionShift(med, layout) {
 		var hd = (med.size / 100 * layout.S) / 2;
 		var edgeGap = layout.inset + layout.band / 2;        // page edge -> band centerline
-		var shift = Math.max(0, hd + Math.max(2, layout.S * 0.005) - edgeGap);
+		return Math.max(0, hd + Math.max(2, layout.S * 0.005) - edgeGap);
+	}
+	function medallionCenter(med, e, layout) {
+		var shift = medallionShift(med, layout);
 		// v=0 is the page-outer side on top/left edges; v=band is page-outer on bottom/right
 		var inward = (e.name === 'top' || e.name === 'left') ? 1 : -1;
 		return toPage(e, med.at / 100 * e.len, layout.band / 2 + inward * shift);
@@ -768,8 +802,8 @@
 		var hd = (med.size / 100 * layout.S) / 2;
 		var C = medallionCenter(med, e, layout);
 		return [
-			{ pts: diamond(C[0], C[1], hd * 1.0, hd * 0.8, e, 12), color: 0, closed: true },
-			{ pts: diamond(C[0], C[1], hd * 0.8, hd * 1.0, e, 12), color: 1, closed: true }
+			{ pts: diamond(C[0], C[1], hd * 1.0, hd * 0.8, e, 12), color: 0, closed: true, ring: true },
+			{ pts: diamond(C[0], C[1], hd * 0.8, hd * 1.0, e, 12), color: 1, closed: true, ring: true }
 		];
 	}
 	function medallionInnerRects(rawCfg, W, H) {
@@ -860,6 +894,11 @@
 	function paintCutStrokes(svg, polys, outlineColor, wf, wOut, paintOfFn) {
 		var windowsByIdx = polys.map(function () { return []; });
 		findCrossings(polys, wf * 0.8).forEach(function (c) {
+			// Medallion rings deterministically lie OVER the funnel tips (and any other weave
+			// strand): the tip always tucks under the lozenge and can never poke into its
+			// interior. Ring-vs-ring crossings keep normal alternation (mostly tangent-fused).
+			var ringA = !!polys[c.a].ring, ringB = !!polys[c.b].ring;
+			if (ringA !== ringB) { c.over = ringA ? 'a' : 'b'; }
 			var w = underWindow(c, polys, wf, wOut);
 			if (!w) { return; }                                 // tangent fusion -> no hole
 			windowsByIdx[w.polyIdx].push({ idx: w.idx, frac: w.frac, halfLen: w.halfLen });
@@ -944,7 +983,7 @@
 			patterns: patterns, findCrossings: findCrossings, blendHex: blendHex, subPolyline: subPolyline,
 			buildSpineSegmentPolys: buildSpineSegmentPolys, buildClosedLoopPolys: buildClosedLoopPolys, collectPolys: collectPolys,
 			curl: curl, rimArc: rimArc, innerArc: innerArc, hookPolys: hookPolys,
-			medallionPolys: medallionPolys, medallionCenter: medallionCenter, cubic: cubic,
+			medallionPolys: medallionPolys, medallionCenter: medallionCenter, medallionShift: medallionShift, cubic: cubic,
 			crossingAngleSin: crossingAngleSin, underWindow: underWindow, splitByWindows: splitByWindows,
 			spine: spine, spineAt: spineAt, sweepPt: sweepPt, edgeIntervalToS: edgeIntervalToS,
 			STEP: STEP, TERM: TERM, EASE: EASE, clamp: clamp, lerp: lerp, smooth: smooth, effCount: effCount,
