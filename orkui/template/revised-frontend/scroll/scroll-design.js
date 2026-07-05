@@ -107,6 +107,45 @@
 		return s;
 	}
 
+	// Visual font picker: each option previews "Order of the ORK" in the font,
+	// with the font name beneath in the UI font. Fixed-positioned menu so the
+	// scrolling inspector panel doesn't clip it.
+	var FONT_PREVIEW = 'Order of the ORK';
+	function fontPicker(current, onPick) {
+		var wrap = el('label', 'sc-field');
+		wrap.appendChild(el('span', 'sc-field__label', 'Font'));
+		var pick = el('div', 'sc-fontpick');
+		var trigger = el('button', 'sc-fontpick__trigger'); trigger.type = 'button';
+		var prev = el('span', 'sc-fontpick__prev', FONT_PREVIEW); prev.style.fontFamily = "'" + current + "'";
+		trigger.appendChild(prev);
+		trigger.appendChild(el('span', 'sc-fontpick__name', current + '  ▾'));
+		var menu = el('div', 'sc-fontpick__menu');
+		FONTS.forEach(function (f) {
+			var opt = el('button', 'sc-fontpick__opt' + (f === current ? ' is-sel' : '')); opt.type = 'button';
+			var p = el('span', 'sc-fontpick__prev', FONT_PREVIEW); p.style.fontFamily = "'" + f + "'";
+			opt.appendChild(p);
+			opt.appendChild(el('span', 'sc-fontpick__name', f));
+			opt.onmousedown = function (e) { e.preventDefault(); onPick(f); };   // rebuild handles close
+			menu.appendChild(opt);
+		});
+		var isOpen = false;
+		function close() { menu.classList.remove('sc-fontpick__menu--open'); isOpen = false; }
+		function open() {
+			var r = trigger.getBoundingClientRect();
+			menu.style.position = 'fixed';
+			menu.style.left = r.left + 'px';
+			menu.style.top = (r.bottom + 2) + 'px';
+			menu.style.width = Math.max(r.width, 240) + 'px';
+			menu.classList.add('sc-fontpick__menu--open'); isOpen = true;
+			var sel = menu.querySelector('.is-sel'); if (sel) { sel.scrollIntoView({ block: 'nearest' }); }
+		}
+		trigger.onclick = function () { isOpen ? close() : open(); };
+		document.addEventListener('click', function (e) { if (!pick.contains(e.target)) { close(); } });
+		pick.appendChild(trigger); pick.appendChild(menu);
+		wrap.appendChild(pick);
+		return wrap;
+	}
+
 	// ---- inspector: Page ----
 	function buildPage() {
 		var box = document.getElementById('scPageProps'); box.innerHTML = '';
@@ -172,7 +211,7 @@
 				chips.appendChild(c);
 			});
 			box.appendChild(field('Insert', chips));
-			box.appendChild(field('Font', select(FONTS, z.font, function (v) { z.font = v; render(); })));
+			box.appendChild(fontPicker(z.font, function (v) { z.font = v; render(); buildSelected(); }));
 			var row = el('div', 'sc-row');
 			row.appendChild(field('Size', input(z.size, 'number', function (v) { z.size = +v || z.size; render(); })));
 			row.appendChild(field('Align', select(['left', 'center', 'right'], z.align, function (v) { z.align = v; render(); })));
