@@ -474,6 +474,14 @@
 		var sinA = crossingAngleSin(c, polys);
 		return Math.min(wf * 3, (wf * 0.75 + gapPx) / Math.max(0.35, sinA));
 	}
+	// Continuous-strand rule: the crossing redraw's FILL window extends past the dark casing
+	// window, so the casing's protruding round end-caps are swallowed by same-paint fill and
+	// the over strand reads as one continuous ribbon. Dark lines then appear ONLY where an
+	// overlap genuinely interrupts the under strand -- like hand-drawn knotwork.
+	function crossingWindows(c, polys, wf, gapPx, wOut) {
+		var casing = crossingHalfLen(c, polys, wf, gapPx);
+		return { casing: casing, fill: casing + (wOut + 2 * gapPx) / 2 + 1.5 };
+	}
 
 	// ---------- terminals (end caps, generated in (u,v) BEFORE sweeping) ----------
 	// Rim pair (outermost lanes): a TRUE (non-squashed) semicircle -- same radius for both axes,
@@ -844,11 +852,12 @@
 			var overIdx = (c.over === 'a') ? c.a : c.b;
 			var idx = (c.over === 'a') ? c.ia : c.ib, frac = (c.over === 'a') ? c.fa : c.fb;
 			var p = polys[overIdx];
-			var arc = subPolyline(p.pts, p.closed, idx, frac, crossingHalfLen(c, polys, wf, gapPx));
-			if (arc.length < 2) { return; }
-			var d = polyPath(arc, false);
-			strokePath(gCross, d, cfg.colors.outline, wOut + 2 * gapPx);
-			strokePath(gCross, d, paintOf(p.color), wf);
+			var win = crossingWindows(c, polys, wf, gapPx, wOut);
+			var arcC = subPolyline(p.pts, p.closed, idx, frac, win.casing);
+			var arcF = subPolyline(p.pts, p.closed, idx, frac, win.fill);
+			if (arcC.length < 2 || arcF.length < 2) { return; }
+			strokePath(gCross, polyPath(arcC, false), cfg.colors.outline, wOut + 2 * gapPx);
+			strokePath(gCross, polyPath(arcF, false), paintOf(p.color), wf);
 		});
 		svg.appendChild(gOutline); svg.appendChild(gFill); svg.appendChild(gCross);
 		return svg;
@@ -874,10 +883,12 @@
 		polys.forEach(function (p) { strokePath(g2, polyPath(p.pts, p.closed), cfg.colors.strands[p.color % cfg.colors.strands.length], wf); });
 		findCrossings(polys, wf * 0.8).forEach(function (c) {
 			var overIdx = (c.over === 'a') ? c.a : c.b, idx = (c.over === 'a') ? c.ia : c.ib, frac = (c.over === 'a') ? c.fa : c.fb;
-			var p = polys[overIdx], arc = subPolyline(p.pts, p.closed, idx, frac, crossingHalfLen(c, polys, wf, gapPx));
-			if (arc.length < 2) { return; }
-			strokePath(g3, polyPath(arc, false), cfg.colors.outline, wOut + 2 * gapPx);
-			strokePath(g3, polyPath(arc, false), cfg.colors.strands[p.color % cfg.colors.strands.length], wf);
+			var p = polys[overIdx], win = crossingWindows(c, polys, wf, gapPx, wOut);
+			var arcC = subPolyline(p.pts, p.closed, idx, frac, win.casing);
+			var arcF = subPolyline(p.pts, p.closed, idx, frac, win.fill);
+			if (arcC.length < 2 || arcF.length < 2) { return; }
+			strokePath(g3, polyPath(arcC, false), cfg.colors.outline, wOut + 2 * gapPx);
+			strokePath(g3, polyPath(arcF, false), cfg.colors.strands[p.color % cfg.colors.strands.length], wf);
 		});
 		svg.appendChild(g1); svg.appendChild(g2); svg.appendChild(g3);
 		return svg;
@@ -894,7 +905,7 @@
 			buildSpineSegmentPolys: buildSpineSegmentPolys, buildClosedLoopPolys: buildClosedLoopPolys, collectPolys: collectPolys,
 			curl: curl, rimArc: rimArc, innerArc: innerArc, hookPolys: hookPolys,
 			medallionPolys: medallionPolys, medallionCenter: medallionCenter, cubic: cubic,
-			crossingAngleSin: crossingAngleSin, crossingHalfLen: crossingHalfLen,
+			crossingAngleSin: crossingAngleSin, crossingHalfLen: crossingHalfLen, crossingWindows: crossingWindows,
 			spine: spine, spineAt: spineAt, sweepPt: sweepPt, edgeIntervalToS: edgeIntervalToS, centerLanes: centerLanes,
 			STEP: STEP, TERM: TERM, EASE: EASE, clamp: clamp, lerp: lerp, smooth: smooth, effCount: effCount
 		}

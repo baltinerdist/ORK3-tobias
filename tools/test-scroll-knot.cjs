@@ -360,5 +360,15 @@ const msL = G.frameLayout(medSm, 816, 1056);
 const smC = G.medallionCenter(medSm.medallions[0], msL.edges.left, msL);
 near(smC[0], msL.inset + msL.band / 2, 0.01, 'small medallion stays on band centerline');
 
+// ---- continuous-strand rule: crossing fill window extends past the casing window
+{
+	const cwPolys = [sine(0), sine(Math.PI)];
+	const cwc = G.findCrossings(cwPolys)[0];
+	const wfT = 12, gapT = 1.4, wOutT = 12 + 2 * G.outlineW(12);
+	const win = G.crossingWindows(cwc, cwPolys, wfT, gapT, wOutT);
+	ok(win.casing === G.crossingHalfLen(cwc, cwPolys, wfT, gapT), 'casing window matches angle-aware half-length');
+	ok(win.fill >= win.casing + wOutT / 2, 'fill window extends past the casing by at least half the casing width');
+}
+
 console.log(bad === 0 ? 'ALL PASS (' + n + ' checks)' : (bad + ' of ' + n + ' checks FAILED'));
 process.exit(bad === 0 ? 0 : 1);
