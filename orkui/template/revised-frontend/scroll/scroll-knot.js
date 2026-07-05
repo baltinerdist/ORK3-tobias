@@ -100,12 +100,12 @@
 	var INNER_REACH_FACTOR = 0.55;         // nested inner cap bulge depth = radius * this
 	var CURL_RADIUS_FACTOR = 0.18;         // odd-middle-strand curl radius = band * this
 	var POINTED_R = 0.01;                  // px, degenerate spine corner radius in pointed mode (arcs ~zero-length)
-	var HOOK_ROLL_TURNS = 1.6;             // extra roll sweep past the rim semicircle, in units of PI
-	var HOOK_ROLL_DRIFT_FACTOR = 0.52;     // roll center drifts this * band along +u into the gap
-	var HOOK_ROLL_VDRIFT_FACTOR = 0.05;    // roll center drifts this * band toward page-inward (v > band/2)
-	var HOOK_ROLL_MIN_R_FACTOR = 0.2;      // roll radius shrinks to this * band at the tail tip (kept > stroke width so the coil reads open, not a filled dot)
+	var HOOK_ROLL_TURNS = 1.75;            // extra roll sweep past the rim semicircle, in units of PI
+	var HOOK_ROLL_DRIFT_FACTOR = 0.75;     // roll center drifts this * band along +u into the gap
+	var HOOK_ROLL_VDRIFT_FACTOR = 0.25;    // roll center drifts this * band toward page-inward (v > band/2)
+	var HOOK_ROLL_MIN_R_FACTOR = 0.17;     // roll radius shrinks to this * band at the tail tip (kept > stroke width so the coil reads open, not a filled dot)
+	var HOOK_ROLL_DRIFT_SETTLE = 0.35;     // fraction of the tail sweep by which the center reaches full drift and stays put (a moving center unwinds the coil into a droopy line)
 	var HOOK_ROLL_SAMPLES_PER_PI = 24;     // roll sampling density (points per PI of sweep)
-	var CURL_RADIUS_FACTOR_HOOK = 0.12;    // odd-middle curl radius factor in hook-terminal mode (tucks inside the roll)
 	var INNER_REACH_FACTOR_HOOK = 0.4;     // nested inner cap reach factor in hook-terminal mode
 
 	// ---------- spine (centerline rounded-rect the whole border weaves along) ----------
@@ -673,8 +673,12 @@
 		for (k = 1; k <= nR; k++) {
 			var t = k / nR;
 			th = Math.PI + t * extra;
-			var cu = ue + dir * smooth(t) * HOOK_ROLL_DRIFT_FACTOR * band;
-			var cv = mid + sign * smooth(t) * HOOK_ROLL_VDRIFT_FACTOR * band;
+			// Drift must be front-loaded then STOP: the tail's first half-winding
+			// (sin(th)<0) swings back over the weave unless the center clears it early,
+			// and a center that keeps moving unwinds the coil into a droopy line.
+			var settle = Math.min(1, t / HOOK_ROLL_DRIFT_SETTLE);
+			var cu = ue + dir * settle * HOOK_ROLL_DRIFT_FACTOR * band;
+			var cv = mid + sign * smooth(settle) * HOOK_ROLL_VDRIFT_FACTOR * band;
 			var rr = lerp(r * RIM_RADIUS_FACTOR, HOOK_ROLL_MIN_R_FACTOR * band, t);
 			pts.push([cu + dir * Math.sin(th) * rr, cv - Math.cos(th) * rr * sign]);
 		}
@@ -750,8 +754,10 @@
 			}
 			if (N % 2 === 1) {
 				var m = res.strands[(N - 1) / 2];
-				if (m && !m.merged && !m.closed) {              // m.closed: defensive only, never closed elsewhere
-					var c = curl(ue, lane((N - 1) / 2, N, band), dir, band, hookMode ? CURL_RADIUS_FACTOR_HOOK : 0);
+				if (m && !m.merged && !m.closed && !hookMode) { // m.closed: defensive only, never closed elsewhere
+					// hook mode: no curl -- the middle strand ends bare under the roll's fold
+					// (a curl there fills the fold's eye and reads as a muddy blob)
+					var c = curl(ue, lane((N - 1) / 2, N, band), dir, band, 0);
 					if (isA) { m.pts = c.slice().reverse().concat(m.pts); } else { m.pts = m.pts.concat(c); }
 				}
 			}
