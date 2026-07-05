@@ -236,5 +236,22 @@ gotHookMed.polys.forEach(function (p, i) {
 const hookMedCross = G.findCrossings(gotHookMed.polys, 3);
 hookMedCross.forEach(function (c) { ok(isFinite(c.x) && isFinite(c.y), 'hook+medallion crossing coords finite'); });
 
+// ---- medallion inward shift: an oversized lozenge must never clip the page edge
+const medBig = G.norm({ enabled: true, medallions: [{ edge: 'left', at: 45, size: 14 }] });
+const mbL = G.frameLayout(medBig, 816, 1056);
+G.medallionPolys(medBig.medallions[0], mbL.edges.left, mbL, medBig).forEach(function (ring) {
+	ring.pts.forEach(function (p) { ok(p[0] >= 1, 'medallion ring inside left page edge, x=' + p[0].toFixed(1)); });
+});
+G.medallionPolys(medBig.medallions[0], mbL.edges.right, mbL, medBig).forEach(function (ring) {
+	ring.pts.forEach(function (p) { ok(p[0] <= 815, 'medallion ring inside right page edge, x=' + p[0].toFixed(1)); });
+});
+const innerB = K.medallionInnerRects(medBig, 816, 1056)[0];
+ok(innerB.x > 0 && innerB.x + innerB.w < 100 && innerB.y > 0, 'shifted inner rect fully within page');
+// a small medallion that already fits stays centered on the band centerline
+const medSm = G.norm({ enabled: true, band: { inset: 4, width: 8 }, medallions: [{ edge: 'left', at: 45, size: 8 }] });
+const msL = G.frameLayout(medSm, 816, 1056);
+const smC = G.medallionCenter(medSm.medallions[0], msL.edges.left, msL);
+near(smC[0], msL.inset + msL.band / 2, 0.01, 'small medallion stays on band centerline');
+
 console.log(bad === 0 ? 'ALL PASS (' + n + ' checks)' : (bad + ' of ' + n + ' checks FAILED'));
 process.exit(bad === 0 ? 0 : 1);

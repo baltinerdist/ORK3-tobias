@@ -478,9 +478,20 @@
 		}
 		return pts;
 	}
+	// Diamond center: on the band centerline, shifted INWARD (into the page) when the
+	// lozenge's across-extent exceeds the page margin, so its outer vertex never clips
+	// the page edge. Matches the reference scrolls, whose lozenges jut into the page.
+	function medallionCenter(med, e, layout) {
+		var hd = (med.size / 100 * layout.S) / 2;
+		var edgeGap = layout.inset + layout.band / 2;        // page edge -> band centerline
+		var shift = Math.max(0, hd + Math.max(2, layout.S * 0.005) - edgeGap);
+		// v=0 is the page-outer side on top/left edges; v=band is page-outer on bottom/right
+		var inward = (e.name === 'top' || e.name === 'left') ? 1 : -1;
+		return toPage(e, med.at / 100 * e.len, layout.band / 2 + inward * shift);
+	}
 	function medallionPolys(med, e, layout, cfg) {
 		var hd = (med.size / 100 * layout.S) / 2;
-		var C = toPage(e, med.at / 100 * e.len, layout.band / 2);
+		var C = medallionCenter(med, e, layout);
 		return [
 			{ pts: diamond(C[0], C[1], hd * 1.0, hd * 0.8, e, 12), color: 0, closed: true },
 			{ pts: diamond(C[0], C[1], hd * 0.8, hd * 1.0, e, 12), color: 1, closed: true }
@@ -491,7 +502,7 @@
 		cfg.medallions.forEach(function (m) {
 			var e = layout.edges[m.edge]; if (!e) { return; }
 			var hd = (m.size / 100 * layout.S) / 2;
-			var C = toPage(e, m.at / 100 * e.len, layout.band / 2);
+			var C = medallionCenter(m, e, layout);
 			var half = hd * 0.8 / Math.SQRT2 * 0.9;
 			out.push({ edge: m.edge, at: m.at, x: (C[0] - half) / W * 100, y: (C[1] - half) / H * 100, w: 2 * half / W * 100, h: 2 * half / H * 100 });
 		});
@@ -640,7 +651,7 @@
 			mergeIntervals: mergeIntervals, segmentEdge: segmentEdge, autoBreaks: autoBreaks,
 			patterns: patterns, findCrossings: findCrossings, blendHex: blendHex, subPolyline: subPolyline,
 			buildSegmentPolys: buildSegmentPolys, collectPolys: collectPolys, uTurn: uTurn, curl: curl,
-			cornerPolys: cornerPolys, medallionPolys: medallionPolys, cubic: cubic,
+			cornerPolys: cornerPolys, medallionPolys: medallionPolys, medallionCenter: medallionCenter, cubic: cubic,
 			crossingAngleSin: crossingAngleSin, crossingHalfLen: crossingHalfLen,
 			STEP: STEP, TERM: TERM, EASE: EASE, clamp: clamp, lerp: lerp, smooth: smooth, effCount: effCount
 		}
