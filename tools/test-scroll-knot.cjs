@@ -251,15 +251,12 @@ ok(G.effCount(G.norm({ pattern: 'plait', strands: { count: 3 } })) === 3, 'effCo
 	});
 });
 
-// ---- norm(): corners/terminals whitelist + legacy corners:'hook' mapping
-ok(G.norm({}).corners === 'woven' && G.norm({}).terminals === 'cap', 'default corners woven, default terminals cap');
+// ---- norm(): corners whitelist + legacy corners:'hook' mapping
+ok(G.norm({}).corners === 'woven', 'default corners woven');
 ok(G.norm({ corners: 'pointed' }).corners === 'pointed', 'pointed corners pass through');
 ok(G.norm({ corners: 'nonsense' }).corners === 'woven', 'unknown corners value falls back to woven');
-ok(G.norm({ terminals: 'nonsense' }).terminals === 'cap', 'unknown terminals value falls back to cap');
-const legacyHook = G.norm({ corners: 'hook' });
-ok(legacyHook.corners === 'pointed' && legacyHook.terminals === 'hook', 'legacy corners:hook -> pointed corners + hook terminals');
-const legacyHookCap = G.norm({ corners: 'hook', terminals: 'cap' });
-ok(legacyHookCap.corners === 'pointed' && legacyHookCap.terminals === 'cap', 'legacy corners:hook with explicit terminals:cap keeps cap');
+ok(G.norm({ corners: 'hook' }).corners === 'pointed', 'legacy corners:hook -> pointed corners');
+ok(!('terminals' in G.norm({})), 'no terminals key in normalized config (hook terminals removed)');
 
 // ---- pointed spine: R ~ 0 -> total length ~ rectangle perimeter; normals stay unit length
 const cfgPtd = G.norm({ enabled: true, pattern: 'plait', corners: 'pointed' });
@@ -298,54 +295,6 @@ ok(badPtdNormal === 0, 'pointed spine normals are unit length, got ' + badPtdNor
 			ok(pt[0] >= -2 && pt[0] <= 816 + 2 && pt[1] >= -2 && pt[1] <= 1056 + 2, 'pointed polyline ' + i + ' within page bounds +/-2, got ' + pt);
 		});
 	});
-}
-
-// ---- hook terminals (bottom break, plait): finite/in-bounds, and the roll protrudes into the
-// gap -- at least one OPEN polyline endpoint lies inside the gap's band-strip (the observable
-// difference vs cap mode, whose gap-emptiness probes above stay on default cap).
-{
-	const cfgRoll = G.norm({
-		enabled: true, pattern: 'plait', terminals: 'hook',
-		breaks: [{ edge: 'bottom', at: 50, width: 20 }], autoBreak: { enabled: false }
-	});
-	const rollLayout = G.frameLayout(cfgRoll, 816, 1056);
-	const gotRoll = G.collectPolys(cfgRoll, 816, 1056, []);
-	const rGapHalf = 20 / 100 * rollLayout.edges.bottom.len / 2;
-	const rGapCx = 816 / 2, rGapY0 = 1056 - rollLayout.inset - rollLayout.band, rGapY1 = 1056 - rollLayout.inset;
-	let rollTips = 0;
-	gotRoll.polys.forEach(function (p, i) {
-		p.pts.forEach(function (pt) {
-			ok(isFinite(pt[0]) && isFinite(pt[1]), 'hook-terminal polyline ' + i + ' coords finite');
-			ok(pt[0] >= -2 && pt[0] <= 816 + 2 && pt[1] >= -2 && pt[1] <= 1056 + 2, 'hook-terminal polyline ' + i + ' within page bounds, got ' + pt);
-		});
-		if (p.closed) { return; }
-		[p.pts[0], p.pts[p.pts.length - 1]].forEach(function (pt) {
-			if (Math.abs(pt[0] - rGapCx) < rGapHalf && pt[1] > rGapY0 && pt[1] < rGapY1) { rollTips++; }
-		});
-	});
-	ok(rollTips >= 1, 'at least one open endpoint (roll tip) protrudes into the gap band-strip, got ' + rollTips);
-	// rolls from both sides must not cross the gap midpoint (clearance for symmetric rolls)
-	let midCross = 0;
-	gotRoll.polys.forEach(function (p) {
-		p.pts.forEach(function (pt) {
-			if (Math.abs(pt[0] - rGapCx) < rGapHalf * 0.1 && pt[1] > rGapY0 && pt[1] < rGapY1) { midCross++; }
-		});
-	});
-	ok(midCross === 0, 'no roll point crosses the gap midpoint region, got ' + midCross);
-}
-
-// ---- two-tone rule preserved with hook terminals: Smith-style 2-color config -> both palette
-// color indices present among emitted polys (no color vanishes at any end).
-{
-	const cfgSmithHook = G.norm({
-		enabled: true, pattern: 'twist', terminals: 'hook',
-		colors: { strands: ['#8a6844', '#7b8494'], outline: '#241a10' },
-		breaks: [{ edge: 'bottom', at: 50, width: 30 }], autoBreak: { enabled: false }
-	});
-	const gotSmith = G.collectPolys(cfgSmithHook, 816, 1056, []);
-	const colorSet = {};
-	gotSmith.polys.forEach(function (p) { colorSet[p.color % 2] = true; });
-	ok(colorSet[0] === true && colorSet[1] === true, 'Smith colors + hook terminals: both palette color indices present');
 }
 
 // ---- left-edge manual break clears the weave from its gap.

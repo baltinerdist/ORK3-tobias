@@ -6,8 +6,8 @@
    flows continuously through corners. Corners are 'woven' (rounded spine) or 'pointed'
    (degenerate-radius spine + miter vertices inserted during the sweep, so the braid folds
    through a sharp 90-degree point). Breaks cut the spine into open segments (or leave it
-   as one closed loop when there are no features); open segment ends finish per
-   cfg.terminals: 'cap' (racetrack rim) or 'hook' (rim continuing into a rolled curl). */
+   as one closed loop when there are no features); open segment ends finish with looped
+   racetrack rim caps, so every strand stays contiguous. */
 (function (w) {
 	'use strict';
 	var SVGNS = 'http://www.w3.org/2000/svg';
@@ -38,10 +38,9 @@
 		function num(v, d) { v = +v; return isFinite(v) ? v : d; }
 		var band = cfg.band || {}, st = cfg.strands || {}, co = cfg.colors || {}, gr = cfg.gradient || {}, ab = cfg.autoBreak || {};
 		var PATTERNS_OK = ['plait', 'openweave', 'twist'];   // whitelist protects old saved configs (e.g. removed 'runningknot')
-		// legacy mapping: the removed corners:'hook' option becomes pointed corners, and (only when
-		// the input carries no explicit terminals choice) rolled hook terminals.
-		var cor = cfg.corners, ter = cfg.terminals;
-		if (cor === 'hook') { cor = 'pointed'; if (ter == null) { ter = 'hook'; } }
+		// legacy mapping: the removed corners:'hook' option becomes pointed corners.
+		var cor = cfg.corners;
+		if (cor === 'hook') { cor = 'pointed'; }
 		return {
 			enabled: !!cfg.enabled,
 			pattern: (PATTERNS_OK.indexOf(cfg.pattern) >= 0) ? cfg.pattern : 'plait',
@@ -56,7 +55,6 @@
 				stops: (Array.isArray(gr.stops) && gr.stops.length >= 2) ? gr.stops : [{ at: 0, color: '#c62828' }, { at: 1, color: '#f9a825' }]
 			},
 			corners: (cor === 'pointed') ? 'pointed' : 'woven',
-			terminals: (ter === 'hook') ? 'hook' : 'cap',
 			breaks: Array.isArray(cfg.breaks) ? cfg.breaks : [],
 			autoBreak: { enabled: ab.enabled == null ? true : !!ab.enabled, padding: num(ab.padding, 2) }
 		};
@@ -100,13 +98,6 @@
 	var INNER_REACH_FACTOR = 0.55;         // nested inner cap bulge depth = radius * this
 	var CURL_RADIUS_FACTOR = 0.18;         // odd-middle-strand curl radius = band * this
 	var POINTED_R = 0.01;                  // px, degenerate spine corner radius in pointed mode (arcs ~zero-length)
-	var HOOK_ROLL_TURNS = 1.75;            // extra roll sweep past the rim semicircle, in units of PI
-	var HOOK_ROLL_DRIFT_FACTOR = 0.75;     // roll center drifts this * band along +u into the gap
-	var HOOK_ROLL_VDRIFT_FACTOR = 0.25;    // roll center drifts this * band toward page-inward (v > band/2)
-	var HOOK_ROLL_MIN_R_FACTOR = 0.17;     // roll radius shrinks to this * band at the tail tip (kept > stroke width so the coil reads open, not a filled dot)
-	var HOOK_ROLL_DRIFT_SETTLE = 0.35;     // fraction of the tail sweep by which the center reaches full drift and stays put (a moving center unwinds the coil into a droopy line)
-	var HOOK_ROLL_SAMPLES_PER_PI = 24;     // roll sampling density (points per PI of sweep)
-	var INNER_REACH_FACTOR_HOOK = 0.4;     // nested inner cap reach factor in hook-terminal mode
 
 	// ---------- spine (centerline rounded-rect the whole border weaves along) ----------
 	// Walks CLOCKWISE starting where the top run begins (end of the TL corner arc):
@@ -633,11 +624,9 @@
 	}
 	// Nested inner pair(s): smaller, shallower arcs that sit inside the rim (short necks). Also
 	// anchored exactly to (ue,va)/(ue,vb); only the bulge depth (reach) is scaled down, keeping
-	// the v-span exact so it nests without a kink. reachF (optional) overrides the default
-	// INNER_REACH_FACTOR -- hook-terminal mode passes a smaller one so the nest tucks inside
-	// the roll instead of colliding with it.
-	function innerArc(ue, va, vb, dir, reachF) {
-		var mid = (va + vb) / 2, r = Math.abs(vb - va) / 2, reach = r * INNER_RADIUS_FACTOR * (reachF || INNER_REACH_FACTOR);
+	// the v-span exact so it nests without a kink.
+	function innerArc(ue, va, vb, dir) {
+		var mid = (va + vb) / 2, r = Math.abs(vb - va) / 2, reach = r * INNER_RADIUS_FACTOR * INNER_REACH_FACTOR;
 		var sign = (va < vb) ? 1 : -1, pts = [];
 		for (var k = 0; k <= 20; k++) {
 			var th = k / 20 * Math.PI;
@@ -645,46 +634,15 @@
 		}
 		return pts;
 	}
-	// Spiral curl for the middle strand of an odd count. rFactor (optional) overrides
-	// CURL_RADIUS_FACTOR (hook-terminal mode shrinks it clear of the roll).
-	function curl(ue, v, dir, band, rFactor) {
-		var pts = [], r0 = band * (rFactor || CURL_RADIUS_FACTOR), cx = ue + dir * r0, turns = 1.5 * Math.PI * 2 * 0.75; // 270 deg
+	// Spiral curl for the middle strand of an odd count.
+	function curl(ue, v, dir, band) {
+		var pts = [], r0 = band * CURL_RADIUS_FACTOR, cx = ue + dir * r0, turns = 1.5 * Math.PI * 2 * 0.75; // 270 deg
 		for (var k = 0; k <= 24; k++) {
 			var th = k / 24 * turns, r = r0 * (1 - 0.7 * (k / 24));
 			pts.push([cx - dir * Math.cos(th) * r, v + Math.sin(th) * r]);
 		}
 		return pts;
 	}
-	// Rolled hook terminal (terminals:'hook'): the outer-pair path starts as the exact rimArc
-	// semicircle (anchored to (ue,va)/(ue,vb) like the cap, so the pair/two-tone anchoring is
-	// unchanged), then CONTINUES curling for HOOK_ROLL_TURNS*PI more with the radius shrinking
-	// to HOOK_ROLL_MIN_R_FACTOR*band while the curl center drifts into the gap (+u*dir) and
-	// toward page-inward (v > band/2), so the band end reads as a rolled/curled scroll end
-	// occupying the gap. Returned open end (tail tip) protrudes past u=ue into the gap.
-	function hookRoll(ue, va, vb, dir, band) {
-		var mid = (va + vb) / 2, r = Math.abs(vb - va) / 2, reach = r * RIM_RADIUS_FACTOR;
-		var sign = (va < vb) ? 1 : -1, pts = [], k, th;
-		for (k = 0; k <= 20; k++) {                        // rim semicircle, byte-equal to rimArc
-			th = k / 20 * Math.PI;
-			pts.push([ue + dir * Math.sin(th) * reach, mid - Math.cos(th) * r * sign]);
-		}
-		var extra = HOOK_ROLL_TURNS * Math.PI;
-		var nR = Math.max(12, Math.round(HOOK_ROLL_TURNS * HOOK_ROLL_SAMPLES_PER_PI));
-		for (k = 1; k <= nR; k++) {
-			var t = k / nR;
-			th = Math.PI + t * extra;
-			// Drift must be front-loaded then STOP: the tail's first half-winding
-			// (sin(th)<0) swings back over the weave unless the center clears it early,
-			// and a center that keeps moving unwinds the coil into a droopy line.
-			var settle = Math.min(1, t / HOOK_ROLL_DRIFT_SETTLE);
-			var cu = ue + dir * settle * HOOK_ROLL_DRIFT_FACTOR * band;
-			var cv = mid + sign * smooth(settle) * HOOK_ROLL_VDRIFT_FACTOR * band;
-			var rr = lerp(r * RIM_RADIUS_FACTOR, HOOK_ROLL_MIN_R_FACTOR * band, t);
-			pts.push([cu + dir * Math.sin(th) * rr, cv - Math.cos(th) * rr * sign]);
-		}
-		return pts;
-	}
-
 	// ---------- segment assembly (spine-local u,v -> page via sweepPt) ----------
 	// Build the page-space polylines for one open spine segment, terminals merged in.
 	// seg: {s0,s1,endA,endB} with endA/endB always 'terminal' (or 'weave' pre-merge).
@@ -706,7 +664,6 @@
 		}
 		var N = res.strands.length;
 		var paletteLen = (cfg.colors.strands && cfg.colors.strands.length) || 1;
-		var hookMode = cfg.terminals === 'hook';
 		// terminal arcs: pair lane i with lane N-1-i (fixed for both A and B passes); odd middle curls.
 		// Each pair (i, N-1-i) is visited once per open end (once by endArcs('A'), once by endArcs('B')).
 		// First visit merges si+sj into one open polyline (owner = si, sj absorbed via sj.merged).
@@ -720,17 +677,7 @@
 				var si = res.strands[i], sj = res.strands[j];
 				if (!si || !sj || si === sj) { continue; }
 				var va = lane(i, N, band), vb = lane(j, N, band);
-				if (i === 0 && hookMode) {
-					// Rolled hook terminal: the rim path grows a roll tail dangling past the pair
-					// connection point, so the pair is NEVER merged here -- strand i owns the
-					// rim+roll (at every end it visits), strand j stays a bare polyline whose
-					// endpoint lands exactly on the rim (the outline pass unions them seamlessly;
-					// same rule as the two-tone split, so both colors always reach the end).
-					var roll = hookRoll(ue, va, vb, dir, band);
-					if (isA) { si.pts = roll.slice().reverse().concat(si.pts); } else { si.pts = si.pts.concat(roll); }
-					continue;
-				}
-				var arc = (i === 0) ? rimArc(ue, va, vb, dir, band) : innerArc(ue, va, vb, dir, hookMode ? INNER_REACH_FACTOR_HOOK : 0);
+				var arc = (i === 0) ? rimArc(ue, va, vb, dir, band) : innerArc(ue, va, vb, dir);
 				var sameColor = (si.color % paletteLen) === (sj.color % paletteLen);
 				if (!sameColor) {
 					// Finding 1: two-tone terminal. Strand i owns the arc at every end it visits;
@@ -754,10 +701,8 @@
 			}
 			if (N % 2 === 1) {
 				var m = res.strands[(N - 1) / 2];
-				if (m && !m.merged && !m.closed && !hookMode) { // m.closed: defensive only, never closed elsewhere
-					// hook mode: no curl -- the middle strand ends bare under the roll's fold
-					// (a curl there fills the fold's eye and reads as a muddy blob)
-					var c = curl(ue, lane((N - 1) / 2, N, band), dir, band, 0);
+				if (m && !m.merged && !m.closed) {              // m.closed: defensive only, never closed elsewhere
+					var c = curl(ue, lane((N - 1) / 2, N, band), dir, band);
 					if (isA) { m.pts = c.slice().reverse().concat(m.pts); } else { m.pts = m.pts.concat(c); }
 				}
 			}
@@ -920,7 +865,7 @@
 			mergeIntervals: mergeIntervals, segmentLoop: segmentLoop, autoBreaks: autoBreaks,
 			patterns: patterns, findCrossings: findCrossings, blendHex: blendHex, subPolyline: subPolyline,
 			buildSpineSegmentPolys: buildSpineSegmentPolys, buildClosedLoopPolys: buildClosedLoopPolys, collectPolys: collectPolys,
-			curl: curl, rimArc: rimArc, innerArc: innerArc, hookRoll: hookRoll,
+			curl: curl, rimArc: rimArc, innerArc: innerArc,
 			crossingAngleSin: crossingAngleSin, underWindow: underWindow, splitByWindows: splitByWindows,
 			spine: spine, spineAt: spineAt, sweepPt: sweepPt, sweepStrand: sweepStrand, edgeIntervalToS: edgeIntervalToS,
 			STEP: STEP, TERM: TERM, EASE: EASE, clamp: clamp, lerp: lerp, smooth: smooth, effCount: effCount

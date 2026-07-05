@@ -67,11 +67,10 @@ Field semantics:
 - `corners` — `woven` (rounded spine, interlace turns the corner) or `pointed` (sharp 90°
   miter — the braid folds through the corner, outer strand forms the point, as on the Flame
   reference). AMENDED 2026-07-05: the original `hook` corner value was a misreading of the
-  Flame reference (its curled motifs are BREAK-END treatments, not corners) and was replaced;
-  legacy `corners:'hook'` configs normalize to `pointed` + `terminals:'hook'`.
-- `terminals` (added 2026-07-05) — `cap` (rounded racetrack rim end caps, default) or `hook`
-  (the band end rolls into a curled hook occupying the break gap, per the Flame reference's
-  top-center break).
+  Flame reference and was replaced; legacy `corners:'hook'` configs normalize to `pointed`.
+  A `terminals: cap|hook` rolled-hook end treatment was tried the same day and REMOVED at
+  Avery's call ("knots should always be contiguous") — break ends are always the looped
+  racetrack rim caps; do not re-add open-ended curl/roll terminals.
 - `medallions[]` — `edge` ∈ top/right/bottom/left, `at` = percent along that edge,
   `size` = percent of page short dimension (diamond diagonal), `shape` = `diamond` (v1 only).
 - `breaks[]` — manual gaps: `edge`, `at` (center, percent along edge), `width` (percent of
@@ -195,7 +194,7 @@ scrolls:
 
 | Preset | Pattern | Colors | Extras |
 |---|---|---|---|
-| Flame  | plait (3-strand, tight) | reds/oranges + near-black outline | vertical gradient red→gold; pointed corners; rolled hook terminals; top+bottom-center breaks |
+| Flame  | plait (3-strand, tight) | reds/oranges + near-black outline | vertical gradient red→gold; pointed corners; top+bottom-center breaks |
 | Dragon | openweave (2-color) | green + gold, dark outline | diamond medallions mid-left/right; bottom-center break |
 | Crown  | openweave | black + gold | medallions at upper-third left/right; bottom-center break |
 | Smith  | twist (2-strand rope) | brown + slate | diamond medallions mid-left/right; bottom-center break |
