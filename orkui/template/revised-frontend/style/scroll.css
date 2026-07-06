@@ -94,8 +94,8 @@ html[data-theme="dark"] {
 }
 
 .sc-inspector { background:var(--sc-panel-bg); border:1px solid var(--sc-panel-line); border-radius:10px;
-	color:var(--sc-ink); padding:14px; position:sticky; top:14px; max-height:calc(100vh - 28px);
-	overflow-y:auto; font:13px/1.4 system-ui,-apple-system,sans-serif; }
+	color:var(--sc-ink); padding:14px; position:sticky; top:62px; max-height:calc(100vh - 76px);
+	overflow-y:auto; font:13px/1.4 system-ui,-apple-system,sans-serif; }   /* 48px fixed site nav + 14px gap */
 
 .sc-toolbar { display:flex; gap:8px; margin-bottom:6px; }
 .sc-view-opts { display:flex; gap:14px; padding:4px 2px 8px; border-bottom:1px solid var(--sc-panel-line); margin-bottom:2px; }
@@ -119,7 +119,48 @@ html[data-theme="dark"] {
 .sc-sec { padding:12px 0; border-top:1px solid var(--sc-panel-line); }
 .sc-sec:first-of-type { border-top:none; padding-top:6px; }
 .sc-eyebrow { margin:0 0 8px; font:600 11px/1 system-ui; letter-spacing:.09em; text-transform:uppercase;
-	color:var(--sc-ink-soft); background:none; border:none; padding:0; text-shadow:none; border-radius:0; }
+	color:var(--sc-ink-soft); background:none; border:none; padding:0; text-shadow:none; border-radius:0;
+	cursor:pointer; user-select:none; display:flex; align-items:center; gap:6px; }
+.sc-eyebrow__chev { font-size:9px; transition:transform .15s; color:var(--sc-ink-soft); }
+.sc-sec.is-collapsed .sc-eyebrow__chev { transform:rotate(-90deg); }
+.sc-sec.is-collapsed > :not(.sc-eyebrow) { display:none; }
+.sc-sec.is-collapsed .sc-eyebrow { margin-bottom:0; }
+
+/* numeric geometry row (X/Y/W/H %) */
+.sc-geom { display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; }
+.sc-geom__f { display:flex; flex-direction:column; gap:2px; }
+.sc-geom__l { font-size:10px; color:var(--sc-ink-soft); letter-spacing:.05em; }
+.sc-geom .sc-input { padding:4px 5px; font-size:12px; }
+
+/* resize-handle overlay: page-level sibling (zones clip children via overflow:hidden) */
+.sc-handles { position:absolute; z-index:5; pointer-events:none; }
+.sc-handle { position:absolute; width:9px; height:9px; box-sizing:border-box; pointer-events:auto;
+	background:var(--sc-accent); border:1px solid #fff; border-radius:2px; box-shadow:0 0 0 1px rgba(0,0,0,.25); }
+.sc-handle--nw { left:-5px; top:-5px; cursor:nwse-resize; }
+.sc-handle--n  { left:calc(50% - 5px); top:-5px; cursor:ns-resize; }
+.sc-handle--ne { right:-5px; top:-5px; cursor:nesw-resize; }
+.sc-handle--e  { right:-5px; top:calc(50% - 5px); cursor:ew-resize; }
+.sc-handle--se { right:-5px; bottom:-5px; cursor:nwse-resize; }
+.sc-handle--s  { left:calc(50% - 5px); bottom:-5px; cursor:ns-resize; }
+.sc-handle--sw { left:-5px; bottom:-5px; cursor:nesw-resize; }
+.sc-handle--w  { left:-5px; top:calc(50% - 5px); cursor:ew-resize; }
+
+/* preset chips: real type-chip styling with an applied state (not token chips) */
+.sc-presets .sc-type { text-transform:none; }
+
+/* dirty indicator on the save button */
+.sc-btn.is-dirty::after { content:'•'; margin-left:6px; font-size:14px; line-height:0; }
+
+/* in-product confirm modal (dark-mode aware via the --sc-* tokens) */
+.sc-confirm-ov { position:fixed; inset:0; z-index:10000; background:rgba(10,12,18,.5);
+	display:flex; align-items:center; justify-content:center; }
+.sc-confirm { background:var(--sc-panel-bg); color:var(--sc-ink); border:1px solid var(--sc-panel-line);
+	border-radius:10px; padding:18px 20px; width:min(380px, calc(100vw - 40px));
+	box-shadow:0 10px 40px rgba(0,0,0,.35); font:13px/1.45 system-ui,-apple-system,sans-serif; }
+.sc-confirm__title { margin:0 0 6px; font:700 15px/1.3 system-ui; color:var(--sc-ink);
+	background:transparent; border:none; padding:0; border-radius:0; text-shadow:none; }
+.sc-confirm__body { margin:0 0 14px; color:var(--sc-ink-soft); }
+.sc-confirm__row { display:flex; justify-content:flex-end; gap:8px; }
 
 /* fields */
 .sc-field { display:grid; grid-template-columns:84px minmax(0,1fr); align-items:center; gap:8px; margin:7px 0; }

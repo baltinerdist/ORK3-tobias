@@ -71,6 +71,17 @@
 	}
 	function baseName(f) { return String(f || '').replace(/^.*\//, ''); }
 
+	// ---- dirty-state tracking (P1: unsaved-work protection) ----
+	var dirty = false, booted = false;
+	function setDirty(v) {
+		dirty = v;
+		var sb = document.getElementById('scSave');
+		if (sb) { sb.classList.toggle('is-dirty', !!v); }
+	}
+	window.addEventListener('beforeunload', function (e) {
+		if (dirty) { e.preventDefault(); e.returnValue = ''; }
+	});
+
 	// ---- toast (no native alert()) ----
 	function scToast(msg, type) {
 		var t = document.createElement('div');
@@ -80,6 +91,26 @@
 			'background:' + (type === 'warn' ? '#c0392b' : '#2f855a') + ';color:#fff;';
 		document.body.appendChild(t);
 		setTimeout(function () { t.style.opacity = '0'; setTimeout(function () { if (t.parentNode) { t.parentNode.removeChild(t); } }, 450); }, 2400);
+	}
+
+	// ---- in-product confirm modal (house rule: no native confirm()) ----
+	function scConfirm(opts) {
+		var ov = el('div', 'sc-confirm-ov');
+		var panel = el('div', 'sc-confirm');
+		panel.appendChild(el('h4', 'sc-confirm__title', opts.title || 'Are you sure?'));
+		panel.appendChild(el('p', 'sc-confirm__body', opts.body || ''));
+		var row = el('div', 'sc-confirm__row');
+		var no = el('button', 'sc-btn', 'Cancel'); no.type = 'button';
+		var yes = el('button', 'sc-btn sc-btn-primary', opts.confirmLabel || 'Confirm'); yes.type = 'button';
+		function close() { if (ov.parentNode) { ov.parentNode.removeChild(ov); } document.removeEventListener('keydown', esc); }
+		function esc(e) { if (e.key === 'Escape') { close(); } }
+		no.onclick = close;
+		yes.onclick = function () { close(); if (opts.onConfirm) { opts.onConfirm(); } };
+		ov.addEventListener('mousedown', function (e) { if (e.target === ov) { close(); } });
+		document.addEventListener('keydown', esc);
+		row.appendChild(no); row.appendChild(yes);
+		panel.appendChild(row); ov.appendChild(panel); document.body.appendChild(ov);
+		yes.focus();
 	}
 
 	// ---- editor gridlines / snapping (viewport prefs, never part of the template) ----
@@ -120,6 +151,7 @@
 	// ---- render + selection ----
 	function ctx() { return { tokens: {}, heraldry: D.heraldry, packBase: D.packBase, libBase: '', editable: true }; }
 	function render() {
+		if (booted) { setDirty(true); }
 		R.renderPage(page, tpl, ctx());
 		R.autoscaleZones(page); R.fitToStage(page, stage);
 		mountGrid(); wireDrag(); markSelected();
@@ -131,10 +163,12 @@
 			var idx = (kind === 'slot' ? tpl.slots : tpl.zones).indexOf(elem.__slot || elem.__zone);
 			elem.addEventListener('mousedown', function (e) {
 				e.preventDefault();
-				sel = { kind: kind, index: idx }; refreshInspector();
+				sel = { kind: kind, index: idx }; refreshInspector(); revealSelected();
 				var pr = pageRect(), sx = e.clientX, sy = e.clientY;
 				var obj = (kind === 'slot' ? tpl.slots : tpl.zones)[idx], ox = obj.x, oy = obj.y;
+				var moved = false;
 				function mv(ev) {
+					moved = true;
 					obj.x = Math.max(0, Math.min(100, ox + (ev.clientX - sx) / pr.width * 100));
 					obj.y = Math.max(0, Math.min(100, oy + (ev.clientY - sy) / pr.height * 100));
 					if (snapGrid) {
@@ -152,11 +186,13 @@
 						gridSnapMark('v', hitX); gridSnapMark('h', hitY);
 					}
 					elem.style.left = obj.x + '%'; elem.style.top = obj.y + '%';
+					syncHandleBox(obj);
 				}
 				function up() {
 					document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up);
 					gridSnapMark('v', null); gridSnapMark('h', null);
-					if (kind === 'slot' && obj.break_border && tpl.knot && tpl.knot.enabled) { render(); }
+					if (moved) { setDirty(true); buildSelected(); }
+					if (moved && kind === 'slot' && obj.break_border && tpl.knot && tpl.knot.enabled) { render(); }
 				}
 				document.addEventListener('mousemove', mv); document.addEventListener('mouseup', up);
 			});
@@ -164,9 +200,81 @@
 	}
 	function markSelected() {
 		page.querySelectorAll('.sc-slot, .sc-zone').forEach(function (elem) { elem.classList.remove('is-sel'); });
+		var oldHb = page.querySelector('.sc-handles');
+		if (oldHb) { oldHb.parentNode.removeChild(oldHb); }
 		if (!sel) { return; }
 		var list = sel.kind === 'slot' ? page.querySelectorAll('.sc-slot') : page.querySelectorAll('.sc-zone');
-		if (list[sel.index]) { list[sel.index].classList.add('is-sel'); }
+		if (list[sel.index]) { list[sel.index].classList.add('is-sel'); mountHandles(list[sel.index]); }
+	}
+	// Resize handles live in a separate page-level overlay (zones clip their own children
+	// via overflow:hidden, so handles cannot be element children). The overlay mirrors the
+	// element's % rect; drag/resize keep it in sync via syncHandleBox().
+	var HANDLE_DIRS = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+	function selObj() { return sel ? (sel.kind === 'slot' ? tpl.slots : tpl.zones)[sel.index] : null; }
+	function syncHandleBox(obj) {
+		var hb = page.querySelector('.sc-handles');
+		if (!hb || !obj) { return; }
+		hb.style.left = obj.x + '%'; hb.style.top = obj.y + '%';
+		hb.style.width = obj.w + '%'; hb.style.height = obj.h + '%';
+	}
+	function mountHandles(elem) {
+		var obj = selObj();
+		if (!obj) { return; }
+		var hb = el('div', 'sc-handles');
+		HANDLE_DIRS.forEach(function (d) {
+			var h = el('div', 'sc-handle sc-handle--' + d);
+			h.setAttribute('data-h', d);
+			h.addEventListener('mousedown', function (e) { e.preventDefault(); e.stopPropagation(); startResize(e, elem, obj, d); });
+			hb.appendChild(h);
+		});
+		page.appendChild(hb);
+		syncHandleBox(obj);
+	}
+	function startResize(e, elem, obj, dir) {
+		var pr = pageRect(), sx = e.clientX, sy = e.clientY;
+		var x0 = obj.x, y0 = obj.y, w0 = obj.w, h0 = obj.h;
+		var L = /w/.test(dir), Rt = /e/.test(dir), T = /n/.test(dir), B = /s/.test(dir);
+		var moved = false;
+		function mv(ev) {
+			moved = true;
+			var dx = (ev.clientX - sx) / pr.width * 100, dy = (ev.clientY - sy) / pr.height * 100;
+			var x = x0, y = y0, wPct = w0, hPct = h0;
+			if (Rt) { wPct = w0 + dx; }
+			if (L)  { x = x0 + dx; wPct = w0 - dx; }
+			if (B)  { hPct = h0 + dy; }
+			if (T)  { y = y0 + dy; hPct = h0 - dy; }
+			// clamp: min 2% size, stay on the page
+			if (L && wPct < 2) { x = x0 + w0 - 2; wPct = 2; }
+			if (Rt && wPct < 2) { wPct = 2; }
+			if (T && hPct < 2) { y = y0 + h0 - 2; hPct = 2; }
+			if (B && hPct < 2) { hPct = 2; }
+			if (x < 0) { wPct += x; x = 0; }
+			if (y < 0) { hPct += y; y = 0; }
+			if (x + wPct > 100) { wPct = 100 - x; }
+			if (y + hPct > 100) { hPct = 100 - y; }
+			// snap the MOVING edge(s) to gridlines
+			if (snapGrid) {
+				var thX = SNAP_PX / pr.width * 100, thY = SNAP_PX / pr.height * 100;
+				var hitX = null, hitY = null;
+				GRID_LINES.forEach(function (ln) {
+					if (L && Math.abs(x - ln) <= thX) { wPct += x - ln; x = ln; hitX = ln; }
+					if (Rt && Math.abs((x + wPct) - ln) <= thX) { wPct = ln - x; hitX = ln; }
+					if (T && Math.abs(y - ln) <= thY) { hPct += y - ln; y = ln; hitY = ln; }
+					if (B && Math.abs((y + hPct) - ln) <= thY) { hPct = ln - y; hitY = ln; }
+				});
+				gridSnapMark('v', hitX); gridSnapMark('h', hitY);
+			}
+			obj.x = x; obj.y = y; obj.w = wPct; obj.h = hPct;
+			elem.style.left = x + '%'; elem.style.top = y + '%';
+			elem.style.width = wPct + '%'; elem.style.height = hPct + '%';
+			syncHandleBox(obj);
+		}
+		function up() {
+			document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up);
+			gridSnapMark('v', null); gridSnapMark('h', null);
+			if (moved) { setDirty(true); render(); refreshInspector(); }
+		}
+		document.addEventListener('mousemove', mv); document.addEventListener('mouseup', up);
 	}
 
 	// ---- small DOM helpers ----
@@ -262,11 +370,27 @@
 		box.innerHTML = '';
 		if (!window.ScrollKnot) { box.appendChild(el('p', 'sc-empty', 'Border engine failed to load.')); return; }
 		var k = knotCfg();
-		// presets
-		var pr = el('div', 'sc-chips');
+		// presets — applying one replaces the whole knot config, so a customized border
+		// (one that no longer matches any preset) is gated behind an in-product confirm.
+		function knotIsCustomized() {
+			if (!tpl.knot || !tpl.knot.enabled) { return false; }
+			var cur = JSON.stringify(tpl.knot);
+			return Object.keys(KNOT_PRESETS).every(function (n) { return JSON.stringify(KNOT_PRESETS[n]) !== cur; });
+		}
+		var pr = el('div', 'sc-type-row sc-presets');
 		Object.keys(KNOT_PRESETS).forEach(function (name) {
-			var b = el('button', 'sc-chip', name); b.type = 'button';
-			b.onclick = function () { tpl.knot = JSON.parse(JSON.stringify(KNOT_PRESETS[name])); render(); buildKnot(); };
+			var applied = JSON.stringify(tpl.knot || null) === JSON.stringify(KNOT_PRESETS[name]);
+			var b = el('button', 'sc-type' + (applied ? ' is-sel' : ''), name); b.type = 'button';
+			function apply() { tpl.knot = JSON.parse(JSON.stringify(KNOT_PRESETS[name])); render(); buildKnot(); }
+			b.onclick = function () {
+				if (knotIsCustomized()) {
+					scConfirm({
+						title: 'Replace border settings?',
+						body: 'Applying the ' + name + ' preset replaces your current border customizations.',
+						confirmLabel: 'Apply preset', onConfirm: apply
+					});
+				} else { apply(); }
+			};
 			pr.appendChild(b);
 		});
 		box.appendChild(field('Presets', pr));
@@ -369,7 +493,7 @@
 		var pick = el('button', 'sc-el__pick'); pick.type = 'button';
 		pick.appendChild(el('span', 'sc-el__tag', tag));
 		pick.appendChild(el('span', 'sc-el__desc', desc));
-		pick.onclick = function () { sel = { kind: kind, index: i }; refreshInspector(); };
+		pick.onclick = function () { sel = { kind: kind, index: i }; refreshInspector(); revealSelected(); };
 		var del = el('button', 'sc-el__del', '×'); del.type = 'button'; del.setAttribute('data-tip', 'Delete');
 		del.onclick = function (e) {
 			e.stopPropagation();
@@ -380,20 +504,42 @@
 		row.appendChild(pick); row.appendChild(del); return row;
 	}
 
+	// numeric geometry row: X/Y/W/H in %, precise keyboard entry alongside drag/resize
+	function geomRow(obj) {
+		var row = el('div', 'sc-geom');
+		[['X', 'x'], ['Y', 'y'], ['W', 'w'], ['H', 'h']].forEach(function (pair) {
+			var f = el('label', 'sc-geom__f');
+			f.appendChild(el('span', 'sc-geom__l', pair[0]));
+			var i = el('input', 'sc-input'); i.type = 'number'; i.step = '0.5'; i.min = '0'; i.max = '100';
+			i.value = Math.round((obj[pair[1]] || 0) * 10) / 10;
+			i.addEventListener('change', function () {
+				var v = Math.max(0, Math.min(100, +i.value || 0));
+				if (pair[1] === 'w' || pair[1] === 'h') { v = Math.max(2, v); }
+				obj[pair[1]] = v; i.value = v; render();
+			});
+			f.appendChild(i);
+			row.appendChild(f);
+		});
+		return field('Position', row);
+	}
+
 	// ---- inspector: Selected element editor ----
 	function buildSelected() {
 		var head = document.getElementById('scSelectedHead');
+		var headT = head.querySelector('.sc-eyebrow__t');
+		function setHead(txt) { if (headT) { headT.textContent = txt; } else { head.textContent = txt; } }
 		var box = document.getElementById('scSelected'); box.innerHTML = '';
 		if (!sel) {
-			head.textContent = 'Nothing selected';
+			setHead('Nothing selected');
 			box.appendChild(el('p', 'sc-empty', 'Pick an element above (or click one on the page) to edit it. Drag it on the page to move it.'));
 			lastSelKey = null;
 			return;
 		}
 		if (sel.kind === 'zone') {
 			lastSelKey = 'zone' + sel.index;
-			head.textContent = 'Text zone';
+			setHead('Selected — Text zone');
 			var z = tpl.zones[sel.index];
+			box.appendChild(geomRow(z));
 			var ta = el('textarea', 'sc-input'); ta.rows = 3; ta.value = z.text || '';
 			ta.addEventListener('input', function () { z.text = ta.value; render(); buildElements(); });
 			box.appendChild(field('Text', ta));
@@ -411,7 +557,7 @@
 			box.appendChild(row);
 			box.appendChild(field('Color', input(z.color || '#1a1a1a', 'color', function (v) { z.color = v; z.inherit_color = false; render(); })));
 		} else {
-			head.textContent = 'Graphic slot';
+			setHead('Selected — Graphic slot');
 			var s = tpl.slots[sel.index];
 			var coll = collectionForPlacement(s.location);
 			// only re-default the active type when this is a NEW slot/placement, so a
@@ -421,6 +567,7 @@
 			box.appendChild(field('Placement', select(LOCATIONS.map(function (l) { return { value: l, label: l.replace(/_/g, ' ') }; }), s.location, function (v) {
 				s.location = v; var r = rectFor(v); s.x = r.x; s.y = r.y; s.w = r.w; s.h = r.h; render(); buildElements(); buildSelected();
 			})));
+			box.appendChild(geomRow(s));
 			box.appendChild(field('Source', select(['pack', 'heraldry', 'none'], s.source_type, function (v) {
 				s.source_type = v;
 				if (v === 'heraldry' && !/^(kingdom|park|player)$/.test(s.source_ref)) { s.source_ref = 'kingdom'; }
@@ -619,7 +766,7 @@
 			c.onclick = function () {
 				var i = tpl.award_keys.indexOf(id);
 				if (i >= 0) { tpl.award_keys.splice(i, 1); } else { tpl.award_keys.push(id); }
-				buildAwardTags();
+				setDirty(true); buildAwardTags();
 			};
 			row.appendChild(c);
 		});
@@ -628,17 +775,58 @@
 
 	function refreshInspector() { buildElements(); buildSelected(); markSelected(); }
 
+	// ---- collapsible sections (P1: the Selected editor was buried under ~800px of Border) ----
+	function sectionOf(divId) {
+		var body = document.getElementById(divId);
+		return body ? body.closest('section.sc-sec') : null;
+	}
+	function initSections() {
+		var isExisting = !!(D.template && typeof D.template === 'object');
+		['scPageProps', 'scKnot', 'scElements', 'scSelected', 'scAwardTags'].forEach(function (id) {
+			var sec = sectionOf(id), head = sec && sec.querySelector('.sc-eyebrow');
+			if (!sec || !head) { return; }
+			// wrap the title so dynamic heads (Selected) can update text without killing the chevron
+			var titleSpan = el('span', 'sc-eyebrow__t', head.textContent);
+			head.textContent = '';
+			var chev = el('i', 'fa fa-chevron-down sc-eyebrow__chev');
+			head.appendChild(chev); head.appendChild(titleSpan);
+			head.setAttribute('role', 'button');
+			var stored = localStorage.getItem('sc_sec_' + id);
+			var collapsed = stored != null
+				? stored === '1'
+				: (isExisting && (id === 'scPageProps' || id === 'scKnot'));
+			sec.classList.toggle('is-collapsed', collapsed);
+			head.addEventListener('click', function () {
+				var now = !sec.classList.contains('is-collapsed');
+				sec.classList.toggle('is-collapsed', now);
+				localStorage.setItem('sc_sec_' + id, now ? '1' : '0');
+			});
+		});
+	}
+	function expandSection(divId) {
+		var sec = sectionOf(divId);
+		if (sec && sec.classList.contains('is-collapsed')) {
+			sec.classList.remove('is-collapsed');
+			localStorage.setItem('sc_sec_' + divId, '0');
+		}
+		return sec;
+	}
+	function revealSelected() {
+		var sec = expandSection('scSelected');
+		if (sec) { sec.scrollIntoView({ block: 'nearest' }); }
+	}
+
 	// ---- toolbar actions ----
 	document.getElementById('scAddZone').onclick = function () {
 		tpl.zones.push({ key: 'zone' + tpl.zones.length, label: 'Text', text: '{PlayerName}', font: 'Cinzel', size: 40, min: 12, max: 56, align: 'center', color: '#1a1a1a', inherit_color: false, x: 18, y: 40, w: 64, h: 12, autoscale: true });
 		sel = { kind: 'zone', index: tpl.zones.length - 1 };
-		render(); refreshInspector();
+		render(); refreshInspector(); revealSelected();
 	};
 	document.getElementById('scAddSlot').onclick = function () {
 		var r = rectFor('center_image');
 		tpl.slots.push({ location: 'center_image', x: r.x, y: r.y, w: r.w, h: r.h, source_type: 'pack', source_ref: '', fit: 'contain' });
 		sel = { kind: 'slot', index: tpl.slots.length - 1 };
-		render(); refreshInspector();
+		render(); refreshInspector(); revealSelected();
 	};
 	document.getElementById('scSave').onclick = function () {
 		tpl.name = document.getElementById('scTplName').value || tpl.name;
@@ -649,12 +837,15 @@
 		})
 			.then(function (r) { return r.json(); })
 			.then(function (j) {
-				if (j.Status === 0) { tpl.scroll_template_id = j.TemplateId; scToast('Template saved.'); }
+				if (j.Status === 0) { tpl.scroll_template_id = j.TemplateId; setDirty(false); scToast('Template saved.'); }
 				else { scToast(j.Message || 'Save failed.', 'warn'); }
 			})
 			.catch(function () { scToast('Save failed.', 'warn'); });
 	};
 
 	// ---- boot ----
+	document.getElementById('scTplName').addEventListener('input', function () { setDirty(true); });
+	initSections();
 	buildPage(); buildAwardTags(); buildKnot(); buildViewOpts(); render(); refreshInspector();
+	booted = true;
 })();
