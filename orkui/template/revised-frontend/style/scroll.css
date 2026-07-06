@@ -80,15 +80,38 @@ html[data-theme="dark"] {
 	--sc-input-bg:#1a1e26; --sc-input-line:#3a4150; --sc-chip-bg:#2c323d;
 }
 
-/* layout: stage + sticky inspector that scrolls on its own */
-.sc-designer { display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:20px; align-items:start; padding:16px; box-sizing:border-box; }
-@media (max-width:900px){ .sc-designer { grid-template-columns:1fr; } }
+/* layout: sticky builder bar on the LEFT (house pattern: sidebar + fluid main, like Reports)
+   + stage. On narrow screens the stage comes first and the bar stacks below it. */
+.sc-designer { display:grid; grid-template-columns:340px minmax(0,1fr); gap:20px; align-items:start; padding:16px; box-sizing:border-box; }
+@media (max-width:900px){
+	.sc-designer { grid-template-columns:1fr; }
+	.sc-designer .sc-stage { order:1; }
+	.sc-designer .sc-inspector { order:2; position:static; max-height:none; }
+}
 
 .sc-inspector { background:var(--sc-panel-bg); border:1px solid var(--sc-panel-line); border-radius:10px;
 	color:var(--sc-ink); padding:14px; position:sticky; top:14px; max-height:calc(100vh - 28px);
 	overflow-y:auto; font:13px/1.4 system-ui,-apple-system,sans-serif; }
 
 .sc-toolbar { display:flex; gap:8px; margin-bottom:6px; }
+.sc-view-opts { display:flex; gap:14px; padding:4px 2px 8px; border-bottom:1px solid var(--sc-panel-line); margin-bottom:2px; }
+.sc-view-opts .sc-check { margin:0; }
+
+/* editor-only gridline overlay (never saved, hidden in print via .sc-print rules: the
+   overlay is only ever mounted by the designer). Major = 50% dashed blue; minor = 25/75%
+   dotted light blue. In snap-only mode (.sc-grid--ghost) lines stay invisible until a
+   drag actually snaps to one (.is-snapped), which also brightens it so the snap is
+   unmistakable. */
+.sc-grid { position:absolute; inset:0; z-index:4; pointer-events:none; }
+.sc-grid__line { position:absolute; opacity:.5; }
+.sc-grid__line--v { top:0; bottom:0; width:0; border-left:1px dashed rgba(37,99,196,.65); }
+.sc-grid__line--h { left:0; right:0; height:0; border-top:1px dashed rgba(37,99,196,.65); }
+.sc-grid__line--minor.sc-grid__line--v { border-left:1px dotted rgba(125,170,240,.6); }
+.sc-grid__line--minor.sc-grid__line--h { border-top:1px dotted rgba(125,170,240,.6); }
+.sc-grid--ghost .sc-grid__line { opacity:0; }
+.sc-grid .sc-grid__line.is-snapped { opacity:1; }
+.sc-grid .sc-grid__line--v.is-snapped { border-left:2px solid rgba(37,99,196,.9); }
+.sc-grid .sc-grid__line--h.is-snapped { border-top:2px solid rgba(37,99,196,.9); }
 .sc-sec { padding:12px 0; border-top:1px solid var(--sc-panel-line); }
 .sc-sec:first-of-type { border-top:none; padding-top:6px; }
 .sc-eyebrow { margin:0 0 8px; font:600 11px/1 system-ui; letter-spacing:.09em; text-transform:uppercase;

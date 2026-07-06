@@ -7,12 +7,12 @@
 	</div>
 <?php else: ?>
 	<div class="sc-designer">
-		<div class="sc-stage" id="scStage"><div class="sc-page sc-editing" id="scPage"></div></div>
 		<aside class="sc-inspector" id="scInspector">
 			<div class="sc-toolbar">
 				<button type="button" id="scAddZone" class="sc-btn">+ Text zone</button>
 				<button type="button" id="scAddSlot" class="sc-btn">+ Graphic slot</button>
 			</div>
+			<div class="sc-view-opts" id="scViewOpts"></div>
 			<section class="sc-sec"><h3 class="sc-eyebrow">Page</h3><div id="scPageProps"></div></section>
 			<section class="sc-sec"><h3 class="sc-eyebrow">Border</h3><div id="scKnot"></div></section>
 			<section class="sc-sec"><h3 class="sc-eyebrow">Elements</h3><div id="scElements" class="sc-el-list"></div></section>
@@ -23,6 +23,7 @@
 				<button type="button" id="scSave" class="sc-btn sc-btn-primary">Save template</button>
 			</section>
 		</aside>
+		<div class="sc-stage" id="scStage"><div class="sc-page sc-editing" id="scPage"></div></div>
 	</div>
 	<script>
 	window.SC_DESIGN = {

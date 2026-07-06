@@ -82,12 +82,47 @@
 		setTimeout(function () { t.style.opacity = '0'; setTimeout(function () { if (t.parentNode) { t.parentNode.removeChild(t); } }, 450); }, 2400);
 	}
 
+	// ---- editor gridlines / snapping (viewport prefs, never part of the template) ----
+	var GRID_LINES = [25, 50, 75];
+	var SNAP_PX = 6;                                        // screen px of pull before an edge center snaps
+	var showGrid = localStorage.getItem('sc_grid') === '1';
+	var snapGrid = localStorage.getItem('sc_snap') === '1';
+	function mountGrid() {
+		var oldG = page.querySelector('.sc-grid');
+		if (oldG) { oldG.parentNode.removeChild(oldG); }
+		if (!showGrid && !snapGrid) { return; }
+		var g = el('div', 'sc-grid' + (showGrid ? '' : ' sc-grid--ghost'));
+		GRID_LINES.forEach(function (pct) {
+			var minor = pct !== 50 ? ' sc-grid__line--minor' : '';
+			var v = el('div', 'sc-grid__line sc-grid__line--v' + minor); v.style.left = pct + '%'; v.setAttribute('data-k', 'v' + pct);
+			var h = el('div', 'sc-grid__line sc-grid__line--h' + minor); h.style.top = pct + '%'; h.setAttribute('data-k', 'h' + pct);
+			g.appendChild(v); g.appendChild(h);
+		});
+		page.appendChild(g);
+	}
+	function gridSnapMark(axis, pct) {                      // brighten the snapped line (null = clear axis)
+		page.querySelectorAll('.sc-grid__line--' + axis).forEach(function (ln) {
+			ln.classList.toggle('is-snapped', pct != null && ln.getAttribute('data-k') === axis + pct);
+		});
+	}
+	function buildViewOpts() {
+		var box = document.getElementById('scViewOpts');
+		if (!box) { return; }
+		box.innerHTML = '';
+		box.appendChild(checkbox('Show gridlines', showGrid, function (v) {
+			showGrid = v; localStorage.setItem('sc_grid', v ? '1' : '0'); mountGrid();
+		}));
+		box.appendChild(checkbox('Snap to gridlines', snapGrid, function (v) {
+			snapGrid = v; localStorage.setItem('sc_snap', v ? '1' : '0'); mountGrid();
+		}));
+	}
+
 	// ---- render + selection ----
 	function ctx() { return { tokens: {}, heraldry: D.heraldry, packBase: D.packBase, libBase: '', editable: true }; }
 	function render() {
 		R.renderPage(page, tpl, ctx());
 		R.autoscaleZones(page); R.fitToStage(page, stage);
-		wireDrag(); markSelected();
+		mountGrid(); wireDrag(); markSelected();
 	}
 	function pageRect() { return page.getBoundingClientRect(); }
 	function wireDrag() {
@@ -102,10 +137,25 @@
 				function mv(ev) {
 					obj.x = Math.max(0, Math.min(100, ox + (ev.clientX - sx) / pr.width * 100));
 					obj.y = Math.max(0, Math.min(100, oy + (ev.clientY - sy) / pr.height * 100));
+					if (snapGrid) {
+						// snap the element CENTER onto a gridline when within SNAP_PX screen px,
+						// and light the line up so the snap is unmistakable while dragging.
+						var thX = SNAP_PX / pr.width * 100, thY = SNAP_PX / pr.height * 100;
+						var cx2 = obj.x + (obj.w || 0) / 2, cy2 = obj.y + (obj.h || 0) / 2;
+						var hitX = null, hitY = null;
+						GRID_LINES.forEach(function (ln) {
+							if (Math.abs(cx2 - ln) <= thX) { hitX = ln; }
+							if (Math.abs(cy2 - ln) <= thY) { hitY = ln; }
+						});
+						if (hitX != null) { obj.x = hitX - (obj.w || 0) / 2; }
+						if (hitY != null) { obj.y = hitY - (obj.h || 0) / 2; }
+						gridSnapMark('v', hitX); gridSnapMark('h', hitY);
+					}
 					elem.style.left = obj.x + '%'; elem.style.top = obj.y + '%';
 				}
 				function up() {
 					document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up);
+					gridSnapMark('v', null); gridSnapMark('h', null);
 					if (kind === 'slot' && obj.break_border && tpl.knot && tpl.knot.enabled) { render(); }
 				}
 				document.addEventListener('mousemove', mv); document.addEventListener('mouseup', up);
@@ -606,5 +656,5 @@
 	};
 
 	// ---- boot ----
-	buildPage(); buildAwardTags(); buildKnot(); render(); refreshInspector();
+	buildPage(); buildAwardTags(); buildKnot(); buildViewOpts(); render(); refreshInspector();
 })();
