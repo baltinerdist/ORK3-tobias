@@ -359,9 +359,13 @@
 	}
 	function slider(labelText, val, min, max, step, on) {
 		var wrap = el('label', 'sc-field');
-		wrap.appendChild(el('span', 'sc-field__label', labelText));
+		var lab = el('span', 'sc-field__label sc-field__label--val');
+		lab.appendChild(el('span', null, labelText));
+		var out = el('span', 'sc-field__val', String(val));
+		lab.appendChild(out);
+		wrap.appendChild(lab);
 		var i = el('input', 'sc-input'); i.type = 'range'; i.min = min; i.max = max; i.step = step; i.value = val;
-		i.addEventListener('input', function () { on(+i.value); });
+		i.addEventListener('input', function () { out.textContent = String(+i.value); on(+i.value); });
 		wrap.appendChild(i);
 		return wrap;
 	}
@@ -471,11 +475,11 @@
 			row.appendChild(del);
 			brBox.appendChild(row);
 		});
+		brBox.appendChild(checkbox('Auto-break border around flagged art', k.autoBreak.enabled, function (v) { k.autoBreak.enabled = v; render(); }));
 		var addBr = el('button', 'sc-chip', '+ Break'); addBr.type = 'button';
 		addBr.onclick = function () { k.breaks.push({ edge: 'bottom', at: 50, width: 20 }); render(); buildKnot(); };
 		brBox.appendChild(addBr);
 		box.appendChild(field('Breaks', brBox));
-		box.appendChild(checkbox('Art can break the border', k.autoBreak.enabled, function (v) { k.autoBreak.enabled = v; render(); }));
 	}
 
 	// ---- inspector: Elements list ----
@@ -485,23 +489,53 @@
 			box.appendChild(el('p', 'sc-empty', 'Nothing on the page yet. Add a text zone or graphic slot above.'));
 			return;
 		}
-		tpl.zones.forEach(function (z, i) { box.appendChild(elemRow('zone', i, 'Text', z.text || '(empty)')); });
-		tpl.slots.forEach(function (s, i) { box.appendChild(elemRow('slot', i, 'Graphic', s.location.replace(/_/g, ' '))); });
+		function withDupNumbers(descs) {
+			var seen = {};
+			return descs.map(function (d) {
+				seen[d] = (seen[d] || 0) + 1;
+				return seen[d] > 1 ? d + ' ' + seen[d] : d;
+			});
+		}
+		var zDescs = withDupNumbers(tpl.zones.map(function (z) { return z.text || '(empty)'; }));
+		var sDescs = withDupNumbers(tpl.slots.map(function (s) { return s.location.replace(/_/g, ' '); }));
+		tpl.zones.forEach(function (z, i) { box.appendChild(elemRow('zone', i, 'Text', zDescs[i], tpl.zones.length)); });
+		tpl.slots.forEach(function (s, i) { box.appendChild(elemRow('slot', i, 'Graphic', sDescs[i], tpl.slots.length)); });
+		if (tpl.zones.length && tpl.slots.length) {
+			box.appendChild(el('p', 'sc-hint', 'Later items in each group render on top; text always renders above graphics.'));
+		}
 	}
-	function elemRow(kind, i, tag, desc) {
+	function moveElem(kind, i, dir) {
+		var arr = kind === 'zone' ? tpl.zones : tpl.slots, j = i + dir;
+		if (j < 0 || j >= arr.length) { return; }
+		var tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+		if (sel && sel.kind === kind) {
+			if (sel.index === i) { sel.index = j; } else if (sel.index === j) { sel.index = i; }
+		}
+		setDirty(true); render(); refreshInspector();
+	}
+	function elemRow(kind, i, tag, desc, total) {
 		var row = el('div', 'sc-el' + (sel && sel.kind === kind && sel.index === i ? ' is-sel' : ''));
 		var pick = el('button', 'sc-el__pick'); pick.type = 'button';
 		pick.appendChild(el('span', 'sc-el__tag', tag));
 		pick.appendChild(el('span', 'sc-el__desc', desc));
 		pick.onclick = function () { sel = { kind: kind, index: i }; refreshInspector(); revealSelected(); };
+		if (total > 1) {
+			var upB = el('button', 'sc-el__ord', '\u25b2'); upB.type = 'button'; upB.setAttribute('data-tip', 'Move up');
+			var dnB = el('button', 'sc-el__ord', '\u25bc'); dnB.type = 'button'; dnB.setAttribute('data-tip', 'Move down');
+			if (i === 0) { upB.disabled = true; }
+			if (i === total - 1) { dnB.disabled = true; }
+			upB.onclick = function (e) { e.stopPropagation(); moveElem(kind, i, -1); };
+			dnB.onclick = function (e) { e.stopPropagation(); moveElem(kind, i, 1); };
+			row.appendChild(pick); row.appendChild(upB); row.appendChild(dnB);
+		} else { row.appendChild(pick); }
 		var del = el('button', 'sc-el__del', '×'); del.type = 'button'; del.setAttribute('data-tip', 'Delete');
 		del.onclick = function (e) {
 			e.stopPropagation();
 			(kind === 'zone' ? tpl.zones : tpl.slots).splice(i, 1);
 			if (sel && sel.kind === kind && sel.index === i) { sel = null; }
-			render(); refreshInspector();
+			setDirty(true); render(); refreshInspector();
 		};
-		row.appendChild(pick); row.appendChild(del); return row;
+		row.appendChild(del); return row;
 	}
 
 	// numeric geometry row: X/Y/W/H in %, precise keyboard entry alongside drag/resize
@@ -573,9 +607,12 @@
 				if (v === 'heraldry' && !/^(kingdom|park|player)$/.test(s.source_ref)) { s.source_ref = 'kingdom'; }
 				render(); buildSelected();
 			})));
-			box.appendChild(checkbox('Border yields to this art', !!s.break_border, function (v) {
+			box.appendChild(checkbox('Break the border around this art', !!s.break_border, function (v) {
 				s.break_border = v; render();
 			}));
+			if (s.break_border) {
+				box.appendChild(el('p', 'sc-hint', 'Requires auto-break to be on in Border \u2192 Breaks.'));
+			}
 			if (s.source_type === 'heraldry') {
 				buildHeraldry(box, s);
 			} else if (s.source_type === 'pack') {
@@ -616,15 +653,25 @@
 			});
 			wrap.appendChild(row);
 		}
-		// grid of the active type
+		// grid of the active type; a caption strip below names the hovered/selected art
+		// (tile data-tips clip inside the grid's scrollport -- house rule: tips stay visible)
 		var grid = el('div', 'sc-pack-grid');
+		var curName = cur ? cur.name : '';
 		items.filter(function (a) { return a.group === active; }).forEach(function (a) {
-			var t = el('button', 'sc-pack' + ((currentFile && a.file === currentFile) ? ' is-sel' : '')); t.type = 'button'; t.setAttribute('data-tip', a.name);
+			var t = el('button', 'sc-pack' + ((currentFile && a.file === currentFile) ? ' is-sel' : '')); t.type = 'button';
 			var img = el('img'); img.src = D.packBase + a.file; img.alt = a.name; img.loading = 'lazy'; t.appendChild(img);
+			t.__artName = a.name;
 			t.onclick = function () { onPick(a); };
 			grid.appendChild(t);
 		});
 		wrap.appendChild(grid);
+		var cap = el('div', 'sc-picker__caption', curName || '\u00a0');
+		grid.addEventListener('mouseover', function (e) {
+			var b = e.target.closest ? e.target.closest('.sc-pack') : null;
+			if (b && b.__artName) { cap.textContent = b.__artName; }
+		});
+		grid.addEventListener('mouseleave', function () { cap.textContent = curName || '\u00a0'; });
+		wrap.appendChild(cap);
 		return wrap;
 	}
 
@@ -842,6 +889,34 @@
 			})
 			.catch(function () { scToast('Save failed.', 'warn'); });
 	};
+
+	// ---- keyboard: nudge / delete / deselect (only when focus is not in a form control) ----
+	document.addEventListener('keydown', function (e) {
+		if (!sel) { return; }
+		var ae = document.activeElement;
+		if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT' || ae.isContentEditable)) { return; }
+		var obj = selObj();
+		if (!obj) { return; }
+		var nud = e.shiftKey ? 2 : 0.5, hit = true;
+		if (e.key === 'ArrowLeft') { obj.x = Math.max(0, obj.x - nud); }
+		else if (e.key === 'ArrowRight') { obj.x = Math.min(100, obj.x + nud); }
+		else if (e.key === 'ArrowUp') { obj.y = Math.max(0, obj.y - nud); }
+		else if (e.key === 'ArrowDown') { obj.y = Math.min(100, obj.y + nud); }
+		else if (e.key === 'Delete' || e.key === 'Backspace') {
+			(sel.kind === 'zone' ? tpl.zones : tpl.slots).splice(sel.index, 1);
+			sel = null; setDirty(true); render(); refreshInspector();
+			e.preventDefault(); return;
+		} else if (e.key === 'Escape') { sel = null; refreshInspector(); return; }
+		else { hit = false; }
+		if (hit) { e.preventDefault(); setDirty(true); render(); buildSelected(); }
+	});
+	// clicking bare canvas (page surface / background) deselects
+	page.addEventListener('mousedown', function (e) {
+		var tg = e.target;
+		if (tg === page || (tg.classList && tg.classList.contains('sc-bg'))) {
+			if (sel) { sel = null; refreshInspector(); }
+		}
+	});
 
 	// ---- boot ----
 	document.getElementById('scTplName').addEventListener('input', function () { setDirty(true); });

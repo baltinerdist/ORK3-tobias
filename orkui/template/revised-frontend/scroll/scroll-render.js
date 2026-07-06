@@ -55,6 +55,15 @@
 			if (rot90) { el.classList.add('sc-slot--rot90'); }
 			var src = slotSrc(s, opts);
 			if (src) { var img = document.createElement('img'); img.src = src; img.alt = ''; el.appendChild(img); }
+			else if (opts.editable) {
+				// designer-only placeholder: an empty slot is otherwise a near-invisible
+				// 1px outline on white paper (never rendered in filler/PDF -- not editable)
+				el.classList.add('sc-slot--empty');
+				var ph = document.createElement('span');
+				ph.className = 'sc-slot__ph';
+				ph.innerHTML = '<i class="fa fa-image"></i> Empty slot';
+				el.appendChild(ph);
+			}
 			el.__slot = s; pageEl.appendChild(el);
 			// size the rotated image in real px (swapped) so it fills the bar after rotation,
 			// which also survives html2canvas/PDF (container-query units would not).

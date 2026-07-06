@@ -148,6 +148,25 @@ html[data-theme="dark"] {
 /* preset chips: real type-chip styling with an applied state (not token chips) */
 .sc-presets .sc-type { text-transform:none; }
 
+/* slider value readout: label + live number on one row */
+.sc-field__label--val { display:flex; justify-content:space-between; align-items:baseline; }
+.sc-field__val { color:var(--sc-ink); font-variant-numeric:tabular-nums; font-size:11px; }
+
+/* empty graphic slot placeholder (designer only) */
+.sc-slot--empty { border:2px dashed rgba(40,90,200,.45); background:rgba(40,90,200,.05);
+	display:flex; align-items:center; justify-content:center; box-sizing:border-box; }
+.sc-slot__ph { font:600 12px/1.2 system-ui; color:#6b7484; display:inline-flex; align-items:center; gap:6px; }
+
+/* art picker caption strip (replaces clipped tile tooltips) */
+.sc-picker__caption { min-height:1.2em; margin-top:4px; font-size:11px; color:var(--sc-ink-soft);
+	white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* element list z-order buttons */
+.sc-el__ord { flex:none; background:none; border:none; border-left:1px solid var(--sc-panel-line);
+	color:var(--sc-ink-soft); cursor:pointer; font-size:9px; padding:0 7px; }
+.sc-el__ord:hover:not(:disabled) { color:var(--sc-accent); }
+.sc-el__ord:disabled { opacity:.3; cursor:default; }
+
 /* dirty indicator on the save button */
 .sc-btn.is-dirty::after { content:'•'; margin-left:6px; font-size:14px; line-height:0; }
 
