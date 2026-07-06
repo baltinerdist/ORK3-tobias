@@ -248,6 +248,7 @@ class Controller_ScrollTemplateAjax extends Controller
             'BgType'      => $body['bg_type'] ?? 'color',
             'BgValue'     => $body['bg_value'] ?? '#ffffff',
             'BgFit'       => $body['bg_fit'] ?? 'tile',
+            'BgOpacity'   => $body['bg_opacity'] ?? 100,
             'Slots'       => $body['slots'] ?? array(),
             'Zones'       => $body['zones'] ?? array(),
             'AwardKeys'   => $body['award_keys'] ?? array(),

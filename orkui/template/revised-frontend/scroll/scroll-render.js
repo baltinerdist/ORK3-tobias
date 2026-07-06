@@ -53,6 +53,10 @@
 			else if (fit === 'stretch') { bg.style.backgroundRepeat = 'no-repeat'; bg.style.backgroundSize = '100% 100%'; }
 			else { bg.style.backgroundRepeat = 'no-repeat'; bg.style.backgroundSize = 'cover'; }
 		}
+		// opacity: 0-100 (%). Default 100 (fully opaque); lower fades the background toward the
+		// white page beneath -- a watermark effect for images, a lighter tint for a solid color.
+		var op = (tpl.bg_opacity == null || isNaN(+tpl.bg_opacity)) ? 100 : Math.max(0, Math.min(100, +tpl.bg_opacity));
+		if (op < 100) { bg.style.opacity = (op / 100).toFixed(3); }
 		pageEl.appendChild(bg);
 		// knotwork border layer (parametric, drawn between bg and slots)
 		if (tpl.knot && tpl.knot.enabled && w.ScrollKnot) {

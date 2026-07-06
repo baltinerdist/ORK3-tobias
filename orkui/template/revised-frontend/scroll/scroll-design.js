@@ -417,6 +417,8 @@
 			box.appendChild(bgFitField());
 			box.appendChild(el('p', 'sc-hint', 'Paste a full image URL, or choose "Library image" above for a built-in background.'));
 		}
+		// opacity applies to any background (0 = fully transparent, 100 = opaque)
+		box.appendChild(slider('Opacity', tpl.bg_opacity == null ? 100 : tpl.bg_opacity, 0, 100, 5, function (v) { tpl.bg_opacity = v; render(); }));
 	}
 	// How an image background fills the page: tile (repeat), fill (cover, may crop),
 	// stretch (100% x 100%, may distort). Default mirrors the renderer per type.
