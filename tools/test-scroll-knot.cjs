@@ -89,17 +89,20 @@ const abU = ab.bottom[0];
 ok(abU[0] > 0 && abU[1] < L1.edges.bottom.len && abU[1] > abU[0], 'projected interval inside edge');
 ok(G.autoBreaks(cfg, 816, 1056, [Object.assign({}, slot, { break_border: false })], L1).bottom.length === 0, 'unflagged slot ignored');
 
-// ---- plait: repeats, easing, containment
+// ---- plait: repeats, raw sinusoid (no end easing -- natural-fold trimming happens
+// downstream in buildSpineSegmentPolys), containment
 const sp = cfg.strands;
 const P = G.patterns.plait(400, 48, sp);
 ok(P.strands.length === 3, 'plait strand count');
+ok(isFinite(P.lam) && P.lam > 0, 'plait returns its wavelength');
 P.strands.forEach(function (s, i) {
 	const first = s.pts[0], last = s.pts[s.pts.length - 1];
 	near(first[0], 0, 1e-9, 'strand ' + i + ' starts at u=0');
 	near(last[0], 400, 1e-6, 'strand ' + i + ' ends at u=L');
-	near(first[1], G.lane(i, 3, 48), 0.01, 'strand ' + i + ' eased to lane at start');
-	near(last[1], G.lane(i, 3, 48), 0.01, 'strand ' + i + ' eased to lane at end');
-	s.pts.forEach(function (p) { ok(p[1] > 0 && p[1] < 48, 'strand ' + i + ' inside band'); });
+	near(first[1], last[1], 0.01, 'strand ' + i + ' raw whole-repeat sinusoid (same v at both ends)');
+	let ampMax = 0;
+	s.pts.forEach(function (p) { ok(p[1] > 0 && p[1] < 48, 'strand ' + i + ' inside band'); ampMax = Math.max(ampMax, Math.abs(p[1] - 24)); });
+	ok(ampMax > 10, 'strand ' + i + ' keeps full amplitude (no lane easing), got ' + ampMax.toFixed(1));
 	ok(s.color === i, 'strand color index');
 });
 // closed mode: no easing, strand marked closed, seamless wrap (integral repeats)
@@ -172,7 +175,7 @@ polysT4.forEach(function (p, i) { ok(p.closed === true, 'N=4 single-color loop '
 const cfgT3 = G.norm({ enabled: true, pattern: 'plait', strands: { count: 3 } });
 const segT3 = { s0: 100, s1: 500, endA: 'terminal', endB: 'terminal', med: null, medA: null, medB: null };
 const polysT3 = G.buildSpineSegmentPolys(segT3, cfgT3, layT, spnT);
-ok(polysT3.length === 2, '3 strands, default 2 colors: outer pair (0,2) shares color -> merges, middle strand curls (2 polylines)');
+ok(polysT3.length === 2, '3 strands, default 2 colors: outer pair (0,2) shares color -> merges, middle strand leaf-folds (2 polylines)');
 
 // ---- collectPolys: full-border sanity (permanent geometry invariants for render() smoke path)
 const cfgFull = G.norm({ enabled: true, pattern: 'plait', colors: { strands: ['#b3231a', '#e4670f', '#f5a623'], outline: '#2a0c05' }, breaks: [{ edge: 'bottom', at: 50, width: 26 }] });
@@ -293,6 +296,59 @@ ok(badPtdNormal === 0, 'pointed spine normals are unit length, got ' + badPtdNor
 		p.pts.forEach(function (pt) {
 			ok(isFinite(pt[0]) && isFinite(pt[1]), 'pointed polyline ' + i + ' coords finite');
 			ok(pt[0] >= -2 && pt[0] <= 816 + 2 && pt[1] >= -2 && pt[1] <= 1056 + 2, 'pointed polyline ' + i + ' within page bounds +/-2, got ' + pt);
+		});
+	});
+}
+
+// ---- NATURAL-FOLD SWEEP (the core guarantee): for every pattern x strand count x density,
+// every strand->cap / strand->leaf junction is tangent-continuous (<20deg), the emitted
+// polys stay contiguous (every open endpoint coincides with another emitted point -- caps,
+// two-tone shared anchors, or leaf closures), coords stay finite, and a bottom-break gap's
+// central 60% stays clear of weave.
+{
+	const SWEEP_SCALES = [0.6, 0.85, 1.0, 1.25, 1.5, 1.8];
+	const SWEEP = [
+		{ pattern: 'plait', count: 2 }, { pattern: 'plait', count: 3 }, { pattern: 'plait', count: 4 },
+		{ pattern: 'openweave', count: 4 }, { pattern: 'twist', count: 2 }
+	];
+	SWEEP.forEach(function (pc) {
+		SWEEP_SCALES.forEach(function (scale) {
+			const tag = pc.pattern + ' N=' + pc.count + ' scale=' + scale;
+			const cfgS = G.norm({ enabled: true, pattern: pc.pattern, strands: { count: pc.count, scale: scale } });
+			const layS = G.frameLayout(cfgS, 816, 1056);
+			const spnS = G.spine(cfgS, 816, 1056);
+			const segS = { s0: 100, s1: 500, endA: 'terminal', endB: 'terminal' };
+			const dbg = {};
+			const polysS = G.buildSpineSegmentPolys(segS, cfgS, layS, spnS, dbg);
+			ok(!dbg.degenerate, tag + ': 400px segment folds naturally (not degenerate)');
+			ok((dbg.junctions || []).length >= 2, tag + ': junction metadata emitted, got ' + (dbg.junctions || []).length);
+			(dbg.junctions || []).forEach(function (J, ji) {
+				const v1 = [J.b[0] - J.a[0], J.b[1] - J.a[1]], v2 = [J.c[0] - J.b[0], J.c[1] - J.b[1]];
+				const n1 = Math.hypot(v1[0], v1[1]) || 1, n2 = Math.hypot(v2[0], v2[1]) || 1;
+				const dot = Math.max(-1, Math.min(1, (v1[0] * v2[0] + v1[1] * v2[1]) / (n1 * n2)));
+				const deg = Math.acos(dot) * 180 / Math.PI;
+				ok(deg < 20, tag + ' junction ' + ji + ' (' + J.kind + '/' + J.end + ') tangent break ' + deg.toFixed(1) + 'deg < 20deg');
+			});
+			const allPts = [];
+			let finiteBad = 0;
+			polysS.forEach(function (p) { p.pts.forEach(function (pt) { allPts.push(pt); if (!isFinite(pt[0]) || !isFinite(pt[1])) { finiteBad++; } }); });
+			ok(finiteBad === 0, tag + ': all coords finite, got ' + finiteBad + ' bad');
+			polysS.forEach(function (p, pi2) {
+				if (p.closed) { return; }
+				[p.pts[0], p.pts[p.pts.length - 1]].forEach(function (ep, ei) {
+					let matches = 0;
+					allPts.forEach(function (q) { if (q !== ep && Math.hypot(q[0] - ep[0], q[1] - ep[1]) <= 0.1) { matches++; } });
+					ok(matches >= 1, tag + ' open poly ' + pi2 + ' endpoint ' + ei + ' coincides with another point (contiguous), got 0');
+				});
+			});
+			const cfgG = G.norm({ enabled: true, pattern: pc.pattern, strands: { count: pc.count, scale: scale }, breaks: [{ edge: 'bottom', at: 50, width: 20 }], autoBreak: { enabled: false } });
+			const layG = G.frameLayout(cfgG, 816, 1056);
+			const gotG = G.collectPolys(cfgG, 816, 1056, []);
+			const gw = 20 / 100 * layG.edges.bottom.len, gHalf = gw / 2 * 0.6;
+			const gcx = 816 / 2, gy0 = 1056 - layG.inset - layG.band, gy1 = 1056 - layG.inset;
+			let intr = 0;
+			gotG.polys.forEach(function (p) { p.pts.forEach(function (pt) { if (Math.abs(pt[0] - gcx) < gHalf && pt[1] > gy0 && pt[1] < gy1) { intr++; } }); });
+			ok(intr === 0, tag + ': bottom gap central 60% clear of weave, got ' + intr + ' intrusions');
 		});
 	});
 }

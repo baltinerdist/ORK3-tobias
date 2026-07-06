@@ -6,8 +6,10 @@
    flows continuously through corners. Corners are 'woven' (rounded spine) or 'pointed'
    (degenerate-radius spine + miter vertices inserted during the sweep, so the braid folds
    through a sharp 90-degree point). Breaks cut the spine into open segments (or leave it
-   as one closed loop when there are no features); open segment ends finish with looped
-   racetrack rim caps, so every strand stays contiguous. */
+   as one closed loop when there are no features); open segment ends finish with natural-fold
+   caps: each nesting pair is trimmed at a shared-tangent separation extremum and bridged with
+   a slope-sheared semicircle (odd middle strands end in a closed leaf fold), so every strand
+   stays contiguous and every wrap is tangent-clean at any density or strand count. */
 (function (w) {
 	'use strict';
 	var SVGNS = 'http://www.w3.org/2000/svg';
@@ -87,16 +89,23 @@
 	function strandW(band, N, sp) { return Math.max(2, (band / N) * clamp(sp.thickness, 0.2, 0.95)); }
 	function outlineW(wf) { return clamp(wf * 0.22, 1.2, 4.5); }   // bold inked outline (reference weight)
 	function STEP(band) { return clamp(band / 16, 1.25, 4); }
-	function TERM(band) { return band * 0.55; }
-	function EASE(lam, L) { return Math.min(lam * 0.35, L * 0.25); }             // shortened (was 0.6/0.4) -- kills long necks
+	function TERM(band) { return band * 0.55; }                                  // degenerate-connector inset only
 
 	// ---------- tunable named constants (visual acceptance loop tunes these) ----------
 	var SPINE_STEP = 2;                    // px, spine sample density
 	var R_FACTOR = 0.75;                   // spine corner radius = clamp(band*R_FACTOR, 6, band)
-	var RIM_RADIUS_FACTOR = 1.0;            // outer (lane0/laneN-1) cap: bulge/gap ratio (1 = true circle)
-	var INNER_RADIUS_FACTOR = 1.05;        // nested inner cap radius = |gap|/2 * this
-	var INNER_REACH_FACTOR = 0.55;         // nested inner cap bulge depth = radius * this
-	var CURL_RADIUS_FACTOR = 0.18;         // odd-middle-strand curl radius = band * this
+	var RIM_RADIUS_FACTOR = 1.0;           // cap bulge/gap ratio (1 = true semicircle)
+	var CAP_SAMPLES = 28;                  // cap semicircle sampling (first-chord angle ~ pi/CAP_SAMPLES/2)
+	var FOLD_SEP_MIN = 0.5;                // candidate folds need >= this * the pair's max separation
+	var CAP_END_MARGIN = 0.1;              // *band: cap tip keeps this clear of the segment boundary
+	var PAIR_STAGGER = 0.3;                // *lam: min inward stagger between nested pair folds
+	var LEAF_STAGGER_RELAXED = 0.2;        // *lam: fallback middle-leaf stagger on short segments
+	var LEAF_REACH_FACTOR = 0.5;           // *lam: middle-strand leaf fold reach
+	var LEAF_REACH_MAX = 0.45;             // *band: middle-strand leaf reach cap
+	var LEAF_WIDTH_FACTOR = 0.5;           // *innermost pair gap at its fold: leaf width
+	var LEAF_SAMPLES = 28;                 // leaf teardrop sampling
+	var JUNCTION_DENSIFY = 0.15;           // *step: extra sample slipped just inside each trim point
+	var SWATCH_MAX_SCALE = 0.7;            // panel thumbnails cap density so the short strip holds enough repeats to fold
 	var POINTED_R = 0.01;                  // px, degenerate spine corner radius in pointed mode (arcs ~zero-length)
 
 	// ---------- spine (centerline rounded-rect the whole border weaves along) ----------
@@ -314,20 +323,12 @@
 		return out;
 	}
 
-	// Per-point end-easing shared by all pattern generators: blends the raw sinusoid value `vv`
-	// toward whichever end (A at u=0 / B at u=L) is nearer, easing to that end's lane center over
-	// `ease`. Only the closer end's window ever applies (always far shorter than L/2 for any
-	// real weave run).
-	function endBlend(vv, uu, L, ease, laneTarget) {
-		var d = Math.min(uu, L - uu);
-		return (ease > 0 && d < ease) ? lerp(laneTarget, vv, smooth(d / ease)) : vv;
-	}
-
 	// ---------- patterns ----------
-	// Contract: gen(L, band, sp, opts) -> {strands:[{pts:[[u,v]..], color:int, closed:bool}]}
-	// Open (opts.closed falsy): strands eased to lane centers over EASE at both ends, whole number
-	// of wave repeats. Closed (opts.closed true): L = full spine length, reps still whole, but NO
-	// end easing -- the sinusoid just continues seamlessly (reps integral -> wraps exactly).
+	// Contract: gen(L, band, sp, opts) -> {strands:[{pts:[[u,v]..], color:int, closed:bool}], lam}
+	// Open (opts.closed falsy) and closed modes both emit RAW full-amplitude sinusoids over the
+	// whole length with a whole number of wave repeats (reps integral -> closed loops wrap
+	// exactly). Open-segment end finishing (trim + fold caps) happens later in
+	// buildSpineSegmentPolys via assignFolds -- there is no port easing here anymore.
 	var patterns = {};
 	patterns.plait = function (L, band, sp, opts) {
 		var closedMode = !!(opts && opts.closed);
@@ -336,47 +337,38 @@
 		var reps = Math.max(1, Math.round(L / lam0)), lam = L / reps;
 		var wf = strandW(band, N, sp);
 		var amp = Math.max(1, band / 2 - wf / 2 - outlineW(wf) - 1);
-		var ease = closedMode ? 0 : EASE(lam, L), step = STEP(band), strands = [];
+		var step = STEP(band), strands = [];
 		for (var i = 0; i < N; i++) {
-			var phi = i * Math.PI * 2 / N, pts = [], laneTarget = lane(i, N, band);
+			var phi = i * Math.PI * 2 / N, pts = [];
 			for (var u = 0; u <= L + 1e-6; u += step) {
 				var uu = Math.min(u, L);
-				var vv = band / 2 + amp * Math.sin(Math.PI * 2 * uu / lam + phi);
-				vv = closedMode ? vv : endBlend(vv, uu, L, ease, laneTarget);
-				pts.push([uu, vv]);
+				pts.push([uu, band / 2 + amp * Math.sin(Math.PI * 2 * uu / lam + phi)]);
 				if (uu >= L) { break; }
 			}
 			if (pts[pts.length - 1][0] < L) {
-				var vEnd = band / 2 + amp * Math.sin(Math.PI * 2 * L / lam + phi);
-				vEnd = closedMode ? vEnd : endBlend(vEnd, L, L, ease, laneTarget);
-				pts.push([L, vEnd]);
+				pts.push([L, band / 2 + amp * Math.sin(Math.PI * 2 * L / lam + phi)]);
 			}
 			strands.push({ pts: pts, color: i, closed: closedMode });
 		}
-		return { strands: strands };
+		return { strands: strands, lam: lam };
 	};
 	// order = [0,2,1,3]: pair A (k=0,1) sits outer/outer, pair B (k=2,3) inner/inner at the lanes
-	// so the two-tone lattice mirrors symmetrically at the segment ports.
+	// so the two-tone lattice mirrors symmetrically across the band.
 	patterns.openweave = function (L, band, sp, opts) {
 		var closedMode = !!(opts && opts.closed);
 		var lam0 = Math.max(band * 2.6 * sp.scale, 10);
 		var reps = Math.max(1, Math.round(L / lam0)), lam = L / reps;
 		var wf = strandW(band, 4, sp), amp = Math.max(1, band / 2 - wf / 2 - outlineW(wf) - 1);
-		var ease = closedMode ? 0 : EASE(lam, L), step = STEP(band), order = [0, 2, 1, 3], strands = [];
+		var step = STEP(band), order = [0, 2, 1, 3], strands = [];
 		for (var k = 0; k < 4; k++) {
 			var pair = k >> 1, sign = (k & 1) ? -1 : 1, phase = pair * Math.PI / 2, pts = [];
-			var laneTarget = lane(order[k], 4, band);
 			for (var u = 0; u <= L + 1e-6; u += step) {
 				var uu = Math.min(u, L);
-				var vv = band / 2 + sign * amp * Math.sin(Math.PI * 2 * uu / lam + phase);
-				vv = closedMode ? vv : endBlend(vv, uu, L, ease, laneTarget);
-				pts.push([uu, vv]);
+				pts.push([uu, band / 2 + sign * amp * Math.sin(Math.PI * 2 * uu / lam + phase)]);
 				if (uu >= L) { break; }
 			}
 			if (pts[pts.length - 1][0] < L) {
-				var vEnd = band / 2 + sign * amp * Math.sin(Math.PI * 2 * L / lam + phase);
-				vEnd = closedMode ? vEnd : endBlend(vEnd, L, L, ease, laneTarget);
-				pts.push([L, vEnd]);
+				pts.push([L, band / 2 + sign * amp * Math.sin(Math.PI * 2 * L / lam + phase)]);
 			}
 			strands.push({ pts: pts, color: pair, closed: closedMode, lane: order[k] });
 		}
@@ -385,7 +377,7 @@
 		// [0,2,1,3]; sort by the `lane` tag so index 0..3 walks lanes 0..3 in page order.
 		strands.sort(function (a, b) { return a.lane - b.lane; });
 		strands.forEach(function (s) { delete s.lane; });
-		return { strands: strands };
+		return { strands: strands, lam: lam };
 	};
 	patterns.twist = function (L, band, sp, opts) {
 		var closedMode = !!(opts && opts.closed);
@@ -393,24 +385,20 @@
 		var lam0 = Math.max(band * 1.15 * sp.scale, 8);
 		var reps = Math.max(1, Math.round(L / lam0)), lam = L / reps;
 		var wf = strandW(band, 2, sp2), amp = Math.max(1, band / 2 - wf / 2 - outlineW(wf) - 1);
-		var ease = closedMode ? 0 : EASE(lam, L), step = STEP(band), strands = [];
+		var step = STEP(band), strands = [];
 		for (var k = 0; k < 2; k++) {
-			var sign = k ? -1 : 1, pts = [], laneTarget = lane(k, 2, band);
+			var sign = k ? -1 : 1, pts = [];
 			for (var u = 0; u <= L + 1e-6; u += step) {
 				var uu = Math.min(u, L);
-				var vv = band / 2 + sign * amp * Math.sin(Math.PI * 2 * uu / lam);
-				vv = closedMode ? vv : endBlend(vv, uu, L, ease, laneTarget);
-				pts.push([uu, vv]);
+				pts.push([uu, band / 2 + sign * amp * Math.sin(Math.PI * 2 * uu / lam)]);
 				if (uu >= L) { break; }
 			}
 			if (pts[pts.length - 1][0] < L) {
-				var vEnd = band / 2 + sign * amp * Math.sin(Math.PI * 2 * L / lam);
-				vEnd = closedMode ? vEnd : endBlend(vEnd, L, L, ease, laneTarget);
-				pts.push([L, vEnd]);
+				pts.push([L, band / 2 + sign * amp * Math.sin(Math.PI * 2 * L / lam)]);
 			}
 			strands.push({ pts: pts, color: k, closed: closedMode });
 		}
-		return { strands: strands };
+		return { strands: strands, lam: lam };
 	};
 	function effCount(cfg) {
 		if (cfg.pattern === 'openweave') { return 4; }
@@ -608,82 +596,257 @@
 		return out;
 	}
 
-	// ---------- terminals (end caps, generated in (u,v) BEFORE sweeping) ----------
-	// Rim pair (outermost lanes): a TRUE (non-squashed) semicircle -- same radius for both axes,
-	// exactly anchored to (ue,va)/(ue,vb) so the two-tone split rule's shared endpoints still land
-	// exactly -- so the outer strand reads as a rounded rim (image 8 style), not a flattened U.
-	// (RIM_RADIUS_FACTOR ~1 keeps it a true circle; nudge slightly >1 for a touch more bulge.)
+	// ---------- terminals (natural-fold end caps, generated in (u,v) BEFORE sweeping) ----------
+	// Every pattern is a sinusoid bundle, so for any pair (i,j) each local extremum of the
+	// separation D(u) = v_i(u) - v_j(u) is a point where the two strands share ONE slope s
+	// (D'(u) = 0 -> v_i' = v_j' = s). Trimming both strands there and bridging with a TRUE
+	// semicircle SHEARED by s is tangent-continuous by construction -- for every pattern,
+	// density, and strand count. Pairs are processed outermost -> innermost and staggered
+	// along the band (PAIR_STAGGER) so the nested wraps read like the references.
+	// Cap semicircle bridging (ue,va)..(ue,vb), bulging toward the segment end (dir); exactly
+	// anchored to the trimmed strand endpoints so merge/two-tone endpoints coincide. Callers
+	// shear it by the pair's shared fold slope (shearPts).
 	function rimArc(ue, va, vb, dir, band) {
 		var mid = (va + vb) / 2, r = Math.abs(vb - va) / 2, reach = r * RIM_RADIUS_FACTOR;
 		var sign = (va < vb) ? 1 : -1, pts = [];
-		for (var k = 0; k <= 20; k++) {
-			var th = k / 20 * Math.PI;
+		for (var k = 0; k <= CAP_SAMPLES; k++) {
+			var th = k / CAP_SAMPLES * Math.PI;
 			pts.push([ue + dir * Math.sin(th) * reach, mid - Math.cos(th) * r * sign]);
 		}
 		return pts;
 	}
-	// Nested inner pair(s): smaller, shallower arcs that sit inside the rim (short necks). Also
-	// anchored exactly to (ue,va)/(ue,vb); only the bulge depth (reach) is scaled down, keeping
-	// the v-span exact so it nests without a kink.
-	function innerArc(ue, va, vb, dir) {
-		var mid = (va + vb) / 2, r = Math.abs(vb - va) / 2, reach = r * INNER_RADIUS_FACTOR * INNER_REACH_FACTOR;
-		var sign = (va < vb) ? 1 : -1, pts = [];
-		for (var k = 0; k <= 20; k++) {
-			var th = k / 20 * Math.PI;
-			pts.push([ue + dir * Math.sin(th) * reach, mid - Math.cos(th) * r * sign]);
+	function shearPts(pts, u0, s) {
+		return pts.map(function (p) { return [p[0], p[1] + s * (p[0] - u0)]; });
+	}
+	// Closed teardrop leaf for the odd middle strand: leaves (ue,v0) toward dir with a
+	// horizontal tangent, comes to a point at u = ue + dir*reach, and returns to the exact
+	// same endpoint (tangent-symmetric) -- the pointed inner fold of the references. Both
+	// endpoints coincide with the strand end so the outline pass unions it (no open tip).
+	function leafFold(ue, v0, dir, reach, width) {
+		var pts = [];
+		for (var k = 0; k <= LEAF_SAMPLES; k++) {
+			var t = k / LEAF_SAMPLES * Math.PI * 2;
+			pts.push([ue + dir * reach * Math.sin(t / 2), v0 + width / 2 * Math.sin(t) * Math.sin(t / 2)]);
 		}
 		return pts;
 	}
-	// Spiral curl for the middle strand of an odd count.
-	function curl(ue, v, dir, band) {
-		var pts = [], r0 = band * CURL_RADIUS_FACTOR, cx = ue + dir * r0, turns = 1.5 * Math.PI * 2 * 0.75; // 270 deg
-		for (var k = 0; k <= 24; k++) {
-			var th = k / 24 * turns, r = r0 * (1 - 0.7 * (k / 24));
-			pts.push([cx - dir * Math.cos(th) * r, v + Math.sin(th) * r]);
+	// 3-point Lagrange interpolation of v (and dv/du) on a sampled strand polyline at u.
+	function sampleVS(pts, u) {
+		var n = pts.length;
+		if (n < 3) {
+			var sl = (pts[n - 1][1] - pts[0][1]) / ((pts[n - 1][0] - pts[0][0]) || 1);
+			return [pts[0][1] + sl * (u - pts[0][0]), sl];
 		}
-		return pts;
+		var lo = 0, hi = n - 1;
+		while (hi - lo > 1) { var mid = (lo + hi) >> 1; if (pts[mid][0] <= u) { lo = mid; } else { hi = mid; } }
+		var k = clamp(lo - 1, 0, n - 3);
+		var x0 = pts[k][0], x1 = pts[k + 1][0], x2 = pts[k + 2][0];
+		var y0 = pts[k][1], y1 = pts[k + 1][1], y2 = pts[k + 2][1];
+		var d0 = (x0 - x1) * (x0 - x2), d1 = (x1 - x0) * (x1 - x2), d2 = (x2 - x0) * (x2 - x1);
+		var v = y0 * (u - x1) * (u - x2) / d0 + y1 * (u - x0) * (u - x2) / d1 + y2 * (u - x0) * (u - x1) / d2;
+		var s = y0 * (2 * u - x1 - x2) / d0 + y1 * (2 * u - x0 - x2) / d1 + y2 * (2 * u - x0 - x1) / d2;
+		return [v, s];
+	}
+	// u of the vertex (dq/du = 0) of the quadratic through three samples, clamped into [x0,x2].
+	function quadVertexU(x0, y0, x1, y1, x2, y2) {
+		var d0 = (x0 - x1) * (x0 - x2), d1 = (x1 - x0) * (x1 - x2), d2 = (x2 - x0) * (x2 - x1);
+		var A2 = y0 / d0 + y1 / d1 + y2 / d2;
+		if (!(Math.abs(A2) > 1e-12)) { return x1; }
+		var u = (y0 * (x1 + x2) / d0 + y1 * (x0 + x2) / d1 + y2 * (x0 + x1) / d2) / (2 * A2);
+		return clamp(u, x0, x2);
+	}
+	// Candidate folds for a pair: local extrema of |D| on the shared sample grid, parabola-
+	// refined, keeping only real separation extrema (>= FOLD_SEP_MIN of the pair's max
+	// separation; the same-sign-neighborhood check skips near-zero kinks where the pair is
+	// basically crossing). Returns ascending [{u}].
+	function pairFoldCandidates(ptsI, ptsJ) {
+		var n = Math.min(ptsI.length, ptsJ.length), D = [], k, a;
+		for (k = 0; k < n; k++) { D.push(ptsI[k][1] - ptsJ[k][1]); }
+		var maxSep = 0;
+		for (k = 0; k < n; k++) { a = Math.abs(D[k]); if (a > maxSep) { maxSep = a; } }
+		if (!(maxSep > 1e-6)) { return []; }
+		var out = [];
+		for (k = 1; k < n - 1; k++) {
+			a = Math.abs(D[k]);
+			if (!(a >= Math.abs(D[k - 1]) && a > Math.abs(D[k + 1]))) { continue; }
+			if (a < FOLD_SEP_MIN * maxSep) { continue; }
+			if (D[k - 1] * D[k + 1] <= 0) { continue; }
+			out.push({ u: quadVertexU(ptsI[k - 1][0], D[k - 1], ptsI[k][0], D[k], ptsI[k + 1][0], D[k + 1]) });
+		}
+		return out;
+	}
+	// Local extrema (zero slope) of a single strand's own v(u) -- middle-strand leaf anchors.
+	function ownExtrema(pts) {
+		var out = [], n = pts.length, k;
+		for (k = 1; k < n - 1; k++) {
+			var d1 = pts[k][1] - pts[k - 1][1], d2 = pts[k + 1][1] - pts[k][1];
+			if (d1 * d2 > 0 || (d1 === 0 && d2 === 0)) { continue; }
+			out.push({ u: quadVertexU(pts[k - 1][0], pts[k - 1][1], pts[k][0], pts[k][1], pts[k + 1][0], pts[k + 1][1]) });
+		}
+		return out;
+	}
+	// Choose per-pair fold points at both ends of an open segment: outermost pair takes the
+	// candidate nearest each end whose cap still clears the segment boundary by CAP_END_MARGIN;
+	// each inner pair staggers at least PAIR_STAGGER*lam further inward (never two caps stacked
+	// at the same u); the odd middle strand staggers beyond the innermost pair, relaxing to
+	// LEAF_STAGGER_RELAXED*lam on short segments (its extrema sit exactly lam/4 from the pair
+	// folds, so the strict stagger would always skip to lam*3/4 -- too deep for thumbnails).
+	// Returns { A:[{u,va,vb,s,sep}..], B:[..], midA:{u,v}|null, midB:{u,v}|null, lam } or null
+	// when the segment is too short to fold cleanly (caller falls back to the connector path).
+	function assignFolds(res, band, Lseg) {
+		var strandsArr = res.strands, N = strandsArr.length, lam = res.lam;
+		var nPairs = Math.floor(N / 2), margin = CAP_END_MARGIN * band;
+		var A = [], B = [], prevA = null, prevB = null, i, k, F, reach;
+		function foldAt(pi, pj, u) {
+			var vi = sampleVS(strandsArr[pi].pts, u), vj = sampleVS(strandsArr[pj].pts, u);
+			return { u: u, va: vi[0], vb: vj[0], s: (vi[1] + vj[1]) / 2, sep: Math.abs(vi[0] - vj[0]) };
+		}
+		// Stagger relaxes on short segments (panel swatches, narrow break runs): the full
+		// PAIR_STAGGER nesting is tried first, then progressively tighter packings before
+		// giving up to the degenerate connector.
+		var relax = [PAIR_STAGGER, PAIR_STAGGER * 0.5, 0.08], rIdx, okAll = false;
+		for (rIdx = 0; rIdx < relax.length && !okAll; rIdx++) {
+			var stagP = relax[rIdx];
+			A.length = 0; B.length = 0; prevA = null; prevB = null; okAll = true;
+			for (i = 0; i < nPairs; i++) {
+				var j = N - 1 - i;
+				var cand = pairFoldCandidates(strandsArr[i].pts, strandsArr[j].pts);
+				var fA = null, fB = null;
+				for (k = cand.length - 1; k >= 0; k--) {
+					F = foldAt(i, j, cand[k].u);
+					reach = F.sep / 2 * RIM_RADIUS_FACTOR;
+					if (F.u + reach > Lseg - margin) { continue; }
+					if (prevB != null && F.u > prevB - stagP * lam) { continue; }
+					fB = F; break;
+				}
+				for (k = 0; k < cand.length; k++) {
+					F = foldAt(i, j, cand[k].u);
+					reach = F.sep / 2 * RIM_RADIUS_FACTOR;
+					if (F.u - reach < margin) { continue; }
+					if (prevA != null && F.u < prevA + stagP * lam) { continue; }
+					fA = F; break;
+				}
+				if (!fA || !fB || fB.u - fA.u < lam * 0.25) { okAll = false; break; }
+				A.push(fA); B.push(fB); prevA = fA.u; prevB = fB.u;
+			}
+		}
+		if (!okAll) { return null; }
+		var midA = null, midB = null;
+		if (N % 2 === 1) {
+			var mPts = strandsArr[(N - 1) / 2].pts;
+			var mc = ownExtrema(mPts), stag = [PAIR_STAGGER, LEAF_STAGGER_RELAXED], sIdx;
+			for (sIdx = 0; sIdx < stag.length; sIdx++) {
+				midA = null; midB = null;
+				for (k = mc.length - 1; k >= 0; k--) {
+					if (mc[k].u <= prevB - stag[sIdx] * lam) { midB = { u: mc[k].u, v: sampleVS(mPts, mc[k].u)[0] }; break; }
+				}
+				for (k = 0; k < mc.length; k++) {
+					if (mc[k].u >= prevA + stag[sIdx] * lam) { midA = { u: mc[k].u, v: sampleVS(mPts, mc[k].u)[0] }; break; }
+				}
+				if (midA && midB && midB.u - midA.u >= lam * 0.25) { break; }
+			}
+			if (!midA || !midB || midB.u - midA.u < lam * 0.25) { return null; }
+		}
+		return { A: A, B: B, midA: midA, midB: midB, lam: lam };
+	}
+	// Trim an open strand to [uA,uB] with exact interpolated (u,v) endpoints. A densify point
+	// is slipped just inside each cut (JUNCTION_DENSIFY*step) so the junction chord hugs the
+	// true tangent -- keeps the <20-degree junction rule honest even at high density.
+	function trimOpen(pts, uA, vA, uB, vB, step) {
+		var hd = step * JUNCTION_DENSIFY, dense = (uB - uA) > 4 * hd, out = [[uA, vA]], k;
+		if (dense) { out.push([uA + hd, sampleVS(pts, uA + hd)[0]]); }
+		for (k = 0; k < pts.length; k++) {
+			if (pts[k][0] > uA + hd + 1e-6 && pts[k][0] < uB - hd - 1e-6) { out.push(pts[k].slice()); }
+		}
+		if (dense) { out.push([uB - hd, sampleVS(pts, uB - hd)[0]]); }
+		out.push([uB, vB]);
+		return out;
 	}
 	// ---------- segment assembly (spine-local u,v -> page via sweepPt) ----------
-	// Build the page-space polylines for one open spine segment, terminals merged in.
-	// seg: {s0,s1,endA,endB} with endA/endB always 'terminal' (or 'weave' pre-merge).
-	function buildSpineSegmentPolys(seg, cfg, layout, spn) {
+	// Build the page-space polylines for one open spine segment, natural-fold end caps merged
+	// in. seg: {s0,s1,endA,endB} with endA/endB always 'terminal' (or 'weave' pre-merge).
+	// Patterns emit RAW sinusoids over the FULL segment length; per end, each nesting pair
+	// (i, N-1-i) is trimmed at a shared-tangent separation extremum (assignFolds) and bridged
+	// with a slope-sheared semicircle. dbg (optional, tests) collects junction metadata
+	// {kind,end,a,b,c} page triples (angle at b = strand->cap tangent break) + dbg.degenerate.
+	function buildSpineSegmentPolys(seg, cfg, layout, spn, dbg) {
 		var band = layout.band, sp = cfg.strands;
-		var tA = TERM(band), tB = TERM(band);
 		var Lseg = seg.s1 - seg.s0;
-		var Lw = Lseg - tA - tB;
 		var gen = patterns[cfg.pattern] || patterns.plait;
-		var res, off = tA;
-		if (Lw < band * 1.1) {                             // degenerate: plain connector strands
-			var pts0 = [[tA, band * 0.35], [Lseg - tB, band * 0.35]];
-			var pts1 = [[tA, band * 0.65], [Lseg - tB, band * 0.65]];
-			res = { strands: [{ pts: pts0, color: 0, closed: false }, { pts: pts1, color: 1, closed: false }] };
-			off = 0;
-		} else {
-			res = gen(Lw, band, sp, {});
-			res.strands.forEach(function (s) { s.pts = s.pts.map(function (p) { return [p[0] + off, p[1]]; }); });
+		var step = STEP(band);
+		var res = null, folds = null, pi, pj;
+		if (Lseg - 2 * TERM(band) >= band * 1.1) {
+			res = gen(Lseg, band, sp, {});
+			folds = assignFolds(res, band, Lseg);
+		}
+		if (folds) {
+			for (pi = 0; pi < folds.A.length; pi++) {
+				pj = res.strands.length - 1 - pi;
+				var fa = folds.A[pi], fb = folds.B[pi];
+				res.strands[pi].pts = trimOpen(res.strands[pi].pts, fa.u, fa.va, fb.u, fb.va, step);
+				res.strands[pj].pts = trimOpen(res.strands[pj].pts, fa.u, fa.vb, fb.u, fb.vb, step);
+			}
+			if (folds.midA) {
+				var mI = (res.strands.length - 1) / 2;
+				res.strands[mI].pts = trimOpen(res.strands[mI].pts, folds.midA.u, folds.midA.v, folds.midB.u, folds.midB.v, step);
+			}
+		} else {                                           // degenerate: plain connector strands
+			if (dbg) { dbg.degenerate = true; }
+			var tC = TERM(band);
+			res = {
+				strands: [
+					{ pts: [[tC, band * 0.35], [Lseg - tC, band * 0.35]], color: 0, closed: false },
+					{ pts: [[tC, band * 0.65], [Lseg - tC, band * 0.65]], color: 1, closed: false }
+				]
+			};
+			folds = {
+				A: [{ u: tC, va: band * 0.35, vb: band * 0.65, s: 0, sep: band * 0.3 }],
+				B: [{ u: Lseg - tC, va: band * 0.35, vb: band * 0.65, s: 0, sep: band * 0.3 }],
+				midA: null, midB: null, lam: 0
+			};
 		}
 		var N = res.strands.length;
 		var paletteLen = (cfg.colors.strands && cfg.colors.strands.length) || 1;
-		// terminal arcs: pair lane i with lane N-1-i (fixed for both A and B passes); odd middle curls.
-		// Each pair (i, N-1-i) is visited once per open end (once by endArcs('A'), once by endArcs('B')).
+		if (dbg && !dbg.junctions) { dbg.junctions = []; }
+		function pageJunction(kind, endName, p0, p1, p2) {
+			if (!dbg || !p0 || !p1 || !p2) { return; }
+			dbg.junctions.push({
+				kind: kind, end: endName,
+				a: sweepPt(spn, seg.s0 + p0[0], p0[1], band),
+				b: sweepPt(spn, seg.s0 + p1[0], p1[1], band),
+				c: sweepPt(spn, seg.s0 + p2[0], p2[1], band)
+			});
+		}
+		// terminal arcs: pair lane i with lane N-1-i (fixed for both A and B passes; the anchor
+		// geometry is per-pair fold points now, but the merge machinery is unchanged). Each pair
+		// is visited once per open end (once by endArcs('A'), once by endArcs('B')).
 		// First visit merges si+sj into one open polyline (owner = si, sj absorbed via sj.merged).
 		// Second visit (sj already merged) finds si's two free ends now sitting at THIS end and
 		// joins them with an arc, closing the polyline into a loop.
 		function endArcs(atEnd) {
 			var isA = atEnd === 'A';
-			var ue = isA ? tA : (Lseg - tB), dir = isA ? -1 : 1;
-			for (var i = 0; i < Math.floor(N / 2); i++) {
+			var dir = isA ? -1 : 1, list = isA ? folds.A : folds.B;
+			for (var i = 0; i < list.length; i++) {
 				var j = N - 1 - i;
 				var si = res.strands[i], sj = res.strands[j];
 				if (!si || !sj || si === sj) { continue; }
-				var va = lane(i, N, band), vb = lane(j, N, band);
-				var arc = (i === 0) ? rimArc(ue, va, vb, dir, band) : innerArc(ue, va, vb, dir);
+				var F = list[i];
+				var arc = shearPts(rimArc(F.u, F.va, F.vb, dir, band), F.u, F.s);
+				// junction metadata BEFORE any merge mutates si; sj.pts is never mutated by merges,
+				// so its trimmed head/tail stays valid even when sj.merged.
+				if (isA) {
+					pageJunction('cap', atEnd, si.pts[1], si.pts[0], arc[1]);
+					pageJunction('cap', atEnd, arc[arc.length - 2], sj.pts[0], sj.pts[1]);
+				} else {
+					pageJunction('cap', atEnd, si.pts[si.pts.length - 2], si.pts[si.pts.length - 1], arc[1]);
+					pageJunction('cap', atEnd, arc[arc.length - 2], sj.pts[sj.pts.length - 1], sj.pts[sj.pts.length - 2]);
+				}
 				var sameColor = (si.color % paletteLen) === (sj.color % paletteLen);
 				if (!sameColor) {
-					// Finding 1: two-tone terminal. Strand i owns the arc at every end it visits;
-					// strand j is left as its own bare, unmerged polyline. Endpoints coincide (both
-					// sample lane i/lane j at the same ue) so the outline pass unions them seamlessly
-					// even though the fill paints never merge.
+					// Two-tone terminal. Strand i owns the arc at every end it visits; strand j is
+					// left as its own bare, unmerged polyline. Endpoints coincide (arc is anchored
+					// exactly to both trimmed strand endpoints) so the outline pass unions them
+					// seamlessly even though the fill paints never merge.
 					if (isA) { si.pts = arc.slice().reverse().concat(si.pts); } else { si.pts = si.pts.concat(arc); }
 					continue;
 				}
@@ -699,22 +862,32 @@
 				else { joined = si.pts.concat(arc, sj.pts.slice().reverse()); }
 				si.pts = joined; sj.merged = true;
 			}
-			if (N % 2 === 1) {
+			// odd middle strand: closed leaf fold at its own zero-slope extremum (folds.midA/midB)
+			var mF = isA ? folds.midA : folds.midB;
+			if (mF && N % 2 === 1) {
 				var m = res.strands[(N - 1) / 2];
 				if (m && !m.merged && !m.closed) {              // m.closed: defensive only, never closed elsewhere
-					var c = curl(ue, lane((N - 1) / 2, N, band), dir, band);
-					if (isA) { m.pts = c.slice().reverse().concat(m.pts); } else { m.pts = m.pts.concat(c); }
+					var inner = list[list.length - 1];
+					var lf = leafFold(mF.u, mF.v, dir,
+						Math.min(LEAF_REACH_FACTOR * folds.lam, LEAF_REACH_MAX * band),
+						LEAF_WIDTH_FACTOR * inner.sep);
+					if (isA) {
+						pageJunction('leaf', atEnd, m.pts[1], m.pts[0], lf[1]);
+						m.pts = lf.slice().reverse().concat(m.pts.slice(1));
+					} else {
+						pageJunction('leaf', atEnd, m.pts[m.pts.length - 2], m.pts[m.pts.length - 1], lf[1]);
+						m.pts = m.pts.concat(lf.slice(1));
+					}
 				}
 			}
 		}
 		endArcs('A'); endArcs('B');
 		var out = [];
-		res.strands.forEach(function (s, idx) {
+		res.strands.forEach(function (s) {
 			if (s.merged) { return; }
-			var pagePts = sweepStrand(spn, seg.s0, s.pts, band);
-			out.push({ pts: pagePts, color: s.color, closed: !!s.closed, _strandIdx: idx });
+			out.push({ pts: sweepStrand(spn, seg.s0, s.pts, band), color: s.color, closed: !!s.closed });
 		});
-		return out.map(function (o) { return { pts: o.pts, color: o.color, closed: o.closed }; });
+		return out;
 	}
 	// No features anywhere on the loop -> one continuous closed weave (whole spine, integral
 	// repeats, no easing) instead of open segments with terminals.
@@ -842,6 +1015,7 @@
 	function swatch(rawCfg, wPx, hPx) {
 		var cfg = norm(rawCfg);
 		cfg.enabled = true; cfg.breaks = []; cfg.autoBreak.enabled = false;
+		cfg.strands.scale = Math.min(cfg.strands.scale, SWATCH_MAX_SCALE);
 		var svg = svgEl('svg');
 		svg.setAttribute('class', 'sc-knot-swatch');
 		svg.setAttribute('viewBox', '0 0 ' + wPx + ' ' + hPx);
@@ -865,10 +1039,11 @@
 			mergeIntervals: mergeIntervals, segmentLoop: segmentLoop, autoBreaks: autoBreaks,
 			patterns: patterns, findCrossings: findCrossings, blendHex: blendHex, subPolyline: subPolyline,
 			buildSpineSegmentPolys: buildSpineSegmentPolys, buildClosedLoopPolys: buildClosedLoopPolys, collectPolys: collectPolys,
-			curl: curl, rimArc: rimArc, innerArc: innerArc,
+			rimArc: rimArc, leafFold: leafFold, shearPts: shearPts, trimOpen: trimOpen,
+			sampleVS: sampleVS, pairFoldCandidates: pairFoldCandidates, ownExtrema: ownExtrema, assignFolds: assignFolds,
 			crossingAngleSin: crossingAngleSin, underWindow: underWindow, splitByWindows: splitByWindows,
 			spine: spine, spineAt: spineAt, sweepPt: sweepPt, sweepStrand: sweepStrand, edgeIntervalToS: edgeIntervalToS,
-			STEP: STEP, TERM: TERM, EASE: EASE, clamp: clamp, lerp: lerp, smooth: smooth, effCount: effCount
+			STEP: STEP, TERM: TERM, clamp: clamp, lerp: lerp, smooth: smooth, effCount: effCount
 		}
 	};
 	w.ScrollKnot = K;
