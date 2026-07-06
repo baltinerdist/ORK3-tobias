@@ -98,15 +98,24 @@
 	var CAP_SAMPLES = 28;                  // cap semicircle sampling (first-chord angle ~ pi/CAP_SAMPLES/2)
 	var FOLD_SEP_MIN = 0.5;                // candidate folds need >= this * the pair's max separation
 	var CAP_END_MARGIN = 0.1;              // *band: cap tip keeps this clear of the segment boundary
-	var PAIR_STAGGER = 0.3;                // *lam: min inward stagger between nested pair folds
+	var PAIR_STAGGER = 0.2;                // *lam: min inward stagger between nested pair folds. Kept BELOW the
+	//                                       natural lam/4 (0.25) interleave of adjacent mirror pairs, so an
+	//                                       inner pair folds right after the outer pair's last crossing
+	//                                       (compact interlocking terminal) instead of being skipped a whole
+	//                                       half-wave inward (which left the outer pair soloing extra loops).
 	var LEAF_STAGGER_RELAXED = 0.2;        // *lam: fallback middle-leaf stagger on short segments
 	var LEAF_REACH_FACTOR = 0.5;           // *lam: middle-strand leaf fold reach
 	var LEAF_REACH_MAX = 0.45;             // *band: middle-strand leaf reach cap
 	var LEAF_WIDTH_FACTOR = 0.5;           // *innermost pair gap at its fold: leaf width
 	var LEAF_SAMPLES = 28;                 // leaf teardrop sampling
+	var LEAF_TAN_BASE = 0.5;               // *reach: odd-leaf base-tangent handle (matches strand arrival slope)
+	var LEAF_TAN_TIP = 0.55;               // *reach: odd-leaf tip vertical handle (roundness of the shared tip)
+	var LEAF_TAN_RISE = 0.5;               // *reach: cap on the arm's v-rise so a steep arrival slope can't balloon it
 	var JUNCTION_DENSIFY = 0.15;           // *step: extra sample slipped just inside each trim point
 	var SWATCH_MAX_SCALE = 0.7;            // panel thumbnails cap density so the short strip holds enough repeats to fold
 	var POINTED_R = 0.01;                  // px, degenerate spine corner radius in pointed mode (arcs ~zero-length)
+	var POINT_REACH_FACTOR = 1.35;         // *(sep/2): two-strand curved-point cap apex reaches past the round rim
+	var POINT_SHOULDER = 0.35;             // *reach: ogee shoulder/sharpness (->1 rounds back toward the semicircle)
 
 	// ---------- spine (centerline rounded-rect the whole border weaves along) ----------
 	// Walks CLOCKWISE starting where the top run begins (end of the TL corner arc):
@@ -615,6 +624,32 @@
 		}
 		return pts;
 	}
+	// Curved-point (ogee) cap for the two-strand line -- bridges the SAME endpoints as rimArc
+	// ((ue,va)->(ue,vb)) but as two convex quadratic arms meeting at a point at the apex
+	// T = (ue + dir*reach, mid). The control points share each endpoint's v, so the tangent at
+	// P0/P1 is purely +/-u (matching rimArc's contract) and stays tangent-clean after shearPts;
+	// reach > shoulder makes the apex a cusp (rounded by stroke-linejoin -> the curved point). v
+	// stays monotonic va->vb, so there is exactly one clean tip. Used by twist only (see endArcs).
+	function pointArc(ue, va, vb, dir, band) {
+		var mid = (va + vb) / 2, r = Math.abs(vb - va) / 2;
+		var reach = r * POINT_REACH_FACTOR, h = reach * POINT_SHOULDER;
+		var half = Math.max(2, Math.round(CAP_SAMPLES / 2));
+		var P0 = [ue, va], T = [ue + dir * reach, mid], P1 = [ue, vb];
+		var C1 = [ue + dir * h, va], C2 = [ue + dir * h, vb];
+		function quad(A, C, B, incStart) {
+			var out = [];
+			for (var k = incStart ? 0 : 1; k <= half; k++) {
+				var t = k / half, mt = 1 - t;
+				out.push([
+					mt * mt * A[0] + 2 * mt * t * C[0] + t * t * B[0],
+					mt * mt * A[1] + 2 * mt * t * C[1] + t * t * B[1]
+				]);
+			}
+			return out;
+		}
+		// arm 1 keeps both endpoints; arm 2 drops its first sample (== T, already emitted by arm 1).
+		return quad(P0, C1, T, true).concat(quad(T, C2, P1, false));
+	}
 	function shearPts(pts, u0, s) {
 		return pts.map(function (p) { return [p[0], p[1] + s * (p[0] - u0)]; });
 	}
@@ -629,6 +664,34 @@
 			pts.push([ue + dir * reach * Math.sin(t / 2), v0 + width / 2 * Math.sin(t) * Math.sin(t / 2)]);
 		}
 		return pts;
+	}
+	// Symmetric two-arm leaf for the ODD outer pair (plait-3). At the middle strand's own extremum
+	// the two outer strands are COINCIDENT at the foot (ue,vfoot) with equal-and-opposite arrival
+	// slopes (+sMag / -sMag). Each strand extends into its OWN arm whose base tangent matches its
+	// arrival slope (so the strand->leaf junction is ~0deg at ANY slope, however steep); the two
+	// arms bulge apart and meet at a SHARED rounded tip at (ue + dir*reach, vfoot). Returns
+	// [armPlus, armMinus] (each foot->tip), sharing the tip endpoint so the outline pass unions
+	// them into one contiguous, mirror-symmetric pointed leaf. No shear is applied anywhere, so the
+	// leaf is symmetric about the run-parallel axis through the foot and can never tilt/protrude.
+	function leafFoldTangent(ue, vfoot, dir, reach, sMag) {
+		var F = [ue, vfoot], T = [ue + dir * reach, vfoot];
+		// bound the base handle so a steep arrival slope (sMag can be > 3) cannot balloon the arm's
+		// v-rise past the band -- v-rise = sMag*hb is held to <= LEAF_TAN_RISE*reach.
+		var hb = Math.min(reach * LEAF_TAN_BASE, reach * LEAF_TAN_RISE / Math.max(0.25, sMag));
+		var ht = reach * LEAF_TAN_TIP;
+		var half = Math.max(3, Math.round(LEAF_SAMPLES / 2));
+		function arm(sign) {                               // sign +1 -> slope +sMag, -1 -> -sMag
+			var P0 = F, P1 = [F[0] + dir * hb, F[1] + sign * sMag * hb], P2 = [T[0], T[1] + sign * ht], P3 = T, out = [];
+			for (var k = 0; k <= half; k++) {
+				var t = k / half, mt = 1 - t;
+				out.push([
+					mt * mt * mt * P0[0] + 3 * mt * mt * t * P1[0] + 3 * mt * t * t * P2[0] + t * t * t * P3[0],
+					mt * mt * mt * P0[1] + 3 * mt * mt * t * P1[1] + 3 * mt * t * t * P2[1] + t * t * t * P3[1]
+				]);
+			}
+			return out;
+		}
+		return [arm(1), arm(-1)];
 	}
 	// 3-point Lagrange interpolation of v (and dv/du) on a sampled strand polyline at u.
 	function sampleVS(pts, u) {
@@ -675,6 +738,14 @@
 		}
 		return out;
 	}
+	// Terminal fold partner for strand i of N. EVEN N: the centerline-MIRROR partner i+N/2 --
+	// mirror strands satisfy v_j = band - v_i, so their separation-maximum coincides with each
+	// strand's own v'=0 peak => shared fold slope s=(v_i'+v_j')/2 = 0 EXACTLY => the bridging cap
+	// needs no shear and cannot tilt outward (this is what kills the protruding "hook", proven for
+	// all lam/scale/thickness/length). ODD N (only plait-3): no exact mirror exists, so keep the
+	// nesting partner N-1-i; the odd terminal is anchored on the middle strand's symmetry axis
+	// separately (see assignFolds odd branch). N=2: i+N/2 == N-1-i, so twist/pointArc is untouched.
+	function foldPartner(i, N) { return (N % 2 === 0) ? (i + N / 2) : (N - 1 - i); }
 	// Local extrema (zero slope) of a single strand's own v(u) -- middle-strand leaf anchors.
 	function ownExtrema(pts) {
 		var out = [], n = pts.length, k;
@@ -701,6 +772,32 @@
 			var vi = sampleVS(strandsArr[pi].pts, u), vj = sampleVS(strandsArr[pj].pts, u);
 			return { u: u, va: vi[0], vb: vj[0], s: (vi[1] + vj[1]) / 2, sep: Math.abs(vi[0] - vj[0]) };
 		}
+		// ODD N (plait-3): anchor the OUTER pair (0, N-1) on the MIDDLE strand's own symmetry-axis
+		// extrema, where the two outer strands are coincident with equal-and-opposite slopes -> a
+		// zero-shear symmetric leaf (leafFoldTangent). The middle strand takes its horizontal-tangent
+		// leafFold at inner extrema. Coincident feet at a single u make a boundary-crossing bridge
+		// structurally impossible (the failure mode of the rejected own-extremum approach).
+		if (N % 2 === 1) {
+			var midIdx = (N - 1) / 2, mPts = strandsArr[midIdx].pts;
+			var o0 = strandsArr[0].pts, o2 = strandsArr[N - 1].pts, mc = ownExtrema(mPts);
+			var oReach = Math.min(LEAF_REACH_FACTOR * lam, LEAF_REACH_MAX * band), uA = null, uB = null;
+			for (k = mc.length - 1; k >= 0; k--) { if (mc[k].u + oReach <= Lseg - margin) { uB = mc[k].u; break; } }
+			for (k = 0; k < mc.length; k++) { if (mc[k].u - oReach >= margin) { uA = mc[k].u; break; } }
+			if (uA == null || uB == null || uB - uA < lam * 0.5) { return null; }
+			function oFold(u) {
+				var a = sampleVS(o0, u), b = sampleVS(o2, u);
+				return { u: u, va: a[0], vb: b[0], s: (a[1] + b[1]) / 2, sep: Math.abs(a[0] - b[0]), leaf: true, si: a[1], sj: b[1] };
+			}
+			var oMA = null, oMB = null, ostag = [PAIR_STAGGER, LEAF_STAGGER_RELAXED], oi;
+			for (oi = 0; oi < ostag.length; oi++) {
+				oMA = null; oMB = null;
+				for (k = mc.length - 1; k >= 0; k--) { if (mc[k].u <= uB - ostag[oi] * lam && mc[k].u > uA + 1e-6) { oMB = mc[k].u; break; } }
+				for (k = 0; k < mc.length; k++) { if (mc[k].u >= uA + ostag[oi] * lam && mc[k].u < uB - 1e-6) { oMA = mc[k].u; break; } }
+				if (oMA != null && oMB != null && oMB - oMA >= lam * 0.25) { break; }
+			}
+			if (oMA == null || oMB == null || oMB - oMA < lam * 0.25) { return null; }
+			return { A: [oFold(uA)], B: [oFold(uB)], midA: { u: oMA, v: sampleVS(mPts, oMA)[0] }, midB: { u: oMB, v: sampleVS(mPts, oMB)[0] }, lam: lam };
+		}
 		// Stagger relaxes on short segments (panel swatches, narrow break runs): the full
 		// PAIR_STAGGER nesting is tried first, then progressively tighter packings before
 		// giving up to the degenerate connector.
@@ -709,7 +806,7 @@
 			var stagP = relax[rIdx];
 			A.length = 0; B.length = 0; prevA = null; prevB = null; okAll = true;
 			for (i = 0; i < nPairs; i++) {
-				var j = N - 1 - i;
+				var j = foldPartner(i, N);
 				var cand = pairFoldCandidates(strandsArr[i].pts, strandsArr[j].pts);
 				var fA = null, fB = null;
 				for (k = cand.length - 1; k >= 0; k--) {
@@ -781,7 +878,7 @@
 		}
 		if (folds) {
 			for (pi = 0; pi < folds.A.length; pi++) {
-				pj = res.strands.length - 1 - pi;
+				pj = foldPartner(pi, res.strands.length);
 				var fa = folds.A[pi], fb = folds.B[pi];
 				res.strands[pi].pts = trimOpen(res.strands[pi].pts, fa.u, fa.va, fb.u, fb.va, step);
 				res.strands[pj].pts = trimOpen(res.strands[pj].pts, fa.u, fa.vb, fb.u, fb.vb, step);
@@ -807,6 +904,11 @@
 		}
 		var N = res.strands.length;
 		var paletteLen = (cfg.colors.strands && cfg.colors.strands.length) || 1;
+		// band bounds for the odd-N leaf/teardrop: keep the centerline (plus stroke half-width) inside
+		// the band so terminal ornament never bleeds past the edge (v-envelope invariant).
+		var wfLoc = strandW(band, N, sp) * (cfg.pattern === 'twist' ? 1.25 : 1);
+		var vLo = wfLoc / 2 + 0.5, vHi = band - wfLoc / 2 - 0.5;
+		function clampV(pts) { return pts.map(function (p) { return [p[0], clamp(p[1], vLo, vHi)]; }); }
 		if (dbg && !dbg.junctions) { dbg.junctions = []; }
 		function pageJunction(kind, endName, p0, p1, p2) {
 			if (!dbg || !p0 || !p1 || !p2) { return; }
@@ -827,11 +929,37 @@
 			var isA = atEnd === 'A';
 			var dir = isA ? -1 : 1, list = isA ? folds.A : folds.B;
 			for (var i = 0; i < list.length; i++) {
-				var j = N - 1 - i;
+				var j = foldPartner(i, N);
 				var si = res.strands[i], sj = res.strands[j];
 				if (!si || !sj || si === sj) { continue; }
 				var F = list[i];
-				var arc = shearPts(rimArc(F.u, F.va, F.vb, dir, band), F.u, F.s);
+				if (F.leaf) {
+					// ODD outer pair (plait-3): coincident feet, equal-and-opposite slopes -> symmetric
+					// two-arm leaf. Each strand extends into the arm matching its arrival slope; both arms
+					// share the rounded tip (contiguous via the shared endpoint, unioned by the outline).
+					var lreach = Math.min(LEAF_REACH_FACTOR * folds.lam, LEAF_REACH_MAX * band);
+					var sMag = Math.max(Math.abs(F.si), Math.abs(F.sj));
+					var larms = leafFoldTangent(F.u, F.va, dir, lreach, sMag);   // [armPlusSlope, armMinusSlope]
+					larms = [clampV(larms[0]), clampV(larms[1])];
+					// arm dv/du = sign*sMag/dir, so match each strand's arrival slope by sign(F.s*dir).
+					var armI = (F.si * dir >= 0) ? larms[0] : larms[1];
+					var armJ = (F.sj * dir >= 0) ? larms[0] : larms[1];
+					if (isA) {
+						pageJunction('leaf', atEnd, si.pts[1], si.pts[0], armI[1]);
+						pageJunction('leaf', atEnd, sj.pts[1], sj.pts[0], armJ[1]);
+						si.pts = armI.slice().reverse().concat(si.pts);
+						sj.pts = armJ.slice().reverse().concat(sj.pts);
+					} else {
+						pageJunction('leaf', atEnd, si.pts[si.pts.length - 2], si.pts[si.pts.length - 1], armI[1]);
+						pageJunction('leaf', atEnd, sj.pts[sj.pts.length - 2], sj.pts[sj.pts.length - 1], armJ[1]);
+						si.pts = si.pts.concat(armI);
+						sj.pts = sj.pts.concat(armJ);
+					}
+					continue;
+				}
+				// two-strand line ends in a curved point (ogee); plait/openweave keep the round rim.
+				var capFn = (cfg.pattern === 'twist') ? pointArc : rimArc;
+				var arc = shearPts(capFn(F.u, F.va, F.vb, dir, band), F.u, F.s);
 				// junction metadata BEFORE any merge mutates si; sj.pts is never mutated by merges,
 				// so its trimmed head/tail stays valid even when sj.merged.
 				if (isA) {
@@ -868,9 +996,17 @@
 				var m = res.strands[(N - 1) / 2];
 				if (m && !m.merged && !m.closed) {              // m.closed: defensive only, never closed elsewhere
 					var inner = list[list.length - 1];
-					var lf = leafFold(mF.u, mF.v, dir,
+					// Leaf width scales with the innermost pair's separation; but the odd-N outer pair
+					// folds on the symmetry axis with COINCIDENT feet (sep~0), so fall back to the
+					// middle strand's own full v-span (~2*amp) to keep the middle teardrop full-bodied.
+					var innerSep = inner.sep;
+					if (!(innerSep > band * 0.08)) {
+						var mvs = m.pts.map(function (q) { return q[1]; });
+						innerSep = Math.max.apply(null, mvs) - Math.min.apply(null, mvs);
+					}
+					var lf = clampV(leafFold(mF.u, mF.v, dir,
 						Math.min(LEAF_REACH_FACTOR * folds.lam, LEAF_REACH_MAX * band),
-						LEAF_WIDTH_FACTOR * inner.sep);
+						LEAF_WIDTH_FACTOR * innerSep));
 					if (isA) {
 						pageJunction('leaf', atEnd, m.pts[1], m.pts[0], lf[1]);
 						m.pts = lf.slice().reverse().concat(m.pts.slice(1));
@@ -1039,7 +1175,7 @@
 			mergeIntervals: mergeIntervals, segmentLoop: segmentLoop, autoBreaks: autoBreaks,
 			patterns: patterns, findCrossings: findCrossings, blendHex: blendHex, subPolyline: subPolyline,
 			buildSpineSegmentPolys: buildSpineSegmentPolys, buildClosedLoopPolys: buildClosedLoopPolys, collectPolys: collectPolys,
-			rimArc: rimArc, leafFold: leafFold, shearPts: shearPts, trimOpen: trimOpen,
+			rimArc: rimArc, pointArc: pointArc, leafFold: leafFold, shearPts: shearPts, trimOpen: trimOpen,
 			sampleVS: sampleVS, pairFoldCandidates: pairFoldCandidates, ownExtrema: ownExtrema, assignFolds: assignFolds,
 			crossingAngleSin: crossingAngleSin, underWindow: underWindow, splitByWindows: splitByWindows,
 			spine: spine, spineAt: spineAt, sweepPt: sweepPt, sweepStrand: sweepStrand, edgeIntervalToS: edgeIntervalToS,

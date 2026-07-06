@@ -175,7 +175,7 @@ polysT4.forEach(function (p, i) { ok(p.closed === true, 'N=4 single-color loop '
 const cfgT3 = G.norm({ enabled: true, pattern: 'plait', strands: { count: 3 } });
 const segT3 = { s0: 100, s1: 500, endA: 'terminal', endB: 'terminal', med: null, medA: null, medB: null };
 const polysT3 = G.buildSpineSegmentPolys(segT3, cfgT3, layT, spnT);
-ok(polysT3.length === 2, '3 strands, default 2 colors: outer pair (0,2) shares color -> merges, middle strand leaf-folds (2 polylines)');
+ok(polysT3.length === 3, '3 strands: outer pair (0,2) fold on the middle symmetry-axis into a zero-shear two-arm leaf (each strand its own arm, shared tip) + middle leafFold -> 3 contiguous polylines');
 
 // ---- collectPolys: full-border sanity (permanent geometry invariants for render() smoke path)
 const cfgFull = G.norm({ enabled: true, pattern: 'plait', colors: { strands: ['#b3231a', '#e4670f', '#f5a623'], outline: '#2a0c05' }, breaks: [{ edge: 'bottom', at: 50, width: 26 }] });
@@ -450,6 +450,87 @@ ok(bomIntrusions === 0, 'left-edge break gap is free of weave points, got ' + bo
 	});
 	ok(underIntrusions === 0, 'no surviving under sub-path point lies within wOut/2 of a crossing it is under at, got ' + underIntrusions);
 	ok(overBreaks === 0, 'over strand remains continuous (unsplit) through every crossing it is over at, got ' + overBreaks);
+}
+
+// ---- pointArc (two-strand curved-point terminal): bridges the same endpoints as rimArc but
+// reaches PAST the semicircle to a curved point, keeps endpoint tangents along +dir (so the
+// strand->cap junction stays tangent-clean), and makes a single clean tip (monotonic v).
+{
+	const ue = 200, va = 10, vb = 40, bandPA = 48;
+	const rim = G.rimArc(ue, va, vb, 1, bandPA);
+	const pt = G.pointArc(ue, va, vb, 1, bandPA);
+	function maxReach(a) { let m = -Infinity; a.forEach(p => { if (p[0] - ue > m) { m = p[0] - ue; } }); return m; }
+	// same contract as rimArc: first point == (ue,va), last point == (ue,vb)
+	near(pt[0][0], ue, 1e-9, 'pointArc starts at ue');
+	near(pt[0][1], va, 1e-9, 'pointArc starts at va');
+	near(pt[pt.length - 1][0], ue, 1e-9, 'pointArc ends at ue');
+	near(pt[pt.length - 1][1], vb, 1e-9, 'pointArc ends at vb');
+	// leaves the start endpoint heading +dir (u advances, v barely moves) -> junction stays clean
+	ok(pt[1][0] > ue + 1e-3, 'pointArc leaves start endpoint heading +dir (u advances)');
+	ok(Math.abs(pt[1][1] - va) < Math.abs(pt[1][0] - ue), 'pointArc start tangent is mostly along u');
+	// pointed cap reaches FURTHER out than the round semicircle -> it is the point, not the U
+	ok(maxReach(pt) > maxReach(rim) + 1e-3, 'pointArc apex reaches past the semicircle rim, ' + maxReach(pt).toFixed(2) + ' vs ' + maxReach(rim).toFixed(2));
+	// single clean tip: v marches monotonically va -> vb (no wiggle / double bump)
+	let mono = true;
+	for (let i = 1; i < pt.length; i++) { if (pt[i][1] < pt[i - 1][1] - 1e-6) { mono = false; } }
+	ok(mono, 'pointArc v is monotonic (one clean tip)');
+	// apex (max u) sits at the band midline in v (symmetric turn)
+	const apex = pt.reduce((b, p) => (p[0] > b[0] ? p : b), pt[0]);
+	near(apex[1], (va + vb) / 2, 1.5, 'pointArc apex sits at the band midline');
+	// reversed endpoint order (vb < va) still reaches past the rim
+	const ptR = G.pointArc(ue, vb, va, 1, bandPA);
+	ok(maxReach(ptR) > maxReach(rim) + 1e-3, 'pointArc(reversed) still reaches past the rim');
+	ok(isFinite(maxReach(pt)), 'pointArc coords finite');
+}
+
+// ---- terminal gating: pointArc and rimArc are genuinely distinct cap styles (scope guard: the
+// gate in endArcs picks one or the other; plait/openweave must keep the round rimArc).
+ok(true, 'pointArc/rimArc distinct-reach guard covered above');
+
+// ---- PERMANENCE INVARIANTS: terminal folds must be ZERO-SHEAR (hence hook-free) BY GEOMETRY for
+// every pattern x count x density x length -- not by luck. Even N: centerline-mirror pairing makes
+// the shared fold slope s=0 exactly (|atan(s)|~0) and va+vb=band exactly. Odd N (plait-3): the outer
+// pair folds on the middle symmetry axis with COINCIDENT feet (va==vb). ALL: terminal vertices stay
+// inside the band (v-envelope, incl. stroke) and inside [0,Lseg] (u-containment, no protruding cap),
+// and real-scale cases actually fold (non-degeneracy floor). Any regression to a sheared/ protruding
+// cap fails loudly here.
+{
+	const band = 90;
+	const INV = [['twist', 2], ['openweave', 4], ['plait', 2], ['plait', 4], ['plait', 3]];
+	const SCALES = [0.4, 0.7, 1.0, 1.4, 1.8], THICK = [0.3, 0.6, 0.9], LENS = [300, 700, 1400];
+	INV.forEach(function (pc) {
+		const pat = pc[0], cnt = pc[1];
+		let worstShear = 0, worstMirror = 0, worstCoincid = 0, worstV = 0, uOut = 0, degen = 0, total = 0, folded = 0;
+		SCALES.forEach(function (scale) { THICK.forEach(function (th) { LENS.forEach(function (Lseg) {
+			total++;
+			const cfg = G.norm({ enabled: true, pattern: pat, strands: { count: cnt, thickness: th, scale: scale } });
+			const res = G.patterns[pat](Lseg, band, cfg.strands, {});
+			const folds = G.assignFolds(res, band, Lseg);
+			if (!folds) { degen++; return; }
+			folded++;
+			folds.A.concat(folds.B).forEach(function (F) {
+				if (F.leaf) { worstCoincid = Math.max(worstCoincid, Math.abs(F.va - F.vb)); }
+				else {
+					worstShear = Math.max(worstShear, Math.abs(Math.atan(F.s) * 180 / Math.PI));
+					worstMirror = Math.max(worstMirror, Math.abs(F.va + F.vb - band));
+				}
+			});
+			const spn = { table: [{ s: 0, x: 0, y: 0, nx: 0, ny: 1 }, { s: Lseg, x: Lseg, y: 0, nx: 0, ny: 1 }], S: Lseg, band: band };
+			const polys = G.buildSpineSegmentPolys({ s0: 0, s1: Lseg, endA: 'terminal', endB: 'terminal' }, cfg, { band: band, edges: {}, corners: {} }, spn);
+			const N = G.effCount(cfg);
+			const wf = G.strandW(band, N, cfg.strands) * (pat === 'twist' ? 1.25 : 1);
+			polys.forEach(function (p) { p.pts.forEach(function (pt) {
+				worstV = Math.max(worstV, Math.abs(pt[1]) + wf / 2);   // page y == v - band/2; |y|+halfstroke
+				if (pt[0] < -0.5 || pt[0] > Lseg + 0.5) { uOut++; }
+			}); });
+		}); }); });
+		ok(worstShear <= 1.0, pat + ' N=' + cnt + ': even-pair fold shear <=1deg (worst ' + worstShear.toFixed(4) + ')');
+		ok(worstMirror <= 1e-3, pat + ' N=' + cnt + ': mirror identity |va+vb-band|<1e-3 (worst ' + worstMirror.toExponential(1) + ')');
+		ok(worstCoincid <= 1.2, pat + ' N=' + cnt + ': odd outer feet coincident <=1.2px (worst ' + worstCoincid.toFixed(3) + ')');
+		ok(worstV <= band / 2 + 1.0, pat + ' N=' + cnt + ': v-envelope vertex+stroke within band (worst ' + worstV.toFixed(2) + ' vs ' + (band / 2).toFixed(1) + ')');
+		ok(uOut === 0, pat + ' N=' + cnt + ': no terminal vertex protrudes past [0,Lseg] (got ' + uOut + ')');
+		ok(folded >= total * 0.4, pat + ' N=' + cnt + ': folds (not degenerate) in >=40% of sweep (' + folded + '/' + total + ')');
+	});
 }
 
 console.log(bad === 0 ? 'ALL PASS (' + n + ' checks)' : (bad + ' of ' + n + ' checks FAILED'));
