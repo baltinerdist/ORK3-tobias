@@ -36,9 +36,23 @@
 		// background
 		var bg = document.createElement('div');
 		bg.className = 'sc-bg'; bg.setAttribute('data-bg-type', tpl.bg_type || 'color');
-		if (tpl.bg_type === 'color')        bg.style.background = tpl.bg_value || '#ffffff';
-		else if (tpl.bg_type === 'texture') bg.style.backgroundImage = 'url(' + opts.packBase + 'backgrounds/' + tpl.bg_value + ')';
-		else if (tpl.bg_type === 'image')   bg.style.backgroundImage = 'url(' + (opts.libBase + encodeURIComponent(tpl.bg_value)) + ')';
+		if (tpl.bg_type === 'color') {
+			bg.style.background = tpl.bg_value || '#ffffff';
+		} else if (tpl.bg_type === 'texture' || tpl.bg_type === 'image') {
+			var url = (tpl.bg_type === 'texture')
+				? opts.packBase + 'backgrounds/' + tpl.bg_value
+				: opts.libBase + encodeURIComponent(tpl.bg_value);
+			bg.style.backgroundImage = 'url(' + url + ')';
+			bg.style.backgroundPosition = 'center';
+			// fit: tile (repeat), fill (cover), stretch (100% x 100%). Empty/unknown falls back
+			// to the historical per-type default (texture tiled, single image covered).
+			var fit = (['tile', 'fill', 'stretch'].indexOf(tpl.bg_fit) >= 0)
+				? tpl.bg_fit
+				: (tpl.bg_type === 'texture' ? 'tile' : 'fill');
+			if (fit === 'tile') { bg.style.backgroundRepeat = 'repeat'; bg.style.backgroundSize = 'auto'; }
+			else if (fit === 'stretch') { bg.style.backgroundRepeat = 'no-repeat'; bg.style.backgroundSize = '100% 100%'; }
+			else { bg.style.backgroundRepeat = 'no-repeat'; bg.style.backgroundSize = 'cover'; }
+		}
 		pageEl.appendChild(bg);
 		// knotwork border layer (parametric, drawn between bg and slots)
 		if (tpl.knot && tpl.knot.enabled && w.ScrollKnot) {

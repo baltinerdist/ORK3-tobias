@@ -75,6 +75,7 @@
 		}
 	}
 	function baseName(f) { return String(f || '').replace(/^.*\//, ''); }
+	function isHexColor(v) { return /^#[0-9a-fA-F]{6}$/.test(v || ''); }
 
 	// ---- dirty-state tracking (P1: unsaved-work protection) ----
 	var dirty = false, booted = false;
@@ -394,18 +395,38 @@
 			{ value: 'color', label: 'Solid color' },
 			{ value: 'texture', label: 'Library image' },
 			{ value: 'image', label: 'Image URL' }
-		], tpl.bg_type, function (v) { tpl.bg_type = v; buildPage(); render(); })));
+		], tpl.bg_type, function (v) {
+			tpl.bg_type = v;
+			// bg_value is shared across types; drop a stale color hex when moving to an image type
+			if (v !== 'color' && isHexColor(tpl.bg_value)) { tpl.bg_value = ''; }
+			buildPage(); render();
+		})));
 		if (tpl.bg_type === 'color') {
-			box.appendChild(field('Color', input(tpl.bg_value || '#ffffff', 'color', function (v) { tpl.bg_value = v; render(); })));
+			// default + guard: a color background is always a valid hex, defaulting to white
+			// (a leftover texture filename / URL in bg_value must not reach the color input)
+			if (!isHexColor(tpl.bg_value)) { tpl.bg_value = '#ffffff'; }
+			box.appendChild(field('Color', input(tpl.bg_value, 'color', function (v) { tpl.bg_value = v; render(); })));
 		} else if (tpl.bg_type === 'texture') {
 			box.appendChild(field('Image', groupedPicker('backgrounds', tpl.bg_value,
 				function (a) { tpl.bg_value = baseName(a.file); render(); buildPage(); }, buildPage)));
+			box.appendChild(bgFitField());
 		} else {
 			var bgUrl = input(tpl.bg_value, 'text', function (v) { tpl.bg_value = v; render(); });
 			bgUrl.placeholder = 'Image URL\u2026';
 			box.appendChild(field('Image', bgUrl));
+			box.appendChild(bgFitField());
 			box.appendChild(el('p', 'sc-hint', 'Paste a full image URL, or choose "Library image" above for a built-in background.'));
 		}
+	}
+	// How an image background fills the page: tile (repeat), fill (cover, may crop),
+	// stretch (100% x 100%, may distort). Default mirrors the renderer per type.
+	function bgFitField() {
+		var def = tpl.bg_type === 'texture' ? 'tile' : 'fill';
+		return field('Fit', select([
+			{ value: 'tile', label: 'Tile' },
+			{ value: 'fill', label: 'Fill' },
+			{ value: 'stretch', label: 'Stretch' }
+		], tpl.bg_fit || def, function (v) { tpl.bg_fit = v; render(); }));
 	}
 
 	// ---- inspector: Border (knotwork) ----

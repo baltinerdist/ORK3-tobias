@@ -45,13 +45,14 @@ class ScrollTemplate extends Ork3
         $this->db->orientation = $orientation;
         $this->db->bg_type     = $bgType;
         $this->db->bg_value    = (string)($req['BgValue'] ?? '#ffffff');
+        $this->db->bg_fit      = in_array($req['BgFit'] ?? '', array('tile', 'fill', 'stretch'), true) ? $req['BgFit'] : 'tile';
         $this->db->slots       = json_encode(array_values($req['Slots'] ?? array()));
         $this->db->zones       = json_encode(array_values($req['Zones'] ?? array()));
         $this->db->award_keys  = self::encodeAwardKeys($req['AwardKeys'] ?? array());
         $this->db->knot        = self::encodeKnot($req['Knot'] ?? null);
         $this->db->is_starter  = !empty($req['IsStarter']) ? 1 : 0;
         $this->db->created_by  = (int)($req['CreatedBy'] ?? 0);
-        $cols = array('kingdom_id', 'name', 'orientation', 'bg_type', 'bg_value', 'slots', 'zones', 'award_keys', 'knot', 'is_starter', 'created_by');
+        $cols = array('kingdom_id', 'name', 'orientation', 'bg_type', 'bg_value', 'bg_fit', 'slots', 'zones', 'award_keys', 'knot', 'is_starter', 'created_by');
         $ph = array_map(function ($c) {
             return ':' . $c;
         }, $cols);
@@ -104,12 +105,13 @@ class ScrollTemplate extends Ork3
         $this->db->orientation = in_array($req['Orientation'] ?? '', array('portrait', 'landscape'), true) ? $req['Orientation'] : 'portrait';
         $this->db->bg_type     = in_array($req['BgType'] ?? '', array('color', 'texture', 'image'), true) ? $req['BgType'] : 'color';
         $this->db->bg_value    = (string)($req['BgValue'] ?? '#ffffff');
+        $this->db->bg_fit      = in_array($req['BgFit'] ?? '', array('tile', 'fill', 'stretch'), true) ? $req['BgFit'] : 'tile';
         $this->db->slots       = json_encode(array_values($req['Slots'] ?? array()));
         $this->db->zones       = json_encode(array_values($req['Zones'] ?? array()));
         $this->db->award_keys  = self::encodeAwardKeys($req['AwardKeys'] ?? array());
         $this->db->knot        = self::encodeKnot($req['Knot'] ?? null);
         $sql = "UPDATE " . DB_PREFIX . "scroll_template SET name = :name, orientation = :orientation,
-			bg_type = :bg_type, bg_value = :bg_value, slots = :slots, zones = :zones, award_keys = :award_keys,
+			bg_type = :bg_type, bg_value = :bg_value, bg_fit = :bg_fit, slots = :slots, zones = :zones, award_keys = :award_keys,
 			knot = :knot
 			WHERE scroll_template_id = :scroll_template_id";
         $this->db->Execute($sql);
@@ -140,6 +142,7 @@ class ScrollTemplate extends Ork3
             'orientation' => $r->orientation,
             'bg_type'     => $r->bg_type,
             'bg_value'    => $r->bg_value,
+            'bg_fit'      => $r->bg_fit,
             'slots'       => json_decode($r->slots ?? '[]', true) ?: array(),
             'zones'       => json_decode($r->zones ?? '[]', true) ?: array(),
             'award_keys'  => json_decode($r->award_keys ?? '[]', true) ?: array(),
