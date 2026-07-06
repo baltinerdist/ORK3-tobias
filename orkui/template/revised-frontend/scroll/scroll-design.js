@@ -24,7 +24,7 @@
 		'UnifrakturMaguntia', 'Great Vibes', 'Pinyon Script', 'Tangerine', 'Uncial Antiqua', 'Goudy Bookletter 1911',
 		'Sorts Mill Goudy', 'Metamorphous', 'Grenze Gotisch', 'Caudex', 'Fondamento', 'Germania One', 'Eagle Lake',
 		'Pirata One', 'Jim Nightshade'];
-	var LOCATIONS = ['full_border', 'center_image', 'top_graphic', 'background', 'border_left', 'border_right', 'border_top', 'border_bottom'];
+	var LOCATIONS = ['full_border', 'center_image', 'top_graphic', 'border_left', 'border_right', 'border_top', 'border_bottom'];
 
 	var KNOT_PRESETS = {
 		Flame: { enabled: true, pattern: 'plait', band: { inset: 1.8, width: 5.5 }, strands: { count: 3, thickness: 0.48, scale: 0.85 },
@@ -390,17 +390,21 @@
 	function buildPage() {
 		var box = document.getElementById('scPageProps'); box.innerHTML = '';
 		box.appendChild(field('Orientation', select(['portrait', 'landscape'], tpl.orientation, function (v) { tpl.orientation = v; render(); })));
-		box.appendChild(field('Background', select(['color', 'texture', 'image'], tpl.bg_type, function (v) { tpl.bg_type = v; buildPage(); render(); })));
+		box.appendChild(field('Background', select([
+			{ value: 'color', label: 'Solid color' },
+			{ value: 'texture', label: 'Library image' },
+			{ value: 'image', label: 'Image URL' }
+		], tpl.bg_type, function (v) { tpl.bg_type = v; buildPage(); render(); })));
 		if (tpl.bg_type === 'color') {
 			box.appendChild(field('Color', input(tpl.bg_value || '#ffffff', 'color', function (v) { tpl.bg_value = v; render(); })));
 		} else if (tpl.bg_type === 'texture') {
-			box.appendChild(field('Texture', groupedPicker('backgrounds', tpl.bg_value,
+			box.appendChild(field('Image', groupedPicker('backgrounds', tpl.bg_value,
 				function (a) { tpl.bg_value = baseName(a.file); render(); buildPage(); }, buildPage)));
 		} else {
 			var bgUrl = input(tpl.bg_value, 'text', function (v) { tpl.bg_value = v; render(); });
 			bgUrl.placeholder = 'Image URL\u2026';
 			box.appendChild(field('Image', bgUrl));
-			box.appendChild(el('p', 'sc-hint', 'Paste a full image URL. For uploaded art, use a Graphic slot with the background placement instead.'));
+			box.appendChild(el('p', 'sc-hint', 'Paste a full image URL, or choose "Library image" above for a built-in background.'));
 		}
 	}
 
