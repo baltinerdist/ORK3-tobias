@@ -154,14 +154,24 @@
 		if (booted) { setDirty(true); }
 		R.renderPage(page, tpl, ctx());
 		R.autoscaleZones(page); R.fitToStage(page, stage);
-		mountGrid(); wireDrag(); markSelected();
+		mountGrid(); wireDrag(); markSelected(); refreshPresetChips();
+	}
+	// preset chips highlight only while tpl.knot still deep-equals that preset;
+	// any manual border edit clears the highlight without rebuilding the section
+	function refreshPresetChips() {
+		var row = document.querySelector('#scKnot .sc-presets');
+		if (!row) { return; }
+		var cur = JSON.stringify(tpl.knot || null);
+		row.querySelectorAll('.sc-type').forEach(function (b) {
+			b.classList.toggle('is-sel', JSON.stringify(KNOT_PRESETS[b.textContent]) === cur);
+		});
 	}
 	function pageRect() { return page.getBoundingClientRect(); }
 	function wireDrag() {
 		page.querySelectorAll('.sc-slot, .sc-zone').forEach(function (elem) {
 			var kind = elem.classList.contains('sc-slot') ? 'slot' : 'zone';
 			var idx = (kind === 'slot' ? tpl.slots : tpl.zones).indexOf(elem.__slot || elem.__zone);
-			elem.addEventListener('mousedown', function (e) {
+			elem.addEventListener('pointerdown', function (e) {
 				e.preventDefault();
 				sel = { kind: kind, index: idx }; refreshInspector(); revealSelected();
 				var pr = pageRect(), sx = e.clientX, sy = e.clientY;
@@ -189,12 +199,12 @@
 					syncHandleBox(obj);
 				}
 				function up() {
-					document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up);
+					document.removeEventListener('pointermove', mv); document.removeEventListener('pointerup', up);
 					gridSnapMark('v', null); gridSnapMark('h', null);
 					if (moved) { setDirty(true); buildSelected(); }
 					if (moved && kind === 'slot' && obj.break_border && tpl.knot && tpl.knot.enabled) { render(); }
 				}
-				document.addEventListener('mousemove', mv); document.addEventListener('mouseup', up);
+				document.addEventListener('pointermove', mv); document.addEventListener('pointerup', up);
 			});
 		});
 	}
@@ -224,7 +234,7 @@
 		HANDLE_DIRS.forEach(function (d) {
 			var h = el('div', 'sc-handle sc-handle--' + d);
 			h.setAttribute('data-h', d);
-			h.addEventListener('mousedown', function (e) { e.preventDefault(); e.stopPropagation(); startResize(e, elem, obj, d); });
+			h.addEventListener('pointerdown', function (e) { e.preventDefault(); e.stopPropagation(); startResize(e, elem, obj, d); });
 			hb.appendChild(h);
 		});
 		page.appendChild(hb);
@@ -270,11 +280,11 @@
 			syncHandleBox(obj);
 		}
 		function up() {
-			document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up);
+			document.removeEventListener('pointermove', mv); document.removeEventListener('pointerup', up);
 			gridSnapMark('v', null); gridSnapMark('h', null);
 			if (moved) { setDirty(true); render(); refreshInspector(); }
 		}
-		document.addEventListener('mousemove', mv); document.addEventListener('mouseup', up);
+		document.addEventListener('pointermove', mv); document.addEventListener('pointerup', up);
 	}
 
 	// ---- small DOM helpers ----
@@ -304,6 +314,16 @@
 		trigger.appendChild(prev);
 		trigger.appendChild(el('span', 'sc-fontpick__name', current + '  ▾'));
 		var menu = el('div', 'sc-fontpick__menu');
+		var filt = el('input', 'sc-input sc-fontpick__filter');
+		filt.type = 'text'; filt.placeholder = 'Filter fonts\u2026';
+		filt.addEventListener('input', function () {
+			var q = filt.value.toLowerCase();
+			menu.querySelectorAll('.sc-fontpick__opt').forEach(function (o) {
+				o.style.display = o.textContent.toLowerCase().indexOf(q) >= 0 ? '' : 'none';
+			});
+		});
+		filt.addEventListener('mousedown', function (e) { e.stopPropagation(); });
+		menu.appendChild(filt);
 		FONTS.forEach(function (f) {
 			var opt = el('button', 'sc-fontpick__opt' + (f === current ? ' is-sel' : '')); opt.type = 'button';
 			var p = el('span', 'sc-fontpick__prev', FONT_PREVIEW); p.style.fontFamily = "'" + f + "'";
@@ -321,10 +341,16 @@
 			menu.style.top = (r.bottom + 2) + 'px';
 			menu.style.width = Math.max(r.width, 240) + 'px';
 			menu.classList.add('sc-fontpick__menu--open'); isOpen = true;
+			filt.value = '';
+			menu.querySelectorAll('.sc-fontpick__opt').forEach(function (o) { o.style.display = ''; });
 			var sel = menu.querySelector('.is-sel'); if (sel) { sel.scrollIntoView({ block: 'nearest' }); }
+			filt.focus();
 		}
 		trigger.onclick = function () { isOpen ? close() : open(); };
 		document.addEventListener('click', function (e) { if (!pick.contains(e.target)) { close(); } });
+		// the menu is position:fixed -- scrolling the panel would leave it floating detached
+		var insp = document.getElementById('scInspector');
+		if (insp) { insp.addEventListener('scroll', function () { if (isOpen) { close(); } }, { passive: true }); }
 		pick.appendChild(trigger); pick.appendChild(menu);
 		wrap.appendChild(pick);
 		return wrap;
@@ -341,7 +367,10 @@
 			box.appendChild(field('Texture', groupedPicker('backgrounds', tpl.bg_value,
 				function (a) { tpl.bg_value = baseName(a.file); render(); buildPage(); }, buildPage)));
 		} else {
-			box.appendChild(field('Image', input(tpl.bg_value, 'text', function (v) { tpl.bg_value = v; render(); })));
+			var bgUrl = input(tpl.bg_value, 'text', function (v) { tpl.bg_value = v; render(); });
+			bgUrl.placeholder = 'Image URL\u2026';
+			box.appendChild(field('Image', bgUrl));
+			box.appendChild(el('p', 'sc-hint', 'Paste a full image URL. For uploaded art, use a Graphic slot with the background placement instead.'));
 		}
 	}
 
@@ -580,7 +609,15 @@
 			var chips = el('div', 'sc-chips');
 			TOKENS.forEach(function (tk) {
 				var c = el('button', 'sc-chip', '{' + tk + '}'); c.type = 'button';
-				c.onclick = function () { z.text = (z.text || '') + '{' + tk + '}'; ta.value = z.text; render(); buildElements(); };
+				c.onclick = function () {
+					var tok = '{' + tk + '}';
+					var st = ta.selectionStart != null ? ta.selectionStart : ta.value.length;
+					var en = ta.selectionEnd != null ? ta.selectionEnd : st;
+					z.text = ta.value.slice(0, st) + tok + ta.value.slice(en);
+					ta.value = z.text;
+					ta.focus(); ta.selectionStart = ta.selectionEnd = st + tok.length;
+					render(); buildElements();
+				};
 				chips.appendChild(c);
 			});
 			box.appendChild(field('Insert', chips));
@@ -602,7 +639,11 @@
 				s.location = v; var r = rectFor(v); s.x = r.x; s.y = r.y; s.w = r.w; s.h = r.h; render(); buildElements(); buildSelected();
 			})));
 			box.appendChild(geomRow(s));
-			box.appendChild(field('Source', select(['pack', 'heraldry', 'none'], s.source_type, function (v) {
+			box.appendChild(field('Source', select([
+				{ value: 'pack', label: 'Clipart library' },
+				{ value: 'heraldry', label: 'Heraldry' },
+				{ value: 'none', label: 'None (empty)' }
+			], s.source_type, function (v) {
 				s.source_type = v;
 				if (v === 'heraldry' && !/^(kingdom|park|player)$/.test(s.source_ref)) { s.source_ref = 'kingdom'; }
 				render(); buildSelected();
@@ -911,7 +952,7 @@
 		if (hit) { e.preventDefault(); setDirty(true); render(); buildSelected(); }
 	});
 	// clicking bare canvas (page surface / background) deselects
-	page.addEventListener('mousedown', function (e) {
+	page.addEventListener('pointerdown', function (e) {
 		var tg = e.target;
 		if (tg === page || (tg.classList && tg.classList.contains('sc-bg'))) {
 			if (sel) { sel = null; refreshInspector(); }
