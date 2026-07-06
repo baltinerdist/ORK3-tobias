@@ -54,7 +54,19 @@
 			var rot90 = (s.location === 'border_top' || s.location === 'border_bottom');
 			if (rot90) { el.classList.add('sc-slot--rot90'); }
 			var src = slotSrc(s, opts);
+			var heraldryRole = (s.source_type === 'heraldry' && /^(kingdom|park|player)$/.test(s.source_ref)) ? s.source_ref : '';
 			if (src) { var img = document.createElement('img'); img.src = src; img.alt = ''; el.appendChild(img); }
+			else if (opts.editable && heraldryRole) {
+				// heraldry placeholder: autopopulates with the recipient's kingdom/park/player
+				// arms at generation. On the design surface the park/player arms aren't known,
+				// so a labeled shield placeholder marks where they'll land (editor-only).
+				el.classList.add('sc-slot--empty', 'sc-slot--heraldry');
+				var hl = { kingdom: 'Kingdom heraldry', park: 'Park heraldry', player: 'Player heraldry' };
+				var hp = document.createElement('span');
+				hp.className = 'sc-slot__ph';
+				hp.innerHTML = '<i class="fa fa-shield-alt"></i> ' + hl[heraldryRole];
+				el.appendChild(hp);
+			}
 			else if (opts.editable) {
 				// designer-only placeholder: an empty slot is otherwise a near-invisible
 				// 1px outline on white paper (never rendered in filler/PDF -- not editable)
@@ -107,15 +119,33 @@
 		});
 	}
 
+	// Scale the page to fit the stage in BOTH dimensions so the preview never needs its own
+	// scrollbar. Two modes:
+	//  - bounded (stage has class 'sc-stage--bounded'): the stage's height is controlled by an
+	//    external layout (the designer grid sizes it to the free viewport height), so we fit the
+	//    page into the stage's current content box and DON'T touch its height.
+	//  - unbounded (filler): the height budget is measured from the stage's top to the viewport
+	//    bottom, and the stage height is pinned to the scaled page so it reserves no extra space.
 	function fitToStage(pageEl, stageEl) {
 		function apply() {
 			pageEl.style.transform = 'scale(1)';
-			var pad = 32;
+			var cs = w.getComputedStyle(stageEl);
+			var vChrome = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+			var hChrome = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
 			var r = pageEl.getBoundingClientRect();                 // natural size at scale(1)
-			var k = Math.min((stageEl.clientWidth - pad) / r.width, (stageEl.clientHeight - pad) / r.height, 1);
-			if (!isFinite(k) || k <= 0) k = 1;
+			var bounded = stageEl.classList.contains('sc-stage--bounded');
+			var availW = stageEl.clientWidth - hChrome;
+			var availH;
+			if (bounded) {
+				availH = stageEl.clientHeight - vChrome;
+			} else {
+				var stageTop = stageEl.getBoundingClientRect().top;
+				availH = (w.innerHeight || document.documentElement.clientHeight) - stageTop - vChrome - 8;
+			}
+			var k = Math.min(availW / r.width, availH / r.height, 1);
+			if (!isFinite(k) || k <= 0) { k = 1; }
 			pageEl.style.transform = 'scale(' + k + ')';
-			stageEl.style.height = Math.ceil(r.height * k + pad) + 'px';   // collapse scaled empty space
+			if (!bounded) { stageEl.style.height = Math.ceil(r.height * k + vChrome) + 'px'; }
 		}
 		requestAnimationFrame(apply);
 		setTimeout(apply, 60);           // rAF is paused in background tabs — always pair with a timeout

@@ -14,7 +14,12 @@
 	var groupState = {};                             // explicit type-chip choice, per collection
 	var lastSelKey = null;                           // identity of the slot the picker last defaulted for
 
-	var TOKENS = ['PlayerName', 'AwardName', 'Kingdom', 'Park', 'Date', 'GivenBy', 'Reason'];
+	var TOKENS = ['PlayerName', 'AwardName', 'Kingdom', 'Park', 'Date', 'GivenBy', 'Reason', 'RankNum', 'RankNumXth', 'RankWord'];
+	var TOKEN_TIPS = {
+		RankNum: 'Award rank as a number (e.g. 1)',
+		RankNumXth: 'Award rank as an ordinal (e.g. 1st)',
+		RankWord: 'Award rank spelled out (e.g. first)'
+	};
 	var FONTS = ['EB Garamond', 'Cinzel', 'Cinzel Decorative', 'Cormorant Garamond', 'Almendra', 'MedievalSharp',
 		'UnifrakturMaguntia', 'Great Vibes', 'Pinyon Script', 'Tangerine', 'Uncial Antiqua', 'Goudy Bookletter 1911',
 		'Sorts Mill Goudy', 'Metamorphous', 'Grenze Gotisch', 'Caudex', 'Fondamento', 'Germania One', 'Eagle Lake',
@@ -146,6 +151,31 @@
 		box.appendChild(checkbox('Snap to gridlines', snapGrid, function (v) {
 			snapGrid = v; localStorage.setItem('sc_snap', v ? '1' : '0'); mountGrid();
 		}));
+	}
+
+	// Size the designer to the free viewport height so the whole ORK page (nav + designer +
+	// footer) fits without a second scrollbar: the two columns stretch to fill it, the sidebar
+	// scrolls internally, and the stage is a bounded box the preview scales into. Below the
+	// stacking breakpoint we hand height back to normal document flow.
+	function layoutDesigner() {
+		var designer = document.querySelector('.sc-designer');
+		if (!designer) { return; }
+		if (window.innerWidth <= 900) { designer.style.height = ''; stage.classList.remove('sc-stage--bounded'); return; }
+		stage.classList.add('sc-stage--bounded');
+		var vh = window.innerHeight || document.documentElement.clientHeight;
+		var absTop = designer.getBoundingClientRect().top + (window.pageYOffset || 0);
+		// first pass: fill from the designer's top to the viewport bottom
+		var h = Math.max(320, vh - absTop - 8);
+		designer.style.height = h + 'px';
+		// self-correct: whatever the document still overflows the viewport by (the ORK footer +
+		// its margins, any wrapper margins) is subtracted directly. A couple of passes converge
+		// the last few px; a small extra is shaved so the footer clears with no second scrollbar.
+		for (var pass = 0; pass < 3; pass++) {
+			var overflow = document.documentElement.scrollHeight - vh;
+			if (overflow <= 0) { break; }
+			h = Math.max(320, h - overflow - (pass === 0 ? 12 : 2));
+			designer.style.height = h + 'px';
+		}
 	}
 
 	// ---- render + selection ----
@@ -609,6 +639,7 @@
 			var chips = el('div', 'sc-chips');
 			TOKENS.forEach(function (tk) {
 				var c = el('button', 'sc-chip', '{' + tk + '}'); c.type = 'button';
+				if (TOKEN_TIPS[tk]) { c.setAttribute('data-tip', TOKEN_TIPS[tk]); }
 				c.onclick = function () {
 					var tok = '{' + tk + '}';
 					var st = ta.selectionStart != null ? ta.selectionStart : ta.value.length;
@@ -960,8 +991,11 @@
 	});
 
 	// ---- boot ----
+	window.addEventListener('resize', function () { layoutDesigner(); R.fitToStage(page, stage); });
 	document.getElementById('scTplName').addEventListener('input', function () { setDirty(true); });
+	document.body.classList.add('sc-designer-body');   // let the ORK body flex to content (kills the baseline shell overflow)
 	initSections();
+	layoutDesigner();
 	buildPage(); buildAwardTags(); buildKnot(); buildViewOpts(); render(); refreshInspector();
 	booted = true;
 })();

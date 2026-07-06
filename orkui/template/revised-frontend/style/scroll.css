@@ -85,20 +85,34 @@ html[data-theme="dark"] {
 	--sc-input-bg:#1a1e26; --sc-input-line:#3a4150; --sc-chip-bg:#2c323d;
 }
 
-/* layout: sticky builder bar on the LEFT (house pattern: sidebar + fluid main, like Reports)
-   + stage. On narrow screens the stage comes first and the bar stacks below it. */
-.sc-designer { display:grid; grid-template-columns:340px minmax(0,1fr); gap:20px; align-items:start; padding:16px; box-sizing:border-box; }
+/* The ORK shell sets body{height:100vh} (content-box) + a 48px top padding for the fixed nav,
+   so the body is always ~56px taller than the viewport -- a baseline overflow the designer's
+   own scroll stacked on top of ("two scrollbars"). On the designer page we let the body flex
+   to its content (min-height still fills the viewport minus the nav clearance so the ORK
+   background/footer layout is preserved) -- one page, one scroll region at most. */
+body.sc-designer-body { height:auto; min-height:calc(100vh - 64px); }
+
+/* layout: builder bar on the LEFT (house pattern: sidebar + fluid main, like Reports) + stage.
+   The designer is sized by JS (layoutDesigner) to the free viewport height so the whole ORK
+   page -- nav, designer, footer -- fits without a second scrollbar; the two columns stretch to
+   fill that height, the sidebar scrolls INTERNALLY, and the stage is a bounded box the preview
+   scales into. On narrow screens it stacks (stage first) and returns to normal document flow. */
+.sc-designer { display:grid; grid-template-columns:340px minmax(0,1fr); gap:20px; align-items:stretch; padding:16px; box-sizing:border-box; overflow:hidden; }
+.sc-designer .sc-inspector { position:static; top:auto; height:100%; max-height:none; }
+.sc-designer .sc-stage { height:100%; }
 @media (max-width:900px){
-	.sc-designer { grid-template-columns:1fr; }
-	.sc-designer .sc-stage { order:1; }
-	.sc-designer .sc-inspector { order:2; position:static; max-height:none; }
+	.sc-designer { grid-template-columns:1fr; height:auto !important; overflow:visible; }
+	.sc-designer .sc-stage { order:1; height:auto; }
+	.sc-designer .sc-inspector { order:2; position:static; height:auto; max-height:none; overflow-y:visible; }
 }
 
 .sc-inspector { background:var(--sc-panel-bg); border:1px solid var(--sc-panel-line); border-radius:10px;
 	color:var(--sc-ink); padding:14px; position:sticky; top:62px; max-height:calc(100vh - 76px);
 	overflow-y:auto; font:13px/1.4 system-ui,-apple-system,sans-serif; }   /* 48px fixed site nav + 14px gap */
 
-.sc-toolbar { display:flex; gap:8px; margin-bottom:6px; }
+.sc-toolbar { display:flex; gap:8px; position:sticky; top:0; z-index:3;
+	background:var(--sc-panel-bg); margin:-14px -14px 6px; padding:14px 14px 10px;
+	border-bottom:1px solid var(--sc-panel-line); border-radius:10px 10px 0 0; }
 .sc-view-opts { display:flex; gap:14px; padding:4px 2px 8px; border-bottom:1px solid var(--sc-panel-line); margin-bottom:2px; }
 .sc-view-opts .sc-check { margin:0; }
 
@@ -156,7 +170,9 @@ html[data-theme="dark"] {
 /* empty graphic slot placeholder (designer only) */
 .sc-slot--empty { border:2px dashed rgba(40,90,200,.45); background:rgba(40,90,200,.05);
 	display:flex; align-items:center; justify-content:center; box-sizing:border-box; }
-.sc-slot__ph { font:600 12px/1.2 system-ui; color:#6b7484; display:inline-flex; align-items:center; gap:6px; }
+.sc-slot__ph { font:600 12px/1.2 system-ui; color:#6b7484; display:inline-flex; align-items:center; gap:6px; text-align:center; }
+.sc-slot--heraldry { border-color:rgba(184,134,11,.55); background:rgba(184,134,11,.07); }
+.sc-slot--heraldry .sc-slot__ph { color:#8a6a12; }
 
 /* art picker caption strip (replaces clipped tile tooltips) */
 .sc-picker__caption { min-height:1.2em; margin-top:4px; font-size:11px; color:var(--sc-ink-soft);

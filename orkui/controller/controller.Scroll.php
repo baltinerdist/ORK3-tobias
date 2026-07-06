@@ -171,6 +171,7 @@ class Controller_Scroll extends Controller
                 $award_date = (is_array($award) && !empty($award['Date']) && strtotime($award['Date']) !== false)
                     ? date('F j, Y', strtotime($award['Date']))
                     : date('F j, Y');
+                $award_rank = (is_array($award) && isset($award['Rank'])) ? (int)$award['Rank'] : 0;
                 $this->data['token_map'] = array(
                     'PlayerName' => $player['Persona'] ?? '',
                     'AwardName'  => $award_name,
@@ -179,6 +180,9 @@ class Controller_Scroll extends Controller
                     'Date'       => $award_date,
                     'GivenBy'    => is_array($award) ? ($award['GivenBy'] ?? '') : '',
                     'Reason'     => is_array($award) ? ($award['Note'] ?? '') : '',
+                    'RankNum'    => $award_rank > 0 ? (string)$award_rank : '',
+                    'RankNumXth' => $award_rank > 0 ? $this->rankOrdinal($award_rank) : '',
+                    'RankWord'   => $award_rank > 0 ? $this->rankWord($award_rank) : '',
                 );
                 $this->data['heraldry'] = array(
                     'kingdom' => $this->data['kingdom_heraldry_url'],
@@ -254,4 +258,37 @@ class Controller_Scroll extends Controller
         $DB->Clear();
     }
 
+    // 3 -> "3rd" (11th/12th/13th handled)
+    private function rankOrdinal($n)
+    {
+        $n = (int)$n;
+        $mod100 = $n % 100;
+        if ($mod100 >= 11 && $mod100 <= 13) {
+            return $n . 'th';
+        }
+        switch ($n % 10) {
+            case 1:
+                return $n . 'st';
+            case 2:
+                return $n . 'nd';
+            case 3:
+                return $n . 'rd';
+            default:
+                return $n . 'th';
+        }
+    }
+
+    // 3 -> "third"; ranks past twentieth fall back to the ordinal-number form
+    private function rankWord($n)
+    {
+        $words = array(
+            1 => 'first', 2 => 'second', 3 => 'third', 4 => 'fourth', 5 => 'fifth',
+            6 => 'sixth', 7 => 'seventh', 8 => 'eighth', 9 => 'ninth', 10 => 'tenth',
+            11 => 'eleventh', 12 => 'twelfth', 13 => 'thirteenth', 14 => 'fourteenth',
+            15 => 'fifteenth', 16 => 'sixteenth', 17 => 'seventeenth', 18 => 'eighteenth',
+            19 => 'nineteenth', 20 => 'twentieth',
+        );
+        $n = (int)$n;
+        return isset($words[$n]) ? $words[$n] : $this->rankOrdinal($n);
+    }
 }
