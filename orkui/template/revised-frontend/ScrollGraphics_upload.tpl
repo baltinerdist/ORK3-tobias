@@ -31,44 +31,27 @@
 }
 .sgu-file-info { font-size: 12px; color: #718096; margin-top: 6px; }
 
-/* ---- Wireframe diagram ---- */
-.sgu-wire-wrap { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
-.sgu-wire {
-	position: relative; width: 232px; height: 300px; flex: 0 0 auto;
-	border: 2px solid #4a5568; border-radius: 4px; background: #fdfcf7;
-	box-shadow: 0 4px 14px rgba(0,0,0,.12);
+/* ---- Placement pills (single-select) ---- */
+.sgu-place { max-width: 460px; }
+.sgu-pills { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.sgu-pill {
+	font: inherit; font-weight: 600; font-size: 13px; padding: 8px 16px;
+	border: 1px solid #cbd5e0; border-radius: 999px; background: #fff; color: #4a5568;
+	cursor: pointer; transition: background .12s, border-color .12s, color .12s;
 }
-.sgu-zone {
-	position: absolute; box-sizing: border-box; cursor: pointer;
-	border: 1px dashed #a0aec0; background: rgba(90,103,216,.04);
-	display: flex; align-items: center; justify-content: center; text-align: center;
-	font-size: 9px; line-height: 1.1; color: #4a5568; padding: 2px;
-	transition: background .12s, border-color .12s;
-}
-.sgu-zone:hover { background: rgba(90,103,216,.16); border-color: #5a67d8; }
-.sgu-zone.is-active {
-	background: rgba(90,103,216,.30); border: 2px solid #5a67d8; color: #2d3748; font-weight: 700; z-index: 5;
-}
-/* Layout of the 8 zones inside the 232x300 box (percentages). */
-.sgu-z-border_top    { top: 0;   left: 13%; right: 13%; height: 13%; }
-.sgu-z-border_bottom { bottom: 0; left: 13%; right: 13%; height: 13%; }
-.sgu-z-border_left   { top: 13%; bottom: 13%; left: 0; width: 13%; }
-.sgu-z-border_right  { top: 13%; bottom: 13%; right: 0; width: 13%; }
-.sgu-z-top_graphic   { top: 16%; left: 30%; right: 30%; height: 16%; }
-.sgu-z-center_image  { top: 38%; left: 26%; right: 26%; height: 30%; }
-.sgu-z-watermark     { top: 72%; left: 22%; right: 22%; height: 18%; }
-.sgu-z-full_border {
-	/* full-page; sits behind, click target is a thin labeled strip along top-left corner via z-index */
-	top: 13%; left: 13%; width: 18%; height: 10%; border-style: solid; border-color: #cbd5e0;
-}
-.sgu-wire-side { flex: 1 1 200px; min-width: 200px; }
+.sgu-pill:hover { border-color: #5a67d8; color: #2d3748; }
+.sgu-pill.is-active { background: #5a67d8; border-color: #5a67d8; color: #fff; }
+.sgu-pill:focus-visible { outline: 2px solid #5a67d8; outline-offset: 2px; }
 .sgu-dim-readout {
 	border: 1px solid #cbd5e0; border-radius: 6px; padding: 10px 12px; background: #f7fafc;
 	font-size: 13px; color: #2d3748; margin-bottom: 10px;
 }
 .sgu-dim-readout strong { display: block; margin-bottom: 4px; }
+.sgu-dim-readout span { display: block; }
+.sgu-dim-readout .sgu-dim-desc { margin-bottom: 6px; color: #718096; }
 .sgu-dim-readout .sgu-dim-px { font-family: ui-monospace, Menlo, monospace; color: #5a67d8; font-weight: 700; }
 .sgu-guide-link { font-size: 13px; }
+.sgu-name-hint { font-weight: 400; color: #718096; font-size: 12px; }
 
 /* ---- Tier toggle (segmented) ---- */
 .sgu-seg { display: inline-flex; border: 1px solid #cbd5e0; border-radius: 8px; overflow: hidden; }
@@ -78,7 +61,8 @@
 }
 .sgu-seg-btn:last-child { border-right: none; }
 .sgu-seg-btn.is-active { background: #5a67d8; color: #fff; }
-.sgu-seg-btn:disabled { opacity: .45; cursor: not-allowed; }
+.sgu-seg-btn:disabled,
+.sgu-seg-btn.sgu-seg-disabled { opacity: .45; cursor: not-allowed; }
 .sgu-tier-note { font-size: 12px; color: #718096; margin-top: 8px; }
 
 /* ---- License box + signature ---- */
@@ -111,13 +95,13 @@ html[data-theme="dark"] .sgu-file {
 }
 html[data-theme="dark"] .sgu-textarea::placeholder { color: #718096; }
 html[data-theme="dark"] .sgu-file-info { color: #718096; }
-html[data-theme="dark"] .sgu-wire { background: #1a202c; border-color: #718096; }
-html[data-theme="dark"] .sgu-zone { border-color: #4a5568; color: #a0aec0; background: rgba(129,140,248,.06); }
-html[data-theme="dark"] .sgu-zone:hover { background: rgba(129,140,248,.2); border-color: #818cf8; }
-html[data-theme="dark"] .sgu-zone.is-active { background: rgba(129,140,248,.34); border-color: #818cf8; color: #e2e8f0; }
-html[data-theme="dark"] .sgu-z-full_border { border-color: #4a5568; }
+html[data-theme="dark"] .sgu-pill { background: #2d3748; color: #a0aec0; border-color: #4a5568; }
+html[data-theme="dark"] .sgu-pill:hover { border-color: #818cf8; color: #e2e8f0; }
+html[data-theme="dark"] .sgu-pill.is-active { background: #5a67d8; border-color: #5a67d8; color: #fff; }
 html[data-theme="dark"] .sgu-dim-readout { background: #2d3748; border-color: #4a5568; color: #e2e8f0; }
+html[data-theme="dark"] .sgu-dim-readout .sgu-dim-desc { color: #a0aec0; }
 html[data-theme="dark"] .sgu-dim-readout .sgu-dim-px { color: #a3bffa; }
+html[data-theme="dark"] .sgu-name-hint { color: #718096; }
 html[data-theme="dark"] .sgu-seg { border-color: #4a5568; }
 html[data-theme="dark"] .sgu-seg-btn { background: #2d3748; color: #a0aec0; border-right-color: #4a5568; }
 html[data-theme="dark"] .sgu-seg-btn.is-active { background: #5a67d8; color: #fff; }
@@ -149,26 +133,20 @@ html[data-theme="dark"] .sgu-status.is-ok { color: #68d391; }
       </div>
 
       <h3 class="sgu-section-title">2 &middot; Placement Zone <span class="sgu-req">*</span></h3>
-      <div class="sgu-wire-wrap">
-        <div class="sgu-wire" id="sgu-wire" role="group" aria-label="Scroll placement zones">
-          <div class="sgu-zone sgu-z-full_border"    data-zone="full_border">Full Border</div>
-          <div class="sgu-zone sgu-z-border_top"      data-zone="border_top" >Top Border</div>
-          <div class="sgu-zone sgu-z-border_bottom"   data-zone="border_bottom">Bottom Border</div>
-          <div class="sgu-zone sgu-z-border_left"     data-zone="border_left">Left</div>
-          <div class="sgu-zone sgu-z-border_right"    data-zone="border_right">Right</div>
-          <div class="sgu-zone sgu-z-top_graphic"     data-zone="top_graphic">Top Graphic</div>
-          <div class="sgu-zone sgu-z-center_image"    data-zone="center_image">Center Image</div>
-          <div class="sgu-zone sgu-z-watermark"       data-zone="watermark"  >Watermark</div>
+      <div class="sgu-place">
+        <div class="sgu-pills" id="sgu-pills" role="radiogroup" aria-label="Where this graphic sits on the scroll">
+          <button type="button" class="sgu-pill" role="radio" aria-checked="false" data-zone="full_border">Full Border</button>
+          <button type="button" class="sgu-pill" role="radio" aria-checked="false" data-zone="border_side">Side Border</button>
+          <button type="button" class="sgu-pill" role="radio" aria-checked="false" data-zone="center_image">Floating Image</button>
+          <button type="button" class="sgu-pill" role="radio" aria-checked="false" data-zone="background">Background</button>
         </div>
-        <div class="sgu-wire-side">
-          <div class="sgu-dim-readout" id="sgu-dim-readout">
-            <strong>No zone selected</strong>
-            <span>Click a region on the scroll to choose where this graphic will sit.</span>
-          </div>
-          <a class="sgu-guide-link" href="<?= UIR ?>ScrollArtworkAjax/template_guide" target="_blank" rel="noopener">
-            <i class="fas fa-download"></i> Download placement guide
-          </a>
+        <div class="sgu-dim-readout" id="sgu-dim-readout">
+          <strong>No placement selected</strong>
+          <span>Choose where this graphic sits on the scroll.</span>
         </div>
+        <a class="sgu-guide-link" href="<?= UIR ?>ScrollArtworkAjax/template_guide" target="_blank" rel="noopener">
+          <i class="fas fa-download"></i> Download placement guide
+        </a>
       </div>
     </div>
 
@@ -200,10 +178,11 @@ html[data-theme="dark"] .sgu-status.is-ok { color: #68d391; }
         <div class="sgu-seg" id="sgu-tier-seg" role="group" aria-label="Submission tier">
           <button type="button" class="sgu-seg-btn is-active" id="sgu-tier-global" data-tier="global">Amtgard</button>
           <button type="button" class="sgu-seg-btn" id="sgu-tier-kingdom" data-tier="kingdom">Kingdom</button>
+          <button type="button" class="sgu-seg-btn" id="sgu-tier-park" data-tier="park">My Park</button>
         </div>
         <input type="hidden" id="sgu-visibility" value="global">
         <div class="sgu-tier-note">
-          Amtgard-wide is reviewed by ORK admins &middot; Kingdom-specific is reviewed by your kingdom's officers.
+          Amtgard-wide is reviewed by ORK admins &middot; Kingdom-specific is reviewed by your kingdom's officers &middot; Park-specific is reviewed by your park's officers.
         </div>
       </div>
 
@@ -223,7 +202,7 @@ This license does not transfer ownership of the artwork. You retain all other ri
 By typing your full legal name below, you acknowledge that this constitutes a legally binding digital signature indicating your agreement to these terms.</div>
       </div>
       <div class="sg-field">
-        <label for="sgu-signer">Full legal name <span class="sgu-req">*</span></label>
+        <label for="sgu-signer">Full legal name <span class="sgu-req">*</span> <span class="sgu-name-hint">(Real Name, not Amtgard Name)</span></label>
         <input type="text" id="sgu-signer" placeholder="Type your full legal name as a digital signature" maxlength="200" autocomplete="off">
       </div>
       <div class="sgu-agree-row">
@@ -248,16 +227,12 @@ var SG = <?= json_encode($sg, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS) ?>;
 
   var AJAX = SG.uir + 'ScrollArtworkAjax/';
 
-  // JS copy of SLOT_DIMENSIONS (target output px per zone).
+  // JS copy of SLOT_DIMENSIONS (target output px + where each placement sits).
   var SLOT_DIMENSIONS = {
-    full_border:   { w: 2550, h: 3300, label: 'Full Border' },
-    border_left:   { w: 300,  h: 3300, label: 'Left Border' },
-    border_right:  { w: 300,  h: 3300, label: 'Right Border' },
-    border_top:    { w: 2550, h: 400,  label: 'Top Border' },
-    border_bottom: { w: 2550, h: 400,  label: 'Bottom Border' },
-    center_image:  { w: 1200, h: 1200, label: 'Center Image' },
-    watermark:     { w: 2550, h: 3300, label: 'Watermark' },
-    top_graphic:   { w: 800,  h: 500,  label: 'Top Graphic' }
+    full_border:  { w: 2550, h: 3300, label: 'Full Border',   desc: 'A decorative frame that wraps the entire edge of the scroll.' },
+    border_side:  { w: 300,  h: 3300, label: 'Side Border',    desc: 'A tall strip running down one side of the scroll.' },
+    center_image: { w: 1200, h: 1200, label: 'Floating Image', desc: 'A standalone emblem or illustration — place it anywhere on the scroll.' },
+    background:   { w: 2550, h: 3300, label: 'Background',      desc: 'Fills the whole page behind the text (opacity is adjustable).' }
   };
 
   var _zone = '';
@@ -278,31 +253,31 @@ var SG = <?= json_encode($sg, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS) ?>;
     s.textContent = msg || '';
   }
 
-  // ---- Wireframe zone selection ----
+  // ---- Placement selection (single-select pills) ----
   function selectZone(zone) {
     _zone = zone;
-    var zones = document.querySelectorAll('.sgu-zone');
-    for (var i = 0; i < zones.length; i++) {
-      zones[i].classList.toggle('is-active', zones[i].getAttribute('data-zone') === zone);
+    var pills = document.querySelectorAll('.sgu-pill');
+    for (var i = 0; i < pills.length; i++) {
+      var on = pills[i].getAttribute('data-zone') === zone;
+      pills[i].classList.toggle('is-active', on);
+      pills[i].setAttribute('aria-checked', on ? 'true' : 'false');
     }
     var dim = SLOT_DIMENSIONS[zone];
     var host = el('sgu-dim-readout');
     if (host && dim) {
       host.innerHTML = '<strong>' + sgEscapeHtml(dim.label) + '</strong>' +
+        '<span class="sgu-dim-desc">' + sgEscapeHtml(dim.desc) + '</span>' +
         '<span>Target output size: <span class="sgu-dim-px">' + dim.w + ' &times; ' + dim.h + ' px</span></span>';
     }
   }
 
-  function initWireframe() {
-    var wire = el('sgu-wire');
-    if (!wire) return;
-    wire.addEventListener('click', function (e) {
-      var t = e.target;
-      while (t && t !== wire && !t.getAttribute('data-zone')) { t = t.parentNode; }
-      if (t && t.getAttribute && t.getAttribute('data-zone')) {
-        selectZone(t.getAttribute('data-zone'));
-      }
-    });
+  function initPills() {
+    var pills = document.querySelectorAll('.sgu-pill');
+    for (var i = 0; i < pills.length; i++) {
+      pills[i].addEventListener('click', function () {
+        selectZone(this.getAttribute('data-zone'));
+      });
+    }
   }
 
   // ---- Categories ----
@@ -327,6 +302,7 @@ var SG = <?= json_encode($sg, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS) ?>;
   function initTier() {
     var seg = el('sgu-tier-seg');
     var kingdomBtn = el('sgu-tier-kingdom');
+    var parkBtn = el('sgu-tier-park');
     var hidden = el('sgu-visibility');
     if (!seg || !hidden) return;
 
@@ -337,9 +313,25 @@ var SG = <?= json_encode($sg, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS) ?>;
       kingdomBtn.textContent = SG.kingdomName;
     }
 
+    // Park tier: enabled ONLY for park officers. Label with the park name.
+    // Use a class (not the native `disabled` attr) so the data-tip still shows
+    // on hover — disabled form controls do not fire :hover in most browsers.
+    if (parkBtn) {
+      if (SG.parkName) { parkBtn.textContent = SG.parkName; }
+      var isParkOfficer = parseInt(SG.isParkOfficer, 10) === 1;
+      var hasPark = SG.parkId && parseInt(SG.parkId, 10) > 0;
+      if (!isParkOfficer || !hasPark) {
+        parkBtn.classList.add('sgu-seg-disabled');
+        parkBtn.setAttribute('aria-disabled', 'true');
+        parkBtn.setAttribute('data-tip', hasPark
+          ? 'Only your park’s officers can submit park-specific artwork.'
+          : 'You are not assigned to a park.');
+      }
+    }
+
     seg.addEventListener('click', function (e) {
       var btn = e.target.closest ? e.target.closest('.sgu-seg-btn') : null;
-      if (!btn || btn.disabled) return;
+      if (!btn || btn.disabled || btn.classList.contains('sgu-seg-disabled')) return;
       var tier = btn.getAttribute('data-tier');
       var btns = seg.querySelectorAll('.sgu-seg-btn');
       for (var i = 0; i < btns.length; i++) {
@@ -365,7 +357,9 @@ var SG = <?= json_encode($sg, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS) ?>;
     var name = nameEl ? nameEl.value.trim() : '';
     var signer = signerEl ? signerEl.value.trim() : '';
     var agreed = agreeEl ? agreeEl.checked : false;
-    var visibility = (visEl && visEl.value === 'kingdom') ? 'kingdom' : 'global';
+    var visibility = 'global';
+    if (visEl && visEl.value === 'kingdom') { visibility = 'kingdom'; }
+    else if (visEl && visEl.value === 'park') { visibility = 'park'; }
 
     if (!file) { setStatus('Please select an image file.', 'warn'); return; }
     if (file.size > 2097152) { setStatus('Image must be 2 MB or smaller (' + Math.round(file.size / 1024) + ' KB selected).', 'warn'); return; }
@@ -383,7 +377,9 @@ var SG = <?= json_encode($sg, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS) ?>;
       var base64 = reader.result.split(',')[1] || '';
       var mimeType = file.type || 'image/png';
 
-      var ownerKingdomId = (visibility === 'kingdom') ? (parseInt(SG.kingdomId, 10) || 0) : 0;
+      // Park + Kingdom tiers both carry the kingdom id (park stores both park + its kingdom).
+      var ownerKingdomId = (visibility === 'kingdom' || visibility === 'park') ? (parseInt(SG.kingdomId, 10) || 0) : 0;
+      var ownerParkId = (visibility === 'park') ? (parseInt(SG.parkId, 10) || 0) : 0;
       var categoryId = (catEl && catEl.value) ? catEl.value : '';
 
       var fd = new FormData();
@@ -396,6 +392,7 @@ var SG = <?= json_encode($sg, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS) ?>;
       fd.append('license_signer_name', signer);
       fd.append('visibility', visibility);
       fd.append('owner_kingdom_id', String(ownerKingdomId));
+      fd.append('owner_park_id', String(ownerParkId));
       fd.append('category_id', categoryId);
 
       fetch(AJAX + 'upload', { method: 'POST', body: fd })
@@ -418,7 +415,7 @@ var SG = <?= json_encode($sg, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS) ?>;
   }
 
   function init() {
-    initWireframe();
+    initPills();
     initTier();
     loadCategories();
     var btn = el('sgu-submit-btn');

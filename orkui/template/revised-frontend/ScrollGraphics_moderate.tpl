@@ -180,6 +180,9 @@ html[data-theme="dark"] .sgm-cat-form .sgm-cancel-btn { background: #1a202c; bor
     <a class="sg-tab" href="<?= UIR ?>ScrollGraphics/upload"><i class="fas fa-upload"></i> Submit a Graphic</a>
     <a class="sg-tab" href="<?= UIR ?>ScrollGraphics/mine"><i class="fas fa-folder"></i> My Submissions</a>
     <a class="sg-tab active" href="<?= UIR ?>ScrollGraphics/moderate"><i class="fas fa-gavel"></i> Moderate</a>
+    <?php if (!empty($sg['canManage'])): ?>
+      <a class="sg-tab" href="<?= UIR ?>ScrollGraphics/manage"><i class="fas fa-sliders-h"></i> Manage Library</a>
+    <?php endif; ?>
   </nav>
 
   <div class="sg-body" style="display:block;">

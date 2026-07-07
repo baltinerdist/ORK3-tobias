@@ -1293,6 +1293,8 @@
 						<h5><i class="fas fa-cog"></i> Park</h5>
 						<ul>
 							<li><a href="<?= UIR ?>Admin/permissions/Park/<?= $park_id ?>">Roles &amp; Permissions</a></li>
+							<li><a href="<?= UIR ?>Scroll/admin">Scroll Administration</a></li>
+							<li><a href="<?= UIR ?>ScrollGraphics/manage">Scroll Asset Library</a></li>
 						</ul>
 					</div>
 				</div>

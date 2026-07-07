@@ -4,8 +4,9 @@
  * Starter-template seeding assertion.
  *
  * listForKingdom(0) must surface the seeded shared starters (is_starter=1,
- * kingdom_id NULL) for any kingdom. Asserts 3 starters, each with a non-empty
- * slots + zones payload (proves the seeder ran and the JSON round-trips).
+ * visibility='global', kingdom_id NULL) for any kingdom. Asserts 3 starters,
+ * each Amtgard-wide (global) with a non-empty slots + zones payload (proves the
+ * seeder ran and the JSON + scope columns round-trip).
  *
  * Boots the full ORK runtime (bootstrap block copied from
  * test_moderation_authority.php) so $DB + Ork3::$Lib->scrolltemplate are live.
@@ -31,6 +32,9 @@ assert_equals(3, count($starters), 'exactly 3 shared starters');
 
 foreach ($starters as $t) {
     $name = $t['name'];
+    assert_equals('global', $t['visibility'], "starter '$name' is Amtgard-wide (global)");
+    assert_equals(null, $t['kingdom_id'], "starter '$name' has NULL kingdom_id");
+    assert_equals(null, $t['park_id'], "starter '$name' has NULL park_id");
     assert_true(is_array($t['slots']) && count($t['slots']) > 0, "starter '$name' has non-empty slots");
     assert_true(is_array($t['zones']) && count($t['zones']) > 0, "starter '$name' has non-empty zones");
 }

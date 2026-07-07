@@ -162,6 +162,7 @@ foreach ($starters as $s) {
     $db->Execute("DELETE FROM " . DB_PREFIX . "scroll_template WHERE is_starter = 1 AND name = :name");
     $st->create(array(
         'KingdomId'   => null,
+        'Visibility'  => 'global',
         'Name'        => $s[0],
         'Orientation' => $s[1],
         'BgType'      => $s[2],

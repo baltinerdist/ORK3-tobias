@@ -48,21 +48,30 @@ class Controller_ScrollTemplateAjax extends Controller
     }
 
     /**
-     * Gate: kingdom officer (AUTH_KINGDOM/AUTH_EDIT) over $kingdom_id, or ORK
-     * admin (AUTH_ADMIN) for shared starters (kingdom_id null). Returns the
-     * mundane_id or exits with a JSON error.
+     * Gate a mutation by the TARGET tier's authority. To save (or re-scope) a
+     * template AT a tier you must hold that tier's edit authority:
+     *   'global'  -> AUTH_ADMIN (ORK admin) over shared/Amtgard-wide starters.
+     *   'kingdom' -> AUTH_KINGDOM/AUTH_EDIT over $kingdom_id.
+     *   'park'    -> AUTH_PARK/AUTH_EDIT over $park_id (kingdom officers pass via
+     *                the built-in park->kingdom authority traversal).
+     * Returns the mundane_id or exits with a JSON error.
      */
-    private function require_kingdom_edit($kingdom_id)
+    private function require_scope_edit($visibility, $kingdom_id, $park_id)
     {
         $mundane_id = $this->mundane();
         if ($mundane_id <= 0) {
             $this->json_response(array('Status' => 5, 'Message' => 'Authorization failed.'));
         }
-        $ok = $kingdom_id
-            ? Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_KINGDOM, (int)$kingdom_id, AUTH_EDIT)
-            : Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_ADMIN, 0, AUTH_EDIT);
+        $auth = Ork3::$Lib->authorization;
+        if ($visibility === 'global') {
+            $ok = $auth->HasAuthority($mundane_id, AUTH_ADMIN, 0, AUTH_EDIT);
+        } elseif ($visibility === 'park') {
+            $ok = $auth->HasAuthority($mundane_id, AUTH_PARK, (int)$park_id, AUTH_EDIT);
+        } else {
+            $ok = $auth->HasAuthority($mundane_id, AUTH_KINGDOM, (int)$kingdom_id, AUTH_EDIT);
+        }
         if (!$ok) {
-            $this->json_response(array('Status' => 5, 'Message' => 'Kingdom officer privileges required.'));
+            $this->json_response(array('Status' => 5, 'Message' => 'Insufficient privileges for this scope.'));
         }
         return $mundane_id;
     }
@@ -238,11 +247,17 @@ class Controller_ScrollTemplateAjax extends Controller
     {
         $this->require_login();
         $body = json_decode(file_get_contents('php://input'), true) ?: array();
+        $visibility = in_array($body['visibility'] ?? '', array('global', 'kingdom', 'park'), true) ? $body['visibility'] : 'kingdom';
         $kingdom_id = ($body['kingdom_id'] ?? null) ? (int)$body['kingdom_id'] : null;
-        $mundane_id = $this->require_kingdom_edit($kingdom_id);
+        $park_id    = ($body['park_id'] ?? null) ? (int)$body['park_id'] : null;
+        // Target-tier authority is sufficient for both new saves and re-scoping:
+        // to save AT a tier you must hold that tier's authority.
+        $mundane_id = $this->require_scope_edit($visibility, $kingdom_id, $park_id);
 
         $request = array(
             'KingdomId'   => $kingdom_id,
+            'Visibility'  => $visibility,
+            'ParkId'      => $park_id,
             'Name'        => $body['name'] ?? '',
             'Orientation' => $body['orientation'] ?? 'portrait',
             'BgType'      => $body['bg_type'] ?? 'color',
@@ -253,7 +268,6 @@ class Controller_ScrollTemplateAjax extends Controller
             'Zones'       => $body['zones'] ?? array(),
             'AwardKeys'   => $body['award_keys'] ?? array(),
             'Knot'        => $body['knot'] ?? null,
-            'IsStarter'   => !empty($body['is_starter']) ? 1 : 0,
             'CreatedBy'   => $mundane_id,
         );
 
@@ -295,8 +309,8 @@ class Controller_ScrollTemplateAjax extends Controller
         if (($existing['Status']['Status'] ?? 1) != 0) {
             $this->json_response(array('Status' => 1, 'Message' => 'Not found.'));
         }
-        $kingdom_id = $existing['Template']['kingdom_id'] ?? null;
-        $this->require_kingdom_edit($kingdom_id);
+        $tpl = $existing['Template'];
+        $this->require_scope_edit($tpl['visibility'] ?? 'kingdom', $tpl['kingdom_id'] ?? null, $tpl['park_id'] ?? null);
 
         $this->st->delete($template_id);
         $this->json_response(array('Status' => 0));

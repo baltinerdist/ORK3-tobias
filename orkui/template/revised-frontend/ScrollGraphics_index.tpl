@@ -13,6 +13,9 @@
     <?php if (!empty($sg['canModerate'])): ?>
       <a class="sg-tab" href="<?= UIR ?>ScrollGraphics/moderate"><i class="fas fa-gavel"></i> Moderate</a>
     <?php endif; ?>
+    <?php if (!empty($sg['canManage'])): ?>
+      <a class="sg-tab" href="<?= UIR ?>ScrollGraphics/manage"><i class="fas fa-sliders-h"></i> Manage Library</a>
+    <?php endif; ?>
   </nav>
   <div class="sg-body">
     <aside class="sg-rail">

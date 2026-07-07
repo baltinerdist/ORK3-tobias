@@ -20,6 +20,106 @@ class Controller_Scroll extends Controller
         exit;
     }
 
+    /**
+     * Scroll Administration surface: manage templates for every tier the logged-in
+     * user administers (Amtgard-wide / Kingdom / Park). Officer/admin gated.
+     */
+    public function admin($id = null)
+    {
+        if (!isset($this->session->user_id)) {
+            header('Location: ' . UIR . 'Login');
+            exit;
+        }
+        $this->template = '../revised-frontend/Scroll_admin.tpl';
+
+        // Resolve the LOGGED-IN user's own park + kingdom (mirrors builder()).
+        $org             = $this->resolveOrg((int)$this->session->user_id);
+        $userParkId      = $org['parkId'];
+        $userParkName    = $org['parkName'];
+        $userKingdomId   = $org['kingdomId'];
+        $userKingdomName = $org['kingdomName'];
+
+        $mid = (int)Ork3::$Lib->authorization->IsAuthorized($this->session->token);
+        $isAdmin          = Ork3::$Lib->authorization->HasAuthority($mid, AUTH_ADMIN, 0, AUTH_EDIT);
+        $isKingdomOfficer = $userKingdomId > 0 && Ork3::$Lib->authorization->HasAuthority($mid, AUTH_KINGDOM, $userKingdomId, AUTH_EDIT);
+        $isParkOfficer    = $userParkId > 0 && Ork3::$Lib->authorization->HasAuthority($mid, AUTH_PARK, $userParkId, AUTH_EDIT);
+
+        if (!$isAdmin && !$isKingdomOfficer && !$isParkOfficer) {
+            header('Location: ' . UIR . 'Scroll/builder');
+            exit;
+        }
+
+        $this->data['sa_config'] = array(
+            'uir'              => UIR,
+            'token'            => $this->session->token ?? '',
+            'userKingdomId'    => $userKingdomId,
+            'userKingdomName'  => $userKingdomName,
+            'userParkId'       => $userParkId,
+            'userParkName'     => $userParkName,
+            'isAdmin'          => $isAdmin ? 1 : 0,
+            'isKingdomOfficer' => $isKingdomOfficer ? 1 : 0,
+            'isParkOfficer'    => $isParkOfficer ? 1 : 0,
+            'packBase'         => str_replace('/assets/', '/system/assets/scroll/packs/', HTTP_ASSETS),
+            'libBase'          => HTTP_SCROLL_ARTWORK,
+        );
+
+        // Only include a section for a tier the user actually manages.
+        $sections = array();
+        if ($isAdmin) {
+            $sections['global'] = Ork3::$Lib->scrolltemplate->listForScope('global', 0, 0)['Templates'] ?? array();
+        }
+        if ($isKingdomOfficer) {
+            $sections['kingdom'] = Ork3::$Lib->scrolltemplate->listForScope('kingdom', $userKingdomId, 0)['Templates'] ?? array();
+        }
+        if ($isParkOfficer) {
+            $sections['park'] = Ork3::$Lib->scrolltemplate->listForScope('park', 0, $userParkId)['Templates'] ?? array();
+        }
+        $this->data['sa_sections'] = $sections;
+
+        // Preview modal: a plausible filled scroll using a random ladder award name.
+        $awards = Ork3::$Lib->award->GetAwardList(array('IsLadder' => 'Ladder'))['Awards'] ?? array();
+        if (empty($awards)) {
+            $awards = Ork3::$Lib->award->GetAwardList(array())['Awards'] ?? array();
+        }
+        $awardName = 'Order of the Example';
+        if (!empty($awards)) {
+            $pick = $awards[array_rand($awards)];
+            $pickName = trim($pick['AwardName'] ?? $pick['Name'] ?? '');
+            $awardName = $pickName !== '' ? $pickName : $awardName;
+        }
+        $rank = mt_rand(1, 5);
+        $tokens = array(
+            'PlayerName' => 'Sir Example',
+            'AwardName'  => $awardName,
+            'Kingdom'    => $userKingdomName,
+            'Park'       => $userParkName,
+            'Date'       => date('F j, Y'),
+            'GivenBy'    => 'Their Excellency',
+            'Reason'     => 'For valorous service to the realm.',
+            'RankNum'    => (string)$rank,
+            'RankNumXth' => $this->rankOrdinal($rank),
+            'RankWord'   => $this->rankWord($rank),
+        );
+        $kingdomHeraldry = $userKingdomId > 0
+            ? (Ork3::$Lib->heraldry->GetHeraldryUrl(array('Type' => 'Kingdom', 'Id' => $userKingdomId))['Url'] ?? '')
+            : '';
+        $parkHeraldry = $userParkId > 0
+            ? (Ork3::$Lib->heraldry->GetHeraldryUrl(array('Type' => 'Park', 'Id' => $userParkId))['Url'] ?? '')
+            : '';
+        $this->data['sa_preview'] = array(
+            'tokens'   => $tokens,
+            'heraldry' => array(
+                'kingdom' => $kingdomHeraldry,
+                'park'    => $parkHeraldry,
+                'player'  => HTTP_PLAYER_HERALDRY . '000000.jpg',
+            ),
+        );
+
+        // Clear stale PDO bindings after auth checks + lib reads.
+        global $DB;
+        $DB->Clear();
+    }
+
     public function builder($id = null)
     {
         $this->template = '../revised-frontend/Scroll_builder.tpl';
@@ -154,10 +254,12 @@ class Controller_Scroll extends Controller
                     }
                 }
 
-                // Slot-based templates for the picker (starters + this kingdom's) + token map.
+                // Token map keys off the RECIPIENT's kingdom, but the template PICKER is
+                // scoped to the logged-in GRANTER's own org (global + their kingdom + park).
                 $this->data['player_kingdom_id'] = $kingdom_id;
-                $tpl_list = Ork3::$Lib->scrolltemplate->listForKingdom($kingdom_id);
-                $this->data['templates'] = $tpl_list['Templates'] ?? array();
+                $granterOrg = $this->resolveOrg($uid);
+                $this->data['templates'] = Ork3::$Lib->scrolltemplate
+                    ->visibleTo($granterOrg['kingdomId'], $granterOrg['parkId'])['Templates'] ?? array();
 
                 $award = $this->data['award'];
                 $award_name = '';
@@ -253,9 +355,74 @@ class Controller_Scroll extends Controller
         $this->data['heraldry']      = array('kingdom' => $kingdomHeraldry, 'park' => '', 'player' => '');
         $this->data['session_token'] = isset($this->session->token) ? $this->session->token : '';
 
+        // Resolve the logged-in user's own park + kingdom for the scope selector.
+        $org             = $this->resolveOrg((int)$this->session->user_id);
+        $userParkId      = $org['parkId'];
+        $userParkName    = $org['parkName'];
+        $userKingdomId   = $org['kingdomId'];
+        $userKingdomName = $org['kingdomName'];
+
+        // COPY MODE: seed the designer from an existing template but flag a copy so the
+        // JS drops the real id + prefixes the name; leave the normal edit path untouched.
+        $this->data['is_copy'] = false;
+        if (!empty($_GET['copy'])) {
+            $copySrc = Ork3::$Lib->scrolltemplate->get((int)$_GET['copy'])['Template'] ?? null;
+            if ($copySrc) {
+                $this->data['edit_template'] = $copySrc;
+                $this->data['is_copy'] = true;
+            }
+        }
+
+        // Scope preselect: explicit ?scope= wins, else the edited template's own
+        // visibility, else default to kingdom.
+        $scopeParam = isset($_GET['scope']) ? (string)$_GET['scope'] : '';
+        $editTpl    = $this->data['edit_template'] ?? null;
+        $preselect  = in_array($scopeParam, array('global', 'kingdom', 'park'), true)
+            ? $scopeParam
+            : ((is_array($editTpl) && !empty($editTpl['visibility'])) ? $editTpl['visibility'] : 'kingdom');
+
+        $this->data['sa_scope'] = array(
+            'allowGlobal'     => $isAdmin ? 1 : 0,
+            'allowKingdom'    => ($mid > 0 && $kingdomId > 0 && Ork3::$Lib->authorization->HasAuthority($mid, AUTH_KINGDOM, $kingdomId, AUTH_EDIT)) ? 1 : 0,
+            'allowPark'       => ($userParkId > 0 && Ork3::$Lib->authorization->HasAuthority($mid, AUTH_PARK, $userParkId, AUTH_EDIT)) ? 1 : 0,
+            'userParkId'      => $userParkId,
+            'userParkName'    => $userParkName,
+            'userKingdomId'   => $userKingdomId,
+            'userKingdomName' => $userKingdomName,
+            'preselect'       => $preselect,
+        );
+
         // Clear stale PDO bindings after auth checks + lib reads.
         global $DB;
         $DB->Clear();
+    }
+
+    /**
+     * Resolve a mundane's own park + kingdom from their player record.
+     * Mirrors builder()'s player->park->kingdom derivation.
+     */
+    private function resolveOrg($mundaneId)
+    {
+        $out = array('parkId' => 0, 'parkName' => '', 'kingdomId' => 0, 'kingdomName' => '');
+        $mundaneId = (int)$mundaneId;
+        if ($mundaneId <= 0) {
+            return $out;
+        }
+        $player = $this->Player->fetch_player($mundaneId);
+        if (!$player) {
+            return $out;
+        }
+        $parkId = (int)($player['ParkId'] ?? 0);
+        if (valid_id($parkId)) {
+            $out['parkId'] = $parkId;
+            $parkInfo = $this->Park->get_park_info($parkId);
+            if ($parkInfo && isset($parkInfo['ParkInfo'])) {
+                $out['parkName']    = $parkInfo['ParkInfo']['ParkName'] ?? '';
+                $out['kingdomId']   = (int)($parkInfo['KingdomInfo']['KingdomId'] ?? 0);
+                $out['kingdomName'] = $parkInfo['KingdomInfo']['KingdomName'] ?? '';
+            }
+        }
+        return $out;
     }
 
     // 3 -> "3rd" (11th/12th/13th handled)

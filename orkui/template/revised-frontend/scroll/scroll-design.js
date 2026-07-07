@@ -10,6 +10,21 @@
 	if (!Array.isArray(tpl.award_keys)) { tpl.award_keys = []; }
 	tpl.award_keys = tpl.award_keys.map(Number);       // ids as numbers for reliable toggling
 	if (tpl.kingdom_id == null) { tpl.kingdom_id = D.kingdomId; }
+
+	// ---- Save-as scope (visibility tier) ----
+	// preselect (from controller) wins; else the loaded template's own visibility; else kingdom.
+	tpl.visibility = (D.scope && D.scope.preselect) || tpl.visibility || 'kingdom';
+
+	// COPY MODE: the loaded template is a SOURCE to clone. Strip its identity so Save CREATES a
+	// brand-new scroll, and rename it "Copy of <original>". (Same seeding as edit, just id-less.)
+	if (D.isCopy && D.template) {
+		var _origName = tpl.name || '';
+		delete tpl.scroll_template_id;
+		delete tpl.id;
+		tpl.name = 'Copy of ' + _origName;
+		var _nameInput = document.getElementById('scTplName');
+		if (_nameInput) { _nameInput.value = tpl.name; }   // markup seeded the original name; override it
+	}
 	var sel = null;                                  // { kind:'slot'|'zone', index:Number }
 	var groupState = {};                             // explicit type-chip choice, per collection
 	var lastSelKey = null;                           // identity of the slot the picker last defaulted for
@@ -24,7 +39,8 @@
 		'UnifrakturMaguntia', 'Great Vibes', 'Pinyon Script', 'Tangerine', 'Uncial Antiqua', 'Goudy Bookletter 1911',
 		'Sorts Mill Goudy', 'Metamorphous', 'Grenze Gotisch', 'Caudex', 'Fondamento', 'Germania One', 'Eagle Lake',
 		'Pirata One', 'Jim Nightshade'];
-	var LOCATIONS = ['full_border', 'center_image', 'top_graphic', 'border_left', 'border_right', 'border_top', 'border_bottom'];
+	var LOCATIONS = ['full_border', 'border_side', 'center_image', 'background'];
+	var PLACEMENT_LABELS = { full_border: 'Full Border', border_side: 'Side Border', center_image: 'Floating Image', background: 'Background' };
 
 	var KNOT_PRESETS = {
 		Flame: { enabled: true, pattern: 'plait', band: { inset: 1.8, width: 5.5 }, strands: { count: 3, thickness: 0.48, scale: 0.85 },
@@ -64,6 +80,7 @@
 	function rectFor(loc) {
 		switch (loc) {
 			case 'full_border':   return { x: 2, y: 2, w: 96, h: 96 };
+			case 'border_side':   return { x: 1, y: 4, w: 14, h: 92 };
 			case 'border_left':   return { x: 1, y: 4, w: 14, h: 92 };
 			case 'border_right':  return { x: 85, y: 4, w: 14, h: 92 };
 			case 'border_top':    return { x: 4, y: 1, w: 92, h: 12 };
@@ -583,7 +600,7 @@
 			});
 		}
 		var zDescs = withDupNumbers(tpl.zones.map(function (z) { return z.text || '(empty)'; }));
-		var sDescs = withDupNumbers(tpl.slots.map(function (s) { return s.location.replace(/_/g, ' '); }));
+		var sDescs = withDupNumbers(tpl.slots.map(function (s) { return PLACEMENT_LABELS[s.location] || s.location.replace(/_/g, ' '); }));
 		tpl.zones.forEach(function (z, i) { box.appendChild(elemRow('zone', i, 'Text', zDescs[i], tpl.zones.length)); });
 		tpl.slots.forEach(function (s, i) { box.appendChild(elemRow('slot', i, 'Graphic', sDescs[i], tpl.slots.length)); });
 		if (tpl.zones.length && tpl.slots.length) {
@@ -693,9 +710,12 @@
 			// later type-chip click (same slot) is not overridden by the selected art's group.
 			var selKey = 'slot' + sel.index + ':' + s.location;
 			if (selKey !== lastSelKey) { delete groupState[coll]; lastSelKey = selKey; }
-			box.appendChild(field('Placement', select(LOCATIONS.map(function (l) { return { value: l, label: l.replace(/_/g, ' ') }; }), s.location, function (v) {
+			box.appendChild(field('Placement', select(LOCATIONS.map(function (l) { return { value: l, label: PLACEMENT_LABELS[l] || l }; }), s.location, function (v) {
 				s.location = v; var r = rectFor(v); s.x = r.x; s.y = r.y; s.w = r.w; s.h = r.h; render(); buildElements(); buildSelected();
 			})));
+			if (s.location === 'center_image') {
+				box.appendChild(el('p', 'sc-hint', 'Place this image anywhere on the scroll — drag it into position.'));
+			}
 			box.appendChild(geomRow(s));
 			box.appendChild(field('Source', select([
 				{ value: 'pack', label: 'Clipart library' },
@@ -919,6 +939,35 @@
 		box.appendChild(row);
 	}
 
+	// ---- "Save as" scope control (which tier this template is saved to) ----
+	// Renders only the tiers the controller allows. One tier -> a static readout; more -> a
+	// segmented picker (reusing .sc-type-row / .sc-type so it inherits designer + dark-mode styling).
+	function buildScope() {
+		var box = document.getElementById('scScope');
+		if (!box) { return; }
+		box.innerHTML = '';
+		var sc = D.scope;
+		if (!sc) { return; }                      // no contract injected -> nothing to choose
+		var tiers = [];
+		if (sc.allowGlobal) { tiers.push({ v: 'global', label: 'Amtgard-Wide' }); }
+		if (sc.allowKingdom) { tiers.push({ v: 'kingdom', label: 'My Kingdom (' + (sc.userKingdomName || '') + ')' }); }
+		if (sc.allowPark) { tiers.push({ v: 'park', label: 'My Park (' + (sc.userParkName || '') + ')' }); }
+		if (!tiers.length) { return; }
+		// keep tpl.visibility valid for the tiers actually offered
+		if (!tiers.some(function (t) { return t.v === tpl.visibility; })) { tpl.visibility = tiers[0].v; }
+		if (tiers.length === 1) {
+			box.appendChild(field('Saving to', el('div', 'sc-scope__readout', tiers[0].label)));
+			return;
+		}
+		var row = el('div', 'sc-type-row');
+		tiers.forEach(function (t) {
+			var b = el('button', 'sc-type' + (t.v === tpl.visibility ? ' is-sel' : ''), t.label); b.type = 'button';
+			b.onclick = function () { tpl.visibility = t.v; setDirty(true); buildScope(); };
+			row.appendChild(b);
+		});
+		box.appendChild(field('Save as', row));
+	}
+
 	function refreshInspector() { buildElements(); buildSelected(); markSelected(); }
 
 	// ---- collapsible sections (P1: the Selected editor was buried under ~800px of Border) ----
@@ -977,9 +1026,22 @@
 	document.getElementById('scSave').onclick = function () {
 		tpl.name = document.getElementById('scTplName').value || tpl.name;
 		if (!tpl.name.trim()) { scToast('Name the template before saving.', 'warn'); return; }
+		// Derive scope fields from the chosen tier. Global scrolls have no kingdom; park scrolls
+		// still store the park's (own) kingdom; park_id is set only for the park tier. Compute
+		// these explicitly and set them LAST so a stale tpl.kingdom_id/tpl.park_id can't override.
+		var sc = D.scope || {};
+		var vis = tpl.visibility || 'kingdom';
+		var kid = (vis === 'global') ? null : (sc.userKingdomId != null ? sc.userKingdomId : D.kingdomId);
+		var pid = (vis === 'park') ? (sc.userParkId != null ? sc.userParkId : null) : null;
 		fetch(D.saveUrl, {
 			method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
-			body: JSON.stringify(Object.assign({ id: tpl.scroll_template_id || 0, kingdom_id: D.kingdomId, token: D.token }, tpl))
+			body: JSON.stringify(Object.assign({}, tpl, {
+				id: tpl.scroll_template_id || 0,
+				token: D.token,
+				visibility: vis,
+				kingdom_id: kid,
+				park_id: pid
+			}))
 		})
 			.then(function (r) { return r.json(); })
 			.then(function (j) {
@@ -1023,6 +1085,6 @@
 	document.body.classList.add('sc-designer-body');   // let the ORK body flex to content (kills the baseline shell overflow)
 	initSections();
 	layoutDesigner();
-	buildPage(); buildAwardTags(); buildKnot(); buildViewOpts(); render(); refreshInspector();
+	buildPage(); buildAwardTags(); buildKnot(); buildViewOpts(); buildScope(); render(); refreshInspector();
 	booted = true;
 })();

@@ -920,6 +920,8 @@
 					<ul>
 						<li><a href="<?= UIR ?>Admin/permissions/Kingdom/<?= $kingdom_id ?>">Roles &amp; Permissions</a></li>
 						<li><a href="#" onclick="knOpenClaimParkModal();return false;">Claim Park</a></li>
+						<li><a href="<?= UIR ?>Scroll/admin">Scroll Administration</a></li>
+						<li><a href="<?= UIR ?>ScrollGraphics/manage">Scroll Asset Library</a></li>
 					</ul>
 				</div>
 			</div>

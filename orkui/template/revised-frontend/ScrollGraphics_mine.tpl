@@ -297,6 +297,140 @@ html[data-theme="dark"] .sg-confirm-cancel {
   color: #e2e8f0;
 }
 html[data-theme="dark"] .sg-confirm-cancel:hover { background: #718096; }
+
+/* ---- Edit action + edit modal ---- */
+.sg-mine-edit-btn {
+  background: #ebf4ff;
+  color: #3730a3;
+  border: 1px solid #a3bffa;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: .82rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: background .15s, color .15s;
+}
+.sg-mine-edit-btn:hover { background: #5a67d8; color: #fff; border-color: #5a67d8; }
+
+.sg-edit-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  z-index: 9000;
+  align-items: center;
+  justify-content: center;
+}
+.sg-edit-backdrop.active { display: flex; }
+.sg-edit-box {
+  background: #fff;
+  border-radius: 12px;
+  padding: 24px 28px;
+  max-width: 440px;
+  width: 92%;
+  max-height: 88vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0,0,0,.2);
+}
+.sg-edit-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #1a202c;
+  margin: 0 0 16px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  border-radius: 0;
+  text-shadow: none;
+}
+.sg-edit-field { margin-bottom: 14px; }
+.sg-edit-field label {
+  display: block;
+  font-size: .8rem;
+  font-weight: 600;
+  color: #4a5568;
+  margin-bottom: 5px;
+}
+.sg-edit-input,
+.sg-edit-textarea,
+.sg-edit-select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  font: inherit;
+  border: 1px solid #cbd5e0;
+  border-radius: 6px;
+  background: #fff;
+  color: #2d3748;
+}
+.sg-edit-textarea { resize: vertical; }
+.sg-edit-input:focus,
+.sg-edit-textarea:focus,
+.sg-edit-select:focus {
+  outline: none;
+  border-color: #5a67d8;
+  box-shadow: 0 0 0 2px rgba(90,103,216,.18);
+}
+.sg-edit-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+.sg-edit-cancel {
+  background: #edf2f7;
+  border: 1px solid #cbd5e0;
+  border-radius: 7px;
+  padding: 8px 18px;
+  font-size: .88rem;
+  cursor: pointer;
+  color: #2d3748;
+}
+.sg-edit-cancel:hover { background: #e2e8f0; }
+.sg-edit-save {
+  background: #5a67d8;
+  border: 1px solid #4c56c0;
+  border-radius: 7px;
+  padding: 8px 18px;
+  font-size: .88rem;
+  font-weight: 700;
+  cursor: pointer;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.sg-edit-save:hover { background: #4c56c0; }
+.sg-edit-save:disabled { opacity: .6; cursor: not-allowed; }
+
+html[data-theme="dark"] .sg-mine-edit-btn {
+  background: rgba(90,103,216,.18);
+  color: #a3bffa;
+  border-color: #4c56c0;
+}
+html[data-theme="dark"] .sg-mine-edit-btn:hover { background: #5a67d8; color: #fff; border-color: #5a67d8; }
+html[data-theme="dark"] .sg-edit-box {
+  background: #2d3748;
+  box-shadow: 0 8px 32px rgba(0,0,0,.55);
+}
+html[data-theme="dark"] .sg-edit-title { color: #e2e8f0; }
+html[data-theme="dark"] .sg-edit-field label { color: #a0aec0; }
+html[data-theme="dark"] .sg-edit-input,
+html[data-theme="dark"] .sg-edit-textarea,
+html[data-theme="dark"] .sg-edit-select {
+  background: #1a202c;
+  border-color: #4a5568;
+  color: #e2e8f0;
+}
+html[data-theme="dark"] .sg-edit-cancel {
+  background: #4a5568;
+  border-color: #718096;
+  color: #e2e8f0;
+}
+html[data-theme="dark"] .sg-edit-cancel:hover { background: #718096; }
 </style>
 
 <!-- Inline confirm modal (no native confirm() per project rules) -->
@@ -307,6 +441,36 @@ html[data-theme="dark"] .sg-confirm-cancel:hover { background: #718096; }
     <div class="sg-confirm-buttons">
       <button type="button" class="sg-confirm-cancel" id="sg-confirm-cancel">Cancel</button>
       <button type="button" class="sg-confirm-ok" id="sg-confirm-ok">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit metadata modal (scope/visibility is intentionally NOT editable here) -->
+<div class="sg-edit-backdrop" id="sg-edit-backdrop" role="dialog" aria-modal="true" aria-labelledby="sg-edit-title-text">
+  <div class="sg-edit-box">
+    <div class="sg-edit-title" id="sg-edit-title-text">Edit submission</div>
+    <input type="hidden" id="sg-edit-id">
+    <div class="sg-edit-field">
+      <label for="sg-edit-name">Name</label>
+      <input type="text" class="sg-edit-input" id="sg-edit-name" maxlength="150" autocomplete="off">
+    </div>
+    <div class="sg-edit-field">
+      <label for="sg-edit-desc">Description</label>
+      <textarea class="sg-edit-textarea" id="sg-edit-desc" rows="2" maxlength="500"></textarea>
+    </div>
+    <div class="sg-edit-field">
+      <label for="sg-edit-tags">Tags <span style="font-weight:400;color:#a0aec0">(comma-separated)</span></label>
+      <input type="text" class="sg-edit-input" id="sg-edit-tags" maxlength="500" autocomplete="off">
+    </div>
+    <div class="sg-edit-field">
+      <label for="sg-edit-category">Category</label>
+      <select class="sg-edit-select" id="sg-edit-category">
+        <option value="">Uncategorized</option>
+      </select>
+    </div>
+    <div class="sg-edit-buttons">
+      <button type="button" class="sg-edit-cancel" id="sg-edit-cancel">Cancel</button>
+      <button type="button" class="sg-edit-save" id="sg-edit-save"><i class="fas fa-save"></i> Save</button>
     </div>
   </div>
 </div>
@@ -357,6 +521,8 @@ var SG = <?= json_encode($sg, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS) ?>;
 
   var AJAX = SG.uir + 'ScrollArtworkAjax/';
   var sgMinePage = 1;
+  var _myItems = {};        // ArtworkId -> full row (for the edit modal + scope preservation)
+  var _categories = null;   // cached category list, loaded on first edit-modal open
 
   // ---- helpers ----
   function sgEscapeHtml(s) {
@@ -431,12 +597,15 @@ var SG = <?= json_encode($sg, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS) ?>;
 
     var items = (data && data.Artwork) || [];
 
+    _myItems = {};
+
     if (items.length === 0) {
       list.innerHTML = '<div class="sg-empty"><i class="fas fa-images"></i> You have not uploaded any artwork yet.</div>';
     } else {
       var html = '';
       for (var i = 0; i < items.length; i++) {
         var item = items[i];
+        _myItems[parseInt(item.ArtworkId, 10)] = item;
         var rawStatus   = (item.Status || 'pending').toLowerCase();
         var statusLabel = rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1);
         var isKingdom   = (item.Visibility === 'kingdom');
@@ -488,6 +657,9 @@ var SG = <?= json_encode($sg, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS) ?>;
 
         // Actions column
         html += '<div class="sg-mine-actions">';
+        html += '<button type="button" class="sg-mine-edit-btn" onclick="sgArtworkEdit(' +
+          parseInt(item.ArtworkId, 10) + ')">';
+        html += '<i class="fas fa-pen"></i> Edit</button>';
         html += '<button type="button" class="sg-mine-delete-btn" onclick="sgArtworkDelete(' +
           parseInt(item.ArtworkId, 10) + ', this)">';
         html += '<i class="fas fa-trash"></i> Withdraw</button>';
@@ -556,6 +728,103 @@ var SG = <?= json_encode($sg, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS) ?>;
     });
   };
 
+  // ---- edit metadata modal ----
+  // Scope (visibility/owner) is intentionally NOT editable here: re-scoping needs
+  // officer authority and belongs to the management tool. We send the row's CURRENT
+  // scope + layout_location on save so the backend leaves scope untouched AND passes
+  // its validators (the /update endpoint requires a valid layout_location and, for
+  // kingdom/park rows, the owner ids — a missing field is NOT treated as "no change").
+
+  function sgEditClose() {
+    var backdrop = el('sg-edit-backdrop');
+    if (backdrop) backdrop.classList.remove('active');
+  }
+
+  function sgEditPopulateCategories(selectedId) {
+    var sel = el('sg-edit-category');
+    if (!sel) return;
+    // reset to just the Uncategorized option, then append the cached list
+    sel.innerHTML = '<option value="">Uncategorized</option>';
+    var cats = _categories || [];
+    for (var i = 0; i < cats.length; i++) {
+      var opt = document.createElement('option');
+      opt.value = cats[i].CategoryId;
+      opt.textContent = cats[i].Label;
+      sel.appendChild(opt);
+    }
+    sel.value = (selectedId !== null && selectedId !== undefined) ? String(selectedId) : '';
+  }
+
+  function sgEditFill(item) {
+    if (el('sg-edit-id'))   el('sg-edit-id').value   = parseInt(item.ArtworkId, 10);
+    if (el('sg-edit-name')) el('sg-edit-name').value = item.Name || '';
+    if (el('sg-edit-desc')) el('sg-edit-desc').value = item.Description || '';
+    if (el('sg-edit-tags')) el('sg-edit-tags').value = item.Tags || '';
+    sgEditPopulateCategories(item.CategoryId);
+    var backdrop = el('sg-edit-backdrop');
+    if (backdrop) backdrop.classList.add('active');
+    if (el('sg-edit-name')) el('sg-edit-name').focus();
+  }
+
+  window.sgArtworkEdit = function (artworkId) {
+    var item = _myItems[parseInt(artworkId, 10)];
+    if (!item) { sgToast('Could not load that submission', 'warn'); return; }
+
+    // Load categories once, then open the modal.
+    if (_categories === null) {
+      fetch(AJAX + 'categories')
+        .then(function (r) { return r.json(); })
+        .then(function (data) { _categories = (data && data.Categories) || []; })
+        .catch(function () { _categories = []; })
+        .then(function () { sgEditFill(item); });
+    } else {
+      sgEditFill(item);
+    }
+  };
+
+  function sgArtworkEditSave() {
+    var id = parseInt(el('sg-edit-id') ? el('sg-edit-id').value : 0, 10);
+    var item = _myItems[id];
+    if (!item) { sgToast('Could not load that submission', 'warn'); return; }
+    if (!SG.token) { sgToast('You must be logged in', 'warn'); return; }
+
+    var name = el('sg-edit-name') ? el('sg-edit-name').value.trim() : '';
+    if (!name) { sgToast('Name is required', 'warn'); return; }
+
+    var saveBtn = el('sg-edit-save');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...'; }
+
+    // Backend reads $_POST (not a JSON body), so post FormData.
+    var fd = new FormData();
+    fd.append('artwork_id', id);
+    fd.append('name', name);
+    fd.append('description', el('sg-edit-desc') ? el('sg-edit-desc').value.trim() : '');
+    fd.append('tags', el('sg-edit-tags') ? el('sg-edit-tags').value.trim() : '');
+    fd.append('category_id', el('sg-edit-category') ? (el('sg-edit-category').value || '0') : '0');
+    // Preserve current scope + layout so the backend does not re-scope or reject.
+    fd.append('layout_location', item.LayoutLocation || '');
+    fd.append('visibility', item.Visibility || 'global');
+    fd.append('owner_kingdom_id', String(parseInt(item.OwnerKingdomId, 10) || 0));
+    fd.append('owner_park_id', String(parseInt(item.OwnerParkId, 10) || 0));
+
+    fetch(AJAX + 'update', { method: 'POST', body: fd })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '<i class="fas fa-save"></i> Save'; }
+        if (data.Status === 0) {
+          sgEditClose();
+          sgToast('Submission updated');
+          sgArtworkLoadMyUploads();
+        } else {
+          sgToast(data.Message || 'Update failed', 'warn');
+        }
+      })
+      .catch(function () {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '<i class="fas fa-save"></i> Save'; }
+        sgToast('Update failed', 'warn');
+      });
+  }
+
   // ---- init ----
   function init() {
     // Confirm modal buttons
@@ -573,6 +842,18 @@ var SG = <?= json_encode($sg, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS) ?>;
     if (backdrop) {
       backdrop.addEventListener('click', function (e) {
         if (e.target === backdrop) sgConfirmClose();
+      });
+    }
+
+    // Edit modal buttons
+    var editCancel = el('sg-edit-cancel');
+    var editSave   = el('sg-edit-save');
+    var editBackdrop = el('sg-edit-backdrop');
+    if (editCancel) editCancel.addEventListener('click', sgEditClose);
+    if (editSave)   editSave.addEventListener('click', sgArtworkEditSave);
+    if (editBackdrop) {
+      editBackdrop.addEventListener('click', function (e) {
+        if (e.target === editBackdrop) sgEditClose();
       });
     }
 
