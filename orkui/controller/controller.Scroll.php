@@ -163,9 +163,10 @@ class Controller_Scroll extends Controller
             if ($player) {
                 $this->data['player'] = $player;
 
-                // Player heraldry
+                // Player heraldry — always the full-res master for print quality,
+                // not the profile's downscaled display rendition.
                 $this->data['player_heraldry_url'] = ($player['HasHeraldry'] > 0)
-                    ? $player['Heraldry']
+                    ? (Ork3::$Lib->heraldry->GetHeraldryUrl(array('Type' => 'Player', 'Id' => $mundane_id, 'Size' => 'master'))['Url'] ?? $player['Heraldry'])
                     : HTTP_PLAYER_HERALDRY . '000000.jpg';
 
                 // Park / Kingdom info from the player's park
@@ -180,18 +181,18 @@ class Controller_Scroll extends Controller
                         $this->data['kingdom_name'] = $park_info['KingdomInfo']['KingdomName'] ?? '';
                     }
 
-                    // Park heraldry
+                    // Park heraldry — full-res master for print, not the display rendition.
                     $park_details = $this->Park->get_park_details($park_id);
                     if ($park_details && isset($park_details['Heraldry']['Url'])) {
-                        $this->data['park_heraldry_url'] = $park_details['Heraldry']['Url'];
+                        $this->data['park_heraldry_url'] = Ork3::$Lib->heraldry->GetHeraldryUrl(array('Type' => 'Park', 'Id' => $park_id, 'Size' => 'master'))['Url'] ?? $park_details['Heraldry']['Url'];
                     }
                 }
 
-                // Kingdom heraldry
+                // Kingdom heraldry — full-res master for print, not the shortinfo thumb.
                 if (valid_id($kingdom_id)) {
                     $kingdom_info = $this->Kingdom->get_kingdom_shortinfo($kingdom_id);
                     if ($kingdom_info && isset($kingdom_info['HeraldryUrl']['Url'])) {
-                        $this->data['kingdom_heraldry_url'] = $kingdom_info['HeraldryUrl']['Url'];
+                        $this->data['kingdom_heraldry_url'] = Ork3::$Lib->heraldry->GetHeraldryUrl(array('Type' => 'Kingdom', 'Id' => $kingdom_id, 'Size' => 'master'))['Url'] ?? $kingdom_info['HeraldryUrl']['Url'];
                     }
                 }
 
