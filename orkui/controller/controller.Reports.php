@@ -950,6 +950,69 @@ class Controller_Reports extends Controller
         }
     }
 
+    // Guest Roster — lists individual guest people (is_guest=1) for the officer's kingdom,
+    // with summary stats, filters, and inline Convert/Link actions. Scoped to the session
+    // kingdom (never a URL id); officer-level authority required.
+    public function guest_roster($params = null)
+    {
+        if (empty($this->session->user_id)) {
+            header('Location: ' . UIR . 'Login/login/Reports/guest_roster');
+            exit;
+        }
+        $this->template = 'Reports_guestroster.tpl';
+        $this->data['page_title'] = "Guest Roster";
+
+        $kingdom_id = $this->session->kingdom_id;
+        if (!valid_id($kingdom_id)) {
+            $this->data['no_kingdom'] = true;
+            return;
+        }
+        // Officer-level authority over the kingdom (ORK admins pass via the same check).
+        $uid = (int)$this->session->user_id;
+        $isOrkAdmin = Ork3::$Lib->authorization->HasAuthority($uid, AUTH_ADMIN, 0, AUTH_ADMIN);
+        if (!$isOrkAdmin && !Ork3::$Lib->authorization->HasAuthority($uid, AUTH_KINGDOM, $kingdom_id, AUTH_EDIT)) {
+            header('Location: ' . UIR);
+            exit;
+        }
+
+        $this->data['kingdom_id'] = $kingdom_id;
+        $parks = $this->Reports->get_kingdom_parks($kingdom_id);
+        if (is_array($parks)) {
+            usort($parks, function ($a, $b) {
+                return strcasecmp($a['Name'], $b['Name']);
+            });
+        }
+        $this->data['parks'] = $parks;
+        $this->data['source_events'] = $this->Reports->guest_source_events(array('KingdomId' => $kingdom_id));
+
+        // Default filter values (also used to pre-populate the form on first load).
+        $status = in_array($this->request->Status ?? '', array('active', 'converted', 'linked', 'all'), true)
+            ? $this->request->Status : 'active';
+        $start = preg_match('/^\d{4}-\d{2}-\d{2}$/', $this->request->StartDate ?? '') ? $this->request->StartDate : '';
+        $end   = preg_match('/^\d{4}-\d{2}-\d{2}$/', $this->request->EndDate ?? '') ? $this->request->EndDate : '';
+        $park_id = intval($this->request->ParkId ?? 0);
+        $event_id = intval($this->request->SourceEventId ?? 0);
+        $this->data['form'] = array(
+            'Status'        => $status,
+            'StartDate'     => $start,
+            'EndDate'       => $end,
+            'ParkId'        => $park_id,
+            'SourceEventId' => $event_id,
+        );
+
+        // The roster always renders (default = active guests); filters refine it.
+        $result = $this->Reports->guest_roster(array(
+            'KingdomId'     => $kingdom_id,
+            'ParkId'        => $park_id,
+            'Status'        => $status,
+            'StartDate'     => $start,
+            'EndDate'       => $end,
+            'SourceEventId' => $event_id,
+        ));
+        $this->data['guests']  = is_array($result) ? ($result['Guests'] ?? array()) : array();
+        $this->data['summary'] = is_array($result) ? ($result['Summary'] ?? array()) : array();
+    }
+
     public function kingdom_officer_directory($params = null)
     {
         $kingdom_id = valid_id($this->request->KingdomId) ? (int)$this->request->KingdomId : null;

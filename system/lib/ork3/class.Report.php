@@ -3046,6 +3046,211 @@ class Report extends Ork3
         return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
     }
 
+    // Guest Roster report. Lists the individual guest PEOPLE (is_guest=1 mundanes),
+    // plus those already converted/linked, scoped to a kingdom's parks. Distinct from
+    // the guest-turnout readouts (which count guest-class sign-ins). Each row carries a
+    // derived status: Active (is_guest=1, active=1), Converted (is_guest=0, converted_at
+    // set), Linked/Retired (is_guest=1, active=0). Optional park / captured-date-range /
+    // status / source-event filters. Returns rows + a Summary of scope-wide counts.
+    public function GetGuestRoster($request)
+    {
+        require_once(__DIR__ . '/class.Attendance.php');
+        // NOT cached: this is an interactive report whose rows are mutated in place by the
+        // inline Convert/Link actions. Caching would leave a just-converted/linked guest
+        // showing under the "Active" filter on the next load (stale for the TTL). The query
+        // is modest and officer-only, so a fresh read per load is the correct trade-off.
+
+        $kingdom_id = (int)($request['KingdomId'] ?? 0);
+        $park_id    = (int)($request['ParkId'] ?? 0);
+        $status     = in_array($request['Status'] ?? '', ['active', 'converted', 'linked', 'all'], true)
+            ? $request['Status'] : 'active';
+        $event_id   = (int)($request['SourceEventId'] ?? 0);
+        // Dates are validated Y-m-d by the controller; escape defensively anyway.
+        $start_date = preg_match('/^\d{4}-\d{2}-\d{2}$/', $request['StartDate'] ?? '') ? $request['StartDate'] : '';
+        $end_date   = preg_match('/^\d{4}-\d{2}-\d{2}$/', $request['EndDate'] ?? '') ? $request['EndDate'] : '';
+
+        $gcid = (int)Attendance::GuestClassId();
+        // Sign-in counts are computed set-based: one grouped aggregate over the Guest-class
+        // attendance rows, LEFT JOINed by mundane_id — a single pass instead of a correlated
+        // subquery evaluated once per roster row (the old N+1). Guard gcid<=0 (no Guest class
+        // configured) by emitting a constant 0 and skipping the join entirely.
+        if ($gcid > 0) {
+            $guest_signins_expr = "COALESCE(gs.cnt, 0)";
+            $guest_signins_join = " LEFT JOIN (SELECT ga.mundane_id, COUNT(*) AS cnt FROM "
+                . DB_PREFIX . "attendance ga WHERE ga.class_id = " . $gcid
+                . " GROUP BY ga.mundane_id) gs ON gs.mundane_id = m.mundane_id";
+        } else {
+            $guest_signins_expr = "0";
+            $guest_signins_join = "";
+        }
+
+        // Scope to the kingdom's stats park set (parent + principalities), like sibling reports.
+        $kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($kingdom_id)));
+        if ($kidList === '') {
+            $kidList = (string)$kingdom_id;
+        }
+        $scope = "m.kingdom_id IN ($kidList)";
+        if (valid_id($park_id)) {
+            $scope .= " AND m.park_id = " . $park_id;
+        }
+
+        // Status discriminator (also the base "ever a guest" filter when status = all).
+        switch ($status) {
+            case 'converted':
+                $status_clause = "m.is_guest = 0 AND m.converted_at IS NOT NULL";
+                break;
+            case 'linked':
+                $status_clause = "m.is_guest = 1 AND m.active = 0";
+                break;
+            case 'all':
+                $status_clause = "(m.is_guest = 1 OR m.converted_at IS NOT NULL)";
+                break;
+            case 'active':
+            default:
+                $status_clause = "m.is_guest = 1 AND m.active = 1";
+                break;
+        }
+
+        $date_clause = '';
+        if ($start_date !== '') {
+            $date_clause .= " AND m.guest_captured_at >= '" . $start_date . " 00:00:00'";
+        }
+        if ($end_date !== '') {
+            $date_clause .= " AND m.guest_captured_at <= '" . $end_date . " 23:59:59'";
+        }
+        $event_clause = valid_id($event_id) ? " AND m.guest_source_event_id = " . $event_id : '';
+
+        // All auxiliary joins are LEFT so a missing park/event/creator never drops a guest.
+        $sql = "SELECT m.mundane_id, m.given_name, m.surname, m.persona, m.email,
+                    m.is_guest, m.active, m.park_id, p.name AS park_name,
+                    m.guest_captured_at, m.converted_at, m.guest_source_event_id,
+                    ev.name AS source_event_name,
+                    cb.persona AS cb_persona, cb.given_name AS cb_given, cb.surname AS cb_surname,
+                    " . $guest_signins_expr . " AS guest_signins
+                FROM " . DB_PREFIX . "mundane m
+                    LEFT JOIN " . DB_PREFIX . "park p  ON p.park_id   = m.park_id
+                    LEFT JOIN " . DB_PREFIX . "event ev ON ev.event_id = m.guest_source_event_id
+                    LEFT JOIN " . DB_PREFIX . "mundane cb ON cb.mundane_id = m.guest_created_by_id
+                    " . $guest_signins_join . "
+                WHERE " . $scope . "
+                    AND " . $status_clause . "
+                    " . $date_clause . "
+                    " . $event_clause . "
+                ORDER BY m.guest_captured_at DESC, m.mundane_id DESC
+                LIMIT 2000";
+
+        $r = $this->db->query($sql);
+        $response = array('Status' => Success(), 'Guests' => array());
+        if ($r !== false) {
+            while ($r->next()) {
+                $real_name = trim(($r->given_name ?? '') . ' ' . ($r->surname ?? ''));
+                $created_by = trim((string)($r->cb_persona ?? ''));
+                if ($created_by === '') {
+                    $created_by = trim(($r->cb_given ?? '') . ' ' . ($r->cb_surname ?? ''));
+                }
+                if ((int)$r->is_guest === 1) {
+                    $status_key = ((int)$r->active === 1) ? 'active' : 'linked';
+                } else {
+                    $status_key = 'converted';
+                }
+                $response['Guests'][] = array(
+                    'MundaneId'       => (int)$r->mundane_id,
+                    'Name'            => $real_name !== '' ? $real_name : ($r->persona ?? ''),
+                    'Email'           => $r->email ?? '',
+                    'ParkId'          => (int)$r->park_id,
+                    'ParkName'        => $r->park_name ?? '',
+                    'CapturedAt'      => $r->guest_captured_at,
+                    'ConvertedAt'     => $r->converted_at,
+                    'CreatedByName'   => $created_by,
+                    'SourceEventId'   => (int)$r->guest_source_event_id,
+                    'SourceEventName' => $r->source_event_name ?? '',
+                    'GuestSignins'    => (int)$r->guest_signins,
+                    'StatusKey'       => $status_key,
+                );
+            }
+        }
+
+        // The roster query is bounded by LIMIT 2000 to keep an unfiltered kingdom-wide read
+        // from returning an unbounded row set; note truncation so it can be diagnosed.
+        if (count($response['Guests']) >= 2000) {
+            logtrace("Report->GetGuestRoster() truncated at LIMIT 2000", $request);
+        }
+
+        // Summary — scope-wide counts. active_guests is a current-state metric (no date
+        // filter); the *_in_range counts respect the captured/converted date range; the
+        // conversion rate is all-time-in-scope (bounded 0..100) = converted / ever-a-guest.
+        $sumDate = function ($col) use ($start_date, $end_date) {
+            $c = '';
+            if ($start_date !== '') {
+                $c .= " AND " . $col . " >= '" . $start_date . " 00:00:00'";
+            }
+            if ($end_date !== '') {
+                $c .= " AND " . $col . " <= '" . $end_date . " 23:59:59'";
+            }
+            return $c;
+        };
+        $capRange = $sumDate('m.guest_captured_at');
+        $convRange = $sumDate('m.converted_at');
+        $sumSql = "SELECT
+                    SUM(CASE WHEN m.is_guest = 1 AND m.active = 1 THEN 1 ELSE 0 END) AS active_guests,
+                    SUM(CASE WHEN 1=1" . $capRange . " THEN 1 ELSE 0 END) AS captured_in_range,
+                    SUM(CASE WHEN m.is_guest = 0 AND m.converted_at IS NOT NULL" . $convRange . " THEN 1 ELSE 0 END) AS converted_in_range,
+                    SUM(CASE WHEN m.is_guest = 1 AND m.active = 0" . $capRange . " THEN 1 ELSE 0 END) AS linked_in_range,
+                    SUM(CASE WHEN m.is_guest = 0 AND m.converted_at IS NOT NULL THEN 1 ELSE 0 END) AS converted_ever,
+                    COUNT(*) AS ever_guest
+                FROM " . DB_PREFIX . "mundane m
+                WHERE " . $scope . "
+                    AND (m.is_guest = 1 OR m.converted_at IS NOT NULL)";
+        $summary = array(
+            'ActiveGuests'     => 0,
+            'CapturedInRange'  => 0,
+            'ConvertedInRange' => 0,
+            'LinkedInRange'    => 0,
+            'ConversionRate'   => 0,
+        );
+        $sr = $this->db->query($sumSql);
+        if ($sr && $sr->next()) {
+            $everGuest = (int)($sr->ever_guest ?? 0);
+            $convEver  = (int)($sr->converted_ever ?? 0);
+            $summary['ActiveGuests']     = (int)($sr->active_guests ?? 0);
+            $summary['CapturedInRange']  = (int)($sr->captured_in_range ?? 0);
+            $summary['ConvertedInRange'] = (int)($sr->converted_in_range ?? 0);
+            $summary['LinkedInRange']    = (int)($sr->linked_in_range ?? 0);
+            $summary['ConversionRate']   = $everGuest > 0 ? round(($convEver / $everGuest) * 100) : 0;
+        }
+        $response['Summary'] = $summary;
+
+        logtrace("Report->GetGuestRoster()", array($this->db->lastSql, $request));
+        return $response;
+    }
+
+    // Distinct source events referenced by any guest in a kingdom's park set — used to
+    // populate the optional Source Event filter on the Guest Roster report.
+    public function GetGuestSourceEvents($request)
+    {
+        $kingdom_id = (int)($request['KingdomId'] ?? 0);
+        $kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($kingdom_id)));
+        if ($kidList === '') {
+            $kidList = (string)$kingdom_id;
+        }
+        $sql = "SELECT DISTINCT ev.event_id, ev.name AS event_name
+                FROM " . DB_PREFIX . "mundane m
+                    INNER JOIN " . DB_PREFIX . "event ev ON ev.event_id = m.guest_source_event_id
+                WHERE m.kingdom_id IN ($kidList)
+                    AND (m.is_guest = 1 OR m.converted_at IS NOT NULL)
+                    AND m.guest_source_event_id IS NOT NULL
+                    AND m.guest_source_event_id > 0
+                ORDER BY ev.name";
+        $r = $this->db->query($sql);
+        $events = array();
+        if ($r !== false) {
+            while ($r->next()) {
+                $events[] = array('EventId' => (int)$r->event_id, 'EventName' => $r->event_name ?? '');
+            }
+        }
+        return array('Status' => Success(), 'Events' => $events);
+    }
+
     public function GetParkDistanceMatrix($request)
     {
         $kingdom_id = intval($request['KingdomId']);
