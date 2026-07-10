@@ -80,6 +80,39 @@ class Attendance extends Ork3
         }
     }
 
+    // Guest/class cross-validation shared by AddAttendance and SetAttendance.
+    // A guest may only ever receive Guest-class attendance, and only in a kingdom
+    // that has opted in; a real player may never be given the Guest class.
+    // Returns an error response to bubble up, or null when the pair is valid.
+    private function validateGuestClassPair($mundaneId, $classId)
+    {
+        $gcid = self::GuestClassId();
+        $target = new yapo($this->db, DB_PREFIX . 'mundane');
+        $target->clear();
+        $target->mundane_id = $mundaneId;
+        $isGuestTarget = $target->find() ? ((int)$target->is_guest === 1) : false;
+        if ($isGuestTarget) {
+            // If no Guest class is configured, $gcid is 0 and the comparison below would
+            // always fire with a misleading message. Surface the real cause instead.
+            if ($gcid <= 0) {
+                return InvalidParameter('Guest class is not configured for this environment.');
+            }
+            if ((int)$classId !== $gcid) {
+                return InvalidParameter('Guests may only receive Guest attendance.');
+            }
+            $kid = (int)$target->kingdom_id;
+            $k = new yapo($this->db, DB_PREFIX . 'kingdom');
+            $k->clear();
+            $k->kingdom_id = $kid;
+            if (!$k->find() || (int)$k->guest_attendance_enabled !== 1) {
+                return NoAuthorization('Guest attendance is not enabled for this kingdom.');
+            }
+        } elseif ((int)$classId === $gcid) {
+            return InvalidParameter('Guest class cannot be assigned to a full player.');
+        }
+        return null;
+    }
+
     public function AddAttendance($request)
     {
         logtrace("Attendance->AddAttendance()", $request);
@@ -99,29 +132,8 @@ class Attendance extends Ork3
         // Guest/class cross-validation. A guest may only ever receive Guest-class
         // attendance, and only in a kingdom that has opted in; a real player may
         // never be given the Guest class.
-        $gcid = self::GuestClassId();
-        $target = new yapo($this->db, DB_PREFIX . 'mundane');
-        $target->clear();
-        $target->mundane_id = $request['MundaneId'];
-        $isGuestTarget = $target->find() ? ((int)$target->is_guest === 1) : false;
-        if ($isGuestTarget) {
-            // If no Guest class is configured, $gcid is 0 and the comparison below would
-            // always fire with a misleading message. Surface the real cause instead.
-            if ($gcid <= 0) {
-                return InvalidParameter('Guest class is not configured for this environment.');
-            }
-            if ((int)$request['ClassId'] !== $gcid) {
-                return InvalidParameter('Guests may only receive Guest attendance.');
-            }
-            $kid = (int)$target->kingdom_id;
-            $k = new yapo($this->db, DB_PREFIX . 'kingdom');
-            $k->clear();
-            $k->kingdom_id = $kid;
-            if (!$k->find() || (int)$k->guest_attendance_enabled !== 1) {
-                return NoAuthorization('Guest attendance is not enabled for this kingdom.');
-            }
-        } elseif ((int)$request['ClassId'] === $gcid) {
-            return InvalidParameter('Guest class cannot be assigned to a full player.');
+        if (($guestErr = $this->validateGuestClassPair($request['MundaneId'], $request['ClassId'])) !== null) {
+            return $guestErr;
         }
 
         $this->attendance->clear();
@@ -237,6 +249,14 @@ class Attendance extends Ork3
 
         $this->attendance->mundane_id = $request['MundaneId'];
         $this->attendance->class_id = $request['ClassId'];
+
+        // Guest/class cross-validation on the final post-edit pair (see AddAttendance):
+        // an edit must not assign the Guest class to a real player, or move a guest
+        // onto a non-Guest class.
+        if (($guestErr = $this->validateGuestClassPair($request['MundaneId'], $request['ClassId'])) !== null) {
+            return $guestErr;
+        }
+
         $this->attendance->date = $request['Date'];
         $this->attendance->credits = $request['Credits'];
         $this->attendance->by_whom_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);

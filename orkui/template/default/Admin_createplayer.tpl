@@ -122,8 +122,8 @@
 			<span><input type='file' class='restricted-image-type' name='PlayerImage' /></span>
 		</div>
 		<div>
-			<span>Email:</span>
-			<span><input type='text' class='most-emails-field' value='<?=$Admin_createplayer['Email'] ?>' name='Email' /></span>
+			<span>Email: <span style='color:#e53e3e'>*</span></span>
+			<span><input type='text' class='most-emails-field' value='<?=$Admin_createplayer['Email'] ?>' name='Email' required /><br><small>Required. No email? Use the Add Guest flow instead, then convert later.</small></span>
 		</div>
 		<div>
 			<span>UserName:</span>

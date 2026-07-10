@@ -79,6 +79,16 @@ class Controller_PlayerAjax extends Controller
                 echo json_encode(['status' => 1, 'error' => 'Username must be at least 4 characters.']);
                 exit;
             }
+            // Email is required for full players (guests use the Add Guest flow instead).
+            // CreatePlayer re-validates authoritatively; this is the early, friendly check.
+            if (!strlen($email)) {
+                echo json_encode(['status' => 1, 'error' => 'Email is required.']);
+                exit;
+            }
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                echo json_encode(['status' => 1, 'error' => 'Please enter a valid email address.']);
+                exit;
+            }
             $request = [
                 'Token'         => $this->session->token,
                 'ParkId'        => $park_id,
@@ -113,6 +123,48 @@ class Controller_PlayerAjax extends Controller
             } else {
                 echo json_encode(['status' => $r['Status'], 'error' => rtrim(($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? ''), ': ')]);
             }
+
+        } elseif ($action === 'createguest') {
+            // Create-only guest capture (login-less, email-optional) from the "Add A Guest"
+            // tab of the Create Player modals. No attendance is logged here — that happens
+            // from the attendance screen. Email collisions are surfaced (status 2) the same
+            // way the attendance-page addguest flow does, so a duplicate offers the owner.
+            $this->load_model('Player');
+            $first = trim($_POST['GivenName'] ?? '');
+            $last  = trim($_POST['Surname']   ?? '');
+            $email = trim($_POST['Email']     ?? '');
+            $phone = trim($_POST['Phone']     ?? '');
+            if ($first === '' || $last === '') {
+                echo json_encode(['status' => 1, 'error' => 'A first and last name are required.']);
+                exit;
+            }
+            $gr = $this->Player->create_guest([
+                'Token'     => $this->session->token,
+                'ParkId'    => $park_id,
+                'GivenName' => $first,
+                'Surname'   => $last,
+                'Email'     => $email,
+                'Phone'     => $phone,
+            ]);
+            if (!isset($gr['Status']) || $gr['Status'] != 0) {
+                // Hardened CreateGuest returns an array Error payload carrying the email
+                // owner on a collision; surface it down the collision UI path (status 2).
+                $gerr = (is_array($gr['Error'] ?? null)) ? $gr['Error'] : null;
+                if ($gerr !== null && (int)($gerr['ownerId'] ?? 0) > 0) {
+                    echo json_encode([
+                        'status'    => 2,
+                        'collision' => !empty($gerr['ownerIsGuest']) ? 'guest' : 'player',
+                        'ownerId'   => (int)$gerr['ownerId'],
+                        'ownerName' => (string)($gerr['ownerName'] ?? ''),
+                    ]);
+                    exit;
+                }
+                $gerrMsg = is_string($gr['Error'] ?? null) ? $gr['Error'] : 'Could not create guest';
+                $gerrDetail = (string)($gr['Detail'] ?? '');
+                echo json_encode(['status' => $gr['Status'] ?? 1, 'error' => $gerrMsg . (($gerrDetail !== '') ? (': ' . $gerrDetail) : '')]);
+                exit;
+            }
+            echo json_encode(['status' => 0, 'mundaneId' => (int)($gr['Detail'] ?? 0)]);
 
         } else {
             echo json_encode(['status' => 1, 'error' => 'Unknown action']);

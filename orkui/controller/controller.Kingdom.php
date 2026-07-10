@@ -947,6 +947,16 @@ class Controller_Kingdom extends Controller
         $this->data['IsOrkAdmin'] = $uid > 0
             && Ork3::$Lib->authorization->HasAuthority($uid, AUTH_ADMIN, 0, AUTH_ADMIN);
 
+        // Kingdom guest-attendance toggle — gates the "Add Guest" tab on the Create
+        // Player modal so it only appears where the kingdom has opted in.
+        $this->data['GuestAttendanceEnabled'] = 0;
+        global $DB;
+        $DB->Clear();
+        $_kgaRs = $DB->DataSet("SELECT guest_attendance_enabled FROM " . DB_PREFIX . "kingdom WHERE kingdom_id = " . (int)$kingdom_id . " LIMIT 1");
+        if ($_kgaRs && $_kgaRs->Next()) {
+            $this->data['GuestAttendanceEnabled'] = (int)$_kgaRs->guest_attendance_enabled;
+        }
+
         // Park-level officers (within this kingdom) need the calendar-item edit
         // modal rendered too so they can edit park-level calendar items via the
         // kingdom calendar view. Without this, clicking Edit closes the view

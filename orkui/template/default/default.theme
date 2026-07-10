@@ -778,6 +778,14 @@ endif;
 .emp-suggestion-use:hover { background:#2b6cb0; }
 .emp-suggestion-dismiss { background:none; border:none; color:#90cdf4; font-size:16px; line-height:1; cursor:pointer; padding:0 2px; flex-shrink:0; }
 .emp-suggestion-dismiss:hover { color:#4299e1; }
+/* "Why do you require an email?" disclosure — a real <button> so it participates
+   in the dialog's Tab focus-trap; reveals a plain text block below it. */
+.emp-why-toggle { display:inline-flex; align-items:center; gap:6px; background:none; border:none; padding:0; margin:-4px 0 14px; font:inherit; font-size:12.5px; font-weight:600; color:#3182ce; cursor:pointer; }
+.emp-why-toggle:hover { color:#2b6cb0; text-decoration:underline; }
+.emp-why-toggle .emp-why-caret { transition:transform .15s; font-size:11px; }
+.emp-why-toggle[aria-expanded="true"] .emp-why-caret { transform:rotate(90deg); }
+.emp-why-body { display:none; font-size:12.5px; color:#4a5568; line-height:1.6; margin:-6px 0 14px; padding:10px 12px; background:#f7fafc; border:1px solid #e2e8f0; border-radius:6px; }
+.emp-why-body.emp-why-open { display:block; }
 /* ── Dark mode ── */
 [data-theme="dark"] .emp-modal { background:#1e293b; box-shadow:0 12px 48px rgba(0,0,0,0.6); }
 [data-theme="dark"] .emp-title, [data-theme="dark"] h1.emp-title, [data-theme="dark"] h2.emp-title { color:#f1f5f9; }
@@ -793,6 +801,9 @@ endif;
 [data-theme="dark"] .emp-suggestion i { color:#63b3ed; }
 [data-theme="dark"] .emp-suggestion-use { background:#3182ce; }
 [data-theme="dark"] .emp-suggestion-use:hover { background:#4299e1; }
+[data-theme="dark"] .emp-why-toggle { color:#63b3ed; }
+[data-theme="dark"] .emp-why-toggle:hover { color:#90cdf4; }
+[data-theme="dark"] .emp-why-body { background:#0f172a; border-color:#334155; color:#cbd5e1; }
 </style>
 <div class="emp-overlay" id="emp-overlay">
   <div class="emp-modal" role="dialog" aria-modal="true" aria-labelledby="emp-title">
@@ -801,6 +812,10 @@ endif;
       <span class="emp-title" id="emp-title">A valid email is required</span>
     </div>
     <p class="emp-body">We don't have a valid email address on file for your account. To keep your account secure and recoverable, please provide a working email address to continue using the ORK. This is a one-time step.</p>
+    <button type="button" class="emp-why-toggle" id="emp-why-toggle" aria-expanded="false" aria-controls="emp-why-body">
+      <i class="fas fa-chevron-right emp-why-caret"></i> Why do you require an email address?
+    </button>
+    <div class="emp-why-body" id="emp-why-body">Your email is how we help you maintain your account and keep it in your control &mdash; resetting a forgotten password, recovering access, verifying important changes, and other self-service tasks.</div>
     <div class="emp-field">
       <label for="emp-email">Email address</label>
       <input type="email" id="emp-email" name="emp-email" placeholder="you@example.com" autocomplete="email">
@@ -829,6 +844,17 @@ endif;
   var suggVal    = document.getElementById('emp-suggestion-val');
   var suggUse    = document.getElementById('emp-suggestion-use');
   var suggDismiss = document.getElementById('emp-suggestion-dismiss');
+  var whyToggle  = document.getElementById('emp-why-toggle');
+  var whyBody    = document.getElementById('emp-why-body');
+
+  // "Why do you require an email?" collapsible disclosure. The toggle is a real
+  // <button> inside the overlay, so the Tab focus-trap already covers it.
+  if (whyToggle && whyBody) {
+    whyToggle.addEventListener('click', function() {
+      var open = whyBody.classList.toggle('emp-why-open');
+      whyToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+  }
 
   // iOS-safe scroll lock: position:fixed on body (overflow:hidden alone does
   // not stop scroll on iOS Safari). Saved scrollY is restored on close.

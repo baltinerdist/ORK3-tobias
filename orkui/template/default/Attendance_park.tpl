@@ -1374,7 +1374,6 @@ $(function() {
 		var MARK_URL     = '<?=UIR?>AttendanceAjax/park/<?=(int)$Id?>/markexisting';
 		var SVC_URL      = '<?=HTTP_SERVICE?>Search/SearchService.php';
 		var PARK_KID     = <?=(int)($kid > 0 ? $kid : (int)($DefaultKingdomId ?? 0))?>;
-		var GUEST_CLASS  = <?=(int)($GuestClassId ?? 0)?>;
 
 		var overlay   = document.getElementById('att-guest-overlay');
 		var firstEl   = document.getElementById('att-guest-first');
@@ -1648,8 +1647,9 @@ $(function() {
 			var chosenClass = null;
 			if (!pendingIsGuest) {
 				// Guard: if no non-Guest classes exist, show inline message instead of
-				// looping forever turning the select red (empty-options edge case).
-				if (confirmClassSel && confirmClassSel.options.length === 0) {
+				// looping forever turning the select red. The select always carries a
+				// blank "— select one —" placeholder, so "no real classes" is length <= 1.
+				if (confirmClassSel && confirmClassSel.options.length <= 1) {
 					var noClassMsg = document.getElementById('att-confirm-no-class-msg');
 					if (noClassMsg) noClassMsg.style.display = '';
 					return;

@@ -3085,13 +3085,13 @@ html[data-theme="dark"] .pn-badge-guest{background:#5c3108!important;color:#fbd3
 			<div class="pn-form-error" id="pn-convert-error"></div>
 
 			<!-- Step: checking for an existing match -->
-			<div id="pn-convert-checking" style="display:none;text-align:center;padding:18px 0;color:#718096;font-size:14px;">
+			<div id="pn-convert-checking" style="display:none;text-align:center;padding:18px 0;color:var(--ork-text-muted);font-size:14px;">
 				<i class="fas fa-spinner fa-spin"></i> Checking for an existing player&hellip;
 			</div>
 
 			<!-- Step: merge candidates found -->
 			<div id="pn-convert-match" style="display:none;">
-				<div style="font-size:14px;color:#4a5568;margin-bottom:10px;">This guest looks like an existing player. Link the guest's attendance and notes to that player instead of creating a duplicate.</div>
+				<div style="font-size:14px;color:var(--ork-text-secondary);margin-bottom:10px;">This guest looks like an existing player. Link the guest's attendance and notes to that player instead of creating a duplicate.</div>
 				<div id="pn-convert-match-list"></div>
 				<div style="margin-top:12px;text-align:center;">
 					<button class="pn-btn pn-btn-secondary" id="pn-convert-newinstead" type="button"><i class="fas fa-user-plus"></i> No, this is a new person &mdash; create a player</button>

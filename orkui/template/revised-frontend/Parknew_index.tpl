@@ -1706,6 +1706,11 @@ var PkBannerConfig = {
 				<button class="pk-att-tab" id="pk-att-tab-recent" data-panel="pk-att-panel-recent">
 					<i class="fas fa-users"></i> Recent Park Attendees
 				</button>
+			<?php if (!empty($GuestAttendanceEnabled)): ?>
+				<button class="pk-att-tab" id="pk-att-tab-guest" data-panel="pk-att-panel-guest">
+					<i class="fas fa-user-plus"></i> Add Guest(s)
+				</button>
+			<?php endif; ?>
 			<?php if (!empty($CanManagePark)): ?>
 				<button class="pk-att-tab" id="pk-att-tab-link" data-panel="pk-att-panel-link">
 					<i class="fas fa-link"></i> Sign-in Link
@@ -1757,6 +1762,41 @@ var PkBannerConfig = {
 					No recent attendees in the last 90 days.
 				</div>
 			</div>
+
+			<?php if (!empty($GuestAttendanceEnabled)): ?>
+			<!-- Add Guest(s) panel — create a walk-up guest and sign them in on the selected date -->
+			<div class="pk-att-tab-panel" id="pk-att-panel-guest" style="display:none">
+				<div class="pk-att-search-section-inner">
+					<p class="pk-att-guest-hint">Sign in a walk-up guest at a demo. Creates a login-less guest profile and marks them present on the date above. Convert them to a full player later from their profile or the Guest Roster report.</p>
+					<div class="pk-att-search-row">
+						<div class="pk-att-field pk-att-field-grow">
+							<label>First Name <span class="plr-req">*</span></label>
+							<input type="text" id="pk-att-guest-first" placeholder="Given name" autocomplete="off">
+						</div>
+						<div class="pk-att-field pk-att-field-grow">
+							<label>Last Name <span class="plr-req">*</span></label>
+							<input type="text" id="pk-att-guest-last" placeholder="Surname" autocomplete="off">
+						</div>
+					</div>
+					<div class="pk-att-search-row">
+						<div class="pk-att-field pk-att-field-grow">
+							<label>Email <span class="plr-hint">(optional)</span></label>
+							<input type="email" id="pk-att-guest-email" placeholder="email@example.com" autocomplete="off">
+						</div>
+						<div class="pk-att-field pk-att-field-sm">
+							<label>Credits</label>
+							<input type="number" id="pk-att-guest-credits" min="0.5" step="0.5" value="1">
+						</div>
+						<div class="pk-att-field pk-att-field-btn">
+							<label>&nbsp;</label>
+							<button class="pk-btn pk-btn-primary" id="pk-att-guest-add-btn">
+								<i class="fas fa-user-plus"></i> Add Guest &amp; Sign In
+							</button>
+						</div>
+					</div>
+				</div>
+			</div>
+			<?php endif; ?>
 
 			<?php if (!empty($CanManagePark)): ?>
 			<!-- Sign-in Link panel -->
@@ -2144,6 +2184,13 @@ var PkBannerConfig = {
 		</div>
 		<div class="pk-modal-body">
 			<div id="pk-addplayer-feedback" class="plr-feedback" style="display:none"></div>
+<?php if (!empty($GuestAttendanceEnabled)): ?>
+			<div class="pk-att-tabs" id="pk-addplayer-tabs">
+				<button type="button" class="pk-att-tab pk-att-tab-active" data-panel="pk-addplayer-panel-player"><i class="fas fa-user-plus"></i> Register New Player</button>
+				<button type="button" class="pk-att-tab" data-panel="pk-addplayer-panel-guest"><i class="fas fa-user-clock"></i> Add A Guest</button>
+			</div>
+<?php endif; ?>
+			<div id="pk-addplayer-panel-player">
 			<div class="plr-field-row">
 				<div class="plr-field plr-field-grow">
 					<label>Persona <span class="plr-req">*</span></label>
@@ -2162,7 +2209,7 @@ var PkBannerConfig = {
 			</div>
 			<div class="plr-field-row">
 				<div class="plr-field plr-field-grow">
-					<label>Email</label>
+					<label>Email <span class="plr-req">*</span></label>
 					<input type="email" id="pk-addplayer-email" placeholder="email@example.com">
 					<div id="pk-addplayer-email-suggestion" class="esc-suggestion" role="alert">
 						<i class="fas fa-magic"></i>
@@ -2170,6 +2217,7 @@ var PkBannerConfig = {
 						<button type="button" class="esc-suggestion-use">Use it</button>
 						<button type="button" class="esc-suggestion-dismiss" aria-label="Dismiss">&times;</button>
 					</div>
+					<?php if (!empty($GuestAttendanceEnabled)): ?><small style="display:block;color:var(--ork-text-muted);margin-top:4px">No email? Use the <strong>Add A Guest</strong> tab instead, then convert them to a full player later.</small><?php endif; ?>
 				</div>
 			</div>
 			<div class="plr-field-row">
@@ -2206,6 +2254,32 @@ var PkBannerConfig = {
 					<input type="file" id="pk-addplayer-waiver" accept=".pdf,image/png,image/jpeg,image/gif">
 				</div>
 			</div>
+			</div><!-- /#pk-addplayer-panel-player -->
+<?php if (!empty($GuestAttendanceEnabled)): ?>
+			<div id="pk-addplayer-panel-guest" style="display:none">
+				<p class="pk-att-guest-hint">A guest is a login-less profile for a walk-up or newcomer. No username, password, or persona required &mdash; just a name. Convert them to a full player later from their profile or the Guest Roster report.</p>
+				<div class="plr-field-row">
+					<div class="plr-field">
+						<label>First Name <span class="plr-req">*</span></label>
+						<input type="text" id="pk-addguest-first" placeholder="Given name">
+					</div>
+					<div class="plr-field">
+						<label>Last Name <span class="plr-req">*</span></label>
+						<input type="text" id="pk-addguest-last" placeholder="Surname">
+					</div>
+				</div>
+				<div class="plr-field-row">
+					<div class="plr-field plr-field-grow">
+						<label>Email <span class="plr-hint">(optional)</span></label>
+						<input type="email" id="pk-addguest-email" placeholder="email@example.com">
+					</div>
+					<div class="plr-field">
+						<label>Phone <span class="plr-hint">(optional)</span></label>
+						<input type="text" id="pk-addguest-phone" placeholder="Phone">
+					</div>
+				</div>
+			</div>
+<?php endif; ?>
 		</div>
 		<div class="pk-modal-footer" style="justify-content:flex-end;gap:8px;">
 			<button class="pk-btn pk-btn-secondary pk-selfreg-trigger" id="pk-selfreg-btn" onclick="pkOpenSelfRegModal()" style="margin-right:auto;">
@@ -2215,6 +2289,11 @@ var PkBannerConfig = {
 			<button class="pk-btn pk-btn-primary" id="pk-addplayer-submit">
 				<i class="fas fa-user-plus"></i> Create Player
 			</button>
+<?php if (!empty($GuestAttendanceEnabled)): ?>
+			<button class="pk-btn pk-btn-primary" id="pk-addguest-submit" style="display:none">
+				<i class="fas fa-user-plus"></i> Add Guest
+			</button>
+<?php endif; ?>
 		</div>
 	</div>
 </div>

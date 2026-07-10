@@ -9,6 +9,11 @@ class Controller_AttendanceAjax extends Controller
         $park_id = (int)preg_replace('/[^0-9]/', '', $parts[0] ?? '');
         $action  = $parts[1] ?? '';
 
+        if (!isset($this->session->user_id)) {
+            echo json_encode(['status' => 5, 'error' => 'Not logged in']);
+            exit;
+        }
+
         if (!valid_id($park_id)) {
             echo json_encode(['status' => 1, 'error' => 'Invalid park ID']);
             exit;

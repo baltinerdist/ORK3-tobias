@@ -492,6 +492,16 @@ class Controller_Park extends Controller
         $this->data['CanMergePlayers'] = $uid > 0
             && Ork3::$Lib->authorization->HasAuthority($uid, AUTH_PARK, (int)$park_id, AUTH_CREATE);
 
+        // Kingdom guest-attendance toggle — gates the "Add Guest" tabs so they only
+        // appear where the kingdom has opted in (parity with the attendance-page button).
+        $this->data['GuestAttendanceEnabled'] = 0;
+        global $DB;
+        $DB->Clear();
+        $_gaRs = $DB->DataSet("SELECT guest_attendance_enabled FROM " . DB_PREFIX . "kingdom WHERE kingdom_id = " . (int)$this->session->kingdom_id . " LIMIT 1");
+        if ($_gaRs && $_gaRs->Next()) {
+            $this->data['GuestAttendanceEnabled'] = (int)$_gaRs->guest_attendance_enabled;
+        }
+
         $knConfigs  = Common::get_configs($this->session->kingdom_id, CFG_KINGDOM);
         $recsPublic = isset($knConfigs['AwardRecsPublic'])
             ? (bool)(int)$knConfigs['AwardRecsPublic']['Value']

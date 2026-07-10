@@ -2000,11 +2000,11 @@ if (PnConfig.recError) {
                 if (m.ParkName) sub.push(m.ParkName);
                 if (m.Email) sub.push(m.Email);
                 var row = document.createElement('div');
-                row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;margin-bottom:8px;';
+                row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--ork-border);border-radius:8px;padding:10px 12px;margin-bottom:8px;';
                 row.innerHTML =
                     '<div style="min-width:0;">'
-                    + '<div style="font-weight:700;color:#2d3748;">This looks like ' + esc(name) + '</div>'
-                    + '<div style="font-size:12px;color:#718096;">' + esc(sub.join(' \u00b7 ')) + '</div>'
+                    + '<div style="font-weight:700;color:var(--ork-text);">This looks like ' + esc(name) + '</div>'
+                    + '<div style="font-size:12px;color:var(--ork-text-muted);">' + esc(sub.join(' \u00b7 ')) + '</div>'
                     + '</div>'
                     + '<button class="pn-btn pn-btn-primary pn-convert-link-btn" data-pid="' + (parseInt(m.MundaneId) || 0) + '" type="button"><i class="fas fa-link"></i> Link instead</button>';
                 box.appendChild(row);
@@ -10110,6 +10110,7 @@ $(document).ready(function() {
     if (!document.getElementById('pk-att-overlay')) return;
 
     var ADD_URL    = PkConfig.uir + 'AttendanceAjax/park/' + PkConfig.parkId + '/add';
+    var ADDGUEST_URL = PkConfig.uir + 'AttendanceAjax/park/' + PkConfig.parkId + '/addguest';
     var GETDAY_URL = PkConfig.uir + 'AttendanceAjax/park/' + PkConfig.parkId + '/getday';
     var SEARCH_URL = PkConfig.httpService + 'Search/SearchService.php';
 
@@ -10679,8 +10680,58 @@ $(document).ready(function() {
             gid(tab.dataset.panel).style.display = '';
             $('#pk-att-player-name').autocomplete('close');
             if (tab.dataset.panel === 'pk-att-panel-recent') pkBuildQuickAddRows();
+            if (tab.dataset.panel === 'pk-att-panel-guest') { var gf = gid('pk-att-guest-first'); if (gf) gf.focus(); }
         });
     });
+
+    // --- Add Guest(s): create a walk-up guest + mark present on the selected date ---
+    var pkGuestBtn = gid('pk-att-guest-add-btn');
+    if (pkGuestBtn) {
+        pkGuestBtn.addEventListener('click', function() {
+            var date  = gid('pk-att-date').value;
+            var first = gid('pk-att-guest-first').value.trim();
+            var last  = gid('pk-att-guest-last').value.trim();
+            var email = gid('pk-att-guest-email').value.trim();
+            var cred  = parseFloat(gid('pk-att-guest-credits').value) || 1;
+            if (!date)          { pkAttShowFeedback('Please choose a date first.', false); return; }
+            if (!first || !last) { pkAttShowFeedback('A first and last name are required.', false); return; }
+            if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { pkAttShowFeedback('Please enter a valid email address (or leave it blank).', false); return; }
+            pkGuestBtn.disabled = true;
+            $.post(ADDGUEST_URL,
+                { AttendanceDate: date, GivenName: first, Surname: last, Email: email, Credits: cred },
+                function(r) {
+                    pkGuestBtn.disabled = false;
+                    if (r && r.status === 0) {
+                        var name = first + ' ' + last;
+                        var newGuestId = parseInt(r.mundaneId, 10);
+                        pkAttShowFeedback(name + ' added as a guest and signed in.', true);
+                        // Mark entered so the Search tab hides them — the new guest is now a real,
+                        // searchable-by-name mundane and could otherwise be double-added.
+                        if (newGuestId) pkAttEntered[newGuestId] = true;
+                        if (typeof pkAttRecorded === 'function' && r.mundaneId) {
+                            pkAttRecorded({ AttendanceId: r.attendanceId || 0, MundaneId: newGuestId, Persona: name, ClassId: 0, Credits: cred });
+                        }
+                        // Clear the name/email for the next guest; keep credits.
+                        gid('pk-att-guest-first').value = '';
+                        gid('pk-att-guest-last').value  = '';
+                        gid('pk-att-guest-email').value = '';
+                        gid('pk-att-guest-first').focus();
+                    } else if (r && r.status === 2 && r.collision) {
+                        // Email already on file — surface who owns it. A real player is findable via
+                        // the Search tab; a guest is NOT (player search excludes guests), so point
+                        // guests to their profile / the Guest Roster instead of a dead-end Search.
+                        var owner = r.ownerName ? (' (' + r.ownerName + ')') : '';
+                        if (r.collision === 'guest') {
+                            pkAttShowFeedback('That email is already on file for an existing guest' + owner + '. Open their profile or the Guest Roster to sign them in — guests do not appear in player search.', false);
+                        } else {
+                            pkAttShowFeedback('That email is already on file for an existing player' + owner + '. Use the Search tab to find and sign them in.', false);
+                        }
+                    } else {
+                        pkAttShowFeedback((r && r.error) ? r.error : 'Could not add guest.', false);
+                    }
+                }, 'json').fail(function() { pkGuestBtn.disabled = false; pkAttShowFeedback('Request failed. Please try again.', false); });
+        });
+    }
 
     // --- Credits: save to localStorage on change ---
     gid('pk-att-search-credits').addEventListener('input', function() { pkSyncCredits(this.value); });
@@ -11935,6 +11986,12 @@ function setupPronounPicker(cfg) {
             sel.dataset.built = '1';
         }
         sel.value = '';
+        // Reset the Add A Guest tab fields + default back to the player tab.
+        if (gid('kn-addguest-first')) gid('kn-addguest-first').value = '';
+        if (gid('kn-addguest-last'))  gid('kn-addguest-last').value  = '';
+        if (gid('kn-addguest-email')) gid('kn-addguest-email').value = '';
+        if (gid('kn-addguest-phone')) gid('kn-addguest-phone').value = '';
+        if (typeof window.knAddPlayerSelectTab === 'function') window.knAddPlayerSelectTab('player');
         ov.classList.add('kn-addplayer-open');
         document.body.style.overflow = 'hidden';
         setTimeout(function() { gid('kn-addplayer-persona').focus(); }, 50);
@@ -11968,16 +12025,75 @@ function setupPronounPicker(cfg) {
                 knCloseAddPlayerModal();
         });
 
+        // --- Register New Player / Add A Guest tabs (only present when guest attendance is enabled) ---
+        window.knAddPlayerSelectTab = function(which) {
+            var tabs = gid('kn-addplayer-tabs');
+            if (!tabs) return;
+            var isGuest = (which === 'guest');
+            tabs.querySelectorAll('.pk-att-tab').forEach(function(t) {
+                t.classList.toggle('pk-att-tab-active', t.dataset.panel === (isGuest ? 'kn-addplayer-panel-guest' : 'kn-addplayer-panel-player'));
+            });
+            gid('kn-addplayer-panel-player').style.display = isGuest ? 'none' : '';
+            gid('kn-addplayer-panel-guest').style.display  = isGuest ? '' : 'none';
+            gid('kn-addplayer-submit').style.display = isGuest ? 'none' : '';
+            var gsub = gid('kn-addguest-submit');
+            if (gsub) gsub.style.display = isGuest ? '' : 'none';
+            hideFeedback(gid('kn-addplayer-feedback'));
+            setTimeout(function() { (isGuest ? gid('kn-addguest-first') : gid('kn-addplayer-persona')).focus(); }, 30);
+        };
+        if (gid('kn-addplayer-tabs')) {
+            gid('kn-addplayer-tabs').querySelectorAll('.pk-att-tab').forEach(function(tab) {
+                tab.addEventListener('click', function() {
+                    knAddPlayerSelectTab(tab.dataset.panel === 'kn-addplayer-panel-guest' ? 'guest' : 'player');
+                });
+            });
+        }
+
+        // --- Add A Guest submit (create-only, login-less; park comes from the shared Park select) ---
+        var knAddGuestBtn = gid('kn-addguest-submit');
+        if (knAddGuestBtn) {
+            knAddGuestBtn.addEventListener('click', function() {
+                var feedback = gid('kn-addplayer-feedback');
+                var parkId = gid('kn-addplayer-park').value;
+                var first  = gid('kn-addguest-first').value.trim();
+                var last   = gid('kn-addguest-last').value.trim();
+                var email  = gid('kn-addguest-email').value.trim();
+                var phone  = gid('kn-addguest-phone').value.trim();
+                if (!parkId)         { showFeedback(feedback, 'Please select a park.', false); return; }
+                if (!first || !last) { showFeedback(feedback, 'A first and last name are required.', false); return; }
+                if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { showFeedback(feedback, 'Please enter a valid email address (or leave it blank).', false); return; }
+                knAddGuestBtn.disabled = true;
+                $.post(CREATE_URL + parkId + '/createguest',
+                    { GivenName: first, Surname: last, Email: email, Phone: phone },
+                    function(r) {
+                        knAddGuestBtn.disabled = false;
+                        if (r && r.status === 0) {
+                            window.location.href = KnConfig.uir + 'Player/profile/' + r.mundaneId;
+                        } else if (r && r.status === 2 && r.collision) {
+                            var owner = r.ownerName ? (' (' + r.ownerName + ')') : '';
+                            var who = r.collision === 'guest' ? 'guest' : 'player';
+                            showFeedback(feedback, 'That email is already on file for an existing ' + who + owner + '. Search for them instead of creating a duplicate.', false);
+                        } else {
+                            showFeedback(feedback, (r && r.error) ? r.error : 'Could not create guest.', false);
+                        }
+                    }, 'json').fail(function() { knAddGuestBtn.disabled = false; showFeedback(feedback, 'Request failed. Please try again.', false); });
+            });
+        }
+
         gid('kn-addplayer-submit').addEventListener('click', function() {
             var feedback = gid('kn-addplayer-feedback');
             var parkId   = gid('kn-addplayer-park').value;
             var persona  = gid('kn-addplayer-persona').value.trim();
             var username = gid('kn-addplayer-username').value.trim();
             var password = gid('kn-addplayer-password').value;
+            var email    = gid('kn-addplayer-email').value.trim();
             if (!parkId)             { showFeedback(feedback, 'Please select a park.', false);                       return; }
             if (!persona)            { showFeedback(feedback, 'Persona is required.', false);                        return; }
             if (!username)           { showFeedback(feedback, 'Username is required.', false);                       return; }
             if (username.length < 4) { showFeedback(feedback, 'Username must be at least 4 characters.', false);    return; }
+            // Email is required for full players (no email -> use Add Guest instead).
+            if (!email)              { showFeedback(feedback, 'Email is required. No email? Use Add Guest instead.', false); return; }
+            if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { showFeedback(feedback, 'Please enter a valid email address.', false); return; }
 
             var btn = gid('kn-addplayer-submit');
             btn.disabled = true;
@@ -12046,6 +12162,12 @@ function setupPronounPicker(cfg) {
         gid('pk-addplayer-password').value = '';
         gid('pk-addplayer-waiver-row').style.display = 'none';
         ov.querySelectorAll('input[type=radio]').forEach(function(r) { if (r.value === '0') r.checked = true; });
+        // Reset the Add A Guest tab fields + default back to the player tab.
+        if (gid('pk-addguest-first'))  gid('pk-addguest-first').value  = '';
+        if (gid('pk-addguest-last'))   gid('pk-addguest-last').value   = '';
+        if (gid('pk-addguest-email'))  gid('pk-addguest-email').value  = '';
+        if (gid('pk-addguest-phone'))  gid('pk-addguest-phone').value  = '';
+        if (typeof window.pkAddPlayerSelectTab === 'function') window.pkAddPlayerSelectTab('player');
         hideFeedback(gid('pk-addplayer-feedback'));
         ov.classList.add('pk-addplayer-open');
         document.body.style.overflow = 'hidden';
@@ -12078,14 +12200,73 @@ function setupPronounPicker(cfg) {
                 pkCloseAddPlayerModal();
         });
 
+        // --- Register New Player / Add A Guest tabs (only present when guest attendance is enabled) ---
+        window.pkAddPlayerSelectTab = function(which) {
+            var tabs = gid('pk-addplayer-tabs');
+            if (!tabs) return; // tabs absent -> plain player form, nothing to toggle
+            var isGuest = (which === 'guest');
+            tabs.querySelectorAll('.pk-att-tab').forEach(function(t) {
+                t.classList.toggle('pk-att-tab-active', t.dataset.panel === (isGuest ? 'pk-addplayer-panel-guest' : 'pk-addplayer-panel-player'));
+            });
+            gid('pk-addplayer-panel-player').style.display = isGuest ? 'none' : '';
+            gid('pk-addplayer-panel-guest').style.display  = isGuest ? '' : 'none';
+            // Footer: player tab shows Self-Reg + Create Player; guest tab shows Add Guest.
+            gid('pk-selfreg-btn').style.display       = isGuest ? 'none' : '';
+            gid('pk-addplayer-submit').style.display  = isGuest ? 'none' : '';
+            var gsub = gid('pk-addguest-submit');
+            if (gsub) gsub.style.display = isGuest ? '' : 'none';
+            hideFeedback(gid('pk-addplayer-feedback'));
+            setTimeout(function() { (isGuest ? gid('pk-addguest-first') : gid('pk-addplayer-persona')).focus(); }, 30);
+        };
+        if (gid('pk-addplayer-tabs')) {
+            gid('pk-addplayer-tabs').querySelectorAll('.pk-att-tab').forEach(function(tab) {
+                tab.addEventListener('click', function() {
+                    pkAddPlayerSelectTab(tab.dataset.panel === 'pk-addplayer-panel-guest' ? 'guest' : 'player');
+                });
+            });
+        }
+
+        // --- Add A Guest submit (create-only, login-less) ---
+        var pkAddGuestBtn = gid('pk-addguest-submit');
+        if (pkAddGuestBtn) {
+            pkAddGuestBtn.addEventListener('click', function() {
+                var feedback = gid('pk-addplayer-feedback');
+                var first = gid('pk-addguest-first').value.trim();
+                var last  = gid('pk-addguest-last').value.trim();
+                var email = gid('pk-addguest-email').value.trim();
+                var phone = gid('pk-addguest-phone').value.trim();
+                if (!first || !last) { showFeedback(feedback, 'A first and last name are required.', false); return; }
+                if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { showFeedback(feedback, 'Please enter a valid email address (or leave it blank).', false); return; }
+                pkAddGuestBtn.disabled = true;
+                $.post(PkConfig.uir + 'PlayerAjax/park/' + PkConfig.parkId + '/createguest',
+                    { GivenName: first, Surname: last, Email: email, Phone: phone },
+                    function(r) {
+                        pkAddGuestBtn.disabled = false;
+                        if (r && r.status === 0) {
+                            window.location.href = PkConfig.uir + 'Player/profile/' + r.mundaneId;
+                        } else if (r && r.status === 2 && r.collision) {
+                            var owner = r.ownerName ? (' (' + r.ownerName + ')') : '';
+                            var who = r.collision === 'guest' ? 'guest' : 'player';
+                            showFeedback(feedback, 'That email is already on file for an existing ' + who + owner + '. Search for them instead of creating a duplicate.', false);
+                        } else {
+                            showFeedback(feedback, (r && r.error) ? r.error : 'Could not create guest.', false);
+                        }
+                    }, 'json').fail(function() { pkAddGuestBtn.disabled = false; showFeedback(feedback, 'Request failed. Please try again.', false); });
+            });
+        }
+
         gid('pk-addplayer-submit').addEventListener('click', function() {
             var feedback = gid('pk-addplayer-feedback');
             var persona  = gid('pk-addplayer-persona').value.trim();
             var username = gid('pk-addplayer-username').value.trim();
             var password = gid('pk-addplayer-password').value;
+            var email    = gid('pk-addplayer-email').value.trim();
             if (!persona)            { showFeedback(feedback, 'Persona is required.', false);                        return; }
             if (!username)           { showFeedback(feedback, 'Username is required.', false);                       return; }
             if (username.length < 4) { showFeedback(feedback, 'Username must be at least 4 characters.', false);    return; }
+            // Email is required for full players (no email -> use Add Guest instead).
+            if (!email)              { showFeedback(feedback, 'Email is required. No email? Use Add Guest instead.', false); return; }
+            if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { showFeedback(feedback, 'Please enter a valid email address.', false); return; }
 
             var btn = gid('pk-addplayer-submit');
             btn.disabled = true;
