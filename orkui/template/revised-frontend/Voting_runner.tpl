@@ -158,6 +158,7 @@
 </div><!-- /rp-root -->
 
 <script src="<?= HTTP_TEMPLATE ?>revised-frontend/script/revised.js?v=<?= filemtime(__DIR__ . '/script/revised.js') ?>"></script>
+<script>window.VOTING_CSRF = <?= json_encode($VotingCsrf ?? '') ?>;</script>
 <script>
 (function(){
 	var eventId = <?= $voting_event_id ?>;
@@ -321,7 +322,7 @@
 
 	var pubBtn = $('#vtr-publish');
 	if (pubBtn) pubBtn.addEventListener('click', function(){
-		fetch('<?= UIR ?>VotingAjax/publish/' + eventId, { method:'POST', credentials:'same-origin' })
+		fetch('<?= UIR ?>VotingAjax/publish/' + eventId, { method:'POST', headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })
 			.then(r => r.json()).then(function(j){
 				if (j.status === 0) location.reload();
 				else $('#vtr-publish-msg').innerHTML = '<div class="vtr-banner vtr-banner-warn">' + escapeHtml(j.error || 'Failed') + (j.detail ? ': ' + escapeHtml(j.detail) : '') + '</div>';
@@ -330,7 +331,7 @@
 	var unpubBtn = $('#vtr-unpublish');
 	if (unpubBtn) unpubBtn.addEventListener('click', function(){
 		pnConfirm({ title:'Unpublish Results?', message:'The public page will show "Results temporarily withdrawn."', confirmText:'Unpublish', danger:true }, function(){
-			fetch('<?= UIR ?>VotingAjax/unpublish/' + eventId, { method:'POST', credentials:'same-origin' })
+			fetch('<?= UIR ?>VotingAjax/unpublish/' + eventId, { method:'POST', headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })
 				.then(r => r.json()).then(function(j){
 					if (j.status === 0) location.reload();
 					else { var m = $('#vtr-publish-msg'); if (m) m.innerHTML = '<div class="vtr-banner vtr-banner-warn">' + escapeHtml(j.error || 'Failed') + '</div>'; }
@@ -348,13 +349,13 @@
 		reopenBtn.disabled = true;
 		var msg = $('#vtr-reopen-msg');
 		var data = new FormData();
-		fetch('<?= UIR ?>VotingAjax/reopen_event/' + eventId, { method:'POST', body:data, credentials:'same-origin' })
+		fetch('<?= UIR ?>VotingAjax/reopen_event/' + eventId, { method:'POST', body:data, headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })
 			.then(r => r.json()).then(function(j){
 				if (j.status === 0) { window.location.href = '<?= UIR ?>Voting/edit/' + eventId; return; }
 				if (j.error === 'confirm_required') {
 					pnConfirm({ title:'Reopen Configuration?', message:'Changing the configuration of this voting event may invalidate current votes. Continue?', confirmText:'Continue', danger:true }, function(){
 						var d2 = new FormData(); d2.append('Confirm', 1);
-						fetch('<?= UIR ?>VotingAjax/reopen_event/' + eventId, { method:'POST', body:d2, credentials:'same-origin' })
+						fetch('<?= UIR ?>VotingAjax/reopen_event/' + eventId, { method:'POST', body:d2, headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })
 							.then(r => r.json()).then(function(k){
 								if (k.status === 0) { window.location.href = '<?= UIR ?>Voting/edit/' + eventId; return; }
 								reopenBtn.disabled = false;

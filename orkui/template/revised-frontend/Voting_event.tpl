@@ -158,6 +158,7 @@
 </div>
 </div><!-- /rp-root -->
 
+<script>window.VOTING_CSRF = <?= json_encode($VotingCsrf ?? '') ?>;</script>
 <script>
 (function(){
 	var eventId = <?= $voting_event_id ?>;
@@ -252,7 +253,7 @@
 
 		var fd = new FormData();
 		fd.append('Votes', JSON.stringify(votes));
-		fetch('<?= UIR ?>VotingAjax/cast/' + eventId, { method:'POST', body:fd, credentials:'same-origin' })
+		fetch('<?= UIR ?>VotingAjax/cast/' + eventId, { method:'POST', body:fd, headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })
 			.then(r => r.json()).then(function(j){
 				var box = $('#vtv-result');
 				if (j.status === 0) {

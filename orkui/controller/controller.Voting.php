@@ -9,6 +9,7 @@ class Controller_Voting extends Controller
         $this->load_model('Park');
         $this->load_model('Kingdom');
         $this->load_model('Reports');
+        $this->data['VotingCsrf'] = $this->_csrfToken();
     }
 
     private function require_login()

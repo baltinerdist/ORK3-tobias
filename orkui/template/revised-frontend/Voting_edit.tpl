@@ -367,6 +367,7 @@
 </div>
 
 <script src="<?= HTTP_TEMPLATE ?>revised-frontend/script/revised.js?v=<?= filemtime(__DIR__ . '/script/revised.js') ?>"></script>
+<script>window.VOTING_CSRF = <?= json_encode($VotingCsrf ?? '') ?>;</script>
 <script>
 (function(){
 	var eventId = <?= $voting_event_id ?>;
@@ -409,7 +410,7 @@
 		data.append('AllowNoneOfAbove', $('#vte-nota').checked ? 1 : 0);
 		if ($('#vte-nota').checked) data.append('NotaCountsAs', $('#vte-nota-ca').value);
 		data.append('IsNonBinding', $('#vte-nb') && $('#vte-nb').checked ? 1 : 0);
-		fetch('<?= UIR ?>VotingAjax/add_race/' + eventId, { method:'POST', body:data, credentials:'same-origin' })
+		fetch('<?= UIR ?>VotingAjax/add_race/' + eventId, { method:'POST', body:data, headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })
 			.then(r => r.json()).then(function(j){
 				if (j.status === 0) { location.reload(); }
 				else { msg.innerHTML = '<div class="vte-error">' + escapeHtml(j.error || 'Failed') + '</div>'; }
@@ -457,7 +458,7 @@
 			if (!pickedId) return;
 			var data = new FormData();
 			data.append('CandidateMundaneId', pickedId);
-			fetch('<?= UIR ?>VotingAjax/add_candidate/' + btn.dataset.raceId, { method:'POST', body:data, credentials:'same-origin' })
+			fetch('<?= UIR ?>VotingAjax/add_candidate/' + btn.dataset.raceId, { method:'POST', body:data, headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })
 				.then(r => r.json()).then(function(j){
 					if (j.status === 0) location.reload();
 					else vteErr(j);
@@ -471,7 +472,7 @@
 			var label = btn.dataset.label || 'this choice';
 			pnConfirm({ title:'Remove Choice?', message:'Remove ' + label + '?', confirmText:'Remove', danger:true }, function(){
 				btn.disabled = true;
-				fetch('<?= UIR ?>VotingAjax/remove_choice/' + btn.dataset.choiceId, { method:'POST', credentials:'same-origin' })
+				fetch('<?= UIR ?>VotingAjax/remove_choice/' + btn.dataset.choiceId, { method:'POST', headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })
 					.then(r => r.json()).then(function(j){
 						if (j.status === 0) location.reload();
 						else { btn.disabled = false; vteErr(j); }
@@ -488,7 +489,7 @@
 			if (!label) return;
 			var data = new FormData();
 			data.append('Label', label);
-			fetch('<?= UIR ?>VotingAjax/add_option/' + btn.dataset.raceId, { method:'POST', body:data, credentials:'same-origin' })
+			fetch('<?= UIR ?>VotingAjax/add_option/' + btn.dataset.raceId, { method:'POST', body:data, headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })
 				.then(r => r.json()).then(function(j){
 					if (j.status === 0) location.reload();
 					else vteErr(j);
@@ -499,7 +500,7 @@
 	// Open event.
 	var openBtn = $('#vte-open-event');
 	if (openBtn) openBtn.addEventListener('click', function(){
-		fetch('<?= UIR ?>VotingAjax/open_event/' + eventId, { method:'POST', credentials:'same-origin' })
+		fetch('<?= UIR ?>VotingAjax/open_event/' + eventId, { method:'POST', headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })
 			.then(r => r.json()).then(function(j){
 				if (j.status === 0) location.reload();
 				else $('#vte-open-msg').innerHTML = '<div class="vte-error">' + escapeHtml(j.error || 'Failed') + (j.detail ? ': ' + escapeHtml(j.detail) : '') + '</div>';
@@ -511,13 +512,13 @@
 	if (reopenBtn) reopenBtn.addEventListener('click', function(){
 		reopenBtn.disabled = true;
 		var data = new FormData();
-		fetch('<?= UIR ?>VotingAjax/reopen_event/' + eventId, { method:'POST', body:data, credentials:'same-origin' })
+		fetch('<?= UIR ?>VotingAjax/reopen_event/' + eventId, { method:'POST', body:data, headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })
 			.then(r => r.json()).then(function(j){
 				if (j.status === 0) { location.reload(); return; }
 				if (j.error === 'confirm_required') {
 					pnConfirm({ title:'Reopen Configuration?', message:'Changing the configuration of this voting event may invalidate current votes. Continue?', confirmText:'Continue', danger:true }, function(){
 						var d2 = new FormData(); d2.append('Confirm', 1);
-						fetch('<?= UIR ?>VotingAjax/reopen_event/' + eventId, { method:'POST', body:d2, credentials:'same-origin' })
+						fetch('<?= UIR ?>VotingAjax/reopen_event/' + eventId, { method:'POST', body:d2, headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })
 							.then(r => r.json()).then(function(k){
 								if (k.status === 0) location.reload();
 								else { reopenBtn.disabled = false; vteErr(k); }
@@ -552,7 +553,7 @@
 			var data = new FormData();
 			data.append('Title', title);
 			data.append('Rationale', rat);
-			fetch('<?= UIR ?>VotingAjax/edit_race/' + btn.dataset.raceId, { method:'POST', body:data, credentials:'same-origin' })
+			fetch('<?= UIR ?>VotingAjax/edit_race/' + btn.dataset.raceId, { method:'POST', body:data, headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })
 				.then(r => r.json()).then(function(j){
 					if (j.status === 0) location.reload();
 					else vteErr(j);
@@ -595,7 +596,7 @@
 				save.disabled = true;
 				var data = new FormData();
 				data.append('Label', next);
-				fetch('<?= UIR ?>VotingAjax/edit_choice/' + btn.dataset.choiceId, { method:'POST', body:data, credentials:'same-origin' })
+				fetch('<?= UIR ?>VotingAjax/edit_choice/' + btn.dataset.choiceId, { method:'POST', body:data, headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })
 					.then(r => r.json()).then(function(j){
 						if (j.status === 0) location.reload();
 						else { save.disabled = false; vteErr(j); }
@@ -608,7 +609,7 @@
 	$$('.vte-restore-choice-btn').forEach(function(btn){
 		btn.addEventListener('click', function(){
 			var data = new FormData();
-			fetch('<?= UIR ?>VotingAjax/restore_choice/' + btn.dataset.choiceId, { method:'POST', body:data, credentials:'same-origin' })
+			fetch('<?= UIR ?>VotingAjax/restore_choice/' + btn.dataset.choiceId, { method:'POST', body:data, headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })
 				.then(r => r.json()).then(function(j){
 					if (j.status === 0) location.reload();
 					else vteErr(j);
@@ -621,7 +622,7 @@
 		btn.addEventListener('click', function(){
 			pnConfirm({ title:'Remove Race?', message:'Remove this race?', confirmText:'Remove', danger:true }, function(){
 				var data = new FormData();
-				fetch('<?= UIR ?>VotingAjax/remove_race/' + btn.dataset.raceId, { method:'POST', body:data, credentials:'same-origin' })
+				fetch('<?= UIR ?>VotingAjax/remove_race/' + btn.dataset.raceId, { method:'POST', body:data, headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })
 					.then(r => r.json()).then(function(j){
 						if (j.status === 0) location.reload();
 						else vteErr(j);
@@ -658,7 +659,7 @@
 	function submitResume(decision){
 		var data = new FormData();
 		if (decision) data.append('Decision', decision);
-		fetch('<?= UIR ?>VotingAjax/resume_event/' + eventId, { method:'POST', body:data, credentials:'same-origin' })
+		fetch('<?= UIR ?>VotingAjax/resume_event/' + eventId, { method:'POST', body:data, headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })
 			.then(r => r.json()).then(function(j){
 				if (j.status === 0) location.reload();
 				else {
@@ -708,7 +709,7 @@
 		data.append('AnonymousToRunner', $('#vte-cfg-anon').checked ? 1 : 0);
 		data.append('HideResultsFromCandidateRunners', $('#vte-cfg-hide').checked ? 1 : 0);
 		data.append('AllowProvisional', $('#vte-cfg-prov').checked ? 1 : 0);
-		fetch('<?= UIR ?>VotingAjax/edit_event/' + eventId, { method:'POST', body:data, credentials:'same-origin' })
+		fetch('<?= UIR ?>VotingAjax/edit_event/' + eventId, { method:'POST', body:data, headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })
 			.then(r => r.json()).then(function(j){
 				if (j.status === 0) { if (msg) { msg.textContent = 'Saved.'; msg.style.color = '#22543d'; } }
 				else { if (msg) { msg.textContent = 'Failed: ' + (j.error || 'unknown'); msg.style.color = '#c53030'; } }
@@ -735,7 +736,7 @@
 			var nEl = card.querySelector('.vte-rs-nota'); if (nEl) data.append('AllowNoneOfAbove', nEl.checked ? 1 : 0);
 			var ncaEl = card.querySelector('.vte-rs-nca'); if (ncaEl) data.append('NotaCountsAs', ncaEl.value);
 			var nbEl = card.querySelector('.vte-rs-nb'); if (nbEl) data.append('IsNonBinding', nbEl.checked ? 1 : 0);
-			fetch('<?= UIR ?>VotingAjax/edit_race_settings/' + btn.dataset.raceId, { method:'POST', body:data, credentials:'same-origin' })
+			fetch('<?= UIR ?>VotingAjax/edit_race_settings/' + btn.dataset.raceId, { method:'POST', body:data, headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })
 				.then(r => r.json()).then(function(j){
 					if (j.status === 0) { if (msg) { msg.textContent = 'Saved.'; msg.style.color = '#22543d'; } }
 					else { if (msg) { msg.textContent = 'Failed: ' + (j.error || 'unknown') + (j.detail ? ' (' + j.detail + ')' : ''); msg.style.color = '#c53030'; } }
