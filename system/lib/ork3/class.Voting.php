@@ -179,6 +179,51 @@ class Voting extends Ork3
         ];
     }
 
+    // Full electorate for a scope: resolves the ruleset, runs the all-players eligibility report,
+    // and returns the eligible set + count. Single source of truth for the organizer roster,
+    // runner turnout, and the publish-time freeze. Kingdom scope evaluates the whole kingdom;
+    // park scope narrows to park members (still using the kingdom-level VotingEligible right).
+    public function compute_eligible_roll($scope_type, $scope_id)
+    {
+        $kingdom_id = $this->resolve_kingdom_id($scope_type, (int)$scope_id);
+        $resolved   = self::resolve_rules($kingdom_id);
+        $rules      = $resolved['rules'];
+
+        $report = new Report();
+        $args = array_merge($rules, ['KingdomId' => $kingdom_id]);
+        if ($scope_type === 'park') {
+            $args['ParkId'] = (int)$scope_id;
+        }
+        $r = $report->GetVotingEligible($args);
+
+        $ids = [];
+        $players = [];
+        foreach (($r['Players'] ?? []) as $p) {
+            if (empty($p['VotingEligible'])) {
+                continue;
+            }
+            $mid = (int)($p['MundaneId'] ?? 0);
+            if ($mid <= 0) {
+                continue;
+            }
+            $ids[] = $mid;
+            $players[] = [
+                'MundaneId' => $mid,
+                'Persona'   => (string)($p['Persona'] ?? ''),
+                'ParkName'  => $p['ParkName'] ?? null,
+                'DuesPaid'  => (int)($p['DuesPaid'] ?? 0),
+                'AttCount'  => (int)($p['AttCount'] ?? 0),
+            ];
+        }
+        return [
+            'rules'      => $rules,
+            'is_default' => $resolved['is_default'],
+            'count'      => count($ids),
+            'ids'        => $ids,
+            'players'    => $players,
+        ];
+    }
+
     // ════════════════════════════════════════════════════════════════════
     //                        AUTHORIZATION HELPERS
     // ════════════════════════════════════════════════════════════════════

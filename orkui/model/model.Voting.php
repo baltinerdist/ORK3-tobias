@@ -116,6 +116,11 @@ class Model_Voting extends Model
         return $this->Voting->GetEligibilityCheck($request);
     }
 
+    public function eligible_roll($scope_type, $scope_id)
+    {
+        return $this->Voting->compute_eligible_roll($scope_type, (int)$scope_id);
+    }
+
     public function list_for_scope($scope_type, $scope_id)
     {
         $r = $this->Voting->ListEventsForScope(['ScopeType' => $scope_type, 'ScopeId' => $scope_id]);
