@@ -99,13 +99,6 @@
 		<div class="vtc-row">
 			<label>Options</label>
 			<div class="vtc-toggle">
-				<input id="vtc-anon" type="checkbox" name="AnonymousToRunner" value="1" />
-				<label for="vtc-anon">
-					Anonymous to runners
-					<div class="vtc-help">Hide voter→choice mapping from runners. ORK admins retain audit access.</div>
-				</label>
-			</div>
-			<div class="vtc-toggle">
 				<input id="vtc-hide" type="checkbox" name="HideResultsFromCandidateRunners" value="1" checked />
 				<label for="vtc-hide">
 					Hide live results from candidate-officers

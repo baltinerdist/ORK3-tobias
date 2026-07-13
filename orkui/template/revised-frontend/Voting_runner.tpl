@@ -73,9 +73,6 @@
 				<a class="rp-scope-chip" href="<?= UIR ?>Voting/index/<?= ucfirst($event['scope_type']) ?>_<?= (int)$event['scope_id'] ?>"><i class="fas fa-arrow-left"></i> Back to Voting</a>
 				<span class="rp-scope-chip" style="cursor:default;">Status: <?= htmlspecialchars($event['status']) ?></span>
 				<span class="rp-scope-chip" style="cursor:default;"><i class="fas fa-clock"></i> Closes <?= date('M j, Y g:i A', strtotime($event['end_date'])) ?></span>
-				<?php if (!empty($event['anonymous_to_runner'])): ?>
-					<span class="rp-scope-chip" style="cursor:default;"><i class="fas fa-user-secret"></i> anonymous</span>
-				<?php endif; ?>
 			</div>
 		</div>
 	</div>

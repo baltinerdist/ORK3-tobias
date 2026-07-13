@@ -154,7 +154,6 @@
 						<input id="vte-cfg-end" type="text" value="<?= htmlspecialchars($event['end_date'] ?? '') ?>" placeholder="Pick a date and time..." />
 					</div>
 				</div>
-				<div class="vte-toggle"><input id="vte-cfg-anon" type="checkbox" <?= !empty($event['anonymous_to_runner']) ? 'checked' : '' ?> /><label for="vte-cfg-anon">Anonymous to runner (runners cannot see who voted what)</label></div>
 				<div class="vte-toggle"><input id="vte-cfg-hide" type="checkbox" <?= !empty($event['hide_results_from_candidate_runners']) ? 'checked' : '' ?> /><label for="vte-cfg-hide">Hide pre-publish results from runners who are also candidates</label></div>
 				<div class="vte-toggle"><input id="vte-cfg-prov" type="checkbox" <?= !empty($event['allow_provisional']) ? 'checked' : '' ?> /><label for="vte-cfg-prov">Allow provisional ballots from voters whose eligibility is pending</label></div>
 				<div class="vte-actions" style="margin-top:10px;"><button id="vte-cfg-save" class="vte-btn vte-btn-primary" type="button">Save Event Settings</button><span id="vte-cfg-msg" style="margin-left:10px;font-size:13px;"></span></div>
@@ -706,7 +705,6 @@
 		data.append('Description', $('#vte-cfg-desc').value);
 		data.append('StartDate', $('#vte-cfg-start').value);
 		data.append('EndDate', $('#vte-cfg-end').value);
-		data.append('AnonymousToRunner', $('#vte-cfg-anon').checked ? 1 : 0);
 		data.append('HideResultsFromCandidateRunners', $('#vte-cfg-hide').checked ? 1 : 0);
 		data.append('AllowProvisional', $('#vte-cfg-prov').checked ? 1 : 0);
 		fetch('<?= UIR ?>VotingAjax/edit_event/' + eventId, { method:'POST', body:data, headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })

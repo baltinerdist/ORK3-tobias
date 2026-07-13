@@ -442,6 +442,8 @@ class Voting extends Ork3
         $this->Event->description = $request['Description'] ?? '';
         $this->Event->start_date = $request['StartDate'];
         $this->Event->end_date   = $request['EndDate'];
+        // DEPRECATED: anonymous_to_runner UI removed (was inert — no per-voter runner projection existed).
+        // Column retained non-destructively; always pins to 0. Runner audit view redacts voters unconditionally.
         $this->Event->anonymous_to_runner = !empty($request['AnonymousToRunner']) ? 1 : 0;
         $this->Event->hide_results_from_candidate_runners = !empty($request['HideResultsFromCandidateRunners']) ? 1 : 0;
         $this->Event->allow_provisional = !empty($request['AllowProvisional']) ? 1 : 0;
