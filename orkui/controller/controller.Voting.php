@@ -83,6 +83,11 @@ class Controller_Voting extends Controller
 
         // Form submit.
         if (!empty($this->request->Action) && $this->request->Action === 'create_event') {
+            if (!hash_equals($this->_csrfToken(), (string)($this->request->csrf_token ?? ''))) {
+                $this->data['Error'] = 'Invalid or expired request token. Reload and try again.';
+                $this->template = '../revised-frontend/Voting_create.tpl';
+                return;
+            }
             $req = [
                 'Token' => $this->session->token,
                 'EventType' => $this->request->EventType,

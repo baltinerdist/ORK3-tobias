@@ -62,6 +62,7 @@
 
 	<form method="POST" class="vtc-card">
 		<input type="hidden" name="Action" value="create_event" />
+		<input type="hidden" name="csrf_token" value="<?= htmlspecialchars($VotingCsrf ?? '', ENT_QUOTES) ?>" />
 
 		<div class="vtc-row">
 			<label>Event Type</label>
