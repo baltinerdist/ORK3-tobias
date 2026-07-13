@@ -152,6 +152,10 @@ class Model_Voting extends Model
     {
         return $this->Voting->user_is_candidate_in_event($mundane_id, $voting_event_id);
     }
+    public function voter_choices($voting_event_id, $voter_mundane_id, $viewer_mundane_id)
+    {
+        return $this->Voting->voter_choices($voting_event_id, $voter_mundane_id, $viewer_mundane_id);
+    }
     public function reopened_by_persona($mundane_id)
     {
         return $this->Voting->reopened_by_persona($mundane_id);

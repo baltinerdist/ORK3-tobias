@@ -372,6 +372,24 @@ class Controller_VotingAjax extends Controller
         $this->candidate_search(ucfirst($scope['scope_type']) . '_' . (int)$scope['scope_id']);
     }
 
+    // Admin-only voter->choice reveal. Writes an admin_voter_choice_view audit row.
+    // POST + X-CSRF-Token enforced by the constructor gate (not a read action).
+    public function voter_choices($voting_event_id = null)
+    {
+        $this->require_login();
+        $voting_event_id = (int)$voting_event_id;
+        $uid = (int)$this->session->user_id;
+        if (!Ork3::$Lib->authorization->HasAuthority($uid, AUTH_ADMIN, 0, AUTH_ADMIN)) {
+            $this->fail('Only ORK administrators may reveal an individual ballot.');
+        }
+        $voter_id = (int)$this->request->VoterMundaneId;
+        if (!$voter_id) {
+            $this->fail('Voter required.');
+        }
+        $choices = $this->Voting->voter_choices($voting_event_id, $voter_id, $uid);
+        $this->ok(['choices' => $choices]);
+    }
+
     public function reopen_event($voting_event_id = null)
     {
         $this->require_login();

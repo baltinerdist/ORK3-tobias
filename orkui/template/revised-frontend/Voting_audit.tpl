@@ -68,4 +68,42 @@
 		<div style="padding:30px;text-align:center;color:#718096;">No audit entries yet.</div>
 	<?php endif; ?>
 </div>
+<?php if (!empty($is_admin)): ?>
+	<div class="vta-wrap" style="margin-top:16px;">
+		<div style="border:1px solid var(--vta-card-border,#e2e8f0);border-radius:8px;padding:12px;">
+			<div style="font-weight:600;margin-bottom:8px;">Reveal a voter's ballot (ORK admin — audited)</div>
+			<div style="font-size:12px;color:#718096;margin-bottom:8px;">Every reveal writes an <code>admin_voter_choice_view</code> audit row.</div>
+			<input id="vta-reveal-id" type="number" min="1" placeholder="Voter mundane id" style="padding:8px;border:1px solid #cbd5e0;border-radius:6px;" />
+			<button id="vta-reveal-go" type="button" class="vta-action-pill" style="cursor:pointer;border:none;">Reveal</button>
+			<div id="vta-reveal-out" style="margin-top:10px;font-size:13px;"></div>
+		</div>
+	</div>
+	<script>window.VOTING_CSRF = <?= json_encode($VotingCsrf ?? '') ?>;</script>
+	<script>
+	(function(){
+		var go = document.getElementById('vta-reveal-go');
+		if (!go) return;
+		go.addEventListener('click', function(){
+			var vid = parseInt(document.getElementById('vta-reveal-id').value, 10);
+			var out = document.getElementById('vta-reveal-out');
+			if (!vid) { out.textContent = 'Enter a voter id.'; return; }
+			fetch('<?= UIR ?>VotingAjax/voter_choices/<?= (int)$voting_event_id ?>', {
+				method:'POST',
+				headers:{'X-CSRF-Token': (window.VOTING_CSRF||''), 'Content-Type':'application/x-www-form-urlencoded'},
+				credentials:'same-origin',
+				body:'VoterMundaneId=' + vid
+			}).then(function(r){ return r.json(); }).then(function(j){
+				if (j.status !== 0) { out.textContent = j.error || 'Failed'; return; }
+				if (!j.choices || !j.choices.length) { out.textContent = 'No active ballot for that voter.'; return; }
+				var lines = j.choices.map(function(c){
+					var pick = c.is_abstain == 1 ? '(abstain)' : (c.is_none_of_above == 1 ? '(none of the above)' : (c.label || ''));
+					var rank = c.rank ? ' [rank ' + c.rank + ']' : '';
+					return (c.race_title || '') + ': ' + pick + rank;
+				});
+				out.innerHTML = lines.map(function(l){ return l.replace(/[<>&]/g, ''); }).join('<br>');
+			});
+		});
+	})();
+	</script>
+<?php endif; ?>
 </div><!-- /rp-root -->

@@ -190,6 +190,35 @@ class Voting extends Ork3
         return $rs && $rs->Next();
     }
 
+    /**
+     * Admin-only voter→choice reveal for a single voter's active ballot.
+     * Writes an admin_voter_choice_view audit row BEFORE returning data — this is
+     * the ONLY sanctioned per-voter read path. (Full secret-ballot decoupling is a
+     * documented future item; see plan-5-security-audit.md.)
+     */
+    public function voter_choices($voting_event_id, $voter_mundane_id, $viewer_mundane_id)
+    {
+        $voting_event_id = (int)$voting_event_id;
+        $voter_mundane_id = (int)$voter_mundane_id;
+        $this->audit($voting_event_id, 'admin_voter_choice_view', ['voter_mundane_id' => $voter_mundane_id], (int)$viewer_mundane_id);
+
+        global $DB;
+        $DB->Clear();
+        $rs = $DB->DataSet("SELECT r.title AS race_title, r.display_order, c.label, c.candidate_mundane_id,
+                v.rank, v.is_abstain, v.is_none_of_above
+            FROM " . DB_PREFIX . "voting_active_ballot ab
+            JOIN " . DB_PREFIX . "voting_vote v ON v.voting_ballot_id = ab.voting_ballot_id
+            JOIN " . DB_PREFIX . "voting_race r ON r.voting_race_id = v.voting_race_id
+            LEFT JOIN " . DB_PREFIX . "voting_choice c ON c.voting_choice_id = v.voting_choice_id
+            WHERE ab.voting_event_id = " . $voting_event_id . " AND ab.voter_mundane_id = " . $voter_mundane_id . "
+            ORDER BY r.display_order, v.rank");
+        $out = [];
+        while ($rs && $rs->Next()) {
+            $out[] = (array)$rs;
+        }
+        return $out;
+    }
+
     // ════════════════════════════════════════════════════════════════════
     //                        DASHBOARD / VOTER READS
     // ════════════════════════════════════════════════════════════════════
@@ -402,10 +431,18 @@ class Voting extends Ork3
     private function audit($voting_event_id, $action, $detail = null, $actor_mundane_id = null)
     {
         global $DB;
+        // Yapo's Execute() takes only $sql — bound params come from SetData(), NOT a
+        // second argument (which it silently ignores). Passing [params] as arg #2 left
+        // every audit row unwritten. Load the values via SetData() before Execute().
         $DB->Clear();
+        $DB->SetData([
+            (int)$voting_event_id,
+            $actor_mundane_id !== null ? (int)$actor_mundane_id : null,
+            (string)$action,
+            $detail !== null ? json_encode($detail) : null,
+        ]);
         $DB->Execute(
-            "INSERT INTO " . DB_PREFIX . "voting_audit (voting_event_id, actor_mundane_id, action, detail, created_at) VALUES (?, ?, ?, ?, NOW())",
-            [(int)$voting_event_id, $actor_mundane_id !== null ? (int)$actor_mundane_id : null, (string)$action, $detail !== null ? json_encode($detail) : null]
+            "INSERT INTO " . DB_PREFIX . "voting_audit (voting_event_id, actor_mundane_id, action, detail, created_at) VALUES (?, ?, ?, ?, NOW())"
         );
         $DB->Clear();
     }
