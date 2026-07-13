@@ -55,9 +55,31 @@ class Voting extends Ork3
         24 => ['AttendanceRequired' => 6,'MonthsWindow' => 6,'MinMembershipMonths' => 3,'AttendanceMode' => 'weeks','ProvinceMode' => false,'ShowEventCount' => true],
     ];
 
+    // Applied when a kingdom is not in $rules_by_kingdom. Matches the Reports-layer defaults
+    // (att_req 6, 6-month window, weeks) so unlisted kingdoms behave like a plain attendance rule
+    // instead of being bricked. See Finding 21.
+    public const DEFAULT_RULES = [
+        'AttendanceRequired'  => 6,
+        'MonthsWindow'        => 6,
+        'MinMembershipMonths' => 0,
+        'AttendanceMode'      => 'weeks',
+        'ProvinceMode'        => false,
+    ];
+
     public static function voting_rules_for_kingdom($kingdom_id)
     {
         return self::$rules_by_kingdom[(int)$kingdom_id] ?? null;
+    }
+
+    // Resolve the ruleset for a kingdom, falling back to a safe default so voting is never
+    // impossible in an unconfigured kingdom. is_default lets the organizer UI disclose the fallback.
+    public static function resolve_rules($kingdom_id)
+    {
+        $rules = self::$rules_by_kingdom[(int)$kingdom_id] ?? null;
+        if ($rules === null) {
+            return ['rules' => self::DEFAULT_RULES, 'is_default' => true];
+        }
+        return ['rules' => $rules, 'is_default' => false];
     }
 
     private function resolve_kingdom_id($scope_type, $scope_id)
@@ -79,29 +101,43 @@ class Voting extends Ork3
     private function check_eligibility_live($mundane_id, $scope_type, $scope_id)
     {
         $kingdom_id = $this->resolve_kingdom_id($scope_type, $scope_id);
-        $rules = self::voting_rules_for_kingdom($kingdom_id);
-        if ($rules === null) {
-            return ['eligible' => false, 'provisional_possible' => false, 'rules' => []];
-        }
+        $resolved   = self::resolve_rules($kingdom_id);
+        $rules      = $resolved['rules'];
+
         $report = new Report();
-        $r = $report->GetVotingEligible(array_merge($rules, [
+        $args = array_merge($rules, [
             'KingdomId' => $kingdom_id,
             'MundaneId' => (int)$mundane_id,
-        ]));
+        ]);
+        if ($scope_type === 'park') {
+            $args['ParkId'] = (int)$scope_id;
+        }
+        $r = $report->GetVotingEligible($args);
         $player = $r['Players'][0] ?? [];
-        // "Provisional possible" = currently ineligible but only because of dues — i.e., they have enough
-        // attendance but their membership status is the gating factor. The Reports check exposes
-        // ActiveMember; if ActiveMember is null/false but other criteria are met, treat as provisional-possible.
+
         $eligible = !empty($player['VotingEligible']);
-        $provisional_possible = !$eligible && !empty($player) && (
-            !empty($player['AttendanceMet'] ?? false) ||
-            ((int)($player['Days'] ?? 0) >= ($rules['AttendanceRequired'] ?? PHP_INT_MAX))
-        );
+        $att_req  = (int)($rules['AttendanceRequired'] ?? 6);
+        $att_have = (int)($player['AttCount'] ?? 0);
+
+        // Provisional-possible = currently ineligible but ONLY because of dues, with attendance already met
+        // and no hard blocker (suspension / no waiver). GetVotingEligible does not expose AttendanceMet/Days;
+        // derive from AttCount vs AttendanceRequired and the dues flag.
+        $provisional_possible = !$eligible
+            && !empty($player)
+            && empty($player['Suspended'])
+            && !empty($player['Waivered'])
+            && empty($player['DuesPaid'])
+            && $att_have >= $att_req;
+
+        $reason = $this->eligibility_reason($eligible, $player, $att_req);
+
         return [
-            'eligible' => $eligible,
+            'eligible'             => $eligible,
             'provisional_possible' => $provisional_possible,
-            'rules' => $rules,
-            'player' => $player,
+            'rules'                => $rules,
+            'is_default_rules'     => $resolved['is_default'],
+            'player'               => $player,
+            'reason'               => $reason,
         ];
     }
 
