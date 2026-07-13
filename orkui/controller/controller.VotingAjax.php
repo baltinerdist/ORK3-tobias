@@ -7,6 +7,30 @@ class Controller_VotingAjax extends Controller
         parent::__construct($call, $id);
         $this->load_model('Voting');
         header('Content-Type: application/json');
+        $this->_csrf_gate($call);
+    }
+
+    /**
+     * CSRF + method gate. Any action NOT on the GET read-allowlist must be a POST
+     * carrying a valid X-CSRF-Token header (window.VOTING_CSRF). New mutation
+     * actions are auto-protected — do not add them here. Reject GET-triggered mutations.
+     */
+    private function _csrf_gate($call)
+    {
+        $read_actions = ['tally', 'banner', 'candidate_search', 'voter_search', 'preview_resume'];
+        $action = strtolower((string)$call);
+        if (in_array($action, $read_actions, true)) {
+            return;
+        }
+        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+            http_response_code(405);
+            $this->fail('This action must be submitted as POST.');
+        }
+        $sent = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? ($this->request->csrf_token ?? '');
+        if (!is_string($sent) || !hash_equals($this->_csrfToken(), $sent)) {
+            http_response_code(419);
+            $this->fail('Invalid or expired request token. Reload the page and try again.');
+        }
     }
 
     private function fail($msg, $detail = '')
