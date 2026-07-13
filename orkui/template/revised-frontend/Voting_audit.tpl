@@ -1,4 +1,42 @@
 <?php $rows = $rows ?? []; $voting_event_id = (int)($voting_event_id ?? 0); ?>
+<?php
+if (!function_exists('vta_detail_phrase')) {
+	function vta_detail_phrase($action, $d)
+	{
+		if (!is_array($d)) {
+			return '';
+		}
+		$esc = function ($v) {
+			return htmlspecialchars(is_scalar($v) ? (string)$v : json_encode($v), ENT_QUOTES);
+		};
+		switch ($action) {
+			case 'event_created':
+			case 'event_updated':
+				return isset($d['title']) ? 'Title: ' . $esc($d['title']) : (isset($d['status']) ? 'Status: ' . $esc($d['status']) : '');
+			case 'race_created':
+			case 'race_wording_edited':
+				return isset($d['title']) ? 'Race: ' . $esc($d['title']) : '';
+			case 'choice_label_edited':
+				return (isset($d['from'], $d['to'])) ? 'Label: ' . $esc($d['from']) . ' &rarr; ' . $esc($d['to']) : '';
+			case 'tie_resolved':
+				return isset($d['winner_choice_id']) ? 'Winner chosen: choice #' . $esc($d['winner_choice_id']) . (isset($d['justification']) ? ' — ' . $esc($d['justification']) : '') : '';
+			case 'provisional_released_runner':
+				return isset($d['reason']) ? 'Reason: ' . $esc($d['reason']) : '';
+			case 'admin_voter_choice_view':
+				return 'Revealed ballot of voter #' . $esc($d['voter_mundane_id'] ?? '(redacted)');
+			case 'ballot_cast':
+			case 'ballot_changed':
+				return isset($d['is_provisional']) && $d['is_provisional'] ? 'Provisional ballot' : 'Ballot recorded';
+		}
+		// Fallback: compact key: value pairs (voter-identifying keys already stripped upstream when redacted).
+		$parts = [];
+		foreach ($d as $k => $v) {
+			$parts[] = $esc($k) . ': ' . $esc($v);
+		}
+		return implode(', ', $parts);
+	}
+}
+?>
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>default/style/reports.css?v=<?= filemtime(__DIR__ . '/../default/style/reports.css') ?>">
 <style>
 	.rp-root.vt-root { --rp-accent-dark:#2c5282; --rp-accent:#3182ce; --rp-accent-mid:#4299e1; }
@@ -51,6 +89,10 @@
 				'ballot_replaced_by_paper' => 'Ballot replaced by runner',
 				'provisional_released_runner' => 'Provisional released by runner',
 				'provisional_released_system' => 'Provisional released (eligibility)',
+				'results_published' => 'Results published',
+				'results_unpublished' => 'Results unpublished',
+				'tie_resolved' => 'Tie resolved',
+				'admin_voter_choice_view' => 'Admin viewed a voter\'s ballot',
 			];
 			foreach ($rows as $r):
 				$action_pretty = $action_labels[$r['action']] ?? $r['action'];
@@ -59,7 +101,7 @@
 					<td><?= htmlspecialchars($r['created_at']) ?></td>
 					<td><?= htmlspecialchars(($r['persona'] ?: $r['username']) ?? '') ?></td>
 					<td><span class="vta-action-pill" data-tip="<?= htmlspecialchars($r['action'], ENT_QUOTES) ?>"><?= htmlspecialchars($action_pretty) ?></span></td>
-					<td class="vta-detail"><?= htmlspecialchars($r['detail'] ?? '') ?></td>
+					<td class="vta-detail"><?= vta_detail_phrase($r['action'], $r['detail_data'] ?? null) ?></td>
 				</tr>
 			<?php endforeach; ?>
 		</tbody>
