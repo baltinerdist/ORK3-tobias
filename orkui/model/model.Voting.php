@@ -168,9 +168,9 @@ class Model_Voting extends Model
     {
         return $this->Voting->ballot_counts($voting_event_id);
     }
-    public function audit_log($voting_event_id, $limit = 500)
+    public function audit_log($voting_event_id, $limit = 500, $redact_voters = false)
     {
-        return $this->Voting->audit_log($voting_event_id, $limit);
+        return $this->Voting->audit_log($voting_event_id, $limit, $redact_voters);
     }
     public function tally_gate_info($voting_event_id)
     {

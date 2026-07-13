@@ -269,16 +269,32 @@ class Voting extends Ork3
 
     // Audit rows for an event, newest-first, joined to actor username/persona.
     // Source: controller.Voting.php::audit.
-    public function audit_log($voting_event_id, $limit = 500)
+    public function audit_log($voting_event_id, $limit = 500, $redact_voters = false)
     {
         global $DB;
         $DB->Clear();
         $rs = $DB->DataSet("SELECT a.*, m.username, m.persona FROM " . DB_PREFIX . "voting_audit a
             LEFT JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = a.actor_mundane_id
             WHERE a.voting_event_id = " . (int)$voting_event_id . " ORDER BY a.created_at DESC, a.voting_audit_id DESC LIMIT " . (int)$limit);
+        $voter_keys = ['voter_mundane_id', 'mundane_id', 'ballot_id', 'prior_ballot_id', 'superseded_ballot_id'];
+        $actor_is_voter = ['ballot_cast', 'ballot_changed'];
         $rows = [];
         while ($rs && $rs->Next()) {
-            $rows[] = (array)$rs;
+            $row = (array)$rs;
+            $decoded = ($row['detail'] ?? null) !== null ? json_decode($row['detail'], true) : null;
+            $row['detail_data'] = is_array($decoded) ? $decoded : null;
+            if ($redact_voters) {
+                if (is_array($row['detail_data'])) {
+                    foreach ($voter_keys as $k) {
+                        unset($row['detail_data'][$k]);
+                    }
+                }
+                if (in_array($row['action'], $actor_is_voter, true)) {
+                    $row['username'] = null;
+                    $row['persona']  = 'A voter';
+                }
+            }
+            $rows[] = $row;
         }
         return $rows;
     }

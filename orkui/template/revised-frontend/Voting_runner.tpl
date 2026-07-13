@@ -92,7 +92,7 @@
 		<button class="vtr-tab active" data-pane="results">Live Results</button>
 		<button class="vtr-tab" data-pane="external">Enter External Votes</button>
 		<button class="vtr-tab" data-pane="manage">Event Management</button>
-		<?php if ($is_admin): ?><button class="vtr-tab" data-pane="audit"><a href="<?= UIR ?>Voting/audit/<?= $voting_event_id ?>" style="color:inherit;text-decoration:none;">Audit Log</a></button><?php endif; ?>
+		<button class="vtr-tab" data-pane="audit"><a href="<?= UIR ?>Voting/audit/<?= $voting_event_id ?>" style="color:inherit;text-decoration:none;">Audit Log</a></button>
 	</div>
 
 	<div class="vtr-pane active" data-pane="results">

@@ -253,11 +253,13 @@ class Controller_Voting extends Controller
         $this->require_login();
         $voting_event_id = (int)$voting_event_id;
         $uid = (int)$this->session->user_id;
-        if (!Ork3::$Lib->authorization->HasAuthority($uid, AUTH_ADMIN, 0, AUTH_ADMIN)) {
-            header('Location: ' . UIR);
+        if (!$this->Voting->user_is_runner_of_event($uid, $voting_event_id)) {
+            header('Location: ' . UIR . 'Voting/results/' . $voting_event_id);
             exit;
         }
-        $this->data['rows'] = $this->Voting->audit_log($voting_event_id);
+        $is_admin = Ork3::$Lib->authorization->HasAuthority($uid, AUTH_ADMIN, 0, AUTH_ADMIN);
+        $this->data['is_admin'] = $is_admin;
+        $this->data['rows'] = $this->Voting->audit_log($voting_event_id, 500, !$is_admin);
         $this->data['voting_event_id'] = $voting_event_id;
         $this->template = '../revised-frontend/Voting_audit.tpl';
     }
