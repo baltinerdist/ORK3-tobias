@@ -73,7 +73,13 @@
 		<?php if ($event['status'] !== 'open'): ?>
 			<div class="vtv-banner vtv-banner-warn">Voting is not currently open. Status: <strong><?= htmlspecialchars($event['status']) ?></strong>.</div>
 		<?php elseif (empty($elig['Eligible']) && (empty($elig['ProvisionalPossible']) || empty($elig['AllowProvisional']))): ?>
-			<div class="vtv-banner vtv-banner-err">You are not currently eligible to vote in this event.</div>
+			<div class="vtv-banner vtv-banner-err">
+				<i class="fas fa-exclamation-triangle"></i>
+				<?= htmlspecialchars(!empty($elig['ReasonText']) ? $elig['ReasonText'] : 'You are not currently eligible to vote in this event.') ?>
+				<?php if (!empty($elig['FixUrl'])): ?>
+					<a href="<?= UIR . htmlspecialchars($elig['FixUrl']) ?>" style="color:inherit;text-decoration:underline;font-weight:600;margin-left:6px;">Fix this &rarr;</a>
+				<?php endif; ?>
+			</div>
 		<?php else: ?>
 			<?php if (empty($elig['Eligible']) && !empty($elig['ProvisionalPossible']) && !empty($elig['AllowProvisional'])): ?>
 				<div class="vtv-banner vtv-banner-info">

@@ -82,6 +82,44 @@ class Voting extends Ork3
         return ['rules' => $rules, 'is_default' => false];
     }
 
+    // Pure gating-reason mapper: given a GetVotingEligible player row + the attendance requirement,
+    // returns why they are ineligible and (when applicable) a relative fix path. Order = severity.
+    public static function reason_pure($eligible, array $player, $att_req)
+    {
+        if ($eligible) {
+            return ['code' => 'none', 'text' => '', 'short' => 0, 'fix' => null];
+        }
+        if (empty($player)) {
+            return ['code' => 'unknown', 'text' => 'You are not currently eligible to vote in this event.', 'short' => 0, 'fix' => null];
+        }
+        if (!empty($player['Suspended'])) {
+            $until = !empty($player['SuspendedUntil']) ? ' (until ' . date('M j, Y', strtotime($player['SuspendedUntil'])) . ')' : '';
+            return ['code' => 'suspended', 'text' => 'Your membership is suspended' . $until . ', so you cannot vote.', 'short' => 0, 'fix' => null];
+        }
+        if (empty($player['Waivered'])) {
+            return ['code' => 'no_waiver', 'text' => 'You need a current waiver on file with your park before you can vote.', 'short' => 0, 'fix' => null];
+        }
+        if (isset($player['MembershipOk']) && empty($player['MembershipOk'])) {
+            $since = !empty($player['MemberSince']) ? ' (member since ' . date('M j, Y', strtotime($player['MemberSince'])) . ')' : '';
+            return ['code' => 'membership', 'text' => 'You have not been a member long enough to vote yet' . $since . '.', 'short' => 0, 'fix' => null];
+        }
+        if (empty($player['DuesPaid'])) {
+            return ['code' => 'dues', 'text' => 'You need to pay your membership dues to be eligible to vote.', 'short' => 0, 'fix' => 'Player/renew'];
+        }
+        $att_have = (int)($player['AttCount'] ?? 0);
+        $short = max(0, (int)$att_req - $att_have);
+        if ($short > 0) {
+            return ['code' => 'attendance', 'text' => 'You need ' . $short . ' more qualifying event ' . ($short === 1 ? 'day' : 'days') . ' before the vote closes to be eligible.', 'short' => $short, 'fix' => null];
+        }
+        return ['code' => 'unknown', 'text' => 'You are not currently eligible to vote in this event.', 'short' => 0, 'fix' => null];
+    }
+
+    // Instance wrapper — keeps call sites terse.
+    private function eligibility_reason($eligible, array $player, $att_req)
+    {
+        return self::reason_pure($eligible, $player, $att_req);
+    }
+
     private function resolve_kingdom_id($scope_type, $scope_id)
     {
         if ($scope_type === 'kingdom') {
@@ -2216,11 +2254,16 @@ class Voting extends Ork3
             return ProcessingError('', 'Event not found.');
         }
         $elig = $this->check_eligibility_live($mundane_id, $rs->scope_type, $rs->scope_id);
+        $reason = $elig['reason'] ?? ['code' => 'unknown', 'text' => 'You are not currently eligible to vote in this event.', 'short' => 0, 'fix' => null];
         return [
             'Status' => 0,
             'Eligible' => $elig['eligible'],
             'ProvisionalPossible' => $elig['provisional_possible'],
             'AllowProvisional' => (int)$rs->allow_provisional,
+            'Reason' => $reason['code'],
+            'ReasonText' => $reason['text'],
+            'ReasonShort' => (int)$reason['short'],
+            'FixUrl' => $reason['fix'],
         ];
     }
 
