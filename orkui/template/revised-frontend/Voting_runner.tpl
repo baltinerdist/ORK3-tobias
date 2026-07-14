@@ -99,14 +99,14 @@
 		<div class="vtr-stat"><div class="vtr-stat-label">Turnout</div><div class="vtr-stat-value"><?= $_elig > 0 ? $_turnout . '%' : '&mdash;' ?></div></div>
 	</div>
 
-	<div class="vtr-tabs">
-		<button class="vtr-tab active" data-pane="results">Live Results</button>
-		<button class="vtr-tab" data-pane="external">Enter External Votes</button>
-		<button class="vtr-tab" data-pane="manage">Event Management</button>
-		<button class="vtr-tab" data-pane="audit"><a href="<?= UIR ?>Voting/audit/<?= $voting_event_id ?>" style="color:inherit;text-decoration:none;">Audit Log</a></button>
+	<div class="vtr-tabs" role="tablist" aria-label="Runner sections">
+		<button class="vtr-tab active" data-pane="results" role="tab" id="vtr-tab-results" aria-selected="true" aria-controls="vtr-pane-results" tabindex="0">Live Results</button>
+		<button class="vtr-tab" data-pane="external" role="tab" id="vtr-tab-external" aria-selected="false" aria-controls="vtr-pane-external" tabindex="-1">Enter External Votes</button>
+		<button class="vtr-tab" data-pane="manage" role="tab" id="vtr-tab-manage" aria-selected="false" aria-controls="vtr-pane-manage" tabindex="-1">Event Management</button>
+		<?php if ($is_admin): ?><a class="vtr-tab" role="tab" tabindex="-1" href="<?= UIR ?>Voting/audit/<?= $voting_event_id ?>">Audit Log</a><?php endif; ?>
 	</div>
 
-	<div class="vtr-pane active" data-pane="results">
+	<div class="vtr-pane active" data-pane="results" id="vtr-pane-results" role="tabpanel" aria-labelledby="vtr-tab-results">
 		<?php if ($suppress): ?>
 			<div class="vtr-suppress">
 				<i class="fas fa-eye-slash" style="font-size:24px"></i>
@@ -118,7 +118,7 @@
 		<?php endif; ?>
 	</div>
 
-	<div class="vtr-pane" data-pane="external">
+	<div class="vtr-pane" data-pane="external" id="vtr-pane-external" role="tabpanel" aria-labelledby="vtr-tab-external">
 		<div class="vtr-card">
 			<h2>Enter External Votes</h2>
 			<div class="vtr-banner vtr-banner-info">Enter votes received outside of ORK voting (e.g., paper ballots collected at events). The voter must already have an ORK record.</div>
@@ -156,7 +156,7 @@
 		</div>
 	</div>
 
-	<div class="vtr-pane" data-pane="manage">
+	<div class="vtr-pane" data-pane="manage" id="vtr-pane-manage" role="tabpanel" aria-labelledby="vtr-tab-manage">
 		<div class="vtr-card">
 			<h2>Event Management</h2>
 			<?php if ($event['status'] === 'open'): ?>
@@ -223,13 +223,27 @@
 	function $(s,p){return (p||document).querySelector(s);}
 	function $$(s,p){return Array.from((p||document).querySelectorAll(s));}
 
-	// Tabs.
-	$$('.vtr-tab').forEach(function(t){
-		t.addEventListener('click', function(){
-			var name = t.dataset.pane;
-			if (!name) return;
-			$$('.vtr-tab').forEach(function(x){ x.classList.toggle('active', x === t); });
-			$$('.vtr-pane').forEach(function(p){ p.classList.toggle('active', p.dataset.pane === name); });
+	// Tabs (ARIA tablist: roving tabindex + arrow keys; the Audit <a> has no data-pane and navigates natively).
+	var tabEls = $$('.vtr-tab');
+	function activateTab(t){
+		var name = t.dataset.pane;
+		if (!name) return; // Audit link — let the browser navigate.
+		tabEls.forEach(function(x){
+			var on = (x === t);
+			x.classList.toggle('active', on);
+			if (x.hasAttribute('role')) { x.setAttribute('aria-selected', on ? 'true' : 'false'); x.tabIndex = on ? 0 : -1; }
+		});
+		$$('.vtr-pane').forEach(function(p){ p.classList.toggle('active', p.dataset.pane === name); });
+	}
+	tabEls.forEach(function(t, i){
+		t.addEventListener('click', function(){ if (t.dataset.pane) activateTab(t); });
+		t.addEventListener('keydown', function(e){
+			if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+			e.preventDefault();
+			var dir = e.key === 'ArrowRight' ? 1 : -1;
+			var next = tabEls[(i + dir + tabEls.length) % tabEls.length];
+			next.focus();
+			if (next.dataset.pane) activateTab(next);
 		});
 	});
 
