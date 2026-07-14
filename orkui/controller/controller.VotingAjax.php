@@ -17,7 +17,7 @@ class Controller_VotingAjax extends Controller
      */
     private function _csrf_gate($call)
     {
-        $read_actions = ['tally', 'banner', 'candidate_search', 'voter_search', 'preview_resume', 'eligibility_roster'];
+        $read_actions = ['tally', 'banner', 'candidate_search', 'voter_search', 'preview_resume', 'eligibility_roster', 'external_ballot_form', 'external_roster'];
         $action = strtolower((string)$call);
         if (in_array($action, $read_actions, true)) {
             return;
@@ -195,12 +195,73 @@ class Controller_VotingAjax extends Controller
             'VotingEventId' => $voting_event_id,
             'VoterMundaneId' => $voter_id,
             'EnteredByRunnerId' => (int)$this->session->user_id,
+            'OverwriteConfirm' => !empty($this->request->OverwriteConfirm) ? 1 : 0,
+            'AttestEligibility' => !empty($this->request->AttestEligibility) ? 1 : 0,
+            'AttestReason' => (string)($this->request->AttestReason ?? ''),
             'Votes' => $votes,
         ]);
         if (($r['Status'] ?? 1) != 0) {
             $this->fail($r['Error'] ?? 'Failed', $r['Detail'] ?? '');
         }
         $this->ok(['voting_ballot_id' => $r['Detail']]);
+    }
+
+    public function external_ballot_form($voting_event_id = null)
+    {
+        $this->require_login();
+        $voting_event_id = (int)$voting_event_id;
+        if (!$this->Voting->user_is_runner_of_event((int)$this->session->user_id, $voting_event_id)) {
+            $this->fail('Not authorized to enter external ballots.');
+        }
+        $voter_id = (int)$this->request->VoterMundaneId;
+        if (!$voter_id) {
+            $this->fail('Voter required.');
+        }
+        $r = $this->Voting->get_event($voting_event_id);
+        if (($r['Status'] ?? 1) != 0) {
+            $this->fail('Event not found.');
+        }
+        $event = $r['Event'];
+        if (($event['status'] ?? '') !== 'open') {
+            $this->fail('Voting is not open.');
+        }
+        // Hide withdrawn choices from the entry UI (same rule as the voter page).
+        foreach ($event['races'] as &$_race) {
+            if (!empty($_race['choices'])) {
+                $_race['choices'] = array_values(array_filter($_race['choices'], fn ($c) => empty($c['withdrawn_at'])));
+            }
+        }
+        unset($_race);
+
+        $active = $this->Voting->active_ballot_for_voter($voting_event_id, $voter_id);
+        $active_is_electronic = ($active && ($active['entered_by_runner_id'] ?? null) === null) ? 1 : 0;
+        $elig = $this->Voting->runner_eligibility_preview($voting_event_id, $voter_id);
+
+        $this->ok([
+            'races' => array_values($event['races']),
+            'has_active' => $active ? 1 : 0,
+            'active_is_electronic' => $active_is_electronic,
+            'eligible' => !empty($elig['eligible']) ? 1 : 0,
+            'provisional_possible' => !empty($elig['provisional_possible']) ? 1 : 0,
+        ]);
+    }
+
+    public function external_roster($voting_event_id = null)
+    {
+        $this->require_login();
+        $voting_event_id = (int)$voting_event_id;
+        if (!$this->Voting->user_is_runner_of_event((int)$this->session->user_id, $voting_event_id)) {
+            $this->fail('Not authorized.');
+        }
+        $this->ok(['roster' => $this->Voting->external_ballots_roster($voting_event_id)]);
+    }
+
+    public function ack_paper_notice($voting_ballot_id = null)
+    {
+        $this->require_login();
+        $voting_ballot_id = (int)$voting_ballot_id;
+        $ok = $this->Voting->ack_paper_notice((int)$this->session->user_id, $voting_ballot_id);
+        $this->ok(['acked' => $ok ? 1 : 0]);
     }
 
     // ──────────────────── Tally / banner / publish ────────────────────
