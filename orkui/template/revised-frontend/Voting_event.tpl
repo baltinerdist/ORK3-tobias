@@ -1,7 +1,7 @@
 <?php
 	$event = $event ?? null;
 	$voting_event_id = (int)($voting_event_id ?? 0);
-	$elig = $eligibility ?? ['Status' => 1];
+	$elig = $eligibility ?? ['Eligible' => false];
 	$active = $active_ballot ?? null;
 	$active_votes = $active_votes ?? [];
 	if (!$event && empty($Error)) { $Error = 'Event not found.'; }
@@ -105,7 +105,7 @@
 			<?php endif; ?>
 			<?php if (!empty($pending_revote)): ?>
 				<div class="vtv-banner vtv-banner-info" style="background:#fefcbf;color:#744210;border:1px solid #f6e05e;">
-					<i class="fas fa-exclamation-circle"></i> The configuration of this event changed. Please re-vote on the <?= count($pending_race_ids) === 1 ? 'race' : count($pending_race_ids).' races' ?> below â your votes for other races have been preserved.
+					<i class="fas fa-exclamation-circle"></i> The configuration of this event changed. Please re-vote on the <?= count($pending_race_ids) === 1 ? 'race' : count($pending_race_ids).' races' ?> below — your votes for other races have been preserved.
 				</div>
 			<?php elseif ($active): ?>
 				<div class="vtv-banner vtv-banner-ok">
