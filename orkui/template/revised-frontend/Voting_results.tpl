@@ -160,6 +160,9 @@
 					<?php if ($result['outcome'] === 'win'):
 						$winner_label_html = $render_choice_label_results($result['winner_choice_id']); ?>
 						<div class="vtp-winner-banner"><i class="fas fa-trophy"></i> Winner: <?= $winner_label_html ?></div>
+						<?php if (isset($result['winner_votes'])): ?>
+							<div class="vtp-rationale">Won <?= (int)$result['winner_votes'] ?> of <?= (int)$result['total_ballots'] ?> ballots cast (<?= $result['winner_share_total'] ?>%)<?= empty($result['winner_is_overall_majority']) ? ' — majority of continuing ballots' : '' ?>.</div>
+						<?php endif; ?>
 					<?php elseif ($result['outcome'] === 'win_resolved'): ?>
 						<div class="vtp-winner-banner"><i class="fas fa-gavel"></i> Tie resolved: <?= $render_choice_label_results($result['winner_choice_id']) ?></div>
 					<?php else: ?>

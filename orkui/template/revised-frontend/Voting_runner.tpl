@@ -263,6 +263,10 @@
 				html += '<span class="vtr-pill ' + (result.outcome === 'win' ? 'vtr-pill-win' : 'vtr-pill-tie') + '">' + escapeHtml(outcomeLabel(result.outcome)) + '</span>';
 				if (result.abstained) html += ' <span class="vtr-pill">' + result.abstained + ' abstained</span>';
 				html += '</div>';
+				if (result.winner_votes != null) {
+					var irvLine = 'Won ' + (result.winner_votes|0) + ' of ' + (result.total_ballots|0) + ' ballots cast (' + result.winner_share_total + '%)' + (result.winner_is_overall_majority ? '' : ' — majority of continuing ballots') + '.';
+					html += '<div class="vtr-rationale" style="font-size:12px;color:#718096;margin-top:4px;">' + escapeHtml(irvLine) + '</div>';
+				}
 			} else {
 				// Plurality / majority
 				var counts = result.counts || {};

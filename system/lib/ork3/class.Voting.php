@@ -2706,7 +2706,13 @@ class Voting extends Ork3
             if (count($winners) === 1 && $counts[$winners[0]] >= $majority_threshold) {
                 $rounds[] = ['round' => count($rounds) + 1, 'counts' => $counts, 'eliminated' => null,
                     'winner' => $winners[0], 'exhausted_this_round' => $exhausted_this_round];
-                return ['outcome' => 'win', 'winner_choice_id' => $winners[0], 'rounds' => $rounds, 'tie' => null, 'abstained' => $abstained];
+                $total_ballots = count($sequences);
+                return ['outcome' => 'win', 'winner_choice_id' => $winners[0], 'rounds' => $rounds, 'tie' => null,
+                    'abstained' => $abstained,
+                    'total_ballots' => $total_ballots,
+                    'winner_votes' => $counts[$winners[0]],
+                    'winner_share_total' => $total_ballots > 0 ? round(($counts[$winners[0]] / $total_ballots) * 100, 1) : 0,
+                    'winner_is_overall_majority' => $counts[$winners[0]] * 2 > $total_ballots];
             }
 
             if (count($counts) === 1) {
@@ -2720,7 +2726,13 @@ class Voting extends Ork3
                 }
                 $rounds[] = ['round' => count($rounds) + 1, 'counts' => $counts, 'eliminated' => null,
                     'winner' => $only, 'exhausted_this_round' => $exhausted_this_round];
-                return ['outcome' => 'win', 'winner_choice_id' => $only, 'rounds' => $rounds, 'tie' => null, 'abstained' => $abstained];
+                $total_ballots = count($sequences);
+                return ['outcome' => 'win', 'winner_choice_id' => $only, 'rounds' => $rounds, 'tie' => null,
+                    'abstained' => $abstained,
+                    'total_ballots' => $total_ballots,
+                    'winner_votes' => $counts[$only],
+                    'winner_share_total' => $total_ballots > 0 ? round(($counts[$only] / $total_ballots) * 100, 1) : 0,
+                    'winner_is_overall_majority' => $counts[$only] * 2 > $total_ballots];
             }
 
             if (count($counts) === 2 && count($winners) === 2 && $counts[$winners[0]] === $counts[$winners[1]]) {

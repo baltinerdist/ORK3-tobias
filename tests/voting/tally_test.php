@@ -574,4 +574,25 @@ class VotingTallyTests
         $this->assertEq(9, $ra['denominator'], 'denominator = yes+no+abstain+nota');
         $this->assertEq('ballots_cast', $ra['denominator_basis']);
     }
+
+    public function test_irv_reports_share_of_total_ballots()
+    {
+        // 4×[A,B], 3×[B], 2×[C]. R1: A4 B3 C2, no majority → eliminate C.
+        // C voters bullet-voted → exhaust. R2: A4 B3 of 7 continuing → A wins with 4.
+        // But 4 of 9 TOTAL ballots = 44% — not an overall majority.
+        $race = ['race_type' => 'position', 'voting_mode' => 'irv',
+            'allow_abstain' => 0, 'allow_none_of_above' => 0, 'nota_counts_as' => null,
+            'choices' => [['id' => 10, 'label' => 'A'], ['id' => 11, 'label' => 'B'], ['id' => 12, 'label' => 'C']]];
+        $ballots = array_merge(
+            array_fill(0, 4, $this->ballot_irv([10, 11])),
+            array_fill(0, 3, $this->ballot_irv([11])),
+            array_fill(0, 2, $this->ballot_irv([12]))
+        );
+        $r = Voting::tally_pure($race, $ballots);
+        $this->assertEq('win', $r['outcome']);
+        $this->assertEq(10, $r['winner_choice_id']);
+        $this->assertEq(9, $r['total_ballots'], 'all 9 ranked ballots counted');
+        $this->assertEq(4, $r['winner_votes'], 'winner final-round count');
+        $this->assertEq(false, $r['winner_is_overall_majority'], '4 of 9 is not an overall majority');
+    }
 }
