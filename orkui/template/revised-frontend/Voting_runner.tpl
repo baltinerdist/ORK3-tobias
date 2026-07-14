@@ -15,6 +15,10 @@
 	.vtr-sub { color:var(--vtr-meta,#5a6472); font-size:13px; margin-bottom: 16px; }
 	.vtr-card { background:var(--vtr-card-bg,#fff); border:1px solid var(--vtr-card-border,#e2e8f0); border-radius:10px; padding:20px; margin-bottom:14px; }
 	.vtr-card h2 { margin:0 0 12px 0; font-size:16px; font-weight:600; background:transparent;border:none;padding:0;border-radius:0;text-shadow:none; color:var(--vtr-text,#1a202c); }
+	#vtr-ext-modal h2 { background:transparent;border:none;padding:0;border-radius:0;text-shadow:none; color:var(--vtr-text,#1a202c); }
+	[data-tip] { position:relative; }
+	[data-tip]:hover::after { content:attr(data-tip); position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%); background:#2d3748; color:#fff; font-size:11px; font-weight:400; white-space:normal; width:max-content; max-width:240px; padding:5px 9px; border-radius:5px; pointer-events:none; z-index:1000; box-shadow:0 2px 6px rgba(0,0,0,0.25); }
+	html[data-theme="dark"] [data-tip]:hover::after { background:#e2e8f0; color:#1a202c; box-shadow:0 2px 6px rgba(0,0,0,0.5); }
 	.vtr-stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px,1fr)); gap:12px; margin-bottom:14px; }
 	.vtr-stat { background:var(--vtr-card-bg,#fff); border:1px solid var(--vtr-card-border,#e2e8f0); border-radius:10px; padding:14px; text-align:center; }
 	.vtr-stat-label { color:var(--vtr-meta,#5a6472); font-size:12px; text-transform:uppercase; letter-spacing:0.05em; }
@@ -469,7 +473,7 @@
 		});
 	});
 
-	// Resolve-Tie form (finding 22): delegated listeners on the re-rendered results host.
+	// Resolve-Tie form: delegated listeners on the re-rendered results host.
 	if (resultsHost) {
 		resultsHost.addEventListener('input', function(e){
 			var form = e.target.closest('.vtr-tie-form'); if (!form) return;
@@ -499,25 +503,22 @@
 		});
 	}
 
-	// External ballot search.
-	var extInput = $('#vtr-ext-input');
-	var extResults = $('#vtr-ext-results');
-	var extId = $('#vtr-ext-id');
-	var extBtn = $('#vtr-ext-go');
-	var extMsg = $('#vtr-ext-msg');
-	var extT;
-	if (extInput) {
-		extInput.addEventListener('input', function(){
-			extId.value = ''; if (extBtn) extBtn.disabled = true;
-			clearTimeout(extT);
-			var q = extInput.value.trim();
-			if (q.length < 2) { extResults.classList.remove('kn-ac-open'); extResults.innerHTML=''; return; }
-			extT = setTimeout(function(){
+	// Shared voter-search wiring for the inline kn-ac-results dropdowns (external ballot + delegate).
+	function wireVoterSearch(opts){
+		var input = opts.input, results = opts.results, hiddenId = opts.hiddenId, button = opts.button, onPick = opts.onPick;
+		if (!input) return;
+		var t;
+		input.addEventListener('input', function(){
+			hiddenId.value = ''; if (button) button.disabled = true;
+			clearTimeout(t);
+			var q = input.value.trim();
+			if (q.length < 2) { results.classList.remove('kn-ac-open'); results.innerHTML=''; return; }
+			t = setTimeout(function(){
 				fetch('<?= UIR ?>VotingAjax/voter_search/' + eventId + '&q=' + encodeURIComponent(q))
 					.then(r => r.json()).then(function(j){
-						extResults.innerHTML = '';
+						results.innerHTML = '';
 						if (!j.results || !j.results.length) {
-							extResults.innerHTML = '<div class="kn-ac-row" style="opacity:0.6;padding:8px 10px;">No matches</div>';
+							results.innerHTML = '<div class="kn-ac-row" style="opacity:0.6;padding:8px 10px;">No matches</div>';
 						} else {
 							j.results.forEach(function(r){
 								var row = document.createElement('div');
@@ -525,22 +526,31 @@
 								row.style.cssText = 'padding:8px 10px;cursor:pointer;';
 								row.textContent = r.label;
 								row.addEventListener('click', function(){
-									extId.value = r.value;
-									extInput.value = r.label;
-									extBtn.disabled = false;
-									extResults.classList.remove('kn-ac-open');
+									hiddenId.value = r.value;
+									input.value = r.label;
+									if (button) button.disabled = false;
+									results.classList.remove('kn-ac-open');
+									if (onPick) onPick(r);
 								});
-								extResults.appendChild(row);
+								results.appendChild(row);
 							});
 						}
-						extResults.classList.add('kn-ac-open');
+						results.classList.add('kn-ac-open');
 					});
 			}, 150);
 		});
 		document.addEventListener('click', function(e){
-			if (extInput && !extInput.contains(e.target) && extResults && !extResults.contains(e.target)) extResults.classList.remove('kn-ac-open');
+			if (input && !input.contains(e.target) && results && !results.contains(e.target)) results.classList.remove('kn-ac-open');
 		});
 	}
+
+	// External ballot search.
+	var extInput = $('#vtr-ext-input');
+	var extResults = $('#vtr-ext-results');
+	var extId = $('#vtr-ext-id');
+	var extBtn = $('#vtr-ext-go');
+	var extMsg = $('#vtr-ext-msg');
+	wireVoterSearch({ input: extInput, results: extResults, hiddenId: extId, button: extBtn });
 	var extModal = $('#vtr-ext-modal');
 	var extRacesHost = $('#vtr-ext-races');
 	var extAttestHost = $('#vtr-ext-attest');
@@ -778,45 +788,14 @@
 		});
 	});
 
-	// Delegate Runner search + add/remove (finding 35). Inline dropdown — mirrors external-vote search.
+	// Delegate Runner search + add/remove. Inline dropdown — mirrors external-vote search.
 	var delInput = $('#vtr-del-input');
 	if (delInput) {
 		var delResults = $('#vtr-del-results');
 		var delId = $('#vtr-del-id');
 		var delBtn = $('#vtr-del-go');
 		var delMsg = $('#vtr-del-msg');
-		var delT;
-		delInput.addEventListener('input', function(){
-			delId.value = ''; delBtn.disabled = true;
-			clearTimeout(delT);
-			var q = delInput.value.trim();
-			if (q.length < 2) { delResults.classList.remove('kn-ac-open'); delResults.innerHTML=''; return; }
-			delT = setTimeout(function(){
-				fetch('<?= UIR ?>VotingAjax/voter_search/' + eventId + '&q=' + encodeURIComponent(q))
-					.then(r => r.json()).then(function(j){
-						delResults.innerHTML = '';
-						if (!j.results || !j.results.length) {
-							delResults.innerHTML = '<div class="kn-ac-row" style="opacity:0.6;padding:8px 10px;">No matches</div>';
-						} else {
-							j.results.forEach(function(r){
-								var row = document.createElement('div');
-								row.className = 'kn-ac-row';
-								row.style.cssText = 'padding:8px 10px;cursor:pointer;';
-								row.textContent = r.label;
-								row.addEventListener('click', function(){
-									delId.value = r.value; delInput.value = r.label; delBtn.disabled = false;
-									delResults.classList.remove('kn-ac-open');
-								});
-								delResults.appendChild(row);
-							});
-						}
-						delResults.classList.add('kn-ac-open');
-					});
-			}, 150);
-		});
-		document.addEventListener('click', function(e){
-			if (delInput && !delInput.contains(e.target) && delResults && !delResults.contains(e.target)) delResults.classList.remove('kn-ac-open');
-		});
+		wireVoterSearch({ input: delInput, results: delResults, hiddenId: delId, button: delBtn });
 		delBtn.addEventListener('click', function(){
 			var vid = parseInt(delId.value, 10);
 			if (!vid) return;
