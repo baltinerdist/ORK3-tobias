@@ -185,6 +185,10 @@ class Model_Voting extends Model
     {
         return $this->Voting->active_ballot_for_voter($voting_event_id, $voter_mundane_id);
     }
+    public function active_ballot_votes($voting_ballot_id)
+    {
+        return $this->Voting->active_ballot_votes($voting_ballot_id);
+    }
     public function pending_revote_race_ids($voting_ballot_id, array $race_ids)
     {
         return $this->Voting->pending_revote_race_ids($voting_ballot_id, $race_ids);

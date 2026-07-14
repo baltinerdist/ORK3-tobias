@@ -182,6 +182,11 @@ class Controller_Voting extends Controller
         $active = $this->Voting->active_ballot_for_voter($voting_event_id, $uid);
         $this->data['active_ballot'] = $active;
 
+        // Prior per-race votes, for pre-populating the ballot on a vote-change visit.
+        $this->data['active_votes'] = $active
+            ? $this->Voting->active_ballot_votes((int)$active['voting_ballot_id'])
+            : [];
+
         // Pending revote: voter has an active ballot but is missing votes for some races
         // (Resume->Discard cleared their per-race votes).
         $pending_race_ids = [];
