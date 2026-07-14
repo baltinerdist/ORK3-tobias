@@ -12,15 +12,15 @@
 	.rp-root.vt-root { --rp-accent-dark:#2c5282; --rp-accent:#3182ce; --rp-accent-mid:#4299e1; }
 	html[data-theme="dark"] .rp-root.vt-root { --rp-accent-dark:#1a365d; --rp-border:#4a5568; --rp-bg-light:#2d3748; --rp-text:#e2e8f0; --rp-text-body:#cbd5e0; --rp-text-muted:#a0aec0; }
 	.vtr-wrap { padding: 16px; }
-	.vtr-sub { color:var(--vtr-meta,#718096); font-size:13px; margin-bottom: 16px; }
+	.vtr-sub { color:var(--vtr-meta,#5a6472); font-size:13px; margin-bottom: 16px; }
 	.vtr-card { background:var(--vtr-card-bg,#fff); border:1px solid var(--vtr-card-border,#e2e8f0); border-radius:10px; padding:20px; margin-bottom:14px; }
 	.vtr-card h2 { margin:0 0 12px 0; font-size:16px; font-weight:600; background:transparent;border:none;padding:0;border-radius:0;text-shadow:none; color:var(--vtr-text,#1a202c); }
 	.vtr-stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px,1fr)); gap:12px; margin-bottom:14px; }
 	.vtr-stat { background:var(--vtr-card-bg,#fff); border:1px solid var(--vtr-card-border,#e2e8f0); border-radius:10px; padding:14px; text-align:center; }
-	.vtr-stat-label { color:var(--vtr-meta,#718096); font-size:12px; text-transform:uppercase; letter-spacing:0.05em; }
+	.vtr-stat-label { color:var(--vtr-meta,#5a6472); font-size:12px; text-transform:uppercase; letter-spacing:0.05em; }
 	.vtr-stat-value { font-size:28px; font-weight:700; color:var(--vtr-text,#1a202c); }
 	.vtr-tabs { display:flex; gap:4px; flex-wrap:wrap; margin-bottom: 12px; border-bottom:1px solid var(--vtr-card-border,#e2e8f0); }
-	.vtr-tab { padding:10px 16px; cursor:pointer; font-size:13px; font-weight:600; color:var(--vtr-meta,#718096); border-bottom: 2px solid transparent; user-select:none; background:transparent; border-top:none; border-left:none; border-right:none; }
+	.vtr-tab { padding:10px 16px; cursor:pointer; font-size:13px; font-weight:600; color:var(--vtr-meta,#5a6472); border-bottom: 2px solid transparent; user-select:none; background:transparent; border-top:none; border-left:none; border-right:none; }
 	.vtr-tab.active { color:#3182ce; border-bottom-color:#3182ce; }
 	.vtr-pane { display:none; }
 	.vtr-pane.active { display:block; }
@@ -47,7 +47,7 @@
 	.vtr-btn-danger:hover { background:#c53030; }
 	.vtr-btn-success { background:#48bb78; }
 	.vtr-btn-ghost { background:transparent; border:1px solid var(--vtr-card-border,#cbd5e0); color:var(--vtr-text,#1a202c); }
-	.vtr-empty { padding:24px; text-align:center; color:var(--vtr-meta,#718096); border:2px dashed var(--vtr-card-border,#e2e8f0); border-radius:8px; }
+	.vtr-empty { padding:24px; text-align:center; color:var(--vtr-meta,#5a6472); border:2px dashed var(--vtr-card-border,#e2e8f0); border-radius:8px; }
 	.vtr-pill { display:inline-block; padding:2px 8px; font-size:11px; font-weight:600; border-radius:999px; background:#edf2f7; color:#4a5568; text-transform:uppercase; }
 	.vtr-pill-tie { background:#fed7d7; color:#742a2a; }
 	.vtr-pill-win { background:#c6f6d5; color:#22543d; }
@@ -139,7 +139,7 @@
 				<h2 style="margin:0;" id="vtr-ext-modal-title">Enter Paper Ballot</h2>
 				<button id="vtr-ext-modal-x" class="vtr-btn" style="padding:4px 10px;">&times;</button>
 			</div>
-			<div id="vtr-ext-modal-sub" style="font-size:13px;color:#718096;margin-bottom:10px;"></div>
+			<div id="vtr-ext-modal-sub" style="font-size:13px;color:#5a6472;margin-bottom:10px;"></div>
 			<div id="vtr-ext-attest" style="display:none;margin-bottom:12px;"></div>
 			<form id="vtr-ext-form"><div id="vtr-ext-races"></div></form>
 			<div id="vtr-ext-modal-msg" style="margin-top:10px;"></div>
@@ -191,8 +191,8 @@
 					<?php foreach ($provisional_ballots as $pb): ?>
 						<div class="vtr-bar" style="align-items:center;gap:10px;margin-bottom:8px;" data-ballot="<?= (int)$pb['voting_ballot_id'] ?>">
 							<div style="flex:1;">
-								<div style="font-weight:600;color:var(--vtr-text,#1a202c);"><?= htmlspecialchars($pb['voter_name']) ?> <span style="font-weight:400;color:var(--vtr-meta,#718096);">(<?= htmlspecialchars($pb['username']) ?>)</span></div>
-								<div style="font-size:12px;color:var(--vtr-meta,#718096);">Cast <?= $pb['submitted_at'] ? htmlspecialchars(date('M j, Y g:i A', strtotime($pb['submitted_at']))) : '—' ?></div>
+								<div style="font-weight:600;color:var(--vtr-text,#1a202c);"><?= htmlspecialchars($pb['voter_name']) ?> <span style="font-weight:400;color:var(--vtr-meta,#5a6472);">(<?= htmlspecialchars($pb['username']) ?>)</span></div>
+								<div style="font-size:12px;color:var(--vtr-meta,#5a6472);">Cast <?= $pb['submitted_at'] ? htmlspecialchars(date('M j, Y g:i A', strtotime($pb['submitted_at']))) : '—' ?></div>
 							</div>
 							<input type="text" class="vtr-prov-reason" placeholder="Reason (required)" style="flex:0 0 200px;padding:6px 8px;font-size:13px;border:1px solid var(--vtr-card-border,#cbd5e0);border-radius:6px;background:var(--vtr-card-bg,#fff);color:var(--vtr-text,#1a202c);" />
 							<button class="vtr-btn vtr-prov-release" data-ballot="<?= (int)$pb['voting_ballot_id'] ?>">Release</button>
@@ -244,7 +244,7 @@
 			if (race.race_type === 'position' && (race.choices || []).length === 1) html += ' <span class="vtr-pill">Confidence</span>';
 			if (race.is_non_binding) html += ' <span class="vtr-pill" style="background:#fefcbf;color:#744210;">Poll</span>';
 			html += '</div>';
-			html += '<div style="font-size:12px;color:#718096;margin-bottom:8px;">' + escapeHtml(race.race_type) + (race.voting_mode ? ' · ' + escapeHtml(race.voting_mode) : '') + ' · ' + (row.ballot_count||0) + ' ballot(s)</div>';
+			html += '<div style="font-size:12px;color:#5a6472;margin-bottom:8px;">' + escapeHtml(race.race_type) + (race.voting_mode ? ' · ' + escapeHtml(race.voting_mode) : '') + ' · ' + (row.ballot_count||0) + ' ballot(s)</div>';
 
 			if (result.outcome === 'pass' || result.outcome === 'fail' || result.outcome === 'tie') {
 				// Confidence/yesno
@@ -277,7 +277,7 @@
 						var ch = (race.choices || []).find(function(c){ return c.id == cid; });
 						html += renderBar(ch ? ch.label : ('#'+cid), rd.counts[cid], rdTotal, '');
 					});
-					if (rd.exhausted_this_round) html += '<div style="font-size:11px;color:#718096;margin-top:4px;">' + rd.exhausted_this_round + ' ballot(s) exhausted this round</div>';
+					if (rd.exhausted_this_round) html += '<div style="font-size:11px;color:#5a6472;margin-top:4px;">' + rd.exhausted_this_round + ' ballot(s) exhausted this round</div>';
 					html += '</div>';
 				});
 				html += '</div>';
@@ -287,7 +287,7 @@
 				html += '</div>';
 				if (result.winner_votes != null) {
 					var irvLine = 'Won ' + (result.winner_votes|0) + ' of ' + (result.total_ballots|0) + ' ballots cast (' + result.winner_share_total + '%)' + (result.winner_is_overall_majority ? '' : ' — majority of continuing ballots') + '.';
-					html += '<div class="vtr-rationale" style="font-size:12px;color:#718096;margin-top:4px;">' + escapeHtml(irvLine) + '</div>';
+					html += '<div class="vtr-rationale" style="font-size:12px;color:#5a6472;margin-top:4px;">' + escapeHtml(irvLine) + '</div>';
 				}
 			} else {
 				// Plurality / majority
@@ -331,7 +331,7 @@
 		var basis = result.denominator_basis === 'ballots_cast' ? 'all ballots cast' : 'choice votes';
 		var s = 'Majority of ' + basis + ' — ' + (result.denominator|0) + ' counted';
 		if (result.winner_share != null) s += ', leader held ' + result.winner_share + '%';
-		return '<div class="vtr-rationale" style="font-size:12px;color:#718096;margin-top:4px;">' + escapeHtml(s) + '.</div>';
+		return '<div class="vtr-rationale" style="font-size:12px;color:#5a6472;margin-top:4px;">' + escapeHtml(s) + '.</div>';
 	}
 
 	function renderBar(label, count, total, cls){
@@ -345,7 +345,7 @@
 		var q = result.quorum;
 		var s = q.evaluable === false ? (q.message || 'Quorum not evaluable.')
 			: ('Turnout ' + (q.turnout|0) + ' of ' + (q.required|0) + ' required' + (q.met ? ' — quorum met' : ' — quorum not met') + '.');
-		return '<div class="vtr-rationale" style="font-size:12px;color:#718096;margin-top:4px;">' + escapeHtml(s) + '</div>';
+		return '<div class="vtr-rationale" style="font-size:12px;color:#5a6472;margin-top:4px;">' + escapeHtml(s) + '</div>';
 	}
 
 	function poll(){
@@ -455,7 +455,7 @@
 		if (isIrv) {
 			h += '<div class="vtv-irv-list">';
 			choices.forEach(function(c){ h += '<label class="vtv-irv-item" data-choice-id="'+parseInt(c.voting_choice_id,10)+'" style="display:block;padding:4px 0;"><input type="checkbox" class="vtv-irv-cb" value="'+parseInt(c.voting_choice_id,10)+'" /> '+escapeHtml(c.label||'')+'</label>'; });
-			h += '</div><div style="font-size:11px;color:#718096;">Check candidates in preference order (first checked = 1st choice).</div>';
+			h += '</div><div style="font-size:11px;color:#5a6472;">Check candidates in preference order (first checked = 1st choice).</div>';
 			if (race.allow_abstain) h += '<label style="display:block;margin-top:6px;"><input type="checkbox" class="vtv-abstain-cb" /> Abstain this race</label>';
 		} else if (isConfidence) {
 			h += '<label style="display:block;"><input type="radio" name="r_'+rid+'" value="'+parseInt(choices[0].voting_choice_id,10)+'" /> Yes — confidence in '+escapeHtml(choices[0].label||'')+'</label>';
@@ -561,7 +561,7 @@
 		fetch('<?= UIR ?>VotingAjax/external_roster/' + eventId, { credentials:'same-origin' })
 			.then(r => r.json()).then(function(j){
 				if (j.status !== 0 || !j.roster || !j.roster.length) { host.innerHTML = '<div class="vtr-empty">No external ballots entered yet.</div>'; return; }
-				var h = '<table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr style="text-align:left;color:#718096;"><th style="padding:6px;">Voter</th><th style="padding:6px;">Entered by</th><th style="padding:6px;">When</th><th style="padding:6px;"></th></tr></thead><tbody>';
+				var h = '<table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr style="text-align:left;color:#5a6472;"><th style="padding:6px;">Voter</th><th style="padding:6px;">Entered by</th><th style="padding:6px;">When</th><th style="padding:6px;"></th></tr></thead><tbody>';
 				j.roster.forEach(function(row){
 					h += '<tr style="border-top:1px solid var(--vtr-card-border,#e2e8f0);">'
 						+ '<td style="padding:6px;">' + escapeHtml(row.voter_label) + (row.is_provisional ? ' <span class="vtr-pill">provisional</span>' : '') + '</td>'
