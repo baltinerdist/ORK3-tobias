@@ -595,4 +595,49 @@ class VotingTallyTests
         $this->assertEq(4, $r['winner_votes'], 'winner final-round count');
         $this->assertEq(false, $r['winner_is_overall_majority'], '4 of 9 is not an overall majority');
     }
+
+    public function test_quorum_absolute_not_met()
+    {
+        // 3 ballots, quorum_count = 5 → no_quorum wrapping a plurality win.
+        $race = ['race_type' => 'position', 'voting_mode' => 'plurality',
+            'allow_abstain' => 0, 'allow_none_of_above' => 0, 'nota_counts_as' => null,
+            'quorum_count' => 5,
+            'choices' => [['id' => 10, 'label' => 'A'], ['id' => 11, 'label' => 'B']]];
+        $ballots = array_merge(array_fill(0, 2, $this->ballot_choice(10)), [$this->ballot_choice(11)]);
+        $r = Voting::tally_pure($race, $ballots);
+        $this->assertEq('no_quorum', $r['outcome']);
+        $this->assertEq('win', $r['underlying_outcome']);
+        $this->assertEq(3, $r['quorum']['turnout']);
+        $this->assertEq(5, $r['quorum']['required']);
+        $this->assertEq(true, $r['quorum']['evaluable']);
+        $this->assertEq(false, $r['quorum']['met']);
+    }
+
+    public function test_quorum_fraction_needs_eligible_count()
+    {
+        // Fraction requested but no frozen roll → not evaluable, outcome unchanged.
+        $race = ['race_type' => 'position', 'voting_mode' => 'plurality',
+            'allow_abstain' => 0, 'allow_none_of_above' => 0, 'nota_counts_as' => null,
+            'quorum_fraction' => 0.5, 'eligible_count' => null,
+            'choices' => [['id' => 10, 'label' => 'A'], ['id' => 11, 'label' => 'B']]];
+        $ballots = array_merge(array_fill(0, 2, $this->ballot_choice(10)), [$this->ballot_choice(11)]);
+        $r = Voting::tally_pure($race, $ballots);
+        $this->assertEq('win', $r['outcome'], 'no eligible roll → fraction quorum not enforced');
+        $this->assertEq(false, $r['quorum']['evaluable']);
+        $this->assertEq('quorum not evaluable — eligible roll not frozen', $r['quorum']['message']);
+    }
+
+    public function test_quorum_fraction_met_with_eligible_count()
+    {
+        // eligible_count = 4, fraction 0.5 → required ceil(2) = 2; turnout 3 → met, outcome stays win.
+        $race = ['race_type' => 'position', 'voting_mode' => 'plurality',
+            'allow_abstain' => 0, 'allow_none_of_above' => 0, 'nota_counts_as' => null,
+            'quorum_fraction' => 0.5, 'eligible_count' => 4,
+            'choices' => [['id' => 10, 'label' => 'A'], ['id' => 11, 'label' => 'B']]];
+        $ballots = array_merge(array_fill(0, 2, $this->ballot_choice(10)), [$this->ballot_choice(11)]);
+        $r = Voting::tally_pure($race, $ballots);
+        $this->assertEq('win', $r['outcome']);
+        $this->assertEq(2, $r['quorum']['required']);
+        $this->assertEq(true, $r['quorum']['met']);
+    }
 }

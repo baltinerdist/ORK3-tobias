@@ -295,6 +295,8 @@ class Controller_VotingAjax extends Controller
         $r = $this->Voting->publish([
             'Token' => $this->session->token,
             'VotingEventId' => (int)$voting_event_id,
+            'AcknowledgeQuorum' => !empty($this->request->AcknowledgeQuorum) ? 1 : 0,
+            'QuorumNote' => $this->request->QuorumNote ?? '',
         ]);
         if (($r['Status'] ?? 1) != 0) {
             $this->fail($r['Error'] ?? 'Failed', $r['Detail'] ?? '');

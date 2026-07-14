@@ -282,6 +282,7 @@
 				html += '</div>';
 				html += basisCaption(result);
 			}
+			html += quorumCaption(result);
 			html += '</div>';
 		});
 		host.innerHTML = html;
@@ -300,7 +301,14 @@
 		return '<div class="vtr-bar"><div class="vtr-bar-label">' + escapeHtml(label) + '</div><div class="vtr-bar-track"><div class="vtr-bar-fill ' + (cls||'') + '" style="width:' + pct + '%"></div></div><div class="vtr-bar-count">' + count + ' (' + pct + '%)</div></div>';
 	}
 	function escapeHtml(s){ return String(s).replace(/[&<>"']/g, function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
-	function outcomeLabel(o){ return ({win:'Win', win_resolved:'Win (resolved)', tie:'Tie', tie_at_final:'Final-round tie', tie_at_elimination:'Elimination tie', no_votes:'No votes cast', no_majority:'No majority', pass:'Pass', fail:'Fail'})[o] || String(o).replace(/_/g,' '); }
+	function outcomeLabel(o){ return ({win:'Win', win_resolved:'Win (resolved)', tie:'Tie', tie_at_final:'Final-round tie', tie_at_elimination:'Elimination tie', no_votes:'No votes cast', no_majority:'No majority', no_quorum:'Quorum not met', pass:'Pass', fail:'Fail'})[o] || String(o).replace(/_/g,' '); }
+	function quorumCaption(result){
+		if (!result || !result.quorum) return '';
+		var q = result.quorum;
+		var s = q.evaluable === false ? (q.message || 'Quorum not evaluable.')
+			: ('Turnout ' + (q.turnout|0) + ' of ' + (q.required|0) + ' required' + (q.met ? ' — quorum met' : ' — quorum not met') + '.');
+		return '<div class="vtr-rationale" style="font-size:12px;color:#718096;margin-top:4px;">' + escapeHtml(s) + '</div>';
+	}
 
 	function poll(){
 		if (suppress) return;
@@ -362,14 +370,23 @@
 		extMsg.innerHTML = '<div class="vtr-banner vtr-banner-info">External ballot entry is in stub form for the prototype. The voter you selected (id ' + escapeHtml(String(vid)) + ') would receive a runner-keyed ballot. Full UI lands in a follow-up.</div>';
 	});
 
-	var pubBtn = $('#vtr-publish');
-	if (pubBtn) pubBtn.addEventListener('click', function(){
-		fetch('<?= UIR ?>VotingAjax/publish/' + eventId, { method:'POST', headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })
+	function doPublish(ackQuorum){
+		var body = null;
+		if (ackQuorum) { body = new FormData(); body.append('AcknowledgeQuorum', '1'); }
+		fetch('<?= UIR ?>VotingAjax/publish/' + eventId, { method:'POST', body:body, headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })
 			.then(r => r.json()).then(function(j){
-				if (j.status === 0) location.reload();
-				else $('#vtr-publish-msg').innerHTML = '<div class="vtr-banner vtr-banner-warn">' + escapeHtml(j.error || 'Failed') + (j.detail ? ': ' + escapeHtml(j.detail) : '') + '</div>';
+				if (j.status === 0) { location.reload(); return; }
+				if (!ackQuorum && j.detail === 'quorum') {
+					pnConfirm({ title:'Quorum Not Met', message:(j.error || 'Turnout did not meet the required quorum.') + ' Publish these results anyway?', confirmText:'Publish Anyway', danger:true }, function(){
+						doPublish(true);
+					});
+					return;
+				}
+				$('#vtr-publish-msg').innerHTML = '<div class="vtr-banner vtr-banner-warn">' + escapeHtml(j.error || 'Failed') + '</div>';
 			});
-	});
+	}
+	var pubBtn = $('#vtr-publish');
+	if (pubBtn) pubBtn.addEventListener('click', function(){ doPublish(false); });
 	var unpubBtn = $('#vtr-unpublish');
 	if (unpubBtn) unpubBtn.addEventListener('click', function(){
 		pnConfirm({ title:'Unpublish Results?', message:'The public page will show "Results temporarily withdrawn."', confirmText:'Unpublish', danger:true }, function(){

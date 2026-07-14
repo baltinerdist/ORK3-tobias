@@ -2066,6 +2066,22 @@ class Voting extends Ork3
             ];
         }
 
+        // Event-level quorum config + frozen eligible roll (Domain 3 snapshot).
+        $DB->Clear();
+        $ev = $DB->DataSet("SELECT quorum_count, quorum_fraction FROM " . DB_PREFIX . "voting_event WHERE voting_event_id = " . $voting_event_id);
+        $quorum_count = 0;
+        $quorum_fraction = null;
+        if ($ev && $ev->Next()) {
+            $quorum_count = (int)$ev->quorum_count;
+            $quorum_fraction = $ev->quorum_fraction !== null ? (float)$ev->quorum_fraction : null;
+        }
+        $DB->Clear();
+        $ec_rs = $DB->DataSet("SELECT COUNT(*) AS c FROM " . DB_PREFIX . "voting_eligibility_snapshot WHERE voting_event_id = " . $voting_event_id . " AND eligible = 1");
+        $eligible_count = null;
+        if ($ec_rs && $ec_rs->Next()) {
+            $eligible_count = ((int)$ec_rs->c) > 0 ? (int)$ec_rs->c : null;
+        }
+
         // Build per-race result.
         $results = [];
         foreach ($races as $rid => $race) {
@@ -2073,6 +2089,9 @@ class Voting extends Ork3
             foreach (($votes_by_race_ballot[$rid] ?? []) as $bid => $vrows) {
                 $ballots[] = ['votes' => $vrows];
             }
+            $race['quorum_count'] = $quorum_count;
+            $race['quorum_fraction'] = $quorum_fraction;
+            $race['eligible_count'] = $eligible_count;
             $result = self::tally_pure($race, $ballots);
             // Honor manual tie resolution.
             if ($race['tie_resolved_winner_choice_id'] && in_array($result['outcome'], ['tie', 'tie_at_elimination', 'tie_at_final'])) {
@@ -2153,14 +2172,31 @@ class Voting extends Ork3
             return ProcessingError('', 'Event must be closed before publish.');
         }
 
-        // Gate: no unresolved ties.
+        // Gate: no unresolved ties / unmet quorum.
+        global $DB;
         $tally = $this->tally($voting_event_id);
+        $acknowledge_quorum = !empty($request['AcknowledgeQuorum']);
+        $DB->Clear();
+        $qo_rs = $DB->DataSet("SELECT quorum_overridden_at FROM " . DB_PREFIX . "voting_event WHERE voting_event_id = " . $voting_event_id);
+        $already_overridden = ($qo_rs && $qo_rs->Next() && $qo_rs->quorum_overridden_at);
         foreach ($tally as $rid => $row) {
             $out = $row['result']['outcome'] ?? null;
             $tie_resolved = $row['race']['tie_resolved_winner_choice_id'] ?? null;
             if (in_array($out, ['tie', 'tie_at_elimination', 'tie_at_final']) && !$tie_resolved) {
                 return ProcessingError('', 'Cannot publish: ' . $row['race']['title'] . ' has an unresolved tie.');
             }
+            if ($out === 'no_quorum' && !$acknowledge_quorum && !$already_overridden) {
+                $q = $row['result']['quorum'] ?? [];
+                return ProcessingError('quorum', 'Cannot publish: ' . $row['race']['title']
+                    . ' did not meet quorum (turnout ' . (int)($q['turnout'] ?? 0)
+                    . ' of ' . (int)($q['required'] ?? 0) . ' required). Acknowledge to publish anyway.');
+            }
+        }
+        if ($acknowledge_quorum && !$already_overridden) {
+            $this->Event->quorum_overridden_at = date('Y-m-d H:i:s');
+            $this->Event->quorum_overridden_by_mundane_id = $mundane_id;
+            $this->Event->quorum_override_note = trim((string)($request['QuorumNote'] ?? ''));
+            $this->audit($voting_event_id, 'quorum_overridden', ['note' => $this->Event->quorum_override_note], $mundane_id);
         }
 
         // Freeze the electorate: materialize every eligible voter into the snapshot (eligible=1)
@@ -2437,20 +2473,52 @@ class Voting extends Ork3
     public static function tally_pure(array $race, array $ballots): array
     {
         if ($race['race_type'] === 'yesno') {
-            return self::tally_confidence($race, $ballots);
+            $result = self::tally_confidence($race, $ballots);
+        } elseif ($race['race_type'] === 'position' && count($race['choices']) === 1) {
+            $result = self::tally_confidence($race, $ballots);
+        } elseif ($race['race_type'] === 'multichoice') {
+            $result = self::tally_plurality($race, $ballots);
+        } else {
+            switch ($race['voting_mode']) {
+                case 'plurality': $result = self::tally_plurality($race, $ballots);
+                    break;
+                case 'majority':  $result = self::tally_majority($race, $ballots);
+                    break;
+                case 'irv':       $result = self::tally_irv($race, $ballots);
+                    break;
+                default: return ['outcome' => 'error', 'error' => 'unknown voting mode'];
+            }
         }
-        if ($race['race_type'] === 'position' && count($race['choices']) === 1) {
-            return self::tally_confidence($race, $ballots);
+        return self::apply_quorum($race, $ballots, $result);
+    }
+
+    private static function apply_quorum(array $race, array $ballots, array $result): array
+    {
+        $qc = (int)($race['quorum_count'] ?? 0);
+        $qf = (isset($race['quorum_fraction']) && $race['quorum_fraction'] !== null && $race['quorum_fraction'] !== '')
+            ? (float)$race['quorum_fraction'] : null;
+        if ($qc <= 0 && ($qf === null || $qf <= 0)) {
+            return $result; // quorum not configured
         }
-        if ($race['race_type'] === 'multichoice') {
-            return self::tally_plurality($race, $ballots);
+        $turnout = count($ballots);
+        $ec = (isset($race['eligible_count']) && $race['eligible_count'] !== null)
+            ? (int)$race['eligible_count'] : null;
+        $required = $qc > 0 ? $qc : 0;
+        if ($qf !== null && $qf > 0) {
+            if ($ec === null) {
+                $result['quorum'] = ['required' => null, 'turnout' => $turnout, 'evaluable' => false,
+                    'met' => null, 'message' => 'quorum not evaluable — eligible roll not frozen'];
+                return $result;
+            }
+            $required = max($required, (int)ceil($qf * $ec));
         }
-        switch ($race['voting_mode']) {
-            case 'plurality': return self::tally_plurality($race, $ballots);
-            case 'majority':  return self::tally_majority($race, $ballots);
-            case 'irv':       return self::tally_irv($race, $ballots);
+        $met = $turnout >= $required;
+        $result['quorum'] = ['required' => $required, 'turnout' => $turnout, 'evaluable' => true, 'met' => $met];
+        if (!$met) {
+            $result['underlying_outcome'] = $result['outcome'];
+            $result['outcome'] = 'no_quorum';
         }
-        return ['outcome' => 'error', 'error' => 'unknown voting mode'];
+        return $result;
     }
 
     private static function tally_confidence(array $race, array $ballots): array
