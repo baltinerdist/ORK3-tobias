@@ -322,7 +322,8 @@ class Controller_VotingAjax extends Controller
             $e['voted'] = !empty($e['active_ballot_id']) && empty($e['pending_revote']) ? 1 : 0;
         }
         unset($e);
-        $this->ok(['events' => $events]);
+        $notices = $this->Voting->paper_replacement_notices($mundane_id);
+        $this->ok(['events' => $events, 'notices' => $notices]);
     }
 
     public function release_provisional($voting_ballot_id = null)

@@ -3692,6 +3692,7 @@ var PnConfig = {
 if (typeof nsKid !== 'undefined' && nsKid === 0 && PnConfig.kingdomId) nsKid = PnConfig.kingdomId;
 
 // ─── Voting banner for own profile ──────────────────────────────────────
+window.VOTING_CSRF = <?= json_encode($VotingCsrf ?? '') ?>;
 (function(){
 	if (!PnConfig.isOwnProfile || !PnConfig.playerId) return;
 	var host = document.getElementById('pn-voting-banner');
@@ -3699,9 +3700,20 @@ if (typeof nsKid !== 'undefined' && nsKid === 0 && PnConfig.kingdomId) nsKid = P
 	fetch(PnConfig.uir + 'VotingAjax/banner/' + PnConfig.playerId, { credentials:'same-origin' })
 		.then(function(r){ return r.json(); })
 		.then(function(j){
-			if (!j || j.status !== 0 || !j.events || !j.events.length) return;
+			if (!j || j.status !== 0) return;
+			var events = j.events || [];
+			var notices = j.notices || [];
+			if (!events.length && !notices.length) return;
 			var html = '';
-			j.events.forEach(function(e){
+			notices.forEach(function(n){
+				html += '<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:#c05621;color:#fff;border-radius:10px;margin-bottom:10px;">'
+					+ '<i class="fas fa-file-signature" style="font-size:20px;"></i>'
+					+ '<div style="flex:1;"><div style="font-weight:600;">A paper ballot replaced your online vote</div>'
+					+ '<div style="font-size:13px;opacity:0.95;">An event runner recorded a paper ballot for you in "' + escapeHtml(n.title) + '", replacing the vote you cast online.</div></div>'
+					+ '<button data-ack-ballot="' + parseInt(n.voting_ballot_id,10) + '" class="pn-ack-paper" style="background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:6px;padding:6px 10px;cursor:pointer;">Dismiss</button>'
+					+ '</div>';
+			});
+			events.forEach(function(e){
 				var endDate = new Date(e.end_date);
 				var endStr  = endDate.toLocaleString(undefined, { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
 				var isRevote = e.pending_revote && e.pending_race_count > 0;
@@ -3724,6 +3736,14 @@ if (typeof nsKid !== 'undefined' && nsKid === 0 && PnConfig.kingdomId) nsKid = P
 			});
 			host.innerHTML = html;
 			host.style.display = 'block';
+			Array.prototype.forEach.call(host.querySelectorAll('.pn-ack-paper'), function(btn){
+				btn.addEventListener('click', function(e){
+					e.preventDefault(); e.stopPropagation();
+					var bid = parseInt(btn.getAttribute('data-ack-ballot'),10);
+					fetch(PnConfig.uir + 'VotingAjax/ack_paper_notice/' + bid, { method:'POST', headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })
+						.then(function(){ var w = btn.closest('div'); if (w && w.parentNode) w.parentNode.removeChild(w); });
+				});
+			});
 		})
 		.catch(function(){});
 	function escapeHtml(s){ return String(s).replace(/[&<>"']/g, function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
