@@ -131,7 +131,7 @@
 		<div class="vtr-card">
 			<h2>Event Management</h2>
 			<?php if ($event['status'] === 'open'): ?>
-				<div class="vtr-banner vtr-banner-warn">Voting is currently open. The event will close automatically at <?= htmlspecialchars(date('M j, Y g:i A', strtotime($event['end_date']))) ?>.</div>
+				<div class="vtr-banner vtr-banner-warn">Voting is currently open. It closes on its own at <?= htmlspecialchars(date('M j, Y g:i A', strtotime($event['end_date']))) ?>, or you can close it now to review and publish results immediately.</div>
 				<div style="display:flex;gap:8px;flex-wrap:wrap;">
 					<button id="vtr-close-now" class="vtr-btn vtr-btn-danger">Close Voting Now</button>
 					<button id="vtr-reopen-config" class="vtr-btn"><i class="fas fa-pause"></i> Reopen Configuration</button>
@@ -345,7 +345,17 @@
 	var closeBtn = $('#vtr-close-now');
 	if (closeBtn) closeBtn.addEventListener('click', function(){
 		var m = $('#vtr-reopen-msg');
-		if (m) m.innerHTML = '<div class="vtr-banner vtr-banner-info">To close immediately, set the event end_date to a past time. Status auto-flips on cron sweep or next page load.</div>';
+		pnConfirm({ title:'Close Voting Now?', message:'This ends voting immediately. Provisional ballots that now qualify are released and counted, then you can review and publish results. This cannot be undone (you would have to Reopen Configuration to change anything).', confirmText:'Close Voting', danger:true }, function(){
+			closeBtn.disabled = true;
+			fetch('<?= UIR ?>VotingAjax/close_event/' + eventId, { method:'POST', headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })
+				.then(function(r){ return r.json(); })
+				.then(function(j){
+					if (j.status === 0) { location.reload(); return; }
+					closeBtn.disabled = false;
+					if (m) m.innerHTML = '<div class="vtr-banner vtr-banner-warn">' + escapeHtml(j.error || 'Failed') + (j.detail ? ': ' + escapeHtml(j.detail) : '') + '</div>';
+				})
+				.catch(function(){ closeBtn.disabled = false; if (m) m.innerHTML = '<div class="vtr-banner vtr-banner-warn">Network error.</div>'; });
+		});
 	});
 
 	var reopenBtn = $('#vtr-reopen-config');
