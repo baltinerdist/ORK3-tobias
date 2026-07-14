@@ -126,10 +126,22 @@
 		</div>
 	<?php endif; ?>
 
+	<?php if ($can_edit && $event['status'] === 'draft' && !empty($event['races'])): ?>
+		<div style="display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+			<div id="vte-open-msg-top" style="font-size:13px;"></div>
+			<?php if (!empty($event['reopened_at'])): ?>
+				<button id="vte-resume-event-top" class="vte-btn vte-btn-success" style="font-size:14px;padding:10px 20px;"><i class="fas fa-play"></i> Resume Voting</button>
+			<?php else: ?>
+				<button id="vte-open-event-top" class="vte-btn vte-btn-success vte-open-event-btn" style="font-size:14px;padding:10px 20px;">Open Voting Now</button>
+			<?php endif; ?>
+		</div>
+	<?php endif; ?>
 	<div class="vte-tabs">
 		<button class="vte-tab active" data-pane="config" type="button"><i class="fas fa-sliders-h"></i> Configuration</button>
 		<button class="vte-tab" data-pane="ballot" type="button"><i class="fas fa-list-ol"></i> Ballot Management</button>
 	</div>
+	<div class="vte-sub" data-pane-desc="config" style="margin-top:-6px;">Event-wide settings: title, description, open/close dates, and privacy options.</div>
+	<div class="vte-sub" data-pane-desc="ballot" style="margin-top:-6px;display:none;">Add races and candidates. Each race's voting mode, abstain, and NOTA options live right beside its candidate list.</div>
 
 	<?php $_render_event_settings = $can_edit; ?>
 	<div class="vte-pane active" data-pane="config">
@@ -170,56 +182,6 @@
 			</div>
 		<?php endif; ?>
 
-		<?php if (!empty($event['races'])): ?>
-			<div class="vte-card">
-				<h2>Per-Race Settings</h2>
-				<?php foreach ($event['races'] as $race): ?>
-					<?php $is_position = ($race['race_type'] === 'position'); $is_althing = in_array($race['race_type'], ['yesno','multichoice'], true); ?>
-					<div class="vte-race" data-race-settings-id="<?= (int)$race['voting_race_id'] ?>">
-						<div class="vte-race-head">
-							<span class="vte-race-title"><?= htmlspecialchars($race['title']) ?></span>
-							<span class="vte-pill"><?= htmlspecialchars($race['race_type']) ?></span>
-						</div>
-						<div class="vte-grid-2">
-							<?php if ($is_position): ?>
-								<div class="vte-row">
-									<label>Voting mode</label>
-									<select class="vte-rs-mode">
-										<option value="plurality" <?= $race['voting_mode'] === 'plurality' ? 'selected' : '' ?>>Plurality (top vote-getter wins)</option>
-										<option value="majority" <?= $race['voting_mode'] === 'majority' ? 'selected' : '' ?>>Majority (50%+1)</option>
-										<option value="irv" <?= $race['voting_mode'] === 'irv' ? 'selected' : '' ?>>Ranked Choice (Instant Runoff)</option>
-									</select>
-									<div style="font-size:11px;color:var(--vte-meta,#718096);margin-top:4px;">Cannot change once votes are cast.</div>
-								</div>
-							<?php else: ?>
-								<div class="vte-row">
-									<label>Voting mode</label>
-									<input type="text" value="<?= htmlspecialchars($race['voting_mode']) ?>" disabled />
-									<div style="font-size:11px;color:var(--vte-meta,#718096);margin-top:4px;">Mode is fixed for <?= htmlspecialchars($race['race_type']) ?> races.</div>
-								</div>
-							<?php endif; ?>
-							<div>
-								<div class="vte-toggle"><input class="vte-rs-abstain" type="checkbox" <?= !empty($race['allow_abstain']) ? 'checked' : '' ?> /><label>Allow abstain</label></div>
-								<div class="vte-toggle"><input class="vte-rs-nota" type="checkbox" <?= !empty($race['allow_none_of_above']) ? 'checked' : '' ?> /><label>Allow None of the Above</label></div>
-								<div class="vte-row" style="margin-top:6px;<?= !empty($race['allow_none_of_above']) ? '' : 'display:none' ?>" data-rs-nota-row>
-									<label style="font-size:11px;">NOTA counts as</label>
-									<select class="vte-rs-nca">
-										<option value="abstain" <?= $race['nota_counts_as'] === 'abstain' ? 'selected' : '' ?>>Abstain (excluded from threshold)</option>
-										<option value="no" <?= $race['nota_counts_as'] === 'no' ? 'selected' : '' ?>>No (counts against)</option>
-									</select>
-								</div>
-								<?php if ($is_althing): ?>
-									<div class="vte-toggle"><input class="vte-rs-nb" type="checkbox" <?= !empty($race['is_non_binding']) ? 'checked' : '' ?> /><label>Non-binding (poll only)</label></div>
-								<?php endif; ?>
-							</div>
-						</div>
-						<?php if ($can_edit): ?>
-							<div class="vte-actions" style="margin-top:10px;"><button class="vte-btn vte-btn-primary vte-rs-save" data-race-id="<?= (int)$race['voting_race_id'] ?>" type="button">Save Race Settings</button><span class="vte-rs-msg" style="margin-left:10px;font-size:13px;"></span></div>
-						<?php endif; ?>
-					</div>
-				<?php endforeach; ?>
-			</div>
-		<?php endif; ?>
 	</div>
 
 	<div class="vte-pane" data-pane="ballot">
@@ -276,6 +238,47 @@
 									<?php endif; ?>
 								</div>
 							<?php endforeach; ?>
+						</div>
+					<?php endif; ?>
+
+					<?php if ($can_edit): ?>
+						<?php $is_position = ($race['race_type'] === 'position'); $is_althing = in_array($race['race_type'], ['yesno','multichoice'], true); ?>
+						<div class="vte-edit-form" style="margin-top:12px;">
+							<div style="font-size:12px;font-weight:600;margin-bottom:8px;color:var(--vte-meta,#5a6472);">Race settings</div>
+							<div class="vte-grid-2">
+								<?php if ($is_position): ?>
+									<div class="vte-row">
+										<label>Voting mode</label>
+										<select class="vte-rs-mode">
+											<option value="plurality" <?= $race['voting_mode'] === 'plurality' ? 'selected' : '' ?>>Plurality (top vote-getter wins)</option>
+											<option value="majority" <?= $race['voting_mode'] === 'majority' ? 'selected' : '' ?>>Majority (50%+1)</option>
+											<option value="irv" <?= $race['voting_mode'] === 'irv' ? 'selected' : '' ?>>Ranked Choice (Instant Runoff)</option>
+										</select>
+										<div style="font-size:11px;color:var(--vte-meta,#5a6472);margin-top:4px;">Cannot change once votes are cast.</div>
+									</div>
+								<?php else: ?>
+									<div class="vte-row">
+										<label>Voting mode</label>
+										<input type="text" value="<?= htmlspecialchars($race['voting_mode']) ?>" disabled />
+										<div style="font-size:11px;color:var(--vte-meta,#5a6472);margin-top:4px;">Mode is fixed for <?= htmlspecialchars($race['race_type']) ?> races.</div>
+									</div>
+								<?php endif; ?>
+								<div>
+									<div class="vte-toggle"><input class="vte-rs-abstain" type="checkbox" <?= !empty($race['allow_abstain']) ? 'checked' : '' ?> /><label>Allow abstain</label></div>
+									<div class="vte-toggle"><input class="vte-rs-nota" type="checkbox" <?= !empty($race['allow_none_of_above']) ? 'checked' : '' ?> /><label>Allow None of the Above</label></div>
+									<div class="vte-row" style="margin-top:6px;<?= !empty($race['allow_none_of_above']) ? '' : 'display:none' ?>" data-rs-nota-row>
+										<label style="font-size:11px;">NOTA counts as</label>
+										<select class="vte-rs-nca">
+											<option value="abstain" <?= $race['nota_counts_as'] === 'abstain' ? 'selected' : '' ?>>Abstain (excluded from threshold)</option>
+											<option value="no" <?= $race['nota_counts_as'] === 'no' ? 'selected' : '' ?>>No (counts against)</option>
+										</select>
+									</div>
+									<?php if ($is_althing): ?>
+										<div class="vte-toggle"><input class="vte-rs-nb" type="checkbox" <?= !empty($race['is_non_binding']) ? 'checked' : '' ?> /><label>Non-binding (poll only)</label></div>
+									<?php endif; ?>
+								</div>
+							</div>
+							<div class="vte-actions" style="margin-top:10px;"><button class="vte-btn vte-btn-primary vte-rs-save" data-race-id="<?= (int)$race['voting_race_id'] ?>" type="button">Save Race Settings</button><span class="vte-rs-msg" style="margin-left:10px;font-size:13px;"></span></div>
 						</div>
 					<?php endif; ?>
 
@@ -350,7 +353,7 @@
 					<?php if (!empty($event['reopened_at'])): ?>
 						<button id="vte-resume-event" class="vte-btn vte-btn-success" style="font-size:14px;padding:10px 20px;"><i class="fas fa-play"></i> Resume Voting</button>
 					<?php else: ?>
-						<button id="vte-open-event" class="vte-btn vte-btn-success" style="font-size:14px;padding:10px 20px;">Open Voting Now</button>
+						<button id="vte-open-event" class="vte-btn vte-btn-success vte-open-event-btn" style="font-size:14px;padding:10px 20px;">Open Voting Now</button>
 					<?php endif; ?>
 					<div id="vte-open-msg" style="margin-top:6px;"></div>
 				</div>
@@ -506,14 +509,16 @@
 		});
 	});
 
-	// Open event.
-	var openBtn = $('#vte-open-event');
-	if (openBtn) openBtn.addEventListener('click', function(){
-		fetch('<?= UIR ?>VotingAjax/open_event/' + eventId, { method:'POST', headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })
-			.then(r => r.json()).then(function(j){
-				if (j.status === 0) location.reload();
-				else $('#vte-open-msg').innerHTML = '<div class="vte-error">' + escapeHtml(j.error || 'Failed') + (j.detail ? ': ' + escapeHtml(j.detail) : '') + '</div>';
-			});
+	// Open event (bound to every Open-Voting button — top bar + ballot tab).
+	$$('.vte-open-event-btn').forEach(function(openBtn){
+		openBtn.addEventListener('click', function(){
+			var msg = $('#vte-open-msg-top') || $('#vte-open-msg');
+			fetch('<?= UIR ?>VotingAjax/open_event/' + eventId, { method:'POST', headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })
+				.then(r => r.json()).then(function(j){
+					if (j.status === 0) location.reload();
+					else if (msg) msg.innerHTML = '<div class="vte-error">' + escapeHtml(j.error || 'Failed') + (j.detail ? ': ' + escapeHtml(j.detail) : '') + '</div>';
+				});
+		});
 	});
 
 	// Reopen configuration.
@@ -641,7 +646,7 @@
 	});
 
 	// Resume voting (with impact preview + decision modal).
-	var resumeBtn = $('#vte-resume-event');
+	var resumeBtn = $('#vte-resume-event') || $('#vte-resume-event-top');
 	var mod = $('#vte-decision-mod');
 	function renderImpacts(impacts) {
 		var ul = $('#vte-decision-impacts');
@@ -703,6 +708,7 @@
 			var name = tab.dataset.pane;
 			$$('.vte-tab').forEach(function(x){ x.classList.toggle('active', x === tab); });
 			$$('.vte-pane').forEach(function(p){ p.classList.toggle('active', p.dataset.pane === name); });
+			$$('[data-pane-desc]').forEach(function(d){ d.style.display = (d.dataset.paneDesc === name) ? '' : 'none'; });
 		});
 	});
 
