@@ -10,6 +10,9 @@
 <style>
 	.rp-root.vt-root { --rp-accent-dark:#2c5282; --rp-accent:#3182ce; --rp-accent-mid:#4299e1; }
 	html[data-theme="dark"] .rp-root.vt-root { --rp-accent-dark:#1a365d; --rp-border:#4a5568; --rp-bg-light:#2d3748; --rp-text:#e2e8f0; --rp-text-body:#cbd5e0; --rp-text-muted:#a0aec0; }
+	[data-tip] { position:relative; }
+	[data-tip]:hover::after { content:attr(data-tip); position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%); background:#2d3748; color:#fff; font-size:11px; font-weight:400; white-space:normal; width:max-content; max-width:240px; padding:5px 9px; border-radius:5px; pointer-events:none; z-index:1000; box-shadow:0 2px 6px rgba(0,0,0,0.25); }
+	html[data-theme="dark"] [data-tip]:hover::after { background:#e2e8f0; color:#1a202c; box-shadow:0 2px 6px rgba(0,0,0,0.5); }
 	.vtv-wrap { padding: 16px; max-width:760px; margin: 0 auto; }
 	.vtv-sub { color:var(--vtv-meta,#5a6472); font-size:13px; margin-bottom: 16px; }
 	.vtv-card { background:var(--vtv-card-bg,#fff); border:1px solid var(--vtv-card-border,#e2e8f0); border-radius:10px; padding:20px; margin-bottom:14px; }
@@ -69,7 +72,7 @@
 			</div>
 			<div class="rp-header-scope">
 				<span class="rp-scope-chip" style="cursor:default;"><i class="fas fa-clock"></i> Closes <?= date('M j, Y g:i A', strtotime($event['end_date'])) ?></span>
-				<span class="rp-scope-chip" style="cursor:default;"><?= htmlspecialchars(ucfirst($event['event_type'])) ?></span>
+				<span class="rp-scope-chip" style="cursor:default;" data-tip="<?= $event['event_type'] === 'election' ? 'Election: a vote for officer positions.' : 'Althing: a business / legislative meeting vote (yes-no or multi-choice proposals), not an officer election.' ?>"><?= htmlspecialchars(ucfirst($event['event_type'])) ?></span>
 			</div>
 		</div>
 	</div>
