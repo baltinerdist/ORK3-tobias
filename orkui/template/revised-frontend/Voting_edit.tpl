@@ -35,6 +35,9 @@
 	.vte-choice-remove { width:24px; height:24px; border-radius:50%; border:none; background:transparent; color:var(--vte-meta,#a0aec0); cursor:pointer; display:inline-flex; align-items:center; justify-content:center; font-size:11px; transition: background 0.15s, color 0.15s; }
 	.vte-choice-remove:hover { background:#fed7d7; color:#c53030; }
 	.vte-choice-remove[disabled] { opacity:0.3; cursor:not-allowed; }
+	.vte-confidence-note { display:flex; align-items:flex-start; gap:7px; margin:8px 0 4px; padding:7px 10px; font-size:12px; line-height:1.4; border-radius:6px; background:#fefcbf; color:#744210; border:1px solid #f6e05e; }
+	.vte-confidence-note i { margin-top:1px; }
+	html[data-theme="dark"] .vte-confidence-note { background:#3a3418; color:#f6e05e; border-color:#5c4d13; }
 	.vte-add-choice-row { display:flex; gap:8px; margin-top:8px; align-items:flex-start; }
 	.vte-ac-wrap { position:relative; flex:1; }
 	.vte-ac-input { width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--vte-input-border,#cbd5e0); background:var(--vte-input-bg,#fff); color:var(--vte-text,#1a202c); border-radius:6px; box-sizing:border-box; }
@@ -284,6 +287,9 @@
 
 					<?php if ($can_edit): ?>
 						<?php if ($race['race_type'] === 'position'): ?>
+							<?php if (count($race['choices'] ?? []) === 1): ?>
+								<div class="vte-confidence-note"><i class="fas fa-info-circle"></i><span>Single candidate &mdash; this race becomes a <strong>Yes/No vote of confidence</strong>. Voters choose to confirm this candidate or vote no confidence. Add a second candidate to make it a contested race.</span></div>
+							<?php endif; ?>
 							<div class="vte-add-choice-row">
 								<div class="vte-ac-wrap">
 									<input type="text" class="vte-ac-input vte-cand-input" placeholder="Search a player by persona or username..." autocomplete="off" />
