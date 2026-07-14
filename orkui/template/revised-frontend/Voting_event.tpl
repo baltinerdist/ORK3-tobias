@@ -124,7 +124,7 @@
 						$pre_nota      = ($av && !empty($av['is_none_of_above']));
 					?>
 					<div class="vtv-race" data-race-id="<?= (int)$race['voting_race_id'] ?>" data-race-type="<?= htmlspecialchars($race['race_type']) ?>" data-voting-mode="<?= htmlspecialchars($race['voting_mode']) ?>" data-irv="<?= $is_irv ? '1' : '0' ?>">
-						<h3>
+						<h3 id="vtv-race-title-<?= (int)$race['voting_race_id'] ?>">
 							<?= htmlspecialchars($race['title']) ?>
 							<?php if ($is_irv): ?><span class="vtv-mode-pill">Ranked Choice</span><?php endif; ?>
 							<?php if ($is_confidence): ?><span class="vtv-mode-pill">Vote of Confidence</span><?php endif; ?>
@@ -167,7 +167,7 @@
 								<label class="vtv-radio" style="margin-top:8px;"><input type="checkbox" class="vtv-abstain-cb" <?= $pre_abstain ? 'checked' : '' ?> /> <span>Skip this race (abstain — your ballot will not contribute to ranking)</span></label>
 							<?php endif; ?>
 						<?php elseif ($is_confidence): ?>
-							<div class="vtv-radio-list">
+							<div class="vtv-radio-list" role="radiogroup" aria-labelledby="vtv-race-title-<?= (int)$race['voting_race_id'] ?>">
 								<label class="vtv-radio<?= ($pre_choice === (int)$race['choices'][0]['voting_choice_id']) ? ' vtv-radio-checked' : '' ?>"><input type="radio" name="r_<?= (int)$race['voting_race_id'] ?>" value="<?= (int)$race['choices'][0]['voting_choice_id'] ?>" <?= ($pre_choice === (int)$race['choices'][0]['voting_choice_id']) ? 'checked' : '' ?> /> <span>Yes — vote of confidence in <?= htmlspecialchars($race['choices'][0]['label']) ?></span></label>
 								<label class="vtv-radio<?= $pre_nota ? ' vtv-radio-checked' : '' ?>"><input type="radio" name="r_<?= (int)$race['voting_race_id'] ?>" value="no" <?= $pre_nota ? 'checked' : '' ?> /> <span>No — no confidence</span></label>
 								<?php if (!empty($race['allow_abstain'])): ?>
@@ -175,7 +175,7 @@
 								<?php endif; ?>
 							</div>
 						<?php else: ?>
-							<div class="vtv-radio-list">
+							<div class="vtv-radio-list" role="radiogroup" aria-labelledby="vtv-race-title-<?= (int)$race['voting_race_id'] ?>">
 								<?php foreach ($race['choices'] as $c): ?>
 									<label class="vtv-radio<?= ($pre_choice === (int)$c['voting_choice_id']) ? ' vtv-radio-checked' : '' ?>"><input type="radio" name="r_<?= (int)$race['voting_race_id'] ?>" value="<?= (int)$c['voting_choice_id'] ?>" <?= ($pre_choice === (int)$c['voting_choice_id']) ? 'checked' : '' ?> /> <span><?= htmlspecialchars($c['label']) ?></span></label>
 								<?php endforeach; ?>
