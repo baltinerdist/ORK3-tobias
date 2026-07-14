@@ -173,7 +173,7 @@ class Voting extends Ork3
             'eligible'             => $eligible,
             'provisional_possible' => $provisional_possible,
             'rules'                => $rules,
-            'is_default_rules'     => $resolved['is_default'],
+            'is_default'           => $resolved['is_default'],
             'player'               => $player,
             'reason'               => $reason,
         ];
@@ -195,15 +195,11 @@ class Voting extends Ork3
     }
 
     // Roster of currently-active external (runner-entered) ballots for an event, for co-runner /
-    // scope-officer visibility (the audit log is admin-only). Respects anonymous_to_runner by
-    // blanking voter identity. Source: controller.VotingAjax.php::external_roster.
+    // scope-officer visibility (the audit log is admin-only). Source:
+    // controller.VotingAjax.php::external_roster.
     public function external_ballots_roster($voting_event_id)
     {
         global $DB;
-        $DB->Clear();
-        $ev = $DB->DataSet("SELECT anonymous_to_runner FROM " . DB_PREFIX . "voting_event WHERE voting_event_id = " . (int)$voting_event_id . " LIMIT 1");
-        $anon = ($ev && $ev->Next() && (int)$ev->anonymous_to_runner === 1);
-
         $DB->Clear();
         $rs = $DB->DataSet("SELECT b.voting_ballot_id, b.voter_mundane_id, b.entered_by_runner_id, b.submitted_at, b.is_provisional,
 				vm.persona AS voter_persona, vm.username AS voter_username,
@@ -219,11 +215,11 @@ class Voting extends Ork3
 			ORDER BY b.submitted_at DESC, b.voting_ballot_id DESC");
         $rows = [];
         while ($rs && $rs->Next()) {
-            $voter_label = $anon ? '(anonymous)' : ((string)($rs->voter_persona ?: $rs->voter_username ?: ('#' . (int)$rs->voter_mundane_id)));
+            $voter_label = (string)($rs->voter_persona ?: $rs->voter_username ?: ('#' . (int)$rs->voter_mundane_id));
             $runner_label = (string)($rs->runner_persona ?: $rs->runner_username ?: ('#' . (int)$rs->entered_by_runner_id));
             $rows[] = [
                 'voting_ballot_id' => (int)$rs->voting_ballot_id,
-                'voter_mundane_id' => $anon ? 0 : (int)$rs->voter_mundane_id,
+                'voter_mundane_id' => (int)$rs->voter_mundane_id,
                 'voter_label' => $voter_label,
                 'runner_label' => $runner_label,
                 'submitted_at' => (string)$rs->submitted_at,
@@ -635,14 +631,13 @@ class Voting extends Ork3
     {
         global $DB;
         $DB->Clear();
-        $rs = $DB->DataSet("SELECT status, hide_results_from_candidate_runners, anonymous_to_runner FROM " . DB_PREFIX . "voting_event WHERE voting_event_id = " . (int)$voting_event_id);
+        $rs = $DB->DataSet("SELECT status, hide_results_from_candidate_runners FROM " . DB_PREFIX . "voting_event WHERE voting_event_id = " . (int)$voting_event_id);
         if (!$rs || !$rs->Next()) {
             return null;
         }
         return [
             'status'    => $rs->status,
             'hide'      => (int)$rs->hide_results_from_candidate_runners,
-            'anonymous' => (int)$rs->anonymous_to_runner,
         ];
     }
 
@@ -809,9 +804,9 @@ class Voting extends Ork3
         $this->Event->description = $request['Description'] ?? '';
         $this->Event->start_date = $request['StartDate'];
         $this->Event->end_date   = $request['EndDate'];
-        // DEPRECATED: anonymous_to_runner UI removed (was inert — no per-voter runner projection existed).
-        // Column retained non-destructively; always pins to 0. Runner audit view redacts voters unconditionally.
-        $this->Event->anonymous_to_runner = !empty($request['AnonymousToRunner']) ? 1 : 0;
+        // RETIRED: anonymous_to_runner was inert (no per-voter runner projection ever existed).
+        // Column retained non-destructively but hard-pinned to 0 — never client-controlled.
+        $this->Event->anonymous_to_runner = 0;
         $this->Event->hide_results_from_candidate_runners = !empty($request['HideResultsFromCandidateRunners']) ? 1 : 0;
         $this->Event->allow_provisional = !empty($request['AllowProvisional']) ? 1 : 0;
         $this->Event->status = 'draft';
@@ -855,13 +850,14 @@ class Voting extends Ork3
             }
         }
 
+        // anonymous_to_runner is RETIRED (pinned to 0 at creation) — intentionally NOT editable here.
         $diff = [];
         foreach (['Title' => 'title', 'Description' => 'description', 'StartDate' => 'start_date', 'EndDate' => 'end_date',
-                 'AnonymousToRunner' => 'anonymous_to_runner', 'HideResultsFromCandidateRunners' => 'hide_results_from_candidate_runners',
+                 'HideResultsFromCandidateRunners' => 'hide_results_from_candidate_runners',
                  'AllowProvisional' => 'allow_provisional'] as $k => $col) {
             if (array_key_exists($k, $request)) {
                 $old = $this->Event->$col;
-                $new = (in_array($col, ['anonymous_to_runner','hide_results_from_candidate_runners','allow_provisional'])) ? (!empty($request[$k]) ? 1 : 0) : $request[$k];
+                $new = (in_array($col, ['hide_results_from_candidate_runners','allow_provisional'])) ? (!empty($request[$k]) ? 1 : 0) : $request[$k];
                 if ((string)$old !== (string)$new) {
                     $diff[$col] = ['from' => $old, 'to' => $new];
                     $this->Event->$col = $new;
@@ -909,6 +905,11 @@ class Voting extends Ork3
         }
         if ($race_type === 'multichoice') {
             $voting_mode = 'plurality';
+        }
+        // Position races accept a client-chosen mode — validate it against the allowed set
+        // (mirrors EditRaceSettings) so an invalid mode can never be persisted.
+        if ($race_type === 'position' && !in_array($voting_mode, ['plurality','majority','irv'], true)) {
+            return InvalidParameter();
         }
 
         $this->Race->clear();
@@ -1496,12 +1497,19 @@ class Voting extends Ork3
                 }
             }
         }
+        $clear_nota = false;
         if (array_key_exists('NotaCountsAs', $request)) {
             $nca = $request['NotaCountsAs'];
             $nca = in_array($nca, ['no','abstain'], true) ? $nca : null;
             if ($nca !== $this->Race->nota_counts_as) {
                 $diff['nota_counts_as'] = ['from' => $this->Race->nota_counts_as, 'to' => $nca];
-                $this->Race->nota_counts_as = $nca;
+                if ($nca === null) {
+                    // yapo drops null from writes, so the object assignment would leave the
+                    // nullable enum unchanged — clear it with a raw UPDATE after save().
+                    $clear_nota = true;
+                } else {
+                    $this->Race->nota_counts_as = $nca;
+                }
             }
         }
         if (empty($diff)) {
@@ -1509,6 +1517,12 @@ class Voting extends Ork3
         }
 
         $this->Race->save();
+        if ($clear_nota) {
+            global $DB;
+            $DB->Clear();
+            $DB->Execute("UPDATE " . DB_PREFIX . "voting_race SET nota_counts_as = NULL WHERE voting_race_id = " . (int)$voting_race_id);
+            $DB->Clear();
+        }
         $this->audit(
             $this->Race->voting_event_id,
             'race_settings_edited',
@@ -1756,6 +1770,10 @@ class Voting extends Ork3
                 return NoAuthorization();
             }
             $entered_by_runner_id = $actor_mundane_id;
+        } else {
+            // Self-cast: entered_by_runner_id must never be client-controlled — a member casting
+            // their own ballot is always an electronic (non-runner) ballot. Force null.
+            $entered_by_runner_id = null;
         }
 
         $this->Event->clear();
@@ -1808,6 +1826,18 @@ class Voting extends Ork3
             ];
         }
 
+        // Valid choice-id set per race — every submitted ChoiceId MUST belong to the race it is
+        // cast in. Guards against a client forging a cross-race or dangling choice id.
+        $DB->Clear();
+        $cids_rs = $DB->DataSet("SELECT c.voting_race_id, c.voting_choice_id
+				FROM " . DB_PREFIX . "voting_choice c
+				JOIN " . DB_PREFIX . "voting_race r USING (voting_race_id)
+				WHERE r.voting_event_id = " . $voting_event_id);
+        $valid_choice_ids = [];
+        while ($cids_rs && $cids_rs->Next()) {
+            $valid_choice_ids[(int)$cids_rs->voting_race_id][(int)$cids_rs->voting_choice_id] = true;
+        }
+
         // Validate every vote item.
         $votes_in = $request['Votes'] ?? [];
         if (!is_array($votes_in) || empty($votes_in)) {
@@ -1831,6 +1861,22 @@ class Voting extends Ork3
             if ($nota && empty($cfg['allow_none_of_above']) && !$is_single_cand_position) {
                 return ProcessingError('', 'None-of-the-above not allowed for race.');
             }
+            // Every submitted ChoiceId must be a member of THIS race's choices. Reject the whole
+            // submission on any stray id rather than silently dropping it (prevents phantom votes).
+            if (!$abst && !$nota) {
+                $cids_in = $vi['ChoiceIds'] ?? [];
+                if (!is_array($cids_in)) {
+                    $cids_in = [];
+                }
+                foreach ($cids_in as $cid) {
+                    if ($cid === null || $cid === '') {
+                        continue;
+                    }
+                    if (empty($valid_choice_ids[$rid][(int)$cid])) {
+                        return ProcessingError('', 'Invalid choice in submission.');
+                    }
+                }
+            }
         }
 
         // Serialize concurrent casts per (event, voter) so a double-tapped FIRST vote
@@ -1838,7 +1884,25 @@ class Voting extends Ork3
         // Ids are (int)-cast above, so the lock name is injection-safe.
         $cast_lock = 'vt_cast_' . $voting_event_id . '_' . $voter_mundane_id;
         $DB->Clear();
-        $DB->Execute("SELECT GET_LOCK('" . $cast_lock . "', 10)");
+        $lock_rs = $DB->DataSet("SELECT GET_LOCK('" . $cast_lock . "', 10) AS got");
+        // GET_LOCK returns 1 on success, 0 on timeout, NULL on error. Only proceed if we hold it —
+        // otherwise a concurrent cast is mid-flight; ask the voter to retry. No transaction is open
+        // and the lock is not held here, so there is nothing to roll back or release.
+        if (!$lock_rs || !$lock_rs->Next() || (int)$lock_rs->got !== 1) {
+            $DB->Clear();
+            return ProcessingError('lock_timeout', 'Please try again.');
+        }
+
+        // Any write failure once the transaction is open must abort the whole ballot — a mid-loop
+        // failure that still COMMITted would leave a partially-persisted ballot yet report Success.
+        $abort_cast = function ($msg) use ($DB, $cast_lock) {
+            $DB->Clear();
+            $DB->Execute("ROLLBACK");
+            $DB->Clear();
+            $DB->Execute("SELECT RELEASE_LOCK('" . $cast_lock . "')");
+            $DB->Clear();
+            return ProcessingError('', $msg);
+        };
 
         // ── Open transaction with FOR UPDATE on the active_ballot pointer (deadlock-safe).
         $DB->Clear();
@@ -1903,6 +1967,9 @@ class Voting extends Ork3
                 $this->Vote->is_abstain = $abst;
                 $this->Vote->is_none_of_above = $nota;
                 $this->Vote->save();
+                if ((int)$this->Vote->voting_vote_id <= 0) {
+                    return $abort_cast('Could not record your vote. Please try again.');
+                }
                 $inserted_vote_rows++;
                 continue;
             }
@@ -1925,6 +1992,9 @@ class Voting extends Ork3
                     $this->Vote->voting_choice_id = (int)$cid;
                     $this->Vote->rank = $rank++;
                     $this->Vote->save();
+                    if ((int)$this->Vote->voting_vote_id <= 0) {
+                        return $abort_cast('Could not record your vote. Please try again.');
+                    }
                     $inserted_vote_rows++;
                 }
             } else {
@@ -1938,6 +2008,9 @@ class Voting extends Ork3
                 $this->Vote->voting_race_id = $rid;
                 $this->Vote->voting_choice_id = (int)$cid;
                 $this->Vote->save();
+                if ((int)$this->Vote->voting_vote_id <= 0) {
+                    return $abort_cast('Could not record your vote. Please try again.');
+                }
                 $inserted_vote_rows++;
             }
         }
@@ -1974,6 +2047,9 @@ class Voting extends Ork3
                 $this->Vote->is_abstain = $row['is_abstain'];
                 $this->Vote->is_none_of_above = $row['is_none_of_above'];
                 $this->Vote->save();
+                if ((int)$this->Vote->voting_vote_id <= 0) {
+                    return $abort_cast('Could not record your vote. Please try again.');
+                }
             }
         }
 
@@ -1994,7 +2070,9 @@ class Voting extends Ork3
         $action = 'ballot_cast';
         if ($prior_ballot_id) {
             $DB->Clear();
-            $DB->Execute("UPDATE " . DB_PREFIX . "voting_ballot SET superseded_by_ballot_id = " . $new_ballot_id . " WHERE voting_ballot_id = " . $prior_ballot_id);
+            if ($DB->Execute("UPDATE " . DB_PREFIX . "voting_ballot SET superseded_by_ballot_id = " . $new_ballot_id . " WHERE voting_ballot_id = " . $prior_ballot_id) === false) {
+                return $abort_cast('Could not record your ballot. Please try again.');
+            }
             $action = 'ballot_changed';
         }
         if ($is_runner_entry) {
@@ -2012,12 +2090,15 @@ class Voting extends Ork3
             ':prov' => (int)$is_provisional,
             ':src' => json_encode($elig['rules']),
         ]);
-        $DB->Execute(
+        $snap_ok = $DB->Execute(
             "INSERT INTO " . DB_PREFIX . "voting_eligibility_snapshot
 			(voting_event_id, mundane_id, eligible, was_provisional, source_rules, evaluated_at)
 			VALUES (:eid, :mid, :elig, :prov, :src, NOW())
 			ON DUPLICATE KEY UPDATE eligible = VALUES(eligible), source_rules = VALUES(source_rules), evaluated_at = NOW()"
         );
+        if ($snap_ok === false) {
+            return $abort_cast('Could not record your ballot. Please try again.');
+        }
 
         // Flip the active-ballot pointer.
         $DB->Clear();
@@ -2026,10 +2107,13 @@ class Voting extends Ork3
             ':mid' => (int)$voter_mundane_id,
             ':bid' => (int)$new_ballot_id,
         ]);
-        $DB->Execute(
+        $active_ok = $DB->Execute(
             "INSERT INTO " . DB_PREFIX . "voting_active_ballot (voting_event_id, voter_mundane_id, voting_ballot_id) VALUES (:eid, :mid, :bid)
 			ON DUPLICATE KEY UPDATE voting_ballot_id = VALUES(voting_ballot_id)"
         );
+        if ($active_ok === false) {
+            return $abort_cast('Could not record your ballot. Please try again.');
+        }
 
         $DB->Clear();
         $DB->Execute("COMMIT");
@@ -2574,6 +2658,9 @@ class Voting extends Ork3
         $already_overridden = ($qo_rs && $qo_rs->Next() && $qo_rs->quorum_overridden_at);
         foreach ($tally as $rid => $row) {
             $out = $row['result']['outcome'] ?? null;
+            if ($out === 'error') {
+                return ProcessingError('', 'Cannot publish: ' . $row['race']['title'] . ' has an invalid tally configuration.');
+            }
             $tie_resolved = $row['race']['tie_resolved_winner_choice_id'] ?? null;
             if (in_array($out, ['tie', 'tie_at_elimination', 'tie_at_final']) && !$tie_resolved) {
                 return ProcessingError('', 'Cannot publish: ' . $row['race']['title'] . ' has an unresolved tie.');
@@ -2602,15 +2689,23 @@ class Voting extends Ork3
         $roll = $this->compute_eligible_roll($this->Event->scope_type, (int)$this->Event->scope_id);
         $rules_json = json_encode($roll['rules']);
         global $DB;
-        foreach ($roll['ids'] as $mid) {
-            // YapoMysql binds params from $this->Data (named placeholders), NOT from a 2nd
-            // positional Execute() arg — SetData() before Execute() so the upsert actually lands.
+        // Chunked multi-row upsert (500 rows/statement) — one round-trip per chunk instead of
+        // one INSERT per eligible voter (N+1). Mundane ids are (int)-cast and interpolated
+        // directly (injection-safe); source_rules is bound per row via named placeholders.
+        $roll_ids = array_map('intval', $roll['ids']);
+        foreach (array_chunk($roll_ids, 500) as $chunk) {
+            $tuples = [];
+            $data = [];
+            foreach ($chunk as $i => $mid) {
+                $tuples[] = "(" . (int)$voting_event_id . ", " . (int)$mid . ", 1, 0, :src{$i}, NOW())";
+                $data[":src{$i}"] = $rules_json;
+            }
             $DB->Clear();
-            $DB->SetData([':eid' => (int)$voting_event_id, ':mid' => (int)$mid, ':src' => $rules_json]);
+            $DB->SetData($data);
             $DB->Execute(
                 "INSERT INTO " . DB_PREFIX . "voting_eligibility_snapshot
                     (voting_event_id, mundane_id, eligible, was_provisional, source_rules, evaluated_at)
-                 VALUES (:eid, :mid, 1, 0, :src, NOW())
+                 VALUES " . implode(', ', $tuples) . "
                  ON DUPLICATE KEY UPDATE eligible = 1, source_rules = VALUES(source_rules), evaluated_at = NOW()"
             );
         }
@@ -2710,7 +2805,7 @@ class Voting extends Ork3
         $DB->Clear();
         $rs = $DB->DataSet("SELECT voting_event_id, event_type, title, status, start_date, end_date, anonymous_to_runner
 			FROM " . DB_PREFIX . "voting_event
-			WHERE scope_type = '" . mysql_real_escape_string($scope_type) . "' AND scope_id = " . $scope_id . "
+			WHERE scope_type = '" . $scope_type . "' AND scope_id = " . $scope_id . "
 			ORDER BY start_date DESC, voting_event_id DESC LIMIT 50");
         $events = [];
         while ($rs && $rs->Next()) {
@@ -2729,7 +2824,7 @@ class Voting extends Ork3
         global $DB;
         $DB->Clear();
         $rs = $DB->DataSet("SELECT COUNT(*) AS n FROM " . DB_PREFIX . "voting_event
-			WHERE scope_type = '" . mysql_real_escape_string($scope_type) . "' AND scope_id = " . $scope_id . "
+			WHERE scope_type = '" . $scope_type . "' AND scope_id = " . $scope_id . "
 			  AND status IN ('open','closed')");
         $n = ($rs && $rs->Next()) ? (int)$rs->n : 0;
         return ['Status' => 0, 'Count' => $n];
@@ -3151,7 +3246,9 @@ class Voting extends Ork3
                         break;
                     }
                 }
-                if ($head === null) {
+                // Guard against a dangling head id (not a tracked candidate) auto-vivifying a
+                // phantom entry in $counts — mirrors tally_plurality's isset() guard.
+                if ($head === null || !isset($counts[$head])) {
                     $exhausted_this_round++;
                     continue;
                 }
