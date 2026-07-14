@@ -321,6 +321,36 @@ class Voting extends Ork3
         ];
     }
 
+    // Count-only electorate size for the live turnout figure. Runs the same eligibility
+    // report as compute_eligible_roll() but returns only the tally — avoids building the
+    // full roster (ids/players arrays) when a caller (e.g. the runner dashboard) needs only
+    // the number and the frozen eligible_count isn't yet set.
+    public function compute_eligible_count($scope_type, $scope_id)
+    {
+        $kingdom_id = $this->resolve_kingdom_id($scope_type, (int)$scope_id);
+        $resolved   = self::resolve_rules($kingdom_id);
+        $rules      = $resolved['rules'];
+
+        $report = new Report();
+        $args = array_merge($rules, ['KingdomId' => $kingdom_id]);
+        if ($scope_type === 'park') {
+            $args['ParkId'] = (int)$scope_id;
+        }
+        $r = $report->GetVotingEligible($args);
+
+        $count = 0;
+        foreach (($r['Players'] ?? []) as $p) {
+            if (empty($p['VotingEligible'])) {
+                continue;
+            }
+            if ((int)($p['MundaneId'] ?? 0) <= 0) {
+                continue;
+            }
+            $count++;
+        }
+        return $count;
+    }
+
     // One-line human summary of a resolved ruleset for the organizer UI.
     public static function rule_summary_line(array $rules, $is_default)
     {

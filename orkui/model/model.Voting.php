@@ -145,6 +145,43 @@ class Model_Voting extends Model
         return $this->Voting->compute_eligible_roll($scope_type, (int)$scope_id);
     }
 
+    public function eligible_count($scope_type, $scope_id)
+    {
+        return $this->Voting->compute_eligible_count($scope_type, (int)$scope_id);
+    }
+
+    // Parse a "Kingdom_10"/"Park_5" scope string into its parts, or null if malformed.
+    // Shared by the Voting controllers (index/create in controller.Voting.php;
+    // candidate_search/eligibility_roster in VotingAjax are a follow-up).
+    // Returns ['type' => 'kingdom', 'label' => 'Kingdom', 'id' => 10].
+    public static function parse_scope($scope)
+    {
+        $parts = explode('_', (string)$scope, 2);
+        $label = $parts[0] ?? '';
+        $id    = (int)($parts[1] ?? 0);
+        if (!in_array($label, ['Kingdom', 'Park'], true) || $id <= 0) {
+            return null;
+        }
+        return ['type' => strtolower($label), 'label' => $label, 'id' => $id];
+    }
+
+    // Remove withdrawn choices from an event's races for voter-facing display (they remain
+    // in results). Shared by the ballot views: event() in controller.Voting.php and
+    // external_ballot_form in VotingAjax (a follow-up caller). Pure array transform.
+    public static function strip_withdrawn_choices($event)
+    {
+        if (empty($event['races']) || !is_array($event['races'])) {
+            return $event;
+        }
+        foreach ($event['races'] as &$_race) {
+            if (!empty($_race['choices'])) {
+                $_race['choices'] = array_values(array_filter($_race['choices'], fn ($c) => empty($c['withdrawn_at'])));
+            }
+        }
+        unset($_race);
+        return $event;
+    }
+
     public function list_for_scope($scope_type, $scope_id)
     {
         $r = $this->Voting->ListEventsForScope(['ScopeType' => $scope_type, 'ScopeId' => $scope_id]);

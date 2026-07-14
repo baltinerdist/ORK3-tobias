@@ -25,18 +25,17 @@ class Controller_Voting extends Controller
     public function index($scope = null)
     {
         // $scope is "Kingdom_10" or "Park_5" — single arg from the routing system.
-        $parts = explode('_', (string)$scope, 2);
-        $scope_type = $parts[0] ?? '';
-        $scope_id = (int)($parts[1] ?? 0);
-        if (!in_array($scope_type, ['Kingdom', 'Park']) || !$scope_id) {
+        $parsed = Model_Voting::parse_scope($scope);
+        if ($parsed === null) {
             $this->data['Error'] = 'Invalid scope.';
             $this->template = '../revised-frontend/Voting_index.tpl';
             return;
         }
-        $st = strtolower($scope_type);
+        $st = $parsed['type'];
+        $scope_id = $parsed['id'];
         $this->data['scope_type'] = $st;
         $this->data['scope_id'] = $scope_id;
-        $this->data['scope_type_label'] = $scope_type;
+        $this->data['scope_type_label'] = $parsed['label'];
 
         // Get scope title (kingdom/park name) for display.
         if ($st === 'kingdom') {
@@ -59,21 +58,20 @@ class Controller_Voting extends Controller
     public function create($scope = null)
     {
         $this->require_login();
-        $parts = explode('_', (string)$scope, 2);
-        $scope_type = $parts[0] ?? '';
-        $scope_id = (int)($parts[1] ?? 0);
-        if (!in_array($scope_type, ['Kingdom', 'Park']) || !$scope_id) {
+        $parsed = Model_Voting::parse_scope($scope);
+        if ($parsed === null) {
             header('Location: ' . UIR);
             exit;
         }
-        $st = strtolower($scope_type);
+        $st = $parsed['type'];
+        $scope_id = $parsed['id'];
         if (!$this->Voting->user_can_run_in_scope((int)$this->session->user_id, $st, $scope_id)) {
             header('Location: ' . UIR);
             exit;
         }
         $this->data['scope_type'] = $st;
         $this->data['scope_id'] = $scope_id;
-        $this->data['scope_type_label'] = $scope_type;
+        $this->data['scope_type_label'] = $parsed['label'];
         if ($st === 'kingdom') {
             $this->data['scope_name'] = $this->Kingdom->get_kingdom_name($scope_id) ?: "Kingdom #$scope_id";
         } else {
@@ -97,7 +95,6 @@ class Controller_Voting extends Controller
                 'Description' => $this->request->Description,
                 'StartDate' => $this->request->StartDate,
                 'EndDate' => $this->request->EndDate,
-                'AnonymousToRunner' => !empty($this->request->AnonymousToRunner) ? 1 : 0,
                 'HideResultsFromCandidateRunners' => !empty($this->request->HideResultsFromCandidateRunners) ? 1 : 0,
                 'AllowProvisional' => !empty($this->request->AllowProvisional) ? 1 : 0,
             ];
@@ -163,12 +160,7 @@ class Controller_Voting extends Controller
         }
         $event = $r['Event'];
         // Hide withdrawn choices from the voter UI (they remain in results display).
-        foreach ($event['races'] as &$_race) {
-            if (!empty($_race['choices'])) {
-                $_race['choices'] = array_values(array_filter($_race['choices'], fn ($c) => empty($c['withdrawn_at'])));
-            }
-        }
-        unset($_race);
+        $event = Model_Voting::strip_withdrawn_choices($event);
 
         // Check eligibility.
         $elig = $this->Voting->eligibility_check([
@@ -216,8 +208,14 @@ class Controller_Voting extends Controller
         $voting_event_id = (int)$voting_event_id;
         // Lazy scheduler (no cron in this repo): auto-open due drafts, release provisional
         // ballots that now qualify, and auto-close events past end_date — so the dashboard a
-        // runner opens is always current. cycle_event_status() runs the full sweep once.
-        $this->Voting->cycle_event_status();
+        // runner opens is always current. cycle_event_status() is a full system-wide sweep, so
+        // rate-limit it to at most once per 45s window (across all dashboard traffic) via a
+        // short-TTL cache flag; a memcache miss (e.g. no cache server) falls back to running it.
+        $swept = Ork3::$Lib->ghettocache->get('Voting.cycle_event_status', 'sweep', 45);
+        if ($swept === false) {
+            $this->Voting->cycle_event_status();
+            Ork3::$Lib->ghettocache->cache('Voting.cycle_event_status', 'sweep', 1);
+        }
         $r = $this->Voting->get_event($voting_event_id);
         if (($r['Status'] ?? 1) != 0) {
             header('Location: ' . UIR);
@@ -258,8 +256,7 @@ class Controller_Voting extends Controller
         if (!empty($event['eligible_count'])) {
             $this->data['eligible_count'] = (int)$event['eligible_count'];
         } else {
-            $roll = $this->Voting->eligible_roll($event['scope_type'], (int)$event['scope_id']);
-            $this->data['eligible_count'] = (int)$roll['count'];
+            $this->data['eligible_count'] = (int)$this->Voting->eligible_count($event['scope_type'], (int)$event['scope_id']);
         }
 
         // Delegate Runner (finding 35): who may add/remove, and the current delegate list.
