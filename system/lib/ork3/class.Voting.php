@@ -1686,6 +1686,13 @@ class Voting extends Ork3
             }
         }
 
+        // Serialize concurrent casts per (event, voter) so a double-tapped FIRST vote
+        // cannot insert two un-superseded ballots before the active-ballot pointer exists.
+        // Ids are (int)-cast above, so the lock name is injection-safe.
+        $cast_lock = 'vt_cast_' . $voting_event_id . '_' . $voter_mundane_id;
+        $DB->Clear();
+        $DB->Execute("SELECT GET_LOCK('" . $cast_lock . "', 10)");
+
         // ── Open transaction with FOR UPDATE on the active_ballot pointer (deadlock-safe).
         $DB->Clear();
         $DB->Execute("START TRANSACTION");
@@ -1709,6 +1716,8 @@ class Voting extends Ork3
         if ($new_ballot_id <= 0) {
             $DB->Clear();
             $DB->Execute("ROLLBACK");
+            $DB->Clear();
+            $DB->Execute("SELECT RELEASE_LOCK('" . $cast_lock . "')");
             $DB->Clear();
             return ProcessingError('', 'Could not record ballot. Please try again.');
         }
@@ -1810,6 +1819,8 @@ class Voting extends Ork3
             $DB->Clear();
             $DB->Execute("ROLLBACK");
             $DB->Clear();
+            $DB->Execute("SELECT RELEASE_LOCK('" . $cast_lock . "')");
+            $DB->Clear();
             return ProcessingError('', 'No votes recorded.');
         }
 
@@ -1844,6 +1855,8 @@ class Voting extends Ork3
 
         $DB->Clear();
         $DB->Execute("COMMIT");
+        $DB->Clear();
+        $DB->Execute("SELECT RELEASE_LOCK('" . $cast_lock . "')");
         $DB->Clear();
 
         $this->audit(
