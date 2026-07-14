@@ -32,6 +32,8 @@
 	.vt-pill-unpublished { background:#fed7d7; color:#742a2a; }
 	.vt-pill-election { background:#e9d8fd; color:#44337a; }
 	.vt-pill-althing { background:#fefcbf; color:#744210; }
+	[data-tip] { position:relative; cursor:help; }
+	[data-tip]:hover::after { content:attr(data-tip); position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%); background:#2d3748; color:#fff; font-size:11px; font-weight:400; letter-spacing:normal; text-transform:none; white-space:normal; width:max-content; max-width:240px; padding:5px 9px; border-radius:5px; pointer-events:none; z-index:1000; box-shadow:0 2px 6px rgba(0,0,0,0.25); }
 	.vt-event-title { font-weight:600; font-size:15px; color:var(--rp-text); margin:0; line-height:1.3; background:transparent; border:none; padding:0; border-radius:0; text-shadow:none; }
 	.vt-event-dates { font-size:12px; color:var(--rp-text-muted); }
 	.vt-event-actions { display:flex; gap:6px; flex-wrap:wrap; margin-top:auto; padding-top:6px; }
@@ -51,6 +53,7 @@
 	html[data-theme="dark"] .vt-event-btn:hover { background:#1a202c; border-color:var(--rp-accent-mid); }
 	html[data-theme="dark"] .vt-event-btn-primary { background:var(--rp-accent); border-color:var(--rp-accent); color:#fff; }
 	html[data-theme="dark"] .vt-pill-draft { background:#2d3748; color:#cbd5e0; }
+	html[data-theme="dark"] [data-tip]:hover::after { background:#e2e8f0; color:#1a202c; box-shadow:0 2px 6px rgba(0,0,0,0.5); }
 </style>
 
 <div class="rp-root vt-root">
@@ -141,8 +144,18 @@
 					?>
 					<div class="vt-event-card">
 						<div class="vt-event-pillrow">
-							<span class="vt-pill <?= $e['event_type'] === 'election' ? 'vt-pill-election' : 'vt-pill-althing' ?>"><?= htmlspecialchars($e['event_type']) ?></span>
-							<span class="vt-pill vt-pill-<?= htmlspecialchars($e['status']) ?>"><?= htmlspecialchars($e['status']) ?></span>
+							<span class="vt-pill <?= $e['event_type'] === 'election' ? 'vt-pill-election' : 'vt-pill-althing' ?>" data-tip="<?= $e['event_type'] === 'election' ? 'Election: a vote for officer positions.' : 'Althing: a business / legislative meeting vote (yes-no or multi-choice proposals), not an officer election.' ?>"><?= htmlspecialchars($e['event_type']) ?></span>
+							<?php
+								$vt_status_tips = [
+									'draft'       => 'Draft: still being set up. Not visible to voters and not yet open.',
+									'open'        => 'Open: voting is live. Eligible voters can cast and change ballots until it closes.',
+									'closed'      => 'Closed: voting has ended, but results are not yet published.',
+									'published'   => 'Published: voting has ended and results are visible.',
+									'unpublished' => 'Unpublished: results are hidden from voters.',
+								];
+								$vt_stip = $vt_status_tips[$e['status']] ?? ucfirst($e['status']);
+							?>
+							<span class="vt-pill vt-pill-<?= htmlspecialchars($e['status']) ?>" data-tip="<?= htmlspecialchars($vt_stip, ENT_QUOTES) ?>"><?= htmlspecialchars($e['status']) ?></span>
 						</div>
 						<h3 class="vt-event-title"><?= htmlspecialchars($e['title']) ?></h3>
 						<div class="vt-event-dates">
