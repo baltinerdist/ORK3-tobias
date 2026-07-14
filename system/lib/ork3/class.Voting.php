@@ -3114,6 +3114,7 @@ class Voting extends Ork3
                     }
                 }
                 if ($head === null) {
+                    $exhausted_this_round++;
                     continue;
                 }
                 $counts[$head]++;

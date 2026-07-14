@@ -305,6 +305,27 @@ class VotingTallyTests
         $this->assertEq('tie_at_final', $r['outcome']);
     }
 
+    public function test_irv_exhausted_count_reported()
+    {
+        // Same shape as test_irv_exhausted_ballots, but asserts the per-round
+        // exhausted counter (Finding 16). One voter ranks only C.
+        // R1: A=2, B=2, C=1 — no majority, eliminate C. No ballot exhausts yet.
+        // R2: C's lone voter has no continuing candidate → exhausts. A=2, B=2 → tie_at_final.
+        $race = ['race_type' => 'position', 'voting_mode' => 'irv',
+            'allow_abstain' => 0, 'allow_none_of_above' => 0, 'nota_counts_as' => null,
+            'choices' => [['id' => 10,'label' => 'A'],['id' => 11,'label' => 'B'],['id' => 12,'label' => 'C']]];
+        $ballots = array_merge(
+            array_fill(0, 2, $this->ballot_irv([10, 11])),
+            array_fill(0, 2, $this->ballot_irv([11, 10])),
+            [$this->ballot_irv([12])]
+        );
+        $r = Voting::tally_pure($race, $ballots);
+        $this->assertEq('tie_at_final', $r['outcome'], 'outcome sanity');
+        $this->assertEq(2, count($r['rounds']), 'two rounds run');
+        $this->assertEq(0, $r['rounds'][0]['exhausted_this_round'], 'round 1: no ballots exhausted');
+        $this->assertEq(1, $r['rounds'][1]['exhausted_this_round'], 'round 2: one ballot exhausted');
+    }
+
     public function test_irv_zero_ranked_ballot()
     {
         $race = ['race_type' => 'position', 'voting_mode' => 'irv',
