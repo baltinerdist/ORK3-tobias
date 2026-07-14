@@ -4,6 +4,7 @@
 	$counts = $counts ?? ['counted'=>0,'provisional'=>0,'total'=>0];
 	$suppress = !empty($suppress_results);
 	$is_admin = !empty($is_admin);
+	$provisional_ballots = $provisional_ballots ?? [];
 	if (!$event) { echo '<div style="padding:40px;text-align:center;">Event not found.</div>'; return; }
 ?>
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>default/style/reports.css?v=<?= filemtime(__DIR__ . '/../default/style/reports.css') ?>">
@@ -157,6 +158,29 @@
 				<div class="vtr-banner vtr-banner-info">Event is in draft. <a href="<?= UIR ?>Voting/edit/<?= $voting_event_id ?>">Continue editing</a> to add races and open voting.</div>
 			<?php endif; ?>
 		</div>
+		<?php if (in_array($event['status'], ['open','closed'], true)): ?>
+		<div class="vtr-card">
+			<h2>Provisional Ballots</h2>
+			<div class="vtr-banner vtr-banner-info">These voters were provisional when they cast (e.g. dues not yet recorded). Any who now qualify are released automatically; use this panel to release one manually with a reason. Released ballots count in the tally.</div>
+			<div id="vtr-prov-list">
+				<?php if (empty($provisional_ballots)): ?>
+					<div class="vtr-empty">No provisional ballots.</div>
+				<?php else: ?>
+					<?php foreach ($provisional_ballots as $pb): ?>
+						<div class="vtr-bar" style="align-items:center;gap:10px;margin-bottom:8px;" data-ballot="<?= (int)$pb['voting_ballot_id'] ?>">
+							<div style="flex:1;">
+								<div style="font-weight:600;color:var(--vtr-text,#1a202c);"><?= htmlspecialchars($pb['voter_name']) ?> <span style="font-weight:400;color:var(--vtr-meta,#718096);">(<?= htmlspecialchars($pb['username']) ?>)</span></div>
+								<div style="font-size:12px;color:var(--vtr-meta,#718096);">Cast <?= $pb['submitted_at'] ? htmlspecialchars(date('M j, Y g:i A', strtotime($pb['submitted_at']))) : '—' ?></div>
+							</div>
+							<input type="text" class="vtr-prov-reason" placeholder="Reason (required)" style="flex:0 0 200px;padding:6px 8px;font-size:13px;border:1px solid var(--vtr-card-border,#cbd5e0);border-radius:6px;background:var(--vtr-card-bg,#fff);color:var(--vtr-text,#1a202c);" />
+							<button class="vtr-btn vtr-prov-release" data-ballot="<?= (int)$pb['voting_ballot_id'] ?>">Release</button>
+						</div>
+					<?php endforeach; ?>
+				<?php endif; ?>
+			</div>
+			<div id="vtr-prov-msg" style="margin-top:8px;"></div>
+		</div>
+		<?php endif; ?>
 	</div>
 </div>
 </div><!-- /rp-root -->
@@ -382,6 +406,32 @@
 					if (msg) msg.innerHTML = '<div style="color:#c53030">Failed: ' + escapeHtml(j.error || 'unknown') + '</div>';
 				}
 			});
+	});
+
+	$$('.vtr-prov-release').forEach(function(btn){
+		btn.addEventListener('click', function(){
+			var bid = parseInt(btn.dataset.ballot, 10);
+			var row = btn.closest('[data-ballot]');
+			var reasonInput = row ? $('.vtr-prov-reason', row) : null;
+			var reason = reasonInput ? reasonInput.value.trim() : '';
+			var msg = $('#vtr-prov-msg');
+			if (!reason) {
+				if (msg) msg.innerHTML = '<div class="vtr-banner vtr-banner-warn">Enter a reason before releasing.</div>';
+				if (reasonInput) reasonInput.focus();
+				return;
+			}
+			btn.disabled = true;
+			var data = new FormData();
+			data.append('Reason', reason);
+			fetch('<?= UIR ?>VotingAjax/release_provisional/' + bid, { method:'POST', body:data, headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })
+				.then(function(r){ return r.json(); })
+				.then(function(j){
+					if (j.status === 0) { if (row) row.remove(); if (msg) msg.innerHTML = '<div class="vtr-banner vtr-banner-info">Ballot released and counted.</div>'; return; }
+					btn.disabled = false;
+					if (msg) msg.innerHTML = '<div class="vtr-banner vtr-banner-warn">' + escapeHtml(j.error || 'Failed') + (j.detail ? ': ' + escapeHtml(j.detail) : '') + '</div>';
+				})
+				.catch(function(){ btn.disabled = false; if (msg) msg.innerHTML = '<div class="vtr-banner vtr-banner-warn">Network error.</div>'; });
+		});
 	});
 })();
 </script>

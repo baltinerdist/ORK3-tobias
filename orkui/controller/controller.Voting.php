@@ -244,6 +244,10 @@ class Controller_Voting extends Controller
         // Counts.
         $this->data['counts'] = $this->Voting->ballot_counts($voting_event_id);
 
+        // Provisional ballots awaiting release (runner review panel, finding 24). Only
+        // meaningful pre-publish; the template gates on status open/closed.
+        $this->data['provisional_ballots'] = $this->Voting->provisional_ballots($voting_event_id);
+
         // Live electorate size for turnout (pre-publish shows a live estimate; post-publish the
         // frozen figure on the event is authoritative).
         if (!empty($event['eligible_count'])) {
