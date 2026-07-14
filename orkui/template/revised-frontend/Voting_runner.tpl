@@ -33,6 +33,12 @@
 	.vtr-bar-fill.vtr-yes { background:#48bb78; }
 	.vtr-bar-fill.vtr-no { background:#e53e3e; }
 	.vtr-bar-count { flex: 0 0 60px; text-align:right; font-weight:600; color:var(--vtr-text,#1a202c); }
+	@media (max-width:480px) {
+		.vtr-bar { flex-wrap:wrap; align-items:stretch; }
+		.vtr-bar-label { flex:1 1 auto; order:1; font-weight:600; }
+		.vtr-bar-count { flex:0 0 auto; order:2; text-align:right; }
+		.vtr-bar-track { flex:1 1 100%; order:3; height:14px; margin-top:4px; }
+	}
 	.vtr-irv-rounds { background:var(--vtr-toggle-bg,#f7fafc); border-radius:8px; padding:12px; margin-top:8px; }
 	.vtr-irv-round { padding:8px 0; border-bottom:1px solid var(--vtr-card-border,#e2e8f0); }
 	.vtr-irv-round:last-child { border-bottom:none; }
