@@ -262,6 +262,11 @@ class Controller_Voting extends Controller
             $this->data['eligible_count'] = (int)$roll['count'];
         }
 
+        // Delegate Runner (finding 35): who may add/remove, and the current delegate list.
+        $this->data['can_delegate'] = $this->data['is_admin']
+            || $this->Voting->user_can_run_in_scope((int)$this->session->user_id, strtolower($event['scope_type']), (int)$event['scope_id']);
+        $this->data['delegates'] = $this->Voting->list_delegates($voting_event_id);
+
         $this->template = '../revised-frontend/Voting_runner.tpl';
     }
 
