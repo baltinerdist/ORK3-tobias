@@ -3,6 +3,7 @@
 	$voting_event_id = (int)($voting_event_id ?? 0);
 	$elig = $eligibility ?? ['Status' => 1];
 	$active = $active_ballot ?? null;
+	$active_votes = $active_votes ?? [];
 	if (!$event && empty($Error)) { $Error = 'Event not found.'; }
 ?>
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>default/style/reports.css?v=<?= filemtime(__DIR__ . '/../default/style/reports.css') ?>">
@@ -101,6 +102,11 @@
 					<?php
 						$is_irv = ($race['race_type'] === 'position' && $race['voting_mode'] === 'irv' && count($race['choices']) > 1);
 						$is_confidence = ($race['race_type'] === 'position' && count($race['choices']) === 1);
+						$rid_pre       = (int)$race['voting_race_id'];
+						$av            = $active_votes[$rid_pre] ?? null;
+						$pre_choice    = ($av && !empty($av['choice_ids'])) ? (int)$av['choice_ids'][0] : null;
+						$pre_abstain   = ($av && !empty($av['is_abstain']));
+						$pre_nota      = ($av && !empty($av['is_none_of_above']));
 					?>
 					<div class="vtv-race" data-race-id="<?= (int)$race['voting_race_id'] ?>" data-race-type="<?= htmlspecialchars($race['race_type']) ?>" data-voting-mode="<?= htmlspecialchars($race['voting_mode']) ?>" data-irv="<?= $is_irv ? '1' : '0' ?>">
 						<h3>
@@ -132,22 +138,22 @@
 							<?php endif; ?>
 						<?php elseif ($is_confidence): ?>
 							<div class="vtv-radio-list">
-								<label class="vtv-radio"><input type="radio" name="r_<?= (int)$race['voting_race_id'] ?>" value="<?= (int)$race['choices'][0]['voting_choice_id'] ?>" /> <span>Yes — vote of confidence in <?= htmlspecialchars($race['choices'][0]['label']) ?></span></label>
-								<label class="vtv-radio"><input type="radio" name="r_<?= (int)$race['voting_race_id'] ?>" value="no" /> <span>No — no confidence</span></label>
+								<label class="vtv-radio<?= ($pre_choice === (int)$race['choices'][0]['voting_choice_id']) ? ' vtv-radio-checked' : '' ?>"><input type="radio" name="r_<?= (int)$race['voting_race_id'] ?>" value="<?= (int)$race['choices'][0]['voting_choice_id'] ?>" <?= ($pre_choice === (int)$race['choices'][0]['voting_choice_id']) ? 'checked' : '' ?> /> <span>Yes — vote of confidence in <?= htmlspecialchars($race['choices'][0]['label']) ?></span></label>
+								<label class="vtv-radio<?= $pre_nota ? ' vtv-radio-checked' : '' ?>"><input type="radio" name="r_<?= (int)$race['voting_race_id'] ?>" value="no" <?= $pre_nota ? 'checked' : '' ?> /> <span>No — no confidence</span></label>
 								<?php if (!empty($race['allow_abstain'])): ?>
-									<label class="vtv-radio"><input type="radio" name="r_<?= (int)$race['voting_race_id'] ?>" value="abstain" /> <span>Abstain</span></label>
+									<label class="vtv-radio<?= $pre_abstain ? ' vtv-radio-checked' : '' ?>"><input type="radio" name="r_<?= (int)$race['voting_race_id'] ?>" value="abstain" <?= $pre_abstain ? 'checked' : '' ?> /> <span>Abstain</span></label>
 								<?php endif; ?>
 							</div>
 						<?php else: ?>
 							<div class="vtv-radio-list">
 								<?php foreach ($race['choices'] as $c): ?>
-									<label class="vtv-radio"><input type="radio" name="r_<?= (int)$race['voting_race_id'] ?>" value="<?= (int)$c['voting_choice_id'] ?>" /> <span><?= htmlspecialchars($c['label']) ?></span></label>
+									<label class="vtv-radio<?= ($pre_choice === (int)$c['voting_choice_id']) ? ' vtv-radio-checked' : '' ?>"><input type="radio" name="r_<?= (int)$race['voting_race_id'] ?>" value="<?= (int)$c['voting_choice_id'] ?>" <?= ($pre_choice === (int)$c['voting_choice_id']) ? 'checked' : '' ?> /> <span><?= htmlspecialchars($c['label']) ?></span></label>
 								<?php endforeach; ?>
 								<?php if (!empty($race['allow_none_of_above'])): ?>
-									<label class="vtv-radio"><input type="radio" name="r_<?= (int)$race['voting_race_id'] ?>" value="nota" /> <span>None of the above</span></label>
+									<label class="vtv-radio<?= $pre_nota ? ' vtv-radio-checked' : '' ?>"><input type="radio" name="r_<?= (int)$race['voting_race_id'] ?>" value="nota" <?= $pre_nota ? 'checked' : '' ?> /> <span>None of the above</span></label>
 								<?php endif; ?>
 								<?php if (!empty($race['allow_abstain'])): ?>
-									<label class="vtv-radio"><input type="radio" name="r_<?= (int)$race['voting_race_id'] ?>" value="abstain" /> <span>Abstain</span></label>
+									<label class="vtv-radio<?= $pre_abstain ? ' vtv-radio-checked' : '' ?>"><input type="radio" name="r_<?= (int)$race['voting_race_id'] ?>" value="abstain" <?= $pre_abstain ? 'checked' : '' ?> /> <span>Abstain</span></label>
 								<?php endif; ?>
 							</div>
 						<?php endif; ?>
