@@ -2545,24 +2545,49 @@ class Voting extends Ork3
                 }
             }
         }
-        $max = empty($counts) ? 0 : max($counts);
-        $top = [];
+        $withdrawn = [];
+        foreach ($race['choices'] as $c) {
+            if (!empty($c['withdrawn_at'])) {
+                $withdrawn[$c['id']] = true;
+            }
+        }
+        // Natural top (includes withdrawn) — reported for transparency only.
+        $natural_max = empty($counts) ? 0 : max($counts);
+        $natural_top = null;
         foreach ($counts as $id => $n) {
+            if ($n === $natural_max && $natural_max > 0) {
+                $natural_top = $id;
+                break;
+            }
+        }
+        // Winner eligibility excludes withdrawn choices.
+        $eligible = [];
+        foreach ($counts as $id => $n) {
+            if (empty($withdrawn[$id])) {
+                $eligible[$id] = $n;
+            }
+        }
+        $max = empty($eligible) ? 0 : max($eligible);
+        $top = [];
+        foreach ($eligible as $id => $n) {
             if ($n === $max && $max > 0) {
                 $top[] = $id;
             }
         }
         if (count($top) === 1) {
             return ['outcome' => 'win', 'winner_choice_id' => $top[0],
-                'counts' => $counts, 'abstain' => $abstain, 'nota' => $nota, 'tie' => null];
+                'counts' => $counts, 'abstain' => $abstain, 'nota' => $nota, 'tie' => null,
+                'natural_top_choice_id' => $natural_top];
         }
         if ($max === 0) {
             return ['outcome' => 'no_votes', 'winner_choice_id' => null,
-                'counts' => $counts, 'abstain' => $abstain, 'nota' => $nota, 'tie' => null];
+                'counts' => $counts, 'abstain' => $abstain, 'nota' => $nota, 'tie' => null,
+                'natural_top_choice_id' => $natural_top];
         }
         sort($top);
         return ['outcome' => 'tie', 'winner_choice_id' => null,
-            'counts' => $counts, 'abstain' => $abstain, 'nota' => $nota, 'tie' => $top];
+            'counts' => $counts, 'abstain' => $abstain, 'nota' => $nota, 'tie' => $top,
+            'natural_top_choice_id' => $natural_top];
     }
 
     private static function tally_majority(array $race, array $ballots): array
@@ -2614,6 +2639,11 @@ class Voting extends Ork3
 
         $candidates = array_map(fn ($c) => $c['id'], $race['choices']);
         $eliminated = [];
+        foreach ($race['choices'] as $c) {
+            if (!empty($c['withdrawn_at'])) {
+                $eliminated[] = $c['id'];
+            }
+        }
         $rounds = [];
 
         while (true) {

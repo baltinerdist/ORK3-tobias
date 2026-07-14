@@ -181,6 +181,9 @@
 				<?php endif;
 					if ($result['outcome'] === 'win'): ?>
 						<div class="vtp-winner-banner"><i class="fas fa-trophy"></i> Winner: <?= $render_choice_label_results($result['winner_choice_id']) ?></div>
+						<?php if (!empty($result['natural_top_choice_id']) && (int)$result['natural_top_choice_id'] !== (int)$result['winner_choice_id']): ?>
+							<div class="vtp-rationale">Top vote-getter <em><?= $render_choice_label_results($result['natural_top_choice_id']) ?></em> was withdrawn and is not eligible to win.</div>
+						<?php endif; ?>
 					<?php elseif ($result['outcome'] === 'win_resolved'): ?>
 						<div class="vtp-winner-banner"><i class="fas fa-gavel"></i> Tie resolved: <?= $render_choice_label_results($result['winner_choice_id']) ?></div>
 					<?php else: ?>

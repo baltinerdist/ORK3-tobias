@@ -479,4 +479,47 @@ class VotingTallyTests
         $this->assertEq('win', $r['outcome']);
         $this->assertEq(20, $r['winner_choice_id']);
     }
+
+    public function test_plurality_withdrawn_cannot_win()
+    {
+        // A is withdrawn with 5 votes, B has 3, C has 2. Withdrawn A must NOT win.
+        $race = ['race_type' => 'position', 'voting_mode' => 'plurality',
+            'allow_abstain' => 0, 'allow_none_of_above' => 0, 'nota_counts_as' => null,
+            'choices' => [
+                ['id' => 10, 'label' => 'A', 'withdrawn_at' => '2026-07-01 00:00:00'],
+                ['id' => 11, 'label' => 'B'],
+                ['id' => 12, 'label' => 'C'],
+            ]];
+        $ballots = array_merge(
+            array_fill(0, 5, $this->ballot_choice(10)),
+            array_fill(0, 3, $this->ballot_choice(11)),
+            array_fill(0, 2, $this->ballot_choice(12))
+        );
+        $r = Voting::tally_pure($race, $ballots);
+        $this->assertEq('win', $r['outcome'], 'an eligible candidate still wins');
+        $this->assertEq(11, $r['winner_choice_id'], 'withdrawn A excluded from winner eligibility');
+        $this->assertEq(5, $r['counts'][10], 'withdrawn A count still shown for transparency');
+        $this->assertEq(10, $r['natural_top_choice_id'], 'natural top (incl. withdrawn) surfaced');
+    }
+
+    public function test_irv_withdrawn_candidate_transfers()
+    {
+        // A withdrawn but holds 5 first-prefs; those ballots' 2nd pref is C.
+        // Seeding A as pre-eliminated: C = 5 (from A) + 2 = 7, B = 3 → C wins (7/10 > 50%).
+        $race = ['race_type' => 'position', 'voting_mode' => 'irv',
+            'allow_abstain' => 0, 'allow_none_of_above' => 0, 'nota_counts_as' => null,
+            'choices' => [
+                ['id' => 10, 'label' => 'A', 'withdrawn_at' => '2026-07-01 00:00:00'],
+                ['id' => 11, 'label' => 'B'],
+                ['id' => 12, 'label' => 'C'],
+            ]];
+        $ballots = array_merge(
+            array_fill(0, 5, $this->ballot_irv([10, 12])),
+            array_fill(0, 3, $this->ballot_irv([11, 12])),
+            array_fill(0, 2, $this->ballot_irv([12, 11]))
+        );
+        $r = Voting::tally_pure($race, $ballots);
+        $this->assertEq('win', $r['outcome']);
+        $this->assertEq(12, $r['winner_choice_id'], 'withdrawn A cannot win; ballots transfer to C');
+    }
 }
