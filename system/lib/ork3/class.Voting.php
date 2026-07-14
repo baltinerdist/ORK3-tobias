@@ -179,6 +179,107 @@ class Voting extends Ork3
         ];
     }
 
+    // Read-only eligibility preview for a runner about to key an external ballot for another member.
+    // Wraps the private live check; the Eligibility domain owns the underlying rules. Source:
+    // controller.VotingAjax.php::external_ballot_form.
+    public function runner_eligibility_preview($voting_event_id, $voter_mundane_id)
+    {
+        global $DB;
+        $DB->Clear();
+        $rs = $DB->DataSet("SELECT scope_type, scope_id FROM " . DB_PREFIX . "voting_event WHERE voting_event_id = " . (int)$voting_event_id . " LIMIT 1");
+        if (!$rs || !$rs->Next()) {
+            return ['eligible' => false, 'provisional_possible' => false];
+        }
+        $elig = $this->check_eligibility_live((int)$voter_mundane_id, $rs->scope_type, (int)$rs->scope_id);
+        return ['eligible' => !empty($elig['eligible']), 'provisional_possible' => !empty($elig['provisional_possible'])];
+    }
+
+    // Roster of currently-active external (runner-entered) ballots for an event, for co-runner /
+    // scope-officer visibility (the audit log is admin-only). Respects anonymous_to_runner by
+    // blanking voter identity. Source: controller.VotingAjax.php::external_roster.
+    public function external_ballots_roster($voting_event_id)
+    {
+        global $DB;
+        $DB->Clear();
+        $ev = $DB->DataSet("SELECT anonymous_to_runner FROM " . DB_PREFIX . "voting_event WHERE voting_event_id = " . (int)$voting_event_id . " LIMIT 1");
+        $anon = ($ev && $ev->Next() && (int)$ev->anonymous_to_runner === 1);
+
+        $DB->Clear();
+        $rs = $DB->DataSet("SELECT b.voting_ballot_id, b.voter_mundane_id, b.entered_by_runner_id, b.submitted_at, b.is_provisional,
+				vm.persona AS voter_persona, vm.username AS voter_username,
+				rm.persona AS runner_persona, rm.username AS runner_username,
+				EXISTS(SELECT 1 FROM " . DB_PREFIX . "voting_ballot pb
+					WHERE pb.superseded_by_ballot_id = b.voting_ballot_id AND pb.entered_by_runner_id IS NULL) AS replaced_online
+			FROM " . DB_PREFIX . "voting_active_ballot ab
+			JOIN " . DB_PREFIX . "voting_ballot b ON b.voting_ballot_id = ab.voting_ballot_id
+			LEFT JOIN " . DB_PREFIX . "mundane vm ON vm.mundane_id = b.voter_mundane_id
+			LEFT JOIN " . DB_PREFIX . "mundane rm ON rm.mundane_id = b.entered_by_runner_id
+			WHERE ab.voting_event_id = " . (int)$voting_event_id . "
+			  AND b.entered_by_runner_id IS NOT NULL
+			ORDER BY b.submitted_at DESC, b.voting_ballot_id DESC");
+        $rows = [];
+        while ($rs && $rs->Next()) {
+            $voter_label = $anon ? '(anonymous)' : ((string)($rs->voter_persona ?: $rs->voter_username ?: ('#' . (int)$rs->voter_mundane_id)));
+            $runner_label = (string)($rs->runner_persona ?: $rs->runner_username ?: ('#' . (int)$rs->entered_by_runner_id));
+            $rows[] = [
+                'voting_ballot_id' => (int)$rs->voting_ballot_id,
+                'voter_mundane_id' => $anon ? 0 : (int)$rs->voter_mundane_id,
+                'voter_label' => $voter_label,
+                'runner_label' => $runner_label,
+                'submitted_at' => (string)$rs->submitted_at,
+                'is_provisional' => (int)$rs->is_provisional,
+                'replaced_online' => (int)$rs->replaced_online,
+            ];
+        }
+        return $rows;
+    }
+
+    // Dismissible notices for a voter whose active ballot is a runner-entered paper ballot that
+    // superseded their own electronic ballot and has not yet been acknowledged. Source:
+    // controller.VotingAjax.php::banner.
+    public function paper_replacement_notices($voter_mundane_id)
+    {
+        global $DB;
+        $DB->Clear();
+        $rs = $DB->DataSet("SELECT b.voting_ballot_id, b.voting_event_id, b.submitted_at AS replaced_at, e.title
+			FROM " . DB_PREFIX . "voting_active_ballot ab
+			JOIN " . DB_PREFIX . "voting_ballot b ON b.voting_ballot_id = ab.voting_ballot_id
+			JOIN " . DB_PREFIX . "voting_event e ON e.voting_event_id = b.voting_event_id
+			WHERE ab.voter_mundane_id = " . (int)$voter_mundane_id . "
+			  AND b.entered_by_runner_id IS NOT NULL
+			  AND b.runner_notice_ack_at IS NULL
+			  AND EXISTS(SELECT 1 FROM " . DB_PREFIX . "voting_ballot pb
+				WHERE pb.superseded_by_ballot_id = b.voting_ballot_id AND pb.entered_by_runner_id IS NULL)
+			ORDER BY b.submitted_at DESC");
+        $rows = [];
+        while ($rs && $rs->Next()) {
+            $rows[] = [
+                'voting_ballot_id' => (int)$rs->voting_ballot_id,
+                'voting_event_id' => (int)$rs->voting_event_id,
+                'title' => (string)$rs->title,
+                'replaced_at' => (string)$rs->replaced_at,
+            ];
+        }
+        return $rows;
+    }
+
+    // Voter dismisses a paper-replacement notice. Scoped to the voter's OWN active ballot so one
+    // member cannot ack another's. Source: controller.VotingAjax.php::ack_paper_notice.
+    public function ack_paper_notice($voter_mundane_id, $voting_ballot_id)
+    {
+        global $DB;
+        $DB->Clear();
+        $DB->Execute("UPDATE " . DB_PREFIX . "voting_ballot b
+			JOIN " . DB_PREFIX . "voting_active_ballot ab ON ab.voting_ballot_id = b.voting_ballot_id
+			SET b.runner_notice_ack_at = NOW()
+			WHERE b.voting_ballot_id = " . (int)$voting_ballot_id . "
+			  AND ab.voter_mundane_id = " . (int)$voter_mundane_id . "
+			  AND b.runner_notice_ack_at IS NULL");
+        $DB->Clear();
+        $chk = $DB->DataSet("SELECT runner_notice_ack_at FROM " . DB_PREFIX . "voting_ballot WHERE voting_ballot_id = " . (int)$voting_ballot_id . " LIMIT 1");
+        return (bool)($chk && $chk->Next() && $chk->runner_notice_ack_at !== null);
+    }
+
     // Full electorate for a scope: resolves the ruleset, runs the all-players eligibility report,
     // and returns the eligible set + count. Single source of truth for the organizer roster,
     // runner turnout, and the publish-time freeze. Kingdom scope evaluates the whole kingdom;
