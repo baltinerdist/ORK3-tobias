@@ -66,6 +66,10 @@
 		<div class="rp-context">
 			<i class="fas fa-info-circle rp-context-icon"></i>
 			<span>Final tally of all counted ballots. Provisional ballots that were never released to count are excluded.</span>
+			<?php $ec = (int)($event['eligible_count'] ?? 0); $bc = (int)($event['ballots_cast'] ?? 0); ?>
+			<?php if ($ec > 0): ?>
+				<span style="margin-left:12px;"><strong><?= $bc ?></strong> of <strong><?= $ec ?></strong> eligible voters cast a counted ballot (<strong><?= round($bc / $ec * 100) ?>%</strong> turnout).</span>
+			<?php endif; ?>
 		</div>
 
 <div class="vtp-wrap">

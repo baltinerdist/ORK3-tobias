@@ -2069,6 +2069,30 @@ class Voting extends Ork3
             }
         }
 
+        // Freeze the electorate: materialize every eligible voter into the snapshot (eligible=1)
+        // and stamp the immutable denominator + turnout numerator on the event. This is the
+        // producer contract the Tally/quorum domain consumes. Preserves any existing rows
+        // (voters already snapshotted at cast time) via upsert.
+        $roll = $this->compute_eligible_roll($this->Event->scope_type, (int)$this->Event->scope_id);
+        $rules_json = json_encode($roll['rules']);
+        global $DB;
+        foreach ($roll['ids'] as $mid) {
+            // YapoMysql binds params from $this->Data (named placeholders), NOT from a 2nd
+            // positional Execute() arg — SetData() before Execute() so the upsert actually lands.
+            $DB->Clear();
+            $DB->SetData([':eid' => (int)$voting_event_id, ':mid' => (int)$mid, ':src' => $rules_json]);
+            $DB->Execute(
+                "INSERT INTO " . DB_PREFIX . "voting_eligibility_snapshot
+                    (voting_event_id, mundane_id, eligible, was_provisional, source_rules, evaluated_at)
+                 VALUES (:eid, :mid, 1, 0, :src, NOW())
+                 ON DUPLICATE KEY UPDATE eligible = 1, source_rules = VALUES(source_rules), evaluated_at = NOW()"
+            );
+        }
+        $DB->Clear();
+        $counts = $this->ballot_counts($voting_event_id);
+        $this->Event->eligible_count = (int)$roll['count'];
+        $this->Event->ballots_cast   = (int)$counts['counted'];
+
         $this->Event->status = 'published';
         $this->Event->published_at = date('Y-m-d H:i:s');
         $this->Event->published_by_mundane_id = $mundane_id;
@@ -2267,7 +2291,7 @@ class Voting extends Ork3
         }
         global $DB;
         $DB->Clear();
-        $rs = $DB->DataSet("SELECT status, tally_snapshot, title, event_type, scope_type, scope_id, start_date, end_date FROM " . DB_PREFIX . "voting_event WHERE voting_event_id = " . $voting_event_id);
+        $rs = $DB->DataSet("SELECT status, tally_snapshot, title, event_type, scope_type, scope_id, start_date, end_date, eligible_count, ballots_cast FROM " . DB_PREFIX . "voting_event WHERE voting_event_id = " . $voting_event_id);
         if (!$rs || !$rs->Next()) {
             return ProcessingError('', 'Not found.');
         }
@@ -2276,7 +2300,7 @@ class Voting extends Ork3
         }
         return [
             'Status' => 0,
-            'Event' => ['title' => $rs->title, 'event_type' => $rs->event_type, 'scope_type' => $rs->scope_type, 'scope_id' => (int)$rs->scope_id, 'start_date' => $rs->start_date, 'end_date' => $rs->end_date],
+            'Event' => ['title' => $rs->title, 'event_type' => $rs->event_type, 'scope_type' => $rs->scope_type, 'scope_id' => (int)$rs->scope_id, 'start_date' => $rs->start_date, 'end_date' => $rs->end_date, 'eligible_count' => (int)$rs->eligible_count, 'ballots_cast' => (int)$rs->ballots_cast],
             'Tally' => json_decode($rs->tally_snapshot, true) ?: [],
         ];
     }
