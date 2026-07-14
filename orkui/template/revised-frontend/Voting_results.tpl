@@ -110,7 +110,7 @@
 					<div class="vtp-rationale"><?= nl2br(htmlspecialchars($race['rationale'])) ?></div>
 				<?php endif; ?>
 
-				<?php if (in_array($result['outcome'], ['pass','fail','tie'])):
+				<?php if (in_array($result['outcome'], ['pass','fail','tie'], true) || ($result['outcome'] === 'win_resolved' && empty($result['counts']) && empty($result['rounds']))):
 					$total = ($result['yes']??0) + ($result['no']??0) + ($result['abstain']??0) + ($result['nota']??0);
 				?>
 					<div class="vtp-bar"><div class="vtp-bar-label">Yes</div>
@@ -129,6 +129,9 @@
 						<div class="vtp-confidence-pass"><i class="fas fa-check"></i> <?= $race['race_type'] === 'yesno' ? 'Passed' : 'Confidence Affirmed' ?></div>
 					<?php elseif ($result['outcome'] === 'fail'): ?>
 						<div class="vtp-confidence-fail"><i class="fas fa-times"></i> <?= $race['race_type'] === 'yesno' ? 'Failed' : 'No Confidence' ?></div>
+					<?php elseif ($result['outcome'] === 'win_resolved'): ?>
+						<div class="vtp-winner-banner"><i class="fas fa-gavel"></i> Tie resolved<?php if (!empty($result['winner_choice_id'])): ?>: <?= $render_choice_label_results($result['winner_choice_id']) ?><?php endif; ?></div>
+						<?php $rn = $result['resolution_note'] ?? ($result['tie_resolution_note'] ?? ''); if (!empty($rn)): ?><div class="vtp-rationale">Resolution: <?= htmlspecialchars($rn) ?></div><?php endif; ?>
 					<?php else: ?>
 						<div class="vtp-tie-banner"><i class="fas fa-equals"></i> Tied — runner has not yet resolved.</div>
 					<?php endif; ?>
