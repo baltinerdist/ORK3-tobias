@@ -470,7 +470,7 @@ class VotingTallyTests
         // reduced to a single candidate holding zero votes. A single-candidate IRV race
         // where every ballot abstains is exactly that case. We invoke tally_irv directly
         // because tally_pure() routes single-candidate `position` races to tally_confidence
-        // (line ~2109), so the IRV no_votes guard can only be exercised by calling the IRV
+        // (see the single-candidate `position` branch in tally_pure's routing switch), so the IRV no_votes guard can only be exercised by calling the IRV
         // path itself. (A multi-candidate all-abstain race exits earlier as
         // tie_at_elimination — it never reaches the lone-survivor guard.)
         $race = ['race_type' => 'position', 'voting_mode' => 'irv',
