@@ -355,6 +355,34 @@ class Controller_VotingAjax extends Controller
         $this->ok();
     }
 
+    public function add_delegate($voting_event_id = null)
+    {
+        $this->require_login();
+        $r = $this->Voting->add_delegate([
+            'Token' => $this->session->token,
+            'VotingEventId' => (int)$voting_event_id,
+            'DelegateMundaneId' => (int)$this->request->DelegateMundaneId,
+        ]);
+        if (($r['Status'] ?? 1) != 0) {
+            $this->fail($r['Error'] ?? 'Failed', $r['Detail'] ?? '');
+        }
+        $this->ok();
+    }
+
+    public function remove_delegate($voting_event_id = null)
+    {
+        $this->require_login();
+        $r = $this->Voting->remove_delegate([
+            'Token' => $this->session->token,
+            'VotingEventId' => (int)$voting_event_id,
+            'DelegateMundaneId' => (int)$this->request->DelegateMundaneId,
+        ]);
+        if (($r['Status'] ?? 1) != 0) {
+            $this->fail($r['Error'] ?? 'Failed', $r['Detail'] ?? '');
+        }
+        $this->ok();
+    }
+
     public function resolve_no_majority($voting_race_id = null)
     {
         $this->require_login();
