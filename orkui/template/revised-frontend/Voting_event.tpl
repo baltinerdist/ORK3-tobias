@@ -32,6 +32,13 @@
 	.vtv-irv-item.dragging { opacity:0.5; }
 	.vtv-irv-rank { font-weight:700; color:#3182ce; min-width:28px; }
 	.vtv-irv-handle { color:var(--vtv-meta,#718096); margin-left:auto; }
+	.vtv-irv-label { flex:1; }
+	.vtv-irv-controls { display:flex; gap:4px; margin-left:auto; }
+	.vtv-irv-controls button { background:transparent; border:1px solid var(--vtv-card-border,#cbd5e0); border-radius:6px; color:var(--vtv-text,#1a202c); width:34px; height:34px; cursor:pointer; font-size:13px; }
+	.vtv-irv-controls button:hover { border-color:#3182ce; color:#3182ce; }
+	.vtv-irv-controls button:disabled { opacity:0.35; cursor:not-allowed; }
+	.vtv-irv-controls button:focus-visible { outline:2px solid #3182ce; outline-offset:1px; }
+	html[data-theme="dark"] .vtv-irv-controls button { border-color:#4a5568; color:#e2e8f0; }
 	.vtv-irv-help { padding:12px 14px; background:var(--vtv-toggle-bg,#f7fafc); border-radius:8px; margin-bottom:12px; font-size:13px; line-height:1.5; color:var(--vtv-text,#1a202c); }
 	.vtv-irv-help summary { cursor:pointer; font-weight:600; color:#3182ce; }
 	.vtv-irv-help[open] summary { margin-bottom:8px; }
@@ -124,17 +131,32 @@
 								<summary>How does ranked choice work?</summary>
 								Drag candidates into your preferred order — top of the list is your first choice. If your top choice doesn't have enough support to win, your vote moves to your next ranked candidate. You can leave candidates unranked; unranked candidates won't receive any of your support. <strong>Example:</strong> if you rank Alice 1st and Bob 2nd, and Alice is eliminated in an early round, your vote moves to Bob.
 							</details>
-							<ul class="vtv-irv-list">
-								<?php foreach ($race['choices'] as $i => $c): ?>
-									<li class="vtv-irv-item" draggable="true" data-choice-id="<?= (int)$c['voting_choice_id'] ?>">
+							<?php
+								$irv_choices = $race['choices'];
+								if ($av && !empty($av['choice_ids'])) {
+									$rank_pos = array_flip($av['choice_ids']); // choice_id => rank index
+									usort($irv_choices, function ($x, $y) use ($rank_pos) {
+										$xi = $rank_pos[(int)$x['voting_choice_id']] ?? PHP_INT_MAX;
+										$yi = $rank_pos[(int)$y['voting_choice_id']] ?? PHP_INT_MAX;
+										return $xi <=> $yi;
+									});
+								}
+							?>
+							<ul class="vtv-irv-list" role="list">
+								<?php foreach ($irv_choices as $i => $c): ?>
+									<li class="vtv-irv-item" draggable="true" data-choice-id="<?= (int)$c['voting_choice_id'] ?>" aria-label="<?= htmlspecialchars($c['label']) ?>, currently ranked <?= $i + 1 ?>">
 										<span class="vtv-irv-rank"><?= $i + 1 ?>.</span>
-										<span><?= htmlspecialchars($c['label']) ?></span>
-										<i class="fas fa-grip-vertical vtv-irv-handle"></i>
+										<span class="vtv-irv-label"><?= htmlspecialchars($c['label']) ?></span>
+										<span class="vtv-irv-controls">
+											<button type="button" class="vtv-irv-up" aria-label="Move <?= htmlspecialchars($c['label']) ?> up"><i class="fas fa-chevron-up" aria-hidden="true"></i></button>
+											<button type="button" class="vtv-irv-down" aria-label="Move <?= htmlspecialchars($c['label']) ?> down"><i class="fas fa-chevron-down" aria-hidden="true"></i></button>
+										</span>
+										<i class="fas fa-grip-vertical vtv-irv-handle" aria-hidden="true"></i>
 									</li>
 								<?php endforeach; ?>
 							</ul>
 							<?php if (!empty($race['allow_abstain'])): ?>
-								<label class="vtv-radio" style="margin-top:8px;"><input type="checkbox" class="vtv-abstain-cb" /> <span>Skip this race (abstain — your ballot will not contribute to ranking)</span></label>
+								<label class="vtv-radio" style="margin-top:8px;"><input type="checkbox" class="vtv-abstain-cb" <?= $pre_abstain ? 'checked' : '' ?> /> <span>Skip this race (abstain — your ballot will not contribute to ranking)</span></label>
 							<?php endif; ?>
 						<?php elseif ($is_confidence): ?>
 							<div class="vtv-radio-list">
@@ -209,11 +231,30 @@
 		});
 	});
 	function renumber(list){
-		list.querySelectorAll('.vtv-irv-item').forEach(function(item, i){
+		var items = list.querySelectorAll('.vtv-irv-item');
+		items.forEach(function(item, i){
 			var rank = item.querySelector('.vtv-irv-rank');
 			if (rank) rank.textContent = (i+1) + '.';
+			var label = item.querySelector('.vtv-irv-label');
+			var name = label ? label.textContent : '';
+			item.setAttribute('aria-label', name + ', currently ranked ' + (i+1));
+			var up = item.querySelector('.vtv-irv-up'), down = item.querySelector('.vtv-irv-down');
+			if (up) up.disabled = (i === 0);
+			if (down) down.disabled = (i === items.length - 1);
 		});
 	}
+	// Move Up / Move Down (keyboard + touch friendly; drag stays as enhancement).
+	document.addEventListener('click', function(e){
+		var up = e.target.closest('.vtv-irv-up'), down = e.target.closest('.vtv-irv-down');
+		if (!up && !down) return;
+		var li = (up || down).closest('.vtv-irv-item');
+		var list = li.closest('.vtv-irv-list');
+		if (up && li.previousElementSibling) li.parentNode.insertBefore(li, li.previousElementSibling);
+		if (down && li.nextElementSibling) li.parentNode.insertBefore(li.nextElementSibling, li);
+		renumber(list);
+		(up || down).focus();
+	});
+	$$('.vtv-irv-list').forEach(renumber); // set initial disabled state
 
 	// Disable IRV list when abstain is checked.
 	$$('.vtv-abstain-cb').forEach(function(cb){
