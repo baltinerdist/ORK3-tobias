@@ -255,9 +255,13 @@ class Controller_VotingAjax extends Controller
         // provisional ballot released here — no cron and no runner action required.
         $this->Voting->reevaluate_provisional_for_player($mundane_id);
         $events = $this->Voting->active_for_voter($mundane_id);
-        // Filter to those without an active ballot.
-        $pending = array_values(array_filter($events, fn ($e) => empty($e['active_ballot_id']) || !empty($e['pending_revote'])));
-        $this->ok(['events' => $pending]);
+        // Keep ALL open, in-scope events (Finding 6): not-yet-voted, pending-revote, AND
+        // already-voted-still-open (so the voter can change their vote from the banner).
+        foreach ($events as &$e) {
+            $e['voted'] = !empty($e['active_ballot_id']) && empty($e['pending_revote']) ? 1 : 0;
+        }
+        unset($e);
+        $this->ok(['events' => $events]);
     }
 
     public function release_provisional($voting_ballot_id = null)
