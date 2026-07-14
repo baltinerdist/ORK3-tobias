@@ -58,6 +58,12 @@
 	.vtr-pill-tie { background:#fed7d7; color:#742a2a; }
 	.vtr-pill-win { background:#c6f6d5; color:#22543d; }
 	.vtr-pill-fail { background:#fed7d7; color:#742a2a; }
+	.vtr-tie-form { margin-top:10px; padding:12px; border:1px solid #f6ad55; background:#fffaf0; border-radius:8px; }
+	.vtr-tie-form label { display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:var(--vtr-text,#1a202c); }
+	.vtr-tie-form select, .vtr-tie-form textarea { width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--vtr-card-border,#cbd5e0); background:var(--vtr-card-bg,#fff); color:var(--vtr-text,#1a202c); border-radius:6px; box-sizing:border-box; margin-bottom:8px; }
+	.vtr-tie-note { margin-top:8px; padding:8px 10px; background:#c6f6d5; color:#22543d; border-radius:6px; font-size:12px; }
+	html[data-theme="dark"] .vtr-tie-form { background:#3a3322; border-color:#975a16; }
+	html[data-theme="dark"] .vtr-tie-note { background:#22543d; color:#c6f6d5; }
 	.vtr-pie { width:160px; height:160px; border-radius:50%; margin:0 auto 12px auto; }
 	.vtr-pie-legend { display:flex; gap:12px; flex-wrap:wrap; justify-content:center; font-size:12px; }
 	.vtr-pie-swatch { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:4px; vertical-align:middle; }
@@ -222,6 +228,7 @@
 	var suppress = <?= $suppress ? 'true' : 'false' ?>;
 	function $(s,p){return (p||document).querySelector(s);}
 	function $$(s,p){return Array.from((p||document).querySelectorAll(s));}
+	function vtHeaders(){ return window.VOTING_CSRF ? {'X-CSRF-Token': window.VOTING_CSRF} : {}; }
 
 	// Tabs (ARIA tablist: roving tabindex + arrow keys; the Audit <a> has no data-pane and navigates natively).
 	var tabEls = $$('.vtr-tab');
@@ -249,6 +256,7 @@
 
 	// Live tally polling.
 	function renderTally(tally){
+		if (window.__vtTieEditing) return; // don't clobber an open tie form mid-edit
 		var host = $('#vtr-results-host');
 		if (!tally || !Object.keys(tally).length) {
 			host.innerHTML = '<div class="vtr-empty">No races configured yet.</div>';
@@ -266,7 +274,8 @@
 			html += '</div>';
 			html += '<div style="font-size:12px;color:#5a6472;margin-bottom:8px;">' + escapeHtml(race.race_type) + (race.voting_mode ? ' · ' + escapeHtml(race.voting_mode) : '') + ' · ' + (row.ballot_count||0) + ' ballot(s)</div>';
 
-			if (result.outcome === 'pass' || result.outcome === 'fail' || result.outcome === 'tie') {
+			if (result.outcome === 'pass' || result.outcome === 'fail' || result.outcome === 'tie'
+				|| (result.outcome === 'win_resolved' && result.counts == null && !Array.isArray(result.rounds))) {
 				// Confidence/yesno
 				var total = (result.yes||0) + (result.no||0) + (result.abstain||0) + (result.nota||0);
 				html += renderBar('Yes', result.yes||0, total, 'vtr-yes');
@@ -274,8 +283,9 @@
 				if (result.abstain) html += renderBar('Abstain', result.abstain, total, '');
 				if (result.nota) html += renderBar('NOTA', result.nota, total, '');
 				html += '<div style="margin-top:8px;">';
-				html += '<span class="vtr-pill ' + (result.outcome === 'pass' ? 'vtr-pill-win' : (result.outcome === 'tie' ? 'vtr-pill-tie' : 'vtr-pill-fail')) + '">' + escapeHtml(outcomeLabel(result.outcome)) + '</span>';
+				html += '<span class="vtr-pill ' + (result.outcome === 'pass' ? 'vtr-pill-win' : (result.outcome === 'win_resolved' ? 'vtr-pill-win' : (result.outcome === 'tie' ? 'vtr-pill-tie' : 'vtr-pill-fail'))) + '">' + escapeHtml(outcomeLabel(result.outcome)) + '</span>';
 				html += '</div>';
+				html += tieBlock(rid, race, result);
 				html += basisCaption(result);
 			} else if (Array.isArray(result.rounds) && result.rounds.length) {
 				// IRV
@@ -305,6 +315,7 @@
 				html += '<span class="vtr-pill ' + (result.outcome === 'win' ? 'vtr-pill-win' : 'vtr-pill-tie') + '">' + escapeHtml(outcomeLabel(result.outcome)) + '</span>';
 				if (result.abstained) html += ' <span class="vtr-pill">' + result.abstained + ' abstained</span>';
 				html += '</div>';
+				html += tieBlock(rid, race, result);
 				if (result.winner_votes != null) {
 					var irvLine = 'Won ' + (result.winner_votes|0) + ' of ' + (result.total_ballots|0) + ' ballots cast (' + result.winner_share_total + '%)' + (result.winner_is_overall_majority ? '' : ' — majority of continuing ballots') + '.';
 					html += '<div class="vtr-rationale" style="font-size:12px;color:#5a6472;margin-top:4px;">' + escapeHtml(irvLine) + '</div>';
@@ -322,6 +333,7 @@
 				html += '<div style="margin-top:8px;">';
 				html += '<span class="vtr-pill ' + (result.outcome === 'win' ? 'vtr-pill-win' : 'vtr-pill-tie') + '">' + escapeHtml(outcomeLabel(result.outcome)) + '</span>';
 				html += '</div>';
+				html += tieBlock(rid, race, result);
 				html += basisCaption(result);
 				html += noMajorityControl(race, result);
 			}
@@ -360,6 +372,23 @@
 	}
 	function escapeHtml(s){ return String(s).replace(/[&<>"']/g, function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
 	function outcomeLabel(o){ return ({win:'Win', win_resolved:'Win (resolved)', tie:'Tie', tie_at_final:'Final-round tie', tie_at_elimination:'Elimination tie', no_votes:'No votes cast', no_majority:'No majority', no_quorum:'Quorum not met', runoff_scheduled:'Runoff scheduled', pass:'Pass', fail:'Fail'})[o] || String(o).replace(/_/g,' '); }
+	function tieBlock(rid, race, result){
+		var TIES = { tie:1, tie_at_elimination:1, tie_at_final:1 };
+		if (result.outcome === 'win_resolved') {
+			return result.tie_resolution_note
+				? '<div class="vtr-tie-note"><strong>Tie resolved.</strong> ' + escapeHtml(result.tie_resolution_note) + '</div>' : '';
+		}
+		if (!TIES[result.outcome]) return '';
+		var choices = race.choices || [];
+		if (!choices.length) return '';
+		var opts = choices.map(function(c){ return '<option value="' + c.id + '">' + escapeHtml(c.label) + '</option>'; }).join('');
+		return '<div class="vtr-tie-form" data-tie-race="' + rid + '">' +
+			'<label>Declare winner</label><select class="vtr-tie-winner">' + opts + '</select>' +
+			'<label>Justification (required — recorded in the audit log)</label>' +
+			'<textarea class="vtr-tie-note-input" rows="2" placeholder="e.g., resolved by coin toss per kingdom bylaws"></textarea>' +
+			'<button class="vtr-btn vtr-tie-submit" data-race-id="' + rid + '" disabled>Resolve &amp; Declare Winner</button>' +
+			'<span class="vtr-tie-msg" style="margin-left:8px;font-size:12px;"></span></div>';
+	}
 	function quorumCaption(result){
 		if (!result || !result.quorum) return '';
 		var q = result.quorum;
@@ -411,6 +440,36 @@
 				});
 		});
 	});
+
+	// Resolve-Tie form (finding 22): delegated listeners on the re-rendered results host.
+	if (resultsHost) {
+		resultsHost.addEventListener('input', function(e){
+			var form = e.target.closest('.vtr-tie-form'); if (!form) return;
+			window.__vtTieEditing = true;
+			var note = form.querySelector('.vtr-tie-note-input');
+			var btn = form.querySelector('.vtr-tie-submit');
+			if (btn && note) btn.disabled = (note.value.trim() === '');
+		});
+		resultsHost.addEventListener('click', function(e){
+			var btn = e.target.closest('.vtr-tie-submit'); if (!btn) return;
+			var form = btn.closest('.vtr-tie-form');
+			var winner = form.querySelector('.vtr-tie-winner').value;
+			var note = form.querySelector('.vtr-tie-note-input').value.trim();
+			var msg = form.querySelector('.vtr-tie-msg');
+			if (!note) { if (msg) { msg.textContent = 'Justification is required.'; msg.style.color = '#c53030'; } return; }
+			pnConfirm({ title:'Resolve Tie?', message:'Declare the selected candidate the winner? This is recorded in the audit log.', confirmText:'Resolve', danger:false }, function(){
+				btn.disabled = true;
+				var data = new FormData();
+				data.append('WinnerChoiceId', winner);
+				data.append('Note', note);
+				fetch('<?= UIR ?>VotingAjax/resolve_tie/' + btn.dataset.raceId, { method:'POST', body:data, credentials:'same-origin', headers: vtHeaders() })
+					.then(r => r.json()).then(function(j){
+						if (j.status === 0) { window.__vtTieEditing = false; location.reload(); }
+						else { btn.disabled = false; if (msg) { msg.textContent = (j.error || 'Failed') + (j.detail ? ': ' + j.detail : ''); msg.style.color = '#c53030'; } }
+					});
+			});
+		});
+	}
 
 	// External ballot search.
 	var extInput = $('#vtr-ext-input');
