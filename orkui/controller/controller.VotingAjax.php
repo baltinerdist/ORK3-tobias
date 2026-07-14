@@ -298,6 +298,26 @@ class Controller_VotingAjax extends Controller
         $this->ok();
     }
 
+    public function close_event($voting_event_id = null)
+    {
+        $this->require_login();
+        $voting_event_id = (int)$voting_event_id;
+        // POST + X-CSRF-Token (window.VOTING_CSRF) auto-enforced by the constructor's
+        // _csrf_gate (this action is NOT on the read-allowlist). The client fetch sends
+        // the header. Mirrors publish/unpublish/reopen_event.
+        if (!$this->Voting->user_is_runner_of_event((int)$this->session->user_id, $voting_event_id)) {
+            $this->fail('Not authorized to close this event.');
+        }
+        $r = $this->Voting->close_event([
+            'Token' => $this->session->token,
+            'VotingEventId' => $voting_event_id,
+        ]);
+        if (($r['Status'] ?? 1) != 0) {
+            $this->fail($r['Error'] ?? 'Failed', $r['Detail'] ?? '');
+        }
+        $this->ok();
+    }
+
     public function unpublish($voting_event_id = null)
     {
         $this->require_login();

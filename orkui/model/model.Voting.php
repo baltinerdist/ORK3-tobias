@@ -93,6 +93,10 @@ class Model_Voting extends Model
     {
         return $this->Voting->Unpublish($request);
     }
+    public function close_event($request)
+    {
+        return $this->Voting->CloseEvent($request);
+    }
 
     // ── Reads ──────────────────────────────────────────────────────────
 
