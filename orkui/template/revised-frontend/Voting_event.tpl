@@ -18,6 +18,9 @@
 	.vtv-banner-warn { background:#feebc8; color:#7c2d12; }
 	.vtv-banner-err { background:#fed7d7; color:#742a2a; }
 	.vtv-banner-info { background:#bee3f8; color:#2a4365; }
+	.vtv-privacy { display:flex; gap:10px; align-items:flex-start; padding:12px 14px; border:1px solid var(--vtv-card-border,#e2e8f0); border-radius:8px; margin-bottom:14px; font-size:12.5px; line-height:1.5; color:var(--vtv-meta,#718096); background:var(--vtv-toggle-bg,#f7fafc); }
+	.vtv-privacy i { color:#3182ce; margin-top:2px; flex:0 0 auto; }
+	.vtv-privacy strong { color:var(--vtv-text,#1a202c); }
 	.vtv-race { padding:18px; border:1px solid var(--vtv-card-border,#e2e8f0); border-radius:10px; margin-bottom:12px; background:var(--vtv-card-bg,#fff); }
 	.vtv-race h3 { margin:0 0 6px 0; font-size:17px; font-weight:600; background:transparent;border:none;padding:0;border-radius:0;text-shadow:none; color:var(--vtv-text,#1a202c); }
 	.vtv-race-rationale { color:var(--vtv-meta,#5a6472); font-size:13px; margin-bottom:12px; line-height:1.5; }
@@ -48,6 +51,7 @@
 	.vtv-btn-primary:disabled { opacity:0.5; cursor:not-allowed; }
 	.vtv-btn-ghost { background:transparent; color:var(--vtv-text,#1a202c); border:1px solid var(--vtv-card-border,#cbd5e0); border-radius:6px; padding:10px 20px; font-size:14px; cursor:pointer; text-decoration:none; }
 	html[data-theme="dark"] .vtv-card, html[data-theme="dark"] .vtv-race, html[data-theme="dark"] .vtv-radio, html[data-theme="dark"] .vtv-irv-item { --vtv-card-bg:#1a202c; --vtv-card-border:#2d3748; --vtv-text:#e2e8f0; --vtv-meta:#a0aec0; --vtv-toggle-bg:#2d3748; }
+	html[data-theme="dark"] .vtv-privacy { --vtv-card-border:#2d3748; --vtv-meta:#a0aec0; --vtv-text:#e2e8f0; --vtv-toggle-bg:#2d3748; }
 	html[data-theme="dark"] .vtv-radio-checked { background:#2c5282 !important; }
 	html[data-theme="dark"] .vtv-h1, html[data-theme="dark"] .vtv-race h3 { color:#e2e8f0; }
 	html[data-theme="dark"] .vtv-sub { color:#a0aec0; }
@@ -104,6 +108,10 @@
 				</div>
 			<?php endif; ?>
 
+			<div class="vtv-privacy">
+				<i class="fas fa-user-shield" aria-hidden="true"></i>
+				<span>Your vote is <strong>not anonymous to site administrators.</strong> The person running this election sees only combined totals — never how any individual voted. A site administrator can look up how you voted, but every such lookup is permanently recorded in the audit log.</span>
+			</div>
 			<form id="vtv-form">
 				<?php foreach ($event['races'] as $race): ?>
 					<?php
