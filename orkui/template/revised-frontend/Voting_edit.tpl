@@ -272,9 +272,10 @@
 									<div class="vte-row" style="margin-top:6px;<?= !empty($race['allow_none_of_above']) ? '' : 'display:none' ?>" data-rs-nota-row>
 										<label style="font-size:11px;">NOTA counts as</label>
 										<select class="vte-rs-nca">
-											<option value="abstain" <?= $race['nota_counts_as'] === 'abstain' ? 'selected' : '' ?>>Abstain (excluded from threshold)</option>
-											<option value="no" <?= $race['nota_counts_as'] === 'no' ? 'selected' : '' ?>>No (counts against)</option>
+											<option value="abstain" <?= $race['nota_counts_as'] === 'abstain' ? 'selected' : '' ?>>Abstain &mdash; excluded from the Yes/No majority</option>
+											<option value="no" <?= $race['nota_counts_as'] === 'no' ? 'selected' : '' ?>>No &mdash; counted as a No vote</option>
 										</select>
+										<div style="font-size:11px;color:var(--vte-meta,#718096);margin-top:4px;">Controls how "None of the Above" ballots affect the tally: either ignored when computing the Yes/No majority, or tallied as a No.</div>
 									</div>
 									<?php if ($is_althing): ?>
 										<div class="vte-toggle"><input class="vte-rs-nb" type="checkbox" <?= !empty($race['is_non_binding']) ? 'checked' : '' ?> /><label>Non-binding (poll only)</label></div>
@@ -345,9 +346,10 @@
 				<div class="vte-row" id="vte-nota-row" style="display:none">
 					<label>NOTA counts as</label>
 					<select id="vte-nota-ca">
-						<option value="abstain">Abstain (excluded from threshold)</option>
-						<option value="no">No (counts against)</option>
+						<option value="abstain">Abstain &mdash; excluded from the Yes/No majority</option>
+						<option value="no">No &mdash; counted as a No vote</option>
 					</select>
+					<div style="font-size:11px;color:var(--vte-meta,#718096);margin-top:4px;">Controls how "None of the Above" ballots affect the tally: either ignored when computing the Yes/No majority, or tallied as a No.</div>
 				</div>
 				<div class="vte-toggle" id="vte-nb-row" style="<?= $event['event_type'] === 'althing' ? '' : 'display:none' ?>"><input id="vte-nb" type="checkbox" /><label for="vte-nb">Non-binding (poll only)</label></div>
 				<div class="vte-actions"><button id="vte-add-race" class="vte-btn vte-btn-primary">Add Race</button></div>
