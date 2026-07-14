@@ -192,6 +192,34 @@
 				<div class="vtr-banner vtr-banner-info">Event is in draft. <a href="<?= UIR ?>Voting/edit/<?= $voting_event_id ?>">Continue editing</a> to add races and open voting.</div>
 			<?php endif; ?>
 		</div>
+		<?php if (!empty($can_delegate)): ?>
+		<div class="vtr-card">
+			<h2>Delegate Runner</h2>
+			<div class="vtr-banner vtr-banner-info">Add another officer as a runner for this event — useful when you are on the ballot and must hand the election to someone else. Delegates can manage and publish, but only sitting scope officers can add or remove them.</div>
+			<div style="display:flex;gap:8px;align-items:flex-start;">
+				<div style="flex:1;position:relative;">
+					<input id="vtr-del-input" type="text" placeholder="Search a player..." autocomplete="off" style="width:100%;padding:10px 12px;font-size:14px;border:1px solid var(--vtr-card-border,#cbd5e0);border-radius:6px;box-sizing:border-box;background:var(--vtr-card-bg,#fff);color:var(--vtr-text,#1a202c);" />
+					<input id="vtr-del-id" type="hidden" />
+					<div id="vtr-del-results" class="kn-ac-results"></div>
+				</div>
+				<button id="vtr-del-go" class="vtr-btn" disabled>Add Delegate</button>
+			</div>
+			<div id="vtr-del-msg" style="margin-top:10px;"></div>
+			<div id="vtr-del-list" style="margin-top:12px;">
+				<?php if (empty($delegates)): ?>
+					<div class="vtr-empty" style="padding:14px;">No delegated runners yet.</div>
+				<?php else: ?>
+					<?php foreach ($delegates as $d): ?>
+						<div class="vtr-del-row" data-del-id="<?= (int)$d['mundane_id'] ?>" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--vtr-card-border,#e2e8f0);border-radius:6px;margin-bottom:6px;">
+							<i class="fas fa-user-shield" style="opacity:0.6"></i>
+							<span style="flex:1;color:var(--vtr-text,#1a202c);"><?= htmlspecialchars($d['persona'] ?: $d['username']) ?> <span class="vtr-sub" style="margin:0;">(<?= htmlspecialchars($d['username']) ?>)</span></span>
+							<button class="vtr-btn vtr-btn-ghost vtr-del-remove" data-del-id="<?= (int)$d['mundane_id'] ?>" data-tip="Remove delegate" aria-label="Remove delegate">Remove</button>
+						</div>
+					<?php endforeach; ?>
+				<?php endif; ?>
+			</div>
+		</div>
+		<?php endif; ?>
 		<?php if (in_array($event['status'], ['open','closed'], true)): ?>
 		<div class="vtr-card">
 			<h2>Provisional Ballots</h2>
@@ -749,5 +777,72 @@
 				.catch(function(){ btn.disabled = false; if (msg) msg.innerHTML = '<div class="vtr-banner vtr-banner-warn">Network error.</div>'; });
 		});
 	});
+
+	// Delegate Runner search + add/remove (finding 35). Inline dropdown — mirrors external-vote search.
+	var delInput = $('#vtr-del-input');
+	if (delInput) {
+		var delResults = $('#vtr-del-results');
+		var delId = $('#vtr-del-id');
+		var delBtn = $('#vtr-del-go');
+		var delMsg = $('#vtr-del-msg');
+		var delT;
+		delInput.addEventListener('input', function(){
+			delId.value = ''; delBtn.disabled = true;
+			clearTimeout(delT);
+			var q = delInput.value.trim();
+			if (q.length < 2) { delResults.classList.remove('kn-ac-open'); delResults.innerHTML=''; return; }
+			delT = setTimeout(function(){
+				fetch('<?= UIR ?>VotingAjax/voter_search/' + eventId + '&q=' + encodeURIComponent(q))
+					.then(r => r.json()).then(function(j){
+						delResults.innerHTML = '';
+						if (!j.results || !j.results.length) {
+							delResults.innerHTML = '<div class="kn-ac-row" style="opacity:0.6;padding:8px 10px;">No matches</div>';
+						} else {
+							j.results.forEach(function(r){
+								var row = document.createElement('div');
+								row.className = 'kn-ac-row';
+								row.style.cssText = 'padding:8px 10px;cursor:pointer;';
+								row.textContent = r.label;
+								row.addEventListener('click', function(){
+									delId.value = r.value; delInput.value = r.label; delBtn.disabled = false;
+									delResults.classList.remove('kn-ac-open');
+								});
+								delResults.appendChild(row);
+							});
+						}
+						delResults.classList.add('kn-ac-open');
+					});
+			}, 150);
+		});
+		document.addEventListener('click', function(e){
+			if (delInput && !delInput.contains(e.target) && delResults && !delResults.contains(e.target)) delResults.classList.remove('kn-ac-open');
+		});
+		delBtn.addEventListener('click', function(){
+			var vid = parseInt(delId.value, 10);
+			if (!vid) return;
+			delBtn.disabled = true;
+			var data = new FormData();
+			data.append('DelegateMundaneId', vid);
+			fetch('<?= UIR ?>VotingAjax/add_delegate/' + eventId, { method:'POST', body:data, credentials:'same-origin', headers: vtHeaders() })
+				.then(r => r.json()).then(function(j){
+					if (j.status === 0) location.reload();
+					else { delBtn.disabled = false; delMsg.innerHTML = '<div class="vtr-banner vtr-banner-warn">' + escapeHtml(j.error || 'Failed') + (j.detail ? ': ' + escapeHtml(j.detail) : '') + '</div>'; }
+				});
+		});
+		$$('.vtr-del-remove').forEach(function(btn){
+			btn.addEventListener('click', function(){
+				pnConfirm({ title:'Remove Delegate?', message:'This officer will no longer be able to run this election.', confirmText:'Remove', danger:true }, function(){
+					btn.disabled = true;
+					var data = new FormData();
+					data.append('DelegateMundaneId', btn.dataset.delId);
+					fetch('<?= UIR ?>VotingAjax/remove_delegate/' + eventId, { method:'POST', body:data, credentials:'same-origin', headers: vtHeaders() })
+						.then(r => r.json()).then(function(j){
+							if (j.status === 0) location.reload();
+							else { btn.disabled = false; if (delMsg) delMsg.innerHTML = '<div class="vtr-banner vtr-banner-warn">' + escapeHtml(j.error || 'Failed') + '</div>'; }
+						});
+				});
+			});
+		});
+	}
 })();
 </script>
