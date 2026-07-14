@@ -395,6 +395,35 @@ class Voting extends Ork3
         return ($rs && $rs->Next()) ? (array)$rs : null;
     }
 
+    // Per-race votes on a single ballot, shaped for ballot pre-population.
+    // Source: controller.Voting.php::event (vote-change UX).
+    public function active_ballot_votes($voting_ballot_id)
+    {
+        global $DB;
+        $DB->Clear();
+        $rs = $DB->DataSet("SELECT voting_race_id, voting_choice_id, `rank`, is_abstain, is_none_of_above
+            FROM " . DB_PREFIX . "voting_vote
+            WHERE voting_ballot_id = " . (int)$voting_ballot_id . "
+            ORDER BY voting_race_id, `rank` IS NULL, `rank`, voting_choice_id");
+        $out = [];
+        while ($rs && $rs->Next()) {
+            $rid = (int)$rs->voting_race_id;
+            if (!isset($out[$rid])) {
+                $out[$rid] = ['choice_ids' => [], 'is_abstain' => 0, 'is_none_of_above' => 0];
+            }
+            if ((int)$rs->is_abstain === 1) {
+                $out[$rid]['is_abstain'] = 1;
+            }
+            if ((int)$rs->is_none_of_above === 1) {
+                $out[$rid]['is_none_of_above'] = 1;
+            }
+            if ($rs->voting_choice_id !== null) {
+                $out[$rid]['choice_ids'][] = (int)$rs->voting_choice_id;
+            }
+        }
+        return $out;
+    }
+
     // Of the supplied race ids, those the ballot has NOT yet voted on (pending
     // revote after Resume->Discard). Source: controller.Voting.php::event.
     public function pending_revote_race_ids($voting_ballot_id, array $race_ids)
