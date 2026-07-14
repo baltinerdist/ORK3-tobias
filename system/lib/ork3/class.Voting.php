@@ -1964,21 +1964,33 @@ class Voting extends Ork3
         }
 
         // Eligibility snapshot at submit time.
+        // YapoMysql binds params from $this->Data (named placeholders), NOT from a 2nd
+        // positional Execute() arg — SetData() before Execute() so the upsert actually lands.
         $DB->Clear();
+        $DB->SetData([
+            ':eid' => (int)$voting_event_id,
+            ':mid' => (int)$voter_mundane_id,
+            ':elig' => $elig['eligible'] ? 1 : 0,
+            ':prov' => (int)$is_provisional,
+            ':src' => json_encode($elig['rules']),
+        ]);
         $DB->Execute(
             "INSERT INTO " . DB_PREFIX . "voting_eligibility_snapshot
 			(voting_event_id, mundane_id, eligible, was_provisional, source_rules, evaluated_at)
-			VALUES (?, ?, ?, ?, ?, NOW())
-			ON DUPLICATE KEY UPDATE eligible = VALUES(eligible), source_rules = VALUES(source_rules), evaluated_at = NOW()",
-            [$voting_event_id, $voter_mundane_id, $elig['eligible'] ? 1 : 0, $is_provisional, json_encode($elig['rules'])]
+			VALUES (:eid, :mid, :elig, :prov, :src, NOW())
+			ON DUPLICATE KEY UPDATE eligible = VALUES(eligible), source_rules = VALUES(source_rules), evaluated_at = NOW()"
         );
 
         // Flip the active-ballot pointer.
         $DB->Clear();
+        $DB->SetData([
+            ':eid' => (int)$voting_event_id,
+            ':mid' => (int)$voter_mundane_id,
+            ':bid' => (int)$new_ballot_id,
+        ]);
         $DB->Execute(
-            "INSERT INTO " . DB_PREFIX . "voting_active_ballot (voting_event_id, voter_mundane_id, voting_ballot_id) VALUES (?, ?, ?)
-			ON DUPLICATE KEY UPDATE voting_ballot_id = VALUES(voting_ballot_id)",
-            [$voting_event_id, $voter_mundane_id, $new_ballot_id]
+            "INSERT INTO " . DB_PREFIX . "voting_active_ballot (voting_event_id, voter_mundane_id, voting_ballot_id) VALUES (:eid, :mid, :bid)
+			ON DUPLICATE KEY UPDATE voting_ballot_id = VALUES(voting_ballot_id)"
         );
 
         $DB->Clear();
