@@ -25,6 +25,8 @@
 	.vtv-race h3 { margin:0 0 6px 0; font-size:17px; font-weight:600; background:transparent;border:none;padding:0;border-radius:0;text-shadow:none; color:var(--vtv-text,#1a202c); }
 	.vtv-race-rationale { color:var(--vtv-meta,#5a6472); font-size:13px; margin-bottom:12px; line-height:1.5; }
 	.vtv-mode-pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:600; background:#e9d8fd; color:#44337a; text-transform:uppercase; margin-left:6px; }
+	.vtv-poll-note { display:inline-block; font-size:12.5px; color:#744210; background:#fefcbf; border-radius:6px; padding:6px 10px; margin-bottom:10px; }
+	html[data-theme="dark"] .vtv-poll-note { background:#5f4c15; color:#fefcbf; }
 	.vtv-radio-list { display:flex; flex-direction:column; gap:6px; }
 	.vtv-radio { display:flex; align-items:center; gap:10px; padding:10px 14px; border:1px solid var(--vtv-card-border,#e2e8f0); border-radius:8px; cursor:pointer; background:var(--vtv-card-bg,#fff); transition: all 0.15s; color:var(--vtv-text,#1a202c); }
 	.vtv-radio:hover { background:var(--vtv-toggle-bg,#f7fafc); border-color:#3182ce; }
@@ -132,6 +134,10 @@
 						</h3>
 						<?php if (!empty($race['rationale'])): ?>
 							<div class="vtv-race-rationale"><?= nl2br(htmlspecialchars($race['rationale'])) ?></div>
+						<?php endif; ?>
+
+						<?php if (!empty($race['is_non_binding'])): ?>
+							<div class="vtv-poll-note"><i class="fas fa-info-circle" aria-hidden="true"></i> Advisory poll — the result is non-binding.</div>
 						<?php endif; ?>
 
 						<?php if ($is_irv): ?>

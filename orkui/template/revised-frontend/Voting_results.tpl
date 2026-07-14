@@ -24,6 +24,8 @@
 	.vtp-confidence-pass { display:inline-block; padding:6px 14px; background:#c6f6d5; color:#22543d; font-weight:600; border-radius:8px; font-size:14px; margin-top:8px; }
 	.vtp-confidence-fail { display:inline-block; padding:6px 14px; background:#fed7d7; color:#742a2a; font-weight:600; border-radius:8px; font-size:14px; margin-top:8px; }
 	.vtp-poll-tag { display:inline-block; padding:2px 10px; background:#fefcbf; color:#744210; font-weight:600; font-size:11px; border-radius:999px; text-transform:uppercase; margin-left:6px; }
+	.vtp-poll-note { display:inline-block; font-size:12.5px; color:#744210; background:#fefcbf; border-radius:6px; padding:6px 10px; margin:0 0 10px; }
+	html[data-theme="dark"] .vtp-poll-note { background:#5f4c15; color:#fefcbf; }
 	.vtp-error { padding: 28px 20px; background:var(--vtp-card-bg,#fff); border:1px solid var(--vtp-card-border,#e2e8f0); border-radius:10px; text-align:center; color:var(--vtp-text,#1a202c); }
 	.vtp-irv-rounds { background:var(--vtp-toggle-bg,#f7fafc); border-radius:8px; padding:14px; margin-top:10px; }
 	.vtp-irv-round { padding:8px 0; border-bottom:1px solid var(--vtp-card-border,#e2e8f0); }
@@ -101,6 +103,9 @@
 					<?php if ($race['race_type'] === 'position' && count($choices) === 1): ?><span class="vtp-poll-tag" style="background:#bee3f8;color:#2a4365;">Confidence</span><?php endif; ?>
 					<?php if (!empty($race['is_non_binding'])): ?><span class="vtp-poll-tag">Poll — non-binding</span><?php endif; ?>
 				</div>
+				<?php if (!empty($race['is_non_binding'])): ?>
+					<div class="vtp-poll-note"><i class="fas fa-info-circle" aria-hidden="true"></i> Advisory poll — the result is non-binding.</div>
+				<?php endif; ?>
 				<?php if (!empty($race['rationale'])): ?>
 					<div class="vtp-rationale"><?= nl2br(htmlspecialchars($race['rationale'])) ?></div>
 				<?php endif; ?>
