@@ -250,6 +250,10 @@ class Controller_VotingAjax extends Controller
         if ($mundane_id !== $uid && !Ork3::$Lib->authorization->HasAuthority($uid, AUTH_ADMIN, 0, AUTH_ADMIN)) {
             $this->fail('Not authorized.');
         }
+        // Cheap single-player lazy sweep: the banner fetch fires on nearly every page load
+        // (Playernew), so a voter who just became eligible via attendance has their own
+        // provisional ballot released here — no cron and no runner action required.
+        $this->Voting->reevaluate_provisional_for_player($mundane_id);
         $events = $this->Voting->active_for_voter($mundane_id);
         // Filter to those without an active ballot.
         $pending = array_values(array_filter($events, fn ($e) => empty($e['active_ballot_id']) || !empty($e['pending_revote'])));

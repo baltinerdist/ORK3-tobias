@@ -101,6 +101,10 @@ class Model_Voting extends Model
     {
         return $this->Voting->cycle_event_status();
     }
+    public function reevaluate_provisional_for_player($mundane_id)
+    {
+        return $this->Voting->reevaluate_provisional_for_player($mundane_id);
+    }
 
     // ── Reads ──────────────────────────────────────────────────────────
 
