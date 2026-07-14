@@ -1055,7 +1055,7 @@ class Voting extends Ork3
         $this->audit(
             $this->Race->voting_event_id,
             'candidate_added',
-            ['race_id' => $voting_race_id, 'candidate_mundane_id' => $candidate_mundane_id, 'label' => $this->Choice->label],
+            ['race_id' => $voting_race_id, 'candidate_mundane_id' => $candidate_mundane_id, 'voting_choice_id' => (int)$this->Choice->voting_choice_id, 'label' => $this->Choice->label],
             $mundane_id
         );
         return Success($this->Choice->voting_choice_id);
@@ -1102,6 +1102,12 @@ class Voting extends Ork3
         $this->Choice->label = $label;
         $this->Choice->display_order = $next_order;
         $this->Choice->save();
+        $this->audit(
+            $this->Race->voting_event_id,
+            'option_added',
+            ['race_id' => $voting_race_id, 'voting_choice_id' => (int)$this->Choice->voting_choice_id, 'label' => $this->Choice->label],
+            $mundane_id
+        );
         return Success($this->Choice->voting_choice_id);
     }
 
@@ -1622,7 +1628,8 @@ class Voting extends Ork3
 				 WHERE b.superseded_by_ballot_id IS NULL
 				 GROUP BY v.voting_choice_id) vc ON vc.voting_choice_id = c.voting_choice_id
 			WHERE r.voting_event_id = " . $voting_event_id . "
-			  AND c.withdrawn_at IS NOT NULL");
+			  AND c.withdrawn_at IS NOT NULL
+			  AND c.withdrawn_at >= '" . date('Y-m-d H:i:s', strtotime($reopened_at)) . "'");
         while ($rs && $rs->Next()) {
             $impacts[] = ['kind' => 'choice_withdrawn',
                 'race_id' => (int)$rs->voting_race_id, 'race_title' => $rs->race_title,
@@ -1641,7 +1648,12 @@ class Voting extends Ork3
 				 WHERE b.superseded_by_ballot_id IS NULL
 				 GROUP BY v.voting_choice_id) vc ON vc.voting_choice_id = c.voting_choice_id
 			WHERE r.voting_event_id = " . $voting_event_id . "
-			  AND c.original_label IS NOT NULL");
+			  AND c.original_label IS NOT NULL
+			  AND EXISTS (SELECT 1 FROM " . DB_PREFIX . "voting_audit a
+			  	WHERE a.voting_event_id = " . $voting_event_id . "
+			  	  AND a.action = 'choice_label_edited'
+			  	  AND JSON_EXTRACT(a.detail, '$.choice_id') = c.voting_choice_id
+			  	  AND a.created_at >= '" . date('Y-m-d H:i:s', strtotime($reopened_at)) . "')");
         while ($rs && $rs->Next()) {
             $impacts[] = ['kind' => 'choice_label_edited',
                 'race_id' => (int)$rs->voting_race_id, 'race_title' => $rs->race_title,
@@ -1653,7 +1665,12 @@ class Voting extends Ork3
         $rs = $DB->DataSet("SELECT r.voting_race_id, r.title, r.rationale, r.original_title, r.original_rationale
 			FROM " . DB_PREFIX . "voting_race r
 			WHERE r.voting_event_id = " . $voting_event_id . "
-			  AND (r.original_title IS NOT NULL OR r.original_rationale IS NOT NULL)");
+			  AND (r.original_title IS NOT NULL OR r.original_rationale IS NOT NULL)
+			  AND EXISTS (SELECT 1 FROM " . DB_PREFIX . "voting_audit a
+			  	WHERE a.voting_event_id = " . $voting_event_id . "
+			  	  AND a.action = 'race_wording_edited'
+			  	  AND JSON_EXTRACT(a.detail, '$.race_id') = r.voting_race_id
+			  	  AND a.created_at >= '" . date('Y-m-d H:i:s', strtotime($reopened_at)) . "')");
         while ($rs && $rs->Next()) {
             $impacts[] = ['kind' => 'race_wording_edited',
                 'race_id' => (int)$rs->voting_race_id, 'race_title' => $rs->title,
@@ -1669,6 +1686,11 @@ class Voting extends Ork3
 			WHERE r.voting_event_id = " . $voting_event_id . "
 			  AND c.withdrawn_at IS NULL
 			  AND c.original_label IS NULL
+			  AND EXISTS (SELECT 1 FROM " . DB_PREFIX . "voting_audit a
+			  	WHERE a.voting_event_id = " . $voting_event_id . "
+			  	  AND a.action IN ('candidate_added','option_added')
+			  	  AND JSON_EXTRACT(a.detail, '$.voting_choice_id') = c.voting_choice_id
+			  	  AND a.created_at >= '" . date('Y-m-d H:i:s', strtotime($reopened_at)) . "')
 			  AND EXISTS (
 			  	SELECT 1 FROM " . DB_PREFIX . "voting_vote v
 				JOIN " . DB_PREFIX . "voting_ballot b ON b.voting_ballot_id = v.voting_ballot_id
@@ -1727,6 +1749,11 @@ class Voting extends Ork3
         }
 
         if ($requires && $decision === 'discard') {
+            // Scope the destructive cleanup to the CURRENT reopen window only —
+            // PreviewResume already surfaces only current-window impacts, but the
+            // withdrawn-choice hard-DELETE below must not remove a choice that was
+            // withdrawn-and-kept in a PRIOR reopen window in an impacted race.
+            $resume_reopened_at = date('Y-m-d H:i:s', strtotime($this->Event->reopened_at));
             $impacted_race_ids = [];
             foreach ($preview['impacts'] as $imp) {
                 $impacted_race_ids[(int)$imp['race_id']] = true;
@@ -1747,7 +1774,7 @@ class Voting extends Ork3
                         throw new Exception('delete_vote');
                     }
                     $DB->Clear();
-                    if ($DB->Execute("DELETE FROM " . DB_PREFIX . "voting_choice WHERE voting_race_id IN ({$in}) AND withdrawn_at IS NOT NULL") === false) {
+                    if ($DB->Execute("DELETE FROM " . DB_PREFIX . "voting_choice WHERE voting_race_id IN ({$in}) AND withdrawn_at IS NOT NULL AND withdrawn_at >= '" . $resume_reopened_at . "'") === false) {
                         throw new Exception('delete_choice');
                     }
                     $DB->Clear();
