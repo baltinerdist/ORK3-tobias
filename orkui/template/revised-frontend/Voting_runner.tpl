@@ -126,6 +126,28 @@
 			</div>
 			<div id="vtr-ext-msg" style="margin-top:10px;"></div>
 		</div>
+		<div class="vtr-card" style="margin-top:14px;">
+			<h2>External Ballots Entered</h2>
+			<div id="vtr-ext-roster"><div class="vtr-empty">Loading…</div></div>
+		</div>
+	</div>
+
+	<!-- External-ballot entry modal -->
+	<div id="vtr-ext-modal" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.5);align-items:flex-start;justify-content:center;overflow:auto;padding:40px 16px;">
+		<div style="background:var(--vtr-card-bg,#fff);color:var(--vtr-text,#1a202c);border:1px solid var(--vtr-card-border,#cbd5e0);border-radius:10px;max-width:640px;width:100%;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,0.3);">
+			<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+				<h2 style="margin:0;" id="vtr-ext-modal-title">Enter Paper Ballot</h2>
+				<button id="vtr-ext-modal-x" class="vtr-btn" style="padding:4px 10px;">&times;</button>
+			</div>
+			<div id="vtr-ext-modal-sub" style="font-size:13px;color:#718096;margin-bottom:10px;"></div>
+			<div id="vtr-ext-attest" style="display:none;margin-bottom:12px;"></div>
+			<form id="vtr-ext-form"><div id="vtr-ext-races"></div></form>
+			<div id="vtr-ext-modal-msg" style="margin-top:10px;"></div>
+			<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
+				<button id="vtr-ext-cancel" class="vtr-btn">Cancel</button>
+				<button id="vtr-ext-submit" class="vtr-btn vtr-btn-success">Submit Ballot</button>
+			</div>
+		</div>
 	</div>
 
 	<div class="vtr-pane" data-pane="manage">
@@ -412,11 +434,147 @@
 			if (extInput && !extInput.contains(e.target) && extResults && !extResults.contains(e.target)) extResults.classList.remove('kn-ac-open');
 		});
 	}
+	var extModal = $('#vtr-ext-modal');
+	var extRacesHost = $('#vtr-ext-races');
+	var extAttestHost = $('#vtr-ext-attest');
+	var extModalMsg = $('#vtr-ext-modal-msg');
+	var extModalSub = $('#vtr-ext-modal-sub');
+	var extVoterId = null, extVoterLabel = '', extActiveElectronic = false;
+
+	function closeExtModal(){ extModal.style.display = 'none'; extRacesHost.innerHTML = ''; extAttestHost.style.display='none'; extAttestHost.innerHTML=''; extModalMsg.innerHTML=''; }
+	if ($('#vtr-ext-modal-x')) $('#vtr-ext-modal-x').addEventListener('click', closeExtModal);
+	if ($('#vtr-ext-cancel')) $('#vtr-ext-cancel').addEventListener('click', closeExtModal);
+
+	function renderExtRace(race){
+		var rid = parseInt(race.voting_race_id,10);
+		var choices = (race.choices||[]);
+		var isIrv = (race.race_type === 'position' && race.voting_mode === 'irv' && choices.length > 1);
+		var isConfidence = (race.race_type === 'position' && choices.length === 1);
+		var h = '<div class="vtv-race" data-race-id="'+rid+'" data-race-type="'+escapeHtml(race.race_type)+'" data-voting-mode="'+escapeHtml(race.voting_mode||'')+'" data-irv="'+(isIrv?'1':'0')+'" style="padding:12px 0;border-bottom:1px solid var(--vtr-card-border,#e2e8f0);">';
+		h += '<div style="font-weight:600;margin-bottom:8px;">'+escapeHtml(race.title||'')+'</div>';
+		if (isIrv) {
+			h += '<div class="vtv-irv-list">';
+			choices.forEach(function(c){ h += '<label class="vtv-irv-item" data-choice-id="'+parseInt(c.voting_choice_id,10)+'" style="display:block;padding:4px 0;"><input type="checkbox" class="vtv-irv-cb" value="'+parseInt(c.voting_choice_id,10)+'" /> '+escapeHtml(c.label||'')+'</label>'; });
+			h += '</div><div style="font-size:11px;color:#718096;">Check candidates in preference order (first checked = 1st choice).</div>';
+			if (race.allow_abstain) h += '<label style="display:block;margin-top:6px;"><input type="checkbox" class="vtv-abstain-cb" /> Abstain this race</label>';
+		} else if (isConfidence) {
+			h += '<label style="display:block;"><input type="radio" name="r_'+rid+'" value="'+parseInt(choices[0].voting_choice_id,10)+'" /> Yes — confidence in '+escapeHtml(choices[0].label||'')+'</label>';
+			h += '<label style="display:block;"><input type="radio" name="r_'+rid+'" value="no" /> No</label>';
+			if (race.allow_abstain) h += '<label style="display:block;"><input type="radio" name="r_'+rid+'" value="abstain" /> Abstain</label>';
+		} else {
+			choices.forEach(function(c){ h += '<label style="display:block;"><input type="radio" name="r_'+rid+'" value="'+parseInt(c.voting_choice_id,10)+'" /> '+escapeHtml(c.label||'')+'</label>'; });
+			if (race.allow_none_of_above) h += '<label style="display:block;"><input type="radio" name="r_'+rid+'" value="nota" /> None of the above</label>';
+			if (race.allow_abstain) h += '<label style="display:block;"><input type="radio" name="r_'+rid+'" value="abstain" /> Abstain</label>';
+		}
+		h += '</div>';
+		return h;
+	}
+
+	function buildExtVotes(){
+		var votes = [];
+		$$('.vtv-race', extRacesHost).forEach(function(race){
+			var rid = parseInt(race.dataset.raceId,10);
+			var isIrv = race.dataset.irv === '1';
+			if (isIrv) {
+				var abst = race.querySelector('.vtv-abstain-cb');
+				if (abst && abst.checked) { votes.push({ VotingRaceId: rid, IsAbstain: 1 }); return; }
+				var ids = $$('.vtv-irv-cb', race).filter(function(cb){ return cb.checked; }).map(function(cb){ return parseInt(cb.value,10); });
+				votes.push({ VotingRaceId: rid, ChoiceIds: ids });
+				return;
+			}
+			var sel = race.querySelector('input[type=radio]:checked');
+			if (!sel) { votes.push({ VotingRaceId: rid, ChoiceIds: [] }); return; }
+			if (sel.value === 'abstain') { votes.push({ VotingRaceId: rid, IsAbstain: 1 }); return; }
+			if (sel.value === 'nota' || sel.value === 'no') { votes.push({ VotingRaceId: rid, IsNoneOfAbove: 1 }); return; }
+			votes.push({ VotingRaceId: rid, ChoiceIds: [parseInt(sel.value,10)] });
+		});
+		return votes;
+	}
+
+	function submitExt(overwriteConfirm){
+		var votes = buildExtVotes();
+		var attestCb = extAttestHost.querySelector('#vtr-attest-cb');
+		var attestReason = extAttestHost.querySelector('#vtr-attest-reason');
+		var fd = new FormData();
+		fd.append('VoterMundaneId', String(extVoterId));
+		fd.append('Votes', JSON.stringify(votes));
+		if (overwriteConfirm) fd.append('OverwriteConfirm', '1');
+		if (attestCb && attestCb.checked) { fd.append('AttestEligibility', '1'); fd.append('AttestReason', attestReason ? attestReason.value : ''); }
+		fetch('<?= UIR ?>VotingAjax/external_ballot/' + eventId, { method:'POST', body:fd, headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })
+			.then(r => r.json()).then(function(j){
+				if (j.status === 0) {
+					closeExtModal();
+					extMsg.innerHTML = '<div class="vtr-banner vtr-banner-info">Paper ballot recorded for ' + escapeHtml(extVoterLabel) + '.</div>';
+					extInput.value = ''; extId.value = ''; extBtn.disabled = true;
+					loadExtRoster();
+					return;
+				}
+				if (j.error === 'confirm_required') {
+					pnConfirm({ title:'Replace online ballot?', message:extVoterLabel + ' already voted online. Recording this paper ballot will replace their electronic ballot and notify them. Continue?', confirmText:'Replace with paper', danger:true }, function(){ submitExt(true); });
+					return;
+				}
+				extModalMsg.innerHTML = '<div class="vtr-banner vtr-banner-warn">' + escapeHtml(j.error || 'Failed') + (j.detail ? ': ' + escapeHtml(j.detail) : '') + '</div>';
+			});
+	}
+
+	function openExtBallot(voterId, voterLabel){
+		extVoterId = voterId; extVoterLabel = voterLabel;
+		extModalMsg.innerHTML = ''; extRacesHost.innerHTML = '<div class="vtr-empty">Loading ballot…</div>';
+		extAttestHost.style.display = 'none'; extAttestHost.innerHTML = '';
+		extModalSub.textContent = 'For ' + voterLabel;
+		extModal.style.display = 'flex';
+		fetch('<?= UIR ?>VotingAjax/external_ballot_form/' + eventId + '&VoterMundaneId=' + encodeURIComponent(voterId), { credentials:'same-origin' })
+			.then(r => r.json()).then(function(j){
+				if (j.status !== 0) { extRacesHost.innerHTML = '<div class="vtr-banner vtr-banner-warn">' + escapeHtml(j.error || 'Failed') + '</div>'; return; }
+				extActiveElectronic = j.active_is_electronic === 1;
+				if (!j.races || !j.races.length) { extRacesHost.innerHTML = '<div class="vtr-empty">No races configured.</div>'; return; }
+				extRacesHost.innerHTML = j.races.map(renderExtRace).join('');
+				if (j.eligible !== 1) {
+					extAttestHost.style.display = 'block';
+					extAttestHost.innerHTML = '<div class="vtr-banner vtr-banner-warn" style="margin-bottom:6px;"><i class="fas fa-exclamation-triangle"></i> The system does not currently show this member as eligible.</div>'
+						+ '<label style="display:block;"><input type="checkbox" id="vtr-attest-cb" /> I verified this member at the door and attest their eligibility.</label>'
+						+ '<input type="text" id="vtr-attest-reason" placeholder="Reason (e.g., dues paid at door)" style="width:100%;margin-top:6px;padding:8px;border:1px solid var(--vtr-card-border,#cbd5e0);border-radius:6px;box-sizing:border-box;background:var(--vtr-card-bg,#fff);color:var(--vtr-text,#1a202c);" />';
+				}
+				if (extActiveElectronic) {
+					var note = document.createElement('div');
+					note.className = 'vtr-banner vtr-banner-info';
+					note.style.marginTop = '4px';
+					note.innerHTML = '<i class="fas fa-info-circle"></i> This member already voted online. Submitting will ask you to confirm replacing their electronic ballot.';
+					extRacesHost.parentNode.insertBefore(note, extRacesHost);
+				}
+			});
+	}
+
+	var extForm = $('#vtr-ext-form');
+	if (extForm) extForm.addEventListener('submit', function(e){ e.preventDefault(); submitExt(false); });
+	if ($('#vtr-ext-submit')) $('#vtr-ext-submit').addEventListener('click', function(){ submitExt(false); });
+
 	if (extBtn) extBtn.addEventListener('click', function(){
 		var vid = parseInt(extId.value, 10);
 		if (!vid) return;
-		extMsg.innerHTML = '<div class="vtr-banner vtr-banner-info">External ballot entry is in stub form for the prototype. The voter you selected (id ' + escapeHtml(String(vid)) + ') would receive a runner-keyed ballot. Full UI lands in a follow-up.</div>';
+		openExtBallot(vid, extInput.value.trim() || ('#' + vid));
 	});
+
+	function loadExtRoster(){
+		var host = $('#vtr-ext-roster');
+		if (!host) return;
+		fetch('<?= UIR ?>VotingAjax/external_roster/' + eventId, { credentials:'same-origin' })
+			.then(r => r.json()).then(function(j){
+				if (j.status !== 0 || !j.roster || !j.roster.length) { host.innerHTML = '<div class="vtr-empty">No external ballots entered yet.</div>'; return; }
+				var h = '<table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr style="text-align:left;color:#718096;"><th style="padding:6px;">Voter</th><th style="padding:6px;">Entered by</th><th style="padding:6px;">When</th><th style="padding:6px;"></th></tr></thead><tbody>';
+				j.roster.forEach(function(row){
+					h += '<tr style="border-top:1px solid var(--vtr-card-border,#e2e8f0);">'
+						+ '<td style="padding:6px;">' + escapeHtml(row.voter_label) + (row.is_provisional ? ' <span class="vtr-pill">provisional</span>' : '') + '</td>'
+						+ '<td style="padding:6px;">' + escapeHtml(row.runner_label) + '</td>'
+						+ '<td style="padding:6px;">' + escapeHtml(row.submitted_at) + '</td>'
+						+ '<td style="padding:6px;">' + (row.replaced_online ? '<span class="vtr-pill vtr-pill-fail">replaced online ballot</span>' : '') + '</td>'
+						+ '</tr>';
+				});
+				h += '</tbody></table>';
+				host.innerHTML = h;
+			}).catch(function(){});
+	}
+	loadExtRoster();
 
 	function doPublish(ackQuorum){
 		var body = null;
