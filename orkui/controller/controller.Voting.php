@@ -209,6 +209,10 @@ class Controller_Voting extends Controller
     {
         $this->require_login();
         $voting_event_id = (int)$voting_event_id;
+        // Lazy scheduler (no cron in this repo): auto-open due drafts, release provisional
+        // ballots that now qualify, and auto-close events past end_date — so the dashboard a
+        // runner opens is always current. cycle_event_status() runs the full sweep once.
+        $this->Voting->cycle_event_status();
         $r = $this->Voting->get_event($voting_event_id);
         if (($r['Status'] ?? 1) != 0) {
             header('Location: ' . UIR);

@@ -97,6 +97,10 @@ class Model_Voting extends Model
     {
         return $this->Voting->CloseEvent($request);
     }
+    public function cycle_event_status()
+    {
+        return $this->Voting->cycle_event_status();
+    }
 
     // ── Reads ──────────────────────────────────────────────────────────
 
