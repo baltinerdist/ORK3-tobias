@@ -752,6 +752,30 @@ class Voting extends Ork3
     //                          EVENT / RACE CRUD
     // ════════════════════════════════════════════════════════════════════
 
+    /**
+     * Sanity-check event window dates. Returns null when OK, else a human message.
+     * Dates arrive as strings from the create/edit form; validate server-side because
+     * the form's JS gate can be bypassed. Never trust the client.
+     */
+    private function validate_event_dates(?string $start, ?string $end): ?string
+    {
+        $s = ($start === null || $start === '') ? false : strtotime($start);
+        $e = ($end === null || $end === '') ? false : strtotime($end);
+        if ($s === false) {
+            return 'A valid opening date is required.';
+        }
+        if ($e === false) {
+            return 'A valid closing date is required.';
+        }
+        if ($e <= $s) {
+            return 'The closing date must be after the opening date.';
+        }
+        if ($e <= time()) {
+            return 'The closing date is already in the past — pick a future closing date.';
+        }
+        return null;
+    }
+
     public function CreateEvent($request)
     {
         $mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
@@ -770,6 +794,11 @@ class Voting extends Ork3
         }
         if (!$this->user_can_run_in_scope($mundane_id, $scope_type, $scope_id)) {
             return NoAuthorization();
+        }
+
+        $date_error = $this->validate_event_dates($request['StartDate'] ?? null, $request['EndDate'] ?? null);
+        if ($date_error !== null) {
+            return ProcessingError('', $date_error);
         }
 
         $this->Event->clear();
@@ -815,6 +844,15 @@ class Voting extends Ork3
         }
         if ($this->Event->status !== 'draft') {
             return ProcessingError('', 'Only draft events can be edited.');
+        }
+
+        $eff_start = array_key_exists('StartDate', $request) ? $request['StartDate'] : $this->Event->start_date;
+        $eff_end   = array_key_exists('EndDate', $request) ? $request['EndDate'] : $this->Event->end_date;
+        if (array_key_exists('StartDate', $request) || array_key_exists('EndDate', $request)) {
+            $date_error = $this->validate_event_dates($eff_start, $eff_end);
+            if ($date_error !== null) {
+                return ProcessingError('', $date_error);
+            }
         }
 
         $diff = [];
