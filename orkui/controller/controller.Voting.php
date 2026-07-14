@@ -228,6 +228,15 @@ class Controller_Voting extends Controller
         // Counts.
         $this->data['counts'] = $this->Voting->ballot_counts($voting_event_id);
 
+        // Live electorate size for turnout (pre-publish shows a live estimate; post-publish the
+        // frozen figure on the event is authoritative).
+        if (!empty($event['eligible_count'])) {
+            $this->data['eligible_count'] = (int)$event['eligible_count'];
+        } else {
+            $roll = $this->Voting->eligible_roll($event['scope_type'], (int)$event['scope_id']);
+            $this->data['eligible_count'] = (int)$roll['count'];
+        }
+
         $this->template = '../revised-frontend/Voting_runner.tpl';
     }
 

@@ -79,10 +79,17 @@
 
 <div class="vtr-wrap">
 
+	<?php
+		$_elig = (int)($eligible_count ?? 0);
+		$_counted = (int)$counts['counted'];
+		$_turnout = $_elig > 0 ? round($_counted / $_elig * 100) : 0;
+	?>
 	<div class="vtr-stats">
-		<div class="vtr-stat"><div class="vtr-stat-label">Counted</div><div class="vtr-stat-value"><?= (int)$counts['counted'] ?></div></div>
+		<div class="vtr-stat"><div class="vtr-stat-label">Counted</div><div class="vtr-stat-value"><?= $_counted ?></div></div>
 		<div class="vtr-stat"><div class="vtr-stat-label">Provisional</div><div class="vtr-stat-value"><?= (int)$counts['provisional'] ?></div></div>
 		<div class="vtr-stat"><div class="vtr-stat-label">Total Ballots</div><div class="vtr-stat-value"><?= (int)$counts['total'] ?></div></div>
+		<div class="vtr-stat"><div class="vtr-stat-label">Eligible Voters</div><div class="vtr-stat-value"><?= $_elig ?></div></div>
+		<div class="vtr-stat"><div class="vtr-stat-label">Turnout</div><div class="vtr-stat-value"><?= $_elig > 0 ? $_turnout . '%' : '&mdash;' ?></div></div>
 	</div>
 
 	<div class="vtr-tabs">
