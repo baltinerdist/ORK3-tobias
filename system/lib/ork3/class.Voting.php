@@ -224,6 +224,28 @@ class Voting extends Ork3
         ];
     }
 
+    // One-line human summary of a resolved ruleset for the organizer UI.
+    public static function rule_summary_line(array $rules, $is_default)
+    {
+        $req  = (int)($rules['AttendanceRequired'] ?? 6);
+        $mode = $rules['AttendanceMode'] ?? 'weeks';
+        $win  = (int)($rules['MonthsWindow'] ?? 6);
+        $unit = $mode === 'count' ? 'sign-ins' : ($mode === 'days' ? 'event days' : 'weeks');
+        $line = 'Paid members with a waiver and at least ' . $req . ' ' . $unit;
+        if ($win > 0) {
+            $line .= ' in the last ' . $win . ' months';
+        }
+        $min = (int)($rules['MinMembershipMonths'] ?? 0);
+        if ($min > 0) {
+            $line .= ', member for ' . $min . '+ months';
+        }
+        $line .= '.';
+        if ($is_default) {
+            $line .= ' (Default ruleset — this kingdom has no custom voting rule configured.)';
+        }
+        return $line;
+    }
+
     // ════════════════════════════════════════════════════════════════════
     //                        AUTHORIZATION HELPERS
     // ════════════════════════════════════════════════════════════════════

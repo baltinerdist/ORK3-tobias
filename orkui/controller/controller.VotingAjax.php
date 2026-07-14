@@ -17,7 +17,7 @@ class Controller_VotingAjax extends Controller
      */
     private function _csrf_gate($call)
     {
-        $read_actions = ['tally', 'banner', 'candidate_search', 'voter_search', 'preview_resume'];
+        $read_actions = ['tally', 'banner', 'candidate_search', 'voter_search', 'preview_resume', 'eligibility_roster'];
         $action = strtolower((string)$call);
         if (in_array($action, $read_actions, true)) {
             return;
@@ -354,6 +354,32 @@ class Controller_VotingAjax extends Controller
             ];
         }
         $this->ok(['results' => $results]);
+    }
+
+    public function eligibility_roster($scope = null)
+    {
+        $this->require_login();
+        $parts = explode('_', (string)$scope, 2);
+        $scope_type = $parts[0] ?? '';
+        $scope_id = (int)($parts[1] ?? 0);
+        if (!in_array($scope_type, ['Kingdom', 'Park']) || !$scope_id) {
+            $this->ok(['count' => 0, 'players' => []]);
+        }
+        if (!$this->Voting->user_can_manage_voting_in_scope((int)$this->session->user_id, strtolower($scope_type), $scope_id)) {
+            $this->fail('Not authorized.');
+        }
+        $roll = $this->Voting->eligible_roll(strtolower($scope_type), $scope_id);
+        $players = [];
+        foreach ($roll['players'] as $p) {
+            $players[] = [
+                'mundane_id' => (int)$p['MundaneId'],
+                'persona'    => $p['Persona'],
+                'park'       => $p['ParkName'],
+                'dues_paid'  => (int)$p['DuesPaid'],
+                'att_count'  => (int)$p['AttCount'],
+            ];
+        }
+        $this->ok(['count' => (int)$roll['count'], 'players' => $players]);
     }
 
     public function voter_search($voting_event_id = null)

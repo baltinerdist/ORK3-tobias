@@ -34,6 +34,8 @@
 	html[data-theme="dark"] .vtc-card { --vtc-card-bg:#1a202c; --vtc-card-border:#2d3748; --vtc-text:#e2e8f0; --vtc-meta:#a0aec0; --vtc-input-border:#4a5568; --vtc-input-bg:#2d3748; --vtc-toggle-bg:#2d3748; }
 	html[data-theme="dark"] .vtc-h1, html[data-theme="dark"] .vtc-row label { color:#e2e8f0; }
 	html[data-theme="dark"] .vtc-sub { color:#a0aec0; }
+	html[data-theme="dark"] .vtc-elig-card { background:#1a365d !important; border-color:#2c5282 !important; color:#e2e8f0; }
+	html[data-theme="dark"] .vtc-elig-card div { color:#cbd5e0 !important; }
 </style>
 
 <div class="rp-root vt-root">
@@ -113,6 +115,16 @@
 				</label>
 			</div>
 		</div>
+
+		<?php if (!empty($elig_summary)): ?>
+		<div class="vtc-row">
+			<label>Who can vote</label>
+			<div class="vtc-elig-card" style="background:#ebf8ff;border:1px solid #bee3f8;border-radius:8px;padding:12px 14px;">
+				<div style="font-weight:600;margin-bottom:4px;"><i class="fas fa-users"></i> <?= (int)$elig_summary['count'] ?> eligible voters right now</div>
+				<div style="font-size:13px;color:#2a4365;"><?= htmlspecialchars($elig_summary['rule_line']) ?></div>
+			</div>
+		</div>
+		<?php endif; ?>
 
 		<div class="vtc-actions">
 			<a class="vtc-btn-ghost" href="<?= UIR ?>Voting/index/<?= $scope_type_label ?>_<?= $scope_id ?>">Cancel</a>

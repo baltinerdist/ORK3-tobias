@@ -110,6 +110,12 @@ class Controller_Voting extends Controller
             }
         }
 
+        $roll = $this->Voting->eligible_roll($st, $scope_id);
+        $this->data['elig_summary'] = [
+            'count'     => (int)$roll['count'],
+            'is_default' => (bool)$roll['is_default'],
+            'rule_line' => Voting::rule_summary_line($roll['rules'], $roll['is_default']),
+        ];
         $this->template = '../revised-frontend/Voting_create.tpl';
     }
 
@@ -134,6 +140,12 @@ class Controller_Voting extends Controller
         $this->data['voting_event_id'] = $voting_event_id;
         $this->data['can_edit'] = ($event['status'] === 'draft');
         $this->data['can_reopen'] = ($event['status'] === 'open');
+        $roll = $this->Voting->eligible_roll($event['scope_type'], (int)$event['scope_id']);
+        $this->data['elig_summary'] = [
+            'count'     => (int)$roll['count'],
+            'is_default' => (bool)$roll['is_default'],
+            'rule_line' => Voting::rule_summary_line($roll['rules'], $roll['is_default']),
+        ];
         $this->template = '../revised-frontend/Voting_edit.tpl';
     }
 

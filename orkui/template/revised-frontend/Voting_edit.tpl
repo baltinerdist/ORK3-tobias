@@ -160,6 +160,16 @@
 			</div>
 		<?php endif; ?>
 
+		<?php if (!empty($elig_summary)): ?>
+			<div class="vte-card">
+				<h2>Eligibility</h2>
+				<div style="font-weight:600;margin-bottom:4px;"><i class="fas fa-users"></i> <?= (int)$elig_summary['count'] ?> eligible voters right now</div>
+				<div style="font-size:13px;color:var(--vte-meta,#4a5568);margin-bottom:10px;"><?= htmlspecialchars($elig_summary['rule_line']) ?></div>
+				<button id="vte-roster-btn" class="vte-btn vte-btn-ghost" type="button"><i class="fas fa-list"></i> View eligible voters</button>
+				<div id="vte-roster-host" style="margin-top:10px;"></div>
+			</div>
+		<?php endif; ?>
+
 		<?php if (!empty($event['races'])): ?>
 			<div class="vte-card">
 				<h2>Per-Race Settings</h2>
@@ -752,5 +762,27 @@
 		if (document.getElementById('vte-cfg-start')) flatpickr('#vte-cfg-start', dateOpts);
 		if (document.getElementById('vte-cfg-end')) flatpickr('#vte-cfg-end', dateOpts);
 	}
+})();
+</script>
+<script>
+(function(){
+	var btn = document.getElementById('vte-roster-btn');
+	if (!btn) { return; }
+	var host = document.getElementById('vte-roster-host');
+	var scope = <?= json_encode(ucfirst($event['scope_type']) . '_' . (int)$event['scope_id']) ?>;
+	btn.addEventListener('click', function(){
+		host.innerHTML = '<div style="font-size:13px;color:#718096;">Loading…</div>';
+		fetch('<?= UIR ?>VotingAjax/eligibility_roster/' + scope, {credentials:'same-origin'})
+			.then(function(r){ return r.json(); })
+			.then(function(d){
+				if (!d || d.status !== 0) { host.innerHTML = '<div style="color:#c53030;font-size:13px;">Could not load roster.</div>'; return; }
+				if (!d.players.length) { host.innerHTML = '<div style="font-size:13px;color:#718096;">No eligible voters found.</div>'; return; }
+				var rows = d.players.map(function(p){
+					return '<tr><td style="padding:4px 8px;">' + (p.persona ? p.persona.replace(/[<>&]/g,'') : '#' + p.mundane_id) + '</td><td style="padding:4px 8px;color:#718096;">' + (p.park ? p.park.replace(/[<>&]/g,'') : '') + '</td></tr>';
+				}).join('');
+				host.innerHTML = '<div style="max-height:280px;overflow:auto;border:1px solid #e2e8f0;border-radius:6px;"><table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr><th style="text-align:left;padding:4px 8px;">Persona</th><th style="text-align:left;padding:4px 8px;">Park</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+			})
+			.catch(function(){ host.innerHTML = '<div style="color:#c53030;font-size:13px;">Could not load roster.</div>'; });
+	});
 })();
 </script>
