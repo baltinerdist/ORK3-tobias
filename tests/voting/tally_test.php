@@ -522,4 +522,56 @@ class VotingTallyTests
         $this->assertEq('win', $r['outcome']);
         $this->assertEq(12, $r['winner_choice_id'], 'withdrawn A cannot win; ballots transfer to C');
     }
+
+    public function test_majority_denominator_ballots_cast()
+    {
+        // 4 A, 3 B, 3 NOTA. Default excludes NOTA → A 4/7 = 57% → win.
+        // ballots_cast basis includes NOTA → A 4/10 → no_majority.
+        $choices = [['id' => 10, 'label' => 'A'], ['id' => 11, 'label' => 'B']];
+        $ballots = array_merge(
+            array_fill(0, 4, $this->ballot_choice(10)),
+            array_fill(0, 3, $this->ballot_choice(11)),
+            array_fill(0, 3, $this->ballot_nota())
+        );
+        $race_default = ['race_type' => 'position', 'voting_mode' => 'majority',
+            'allow_abstain' => 0, 'allow_none_of_above' => 1, 'nota_counts_as' => null,
+            'majority_denominator' => 'choice_votes', 'choices' => $choices];
+        $rd = Voting::tally_pure($race_default, $ballots);
+        $this->assertEq('win', $rd['outcome'], 'default excludes NOTA from denominator');
+        $this->assertEq(10, $rd['winner_choice_id']);
+        $this->assertEq(7, $rd['denominator'], 'default denominator is choice votes only');
+
+        $race_all = $race_default;
+        $race_all['majority_denominator'] = 'ballots_cast';
+        $ra = Voting::tally_pure($race_all, $ballots);
+        $this->assertEq('no_majority', $ra['outcome'], 'NOTA in denominator defeats 4/10');
+        $this->assertEq(null, $ra['winner_choice_id']);
+        $this->assertEq(10, $ra['denominator'], 'denominator now includes 3 NOTA');
+        $this->assertEq('ballots_cast', $ra['denominator_basis']);
+    }
+
+    public function test_confidence_denominator_ballots_cast()
+    {
+        // 3 Yes, 2 No, 4 Abstain. Default: yes>no → pass (denom 5).
+        // ballots_cast: yes must exceed half of 9 → 3*2=6 !> 9 → fail.
+        $choices = $this->yes_no_choices();
+        $ballots = array_merge(
+            array_fill(0, 3, $this->ballot_choice(1)),
+            array_fill(0, 2, $this->ballot_choice(2)),
+            array_fill(0, 4, $this->ballot_abstain())
+        );
+        $race_default = ['race_type' => 'yesno', 'voting_mode' => 'majority',
+            'allow_abstain' => 1, 'allow_none_of_above' => 0, 'nota_counts_as' => null,
+            'majority_denominator' => 'choice_votes', 'choices' => $choices];
+        $rd = Voting::tally_pure($race_default, $ballots);
+        $this->assertEq('pass', $rd['outcome'], 'default: yes>no');
+        $this->assertEq(5, $rd['denominator']);
+
+        $race_all = $race_default;
+        $race_all['majority_denominator'] = 'ballots_cast';
+        $ra = Voting::tally_pure($race_all, $ballots);
+        $this->assertEq('fail', $ra['outcome'], 'yes must clear majority of all ballots');
+        $this->assertEq(9, $ra['denominator'], 'denominator = yes+no+abstain+nota');
+        $this->assertEq('ballots_cast', $ra['denominator_basis']);
+    }
 }

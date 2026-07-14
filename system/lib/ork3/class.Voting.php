@@ -2017,6 +2017,7 @@ class Voting extends Ork3
                 'original_title' => $rs->original_title, 'original_rationale' => $rs->original_rationale,
                 'allow_abstain' => (int)$rs->allow_abstain, 'allow_none_of_above' => (int)$rs->allow_none_of_above,
                 'nota_counts_as' => $rs->nota_counts_as, 'is_non_binding' => (int)$rs->is_non_binding,
+                'majority_denominator' => $rs->majority_denominator,
                 'tie_resolved_winner_choice_id' => $rs->tie_resolved_winner_choice_id ? (int)$rs->tie_resolved_winner_choice_id : null,
                 'tie_resolution_note' => $rs->tie_resolution_note,
                 'choices' => [],
@@ -2507,16 +2508,33 @@ class Voting extends Ork3
             $no += $nota;
             $nota = 0;
         }
-        $outcome = 'tie';
-        if ($yes > $no) {
-            $outcome = 'pass';
-        } elseif ($no > $yes) {
-            $outcome = 'fail';
+        $basis = ($race['majority_denominator'] ?? 'choice_votes') === 'ballots_cast' ? 'ballots_cast' : 'choice_votes';
+        if ($basis === 'ballots_cast') {
+            $denominator = $yes + $no + $abstain + $nota;
+            if ($yes * 2 > $denominator) {
+                $outcome = 'pass';
+            } elseif ($no * 2 > $denominator) {
+                $outcome = 'fail';
+            } elseif ($yes === $no) {
+                $outcome = 'tie';
+            } else {
+                $outcome = 'fail';
+            }
+        } else {
+            $denominator = $yes + $no;
+            $outcome = 'tie';
+            if ($yes > $no) {
+                $outcome = 'pass';
+            } elseif ($no > $yes) {
+                $outcome = 'fail';
+            }
         }
         return [
             'outcome' => $outcome,
             'yes' => $yes, 'no' => $no, 'abstain' => $abstain, 'nota' => $nota,
-            'denominator' => $yes + $no,
+            'denominator' => $denominator,
+            'denominator_basis' => $basis,
+            'winner_share' => $denominator > 0 ? round((max($yes, $no) / $denominator) * 100, 1) : 0,
             'tie' => $outcome === 'tie' ? true : null,
         ];
     }
@@ -2599,9 +2617,16 @@ class Voting extends Ork3
         if ($plur['outcome'] === 'no_votes') {
             return $plur;
         }
-        $total_choice_votes = array_sum($plur['counts']);
+        $basis = ($race['majority_denominator'] ?? 'choice_votes') === 'ballots_cast' ? 'ballots_cast' : 'choice_votes';
+        $choice_votes = array_sum($plur['counts']); // includes withdrawn counts (transparency)
+        $denominator = $basis === 'ballots_cast'
+            ? $choice_votes + ($plur['abstain'] ?? 0) + ($plur['nota'] ?? 0)
+            : $choice_votes;
         $winner_count = $plur['counts'][$plur['winner_choice_id']];
-        if ($total_choice_votes > 0 && $winner_count * 2 > $total_choice_votes) {
+        $plur['denominator'] = $denominator;
+        $plur['denominator_basis'] = $basis;
+        $plur['winner_share'] = $denominator > 0 ? round(($winner_count / $denominator) * 100, 1) : 0;
+        if ($denominator > 0 && $winner_count * 2 > $denominator) {
             return $plur;
         }
         return [
@@ -2610,6 +2635,10 @@ class Voting extends Ork3
             'counts' => $plur['counts'],
             'abstain' => $plur['abstain'],
             'nota' => $plur['nota'],
+            'natural_top_choice_id' => $plur['natural_top_choice_id'] ?? null,
+            'denominator' => $denominator,
+            'denominator_basis' => $basis,
+            'winner_share' => $plur['winner_share'],
             'tie' => null,
         ];
     }

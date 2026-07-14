@@ -234,6 +234,7 @@
 				html += '<div style="margin-top:8px;">';
 				html += '<span class="vtr-pill ' + (result.outcome === 'pass' ? 'vtr-pill-win' : (result.outcome === 'tie' ? 'vtr-pill-tie' : 'vtr-pill-fail')) + '">' + escapeHtml(outcomeLabel(result.outcome)) + '</span>';
 				html += '</div>';
+				html += basisCaption(result);
 			} else if (Array.isArray(result.rounds) && result.rounds.length) {
 				// IRV
 				html += '<div class="vtr-irv-rounds">';
@@ -275,10 +276,19 @@
 				html += '<div style="margin-top:8px;">';
 				html += '<span class="vtr-pill ' + (result.outcome === 'win' ? 'vtr-pill-win' : 'vtr-pill-tie') + '">' + escapeHtml(outcomeLabel(result.outcome)) + '</span>';
 				html += '</div>';
+				html += basisCaption(result);
 			}
 			html += '</div>';
 		});
 		host.innerHTML = html;
+	}
+
+	function basisCaption(result){
+		if (!result || !result.denominator_basis) return '';
+		var basis = result.denominator_basis === 'ballots_cast' ? 'all ballots cast' : 'choice votes';
+		var s = 'Majority of ' + basis + ' — ' + (result.denominator|0) + ' counted';
+		if (result.winner_share != null) s += ', leader held ' + result.winner_share + '%';
+		return '<div class="vtr-rationale" style="font-size:12px;color:#718096;margin-top:4px;">' + escapeHtml(s) + '.</div>';
 	}
 
 	function renderBar(label, count, total, cls){
