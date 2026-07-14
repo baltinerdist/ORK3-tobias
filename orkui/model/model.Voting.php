@@ -85,6 +85,14 @@ class Model_Voting extends Model
     {
         return $this->Voting->ResolveTie($request);
     }
+    public function add_delegate($request)
+    {
+        return $this->Voting->AddDelegate($request);
+    }
+    public function remove_delegate($request)
+    {
+        return $this->Voting->RemoveDelegate($request);
+    }
     public function resolve_no_majority($request)
     {
         return $this->Voting->ResolveNoMajority($request);
@@ -232,5 +240,9 @@ class Model_Voting extends Model
     public function event_scope($voting_event_id)
     {
         return $this->Voting->event_scope($voting_event_id);
+    }
+    public function list_delegates($voting_event_id)
+    {
+        return $this->Voting->ListDelegates($voting_event_id);
     }
 }
