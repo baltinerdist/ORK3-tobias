@@ -1634,11 +1634,19 @@ class Voting extends Ork3
             return ProcessingError('', 'Voting has closed.');
         }
 
-        // Eligibility check.
+        // Eligibility check. (Read-only — the Eligibility domain owns the rules map.)
         $elig = $this->check_eligibility_live($voter_mundane_id, $this->Event->scope_type, $this->Event->scope_id);
         $is_provisional = 0;
+        // Runner attestation: a runner keying a door-verified paper ballot may attest eligibility the
+        // live check can't confirm (lapsed dues not yet recorded, unlogged attendance, etc.). Honored
+        // only on runner entry; recorded with a reason in the audit trail.
+        $attested_eligibility = $is_runner_entry && !empty($request['AttestEligibility']);
+        $attest_reason = $attested_eligibility ? trim((string)($request['AttestReason'] ?? '')) : '';
         if (!$elig['eligible']) {
-            if (!empty($this->Event->allow_provisional) && $elig['provisional_possible']) {
+            if ($attested_eligibility) {
+                // Runner attests: count as eligible, non-provisional.
+                $is_provisional = 0;
+            } elseif (!empty($this->Event->allow_provisional) && $elig['provisional_possible']) {
                 $is_provisional = 1;
             } else {
                 return ProcessingError('', 'Not eligible to vote in this event.');
@@ -1700,6 +1708,25 @@ class Voting extends Ork3
         $rs = $DB->DataSet("SELECT voting_ballot_id FROM " . DB_PREFIX . "voting_active_ballot
 			WHERE voting_event_id = " . $voting_event_id . " AND voter_mundane_id = " . $voter_mundane_id . " FOR UPDATE");
         $prior_ballot_id = ($rs && $rs->Next()) ? (int)$rs->voting_ballot_id : null;
+
+        // Overwrite-confirm gate: a runner-entered paper ballot may NOT silently supersede a voter's
+        // own electronic ballot. Require an explicit OverwriteConfirm; otherwise roll back and signal
+        // the UI to show the "Replace with paper?" confirmation. (Replacing a prior *paper* ballot —
+        // entered_by_runner_id NOT NULL — is a routine correction and does not require this gate.)
+        $prior_is_electronic = false;
+        if ($is_runner_entry && $prior_ballot_id) {
+            $DB->Clear();
+            $prs = $DB->DataSet("SELECT entered_by_runner_id FROM " . DB_PREFIX . "voting_ballot WHERE voting_ballot_id = " . (int)$prior_ballot_id);
+            $prior_is_electronic = ($prs && $prs->Next() && $prs->entered_by_runner_id === null);
+            if ($prior_is_electronic && empty($request['OverwriteConfirm'])) {
+                $DB->Clear();
+                $DB->Execute("ROLLBACK");
+                $DB->Clear();
+                $DB->Execute("SELECT RELEASE_LOCK('" . $cast_lock . "')");
+                $DB->Clear();
+                return ProcessingError('has_online_ballot', 'confirm_required');
+            }
+        }
 
         // Insert new ballot row.
         $this->Ballot->clear();
@@ -1862,9 +1889,19 @@ class Voting extends Ork3
         $this->audit(
             $voting_event_id,
             $action,
-            ['ballot_id' => $new_ballot_id, 'voter_mundane_id' => $voter_mundane_id, 'is_provisional' => $is_provisional, 'prior_ballot_id' => $prior_ballot_id],
+            ['ballot_id' => $new_ballot_id, 'voter_mundane_id' => $voter_mundane_id, 'is_provisional' => $is_provisional,
+                'prior_ballot_id' => $prior_ballot_id, 'replaced_online_ballot' => ($prior_is_electronic ? 1 : 0),
+                'attested_eligibility' => ($attested_eligibility ? 1 : 0)],
             $actor_mundane_id
         );
+        if ($attested_eligibility) {
+            $this->audit(
+                $voting_event_id,
+                'ballot_eligibility_attested',
+                ['ballot_id' => $new_ballot_id, 'voter_mundane_id' => $voter_mundane_id, 'reason' => $attest_reason],
+                $actor_mundane_id
+            );
+        }
 
         return Success($new_ballot_id);
     }
