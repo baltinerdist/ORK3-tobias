@@ -197,6 +197,22 @@ class Model_Voting extends Model
     {
         return $this->Voting->ballot_counts($voting_event_id);
     }
+    public function runner_eligibility_preview($voting_event_id, $voter_mundane_id)
+    {
+        return $this->Voting->runner_eligibility_preview($voting_event_id, $voter_mundane_id);
+    }
+    public function external_ballots_roster($voting_event_id)
+    {
+        return $this->Voting->external_ballots_roster($voting_event_id);
+    }
+    public function paper_replacement_notices($voter_mundane_id)
+    {
+        return $this->Voting->paper_replacement_notices($voter_mundane_id);
+    }
+    public function ack_paper_notice($voter_mundane_id, $voting_ballot_id)
+    {
+        return $this->Voting->ack_paper_notice($voter_mundane_id, $voting_ballot_id);
+    }
     public function provisional_ballots($voting_event_id)
     {
         return $this->Voting->provisional_ballots($voting_event_id);
