@@ -189,6 +189,10 @@ class Model_Voting extends Model
     {
         return $this->Voting->ballot_counts($voting_event_id);
     }
+    public function provisional_ballots($voting_event_id)
+    {
+        return $this->Voting->provisional_ballots($voting_event_id);
+    }
     public function audit_log($voting_event_id, $limit = 500, $redact_voters = false)
     {
         return $this->Voting->audit_log($voting_event_id, $limit, $redact_voters);

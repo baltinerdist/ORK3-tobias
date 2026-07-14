@@ -437,6 +437,36 @@ class Voting extends Ork3
         return ['counted' => 0, 'provisional' => 0, 'total' => 0];
     }
 
+    // Currently-active PROVISIONAL ballots for an event (runner review panel). Joined via
+    // voting_active_ballot so superseded ballots are excluded. Source: finding 24.
+    public function provisional_ballots($voting_event_id)
+    {
+        global $DB;
+        $DB->Clear();
+        $rs = $DB->DataSet("SELECT b.voting_ballot_id, b.voter_mundane_id, b.submitted_at,
+            m.username, m.persona, m.given_name, m.surname
+            FROM " . DB_PREFIX . "voting_active_ballot ab
+            JOIN " . DB_PREFIX . "voting_ballot b ON b.voting_ballot_id = ab.voting_ballot_id
+            LEFT JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = b.voter_mundane_id
+            WHERE ab.voting_event_id = " . (int)$voting_event_id . " AND b.is_provisional = 1
+            ORDER BY b.submitted_at ASC, b.voting_ballot_id ASC");
+        $rows = [];
+        while ($rs && $rs->Next()) {
+            $name = $rs->persona ?: trim(($rs->given_name ?? '') . ' ' . ($rs->surname ?? ''));
+            if ($name === '') {
+                $name = $rs->username ?? '';
+            }
+            $rows[] = [
+                'voting_ballot_id' => (int)$rs->voting_ballot_id,
+                'voter_mundane_id' => (int)$rs->voter_mundane_id,
+                'submitted_at' => $rs->submitted_at,
+                'voter_name' => $name,
+                'username' => $rs->username ?? '',
+            ];
+        }
+        return $rows;
+    }
+
     // Audit rows for an event, newest-first, joined to actor username/persona.
     // Source: controller.Voting.php::audit.
     public function audit_log($voting_event_id, $limit = 500, $redact_voters = false)
