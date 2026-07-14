@@ -3741,7 +3741,16 @@ window.VOTING_CSRF = <?= json_encode($VotingCsrf ?? '') ?>;
 					e.preventDefault(); e.stopPropagation();
 					var bid = parseInt(btn.getAttribute('data-ack-ballot'),10);
 					fetch(PnConfig.uir + 'VotingAjax/ack_paper_notice/' + bid, { method:'POST', headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })
-						.then(function(){ var w = btn.closest('div'); if (w && w.parentNode) w.parentNode.removeChild(w); });
+						.then(function(response){
+							if (!response.ok) return;
+							return response.json().then(function(data){
+								if (data && typeof data.status !== 'undefined' && parseInt(data.status, 10) !== 0) return;
+								var w = btn.closest('div'); if (w && w.parentNode) w.parentNode.removeChild(w);
+							}).catch(function(){
+								var w = btn.closest('div'); if (w && w.parentNode) w.parentNode.removeChild(w);
+							});
+						})
+						.catch(function(){});
 				});
 			});
 		})
