@@ -2360,6 +2360,83 @@ class Voting extends Ork3
         return Success($voting_race_id);
     }
 
+    public function AddDelegate($request)
+    {
+        $mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+        if (!valid_id($mundane_id)) {
+            return NoAuthorization();
+        }
+        $voting_event_id = (int)($request['VotingEventId'] ?? 0);
+        $delegate_id = (int)($request['DelegateMundaneId'] ?? 0);
+        if (!$voting_event_id || !$delegate_id) {
+            return InvalidParameter();
+        }
+        $this->Event->clear();
+        $this->Event->voting_event_id = $voting_event_id;
+        if (!$this->Event->find()) {
+            return InvalidParameter();
+        }
+        // Only a sitting scope officer (or admin) may delegate — NOT a mere delegated runner.
+        $is_admin = Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_ADMIN, 0, AUTH_ADMIN);
+        if (!$is_admin && !$this->user_can_run_in_scope($mundane_id, $this->Event->scope_type, $this->Event->scope_id)) {
+            return NoAuthorization();
+        }
+        global $DB;
+        $DB->Clear();
+        $DB->Execute("INSERT IGNORE INTO " . DB_PREFIX . "voting_runner (voting_event_id, mundane_id) VALUES (" . $voting_event_id . ", " . $delegate_id . ")");
+        $this->audit($voting_event_id, 'runner_delegated', ['delegate' => $delegate_id], $mundane_id);
+        return Success($delegate_id);
+    }
+
+    public function RemoveDelegate($request)
+    {
+        $mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+        if (!valid_id($mundane_id)) {
+            return NoAuthorization();
+        }
+        $voting_event_id = (int)($request['VotingEventId'] ?? 0);
+        $delegate_id = (int)($request['DelegateMundaneId'] ?? 0);
+        if (!$voting_event_id || !$delegate_id) {
+            return InvalidParameter();
+        }
+        $this->Event->clear();
+        $this->Event->voting_event_id = $voting_event_id;
+        if (!$this->Event->find()) {
+            return InvalidParameter();
+        }
+        $is_admin = Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_ADMIN, 0, AUTH_ADMIN);
+        if (!$is_admin && !$this->user_can_run_in_scope($mundane_id, $this->Event->scope_type, $this->Event->scope_id)) {
+            return NoAuthorization();
+        }
+        global $DB;
+        $DB->Clear();
+        $DB->Execute("DELETE FROM " . DB_PREFIX . "voting_runner WHERE voting_event_id = " . $voting_event_id . " AND mundane_id = " . $delegate_id);
+        $this->audit($voting_event_id, 'runner_undelegated', ['delegate' => $delegate_id], $mundane_id);
+        return Success($delegate_id);
+    }
+
+    public function ListDelegates($voting_event_id)
+    {
+        global $DB;
+        $DB->Clear();
+        $rs = $DB->DataSet("SELECT vr.mundane_id, m.persona, m.username
+			FROM " . DB_PREFIX . "voting_runner vr
+			JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = vr.mundane_id
+			WHERE vr.voting_event_id = " . (int)$voting_event_id . "
+			ORDER BY m.persona");
+        $out = [];
+        if ($rs) {
+            while ($rs->Next()) {
+                $out[] = [
+                    'mundane_id' => (int)$rs->mundane_id,
+                    'persona'    => $rs->persona,
+                    'username'   => $rs->username,
+                ];
+            }
+        }
+        return $out;
+    }
+
     public function ResolveNoMajority($request)
     {
         $mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
