@@ -1865,6 +1865,9 @@ class Voting extends Ork3
         while ($rs && $rs->Next()) {
             $ids[] = (int)$rs->voter_mundane_id;
         }
+        // TODO(finding-7): re-eval against each ballot's captured snapshot source_rules
+        // rather than the live eligibility rules. Today this re-runs the CURRENT rules via
+        // reevaluate_provisional_for_player(); the snapshot-accurate re-eval is a parked item.
         foreach ($ids as $mid) {
             $this->reevaluate_provisional_for_player($mid);
         }
@@ -1904,6 +1907,44 @@ class Voting extends Ork3
             $DB->Execute("UPDATE " . DB_PREFIX . "voting_event SET status = 'closed' WHERE voting_event_id = " . $eid);
             $this->audit($eid, 'event_updated', ['status' => 'closed', 'auto' => true]);
         }
+    }
+
+    /**
+     * Runner-initiated immediate close. Flips a single open event to closed and runs the
+     * final provisional sweep so attendance-qualified provisional ballots are released and
+     * counted before results are reviewed/published. Mirrors OpenEvent's auth + status gate.
+     */
+    public function CloseEvent($request)
+    {
+        $mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+        if (!valid_id($mundane_id)) {
+            return NoAuthorization();
+        }
+        $voting_event_id = (int)($request['VotingEventId'] ?? 0);
+        if (!$voting_event_id) {
+            return InvalidParameter();
+        }
+        if (!$this->user_is_runner_of_event($mundane_id, $voting_event_id)) {
+            return NoAuthorization();
+        }
+
+        $this->Event->clear();
+        $this->Event->voting_event_id = $voting_event_id;
+        if (!$this->Event->find()) {
+            return InvalidParameter();
+        }
+        if ($this->Event->status !== 'open') {
+            return ProcessingError('', 'Voting is not open.');
+        }
+
+        // Final sweep BEFORE flipping status: release any provisional ballot that now
+        // qualifies (e.g. attendance recorded) so it counts in the closed tally.
+        $this->sweep_provisional_eligibility();
+
+        $this->Event->status = 'closed';
+        $this->Event->save();
+        $this->audit($voting_event_id, 'event_updated', ['status' => 'closed', 'manual' => true], $mundane_id);
+        return Success($voting_event_id);
     }
 
     /**
