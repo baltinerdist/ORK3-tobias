@@ -1714,6 +1714,7 @@ class Voting extends Ork3
         }
 
         // Insert vote rows.
+        $inserted_vote_rows = 0;
         foreach ($votes_in as $vi) {
             $rid = (int)$vi['VotingRaceId'];
             $cfg = $races_by_id[$rid];
@@ -1727,6 +1728,7 @@ class Voting extends Ork3
                 $this->Vote->is_abstain = $abst;
                 $this->Vote->is_none_of_above = $nota;
                 $this->Vote->save();
+                $inserted_vote_rows++;
                 continue;
             }
 
@@ -1748,6 +1750,7 @@ class Voting extends Ork3
                     $this->Vote->voting_choice_id = (int)$cid;
                     $this->Vote->rank = $rank++;
                     $this->Vote->save();
+                    $inserted_vote_rows++;
                 }
             } else {
                 // Single-select.
@@ -1760,6 +1763,7 @@ class Voting extends Ork3
                 $this->Vote->voting_race_id = $rid;
                 $this->Vote->voting_choice_id = (int)$cid;
                 $this->Vote->save();
+                $inserted_vote_rows++;
             }
         }
 
@@ -1796,6 +1800,17 @@ class Voting extends Ork3
                 $this->Vote->is_none_of_above = $row['is_none_of_above'];
                 $this->Vote->save();
             }
+        }
+
+        // Guard: never let a zero-content ballot become the active ballot (Finding 3).
+        // If the new ballot carries no fresh votes AND nothing was carried forward,
+        // the voter effectively submitted nothing — roll back and do not flip the pointer.
+        $carried_rows = isset($carry) ? count($carry) : 0;
+        if ($inserted_vote_rows === 0 && $carried_rows === 0) {
+            $DB->Clear();
+            $DB->Execute("ROLLBACK");
+            $DB->Clear();
+            return ProcessingError('', 'No votes recorded.');
         }
 
         // Mark prior ballot superseded.
