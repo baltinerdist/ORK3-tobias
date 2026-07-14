@@ -2020,6 +2020,10 @@ class Voting extends Ork3
                 'majority_denominator' => $rs->majority_denominator,
                 'tie_resolved_winner_choice_id' => $rs->tie_resolved_winner_choice_id ? (int)$rs->tie_resolved_winner_choice_id : null,
                 'tie_resolution_note' => $rs->tie_resolution_note,
+                'no_majority_resolution' => $rs->no_majority_resolution,
+                'no_majority_winner_choice_id' => $rs->no_majority_winner_choice_id ? (int)$rs->no_majority_winner_choice_id : null,
+                'runoff_event_id' => $rs->runoff_event_id ? (int)$rs->runoff_event_id : null,
+                'no_majority_note' => $rs->no_majority_note,
                 'choices' => [],
             ];
         }
@@ -2099,6 +2103,18 @@ class Voting extends Ork3
                 $result['winner_choice_id'] = $race['tie_resolved_winner_choice_id'];
                 $result['tie_resolution_note'] = $race['tie_resolution_note'];
             }
+            // Honor no-majority resolution (override winner or scheduled runoff).
+            if (($result['outcome'] ?? null) === 'no_majority' && !empty($race['no_majority_resolution'])) {
+                if ($race['no_majority_resolution'] === 'override' && $race['no_majority_winner_choice_id']) {
+                    $result['outcome'] = 'win_resolved';
+                    $result['winner_choice_id'] = $race['no_majority_winner_choice_id'];
+                    $result['resolution_note'] = $race['no_majority_note'];
+                } elseif ($race['no_majority_resolution'] === 'runoff') {
+                    $result['outcome'] = 'runoff_scheduled';
+                    $result['runoff_event_id'] = $race['runoff_event_id'];
+                    $result['resolution_note'] = $race['no_majority_note'];
+                }
+            }
             $results[$rid] = ['race' => $race, 'result' => $result, 'ballot_count' => count($ballots)];
         }
         return $results;
@@ -2149,6 +2165,61 @@ class Voting extends Ork3
         return Success($voting_race_id);
     }
 
+    public function ResolveNoMajority($request)
+    {
+        $mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+        if (!valid_id($mundane_id)) {
+            return NoAuthorization();
+        }
+        $voting_race_id = (int)($request['VotingRaceId'] ?? 0);
+        $resolution = ($request['Resolution'] ?? '') === 'runoff' ? 'runoff' : (($request['Resolution'] ?? '') === 'override' ? 'override' : '');
+        $winner_choice_id = (int)($request['WinnerChoiceId'] ?? 0);
+        $runoff_event_id = (int)($request['RunoffEventId'] ?? 0);
+        $note = trim($request['Note'] ?? '');
+        if (!$voting_race_id || $resolution === '' || $note === '') {
+            return InvalidParameter();
+        }
+        if ($resolution === 'override' && !$winner_choice_id) {
+            return InvalidParameter();
+        }
+
+        $this->Race->clear();
+        $this->Race->voting_race_id = $voting_race_id;
+        if (!$this->Race->find()) {
+            return InvalidParameter();
+        }
+        if (!$this->user_is_runner_of_event($mundane_id, $this->Race->voting_event_id)) {
+            return NoAuthorization();
+        }
+
+        if ($resolution === 'override') {
+            global $DB;
+            $DB->Clear();
+            $rs = $DB->DataSet("SELECT 1 FROM " . DB_PREFIX . "voting_choice WHERE voting_choice_id = " . $winner_choice_id . " AND voting_race_id = " . $voting_race_id);
+            if (!$rs || !$rs->Next()) {
+                return InvalidParameter();
+            }
+            $this->Race->no_majority_winner_choice_id = $winner_choice_id;
+            $this->Race->runoff_event_id = ''; // yapo: clear with '' not null
+        } else {
+            $this->Race->no_majority_winner_choice_id = ''; // clear
+            $this->Race->runoff_event_id = $runoff_event_id ?: '';
+        }
+        $this->Race->no_majority_resolution = $resolution;
+        $this->Race->no_majority_note = $note;
+        $this->Race->no_majority_resolved_at = date('Y-m-d H:i:s');
+        $this->Race->no_majority_resolved_by_mundane_id = $mundane_id;
+        $this->Race->save();
+
+        $this->audit(
+            $this->Race->voting_event_id,
+            'no_majority_resolved',
+            ['race_id' => $voting_race_id, 'resolution' => $resolution, 'winner' => $winner_choice_id ?: null, 'runoff_event_id' => $runoff_event_id ?: null, 'note' => $note],
+            $mundane_id
+        );
+        return Success($voting_race_id);
+    }
+
     public function Publish($request)
     {
         $mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
@@ -2184,6 +2255,9 @@ class Voting extends Ork3
             $tie_resolved = $row['race']['tie_resolved_winner_choice_id'] ?? null;
             if (in_array($out, ['tie', 'tie_at_elimination', 'tie_at_final']) && !$tie_resolved) {
                 return ProcessingError('', 'Cannot publish: ' . $row['race']['title'] . ' has an unresolved tie.');
+            }
+            if ($out === 'no_majority') {
+                return ProcessingError('', 'Cannot publish: ' . $row['race']['title'] . ' has no majority winner — resolve (runoff or override) first.');
             }
             if ($out === 'no_quorum' && !$acknowledge_quorum && !$already_overridden) {
                 $q = $row['result']['quorum'] ?? [];

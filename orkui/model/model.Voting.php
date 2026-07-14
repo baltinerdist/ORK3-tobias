@@ -85,6 +85,10 @@ class Model_Voting extends Model
     {
         return $this->Voting->ResolveTie($request);
     }
+    public function resolve_no_majority($request)
+    {
+        return $this->Voting->ResolveNoMajority($request);
+    }
     public function publish($request)
     {
         return $this->Voting->Publish($request);

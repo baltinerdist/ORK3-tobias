@@ -165,8 +165,9 @@
 						<?php endif; ?>
 					<?php elseif ($result['outcome'] === 'win_resolved'): ?>
 						<div class="vtp-winner-banner"><i class="fas fa-gavel"></i> Tie resolved: <?= $render_choice_label_results($result['winner_choice_id']) ?></div>
+<?php if (!empty($result['resolution_note'])): ?><div class="vtp-rationale">Resolution: <?= htmlspecialchars($result['resolution_note']) ?></div><?php endif; ?>
 					<?php else: ?>
-						<div class="vtp-tie-banner"><i class="fas fa-equals"></i> <?php $o = $result['outcome']; echo htmlspecialchars(['no_votes' => 'No votes cast', 'no_majority' => 'No majority', 'no_quorum' => 'Quorum not met', 'tie' => 'Tied — runner has not yet resolved.', 'tie_at_final' => 'Final-round tie', 'tie_at_elimination' => 'Elimination tie'][$o] ?? ucfirst(str_replace('_', ' ', $o))); ?></div>
+						<div class="vtp-tie-banner"><i class="fas fa-equals"></i> <?php $o = $result['outcome']; echo htmlspecialchars(['no_votes' => 'No votes cast', 'no_majority' => 'No majority — resolution pending', 'no_quorum' => 'Quorum not met', 'runoff_scheduled' => 'Runoff scheduled', 'tie' => 'Tied — runner has not yet resolved.', 'tie_at_final' => 'Final-round tie', 'tie_at_elimination' => 'Elimination tie'][$o] ?? ucfirst(str_replace('_', ' ', $o))); ?></div>
 					<?php endif; ?>
 
 				<?php else:
@@ -192,8 +193,9 @@
 						<?php endif; ?>
 					<?php elseif ($result['outcome'] === 'win_resolved'): ?>
 						<div class="vtp-winner-banner"><i class="fas fa-gavel"></i> Tie resolved: <?= $render_choice_label_results($result['winner_choice_id']) ?></div>
+<?php if (!empty($result['resolution_note'])): ?><div class="vtp-rationale">Resolution: <?= htmlspecialchars($result['resolution_note']) ?></div><?php endif; ?>
 					<?php else: ?>
-						<div class="vtp-tie-banner"><i class="fas fa-equals"></i> <?php $o = $result['outcome']; echo htmlspecialchars(['no_votes' => 'No votes cast', 'no_majority' => 'No majority', 'no_quorum' => 'Quorum not met', 'tie' => 'Tied — runner has not yet resolved.', 'tie_at_final' => 'Final-round tie', 'tie_at_elimination' => 'Elimination tie'][$o] ?? ucfirst(str_replace('_', ' ', $o))); ?></div>
+						<div class="vtp-tie-banner"><i class="fas fa-equals"></i> <?php $o = $result['outcome']; echo htmlspecialchars(['no_votes' => 'No votes cast', 'no_majority' => 'No majority — resolution pending', 'no_quorum' => 'Quorum not met', 'runoff_scheduled' => 'Runoff scheduled', 'tie' => 'Tied — runner has not yet resolved.', 'tie_at_final' => 'Final-round tie', 'tie_at_elimination' => 'Elimination tie'][$o] ?? ucfirst(str_replace('_', ' ', $o))); ?></div>
 				<?php endif;
 					if (!empty($result['denominator_basis'])): ?>
 						<div class="vtp-rationale">Majority of <?= $result['denominator_basis'] === 'ballots_cast' ? 'all ballots cast' : 'choice votes' ?> — <?= (int)$result['denominator'] ?> counted<?php if (isset($result['winner_share'])): ?>, leader held <?= $result['winner_share'] ?>%<?php endif; ?>.</div>

@@ -289,6 +289,23 @@ class Controller_VotingAjax extends Controller
         $this->ok();
     }
 
+    public function resolve_no_majority($voting_race_id = null)
+    {
+        $this->require_login();
+        $r = $this->Voting->resolve_no_majority([
+            'Token' => $this->session->token,
+            'VotingRaceId' => (int)$voting_race_id,
+            'Resolution' => $this->request->Resolution,
+            'WinnerChoiceId' => (int)$this->request->WinnerChoiceId,
+            'RunoffEventId' => (int)$this->request->RunoffEventId,
+            'Note' => $this->request->Note,
+        ]);
+        if (($r['Status'] ?? 1) != 0) {
+            $this->fail($r['Error'] ?? 'Failed', $r['Detail'] ?? '');
+        }
+        $this->ok();
+    }
+
     public function publish($voting_event_id = null)
     {
         $this->require_login();

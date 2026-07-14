@@ -640,4 +640,20 @@ class VotingTallyTests
         $this->assertEq(2, $r['quorum']['required']);
         $this->assertEq(true, $r['quorum']['met']);
     }
+
+    public function test_no_majority_winner_is_null()
+    {
+        // 4 A, 3 B, 3 C — no >50% winner. Pure engine must not seat anyone.
+        $race = ['race_type' => 'position', 'voting_mode' => 'majority',
+            'allow_abstain' => 0, 'allow_none_of_above' => 0, 'nota_counts_as' => null,
+            'choices' => [['id' => 10, 'label' => 'A'], ['id' => 11, 'label' => 'B'], ['id' => 12, 'label' => 'C']]];
+        $ballots = array_merge(
+            array_fill(0, 4, $this->ballot_choice(10)),
+            array_fill(0, 3, $this->ballot_choice(11)),
+            array_fill(0, 3, $this->ballot_choice(12))
+        );
+        $r = Voting::tally_pure($race, $ballots);
+        $this->assertEq('no_majority', $r['outcome']);
+        $this->assertEq(null, $r['winner_choice_id'], 'no seat filled without runner resolution');
+    }
 }

@@ -281,11 +281,27 @@
 				html += '<span class="vtr-pill ' + (result.outcome === 'win' ? 'vtr-pill-win' : 'vtr-pill-tie') + '">' + escapeHtml(outcomeLabel(result.outcome)) + '</span>';
 				html += '</div>';
 				html += basisCaption(result);
+				html += noMajorityControl(race, result);
 			}
 			html += quorumCaption(result);
 			html += '</div>';
 		});
 		host.innerHTML = html;
+	}
+
+	function noMajorityControl(race, result){
+		if (!result || result.outcome !== 'no_majority') return '';
+		var rid = race.voting_race_id;
+		var opts = (race.choices || []).map(function(c){ return '<option value="' + (c.voting_choice_id != null ? c.voting_choice_id : c.id) + '">' + escapeHtml(c.label) + '</option>'; }).join('');
+		var h = '<div class="vtr-nomaj" data-race="' + rid + '" style="margin-top:8px;padding:10px;border:1px solid #f6ad55;border-radius:8px;background:rgba(246,173,85,0.08);">';
+		h += '<div style="font-weight:600;margin-bottom:6px;">No majority — resolve to publish</div>';
+		h += '<label style="display:block;font-size:12px;margin-bottom:4px;">Override winner: <select class="vtr-nomaj-choice" style="margin-left:4px;"><option value="">— select —</option>' + opts + '</select></label>';
+		h += '<label style="display:block;font-size:12px;margin-bottom:6px;">Reason / note: <input type="text" class="vtr-nomaj-note" style="width:60%;margin-left:4px;" placeholder="required"></label>';
+		h += '<button type="button" class="vtr-nomaj-override" style="margin-right:6px;">Seat override winner</button>';
+		h += '<button type="button" class="vtr-nomaj-runoff">Schedule runoff</button>';
+		h += '<div class="vtr-nomaj-msg" style="margin-top:6px;"></div>';
+		h += '</div>';
+		return h;
 	}
 
 	function basisCaption(result){
@@ -301,7 +317,7 @@
 		return '<div class="vtr-bar"><div class="vtr-bar-label">' + escapeHtml(label) + '</div><div class="vtr-bar-track"><div class="vtr-bar-fill ' + (cls||'') + '" style="width:' + pct + '%"></div></div><div class="vtr-bar-count">' + count + ' (' + pct + '%)</div></div>';
 	}
 	function escapeHtml(s){ return String(s).replace(/[&<>"']/g, function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
-	function outcomeLabel(o){ return ({win:'Win', win_resolved:'Win (resolved)', tie:'Tie', tie_at_final:'Final-round tie', tie_at_elimination:'Elimination tie', no_votes:'No votes cast', no_majority:'No majority', no_quorum:'Quorum not met', pass:'Pass', fail:'Fail'})[o] || String(o).replace(/_/g,' '); }
+	function outcomeLabel(o){ return ({win:'Win', win_resolved:'Win (resolved)', tie:'Tie', tie_at_final:'Final-round tie', tie_at_elimination:'Elimination tie', no_votes:'No votes cast', no_majority:'No majority', no_quorum:'Quorum not met', runoff_scheduled:'Runoff scheduled', pass:'Pass', fail:'Fail'})[o] || String(o).replace(/_/g,' '); }
 	function quorumCaption(result){
 		if (!result || !result.quorum) return '';
 		var q = result.quorum;
@@ -312,6 +328,9 @@
 
 	function poll(){
 		if (suppress) return;
+		// Don't clobber an in-progress no-majority resolution the runner is filling out.
+		var ae = document.activeElement;
+		if (ae && ae.closest && ae.closest('.vtr-nomaj')) return;
 		fetch('<?= UIR ?>VotingAjax/tally/' + eventId, { credentials:'same-origin' })
 			.then(function(r){ return r.json(); })
 			.then(function(j){
@@ -321,6 +340,35 @@
 			.catch(function(){});
 	}
 	if (!suppress) { poll(); setInterval(poll, 5000); }
+
+	// Delegated handler for no-majority resolution controls (re-rendered each poll).
+	var resultsHost = $('#vtr-results-host');
+	if (resultsHost) resultsHost.addEventListener('click', function(ev){
+		var btn = ev.target.closest('.vtr-nomaj-override, .vtr-nomaj-runoff');
+		if (!btn) return;
+		var box = btn.closest('.vtr-nomaj');
+		if (!box) return;
+		var rid = parseInt(box.getAttribute('data-race'), 10);
+		var note = (box.querySelector('.vtr-nomaj-note').value || '').trim();
+		var msg = box.querySelector('.vtr-nomaj-msg');
+		var isOverride = btn.classList.contains('vtr-nomaj-override');
+		var choiceId = isOverride ? parseInt(box.querySelector('.vtr-nomaj-choice').value, 10) : 0;
+		if (!note) { msg.innerHTML = '<div class="vtr-banner vtr-banner-warn">A reason/note is required.</div>'; return; }
+		if (isOverride && !choiceId) { msg.innerHTML = '<div class="vtr-banner vtr-banner-warn">Select the override winner.</div>'; return; }
+		var title = isOverride ? 'Seat Override Winner?' : 'Schedule Runoff?';
+		var body = isOverride ? 'This race has no majority. Seat the selected candidate as the resolved winner?' : 'Mark this race for a runoff between the top candidates?';
+		pnConfirm({ title:title, message:body, confirmText:'Confirm', danger:true }, function(){
+			var data = new FormData();
+			data.append('Resolution', isOverride ? 'override' : 'runoff');
+			data.append('Note', note);
+			if (isOverride) data.append('WinnerChoiceId', String(choiceId));
+			fetch('<?= UIR ?>VotingAjax/resolve_no_majority/' + rid, { method:'POST', body:data, headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })
+				.then(r => r.json()).then(function(j){
+					if (j.status === 0) { poll(); return; }
+					msg.innerHTML = '<div class="vtr-banner vtr-banner-warn">' + escapeHtml(j.error || 'Failed') + '</div>';
+				});
+		});
+	});
 
 	// External ballot search.
 	var extInput = $('#vtr-ext-input');
