@@ -181,6 +181,18 @@ class Model_Voting extends Model
     {
         return $this->Voting->user_is_candidate_in_event($mundane_id, $voting_event_id);
     }
+    public function event_id_for_race($voting_race_id)
+    {
+        return $this->Voting->event_id_for_race($voting_race_id);
+    }
+    public function event_id_for_choice($voting_choice_id)
+    {
+        return $this->Voting->event_id_for_choice($voting_choice_id);
+    }
+    public function event_id_for_ballot($voting_ballot_id)
+    {
+        return $this->Voting->event_id_for_ballot($voting_ballot_id);
+    }
     public function voter_choices($voting_event_id, $voter_mundane_id, $viewer_mundane_id)
     {
         return $this->Voting->voter_choices($voting_event_id, $voter_mundane_id, $viewer_mundane_id);

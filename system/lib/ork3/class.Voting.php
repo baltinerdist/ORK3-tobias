@@ -428,6 +428,34 @@ class Voting extends Ork3
         return $rs && $rs->Next();
     }
 
+    // Owning-event resolvers for authorization gates on actions that take a child id.
+    // Return the int voting_event_id, or 0 when the row does not exist.
+    public function event_id_for_race($voting_race_id)
+    {
+        global $DB;
+        $DB->Clear();
+        $rs = $DB->DataSet("SELECT voting_event_id FROM " . DB_PREFIX . "voting_race WHERE voting_race_id = " . (int)$voting_race_id . " LIMIT 1");
+        return ($rs && $rs->Next()) ? (int)$rs->voting_event_id : 0;
+    }
+
+    public function event_id_for_choice($voting_choice_id)
+    {
+        global $DB;
+        $DB->Clear();
+        $rs = $DB->DataSet("SELECT r.voting_event_id FROM " . DB_PREFIX . "voting_choice c
+				JOIN " . DB_PREFIX . "voting_race r ON r.voting_race_id = c.voting_race_id
+				WHERE c.voting_choice_id = " . (int)$voting_choice_id . " LIMIT 1");
+        return ($rs && $rs->Next()) ? (int)$rs->voting_event_id : 0;
+    }
+
+    public function event_id_for_ballot($voting_ballot_id)
+    {
+        global $DB;
+        $DB->Clear();
+        $rs = $DB->DataSet("SELECT voting_event_id FROM " . DB_PREFIX . "voting_ballot WHERE voting_ballot_id = " . (int)$voting_ballot_id . " LIMIT 1");
+        return ($rs && $rs->Next()) ? (int)$rs->voting_event_id : 0;
+    }
+
     /**
      * Admin-only voter→choice reveal for a single voter's active ballot.
      * Writes an admin_voter_choice_view audit row BEFORE returning data — this is

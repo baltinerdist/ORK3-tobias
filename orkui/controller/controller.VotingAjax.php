@@ -52,12 +52,27 @@ class Controller_VotingAjax extends Controller
         }
     }
 
+    /**
+     * Ownership gate for mutating actions. Mirrors close_event()/reopen_event():
+     * a runner of the event (which already grants ORK admins) may proceed. A
+     * non-positive $voting_event_id (unresolved child row) always fails. Calls
+     * fail() (which exits) on rejection, so callers need not check a return value.
+     */
+    private function require_event_owner($voting_event_id)
+    {
+        $voting_event_id = (int)$voting_event_id;
+        if ($voting_event_id <= 0 || !$this->Voting->user_is_runner_of_event((int)$this->session->user_id, $voting_event_id)) {
+            $this->fail('Not authorized.');
+        }
+    }
+
     // ──────────────────── Race / candidate adders (used by edit page) ────────────────────
 
     public function add_race($voting_event_id = null)
     {
         $this->require_login();
         $voting_event_id = (int)$voting_event_id;
+        $this->require_event_owner($voting_event_id);
         $req = [
             'Token' => $this->session->token,
             'VotingEventId' => $voting_event_id,
@@ -82,6 +97,7 @@ class Controller_VotingAjax extends Controller
     public function add_candidate($voting_race_id = null)
     {
         $this->require_login();
+        $this->require_event_owner($this->Voting->event_id_for_race((int)$voting_race_id));
         $r = $this->Voting->add_candidate([
             'Token' => $this->session->token,
             'VotingRaceId' => (int)$voting_race_id,
@@ -96,6 +112,7 @@ class Controller_VotingAjax extends Controller
     public function add_option($voting_race_id = null)
     {
         $this->require_login();
+        $this->require_event_owner($this->Voting->event_id_for_race((int)$voting_race_id));
         $r = $this->Voting->add_option([
             'Token' => $this->session->token,
             'VotingRaceId' => (int)$voting_race_id,
@@ -110,6 +127,7 @@ class Controller_VotingAjax extends Controller
     public function remove_choice($voting_choice_id = null)
     {
         $this->require_login();
+        $this->require_event_owner($this->Voting->event_id_for_choice((int)$voting_choice_id));
         $r = $this->Voting->remove_choice([
             'Token' => $this->session->token,
             'VotingChoiceId' => (int)$voting_choice_id,
@@ -123,6 +141,7 @@ class Controller_VotingAjax extends Controller
     public function open_event($voting_event_id = null)
     {
         $this->require_login();
+        $this->require_event_owner((int)$voting_event_id);
         $r = $this->Voting->open_event([
             'Token' => $this->session->token,
             'VotingEventId' => (int)$voting_event_id,
@@ -133,24 +152,45 @@ class Controller_VotingAjax extends Controller
         $this->ok();
     }
 
+    /**
+     * Decode the Votes payload from the request (array, or JSON string from Smarty /
+     * raw $_POST). Returns the decoded array, or [] for a genuinely absent / explicitly
+     * empty payload (an abstain). Returns FALSE when a payload WAS present but no decode
+     * yielded an array — a transport/client error the caller must surface, not silently
+     * cast as an empty ballot.
+     */
+    private function _read_votes()
+    {
+        $votes = $this->request->Votes;
+        if (is_array($votes)) {
+            return $votes;
+        }
+        $present = false;
+        if (is_string($votes) && $votes !== '') {
+            $present = true;
+            $d = json_decode($votes, true);
+            if (is_array($d)) {
+                return $d;
+            }
+        }
+        if (isset($_POST['Votes']) && $_POST['Votes'] !== '') {
+            $present = true;
+            $d = json_decode($_POST['Votes'], true);
+            if (is_array($d)) {
+                return $d;
+            }
+        }
+        return $present ? false : [];
+    }
+
     // ──────────────────── Cast ballot ────────────────────
 
     public function cast($voting_event_id = null)
     {
         $this->require_login();
-        $votes = $this->request->Votes;
-        // Smarty's request mechanism may have different shapes; accept JSON-encoded fallback.
-        if (!is_array($votes) && is_string($votes)) {
-            $votes = json_decode($votes, true);
-        }
-        if (!is_array($votes) && isset($_POST['Votes'])) {
-            $decoded = json_decode($_POST['Votes'], true);
-            if (is_array($decoded)) {
-                $votes = $decoded;
-            }
-        }
-        if (!is_array($votes)) {
-            $votes = [];
+        $votes = $this->_read_votes();
+        if ($votes === false) {
+            $this->fail('Could not read your selections. Reload and try again.');
         }
 
         $r = $this->Voting->cast_ballot([
@@ -176,18 +216,9 @@ class Controller_VotingAjax extends Controller
             $this->fail('Voter required.');
         }
 
-        $votes = $this->request->Votes;
-        if (!is_array($votes) && is_string($votes)) {
-            $votes = json_decode($votes, true);
-        }
-        if (!is_array($votes) && isset($_POST['Votes'])) {
-            $decoded = json_decode($_POST['Votes'], true);
-            if (is_array($decoded)) {
-                $votes = $decoded;
-            }
-        }
-        if (!is_array($votes)) {
-            $votes = [];
+        $votes = $this->_read_votes();
+        if ($votes === false) {
+            $this->fail('Could not read your selections. Reload and try again.');
         }
 
         $r = $this->Voting->cast_ballot([
@@ -329,6 +360,7 @@ class Controller_VotingAjax extends Controller
     public function release_provisional($voting_ballot_id = null)
     {
         $this->require_login();
+        $this->require_event_owner($this->Voting->event_id_for_ballot((int)$voting_ballot_id));
         $r = $this->Voting->release_provisional([
             'Token' => $this->session->token,
             'VotingBallotId' => (int)$voting_ballot_id,
@@ -343,6 +375,7 @@ class Controller_VotingAjax extends Controller
     public function resolve_tie($voting_race_id = null)
     {
         $this->require_login();
+        $this->require_event_owner($this->Voting->event_id_for_race((int)$voting_race_id));
         $r = $this->Voting->resolve_tie([
             'Token' => $this->session->token,
             'VotingRaceId' => (int)$voting_race_id,
@@ -358,6 +391,7 @@ class Controller_VotingAjax extends Controller
     public function add_delegate($voting_event_id = null)
     {
         $this->require_login();
+        $this->require_event_owner((int)$voting_event_id);
         $r = $this->Voting->add_delegate([
             'Token' => $this->session->token,
             'VotingEventId' => (int)$voting_event_id,
@@ -372,6 +406,7 @@ class Controller_VotingAjax extends Controller
     public function remove_delegate($voting_event_id = null)
     {
         $this->require_login();
+        $this->require_event_owner((int)$voting_event_id);
         $r = $this->Voting->remove_delegate([
             'Token' => $this->session->token,
             'VotingEventId' => (int)$voting_event_id,
@@ -386,6 +421,7 @@ class Controller_VotingAjax extends Controller
     public function resolve_no_majority($voting_race_id = null)
     {
         $this->require_login();
+        $this->require_event_owner($this->Voting->event_id_for_race((int)$voting_race_id));
         $r = $this->Voting->resolve_no_majority([
             'Token' => $this->session->token,
             'VotingRaceId' => (int)$voting_race_id,
@@ -403,6 +439,7 @@ class Controller_VotingAjax extends Controller
     public function publish($voting_event_id = null)
     {
         $this->require_login();
+        $this->require_event_owner((int)$voting_event_id);
         $r = $this->Voting->publish([
             'Token' => $this->session->token,
             'VotingEventId' => (int)$voting_event_id,
@@ -438,6 +475,7 @@ class Controller_VotingAjax extends Controller
     public function unpublish($voting_event_id = null)
     {
         $this->require_login();
+        $this->require_event_owner((int)$voting_event_id);
         $r = $this->Voting->unpublish([
             'Token' => $this->session->token,
             'VotingEventId' => (int)$voting_event_id,
@@ -585,6 +623,7 @@ class Controller_VotingAjax extends Controller
     public function resume_event($voting_event_id = null)
     {
         $this->require_login();
+        $this->require_event_owner((int)$voting_event_id);
         $r = $this->Voting->resume_event([
             'Token' => $this->session->token,
             'VotingEventId' => (int)$voting_event_id,
@@ -599,6 +638,7 @@ class Controller_VotingAjax extends Controller
     public function edit_race($voting_race_id = null)
     {
         $this->require_login();
+        $this->require_event_owner($this->Voting->event_id_for_race((int)$voting_race_id));
         $r = $this->Voting->edit_race([
             'Token' => $this->session->token,
             'VotingRaceId' => (int)$voting_race_id,
@@ -614,6 +654,7 @@ class Controller_VotingAjax extends Controller
     public function edit_choice($voting_choice_id = null)
     {
         $this->require_login();
+        $this->require_event_owner($this->Voting->event_id_for_choice((int)$voting_choice_id));
         $r = $this->Voting->edit_choice([
             'Token' => $this->session->token,
             'VotingChoiceId' => (int)$voting_choice_id,
@@ -628,6 +669,7 @@ class Controller_VotingAjax extends Controller
     public function restore_choice($voting_choice_id = null)
     {
         $this->require_login();
+        $this->require_event_owner($this->Voting->event_id_for_choice((int)$voting_choice_id));
         $r = $this->Voting->restore_choice([
             'Token' => $this->session->token,
             'VotingChoiceId' => (int)$voting_choice_id,
@@ -641,6 +683,7 @@ class Controller_VotingAjax extends Controller
     public function remove_race($voting_race_id = null)
     {
         $this->require_login();
+        $this->require_event_owner($this->Voting->event_id_for_race((int)$voting_race_id));
         $r = $this->Voting->remove_race([
             'Token' => $this->session->token,
             'VotingRaceId' => (int)$voting_race_id,
@@ -655,6 +698,7 @@ class Controller_VotingAjax extends Controller
     public function edit_event($voting_event_id = null)
     {
         $this->require_login();
+        $this->require_event_owner((int)$voting_event_id);
         $req = ['Token' => $this->session->token, 'VotingEventId' => (int)$voting_event_id];
         foreach (['Title','Description','StartDate','EndDate'] as $k) {
             if (isset($this->request->$k)) {
@@ -676,6 +720,7 @@ class Controller_VotingAjax extends Controller
     public function edit_race_settings($voting_race_id = null)
     {
         $this->require_login();
+        $this->require_event_owner($this->Voting->event_id_for_race((int)$voting_race_id));
         $req = ['Token' => $this->session->token, 'VotingRaceId' => (int)$voting_race_id];
         if (isset($this->request->VotingMode)) {
             $req['VotingMode'] = $this->request->VotingMode;
