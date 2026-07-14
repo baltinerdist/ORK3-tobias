@@ -186,6 +186,7 @@
 					<button type="submit" class="vtv-btn-primary"><i class="fas fa-paper-plane"></i> Submit Ballot</button>
 				</div>
 				<div id="vtv-result" style="margin-top:14px;"></div>
+				<div id="vtv-blank-confirm" style="display:none;margin-top:14px;"></div>
 			</form>
 		<?php endif; ?>
 	<?php endif; ?>
@@ -267,43 +268,36 @@
 	});
 
 	var form = $('#vtv-form');
-	if (form) form.addEventListener('submit', function(e){
-		e.preventDefault();
-		var votes = [];
+	var confirmedBlanks = false;
+
+	function collectVotes(){
+		var votes = [], blankTitles = [];
 		$$('.vtv-race').forEach(function(race){
 			var rid = parseInt(race.dataset.raceId,10);
-			var rt = race.dataset.raceType;
-			var mode = race.dataset.votingMode;
 			var isIrv = race.dataset.irv === '1';
-
 			if (isIrv) {
 				var abstainCb = race.querySelector('.vtv-abstain-cb');
-				if (abstainCb && abstainCb.checked) {
-					votes.push({ VotingRaceId: rid, IsAbstain: 1 });
-					return;
-				}
+				if (abstainCb && abstainCb.checked) { votes.push({ VotingRaceId: rid, IsAbstain: 1 }); return; }
 				var ids = $$('.vtv-irv-item', race).map(function(li){ return parseInt(li.dataset.choiceId,10); });
 				votes.push({ VotingRaceId: rid, ChoiceIds: ids });
 				return;
 			}
-
 			var sel = race.querySelector('input[type=radio]:checked');
 			if (!sel) {
-				votes.push({ VotingRaceId: rid, ChoiceIds: [] });
+				// No selection: DO NOT push — cast() carries forward the prior vote for this race.
+				var h3 = race.querySelector('h3');
+				blankTitles.push(h3 ? h3.textContent.trim() : ('Race ' + rid));
 				return;
 			}
 			if (sel.value === 'abstain') { votes.push({ VotingRaceId: rid, IsAbstain: 1 }); return; }
 			if (sel.value === 'nota')    { votes.push({ VotingRaceId: rid, IsNoneOfAbove: 1 }); return; }
-			if (sel.value === 'no') {
-				// Single-candidate confidence: "No" sends IsNoneOfAbove=1. The backend bypasses the
-				// allow_none_of_above check for single-candidate position races (runtime confidence),
-				// and the tally treats NOTA as No when no explicit 'No' choice exists.
-				votes.push({ VotingRaceId: rid, IsNoneOfAbove: 1 });
-				return;
-			}
+			if (sel.value === 'no')      { votes.push({ VotingRaceId: rid, IsNoneOfAbove: 1 }); return; }
 			votes.push({ VotingRaceId: rid, ChoiceIds: [parseInt(sel.value,10)] });
 		});
+		return { votes: votes, blankTitles: blankTitles };
+	}
 
+	function doSubmit(votes){
 		var fd = new FormData();
 		fd.append('Votes', JSON.stringify(votes));
 		fetch('<?= UIR ?>VotingAjax/cast/' + eventId, { method:'POST', body:fd, headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })
@@ -316,6 +310,27 @@
 					box.innerHTML = '<div class="vtv-banner vtv-banner-err">' + escapeHtml(j.error || 'Failed') + (j.detail ? ': ' + escapeHtml(j.detail) : '') + '</div>';
 				}
 			});
+	}
+
+	if (form) form.addEventListener('submit', function(e){
+		e.preventDefault();
+		var r = collectVotes();
+		var confirmBox = $('#vtv-blank-confirm');
+		if (r.votes.length === 0) {
+			confirmBox.style.display = 'none';
+			$('#vtv-result').innerHTML = '<div class="vtv-banner vtv-banner-err"><i class="fas fa-exclamation-circle"></i> Please make a selection in at least one race before submitting.</div>';
+			return;
+		}
+		if (r.blankTitles.length > 0 && !confirmedBlanks) {
+			confirmBox.style.display = 'block';
+			confirmBox.innerHTML =
+				'<div class="vtv-banner vtv-banner-warn">You left <strong>' + r.blankTitles.length + '</strong> race' + (r.blankTitles.length === 1 ? '' : 's') + ' blank (' + escapeHtml(r.blankTitles.join(', ')) + '). Any previous choice for those races is kept. '
+				+ '<div class="vtv-actions" style="margin-top:10px;"><button type="button" class="vtv-btn-ghost" id="vtv-blank-back">Go back</button> <button type="button" class="vtv-btn-primary" id="vtv-blank-go">Submit anyway</button></div></div>';
+			$('#vtv-blank-go').addEventListener('click', function(){ confirmedBlanks = true; doSubmit(collectVotes().votes); });
+			$('#vtv-blank-back').addEventListener('click', function(){ confirmBox.style.display = 'none'; });
+			return;
+		}
+		doSubmit(r.votes);
 	});
 })();
 </script>
