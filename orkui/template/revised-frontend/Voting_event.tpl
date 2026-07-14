@@ -146,7 +146,7 @@
 						<?php if ($is_irv): ?>
 							<details class="vtv-irv-help">
 								<summary>How does ranked choice work?</summary>
-								Drag candidates into your preferred order — top of the list is your first choice. If your top choice doesn't have enough support to win, your vote moves to your next ranked candidate. You can leave candidates unranked; unranked candidates won't receive any of your support. <strong>Example:</strong> if you rank Alice 1st and Bob 2nd, and Alice is eliminated in an early round, your vote moves to Bob.
+								Drag or arrange the candidates into your preferred order — top of the list is your first choice. If your top choice doesn't have enough support to win, your vote moves to your next ranked candidate. To skip this race entirely, use "Skip this race" below. If you don't arrange this race, your previously recorded ballot (if any) is kept unchanged. <strong>Example:</strong> if you rank Alice 1st and Bob 2nd, and Alice is eliminated in an early round, your vote moves to Bob.
 							</details>
 							<?php
 								$irv_choices = $race['choices'];
@@ -245,6 +245,7 @@
 				var midY = rect.top + rect.height/2;
 				if (e.clientY < midY) item.parentNode.insertBefore(dragged, item);
 				else item.parentNode.insertBefore(dragged, item.nextSibling);
+				list.dataset.touched = '1'; // voter reordered this race via drag
 			});
 		});
 	});
@@ -267,8 +268,8 @@
 		if (!up && !down) return;
 		var li = (up || down).closest('.vtv-irv-item');
 		var list = li.closest('.vtv-irv-list');
-		if (up && li.previousElementSibling) li.parentNode.insertBefore(li, li.previousElementSibling);
-		if (down && li.nextElementSibling) li.parentNode.insertBefore(li.nextElementSibling, li);
+		if (up && li.previousElementSibling) { li.parentNode.insertBefore(li, li.previousElementSibling); list.dataset.touched = '1'; }
+		if (down && li.nextElementSibling) { li.parentNode.insertBefore(li.nextElementSibling, li); list.dataset.touched = '1'; }
 		renumber(list);
 		(up || down).focus();
 	});
@@ -295,6 +296,13 @@
 			if (isIrv) {
 				var abstainCb = race.querySelector('.vtv-abstain-cb');
 				if (abstainCb && abstainCb.checked) { votes.push({ VotingRaceId: rid, IsAbstain: 1 }); return; }
+				var list = race.querySelector('.vtv-irv-list');
+				if (!list || list.dataset.touched !== '1') {
+					// Untouched: DO NOT push — cast() carries forward the prior ballot for this race.
+					var h3irv = race.querySelector('h3');
+					blankTitles.push(h3irv ? h3irv.textContent.trim() : ('Race ' + rid));
+					return;
+				}
 				var ids = $$('.vtv-irv-item', race).map(function(li){ return parseInt(li.dataset.choiceId,10); });
 				votes.push({ VotingRaceId: rid, ChoiceIds: ids });
 				return;
