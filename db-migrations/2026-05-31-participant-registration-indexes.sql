@@ -3,11 +3,11 @@
 
 -- Stable-identity lookups (ensureRegistrant, GetRegistrants assignment join):
 ALTER TABLE ork_participant
-  ADD INDEX idx_participant_tourn_number (tournament_id, participant_number);
+  ADD INDEX IF NOT EXISTS idx_participant_tourn_number (tournament_id, participant_number);
 
 -- Roster scan (bracket_id IS NULL) and per-bracket entrant scan:
 ALTER TABLE ork_participant
-  ADD INDEX idx_participant_tourn_bracket (tournament_id, bracket_id);
+  ADD INDEX IF NOT EXISTS idx_participant_tourn_bracket (tournament_id, bracket_id);
 
 -- Registration rows live as ork_participant with bracket_id IS NULL
 -- (registered to the tournament, not yet assigned to any bracket).

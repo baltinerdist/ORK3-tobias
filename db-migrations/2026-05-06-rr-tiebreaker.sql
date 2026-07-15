@@ -4,4 +4,4 @@
 -- in ork_match with bracket_side='tiebreaker' and round = max(regular)+N.
 
 ALTER TABLE ork_bracket
-  ADD COLUMN tiebreaker_declined TINYINT(1) NOT NULL DEFAULT 0;
+  ADD COLUMN IF NOT EXISTS tiebreaker_declined TINYINT(1) NOT NULL DEFAULT 0;

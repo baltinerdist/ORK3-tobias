@@ -54,8 +54,10 @@ class TournamentExport extends Ork3 {
             return ['Status' => InvalidParameter('TournamentId required'), 'Path' => null, 'Filename' => null];
         }
 
-        $tr = Ork3::$Lib->report->TournamentReport(['TournamentId' => $tid]);
-        $t  = $tr['Tournaments'][0] ?? null;
+        // Header must be FRESH, not the 1800s-cached Report::TournamentReport() — a
+        // rename / move / re-link between the last report view and the export would
+        // otherwise stamp a stale name/date/location onto the workbook.
+        $t = $this->freshTournamentHeader($tid);
         if (!$t) {
             return ['Status' => InvalidParameter('Tournament not found'), 'Path' => null, 'Filename' => null];
         }
@@ -232,6 +234,22 @@ class TournamentExport extends Ork3 {
             );
         }
 
+        // Registered-but-unassigned individual registrants (participant.bracket_id IS
+        // NULL): people who signed up but were never placed into a bracket. Fold them in
+        // so they still appear on the roster; $upsert dedupes them by mundane_id/alias
+        // against anyone already present from a bracket.
+        $regs = Ork3::$Lib->tournament->GetRegistrants(['TournamentId' => (int)($t['TournamentId'] ?? 0)]);
+        foreach (($regs['Detail'] ?? []) as $rg) {
+            $name = trim((string)($rg['Persona'] ?? '')) !== '' ? (string)$rg['Persona'] : (string)($rg['Alias'] ?? '');
+            if ($name === '' && (int)($rg['MundaneId'] ?? 0) <= 0) continue;
+            $upsert(
+                (int)($rg['MundaneId'] ?? 0), $name,
+                (string)($rg['KingdomName'] ?? ''), (string)($rg['ParkName'] ?? ''),
+                (int)($rg['WarriorLevel'] ?? 0), (int)($rg['GriffonLevel'] ?? 0),
+                (string)($rg['Status'] ?? '')
+            );
+        }
+
         // Live "today" ladder levels for everyone with a mundane_id.
         $mids = [];
         foreach ($byKey as $row) { if ($row['MundaneId'] > 0) $mids[] = $row['MundaneId']; }
@@ -305,7 +323,7 @@ class TournamentExport extends Ork3 {
                 LEFT JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = ptm.mundane_id
                 LEFT JOIN " . DB_PREFIX . "kingdom k ON k.kingdom_id = m.kingdom_id
                 LEFT JOIN " . DB_PREFIX . "park pk ON pk.park_id = m.park_id
-             WHERE pt.tournament_id = $tid",
+             WHERE pt.tournament_id = $tid AND pt.bracket_id IS NOT NULL",
             []
         );
         if ($r && $r->size() > 0) {
@@ -517,7 +535,12 @@ class TournamentExport extends Ork3 {
             $rows[] = [];
         }
 
-        $rows[] = [['v' => 'Final Standings', 's' => SimpleXlsx::S_LABEL]];
+        // Labeled 'Match Record' (not 'Final Standings'): for elimination the W/L table is
+        // sorted by GetStandings' Rank, which can disagree with the true bracket podium
+        // (e.g. a fighter who lost the final but has a gaudy W/L). The Podium block above
+        // is the single source of placement truth; this table just reports each fighter's
+        // win/loss record.
+        $rows[] = [['v' => 'Match Record', 's' => SimpleXlsx::S_LABEL]];
         $header = ['Rank', 'Competitor', 'Park'];
         if ($isTeam) $header[] = 'Members';
         $header = array_merge($header, ['W', 'L', 'Byes', 'Points']);
@@ -575,8 +598,10 @@ class TournamentExport extends Ork3 {
             $p2 = (int)($m['Participant2Id'] ?? 0);
             $res = (string)($m['Result'] ?? '');
             if (!$p1 || !$p2) continue;
-            if ($res === '1-wins') { $cell["$p1:$p2"] = 'W'; $cell["$p2:$p1"] = 'L'; }
-            elseif (in_array($res, ['2-wins', 'forfeit', 'disqualified'], true)) { $cell["$p1:$p2"] = 'L'; $cell["$p2:$p1"] = 'W'; }
+            // Shared canonical resolver handles short + legacy long-form result enums.
+            $w = TournamentReport::ResolveWinnerId($p1, $p2, $res);
+            if ($w === $p1) { $cell["$p1:$p2"] = 'W'; $cell["$p2:$p1"] = 'L'; }
+            elseif ($w === $p2) { $cell["$p1:$p2"] = 'L'; $cell["$p2:$p1"] = 'W'; }
             elseif ($res === 'tie') { $cell["$p1:$p2"] = 'T'; $cell["$p2:$p1"] = 'T'; }
         }
 
@@ -605,11 +630,14 @@ class TournamentExport extends Ork3 {
 
     private function winnerLabel($m) {
         $res = (string)($m['Result'] ?? '');
-        $a1 = (string)($m['Participant1Alias'] ?? '');
-        $a2 = (string)($m['Participant2Alias'] ?? '');
-        if ($res === '1-wins') return $a1;
-        if (in_array($res, ['2-wins', 'forfeit', 'disqualified'], true)) return $a2;
         if ($res === 'tie') return 'Tie';
+        // Shared canonical resolver (covers short + legacy long-form result enums), then
+        // map the winning participant_id back to its alias.
+        $p1 = (int)($m['Participant1Id'] ?? 0);
+        $p2 = (int)($m['Participant2Id'] ?? 0);
+        $w  = TournamentReport::ResolveWinnerId($p1, $p2, $res);
+        if ($w === $p1 && $p1 > 0) return (string)($m['Participant1Alias'] ?? '');
+        if ($w === $p2 && $p2 > 0) return (string)($m['Participant2Alias'] ?? '');
         return '';
     }
 
@@ -728,6 +756,35 @@ class TournamentExport extends Ork3 {
     private function methodLabel($m) {
         if (isset(self::$METHOD_LABELS[$m])) return self::$METHOD_LABELS[$m];
         return $m !== '' ? ucfirst($m) : '—';
+    }
+
+    /**
+     * Fresh tournament header straight from the row (bypasses the cached
+     * Report::TournamentReport). Returns the keys the summary/participants sheets read:
+     * TournamentId, Name, DateTime, KingdomName, ParkName, EventName — or null if gone.
+     */
+    private function freshTournamentHeader($tid) {
+        $tid = (int)$tid;
+        if ($tid <= 0) return null;
+        $r = $this->db->query(
+            "SELECT t.tournament_id, t.name, t.date_time, t.kingdom_id, t.park_id, t.event_id,
+                    k.name AS kingdom_name, pk.name AS park_name, e.name AS event_name
+             FROM " . DB_PREFIX . "tournament t
+                LEFT JOIN " . DB_PREFIX . "kingdom k ON k.kingdom_id = t.kingdom_id
+                LEFT JOIN " . DB_PREFIX . "park pk ON pk.park_id = t.park_id
+                LEFT JOIN " . DB_PREFIX . "event e ON e.event_id = t.event_id
+             WHERE t.tournament_id = $tid LIMIT 1"
+        );
+        if ($r === false || $r->size() === 0) return null;
+        $r->next();
+        return [
+            'TournamentId' => (int)$r->tournament_id,
+            'Name'         => (string)($r->name ?? ''),
+            'DateTime'     => (string)($r->date_time ?? ''),
+            'KingdomName'  => (string)($r->kingdom_name ?? ''),
+            'ParkName'     => (string)($r->park_name ?? ''),
+            'EventName'    => (string)($r->event_name ?? ''),
+        ];
     }
 
     private function fmtDate($raw) {

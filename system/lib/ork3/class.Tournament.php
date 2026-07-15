@@ -102,8 +102,12 @@ class Tournament extends Ork3 {
 	 * For ties, both are 0.
 	 */
 	private function resolveWinnerLoser(string $result, int $p1_id, int $p2_id): array {
-		if ($result === '1-wins') return [$p1_id, $p2_id];
-		if ($result === '2-wins' || $result === 'forfeit' || $result === 'disqualified') return [$p2_id, $p1_id];
+		// Participant 1 wins.
+		if ($result === '1-wins' || $result === '2-forfeits' || $result === '2-is-disqualified') return [$p1_id, $p2_id];
+		// Participant 2 wins. Legacy 'forfeit'/'disqualified' (no side) mean participant 1
+		// forfeited / was disqualified, so participant 2 takes the win.
+		if ($result === '2-wins' || $result === 'forfeit' || $result === 'disqualified'
+			|| $result === '1-forfeits' || $result === '1-is-disqualified') return [$p2_id, $p1_id];
 		return [0, 0]; // tie or unknown
 	}
 
@@ -133,6 +137,17 @@ class Tournament extends Ork3 {
 
 		// Organizer reeves get full manage rights, scoped to this tournament only.
 		return $this->get_reeve_role($mundane_id, (int)$this->Tournament->tournament_id) === 'organizer';
+	}
+
+	/**
+	 * Confirms a bracket belongs to the (already-authed) tournament. Guards bracket-id-only
+	 * mutators against cross-tournament IDOR, since check_auth only authorizes the request
+	 * TournamentId — not the tournament the bracket row actually belongs to.
+	 */
+	private function bracketBelongsTo(int $bid, int $tid): bool {
+		if ($bid <= 0 || $tid <= 0) return false;
+		$r = $this->db->query("SELECT tournament_id FROM " . DB_PREFIX . "bracket WHERE bracket_id = $bid LIMIT 1");
+		return $r && $r->next() && (int)$r->tournament_id === $tid;
 	}
 
 	/**
@@ -402,7 +417,7 @@ class Tournament extends Ork3 {
 				$this->Bracket->point_mode  = $request['PointMode'];
 				$this->Bracket->point_scale = ($request['PointMode'] === 'fixed')
 					? $this->normalize_point_scale($request['PointScale'] ?? '')
-					: null;
+					: '';
 			}
 		}
 
@@ -451,7 +466,7 @@ class Tournament extends Ork3 {
 	 * $person: ['MundaneId'=>int, 'Alias'=>string, 'UnitId'=>int, 'ParkId'=>int, 'KingdomId'=>int]
 	 * Returns ['ParticipantNumber'=>int, 'RegistrationId'=>int]. Caller wraps in a transaction.
 	 */
-	private function ensureRegistrant(int $tournament_id, array $person): array {
+	private function ensureRegistrant(int $tournament_id, array $person, ?array $awardsMap = null): array {
 		$mid = (int)($person['MundaneId'] ?? 0);
 		$pnum = 0;
 		if (valid_id($mid)) {
@@ -474,7 +489,10 @@ class Tournament extends Ork3 {
 			}
 		}
 		if (!$pnum) {
-			$max = $this->db->query("SELECT MAX(participant_number) AS m FROM " . DB_PREFIX . "participant WHERE tournament_id = $tournament_id");
+			// Locking read: serialize concurrent registrations so two callers can't both
+			// grab the same MAX+1. Callers wrap this in a transaction, so FOR UPDATE holds
+			// the lock until commit; UNIQUE(tournament_id, participant_number) is the backstop.
+			$max = $this->db->query("SELECT MAX(participant_number) AS m FROM " . DB_PREFIX . "participant WHERE tournament_id = $tournament_id FOR UPDATE");
 			$pnum = ($max && $max->next() && $max->m > 0) ? (int)$max->m + 1 : 1;
 		}
 
@@ -509,7 +527,9 @@ class Tournament extends Ork3 {
 			$this->Player->tournament_id  = $tournament_id;
 			$this->Player->save();
 			$this->db->query("UPDATE " . DB_PREFIX . "participant_mundane SET bracket_id = NULL WHERE participant_id = $reg_id");
-			$awards_map = $this->fetchAwardsForMundanes([$mid]);
+			// Reuse a caller-supplied awards map (e.g. ensureTeam prefetches once for the
+			// whole roster) to avoid one single-mundane award query per member.
+			$awards_map = ($awardsMap !== null) ? $awardsMap : $this->fetchAwardsForMundanes([$mid]);
 			$lvl  = isset($awards_map[$mid]) ? $this->warriorLevelFromAwards($awards_map[$mid]) : 0;
 			$glvl = isset($awards_map[$mid]) ? $this->griffonLevelFromAwards($awards_map[$mid]) : 0;
 			$this->db->query(
@@ -538,7 +558,9 @@ class Tournament extends Ork3 {
 
 		// Resolve team_number: explicit (edit), else MAX+1.
 		if ($tnum <= 0) {
-			$max = $this->db->query("SELECT MAX(team_number) AS m FROM " . DB_PREFIX . "participant_teams WHERE tournament_id = $tournament_id");
+			// Locking read: serialize concurrent team registrations (see ensureRegistrant).
+			// UNIQUE(tournament_id, team_number) is the backstop for the race.
+			$max = $this->db->query("SELECT MAX(team_number) AS m FROM " . DB_PREFIX . "participant_teams WHERE tournament_id = $tournament_id FOR UPDATE");
 			$tnum = ($max && $max->next() && $max->m > 0) ? (int)$max->m + 1 : 1;
 		}
 
@@ -572,23 +594,53 @@ class Tournament extends Ork3 {
 			if (!valid_id($team_id)) throw new \RuntimeException('Team registration row save failed');
 		}
 
-		// Replace the member roster for this registration team.
-		$this->db->query("DELETE FROM " . DB_PREFIX . "participant_team_members WHERE team_id = $team_id");
-		$memberMids = [];
+		// One player, one team: a mundane may not sit on two different registration
+		// teams in the same tournament. Scope strictly to registration teams
+		// (pt.bracket_id IS NULL) — bracket-assigned rows legitimately clone the same
+		// mundane across a team's multiple bracket assignments and must NOT count.
+		// Exclude this team's own number so re-saving an existing roster is allowed.
 		foreach ($members as $m) {
 			$mid = (int)($m['MundaneId'] ?? 0);
 			if (!valid_id($mid)) continue;
-			$memberMids[] = $mid;
+			$dupe = $this->db->query(
+				"SELECT mn.persona FROM " . DB_PREFIX . "participant_team_members ptm
+				 JOIN " . DB_PREFIX . "participant_teams pt ON pt.team_id = ptm.team_id
+				 LEFT JOIN " . DB_PREFIX . "mundane mn ON mn.mundane_id = ptm.mundane_id
+				 WHERE pt.tournament_id = $tournament_id AND pt.bracket_id IS NULL
+				   AND ptm.mundane_id = $mid AND pt.team_number <> $tnum
+				 LIMIT 1"
+			);
+			if ($dupe && $dupe->next()) {
+				$who = trim((string)$dupe->persona);
+				// Abort the whole ensureTeam: roll back the open transaction (same as the
+				// callers' catch) and surface the error unchanged to RegisterTeam/UpdateTeam.
+				$this->db->query('ROLLBACK');
+				return InvalidParameter(($who !== '' ? $who : 'A player') . ' is already on another team');
+			}
+		}
+
+		// Replace the member roster for this registration team.
+		$this->db->query("DELETE FROM " . DB_PREFIX . "participant_team_members WHERE team_id = $team_id");
+		// Pre-fetch awards once for the whole roster so ensureRegistrant (per member) and
+		// the team-level snapshot below both reuse it instead of one query per member.
+		$memberMids = [];
+		foreach ($members as $m) {
+			$mid = (int)($m['MundaneId'] ?? 0);
+			if (valid_id($mid)) $memberMids[] = $mid;
+		}
+		$awards = !empty($memberMids) ? $this->fetchAwardsForMundanes($memberMids) : [];
+		foreach ($members as $m) {
+			$mid = (int)($m['MundaneId'] ?? 0);
+			if (!valid_id($mid)) continue;
 			$this->db->query(
 				"INSERT IGNORE INTO " . DB_PREFIX . "participant_team_members (team_id, mundane_id, tournament_id) VALUES (:t, :m, :tid)",
 				[':t' => $team_id, ':m' => $mid, ':tid' => $tournament_id]
 			);
-			// Ensure each member is a registered individual too.
-			$this->ensureRegistrant($tournament_id, ['MundaneId' => $mid, 'Alias' => '']);
+			// Ensure each member is a registered individual too (reuse prefetched awards).
+			$this->ensureRegistrant($tournament_id, ['MundaneId' => $mid, 'Alias' => ''], $awards);
 		}
 
 		// Snapshot summed warrior/griffon level on the team identity row.
-		$awards = !empty($memberMids) ? $this->fetchAwardsForMundanes($memberMids) : [];
 		$teamWL = 0; $teamGL = 0;
 		foreach ($memberMids as $mid) {
 			$teamWL += isset($awards[$mid]) ? $this->warriorLevelFromAwards($awards[$mid]) : 0;
@@ -628,8 +680,8 @@ class Tournament extends Ork3 {
 			$pid           = (int)$request['ParticipantId'];
 			$tournament_id = (int)($request['TournamentId'] ?? 0);
 			if (!valid_id($tournament_id)) return InvalidParameter('TournamentId required');
-			$sql = "INSERT INTO " . DB_PREFIX . "participant (tournament_id, bracket_id, alias, unit_id, park_id, kingdom_id, participant_number)
-						SELECT tournament_id, $bid, alias, unit_id, park_id, kingdom_id, participant_number
+			$sql = "INSERT INTO " . DB_PREFIX . "participant (tournament_id, bracket_id, alias, unit_id, park_id, kingdom_id, participant_number, warrior_level, griffon_level)
+						SELECT tournament_id, $bid, alias, unit_id, park_id, kingdom_id, participant_number, warrior_level, griffon_level
 						FROM " . DB_PREFIX . "participant WHERE participant_id = $pid AND tournament_id = $tournament_id";
 			$this->db->query($sql);
 			$new_id = $this->db->GetLastInsertId();
@@ -1129,37 +1181,69 @@ class Tournament extends Ork3 {
 		if (!valid_id($tid) || !valid_id($bid)) return InvalidParameter('TournamentId and BracketId required');
 		if (!is_array($nums) || empty($nums)) return InvalidParameter('ParticipantNumbers required');
 
-		$b = $this->db->query("SELECT tournament_id, status FROM " . DB_PREFIX . "bracket WHERE bracket_id = $bid LIMIT 1");
+		$b = $this->db->query("SELECT tournament_id, status, participants FROM " . DB_PREFIX . "bracket WHERE bracket_id = $bid LIMIT 1");
 		if (!$b || !$b->next() || (int)$b->tournament_id !== $tid) return InvalidParameter('Bracket does not belong to this tournament.');
+		if ($b->participants !== 'individual') return InvalidParameter('This bracket is not an individual bracket.');
 		if ($b->status !== 'setup') return InvalidParameter('Participants can only be assigned while the bracket is in setup.');
+
+		// Normalize the request to unique positive numbers, preserving first-seen order
+		// (dedup is equivalent to the old per-row flow: a repeated number assigns once,
+		// then hits the already-in-bracket skip).
+		$order = [];
+		$seen  = [];
+		foreach ($nums as $num) {
+			$num = (int)$num;
+			if ($num <= 0 || isset($seen[$num])) continue;
+			$seen[$num] = true;
+			$order[] = $num;
+		}
 
 		$assigned = [];
 		$this->db->query('START TRANSACTION');
 		try {
-			foreach ($nums as $num) {
-				$num = (int)$num;
-				if ($num <= 0) continue;
-				// Skip if already in this bracket.
-				$ex = $this->db->query("SELECT participant_id FROM " . DB_PREFIX . "participant WHERE tournament_id = $tid AND bracket_id = $bid AND participant_number = $num LIMIT 1");
-				if ($ex && $ex->next() && valid_id($ex->participant_id)) continue;
-				// Source = registration row (bracket_id IS NULL preferred) for this number.
-				$src = $this->db->query("SELECT participant_id FROM " . DB_PREFIX . "participant WHERE tournament_id = $tid AND participant_number = $num ORDER BY (bracket_id IS NOT NULL) ASC LIMIT 1");
-				if (!$src || !$src->next() || !valid_id($src->participant_id)) continue;
-				$srcId = (int)$src->participant_id;
-				// Clone into the bracket (carry warrior_level snapshot).
-				$this->db->query(
-					"INSERT INTO " . DB_PREFIX . "participant (tournament_id, bracket_id, alias, unit_id, park_id, kingdom_id, participant_number, warrior_level)
-					 SELECT tournament_id, $bid, alias, unit_id, park_id, kingdom_id, participant_number, warrior_level
-					 FROM " . DB_PREFIX . "participant WHERE participant_id = $srcId"
-				);
-				$newPid = (int)$this->db->GetLastInsertId();
-				if (!valid_id($newPid)) { $this->db->query('ROLLBACK'); return InvalidParameter('Assignment failed.'); }
-				// Copy the individual player link (mundane). Team rosters are not handled here.
-				$this->db->query(
-					"INSERT INTO " . DB_PREFIX . "participant_mundane (participant_id, mundane_id, tournament_id, bracket_id)
-					 SELECT $newPid, mundane_id, $tid, $bid FROM " . DB_PREFIX . "participant_mundane WHERE participant_id = $srcId"
-				);
-				$assigned[] = ['ParticipantNumber' => $num, 'ParticipantId' => $newPid];
+			if (!empty($order)) {
+				$inList = implode(',', $order);
+				// Numbers already in this bracket are skipped (set-based existence check).
+				$existing = [];
+				$ex = $this->db->query("SELECT participant_number FROM " . DB_PREFIX . "participant WHERE tournament_id = $tid AND bracket_id = $bid AND participant_number IN ($inList)");
+				if ($ex) { while ($ex->next()) { $existing[(int)$ex->participant_number] = true; } }
+				$todo = array_values(array_filter($order, fn($n) => !isset($existing[$n])));
+
+				if (!empty($todo)) {
+					$todoList = implode(',', $todo);
+					// Clone the registration rows (bracket_id IS NULL) into this bracket in one
+					// INSERT...SELECT, carrying the warrior_level + griffon_level snapshots.
+					// INSERT IGNORE + UNIQUE(tournament_id, bracket_id, participant_number) makes
+					// this atomic vs. a concurrent request: a collision inserts 0 rows (benign skip).
+					$this->db->query(
+						"INSERT IGNORE INTO " . DB_PREFIX . "participant (tournament_id, bracket_id, alias, unit_id, park_id, kingdom_id, participant_number, warrior_level, griffon_level)
+						 SELECT tournament_id, $bid, alias, unit_id, park_id, kingdom_id, participant_number, warrior_level, griffon_level
+						 FROM " . DB_PREFIX . "participant
+						 WHERE tournament_id = $tid AND bracket_id IS NULL AND participant_number IN ($todoList)"
+					);
+					// Copy the individual player links (mundane) for the just-cloned rows. The new
+					// entrant id is mapped from its source by the shared participant_number: the
+					// source is the unique registration row (bracket_id IS NULL) and the clone is
+					// unique per (tournament_id, bracket_id, participant_number).
+					$this->db->query(
+						"INSERT INTO " . DB_PREFIX . "participant_mundane (participant_id, mundane_id, tournament_id, bracket_id)
+						 SELECT newp.participant_id, pm.mundane_id, $tid, $bid
+						 FROM " . DB_PREFIX . "participant newp
+						 JOIN " . DB_PREFIX . "participant srcp
+						   ON srcp.tournament_id = $tid AND srcp.bracket_id IS NULL AND srcp.participant_number = newp.participant_number
+						 JOIN " . DB_PREFIX . "participant_mundane pm ON pm.participant_id = srcp.participant_id
+						 WHERE newp.tournament_id = $tid AND newp.bracket_id = $bid AND newp.participant_number IN ($todoList)"
+					);
+					// Read back the assigned ids for the response, reported in request order.
+					$map = [];
+					$rr = $this->db->query("SELECT participant_id, participant_number FROM " . DB_PREFIX . "participant WHERE tournament_id = $tid AND bracket_id = $bid AND participant_number IN ($todoList)");
+					if ($rr) { while ($rr->next()) { $map[(int)$rr->participant_number] = (int)$rr->participant_id; } }
+					foreach ($order as $n) {
+						if (!isset($existing[$n]) && isset($map[$n])) {
+							$assigned[] = ['ParticipantNumber' => $n, 'ParticipantId' => $map[$n]];
+						}
+					}
+				}
 			}
 			$this->db->query('COMMIT');
 		} catch (\Throwable $e) {
@@ -1225,6 +1309,11 @@ class Tournament extends Ork3 {
 		$this->db->query('START TRANSACTION');
 		try {
 			$res = $this->ensureTeam($tid, ['Name' => $name, 'Members' => $members]);
+			// ensureTeam returns an error response (and has already rolled back) on a
+			// one-player-one-team violation — surface it unchanged. Success returns a bare
+			// ['TeamNumber'=>..] array with no Status key; the error path is InvalidParameter()
+			// (Status=4), so a present, non-zero Status is the reliable error discriminator.
+			if (isset($res['Status']) && (int)$res['Status'] !== 0) return $res;
 			$this->db->query('COMMIT');
 		} catch (\Throwable $e) { $this->db->query('ROLLBACK'); throw $e; }
 		$this->bustTournamentReportCache();
@@ -1344,11 +1433,19 @@ class Tournament extends Ork3 {
 				);
 				$newPid = (int)$this->db->GetLastInsertId();
 				if (!valid_id($newPid)) { $this->db->query('ROLLBACK'); return InvalidParameter('Team assignment failed.'); }
-				$this->db->query(
-					"INSERT INTO " . DB_PREFIX . "participant_teams (tournament_id, bracket_id, participant_id, name, team_number)
+				// INSERT IGNORE + UNIQUE(tournament_id, bracket_id, team_number) makes the
+				// check-then-insert atomic: if a concurrent request already assigned this
+				// team, the collision inserts 0 rows — drop the orphan participant clone
+				// created just above and skip cleanly.
+				$tins = $this->db->query(
+					"INSERT IGNORE INTO " . DB_PREFIX . "participant_teams (tournament_id, bracket_id, participant_id, name, team_number)
 					 VALUES (:tid, :bid, :pid, :name, :num)",
 					[':tid' => $tid, ':bid' => $bid, ':pid' => $newPid, ':name' => $teamName, ':num' => $num]
 				);
+				if (!$tins || (int)$tins->Size() < 1) {
+					$this->db->query("DELETE FROM " . DB_PREFIX . "participant WHERE participant_id = $newPid");
+					continue;
+				}
 				$newTeamId = (int)$this->db->GetLastInsertId();
 				if (!valid_id($newTeamId)) { $this->db->query('ROLLBACK'); return InvalidParameter('Team assignment failed.'); }
 				$rows = $this->db->query("SELECT mundane_id FROM " . DB_PREFIX . "participant_team_members WHERE team_id = $srcTeamId");
@@ -1443,7 +1540,11 @@ class Tournament extends Ork3 {
 				return Success(['TeamNumber' => $num, 'RosterLocked' => true]);
 			}
 			// Not locked: re-run ensureTeam (updates name + replaces registration roster).
-			$this->ensureTeam($tid, ['Name' => $name, 'Members' => $members, 'TeamNumber' => $num]);
+			$res = $this->ensureTeam($tid, ['Name' => $name, 'Members' => $members, 'TeamNumber' => $num]);
+			// One-player-one-team violation: ensureTeam already rolled back — surface unchanged.
+			// (Success is a bare array with no Status key; the error path is InvalidParameter()
+			// with Status=4, so a present, non-zero Status is the reliable error discriminator.)
+			if (isset($res['Status']) && (int)$res['Status'] !== 0) return $res;
 			// Propagate name + roster to setup-bracket entrant team rows for this number.
 			$setupRows = $this->db->query(
 				"SELECT pt.team_id, pt.participant_id, pt.bracket_id FROM " . DB_PREFIX . "participant_teams pt
@@ -1626,10 +1727,20 @@ class Tournament extends Ork3 {
 		$this->db->query('START TRANSACTION');
 		try {
 			$this->deleteTeamRows('tournament_id', $tid);
+			// Bracket-scoped child rows (keyed by bracket_id, no tournament_id column) must
+			// be removed while the parent bracket rows still exist to resolve the subquery.
+			$bracketSub = '(SELECT bracket_id FROM ' . DB_PREFIX . 'bracket WHERE tournament_id = ' . $tid . ')';
+			$this->db->query('DELETE FROM ' . DB_PREFIX . 'point_score        WHERE bracket_id IN ' . $bracketSub);
+			$this->db->query('DELETE FROM ' . DB_PREFIX . 'seed               WHERE bracket_id IN ' . $bracketSub);
+			$this->db->query('DELETE FROM ' . DB_PREFIX . 'bracket_officiant  WHERE bracket_id IN ' . $bracketSub);
 			$this->db->query('DELETE FROM ' . DB_PREFIX . 'match               WHERE tournament_id = ' . $tid);
 			$this->db->query('DELETE FROM ' . DB_PREFIX . 'participant_mundane WHERE tournament_id = ' . $tid);
 			$this->db->query('DELETE FROM ' . DB_PREFIX . 'participant         WHERE tournament_id = ' . $tid);
 			$this->db->query('DELETE FROM ' . DB_PREFIX . 'bracket             WHERE tournament_id = ' . $tid);
+			// Tournament-scoped live-collab + roster rows.
+			$this->db->query('DELETE FROM ' . DB_PREFIX . 'tournament_reeve    WHERE tournament_id = ' . $tid);
+			$this->db->query('DELETE FROM ' . DB_PREFIX . 'tournament_event    WHERE tournament_id = ' . $tid);
+			$this->db->query('DELETE FROM ' . DB_PREFIX . 'tournament_seq      WHERE tournament_id = ' . $tid);
 			$this->Tournament->delete();
 			$this->db->query('COMMIT');
 		} catch (\Throwable $e) {
@@ -1645,10 +1756,19 @@ class Tournament extends Ork3 {
 	public function GetMatches($request) {
 		$where = $this->buildFilterWhere($request, 'm');
 
-		$sql = "SELECT m.*, p1.alias AS participant1_alias, p2.alias AS participant2_alias
+		// Participants linked to a player (a mundane) carry an empty participant.alias —
+		// their real name lives in mundane.persona (mirrors GetParticipants' pm/m join).
+		// COALESCE alias with the linked persona so match tables never show blanks.
+		$sql = "SELECT m.*,
+					COALESCE(NULLIF(p1.alias,''), mnd1.persona) AS participant1_alias,
+					COALESCE(NULLIF(p2.alias,''), mnd2.persona) AS participant2_alias
 				FROM " . DB_PREFIX . "match m
 					LEFT JOIN " . DB_PREFIX . "participant p1 ON p1.participant_id = m.participant_1_id
+						LEFT JOIN " . DB_PREFIX . "participant_mundane pm1 ON pm1.participant_id = p1.participant_id
+							LEFT JOIN " . DB_PREFIX . "mundane mnd1 ON mnd1.mundane_id = pm1.mundane_id
 					LEFT JOIN " . DB_PREFIX . "participant p2 ON p2.participant_id = m.participant_2_id
+						LEFT JOIN " . DB_PREFIX . "participant_mundane pm2 ON pm2.participant_id = p2.participant_id
+							LEFT JOIN " . DB_PREFIX . "mundane mnd2 ON mnd2.mundane_id = pm2.mundane_id
 				WHERE 1 $where
 				ORDER BY m.round, m.`order`";
 		$r = $this->db->query($sql);
@@ -1693,6 +1813,7 @@ class Tournament extends Ork3 {
 
 		$bracket_id    = (int)$request['BracketId'];
 		$tournament_id = (int)$request['TournamentId'];
+		if (!$this->bracketBelongsTo($bracket_id, $tournament_id)) return InvalidParameter('Bracket does not belong to this tournament.');
 
 		// Load bracket
 		$this->Bracket->clear();
@@ -1738,8 +1859,16 @@ class Tournament extends Ork3 {
 					return $this->warrior_seed_rank($b) - $this->warrior_seed_rank($a);
 				});
 			}
+		} elseif ($seeding === 'glicko2') {
+			// Performance Score seeding: order by the Glicko-2 rating snapshot, highest
+			// rating = top seed. Glicko-2 ratings are stored per org unit (ork_glicko2 is
+			// keyed by park/kingdom/unit/team, NOT per player), so individuals are seeded by
+			// their park's Performance Score as the best available proxy. Any participant
+			// without a rating falls back to a DETERMINISTIC seed order — never a shuffle —
+			// so this mode can no longer silently randomize.
+			$this->seedByPerformanceScore($participants);
 		} else {
-			// glicko2, random, random-manual, and any unknown seeding mode: randomize
+			// random, random-manual, and any unknown seeding mode: randomize
 			shuffle($participants);
 		}
 
@@ -1749,6 +1878,36 @@ class Tournament extends Ork3 {
 		try {
 			// Delete any previously generated matches for this bracket
 			$this->db->query("DELETE FROM " . DB_PREFIX . "match WHERE bracket_id = $bracket_id");
+
+			// #96: Re-freeze each individual entrant's warrior/griffon snapshot from current
+			// awards at the moment seeding locks, using the same source as the rest of the
+			// module (fetchAwardsForMundanes + warriorLevelFromAwards/griffonLevelFromAwards),
+			// so standings/reports read an authoritative lock-time value rather than a stale
+			// registration-time one. Teams keep their assign-time summed snapshot. This runs
+			// after the in-memory seeding sort above, so it never alters seed order.
+			if ($this->Bracket->participants !== 'team') {
+				$genMids = [];
+				foreach ($participants as $gp) {
+					$gmid = (int)($gp['MundaneId'] ?? 0);
+					if ($gmid > 0) $genMids[$gmid] = true;
+				}
+				if (!empty($genMids)) {
+					$genAwards = $this->fetchAwardsForMundanes(array_keys($genMids));
+					foreach ($participants as $gp) {
+						$gmid = (int)($gp['MundaneId'] ?? 0);
+						$gpid = (int)($gp['ParticipantId'] ?? 0);
+						if ($gmid <= 0 || $gpid <= 0) {
+							continue;
+						}
+						$gwl = isset($genAwards[$gmid]) ? $this->warriorLevelFromAwards($genAwards[$gmid]) : 0;
+						$ggl = isset($genAwards[$gmid]) ? $this->griffonLevelFromAwards($genAwards[$gmid]) : 0;
+						$this->db->query(
+							"UPDATE " . DB_PREFIX . "participant SET warrior_level = :wl, griffon_level = :gl WHERE participant_id = :pid",
+							[':wl' => (int)$gwl, ':gl' => (int)$ggl, ':pid' => $gpid]
+						);
+					}
+				}
+			}
 
 			// Dispatch on method (bracket format: single, double, swiss, round-robin, ironman)
 			$method = $this->Bracket->method;
@@ -1928,7 +2087,7 @@ class Tournament extends Ork3 {
 
 		$wr1_r     = $this->db->query("SELECT COUNT(*) AS cnt FROM " . DB_PREFIX . "match WHERE bracket_id = $bracket_id AND bracket_side = 'winners' AND round = 1");
 		$wr1_count = ($wr1_r && $wr1_r->next()) ? (int)$wr1_r->cnt : 1;
-		$wr_rounds = (int)log($wr1_count * 2, 2); // slots = wr1_count*2
+		$wr_rounds = (int)round(log($wr1_count * 2, 2)); // slots = wr1_count*2
 
 		// -- Winners bracket advancement --
 		if ($winner_id > 0 && ($method === 'single' || $method === 'double') && $bracket_side === 'winners') {
@@ -1998,8 +2157,29 @@ class Tournament extends Ork3 {
 			}
 		}
 
+		// -- Grand Final: Second-Chance (LB champ) wins GF1 → mandatory bracket reset --
+		// The Grand Final is stored as round 1 with participant_1 = winners-bracket champ,
+		// participant_2 = losers-bracket champ. If the LB champ wins GF1 the WB champ has
+		// only taken their FIRST loss, so the tournament is NOT over: auto-create the reset
+		// match (GF2, round 2, same participants) and clear the WB champ's premature
+		// elimination flag. Finalization happens only when GF2 (the true final) is decided.
+		$gf_reset = false;
+		if ($method === 'double' && $bracket_side === 'grand-final' && $round === 1
+			&& $loser_id > 0 && $loser_id === $p1_id) {
+			$gf_reset = true;
+			$exists = $this->db->query("SELECT match_id FROM " . DB_PREFIX . "match
+				WHERE bracket_id = $bracket_id AND bracket_side = 'grand-final' AND round = 2 LIMIT 1");
+			if (!$exists || !$exists->next()) {
+				$maxOrd = $this->db->query("SELECT MAX(`order`) AS m FROM " . DB_PREFIX . "match WHERE bracket_id = $bracket_id");
+				$next_order = ($maxOrd && $maxOrd->next() && $maxOrd->m !== null) ? (int)$maxOrd->m + 1 : 1;
+				$this->insert_match($bracket_id, $tournament_id, 2, 1, $next_order, $p1_id, $p2_id, 'grand-final');
+			}
+			// WB champ is still alive for GF2 — undo any prior/premature elimination.
+			$this->db->query("UPDATE " . DB_PREFIX . "participant SET eliminated = 0 WHERE participant_id = $p1_id");
+		}
+
 		// -- Eliminations --
-		$shouldEliminate = $loser_id > 0 && (
+		$shouldEliminate = !$gf_reset && $loser_id > 0 && (
 			$method === 'single' ||
 			($method === 'double' && in_array($bracket_side, ['losers', 'grand-final']))
 		);
@@ -2008,9 +2188,26 @@ class Tournament extends Ork3 {
 		}
 
 		// Check if all matches resolved â mark bracket complete
-		$unresolved = $this->db->query("SELECT COUNT(*) AS cnt FROM " . DB_PREFIX . "match
-			WHERE bracket_id = $bracket_id AND (result IS NULL OR result = '') AND participant_1_id > 0 AND participant_2_id > 0 AND voided = 0");
-		if ($unresolved && $unresolved->next() && (int)$unresolved->cnt === 0) {
+		// For a DOUBLE elimination the "both participants > 0" guard below is dangerous: when the
+		// winners-bracket final is recorded the grand final and remaining losers-bracket matches are
+		// still feeder-pending (a slot = 0), so they'd be skipped and the bracket would complete
+		// before the losers bracket + grand final are ever played. Gate double-elim completion on
+		// the grand final instead — done only when a grand-final match exists and none is pending.
+		$markComplete = false;
+		if ($method === 'double') {
+			$gfPending = $this->db->query("SELECT COUNT(*) AS cnt FROM " . DB_PREFIX . "match
+				WHERE bracket_id = $bracket_id AND bracket_side = 'grand-final' AND (result IS NULL OR result = '') AND voided = 0");
+			$gfTotal = $this->db->query("SELECT COUNT(*) AS cnt FROM " . DB_PREFIX . "match
+				WHERE bracket_id = $bracket_id AND bracket_side = 'grand-final' AND voided = 0");
+			$noGfPending = ($gfPending && $gfPending->next() && (int)$gfPending->cnt === 0);
+			$hasGf = ($gfTotal && $gfTotal->next() && (int)$gfTotal->cnt > 0);
+			$markComplete = $hasGf && $noGfPending;
+		} else {
+			$unresolved = $this->db->query("SELECT COUNT(*) AS cnt FROM " . DB_PREFIX . "match
+				WHERE bracket_id = $bracket_id AND (result IS NULL OR result = '') AND participant_1_id > 0 AND participant_2_id > 0 AND voided = 0");
+			$markComplete = ($unresolved && $unresolved->next() && (int)$unresolved->cnt === 0);
+		}
+		if ($markComplete) {
 			$this->db->query("UPDATE " . DB_PREFIX . "bracket SET status = 'complete' WHERE bracket_id = $bracket_id AND status != 'finalized' AND method != 'swiss'");
 		}
 
@@ -2038,8 +2235,17 @@ class Tournament extends Ork3 {
 	 * Assumes it runs inside a transaction managed by the caller.
 	 */
 	private function resolveEliminationWalkovers($bracket_id, $tournament_id) {
+		$bm      = $this->db->query("SELECT method FROM " . DB_PREFIX . "match m JOIN " . DB_PREFIX . "bracket b ON b.bracket_id = m.bracket_id WHERE m.bracket_id = $bracket_id LIMIT 1");
+		$method  = ($bm && $bm->next()) ? (string)$bm->method : '';
+		$isElim  = in_array($method, ['single', 'double'], true);
 		$guard = 0;
 		while ($guard++ < 500) {
+			// Wave scan: collect EVERY currently-resolvable walkover (a pending match with
+			// both participants known where exactly one is non-active) in a single pass, then
+			// resolve + advance them all before rescanning. These matches never feed each other
+			// within a wave (a match with both slots filled cannot receive a winner advanced
+			// from another match this wave), so a single scan per wave — rather than one scan
+			// per resolution — is safe and cuts the scan count from O(matches) to O(rounds).
 			$r = $this->db->query("SELECT m.match_id, p1.status AS s1, p2.status AS s2
 				FROM " . DB_PREFIX . "match m
 				LEFT JOIN " . DB_PREFIX . "participant p1 ON p1.participant_id = m.participant_1_id
@@ -2048,23 +2254,61 @@ class Tournament extends Ork3 {
 				  AND (m.result IS NULL OR m.result = '')
 				  AND m.voided = 0
 				  AND m.participant_1_id > 0 AND m.participant_2_id > 0
+				ORDER BY m.`order` ASC
 				LIMIT 300");
-			$target_mid = 0; $withdrawn_side = 0;
+			$targets = [];
 			if ($r) {
 				while ($r->next()) {
 					$s1 = (string)$r->s1; $s2 = (string)$r->s2;
 					$w1 = !($s1 === 'active' || $s1 === '');
 					$w2 = !($s2 === 'active' || $s2 === '');
-					if ($w1 xor $w2) { $target_mid = (int)$r->match_id; $withdrawn_side = $w1 ? 1 : 2; break; }
+					if ($w1 xor $w2) { $targets[] = ['mid' => (int)$r->match_id, 'side' => $w1 ? 1 : 2]; }
 				}
 			}
-			if ($target_mid === 0) break;
-			// Opponent of the withdrawn participant wins by forfeit.
-			$res = ($withdrawn_side === 1) ? '2-wins' : '1-wins';
-			$this->db->query("UPDATE " . DB_PREFIX . "match SET result = '$res', auto_resolved = 1
-				WHERE match_id = $target_mid AND (result IS NULL OR result = '')");
-			$advErr = $this->applyAdvancement($bracket_id, $tournament_id, $target_mid);
-			if ($advErr !== null) return $advErr;
+			if (!empty($targets)) {
+				foreach ($targets as $t) {
+					// Opponent of the withdrawn participant wins by forfeit.
+					$res = ($t['side'] === 1) ? '2-wins' : '1-wins';
+					$this->db->query("UPDATE " . DB_PREFIX . "match SET result = '$res', auto_resolved = 1
+						WHERE match_id = " . $t['mid'] . " AND (result IS NULL OR result = '')");
+					$advErr = $this->applyAdvancement($bracket_id, $tournament_id, $t['mid']);
+					if ($advErr !== null) return $advErr;
+				}
+				continue;
+			}
+
+			// Bye cascade (single/double-elim only): resolve/void byes that surface during
+			// play — e.g. a winners-bracket loser routed into a losers slot whose opposite
+			// slot was fed by a bye. We only ever touch the SMALLEST-`order` unresolved match:
+			// since every feeder has a smaller order, a still-fillable empty slot is never at
+			// the frontier, so this can never prematurely resolve a genuinely pending match.
+			if ($isElim) {
+				$fr = $this->db->query("SELECT match_id, participant_1_id, participant_2_id FROM " . DB_PREFIX . "match
+					WHERE bracket_id = $bracket_id AND (result IS NULL OR result = '') AND voided = 0
+					ORDER BY `order` ASC LIMIT 1");
+				if ($fr && $fr->next()) {
+					$fmid = (int)$fr->match_id;
+					$fp1  = (int)$fr->participant_1_id;
+					$fp2  = (int)$fr->participant_2_id;
+					if ($fp1 > 0 xor $fp2 > 0) {
+						// One real participant + a permanent bye: walkover the real side forward.
+						$res = ($fp1 > 0) ? '1-wins' : '2-wins';
+						$this->db->query("UPDATE " . DB_PREFIX . "match SET result = '$res', auto_resolved = 1
+							WHERE match_id = $fmid AND (result IS NULL OR result = '')");
+						$advErr = $this->applyAdvancement($bracket_id, $tournament_id, $fmid);
+						if ($advErr !== null) return $advErr;
+						continue;
+					}
+					if ($fp1 === 0 && $fp2 === 0) {
+						// Phantom match: both feeders were byes, so it can never be contested. Void
+						// it so it neither blocks completion nor advances a nonexistent winner.
+						$this->db->query("UPDATE " . DB_PREFIX . "match SET voided = 1
+							WHERE match_id = $fmid AND (result IS NULL OR result = '')");
+						continue;
+					}
+				}
+			}
+			break;
 		}
 		return null;
 	}
@@ -2085,10 +2329,12 @@ class Tournament extends Ork3 {
 		$mids = [];
 		if ($r) { while ($r->next()) $mids[] = (int)$r->match_id; }
 		foreach ($mids as $mid) {
-			$resp = $this->ResetMatch([
+			// Call the internal reset directly: the actor was already authorized by the
+			// UpdateParticipantStatus caller, so re-running the full auth chain per match
+			// (via the public ResetMatch) is pure overhead here.
+			$resp = $this->resetMatchInternal($mid, (int)$tournament_id, [
 				'Token'        => $request['Token'] ?? '',
 				'TournamentId' => $tournament_id,
-				'MatchId'      => $mid,
 			]);
 			if (!is_array($resp) || ($resp['Status'] ?? 1) != 0) {
 				return 'Cannot reactivate: a match this participant forfeited has downstream results. Reset those matches first, then reactivate.';
@@ -2113,6 +2359,34 @@ class Tournament extends Ork3 {
 		$tournament_id = (int)($request['TournamentId'] ?? 0);
 		if (!valid_id($match_id) || !valid_id($tournament_id)) return InvalidParameter('MatchId and TournamentId required');
 
+		// Delegate the actual reset. reverseEliminationWithdrawal calls resetMatchInternal
+		// directly (bypassing this method), so the single change-log emit below fires only
+		// for a user-initiated reset — the walkover-reversal loop never double-emits here.
+		$resp = $this->resetMatchInternal($match_id, $tournament_id, $request);
+		if (!is_array($resp) || (int)($resp['Status'] ?? 1) !== 0) return $resp;
+
+		$action_id = substr(trim($request['ActionId'] ?? ''), 0, 36);
+		$actor_id  = (int)Ork3::$Lib->authorization->IsAuthorized($request['Token'] ?? '');
+
+		$br = $this->db->query("SELECT bracket_id FROM " . DB_PREFIX . "match WHERE match_id = $match_id AND tournament_id = $tournament_id");
+		$bracket_id = ($br && $br->next()) ? (int)$br->bracket_id : 0;
+
+		$seq = $this->tnEmitEvent($tournament_id, $bracket_id, 'match_reset', [
+			'match_id' => $match_id,
+		], $actor_id, $action_id !== '' ? $action_id : null);
+
+		$this->tnPublishSeq($tournament_id, $seq);
+		return Success(['MatchId' => $match_id, 'Seq' => $seq]);
+	}
+
+	/**
+	 * Core match-reset logic WITHOUT the can_run_brackets auth gate. Callable from
+	 * ResetMatch (after auth) and from already-authorized internal flows such as
+	 * reverseEliminationWithdrawal, which resets many walkover matches in a loop and
+	 * would otherwise re-run the full auth chain once per match. The optional $request
+	 * only carries the Token used by the privileged finalized-bracket re-open path.
+	 */
+	private function resetMatchInternal(int $match_id, int $tournament_id, array $request = []) {
 		// Load match
 		$sql = "SELECT * FROM " . DB_PREFIX . "match WHERE match_id = $match_id AND tournament_id = $tournament_id";
 		$r = $this->db->query($sql);
@@ -2143,6 +2417,15 @@ class Tournament extends Ork3 {
 		if (!$this->Bracket->bracket_id) return InvalidParameter('Bracket not found');
 		$method = $this->Bracket->method;
 
+		// A *finalized* bracket is only re-opened by a reset through the stronger
+		// organizer-level gate (finalize is an explicit, privileged step). The
+		// run-brackets gate at the top is not enough on its own — block the reset
+		// unless the caller also holds edit authority, and audit the re-open below.
+		$wasFinalized = ((string)$this->Bracket->status === 'finalized');
+		if ($wasFinalized && !$this->check_auth($request)) {
+			return NoAuthorization();
+		}
+
 		// Check: no later-round match on the same bracket_side involving either participant
 		// may already be resolved. Scoping to the same bracket_side ensures (e.g.) a WR2
 		// reset isn't falsely blocked by an LB2 result — the LB-loser-slot clearing below
@@ -2155,6 +2438,22 @@ class Tournament extends Ork3 {
 				  AND (participant_1_id IN ($ids) OR participant_2_id IN ($ids))");
 			if ($check && $check->next() && (int)$check->cnt > 0) {
 				return InvalidParameter('Cannot reset: a downstream match has already been played');
+			}
+		}
+
+		// Grand Final guard (double-elim): the same-bracket_side check above never sees the
+		// cross-side Grand Final that a WR/LB participant was routed into. Resetting an early
+		// WR/LB match after either participant already PLAYED the Grand Final would orphan a
+		// GF slot. Block the reset unless the reset match IS the Grand Final (handled by the
+		// same-side round>round check) so the organizer resets the Grand Final first.
+		if ($method === 'double' && $bracket_side !== 'grand-final' && ($p1_id > 0 || $p2_id > 0)) {
+			$gfIds = implode(',', array_filter([$p1_id, $p2_id]));
+			$gf_chk = $this->db->query("SELECT COUNT(*) AS cnt FROM " . DB_PREFIX . "match
+				WHERE bracket_id = $bracket_id AND bracket_side = 'grand-final'
+				  AND (result IS NOT NULL AND result != '')
+				  AND (participant_1_id IN ($gfIds) OR participant_2_id IN ($gfIds))");
+			if ($gf_chk && $gf_chk->next() && (int)$gf_chk->cnt > 0) {
+				return InvalidParameter('Cannot reset: the Grand Final involving this participant has already been played. Reset the Grand Final first.');
 			}
 		}
 
@@ -2175,7 +2474,7 @@ class Tournament extends Ork3 {
 		// Bracket size from WR round 1 match count
 		$wr1_r     = $this->db->query("SELECT COUNT(*) AS cnt FROM " . DB_PREFIX . "match WHERE bracket_id = $bracket_id AND bracket_side = 'winners' AND round = 1");
 		$wr1_count = ($wr1_r && $wr1_r->next()) ? (int)$wr1_r->cnt : 1;
-		$wr_rounds = (int)log($wr1_count * 2, 2);
+		$wr_rounds = (int)round(log($wr1_count * 2, 2));
 
 		// ── Reverse WR winner advancement ────────────────────────────────────────
 		if ($winner_id > 0 && ($method === 'single' || $method === 'double') && $bracket_side === 'winners') {
@@ -2189,8 +2488,11 @@ class Tournament extends Ork3 {
 					WHERE bracket_id = $bracket_id AND round = $next_round AND `match` = $next_match
 					  AND bracket_side = 'winners' AND $next_slot = $winner_id");
 			} elseif ($method === 'double') {
+				// Only clear the GF slot if the routed participant is still sitting there
+				// unplayed; never wipe a Grand Final that already produced a result.
 				$this->db->query("UPDATE " . DB_PREFIX . "match SET participant_1_id = 0
-					WHERE bracket_id = $bracket_id AND bracket_side = 'grand-final' AND participant_1_id = $winner_id");
+					WHERE bracket_id = $bracket_id AND bracket_side = 'grand-final' AND participant_1_id = $winner_id
+					  AND (result IS NULL OR result = '')");
 			}
 		}
 
@@ -2240,8 +2542,11 @@ class Tournament extends Ork3 {
 						  AND bracket_side = 'losers' AND $next_slot = $winner_id");
 				}
 			} else {
+				// Only clear the GF slot if the routed participant is still sitting there
+				// unplayed; never wipe a Grand Final that already produced a result.
 				$this->db->query("UPDATE " . DB_PREFIX . "match SET participant_2_id = 0
-					WHERE bracket_id = $bracket_id AND bracket_side = 'grand-final' AND participant_2_id = $winner_id");
+					WHERE bracket_id = $bracket_id AND bracket_side = 'grand-final' AND participant_2_id = $winner_id
+					  AND (result IS NULL OR result = '')");
 			}
 		}
 
@@ -2254,8 +2559,27 @@ class Tournament extends Ork3 {
 			$this->db->query("UPDATE " . DB_PREFIX . "participant SET eliminated = 0 WHERE participant_id = $loser_id");
 		}
 
-		// Reopen bracket if it was marked complete
-		$this->db->query("UPDATE " . DB_PREFIX . "bracket SET status = 'active' WHERE bracket_id = $bracket_id AND status IN ('complete', 'finalized')");
+		// Reopen bracket if it was marked complete/finalized. A finalized re-open is a
+		// privileged, audited action (auth already enforced above); a plain 'complete'
+		// bracket reopens silently under the run-brackets gate.
+		if ($wasFinalized) {
+			$actor_id = (int)Ork3::$Lib->authorization->IsAuthorized($request['Token'] ?? '');
+			$this->db->query('START TRANSACTION');
+			try {
+				$this->db->query("UPDATE " . DB_PREFIX . "bracket SET status = 'active' WHERE bracket_id = $bracket_id AND status = 'finalized'");
+				$seq = $this->tnEmitEvent($tournament_id, $bracket_id, 'bracket_reopened', [
+					'bracket_id' => $bracket_id,
+					'match_id'   => $match_id,
+				], $actor_id);
+				$this->db->query('COMMIT');
+			} catch (\Throwable $e) {
+				$this->db->query('ROLLBACK');
+				throw $e;
+			}
+			$this->tnPublishSeq($tournament_id, $seq);
+		} else {
+			$this->db->query("UPDATE " . DB_PREFIX . "bracket SET status = 'active' WHERE bracket_id = $bracket_id AND status = 'complete'");
+		}
 
 		return Success($match_id);
 	}
@@ -2443,6 +2767,13 @@ class Tournament extends Ork3 {
 				$rank += ($j - $i);
 				$i = $j;
 			}
+		} elseif ($bracketMethod === 'single' || $bracketMethod === 'double') {
+			// Elimination placement is derived from BRACKET DEPTH (how far each competitor
+			// advanced before being eliminated), not a raw win-count proxy: champion (never
+			// eliminated) = 1st, the final's loser = 2nd, semifinal losers tie for 3rd, etc.
+			// Byes count as advancement (they record a win, never an elimination). Win count
+			// survives only as a display/secondary tiebreak inside a shared depth.
+			$this->assignEliminationRanks($standings, $bracket_id, $bracketMethod);
 		} else {
 			// Order by points then fewest losses so the competition-ranking loop
 			// below (which groups consecutive equal Points+Losses) sees the array
@@ -2463,6 +2794,76 @@ class Tournament extends Ork3 {
 			}
 		}
 		return Success($standings);
+	}
+
+	/**
+	 * assignEliminationRanks(&$standings, $bracket_id, $method)
+	 * Sorts and ranks single/double-elimination standings by bracket depth: the round in
+	 * which each competitor was finally eliminated. Deeper = better place; equal depth =
+	 * tied place (both semifinal losers share 3rd). Never-eliminated competitors (the
+	 * champion, or everyone still alive mid-bracket) rank first. For double-elim only a
+	 * losers-bracket or grand-final loss eliminates a competitor (a winners-bracket loss
+	 * just drops them to the losers bracket). Mutates $standings, assigning each a 'Rank'.
+	 */
+	private function assignEliminationRanks(array &$standings, $bracket_id, $method) {
+		if (empty($standings)) return;
+		$bracket_id = (int)$bracket_id;
+
+		// Load resolved, non-voided matches; track the deepest losers-bracket round so the
+		// grand final scores just below it (its loser is the runner-up).
+		$rows = [];
+		$maxLbRound = 0;
+		$mr = $this->db->query("SELECT participant_1_id, participant_2_id, round, bracket_side, result
+			FROM " . DB_PREFIX . "match
+			WHERE bracket_id = $bracket_id AND result IS NOT NULL AND result != '' AND voided = 0");
+		if ($mr) {
+			while ($mr->next()) {
+				$side = (string)$mr->bracket_side;
+				if ($method === 'double' && $side === 'losers') $maxLbRound = max($maxLbRound, (int)$mr->round);
+				$rows[] = [(int)$mr->participant_1_id, (int)$mr->participant_2_id, (int)$mr->round, $side, (string)$mr->result];
+			}
+		}
+
+		// depth[participant_id] = round at which they were finally eliminated (deeper = further).
+		$depth = [];
+		foreach ($rows as [$p1, $p2, $rnd, $side, $result]) {
+			[$w, $l] = $this->resolveWinnerLoser($result, $p1, $p2);
+			if ($l <= 0) continue; // tie or bye — no elimination
+			if ($method === 'double') {
+				if ($side === 'losers')          $d = $rnd;
+				elseif ($side === 'grand-final') $d = $maxLbRound + 1;
+				else                             continue; // winners-bracket loss only drops to LB
+			} else {
+				$d = $rnd; // single-elim: the round of the (only) loss
+			}
+			if (!isset($depth[$l]) || $d > $depth[$l]) $depth[$l] = $d;
+		}
+
+		$INF = PHP_INT_MAX; // never eliminated → champion / still alive
+		foreach ($standings as &$s) {
+			$s['_elimDepth'] = $depth[(int)$s['ParticipantId']] ?? $INF;
+		}
+		unset($s);
+
+		// Deepest first; win count / fewest losses only orders WITHIN an equal depth (display).
+		usort($standings, function ($a, $b) {
+			if ($a['_elimDepth'] !== $b['_elimDepth']) return $b['_elimDepth'] <=> $a['_elimDepth'];
+			if ($b['Points'] !== $a['Points']) return $b['Points'] - $a['Points'];
+			return $a['Losses'] - $b['Losses'];
+		});
+
+		// Competition ranks group strictly by elimination depth so tied depths share a place.
+		$rank = 1;
+		$count = count($standings);
+		for ($i = 0; $i < $count; ) {
+			$j = $i;
+			while ($j < $count && $standings[$j]['_elimDepth'] === $standings[$i]['_elimDepth']) $j++;
+			for ($k = $i; $k < $j; $k++) $standings[$k]['Rank'] = $rank;
+			$rank += ($j - $i);
+			$i = $j;
+		}
+		foreach ($standings as &$s) unset($s['_elimDepth']);
+		unset($s);
 	}
 
 	/**
@@ -2517,9 +2918,9 @@ class Tournament extends Ork3 {
 		if (!$chk || !$chk->next()) return InvalidParameter('Bracket not found in this tournament');
 
 		$this->db->query('DELETE FROM ' . DB_PREFIX . 'match WHERE bracket_id = ' . $bracket_id . ' AND tournament_id = ' . $tournament_id);
-		// Return the bracket to setup so it can be re-generated. Ironman's
-		// RecordIronmanWin flips status back to active on the next fight,
-		// so that flow is unaffected.
+		// Return the bracket to setup so it can be re-generated. Ironman is
+		// unaffected: RecordIronmanWin re-flips status to 'active' when the next
+		// fight is recorded (see the guarded UPDATE there).
 		$this->db->query('UPDATE ' . DB_PREFIX . 'bracket SET status = \'setup\' WHERE bracket_id = ' . $bracket_id);
 		// Ironman denormalized stats are derived from matches — reset them too.
 		$this->db->query('UPDATE ' . DB_PREFIX . 'participant SET im_wins = 0, im_current_streak = 0, im_max_streak = 0 WHERE bracket_id = ' . $bracket_id);
@@ -2553,12 +2954,12 @@ class Tournament extends Ork3 {
 		$ranked_r = $this->db->query(
 			"SELECT p.participant_id,
 			    COALESCE(SUM(
-			        CASE WHEN (m.participant_1_id = p.participant_id AND m.result IN ('1-wins','forfeit','disqualified'))
-			              OR  (m.participant_2_id = p.participant_id AND m.result = '2-wins') THEN 1 ELSE 0 END
+			        CASE WHEN (m.participant_1_id = p.participant_id AND m.result = '1-wins')
+			              OR  (m.participant_2_id = p.participant_id AND m.result IN ('2-wins','forfeit','disqualified')) THEN 1 ELSE 0 END
 			    ), 0) AS wins,
 			    COALESCE(SUM(
-			        CASE WHEN (m.participant_1_id = p.participant_id AND m.result = '2-wins')
-			              OR  (m.participant_2_id = p.participant_id AND m.result IN ('1-wins','forfeit','disqualified')) THEN 1 ELSE 0 END
+			        CASE WHEN (m.participant_1_id = p.participant_id AND m.result IN ('2-wins','forfeit','disqualified'))
+			              OR  (m.participant_2_id = p.participant_id AND m.result = '1-wins') THEN 1 ELSE 0 END
 			    ), 0) AS losses
 			 FROM " . DB_PREFIX . "participant p
 			 LEFT JOIN " . DB_PREFIX . "match m
@@ -2573,15 +2974,64 @@ class Tournament extends Ork3 {
 		$ranked = [];
 		while ($ranked_r->next()) $ranked[] = (int)$ranked_r->participant_id;
 
-		// If odd count, bottom-ranked participant receives a bye (auto-win)
-		$bye_pid = null;
-		if (count($ranked) % 2 !== 0) $bye_pid = array_pop($ranked);
+		// Match history: which pairs have already met, and who has already had a bye,
+		// so we avoid rematches and repeated byes (Swiss requirements).
+		$played = [];
+		$hist = $this->db->query("SELECT participant_1_id, participant_2_id FROM " . DB_PREFIX . "match
+			WHERE bracket_id = $bracket_id AND participant_1_id > 0 AND participant_2_id > 0");
+		if ($hist) {
+			while ($hist->next()) {
+				$a = (int)$hist->participant_1_id; $b = (int)$hist->participant_2_id;
+				$played[$a][$b] = true; $played[$b][$a] = true;
+			}
+		}
+		$byeHistory = [];
+		$bh = $this->db->query("SELECT participant_1_id, participant_2_id FROM " . DB_PREFIX . "match
+			WHERE bracket_id = $bracket_id
+			  AND ((participant_1_id > 0 AND participant_2_id = 0) OR (participant_1_id = 0 AND participant_2_id > 0))");
+		if ($bh) {
+			while ($bh->next()) {
+				$p = ((int)$bh->participant_1_id > 0) ? (int)$bh->participant_1_id : (int)$bh->participant_2_id;
+				if ($p > 0) $byeHistory[$p] = true;
+			}
+		}
 
-		// Pair in rank order: 1st vs 2nd, 3rd vs 4th, …
+		// If odd count, assign the bye to the lowest-ranked player who has NOT already had
+		// one (walking up from the bottom); fall back to the lowest-ranked if all have.
+		$bye_pid = null;
+		if (count($ranked) % 2 !== 0) {
+			$byeCandidates = [];
+			for ($i = count($ranked) - 1; $i >= 0; $i--) {
+				if (!isset($byeHistory[$ranked[$i]])) $byeCandidates[] = $ranked[$i];
+			}
+			// Then anyone (already-byed), still lowest-ranked first, so a repeat is a last resort.
+			for ($i = count($ranked) - 1; $i >= 0; $i--) {
+				if (isset($byeHistory[$ranked[$i]])) $byeCandidates[] = $ranked[$i];
+			}
+			// Pick the first bye candidate for which the remaining field can be paired
+			// without a rematch; otherwise keep the top preference and let the fallback pair.
+			foreach ($byeCandidates as $cand) {
+				$rest = array_values(array_filter($ranked, fn($x) => $x !== $cand));
+				$budget = 200000;
+				if ($this->swissBacktrackPair($rest, $played, $budget) !== null) { $bye_pid = $cand; break; }
+			}
+			if ($bye_pid === null) $bye_pid = $byeCandidates[0] ?? array_pop($ranked);
+			$ranked = array_values(array_filter($ranked, fn($x) => $x !== $bye_pid));
+		}
+
+		// Greedy pairing with backtracking to skip would-be rematches. If no rematch-free
+		// perfect pairing exists, fall back to strict rank order (a repeat is unavoidable).
+		$budget = 200000;
+		$pairs = $this->swissBacktrackPair($ranked, $played, $budget);
+		if ($pairs === null) {
+			$pairs = [];
+			for ($i = 0; $i + 1 < count($ranked); $i += 2) $pairs[] = [$ranked[$i], $ranked[$i + 1]];
+		}
+
 		$slot = 0;
-		for ($i = 0; $i + 1 < count($ranked) && $slot < count($placeholders); $i += 2) {
-			$p1  = $ranked[$i];
-			$p2  = $ranked[$i + 1];
+		foreach ($pairs as $pair) {
+			if ($slot >= count($placeholders)) break;
+			$p1 = (int)$pair[0]; $p2 = (int)$pair[1];
 			$mid = $placeholders[$slot++];
 			$this->db->query("UPDATE " . DB_PREFIX . "match SET participant_1_id = $p1, participant_2_id = $p2 WHERE match_id = $mid");
 		}
@@ -2591,6 +3041,33 @@ class Tournament extends Ork3 {
 			$mid = $placeholders[$slot];
 			$this->db->query("UPDATE " . DB_PREFIX . "match SET participant_1_id = $bye_pid, participant_2_id = 0, result = '1-wins' WHERE match_id = $mid");
 		}
+	}
+
+	/**
+	 * swissBacktrackPair($ranked, $played, &$budget)
+	 * Returns a rematch-free perfect pairing of the (even-length) $ranked list as an array
+	 * of [p1, p2] pairs, preferring rank-adjacent opponents, or null if none exists within
+	 * the step budget. $played[a][b] marks a prior meeting. The step budget bounds the
+	 * backtracking so a pathological field can never hang result entry.
+	 */
+	private function swissBacktrackPair(array $ranked, array $played, &$budget) {
+		if (empty($ranked)) return [];
+		if ($budget-- <= 0) return null;
+		$first = $ranked[0];
+		$rest  = array_slice($ranked, 1);
+		for ($i = 0; $i < count($rest); $i++) {
+			$cand = $rest[$i];
+			if (isset($played[$first][$cand])) continue; // avoid a rematch
+			$remaining = $rest;
+			array_splice($remaining, $i, 1);
+			$sub = $this->swissBacktrackPair($remaining, $played, $budget);
+			if ($sub !== null) {
+				array_unshift($sub, [$first, $cand]);
+				return $sub;
+			}
+			if ($budget <= 0) return null;
+		}
+		return null;
 	}
 
 		private function insert_match($bracket_id, $tournament_id, $round, $match_num, $order, $p1_id, $p2_id, $bracket_side = 'winners') {
@@ -2605,6 +3082,41 @@ class Tournament extends Ork3 {
 	}
 
 	/**
+	 * Bulk-insert match rows via chunked multi-row INSERTs (one round-trip per ~200
+	 * rows) instead of one INSERT per match. Column set and per-value casting mirror
+	 * insert_match() exactly, so the rows written are byte-for-byte identical.
+	 * Each $row is an ordered tuple matching insert_match()'s argument order:
+	 * [$bracket_id, $tournament_id, $round, $match_num, $order, $p1_id, $p2_id, $bracket_side].
+	 */
+	private function insert_matches_batch(array $rows) {
+		if (empty($rows)) {
+			return;
+		}
+		$cols = "(tournament_id, bracket_id, round, `match`, `order`, participant_1_id, participant_2_id, bracket_side)";
+		foreach (array_chunk($rows, 200) as $chunk) {
+			$placeholders = [];
+			$params = [];
+			$i = 0;
+			foreach ($chunk as $r) {
+				$placeholders[] = "(:tid$i, :bid$i, :round$i, :mnum$i, :order$i, :p1$i, :p2$i, :bside$i)";
+				$params[":tid$i"]   = (int)$r[1];
+				$params[":bid$i"]   = (int)$r[0];
+				$params[":round$i"] = (int)$r[2];
+				$params[":mnum$i"]  = (int)$r[3];
+				$params[":order$i"] = (int)$r[4];
+				$params[":p1$i"]    = (int)$r[5];
+				$params[":p2$i"]    = (int)$r[6];
+				$params[":bside$i"] = $r[7];
+				$i++;
+			}
+			$this->db->query(
+				"INSERT INTO " . DB_PREFIX . "match $cols VALUES " . implode(', ', $placeholders),
+				$params
+			);
+		}
+	}
+
+	/**
 	 * Returns the warrior seeding rank (0-12) for a participant.
 	 * 12 = Sword Knight (strongest), 11 = Warlord, 1-10 = OotW rank, 0 = unranked.
 	 */
@@ -2612,6 +3124,36 @@ class Tournament extends Ork3 {
 		if (!empty($p['IsKnightSword'])) return 12;
 		if (!empty($p['IsWarlord']))     return 11;
 		return min(10, max(0, (int)($p['WarriorRank'] ?? 0)));
+	}
+
+	/**
+	 * seedByPerformanceScore(&$participants)
+	 * Sorts $participants in place by their Glicko-2 (Performance Score) rating, highest
+	 * first. ork_glicko2 is keyed by org unit (no per-player row), so each participant is
+	 * scored by their park's overall (non-style-specific) rating. Participants with no
+	 * rating fall back to a deterministic Seed order, so this seeding never randomizes.
+	 */
+	private function seedByPerformanceScore(array &$participants): void {
+		$parkIds = [];
+		foreach ($participants as $p) {
+			$pid = (int)($p['ParkId'] ?? 0);
+			if ($pid > 0) $parkIds[$pid] = true;
+		}
+		$ratings = [];
+		if (!empty($parkIds)) {
+			$idlist = implode(',', array_map('intval', array_keys($parkIds)));
+			$rr = $this->db->query("SELECT park_id, MAX(mu) AS mu FROM " . DB_PREFIX . "glicko2
+				WHERE park_id IN ($idlist) AND style_specific = 0 GROUP BY park_id");
+			if ($rr) {
+				while ($rr->next()) $ratings[(int)$rr->park_id] = (float)$rr->mu;
+			}
+		}
+		usort($participants, function ($a, $b) use ($ratings) {
+			$ra = $ratings[(int)($a['ParkId'] ?? 0)] ?? -INF; // unrated sinks to the bottom
+			$rb = $ratings[(int)($b['ParkId'] ?? 0)] ?? -INF;
+			if ($ra != $rb) return $rb <=> $ra;               // higher rating = higher seed
+			return (int)($a['Seed'] ?? 0) <=> (int)($b['Seed'] ?? 0); // deterministic fallback
+		});
 	}
 
 	/**
@@ -2623,20 +3165,20 @@ class Tournament extends Ork3 {
 		$n     = count($participants);
 		$slots = $this->next_power_of_two($n);
 
-		// Pad with byes
+		// Pad with byes (byes land on the lowest seeds, opposite the top seeds).
 		$pids = array_map(fn($p) => (int)$p['ParticipantId'], $participants);
 		while (count($pids) < $slots) $pids[] = 0;
 
-		// Round 1: 1 vs N, 2 vs N-1, ...
-		$round1_pairs = [];
-		$lo = 0; $hi = $slots - 1;
-		while ($lo < $hi) { $round1_pairs[] = [$pids[$lo++], $pids[$hi--]]; }
+		// Round 1 via the standard recursive bracket-seed ordering so that adjacent
+		// match-pairs converge correctly (seeds 1 and 2 cannot meet before the final).
+		$round1_pairs = $this->build_round1_pairs($pids, $slots);
 
-		$total_rounds = (int)log($slots, 2);
+		$total_rounds = (int)round(log($slots, 2));
 		$order = 1;
+		$rows = [];
 		for ($m = 0; $m < count($round1_pairs); $m++) {
-			$this->insert_match($bracket_id, $tournament_id, 1, $m + 1, $order++,
-				$round1_pairs[$m][0], $round1_pairs[$m][1], 'winners');
+			$rows[] = [$bracket_id, $tournament_id, 1, $m + 1, $order++,
+				$round1_pairs[$m][0], $round1_pairs[$m][1], 'winners'];
 		}
 
 		// Placeholder matches for rounds 2+
@@ -2644,9 +3186,13 @@ class Tournament extends Ork3 {
 		for ($round = 2; $round <= $total_rounds; $round++) {
 			$matches_in_round = $matches_in_round / 2;
 			for ($m = 1; $m <= $matches_in_round; $m++) {
-				$this->insert_match($bracket_id, $tournament_id, $round, $m, $order++, 0, 0, 'winners');
+				$rows[] = [$bracket_id, $tournament_id, $round, $m, $order++, 0, 0, 'winners'];
 			}
 		}
+		$this->insert_matches_batch($rows);
+
+		// Auto-resolve first-round byes so a non-power-of-two field advances and completes.
+		$this->autoResolveElimByes($bracket_id, $tournament_id);
 	}
 
 	/**
@@ -2661,18 +3207,18 @@ class Tournament extends Ork3 {
 		$pids  = array_map(fn($p) => (int)$p['ParticipantId'], $participants);
 		while (count($pids) < $slots) $pids[] = 0;
 
-		// Winners bracket round 1
-		$round1_pairs = [];
-		$lo = 0; $hi = $slots - 1;
-		while ($lo < $hi) { $round1_pairs[] = [$pids[$lo++], $pids[$hi--]]; }
+		// Winners bracket round 1 via the standard recursive bracket-seed ordering so
+		// adjacent match-pairs converge correctly (seeds 1 and 2 cannot meet early).
+		$round1_pairs = $this->build_round1_pairs($pids, $slots);
 
-		$wr_rounds  = (int)log($slots, 2);
+		$wr_rounds  = (int)round(log($slots, 2));
 		$order = 1;
 		$wr1_count = count($round1_pairs);
+		$rows = [];
 
 		for ($m = 0; $m < $wr1_count; $m++) {
-			$this->insert_match($bracket_id, $tournament_id, 1, $m + 1, $order++,
-				$round1_pairs[$m][0], $round1_pairs[$m][1], 'winners');
+			$rows[] = [$bracket_id, $tournament_id, 1, $m + 1, $order++,
+				$round1_pairs[$m][0], $round1_pairs[$m][1], 'winners'];
 		}
 
 		// Winners bracket rounds 2+
@@ -2680,7 +3226,7 @@ class Tournament extends Ork3 {
 		for ($round = 2; $round <= $wr_rounds; $round++) {
 			$mpr = $mpr / 2;
 			for ($m = 1; $m <= $mpr; $m++) {
-				$this->insert_match($bracket_id, $tournament_id, $round, $m, $order++, 0, 0, 'winners');
+				$rows[] = [$bracket_id, $tournament_id, $round, $m, $order++, 0, 0, 'winners'];
 			}
 		}
 
@@ -2691,13 +3237,18 @@ class Tournament extends Ork3 {
 		$lr_matches = (int)($wr1_count / 2);
 		for ($lr_round = 1; $lr_round <= ($wr_rounds - 1) * 2; $lr_round++) {
 			for ($m = 1; $m <= $lr_matches; $m++) {
-				$this->insert_match($bracket_id, $tournament_id, $lr_round, $m, $order++, 0, 0, 'losers');
+				$rows[] = [$bracket_id, $tournament_id, $lr_round, $m, $order++, 0, 0, 'losers'];
 			}
 			if ($lr_round % 2 === 0) $lr_matches = max(1, $lr_matches / 2);
 		}
 
 		// Grand final
-		$this->insert_match($bracket_id, $tournament_id, 1, 1, $order, 0, 0, 'grand-final');
+		$rows[] = [$bracket_id, $tournament_id, 1, 1, $order, 0, 0, 'grand-final'];
+		$this->insert_matches_batch($rows);
+
+		// Auto-resolve first-round byes so a non-power-of-two field advances and completes.
+		// (Byes route no loser into the losers bracket, so this only advances the present seed.)
+		$this->autoResolveElimByes($bracket_id, $tournament_id);
 	}
 
 	/**
@@ -2714,19 +3265,15 @@ class Tournament extends Ork3 {
 		if ($bye) $pids[] = 0;
 
 		$order = 1;
+		$rows = [];
+		$has_bye_match = false;
 		// Round 1: random (already shuffled by caller)
 		$pairs = array_chunk($pids, 2);
 		$match_num = 1;
 		foreach ($pairs as $pair) {
 			$p1 = $pair[0] ?? 0; $p2 = $pair[1] ?? 0;
-			$this->insert_match($bracket_id, $tournament_id, 1, $match_num++, $order++, $p1, $p2, 'winners');
-			// Auto-complete bye matches so they count in standings from round 1
-			if ($p1 > 0 && $p2 === 0) {
-				$bm = (int)$this->db->GetLastInsertId();
-				if ($bm > 0) {
-					$this->db->query("UPDATE " . DB_PREFIX . "match SET result = '1-wins' WHERE match_id = $bm");
-				}
-			}
+			$rows[] = [$bracket_id, $tournament_id, 1, $match_num++, $order++, $p1, $p2, 'winners'];
+			if ($p1 > 0 && $p2 === 0) $has_bye_match = true;
 		}
 
 		// Rounds 2+ are placeholder matches (pairings computed dynamically on result entry)
@@ -2734,8 +3281,21 @@ class Tournament extends Ork3 {
 			$match_num = 1;
 			$per_round = (int)floor(($bye ? count($pids) : $n) / 2);
 			for ($m = 0; $m < $per_round; $m++) {
-				$this->insert_match($bracket_id, $tournament_id, $round, $match_num++, $order++, 0, 0, 'winners');
+				$rows[] = [$bracket_id, $tournament_id, $round, $match_num++, $order++, 0, 0, 'winners'];
 			}
+		}
+		$this->insert_matches_batch($rows);
+
+		// Auto-complete round-1 bye matches so they count in standings from round 1.
+		// Round-1 byes are the only matches with participant_1_id > 0 AND participant_2_id = 0
+		// (rounds 2+ are all 0-vs-0 placeholders), so this set-based update targets exactly
+		// the rows the former per-row GetLastInsertId UPDATE did.
+		if ($has_bye_match) {
+			$bid = (int)$bracket_id;
+			$this->db->query(
+				"UPDATE " . DB_PREFIX . "match SET result = '1-wins'
+				 WHERE bracket_id = $bid AND round = 1 AND participant_1_id > 0 AND participant_2_id = 0"
+			);
 		}
 	}
 
@@ -2752,6 +3312,7 @@ class Tournament extends Ork3 {
 		$fixed = $pids[0];
 		$rot   = array_slice($pids, 1);
 		$order = 1;
+		$rows  = [];
 
 		for ($round = 1; $round < $cnt; $round++) {
 			$current = array_merge([$fixed], $rot);
@@ -2759,12 +3320,21 @@ class Tournament extends Ork3 {
 			for ($i = 0; $i < $cnt / 2; $i++) {
 				$p1 = $current[$i];
 				$p2 = $current[$cnt - 1 - $i];
-				if ($p1 === 0 || $p2 === 0) continue; // skip bye slots
-				$this->insert_match($bracket_id, $tournament_id, $round, $match_num++, $order++, $p1, $p2, 'winners');
+				if ($p1 === 0 || $p2 === 0) {
+					// Odd field: write a real bye match (participant_2_id = 0) so the Byes
+					// column in GetStandings is populated. Left unresolved so it does NOT
+					// count as a win (round-robin byes are not wins); the completion check
+					// ignores it since it requires both participants > 0.
+					$real = ($p1 !== 0) ? $p1 : $p2;
+					$rows[] = [$bracket_id, $tournament_id, $round, $match_num++, $order++, $real, 0, 'winners'];
+					continue;
+				}
+				$rows[] = [$bracket_id, $tournament_id, $round, $match_num++, $order++, $p1, $p2, 'winners'];
 			}
 			// Rotate: move last element of $rot to front
 			array_unshift($rot, array_pop($rot));
 		}
+		$this->insert_matches_batch($rows);
 	}
 
 	/**
@@ -2795,6 +3365,79 @@ class Tournament extends Ork3 {
 	}
 
 	/**
+	 * Standard recursive bracket-seed ordering for a field of $slots (a power of two).
+	 * Returns the 1-indexed seed positions laid out so that adjacent match-pairs
+	 * converge correctly — i.e. the top two seeds cannot meet before the final and
+	 * byes (padded onto the lowest seeds) fall opposite the highest seeds. For 8
+	 * slots this yields [1,8,5,4,3,6,7,2] ... (seedOrder), consumed two-at-a-time as
+	 * round-1 match pairings.
+	 */
+	private function bracket_seed_order($slots) {
+		$rounds = (int)round(log(max(1, $slots), 2));
+		$seeds = [1];
+		for ($r = 0; $r < $rounds; $r++) {
+			$next = [];
+			$sum = count($seeds) * 2 + 1;
+			foreach ($seeds as $s) {
+				$next[] = $s;
+				$next[] = $sum - $s;
+			}
+			$seeds = $next;
+		}
+		return $seeds; // 1-indexed seed positions, length $slots
+	}
+
+	/**
+	 * Builds round-1 [p1, p2] pairings from a seed-ordered, bye-padded participant id
+	 * list using the standard bracket-seed ordering (see bracket_seed_order). $pids is
+	 * indexed by seed-1 (index 0 = the top seed), padded to a power of two with 0 (byes).
+	 */
+	private function build_round1_pairs(array $pids, $slots) {
+		$order = $this->bracket_seed_order($slots);
+		$pairs = [];
+		for ($i = 0; $i < count($order); $i += 2) {
+			$a = $order[$i] - 1;      // seed position → 0-based index into $pids
+			$b = $order[$i + 1] - 1;
+			$pairs[] = [$pids[$a] ?? 0, $pids[$b] ?? 0];
+		}
+		return $pairs;
+	}
+
+	/**
+	 * autoResolveElimByes($bracket_id, $tournament_id)
+	 * Auto-resolves every first-round elimination bye (a winners-round-1 match with
+	 * exactly one real participant and a 0/bye on the other side): records the win for
+	 * the present participant and runs the shared advancement engine so the byed seed
+	 * moves into round 2. Mirrors the Swiss bye auto-win so non-power-of-two single/
+	 * double-elim fields can complete. Standard bracket seeding guarantees byes never
+	 * meet each other in round 1, so a single round-1 pass is sufficient (every later
+	 * slot is fed by a match that produces a real winner). Runs inside the generation
+	 * transaction managed by GenerateMatches.
+	 */
+	private function autoResolveElimByes($bracket_id, $tournament_id) {
+		$r = $this->db->query("SELECT match_id, participant_1_id, participant_2_id
+			FROM " . DB_PREFIX . "match
+			WHERE bracket_id = $bracket_id AND bracket_side = 'winners' AND round = 1
+			  AND (result IS NULL OR result = '')
+			  AND ((participant_1_id > 0 AND participant_2_id = 0)
+			    OR (participant_1_id = 0 AND participant_2_id > 0))");
+		$byes = [];
+		if ($r && $r->size() > 0) {
+			while ($r->next()) {
+				$byes[] = [(int)$r->match_id, (int)$r->participant_1_id, (int)$r->participant_2_id];
+			}
+		}
+		foreach ($byes as [$mid, $p1, $p2]) {
+			$res = ($p1 > 0) ? '1-wins' : '2-wins';
+			$this->db->query("UPDATE " . DB_PREFIX . "match SET result = '$res', auto_resolved = 1
+				WHERE match_id = $mid AND (result IS NULL OR result = '')");
+			// loser_id is 0 for a bye, so applyAdvancement only advances the present seed
+			// (no losers-bracket routing, no elimination).
+			$this->applyAdvancement($bracket_id, $tournament_id, $mid);
+		}
+	}
+
+	/**
 	 * CreateConfirmationMatch($request)
 	 * In double-elimination, when the Second Chance (LB) winner wins the Grand Final
 	 * (result = '2-wins'), creates a second Grand Final match so the WB champion
@@ -2807,6 +3450,7 @@ class Tournament extends Ork3 {
 
 		$bracket_id = (int)($request['BracketId'] ?? 0);
 		if (!valid_id($bracket_id)) return InvalidParameter('BracketId required');
+		if (!$this->bracketBelongsTo($bracket_id, (int)($request['TournamentId'] ?? 0))) return InvalidParameter('Bracket does not belong to this tournament.');
 
 		$this->Bracket->clear();
 		$this->Bracket->bracket_id = $bracket_id;
@@ -2836,6 +3480,8 @@ class Tournament extends Ork3 {
 		// Use max(order)+1 so the confirmation match sorts after all existing matches
 		$maxOrd = $this->db->query('SELECT MAX(`order`) AS m FROM ' . DB_PREFIX . 'match WHERE bracket_id = ' . $bracket_id);
 		$next_order = ($maxOrd && $maxOrd->next() && $maxOrd->m !== null) ? (int)$maxOrd->m + 1 : 1;
+		// Clear stale PDO bindings left by the yapo find() above before the raw insert/update.
+		$this->db->Clear();
 		$this->insert_match($bracket_id, $tournament_id, 2, 1, $next_order, $gf_p1, $gf_p2, 'grand-final');
 		$new_id = (int)$this->db->GetLastInsertId();
 		if (!valid_id($new_id)) return InvalidParameter('Failed to create match record');
@@ -2885,20 +3531,28 @@ class Tournament extends Ork3 {
 		$maxRings = ($br && $br->next()) ? max(1, (int)$br->rings) : 1;
 		if ($ring_number > $maxRings) return InvalidParameter('RingNumber exceeds bracket ring count');
 
-		// Fight number = atomic MAX(order)+1; the denormalized stat updates run in the
-		// same transaction so wins/streaks stay consistent under the constant concurrent
-		// recording an ironman generates. Participant rows are updated in ascending id
-		// order so two ring recorders can't deadlock.
+		$action_id = substr(trim($request['ActionId'] ?? ''), 0, 36);
+		$actor_id  = (int)Ork3::$Lib->authorization->IsAuthorized($request['Token'] ?? '');
+
+		// Fight number = MAX(order)+1. We deliberately do NOT range-lock the bracket
+		// (the old `FOR UPDATE` gap-locked every match row, serializing all rings and
+		// killing multi-ring KITH throughput). `order` carries no unique constraint and
+		// nothing but display sort depends on it, so a rare same-instant collision across
+		// two rings is cosmetic; the AUTO_INCREMENT match_id is the authoritative
+		// monotonic tiebreak (used below and in the current-king lookup). The denormalized
+		// stat updates still run in the transaction so wins/streaks stay consistent, and
+		// participant rows are updated in ascending id order so two recorders can't deadlock.
 		$this->db->query('START TRANSACTION');
 		try {
-			$cnt_r     = $this->db->query("SELECT COALESCE(MAX(`order`),0)+1 AS next_ord FROM " . DB_PREFIX . "match WHERE bracket_id = $bracket_id FOR UPDATE");
+			$cnt_r     = $this->db->query("SELECT COALESCE(MAX(`order`),0)+1 AS next_ord FROM " . DB_PREFIX . "match WHERE bracket_id = $bracket_id");
 			$fight_num = ($cnt_r && $cnt_r->next()) ? (int)$cnt_r->next_ord : 1;
 
 			// Previous king of this ring = last recorded winner in it. A different winner
-			// now dethrones them, resetting that fighter's current streak.
+			// now dethrones them, resetting that fighter's current streak. Order by match_id
+			// as well so the "latest" fight is deterministic even if two share an order value.
 			$pk = $this->db->query("SELECT participant_1_id FROM " . DB_PREFIX . "match
 				WHERE bracket_id = $bracket_id AND ring_number = $ring_number AND result IS NOT NULL AND result != ''
-				ORDER BY `order` DESC LIMIT 1");
+				ORDER BY `order` DESC, match_id DESC LIMIT 1");
 			$prev_king = ($pk && $pk->next()) ? (int)$pk->participant_1_id : 0;
 			$dethroned = ($prev_king > 0 && $prev_king !== $winner_id) ? $prev_king : 0;
 
@@ -2926,12 +3580,24 @@ class Tournament extends Ork3 {
 			$win_total = 0; $win_streak = 0;
 			if ($ws && $ws->next()) { $win_total = (int)$ws->im_wins; $win_streak = (int)$ws->im_current_streak; }
 
+			// A fight has now been recorded, so the bracket is under way — flip it out of
+			// setup. Guarded so a bracket already 'active'/'complete'/'paused' is untouched.
+			$this->db->query("UPDATE " . DB_PREFIX . "bracket SET status = 'active' WHERE bracket_id = $bracket_id AND status IN ('setup','')");
+
+			$seq = $this->tnEmitEvent($tournament_id, $bracket_id, 'ironman_win', [
+				'winner_id' => $winner_id,
+				'loser_id'  => $loser_id,
+				'fight_num' => $fight_num,
+				'ring'      => $ring_number,
+			], $actor_id, $action_id !== '' ? $action_id : null);
+
 			$this->db->query('COMMIT');
 		} catch (\Throwable $e) {
 			$this->db->query('ROLLBACK');
 			throw $e;
 		}
 
+		$this->tnPublishSeq($tournament_id, $seq);
 		return Success([
 			'FightNum'     => $fight_num,
 			'WinnerId'     => $winner_id,
@@ -2940,6 +3606,7 @@ class Tournament extends Ork3 {
 			'DethronedId'  => $dethroned,
 			'KingChanged'  => ($prev_king !== $winner_id) ? 1 : 0,
 			'RingNumber'   => $ring_number,
+			'Seq'          => $seq,
 		]);
 	}
 
@@ -3011,8 +3678,8 @@ class Tournament extends Ork3 {
 				$i++;
 				$seedVal = ($seeding === 'manual') ? $i : 0;
 				$this->db->query("INSERT INTO " . DB_PREFIX . "participant
-					(tournament_id, bracket_id, alias, unit_id, park_id, kingdom_id, participant_number, seed)
-					SELECT tournament_id, $new_bid, alias, unit_id, park_id, kingdom_id, participant_number, $seedVal
+					(tournament_id, bracket_id, alias, unit_id, park_id, kingdom_id, participant_number, seed, warrior_level, griffon_level)
+					SELECT tournament_id, $new_bid, alias, unit_id, park_id, kingdom_id, participant_number, $seedVal, warrior_level, griffon_level
 					FROM " . DB_PREFIX . "participant WHERE participant_id = $pid AND tournament_id = $tid");
 				$new_pid = (int)$this->db->GetLastInsertId();
 				if ($new_pid > 0) {
@@ -3047,6 +3714,7 @@ class Tournament extends Ork3 {
 
 		$bracket_id = (int)($request['BracketId'] ?? 0);
 		if (!valid_id($bracket_id)) return InvalidParameter('BracketId required');
+		if (!$this->bracketBelongsTo($bracket_id, (int)($request['TournamentId'] ?? 0))) return InvalidParameter('Bracket does not belong to this tournament.');
 
 		$tournament_id = (int)($request['TournamentId'] ?? 0);
 
@@ -3092,6 +3760,8 @@ class Tournament extends Ork3 {
 		// Insert tiebreaker match
 		$maxOrd = $this->db->query('SELECT MAX(`order`) AS m FROM ' . DB_PREFIX . 'match WHERE bracket_id = ' . $bracket_id);
 		$next_order = ($maxOrd && $maxOrd->next() && $maxOrd->m !== null) ? (int)$maxOrd->m + 1 : 1;
+		// Clear stale PDO bindings left by the yapo find() above before the raw insert/update.
+		$this->db->Clear();
 		$this->insert_match($bracket_id, $tournament_id, $max_round, 1, $next_order, $losers[0], $losers[1], 'tiebreaker-3rd');
 		$new_id = (int)$this->db->GetLastInsertId();
 		if (!valid_id($new_id)) return InvalidParameter('Failed to create match record');
@@ -3114,6 +3784,7 @@ class Tournament extends Ork3 {
 
 		$bracket_id = (int)($request['BracketId'] ?? 0);
 		if (!valid_id($bracket_id)) return InvalidParameter('BracketId required');
+		if (!$this->bracketBelongsTo($bracket_id, (int)($request['TournamentId'] ?? 0))) return InvalidParameter('Bracket does not belong to this tournament.');
 
 		$unresolved = $this->db->query("SELECT COUNT(*) AS cnt FROM " . DB_PREFIX . "match WHERE bracket_id = $bracket_id AND (result IS NULL OR result = '') AND participant_1_id > 0 AND participant_2_id > 0 AND voided = 0");
 		if ($unresolved && $unresolved->next() && (int)$unresolved->cnt > 0) {
@@ -3173,6 +3844,7 @@ class Tournament extends Ork3 {
 
 		$bracket_id = (int)($request['BracketId'] ?? 0);
 		if (!valid_id($bracket_id)) return InvalidParameter('BracketId required');
+		if (!$this->bracketBelongsTo($bracket_id, (int)($request['TournamentId'] ?? 0))) return InvalidParameter('Bracket does not belong to this tournament.');
 
 		$tournament_id = (int)($request['TournamentId'] ?? 0);
 
@@ -3202,7 +3874,9 @@ class Tournament extends Ork3 {
 		// because the match table doesn't carry a best_of column — the bracket-level
 		// best_of applies at result-recording time. We don't need to copy it here.
 
-		// Insert one match per pair of tied players
+		// Insert one match per pair of tied players. Clear stale PDO bindings left by
+		// the yapo find() above before the raw inserts.
+		$this->db->Clear();
 		$match_num = 1;
 		$count = count($tied);
 		for ($i = 0; $i < $count; $i++) {
@@ -3233,6 +3907,7 @@ class Tournament extends Ork3 {
 
 		$bracket_id = (int)($request['BracketId'] ?? 0);
 		if (!valid_id($bracket_id)) return InvalidParameter('BracketId required');
+		if (!$this->bracketBelongsTo($bracket_id, (int)($request['TournamentId'] ?? 0))) return InvalidParameter('Bracket does not belong to this tournament.');
 
 		$this->Bracket->clear();
 		$this->Bracket->bracket_id = $bracket_id;
@@ -3246,6 +3921,8 @@ class Tournament extends Ork3 {
 			return InvalidParameter('Cannot decline tiebreaker with unresolved matches (' . (int)$unresolved->cnt . ' remaining)');
 		}
 
+		// Clear stale PDO bindings left by the yapo find() above before the raw update.
+		$this->db->Clear();
 		$this->db->query("UPDATE " . DB_PREFIX . "bracket SET tiebreaker_declined = 1, status = 'finalized' WHERE bracket_id = $bracket_id");
 
 		return Success($bracket_id);
@@ -3291,6 +3968,7 @@ class Tournament extends Ork3 {
 
 		$bracket_id = (int)($request['BracketId'] ?? 0);
 		if (!valid_id($bracket_id)) return InvalidParameter('BracketId required');
+		if (!$this->bracketBelongsTo($bracket_id, (int)($request['TournamentId'] ?? 0))) return InvalidParameter('Bracket does not belong to this tournament.');
 
 		$order = $request['Order'] ?? null;
 		if (!is_array($order)) return InvalidParameter('Invalid order data.');
@@ -3374,6 +4052,10 @@ class Tournament extends Ork3 {
 		$brow && $brow->next();
 		$b_tid  = $brow ? (int)$brow->tournament_id : $tournament_id;
 		$method = $brow ? (string)$brow->method : '';
+
+		// Guard against cross-tournament IDOR: check_auth authorized against the request
+		// TournamentId, so the bracket that actually owns this participant must match it.
+		if ($b_tid !== $tournament_id) return InvalidParameter('Bracket does not belong to this tournament.');
 
 		$this->db->query('START TRANSACTION');
 		try {
@@ -3735,12 +4417,26 @@ class Tournament extends Ork3 {
 		$mr = $this->db->query("SELECT mundane_id FROM " . DB_PREFIX . "mundane WHERE mundane_id = $mundane_id LIMIT 1");
 		if (!$mr || $mr->size() === 0) return InvalidParameter('Player not found');
 
-		$this->db->query(
-			"INSERT INTO " . DB_PREFIX . "tournament_reeve (tournament_id, mundane_id, role)
-				VALUES (:tid, :mid, :role)
-				ON DUPLICATE KEY UPDATE role = :role2",
-			[':tid' => $tournament_id, ':mid' => $mundane_id, ':role' => $role, ':role2' => $role]
-		);
+		$actor_id = (int)Ork3::$Lib->authorization->IsAuthorized($request['Token'] ?? '');
+		$this->db->query('START TRANSACTION');
+		try {
+			$this->db->query(
+				"INSERT INTO " . DB_PREFIX . "tournament_reeve (tournament_id, mundane_id, role)
+					VALUES (:tid, :mid, :role)
+					ON DUPLICATE KEY UPDATE role = :role2",
+				[':tid' => $tournament_id, ':mid' => $mundane_id, ':role' => $role, ':role2' => $role]
+			);
+			// Audit / live-collab change-log entry so peers see the reeve roster change.
+			$seq = $this->tnEmitEvent($tournament_id, 0, 'reeve_added', [
+				'mundane_id' => $mundane_id,
+				'role'       => $role,
+			], $actor_id);
+			$this->db->query('COMMIT');
+		} catch (\Throwable $e) {
+			$this->db->query('ROLLBACK');
+			throw $e;
+		}
+		$this->tnPublishSeq($tournament_id, $seq);
 		return Success(['MundaneId' => $mundane_id, 'Role' => $role]);
 	}
 
@@ -3756,10 +4452,23 @@ class Tournament extends Ork3 {
 		if (!valid_id($tournament_id)) return InvalidParameter('TournamentId required');
 		if (!valid_id($mundane_id))    return InvalidParameter('MundaneId required');
 
-		$this->db->query(
-			"DELETE FROM " . DB_PREFIX . "tournament_reeve WHERE tournament_id = :tid AND mundane_id = :mid",
-			[':tid' => $tournament_id, ':mid' => $mundane_id]
-		);
+		$actor_id = (int)Ork3::$Lib->authorization->IsAuthorized($request['Token'] ?? '');
+		$this->db->query('START TRANSACTION');
+		try {
+			$this->db->query(
+				"DELETE FROM " . DB_PREFIX . "tournament_reeve WHERE tournament_id = :tid AND mundane_id = :mid",
+				[':tid' => $tournament_id, ':mid' => $mundane_id]
+			);
+			// Audit / live-collab change-log entry so peers see the reeve roster change.
+			$seq = $this->tnEmitEvent($tournament_id, 0, 'reeve_removed', [
+				'mundane_id' => $mundane_id,
+			], $actor_id);
+			$this->db->query('COMMIT');
+		} catch (\Throwable $e) {
+			$this->db->query('ROLLBACK');
+			throw $e;
+		}
+		$this->tnPublishSeq($tournament_id, $seq);
 		return Success(['MundaneId' => $mundane_id]);
 	}
 
@@ -3854,6 +4563,18 @@ class Tournament extends Ork3 {
 		$tournament_id = (int)($request['TournamentId'] ?? 0);
 		if (!valid_id($tournament_id)) return InvalidParameter('TournamentId required');
 
+		// The signature below scans every match + participant row for the tournament,
+		// which is wasteful to repeat on each spectator poll. Cache it for a few seconds:
+		// spectators already poll on that cadence, any mutation is still reflected within
+		// the TTL, and a cache miss simply recomputes. Best-effort — never fatal.
+		$cacheName = 'tnver.' . $tournament_id;
+		try {
+			if (isset(Ork3::$Lib->ghettocache)) {
+				$cachedSig = Ork3::$Lib->ghettocache->counterGet($cacheName);
+				if (is_string($cachedSig) && $cachedSig !== '') return Success(['Version' => $cachedSig]);
+			}
+		} catch (\Throwable $e) { /* fall through to recompute */ }
+
 		// Match-state component (result/score edits, resets, new matches).
 		$mc = 0; $msum = 0;
 		$mr = $this->db->query(
@@ -3876,6 +4597,13 @@ class Tournament extends Ork3 {
 		if ($pr && $pr->next()) { $pc = (int)$pr->pc; $psum = (string)$pr->psum; }
 
 		$sig = md5("{$mc}:{$msum}|{$bsig}|{$pc}:{$psum}");
+
+		// Short TTL so bursts of spectator polls hit the cache; mutations still surface
+		// within a few seconds. Best-effort — cache is an accelerator, DB is truth.
+		try {
+			if (isset(Ork3::$Lib->ghettocache)) Ork3::$Lib->ghettocache->counterSet($cacheName, $sig, 3);
+		} catch (\Throwable $e) { /* ignore cache write failures */ }
+
 		return Success(['Version' => $sig]);
 	}
 
@@ -3887,14 +4615,31 @@ class Tournament extends Ork3 {
 	public function GetSeq($request) {
 		$tournament_id = (int)($request['TournamentId'] ?? 0);
 		if (!valid_id($tournament_id)) return InvalidParameter('TournamentId required');
+		// The client may pass its last-known seq so we can detect a counter that has gone
+		// backwards (see the resync note below).
+		$known = (int)($request['Known'] ?? 0);
 
 		$seq = Ork3::$Lib->ghettocache->counterGet('tnseq.' . $tournament_id);
 		if ($seq === false || $seq === null) {
+			// Cache miss — cold start, TTL expiry, OR a global Memcache flush wiped the
+			// mirror. The ork_tournament_seq row is the persistent source of truth and
+			// survives a flush, so reload from it and repopulate the mirror; the cursor
+			// itself is never lost to a cache flush.
 			$sr  = $this->db->query("SELECT last_seq FROM " . DB_PREFIX . "tournament_seq WHERE tournament_id = $tournament_id");
 			$seq = ($sr && $sr->next()) ? (int)$sr->last_seq : 0;
 			Ork3::$Lib->ghettocache->counterSet('tnseq.' . $tournament_id, $seq, 60);
 		}
-		return Success(['Seq' => (int)$seq]);
+		$seq = (int)$seq;
+
+		// Self-heal signal: if the caller is already ahead of the authoritative cursor, the
+		// seq was reset out from under it (e.g. the tournament's seq row was rebuilt after a
+		// flush, or a stale-low cache value). Tell the client to fall back to a full resync
+		// rather than silently stalling on events it can never receive. The tpl client acts
+		// on this flag; older clients that don't send Known are unaffected.
+		if ($known > 0 && $seq < $known) {
+			return Success(['Seq' => $seq, 'Resync' => true]);
+		}
+		return Success(['Seq' => $seq]);
 	}
 
 	/**
@@ -3919,15 +4664,18 @@ class Tournament extends Ork3 {
 			return Success(['Resync' => true, 'Seq' => $high]);
 		}
 
+		$limit = 500;
 		$rows = $this->db->query(
 			"SELECT seq, bracket_id, type, payload, actor_id, actor_name, action_id
 			   FROM " . DB_PREFIX . "tournament_event
 			  WHERE tournament_id = $tournament_id AND seq > $since
-			  ORDER BY seq ASC LIMIT 500"
+			  ORDER BY seq ASC LIMIT $limit"
 		);
-		$events = [];
+		$events  = [];
+		$lastSeq = $since;
 		if ($rows) {
 			while ($rows->next()) {
+				$lastSeq  = (int)$rows->seq;
 				$events[] = [
 					'Seq'       => (int)$rows->seq,
 					'BracketId' => $rows->bracket_id !== null ? (int)$rows->bracket_id : null,
@@ -3939,7 +4687,13 @@ class Tournament extends Ork3 {
 				];
 			}
 		}
-		return Success(['Events' => $events, 'Seq' => $high]);
+
+		// Truncation guard: if this batch filled the LIMIT and more events remain past the
+		// last one returned, report the last DELIVERED seq — NOT the high-water mark — so the
+		// client's next poll resumes from there and picks up the remainder. Reporting $high
+		// here would make the client believe it caught up and silently skip events 501+.
+		$reportSeq = (count($events) >= $limit && $lastSeq < $high) ? $lastSeq : $high;
+		return Success(['Events' => $events, 'Seq' => $reportSeq]);
 	}
 
 
@@ -3959,6 +4713,7 @@ class Tournament extends Ork3 {
 		if (!valid_id($bracket_id) || !valid_id($participant_id) || $round < 1) {
 			return InvalidParameter('BracketId, ParticipantId, Round required.');
 		}
+		if (!$this->bracketBelongsTo($bracket_id, (int)($request['TournamentId'] ?? 0))) return InvalidParameter('Bracket does not belong to this tournament.');
 
 		$this->Bracket->clear();
 		$this->Bracket->bracket_id = $bracket_id;
@@ -3993,7 +4748,8 @@ class Tournament extends Ork3 {
 			$pointsValue = number_format($f, 2, '.', '');
 		}
 
-		$scoredBy = (int)($this->session->player_id ?? 0);
+		// Resolve the actor from the auth token — the lib layer has no session accessor.
+		$scoredBy = (int)Ork3::$Lib->authorization->IsAuthorized($request['Token'] ?? '');
 		$scoredByClause = $scoredBy > 0 ? $scoredBy : 'NULL';
 		$pointsClause = ($pointsValue === null) ? 'NULL' : "'$pointsValue'";
 
@@ -4007,6 +4763,14 @@ class Tournament extends Ork3 {
 				scored_by = $scoredByClause";
 		$this->db->query($sql);
 
+		$action_id = substr(trim($request['ActionId'] ?? ''), 0, 36);
+		$tournament_id = (int)($request['TournamentId'] ?? 0);
+		$seq = $this->tnEmitEvent($tournament_id, $bracket_id, 'point_score', [
+			'participant_id' => $participant_id,
+			'round'          => $round,
+			'points'         => $pointsValue,
+		], $scoredBy, $action_id !== '' ? $action_id : null);
+
 		$standings = $this->GetPointStandings(['BracketId' => $bracket_id]);
 		$detail = [
 			'Cell' => [
@@ -4015,8 +4779,10 @@ class Tournament extends Ork3 {
 				'Points'        => $pointsValue,
 			],
 			'Standings' => $standings['Detail'] ?? [],
+			'Seq'       => $seq,
 		];
 		$this->bustTournamentReportCache();
+		$this->tnPublishSeq($tournament_id, $seq);
 		return Success($detail);
 	}
 
@@ -4027,6 +4793,7 @@ class Tournament extends Ork3 {
 		if (!$this->check_auth($request)) return NoAuthorization();
 		$bracket_id = (int)($request['BracketId'] ?? 0);
 		if (!valid_id($bracket_id)) return InvalidParameter('BracketId required.');
+		if (!$this->bracketBelongsTo($bracket_id, (int)($request['TournamentId'] ?? 0))) return InvalidParameter('Bracket does not belong to this tournament.');
 
 		$this->Bracket->clear();
 		$this->Bracket->bracket_id = $bracket_id;
@@ -4040,8 +4807,16 @@ class Tournament extends Ork3 {
 		$this->db->Clear();
 		$this->db->query("UPDATE " . DB_PREFIX . "bracket SET point_rounds = $new WHERE bracket_id = $bracket_id");
 
+		$action_id = substr(trim($request['ActionId'] ?? ''), 0, 36);
+		$actor_id  = (int)Ork3::$Lib->authorization->IsAuthorized($request['Token'] ?? '');
+		$tournament_id = (int)($request['TournamentId'] ?? 0);
+		$seq = $this->tnEmitEvent($tournament_id, $bracket_id, 'points_round', [
+			'point_rounds' => $new,
+		], $actor_id, $action_id !== '' ? $action_id : null);
+
 		$this->bustTournamentReportCache();
-		return Success(['PointRounds' => $new]);
+		$this->tnPublishSeq($tournament_id, $seq);
+		return Success(['PointRounds' => $new, 'Seq' => $seq]);
 	}
 
 	/**
@@ -4081,9 +4856,13 @@ class Tournament extends Ork3 {
 			];
 		}
 
-		$sr = $this->db->query("SELECT participant_id, round, points
+		// Defensive dedupe: GROUP BY (participant_id, round) so a duplicate cell (should the
+		// UNIQUE(bracket_id, participant_id, round) constraint be missing) can't double-count
+		// into Total. MAX(points) prefers a scored value over a NULL placeholder.
+		$sr = $this->db->query("SELECT participant_id, round, MAX(points) AS points
 			FROM " . DB_PREFIX . "point_score
-			WHERE bracket_id = $bracket_id");
+			WHERE bracket_id = $bracket_id
+			GROUP BY participant_id, round");
 		if ($sr) while ($sr->next()) {
 			$pid = (int)$sr->participant_id;
 			$rnd = (int)$sr->round;

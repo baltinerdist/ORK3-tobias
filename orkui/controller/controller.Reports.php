@@ -136,6 +136,15 @@ class Controller_Reports extends Controller {
 		if (isset($this->request->KingdomId)) { $type = 'Kingdom'; $id = (int)$this->request->KingdomId; $this->data['page_title'] = "Kingdom Tournament Report"; }
 		if (isset($this->request->ParkId))    { $type = 'Park';    $id = (int)$this->request->ParkId;    $this->data['page_title'] = "Park Tournament Report"; }
 
+		// Require a Kingdom or Park scope: an unscoped/AllTime report fans placement
+		// resolution across every bracket in the program and is admin-only.
+		$_uid = isset($this->session->user_id) ? (int)$this->session->user_id : 0;
+		$_isOrkAdmin = $_uid > 0 && Ork3::$Lib->authorization->HasAuthority($_uid, AUTH_ADMIN, 0, AUTH_ADMIN);
+		if ($type === '' && !$_isOrkAdmin) {
+			header('Location: ' . UIR);
+			exit;
+		}
+
 		$dateFrom = isset($this->request->DateFrom) ? preg_replace('/[^0-9-]/','',$this->request->DateFrom) : '';
 		$dateTo   = isset($this->request->DateTo)   ? preg_replace('/[^0-9-]/','',$this->request->DateTo)   : '';
 		// Default to the last six months on a fresh load. An explicit AllTime flag

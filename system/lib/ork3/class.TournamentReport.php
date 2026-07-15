@@ -11,6 +11,11 @@
  */
 class TournamentReport extends Ork3 {
 
+	/** Per-request placements memo: bracket_id => GetBracketPlacements result. Lets
+	 * GetFighterLeaderboard and GetTournamentParkComparison (which resolve the SAME set
+	 * of completed individual brackets) share one resolution pass within a request. */
+	private $placementsMemo = [];
+
 	public function __construct() {
 		parent::__construct();
 	}
@@ -27,6 +32,7 @@ class TournamentReport extends Ork3 {
 	public function GetBracketPlacements($request) {
 		$bracket_id = (int)($request['BracketId'] ?? 0);
 		if (!valid_id($bracket_id)) return ['Placements' => [], 'Status' => InvalidParameter('BracketId required')];
+		if (isset($this->placementsMemo[$bracket_id])) return $this->placementsMemo[$bracket_id];
 
 		$brow = $this->db->query("SELECT method FROM " . DB_PREFIX . "bracket WHERE bracket_id = $bracket_id");
 		if ($brow === false || $brow->size() === 0) return ['Placements' => [], 'Status' => InvalidParameter('Bracket not found')];
@@ -41,7 +47,25 @@ class TournamentReport extends Ork3 {
 			$placements = $this->placementsFromStandings($bracket_id);
 		}
 
-		return ['BracketId' => $bracket_id, 'Method' => $method, 'Placements' => $placements, 'Status' => Success()];
+		$result = ['BracketId' => $bracket_id, 'Method' => $method, 'Placements' => $placements, 'Status' => Success()];
+		$this->placementsMemo[$bracket_id] = $result;
+		return $result;
+	}
+
+	/**
+	 * Batched placements for many brackets: [bracket_id => GetBracketPlacements result].
+	 * Shares the per-request memo so a bracket resolved for one report section is not
+	 * re-resolved for another (GetFighterLeaderboard / GetTournamentParkComparison /
+	 * GetTeamChampions all funnel through here).
+	 */
+	public function GetBracketPlacementsBatch(array $bracketIds) {
+		$out = [];
+		foreach ($bracketIds as $bid) {
+			$bid = (int)$bid;
+			if ($bid <= 0 || isset($out[$bid])) continue;
+			$out[$bid] = $this->GetBracketPlacements(['BracketId' => $bid]);
+		}
+		return $out;
 	}
 
 	/**
@@ -85,10 +109,26 @@ class TournamentReport extends Ork3 {
 			$b  = (int)$t3->participant_2_id;
 			$w3 = $this->matchWinner($a, $b, $t3->result);
 			if ($w3 > 0 && !in_array($w3, $ordered, true)) $ordered[] = $w3;
+		} elseif ($method === 'double') {
+			// Double-elim without an explicit 3rd-place match: 3rd = the loser of the
+			// final (highest-round) losers-bracket match — they were eliminated last on
+			// the losers side, i.e. the true bronze finisher.
+			$lb = $this->db->query(
+				"SELECT participant_1_id, participant_2_id, result FROM " . DB_PREFIX . "match
+				 WHERE bracket_id = $bracket_id AND bracket_side = 'losers'
+				   AND result IS NOT NULL AND result <> ''
+				 ORDER BY CAST(round AS UNSIGNED) DESC, match_id DESC LIMIT 1"
+			);
+			if ($lb !== false && $lb->size() > 0) {
+				$lb->next();
+				$a  = (int)$lb->participant_1_id;
+				$b  = (int)$lb->participant_2_id;
+				$lw = $this->matchWinner($a, $b, $lb->result);
+				$ll = ($lw === $a) ? $b : $a;
+				if ($ll > 0 && !in_array($ll, $ordered, true)) $ordered[] = $ll;
+			}
 		} else {
-			// Fallback: losers of the semifinals (round before the final).
-			// 'tiebreaker-3rd' match is the reliable path; this arithmetic is best-effort
-			// for single-elim only — double-elim grand-final rounds may not be sequential.
+			// Single-elim fallback: losers of the semifinals (round before the final).
 			$final_round = (int)$r->round;
 			$semi_round  = $final_round - 1;
 			if ($semi_round >= 1) { // guard: skip if round arithmetic yields a nonsensical value
@@ -111,7 +151,13 @@ class TournamentReport extends Ork3 {
 			}
 		}
 
-		return $this->decoratePlacements($bracket_id, $ordered);
+		// Elimination places are strictly ordered (1st, 2nd, 3rd) — no ties to carry.
+		$items = [];
+		$place = 1;
+		foreach ($ordered as $pid) {
+			$items[] = ['pid' => (int)$pid, 'place' => $place++];
+		}
+		return $this->decoratePlacements($bracket_id, $items);
 	}
 
 	/** RR/Swiss/Ironman: lean on the existing ranked standings. */
@@ -120,12 +166,21 @@ class TournamentReport extends Ork3 {
 		// GetStandings returns Success($rows): { Status, Error, Detail:[ {ParticipantId, MundaneId, Rank, ...} ] }
 		// already ordered by competition Rank (wins-desc, losses-asc).
 		$rows = (is_array($res) && isset($res['Detail']) && is_array($res['Detail'])) ? $res['Detail'] : [];
-		$ordered = [];
+		// Carry the competition Rank from GetStandings so joint champions share a Place
+		// (two Rank=1 rows both render as 1st, and the next competitor is 3rd) instead of
+		// being renumbered 1/2/3 by enumeration. Rows are already Rank-ordered ascending.
+		$items = [];
+		$pos = 0;
 		foreach ($rows as $row) {
 			$pid = (int)($row['ParticipantId'] ?? 0);
-			if ($pid > 0) $ordered[] = $pid;
+			if ($pid <= 0) continue;
+			$pos++;
+			$rank = (int)($row['Rank'] ?? 0);
+			if ($rank <= 0) $rank = $pos; // fall back to positional rank when unranked
+			if ($rank > 3) break;         // nothing at/after 3rd place belongs on the podium
+			$items[] = ['pid' => $pid, 'place' => $rank];
 		}
-		return $this->decoratePlacements($bracket_id, array_slice($ordered, 0, 3));
+		return $this->decoratePlacements($bracket_id, $items);
 	}
 
 	/** Given an ordered list of participant_ids, attach Place/MundaneId/Alias.
@@ -133,8 +188,24 @@ class TournamentReport extends Ork3 {
 	 * member and the array-key overwrite would keep an arbitrary member. Instead, for
 	 * team brackets we do NOT join participant_mundane: we return the team alias with
 	 * MundaneId=0, which is the correct display for a team podium row. */
-	private function decoratePlacements($bracket_id, array $orderedPids) {
-		if (empty($orderedPids)) return [];
+	private function decoratePlacements($bracket_id, array $ordered) {
+		if (empty($ordered)) return [];
+		// Accept either bare participant-ids (Place inferred by position) or
+		// ['pid'=>int,'place'=>int] items that carry an explicit competition rank
+		// (so tied placements survive — see placementsFromStandings).
+		$items = [];
+		foreach ($ordered as $i => $o) {
+			if (is_array($o)) {
+				$pid   = (int)($o['pid'] ?? 0);
+				$place = (int)($o['place'] ?? ($i + 1));
+			} else {
+				$pid   = (int)$o;
+				$place = $i + 1;
+			}
+			if ($pid > 0) $items[] = ['pid' => $pid, 'place' => $place];
+		}
+		if (empty($items)) return [];
+		$orderedPids = array_map(fn($it) => $it['pid'], $items);
 		$idlist = implode(',', array_map('intval', $orderedPids));
 
 		// Determine whether this bracket is a team bracket.
@@ -172,11 +243,11 @@ class TournamentReport extends Ork3 {
 			}
 		}
 
-		$out   = [];
-		$place = 1;
-		foreach ($orderedPids as $pid) {
+		$out = [];
+		foreach ($items as $it) {
+			$pid = $it['pid'];
 			$out[] = [
-				'Place'         => $place++,
+				'Place'         => (int)$it['place'],
 				'ParticipantId' => (int)$pid,
 				'MundaneId'     => $lookup[$pid]['MundaneId'] ?? 0,
 				'Alias'         => $lookup[$pid]['Alias'] ?? '',
@@ -186,12 +257,58 @@ class TournamentReport extends Ork3 {
 		return $out;
 	}
 
-	/** Resolve a match winner participant_id from the result enum. 0 if no clear winner.
-	 * Mirrors class.Tournament::resolveWinnerLoser — the canonical source of truth. */
+	/**
+	 * Canonical winner-participant resolver covering EVERY ork_match.result enum value:
+	 * the short forms written today ('1-wins','2-wins','forfeit','disqualified') and the
+	 * legacy long forms preserved for old rows ('1-forfeits','2-forfeits',
+	 * '1-is-disqualified','2-is-disqualified','1-is-bye','2-is-bye'). Returns the winning
+	 * participant_id, or 0 for a tie / 'score' / unknown (no clear winner).
+	 *
+	 * "N-…" long forms name the DISADVANTAGED side (that participant forfeits, is
+	 * disqualified, or is the bye), so the OTHER participant wins. The short 'forfeit' /
+	 * 'disqualified' forms are written when participant 1 is disadvantaged, so p2 wins.
+	 * Public + static so class.TournamentExport (same bucket) shares this one mapping.
+	 */
+	public static function ResolveWinnerId($p1, $p2, $result) {
+		$p1 = (int)$p1;
+		$p2 = (int)$p2;
+		switch ((string)$result) {
+			case '1-wins':
+			case '2-forfeits':
+			case '2-is-disqualified':
+			case '2-is-bye':
+				return $p1;
+			case '2-wins':
+			case 'forfeit':
+			case 'disqualified':
+			case '1-forfeits':
+			case '1-is-disqualified':
+			case '1-is-bye':
+				return $p2;
+			default: // 'tie', 'score', '' or unknown — no clear winner
+				return 0;
+		}
+	}
+
+	/** SQL IN-list (quoted) of result enum values that mean participant_1 won. */
+	private static function sqlP1Wins()
+	{
+		return "'1-wins','2-forfeits','2-is-disqualified','2-is-bye'";
+	}
+	/** SQL IN-list (quoted) of result enum values that mean participant_2 won. */
+	private static function sqlP2Wins()
+	{
+		return "'2-wins','forfeit','disqualified','1-forfeits','1-is-disqualified','1-is-bye'";
+	}
+	/** SQL IN-list of all decisive (non-tie/non-score) result enum values. */
+	private static function sqlDecisive()
+	{
+		return self::sqlP1Wins() . ',' . self::sqlP2Wins();
+	}
+
+	/** Resolve a match winner participant_id from the result enum. 0 if no clear winner. */
 	private function matchWinner($p1, $p2, $result) {
-		if ($result === '1-wins') return (int)$p1;
-		if ($result === '2-wins' || $result === 'forfeit' || $result === 'disqualified') return (int)$p2;
-		return 0; // tie or unknown — no clear winner
+		return self::ResolveWinnerId($p1, $p2, $result);
 	}
 
 	/**
@@ -216,6 +333,11 @@ class TournamentReport extends Ork3 {
 	}
 
 	public function GetTournamentProgramStats($request) {
+		$ckey = Ork3::$Lib->ghettocache->key($request);
+		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $ckey, 300)) !== false) {
+			return $cache;
+		}
+
 		$where = $this->scopeWhere($request, 't');
 
 		$row = $this->db->query(
@@ -228,10 +350,18 @@ class TournamentReport extends Ork3 {
 		$total = $setup = $active = $complete = 0;
 		if ($row !== false && $row->size() > 0) { $row->next(); $total=(int)$row->total; $setup=(int)$row->setup; $active=(int)$row->active; $complete=(int)$row->complete; }
 
+		// avg_wl must average only INDIVIDUAL-bracket snapshots: a team-bracket
+		// participant row carries the team's SUMMED warrior_level, which would inflate
+		// the field average. The bracket LEFT JOIN is 1:1 (participant.bracket_id), so it
+		// does not fan out; the CASE keeps uniq/part_rows counting every entrant (team +
+		// unassigned included) while excluding non-individual rows from the average.
 		$prow = $this->db->query(
-			"SELECT COUNT(DISTINCT pm.mundane_id) AS uniq, AVG(NULLIF(p.warrior_level,0)) AS avg_wl, COUNT(p.participant_id) AS part_rows
+			"SELECT COUNT(DISTINCT pm.mundane_id) AS uniq,
+			        AVG(NULLIF(CASE WHEN b.participants = 'individual' THEN p.warrior_level END, 0)) AS avg_wl,
+			        COUNT(p.participant_id) AS part_rows
 			 FROM " . DB_PREFIX . "participant p
 			 JOIN " . DB_PREFIX . "tournament t ON t.tournament_id = p.tournament_id
+			 LEFT JOIN " . DB_PREFIX . "bracket b ON b.bracket_id = p.bracket_id
 			 LEFT JOIN " . DB_PREFIX . "participant_mundane pm ON pm.participant_id = p.participant_id
 			 WHERE 1 $where"
 		);
@@ -276,27 +406,35 @@ class TournamentReport extends Ork3 {
 			'Trend' => $trend,
 			'Status' => Success(),
 		];
-		return $response;
+		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $ckey, $response);
 	}
 
 	public function GetFighterLeaderboard($request) {
+		$ckey = Ork3::$Lib->ghettocache->key($request);
+		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $ckey, 300)) !== false) {
+			return $cache;
+		}
+
 		$where = $this->scopeWhere($request, 't');
+		$p1w = self::sqlP1Wins();
+		$p2w = self::sqlP2Wins();
+		$decisive = self::sqlDecisive();
 
 		// Assumes one participant row per mundane per individual bracket (the normal case); duplicate entries in a single bracket would inflate W/L.
 		$sql = "SELECT pm.mundane_id, mn.persona,
 		           COUNT(DISTINCT p.tournament_id) AS tournaments_entered,
 		           COUNT(DISTINCT p.bracket_id)    AS brackets_entered,
-		           SUM((m.participant_1_id=p.participant_id AND m.result='1-wins')
-		             OR (m.participant_2_id=p.participant_id AND m.result IN ('2-wins','forfeit','disqualified'))) AS wins,
-		           SUM((m.participant_1_id=p.participant_id AND m.result IN ('2-wins','forfeit','disqualified'))
-		             OR (m.participant_2_id=p.participant_id AND m.result='1-wins')) AS losses,
+		           SUM((m.participant_1_id=p.participant_id AND m.result IN ($p1w))
+		             OR (m.participant_2_id=p.participant_id AND m.result IN ($p2w))) AS wins,
+		           SUM((m.participant_1_id=p.participant_id AND m.result IN ($p2w))
+		             OR (m.participant_2_id=p.participant_id AND m.result IN ($p1w))) AS losses,
 		           MAX(p.im_max_streak) AS max_streak
 		       FROM " . DB_PREFIX . "participant p
 		         JOIN " . DB_PREFIX . "tournament t ON t.tournament_id = p.tournament_id
 		         JOIN " . DB_PREFIX . "bracket b ON b.bracket_id = p.bracket_id AND b.participants = 'individual'
 		         JOIN " . DB_PREFIX . "participant_mundane pm ON pm.participant_id = p.participant_id
 		         LEFT JOIN " . DB_PREFIX . "mundane mn ON mn.mundane_id = pm.mundane_id
-		         LEFT JOIN " . DB_PREFIX . "match m ON (m.participant_1_id=p.participant_id OR m.participant_2_id=p.participant_id) AND m.bracket_id=p.bracket_id
+		         LEFT JOIN " . DB_PREFIX . "match m ON (m.participant_1_id=p.participant_id OR m.participant_2_id=p.participant_id) AND m.bracket_id=p.bracket_id AND m.voided = 0
 		       WHERE 1 $where
 		       GROUP BY pm.mundane_id, mn.persona";
 		$rows = []; $mids = [];
@@ -324,28 +462,31 @@ class TournamentReport extends Ork3 {
 		$bsql = "SELECT b.bracket_id FROM " . DB_PREFIX . "bracket b
 		          JOIN " . DB_PREFIX . "tournament t ON t.tournament_id=b.tournament_id
 		          WHERE b.participants='individual' AND b.status IN ('complete','finalized') AND 1 $where";
+		$bids = [];
 		$br = $this->db->query($bsql);
-		if ($br !== false) {
-			while ($br->next()) {
-				$pl = $this->GetBracketPlacements(['BracketId' => (int)$br->bracket_id]);
-				foreach ($pl['Placements'] as $place) {
-					$mid = (int)$place['MundaneId'];
-					if ($mid < 1 || !isset($rows[$mid])) continue;
-					if ($place['Place'] === 1) $rows[$mid]['Championships']++;
-					if ($place['Place'] <= 3)  $rows[$mid]['Podiums']++;
-				}
+		if ($br !== false) { while ($br->next()) { $bids[] = (int)$br->bracket_id; } }
+		foreach ($this->GetBracketPlacementsBatch($bids) as $pl) {
+			foreach ($pl['Placements'] as $place) {
+				$mid = (int)$place['MundaneId'];
+				if ($mid < 1 || !isset($rows[$mid])) continue;
+				if ($place['Place'] === 1) $rows[$mid]['Championships']++;
+				if ($place['Place'] <= 3)  $rows[$mid]['Podiums']++;
 			}
 		}
 
 		// Upset wins: won a match where opponent's snapshot warrior_level >= mine + 3.
+		// A 0/absent snapshot is "unknown" (see #91): require both levels > 0 so an
+		// unknown baseline never fires a phantom upset.
 		$usql = "SELECT pm.mundane_id, COUNT(*) AS upsets
 		         FROM " . DB_PREFIX . "match m
 		           JOIN " . DB_PREFIX . "bracket b ON b.bracket_id=m.bracket_id AND b.participants='individual'
 		           JOIN " . DB_PREFIX . "tournament t ON t.tournament_id=b.tournament_id
-		           JOIN " . DB_PREFIX . "participant pw ON pw.participant_id = (CASE WHEN m.result='1-wins' THEN m.participant_1_id WHEN m.result IN ('2-wins','forfeit','disqualified') THEN m.participant_2_id END)
-		           JOIN " . DB_PREFIX . "participant pl ON pl.participant_id = (CASE WHEN m.result='1-wins' THEN m.participant_2_id WHEN m.result IN ('2-wins','forfeit','disqualified') THEN m.participant_1_id END)
+		           JOIN " . DB_PREFIX . "participant pw ON pw.participant_id = (CASE WHEN m.result IN ($p1w) THEN m.participant_1_id WHEN m.result IN ($p2w) THEN m.participant_2_id END)
+		           JOIN " . DB_PREFIX . "participant pl ON pl.participant_id = (CASE WHEN m.result IN ($p1w) THEN m.participant_2_id WHEN m.result IN ($p2w) THEN m.participant_1_id END)
 		           JOIN " . DB_PREFIX . "participant_mundane pm ON pm.participant_id = pw.participant_id
-		         WHERE m.result IN ('1-wins','2-wins','forfeit','disqualified') AND pl.warrior_level >= pw.warrior_level + 3 AND 1 $where
+		         WHERE m.result IN ($decisive) AND m.voided = 0
+		           AND pw.warrior_level > 0 AND pl.warrior_level > 0
+		           AND pl.warrior_level >= pw.warrior_level + 3 AND 1 $where
 		         GROUP BY pm.mundane_id";
 		$ur = $this->db->query($usql);
 		if ($ur !== false) { while ($ur->next()) { $mid=(int)$ur->mundane_id; if (isset($rows[$mid])) $rows[$mid]['UpsetWins']=(int)$ur->upsets; } }
@@ -361,7 +502,7 @@ class TournamentReport extends Ork3 {
 		usort($list, fn($a,$b) => $b['Championships'] <=> $a['Championships'] ?: ($b['WinPct'] <=> $a['WinPct']) ?: ($b['Wins'] <=> $a['Wins']));
 
 		$response = ['Fighters' => $list, 'Status' => Success()];
-		return $response;
+		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $ckey, $response);
 	}
 
 	/** Live OotW level (0-12) per mundane: award 27=rank, 12=Warlord(11), 20=Sword Knight(12). */
@@ -396,9 +537,16 @@ class TournamentReport extends Ork3 {
 	 * current Warrior rank (Order of the Warrior candidates).
 	 */
 	public function GetTournamentAwardCandidates($request) {
+		$ckey = Ork3::$Lib->ghettocache->key($request);
+		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $ckey, 300)) !== false) {
+			return $cache;
+		}
+
 		$minChamp  = (int)($request['MinChampionships'] ?? 1);
 		$minPodium = (int)($request['MinPodiums'] ?? 2);
 
+		// GetFighterLeaderboard is itself GhettoCache-memoized on the same scope key, so
+		// this reuses the board the controller already computed rather than recomputing it.
 		$board = $this->GetFighterLeaderboard($request);
 		$cands = [];
 		foreach ($board['Fighters'] as $f) {
@@ -424,7 +572,8 @@ class TournamentReport extends Ork3 {
 			];
 		}
 		usort($cands, fn($a,$b)=> ($b['OotWCandidate']<=>$a['OotWCandidate']) ?: ($b['Championships']<=>$a['Championships']));
-		return ['Candidates' => $cands, 'Status' => Success()];
+		$response = ['Candidates' => $cands, 'Status' => Success()];
+		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $ckey, $response);
 	}
 
 
@@ -440,6 +589,11 @@ class TournamentReport extends Ork3 {
 	 * ]]
 	 */
 	public function GetTeamChampions($request) {
+		$ckey = Ork3::$Lib->ghettocache->key($request);
+		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $ckey, 300)) !== false) {
+			return $cache;
+		}
+
 		$where = $this->scopeWhere($request, 't');
 
 		// Fetch all completed/finalized team brackets in scope, ordered by tournament date desc.
@@ -533,21 +687,32 @@ class TournamentReport extends Ork3 {
 			];
 		}
 
-		return ['Status' => Success(), 'Detail' => $detail];
+		$response = ['Status' => Success(), 'Detail' => $detail];
+		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $ckey, $response);
 	}
 
 	/** Per-park comparison within a kingdom: tournaments hosted, participants, championships, avg warrior level. */
 	public function GetTournamentParkComparison($request) {
 		if (!valid_id($request['KingdomId'] ?? 0)) return ['Parks' => [], 'Status' => InvalidParameter('KingdomId required')];
+		$kingdomId = (int)$request['KingdomId'];
+		$ckey = Ork3::$Lib->ghettocache->key($request);
+		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $ckey, 300)) !== false) {
+			return $cache;
+		}
+
 		$where = $this->scopeWhere(['KingdomId'=>$request['KingdomId'], 'DateFrom'=>$request['DateFrom']??null, 'DateTo'=>$request['DateTo']??null], 't');
 
+		// avg_wl averages only INDIVIDUAL-bracket snapshots (team rows carry a SUMMED
+		// warrior_level that would inflate the field average). The bracket LEFT JOIN is
+		// 1:1 on participant.bracket_id, so hosted/participant counts are unaffected.
 		$sql = "SELECT pk.park_id, pk.name AS park_name,
 		           COUNT(DISTINCT t.tournament_id) AS hosted,
 		           COUNT(DISTINCT pm.mundane_id) AS participants,
-		           AVG(NULLIF(p.warrior_level,0)) AS avg_wl
+		           AVG(NULLIF(CASE WHEN b.participants = 'individual' THEN p.warrior_level END, 0)) AS avg_wl
 		        FROM " . DB_PREFIX . "tournament t
 		          JOIN " . DB_PREFIX . "park pk ON pk.park_id = t.park_id
 		          LEFT JOIN " . DB_PREFIX . "participant p ON p.tournament_id = t.tournament_id
+		          LEFT JOIN " . DB_PREFIX . "bracket b ON b.bracket_id = p.bracket_id
 		          LEFT JOIN " . DB_PREFIX . "participant_mundane pm ON pm.participant_id = p.participant_id
 		        WHERE t.park_id > 0 $where
 		        GROUP BY pk.park_id, pk.name ORDER BY hosted DESC";
@@ -563,22 +728,48 @@ class TournamentReport extends Ork3 {
 			}
 		}
 
+		// Championship semantic (#92): "championships won by THIS PARK'S PLAYERS" — credited
+		// to the champion's HOME park (place ParkId), not the hosting park. Tally first, then
+		// ensure every same-kingdom park that produced a champion has a row (so a park that
+		// won but hosted nothing still shows its count); visiting champions from other
+		// kingdoms are not part of this kingdom's park comparison and are dropped.
 		$bsql = "SELECT b.bracket_id FROM " . DB_PREFIX . "bracket b
 		          JOIN " . DB_PREFIX . "tournament t ON t.tournament_id=b.tournament_id
 		          WHERE 1 AND b.participants='individual' AND b.status IN ('complete','finalized') $where";
+		$bids = [];
 		$br = $this->db->query($bsql);
-		if ($br !== false) {
-			while ($br->next()) {
-				$pl = $this->GetBracketPlacements(['BracketId'=>(int)$br->bracket_id]);
-				foreach ($pl['Placements'] as $place) {
-					if ($place['Place'] !== 1) continue;
-					$pkid = (int)($place['ParkId'] ?? 0);
-					if ($pkid > 0 && isset($parks[$pkid])) $parks[$pkid]['Championships']++;
+		if ($br !== false) { while ($br->next()) { $bids[] = (int)$br->bracket_id; } }
+		$champByPark = [];
+		foreach ($this->GetBracketPlacementsBatch($bids) as $pl) {
+			foreach ($pl['Placements'] as $place) {
+				if ($place['Place'] !== 1) continue;
+				$pkid = (int)($place['ParkId'] ?? 0);
+				if ($pkid > 0) $champByPark[$pkid] = ($champByPark[$pkid] ?? 0) + 1;
+			}
+		}
+		$missing = array_values(array_filter(array_keys($champByPark), fn($id) => !isset($parks[$id])));
+		if (!empty($missing)) {
+			$idlist = implode(',', array_map('intval', $missing));
+			$nr = $this->db->query(
+				"SELECT park_id, name FROM " . DB_PREFIX . "park
+				 WHERE park_id IN ($idlist) AND kingdom_id = $kingdomId"
+			);
+			if ($nr !== false) {
+				while ($nr->next()) {
+					$parks[(int)$nr->park_id] = [
+						'ParkId' => (int)$nr->park_id, 'ParkName' => $nr->name,
+						'TournamentsHosted' => 0, 'Participants' => 0,
+						'AvgWarriorLevel' => 0, 'Championships' => 0, 'TopFighter' => '',
+					];
 				}
 			}
 		}
+		foreach ($champByPark as $pkid => $cnt) {
+			if (isset($parks[$pkid])) $parks[$pkid]['Championships'] += $cnt;
+		}
 
-		return ['Parks' => array_values($parks), 'Status' => Success()];
+		$response = ['Parks' => array_values($parks), 'Status' => Success()];
+		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $ckey, $response);
 	}
 
 	/**
@@ -588,24 +779,31 @@ class TournamentReport extends Ork3 {
 	 * Returns up to 8 ranked participants per tournament (UI shows 4, expands to 8).
 	 */
 	public function GetTournamentList($request) {
+		$ckey = Ork3::$Lib->ghettocache->key($request);
+		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $ckey, 300)) !== false) {
+			return $cache;
+		}
+
 		$where = $this->scopeWhere($request, 't');
+		$p1w = self::sqlP1Wins();
+		$p2w = self::sqlP2Wins();
 
 		// Per tournament, per mundane: collective wins/losses across individual brackets only + warrior level.
 		// The bracket JOIN with participants='individual' mirrors GetFighterLeaderboard and prevents
 		// team members from being fanned out as separate fighters each credited with the team's W/L.
 		$sql = "SELECT t.tournament_id, t.name, t.date_time, COALESCE(pk.name,'') AS park_name,
 		           pm.mundane_id, mn.persona, MAX(p.warrior_level) AS wl,
-		           SUM((m.participant_1_id=p.participant_id AND m.result='1-wins')
-		             OR (m.participant_2_id=p.participant_id AND m.result IN ('2-wins','forfeit','disqualified'))) AS wins,
-		           SUM((m.participant_1_id=p.participant_id AND m.result IN ('2-wins','forfeit','disqualified'))
-		             OR (m.participant_2_id=p.participant_id AND m.result='1-wins')) AS losses
+		           SUM((m.participant_1_id=p.participant_id AND m.result IN ($p1w))
+		             OR (m.participant_2_id=p.participant_id AND m.result IN ($p2w))) AS wins,
+		           SUM((m.participant_1_id=p.participant_id AND m.result IN ($p2w))
+		             OR (m.participant_2_id=p.participant_id AND m.result IN ($p1w))) AS losses
 		       FROM " . DB_PREFIX . "tournament t
 		         LEFT JOIN " . DB_PREFIX . "park pk ON pk.park_id = t.park_id
 		         JOIN " . DB_PREFIX . "participant p ON p.tournament_id = t.tournament_id
 		         JOIN " . DB_PREFIX . "bracket b ON b.bracket_id = p.bracket_id AND b.participants = 'individual'
 		         JOIN " . DB_PREFIX . "participant_mundane pm ON pm.participant_id = p.participant_id
 		         LEFT JOIN " . DB_PREFIX . "mundane mn ON mn.mundane_id = pm.mundane_id
-		         LEFT JOIN " . DB_PREFIX . "match m ON (m.participant_1_id=p.participant_id OR m.participant_2_id=p.participant_id) AND m.bracket_id=p.bracket_id
+		         LEFT JOIN " . DB_PREFIX . "match m ON (m.participant_1_id=p.participant_id OR m.participant_2_id=p.participant_id) AND m.bracket_id=p.bracket_id AND m.voided = 0
 		       WHERE 1 $where
 		       GROUP BY t.tournament_id, t.name, t.date_time, park_name, pm.mundane_id, mn.persona
 		       ORDER BY t.date_time DESC, t.tournament_id DESC, wins DESC, losses ASC";
@@ -655,7 +853,8 @@ class TournamentReport extends Ork3 {
 				'WarriorStats' => $this->warriorFieldStats($levels),
 			];
 		}
-		return ['Tournaments' => $out, 'Status' => Success()];
+		$response = ['Tournaments' => $out, 'Status' => Success()];
+		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $ckey, $response);
 	}
 
 	/** Field warrior-level summary: avg, median, highest, #Warlords (11), #Sword Knights (12). */

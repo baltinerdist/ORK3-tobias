@@ -831,8 +831,8 @@
 				<?php endif; ?>
 				</div><!-- /pk-events-list-view -->
 
-				<div style="display:flex;align-items:center;justify-content:space-between;margin:20px 0 10px;border-top:1px solid #e2e8f0;padding-top:16px;">
-					<h4 style="margin:0;font-size:14px;font-weight:700;color:#4a5568;"><i class="fas fa-trophy" style="margin-right:6px;color:#a0aec0"></i>Tournaments</h4>
+				<div style="display:flex;align-items:center;justify-content:space-between;margin:20px 0 10px;border-top:1px solid var(--ork-border,#e2e8f0);padding-top:16px;">
+					<h4 style="margin:0;font-size:14px;font-weight:700;color:var(--ork-text-secondary,#4a5568);"><i class="fas fa-trophy" style="margin-right:6px;color:var(--ork-text-muted,#a0aec0)"></i>Tournaments</h4>
 					<?php if ($CanManagePark): ?>
 					<button onclick="pkOpenAddTournamentModal()" style="display:inline-flex;align-items:center;gap:5px;background:#276749;color:#fff;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:600;border:none;cursor:pointer;">
 						<i class="fas fa-plus"></i> Add Tournament
@@ -1618,7 +1618,7 @@ var PkConfig = {
 			<!-- Entered today (always visible, shared by both tabs) -->
 			<div class="pk-att-entered-section">
 				<div class="pk-att-section-label">
-					<i class="fas fa-list-check" style="margin-right:6px;color:#a0aec0"></i>Attendance
+					<i class="fas fa-tasks" style="margin-right:6px;color:var(--ork-text-muted,#a0aec0)"></i>Attendance
 					<span class="pk-att-entered-count" id="pk-att-entered-count"></span>
 				</div>
 				<div id="pk-att-entered-empty" class="pk-att-qa-empty">No entries yet for this date.</div>
@@ -2348,11 +2348,11 @@ html[data-theme="dark"] .pk-wx-warning { background:#450a0a; color:#fca5a5; bord
 				<input type="date" id="pk-addtournament-when" />
 			</div>
 			<div class="pk-addday-field">
-				<label for="pk-addtournament-desc">Description <span style="color:#a0aec0;font-size:11px;text-transform:none;letter-spacing:0">(optional)</span></label>
+				<label for="pk-addtournament-desc">Description <span style="color:var(--ork-text-muted,#a0aec0);font-size:11px;text-transform:none;letter-spacing:0">(optional)</span></label>
 				<textarea id="pk-addtournament-desc" rows="3" placeholder="Brief description..."></textarea>
 			</div>
 			<div class="pk-addday-field">
-				<label for="pk-addtournament-url">URL <span style="color:#a0aec0;font-size:11px;text-transform:none;letter-spacing:0">(optional)</span></label>
+				<label for="pk-addtournament-url">URL <span style="color:var(--ork-text-muted,#a0aec0);font-size:11px;text-transform:none;letter-spacing:0">(optional)</span></label>
 				<input type="url" id="pk-addtournament-url" placeholder="https://..." maxlength="255" />
 			</div>
 		</div>

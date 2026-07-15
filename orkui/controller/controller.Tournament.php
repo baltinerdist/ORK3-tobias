@@ -19,9 +19,9 @@ class Controller_Tournament extends Controller {
 			$this->session->kingdom_name = $park_info['KingdomInfo']['KingdomName'];
 			$this->data['menu']['kingdom'] = array( 'url' => UIR.'Kingdom/profile/'.$this->session->kingdom_id, 'display' => $this->session->kingdom_name );
 		}
-		$this->data['kingdom_id'] = $this->session->kingdom_id;
-		$this->data['park_id'] = $this->session->park_id;
-		$this->data['kingdom_name'] = $this->session->kingdom_name;
+		$this->data['kingdom_id'] = $this->session->kingdom_id ?? null;
+		$this->data['park_id'] = $this->session->park_id ?? null;
+		$this->data['kingdom_name'] = $this->session->kingdom_name ?? null;
 		
 		if (isset($this->request->park_name)) {
 			$this->session->park_name = $this->request->park_name;
@@ -41,10 +41,16 @@ class Controller_Tournament extends Controller {
 	}
 	
 	public function worksheet($tournament_id) {
+		$tournament_id = (int)preg_replace('/[^0-9]/', '', $tournament_id ?? '');
+		if (!valid_id($tournament_id)) {
+			header('Location: ' . UIR . 'Tournament/create');
+			exit;
+		}
 		if (strlen($this->request->Action) > 0) {
 			$this->request->save('Tournament_worksheet', true);
 			if (!isset($this->session->user_id)) {
 				header( 'Location: '.UIR.'Login/login/Tournament/worksheet' );
+				exit;
 			} else {
 				$r = null;
 				switch ($this->request->Action) {
@@ -65,6 +71,7 @@ class Controller_Tournament extends Controller {
 					$this->request->clear('Tournament_worksheet');
 				} else if(isset($r) && $r['Status'] == 5) {
 					header( 'Location: '.UIR.'Login/login/Tournament/worksheet' );
+					exit;
 				} else if (isset($r)) {
 					$this->data['Error'] = $r['Error'].':<p>'.$r['Detail'];
 				}
@@ -79,6 +86,7 @@ class Controller_Tournament extends Controller {
 			$this->request->save('Tournament_create', true);
 			if (!isset($this->session->user_id)) {
 				header( 'Location: '.UIR.'Login/login/Tournament/create' );
+				exit;
 			} else {
 				$r = null;
 				switch ($post) {
@@ -98,7 +106,10 @@ class Controller_Tournament extends Controller {
 				if (isset($r) && $r['Status'] == 0) {
 					$this->request->clear('Tournament_create');
 				} else if(isset($r) && $r['Status'] == 5) {
-					header( 'Location: '.UIR.'Login/login/Tournament/create' );
+					// Status 5 here is "no authority / no kingdom-or-park scope" — the user
+					// is already authenticated (the logged-out case is guarded above), so
+					// surface an inline error and fall through to re-render the form.
+					$this->data['Error'] = 'You do not have authority to create a tournament here, or no kingdom or park was specified.';
 				} else if (isset($r)) {
 					$this->data['Error'] = $r['Error'].':<p>'.$r['Detail'];
 				}
@@ -265,7 +276,8 @@ class Controller_Tournament extends Controller {
 		}
 		$this->data['bracket_data']      = $bracketData;
 		$this->data['TotalBrackets']     = count($brackets);
-		$this->data['TotalParticipants'] = count($_seen);
+		// Distinct count of bracket-ASSIGNED entrants (kept for any per-bracket use).
+		$this->data['TotalBracketAssigned'] = count($_seen);
 		$this->data['TotalMatches']      = $totalMatches;
 
 		// Load standings per bracket (only meaningful when matches exist)
@@ -282,6 +294,19 @@ class Controller_Tournament extends Controller {
 		// Tournament-level registrants (roster: registered, with their bracket assignments)
 		$_regs = $this->Tournament->get_registrants(['TournamentId' => $tournament_id]);
 		$this->data['registrants'] = ($_regs['Status'] == 0) ? ($_regs['Detail'] ?? []) : [];
+
+		// Header stat + Participants tab label reflect the registered roster (the same
+		// rows the Participants→Individuals tab renders), NOT just bracket-assigned
+		// entrants. GetRegistrants returns one row per registered individual; count
+		// distinct people (by MundaneId, falling back to alias for alias-only entries).
+		$_regSeen = [];
+		foreach ($this->data['registrants'] as $_rg) {
+			$_key = ((int)($_rg['MundaneId'] ?? 0) > 0)
+				? 'mid:' . (int)$_rg['MundaneId']
+				: 'alias:' . strtolower(trim($_rg['Alias'] ?? ''));
+			$_regSeen[$_key] = true;
+		}
+		$this->data['TotalParticipants'] = count($_regSeen);
 
 		// Tournament-level registered teams (Teams sub-tab roster)
 		$_rt = $this->Tournament->get_registered_teams(['TournamentId' => $tournament_id]);
@@ -311,6 +336,13 @@ class Controller_Tournament extends Controller {
 		if (!valid_id($tournament_id)) {
 			http_response_code(404);
 			echo 'Tournament not found.';
+			exit;
+		}
+
+		// Require an authenticated session: the export endpoint is ID-enumerable,
+		// so gate it behind login rather than serving results to anonymous callers.
+		if (!isset($this->session->user_id) || (int)$this->session->user_id <= 0) {
+			header('Location: ' . UIR . 'Login/login/Tournament/export/' . $tournament_id);
 			exit;
 		}
 

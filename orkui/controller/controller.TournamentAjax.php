@@ -5,8 +5,65 @@ class Controller_TournamentAjax extends Controller {
 	/** Returns a compact JSON error string from a model response array. */
 	private function modelError(array $r): string {
 		$msg = $r['Error'] ?? 'Error';
-		$det = trim((string)($r['Detail'] ?? ''));
+		// Backend Detail can carry internal specifics; only expose it to authenticated
+		// callers. Spectator (no-session) endpoints get a generic message. (#17)
+		$det = isset($this->session->user_id) ? trim((string)($r['Detail'] ?? '')) : '';
 		return json_encode(['status' => $r['Status'], 'error' => $det !== '' ? "$msg: $det" : $msg]);
+	}
+
+	/**
+	 * CSRF guard for state-changing (POST) tournament AJAX. (#12)
+	 *
+	 * This branch has no per-session CSRF token infrastructure (no CmsAjax _begin()
+	 * to mirror, and the spectator/organizer JS does not send an X-CSRF-Token header),
+	 * so we enforce same-origin via the Origin / Referer headers — the standard
+	 * token-less CSRF defense (OWASP). A browser-driven cross-site POST always carries
+	 * an Origin header, so this blocks the CSRF attack vector without breaking the
+	 * existing client. Requests with no Origin/Referer at all (e.g. curl tooling) are
+	 * allowed through, as they cannot be forged by a third-party site. Read-only GET
+	 * endpoints are unaffected. When an app-wide session CSRF token + header lands,
+	 * upgrade this to validate it.
+	 *
+	 * Returns true when the request may proceed; on rejection it emits JSON and
+	 * returns false (caller must exit).
+	 */
+	private function csrfOk(): bool {
+		if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') return true;
+		// Compare host WITHOUT the port: HTTP_HOST carries the port (e.g. "localhost:19080")
+		// but parse_url(origin, PHP_URL_HOST) never does, so a raw compare would reject
+		// every same-origin POST on any non-default port.
+		$host = strtolower((string)($_SERVER['HTTP_HOST'] ?? ''));
+		$host = preg_replace('/:\d+$/', '', $host);
+		$origin = (string)($_SERVER['HTTP_ORIGIN'] ?? '');
+		if ($origin === '' && isset($_SERVER['HTTP_REFERER'])) {
+			$origin = (string)$_SERVER['HTTP_REFERER'];
+		}
+		// Cannot determine origin (non-browser tooling) — allow; a forging site
+		// could not suppress the Origin header on a real cross-site POST.
+		if ($origin === '' || $host === '') return true;
+		$ohost = strtolower((string)parse_url($origin, PHP_URL_HOST));
+		if ($ohost !== '' && $ohost !== $host) {
+			echo json_encode(['status' => 5, 'error' => 'Invalid request origin.']);
+			return false;
+		}
+		return true;
+	}
+
+	/**
+	 * Ownership cross-check (#3): true when $bracket_id is one of the brackets owned
+	 * by $tournament_id. Prevents a caller authorized for one tournament from acting
+	 * on a bracket that actually belongs to another by supplying a mismatched id from
+	 * a different request location. The model methods re-verify ownership too — this
+	 * is dispatch-level defense in depth, resolved via the existing bracket list.
+	 */
+	private function bracketBelongsTo(int $bracket_id, int $tournament_id): bool {
+		if (!valid_id($bracket_id) || !valid_id($tournament_id)) return false;
+		$r = $this->Tournament->get_brackets($tournament_id);
+		if (($r['Status'] ?? 1) != 0) return false;
+		foreach (($r['Detail'] ?? []) as $b) {
+			if ((int)($b['BracketId'] ?? 0) === $bracket_id) return true;
+		}
+		return false;
 	}
 
 	/**
@@ -18,6 +75,7 @@ class Controller_TournamentAjax extends Controller {
 	 */
 	public function tournament($p = null) {
 		header('Content-Type: application/json');
+		if (!$this->csrfOk()) { exit; }
 		$parts         = explode('/', $p ?? '');
 		$tournament_id = (int)preg_replace('/[^0-9]/', '', $parts[0] ?? '');
 		$action        = $parts[1] ?? '';
@@ -75,6 +133,14 @@ class Controller_TournamentAjax extends Controller {
 		// ── All other tournament actions require a logged-in session ──
 		if (!isset($this->session->user_id)) {
 			echo json_encode(['status' => 5, 'error' => 'Not logged in']);
+			exit;
+		}
+
+		// Ownership cross-check (#3): any BracketId supplied in a tournament-level POST
+		// must belong to the tournament named in the route.
+		$post_bid = (int)($_POST['BracketId'] ?? 0);
+		if ($post_bid > 0 && !$this->bracketBelongsTo($post_bid, $tournament_id)) {
+			echo json_encode(['status' => 1, 'error' => 'Bracket does not belong to this tournament.']);
 			exit;
 		}
 
@@ -290,6 +356,9 @@ class Controller_TournamentAjax extends Controller {
 				echo json_encode(['status' => 1, 'error' => 'Points data is required.']); exit;
 			}
 			$points_arr = json_decode($points_raw, true);
+			if (!is_array($points_arr)) {
+				echo json_encode(['status' => 1, 'error' => 'Invalid points data.']); exit;
+			}
 			$r = $this->Tournament->save_standings_points([
 				'Token'        => $this->session->token,
 				'TournamentId' => $tournament_id,
@@ -305,6 +374,7 @@ class Controller_TournamentAjax extends Controller {
 			$participant_id = (int)($_POST['ParticipantId'] ?? 0);
 			$round = (int)($_POST['Round'] ?? 0);
 			$points = (isset($_POST['Points']) && $_POST['Points'] !== '') ? trim($_POST['Points']) : null;
+			$actionId = trim($_POST['ActionId'] ?? '');
 			$r = $this->Tournament->save_point_score([
 				'Token'         => $this->session->token,
 				'TournamentId'  => $tournament_id,
@@ -312,21 +382,24 @@ class Controller_TournamentAjax extends Controller {
 				'ParticipantId' => $participant_id,
 				'Round'         => $round,
 				'Points'        => $points,
+				'ActionId'      => $actionId,
 			]);
 			echo ($r['Status'] == 0)
-				? json_encode(['status' => 0, 'detail' => $r['Detail']])
+				? json_encode(['status' => 0, 'detail' => $r['Detail'], 'seq' => (int)($r['Detail']['Seq'] ?? 0)])
 				: $this->modelError($r);
 
 		} elseif ($action === 'addpointsround') {
 			$bracket_id = (int)($_POST['BracketId'] ?? 0);
 			if (!valid_id($bracket_id)) { echo json_encode(['status' => 1, 'error' => 'BracketId required.']); exit; }
+			$actionId = trim($_POST['ActionId'] ?? '');
 			$r = $this->Tournament->add_points_round([
 				'Token'        => $this->session->token,
 				'TournamentId' => $tournament_id,
 				'BracketId'    => $bracket_id,
+				'ActionId'     => $actionId,
 			]);
 			echo ($r['Status'] == 0)
-				? json_encode(['status' => 0, 'detail' => $r['Detail']])
+				? json_encode(['status' => 0, 'detail' => $r['Detail'], 'seq' => (int)($r['Detail']['Seq'] ?? 0)])
 				: $this->modelError($r);
 
 		} elseif ($action === 'updatetournament') {
@@ -501,6 +574,7 @@ class Controller_TournamentAjax extends Controller {
 	 */
 	public function bracket($p = null) {
 		header('Content-Type: application/json');
+		if (!$this->csrfOk()) { exit; }
 		$parts      = explode('/', $p ?? '');
 		$bracket_id = (int)preg_replace('/[^0-9]/', '', $parts[0] ?? '');
 		$action     = $parts[1] ?? '';
@@ -532,6 +606,14 @@ class Controller_TournamentAjax extends Controller {
 		// ── All other bracket actions require a logged-in session ──
 		if (!isset($this->session->user_id)) {
 			echo json_encode(['status' => 5, 'error' => 'Not logged in']);
+			exit;
+		}
+
+		// Ownership cross-check (#3): the route bracket must belong to the tournament
+		// supplied in the POST body (a missing/invalid TournamentId is rejected per-action).
+		$post_tid = (int)($_POST['TournamentId'] ?? 0);
+		if (valid_id($post_tid) && !$this->bracketBelongsTo($bracket_id, $post_tid)) {
+			echo json_encode(['status' => 1, 'error' => 'Bracket does not belong to this tournament.']);
 			exit;
 		}
 
@@ -632,15 +714,18 @@ class Controller_TournamentAjax extends Controller {
 			if (!valid_id($tid)) {
 				echo json_encode(['status' => 1, 'error' => 'TournamentId required.']); exit;
 			}
+			$actionId = trim($_POST['ActionId'] ?? '');
 			$r = $this->Tournament->record_ironman_win([
 				'Token'        => $this->session->token,
 				'TournamentId' => $tid,
 				'BracketId'    => $bracket_id,
 				'WinnerId'     => $winner_id,
 				'RingNumber'   => $ring_number,
+				'ActionId'     => $actionId,
 			]);
+			$detail = is_array($r['Detail']) ? $r['Detail'] : ['FightNum' => (int)($r['Detail'] ?? 0)];
 			echo ($r['Status'] == 0)
-				? json_encode(array_merge(['status' => 0], is_array($r['Detail']) ? $r['Detail'] : ['FightNum' => (int)($r['Detail'] ?? 0)]))
+				? json_encode(array_merge(['status' => 0], $detail, ['seq' => (int)($detail['Seq'] ?? 0)]))
 				: $this->modelError($r);
 
 		} elseif ($action === 'poolstobrackets') {
@@ -669,6 +754,9 @@ class Controller_TournamentAjax extends Controller {
 			}
 			$order_json = trim($_POST['Order'] ?? '');
 			$order_arr  = json_decode($order_json, true);
+			if (!is_array($order_arr)) {
+				echo json_encode(['status' => 1, 'error' => 'Invalid order data.']); exit;
+			}
 			$r = $this->Tournament->reorder_seeds([
 				'Token'        => $this->session->token,
 				'TournamentId' => $tid,
@@ -733,6 +821,9 @@ class Controller_TournamentAjax extends Controller {
 			if (!is_array($nums_arr) || count($nums_arr) === 0) {
 				echo json_encode(['status' => 1, 'error' => 'ParticipantNumbers required.']); exit;
 			}
+			if (count($nums_arr) > 500) {
+				echo json_encode(['status' => 1, 'error' => 'Too many participants.']); exit;
+			}
 			$nums_arr = array_values(array_filter(array_map('intval', $nums_arr), fn($n) => $n > 0));
 			$r = $this->Tournament->assign_to_bracket([
 				'Token'              => $this->session->token,
@@ -755,6 +846,9 @@ class Controller_TournamentAjax extends Controller {
 			if (!is_array($nums_arr) || count($nums_arr) === 0) {
 				echo json_encode(['status' => 1, 'error' => 'ParticipantNumbers required.']); exit;
 			}
+			if (count($nums_arr) > 500) {
+				echo json_encode(['status' => 1, 'error' => 'Too many participants.']); exit;
+			}
 			$nums_arr = array_values(array_filter(array_map('intval', $nums_arr), fn($n) => $n > 0));
 			$r = $this->Tournament->unassign_from_bracket([
 				'Token'              => $this->session->token,
@@ -775,6 +869,9 @@ class Controller_TournamentAjax extends Controller {
 			$nums_arr = json_decode(trim($_POST['TeamNumbers'] ?? ''), true);
 			if (!is_array($nums_arr) || count($nums_arr) === 0) {
 				echo json_encode(['status' => 1, 'error' => 'TeamNumbers required.']); exit;
+			}
+			if (count($nums_arr) > 500) {
+				echo json_encode(['status' => 1, 'error' => 'Too many teams.']); exit;
 			}
 			$nums_arr = array_values(array_filter(array_map('intval', $nums_arr), fn($n) => $n > 0));
 			$payload = [
@@ -809,6 +906,7 @@ class Controller_TournamentAjax extends Controller {
 	 */
 	public function match($p = null) {
 		header('Content-Type: application/json');
+		if (!$this->csrfOk()) { exit; }
 		$parts         = explode('/', $p ?? '');
 		$match_id      = (int)preg_replace('/[^0-9]/', '', $parts[0] ?? '');
 		$tournament_id = (int)preg_replace('/[^0-9]/', '', $parts[1] ?? '');
@@ -827,13 +925,15 @@ class Controller_TournamentAjax extends Controller {
 		$this->load_model('Tournament');
 
 		if ($action === 'reset') {
+			$actionId = trim($_POST['ActionId'] ?? '');
 			$r = $this->Tournament->reset_match([
 				'Token'        => $this->session->token,
 				'TournamentId' => $tournament_id,
 				'MatchId'      => $match_id,
+				'ActionId'     => $actionId,
 			]);
 			echo ($r['Status'] == 0)
-				? json_encode(['status' => 0, 'matchId' => $match_id])
+				? json_encode(['status' => 0, 'matchId' => $match_id, 'seq' => (int)(is_array($r['Detail'] ?? null) ? ($r['Detail']['Seq'] ?? 0) : 0)])
 				: $this->modelError($r);
 			exit;
 		}

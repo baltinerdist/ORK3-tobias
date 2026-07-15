@@ -257,6 +257,12 @@ class SimpleXlsx {
     // ---- helpers ---------------------------------------------------------
 
     private function esc($s) {
+        // Strip XML-1.0-invalid control characters (0x00-0x1F except tab/newline/CR).
+        // A stray control byte in a persona or team name otherwise produces malformed
+        // XML that Excel/LibreOffice refuse to open. /u can return null on invalid
+        // UTF-8, so keep the original string in that case rather than blanking it.
+        $clean = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F]/u', '', (string)$s);
+        if ($clean !== null) $s = $clean;
         return htmlspecialchars((string)$s, ENT_QUOTES | ENT_XML1, 'UTF-8');
     }
 

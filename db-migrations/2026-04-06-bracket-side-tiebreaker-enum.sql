@@ -1,7 +1,10 @@
 -- Add 'tiebreaker-3rd' to bracket_side enum on ork_match
 -- Without this, CreateTiebreakerMatch silently stores empty string (sql_mode is off)
+-- DEFAULT stays '' (not 'winners'): insert_match() always sets bracket_side explicitly,
+-- so a 'winners' default would silently mislabel any future non-elimination insert that
+-- forgot to pass it. '' is the safe "unset" sentinel matching the original schema.
 ALTER TABLE ork_match
-  MODIFY COLUMN bracket_side ENUM('winners','losers','grand-final','tiebreaker-3rd','') NOT NULL DEFAULT 'winners';
+  MODIFY COLUMN bracket_side ENUM('winners','losers','grand-final','tiebreaker-3rd','') NOT NULL DEFAULT '';
 
 -- Fix any existing tiebreaker matches that were silently stored with empty bracket_side.
 -- They are identifiable as matches whose round = max winners round, but whose participant pair

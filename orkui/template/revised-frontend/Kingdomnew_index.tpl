@@ -679,8 +679,8 @@
 				</div>
 				</div><!-- /kn-events-list-view -->
 
-				<div style="display:flex;align-items:center;justify-content:space-between;margin:20px 0 10px;border-top:1px solid #e2e8f0;padding-top:16px;">
-					<h4 style="margin:0;font-size:14px;font-weight:700;color:#4a5568;"><i class="fas fa-trophy" style="margin-right:6px;color:#a0aec0"></i>Tournaments</h4>
+				<div style="display:flex;align-items:center;justify-content:space-between;margin:20px 0 10px;border-top:1px solid var(--ork-border,#e2e8f0);padding-top:16px;">
+					<h4 style="margin:0;font-size:14px;font-weight:700;color:var(--ork-text-secondary,#4a5568);"><i class="fas fa-trophy" style="margin-right:6px;color:var(--ork-text-muted,#a0aec0)"></i>Tournaments</h4>
 					<?php if ($CanManageKingdom): ?>
 					<button onclick="knOpenAddTournamentModal()" style="display:inline-flex;align-items:center;gap:5px;background:#276749;color:#fff;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:600;border:none;cursor:pointer;">
 						<i class="fas fa-plus"></i> Add Tournament

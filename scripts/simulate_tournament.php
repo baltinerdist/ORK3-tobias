@@ -82,6 +82,14 @@ function check_response($resp, $label) {
 	return $resp['Detail'];
 }
 
+/** AddParticipant returns Detail = ['ParticipantId'=>int, ...]; older paths returned a bare int. Normalize. */
+function sim_participant_id($detail) {
+	if (is_array($detail)) {
+		return (int)($detail['ParticipantId'] ?? 0);
+	}
+	return (int)$detail;
+}
+
 /** Probabilistic match winner based on warrior_level */
 function pick_winner_result($wl1, $wl2) {
 	// Small % chance of forfeit/disqualified for variety (~3%)
@@ -168,12 +176,14 @@ if ($park_id) {
 		WHERE m.park_id = $park_id AND a.date >= DATE_SUB(NOW(), INTERVAL 1 YEAR)
 	";
 } else {
+	// Filter a.kingdom_id directly (NOT via a park join on m.park_id) so the
+	// purpose-built idx_attendance_kingdom_date_mundane_park covering index is used
+	// as a range scan instead of being defeated by the ork_park lookup.
 	$pool_sql = "
 		SELECT DISTINCT a.mundane_id, m.persona
 		FROM ork_attendance a
 		JOIN ork_mundane m ON m.mundane_id = a.mundane_id
-		JOIN ork_park p ON p.park_id = m.park_id
-		WHERE p.kingdom_id = $kingdom_id AND a.date >= DATE_SUB(NOW(), INTERVAL 1 YEAR)
+		WHERE a.kingdom_id = $kingdom_id AND a.date >= DATE_SUB(NOW(), INTERVAL 1 YEAR)
 	";
 }
 
@@ -255,14 +265,18 @@ sim_log("Tournament created: id=$tournament_id");
 // ── Plan brackets (3–5, with ≥1 single + ≥1 double) ─────────────────────────
 
 $all_styles  = ['Single Sword', 'Florentine', 'Sword and Shield', 'Great Weapon', 'Missile', 'Other', 'Open Weapons'];
-$all_methods = ['single', 'double', 'round-robin'];  // swiss excluded per spec unless robust
+$all_methods = ['single', 'double', 'round-robin'];  // generic match-based individual formats
 $seedings    = ['random', 'warrior'];
 
-$num_brackets = mt_rand(3, 5);
+// The random pool covers the generic match-based individual formats. Dedicated
+// brackets for the bespoke-schema formats (swiss / ironman / points / team) plus a
+// forfeit and an annul withdrawal are appended unconditionally below so every path
+// with a distinct schema is exercised end-to-end.
+$num_random = mt_rand(3, 5);
 
 // Build the method list: ensure ≥1 single, ≥1 double; fill the rest randomly
 $bracket_methods = ['single', 'double'];
-for ($i = 2; $i < $num_brackets; $i++) {
+for ($i = 2; $i < $num_random; $i++) {
 	$bracket_methods[] = $all_methods[mt_rand(0, count($all_methods) - 1)];
 }
 shuffle($bracket_methods);
@@ -271,17 +285,70 @@ shuffle($bracket_methods);
 $shuffled_styles = $all_styles;
 shuffle($shuffled_styles);
 $bracket_configs = [];
-for ($i = 0; $i < $num_brackets; $i++) {
+for ($i = 0; $i < $num_random; $i++) {
 	$bracket_configs[] = [
-		'method'  => $bracket_methods[$i],
-		'style'   => $shuffled_styles[$i % count($shuffled_styles)],
-		'seeding' => $seedings[mt_rand(0, 1)],
+		'method'       => $bracket_methods[$i],
+		'style'        => $shuffled_styles[$i % count($shuffled_styles)],
+		'seeding'      => $seedings[mt_rand(0, 1)],
+		'participants' => 'individual',
 	];
 }
 
-sim_log("Bracket plan (" . count($bracket_configs) . " brackets):");
+// Guarantee a forfeit result is exercised on the first (single-elim) bracket.
+$bracket_configs[0]['force_forfeit'] = true;
+
+// ── Dedicated brackets for the bespoke-schema formats ─────────────────────────
+$style_pick = fn() => $all_styles[mt_rand(0, count($all_styles) - 1)];
+
+// Swiss (individual): rounds carried in Rings; lib auto-populates each round and
+// the harness finalizes when no pairings remain.
+$bracket_configs[] = [
+	'method'       => 'swiss',
+	'style'        => $style_pick(),
+	'seeding'      => 'warrior',
+	'participants' => 'individual',
+	'swiss_rounds' => mt_rand(3, 4),
+];
+// Ironman / king-of-the-hill (individual): live fights via RecordIronmanWin, no
+// pre-generated matches.
+$bracket_configs[] = [
+	'method'       => 'ironman',
+	'style'        => $style_pick(),
+	'seeding'      => 'random',
+	'participants' => 'individual',
+];
+// Points (individual): grid scoring via SavePointScore, no matches.
+$bracket_configs[] = [
+	'method'       => 'points',
+	'style'        => $style_pick(),
+	'seeding'      => 'random',
+	'participants' => 'individual',
+	'point_rounds' => 3,
+	'point_mode'   => 'open',
+	'point_scale'  => '',
+];
+// Round-robin (individual) exercising an annul withdrawal (round-robin-only Mode).
+$bracket_configs[] = [
+	'method'         => 'round-robin',
+	'style'          => $style_pick(),
+	'seeding'        => 'random',
+	'participants'   => 'individual',
+	'withdraw_annul' => true,
+];
+// Team (single-elim): exercises the team participant/roster schema end-to-end.
+$bracket_configs[] = [
+	'method'       => 'single',
+	'style'        => $style_pick(),
+	'seeding'      => 'random',
+	'participants' => 'team',
+];
+
+$num_brackets = count($bracket_configs);
+
+sim_log("Bracket plan ($num_brackets brackets):");
 foreach ($bracket_configs as $bi => $bc) {
-	sim_log("  Bracket " . ($bi + 1) . ": method={$bc['method']}, style={$bc['style']}, seeding={$bc['seeding']}");
+	$pmode = $bc['participants'] ?? 'individual';
+	sim_log("  Bracket " . ($bi + 1) . ": method={$bc['method']}, style={$bc['style']}, seeding={$bc['seeding']}, participants=$pmode");
 }
 
 // ── Add brackets, participants, generate matches, simulate results ────────────
@@ -289,23 +356,29 @@ foreach ($bracket_configs as $bi => $bc) {
 $bracket_summaries = [];
 
 foreach ($bracket_configs as $bi => $bc) {
-	$bnum = $bi + 1;
-	sim_log("--- Bracket $bnum/{$num_brackets}: {$bc['method']} ({$bc['style']}) ---");
+	$bnum  = $bi + 1;
+	$pmode = $bc['participants'] ?? 'individual';
+	sim_log("--- Bracket $bnum/{$num_brackets}: {$bc['method']} ({$bc['style']}, $pmode) ---");
 
-	// Add bracket
+	// Add bracket. Swiss carries its round count in Rings; Points carries its grid config.
 	$add_bracket_req = [
 		'Token'           => $dummy_token,
 		'TournamentId'    => $tournament_id,
 		'Style'           => $bc['style'],
 		'StyleNote'       => '',
 		'Method'          => $bc['method'],
-		'Rings'           => 1,
-		'Participants'    => 'individual',
+		'Rings'           => ($bc['method'] === 'swiss') ? (int)($bc['swiss_rounds'] ?? 3) : 1,
+		'Participants'    => $pmode,
 		'Seeding'         => $bc['seeding'],
 		'DurationMinutes' => 0,
 		'BestOf'          => 1,
 		'CopyOfId'        => 0,
 	];
+	if ($bc['method'] === 'points') {
+		$add_bracket_req['PointRounds'] = (int)($bc['point_rounds'] ?? 3);
+		$add_bracket_req['PointMode']   = $bc['point_mode'] ?? 'open';
+		$add_bracket_req['PointScale']  = $bc['point_scale'] ?? '';
+	}
 	$resp       = $T->AddBracket($add_bracket_req);
 	$bracket_id = check_response($resp, "AddBracket[$bnum]");
 	sim_log("  Bracket id=$bracket_id created");
@@ -316,30 +389,55 @@ foreach ($bracket_configs as $bi => $bc) {
 	$shuffled_p = $participants;
 	shuffle($shuffled_p);
 	$roster = array_slice($shuffled_p, 0, $roster_size);
-	sim_log("  Roster size: $roster_size");
 
-	// Add each participant to this bracket
-	$participant_id_map = []; // mundane_id => participant_id
-	$warrior_level_map  = []; // participant_id => warrior_level
+	// warrior_level_map: participant_id => warrior_level (for probabilistic weighting)
+	$warrior_level_map = [];
 
-	foreach ($roster as $p) {
-		$add_p_req = [
-			'Token'        => $dummy_token,
-			'TournamentId' => $tournament_id,
-			'BracketId'    => $bracket_id,
-			'MundaneId'    => $p['mundane_id'],
-			'Alias'        => $p['persona'],
-			'ParkId'       => 0,
-			'KingdomId'    => $kingdom_id,
-			'ParticipantId' => 0,
-			'Members'      => [],
-		];
-		$resp  = $T->AddParticipant($add_p_req);
-		$p_id  = check_response($resp, "AddParticipant[mundane={$p['mundane_id']}]");
-		$participant_id_map[$p['mundane_id']] = $p_id;
-		$warrior_level_map[$p_id]             = $wl_map[$p['mundane_id']] ?? 0;
+	if ($pmode === 'team') {
+		// Group the roster into pairs; each pair becomes a 2-person team. Drop a
+		// trailing odd member so every team has exactly two fighters.
+		$roster = array_slice($roster, 0, $roster_size - ($roster_size % 2));
+		$teams  = array_chunk($roster, 2);
+		foreach ($teams as $members) {
+			$team_name      = $members[0]['persona'] . ' & ' . $members[1]['persona'];
+			$member_payload = array_map(fn($mm) => ['MundaneId' => $mm['mundane_id']], $members);
+			$add_p_req = [
+				'Token'         => $dummy_token,
+				'TournamentId'  => $tournament_id,
+				'BracketId'     => $bracket_id,
+				'MundaneId'     => 0,
+				'Alias'         => $team_name,
+				'ParkId'        => 0,
+				'KingdomId'     => $kingdom_id,
+				'ParticipantId' => 0,
+				'Members'       => $member_payload,
+			];
+			$resp = $T->AddParticipant($add_p_req);
+			$p_id = sim_participant_id(check_response($resp, "AddParticipant[team=$team_name]"));
+			// Team weighting is handled by the lib snapshot; keep the harness neutral.
+			$warrior_level_map[$p_id] = 0;
+		}
+		sim_log("  Added " . count($teams) . " teams (2 fighters each)");
+	} else {
+		sim_log("  Roster size: $roster_size");
+		foreach ($roster as $p) {
+			$add_p_req = [
+				'Token'        => $dummy_token,
+				'TournamentId' => $tournament_id,
+				'BracketId'    => $bracket_id,
+				'MundaneId'    => $p['mundane_id'],
+				'Alias'        => $p['persona'],
+				'ParkId'       => 0,
+				'KingdomId'    => $kingdom_id,
+				'ParticipantId' => 0,
+				'Members'      => [],
+			];
+			$resp  = $T->AddParticipant($add_p_req);
+			$p_id  = sim_participant_id(check_response($resp, "AddParticipant[mundane={$p['mundane_id']}]"));
+			$warrior_level_map[$p_id] = $wl_map[$p['mundane_id']] ?? 0;
+		}
+		sim_log("  Added " . count($roster) . " participants");
 	}
-	sim_log("  Added " . count($roster) . " participants");
 
 	// Generate matches
 	$resp = $T->GenerateMatches([
@@ -349,6 +447,92 @@ foreach ($bracket_configs as $bi => $bc) {
 	]);
 	check_response($resp, "GenerateMatches[$bnum]");
 	sim_log("  Matches generated");
+
+	// ── Simulate results, dispatching on bracket format ───────────────────────
+	// Points and Ironman have no ork_match rows to iterate: Points is a scoring
+	// grid (SavePointScore) and Ironman is live king-of-the-hill fights
+	// (RecordIronmanWin). Everything else (single/double/round-robin/swiss/team)
+	// is match-based and driven through the PostMatchResult loop below.
+	$total_matches_posted = 0;
+	$match_based          = !in_array($bc['method'], ['points', 'ironman'], true);
+	$forfeit_pending      = !empty($bc['force_forfeit']);
+
+	if ($bc['method'] === 'points') {
+		// Fill every participant's cell for every round via SavePointScore.
+		$pr_resp = $T->GetParticipants(['TournamentId' => $tournament_id, 'BracketId' => $bracket_id]);
+		$plist   = ($pr_resp['Status'] === 0) ? $pr_resp['Detail'] : [];
+		$prounds = (int)($bc['point_rounds'] ?? 3);
+		foreach ($plist as $pp) {
+			for ($rd = 1; $rd <= $prounds; $rd++) {
+				$pts = number_format(mt_rand(0, 500) / 100, 2, '.', '');
+				$sp  = $T->SavePointScore([
+					'Token'         => $dummy_token,
+					'TournamentId'  => $tournament_id,
+					'BracketId'     => $bracket_id,
+					'ParticipantId' => (int)$pp['ParticipantId'],
+					'Round'         => $rd,
+					'Points'        => $pts,
+				]);
+				if ($sp['Status'] === 0) {
+					$total_matches_posted++;
+				} else {
+					sim_log("  WARN: SavePointScore failed: " . json_encode($sp));
+				}
+			}
+		}
+		$cm = $T->CompleteBracket(['Token' => $dummy_token, 'TournamentId' => $tournament_id, 'BracketId' => $bracket_id]);
+		if ($cm['Status'] !== 0) sim_log("  WARN: CompleteBracket(points) failed: " . json_encode($cm));
+		sim_log("  Points grid filled: $total_matches_posted cell(s) across $prounds round(s)");
+	} elseif ($bc['method'] === 'ironman') {
+		// Record a series of live fights among random pairs of the roster.
+		$pr_resp = $T->GetParticipants(['TournamentId' => $tournament_id, 'BracketId' => $bracket_id]);
+		$plist   = ($pr_resp['Status'] === 0) ? $pr_resp['Detail'] : [];
+		$pids    = array_map(fn($pp) => (int)$pp['ParticipantId'], $plist);
+		$fights  = max(count($pids) * 2, 12);
+		for ($f = 0; $f < $fights && count($pids) >= 2; $f++) {
+			$a = $pids[array_rand($pids)];
+			do { $b = $pids[array_rand($pids)]; } while ($b === $a);
+			$rw = $T->RecordIronmanWin([
+				'Token'        => $dummy_token,
+				'TournamentId' => $tournament_id,
+				'BracketId'    => $bracket_id,
+				'WinnerId'     => $a,
+				'LoserId'      => $b,
+				'RingNumber'   => 1,
+			]);
+			if ($rw['Status'] === 0) {
+				$total_matches_posted++;
+			} else {
+				sim_log("  WARN: RecordIronmanWin failed: " . json_encode($rw));
+			}
+		}
+		$cm = $T->CompleteBracket(['Token' => $dummy_token, 'TournamentId' => $tournament_id, 'BracketId' => $bracket_id]);
+		if ($cm['Status'] !== 0) sim_log("  WARN: CompleteBracket(ironman) failed: " . json_encode($cm));
+		sim_log("  Ironman fights recorded: $total_matches_posted");
+	}
+
+	// Annul withdrawal (round-robin only): pull one entrant with Mode='annul' before
+	// playing so their matches are voided and the bracket still completes in place.
+	if ($match_based && !empty($bc['withdraw_annul']) && $bc['method'] === 'round-robin') {
+		$pr_resp = $T->GetParticipants(['TournamentId' => $tournament_id, 'BracketId' => $bracket_id]);
+		$plist   = ($pr_resp['Status'] === 0) ? $pr_resp['Detail'] : [];
+		if (!empty($plist)) {
+			$victim = (int)$plist[array_rand($plist)]['ParticipantId'];
+			$wr = $T->UpdateParticipantStatus([
+				'Token'         => $dummy_token,
+				'TournamentId'  => $tournament_id,
+				'BracketId'     => $bracket_id,
+				'ParticipantId' => $victim,
+				'Status'        => 'withdrawn',
+				'Mode'          => 'annul',
+			]);
+			if ($wr['Status'] === 0) {
+				sim_log("  Annul withdrawal: participant_id=$victim removed (matches voided)");
+			} else {
+				sim_log("  WARN: annul withdrawal failed: " . json_encode($wr));
+			}
+		}
+	}
 
 	// ── Simulate results until bracket is complete ────────────────────────────
 	// PostMatchResult handles ALL match types including byes (one participant = 0).
@@ -364,9 +548,8 @@ foreach ($bracket_configs as $bi => $bc) {
 	// wins the Grand Final (result = '2-wins' on bracket_side = 'grand-final').
 	$max_iterations = 200;
 	$iteration      = 0;
-	$total_matches_posted = 0;
 
-	while ($iteration < $max_iterations) {
+	while ($match_based && $iteration < $max_iterations) {
 		$iteration++;
 
 		// Check bracket status first
@@ -434,6 +617,22 @@ foreach ($bracket_configs as $bi => $bc) {
 				}
 			}
 
+			// Swiss never auto-marks 'complete' (its matches close but the bracket
+			// status stays 'active' so extra rounds can be appended). Once no pairings
+			// remain, finalize explicitly and break.
+			if ($bc['method'] === 'swiss') {
+				$cm = $T->CompleteBracket([
+					'Token'        => $dummy_token,
+					'TournamentId' => $tournament_id,
+					'BracketId'    => $bracket_id,
+				]);
+				if ($cm['Status'] === 0) {
+					sim_log("  Swiss bracket finalized after $iteration iteration(s)");
+					break;
+				}
+				sim_log("  WARN: CompleteBracket(swiss) failed: " . json_encode($cm));
+			}
+
 			// Still no pending matches and no confirmation match needed — genuinely stuck
 			sim_abort(
 				"Bracket $bnum (id=$bracket_id) stalled: no pending matches but status='$bstat'",
@@ -469,6 +668,11 @@ foreach ($bracket_configs as $bi => $bc) {
 				$result = '1-wins';
 			} elseif ($p2_id > 0 && $p1_id === 0) {
 				$result = '2-wins';
+			} elseif ($forfeit_pending) {
+				// Guarantee at least one forfeit is exercised (participant 1 forfeits).
+				$result          = 'forfeit';
+				$forfeit_pending = false;
+				sim_log("  Forced forfeit on match_id={$match['MatchId']}");
 			} else {
 				$wl1    = $warrior_level_map[$p1_id] ?? 0;
 				$wl2    = $warrior_level_map[$p2_id] ?? 0;
@@ -569,8 +773,17 @@ foreach ($bracket_summaries as $bs) {
 	echo "  Standings  :\n";
 	$top = array_slice($bs['standings'], 0, 3);
 	foreach ($top as $rank_i => $s) {
-		$wl_label = $s['WarriorRank'] > 0 ? " (OotW {$s['WarriorRank']})" : '';
-		echo "    " . ($rank_i + 1) . ". {$s['Alias']}{$wl_label} — W:{$s['Wins']} L:{$s['Losses']}\n";
+		$wr       = (int)($s['WarriorRank'] ?? 0);
+		$wl_label = $wr > 0 ? " (OotW $wr)" : '';
+		$alias    = $s['Alias'] ?? '(unknown)';
+		if (isset($s['Total'])) {
+			// Points bracket: score-based standings.
+			echo "    " . ($rank_i + 1) . ". {$alias}{$wl_label} — Total:{$s['Total']}\n";
+		} else {
+			$wins   = (int)($s['Wins'] ?? 0);
+			$losses = (int)($s['Losses'] ?? 0);
+			echo "    " . ($rank_i + 1) . ". {$alias}{$wl_label} — W:$wins L:$losses\n";
+		}
 	}
 }
 
