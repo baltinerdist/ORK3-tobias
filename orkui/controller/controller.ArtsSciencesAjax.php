@@ -43,10 +43,42 @@ class Controller_ArtsSciencesAjax extends Controller
         }
     }
 
+    // _csrfToken() is inherited (protected) from the base Controller so the emit side
+    // (Controller_ArtsSciences / Kingdomnew A&S section -> window.AS_CSRF) and this
+    // validation side read the exact same per-session token. Mirrors the CMS pattern.
+
+    // POST-only CSRF gate. Reads the token from the X-CSRF-Token header (preferred) or a
+    // csrf_token POST field and compares with hash_equals. GET reads never call this.
+    private function require_csrf()
+    {
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+            return;
+        }
+        $sent = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_POST['csrf_token'] ?? '';
+        if (!is_string($sent) || !hash_equals($this->_csrfToken(), $sent)) {
+            $this->respond(['status' => 9, 'error' => 'Invalid or expired request token']);
+        }
+    }
+
+    // F16: persist a destructive-action audit record. Unlike logtrace() (a no-op unless the
+    // global TRACE flag is on, and even then only buffered in-memory for the request), this
+    // writes to the PHP error log via error_log(), which survives in every real deployment so
+    // the security team can grep the trail. Prefixed for easy filtering.
+    private function audit_destructive(array $fields)
+    {
+        $record = array_merge([
+            'ts'         => date('c'),
+            'ip'         => $_SERVER['REMOTE_ADDR'] ?? '',
+            'user_id'    => (int)($this->session->user_id ?? 0),
+        ], $fields);
+        error_log('AS_AUDIT.destructive ' . json_encode($record));
+    }
+
     // Route: ArtsSciencesAjax/create
     public function create()
     {
         $this->require_login();
+        $this->require_csrf();
         $kingdom_id = (int)($_POST['KingdomId'] ?? 0);
         if (!valid_id($kingdom_id)) {
             $this->respond(['status' => 1, 'error' => 'KingdomId required']);
@@ -72,7 +104,21 @@ class Controller_ArtsSciencesAjax extends Controller
             'AnonymousJudging'  => !empty($_POST['AnonymousJudging']) ? 1 : 0,
             'Status'            => $_POST['Status'] ?? 'draft',
         ];
-        $this->respond($this->unwrap($this->ArtsSciences->create_competition($req)));
+        // F40: idempotency guard — a rapid duplicate submit of the same
+        // (KingdomId, Name, CompetitionDate) within a few seconds returns the prior
+        // result instead of creating a second identical competition.
+        $sig = md5($kingdom_id . '|' . $req['Name'] . '|' . ($req['CompetitionDate'] ?? ''));
+        $now = microtime(true);
+        $last = $this->session->as_create_guard ?? null;
+        if (is_array($last) && ($last['sig'] ?? '') === $sig
+            && ($now - ($last['at'] ?? 0)) < 4 && !empty($last['result'])) {
+            $this->respond($last['result']);
+        }
+        $result = $this->unwrap($this->ArtsSciences->create_competition($req));
+        if ((int)($result['status'] ?? 1) === 0) {
+            $this->session->as_create_guard = ['sig' => $sig, 'at' => $now, 'result' => $result];
+        }
+        $this->respond($result);
     }
 
     // Route: ArtsSciencesAjax/kingdom/{kingdom_id}
@@ -95,36 +141,19 @@ class Controller_ArtsSciencesAjax extends Controller
         if (!valid_id($kingdom_id)) {
             $this->respond(['status' => 1, 'error' => 'KingdomId required']);
         }
-        global $DB;
-        $DB->Clear();
-        $kid = (int)$kingdom_id;
-        $rs = $DB->DataSet("
-			SELECT e.event_id AS EventId, e.name AS Name, MIN(d.event_start) AS NextDate
-			FROM " . DB_PREFIX . "event e
-			INNER JOIN " . DB_PREFIX . "event_calendardetail d ON d.event_id = e.event_id
-			WHERE e.kingdom_id = {$kid}
-			  AND d.event_start >= CURDATE()
-			GROUP BY e.event_id, e.name
-			ORDER BY NextDate ASC
-			LIMIT 100
-		");
-        $out = [];
-        if ($rs && $rs->Size() > 0) {
-            while ($rs->Next()) {
-                $out[] = [
-                    'EventId'  => (int)$rs->EventId,
-                    'Name'     => $rs->Name,
-                    'NextDate' => $rs->NextDate,
-                ];
-            }
-        }
-        $this->respond(['status' => 0, 'result' => $out]);
+        // F35: SQL now lives in class.ArtsSciences::FutureEvents (kingdom AUTH_EDIT gated);
+        // no inline $DB here.
+        $this->respond($this->unwrap($this->ArtsSciences->future_events([
+            'Token'     => $this->token(),
+            'KingdomId' => $kingdom_id,
+        ])));
     }
 
     // Route: ArtsSciencesAjax/comp/{competition_id}/{action}
     public function comp($p = null)
     {
         $this->require_login();
+        $this->require_csrf();
         $parts = explode('/', $p ?? '');
         $competition_id = (int) preg_replace('/[^0-9]/', '', $parts[0] ?? '');
         $action = strtolower(trim($parts[1] ?? ''));
@@ -133,6 +162,27 @@ class Controller_ArtsSciencesAjax extends Controller
         }
 
         $req = ['Token' => $this->token(), 'CompetitionId' => $competition_id];
+
+        // F16: audit destructive dispatches (user, action, target ids) BEFORE they run.
+        $destructive = [
+            'delete', 'taxonomy.delete', 'criterion.delete', 'participant.delete',
+            'judge.delete', 'entry.delete', 'award.delete', 'rec.delete',
+            'preset.load_taxonomy', 'preset.load_award',
+        ];
+        if (in_array($action, $destructive, true)) {
+            $targets = [];
+            foreach (['TaxonomyId','CriterionId','ParticipantId','JudgeId','EntryId',
+                      'AwardId','RecommendationsId','PresetId'] as $tk) {
+                if (isset($_POST[$tk])) {
+                    $targets[$tk] = (int)$_POST[$tk];
+                }
+            }
+            $this->audit_destructive([
+                'action'         => $action,
+                'competition_id' => $competition_id,
+                'targets'        => $targets,
+            ]);
+        }
 
         switch ($action) {
             // Competition itself
@@ -149,18 +199,18 @@ class Controller_ArtsSciencesAjax extends Controller
                     $req['AnonymousJudging'] = !empty($_POST['AnonymousJudging']);
                 }
                 $this->respond($this->unwrap($this->ArtsSciences->update_competition($req)));
-                // no break
+                return;
             case 'delete':
                 $this->respond($this->unwrap($this->ArtsSciences->delete_competition($req)));
-                // no break
+                return;
             case 'get':
                 $this->respond($this->unwrap($this->ArtsSciences->get_competition($req)));
 
                 // Taxonomy
-                // no break
+                return;
             case 'taxonomy.list':
                 $this->respond($this->unwrap($this->ArtsSciences->get_taxonomy($req)));
-                // no break
+                return;
             case 'taxonomy.save':
                 $req['TaxonomyId']  = $_POST['TaxonomyId']  ?? null;
                 $req['ParentId']    = $_POST['ParentId']    ?? null;
@@ -170,21 +220,21 @@ class Controller_ArtsSciencesAjax extends Controller
                     $req['Active'] = $_POST['Active'];
                 }
                 $this->respond($this->unwrap($this->ArtsSciences->save_taxonomy($req)));
-                // no break
+                return;
             case 'taxonomy.delete':
                 $req['TaxonomyId'] = $_POST['TaxonomyId'] ?? 0;
                 $this->respond($this->unwrap($this->ArtsSciences->delete_taxonomy($req)));
-                // no break
+                return;
             case 'taxonomy.reorder':
                 $tree = json_decode($_POST['Tree'] ?? '[]', true);
                 $req['Tree'] = is_array($tree) ? $tree : [];
                 $this->respond($this->unwrap($this->ArtsSciences->reorder_taxonomy($req)));
 
                 // Criteria
-                // no break
+                return;
             case 'criterion.list':
                 $this->respond($this->unwrap($this->ArtsSciences->get_criteria($req)));
-                // no break
+                return;
             case 'criterion.save':
                 foreach (['CriterionId','Name','Description','Weight','SortOrder'] as $k) {
                     if (array_key_exists($k, $_POST)) {
@@ -192,16 +242,16 @@ class Controller_ArtsSciencesAjax extends Controller
                     }
                 }
                 $this->respond($this->unwrap($this->ArtsSciences->save_criterion($req)));
-                // no break
+                return;
             case 'criterion.delete':
                 $req['CriterionId'] = $_POST['CriterionId'] ?? 0;
                 $this->respond($this->unwrap($this->ArtsSciences->delete_criterion($req)));
 
                 // Participants
-                // no break
+                return;
             case 'participant.list':
                 $this->respond($this->unwrap($this->ArtsSciences->get_participants($req)));
-                // no break
+                return;
             case 'participant.save':
                 foreach (['ParticipantId','MundaneId','Persona','ParkId','IsNovice','Notes'] as $k) {
                     if (array_key_exists($k, $_POST)) {
@@ -209,16 +259,16 @@ class Controller_ArtsSciencesAjax extends Controller
                     }
                 }
                 $this->respond($this->unwrap($this->ArtsSciences->save_participant($req)));
-                // no break
+                return;
             case 'participant.delete':
                 $req['ParticipantId'] = $_POST['ParticipantId'] ?? 0;
                 $this->respond($this->unwrap($this->ArtsSciences->delete_participant($req)));
 
                 // Judges
-                // no break
+                return;
             case 'judge.list':
                 $this->respond($this->unwrap($this->ArtsSciences->get_judges($req)));
-                // no break
+                return;
             case 'judge.save':
                 foreach (['JudgeId','MundaneId','Persona','FieldTaxonomyId'] as $k) {
                     if (array_key_exists($k, $_POST)) {
@@ -229,16 +279,16 @@ class Controller_ArtsSciencesAjax extends Controller
                     $req['FieldTaxonomyIds'] = $_POST['FieldTaxonomyIds'];
                 }
                 $this->respond($this->unwrap($this->ArtsSciences->save_judge($req)));
-                // no break
+                return;
             case 'judge.delete':
                 $req['JudgeId'] = $_POST['JudgeId'] ?? 0;
                 $this->respond($this->unwrap($this->ArtsSciences->delete_judge($req)));
 
                 // Entries
-                // no break
+                return;
             case 'entry.list':
                 $this->respond($this->unwrap($this->ArtsSciences->get_entries($req)));
-                // no break
+                return;
             case 'entry.save':
                 foreach (['EntryId','ParticipantId','TaxonomyId','Title','Description','Documentation','EntryNumber'] as $k) {
                     if (array_key_exists($k, $_POST)) {
@@ -246,13 +296,13 @@ class Controller_ArtsSciencesAjax extends Controller
                     }
                 }
                 $this->respond($this->unwrap($this->ArtsSciences->save_entry($req)));
-                // no break
+                return;
             case 'entry.delete':
                 $req['EntryId'] = $_POST['EntryId'] ?? 0;
                 $this->respond($this->unwrap($this->ArtsSciences->delete_entry($req)));
 
                 // Scores
-                // no break
+                return;
             case 'score.list':
                 foreach (['EntryId','JudgeId'] as $k) {
                     if (array_key_exists($k, $_GET)) {
@@ -265,7 +315,7 @@ class Controller_ArtsSciencesAjax extends Controller
                     }
                 }
                 $this->respond($this->unwrap($this->ArtsSciences->get_scores($req)));
-                // no break
+                return;
             case 'score.save':
                 foreach (['EntryId','JudgeId','CriterionId','Score','Feedback'] as $k) {
                     if (array_key_exists($k, $_POST)) {
@@ -275,10 +325,10 @@ class Controller_ArtsSciencesAjax extends Controller
                 $this->respond($this->unwrap($this->ArtsSciences->save_score($req)));
 
                 // Awards
-                // no break
+                return;
             case 'award.list':
                 $this->respond($this->unwrap($this->ArtsSciences->get_awards($req)));
-                // no break
+                return;
             case 'award.save':
                 foreach (['AwardId','Name','Description','AwardType','FieldTaxonomyId','TopN','MinDistinctFields','MinDistinctCategories','NoviceOnly','SortOrder'] as $k) {
                     if (array_key_exists($k, $_POST)) {
@@ -289,21 +339,21 @@ class Controller_ArtsSciencesAjax extends Controller
                     $req['Rules'] = $_POST['Rules'];
                 }
                 $this->respond($this->unwrap($this->ArtsSciences->save_award($req)));
-                // no break
+                return;
             case 'award.delete':
                 $req['AwardId'] = $_POST['AwardId'] ?? 0;
                 $this->respond($this->unwrap($this->ArtsSciences->delete_award($req)));
-                // no break
+                return;
             case 'award.preview':
                 $req['Rules'] = $_POST['Rules'] ?? '[]';
                 $this->respond($this->unwrap($this->ArtsSciences->preview_award($req)));
 
                 // Award recommendations from the judging form
-                // no break
+                return;
             case 'rec.context':
                 $req['EntryId'] = $_POST['EntryId'] ?? $_GET['EntryId'] ?? 0;
                 $this->respond($this->unwrap($this->ArtsSciences->get_rec_context($req)));
-                // no break
+                return;
             case 'rec.save':
                 foreach (['EntryId','KingdomAwardId','Rank','Reason'] as $k) {
                     if (array_key_exists($k, $_POST)) {
@@ -311,44 +361,45 @@ class Controller_ArtsSciencesAjax extends Controller
                     }
                 }
                 $this->respond($this->unwrap($this->ArtsSciences->save_rec($req)));
-                // no break
+                return;
             case 'rec.delete':
                 $req['RecommendationsId'] = $_POST['RecommendationsId'] ?? 0;
                 $this->respond($this->unwrap($this->ArtsSciences->delete_rec($req)));
 
                 // Results
-                // no break
+                return;
             case 'results':
                 $this->respond($this->unwrap($this->ArtsSciences->compute_results($req)));
 
                 // Presets (competition-scoped: snapshot from / load into this competition)
-                // no break
+                return;
             case 'preset.save_taxonomy':
                 $req['KingdomId']  = $_POST['KingdomId']  ?? 0;
                 $req['PresetId']   = $_POST['PresetId']   ?? 0;
                 $req['Name']       = $_POST['Name']       ?? '';
                 $req['Description'] = $_POST['Description'] ?? '';
                 $this->respond($this->unwrap($this->ArtsSciences->save_taxonomy_preset($req)));
-                // no break
+                return;
             case 'preset.save_award':
                 $req['KingdomId']  = $_POST['KingdomId']  ?? 0;
                 $req['PresetId']   = $_POST['PresetId']   ?? 0;
                 $req['Name']       = $_POST['Name']       ?? '';
                 $req['Description'] = $_POST['Description'] ?? '';
                 $this->respond($this->unwrap($this->ArtsSciences->save_award_preset($req)));
-                // no break
+                return;
             case 'preset.preview':
                 $req['PresetId'] = $_POST['PresetId'] ?? 0;
                 $req['Type']     = $_POST['Type']     ?? 'taxonomy';
                 $this->respond($this->unwrap($this->ArtsSciences->preview_load_preset($req)));
-                // no break
+                return;
             case 'preset.load_taxonomy':
                 $req['PresetId'] = $_POST['PresetId'] ?? 0;
                 $this->respond($this->unwrap($this->ArtsSciences->load_taxonomy_preset($req)));
-                // no break
+                return;
             case 'preset.load_award':
                 $req['PresetId'] = $_POST['PresetId'] ?? 0;
                 $this->respond($this->unwrap($this->ArtsSciences->load_award_preset($req)));
+                return;
         }
         $this->respond(['status' => 1, 'error' => 'Unknown action: ' . $action]);
     }
@@ -367,48 +418,18 @@ class Controller_ArtsSciencesAjax extends Controller
         if (strlen($q) < 2) {
             $this->respond([]);
         }
-        global $DB;
-        $DB->Clear();
-        // Escape quote/backslash + neutralize LIKE wildcards inline (same safe pattern as
-        // controller.KingdomAjax.php playersearch); mysql_real_escape_string is gone in PHP 8.
-        $qLikeEsc = '%' . str_replace(["'", '%', '_', '\\'], ["''", '\\%', '\\_', '\\\\'], $q) . '%';
-        $kid = max(0, $kingdom_id);
-        $pid = max(0, $park_id);
-        // Bucket each row by proximity so a single ORDER BY pushes closer matches up.
-        $rankExpr = "(CASE
-			WHEN {$pid} > 0 AND p.park_id    = {$pid} THEN 1
-			WHEN {$kid} > 0 AND p.kingdom_id = {$kid} THEN 2
-			ELSE 3
-		END)";
-        $sql = "SELECT m.mundane_id AS MundaneId, m.persona AS Persona,
-		               p.kingdom_id AS KingdomId, p.park_id AS ParkId,
-		               p.name AS ParkName, k.name AS KingdomName,
-		               {$rankExpr} AS Bucket
-				FROM " . DB_PREFIX . "mundane m
-				LEFT JOIN " . DB_PREFIX . "park    p ON p.park_id    = m.park_id
-				LEFT JOIN " . DB_PREFIX . "kingdom k ON k.kingdom_id = p.kingdom_id
-				WHERE m.persona LIKE '{$qLikeEsc}'
-				  AND m.suspended = 0
-				  AND m.active    = 1
-				ORDER BY Bucket ASC, m.persona ASC
-				LIMIT 15";
-        $rs = $DB->DataSet($sql);
-        $out = [];
-        if ($rs && $rs->Size() > 0) {
-            while ($rs->Next()) {
-                $bucket = (int)$rs->Bucket;
-                $out[] = [
-                    'MundaneId'   => (int)$rs->MundaneId,
-                    'Persona'     => $rs->Persona,
-                    'KingdomId'   => (int)$rs->KingdomId,
-                    'ParkId'      => (int)$rs->ParkId,
-                    'ParkName'    => $rs->ParkName,
-                    'KingdomName' => $rs->KingdomName,
-                    'Scope'       => $bucket === 1 ? 'park' : ($bucket === 2 ? 'kingdom' : 'other'),
-                ];
-            }
-        }
-        $this->respond($out);
+        // F35 / F47: SQL (with corrected escape order + kingdom-family scoping) now lives in
+        // class.ArtsSciences::PlayerSearch (kingdom AUTH_EDIT gated); no inline $DB here.
+        $r = $this->ArtsSciences->player_search([
+            'Token'     => $this->token(),
+            'KingdomId' => $kingdom_id,
+            'ParkId'    => $park_id,
+            'Query'     => $q,
+        ]);
+        // This endpoint returns a bare row array (not the {status,...} envelope) to match the
+        // kn-ac autocomplete contract; unwrap the class result and emit just the rows.
+        $u = $this->unwrap($r);
+        $this->respond((int)($u['status'] ?? 1) === 0 && is_array($u['result'] ?? null) ? $u['result'] : []);
     }
 
     // Route: ArtsSciencesAjax/preset/{kingdom_id}/{action}
@@ -417,6 +438,7 @@ class Controller_ArtsSciencesAjax extends Controller
     public function preset($p = null)
     {
         $this->require_login();
+        $this->require_csrf();
         $parts = explode('/', $p ?? '');
         $kingdom_id = (int) preg_replace('/[^0-9]/', '', $parts[0] ?? '');
         $action     = strtolower(trim($parts[1] ?? ''));
@@ -428,17 +450,26 @@ class Controller_ArtsSciencesAjax extends Controller
             'KingdomId' => $kingdom_id,
             'Type'      => $_POST['Type'] ?? $_GET['Type'] ?? 'taxonomy',
         ];
+        // F16: audit destructive preset dispatch before it runs.
+        if ($action === 'delete') {
+            $this->audit_destructive([
+                'action'    => 'preset.delete',
+                'kingdom_id' => $kingdom_id,
+                'preset_id' => (int)($_POST['PresetId'] ?? 0),
+            ]);
+        }
         switch ($action) {
             case 'list':
                 $this->respond($this->unwrap($this->ArtsSciences->list_presets($req)));
-                // no break
+                return;
             case 'get':
                 $req['PresetId'] = (int)($_POST['PresetId'] ?? $_GET['PresetId'] ?? 0);
                 $this->respond($this->unwrap($this->ArtsSciences->get_preset($req)));
-                // no break
+                return;
             case 'delete':
                 $req['PresetId'] = (int)($_POST['PresetId'] ?? 0);
                 $this->respond($this->unwrap($this->ArtsSciences->delete_preset($req)));
+                return;
         }
         $this->respond(['status' => 1, 'error' => 'Unknown preset action: ' . $action]);
     }

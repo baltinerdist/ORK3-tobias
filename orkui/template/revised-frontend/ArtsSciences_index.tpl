@@ -226,7 +226,7 @@ html[data-theme="dark"] .as-create-feedback { background: rgba(229,62,62,0.16); 
 			<div class="as-field"><label>Name <span style="color:#e53e3e">*</span></label><input type="text" id="as-create-name" placeholder="e.g. Crown Qualifications A&amp;S 2026"></div>
 			<div class="as-field"><label>Description</label><textarea id="as-create-desc"></textarea></div>
 			<div class="as-field-row">
-				<div class="as-field"><label>Competition Date</label><input type="date" id="as-create-date"></div>
+				<div class="as-field"><label>Competition Date</label><input type="text" id="as-create-date" placeholder="Select a date"></div>
 			</div>
 			<div class="as-help" style="margin-top:-6px;margin-bottom:10px;font-size:0.78em">Judging window and entries deadline can be set on the Setup tab after creation.</div>
 			<div class="as-field-row">
@@ -262,6 +262,9 @@ html[data-theme="dark"] .as-create-feedback { background: rgba(229,62,62,0.16); 
 </div>
 <?php endif; ?>
 
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>window.AS_CSRF = "<?= htmlspecialchars($AsCsrf ?? '', ENT_QUOTES) ?>";</script>
 <script>
 (function(){
 	var UIR = <?= json_encode(UIR) ?>;
@@ -281,10 +284,25 @@ html[data-theme="dark"] .as-create-feedback { background: rgba(229,62,62,0.16); 
 	overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
 	document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && overlay.classList.contains('as-open')) close(); });
 
-	document.getElementById('as-create-submit').addEventListener('click', function(){
+	if (typeof flatpickr === 'function') {
+		flatpickr('#as-create-date', {
+			dateFormat: 'Y-m-d',
+			altInput: true,
+			altFormat: 'F j, Y'
+		});
+	}
+
+	var submitBtn = document.getElementById('as-create-submit');
+	var submitBtnHtml = submitBtn ? submitBtn.innerHTML : '';
+	function lockSubmit(){ if (!submitBtn) return; submitBtn.disabled = true; submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> &nbsp;Creating…'; }
+	function unlockSubmit(){ if (!submitBtn) return; submitBtn.disabled = false; submitBtn.innerHTML = submitBtnHtml; }
+
+	submitBtn.addEventListener('click', function(){
+		if (submitBtn.disabled) return;
 		clearFeedback();
 		var name = document.getElementById('as-create-name').value.trim();
 		if (!name) { showFeedback('Please enter a name.'); return; }
+		lockSubmit();
 		var fd = new FormData();
 		fd.append('KingdomId', KINGDOM_ID);
 		fd.append('Name', name);
@@ -296,17 +314,22 @@ html[data-theme="dark"] .as-create-feedback { background: rgba(229,62,62,0.16); 
 		fd.append('ScoringIncrement', document.getElementById('as-create-incr').value);
 		fd.append('AggregationMethod', document.getElementById('as-create-agg').value);
 		if (document.getElementById('as-create-anon').checked) fd.append('AnonymousJudging', 1);
-		fetch(UIR + 'ArtsSciencesAjax/create', { method: 'POST', body: fd, credentials: 'same-origin' })
+		fetch(UIR + 'ArtsSciencesAjax/create', {
+			method: 'POST',
+			body: fd,
+			credentials: 'same-origin',
+			headers: { 'X-CSRF-Token': (window.AS_CSRF || '') }
+		})
 			.then(function(r){ return r.json(); })
 			.then(function(j){
-				console.log('[AS create]', j);
 				if (j.status === 0 && j.result) {
 					window.location = UIR + 'ArtsComp/' + j.result;
 				} else {
 					showFeedback('Error: ' + (j.error || 'Unknown'));
+					unlockSubmit();
 				}
 			})
-			.catch(function(err){ console.error(err); showFeedback('Network error: ' + err); });
+			.catch(function(err){ console.error(err); showFeedback('Network error: ' + err); unlockSubmit(); });
 	});
 })();
 </script>

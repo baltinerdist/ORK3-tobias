@@ -34,6 +34,27 @@
 	$participants = $bundle['Participants'] ?? [];
 	$criteriaList = $bundle['Criteria']     ?? [];
 	$taxonomy     = $bundle['Taxonomy']     ?? [];
+
+	// F3: a null bundle means results are not yet published (competition still open and the
+	// viewer is neither admin nor judge). The Results tab then shows an empty state.
+	$resultsPublished = ($bundle !== null);
+	// F2 (render side): a non-admin judge under anonymous judging must not see entrant persona.
+	$hidePersona = $isJudgeOnly && !empty($competition['AnonymousJudging']);
+	$aggMethod   = (string)($competition['AggregationMethod'] ?? 'average');
+
+	// F32/F28: surface uneven judge coverage — decisive when the method SUMS judge scores
+	// (differing counts make totals incomparable) and a general incomplete-ballot heads-up.
+	$resultsWarnings = [];
+	if ($resultsPublished) {
+		$scored = array_values(array_filter($entries, function ($e) { return (int)($e['JudgeCount'] ?? 0) > 0; }));
+		if ($aggMethod === 'sum' && count($scored) > 1) {
+			$distinctCounts = [];
+			foreach ($scored as $e) { $distinctCounts[(int)($e['JudgeCount'] ?? 0)] = true; }
+			if (count($distinctCounts) > 1) {
+				$resultsWarnings[] = 'Entries were scored by differing numbers of judges. Because this competition sums judge scores, the totals below are not directly comparable.';
+			}
+		}
+	}
 ?>
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>revised-frontend/style/revised.css?v=<?= filemtime(DIR_TEMPLATE . 'revised-frontend/style/revised.css') ?>">
 
@@ -59,6 +80,17 @@
 	font-size: 0.7em; font-weight: 700; text-transform: uppercase;
 	background: rgba(255,255,255,0.20); color: #fff;
 }
+/* F68: per-state colour coding of the hero status pill, mirroring the index
+   status-color scale. Opacities are lifted so the pill stays legible on the
+   purple hero gradient. Light + dark variants below. */
+.as-status-pill.as-status-draft   { background: rgba(226,232,240,0.92); color: #4a5568; }
+.as-status-pill.as-status-open    { background: rgba(198,246,213,0.94); color: #276749; }
+.as-status-pill.as-status-judging { background: rgba(250,240,199,0.96); color: #975a16; }
+.as-status-pill.as-status-closed  { background: rgba(254,215,215,0.96); color: #9b2c2c; }
+html[data-theme="dark"] .as-status-pill.as-status-draft   { background: rgba(45,55,72,0.85);  color: #cbd5e0; }
+html[data-theme="dark"] .as-status-pill.as-status-open    { background: rgba(34,84,61,0.90);  color: #9ae6b4; }
+html[data-theme="dark"] .as-status-pill.as-status-judging { background: rgba(116,66,16,0.92); color: #fbd38d; }
+html[data-theme="dark"] .as-status-pill.as-status-closed  { background: rgba(120,30,30,0.92); color: #feb2b2; }
 
 .as-stats-row { display: flex; gap: 14px; margin-bottom: 22px; flex-wrap: wrap; }
 .as-stat-card {
@@ -79,13 +111,16 @@
 	display: flex; flex-wrap: wrap; list-style: none; padding: 0; margin: 0;
 	border-bottom: 1px solid var(--ork-border);
 }
-.as-tab-nav li {
+.as-tab-nav li { display: flex; margin: 0; padding: 0; }
+.as-tab-nav .as-tab {
 	padding: 12px 18px; cursor: pointer; font-size: 0.9em;
-	color: var(--ork-text-muted); border-bottom: 3px solid transparent;
+	color: var(--ork-text-muted); border: none; background: transparent;
+	border-bottom: 3px solid transparent; font-family: inherit; line-height: 1.2;
 	transition: color 0.15s, border-color 0.15s;
 }
-.as-tab-nav li:hover { color: var(--ork-text); }
-.as-tab-nav li.as-tab-active { color: #5a67d8; border-bottom-color: #5a67d8; font-weight: 600; }
+.as-tab-nav .as-tab:hover { color: var(--ork-text); }
+.as-tab-nav .as-tab.as-tab-active { color: #5a67d8; border-bottom-color: #5a67d8; font-weight: 600; }
+.as-tab-nav .as-tab:focus-visible { outline: 2px solid #5a67d8; outline-offset: -3px; border-radius: 4px; }
 .as-tab-panel { padding: 22px 24px; }
 
 .as-section-title { background: transparent; border: none; padding: 0; border-radius: 0; text-shadow: none; margin: 0 0 12px; font-size: 1.05em; color: var(--ork-text); }
@@ -106,6 +141,11 @@
 .as-btn-row { display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 14px; }
 
 .as-empty-mini { padding: 26px; text-align: center; color: var(--ork-text-muted); font-style: italic; }
+
+/* F62: distinct load-error state (separate from the genuine-empty copy) with a Retry affordance. */
+.as-load-error { font-style: normal; color: var(--ork-text); }
+.as-load-error i { color: #c53030; margin-right: 6px; }
+.as-load-error .as-retry-btn { margin-left: 10px; padding: 4px 12px; font-size: 0.85em; }
 
 /* Taxonomy tree */
 .as-tax-tree { padding: 0; margin: 0; }
@@ -244,6 +284,15 @@ html[data-theme="dark"] .as-pill-warn   { background: rgba(252,129,129,0.20); co
 .as-results-card .as-winner   { padding: 10px 12px; background: linear-gradient(135deg, rgba(90,103,216,0.10), rgba(128,90,213,0.12)); border-radius: 6px; }
 .as-results-card .as-no-winner { color: var(--ork-text-muted); font-style: italic; padding: 10px 0; }
 
+.as-results-warning { margin-bottom: 14px; display: flex; flex-direction: column; gap: 8px; }
+.as-results-warn {
+	display: flex; align-items: flex-start; gap: 8px;
+	padding: 9px 12px; border-radius: 8px; font-size: 0.86em; line-height: 1.4;
+	background: rgba(214,158,46,0.14); border: 1px solid rgba(214,158,46,0.35); color: #975a16;
+}
+.as-results-warn i { margin-top: 2px; }
+html[data-theme="dark"] .as-results-warn { background: rgba(237,137,54,0.12); border-color: rgba(237,137,54,0.35); color: #fbd38d; }
+
 .as-help { font-size: 0.82em; color: var(--ork-text-muted); margin-top: 4px; }
 
 /* Player-search autocomplete dropdown (modal-friendly via position:fixed) */
@@ -336,6 +385,20 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 	border: 6px solid transparent; border-bottom-color: #2d3748; z-index: 1501;
 }
 
+/* F63: generic data-tip tooltip (replaces native title=). The more-specific
+   .as-guild-h / .as-help-tip rules above still win where they apply. */
+.as-tip { position: relative; }
+.as-tip[data-tip]:hover::after,
+.as-tip[data-tip]:focus-visible::after {
+	content: attr(data-tip); position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+	background: #2d3748; color: #fff; font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: 0;
+	white-space: normal; width: max-content; max-width: 240px; padding: 5px 10px; border-radius: 4px;
+	z-index: 1600; pointer-events: none; line-height: 1.4; box-shadow: 0 4px 14px rgba(0,0,0,0.2); text-align: left;
+}
+/* Actions-column tips right-anchor so they don't overflow the viewport edge. */
+.as-tip-right[data-tip]:hover::after,
+.as-tip-right[data-tip]:focus-visible::after { left: auto; right: 0; transform: none; }
+
 /* tnConfirm modal (in-product replacement for native confirm) */
 .tnc-overlay {
 	position: fixed; inset: 0; background: rgba(0,0,0,0.5);
@@ -360,6 +423,11 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 .tnc-btn-confirm:hover { filter: brightness(1.06); }
 .tnc-btn-danger { background: #c53030; color: #fff; border: none; }
 .tnc-btn-danger:hover { background: #9b2c2c; }
+.tnc-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.tnc-confirm-type { padding: 0 18px 14px; }
+.tnc-confirm-label { display: block; font-size: 0.82em; color: var(--ork-text-muted); margin-bottom: 6px; }
+.tnc-confirm-label strong { color: var(--ork-text); }
+.tnc-confirm-input { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--ork-border); border-radius: 6px; background: var(--ork-input-bg, #fff); color: var(--ork-text); font-size: 0.92em; }
 
 /* Inline toast — non-blocking replacement for native alert */
 .as-toast-wrap { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 2100; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
@@ -378,7 +446,7 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 	<div class="as-hero">
 		<div>
 			<div class="as-kingdom-link"><a href="<?= UIR ?>ArtsSciences/index/<?= $kingdom_id ?>"><i class="fas fa-arrow-left"></i> All Competitions</a> &nbsp;·&nbsp; <a href="<?= UIR ?>Kingdom/profile/<?= $kingdom_id ?>"><i class="fas fa-crown"></i> <?= htmlspecialchars($kingdom_name) ?></a></div>
-			<h1><i class="fas fa-trophy"></i> <?= htmlspecialchars($compName) ?> &nbsp; <span class="as-status-pill"><?= htmlspecialchars($compStatus) ?></span></h1>
+			<h1><i class="fas fa-trophy"></i> <?= htmlspecialchars($compName) ?> &nbsp; <span class="as-status-pill as-status-<?= htmlspecialchars($compStatus) ?>"><?= htmlspecialchars($compStatus) ?></span></h1>
 			<?php if ($compDesc): ?>
 				<div class="as-comp-desc"><?= htmlspecialchars($compDesc) ?></div>
 			<?php endif; ?>
@@ -405,42 +473,55 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 	</div>
 
 	<div class="as-tabs">
-		<ul class="as-tab-nav">
-			<li class="as-tab-active" data-astab="results"><i class="fas fa-medal"></i> Results</li>
+		<ul class="as-tab-nav" role="tablist" aria-label="Competition sections">
+			<li role="presentation"><button type="button" class="as-tab as-tab-active" role="tab" id="as-tabbtn-results" aria-controls="as-tab-results" aria-selected="true" tabindex="0" data-astab="results"><i class="fas fa-medal"></i> Results</button></li>
 			<?php if (!$isJudgeOnly): ?>
-				<li data-astab="taxonomy"><i class="fas fa-sitemap"></i> Fields &amp; Categories</li>
+				<li role="presentation"><button type="button" class="as-tab" role="tab" id="as-tabbtn-taxonomy" aria-controls="as-tab-taxonomy" aria-selected="false" tabindex="-1" data-astab="taxonomy"><i class="fas fa-sitemap"></i> Fields &amp; Categories</button></li>
 			<?php endif; ?>
-			<li data-astab="participants"><i class="fas fa-users"></i> Participants</li>
-			<li data-astab="entries"><i class="fas fa-scroll"></i> Entries</li>
+			<li role="presentation"><button type="button" class="as-tab" role="tab" id="as-tabbtn-participants" aria-controls="as-tab-participants" aria-selected="false" tabindex="-1" data-astab="participants"><i class="fas fa-users"></i> Participants</button></li>
+			<li role="presentation"><button type="button" class="as-tab" role="tab" id="as-tabbtn-entries" aria-controls="as-tab-entries" aria-selected="false" tabindex="-1" data-astab="entries"><i class="fas fa-scroll"></i> Entries</button></li>
 			<?php if (!$isJudgeOnly): ?>
-				<li data-astab="judges"><i class="fas fa-gavel"></i> Judges</li>
+				<li role="presentation"><button type="button" class="as-tab" role="tab" id="as-tabbtn-judges" aria-controls="as-tab-judges" aria-selected="false" tabindex="-1" data-astab="judges"><i class="fas fa-gavel"></i> Judges</button></li>
 			<?php endif; ?>
 			<?php if ($isJudge || $canManage): ?>
-				<li data-astab="judging"><i class="fas fa-edit"></i> Judging</li>
+				<li role="presentation"><button type="button" class="as-tab" role="tab" id="as-tabbtn-judging" aria-controls="as-tab-judging" aria-selected="false" tabindex="-1" data-astab="judging"><i class="fas fa-edit"></i> Judging</button></li>
 			<?php endif; ?>
 			<?php if ($canManage): ?>
-				<li data-astab="setup"><i class="fas fa-cog"></i> Setup</li>
+				<li role="presentation"><button type="button" class="as-tab" role="tab" id="as-tabbtn-setup" aria-controls="as-tab-setup" aria-selected="false" tabindex="-1" data-astab="setup"><i class="fas fa-cog"></i> Setup</button></li>
 			<?php endif; ?>
 		</ul>
 
 		<!-- ============ RESULTS ============ -->
-		<div class="as-tab-panel" id="as-tab-results">
+		<div class="as-tab-panel" id="as-tab-results" role="tabpanel" aria-labelledby="as-tabbtn-results" tabindex="0">
 			<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
 				<div>
-					<h3 class="as-section-title">Award Winners (live)</h3>
-					<div class="as-section-sub">Computed from current scores using the configured aggregation method.</div>
+					<h3 class="as-section-title">Award Winners <span style="font-weight:400;font-size:0.8em;color:var(--ork-text-muted)">(live)</span></h3>
+					<div class="as-section-sub">Computed from current scores using the configured aggregation method. <span id="as-results-updated" style="font-style:italic"></span></div>
 				</div>
 				<?php if ($canManage): ?>
-				<div>
+				<div style="display:flex;gap:6px;align-items:center">
+					<button type="button" class="as-btn" id="as-results-refresh"><i class="fas fa-sync"></i> Refresh</button>
 					<a class="as-btn" href="<?= UIR ?>ArtsSciences/csv/<?= $cid ?>"><i class="fas fa-file-csv"></i> Export CSV</a>
 					<a class="as-btn" href="<?= UIR ?>ArtsSciences/csv/<?= $cid ?>?IncludeFeedback=1"><i class="fas fa-comment"></i> Export with Feedback</a>
 				</div>
 				<?php endif; ?>
 			</div>
 
+			<div id="as-results-warning" class="as-results-warning"<?= empty($resultsWarnings) ? ' style="display:none"' : '' ?>>
+				<?php foreach ($resultsWarnings as $rw): ?>
+					<div class="as-results-warn"><i class="fas fa-exclamation-triangle"></i> <?= htmlspecialchars($rw) ?></div>
+				<?php endforeach; ?>
+			</div>
+
+			<?php if (!$resultsPublished): ?>
+				<div class="as-empty-mini" id="as-results-unpublished">
+					<i class="fas fa-hourglass-half" style="font-size:1.4em;display:block;margin-bottom:8px;opacity:0.6"></i>
+					Results are not yet published. Winners and the leaderboard will appear here once judging closes.
+				</div>
+			<?php else: ?>
 			<div id="as-awards-list">
 				<?php if (empty($awards)): ?>
-					<div class="as-empty-mini">No awards configured yet. Add awards in the Setup tab.</div>
+					<div class="as-empty-mini">No awards configured yet.<?php if ($canManage): ?> Add awards in the Setup tab.<?php endif; ?></div>
 				<?php endif; ?>
 				<?php foreach ($awards as $aw): $a = $aw['Award']; $w = $aw['Winners']; ?>
 					<div class="as-results-card">
@@ -460,17 +541,36 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 						<?php endif; ?>
 						<?php if (empty($w)): ?>
 							<div class="as-no-winner">No qualifying winner yet.</div>
-						<?php else: $win = $w[0]; ?>
-							<div class="as-winner">
+						<?php else:
+							// F19: render EVERY winner (places + co-winners), not just $w[0].
+							$place = 0; $prevAgg = null;
+							foreach ($w as $i => $win):
+								$agg = ($win['Aggregate'] === null) ? null : (float)$win['Aggregate'];
+								$tie = ($i > 0 && $agg !== null && $prevAgg !== null && $agg === $prevAgg);
+								if (!$tie) $place = $i + 1;
+								$prevAgg = $agg;
+								if (count($w) === 1)      $placeLabel = 'Winner';
+								elseif ($tie)             $placeLabel = 'Co-winner';
+								else                      $placeLabel = $place . (($place % 10 === 1 && $place % 100 !== 11) ? 'st' : (($place % 10 === 2 && $place % 100 !== 12) ? 'nd' : (($place % 10 === 3 && $place % 100 !== 13) ? 'rd' : 'th'))) . ' place';
+						?>
+							<div class="as-winner" style="<?= $i > 0 ? 'margin-top:8px;' : '' ?>">
 								<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
 									<div>
-										<div style="font-weight:700;font-size:1.05em;color:var(--ork-text)"><i class="fas fa-trophy" style="color:#d69e2e"></i> <?= htmlspecialchars($win['Persona'] ?? '—') ?></div>
-										<?php if (!empty($win['Title'])): ?>
+										<div style="font-weight:700;font-size:1.05em;color:var(--ork-text)">
+											<i class="fas fa-trophy" style="color:#d69e2e"></i>
+											<span class="as-pill" style="margin-right:4px"><?= htmlspecialchars($placeLabel) ?></span>
+											<?php if ($hidePersona): ?>
+												<?= htmlspecialchars($win['Title'] ?? 'Entry') ?>
+											<?php else: ?>
+												<?= htmlspecialchars($win['Persona'] ?? '—') ?>
+											<?php endif; ?>
+										</div>
+										<?php if (!$hidePersona && !empty($win['Title'])): ?>
 											<div style="color:var(--ork-text-muted);font-size:0.9em">for <em><?= htmlspecialchars($win['Title']) ?></em><?php if (!empty($win['TaxonomyName'])): ?> in <?= htmlspecialchars($win['TaxonomyName']) ?><?php endif; ?></div>
 										<?php endif; ?>
 									</div>
 									<div style="text-align:right">
-										<div style="font-size:1.3em;font-weight:700;color:#5a67d8"><?= number_format((float)$win['Aggregate'], 2) ?></div>
+										<div style="font-size:1.3em;font-weight:700;color:#5a67d8"><?= $agg === null ? '—' : number_format($agg, 2) ?></div>
 										<div style="font-size:0.78em;color:var(--ork-text-muted)">Final Score</div>
 									</div>
 								</div>
@@ -483,14 +583,14 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 									</div>
 								<?php endif; ?>
 							</div>
-						<?php endif; ?>
+						<?php endforeach; endif; ?>
 					</div>
 				<?php endforeach; ?>
 			</div>
 
 			<h3 class="as-section-title" style="margin-top:24px">Live Leaderboard</h3>
 			<table class="as-table">
-				<thead><tr><th>Rank</th><th>Title</th><th>Participant</th><th>Field/Category</th><th>Judges</th><th style="text-align:right">Final Score</th></tr></thead>
+				<thead><tr><th>Rank</th><th>Title</th><th><?= $hidePersona ? 'Entry #' : 'Participant' ?></th><th>Field/Category</th><th>Judges</th><th style="text-align:right">Final Score</th></tr></thead>
 				<tbody id="as-leaderboard-body">
 				<?php
 					$sortable = $entries;
@@ -505,7 +605,7 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 							<?php if (!empty($e['EntryNumber'])): ?> <span class="as-pill">#<?= htmlspecialchars($e['EntryNumber']) ?></span><?php endif; ?>
 							<?php if (!empty($e['IsNovice'])): ?> <span class="as-pill as-pill-novice">Novice</span><?php endif; ?>
 						</td>
-						<td><?= htmlspecialchars($e['Persona'] ?? '—') ?></td>
+						<td><?php if ($hidePersona): ?>#<?= htmlspecialchars($e['EntryNumber'] ?? (string)($e['EntryId'] ?? '')) ?><?php else: ?><?= htmlspecialchars($e['Persona'] ?? '—') ?><?php endif; ?></td>
 						<td><?= htmlspecialchars($e['TaxonomyName'] ?? '—') ?></td>
 						<td><?= (int)$e['JudgeCount'] ?></td>
 						<td style="text-align:right;font-weight:700;color:<?= $e['Aggregate'] === null ? 'var(--ork-text-muted)' : '#5a67d8' ?>">
@@ -515,11 +615,12 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 				<?php endforeach; endif; ?>
 				</tbody>
 			</table>
+			<?php endif; /* $resultsPublished */ ?>
 		</div>
 
 		<?php if (!$isJudgeOnly): ?>
 		<!-- ============ TAXONOMY (drag-drop tree) ============ -->
-		<div class="as-tab-panel" id="as-tab-taxonomy" style="display:none">
+		<div class="as-tab-panel" id="as-tab-taxonomy" style="display:none" role="tabpanel" aria-labelledby="as-tabbtn-taxonomy" tabindex="0">
 			<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
 				<div>
 					<h3 class="as-section-title">Fields, Categories &amp; Subcategories</h3>
@@ -548,7 +649,7 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 		<?php endif; /* !$isJudgeOnly: taxonomy */ ?>
 
 		<!-- ============ PARTICIPANTS ============ -->
-		<div class="as-tab-panel" id="as-tab-participants" style="display:none">
+		<div class="as-tab-panel" id="as-tab-participants" style="display:none" role="tabpanel" aria-labelledby="as-tabbtn-participants" tabindex="0">
 			<div class="as-btn-row">
 				<?php if ($canManage): ?><button class="as-btn as-btn-primary" id="as-add-participant-btn"><i class="fas fa-user-plus"></i> Register Participant</button><?php endif; ?>
 			</div>
@@ -561,7 +662,7 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 		</div>
 
 		<!-- ============ ENTRIES ============ -->
-		<div class="as-tab-panel" id="as-tab-entries" style="display:none">
+		<div class="as-tab-panel" id="as-tab-entries" style="display:none" role="tabpanel" aria-labelledby="as-tabbtn-entries" tabindex="0">
 			<div class="as-btn-row">
 				<?php if ($canManage): ?><button class="as-btn as-btn-primary" id="as-add-entry-btn"><i class="fas fa-plus"></i> Add Entry</button><?php endif; ?>
 			</div>
@@ -575,7 +676,7 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 
 		<?php if (!$isJudgeOnly): ?>
 		<!-- ============ JUDGES ============ -->
-		<div class="as-tab-panel" id="as-tab-judges" style="display:none">
+		<div class="as-tab-panel" id="as-tab-judges" style="display:none" role="tabpanel" aria-labelledby="as-tabbtn-judges" tabindex="0">
 			<div class="as-btn-row">
 				<?php if ($canManage): ?><button class="as-btn as-btn-primary" id="as-add-judge-btn"><i class="fas fa-gavel"></i> Add Judge</button><?php endif; ?>
 			</div>
@@ -591,7 +692,7 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 
 		<!-- ============ JUDGING (judge view: score entries) ============ -->
 		<?php if ($isJudge || $canManage): ?>
-		<div class="as-tab-panel" id="as-tab-judging" style="display:none">
+		<div class="as-tab-panel" id="as-tab-judging" style="display:none" role="tabpanel" aria-labelledby="as-tabbtn-judging" tabindex="0">
 			<div style="display:flex;gap:14px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
 				<div>
 					<label style="font-size:0.82em;font-weight:600;color:var(--ork-text);margin-right:6px">Judging as:</label>
@@ -604,9 +705,9 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 				</div>
 				<div>
 					<label style="font-size:0.82em;font-weight:600;color:var(--ork-text);margin-right:6px">Entry:</label>
-					<button type="button" class="as-btn as-judging-nav" id="as-judging-prev" title="Previous entry" aria-label="Previous entry"><i class="fas fa-chevron-left"></i></button>
+					<button type="button" class="as-btn as-judging-nav as-tip" id="as-judging-prev" data-tip="Previous entry" aria-label="Previous entry"><i class="fas fa-chevron-left"></i></button>
 					<select id="as-judging-entry-picker" style="min-width:280px"></select>
-					<button type="button" class="as-btn as-judging-nav" id="as-judging-next" title="Next entry" aria-label="Next entry"><i class="fas fa-chevron-right"></i></button>
+					<button type="button" class="as-btn as-judging-nav as-tip" id="as-judging-next" data-tip="Next entry" aria-label="Next entry"><i class="fas fa-chevron-right"></i></button>
 					<span id="as-judging-progress" style="margin-left:10px;font-size:0.82em;color:var(--ork-text-muted)"></span>
 				</div>
 			</div>
@@ -618,7 +719,7 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 
 		<!-- ============ SETUP (admin only) ============ -->
 		<?php if ($canManage): ?>
-		<div class="as-tab-panel" id="as-tab-setup" style="display:none">
+		<div class="as-tab-panel" id="as-tab-setup" style="display:none" role="tabpanel" aria-labelledby="as-tabbtn-setup" tabindex="0">
 			<h3 class="as-section-title">Competition Settings</h3>
 			<div class="as-field"><label>Name</label><input type="text" id="as-set-name" value="<?= htmlspecialchars($compName) ?>"></div>
 			<div class="as-field"><label>Description</label><textarea id="as-set-desc"><?= htmlspecialchars($compDesc) ?></textarea></div>
@@ -723,7 +824,7 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 
 <!-- Generic edit modal: taxonomy node -->
 <div id="as-tax-modal" class="as-modal-overlay">
-	<div class="as-modal-box">
+	<div class="as-modal-box" role="dialog" aria-modal="true" aria-labelledby="as-tax-modal-title">
 		<div class="as-modal-header"><h3 id="as-tax-modal-title"><i class="fas fa-sitemap"></i> Add Field</h3><button class="as-modal-close-btn" data-close>&times;</button></div>
 		<div class="as-modal-body">
 			<input type="hidden" id="as-tax-id">
@@ -737,8 +838,8 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 
 <!-- Participant modal -->
 <div id="as-part-modal" class="as-modal-overlay">
-	<div class="as-modal-box">
-		<div class="as-modal-header"><h3><i class="fas fa-user-plus"></i> Register Participant</h3><button class="as-modal-close-btn" data-close>&times;</button></div>
+	<div class="as-modal-box" role="dialog" aria-modal="true" aria-labelledby="as-part-modal-title">
+		<div class="as-modal-header"><h3 id="as-part-modal-title"><i class="fas fa-user-plus"></i> Register Participant</h3><button class="as-modal-close-btn" data-close>&times;</button></div>
 		<div class="as-modal-body">
 			<input type="hidden" id="as-part-id">
 			<div class="as-field" style="position:relative"><label>Find existing player</label><input type="text" id="as-part-search" autocomplete="off" placeholder="Type 2+ letters of persona…"><input type="hidden" id="as-part-mundane"><div class="as-ac-results" id="as-part-results"></div><div class="as-help">Optional — leaves Persona below empty if no match found.</div></div>
@@ -752,8 +853,8 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 
 <!-- Judge modal -->
 <div id="as-judge-modal" class="as-modal-overlay">
-	<div class="as-modal-box">
-		<div class="as-modal-header"><h3><i class="fas fa-gavel"></i> Add Judge</h3><button class="as-modal-close-btn" data-close>&times;</button></div>
+	<div class="as-modal-box" role="dialog" aria-modal="true" aria-labelledby="as-judge-modal-title">
+		<div class="as-modal-header"><h3 id="as-judge-modal-title"><i class="fas fa-gavel"></i> Add Judge</h3><button class="as-modal-close-btn" data-close>&times;</button></div>
 		<div class="as-modal-body">
 			<input type="hidden" id="as-judge-id">
 			<div class="as-field" style="position:relative"><label>Find player</label><input type="text" id="as-judge-search" autocomplete="off" placeholder="Type 2+ letters…"><input type="hidden" id="as-judge-mundane"><div class="as-ac-results" id="as-judge-results"></div><div class="as-help">Search prioritises this competition's park, then kingdom, then everyone.</div></div>
@@ -768,8 +869,8 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 
 <!-- Entry modal -->
 <div id="as-entry-modal" class="as-modal-overlay">
-	<div class="as-modal-box">
-		<div class="as-modal-header"><h3><i class="fas fa-scroll"></i> Add Entry</h3><button class="as-modal-close-btn" data-close>&times;</button></div>
+	<div class="as-modal-box" role="dialog" aria-modal="true" aria-labelledby="as-entry-modal-title">
+		<div class="as-modal-header"><h3 id="as-entry-modal-title"><i class="fas fa-scroll"></i> Add Entry</h3><button class="as-modal-close-btn" data-close>&times;</button></div>
 		<div class="as-modal-body">
 			<input type="hidden" id="as-entry-id">
 			<div class="as-field"><label>Participant <span style="color:#e53e3e">*</span></label><select id="as-entry-participant"></select></div>
@@ -799,8 +900,8 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 
 <!-- Criterion modal -->
 <div id="as-crit-modal" class="as-modal-overlay">
-	<div class="as-modal-box">
-		<div class="as-modal-header"><h3><i class="fas fa-balance-scale"></i> Scoring Criterion</h3><button class="as-modal-close-btn" data-close>&times;</button></div>
+	<div class="as-modal-box" role="dialog" aria-modal="true" aria-labelledby="as-crit-modal-title">
+		<div class="as-modal-header"><h3 id="as-crit-modal-title"><i class="fas fa-balance-scale"></i> Scoring Criterion</h3><button class="as-modal-close-btn" data-close>&times;</button></div>
 		<div class="as-modal-body">
 			<input type="hidden" id="as-crit-id">
 			<div class="as-field-row">
@@ -859,8 +960,8 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 .as-preview-error { color: #c53030; }
 </style>
 <div id="as-award-modal" class="as-modal-overlay">
-	<div class="as-modal-box" style="width:720px">
-		<div class="as-modal-header"><h3><i class="fas fa-medal"></i> Award Formula</h3><button class="as-modal-close-btn" data-close>&times;</button></div>
+	<div class="as-modal-box" style="width:720px" role="dialog" aria-modal="true" aria-labelledby="as-award-modal-title">
+		<div class="as-modal-header"><h3 id="as-award-modal-title"><i class="fas fa-medal"></i> Award Formula</h3><button class="as-modal-close-btn" data-close>&times;</button></div>
 		<div class="as-modal-body">
 			<input type="hidden" id="as-award-id">
 			<div class="as-field-row">
@@ -937,7 +1038,7 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 
 <!-- Save Preset modal (shared by Taxonomy & Award preset bars) -->
 <div id="as-preset-save-modal" class="as-modal-overlay">
-	<div class="as-modal-box">
+	<div class="as-modal-box" role="dialog" aria-modal="true" aria-labelledby="as-preset-save-title">
 		<div class="as-modal-header"><h3 id="as-preset-save-title"><i class="fas fa-bookmark"></i> Save Preset</h3><button class="as-modal-close-btn" data-close>&times;</button></div>
 		<div class="as-modal-body">
 			<input type="hidden" id="as-preset-save-type">
@@ -950,9 +1051,15 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 </div>
 
 <!-- Edit Setup overlay (just opens the Setup tab) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>window.AS_CSRF = "<?= htmlspecialchars($AsCsrf ?? '', ENT_QUOTES) ?>";</script>
 <script>
 (function(){
 	var UIR = <?= json_encode(UIR) ?>;
+	var COMP_NAME = <?= json_encode($compName) ?>;
+	var ANON_JUDGING = <?= !empty($competition['AnonymousJudging']) ? 'true' : 'false' ?>;
+	var AGG_METHOD = <?= json_encode((string)($competition['AggregationMethod'] ?? 'average')) ?>;
 	var COMP_ID = <?= (int)$cid ?>;
 	var KINGDOM_ID = <?= (int)$kingdom_id ?>;
 	var PARK_ID = <?= (int)$compParkId ?>;
@@ -960,6 +1067,14 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 	var isJudge   = <?= $isJudge ? 'true' : 'false' ?>;
 	var IS_JUDGE_ONLY = <?= !empty($isJudgeOnly) ? 'true' : 'false' ?>;
 	var selfJudgeId = <?= $selfJudgeId !== null ? (int)$selfJudgeId : 'null' ?>;
+	// F2: a non-admin judge under anonymous judging must never see entrant persona —
+	// show the anonymizing Entry # instead (server also redacts, this is defence-in-depth).
+	var HIDE_PERSONA = IS_JUDGE_ONLY && ANON_JUDGING;
+	function entryLabelName(e){
+		if (!e) return '';
+		if (HIDE_PERSONA) return 'Entry #' + (e.EntryNumber || e.EntryId || '');
+		return e.Persona || '';
+	}
 	var SCORE_MIN = <?= $scoringMin ?>;
 	var SCORE_MAX = <?= $scoringMax ?>;
 	var SCORE_DEFAULT = <?= $scoringDefault ?>;
@@ -975,9 +1090,9 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 			var fd;
 			if (data instanceof FormData) fd = data;
 			else { fd = new FormData(); for (var k in data) if (data[k] !== undefined && data[k] !== null) fd.append(k, data[k]); }
-			return fetch(UIR + 'ArtsSciencesAjax/comp/' + COMP_ID + '/' + action, { method: 'POST', body: fd, credentials: 'same-origin' })
+			return fetch(UIR + 'ArtsSciencesAjax/comp/' + COMP_ID + '/' + action, { method: 'POST', body: fd, credentials: 'same-origin', headers: { 'X-CSRF-Token': (window.AS_CSRF || '') } })
 				.then(function(r){ return r.json(); })
-				.then(function(j){ console.log('[AS '+action+']', j); return j; });
+				.then(function(j){ return j; });
 		},
 		list: function(action) { // GET-friendly variants still use POST harness
 			return this.comp(action, {});
@@ -990,7 +1105,7 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 		var url = UIR + 'ArtsSciencesAjax/playersearch/' + KINGDOM_ID
 			+ '&q=' + encodeURIComponent(term)
 			+ (PARK_ID > 0 ? '&park_id=' + PARK_ID : '');
-		return fetch(url, { credentials: 'same-origin' })
+		return fetch(url, { credentials: 'same-origin', headers: { 'X-CSRF-Token': (window.AS_CSRF || '') } })
 			.then(function(r){ return r.json(); })
 			.then(function(rows){ return Array.isArray(rows) ? rows : []; })
 			.catch(function(){ return []; });
@@ -1000,9 +1115,40 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 	function fmtNum(n, dp){ dp = dp == null ? 2 : dp; if (n === null || n === undefined || isNaN(n)) return '—'; return Number(n).toFixed(dp); }
 	function bind(id, ev, cb){ var el = document.getElementById(id); if (el) el.addEventListener(ev, cb); }
 
+	// F62: distinct load-error state (separate from genuine-empty copy) with a Retry affordance.
+	// tableBody variant renders a spanning row; host variant renders a block. Both wire Retry.
+	function asErrorInner(retryFn){
+		var wrap = document.createElement('span');
+		wrap.className = 'as-load-error';
+		wrap.innerHTML = '<i class="fas fa-exclamation-circle"></i>Something went wrong loading this data.'
+			+ '<button type="button" class="as-btn as-retry-btn"><i class="fas fa-sync"></i> Retry</button>';
+		wrap.querySelector('.as-retry-btn').addEventListener('click', function(){ if (typeof retryFn === 'function') retryFn(); });
+		return wrap;
+	}
+	function showTabError(body, colspan, retryFn){
+		if (!body) return;
+		body.innerHTML = '<tr><td colspan="' + colspan + '" class="as-empty-mini"></td></tr>';
+		body.querySelector('td').appendChild(asErrorInner(retryFn));
+	}
+	function showHostError(host, retryFn){
+		if (!host) return;
+		host.innerHTML = '<div class="as-empty-mini"></div>';
+		host.querySelector('.as-empty-mini').appendChild(asErrorInner(retryFn));
+	}
+
 	// --------- tabs ---------
+	function defaultTabName(){ return IS_JUDGE_ONLY ? 'judging' : 'results'; }
 	function activateTab(name) {
-		document.querySelectorAll('.as-tab-nav li').forEach(function(li){ li.classList.toggle('as-tab-active', li.getAttribute('data-astab') === name); });
+		// F64: a deep-linked ?tab= may name a panel this viewer isn't allowed to see (or a
+		// bogus value). Only honour it when the panel actually exists; otherwise fall back.
+		if (!name || !document.getElementById('as-tab-' + name)) { name = defaultTabName(); }
+		// F61: keep the ARIA tab state (aria-selected + roving tabindex) in sync with the visual state.
+		document.querySelectorAll('.as-tab-nav .as-tab').forEach(function(btn){
+			var on = btn.getAttribute('data-astab') === name;
+			btn.classList.toggle('as-tab-active', on);
+			btn.setAttribute('aria-selected', on ? 'true' : 'false');
+			btn.tabIndex = on ? 0 : -1;
+		});
 		document.querySelectorAll('.as-tab-panel').forEach(function(p){ p.style.display = p.id === 'as-tab-' + name ? '' : 'none'; });
 		// Update only the `tab` param without re-serializing the whole query —
 		// URLSearchParams.set encodes '/' (turning Route=ArtsComp/3 into ArtsComp%2F3).
@@ -1013,6 +1159,7 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 			: search + (search ? '&' : '?') + 'tab=' + enc;
 		window.history.replaceState({}, '', window.location.pathname + newSearch + window.location.hash);
 		// Lazy loaders per tab
+		if (name === 'results')      loadResults();
 		if (name === 'taxonomy')     loadTaxonomy();
 		if (name === 'participants') loadParticipants();
 		if (name === 'entries')      loadEntries();
@@ -1020,18 +1167,55 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 		if (name === 'judging')      loadJudging();
 		if (name === 'setup')        { loadCriteria(); loadAwards(); }
 	}
-	document.querySelectorAll('.as-tab-nav li').forEach(function(li){
-		li.addEventListener('click', function(){ activateTab(li.getAttribute('data-astab')); });
+	// F61: buttons handle Enter/Space natively (they fire click); arrow/Home/End keys move
+	// focus between tabs (roving tabindex) and activate the newly-focused tab.
+	var AS_TAB_BTNS = Array.prototype.slice.call(document.querySelectorAll('.as-tab-nav .as-tab'));
+	AS_TAB_BTNS.forEach(function(btn, i){
+		btn.addEventListener('click', function(){ activateTab(btn.getAttribute('data-astab')); });
+		btn.addEventListener('keydown', function(e){
+			var n = AS_TAB_BTNS.length, target = null;
+			if (e.key === 'ArrowRight' || e.key === 'ArrowDown')      target = AS_TAB_BTNS[(i + 1) % n];
+			else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp')    target = AS_TAB_BTNS[(i - 1 + n) % n];
+			else if (e.key === 'Home')                                target = AS_TAB_BTNS[0];
+			else if (e.key === 'End')                                 target = AS_TAB_BTNS[n - 1];
+			if (target) { e.preventDefault(); target.focus(); activateTab(target.getAttribute('data-astab')); }
+		});
 	});
 
 	// --------- modal helpers ---------
-	function openModal(id){ var m = document.getElementById(id); m.classList.add('as-open'); document.body.style.overflow='hidden'; setTimeout(function(){ var f = m.querySelector('input[type="text"], select, textarea'); if (f) f.focus(); }, 60); }
-	function closeModal(id){ var m = document.getElementById(id); if (m) m.classList.remove('as-open'); document.body.style.overflow=''; }
+	// F66: dialog a11y — trap Tab within the open modal and restore focus to the trigger on close.
+	var AS_MODAL_LAST_FOCUS = null;
+	function asFocusables(m){
+		return Array.prototype.slice.call(m.querySelectorAll(
+			'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+		)).filter(function(el){ return el.offsetWidth > 0 || el.offsetHeight > 0 || el === document.activeElement; });
+	}
+	function openModal(id){
+		var m = document.getElementById(id); if (!m) return;
+		AS_MODAL_LAST_FOCUS = document.activeElement;
+		m.classList.add('as-open'); document.body.style.overflow='hidden';
+		m._asTrap = function(e){
+			if (e.key !== 'Tab') return;
+			var f = asFocusables(m); if (!f.length) return;
+			var first = f[0], last = f[f.length - 1];
+			if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+			else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+		};
+		m.addEventListener('keydown', m._asTrap);
+		setTimeout(function(){ var f = m.querySelector('input[type="text"], select, textarea'); if (!f) f = m.querySelector('button:not([data-close])'); if (f) f.focus(); }, 60);
+	}
+	function closeModal(id){
+		var m = document.getElementById(id); if (!m) return;
+		m.classList.remove('as-open'); document.body.style.overflow='';
+		if (m._asTrap) { m.removeEventListener('keydown', m._asTrap); m._asTrap = null; }
+		if (AS_MODAL_LAST_FOCUS && typeof AS_MODAL_LAST_FOCUS.focus === 'function') { AS_MODAL_LAST_FOCUS.focus(); }
+		AS_MODAL_LAST_FOCUS = null;
+	}
 	document.querySelectorAll('.as-modal-overlay').forEach(function(m){
-		m.addEventListener('click', function(e){ if (e.target === m) m.classList.remove('as-open'); });
-		m.querySelectorAll('[data-close]').forEach(function(b){ b.addEventListener('click', function(){ m.classList.remove('as-open'); document.body.style.overflow=''; }); });
+		m.addEventListener('click', function(e){ if (e.target === m) closeModal(m.id); });
+		m.querySelectorAll('[data-close]').forEach(function(b){ b.addEventListener('click', function(){ closeModal(m.id); }); });
 	});
-	document.addEventListener('keydown', function(e){ if (e.key === 'Escape') document.querySelectorAll('.as-modal-overlay.as-open').forEach(function(m){ m.classList.remove('as-open'); document.body.style.overflow=''; }); });
+	document.addEventListener('keydown', function(e){ if (e.key === 'Escape') document.querySelectorAll('.as-modal-overlay.as-open').forEach(function(m){ closeModal(m.id); }); });
 
 	// --------- tnConfirm (in-product confirm dialog) ---------
 	// Defined globally + idempotently so other surfaces can reuse it.
@@ -1045,22 +1229,60 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 			var danger = !!opts.danger;
 			var confirmLabel = opts.confirmLabel || (danger ? 'Delete' : 'Confirm');
 			var box = document.createElement('div'); box.className = 'tnc-box';
+			// F66: dialog semantics for the confirm modal.
+			box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true');
 			var hd = document.createElement('div'); hd.className = 'tnc-header';
-			var h3 = document.createElement('h3'); h3.textContent = opts.title || 'Confirm'; hd.appendChild(h3);
+			var h3 = document.createElement('h3'); h3.id = 'tnc-title'; h3.textContent = opts.title || 'Confirm'; hd.appendChild(h3);
+			box.setAttribute('aria-labelledby', 'tnc-title');
 			var bd = document.createElement('div'); bd.className = 'tnc-body'; bd.textContent = opts.body || '';
 			var ft = document.createElement('div'); ft.className = 'tnc-footer';
 			var cancel = document.createElement('button'); cancel.className = 'tnc-btn'; cancel.textContent = opts.cancelLabel || 'Cancel';
 			var ok = document.createElement('button'); ok.className = 'tnc-btn ' + (danger ? 'tnc-btn-danger' : 'tnc-btn-confirm'); ok.textContent = confirmLabel;
 			ft.appendChild(cancel); ft.appendChild(ok);
-			box.appendChild(hd); box.appendChild(bd); box.appendChild(ft);
+			box.appendChild(hd); box.appendChild(bd);
+			// F41: for irreversible actions, require the operator to type an exact confirmation
+			// phrase (e.g. the competition or preset name) before the confirm button unlocks.
+			var requireText = opts.requireText ? String(opts.requireText) : '';
+			var confInput = null;
+			if (requireText) {
+				var cw = document.createElement('div'); cw.className = 'tnc-confirm-type';
+				var lbl = document.createElement('label'); lbl.className = 'tnc-confirm-label';
+				lbl.appendChild(document.createTextNode('Type '));
+				var strong = document.createElement('strong'); strong.textContent = requireText; lbl.appendChild(strong);
+				lbl.appendChild(document.createTextNode(' to confirm'));
+				confInput = document.createElement('input');
+				confInput.type = 'text'; confInput.className = 'tnc-confirm-input'; confInput.autocomplete = 'off';
+				confInput.setAttribute('aria-label', 'Type ' + requireText + ' to confirm');
+				cw.appendChild(lbl); cw.appendChild(confInput);
+				box.appendChild(cw);
+				ok.disabled = true;
+			}
+			box.appendChild(ft);
 			ov.appendChild(box); document.body.appendChild(ov);
-			function close(){ ov.classList.remove('tnc-open'); document.removeEventListener('keydown', onKey); setTimeout(function(){ if (ov.parentNode) ov.parentNode.removeChild(ov); }, 200); }
-			function onKey(e){ if (e.key === 'Escape') close(); }
+			function matchesConfirm(){ return !requireText || confInput.value.trim().toLowerCase() === requireText.trim().toLowerCase(); }
+			// F66: restore focus to whatever triggered the confirm when it closes.
+			var tncLastFocus = document.activeElement;
+			function close(){ ov.classList.remove('tnc-open'); document.removeEventListener('keydown', onKey); setTimeout(function(){ if (ov.parentNode) ov.parentNode.removeChild(ov); }, 200); if (tncLastFocus && typeof tncLastFocus.focus === 'function') tncLastFocus.focus(); }
+			function onKey(e){
+				if (e.key === 'Escape') { close(); return; }
+				// F66: trap Tab within the confirm dialog.
+				if (e.key !== 'Tab') return;
+				var f = Array.prototype.slice.call(box.querySelectorAll('button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+					.filter(function(el){ return el.offsetWidth > 0 || el.offsetHeight > 0 || el === document.activeElement; });
+				if (!f.length) return;
+				var first = f[0], last = f[f.length - 1];
+				if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+				else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+			}
 			cancel.addEventListener('click', close);
 			ov.addEventListener('click', function(e){ if (e.target === ov) close(); });
 			document.addEventListener('keydown', onKey);
-			ok.addEventListener('click', function(){ close(); if (typeof opts.onConfirm === 'function') opts.onConfirm(); });
-			requestAnimationFrame(function(){ ov.classList.add('tnc-open'); ok.focus(); });
+			if (confInput) {
+				confInput.addEventListener('input', function(){ ok.disabled = !matchesConfirm(); });
+				confInput.addEventListener('keydown', function(e){ if (e.key === 'Enter' && matchesConfirm()) { e.preventDefault(); ok.click(); } });
+			}
+			ok.addEventListener('click', function(){ if (ok.disabled || !matchesConfirm()) return; close(); if (typeof opts.onConfirm === 'function') opts.onConfirm(); });
+			requestAnimationFrame(function(){ ov.classList.add('tnc-open'); (confInput || ok).focus(); });
 		};
 	}
 
@@ -1134,13 +1356,137 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 	bindPlayerAutocomplete('as-part-search',  'as-part-mundane',  'as-part-results',  'as-part-persona');
 	bindPlayerAutocomplete('as-judge-search', 'as-judge-mundane', 'as-judge-results', 'as-judge-persona');
 
+	// --------- RESULTS tab (live refetch) ---------
+	// F23: the Results board is refetched from the server (compute_results bundle) whenever the
+	// tab is opened and after a successful score save, so it stays truly "live".
+	function asOrdinal(n){
+		var v = n % 100;
+		if (v >= 11 && v <= 13) return n + 'th';
+		switch (n % 10) { case 1: return n + 'st'; case 2: return n + 'nd'; case 3: return n + 'rd'; default: return n + 'th'; }
+	}
+	function renderResultsWarning(bundle){
+		var host = document.getElementById('as-results-warning');
+		if (!host) return;
+		var entries = (bundle && bundle.Entries) || [];
+		var scored = entries.filter(function(e){ return (e.JudgeCount | 0) > 0; });
+		var msgs = [];
+		// F32: differing judge counts make SUMMED totals non-comparable.
+		if (AGG_METHOD === 'sum' && scored.length > 1) {
+			var counts = {};
+			scored.forEach(function(e){ counts[e.JudgeCount | 0] = true; });
+			if (Object.keys(counts).length > 1) {
+				msgs.push('Entries were scored by differing numbers of judges. Because this competition sums judge scores, the totals below are not directly comparable.');
+			}
+		}
+		// F28: incomplete ballots — some entries not yet seen by the full judge panel.
+		var totalJudges = (typeof JUDGES !== 'undefined' && JUDGES) ? JUDGES.length : 0;
+		if (totalJudges > 1 && scored.length) {
+			var under = scored.filter(function(e){ return (e.JudgeCount | 0) < totalJudges; }).length;
+			if (under > 0) msgs.push(under + ' of ' + scored.length + ' scored entries have not yet been seen by every judge (incomplete ballots).');
+		}
+		if (!msgs.length) { host.style.display = 'none'; host.innerHTML = ''; return; }
+		host.style.display = '';
+		host.innerHTML = msgs.map(function(m){ return '<div class="as-results-warn"><i class="fas fa-exclamation-triangle"></i> ' + escHtml(m) + '</div>'; }).join('');
+	}
+	function renderAwardsList(awards){
+		var host = document.getElementById('as-awards-list');
+		if (!host) return;
+		if (!awards || !awards.length) {
+			host.innerHTML = '<div class="as-empty-mini">No awards configured yet.' + (canManage ? ' Add awards in the Setup tab.' : '') + '</div>';
+			return;
+		}
+		host.innerHTML = awards.map(function(aw){
+			var a = aw.Award || {};
+			var winners = aw.Winners || [];
+			var html = '<div class="as-results-card"><div class="as-aw-title"><i class="fas fa-medal" style="color:#d69e2e"></i> ' + escHtml(a.Name || '')
+				+ ' <span class="as-pill">' + escHtml(String(a.AwardType || '').replace(/_/g, ' ')) + '</span>'
+				+ (a.NoviceOnly ? ' <span class="as-pill as-pill-novice">Novice only</span>' : '')
+				+ '</div>';
+			if (a.Description) html += '<div class="as-aw-meta">' + escHtml(a.Description) + '</div>';
+			if (a.AwardType === 'best_x_of_y') {
+				html += '<div class="as-aw-meta">Top ' + (a.TopN | 0) + ' entries'
+					+ (a.MinDistinctFields ? ' · min ' + (a.MinDistinctFields | 0) + ' fields' : '')
+					+ (a.MinDistinctCategories ? ' · min ' + (a.MinDistinctCategories | 0) + ' categories' : '')
+					+ '</div>';
+			}
+			if (!winners.length) {
+				html += '<div class="as-no-winner">No qualifying winner yet.</div>';
+			} else {
+				// F19: render every winner (places + co-winners).
+				var place = 0, prevAgg = null;
+				winners.forEach(function(w, i){
+					var agg = (w.Aggregate == null) ? null : Number(w.Aggregate);
+					var tie = (i > 0 && agg != null && prevAgg != null && agg === prevAgg);
+					if (!tie) place = i + 1;
+					prevAgg = agg;
+					var placeLabel = winners.length === 1 ? 'Winner' : (tie ? 'Co-winner' : asOrdinal(place) + ' place');
+					// F2: under anonymous judging a non-admin judge sees the entry title, not persona.
+					var identity = HIDE_PERSONA ? escHtml(w.Title || 'Entry') : escHtml(w.Persona || '—');
+					var sub = (!HIDE_PERSONA && w.Title)
+						? '<div style="color:var(--ork-text-muted);font-size:0.9em">for <em>' + escHtml(w.Title) + '</em>' + (w.TaxonomyName ? ' in ' + escHtml(w.TaxonomyName) : '') + '</div>'
+						: '';
+					html += '<div class="as-winner"' + (i > 0 ? ' style="margin-top:8px"' : '') + '>'
+						+ '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">'
+						+   '<div><div style="font-weight:700;font-size:1.05em;color:var(--ork-text)"><i class="fas fa-trophy" style="color:#d69e2e"></i> <span class="as-pill" style="margin-right:4px">' + escHtml(placeLabel) + '</span>' + identity + '</div>' + sub + '</div>'
+						+   '<div style="text-align:right"><div style="font-size:1.3em;font-weight:700;color:#5a67d8">' + (agg == null ? '—' : agg.toFixed(2)) + '</div><div style="font-size:0.78em;color:var(--ork-text-muted)">Final Score</div></div>'
+						+ '</div>';
+					if (a.AwardType === 'best_x_of_y' && w.TopEntries && w.TopEntries.length) {
+						html += '<div style="margin-top:8px;font-size:0.86em;color:var(--ork-text-muted)">Counted entries: '
+							+ w.TopEntries.map(function(te){ return '<span class="as-pill" style="margin-right:4px">' + escHtml(te.Title || '') + ' · ' + fmtNum(te.Aggregate, 2) + '</span>'; }).join('')
+							+ '</div>';
+					}
+					html += '</div>';
+				});
+			}
+			return html + '</div>';
+		}).join('');
+	}
+	function renderLeaderboard(entries){
+		var body = document.getElementById('as-leaderboard-body');
+		if (!body) return;
+		var sortable = (entries || []).slice().sort(function(a, b){ return (b.Aggregate || 0) - (a.Aggregate || 0); });
+		if (!sortable.length) { body.innerHTML = '<tr><td colspan="6" class="as-empty-mini">No entries scored yet.</td></tr>'; return; }
+		body.innerHTML = sortable.map(function(e, i){
+			var agg = (e.Aggregate == null) ? null : Number(e.Aggregate);
+			var who = HIDE_PERSONA ? ('#' + escHtml(e.EntryNumber || e.EntryId || '')) : escHtml(e.Persona || '—');
+			return '<tr><td>' + (i + 1) + '</td>'
+				+ '<td><strong>' + escHtml(e.Title || '') + '</strong>'
+				+ (e.EntryNumber ? ' <span class="as-pill">#' + escHtml(e.EntryNumber) + '</span>' : '')
+				+ (e.IsNovice ? ' <span class="as-pill as-pill-novice">Novice</span>' : '') + '</td>'
+				+ '<td>' + who + '</td>'
+				+ '<td>' + escHtml(e.TaxonomyName || '—') + '</td>'
+				+ '<td>' + (e.JudgeCount | 0) + '</td>'
+				+ '<td style="text-align:right;font-weight:700;color:' + (agg == null ? 'var(--ork-text-muted)' : '#5a67d8') + '">' + (agg == null ? '—' : agg.toFixed(2)) + '</td>'
+				+ '</tr>';
+		}).join('');
+	}
+	var RESULTS_LOADING = false;
+	function loadResults(){
+		// If the server never published a bundle (empty state present), there is nothing to refresh.
+		if (document.getElementById('as-results-unpublished')) return;
+		if (RESULTS_LOADING) return;
+		RESULTS_LOADING = true;
+		ASApi.comp('results', {}).then(function(j){
+			RESULTS_LOADING = false;
+			if (!j || j.status !== 0 || !j.result) { showHostError(document.getElementById('as-awards-list'), loadResults); return; }
+			var bundle = j.result;
+			renderAwardsList(bundle.Awards || []);
+			renderLeaderboard(bundle.Entries || []);
+			renderResultsWarning(bundle);
+			var stamp = document.getElementById('as-results-updated');
+			if (stamp) stamp.textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+		}, function(){ RESULTS_LOADING = false; showHostError(document.getElementById('as-awards-list'), loadResults); });
+	}
+	bind('as-results-refresh', 'click', loadResults);
+
 	// --------- TAXONOMY tab ---------
 	var TAX_FLAT = [];
 	function loadTaxonomy() {
 		ASApi.list('taxonomy.list').then(function(j){
-			TAX_FLAT = (j.status === 0 ? (j.result || []) : []);
+			if (!j || j.status !== 0) { showHostError(document.getElementById('as-tax-tree'), loadTaxonomy); return; }
+			TAX_FLAT = (j.result || []);
 			renderTaxTree();
-		});
+		}, function(){ showHostError(document.getElementById('as-tax-tree'), loadTaxonomy); });
 	}
 	function buildTree(flat) {
 		var byId = {}, roots = [];
@@ -1165,18 +1511,18 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 			var dragAttr = canManage && !isSystem ? 'true' : 'false';
 			var nodeCls  = 'as-tax-node as-tax-depth-' + depth + (isActive ? '' : ' as-tax-inactive') + (isSystem ? ' as-tax-system' : '');
 			html += '<div class="' + nodeCls + '" draggable="' + dragAttr + '" data-id="' + n.TaxonomyId + '" data-depth="' + depth + '">'
-				+ '<span class="as-tax-handle"' + (isSystem ? ' style="opacity:0.35;cursor:default" title="System field"' : '') + '><i class="fas fa-' + (isSystem ? 'lock' : 'grip-vertical') + '"></i></span>'
+				+ '<span class="as-tax-handle as-tip"' + (isSystem ? ' style="opacity:0.35;cursor:default" data-tip="System field"' : '') + '><i class="fas fa-' + (isSystem ? 'lock' : 'grip-vertical') + '"></i></span>'
 				+ '<span class="as-tax-name">' + escHtml(n.Name)
-					+ (isSystem ? ' <span class="as-tax-badge as-tax-badge-system" title="System field — Owl/Dragon/Smith/Garber are locked into every competition">SYSTEM</span>' : '')
+					+ (isSystem ? ' <span class="as-tax-badge as-tax-badge-system as-tip" data-tip="System field — Owl/Dragon/Smith/Garber are locked into every competition">SYSTEM</span>' : '')
 					+ (!isActive ? ' <span class="as-tax-badge as-tax-badge-inactive">INACTIVE</span>' : '')
 					+ (n.Description ? '<span class="as-tax-desc">' + escHtml(n.Description) + '</span>' : '')
 				+ '</span>'
 				+ (canManage ? ('<span class="as-row-actions">'
-					+ (depth < 2 ? '<button class="as-btn-ghost" title="Add child" data-tax-add-child="' + n.TaxonomyId + '"><i class="fas fa-plus"></i></button>' : '')
-					+ '<button class="as-btn-ghost" title="Edit description" data-tax-edit="' + n.TaxonomyId + '"><i class="fas fa-pen"></i></button>'
+					+ (depth < 2 ? '<button class="as-btn-ghost as-tip as-tip-right" data-tip="Add child" data-tax-add-child="' + n.TaxonomyId + '"><i class="fas fa-plus"></i></button>' : '')
+					+ '<button class="as-btn-ghost as-tip as-tip-right" data-tip="Edit description" data-tax-edit="' + n.TaxonomyId + '"><i class="fas fa-pen"></i></button>'
 					+ (isSystem
-						? '<button class="as-btn-ghost" title="' + (isActive ? 'Deactivate' : 'Reactivate') + '" data-tax-toggle="' + n.TaxonomyId + '" data-active="' + (isActive ? '1' : '0') + '"><i class="fas fa-' + (isActive ? 'eye-slash' : 'eye') + '"></i></button>'
-						: '<button class="as-btn-ghost" title="Delete" data-tax-delete="' + n.TaxonomyId + '"><i class="fas fa-trash"></i></button>')
+						? '<button class="as-btn-ghost as-tip as-tip-right" data-tip="' + (isActive ? 'Deactivate' : 'Reactivate') + '" data-tax-toggle="' + n.TaxonomyId + '" data-active="' + (isActive ? '1' : '0') + '"><i class="fas fa-' + (isActive ? 'eye-slash' : 'eye') + '"></i></button>'
+						: '<button class="as-btn-ghost as-tip as-tip-right" data-tip="Delete" data-tax-delete="' + n.TaxonomyId + '"><i class="fas fa-trash"></i></button>')
 					+ '</span>') : '')
 				+ '</div>';
 			if (n.children && n.children.length) {
@@ -1278,7 +1624,13 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 		var nameEl = document.getElementById('as-tax-name');
 		nameEl.value    = node ? node.Name : '';
 		nameEl.disabled = isSystem;
-		nameEl.title    = isSystem ? 'System field name is locked.' : '';
+		// F63: convey the locked-name hint via the data-tip pattern on the field wrapper (inputs can't host a ::after tooltip).
+		var nameField = nameEl.closest('.as-field');
+		if (nameField) {
+			nameField.classList.toggle('as-tip', isSystem);
+			if (isSystem) nameField.setAttribute('data-tip', 'System field name is locked.');
+			else nameField.removeAttribute('data-tip');
+		}
 		document.getElementById('as-tax-desc').value   = node ? (node.Description || '') : '';
 		openModal('as-tax-modal');
 	}
@@ -1295,9 +1647,10 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 	// --------- PARTICIPANTS tab ---------
 	var PARTICIPANTS = [];
 	function loadParticipants() {
+		var body = document.getElementById('as-participants-body');
 		ASApi.list('participant.list').then(function(j){
-			PARTICIPANTS = j.status === 0 ? (j.result || []) : [];
-			var body = document.getElementById('as-participants-body');
+			if (!j || j.status !== 0) { showTabError(body, canManage ? 9 : 8, loadParticipants); return; }
+			PARTICIPANTS = j.result || [];
 			if (!PARTICIPANTS.length) { body.innerHTML = '<tr><td colspan="' + (canManage ? 9 : 8) + '" class="as-empty-mini">No participants registered yet.</td></tr>'; return; }
 			body.innerHTML = PARTICIPANTS.map(function(p){
 				var g = p.Guilds || {};
@@ -1324,7 +1677,7 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 			}); });
 			// Refresh entry participant picker
 			refreshEntryPickers();
-		});
+		}, function(){ showTabError(body, canManage ? 9 : 8, loadParticipants); });
 	}
 	function openPartModal(id) {
 		var p = id ? PARTICIPANTS.find(function(x){ return x.ParticipantId == id; }) : null;
@@ -1350,11 +1703,12 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 	// --------- JUDGES tab ---------
 	var JUDGES = [];
 	function loadJudges() {
+		var body = document.getElementById('as-judges-body');
 		ASApi.list('judge.list').then(function(j){
-			JUDGES = j.status === 0 ? (j.result || []) : [];
+			if (!j || j.status !== 0) { showTabError(body, canManage ? 3 : 2, loadJudges); return; }
+			JUDGES = j.result || [];
 			document.getElementById('as-judge-count').textContent = JUDGES.length;
-			var body = document.getElementById('as-judges-body');
-			if (!JUDGES.length) { body.innerHTML = '<tr><td colspan="' + (canManage ? 3 : 2) + '" class="as-empty-mini">No judges yet.</td></tr>'; return; }
+			if (!JUDGES.length) { if (body) body.innerHTML = '<tr><td colspan="' + (canManage ? 3 : 2) + '" class="as-empty-mini">No judges yet.</td></tr>'; return; }
 			body.innerHTML = JUDGES.map(function(j2){
 				var fieldList = (j2.FieldNames && j2.FieldNames.length)
 					? j2.FieldNames.map(function(n){ return '<span class="as-pill" style="margin-right:4px">' + escHtml(n) + '</span>'; }).join('')
@@ -1362,7 +1716,7 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 				return '<tr>'
 					+ '<td><strong>' + escHtml(j2.Persona) + '</strong></td>'
 					+ '<td>' + fieldList + '</td>'
-					+ (canManage ? '<td class="as-row-actions"><button class="as-btn-ghost" data-judge-edit="'+j2.JudgeId+'" title="Edit"><i class="fas fa-pen"></i></button><button class="as-btn-ghost" data-judge-del="'+j2.JudgeId+'" title="Remove"><i class="fas fa-trash"></i></button></td>' : '')
+					+ (canManage ? '<td class="as-row-actions"><button class="as-btn-ghost as-tip as-tip-right" data-judge-edit="'+j2.JudgeId+'" data-tip="Edit"><i class="fas fa-pen"></i></button><button class="as-btn-ghost as-tip as-tip-right" data-judge-del="'+j2.JudgeId+'" data-tip="Remove"><i class="fas fa-trash"></i></button></td>' : '')
 					+ '</tr>';
 			}).join('');
 			body.querySelectorAll('[data-judge-edit]').forEach(function(b){ b.addEventListener('click', function(){ openEditJudgeModal(b.getAttribute('data-judge-edit')); }); });
@@ -1373,7 +1727,7 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 				}});
 			}); });
 			refreshJudgePicker();
-		});
+		}, function(){ showTabError(body, canManage ? 3 : 2, loadJudges); });
 	}
 	function refreshJudgePicker() {
 		var sel = document.getElementById('as-judge-picker'); if (!sel) return;
@@ -1447,13 +1801,15 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 	// --------- ENTRIES tab ---------
 	var ENTRIES = [];
 	function loadEntries() {
+		var body = document.getElementById('as-entries-body');
 		Promise.all([ASApi.list('entry.list'), ASApi.list('taxonomy.list'), ASApi.list('participant.list')]).then(function(rs){
-			ENTRIES = rs[0].status === 0 ? (rs[0].result || []) : [];
-			TAX_FLAT = rs[1].status === 0 ? (rs[1].result || []) : TAX_FLAT;
-			PARTICIPANTS = rs[2].status === 0 ? (rs[2].result || []) : PARTICIPANTS;
+			if (!rs[0] || rs[0].status !== 0) { showTabError(body, canManage ? 6 : 5, loadEntries); return; }
+			ENTRIES = rs[0].result || [];
+			TAX_FLAT = rs[1] && rs[1].status === 0 ? (rs[1].result || []) : TAX_FLAT;
+			PARTICIPANTS = rs[2] && rs[2].status === 0 ? (rs[2].result || []) : PARTICIPANTS;
 			refreshEntryPickers();
 			renderEntries();
-		});
+		}, function(){ showTabError(body, canManage ? 6 : 5, loadEntries); });
 	}
 	function renderEntries() {
 		var body = document.getElementById('as-entries-body');
@@ -1465,8 +1821,8 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 				+ '<td><strong>' + escHtml(e.Title) + '</strong>' + (e.IsNovice ? ' <span class="as-pill as-pill-novice">Novice</span>' : '') + '</td>'
 				+ '<td>' + escHtml(e.Persona || '—') + '</td>'
 				+ '<td>' + escHtml(e.TaxonomyName || '—') + '</td>'
-				+ '<td>' + (hasDoc ? '<i class="fas fa-check" style="color:#38a169" title="Yes"></i>' : '<i class="far fa-circle" style="color:var(--ork-text-muted)" title="No"></i>') + '</td>'
-				+ (canManage ? '<td class="as-row-actions"><button class="as-btn-ghost" data-entry-edit="'+e.EntryId+'"><i class="fas fa-pen"></i></button><button class="as-btn-ghost" data-entry-del="'+e.EntryId+'"><i class="fas fa-trash"></i></button></td>' : '')
+				+ '<td>' + (hasDoc ? '<span class="as-tip" data-tip="Documentation provided"><i class="fas fa-check" style="color:#38a169"></i></span>' : '<span class="as-tip" data-tip="No documentation"><i class="far fa-circle" style="color:var(--ork-text-muted)"></i></span>') + '</td>'
+				+ (canManage ? '<td class="as-row-actions"><button class="as-btn-ghost as-tip as-tip-right" data-tip="Edit" data-entry-edit="'+e.EntryId+'"><i class="fas fa-pen"></i></button><button class="as-btn-ghost as-tip as-tip-right" data-tip="Delete" data-entry-del="'+e.EntryId+'"><i class="fas fa-trash"></i></button></td>' : '')
 				+ '</tr>';
 		}).join('');
 		body.querySelectorAll('[data-entry-edit]').forEach(function(b){ b.addEventListener('click', function(){ openEntryModal(b.getAttribute('data-entry-edit')); }); });
@@ -1499,7 +1855,7 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 		var ordered = unjudged.concat(judged);
 		jSel.innerHTML = '<option value="">— select an entry —</option>' + ordered.map(function(e){
 			var done = !!JUDGED_ENTRY_IDS[e.EntryId];
-			var label = (done ? '✓ ' : '') + (e.Title || '') + ' · ' + (e.TaxonomyName || '') + ' · ' + (e.Persona || '');
+			var label = (done ? '✓ ' : '') + (e.Title || '') + ' · ' + (e.TaxonomyName || '') + ' · ' + entryLabelName(e);
 			return '<option value="' + e.EntryId + '"' + (done ? ' class="as-entry-judged"' : '') + '>' + escHtml(label) + '</option>';
 		}).join('');
 		// Preserve current selection if still present.
@@ -1677,9 +2033,10 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 	// --------- JUDGING tab ---------
 	function loadJudging() {
 		Promise.all([ASApi.list('judge.list'), ASApi.list('entry.list'), ASApi.list('criterion.list')]).then(function(rs){
-			JUDGES   = rs[0].status === 0 ? (rs[0].result || []) : [];
-			ENTRIES  = rs[1].status === 0 ? (rs[1].result || []) : [];
-			var crit = rs[2].status === 0 ? (rs[2].result || []) : [];
+			if (!rs[0] || rs[0].status !== 0 || !rs[1] || rs[1].status !== 0 || !rs[2] || rs[2].status !== 0) { showHostError(document.getElementById('as-judging-form-host'), loadJudging); return; }
+			JUDGES   = rs[0].result || [];
+			ENTRIES  = rs[1].result || [];
+			var crit = rs[2].result || [];
 			refreshJudgePicker();
 			// Build the participant picker etc., then fetch judged-set for current judge before rendering.
 			var partSel = document.getElementById('as-entry-participant');
@@ -1687,7 +2044,7 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 			refreshJudgedSetForCurrentJudge().then(function(){
 				renderJudgingForm(crit);
 			});
-		});
+		}, function(){ showHostError(document.getElementById('as-judging-form-host'), loadJudging); });
 	}
 	function renderJudgingForm(criteria) {
 		var jpick = document.getElementById('as-judge-picker');
@@ -1705,7 +2062,7 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 				var entry = ENTRIES.find(function(x){ return x.EntryId == eid; }) || {};
 				var html = '<div style="margin-bottom:14px;padding:12px;background:var(--ork-bg-secondary);border-radius:8px">'
 					+ '<div style="font-weight:700">' + escHtml(entry.Title || '') + '</div>'
-					+ '<div style="font-size:0.85em;color:var(--ork-text-muted)">' + escHtml(entry.TaxonomyName || '') + ' · ' + escHtml(entry.Persona || '') + '</div>'
+					+ '<div style="font-size:0.85em;color:var(--ork-text-muted)">' + escHtml(entry.TaxonomyName || '') + ' · ' + escHtml(entryLabelName(entry)) + '</div>'
 					+ (entry.Description ? ('<div style="margin-top:6px;font-size:0.9em">' + escHtml(entry.Description) + '</div>') : '')
 					+ (entry.Documentation ? ('<details style="margin-top:6px"><summary style="cursor:pointer;color:#5a67d8">Documentation</summary><div style="white-space:pre-wrap;font-size:0.88em;margin-top:6px">' + escHtml(entry.Documentation) + '</div></details>') : '')
 					+ '</div>';
@@ -1747,6 +2104,8 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 						// Mark this entry as judged + re-order the picker (just-judged drops to bottom, italicized).
 						JUDGED_ENTRY_IDS[eid] = true;
 						refreshJudgingEntryPicker();
+						// F23: keep the live Results board in sync with the score just saved.
+						loadResults();
 					});
 				});
 			});
@@ -1962,7 +2321,7 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 	});
 	bind('as-edit-btn', 'click', function(){ activateTab('setup'); });
 	bind('as-delete-comp-btn', 'click', function(){
-		tnConfirm({ title: 'Delete Competition', body: 'Permanently delete this competition and ALL its data? This cannot be undone.', danger: true, confirmLabel: 'Delete', onConfirm: function(){
+		tnConfirm({ title: 'Delete Competition', body: 'Permanently delete this competition and ALL its data? This cannot be undone.', danger: true, confirmLabel: 'Delete', requireText: COMP_NAME, onConfirm: function(){
 			ASApi.comp('delete', {}).then(function(j){ if (j.status === 0) window.location = UIR + 'ArtsSciences/index/' + KINGDOM_ID; else asToast('Error: ' + (j.error || ''), true); });
 		}});
 	});
@@ -1972,7 +2331,7 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 	var FUTURE_EVENTS = null;
 	function loadFutureEvents(){
 		if (FUTURE_EVENTS !== null) return Promise.resolve(FUTURE_EVENTS);
-		return fetch(UIR + 'ArtsSciencesAjax/future_events/' + KINGDOM_ID, { credentials: 'same-origin' })
+		return fetch(UIR + 'ArtsSciencesAjax/future_events/' + KINGDOM_ID, { credentials: 'same-origin', headers: { 'X-CSRF-Token': (window.AS_CSRF || '') } })
 			.then(function(r){ return r.json(); })
 			.then(function(j){ FUTURE_EVENTS = (j && j.status === 0) ? (j.result || []) : []; return FUTURE_EVENTS; });
 	}
@@ -1994,6 +2353,19 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 	}
 	populateEventPicker();
 
+	// F67: house Flatpickr on the Setup date/time fields (human-readable, 12-hour display).
+	// altInput:true keeps the original inputs' machine values (Y-m-d / H:i) untouched, so the
+	// save handler and the smart-default math below still read #id.value directly.
+	if (typeof flatpickr === 'function') {
+		flatpickr('#as-set-date', { dateFormat: 'Y-m-d', altInput: true, altFormat: 'F j, Y' });
+		['as-set-entries-due', 'as-set-judge-start', 'as-set-judge-end'].forEach(function(id){
+			var el = document.getElementById(id);
+			if (el) flatpickr(el, { enableTime: true, noCalendar: true, dateFormat: 'H:i', altInput: true, altFormat: 'h:i K', time_24hr: false, minuteIncrement: 5 });
+		});
+	}
+	// Set a Setup date/time field programmatically, honouring Flatpickr if it's enhancing the input.
+	function asSetFieldValue(el, v){ if (el && el._flatpickr) el._flatpickr.setDate(v, false); else if (el) el.value = v; }
+
 	// When an event is picked, set Competition Date to that event's first upcoming date (overwrites any
 	// existing date). Switching back to "— No event —" leaves the date alone.
 	bind('as-set-event', 'change', function(){
@@ -2002,7 +2374,7 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 		if (!sel.value) return;
 		(FUTURE_EVENTS || []).some(function(e){
 			if (String(e.EventId) === String(sel.value) && e.NextDate) {
-				dateInp.value = String(e.NextDate).substring(0, 10);
+				asSetFieldValue(dateInp, String(e.NextDate).substring(0, 10));
 				return true;
 			}
 			return false;
@@ -2010,7 +2382,8 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 	});
 
 	// Smart defaults: setting Judging Starts auto-fills Judging Ends (+3h) and Entries Due By (-30min)
-	// unless the user has already touched those fields.
+	// unless the user has already touched those fields. Flatpickr fires 'change' on the original input;
+	// native inputs fire 'input' — bind both so this works with or without the CDN.
 	(function(){
 		var startInp   = document.getElementById('as-set-judge-start');
 		var endInp     = document.getElementById('as-set-judge-end');
@@ -2018,30 +2391,32 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 		if (!startInp) return;
 		var endTouched     = !!endInp.value;
 		var entriesTouched = !!entriesInp.value;
-		endInp.addEventListener('input',     function(){ endTouched = true; });
-		entriesInp.addEventListener('input', function(){ entriesTouched = true; });
-		startInp.addEventListener('input', function(){
+		function pad(n){ return (n < 10 ? '0' : '') + n; }
+		['input', 'change'].forEach(function(ev){
+			endInp.addEventListener(ev,     function(){ endTouched = true; });
+			entriesInp.addEventListener(ev, function(){ entriesTouched = true; });
+		});
+		function onStart(){
 			var v = startInp.value; if (!v || !/^\d{1,2}:\d{2}/.test(v)) return;
 			var parts = v.split(':'); var hh = +parts[0]; var mm = +parts[1];
-			if (!endTouched) {
-				var eh = (hh + 3) % 24, em = mm;
-				endInp.value = (eh < 10 ? '0' : '') + eh + ':' + (em < 10 ? '0' : '') + em;
-			}
+			// asSetFieldValue uses setDate(..., false) so it does NOT fire 'change' — the touched
+			// flags stay clear and a later Start edit can re-derive these values.
+			if (!endTouched)     asSetFieldValue(endInp, pad((hh + 3) % 24) + ':' + pad(mm));
 			if (!entriesTouched) {
-				var totalMin = (hh * 60 + mm) - 30;
-				if (totalMin < 0) totalMin += 24 * 60;
-				var dh = Math.floor(totalMin / 60), dm = totalMin % 60;
-				entriesInp.value = (dh < 10 ? '0' : '') + dh + ':' + (dm < 10 ? '0' : '') + dm;
+				var totalMin = (hh * 60 + mm) - 30; if (totalMin < 0) totalMin += 24 * 60;
+				asSetFieldValue(entriesInp, pad(Math.floor(totalMin / 60)) + ':' + pad(totalMin % 60));
 			}
-		});
+		}
+		['input', 'change'].forEach(function(ev){ startInp.addEventListener(ev, onStart); });
 	})();
 
 	// Criteria CRUD
 	var CRITERIA = [];
 	function loadCriteria() {
+		var body = document.getElementById('as-criteria-body');
 		ASApi.list('criterion.list').then(function(j){
-			CRITERIA = j.status === 0 ? (j.result || []) : [];
-			var body = document.getElementById('as-criteria-body');
+			if (!j || j.status !== 0) { showTabError(body, 4, loadCriteria); return; }
+			CRITERIA = j.result || [];
 			if (!CRITERIA.length) { body.innerHTML = '<tr><td colspan="4" class="as-empty-mini">No criteria yet.</td></tr>'; return; }
 			body.innerHTML = CRITERIA.map(function(c){
 				return '<tr>'
@@ -2058,7 +2433,7 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 					ASApi.comp('criterion.delete', fd).then(function(j){ if (j.status === 0) loadCriteria(); else asToast('Error: ' + (j.error || ''), true); });
 				}});
 			}); });
-		});
+		}, function(){ showTabError(body, 4, loadCriteria); });
 	}
 	function openCritModal(id) {
 		var c = id ? CRITERIA.find(function(x){ return x.CriterionId == id; }) : null;
@@ -2144,9 +2519,10 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 	}
 
 	function loadAwards() {
+		var body = document.getElementById('as-awards-body');
 		ASApi.list('award.list').then(function(j){
-			AWARDS = j.status === 0 ? (j.result || []) : [];
-			var body = document.getElementById('as-awards-body');
+			if (!j || j.status !== 0) { showTabError(body, 4, loadAwards); return; }
+			AWARDS = j.result || [];
 			if (!AWARDS.length) { body.innerHTML = '<tr><td colspan="4" class="as-empty-mini">No awards yet.</td></tr>'; return; }
 			body.innerHTML = AWARDS.map(function(a){
 				var rules = a.Rules || null;
@@ -2166,7 +2542,7 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 					ASApi.comp('award.delete', fd).then(function(j){ if (j.status === 0) loadAwards(); else asToast('Error: ' + (j.error || ''), true); });
 				}});
 			}); });
-		});
+		}, function(){ showTabError(body, 4, loadAwards); });
 	}
 
 	function ensureCriteriaLoaded(){
@@ -2204,7 +2580,7 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 			var argsHtml = elligArgsHtml(rule);
 			row.innerHTML = kindSel
 				+ '<div class="as-elig-args">' + argsHtml + '</div>'
-				+ '<div class="as-row-tools"><button type="button" class="as-row-del" title="Remove"><i class="fas fa-times"></i></button></div>';
+				+ '<div class="as-row-tools"><button type="button" class="as-row-del as-tip as-tip-right" data-tip="Remove"><i class="fas fa-times"></i></button></div>';
 			host.appendChild(row);
 
 			row.querySelector('.as-elig-kind').addEventListener('change', function(e){
@@ -2275,9 +2651,9 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 			row.innerHTML = kindSel
 				+ '<div class="as-tb-args">' + argsHtml + '</div>'
 				+ '<div class="as-row-tools">'
-				+   '<button type="button" data-act="up" title="Move up"' + (idx === 0 ? ' disabled' : '') + '><i class="fas fa-arrow-up"></i></button>'
-				+   '<button type="button" data-act="down" title="Move down"' + (idx === ruleState.tiebreakers.length - 1 ? ' disabled' : '') + '><i class="fas fa-arrow-down"></i></button>'
-				+   '<button type="button" class="as-row-del" title="Remove"><i class="fas fa-times"></i></button>'
+				+   '<button type="button" class="as-tip as-tip-right" data-act="up" data-tip="Move up"' + (idx === 0 ? ' disabled' : '') + '><i class="fas fa-arrow-up"></i></button>'
+				+   '<button type="button" class="as-tip as-tip-right" data-act="down" data-tip="Move down"' + (idx === ruleState.tiebreakers.length - 1 ? ' disabled' : '') + '><i class="fas fa-arrow-down"></i></button>'
+				+   '<button type="button" class="as-row-del as-tip as-tip-right" data-tip="Remove"><i class="fas fa-times"></i></button>'
 				+ '</div>';
 			host.appendChild(row);
 
@@ -2588,7 +2964,7 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 	}
 
 	function loadPresetList(type) {
-		return fetch(UIR + 'ArtsSciencesAjax/preset/' + KINGDOM_ID + '/list?Type=' + type, { credentials: 'same-origin' })
+		return fetch(UIR + 'ArtsSciencesAjax/preset/' + KINGDOM_ID + '/list?Type=' + type, { credentials: 'same-origin', headers: { 'X-CSRF-Token': (window.AS_CSRF || '') } })
 			.then(function(r){ return r.json(); })
 			.then(function(j){
 				PRESET_STATE[type].list = (j && j.status === 0) ? (j.result || []) : [];
@@ -2631,7 +3007,7 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 				var title = type === 'taxonomy'
 					? 'Load Taxonomy Preset "' + name + '"?'
 					: 'Load Award Preset "' + name + '"?';
-				tnConfirm({ title: title, body: msg, danger: true, confirmLabel: 'Load Preset', onConfirm: function(){
+				tnConfirm({ title: title, body: msg, danger: true, confirmLabel: 'Load Preset', requireText: name, onConfirm: function(){
 					var fd2 = new FormData(); fd2.append('PresetId', pid);
 					ASApi.comp('preset.load_' + type, fd2).then(function(j2){
 						if (j2.status !== 0) { asToast('Error: ' + (j2.error || ''), true); return; }
@@ -2678,7 +3054,7 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 			var active = PRESET_STATE[type].active; if (!active) return;
 			tnConfirm({ title: 'Delete Preset', body: 'Delete preset "' + active.Name + '"? This only removes the saved template — your competition is unaffected.', danger: true, confirmLabel: 'Delete', onConfirm: function(){
 				var fd = new FormData(); fd.append('PresetId', active.PresetId); fd.append('Type', type);
-				fetch(UIR + 'ArtsSciencesAjax/preset/' + KINGDOM_ID + '/delete', { method: 'POST', body: fd, credentials: 'same-origin' })
+				fetch(UIR + 'ArtsSciencesAjax/preset/' + KINGDOM_ID + '/delete', { method: 'POST', body: fd, credentials: 'same-origin', headers: { 'X-CSRF-Token': (window.AS_CSRF || '') } })
 					.then(function(r){ return r.json(); })
 					.then(function(j){
 						if (j.status !== 0) { asToast('Error: ' + (j.error || ''), true); return; }

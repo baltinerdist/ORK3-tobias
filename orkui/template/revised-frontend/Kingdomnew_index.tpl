@@ -2558,6 +2558,7 @@ window.knRecCsv   = function() { if (window.knRecDT) window.recsExportCsv(window
 initEmailSpellCheck('kn-addplayer-email', 'kn-addplayer-email-suggestion');
 
 // ========== Arts & Sciences Competitions section (Events tab) ==========
+window.AS_CSRF = <?= json_encode($AsCsrf ?? '') ?>;
 (function(){
 	var UIR = <?= json_encode(UIR) ?>;
 	var KINGDOM_ID = <?= (int)$kingdom_id ?>;
@@ -2568,10 +2569,9 @@ initEmailSpellCheck('kn-addplayer-email', 'kn-addplayer-email-suggestion');
 	function loadAsCompetitions(){
 		var host = document.getElementById('kn-as-list');
 		if (!host) return;
-		fetch(UIR + 'ArtsSciencesAjax/kingdom/' + KINGDOM_ID, { credentials: 'same-origin' })
+		fetch(UIR + 'ArtsSciencesAjax/kingdom/' + KINGDOM_ID, { credentials: 'same-origin', headers: { 'X-CSRF-Token': (window.AS_CSRF || '') } })
 			.then(function(r){ return r.json(); })
 			.then(function(j){
-				console.log('[KN A&S list]', j);
 				var list = (j && j.status === 0 && Array.isArray(j.result)) ? j.result : [];
 				if (!list.length) {
 					host.innerHTML = '<div class=\"kn-empty\" style=\"grid-column:1/-1\">No A&amp;S competitions yet'
@@ -2628,10 +2628,9 @@ initEmailSpellCheck('kn-addplayer-email', 'kn-addplayer-email-suggestion');
 		fd.append('Description', document.getElementById('kn-as-desc').value);
 		var eid = document.getElementById('kn-as-event').value;
 		if (eid) fd.append('EventId', eid);
-		fetch(UIR + 'ArtsSciencesAjax/create', { method: 'POST', body: fd, credentials: 'same-origin' })
+		fetch(UIR + 'ArtsSciencesAjax/create', { method: 'POST', body: fd, credentials: 'same-origin', headers: { 'X-CSRF-Token': (window.AS_CSRF || '') } })
 			.then(function(r){ return r.json(); })
 			.then(function(j){
-				console.log('[KN A&S create]', j);
 				if (j && j.status === 0 && j.result) {
 					window.location = UIR + 'ArtsComp/' + j.result;
 				} else {

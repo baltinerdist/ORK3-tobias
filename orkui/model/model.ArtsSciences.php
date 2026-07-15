@@ -1,59 +1,186 @@
 <?php
 
-class Model_ArtsSciences extends Model {
+class Model_ArtsSciences extends Model
+{
+    public function __construct()
+    {
+        parent::__construct();
+        $this->AS = new APIModel('ArtsSciences');
+    }
 
-	function __construct() {
-		parent::__construct();
-		$this->AS = new APIModel('ArtsSciences');
-	}
+    public function list_competitions($request)
+    {
+        return $this->AS->ListCompetitions($request);
+    }
+    public function get_competition($request)
+    {
+        return $this->AS->GetCompetition($request);
+    }
+    public function create_competition($request)
+    {
+        return $this->AS->CreateCompetition($request);
+    }
+    public function update_competition($request)
+    {
+        return $this->AS->UpdateCompetition($request);
+    }
+    public function delete_competition($request)
+    {
+        return $this->AS->DeleteCompetition($request);
+    }
 
-	function list_competitions($request)   { return $this->AS->ListCompetitions($request); }
-	function get_competition($request)     { return $this->AS->GetCompetition($request); }
-	function create_competition($request)  { return $this->AS->CreateCompetition($request); }
-	function update_competition($request)  { return $this->AS->UpdateCompetition($request); }
-	function delete_competition($request)  { return $this->AS->DeleteCompetition($request); }
+    public function get_taxonomy($request)
+    {
+        return $this->AS->GetTaxonomy($request);
+    }
+    public function save_taxonomy($request)
+    {
+        return $this->AS->SaveTaxonomy($request);
+    }
+    public function delete_taxonomy($request)
+    {
+        return $this->AS->DeleteTaxonomy($request);
+    }
+    public function reorder_taxonomy($request)
+    {
+        return $this->AS->ReorderTaxonomy($request);
+    }
 
-	function get_taxonomy($request)        { return $this->AS->GetTaxonomy($request); }
-	function save_taxonomy($request)       { return $this->AS->SaveTaxonomy($request); }
-	function delete_taxonomy($request)     { return $this->AS->DeleteTaxonomy($request); }
-	function reorder_taxonomy($request)    { return $this->AS->ReorderTaxonomy($request); }
+    public function get_criteria($request)
+    {
+        return $this->AS->GetCriteria($request);
+    }
+    public function save_criterion($request)
+    {
+        return $this->AS->SaveCriterion($request);
+    }
+    public function delete_criterion($request)
+    {
+        return $this->AS->DeleteCriterion($request);
+    }
 
-	function get_criteria($request)        { return $this->AS->GetCriteria($request); }
-	function save_criterion($request)      { return $this->AS->SaveCriterion($request); }
-	function delete_criterion($request)    { return $this->AS->DeleteCriterion($request); }
+    public function get_participants($request)
+    {
+        return $this->AS->GetParticipants($request);
+    }
+    public function save_participant($request)
+    {
+        return $this->AS->SaveParticipant($request);
+    }
+    public function delete_participant($request)
+    {
+        return $this->AS->DeleteParticipant($request);
+    }
 
-	function get_participants($request)    { return $this->AS->GetParticipants($request); }
-	function save_participant($request)    { return $this->AS->SaveParticipant($request); }
-	function delete_participant($request)  { return $this->AS->DeleteParticipant($request); }
+    public function get_judges($request)
+    {
+        return $this->AS->GetJudges($request);
+    }
+    public function save_judge($request)
+    {
+        return $this->AS->SaveJudge($request);
+    }
+    public function delete_judge($request)
+    {
+        return $this->AS->DeleteJudge($request);
+    }
 
-	function get_judges($request)          { return $this->AS->GetJudges($request); }
-	function save_judge($request)          { return $this->AS->SaveJudge($request); }
-	function delete_judge($request)        { return $this->AS->DeleteJudge($request); }
+    public function get_entries($request)
+    {
+        return $this->AS->GetEntries($request);
+    }
+    public function save_entry($request)
+    {
+        return $this->AS->SaveEntry($request);
+    }
+    public function delete_entry($request)
+    {
+        return $this->AS->DeleteEntry($request);
+    }
 
-	function get_entries($request)         { return $this->AS->GetEntries($request); }
-	function save_entry($request)          { return $this->AS->SaveEntry($request); }
-	function delete_entry($request)        { return $this->AS->DeleteEntry($request); }
+    public function get_scores($request)
+    {
+        return $this->AS->GetScores($request);
+    }
+    public function save_score($request)
+    {
+        return $this->AS->SaveScore($request);
+    }
 
-	function get_scores($request)          { return $this->AS->GetScores($request); }
-	function save_score($request)          { return $this->AS->SaveScore($request); }
+    public function get_awards($request)
+    {
+        return $this->AS->GetAwards($request);
+    }
+    public function save_award($request)
+    {
+        return $this->AS->SaveAward($request);
+    }
+    public function delete_award($request)
+    {
+        return $this->AS->DeleteAward($request);
+    }
 
-	function get_awards($request)          { return $this->AS->GetAwards($request); }
-	function save_award($request)          { return $this->AS->SaveAward($request); }
-	function delete_award($request)        { return $this->AS->DeleteAward($request); }
+    public function get_rec_context($request)
+    {
+        return $this->AS->GetRecContext($request);
+    }
+    public function save_rec($request)
+    {
+        return $this->AS->SaveRec($request);
+    }
+    public function delete_rec($request)
+    {
+        return $this->AS->DeleteRec($request);
+    }
 
-	function get_rec_context($request)     { return $this->AS->GetRecContext($request); }
-	function save_rec($request)            { return $this->AS->SaveRec($request); }
-	function delete_rec($request)          { return $this->AS->DeleteRec($request); }
+    public function compute_results($request)
+    {
+        return $this->AS->ComputeResults($request);
+    }
+    public function preview_award($request)
+    {
+        return $this->AS->PreviewAward($request);
+    }
 
-	function compute_results($request)     { return $this->AS->ComputeResults($request); }
-	function preview_award($request)       { return $this->AS->PreviewAward($request); }
+    public function future_events($request)
+    {
+        return $this->AS->FutureEvents($request);
+    }
+    public function player_search($request)
+    {
+        return $this->AS->PlayerSearch($request);
+    }
 
-	function list_presets($request)            { return $this->AS->ListPresets($request); }
-	function get_preset($request)              { return $this->AS->GetPreset($request); }
-	function delete_preset($request)           { return $this->AS->DeletePreset($request); }
-	function save_taxonomy_preset($request)    { return $this->AS->SaveTaxonomyPreset($request); }
-	function save_award_preset($request)       { return $this->AS->SaveAwardPreset($request); }
-	function preview_load_preset($request)     { return $this->AS->PreviewLoadPreset($request); }
-	function load_taxonomy_preset($request)    { return $this->AS->LoadTaxonomyPreset($request); }
-	function load_award_preset($request)       { return $this->AS->LoadAwardPreset($request); }
+    public function list_presets($request)
+    {
+        return $this->AS->ListPresets($request);
+    }
+    public function get_preset($request)
+    {
+        return $this->AS->GetPreset($request);
+    }
+    public function delete_preset($request)
+    {
+        return $this->AS->DeletePreset($request);
+    }
+    public function save_taxonomy_preset($request)
+    {
+        return $this->AS->SaveTaxonomyPreset($request);
+    }
+    public function save_award_preset($request)
+    {
+        return $this->AS->SaveAwardPreset($request);
+    }
+    public function preview_load_preset($request)
+    {
+        return $this->AS->PreviewLoadPreset($request);
+    }
+    public function load_taxonomy_preset($request)
+    {
+        return $this->AS->LoadTaxonomyPreset($request);
+    }
+    public function load_award_preset($request)
+    {
+        return $this->AS->LoadAwardPreset($request);
+    }
 }

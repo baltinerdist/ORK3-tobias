@@ -86,6 +86,7 @@ class YapoDb
             // beginTransaction failed (e.g. dropped connection) — restore the
             // normal error mode so the rest of the request isn't left throwing,
             // and let the caller fall back to the non-transactional path.
+            error_log('YapoDb::Begin() transaction start failed: ' . $e->getMessage());
             $this->DBH->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_WARNING);
             return false;
         }
@@ -98,6 +99,11 @@ class YapoDb
                 return $this->DBH->commit();
             }
             return false;
+        } catch (\Throwable $e) {
+            // Log the commit failure so a production failure leaves a trace,
+            // then preserve the original propagation contract by re-throwing.
+            error_log('YapoDb::Commit() failed: ' . $e->getMessage());
+            throw $e;
         } finally {
             $this->DBH->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_WARNING);
         }
@@ -111,6 +117,7 @@ class YapoDb
             }
             return false;
         } catch (\Throwable $e) {
+            error_log('YapoDb::Rollback() failed: ' . $e->getMessage());
             return false;
         } finally {
             $this->DBH->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_WARNING);
