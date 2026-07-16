@@ -2168,4 +2168,123 @@ class Controller_EventAjax extends Controller
         echo json_encode(['status' => 0]);
         exit;
     }
+
+    public function site_location_save($p = null)
+    {
+        header('Content-Type: application/json');
+        if (!isset($this->session->user_id)) {
+            echo json_encode(['status' => 5, 'error' => 'Not logged in']);
+            exit;
+        }
+
+        $params    = explode('/', $p ?? '');
+        $event_id  = (int)preg_replace('/[^0-9]/', '', $params[0] ?? '');
+        $detail_id = (int)preg_replace('/[^0-9]/', '', $params[1] ?? '');
+        if (!valid_id($event_id) || !valid_id($detail_id)) {
+            echo json_encode(['status' => 1, 'error' => 'Invalid Event ID.']);
+            exit;
+        }
+        if (!$this->_canManageSite($event_id, $detail_id)) {
+            echo json_encode(['status' => 3, 'error' => 'Not authorized.']);
+            exit;
+        }
+
+        require_once(DIR_LIB . 'ork3/eventsite-catalog.php');
+        $loc_id   = (int)($_POST['LocationId'] ?? 0);
+        $name     = mb_substr(trim($_POST['Name'] ?? ''), 0, 80);
+        $category = trim($_POST['Category'] ?? 'other');
+        $desc     = trim($_POST['Description'] ?? '');
+        $x        = max(0.0, min(1.0, (float)($_POST['X'] ?? 0)));
+        $y        = max(0.0, min(1.0, (float)($_POST['Y'] ?? 0)));
+        if (!isset(event_site_location_categories()[$category])) {
+            $category = 'other';
+        }
+        if ($name === '') {
+            echo json_encode(['status' => 1, 'error' => 'A name is required.']);
+            exit;
+        }
+
+        $name_safe = $this->_escSql($name);
+        $cat_safe  = $this->_escSql($category);
+        $desc_safe = $this->_escSql($desc);
+        $x_sql     = sprintf('%.6F', $x);
+        $y_sql     = sprintf('%.6F', $y);
+
+        global $DB;
+        if ($loc_id > 0) {
+            $DB->Clear();
+            $own = $DB->DataSet('SELECT 1 FROM ' . DB_PREFIX . 'event_site_location WHERE event_site_location_id = ' . $loc_id . ' AND event_calendardetail_id = ' . $detail_id . ' LIMIT 1');
+            if (!($own && $own->Next())) {
+                echo json_encode(['status' => 1, 'error' => 'Unknown location.']);
+                exit;
+            }
+            $DB->Clear();
+            $DB->Execute('UPDATE ' . DB_PREFIX . "event_site_location SET name = '" . $name_safe . "', category = '" . $cat_safe . "', description = '" . $desc_safe . "', x = " . $x_sql . ', y = ' . $y_sql . ' WHERE event_site_location_id = ' . $loc_id);
+            // Keep the denormalized schedule location text in sync on rename.
+            $DB->Clear();
+            $DB->Execute('UPDATE ' . DB_PREFIX . "event_schedule SET location = '" . $name_safe . "' WHERE site_location_id = " . $loc_id);
+        } else {
+            $DB->Clear();
+            $DB->Execute('INSERT INTO ' . DB_PREFIX . "event_site_location (event_calendardetail_id, name, category, description, x, y) VALUES (" . $detail_id . ", '" . $name_safe . "', '" . $cat_safe . "', '" . $desc_safe . "', " . $x_sql . ', ' . $y_sql . ')');
+            // lastInsertId is unreliable here (see project memory) — read back.
+            $DB->Clear();
+            $idrow = $DB->DataSet('SELECT event_site_location_id FROM ' . DB_PREFIX . 'event_site_location WHERE event_calendardetail_id = ' . $detail_id . ' ORDER BY event_site_location_id DESC LIMIT 1');
+            $loc_id = ($idrow && $idrow->Next()) ? (int)$idrow->event_site_location_id : 0;
+            if ($loc_id === 0) {
+                echo json_encode(['status' => 1, 'error' => 'Could not save the location. Please try again.']);
+                exit;
+            }
+        }
+
+        echo json_encode(['status' => 0, 'location' => [
+            'LocationId'  => $loc_id,
+            'Name'        => $name,
+            'Category'    => $category,
+            'Description' => $desc,
+            'X'           => $x,
+            'Y'           => $y,
+        ]]);
+        exit;
+    }
+
+    public function site_location_delete($p = null)
+    {
+        header('Content-Type: application/json');
+        if (!isset($this->session->user_id)) {
+            echo json_encode(['status' => 5, 'error' => 'Not logged in']);
+            exit;
+        }
+
+        $params    = explode('/', $p ?? '');
+        $event_id  = (int)preg_replace('/[^0-9]/', '', $params[0] ?? '');
+        $detail_id = (int)preg_replace('/[^0-9]/', '', $params[1] ?? '');
+        $loc_id    = (int)($_POST['LocationId'] ?? 0);
+        if (!valid_id($event_id) || !valid_id($detail_id) || !valid_id($loc_id)) {
+            echo json_encode(['status' => 1, 'error' => 'Invalid parameters.']);
+            exit;
+        }
+        if (!$this->_canManageSite($event_id, $detail_id)) {
+            echo json_encode(['status' => 3, 'error' => 'Not authorized.']);
+            exit;
+        }
+
+        global $DB;
+        $DB->Clear();
+        $own = $DB->DataSet('SELECT name FROM ' . DB_PREFIX . 'event_site_location WHERE event_site_location_id = ' . $loc_id . ' AND event_calendardetail_id = ' . $detail_id . ' LIMIT 1');
+        if (!($own && $own->Next())) {
+            echo json_encode(['status' => 1, 'error' => 'Unknown location.']);
+            exit;
+        }
+        $name_safe = $this->_escSql((string)$own->name);
+
+        // Graceful degradation: make sure every linked schedule row keeps a
+        // readable location string before the FK nulls the link.
+        $DB->Clear();
+        $DB->Execute('UPDATE ' . DB_PREFIX . "event_schedule SET location = '" . $name_safe . "' WHERE site_location_id = " . $loc_id . " AND location = ''");
+        $DB->Clear();
+        $DB->Execute('DELETE FROM ' . DB_PREFIX . 'event_site_location WHERE event_site_location_id = ' . $loc_id);
+
+        echo json_encode(['status' => 0]);
+        exit;
+    }
 }
