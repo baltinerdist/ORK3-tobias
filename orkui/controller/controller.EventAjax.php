@@ -2016,4 +2016,142 @@ class Controller_EventAjax extends Controller
         echo json_encode(['status' => 0, 'rules' => $this->_loadSiteRules($detail_id)]);
         exit;
     }
+
+    public function site_map_upload($p = null)
+    {
+        header('Content-Type: application/json');
+        if (!isset($this->session->user_id)) {
+            echo json_encode(['status' => 5, 'error' => 'Not logged in']);
+            exit;
+        }
+
+        $params    = explode('/', $p ?? '');
+        $event_id  = (int)preg_replace('/[^0-9]/', '', $params[0] ?? '');
+        $detail_id = (int)preg_replace('/[^0-9]/', '', $params[1] ?? '');
+        if (!valid_id($event_id) || !valid_id($detail_id)) {
+            echo json_encode(['status' => 1, 'error' => 'Invalid Event ID.']);
+            exit;
+        }
+        if (!$this->_canManageSite($event_id, $detail_id)) {
+            echo json_encode(['status' => 3, 'error' => 'Not authorized.']);
+            exit;
+        }
+
+        if (empty($_FILES['SiteMap']['tmp_name'])) {
+            echo json_encode(['status' => 1, 'error' => 'No file uploaded.']);
+            exit;
+        }
+        // Real HTTP upload only (prevents path spoofing).
+        if (!is_uploaded_file($_FILES['SiteMap']['tmp_name'])) {
+            echo json_encode(['status' => 1, 'error' => 'Invalid upload.']);
+            exit;
+        }
+        // Server-side size gate — the client precheck is bypassable via curl.
+        if (($_FILES['SiteMap']['size'] ?? 0) > 2 * 1024 * 1024) {
+            echo json_encode(['status' => 1, 'error' => 'File too large (max 2 MB).']);
+            exit;
+        }
+        $tmp = $_FILES['SiteMap']['tmp_name'];
+        // Magic-byte check, not the browser-supplied MIME (trivially spoofed).
+        $detectedType = exif_imagetype($tmp);
+        if ($detectedType !== IMAGETYPE_JPEG && $detectedType !== IMAGETYPE_PNG) {
+            echo json_encode(['status' => 1, 'error' => 'Only JPEG and PNG images are supported.']);
+            exit;
+        }
+        // Dimensions from headers only — no GD decode, so no decompression
+        // bomb. SMALLINT storage + Leaflet sanity both cap at 16000/edge.
+        $dims = @getimagesize($tmp);
+        if (!$dims || (int)$dims[0] < 1 || (int)$dims[1] < 1) {
+            echo json_encode(['status' => 1, 'error' => 'Could not read image dimensions.']);
+            exit;
+        }
+        if ((int)$dims[0] > 16000 || (int)$dims[1] > 16000 || (int)$dims[0] * (int)$dims[1] > 40000000) {
+            echo json_encode(['status' => 1, 'error' => 'Image dimensions too large.']);
+            exit;
+        }
+
+        $ext  = ($detectedType === IMAGETYPE_PNG) ? 'png' : 'jpg';
+        if (!is_dir(DIR_SITEMAP)) {
+            @mkdir(DIR_SITEMAP, 0775, true);
+        }
+        $base = DIR_SITEMAP . sprintf('%05d', $detail_id);
+        // Land the new file under a temp name first so a failed move can
+        // never destroy the existing map.
+        $newPath = $base . '.new.' . $ext;
+        if (!@move_uploaded_file($tmp, $newPath)) {
+            echo json_encode(['status' => 1, 'error' => 'Could not save uploaded file.']);
+            exit;
+        }
+        if (file_exists($base . '.jpg')) {
+            @unlink($base . '.jpg');
+        }
+        if (file_exists($base . '.png')) {
+            @unlink($base . '.png');
+        }
+        if (!@rename($newPath, $base . '.' . $ext)) {
+            @unlink($newPath);
+            echo json_encode(['status' => 1, 'error' => 'Could not save uploaded file.']);
+            exit;
+        }
+
+        global $DB;
+        $DB->Clear();
+        $DB->Execute(
+            'INSERT INTO ' . DB_PREFIX . 'event_site_map (event_calendardetail_id, ext, width, height, uploaded_by)
+			VALUES (' . $detail_id . ", '" . $ext . "', " . (int)$dims[0] . ', ' . (int)$dims[1] . ', ' . (int)$this->session->user_id . ")
+			ON DUPLICATE KEY UPDATE ext = VALUES(ext), width = VALUES(width), height = VALUES(height), uploaded_by = VALUES(uploaded_by)"
+        );
+        // Execute() is void and the Yapo layer can silently swallow failures
+        // (sql_mode etc.) — verify the row landed before reporting success.
+        $DB->Clear();
+        $verify = $DB->DataSet('SELECT ext, width FROM ' . DB_PREFIX . 'event_site_map WHERE event_calendardetail_id = ' . $detail_id . ' LIMIT 1');
+        if (!$verify || !$verify->Next() || (string)$verify->ext !== $ext || (int)$verify->width !== (int)$dims[0]) {
+            @unlink($base . '.' . $ext);
+            echo json_encode(['status' => 1, 'error' => 'Saved file but could not update the database. Please try again.']);
+            exit;
+        }
+
+        echo json_encode(['status' => 0, 'map' => [
+            'Url'    => HTTP_SITEMAP . sprintf('%05d', $detail_id) . '.' . $ext . '?v=' . filemtime($base . '.' . $ext),
+            'Width'  => (int)$dims[0],
+            'Height' => (int)$dims[1],
+        ]]);
+        exit;
+    }
+
+    public function site_map_delete($p = null)
+    {
+        header('Content-Type: application/json');
+        if (!isset($this->session->user_id)) {
+            echo json_encode(['status' => 5, 'error' => 'Not logged in']);
+            exit;
+        }
+
+        $params    = explode('/', $p ?? '');
+        $event_id  = (int)preg_replace('/[^0-9]/', '', $params[0] ?? '');
+        $detail_id = (int)preg_replace('/[^0-9]/', '', $params[1] ?? '');
+        if (!valid_id($event_id) || !valid_id($detail_id)) {
+            echo json_encode(['status' => 1, 'error' => 'Invalid Event ID.']);
+            exit;
+        }
+        if (!$this->_canManageSite($event_id, $detail_id)) {
+            echo json_encode(['status' => 3, 'error' => 'Not authorized.']);
+            exit;
+        }
+
+        global $DB;
+        $DB->Clear();
+        $DB->Execute('DELETE FROM ' . DB_PREFIX . 'event_site_map WHERE event_calendardetail_id = ' . $detail_id);
+        // Pins are intentionally KEPT (fractional coords survive a future
+        // re-upload); only the image row + files go.
+        $base = DIR_SITEMAP . sprintf('%05d', $detail_id);
+        if (file_exists($base . '.jpg')) {
+            @unlink($base . '.jpg');
+        }
+        if (file_exists($base . '.png')) {
+            @unlink($base . '.png');
+        }
+        echo json_encode(['status' => 0]);
+        exit;
+    }
 }
