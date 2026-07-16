@@ -2082,16 +2082,19 @@ class Controller_EventAjax extends Controller
             echo json_encode(['status' => 1, 'error' => 'Could not save uploaded file.']);
             exit;
         }
-        if (file_exists($base . '.jpg')) {
-            @unlink($base . '.jpg');
-        }
-        if (file_exists($base . '.png')) {
-            @unlink($base . '.png');
-        }
+        // POSIX rename() atomically replaces a same-ext old file, so the old
+        // map stays fully intact right up until the new one lands — no
+        // pre-unlink, no window where zero map files exist on disk.
         if (!@rename($newPath, $base . '.' . $ext)) {
             @unlink($newPath);
             echo json_encode(['status' => 1, 'error' => 'Could not save uploaded file.']);
             exit;
+        }
+        // Only now, with the new file safely in place, remove a stale
+        // opposite-extension old map (e.g. replacing a .jpg with a .png).
+        $oldExt = ($ext === 'jpg') ? 'png' : 'jpg';
+        if (file_exists($base . '.' . $oldExt)) {
+            @unlink($base . '.' . $oldExt);
         }
 
         global $DB;
@@ -2106,7 +2109,10 @@ class Controller_EventAjax extends Controller
         $DB->Clear();
         $verify = $DB->DataSet('SELECT ext, width FROM ' . DB_PREFIX . 'event_site_map WHERE event_calendardetail_id = ' . $detail_id . ' LIMIT 1');
         if (!$verify || !$verify->Next() || (string)$verify->ext !== $ext || (int)$verify->width !== (int)$dims[0]) {
-            @unlink($base . '.' . $ext);
+            // Do NOT unlink the new file here: the read side (Controller_Event)
+            // checks file_exists and degrades to "no map" if the DB row is
+            // missing/stale, so an inconsistent row here is self-healing
+            // rather than user-breaking (losing the just-uploaded image).
             echo json_encode(['status' => 1, 'error' => 'Saved file but could not update the database. Please try again.']);
             exit;
         }
@@ -2142,6 +2148,14 @@ class Controller_EventAjax extends Controller
         global $DB;
         $DB->Clear();
         $DB->Execute('DELETE FROM ' . DB_PREFIX . 'event_site_map WHERE event_calendardetail_id = ' . $detail_id);
+        // Execute() is void and the Yapo layer can silently swallow failures
+        // — verify the row is actually gone before touching any files.
+        $DB->Clear();
+        $verify = $DB->DataSet('SELECT 1 FROM ' . DB_PREFIX . 'event_site_map WHERE event_calendardetail_id = ' . $detail_id . ' LIMIT 1');
+        if ($verify && $verify->Next()) {
+            echo json_encode(['status' => 1, 'error' => 'Could not remove the site map. Please try again.']);
+            exit;
+        }
         // Pins are intentionally KEPT (fractional coords survive a future
         // re-upload); only the image row + files go.
         $base = DIR_SITEMAP . sprintf('%05d', $detail_id);
