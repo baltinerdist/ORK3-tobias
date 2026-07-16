@@ -1879,4 +1879,141 @@ class Controller_EventAjax extends Controller
         echo json_encode(['status' => 1, 'error' => 'Unknown action.']);
         exit;
     }
+
+    private function _escSql(string $v): string
+    {
+        return str_replace(["'", '\\'], ["''", '\\\\'], $v);
+    }
+
+    private function _detailBelongsToEvent(int $event_id, int $detail_id): bool
+    {
+        global $DB;
+        $DB->Clear();
+        $row = $DB->DataSet('SELECT 1 FROM ' . DB_PREFIX . 'event_calendardetail WHERE event_calendardetail_id = ' . $detail_id . ' AND event_id = ' . $event_id . ' LIMIT 1');
+        return $row && $row->Next();
+    }
+
+    // Site Details editing gate: full event managers only (AUTH_EDIT or a
+    // staff row with can_manage). Also preflights that the detail belongs to
+    // the event — site-map files are keyed by detail_id alone, so an id
+    // mismatch here would let an editor of event A write files for event B.
+    private function _canManageSite(int $event_id, int $detail_id): bool
+    {
+        if (!$this->_detailBelongsToEvent($event_id, $detail_id)) {
+            return false;
+        }
+        $uid = (int)$this->session->user_id;
+        if (Ork3::$Lib->authorization->HasAuthority($uid, AUTH_EVENT, $event_id, AUTH_EDIT)) {
+            return true;
+        }
+        global $DB;
+        $DB->Clear();
+        $staffRow = $DB->DataSet('SELECT 1 FROM ' . DB_PREFIX . 'event_staff WHERE event_calendardetail_id = ' . $detail_id . ' AND mundane_id = ' . $uid . ' AND can_manage = 1 LIMIT 1');
+        return $staffRow && $staffRow->Next();
+    }
+
+    private function _loadSiteRules(int $detail_id): array
+    {
+        global $DB;
+        $DB->Clear();
+        $rows = $DB->DataSet(
+            'SELECT event_site_rule_id AS RuleId, rule_key AS RuleKey, value AS Value, title AS Title, details AS Details, sort_order AS SortOrder
+			FROM ' . DB_PREFIX . 'event_site_rule
+			WHERE event_calendardetail_id = ' . $detail_id . '
+			ORDER BY sort_order, event_site_rule_id'
+        );
+        $out = [];
+        if ($rows) {
+            while ($rows->Next()) {
+                $out[] = [
+                    'RuleId'    => (int)$rows->RuleId,
+                    'RuleKey'   => $rows->RuleKey !== null ? (string)$rows->RuleKey : null,
+                    'Value'     => (string)($rows->Value ?? ''),
+                    'Title'     => (string)($rows->Title ?? ''),
+                    'Details'   => (string)($rows->Details ?? ''),
+                    'SortOrder' => (int)$rows->SortOrder,
+                ];
+            }
+        }
+        return $out;
+    }
+
+    public function site_rules_save($p = null)
+    {
+        header('Content-Type: application/json');
+        if (!isset($this->session->user_id)) {
+            echo json_encode(['status' => 5, 'error' => 'Not logged in']);
+            exit;
+        }
+
+        $params    = explode('/', $p ?? '');
+        $event_id  = (int)preg_replace('/[^0-9]/', '', $params[0] ?? '');
+        $detail_id = (int)preg_replace('/[^0-9]/', '', $params[1] ?? '');
+        if (!valid_id($event_id) || !valid_id($detail_id)) {
+            echo json_encode(['status' => 1, 'error' => 'Invalid Event ID.']);
+            exit;
+        }
+        if (!$this->_canManageSite($event_id, $detail_id)) {
+            echo json_encode(['status' => 3, 'error' => 'Not authorized.']);
+            exit;
+        }
+
+        require_once(DIR_LIB . 'ork3/eventsite-catalog.php');
+        $catalog = event_site_rule_catalog();
+
+        $rulesJson = trim($_POST['Rules'] ?? '');
+        $rulesIn   = ($rulesJson !== '') ? json_decode($rulesJson, true) : [];
+        if (!is_array($rulesIn)) {
+            echo json_encode(['status' => 1, 'error' => 'Invalid rules payload.']);
+            exit;
+        }
+
+        // Validate the full payload BEFORE any write (no transactions on
+        // this branch — the failure window between DELETE and INSERT must
+        // only ever contain pre-validated data).
+        $pillRows   = [];
+        $customRows = [];
+        foreach ($rulesIn as $r) {
+            if (!is_array($r)) {
+                continue;
+            }
+            $key     = trim((string)($r['RuleKey'] ?? ''));
+            $value   = trim((string)($r['Value']   ?? ''));
+            $title   = trim((string)($r['Title']   ?? ''));
+            $details = trim((string)($r['Details'] ?? ''));
+            if ($key !== '') {
+                if (!isset($catalog[$key]['values'][$value])) {
+                    echo json_encode(['status' => 1, 'error' => 'Unknown rule option.']);
+                    exit;
+                }
+                $pillRows[$key] = ['value' => $value, 'details' => $details];
+            } elseif ($title !== '') {
+                $customRows[] = ['title' => mb_substr($title, 0, 120), 'details' => $details];
+            }
+        }
+
+        global $DB;
+        $values = [];
+        foreach ($pillRows as $key => $r) {
+            $values[] = '(' . $detail_id . ", '" . $this->_escSql($key) . "', '" . $this->_escSql($r['value']) . "', '', '" . $this->_escSql($r['details']) . "', 0)";
+        }
+        $sort = 0;
+        foreach ($customRows as $r) {
+            $values[] = '(' . $detail_id . ", NULL, '', '" . $this->_escSql($r['title']) . "', '" . $this->_escSql($r['details']) . "', " . $sort++ . ')';
+        }
+
+        $DB->Clear();
+        $DB->Execute('DELETE FROM ' . DB_PREFIX . 'event_site_rule WHERE event_calendardetail_id = ' . $detail_id);
+        if (!empty($values)) {
+            $DB->Clear();
+            $DB->Execute(
+                'INSERT INTO ' . DB_PREFIX . 'event_site_rule
+				(event_calendardetail_id, rule_key, value, title, details, sort_order)
+				VALUES ' . implode(', ', $values)
+            );
+        }
+
+        echo json_encode(['status' => 0, 'rules' => $this->_loadSiteRules($detail_id)]);
+        exit;
+    }
 }
