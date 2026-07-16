@@ -808,6 +808,7 @@ class Controller_EventAjax extends Controller
         $start_time  = trim($_POST['StartTime']   ?? '');
         $end_time    = trim($_POST['EndTime']     ?? '');
         $location    = trim($_POST['Location']    ?? '');
+        $site_location_id = (int)($_POST['SiteLocationId'] ?? 0);
         $description = trim($_POST['Description'] ?? '');
         $category           = trim($_POST['Category']           ?? 'Other');
         $secondary_category = trim($_POST['SecondaryCategory']  ?? '');
@@ -867,6 +868,21 @@ class Controller_EventAjax extends Controller
         $dietary   = ($can_feast && $raw_dietary   !== '') ? $raw_dietary : null;
         $allergens = ($can_feast && $raw_allergens !== '') ? $raw_allergens : null;
 
+        // Optional link to a tagged site-map location. Must belong to this
+        // same occurrence; anything else silently degrades to free text.
+        if ($site_location_id > 0) {
+            global $DB;
+            $DB->Clear();
+            $slRow = $DB->DataSet('SELECT name FROM ' . DB_PREFIX . 'event_site_location WHERE event_site_location_id = ' . $site_location_id . ' AND event_calendardetail_id = ' . $detail_id . ' LIMIT 1');
+            if ($slRow && $slRow->Next()) {
+                if ($location === '') {
+                    $location = (string)$slRow->name;
+                }
+            } else {
+                $site_location_id = 0;
+            }
+        }
+
         $title_safe       = str_replace(["'", '\\'], ["''", '\\\\'], $title);
         $location_safe    = str_replace(["'", '\\'], ["''", '\\\\'], $location);
         $description_safe = str_replace(["'", '\\'], ["''", '\\\\'], $description);
@@ -886,8 +902,8 @@ class Controller_EventAjax extends Controller
         $DB->Clear();
         $DB->Execute(
             'INSERT INTO ' . DB_PREFIX . 'event_schedule
-			(event_calendardetail_id, title, start_time, end_time, location, description, category, secondary_category, menu, cost, dietary, allergens)
-			VALUES (' . $detail_id . ', \'' . $title_safe . '\', \'' . $start_fmt . '\', \'' . $end_fmt . '\', \'' . $location_safe . '\', \'' . $description_safe . '\', \'' . $category_safe . '\', \'' . $secondary_category_safe . '\', ' . $menu_sql . ', ' . $cost_sql . ', ' . $dietary_sql . ', ' . $allergens_sql . ')'
+			(event_calendardetail_id, title, start_time, end_time, location, description, category, secondary_category, menu, cost, dietary, allergens, site_location_id)
+			VALUES (' . $detail_id . ', \'' . $title_safe . '\', \'' . $start_fmt . '\', \'' . $end_fmt . '\', \'' . $location_safe . '\', \'' . $description_safe . '\', \'' . $category_safe . '\', \'' . $secondary_category_safe . '\', ' . $menu_sql . ', ' . $cost_sql . ', ' . $dietary_sql . ', ' . $allergens_sql . ', ' . ($site_location_id > 0 ? $site_location_id : 'NULL') . ')'
         );
         $DB->Clear();
         $idrow = $DB->DataSet('SELECT event_schedule_id FROM ' . DB_PREFIX . 'event_schedule WHERE event_calendardetail_id = ' . $detail_id . ' ORDER BY event_schedule_id DESC LIMIT 1');
@@ -916,6 +932,7 @@ class Controller_EventAjax extends Controller
             'StartTime'         => $start_fmt,
             'EndTime'           => $end_fmt,
             'Location'          => $location,
+            'SiteLocationId'    => $site_location_id > 0 ? $site_location_id : null,
             'Description'       => $description,
             'Category'          => $category,
             'SecondaryCategory' => $secondary_category,
@@ -1018,6 +1035,7 @@ class Controller_EventAjax extends Controller
         $start_time  = trim($_POST['StartTime']   ?? '');
         $end_time    = trim($_POST['EndTime']     ?? '');
         $location    = trim($_POST['Location']    ?? '');
+        $site_location_id = (int)($_POST['SiteLocationId'] ?? 0);
         $description = trim($_POST['Description'] ?? '');
         $category           = trim($_POST['Category']           ?? 'Other');
         $secondary_category = trim($_POST['SecondaryCategory']  ?? '');
@@ -1046,6 +1064,21 @@ class Controller_EventAjax extends Controller
         if (!$title) {
             echo json_encode(['status' => 1, 'error' => 'A title is required.']);
             exit;
+        }
+
+        // Optional link to a tagged site-map location. Must belong to this
+        // same occurrence; anything else silently degrades to free text.
+        if ($site_location_id > 0) {
+            global $DB;
+            $DB->Clear();
+            $slRow = $DB->DataSet('SELECT name FROM ' . DB_PREFIX . 'event_site_location WHERE event_site_location_id = ' . $site_location_id . ' AND event_calendardetail_id = ' . $detail_id . ' LIMIT 1');
+            if ($slRow && $slRow->Next()) {
+                if ($location === '') {
+                    $location = (string)$slRow->name;
+                }
+            } else {
+                $site_location_id = 0;
+            }
         }
 
         // Build SET clauses selectively based on permissions:
@@ -1084,6 +1117,7 @@ class Controller_EventAjax extends Controller
             $set_parts[] = 'start_time = \'' . $start_fmt . '\'';
             $set_parts[] = 'end_time = \'' . $end_fmt . '\'';
             $set_parts[] = 'location = \'' . $location_safe . '\'';
+            $set_parts[] = 'site_location_id = ' . ($site_location_id > 0 ? $site_location_id : 'NULL');
             $set_parts[] = 'description = \'' . $description_safe . '\'';
             $set_parts[] = 'category = \'' . $category_safe . '\'';
             $set_parts[] = 'secondary_category = \'' . $secondary_category_safe . '\'';
@@ -1155,6 +1189,7 @@ class Controller_EventAjax extends Controller
             'StartTime'         => $start_fmt ?: '',
             'EndTime'           => $end_fmt ?: '',
             'Location'          => $can_schedule ? $location : null,
+            'SiteLocationId'    => $can_schedule ? ($site_location_id > 0 ? $site_location_id : null) : null,
             'Description'       => $can_schedule ? $description : null,
             'Category'          => $can_schedule ? $category : null,
             'SecondaryCategory' => $can_schedule ? $secondary_category : null,

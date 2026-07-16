@@ -750,7 +750,7 @@ class Controller_Event extends Controller
         $scheduleRows = $DB->DataSet(
             'SELECT event_schedule_id AS EventScheduleId, title AS Title,
 			        start_time AS StartTime, end_time AS EndTime,
-			        location AS Location, description AS Description, category AS Category,
+			        location AS Location, site_location_id AS SiteLocationId, description AS Description, category AS Category,
 			        secondary_category AS SecondaryCategory,
 			        menu AS Menu, cost AS Cost, dietary AS Dietary, allergens AS Allergens
 			FROM ' . DB_PREFIX . 'event_schedule
@@ -766,6 +766,7 @@ class Controller_Event extends Controller
                     'StartTime'         => $scheduleRows->StartTime,
                     'EndTime'           => $scheduleRows->EndTime,
                     'Location'          => $scheduleRows->Location,
+                    'SiteLocationId'    => $scheduleRows->SiteLocationId !== null ? (int)$scheduleRows->SiteLocationId : null,
                     'Description'       => $scheduleRows->Description,
                     'Category'          => $scheduleRows->Category,
                     'SecondaryCategory' => $scheduleRows->SecondaryCategory ?? '',
