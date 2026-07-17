@@ -769,6 +769,34 @@ html[data-theme="dark"] .ev-site-cta { border-color:#4a5568; color:#a0aec0; }
 html[data-theme="dark"] .ev-site-rule-group-label { color:#a0aec0; }
 html[data-theme="dark"] .ev-site-opt { background:#2d3748; border-color:#4a5568; color:#cbd5e0; }
 html[data-theme="dark"] .ev-site-opt.ev-site-opt-on { background:#3182ce; border-color:#3182ce; color:#fff; }
+/* Site map */
+#ev-site-map-wrap { position:relative; }
+#ev-site-map { width:100%; height:480px; border-radius:8px; border:1px solid #e2e8f0; background:#f7fafc; z-index:0; }
+@media (max-width:640px) { #ev-site-map { height:360px; } }
+#ev-site-editmode-hint { position:absolute; top:10px; left:50%; transform:translateX(-50%); z-index:500; background:#2c5282; color:#fff; font-size:12.5px; padding:6px 14px; border-radius:999px; box-shadow:0 2px 8px rgba(0,0,0,.25); pointer-events:none; }
+#ev-site-map.ev-site-editing { cursor:crosshair; }
+.ev-site-legend { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+.ev-site-legend-chip { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:999px; font-size:12px; border:1px solid #cbd5e0; background:#fff; color:#4a5568; cursor:pointer; }
+.ev-site-legend-chip i { font-size:11px; }
+/* divIcon pin */
+.ev-site-pin { display:flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:50% 50% 50% 0; transform:rotate(-45deg); border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,.35); }
+.ev-site-pin i { transform:rotate(45deg); color:#fff; font-size:13px; }
+.ev-site-popup-name { font-weight:700; font-size:14px; margin-bottom:2px; }
+.ev-site-popup-cat { font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:#718096; margin-bottom:4px; }
+.ev-site-popup-desc { font-size:12.5px; color:#4a5568; margin-bottom:6px; }
+.ev-site-popup-sched { border-top:1px solid #e2e8f0; margin-top:6px; padding-top:6px; }
+.ev-site-popup-sched a { display:block; font-size:12px; margin-bottom:3px; }
+.ev-site-popup-actions { border-top:1px solid #e2e8f0; margin-top:6px; padding-top:6px; display:flex; gap:10px; }
+.ev-site-popup-actions button { background:none; border:none; cursor:pointer; font-size:12px; color:#3182ce; padding:0; }
+.ev-site-popup-actions button.ev-site-popup-del { color:#e53e3e; }
+/* Leaflet dark mode (pattern proven on the Weather page) */
+html[data-theme="dark"] #ev-site-map { background:#1a202c; border-color:#4a5568; }
+html[data-theme="dark"] .leaflet-bar a { background:#2d3748; color:#e2e8f0; border-color:#4a5568; }
+html[data-theme="dark"] .leaflet-popup-content-wrapper, html[data-theme="dark"] .leaflet-popup-tip { background:#2d3748; color:#e2e8f0; }
+html[data-theme="dark"] .ev-site-popup-desc { color:#cbd5e0; }
+html[data-theme="dark"] .ev-site-popup-cat { color:#a0aec0; }
+html[data-theme="dark"] .ev-site-popup-sched, html[data-theme="dark"] .ev-site-popup-actions { border-color:#4a5568; }
+html[data-theme="dark"] .ev-site-legend-chip { background:#2d3748; border-color:#4a5568; color:#cbd5e0; }
 </style>
 
 <?php // ---- DRAFT BLOCKED ---- ?>
@@ -1312,7 +1340,7 @@ html[data-theme="dark"] .ev-site-opt.ev-site-opt-on { background:#3182ce; border
 							$evSeg = ($item['_IsFirstDay'] && $item['_IsLastDay']) ? 'single'
 								: ($item['_IsFirstDay'] ? 'first' : ($item['_IsLastDay'] ? 'last' : 'mid'));
 						?>
-						<tr <?php if ($item['_IsFirstDay']): ?>id="ev-schedule-row-<?= (int)$item['EventScheduleId'] ?>" <?php endif; ?>data-seg="<?= $evSeg ?>" data-schedule-id="<?= (int)$item['EventScheduleId'] ?>" data-title="<?= htmlspecialchars($item['Title'], ENT_QUOTES) ?>" data-start="<?= date('Y-m-d\TH:i', strtotime($item['StartTime'])) ?>" data-end="<?= date('Y-m-d\TH:i', strtotime($item['EndTime'])) ?>" data-location="<?= htmlspecialchars($item['Location'], ENT_QUOTES) ?>" data-description="<?= htmlspecialchars($item['Description'], ENT_QUOTES) ?>" data-category="<?= htmlspecialchars($evCat, ENT_QUOTES) ?>" data-secondary-category="<?= htmlspecialchars($evSecCat, ENT_QUOTES) ?>" data-leads="<?= htmlspecialchars(json_encode($item['Leads'] ?? []), ENT_QUOTES) ?>" data-menu="<?= htmlspecialchars($item['Menu'] ?? '', ENT_QUOTES) ?>" data-cost="<?= htmlspecialchars((string)($item['Cost'] ?? ''), ENT_QUOTES) ?>" data-dietary="<?= htmlspecialchars($item['Dietary'] ?? '', ENT_QUOTES) ?>" data-allergens="<?= htmlspecialchars($item['Allergens'] ?? '', ENT_QUOTES) ?>" style="background:<?= $evCatCfg['bg'] ?>">
+						<tr <?php if ($item['_IsFirstDay']): ?>id="ev-schedule-row-<?= (int)$item['EventScheduleId'] ?>" <?php endif; ?>data-seg="<?= $evSeg ?>" data-schedule-id="<?= (int)$item['EventScheduleId'] ?>" data-title="<?= htmlspecialchars($item['Title'], ENT_QUOTES) ?>" data-start="<?= date('Y-m-d\TH:i', strtotime($item['StartTime'])) ?>" data-end="<?= date('Y-m-d\TH:i', strtotime($item['EndTime'])) ?>" data-location="<?= htmlspecialchars($item['Location'], ENT_QUOTES) ?>" data-description="<?= htmlspecialchars($item['Description'], ENT_QUOTES) ?>" data-category="<?= htmlspecialchars($evCat, ENT_QUOTES) ?>" data-secondary-category="<?= htmlspecialchars($evSecCat, ENT_QUOTES) ?>" data-leads="<?= htmlspecialchars(json_encode($item['Leads'] ?? []), ENT_QUOTES) ?>" data-menu="<?= htmlspecialchars($item['Menu'] ?? '', ENT_QUOTES) ?>" data-cost="<?= htmlspecialchars((string)($item['Cost'] ?? ''), ENT_QUOTES) ?>" data-dietary="<?= htmlspecialchars($item['Dietary'] ?? '', ENT_QUOTES) ?>" data-allergens="<?= htmlspecialchars($item['Allergens'] ?? '', ENT_QUOTES) ?>" data-site-location-id="<?= $item['SiteLocationId'] ?? '' ?>" style="background:<?= $evCatCfg['bg'] ?>">
 							<td style="white-space:nowrap"><?= $item['_IsFirstDay'] ? date('g:ia', $item['_SegStart']) : '(cont.)' ?></td>
 							<td style="white-space:nowrap"><?php
 								if (!$item['_IsLastDay']) {
@@ -2088,7 +2116,39 @@ html[data-theme="dark"] .ev-site-opt.ev-site-opt-on { background:#3182ce; border
 				</div>
 
 				<div id="ev-site-map-section">
-					<?php /* Filled in by the Site Map task */ ?>
+					<?php if (!empty($siteMap) || $canManageSite): ?>
+					<div class="ev-site-section-head">
+						<h3 class="ev-site-section-title"><i class="fas fa-map"></i> Site Map</h3>
+						<?php if ($canManageSite): ?>
+						<div style="display:flex;gap:8px">
+							<?php if (!empty($siteMap)): ?>
+							<button type="button" class="pk-btn pk-btn-secondary" id="ev-site-editmode-btn" style="font-size:13px;padding:6px 14px" onclick="evSiteToggleEditMode()">
+								<i class="fas fa-map-pin" style="margin-right:6px"></i><span>Edit Locations</span>
+							</button>
+							<?php endif; ?>
+							<button type="button" class="pk-btn pk-btn-secondary" style="font-size:13px;padding:6px 14px" onclick="evOpenSiteMapUploadModal()">
+								<i class="fas fa-upload" style="margin-right:6px"></i><?= !empty($siteMap) ? 'Replace Map' : 'Upload Site Map' ?>
+							</button>
+						</div>
+						<?php endif; ?>
+					</div>
+					<?php if (!empty($siteMap)): ?>
+					<div id="ev-site-map-wrap">
+						<div id="ev-site-map"></div>
+						<div id="ev-site-editmode-hint" style="display:none"><i class="fas fa-hand-pointer"></i> Click the map to place a pin. Drag pins to move them.</div>
+						<div class="ev-site-legend" id="ev-site-legend"></div>
+					</div>
+					<noscript>
+						<div style="overflow:auto;max-height:480px;border:1px solid #e2e8f0;border-radius:8px">
+							<img src="<?= htmlspecialchars($siteMap['Url']) ?>" alt="Site map" style="max-width:none">
+						</div>
+					</noscript>
+					<?php elseif ($canManageSite): ?>
+					<div class="ev-site-cta" onclick="evOpenSiteMapUploadModal()">
+						<i class="fas fa-map"></i> Upload a site map to tag battlefields, camping, parking, and more
+					</div>
+					<?php endif; ?>
+					<?php endif; ?>
 				</div>
 
 				<?php if ($hasMapTab): ?>
@@ -3093,6 +3153,84 @@ html[data-theme="dark"] #ev-attendance-table_wrapper .dataTables_paginate .pagin
 			<button class="ev-btn ev-btn-outline" type="button" onclick="evCloseSiteRulesModal()" style="margin-right:auto">Cancel</button>
 			<button class="ev-submit-btn" type="button" id="ev-site-rules-save-btn" onclick="evSubmitSiteRules()">
 				<i class="fas fa-save"></i> <span>Save Rules</span>
+			</button>
+		</div>
+	</div>
+</div>
+<?php endif; ?>
+
+<?php if ($canManageSite): ?>
+<!-- Site Map Upload Modal -->
+<div class="ev-modal-overlay" id="ev-site-upload-modal">
+	<div class="ev-modal" style="max-width:520px">
+		<div class="ev-modal-header">
+			<h3><i class="fas fa-upload" style="margin-right:8px"></i>Upload Site Map</h3>
+			<button class="ev-modal-close" type="button" onclick="evCloseSiteMapUploadModal()">&times;</button>
+		</div>
+		<div class="ev-modal-body">
+			<p style="font-size:13px;color:#718096;margin:0 0 10px">JPEG or PNG, up to 2 MB. A drawn or annotated map works best — aerial photos are fine too.</p>
+			<?php if (!empty($siteMap)): ?>
+			<div class="ev-modal-warning-box" style="margin-bottom:10px">
+				<i class="fas fa-info-circle" style="margin-right:6px;flex-shrink:0;margin-top:2px"></i>
+				<span>Replacing the map keeps your existing location pins — they're stored as relative positions. If the new image is a different area, drag them into place afterward.</span>
+			</div>
+			<?php endif; ?>
+			<input type="file" id="ev-site-file" accept="image/jpeg,image/png" style="width:100%">
+			<div id="ev-site-upload-preview" style="display:none;margin-top:10px;text-align:center">
+				<img id="ev-site-upload-preview-img" style="max-width:100%;max-height:240px;border-radius:6px;border:1px solid #e2e8f0" alt="Preview">
+			</div>
+			<div class="ev-modal-error" id="ev-site-upload-error" style="display:none"></div>
+		</div>
+		<div class="ev-modal-footer">
+			<button class="ev-btn ev-btn-outline" type="button" onclick="evCloseSiteMapUploadModal()" style="margin-right:auto">Cancel</button>
+			<button class="ev-submit-btn" type="button" id="ev-site-upload-btn" onclick="evSubmitSiteMapUpload()" disabled>
+				<i class="fas fa-upload"></i> <span>Upload</span>
+			</button>
+		</div>
+	</div>
+</div>
+<!-- Site Location (pin) Form Modal -->
+<div class="ev-modal-overlay" id="ev-site-loc-modal">
+	<div class="ev-modal" style="max-width:460px">
+		<div class="ev-modal-header">
+			<h3><i class="fas fa-map-pin" style="margin-right:8px"></i><span id="ev-site-loc-modal-title">Add Location</span></h3>
+			<button class="ev-modal-close" type="button" onclick="evCloseSiteLocModal()">&times;</button>
+		</div>
+		<div class="ev-modal-body">
+			<div class="ev-modal-row">
+				<div class="ev-modal-field ev-field-full">
+					<label>Name <span style="color:#e53e3e">*</span></label>
+					<input type="text" id="ev-site-loc-name" maxlength="80" placeholder="Main Battlefield, Feast Hall, Troll Booth..." style="width:100%">
+				</div>
+			</div>
+			<div class="ev-modal-row">
+				<div class="ev-modal-field ev-field-full">
+					<label>Category</label>
+					<select id="ev-site-loc-category" style="width:100%">
+						<?php foreach ($siteLocCategories as $ck => $cc): ?>
+						<option value="<?= $ck ?>"><?= htmlspecialchars($cc['label']) ?></option>
+						<?php endforeach; ?>
+					</select>
+				</div>
+			</div>
+			<div class="ev-modal-row">
+				<div class="ev-modal-field ev-field-full">
+					<label>Description <span style="font-size:11px;color:#718096;font-weight:400">(optional)</span></label>
+					<textarea id="ev-site-loc-desc" rows="2" placeholder="Anything attendees should know about this spot..." style="width:100%;resize:vertical"></textarea>
+				</div>
+			</div>
+			<div class="ev-modal-error" id="ev-site-loc-error" style="display:none"></div>
+			<input type="hidden" id="ev-site-loc-id" value="0">
+			<input type="hidden" id="ev-site-loc-x" value="0">
+			<input type="hidden" id="ev-site-loc-y" value="0">
+		</div>
+		<div class="ev-modal-footer">
+			<button class="ev-btn ev-btn-outline" type="button" onclick="evCloseSiteLocModal()" style="margin-right:auto">Cancel</button>
+			<button class="ev-btn ev-btn-outline" type="button" id="ev-site-loc-delete-btn" style="color:#e53e3e;display:none" onclick="evSiteDeleteLocation()">
+				<i class="fas fa-trash-alt"></i> Delete
+			</button>
+			<button class="ev-submit-btn" type="button" id="ev-site-loc-save-btn" onclick="evSubmitSiteLocation()">
+				<i class="fas fa-save"></i> <span>Save Location</span>
 			</button>
 		</div>
 	</div>
@@ -4757,6 +4895,324 @@ html[data-theme="dark"] .ev-grid-day-pill.ev-grid-day-pill-active {
 			if (customs) html += '<ul class="ev-site-custom-rules">' + customs + '</ul>';
 		}
 		gid('ev-site-rules-display').innerHTML = html;
+	};
+})();
+</script>
+
+<script>
+(function() {
+	'use strict';
+	if (!window.EvConfig) return;
+	if (!EvConfig.siteMap && !EvConfig.canManageSite) return;
+	function gid(id) { return document.getElementById(id); }
+
+	var map = null, imageLayer = null, editMode = false;
+	var evSiteMarkers = {};
+	var COORD_H = 1000; // fixed CRS height; width scales by aspect ratio
+
+	function catCfg(key) {
+		return EvConfig.siteLocCategories[key] || EvConfig.siteLocCategories.other;
+	}
+	function escH(s) {
+		return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+			return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+		});
+	}
+	function coordW() {
+		return COORD_H * (EvConfig.siteMap.Width / EvConfig.siteMap.Height);
+	}
+	// fractional x/y (0-1, y from image TOP) <-> CRS.Simple latlng (y up)
+	function fracToLatLng(x, y) { return [COORD_H - y * COORD_H, x * coordW()]; }
+	function latLngToFrac(ll) {
+		return {
+			x: Math.max(0, Math.min(1, ll.lng / coordW())),
+			y: Math.max(0, Math.min(1, (COORD_H - ll.lat) / COORD_H))
+		};
+	}
+
+	window.evSiteMapInit = function() {
+		if (map || !EvConfig.siteMap || !gid('ev-site-map') || typeof L === 'undefined') return;
+		var bounds = [[0, 0], [COORD_H, coordW()]];
+		map = L.map('ev-site-map', { crs: L.CRS.Simple, minZoom: -3, maxZoom: 2, zoomSnap: 0.25, attributionControl: false });
+		imageLayer = L.imageOverlay(EvConfig.siteMap.Url, bounds).addTo(map);
+		map.fitBounds(bounds);
+		map.setMaxBounds(L.latLngBounds(bounds).pad(0.25));
+		EvConfig.siteLocations.forEach(addMarker);
+		renderLegend();
+		if (EvConfig.canManageSite) {
+			map.on('click', function(e) {
+				if (!editMode) return;
+				var f = latLngToFrac(e.latlng);
+				openLocModal({ LocationId: 0, Name: '', Category: 'other', Description: '', X: f.x, Y: f.y });
+			});
+		}
+	};
+
+	function pinHtml(cat) {
+		var c = catCfg(cat);
+		return '<div class="ev-site-pin" style="background:' + c.color + '"><i class="fas ' + c.icon + '"></i></div>';
+	}
+	function addMarker(loc) {
+		var m = L.marker(fracToLatLng(loc.X, loc.Y), {
+			icon: L.divIcon({ className: '', html: pinHtml(loc.Category), iconSize: [30, 30], iconAnchor: [15, 30], popupAnchor: [0, -30] }),
+			draggable: false
+		}).addTo(map);
+		m.bindPopup(function() { return popupHtml(loc); });
+		m.on('dragend', function() {
+			var f = latLngToFrac(m.getLatLng());
+			saveLocation({ LocationId: loc.LocationId, Name: loc.Name, Category: loc.Category, Description: loc.Description, X: f.x, Y: f.y }, null);
+		});
+		evSiteMarkers[loc.LocationId] = m;
+	}
+	function popupHtml(loc) {
+		var c = catCfg(loc.Category);
+		var html = '<div class="ev-site-popup-name">' + escH(loc.Name) + '</div>' +
+			'<div class="ev-site-popup-cat"><i class="fas ' + c.icon + '" style="color:' + c.color + ';margin-right:3px"></i>' + escH(c.label) + '</div>';
+		if (loc.Description) html += '<div class="ev-site-popup-desc">' + escH(loc.Description) + '</div>';
+		// Schedule items at this location — read live from the schedule table's
+		// row data attributes so there's no second copy of schedule state.
+		var items = document.querySelectorAll('tr[data-site-location-id="' + loc.LocationId + '"]');
+		if (items.length) {
+			html += '<div class="ev-site-popup-sched">';
+			items.forEach(function(tr) {
+				var t = tr.getAttribute('data-title') || '';
+				var s = tr.getAttribute('data-start') || '';
+				var timeLabel = s ? new Date(s).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
+				html += '<a href="javascript:void(0)" onclick="evSiteGoToScheduleItem(\'' + tr.id + '\')"><i class="fas fa-clock" style="margin-right:4px"></i>' + escH(timeLabel) + ' — ' + escH(t) + '</a>';
+			});
+			html += '</div>';
+		}
+		if (EvConfig.canManageSite && editMode) {
+			html += '<div class="ev-site-popup-actions">' +
+				'<button type="button" onclick="evSiteEditLocation(' + loc.LocationId + ')"><i class="fas fa-pencil-alt"></i> Edit</button>' +
+				'<button type="button" class="ev-site-popup-del" onclick="evSiteEditLocation(' + loc.LocationId + ', true)"><i class="fas fa-trash-alt"></i> Delete</button>' +
+				'</div>';
+		}
+		return html;
+	}
+	function renderLegend() {
+		var el = gid('ev-site-legend');
+		if (!el) return;
+		var seen = {};
+		EvConfig.siteLocations.forEach(function(l) { seen[l.Category] = (seen[l.Category] || 0) + 1; });
+		el.innerHTML = Object.keys(seen).map(function(k) {
+			var c = catCfg(k);
+			return '<span class="ev-site-legend-chip" onclick="evSiteLegendClick(\'' + k + '\')"><i class="fas ' + c.icon + '" style="color:' + c.color + '"></i>' + escH(c.label) + ' (' + seen[k] + ')</span>';
+		}).join('');
+	}
+	var legendCycle = {};
+	window.evSiteLegendClick = function(cat) {
+		var matches = EvConfig.siteLocations.filter(function(l) { return l.Category === cat; });
+		if (!matches.length || !map) return;
+		legendCycle[cat] = ((legendCycle[cat] || 0) + 1) % matches.length;
+		var loc = matches[legendCycle[cat]];
+		map.flyTo(fracToLatLng(loc.X, loc.Y), Math.max(map.getZoom(), 0));
+		evSiteMarkers[loc.LocationId] && evSiteMarkers[loc.LocationId].openPopup();
+	};
+
+	// ---- Cross-tab entry points ----
+	window.evSiteFlyTo = function(locationId) {
+		var loc = EvConfig.siteLocations.find(function(l) { return l.LocationId === locationId; });
+		if (!loc) return;
+		var li = document.querySelector('#ev-tab-nav li[data-tab="ev-tab-site"]');
+		if (li && window.evShowTab) evShowTab(li, 'ev-tab-site');
+		evSiteMapInit();
+		if (!map) return;
+		map.invalidateSize();
+		map.flyTo(fracToLatLng(loc.X, loc.Y), 0.5);
+		var m = evSiteMarkers[locationId];
+		if (m) setTimeout(function() { m.openPopup(); }, 600);
+	};
+	window.evSiteGoToScheduleItem = function(rowId) {
+		var li = document.querySelector('#ev-tab-nav li[data-tab="ev-tab-schedule"]');
+		if (li && window.evShowTab) evShowTab(li, 'ev-tab-schedule');
+		var row = gid(rowId);
+		if (row) {
+			row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+			row.style.outline = '2px solid #3182ce';
+			setTimeout(function() { row.style.outline = ''; }, 2500);
+		}
+	};
+
+	// Lazy init on first Site-tab open (Leaflet can't lay out in display:none).
+	var siteTabLi = document.querySelector('#ev-tab-nav li[data-tab="ev-tab-site"]');
+	if (siteTabLi) siteTabLi.addEventListener('click', function() {
+		setTimeout(function() { evSiteMapInit(); if (map) map.invalidateSize(); }, 50);
+	});
+	// Init now if the Site tab is already the visible one on load — e.g. a
+	// direct #ev-tab-site deep link (the hash wrapper runs before this script
+	// and only flips panel visibility; it can't call evSiteMapInit itself).
+	$(function() {
+		if (document.querySelector('#ev-tab-site.ev-tab-visible')) {
+			evSiteMapInit();
+			if (map) map.invalidateSize();
+		}
+	});
+
+	// ---- Manager-only: edit mode, pin CRUD, upload ----
+	if (!EvConfig.canManageSite) return;
+
+	window.evSiteToggleEditMode = function() {
+		editMode = !editMode;
+		var btn = gid('ev-site-editmode-btn');
+		if (btn) {
+			btn.querySelector('span').textContent = editMode ? 'Done Editing' : 'Edit Locations';
+			btn.style.background = editMode ? '#2c5282' : '';
+			btn.style.color = editMode ? '#fff' : '';
+		}
+		gid('ev-site-editmode-hint').style.display = editMode ? '' : 'none';
+		gid('ev-site-map').classList.toggle('ev-site-editing', editMode);
+		Object.keys(evSiteMarkers).forEach(function(id) {
+			if (evSiteMarkers[id].dragging) editMode ? evSiteMarkers[id].dragging.enable() : evSiteMarkers[id].dragging.disable();
+		});
+		map && map.closePopup();
+	};
+
+	function openLocModal(loc, deleteFocus) {
+		gid('ev-site-loc-modal-title').textContent = loc.LocationId ? 'Edit Location' : 'Add Location';
+		gid('ev-site-loc-id').value   = loc.LocationId;
+		gid('ev-site-loc-x').value    = loc.X;
+		gid('ev-site-loc-y').value    = loc.Y;
+		gid('ev-site-loc-name').value = loc.Name;
+		gid('ev-site-loc-category').value = loc.Category || 'other';
+		gid('ev-site-loc-desc').value = loc.Description || '';
+		gid('ev-site-loc-error').style.display = 'none';
+		gid('ev-site-loc-delete-btn').style.display = loc.LocationId ? '' : 'none';
+		gid('ev-site-loc-modal').classList.add('ev-modal-open');
+		if (!deleteFocus) setTimeout(function() { gid('ev-site-loc-name').focus(); }, 50);
+	}
+	window.evCloseSiteLocModal = function() { gid('ev-site-loc-modal').classList.remove('ev-modal-open'); };
+	window.evSiteEditLocation = function(locationId, focusDelete) {
+		var loc = EvConfig.siteLocations.find(function(l) { return l.LocationId === locationId; });
+		if (loc) openLocModal(loc, !!focusDelete);
+	};
+
+	function refreshMarker(loc) {
+		if (evSiteMarkers[loc.LocationId]) { map.removeLayer(evSiteMarkers[loc.LocationId]); delete evSiteMarkers[loc.LocationId]; }
+		addMarker(loc);
+		if (editMode && evSiteMarkers[loc.LocationId].dragging) evSiteMarkers[loc.LocationId].dragging.enable();
+	}
+	function saveLocation(payload, onDone) {
+		var fd = new FormData();
+		fd.append('LocationId', payload.LocationId);
+		fd.append('Name', payload.Name);
+		fd.append('Category', payload.Category);
+		fd.append('Description', payload.Description || '');
+		fd.append('X', payload.X);
+		fd.append('Y', payload.Y);
+		fetch(EvConfig.uir + 'EventAjax/site_location_save/' + EvConfig.eventId + '/' + EvConfig.detailId, {
+			method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' }
+		})
+		.then(function(r) { return r.json(); })
+		.then(function(data) {
+			if (data.status === 0) {
+				var idx = EvConfig.siteLocations.findIndex(function(l) { return l.LocationId === data.location.LocationId; });
+				if (idx >= 0) EvConfig.siteLocations[idx] = data.location; else EvConfig.siteLocations.push(data.location);
+				refreshMarker(data.location);
+				renderLegend();
+				if (typeof window.evSiteSyncScheduleOptions === 'function') window.evSiteSyncScheduleOptions();
+				if (onDone) onDone(null, data.location);
+			} else if (onDone) onDone(data.error || 'Could not save.');
+		})
+		.catch(function() { if (onDone) onDone('Network error — please try again.'); });
+	}
+	window.evSubmitSiteLocation = function() {
+		var name = gid('ev-site-loc-name').value.trim();
+		var err  = gid('ev-site-loc-error');
+		if (!name) { err.textContent = 'Please enter a name.'; err.style.display = 'block'; return; }
+		var btn = gid('ev-site-loc-save-btn'), orig = btn.innerHTML;
+		btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
+		saveLocation({
+			LocationId: parseInt(gid('ev-site-loc-id').value, 10) || 0,
+			Name: name,
+			Category: gid('ev-site-loc-category').value,
+			Description: gid('ev-site-loc-desc').value.trim(),
+			X: parseFloat(gid('ev-site-loc-x').value) || 0,
+			Y: parseFloat(gid('ev-site-loc-y').value) || 0
+		}, function(errMsg) {
+			btn.disabled = false; btn.innerHTML = orig;
+			if (errMsg) { err.textContent = errMsg; err.style.display = 'block'; }
+			else evCloseSiteLocModal();
+		});
+	};
+	window.evSiteDeleteLocation = function() {
+		var id = parseInt(gid('ev-site-loc-id').value, 10) || 0;
+		if (!id) return;
+		var btn = gid('ev-site-loc-delete-btn'), orig = btn.innerHTML;
+		btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+		var fd = new FormData();
+		fd.append('LocationId', id);
+		fetch(EvConfig.uir + 'EventAjax/site_location_delete/' + EvConfig.eventId + '/' + EvConfig.detailId, {
+			method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' }
+		})
+		.then(function(r) { return r.json(); })
+		.then(function(data) {
+			btn.disabled = false; btn.innerHTML = orig;
+			if (data.status === 0) {
+				EvConfig.siteLocations = EvConfig.siteLocations.filter(function(l) { return l.LocationId !== id; });
+				if (evSiteMarkers[id]) { map.removeLayer(evSiteMarkers[id]); delete evSiteMarkers[id]; }
+				renderLegend();
+				if (typeof window.evSiteSyncScheduleOptions === 'function') window.evSiteSyncScheduleOptions();
+				// Linked schedule chips degrade to plain text on next reload;
+				// live rows just lose fly-to (evSiteFlyTo no-ops on a missing pin).
+				evCloseSiteLocModal();
+			} else {
+				var err = gid('ev-site-loc-error');
+				err.textContent = data.error || 'Could not delete.'; err.style.display = 'block';
+			}
+		});
+	};
+
+	// ---- Upload modal ----
+	window.evOpenSiteMapUploadModal = function() {
+		gid('ev-site-file').value = '';
+		gid('ev-site-upload-preview').style.display = 'none';
+		gid('ev-site-upload-error').style.display = 'none';
+		gid('ev-site-upload-btn').disabled = true;
+		gid('ev-site-upload-modal').classList.add('ev-modal-open');
+	};
+	window.evCloseSiteMapUploadModal = function() { gid('ev-site-upload-modal').classList.remove('ev-modal-open'); };
+	gid('ev-site-file') && gid('ev-site-file').addEventListener('change', function() {
+		var f = this.files && this.files[0];
+		var err = gid('ev-site-upload-error');
+		err.style.display = 'none';
+		gid('ev-site-upload-btn').disabled = true;
+		gid('ev-site-upload-preview').style.display = 'none';
+		if (!f) return;
+		if (f.size > 2 * 1024 * 1024) { err.textContent = 'That file is over 2 MB. Please resize or compress it first.'; err.style.display = 'block'; return; }
+		if (f.type !== 'image/jpeg' && f.type !== 'image/png') { err.textContent = 'Only JPEG and PNG images are supported.'; err.style.display = 'block'; return; }
+		gid('ev-site-upload-preview-img').src = URL.createObjectURL(f);
+		gid('ev-site-upload-preview').style.display = '';
+		gid('ev-site-upload-btn').disabled = false;
+	});
+	window.evSubmitSiteMapUpload = function() {
+		var f = gid('ev-site-file').files && gid('ev-site-file').files[0];
+		if (!f) return;
+		var btn = gid('ev-site-upload-btn'), orig = btn.innerHTML;
+		btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading…';
+		var fd = new FormData();
+		fd.append('SiteMap', f);
+		fetch(EvConfig.uir + 'EventAjax/site_map_upload/' + EvConfig.eventId + '/' + EvConfig.detailId, {
+			method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' }
+		})
+		.then(function(r) { return r.json(); })
+		.then(function(data) {
+			btn.disabled = false; btn.innerHTML = orig;
+			if (data.status === 0) {
+				// Section structure (map div, edit button) is PHP-rendered on
+				// whether a map exists — a reload is the honest way to swap in.
+				location.hash = 'ev-tab-site';
+				location.reload();
+			} else {
+				var err = gid('ev-site-upload-error');
+				err.textContent = data.error || 'Upload failed.'; err.style.display = 'block';
+			}
+		})
+		.catch(function() {
+			btn.disabled = false; btn.innerHTML = orig;
+			var err = gid('ev-site-upload-error');
+			err.textContent = 'Network error — please try again.'; err.style.display = 'block';
+		});
 	};
 })();
 </script>
