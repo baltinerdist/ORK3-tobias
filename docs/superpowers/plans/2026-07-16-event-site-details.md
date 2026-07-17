@@ -2190,6 +2190,19 @@ git commit -m "Enhancement: schedule location picker + map fly-to chips with pop
 - [ ] Implement per the above; verify in browser: a >2MB JPEG and a >2MB PNG both auto-downsize + upload successfully (server accepts, dims recorded), a ≤2MB file uploads byte-identical (no recompression — confirm the served file's dimensions match the original exactly and the notice does not appear), a non-image still rejects client-side. Zero console errors; dark-mode notice legibility.
 - [ ] Commit (tpl only).
 
+### Task 10c: In-product confirmation for schedule-item removal (added 2026-07-16 by Avery mid-build)
+
+**Files:**
+- Modify: `orkui/template/revised-frontend/script/revised.js` — `window.evRemoveSchedule` (~L9655; `if (!confirm('Remove this schedule item?')) return;` at ~L9656)
+- Modify: `orkui/template/revised-frontend/Eventnew_index.tpl` — confirm modal markup (manager-gated) + any CSS needed.
+
+**Interfaces:**
+- Consumes: existing `evRemoveSchedule(btn, scheduleId)` call sites (static rows in the tpl AND the JS-built row string ~L9457 — signature must not change) and the `ev-` modal pattern.
+- Produces: clicking a schedule row's × opens a small in-page `ev-modal-overlay` confirm dialog (title "Remove Schedule Item", body shows the item's title read from the row's `data-title`, Cancel + red "Remove" buttons — NO native `confirm()`). Confirming runs the existing removal fetch unchanged; canceling closes the dialog and does nothing. Reuse an existing event-page confirm helper if one exists (grep `evConfirm`/similar in revised.js first); otherwise add a minimal one following the `.ev-modal-overlay`/`.ev-modal-open` pattern. Dark mode covered by the existing ev-modal styles.
+
+- [ ] Implement; verify in browser: × opens the dialog with the right item title; Cancel leaves the row; Remove deletes it (row disappears, feast card syncs if applicable); zero console errors; grep confirms no `confirm(` remains in `evRemoveSchedule`.
+- [ ] Commit (both files).
+
 ### Task 11: Full verification + polish gate
 
 **Files:** none new — fixes land where found.
