@@ -9546,55 +9546,59 @@ $(document).ready(function() {
         };
 
         window.evRemoveSchedule = function(btn, scheduleId) {
-            if (!confirm('Remove this schedule item?')) return;
-            var fd = new FormData();
-            fd.append('ScheduleId', scheduleId);
-            fetch(EvConfig.uir + 'EventAjax/remove_schedule/' + EvConfig.eventId + '/' + EvConfig.detailId, {
-                method: 'POST', body: fd,
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data.status === 0) {
-                    // A multi-day item renders one row per day it spans, so remove them all.
-                    var rows = document.querySelectorAll('tr[data-schedule-id="' + scheduleId + '"]');
-                    // Capture the day-sections BEFORE removing the rows — closest() on a
-                    // detached node returns null, so empty sections never got cleaned up.
-                    var daySections = [];
-                    rows.forEach(function(row) {
-                        var sec = row.closest('.ev-sched-day-section');
-                        if (sec && daySections.indexOf(sec) === -1) daySections.push(sec);
-                        row.remove();
-                    });
-                    daySections.forEach(function(daySection) {
-                        var tbody = daySection.querySelector('tbody');
-                        if (tbody && tbody.querySelectorAll('tr').length === 0) {
-                            daySection.remove();
-                        }
-                    });
-                    var container = gid('ev-schedule-container');
-                    if (container && container.querySelectorAll('.ev-sched-day-section').length === 0) {
-                        var empty = gid('ev-schedule-empty');
-                        if (empty) empty.style.display = '';
-                    }
-                    var navItems = document.querySelectorAll('#ev-tab-nav li');
-                    navItems.forEach(function(li) {
-                        if (li.getAttribute('data-tab') === 'ev-tab-schedule') {
-                            var badge = li.querySelector('.ev-tab-count');
-                            if (badge) {
-                                var n = parseInt(badge.textContent || '1') - 1;
-                                badge.textContent = Math.max(0, n);
+            var titleRow = document.querySelector('tr[data-schedule-id="' + scheduleId + '"]');
+            var itemTitle = titleRow ? (titleRow.getAttribute('data-title') || 'this item') : 'this item';
+            var doRemove = function() {
+                var fd = new FormData();
+                fd.append('ScheduleId', scheduleId);
+                fetch(EvConfig.uir + 'EventAjax/remove_schedule/' + EvConfig.eventId + '/' + EvConfig.detailId, {
+                    method: 'POST', body: fd,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.status === 0) {
+                        // A multi-day item renders one row per day it spans, so remove them all.
+                        var rows = document.querySelectorAll('tr[data-schedule-id="' + scheduleId + '"]');
+                        // Capture the day-sections BEFORE removing the rows — closest() on a
+                        // detached node returns null, so empty sections never got cleaned up.
+                        var daySections = [];
+                        rows.forEach(function(row) {
+                            var sec = row.closest('.ev-sched-day-section');
+                            if (sec && daySections.indexOf(sec) === -1) daySections.push(sec);
+                            row.remove();
+                        });
+                        daySections.forEach(function(daySection) {
+                            var tbody = daySection.querySelector('tbody');
+                            if (tbody && tbody.querySelectorAll('tr').length === 0) {
+                                daySection.remove();
                             }
+                        });
+                        var container = gid('ev-schedule-container');
+                        if (container && container.querySelectorAll('.ev-sched-day-section').length === 0) {
+                            var empty = gid('ev-schedule-empty');
+                            if (empty) empty.style.display = '';
                         }
-                    });
-                    evBuildScheduleFilters();
-                    // Keep the server-rendered grid in sync with this removal.
-                    if (typeof window.evRefreshScheduleGrid === 'function') window.evRefreshScheduleGrid();
-                } else {
-                    alert(data.error || 'Could not remove schedule item.');
-                }
-            })
-            .catch(function(err) { alert('Request failed: ' + err.message); });
+                        var navItems = document.querySelectorAll('#ev-tab-nav li');
+                        navItems.forEach(function(li) {
+                            if (li.getAttribute('data-tab') === 'ev-tab-schedule') {
+                                var badge = li.querySelector('.ev-tab-count');
+                                if (badge) {
+                                    var n = parseInt(badge.textContent || '1') - 1;
+                                    badge.textContent = Math.max(0, n);
+                                }
+                            }
+                        });
+                        evBuildScheduleFilters();
+                        // Keep the server-rendered grid in sync with this removal.
+                        if (typeof window.evRefreshScheduleGrid === 'function') window.evRefreshScheduleGrid();
+                    } else {
+                        alert(data.error || 'Could not remove schedule item.');
+                    }
+                })
+                .catch(function(err) { alert('Request failed: ' + err.message); });
+            };
+            knConfirm('Remove "' + itemTitle + '" from the schedule? This cannot be undone.', doRemove, 'Remove Schedule Item');
         };
         // Initialize schedule filters on page load
         evBuildScheduleFilters();
