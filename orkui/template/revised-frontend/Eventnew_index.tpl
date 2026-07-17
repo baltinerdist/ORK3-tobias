@@ -736,6 +736,39 @@ html[data-theme="dark"] .ev-ds-action-btn:hover{background:rgba(72,187,120,.2)}
 #ev-tab-site .ev-site-section-title i { margin-right:7px; color:#4a5568; }
 html[data-theme="dark"] #ev-tab-site .ev-site-section-title { color:#e2e8f0; }
 html[data-theme="dark"] #ev-tab-site .ev-site-section-title i { color:#a0aec0; }
+/* Site rules pills */
+.ev-site-pills { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
+.ev-site-pill { display:inline-flex; align-items:center; gap:5px; padding:5px 12px; border-radius:999px; font-size:13px; border:1px solid; }
+.ev-site-pill i { font-size:12px; }
+.ev-site-pill-restrictive { background:#fff5f5; border-color:#feb2b2; color:#c53030; }
+.ev-site-pill-neutral     { background:#f7fafc; border-color:#cbd5e0; color:#4a5568; }
+.ev-site-pill-permissive  { background:#f0fff4; border-color:#9ae6b4; color:#276749; }
+.ev-site-pill-info { opacity:.6; font-size:11px; }
+.ev-site-custom-rules { margin:6px 0 0; padding-left:20px; }
+.ev-site-custom-rules li { margin-bottom:5px; font-size:14px; color:#2d3748; }
+.ev-site-custom-detail { display:block; font-size:12.5px; color:#718096; }
+.ev-site-cta { border:2px dashed #cbd5e0; border-radius:8px; padding:16px; text-align:center; color:#718096; cursor:pointer; font-size:14px; }
+.ev-site-cta:hover { border-color:#a0aec0; color:#4a5568; }
+/* Rules modal */
+.ev-site-rule-group { margin-bottom:12px; }
+.ev-site-rule-group-label { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#4a5568; margin-bottom:5px; }
+.ev-site-rule-group-label i { margin-right:4px; }
+.ev-site-rule-options { display:flex; flex-wrap:wrap; gap:6px; }
+.ev-site-opt { border:1px solid #cbd5e0; background:#fff; border-radius:999px; padding:4px 12px; font-size:12.5px; color:#4a5568; cursor:pointer; }
+.ev-site-opt.ev-site-opt-on { background:#2c5282; border-color:#2c5282; color:#fff; }
+.ev-site-custom-row { display:flex; gap:6px; margin-bottom:6px; align-items:flex-start; }
+.ev-site-custom-row input { flex:1; }
+.ev-site-custom-row .ev-site-custom-del { background:none; border:none; color:#e53e3e; cursor:pointer; font-size:16px; padding:4px; }
+/* Dark mode */
+html[data-theme="dark"] .ev-site-pill-restrictive { background:#3b1f1f; border-color:#822727; color:#feb2b2; }
+html[data-theme="dark"] .ev-site-pill-neutral     { background:#2d3748; border-color:#4a5568; color:#cbd5e0; }
+html[data-theme="dark"] .ev-site-pill-permissive  { background:#1c2f24; border-color:#276749; color:#9ae6b4; }
+html[data-theme="dark"] .ev-site-custom-rules li { color:#e2e8f0; }
+html[data-theme="dark"] .ev-site-custom-detail { color:#a0aec0; }
+html[data-theme="dark"] .ev-site-cta { border-color:#4a5568; color:#a0aec0; }
+html[data-theme="dark"] .ev-site-rule-group-label { color:#a0aec0; }
+html[data-theme="dark"] .ev-site-opt { background:#2d3748; border-color:#4a5568; color:#cbd5e0; }
+html[data-theme="dark"] .ev-site-opt.ev-site-opt-on { background:#3182ce; border-color:#3182ce; color:#fff; }
 </style>
 
 <?php // ---- DRAFT BLOCKED ---- ?>
@@ -2011,7 +2044,47 @@ html[data-theme="dark"] #ev-tab-site .ev-site-section-title i { color:#a0aec0; }
 			<div class="ev-tab-panel" id="ev-tab-site">
 
 				<div id="ev-site-rules-section">
-					<?php /* Filled in by the Site Rules task */ ?>
+					<?php if (!empty($siteRules) || $canManageSite): ?>
+					<div class="ev-site-section-head">
+						<h3 class="ev-site-section-title"><i class="fas fa-clipboard-check"></i> Site Rules</h3>
+						<?php if ($canManageSite): ?>
+						<button type="button" class="pk-btn pk-btn-secondary" style="font-size:13px;padding:6px 14px" onclick="evOpenSiteRulesModal()">
+							<i class="fas fa-pencil-alt" style="margin-right:6px"></i>Edit Rules
+						</button>
+						<?php endif; ?>
+					</div>
+					<div id="ev-site-rules-display">
+						<?php if (empty($siteRules) && $canManageSite): ?>
+						<div class="ev-site-cta" onclick="evOpenSiteRulesModal()">
+							<i class="fas fa-plus-circle"></i> Add site rules — smoking, alcohol, pets, fires, and more
+						</div>
+						<?php endif; ?>
+						<?php if (!empty($siteRules)): ?>
+						<div class="ev-site-pills">
+							<?php foreach ($siteRules as $r): if ($r['RuleKey'] === null || !isset($siteRuleCatalog[$r['RuleKey']])) continue;
+								$cat = $siteRuleCatalog[$r['RuleKey']];
+								$val = $cat['values'][$r['Value']] ?? null; if (!$val) continue; ?>
+							<span class="ev-site-pill ev-site-pill-<?= $val['severity'] ?>"<?= $r['Details'] !== '' ? ' data-tip="' . htmlspecialchars($r['Details'], ENT_QUOTES) . '"' : '' ?>>
+								<i class="fas <?= $cat['icon'] ?>"></i>
+								<strong><?= htmlspecialchars($cat['label']) ?>:</strong>&nbsp;<?= htmlspecialchars($val['label']) ?>
+								<?php if ($r['Details'] !== ''): ?><i class="fas fa-info-circle ev-site-pill-info"></i><?php endif; ?>
+							</span>
+							<?php endforeach; ?>
+						</div>
+						<?php $customRules = array_values(array_filter($siteRules, fn ($r) => $r['RuleKey'] === null)); ?>
+						<?php if (!empty($customRules)): ?>
+						<ul class="ev-site-custom-rules">
+							<?php foreach ($customRules as $r): ?>
+							<li>
+								<strong><?= htmlspecialchars($r['Title']) ?></strong>
+								<?php if ($r['Details'] !== ''): ?><span class="ev-site-custom-detail"><?= htmlspecialchars($r['Details']) ?></span><?php endif; ?>
+							</li>
+							<?php endforeach; ?>
+						</ul>
+						<?php endif; ?>
+						<?php endif; ?>
+					</div>
+					<?php endif; ?>
 				</div>
 
 				<div id="ev-site-map-section">
@@ -2979,6 +3052,47 @@ html[data-theme="dark"] #ev-attendance-table_wrapper .dataTables_paginate .pagin
 			</button>
 			<button class="ev-submit-btn ev-sched-save-any" type="button" id="ev-sched-save-btn" onclick="evSubmitSchedule('close')">
 				<i class="fas fa-save"></i> <span id="ev-sched-save-label">Save and Close</span>
+			</button>
+		</div>
+	</div>
+</div>
+<?php endif; ?>
+
+<?php if ($canManageSite): ?>
+<!-- Site Rules Modal -->
+<div class="ev-modal-overlay" id="ev-site-rules-modal">
+	<div class="ev-modal" style="max-width:640px">
+		<div class="ev-modal-header">
+			<h3><i class="fas fa-clipboard-check" style="margin-right:8px"></i>Edit Site Rules</h3>
+			<button class="ev-modal-close" type="button" onclick="evCloseSiteRulesModal()">&times;</button>
+		</div>
+		<div class="ev-modal-body">
+			<div id="ev-site-rules-groups">
+				<?php foreach ($siteRuleCatalog as $key => $cat): ?>
+				<div class="ev-site-rule-group" data-rule-key="<?= $key ?>">
+					<div class="ev-site-rule-group-label"><i class="fas <?= $cat['icon'] ?>"></i> <?= htmlspecialchars($cat['label']) ?></div>
+					<div class="ev-site-rule-options">
+						<?php foreach ($cat['values'] as $vkey => $v): ?>
+						<button type="button" class="ev-site-opt" data-value="<?= $vkey ?>"><?= htmlspecialchars($v['label']) ?></button>
+						<?php endforeach; ?>
+					</div>
+					<input type="text" class="ev-site-rule-details" placeholder="Optional details (times, areas, exceptions)..." style="display:none;width:100%;margin-top:6px">
+				</div>
+				<?php endforeach; ?>
+			</div>
+			<div style="border-top:1px solid #e2e8f0;margin-top:14px;padding-top:12px">
+				<div class="ev-site-rule-group-label" style="margin-bottom:8px"><i class="fas fa-plus"></i> Custom Rules</div>
+				<div id="ev-site-custom-list"></div>
+				<button type="button" class="pk-btn pk-btn-secondary" style="font-size:12px;padding:5px 12px" onclick="evSiteAddCustomRow('','')">
+					<i class="fas fa-plus" style="margin-right:5px"></i>Add custom rule
+				</button>
+			</div>
+			<div class="ev-modal-error" id="ev-site-rules-error" style="display:none"></div>
+		</div>
+		<div class="ev-modal-footer">
+			<button class="ev-btn ev-btn-outline" type="button" onclick="evCloseSiteRulesModal()" style="margin-right:auto">Cancel</button>
+			<button class="ev-submit-btn" type="button" id="ev-site-rules-save-btn" onclick="evSubmitSiteRules()">
+				<i class="fas fa-save"></i> <span>Save Rules</span>
 			</button>
 		</div>
 	</div>
@@ -4506,6 +4620,143 @@ html[data-theme="dark"] .ev-grid-day-pill.ev-grid-day-pill-active {
 			}
 		})
 		.catch(function() { /* leave the grid as-is; the list is already correct */ });
+	};
+})();
+</script>
+
+<script>
+(function() {
+	'use strict';
+	if (!window.EvConfig || !EvConfig.canManageSite) return;
+	function gid(id) { return document.getElementById(id); }
+
+	// Current rules state, keyed for the modal. Seeded from the server render.
+	var siteRules = <?= json_encode($siteRules) ?>;
+
+	window.evOpenSiteRulesModal = function() {
+		// Reset all groups to current saved state.
+		document.querySelectorAll('#ev-site-rules-groups .ev-site-rule-group').forEach(function(g) {
+			var key = g.getAttribute('data-rule-key');
+			var saved = siteRules.find(function(r) { return r.RuleKey === key; });
+			var details = g.querySelector('.ev-site-rule-details');
+			g.querySelectorAll('.ev-site-opt').forEach(function(b) {
+				b.classList.toggle('ev-site-opt-on', !!saved && b.getAttribute('data-value') === saved.Value);
+			});
+			details.value = saved ? (saved.Details || '') : '';
+			details.style.display = saved ? '' : 'none';
+		});
+		gid('ev-site-custom-list').innerHTML = '';
+		siteRules.filter(function(r) { return r.RuleKey === null; }).forEach(function(r) {
+			evSiteAddCustomRow(r.Title, r.Details || '');
+		});
+		gid('ev-site-rules-error').style.display = 'none';
+		gid('ev-site-rules-modal').classList.add('ev-modal-open');
+	};
+	window.evCloseSiteRulesModal = function() {
+		gid('ev-site-rules-modal').classList.remove('ev-modal-open');
+	};
+
+	// Single-choice per group; tapping the active pill clears it.
+	document.querySelectorAll('#ev-site-rules-groups .ev-site-rule-group').forEach(function(g) {
+		var details = g.querySelector('.ev-site-rule-details');
+		g.querySelectorAll('.ev-site-opt').forEach(function(b) {
+			b.addEventListener('click', function() {
+				var wasOn = b.classList.contains('ev-site-opt-on');
+				g.querySelectorAll('.ev-site-opt').forEach(function(o) { o.classList.remove('ev-site-opt-on'); });
+				if (!wasOn) b.classList.add('ev-site-opt-on');
+				details.style.display = wasOn ? 'none' : '';
+				if (wasOn) details.value = '';
+			});
+		});
+	});
+
+	window.evSiteAddCustomRow = function(title, details) {
+		var row = document.createElement('div');
+		row.className = 'ev-site-custom-row';
+		row.innerHTML = '<input type="text" class="ev-site-custom-title" placeholder="Rule (e.g. No glass containers)" maxlength="120">' +
+			'<input type="text" class="ev-site-custom-details" placeholder="Details (optional)">' +
+			'<button type="button" class="ev-site-custom-del" data-tip="Remove">&times;</button>';
+		row.querySelector('.ev-site-custom-title').value = title || '';
+		row.querySelector('.ev-site-custom-details').value = details || '';
+		row.querySelector('.ev-site-custom-del').addEventListener('click', function() { row.remove(); });
+		gid('ev-site-custom-list').appendChild(row);
+	};
+
+	window.evSubmitSiteRules = function() {
+		var out = [];
+		document.querySelectorAll('#ev-site-rules-groups .ev-site-rule-group').forEach(function(g) {
+			var on = g.querySelector('.ev-site-opt-on');
+			if (on) out.push({
+				RuleKey: g.getAttribute('data-rule-key'),
+				Value:   on.getAttribute('data-value'),
+				Details: g.querySelector('.ev-site-rule-details').value.trim()
+			});
+		});
+		document.querySelectorAll('#ev-site-custom-list .ev-site-custom-row').forEach(function(row) {
+			var t = row.querySelector('.ev-site-custom-title').value.trim();
+			if (t) out.push({ Title: t, Details: row.querySelector('.ev-site-custom-details').value.trim() });
+		});
+
+		var btn = gid('ev-site-rules-save-btn');
+		var orig = btn.innerHTML;
+		btn.disabled = true;
+		btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
+		var fd = new FormData();
+		fd.append('Rules', JSON.stringify(out));
+		fetch(EvConfig.uir + 'EventAjax/site_rules_save/' + EvConfig.eventId + '/' + EvConfig.detailId, {
+			method: 'POST', body: fd,
+			headers: { 'X-Requested-With': 'XMLHttpRequest' }
+		})
+		.then(function(r) { return r.json(); })
+		.then(function(data) {
+			if (data.status === 0) {
+				siteRules = data.rules;
+				evSiteRenderRules();
+				evCloseSiteRulesModal();
+			} else {
+				var err = gid('ev-site-rules-error');
+				err.textContent = data.error || 'Could not save rules.';
+				err.style.display = 'block';
+			}
+		})
+		.catch(function() {
+			var err = gid('ev-site-rules-error');
+			err.textContent = 'Network error — please try again.';
+			err.style.display = 'block';
+		})
+		.finally(function() { btn.disabled = false; btn.innerHTML = orig; });
+	};
+
+	function escH(s) {
+		return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+			return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+		});
+	}
+
+	// Re-render the public display from state (mirrors the PHP render).
+	window.evSiteRenderRules = function() {
+		var cat = EvConfig.siteRuleCatalog;
+		var pills = '', customs = '';
+		siteRules.forEach(function(r) {
+			if (r.RuleKey !== null && cat[r.RuleKey] && cat[r.RuleKey].values[r.Value]) {
+				var c = cat[r.RuleKey], v = c.values[r.Value];
+				pills += '<span class="ev-site-pill ev-site-pill-' + v.severity + '"' +
+					(r.Details ? ' data-tip="' + escH(r.Details) + '"' : '') + '>' +
+					'<i class="fas ' + c.icon + '"></i><strong>' + escH(c.label) + ':</strong>&nbsp;' + escH(v.label) +
+					(r.Details ? '<i class="fas fa-info-circle ev-site-pill-info"></i>' : '') + '</span>';
+			} else if (r.RuleKey === null) {
+				customs += '<li><strong>' + escH(r.Title) + '</strong>' +
+					(r.Details ? '<span class="ev-site-custom-detail">' + escH(r.Details) + '</span>' : '') + '</li>';
+			}
+		});
+		var html = '';
+		if (!pills && !customs) {
+			html = '<div class="ev-site-cta" onclick="evOpenSiteRulesModal()"><i class="fas fa-plus-circle"></i> Add site rules — smoking, alcohol, pets, fires, and more</div>';
+		} else {
+			if (pills)   html += '<div class="ev-site-pills">' + pills + '</div>';
+			if (customs) html += '<ul class="ev-site-custom-rules">' + customs + '</ul>';
+		}
+		gid('ev-site-rules-display').innerHTML = html;
 	};
 })();
 </script>
