@@ -8833,8 +8833,8 @@ html[data-theme="dark"] .ev-img-form-error {
   color: var(--ork-alert-danger-text);
 }
 
-/* Map tab iframe border */
-html[data-theme="dark"] #ev-tab-map div[style*="border"] {
+/* Site tab: Getting There iframe wrapper + noscript map-image scroll container */
+html[data-theme="dark"] #ev-tab-site div[style*="border"] {
   border-color: var(--ork-border) !important;
 }
 

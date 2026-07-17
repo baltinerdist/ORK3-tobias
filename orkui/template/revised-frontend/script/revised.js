@@ -9557,7 +9557,24 @@ $(document).ready(function() {
         window.evRemoveSchedule = function(btn, scheduleId) {
             var titleRow = document.querySelector('tr[data-schedule-id="' + scheduleId + '"]');
             var itemTitle = titleRow ? (titleRow.getAttribute('data-title') || 'this item') : 'this item';
+            // M-9: no native alert() — there's no shared row-level error slot for the
+            // schedule table, so surface failures as a transient inline message next
+            // to the button that triggered the removal (mirrors the in-page-only
+            // error surfacing used elsewhere on this page, e.g. ev-sched-error).
+            function showRowError(msg) {
+                btn.disabled = false;
+                var cell = btn.closest('td') || btn.parentNode;
+                var existing = cell.querySelector('.ev-sched-row-err');
+                if (existing) existing.remove();
+                var err = document.createElement('div');
+                err.className = 'ev-sched-row-err';
+                err.style.cssText = 'color:#e53e3e;font-size:11px;white-space:normal;margin-top:2px;max-width:140px';
+                err.textContent = msg;
+                cell.appendChild(err);
+                setTimeout(function() { if (err.parentNode) err.remove(); }, 6000);
+            }
             var doRemove = function() {
+                btn.disabled = true;
                 var fd = new FormData();
                 fd.append('ScheduleId', scheduleId);
                 fetch(EvConfig.uir + 'EventAjax/remove_schedule/' + EvConfig.eventId + '/' + EvConfig.detailId, {
@@ -9602,10 +9619,10 @@ $(document).ready(function() {
                         // Keep the server-rendered grid in sync with this removal.
                         if (typeof window.evRefreshScheduleGrid === 'function') window.evRefreshScheduleGrid();
                     } else {
-                        alert(data.error || 'Could not remove schedule item.');
+                        showRowError(data.error || 'Could not remove schedule item.');
                     }
                 })
-                .catch(function(err) { alert('Request failed: ' + err.message); });
+                .catch(function(err) { showRowError('Request failed: ' + err.message); });
             };
             knConfirm('Remove "' + itemTitle + '" from the schedule? This cannot be undone.', doRemove, 'Remove Schedule Item');
         };

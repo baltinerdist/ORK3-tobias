@@ -2015,7 +2015,9 @@ class Controller_EventAjax extends Controller
             $key     = trim((string)($r['RuleKey'] ?? ''));
             $value   = trim((string)($r['Value']   ?? ''));
             $title   = trim((string)($r['Title']   ?? ''));
-            $details = trim((string)($r['Details'] ?? ''));
+            // M-7: cap Details length — TEXT columns can hold far more than a
+            // rule blurb ever should, and this endpoint is the only writer.
+            $details = mb_substr(trim((string)($r['Details'] ?? '')), 0, 2000);
             if ($key !== '') {
                 if (!isset($catalog[$key]['values'][$value])) {
                     echo json_encode(['status' => 1, 'error' => 'Unknown rule option.']);
@@ -2023,6 +2025,13 @@ class Controller_EventAjax extends Controller
                 }
                 $pillRows[$key] = ['value' => $value, 'details' => $details];
             } elseif ($title !== '') {
+                // M-7: bound the number of custom rules a single save can create.
+                // Reject silently past the cap rather than erroring — mirrors the
+                // "just don't accept it" posture used for out-of-range inputs
+                // elsewhere on this endpoint.
+                if (count($customRows) >= 100) {
+                    continue;
+                }
                 $customRows[] = ['title' => mb_substr($title, 0, 120), 'details' => $details];
             }
         }
@@ -2228,7 +2237,8 @@ class Controller_EventAjax extends Controller
         $loc_id   = (int)($_POST['LocationId'] ?? 0);
         $name     = mb_substr(trim($_POST['Name'] ?? ''), 0, 80);
         $category = trim($_POST['Category'] ?? 'other');
-        $desc     = trim($_POST['Description'] ?? '');
+        // M-7: cap Description length — TEXT column, sole writer is this endpoint.
+        $desc     = mb_substr(trim($_POST['Description'] ?? ''), 0, 2000);
         $x        = max(0.0, min(1.0, (float)($_POST['X'] ?? 0)));
         $y        = max(0.0, min(1.0, (float)($_POST['Y'] ?? 0)));
         if (!isset(event_site_location_categories()[$category])) {
