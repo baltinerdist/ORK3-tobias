@@ -1356,7 +1356,7 @@ html[data-theme="dark"] .ev-site-legend-chip { background:#2d3748; border-color:
 								}
 							?></td>
 							<td style="white-space:nowrap"><i class="fas fa-fw <?= $evCatCfg['icon'] ?>" style="color:<?= $evCatCfg['color'] ?>" data-tip="<?= htmlspecialchars($evCat) ?>"></i><?php if ($evSecCatCfg): ?><i class="fas fa-fw <?= $evSecCatCfg['icon'] ?>" style="color:<?= $evSecCatCfg['color'] ?>;margin-right:4px" data-tip="<?= htmlspecialchars($evSecCat) ?>"></i><?php else: ?><span style="display:inline-block;width:1.25em;margin-right:4px"></span><?php endif; ?><?= htmlspecialchars($item['Title']) ?><?php if (($evCat === 'Feast and Food' || $evSecCat === 'Feast and Food') && !empty($item['Menu'])): ?> <i class="fas fa-scroll" style="color:#e65100;font-size:10px;margin-left:4px;vertical-align:middle" data-tip="Has menu"></i><?php endif; ?></td>
-							<td><?php if (!empty($item['SiteLocationId'])): ?><a href="javascript:void(0)" class="ev-loc-chip" onclick="evSiteFlyTo(<?= (int)$item['SiteLocationId'] ?>)" data-tip="Show on site map"><i class="fas fa-map-marker-alt"></i> <?= htmlspecialchars($item['Location']) ?></a><?php else: ?><?= htmlspecialchars($item['Location']) ?><?php endif; ?></td>
+							<td><?php if (!empty($item['SiteLocationId']) && !empty($siteMap)): ?><a href="javascript:void(0)" class="ev-loc-chip" onclick="evSiteFlyTo(<?= (int)$item['SiteLocationId'] ?>)" data-tip="Show on site map"><i class="fas fa-map-marker-alt"></i> <?= htmlspecialchars($item['Location']) ?></a><?php else: ?><?= htmlspecialchars($item['Location']) ?><?php endif; ?></td>
 							<td><?php foreach ($item['Leads'] ?? [] as $li => $lead) { if ($li > 0) echo ', '; echo '<a href="' . UIR . 'Playernew/index/' . (int)$lead['MundaneId'] . '">' . htmlspecialchars($lead['Persona']) . '</a>'; } ?></td>
 							<td><?= htmlspecialchars($item['Description']) ?></td>
 							<?php if ($canManageSchedule): ?>
@@ -1533,7 +1533,7 @@ html[data-theme="dark"] .ev-site-legend-chip { background:#2d3748; border-color:
 										</div>
 										<div class="ev-grid-block-time"><?php if (!$it['_IsFirstDay']): ?>&rarr; <?php endif; ?><?= date('g:ia', $entry['start']) ?> – <?= date('g:ia', $entry['end']) ?><?php if (!$it['_IsLastDay']): ?> &rarr;<?php endif; ?></div>
 										<?php if (!empty($it['Location'])): ?>
-										<div class="ev-grid-block-loc"><?php if (!empty($it['SiteLocationId'])): ?><a href="javascript:void(0)" class="ev-loc-chip ev-loc-chip-grid" onclick="event.stopPropagation();evSiteFlyTo(<?= (int)$it['SiteLocationId'] ?>)"><i class="fas fa-map-marker-alt"></i> <?= htmlspecialchars($it['Location']) ?></a><?php else: ?><i class="fas fa-map-marker-alt"></i> <?= htmlspecialchars($it['Location']) ?><?php endif; ?></div>
+										<div class="ev-grid-block-loc"><?php if (!empty($it['SiteLocationId']) && !empty($siteMap)): ?><a href="javascript:void(0)" class="ev-loc-chip ev-loc-chip-grid" onclick="event.stopPropagation();evSiteFlyTo(<?= (int)$it['SiteLocationId'] ?>)"><i class="fas fa-map-marker-alt"></i> <?= htmlspecialchars($it['Location']) ?></a><?php else: ?><i class="fas fa-map-marker-alt"></i> <?= htmlspecialchars($it['Location']) ?><?php endif; ?></div>
 										<?php endif; ?>
 										<?php if (!empty($it['Leads'])): ?>
 										<div class="ev-grid-block-leads">
@@ -2131,6 +2131,11 @@ html[data-theme="dark"] .ev-site-legend-chip { background:#2d3748; border-color:
 							<button type="button" class="pk-btn pk-btn-secondary" style="font-size:13px;padding:6px 14px" onclick="evOpenSiteMapUploadModal()">
 								<i class="fas fa-upload" style="margin-right:6px"></i><?= !empty($siteMap) ? 'Replace Map' : 'Upload Site Map' ?>
 							</button>
+							<?php if (!empty($siteMap)): ?>
+							<button type="button" class="pk-btn pk-btn-secondary" style="font-size:13px;padding:6px 14px;color:#c53030" onclick="evRemoveSiteMap()">
+								<i class="fas fa-trash-alt" style="margin-right:6px"></i>Remove Map
+							</button>
+							<?php endif; ?>
 						</div>
 						<?php endif; ?>
 					</div>
@@ -2149,6 +2154,9 @@ html[data-theme="dark"] .ev-site-legend-chip { background:#2d3748; border-color:
 					<div class="ev-site-cta" onclick="evOpenSiteMapUploadModal()">
 						<i class="fas fa-map"></i> Upload a site map to tag battlefields, camping, parking, and more
 					</div>
+					<?php endif; ?>
+					<?php if ($canManageSite): ?>
+					<div id="ev-site-map-remove-error" class="ev-modal-error" style="display:none"></div>
 					<?php endif; ?>
 					<?php endif; ?>
 				</div>
@@ -5349,7 +5357,48 @@ html[data-theme="dark"] .ev-grid-day-pill.ev-grid-day-pill-active {
 			err.textContent = 'Network error — please try again.'; err.style.display = 'block';
 		});
 	};
+
+	// ---- Remove Map (I-3) ----
+	// Pins are kept server-side (site_map_delete only clears the map row/files);
+	// the confirm copy below reflects that so managers aren't surprised.
+	window.evRemoveSiteMap = function() {
+		var errEl = gid('ev-site-map-remove-error');
+		if (errEl) errEl.style.display = 'none';
+		knConfirm(
+			'This will remove the site map image. Its pins will no longer display on a map until a new one is uploaded, but they are kept and will reappear once you upload a replacement.',
+			function() {
+				var fd = new FormData();
+				fetch(EvConfig.uir + 'EventAjax/site_map_delete/' + EvConfig.eventId + '/' + EvConfig.detailId, {
+					method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' }
+				})
+				.then(function(r) { return r.json(); })
+				.then(function(data) {
+					if (data.status === 0) {
+						// Section structure (map div, buttons, chip fallback) is
+						// PHP-rendered on whether a map exists — reload is the
+						// honest way to swap in, same as the upload success path.
+						location.hash = 'ev-tab-site';
+						location.reload();
+					} else if (errEl) {
+						errEl.textContent = data.error || 'Could not remove the site map.';
+						errEl.style.display = 'block';
+					}
+				})
+				.catch(function() {
+					if (errEl) {
+						errEl.textContent = 'Network error — please try again.';
+						errEl.style.display = 'block';
+					}
+				});
+			},
+			'Remove Site Map'
+		);
+	};
 })();
+// M-1: the IIFE above early-returns without defining evSiteFlyTo when there's no
+// site map and the viewer can't manage it (public page). A stale/late chip click
+// (dynamic edge states — e.g. the map was just removed) must no-op, not throw.
+window.evSiteFlyTo = window.evSiteFlyTo || function() {};
 </script>
 
 <?php endif; /* DraftBlocked */ ?>
