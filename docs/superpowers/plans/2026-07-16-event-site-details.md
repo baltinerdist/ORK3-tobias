@@ -2173,6 +2173,23 @@ git commit -m "Enhancement: schedule location picker + map fly-to chips with pop
 
 ---
 
+### Task 10b: Client-side auto-downsize for oversized site maps (added 2026-07-16 by Avery mid-build)
+
+**Files:**
+- Modify: `orkui/template/revised-frontend/Eventnew_index.tpl` — site-map IIFE (upload modal handlers) only.
+
+**Interfaces:**
+- Consumes: the upload modal from Task 9 (`#ev-site-file` change handler, `evSubmitSiteMapUpload`), the live `site_map_upload` endpoint (server 2MB gate UNCHANGED — it stays as the backstop).
+- Produces: files ≤2MB upload untouched (byte-identical, zero recompression). Files >2MB are automatically downsized client-side before upload, quality-first:
+  1. Decode via Image + canvas. Flatten to white like the banner path (site maps don't need alpha once they exceed 2MB; a >2MB PNG converts to JPEG).
+  2. First attempt: clamp longest edge to 3000px (no-op if smaller), encode JPEG **q0.92**.
+  3. While still >2MB target (use 2,000,000 bytes as the working target for headroom under the 2,097,152 server gate): scale dimensions by `sqrt(target/size) * 0.95` at q0.92, up to 3 attempts; then one final attempt at q0.85; then error "Could not downsize this image enough — please export it smaller."
+  4. Local function inside the site IIFE (e.g. `evSiteDownsizeMap(file, onReady, onError)`); do NOT modify the shared `resizeImageToLimit` in orkui.js (other callers depend on its behavior).
+- UX: the file-change handler no longer rejects >2MB files; it shows an inline notice in the modal ("Downsizing 5.2 MB image…" → "Downsized to 1.8 MB — some detail may be reduced"), previews the downsized result, and enables Upload with the downsized blob (`new File([blob], 'sitemap.jpg', {type:'image/jpeg'})`). The type check (jpeg/png only) still rejects other formats before any downsizing.
+
+- [ ] Implement per the above; verify in browser: a >2MB JPEG and a >2MB PNG both auto-downsize + upload successfully (server accepts, dims recorded), a ≤2MB file uploads byte-identical (no recompression — confirm the served file's dimensions match the original exactly and the notice does not appear), a non-image still rejects client-side. Zero console errors; dark-mode notice legibility.
+- [ ] Commit (tpl only).
+
 ### Task 11: Full verification + polish gate
 
 **Files:** none new — fixes land where found.
