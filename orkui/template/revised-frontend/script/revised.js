@@ -9364,10 +9364,10 @@ $(document).ready(function() {
                             row.setAttribute('data-title',       s.Title);
                             row.setAttribute('data-start',       (s.StartTime || '').replace(' ', 'T').substring(0, 16));
                             row.setAttribute('data-end',         (s.EndTime || '').replace(' ', 'T').substring(0, 16));
-                            row.setAttribute('data-location',    s.Location);
+                            row.setAttribute('data-location',    s.Location || '');
                             row.setAttribute('data-site-location-id', s.SiteLocationId != null ? s.SiteLocationId : '');
-                            row.setAttribute('data-description', s.Description);
-                            row.setAttribute('data-category',           s.Category);
+                            row.setAttribute('data-description', s.Description || '');
+                            row.setAttribute('data-category',           s.Category || '');
                             row.setAttribute('data-secondary-category', s.SecondaryCategory || '');
                             row.setAttribute('data-leads',              JSON.stringify(s.Leads || []));
                             row.style.background = catCfg.bg;
