@@ -9238,6 +9238,8 @@ $(document).ready(function() {
             gid('ev-sched-secondary-category').value = row.getAttribute('data-secondary-category') || '';
             gid('ev-sched-title').value       = row.getAttribute('data-title') || '';
             gid('ev-sched-location').value     = row.getAttribute('data-location') || '';
+            var slSel = gid('ev-sched-site-location');
+            if (slSel) slSel.value = row.getAttribute('data-site-location-id') || '';
             gid('ev-sched-description').value  = row.getAttribute('data-description') || '';
             gid('ev-sched-error').style.display = 'none';
             try { evSchedLeads = JSON.parse(row.getAttribute('data-leads') || '[]'); } catch(e) { evSchedLeads = []; }
@@ -9305,6 +9307,8 @@ $(document).ready(function() {
             fd.append('Location',    loc);
             fd.append('Description', desc);
             fd.append('Leads',       JSON.stringify(evSchedLeads));
+            var slSel = gid('ev-sched-site-location');
+            fd.append('SiteLocationId', slSel && slSel.value ? slSel.value : '');
 
             var isEdit = gid('ev-sched-mode').value === 'edit';
             var schedId = gid('ev-sched-id').value;
@@ -9342,6 +9346,9 @@ $(document).ready(function() {
                         '<button class="ev-edit-link" data-tip="Edit" onclick="evOpenScheduleEditModal(' + s.EventScheduleId + ',this)" style="background:none;border:none;cursor:pointer;color:#666;font-size:13px;padding:0 5px 0 0"><i class="fas fa-pencil-alt"></i></button>' +
                         '<button class="ev-del-link" data-tip="Remove" onclick="evRemoveSchedule(this,' + s.EventScheduleId + ')" style="background:none;border:none;cursor:pointer;color:#e53e3e;font-size:16px;padding:0">&times;</button>' +
                         '</td>';
+                    var locCellHtml = (s.SiteLocationId != null)
+                        ? '<a href="javascript:void(0)" class="ev-loc-chip" onclick="evSiteFlyTo(' + s.SiteLocationId + ')" data-tip="Show on site map"><i class="fas fa-map-marker-alt"></i> ' + escHtmlSch(s.Location) + '</a>'
+                        : escHtmlSch(s.Location);
                     if (isEdit) {
                         var row = gid('ev-schedule-row-' + s.EventScheduleId);
                         if (row) {
@@ -9349,6 +9356,7 @@ $(document).ready(function() {
                             row.setAttribute('data-start',       (s.StartTime || '').replace(' ', 'T').substring(0, 16));
                             row.setAttribute('data-end',         (s.EndTime || '').replace(' ', 'T').substring(0, 16));
                             row.setAttribute('data-location',    s.Location);
+                            row.setAttribute('data-site-location-id', s.SiteLocationId != null ? s.SiteLocationId : '');
                             row.setAttribute('data-description', s.Description);
                             row.setAttribute('data-category',           s.Category);
                             row.setAttribute('data-secondary-category', s.SecondaryCategory || '');
@@ -9357,7 +9365,7 @@ $(document).ready(function() {
                             row.cells[0].innerHTML = startCell;
                             row.cells[1].innerHTML = endCell;
                             row.cells[2].innerHTML = glyphHtml + escHtmlSch(s.Title);
-                            row.cells[3].textContent = s.Location;
+                            row.cells[3].innerHTML = locCellHtml;
                             row.cells[4].innerHTML = evSchedLeadsCell(s.Leads || []);
                             row.cells[5].textContent = s.Description;
                             if (row.cells[6]) row.cells[6].innerHTML = actionCells.replace(/^<td[^>]*>/, '').replace(/<\/td>$/, '');
@@ -9369,6 +9377,7 @@ $(document).ready(function() {
                             ' data-start="' + (s.StartTime || '').replace(' ','T').substring(0,16) + '"' +
                             ' data-end="'   + (s.EndTime || '').replace(' ','T').substring(0,16) + '"' +
                             ' data-location="' + s.Location.replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '"' +
+                            ' data-site-location-id="' + (s.SiteLocationId != null ? s.SiteLocationId : '') + '"' +
                             ' data-description="' + s.Description.replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '"' +
                             ' data-category="' + escHtmlSch(s.Category) + '"' +
                             ' data-secondary-category="' + escHtmlSch(s.SecondaryCategory || '') + '"' +
@@ -9377,7 +9386,7 @@ $(document).ready(function() {
                             '<td style="white-space:nowrap">' + startCell + '</td>' +
                             '<td style="white-space:nowrap">' + endCell + '</td>' +
                             '<td>' + glyphHtml + escHtmlSch(s.Title) + '</td>' +
-                            '<td>' + escHtmlSch(s.Location) + '</td>' +
+                            '<td>' + locCellHtml + '</td>' +
                             '<td>' + evSchedLeadsCell(s.Leads || []) + '</td>' +
                             '<td>' + escHtmlSch(s.Description) + '</td>' +
                             actionCells +

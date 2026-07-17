@@ -401,6 +401,8 @@ html[data-theme="dark"] .ev-grid-block-title { color: var(--ork-text); }
 html[data-theme="dark"] .ev-grid-block-time { color: var(--ork-text-muted); }
 html[data-theme="dark"] .ev-grid-block-loc { color: var(--ork-text-secondary); }
 html[data-theme="dark"] .ev-grid-block-loc i { color: var(--ork-text-muted); }
+html[data-theme="dark"] .ev-loc-chip { background:#1e3a5f; border-color:#2c5282; color:#90cdf4; }
+html[data-theme="dark"] .ev-loc-chip:hover { background:#2c5282; }
 html[data-theme="dark"] .ev-grid-lead-chip { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.12); color: var(--ork-text-secondary); }
 html[data-theme="dark"] .ev-grid-cat-count { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.14); color: var(--ork-text); }
 html[data-theme="dark"] .ev-grid-now-dot { box-shadow: 0 0 0 2px var(--ork-bg-secondary); }
@@ -1354,7 +1356,7 @@ html[data-theme="dark"] .ev-site-legend-chip { background:#2d3748; border-color:
 								}
 							?></td>
 							<td style="white-space:nowrap"><i class="fas fa-fw <?= $evCatCfg['icon'] ?>" style="color:<?= $evCatCfg['color'] ?>" data-tip="<?= htmlspecialchars($evCat) ?>"></i><?php if ($evSecCatCfg): ?><i class="fas fa-fw <?= $evSecCatCfg['icon'] ?>" style="color:<?= $evSecCatCfg['color'] ?>;margin-right:4px" data-tip="<?= htmlspecialchars($evSecCat) ?>"></i><?php else: ?><span style="display:inline-block;width:1.25em;margin-right:4px"></span><?php endif; ?><?= htmlspecialchars($item['Title']) ?><?php if (($evCat === 'Feast and Food' || $evSecCat === 'Feast and Food') && !empty($item['Menu'])): ?> <i class="fas fa-scroll" style="color:#e65100;font-size:10px;margin-left:4px;vertical-align:middle" data-tip="Has menu"></i><?php endif; ?></td>
-							<td><?= htmlspecialchars($item['Location']) ?></td>
+							<td><?php if (!empty($item['SiteLocationId'])): ?><a href="javascript:void(0)" class="ev-loc-chip" onclick="evSiteFlyTo(<?= (int)$item['SiteLocationId'] ?>)" data-tip="Show on site map"><i class="fas fa-map-marker-alt"></i> <?= htmlspecialchars($item['Location']) ?></a><?php else: ?><?= htmlspecialchars($item['Location']) ?><?php endif; ?></td>
 							<td><?php foreach ($item['Leads'] ?? [] as $li => $lead) { if ($li > 0) echo ', '; echo '<a href="' . UIR . 'Playernew/index/' . (int)$lead['MundaneId'] . '">' . htmlspecialchars($lead['Persona']) . '</a>'; } ?></td>
 							<td><?= htmlspecialchars($item['Description']) ?></td>
 							<?php if ($canManageSchedule): ?>
@@ -1531,7 +1533,7 @@ html[data-theme="dark"] .ev-site-legend-chip { background:#2d3748; border-color:
 										</div>
 										<div class="ev-grid-block-time"><?php if (!$it['_IsFirstDay']): ?>&rarr; <?php endif; ?><?= date('g:ia', $entry['start']) ?> – <?= date('g:ia', $entry['end']) ?><?php if (!$it['_IsLastDay']): ?> &rarr;<?php endif; ?></div>
 										<?php if (!empty($it['Location'])): ?>
-										<div class="ev-grid-block-loc"><i class="fas fa-map-marker-alt"></i> <?= htmlspecialchars($it['Location']) ?></div>
+										<div class="ev-grid-block-loc"><?php if (!empty($it['SiteLocationId'])): ?><a href="javascript:void(0)" class="ev-loc-chip ev-loc-chip-grid" onclick="event.stopPropagation();evSiteFlyTo(<?= (int)$it['SiteLocationId'] ?>)"><i class="fas fa-map-marker-alt"></i> <?= htmlspecialchars($it['Location']) ?></a><?php else: ?><i class="fas fa-map-marker-alt"></i> <?= htmlspecialchars($it['Location']) ?><?php endif; ?></div>
 										<?php endif; ?>
 										<?php if (!empty($it['Leads'])): ?>
 										<div class="ev-grid-block-leads">
@@ -3023,6 +3025,12 @@ html[data-theme="dark"] #ev-attendance-table_wrapper .dataTables_paginate .pagin
 			<div class="ev-modal-row">
 				<div class="ev-modal-field ev-field-full">
 					<label>Location</label>
+					<select id="ev-sched-site-location" style="width:100%;margin-bottom:6px<?= empty($siteLocations) ? ';display:none' : '' ?>">
+						<option value="">— Pick from the site map (optional) —</option>
+						<?php foreach ($siteLocations as $sl): ?>
+						<option value="<?= (int)$sl['LocationId'] ?>"><?= htmlspecialchars($sl['Name']) ?></option>
+						<?php endforeach; ?>
+					</select>
 					<input type="text" id="ev-sched-location" placeholder="Main field, Feast hall, etc." autocomplete="off" style="width:100%">
 				</div>
 			</div>
@@ -4155,6 +4163,30 @@ var _fpEnd = flatpickr('#ev-fp-end', Object.assign({}, _fpOpts, {
 		};
 	}
 })();
+
+// ── Schedule modal: site-map location dropdown ────────────────────────────────
+(function() {
+	'use strict';
+	var sel = document.getElementById('ev-sched-site-location');
+	if (!sel) return;
+	// Picking a tag fills the text field (still editable); clearing leaves text.
+	sel.addEventListener('change', function() {
+		if (!sel.value) return;
+		var loc = (EvConfig.siteLocations || []).find(function(l) { return l.LocationId === parseInt(sel.value, 10); });
+		if (loc) document.getElementById('ev-sched-location').value = loc.Name;
+	});
+	// Refresh options after pin CRUD on the Site tab (keeps selection if alive).
+	window.evSiteSyncScheduleOptions = function() {
+		var cur = sel.value;
+		sel.innerHTML = '<option value="">— Pick from the site map (optional) —</option>' +
+			(EvConfig.siteLocations || []).map(function(l) {
+				return '<option value="' + l.LocationId + '">' + String(l.Name).replace(/[&<>"]/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }) + '</option>';
+			}).join('');
+		sel.value = cur;
+		if (sel.value !== cur) sel.value = '';
+		sel.style.display = (EvConfig.siteLocations || []).length ? '' : 'none';
+	};
+})();
 </script>
 <style>
 /* ===========================================   Schedule Grid View (ev-grid-*)
@@ -4311,6 +4343,9 @@ html[data-theme="dark"] .ev-grid-day-pill.ev-grid-day-pill-active {
 	white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 .ev-grid-block-loc i { font-size:9px; margin-right:2px; color:#a0aec0; }
+.ev-loc-chip { display:inline-flex; align-items:center; gap:4px; padding:1px 8px; border-radius:999px; font-size:12.5px; background:#ebf8ff; border:1px solid #90cdf4; color:#2b6cb0; text-decoration:none; cursor:pointer; }
+.ev-loc-chip:hover { background:#bee3f8; }
+.ev-loc-chip-grid { font-size:11px; padding:0 6px; }
 .ev-grid-block-leads { margin-top:3px; display:flex; flex-wrap:wrap; gap:3px; }
 .ev-grid-lead-chip {
 	background:rgba(255,255,255,0.65); border:1px solid rgba(0,0,0,0.07);
