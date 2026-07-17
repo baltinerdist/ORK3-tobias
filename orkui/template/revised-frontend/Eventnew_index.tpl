@@ -149,6 +149,13 @@
 	$canManageAttendance = $CanManageAttendance ?? false;
 	$canManageSchedule   = $CanManageSchedule ?? false;
 	$canManageFeast      = $CanManageFeast ?? false;
+	$canManageSite = $CanManageSite ?? false;
+	$siteRules     = $SiteRules     ?? [];
+	$siteLocations = $SiteLocations ?? [];
+	$siteMap       = $SiteMap       ?? null;
+	require_once(DIR_LIB . 'ork3/eventsite-catalog.php');
+	$siteRuleCatalog   = event_site_rule_catalog();
+	$siteLocCategories = event_site_location_categories();
 	$canManageStaff = $canManage || $canManageAttendance;
 	$canDelete           = ($attendeeCount === 0 && $rsvpCount === 0);
 
@@ -173,6 +180,10 @@
 ?>
 
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>revised-frontend/style/revised.css?v=<?= filemtime(DIR_TEMPLATE . 'revised-frontend/style/revised.css') ?>">
+<?php if (!empty($siteMap) || $canManageSite): ?>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+<?php endif; ?>
 <style>
 .ev-export-bar { display: flex; justify-content: flex-end; gap: 6px; margin-bottom: 10px; }
 .ev-checkin-locked { display:flex; align-items:flex-start; gap:10px; background:#fffbeb; border:1px solid #f6e05e; border-radius:7px; padding:11px 14px; margin-bottom:14px; font-size:13px; color:#744210; line-height:1.45; }
@@ -720,6 +731,11 @@ html[data-theme="dark"] .ev-ds-pill.ev-ds-pill-mild{background:#78350f;color:#fd
 html[data-theme="dark"] .ev-ds-pill.ev-ds-pill-severe{background:#7f1d1d;color:#fca5a5;border-color:#b91c1c}
 html[data-theme="dark"] .ev-ds-action-btn{background:rgba(72,187,120,.1);border-color:#276749;color:#68d391}
 html[data-theme="dark"] .ev-ds-action-btn:hover{background:rgba(72,187,120,.2)}
+.ev-site-section-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:18px 0 10px; }
+#ev-tab-site .ev-site-section-title { background:none; border:none; padding:0; border-radius:0; margin:0; font-size:16px; font-weight:700; color:#2d3748; }
+#ev-tab-site .ev-site-section-title i { margin-right:7px; color:#4a5568; }
+html[data-theme="dark"] #ev-tab-site .ev-site-section-title { color:#e2e8f0; }
+html[data-theme="dark"] #ev-tab-site .ev-site-section-title i { color:#a0aec0; }
 </style>
 
 <?php // ---- DRAFT BLOCKED ---- ?>
@@ -886,7 +902,10 @@ html[data-theme="dark"] .ev-ds-action-btn:hover{background:rgba(72,187,120,.2)}
 		</div>
 		<div class="ev-stat-label">Starts At</div>
 	</div>
-	<?php $hasMapTab = (bool)($locationDisplay ?: $locationFallback); ?>
+	<?php
+		$hasMapTab  = (bool)($locationDisplay ?: $locationFallback);
+		$hasSiteTab = $hasMapTab || !empty($siteRules) || !empty($siteMap) || $canManageSite;
+	?>
 	<?php $_dispLoc = $locationDisplay ?: $locationFallback; ?>
 	<div class="ev-stat-card ev-stat-card-location">
 		<div class="ev-stat-icon"><i class="fas fa-map-marker-alt"></i></div>
@@ -897,7 +916,7 @@ html[data-theme="dark"] .ev-ds-action-btn:hover{background:rgba(72,187,120,.2)}
 		<?php if ($hasMapTab || $mapLink || ($mapUrl && $mapUrlName)): ?>
 		<div class="ev-stat-actions">
 			<?php if ($hasMapTab): ?>
-			<button type="button" class="ev-stat-action" onclick="evShowTab(document.querySelector('[data-tab=ev-tab-map]'),'ev-tab-map')" data-tip="View the embedded map">
+			<button type="button" class="ev-stat-action" onclick="evShowTab(document.querySelector('[data-tab=ev-tab-site]'),'ev-tab-site')" data-tip="View the embedded map">
 				<i class="fas fa-map-marked-alt"></i> Map
 			</button>
 			<?php endif; ?>
@@ -1078,9 +1097,9 @@ html[data-theme="dark"] .ev-ds-action-btn:hover{background:rgba(72,187,120,.2)}
 					<i class="fas fa-id-badge"></i><span class="ev-tab-label"> Staff</span>
 					<span class="ev-tab-count"><?= count($StaffList ?? []) ?></span>
 				</li>
-				<?php if ($hasMapTab): ?>
-				<li data-tab="ev-tab-map" onclick="evShowTab(this,'ev-tab-map')">
-					<i class="fas fa-map-marked-alt"></i><span class="ev-tab-label"> Map</span>
+				<?php if ($hasSiteTab): ?>
+				<li data-tab="ev-tab-site" onclick="evShowTab(this,'ev-tab-site')">
+					<i class="fas fa-map-marked-alt"></i><span class="ev-tab-label"> Site</span>
 				</li>
 				<?php endif; ?>
 				<?php if ($canManage): ?>
@@ -1987,37 +2006,52 @@ html[data-theme="dark"] .ev-ds-action-btn:hover{background:rgba(72,187,120,.2)}
 
 			</div><!-- /.ev-tab-panel (staff) -->
 
-			<?php if ($hasMapTab): ?>
-			<?php
-				$mapOpenUrl  = $mapLink ?: null;
-				$mapQuery    = urlencode($mapQueryAddress);
-				if ($mapLink && strpos($mapLink, 'q=@') !== false) {
-					// lat/lng link — strip @ for embed (Google Maps embed doesn't accept @)
-					$mapEmbedUrl = str_replace('?q=@', '?q=', $mapLink) . '&output=embed&z=14';
-				} else {
-					$mapEmbedUrl = 'https://maps.google.com/maps?q=' . $mapQuery . '&output=embed';
-				}
-				if (!$mapOpenUrl) $mapOpenUrl = 'https://maps.google.com/maps?q=' . $mapQuery;
-			?>
-			<?php // ---- Map Tab ---- ?>
-			<div class="ev-tab-panel" id="ev-tab-map">
-				<div style="margin-bottom:10px;display:flex;justify-content:flex-end">
-					<a href="<?= htmlspecialchars($mapOpenUrl) ?>" target="_blank" class="pk-btn pk-btn-secondary" style="font-size:13px;padding:6px 14px;text-decoration:none">
-						<i class="fas fa-external-link-alt" style="margin-right:6px"></i>Open in Maps
-					</a>
+			<?php if ($hasSiteTab): ?>
+			<?php // ---- Site Tab: rules + site map + directions ---- ?>
+			<div class="ev-tab-panel" id="ev-tab-site">
+
+				<div id="ev-site-rules-section">
+					<?php /* Filled in by the Site Rules task */ ?>
 				</div>
-				<div style="width:100%;border-radius:8px;overflow:hidden;border:1px solid #e2e8f0">
-					<iframe
-						src="<?= htmlspecialchars($mapEmbedUrl) ?>"
-						width="100%"
-						height="400"
-						style="border:0;display:block"
-						allowfullscreen=""
-						loading="lazy"
-						referrerpolicy="no-referrer-when-downgrade"
-					></iframe>
+
+				<div id="ev-site-map-section">
+					<?php /* Filled in by the Site Map task */ ?>
 				</div>
-			</div><!-- /.ev-tab-panel -->
+
+				<?php if ($hasMapTab): ?>
+				<?php
+					$mapOpenUrl  = $mapLink ?: null;
+					$mapQuery    = urlencode($mapQueryAddress);
+					if ($mapLink && strpos($mapLink, 'q=@') !== false) {
+						// lat/lng link — strip @ for embed (Google Maps embed doesn't accept @)
+						$mapEmbedUrl = str_replace('?q=@', '?q=', $mapLink) . '&output=embed&z=14';
+					} else {
+						$mapEmbedUrl = 'https://maps.google.com/maps?q=' . $mapQuery . '&output=embed';
+					}
+					if (!$mapOpenUrl) $mapOpenUrl = 'https://maps.google.com/maps?q=' . $mapQuery;
+				?>
+				<div id="ev-site-directions-section">
+					<div class="ev-site-section-head">
+						<h3 class="ev-site-section-title"><i class="fas fa-directions"></i> Getting There</h3>
+						<a href="<?= htmlspecialchars($mapOpenUrl) ?>" target="_blank" class="pk-btn pk-btn-secondary" style="font-size:13px;padding:6px 14px;text-decoration:none">
+							<i class="fas fa-external-link-alt" style="margin-right:6px"></i>Open in Maps
+						</a>
+					</div>
+					<div style="width:100%;border-radius:8px;overflow:hidden;border:1px solid #e2e8f0">
+						<iframe
+							src="<?= htmlspecialchars($mapEmbedUrl) ?>"
+							width="100%"
+							height="400"
+							style="border:0;display:block"
+							allowfullscreen=""
+							loading="lazy"
+							referrerpolicy="no-referrer-when-downgrade"
+						></iframe>
+					</div>
+				</div>
+				<?php endif; ?>
+
+			</div><!-- /.ev-tab-panel (site) -->
 			<?php endif; ?>
 
 			<?php if ($canManage): ?>
@@ -2497,6 +2531,11 @@ var EvConfig = {
 	bannerOffsetX:   <?= (int)$bannerOffsetX ?>,
 	bannerOffsetY:   <?= (int)$bannerOffsetY ?>,
 	bannerUrl:       <?= json_encode($bannerUrl) ?>,
+	canManageSite:     <?= !empty($canManageSite) ? 'true' : 'false' ?>,
+	siteMap:           <?= json_encode($siteMap) ?>,
+	siteLocations:     <?= json_encode($siteLocations) ?>,
+	siteLocCategories: <?= json_encode($siteLocCategories) ?>,
+	siteRuleCatalog:   <?= json_encode($siteRuleCatalog) ?>,
 };
 </script>
 <?php if ($canManageStaff): ?>
