@@ -1340,7 +1340,7 @@ html[data-theme="dark"] .ev-site-legend-chip { background:#2d3748; border-color:
 							$evSeg = ($item['_IsFirstDay'] && $item['_IsLastDay']) ? 'single'
 								: ($item['_IsFirstDay'] ? 'first' : ($item['_IsLastDay'] ? 'last' : 'mid'));
 						?>
-						<tr <?php if ($item['_IsFirstDay']): ?>id="ev-schedule-row-<?= (int)$item['EventScheduleId'] ?>" <?php endif; ?>data-seg="<?= $evSeg ?>" data-schedule-id="<?= (int)$item['EventScheduleId'] ?>" data-title="<?= htmlspecialchars($item['Title'], ENT_QUOTES) ?>" data-start="<?= date('Y-m-d\TH:i', strtotime($item['StartTime'])) ?>" data-end="<?= date('Y-m-d\TH:i', strtotime($item['EndTime'])) ?>" data-location="<?= htmlspecialchars($item['Location'], ENT_QUOTES) ?>" data-description="<?= htmlspecialchars($item['Description'], ENT_QUOTES) ?>" data-category="<?= htmlspecialchars($evCat, ENT_QUOTES) ?>" data-secondary-category="<?= htmlspecialchars($evSecCat, ENT_QUOTES) ?>" data-leads="<?= htmlspecialchars(json_encode($item['Leads'] ?? []), ENT_QUOTES) ?>" data-menu="<?= htmlspecialchars($item['Menu'] ?? '', ENT_QUOTES) ?>" data-cost="<?= htmlspecialchars((string)($item['Cost'] ?? ''), ENT_QUOTES) ?>" data-dietary="<?= htmlspecialchars($item['Dietary'] ?? '', ENT_QUOTES) ?>" data-allergens="<?= htmlspecialchars($item['Allergens'] ?? '', ENT_QUOTES) ?>" data-site-location-id="<?= $item['SiteLocationId'] ?? '' ?>" style="background:<?= $evCatCfg['bg'] ?>">
+						<tr <?php if ($item['_IsFirstDay']): ?>id="ev-schedule-row-<?= (int)$item['EventScheduleId'] ?>" <?php endif; ?>data-seg="<?= $evSeg ?>" data-schedule-id="<?= (int)$item['EventScheduleId'] ?>" data-title="<?= htmlspecialchars($item['Title'], ENT_QUOTES) ?>" data-start="<?= date('Y-m-d\TH:i', strtotime($item['StartTime'])) ?>" data-end="<?= date('Y-m-d\TH:i', strtotime($item['EndTime'])) ?>" data-location="<?= htmlspecialchars($item['Location'], ENT_QUOTES) ?>" data-description="<?= htmlspecialchars($item['Description'], ENT_QUOTES) ?>" data-category="<?= htmlspecialchars($evCat, ENT_QUOTES) ?>" data-secondary-category="<?= htmlspecialchars($evSecCat, ENT_QUOTES) ?>" data-leads="<?= htmlspecialchars(json_encode($item['Leads'] ?? []), ENT_QUOTES) ?>" data-menu="<?= htmlspecialchars($item['Menu'] ?? '', ENT_QUOTES) ?>" data-cost="<?= htmlspecialchars((string)($item['Cost'] ?? ''), ENT_QUOTES) ?>" data-dietary="<?= htmlspecialchars($item['Dietary'] ?? '', ENT_QUOTES) ?>" data-allergens="<?= htmlspecialchars($item['Allergens'] ?? '', ENT_QUOTES) ?>" data-site-location-id="<?= $item['SiteLocationId'] !== null ? (int)$item['SiteLocationId'] : '' ?>" style="background:<?= $evCatCfg['bg'] ?>">
 							<td style="white-space:nowrap"><?= $item['_IsFirstDay'] ? date('g:ia', $item['_SegStart']) : '(cont.)' ?></td>
 							<td style="white-space:nowrap"><?php
 								if (!$item['_IsLastDay']) {
@@ -4906,7 +4906,7 @@ html[data-theme="dark"] .ev-grid-day-pill.ev-grid-day-pill-active {
 	if (!EvConfig.siteMap && !EvConfig.canManageSite) return;
 	function gid(id) { return document.getElementById(id); }
 
-	var map = null, imageLayer = null, editMode = false;
+	var map = null, editMode = false;
 	var evSiteMarkers = {};
 	var COORD_H = 1000; // fixed CRS height; width scales by aspect ratio
 
@@ -4934,7 +4934,7 @@ html[data-theme="dark"] .ev-grid-day-pill.ev-grid-day-pill-active {
 		if (map || !EvConfig.siteMap || !gid('ev-site-map') || typeof L === 'undefined') return;
 		var bounds = [[0, 0], [COORD_H, coordW()]];
 		map = L.map('ev-site-map', { crs: L.CRS.Simple, minZoom: -3, maxZoom: 2, zoomSnap: 0.25, attributionControl: false });
-		imageLayer = L.imageOverlay(EvConfig.siteMap.Url, bounds).addTo(map);
+		L.imageOverlay(EvConfig.siteMap.Url, bounds).addTo(map);
 		map.fitBounds(bounds);
 		map.setMaxBounds(L.latLngBounds(bounds).pad(0.25));
 		EvConfig.siteLocations.forEach(addMarker);
@@ -4997,7 +4997,7 @@ html[data-theme="dark"] .ev-grid-day-pill.ev-grid-day-pill-active {
 		EvConfig.siteLocations.forEach(function(l) { seen[l.Category] = (seen[l.Category] || 0) + 1; });
 		el.innerHTML = Object.keys(seen).map(function(k) {
 			var c = catCfg(k);
-			return '<span class="ev-site-legend-chip" onclick="evSiteLegendClick(\'' + k + '\')"><i class="fas ' + c.icon + '" style="color:' + c.color + '"></i>' + escH(c.label) + ' (' + seen[k] + ')</span>';
+			return '<span class="ev-site-legend-chip" onclick="evSiteLegendClick(\'' + escH(k) + '\')"><i class="fas ' + c.icon + '" style="color:' + c.color + '"></i>' + escH(c.label) + ' (' + seen[k] + ')</span>';
 		}).join('');
 	}
 	var legendCycle = {};
@@ -5160,6 +5160,11 @@ html[data-theme="dark"] .ev-grid-day-pill.ev-grid-day-pill-active {
 				var err = gid('ev-site-loc-error');
 				err.textContent = data.error || 'Could not delete.'; err.style.display = 'block';
 			}
+		})
+		.catch(function() {
+			btn.disabled = false; btn.innerHTML = orig;
+			var err = gid('ev-site-loc-error');
+			err.textContent = 'Network error — please try again.'; err.style.display = 'block';
 		});
 	};
 
