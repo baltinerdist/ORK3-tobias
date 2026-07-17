@@ -9111,6 +9111,8 @@ $(document).ready(function() {
             gid('ev-sched-secondary-category').value = '';
             gid('ev-sched-title').value       = '';
             gid('ev-sched-location').value     = '';
+            var slSelReset = gid('ev-sched-site-location');
+            if (slSelReset) slSelReset.value = '';
             gid('ev-sched-description').value  = '';
             gid('ev-sched-error').style.display = 'none';
             evSchedLeads = [];
@@ -9346,9 +9348,16 @@ $(document).ready(function() {
                         '<button class="ev-edit-link" data-tip="Edit" onclick="evOpenScheduleEditModal(' + s.EventScheduleId + ',this)" style="background:none;border:none;cursor:pointer;color:#666;font-size:13px;padding:0 5px 0 0"><i class="fas fa-pencil-alt"></i></button>' +
                         '<button class="ev-del-link" data-tip="Remove" onclick="evRemoveSchedule(this,' + s.EventScheduleId + ')" style="background:none;border:none;cursor:pointer;color:#e53e3e;font-size:16px;padding:0">&times;</button>' +
                         '</td>';
-                    var locCellHtml = (s.SiteLocationId != null)
-                        ? '<a href="javascript:void(0)" class="ev-loc-chip" onclick="evSiteFlyTo(' + s.SiteLocationId + ')" data-tip="Show on site map"><i class="fas fa-map-marker-alt"></i> ' + escHtmlSch(s.Location) + '</a>'
-                        : escHtmlSch(s.Location);
+                    // s.Location comes back null when the caller isn't allowed to see it
+                    // (can_schedule=false feast-only saves) — String(null) would render the
+                    // literal text "null" in the cell, so guard it to an empty string instead.
+                    var locText = (s.Location == null) ? '' : escHtmlSch(s.Location);
+                    // M-1: only render the fly-to chip when a site map actually exists —
+                    // without one, evSiteFlyTo has nothing to show and the row should
+                    // degrade to plain text (mirrors the server-rendered gating).
+                    var locCellHtml = (s.SiteLocationId != null && EvConfig.siteMap)
+                        ? '<a href="javascript:void(0)" class="ev-loc-chip" onclick="evSiteFlyTo(' + s.SiteLocationId + ')" data-tip="Show on site map"><i class="fas fa-map-marker-alt"></i> ' + locText + '</a>'
+                        : locText;
                     if (isEdit) {
                         var row = gid('ev-schedule-row-' + s.EventScheduleId);
                         if (row) {

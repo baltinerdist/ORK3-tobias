@@ -1589,7 +1589,7 @@ html[data-theme="dark"] .ev-site-legend-chip { background:#2d3748; border-color:
 							<?php endif; ?>
 							<?php if ($canManageFeast || $canManageSchedule): ?>
 							<button class="ev-edit-btn" data-tip="Edit feast item"
-								onclick='evOpenFeastEditModal(<?= htmlspecialchars(json_encode(["EventScheduleId"=>(int)$meal["EventScheduleId"],"Title"=>$meal["Title"],"StartTime"=>$meal["StartTime"]??"","EndTime"=>$meal["EndTime"]??"","Location"=>$meal["Location"]??"","Description"=>$meal["Description"]??"","Category"=>$meal["Category"]??"","SecondaryCategory"=>$meal["SecondaryCategory"]??"","Leads"=>$meal["Leads"]??[],"Menu"=>$meal["Menu"]??"","Cost"=>$meal["Cost"],"Dietary"=>$meal["Dietary"]??"","Allergens"=>$meal["Allergens"]??""]), ENT_QUOTES) ?>)'>
+								onclick='evOpenFeastEditModal(<?= htmlspecialchars(json_encode(["EventScheduleId"=>(int)$meal["EventScheduleId"],"Title"=>$meal["Title"],"StartTime"=>$meal["StartTime"]??"","EndTime"=>$meal["EndTime"]??"","Location"=>$meal["Location"]??"","SiteLocationId"=>$meal["SiteLocationId"]??null,"Description"=>$meal["Description"]??"","Category"=>$meal["Category"]??"","SecondaryCategory"=>$meal["SecondaryCategory"]??"","Leads"=>$meal["Leads"]??[],"Menu"=>$meal["Menu"]??"","Cost"=>$meal["Cost"],"Dietary"=>$meal["Dietary"]??"","Allergens"=>$meal["Allergens"]??""]), ENT_QUOTES) ?>)'>
 								<i class="fas fa-pencil-alt"></i></button>
 							<button class="ev-del-link" data-tip="Remove feast item" style="background:none;border:none;cursor:pointer;color:#e53e3e;font-size:18px;padding:0;line-height:1"
 								onclick="evRemoveFeastCard(this, <?= (int)$meal['EventScheduleId'] ?>)">&times;</button>
@@ -3862,6 +3862,11 @@ var _fpEnd = flatpickr('#ev-fp-end', Object.assign({}, _fpOpts, {
 		catEl.value    = meal.Category || 'Feast and Food';
 		if (secCatEl) secCatEl.value = meal.SecondaryCategory || '';
 		if (locEl)  locEl.value  = meal.Location || '';
+		// I-2: the shared schedule modal's site-location dropdown must reflect this
+		// meal's pin (or be cleared) — otherwise a stale selection from a prior
+		// schedule edit gets posted back and re-links (or unlinks) the wrong pin.
+		var slSelFeast = document.getElementById('ev-sched-site-location');
+		if (slSelFeast) slSelFeast.value = (meal.SiteLocationId !== undefined && meal.SiteLocationId !== null) ? meal.SiteLocationId : '';
 		if (descEl) descEl.value = meal.Description || '';
 		if (errEl)  { errEl.style.display = 'none'; errEl.textContent = ''; }
 		// Leads — evSchedLeads/evRenderSchedLeads live in revised.js's closure, not
@@ -4045,7 +4050,8 @@ var _fpEnd = flatpickr('#ev-fp-end', Object.assign({}, _fpOpts, {
 		// Wire buttons in JS (avoids embedding the meal payload as an escaped attr).
 		var mealPayload = {
 			EventScheduleId: sid, Title: s.Title || '', StartTime: s.StartTime || '', EndTime: s.EndTime || '',
-			Location: s.Location || '', Description: s.Description || '', Category: s.Category || '',
+			Location: s.Location || '', SiteLocationId: (s.SiteLocationId === undefined ? null : s.SiteLocationId),
+			Description: s.Description || '', Category: s.Category || '',
 			SecondaryCategory: s.SecondaryCategory || '', Leads: s.Leads || [], Menu: s.Menu || '',
 			Cost: (s.Cost === undefined ? null : s.Cost), Dietary: s.Dietary || '', Allergens: s.Allergens || ''
 		};
