@@ -3184,6 +3184,10 @@ html[data-theme="dark"] #ev-attendance-table_wrapper .dataTables_paginate .pagin
 			</div>
 			<?php endif; ?>
 			<input type="file" id="ev-site-file" accept="image/jpeg,image/png" style="width:100%">
+			<div class="ev-modal-info-box" id="ev-site-upload-notice" style="display:none;margin-top:10px">
+				<i class="fas fa-compress-arrows-alt" style="margin-right:6px;flex-shrink:0;margin-top:2px"></i>
+				<span id="ev-site-upload-notice-text"></span>
+			</div>
 			<div id="ev-site-upload-preview" style="display:none;margin-top:10px;text-align:center">
 				<img id="ev-site-upload-preview-img" style="max-width:100%;max-height:240px;border-radius:6px;border:1px solid #e2e8f0" alt="Preview">
 			</div>
@@ -5204,29 +5208,114 @@ html[data-theme="dark"] .ev-grid-day-pill.ev-grid-day-pill-active {
 	};
 
 	// ---- Upload modal ----
+	// Effective file to upload once a >2MB source has been client-side downsized.
+	// null means "upload the raw <input> file as-is" (the untouched, byte-identical path).
+	var evSiteEffectiveMapFile = null;
+	var evSiteMapGen = 0;
 	window.evOpenSiteMapUploadModal = function() {
 		gid('ev-site-file').value = '';
+		evSiteEffectiveMapFile = null;
+		evSiteMapGen++;
 		gid('ev-site-upload-preview').style.display = 'none';
 		gid('ev-site-upload-error').style.display = 'none';
+		gid('ev-site-upload-notice').style.display = 'none';
 		gid('ev-site-upload-btn').disabled = true;
 		gid('ev-site-upload-modal').classList.add('ev-modal-open');
 	};
 	window.evCloseSiteMapUploadModal = function() { gid('ev-site-upload-modal').classList.remove('ev-modal-open'); };
+
+	// Client-side downsize for site maps over the 2MB server gate. Quality-first:
+	// clamp longest edge to 3000px @ q0.92, then shrink by sqrt(target/size)*0.95
+	// @ q0.92 up to 3 tries, then one final try @ q0.85, then give up. Always
+	// flattens to white + encodes JPEG (site maps don't need alpha once they're
+	// this large, so a >2MB PNG converts to JPEG). Kept local to this IIFE —
+	// the shared resizeImageToLimit() in orkui.js has other callers depending on
+	// its exact behavior and is intentionally left untouched.
+	function evSiteDownsizeMap(file, onReady, onError) {
+		var TARGET_BYTES = 2000000; // working target; headroom under the 2,097,152 server gate
+		var MAX_EDGE = 3000;
+		var img = new Image();
+		var url = URL.createObjectURL(file);
+		img.onload = function() {
+			URL.revokeObjectURL(url);
+			var origW = img.width, origH = img.height;
+			function render(scale, quality, cb) {
+				var w = Math.max(1, Math.round(origW * scale));
+				var h = Math.max(1, Math.round(origH * scale));
+				var canvas = document.createElement('canvas');
+				canvas.width = w; canvas.height = h;
+				var ctx = canvas.getContext('2d');
+				ctx.fillStyle = '#ffffff';
+				ctx.fillRect(0, 0, w, h);
+				ctx.drawImage(img, 0, 0, w, h);
+				canvas.toBlob(function(blob) { cb(blob, w, h); }, 'image/jpeg', quality);
+			}
+			var initialScale = Math.min(1, MAX_EDGE / Math.max(origW, origH));
+			render(initialScale, 0.92, function(blob, w, h) {
+				if (!blob) { onError('Could not downsize this image enough — please export it smaller.'); return; }
+				if (blob.size <= TARGET_BYTES) { onReady(blob, w, h); return; }
+				var scale = initialScale;
+				var lastSize = blob.size;
+				var tries = 0;
+				function shrink() {
+					tries++;
+					scale = scale * Math.sqrt(TARGET_BYTES / lastSize) * 0.95;
+					render(scale, 0.92, function(b, w2, h2) {
+						if (!b) { onError('Could not downsize this image enough — please export it smaller.'); return; }
+						if (b.size <= TARGET_BYTES) { onReady(b, w2, h2); return; }
+						lastSize = b.size;
+						if (tries < 3) { shrink(); return; }
+						render(scale, 0.85, function(bFinal, w3, h3) {
+							if (bFinal && bFinal.size <= TARGET_BYTES) { onReady(bFinal, w3, h3); }
+							else { onError('Could not downsize this image enough — please export it smaller.'); }
+						});
+					});
+				}
+				shrink();
+			});
+		};
+		img.onerror = function() { URL.revokeObjectURL(url); onError('Could not load image for downsizing.'); };
+		img.src = url;
+	}
+
 	gid('ev-site-file') && gid('ev-site-file').addEventListener('change', function() {
 		var f = this.files && this.files[0];
 		var err = gid('ev-site-upload-error');
+		var notice = gid('ev-site-upload-notice');
+		var noticeText = gid('ev-site-upload-notice-text');
 		err.style.display = 'none';
+		notice.style.display = 'none';
 		gid('ev-site-upload-btn').disabled = true;
 		gid('ev-site-upload-preview').style.display = 'none';
+		evSiteEffectiveMapFile = null;
+		evSiteMapGen++;
+		var gen = evSiteMapGen;
 		if (!f) return;
-		if (f.size > 2 * 1024 * 1024) { err.textContent = 'That file is over 2 MB. Please resize or compress it first.'; err.style.display = 'block'; return; }
 		if (f.type !== 'image/jpeg' && f.type !== 'image/png') { err.textContent = 'Only JPEG and PNG images are supported.'; err.style.display = 'block'; return; }
-		gid('ev-site-upload-preview-img').src = URL.createObjectURL(f);
-		gid('ev-site-upload-preview').style.display = '';
-		gid('ev-site-upload-btn').disabled = false;
+		if (f.size <= 2 * 1024 * 1024) {
+			gid('ev-site-upload-preview-img').src = URL.createObjectURL(f);
+			gid('ev-site-upload-preview').style.display = '';
+			gid('ev-site-upload-btn').disabled = false;
+			return;
+		}
+		noticeText.textContent = 'Downsizing ' + (f.size / (1024 * 1024)).toFixed(1) + ' MB image…';
+		notice.style.display = '';
+		evSiteDownsizeMap(f, function(blob, w, h) {
+			if (gen !== evSiteMapGen) return; // a newer file was chosen while this was running
+			evSiteEffectiveMapFile = new File([blob], 'sitemap.jpg', { type: 'image/jpeg' });
+			noticeText.textContent = 'Downsized to ' + (blob.size / (1024 * 1024)).toFixed(1) + ' MB — some detail may be reduced';
+			gid('ev-site-upload-preview-img').src = URL.createObjectURL(blob);
+			gid('ev-site-upload-preview').style.display = '';
+			gid('ev-site-upload-btn').disabled = false;
+		}, function(errMsg) {
+			if (gen !== evSiteMapGen) return;
+			notice.style.display = 'none';
+			err.textContent = errMsg;
+			err.style.display = 'block';
+		});
 	});
 	window.evSubmitSiteMapUpload = function() {
-		var f = gid('ev-site-file').files && gid('ev-site-file').files[0];
+		var f = evSiteEffectiveMapFile || (gid('ev-site-file').files && gid('ev-site-file').files[0]);
 		if (!f) return;
 		var btn = gid('ev-site-upload-btn'), orig = btn.innerHTML;
 		btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading…';
