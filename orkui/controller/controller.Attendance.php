@@ -26,7 +26,7 @@ class Controller_Attendance extends Controller {
 		}
 		
 		$params = explode('/',$id);
-		$id = $params[0];
+		$id = (int) $params[0];
 		$this->data['menu']['attendance'] = array( 'url' => UIR."Attendance/$call/$id", 'display' => 'Attendance' );
 	
 	}
@@ -37,7 +37,7 @@ class Controller_Attendance extends Controller {
 	
 	public function kingdom($k) {
 		$params = explode('/',$k);
-		$id = $params[0];
+		$id = (int) $params[0];
 		if (count($params) > 1)
 			$action = $params[1];
 		if (count($params) > 2)
@@ -91,6 +91,8 @@ class Controller_Attendance extends Controller {
 			$this->data['AttendanceDate'] = isset($this->request->AttendanceDate)?$this->request->AttendanceDate:date('Y-m-d');
 		}
 		$this->data['AttendanceReport'] = $this->Attendance->get_kingdom_attendance_for_date($id, $this->data['AttendanceDate']);
+		$_aeKingdom = Ork3::$Lib->event->GetActiveEventsAtScope(['Scope'=>'kingdom','ScopeId'=>$id,'Date'=>$this->data['AttendanceDate']]);
+		$this->data['ActiveEvent'] = !empty($_aeKingdom['Events']) ? $_aeKingdom['Events'][0] : null;
 		if ($this->request->exists('Attendance_kingdom')) {
 			$this->data['Attendance_kingdom'] = $this->request->Attendance_kingdom->Request;
 		}
@@ -162,7 +164,7 @@ class Controller_Attendance extends Controller {
   
 	public function park($p) {
 		$params = explode('/',$p);
-		$id = $params[0];
+		$id = (int) $params[0];
 		if (count($params) > 1)
 			$action = $params[1];
 		if (count($params) > 2)
@@ -224,6 +226,8 @@ class Controller_Attendance extends Controller {
 			$this->data['AttendanceDate'] = isset($this->request->AttendanceDate)?$this->request->AttendanceDate:date('Y-m-d');
 		}
 		$this->data['AttendanceReport']  = $this->Attendance->get_attendance_for_date($id, $this->data['AttendanceDate']);
+		$_aePark = Ork3::$Lib->event->GetActiveEventsAtScope(['Scope'=>'park','ScopeId'=>$id,'Date'=>$this->data['AttendanceDate']]);
+		$this->data['ActiveEvent'] = !empty($_aePark['Events']) ? $_aePark['Events'][0] : null;
 		$this->data['RecentAttendees']   = $this->Attendance->get_recent_attendees($id);
 		$this->data['AdjacentDates']     = $this->Attendance->get_adjacent_park_dates($id, $this->data['AttendanceDate']);
 		if ($this->request->exists('Attendance_park')) {
@@ -237,8 +241,8 @@ class Controller_Attendance extends Controller {
 
 	public function event($p) {
 		$params = explode('/',$p);
-		$event_id = $params[0];
-		$detail_id = $params[1];
+		$event_id = (int) $params[0];
+		$detail_id = (int) $params[1];
 		
 		if (count($params) > 2)
 			$action = $params[2];

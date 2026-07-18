@@ -567,7 +567,7 @@ class Controller_Admin extends Controller {
 
 	public function event($p) {
 		$params = explode('/',$p);
-		$event_id = $params[0];
+		$event_id = (int) $params[0];
 		if (count($params) > 1) $post = $params[1];
 
 		logtrace("index($p)", $params);
@@ -1072,7 +1072,7 @@ class Controller_Admin extends Controller {
 		$this->load_model('Pronoun');
 
 		$params = explode('/',$id);
-		$id = $params[0];
+		$id = (int) $params[0];
 		if (count($params) > 1)
 			$action = $params[1];
 		if (count($params) > 2)
@@ -2638,6 +2638,29 @@ class Controller_Admin extends Controller {
 		$this->data['menu']['kingdom'] = array( 'url' => UIR.'Kingdom/profile/'.$this->session->kingdom_id, 'display' => $this->session->kingdom_name );
 		$this->data['menu']['park'] = array( 'url' => UIR.'Park/profile/'.$this->session->park_id, 'display' => $this->session->park_name );
 	}
+
+	public function stateofamtgard($duh = null) {
+		if (!isset($this->session->user_id)) {
+			header('Location: ' . UIR . 'Home/index/login'); exit;
+		}
+		$this->data['Kingdoms'] = Ork3::$Lib->stateofamtgard->getActiveKingdoms();
+		// Full attendance date range, for the "All Time" quick-range button.
+		global $DB;
+		$DB->Clear();
+		$_rng = $DB->DataSet("SELECT MIN(date) AS mn, MAX(date) AS mx FROM " . DB_PREFIX . "attendance WHERE date BETWEEN '1990-01-01' AND CURDATE()");
+		$this->data['MinDate'] = '';
+		$this->data['MaxDate'] = '';
+		if ($_rng && $_rng->Next()) {
+			$this->data['MinDate'] = (string)$_rng->mn;
+			$this->data['MaxDate'] = (string)$_rng->mx;
+		}
+		// 12-month cap on the reporting window in production (server-crash guard);
+		// 0 = unlimited for local/dev. Mirrors the hard limit in AdminAjax::stateofamtgard.
+		$this->data['RangeLimitMonths'] = (getenv('ENVIRONMENT') === 'DEV') ? 0 : 12;
+		$this->data['page_title'] = 'State of Amtgard Report';
+		$this->template = '../revised-frontend/StateOfAmtgard_index.tpl';
+	}
+
 }
 
 ?>
