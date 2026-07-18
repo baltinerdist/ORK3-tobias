@@ -2336,11 +2336,9 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 				<li class="tn-focus-toggle" role="button" tabindex="0" data-tn-keyclick onclick="tnToggleFocus()" data-tip="Hide everything but the bracket">
 					<i class="fas fa-expand"></i> Focus
 				</li>
-				<?php if (!empty($standingsData)): ?>
 				<li data-tntab="standings" role="tab" id="tn-tabhdr-standings" aria-selected="false" aria-controls="tn-tab-standings" tabindex="-1" onclick="tnActivateTab('standings')">
 					<i class="fas fa-medal"></i> Standings
 				</li>
-				<?php endif; ?>
 			</ul>
 
 			<!-- About Tab -->
@@ -2901,18 +2899,17 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 			</div>
 
 			<!-- Standings Tab -->
-			<?php if (!empty($standingsData)): ?>
 			<div class="tn-tab-panel" id="tn-tab-standings" role="tabpanel" aria-labelledby="tn-tabhdr-standings" tabindex="0" style="display:none">
 				<!-- Pills row + gear icon -->
 				<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px">
-					<div class="tn-bk-pills" style="flex:1;flex-wrap:wrap">
+					<div class="tn-bk-pills" id="tn-standings-pills" style="flex:1;flex-wrap:wrap">
 						<button class="tn-bk-pill tn-bk-pill-active" data-bid="leaderboard" onclick="tnStandingsPillClick(this,'leaderboard')">
 							<i class="fas fa-trophy" style="margin-right:5px;color:#d69e2e"></i>Leaderboard
 						</button>
-						<?php foreach ($standingsData as $stBid => $stRows): $stB = $bracketData[$stBid]['Bracket'] ?? []; ?>
-						<button class="tn-bk-pill" data-bid="<?= $stBid ?>" onclick="tnStandingsPillClick(this,<?= $stBid ?>)"><?= htmlspecialchars($styleLabelMap[$stB['Style']] ?? $stB['Style'] ?? '') ?> &mdash; <?= htmlspecialchars($methodLabelMap[$stB['Method']] ?? $stB['Method'] ?? '') ?></button>
-						<?php endforeach; ?>
 					</div>
+					<button class="tn-btn tn-btn-ghost tn-btn-sm" id="tn-standings-refresh" onclick="tnRefreshStandings(this)" data-tip="Recalculate standings from the latest results" style="padding:6px 10px;flex-shrink:0">
+						<i class="fas fa-sync-alt"></i>
+					</button>
 					<a class="tn-btn tn-btn-ghost tn-btn-sm" href="<?= UIR ?>Tournament/export/<?= (int)$tournament['TournamentId'] ?>" data-tip="Download an .xlsx workbook of every bracket" style="flex-shrink:0;display:inline-flex;align-items:center;gap:6px;text-decoration:none">
 						<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
 						Export Results
@@ -2948,117 +2945,9 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 					</table>
 				</div>
 
-				<!-- Per-bracket standings sections -->
-				<?php foreach ($standingsData as $stBid => $stRows): ?>
-				<?php $_stBracket = $bracketData[$stBid]['Bracket'] ?? []; $_stIsIronman = (($_stBracket['Method'] ?? '') === 'ironman'); ?>
-				<div class="tn-standings-section" data-stbid="<?= $stBid ?>" style="display:none">
-					<?php if ($canManage && $_stIsIronman && !empty($stRows)): ?>
-					<div style="margin-bottom:12px">
-						<button class="tn-btn tn-btn-primary tn-btn-sm" onclick="tnOpenPoolsToBracketsModal(<?= (int)$stBid ?>, <?= count($stRows) ?>)">
-							<i class="fas fa-sitemap"></i> Pools to Brackets
-						</button>
-					</div>
-					<?php endif; ?>
-					<?php if (empty($stRows)): ?>
-					<div class="tn-empty">No standings yet.</div>
-					<?php else: ?>
-					<table class="tn-table" id="tn-standings-table-<?= $stBid ?>">
-						<thead>
-							<tr>
-								<th style="cursor:pointer" onclick="tnSortTable('tn-standings-table-<?= $stBid ?>',0,true)">Rank</th>
-								<th style="cursor:pointer" onclick="tnSortTable('tn-standings-table-<?= $stBid ?>',1,false)">Participant</th>
-								<th style="cursor:pointer" onclick="tnSortTable('tn-standings-table-<?= $stBid ?>',2,false)">Park</th>
-								<th style="cursor:pointer;text-align:center" onclick="tnSortTable('tn-standings-table-<?= $stBid ?>',3,true)">Wins</th>
-								<?php if ($_stIsIronman): ?>
-								<th style="cursor:pointer;text-align:center" onclick="tnSortTable('tn-standings-table-<?= $stBid ?>',4,true)">Max Streak</th>
-								<th style="cursor:pointer;text-align:center" onclick="tnSortTable('tn-standings-table-<?= $stBid ?>',5,true)">Cur Streak</th>
-								<th style="cursor:pointer;text-align:right" onclick="tnSortTable('tn-standings-table-<?= $stBid ?>',6,true)">Place Pts</th>
-								<?php else: ?>
-								<th style="cursor:pointer;text-align:center" onclick="tnSortTable('tn-standings-table-<?= $stBid ?>',4,true)">L</th>
-								<th style="cursor:pointer;text-align:center" onclick="tnSortTable('tn-standings-table-<?= $stBid ?>',5,true)">T</th>
-								<th style="cursor:pointer;text-align:center" onclick="tnSortTable('tn-standings-table-<?= $stBid ?>',6,true)">Byes</th>
-								<th style="cursor:pointer;text-align:center" onclick="tnSortTable('tn-standings-table-<?= $stBid ?>',7,true)">Pts</th>
-								<th style="cursor:pointer;text-align:right" onclick="tnSortTable('tn-standings-table-<?= $stBid ?>',8,true)">Place Pts</th>
-								<?php endif; ?>
-								<?php if ($canRecommend): ?>
-								<th style="text-align:center">Recommend for&hellip;</th>
-								<?php endif; ?>
-							</tr>
-						</thead>
-						<tbody>
-							<?php
-							$_stPrev = null;
-							foreach ($stRows as $stRow):
-								$_isTied    = $_stPrev !== null && $stRow['Rank'] === $_stPrev['Rank'];
-								$_stRank    = (int)$stRow['Rank'];
-								$_placePts  = ($_stRank >= 1 && $_stRank <= 8) ? (float)($standingsPoints[$_stRank - 1] ?? 0) : 0;
-								if ($_stPrev !== null && $stRow['Rank'] !== $_stPrev['Rank'] && isset($_stTieCount) && $_stTieCount > 1):
-									$_colspan = ($_stIsIronman ? 7 : 9) + ($canRecommend ? 1 : 0);
-									for ($_si = 0; $_si < $_stTieCount - 1; $_si++): ?>
-							<tr class="tn-standings-spacer"><td colspan="<?= $_colspan ?>"></td></tr>
-								<?php endfor;
-								endif;
-								if ($_stPrev === null || $stRow['Rank'] !== $_stPrev['Rank']) $_stTieCount = 0;
-								$_stTieCount++;
-								$_stPrev = $stRow;
-							?>
-							<?php $_stIsTeam = $stRow['IsTeam'] ?? false; ?>
-							<tr>
-								<td style="color:#a0aec0;font-weight:700"><?= $_stRank ?></td>
-								<td style="font-weight:600">
-									<?= tnPidShield((int)($stRow['ParticipantNumber'] ?? 0)) ?><?= htmlspecialchars($stRow['Alias'] ?? '—') ?>
-									<?php if ($_stIsTeam): ?>
-									<span style="display:inline-flex;gap:3px;margin-left:4px;vertical-align:middle"><span class="tn-pill tn-pill-team-wl" data-tip="Team warrior level">⚔ <?= (int)($stRow['TeamWarriorLevel'] ?? 0) ?></span></span>
-									<?php if (!empty($stRow['Members'])): ?>
-									<button class="tn-team-roster-btn" onclick="tnToggleRoster(this)" data-tip="Show/hide team roster">&#9658; <?= count($stRow['Members']) ?></button>
-									<?php endif; ?>
-									<?php else: ?>
-									<?= tnParticipantPills($stRow) ?>
-									<?php endif; ?>
-								</td>
-								<td style="color:#718096"><?= $_stIsTeam ? '—' : (htmlspecialchars($stRow['ParkName'] ?? '') ?: '—') ?></td>
-								<td style="text-align:center;color:#276749;font-weight:700"><?= (int)$stRow['Wins'] ?></td>
-								<?php if ($_stIsIronman): ?>
-								<td style="text-align:center;font-weight:700;color:#d69e2e"><?= (int)($stRow['MaxStreak'] ?? 0) ?></td>
-								<td style="text-align:center;color:#276749"><?= (int)($stRow['CurrentStreak'] ?? 0) ?></td>
-								<?php else: ?>
-								<td style="text-align:center;color:#e53e3e"><?= (int)$stRow['Losses'] ?></td>
-								<td style="text-align:center;color:#718096"><?= (int)$stRow['Ties'] ?></td>
-								<td style="text-align:center;color:#a0aec0"><?= (int)$stRow['Byes'] ?></td>
-								<td style="text-align:center;font-weight:800;color:#1a202c"><?= (int)$stRow['Points'] ?></td>
-								<?php endif; ?>
-								<td style="text-align:right;font-weight:800;color:#276749" data-place-rank="<?= $_stRank ?>"><?= $_placePts ?></td>
-								<?php if ($canRecommend): ?>
-								<td style="text-align:center">
-									<?php $_recMid = (int)($stRow['MundaneId'] ?? 0); $_recPersona = $stRow['Alias'] ?? ''; ?>
-									<?php if ($_recMid > 0): ?>
-									<span class="tn-rec-actions">
-										<button type="button" class="tn-rec-btn" onclick="tnOpenRecModal(<?= $_recMid ?>, <?= htmlspecialchars(json_encode($_recPersona), ENT_QUOTES) ?>, 27)"><i class="fas fa-star"></i> Warrior</button>
-										<button type="button" class="tn-rec-btn" onclick="tnOpenRecModal(<?= $_recMid ?>, <?= htmlspecialchars(json_encode($_recPersona), ENT_QUOTES) ?>, 33)"><i class="fas fa-star"></i> Griffin</button>
-									</span>
-									<?php else: ?>
-									<span style="color:#cbd5e0;font-size:11px">&mdash;</span>
-									<?php endif; ?>
-								</td>
-								<?php endif; ?>
-							</tr>
-							<?php if ($_stIsTeam && !empty($stRow['Members'])): ?>
-							<tr class="tn-team-roster-row" style="display:none">
-								<td colspan="<?= ($_stIsIronman ? 7 : 9) + ($canRecommend ? 1 : 0) + 1 ?>" style="padding:4px 10px 8px 30px">
-									<?php foreach ($stRow['Members'] as $_sm): ?>
-									<span class="tn-roster-member"><?= htmlspecialchars($_sm['Persona'] ?? '') ?><span class="tn-pill tn-pill-team-wl" data-tip="Warrior level" style="margin-left:3px">⚔<?= (int)$_sm['WarriorLevel'] ?></span></span>
-									<?php endforeach; ?>
-								</td>
-							</tr>
-							<?php endif; ?>
-							<?php endforeach; ?>
-						</tbody>
-					</table>
-					<?php endif; ?>
-				</div>
-				<?php endforeach; ?>
+				<!-- Per-bracket standings sections (JS-rendered from TnConfig.standingsData) -->
+				<div id="tn-standings-sections"></div>
 			</div>
-			<?php endif; ?>
 
 		</div><!-- /.tn-tabs -->
 	</div><!-- /.tn-main -->
@@ -5116,8 +5005,194 @@ function tnRenderLeaderboard() {
 	tbody.innerHTML = rows;
 }
 
+// Per-bracket standings pills + tables, rendered from TnConfig.standingsData so a
+// refresh (tnRefreshStandings) can rebuild them without a page reload. Mirrors the
+// former PHP-rendered markup (pid shield, warrior pills, team rosters, tie spacers).
+function tnRenderStandingsTables() {
+	var pillsWrap    = document.getElementById('tn-standings-pills');
+	var sectionsWrap = document.getElementById('tn-standings-sections');
+	if (!pillsWrap || !sectionsWrap) return;
+	var sd    = TnConfig.standingsData || {};
+	var bmap  = TnConfig.bracketData   || {};
+	var canManage    = !!TnConfig.canManage;
+	var canRecommend = !!TnConfig.canRecommend;
+	var flag = function(v) { return !!v && v !== '0'; };
+
+	// Remember the active pill so a re-render keeps the user's selection.
+	var activeBtn = pillsWrap.querySelector('.tn-bk-pill-active');
+	var activeBid = activeBtn ? String(activeBtn.dataset.bid) : 'leaderboard';
+
+	pillsWrap.querySelectorAll('.tn-bk-pill').forEach(function(p) {
+		if (p.dataset.bid !== 'leaderboard') p.remove();
+	});
+
+	var pillsHtml = '', sectionsHtml = '';
+	Object.keys(sd).forEach(function(bid) {
+		var rows = sd[bid] || [];
+		var br = (bmap[bid] && bmap[bid].Bracket) ? bmap[bid].Bracket : null;
+		var sl = br ? ((TnConfig.styleLabels  || {})[br.Style]  || br.Style  || '') : ('Bracket ' + bid);
+		var ml = br ? ((TnConfig.methodLabels || {})[br.Method] || br.Method || '') : '';
+		var isIronman = !!(br && br.Method === 'ironman');
+		pillsHtml += '<button class="tn-bk-pill" data-bid="' + bid + '" onclick="tnStandingsPillClick(this,' + bid + ')">'
+			+ tnEsc(sl) + (ml ? ' &mdash; ' + tnEsc(ml) : '') + '</button>';
+
+		var html = '<div class="tn-standings-section" data-stbid="' + bid + '" style="display:none">';
+		if (canManage && isIronman && rows.length) {
+			html += '<div style="margin-bottom:12px">'
+				+ '<button class="tn-btn tn-btn-primary tn-btn-sm" onclick="tnOpenPoolsToBracketsModal(' + parseInt(bid, 10) + ', ' + rows.length + ')">'
+				+ '<i class="fas fa-sitemap"></i> Pools to Brackets</button></div>';
+		}
+		if (!rows.length) {
+			html += '<div class="tn-empty">No standings yet.</div></div>';
+			sectionsHtml += html;
+			return;
+		}
+		var tid = 'tn-standings-table-' + bid;
+		html += '<table class="tn-table" id="' + tid + '"><thead><tr>'
+			+ '<th style="cursor:pointer" onclick="tnSortTable(\'' + tid + '\',0,true)">Rank</th>'
+			+ '<th style="cursor:pointer" onclick="tnSortTable(\'' + tid + '\',1,false)">Participant</th>'
+			+ '<th style="cursor:pointer" onclick="tnSortTable(\'' + tid + '\',2,false)">Park</th>'
+			+ '<th style="cursor:pointer;text-align:center" onclick="tnSortTable(\'' + tid + '\',3,true)">Wins</th>';
+		if (isIronman) {
+			html += '<th style="cursor:pointer;text-align:center" onclick="tnSortTable(\'' + tid + '\',4,true)">Max Streak</th>'
+				+ '<th style="cursor:pointer;text-align:center" onclick="tnSortTable(\'' + tid + '\',5,true)">Cur Streak</th>'
+				+ '<th style="cursor:pointer;text-align:right" onclick="tnSortTable(\'' + tid + '\',6,true)">Place Pts</th>';
+		} else {
+			html += '<th style="cursor:pointer;text-align:center" onclick="tnSortTable(\'' + tid + '\',4,true)">L</th>'
+				+ '<th style="cursor:pointer;text-align:center" onclick="tnSortTable(\'' + tid + '\',5,true)">T</th>'
+				+ '<th style="cursor:pointer;text-align:center" onclick="tnSortTable(\'' + tid + '\',6,true)">Byes</th>'
+				+ '<th style="cursor:pointer;text-align:center" onclick="tnSortTable(\'' + tid + '\',7,true)">Pts</th>'
+				+ '<th style="cursor:pointer;text-align:right" onclick="tnSortTable(\'' + tid + '\',8,true)">Place Pts</th>';
+		}
+		if (canRecommend) html += '<th style="text-align:center">Recommend for&hellip;</th>';
+		html += '</tr></thead><tbody>';
+
+		var colspan = (isIronman ? 7 : 9) + (canRecommend ? 1 : 0);
+		var prevRank = null, tieCount = 0;
+		rows.forEach(function(r) {
+			var rank = parseInt(r.Rank, 10) || 0;
+			if (prevRank !== null && rank !== prevRank && tieCount > 1) {
+				for (var si = 0; si < tieCount - 1; si++) {
+					html += '<tr class="tn-standings-spacer"><td colspan="' + colspan + '"></td></tr>';
+				}
+			}
+			if (prevRank === null || rank !== prevRank) tieCount = 0;
+			tieCount++;
+			prevRank = rank;
+
+			var isTeam  = flag(r.IsTeam);
+			var members = r.Members || [];
+			var pnum    = parseInt(r.ParticipantNumber, 10) || 0;
+
+			var partCell = '';
+			if (pnum > 0) partCell += '<span class="tn-pid" data-tip="Player #' + pnum + ' — same number across every bracket">' + pnum + '</span>';
+			partCell += tnEsc(r.Alias || '—');
+			if (isTeam) {
+				partCell += '<span style="display:inline-flex;gap:3px;margin-left:4px;vertical-align:middle"><span class="tn-pill tn-pill-team-wl" data-tip="Team warrior level">⚔ ' + (parseInt(r.TeamWarriorLevel, 10) || 0) + '</span></span>';
+				if (members.length) partCell += '<button class="tn-team-roster-btn" onclick="tnToggleRoster(this)" data-tip="Show/hide team roster">&#9658; ' + members.length + '</button>';
+			} else {
+				// Warrior/award pills (mirror PHP tnParticipantPills)
+				var pills = '';
+				var wc = parseInt(r.WarriorCount, 10) || 0;
+				if (wc > 0) pills += '<span class="tn-pill tn-pill-warrior" data-tip="Order of the Warrior x' + wc + '">' + Math.min(wc, 10) + '</span>';
+				if (flag(r.IsWarlord))     pills += '<span class="tn-pill tn-pill-warlord" data-tip="Warlord">W</span>';
+				if (flag(r.IsKnightSword)) pills += '<span class="tn-pill tn-pill-knight" data-tip="Knight of the Sword">K</span>';
+				if (pills) partCell += '<span style="display:inline-flex;gap:3px;margin-left:4px;vertical-align:middle">' + pills + '</span>';
+			}
+
+			html += '<tr>'
+				+ '<td style="color:#a0aec0;font-weight:700">' + rank + '</td>'
+				+ '<td style="font-weight:600">' + partCell + '</td>'
+				+ '<td style="color:#718096">' + (isTeam ? '—' : (tnEsc(r.ParkName || '') || '—')) + '</td>'
+				+ '<td style="text-align:center;color:#276749;font-weight:700">' + (parseInt(r.Wins, 10) || 0) + '</td>';
+			if (isIronman) {
+				html += '<td style="text-align:center;font-weight:700;color:#d69e2e">' + (parseInt(r.MaxStreak, 10) || 0) + '</td>'
+					+ '<td style="text-align:center;color:#276749">' + (parseInt(r.CurrentStreak, 10) || 0) + '</td>';
+			} else {
+				html += '<td style="text-align:center;color:#e53e3e">' + (parseInt(r.Losses, 10) || 0) + '</td>'
+					+ '<td style="text-align:center;color:#718096">' + (parseInt(r.Ties, 10) || 0) + '</td>'
+					+ '<td style="text-align:center;color:#a0aec0">' + (parseInt(r.Byes, 10) || 0) + '</td>'
+					+ '<td style="text-align:center;font-weight:800;color:#1a202c">' + (parseInt(r.Points, 10) || 0) + '</td>';
+			}
+			html += '<td style="text-align:right;font-weight:800;color:#276749" data-place-rank="' + rank + '">' + tnGetPlacePts(rank) + '</td>';
+			if (canRecommend) {
+				var mid = parseInt(r.MundaneId, 10) || 0;
+				if (mid > 0) {
+					var pa = tnEsc(r.Alias || '');
+					html += '<td style="text-align:center"><span class="tn-rec-actions">'
+						+ '<button type="button" class="tn-rec-btn tn-rec-trigger" data-mundane-id="' + mid + '" data-persona="' + pa + '" data-award="27"><i class="fas fa-star"></i> Warrior</button>'
+						+ '<button type="button" class="tn-rec-btn tn-rec-trigger" data-mundane-id="' + mid + '" data-persona="' + pa + '" data-award="33"><i class="fas fa-star"></i> Griffin</button>'
+						+ '</span></td>';
+				} else {
+					html += '<td style="text-align:center"><span style="color:#cbd5e0;font-size:11px">&mdash;</span></td>';
+				}
+			}
+			html += '</tr>';
+
+			if (isTeam && members.length) {
+				html += '<tr class="tn-team-roster-row" style="display:none"><td colspan="' + (colspan + 1) + '" style="padding:4px 10px 8px 30px">'
+					+ members.map(function(m) {
+						return '<span class="tn-roster-member">' + tnEsc(m.Persona || '')
+							+ '<span class="tn-pill tn-pill-team-wl" data-tip="Warrior level" style="margin-left:3px">⚔' + (parseInt(m.WarriorLevel, 10) || 0) + '</span></span>';
+					}).join('')
+					+ '</td></tr>';
+			}
+		});
+		html += '</tbody></table></div>';
+		sectionsHtml += html;
+	});
+
+	pillsWrap.insertAdjacentHTML('beforeend', pillsHtml);
+	sectionsWrap.innerHTML = sectionsHtml;
+
+	// Restore the previous selection; fall back to the leaderboard if it vanished.
+	if (activeBid !== 'leaderboard' && !(activeBid in sd)) activeBid = 'leaderboard';
+	pillsWrap.querySelectorAll('.tn-bk-pill').forEach(function(b) {
+		b.classList.toggle('tn-bk-pill-active', String(b.dataset.bid) === activeBid);
+	});
+	tnShowStandings(activeBid);
+}
+
+// Refresh button: refetch standings + points from the server and re-render the
+// leaderboard and per-bracket tables in place (no page reload).
+function tnRefreshStandings(btn) {
+	var icon = btn ? btn.querySelector('i') : null;
+	if (btn) btn.disabled = true;
+	if (icon) icon.classList.add('fa-spin');
+	var done = function() {
+		if (btn) btn.disabled = false;
+		if (icon) icon.classList.remove('fa-spin');
+	};
+	fetch(TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/standings')
+		.then(function(r) { return r.json(); })
+		.then(function(d) {
+			done();
+			if (!d || d.status !== 0) {
+				window.tnToast('Error: ' + ((d && d.error) || 'Could not refresh standings'));
+				return;
+			}
+			TnConfig.standingsData = d.standings || {};
+			if (Array.isArray(d.points) && d.points.length) TnConfig.standingsPoints = d.points;
+			// Patch bracket meta so pills label correctly even for brackets created after page load.
+			if (!TnConfig.bracketData) TnConfig.bracketData = {};
+			(d.brackets || []).forEach(function(b) {
+				var bid = parseInt(b.BracketId, 10) || 0;
+				if (bid <= 0) return;
+				if (!TnConfig.bracketData[bid]) TnConfig.bracketData[bid] = {};
+				if (!TnConfig.bracketData[bid].Bracket) TnConfig.bracketData[bid].Bracket = { BracketId: bid };
+				TnConfig.bracketData[bid].Bracket.Style  = b.Style;
+				TnConfig.bracketData[bid].Bracket.Method = b.Method;
+			});
+			tnRenderLeaderboard();
+			tnRenderStandingsTables();
+			window.tnToast('Standings refreshed');
+		})
+		.catch(function(err) { done(); window.tnToast('Request failed: ' + err); });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
 	tnRenderLeaderboard();
+	tnRenderStandingsTables();
 });
 
 

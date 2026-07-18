@@ -128,6 +128,36 @@ class Controller_TournamentAjax extends Controller {
 				? json_encode(['status' => 0, 'brackets' => $r['Detail'] ?? []])
 				: $this->modelError($r);
 			exit;
+
+		} elseif ($action === 'standings') {
+			// Fresh standings for every bracket that has matches (mirrors the page
+			// controller's load), plus the points config and bracket meta so the
+			// client can rebuild the Standings tab without a reload.
+			$br = $this->Tournament->get_brackets($tournament_id);
+			if ($br['Status'] != 0) { echo $this->modelError($br); exit; }
+			$standings   = [];
+			$bracketMeta = [];
+			foreach (($br['Detail'] ?? []) as $b) {
+				$bid = (int)($b['BracketId'] ?? 0);
+				if ($bid <= 0) continue;
+				$bracketMeta[] = [
+					'BracketId' => $bid,
+					'Style'     => $b['Style']  ?? '',
+					'Method'    => $b['Method'] ?? '',
+				];
+				$mr = $this->Tournament->get_matches(['BracketId' => $bid]);
+				if ($mr['Status'] != 0 || empty($mr['Detail'])) continue;
+				$sr = $this->Tournament->get_standings($bid);
+				if ($sr['Status'] == 0) $standings[$bid] = $sr['Detail'] ?? [];
+			}
+			$pr = $this->Tournament->get_standings_points($tournament_id);
+			echo json_encode([
+				'status'    => 0,
+				'standings' => (object)$standings,
+				'points'    => ($pr['Status'] == 0) ? ($pr['Detail'] ?? []) : [],
+				'brackets'  => $bracketMeta,
+			]);
+			exit;
 		}
 
 		// ── All other tournament actions require a logged-in session ──
