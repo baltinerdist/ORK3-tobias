@@ -2803,7 +2803,10 @@ class Tournament extends Ork3 {
 	 * tied place (both semifinal losers share 3rd). Never-eliminated competitors (the
 	 * champion, or everyone still alive mid-bracket) rank first. For double-elim only a
 	 * losers-bracket or grand-final loss eliminates a competitor (a winners-bracket loss
-	 * just drops them to the losers bracket). Mutates $standings, assigning each a 'Rank'.
+	 * just drops them to the losers bracket). A resolved tiebreaker-3rd match splits the
+	 * semifinal losers: its winner takes 3rd, its loser 4th — depths are scaled ×2 so the
+	 * winner can sit half a round above the shared semifinal depth without colliding with
+	 * the finals loser. Mutates $standings, assigning each a 'Rank'.
 	 */
 	private function assignEliminationRanks(array &$standings, $bracket_id, $method) {
 		if (empty($standings)) return;
@@ -2825,18 +2828,32 @@ class Tournament extends Ork3 {
 		}
 
 		// depth[participant_id] = round at which they were finally eliminated (deeper = further).
+		// Depths are round × 2 so the tiebreaker-3rd winner can be bumped +1 (half a round)
+		// above the shared semifinal-loss depth while staying below the finals loser.
 		$depth = [];
+		$tbWinner = 0;
+		$tbLoser  = 0;
 		foreach ($rows as [$p1, $p2, $rnd, $side, $result]) {
 			[$w, $l] = $this->resolveWinnerLoser($result, $p1, $p2);
 			if ($l <= 0) continue; // tie or bye — no elimination
+			if ($side === 'tiebreaker-3rd') {
+				// The 3rd-place playoff is not an elimination — it only orders the two
+				// semifinal losers (winner=3rd, loser=4th), applied after the loop.
+				$tbWinner = $w;
+				$tbLoser  = $l;
+				continue;
+			}
 			if ($method === 'double') {
-				if ($side === 'losers')          $d = $rnd;
-				elseif ($side === 'grand-final') $d = $maxLbRound + 1;
+				if ($side === 'losers')          $d = $rnd * 2;
+				elseif ($side === 'grand-final') $d = ($maxLbRound + 1) * 2;
 				else                             continue; // winners-bracket loss only drops to LB
 			} else {
-				$d = $rnd; // single-elim: the round of the (only) loss
+				$d = $rnd * 2; // single-elim: the round of the (only) loss
 			}
 			if (!isset($depth[$l]) || $d > $depth[$l]) $depth[$l] = $d;
+		}
+		if ($tbWinner > 0) {
+			$depth[$tbWinner] = ($depth[$tbWinner] ?? 0) + 1;
 		}
 
 		$INF = PHP_INT_MAX; // never eliminated → champion / still alive
@@ -3947,7 +3964,11 @@ class Tournament extends Ork3 {
 		if (!is_array($points) || count($points) < 1 || count($points) > 16) {
 			return InvalidParameter('Invalid points data (must be 1-16 positions).');
 		}
-		$points_clean = array_map(function($v) { return max(0, (int)$v); }, $points);
+		// Round to the nearest half point; keep whole values as ints so the stored JSON stays clean.
+		$points_clean = array_map(function($v) {
+			$n = max(0, round(((float)$v) * 2) / 2);
+			return ($n == (int)$n) ? (int)$n : $n;
+		}, $points);
 
 		$this->db->query(
 			"UPDATE " . DB_PREFIX . "tournament SET standings_points = :points WHERE tournament_id = :tid",

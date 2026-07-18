@@ -2991,7 +2991,7 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 							foreach ($stRows as $stRow):
 								$_isTied    = $_stPrev !== null && $stRow['Rank'] === $_stPrev['Rank'];
 								$_stRank    = (int)$stRow['Rank'];
-								$_placePts  = ($_stRank >= 1 && $_stRank <= 8) ? (int)($standingsPoints[$_stRank - 1] ?? 0) : 0;
+								$_placePts  = ($_stRank >= 1 && $_stRank <= 8) ? (float)($standingsPoints[$_stRank - 1] ?? 0) : 0;
 								if ($_stPrev !== null && $stRow['Rank'] !== $_stPrev['Rank'] && isset($_stTieCount) && $_stTieCount > 1):
 									$_colspan = ($_stIsIronman ? 7 : 9) + ($canRecommend ? 1 : 0);
 									for ($_si = 0; $_si < $_stTieCount - 1; $_si++): ?>
@@ -3651,7 +3651,7 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 				?>
 				<div class="tn-field" style="margin:0">
 					<label style="font-size:11px"><?= $_oLabel ?> Place</label>
-					<input type="number" class="tn-cs-pts-input" data-idx="<?= $_oi ?>" min="0" max="999" value="<?= (int)($standingsPoints[$_oi] ?? 0) ?>" style="text-align:center">
+					<input type="number" class="tn-cs-pts-input" data-idx="<?= $_oi ?>" min="0" max="999" step="0.5" value="<?= (float)($standingsPoints[$_oi] ?? 0) ?>" style="text-align:center">
 				</div>
 				<?php endforeach; ?>
 			</div>
@@ -5153,7 +5153,7 @@ document.addEventListener('DOMContentLoaded', function() {
 			var btn = this;
 			var pts = [];
 			document.querySelectorAll('.tn-cs-pts-input').forEach(function(inp) {
-				pts.push(Math.max(0, parseInt(inp.value) || 0));
+				pts.push(Math.max(0, Math.round((parseFloat(inp.value) || 0) * 2) / 2));
 			});
 			if (pts.length !== 8) { tnShowFeedback('tn-cs-feedback','Invalid input.',false); return; }
 			btn.disabled = true;
@@ -9518,8 +9518,11 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 		}
 
 		// ── Single-elim 3rd place tiebreaker banner ─────────────────────────────
-		// Show when: single-elim, bracket complete, at least 2 rounds (semis exist),
-		// no tiebreaker-3rd match yet, and bracket is not finalized.
+		// Show as soon as the finals pairing is set (both semifinals resolved) so the
+		// organizer can bracket out the 3rd/4th fight while the finals are still pending.
+		// The "Tournament Complete" (waive) button only appears once the bracket is
+		// actually complete; requires ≥2 rounds (semis exist), no tiebreaker-3rd match
+		// yet, and bracket not finalized.
 		if (method === 'single' && TnConfig.canManage) {
 			var bd2 = TnConfig.bracketData[bracketId];
 			var bracketStatus2 = bd2 && bd2.Bracket ? bd2.Bracket.Status : '';
@@ -9528,7 +9531,12 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 			matches.forEach(function(m) {
 				if ((m.BracketSide || 'winners') === 'winners') maxWRRound = Math.max(maxWRRound, parseInt(m.Round) || 0);
 			});
-			if (bracketStatus2 === 'complete' && !hasTiebreaker && maxWRRound >= 2) {
+			var finalsReady = matches.some(function(m) {
+				return (m.BracketSide || 'winners') === 'winners' && (parseInt(m.Round) || 0) === maxWRRound
+					&& parseInt(m.Participant1Id) > 0 && parseInt(m.Participant2Id) > 0;
+			});
+			var bracketDone = (bracketStatus2 === 'complete');
+			if ((bracketDone || finalsReady) && bracketStatus2 !== 'finalized' && !hasTiebreaker && maxWRRound >= 2) {
 				var tid2 = TnConfig.tournamentId;
 
 				var doTiebreakerYes = function() {
@@ -9576,15 +9584,19 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 				// Yellow banner above the bracket
 				var tbBanner = document.createElement('div');
 				tbBanner.className = 'tn-gf-confirm-banner';
+				var tbText = bracketDone
+					? 'The bracket is complete — the two semifinal runners-up are tied for 3rd place. Is a tiebreaker match needed?'
+					: 'The finals are set — the two semifinal runners-up are tied for 3rd place. Bracket out a 3rd/4th place match?';
 				tbBanner.innerHTML =
-					'<div class="tn-gf-confirm-text"><i class="fas fa-medal"></i> The bracket is complete — the two semifinal runners-up are tied for 3rd place. Is a tiebreaker match needed?</div>' +
+					'<div class="tn-gf-confirm-text"><i class="fas fa-medal"></i> ' + tbText + '</div>' +
 					'<div class="tn-gf-confirm-btns">' +
 						'<button class="tn-gf-confirm-yes"><i class="fas fa-check-circle"></i> Tiebreaker for 3rd</button>' +
-						'<button class="tn-gf-confirm-no"><i class="fas fa-times-circle"></i> Tournament Complete</button>' +
+						(bracketDone ? '<button class="tn-gf-confirm-no"><i class="fas fa-times-circle"></i> Tournament Complete</button>' : '') +
 					'</div>';
 				wrap.insertBefore(tbBanner, wrap.firstChild);
 				tbBanner.querySelector('.tn-gf-confirm-yes').onclick = doTiebreakerYes;
-				tbBanner.querySelector('.tn-gf-confirm-no').onclick = doTiebreakerNo;
+				var tbNoBtn = tbBanner.querySelector('.tn-gf-confirm-no');
+				if (tbNoBtn) tbNoBtn.onclick = doTiebreakerNo;
 			}
 		}
 	}

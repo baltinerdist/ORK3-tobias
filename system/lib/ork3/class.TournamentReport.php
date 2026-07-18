@@ -71,7 +71,8 @@ class TournamentReport extends Ork3 {
 	/**
 	 * Elimination placements. The decisive match is the grand-final (double) or the
 	 * highest-round winners match (single). Winner=1, its opponent=2.
-	 * 3rd = winner of tiebreaker-3rd match (if present), else losers of semifinals.
+	 * 3rd = winner of tiebreaker-3rd match (if present, its loser = 4th),
+	 * else losers of semifinals.
 	 */
 	private function placementsFromElimination($bracket_id, $method) {
 		// Find the decisive final: grand-final first, then highest round on winners side
@@ -109,6 +110,8 @@ class TournamentReport extends Ork3 {
 			$b  = (int)$t3->participant_2_id;
 			$w3 = $this->matchWinner($a, $b, $t3->result);
 			if ($w3 > 0 && !in_array($w3, $ordered, true)) $ordered[] = $w3;
+			$l3 = ($w3 === $a) ? $b : (($w3 === $b) ? $a : 0);
+			if ($w3 > 0 && $l3 > 0 && !in_array($l3, $ordered, true)) $ordered[] = $l3;
 		} elseif ($method === 'double') {
 			// Double-elim without an explicit 3rd-place match: 3rd = the loser of the
 			// final (highest-round) losers-bracket match — they were eliminated last on
