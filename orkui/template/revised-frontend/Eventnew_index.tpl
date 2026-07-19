@@ -149,6 +149,13 @@
 	$canManageAttendance = $CanManageAttendance ?? false;
 	$canManageSchedule   = $CanManageSchedule ?? false;
 	$canManageFeast      = $CanManageFeast ?? false;
+	$canManageSite = $CanManageSite ?? false;
+	$siteRules     = $SiteRules     ?? [];
+	$siteLocations = $SiteLocations ?? [];
+	$siteMap       = $SiteMap       ?? null;
+	require_once(DIR_LIB . 'ork3/eventsite-catalog.php');
+	$siteRuleCatalog   = event_site_rule_catalog();
+	$siteLocCategories = event_site_location_categories();
 	$canManageStaff = $canManage || $canManageAttendance;
 	$canDelete           = ($attendeeCount === 0 && $rsvpCount === 0);
 
@@ -173,6 +180,10 @@
 ?>
 
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>revised-frontend/style/revised.css?v=<?= filemtime(DIR_TEMPLATE . 'revised-frontend/style/revised.css') ?>">
+<?php if (!empty($siteMap) || $canManageSite): ?>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous" defer></script>
+<?php endif; ?>
 <style>
 .ev-export-bar { display: flex; justify-content: flex-end; gap: 6px; margin-bottom: 10px; }
 .ev-checkin-locked { display:flex; align-items:flex-start; gap:10px; background:#fffbeb; border:1px solid #f6e05e; border-radius:7px; padding:11px 14px; margin-bottom:14px; font-size:13px; color:#744210; line-height:1.45; }
@@ -390,6 +401,8 @@ html[data-theme="dark"] .ev-grid-block-title { color: var(--ork-text); }
 html[data-theme="dark"] .ev-grid-block-time { color: var(--ork-text-muted); }
 html[data-theme="dark"] .ev-grid-block-loc { color: var(--ork-text-secondary); }
 html[data-theme="dark"] .ev-grid-block-loc i { color: var(--ork-text-muted); }
+html[data-theme="dark"] .ev-loc-chip { background:#1e3a5f; border-color:#2c5282; color:#90cdf4; }
+html[data-theme="dark"] .ev-loc-chip:hover { background:#2c5282; }
 html[data-theme="dark"] .ev-grid-lead-chip { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.12); color: var(--ork-text-secondary); }
 html[data-theme="dark"] .ev-grid-cat-count { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.14); color: var(--ork-text); }
 html[data-theme="dark"] .ev-grid-now-dot { box-shadow: 0 0 0 2px var(--ork-bg-secondary); }
@@ -720,6 +733,85 @@ html[data-theme="dark"] .ev-ds-pill.ev-ds-pill-mild{background:#78350f;color:#fd
 html[data-theme="dark"] .ev-ds-pill.ev-ds-pill-severe{background:#7f1d1d;color:#fca5a5;border-color:#b91c1c}
 html[data-theme="dark"] .ev-ds-action-btn{background:rgba(72,187,120,.1);border-color:#276749;color:#68d391}
 html[data-theme="dark"] .ev-ds-action-btn:hover{background:rgba(72,187,120,.2)}
+.ev-site-section-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:18px 0 10px; }
+#ev-tab-site .ev-site-section-title { background:none; border:none; padding:0; border-radius:0; margin:0; font-size:16px; font-weight:700; color:#2d3748; }
+#ev-tab-site .ev-site-section-title i { margin-right:7px; color:#4a5568; }
+html[data-theme="dark"] #ev-tab-site .ev-site-section-title { color:#e2e8f0; }
+html[data-theme="dark"] #ev-tab-site .ev-site-section-title i { color:#a0aec0; }
+/* Site rules pills */
+.ev-site-pills { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
+.ev-site-pill { display:inline-flex; align-items:center; gap:5px; padding:5px 12px; border-radius:999px; font-size:13px; border:1px solid; }
+.ev-site-pill i { font-size:12px; }
+.ev-site-pill-restrictive { background:#fff5f5; border-color:#feb2b2; color:#c53030; }
+.ev-site-pill-neutral     { background:#f7fafc; border-color:#cbd5e0; color:#4a5568; }
+.ev-site-pill-permissive  { background:#f0fff4; border-color:#9ae6b4; color:#276749; }
+.ev-site-pill-info { opacity:.6; font-size:11px; }
+.ev-site-custom-rules { margin:6px 0 0; padding-left:20px; }
+.ev-site-custom-rules li { margin-bottom:5px; font-size:14px; color:#2d3748; }
+.ev-site-custom-detail { display:block; font-size:12.5px; color:#718096; }
+.ev-site-cta { border:2px dashed #cbd5e0; border-radius:8px; padding:16px; text-align:center; color:#718096; cursor:pointer; font-size:14px; }
+.ev-site-cta:hover { border-color:#a0aec0; color:#4a5568; }
+/* Rules modal */
+.ev-site-rule-group { margin-bottom:12px; }
+.ev-site-rule-group-label { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#4a5568; margin-bottom:5px; }
+.ev-site-rule-group-label i { margin-right:4px; }
+.ev-site-rule-options { display:flex; flex-wrap:wrap; gap:6px; }
+.ev-site-opt { border:1px solid #cbd5e0; background:#fff; border-radius:999px; padding:4px 12px; font-size:12.5px; color:#4a5568; cursor:pointer; }
+.ev-site-opt.ev-site-opt-on { background:#2c5282; border-color:#2c5282; color:#fff; }
+.ev-site-custom-row { display:flex; gap:6px; margin-bottom:6px; align-items:flex-start; }
+.ev-site-custom-row input { flex:1; }
+.ev-site-custom-row .ev-site-custom-del { background:none; border:none; color:#e53e3e; cursor:pointer; font-size:16px; padding:4px; }
+/* Dark mode */
+html[data-theme="dark"] .ev-site-pill-restrictive { background:#3b1f1f; border-color:#822727; color:#feb2b2; }
+html[data-theme="dark"] .ev-site-pill-neutral     { background:#2d3748; border-color:#4a5568; color:#cbd5e0; }
+html[data-theme="dark"] .ev-site-pill-permissive  { background:#1c2f24; border-color:#276749; color:#9ae6b4; }
+html[data-theme="dark"] .ev-site-custom-rules li { color:#e2e8f0; }
+html[data-theme="dark"] .ev-site-custom-detail { color:#a0aec0; }
+html[data-theme="dark"] .ev-site-cta { border-color:#4a5568; color:#a0aec0; }
+html[data-theme="dark"] .ev-site-rule-group-label { color:#a0aec0; }
+html[data-theme="dark"] .ev-site-opt { background:#2d3748; border-color:#4a5568; color:#cbd5e0; }
+html[data-theme="dark"] .ev-site-opt.ev-site-opt-on { background:#3182ce; border-color:#3182ce; color:#fff; }
+/* Site map */
+#ev-site-map-wrap { position:relative; }
+#ev-site-map { width:100%; height:480px; border-radius:8px; border:1px solid #e2e8f0; background:#f7fafc; z-index:0; }
+@media (max-width:640px) { #ev-site-map { height:360px; } }
+#ev-site-editmode-hint { position:absolute; top:10px; left:50%; transform:translateX(-50%); z-index:500; background:#2c5282; color:#fff; font-size:12.5px; padding:6px 14px; border-radius:999px; box-shadow:0 2px 8px rgba(0,0,0,.25); pointer-events:none; }
+#ev-site-map.ev-site-editing { cursor:crosshair; }
+.ev-site-legend { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+.ev-site-legend-chip { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:999px; font-size:12px; border:1px solid #cbd5e0; background:#fff; color:#4a5568; cursor:pointer; }
+.ev-site-legend-chip i { font-size:11px; }
+/* divIcon pin */
+.ev-site-pin { display:flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:50% 50% 50% 0; transform:rotate(-45deg); border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,.35); }
+.ev-site-pin i { transform:rotate(45deg); color:#fff; font-size:13px; }
+.ev-site-popup-name { font-weight:700; font-size:14px; margin-bottom:2px; }
+.ev-site-popup-cat { font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:#718096; margin-bottom:4px; }
+.ev-site-popup-desc { font-size:12.5px; color:#4a5568; margin-bottom:6px; }
+.ev-site-popup-sched { border-top:1px solid #e2e8f0; margin-top:6px; padding-top:6px; }
+.ev-site-popup-sched a { display:block; font-size:12px; margin-bottom:3px; }
+.ev-site-popup-actions { border-top:1px solid #e2e8f0; margin-top:6px; padding-top:6px; display:flex; gap:10px; }
+.ev-site-popup-actions button { background:none; border:none; cursor:pointer; font-size:12px; color:#3182ce; padding:0; }
+.ev-site-popup-actions button.ev-site-popup-del { color:#e53e3e; }
+/* Leaflet dark mode (pattern proven on the Weather page) */
+html[data-theme="dark"] #ev-site-map { background:#1a202c; border-color:#4a5568; }
+html[data-theme="dark"] .leaflet-bar a { background:#2d3748; color:#e2e8f0; border-color:#4a5568; }
+html[data-theme="dark"] .leaflet-popup-content-wrapper, html[data-theme="dark"] .leaflet-popup-tip { background:#2d3748; color:#e2e8f0; }
+html[data-theme="dark"] .ev-site-popup-desc { color:#cbd5e0; }
+html[data-theme="dark"] .ev-site-popup-cat { color:#a0aec0; }
+html[data-theme="dark"] .ev-site-popup-sched, html[data-theme="dark"] .ev-site-popup-actions { border-color:#4a5568; }
+html[data-theme="dark"] .ev-site-legend-chip { background:#2d3748; border-color:#4a5568; color:#cbd5e0; }
+/* Always-visible pin labels (permanent Leaflet tooltip) */
+.leaflet-tooltip.ev-pin-label { background:rgba(255,255,255,.92); color:#2d3748; border:1px solid #cbd5e0; border-radius:4px; padding:1px 6px; font-size:11px; font-weight:600; box-shadow:0 1px 3px rgba(0,0,0,.2); }
+.leaflet-tooltip.ev-pin-label:before { display:none; }
+html[data-theme="dark"] .leaflet-tooltip.ev-pin-label { background:rgba(45,55,72,.94); color:#e2e8f0; border-color:#4a5568; box-shadow:0 1px 3px rgba(0,0,0,.5); }
+/* Static fallback when Leaflet fails to load / a tile image is missing */
+#ev-site-map.ev-site-map-static { overflow:auto; padding:0; }
+.ev-site-map-fallback-note, .ev-site-map-overlay-error { display:flex; align-items:flex-start; gap:7px; background:#fffbeb; border:1px solid #f6e05e; color:#744210; font-size:12.5px; line-height:1.45; padding:8px 12px; border-radius:6px; margin:8px; }
+.ev-site-map-fallback img { display:block; max-width:none; }
+.ev-site-map-overlay-error { position:absolute; top:10px; left:10px; right:10px; z-index:600; margin:0; }
+html[data-theme="dark"] .ev-site-map-fallback-note, html[data-theme="dark"] .ev-site-map-overlay-error { background:#3b2f1a; border-color:#975a16; color:#fbd38d; }
+/* Screen-reader / print text equivalent of the tagged pins */
+.ev-site-loc-textlist { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+@media print { .ev-site-loc-textlist { position:static; width:auto; height:auto; margin:8px 0 0; overflow:visible; clip:auto; white-space:normal; } }
 </style>
 
 <?php // ---- DRAFT BLOCKED ---- ?>
@@ -886,7 +978,10 @@ html[data-theme="dark"] .ev-ds-action-btn:hover{background:rgba(72,187,120,.2)}
 		</div>
 		<div class="ev-stat-label">Starts At</div>
 	</div>
-	<?php $hasMapTab = (bool)($locationDisplay ?: $locationFallback); ?>
+	<?php
+		$hasMapTab  = (bool)($locationDisplay ?: $locationFallback);
+		$hasSiteTab = $hasMapTab || !empty($siteRules) || !empty($siteMap) || $canManageSite;
+	?>
 	<?php $_dispLoc = $locationDisplay ?: $locationFallback; ?>
 	<div class="ev-stat-card ev-stat-card-location">
 		<div class="ev-stat-icon"><i class="fas fa-map-marker-alt"></i></div>
@@ -897,7 +992,7 @@ html[data-theme="dark"] .ev-ds-action-btn:hover{background:rgba(72,187,120,.2)}
 		<?php if ($hasMapTab || $mapLink || ($mapUrl && $mapUrlName)): ?>
 		<div class="ev-stat-actions">
 			<?php if ($hasMapTab): ?>
-			<button type="button" class="ev-stat-action" onclick="evShowTab(document.querySelector('[data-tab=ev-tab-map]'),'ev-tab-map')" data-tip="View the embedded map">
+			<button type="button" class="ev-stat-action" onclick="evShowTab(document.querySelector('[data-tab=ev-tab-site]'),'ev-tab-site')" data-tip="View the embedded map">
 				<i class="fas fa-map-marked-alt"></i> Map
 			</button>
 			<?php endif; ?>
@@ -1078,9 +1173,9 @@ html[data-theme="dark"] .ev-ds-action-btn:hover{background:rgba(72,187,120,.2)}
 					<i class="fas fa-id-badge"></i><span class="ev-tab-label"> Staff</span>
 					<span class="ev-tab-count"><?= count($StaffList ?? []) ?></span>
 				</li>
-				<?php if ($hasMapTab): ?>
-				<li data-tab="ev-tab-map" onclick="evShowTab(this,'ev-tab-map')">
-					<i class="fas fa-map-marked-alt"></i><span class="ev-tab-label"> Map</span>
+				<?php if ($hasSiteTab): ?>
+				<li data-tab="ev-tab-site" onclick="evShowTab(this,'ev-tab-site')">
+					<i class="fas fa-map-marked-alt"></i><span class="ev-tab-label"> Site</span>
 				</li>
 				<?php endif; ?>
 				<?php if ($canManage): ?>
@@ -1260,7 +1355,7 @@ html[data-theme="dark"] .ev-ds-action-btn:hover{background:rgba(72,187,120,.2)}
 							$evSeg = ($item['_IsFirstDay'] && $item['_IsLastDay']) ? 'single'
 								: ($item['_IsFirstDay'] ? 'first' : ($item['_IsLastDay'] ? 'last' : 'mid'));
 						?>
-						<tr <?php if ($item['_IsFirstDay']): ?>id="ev-schedule-row-<?= (int)$item['EventScheduleId'] ?>" <?php endif; ?>data-seg="<?= $evSeg ?>" data-schedule-id="<?= (int)$item['EventScheduleId'] ?>" data-title="<?= htmlspecialchars($item['Title'], ENT_QUOTES) ?>" data-start="<?= date('Y-m-d\TH:i', strtotime($item['StartTime'])) ?>" data-end="<?= date('Y-m-d\TH:i', strtotime($item['EndTime'])) ?>" data-location="<?= htmlspecialchars($item['Location'], ENT_QUOTES) ?>" data-description="<?= htmlspecialchars($item['Description'], ENT_QUOTES) ?>" data-category="<?= htmlspecialchars($evCat, ENT_QUOTES) ?>" data-secondary-category="<?= htmlspecialchars($evSecCat, ENT_QUOTES) ?>" data-leads="<?= htmlspecialchars(json_encode($item['Leads'] ?? []), ENT_QUOTES) ?>" data-menu="<?= htmlspecialchars($item['Menu'] ?? '', ENT_QUOTES) ?>" data-cost="<?= htmlspecialchars((string)($item['Cost'] ?? ''), ENT_QUOTES) ?>" data-dietary="<?= htmlspecialchars($item['Dietary'] ?? '', ENT_QUOTES) ?>" data-allergens="<?= htmlspecialchars($item['Allergens'] ?? '', ENT_QUOTES) ?>" style="background:<?= $evCatCfg['bg'] ?>">
+						<tr <?php if ($item['_IsFirstDay']): ?>id="ev-schedule-row-<?= (int)$item['EventScheduleId'] ?>" <?php endif; ?>data-seg="<?= $evSeg ?>" data-schedule-id="<?= (int)$item['EventScheduleId'] ?>" data-title="<?= htmlspecialchars($item['Title'], ENT_QUOTES) ?>" data-start="<?= date('Y-m-d\TH:i', strtotime($item['StartTime'])) ?>" data-end="<?= date('Y-m-d\TH:i', strtotime($item['EndTime'])) ?>" data-location="<?= htmlspecialchars($item['Location'], ENT_QUOTES) ?>" data-description="<?= htmlspecialchars($item['Description'], ENT_QUOTES) ?>" data-category="<?= htmlspecialchars($evCat, ENT_QUOTES) ?>" data-secondary-category="<?= htmlspecialchars($evSecCat, ENT_QUOTES) ?>" data-leads="<?= htmlspecialchars(json_encode($item['Leads'] ?? []), ENT_QUOTES) ?>" data-menu="<?= htmlspecialchars($item['Menu'] ?? '', ENT_QUOTES) ?>" data-cost="<?= htmlspecialchars((string)($item['Cost'] ?? ''), ENT_QUOTES) ?>" data-dietary="<?= htmlspecialchars($item['Dietary'] ?? '', ENT_QUOTES) ?>" data-allergens="<?= htmlspecialchars($item['Allergens'] ?? '', ENT_QUOTES) ?>" data-site-location-id="<?= $item['SiteLocationId'] !== null ? (int)$item['SiteLocationId'] : '' ?>" style="background:<?= $evCatCfg['bg'] ?>">
 							<td style="white-space:nowrap"><?= $item['_IsFirstDay'] ? date('g:ia', $item['_SegStart']) : '(cont.)' ?></td>
 							<td style="white-space:nowrap"><?php
 								if (!$item['_IsLastDay']) {
@@ -1274,7 +1369,7 @@ html[data-theme="dark"] .ev-ds-action-btn:hover{background:rgba(72,187,120,.2)}
 								}
 							?></td>
 							<td style="white-space:nowrap"><i class="fas fa-fw <?= $evCatCfg['icon'] ?>" style="color:<?= $evCatCfg['color'] ?>" data-tip="<?= htmlspecialchars($evCat) ?>"></i><?php if ($evSecCatCfg): ?><i class="fas fa-fw <?= $evSecCatCfg['icon'] ?>" style="color:<?= $evSecCatCfg['color'] ?>;margin-right:4px" data-tip="<?= htmlspecialchars($evSecCat) ?>"></i><?php else: ?><span style="display:inline-block;width:1.25em;margin-right:4px"></span><?php endif; ?><?= htmlspecialchars($item['Title']) ?><?php if (($evCat === 'Feast and Food' || $evSecCat === 'Feast and Food') && !empty($item['Menu'])): ?> <i class="fas fa-scroll" style="color:#e65100;font-size:10px;margin-left:4px;vertical-align:middle" data-tip="Has menu"></i><?php endif; ?></td>
-							<td><?= htmlspecialchars($item['Location']) ?></td>
+							<td><?php if (!empty($item['SiteLocationId']) && !empty($siteMap)): ?><a href="javascript:void(0)" class="ev-loc-chip" onclick="evSiteFlyTo(<?= (int)$item['SiteLocationId'] ?>)" data-tip="Show on site map"><i class="fas fa-map-marker-alt"></i> <?= htmlspecialchars($item['Location']) ?></a><?php else: ?><?= htmlspecialchars($item['Location']) ?><?php endif; ?></td>
 							<td><?php foreach ($item['Leads'] ?? [] as $li => $lead) { if ($li > 0) echo ', '; echo '<a href="' . UIR . 'Playernew/index/' . (int)$lead['MundaneId'] . '">' . htmlspecialchars($lead['Persona']) . '</a>'; } ?></td>
 							<td><?= htmlspecialchars($item['Description']) ?></td>
 							<?php if ($canManageSchedule): ?>
@@ -1451,7 +1546,7 @@ html[data-theme="dark"] .ev-ds-action-btn:hover{background:rgba(72,187,120,.2)}
 										</div>
 										<div class="ev-grid-block-time"><?php if (!$it['_IsFirstDay']): ?>&rarr; <?php endif; ?><?= date('g:ia', $entry['start']) ?> – <?= date('g:ia', $entry['end']) ?><?php if (!$it['_IsLastDay']): ?> &rarr;<?php endif; ?></div>
 										<?php if (!empty($it['Location'])): ?>
-										<div class="ev-grid-block-loc"><i class="fas fa-map-marker-alt"></i> <?= htmlspecialchars($it['Location']) ?></div>
+										<div class="ev-grid-block-loc"><?php if (!empty($it['SiteLocationId']) && !empty($siteMap)): ?><a href="javascript:void(0)" class="ev-loc-chip ev-loc-chip-grid" onclick="event.stopPropagation();evSiteFlyTo(<?= (int)$it['SiteLocationId'] ?>)"><i class="fas fa-map-marker-alt"></i> <?= htmlspecialchars($it['Location']) ?></a><?php else: ?><i class="fas fa-map-marker-alt"></i> <?= htmlspecialchars($it['Location']) ?><?php endif; ?></div>
 										<?php endif; ?>
 										<?php if (!empty($it['Leads'])): ?>
 										<div class="ev-grid-block-leads">
@@ -1507,7 +1602,7 @@ html[data-theme="dark"] .ev-ds-action-btn:hover{background:rgba(72,187,120,.2)}
 							<?php endif; ?>
 							<?php if ($canManageFeast || $canManageSchedule): ?>
 							<button class="ev-edit-btn" data-tip="Edit feast item"
-								onclick='evOpenFeastEditModal(<?= htmlspecialchars(json_encode(["EventScheduleId"=>(int)$meal["EventScheduleId"],"Title"=>$meal["Title"],"StartTime"=>$meal["StartTime"]??"","EndTime"=>$meal["EndTime"]??"","Location"=>$meal["Location"]??"","Description"=>$meal["Description"]??"","Category"=>$meal["Category"]??"","SecondaryCategory"=>$meal["SecondaryCategory"]??"","Leads"=>$meal["Leads"]??[],"Menu"=>$meal["Menu"]??"","Cost"=>$meal["Cost"],"Dietary"=>$meal["Dietary"]??"","Allergens"=>$meal["Allergens"]??""]), ENT_QUOTES) ?>)'>
+								onclick='evOpenFeastEditModal(<?= htmlspecialchars(json_encode(["EventScheduleId"=>(int)$meal["EventScheduleId"],"Title"=>$meal["Title"],"StartTime"=>$meal["StartTime"]??"","EndTime"=>$meal["EndTime"]??"","Location"=>$meal["Location"]??"","SiteLocationId"=>$meal["SiteLocationId"]??null,"Description"=>$meal["Description"]??"","Category"=>$meal["Category"]??"","SecondaryCategory"=>$meal["SecondaryCategory"]??"","Leads"=>$meal["Leads"]??[],"Menu"=>$meal["Menu"]??"","Cost"=>$meal["Cost"],"Dietary"=>$meal["Dietary"]??"","Allergens"=>$meal["Allergens"]??""]), ENT_QUOTES) ?>)'>
 								<i class="fas fa-pencil-alt"></i></button>
 							<button class="ev-del-link" data-tip="Remove feast item" style="background:none;border:none;cursor:pointer;color:#e53e3e;font-size:18px;padding:0;line-height:1"
 								onclick="evRemoveFeastCard(this, <?= (int)$meal['EventScheduleId'] ?>)">&times;</button>
@@ -1987,37 +2082,143 @@ html[data-theme="dark"] .ev-ds-action-btn:hover{background:rgba(72,187,120,.2)}
 
 			</div><!-- /.ev-tab-panel (staff) -->
 
-			<?php if ($hasMapTab): ?>
-			<?php
-				$mapOpenUrl  = $mapLink ?: null;
-				$mapQuery    = urlencode($mapQueryAddress);
-				if ($mapLink && strpos($mapLink, 'q=@') !== false) {
-					// lat/lng link — strip @ for embed (Google Maps embed doesn't accept @)
-					$mapEmbedUrl = str_replace('?q=@', '?q=', $mapLink) . '&output=embed&z=14';
-				} else {
-					$mapEmbedUrl = 'https://maps.google.com/maps?q=' . $mapQuery . '&output=embed';
-				}
-				if (!$mapOpenUrl) $mapOpenUrl = 'https://maps.google.com/maps?q=' . $mapQuery;
-			?>
-			<?php // ---- Map Tab ---- ?>
-			<div class="ev-tab-panel" id="ev-tab-map">
-				<div style="margin-bottom:10px;display:flex;justify-content:flex-end">
-					<a href="<?= htmlspecialchars($mapOpenUrl) ?>" target="_blank" class="pk-btn pk-btn-secondary" style="font-size:13px;padding:6px 14px;text-decoration:none">
-						<i class="fas fa-external-link-alt" style="margin-right:6px"></i>Open in Maps
-					</a>
+			<?php if ($hasSiteTab): ?>
+			<?php // ---- Site Tab: rules + site map + directions ---- ?>
+			<div class="ev-tab-panel" id="ev-tab-site">
+
+				<div id="ev-site-rules-section">
+					<?php if (!empty($siteRules) || $canManageSite): ?>
+					<div class="ev-site-section-head">
+						<h3 class="ev-site-section-title"><i class="fas fa-clipboard-check"></i> Site Rules</h3>
+						<?php if ($canManageSite): ?>
+						<button type="button" class="pk-btn pk-btn-secondary" style="font-size:13px;padding:6px 14px" onclick="evOpenSiteRulesModal()">
+							<i class="fas fa-pencil-alt" style="margin-right:6px"></i>Edit Rules
+						</button>
+						<?php endif; ?>
+					</div>
+					<div id="ev-site-rules-display">
+						<?php if (empty($siteRules) && $canManageSite): ?>
+						<div class="ev-site-cta" onclick="evOpenSiteRulesModal()">
+							<i class="fas fa-plus-circle"></i> Add site rules — smoking, alcohol, pets, fires, and more
+						</div>
+						<?php endif; ?>
+						<?php if (!empty($siteRules)): ?>
+						<div class="ev-site-pills">
+							<?php foreach ($siteRules as $r): if ($r['RuleKey'] === null || !isset($siteRuleCatalog[$r['RuleKey']])) continue;
+								$cat = $siteRuleCatalog[$r['RuleKey']];
+								$val = $cat['values'][$r['Value']] ?? null; if (!$val) continue; ?>
+							<span class="ev-site-pill ev-site-pill-<?= $val['severity'] ?>"<?= $r['Details'] !== '' ? ' data-tip="' . htmlspecialchars($r['Details'], ENT_QUOTES) . '"' : '' ?>>
+								<i class="fas <?= $cat['icon'] ?>"></i>
+								<strong><?= htmlspecialchars($cat['label']) ?>:</strong>&nbsp;<?= htmlspecialchars($val['label']) ?>
+								<?php if ($r['Details'] !== ''): ?><i class="fas fa-info-circle ev-site-pill-info"></i><?php endif; ?>
+							</span>
+							<?php endforeach; ?>
+						</div>
+						<?php $customRules = array_values(array_filter($siteRules, fn ($r) => $r['RuleKey'] === null)); ?>
+						<?php if (!empty($customRules)): ?>
+						<ul class="ev-site-custom-rules">
+							<?php foreach ($customRules as $r): ?>
+							<li>
+								<strong><?= htmlspecialchars($r['Title']) ?></strong>
+								<?php if ($r['Details'] !== ''): ?><span class="ev-site-custom-detail"><?= htmlspecialchars($r['Details']) ?></span><?php endif; ?>
+							</li>
+							<?php endforeach; ?>
+						</ul>
+						<?php endif; ?>
+						<?php endif; ?>
+					</div>
+					<?php endif; ?>
 				</div>
-				<div style="width:100%;border-radius:8px;overflow:hidden;border:1px solid #e2e8f0">
-					<iframe
-						src="<?= htmlspecialchars($mapEmbedUrl) ?>"
-						width="100%"
-						height="400"
-						style="border:0;display:block"
-						allowfullscreen=""
-						loading="lazy"
-						referrerpolicy="no-referrer-when-downgrade"
-					></iframe>
+
+				<div id="ev-site-map-section">
+					<?php if (!empty($siteMap) || $canManageSite): ?>
+					<div class="ev-site-section-head">
+						<h3 class="ev-site-section-title"><i class="fas fa-map"></i> Site Map</h3>
+						<?php if ($canManageSite): ?>
+						<div style="display:flex;gap:8px">
+							<?php if (!empty($siteMap)): ?>
+							<button type="button" class="pk-btn pk-btn-secondary" id="ev-site-editmode-btn" style="font-size:13px;padding:6px 14px" onclick="evSiteToggleEditMode()">
+								<i class="fas fa-map-pin" style="margin-right:6px"></i><span>Edit Locations</span>
+							</button>
+							<?php endif; ?>
+							<button type="button" class="pk-btn pk-btn-secondary" style="font-size:13px;padding:6px 14px" onclick="evOpenSiteMapUploadModal()">
+								<i class="fas fa-upload" style="margin-right:6px"></i><?= !empty($siteMap) ? 'Replace Map' : 'Upload Site Map' ?>
+							</button>
+							<?php if (!empty($siteMap)): ?>
+							<button type="button" class="pk-btn pk-btn-secondary" style="font-size:13px;padding:6px 14px;color:#c53030" onclick="evRemoveSiteMap()">
+								<i class="fas fa-trash-alt" style="margin-right:6px"></i>Remove Map
+							</button>
+							<?php endif; ?>
+						</div>
+						<?php endif; ?>
+					</div>
+					<?php if (!empty($siteMap)): ?>
+					<div id="ev-site-map-wrap">
+						<div id="ev-site-map"></div>
+						<div id="ev-site-editmode-hint" style="display:none"><i class="fas fa-hand-pointer"></i> Click the map to place a pin. Drag pins to move them.</div>
+						<div class="ev-site-legend" id="ev-site-legend"></div>
+					</div>
+					<noscript>
+						<div style="overflow:auto;max-height:480px;border:1px solid #e2e8f0;border-radius:8px">
+							<img src="<?= htmlspecialchars($siteMap['Url']) ?>" alt="Site map" style="max-width:none">
+						</div>
+					</noscript>
+					<?php // Text equivalent of the tagged pins for non-visual users (and print). ?>
+					<?php if (!empty($siteLocations)): ?>
+					<ul class="ev-site-loc-textlist" aria-label="Tagged locations on the site map">
+						<?php foreach ($siteLocations as $_loc): ?>
+						<?php $_lc = $siteLocCategories[$_loc['Category']] ?? ($siteLocCategories['other'] ?? null); ?>
+						<li>
+							<strong><?= htmlspecialchars($_loc['Name']) ?></strong><?php if ($_lc): ?> (<?= htmlspecialchars($_lc['label']) ?>)<?php endif; ?><?php if (!empty($_loc['Description'])): ?> — <?= htmlspecialchars($_loc['Description']) ?><?php endif; ?>
+						</li>
+						<?php endforeach; ?>
+					</ul>
+					<?php endif; ?>
+					<?php elseif ($canManageSite): ?>
+					<div class="ev-site-cta" onclick="evOpenSiteMapUploadModal()">
+						<i class="fas fa-map"></i> Upload a site map to tag battlefields, camping, parking, and more
+					</div>
+					<?php endif; ?>
+					<?php if ($canManageSite): ?>
+					<div id="ev-site-map-remove-error" class="ev-modal-error" style="display:none"></div>
+					<?php endif; ?>
+					<?php endif; ?>
 				</div>
-			</div><!-- /.ev-tab-panel -->
+
+				<?php if ($hasMapTab): ?>
+				<?php
+					$mapOpenUrl  = $mapLink ?: null;
+					$mapQuery    = urlencode($mapQueryAddress);
+					if ($mapLink && strpos($mapLink, 'q=@') !== false) {
+						// lat/lng link — strip @ for embed (Google Maps embed doesn't accept @)
+						$mapEmbedUrl = str_replace('?q=@', '?q=', $mapLink) . '&output=embed&z=14';
+					} else {
+						$mapEmbedUrl = 'https://maps.google.com/maps?q=' . $mapQuery . '&output=embed';
+					}
+					if (!$mapOpenUrl) $mapOpenUrl = 'https://maps.google.com/maps?q=' . $mapQuery;
+				?>
+				<div id="ev-site-directions-section">
+					<div class="ev-site-section-head">
+						<h3 class="ev-site-section-title"><i class="fas fa-directions"></i> Getting There</h3>
+						<a href="<?= htmlspecialchars($mapOpenUrl) ?>" target="_blank" rel="noopener" class="pk-btn pk-btn-secondary" style="font-size:13px;padding:6px 14px;text-decoration:none">
+							<i class="fas fa-external-link-alt" style="margin-right:6px"></i>Open in Maps
+						</a>
+					</div>
+					<div style="width:100%;border-radius:8px;overflow:hidden;border:1px solid #e2e8f0">
+						<iframe
+							src="<?= htmlspecialchars($mapEmbedUrl) ?>"
+							width="100%"
+							height="400"
+							style="border:0;display:block"
+							allowfullscreen=""
+							loading="lazy"
+							referrerpolicy="no-referrer-when-downgrade"
+						></iframe>
+					</div>
+				</div>
+				<?php endif; ?>
+
+			</div><!-- /.ev-tab-panel (site) -->
 			<?php endif; ?>
 
 			<?php if ($canManage): ?>
@@ -2497,6 +2698,11 @@ var EvConfig = {
 	bannerOffsetX:   <?= (int)$bannerOffsetX ?>,
 	bannerOffsetY:   <?= (int)$bannerOffsetY ?>,
 	bannerUrl:       <?= json_encode($bannerUrl) ?>,
+	canManageSite:     <?= !empty($canManageSite) ? 'true' : 'false' ?>,
+	siteMap:           <?= json_encode($siteMap) ?>,
+	siteLocations:     <?= json_encode($siteLocations) ?>,
+	siteLocCategories: <?= json_encode($siteLocCategories) ?>,
+	siteRuleCatalog:   <?= json_encode($siteRuleCatalog) ?>,
 };
 </script>
 <?php if ($canManageStaff): ?>
@@ -2851,6 +3057,12 @@ html[data-theme="dark"] #ev-attendance-table_wrapper .dataTables_paginate .pagin
 			<div class="ev-modal-row">
 				<div class="ev-modal-field ev-field-full">
 					<label>Location</label>
+					<select id="ev-sched-site-location" style="width:100%;margin-bottom:6px<?= empty($siteLocations) ? ';display:none' : '' ?>">
+						<option value="">— Pick from the site map (optional) —</option>
+						<?php foreach ($siteLocations as $sl): ?>
+						<option value="<?= (int)$sl['LocationId'] ?>"><?= htmlspecialchars($sl['Name']) ?></option>
+						<?php endforeach; ?>
+					</select>
 					<input type="text" id="ev-sched-location" placeholder="Main field, Feast hall, etc." autocomplete="off" style="width:100%">
 				</div>
 			</div>
@@ -2940,6 +3152,129 @@ html[data-theme="dark"] #ev-attendance-table_wrapper .dataTables_paginate .pagin
 			</button>
 			<button class="ev-submit-btn ev-sched-save-any" type="button" id="ev-sched-save-btn" onclick="evSubmitSchedule('close')">
 				<i class="fas fa-save"></i> <span id="ev-sched-save-label">Save and Close</span>
+			</button>
+		</div>
+	</div>
+</div>
+<?php endif; ?>
+
+<?php if ($canManageSite): ?>
+<!-- Site Rules Modal -->
+<div class="ev-modal-overlay" id="ev-site-rules-modal">
+	<div class="ev-modal" style="max-width:640px">
+		<div class="ev-modal-header">
+			<h3><i class="fas fa-clipboard-check" style="margin-right:8px"></i>Edit Site Rules</h3>
+			<button class="ev-modal-close" type="button" onclick="evCloseSiteRulesModal()">&times;</button>
+		</div>
+		<div class="ev-modal-body">
+			<div id="ev-site-rules-groups">
+				<?php foreach ($siteRuleCatalog as $key => $cat): ?>
+				<div class="ev-site-rule-group" data-rule-key="<?= $key ?>">
+					<div class="ev-site-rule-group-label"><i class="fas <?= $cat['icon'] ?>"></i> <?= htmlspecialchars($cat['label']) ?></div>
+					<div class="ev-site-rule-options">
+						<?php foreach ($cat['values'] as $vkey => $v): ?>
+						<button type="button" class="ev-site-opt" data-value="<?= $vkey ?>" aria-pressed="false"><?= htmlspecialchars($v['label']) ?></button>
+						<?php endforeach; ?>
+					</div>
+					<input type="text" class="ev-site-rule-details" placeholder="Optional details (times, areas, exceptions)..." style="display:none;width:100%;margin-top:6px">
+				</div>
+				<?php endforeach; ?>
+			</div>
+			<div style="border-top:1px solid #e2e8f0;margin-top:14px;padding-top:12px">
+				<div class="ev-site-rule-group-label" style="margin-bottom:8px"><i class="fas fa-plus"></i> Custom Rules</div>
+				<div id="ev-site-custom-list"></div>
+				<button type="button" class="pk-btn pk-btn-secondary" style="font-size:12px;padding:5px 12px" onclick="evSiteAddCustomRow('','')">
+					<i class="fas fa-plus" style="margin-right:5px"></i>Add custom rule
+				</button>
+			</div>
+			<div class="ev-modal-error" id="ev-site-rules-error" style="display:none"></div>
+		</div>
+		<div class="ev-modal-footer">
+			<button class="ev-btn ev-btn-outline" type="button" onclick="evCloseSiteRulesModal()" style="margin-right:auto">Cancel</button>
+			<button class="ev-submit-btn" type="button" id="ev-site-rules-save-btn" onclick="evSubmitSiteRules()">
+				<i class="fas fa-save"></i> <span>Save Rules</span>
+			</button>
+		</div>
+	</div>
+</div>
+<?php endif; ?>
+
+<?php if ($canManageSite): ?>
+<!-- Site Map Upload Modal -->
+<div class="ev-modal-overlay" id="ev-site-upload-modal">
+	<div class="ev-modal" style="max-width:520px">
+		<div class="ev-modal-header">
+			<h3><i class="fas fa-upload" style="margin-right:8px"></i>Upload Site Map</h3>
+			<button class="ev-modal-close" type="button" onclick="evCloseSiteMapUploadModal()">&times;</button>
+		</div>
+		<div class="ev-modal-body">
+			<p style="font-size:13px;color:#718096;margin:0 0 10px">JPEG or PNG, up to 2 MB. A drawn or annotated map works best — aerial photos are fine too.</p>
+			<?php if (!empty($siteMap)): ?>
+			<div class="ev-modal-warning-box" style="margin-bottom:10px">
+				<i class="fas fa-info-circle" style="margin-right:6px;flex-shrink:0;margin-top:2px"></i>
+				<span>Replacing the map keeps your existing location pins — they're stored as relative positions. If the new image is a different area, drag them into place afterward.</span>
+			</div>
+			<?php endif; ?>
+			<input type="file" id="ev-site-file" accept="image/jpeg,image/png" style="width:100%">
+			<div class="ev-modal-info-box" id="ev-site-upload-notice" style="display:none;margin-top:10px">
+				<i class="fas fa-compress-arrows-alt" style="margin-right:6px;flex-shrink:0;margin-top:2px"></i>
+				<span id="ev-site-upload-notice-text"></span>
+			</div>
+			<div id="ev-site-upload-preview" style="display:none;margin-top:10px;text-align:center">
+				<img id="ev-site-upload-preview-img" style="max-width:100%;max-height:240px;border-radius:6px;border:1px solid #e2e8f0" alt="Preview">
+			</div>
+			<div class="ev-modal-error" id="ev-site-upload-error" style="display:none"></div>
+		</div>
+		<div class="ev-modal-footer">
+			<button class="ev-btn ev-btn-outline" type="button" onclick="evCloseSiteMapUploadModal()" style="margin-right:auto">Cancel</button>
+			<button class="ev-submit-btn" type="button" id="ev-site-upload-btn" onclick="evSubmitSiteMapUpload()" disabled>
+				<i class="fas fa-upload"></i> <span>Upload</span>
+			</button>
+		</div>
+	</div>
+</div>
+<!-- Site Location (pin) Form Modal -->
+<div class="ev-modal-overlay" id="ev-site-loc-modal">
+	<div class="ev-modal" style="max-width:460px">
+		<div class="ev-modal-header">
+			<h3><i class="fas fa-map-pin" style="margin-right:8px"></i><span id="ev-site-loc-modal-title">Add Location</span></h3>
+			<button class="ev-modal-close" type="button" onclick="evCloseSiteLocModal()">&times;</button>
+		</div>
+		<div class="ev-modal-body">
+			<div class="ev-modal-row">
+				<div class="ev-modal-field ev-field-full">
+					<label>Name <span style="color:#e53e3e">*</span></label>
+					<input type="text" id="ev-site-loc-name" maxlength="80" placeholder="Main Battlefield, Feast Hall, Troll Booth..." style="width:100%">
+				</div>
+			</div>
+			<div class="ev-modal-row">
+				<div class="ev-modal-field ev-field-full">
+					<label>Category</label>
+					<select id="ev-site-loc-category" style="width:100%">
+						<?php foreach ($siteLocCategories as $ck => $cc): ?>
+						<option value="<?= $ck ?>"><?= htmlspecialchars($cc['label']) ?></option>
+						<?php endforeach; ?>
+					</select>
+				</div>
+			</div>
+			<div class="ev-modal-row">
+				<div class="ev-modal-field ev-field-full">
+					<label>Description <span style="font-size:11px;color:#718096;font-weight:400">(optional)</span></label>
+					<textarea id="ev-site-loc-desc" rows="2" placeholder="Anything attendees should know about this spot..." style="width:100%;resize:vertical"></textarea>
+				</div>
+			</div>
+			<div class="ev-modal-error" id="ev-site-loc-error" style="display:none"></div>
+			<input type="hidden" id="ev-site-loc-id" value="0">
+			<input type="hidden" id="ev-site-loc-x" value="0">
+			<input type="hidden" id="ev-site-loc-y" value="0">
+		</div>
+		<div class="ev-modal-footer">
+			<button class="ev-btn ev-btn-outline" type="button" onclick="evCloseSiteLocModal()" style="margin-right:auto">Cancel</button>
+			<button class="ev-btn ev-btn-outline" type="button" id="ev-site-loc-delete-btn" style="color:#e53e3e;display:none" onclick="evSiteDeleteLocation()">
+				<i class="fas fa-trash-alt"></i> Delete
+			</button>
+			<button class="ev-submit-btn" type="button" id="ev-site-loc-save-btn" onclick="evSubmitSiteLocation()">
+				<i class="fas fa-save"></i> <span>Save Location</span>
 			</button>
 		</div>
 	</div>
@@ -3559,6 +3894,11 @@ var _fpEnd = flatpickr('#ev-fp-end', Object.assign({}, _fpOpts, {
 		catEl.value    = meal.Category || 'Feast and Food';
 		if (secCatEl) secCatEl.value = meal.SecondaryCategory || '';
 		if (locEl)  locEl.value  = meal.Location || '';
+		// I-2: the shared schedule modal's site-location dropdown must reflect this
+		// meal's pin (or be cleared) — otherwise a stale selection from a prior
+		// schedule edit gets posted back and re-links (or unlinks) the wrong pin.
+		var slSelFeast = document.getElementById('ev-sched-site-location');
+		if (slSelFeast) slSelFeast.value = (meal.SiteLocationId !== undefined && meal.SiteLocationId !== null) ? meal.SiteLocationId : '';
 		if (descEl) descEl.value = meal.Description || '';
 		if (errEl)  { errEl.style.display = 'none'; errEl.textContent = ''; }
 		// Leads — evSchedLeads/evRenderSchedLeads live in revised.js's closure, not
@@ -3742,7 +4082,8 @@ var _fpEnd = flatpickr('#ev-fp-end', Object.assign({}, _fpOpts, {
 		// Wire buttons in JS (avoids embedding the meal payload as an escaped attr).
 		var mealPayload = {
 			EventScheduleId: sid, Title: s.Title || '', StartTime: s.StartTime || '', EndTime: s.EndTime || '',
-			Location: s.Location || '', Description: s.Description || '', Category: s.Category || '',
+			Location: s.Location || '', SiteLocationId: (s.SiteLocationId === undefined ? null : s.SiteLocationId),
+			Description: s.Description || '', Category: s.Category || '',
 			SecondaryCategory: s.SecondaryCategory || '', Leads: s.Leads || [], Menu: s.Menu || '',
 			Cost: (s.Cost === undefined ? null : s.Cost), Dietary: s.Dietary || '', Allergens: s.Allergens || ''
 		};
@@ -3863,6 +4204,30 @@ var _fpEnd = flatpickr('#ev-fp-end', Object.assign({}, _fpOpts, {
 			_schedFpSyncFromValue();
 		};
 	}
+})();
+
+// ── Schedule modal: site-map location dropdown ────────────────────────────────
+(function() {
+	'use strict';
+	var sel = document.getElementById('ev-sched-site-location');
+	if (!sel) return;
+	// Picking a tag fills the text field (still editable); clearing leaves text.
+	sel.addEventListener('change', function() {
+		if (!sel.value) return;
+		var loc = (EvConfig.siteLocations || []).find(function(l) { return l.LocationId === parseInt(sel.value, 10); });
+		if (loc) document.getElementById('ev-sched-location').value = loc.Name;
+	});
+	// Refresh options after pin CRUD on the Site tab (keeps selection if alive).
+	window.evSiteSyncScheduleOptions = function() {
+		var cur = sel.value;
+		sel.innerHTML = '<option value="">— Pick from the site map (optional) —</option>' +
+			(EvConfig.siteLocations || []).map(function(l) {
+				return '<option value="' + l.LocationId + '">' + String(l.Name).replace(/[&<>"]/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }) + '</option>';
+			}).join('');
+		sel.value = cur;
+		if (sel.value !== cur) sel.value = '';
+		sel.style.display = (EvConfig.siteLocations || []).length ? '' : 'none';
+	};
 })();
 </script>
 <style>
@@ -4020,6 +4385,9 @@ html[data-theme="dark"] .ev-grid-day-pill.ev-grid-day-pill-active {
 	white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 .ev-grid-block-loc i { font-size:9px; margin-right:2px; color:#a0aec0; }
+.ev-loc-chip { display:inline-flex; align-items:center; gap:4px; padding:1px 8px; border-radius:999px; font-size:12.5px; background:#ebf8ff; border:1px solid #90cdf4; color:#2b6cb0; text-decoration:none; cursor:pointer; }
+.ev-loc-chip:hover { background:#bee3f8; }
+.ev-loc-chip-grid { font-size:11px; padding:0 6px; }
 .ev-grid-block-leads { margin-top:3px; display:flex; flex-wrap:wrap; gap:3px; }
 .ev-grid-lead-chip {
 	background:rgba(255,255,255,0.65); border:1px solid rgba(0,0,0,0.07);
@@ -4468,6 +4836,766 @@ html[data-theme="dark"] .ev-grid-day-pill.ev-grid-day-pill-active {
 		})
 		.catch(function() { /* leave the grid as-is; the list is already correct */ });
 	};
+})();
+</script>
+
+<script>
+(function() {
+	'use strict';
+	if (!window.EvConfig || !EvConfig.canManageSite) return;
+	function gid(id) { return document.getElementById(id); }
+
+	// Current rules state, keyed for the modal. Seeded from the server render.
+	var siteRules = <?= json_encode($siteRules) ?>;
+	// CONTRACT A (optimistic concurrency): the RuleId set this editing session is
+	// based on. Posted as BaselineRuleIds so the server can reject a save when
+	// another manager changed the rules meanwhile; refreshed after every
+	// successful save so sequential saves in one session don't self-conflict.
+	function evSiteRuleIds() { return (siteRules || []).map(function(r) { return r.RuleId; }).filter(function(id) { return id != null; }); }
+	var evSiteRulesBaseline = evSiteRuleIds();
+
+	window.evOpenSiteRulesModal = function() {
+		// Reset all groups to current saved state.
+		document.querySelectorAll('#ev-site-rules-groups .ev-site-rule-group').forEach(function(g) {
+			var key = g.getAttribute('data-rule-key');
+			var saved = siteRules.find(function(r) { return r.RuleKey === key; });
+			var details = g.querySelector('.ev-site-rule-details');
+			g.querySelectorAll('.ev-site-opt').forEach(function(b) {
+				var isOn = !!saved && b.getAttribute('data-value') === saved.Value;
+				b.classList.toggle('ev-site-opt-on', isOn);
+				b.setAttribute('aria-pressed', isOn ? 'true' : 'false');
+			});
+			details.value = saved ? (saved.Details || '') : '';
+			details.style.display = saved ? '' : 'none';
+		});
+		gid('ev-site-custom-list').innerHTML = '';
+		siteRules.filter(function(r) { return r.RuleKey === null; }).forEach(function(r) {
+			evSiteAddCustomRow(r.Title, r.Details || '');
+		});
+		gid('ev-site-rules-error').style.display = 'none';
+		gid('ev-site-rules-modal').classList.add('ev-modal-open');
+	};
+	window.evCloseSiteRulesModal = function() {
+		gid('ev-site-rules-modal').classList.remove('ev-modal-open');
+	};
+
+	// Single-choice per group; tapping the active pill clears it.
+	document.querySelectorAll('#ev-site-rules-groups .ev-site-rule-group').forEach(function(g) {
+		var details = g.querySelector('.ev-site-rule-details');
+		g.querySelectorAll('.ev-site-opt').forEach(function(b) {
+			b.addEventListener('click', function() {
+				var wasOn = b.classList.contains('ev-site-opt-on');
+				g.querySelectorAll('.ev-site-opt').forEach(function(o) { o.classList.remove('ev-site-opt-on'); o.setAttribute('aria-pressed', 'false'); });
+				if (!wasOn) { b.classList.add('ev-site-opt-on'); b.setAttribute('aria-pressed', 'true'); }
+				details.style.display = wasOn ? 'none' : '';
+				if (wasOn) details.value = '';
+			});
+		});
+	});
+
+	window.evSiteAddCustomRow = function(title, details) {
+		var row = document.createElement('div');
+		row.className = 'ev-site-custom-row';
+		row.innerHTML = '<input type="text" class="ev-site-custom-title" placeholder="Rule (e.g. No glass containers)" maxlength="120">' +
+			'<input type="text" class="ev-site-custom-details" placeholder="Details (optional)">' +
+			'<button type="button" class="ev-site-custom-del" data-tip="Remove">&times;</button>';
+		row.querySelector('.ev-site-custom-title').value = title || '';
+		row.querySelector('.ev-site-custom-details').value = details || '';
+		row.querySelector('.ev-site-custom-del').addEventListener('click', function() { row.remove(); });
+		gid('ev-site-custom-list').appendChild(row);
+	};
+
+	window.evSubmitSiteRules = function() {
+		var out = [];
+		document.querySelectorAll('#ev-site-rules-groups .ev-site-rule-group').forEach(function(g) {
+			var on = g.querySelector('.ev-site-opt-on');
+			if (on) out.push({
+				RuleKey: g.getAttribute('data-rule-key'),
+				Value:   on.getAttribute('data-value'),
+				Details: g.querySelector('.ev-site-rule-details').value.trim()
+			});
+		});
+		document.querySelectorAll('#ev-site-custom-list .ev-site-custom-row').forEach(function(row) {
+			var t = row.querySelector('.ev-site-custom-title').value.trim();
+			if (t) out.push({ Title: t, Details: row.querySelector('.ev-site-custom-details').value.trim() });
+		});
+
+		var btn = gid('ev-site-rules-save-btn');
+		var orig = btn.innerHTML;
+		btn.disabled = true;
+		btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
+		var fd = new FormData();
+		fd.append('Rules', JSON.stringify(out));
+		fd.append('BaselineRuleIds', evSiteRulesBaseline.join(','));
+		fetch(EvConfig.uir + 'EventAjax/site_rules_save/' + EvConfig.eventId + '/' + EvConfig.detailId, {
+			method: 'POST', body: fd,
+			headers: { 'X-Requested-With': 'XMLHttpRequest' }
+		})
+		.then(function(r) { return r.json(); })
+		.then(function(data) {
+			if (data.status === 0) {
+				siteRules = data.rules;
+				// Re-baseline from what the server just persisted so a follow-up
+				// save in the same session doesn't false-conflict against itself.
+				evSiteRulesBaseline = evSiteRuleIds();
+				evSiteRenderRules();
+				evCloseSiteRulesModal();
+			} else if (data.status === 9) {
+				var errC = gid('ev-site-rules-error');
+				errC.textContent = data.error || 'These site rules were changed by someone else — reload the page and try again.';
+				errC.style.display = 'block';
+			} else {
+				var err = gid('ev-site-rules-error');
+				err.textContent = data.error || 'Could not save rules.';
+				err.style.display = 'block';
+			}
+		})
+		.catch(function() {
+			var err = gid('ev-site-rules-error');
+			err.textContent = 'Network error — please try again.';
+			err.style.display = 'block';
+		})
+		.finally(function() { btn.disabled = false; btn.innerHTML = orig; });
+	};
+
+	function escH(s) {
+		return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+			return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+		});
+	}
+
+	// Re-render the public display from state (mirrors the PHP render).
+	window.evSiteRenderRules = function() {
+		var cat = EvConfig.siteRuleCatalog;
+		var pills = '', customs = '';
+		siteRules.forEach(function(r) {
+			if (r.RuleKey !== null && cat[r.RuleKey] && cat[r.RuleKey].values[r.Value]) {
+				var c = cat[r.RuleKey], v = c.values[r.Value];
+				pills += '<span class="ev-site-pill ev-site-pill-' + v.severity + '"' +
+					(r.Details ? ' data-tip="' + escH(r.Details) + '"' : '') + '>' +
+					'<i class="fas ' + c.icon + '"></i><strong>' + escH(c.label) + ':</strong>&nbsp;' + escH(v.label) +
+					(r.Details ? '<i class="fas fa-info-circle ev-site-pill-info"></i>' : '') + '</span>';
+			} else if (r.RuleKey === null) {
+				customs += '<li><strong>' + escH(r.Title) + '</strong>' +
+					(r.Details ? '<span class="ev-site-custom-detail">' + escH(r.Details) + '</span>' : '') + '</li>';
+			}
+		});
+		var html = '';
+		if (!pills && !customs) {
+			html = '<div class="ev-site-cta" onclick="evOpenSiteRulesModal()"><i class="fas fa-plus-circle"></i> Add site rules — smoking, alcohol, pets, fires, and more</div>';
+		} else {
+			if (pills)   html += '<div class="ev-site-pills">' + pills + '</div>';
+			if (customs) html += '<ul class="ev-site-custom-rules">' + customs + '</ul>';
+		}
+		gid('ev-site-rules-display').innerHTML = html;
+	};
+})();
+</script>
+
+<script>
+(function() {
+	'use strict';
+	if (!window.EvConfig) return;
+	if (!EvConfig.siteMap && !EvConfig.canManageSite) return;
+	function gid(id) { return document.getElementById(id); }
+
+	var map = null, editMode = false;
+	var evSiteMarkers = {};
+	var COORD_H = 1000; // fixed CRS height; width scales by aspect ratio
+	var evLeafletFailed = false, evLeafletPending = false;
+	var evSiteSaveGen = {}; // LocationId -> latest drag-save token (out-of-order guard)
+
+	function catCfg(key) {
+		return EvConfig.siteLocCategories[key] || EvConfig.siteLocCategories.other;
+	}
+	function escH(s) {
+		return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+			return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+		});
+	}
+	function coordW() {
+		return COORD_H * (EvConfig.siteMap.Width / EvConfig.siteMap.Height);
+	}
+	// fractional x/y (0-1, y from image TOP) <-> CRS.Simple latlng (y up)
+	function fracToLatLng(x, y) { return [COORD_H - y * COORD_H, x * coordW()]; }
+	function latLngToFrac(ll) {
+		return {
+			x: Math.max(0, Math.min(1, ll.lng / coordW())),
+			y: Math.max(0, Math.min(1, (COORD_H - ll.lat) / COORD_H))
+		};
+	}
+
+	// Leaflet is loaded deferred from a CDN (with SRI). If it hasn't parsed yet,
+	// run cb on the script's load event; if it never arrives (CDN down, SRI/
+	// integrity mismatch, offline), fall back to the static image via onFail.
+	function whenLeafletReady(cb, onFail) {
+		if (typeof L !== 'undefined') return cb();
+		var s = document.querySelector('script[src*="leaflet.js"]');
+		if (s) {
+			s.addEventListener('load', cb);
+			if (onFail) s.addEventListener('error', onFail);
+		} else if (onFail) {
+			onFail();
+		} else {
+			window.addEventListener('load', cb);
+		}
+	}
+	// Hard-fail path: replace the blank map box with the static site-map image
+	// plus an inline notice (no native dialogs), so the section never sits empty.
+	function evSiteMapLoadFailed() {
+		if (evLeafletFailed || map) return;
+		evLeafletFailed = true;
+		var el = gid('ev-site-map');
+		if (!el || !EvConfig.siteMap) return;
+		el.classList.add('ev-site-map-static');
+		el.innerHTML = '<div class="ev-site-map-fallback">' +
+			'<div class="ev-site-map-fallback-note"><i class="fas fa-exclamation-triangle" aria-hidden="true"></i> Interactive site map failed to load — showing the static image instead.</div>' +
+			'<img src="' + escH(EvConfig.siteMap.Url) + '" alt="Site map">' +
+			'</div>';
+	}
+
+	window.evSiteMapInit = function() {
+		if (map || evLeafletFailed || !EvConfig.siteMap || !gid('ev-site-map')) return;
+		if (typeof L === 'undefined') {
+			// Deferred Leaflet not parsed yet — init once it loads, or show the
+			// static fallback on a hard load/SRI failure or an 8s timeout.
+			if (!evLeafletPending) {
+				evLeafletPending = true;
+				whenLeafletReady(function() {
+					evLeafletPending = false;
+					evSiteMapInit();
+					if (map) map.invalidateSize();
+				}, evSiteMapLoadFailed);
+				setTimeout(function() { if (typeof L === 'undefined' && !map) evSiteMapLoadFailed(); }, 8000);
+			}
+			return;
+		}
+		var bounds = [[0, 0], [COORD_H, coordW()]];
+		map = L.map('ev-site-map', { crs: L.CRS.Simple, minZoom: -3, maxZoom: 2, zoomSnap: 0.25, attributionControl: false });
+		var mapEl = gid('ev-site-map');
+		if (mapEl) mapEl.setAttribute('aria-label', 'Interactive site map — pan with the arrow keys, zoom with plus and minus.');
+		// Keep the overlay layer so we can surface a missing-image error inline.
+		var overlay = L.imageOverlay(EvConfig.siteMap.Url, bounds).addTo(map);
+		overlay.on('error', function() {
+			var note = gid('ev-site-map-overlay-error');
+			if (!note) {
+				note = document.createElement('div');
+				note.id = 'ev-site-map-overlay-error';
+				note.className = 'ev-site-map-overlay-error';
+				note.innerHTML = '<i class="fas fa-exclamation-triangle" aria-hidden="true"></i> Site map image could not be loaded — try re-uploading.';
+				var wrap = gid('ev-site-map-wrap');
+				if (wrap) wrap.appendChild(note);
+			}
+			note.style.display = '';
+		});
+		map.fitBounds(bounds);
+		map.setMaxBounds(L.latLngBounds(bounds).pad(0.25));
+		EvConfig.siteLocations.forEach(addMarker);
+		renderLegend();
+		if (EvConfig.canManageSite) {
+			map.on('click', function(e) {
+				if (!editMode) return;
+				var f = latLngToFrac(e.latlng);
+				openLocModal({ LocationId: 0, Name: '', Category: 'other', Description: '', X: f.x, Y: f.y });
+			});
+		}
+	};
+
+	function pinHtml(cat, label) {
+		var c = catCfg(cat);
+		return '<div class="ev-site-pin" role="img"' + (label ? ' aria-label="' + escH(label) + '"' : '') +
+			' style="background:' + c.color + '"><i class="fas ' + c.icon + '" aria-hidden="true"></i></div>';
+	}
+	function addMarker(loc) {
+		// Accessible name for the keyboard-focusable marker: "<name> — <category>".
+		var accName = loc.Name + ' — ' + catCfg(loc.Category).label;
+		var m = L.marker(fracToLatLng(loc.X, loc.Y), {
+			icon: L.divIcon({ className: '', html: pinHtml(loc.Category, accName), iconSize: [30, 30], iconAnchor: [15, 30], popupAnchor: [0, -30] }),
+			draggable: false,
+			alt: accName,
+			title: accName
+		}).addTo(map);
+		m.bindPopup(function() { return popupHtml(loc); });
+		// Always-visible label so pins are legible at a glance, not only on click.
+		m.bindTooltip(loc.Name, { permanent: true, direction: 'right', className: 'ev-pin-label' });
+		m.on('dragend', function() {
+			var f = latLngToFrac(m.getLatLng());
+			// Sequence guard: stamp each save; ignore a response once a newer drag
+			// save for this LocationId has been issued (out-of-order responses
+			// must not snap the pin backward).
+			var myGen = (evSiteSaveGen[loc.LocationId] = (evSiteSaveGen[loc.LocationId] || 0) + 1);
+			saveLocation({ LocationId: loc.LocationId, Name: loc.Name, Category: loc.Category, Description: loc.Description, X: f.x, Y: f.y }, function(errMsg, saved) {
+				if (evSiteSaveGen[loc.LocationId] !== myGen) return; // superseded by a newer drag
+				if (errMsg) {
+					// Save failed — snap the pin back to its last known-good spot
+					// so the map never disagrees with what the DB actually holds.
+					m.setLatLng(fracToLatLng(loc.X, loc.Y));
+					evSiteMapFlash('Could not save the new pin position — ' + errMsg);
+				} else {
+					loc.X = (saved && saved.X != null) ? saved.X : f.x;
+					loc.Y = (saved && saved.Y != null) ? saved.Y : f.y;
+				}
+			}, function() { return evSiteSaveGen[loc.LocationId] === myGen; });
+		});
+		evSiteMarkers[loc.LocationId] = m;
+	}
+	// Brief non-native inline error banner over the map (auto-dismisses).
+	function evSiteMapFlash(msg) {
+		var wrap = gid('ev-site-map-wrap');
+		if (!wrap) return;
+		var note = gid('ev-site-map-flash');
+		if (!note) {
+			note = document.createElement('div');
+			note.id = 'ev-site-map-flash';
+			note.className = 'ev-site-map-overlay-error';
+			wrap.appendChild(note);
+		}
+		note.innerHTML = '<i class="fas fa-exclamation-triangle" aria-hidden="true"></i> ' + escH(msg);
+		note.style.display = '';
+		clearTimeout(note._t);
+		note._t = setTimeout(function() { note.style.display = 'none'; }, 4000);
+	}
+	function popupHtml(loc) {
+		var c = catCfg(loc.Category);
+		var html = '<div class="ev-site-popup-name">' + escH(loc.Name) + '</div>' +
+			'<div class="ev-site-popup-cat"><i class="fas ' + c.icon + '" style="color:' + c.color + ';margin-right:3px"></i>' + escH(c.label) + '</div>';
+		if (loc.Description) html += '<div class="ev-site-popup-desc">' + escH(loc.Description) + '</div>';
+		// Schedule items at this location — read live from the schedule table's
+		// row data attributes so there's no second copy of schedule state.
+		var rows = document.querySelectorAll('tr[data-site-location-id="' + loc.LocationId + '"]');
+		if (rows.length) {
+			// A multi-day item renders one <tr> per day (all sharing the same
+			// data-schedule-id) but only the first-day row carries the stable
+			// id='ev-schedule-row-N'. De-dupe by data-schedule-id so each item
+			// appears once, and always target the stable first-day anchor id.
+			var seenSched = new Set();
+			var schedLinks = '';
+			rows.forEach(function(tr) {
+				var sid = tr.getAttribute('data-schedule-id') || '';
+				if (!sid || seenSched.has(sid)) return;
+				seenSched.add(sid);
+				var t = tr.getAttribute('data-title') || '';
+				var s = tr.getAttribute('data-start') || '';
+				var timeLabel = s ? new Date(s).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
+				schedLinks += '<a href="javascript:void(0)" onclick="evSiteGoToScheduleItem(\'ev-schedule-row-' + sid + '\')"><i class="fas fa-clock" style="margin-right:4px"></i>' + escH(timeLabel) + ' — ' + escH(t) + '</a>';
+			});
+			if (schedLinks) html += '<div class="ev-site-popup-sched">' + schedLinks + '</div>';
+		}
+		if (EvConfig.canManageSite && editMode) {
+			html += '<div class="ev-site-popup-actions">' +
+				'<button type="button" onclick="evSiteEditLocation(' + loc.LocationId + ')"><i class="fas fa-pencil-alt"></i> Edit</button>' +
+				'<button type="button" class="ev-site-popup-del" onclick="evSiteEditLocation(' + loc.LocationId + ', true)"><i class="fas fa-trash-alt"></i> Delete</button>' +
+				'</div>';
+		}
+		return html;
+	}
+	function renderLegend() {
+		var el = gid('ev-site-legend');
+		if (!el) return;
+		var seen = {};
+		EvConfig.siteLocations.forEach(function(l) { seen[l.Category] = (seen[l.Category] || 0) + 1; });
+		el.innerHTML = Object.keys(seen).map(function(k) {
+			var c = catCfg(k);
+			return '<span class="ev-site-legend-chip" onclick="evSiteLegendClick(\'' + escH(k) + '\')"><i class="fas ' + c.icon + '" style="color:' + c.color + '"></i>' + escH(c.label) + ' (' + seen[k] + ')</span>';
+		}).join('');
+	}
+	var legendCycle = {};
+	window.evSiteLegendClick = function(cat) {
+		var matches = EvConfig.siteLocations.filter(function(l) { return l.Category === cat; });
+		if (!matches.length || !map) return;
+		legendCycle[cat] = ((legendCycle[cat] || 0) + 1) % matches.length;
+		var loc = matches[legendCycle[cat]];
+		map.flyTo(fracToLatLng(loc.X, loc.Y), Math.max(map.getZoom(), 0));
+		evSiteMarkers[loc.LocationId] && evSiteMarkers[loc.LocationId].openPopup();
+	};
+
+	// ---- Cross-tab entry points ----
+	window.evSiteFlyTo = function(locationId) {
+		var loc = EvConfig.siteLocations.find(function(l) { return l.LocationId === locationId; });
+		if (!loc) return;
+		var li = document.querySelector('#ev-tab-nav li[data-tab="ev-tab-site"]');
+		if (li && window.evShowTab) evShowTab(li, 'ev-tab-site');
+		evSiteMapInit();
+		if (!map) return;
+		map.invalidateSize();
+		map.flyTo(fracToLatLng(loc.X, loc.Y), 0.5);
+		var m = evSiteMarkers[locationId];
+		if (m) setTimeout(function() { m.openPopup(); }, 600);
+	};
+	window.evSiteGoToScheduleItem = function(rowId) {
+		var li = document.querySelector('#ev-tab-nav li[data-tab="ev-tab-schedule"]');
+		if (li && window.evShowTab) evShowTab(li, 'ev-tab-schedule');
+		var row = gid(rowId);
+		if (row) {
+			row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+			row.style.outline = '2px solid #3182ce';
+			setTimeout(function() { row.style.outline = ''; }, 2500);
+		}
+	};
+
+	// Lazy init on first Site-tab open (Leaflet can't lay out in display:none).
+	var siteTabLi = document.querySelector('#ev-tab-nav li[data-tab="ev-tab-site"]');
+	if (siteTabLi) siteTabLi.addEventListener('click', function() {
+		setTimeout(function() { evSiteMapInit(); if (map) map.invalidateSize(); }, 50);
+	});
+	// Init now if the Site tab is already the visible one on load — e.g. a
+	// direct #ev-tab-site deep link (the hash wrapper runs before this script
+	// and only flips panel visibility; it can't call evSiteMapInit itself).
+	$(function() {
+		if (document.querySelector('#ev-tab-site.ev-tab-visible')) {
+			evSiteMapInit();
+			if (map) map.invalidateSize();
+		}
+	});
+
+	// ---- Manager-only: edit mode, pin CRUD, upload ----
+	if (!EvConfig.canManageSite) return;
+
+	window.evSiteToggleEditMode = function() {
+		editMode = !editMode;
+		var btn = gid('ev-site-editmode-btn');
+		if (btn) {
+			btn.querySelector('span').textContent = editMode ? 'Done Editing' : 'Edit Locations';
+			btn.style.background = editMode ? '#2c5282' : '';
+			btn.style.color = editMode ? '#fff' : '';
+		}
+		gid('ev-site-editmode-hint').style.display = editMode ? '' : 'none';
+		gid('ev-site-map').classList.toggle('ev-site-editing', editMode);
+		Object.keys(evSiteMarkers).forEach(function(id) {
+			if (evSiteMarkers[id].dragging) editMode ? evSiteMarkers[id].dragging.enable() : evSiteMarkers[id].dragging.disable();
+		});
+		map && map.closePopup();
+	};
+
+	function openLocModal(loc, deleteFocus) {
+		gid('ev-site-loc-modal-title').textContent = loc.LocationId ? 'Edit Location' : 'Add Location';
+		gid('ev-site-loc-id').value   = loc.LocationId;
+		gid('ev-site-loc-x').value    = loc.X;
+		gid('ev-site-loc-y').value    = loc.Y;
+		gid('ev-site-loc-name').value = loc.Name;
+		gid('ev-site-loc-category').value = loc.Category || 'other';
+		gid('ev-site-loc-desc').value = loc.Description || '';
+		gid('ev-site-loc-error').style.display = 'none';
+		gid('ev-site-loc-delete-btn').style.display = loc.LocationId ? '' : 'none';
+		gid('ev-site-loc-modal').classList.add('ev-modal-open');
+		if (!deleteFocus) setTimeout(function() { gid('ev-site-loc-name').focus(); }, 50);
+	}
+	window.evCloseSiteLocModal = function() { gid('ev-site-loc-modal').classList.remove('ev-modal-open'); };
+	window.evSiteEditLocation = function(locationId, focusDelete) {
+		var loc = EvConfig.siteLocations.find(function(l) { return l.LocationId === locationId; });
+		if (loc) openLocModal(loc, !!focusDelete);
+	};
+
+	function refreshMarker(loc) {
+		if (evSiteMarkers[loc.LocationId]) { map.removeLayer(evSiteMarkers[loc.LocationId]); delete evSiteMarkers[loc.LocationId]; }
+		addMarker(loc);
+		if (editMode && evSiteMarkers[loc.LocationId].dragging) evSiteMarkers[loc.LocationId].dragging.enable();
+	}
+	function saveLocation(payload, onDone, isCurrent) {
+		var fd = new FormData();
+		fd.append('LocationId', payload.LocationId);
+		fd.append('Name', payload.Name);
+		fd.append('Category', payload.Category);
+		fd.append('Description', payload.Description || '');
+		fd.append('X', payload.X);
+		fd.append('Y', payload.Y);
+		fetch(EvConfig.uir + 'EventAjax/site_location_save/' + EvConfig.eventId + '/' + EvConfig.detailId, {
+			method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' }
+		})
+		.then(function(r) { return r.json(); })
+		.then(function(data) {
+			// A superseded drag-save must not mutate state: its refreshMarker would
+			// recreate the pin at stale coords and rebind dragend to the old object.
+			if (isCurrent && !isCurrent()) return;
+			if (data.status === 0) {
+				var idx = EvConfig.siteLocations.findIndex(function(l) { return l.LocationId === data.location.LocationId; });
+				if (idx >= 0) EvConfig.siteLocations[idx] = data.location; else EvConfig.siteLocations.push(data.location);
+				refreshMarker(data.location);
+				renderLegend();
+				if (typeof window.evSiteSyncScheduleOptions === 'function') window.evSiteSyncScheduleOptions();
+				if (onDone) onDone(null, data.location);
+			} else if (onDone) onDone(data.error || 'Could not save.');
+		})
+		.catch(function() { if (isCurrent && !isCurrent()) return; if (onDone) onDone('Network error — please try again.'); });
+	}
+	window.evSubmitSiteLocation = function() {
+		var name = gid('ev-site-loc-name').value.trim();
+		var err  = gid('ev-site-loc-error');
+		if (!name) { err.textContent = 'Please enter a name.'; err.style.display = 'block'; return; }
+		var btn = gid('ev-site-loc-save-btn'), orig = btn.innerHTML;
+		btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
+		saveLocation({
+			LocationId: parseInt(gid('ev-site-loc-id').value, 10) || 0,
+			Name: name,
+			Category: gid('ev-site-loc-category').value,
+			Description: gid('ev-site-loc-desc').value.trim(),
+			X: parseFloat(gid('ev-site-loc-x').value) || 0,
+			Y: parseFloat(gid('ev-site-loc-y').value) || 0
+		}, function(errMsg) {
+			btn.disabled = false; btn.innerHTML = orig;
+			if (errMsg) { err.textContent = errMsg; err.style.display = 'block'; }
+			else evCloseSiteLocModal();
+		});
+	};
+	window.evSiteDeleteLocation = function() {
+		var id = parseInt(gid('ev-site-loc-id').value, 10) || 0;
+		if (!id) return;
+		var btn = gid('ev-site-loc-delete-btn'), orig = btn.innerHTML;
+		btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+		var fd = new FormData();
+		fd.append('LocationId', id);
+		fetch(EvConfig.uir + 'EventAjax/site_location_delete/' + EvConfig.eventId + '/' + EvConfig.detailId, {
+			method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' }
+		})
+		.then(function(r) { return r.json(); })
+		.then(function(data) {
+			btn.disabled = false; btn.innerHTML = orig;
+			if (data.status === 0) {
+				EvConfig.siteLocations = EvConfig.siteLocations.filter(function(l) { return l.LocationId !== id; });
+				if (evSiteMarkers[id]) { map.removeLayer(evSiteMarkers[id]); delete evSiteMarkers[id]; }
+				renderLegend();
+				if (typeof window.evSiteSyncScheduleOptions === 'function') window.evSiteSyncScheduleOptions();
+				// Linked schedule chips degrade to plain text on next reload;
+				// live rows just lose fly-to (evSiteFlyTo no-ops on a missing pin).
+				evCloseSiteLocModal();
+			} else {
+				var err = gid('ev-site-loc-error');
+				err.textContent = data.error || 'Could not delete.'; err.style.display = 'block';
+			}
+		})
+		.catch(function() {
+			btn.disabled = false; btn.innerHTML = orig;
+			var err = gid('ev-site-loc-error');
+			err.textContent = 'Network error — please try again.'; err.style.display = 'block';
+		});
+	};
+
+	// ---- Upload modal ----
+	// Effective file to upload once a >2MB source has been client-side downsized.
+	// null means "upload the raw <input> file as-is" (the untouched, byte-identical path).
+	var evSiteEffectiveMapFile = null;
+	var evSiteMapGen = 0;
+	var evSiteUploadController = null; // aborts an in-flight upload when the modal is closed
+	window.evOpenSiteMapUploadModal = function() {
+		gid('ev-site-file').value = '';
+		evSiteEffectiveMapFile = null;
+		evSiteMapGen++;
+		gid('ev-site-upload-preview').style.display = 'none';
+		gid('ev-site-upload-error').style.display = 'none';
+		gid('ev-site-upload-notice').style.display = 'none';
+		gid('ev-site-upload-btn').disabled = true;
+		gid('ev-site-upload-modal').classList.add('ev-modal-open');
+	};
+	window.evCloseSiteMapUploadModal = function() {
+		// Abort any in-flight upload so a late success can't reload the page out
+		// from under a manager who just cancelled.
+		if (evSiteUploadController) { try { evSiteUploadController.abort(); } catch (e) {} evSiteUploadController = null; }
+		gid('ev-site-upload-modal').classList.remove('ev-modal-open');
+	};
+
+	// Client-side downsize for site maps over the 2MB server gate. Quality-first:
+	// clamp longest edge to 3000px @ q0.92, then shrink by sqrt(target/size)*0.95
+	// @ q0.92 up to 3 tries, then one final try @ q0.85, then give up. Always
+	// flattens to white + encodes JPEG (site maps don't need alpha once they're
+	// this large, so a >2MB PNG converts to JPEG). Kept local to this IIFE —
+	// the shared resizeImageToLimit() in orkui.js has other callers depending on
+	// its exact behavior and is intentionally left untouched.
+	function evSiteDownsizeMap(file, onReady, onError) {
+		var TARGET_BYTES = 2000000; // working target; headroom under the 2,097,152 server gate
+		var MAX_EDGE = 3000;
+		var img = new Image();
+		var url = URL.createObjectURL(file);
+		img.onload = function() {
+			URL.revokeObjectURL(url);
+			var origW = img.width, origH = img.height;
+			function render(scale, quality, cb) {
+				var w = Math.max(1, Math.round(origW * scale));
+				var h = Math.max(1, Math.round(origH * scale));
+				var canvas = document.createElement('canvas');
+				canvas.width = w; canvas.height = h;
+				var ctx = canvas.getContext('2d');
+				ctx.fillStyle = '#ffffff';
+				ctx.fillRect(0, 0, w, h);
+				ctx.drawImage(img, 0, 0, w, h);
+				canvas.toBlob(function(blob) { cb(blob, w, h); }, 'image/jpeg', quality);
+			}
+			var initialScale = Math.min(1, MAX_EDGE / Math.max(origW, origH));
+			render(initialScale, 0.92, function(blob, w, h) {
+				if (!blob) { onError('Could not downsize this image enough — please export it smaller.'); return; }
+				if (blob.size <= TARGET_BYTES) { onReady(blob, w, h); return; }
+				var scale = initialScale;
+				var lastSize = blob.size;
+				var tries = 0;
+				function shrink() {
+					tries++;
+					scale = scale * Math.sqrt(TARGET_BYTES / lastSize) * 0.95;
+					render(scale, 0.92, function(b, w2, h2) {
+						if (!b) { onError('Could not downsize this image enough — please export it smaller.'); return; }
+						if (b.size <= TARGET_BYTES) { onReady(b, w2, h2); return; }
+						lastSize = b.size;
+						if (tries < 3) { shrink(); return; }
+						render(scale, 0.85, function(bFinal, w3, h3) {
+							if (bFinal && bFinal.size <= TARGET_BYTES) { onReady(bFinal, w3, h3); }
+							else { onError('Could not downsize this image enough — please export it smaller.'); }
+						});
+					});
+				}
+				shrink();
+			});
+		};
+		img.onerror = function() { URL.revokeObjectURL(url); onError('Could not load image for downsizing.'); };
+		img.src = url;
+	}
+
+	gid('ev-site-file') && gid('ev-site-file').addEventListener('change', function() {
+		var f = this.files && this.files[0];
+		var err = gid('ev-site-upload-error');
+		var notice = gid('ev-site-upload-notice');
+		var noticeText = gid('ev-site-upload-notice-text');
+		err.style.display = 'none';
+		notice.style.display = 'none';
+		gid('ev-site-upload-btn').disabled = true;
+		gid('ev-site-upload-preview').style.display = 'none';
+		evSiteEffectiveMapFile = null;
+		evSiteMapGen++;
+		var gen = evSiteMapGen;
+		if (!f) return;
+		if (f.type !== 'image/jpeg' && f.type !== 'image/png') { err.textContent = 'Only JPEG and PNG images are supported.'; err.style.display = 'block'; return; }
+		if (f.size <= 2 * 1024 * 1024) {
+			gid('ev-site-upload-preview-img').src = URL.createObjectURL(f);
+			gid('ev-site-upload-preview').style.display = '';
+			gid('ev-site-upload-btn').disabled = false;
+			return;
+		}
+		noticeText.textContent = 'Downsizing ' + (f.size / (1024 * 1024)).toFixed(1) + ' MB image…';
+		notice.style.display = '';
+		evSiteDownsizeMap(f, function(blob, w, h) {
+			if (gen !== evSiteMapGen) return; // a newer file was chosen while this was running
+			evSiteEffectiveMapFile = new File([blob], 'sitemap.jpg', { type: 'image/jpeg' });
+			noticeText.textContent = 'Downsized to ' + (blob.size / (1024 * 1024)).toFixed(1) + ' MB — some detail may be reduced';
+			gid('ev-site-upload-preview-img').src = URL.createObjectURL(blob);
+			gid('ev-site-upload-preview').style.display = '';
+			gid('ev-site-upload-btn').disabled = false;
+		}, function(errMsg) {
+			if (gen !== evSiteMapGen) return;
+			notice.style.display = 'none';
+			err.textContent = errMsg;
+			err.style.display = 'block';
+		});
+	});
+	window.evSubmitSiteMapUpload = function() {
+		var f = evSiteEffectiveMapFile || (gid('ev-site-file').files && gid('ev-site-file').files[0]);
+		if (!f) return;
+		var btn = gid('ev-site-upload-btn'), orig = btn.innerHTML;
+		btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading…';
+		var fd = new FormData();
+		fd.append('SiteMap', f);
+		evSiteUploadController = new AbortController();
+		var mySignal = evSiteUploadController.signal;
+		fetch(EvConfig.uir + 'EventAjax/site_map_upload/' + EvConfig.eventId + '/' + EvConfig.detailId, {
+			method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' }, signal: mySignal
+		})
+		.then(function(r) { return r.json(); })
+		.then(function(data) {
+			evSiteUploadController = null;
+			btn.disabled = false; btn.innerHTML = orig;
+			// If the modal was closed/cancelled mid-flight, don't reload the page.
+			if (mySignal.aborted || !gid('ev-site-upload-modal').classList.contains('ev-modal-open')) return;
+			if (data.status === 0) {
+				// Section structure (map div, edit button) is PHP-rendered on
+				// whether a map exists — a reload is the honest way to swap in.
+				location.hash = 'ev-tab-site';
+				location.reload();
+			} else {
+				var err = gid('ev-site-upload-error');
+				err.textContent = data.error || 'Upload failed.'; err.style.display = 'block';
+			}
+		})
+		.catch(function(e) {
+			// Aborted uploads are intentional (user cancelled) — stay silent.
+			if (e && e.name === 'AbortError') return;
+			evSiteUploadController = null;
+			btn.disabled = false; btn.innerHTML = orig;
+			var err = gid('ev-site-upload-error');
+			err.textContent = 'Network error — please try again.'; err.style.display = 'block';
+		});
+	};
+
+	// ---- Remove Map (I-3) ----
+	// Pins are kept server-side (site_map_delete only clears the map row/files);
+	// the confirm copy below reflects that so managers aren't surprised.
+	window.evRemoveSiteMap = function() {
+		var errEl = gid('ev-site-map-remove-error');
+		if (errEl) errEl.style.display = 'none';
+		knConfirm(
+			'This will remove the site map image. Its pins will no longer display on a map until a new one is uploaded, but they are kept and will reappear once you upload a replacement.',
+			function() {
+				var fd = new FormData();
+				fetch(EvConfig.uir + 'EventAjax/site_map_delete/' + EvConfig.eventId + '/' + EvConfig.detailId, {
+					method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' }
+				})
+				.then(function(r) { return r.json(); })
+				.then(function(data) {
+					if (data.status === 0) {
+						// Section structure (map div, buttons, chip fallback) is
+						// PHP-rendered on whether a map exists — reload is the
+						// honest way to swap in, same as the upload success path.
+						location.hash = 'ev-tab-site';
+						location.reload();
+					} else if (errEl) {
+						errEl.textContent = data.error || 'Could not remove the site map.';
+						errEl.style.display = 'block';
+					}
+				})
+				.catch(function() {
+					if (errEl) {
+						errEl.textContent = 'Network error — please try again.';
+						errEl.style.display = 'block';
+					}
+				});
+			},
+			'Remove Site Map'
+		);
+	};
+})();
+// M-1: the IIFE above early-returns without defining evSiteFlyTo when there's no
+// site map and the viewer can't manage it (public page). A stale/late chip click
+// (dynamic edge states — e.g. the map was just removed) must no-op, not throw.
+window.evSiteFlyTo = window.evSiteFlyTo || function() {};
+</script>
+
+<script>
+// CONTRACT B (template half): Escape + backdrop dismissal for the three site
+// modals, mirroring the ev-edit-modal pattern and reusing the existing close
+// fns. (revised.js separately gates its own global Escape so the edit-modal
+// dirty-check doesn't also fire here.)
+(function() {
+	'use strict';
+	var mods = [
+		{ id: 'ev-site-rules-modal',  close: 'evCloseSiteRulesModal' },
+		{ id: 'ev-site-upload-modal', close: 'evCloseSiteMapUploadModal' },
+		{ id: 'ev-site-loc-modal',    close: 'evCloseSiteLocModal' }
+	];
+	function fire(name) { if (typeof window[name] === 'function') window[name](); }
+	mods.forEach(function(m) {
+		var el = document.getElementById(m.id);
+		if (!el) return; // modal only rendered when the manager guard passed
+		// Require mousedown AND click to both land on the overlay itself, so a
+		// drag that starts inside and releases on the backdrop doesn't dismiss.
+		var downOnBackdrop = false;
+		el.addEventListener('mousedown', function(e) { downOnBackdrop = (e.target === el); });
+		el.addEventListener('click', function(e) {
+			if (e.target === el && downOnBackdrop) fire(m.close);
+			downOnBackdrop = false;
+		});
+	});
+	document.addEventListener('keydown', function(e) {
+		if (e.key !== 'Escape' && e.key !== 'Esc') return;
+		mods.forEach(function(m) {
+			var el = document.getElementById(m.id);
+			if (el && el.classList.contains('ev-modal-open')) fire(m.close);
+		});
+	});
 })();
 </script>
 

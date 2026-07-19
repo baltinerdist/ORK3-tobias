@@ -22,6 +22,8 @@ assets/tmp/*
 !assets/tmp/.gitkeep
 assets/waivers/*
 !assets/waivers/.gitkeep
+assets/sitemaps/*
+!assets/sitemaps/.gitkeep
 assets/backups/*
 system/lib/phpqrcode/temp/*
 system/lib/phpqrcode/temp/

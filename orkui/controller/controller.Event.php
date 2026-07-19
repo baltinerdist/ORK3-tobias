@@ -340,6 +340,15 @@ class Controller_Event extends Controller
                 $rsvpCnt   = ($checkRsvp && $checkRsvp->Size() > 0 && $checkRsvp->Next()) ? (int)$checkRsvp->cnt : 0;
                 if ($attCnt === 0 && $rsvpCnt === 0) {
                     $this->Event->delete_calendar_detail($this->session->token, $detail_id);
+                    // The event_site_map row is FK ON DELETE CASCADE, but the physical
+                    // site-map image is not — unlink it here (mirror site_map_delete).
+                    $siteMapBase = DIR_SITEMAP . sprintf('%05d', (int)$detail_id);
+                    if (file_exists($siteMapBase . '.jpg')) {
+                        @unlink($siteMapBase . '.jpg');
+                    }
+                    if (file_exists($siteMapBase . '.png')) {
+                        @unlink($siteMapBase . '.png');
+                    }
                 }
             }
             global $DB;
@@ -686,6 +695,7 @@ class Controller_Event extends Controller
             && (Ork3::$Lib->authorization->HasAuthority($uid, AUTH_EVENT, $event_id, AUTH_EDIT) || $uid_staff_can_manage || $uid_staff_can_schedule);
         $this->data['CanManageFeast'] = $uid > 0
             && (Ork3::$Lib->authorization->HasAuthority($uid, AUTH_EVENT, $event_id, AUTH_EDIT) || $uid_staff_can_manage || $uid_staff_can_feast);
+        $this->data['CanManageSite'] = $this->data['CanManageEvent'];
 
         // Pull event status + creator id (for draft visibility gate).
         global $DB;
@@ -750,7 +760,7 @@ class Controller_Event extends Controller
         $scheduleRows = $DB->DataSet(
             'SELECT event_schedule_id AS EventScheduleId, title AS Title,
 			        start_time AS StartTime, end_time AS EndTime,
-			        location AS Location, description AS Description, category AS Category,
+			        location AS Location, site_location_id AS SiteLocationId, description AS Description, category AS Category,
 			        secondary_category AS SecondaryCategory,
 			        menu AS Menu, cost AS Cost, dietary AS Dietary, allergens AS Allergens
 			FROM ' . DB_PREFIX . 'event_schedule
@@ -766,6 +776,7 @@ class Controller_Event extends Controller
                     'StartTime'         => $scheduleRows->StartTime,
                     'EndTime'           => $scheduleRows->EndTime,
                     'Location'          => $scheduleRows->Location,
+                    'SiteLocationId'    => $scheduleRows->SiteLocationId !== null ? (int)$scheduleRows->SiteLocationId : null,
                     'Description'       => $scheduleRows->Description,
                     'Category'          => $scheduleRows->Category,
                     'SecondaryCategory' => $scheduleRows->SecondaryCategory ?? '',
@@ -852,6 +863,66 @@ class Controller_Event extends Controller
         // MealList is derived from ScheduleList — rows with category or secondary_category 'Feast and Food'
         // (ork_event_meal table removed; meal fields are now columns on ork_event_schedule)
         $this->data['MealList'] = array_values(array_filter($this->data['ScheduleList'], fn ($s) => ($s['Category'] ?? '') === 'Feast and Food' || ($s['SecondaryCategory'] ?? '') === 'Feast and Food'));
+
+        // ---- Site Details: rules, tagged locations, uploaded site map ----
+        $DB->Clear();
+        $siteRuleRows = $DB->DataSet(
+            'SELECT event_site_rule_id AS RuleId, rule_key AS RuleKey, value AS Value, title AS Title, details AS Details, sort_order AS SortOrder
+			FROM ' . DB_PREFIX . 'event_site_rule
+			WHERE event_calendardetail_id = ' . $detail_id . '
+			ORDER BY sort_order, event_site_rule_id'
+        );
+        $siteRules = [];
+        if ($siteRuleRows) {
+            while ($siteRuleRows->Next()) {
+                $siteRules[] = [
+                    'RuleId'    => (int)$siteRuleRows->RuleId,
+                    'RuleKey'   => $siteRuleRows->RuleKey !== null ? (string)$siteRuleRows->RuleKey : null,
+                    'Value'     => (string)($siteRuleRows->Value ?? ''),
+                    'Title'     => (string)($siteRuleRows->Title ?? ''),
+                    'Details'   => (string)($siteRuleRows->Details ?? ''),
+                    'SortOrder' => (int)$siteRuleRows->SortOrder,
+                ];
+            }
+        }
+        $this->data['SiteRules'] = $siteRules;
+
+        $DB->Clear();
+        $siteLocRows = $DB->DataSet(
+            'SELECT event_site_location_id AS LocationId, name AS Name, category AS Category, description AS Description, x AS X, y AS Y
+			FROM ' . DB_PREFIX . 'event_site_location
+			WHERE event_calendardetail_id = ' . $detail_id . '
+			ORDER BY sort_order, name'
+        );
+        $siteLocations = [];
+        if ($siteLocRows) {
+            while ($siteLocRows->Next()) {
+                $siteLocations[] = [
+                    'LocationId'  => (int)$siteLocRows->LocationId,
+                    'Name'        => (string)$siteLocRows->Name,
+                    'Category'    => (string)$siteLocRows->Category,
+                    'Description' => (string)($siteLocRows->Description ?? ''),
+                    'X'           => (float)$siteLocRows->X,
+                    'Y'           => (float)$siteLocRows->Y,
+                ];
+            }
+        }
+        $this->data['SiteLocations'] = $siteLocations;
+
+        $siteMap = null;
+        $DB->Clear();
+        $siteMapRow = $DB->DataSet('SELECT ext, width, height FROM ' . DB_PREFIX . 'event_site_map WHERE event_calendardetail_id = ' . $detail_id . ' LIMIT 1');
+        if ($siteMapRow && $siteMapRow->Next()) {
+            $smFile = sprintf('%05d', $detail_id) . '.' . $siteMapRow->ext;
+            if (file_exists(DIR_SITEMAP . $smFile)) {
+                $siteMap = [
+                    'Url'    => HTTP_SITEMAP . $smFile . '?v=' . filemtime(DIR_SITEMAP . $smFile),
+                    'Width'  => (int)$siteMapRow->width,
+                    'Height' => (int)$siteMapRow->height,
+                ];
+            }
+        }
+        $this->data['SiteMap'] = $siteMap;
 
         $this->data['DietarySummary'] = null;
         // Guard against detail_id = 0. Historical ork_attendance rows

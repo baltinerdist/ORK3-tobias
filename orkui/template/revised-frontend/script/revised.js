@@ -8322,7 +8322,12 @@ $(document).ready(function() {
     });
     // Close on Escape key
     document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') { evCloseEditModal(); evCloseCheckinModal(); }
+        if (e.key !== 'Escape') return;
+        // A Site modal (rules/upload/loc) owns its own Escape handling; don't let the
+        // Edit-Details/Check-in closers (with their unsaved-changes dirty check) fire
+        // when one of those is open on top.
+        if (document.querySelector('#ev-site-rules-modal.ev-modal-open, #ev-site-upload-modal.ev-modal-open, #ev-site-loc-modal.ev-modal-open')) return;
+        evCloseEditModal(); evCloseCheckinModal();
     });
 
     function evGetSavedCredits() {
@@ -9111,6 +9116,8 @@ $(document).ready(function() {
             gid('ev-sched-secondary-category').value = '';
             gid('ev-sched-title').value       = '';
             gid('ev-sched-location').value     = '';
+            var slSelReset = gid('ev-sched-site-location');
+            if (slSelReset) slSelReset.value = '';
             gid('ev-sched-description').value  = '';
             gid('ev-sched-error').style.display = 'none';
             evSchedLeads = [];
@@ -9238,6 +9245,8 @@ $(document).ready(function() {
             gid('ev-sched-secondary-category').value = row.getAttribute('data-secondary-category') || '';
             gid('ev-sched-title').value       = row.getAttribute('data-title') || '';
             gid('ev-sched-location').value     = row.getAttribute('data-location') || '';
+            var slSel = gid('ev-sched-site-location');
+            if (slSel) slSel.value = row.getAttribute('data-site-location-id') || '';
             gid('ev-sched-description').value  = row.getAttribute('data-description') || '';
             gid('ev-sched-error').style.display = 'none';
             try { evSchedLeads = JSON.parse(row.getAttribute('data-leads') || '[]'); } catch(e) { evSchedLeads = []; }
@@ -9305,6 +9314,8 @@ $(document).ready(function() {
             fd.append('Location',    loc);
             fd.append('Description', desc);
             fd.append('Leads',       JSON.stringify(evSchedLeads));
+            var slSel = gid('ev-sched-site-location');
+            fd.append('SiteLocationId', slSel && slSel.value ? slSel.value : '');
 
             var isEdit = gid('ev-sched-mode').value === 'edit';
             var schedId = gid('ev-sched-id').value;
@@ -9342,22 +9353,33 @@ $(document).ready(function() {
                         '<button class="ev-edit-link" data-tip="Edit" onclick="evOpenScheduleEditModal(' + s.EventScheduleId + ',this)" style="background:none;border:none;cursor:pointer;color:#666;font-size:13px;padding:0 5px 0 0"><i class="fas fa-pencil-alt"></i></button>' +
                         '<button class="ev-del-link" data-tip="Remove" onclick="evRemoveSchedule(this,' + s.EventScheduleId + ')" style="background:none;border:none;cursor:pointer;color:#e53e3e;font-size:16px;padding:0">&times;</button>' +
                         '</td>';
+                    // s.Location comes back null when the caller isn't allowed to see it
+                    // (can_schedule=false feast-only saves) — String(null) would render the
+                    // literal text "null" in the cell, so guard it to an empty string instead.
+                    var locText = (s.Location == null) ? '' : escHtmlSch(s.Location);
+                    // M-1: only render the fly-to chip when a site map actually exists —
+                    // without one, evSiteFlyTo has nothing to show and the row should
+                    // degrade to plain text (mirrors the server-rendered gating).
+                    var locCellHtml = (s.SiteLocationId != null && EvConfig.siteMap)
+                        ? '<a href="javascript:void(0)" class="ev-loc-chip" onclick="evSiteFlyTo(' + s.SiteLocationId + ')" data-tip="Show on site map"><i class="fas fa-map-marker-alt"></i> ' + locText + '</a>'
+                        : locText;
                     if (isEdit) {
                         var row = gid('ev-schedule-row-' + s.EventScheduleId);
                         if (row) {
                             row.setAttribute('data-title',       s.Title);
                             row.setAttribute('data-start',       (s.StartTime || '').replace(' ', 'T').substring(0, 16));
                             row.setAttribute('data-end',         (s.EndTime || '').replace(' ', 'T').substring(0, 16));
-                            row.setAttribute('data-location',    s.Location);
-                            row.setAttribute('data-description', s.Description);
-                            row.setAttribute('data-category',           s.Category);
+                            row.setAttribute('data-location',    s.Location || '');
+                            row.setAttribute('data-site-location-id', s.SiteLocationId != null ? s.SiteLocationId : '');
+                            row.setAttribute('data-description', s.Description || '');
+                            row.setAttribute('data-category',           s.Category || '');
                             row.setAttribute('data-secondary-category', s.SecondaryCategory || '');
                             row.setAttribute('data-leads',              JSON.stringify(s.Leads || []));
                             row.style.background = catCfg.bg;
                             row.cells[0].innerHTML = startCell;
                             row.cells[1].innerHTML = endCell;
                             row.cells[2].innerHTML = glyphHtml + escHtmlSch(s.Title);
-                            row.cells[3].textContent = s.Location;
+                            row.cells[3].innerHTML = locCellHtml;
                             row.cells[4].innerHTML = evSchedLeadsCell(s.Leads || []);
                             row.cells[5].textContent = s.Description;
                             if (row.cells[6]) row.cells[6].innerHTML = actionCells.replace(/^<td[^>]*>/, '').replace(/<\/td>$/, '');
@@ -9368,8 +9390,9 @@ $(document).ready(function() {
                             ' data-title="' + s.Title.replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '"' +
                             ' data-start="' + (s.StartTime || '').replace(' ','T').substring(0,16) + '"' +
                             ' data-end="'   + (s.EndTime || '').replace(' ','T').substring(0,16) + '"' +
-                            ' data-location="' + s.Location.replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '"' +
-                            ' data-description="' + s.Description.replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '"' +
+                            ' data-location="' + (s.Location || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '"' +
+                            ' data-site-location-id="' + (s.SiteLocationId != null ? s.SiteLocationId : '') + '"' +
+                            ' data-description="' + (s.Description || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '"' +
                             ' data-category="' + escHtmlSch(s.Category) + '"' +
                             ' data-secondary-category="' + escHtmlSch(s.SecondaryCategory || '') + '"' +
                             ' data-leads="' + JSON.stringify(s.Leads || []).replace(/"/g,'&quot;') + '"' +
@@ -9377,9 +9400,9 @@ $(document).ready(function() {
                             '<td style="white-space:nowrap">' + startCell + '</td>' +
                             '<td style="white-space:nowrap">' + endCell + '</td>' +
                             '<td>' + glyphHtml + escHtmlSch(s.Title) + '</td>' +
-                            '<td>' + escHtmlSch(s.Location) + '</td>' +
+                            '<td>' + locCellHtml + '</td>' +
                             '<td>' + evSchedLeadsCell(s.Leads || []) + '</td>' +
-                            '<td>' + escHtmlSch(s.Description) + '</td>' +
+                            '<td>' + escHtmlSch(s.Description || '') + '</td>' +
                             actionCells +
                             '</tr>';
                         var dateKey = s.StartTime.substring(0, 10).replace(/-/g, '');
@@ -9537,55 +9560,76 @@ $(document).ready(function() {
         };
 
         window.evRemoveSchedule = function(btn, scheduleId) {
-            if (!confirm('Remove this schedule item?')) return;
-            var fd = new FormData();
-            fd.append('ScheduleId', scheduleId);
-            fetch(EvConfig.uir + 'EventAjax/remove_schedule/' + EvConfig.eventId + '/' + EvConfig.detailId, {
-                method: 'POST', body: fd,
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data.status === 0) {
-                    // A multi-day item renders one row per day it spans, so remove them all.
-                    var rows = document.querySelectorAll('tr[data-schedule-id="' + scheduleId + '"]');
-                    // Capture the day-sections BEFORE removing the rows — closest() on a
-                    // detached node returns null, so empty sections never got cleaned up.
-                    var daySections = [];
-                    rows.forEach(function(row) {
-                        var sec = row.closest('.ev-sched-day-section');
-                        if (sec && daySections.indexOf(sec) === -1) daySections.push(sec);
-                        row.remove();
-                    });
-                    daySections.forEach(function(daySection) {
-                        var tbody = daySection.querySelector('tbody');
-                        if (tbody && tbody.querySelectorAll('tr').length === 0) {
-                            daySection.remove();
-                        }
-                    });
-                    var container = gid('ev-schedule-container');
-                    if (container && container.querySelectorAll('.ev-sched-day-section').length === 0) {
-                        var empty = gid('ev-schedule-empty');
-                        if (empty) empty.style.display = '';
-                    }
-                    var navItems = document.querySelectorAll('#ev-tab-nav li');
-                    navItems.forEach(function(li) {
-                        if (li.getAttribute('data-tab') === 'ev-tab-schedule') {
-                            var badge = li.querySelector('.ev-tab-count');
-                            if (badge) {
-                                var n = parseInt(badge.textContent || '1') - 1;
-                                badge.textContent = Math.max(0, n);
+            var titleRow = document.querySelector('tr[data-schedule-id="' + scheduleId + '"]');
+            var itemTitle = titleRow ? (titleRow.getAttribute('data-title') || 'this item') : 'this item';
+            // M-9: no native alert() — there's no shared row-level error slot for the
+            // schedule table, so surface failures as a transient inline message next
+            // to the button that triggered the removal (mirrors the in-page-only
+            // error surfacing used elsewhere on this page, e.g. ev-sched-error).
+            function showRowError(msg) {
+                btn.disabled = false;
+                var cell = btn.closest('td') || btn.parentNode;
+                var existing = cell.querySelector('.ev-sched-row-err');
+                if (existing) existing.remove();
+                var err = document.createElement('div');
+                err.className = 'ev-sched-row-err';
+                err.style.cssText = 'color:#e53e3e;font-size:11px;white-space:normal;margin-top:2px;max-width:140px';
+                err.textContent = msg;
+                cell.appendChild(err);
+                setTimeout(function() { if (err.parentNode) err.remove(); }, 6000);
+            }
+            var doRemove = function() {
+                btn.disabled = true;
+                var fd = new FormData();
+                fd.append('ScheduleId', scheduleId);
+                fetch(EvConfig.uir + 'EventAjax/remove_schedule/' + EvConfig.eventId + '/' + EvConfig.detailId, {
+                    method: 'POST', body: fd,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.status === 0) {
+                        // A multi-day item renders one row per day it spans, so remove them all.
+                        var rows = document.querySelectorAll('tr[data-schedule-id="' + scheduleId + '"]');
+                        // Capture the day-sections BEFORE removing the rows — closest() on a
+                        // detached node returns null, so empty sections never got cleaned up.
+                        var daySections = [];
+                        rows.forEach(function(row) {
+                            var sec = row.closest('.ev-sched-day-section');
+                            if (sec && daySections.indexOf(sec) === -1) daySections.push(sec);
+                            row.remove();
+                        });
+                        daySections.forEach(function(daySection) {
+                            var tbody = daySection.querySelector('tbody');
+                            if (tbody && tbody.querySelectorAll('tr').length === 0) {
+                                daySection.remove();
                             }
+                        });
+                        var container = gid('ev-schedule-container');
+                        if (container && container.querySelectorAll('.ev-sched-day-section').length === 0) {
+                            var empty = gid('ev-schedule-empty');
+                            if (empty) empty.style.display = '';
                         }
-                    });
-                    evBuildScheduleFilters();
-                    // Keep the server-rendered grid in sync with this removal.
-                    if (typeof window.evRefreshScheduleGrid === 'function') window.evRefreshScheduleGrid();
-                } else {
-                    alert(data.error || 'Could not remove schedule item.');
-                }
-            })
-            .catch(function(err) { alert('Request failed: ' + err.message); });
+                        var navItems = document.querySelectorAll('#ev-tab-nav li');
+                        navItems.forEach(function(li) {
+                            if (li.getAttribute('data-tab') === 'ev-tab-schedule') {
+                                var badge = li.querySelector('.ev-tab-count');
+                                if (badge) {
+                                    var n = parseInt(badge.textContent || '1') - 1;
+                                    badge.textContent = Math.max(0, n);
+                                }
+                            }
+                        });
+                        evBuildScheduleFilters();
+                        // Keep the server-rendered grid in sync with this removal.
+                        if (typeof window.evRefreshScheduleGrid === 'function') window.evRefreshScheduleGrid();
+                    } else {
+                        showRowError(data.error || 'Could not remove schedule item.');
+                    }
+                })
+                .catch(function(err) { showRowError('Request failed: ' + err.message); });
+            };
+            knConfirm('Remove "' + itemTitle + '" from the schedule? This cannot be undone.', doRemove, 'Remove Schedule Item');
         };
         // Initialize schedule filters on page load
         evBuildScheduleFilters();
