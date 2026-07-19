@@ -69,13 +69,13 @@ if (!function_exists('event_site_location_categories')) {
     function event_site_location_categories(): array
     {
         return [
-            'battlefield' => ['label' => 'Battlefield', 'icon' => 'fa-flag',           'color' => '#c53030'],
+            'battlefield' => ['label' => 'Battlefield', 'icon' => 'fa-flag',           'color' => '#808000'],
             'feast'       => ['label' => 'Feast Hall',  'icon' => 'fa-utensils',       'color' => '#dd6b20'],
             'camping'     => ['label' => 'Camping',     'icon' => 'fa-campground',     'color' => '#38a169'],
             'parking'     => ['label' => 'Parking',     'icon' => 'fa-parking',        'color' => '#3182ce'],
             'water'       => ['label' => 'Water',       'icon' => 'fa-tint',           'color' => '#00b5d8'],
             'firstaid'    => ['label' => 'First Aid',   'icon' => 'fa-first-aid',      'color' => '#e53e3e'],
-            'privies'     => ['label' => 'Restrooms',   'icon' => 'fa-restroom',       'color' => '#805ad5'],
+            'privies'     => ['label' => 'Restrooms',   'icon' => 'fa-restroom',       'color' => '#d53f8c'],
             'vendors'     => ['label' => 'Vendors',     'icon' => 'fa-store',          'color' => '#d69e2e'],
             'stage'       => ['label' => 'Stage/Court', 'icon' => 'fa-theater-masks',  'color' => '#6b46c1'],
             'other'       => ['label' => 'Other',       'icon' => 'fa-map-marker-alt', 'color' => '#4a5568'],

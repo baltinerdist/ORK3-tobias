@@ -8322,7 +8322,12 @@ $(document).ready(function() {
     });
     // Close on Escape key
     document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') { evCloseEditModal(); evCloseCheckinModal(); }
+        if (e.key !== 'Escape') return;
+        // A Site modal (rules/upload/loc) owns its own Escape handling; don't let the
+        // Edit-Details/Check-in closers (with their unsaved-changes dirty check) fire
+        // when one of those is open on top.
+        if (document.querySelector('#ev-site-rules-modal.ev-modal-open, #ev-site-upload-modal.ev-modal-open, #ev-site-loc-modal.ev-modal-open')) return;
+        evCloseEditModal(); evCloseCheckinModal();
     });
 
     function evGetSavedCredits() {
@@ -9385,9 +9390,9 @@ $(document).ready(function() {
                             ' data-title="' + s.Title.replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '"' +
                             ' data-start="' + (s.StartTime || '').replace(' ','T').substring(0,16) + '"' +
                             ' data-end="'   + (s.EndTime || '').replace(' ','T').substring(0,16) + '"' +
-                            ' data-location="' + s.Location.replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '"' +
+                            ' data-location="' + (s.Location || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '"' +
                             ' data-site-location-id="' + (s.SiteLocationId != null ? s.SiteLocationId : '') + '"' +
-                            ' data-description="' + s.Description.replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '"' +
+                            ' data-description="' + (s.Description || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '"' +
                             ' data-category="' + escHtmlSch(s.Category) + '"' +
                             ' data-secondary-category="' + escHtmlSch(s.SecondaryCategory || '') + '"' +
                             ' data-leads="' + JSON.stringify(s.Leads || []).replace(/"/g,'&quot;') + '"' +
@@ -9397,7 +9402,7 @@ $(document).ready(function() {
                             '<td>' + glyphHtml + escHtmlSch(s.Title) + '</td>' +
                             '<td>' + locCellHtml + '</td>' +
                             '<td>' + evSchedLeadsCell(s.Leads || []) + '</td>' +
-                            '<td>' + escHtmlSch(s.Description) + '</td>' +
+                            '<td>' + escHtmlSch(s.Description || '') + '</td>' +
                             actionCells +
                             '</tr>';
                         var dateKey = s.StartTime.substring(0, 10).replace(/-/g, '');

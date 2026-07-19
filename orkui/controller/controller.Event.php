@@ -340,6 +340,15 @@ class Controller_Event extends Controller
                 $rsvpCnt   = ($checkRsvp && $checkRsvp->Size() > 0 && $checkRsvp->Next()) ? (int)$checkRsvp->cnt : 0;
                 if ($attCnt === 0 && $rsvpCnt === 0) {
                     $this->Event->delete_calendar_detail($this->session->token, $detail_id);
+                    // The event_site_map row is FK ON DELETE CASCADE, but the physical
+                    // site-map image is not — unlink it here (mirror site_map_delete).
+                    $siteMapBase = DIR_SITEMAP . sprintf('%05d', (int)$detail_id);
+                    if (file_exists($siteMapBase . '.jpg')) {
+                        @unlink($siteMapBase . '.jpg');
+                    }
+                    if (file_exists($siteMapBase . '.png')) {
+                        @unlink($siteMapBase . '.png');
+                    }
                 }
             }
             global $DB;

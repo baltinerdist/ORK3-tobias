@@ -64,10 +64,28 @@ CREATE TABLE IF NOT EXISTS ork_event_site_location (
 -- Schedule items may link to a tagged location. ON DELETE SET NULL so
 -- deleting a pin never breaks the schedule (the free-text `location`
 -- column keeps a readable copy of the pin name).
+-- Idempotent so a hand re-run (no migration-tracking table) won't hard-fail on
+-- a duplicate column/key/constraint. MariaDB 10.x supports IF NOT EXISTS for
+-- ADD COLUMN / ADD INDEX but NOT for a named ADD CONSTRAINT, so the FK is
+-- guarded via information_schema + a prepared statement.
 ALTER TABLE ork_event_schedule
-    ADD COLUMN site_location_id INT NULL DEFAULT NULL,
-    ADD KEY idx_sched_site_location (site_location_id),
-    ADD CONSTRAINT fk_sched_site_location
+    ADD COLUMN IF NOT EXISTS site_location_id INT NULL DEFAULT NULL;
+
+ALTER TABLE ork_event_schedule
+    ADD INDEX IF NOT EXISTS idx_sched_site_location (site_location_id);
+
+SELECT COUNT(*) INTO @exist
+    FROM information_schema.TABLE_CONSTRAINTS
+    WHERE CONSTRAINT_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'ork_event_schedule'
+      AND CONSTRAINT_NAME = 'fk_sched_site_location';
+SET @sql = IF(@exist = 0,
+    'ALTER TABLE ork_event_schedule
+        ADD CONSTRAINT fk_sched_site_location
         FOREIGN KEY (site_location_id)
         REFERENCES ork_event_site_location (event_site_location_id)
-        ON DELETE SET NULL;
+        ON DELETE SET NULL',
+    'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;

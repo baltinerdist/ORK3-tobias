@@ -1980,6 +1980,13 @@ class Controller_EventAjax extends Controller
             echo json_encode(['status' => 5, 'error' => 'Not logged in']);
             exit;
         }
+        // CSRF mitigation: cross-site form POSTs cannot set a custom header,
+        // and cross-origin XHR is preflight-blocked. No token system exists in
+        // this codebase, so enforce the header the client already sends.
+        if (($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') !== 'XMLHttpRequest') {
+            echo json_encode(['status' => 4, 'error' => 'Bad request.']);
+            exit;
+        }
 
         $params    = explode('/', $p ?? '');
         $event_id  = (int)preg_replace('/[^0-9]/', '', $params[0] ?? '');
@@ -2037,6 +2044,31 @@ class Controller_EventAjax extends Controller
         }
 
         global $DB;
+
+        // CONTRACT A (optimistic concurrency): the client posts the RuleId set
+        // it rendered from. If the current set differs (rules added/removed by
+        // another manager since the page loaded), reject and write nothing.
+        $baselineRaw = trim((string)($_POST['BaselineRuleIds'] ?? ''));
+        $baseline    = [];
+        if ($baselineRaw !== '') {
+            foreach (explode(',', $baselineRaw) as $bid) {
+                $bid = (int)trim($bid);
+                if ($bid > 0) {
+                    $baseline[$bid] = true;
+                }
+            }
+        }
+        $current = [];
+        foreach ($this->_loadSiteRules($detail_id) as $existing) {
+            $current[(int)$existing['RuleId']] = true;
+        }
+        ksort($baseline);
+        ksort($current);
+        if (array_keys($baseline) !== array_keys($current)) {
+            echo json_encode(['status' => 9, 'error' => 'These site rules were changed by someone else — reload the page and try again.']);
+            exit;
+        }
+
         $values = [];
         foreach ($pillRows as $key => $r) {
             $values[] = '(' . $detail_id . ", '" . $this->_escSql($key) . "', '" . $this->_escSql($r['value']) . "', '', '" . $this->_escSql($r['details']) . "', 0)";
@@ -2046,6 +2078,15 @@ class Controller_EventAjax extends Controller
             $values[] = '(' . $detail_id . ", NULL, '', '" . $this->_escSql($r['title']) . "', '" . $this->_escSql($r['details']) . "', " . $sort++ . ')';
         }
 
+        // Wrap the DELETE + INSERT in a transaction and drive COMMIT/ROLLBACK off
+        // a row-count check taken INSIDE the transaction. YapoMysql::Execute() has
+        // no return value and PDO runs in warning mode, so an Execute failure can't
+        // be detected from a return code — the post-INSERT COUNT(*) is the only
+        // reliable signal the rewrite fully landed. A mismatch ROLLs BACK, undoing
+        // the DELETE, so a failed INSERT can never leave the rule set empty.
+        $expected = count($pillRows) + count($customRows);
+        $DB->Clear();
+        $DB->Execute('START TRANSACTION');
         $DB->Clear();
         $DB->Execute('DELETE FROM ' . DB_PREFIX . 'event_site_rule WHERE event_calendardetail_id = ' . $detail_id);
         if (!empty($values)) {
@@ -2055,6 +2096,20 @@ class Controller_EventAjax extends Controller
 				(event_calendardetail_id, rule_key, value, title, details, sort_order)
 				VALUES ' . implode(', ', $values)
             );
+        }
+        // COUNT within the still-open transaction — it sees the uncommitted
+        // rewrite. Committing only on an exact match makes a partial write
+        // self-healing: ROLLBACK restores the pre-DELETE rows.
+        $DB->Clear();
+        $cntRow = $DB->DataSet('SELECT COUNT(*) AS cnt FROM ' . DB_PREFIX . 'event_site_rule WHERE event_calendardetail_id = ' . $detail_id);
+        $actual = ($cntRow && $cntRow->Next()) ? (int)$cntRow->cnt : -1;
+        $ok     = ($actual === $expected);
+        $DB->Clear();
+        $DB->Execute($ok ? 'COMMIT' : 'ROLLBACK');
+
+        if (!$ok) {
+            echo json_encode(['status' => 2, 'error' => 'Failed to save site rules — please retry.']);
+            exit;
         }
 
         echo json_encode(['status' => 0, 'rules' => $this->_loadSiteRules($detail_id)]);
@@ -2066,6 +2121,13 @@ class Controller_EventAjax extends Controller
         header('Content-Type: application/json');
         if (!isset($this->session->user_id)) {
             echo json_encode(['status' => 5, 'error' => 'Not logged in']);
+            exit;
+        }
+        // CSRF mitigation: cross-site form POSTs cannot set a custom header,
+        // and cross-origin XHR is preflight-blocked. No token system exists in
+        // this codebase, so enforce the header the client already sends.
+        if (($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') !== 'XMLHttpRequest') {
+            echo json_encode(['status' => 4, 'error' => 'Bad request.']);
             exit;
         }
 
@@ -2120,8 +2182,10 @@ class Controller_EventAjax extends Controller
         }
         $base = DIR_SITEMAP . sprintf('%05d', $detail_id);
         // Land the new file under a temp name first so a failed move can
-        // never destroy the existing map.
-        $newPath = $base . '.new.' . $ext;
+        // never destroy the existing map. The temp name is per-request-unique
+        // (uniqid) so two concurrent same-ext uploads can't collide on it;
+        // this same $newPath is the one moved, renamed, and cleaned up below.
+        $newPath = $base . '.' . uniqid('', true) . '.new.' . $ext;
         if (!@move_uploaded_file($tmp, $newPath)) {
             echo json_encode(['status' => 1, 'error' => 'Could not save uploaded file.']);
             exit;
@@ -2176,6 +2240,13 @@ class Controller_EventAjax extends Controller
             echo json_encode(['status' => 5, 'error' => 'Not logged in']);
             exit;
         }
+        // CSRF mitigation: cross-site form POSTs cannot set a custom header,
+        // and cross-origin XHR is preflight-blocked. No token system exists in
+        // this codebase, so enforce the header the client already sends.
+        if (($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') !== 'XMLHttpRequest') {
+            echo json_encode(['status' => 4, 'error' => 'Bad request.']);
+            exit;
+        }
 
         $params    = explode('/', $p ?? '');
         $event_id  = (int)preg_replace('/[^0-9]/', '', $params[0] ?? '');
@@ -2218,6 +2289,13 @@ class Controller_EventAjax extends Controller
         header('Content-Type: application/json');
         if (!isset($this->session->user_id)) {
             echo json_encode(['status' => 5, 'error' => 'Not logged in']);
+            exit;
+        }
+        // CSRF mitigation: cross-site form POSTs cannot set a custom header,
+        // and cross-origin XHR is preflight-blocked. No token system exists in
+        // this codebase, so enforce the header the client already sends.
+        if (($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') !== 'XMLHttpRequest') {
+            echo json_encode(['status' => 4, 'error' => 'Bad request.']);
             exit;
         }
 
@@ -2265,9 +2343,12 @@ class Controller_EventAjax extends Controller
             }
             $DB->Clear();
             $DB->Execute('UPDATE ' . DB_PREFIX . "event_site_location SET name = '" . $name_safe . "', category = '" . $cat_safe . "', description = '" . $desc_safe . "', x = " . $x_sql . ', y = ' . $y_sql . ' WHERE event_site_location_id = ' . $loc_id);
-            // Keep the denormalized schedule location text in sync on rename.
+            // Re-sync the denormalized schedule location text on rename, but
+            // ONLY for auto-filled copies (location = '') — mirrors the guarded
+            // backfill in site_location_delete so a manager's custom schedule
+            // text is never clobbered.
             $DB->Clear();
-            $DB->Execute('UPDATE ' . DB_PREFIX . "event_schedule SET location = '" . $name_safe . "' WHERE site_location_id = " . $loc_id);
+            $DB->Execute('UPDATE ' . DB_PREFIX . "event_schedule SET location = '" . $name_safe . "' WHERE site_location_id = " . $loc_id . " AND location = ''");
         } else {
             $DB->Clear();
             $DB->Execute('INSERT INTO ' . DB_PREFIX . "event_site_location (event_calendardetail_id, name, category, description, x, y) VALUES (" . $detail_id . ", '" . $name_safe . "', '" . $cat_safe . "', '" . $desc_safe . "', " . $x_sql . ', ' . $y_sql . ')');
@@ -2297,6 +2378,13 @@ class Controller_EventAjax extends Controller
         header('Content-Type: application/json');
         if (!isset($this->session->user_id)) {
             echo json_encode(['status' => 5, 'error' => 'Not logged in']);
+            exit;
+        }
+        // CSRF mitigation: cross-site form POSTs cannot set a custom header,
+        // and cross-origin XHR is preflight-blocked. No token system exists in
+        // this codebase, so enforce the header the client already sends.
+        if (($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') !== 'XMLHttpRequest') {
+            echo json_encode(['status' => 4, 'error' => 'Bad request.']);
             exit;
         }
 

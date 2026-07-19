@@ -181,8 +181,8 @@
 
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>revised-frontend/style/revised.css?v=<?= filemtime(DIR_TEMPLATE . 'revised-frontend/style/revised.css') ?>">
 <?php if (!empty($siteMap) || $canManageSite): ?>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous" defer></script>
 <?php endif; ?>
 <style>
 .ev-export-bar { display: flex; justify-content: flex-end; gap: 6px; margin-bottom: 10px; }
@@ -799,6 +799,19 @@ html[data-theme="dark"] .ev-site-popup-desc { color:#cbd5e0; }
 html[data-theme="dark"] .ev-site-popup-cat { color:#a0aec0; }
 html[data-theme="dark"] .ev-site-popup-sched, html[data-theme="dark"] .ev-site-popup-actions { border-color:#4a5568; }
 html[data-theme="dark"] .ev-site-legend-chip { background:#2d3748; border-color:#4a5568; color:#cbd5e0; }
+/* Always-visible pin labels (permanent Leaflet tooltip) */
+.leaflet-tooltip.ev-pin-label { background:rgba(255,255,255,.92); color:#2d3748; border:1px solid #cbd5e0; border-radius:4px; padding:1px 6px; font-size:11px; font-weight:600; box-shadow:0 1px 3px rgba(0,0,0,.2); }
+.leaflet-tooltip.ev-pin-label:before { display:none; }
+html[data-theme="dark"] .leaflet-tooltip.ev-pin-label { background:rgba(45,55,72,.94); color:#e2e8f0; border-color:#4a5568; box-shadow:0 1px 3px rgba(0,0,0,.5); }
+/* Static fallback when Leaflet fails to load / a tile image is missing */
+#ev-site-map.ev-site-map-static { overflow:auto; padding:0; }
+.ev-site-map-fallback-note, .ev-site-map-overlay-error { display:flex; align-items:flex-start; gap:7px; background:#fffbeb; border:1px solid #f6e05e; color:#744210; font-size:12.5px; line-height:1.45; padding:8px 12px; border-radius:6px; margin:8px; }
+.ev-site-map-fallback img { display:block; max-width:none; }
+.ev-site-map-overlay-error { position:absolute; top:10px; left:10px; right:10px; z-index:600; margin:0; }
+html[data-theme="dark"] .ev-site-map-fallback-note, html[data-theme="dark"] .ev-site-map-overlay-error { background:#3b2f1a; border-color:#975a16; color:#fbd38d; }
+/* Screen-reader / print text equivalent of the tagged pins */
+.ev-site-loc-textlist { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+@media print { .ev-site-loc-textlist { position:static; width:auto; height:auto; margin:8px 0 0; overflow:visible; clip:auto; white-space:normal; } }
 </style>
 
 <?php // ---- DRAFT BLOCKED ---- ?>
@@ -2150,6 +2163,17 @@ html[data-theme="dark"] .ev-site-legend-chip { background:#2d3748; border-color:
 							<img src="<?= htmlspecialchars($siteMap['Url']) ?>" alt="Site map" style="max-width:none">
 						</div>
 					</noscript>
+					<?php // Text equivalent of the tagged pins for non-visual users (and print). ?>
+					<?php if (!empty($siteLocations)): ?>
+					<ul class="ev-site-loc-textlist" aria-label="Tagged locations on the site map">
+						<?php foreach ($siteLocations as $_loc): ?>
+						<?php $_lc = $siteLocCategories[$_loc['Category']] ?? ($siteLocCategories['other'] ?? null); ?>
+						<li>
+							<strong><?= htmlspecialchars($_loc['Name']) ?></strong><?php if ($_lc): ?> (<?= htmlspecialchars($_lc['label']) ?>)<?php endif; ?><?php if (!empty($_loc['Description'])): ?> — <?= htmlspecialchars($_loc['Description']) ?><?php endif; ?>
+						</li>
+						<?php endforeach; ?>
+					</ul>
+					<?php endif; ?>
 					<?php elseif ($canManageSite): ?>
 					<div class="ev-site-cta" onclick="evOpenSiteMapUploadModal()">
 						<i class="fas fa-map"></i> Upload a site map to tag battlefields, camping, parking, and more
@@ -2176,7 +2200,7 @@ html[data-theme="dark"] .ev-site-legend-chip { background:#2d3748; border-color:
 				<div id="ev-site-directions-section">
 					<div class="ev-site-section-head">
 						<h3 class="ev-site-section-title"><i class="fas fa-directions"></i> Getting There</h3>
-						<a href="<?= htmlspecialchars($mapOpenUrl) ?>" target="_blank" class="pk-btn pk-btn-secondary" style="font-size:13px;padding:6px 14px;text-decoration:none">
+						<a href="<?= htmlspecialchars($mapOpenUrl) ?>" target="_blank" rel="noopener" class="pk-btn pk-btn-secondary" style="font-size:13px;padding:6px 14px;text-decoration:none">
 							<i class="fas fa-external-link-alt" style="margin-right:6px"></i>Open in Maps
 						</a>
 					</div>
@@ -3149,7 +3173,7 @@ html[data-theme="dark"] #ev-attendance-table_wrapper .dataTables_paginate .pagin
 					<div class="ev-site-rule-group-label"><i class="fas <?= $cat['icon'] ?>"></i> <?= htmlspecialchars($cat['label']) ?></div>
 					<div class="ev-site-rule-options">
 						<?php foreach ($cat['values'] as $vkey => $v): ?>
-						<button type="button" class="ev-site-opt" data-value="<?= $vkey ?>"><?= htmlspecialchars($v['label']) ?></button>
+						<button type="button" class="ev-site-opt" data-value="<?= $vkey ?>" aria-pressed="false"><?= htmlspecialchars($v['label']) ?></button>
 						<?php endforeach; ?>
 					</div>
 					<input type="text" class="ev-site-rule-details" placeholder="Optional details (times, areas, exceptions)..." style="display:none;width:100%;margin-top:6px">
@@ -4823,6 +4847,12 @@ html[data-theme="dark"] .ev-grid-day-pill.ev-grid-day-pill-active {
 
 	// Current rules state, keyed for the modal. Seeded from the server render.
 	var siteRules = <?= json_encode($siteRules) ?>;
+	// CONTRACT A (optimistic concurrency): the RuleId set this editing session is
+	// based on. Posted as BaselineRuleIds so the server can reject a save when
+	// another manager changed the rules meanwhile; refreshed after every
+	// successful save so sequential saves in one session don't self-conflict.
+	function evSiteRuleIds() { return (siteRules || []).map(function(r) { return r.RuleId; }).filter(function(id) { return id != null; }); }
+	var evSiteRulesBaseline = evSiteRuleIds();
 
 	window.evOpenSiteRulesModal = function() {
 		// Reset all groups to current saved state.
@@ -4831,7 +4861,9 @@ html[data-theme="dark"] .ev-grid-day-pill.ev-grid-day-pill-active {
 			var saved = siteRules.find(function(r) { return r.RuleKey === key; });
 			var details = g.querySelector('.ev-site-rule-details');
 			g.querySelectorAll('.ev-site-opt').forEach(function(b) {
-				b.classList.toggle('ev-site-opt-on', !!saved && b.getAttribute('data-value') === saved.Value);
+				var isOn = !!saved && b.getAttribute('data-value') === saved.Value;
+				b.classList.toggle('ev-site-opt-on', isOn);
+				b.setAttribute('aria-pressed', isOn ? 'true' : 'false');
 			});
 			details.value = saved ? (saved.Details || '') : '';
 			details.style.display = saved ? '' : 'none';
@@ -4853,8 +4885,8 @@ html[data-theme="dark"] .ev-grid-day-pill.ev-grid-day-pill-active {
 		g.querySelectorAll('.ev-site-opt').forEach(function(b) {
 			b.addEventListener('click', function() {
 				var wasOn = b.classList.contains('ev-site-opt-on');
-				g.querySelectorAll('.ev-site-opt').forEach(function(o) { o.classList.remove('ev-site-opt-on'); });
-				if (!wasOn) b.classList.add('ev-site-opt-on');
+				g.querySelectorAll('.ev-site-opt').forEach(function(o) { o.classList.remove('ev-site-opt-on'); o.setAttribute('aria-pressed', 'false'); });
+				if (!wasOn) { b.classList.add('ev-site-opt-on'); b.setAttribute('aria-pressed', 'true'); }
 				details.style.display = wasOn ? 'none' : '';
 				if (wasOn) details.value = '';
 			});
@@ -4894,6 +4926,7 @@ html[data-theme="dark"] .ev-grid-day-pill.ev-grid-day-pill-active {
 		btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
 		var fd = new FormData();
 		fd.append('Rules', JSON.stringify(out));
+		fd.append('BaselineRuleIds', evSiteRulesBaseline.join(','));
 		fetch(EvConfig.uir + 'EventAjax/site_rules_save/' + EvConfig.eventId + '/' + EvConfig.detailId, {
 			method: 'POST', body: fd,
 			headers: { 'X-Requested-With': 'XMLHttpRequest' }
@@ -4902,8 +4935,15 @@ html[data-theme="dark"] .ev-grid-day-pill.ev-grid-day-pill-active {
 		.then(function(data) {
 			if (data.status === 0) {
 				siteRules = data.rules;
+				// Re-baseline from what the server just persisted so a follow-up
+				// save in the same session doesn't false-conflict against itself.
+				evSiteRulesBaseline = evSiteRuleIds();
 				evSiteRenderRules();
 				evCloseSiteRulesModal();
+			} else if (data.status === 9) {
+				var errC = gid('ev-site-rules-error');
+				errC.textContent = data.error || 'These site rules were changed by someone else — reload the page and try again.';
+				errC.style.display = 'block';
 			} else {
 				var err = gid('ev-site-rules-error');
 				err.textContent = data.error || 'Could not save rules.';
@@ -4962,6 +5002,8 @@ html[data-theme="dark"] .ev-grid-day-pill.ev-grid-day-pill-active {
 	var map = null, editMode = false;
 	var evSiteMarkers = {};
 	var COORD_H = 1000; // fixed CRS height; width scales by aspect ratio
+	var evLeafletFailed = false, evLeafletPending = false;
+	var evSiteSaveGen = {}; // LocationId -> latest drag-save token (out-of-order guard)
 
 	function catCfg(key) {
 		return EvConfig.siteLocCategories[key] || EvConfig.siteLocCategories.other;
@@ -4983,11 +5025,69 @@ html[data-theme="dark"] .ev-grid-day-pill.ev-grid-day-pill-active {
 		};
 	}
 
+	// Leaflet is loaded deferred from a CDN (with SRI). If it hasn't parsed yet,
+	// run cb on the script's load event; if it never arrives (CDN down, SRI/
+	// integrity mismatch, offline), fall back to the static image via onFail.
+	function whenLeafletReady(cb, onFail) {
+		if (typeof L !== 'undefined') return cb();
+		var s = document.querySelector('script[src*="leaflet.js"]');
+		if (s) {
+			s.addEventListener('load', cb);
+			if (onFail) s.addEventListener('error', onFail);
+		} else if (onFail) {
+			onFail();
+		} else {
+			window.addEventListener('load', cb);
+		}
+	}
+	// Hard-fail path: replace the blank map box with the static site-map image
+	// plus an inline notice (no native dialogs), so the section never sits empty.
+	function evSiteMapLoadFailed() {
+		if (evLeafletFailed || map) return;
+		evLeafletFailed = true;
+		var el = gid('ev-site-map');
+		if (!el || !EvConfig.siteMap) return;
+		el.classList.add('ev-site-map-static');
+		el.innerHTML = '<div class="ev-site-map-fallback">' +
+			'<div class="ev-site-map-fallback-note"><i class="fas fa-exclamation-triangle" aria-hidden="true"></i> Interactive site map failed to load — showing the static image instead.</div>' +
+			'<img src="' + escH(EvConfig.siteMap.Url) + '" alt="Site map">' +
+			'</div>';
+	}
+
 	window.evSiteMapInit = function() {
-		if (map || !EvConfig.siteMap || !gid('ev-site-map') || typeof L === 'undefined') return;
+		if (map || evLeafletFailed || !EvConfig.siteMap || !gid('ev-site-map')) return;
+		if (typeof L === 'undefined') {
+			// Deferred Leaflet not parsed yet — init once it loads, or show the
+			// static fallback on a hard load/SRI failure or an 8s timeout.
+			if (!evLeafletPending) {
+				evLeafletPending = true;
+				whenLeafletReady(function() {
+					evLeafletPending = false;
+					evSiteMapInit();
+					if (map) map.invalidateSize();
+				}, evSiteMapLoadFailed);
+				setTimeout(function() { if (typeof L === 'undefined' && !map) evSiteMapLoadFailed(); }, 8000);
+			}
+			return;
+		}
 		var bounds = [[0, 0], [COORD_H, coordW()]];
 		map = L.map('ev-site-map', { crs: L.CRS.Simple, minZoom: -3, maxZoom: 2, zoomSnap: 0.25, attributionControl: false });
-		L.imageOverlay(EvConfig.siteMap.Url, bounds).addTo(map);
+		var mapEl = gid('ev-site-map');
+		if (mapEl) mapEl.setAttribute('aria-label', 'Interactive site map — pan with the arrow keys, zoom with plus and minus.');
+		// Keep the overlay layer so we can surface a missing-image error inline.
+		var overlay = L.imageOverlay(EvConfig.siteMap.Url, bounds).addTo(map);
+		overlay.on('error', function() {
+			var note = gid('ev-site-map-overlay-error');
+			if (!note) {
+				note = document.createElement('div');
+				note.id = 'ev-site-map-overlay-error';
+				note.className = 'ev-site-map-overlay-error';
+				note.innerHTML = '<i class="fas fa-exclamation-triangle" aria-hidden="true"></i> Site map image could not be loaded — try re-uploading.';
+				var wrap = gid('ev-site-map-wrap');
+				if (wrap) wrap.appendChild(note);
+			}
+			note.style.display = '';
+		});
 		map.fitBounds(bounds);
 		map.setMaxBounds(L.latLngBounds(bounds).pad(0.25));
 		EvConfig.siteLocations.forEach(addMarker);
@@ -5001,21 +5101,59 @@ html[data-theme="dark"] .ev-grid-day-pill.ev-grid-day-pill-active {
 		}
 	};
 
-	function pinHtml(cat) {
+	function pinHtml(cat, label) {
 		var c = catCfg(cat);
-		return '<div class="ev-site-pin" style="background:' + c.color + '"><i class="fas ' + c.icon + '"></i></div>';
+		return '<div class="ev-site-pin" role="img"' + (label ? ' aria-label="' + escH(label) + '"' : '') +
+			' style="background:' + c.color + '"><i class="fas ' + c.icon + '" aria-hidden="true"></i></div>';
 	}
 	function addMarker(loc) {
+		// Accessible name for the keyboard-focusable marker: "<name> — <category>".
+		var accName = loc.Name + ' — ' + catCfg(loc.Category).label;
 		var m = L.marker(fracToLatLng(loc.X, loc.Y), {
-			icon: L.divIcon({ className: '', html: pinHtml(loc.Category), iconSize: [30, 30], iconAnchor: [15, 30], popupAnchor: [0, -30] }),
-			draggable: false
+			icon: L.divIcon({ className: '', html: pinHtml(loc.Category, accName), iconSize: [30, 30], iconAnchor: [15, 30], popupAnchor: [0, -30] }),
+			draggable: false,
+			alt: accName,
+			title: accName
 		}).addTo(map);
 		m.bindPopup(function() { return popupHtml(loc); });
+		// Always-visible label so pins are legible at a glance, not only on click.
+		m.bindTooltip(loc.Name, { permanent: true, direction: 'right', className: 'ev-pin-label' });
 		m.on('dragend', function() {
 			var f = latLngToFrac(m.getLatLng());
-			saveLocation({ LocationId: loc.LocationId, Name: loc.Name, Category: loc.Category, Description: loc.Description, X: f.x, Y: f.y }, null);
+			// Sequence guard: stamp each save; ignore a response once a newer drag
+			// save for this LocationId has been issued (out-of-order responses
+			// must not snap the pin backward).
+			var myGen = (evSiteSaveGen[loc.LocationId] = (evSiteSaveGen[loc.LocationId] || 0) + 1);
+			saveLocation({ LocationId: loc.LocationId, Name: loc.Name, Category: loc.Category, Description: loc.Description, X: f.x, Y: f.y }, function(errMsg, saved) {
+				if (evSiteSaveGen[loc.LocationId] !== myGen) return; // superseded by a newer drag
+				if (errMsg) {
+					// Save failed — snap the pin back to its last known-good spot
+					// so the map never disagrees with what the DB actually holds.
+					m.setLatLng(fracToLatLng(loc.X, loc.Y));
+					evSiteMapFlash('Could not save the new pin position — ' + errMsg);
+				} else {
+					loc.X = (saved && saved.X != null) ? saved.X : f.x;
+					loc.Y = (saved && saved.Y != null) ? saved.Y : f.y;
+				}
+			}, function() { return evSiteSaveGen[loc.LocationId] === myGen; });
 		});
 		evSiteMarkers[loc.LocationId] = m;
+	}
+	// Brief non-native inline error banner over the map (auto-dismisses).
+	function evSiteMapFlash(msg) {
+		var wrap = gid('ev-site-map-wrap');
+		if (!wrap) return;
+		var note = gid('ev-site-map-flash');
+		if (!note) {
+			note = document.createElement('div');
+			note.id = 'ev-site-map-flash';
+			note.className = 'ev-site-map-overlay-error';
+			wrap.appendChild(note);
+		}
+		note.innerHTML = '<i class="fas fa-exclamation-triangle" aria-hidden="true"></i> ' + escH(msg);
+		note.style.display = '';
+		clearTimeout(note._t);
+		note._t = setTimeout(function() { note.style.display = 'none'; }, 4000);
 	}
 	function popupHtml(loc) {
 		var c = catCfg(loc.Category);
@@ -5024,16 +5162,24 @@ html[data-theme="dark"] .ev-grid-day-pill.ev-grid-day-pill-active {
 		if (loc.Description) html += '<div class="ev-site-popup-desc">' + escH(loc.Description) + '</div>';
 		// Schedule items at this location — read live from the schedule table's
 		// row data attributes so there's no second copy of schedule state.
-		var items = document.querySelectorAll('tr[data-site-location-id="' + loc.LocationId + '"]');
-		if (items.length) {
-			html += '<div class="ev-site-popup-sched">';
-			items.forEach(function(tr) {
+		var rows = document.querySelectorAll('tr[data-site-location-id="' + loc.LocationId + '"]');
+		if (rows.length) {
+			// A multi-day item renders one <tr> per day (all sharing the same
+			// data-schedule-id) but only the first-day row carries the stable
+			// id='ev-schedule-row-N'. De-dupe by data-schedule-id so each item
+			// appears once, and always target the stable first-day anchor id.
+			var seenSched = new Set();
+			var schedLinks = '';
+			rows.forEach(function(tr) {
+				var sid = tr.getAttribute('data-schedule-id') || '';
+				if (!sid || seenSched.has(sid)) return;
+				seenSched.add(sid);
 				var t = tr.getAttribute('data-title') || '';
 				var s = tr.getAttribute('data-start') || '';
 				var timeLabel = s ? new Date(s).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
-				html += '<a href="javascript:void(0)" onclick="evSiteGoToScheduleItem(\'' + tr.id + '\')"><i class="fas fa-clock" style="margin-right:4px"></i>' + escH(timeLabel) + ' — ' + escH(t) + '</a>';
+				schedLinks += '<a href="javascript:void(0)" onclick="evSiteGoToScheduleItem(\'ev-schedule-row-' + sid + '\')"><i class="fas fa-clock" style="margin-right:4px"></i>' + escH(timeLabel) + ' — ' + escH(t) + '</a>';
 			});
-			html += '</div>';
+			if (schedLinks) html += '<div class="ev-site-popup-sched">' + schedLinks + '</div>';
 		}
 		if (EvConfig.canManageSite && editMode) {
 			html += '<div class="ev-site-popup-actions">' +
@@ -5145,7 +5291,7 @@ html[data-theme="dark"] .ev-grid-day-pill.ev-grid-day-pill-active {
 		addMarker(loc);
 		if (editMode && evSiteMarkers[loc.LocationId].dragging) evSiteMarkers[loc.LocationId].dragging.enable();
 	}
-	function saveLocation(payload, onDone) {
+	function saveLocation(payload, onDone, isCurrent) {
 		var fd = new FormData();
 		fd.append('LocationId', payload.LocationId);
 		fd.append('Name', payload.Name);
@@ -5158,6 +5304,9 @@ html[data-theme="dark"] .ev-grid-day-pill.ev-grid-day-pill-active {
 		})
 		.then(function(r) { return r.json(); })
 		.then(function(data) {
+			// A superseded drag-save must not mutate state: its refreshMarker would
+			// recreate the pin at stale coords and rebind dragend to the old object.
+			if (isCurrent && !isCurrent()) return;
 			if (data.status === 0) {
 				var idx = EvConfig.siteLocations.findIndex(function(l) { return l.LocationId === data.location.LocationId; });
 				if (idx >= 0) EvConfig.siteLocations[idx] = data.location; else EvConfig.siteLocations.push(data.location);
@@ -5167,7 +5316,7 @@ html[data-theme="dark"] .ev-grid-day-pill.ev-grid-day-pill-active {
 				if (onDone) onDone(null, data.location);
 			} else if (onDone) onDone(data.error || 'Could not save.');
 		})
-		.catch(function() { if (onDone) onDone('Network error — please try again.'); });
+		.catch(function() { if (isCurrent && !isCurrent()) return; if (onDone) onDone('Network error — please try again.'); });
 	}
 	window.evSubmitSiteLocation = function() {
 		var name = gid('ev-site-loc-name').value.trim();
@@ -5226,6 +5375,7 @@ html[data-theme="dark"] .ev-grid-day-pill.ev-grid-day-pill-active {
 	// null means "upload the raw <input> file as-is" (the untouched, byte-identical path).
 	var evSiteEffectiveMapFile = null;
 	var evSiteMapGen = 0;
+	var evSiteUploadController = null; // aborts an in-flight upload when the modal is closed
 	window.evOpenSiteMapUploadModal = function() {
 		gid('ev-site-file').value = '';
 		evSiteEffectiveMapFile = null;
@@ -5236,7 +5386,12 @@ html[data-theme="dark"] .ev-grid-day-pill.ev-grid-day-pill-active {
 		gid('ev-site-upload-btn').disabled = true;
 		gid('ev-site-upload-modal').classList.add('ev-modal-open');
 	};
-	window.evCloseSiteMapUploadModal = function() { gid('ev-site-upload-modal').classList.remove('ev-modal-open'); };
+	window.evCloseSiteMapUploadModal = function() {
+		// Abort any in-flight upload so a late success can't reload the page out
+		// from under a manager who just cancelled.
+		if (evSiteUploadController) { try { evSiteUploadController.abort(); } catch (e) {} evSiteUploadController = null; }
+		gid('ev-site-upload-modal').classList.remove('ev-modal-open');
+	};
 
 	// Client-side downsize for site maps over the 2MB server gate. Quality-first:
 	// clamp longest edge to 3000px @ q0.92, then shrink by sqrt(target/size)*0.95
@@ -5335,12 +5490,17 @@ html[data-theme="dark"] .ev-grid-day-pill.ev-grid-day-pill-active {
 		btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading…';
 		var fd = new FormData();
 		fd.append('SiteMap', f);
+		evSiteUploadController = new AbortController();
+		var mySignal = evSiteUploadController.signal;
 		fetch(EvConfig.uir + 'EventAjax/site_map_upload/' + EvConfig.eventId + '/' + EvConfig.detailId, {
-			method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' }
+			method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' }, signal: mySignal
 		})
 		.then(function(r) { return r.json(); })
 		.then(function(data) {
+			evSiteUploadController = null;
 			btn.disabled = false; btn.innerHTML = orig;
+			// If the modal was closed/cancelled mid-flight, don't reload the page.
+			if (mySignal.aborted || !gid('ev-site-upload-modal').classList.contains('ev-modal-open')) return;
 			if (data.status === 0) {
 				// Section structure (map div, edit button) is PHP-rendered on
 				// whether a map exists — a reload is the honest way to swap in.
@@ -5351,7 +5511,10 @@ html[data-theme="dark"] .ev-grid-day-pill.ev-grid-day-pill-active {
 				err.textContent = data.error || 'Upload failed.'; err.style.display = 'block';
 			}
 		})
-		.catch(function() {
+		.catch(function(e) {
+			// Aborted uploads are intentional (user cancelled) — stay silent.
+			if (e && e.name === 'AbortError') return;
+			evSiteUploadController = null;
 			btn.disabled = false; btn.innerHTML = orig;
 			var err = gid('ev-site-upload-error');
 			err.textContent = 'Network error — please try again.'; err.style.display = 'block';
@@ -5399,6 +5562,41 @@ html[data-theme="dark"] .ev-grid-day-pill.ev-grid-day-pill-active {
 // site map and the viewer can't manage it (public page). A stale/late chip click
 // (dynamic edge states — e.g. the map was just removed) must no-op, not throw.
 window.evSiteFlyTo = window.evSiteFlyTo || function() {};
+</script>
+
+<script>
+// CONTRACT B (template half): Escape + backdrop dismissal for the three site
+// modals, mirroring the ev-edit-modal pattern and reusing the existing close
+// fns. (revised.js separately gates its own global Escape so the edit-modal
+// dirty-check doesn't also fire here.)
+(function() {
+	'use strict';
+	var mods = [
+		{ id: 'ev-site-rules-modal',  close: 'evCloseSiteRulesModal' },
+		{ id: 'ev-site-upload-modal', close: 'evCloseSiteMapUploadModal' },
+		{ id: 'ev-site-loc-modal',    close: 'evCloseSiteLocModal' }
+	];
+	function fire(name) { if (typeof window[name] === 'function') window[name](); }
+	mods.forEach(function(m) {
+		var el = document.getElementById(m.id);
+		if (!el) return; // modal only rendered when the manager guard passed
+		// Require mousedown AND click to both land on the overlay itself, so a
+		// drag that starts inside and releases on the backdrop doesn't dismiss.
+		var downOnBackdrop = false;
+		el.addEventListener('mousedown', function(e) { downOnBackdrop = (e.target === el); });
+		el.addEventListener('click', function(e) {
+			if (e.target === el && downOnBackdrop) fire(m.close);
+			downOnBackdrop = false;
+		});
+	});
+	document.addEventListener('keydown', function(e) {
+		if (e.key !== 'Escape' && e.key !== 'Esc') return;
+		mods.forEach(function(m) {
+			var el = document.getElementById(m.id);
+			if (el && el.classList.contains('ev-modal-open')) fire(m.close);
+		});
+	});
+})();
 </script>
 
 <?php endif; /* DraftBlocked */ ?>
