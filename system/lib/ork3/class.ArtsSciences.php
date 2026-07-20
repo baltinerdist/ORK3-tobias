@@ -2,6 +2,12 @@
 
 class ArtsSciences extends Ork3
 {
+    // F16: per-request cache of read_guild_ladder_history results, keyed by (mundane-id set, award-id
+    // set). F14: per-request cache of build_entry_results bundles, keyed by (competition_id, token).
+    // Both live for a single request only; any write path clears the results cache before returning.
+    private $ladder_history_memo = [];
+    private $results_memo = [];
+
     public function __construct()
     {
         parent::__construct();
@@ -118,7 +124,48 @@ class ArtsSciences extends Ork3
         $kid = $this->competition_kingdom_id($competition_id);
         $is_admin = ($mid > 0 && valid_id($kid) && Ork3::$Lib->authorization->HasAuthority($mid, AUTH_KINGDOM, $kid, AUTH_EDIT));
         $is_judge = ($mid > 0 && $this->is_judge($mid, $competition_id));
-        return ['mundane_id' => $mid, 'is_admin' => $is_admin, 'is_judge' => $is_judge, 'privileged' => ($is_admin || $is_judge)];
+        return ['mundane_id' => $mid, 'kingdom_id' => (int)$kid, 'is_admin' => $is_admin, 'is_judge' => $is_judge, 'privileged' => ($is_admin || $is_judge)];
+    }
+
+    // F2: the SINGLE read-authorization authority for A&S. A caller may read a competition's data
+    // iff they are an admin over its kingdom (mirrors controller::csv HasAuthority(AUTH_KINGDOM,
+    // kingdom_id, AUTH_EDIT)) OR a seated judge on it. Ordinary members may additionally read a
+    // competition only once its results are published (status 'closed') — draft/open/judging
+    // internals stay officer/judge-only (matches the controller's publish-when-closed policy).
+    private function can_view_competition(array $ctx, array $competition): bool
+    {
+        $mid = (int)($ctx['mundane_id'] ?? 0);
+        if ($mid <= 0) {
+            return false;
+        }
+        if (!empty($ctx['is_admin']) || !empty($ctx['is_judge'])) {
+            return true;
+        }
+        // Defensive fallback: re-verify kingdom authority from the passed competition row (identical
+        // to the check viewer_context already folded into is_admin).
+        $kid = (int)($competition['KingdomId'] ?? 0);
+        if ($kid > 0 && Ork3::$Lib->authorization->HasAuthority($mid, AUTH_KINGDOM, $kid, AUTH_EDIT)) {
+            return true;
+        }
+        return strtolower((string)($competition['Status'] ?? '')) === 'closed';
+    }
+
+    // F2: resolve viewer_context + the competition's kingdom/status in one place, then apply the
+    // can_view_competition gate. Populates $ctx by reference for callers that need the roles.
+    // Returns true when the caller may read this competition, false otherwise.
+    private function authorize_read($token, $competition_id, &$ctx = null)
+    {
+        $ctx = $this->viewer_context($token, $competition_id);
+        if ($ctx['mundane_id'] <= 0) {
+            return false;
+        }
+        $this->db->Clear();
+        $rs = $this->db->query("SELECT kingdom_id, status FROM " . DB_PREFIX . "as_competition WHERE competition_id = " . (int)$competition_id . " LIMIT 1");
+        $competition = ['KingdomId' => 0, 'Status' => ''];
+        if ($rs && $rs->next()) {
+            $competition = ['KingdomId' => (int)$rs->kingdom_id, 'Status' => (string)$rs->status];
+        }
+        return $this->can_view_competition($ctx, $competition);
     }
 
     // Is this competition running blind (anonymous) judging?
@@ -146,6 +193,18 @@ class ArtsSciences extends Ork3
         return ($rs && $rs->next()) ? (int)$rs->judge_id : 0;
     }
 
+    // F6: the CALLER'S OWN seated judge_id (resolved via their mundane_id), NEVER redacted even
+    // under anonymous judging — so the page can identify a judge's own row/scores. 0 if the caller
+    // is not authenticated or not seated as a judge on this competition.
+    public function self_judge_id($token, $competition_id)
+    {
+        $mid = (int) Ork3::$Lib->authorization->IsAuthorized($token);
+        if ($mid <= 0) {
+            return 0;
+        }
+        return $this->judge_id_for_mundane($mid, (int)$competition_id);
+    }
+
     // Walk up the taxonomy tree from a node to its depth-0 field root (0 if not found).
     private function field_root_taxonomy_id($taxonomy_id)
     {
@@ -166,9 +225,92 @@ class ArtsSciences extends Ork3
         return $tid > 0 ? (int)$tid : 0;
     }
 
+    // F13: load a competition's taxonomy id -> parent_id map in one query so field-root resolution
+    // (field_root_from_map) can walk the tree in memory instead of one SELECT per level. parent_id
+    // is normalized to 0 for roots. Returns [ taxonomy_id => parent_id_or_0 ].
+    private function taxonomy_parent_map($competition_id)
+    {
+        $cid = (int)$competition_id;
+        $map = [];
+        $this->db->Clear();
+        $rs = $this->db->query("SELECT taxonomy_id, parent_id FROM " . DB_PREFIX . "as_taxonomy WHERE competition_id = $cid");
+        while ($rs && $rs->next()) {
+            $map[(int)$rs->taxonomy_id] = $rs->parent_id ? (int)$rs->parent_id : 0;
+        }
+        return $map;
+    }
+
+    // F13: in-memory equivalent of field_root_taxonomy_id — walk up $map to the depth-0 field root.
+    // Byte-identical outcomes: a node absent from the map returns 0 (matches the DB not-found case),
+    // a node whose parent is 0/absent is itself the root.
+    private function field_root_from_map($taxonomy_id, $map)
+    {
+        $tid   = (int)$taxonomy_id;
+        $guard = 0;
+        while ($tid > 0 && $guard++ < 20) {
+            if (!isset($map[$tid])) {
+                return 0;
+            }
+            $pid = (int)$map[$tid];
+            if ($pid <= 0) {
+                return $tid;
+            }
+            $tid = $pid;
+        }
+        return $tid > 0 ? $tid : 0;
+    }
+
     // ------------------------------------------------------------------
     // Competition
     // ------------------------------------------------------------------
+
+    // F22: the ENUM domains for the status and aggregation_method columns. A shared const so
+    // CreateCompetition and UpdateCompetition validate against the same list before writing —
+    // an out-of-domain value would otherwise be silently coerced/rejected by the ENUM column.
+    public const VALID_STATUSES = ['draft', 'open', 'judging', 'closed'];
+    public const VALID_AGGREGATION_METHODS = ['average', 'sum', 'median', 'drop_high', 'drop_low', 'drop_both'];
+    // #40: entrant results-sharing modes (ork_as_competition.share_with_entrants ENUM). Validated
+    // against this domain on Create/Update so an out-of-domain value never reaches the ENUM column.
+    public const VALID_SHARE_MODES = ['none', 'feedback', 'scores', 'scores_feedback'];
+    // #39: entry lifecycle statuses (ork_as_entry.status ENUM). 'withdrawn'/'disqualified' are
+    // EXCLUDED from aggregation/leaderboard/grid/award computation (kept in raw entry lists).
+    public const VALID_ENTRY_STATUSES = ['registered', 'checked_in', 'withdrawn', 'disqualified'];
+    // #39: entry statuses removed from results computation (but still listed in GetEntries).
+    public const EXCLUDED_ENTRY_STATUSES = ['withdrawn', 'disqualified'];
+
+    // #20: build an optional trailing " LIMIT n OFFSET m" clause from request Limit/Offset (both
+    // optional integers). Returns '' when no Limit is supplied so existing unpaginated callers are
+    // unchanged. Values are cast to int, so the interpolation is injection-safe.
+    private function build_limit_clause($request)
+    {
+        if (!isset($request['Limit']) || $request['Limit'] === '' || $request['Limit'] === null) {
+            return '';
+        }
+        $limit  = max(0, (int)$request['Limit']);
+        $offset = isset($request['Offset']) ? max(0, (int)$request['Offset']) : 0;
+        return " LIMIT $limit OFFSET $offset";
+    }
+
+    // #31: shared scoring-config validator for create + update. Enforces ScoringMin < ScoringMax,
+    // ScoringIncrement > 0, and ScoringDefault within [min, max]. Returns an InvalidParameter
+    // response on violation, or null when the config is valid.
+    private function validate_scoring_config($min, $max, $default, $increment)
+    {
+        $min       = (float)$min;
+        $max       = (float)$max;
+        $default   = (float)$default;
+        $increment = (float)$increment;
+        if ($min >= $max) {
+            return InvalidParameter('ScoringMin must be less than ScoringMax');
+        }
+        if ($increment <= 0) {
+            return InvalidParameter('ScoringIncrement must be greater than zero');
+        }
+        if ($default < $min || $default > $max) {
+            return InvalidParameter('ScoringDefault must be within [ScoringMin, ScoringMax]');
+        }
+        return null;
+    }
 
     public function CreateCompetition($request)
     {
@@ -182,6 +324,21 @@ class ArtsSciences extends Ork3
         }
         if (!Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_KINGDOM, $kingdom_id, AUTH_EDIT)) {
             return NoAuthorization();
+        }
+
+        // F22: validate the ENUM-column inputs against their domains before any write.
+        $agg    = $request['AggregationMethod'] ?? 'average';
+        $status = $request['Status'] ?? 'draft';
+        $share  = $request['ShareWithEntrants'] ?? 'none';
+        if (!in_array($agg, self::VALID_AGGREGATION_METHODS, true)) {
+            return InvalidParameter('Invalid AggregationMethod');
+        }
+        if (!in_array($status, self::VALID_STATUSES, true)) {
+            return InvalidParameter('Invalid Status');
+        }
+        // #40: validate the entrant-sharing mode against its ENUM domain before any write.
+        if (!in_array($share, self::VALID_SHARE_MODES, true)) {
+            return InvalidParameter('Invalid ShareWithEntrants');
         }
 
         $this->Competition->clear();
@@ -202,9 +359,19 @@ class ArtsSciences extends Ork3
         $this->Competition->scoring_max       = isset($request['ScoringMax']) ? (float)$request['ScoringMax'] : 5;
         $this->Competition->scoring_default   = isset($request['ScoringDefault']) ? (float)$request['ScoringDefault'] : 3;
         $this->Competition->scoring_increment = isset($request['ScoringIncrement']) ? (float)$request['ScoringIncrement'] : 0.5;
-        $this->Competition->aggregation_method = $request['AggregationMethod'] ?? 'average';
+        // #31: reject an inconsistent scoring config before any write.
+        if ($err = $this->validate_scoring_config(
+            $this->Competition->scoring_min,
+            $this->Competition->scoring_max,
+            $this->Competition->scoring_default,
+            $this->Competition->scoring_increment
+        )) {
+            return $err;
+        }
+        $this->Competition->aggregation_method = $agg;
         $this->Competition->anonymous_judging = !empty($request['AnonymousJudging']) ? 1 : 0;
-        $this->Competition->status            = $request['Status'] ?? 'draft';
+        $this->Competition->status            = $status;
+        $this->Competition->share_with_entrants = $share; // #40
 
         // F13: the competition insert and its default taxonomy/criteria/award seed must be
         // atomic — a half-seeded competition (e.g. missing system fields) is unusable. Abort
@@ -240,6 +407,25 @@ class ArtsSciences extends Ork3
         if (!$this->Competition->find()) {
             return InvalidParameter('Competition not found');
         }
+        // #11: remember the status BEFORE this update so we can detect a transition into 'closed'
+        // (which freezes an immutable results snapshot) after the save.
+        $prev_status = strtolower((string)$this->Competition->status);
+        $this->invalidate_results_cache($competition_id); // F14
+
+        // F22: validate the ENUM-column inputs against their domains before any write.
+        if (array_key_exists('AggregationMethod', $request)
+            && !in_array($request['AggregationMethod'], self::VALID_AGGREGATION_METHODS, true)) {
+            return InvalidParameter('Invalid AggregationMethod');
+        }
+        if (array_key_exists('Status', $request)
+            && !in_array($request['Status'], self::VALID_STATUSES, true)) {
+            return InvalidParameter('Invalid Status');
+        }
+        // #40: validate the entrant-sharing mode against its ENUM domain before any write.
+        if (array_key_exists('ShareWithEntrants', $request)
+            && !in_array($request['ShareWithEntrants'], self::VALID_SHARE_MODES, true)) {
+            return InvalidParameter('Invalid ShareWithEntrants');
+        }
 
         $updatable = [
             'Name'              => 'name',
@@ -250,18 +436,37 @@ class ArtsSciences extends Ork3
             'ScoringIncrement'  => 'scoring_increment',
             'AggregationMethod' => 'aggregation_method',
             'Status'            => 'status',
-            'ParkId'            => 'park_id',
-            'EventId'           => 'event_id',
+            'ShareWithEntrants' => 'share_with_entrants', // #40
         ];
         foreach ($updatable as $req => $col) {
             if (array_key_exists($req, $request)) {
                 $this->Competition->$col = $request[$req];
             }
         }
-        // F9: yapo silently drops null from UPDATE, so a cleared DATETIME never persists via the
-        // active record. Track columns that should become NULL and clear them with an explicit
-        // raw UPDATE after save() (''-is-invalid for DATETIME under strict sql_mode).
+        // #31: validate the effective (merged request + existing) scoring config before any write.
+        if ($err = $this->validate_scoring_config(
+            $this->Competition->scoring_min,
+            $this->Competition->scoring_max,
+            $this->Competition->scoring_default,
+            $this->Competition->scoring_increment
+        )) {
+            return $err;
+        }
+        // F9/F27: yapo silently drops null from UPDATE, so a cleared DATETIME/ParkId/EventId never
+        // persists via the active record. Track columns that should become NULL and clear them with
+        // an explicit raw UPDATE after save() (''-is-invalid for DATETIME under strict sql_mode).
         $datetime_nulls = [];
+        // F27: ParkId/EventId can be cleared to NULL (a falsy value unlinks the park/event). Set a
+        // real id via the active record; otherwise flag the column for the raw-NULL pass below.
+        foreach (['ParkId' => 'park_id', 'EventId' => 'event_id'] as $req => $col) {
+            if (array_key_exists($req, $request)) {
+                if (valid_id($request[$req])) {
+                    $this->Competition->$col = (int)$request[$req];
+                } else {
+                    $datetime_nulls[$col] = true;
+                }
+            }
+        }
         // Date/time fields: when any of CompetitionDate, EntriesDueBy, JudgingStartsAt,
         // JudgingEndsAt are provided, recompute all four DATETIME fields together.
         if (array_key_exists('CompetitionDate', $request) ||
@@ -316,7 +521,150 @@ class ArtsSciences extends Ork3
             $this->db->Clear();
             $this->db->query("UPDATE " . DB_PREFIX . "as_competition SET $sets WHERE competition_id = " . (int)$competition_id);
         }
+
+        // #11: when the competition transitions INTO 'closed', freeze an immutable results snapshot
+        // so later score/entry/award edits can never rewrite a published result. Also (re)write it
+        // if we are closed but no snapshot exists yet (e.g. a prior close's snapshot write failed and
+        // this is a retry, or a reopen->reclose). The snapshot write is transactional (write_close
+        // _snapshot). A failure there leaves the competition closed but unfrozen; ComputeResults then
+        // safely falls back to a live recompute, and the next close attempt re-freezes.
+        $curr_status = strtolower((string)$this->Competition->status);
+        if ($curr_status === 'closed' && ($prev_status !== 'closed' || !$this->snapshot_exists($competition_id))) {
+            $closed_by = (int) Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+            $computed  = $this->compute_results_live($competition_id, $request['Token'] ?? '');
+            if (isset($computed['Status']) && $computed['Status'] == 0 && isset($computed['Detail'])) {
+                $detail = $computed['Detail'];
+                // The frozen bundle records the closed state even though it was computed from the
+                // (unchanged) live scores/entries just before/at close.
+                if (isset($detail['Competition']) && is_array($detail['Competition'])) {
+                    $detail['Competition']['Status'] = 'closed';
+                }
+                $this->write_close_snapshot($competition_id, $closed_by, $detail);
+            }
+        }
         return Success($competition_id);
+    }
+
+    // #11: true when an immutable results snapshot already exists for this competition.
+    private function snapshot_exists($competition_id)
+    {
+        $this->db->Clear();
+        $rs = $this->db->query(
+            "SELECT snapshot_id FROM " . DB_PREFIX . "as_result_snapshot WHERE competition_id = :cid LIMIT 1",
+            [':cid' => (int)$competition_id]
+        );
+        return ($rs && $rs->next());
+    }
+
+    // #11: write the immutable results snapshot for a just-closed competition, transactionally
+    // (YapoMysql Begin/Commit/Rollback). Replaces any prior snapshot + winners for the competition
+    // (a reopen->reclose re-freezes), stores the full computed bundle as JSON, and flattens the
+    // per-award winners into ork_as_winner for reports/award grants. $detail is the full
+    // ComputeResults Detail computed under an admin (closing-officer) context. Returns true on
+    // commit, false on failure (caller leaves the competition closed but unfrozen).
+    private function write_close_snapshot($competition_id, $closed_by, $detail)
+    {
+        $cid = (int)$competition_id;
+        if (!valid_id($cid) || !is_array($detail)) {
+            return false;
+        }
+        $agg = (string)($detail['Competition']['AggregationMethod'] ?? 'average');
+        if (!in_array($agg, self::VALID_AGGREGATION_METHODS, true)) {
+            $agg = 'average';
+        }
+        // entry_id -> artisan mundane_id, so flattened winners carry the participant's mundane.
+        $entry_mundane = [];
+        foreach (($detail['Entries'] ?? []) as $e) {
+            $eid = (int)($e['EntryId'] ?? 0);
+            if ($eid > 0) {
+                $entry_mundane[$eid] = (int)($e['MundaneId'] ?? 0);
+            }
+        }
+        $payload = json_encode($detail);
+
+        if (!$this->db->Begin()) {
+            return false;
+        }
+        try {
+            $this->db->Clear();
+            $this->db->query("DELETE FROM " . DB_PREFIX . "as_winner WHERE competition_id = :cid", [':cid' => $cid]);
+            $this->db->query("DELETE FROM " . DB_PREFIX . "as_result_snapshot WHERE competition_id = :cid", [':cid' => $cid]);
+
+            $snap = new yapo($this->db, DB_PREFIX . 'as_result_snapshot');
+            $snap->clear();
+            $snap->competition_id     = $cid;
+            $snap->payload_json       = $payload;
+            $snap->aggregation_method = $agg;
+            if ((int)$closed_by > 0) {
+                $snap->closed_by = (int)$closed_by;
+            }
+            $snap->closed_at = date('Y-m-d H:i:s');
+            $this->db->Clear();
+            $snap->save();
+            if (!valid_id($snap->snapshot_id ?? null)) {
+                throw new \RuntimeException('failed to write results snapshot');
+            }
+
+            $win = new yapo($this->db, DB_PREFIX . 'as_winner');
+            foreach (($detail['Awards'] ?? []) as $ar) {
+                $award    = $ar['Award'] ?? [];
+                $award_id = (int)($award['AwardId'] ?? 0);
+                $warn     = json_encode($ar['Warnings'] ?? []);
+                $place    = 0;
+                foreach (($ar['Winners'] ?? []) as $w) {
+                    $place++;
+                    $eid  = (int)($w['EntryId'] ?? 0);
+                    $pid  = (int)($w['ParticipantId'] ?? 0);
+                    $mund = ($eid > 0 && isset($entry_mundane[$eid])) ? (int)$entry_mundane[$eid] : 0;
+                    $win->clear();
+                    $win->competition_id = $cid;
+                    if ($award_id > 0) {
+                        $win->award_id = $award_id;
+                    }
+                    if ($eid > 0) {
+                        $win->entry_id = $eid;
+                    }
+                    if ($pid > 0) {
+                        $win->participant_id = $pid;
+                    }
+                    if ($mund > 0) {
+                        $win->mundane_id = $mund;
+                    }
+                    if (isset($w['Aggregate']) && $w['Aggregate'] !== null) {
+                        $win->aggregate = (float)$w['Aggregate'];
+                    }
+                    $win->rank        = $place;
+                    $win->place_label = $this->ordinal_label($place);
+                    $win->warnings    = $warn;
+                    $this->db->Clear();
+                    $win->save();
+                }
+            }
+            $this->db->Commit();
+        } catch (\Throwable $e) {
+            $this->db->Rollback();
+            return false;
+        }
+        return true;
+    }
+
+    // #11: human-facing placement label for a 1-based rank ("1st", "2nd", "3rd", "4th"...).
+    private function ordinal_label($n)
+    {
+        $n = (int)$n;
+        if ($n <= 0) {
+            return '';
+        }
+        $mod100 = $n % 100;
+        if ($mod100 >= 11 && $mod100 <= 13) {
+            return $n . 'th';
+        }
+        switch ($n % 10) {
+            case 1:  return $n . 'st';
+            case 2:  return $n . 'nd';
+            case 3:  return $n . 'rd';
+            default: return $n . 'th';
+        }
     }
 
     public function DeleteCompetition($request)
@@ -326,6 +674,7 @@ class ArtsSciences extends Ork3
             return NoAuthorization();
         }
         $cid = (int)$competition_id;
+        $this->invalidate_results_cache($competition_id); // F14
         // F10: refuse to proceed non-transactionally — a partial cascade delete would corrupt data.
         if (!$this->db->Begin()) {
             return ProcessingError('Could not start a transaction to delete competition');
@@ -339,6 +688,9 @@ class ArtsSciences extends Ork3
             $this->db->query("DELETE FROM " . DB_PREFIX . "as_taxonomy WHERE competition_id = $cid");
             $this->db->query("DELETE FROM " . DB_PREFIX . "as_criterion WHERE competition_id = $cid");
             $this->db->query("DELETE FROM " . DB_PREFIX . "as_award WHERE competition_id = $cid");
+            // #11: drop the frozen results snapshot + flattened winners alongside the competition.
+            $this->db->query("DELETE FROM " . DB_PREFIX . "as_winner WHERE competition_id = $cid");
+            $this->db->query("DELETE FROM " . DB_PREFIX . "as_result_snapshot WHERE competition_id = $cid");
             $this->db->query("DELETE FROM " . DB_PREFIX . "as_competition WHERE competition_id = $cid");
             $this->db->Commit();
         } catch (\Throwable $e) {
@@ -350,17 +702,23 @@ class ArtsSciences extends Ork3
 
     public function GetCompetition($request)
     {
-        if ((int) Ork3::$Lib->authorization->IsAuthorized($request['Token'] ?? '') <= 0) {
-            return NoAuthorization();
-        }
         $competition_id = (int)($request['CompetitionId'] ?? 0);
         if (!valid_id($competition_id)) {
             return InvalidParameter('CompetitionId required');
+        }
+        // F2: read-authorization is the lib's responsibility — resolve the caller's roles up front.
+        $ctx = $this->viewer_context($request['Token'] ?? '', $competition_id);
+        if ($ctx['mundane_id'] <= 0) {
+            return NoAuthorization();
         }
         $this->Competition->clear();
         $this->Competition->competition_id = $competition_id;
         if (!$this->Competition->find()) {
             return InvalidParameter('Competition not found');
+        }
+        // F2: block cross-kingdom reads; ordinary members may only read a published (closed) comp.
+        if (!$this->can_view_competition($ctx, ['KingdomId' => (int)$this->Competition->kingdom_id, 'Status' => (string)$this->Competition->status])) {
+            return NoAuthorization();
         }
         return Success([
             'CompetitionId'     => (int)$this->Competition->competition_id,
@@ -383,18 +741,22 @@ class ArtsSciences extends Ork3
             'AggregationMethod' => $this->Competition->aggregation_method,
             'AnonymousJudging'  => (int)$this->Competition->anonymous_judging,
             'Status'            => $this->Competition->status,
+            'ShareWithEntrants' => $this->Competition->share_with_entrants ?: 'none', // #40
         ]);
     }
 
     public function ListCompetitions($request)
     {
-        if ((int) Ork3::$Lib->authorization->IsAuthorized($request['Token'] ?? '') <= 0) {
+        $mundane_id = (int) Ork3::$Lib->authorization->IsAuthorized($request['Token'] ?? '');
+        if ($mundane_id <= 0) {
             return NoAuthorization();
         }
         $kingdom_id = (int)($request['KingdomId'] ?? 0);
         if (!valid_id($kingdom_id)) {
             return InvalidParameter('KingdomId required');
         }
+        // F2: only kingdom officers may see draft (unpublished) competitions; members see the rest.
+        $is_officer = Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_KINGDOM, $kingdom_id, AUTH_EDIT);
         $this->db->Clear();
         // F48: correlated per-row subqueries scoped to c.competition_id (was two derived tables
         // that grouped EVERY competition's participants/entries). Correlated form lets the
@@ -409,6 +771,9 @@ class ArtsSciences extends Ork3
 		");
         $out = [];
         while ($rs && $rs->next()) {
+            if (!$is_officer && (string)$rs->status === 'draft') {
+                continue;
+            }
             $out[] = [
                 'CompetitionId'    => (int)$rs->competition_id,
                 'Name'             => $rs->name,
@@ -528,6 +893,7 @@ class ArtsSciences extends Ork3
             return NoAuthorization();
         }
 
+        $this->invalidate_results_cache($competition_id); // F14
         $this->Taxonomy->clear();
         $is_system = false;
         if (valid_id($request['TaxonomyId'] ?? null)) {
@@ -567,6 +933,9 @@ class ArtsSciences extends Ork3
         if (array_key_exists('Active', $request)) {
             $this->Taxonomy->active = !empty($request['Active']) ? 1 : 0;
         }
+        // F21: clear stale PDO bindings left by the parent-validation query above before save(),
+        // matching the SaveEntry guard — otherwise the INSERT can silently fail.
+        $this->db->Clear();
         $this->Taxonomy->save();
         return Success((int)$this->Taxonomy->taxonomy_id);
     }
@@ -604,9 +973,19 @@ class ArtsSciences extends Ork3
             $this->Taxonomy->ladder_award_id = $f['ladder'];
             $this->Taxonomy->master_award_id = $f['master'];
             $this->Taxonomy->is_system       = 1;
+            $this->db->Clear();
             $this->Taxonomy->save();
-            // F13: a failed system-field insert must abort the enclosing transaction.
             if (!valid_id($this->Taxonomy->taxonomy_id ?? null)) {
+                // F24: idempotent against UNIQUE(competition_id, ladder_award_id) — a concurrent
+                // create or migration re-run may have inserted this system row already, tripping the
+                // dup-key constraint (yapo swallows the error into no-id). Treat an existing row as
+                // 'already present' rather than aborting the enclosing transaction (F13); only a
+                // genuinely-absent row is a real failure.
+                $this->db->Clear();
+                $ex = $this->db->query("SELECT taxonomy_id FROM " . DB_PREFIX . "as_taxonomy WHERE competition_id = $cid AND ladder_award_id = " . (int)$f['ladder'] . " LIMIT 1");
+                if ($ex && $ex->next()) {
+                    continue;
+                }
                 throw new \RuntimeException('failed to seed system field');
             }
         }
@@ -639,11 +1018,18 @@ class ArtsSciences extends Ork3
         if (!valid_id($taxonomy_id)) {
             return InvalidParameter('TaxonomyId required');
         }
+        $this->invalidate_results_cache($competition_id); // F14
 
-        // System fields (is_system=1 / ladder-linked) can only be deactivated, never deleted.
+        // F26: the taxonomy must exist AND belong to this competition. Without this branch a bad or
+        // foreign id fell through, ran an unscoped descendant walk, and returned Success having
+        // deleted nothing — masking the error. Resolve the row once, then apply the system-field lock.
         $this->db->Clear();
         $rs = $this->db->query("SELECT is_system, ladder_award_id FROM " . DB_PREFIX . "as_taxonomy WHERE taxonomy_id = $taxonomy_id AND competition_id = $competition_id LIMIT 1");
-        if ($rs && $rs->next() && (!empty($rs->is_system) || !empty($rs->ladder_award_id))) {
+        if (!$rs || !$rs->next()) {
+            return InvalidParameter('Taxonomy not found');
+        }
+        // System fields (is_system=1 / ladder-linked) can only be deactivated, never deleted.
+        if (!empty($rs->is_system) || !empty($rs->ladder_award_id)) {
             return InvalidParameter('System fields cannot be deleted; deactivate instead.');
         }
 
@@ -725,10 +1111,19 @@ class ArtsSciences extends Ork3
             }
         }
         foreach ($pending as $jid => $kept) {
-            $json   = addslashes(json_encode($kept ? $kept : []));
-            $scalar = $kept ? (int)$kept[0] : 'NULL';
+            // #65: parameterized instead of addslashes()-interpolated. A null scalar binds as SQL
+            // NULL (clears the legacy field_taxonomy_id when no fields remain).
             $this->db->Clear();
-            $this->db->query("UPDATE " . DB_PREFIX . "as_judge SET field_taxonomy_ids = '$json', field_taxonomy_id = $scalar WHERE judge_id = " . (int)$jid . " AND competition_id = $cid");
+            $this->db->query(
+                "UPDATE " . DB_PREFIX . "as_judge SET field_taxonomy_ids = :ids, field_taxonomy_id = :scalar "
+                . "WHERE judge_id = :jid AND competition_id = :cid",
+                [
+                    ':ids'    => json_encode($kept ? $kept : []),
+                    ':scalar' => $kept ? (int)$kept[0] : null,
+                    ':jid'    => (int)$jid,
+                    ':cid'    => $cid,
+                ]
+            );
         }
     }
 
@@ -742,6 +1137,7 @@ class ArtsSciences extends Ork3
         if (!is_array($tree)) {
             return InvalidParameter('Tree array required');
         }
+        $this->invalidate_results_cache($competition_id); // F14
 
         // Flatten the client tree into (taxonomy_id, parent_id, depth, sort_order) tuples,
         // then apply all moves in a single batched UPDATE (was one round-trip per node).
@@ -831,7 +1227,9 @@ class ArtsSciences extends Ork3
                 'sort'  => $sort,
             ];
             $sort++;
-            if (!empty($node['Children']) && is_array($node['Children'])) {
+            // #34: 3-level model (depth 0/1/2). Stop descending once children would land at
+            // depth 3 — don't just clamp the stored depth, actually prune the deeper subtree.
+            if ($depth < 2 && !empty($node['Children']) && is_array($node['Children'])) {
                 $this->apply_tree_reorder($node['Children'], $tid, $depth + 1, $competition_id, $rows);
             }
         }
@@ -839,12 +1237,13 @@ class ArtsSciences extends Ork3
 
     public function GetTaxonomy($request)
     {
-        if ((int) Ork3::$Lib->authorization->IsAuthorized($request['Token'] ?? '') <= 0) {
-            return NoAuthorization();
-        }
         $competition_id = (int)($request['CompetitionId'] ?? 0);
         if (!valid_id($competition_id)) {
             return InvalidParameter('CompetitionId required');
+        }
+        // F2: gate cross-kingdom reads via the lib's single read-authorization authority.
+        if (!$this->authorize_read($request['Token'] ?? '', $competition_id)) {
+            return NoAuthorization();
         }
         $this->db->Clear();
         $rs = $this->db->query("SELECT * FROM " . DB_PREFIX . "as_taxonomy WHERE competition_id = $competition_id ORDER BY depth, sort_order, taxonomy_id");
@@ -876,6 +1275,7 @@ class ArtsSciences extends Ork3
         if (!$this->check_auth($request['Token'], $competition_id)) {
             return NoAuthorization();
         }
+        $this->invalidate_results_cache($competition_id); // F14
         $this->Criterion->clear();
         if (valid_id($request['CriterionId'] ?? null)) {
             $this->Criterion->criterion_id = (int)$request['CriterionId'];
@@ -903,6 +1303,7 @@ class ArtsSciences extends Ork3
         if (!$this->check_auth($request['Token'], $competition_id)) {
             return NoAuthorization();
         }
+        $this->invalidate_results_cache($competition_id); // F14
         // F10/F11: scores + criterion delete must be atomic (else orphaned scores linger).
         if (!$this->db->Begin()) {
             return ProcessingError('Could not start a transaction to delete criterion');
@@ -921,10 +1322,11 @@ class ArtsSciences extends Ork3
 
     public function GetCriteria($request)
     {
-        if ((int) Ork3::$Lib->authorization->IsAuthorized($request['Token'] ?? '') <= 0) {
+        $competition_id = (int)($request['CompetitionId'] ?? 0);
+        // F2: gate cross-kingdom reads via the lib's single read-authorization authority.
+        if (!$this->authorize_read($request['Token'] ?? '', $competition_id)) {
             return NoAuthorization();
         }
-        $competition_id = (int)($request['CompetitionId'] ?? 0);
         $this->db->Clear();
         $rs = $this->db->query("SELECT * FROM " . DB_PREFIX . "as_criterion WHERE competition_id = $competition_id ORDER BY sort_order, criterion_id");
         $out = [];
@@ -951,6 +1353,7 @@ class ArtsSciences extends Ork3
             return NoAuthorization();
         }
 
+        $this->invalidate_results_cache($competition_id); // F14
         $this->Participant->clear();
         if (valid_id($request['ParticipantId'] ?? null)) {
             $this->Participant->participant_id = (int)$request['ParticipantId'];
@@ -980,6 +1383,9 @@ class ArtsSciences extends Ork3
         }
         $this->Participant->is_novice  = !empty($request['IsNovice']) ? 1 : 0;
         $this->Participant->notes      = $request['Notes'] ?? '';
+        // F21: clear stale PDO bindings left by the home-park lookup above before save(), matching
+        // the SaveEntry guard — otherwise the INSERT can silently fail.
+        $this->db->Clear();
         $this->Participant->save();
         return Success((int)$this->Participant->participant_id);
     }
@@ -991,6 +1397,7 @@ class ArtsSciences extends Ork3
         if (!$this->check_auth($request['Token'], $competition_id)) {
             return NoAuthorization();
         }
+        $this->invalidate_results_cache($competition_id); // F14
         // F10/F11: scores + entries + participant must be removed atomically.
         if (!$this->db->Begin()) {
             return ProcessingError('Could not start a transaction to delete participant');
@@ -1010,10 +1417,15 @@ class ArtsSciences extends Ork3
 
     public function GetParticipants($request, $includePrivate = false)
     {
-        if ((int) Ork3::$Lib->authorization->IsAuthorized($request['Token'] ?? '') <= 0) {
+        $competition_id = (int)($request['CompetitionId'] ?? 0);
+        // F2: gate cross-kingdom reads via the lib's single read-authorization authority.
+        if (!$this->authorize_read($request['Token'] ?? '', $competition_id, $ctx)) {
             return NoAuthorization();
         }
-        $competition_id = (int)($request['CompetitionId'] ?? 0);
+        // F5: apply the SAME blind redaction GetEntries uses — any non-admin viewer under anonymous
+        // judging sees the roster de-identified (Persona -> 'Artisan #{id}', no MundaneId/park, no
+        // guild-ladder columns) so the participant list can't be cross-referenced to unmask entries.
+        $hide_identity = ($this->competition_is_anonymous($competition_id) && !$ctx['is_admin']);
         $this->db->Clear();
         $rs = $this->db->query("
 			SELECT p.*, m.persona AS mundane_persona, k.name AS park_name
@@ -1028,6 +1440,19 @@ class ArtsSciences extends Ork3
         while ($rs && $rs->next()) {
             $display_persona = trim((string)$rs->persona) !== '' ? $rs->persona : ($rs->mundane_persona ?? '(unnamed)');
             $mid = $rs->mundane_id ? (int)$rs->mundane_id : null;
+            if ($hide_identity) {
+                // Notes (private management data) are never surfaced under blind redaction.
+                $out[] = [
+                    'ParticipantId' => (int)$rs->participant_id,
+                    'MundaneId'     => null,
+                    'Persona'       => 'Artisan #' . (int)$rs->participant_id,
+                    'ParkId'        => null,
+                    'ParkName'      => null,
+                    'IsNovice'      => (int)$rs->is_novice,
+                    'Guilds'        => ['O' => '', 'G' => '', 'D' => '', 'S' => ''],
+                ];
+                continue;
+            }
             if ($mid) {
                 $mids[$mid] = true;
             }
@@ -1046,7 +1471,10 @@ class ArtsSciences extends Ork3
             }
             $out[] = $row;
         }
-        $this->annotate_guild_ladders($out, array_keys($mids));
+        // Guild-ladder columns are suppressed under blind redaction (no mundane ids collected).
+        if (!$hide_identity) {
+            $this->annotate_guild_ladders($out, array_keys($mids));
+        }
         return Success($out);
     }
 
@@ -1115,6 +1543,20 @@ class ArtsSciences extends Ork3
         $award_csv = implode(',', array_map('intval', $all_award_ids));
         $mids_csv  = implode(',', array_map('intval', $mundane_ids));
 
+        // F16: memoize per request. build_entry_results resolves the SAME cohort's ladder history
+        // twice — GetParticipants -> annotate_guild_ladders, then compute_ladder_counts_for_participants
+        // -> here — running the identical JOIN each time. Caching by the exact (mundane-id set,
+        // award-id set) collapses it to one query with a byte-identical result. Keyed on sorted sets
+        // so call-order/dedup differences can never produce a false cache hit.
+        $mids_sorted   = array_map('intval', $mundane_ids);
+        sort($mids_sorted);
+        $awards_sorted = array_map('intval', $all_award_ids);
+        sort($awards_sorted);
+        $memo_key = implode(',', $mids_sorted) . '|' . implode(',', $awards_sorted);
+        if (isset($this->ladder_history_memo[$memo_key])) {
+            return $this->ladder_history_memo[$memo_key];
+        }
+
         $this->db->Clear();
         $rs = $this->db->query("
 			SELECT a.mundane_id AS mundane_id, ka.award_id AS award_id, MAX(a.`rank`) AS max_rank
@@ -1147,6 +1589,7 @@ class ArtsSciences extends Ork3
                 $out[$mid][$lid]['rank'] = max($out[$mid][$lid]['rank'], $rank);
             }
         }
+        $this->ladder_history_memo[$memo_key] = $out;
         return $out;
     }
 
@@ -1198,6 +1641,7 @@ class ArtsSciences extends Ork3
         if (!$this->check_auth($request['Token'], $competition_id)) {
             return NoAuthorization();
         }
+        $this->invalidate_results_cache($competition_id); // F14
         $this->Judge->clear();
         if (valid_id($request['JudgeId'] ?? null)) {
             $this->Judge->judge_id = (int)$request['JudgeId'];
@@ -1227,9 +1671,20 @@ class ArtsSciences extends Ork3
         } elseif (array_key_exists('FieldTaxonomyId', $request)) {
             $ids = [$request['FieldTaxonomyId']];
         }
-        $ids = array_values(array_filter(array_map('intval', $ids), function ($v) {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), function ($v) {
             return $v > 0;
-        }));
+        })));
+        // F25: every supplied field id must belong to THIS competition — a foreign/stale id would
+        // silently break the judge's field restriction (and eligibility gating downstream).
+        if (!empty($ids)) {
+            $ids_csv = implode(',', $ids);
+            $this->db->Clear();
+            $chk = $this->db->query("SELECT COUNT(*) AS cnt FROM " . DB_PREFIX . "as_taxonomy WHERE taxonomy_id IN ($ids_csv) AND competition_id = $competition_id");
+            $found = ($chk && $chk->next()) ? (int)$chk->cnt : 0;
+            if ($found !== count($ids)) {
+                return InvalidParameter('A judge field does not belong to this competition.');
+            }
+        }
         // F9: keep scalar + JSON in sync, and clear with '' / '[]' (not null, which yapo drops on
         // UPDATE) so removing a judge's field assignments actually persists.
         $this->Judge->field_taxonomy_ids = $ids ? json_encode($ids) : '[]';
@@ -1245,6 +1700,7 @@ class ArtsSciences extends Ork3
         if (!$this->check_auth($request['Token'], $competition_id)) {
             return NoAuthorization();
         }
+        $this->invalidate_results_cache($competition_id); // F14
         // F10/F11: a judge's scores + the judge row must be removed atomically.
         if (!$this->db->Begin()) {
             return ProcessingError('Could not start a transaction to delete judge');
@@ -1264,12 +1720,15 @@ class ArtsSciences extends Ork3
     public function GetJudges($request)
     {
         $competition_id = (int)($request['CompetitionId'] ?? 0);
-        $ctx = $this->viewer_context($request['Token'] ?? '', $competition_id);
-        if ($ctx['mundane_id'] <= 0) {
+        // F2: gate cross-kingdom reads via the lib's single read-authorization authority.
+        if (!$this->authorize_read($request['Token'] ?? '', $competition_id, $ctx)) {
             return NoAuthorization();
         }
         // Under blind judging, non-admins must not learn who the judges are.
         $hide_identity = ($this->competition_is_anonymous($competition_id) && !$ctx['is_admin']);
+        // F6: the caller's OWN judge row stays un-redacted even under blind judging so a judge can
+        // still identify themselves; every OTHER judge is masked.
+        $own_judge_id = ($ctx['mundane_id'] > 0) ? $this->judge_id_for_mundane($ctx['mundane_id'], $competition_id) : 0;
         $this->db->Clear();
         $rs = $this->db->query("
 			SELECT j.*, m.persona AS mundane_persona
@@ -1324,10 +1783,12 @@ class ArtsSciences extends Ork3
             $names = array_values(array_filter(array_map(function ($id) use ($names_by_id) {
                 return $names_by_id[$id] ?? null;
             }, $ids)));
+            // F6: never redact the viewer's own row.
+            $redact = $hide_identity && !($own_judge_id > 0 && (int)$r['judge_id'] === (int)$own_judge_id);
             $out[] = [
                 'JudgeId'          => $r['judge_id'],
-                'MundaneId'        => $hide_identity ? null : $r['mundane_id'],
-                'Persona'          => $hide_identity ? ('Judge #' . $r['judge_id']) : $display_persona,
+                'MundaneId'        => $redact ? null : $r['mundane_id'],
+                'Persona'          => $redact ? ('Judge #' . $r['judge_id']) : $display_persona,
                 'FieldTaxonomyId'  => $r['field_taxonomy_id'],
                 'FieldTaxonomyIds' => $ids,
                 'FieldName'        => $names ? implode(', ', $names) : null,
@@ -1347,6 +1808,7 @@ class ArtsSciences extends Ork3
         if (!$this->check_auth($request['Token'], $competition_id)) {
             return NoAuthorization();
         }
+        $this->invalidate_results_cache($competition_id); // F14
         $this->Entry->clear();
         if (valid_id($request['EntryId'] ?? null)) {
             $this->Entry->entry_id = (int)$request['EntryId'];
@@ -1360,6 +1822,43 @@ class ArtsSciences extends Ork3
             $this->Entry->competition_id = $competition_id;
         }
         $is_new = !valid_id($request['EntryId'] ?? null);
+
+        // #39: optional entry lifecycle status, validated against the ENUM domain. Left unset on a
+        // new entry defaults to 'registered' at the column. 'withdrawn'/'disqualified' entries are
+        // excluded from results computation downstream (build_entry_results) but stay in listings.
+        $entry_status = null;
+        if (array_key_exists('Status', $request)) {
+            $st = (string)$request['Status'];
+            if (!in_array($st, self::VALID_ENTRY_STATUSES, true)) {
+                return InvalidParameter('Invalid Status');
+            }
+            $entry_status = $st;
+        }
+
+        // F8 — lifecycle: no entry writes once a competition is closed, and no NEW entries once the
+        // entry window has passed (status advanced beyond draft/open, or entries_due_at elapsed).
+        // check_auth already confirmed AUTH_EDIT, so an officer may correct records with an explicit
+        // Override flag.
+        if (empty($request['Override'])) {
+            $this->db->Clear();
+            $rls = $this->db->query("SELECT status, entries_due_at FROM " . DB_PREFIX . "as_competition WHERE competition_id = $competition_id LIMIT 1");
+            $lstatus = '';
+            $edue    = null;
+            if ($rls && $rls->next()) {
+                $lstatus = (string)$rls->status;
+                $edue    = $rls->entries_due_at ?: null;
+            }
+            if ($lstatus === 'closed') {
+                return InvalidParameter('This competition is closed; entries can no longer be changed.');
+            }
+            if ($is_new) {
+                $past_window = !in_array($lstatus, ['draft', 'open'], true);
+                $past_due    = $edue && date('Y-m-d H:i:s') > (string)$edue;
+                if ($past_window || $past_due) {
+                    return InvalidParameter('Entry submission is closed for this competition.');
+                }
+            }
+        }
 
         // F6: the participant must belong to this competition (no cross-competition entry).
         $participant_id = (int)($request['ParticipantId'] ?? 0);
@@ -1393,19 +1892,29 @@ class ArtsSciences extends Ork3
         $this->Entry->title          = trim($request['Title'] ?? 'Untitled Entry');
         $this->Entry->description    = $request['Description'] ?? '';
         $this->Entry->documentation  = $request['Documentation'] ?? '';
+        if ($entry_status !== null) {
+            $this->Entry->status = $entry_status; // #39
+        }
 
+        // F23: entry_number uses a single clear-path sentinel — NULL, never '' — to match the new
+        // UNIQUE(competition_id, entry_number) constraint (the migration normalizes '' -> NULL, and
+        // multiple NULLs never collide, so unnumbered entries stay legal while '' would dup-collide).
         $entry_number_in = isset($request['EntryNumber']) ? trim((string)$request['EntryNumber']) : '';
+        $auto_number  = false;
+        $clear_number = false;
         if (!$is_new) {
-            // Editing — respect whatever the admin has, including blank. F9: '' clears the
-            // VARCHAR (null would be dropped by yapo, leaving the stale number).
-            $this->Entry->entry_number = $entry_number_in !== '' ? $entry_number_in : '';
+            if ($entry_number_in !== '') {
+                $this->Entry->entry_number = $entry_number_in;
+            } else {
+                // Editing to blank — clear to NULL. yapo drops null on UPDATE, so raw-clear after save().
+                $this->Entry->entry_number = null;
+                $clear_number = true;
+            }
         } elseif ($entry_number_in !== '') {
             // New entry, admin supplied a number explicitly.
             $this->Entry->entry_number = $entry_number_in;
         } else {
-            // New entry, no number supplied — assign next sequential number.
-            // We pick MAX+1 then save; if a rare concurrent insert wins the same number,
-            // the user can edit and renumber.
+            // New entry, no number supplied — assign next sequential number (MAX+1).
             $this->db->Clear();
             $rs_next = $this->db->query("SELECT COALESCE(MAX(CAST(NULLIF(entry_number,'') AS UNSIGNED)),0)+1 AS next FROM " . DB_PREFIX . "as_entry WHERE competition_id = $competition_id");
             $next = ($rs_next && $rs_next->next()) ? (int)$rs_next->next : 1;
@@ -1413,6 +1922,7 @@ class ArtsSciences extends Ork3
                 $next = 1;
             }
             $this->Entry->entry_number = (string)$next;
+            $auto_number = true;
         }
 
         // Clear stale PDO bindings before save() (has previously caused silent INSERT failures).
@@ -1420,6 +1930,40 @@ class ArtsSciences extends Ork3
         // yapo->save() returns an undefined variable, so we can't use its return value.
         // After save() the row is reloaded into the active record; confirm entry_id populated.
         $this->Entry->save();
+        // F23: an auto-assigned entry_number can collide with a concurrent insert under the new
+        // UNIQUE(competition_id, entry_number) constraint. yapo swallows the dup-key error and then
+        // reloads by GetLastInsertId(), which returns a STALE prior id on a failed insert (so a bare
+        // valid_id(entry_id) check can't see the collision). Confirm the reloaded row is actually the
+        // one we just tried to write — same competition AND same entry_number — and, if not, retry
+        // ONCE with a freshly-read MAX+1 that now reflects the winning row.
+        if ($is_new && $auto_number) {
+            $insert_ok = valid_id($this->Entry->entry_id ?? null)
+                && (int)$this->Entry->competition_id === $competition_id
+                && (string)$this->Entry->entry_number === (string)$next;
+            if (!$insert_ok) {
+                $this->db->Clear();
+                $rs_next = $this->db->query("SELECT COALESCE(MAX(CAST(NULLIF(entry_number,'') AS UNSIGNED)),0)+1 AS next FROM " . DB_PREFIX . "as_entry WHERE competition_id = $competition_id");
+                $next = ($rs_next && $rs_next->next()) ? (int)$rs_next->next : 1;
+                if ($next < 1) {
+                    $next = 1;
+                }
+                $this->Entry->clear();
+                $this->Entry->competition_id = $competition_id;
+                $this->Entry->participant_id = $participant_id;
+                if (valid_id($taxonomy_id)) {
+                    $this->Entry->taxonomy_id = $taxonomy_id;
+                }
+                $this->Entry->title         = trim($request['Title'] ?? 'Untitled Entry');
+                $this->Entry->description   = $request['Description'] ?? '';
+                $this->Entry->documentation = $request['Documentation'] ?? '';
+                if ($entry_status !== null) {
+                    $this->Entry->status = $entry_status; // #39
+                }
+                $this->Entry->entry_number  = (string)$next;
+                $this->db->Clear();
+                $this->Entry->save();
+            }
+        }
         if (!valid_id($this->Entry->entry_id ?? null)) {
             return ProcessingError('Failed to save entry.');
         }
@@ -1427,6 +1971,11 @@ class ArtsSciences extends Ork3
             // F60: yapo can't write NULL on UPDATE — clear the detach sentinel explicitly.
             $this->db->Clear();
             $this->db->query("UPDATE " . DB_PREFIX . "as_entry SET taxonomy_id = NULL WHERE entry_id = " . (int)$this->Entry->entry_id . " AND competition_id = $competition_id");
+        }
+        if ($clear_number) {
+            // F23: yapo dropped the NULL on UPDATE — clear the entry_number sentinel explicitly.
+            $this->db->Clear();
+            $this->db->query("UPDATE " . DB_PREFIX . "as_entry SET entry_number = NULL WHERE entry_id = " . (int)$this->Entry->entry_id . " AND competition_id = $competition_id");
         }
         return Success((int)$this->Entry->entry_id);
     }
@@ -1438,6 +1987,7 @@ class ArtsSciences extends Ork3
         if (!$this->check_auth($request['Token'], $competition_id)) {
             return NoAuthorization();
         }
+        $this->invalidate_results_cache($competition_id); // F14
         // F10/F11: an entry's scores + the entry row must be removed atomically.
         if (!$this->db->Begin()) {
             return ProcessingError('Could not start a transaction to delete entry');
@@ -1457,12 +2007,13 @@ class ArtsSciences extends Ork3
     public function GetEntries($request)
     {
         $competition_id = (int)($request['CompetitionId'] ?? 0);
-        $ctx = $this->viewer_context($request['Token'] ?? '', $competition_id);
-        if ($ctx['mundane_id'] <= 0) {
+        // F2: gate cross-kingdom reads via the lib's single read-authorization authority.
+        if (!$this->authorize_read($request['Token'] ?? '', $competition_id, $ctx)) {
             return NoAuthorization();
         }
-        // Blind judging: a non-admin judge scores entries without seeing the artisan.
-        $hide_identity = ($this->competition_is_anonymous($competition_id) && $ctx['is_judge'] && !$ctx['is_admin']);
+        // F5: blind judging hides the artisan from ANY non-admin viewer (not just seated judges),
+        // so a member viewing published results can't unmask entries either.
+        $hide_identity = ($this->competition_is_anonymous($competition_id) && !$ctx['is_admin']);
         $this->db->Clear();
         $rs = $this->db->query("
 			SELECT e.*,
@@ -1477,7 +2028,7 @@ class ArtsSciences extends Ork3
 			LEFT JOIN " . DB_PREFIX . "as_taxonomy     t ON t.taxonomy_id    = e.taxonomy_id    AND t.competition_id = e.competition_id
 			WHERE e.competition_id = $competition_id
 			ORDER BY t.sort_order, e.entry_id
-		");
+		" . $this->build_limit_clause($request)); // #20: optional pagination
         $out = [];
         while ($rs && $rs->next()) {
             $entry_number = $rs->entry_number;
@@ -1496,6 +2047,7 @@ class ArtsSciences extends Ork3
                 'Description'   => $rs->description,
                 'Documentation' => $rs->documentation,
                 'EntryNumber'   => $rs->entry_number,
+                'Status'        => $rs->status ?? 'registered', // #39
             ];
         }
         return Success($out);
@@ -1519,74 +2071,143 @@ class ArtsSciences extends Ork3
         if (!valid_id($competition_id) || !valid_id($entry_id) || !valid_id($judge_id) || !valid_id($criterion_id)) {
             return InvalidParameter();
         }
+        $this->invalidate_results_cache($competition_id); // F14
 
-        $kid = $this->competition_kingdom_id($competition_id);
+        // F13: collapse the competition/judge/entry/criterion ownership + lifecycle + scoring-config
+        // lookups (previously ~7 sequential round-trips) into ONE JOIN. LEFT JOINs let each missing
+        // relation surface as a NULL, so the SAME validation outcomes/messages are produced in the
+        // SAME order. The participant join is unscoped-by-competition, mirroring entry_artisan_mundane_id.
+        // Every needed field is read into a local immediately (the shared cursor is reused below).
+        $this->db->Clear();
+        $rv = $this->db->query("
+			SELECT c.kingdom_id AS kingdom_id, c.status AS status,
+			       c.judging_starts_at AS judging_starts_at, c.judging_ends_at AS judging_ends_at,
+			       c.scoring_min AS scoring_min, c.scoring_max AS scoring_max, c.scoring_increment AS scoring_increment,
+			       j.judge_id AS jj_id, j.mundane_id AS judge_mundane_id, j.field_taxonomy_ids AS judge_fields,
+			       e.entry_id AS ee_id, e.taxonomy_id AS entry_taxonomy_id, p.mundane_id AS artisan_mundane_id,
+			       cr.criterion_id AS cc_id
+			FROM " . DB_PREFIX . "as_competition c
+			LEFT JOIN " . DB_PREFIX . "as_judge       j  ON j.judge_id       = $judge_id     AND j.competition_id  = c.competition_id
+			LEFT JOIN " . DB_PREFIX . "as_entry       e  ON e.entry_id       = $entry_id     AND e.competition_id  = c.competition_id
+			LEFT JOIN " . DB_PREFIX . "as_participant p  ON p.participant_id  = e.participant_id
+			LEFT JOIN " . DB_PREFIX . "as_criterion   cr ON cr.criterion_id  = $criterion_id AND cr.competition_id = c.competition_id
+			WHERE c.competition_id = $competition_id
+			LIMIT 1
+		");
+        if (!$rv || !$rv->next()) {
+            // No competition row — competition_kingdom_id would have returned 0 → NoAuthorization.
+            return NoAuthorization();
+        }
+        $kid              = (int)$rv->kingdom_id;
+        $c_status         = (string)$rv->status;
+        $c_jstart         = $rv->judging_starts_at ?: null;
+        $c_jend           = $rv->judging_ends_at ?: null;
+        $cfg_min          = (float)$rv->scoring_min;
+        $cfg_max          = (float)$rv->scoring_max;
+        $cfg_inc          = (float)$rv->scoring_increment;
+        $has_judge        = !empty($rv->jj_id);
+        $judge_mid        = $rv->judge_mundane_id ? (int)$rv->judge_mundane_id : 0;
+        $judge_field_json = $rv->judge_fields;
+        $has_entry        = !empty($rv->ee_id);
+        $entry_tax        = $rv->entry_taxonomy_id ? (int)$rv->entry_taxonomy_id : 0;
+        $artisan_mid      = $rv->artisan_mundane_id ? (int)$rv->artisan_mundane_id : 0;
+        $has_criterion    = !empty($rv->cc_id);
+
         if (!valid_id($kid)) {
             return NoAuthorization();
         }
         $is_admin = Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_KINGDOM, $kid, AUTH_EDIT);
 
-        // Load the seated judge row (identity confirmation, recusal, and field restriction all use it).
-        $this->db->Clear();
-        $rj = $this->db->query("SELECT mundane_id, field_taxonomy_ids FROM " . DB_PREFIX . "as_judge WHERE judge_id = $judge_id AND competition_id = $competition_id LIMIT 1");
-        if (!$rj || !$rj->next()) {
+        // F8 — lifecycle: scoring is only open while the competition is in 'judging' and, if a
+        // judging window is set, within it. A kingdom admin may bypass with an explicit Override to
+        // correct records; everyone else is rejected once judging is closed or not yet open.
+        $override = $is_admin && !empty($request['Override']);
+        if (!$override) {
+            if ($c_status === 'closed') {
+                return InvalidParameter('This competition is closed; scores can no longer be changed.');
+            }
+            if ($c_status !== 'judging') {
+                return InvalidParameter('Judging is not open for this competition.');
+            }
+            $now = date('Y-m-d H:i:s');
+            if ($c_jstart && $now < (string)$c_jstart) {
+                return InvalidParameter('Judging has not opened yet.');
+            }
+            if ($c_jend && $now > (string)$c_jend) {
+                return InvalidParameter('The judging window has closed.');
+            }
+        }
+
+        // Seated judge row (identity confirmation, recusal, and field restriction all use it).
+        if (!$has_judge) {
             return InvalidParameter('Judge not found for this competition.');
         }
-        $judge_mid        = $rj->mundane_id ? (int)$rj->mundane_id : 0;
-        $judge_field_json = $rj->field_taxonomy_ids;
         if (!$is_admin && $judge_mid !== (int)$mundane_id) {
             // Confirm requester is the named judge.
             return NoAuthorization();
         }
 
-        // F5 — cross-competition integrity: the entry, criterion (and, above, the judge) must all
+        // F5 — cross-competition integrity: the entry and criterion (and, above, the judge) must all
         // belong to THIS competition. Without this a caller could splice a score across competitions.
-        $this->db->Clear();
-        $rce = $this->db->query("SELECT entry_id FROM " . DB_PREFIX . "as_entry WHERE entry_id = $entry_id AND competition_id = $competition_id LIMIT 1");
-        if (!$rce || !$rce->next()) {
+        if (!$has_entry) {
             return InvalidParameter('Entry does not belong to this competition.');
         }
-        $this->db->Clear();
-        $rcc = $this->db->query("SELECT criterion_id FROM " . DB_PREFIX . "as_criterion WHERE criterion_id = $criterion_id AND competition_id = $competition_id LIMIT 1");
-        if (!$rcc || !$rcc->next()) {
+        if (!$has_criterion) {
             return InvalidParameter('Criterion does not belong to this competition.');
         }
 
         // F26 — recusal: a judge may not score their own entry.
-        $artisan_mid = $this->entry_artisan_mundane_id($competition_id, $entry_id);
         if (valid_id($judge_mid) && $judge_mid === $artisan_mid) {
             return InvalidParameter('A judge may not score their own entry.');
         }
+
+        // F13: resolve the entry's root field via an in-memory walk over a once-loaded taxonomy map
+        // (was a per-level query loop). Reused by F27 (field restriction) and F36 (field recusal),
+        // so the map also serves the recusal loop below without a query per own-entry.
+        $tax_parent_map = $this->taxonomy_parent_map($competition_id);
+        $entry_root = $this->field_root_from_map($entry_tax, $tax_parent_map);
 
         // F27 — field restriction: a judge with explicit field assignments may only score
         // entries whose root field is among them. A judge with no assignments is at-large.
         $field_ids = $judge_field_json ? json_decode((string)$judge_field_json, true) : [];
         if (is_array($field_ids) && !empty($field_ids)) {
             $field_ids = array_values(array_filter(array_map('intval', $field_ids)));
-            if (!empty($field_ids)) {
-                $this->db->Clear();
-                $re = $this->db->query("SELECT taxonomy_id FROM " . DB_PREFIX . "as_entry WHERE entry_id = $entry_id AND competition_id = $competition_id LIMIT 1");
-                $entry_tax = ($re && $re->next()) ? (int)$re->taxonomy_id : 0;
-                $root = $this->field_root_taxonomy_id($entry_tax);
-                if ($root && !in_array($root, $field_ids, true)) {
-                    return InvalidParameter("This judge is not assigned to the entry's field.");
+            if (!empty($field_ids) && $entry_root && !in_array($entry_root, $field_ids, true)) {
+                return InvalidParameter("This judge is not assigned to the entry's field.");
+            }
+        }
+
+        // F36 — field-level recusal: a judge who is themselves an entrant in the SAME root field as
+        // the entry being scored has a conflict of interest for that whole field, not just their own
+        // entry. Block scoring other entries in it (admins may bypass to correct records).
+        if (!$is_admin && valid_id($judge_mid) && $entry_root) {
+            $this->db->Clear();
+            $rown = $this->db->query("
+				SELECT e.taxonomy_id
+				FROM " . DB_PREFIX . "as_entry e
+				INNER JOIN " . DB_PREFIX . "as_participant p ON p.participant_id = e.participant_id AND p.competition_id = e.competition_id
+				WHERE e.competition_id = $competition_id AND p.mundane_id = $judge_mid
+			");
+            $conflict = false;
+            while ($rown && $rown->next()) {
+                $own_root = $this->field_root_from_map((int)$rown->taxonomy_id, $tax_parent_map);
+                if ($own_root && $own_root === $entry_root) {
+                    $conflict = true;
+                    break;
                 }
+            }
+            if ($conflict) {
+                return InvalidParameter("A judge who competes in this field may not score other entries in it.");
             }
         }
 
         // F8 — clamp the incoming score into the competition's [min, max] band and snap it to the
         // configured increment. Reject values grossly outside the band (more than one step past an
-        // edge) rather than silently clamping a clearly-bogus submission.
-        $this->db->Clear();
-        $rcfg = $this->db->query("SELECT scoring_min, scoring_max, scoring_increment FROM " . DB_PREFIX . "as_competition WHERE competition_id = $competition_id LIMIT 1");
-        $smin = 0.0;
-        $smax = 5.0;
-        $sinc = 0.0;
-        if ($rcfg && $rcfg->next()) {
-            $smin = (float)$rcfg->scoring_min;
-            $smax = (float)$rcfg->scoring_max;
-            $sinc = (float)$rcfg->scoring_increment;
-        }
+        // edge) rather than silently clamping a clearly-bogus submission. F13: the config was read in
+        // the single JOIN above, so no extra round-trip here.
+        $smin = $cfg_min;
+        $smax = $cfg_max;
+        $sinc = $cfg_inc;
         if ($smax < $smin) {
             $t = $smin;
             $smin = $smax;
@@ -1606,12 +2227,19 @@ class ArtsSciences extends Ork3
         // F14 — safe upsert against uniq_as_score(entry_id, judge_id, criterion_id). The old
         // find-then-save could swallow a concurrent duplicate and return Success(0); an
         // INSERT ... ON DUPLICATE KEY UPDATE plus a read-back guarantees a real score_id.
-        $feedback_esc = "'" . addslashes((string)($request['Feedback'] ?? '')) . "'";
+        // #65: parameterized upsert (was addslashes()-interpolated feedback).
         $this->db->Clear();
         $this->db->query(
             "INSERT INTO " . DB_PREFIX . "as_score (entry_id, judge_id, criterion_id, score, feedback) "
-            . "VALUES ($entry_id, $judge_id, $criterion_id, " . (float)$score . ", $feedback_esc) "
-            . "ON DUPLICATE KEY UPDATE score = VALUES(score), feedback = VALUES(feedback)"
+            . "VALUES (:eid, :jid, :cid, :score, :feedback) "
+            . "ON DUPLICATE KEY UPDATE score = VALUES(score), feedback = VALUES(feedback)",
+            [
+                ':eid'      => $entry_id,
+                ':jid'      => $judge_id,
+                ':cid'      => $criterion_id,
+                ':score'    => (float)$score,
+                ':feedback' => (string)($request['Feedback'] ?? ''),
+            ]
         );
         $this->db->Clear();
         $rsid = $this->db->query("SELECT score_id FROM " . DB_PREFIX . "as_score WHERE entry_id = $entry_id AND judge_id = $judge_id AND criterion_id = $criterion_id LIMIT 1");
@@ -1751,9 +2379,17 @@ class ArtsSciences extends Ork3
         if (!$mid) {
             return NoAuthorization();
         }
+        $this->invalidate_results_cache($cid); // F14
         $artisan = $this->entry_artisan_mundane_id($cid, $eid);
         if (!valid_id($artisan)) {
             return InvalidParameter('Entry has no linked player.');
+        }
+        // F10 — recusal: when the caller acts as a seated judge (not a kingdom admin officer), they
+        // may not recommend an award for their own entry. Mirrors the SaveScore own-entry recusal.
+        $kid = $this->competition_kingdom_id($cid);
+        $is_admin = $kid && Ork3::$Lib->authorization->HasAuthority($mid, AUTH_KINGDOM, $kid, AUTH_EDIT);
+        if (!$is_admin && (int)$mid === (int)$artisan) {
+            return InvalidParameter('A judge may not recommend an award for their own entry.');
         }
         return Ork3::$Lib->player->AddAwardRecommendation([
             'Token'          => $request['Token'],
@@ -1805,13 +2441,16 @@ class ArtsSciences extends Ork3
         // Under blind judging a non-admin must not see which judge produced a score.
         $hide_judge = ($this->competition_is_anonymous($competition_id) && !$ctx['is_admin']);
         $wsql = implode(' AND ', $where);
+        // #20: paginate only the broad (unscoped) query — a single-entry or single-judge fetch is
+        // already narrow and must return its full set unchanged.
+        $limit_sql = (!$entry_id && !$judge_id) ? $this->build_limit_clause($request) : '';
         $this->db->Clear();
         $rs = $this->db->query("
 			SELECT s.*
 			FROM " . DB_PREFIX . "as_score s
 			INNER JOIN " . DB_PREFIX . "as_entry e ON e.entry_id = s.entry_id
 			WHERE $wsql
-		");
+		" . $limit_sql);
         $out = [];
         while ($rs && $rs->next()) {
             $out[] = [
@@ -1827,6 +2466,258 @@ class ArtsSciences extends Ork3
     }
 
     // ------------------------------------------------------------------
+    // #40: Entrant self-service results sharing.
+    // An artisan can see their OWN entries across every competition, and — once a competition is
+    // closed AND its share_with_entrants mode is not 'none' — the results for an entry they own.
+    // Judge identity is ALWAYS blinded to 'Judge 1/2/...' here (never persona/mundane), regardless
+    // of the competition's anonymous_judging flag, so entrant-facing results never unmask a judge.
+    // ------------------------------------------------------------------
+
+    // The caller's OWN A&S entries across all competitions. Shareable = the competition is closed
+    // AND its share_with_entrants mode is not 'none' (i.e. GetMyEntryResults will honor a request
+    // for this entry). SQL stays in the lib (F/architecture); the mundane filter is a bound param.
+    public function GetMyEntries($token)
+    {
+        $mundane_id = (int) Ork3::$Lib->authorization->IsAuthorized($token);
+        if (!valid_id($mundane_id)) {
+            return NoAuthorization();
+        }
+        $this->db->Clear();
+        $rs = $this->db->query(
+            "SELECT e.entry_id, e.title, e.status,
+                    c.competition_id, c.name AS competition_name, c.competition_date,
+                    c.status AS competition_status, c.share_with_entrants,
+                    t.name AS taxonomy_name
+             FROM " . DB_PREFIX . "as_entry e
+             INNER JOIN " . DB_PREFIX . "as_participant p
+                    ON p.participant_id = e.participant_id AND p.competition_id = e.competition_id
+             INNER JOIN " . DB_PREFIX . "as_competition c ON c.competition_id = e.competition_id
+             LEFT JOIN  " . DB_PREFIX . "as_taxonomy    t
+                    ON t.taxonomy_id = e.taxonomy_id AND t.competition_id = e.competition_id
+             WHERE p.mundane_id = :mid
+             ORDER BY COALESCE(c.competition_date, DATE(c.start_date_time), DATE(c.created_at)) DESC, e.entry_id DESC",
+            [':mid' => $mundane_id]
+        );
+        $out = [];
+        while ($rs && $rs->next()) {
+            $comp_status = strtolower((string)$rs->competition_status);
+            $share       = strtolower((string)($rs->share_with_entrants ?: 'none'));
+            $out[] = [
+                'EntryId'         => (int)$rs->entry_id,
+                'CompetitionId'   => (int)$rs->competition_id,
+                'CompetitionName' => $rs->competition_name,
+                'CompetitionDate' => $rs->competition_date,
+                'Status'          => $rs->status ?: 'registered',
+                'Title'           => $rs->title,
+                'TaxonomyName'    => $rs->taxonomy_name,
+                'Shareable'       => ($comp_status === 'closed' && $share !== 'none'),
+            ];
+        }
+        return Success($out);
+    }
+
+    // Results for a single entry the caller OWNS, gated on the competition being closed AND
+    // share_with_entrants <> 'none'. Honors the sharing mode:
+    //   'feedback'        => judges' written feedback only (no score numbers).
+    //   'scores'          => aggregate + per-criterion + per-judge scores (no feedback).
+    //   'scores_feedback' => both.
+    // Judge identity is ALWAYS blinded to 'Judge 1/2/...'. Returns NoAuthorization when the entry
+    // is not owned by the caller or the competition is not in a shareable state.
+    public function GetMyEntryResults($token, $entry_id)
+    {
+        $mundane_id = (int) Ork3::$Lib->authorization->IsAuthorized($token);
+        if (!valid_id($mundane_id)) {
+            return NoAuthorization();
+        }
+        $entry_id = (int)$entry_id;
+        if (!valid_id($entry_id)) {
+            return InvalidParameter();
+        }
+
+        // Ownership + shareability gate in a single read: the entry's participant must be the caller,
+        // and its competition must be closed with a non-'none' sharing mode.
+        $this->db->Clear();
+        $rs = $this->db->query(
+            "SELECT e.entry_id, e.competition_id, e.title,
+                    c.name AS competition_name, c.competition_date,
+                    c.status AS competition_status, c.share_with_entrants, c.aggregation_method,
+                    t.name AS taxonomy_name,
+                    p.mundane_id AS participant_mundane_id
+             FROM " . DB_PREFIX . "as_entry e
+             INNER JOIN " . DB_PREFIX . "as_participant p
+                    ON p.participant_id = e.participant_id AND p.competition_id = e.competition_id
+             INNER JOIN " . DB_PREFIX . "as_competition c ON c.competition_id = e.competition_id
+             LEFT JOIN  " . DB_PREFIX . "as_taxonomy    t
+                    ON t.taxonomy_id = e.taxonomy_id AND t.competition_id = e.competition_id
+             WHERE e.entry_id = :eid
+             LIMIT 1",
+            [':eid' => $entry_id]
+        );
+        if (!$rs || !$rs->next()) {
+            return NoAuthorization();
+        }
+        if ((int)$rs->participant_mundane_id !== $mundane_id) {
+            return NoAuthorization();
+        }
+        $comp_status = strtolower((string)$rs->competition_status);
+        $share       = strtolower((string)($rs->share_with_entrants ?: 'none'));
+        if ($comp_status !== 'closed' || $share === 'none') {
+            return NoAuthorization();
+        }
+        $competition_id = (int)$rs->competition_id;
+        $agg_method     = (string)$rs->aggregation_method;
+        $want_scores    = ($share === 'scores' || $share === 'scores_feedback');
+        $want_feedback  = ($share === 'feedback' || $share === 'scores_feedback');
+
+        $detail = [
+            'EntryId'         => $entry_id,
+            'CompetitionId'   => $competition_id,
+            'CompetitionName' => $rs->competition_name,
+            'CompetitionDate' => $rs->competition_date,
+            'Title'           => $rs->title,
+            'TaxonomyName'    => $rs->taxonomy_name,
+            'Mode'            => $share,
+        ];
+
+        // Criteria (id, name, weight) for aggregation + labeling.
+        $crit_name   = [];
+        $crit_weight = [];
+        $this->db->Clear();
+        $rc = $this->db->query(
+            "SELECT criterion_id, name, weight FROM " . DB_PREFIX . "as_criterion
+             WHERE competition_id = :cid ORDER BY sort_order, criterion_id",
+            [':cid' => $competition_id]
+        );
+        while ($rc && $rc->next()) {
+            $cid = (int)$rc->criterion_id;
+            $crit_name[$cid]   = (string)$rc->name;
+            $crit_weight[$cid] = max(0.0001, (float)$rc->weight);
+        }
+
+        // All scores + feedback for this entry.
+        $this->db->Clear();
+        $rows = $this->db->query(
+            "SELECT judge_id, criterion_id, score, feedback FROM " . DB_PREFIX . "as_score
+             WHERE entry_id = :eid ORDER BY judge_id, criterion_id",
+            [':eid' => $entry_id]
+        );
+        $by_judge = []; // judge_id => [criterion_id => score]
+        $fb_rows  = []; // judge_id => [ {CriterionName, Feedback} ]
+        while ($rows && $rows->next()) {
+            $jid = (int)$rows->judge_id;
+            $cid = (int)$rows->criterion_id;
+            $by_judge[$jid][$cid] = (float)$rows->score;
+            $fb = trim((string)$rows->feedback);
+            if ($fb !== '') {
+                $fb_rows[$jid][] = ['CriterionName' => $crit_name[$cid] ?? '', 'Feedback' => $fb];
+            }
+        }
+
+        // Blind judge identity: assign stable 'Judge N' labels in judge_id order. Never expose the
+        // judge's mundane/persona, regardless of the competition's anonymous_judging setting.
+        $judge_ids = array_values(array_unique(array_merge(array_keys($by_judge), array_keys($fb_rows))));
+        sort($judge_ids);
+        $label = [];
+        $n = 0;
+        foreach ($judge_ids as $jid) {
+            $label[$jid] = 'Judge ' . (++$n);
+        }
+
+        if ($want_scores) {
+            // Per-judge weighted total (mirrors build_entry_results' per-judge weighting).
+            $judge_totals = [];
+            foreach ($by_judge as $jid => $crits) {
+                $sum = 0.0;
+                $wsum = 0.0;
+                foreach ($crits as $cid => $sc) {
+                    $w = $crit_weight[$cid] ?? 1.0;
+                    $sum  += $w * $sc;
+                    $wsum += $w;
+                }
+                $judge_totals[$jid] = $wsum > 0 ? $sum / $wsum : 0.0;
+            }
+            // Aggregate across judges using the competition's aggregation method (same family as
+            // build_entry_results: sum / median / average with optional drop_high/low/both).
+            $values = array_values($judge_totals);
+            sort($values);
+            $jcount    = count($values);
+            $aggregate = null;
+            if ($jcount > 0) {
+                if ($agg_method === 'sum') {
+                    $aggregate = array_sum($values);
+                } elseif ($agg_method === 'median') {
+                    $m = intdiv($jcount, 2);
+                    $aggregate = ($jcount % 2 === 0) ? (($values[$m - 1] + $values[$m]) / 2) : $values[$m];
+                } else {
+                    $slice = $values;
+                    if ($agg_method === 'drop_high' && $jcount > 1) {
+                        array_pop($slice);
+                    }
+                    if ($agg_method === 'drop_low'  && $jcount > 1) {
+                        array_shift($slice);
+                    }
+                    if ($agg_method === 'drop_both' && $jcount > 2) {
+                        array_pop($slice);
+                        array_shift($slice);
+                    }
+                    $ec        = count($slice);
+                    $aggregate = $ec > 0 ? array_sum($slice) / $ec : 0.0;
+                }
+            }
+            // Per-criterion average across judges.
+            $crit_out = [];
+            foreach ($crit_name as $cid => $cname) {
+                $list = [];
+                foreach ($by_judge as $jid => $crits) {
+                    if (isset($crits[$cid])) {
+                        $list[] = $crits[$cid];
+                    }
+                }
+                $crit_out[] = [
+                    'CriterionId' => $cid,
+                    'Name'        => $cname,
+                    'Average'     => count($list) ? round(array_sum($list) / count($list), 2) : null,
+                ];
+            }
+            // Per-judge blinded score breakdown.
+            $judge_out = [];
+            foreach ($judge_ids as $jid) {
+                if (!isset($by_judge[$jid])) {
+                    continue;
+                }
+                $cells = [];
+                foreach ($by_judge[$jid] as $cid => $sc) {
+                    $cells[] = ['CriterionId' => $cid, 'Name' => $crit_name[$cid] ?? '', 'Score' => round($sc, 2)];
+                }
+                $judge_out[] = [
+                    'Judge'    => $label[$jid],
+                    'Total'    => round($judge_totals[$jid] ?? 0, 2),
+                    'Criteria' => $cells,
+                ];
+            }
+            $detail['Aggregate']         = $aggregate !== null ? round($aggregate, 2) : null;
+            $detail['JudgeCount']        = $jcount;
+            $detail['AggregationMethod'] = $agg_method;
+            $detail['CriterionScores']   = $crit_out;
+            $detail['JudgeScores']       = $judge_out;
+        }
+
+        if ($want_feedback) {
+            $fb_out = [];
+            foreach ($judge_ids as $jid) {
+                $items = $fb_rows[$jid] ?? [];
+                if (!$items) {
+                    continue;
+                }
+                $fb_out[] = ['Judge' => $label[$jid], 'Feedback' => $items];
+            }
+            $detail['Feedback'] = $fb_out;
+        }
+
+        return Success($detail);
+    }
+
+    // ------------------------------------------------------------------
     // Awards (definitions)
     // ------------------------------------------------------------------
 
@@ -1836,7 +2727,12 @@ class ArtsSciences extends Ork3
         if (!$this->check_auth($request['Token'], $competition_id)) {
             return NoAuthorization();
         }
+        $this->invalidate_results_cache($competition_id); // F14
         $this->Award->clear();
+        // F28: whether this award already carries a rules JSON. Captured inside the edit branch,
+        // right after find() populates the active record (reading a yapo field on a fresh/new,
+        // never-found record throws "no active record set").
+        $existing_rules_present = false;
         if (valid_id($request['AwardId'] ?? null)) {
             $this->Award->award_id = (int)$request['AwardId'];
             if (!$this->Award->find()) {
@@ -1845,30 +2741,64 @@ class ArtsSciences extends Ork3
             if ((int)$this->Award->competition_id !== $competition_id) {
                 return NoAuthorization();
             }
+            $existing_rules_present = !empty($this->Award->rules);
         } else {
             $this->Award->competition_id = $competition_id;
         }
         $this->Award->name                    = trim($request['Name'] ?? 'Award');
         $this->Award->description             = $request['Description'] ?? '';
         $this->Award->award_type              = $request['AwardType'] ?? 'best_in_show';
-        $this->Award->field_taxonomy_id       = valid_id($request['FieldTaxonomyId'] ?? null) ? (int)$request['FieldTaxonomyId'] : '';
-        $this->Award->top_n                   = isset($request['TopN']) && $request['TopN'] !== '' ? (int)$request['TopN'] : '';
-        $this->Award->min_distinct_fields     = isset($request['MinDistinctFields']) && $request['MinDistinctFields'] !== '' ? (int)$request['MinDistinctFields'] : '';
-        $this->Award->min_distinct_categories = isset($request['MinDistinctCategories']) && $request['MinDistinctCategories'] !== '' ? (int)$request['MinDistinctCategories'] : '';
-        $this->Award->novice_only             = !empty($request['NoviceOnly']) ? 1 : 0;
+
+        // F28: the rules JSON is CANONICAL. When an award has (or is receiving) a rules JSON, the
+        // results/preset compute path (extract_rules) reads it and IGNORES the structured columns
+        // (field_taxonomy_id / top_n / min_distinct_fields / min_distinct_categories), so we STOP
+        // persisting those columns to avoid storing stale, contradictory data. novice_only is the
+        // one structured flag still honored under rules (F30 folds it into eligibility), so it is
+        // always persisted.
         $clearRules = false;
+        $has_rules  = $existing_rules_present;
         if (array_key_exists('Rules', $request)) {
             $rules = is_array($request['Rules']) ? $request['Rules'] : json_decode((string)$request['Rules'], true);
             // `rules` is a JSON column with a json_valid() CHECK — writing '' is rejected
             // (silent save failure). Store valid JSON when present; otherwise clear to NULL.
             if (is_array($rules) && !empty($rules)) {
                 $this->Award->rules = json_encode($rules);
+                $has_rules = true;
             } else {
                 $this->Award->rules = null; // yapo drops null on UPDATE; raw-clear below handles existing rows
                 $clearRules = true;
+                $has_rules  = false;
             }
         }
+
+        $this->Award->novice_only = !empty($request['NoviceOnly']) ? 1 : 0;
+        if ($has_rules) {
+            // F28: structured columns are ignored under rules precedence — clear them so a later
+            // edit or preset snapshot can't resurrect stale values. '' clears the nullable INT
+            // columns (yapo drops a literal null on UPDATE).
+            $this->Award->field_taxonomy_id       = '';
+            $this->Award->top_n                   = '';
+            $this->Award->min_distinct_fields     = '';
+            $this->Award->min_distinct_categories = '';
+        } else {
+            // F25: a supplied field id must belong to THIS competition, else a field-scoped award
+            // silently targets a foreign/stale field.
+            $field_tax = valid_id($request['FieldTaxonomyId'] ?? null) ? (int)$request['FieldTaxonomyId'] : 0;
+            if ($field_tax > 0) {
+                $this->db->Clear();
+                $chk = $this->db->query("SELECT taxonomy_id FROM " . DB_PREFIX . "as_taxonomy WHERE taxonomy_id = $field_tax AND competition_id = $competition_id LIMIT 1");
+                if (!$chk || !$chk->next()) {
+                    return InvalidParameter('Award field does not belong to this competition.');
+                }
+            }
+            $this->Award->field_taxonomy_id       = $field_tax > 0 ? $field_tax : '';
+            $this->Award->top_n                   = isset($request['TopN']) && $request['TopN'] !== '' ? (int)$request['TopN'] : '';
+            $this->Award->min_distinct_fields     = isset($request['MinDistinctFields']) && $request['MinDistinctFields'] !== '' ? (int)$request['MinDistinctFields'] : '';
+            $this->Award->min_distinct_categories = isset($request['MinDistinctCategories']) && $request['MinDistinctCategories'] !== '' ? (int)$request['MinDistinctCategories'] : '';
+        }
         $this->Award->sort_order              = (int)($request['SortOrder'] ?? 0);
+        // F25: clear stale bindings from the field-ownership check before save().
+        $this->db->Clear();
         $this->Award->save();
         $award_id = (int)$this->Award->award_id;
         if ($clearRules && $award_id > 0) {
@@ -1885,6 +2815,7 @@ class ArtsSciences extends Ork3
         if (!$this->check_auth($request['Token'], $competition_id)) {
             return NoAuthorization();
         }
+        $this->invalidate_results_cache($competition_id); // F14
         $this->db->Clear();
         $this->db->query("DELETE FROM " . DB_PREFIX . "as_award WHERE award_id = $award_id AND competition_id = $competition_id");
         return Success();
@@ -1892,10 +2823,11 @@ class ArtsSciences extends Ork3
 
     public function GetAwards($request)
     {
-        if ((int) Ork3::$Lib->authorization->IsAuthorized($request['Token'] ?? '') <= 0) {
+        $competition_id = (int)($request['CompetitionId'] ?? 0);
+        // F2: gate cross-kingdom reads via the lib's single read-authorization authority.
+        if (!$this->authorize_read($request['Token'] ?? '', $competition_id)) {
             return NoAuthorization();
         }
-        $competition_id = (int)($request['CompetitionId'] ?? 0);
         $this->db->Clear();
         $rs = $this->db->query("
 			SELECT a.*, t.name AS field_name
@@ -1928,11 +2860,151 @@ class ArtsSciences extends Ork3
     // Results computation
     // ------------------------------------------------------------------
 
+    // #11/#17: public results entry point. A CLOSED competition serves its immutable frozen
+    // snapshot (written at close by write_close_snapshot) so post-close score/entry/award edits can
+    // never rewrite a published result; draft/open/judging recompute live. The snapshot payload is
+    // the admin-context master bundle — redact_detail_for_viewer downgrades it per viewer on read.
     public function ComputeResults($request)
     {
         $competition_id = (int)($request['CompetitionId'] ?? 0);
         $token          = $request['Token'] ?? '';
+        if (!valid_id($competition_id)) {
+            return InvalidParameter('CompetitionId required');
+        }
 
+        // Resolve the competition status + latest snapshot id in one indexed lookup.
+        $this->db->Clear();
+        $srow = $this->db->query(
+            "SELECT c.status AS status, s.snapshot_id AS snapshot_id "
+            . "FROM " . DB_PREFIX . "as_competition c "
+            . "LEFT JOIN " . DB_PREFIX . "as_result_snapshot s ON s.competition_id = c.competition_id "
+            . "WHERE c.competition_id = :cid ORDER BY s.snapshot_id DESC LIMIT 1",
+            [':cid' => $competition_id]
+        );
+        $c_status = '';
+        $snapshot_id = 0;
+        if ($srow && $srow->next()) {
+            $c_status    = strtolower((string)$srow->status);
+            $snapshot_id = $srow->snapshot_id ? (int)$srow->snapshot_id : 0;
+        }
+
+        if ($c_status === 'closed' && $snapshot_id > 0) {
+            // F2: enforce read-authorization (members may read a closed competition's results).
+            if (!$this->authorize_read($token, $competition_id, $ctx)) {
+                return NoAuthorization();
+            }
+            // #17: SHORT-TTL cross-request cache of the immutable snapshot payload, keyed by the
+            // snapshot_id — a natural, never-reused version stamp (a reopen->reclose writes a NEW
+            // AUTO_INCREMENT snapshot_id, so the old key is orphaned; closed data is otherwise
+            // immutable, so this layer can NEVER serve a stale bundle after a write). The cached
+            // value is the viewer-INDEPENDENT admin master bundle; per-viewer redaction runs AFTER
+            // the read, so no viewer's redaction leaks to another. See the note on compute_results
+            // _live for why the LIVE (draft/open/judging) path deliberately has no cross-request layer.
+            $detail = $this->snapshot_cache_get($competition_id, $snapshot_id);
+            if ($detail === false || !is_array($detail)) {
+                $this->db->Clear();
+                $prow = $this->db->query(
+                    "SELECT payload_json FROM " . DB_PREFIX . "as_result_snapshot WHERE snapshot_id = :sid LIMIT 1",
+                    [':sid' => $snapshot_id]
+                );
+                $detail = ($prow && $prow->next()) ? json_decode((string)$prow->payload_json, true) : null;
+                if (is_array($detail)) {
+                    $this->snapshot_cache_put($competition_id, $snapshot_id, $detail);
+                }
+            }
+            if (is_array($detail)) {
+                $this->redact_detail_for_viewer($detail, $ctx, $competition_id);
+                return Success($detail);
+            }
+            // Payload unreadable — fall through to a live recompute rather than failing.
+        }
+
+        return $this->compute_results_live($competition_id, $token);
+    }
+
+    // #17: fetch a cached immutable snapshot bundle, or false on miss / no cache backend. Keyed by
+    // (competition_id, snapshot_id); the snapshot_id is the immutable version stamp.
+    private function snapshot_cache_get($competition_id, $snapshot_id)
+    {
+        if (!isset(Ork3::$Lib->ghettocache) || !isset(Ork3::$Lib->ghettocache->memcache)) {
+            return false;
+        }
+        return Ork3::$Lib->ghettocache->get('ArtsSciences.snapshot', (int)$competition_id . '.' . (int)$snapshot_id, 60);
+    }
+
+    // #17: store an immutable snapshot bundle in the short-TTL cross-request cache.
+    private function snapshot_cache_put($competition_id, $snapshot_id, $detail)
+    {
+        if (!isset(Ork3::$Lib->ghettocache) || !isset(Ork3::$Lib->ghettocache->memcache)) {
+            return;
+        }
+        Ork3::$Lib->ghettocache->cache('ArtsSciences.snapshot', (int)$competition_id . '.' . (int)$snapshot_id, $detail);
+    }
+
+    // #11: apply the build_entry_results viewer redaction to a snapshot bundle (which was frozen
+    // under an admin context, so it carries real personas + every judge's cells). Mirrors the two
+    // redaction blocks in build_entry_results so a member / non-admin judge reading a closed
+    // competition's frozen results sees exactly what a live compute would have shown them.
+    private function redact_detail_for_viewer(&$detail, $ctx, $competition_id)
+    {
+        if (!empty($ctx['is_admin'])) {
+            return; // admins see the full frozen bundle.
+        }
+        $blind        = $this->competition_is_anonymous($competition_id);
+        $own_judge_id = ($ctx['mundane_id'] > 0) ? $this->judge_id_for_mundane($ctx['mundane_id'], $competition_id) : 0;
+        $own_only     = (!empty($ctx['is_judge']) && !$blind && $own_judge_id > 0);
+
+        // Persona/identity redaction under blind judging for any non-admin viewer (F5).
+        if ($blind) {
+            foreach (($detail['Participants'] ?? []) as &$p) {
+                $p['Persona']   = 'Artisan #' . ($p['ParticipantId'] ?? '');
+                $p['MundaneId'] = null;
+            }
+            unset($p);
+            foreach (($detail['Entries'] ?? []) as &$e) {
+                $lbl = (($e['EntryNumber'] ?? '') !== '' && $e['EntryNumber'] !== null) ? $e['EntryNumber'] : ($e['EntryId'] ?? 0);
+                $e['Persona']   = 'Entry #' . $lbl;
+                $e['MundaneId'] = null;
+            }
+            unset($e);
+            foreach (($detail['Awards'] ?? []) as &$aw) {
+                foreach (($aw['Winners'] ?? []) as &$w) {
+                    $w['Persona'] = (($w['Type'] ?? 'entry') === 'participant')
+                        ? ('Artisan #' . ($w['ParticipantId'] ?? ''))
+                        : ('Entry #' . ($w['EntryId'] ?? ''));
+                }
+                unset($w);
+            }
+            unset($aw);
+        }
+
+        // Per-judge exposure tiering (F1): a non-admin seated judge keeps only their own cells when
+        // NOT blind; everyone else has the identifiable per-judge matrix stripped.
+        foreach (($detail['Entries'] ?? []) as &$e) {
+            if ($own_only) {
+                $js  = $e['JudgeScores'] ?? [];
+                $jcs = $e['JudgeCriterionScores'] ?? [];
+                $e['JudgeScores']          = array_key_exists($own_judge_id, $js) ? [$own_judge_id => $js[$own_judge_id]] : [];
+                $e['JudgeCriterionScores'] = array_key_exists($own_judge_id, $jcs) ? [$own_judge_id => $jcs[$own_judge_id]] : [];
+            } else {
+                $e['JudgeScores']          = [];
+                $e['JudgeCriterionScores'] = [];
+            }
+            $e['DroppedJudgeIds'] = [];
+        }
+        unset($e);
+    }
+
+    // #11/#17: the LIVE results computation for a draft/open/judging competition (also used to build
+    // the frozen bundle at close). NO cross-request cache layer is added here on purpose: the bundle
+    // is viewer-dependent AND invalidate_results_cache() runs BEFORE a write commits, so a
+    // cross-request stamp bumped at that point could let a concurrent reader cache pre-write data
+    // under the post-write stamp — i.e. serve a stale bundle after a write. Since a hard no-stale
+    // guarantee is not achievable from the lib alone for the live path, per the correctness guardrail
+    // it is skipped; the per-request memo (build_entry_results) plus the immutable snapshot cache for
+    // CLOSED competitions cover the hot repeat-load paths safely.
+    private function compute_results_live($competition_id, $token)
+    {
         // F46: the entry/criteria/ladder aggregation is shared with PreviewAward via
         // build_entry_results; ComputeResults layers the per-award winner engine on top.
         $bundle = $this->build_entry_results($competition_id, $token);
@@ -1943,11 +3015,16 @@ class ArtsSciences extends Ork3
         $entries  = $detail['Entries'];
         $criteria = $detail['Criteria'];
 
+        // F35: competition-level minimum-judge quorum hook. Defaults to 0 (no quorum) — reads a
+        // per-competition MinJudges setting when one is exposed, keeping existing competitions
+        // unchanged until an author opts in.
+        $min_judges = (int)($detail['Competition']['MinJudges'] ?? 0);
+
         $awards = $this->GetAwards(['CompetitionId' => $competition_id, 'Token' => $token])['Detail'] ?? [];
         $award_results = [];
         foreach ($awards as $aw) {
             $warnings = [];
-            $winners  = $this->compute_award_winners($aw, $entries, $criteria, $warnings);
+            $winners  = $this->compute_award_winners($aw, $entries, $criteria, $warnings, $min_judges);
             $award_results[] = [
                 'Award'    => $aw,
                 'Winners'  => $winners,
@@ -1972,23 +3049,51 @@ class ArtsSciences extends Ork3
         if ($ctx['mundane_id'] <= 0) {
             return NoAuthorization();
         }
+        // F14: per-REQUEST memoization only. Both ComputeResults and PreviewAward call this within a
+        // single request, and the frontend refetches results after each score save — but the bundle is
+        // VIEWER-DEPENDENT (blind-judging persona redaction + per-judge score tiering vary by caller),
+        // so a cross-request cache keyed by competition_id alone would leak one viewer's redaction to
+        // another and cannot be invalidated across every viewer variant. We therefore memoize within
+        // the request only, keyed by (competition_id, caller). Any write path clears this cache
+        // (invalidate_results_cache) before returning, so a stale bundle is never served after a write.
+        $memo_key = $competition_id . '|' . md5((string)$token);
+        if (isset($this->results_memo[$memo_key])) {
+            return $this->results_memo[$memo_key];
+        }
         $comp = $this->GetCompetition(['CompetitionId' => $competition_id, 'Token' => $token]);
         if (!isset($comp['Status']) || $comp['Status'] != 0) {
             return $comp;
         }
         $comp = $comp['Detail'];
 
+        // F1: read-authorization gate (the lib is the single authority) plus a draft visibility gate
+        // — a draft competition's results are never served to a non-privileged viewer.
+        if (!$this->can_view_competition($ctx, $comp)) {
+            return NoAuthorization();
+        }
+        if (strtolower((string)($comp['Status'] ?? '')) === 'draft' && !$ctx['privileged']) {
+            return NoAuthorization();
+        }
+
         // Sub-calls re-authenticate against the same token; GetEntries applies blind-judging
         // persona redaction there, so entry_results (and award winners derived from them)
         // inherit the correct anonymity. The results bundle never carries private Notes.
         $entries     = $this->GetEntries(['CompetitionId' => $competition_id, 'Token' => $token])['Detail']     ?? [];
+        // #39: withdrawn/disqualified entries remain in the raw GetEntries listing (roster/management),
+        // but are EXCLUDED here from aggregation/leaderboard/grid/award computation. Filtering them out
+        // before entry_results is built keeps them from receiving aggregates or winning awards, and
+        // (since compute_award_winners only sees entry_results) removes them from award consideration too.
+        $entries = array_values(array_filter($entries, function ($e) {
+            return !in_array(strtolower((string)($e['Status'] ?? '')), self::EXCLUDED_ENTRY_STATUSES, true);
+        }));
         $criteria    = $this->GetCriteria(['CompetitionId' => $competition_id, 'Token' => $token])['Detail']    ?? [];
         $participants = $this->GetParticipants(['CompetitionId' => $competition_id, 'Token' => $token], false)['Detail'] ?? [];
         $taxonomy    = $this->GetTaxonomy(['CompetitionId' => $competition_id, 'Token' => $token])['Detail']    ?? [];
 
-        // Blind judging: hide artisan identity in the roster too, so a non-admin judge
-        // can't recover who made an entry by cross-referencing the participant list.
-        if ($this->competition_is_anonymous($competition_id) && $ctx['is_judge'] && !$ctx['is_admin']) {
+        // Blind judging: hide artisan identity in the roster too, so ANY non-admin viewer (F5:
+        // aligned with GetEntries/GetParticipants) can't recover who made an entry by
+        // cross-referencing the participant list. GetParticipants already redacts; this is defense.
+        if ($this->competition_is_anonymous($competition_id) && !$ctx['is_admin']) {
             foreach ($participants as &$pp) {
                 $pp['Persona']   = 'Artisan #' . ($pp['ParticipantId'] ?? '');
                 $pp['MundaneId'] = null;
@@ -2092,6 +3197,10 @@ class ArtsSciences extends Ork3
                 $mid = intdiv($jcount, 2);
                 $agg_value = ($jcount % 2 === 0) ? (($values[$mid - 1] + $values[$mid]) / 2) : $values[$mid];
             } else {
+                // F22: the 'average' family (plain average + the drop_high/drop_low/drop_both
+                // variants). AggregationMethod is validated against VALID_AGGREGATION_METHODS on
+                // write, so an unrecognized value never reaches here — this branch is explicitly the
+                // 'average' default, not a silent catch-all.
                 $slice = $values;
                 if ($method === 'drop_high'  && $jcount > 1) {
                     array_pop($slice);
@@ -2143,6 +3252,46 @@ class ArtsSciences extends Ork3
             $ladder_id = $field_id && isset($tax_by_id[$field_id]) ? ($tax_by_id[$field_id]['LadderAwardId'] ?? null) : null;
             $master_id = $field_id && isset($tax_by_id[$field_id]) ? ($tax_by_id[$field_id]['MasterAwardId'] ?? null) : null;
             $mid = (int)($e['MundaneId'] ?? 0);
+
+            // Grid (spreadsheet) view: expose the per-judge matrix already computed above so the
+            // Results tab can render entries x judges without a second endpoint. Keyed by judge_id
+            // only; identity labels are joined client-side against the anonymity-redacted GetJudges
+            // output, keeping the model the single place blind-judging is enforced.
+            $judge_scores = [];
+            foreach ($judge_totals as $jid => $total) {
+                $judge_scores[$jid] = round($total, 2);
+            }
+            $judge_criterion_scores = [];
+            foreach ($by_judge as $jid => $crits) {
+                $cell = [];
+                foreach ($crits as $cid => $sc) {
+                    $cell[$cid] = (float)$sc;
+                }
+                $judge_criterion_scores[$jid] = $cell;
+            }
+            // Which judge ids the aggregation method dropped from the final Aggregate. Mirrors the
+            // drop slice used for $agg_value above (same guards, so counts match EffectiveCount) but
+            // tracks ids, so the frontend never re-derives min/max. Ties at an end drop exactly one.
+            $dropped_judge_ids = [];
+            if ($jcount > 0 && ($method === 'drop_high' || $method === 'drop_low' || $method === 'drop_both')) {
+                $pairs = [];
+                foreach ($judge_totals as $jid => $total) {
+                    $pairs[] = ['jid' => (int)$jid, 'total' => $total];
+                }
+                usort($pairs, function ($x, $y) {
+                    return $x['total'] <=> $y['total'];
+                });
+                $last = count($pairs) - 1;
+                if ($method === 'drop_high' && $jcount > 1) {
+                    $dropped_judge_ids[] = $pairs[$last]['jid'];
+                } elseif ($method === 'drop_low' && $jcount > 1) {
+                    $dropped_judge_ids[] = $pairs[0]['jid'];
+                } elseif ($method === 'drop_both' && $jcount > 2) {
+                    $dropped_judge_ids[] = $pairs[0]['jid'];
+                    $dropped_judge_ids[] = $pairs[$last]['jid'];
+                }
+            }
+
             $entry_results[$e['EntryId']] = [
                 'EntryId'             => $e['EntryId'],
                 'EntryNumber'         => $e['EntryNumber'] ?? '',
@@ -2166,16 +3315,61 @@ class ArtsSciences extends Ork3
                 'DocumentationAvg'    => $doc_count ? $doc_total / $doc_count : null,
                 'DocumentationLength' => strlen((string)($e['Documentation'] ?? '')),
                 'CriterionAverages'   => $crit_avgs,
+                'JudgeScores'         => $judge_scores,
+                'JudgeCriterionScores' => $judge_criterion_scores,
+                'DroppedJudgeIds'     => $dropped_judge_ids,
             ];
         }
 
-        return Success([
+        // F1: gate per-judge exposure. The aggregate Score/rank/leaderboard (and CriterionAverages,
+        // needed for award computation) are kept for everyone who passed the gate; the identifiable
+        // per-judge matrix is tiered:
+        //   - admin: full detail.
+        //   - non-admin seated judge, NOT blind: only their OWN judge_id's cells (mirrors GetScores).
+        //   - everyone else (non-privileged member, OR any non-admin under blind judging): stripped.
+        if (!$ctx['is_admin']) {
+            $own_judge_id = $this->judge_id_for_mundane($ctx['mundane_id'], $competition_id);
+            $blind        = $this->competition_is_anonymous($competition_id);
+            $own_only     = ($ctx['is_judge'] && !$blind && $own_judge_id > 0);
+            foreach ($entry_results as &$er) {
+                if ($own_only) {
+                    $js  = $er['JudgeScores'] ?? [];
+                    $jcs = $er['JudgeCriterionScores'] ?? [];
+                    $er['JudgeScores']          = array_key_exists($own_judge_id, $js) ? [$own_judge_id => $js[$own_judge_id]] : [];
+                    $er['JudgeCriterionScores'] = array_key_exists($own_judge_id, $jcs) ? [$own_judge_id => $jcs[$own_judge_id]] : [];
+                    $er['DroppedJudgeIds']      = [];
+                } else {
+                    $er['JudgeScores']          = [];
+                    $er['JudgeCriterionScores'] = [];
+                    $er['DroppedJudgeIds']      = [];
+                }
+            }
+            unset($er);
+        }
+
+        $bundle = Success([
             'Competition'  => $comp,
             'Criteria'     => $criteria,
             'Entries'      => array_values($entry_results),
             'Participants' => $participants,
             'Taxonomy'     => $taxonomy,
         ]);
+        // F14: cache the built bundle for the remainder of THIS request (see the keying note above).
+        $this->results_memo[$memo_key] = $bundle;
+        return $bundle;
+    }
+
+    // F14: drop the per-request results cache for a competition. Called from every write path so a
+    // Save*/Delete*/preset-load in the same request can never be followed by a stale cached bundle.
+    private function invalidate_results_cache($competition_id)
+    {
+        $cid    = (int)$competition_id;
+        $prefix = $cid . '|';
+        foreach (array_keys($this->results_memo) as $k) {
+            if (strncmp($k, $prefix, strlen($prefix)) === 0) {
+                unset($this->results_memo[$k]);
+            }
+        }
     }
 
     // ------------------------------------------------------------------
@@ -2185,12 +3379,38 @@ class ArtsSciences extends Ork3
     // Legacy enum-typed awards are converted on the fly via legacy_preset_to_rules().
     // ------------------------------------------------------------------
 
-    private function compute_award_winners($award, $entry_results, $criteria, &$warnings = null)
+    private function compute_award_winners($award, $entry_results, $criteria, &$warnings = null, $min_judges = 0)
     {
         if (!is_array($warnings)) {
             $warnings = [];
         }
         $rules     = $this->extract_rules($award);
+
+        // F35: competition-level minimum-judge quorum, applied as an implicit eligibility rule (the
+        // 'min_judges' kind already exists). Backward-compatible: $min_judges defaults to 0 = no
+        // quorum, so existing competitions with no setting keep ranking every scored entry. When a
+        // quorum IS set, below-quorum entries are excluded from final winners and surfaced as a
+        // warning rather than silently dropped. An award may still carry its own stricter rule.
+        $min_judges = (int)$min_judges;
+        if ($min_judges > 0) {
+            $rules['eligibility'] = $rules['eligibility'] ?? [];
+            $rules['eligibility'][] = ['kind' => 'min_judges', 'value' => $min_judges];
+            $below = 0;
+            foreach ($entry_results as $e) {
+                $jc = (int)($e['JudgeCount'] ?? 0);
+                if (($e['Aggregate'] ?? null) !== null && $jc > 0 && $jc < $min_judges) {
+                    $below++;
+                }
+            }
+            if ($below > 0) {
+                $warnings[] = [
+                    'kind'    => 'insufficient_judges',
+                    'message' => $below . ' ' . ($below === 1 ? 'entry was' : 'entries were')
+                        . ' below the ' . $min_judges . '-judge minimum and excluded from final winners.',
+                ];
+            }
+        }
+
         $entries   = array_values($entry_results);
         $candidates = $this->apply_eligibility($entries, $rules['eligibility'] ?? []);
         $ranking   = $rules['ranking'] ?? ['mode' => 'single_best'];
@@ -2266,6 +3486,22 @@ class ArtsSciences extends Ork3
         if (!empty($award['Rules'])) {
             $r = is_array($award['Rules']) ? $award['Rules'] : json_decode((string)$award['Rules'], true);
             if (is_array($r)) {
+                // F30: the structured novice_only flag is honored even alongside a rules JSON (it was
+                // previously consulted only on the no-rules legacy path). Append a novice 'only'
+                // eligibility rule when the flag is set and no novice rule is already present.
+                if (!empty($award['NoviceOnly'])) {
+                    $has_novice = false;
+                    foreach (($r['eligibility'] ?? []) as $rule) {
+                        if (($rule['kind'] ?? '') === 'novice') {
+                            $has_novice = true;
+                            break;
+                        }
+                    }
+                    if (!$has_novice) {
+                        $r['eligibility'] = $r['eligibility'] ?? [];
+                        $r['eligibility'][] = ['kind' => 'novice', 'value' => 'only'];
+                    }
+                }
                 return $r;
             }
         }
@@ -2671,11 +3907,13 @@ class ArtsSciences extends Ork3
         $entries  = $bundle['Detail']['Entries']  ?? [];
         $criteria = $bundle['Detail']['Criteria'] ?? [];
 
+        // F35: mirror ComputeResults' quorum hook so the live preview reflects the same eligibility.
+        $min_judges = (int)($bundle['Detail']['Competition']['MinJudges'] ?? 0);
         $total      = count($entries);
         $eligible   = count($this->apply_eligibility($entries, $rules['eligibility'] ?? []));
         $synthetic  = ['Rules' => $rules, 'AwardType' => 'custom', 'Name' => 'Preview'];
         $warnings   = [];
-        $winners    = $this->compute_award_winners($synthetic, $entries, $criteria, $warnings);
+        $winners    = $this->compute_award_winners($synthetic, $entries, $criteria, $warnings, $min_judges);
 
         return Success([
             'TotalEntries'  => $total,
@@ -2806,6 +4044,13 @@ class ArtsSciences extends Ork3
         foreach ($rows as $r) {
             $parent_path = $r['parent_id'] ? $path_of($r['parent_id']) : [];
             $nodes[] = [
+                // F29: carry an explicit, stable per-node id (the source taxonomy_id) plus its parent
+                // id so the load can resolve lineage UNAMBIGUOUSLY — two siblings with the same name
+                // used to collapse to one (parent_id|name) key and mis-attach/skip their children.
+                // parent_path is retained purely for backward-compat with older payloads that lack
+                // local_id (the load falls back to it only then).
+                'local_id'    => $r['taxonomy_id'],
+                'parent_local' => $r['parent_id'],
                 'name'        => $r['name'],
                 'description' => $r['description'],
                 'depth'       => $r['depth'],
@@ -3007,6 +4252,7 @@ class ArtsSciences extends Ork3
         if (!valid_id($preset_id)) {
             return InvalidParameter('PresetId required');
         }
+        $this->invalidate_results_cache($competition_id); // F14
         $kingdom_id = $this->competition_kingdom_id($competition_id);
 
         $this->db->Clear();
@@ -3028,10 +4274,13 @@ class ArtsSciences extends Ork3
             return json_encode(array_merge((array)$parent_path, [$name]));
         };
 
-        // F50: group nodes by depth so each level goes in as ONE multi-row INSERT, reading the
-        // rows back to resolve parent ids for the next level (was one save() round-trip per node).
-        // Payload depth is 0..2 by construction (compute_taxonomy_depth clamps); anything deeper
-        // would be unresolvable within its level and is counted as skipped (F17).
+        // F29: group nodes by depth so parents (shallower) are inserted before their children, then
+        // insert each node INDIVIDUALLY and key lineage by an explicit per-node id (local_id) instead
+        // of by (parent_id|name) — two siblings sharing a name no longer collapse and mis-attach/skip
+        // their children. Payloads predating local_id fall back to the ancestor-name parent_path.
+        // Trees are small (a few dozen nodes), so per-node inserts are cheap and the correctness win
+        // is worth dropping the batch. Payload depth is 0..2 by construction (compute_taxonomy_depth
+        // clamps); a node whose parent can't be resolved is counted as skipped (F17).
         $by_depth = [];
         foreach ($nodes as $n) {
             $d = min(2, (int)($n['depth'] ?? 0));
@@ -3040,7 +4289,8 @@ class ArtsSciences extends Ork3
         ksort($by_depth);
 
         $inserted = 0;
-        $skipped  = 0; // F17: nodes whose parent_path couldn't be resolved.
+        $skipped  = 0; // F17: nodes whose parent couldn't be resolved.
+        $new_id_by_local = []; // F29: source local_id -> newly-inserted taxonomy_id
 
         // F10: abort rather than run the destructive wipe non-transactionally.
         if (!$this->db->Begin()) {
@@ -3056,50 +4306,57 @@ class ArtsSciences extends Ork3
             $this->db->query("DELETE FROM " . DB_PREFIX . "as_taxonomy WHERE competition_id = $competition_id");
 
             foreach ($by_depth as $depth => $level_nodes) {
-                $value_rows = [];
-                $planned    = []; // parallel to value_rows: how to relocate the read-back id
                 foreach ($level_nodes as $n) {
                     $parent_path = $n['parent_path'] ?? [];
-                    $pid = null;
-                    if (!empty($parent_path)) {
-                        $pid = $id_by_path[json_encode($parent_path)] ?? null;
-                        if ($pid === null) {
-                            $skipped++; // F17: parent was itself skipped or the payload is malformed
+                    $has_local   = array_key_exists('local_id', $n);
+                    $parent_new  = null;
+                    if ($has_local) {
+                        // F29: resolve the parent by its stable source id.
+                        $parent_local = (isset($n['parent_local']) && $n['parent_local'] !== null) ? (int)$n['parent_local'] : 0;
+                        if ($parent_local > 0) {
+                            if (!isset($new_id_by_local[$parent_local])) {
+                                $skipped++; // parent skipped or payload malformed
+                                continue;
+                            }
+                            $parent_new = (int)$new_id_by_local[$parent_local];
+                        }
+                    } elseif (!empty($parent_path)) {
+                        // Legacy payload (no local_id): fall back to ancestor-name resolution.
+                        $parent_new = $id_by_path[json_encode($parent_path)] ?? null;
+                        if ($parent_new === null) {
+                            $skipped++;
                             continue;
                         }
                     }
-                    $name   = (string)$n['name'];
-                    $desc   = (string)($n['description'] ?? '');
-                    $sort   = (int)($n['sort_order'] ?? 0);
-                    $pidSql = $pid === null ? 'NULL' : (int)$pid;
-                    $value_rows[] = "(" . (int)$competition_id . ", $pidSql, '" . addslashes($name) . "', '" . addslashes($desc) . "', " . (int)$depth . ", $sort, 1)";
-                    $planned[] = [
-                        'pathkey' => $path_key($parent_path, $name),
-                        'pkey'    => ($pid === null ? 0 : (int)$pid) . '|' . $name,
-                    ];
-                }
-                if (empty($value_rows)) {
-                    continue;
-                }
-                $this->db->Clear();
-                $this->db->query(
-                    "INSERT INTO " . DB_PREFIX . "as_taxonomy (competition_id, parent_id, name, description, depth, sort_order, active) VALUES "
-                    . implode(', ', $value_rows)
-                );
-                $inserted += count($value_rows);
-                // Read the level back and map (parent_id|name) -> new id so the next depth can
-                // resolve its parents. (parent_id,name) is unique within a well-formed level.
-                $this->db->Clear();
-                $rb = $this->db->query("SELECT taxonomy_id, parent_id, name FROM " . DB_PREFIX . "as_taxonomy WHERE competition_id = $competition_id AND depth = " . (int)$depth);
-                $id_by_pkey = [];
-                while ($rb && $rb->next()) {
-                    $pk = ($rb->parent_id ? (int)$rb->parent_id : 0) . '|' . (string)$rb->name;
-                    $id_by_pkey[$pk] = (int)$rb->taxonomy_id;
-                }
-                foreach ($planned as $p) {
-                    if (isset($id_by_pkey[$p['pkey']])) {
-                        $id_by_path[$p['pathkey']] = $id_by_pkey[$p['pkey']];
+
+                    $name = (string)$n['name'];
+                    $desc = (string)($n['description'] ?? '');
+                    $sort = (int)($n['sort_order'] ?? 0);
+
+                    $this->Taxonomy->clear();
+                    $this->Taxonomy->competition_id = $competition_id;
+                    if ($parent_new !== null) {
+                        // Roots: leave parent_id unset so yapo omits it and the column defaults to NULL.
+                        $this->Taxonomy->parent_id = (int)$parent_new;
                     }
+                    $this->Taxonomy->name        = $name;
+                    $this->Taxonomy->description = $desc;
+                    $this->Taxonomy->depth       = (int)$depth;
+                    $this->Taxonomy->sort_order  = $sort;
+                    $this->Taxonomy->active      = 1;
+                    $this->db->Clear();
+                    $this->Taxonomy->save();
+                    $new = (int)($this->Taxonomy->taxonomy_id ?? 0);
+                    if ($new <= 0) {
+                        $skipped++;
+                        continue;
+                    }
+                    $inserted++;
+                    if ($has_local) {
+                        $new_id_by_local[(int)$n['local_id']] = $new;
+                    }
+                    // Keep the legacy path map current so old/mixed payloads still resolve children.
+                    $id_by_path[$path_key($parent_path, $name)] = $new;
                 }
             }
 
@@ -3125,6 +4382,7 @@ class ArtsSciences extends Ork3
         if (!valid_id($preset_id)) {
             return InvalidParameter('PresetId required');
         }
+        $this->invalidate_results_cache($competition_id); // F14
         $kingdom_id = $this->competition_kingdom_id($competition_id);
 
         $this->db->Clear();
@@ -3135,26 +4393,32 @@ class ArtsSciences extends Ork3
         $payload = json_decode((string)$rs->payload_json, true) ?: [];
         $awards  = $payload['awards'] ?? [];
 
-        // Build a single multi-row INSERT (was one INSERT per award via the yapo object).
-        // Awards have no parent-child dependency, so this is safe to batch.
+        // #65: build a single multi-row INSERT with bound placeholders (was one INSERT per award
+        // via the yapo object, then addslashes()-interpolated). Awards have no parent-child
+        // dependency, so batching is safe; per-row placeholders keep quotes/unicode round-tripping.
         $value_rows = [];
+        $bind       = [];
+        $i          = 0;
         foreach ($awards as $a) {
             $type = (string)($a['award_type'] ?? 'best_in_show');
             // Defensive: refuse to insert field-scoped types from a payload (shouldn't be present).
             if ($type === 'best_in_field' || $type === 'best_in_category') {
                 continue;
             }
-            $name        = "'" . addslashes((string)($a['name'] ?? 'Award')) . "'";
-            $description = "'" . addslashes((string)($a['description'] ?? '')) . "'";
-            $award_type  = "'" . addslashes($type) . "'";
-            $top_n       = isset($a['top_n']) && $a['top_n'] !== null ? (int)$a['top_n'] : 'NULL';
-            $mdf         = isset($a['min_distinct_fields']) && $a['min_distinct_fields'] !== null ? (int)$a['min_distinct_fields'] : 'NULL';
-            $mdc         = isset($a['min_distinct_categories']) && $a['min_distinct_categories'] !== null ? (int)$a['min_distinct_categories'] : 'NULL';
-            $novice_only = !empty($a['novice_only']) ? 1 : 0;
-            $sort_order  = (int)($a['sort_order'] ?? 0);
-            $rules       = !empty($a['rules']) ? "'" . addslashes(json_encode($a['rules'])) . "'" : 'NULL';
-            $value_rows[] = "(" . (int)$competition_id . ", $name, $description, $award_type, NULL, "
-                . "$top_n, $mdf, $mdc, $novice_only, $sort_order, $rules)";
+            $p = ":a{$i}_";
+            $value_rows[] = "({$p}cid, {$p}name, {$p}desc, {$p}type, NULL, "
+                . "{$p}topn, {$p}mdf, {$p}mdc, {$p}novice, {$p}sort, {$p}rules)";
+            $bind["{$p}cid"]    = (int)$competition_id;
+            $bind["{$p}name"]   = (string)($a['name'] ?? 'Award');
+            $bind["{$p}desc"]   = (string)($a['description'] ?? '');
+            $bind["{$p}type"]   = $type;
+            $bind["{$p}topn"]   = isset($a['top_n']) && $a['top_n'] !== null ? (int)$a['top_n'] : null;
+            $bind["{$p}mdf"]    = isset($a['min_distinct_fields']) && $a['min_distinct_fields'] !== null ? (int)$a['min_distinct_fields'] : null;
+            $bind["{$p}mdc"]    = isset($a['min_distinct_categories']) && $a['min_distinct_categories'] !== null ? (int)$a['min_distinct_categories'] : null;
+            $bind["{$p}novice"] = !empty($a['novice_only']) ? 1 : 0;
+            $bind["{$p}sort"]   = (int)($a['sort_order'] ?? 0);
+            $bind["{$p}rules"]  = !empty($a['rules']) ? json_encode($a['rules']) : null;
+            $i++;
         }
         $inserted = count($value_rows);
         // F10: abort rather than run the destructive wipe non-transactionally.
@@ -3171,7 +4435,8 @@ class ArtsSciences extends Ork3
                     "INSERT INTO " . DB_PREFIX . "as_award "
                     . "(competition_id, name, description, award_type, field_taxonomy_id, "
                     . "top_n, min_distinct_fields, min_distinct_categories, novice_only, sort_order, rules) "
-                    . "VALUES " . implode(', ', $value_rows)
+                    . "VALUES " . implode(', ', $value_rows),
+                    $bind
                 );
             }
             $this->db->Commit();

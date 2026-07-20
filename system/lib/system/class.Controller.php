@@ -46,7 +46,6 @@ class Controller
             'Controller_PlayerAjax',
             'Controller_AdminAjax',
             'Controller_WnAjax',
-            'Controller_ArtsSciencesAjax',
         ]);
         if (!$_skipTokenCheck && isset($this->session->user_id) && isset($this->session->token)) {
             global $DB;
@@ -55,10 +54,19 @@ class Controller
             $_tok_check = $this->session->token;
             $_rs = $DB->DataSet("SELECT token FROM " . DB_PREFIX . "mundane WHERE mundane_id = {$_uid_check} LIMIT 1");
             if (!$_rs || !$_rs->Next() || $_rs->token !== $_tok_check) {
-                $_returnRoute = trim($_GET['Route'] ?? '');
                 unset($_SESSION['is_authorized_mundane_id']);
                 session_unset();
                 session_destroy();
+                // The A&S Ajax controller is served over XHR, where a header() redirect
+                // would be swallowed as an opaque cross-origin response and the stale
+                // session would silently keep writing. Emit a JSON 401 instead so the
+                // client can detect the replacement and stop.
+                if (get_class($this) === 'Controller_ArtsSciencesAjax') {
+                    header('Content-Type: application/json', true, 401);
+                    echo json_encode(['error' => 'session_replaced']);
+                    exit;
+                }
+                $_returnRoute = trim($_GET['Route'] ?? '');
                 $_returnParam = (strlen($_returnRoute) > 0 && strncasecmp($_returnRoute, 'Login', 5) !== 0)
                     ? '&return=' . urlencode($_returnRoute)
                     : '';

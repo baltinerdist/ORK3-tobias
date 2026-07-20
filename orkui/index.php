@@ -1,27 +1,27 @@
 <?php
 
-include_once( "../startup.php" );
-define( 'UIR', HTTP_UI_REMOTE . 'index.php?Route=' );
+include_once("../startup.php");
+define('UIR', HTTP_UI_REMOTE . 'index.php?Route=');
 
 ini_set("error_reporting", E_ALL & ~E_DEPRECATED & ~E_NOTICE & ~E_WARNING);
 
-if ( isset($_REQUEST['Route']) && $_REQUEST['Route'] === 'Health' ) {
+if (isset($_REQUEST['Route']) && $_REQUEST['Route'] === 'Health') {
     $ok = false;
     try {
         $r = $DB->query("SELECT 1 AS ok");
-        $ok = ( $r && $r->size() > 0 );
+        $ok = ($r && $r->size() > 0);
     } catch (Throwable $e) {
         $ok = false;
     }
-    http_response_code( $ok ? 200 : 503 );
-    if ( $_SERVER['REQUEST_METHOD'] !== 'HEAD' ) {
+    http_response_code($ok ? 200 : 503);
+    if ($_SERVER['REQUEST_METHOD'] !== 'HEAD') {
         header('Content-Type: text/plain');
         echo $ok ? "OK\n" : "DB UNAVAILABLE\n";
     }
     exit;
 }
 
-if ( $_SERVER['REQUEST_METHOD'] === 'HEAD' ) {
+if ($_SERVER['REQUEST_METHOD'] === 'HEAD') {
     http_response_code(200);
     exit;
 }
@@ -46,7 +46,7 @@ $Settings = new Settings();
 $Session = new Session();
 $Request = new Request();
 
-if ( empty( $_REQUEST[ 'Route' ] ) ) {
+if (empty($_REQUEST[ 'Route' ])) {
     $_REQUEST[ 'Route' ] = '';
 }
 
@@ -69,7 +69,11 @@ foreach ($_legacyRedirects as $_old => $_new) {
 // Old long route redirects to canonical; canonical rewrites internally to the
 // real controller without changing the URL.
 if (preg_match('#^ArtsSciences/competition/(\d+)$#i', $_REQUEST['Route'], $_m)) {
-    header('Location: ' . UIR . 'ArtsComp/' . $_m[1], true, 301);
+    // Preserve any extra query params (e.g. ?tab=) across the redirect; drop only Route.
+    $_extra = $_GET;
+    unset($_extra['Route']);
+    $_qs = http_build_query($_extra);
+    header('Location: ' . UIR . 'ArtsComp/' . $_m[1] . ($_qs !== '' ? '&' . $_qs : ''), true, 301);
     exit;
 }
 if (preg_match('#^ArtsComp/(\d+)$#i', $_REQUEST['Route'], $_m)) {
@@ -88,49 +92,49 @@ if (preg_match('#^Event/index/(\d+)#i', $_REQUEST['Route'], $_m)) {
     }
 }
 
-$route = explode( '/', $_REQUEST[ "Route" ] );
-logtrace( 'Index: Route', $route );
+$route = explode('/', $_REQUEST[ "Route" ]);
+logtrace('Index: Route', $route);
 Ork3::$Lib->session = $Session;
 Ork3::$Lib->session->times[ 'Route' ] = time();
-if ( file_exists( DIR_CONTROLLER . 'controller.' . trim( $route[ 0 ] ) . '.php' ) ) {
-    include_once( DIR_CONTROLLER . 'controller.' . trim( $route[ 0 ] ) . '.php' );
-    $class = 'Controller_' . trim( $route[ 0 ] );
-    $call = trim( $route[ 1 ] );
-    $action = trim( $route[ 2 ] );
-    if ( count( $route ) == 1 ) {
-        logtrace( "Index: Route(1): $class(index)", null );
+if (file_exists(DIR_CONTROLLER . 'controller.' . trim($route[ 0 ]) . '.php')) {
+    include_once(DIR_CONTROLLER . 'controller.' . trim($route[ 0 ]) . '.php');
+    $class = 'Controller_' . trim($route[ 0 ]);
+    $call = trim($route[ 1 ]);
+    $action = trim($route[ 2 ]);
+    if (count($route) == 1) {
+        logtrace("Index: Route(1): $class(index)", null);
 
-        if ( required_parameter_count( $class, 'index' ) > 0 ) {
-            header( "Location: " . UIR );
+        if (required_parameter_count($class, 'index') > 0) {
+            header("Location: " . UIR);
             return;
         }
 
-        $C = new $class( "index" );
+        $C = new $class("index");
         $C->index();
-    } else if ( count( $route ) == 2 ) {
-        logtrace( "Index: Route(2): $class($call)", null );
+    } elseif (count($route) == 2) {
+        logtrace("Index: Route(2): $class($call)", null);
 
-        if ( required_parameter_count( $class, $call ) > 0 ) {
-            header( "Location: " . UIR );
+        if (required_parameter_count($class, $call) > 0) {
+            header("Location: " . UIR);
             return;
         }
 
-        $C = new $class( $call );
+        $C = new $class($call);
         $C->$call();
-    } else if ( count( $route ) == 3 ) {
-        logtrace( "Index: Route(3): $class($call,$action)", null );
+    } elseif (count($route) == 3) {
+        logtrace("Index: Route(3): $class($call,$action)", null);
 
-        $C = new $class( $call, $action );
-        $C->$call( $action );
-    } else if ( count( $route ) > 3 ) {
-        $action = implode( '/', array_slice( $route, 2 ) );
-        logtrace( "Index: Route(3+): $class($call,$action)", null );
+        $C = new $class($call, $action);
+        $C->$call($action);
+    } elseif (count($route) > 3) {
+        $action = implode('/', array_slice($route, 2));
+        logtrace("Index: Route(3+): $class($call,$action)", null);
 
-        $C = new $class( $call, $action );
-        $C->$call( $action );
+        $C = new $class($call, $action);
+        $C->$call($action);
     }
 } else {
-    $C = new Controller( "index" );
+    $C = new Controller("index");
     $C->index();
 }
 Ork3::$Lib->session->times[ 'Route Complete' ] = time();
@@ -141,22 +145,21 @@ Ork3::$Lib->session->times[ 'Composite' ] = time();
 
 echo $CONTENT;
 
-logtrace( "Timing Information", Ork3::$Lib->session->times );
+logtrace("Timing Information", Ork3::$Lib->session->times);
 
-if ( DUMPTRACE ) {
-    logtrace( 'Session', $_SESSION );
+if (DUMPTRACE) {
+    logtrace('Session', $_SESSION);
     dumplogtrace();
 }
 
-function required_parameter_count( $class, $call )
+function required_parameter_count($class, $call)
 {
-    $classMethod = new ReflectionMethod( $class, $call );
+    $classMethod = new ReflectionMethod($class, $call);
     $required = 0;
-    foreach ( $classMethod->getParameters() as $param ) {
-        if ( !$param->isOptional() )
+    foreach ($classMethod->getParameters() as $param) {
+        if (!$param->isOptional()) {
             $required++;
+        }
     }
     return $required;
 }
-
-?>

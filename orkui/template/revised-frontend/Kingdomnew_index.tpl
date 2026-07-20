@@ -2645,8 +2645,31 @@ window.AS_CSRF = <?= json_encode($AsCsrf ?? '') ?>;
 	if (mEl) mEl.addEventListener('click', function(e){ if (e.target === mEl) knCloseAsModal(); });
 	document.addEventListener('keydown', function(e){ if (e.key === 'Escape') { var m = document.getElementById('kn-as-modal'); if (m && m.classList.contains('kn-emod-open')) knCloseAsModal(); } });
 
-	// Eager load — section is small and lives inside the events tab.
-	loadAsCompetitions();
+	// Lazy-load the A&S competition list the first time the Events tab is
+	// activated, matching how the Recommendations/Players tabs defer heavy work.
+	// Fetching on every kingdom-profile load was needless work for the many
+	// visitors who never open the Events tab.
+	var asListLoaded = false;
+	function knMaybeLoadAsCompetitions(){
+		if (asListLoaded) return;
+		asListLoaded = true;
+		loadAsCompetitions();
+	}
+	// Hook the page's tab-activation so any path that opens Events (tab click,
+	// stat-card shortcut, deep-link) triggers the fetch exactly once. revised.js
+	// (loaded above) defines knActivateTab synchronously; its jQuery-ready
+	// deep-link handler runs after this inline block, so the wrapper is in place.
+	if (typeof window.knActivateTab === 'function') {
+		var knOrigActivateTab = window.knActivateTab;
+		window.knActivateTab = function(tab){
+			var r = knOrigActivateTab.apply(this, arguments);
+			if (tab === 'events') knMaybeLoadAsCompetitions();
+			return r;
+		};
+	}
+	// Safety net: if the Events panel is already visible at this point, load now.
+	var knEventsPanel = document.getElementById('kn-tab-events');
+	if (knEventsPanel && knEventsPanel.style.display !== 'none') knMaybeLoadAsCompetitions();
 })();
 </script>
 

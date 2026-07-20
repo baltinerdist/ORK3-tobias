@@ -76,6 +76,13 @@ class Model_ArtsSciences extends Model
     {
         return $this->AS->GetJudges($request);
     }
+    // F6: two positional scalars ($token, $competition_id) — forwarded verbatim by
+    // APIModel::__call (call_user_func_array) to the lib's self_judge_id($token, $cid),
+    // which resolves the caller's OWN judge_id (never redacted), else 0.
+    public function self_judge_id($token, $competition_id)
+    {
+        return $this->AS->self_judge_id($token, $competition_id);
+    }
     public function save_judge($request)
     {
         return $this->AS->SaveJudge($request);
@@ -101,6 +108,18 @@ class Model_ArtsSciences extends Model
     public function get_scores($request)
     {
         return $this->AS->GetScores($request);
+    }
+
+    // #40: entrant self-service. Two positional scalars forwarded verbatim by APIModel::__call
+    // (call_user_func_array) to the lib, which enforces ownership + closed status + the
+    // competition's share_with_entrants setting and keeps judge identity blind. No SQL here.
+    public function get_my_entries($token)
+    {
+        return $this->AS->GetMyEntries($token);
+    }
+    public function get_my_entry_results($token, $entry_id)
+    {
+        return $this->AS->GetMyEntryResults($token, $entry_id);
     }
     public function save_score($request)
     {

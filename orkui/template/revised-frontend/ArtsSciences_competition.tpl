@@ -54,6 +54,24 @@
 				$resultsWarnings[] = 'Entries were scored by differing numbers of judges. Because this competition sums judge scores, the totals below are not directly comparable.';
 			}
 		}
+		// F56: compute the F28 incomplete-ballot warning server-side too, so first paint (SSR)
+		// agrees with the JS re-render. Both derive the judge total from the union of JudgeScores
+		// keys across scored entries (the judges who have actually participated) — no dependency
+		// on the separately-fetched judge list, which previously raced the client render.
+		$judgeUnion = [];
+		foreach ($scored as $e) {
+			foreach ((array)($e['JudgeScores'] ?? []) as $jid => $_) { $judgeUnion[(string)$jid] = true; }
+		}
+		$totalJudges = count($judgeUnion);
+		if ($totalJudges > 1 && count($scored) > 0) {
+			$under = 0;
+			foreach ($scored as $e) { if ((int)($e['JudgeCount'] ?? 0) < $totalJudges) { $under++; } }
+			if ($under > 0) {
+				$resultsWarnings[] = ($under === count($scored))
+					? 'No entry has been scored by all ' . $totalJudges . ' judges yet — totals are provisional.'
+					: $under . ' of ' . count($scored) . ' scored entries have not yet been seen by every judge (incomplete ballots).';
+			}
+		}
 	}
 ?>
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>revised-frontend/style/revised.css?v=<?= filemtime(DIR_TEMPLATE . 'revised-frontend/style/revised.css') ?>">
@@ -134,6 +152,10 @@ html[data-theme="dark"] .as-status-pill.as-status-closed  { background: rgba(120
 
 .as-btn { padding: 7px 14px; border: 1px solid var(--ork-border); background: var(--ork-card-bg); color: var(--ork-text); border-radius: 6px; cursor: pointer; font-size: 0.88em; }
 .as-btn:hover { background: var(--ork-bg-secondary); }
+/* F47 (WCAG 2.4.7): visible keyboard focus for action buttons and the List/Grid toggle,
+   matching the tab treatment. Without this the reset toggle buttons had no focus indicator. */
+.as-btn:focus-visible,
+.as-view-toggle .as-view-btn:focus-visible { outline: 2px solid #5a67d8; outline-offset: 2px; }
 .as-btn-primary { background: linear-gradient(135deg, #5a67d8, #805ad5); color: #fff; border: none; }
 .as-btn-primary:hover { filter: brightness(1.06); color: #fff; }
 .as-btn-ghost { background: transparent; border: none; color: var(--ork-text-muted); padding: 4px 8px; cursor: pointer; }
@@ -187,6 +209,18 @@ html[data-theme="dark"] .as-tax-badge-inactive { background: rgba(255,255,255,0.
 .as-score-grid input[type="range"] { width: 100%; }
 .as-score-grid .as-score-value { font-weight: 700; color: #5a67d8; font-size: 1.05em; min-width: 36px; text-align: center; }
 .as-score-grid textarea { grid-column: 1 / -1; min-height: 50px; padding: 7px 9px; border: 1px solid var(--ork-border); border-radius: 6px; background: var(--ork-input-bg); color: var(--ork-text); font-size: 0.86em; resize: vertical; }
+/* F53: slider endpoint labels + a distinct treatment for an untouched-default row. */
+.as-score-slider { display: flex; flex-direction: column; }
+.as-score-ends { display: flex; justify-content: space-between; margin-top: 2px; font-size: 0.72em; color: var(--ork-text-muted); font-variant-numeric: tabular-nums; }
+.as-score-default-tag {
+	display: none; margin-left: 6px; padding: 0 6px; border-radius: 999px; vertical-align: middle;
+	font-size: 0.6em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+	background: rgba(160,174,192,0.22); color: #4a5568;
+}
+html[data-theme="dark"] .as-score-default-tag { background: rgba(255,255,255,0.10); color: #cbd5e0; }
+/* An untouched default is muted (not a committed value); a genuine saved score keeps the bold accent. */
+.as-score-grid.as-score-untouched .as-score-value { color: var(--ork-text-muted); font-weight: 400; font-style: italic; }
+.as-score-grid.as-score-untouched .as-score-default-tag { display: inline-block; }
 
 /* Award recommendation block in the judging form */
 .as-rec-section { margin-top: 14px; padding: 12px 14px; border: 1px dashed var(--ork-border); border-radius: 8px; background: var(--ork-bg-secondary); }
@@ -275,14 +309,29 @@ html[data-theme="dark"] .as-pill        { background: rgba(165,180,252,0.18); co
 html[data-theme="dark"] .as-pill-novice { background: rgba(237,137,54,0.20);  color: #fbd38d; }
 html[data-theme="dark"] .as-pill-warn   { background: rgba(252,129,129,0.20); color: #feb2b2; }
 
-.as-results-card {
-	border: 1px solid var(--ork-border); border-radius: 10px; padding: 16px 18px; margin-bottom: 14px;
-	background: var(--ork-card-bg);
-}
-.as-results-card .as-aw-title { font-weight: 700; font-size: 1.05em; color: var(--ork-text); margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
-.as-results-card .as-aw-meta  { font-size: 0.84em; color: var(--ork-text-muted); margin-bottom: 10px; }
-.as-results-card .as-winner   { padding: 10px 12px; background: linear-gradient(135deg, rgba(90,103,216,0.10), rgba(128,90,213,0.12)); border-radius: 6px; }
-.as-results-card .as-no-winner { color: var(--ork-text-muted); font-style: italic; padding: 10px 0; }
+/* Award Winners — one dense table (builds on the shared .as-table on this tab) */
+.as-awards-table { table-layout: auto; }
+.as-awards-table th.as-aw-scoreh,
+.as-awards-table td.as-aw-score { text-align: right; white-space: nowrap; }
+.as-awards-table td { vertical-align: top; }
+.as-aw-cell { width: 42%; }
+.as-aw-cell.as-aw-marquee { border-left: 3px solid #d69e2e; }
+.as-aw-name { font-weight: 700; color: var(--ork-text); display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.as-aw-name i.fa-medal { color: #d69e2e; }
+.as-aw-cell.as-aw-marquee .as-aw-name { font-size: 1.02em; }
+.as-aw-desc { margin-top: 3px; font-size: 0.82em; color: var(--ork-text-muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.as-aw-win .as-w-name { font-weight: 600; color: var(--ork-text); }
+.as-aw-win .as-w-sub  { margin-top: 2px; font-size: 0.85em; color: var(--ork-text-muted); }
+.as-aw-win .as-w-sub em { font-style: italic; }
+.as-aw-win .as-w-counted { margin-top: 5px; font-size: 0.82em; color: var(--ork-text-muted); display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.as-aw-none { color: var(--ork-text-muted); font-style: italic; }
+.as-place { display: inline-block; margin-right: 6px; padding: 2px 8px; border-radius: 999px; font-size: 0.68em; font-weight: 700; letter-spacing: 0.02em; vertical-align: middle; background: rgba(90,103,216,0.14); color: #4c51bf; }
+.as-place-win, .as-place-co { background: rgba(214,158,46,0.18); color: #975a16; }
+.as-aw-score { font-weight: 700; font-size: 1.15em; color: #5a67d8; font-variant-numeric: tabular-nums; }
+html[data-theme="dark"] .as-place { background: rgba(165,180,252,0.18); color: #c3dafe; }
+html[data-theme="dark"] .as-place-win,
+html[data-theme="dark"] .as-place-co { background: rgba(237,137,54,0.20); color: #fbd38d; }
+html[data-theme="dark"] .as-aw-score { color: #a3bffa; }
 
 .as-results-warning { margin-bottom: 14px; display: flex; flex-direction: column; gap: 8px; }
 .as-results-warn {
@@ -292,8 +341,81 @@ html[data-theme="dark"] .as-pill-warn   { background: rgba(252,129,129,0.20); co
 }
 .as-results-warn i { margin-top: 2px; }
 html[data-theme="dark"] .as-results-warn { background: rgba(237,137,54,0.12); border-color: rgba(237,137,54,0.35); color: #fbd38d; }
+/* F58: red error variant of the results warning banner (results-fetch failure) + inline retry. */
+.as-results-warn.as-results-warn-error { align-items: center; background: rgba(197,48,48,0.12); border-color: rgba(197,48,48,0.4); color: #9b2c2c; }
+.as-results-warn.as-results-warn-error .as-retry-btn { margin-left: auto; padding: 4px 12px; font-size: 0.85em; }
+html[data-theme="dark"] .as-results-warn.as-results-warn-error { background: rgba(197,48,48,0.18); border-color: rgba(197,48,48,0.5); color: #feb2b2; }
 
 .as-help { font-size: 0.82em; color: var(--ork-text-muted); margin-top: 4px; }
+
+/* Results view toggle (List | Grid) */
+.as-view-toggle { display: inline-flex; }
+.as-view-toggle .as-view-btn { border-radius: 0; }
+.as-view-toggle .as-view-btn:first-child { border-radius: 6px 0 0 6px; }
+.as-view-toggle .as-view-btn:last-child  { border-radius: 0 6px 6px 0; border-left: none; }
+.as-view-toggle .as-view-btn.as-view-active { background: linear-gradient(135deg, #5a67d8, #805ad5); color: #fff; border-color: #5a67d8; }
+.as-view-toggle .as-view-btn.as-view-active:hover { filter: brightness(1.06); color: #fff; }
+
+/* Results Grid (spreadsheet) view */
+.as-grid-scroll { overflow-x: auto; border: 1px solid var(--ork-border, #e2e8f0); border-radius: 10px; }
+.as-grid { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 0.9em; }
+.as-grid th, .as-grid td { padding: 7px 10px; border-bottom: 1px solid var(--ork-border, #e2e8f0); white-space: nowrap; vertical-align: middle; }
+.as-grid thead th {
+	position: sticky; top: 0; z-index: 3;
+	background: var(--ork-bg-secondary, #f7fafc); color: var(--ork-text-muted);
+	font-size: 0.76em; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;
+	text-align: center; vertical-align: bottom;
+}
+.as-grid tbody tr:hover td { background: rgba(90,103,216,0.05); }
+.as-grid .as-grid-num { text-align: right; font-variant-numeric: tabular-nums; color: var(--ork-text); }
+.as-grid thead .as-grid-jcol, .as-grid thead .as-grid-col-score { text-align: right; }
+/* Keep judge/score columns as narrow as their numbers so the name columns get the room. */
+.as-grid th.as-grid-jcol, .as-grid td.as-grid-num { padding-left: 4px; padding-right: 8px; }
+.as-grid th.as-grid-jcol { width: 46px; min-width: 46px; }
+
+/* Sticky first two columns (Entry, Participant) — fixed widths keep the left offsets aligned. */
+.as-grid .as-grid-col-entry { position: sticky; left: 0; z-index: 2; background: var(--ork-card-bg, #fff); text-align: left; width: 340px; min-width: 340px; max-width: 340px; white-space: normal; word-break: break-word; }
+.as-grid .as-grid-col-part  { position: sticky; left: 340px; z-index: 2; background: var(--ork-card-bg, #fff); text-align: left; width: 220px; min-width: 220px; max-width: 220px; white-space: normal; word-break: break-word; color: var(--ork-text-muted); }
+.as-grid thead .as-grid-col-entry { z-index: 4; left: 0; background: var(--ork-bg-secondary, #f7fafc); }
+.as-grid thead .as-grid-col-part  { z-index: 4; left: 340px; background: var(--ork-bg-secondary, #f7fafc); }
+.as-grid .as-grid-col-score { font-weight: 700; color: #5a67d8; }
+/* F51: on narrow viewports the two sticky columns (340 + 220 = 560px) swallow the score
+   cells. Un-stick Participant (it scrolls with the grid) and shrink Entry so only ~150px
+   is pinned. Desktop layout above is unchanged. */
+@media (max-width: 599px) {
+	.as-grid .as-grid-col-entry,
+	.as-grid thead .as-grid-col-entry { width: 150px; min-width: 150px; max-width: 150px; }
+	.as-grid .as-grid-col-part,
+	.as-grid thead .as-grid-col-part  { position: static; left: auto; z-index: auto; width: auto; min-width: 140px; max-width: none; }
+}
+
+/* Judge header chip + persona subtitle */
+.as-grid-jchip { display: inline-block; padding: 1px 7px; border-radius: 999px; background: rgba(90,103,216,0.14); color: #4c51bf; font-size: 0.92em; font-weight: 700; letter-spacing: 0.02em; }
+/* F48: chips that carry a hover name (wrapped in .as-tip) get a help cursor + dotted
+   underline so the affordance is discoverable; anonymised chips (no tip) stay plain. */
+.as-grid-jcol .as-tip .as-grid-jchip { cursor: help; text-decoration: underline dotted; text-underline-offset: 2px; }
+
+/* F44: Grid legend + hover hint under the caption. */
+.as-grid-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; margin: 6px 0 10px; font-size: 0.78em; color: var(--ork-text-muted); }
+.as-grid-legend-item { display: inline-flex; align-items: center; gap: 5px; }
+.as-grid-legend-swatch { display: inline-block; min-width: 18px; text-align: center; font-variant-numeric: tabular-nums; }
+.as-grid-legend-hint { font-style: italic; }
+
+/* F44: widen the visual distinction between cell states so the glyphs are decipherable.
+   Dropped = struck-through/greyed (still shows its number); pending "—" is muted; N/A "·"
+   recedes further (italic + low opacity) so "not scored" vs "not assigned" read differently. */
+.as-grid-cell-dropped { color: var(--ork-text-muted); text-decoration: line-through; }
+.as-grid-cell-pending { color: var(--ork-text-muted); }
+.as-grid-cell-na      { color: var(--ork-text-muted); opacity: 0.4; font-style: italic; }
+
+html[data-theme="dark"] .as-grid thead th { background: #2d3748; color: #cbd5e0; }
+html[data-theme="dark"] .as-grid thead .as-grid-col-entry,
+html[data-theme="dark"] .as-grid thead .as-grid-col-part { background: #2d3748; }
+html[data-theme="dark"] .as-grid .as-grid-col-entry,
+html[data-theme="dark"] .as-grid .as-grid-col-part { background: var(--ork-card-bg, #1a202c); }
+html[data-theme="dark"] .as-grid tbody tr:hover td { background: rgba(90,103,216,0.12); }
+html[data-theme="dark"] .as-grid-jchip { background: rgba(165,180,252,0.18); color: #c3dafe; }
+html[data-theme="dark"] .as-grid .as-grid-col-score { color: #a3bffa; }
 
 /* Player-search autocomplete dropdown (modal-friendly via position:fixed) */
 .as-ac-results {
@@ -478,8 +600,10 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 			<?php if (!$isJudgeOnly): ?>
 				<li role="presentation"><button type="button" class="as-tab" role="tab" id="as-tabbtn-taxonomy" aria-controls="as-tab-taxonomy" aria-selected="false" tabindex="-1" data-astab="taxonomy"><i class="fas fa-sitemap"></i> Fields &amp; Categories</button></li>
 			<?php endif; ?>
-			<li role="presentation"><button type="button" class="as-tab" role="tab" id="as-tabbtn-participants" aria-controls="as-tab-participants" aria-selected="false" tabindex="-1" data-astab="participants"><i class="fas fa-users"></i> Participants</button></li>
-			<li role="presentation"><button type="button" class="as-tab" role="tab" id="as-tabbtn-entries" aria-controls="as-tab-entries" aria-selected="false" tabindex="-1" data-astab="entries"><i class="fas fa-scroll"></i> Entries</button></li>
+			<?php if (!$hidePersona): /* F5: blind judge-only viewers must not browse the entrant roster / entry list under anonymous judging (mirrors the Taxonomy/Judges tab gating). */ ?>
+				<li role="presentation"><button type="button" class="as-tab" role="tab" id="as-tabbtn-participants" aria-controls="as-tab-participants" aria-selected="false" tabindex="-1" data-astab="participants"><i class="fas fa-users"></i> Participants</button></li>
+				<li role="presentation"><button type="button" class="as-tab" role="tab" id="as-tabbtn-entries" aria-controls="as-tab-entries" aria-selected="false" tabindex="-1" data-astab="entries"><i class="fas fa-scroll"></i> Entries</button></li>
+			<?php endif; ?>
 			<?php if (!$isJudgeOnly): ?>
 				<li role="presentation"><button type="button" class="as-tab" role="tab" id="as-tabbtn-judges" aria-controls="as-tab-judges" aria-selected="false" tabindex="-1" data-astab="judges"><i class="fas fa-gavel"></i> Judges</button></li>
 			<?php endif; ?>
@@ -495,16 +619,24 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 		<div class="as-tab-panel" id="as-tab-results" role="tabpanel" aria-labelledby="as-tabbtn-results" tabindex="0">
 			<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
 				<div>
-					<h3 class="as-section-title">Award Winners <span style="font-weight:400;font-size:0.8em;color:var(--ork-text-muted)">(live)</span></h3>
+					<h3 class="as-section-title">Results <span style="font-weight:400;font-size:0.8em;color:var(--ork-text-muted)">(live)</span></h3>
 					<div class="as-section-sub">Computed from current scores using the configured aggregation method. <span id="as-results-updated" style="font-style:italic"></span></div>
 				</div>
-				<?php if ($canManage): ?>
-				<div style="display:flex;gap:6px;align-items:center">
-					<button type="button" class="as-btn" id="as-results-refresh"><i class="fas fa-sync"></i> Refresh</button>
-					<a class="as-btn" href="<?= UIR ?>ArtsSciences/csv/<?= $cid ?>"><i class="fas fa-file-csv"></i> Export CSV</a>
-					<a class="as-btn" href="<?= UIR ?>ArtsSciences/csv/<?= $cid ?>?IncludeFeedback=1"><i class="fas fa-comment"></i> Export with Feedback</a>
+				<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+					<?php if ($resultsPublished): ?>
+					<div class="as-view-toggle" role="group" aria-label="Results view">
+						<button type="button" class="as-btn as-view-btn as-view-active" id="as-view-list" aria-pressed="true">List</button>
+						<button type="button" class="as-btn as-view-btn" id="as-view-grid" aria-pressed="false">Grid</button>
+					</div>
+					<?php endif; ?>
+					<?php if ($canManage): ?>
+					<div style="display:flex;gap:6px;align-items:center">
+						<button type="button" class="as-btn" id="as-results-refresh"><i class="fas fa-sync"></i> Refresh</button>
+						<a class="as-btn" href="<?= UIR ?>ArtsSciences/csv/<?= $cid ?>"><i class="fas fa-file-csv"></i> Export CSV</a>
+						<a class="as-btn" href="<?= UIR ?>ArtsSciences/csv/<?= $cid ?>?IncludeFeedback=1"><i class="fas fa-comment"></i> Export with Feedback</a>
+					</div>
+					<?php endif; ?>
 				</div>
-				<?php endif; ?>
 			</div>
 
 			<div id="as-results-warning" class="as-results-warning"<?= empty($resultsWarnings) ? ' style="display:none"' : '' ?>>
@@ -519,102 +651,40 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 					Results are not yet published. Winners and the leaderboard will appear here once judging closes.
 				</div>
 			<?php else: ?>
-			<div id="as-awards-list">
-				<?php if (empty($awards)): ?>
-					<div class="as-empty-mini">No awards configured yet.<?php if ($canManage): ?> Add awards in the Setup tab.<?php endif; ?></div>
-				<?php endif; ?>
-				<?php foreach ($awards as $aw): $a = $aw['Award']; $w = $aw['Winners']; ?>
-					<div class="as-results-card">
-						<div class="as-aw-title">
-							<i class="fas fa-medal" style="color:#d69e2e"></i>
-							<?= htmlspecialchars($a['Name']) ?>
-							<span class="as-pill"><?= htmlspecialchars(str_replace('_',' ', $a['AwardType'])) ?></span>
-							<?php if ($a['NoviceOnly']): ?><span class="as-pill as-pill-novice">Novice only</span><?php endif; ?>
-						</div>
-						<?php if (!empty($a['Description'])): ?><div class="as-aw-meta"><?= htmlspecialchars($a['Description']) ?></div><?php endif; ?>
-						<?php if ($a['AwardType'] === 'best_x_of_y'): ?>
-							<div class="as-aw-meta">
-								Top <?= (int)$a['TopN'] ?> entries
-								<?php if ($a['MinDistinctFields']): ?> · min <?= (int)$a['MinDistinctFields'] ?> fields<?php endif; ?>
-								<?php if ($a['MinDistinctCategories']): ?> · min <?= (int)$a['MinDistinctCategories'] ?> categories<?php endif; ?>
-							</div>
-						<?php endif; ?>
-						<?php if (empty($w)): ?>
-							<div class="as-no-winner">No qualifying winner yet.</div>
-						<?php else:
-							// F19: render EVERY winner (places + co-winners), not just $w[0].
-							$place = 0; $prevAgg = null;
-							foreach ($w as $i => $win):
-								$agg = ($win['Aggregate'] === null) ? null : (float)$win['Aggregate'];
-								$tie = ($i > 0 && $agg !== null && $prevAgg !== null && $agg === $prevAgg);
-								if (!$tie) $place = $i + 1;
-								$prevAgg = $agg;
-								if (count($w) === 1)      $placeLabel = 'Winner';
-								elseif ($tie)             $placeLabel = 'Co-winner';
-								else                      $placeLabel = $place . (($place % 10 === 1 && $place % 100 !== 11) ? 'st' : (($place % 10 === 2 && $place % 100 !== 12) ? 'nd' : (($place % 10 === 3 && $place % 100 !== 13) ? 'rd' : 'th'))) . ' place';
-						?>
-							<div class="as-winner" style="<?= $i > 0 ? 'margin-top:8px;' : '' ?>">
-								<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
-									<div>
-										<div style="font-weight:700;font-size:1.05em;color:var(--ork-text)">
-											<i class="fas fa-trophy" style="color:#d69e2e"></i>
-											<span class="as-pill" style="margin-right:4px"><?= htmlspecialchars($placeLabel) ?></span>
-											<?php if ($hidePersona): ?>
-												<?= htmlspecialchars($win['Title'] ?? 'Entry') ?>
-											<?php else: ?>
-												<?= htmlspecialchars($win['Persona'] ?? '—') ?>
-											<?php endif; ?>
-										</div>
-										<?php if (!$hidePersona && !empty($win['Title'])): ?>
-											<div style="color:var(--ork-text-muted);font-size:0.9em">for <em><?= htmlspecialchars($win['Title']) ?></em><?php if (!empty($win['TaxonomyName'])): ?> in <?= htmlspecialchars($win['TaxonomyName']) ?><?php endif; ?></div>
-										<?php endif; ?>
-									</div>
-									<div style="text-align:right">
-										<div style="font-size:1.3em;font-weight:700;color:#5a67d8"><?= $agg === null ? '—' : number_format($agg, 2) ?></div>
-										<div style="font-size:0.78em;color:var(--ork-text-muted)">Final Score</div>
-									</div>
-								</div>
-								<?php if ($a['AwardType'] === 'best_x_of_y' && !empty($win['TopEntries'])): ?>
-									<div style="margin-top:8px;font-size:0.86em;color:var(--ork-text-muted)">
-										Counted entries:
-										<?php foreach ($win['TopEntries'] as $te): ?>
-											<span class="as-pill" style="margin-right:4px"><?= htmlspecialchars($te['Title']) ?> · <?= number_format((float)$te['Aggregate'], 2) ?></span>
-										<?php endforeach; ?>
-									</div>
-								<?php endif; ?>
-							</div>
-						<?php endforeach; endif; ?>
-					</div>
-				<?php endforeach; ?>
-			</div>
-
-			<h3 class="as-section-title" style="margin-top:24px">Live Leaderboard</h3>
+			<div id="as-leaderboard-wrap">
+			<h3 class="as-section-title">Live Leaderboard</h3>
 			<table class="as-table">
 				<thead><tr><th>Rank</th><th>Title</th><th><?= $hidePersona ? 'Entry #' : 'Participant' ?></th><th>Field/Category</th><th>Judges</th><th style="text-align:right">Final Score</th></tr></thead>
-				<tbody id="as-leaderboard-body">
-				<?php
-					$sortable = $entries;
-					usort($sortable, function($a, $b) { return ($b['Aggregate'] ?? 0) <=> ($a['Aggregate'] ?? 0); });
-					$rank = 0;
-					if (empty($sortable)): echo '<tr><td colspan="6" class="as-empty-mini">No entries scored yet.</td></tr>';
-					else: foreach ($sortable as $e): $rank++; ?>
-					<tr>
-						<td><?= $rank ?></td>
-						<td>
-							<strong><?= htmlspecialchars($e['Title']) ?></strong>
-							<?php if (!empty($e['EntryNumber'])): ?> <span class="as-pill">#<?= htmlspecialchars($e['EntryNumber']) ?></span><?php endif; ?>
-							<?php if (!empty($e['IsNovice'])): ?> <span class="as-pill as-pill-novice">Novice</span><?php endif; ?>
-						</td>
-						<td><?php if ($hidePersona): ?>#<?= htmlspecialchars($e['EntryNumber'] ?? (string)($e['EntryId'] ?? '')) ?><?php else: ?><?= htmlspecialchars($e['Persona'] ?? '—') ?><?php endif; ?></td>
-						<td><?= htmlspecialchars($e['TaxonomyName'] ?? '—') ?></td>
-						<td><?= (int)$e['JudgeCount'] ?></td>
-						<td style="text-align:right;font-weight:700;color:<?= $e['Aggregate'] === null ? 'var(--ork-text-muted)' : '#5a67d8' ?>">
-							<?= $e['Aggregate'] === null ? '—' : number_format((float)$e['Aggregate'], 2) ?>
-						</td>
-					</tr>
-				<?php endforeach; endif; ?>
-				</tbody>
+				<!-- F57: JS renderLeaderboard() (fed by INITIAL_RESULTS_BUNDLE on first paint) is the
+				     sole authority for these rows — the duplicated PHP render was removed to avoid
+				     a double render / flash. -->
+				<tbody id="as-leaderboard-body"></tbody>
 			</table>
+			</div><!-- /#as-leaderboard-wrap -->
+
+			<div id="as-results-grid" style="display:none">
+				<h3 class="as-section-title" style="margin-top:24px">Results Grid</h3>
+				<div class="as-section-sub">Each judge's score per entry. Rows sorted by Final Score. <span id="as-grid-method-caption" style="font-style:italic"></span></div>
+				<div class="as-grid-legend">
+					<span class="as-grid-legend-item"><span class="as-grid-legend-swatch as-grid-cell-pending">—</span> not yet scored</span>
+					<span class="as-grid-legend-item"><span class="as-grid-legend-swatch as-grid-cell-na">·</span> judge not assigned to this field</span>
+					<span class="as-grid-legend-item"><span class="as-grid-legend-swatch as-grid-cell-dropped">3.50</span> dropped (not counted)</span>
+					<span class="as-grid-legend-item as-grid-legend-hint"><i class="fas fa-info-circle"></i> Hover a judge column for its name</span>
+				</div>
+				<div class="as-grid-scroll">
+					<table class="as-grid">
+						<thead id="as-grid-head"></thead>
+						<tbody id="as-grid-body"></tbody>
+					</table>
+				</div>
+			</div>
+
+			<h3 class="as-section-title" style="margin-top:28px">Award Winners <span style="font-weight:400;font-size:0.8em;color:var(--ork-text-muted)">(live)</span></h3>
+			<div class="as-section-sub">Winner(s) computed for each award from the current scores.</div>
+			<!-- F57: JS renderAwardsList() (fed by INITIAL_RESULTS_BUNDLE on first paint) is the sole
+			     authority for the award-winners table — the duplicated PHP render (including the
+			     empty/"No awards configured" state) was removed to avoid a double render / flash. -->
+			<div id="as-awards-list"></div>
 			<?php endif; /* $resultsPublished */ ?>
 		</div>
 
@@ -648,6 +718,7 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 		</div>
 		<?php endif; /* !$isJudgeOnly: taxonomy */ ?>
 
+		<?php if (!$hidePersona): /* F5: hide the roster/entry management panels from blind judge-only viewers under anonymous judging. */ ?>
 		<!-- ============ PARTICIPANTS ============ -->
 		<div class="as-tab-panel" id="as-tab-participants" style="display:none" role="tabpanel" aria-labelledby="as-tabbtn-participants" tabindex="0">
 			<div class="as-btn-row">
@@ -673,6 +744,7 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 				</tbody>
 			</table>
 		</div>
+		<?php endif; /* !$hidePersona: participants + entries panels */ ?>
 
 		<?php if (!$isJudgeOnly): ?>
 		<!-- ============ JUDGES ============ -->
@@ -779,6 +851,19 @@ html[data-theme="dark"] .as-help-tip { background: rgba(165,180,252,0.22); color
 			</div>
 			<div class="as-help" style="margin:-6px 0 8px;font-size:0.78em">Setting <strong>Judging Starts</strong> auto-fills <strong>Judging Ends</strong> (+3 hours) and <strong>Entries Due By</strong> (–30 minutes) — overwrite either to override.</div>
 			<div class="as-field"><label><input type="checkbox" id="as-set-anon" <?= !empty($competition['AnonymousJudging']) ? 'checked' : '' ?>> Anonymous judging</label></div>
+			<div class="as-field"><label>Share results with entrants <span class="as-help-tip" data-tip="Once this competition is closed, entrants can view their own results from their profile:
+• Off — nothing is shared
+• Feedback only — judges' written feedback (no numbers)
+• Scores only — aggregate + per-criterion scores (no feedback)
+• Scores and feedback — both
+Judge identities are always blinded.">?</span></label>
+				<?php $shareWith = (string)($competition['ShareWithEntrants'] ?? 'none'); ?>
+				<select id="as-set-share">
+					<?php foreach (['none'=>'Off','feedback'=>'Feedback only','scores'=>'Scores only','scores_feedback'=>'Scores and feedback'] as $sv => $slabel): ?>
+						<option value="<?= $sv ?>" <?= $sv===$shareWith?'selected':'' ?>><?= htmlspecialchars($slabel) ?></option>
+					<?php endforeach; ?>
+				</select>
+			</div>
 			<div class="as-btn-row"><button class="as-btn as-btn-primary" id="as-set-save"><i class="fas fa-save"></i> Save Settings</button></div>
 
 			<hr style="border:none;border-top:1px solid var(--ork-border);margin:24px 0">
@@ -1067,6 +1152,10 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 	var isJudge   = <?= $isJudge ? 'true' : 'false' ?>;
 	var IS_JUDGE_ONLY = <?= !empty($isJudgeOnly) ? 'true' : 'false' ?>;
 	var selfJudgeId = <?= $selfJudgeId !== null ? (int)$selfJudgeId : 'null' ?>;
+	// F15: server-computed results bundle for the initial paint. The FIRST Results-tab
+	// activation renders from this instead of firing a redundant compute_results fetch;
+	// later activations / manual Refresh refetch. (Already viewer-redacted by the lib.)
+	var INITIAL_RESULTS_BUNDLE = <?= json_encode($bundle) ?>;
 	// F2: a non-admin judge under anonymous judging must never see entrant persona —
 	// show the anonymizing Entry # instead (server also redacts, this is defence-in-depth).
 	var HIDE_PERSONA = IS_JUDGE_ONLY && ANON_JUDGING;
@@ -1378,15 +1467,42 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 				msgs.push('Entries were scored by differing numbers of judges. Because this competition sums judge scores, the totals below are not directly comparable.');
 			}
 		}
-		// F28: incomplete ballots — some entries not yet seen by the full judge panel.
-		var totalJudges = (typeof JUDGES !== 'undefined' && JUDGES) ? JUDGES.length : 0;
+		// F28/F56: incomplete ballots — some entries not yet seen by the full judge panel.
+		// Derive the judge total from the union of JudgeScores keys in THIS bundle (the judges who
+		// have actually participated) rather than the separately-fetched JUDGES array, which could
+		// still be empty on first paint (race). This matches the server-side (SSR) computation.
+		var judgeUnion = {};
+		scored.forEach(function(e){ var js = e.JudgeScores || {}; for (var k in js) { if (Object.prototype.hasOwnProperty.call(js, k)) judgeUnion[k] = true; } });
+		var totalJudges = Object.keys(judgeUnion).length;
 		if (totalJudges > 1 && scored.length) {
 			var under = scored.filter(function(e){ return (e.JudgeCount | 0) < totalJudges; }).length;
-			if (under > 0) msgs.push(under + ' of ' + scored.length + ' scored entries have not yet been seen by every judge (incomplete ballots).');
+			if (under > 0) {
+				// F50: avoid the "N of N" tautology when it applies to every entry.
+				msgs.push(under === scored.length
+					? 'No entry has been scored by all ' + totalJudges + ' judges yet — totals are provisional.'
+					: under + ' of ' + scored.length + ' scored entries have not yet been seen by every judge (incomplete ballots).');
+			}
 		}
 		if (!msgs.length) { host.style.display = 'none'; host.innerHTML = ''; return; }
 		host.style.display = '';
 		host.innerHTML = msgs.map(function(m){ return '<div class="as-results-warn"><i class="fas fa-exclamation-triangle"></i> ' + escHtml(m) + '</div>'; }).join('');
+	}
+	// F52: which award gets the gold marquee. Best in Show always wins it; otherwise the
+	// highest-precedence award (lowest Precedence/SortOrder number, if the lib provides one);
+	// otherwise fall back to the first award so the marquee is never dropped entirely.
+	function marqueeAwardIndex(awards){
+		if (!awards || !awards.length) return -1;
+		for (var i = 0; i < awards.length; i++) {
+			if ((awards[i].Award || {}).AwardType === 'best_in_show') return i;
+		}
+		var best = -1, bestP = Infinity;
+		for (var j = 0; j < awards.length; j++) {
+			var a = awards[j].Award || {};
+			var p = (a.Precedence != null) ? Number(a.Precedence)
+				: (a.SortOrder != null) ? Number(a.SortOrder) : null;
+			if (p != null && !isNaN(p) && p < bestP) { bestP = p; best = j; }
+		}
+		return best !== -1 ? best : 0;
 	}
 	function renderAwardsList(awards){
 		var host = document.getElementById('as-awards-list');
@@ -1395,61 +1511,77 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 			host.innerHTML = '<div class="as-empty-mini">No awards configured yet.' + (canManage ? ' Add awards in the Setup tab.' : '') + '</div>';
 			return;
 		}
-		host.innerHTML = awards.map(function(aw){
+		var marqueeIdx = marqueeAwardIndex(awards);
+		var rows = awards.map(function(aw, idx){
 			var a = aw.Award || {};
 			var winners = aw.Winners || [];
-			var html = '<div class="as-results-card"><div class="as-aw-title"><i class="fas fa-medal" style="color:#d69e2e"></i> ' + escHtml(a.Name || '')
+			var n = winners.length || 1;
+			// Award cell — rowspans this award's winner rows; emitted on the first row only.
+			// F52: the gold marquee follows award semantics (see marqueeAwardIndex), not array position.
+			var awardCell = '<td class="as-aw-cell' + (idx === marqueeIdx ? ' as-aw-marquee' : '') + '" rowspan="' + n + '">'
+				+ '<div class="as-aw-name"><i class="fas fa-medal"></i> ' + escHtml(a.Name || '')
 				+ ' <span class="as-pill">' + escHtml(String(a.AwardType || '').replace(/_/g, ' ')) + '</span>'
 				+ (a.NoviceOnly ? ' <span class="as-pill as-pill-novice">Novice only</span>' : '')
 				+ '</div>';
-			if (a.Description) html += '<div class="as-aw-meta">' + escHtml(a.Description) + '</div>';
+			// F55: house-rule — data-tip tooltip, never native title=.
+			if (a.Description) awardCell += '<div class="as-aw-desc as-tip" data-tip="' + escHtml(a.Description) + '">' + escHtml(a.Description) + '</div>';
 			if (a.AwardType === 'best_x_of_y') {
-				html += '<div class="as-aw-meta">Top ' + (a.TopN | 0) + ' entries'
+				awardCell += '<div class="as-aw-desc">Top ' + (a.TopN | 0) + ' entries'
 					+ (a.MinDistinctFields ? ' · min ' + (a.MinDistinctFields | 0) + ' fields' : '')
 					+ (a.MinDistinctCategories ? ' · min ' + (a.MinDistinctCategories | 0) + ' categories' : '')
 					+ '</div>';
 			}
+			awardCell += '</td>';
+
 			if (!winners.length) {
-				html += '<div class="as-no-winner">No qualifying winner yet.</div>';
-			} else {
-				// F19: render every winner (places + co-winners).
-				var place = 0, prevAgg = null;
-				winners.forEach(function(w, i){
-					var agg = (w.Aggregate == null) ? null : Number(w.Aggregate);
-					var tie = (i > 0 && agg != null && prevAgg != null && agg === prevAgg);
-					if (!tie) place = i + 1;
-					prevAgg = agg;
-					var placeLabel = winners.length === 1 ? 'Winner' : (tie ? 'Co-winner' : asOrdinal(place) + ' place');
-					// F2: under anonymous judging a non-admin judge sees the entry title, not persona.
-					var identity = HIDE_PERSONA ? escHtml(w.Title || 'Entry') : escHtml(w.Persona || '—');
-					var sub = (!HIDE_PERSONA && w.Title)
-						? '<div style="color:var(--ork-text-muted);font-size:0.9em">for <em>' + escHtml(w.Title) + '</em>' + (w.TaxonomyName ? ' in ' + escHtml(w.TaxonomyName) : '') + '</div>'
-						: '';
-					html += '<div class="as-winner"' + (i > 0 ? ' style="margin-top:8px"' : '') + '>'
-						+ '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">'
-						+   '<div><div style="font-weight:700;font-size:1.05em;color:var(--ork-text)"><i class="fas fa-trophy" style="color:#d69e2e"></i> <span class="as-pill" style="margin-right:4px">' + escHtml(placeLabel) + '</span>' + identity + '</div>' + sub + '</div>'
-						+   '<div style="text-align:right"><div style="font-size:1.3em;font-weight:700;color:#5a67d8">' + (agg == null ? '—' : agg.toFixed(2)) + '</div><div style="font-size:0.78em;color:var(--ork-text-muted)">Final Score</div></div>'
-						+ '</div>';
-					if (a.AwardType === 'best_x_of_y' && w.TopEntries && w.TopEntries.length) {
-						html += '<div style="margin-top:8px;font-size:0.86em;color:var(--ork-text-muted)">Counted entries: '
-							+ w.TopEntries.map(function(te){ return '<span class="as-pill" style="margin-right:4px">' + escHtml(te.Title || '') + ' · ' + fmtNum(te.Aggregate, 2) + '</span>'; }).join('')
-							+ '</div>';
-					}
-					html += '</div>';
-				});
+				return '<tr>' + awardCell + '<td class="as-aw-win as-aw-none" colspan="2">No qualifying winner yet.</td></tr>';
 			}
-			return html + '</div>';
+			// F19: render every winner (places + co-winners).
+			var place = 0, prevAgg = null;
+			return winners.map(function(w, i){
+				var agg = (w.Aggregate == null) ? null : Number(w.Aggregate);
+				var tie = (i > 0 && agg != null && prevAgg != null && agg === prevAgg);
+				if (!tie) place = i + 1;
+				prevAgg = agg;
+				var placeLabel, placeCls;
+				if (winners.length === 1) { placeLabel = 'Winner';    placeCls = 'as-place as-place-win'; }
+				else if (tie)             { placeLabel = 'Co-winner'; placeCls = 'as-place as-place-co'; }
+				else                      { placeLabel = asOrdinal(place) + ' place'; placeCls = 'as-place'; }
+				// F2: under anonymous judging a non-admin judge sees the entry title, not persona.
+				var identity = HIDE_PERSONA ? escHtml(w.Title || 'Entry') : escHtml(w.Persona || '—');
+				var sub = (!HIDE_PERSONA && w.Title)
+					? '<div class="as-w-sub">for <em>' + escHtml(w.Title) + '</em>' + (w.TaxonomyName ? ' · ' + escHtml(w.TaxonomyName) : '') + '</div>'
+					: '';
+				var counted = '';
+				if (a.AwardType === 'best_x_of_y' && w.TopEntries && w.TopEntries.length) {
+					counted = '<div class="as-w-counted">Counted: '
+						+ w.TopEntries.map(function(te){ return '<span class="as-pill">' + escHtml(te.Title || '') + ' · ' + fmtNum(te.Aggregate, 2) + '</span>'; }).join('')
+						+ '</div>';
+				}
+				return '<tr>'
+					+ (i === 0 ? awardCell : '')
+					+ '<td class="as-aw-win"><span class="' + placeCls + '">' + escHtml(placeLabel) + '</span> <span class="as-w-name">' + identity + '</span>' + sub + counted + '</td>'
+					+ '<td class="as-aw-score">' + (agg == null ? '—' : agg.toFixed(2)) + '</td>'
+					+ '</tr>';
+			}).join('');
 		}).join('');
+		host.innerHTML = '<table class="as-table as-awards-table"><thead><tr><th>Award</th><th>Winner</th><th class="as-aw-scoreh">Score</th></tr></thead><tbody>' + rows + '</tbody></table>';
 	}
 	function renderLeaderboard(entries){
 		var body = document.getElementById('as-leaderboard-body');
 		if (!body) return;
 		var sortable = (entries || []).slice().sort(function(a, b){ return (b.Aggregate || 0) - (a.Aggregate || 0); });
 		if (!sortable.length) { body.innerHTML = '<tr><td colspan="6" class="as-empty-mini">No entries scored yet.</td></tr>'; return; }
+		// F45: standard competition ranking — equal aggregates share a rank, next rank skips
+		// accordingly (mirrors the PHP first-paint and the award co-winner tie logic).
+		var lbPrevAgg = null, lbRank = 0;
 		body.innerHTML = sortable.map(function(e, i){
 			var agg = (e.Aggregate == null) ? null : Number(e.Aggregate);
+			var tie = (i > 0 && agg != null && lbPrevAgg != null && agg === lbPrevAgg);
+			if (!tie) lbRank = i + 1;
+			lbPrevAgg = agg;
 			var who = HIDE_PERSONA ? ('#' + escHtml(e.EntryNumber || e.EntryId || '')) : escHtml(e.Persona || '—');
-			return '<tr><td>' + (i + 1) + '</td>'
+			return '<tr><td>' + lbRank + '</td>'
 				+ '<td><strong>' + escHtml(e.Title || '') + '</strong>'
 				+ (e.EntryNumber ? ' <span class="as-pill">#' + escHtml(e.EntryNumber) + '</span>' : '')
 				+ (e.IsNovice ? ' <span class="as-pill as-pill-novice">Novice</span>' : '') + '</td>'
@@ -1460,24 +1592,219 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 				+ '</tr>';
 		}).join('');
 	}
+
+	// --------- Results Grid (spreadsheet) view ---------
+	// Alternate render of the SAME results bundle: entries x judges, from JudgeScores /
+	// JudgeCriterionScores / DroppedJudgeIds attached per entry by build_entry_results().
+	var RESULTS_VIEW = 'list';
+	var GRID_CRITERIA = [];
+	var LAST_RESULTS_ENTRIES = null;
+	function gridMethodLabel(m){
+		switch (m) {
+			case 'sum':       return 'Sum';
+			case 'median':    return 'Median';
+			case 'drop_high': return 'Avg · drop high';
+			case 'drop_low':  return 'Avg · drop low';
+			case 'drop_both': return 'Avg · drop high+low';
+			default:          return 'Avg';
+		}
+	}
+	function gridNormFieldIds(v){
+		if (Array.isArray(v)) return v.map(Number).filter(function(n){ return !isNaN(n); });
+		if (typeof v === 'string' && v) {
+			try { var p = JSON.parse(v); return Array.isArray(p) ? p.map(Number).filter(function(n){ return !isNaN(n); }) : []; }
+			catch (e) { return []; }
+		}
+		return [];
+	}
+	function renderGrid(entries, judges){
+		var head = document.getElementById('as-grid-head');
+		var body = document.getElementById('as-grid-body');
+		if (!head || !body) return;
+		judges = judges || [];
+		var list = (entries || []).slice();
+
+		var cap = document.getElementById('as-grid-method-caption');
+		if (cap) cap.textContent = 'Score method: ' + gridMethodLabel(AGG_METHOD) + '.';
+
+		// Judge columns in JUDGES order, then trailing "former judge" columns for any judge id
+		// that scored an entry but is no longer in the current JUDGES list (so scores aren't dropped).
+		var known = {};
+		judges.forEach(function(j){ known[j.JudgeId] = true; });
+		var extraIds = [], seenExtra = {};
+		list.forEach(function(e){
+			var js = e.JudgeScores || {};
+			for (var k in js) {
+				if (!Object.prototype.hasOwnProperty.call(js, k)) continue;
+				if (!known[k] && !seenExtra[k]) { seenExtra[k] = true; extraIds.push(k); }
+			}
+		});
+		var cols = judges.map(function(j, i){
+			var f = gridNormFieldIds(j.FieldTaxonomyIds);
+			return { id: j.JudgeId, label: 'J' + (i + 1), persona: j.Persona, fields: f, atLarge: f.length === 0, former: false };
+		});
+		extraIds.forEach(function(id){
+			cols.push({ id: id, label: 'J?', persona: null, fields: [], atLarge: true, former: true });
+		});
+
+		// Header row
+		var thead = '<tr>'
+			+ '<th class="as-grid-col-entry">Entry</th>'
+			+ '<th class="as-grid-col-part">' + (HIDE_PERSONA ? 'Entry #' : 'Participant') + '</th>';
+		cols.forEach(function(c){
+			var inner = '<span class="as-grid-jchip">' + escHtml(c.label) + '</span>';
+			var tipAttr = '';
+			if (c.former) {
+				tipAttr = ' class="as-tip" data-tip="former judge"';
+			} else if (!IS_JUDGE_ONLY && c.persona) {
+				// Judge names are hidden in the header to keep columns narrow; the persona
+				// stays available on hover via the tooltip — but ONLY for managers. #7: a
+				// judge-only viewer (Judges tab hidden from them) must never see other judges'
+				// names, so suppress the persona tip for them regardless of ENTRANT anonymity
+				// (HIDE_PERSONA), which is a different axis.
+				tipAttr = ' class="as-tip" data-tip="' + escHtml(c.persona) + '"';
+			}
+			thead += '<th class="as-grid-jcol"><span' + tipAttr + '>' + inner + '</span></th>';
+		});
+		thead += '<th class="as-grid-col-score">Score</th></tr>';
+		head.innerHTML = thead;
+
+		// Empty state mirrors the leaderboard message.
+		if (!list.length) {
+			body.innerHTML = '<tr><td colspan="' + (cols.length + 3) + '" class="as-empty-mini">No entries scored yet.</td></tr>';
+			return;
+		}
+
+		// Same order as the leaderboard: Aggregate desc, unscored last.
+		list.sort(function(a, b){ return (b.Aggregate || 0) - (a.Aggregate || 0); });
+
+		var critNames = {}, critOrder = [];
+		(GRID_CRITERIA || []).forEach(function(c){ critNames[c.CriterionId] = c.Name; critOrder.push(c.CriterionId); });
+
+		body.innerHTML = list.map(function(e){
+			var scores = e.JudgeScores || {};
+			var critScores = e.JudgeCriterionScores || {};
+			var dropped = e.DroppedJudgeIds || [];
+			var entryFieldId = (e.FieldId == null) ? null : Number(e.FieldId);
+			var entryLabel = HIDE_PERSONA ? ('#' + escHtml(e.EntryNumber || e.EntryId || '')) : escHtml(e.Title || '—');
+			var who = HIDE_PERSONA ? ('#' + escHtml(e.EntryNumber || e.EntryId || '')) : escHtml(e.Persona || '—');
+			var agg = (e.Aggregate == null) ? null : Number(e.Aggregate);
+
+			var cells = cols.map(function(c){
+				var raw = scores[c.id];
+				if (raw !== undefined && raw !== null) {
+					var isDropped = dropped.indexOf(Number(c.id)) !== -1 || dropped.indexOf(String(c.id)) !== -1;
+					var cs = critScores[c.id] || {};
+					var order = critOrder.length ? critOrder : Object.keys(cs);
+					var lines = [];
+					order.forEach(function(cid){
+						if (cs[cid] === undefined) return;
+						lines.push((critNames[cid] || ('Criterion ' + cid)) + ': ' + Number(cs[cid]));
+					});
+					var tip = lines.join(' · ');
+					if (isDropped) tip = (tip ? tip + ' — ' : '') + '(dropped from score)';
+					var cls = 'as-grid-num' + (isDropped ? ' as-grid-cell-dropped' : '');
+					var tipAttr = tip ? ' class="as-tip" data-tip="' + escHtml(tip) + '"' : '';
+					return '<td class="' + cls + '"><span' + tipAttr + '>' + Number(raw).toFixed(2) + '</span></td>';
+				}
+				var covers = c.atLarge || (entryFieldId != null && c.fields.indexOf(entryFieldId) !== -1);
+				// F44: per-cell hover explains the glyph — pending "—" vs not-assigned "·".
+				return covers
+					? '<td class="as-grid-num as-grid-cell-pending"><span class="as-tip" data-tip="not yet scored">—</span></td>'
+					: '<td class="as-grid-num as-grid-cell-na"><span class="as-tip" data-tip="judge not assigned to this field">·</span></td>';
+			}).join('');
+
+			return '<tr>'
+				+ '<td class="as-grid-col-entry"><strong>' + entryLabel + '</strong>'
+				+ (e.EntryNumber && !HIDE_PERSONA ? ' <span class="as-pill">#' + escHtml(e.EntryNumber) + '</span>' : '')
+				+ (e.IsNovice ? ' <span class="as-pill as-pill-novice">Novice</span>' : '') + '</td>'
+				+ '<td class="as-grid-col-part">' + who + '</td>'
+				+ cells
+				+ '<td class="as-grid-col-score as-grid-num">' + (agg == null ? '—' : agg.toFixed(2)) + '</td>'
+				+ '</tr>';
+		}).join('');
+	}
+	function setResultsView(view){
+		RESULTS_VIEW = (view === 'grid') ? 'grid' : 'list';
+		var lb = document.getElementById('as-leaderboard-wrap');
+		var gr = document.getElementById('as-results-grid');
+		var bl = document.getElementById('as-view-list');
+		var bg = document.getElementById('as-view-grid');
+		if (lb) lb.style.display = RESULTS_VIEW === 'list' ? '' : 'none';
+		if (gr) gr.style.display = RESULTS_VIEW === 'grid' ? '' : 'none';
+		if (bl) { bl.classList.toggle('as-view-active', RESULTS_VIEW === 'list'); bl.setAttribute('aria-pressed', RESULTS_VIEW === 'list' ? 'true' : 'false'); }
+		if (bg) { bg.classList.toggle('as-view-active', RESULTS_VIEW === 'grid'); bg.setAttribute('aria-pressed', RESULTS_VIEW === 'grid' ? 'true' : 'false'); }
+		// Re-render from the last bundle when switching to Grid so late-arriving JUDGES labels apply. No refetch.
+		if (RESULTS_VIEW === 'grid' && LAST_RESULTS_ENTRIES) renderGrid(LAST_RESULTS_ENTRIES, JUDGES);
+	}
+	bind('as-view-list', 'click', function(){ setResultsView('list'); });
+	bind('as-view-grid', 'click', function(){ setResultsView('grid'); });
+
 	var RESULTS_LOADING = false;
-	function loadResults(){
+	var RESULTS_INITIAL_RENDERED = false;
+	// Shared render path for a results bundle (server initial paint OR a live refetch).
+	function renderResultsBundle(bundle){
+		renderAwardsList(bundle.Awards || []);
+		renderLeaderboard(bundle.Entries || []);
+		GRID_CRITERIA = bundle.Criteria || [];
+		LAST_RESULTS_ENTRIES = bundle.Entries || [];
+		renderGrid(LAST_RESULTS_ENTRIES, JUDGES);
+		renderResultsWarning(bundle);
+		var stamp = document.getElementById('as-results-updated');
+		// Reset any prior failure styling from showResultsError() on a successful (re)render.
+		if (stamp) { stamp.style.color = ''; stamp.textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
+	}
+	// F58: a results fetch failure must be surfaced across every results surface — not only the
+	// awards list — and must never leave stale data looking freshly-updated. We stamp the "updated"
+	// line with a failure notice, drop a retry banner into the warnings area, and fill any surface
+	// that is currently EMPTY (leaderboard / grid / awards) with an inline error+retry so an
+	// initial-load failure isn't a silent blank, while preserving last-known data elsewhere.
+	function showResultsError(){
+		var retry = function(){ loadResults(true); };
+		var stamp = document.getElementById('as-results-updated');
+		if (stamp) { stamp.textContent = 'Failed to refresh — showing last-known data'; stamp.style.color = '#c53030'; }
+		var warn = document.getElementById('as-results-warning');
+		if (warn) {
+			var old = warn.querySelector('.as-results-warn-error'); if (old) old.parentNode.removeChild(old);
+			warn.style.display = '';
+			var banner = document.createElement('div');
+			banner.className = 'as-results-warn as-results-warn-error';
+			banner.innerHTML = '<i class="fas fa-exclamation-circle"></i> <span>Couldn’t refresh results.</span>';
+			var btn = document.createElement('button');
+			btn.type = 'button'; btn.className = 'as-btn as-retry-btn';
+			btn.innerHTML = '<i class="fas fa-sync"></i> Retry';
+			btn.addEventListener('click', retry);
+			banner.appendChild(btn);
+			warn.insertBefore(banner, warn.firstChild);
+		}
+		// Only fill genuinely-empty surfaces so any stale-but-useful data stays visible.
+		var lb = document.getElementById('as-leaderboard-body');
+		if (lb && !lb.querySelector('tr')) showTabError(lb, 6, retry);
+		var gb = document.getElementById('as-grid-body');
+		if (gb && !gb.querySelector('tr')) showTabError(gb, 99, retry);
+		var aw = document.getElementById('as-awards-list');
+		if (aw && !aw.textContent.trim()) showHostError(aw, retry);
+	}
+	// F15: the FIRST Results activation renders the server-provided INITIAL_RESULTS_BUNDLE (no
+	// redundant compute); pass force=true (manual Refresh, post-save) to always refetch fresh.
+	function loadResults(force){
 		// If the server never published a bundle (empty state present), there is nothing to refresh.
 		if (document.getElementById('as-results-unpublished')) return;
+		if (!force && !RESULTS_INITIAL_RENDERED && INITIAL_RESULTS_BUNDLE) {
+			RESULTS_INITIAL_RENDERED = true;
+			renderResultsBundle(INITIAL_RESULTS_BUNDLE);
+			return;
+		}
+		RESULTS_INITIAL_RENDERED = true;
 		if (RESULTS_LOADING) return;
 		RESULTS_LOADING = true;
 		ASApi.comp('results', {}).then(function(j){
 			RESULTS_LOADING = false;
-			if (!j || j.status !== 0 || !j.result) { showHostError(document.getElementById('as-awards-list'), loadResults); return; }
-			var bundle = j.result;
-			renderAwardsList(bundle.Awards || []);
-			renderLeaderboard(bundle.Entries || []);
-			renderResultsWarning(bundle);
-			var stamp = document.getElementById('as-results-updated');
-			if (stamp) stamp.textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-		}, function(){ RESULTS_LOADING = false; showHostError(document.getElementById('as-awards-list'), loadResults); });
+			if (!j || j.status !== 0 || !j.result) { showResultsError(); return; }
+			renderResultsBundle(j.result);
+		}, function(){ RESULTS_LOADING = false; showResultsError(); });
 	}
-	bind('as-results-refresh', 'click', loadResults);
+	bind('as-results-refresh', 'click', function(){ loadResults(true); });
 
 	// --------- TAXONOMY tab ---------
 	var TAX_FLAT = [];
@@ -1659,13 +1986,16 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 					if (v && v !== '' && v !== '0') return '<td class="as-guild-c">' + escHtml(v) + '</td>';
 					return '<td class="as-guild-c as-guild-empty">·</td>';
 				}
+				// F5: defence-in-depth — even though the panel is server-gated for blind judge-only
+				// viewers, redact the persona to an anonymised label if HIDE_PERSONA is ever true.
+				var pName = HIDE_PERSONA ? ('Artisan #' + escHtml(p.ParticipantId)) : escHtml(p.Persona);
 				return '<tr>'
-					+ '<td><strong>' + escHtml(p.Persona) + '</strong></td>'
+					+ '<td><strong>' + pName + '</strong></td>'
 					+ guildCell(g.O) + guildCell(g.G) + guildCell(g.D) + guildCell(g.S)
 					+ '<td>' + escHtml(p.ParkName || '—') + '</td>'
 					+ '<td>' + (p.IsNovice ? '<span class="as-pill as-pill-novice">Novice</span>' : '') + '</td>'
 					+ '<td>' + escHtml(p.Notes || '') + '</td>'
-					+ (canManage ? '<td class="as-row-actions"><button class="as-btn-ghost" data-part-edit="'+p.ParticipantId+'"><i class="fas fa-pen"></i></button><button class="as-btn-ghost" data-part-del="'+p.ParticipantId+'"><i class="fas fa-trash"></i></button></td>' : '')
+					+ (canManage ? '<td class="as-row-actions"><button class="as-btn-ghost as-tip as-tip-right" data-tip="Edit" data-part-edit="'+p.ParticipantId+'"><i class="fas fa-pen"></i></button><button class="as-btn-ghost as-tip as-tip-right" data-tip="Remove" data-part-del="'+p.ParticipantId+'"><i class="fas fa-trash"></i></button></td>' : '')
 					+ '</tr>';
 			}).join('');
 			body.querySelectorAll('[data-part-edit]').forEach(function(b){ b.addEventListener('click', function(){ openPartModal(b.getAttribute('data-part-edit')); }); });
@@ -1816,10 +2146,13 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 		if (!ENTRIES.length) { body.innerHTML = '<tr><td colspan="' + (canManage ? 6 : 5) + '" class="as-empty-mini">No entries yet.</td></tr>'; return; }
 		body.innerHTML = ENTRIES.map(function(e){
 			var hasDoc = !!(e.Documentation && e.Documentation.length);
+			// F5: redact the entrant persona under blind judging (mirror the leaderboard's
+			// entry-number fallback); defence-in-depth behind the server-gated panel.
+			var eWho = HIDE_PERSONA ? ('#' + escHtml(e.EntryNumber || e.EntryId || '')) : escHtml(e.Persona || '—');
 			return '<tr>'
 				+ '<td>' + escHtml(e.EntryNumber || '') + '</td>'
 				+ '<td><strong>' + escHtml(e.Title) + '</strong>' + (e.IsNovice ? ' <span class="as-pill as-pill-novice">Novice</span>' : '') + '</td>'
-				+ '<td>' + escHtml(e.Persona || '—') + '</td>'
+				+ '<td>' + eWho + '</td>'
 				+ '<td>' + escHtml(e.TaxonomyName || '—') + '</td>'
 				+ '<td>' + (hasDoc ? '<span class="as-tip" data-tip="Documentation provided"><i class="fas fa-check" style="color:#38a169"></i></span>' : '<span class="as-tip" data-tip="No documentation"><i class="far fa-circle" style="color:var(--ork-text-muted)"></i></span>') + '</td>'
 				+ (canManage ? '<td class="as-row-actions"><button class="as-btn-ghost as-tip as-tip-right" data-tip="Edit" data-entry-edit="'+e.EntryId+'"><i class="fas fa-pen"></i></button><button class="as-btn-ghost as-tip as-tip-right" data-tip="Delete" data-entry-del="'+e.EntryId+'"><i class="fas fa-trash"></i></button></td>' : '')
@@ -1844,18 +2177,46 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 	// Set of EntryIds the currently selected judge has scored at least one criterion on.
 	var JUDGED_ENTRY_IDS = {};
 
+	// F46: a field-restricted judge can only meaningfully score entries whose ROOT field is in
+	// their assignment (at-large judges cover everything). Used to size the progress denominator
+	// and label out-of-field entries so the "N / N scored" goal is actually reachable.
+	function entryRootFieldId(e) {
+		var taxId = (e && e.FieldId != null) ? e.FieldId : (e ? e.TaxonomyId : null);
+		if (!taxId) return null;
+		var byId = {}; TAX_FLAT.forEach(function(n){ byId[n.TaxonomyId] = n; });
+		var node = byId[taxId];
+		while (node && node.ParentId) node = byId[node.ParentId];
+		return node ? Number(node.TaxonomyId) : null;
+	}
+	function currentJudgeFields() {
+		var jpick = document.getElementById('as-judge-picker');
+		var jid = jpick ? parseInt(jpick.value, 10) : 0;
+		var judge = JUDGES.find(function(j){ return j.JudgeId == jid; });
+		return judge ? gridNormFieldIds(judge.FieldTaxonomyIds) : [];
+	}
+	function judgeEligibleForEntry(jFields, e) {
+		if (!jFields || !jFields.length) return true;   // at-large judge covers every field
+		var root = entryRootFieldId(e);
+		if (root == null) return true;                  // unknown field → don't restrict
+		return jFields.indexOf(root) !== -1;
+	}
+
 	// Build the judging entry picker, with judged entries italicized + sorted to the bottom.
 	function refreshJudgingEntryPicker() {
 		var jSel = document.getElementById('as-judging-entry-picker');
 		if (!jSel) return;
 		var prevValue = jSel.value;
+		var jFields = currentJudgeFields();
 		// Stable sort: unjudged first (in original ENTRIES order), then judged.
 		var unjudged = [], judged = [];
 		ENTRIES.forEach(function(e){ if (JUDGED_ENTRY_IDS[e.EntryId]) judged.push(e); else unjudged.push(e); });
 		var ordered = unjudged.concat(judged);
 		jSel.innerHTML = '<option value="">— select an entry —</option>' + ordered.map(function(e){
 			var done = !!JUDGED_ENTRY_IDS[e.EntryId];
-			var label = (done ? '✓ ' : '') + (e.Title || '') + ' · ' + (e.TaxonomyName || '') + ' · ' + entryLabelName(e);
+			// F46: flag entries outside the selected judge's field so they aren't counted against
+			// an unreachable "N / N" and the judge knows why they don't need to score them.
+			var offField = !judgeEligibleForEntry(jFields, e);
+			var label = (done ? '✓ ' : '') + (e.Title || '') + ' · ' + (e.TaxonomyName || '') + ' · ' + entryLabelName(e) + (offField ? ' · (not your field)' : '');
 			return '<option value="' + e.EntryId + '"' + (done ? ' class="as-entry-judged"' : '') + '>' + escHtml(label) + '</option>';
 		}).join('');
 		// Preserve current selection if still present.
@@ -1888,8 +2249,12 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 		prevBtn.disabled = idx <= 0;
 		nextBtn.disabled = idx === -1 || idx >= opts.length - 1;
 		if (progress) {
-			var total = ENTRIES.length;
-			var done  = Object.keys(JUDGED_ENTRY_IDS).length;
+			// F46: base the denominator on entries the SELECTED judge is eligible to score, so a
+			// field-restricted judge can actually reach N / N (counting all entries made it stick).
+			var jFields = currentJudgeFields();
+			var eligible = ENTRIES.filter(function(e){ return judgeEligibleForEntry(jFields, e); });
+			var total = eligible.length;
+			var done  = eligible.filter(function(e){ return JUDGED_ENTRY_IDS[e.EntryId]; }).length;
 			progress.textContent = total ? (done + ' / ' + total + ' scored') : '';
 		}
 	}
@@ -2046,6 +2411,10 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 			});
 		}, function(){ showHostError(document.getElementById('as-judging-form-host'), loadJudging); });
 	}
+	// F54: JUDGING_RENDER always points at the latest render closure; the static picker/nav
+	// listeners (bound once) call through it so they never accumulate across tab activations.
+	var JUDGING_RENDER = function(){};
+	var JUDGING_LISTENERS_BOUND = false;
 	function renderJudgingForm(criteria) {
 		var jpick = document.getElementById('as-judge-picker');
 		var epick = document.getElementById('as-judging-entry-picker');
@@ -2068,12 +2437,18 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 					+ '</div>';
 				html += criteria.map(function(c){
 					var prev = existing[c.CriterionId];
-					var val = prev ? prev.Score : SCORE_DEFAULT;
-					var fb  = prev ? (prev.Feedback || '') : '';
-					return '<div class="as-score-grid">'
+					// F53: a genuine SAVED score vs an untouched default at the same value must read
+					// differently — the row is flagged .as-score-untouched until the judge moves it.
+					var saved = !!prev;
+					var val = saved ? prev.Score : SCORE_DEFAULT;
+					var fb  = saved ? (prev.Feedback || '') : '';
+					return '<div class="as-score-grid' + (saved ? '' : ' as-score-untouched') + '">'
 						+ '<label>' + escHtml(c.Name) + (c.Description ? ' <span style="font-weight:400;color:var(--ork-text-muted);font-size:0.85em">' + escHtml(c.Description) + '</span>' : '') + '</label>'
-						+ '<input type="range" min="' + SCORE_MIN + '" max="' + SCORE_MAX + '" step="' + SCORE_INCREMENT + '" value="' + val + '" data-cid="' + c.CriterionId + '" class="as-judge-range">'
-						+ '<span class="as-score-value" data-cid-val="' + c.CriterionId + '">' + fmtNum(val, 2) + '</span>'
+						+ '<div class="as-score-slider">'
+							+ '<input type="range" min="' + SCORE_MIN + '" max="' + SCORE_MAX + '" step="' + SCORE_INCREMENT + '" value="' + val + '" data-cid="' + c.CriterionId + '" class="as-judge-range">'
+							+ '<div class="as-score-ends"><span>' + escHtml(String(SCORE_MIN)) + '</span><span>' + escHtml(String(SCORE_MAX)) + '</span></div>'
+						+ '</div>'
+						+ '<span class="as-score-value" data-cid-val="' + c.CriterionId + '">' + fmtNum(val, 2) + '<span class="as-score-default-tag">default</span></span>'
 						+ '<textarea placeholder="Feedback (optional)" data-cid-fb="' + c.CriterionId + '">' + escHtml(fb) + '</textarea>'
 						+ '</div>';
 				}).join('');
@@ -2081,7 +2456,11 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 				html += '<div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="as-btn as-btn-primary" id="as-judging-save"><i class="fas fa-save"></i> Save Scores</button></div>';
 				host.innerHTML = html;
 				host.querySelectorAll('.as-judge-range').forEach(function(r){
-					r.addEventListener('input', function(){ host.querySelector('[data-cid-val="' + r.dataset.cid + '"]').textContent = fmtNum(r.value, 2); });
+					r.addEventListener('input', function(){
+						host.querySelector('[data-cid-val="' + r.dataset.cid + '"]').textContent = fmtNum(r.value, 2);
+						// F53: once the judge moves the slider the value is no longer an untouched default.
+						var row = r.closest('.as-score-grid'); if (row) row.classList.remove('as-score-untouched');
+					});
 				});
 				loadRecSection(eid, entry);
 				document.getElementById('as-judging-save').addEventListener('click', function(){
@@ -2104,24 +2483,32 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 						// Mark this entry as judged + re-order the picker (just-judged drops to bottom, italicized).
 						JUDGED_ENTRY_IDS[eid] = true;
 						refreshJudgingEntryPicker();
-						// F23: keep the live Results board in sync with the score just saved.
-						loadResults();
+						// F23/F15: refetch the live Results board so it reflects the score just saved
+						// (force=true — never serve the stale initial bundle after a mutation).
+						loadResults(true);
 					});
 				});
 			});
 		}
-		// Restricted view uses a hidden input rather than a select — no change event needed.
-		if (jpick && jpick.tagName === 'SELECT') {
-			jpick.addEventListener('change', function(){
-				// Different judge → refetch their judged-set, rebuild dropdown, then re-render.
-				refreshJudgedSetForCurrentJudge().then(render);
-			});
+		// F54: keep the once-bound listeners pointing at the current render closure, then attach
+		// them EXACTLY ONCE. Previously these were re-added on every Judging-tab activation, so a
+		// single change would fire N duplicate score.list fetches after N visits (stale scores).
+		JUDGING_RENDER = render;
+		if (!JUDGING_LISTENERS_BOUND) {
+			JUDGING_LISTENERS_BOUND = true;
+			// Restricted view uses a hidden input rather than a select — no change event needed.
+			if (jpick && jpick.tagName === 'SELECT') {
+				jpick.addEventListener('change', function(){
+					// Different judge → refetch their judged-set, rebuild dropdown, then re-render.
+					refreshJudgedSetForCurrentJudge().then(function(){ JUDGING_RENDER(); });
+				});
+			}
+			epick.addEventListener('change', function(){ updateJudgingNavState(); JUDGING_RENDER(); });
+			var prevBtn = document.getElementById('as-judging-prev');
+			var nextBtn = document.getElementById('as-judging-next');
+			if (prevBtn) prevBtn.addEventListener('click', function(){ judgingStep(-1); });
+			if (nextBtn) nextBtn.addEventListener('click', function(){ judgingStep( 1); });
 		}
-		epick.addEventListener('change', function(){ updateJudgingNavState(); render(); });
-		var prevBtn = document.getElementById('as-judging-prev');
-		var nextBtn = document.getElementById('as-judging-next');
-		if (prevBtn) prevBtn.addEventListener('click', function(){ judgingStep(-1); });
-		if (nextBtn) nextBtn.addEventListener('click', function(){ judgingStep( 1); });
 		updateJudgingNavState();
 		render();
 	}
@@ -2317,6 +2704,7 @@ html[data-theme="dark"] .as-preview-winner { background: rgba(0,0,0,0.18); }
 		fd.append('JudgingEndsAt',   document.getElementById('as-set-judge-end').value);
 		fd.append('EventId',         document.getElementById('as-set-event').value);
 		fd.append('AnonymousJudging',  document.getElementById('as-set-anon').checked ? 1 : 0);
+		fd.append('ShareWithEntrants', document.getElementById('as-set-share').value);
 		ASApi.comp('update', fd).then(function(j){ if (j.status === 0) location.reload(); else asToast('Error: ' + (j.error || ''), true); });
 	});
 	bind('as-edit-btn', 'click', function(){ activateTab('setup'); });

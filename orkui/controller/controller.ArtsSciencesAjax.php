@@ -28,7 +28,18 @@ class Controller_ArtsSciencesAjax extends Controller
         if ($r['Status'] == 0) {
             return ['status' => 0, 'result' => $r['Detail'] ?? null];
         }
-        return ['status' => (int)$r['Status'], 'error' => ($r['Error'] ?? 'Error') . ($r['Detail'] ? ': ' . (is_string($r['Detail']) ? $r['Detail'] : json_encode($r['Detail'])) : '')];
+        // F59: null-coalesce Detail so a missing key never raises a PHP 8 "Undefined array key"
+        // warning that would corrupt the JSON body. F62: only append Detail to the client-facing
+        // message when it is a string; structured (non-string) Detail is internal implementation
+        // state — route it to the error/audit log instead of leaking it to the client.
+        $error  = $r['Error'] ?? 'Error';
+        $detail = $r['Detail'] ?? null;
+        if (is_string($detail) && $detail !== '') {
+            $error .= ': ' . $detail;
+        } elseif ($detail !== null) {
+            error_log('AS_AUDIT.detail ' . json_encode(['error' => $r['Error'] ?? 'Error', 'detail' => $detail]));
+        }
+        return ['status' => (int)$r['Status'], 'error' => $error];
     }
 
     private function token()
@@ -129,7 +140,12 @@ class Controller_ArtsSciencesAjax extends Controller
         if (!valid_id($kingdom_id)) {
             $this->respond(['status' => 1, 'error' => 'KingdomId required']);
         }
-        $this->respond($this->unwrap($this->ArtsSciences->list_competitions(['KingdomId' => $kingdom_id])));
+        // F60: pass Token so the lib auth gate (IsAuthorized) resolves the caller instead of
+        // failing closed on an empty token and returning an empty/broken competition list.
+        $this->respond($this->unwrap($this->ArtsSciences->list_competitions([
+            'Token'     => $this->token(),
+            'KingdomId' => $kingdom_id,
+        ])));
     }
 
     // Route: ArtsSciencesAjax/future_events/{kingdom_id}
@@ -147,6 +163,30 @@ class Controller_ArtsSciencesAjax extends Controller
             'Token'     => $this->token(),
             'KingdomId' => $kingdom_id,
         ])));
+    }
+
+    // Route: ArtsSciencesAjax/my_entries
+    // Returns the caller's OWN recent A&S entries (EntryId, CompetitionName, CompetitionDate,
+    // Title, TaxonomyName, Status, Shareable). GET read; the lib scopes rows to the caller via
+    // Token, so no competition/kingdom auth gate is needed here.
+    public function my_entries($p = null)
+    {
+        $this->require_login();
+        $this->respond($this->unwrap($this->ArtsSciences->get_my_entries($this->token())));
+    }
+
+    // Route: ArtsSciencesAjax/my_entry_results/{entry_id}
+    // Opt-in results view for one of the caller's OWN entries. The lib enforces ownership +
+    // closed status + the competition's share_with_entrants setting and keeps judge identity
+    // blind; the action just authenticates and forwards.
+    public function my_entry_results($p = null)
+    {
+        $this->require_login();
+        $entry_id = (int) preg_replace('/[^0-9]/', '', $p ?? '');
+        if (!valid_id($entry_id)) {
+            $this->respond(['status' => 1, 'error' => 'Invalid entry id']);
+        }
+        $this->respond($this->unwrap($this->ArtsSciences->get_my_entry_results($this->token(), $entry_id)));
     }
 
     // Route: ArtsSciencesAjax/comp/{competition_id}/{action}
@@ -287,6 +327,16 @@ class Controller_ArtsSciencesAjax extends Controller
                 // Entries
                 return;
             case 'entry.list':
+                // F20: optional pagination — forward Offset/Limit when present; the lib honors
+                // them and falls back to its default window when absent (unchanged behavior).
+                foreach (['Offset','Limit'] as $k) {
+                    if (array_key_exists($k, $_GET)) {
+                        $req[$k] = $_GET[$k];
+                    }
+                    if (array_key_exists($k, $_POST)) {
+                        $req[$k] = $_POST[$k];
+                    }
+                }
                 $this->respond($this->unwrap($this->ArtsSciences->get_entries($req)));
                 return;
             case 'entry.save':
@@ -304,12 +354,14 @@ class Controller_ArtsSciencesAjax extends Controller
                 // Scores
                 return;
             case 'score.list':
-                foreach (['EntryId','JudgeId'] as $k) {
+                // F20: Offset/Limit joined to the existing EntryId/JudgeId filters — forwarded
+                // to the lib GetScores when present, otherwise its default window (unchanged).
+                foreach (['EntryId','JudgeId','Offset','Limit'] as $k) {
                     if (array_key_exists($k, $_GET)) {
                         $req[$k] = $_GET[$k];
                     }
                 }
-                foreach (['EntryId','JudgeId'] as $k) {
+                foreach (['EntryId','JudgeId','Offset','Limit'] as $k) {
                     if (array_key_exists($k, $_POST)) {
                         $req[$k] = $_POST[$k];
                     }
@@ -407,7 +459,7 @@ class Controller_ArtsSciencesAjax extends Controller
 
     // Player search with proximity ranking: rows that match the competition's park
     // surface first, then the kingdom, then everyone else. Always returns up to 15 results.
-    // URL: ArtsSciencesAjax/playersearch/{kingdom_id}?q=…&park_id=…
+    // URL: index.php?Route=ArtsSciencesAjax/playersearch/{kingdom_id}&q=…&park_id=…
     public function playersearch($p = null)
     {
         $this->require_login();

@@ -28,6 +28,7 @@ Attach both to the per-entry result object (built ~2146–2169), as new keys:
 
 - `JudgeScores`: `{ judge_id (int) => weighted_total (float, rounded to 2) }` — one entry per judge who scored this entry. Judges with no score for the entry are simply absent from the map.
 - `JudgeCriterionScores`: `{ judge_id => { criterion_id => raw_score } }` — powers the cell tooltip. Absent judges/criteria = not scored.
+- `DroppedJudgeIds`: `[ judge_id, ... ]` — judges whose total was dropped from the final aggregate by `drop_high` / `drop_low` / `drop_both` (empty for `average`/`sum`/`median`). Determined authoritatively where the drop slice is computed (~2085–2108), so the frontend never re-derives min/max.
 
 Both maps are keyed by `judge_id`. No identity strings are embedded — labeling is joined client-side against the already-anonymity-redacted `GetJudges` output (`Persona` is `Judge #<id>` for anonymous non-admin viewers, real persona otherwise). This keeps the one place anonymity is enforced (the model) authoritative; the new keys carry only numbers.
 
@@ -48,7 +49,7 @@ A new `<div id="as-results-grid">` (hidden by default) as a sibling of the leade
 **Columns:**
 1. `Entry` — Title (or `#EntryNumber` when `HIDE_PERSONA`).
 2. `Participant` — Persona (or `Artisan #id` / entry number when redacted, reusing the leaderboard's existing redaction).
-3. One column **per judge**, in `JUDGES` order. Header = positional chip **`J1 … Jn`** (satisfies "judge # at the top"), with the judge's persona as a smaller subtitle line **unless** `HIDE_PERSONA` is set (anonymous + non-admin judge viewer), in which case the subtitle is omitted and only `J#` shows. A hover tooltip on the header maps `J#` → persona when allowed.
+3. One column **per judge**, in `JUDGES` order. Header = positional chip **`J1 … Jn`** only (satisfies "judge # at the top") — judge names are **not** shown inline, to keep the judge columns narrow so the Entry/Participant name columns get more room. The judge persona is available on **hover via the header tooltip**, and only when `HIDE_PERSONA` is not set (anonymous + non-admin judge viewer sees `J#` with no persona anywhere).
 4. `Score` — the entry's `Aggregate` (the leaderboard's Final Score), formatted to 2 decimals; `—` when unscored. A small caption under the section or in the header shows the active aggregation method: `Avg`, `Sum`, `Median`, `Avg · drop high`, `Avg · drop low`, `Avg · drop high+low`.
 
 **Cell states** (drives readability of a mid-judging competition):
@@ -63,7 +64,7 @@ A new `<div id="as-results-grid">` (hidden by default) as a sibling of the leade
 ### 3. Styling
 - Reuse `as-` prefix and the theme tokens (`--ork-card-bg`, `--ork-border`, `--ork-text`, `--ork-text-muted`, `--ork-bg-secondary`, `--ork-input-bg`) with light fallbacks.
 - Dark mode via `html[data-theme="dark"] .as-grid …` overrides, matching the existing pattern in the template's `<style>` block (~88–310).
-- Judge columns are narrow and numeric (right-aligned, tabular). Sticky first two columns (`Entry`, `Participant`) and a horizontal scroll container (`overflow-x: auto`) so many judges don't break the page layout — consistent with the project rule that wide content scrolls inside its own container.
+- Judge columns are narrow and numeric (right-aligned, tabular). Sticky first two columns (`Entry` 250px, `Participant` 170px — sized so entry titles and participant names fit) and a horizontal scroll container (`overflow-x: auto`) so many judges don't break the page layout — consistent with the project rule that wide content scrolls inside its own container.
 - Sticky header row for vertical scroll.
 
 ## Data flow (summary)
@@ -83,7 +84,7 @@ ComputeResults()  ──►  ArtsSciencesAjax::comp('results')  ──►  loadR
 
 - **No judges / no entries:** grid renders header with no judge columns / empty-state row; no error.
 - **Judge removed after scoring:** a `judge_id` present in `JudgeScores` but absent from the current `JUDGES` list — render it as a trailing "(former judge)" column keyed by id so scores are not silently dropped; label `J?`. (Rare; keeps totals honest.)
-- **Aggregation with drops:** the Score column shows the final `Aggregate` (post-drop). Individual judge cells always show that judge's raw total, even if dropped by `drop_high/low/both` — a dropped cell is annotated with a subtle strike/marker via `EffectiveCount` context if feasible; otherwise cells are shown plain and only the Score reflects drops. (v1: plain cells; drop indication is a nice-to-have, not required.)
+- **Aggregation with drops:** the Score column shows the final `Aggregate` (post-drop). Individual judge cells always show that judge's raw total, even when dropped by `drop_high/low/both`. A dropped cell (judge id ∈ `DroppedJudgeIds` for that entry) is rendered in a **muted gray** — de-emphasized from the normal cell text in both themes (lighter than the near-black default in light mode; dimmer than the near-white default in dark mode), via a `.as-grid-cell-dropped` class using `--ork-text-muted`. No strikethrough. This makes it visible that the value did not count toward the Score while keeping the number readable.
 - **Anonymous judging + judge viewer:** columns are `J1…Jn` positional only, no persona subtitle/tooltip; participant identity uses the existing redaction. Admins always see real personas.
 
 ## Testing / verification

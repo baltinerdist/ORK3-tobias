@@ -44,6 +44,11 @@ class YapoMysql extends YapoDb
                 return $this->DBH->commit();
             }
             return false;
+        } catch (\Throwable $e) {
+            // Log the commit failure so a production failure leaves a trace,
+            // then preserve the original propagation contract by re-throwing.
+            error_log('YapoMysql::Commit() failed: ' . $e->getMessage());
+            throw $e;
         } finally {
             $this->DBH->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_WARNING);
         }
