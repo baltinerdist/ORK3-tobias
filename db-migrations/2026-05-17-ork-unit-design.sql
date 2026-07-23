@@ -6,7 +6,14 @@
 -- color_accent / color_secondary, hero_overlay, name_font, milestone_config (JSON).
 --
 -- Engine note: ork_unit is MyISAM in legacy state. Convert to InnoDB first so
--- the FK below succeeds. Idempotent: no-op when already InnoDB.
+-- the FK below succeeds (matching the InnoDB conversion already done on
+-- ork_mundane for the player design tables). No FULLTEXT indexes exist on
+-- ork_unit (verified), so nothing is lost in the conversion.
+--
+-- OPERATIONAL WARNING: ALTER TABLE ... ENGINE=InnoDB is a full-table rebuild
+-- that holds an exclusive lock for its duration. ork_unit is a core table read
+-- on nearly every page, so this should be SCHEDULED DURING A LOW-TRAFFIC /
+-- MAINTENANCE WINDOW. Idempotent: no-op when already InnoDB.
 
 SET @engine := (
     SELECT ENGINE FROM information_schema.TABLES
@@ -21,8 +28,8 @@ DEALLOCATE PREPARE stmt;
 
 CREATE TABLE IF NOT EXISTS ork_unit_design (
     unit_id           int(11)            NOT NULL PRIMARY KEY,
-    about_text        text               NULL,
-    our_history       text               NULL,
+    about_text        mediumtext         NULL,
+    our_history       mediumtext         NULL,
     color_primary     varchar(7)         NULL,
     color_accent      varchar(7)         NULL,
     color_secondary   varchar(7)         NULL,

@@ -32,8 +32,8 @@ DEALLOCATE PREPARE stmt;
 
 CREATE TABLE IF NOT EXISTS ork_park_design (
     park_id           int(11)            NOT NULL PRIMARY KEY,
-    about_text        text               NULL,
-    our_history       text               NULL,
+    about_text        mediumtext         NULL,
+    our_history       mediumtext         NULL,
     color_primary     varchar(7)         NULL,
     color_accent      varchar(7)         NULL,
     color_secondary   varchar(7)         NULL,
