@@ -33,9 +33,9 @@ class Model_Reports extends Model
     {
         return $this->TournamentReport->GetFighterLeaderboard($request);
     }
-    public function tournament_award_candidates($request)
+    public function tournament_award_candidates($request, $precomputedBoard = null)
     {
-        return $this->TournamentReport->GetTournamentAwardCandidates($request);
+        return $this->TournamentReport->GetTournamentAwardCandidates($request, $precomputedBoard);
     }
     public function tournament_park_comparison($request)
     {

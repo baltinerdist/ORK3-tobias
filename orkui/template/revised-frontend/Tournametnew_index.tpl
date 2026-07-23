@@ -121,8 +121,11 @@ $heroStyles = array_keys($heroStyles);
 
 /* In-product tooltips (project convention: no native data-tip="" tooltips) */
 [data-tip] { position:relative; cursor:help; }
-[data-tip]::after { content:attr(data-tip); position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%); background:#2d3748; color:#fff; font-size:11px; padding:4px 10px; border-radius:4px; white-space:nowrap; pointer-events:none; opacity:0; transition:opacity 0.05s; z-index:500; }
+[data-tip]::after { content:attr(data-tip); position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%); background:#2d3748; color:#fff; font-size:11px; padding:4px 10px; border-radius:4px; white-space:normal; width:max-content; max-width:240px; pointer-events:none; opacity:0; transition:opacity 0.05s; z-index:500; }
 [data-tip]::before { content:''; position:absolute; bottom:calc(100% + 2px); left:50%; transform:translateX(-50%); border:4px solid transparent; border-top-color:#2d3748; pointer-events:none; opacity:0; transition:opacity 0.05s; z-index:500; }
+/* Right-edge action buttons: anchor the bubble to the right so long tips don't clip past the viewport. */
+[data-tip][data-tip-right]::after { left:auto; right:0; transform:none; }
+[data-tip][data-tip-right]::before { left:auto; right:8px; transform:none; }
 [data-tip]:hover::after, [data-tip]:hover::before { opacity:1; }
 html[data-theme="dark"] [data-tip]::after { background:#1a202c; color:#e2e8f0; }
 html[data-theme="dark"] [data-tip]::before { border-top-color:#1a202c; }
@@ -2237,7 +2240,7 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 		<div class="tn-stat-value" id="tn-stat-participants"><?= $totalParticipants ?></div>
 		<div class="tn-stat-label">Participant<?= $totalParticipants != 1 ? 's' : '' ?></div>
 	</div>
-	<div class="tn-stat-card">
+	<div class="tn-stat-card<?= $totalMatches > 0 ? ' tn-stat-card-link' : '' ?>"<?= $totalMatches > 0 ? ' onclick="tnActivateTab(\'bracketviz\')" role="button" tabindex="0" data-tn-keyclick aria-label="View matches"' : '' ?>>
 		<div class="tn-stat-icon"><i class="fas fa-khanda"></i></div>
 		<div class="tn-stat-value"><?= $totalMatches ?></div>
 		<div class="tn-stat-label">Match<?= $totalMatches != 1 ? 'es' : '' ?></div>
@@ -2462,7 +2465,7 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 								<button class="tn-btn tn-btn-outline tn-btn-sm" onclick="tnOpenEditBracketModal(<?= $bid ?>, <?= htmlspecialchars(json_encode(['style'=>$b['Style'],'styleNote'=>$b['StyleNote'],'method'=>$b['Method'],'rings'=>(int)$b['Rings'],'participants'=>$b['Participants'],'seeding'=>$b['Seeding'],'durationMinutes'=>(int)($b['DurationMinutes']??0),'bestOf'=>(int)($b['BestOf']??1),'pointRounds'=>(int)($b['PointRounds']??3),'pointMode'=>($b['PointMode']??'fixed'),'pointScale'=>($b['PointScale']??'5,3,1,0')], JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT), ENT_QUOTES) ?>)">
 									<i class="fas fa-pencil-alt"></i> Edit
 								</button>
-								<button class="tn-btn tn-btn-outline tn-btn-sm" onclick="tnCopyBracket(<?= $bid ?>, <?= $tid ?>)" data-tip="Duplicate this bracket with its participants">
+								<button class="tn-btn tn-btn-outline tn-btn-sm" onclick="tnCopyBracket(<?= $bid ?>, <?= $tid ?>)" data-tip="Duplicate this bracket with its participants" data-tip-right>
 									<i class="fas fa-copy"></i> Copy
 								</button>
 								<?php if (($b['Participants'] ?? 'individual') === 'team'): ?>
@@ -2900,6 +2903,21 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 
 			<!-- Standings Tab -->
 			<div class="tn-tab-panel" id="tn-tab-standings" role="tabpanel" aria-labelledby="tn-tabhdr-standings" tabindex="0" style="display:none">
+<?php
+			// #58: a workbook is only meaningful once there is standings data to export.
+			// With no completed/finalized bracket AND no recorded matches the export is an
+			// empty file, so gate the link the same way the leaderboard empty-states gate.
+			$hasStandingsData = ($totalMatches > 0);
+			if (!$hasStandingsData && !empty($bracketData)) {
+				foreach ($bracketData as $__exBid => $__exBd) {
+					$__exSt = $__exBd['Bracket']['Status'] ?? '';
+					if (in_array($__exSt, ['complete', 'finalized'], true) || !empty($standingsData[$__exBid])) {
+						$hasStandingsData = true;
+						break;
+					}
+				}
+			}
+?>
 				<!-- Pills row + gear icon -->
 				<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px">
 					<div class="tn-bk-pills" id="tn-standings-pills" style="flex:1;flex-wrap:wrap">
@@ -2907,13 +2925,20 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 							<i class="fas fa-trophy" style="margin-right:5px;color:#d69e2e"></i>Leaderboard
 						</button>
 					</div>
-					<button class="tn-btn tn-btn-ghost tn-btn-sm" id="tn-standings-refresh" onclick="tnRefreshStandings(this)" data-tip="Recalculate standings from the latest results" style="padding:6px 10px;flex-shrink:0">
+					<button class="tn-btn tn-btn-ghost tn-btn-sm" id="tn-standings-refresh" onclick="tnRefreshStandings(this)" data-tip="Recalculate standings from the latest results" data-tip-right style="padding:6px 10px;flex-shrink:0">
 						<i class="fas fa-sync-alt"></i>
 					</button>
-					<a class="tn-btn tn-btn-ghost tn-btn-sm" href="<?= UIR ?>Tournament/export/<?= (int)$tournament['TournamentId'] ?>" data-tip="Download an .xlsx workbook of every bracket" style="flex-shrink:0;display:inline-flex;align-items:center;gap:6px;text-decoration:none">
+<?php if ($hasStandingsData): ?>
+					<a class="tn-btn tn-btn-ghost tn-btn-sm" href="<?= UIR ?>Tournament/export/<?= (int)$tournament['TournamentId'] ?>" data-tip="Download an .xlsx workbook of every bracket" data-tip-right style="flex-shrink:0;display:inline-flex;align-items:center;gap:6px;text-decoration:none">
 						<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
 						Export Results
 					</a>
+<?php else: ?>
+					<span class="tn-btn tn-btn-ghost tn-btn-sm" aria-disabled="true" data-tip="Nothing to export yet — record match results or complete a bracket first" data-tip-right style="flex-shrink:0;display:inline-flex;align-items:center;gap:6px;opacity:.5;cursor:not-allowed">
+						<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+						Export Results
+					</span>
+<?php endif; ?>
 					<?php if ($canManage): ?>
 					<button class="tn-btn tn-btn-ghost tn-btn-sm" onclick="tnOpenConfigStandingsModal()" data-tip="Configure standings points" style="padding:6px 10px;flex-shrink:0">
 						<i class="fas fa-cog"></i>
@@ -3748,7 +3773,7 @@ html[data-theme="dark"] .tn-mobile .tn-imd-empty { color:#718096; }
 					<option value="">— select —</option>
 					<option value="1-wins" id="tn-rr-opt-p1wins">— wins</option>
 					<option value="2-wins" id="tn-rr-opt-p2wins">— wins</option>
-					<option value="tie">Tie</option>
+					<option value="tie" id="tn-rr-opt-tie">Tie</option>
 					<option value="1-forfeits" id="tn-rr-opt-p1ff">— forfeits</option>
 					<option value="2-forfeits" id="tn-rr-opt-p2ff">— forfeits</option>
 					<option value="1-is-disqualified" id="tn-rr-opt-p1dq">— disqualified</option>
@@ -4639,6 +4664,10 @@ function tnSetFocus(on) {
 	root.classList.toggle('tn-focus', on);
 	var li = document.querySelector('.tn-focus-toggle i');
 	if (li) li.className = on ? 'fas fa-compress' : 'fas fa-expand';
+	// Focus mode is the full-screen running view — it must land on the bracket
+	// panel, otherwise entering Focus from another tab hides everything but shows
+	// the wrong (non-bracket) panel and no bracket at all.
+	if (on && typeof tnActivateTab === 'function') tnActivateTab('bracketviz');
 	if (on) sessionStorage.setItem('tnFocusMode', '1');
 	else    sessionStorage.removeItem('tnFocusMode');
 }
@@ -4656,6 +4685,10 @@ function tnDeleteBracket(bid, tid) {
 		onConfirm: function() {
 			var fd = new FormData();
 			fd.append('BracketId', bid);
+			var actionId = window.tnNewActionId ? window.tnNewActionId() : '';
+			if (window.tnRegisterAction) window.tnRegisterAction(actionId);
+			if (window.tnCollabNudge) window.tnCollabNudge();
+			fd.append('ActionId', actionId);
 			fetch(TnConfig.uir + 'TournamentAjax/tournament/' + tid + '/deletebracket', { method:'POST', body:fd })
 				.then(function(r) { return r.json(); })
 				.then(function(d) {
@@ -4681,6 +4714,10 @@ function tnCopyBracket(bid, tid) {
 		onConfirm: function() {
 			var fd = new FormData();
 			fd.append('BracketId', bid);
+			var actionId = window.tnNewActionId ? window.tnNewActionId() : '';
+			if (window.tnRegisterAction) window.tnRegisterAction(actionId);
+			if (window.tnCollabNudge) window.tnCollabNudge();
+			fd.append('ActionId', actionId);
 			fetch(TnConfig.uir + 'TournamentAjax/tournament/' + tid + '/copybracket', { method:'POST', body:fd })
 				.then(function(r) { return r.json(); })
 				.then(function(d) {
@@ -5401,6 +5438,9 @@ window.tnOpenAsSheet = function(overlayId, opts) {
 			if (!style || !method) { tnShowFeedback('tn-addbracket-feedback', 'Style and format are required.', false); return; }
 
 			btn.disabled = true;
+			var actionId = window.tnNewActionId ? window.tnNewActionId() : '';
+			if (window.tnRegisterAction) window.tnRegisterAction(actionId);
+			if (window.tnCollabNudge) window.tnCollabNudge();
 			var fd = new FormData();
 			fd.append('Style',        style);
 			fd.append('Method',       method);
@@ -5410,6 +5450,7 @@ window.tnOpenAsSheet = function(overlayId, opts) {
 			fd.append('StyleNote',    document.getElementById('tn-addbracket-stylenote').value);
 			fd.append('DurationMinutes', document.getElementById('tn-addbracket-duration').value || 0);
 			fd.append('BestOf',       document.getElementById('tn-addbracket-bestof').value || 1);
+			fd.append('ActionId',     actionId);
 				if (window.tnAddBracketIsPoints && window.tnAddBracketIsPoints()) {
 					window.tnAddBracketAppendPointsFields(fd);
 				}
@@ -5627,6 +5668,9 @@ window.tnOpenAsSheet = function(overlayId, opts) {
 			if (!style || !method) { tnShowFeedback('tn-editbracket-feedback', 'Style and format are required.', false); return; }
 
 			btn.disabled = true;
+			var actionId = window.tnNewActionId ? window.tnNewActionId() : '';
+			if (window.tnRegisterAction) window.tnRegisterAction(actionId);
+			if (window.tnCollabNudge) window.tnCollabNudge();
 			var fd = new FormData();
 			fd.append('BracketId',    document.getElementById('tn-editbracket-bid').value);
 			fd.append('Style',        style);
@@ -5637,6 +5681,7 @@ window.tnOpenAsSheet = function(overlayId, opts) {
 			fd.append('StyleNote',    document.getElementById('tn-editbracket-stylenote').value);
 			fd.append('DurationMinutes', document.getElementById('tn-editbracket-duration').value || 0);
 			fd.append('BestOf',       document.getElementById('tn-editbracket-bestof').value || 1);
+			fd.append('ActionId',     actionId);
 				if (window.tnEditBracketIsPoints && window.tnEditBracketIsPoints()) {
 					window.tnEditBracketAppendPointsFields(fd);
 				}
@@ -9175,7 +9220,14 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 				TnConfig.bracketData[bracketId].Participants = pData.participants || [];
 			}
 			tnRenderBracketViz(bracketId);
-		}).catch(function(err){ console.warn('[tn] refresh failed', err); tnRenderBracketViz(bracketId); if (window.tnShowStaleWarning) tnShowStaleWarning(); });
+		}).catch(function(err){
+			console.warn('[tn] refresh failed', err);
+			// #52: remember the load failed so the renderer shows an explicit error state
+			// instead of masquerading as an empty bracket (enabled Generate + no wipe warning).
+			if (TnConfig.bracketData[bracketId]) TnConfig.bracketData[bracketId]._matchesLoadError = true;
+			tnRenderBracketViz(bracketId);
+			if (window.tnShowStaleWarning) tnShowStaleWarning();
+		});
 	}
 
 	window.tnRenderBracketViz = function(bracketId) {
@@ -9194,6 +9246,24 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 			bd._matchesLoaded = true;
 			container.innerHTML = '<div class="tn-bv-empty">Loading bracket…</div>';
 			tnRefreshAndRender(bracketId);
+			return;
+		}
+
+		// #52: matches never loaded (fetch failed). Show an explicit, retryable error
+		// state rather than the empty "No matches yet — Generate" state, which would
+		// offer an enabled Generate and hide the destructive-regen warning.
+		if (bd.Matches === undefined && bd._matchesLoadError) {
+			container.innerHTML = '';
+			var errBox = document.createElement('div');
+			errBox.className = 'tn-bv-empty';
+			errBox.innerHTML = 'Couldn\'t load matches. ';
+			var retryBtn = document.createElement('button');
+			retryBtn.type = 'button';
+			retryBtn.className = 'tn-btn tn-btn-outline tn-btn-sm';
+			retryBtn.innerHTML = '<i class="fas fa-redo"></i> Retry';
+			retryBtn.onclick = function() { bd._matchesLoaded = false; bd._matchesLoadError = false; tnRenderBracketViz(bracketId); };
+			errBox.appendChild(retryBtn);
+			container.appendChild(errBox);
 			return;
 		}
 
@@ -9519,7 +9589,59 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 			var gfMatches = matches.filter(function(m) { return m.BracketSide === 'grand-final'; });
 			var gfR1 = gfMatches.filter(function(m) { return parseInt(m.Round) === 1; });
 			var gfR2 = gfMatches.filter(function(m) { return parseInt(m.Round) > 1; });
-			if (gfR1.length === 1 && gfR1[0].Result === '2-wins' && gfR2.length === 0 && bracketStatus !== 'finalized') {
+			var gfResetUnresolved = gfR2.filter(function(m) { return !m.Result || m.Result === ''; });
+			if (gfR1.length === 1 && gfR1[0].Result === '2-wins' && bracketStatus !== 'finalized' && gfResetUnresolved.length >= 1) {
+				// #3: GF2 now auto-creates, so an unresolved Grand-Final reset match
+				// already exists. Offer to play it out (existing bracket entry) OR waive
+				// the rematch and finalize on the GF1 result (WaiveReset=1 per contract).
+				var tid = TnConfig.tournamentId;
+				var _gfRefresh = function() {
+					Promise.all([
+						fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bracketId + '/matches').then(function(r) { return r.json(); }),
+						fetch(TnConfig.uir + 'TournamentAjax/tournament/' + tid + '/brackets').then(function(r) { return r.json(); })
+					]).then(function(results) {
+						var mData = results[0], bData = results[1];
+						if (mData.status === 0 && TnConfig.bracketData[bracketId]) TnConfig.bracketData[bracketId].Matches = mData.matches;
+						if (bData.status === 0 && bData.brackets && TnConfig.bracketData[bracketId]) {
+							var br = bData.brackets.find(function(b) { return parseInt(b.BracketId) === parseInt(bracketId); });
+							if (br) TnConfig.bracketData[bracketId].Bracket = br;
+						}
+						tnRenderBracketViz(bracketId);
+					}).catch(function(err) { window.tnToast('Refresh error: ' + err); });
+				};
+				// Waiving finalizes on the GF1 result, so the GF1 WINNER (the Second-Chance
+				// bracket champion, who took game 1) is crowned — NOT the winners-bracket
+				// champion who lost GF1. Name the actual winner so the reeve isn't misled.
+				var _winId = (gfR1[0].Result === '2-wins') ? parseInt(gfR1[0].Participant2Id) : parseInt(gfR1[0].Participant1Id);
+				var _win = pMap[_winId] || null;
+				var _winName = _win ? (_win.Alias || _win.Persona || 'the Second Chance champion') : 'the Second Chance champion';
+				var doWaiveReset = function() {
+					var fd = new FormData();
+					fd.append('BracketId', bracketId);
+					fd.append('WaiveReset', '1');
+					fetch(TnConfig.uir + 'TournamentAjax/tournament/' + tid + '/completebracket', { method:'POST', body:fd })
+						.then(function(r) { return r.json(); })
+						.then(function(d) {
+							if (d.status === 0) { _gfRefresh(); }
+							else { window.tnToast('Error: ' + (d.error || 'Unknown error')); }
+						}).catch(function(err) { window.tnToast('Request failed: ' + err); });
+				};
+				var rbanner = document.createElement('div');
+				rbanner.className = 'tn-gf-confirm-banner';
+				rbanner.innerHTML =
+					'<div class="tn-gf-confirm-text"><i class="fas fa-exclamation-circle"></i> The Second Chance winner took the Grand Final — a reset match will decide the champion. Play it out, or waive the rematch.</div>' +
+					'<div class="tn-gf-confirm-btns">' +
+						'<button class="tn-gf-confirm-yes"><i class="fas fa-play-circle"></i> Play reset match</button>' +
+						'<button class="tn-gf-confirm-no"><i class="fas fa-flag-checkered"></i> Waive rematch — declare ' + tnEscHtml(_winName) + ' the winner</button>' +
+					'</div>';
+				wrap.insertBefore(rbanner, wrap.firstChild);
+				rbanner.querySelector('.tn-gf-confirm-yes').onclick = function() {
+					if (rbanner.parentNode) rbanner.parentNode.removeChild(rbanner);
+					var gfCard = wrap.querySelector('[data-matchid="' + gfResetUnresolved[0].MatchId + '"]');
+					if (gfCard && gfCard.scrollIntoView) gfCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+				};
+				rbanner.querySelector('.tn-gf-confirm-no').onclick = doWaiveReset;
+			} else if (gfR1.length === 1 && gfR1[0].Result === '2-wins' && gfR2.length === 0 && bracketStatus !== 'finalized') {
 				var tid = TnConfig.tournamentId;
 
 				var doConfirmYes = function() {
@@ -9819,6 +9941,9 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 			return (p1 && (d1 === p1 || d2 === p1)) || (p2 && (d1 === p2 || d2 === p2));
 		});
 	}
+	// #35: expose the resettability test so the shared "undo" result toast (defined
+	// near tnToast, outside this IIFE) can decide whether to offer an Undo affordance.
+	window.tnIsMatchResettable = function(m) { return isMatchResettable(m, (m && m.BracketId && TnConfig.bracketData[m.BracketId] && TnConfig.bracketData[m.BracketId].Matches) || []); };
 
 	// Should the 'Play-In' first-round option be offered for this bracket?
 	// True only for single/double elim where the field is not a power of two AND
@@ -10138,17 +10263,26 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 				btn2.className = 'tn-qr-btn tn-qr-btn-p2';
 				btn2.textContent = p2Short + ' Wins';
 				btn2.onclick = function(ev) { tnSubmitQuickResult(m.MatchId, '2-wins', ev); };
-				var btnTie = document.createElement('button');
-				btnTie.className = 'tn-qr-btn tn-qr-btn-tie';
-				btnTie.textContent = 'Tie';
-				btnTie.onclick = function(ev) { tnSubmitQuickResult(m.MatchId, 'tie', ev); };
+				// Only offer Tie where it doesn't strand advancement (round-robin/swiss/points);
+				// in single/double/ironman elimination a tie leaves no winner to advance.
+				var _qrSel = document.getElementById('tn-bv-bracket-select');
+				var _qrBid = _qrSel ? parseInt(_qrSel.value) : 0;
+				var _qrMethod = (_qrBid && TnConfig.bracketData[_qrBid] && TnConfig.bracketData[_qrBid].Bracket)
+					? (TnConfig.bracketData[_qrBid].Bracket.Method || '') : '';
+				var _qrAllowTie = !window.tnMethodAllowsTie || window.tnMethodAllowsTie(_qrMethod);
 				var moreLink = document.createElement('a');
 				moreLink.className = 'tn-qr-more';
 				moreLink.textContent = 'More Options';
 				moreLink.onclick = function(ev) { ev.stopPropagation(); tnOpenRecordResult(m, p1, p2); };
 				qrBar.appendChild(btn1);
 				qrBar.appendChild(btn2);
-				qrBar.appendChild(btnTie);
+				if (_qrAllowTie) {
+					var btnTie = document.createElement('button');
+					btnTie.className = 'tn-qr-btn tn-qr-btn-tie';
+					btnTie.textContent = 'Tie';
+					btnTie.onclick = function(ev) { tnSubmitQuickResult(m.MatchId, 'tie', ev); };
+					qrBar.appendChild(btnTie);
+				}
 				qrBar.appendChild(moreLink);
 				box.appendChild(qrBar);
 				box.classList.add('tn-qr-expanded');
@@ -10184,10 +10318,19 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 					resetBtn.disabled = true;
 					var tid = TnConfig.tournamentId;
 					var url = TnConfig.uir + 'TournamentAjax/match/' + m.MatchId + '/' + tid + '/reset';
-					fetch(url, { method: 'POST' })
+					// #29: tag the reset so the reeve's own undo echoes back as a
+					// recognized own-action (no spurious "someone reset" toast) and keep
+					// our collab cursor ahead of the returned seq.
+					var actionId = window.tnNewActionId ? window.tnNewActionId() : '';
+					if (window.tnRegisterAction) window.tnRegisterAction(actionId);
+					if (window.tnCollabNudge) window.tnCollabNudge();
+					var rfd = new FormData();
+					rfd.append('ActionId', actionId);
+					fetch(url, { method: 'POST', body: rfd })
 						.then(function(res) { return res.json(); })
 						.then(function(d) {
 							if (d && d.status === 0) {
+								if (typeof d.seq === 'number' && window.tnCollabBumpSeq) window.tnCollabBumpSeq(d.seq);
 								var sel = document.getElementById('tn-bv-bracket-select');
 								var bid = sel ? parseInt(sel.value) : 0;
 								if (bid && TnConfig.bracketData[bid]) {
@@ -10817,6 +10960,10 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 									statusEl.textContent = (err && err.name === 'AbortError') ? 'Timed out — try again' : 'Network error';
 									inputEl.disabled = false;
 									inputEl.focus();
+									// #28: a 9s abort can fire AFTER the server committed. Drop our
+									// own-action id so the later echo is treated as new and the bracket
+									// refetches rather than silently skipping our own win.
+									if (window.tnUnregisterAction) window.tnUnregisterAction(actionId);
 								})
 								.finally(function(){ clearTimeout(_to); });
 						};
@@ -11832,7 +11979,14 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 		if (!sel || p1 + p2 === 0) return;
 		if (p1 > p2)      sel.value = '1-wins';
 		else if (p2 > p1) sel.value = '2-wins';
-		else              sel.value = 'tie';
+		else {
+			// Even pips: only offer a tie in formats that can carry one. In an
+			// elimination bracket a tie strands the match, so force a decider (#13).
+			var _ov = document.getElementById(OVERLAY);
+			var _m  = _ov ? _ov.getAttribute('data-method') : '';
+			var _allowTie = window.tnMethodAllowsTie ? window.tnMethodAllowsTie(_m) : (_m === 'round-robin' || _m === 'swiss' || _m === 'points');
+			sel.value = _allowTie ? 'tie' : '';
+		}
 	}
 
 	// ---- Pip click handler ----
@@ -11853,6 +12007,19 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 	window.tnOpenRecordResult = function(match, p1, p2) {
 		if (!TnConfig.canRecordResult) return;
 		bouts = [null, null, null, null, null, null, null, null, null];
+		// #53: editing an already-recorded match — preload the stored bouts and the
+		// recorded result instead of opening a blank form that invites an overwrite.
+		var _isEdit = !!(match && match.Result && match.Result !== '');
+		if (_isEdit && match.Bouts) {
+			try {
+				var _stored = JSON.parse(match.Bouts);
+				if (Array.isArray(_stored)) {
+					for (var _si = 0; _si < _stored.length && _si < 9; _si++) {
+						bouts[_si] = (_stored[_si] === '1' || _stored[_si] === '2') ? _stored[_si] : null;
+					}
+				}
+			} catch (e) {}
+		}
 		p1Name = p1 ? (p1.Alias || p1.Persona || '—') : '—';
 		p2Name = p2 ? (p2.Alias || p2.Persona || '—') : '—';
 		document.getElementById('tn-recordresult-match-id').value = match.MatchId;
@@ -11883,10 +12050,20 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 		// layer (task 13) can read it for its remaining-pips math.
 		var _ov = document.getElementById(OVERLAY);
 		if (_ov) _ov.setAttribute('data-best-of', String(_bestOf));
-		document.getElementById('tn-rr-round-info').textContent = _method === 'ironman'
+		// #13: stash the bracket method so the pip/result logic can suppress ties in
+		// elimination formats, and hide the Tie option unless the format allows one.
+		if (_ov) _ov.setAttribute('data-method', _method || '');
+		var _allowTie = window.tnMethodAllowsTie ? window.tnMethodAllowsTie(_method) : (_method === 'round-robin' || _method === 'swiss' || _method === 'points');
+		var _tieOpt = document.getElementById('tn-rr-opt-tie');
+		if (_tieOpt) _tieOpt.style.display = _allowTie ? '' : 'none';
+		document.getElementById('tn-rr-round-info').textContent = (_method === 'ironman'
 			? 'Fight #' + (match.Match || '')
-			: 'Round ' + match.Round + ', Match ' + (match.Match || '');
-		document.getElementById('tn-rr-result').value = '';
+			: 'Round ' + match.Round + ', Match ' + (match.Match || ''))
+			+ (_isEdit ? ' · Editing recorded result' : '');
+		// #53: preload the recorded result for an edit (renderPips re-derives it from
+		// the loaded pips for pip-based results; forfeit/DQ results have no pips so the
+		// preset value survives).
+		document.getElementById('tn-rr-result').value = _isEdit ? (match.Result || '') : '';
 		document.getElementById('tn-rr-bout-score').textContent = '';
 		renderPips();
 		tnHideFeedback('tn-recordresult-feedback');
@@ -11955,6 +12132,8 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 										if (br) TnConfig.bracketData[bid].Bracket = br;
 									}
 									tnRenderBracketViz(bid);
+									// #35: offer a tap-to-undo now that downstream state is fresh.
+									if (window.tnResultRecordedToast) window.tnResultRecordedToast(matchId, bid);
 								}).catch(function(err) { console.warn('[tn] refresh failed', err); if (window.tnShowStaleWarning) tnShowStaleWarning(); });
 							}
 						}, 400);
@@ -11962,7 +12141,14 @@ window.tnMobileBracketMore = function(bracketId, tournamentId, isTeam, editData)
 						tnShowFeedback('tn-recordresult-feedback', (d && d.error) ? d.error : 'Failed to save result.', false);
 					}
 				})
-				.catch(function() { btn.disabled = false; tnShowFeedback('tn-recordresult-feedback', 'Request failed.', false); });
+				.catch(function() {
+					btn.disabled = false;
+					// #28: the write may have committed server-side before we timed out/failed.
+					// Drop our own-action registration so the echo is treated as new and the
+					// collab loop refetches, keeping the initiator's screen in sync.
+					if (window.tnUnregisterAction) window.tnUnregisterAction(actionId);
+					tnShowFeedback('tn-recordresult-feedback', 'Request failed.', false);
+				});
 		});
 	}
 
@@ -12238,6 +12424,8 @@ window.tnSubmitQuickResult = function(matchId, result, event) {
 							if (br) TnConfig.bracketData[bid].Bracket = br;
 						}
 						tnRenderBracketViz(bid);
+						// #35: offer a tap-to-undo now that downstream state is fresh.
+						if (window.tnResultRecordedToast) window.tnResultRecordedToast(matchId, bid);
 					}).catch(function(err) { console.warn('[tn] refresh failed', err); tnShowStaleWarning(); });
 				}
 			} else {
@@ -12364,9 +12552,8 @@ html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 	background:#fff; color:#276749; border:1px solid #c6f6d5;
 }
 .tn-boutlist-trigger:hover { background:#f0fff4; }
-/* Only meaningful on mobile (the deck is mobile-only); hide on desktop. */
-.tn-boutlist-trigger { display:none; }
-.tn-mobile .tn-boutlist-trigger { display:inline-flex; min-height:var(--tn-touch, 44px); }
+/* #56: shown on desktop (opens a centered panel) AND mobile (the jump sheet). */
+.tn-mobile .tn-boutlist-trigger { min-height:var(--tn-touch, 44px); }
 /* Desktop width for the Bout List sheet box (moved off the inline style so the
    `.tn-mobile .tn-overlay .tn-modal-box { width:100%; max-width:100% }` rule — higher
    specificity — wins on mobile and the sheet goes full-width like the others). */
@@ -12424,6 +12611,16 @@ html[data-theme="dark"] .tn-nu-empty { color:#a0aec0; }
 .tn-boutlist-row--notready .tn-boutlist-side { background:#f7fafc; color:#cbd5e0; }
 .tn-boutlist-tbd { color:#a0aec0; font-style:italic; }
 .tn-boutlist-empty { padding:24px 12px; text-align:center; color:#a0aec0; font-size:14px; }
+
+/* #36 — reeve presence "others here" badge. Subtle, dark-mode aware. */
+.tn-presence-badge {
+	display:inline-flex; align-items:center; gap:3px; vertical-align:middle;
+	margin-left:8px; padding:1px 7px; border-radius:9px; white-space:nowrap;
+	font-size:10px; font-weight:800; letter-spacing:0.3px;
+	background:#ebf8ff; color:#2b6cb0; border:1px solid #bee3f8;
+}
+.tn-presence-badge i { font-size:9px; opacity:0.85; }
+html[data-theme="dark"] .tn-presence-badge { background:#1a2a3a; color:#90cdf4; border-color:#2c5282; }
 
 /* Dark-mode parity */
 html[data-theme="dark"] .tn-boutlist-trigger { background:#1a202c; color:#9ae6b4; border-color:#2f5540; }
@@ -12545,6 +12742,7 @@ html[data-theme="dark"] .tn-team-chip { background:#2a4a6b; color:#90cdf4; }
 		var mode = 'quick';            // 'quick' | 'track'
 		var trackState = Object.create(null); // matchId -> [null|'1'|'2', × bestOf]
 		var activeBestOf = 1;          // effective best-of for the currently rendered bracket
+		var activeMethod = '';         // method of the currently rendered bracket (tie suppression, #13)
 		var MODE_KEY = 'tn_nu_mode_' + (TnConfig.tournamentId || 0);
 
 		// --- Mobile Match Deck (Track R) ---------------------------------------
@@ -12858,18 +13056,32 @@ html[data-theme="dark"] .tn-team-chip { background:#2a4a6b; color:#90cdf4; }
 			'</button>';
 		}
 
-		// Open the Bout List for the deck's current bracket. Rebuilds from live bd.
+		// Open the Bout List for the current bracket. Rebuilds from live bd. On mobile
+		// the bracket is the deck's (deckBid); on desktop (#56) the deck never mounts,
+		// so fall back to the on-screen bracket from the viz selector. Reuses the SAME
+		// buildBoutListSheet + tnSequencedBouts + status logic in both layouts. On
+		// desktop it presents as a centered panel (TnMobile.sheet.open centers when not
+		// mobile) and we add the backdrop/Esc dismissal that sheet.open only wires on mobile.
 		function openBoutListSheet(){
 			var bid = deckBid;
+			if (!bid){ var bsel = $('tn-bv-bracket-select'); bid = bsel ? parseInt(bsel.value, 10) : 0; }
 			if (!bid || !TnConfig.bracketData || !TnConfig.bracketData[bid]) return;
 			var bd = TnConfig.bracketData[bid];
 			if (!window.TnMobile || !TnMobile.sheet) return;
 			var overlay = buildBoutListSheet(bid, bd);
 			document.body.appendChild(overlay);
 			void overlay.offsetWidth;                  // reflow for slide-up
+			var isDesk = !isMobileView();
+			function deskBackdrop(ev){ if (ev.target === overlay) TnMobile.sheet.close(overlay); }
+			function deskKey(ev){ if (ev.key === 'Escape'){ ev.preventDefault(); TnMobile.sheet.close(overlay); } }
 			TnMobile.sheet.open(overlay, { onDismiss: function(){
+				if (isDesk){ overlay.removeEventListener('click', deskBackdrop); document.removeEventListener('keydown', deskKey); }
 				if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
 			}});
+			if (isDesk){
+				overlay.addEventListener('click', deskBackdrop);
+				document.addEventListener('keydown', deskKey);
+			}
 			// Land on the current bout, not the top of a long list. The rect delta
 			// is invariant under the sheet's slide-up transform; double rAF lets
 			// layout settle first.
@@ -12920,7 +13132,9 @@ html[data-theme="dark"] .tn-team-chip { background:#2a4a6b; color:#90cdf4; }
 						? '<div class="tn-nu-actions">' +
 							'<button class="tn-nu-btn tn-nu-btn-p1" data-mid="' + parseInt(m.MatchId, 10) + '" data-r="1-wins" data-tip="' + p1Name + ' wins">' + p1Name + ' wins</button>' +
 							'<button class="tn-nu-btn tn-nu-btn-p2" data-mid="' + parseInt(m.MatchId, 10) + '" data-r="2-wins" data-tip="' + p2Name + ' wins">' + p2Name + ' wins</button>' +
-							'<button class="tn-nu-btn tn-nu-btn-tie" data-mid="' + parseInt(m.MatchId, 10) + '" data-r="tie">Tie</button>' +
+							((window.tnMethodAllowsTie && window.tnMethodAllowsTie(activeMethod))
+								? '<button class="tn-nu-btn tn-nu-btn-tie" data-mid="' + parseInt(m.MatchId, 10) + '" data-r="tie">Tie</button>'
+								: '') +
 							'<button class="tn-nu-btn tn-nu-btn-more" data-mid="' + parseInt(m.MatchId, 10) + '" data-more="1" data-tip="Bouts / forfeit / DQ">⋯</button>' +
 						'</div>'
 						: '') +
@@ -13016,9 +13230,13 @@ html[data-theme="dark"] .tn-team-chip { background:#2a4a6b; color:#90cdf4; }
 			} else if (p2 > p1){
 				btn.classList.remove('tn-nu-btn-end-tie');
 				btn.textContent = 'End · ' + p2Name + ' wins';
-			} else {
+			} else if (window.tnMethodAllowsTie && window.tnMethodAllowsTie(activeMethod)) {
 				btn.classList.add('tn-nu-btn-end-tie');
 				btn.textContent = 'End · Tie';
+			} else {
+				// Elimination: a tie can't end the match — hide End until a side leads (#13).
+				btn.classList.remove('tn-nu-btn-end-show', 'tn-nu-btn-end-tie');
+				btn.textContent = 'End';
 			}
 		}
 
@@ -13033,8 +13251,31 @@ html[data-theme="dark"] .tn-team-chip { background:#2a4a6b; color:#90cdf4; }
 			var p1 = bouts.filter(function(b){ return b === '1'; }).length;
 			var p2 = bouts.filter(function(b){ return b === '2'; }).length;
 			if (p1 + p2 === 0) return;
+			// #13: never commit a tie in an elimination format — it strands the match.
+			if (p1 === p2 && !(window.tnMethodAllowsTie && window.tnMethodAllowsTie(activeMethod))) return;
+			cancelPendingCommit(matchId);
 			var result = p1 > p2 ? '1-wins' : (p2 > p1 ? '2-wins' : 'tie');
 			submitWithBouts(matchId, result);
+		}
+
+		// #51: a short toast-based undo window before an auto-detected result actually
+		// commits, mirroring the Record Result modal's brief countdown. Reaching majority
+		// on a pip click no longer commits instantly with no way back.
+		var _pendingCommit = Object.create(null); // matchId -> timeout id
+		function cancelPendingCommit(matchId){
+			if (_pendingCommit[matchId]){ clearTimeout(_pendingCommit[matchId]); delete _pendingCommit[matchId]; }
+		}
+		function commitWithUndo(matchId, result){
+			cancelPendingCommit(matchId);
+			var card = nuHost && nuHost.querySelector('.tn-nu-card-track[data-mid="' + matchId + '"]');
+			var winnerLabel = 'Tie';
+			if (result === '1-wins') winnerLabel = (card && card.getAttribute('data-p1-name')) || 'P1';
+			else if (result === '2-wins') winnerLabel = (card && card.getAttribute('data-p2-name')) || 'P2';
+			_pendingCommit[matchId] = setTimeout(function(){
+				delete _pendingCommit[matchId];
+				submitWithBouts(matchId, result, true); // #35: pre-commit undo already shown
+			}, 2500);
+			if (window.tnToast) window.tnToast('Recorded ' + winnerLabel + ' — tap to undo', 2500, { onClick: function(){ cancelPendingCommit(matchId); } });
 		}
 
 		function evaluateMajority(matchId){
@@ -13043,14 +13284,17 @@ html[data-theme="dark"] .tn-team-chip { background:#2a4a6b; color:#90cdf4; }
 			var p2 = bouts.filter(function(b){ return b === '2'; }).length;
 			var total = p1 + p2;
 			var remaining = activeBestOf - total;
+			var allowTie = !!(window.tnMethodAllowsTie && window.tnMethodAllowsTie(activeMethod));
 			var decided = null;
 			if (p1 > p2 && (p1 - p2) > remaining) decided = '1-wins';
 			else if (p2 > p1 && (p2 - p1) > remaining) decided = '2-wins';
-			else if (total >= activeBestOf) decided = (p1 > p2) ? '1-wins' : (p2 > p1 ? '2-wins' : 'tie');
-			if (decided) submitWithBouts(matchId, decided);
+			// #13: only auto-resolve an even split as a tie where a tie is legal; in
+			// elimination the organizer must add a decider bout instead.
+			else if (total >= activeBestOf) decided = (p1 > p2) ? '1-wins' : (p2 > p1 ? '2-wins' : (allowTie ? 'tie' : null));
+			if (decided) commitWithUndo(matchId, decided);
 		}
 
-		function submitWithBouts(matchId, result){
+		function submitWithBouts(matchId, result, skipUndoToast){
 			var bouts = trackState[matchId] || [];
 			// Preserve a snapshot; do NOT delete trackState until the server
 			// confirms — a failed save would otherwise lose the bout pips.
@@ -13064,13 +13308,17 @@ html[data-theme="dark"] .tn-team-chip { background:#2a4a6b; color:#90cdf4; }
 			fd.append('Score', '');
 			fd.append('Bouts', JSON.stringify(compact));
 			fd.append('ActionId', actionId);
-			function restoreBouts(){
+			// #32: surface WHY the save failed. Pass the server's error (or the
+			// desktop concurrent-edit copy) so the organizer isn't left with only a
+			// red flash and no reason.
+			function restoreBouts(reason){
 				trackState[matchId] = savedBouts;
 				repaintCardPips(matchId);
 				if (nuHost){
 					var card = nuHost.querySelector('.tn-nu-card-track[data-mid="' + matchId + '"]');
 					if (card){ card.classList.add('tn-nu-card-error'); setTimeout(function(){ card.classList.remove('tn-nu-card-error'); }, 1200); }
 				}
+				if (window.tnToast) window.tnToast(reason || 'Not saved — it may have just been recorded by someone else.');
 			}
 			fetch(TnConfig.uir + 'TournamentAjax/match/' + matchId + '/' + TnConfig.tournamentId, { method:'POST', body: fd })
 				.then(function(r){ return r.json(); })
@@ -13079,11 +13327,17 @@ html[data-theme="dark"] .tn-team-chip { background:#2a4a6b; color:#90cdf4; }
 						if (typeof d.seq === 'number' && window.tnCollabBumpSeq) window.tnCollabBumpSeq(d.seq);
 						delete trackState[matchId];
 						refreshBracket();
+						// #35: offer a tap-to-undo (unless the auto-commit path already
+						// showed its own pre-commit undo window, #51).
+						if (!skipUndoToast && window.tnResultRecordedToast){
+							var _bid = deckBid || (function(){ var s = $('tn-bv-bracket-select'); return s ? parseInt(s.value, 10) : 0; })();
+							window.tnResultRecordedToast(matchId, _bid);
+						}
 					} else {
-						restoreBouts();
+						restoreBouts(d && d.error ? d.error : null);
 					}
 				})
-				.catch(function(){ restoreBouts(); });
+				.catch(function(){ restoreBouts('Network error — not saved. Check your connection and try again.'); });
 		}
 
 		function refreshBracket(){
@@ -13452,6 +13706,7 @@ html[data-theme="dark"] .tn-team-chip { background:#2a4a6b; color:#90cdf4; }
 				return;
 			}
 			activeBestOf = bestOfForBracket(bd);
+			activeMethod = method;
 			var unresolved = nextUnresolved(bd);
 			// Purge track state for matches that no longer exist in the queue.
 			Object.keys(trackState).forEach(function(mid){
@@ -13494,11 +13749,15 @@ html[data-theme="dark"] .tn-team-chip { background:#2a4a6b; color:#90cdf4; }
 			var show = unresolved.slice(0, 2);
 			var labels = ['NOW', 'ON DECK'];
 
+			// #56: expose the same scrollable, status-tagged bout queue the mobile deck
+			// has, reachable from the desktop Next-Up strip. Reuses buildBoutListSheet.
+			var boutListBtn = '<button type="button" class="tn-boutlist-trigger" data-tn-boutlist-open="1" aria-label="Open bout list">List ≡</button>';
 			nuHost.innerHTML =
 				'<div class="tn-nu-wrap">' +
 					'<div class="tn-nu-header">' +
 						'<span class="tn-nu-title">Next up</span>' +
 						'<span class="tn-nu-sub">&mdash; updates after each result</span>' +
+						boutListBtn +
 						toggleHTML +
 					'</div>' +
 					'<div class="tn-nu-grid">' +
@@ -13507,6 +13766,8 @@ html[data-theme="dark"] .tn-team-chip { background:#2a4a6b; color:#90cdf4; }
 				'</div>';
 
 			bindToggle(bid);
+			var _blBtn = nuHost.querySelector('[data-tn-boutlist-open]');
+			if (_blBtn) _blBtn.addEventListener('click', function(ev){ ev.preventDefault(); openBoutListSheet(); });
 			bindNuCardHandlers(bid, bd, pMap);
 		};
 
@@ -13773,14 +14034,21 @@ html[data-theme="dark"] .tn-team-chip { background:#2a4a6b; color:#90cdf4; }
 	// on top. `onError` runs in .catch BEFORE the shared alert (lets the
 	// desktop caller re-enable its armed button).
 	window.tnRegenFetch = function(bid, tid, onError){
+		// #30: register + tag both writes so the acting reeve's own change is
+		// recognized as an echo by the collab delta loop.
+		var actionId = window.tnNewActionId ? window.tnNewActionId() : '';
+		if (window.tnRegisterAction) window.tnRegisterAction(actionId);
+		if (window.tnCollabNudge) window.tnCollabNudge();
 		var fd1 = new FormData();
 		fd1.append('TournamentId', tid);
+		fd1.append('ActionId', actionId);
 		fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bid + '/clearmatches', { method: 'POST', body: fd1 })
 			.then(function(r){ return r.json(); })
 			.then(function(d){
 				if (!d || d.status !== 0) throw new Error((d && d.error) || 'Clear failed');
 				var fd2 = new FormData();
 				fd2.append('BracketId', bid);
+				fd2.append('ActionId', actionId);
 				return fetch(TnConfig.uir + 'TournamentAjax/tournament/' + tid + '/generate', { method: 'POST', body: fd2 });
 			})
 			.then(function(r){ return r.json(); })
@@ -13814,6 +14082,7 @@ html[data-theme="dark"] .tn-team-chip { background:#2a4a6b; color:#90cdf4; }
 			armedBtn.classList.remove('tn-btn-danger');
 			armedBtn.classList.add('tn-btn-primary');
 			armedBtn.removeAttribute('data-armed');
+			armedBtn.removeAttribute('aria-live');
 			armedBtn = null;
 			armedOriginal = null;
 			if (tickTimer){ clearTimeout(tickTimer); tickTimer = null; }
@@ -13843,33 +14112,38 @@ html[data-theme="dark"] .tn-team-chip { background:#2a4a6b; color:#90cdf4; }
 			var tid = parseInt(btn.getAttribute('data-tid'), 10);
 			var n   = parseInt(btn.getAttribute('data-match-count'), 10) || 0;
 
-			// Click on the inline "cancel" link while armed
+			// Second click while armed. The "cancel" link disarms; a click anywhere
+			// else on the armed button is the explicit confirmation that commits the
+			// destructive wipe. We NEVER auto-commit on a timer (#50).
 			if (btn.getAttribute('data-armed') === '1'){
 				if (ev && ev.target && ev.target.closest('.tn-regen-cancel')){
 					disarm();
+				} else {
+					commit(bid, tid);
 				}
-				// Any other click on the body of the armed button is a no-op.
 				return false;
 			}
 
-			// First click — arm + countdown that auto-commits at zero
+			// First click — arm + require an explicit second click to confirm. The
+			// countdown counts down to CANCEL (auto-disarm), never to a commit.
 			if (armedBtn && armedBtn !== btn) disarm();
 			armedBtn = btn;
 			armedOriginal = btn.innerHTML;
 			btn.classList.remove('tn-btn-primary');
 			btn.classList.add('tn-btn-danger');
 			btn.setAttribute('data-armed', '1');
+			btn.setAttribute('aria-live', 'assertive');
 			var remaining = 4;
 			function render(){
 				btn.innerHTML =
 					'<i class="fas fa-exclamation-triangle"></i> ' +
-					'Wiping ' + n + ' match' + (n===1?'':'es') + ' in ' + remaining + 's ' +
+					'Click again to wipe ' + n + ' match' + (n===1?'':'es') + ' — cancels in ' + remaining + 's ' +
 					'<span class="tn-regen-cancel" style="text-decoration:underline;margin-left:10px;font-weight:700;cursor:pointer">cancel</span>';
 			}
 			render();
 			var tick = function(){
 				remaining--;
-				if (remaining <= 0){ commit(bid, tid); return; }
+				if (remaining <= 0){ disarm(); return; }
 				render();
 				tickTimer = setTimeout(tick, 1000);
 			};
@@ -13963,6 +14237,69 @@ window.tnToast = function(msg, ms, opts) {
 	}, ms || 3200);
 };
 
+// #35: shared match-reset POST used by the "Undo" result toast. Mints + registers a
+// fresh ActionId exactly like the #29 desktop reset handler so the undo echoes back
+// as a recognized own-action (no spurious "someone reset" toast), keeps the collab
+// cursor ahead of the returned seq, and refetches the affected bracket.
+window.tnResetMatchAjax = function(matchId, bid) {
+	var tid = TnConfig.tournamentId;
+	var actionId = window.tnNewActionId ? window.tnNewActionId() : '';
+	if (window.tnRegisterAction) window.tnRegisterAction(actionId);
+	if (window.tnCollabNudge) window.tnCollabNudge();
+	var rfd = new FormData();
+	rfd.append('ActionId', actionId);
+	return fetch(TnConfig.uir + 'TournamentAjax/match/' + matchId + '/' + tid + '/reset', { method: 'POST', body: rfd })
+		.then(function(r) { return r.json(); })
+		.then(function(d) {
+			if (d && d.status === 0) {
+				if (typeof d.seq === 'number' && window.tnCollabBumpSeq) window.tnCollabBumpSeq(d.seq);
+				var sel = document.getElementById('tn-bv-bracket-select');
+				var cur = parseInt(bid) || (sel ? parseInt(sel.value) : 0);
+				if (cur && TnConfig.bracketData[cur]) {
+					return Promise.all([
+						fetch(TnConfig.uir + 'TournamentAjax/bracket/' + cur + '/matches').then(function(r) { return r.json(); }),
+						fetch(TnConfig.uir + 'TournamentAjax/tournament/' + tid + '/brackets').then(function(r) { return r.json(); })
+					]).then(function(res) {
+						var md = res[0], bd2 = res[1];
+						if (md && md.status === 0) TnConfig.bracketData[cur].Matches = md.matches;
+						if (bd2 && bd2.status === 0 && bd2.brackets) {
+							var br = bd2.brackets.find(function(b) { return parseInt(b.BracketId) === parseInt(cur); });
+							if (br) TnConfig.bracketData[cur].Bracket = br;
+						}
+						if (typeof window.tnRenderBracketViz === 'function') window.tnRenderBracketViz(cur);
+					}).catch(function(err) { console.warn('[tn] undo refresh failed', err); if (window.tnShowStaleWarning) tnShowStaleWarning(); });
+				}
+			} else if (window.tnToast) {
+				window.tnToast((d && d.error) ? d.error : 'Undo failed.');
+			}
+		})
+		.catch(function() { if (window.tnToast) window.tnToast('Undo request failed.'); });
+};
+
+// #35: one helper every record-result success path shares — shows "Result recorded"
+// and, when the just-recorded match can actually be reset, offers a tap-to-Undo that
+// reuses tnResetMatchAjax. Call AFTER the post-result refresh so the resettability
+// test sees current downstream state. Accepts a matchId (+ optional bracket id).
+window.tnResultRecordedToast = function(matchId, bid) {
+	if (!window.tnToast) return;
+	var resettable = false, b = parseInt(bid) || 0;
+	try {
+		if (!b) { var sel = document.getElementById('tn-bv-bracket-select'); b = sel ? parseInt(sel.value) : 0; }
+		var mo = (b && TnConfig.bracketData[b] && TnConfig.bracketData[b].Matches)
+			? TnConfig.bracketData[b].Matches.find(function(m) { return parseInt(m.MatchId) === parseInt(matchId); })
+			: null;
+		if (mo) {
+			if (mo.BracketId == null) mo.BracketId = b;
+			resettable = (typeof window.tnIsMatchResettable === 'function') ? window.tnIsMatchResettable(mo) : true;
+		}
+	} catch (e) {}
+	if (resettable && matchId) {
+		window.tnToast('Result recorded — tap to undo', 6000, { onClick: function() { window.tnResetMatchAjax(matchId, b); } });
+	} else {
+		window.tnToast('Result recorded', 2500);
+	}
+};
+
 // Registry of action_ids this client originated, with timestamps for pruning.
 // Used to drop our own changes when they echo back in the delta feed.
 window.TnOwnActions = window.TnOwnActions || {};
@@ -13976,6 +14313,16 @@ window.tnIsOwnAction = function(id) {
 window.tnNewActionId = function() {
 	return 'a-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
 };
+// Drop a previously-registered own-action id (e.g. after a local write failed/aborted)
+// so that when the server-committed change echoes back it is treated as new (#28).
+window.tnUnregisterAction = function(id) { if (id && window.TnOwnActions) delete window.TnOwnActions[id]; };
+// A tie is only a valid, non-stranding result in non-elimination formats. In
+// single/double/ironman elimination a committed tie leaves the bracket unable to
+// advance, so the Tie option and every tie auto-resolution are suppressed there (#13).
+// Ties are legitimate only where they don't strand advancement: round-robin, swiss
+// (half-point standings, re-paired each round) and points. Single/double/ironman
+// elimination MUST have a winner, so a tie there would leave nobody to advance.
+window.tnMethodAllowsTie = function(method) { return method === 'round-robin' || method === 'swiss' || method === 'points'; };
 </script>
 <script>
 // ============================================================
@@ -13993,7 +14340,11 @@ window.tnNewActionId = function() {
 		});
 	}
 
-	var lastVersion = null;
+	// #33: spectators ride the SAME GetSeq/GetChanges cursor the reeve loop uses —
+	// a seq bump fetches the delta feed and refetches ONLY the named bracket(s),
+	// instead of refetching every bracket on any version change. Read-only: no
+	// ActionId is minted and no toasts are shown.
+	var clientSeq = null;
 	var timer = null;
 	var paused = false;
 	var inFlight = false;
@@ -14054,24 +14405,76 @@ window.tnNewActionId = function() {
 		}).catch(function(err) {
 			console.warn('[tn-spectator] refresh failed', err);
 			if (window.tnShowStaleWarning) tnShowStaleWarning();
+			// #25: reject so the caller does NOT advance lastVersion or flash "Updated"
+			// on a failed refresh — the next poll retries the same version.
+			throw err;
 		});
+	}
+
+	// Refetch a SINGLE bracket's matches + meta and re-render it if it's on screen.
+	// Mirrors refreshAll's per-bracket logic but for just one id (the delta target).
+	function refetchBracket(bid) {
+		bid = parseInt(bid);
+		if (!bid) return Promise.resolve();
+		return Promise.all([
+			fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bid + '/matches').then(function(r) { return r.json(); }),
+			fetch(TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/brackets').then(function(r) { return r.json(); })
+		]).then(function(res) {
+			var md = res[0], bd = res[1];
+			if (bd && bd.status === 0 && bd.brackets) {
+				var br = bd.brackets.find(function(b) { return parseInt(b.BracketId) === bid; });
+				if (br) {
+					if (!TnConfig.bracketData[bid]) TnConfig.bracketData[bid] = { Bracket: br, Participants: [] };
+					else TnConfig.bracketData[bid].Bracket = br;
+				}
+			}
+			if (md && md.status === 0 && TnConfig.bracketData[bid]) TnConfig.bracketData[bid].Matches = md.matches;
+			var sel = document.getElementById('tn-bv-bracket-select');
+			var curBid = sel ? parseInt(sel.value) : 0;
+			if (bid === curBid && typeof tnRenderBracketViz === 'function') tnRenderBracketViz(bid);
+			if (typeof tnRenderLeaderboard === 'function') tnRenderLeaderboard();
+		});
+	}
+
+	// Apply a /changes payload: refetch only the brackets the events name. A resync
+	// flag (or a below-cursor seq) falls back to refreshAll. Advance the cursor ONLY
+	// after every refetch fulfills so a failed refetch retries the same delta.
+	function applyDeltas(data) {
+		if (data.resync) { return refreshAll().then(function() { clientSeq = data.seq; }); }
+		var events = data.events || [];
+		var toRefetch = {};
+		events.forEach(function(ev) { if (ev.BracketId) toRefetch[ev.BracketId] = true; });
+		var bids = Object.keys(toRefetch);
+		if (!bids.length) { clientSeq = data.seq; return Promise.resolve(); }
+		return Promise.all(bids.map(function(b) { return refetchBracket(parseInt(b)); }))
+			.then(function() { clientSeq = data.seq; });
 	}
 
 	function poll() {
 		if (paused || inFlight) return;   // skip this tick if a cycle is still in flight
 		inFlight = true;
-		fetch(TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/version')
+		fetch(TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/seq')
 			.then(function(r) { return r.json(); })
 			.then(function(d) {
 				if (!d || d.status !== 0) return;
-				if (lastVersion === null) { lastVersion = d.version; return; }
-				if (d.version !== lastVersion) {
-					lastVersion = d.version;
+				if (clientSeq === null) { clientSeq = d.seq; return; }
+				// Server reset/lost its seq (memcache flush, restart) — resync fully.
+				if (d.resync || d.reset || d.seq < clientSeq) {
 					flashSync('Updating…');
-					return refreshAll().then(function() { flashSync('Updated just now'); });
+					return refreshAll().then(function() { clientSeq = d.seq; flashSync('Updated just now'); });
+				}
+				if (d.seq > clientSeq) {
+					flashSync('Updating…');
+					return fetch(TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/changes&since=' + clientSeq)
+						.then(function(r) { return r.json(); })
+						.then(function(cd) {
+							// #33 fallback: a failed /changes leaves the cursor in place so
+							// the next tick retries the same delta rather than skipping it.
+							if (cd && cd.status === 0) return applyDeltas(cd).then(function() { flashSync('Updated just now'); });
+						});
 				}
 			})
-			.catch(function(err) { console.warn('[tn-spectator] version poll failed', err); })
+			.catch(function(err) { console.warn('[tn-spectator] seq poll failed', err); })
 			.finally(function() { inFlight = false; });
 	}
 
@@ -14093,10 +14496,10 @@ window.tnNewActionId = function() {
 		}
 	});
 
-	// Seed the baseline version then begin the loop.
-	fetch(TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/version')
+	// Seed the baseline seq cursor then begin the loop.
+	fetch(TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/seq')
 		.then(function(r) { return r.json(); })
-		.then(function(d) { if (d && d.status === 0) lastVersion = d.version; })
+		.then(function(d) { if (d && d.status === 0) clientSeq = d.seq; })
 		.catch(function() {})
 		.finally(function() { schedule(); });
 })();
@@ -14116,6 +14519,37 @@ window.tnNewActionId = function() {
 	var nudgeUntil = 0;
 	var inFlight = false;
 
+	// #27: persistent live-sync indicator. Flips to "Reconnecting…" after N consecutive
+	// seq-poll failures (counted in the poll .catch) and back to "Live" on the next
+	// successful poll, so a silently-dead heartbeat is visible instead of console-only.
+	var seqFailures = 0;
+	var RECONNECT_AFTER = 3;
+	var syncChip = null, syncChipDot = null, syncChipText = null;
+	(function() {
+		syncChip = document.createElement('div');
+		syncChip.id = 'tn-collab-chip';
+		syncChip.setAttribute('role', 'status');
+		syncChip.setAttribute('aria-live', 'polite');
+		syncChip.style.cssText = 'position:fixed;left:12px;bottom:12px;z-index:9998;display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:16px;font-size:12px;font-weight:600;background:#1f2937;color:#e5e7eb;border:1px solid #374151;box-shadow:0 2px 8px rgba(0,0,0,.2);opacity:.9;';
+		syncChipDot = document.createElement('span');
+		syncChipDot.style.cssText = 'width:8px;height:8px;border-radius:50%;background:#38a169;flex-shrink:0;';
+		syncChipText = document.createElement('span');
+		syncChipText.textContent = 'Live';
+		syncChip.appendChild(syncChipDot);
+		syncChip.appendChild(syncChipText);
+		if (document.body) document.body.appendChild(syncChip);
+	})();
+	function setSyncState(live) {
+		if (!syncChip) return;
+		if (live) {
+			syncChipDot.style.background = '#38a169';
+			syncChipText.textContent = 'Live';
+		} else {
+			syncChipDot.style.background = '#dd6b20';
+			syncChipText.textContent = 'Reconnecting…';
+		}
+	}
+
 	function anyActive() {
 		var bd = TnConfig.bracketData || {};
 		for (var k in bd) { if (bd[k] && bd[k].Bracket && bd[k].Bracket.Status === 'active') return true; }
@@ -14124,32 +14558,59 @@ window.tnNewActionId = function() {
 
 	// Refetch a single bracket's matches + meta, then re-render if it's on screen.
 	function refetchBracket(bid) {
-		if (!bid || !TnConfig.bracketData[bid]) return Promise.resolve();
+		if (!bid) return Promise.resolve();
+		bid = parseInt(bid);
 		var tid = TnConfig.tournamentId;
 		return Promise.all([
 			fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bid + '/matches').then(function(r) { return r.json(); }),
 			fetch(TnConfig.uir + 'TournamentAjax/tournament/' + tid + '/brackets').then(function(r) { return r.json(); })
 		]).then(function(res) {
 			var md = res[0], bd = res[1];
-			if (md && md.status === 0) TnConfig.bracketData[bid].Matches = md.matches;
+			// #26: a delta may reference a bracket another reeve just created. Seed a new
+			// entry from the bracket list instead of bailing into a dead-end no-op.
 			if (bd && bd.status === 0 && bd.brackets) {
-				var br = bd.brackets.find(function(b) { return parseInt(b.BracketId) === parseInt(bid); });
-				if (br) TnConfig.bracketData[bid].Bracket = br;
-			}
-			var sel = document.getElementById('tn-bv-bracket-select');
-			var curBid = sel ? parseInt(sel.value) : 0;
-			if (parseInt(bid) === curBid && typeof tnRenderBracketViz === 'function') {
-				if (window.tnQrEntryOpen && window.tnQrEntryOpen()) {
-					// Local user has an open quick-result bar on the on-screen bracket —
-					// deferring avoids destroying their in-progress entry. The poll loop
-					// flushes _tnPendingRerenderBid once the bar is closed.
-					window._tnPendingRerenderBid = parseInt(bid);
-				} else {
-					tnRenderBracketViz(bid);
+				var br = bd.brackets.find(function(b) { return parseInt(b.BracketId) === bid; });
+				if (br) {
+					if (!TnConfig.bracketData[bid]) TnConfig.bracketData[bid] = { Bracket: br, Participants: [] };
+					else TnConfig.bracketData[bid].Bracket = br;
 				}
 			}
-			if (typeof tnRenderLeaderboard === 'function') tnRenderLeaderboard();
-		}).catch(function(err) { console.warn('[tn-collab] bracket refetch failed', err); if (window.tnShowStaleWarning) tnShowStaleWarning(); });
+			if (md && md.status === 0 && TnConfig.bracketData[bid]) TnConfig.bracketData[bid].Matches = md.matches;
+			// Re-render / leaderboard step, run after the optional points-standings fetch.
+			var _after = function() {
+				var sel = document.getElementById('tn-bv-bracket-select');
+				var curBid = sel ? parseInt(sel.value) : 0;
+				if (bid === curBid && typeof tnRenderBracketViz === 'function') {
+					if (window.tnQrEntryOpen && window.tnQrEntryOpen()) {
+						// Local user has an open quick-result bar on the on-screen bracket —
+						// deferring avoids destroying their in-progress entry. The poll loop
+						// flushes _tnPendingRerenderBid once the bar is closed.
+						window._tnPendingRerenderBid = bid;
+					} else {
+						tnRenderBracketViz(bid);
+					}
+				}
+				if (typeof tnRenderLeaderboard === 'function') tnRenderLeaderboard();
+			};
+			// #19: a Points bracket's per-cell standings live outside the matches payload,
+			// so a peer's point_score/points_round change would otherwise never show. Pull
+			// fresh standings before re-rendering (non-fatal if the endpoint is unavailable).
+			var _isPts = TnConfig.bracketData[bid] && TnConfig.bracketData[bid].Bracket && TnConfig.bracketData[bid].Bracket.Method === 'points';
+			if (_isPts) {
+				return fetch(TnConfig.uir + 'TournamentAjax/bracket/' + bid + '/pointstandings')
+					.then(function(r) { return r.json(); })
+					.then(function(ps) { if (ps && ps.status === 0 && TnConfig.bracketData[bid]) TnConfig.bracketData[bid].PointStandings = ps.standings || []; })
+					.catch(function() { /* non-fatal: keep prior standings */ })
+					.then(_after);
+			}
+			_after();
+		}).catch(function(err) {
+			console.warn('[tn-collab] bracket refetch failed', err);
+			if (window.tnShowStaleWarning) tnShowStaleWarning();
+			// #25: reject so Promise.all in applyDeltas / fullResync rejects and the seq
+			// cursor is left in place rather than advanced past an unsynced change.
+			throw err;
+		});
 	}
 
 	// Full resync: refetch every known bracket (used when the delta feed reports resync).
@@ -14159,31 +14620,70 @@ window.tnNewActionId = function() {
 		return Promise.all(bids.map(function(b) { return refetchBracket(parseInt(b)); }));
 	}
 
+	// #10: light bracket-list refresh — pulls the brackets list and refreshes each
+	// bracket's meta (status/method/name → pills) WITHOUT refetching every bracket's
+	// matches. Used when the server emits a tournament-scoped 'tournament_updated'.
+	function lightBracketListRefresh() {
+		return fetch(TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/brackets')
+			.then(function(r) { return r.json(); })
+			.then(function(bd) {
+				if (bd && bd.status === 0 && bd.brackets) {
+					bd.brackets.forEach(function(br) {
+						var id = parseInt(br.BracketId);
+						if (TnConfig.bracketData[id]) TnConfig.bracketData[id].Bracket = br;
+						else TnConfig.bracketData[id] = { Bracket: br, Participants: [] };
+					});
+				}
+			})
+			.catch(function() { /* non-fatal: pills just stay as-is until next sync */ });
+	}
+
 	function applyDeltas(data) {
 		if (data.resync) { return fullResync().then(function() { clientSeq = data.seq; }); }
 		var events = data.events || [];
 		var bracketsToRefetch = {};
 		var lastActor = '';
+		var tournamentTouched = false;
 		events.forEach(function(ev) {
 			if (window.tnIsOwnAction && window.tnIsOwnAction(ev.ActionId)) return; // echo — already applied locally
+			// #10: a bracket-scoped event ('bracket_updated' etc.) refetches that
+			// bracket; a tournament-scoped 'tournament_updated' (no bracket id) does
+			// a light bracket-list refresh instead of a per-bracket refetch.
 			if (ev.BracketId) bracketsToRefetch[ev.BracketId] = true;
+			else if (ev.Type === 'tournament_updated') tournamentTouched = true;
 			if (ev.ActorName) lastActor = ev.ActorName;
 		});
 		var bids = Object.keys(bracketsToRefetch);
-		clientSeq = data.seq;
-		if (!bids.length) return Promise.resolve();
-		return Promise.all(bids.map(function(b) { return refetchBracket(parseInt(b)); })).then(function() {
+		// #25: no work to do (all echoes) is a successful sync — advance the cursor.
+		// When there IS work, advance ONLY after every refetch fulfills so a failed
+		// refetch leaves the cursor in place (and skips the success toast).
+		if (!bids.length && !tournamentTouched) { clientSeq = data.seq; return Promise.resolve(); }
+		var work = bids.map(function(b) { return refetchBracket(parseInt(b)); });
+		if (tournamentTouched) work.push(lightBracketListRefresh());
+		return Promise.all(work).then(function() {
+			clientSeq = data.seq;
+			// A tournament-only change (no bracket refetch) has no per-bracket toast.
+			if (!bids.length) return;
 			if (!window.tnToast) return;
 			// Give the toast a bracket label + a jump affordance when the changed
 			// bracket isn't the one currently on screen.
 			var changedBid = parseInt(bids[0]);
 			var pill = document.querySelector('.tn-bk-pill[data-bid="' + changedBid + '"]');
-			var bname = pill ? pill.textContent.trim() : ('Bracket ' + changedBid);
+			// Read the pill label WITHOUT the #36 presence badge that may be appended to it.
+			var bname = 'Bracket ' + changedBid;
+			if (pill) {
+				var _pc = pill.cloneNode(true);
+				var _pb = _pc.querySelector('.tn-presence-badge');
+				if (_pb) _pb.parentNode.removeChild(_pb);
+				bname = _pc.textContent.trim();
+			}
 			var inp = document.getElementById('tn-bv-bracket-select');
 			var curBid = inp ? parseInt(inp.value) : 0;
 			var offscreen = (bids.length === 1 && changedBid && changedBid !== curBid);
 			var msg = (lastActor ? (lastActor + ' updated ') : 'Updated ') + bname + (offscreen ? ' — tap to view' : '');
-			var opts = (offscreen && typeof window.tnGoToBracket === 'function')
+			// #26: only offer the jump affordance when there is actually a pill/tab to
+			// jump to — a bracket just seeded from a peer has no UI target yet.
+			var opts = (offscreen && pill && typeof window.tnGoToBracket === 'function')
 				? { onClick: function() { window.tnGoToBracket(changedBid); } }
 				: null;
 			window.tnToast(msg, 3200, opts);
@@ -14205,6 +14705,8 @@ window.tnNewActionId = function() {
 		fetch(TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/seq')
 			.then(function(r) { return r.json(); })
 			.then(function(d) {
+				// #27: a response arrived — the heartbeat is alive again.
+				seqFailures = 0; setSyncState(true);
 				if (!d || d.status !== 0) return;
 				if (clientSeq === null) { clientSeq = d.seq; return; }
 				// Self-heal: server reset/lost its seq (memcache flush, restart) — it now
@@ -14218,7 +14720,13 @@ window.tnNewActionId = function() {
 						.then(function(cd) { if (cd && cd.status === 0) return applyDeltas(cd); });
 				}
 			})
-			.catch(function(err) { console.warn('[tn-collab] seq poll failed', err); })
+			.catch(function(err) {
+				console.warn('[tn-collab] seq poll failed', err);
+				// #27: count consecutive failures; surface "Reconnecting…" once past the
+				// threshold so a stalled heartbeat isn't invisible.
+				seqFailures++;
+				if (seqFailures >= RECONNECT_AFTER) setSyncState(false);
+			})
 			.finally(function() { inFlight = false; });
 	}
 
@@ -14245,6 +14753,115 @@ window.tnNewActionId = function() {
 		.then(function(d) { if (d && d.status === 0) clientSeq = d.seq; })
 		.catch(function() {})
 		.finally(function() { schedule(); });
+})();
+
+
+// ============================================================
+// #36 — Reeve presence ("others here" badges)
+// Reeve-only. On an ~8s heartbeat AND on bracket switch, POST the current selected
+// bracket to /presence and render a subtle FA5 eye-icon "+N" badge of the OTHER
+// reeves on each bracket switcher pill and the mobile deck header. Self is excluded
+// via TnConfig.currentUserId; when own id is unknown we badge only 2+ present.
+// ============================================================
+(function() {
+	if (TnConfig.spectator || !TnConfig.loggedIn) return;
+	if (!(TnConfig.canManage || TnConfig.isOrganizerReeve || TnConfig.isBracketRunner)) return;
+
+	var HEARTBEAT_MS = 8000;
+	var selfId = parseInt(TnConfig.currentUserId, 10) || 0;
+	var timer = null, paused = false;
+	var lastPresence = [];
+
+	function currentBid() {
+		var sel = document.getElementById('tn-bv-bracket-select');
+		return sel ? (parseInt(sel.value, 10) || 0) : 0;
+	}
+
+	// Group presence by bracket id, tracking total present + others (excluding self).
+	function othersByBracket(presence) {
+		var byBid = {};
+		(presence || []).forEach(function(p) {
+			var bid = parseInt(p.BracketId, 10) || 0;
+			if (!bid) return;
+			if (!byBid[bid]) byBid[bid] = { total: 0, others: 0, names: [] };
+			byBid[bid].total++;
+			if (selfId > 0 && parseInt(p.ReeveId, 10) === selfId) return;
+			byBid[bid].others++;
+			byBid[bid].names.push(p.Name || 'Reeve');
+		});
+		return byBid;
+	}
+
+	// How many to show: exact "others" when we know our own id, else only badge a
+	// crowd of 2+ (we can't tell which entry is us). Never badge 0.
+	function badgeCount(info) {
+		if (!info) return 0;
+		return selfId > 0 ? info.others : (info.total >= 2 ? info.total : 0);
+	}
+
+	function renderBadge(host, info) {
+		if (!host) return;
+		var existing = host.querySelector('.tn-presence-badge');
+		var n = badgeCount(info);
+		if (n <= 0) { if (existing) existing.parentNode.removeChild(existing); return; }
+		var names = (info && info.names && info.names.length) ? info.names.join(', ') : '';
+		var tip = n + ' other reeve' + (n === 1 ? '' : 's') + ' here' + (names ? ': ' + names : '');
+		if (!existing) {
+			existing = document.createElement('span');
+			existing.className = 'tn-presence-badge';
+			host.appendChild(existing);
+		}
+		existing.innerHTML = '<i class="fas fa-eye"></i>+' + n;
+		existing.setAttribute('data-tip', tip);
+	}
+
+	function render() {
+		var byBid = othersByBracket(lastPresence);
+		// Bracket switcher pills (Run Tournament tab).
+		var pills = document.querySelectorAll('#tn-tab-bracketviz .tn-bk-pill[data-bid]');
+		Array.prototype.forEach.call(pills, function(pill) {
+			var bid = parseInt(pill.getAttribute('data-bid'), 10) || 0;
+			renderBadge(pill, byBid[bid]);
+		});
+		// Mobile deck header for the active bracket (the deck is mobile-only).
+		if (window.TnMobile && TnMobile.isMobile()) {
+			var deckHeader = document.querySelector('#tn-nextup .tn-nu-header');
+			renderBadge(deckHeader, byBid[currentBid()]);
+		}
+	}
+
+	function heartbeat() {
+		var fd = new FormData();
+		fd.append('BracketId', currentBid());
+		fetch(TnConfig.uir + 'TournamentAjax/tournament/' + TnConfig.tournamentId + '/presence', { method: 'POST', body: fd })
+			.then(function(r) { return r.json(); })
+			.then(function(d) { if (d && d.status === 0) { lastPresence = d.presence || []; render(); } })
+			.catch(function() { /* presence is best-effort — silent on failure */ });
+	}
+
+	function schedule() {
+		if (timer) clearTimeout(timer);
+		if (paused) return;
+		timer = setTimeout(function() { heartbeat(); schedule(); }, HEARTBEAT_MS);
+	}
+
+	// Re-POST immediately when the reeve switches brackets via the pills, so the
+	// server sees the new bracket and peers' badges update without an 8s wait.
+	document.addEventListener('click', function(ev) {
+		var pill = ev.target.closest && ev.target.closest('#tn-tab-bracketviz .tn-bk-pill[data-bid]');
+		if (pill) setTimeout(heartbeat, 0);
+	});
+	// Re-apply badges after a view-mode flip (the deck header is rebuilt).
+	var root = document.getElementById('tn-root');
+	if (root) root.addEventListener('tn:viewmodechange', function() { setTimeout(render, 0); });
+
+	document.addEventListener('visibilitychange', function() {
+		if (document.hidden) { paused = true; if (timer) { clearTimeout(timer); timer = null; } }
+		else { paused = false; heartbeat(); schedule(); }
+	});
+
+	heartbeat();
+	schedule();
 })();
 
 
@@ -14644,6 +15261,8 @@ window.tnNewActionId = function() {
 		fetch(url, { method:'POST', body:fd, credentials:'same-origin' })
 			.then(function(r){ return r.json(); })
 			.then(function(j){
+				// #31: release the in-flight guard now that the request resolved.
+				cellEl.dataset.tnSaving = ''; cellEl.style.pointerEvents = '';
 				if (j.status !== 0) throw new Error(j.error || 'Save failed');
 				if (typeof j.seq === 'number' && window.tnCollabBumpSeq) window.tnCollabBumpSeq(j.seq);
 				var pts = (j.detail && j.detail.Cell) ? j.detail.Cell.Points : null;
@@ -14656,6 +15275,8 @@ window.tnNewActionId = function() {
 				if (j.detail && j.detail.Standings) renderStandings(bid, j.detail.Standings);
 			})
 			.catch(function(e){
+				// #31: release the in-flight guard on failure too, so the cell stays usable.
+				cellEl.dataset.tnSaving = ''; cellEl.style.pointerEvents = '';
 				setCellStatus(cellEl, 'tn-error');
 				var s = cellEl.querySelector('.tn-points-status');
 				if (s) s.setAttribute('data-tip', String(e.message || e));
@@ -14672,6 +15293,9 @@ window.tnNewActionId = function() {
 		if (!wrap) return;
 		// Only fixed-mode cells have pips, but guard anyway
 		if (wrap.dataset.mode !== 'fixed') return;
+		// #31: in-flight guard — ignore rapid re-clicks on a cell whose save is still
+		// pending so responses can't resolve out of order and clobber a newer value.
+		if (cell.dataset.tnSaving === '1') return;
 
 		var bid    = wrap.dataset.bid;
 		var pid    = cell.dataset.pid;
@@ -14684,6 +15308,10 @@ window.tnNewActionId = function() {
 		cell.querySelectorAll('.tn-pip').forEach(function(s){ s.classList.remove('tn-pip-selected'); });
 		if (!willClear) pip.classList.add('tn-pip-selected');
 
+		// #31: mark the cell in-flight (cleared by postSave on resolve) and freeze
+		// further pip clicks on it until the save completes.
+		cell.dataset.tnSaving = '1';
+		cell.style.pointerEvents = 'none';
 		postSave(bid, pid, round, willClear ? null : clickedVal, cell);
 	});
 
@@ -14727,6 +15355,14 @@ window.tnNewActionId = function() {
 		if (!v.ok) {
 			input.classList.add('tn-points-err');
 			input.value = prev;
+			// #55: surface WHY it was rejected via the cell's status tooltip (the same
+			// affordance postSave uses for save errors), not just a silent red flash.
+			var st = cell.querySelector('.tn-points-status');
+			if (st) {
+				st.className = 'tn-points-status tn-error';
+				st.setAttribute('data-tip', v.error || 'Invalid value');
+				setTimeout(function(){ st.className = 'tn-points-status'; st.removeAttribute('data-tip'); }, 2500);
+			}
 			setTimeout(function(){ input.classList.remove('tn-points-err'); }, 800);
 			return;
 		}

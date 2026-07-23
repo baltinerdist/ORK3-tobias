@@ -15001,63 +15001,80 @@ window.pnCloseUnitCreateModal = function() {
 })();
 
 
-// ── Add Tournament Modal (Kingdom) ──────────────────────────────────────────
-(function() {
-    if (!window.KnConfig || !KnConfig.canManage) return;
-    var overlay = document.getElementById('kn-addtournament-overlay');
+// ── Add Tournament Modal (shared factory) ────────────────────────────────────
+// Wires up the Kingdom/Park add-tournament modal. The two callers differ only by
+// id prefix, config object, create endpoint, and one extra POST param (Park sends
+// KingdomId). `endpoint`/`extra` are called with the (guarded, present) config.
+function initAddTournamentModal(opts) {
+    var prefix = opts.prefix;
+    var config = opts.config;
+    if (!config || !config.canManage) return;
+    var overlay = document.getElementById(prefix + '-addtournament-overlay');
     if (!overlay) return;
 
+    var openClass = prefix + '-open';
+    function el(suffix) { return document.getElementById(prefix + '-addtournament-' + suffix); }
+
     function showFb(msg, ok) {
-        var fb = document.getElementById('kn-addtournament-feedback');
+        var fb = el('feedback');
         if (!fb) return;
         fb.textContent = msg;
         fb.style.display = 'block';
-        fb.style.color = ok ? '#276749' : '#e53e3e';
+        fb.style.color      = ok ? '#276749' : '#c53030';
+        fb.style.background = ok ? '#f0fff4' : '#fff5f5';
+        fb.style.border     = ok ? '1px solid #c6f6d5' : '1px solid #fed7d7';
     }
 
     function openModal() {
-        document.getElementById('kn-addtournament-name').value = '';
-        document.getElementById('kn-addtournament-when').value = '';
-        document.getElementById('kn-addtournament-desc').value = '';
-        document.getElementById('kn-addtournament-url').value  = '';
-        var fb = document.getElementById('kn-addtournament-feedback');
+        el('name').value = '';
+        el('when').value = '';
+        el('desc').value = '';
+        el('url').value  = '';
+        var fb = el('feedback');
         if (fb) { fb.style.display = 'none'; fb.textContent = ''; }
-        overlay.classList.add('kn-open');
+        overlay.classList.add(openClass);
     }
 
     function closeModal() {
-        overlay.classList.remove('kn-open');
+        overlay.classList.remove(openClass);
     }
 
-    window.knOpenAddTournamentModal = openModal;
+    window[prefix + 'OpenAddTournamentModal'] = openModal;
 
-    document.getElementById('kn-addtournament-close-btn').addEventListener('click', closeModal);
-    document.getElementById('kn-addtournament-cancel').addEventListener('click', closeModal);
+    el('close-btn').addEventListener('click', closeModal);
+    el('cancel').addEventListener('click', closeModal);
     overlay.addEventListener('click', function(e) { if (e.target === overlay) closeModal(); });
     document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape' && overlay.classList.contains('kn-open')) closeModal();
+        if (e.key === 'Escape' && overlay.classList.contains(openClass)) closeModal();
     });
 
-    document.getElementById('kn-addtournament-submit').addEventListener('click', function() {
+    el('submit').addEventListener('click', function() {
         var btn  = this;
-        var name = document.getElementById('kn-addtournament-name').value.trim();
-        var when = document.getElementById('kn-addtournament-when').value.trim();
-        var desc = document.getElementById('kn-addtournament-desc').value.trim();
-        var url  = document.getElementById('kn-addtournament-url').value.trim();
+        var name = el('name').value.trim();
+        var when = el('when').value.trim();
+        var desc = el('desc').value.trim();
+        var url  = el('url').value.trim();
 
         if (!name) { showFb('Tournament name is required.', false); return; }
         if (!when) { showFb('Tournament date is required.', false); return; }
 
+        var data = { Name: name, When: when, Description: desc, Url: url };
+        if (opts.extra) {
+            var ex = opts.extra(config);
+            for (var k in ex) { if (ex.hasOwnProperty(k)) data[k] = ex[k]; }
+        }
+
         btn.disabled = true;
         jQuery.post(
-            KnConfig.uir + 'KingdomAjax/kingdom/' + KnConfig.kingdomId + '/createtournament',
-            { Name: name, When: when, Description: desc, Url: url },
+            opts.endpoint(config),
+            data,
             function(r) {
-                btn.disabled = false;
                 if (r && r.status === 0) {
+                    // Leave the button disabled through the redirect window so a second click can't create a duplicate tournament.
                     showFb('Tournament created!', true);
-                    setTimeout(function() { closeModal(); window.location.href = KnConfig.uir + 'Tournament/profile/' + r.tournamentId; }, 900);
+                    setTimeout(function() { closeModal(); window.location.href = config.uir + 'Tournament/profile/' + r.tournamentId; }, 900);
                 } else {
+                    btn.disabled = false;
                     showFb((r && r.error) ? r.error : 'Failed to create tournament.', false);
                 }
             }, 'json'
@@ -15066,74 +15083,20 @@ window.pnCloseUnitCreateModal = function() {
             showFb('Request failed. Please try again.', false);
         });
     });
-})();
+}
 
-// ── Add Tournament Modal (Park) ──────────────────────────────────────────────
-(function() {
-    if (!window.PkConfig || !PkConfig.canManage) return;
-    var overlay = document.getElementById('pk-addtournament-overlay');
-    if (!overlay) return;
+initAddTournamentModal({
+    prefix:   'kn',
+    config:   window.KnConfig,
+    endpoint: function(c) { return c.uir + 'KingdomAjax/kingdom/' + c.kingdomId + '/createtournament'; }
+});
 
-    function showFb(msg, ok) {
-        var fb = document.getElementById('pk-addtournament-feedback');
-        if (!fb) return;
-        fb.textContent = msg;
-        fb.style.display = 'block';
-        fb.style.color = ok ? '#276749' : '#e53e3e';
-    }
-
-    function openModal() {
-        document.getElementById('pk-addtournament-name').value = '';
-        document.getElementById('pk-addtournament-when').value = '';
-        document.getElementById('pk-addtournament-desc').value = '';
-        document.getElementById('pk-addtournament-url').value  = '';
-        var fb = document.getElementById('pk-addtournament-feedback');
-        if (fb) { fb.style.display = 'none'; fb.textContent = ''; }
-        overlay.classList.add('pk-open');
-    }
-
-    function closeModal() {
-        overlay.classList.remove('pk-open');
-    }
-
-    window.pkOpenAddTournamentModal = openModal;
-
-    document.getElementById('pk-addtournament-close-btn').addEventListener('click', closeModal);
-    document.getElementById('pk-addtournament-cancel').addEventListener('click', closeModal);
-    overlay.addEventListener('click', function(e) { if (e.target === overlay) closeModal(); });
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape' && overlay.classList.contains('pk-open')) closeModal();
-    });
-
-    document.getElementById('pk-addtournament-submit').addEventListener('click', function() {
-        var btn  = this;
-        var name = document.getElementById('pk-addtournament-name').value.trim();
-        var when = document.getElementById('pk-addtournament-when').value.trim();
-        var desc = document.getElementById('pk-addtournament-desc').value.trim();
-        var url  = document.getElementById('pk-addtournament-url').value.trim();
-
-        if (!name) { showFb('Tournament name is required.', false); return; }
-        if (!when) { showFb('Tournament date is required.', false); return; }
-
-        btn.disabled = true;
-        jQuery.post(
-            PkConfig.uir + 'ParkAjax/park/' + PkConfig.parkId + '/createtournament',
-            { Name: name, When: when, Description: desc, Url: url, KingdomId: PkConfig.kingdomId },
-            function(r) {
-                btn.disabled = false;
-                if (r && r.status === 0) {
-                    showFb('Tournament created!', true);
-                    setTimeout(function() { closeModal(); window.location.href = PkConfig.uir + 'Tournament/profile/' + r.tournamentId; }, 900);
-                } else {
-                    showFb((r && r.error) ? r.error : 'Failed to create tournament.', false);
-                }
-            }, 'json'
-        ).fail(function() {
-            btn.disabled = false;
-            showFb('Request failed. Please try again.', false);
-        });
-    });
-})();
+initAddTournamentModal({
+    prefix:   'pk',
+    config:   window.PkConfig,
+    endpoint: function(c) { return c.uir + 'ParkAjax/park/' + c.parkId + '/createtournament'; },
+    extra:    function(c) { return { KingdomId: c.kingdomId }; }
+});
 
 
 // ---- Merge Players Modal (Parknew) ----

@@ -10,20 +10,21 @@
 	$dateFrom   = $DateFrom;
 	$dateTo     = $DateTo;
 	$fmtDate    = function($d){ return $d ? date('M j, Y', strtotime($d)) : ''; };
-	// Order of the Warrior level (0-12) -> display label: 12=Sword Knight, 11=Warlord, 1-10=ordinal, 0=Unranked.
-	$warriorLabel = function($lvl){
-		$lvl = (int)$lvl;
-		if ($lvl >= 12) return 'Sword Knight';
-		if ($lvl === 11) return 'Warlord';
-		if ($lvl <= 0)  return 'Unranked';
-		$suffix = ($lvl === 1) ? 'st' : (($lvl === 2) ? 'nd' : (($lvl === 3) ? 'rd' : 'th'));
-		return $lvl . $suffix;
-	};
 	$periodLbl  = '';
 	if ($dateFrom && $dateTo)      $periodLbl = $fmtDate($dateFrom) . ' – ' . $fmtDate($dateTo);
 	elseif ($dateFrom)             $periodLbl = 'Since ' . $fmtDate($dateFrom);
 	elseif ($dateTo)               $periodLbl = 'Through ' . $fmtDate($dateTo);
 	$scopeParam = $scopeType === 'park' ? 'ParkId' : 'KingdomId';
+	// Base URL for the lazy per-tab section loads; carries the exact scope of this page
+	// (AllTime clears the dates, otherwise the resolved from/to) so a fetched section
+	// renders against the identical window as the first paint.
+	$sectionBase = UIR . 'Reports/tournament_section&' . $scopeParam . '=' . (int)$ScopeId;
+	if (!empty($IsAllTime)) {
+		$sectionBase .= '&AllTime=1';
+	} else {
+		if ($dateFrom !== '') $sectionBase .= '&DateFrom=' . rawurlencode($dateFrom);
+		if ($dateTo   !== '') $sectionBase .= '&DateTo='   . rawurlencode($dateTo);
+	}
 ?>
 <div class="rp-root" id="tnr-report" data-scope="<?=htmlspecialchars($scopeType)?>" data-id="<?=(int)$ScopeId?>">
 
@@ -104,226 +105,112 @@
 <?php if ($scopeType === 'kingdom'): ?>
 		<button class="tnr-tab" data-tnrtab="parks"><i class="fas fa-map-marked-alt"></i> Parks</button>
 <?php endif; ?>
-<?php if (!empty($TeamChampions)): ?>
+<?php if (!empty($HasTeamChampions)): ?>
 		<button class="tnr-tab" data-tnrtab="teams"><i class="fas fa-users"></i> Team Champions</button>
 <?php endif; ?>
 	</nav>
 
-	<!-- Overview: breakdowns + trend -->
+	<!-- Overview: breakdowns + trend (rendered on first paint) -->
 	<div class="tnr-panel tnr-active" id="tnr-tab-overview">
-		<div class="tnr-grid2">
-			<div class="tnr-card"><h4 class="tnr-h">By Style</h4>
-<?php foreach (($ProgramStats['ByStyle']??[]) as $s): ?>
-				<div class="tnr-bar-row"><span><?=htmlspecialchars($s['Key'])?></span><b><?=(int)$s['Count']?></b></div>
-<?php endforeach; ?>
-<?php if (empty($ProgramStats['ByStyle'])): ?><div class="tnr-empty">No tournaments in range.</div><?php endif; ?>
-			</div>
-			<div class="tnr-card"><h4 class="tnr-h">By Method</h4>
-<?php foreach (($ProgramStats['ByMethod']??[]) as $s): ?>
-				<div class="tnr-bar-row"><span><?=htmlspecialchars($s['Key'])?></span><b><?=(int)$s['Count']?></b></div>
-<?php endforeach; ?>
-<?php if (empty($ProgramStats['ByMethod'])): ?><div class="tnr-empty">No tournaments in range.</div><?php endif; ?>
-			</div>
-		</div>
-		<div class="tnr-card"><h4 class="tnr-h">Activity Over Time</h4>
-			<svg id="tnr-trend" class="tnr-trend" viewBox="0 0 720 220" preserveAspectRatio="xMidYMid meet"></svg>
-			<div class="tnr-legend">Bar height = participants per month &middot; number on each bar = tournaments held</div>
-		</div>
-		<script>window.__tnrTrend = <?=json_encode($ProgramStats['Trend'] ?? [])?>;</script>
+<?php $Section = 'overview'; include __DIR__ . '/Reports_tournaments_section.tpl'; ?>
 	</div>
 
-	<!-- Tournaments: per-tournament collective standings + warrior field stats -->
-	<div class="tnr-panel" id="tnr-tab-tournaments">
-<?php foreach (($TournamentList['Tournaments'] ?? []) as $tour): $w = $tour['WarriorStats']; ?>
-		<div class="tnr-tcard">
-			<div class="tnr-tcard-top">
-				<div class="tnr-tcard-info">
-					<a class="tnr-tcard-name" href="<?=UIR?>Tournament/profile/<?=(int)$tour['TournamentId']?>"><?=htmlspecialchars($tour['Name'])?></a>
-					<div class="tnr-tcard-meta"><?=date('M j, Y', strtotime($tour['DateTime']))?><?php if ($scopeType==='kingdom' && $tour['ParkName']): ?> &middot; <?=htmlspecialchars($tour['ParkName'])?><?php endif; ?> &middot; <?=(int)$tour['BracketCount']?> bracket<?=$tour['BracketCount']==1?'':'s'?> &middot; <?=(int)$tour['ParticipantCount']?> fighters</div>
-					<div class="tnr-warstats">
-						<span class="tnr-warstat tnr-warstat-hi" data-tip="Highest Order of the Warrior in the field">Highest: <b><?=htmlspecialchars($warriorLabel($w['HighestLevel'] ?? 0))?></b></span>
-						<span class="tnr-warstat" data-tip="Average Order-of-the-Warrior level of the field"><b><?=htmlspecialchars($w['AvgLevel'])?></b> avg Warrior</span>
-						<span class="tnr-warstat" data-tip="Median Order-of-the-Warrior level of the field"><b><?=htmlspecialchars($w['MedianLevel'])?></b> median</span>
-					</div>
-				</div>
-<?php $dist = $w['Distribution'] ?? []; $maxc = 1; foreach (($dist ?: []) as $c) { if ($c > $maxc) $maxc = $c; } ?>
-				<div class="tnr-rankdist" data-tip="Participants by Order of the Warrior rank (W = Warlord, K = Sword Knight)">
-<?php for ($lvl = 1; $lvl <= 12; $lvl++): $c = (int)($dist[$lvl] ?? 0); $lab = $lvl <= 10 ? $lvl : ($lvl == 11 ? 'W' : 'K'); ?>
-					<div class="tnr-rankcol<?=$lvl >= 11 ? ' tnr-rankcol-elite' : ''?>">
-						<span class="tnr-rankcount<?=$c > 0 ? ' tnr-rankcount-has' : ''?>"><?=$c?></span>
-						<span class="tnr-rankbar-wrap"><span class="tnr-rankbar" style="height:<?=$c > 0 ? max(3, (int)round(32 * $c / $maxc)) : 0?>px"></span></span>
-						<span class="tnr-ranklabel"><?=$lab?></span>
-					</div>
-<?php endfor; ?>
-				</div>
-			</div>
-			<table class="tnr-table tnr-tstandings">
-				<thead><tr><th>#</th><th>Fighter</th><th>W</th><th>L</th><th>Win %</th><th data-tip="Order of the Warrior 0-12">Warrior</th></tr></thead>
-				<tbody>
-<?php foreach ($tour['TopParticipants'] as $i => $p): ?>
-					<tr class="<?=$i >= 4 ? 'tnr-thidden' : ''?>">
-						<td><?=$i+1?></td>
-						<td><a href="<?=UIR?>Player/profile/<?=(int)$p['MundaneId']?>"><?=htmlspecialchars($p['Persona'])?></a></td>
-						<td><?=(int)$p['Wins']?></td><td><?=(int)$p['Losses']?></td><td><?=(int)$p['WinPct']?>%</td><td><?=(int)$p['WarriorLevel']?></td>
-					</tr>
-<?php endforeach; ?>
-				</tbody>
-			</table>
-<?php if (count($tour['TopParticipants']) > 4): ?>
-			<button type="button" class="tnr-showmore">Show more</button>
-<?php endif; ?>
-		</div>
-<?php endforeach; ?>
-<?php if (empty($TournamentList['Tournaments'])): ?><div class="tnr-empty">No tournaments in range.</div><?php endif; ?>
-	</div>
+	<!-- Non-Overview tab bodies are lazy-loaded (Reports/tournament_section) on first
+	     activation; each shell is populated once via AJAX and then cached in the DOM. -->
+	<div class="tnr-panel" id="tnr-tab-tournaments" data-tnr-section="tournaments"></div>
 
-	<!-- Fighters leaderboard -->
-	<div class="tnr-panel" id="tnr-tab-fighters">
-		<table class="tnr-table tnr-sortable" id="tnr-fighters">
-			<thead><tr>
-				<th data-sort="text">Fighter</th>
-				<th data-sort="num" data-tip="Order of the Warrior 0-12">Warrior</th>
-				<th data-sort="num">Tournaments</th>
-				<th data-sort="num">W</th><th data-sort="num">L</th><th data-sort="num">Win %</th>
-				<th data-sort="num">Championships</th><th data-sort="num">Podiums</th>
-				<th data-sort="num">Streak</th><th data-sort="num" data-tip="Wins vs fighters 3+ Warrior levels higher">Upsets</th>
-			</tr></thead>
-			<tbody>
-<?php foreach (($Leaderboard['Fighters']??[]) as $f): ?>
-				<tr>
-					<td><a href="<?=UIR?>Player/profile/<?=(int)$f['MundaneId']?>"><?=htmlspecialchars($f['Persona'])?></a></td>
-					<td><?=(int)$f['WarriorLevel']?></td>
-					<td><?=(int)$f['TournamentsEntered']?></td>
-					<td><?=(int)$f['Wins']?></td><td><?=(int)$f['Losses']?></td><td><?=(int)$f['WinPct']?>%</td>
-					<td><?=(int)$f['Championships']?></td><td><?=(int)$f['Podiums']?></td>
-					<td><?=(int)$f['MaxStreak']?></td><td><?=(int)$f['UpsetWins']?></td>
-				</tr>
-<?php endforeach; ?>
-			</tbody>
-		</table>
-<?php if (empty($Leaderboard['Fighters'])): ?><div class="tnr-empty">No individual-bracket results in range.</div><?php endif; ?>
-	</div>
+	<div class="tnr-panel" id="tnr-tab-fighters" data-tnr-section="fighters"></div>
 
-	<!-- Award candidates -->
-	<div class="tnr-panel" id="tnr-tab-awards">
-<?php foreach (($AwardCandidates['Candidates']??[]) as $c): ?>
-		<div class="tnr-cand <?=$c['OotWCandidate'] ? 'tnr-cand-ootw' : ''?>">
-			<div class="tnr-cand-main">
-				<a class="tnr-cand-name" href="<?=UIR?>Player/profile/<?=(int)$c['MundaneId']?>"><?=htmlspecialchars($c['Persona'])?></a>
-				<span class="tnr-cand-wl">Warrior <?=(int)$c['WarriorLevel']?></span>
-<?php if ($c['OotWCandidate']): ?><span class="tnr-pill">Order of the Warrior candidate</span><?php endif; ?>
-				<div class="tnr-cand-note"><?=htmlspecialchars($c['EvidenceNote'])?></div>
-			</div>
-			<a class="rp-btn-ghost tnr-cand-btn" href="<?=UIR?>Player/profile/<?=(int)$c['MundaneId']?>" data-tip="Open this fighter's profile to make an award recommendation"><i class="fas fa-star"></i> Recommend</a>
-		</div>
-<?php endforeach; ?>
-<?php if (empty($AwardCandidates['Candidates'])): ?><div class="tnr-empty">No recognition candidates meet the thresholds in range.</div><?php endif; ?>
-	</div>
+	<div class="tnr-panel" id="tnr-tab-awards" data-tnr-section="awards"></div>
 
 <?php if ($scopeType === 'kingdom'): ?>
-	<!-- Park comparison -->
-	<div class="tnr-panel" id="tnr-tab-parks">
-		<table class="tnr-table tnr-sortable" id="tnr-parks">
-			<thead><tr><th data-sort="text">Park</th><th data-sort="num">Tournaments Hosted</th><th data-sort="num">Participants</th><th data-sort="num">Championships</th><th data-sort="num">Avg Warrior</th></tr></thead>
-			<tbody>
-<?php foreach (($ParkComparison['Parks']??[]) as $p): ?>
-				<tr>
-					<td><a href="<?=UIR?>Park/profile/<?=(int)$p['ParkId']?>"><?=htmlspecialchars($p['ParkName'])?></a></td>
-					<td><?=(int)$p['TournamentsHosted']?></td><td><?=(int)$p['Participants']?></td>
-					<td><?=(int)$p['Championships']?></td><td><?=htmlspecialchars($p['AvgWarriorLevel'])?></td>
-				</tr>
-<?php endforeach; ?>
-			</tbody>
-		</table>
-<?php if (empty($ParkComparison['Parks'])): ?><div class="tnr-empty">No park-hosted tournaments in range.</div><?php endif; ?>
-	</div>
+	<div class="tnr-panel" id="tnr-tab-parks" data-tnr-section="parks"></div>
 <?php endif; ?>
 
-<?php if (!empty($TeamChampions)): ?>
-	<!-- Team Champions -->
-	<div class="tnr-panel" id="tnr-tab-teams">
-		<p class="tnr-context">Team brackets that have concluded &mdash; champion and runner-up teams with their member rosters.</p>
-<?php foreach ($TeamChampions as $tc): ?>
-		<div class="tnr-tcard tnr-tc-card">
-			<div class="tnr-tcard-top">
-				<div class="tnr-tcard-info">
-					<a class="tnr-tcard-name" href="<?=UIR?>Tournament/profile/<?=(int)$tc['TournamentId']?>"><?=htmlspecialchars($tc['TournamentName'])?></a>
-					<div class="tnr-tcard-meta"><?=date('M j, Y', strtotime($tc['TournamentDate']))?><?php if ($scopeType==='kingdom' && $tc['ParkName']): ?> &middot; <?=htmlspecialchars($tc['ParkName'])?><?php endif; ?> &middot; <?=htmlspecialchars(ucfirst($tc['Style']??''))?> &middot; <?=htmlspecialchars(ucfirst($tc['Method']??''))?></div>
-				</div>
-			</div>
-			<div class="tnr-tc-podium">
-				<!-- Champion -->
-				<div class="tnr-tc-place tnr-tc-first">
-					<div class="tnr-tc-badge"><i class="fas fa-trophy"></i> Champion</div>
-					<div class="tnr-tc-teamname"><?=htmlspecialchars($tc['Champion']['TeamName'])?></div>
-<?php if (!empty($tc['Champion']['Members'])): ?>
-					<ul class="tnr-tc-roster">
-<?php foreach ($tc['Champion']['Members'] as $m): ?>
-						<li><a href="<?=UIR?>Player/profile/<?=(int)$m['MundaneId']?>"><?=htmlspecialchars($m['Persona'])?></a></li>
-<?php endforeach; ?>
-					</ul>
-<?php endif; ?>
-				</div>
-<?php if ($tc['RunnerUp'] !== null): ?>
-				<!-- Runner-up -->
-				<div class="tnr-tc-place tnr-tc-second">
-					<div class="tnr-tc-badge"><i class="fas fa-medal"></i> Runner-up</div>
-					<div class="tnr-tc-teamname"><?=htmlspecialchars($tc['RunnerUp']['TeamName'])?></div>
-<?php if (!empty($tc['RunnerUp']['Members'])): ?>
-					<ul class="tnr-tc-roster">
-<?php foreach ($tc['RunnerUp']['Members'] as $m): ?>
-						<li><a href="<?=UIR?>Player/profile/<?=(int)$m['MundaneId']?>"><?=htmlspecialchars($m['Persona'])?></a></li>
-<?php endforeach; ?>
-					</ul>
-<?php endif; ?>
-				</div>
-<?php endif; ?>
-			</div>
-		</div>
-<?php endforeach; ?>
-	</div>
+<?php if (!empty($HasTeamChampions)): ?>
+	<div class="tnr-panel" id="tnr-tab-teams" data-tnr-section="teams"></div>
 <?php endif; ?>
 
 </div>
+<script>window.__tnrSectionBase = <?=json_encode($sectionBase)?>;</script>
 <script>
 (function(){
   var root = document.getElementById('tnr-report'); if(!root) return;
+
+  // Sortable-table headers — idempotent so freshly injected lazy panels bind once.
+  function bindSortable(scope){
+    scope.querySelectorAll('.tnr-sortable th[data-sort]').forEach(function(th){
+      if(th.__tnrSort) return; th.__tnrSort=1;
+      th.style.cursor='pointer';
+      th.addEventListener('click', function(){
+        var table=th.closest('table'), tbody=table.tBodies[0], idx=Array.from(th.parentNode.children).indexOf(th);
+        var num=th.dataset.sort==='num', dir=th.__asc=!th.__asc?1:-1;
+        Array.from(tbody.rows).sort(function(a,b){
+          var x=a.cells[idx].textContent.trim(), y=b.cells[idx].textContent.trim();
+          if(num){ x=parseFloat(x)||0; y=parseFloat(y)||0; return (x-y)*dir; }
+          return x.localeCompare(y)*dir;
+        }).forEach(function(r){tbody.appendChild(r);});
+      });
+    });
+  }
+
+  // Tournaments tab: show more / less of the collective standings (rows 5-8).
+  function bindShowmore(scope){
+    scope.querySelectorAll('.tnr-showmore').forEach(function(btn){
+      if(btn.__tnrMore) return; btn.__tnrMore=1;
+      btn.addEventListener('click', function(){
+        var card=btn.closest('.tnr-tcard');
+        var open=card.classList.toggle('tnr-show-all');
+        btn.textContent = open ? 'Show less' : 'Show more';
+      });
+    });
+  }
+
+  function bindPanel(scope){ bindSortable(scope); bindShowmore(scope); }
+
+  // Fetch a non-Overview tab body once, on first activation, then cache it in the DOM.
+  function loadSection(panel){
+    if(panel.dataset.tnrLoaded || panel.dataset.tnrLoading) return;
+    var section = panel.dataset.tnrSection;
+    if(!section || !window.__tnrSectionBase) return;
+    panel.dataset.tnrLoading='1';
+    panel.innerHTML='<div class="tnr-empty">Loading…</div>';
+    fetch(window.__tnrSectionBase+'&Section='+encodeURIComponent(section), {credentials:'same-origin'})
+      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.text(); })
+      .then(function(html){
+        panel.innerHTML=html;
+        panel.dataset.tnrLoaded='1';
+        delete panel.dataset.tnrLoading;
+        bindPanel(panel);
+      })
+      .catch(function(){
+        delete panel.dataset.tnrLoading;
+        panel.innerHTML='<div class="tnr-empty">Couldn’t load this section. <button type="button" class="rp-btn-ghost tnr-retry">Retry</button></div>';
+        var rb=panel.querySelector('.tnr-retry'); if(rb) rb.addEventListener('click', function(){ loadSection(panel); });
+      });
+  }
+
   root.querySelectorAll('.tnr-tab').forEach(function(btn){
     btn.addEventListener('click', function(){
       root.querySelectorAll('.tnr-tab').forEach(t=>t.classList.remove('tnr-active'));
       root.querySelectorAll('.tnr-panel').forEach(p=>p.classList.remove('tnr-active'));
       btn.classList.add('tnr-active');
       var panel = document.getElementById('tnr-tab-'+btn.dataset.tnrtab);
-      if(panel) panel.classList.add('tnr-active');
+      if(panel){ panel.classList.add('tnr-active'); if(panel.dataset.tnrSection) loadSection(panel); }
     });
   });
-  root.querySelectorAll('.tnr-sortable th[data-sort]').forEach(function(th){
-    th.style.cursor='pointer';
-    th.addEventListener('click', function(){
-      var table=th.closest('table'), tbody=table.tBodies[0], idx=Array.from(th.parentNode.children).indexOf(th);
-      var num=th.dataset.sort==='num', dir=th.__asc=!th.__asc?1:-1;
-      Array.from(tbody.rows).sort(function(a,b){
-        var x=a.cells[idx].textContent.trim(), y=b.cells[idx].textContent.trim();
-        if(num){ x=parseFloat(x)||0; y=parseFloat(y)||0; return (x-y)*dir; }
-        return x.localeCompare(y)*dir;
-      }).forEach(function(r){tbody.appendChild(r);});
-    });
-  });
+
+  bindPanel(root); // Overview is server-rendered on first paint.
+
   if(window.flatpickr){
     root.querySelectorAll('.tnr-date').forEach(function(el){
       flatpickr(el,{altInput:true,altFormat:'F j, Y',dateFormat:'Y-m-d'});
     });
   }
-  // Tournaments tab: show more / less of the collective standings (rows 5-8)
-  root.querySelectorAll('.tnr-showmore').forEach(function(btn){
-    btn.addEventListener('click', function(){
-      var card=btn.closest('.tnr-tcard');
-      var open=card.classList.toggle('tnr-show-all');
-      btn.textContent = open ? 'Show less' : 'Show more';
-    });
-  });
-  var data=window.__tnrTrend||[], svg=document.getElementById('tnr-trend');
-  if(svg){
+
+  (function drawTrend(){
+    var data=window.__tnrTrend||[], svg=document.getElementById('tnr-trend');
+    if(!svg) return;
     if(!data.length){ svg.insertAdjacentHTML('afterend','<div class="tnr-empty">No activity in range.</div>'); svg.remove(); return; }
     var W=720,H=220, ml=42, mr=14, mt=22, mb=30;
     var pw=W-ml-mr, ph=H-mt-mb, n=data.length;
@@ -353,6 +240,6 @@
       }
     });
     svg.innerHTML=g;
-  }
+  })();
 })();
 </script>

@@ -1,267 +1,307 @@
 <?php
 
-class Model_Tournament extends Model {
+class Model_Tournament extends Model
+{
+    public function __construct()
+    {
+        parent::__construct();
+        $this->Report          = new APIModel('Report');
+        $this->Tournament      = new APIModel('Tournament');
+        $this->TournamentExport = new APIModel('TournamentExport');
+    }
 
-	function __construct() {
-		parent::__construct();
-		$this->Report          = new APIModel('Report');
-		$this->Tournament      = new APIModel('Tournament');
-		$this->TournamentExport = new APIModel('TournamentExport');
-	}
+    public function get_tournies($request)
+    {
+        return $this->Report->TournamentReport($request);
+    }
 
-	function get_tournies($request) {
-		return $this->Report->TournamentReport($request);
-	}
+    public function create_tournament($request)
+    {
+        return $this->Tournament->CreateTournament($request);
+    }
 
-	function create_tournament($request) {
-		return $this->Tournament->CreateTournament($request);
-	}
+    public function delete_tournament($request)
+    {
+        return $this->Tournament->DeleteTournament($request);
+    }
 
-	function delete_tournament($request) {
-		return $this->Tournament->DeleteTournament($request);
-	}
+    public function update_tournament($request)
+    {
+        return $this->Tournament->UpdateTournament($request);
+    }
 
-	function update_tournament($request) {
-		return $this->Tournament->UpdateTournament($request);
-	}
+    public function add_bracket($request)
+    {
+        return $this->Tournament->AddBracket($request);
+    }
 
-	function add_bracket($request) {
-		return $this->Tournament->AddBracket($request);
-	}
+    public function update_bracket($request)
+    {
+        return $this->Tournament->UpdateBracket($request);
+    }
 
-	function update_bracket($request) {
-		return $this->Tournament->UpdateBracket($request);
-	}
+    public function add_participant($request)
+    {
+        return $this->Tournament->AddParticipant($request);
+    }
 
-	function add_participant($request) {
-		return $this->Tournament->AddParticipant($request);
-	}
+    public function get_brackets($tournament_id)
+    {
+        return $this->Tournament->GetBrackets(['TournamentId' => $tournament_id]);
+    }
 
-	function get_brackets($tournament_id) {
-		return $this->Tournament->GetBrackets(['TournamentId' => $tournament_id]);
-	}
+    public function get_participants($request)
+    {
+        return $this->Tournament->GetParticipants($request);
+    }
 
-	function get_participants($request) {
-		return $this->Tournament->GetParticipants($request);
-	}
+    public function get_matches($request)
+    {
+        return $this->Tournament->GetMatches($request);
+    }
 
-	function get_matches($request) {
-		return $this->Tournament->GetMatches($request);
-	}
+    public function remove_participant($request)
+    {
+        return $this->Tournament->RemoveParticipant($request);
+    }
 
-	function remove_participant($request) {
-		return $this->Tournament->RemoveParticipant($request);
-	}
+    public function register_participant($request)
+    {
+        return $this->Tournament->RegisterParticipant($request);
+    }
 
-	function register_participant($request) {
-		return $this->Tournament->RegisterParticipant($request);
-	}
+    public function get_registrants($request)
+    {
+        return $this->Tournament->GetRegistrants($request);
+    }
 
-	function get_registrants($request) {
-		return $this->Tournament->GetRegistrants($request);
-	}
+    public function assign_to_bracket($request)
+    {
+        return $this->Tournament->AssignToBracket($request);
+    }
 
-	function assign_to_bracket($request) {
-		return $this->Tournament->AssignToBracket($request);
-	}
+    public function unassign_from_bracket($request)
+    {
+        return $this->Tournament->UnassignFromBracket($request);
+    }
 
-	function unassign_from_bracket($request) {
-		return $this->Tournament->UnassignFromBracket($request);
-	}
+    public function update_registration_status($request)
+    {
+        return $this->Tournament->UpdateRegistrationStatus($request);
+    }
 
-	function update_registration_status($request) {
-		return $this->Tournament->UpdateRegistrationStatus($request);
-	}
+    public function remove_registrant($request)
+    {
+        return $this->Tournament->RemoveRegistrant($request);
+    }
 
-	function remove_registrant($request) {
-		return $this->Tournament->RemoveRegistrant($request);
-	}
+    public function register_team($request)
+    {
+        return $this->Tournament->RegisterTeam($request);
+    }
 
-	function register_team($request) {
-		return $this->Tournament->RegisterTeam($request);
-	}
+    public function get_registered_teams($request)
+    {
+        return $this->Tournament->GetRegisteredTeams($request);
+    }
 
-	function get_registered_teams($request) {
-		return $this->Tournament->GetRegisteredTeams($request);
-	}
+    public function update_team($request)
+    {
+        return $this->Tournament->UpdateTeam($request);
+    }
 
-	function update_team($request) {
-		return $this->Tournament->UpdateTeam($request);
-	}
+    public function remove_registered_team($request)
+    {
+        return $this->Tournament->RemoveRegisteredTeam($request);
+    }
 
-	function remove_registered_team($request) {
-		return $this->Tournament->RemoveRegisteredTeam($request);
-	}
+    public function assign_team_to_bracket($request)
+    {
+        return $this->Tournament->AssignTeamToBracket($request);
+    }
 
-	function assign_team_to_bracket($request) {
-		return $this->Tournament->AssignTeamToBracket($request);
-	}
+    public function unassign_team_from_bracket($request)
+    {
+        return $this->Tournament->UnassignTeamFromBracket($request);
+    }
 
-	function unassign_team_from_bracket($request) {
-		return $this->Tournament->UnassignTeamFromBracket($request);
-	}
+    public function generate_matches($request)
+    {
+        return $this->Tournament->GenerateMatches($request);
+    }
 
-	function generate_matches($request) {
-		return $this->Tournament->GenerateMatches($request);
-	}
+    public function post_match_result($request)
+    {
+        return $this->Tournament->PostMatchResult($request);
+    }
 
-	function post_match_result($request) {
-		return $this->Tournament->PostMatchResult($request);
-	}
+    public function reset_match($request)
+    {
+        return $this->Tournament->ResetMatch($request);
+    }
 
-	function reset_match($request) {
-		return $this->Tournament->ResetMatch($request);
-	}
+    public function create_confirmation_match($request)
+    {
+        return $this->Tournament->CreateConfirmationMatch($request);
+    }
 
-	function create_confirmation_match($request) {
-		return $this->Tournament->CreateConfirmationMatch($request);
-	}
+    public function create_tiebreaker_match($request)
+    {
+        return $this->Tournament->CreateTiebreakerMatch($request);
+    }
 
-	function create_tiebreaker_match($request) {
-		return $this->Tournament->CreateTiebreakerMatch($request);
-	}
+    public function create_round_robin_tiebreaker($request)
+    {
+        return $this->Tournament->CreateRoundRobinTiebreaker($request);
+    }
 
-	function create_round_robin_tiebreaker($request) {
-		return $this->Tournament->CreateRoundRobinTiebreaker($request);
-	}
+    public function decline_round_robin_tiebreaker($request)
+    {
+        return $this->Tournament->DeclineRoundRobinTiebreaker($request);
+    }
 
-	function decline_round_robin_tiebreaker($request) {
-		return $this->Tournament->DeclineRoundRobinTiebreaker($request);
-	}
+    public function record_ironman_win($request)
+    {
+        return $this->Tournament->RecordIronmanWin($request);
+    }
 
-	function record_ironman_win($request) {
-		return $this->Tournament->RecordIronmanWin($request);
-	}
+    public function complete_bracket($request)
+    {
+        return $this->Tournament->CompleteBracket($request);
+    }
 
-	function complete_bracket($request) {
-		return $this->Tournament->CompleteBracket($request);
-	}
+    public function delete_bracket($request)
+    {
+        return $this->Tournament->DeleteBracket($request);
+    }
 
-	function delete_bracket($request) {
-		return $this->Tournament->DeleteBracket($request);
-	}
+    public function clear_bracket_matches($request)
+    {
+        return $this->Tournament->ClearBracketMatches($request);
+    }
 
-	function clear_bracket_matches($request) {
-		return $this->Tournament->ClearBracketMatches($request);
-	}
+    public function pools_to_bracket($request)
+    {
+        return $this->Tournament->PoolsToBracket($request);
+    }
 
-	function pools_to_bracket($request) {
-		return $this->Tournament->PoolsToBracket($request);
-	}
+    public function auth_check($request)
+    {
+        return $this->Tournament->CheckAuth($request);
+    }
 
-	function auth_check($request) {
-		return $this->Tournament->CheckAuth($request);
-	}
+    public function save_standings_points($request)
+    {
+        return $this->Tournament->SaveStandingsPoints($request);
+    }
 
-	function save_standings_points($request) {
-		return $this->Tournament->SaveStandingsPoints($request);
-	}
+    public function reorder_seeds($request)
+    {
+        return $this->Tournament->ReorderSeeds($request);
+    }
 
-	function reorder_seeds($request) {
-		return $this->Tournament->ReorderSeeds($request);
-	}
+    public function update_participant_status($request)
+    {
+        return $this->Tournament->UpdateParticipantStatus($request);
+    }
 
-	function update_participant_status($request) {
-		return $this->Tournament->UpdateParticipantStatus($request);
-	}
+    public function update_alias($request)
+    {
+        return $this->Tournament->UpdateAlias($request);
+    }
 
-	function update_alias($request) {
-		return $this->Tournament->UpdateAlias($request);
-	}
+    public function search_parks($query)
+    {
+        return $this->Tournament->SearchParks($query);
+    }
 
-	function search_parks($query) {
-		return $this->Tournament->SearchParks($query);
-	}
+    public function search_events($query)
+    {
+        return $this->Tournament->SearchEvents($query);
+    }
 
-	function search_events($query) {
-		return $this->Tournament->SearchEvents($query);
-	}
+    public function get_tournament_event_label($tournament_id)
+    {
+        return $this->Tournament->GetTournamentEventLabel($tournament_id);
+    }
 
-	function get_tournament_event_label($tournament_id) {
-		return $this->Tournament->GetTournamentEventLabel($tournament_id);
-	}
+    public function get_standings_points($tournament_id)
+    {
+        return $this->Tournament->GetStandingsPoints($tournament_id);
+    }
 
-	function get_standings_points($tournament_id) {
-		return $this->Tournament->GetStandingsPoints($tournament_id);
-	}
+    public function get_standings($bracket_id)
+    {
+        return $this->Tournament->GetStandings(['BracketId' => $bracket_id]);
+    }
 
-	function get_standings($bracket_id) {
-		return $this->Tournament->GetStandings(['BracketId' => $bracket_id]);
-	}
+    public function export_workbook($tournament_id)
+    {
+        return $this->TournamentExport->BuildWorkbook(['TournamentId' => (int)$tournament_id]);
+    }
 
-	function export_workbook($tournament_id) {
-		return $this->TournamentExport->BuildWorkbook(['TournamentId' => (int)$tournament_id]);
-	}
+    public function get_reeves($request)
+    {
+        return $this->Tournament->GetReeves($request);
+    }
 
-	function get_reeves($request) {
-		return $this->Tournament->GetReeves($request);
-	}
+    public function add_reeve($request)
+    {
+        return $this->Tournament->AddReeve($request);
+    }
 
-	function add_reeve($request) {
-		return $this->Tournament->AddReeve($request);
-	}
+    public function remove_reeve($request)
+    {
+        return $this->Tournament->RemoveReeve($request);
+    }
 
-	function remove_reeve($request) {
-		return $this->Tournament->RemoveReeve($request);
-	}
+    public function save_point_score($request)
+    {
+        return $this->Tournament->SavePointScore($request);
+    }
 
-	function save_point_score($request) {
-		return $this->Tournament->SavePointScore($request);
-	}
+    public function add_points_round($request)
+    {
+        return $this->Tournament->AddPointsRound($request);
+    }
 
-	function add_points_round($request) {
-		return $this->Tournament->AddPointsRound($request);
-	}
+    public function get_point_standings($request)
+    {
+        return $this->Tournament->GetPointStandings($request);
+    }
 
-	function get_point_standings($request) {
-		return $this->Tournament->GetPointStandings($request);
-	}
+    public function get_version($request)
+    {
+        return $this->Tournament->GetVersion($request);
+    }
 
-	function get_version($request) {
-		return $this->Tournament->GetVersion($request);
-	}
+    public function get_seq($request)
+    {
+        return $this->Tournament->GetSeq($request);
+    }
 
-	function get_seq($request) {
-		return $this->Tournament->GetSeq($request);
-	}
+    public function get_changes($request)
+    {
+        return $this->Tournament->GetChanges($request);
+    }
 
-	function get_changes($request) {
-		return $this->Tournament->GetChanges($request);
-	}
+    public function get_reeve_role($request)
+    {
+        return $this->Tournament->GetReeveRole($request);
+    }
 
-	function get_reeve_role($request) {
-		return $this->Tournament->GetReeveRole($request);
-	}
+    public function reeve_presence($request)
+    {
+        return $this->Tournament->ReevePresence($request);
+    }
 
-	function get_player_history($mundane_id) {
-		$report = $this->Report->GetPlayerTournamentHistory(['MundaneId' => $mundane_id]);
-		$rows = is_array($report['Detail']) ? $report['Detail'] : [];
-		if (empty($rows)) return [];
-
-		// Perf: memoize standings per BracketId so each bracket is fetched at most once.
-		// GetStandings() issues 2-3 queries; remaining cost is O(distinct brackets) per
-		// player history (the player appears once per bracket, so the memo only collapses
-		// the rare same-bracket dup). A true O(1)-query path would need a batched
-		// GetStandingsForBrackets([bid,...]) in class.Tournament.php (out of scope here).
-		$bracketStandings = [];
-		foreach ($rows as &$row) {
-			$bid = $row['BracketId'];
-			if (!array_key_exists($bid, $bracketStandings)) {
-				$s = $this->Tournament->GetStandings(['BracketId' => $bid]);
-				$bracketStandings[$bid] = is_array($s['Detail']) ? $s['Detail'] : [];
-			}
-			$row['Placement'] = null;
-			foreach ($bracketStandings[$bid] as $s) {
-				if ((int)$s['ParticipantId'] === (int)$row['ParticipantId']) {
-					$row['Placement'] = (int)$s['Rank'];
-					break;
-				}
-			}
-		}
-		unset($row);
-		return $rows;
-	}
+    public function get_player_history($mundane_id)
+    {
+        // Placement decoration + per-bracket standings batching now lives in the lib layer
+        // (Tournament::GetPlayerHistory); this stays a thin pass-through. Unwrap Detail to
+        // preserve the controller's bare-array contract.
+        $r = $this->Tournament->GetPlayerHistory(['MundaneId' => $mundane_id]);
+        return (isset($r['Detail']) && is_array($r['Detail'])) ? $r['Detail'] : [];
+    }
 
 }
-
-?>
