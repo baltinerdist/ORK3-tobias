@@ -3565,19 +3565,30 @@ class Report extends Ork3
         //    credits separately, applies per-event cap and outside-kingdom credit ceiling.
         // 2. Standard path: single-level GROUP BY with att_expr.
         // Both produce the same att alias with att_count; path 1 also emits outside_credits_raw.
+        //
+        // Kingdom scope is computed by PARK membership, not by attendance.kingdom_id.
+        // attendance.kingdom_id is a point-in-time snapshot set when the row was
+        // inserted; if a park later transfers between kingdoms (most notably when a
+        // principality splits off from its parent), historical rows keep the old
+        // kingdom_id and are silently misattributed. park.kingdom_id is the stable
+        // truth, so we filter via park membership + a fallback branch for kingdom-only
+        // events (which have no park_id by definition).
+        $_park_subq        = "SELECT park_id FROM " . DB_PREFIX . "park WHERE kingdom_id = $kingdom_id";
+        $_in_scope_clause  = "(a.park_id IN ($_park_subq) OR (a.kingdom_id = $kingdom_id AND a.park_id = 0))";
         $att_select_extra = '';
         if ($max_outside_kingdom_creds > 0) {
             $_per_evt = $max_credits_per_event > 0 ? "LEAST(COUNT(*), $max_credits_per_event)" : "COUNT(*)";
-            // Use COALESCE(a.kingdom_id, $kingdom_id) so that attendance rows with NULL kingdom_id
-            // are treated as in-kingdom, preventing NULL propagation in SUM() arithmetic.
+            // In-kingdom classification is by PARK membership (see $_in_scope_clause
+            // comment above). The boolean returns 1 for in-kingdom rows, 0 otherwise,
+            // which is exactly what the credit-multiplier arithmetic below needs.
             $att_join_clause = "LEFT JOIN (
 					SELECT mundane_id,
 					       SUM(in_credits) + LEAST(SUM(out_credits), $max_outside_kingdom_creds) AS att_count,
 					       SUM(out_credits) AS outside_credits_raw
 					FROM (
 					    SELECT a.mundane_id,
-					           $_per_evt * (COALESCE(a.kingdom_id, $kingdom_id) = $kingdom_id) AS in_credits,
-					           $_per_evt * (COALESCE(a.kingdom_id, $kingdom_id) != $kingdom_id) AS out_credits
+					           $_per_evt * ($_in_scope_clause)    AS in_credits,
+					           $_per_evt * (NOT $_in_scope_clause) AS out_credits
 					    FROM " . DB_PREFIX . "attendance a
 					    WHERE a.event_id IS NOT NULL AND a.event_id != 0
 					      AND a.date >= '$start_date'
@@ -3585,8 +3596,8 @@ class Report extends Ork3
 					    GROUP BY a.mundane_id, a.event_id, a.kingdom_id
 					    UNION ALL
 					    SELECT a.mundane_id,
-					           (COALESCE(a.kingdom_id, $kingdom_id) = $kingdom_id) AS in_credits,
-					           (COALESCE(a.kingdom_id, $kingdom_id) != $kingdom_id) AS out_credits
+					           ($_in_scope_clause)    AS in_credits,
+					           (NOT $_in_scope_clause) AS out_credits
 					    FROM " . DB_PREFIX . "attendance a
 					    WHERE (a.event_id = 0 OR a.event_id IS NULL)
 					      AND a.date >= '$start_date'
@@ -3601,7 +3612,7 @@ class Report extends Ork3
             $_kve_join_sql  = $kingdom_evt_bonus
                 ? "LEFT JOIN " . DB_PREFIX . "event kve ON kve.event_id = a.event_id AND a.event_id != 0"
                 : '';
-            $_att_where_kw  = $all_kingdoms ? "1=1" : "a.kingdom_id = $kingdom_id";
+            $_att_where_kw  = $all_kingdoms ? "1=1" : $_in_scope_clause;
             $att_join_clause = "LEFT JOIN (
 					SELECT a.mundane_id, $att_expr AS att_count $att_extra_cols
 					FROM " . DB_PREFIX . "attendance a
@@ -3724,7 +3735,7 @@ class Report extends Ork3
 				CASE WHEN EXISTS (
 					SELECT 1 FROM " . DB_PREFIX . "dues d
 					WHERE d.mundane_id = m.mundane_id
-					  AND d.kingdom_id = $kingdom_id
+					  AND d.park_id IN ($_park_subq)
 					  AND d.revoked != 1
 					  AND (d.dues_until >= CURDATE() OR d.dues_for_life = 1)
 				) THEN 1 ELSE 0 END AS dues_paid,
@@ -3732,7 +3743,7 @@ class Report extends Ork3
 				             ELSE MAX(d.dues_until) END
 				 FROM " . DB_PREFIX . "dues d
 				 WHERE d.mundane_id = m.mundane_id
-				   AND d.kingdom_id = $kingdom_id
+				   AND d.park_id IN ($_park_subq)
 				   AND d.revoked != 1
 				   AND (d.dues_until >= CURDATE() OR d.dues_for_life = 1)
 				) AS dues_until
@@ -4518,6 +4529,680 @@ class Report extends Ork3
         };
 
         // ====================================================================
+        // RELEASE 3.5.4 — Walker  (Qualification Tests)
+        // ====================================================================
+        // Qualification tests are opt-in per kingdom, so adoption here is
+        // KINGDOM-scoped, not player-scoped — $denom/$pct (active players) must
+        // not be used for it. The denominator is active kingdoms, which includes
+        // principalities and excludes Retired, deliberately matching the rule the
+        // migration itself seeds the config switches with.
+        $activeKingdoms = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}kingdom` WHERE active = 'Active'"
+        );
+        $kPct = function ($value) use ($activeKingdoms) {
+            if ($activeKingdoms <= 0) {
+                return null;
+            }
+            return round(($value / $activeKingdoms) * 100, 1);
+        };
+
+        // --- qualification test adoption -------------------------------------
+        // The on/off switches live in ork_configuration rows, not a kingdom column,
+        // and the value is JSON round-tripped: the stored literal is '"1"' / '"0"'
+        // (a JSON-encoded string, quotes included), so compare against '"1"'. Each
+        // count joins ork_kingdom so the numerator can never exceed the active-
+        // kingdom denominator if a kingdom retires while its config row lingers.
+        $qualReeveKingdoms = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c
+			   FROM `{$p}configuration` cfg
+			   JOIN `{$p}kingdom` k ON k.kingdom_id = cfg.id AND k.active = 'Active'
+			  WHERE cfg.type = 'Kingdom' AND cfg.`key` = 'QualTestReeveEnabled' AND cfg.value = '\"1\"'"
+        );
+        $qualCorporaKingdoms = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c
+			   FROM `{$p}configuration` cfg
+			   JOIN `{$p}kingdom` k ON k.kingdom_id = cfg.id AND k.active = 'Active'
+			  WHERE cfg.type = 'Kingdom' AND cfg.`key` = 'QualTestCorporaEnabled' AND cfg.value = '\"1\"'"
+        );
+        $qualEitherKingdoms = $this->_rfuScalar(
+            "SELECT COUNT(DISTINCT cfg.id) AS c
+			   FROM `{$p}configuration` cfg
+			   JOIN `{$p}kingdom` k ON k.kingdom_id = cfg.id AND k.active = 'Active'
+			  WHERE cfg.type = 'Kingdom'
+			    AND cfg.`key` IN ('QualTestReeveEnabled', 'QualTestCorporaEnabled')
+			    AND cfg.value = '\"1\"'"
+        );
+        // "Takeable" is the honest companion to "enabled": a kingdom can flip the
+        // switch on and still have nothing a player could sit. It counts only where
+        // the test is enabled AND a published version exists AND that version holds
+        // at least as many ACTIVE questions as the kingdom's configured
+        // question_count. The app serves config defaults in-memory without writing
+        // an ork_qual_config row, so a missing row means the default of 10.
+        $qualTakeableKingdoms = $this->_rfuScalar(
+            "SELECT COUNT(DISTINCT k.kingdom_id) AS c
+			   FROM `{$p}kingdom` k
+			   JOIN `{$p}configuration` cfg
+			     ON cfg.type = 'Kingdom' AND cfg.id = k.kingdom_id AND cfg.value = '\"1\"'
+			    AND cfg.`key` IN ('QualTestReeveEnabled', 'QualTestCorporaEnabled')
+			   JOIN `{$p}qual_question_set` qs
+			     ON qs.kingdom_id = k.kingdom_id AND qs.status = 'published'
+			    AND qs.test_type = CASE cfg.`key`
+			                           WHEN 'QualTestReeveEnabled' THEN 'reeve'
+			                           ELSE 'corpora'
+			                       END
+			   LEFT JOIN `{$p}qual_config` qc
+			     ON qc.kingdom_id = k.kingdom_id AND qc.test_type = qs.test_type
+			  WHERE k.active = 'Active'
+			    AND (
+			          SELECT COUNT(*) FROM `{$p}qual_set_question` sq
+			          JOIN `{$p}qual_question` q
+			            ON q.qual_question_id = sq.qual_question_id AND q.status = 'active'
+			          WHERE sq.qual_question_set_id = qs.qual_question_set_id
+			        ) >= COALESCE(qc.question_count, 10)"
+        );
+        $qualAdoptChart = array(
+            'id'         => 'rfu-qual-adoption',
+            'type'       => 'bar',
+            'title'      => 'Kingdoms with each test enabled',
+            'categories' => array("Reeve's Test", 'Corpora Test'),
+            'series'     => array(
+                array('name' => 'Enabled kingdoms', 'data' => array($qualReeveKingdoms, $qualCorporaKingdoms)),
+            ),
+        );
+        $featQualAdoption = array(
+            'key'         => 'qual_adoption',
+            'title'       => 'Qualification Tests',
+            'description' => "Kingdoms opt in to the Reeve's and Corpora qualification tests, then build and publish the version their players sit.",
+            'kpis' => array(
+                $this->_rfuKpi("Kingdoms with the Reeve's Test enabled", $qualReeveKingdoms, $activeKingdoms, $kPct($qualReeveKingdoms), "active kingdoms with QualTestReeveEnabled turned on", null, null, 'of active kingdoms'),
+                $this->_rfuKpi('Kingdoms with the Corpora Test enabled', $qualCorporaKingdoms, $activeKingdoms, $kPct($qualCorporaKingdoms), 'active kingdoms with QualTestCorporaEnabled turned on', null, null, 'of active kingdoms'),
+                $this->_rfuKpi('Kingdoms with either test enabled', $qualEitherKingdoms, $activeKingdoms, $kPct($qualEitherKingdoms), 'active kingdoms running at least one of the two tests', null, null, 'of active kingdoms'),
+                $this->_rfuKpi('Kingdoms with a takeable test', $qualTakeableKingdoms, $activeKingdoms, $kPct($qualTakeableKingdoms), 'enabled AND a published version with enough active questions — players can actually sit it', null, null, 'of active kingdoms'),
+            ),
+            'charts' => array($qualAdoptChart),
+            'links' => array(
+                $this->_rfuQualKingdomTile("Kingdoms with the Reeve's Test enabled", 'QualTestReeveEnabled'),
+                $this->_rfuQualKingdomTile('Kingdoms with the Corpora Test enabled', 'QualTestCorporaEnabled'),
+            ),
+        );
+
+        // --- question banks & versions ---------------------------------------
+        $qualQuestions = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}qual_question`");
+        $qualQActive   = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}qual_question` WHERE status = 'active'");
+        $qualQArchived = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}qual_question` WHERE status = 'archived'");
+        $qualImported  = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}qual_question` WHERE source_question_id IS NOT NULL");
+        $qualSets      = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}qual_question_set`");
+        $qualSetsLive  = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}qual_question_set` WHERE status = 'published'");
+        $qualFlagged   = $this->_rfuScalar("SELECT COUNT(DISTINCT qual_question_id) AS c FROM `{$p}qual_report`");
+        $qualSetBreak  = $this->_rfuBreakdown(
+            "SELECT CASE status
+						WHEN 'draft'     THEN 'Draft'
+						WHEN 'published' THEN 'Published'
+						ELSE 'Retired'
+					END AS k, COUNT(*) AS c
+			   FROM `{$p}qual_question_set`
+			  GROUP BY k ORDER BY c DESC, k ASC"
+        );
+        $qualFlagBreak = $this->_rfuBreakdown(
+            "SELECT CASE reason
+						WHEN 'wording'  THEN 'Unclear wording'
+						WHEN 'correct'  THEN 'Incorrect answer'
+						WHEN 'outdated' THEN 'Outdated'
+						ELSE 'Other'
+					END AS k, COUNT(*) AS c
+			   FROM `{$p}qual_report`
+			  GROUP BY k ORDER BY c DESC, k ASC"
+        );
+        $featQualBank = array(
+            'key'         => 'qual_bank',
+            'title'       => 'Question Banks & Versions',
+            'description' => 'Managers write or import questions, gather them into named versions, and publish one version at a time as the live test.',
+            'kpis' => array(
+                $this->_rfuKpi('Questions created', $qualQuestions, null, null, 'rows in qual question'),
+                $this->_rfuKpi('Active questions', $qualQActive, null, null, 'questions available to be drawn into a test'),
+                $this->_rfuKpi('Archived questions', $qualQArchived, null, null, 'questions retired from the bank'),
+                $this->_rfuKpi('Imported from the shared library', $qualImported, null, null, 'questions copied from another kingdom rather than written locally'),
+                $this->_rfuKpi('Test versions created', $qualSets, null, null, 'rows in qual question set'),
+                $this->_rfuKpi('Published (live) versions', $qualSetsLive, null, null, "versions with status 'published' — one per kingdom and test type"),
+                $this->_rfuKpi('Questions flagged', $qualFlagged, null, null, 'distinct questions with an OPEN flag — flags are deleted once a manager resolves them, so this is not a lifetime total'),
+            ),
+            'charts' => array(
+                $this->_rfuChartFromBreakdown('rfu-qual-sets', 'bar', 'Test versions by status', $qualSetBreak, 'Versions'),
+                $this->_rfuChartFromBreakdown('rfu-qual-flags', 'bar', 'Open question flags by reason', $qualFlagBreak, 'Flags'),
+            ),
+        );
+
+        // --- taking the test --------------------------------------------------
+        // ork_qual_attempt logs EVERY submission, pass or fail, so pass rate is
+        // per attempt (SUM(passed)/COUNT(*)). ork_qual_result is pass-only current
+        // standing (one row per player+kingdom+type) and must not be used for it.
+        $qualAttempts        = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}qual_attempt`");
+        $qualAttemptsReeve   = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}qual_attempt` WHERE test_type = 'reeve'");
+        $qualAttemptsCorpora = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}qual_attempt` WHERE test_type = 'corpora'");
+        $qualPassed          = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}qual_attempt` WHERE passed = 1");
+        $qualPassedReeve     = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}qual_attempt` WHERE passed = 1 AND test_type = 'reeve'");
+        $qualPassedCorpora   = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}qual_attempt` WHERE passed = 1 AND test_type = 'corpora'");
+        $qualTakers          = $this->_rfuScalar("SELECT COUNT(DISTINCT player_id) AS c FROM `{$p}qual_attempt`");
+        $qualCurrent         = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}qual_result` WHERE expires_at > NOW()");
+        $qualRate        = ($qualAttempts > 0) ? round(100.0 * $qualPassed / $qualAttempts, 1) : null;
+        $qualRateReeve   = ($qualAttemptsReeve > 0) ? round(100.0 * $qualPassedReeve / $qualAttemptsReeve, 1) : null;
+        $qualRateCorpora = ($qualAttemptsCorpora > 0) ? round(100.0 * $qualPassedCorpora / $qualAttemptsCorpora, 1) : null;
+        $qualOutcomeChart = array(
+            'id'         => 'rfu-qual-outcomes',
+            'type'       => 'column',
+            'title'      => 'Attempts by test type: passed vs failed',
+            'categories' => array("Reeve's Test", 'Corpora Test'),
+            'series'     => array(
+                array('name' => 'Passed', 'data' => array($qualPassedReeve, $qualPassedCorpora)),
+                array('name' => 'Failed', 'data' => array($qualAttemptsReeve - $qualPassedReeve, $qualAttemptsCorpora - $qualPassedCorpora)),
+            ),
+        );
+        $featQualTaking = array(
+            'key'         => 'qual_taking',
+            'title'       => 'Taking the Test',
+            'description' => 'Players sit their kingdom\'s published test and earn a dated qualification; every submission is logged, pass or fail.',
+            'kpis' => array(
+                $this->_rfuKpi('Tests taken', $qualAttempts, null, null, 'total submissions logged, pass or fail'),
+                $this->_rfuKpi("Reeve's Test attempts", $qualAttemptsReeve, null, null, "submissions of the Reeve's Test"),
+                $this->_rfuKpi('Corpora Test attempts', $qualAttemptsCorpora, null, null, 'submissions of the Corpora Test'),
+                $this->_rfuKpi('Pass rate', $qualRate, null, null, 'share of all attempts that passed — retakes count as separate attempts', null, null, null, '%', 1),
+                $this->_rfuKpi("Reeve's Test pass rate", $qualRateReeve, null, null, "share of Reeve's Test attempts that passed — retakes count separately", null, null, null, '%', 1),
+                $this->_rfuKpi('Corpora Test pass rate', $qualRateCorpora, null, null, 'share of Corpora Test attempts that passed — retakes count separately', null, null, null, '%', 1),
+                $this->_rfuKpi('Players who have taken a test', $qualTakers, null, null, 'distinct players with at least one attempt'),
+                $this->_rfuKpi('Players currently qualified', $qualCurrent, null, null, 'standing qualifications that have not yet expired'),
+            ),
+            'charts' => array($qualOutcomeChart),
+        );
+
+        $release354 = array(
+            'version' => '3.5.4',
+            'name'    => 'Walker',
+            'date'    => '2026-07-15',
+            'blurb'   => "Qualification Tests: kingdoms build a Reeve's and Corpora question bank, publish a versioned test, and players sit it for a dated qualification.",
+            'features' => array(
+                $featQualAdoption,
+                $featQualBank,
+                $featQualTaking,
+            ),
+        );
+
+        // ====================================================================
+        // RELEASE 3.5.3 — Rose  (Event Planning Expansion)
+        // ====================================================================
+        // Every Rose table/column below is new this release, so these are pure
+        // post-launch adoption counts. A before/after activity-impact pass (like
+        // Dragon's) is intentionally deferred: Rose ships 2026-07-01, so an
+        // "after" window of ~0 days would be noise, not signal. Add it once the
+        // release has accrued a meaningful post-launch window.
+
+        // --- Event schedule & activity leads --------------------------------
+        $schedItems      = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event_schedule`");
+        $schedEvents     = $this->_rfuScalar("SELECT COUNT(DISTINCT event_calendardetail_id) AS c FROM `{$p}event_schedule`");
+        $schedAvg        = ($schedEvents > 0) ? round($schedItems / $schedEvents, 1) : 0;
+        $schedSecondary  = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event_schedule` WHERE secondary_category IS NOT NULL AND secondary_category <> ''");
+        $leadItems       = $this->_rfuScalar("SELECT COUNT(DISTINCT event_schedule_id) AS c FROM `{$p}event_schedule_lead`");
+        $leadPeople      = $this->_rfuScalar("SELECT COUNT(DISTINCT mundane_id) AS c FROM `{$p}event_schedule_lead`");
+        $schedCatBreak   = $this->_rfuBreakdown(
+            "SELECT category AS k, COUNT(*) AS c FROM `{$p}event_schedule`
+			 WHERE category IS NOT NULL AND category <> ''
+			 GROUP BY category ORDER BY c DESC, category ASC"
+        );
+        $featSchedule = array(
+            'key'         => 'event_schedule',
+            'title'       => 'Event Schedule & Activity Leads',
+            'description' => 'Organizers build a per-occurrence agenda — activities with categories, locations, and the members leading each one.',
+            'kpis' => array(
+                $this->_rfuKpi('Events with a schedule', $schedEvents, null, null, 'distinct event occurrences with >=1 schedule item'),
+                $this->_rfuKpi('Schedule items', $schedItems, null, null, 'rows in event schedule'),
+                $this->_rfuKpi('Avg items per planned event', $schedAvg, null, null, 'schedule items / event that has a schedule', decimals: 1),
+                $this->_rfuKpi('Items with a secondary tag', $schedSecondary, null, null, 'schedule items using a secondary category'),
+                $this->_rfuKpi('Items with an activity lead', $leadItems, null, null, 'distinct schedule items naming a lead'),
+                $this->_rfuKpi('Distinct activity leads', $leadPeople, null, null, 'distinct members leading an activity'),
+            ),
+            'charts' => array(
+                $this->_rfuChartFromBreakdown('rfu-sched-cat', 'bar', 'Schedule items by category', $schedCatBreak, 'Items'),
+            ),
+            'links' => array(
+                $this->_rfuEventLinkTile('Example Events with a Schedule', 'event_schedule'),
+            ),
+        );
+
+        // --- event staff & delegated capabilities ---------------------------
+        $staffTotal  = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event_staff`");
+        $staffEvents = $this->_rfuScalar("SELECT COUNT(DISTINCT event_calendardetail_id) AS c FROM `{$p}event_staff`");
+        $staffPeople = $this->_rfuScalar("SELECT COUNT(DISTINCT mundane_id) AS c FROM `{$p}event_staff`");
+        $capManage   = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event_staff` WHERE can_manage = 1");
+        $capAttend   = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event_staff` WHERE can_attendance = 1");
+        $capSchedule = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event_staff` WHERE can_schedule = 1");
+        $capFeast    = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event_staff` WHERE can_feast = 1");
+        $capChart = array(
+            'id'         => 'rfu-staff-caps',
+            'type'       => 'bar',
+            'title'      => 'Delegated capabilities in use',
+            'categories' => array('Manage', 'Attendance', 'Schedule', 'Feast'),
+            'series'     => array(array('name' => 'Staff with capability', 'data' => array($capManage, $capAttend, $capSchedule, $capFeast))),
+        );
+        $featStaff = array(
+            'key'         => 'event_staff',
+            'title'       => 'Event Staff & Delegated Capabilities',
+            'description' => 'Officers appoint event staff and grant granular powers — manage, attendance, schedule, feast — without handing over full park-officer rights.',
+            'kpis' => array(
+                $this->_rfuKpi('Events with staff', $staffEvents, null, null, 'distinct event occurrences with >=1 staffer'),
+                $this->_rfuKpi('Staff assignments', $staffTotal, null, null, 'rows in event staff'),
+                $this->_rfuKpi('Distinct staffers', $staffPeople, null, null, 'distinct members given an event-staff role'),
+                $this->_rfuKpi('Can manage', $capManage, null, null, 'staffers granted full event management'),
+                $this->_rfuKpi('Can take attendance', $capAttend, null, null, 'staffers granted attendance / sign-in'),
+                $this->_rfuKpi('Can edit schedule', $capSchedule, null, null, 'staffers granted schedule editing'),
+                $this->_rfuKpi('Can edit feast', $capFeast, null, null, 'staffers granted feast editing'),
+            ),
+            'charts' => array($capChart),
+            'links' => array(
+                $this->_rfuEventLinkTile('Example Events with Staff', 'event_staff'),
+            ),
+        );
+
+        // --- admission, fees & ticket links ---------------------------------
+        // Ticket links are stored as ork_event_links rows with the ticket icon.
+        $feeTiers     = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event_fees`");
+        $feeEvents    = $this->_rfuScalar("SELECT COUNT(DISTINCT event_calendardetail_id) AS c FROM `{$p}event_fees`");
+        $feePaid      = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event_fees` WHERE cost > 0");
+        $feeFree      = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event_fees` WHERE cost = 0");
+        $ticketEvents = $this->_rfuScalar("SELECT COUNT(DISTINCT event_calendardetail_id) AS c FROM `{$p}event_links` WHERE icon = 'fas fa-ticket-alt'");
+        // admission_type is free text ('Bronze', 'Mammoth', 'general admission', ...),
+        // so grouping by it says nothing useful. Bucket the numeric cost instead and
+        // keep the buckets in natural price order (ORDER BY MIN(cost)), not by count.
+        // Buckets with no rows simply don't come back from GROUP BY — that's fine.
+        $feeCostBreak = $this->_rfuBreakdown(
+            "SELECT CASE
+						WHEN cost <= 0  THEN 'Free'
+						WHEN cost <= 10 THEN '1-10'
+						WHEN cost <= 20 THEN '11-20'
+						WHEN cost <= 30 THEN '21-30'
+						WHEN cost <= 40 THEN '31-40'
+						WHEN cost <= 50 THEN '41-50'
+						WHEN cost <= 60 THEN '51-60'
+						ELSE '60+'
+					END AS k, COUNT(*) AS c
+			   FROM `{$p}event_fees`
+			  GROUP BY k ORDER BY MIN(cost)"
+        );
+        $featFees = array(
+            'key'         => 'event_fees',
+            'title'       => 'Admission, Fees & Ticket Links',
+            'description' => 'Events publish priced admission tiers and a ticket-sales link so attendees know costs up front.',
+            'kpis' => array(
+                $this->_rfuKpi('Events with fee tiers', $feeEvents, null, null, 'distinct events listing admission tiers'),
+                $this->_rfuKpi('Total fee tiers', $feeTiers, null, null, 'rows in event fees'),
+                $this->_rfuKpi('Paid tiers', $feePaid, null, null, 'fee tiers with a cost above 0'),
+                $this->_rfuKpi('Free tiers', $feeFree, null, null, 'fee tiers listed at no cost'),
+                $this->_rfuKpi('Events with a ticket link', $ticketEvents, null, null, 'events linking out to ticket sales'),
+            ),
+            'charts' => array(
+                $this->_rfuChartFromBreakdown('rfu-fee-cost', 'bar', 'Admission tiers by cost', $feeCostBreak, 'Tiers'),
+            ),
+            'links' => array(
+                $this->_rfuEventLinkTile('Example Events with Admission & Fees', 'event_fees'),
+            ),
+        );
+
+        // --- feast planning & dietary needs ---------------------------------
+        // Post-unify, feast rows live in ork_event_schedule (category 'Feast and Food').
+        $feastItems    = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event_schedule` WHERE category = 'Feast and Food'");
+        $feastEvents   = $this->_rfuScalar("SELECT COUNT(DISTINCT event_calendardetail_id) AS c FROM `{$p}event_schedule` WHERE category = 'Feast and Food'");
+        $feastMenu     = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event_schedule` WHERE category = 'Feast and Food' AND menu IS NOT NULL AND menu <> ''");
+        $feastDietInfo = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event_schedule` WHERE category = 'Feast and Food' AND ((dietary IS NOT NULL AND dietary <> '') OR (allergens IS NOT NULL AND allergens <> ''))");
+        $dietPlayers   = $this->_rfuScalar("SELECT COUNT(DISTINCT mundane_id) AS c FROM `{$p}mundane_dietary`");
+        // Aggregate (anonymized) dietary-need counts across the most common flags.
+        $this->db->Clear();
+        $dietBreak = array();
+        $dietRow = $this->db->query(
+            "SELECT
+				SUM(diet_vegetarian)                  AS vegetarian,
+				SUM(diet_vegan)                        AS vegan,
+				SUM(diet_halal + diet_kosher)          AS faith_based,
+				SUM(restrict_dairy + allergen_milk)    AS dairy,
+				SUM(allergen_wheat)                    AS gluten_wheat,
+				SUM(allergen_peanuts + allergen_treenuts) AS nuts,
+				SUM(restrict_shellfish + allergen_shellfish) AS shellfish
+			 FROM `{$p}mundane_dietary`"
+        );
+        if ($dietRow !== false && $dietRow->next()) {
+            $dietBreak = array(
+                array('k' => 'Vegetarian',       'c' => (int)$dietRow->vegetarian),
+                array('k' => 'Vegan',            'c' => (int)$dietRow->vegan),
+                array('k' => 'Halal / Kosher',   'c' => (int)$dietRow->faith_based),
+                array('k' => 'Dairy-free',       'c' => (int)$dietRow->dairy),
+                array('k' => 'Gluten / wheat',   'c' => (int)$dietRow->gluten_wheat),
+                array('k' => 'Tree nut / peanut', 'c' => (int)$dietRow->nuts),
+                array('k' => 'Shellfish',        'c' => (int)$dietRow->shellfish),
+            );
+            // This breakdown is hand-built rather than GROUP BY'd, so it needs the
+            // same ordering the other bar charts get from SQL `ORDER BY c DESC` —
+            // biggest first — to render consistently with them.
+            usort($dietBreak, function ($a, $b) {
+                return $b['c'] - $a['c'];
+            });
+        }
+        $featFeast = array(
+            'key'         => 'feast',
+            'title'       => 'Feast Planning & Dietary Needs',
+            'description' => 'Feast is part of the event schedule — menus, costs, dietary notes and allergens together — and players can record dietary preferences for planners.',
+            'kpis' => array(
+                $this->_rfuKpi('Events with a feast', $feastEvents, null, null, "events with a 'Feast and Food' schedule item"),
+                $this->_rfuKpi('Feast items', $feastItems, null, null, 'feast / food schedule rows'),
+                $this->_rfuKpi('Feast items with a menu', $feastMenu, null, null, 'feast items that list a menu'),
+                $this->_rfuKpi('Feast items noting diet / allergens', $feastDietInfo, null, null, 'feast items recording dietary or allergen info'),
+                $this->_rfuKpi('Players with dietary preferences', $dietPlayers, $denom, $pct($dietPlayers), 'players who saved dietary preferences'),
+            ),
+            'charts' => array(
+                $this->_rfuChartFromBreakdown('rfu-diet', 'bar', 'Dietary needs across players (aggregate)', $dietBreak, 'Players'),
+            ),
+            'links' => array(
+                $this->_rfuEventLinkTile(
+                    'Example Events with a Feast',
+                    'event_schedule',
+                    "src.category = 'Feast and Food'"
+                ),
+            ),
+        );
+
+        // --- day-of sign-in & self-registration -----------------------------
+        $signinLinks    = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}attendance_link`");
+        $signinCreators = $this->_rfuScalar("SELECT COUNT(DISTINCT by_whom_id) AS c FROM `{$p}attendance_link`");
+        $signinEventTied = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}attendance_link` WHERE event_id > 0");
+        $selfregLinks   = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}selfreg_link`");
+        $selfregUsed    = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}selfreg_link` WHERE used_by IS NOT NULL");
+        $selfregConv    = ($selfregLinks > 0) ? round(100.0 * $selfregUsed / $selfregLinks, 1) : null;
+        // Attendance entry-method metrics are scoped to the last 30 days. The
+        // entry_method column is unindexed on a 3.5M-row table, so an all-time
+        // count is a full table scan (x3 here); the `date` index turns each into
+        // a ~1.4k-row range scan. It is also more meaningful: sign-in links and
+        // self-reg launched with 3.5.3, so an all-time entry-method mix is ~100%
+        // legacy 'manual' — a recent window shows how players are checking in now.
+        $attnSignin     = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}attendance` WHERE `date` >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND entry_method = 'signin_link'");
+        $attnSelfreg    = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}attendance` WHERE `date` >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND entry_method = 'self_reg'");
+        $entryBreak     = $this->_rfuBreakdown(
+            "SELECT entry_method AS k, COUNT(*) AS c FROM `{$p}attendance`
+			 WHERE `date` >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND entry_method IS NOT NULL AND entry_method <> ''
+			 GROUP BY entry_method ORDER BY c DESC, entry_method ASC"
+        );
+        $featSignin = array(
+            'key'         => 'signin_selfreg',
+            'title'       => 'Day-of Sign-In & Self-Registration',
+            'description' => 'QR sign-in links let players check themselves in, and self-registration links let brand-new players create an account on the spot.',
+            'kpis' => array(
+                $this->_rfuKpi('Sign-in links created', $signinLinks, null, null, 'rows in attendance link'),
+                $this->_rfuKpi('Officers issuing links', $signinCreators, null, null, 'distinct members who created a sign-in link'),
+                $this->_rfuKpi('Links tied to an event', $signinEventTied, null, null, 'sign-in links scoped to a specific event'),
+                $this->_rfuKpi('Check-ins via sign-in link (30d)', $attnSignin, null, null, "attendance in the last 30 days with entry_method 'signin_link'"),
+                $this->_rfuKpi('Self-reg links created', $selfregLinks, null, null, 'rows in self-registration link'),
+                $this->_rfuKpi('Self-reg links redeemed', $selfregUsed, $selfregLinks, $selfregConv, 'self-reg links that created a new player', null, null, 'of self-reg links were used'),
+                $this->_rfuKpi('Self-reg check-ins recorded (30d)', $attnSelfreg, null, null, "attendance in the last 30 days with entry_method 'self_reg'"),
+            ),
+            'charts' => array(
+                $this->_rfuChartFromBreakdown('rfu-entry-method', 'pie', 'Attendance by entry method (last 30 days)', $entryBreak, 'Sign-ins'),
+            ),
+        );
+
+        // --- custom hero banners (all profile types) ------------------------
+        $bannerPlayers  = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}mundane` WHERE has_banner = 1");
+        $bannerParks    = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}park` WHERE has_banner = 1");
+        $bannerKingdoms = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}kingdom` WHERE has_banner = 1");
+        $bannerUnits    = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}unit` WHERE has_banner = 1");
+        $bannerEvents   = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event` WHERE has_banner = 1");
+        // ork_mundane records no "banner added" date, so there is no recency to sort
+        // by — sample randomly from the players who turned one on.
+        $this->db->Clear();
+        $bannerRows = array();
+        $bannerR = $this->db->query(
+            "SELECT mundane_id, persona FROM `{$p}mundane`
+			  WHERE has_banner = 1 AND persona IS NOT NULL AND persona <> ''
+			  ORDER BY RAND() LIMIT 3"
+        );
+        if ($bannerR !== false) {
+            while ($bannerR->next()) {
+                $bannerRows[] = array(
+                    'label' => $bannerR->persona,
+                    'route' => 'Player/profile/' . (int)$bannerR->mundane_id,
+                );
+            }
+        }
+        // Same random sampling for the other profile types that can carry a banner,
+        // so the report shows a live example of each — not just players.
+        $this->db->Clear();
+        $bannerParkRows = array();
+        $bpR = $this->db->query(
+            "SELECT park_id, name FROM `{$p}park`
+			  WHERE has_banner = 1 AND name IS NOT NULL AND name <> ''
+			  ORDER BY RAND() LIMIT 3"
+        );
+        if ($bpR !== false) {
+            while ($bpR->next()) {
+                $bannerParkRows[] = array('label' => $bpR->name, 'route' => 'Park/index/' . (int)$bpR->park_id);
+            }
+        }
+        $this->db->Clear();
+        $bannerKingdomRows = array();
+        $bkR = $this->db->query(
+            "SELECT kingdom_id, name FROM `{$p}kingdom`
+			  WHERE has_banner = 1 AND name IS NOT NULL AND name <> ''
+			  ORDER BY RAND() LIMIT 3"
+        );
+        if ($bkR !== false) {
+            while ($bkR->next()) {
+                $bannerKingdomRows[] = array('label' => $bkR->name, 'route' => 'Kingdom/index/' . (int)$bkR->kingdom_id);
+            }
+        }
+        $this->db->Clear();
+        $bannerUnitRows = array();
+        $buR = $this->db->query(
+            "SELECT unit_id, name FROM `{$p}unit`
+			  WHERE has_banner = 1 AND name IS NOT NULL AND name <> ''
+			  ORDER BY RAND() LIMIT 3"
+        );
+        if ($buR !== false) {
+            while ($buR->next()) {
+                $bannerUnitRows[] = array('label' => $buR->name, 'route' => 'Unit/index/' . (int)$buR->unit_id);
+            }
+        }
+        // Events link through a calendar occurrence — Event/detail needs both the event
+        // id and one of its calendardetail ids — so the INNER JOIN drops any banner
+        // event that has no occurrence to point at.
+        $this->db->Clear();
+        $bannerEventRows = array();
+        $beR = $this->db->query(
+            "SELECT e.event_id, e.name, MIN(cd.event_calendardetail_id) AS cdid
+			   FROM `{$p}event` e
+			   JOIN `{$p}event_calendardetail` cd ON cd.event_id = e.event_id
+			  WHERE e.has_banner = 1 AND e.name IS NOT NULL AND e.name <> ''
+			  GROUP BY e.event_id, e.name
+			  ORDER BY RAND() LIMIT 3"
+        );
+        if ($beR !== false) {
+            while ($beR->next()) {
+                $bannerEventRows[] = array('label' => $beR->name, 'route' => 'Event/detail/' . (int)$beR->event_id . '/' . (int)$beR->cdid);
+            }
+        }
+        $bannerChart = array(
+            'id'         => 'rfu-banners',
+            'type'       => 'bar',
+            'title'      => 'Custom banners by profile type',
+            'categories' => array('Players', 'Parks', 'Kingdoms', 'Units', 'Events'),
+            'series'     => array(array('name' => 'With a custom banner', 'data' => array($bannerPlayers, $bannerParks, $bannerKingdoms, $bannerUnits, $bannerEvents))),
+        );
+        $featBanners = array(
+            'key'         => 'hero_banners',
+            'title'       => 'Custom Hero Banners',
+            'description' => 'Players, parks, kingdoms, units and events can upload a framed hero banner image for their profile masthead.',
+            'kpis' => array(
+                $this->_rfuKpi('Players with a banner', $bannerPlayers, $denom, $pct($bannerPlayers), 'players with has_banner on'),
+                $this->_rfuKpi('Parks with a banner', $bannerParks, null, null, 'parks with has_banner on'),
+                $this->_rfuKpi('Kingdoms with a banner', $bannerKingdoms, null, null, 'kingdoms with has_banner on'),
+                $this->_rfuKpi('Units with a banner', $bannerUnits, null, null, 'units with has_banner on'),
+                $this->_rfuKpi('Events with a banner', $bannerEvents, null, null, 'events with has_banner on'),
+            ),
+            'charts' => array($bannerChart),
+            'links' => array(
+                $this->_rfuLinkTile('Example Players with a Hero Banner', $bannerRows),
+                $this->_rfuLinkTile('Example Parks with a Hero Banner', $bannerParkRows),
+                $this->_rfuLinkTile('Example Kingdoms with a Hero Banner', $bannerKingdomRows),
+                $this->_rfuLinkTile('Example Units with a Hero Banner', $bannerUnitRows),
+                $this->_rfuLinkTile('Example Events with a Hero Banner', $bannerEventRows),
+            ),
+        );
+
+        // --- calendar items & smarter calendar ------------------------------
+        $calItems       = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}calendar_item`");
+        $calCreators    = $this->_rfuScalar("SELECT COUNT(DISTINCT created_by) AS c FROM `{$p}calendar_item` WHERE created_by > 0");
+        $calKingdomWide = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}calendar_item` WHERE park_id = 0 AND kingdom_id > 0");
+        $calOfficerOnly = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}calendar_item` WHERE is_officer_only = 1");
+        $calLocalsOnly  = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}calendar_item` WHERE is_locals_only = 1");
+        $calAllDay      = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}calendar_item` WHERE all_day = 1");
+        // Calendar items have no deep-link route of their own (they render as a JS
+        // overlay), so each links to its owning park — or its kingdom when the item
+        // is kingdom-wide (park_id = 0) — and names that owner in the subtitle.
+        $this->db->Clear();
+        $calRows = array();
+        $calR = $this->db->query(
+            "SELECT ci.calendar_item_id, ci.name, ci.park_id, ci.kingdom_id,
+					pk.name AS park_name, kd.name AS kingdom_name
+			   FROM `{$p}calendar_item` ci
+			   LEFT JOIN `{$p}park` pk ON pk.park_id = ci.park_id
+			   LEFT JOIN `{$p}kingdom` kd ON kd.kingdom_id = ci.kingdom_id
+			  WHERE ci.name IS NOT NULL AND ci.name <> ''
+			  ORDER BY RAND() LIMIT 3"
+        );
+        if ($calR !== false) {
+            while ($calR->next()) {
+                $isPark = ((int)$calR->park_id > 0);
+                $calRows[] = array(
+                    'label' => $calR->name,
+                    'route' => $isPark
+                        ? 'Park/index/' . (int)$calR->park_id
+                        : 'Kingdom/index/' . (int)$calR->kingdom_id,
+                    'sub'   => $isPark ? $calR->park_name : $calR->kingdom_name,
+                );
+            }
+        }
+        // Flags can co-occur, so show them as independent bars (not a partition).
+        $calFlagsChart = array(
+            'id'         => 'rfu-cal-flags',
+            'type'       => 'bar',
+            'title'      => 'Calendar item options in use',
+            'categories' => array('Kingdom-wide', 'Officer-only', 'Locals-only', 'All-day'),
+            'series'     => array(array('name' => 'Items', 'data' => array($calKingdomWide, $calOfficerOnly, $calLocalsOnly, $calAllDay))),
+        );
+        $featCalendar = array(
+            'key'         => 'calendar_items',
+            'title'       => 'Calendar Items & Smarter Calendar',
+            'description' => 'Kingdoms and parks add standalone calendar items — kingdom-wide entries plus officer-only or locals-only visibility.',
+            'kpis' => array(
+                $this->_rfuKpi('Calendar items', $calItems, null, null, 'rows in calendar item'),
+                $this->_rfuKpi('Distinct creators', $calCreators, null, null, 'members who created a calendar item'),
+                $this->_rfuKpi('Kingdom-wide items', $calKingdomWide, null, null, 'items scoped to a whole kingdom'),
+                $this->_rfuKpi('Officer-only items', $calOfficerOnly, null, null, 'items visible to officers only'),
+                $this->_rfuKpi('Locals-only items', $calLocalsOnly, null, null, 'items visible to local members only'),
+            ),
+            'charts' => array($calFlagsChart),
+            'links' => array(
+                $this->_rfuLinkTile('Example Calendar Items', $calRows),
+            ),
+        );
+
+        // --- event types ----------------------------------------------------
+        $typedOcc  = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event_calendardetail` WHERE event_type IS NOT NULL AND event_type <> ''");
+        $typeBreak = $this->_rfuBreakdown(
+            "SELECT event_type AS k, COUNT(*) AS c FROM `{$p}event_calendardetail`
+			 WHERE event_type IS NOT NULL AND event_type <> ''
+			 GROUP BY event_type ORDER BY c DESC, event_type ASC LIMIT 15"
+        );
+        $featEventType = array(
+            'key'         => 'event_type',
+            'title'       => 'Event Types',
+            'description' => 'Occurrences can be typed (Coronation, Midreign, Warmaster, etc.), driving the icons and labels that distinguish them on the Kingdom events tab.',
+            'kpis' => array(
+                $this->_rfuKpi('Typed occurrences', $typedOcc, null, null, 'event occurrences with an event type set'),
+            ),
+            'charts' => array(
+                $this->_rfuChartFromBreakdown('rfu-event-type', 'bar', 'Occurrences by event type', $typeBreak, 'Occurrences'),
+            ),
+        );
+
+        // --- event external links -------------------------------------------
+        $linkRows      = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event_links`");
+        $linkEvents    = $this->_rfuScalar("SELECT COUNT(DISTINCT event_calendardetail_id) AS c FROM `{$p}event_links`");
+        $linkIconBreak = $this->_rfuBreakdown(
+            "SELECT icon AS k, COUNT(*) AS c FROM `{$p}event_links`
+			 WHERE icon IS NOT NULL AND icon <> ''
+			 GROUP BY icon ORDER BY c DESC, icon ASC"
+        );
+        // Map raw FontAwesome classes to friendly link-type labels for the chart.
+        $linkIconLabels = array(
+            'fab fa-facebook'  => 'Facebook',
+            'fab fa-discord'   => 'Discord',
+            'fas fa-globe'     => 'Website',
+            'far fa-clipboard' => 'Form / doc',
+            'fas fa-link'      => 'Generic link',
+            'fas fa-ticket-alt' => 'Ticket sales',
+        );
+        foreach ($linkIconBreak as &$linkRow) {
+            if (isset($linkIconLabels[$linkRow['k']])) {
+                $linkRow['k'] = $linkIconLabels[$linkRow['k']];
+            }
+        }
+        unset($linkRow);
+        $featLinks = array(
+            'key'         => 'event_links',
+            'title'       => 'Event External Links',
+            'description' => 'Events attach external links — registration, rules, Discord, ticket sales and more.',
+            'kpis' => array(
+                $this->_rfuKpi('Events with links', $linkEvents, null, null, 'distinct events with >=1 external link'),
+                $this->_rfuKpi('Total links', $linkRows, null, null, 'rows in event links'),
+            ),
+            'charts' => array(
+                $this->_rfuChartFromBreakdown('rfu-link-types', 'pie', 'External links by type', $linkIconBreak, 'Links'),
+            ),
+        );
+
+        // --- flexible park-day recurrence -----------------------------------
+        $pdEveryX     = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}parkday` WHERE recurrence = 'every-x-weeks'");
+        $pdRecurBreak = $this->_rfuBreakdown(
+            "SELECT recurrence AS k, COUNT(*) AS c FROM `{$p}parkday`
+			 WHERE recurrence IS NOT NULL AND recurrence <> ''
+			 GROUP BY recurrence ORDER BY c DESC, recurrence ASC"
+        );
+        $featParkday = array(
+            'key'         => 'parkday_recurrence',
+            'title'       => 'Flexible Park-Day Recurrence',
+            'description' => "Park days can recur on an 'every X weeks' cadence in addition to weekly, monthly and week-of-month.",
+            'kpis' => array(
+                $this->_rfuKpi("Park days on 'every X weeks'", $pdEveryX, null, null, 'parkday rows using the every-x-weeks cadence'),
+            ),
+            'charts' => array(
+                $this->_rfuChartFromBreakdown('rfu-parkday-recur', 'pie', 'Park-day recurrence modes', $pdRecurBreak, 'Park days'),
+            ),
+        );
+
+        $release353 = array(
+            'version' => '3.5.3',
+            'name'    => 'Rose',
+            'date'    => '2026-07-01',
+            'blurb'   => 'Event Planning Expansion: schedule, staff, fees and feast on the event page, day-of QR sign-in and self-registration, custom hero banners, and a smarter calendar.',
+            'features' => array(
+                $featSchedule,
+                $featStaff,
+                $featFees,
+                $featFeast,
+                $featSignin,
+                $featBanners,
+                $featCalendar,
+                $featEventType,
+                $featLinks,
+                $featParkday,
+            ),
+        );
+
+        // ====================================================================
         // RELEASE 3.5.2 — Mask
         // ====================================================================
 
@@ -4797,28 +5482,6 @@ class Report extends Ork3
         // RELEASE 3.5.0 — Dragon
         // ====================================================================
 
-        // --- custom About pages (org design tables) --------------------------
-        $aboutKingdom = $this->_rfuScalar(
-            "SELECT COUNT(*) AS c FROM `{$p}kingdom_design` WHERE about_enabled = 1"
-        );
-        $aboutPark = $this->_rfuScalar(
-            "SELECT COUNT(*) AS c FROM `{$p}park_design` WHERE about_enabled = 1"
-        );
-        $aboutUnit = $this->_rfuScalar(
-            "SELECT COUNT(*) AS c FROM `{$p}unit_design` WHERE about_enabled = 1"
-        );
-        $featCustomAbout = array(
-            'key'         => 'custom_about',
-            'title'       => 'Custom About Pages',
-            'description' => 'Kingdoms, parks and units opt into a designed public About page.',
-            'kpis' => array(
-                $this->_rfuKpi('Kingdoms with About', $aboutKingdom, null, null, 'kingdom_design.about_enabled = 1'),
-                $this->_rfuKpi('Parks with About', $aboutPark, null, null, 'park_design.about_enabled = 1'),
-                $this->_rfuKpi('Units with About', $aboutUnit, null, null, 'unit_design.about_enabled = 1'),
-            ),
-            'charts' => array(),
-        );
-
         // --- heraldry adoption -----------------------------------------------
         $playerHeraldry = $this->_rfuScalar(
             "SELECT COUNT(*) AS c FROM `{$p}mundane` WHERE has_heraldry = 1"
@@ -4839,37 +5502,6 @@ class Report extends Ork3
                 $this->_rfuKpi('Events with a banner', $eventBanner, null, null, 'events with has_banner on'),
             ),
             'charts' => array(),
-        );
-
-        // --- tournament module -----------------------------------------------
-        $tourTotal = $this->_rfuScalar(
-            "SELECT COUNT(*) AS c FROM `{$p}tournament`"
-        );
-        $bracketTotal = $this->_rfuScalar(
-            "SELECT COUNT(*) AS c FROM `{$p}bracket`"
-        );
-        $tourStatusBreak = $this->_rfuBreakdown(
-            "SELECT status AS k, COUNT(*) AS c FROM `{$p}tournament`
-			 WHERE status IS NOT NULL AND status <> ''
-			 GROUP BY status ORDER BY c DESC, status ASC"
-        );
-        $bracketStyleBreak = $this->_rfuBreakdown(
-            "SELECT style AS k, COUNT(*) AS c FROM `{$p}bracket`
-			 WHERE style IS NOT NULL AND style <> ''
-			 GROUP BY style ORDER BY c DESC, style ASC"
-        );
-        $featTournaments = array(
-            'key'         => 'tournaments',
-            'title'       => 'Tournament Module',
-            'description' => 'Organizers run bracketed tournaments tied to events.',
-            'kpis' => array(
-                $this->_rfuKpi('Total tournaments', $tourTotal, null, null, 'rows in tournament'),
-                $this->_rfuKpi('Total brackets', $bracketTotal, null, null, 'rows in bracket'),
-            ),
-            'charts' => array(
-                $this->_rfuChartFromBreakdown('rfu-tour-status', 'pie', 'Tournament status', $tourStatusBreak, 'Tournaments'),
-                $this->_rfuChartFromBreakdown('rfu-bracket-style', 'bar', 'Bracket types', $bracketStyleBreak, 'Brackets'),
-            ),
         );
 
         // --- weekly recap ----------------------------------------------------
@@ -4982,9 +5614,7 @@ class Report extends Ork3
             'date'    => '2026-04-02',
             'blurb'   => 'The big redesign: new profiles, events, tournaments — plus org-level adoption signals.',
             'features' => array(
-                $featCustomAbout,
                 $featHeraldry,
-                $featTournaments,
                 $featWeeklyRecap,
                 $featAwareness,
                 $featActivityImpact,
@@ -4998,7 +5628,7 @@ class Report extends Ork3
                 'players_with_design'    => (int)$playersWithDesign,
                 'active_recommendations' => (int)$activeRecommendations,
             ),
-            'releases' => array($release352, $release351, $release350),
+            'releases' => array($release354, $release353, $release352, $release351, $release350),
         );
     }
 
@@ -5118,7 +5748,7 @@ class Report extends Ork3
      * @param string|null $delta    Preformatted signed percent string (e.g. '+37%'); null when N/A.
      * @param string|null $deltaDir 'up' | 'down' | 'flat' — drives the colored delta pill.
      */
-    private function _rfuKpi($label, $value, $denom, $pct, $hint, $delta = null, $deltaDir = null, $pctLabel = null, $suffix = null)
+    private function _rfuKpi($label, $value, $denom, $pct, $hint, $delta = null, $deltaDir = null, $pctLabel = null, $suffix = null, $decimals = 0)
     {
         $kpi = array(
             'label'    => $label,
@@ -5135,7 +5765,132 @@ class Report extends Ork3
         if ($suffix !== null && $suffix !== '') {
             $kpi['suffix'] = (string)$suffix;
         }
+        // Rates and averages carry a decimal place; plain counts render whole.
+        if ((int)$decimals > 0) {
+            $kpi['decimals'] = (int)$decimals;
+        }
         return $kpi;
+    }
+
+    /**
+     * Format a raw DB datetime as a human-readable date. The project never
+     * surfaces raw ISO timestamps, so link-tile subtitles go through here.
+     * Returns null for empty / zero / unparseable values so the tile simply
+     * omits the subtitle rather than printing a bogus date.
+     */
+    private function _rfuNiceDate($raw)
+    {
+        if ($raw === null || $raw === '' || strncmp((string)$raw, '0000-00-00', 10) === 0) {
+            return null;
+        }
+        $ts = strtotime((string)$raw);
+        return ($ts === false) ? null : date('F j, Y', $ts);
+    }
+
+    /**
+     * Build one link-tile entry for the data contract. Always emits a valid tile
+     * (empty items[] when there is nothing to link) so the template can render a
+     * graceful empty state, mirroring _rfuChartFromBreakdown's contract.
+     *
+     * @param array $rows Each ['label' => string, 'route' => string, 'sub' => string|null].
+     *                    Rows with a blank label are skipped.
+     */
+    private function _rfuLinkTile($title, $rows)
+    {
+        $items = array();
+        foreach ($rows as $row) {
+            $label = isset($row['label']) ? trim((string)$row['label']) : '';
+            if ($label === '') {
+                continue;
+            }
+            $item = array(
+                'label' => $label,
+                'route' => (string)$row['route'],
+            );
+            if (isset($row['sub']) && $row['sub'] !== null && $row['sub'] !== '') {
+                $item['sub'] = (string)$row['sub'];
+            }
+            $items[] = $item;
+        }
+        return array(
+            'title' => $title,
+            'items' => $items,
+        );
+    }
+
+    /**
+     * Build a "3 random example events" link tile for a Rose event feature.
+     * Every Rose event table keys on event_calendardetail_id, so the route needs
+     * both ids: join up to the occurrence for event_id and to the event for its
+     * name. $table / $extraWhere are code-supplied constants, never user input.
+     *
+     * @param string $table      Event child table, minus the DB prefix.
+     * @param string $extraWhere Optional additional filter on that table (alias `src`).
+     */
+    private function _rfuEventLinkTile($title, $table, $extraWhere = '')
+    {
+        $p = DB_PREFIX;
+        $where = "e.name IS NOT NULL AND e.name <> ''";
+        if ($extraWhere !== '') {
+            $where .= ' AND ' . $extraWhere;
+        }
+        $this->db->Clear();
+        $rows = array();
+        $r = $this->db->query(
+            "SELECT DISTINCT e.name AS label, cd.event_id AS eid,
+					cd.event_calendardetail_id AS cdid, cd.event_start AS starts
+			   FROM `{$p}{$table}` src
+			   JOIN `{$p}event_calendardetail` cd ON cd.event_calendardetail_id = src.event_calendardetail_id
+			   JOIN `{$p}event` e ON e.event_id = cd.event_id
+			  WHERE {$where}
+			  ORDER BY RAND() LIMIT 3"
+        );
+        if ($r !== false) {
+            while ($r->next()) {
+                $rows[] = array(
+                    'label' => $r->label,
+                    'route' => 'Event/detail/' . (int)$r->eid . '/' . (int)$r->cdid,
+                    'sub'   => $this->_rfuNiceDate($r->starts),
+                );
+            }
+        }
+        return $this->_rfuLinkTile($title, $rows);
+    }
+
+    /**
+     * Build the full list of active kingdoms that have a qualification-test switch
+     * turned on, as a link tile. The switch lives in ork_configuration and its
+     * value is JSON round-tripped, so the stored literal is '"1"' (quotes included).
+     * $key is a code-supplied constant, never user input, but it is whitelisted
+     * anyway since it is inlined into the SQL.
+     *
+     * @param string $key 'QualTestReeveEnabled' | 'QualTestCorporaEnabled'
+     */
+    private function _rfuQualKingdomTile($title, $key)
+    {
+        $p = DB_PREFIX;
+        $allowed = array('QualTestReeveEnabled', 'QualTestCorporaEnabled');
+        if (!in_array($key, $allowed, true)) {
+            return $this->_rfuLinkTile($title, array());
+        }
+        $this->db->Clear();
+        $rows = array();
+        $r = $this->db->query(
+            "SELECT k.kingdom_id, k.name
+			   FROM `{$p}configuration` cfg
+			   JOIN `{$p}kingdom` k ON k.kingdom_id = cfg.id AND k.active = 'Active'
+			  WHERE cfg.type = 'Kingdom' AND cfg.`key` = '{$key}' AND cfg.value = '\"1\"'
+			  ORDER BY k.name ASC"
+        );
+        if ($r !== false) {
+            while ($r->next()) {
+                $rows[] = array(
+                    'label' => $r->name,
+                    'route' => 'Kingdom/index/' . (int)$r->kingdom_id,
+                );
+            }
+        }
+        return $this->_rfuLinkTile($title, $rows);
     }
 
     /**

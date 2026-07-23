@@ -767,34 +767,124 @@ class Controller_KingdomAjax extends Controller
         }
 
         $kid    = (int)$kingdom_id;
+        $kn_uid = isset($this->session->user_id) ? (int)$this->session->user_id : 0;
         global $DB;
         $events = [];
+        $this->load_model('Kingdom');
+        // G1: scope events to family kingdoms (parent + principalities when flag on), matching profile().
+        $statsEvtKids = implode(',', array_map('intval', $this->Kingdom->GetStatsKingdomIds($kid)));
+
+        // Royal-attendance detection across the family (parent kingdom + principalities, "up and down").
+        // Most-recent Monarch + Regent per family kingdom.
+        $familyRoyals = []; // kingdom_id => ['monarch'=>id, 'regent'=>id]
+        $allRoyalIds  = [];
+        $DB->Clear();
+        $royRes = $DB->DataSet("SELECT o.kingdom_id, o.role, o.mundane_id FROM ork_officer o
+			INNER JOIN (SELECT kingdom_id, role, MAX(officer_id) AS max_oid FROM ork_officer
+			            WHERE kingdom_id IN ({$statsEvtKids}) AND park_id = 0 AND role IN ('Monarch','Regent') AND mundane_id > 0
+			            GROUP BY kingdom_id, role) latest ON latest.max_oid = o.officer_id");
+        if ($royRes) {
+            while ($royRes->Next()) {
+                $rk = (int)$royRes->kingdom_id;
+                $rid = (int)$royRes->mundane_id;
+                if (!isset($familyRoyals[$rk])) {
+                    $familyRoyals[$rk] = ['monarch' => 0, 'regent' => 0];
+                }
+                $familyRoyals[$rk][$royRes->role === 'Monarch' ? 'monarch' : 'regent'] = $rid;
+                if ($rid > 0) {
+                    $allRoyalIds[$rid] = true;
+                }
+            }
+        }
+        $kingdomMonarchId = $familyRoyals[$kid]['monarch'] ?? 0;
+        $kingdomRegentId  = $familyRoyals[$kid]['regent'] ?? 0;
+        // Pre-aggregating LEFT JOIN: per detail, the set of family-royal mundane_ids who RSVP'd.
+        if (!empty($allRoyalIds)) {
+            $royalIdList     = implode(',', array_map('intval', array_keys($allRoyalIds)));
+            $royalSelectCols = 'royal.royal_rsvps AS royal_rsvps';
+            $royalJoinSql    = "LEFT JOIN (SELECT event_calendardetail_id, GROUP_CONCAT(mundane_id) AS royal_rsvps FROM ork_event_rsvp WHERE mundane_id IN ({$royalIdList}) GROUP BY event_calendardetail_id) royal ON royal.event_calendardetail_id = cd.event_calendardetail_id";
+        } else {
+            $royalSelectCols = 'NULL AS royal_rsvps';
+            $royalJoinSql    = '';
+        }
+        $kn_uid     = isset($this->session->user_id) ? (int)$this->session->user_id : 0;
+        $kn_isAdmin = ($kn_uid > 0) ? Ork3::$Lib->authorization->HasAuthority($kn_uid, AUTH_ADMIN, 0, AUTH_CREATE) : false;
+        $kn_draftClause = $kn_isAdmin ? '' : ($kn_uid > 0 ? "AND (e.status = 'published' OR e.mundane_id = {$kn_uid})" : "AND e.status = 'published'");
 
         // Events in range (all calendar-detail occurrences within window)
         $evtSql = "
-			SELECT e.event_id, e.name, e.park_id, p.abbreviation AS park_abbr,
-			       cd.event_start, cd.event_end, cd.event_calendardetail_id AS detail_id
+			SELECT e.event_id, e.name, e.park_id, e.kingdom_id, e.status, e.mundane_id AS event_creator,
+			       p.abbreviation AS park_abbr,
+			       cd.event_start, cd.event_end, cd.event_calendardetail_id AS detail_id,
+			       {$royalSelectCols}
 			FROM ork_event e
 			LEFT JOIN ork_park p ON p.park_id = e.park_id
 			INNER JOIN ork_event_calendardetail cd ON cd.event_id = e.event_id
-			WHERE e.kingdom_id = {$kid}
+			{$royalJoinSql}
+			WHERE e.kingdom_id IN ({$statsEvtKids})
 			  AND cd.event_start >= '{$start}'
 			  AND cd.event_start < '{$end}'
+			  {$kn_draftClause}
 			ORDER BY cd.event_start";
+        $DB->Clear();
         $evtResult = $DB->DataSet($evtSql);
         if ($evtResult && $evtResult->Size() > 0) {
             while ($evtResult->Next()) {
-                $isPark = (int)$evtResult->park_id > 0;
-                $abbr   = ($isPark && $evtResult->park_abbr) ? $evtResult->park_abbr . ': ' : '';
-                $eid    = (int)$evtResult->event_id;
-                $did    = (int)$evtResult->detail_id;
+                $evStatus = (string)($evtResult->status ?? 'published');
+                // Per-row draft check (covers AUTH_EVENT/AUTH_EDIT users beyond simple creator/admin filter above)
+                if ($evStatus !== 'published' && !$kn_isAdmin && (int)$evtResult->event_creator !== $kn_uid) {
+                    $canEditRow = ($kn_uid > 0) && Ork3::$Lib->authorization->HasAuthority($kn_uid, AUTH_EVENT, (int)$evtResult->event_id, AUTH_EDIT);
+                    if (!$canEditRow) {
+                        continue;
+                    }
+                }
+                $isPark    = (int)$evtResult->park_id > 0;
+                $abbr      = ($isPark && $evtResult->park_abbr) ? $evtResult->park_abbr . ': ' : '';
+                $eid       = (int)$evtResult->event_id;
+                $did       = (int)$evtResult->detail_id;
+                $evKid   = (int)$evtResult->kingdom_id;
+                $rsvpRaw = (string)($evtResult->royal_rsvps ?? '');
+                $royal   = [];
+                // Only an event with at least one royal RSVP can carry a crown — skip the rest otherwise.
+                if ($rsvpRaw !== '') {
+                    $rsvpSet = array_flip(array_map('intval', explode(',', $rsvpRaw)));
+                    if ($kingdomMonarchId && isset($rsvpSet[$kingdomMonarchId])) {
+                        $royal['km'] = true;
+                    }
+                    if ($kingdomRegentId && isset($rsvpSet[$kingdomRegentId])) {
+                        $royal['kr'] = true;
+                    }
+                    if ($evKid !== $kid && isset($familyRoyals[$evKid])) {
+                        $pmId = $familyRoyals[$evKid]['monarch'];
+                        $prId = $familyRoyals[$evKid]['regent'];
+                        if ($pmId && isset($rsvpSet[$pmId])) {
+                            $royal['pm'] = true;
+                        }
+                        if ($prId && isset($rsvpSet[$prId])) {
+                            $royal['pr'] = true;
+                        }
+                    }
+                }
                 $ev = [
                     'title' => $abbr . $evtResult->name,
                     'start' => $evtResult->event_start,
                     'url'   => $did ? UIR . "Event/detail/{$eid}/{$did}" : '',
                     'color' => $isPark ? '#6b46c1' : '#0891b2',
                     'type'  => $isPark ? 'park-event' : 'kingdom-event',
+                    'extendedProps' => [
+                        'eventId'  => $eid,
+                        'detailId' => $did,
+                        'isDraft'  => $evStatus === 'draft',
+                    ],
                 ];
+                // A10: FullCalendar strips unrecognized top-level keys — royalPresence MUST live in extendedProps.
+                // Object with up to 4 flags: km/kr (kingdom monarch/regent), pm/pr (principality monarch/regent).
+                if (!empty($royal)) {
+                    if (!isset($ev['extendedProps']) || !is_array($ev['extendedProps'])) {
+                        $ev['extendedProps'] = [];
+                    }
+                    $ev['extendedProps']['royalPresence'] = $royal;
+                }
                 $endRaw = $evtResult->event_end ?? '';
                 if ($endRaw && substr($endRaw, 0, 10) > substr($evtResult->event_start, 0, 10)) {
                     $endDt = new DateTime(substr($endRaw, 0, 10));
@@ -805,13 +895,75 @@ class Controller_KingdomAjax extends Controller
             }
         }
 
+        // Calendar items (kingdom- or park-scoped) overlapping the range.
+        // is_officer_only / is_locals_only must be filtered via CalendarItem::CanSee
+        // before emitting — otherwise officer-only items leak to any kingdom-calendar
+        // viewer regardless of role (matches the filter already applied in the page-
+        // render path at controller.Kingdom.php).
+        $ciSql = "
+			SELECT ci.calendar_item_id, ci.name, ci.description, ci.all_day,
+			       ci.event_start, ci.event_end, ci.park_id, ci.kingdom_id,
+			       ci.is_officer_only, ci.is_locals_only, ci.color,
+			       p.abbreviation AS park_abbr
+			FROM " . DB_PREFIX . "calendar_item ci
+			LEFT JOIN " . DB_PREFIX . "park p ON p.park_id = ci.park_id
+			WHERE ci.kingdom_id = {$kid}
+			  AND ci.event_start < '{$end}'
+			  AND ci.event_end   >= '{$start}'
+			ORDER BY ci.event_start";
+        $DB->Clear();
+        $ciResult = $DB->DataSet($ciSql);
+        if ($ciResult && $ciResult->Size() > 0) {
+            while ($ciResult->Next()) {
+                $ci_isOfficerOnly = (int)$ciResult->is_officer_only;
+                $ci_isLocalsOnly  = (int)$ciResult->is_locals_only;
+                if (!CalendarItem::CanSee($kn_uid, (int)$ciResult->kingdom_id, (int)$ciResult->park_id, $ci_isOfficerOnly, $ci_isLocalsOnly)) {
+                    continue;
+                }
+                $isPark = (int)$ciResult->park_id > 0;
+                $abbr   = ($isPark && $ciResult->park_abbr) ? $ciResult->park_abbr . ': ' : '';
+                $allDay = (int)$ciResult->all_day === 1;
+                $ev = [
+                    'title'         => $abbr . $ciResult->name,
+                    'start'         => $allDay ? substr($ciResult->event_start, 0, 10) : $ciResult->event_start,
+                    'color'         => $ciResult->color ?: '#64748b',
+                    'textColor'     => CalendarItem::TextColorFor($ciResult->color ?: '#64748b'),
+                    'type'          => 'calendar-item',
+                    'allDay'        => $allDay,
+                    'extendedProps' => [
+                        'calendarItemId' => (int)$ciResult->calendar_item_id,
+                        'description'    => (string)$ciResult->description,
+                        'parkId'         => (int)$ciResult->park_id,
+                        'kingdomId'      => (int)$ciResult->kingdom_id,
+                        'parkAbbr'       => $ciResult->park_abbr ?? '',
+                        'rawStart'       => $ciResult->event_start,
+                        'rawEnd'         => $ciResult->event_end,
+                    ],
+                ];
+                // Multi-day: emit an exclusive end for FullCalendar (next day after the end date for all-day).
+                $startDate = substr($ciResult->event_start, 0, 10);
+                $endDate   = substr($ciResult->event_end, 0, 10);
+                if ($endDate > $startDate) {
+                    $endDt = new DateTime($endDate);
+                    if ($allDay) {
+                        $endDt->modify('+1 day');
+                    }
+                    $ev['end'] = $allDay ? $endDt->format('Y-m-d') : $ciResult->event_end;
+                } elseif (!$allDay) {
+                    $ev['end'] = $ciResult->event_end;
+                }
+                $events[] = $ev;
+            }
+        }
+
         // Park day recurrences expanded for the requested range
         $pdSql = "
 			SELECT pd.park_id, pd.recurrence, pd.week_day, pd.week_of_month,
-			       pd.month_day, pd.time, pd.purpose, p.abbreviation AS park_abbr
+			       pd.month_day, pd.start_date, pd.week_interval, pd.time, pd.purpose, p.abbreviation AS park_abbr
 			FROM ork_parkday pd
 			JOIN ork_park p ON p.park_id = pd.park_id
 			WHERE p.kingdom_id = {$kid} AND p.active = 'Active'";
+        $DB->Clear();
         $pdResult = $DB->DataSet($pdSql);
         if ($pdResult && $pdResult->Size() > 0) {
             $dayNames   = ['Sunday' => 0,'Monday' => 1,'Tuesday' => 2,'Wednesday' => 3,'Thursday' => 4,'Friday' => 5,'Saturday' => 6];
@@ -885,6 +1037,11 @@ class Controller_KingdomAjax extends Controller
                             $events[] = ['title' => $title,'start' => $cur->format('Y-m-d').$timeStr,'url' => $url,'color' => '#b7791f','type' => 'park-day'];
                         }
                         $curMonth->modify('first day of next month');
+                    }
+                } elseif ($rec === 'every-x-weeks') {
+                    $occs = Park::ExpandEveryXWeeks($pdResult->start_date, (int)$pdResult->week_interval, $rangeStart, $rangeEnd);
+                    foreach ($occs as $occ) {
+                        $events[] = ['title' => $title,'start' => $occ.$timeStr,'url' => $url,'color' => '#b7791f','type' => 'park-day'];
                     }
                 }
             }
@@ -1086,4 +1243,158 @@ class Controller_KingdomAjax extends Controller
             : json_encode(['status' => $r['Status'] ?? 1, 'error' => ($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? '')]);
         exit;
     }
+
+    public function banner($p = null)
+    {
+        header('Content-Type: application/json');
+
+        if (!isset($this->session->user_id)) {
+            echo json_encode(['status' => 5, 'error' => 'Not logged in']);
+            exit;
+        }
+
+        $params   = explode('/', $p ?? '');
+        $kingdom_id = (int)preg_replace('/[^0-9]/', '', $params[0] ?? '');
+        $action   = $params[1] ?? '';
+
+        if (!valid_id($kingdom_id)) {
+            echo json_encode(['status' => 1, 'error' => 'Invalid Kingdom ID.']);
+            exit;
+        }
+
+        $uid = (int)$this->session->user_id;
+        // Banner management requires AUTH_EDIT (aligned with Park/Player banner endpoints and design spec).
+        $canEdit = $uid > 0 && Ork3::$Lib->authorization->HasAuthority($uid, AUTH_KINGDOM, $kingdom_id, AUTH_EDIT);
+        if (!$canEdit) {
+            echo json_encode(['status' => 5, 'error' => 'Not authorized to manage this kingdom\'s banner.']);
+            exit;
+        }
+
+        global $DB;
+
+        if ($action === 'remove') {
+            $DB->Clear();
+            // Reset display toggles AND framing offsets to defaults so a future
+            // upload starts fresh instead of inheriting the removed banner's
+            // config.
+            $DB->Execute('UPDATE ' . DB_PREFIX . 'kingdom SET has_banner = 0, banner_show_logo = 1, banner_vignette = 1, banner_offset_x = 50, banner_offset_y = 50 WHERE kingdom_id = ' . $kingdom_id);
+            // I4 fix: verify the UPDATE landed before deleting the file.
+            // If the DB update silently failed and we delete the file, the
+            // banner column stays 1 but the file is gone -> broken banner.
+            $DB->Clear();
+            $removeCheck = $DB->DataSet('SELECT has_banner FROM ' . DB_PREFIX . 'kingdom WHERE kingdom_id = ' . $kingdom_id);
+            if (!$removeCheck || !$removeCheck->Next() || (int)$removeCheck->has_banner !== 0) {
+                echo json_encode(['status' => 1, 'error' => 'Could not clear banner flag in database. Please try again.']);
+                exit;
+            }
+            $base = DIR_KINGDOM_BANNER . sprintf('%04d', $kingdom_id);
+            if (file_exists($base . '.jpg')) {
+                unlink($base . '.jpg');
+            }
+            if (file_exists($base . '.png')) {
+                unlink($base . '.png');
+            }
+            echo json_encode(['status' => 0]);
+            exit;
+        }
+
+        if ($action === 'config') {
+            // Refuse silent no-ops: config only meaningful with a banner present.
+            $DB->Clear();
+            $row = $DB->DataSet('SELECT has_banner FROM ' . DB_PREFIX . 'kingdom WHERE kingdom_id = ' . $kingdom_id);
+            if (!$row || !$row->Next() || (int)$row->has_banner !== 1) {
+                echo json_encode(['status' => 1, 'error' => 'Upload a banner first before saving settings.']);
+                exit;
+            }
+            $showLogo = !empty($_POST['ShowLogo']) ? 1 : 0;
+            $vignette = !empty($_POST['Vignette']) ? 1 : 0;
+            $offX = max(0, min(100, (int)($_POST['OffsetX'] ?? 50)));
+            $offY = max(0, min(100, (int)($_POST['OffsetY'] ?? 50)));
+            $DB->Clear();
+            $DB->Execute('UPDATE ' . DB_PREFIX . 'kingdom SET banner_show_logo = ' . $showLogo . ', banner_vignette = ' . $vignette . ', banner_offset_x = ' . $offX . ', banner_offset_y = ' . $offY . ' WHERE kingdom_id = ' . $kingdom_id);
+            // Verify the UPDATE landed (mirrors the verify pattern in update/remove
+            // branches). $DB->Execute() is void and YapoMysql can silently swallow
+            // failures (sql_mode=STRICT etc), so re-read banner_offset_x and
+            // compare against the submitted value.
+            $DB->Clear();
+            $verify = $DB->DataSet('SELECT banner_show_logo, banner_vignette, banner_offset_x, banner_offset_y FROM ' . DB_PREFIX . 'kingdom WHERE kingdom_id = ' . $kingdom_id);
+            if (!$verify || !$verify->Next()
+                || (int)$verify->banner_show_logo !== $showLogo
+                || (int)$verify->banner_vignette  !== $vignette
+                || (int)$verify->banner_offset_x  !== $offX
+                || (int)$verify->banner_offset_y  !== $offY) {
+                echo json_encode(['status' => 1, 'error' => 'Could not save banner settings. Please try again.']);
+                exit;
+            }
+            echo json_encode(['status' => 0]);
+            exit;
+        }
+
+        if ($action === 'update') {
+            if (empty($_FILES['Banner']['tmp_name'])) {
+                echo json_encode(['status' => 1, 'error' => 'No file uploaded.']);
+                exit;
+            }
+            // I2 fix: validate the upload came via a real HTTP file upload (prevents spoofing).
+            if (!is_uploaded_file($_FILES['Banner']['tmp_name'])) {
+                echo json_encode(['status' => 1, 'error' => 'Invalid upload.']);
+                exit;
+            }
+            // I5 fix: server-side file size check (JS resize can be bypassed via curl).
+            if (($_FILES['Banner']['size'] ?? 0) > 1024 * 1024) {
+                echo json_encode(['status' => 1, 'error' => 'File too large (max 1 MB).']);
+                exit;
+            }
+            $tmp  = $_FILES['Banner']['tmp_name'];
+            // I3 fix: use exif_imagetype() (magic-byte check) instead of the
+            // browser-supplied MIME type, which is trivially spoofable.
+            $detectedType = exif_imagetype($tmp);
+            if ($detectedType !== IMAGETYPE_JPEG && $detectedType !== IMAGETYPE_PNG) {
+                echo json_encode(['status' => 1, 'error' => 'Only JPEG and PNG images are supported.']);
+                exit;
+            }
+            $mime = ($detectedType === IMAGETYPE_PNG) ? 'image/png' : 'image/jpeg';
+            if (!is_dir(DIR_KINGDOM_BANNER)) {
+                @mkdir(DIR_KINGDOM_BANNER, 0775, true);
+            }
+            $ext  = ($mime === 'image/png') ? 'png' : 'jpg';
+            $base = DIR_KINGDOM_BANNER . sprintf('%04d', $kingdom_id);
+            // Delete any previous banner files (both extensions) before saving
+            // the new one so we never leave the old image behind when the host
+            // switches images. resolve_image_ext picks whichever survives.
+            if (file_exists($base . '.jpg')) {
+                @unlink($base . '.jpg');
+            }
+            if (file_exists($base . '.png')) {
+                @unlink($base . '.png');
+            }
+            if (!@move_uploaded_file($tmp, $base . '.' . $ext)) {
+                echo json_encode(['status' => 1, 'error' => 'Could not save uploaded file.']);
+                exit;
+            }
+            $showLogo = !empty($_POST['ShowLogo']) ? 1 : 0;
+            $vignette = !empty($_POST['Vignette']) ? 1 : 0;
+            $offX = max(0, min(100, (int)($_POST['OffsetX'] ?? 50)));
+            $offY = max(0, min(100, (int)($_POST['OffsetY'] ?? 50)));
+            $DB->Clear();
+            $DB->Execute('UPDATE ' . DB_PREFIX . 'kingdom SET has_banner = 1, banner_show_logo = ' . $showLogo . ', banner_vignette = ' . $vignette . ', banner_offset_x = ' . $offX . ', banner_offset_y = ' . $offY . ' WHERE kingdom_id = ' . $kingdom_id);
+            // $DB->Execute() is void; the YapoMysql layer can silently swallow
+            // failures (sql_mode=STRICT etc). Verify the update landed by
+            // re-reading has_banner. If it didn't, roll back the file so we
+            // don't leave an orphan whose flag is still 0.
+            $DB->Clear();
+            $verify = $DB->DataSet('SELECT has_banner FROM ' . DB_PREFIX . 'kingdom WHERE kingdom_id = ' . $kingdom_id);
+            if (!$verify || !$verify->Next() || (int)$verify->has_banner !== 1) {
+                @unlink($base . '.' . $ext);
+                echo json_encode(['status' => 1, 'error' => 'Saved file but could not update the database. Please try again.']);
+                exit;
+            }
+            echo json_encode(['status' => 0]);
+            exit;
+        }
+
+        echo json_encode(['status' => 1, 'error' => 'Unknown action.']);
+        exit;
+    }
+
 }

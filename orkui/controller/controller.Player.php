@@ -294,6 +294,15 @@ class Controller_Player extends Controller
         $action    = $params[1] ?? '';
         $roastbeef = $params[2] ?? '';
 
+        // Missing row → bail rather than render a mostly-blank profile with
+        // sub-fields synthesized from queries against a nonexistent id. Same
+        // guard as index() at the top of this file.
+        $this->data['Player'] = $this->Player->fetch_player($id);
+        if (empty($this->data['Player']['MundaneId'])) {
+            header('Location: ' . UIR);
+            exit;
+        }
+
         $uid = isset($this->session->user_id) ? (int)$this->session->user_id : 0;
 
         if ($uid > 0 && $uid === (int)$id && isset($this->request->cancel_rsvp_detail_id)) {
@@ -653,6 +662,11 @@ class Controller_Player extends Controller
         $DB->Clear();
         $this->data['BeltlineAssociates'] = $__blAssocs;
 
+        // Feast preferences for the About-tab "Feast Preferences" card.
+        // Always loaded — the template gates visibility on Show My Feast
+        // Preferences + presence of meaningful data. Cheap single-row read.
+        $this->data['FeastPrefs'] = $this->Player->GetDietaryPreferences((int)$id);
+
         if ($uid === (int)$id) {
             $DB->Clear();
             $__assocSql = "SELECT ma.mundane_id AS RecipientId, m.persona AS Persona,
@@ -684,6 +698,17 @@ class Controller_Player extends Controller
                 }
             }
             $DB->Clear();
+            // Same dedupe — first occurrence per recipient is the highest
+            // peerage rank, so the "My Associates" list collapses to one
+            // row per associate at their current rank.
+            $__assocSeen = [];
+            $__assocs    = array_values(array_filter($__assocs, function ($r) use (&$__assocSeen) {
+                if (isset($__assocSeen[$r['RecipientId']])) {
+                    return false;
+                }
+                $__assocSeen[$r['RecipientId']] = true;
+                return true;
+            }));
             $this->data['MyAssociates'] = $__assocs;
         }
 
@@ -894,6 +919,64 @@ class Controller_Player extends Controller
         $this->data['CustomMilestones'] = is_array($__customMs) ? $__customMs : [];
         $this->data['MilestoneConfig'] = $this->data['Player']['MilestoneConfig'] ?? '';
 
+        // Collapse the Peers/Associates *display* lists to one row per
+        // counterparty, keeping the highest-precedence peerage (the SQL
+        // already orders Squire→Page so the first row wins). Run this AFTER
+        // milestones are built so the historical "Became Page → Became
+        // Squire" progression still surfaces in the timeline.
+        $__dedupeByKey = function (array $rows, string $key): array {
+            $__seen = [];
+            return array_values(array_filter($rows, function ($r) use (&$__seen, $key) {
+                if (isset($__seen[$r[$key]])) {
+                    return false;
+                }
+                $__seen[$r[$key]] = true;
+                return true;
+            }));
+        };
+        if (!empty($this->data['BeltlinePeers'])) {
+            $this->data['BeltlinePeers'] = $__dedupeByKey($this->data['BeltlinePeers'], 'PeerId');
+        }
+        if (!empty($this->data['BeltlineAssociates'])) {
+            $this->data['BeltlineAssociates'] = $__dedupeByKey($this->data['BeltlineAssociates'], 'RecipientId');
+        }
+
+        // Qualification test results — use the viewed player's home kingdom, not the session context
+        $playerKingdomId    = (int)($this->data['Player']['KingdomId'] ?? $this->session->kingdom_id);
+        $playerKnConfigs    = Common::get_configs($playerKingdomId, CFG_KINGDOM);
+        $qualReeveEnabled   = isset($playerKnConfigs['QualTestReeveEnabled'])
+            ? (bool)(int)$playerKnConfigs['QualTestReeveEnabled']['Value']
+            : false;
+        $qualCorporaEnabled = isset($playerKnConfigs['QualTestCorporaEnabled'])
+            ? (bool)(int)$playerKnConfigs['QualTestCorporaEnabled']['Value']
+            : false;
+
+        $this->data['QualTestReeveEnabled']   = $qualReeveEnabled;
+        $this->data['QualTestCorporaEnabled'] = $qualCorporaEnabled;
+        $this->data['QualKingdomId']          = $playerKingdomId;
+        $this->data['QualPlayerId']           = (int)$id;
+
+        // The kingdom switch says the kingdom PARTICIPATES; it does not say a test exists yet.
+        // Offering "Take Test" off the switch alone meant a player could accept and immediately
+        // be told "Not enough active questions available" — inviting them to do something that
+        // cannot be done. A test is takeable only if it is ALSO published with enough questions.
+        $this->data['QualTakeable'] = [
+            'reeve'   => $qualReeveEnabled   && Ork3::$Lib->qualtest->hasTakeableVersion($playerKingdomId, 'reeve'),
+            'corpora' => $qualCorporaEnabled && Ork3::$Lib->qualtest->hasTakeableVersion($playerKingdomId, 'corpora'),
+        ];
+
+        if ($qualReeveEnabled || $qualCorporaEnabled) {
+            $this->data['QualResults']   = Ork3::$Lib->qualtest->getPlayerResults((int)$id, $playerKingdomId);
+            $this->data['QualCanManage'] = $canEdit || Ork3::$Lib->qualtest->canManage($uid, $playerKingdomId);
+            $this->data['QualConfigs']   = [
+                'reeve'   => $qualReeveEnabled ? Ork3::$Lib->qualtest->getConfig($playerKingdomId, 'reeve') : null,
+                'corpora' => $qualCorporaEnabled ? Ork3::$Lib->qualtest->getConfig($playerKingdomId, 'corpora') : null,
+            ];
+        } else {
+            $this->data['QualResults']   = [];
+            $this->data['QualCanManage'] = false;
+            $this->data['QualConfigs']   = ['reeve' => null, 'corpora' => null];
+        }
     }
 
 
