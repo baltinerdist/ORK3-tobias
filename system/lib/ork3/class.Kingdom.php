@@ -75,6 +75,7 @@ class Kingdom extends Ork3
             $response['KingdomInfo']['SocialLinks']         = (string)$design->social_links;
             $response['KingdomInfo']['Announcement']        = (string)$design->announcement;
             $response['KingdomInfo']['AnnouncementUntil']   = $design->announcement_until;
+            $response['KingdomInfo']['AnnouncementStarts']  = $design->announcement_starts;
             $response['KingdomInfo']['MonarchReignStarted'] = $design->monarch_reign_started;
             $response['KingdomInfo']['RegentReignStarted']  = $design->regent_reign_started;
             $response['KingdomInfo']['ReignLore']           = (string)$design->reign_lore;
@@ -351,6 +352,7 @@ class Kingdom extends Ork3
             $response['KingdomInfo']['SocialLinks']         = (string)$design->social_links;
             $response['KingdomInfo']['Announcement']        = (string)$design->announcement;
             $response['KingdomInfo']['AnnouncementUntil']   = $design->announcement_until;
+            $response['KingdomInfo']['AnnouncementStarts']  = $design->announcement_starts;
             $response['KingdomInfo']['MonarchReignStarted'] = $design->monarch_reign_started;
             $response['KingdomInfo']['RegentReignStarted']  = $design->regent_reign_started;
             $response['KingdomInfo']['ReignLore']           = (string)$design->reign_lore;
@@ -621,7 +623,9 @@ class Kingdom extends Ork3
                     $_design_sync = new yapo($this->db, DB_PREFIX . 'kingdom_design');
                     $_design_sync->clear();
                     $_design_sync->kingdom_id = (int)$this->kingdom->kingdom_id;
-                    if ($_design_sync->find() && trim((string)$_design_sync->about_text) !== '') {
+                    // Only seed the design About from the legacy Description when the
+                    // curated About is still EMPTY — never clobber a manager's edits.
+                    if ($_design_sync->find() && trim((string)$_design_sync->about_text) === '') {
                         $_design_sync->about_text = (string)$request['Description'];
                         $_design_sync->save();
                     }
@@ -983,7 +987,7 @@ class Kingdom extends Ork3
 
     /**
      * Save kingdom profile design (header colors/font/overlay, about + our history markdown,
-     * milestone visibility config). Uses AUTH_KINGDOM/AUTH_EDIT.
+     * milestone visibility config). Uses AUTH_KINGDOM/AUTH_CREATE (org admin).
      *
      * Thin wrapper: auth -> profanity gate on About/History -> seed row ->
      * shared common-field validators (trait) -> Kingdom-specific extra fields
@@ -996,7 +1000,7 @@ class Kingdom extends Ork3
             return InvalidParameter('KingdomId is required.');
         }
         $mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
-        if (!($mundane_id > 0) || !Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_KINGDOM, $kingdom_id, AUTH_EDIT)) {
+        if (!($mundane_id > 0) || !Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_KINGDOM, $kingdom_id, AUTH_CREATE)) {
             return NoAuthorization();
         }
         require_once(__DIR__ . '/class.ProfanityFilter.php');
@@ -1022,7 +1026,8 @@ class Kingdom extends Ork3
             }
             $v = trim((string)$request[$req]);
             if ($v === '') {
-                $design->$col = null;
+                // yapo drops nulls from UPDATE; '' persists as '0000-00-00' (empty date).
+                $design->$col = '';
                 continue;
             }
             $ts = strtotime($v);
@@ -1040,13 +1045,15 @@ class Kingdom extends Ork3
             if (trim($rl) !== '' && $pf->containsProfanity($rl)) {
                 return InvalidParameter('ReignLore', ProfanityFilter::ERROR_MESSAGE);
             }
-            $design->reign_lore = trim($rl) === '' ? null : $rl;
+            $design->reign_lore = trim($rl) === '' ? '' : $rl;
         }
 
         if (array_key_exists('AboutEnabled', $request)) {
             $design->about_enabled = (!empty($request['AboutEnabled']) && (string)$request['AboutEnabled'] !== '0') ? 1 : 0;
         }
 
+        $design->updated_by = (int)$mundane_id;
+        $design->updated_at = date('Y-m-d H:i:s');
         $design->save();
         return Success($kingdom_id);
     }
@@ -1064,6 +1071,23 @@ class Kingdom extends Ork3
     public function DeleteKingdomMilestone($request)
     {
         return $this->DeleteDesignMilestone((int)($request['KingdomId'] ?? 0), $request);
+    }
+
+    public function UpdateKingdomMilestone($request)
+    {
+        return $this->UpdateDesignMilestone((int)($request['KingdomId'] ?? 0), $request);
+    }
+
+    /**
+     * Custom + derived kingdom milestones merged into one sorted timeline list.
+     * Fetches derived via this class's cache-namespaced GetDerivedKingdomMilestones,
+     * then hands both to the trait merge. Returns a plain list.
+     */
+    public function GetMergedKingdomMilestones($request)
+    {
+        $kingdom_id = (int)($request['KingdomId'] ?? 0);
+        $derived    = $this->GetDerivedKingdomMilestones($kingdom_id);
+        return $this->GetMergedDesignMilestones($kingdom_id, $derived);
     }
 
     /**
@@ -1105,7 +1129,7 @@ class Kingdom extends Ork3
         }
         // 2) Attendance count crossings — kingdoms are larger than parks, so scaled up.
         $this->db->Clear();
-        $r = $this->db->query("SELECT COUNT(*) AS total FROM " . DB_PREFIX . "attendance WHERE kingdom_id = $kingdom_id");
+        $r = $this->db->query("SELECT COUNT(*) AS total FROM " . DB_PREFIX . "attendance WHERE kingdom_id = $kingdom_id AND date >= '1988-01-01'");
         $total = 0;
         if ($r !== false && $r->size() > 0) {
             $r->next();
@@ -1135,7 +1159,7 @@ class Kingdom extends Ork3
         }
         // 3) Distinct-member crossings — scaled up for kingdom size.
         $this->db->Clear();
-        $r = $this->db->query("SELECT COUNT(DISTINCT mundane_id) AS members FROM " . DB_PREFIX . "attendance WHERE kingdom_id = $kingdom_id");
+        $r = $this->db->query("SELECT COUNT(DISTINCT mundane_id) AS members FROM " . DB_PREFIX . "attendance WHERE kingdom_id = $kingdom_id AND date >= '1988-01-01'");
         $members = 0;
         if ($r !== false && $r->size() > 0) {
             $r->next();

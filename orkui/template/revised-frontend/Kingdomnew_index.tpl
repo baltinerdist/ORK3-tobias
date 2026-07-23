@@ -164,14 +164,16 @@
 	}
 
 	$knAnnouncement       = trim((string)($_kInfo['Announcement'] ?? ''));
+	$knAnnouncementStarts = trim((string)($_kInfo['AnnouncementStarts'] ?? ''));
 	$knAnnouncementUntil  = trim((string)($_kInfo['AnnouncementUntil'] ?? ''));
 	$knShowAnnouncement   = false;
 	if ($knAnnouncement !== '') {
-		if ($knAnnouncementUntil === '' || $knAnnouncementUntil === '0000-00-00') {
-			$knShowAnnouncement = true;
-		} else {
-			$knShowAnnouncement = (strtotime($knAnnouncementUntil) !== false && strtotime($knAnnouncementUntil) >= strtotime(date('Y-m-d')));
-		}
+		$_knToday    = strtotime(date('Y-m-d'));
+		$_knStartsOk = ($knAnnouncementStarts === '' || $knAnnouncementStarts === '0000-00-00'
+			|| (strtotime($knAnnouncementStarts) !== false && strtotime($knAnnouncementStarts) <= $_knToday));
+		$_knUntilOk  = ($knAnnouncementUntil === '' || $knAnnouncementUntil === '0000-00-00'
+			|| (strtotime($knAnnouncementUntil) !== false && strtotime($knAnnouncementUntil) >= $_knToday));
+		$knShowAnnouncement = $_knStartsOk && $_knUntilOk;
 	}
 
 	$knMonarchReignStarted = trim((string)($_kInfo['MonarchReignStarted'] ?? ''));
@@ -225,6 +227,7 @@
 		'name_font'          => $knNameFont,
 		'tagline'            => $knTagline,
 		'announcement'       => $knAnnouncement,
+		'announcement_starts' => $knAnnouncementStarts,
 		'announcement_until' => $knAnnouncementUntil,
 		'social_links'       => $knVisibleSocials,
 		'about_enabled'      => $knAboutEnabled,
@@ -279,12 +282,14 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
 .kn-parent-kingdom-link a i { color: <?= htmlspecialchars($knColorAccent) ?>; }
 .kn-link-list .kn-link-icon i { color: <?= htmlspecialchars($knColorAccent) ?>; }
 <?php endif; ?>
+<?php if (!$bannerUrl): /* overlay opacity + vignette mask apply to the heraldry backdrop only; an uploaded banner shows at full opacity (see .kn-hero-has-banner .kn-hero-bg) */ ?>
 .kn-hero-bg { opacity: <?= $knOverlayOpacity ?> !important; }
 <?php if ($knOverlay === 'vignette'): ?>
 .kn-hero-bg {
 	-webkit-mask-image: radial-gradient(ellipse at center, rgba(0,0,0,0.95) 38%, rgba(0,0,0,0) 78%);
 	        mask-image: radial-gradient(ellipse at center, rgba(0,0,0,0.95) 38%, rgba(0,0,0,0) 78%);
 }
+<?php endif; ?>
 <?php endif; ?>
 <?php if ($knNameFont !== '' && $knHeroFontCss !== ''): ?>
 .kn-kingdom-name { font-family: <?= $knHeroFontCss ?>, 'Cinzel', serif !important; letter-spacing: 0.02em; }
@@ -295,13 +300,31 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
      ZONE 1: Hero Header
      ============================================= -->
 <?php if ($knShowAnnouncement): ?>
-<div class="od-announce" role="status">
+<div class="od-announce" role="status" data-od-announce-key="od-announce-dismissed-kingdom-<?= (int)$kingdom_id ?>" data-od-announce-token="<?= substr(sha1($knAnnouncement), 0, 16) ?>">
 	<i class="fas fa-bullhorn od-announce-icon"></i>
 	<div class="od-announce-body"><strong>Announcement:</strong><?= htmlspecialchars($knAnnouncement) ?></div>
 	<?php if ($knAnnouncementUntil !== '' && $knAnnouncementUntil !== '0000-00-00'): ?>
 	<div class="od-announce-until">Until <?= date('M j, Y', strtotime($knAnnouncementUntil)) ?></div>
 	<?php endif; ?>
+	<button type="button" class="od-announce-dismiss" data-tip="Dismiss" aria-label="Dismiss announcement">&times;</button>
 </div>
+<script>
+(function () {
+	var banners = document.querySelectorAll('.od-announce[data-od-announce-key]');
+	for (var i = 0; i < banners.length; i++) {
+		(function (b) {
+			var key = b.getAttribute('data-od-announce-key');
+			var token = b.getAttribute('data-od-announce-token') || '';
+			try { if (key && localStorage.getItem(key) === token) { b.style.display = 'none'; } } catch (e) {}
+			var x = b.querySelector('.od-announce-dismiss');
+			if (x) { x.addEventListener('click', function () {
+				b.style.display = 'none';
+				try { if (key) { localStorage.setItem(key, token); } } catch (e) {}
+			}); }
+		})(banners[i]);
+	}
+})();
+</script>
 <?php endif; ?>
 <?php
 	$_heroBgUrl    = $bannerUrl ?: $heraldryUrl;
@@ -560,7 +583,7 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
 						<i class="fas fa-crown"></i>
 						<span>Current Reign</span>
 						<?php if ($CanManageKingdom ?? false): ?>
-						<button class="od-about-edit-btn" type="button" onclick="odOpenDesignModal('about')" data-tip="Edit Reign" style="margin-left:auto;background:transparent;border:0;color:#744210;cursor:pointer;font-size:11px">
+						<button class="od-about-edit-btn od-reign-edit-btn" type="button" onclick="odOpenDesignModal('about')" data-tip="Edit Reign" style="margin-left:auto">
 							<i class="fas fa-pencil-alt"></i> Edit
 						</button>
 						<?php endif; ?>
@@ -607,7 +630,7 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
 				<div class="od-reign-banner">
 					<div class="od-reign-head"><i class="fas fa-crown"></i><span>Current Reign</span></div>
 					<div class="od-reign-empty">
-						Showcase the current Monarch &amp; Regent. <a href="#" onclick="event.preventDefault();odOpenDesignModal('about')" style="color:#744210;text-decoration:underline">Set reign-start dates</a> or add lore.
+						Showcase the current Monarch &amp; Regent. <a href="#" class="od-reign-link" onclick="event.preventDefault();odOpenDesignModal('about')">Set reign-start dates</a> or add lore.
 					</div>
 				</div>
 				<?php endif; ?>

@@ -41,10 +41,12 @@ class Controller_UnitAjax extends Controller
                 'set_unit_design',
                 'UnitId',
                 $unit_id,
-                ['AboutText','OurHistory','ColorPrimary','ColorAccent','ColorSecondary','HeroOverlay','NameFont','MilestoneConfig','Tagline','SocialLinks','Announcement','AnnouncementUntil','RecruitmentStatus','HowToJoin','AboutEnabled']
+                ['AboutText','OurHistory','ColorPrimary','ColorAccent','ColorSecondary','HeroOverlay','NameFont','MilestoneConfig','Tagline','SocialLinks','Announcement','AnnouncementUntil','AnnouncementStarts','RecruitmentStatus','HowToJoin','AboutEnabled']
             );
         } elseif ($action === 'addmilestone') {
             $this->org_add_milestone($this->Unit, 'add_unit_milestone', 'UnitId', $unit_id);
+        } elseif ($action === 'updatemilestone') {
+            $this->org_update_milestone($this->Unit, 'update_unit_milestone', 'UnitId', $unit_id);
         } elseif ($action === 'deletemilestone') {
             $this->org_delete_milestone($this->Unit, 'delete_unit_milestone', 'UnitId', $unit_id);
         } else {
@@ -164,6 +166,13 @@ class Controller_UnitAjax extends Controller
             $detectedType = exif_imagetype($tmp);
             if ($detectedType !== IMAGETYPE_JPEG && $detectedType !== IMAGETYPE_PNG) {
                 echo json_encode(['status' => 1, 'error' => 'Only JPEG and PNG images are supported.']);
+                exit;
+            }
+            // Reject decompression-bomb images before this becomes a public
+            // hero: cap the pixel dimensions in addition to the byte-size check.
+            $dims = getimagesize($tmp);
+            if ($dims === false || $dims[0] > 4000 || $dims[1] > 1500 || ($dims[0] * $dims[1]) > 6000000) {
+                echo json_encode(['status' => 1, 'error' => 'Image dimensions too large (max 4000x1500).']);
                 exit;
             }
             $mime = ($detectedType === IMAGETYPE_PNG) ? 'image/png' : 'image/jpeg';

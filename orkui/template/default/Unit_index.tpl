@@ -108,8 +108,12 @@ $_un_hero_font_css = $_un_name_font !== '' ? ("'" . str_replace("'", '', $_un_na
 /* ── Phase 2 customizations: tagline, social links, announcement, recruitment, how-to-join ── */
 $_unTagline            = trim((string)($_unit['Tagline'] ?? ''));
 $_unAnnouncement       = trim((string)($_unit['Announcement'] ?? ''));
+$_unAnnouncementStarts = trim((string)($_unit['AnnouncementStarts'] ?? ''));
 $_unAnnouncementUntil  = trim((string)($_unit['AnnouncementUntil'] ?? ''));
 $_unShowAnnouncement   = ($_unAnnouncement !== '');
+if ($_unShowAnnouncement && $_unAnnouncementStarts !== '' && $_unAnnouncementStarts !== '0000-00-00') {
+	$_unShowAnnouncement = (strtotime($_unAnnouncementStarts) <= strtotime(date('Y-m-d')));
+}
 if ($_unShowAnnouncement && $_unAnnouncementUntil !== '' && $_unAnnouncementUntil !== '0000-00-00') {
 	$_unShowAnnouncement = (strtotime($_unAnnouncementUntil) >= strtotime(date('Y-m-d')));
 }
@@ -163,6 +167,7 @@ $ctx = [
 	'name_font'          => $_un_name_font,
 	'tagline'            => $_unTagline,
 	'announcement'       => $_unAnnouncement,
+	'announcement_starts' => $_unAnnouncementStarts,
 	'announcement_until' => $_unAnnouncementUntil,
 	'social_links'       => $_unSocialLinks,
 	'about_enabled'      => $_unAboutEnabled,
@@ -700,13 +705,31 @@ html[data-theme="dark"] .un-btn-danger { color: #fc8181 !important; border-color
 <?php endif; ?>
 
 <?php if ($_unShowAnnouncement): ?>
-<div class="od-announce" role="status">
+<div class="od-announce" role="status" data-od-announce-key="od-announce-dismissed-unit-<?= (int)$_unit_id ?>" data-od-announce-token="<?= substr(sha1($_unAnnouncement), 0, 16) ?>">
 	<i class="fas fa-bullhorn od-announce-icon"></i>
 	<div class="od-announce-body"><strong>Announcement:</strong><?= htmlspecialchars($_unAnnouncement) ?></div>
 	<?php if ($_unAnnouncementUntil !== '' && $_unAnnouncementUntil !== '0000-00-00'): ?>
 	<div class="od-announce-until">Until <?= date('M j, Y', strtotime($_unAnnouncementUntil)) ?></div>
 	<?php endif; ?>
+	<button type="button" class="od-announce-dismiss" data-tip="Dismiss" aria-label="Dismiss announcement">&times;</button>
 </div>
+<script>
+(function () {
+	var banners = document.querySelectorAll('.od-announce[data-od-announce-key]');
+	for (var i = 0; i < banners.length; i++) {
+		(function (b) {
+			var key = b.getAttribute('data-od-announce-key');
+			var token = b.getAttribute('data-od-announce-token') || '';
+			try { if (key && localStorage.getItem(key) === token) { b.style.display = 'none'; } } catch (e) {}
+			var x = b.querySelector('.od-announce-dismiss');
+			if (x) { x.addEventListener('click', function () {
+				b.style.display = 'none';
+				try { if (key) { localStorage.setItem(key, token); } } catch (e) {}
+			}); }
+		})(banners[i]);
+	}
+})();
+</script>
 <?php endif; ?>
 
 <!-- ── Hero ─────────────────────────────────────────────── -->
@@ -761,7 +784,7 @@ html[data-theme="dark"] .un-btn-danger { color: #fc8181 !important; border-color
 					<i class="fas <?=$_type_icon?>"></i>
 					<?=htmlspecialchars($_type)?>
 				</span>
-<?php if ($_unRecruitmentStatus !== ''): $_rm = $_unRecruitMeta[$_unRecruitmentStatus]; ?>
+<?php if ($_unShowNewAbout && $_unRecruitmentStatus !== ''): $_rm = $_unRecruitMeta[$_unRecruitmentStatus]; ?>
 				<span class="un-recruit-pill un-recruit-<?= htmlspecialchars($_unRecruitmentStatus) ?>" data-tip="Recruitment status">
 					<i class="fas <?= htmlspecialchars($_rm['icon']) ?>"></i>
 					<?= htmlspecialchars($_rm['label']) ?>
@@ -821,7 +844,7 @@ html[data-theme="dark"] .un-btn-danger { color: #fc8181 !important; border-color
 	<div class="un-tab-panel un-tab-active" id="un-tab-about">
 
 <?php if ($_can_edit && $_unAboutEnabled !== 1): ?>
-		<div class="un-unpublished-badge" data-tip="Only managers can see this. Enable the New About Design in this modal to publish.">
+		<div class="od-about-unpublished" data-tip="Only managers can see this. Enable the About Page in Customize to publish it.">
 			<i class="fas fa-eye-slash"></i> Unpublished &mdash; only managers can see this
 		</div>
 <?php endif; ?>
@@ -829,7 +852,7 @@ html[data-theme="dark"] .un-btn-danger { color: #fc8181 !important; border-color
 <?php if ($_is_retired): ?>
 		<div class="un-fullwidth-section un-retired-card">
 			<div class="un-fullwidth-head">
-				<h3 class="un-fullwidth-title"><i class="fas fa-box-archive"></i> Retired</h3>
+				<h3 class="un-fullwidth-title"><i class="fas fa-archive"></i> Retired</h3>
 			</div>
 			<p class="un-card-text">This <?=htmlspecialchars($_type_l)?> has been retired and is hidden from listings and search.</p>
 <?php if ($_can_officer): ?>
@@ -968,7 +991,7 @@ if ($_can_edit || count($_auths) > 0):
 <?php if ($_show_claim): ?>
 		<div class="un-fullwidth-section un-claim-card">
 <?php if ($_can_claim): ?>
-			<h4 style="display:flex;align-items:center;justify-content:space-between;"><span><i class="fas fa-hand-sparkles"></i> Claim This <?=htmlspecialchars($_type)?></span></h4>
+			<h4 style="display:flex;align-items:center;justify-content:space-between;"><span><i class="fas fa-hands-helping"></i> Claim This <?=htmlspecialchars($_type)?></span></h4>
 			<p class="un-card-text">This <?=htmlspecialchars($_type_l)?> has no manager. As a leader of <?=htmlspecialchars($_name)?>, you can take over managing it.</p>
 			<form method="post" action="<?=htmlspecialchars($_base_url)?>">
 				<input type="hidden" name="Action" value="claim_unit">
@@ -997,10 +1020,10 @@ if ($_can_edit || count($_auths) > 0):
 <!-- ── Retire Card ──────────────────────────────────────── -->
 <?php if ($_show_retire): ?>
 		<div class="un-fullwidth-section un-retire-card">
-			<h4 style="display:flex;align-items:center;justify-content:space-between;"><span><i class="fas fa-box-archive"></i> Retire <?=htmlspecialchars($_type)?></span></h4>
+			<h4 style="display:flex;align-items:center;justify-content:space-between;"><span><i class="fas fa-archive"></i> Retire <?=htmlspecialchars($_type)?></span></h4>
 			<p class="un-card-text">If <?=htmlspecialchars($_name)?> is no longer active or has disbanded, you can retire it here.</p>
 			<button type="button" class="pn-btn pn-btn-ghost" style="width:100%;color:#c05621;border-color:#c05621;" onclick="unOpenModal('un-modal-retire')">
-				<i class="fas fa-box-archive"></i> Retire This Unit
+				<i class="fas fa-archive"></i> Retire This Unit
 			</button>
 		</div>
 <?php endif; ?>
@@ -2407,6 +2430,8 @@ html[data-theme="dark"] .un-retire-note {
 	}
 ?>
 <?php if ($ctx['can_manage']): ?>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
 <script src="<?= HTTP_TEMPLATE ?>shared/orgdesign/orgdesign.js?v=<?= filemtime(DIR_TEMPLATE . 'shared/orgdesign/orgdesign.js') ?>"></script>

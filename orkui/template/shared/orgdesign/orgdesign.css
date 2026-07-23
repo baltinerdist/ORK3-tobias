@@ -153,6 +153,23 @@ html[data-theme="dark"] .od-announce {
 html[data-theme="dark"] .od-announce i.od-announce-icon { color: #fbbf24; }
 html[data-theme="dark"] .od-announce-body strong { color: #fef3c7; }
 html[data-theme="dark"] .od-announce-until { color: #fbbf24; }
+/* Dismiss control (FE#39) — visitor can hide the banner; a new/edited announcement re-appears */
+.od-announce-dismiss {
+	background: transparent; border: 0; cursor: pointer; color: #92400e;
+	font-size: 18px; line-height: 1; padding: 2px 6px; border-radius: 4px;
+	flex-shrink: 0; opacity: 0.7; position: relative;
+}
+.od-announce-dismiss:hover { opacity: 1; background: rgba(146,64,14,0.12); }
+html[data-theme="dark"] .od-announce-dismiss { color: #fbbf24; }
+html[data-theme="dark"] .od-announce-dismiss:hover { background: rgba(251,191,36,0.18); }
+.od-announce-dismiss[data-tip]::after {
+	content: attr(data-tip); position: absolute; bottom: calc(100% + 6px); right: 0;
+	background: #2d3748; color: #fff; font-size: 11px; white-space: normal; width: max-content; max-width: 240px; line-height: 1.4;
+	padding: 3px 8px; border-radius: 4px; pointer-events: none; opacity: 0;
+	transition: opacity 0.12s; z-index: 600;
+}
+.od-announce-dismiss[data-tip]:hover::after { opacity: 1; transition-delay: 0.3s; }
+html[data-theme="dark"] .od-announce-dismiss[data-tip]::after { background: var(--ork-bg-tertiary); color: var(--ork-text); border: 1px solid var(--ork-border); }
 
 /* --- Connect (sidebar) — flat accent pills --------------------------------- */
 .od-connect-block { margin-top: 14px; padding-top: 12px; border-top: 1px dashed #e2e8f0; }
@@ -288,6 +305,17 @@ html[data-theme="dark"] .od-reign-lore {
 	border-left-color: #fbbf24;
 }
 html[data-theme="dark"] .od-reign-empty { color: #fbd38d; }
+/* Edit button + "set dates" link sit on the amber/brown reign banner — need
+   banner-tuned colors that stay legible in BOTH themes (the base .od-about-edit-btn
+   gray is too faint on the banner, and a hardcoded dark brown vanishes in dark mode). */
+.od-reign-edit-btn.od-about-edit-btn { color: #744210; }
+.od-reign-edit-btn.od-about-edit-btn:hover { background: rgba(116,66,16,0.12); color: #5c340c; border-color: rgba(116,66,16,0.3); }
+html[data-theme="dark"] .od-reign-edit-btn.od-about-edit-btn { color: #fbbf24; }
+html[data-theme="dark"] .od-reign-edit-btn.od-about-edit-btn:hover { background: rgba(251,191,36,0.15); color: #fde68a; border-color: rgba(251,191,36,0.35); }
+.od-reign-link { color: #744210; text-decoration: underline; }
+.od-reign-link:hover { color: #5c340c; }
+html[data-theme="dark"] .od-reign-link { color: #fbbf24; }
+html[data-theme="dark"] .od-reign-link:hover { color: #fde68a; }
 
 /* --- Unpublished badge (manager-only, About not yet enabled) --------------- */
 .od-about-unpublished {
@@ -438,6 +466,45 @@ html[data-theme="dark"] .od-dm-swatch.od-selected { box-shadow: 0 0 0 2px var(--
 	padding: 0; background: transparent; cursor: pointer;
 }
 .od-dm-color-input input[type="text"] { flex: 1; }
+
+/* Reset colors to default (sends empty so the server clears the columns) */
+.od-dm-color-reset {
+	margin-top: 10px; background: transparent; border: 0; color: #718096;
+	font-size: 12px; cursor: pointer; padding: 2px 0; text-decoration: underline;
+	display: inline-flex; align-items: center; gap: 5px;
+}
+.od-dm-color-reset:hover { color: #2b6cb0; }
+html[data-theme="dark"] .od-dm-color-reset { color: var(--ork-text-muted); }
+html[data-theme="dark"] .od-dm-color-reset:hover { color: var(--ork-link); }
+
+/* Live hero preview (Header tab) — approximates the emitted hero: primary /
+   gradient background, name font, overlay wash, vignette, and tagline. The hero
+   itself is a colored surface with white text in both themes (like the real
+   hero), so only its border needs a dark-mode rule. */
+.od-dm-preview-hero {
+	position: relative; overflow: hidden; min-height: 96px;
+	border-radius: 8px; border: 1px solid #cbd5e0;
+	display: flex; flex-direction: column; align-items: center; justify-content: center;
+	padding: 18px 16px; text-align: center; gap: 4px; background: #2c5282;
+}
+html[data-theme="dark"] .od-dm-preview-hero { border-color: var(--ork-border); }
+.od-dm-preview-hero::before {
+	content: ''; position: absolute; inset: 0; pointer-events: none;
+	background: radial-gradient(circle at 50% 40%, rgba(255,255,255,var(--od-preview-overlay, 0.13)), rgba(255,255,255,0) 70%);
+}
+.od-dm-preview-hero.od-preview-vignette::after {
+	content: ''; position: absolute; inset: 0; pointer-events: none;
+	background: radial-gradient(ellipse at center, rgba(0,0,0,0) 40%, rgba(0,0,0,0.45) 100%);
+}
+.od-dm-preview-name {
+	position: relative; z-index: 1; font-size: 26px; font-weight: 700;
+	color: #fff; line-height: 1.15; text-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
+.od-dm-preview-tagline {
+	position: relative; z-index: 1; font-size: 13px; font-style: italic;
+	color: #e2e8f0; text-shadow: 0 1px 2px rgba(0,0,0,0.4); max-width: 40ch;
+}
+
 .od-dm-overlay-btns { display: flex; gap: 6px; flex-wrap: wrap; }
 .od-dm-overlay-btn {
 	flex: 1; min-width: 80px; padding: 8px 10px; font-size: 12px; font-weight: 600;
@@ -521,6 +588,22 @@ html[data-theme="dark"] .od-dm-ms-row button:hover { background: var(--ork-bg-te
 html[data-theme="dark"] .od-dm-ms-row button[data-tip]::after {
 	background: var(--ork-bg-tertiary); color: var(--ork-text); border: 1px solid var(--ork-border);
 }
+/* Edit affordance (FE#27) — neutral color so it reads distinct from the red delete */
+.od-dm-ms-row button[data-ms-edit] { color: #718096; }
+.od-dm-ms-row button[data-ms-edit]:hover { background: rgba(49,130,206,0.08); color: #2b6cb0; }
+html[data-theme="dark"] .od-dm-ms-row button[data-ms-edit] { color: var(--ork-text-muted); }
+html[data-theme="dark"] .od-dm-ms-row button[data-ms-edit]:hover { background: var(--ork-bg-tertiary); color: var(--ork-link); }
+
+/* Cancel-edit control (FE#27) — returns the add-row to plain add mode */
+.od-dm-ms-edit-cancel {
+	margin-top: 8px; background: transparent; border: 0; color: #718096;
+	font-size: 12px; cursor: pointer; padding: 2px 0; text-decoration: underline;
+	display: inline-flex; align-items: center; gap: 5px;
+}
+.od-dm-ms-edit-cancel:hover { color: #c53030; }
+html[data-theme="dark"] .od-dm-ms-edit-cancel { color: var(--ork-text-muted); }
+html[data-theme="dark"] .od-dm-ms-edit-cancel:hover { color: #fc8181; }
+
 .od-dm-ms-add { display: grid; grid-template-columns: 1fr 140px 90px; gap: 8px; align-items: end; }
 @media (max-width: 600px) { .od-dm-ms-add { grid-template-columns: 1fr; } }
 .od-dm-ms-icons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
@@ -575,6 +658,20 @@ html[data-theme="dark"] .od-dm-recruit-opt.od-active { background: var(--ork-lin
 }
 html[data-theme="dark"] .od-dm-counter { color: var(--ork-text-muted); }
 .od-dm-counter.od-over { color: #c53030; font-weight: 600; }
+
+/* Announcement lifecycle indicator (FE#39) — Live / Scheduled / Expired pill */
+.od-dm-announce-status {
+	display: inline-block; margin-top: 8px; padding: 3px 10px; border-radius: 999px;
+	font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+}
+.od-dm-announce-status.od-live      { background: #c6f6d5; color: #22543d; }
+.od-dm-announce-status.od-scheduled { background: #bee3f8; color: #2a4365; }
+.od-dm-announce-status.od-expired   { background: #fed7d7; color: #822727; }
+.od-dm-announce-status.od-neutral   { background: #edf2f7; color: #4a5568; }
+html[data-theme="dark"] .od-dm-announce-status.od-live      { background: rgba(72,187,120,0.2); color: #9ae6b4; }
+html[data-theme="dark"] .od-dm-announce-status.od-scheduled { background: rgba(66,153,225,0.2); color: #90cdf4; }
+html[data-theme="dark"] .od-dm-announce-status.od-expired   { background: rgba(252,129,129,0.18); color: #feb2b2; }
+html[data-theme="dark"] .od-dm-announce-status.od-neutral   { background: var(--ork-bg-tertiary); color: var(--ork-text-secondary); }
 
 /* --- In-product confirm fallback (no native confirm/alert) ----------------- */
 .od-confirm-overlay {

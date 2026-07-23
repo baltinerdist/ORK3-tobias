@@ -62,6 +62,17 @@ class Unit extends Ork3
                 throw new Exception('mundane update failed');
             }
 
+            // Relocate authored custom milestones to the surviving unit. fk_unit_milestone_unit
+            // is ON DELETE CASCADE, so without this the source unit's milestones would be
+            // silently dropped when the row is deleted below.
+            $this->db->Clear();
+            $sql = "update " . DB_PREFIX . "unit_milestones set unit_id = '" . (int)$to . "' where unit_id = '" . (int)$from . "'";
+            if (!$this->db->query($sql)) {
+                throw new Exception('unit_milestones update failed');
+            }
+
+            // The source unit's design row (cosmetic colors/overlay/about) is intentionally
+            // left to cascade-delete — the surviving unit keeps its own design.
             $sql = "delete from " . DB_PREFIX . "unit where unit_id = '" . $from . "'";
             if (!$this->db->query($sql)) {
                 throw new Exception('unit delete failed');
@@ -229,6 +240,7 @@ class Unit extends Ork3
             $response['Unit']['SocialLinks']        = (string)$design->social_links;
             $response['Unit']['Announcement']       = (string)$design->announcement;
             $response['Unit']['AnnouncementUntil']  = $design->announcement_until;
+            $response['Unit']['AnnouncementStarts'] = $design->announcement_starts;
             $response['Unit']['RecruitmentStatus']  = (string)$design->recruitment_status;
             $response['Unit']['HowToJoin']          = (string)$design->how_to_join;
             $response['Unit']['AboutEnabled']        = (int)$design->about_enabled;
@@ -369,6 +381,14 @@ class Unit extends Ork3
             $_design_seed->clear();
             $_design_seed->unit_id      = (int)$this->unit->unit_id;
             $_design_seed->hero_overlay = 'med';
+            // Seed the curated About/History from the entered Description/History so the
+            // read-time fallback isn't blank (the LIB#7 sync only seeds an empty About).
+            if (isset($request['Description']) && trim((string)$request['Description']) !== '') {
+                $_design_seed->about_text = trim((string)$request['Description']);
+            }
+            if (isset($request['History']) && trim((string)$request['History']) !== '') {
+                $_design_seed->our_history = trim((string)$request['History']);
+            }
             $_design_seed->save();
 
             if (strlen($request['Heraldry']) > 0) {
@@ -438,12 +458,14 @@ class Unit extends Ork3
             $_design_sync->clear();
             $_design_sync->unit_id = (int)$this->unit->unit_id;
             if ($_design_sync->find()) {
+                // Only seed the design About/History from the legacy Description/History
+                // when the curated copy is still EMPTY — never clobber a manager's edits.
                 $_dirty = false;
-                if (isset($request['Description']) && trim((string)$request['Description']) !== '' && trim((string)$_design_sync->about_text) !== '') {
+                if (isset($request['Description']) && trim((string)$request['Description']) !== '' && trim((string)$_design_sync->about_text) === '') {
                     $_design_sync->about_text = trim((string)$request['Description']);
                     $_dirty = true;
                 }
-                if (isset($request['History']) && trim((string)$request['History']) !== '' && trim((string)$_design_sync->our_history) !== '') {
+                if (isset($request['History']) && trim((string)$request['History']) !== '' && trim((string)$_design_sync->our_history) === '') {
                     $_design_sync->our_history = trim((string)$request['History']);
                     $_dirty = true;
                 }
@@ -733,7 +755,7 @@ class Unit extends Ork3
     }
 
     /**
-     * Save unit profile design. Uses AUTH_UNIT/AUTH_EDIT.
+     * Save unit profile design. Uses AUTH_UNIT/AUTH_CREATE (org admin).
      *
      * Thin wrapper mirroring SetKingdomDesign: auth -> profanity gate on the
      * org's profanity_fields -> seed row -> shared common-field validators
@@ -747,7 +769,7 @@ class Unit extends Ork3
             return InvalidParameter('UnitId is required.');
         }
         $mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
-        if (!($mundane_id > 0) || !Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_UNIT, $unit_id, AUTH_EDIT)) {
+        if (!($mundane_id > 0) || !Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_UNIT, $unit_id, AUTH_CREATE)) {
             return NoAuthorization();
         }
         require_once(__DIR__ . '/class.ProfanityFilter.php');
@@ -770,7 +792,8 @@ class Unit extends Ork3
         if (array_key_exists('RecruitmentStatus', $request)) {
             $rs = strtolower(trim((string)$request['RecruitmentStatus']));
             if ($rs === '' || $rs === 'none' || $rs === 'unset') {
-                $design->recruitment_status = null;
+                // yapo drops nulls from UPDATE — assign '' to actually clear the column.
+                $design->recruitment_status = '';
             } elseif (in_array($rs, ['open','invite','closed'], true)) {
                 $design->recruitment_status = $rs;
             } else {
@@ -785,11 +808,13 @@ class Unit extends Ork3
             if (trim($hj) !== '' && $pf->containsProfanity($hj)) {
                 return InvalidParameter('HowToJoin', ProfanityFilter::ERROR_MESSAGE);
             }
-            $design->how_to_join = trim($hj) === '' ? null : $hj;
+            $design->how_to_join = trim($hj) === '' ? '' : $hj;
         }
         if (array_key_exists('AboutEnabled', $request)) {
             $design->about_enabled = (!empty($request['AboutEnabled']) && (string)$request['AboutEnabled'] !== '0') ? 1 : 0;
         }
+        $design->updated_by = (int)$mundane_id;
+        $design->updated_at = date('Y-m-d H:i:s');
         $design->save();
         return Success($unit_id);
     }
@@ -807,6 +832,23 @@ class Unit extends Ork3
     public function DeleteUnitMilestone($request)
     {
         return $this->DeleteDesignMilestone((int)($request['UnitId'] ?? 0), $request);
+    }
+
+    public function UpdateUnitMilestone($request)
+    {
+        return $this->UpdateDesignMilestone((int)($request['UnitId'] ?? 0), $request);
+    }
+
+    /**
+     * Custom + derived unit milestones merged into one sorted timeline list.
+     * Fetches derived via this class's cache-namespaced GetDerivedUnitMilestones,
+     * then hands both to the trait merge. Returns a plain list.
+     */
+    public function GetMergedUnitMilestones($request)
+    {
+        $unit_id = (int)($request['UnitId'] ?? 0);
+        $derived = $this->GetDerivedUnitMilestones($unit_id);
+        return $this->GetMergedDesignMilestones($unit_id, $derived);
     }
 
     /**
@@ -839,7 +881,9 @@ class Unit extends Ork3
             $fd = $r->first_date;
             if ($fd && $fd !== '0000-00-00') {
                 $out[] = [
-                    'Type'          => 'first_member_activity',
+                    // Reuse the shared 'first_attendance' toggle key so the design modal's
+                    // "First Attendance" visibility switch actually controls this row.
+                    'Type'          => 'first_attendance',
                     'Icon'          => 'fa-door-open',
                     'Description'   => 'First recorded activity by a member',
                     'MilestoneDate' => $fd,

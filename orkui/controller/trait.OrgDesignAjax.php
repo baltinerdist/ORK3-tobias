@@ -96,6 +96,38 @@ trait OrgDesignAjax
     }
 
     /**
+     * Update an existing custom milestone on an org.
+     *
+     * @param object $model       The loaded org model.
+     * @param string $modelMethod Pass-through method name (update_kingdom_milestone ...).
+     * @param string $idField     Org id key for the payload.
+     * @param int    $orgId       Org id value.
+     */
+    protected function org_update_milestone(object $model, string $modelMethod, string $idField, int $orgId): void
+    {
+        $description = trim($_POST['Description']   ?? '');
+        $icon        = trim($_POST['Icon']          ?? 'fa-star');
+        $msDate      = trim($_POST['MilestoneDate'] ?? '');
+        if (!strlen($description)) {
+            echo json_encode(['status' => 1, 'error' => 'Description is required.', 'field' => '']);
+            exit;
+        }
+        if (!strlen($msDate) || !strtotime($msDate)) {
+            echo json_encode(['status' => 1, 'error' => 'A valid date is required.', 'field' => '']);
+            exit;
+        }
+        $r = $model->$modelMethod([
+            'Token'         => $this->session->token,
+            $idField        => $orgId,
+            'MilestoneId'   => (int)($_POST['MilestoneId'] ?? 0),
+            'Icon'          => $icon,
+            'Description'   => $description,
+            'MilestoneDate' => $msDate,
+        ]);
+        $this->org_design_emit($r);
+    }
+
+    /**
      * Delete a custom milestone from an org.
      *
      * @param object $model       The loaded org model.

@@ -731,12 +731,16 @@ class Controller_KingdomAjax extends Controller
                 'set_kingdom_design',
                 'KingdomId',
                 $kingdom_id,
-                ['AboutText','OurHistory','ColorPrimary','ColorAccent','ColorSecondary','HeroOverlay','NameFont','MilestoneConfig','Tagline','SocialLinks','Announcement','AnnouncementUntil','MonarchReignStarted','RegentReignStarted','ReignLore','AboutEnabled']
+                ['AboutText','OurHistory','ColorPrimary','ColorAccent','ColorSecondary','HeroOverlay','NameFont','MilestoneConfig','Tagline','SocialLinks','Announcement','AnnouncementUntil','AnnouncementStarts','MonarchReignStarted','RegentReignStarted','ReignLore','AboutEnabled']
             );
 
         } elseif ($action === 'addmilestone') {
             $this->load_model('Kingdom');
             $this->org_add_milestone($this->Kingdom, 'add_kingdom_milestone', 'KingdomId', $kingdom_id);
+
+        } elseif ($action === 'updatemilestone') {
+            $this->load_model('Kingdom');
+            $this->org_update_milestone($this->Kingdom, 'update_kingdom_milestone', 'KingdomId', $kingdom_id);
 
         } elseif ($action === 'deletemilestone') {
             $this->load_model('Kingdom');
@@ -1351,6 +1355,13 @@ class Controller_KingdomAjax extends Controller
             $detectedType = exif_imagetype($tmp);
             if ($detectedType !== IMAGETYPE_JPEG && $detectedType !== IMAGETYPE_PNG) {
                 echo json_encode(['status' => 1, 'error' => 'Only JPEG and PNG images are supported.']);
+                exit;
+            }
+            // Reject decompression-bomb images before this becomes a public
+            // hero: cap the pixel dimensions in addition to the byte-size check.
+            $dims = getimagesize($tmp);
+            if ($dims === false || $dims[0] > 4000 || $dims[1] > 1500 || ($dims[0] * $dims[1]) > 6000000) {
+                echo json_encode(['status' => 1, 'error' => 'Image dimensions too large (max 4000x1500).']);
                 exit;
             }
             $mime = ($detectedType === IMAGETYPE_PNG) ? 'image/png' : 'image/jpeg';

@@ -49,6 +49,7 @@ if (!in_array($_odOverlay, ['low', 'med', 'high', 'vignette'], true)) {
 $_odFont      = (string)($ctx['name_font'] ?? '');
 $_odTagline   = (string)($ctx['tagline'] ?? '');
 $_odAnnounce  = (string)($ctx['announcement'] ?? '');
+$_odAnnStarts = (string)($ctx['announcement_starts'] ?? '');
 $_odAnnUntil  = (string)($ctx['announcement_until'] ?? '');
 $_odSocial    = isset($ctx['social_links']) && is_array($ctx['social_links']) ? $ctx['social_links'] : [];
 $_odPlatforms = isset($OD_SOCIAL_PLATFORMS) && is_array($OD_SOCIAL_PLATFORMS) ? $OD_SOCIAL_PLATFORMS : [];
@@ -125,6 +126,15 @@ $_odIcons = ['fa-star', 'fa-trophy', 'fa-flag', 'fa-chess-rook', 'fa-crown', 'fa
 				<div class="od-dm-hint" style="margin-bottom:12px"><i class="fas fa-moon" style="margin-right:6px"></i><strong>Dark mode viewers</strong> see your hero with a slight darkening filter so colors stay readable. Preview both themes with the moon icon in the site header before saving.</div>
 
 				<div class="od-dm-field">
+					<label>Live Preview</label>
+					<div class="od-dm-preview-hero" id="od-dm-preview-hero">
+						<div class="od-dm-preview-name" id="od-dm-preview-name"><?= htmlspecialchars($_odName) ?></div>
+						<div class="od-dm-preview-tagline" id="od-dm-preview-tagline" style="display:none"></div>
+					</div>
+					<div class="od-dm-hint" style="margin-top:6px">An approximation of the hero — the primary/gradient background, name font, overlay strength, and tagline update as you edit. Heraldry and exact layout may differ on the live page.</div>
+				</div>
+
+				<div class="od-dm-field">
 					<label>Color Presets</label>
 					<div class="od-dm-preset-grid" id="od-dm-presets">
 						<div class="od-dm-swatch" data-primary="#2c5282" data-accent="#4299e1" style="background:#2c5282"></div>
@@ -170,6 +180,7 @@ $_odIcons = ['fa-star', 'fa-trophy', 'fa-flag', 'fa-chess-rook', 'fa-crown', 'fa
 							</div>
 						</div>
 					</div>
+					<button type="button" class="od-dm-color-reset" id="od-dm-color-reset"><i class="fas fa-undo"></i> Reset colors to default</button>
 				</div>
 
 				<div class="od-dm-field">
@@ -183,7 +194,7 @@ $_odIcons = ['fa-star', 'fa-trophy', 'fa-flag', 'fa-chess-rook', 'fa-crown', 'fa
 							</div>
 						</div>
 						<div class="od-dm-color-col" style="display:flex;align-items:center;padding-top:18px">
-							<label style="text-transform:none;letter-spacing:0;display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:500;color:#4a5568;font-size:13px;margin-bottom:0">
+							<label style="text-transform:none;letter-spacing:0;display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:500;font-size:13px;margin-bottom:0">
 								<input type="checkbox" id="od-dm-gradient-enabled" <?= $_odSecond !== '' ? 'checked' : '' ?> />
 								Enable gradient
 							</label>
@@ -212,20 +223,23 @@ $_odIcons = ['fa-star', 'fa-trophy', 'fa-flag', 'fa-chess-rook', 'fa-crown', 'fa
 				<div class="od-dm-field">
 					<label>Tagline</label>
 					<div class="od-dm-hint" style="margin-bottom:6px">A short one-liner that appears under the name in the hero. 160 characters max.</div>
-					<input type="text" id="od-dm-tagline" maxlength="160" value="<?= htmlspecialchars($_odTagline) ?>" placeholder="e.g. Honor, Glory, and the Sound of Sword on Shield." style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e0;border-radius:5px" />
+					<input type="text" id="od-dm-tagline" maxlength="160" value="<?= htmlspecialchars($_odTagline) ?>" placeholder="e.g. Honor, Glory, and the Sound of Sword on Shield." style="width:100%;padding:8px 10px;font-size:13px;border-radius:5px" />
 					<div class="od-dm-counter" id="od-dm-tagline-counter">0 / 160</div>
 				</div>
 
 				<div class="od-dm-field">
 					<label>Announcement Banner</label>
 					<div class="od-dm-hint" style="margin-bottom:6px">A short amber banner that appears above the hero. Use for upcoming events, weather cancellations, or news. 280 characters max.</div>
-					<textarea id="od-dm-announcement" maxlength="280" placeholder="e.g. Crown List sign-ups close Friday at midnight. RSVP on the events page!" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #cbd5e0;border-radius:5px;min-height:60px;resize:vertical"><?= htmlspecialchars($_odAnnounce) ?></textarea>
+					<textarea id="od-dm-announcement" maxlength="280" placeholder="e.g. Crown List sign-ups close Friday at midnight. RSVP on the events page!" style="width:100%;padding:8px 10px;font-size:13px;border-radius:5px;min-height:60px;resize:vertical"><?= htmlspecialchars($_odAnnounce) ?></textarea>
 					<div class="od-dm-counter" id="od-dm-announcement-counter">0 / 280</div>
 					<div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
-						<label style="font-size:12px;color:#4a5568;text-transform:none;letter-spacing:0;margin-bottom:0">Show until (optional):</label>
-						<input type="date" id="od-dm-announcement-until" value="<?= htmlspecialchars(($_odAnnUntil !== '' && $_odAnnUntil !== '0000-00-00') ? $_odAnnUntil : '') ?>" style="padding:5px 8px;font-size:12px;border:1px solid #cbd5e0;border-radius:4px" />
-						<button type="button" id="od-dm-announcement-clear" style="background:transparent;border:0;color:#718096;font-size:11px;cursor:pointer;text-decoration:underline">Clear date</button>
+						<label style="font-size:12px;text-transform:none;letter-spacing:0;margin-bottom:0">Starts (optional):</label>
+						<input type="date" id="od-dm-announcement-starts" value="<?= htmlspecialchars(($_odAnnStarts !== '' && $_odAnnStarts !== '0000-00-00') ? $_odAnnStarts : '') ?>" style="padding:5px 8px;font-size:12px;border-radius:4px" />
+						<label style="font-size:12px;text-transform:none;letter-spacing:0;margin-bottom:0">Show until (optional):</label>
+						<input type="date" id="od-dm-announcement-until" value="<?= htmlspecialchars(($_odAnnUntil !== '' && $_odAnnUntil !== '0000-00-00') ? $_odAnnUntil : '') ?>" style="padding:5px 8px;font-size:12px;border-radius:4px" />
+						<button type="button" id="od-dm-announcement-clear" style="background:transparent;border:0;color:#718096;font-size:11px;cursor:pointer;text-decoration:underline">Clear dates</button>
 					</div>
+					<div class="od-dm-announce-status" id="od-dm-announce-status" style="display:none"></div>
 				</div>
 			</div>
 
@@ -237,16 +251,16 @@ $_odIcons = ['fa-star', 'fa-trophy', 'fa-flag', 'fa-chess-rook', 'fa-crown', 'fa
 					<div class="od-dm-hint" style="margin-bottom:8px">Personae are derived from current Monarch &amp; Regent on the Officers list. Set reign-start dates and add optional lore (Markdown supported, 2,000 char max).</div>
 					<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
 						<div>
-							<label style="font-size:11px;color:#4a5568;text-transform:none;letter-spacing:0">Monarch reign started</label>
-							<input type="date" id="od-dm-monarch-reign" value="<?= htmlspecialchars(($_odMonarchStarted !== '' && $_odMonarchStarted !== '0000-00-00') ? $_odMonarchStarted : '') ?>" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid #cbd5e0;border-radius:4px" />
+							<label style="font-size:11px;text-transform:none;letter-spacing:0">Monarch reign started</label>
+							<input type="date" id="od-dm-monarch-reign" value="<?= htmlspecialchars(($_odMonarchStarted !== '' && $_odMonarchStarted !== '0000-00-00') ? $_odMonarchStarted : '') ?>" style="width:100%;padding:6px 8px;font-size:12px;border-radius:4px" />
 						</div>
 						<div>
-							<label style="font-size:11px;color:#4a5568;text-transform:none;letter-spacing:0">Regent reign started</label>
-							<input type="date" id="od-dm-regent-reign" value="<?= htmlspecialchars(($_odRegentStarted !== '' && $_odRegentStarted !== '0000-00-00') ? $_odRegentStarted : '') ?>" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid #cbd5e0;border-radius:4px" />
+							<label style="font-size:11px;text-transform:none;letter-spacing:0">Regent reign started</label>
+							<input type="date" id="od-dm-regent-reign" value="<?= htmlspecialchars(($_odRegentStarted !== '' && $_odRegentStarted !== '0000-00-00') ? $_odRegentStarted : '') ?>" style="width:100%;padding:6px 8px;font-size:12px;border-radius:4px" />
 						</div>
 					</div>
 					<div class="od-dm-md-toolbar">
-						<label style="margin-bottom:0;font-size:11px;text-transform:none;letter-spacing:0;color:#4a5568">Reign Lore (optional, Markdown)</label>
+						<label style="margin-bottom:0;font-size:11px;text-transform:none;letter-spacing:0">Reign Lore (optional, Markdown)</label>
 						<div class="od-dm-md-toggle">
 							<button type="button" class="od-active" data-odmd-target="edit" data-odmd-field="reign">Write</button>
 							<button type="button" data-odmd-target="preview" data-odmd-field="reign">Preview</button>
@@ -294,7 +308,7 @@ $_odIcons = ['fa-star', 'fa-trophy', 'fa-flag', 'fa-chess-rook', 'fa-crown', 'fa
 								<button type="button" data-odmd-target="preview" data-odmd-field="about">Preview</button>
 							</div>
 							<div class="od-dm-md-quick">
-								<button type="button" class="od-dm-md-quick-btn" data-odquick="newbies" data-odfield="about"><i class="fas fa-hand-sparkles"></i> New Player Welcome</button>
+								<button type="button" class="od-dm-md-quick-btn" data-odquick="newbies" data-odfield="about"><i class="fas fa-hands-helping"></i> New Player Welcome</button>
 								<button type="button" class="od-dm-md-quick-btn" data-odquick="vibe" data-odfield="about"><i class="fas fa-fire"></i> Kingdom Vibe</button>
 								<button type="button" class="od-dm-md-quick-btn" data-odquick="findus" data-odfield="about"><i class="fas fa-map-marker-alt"></i> Where We Play</button>
 							</div>
@@ -375,6 +389,7 @@ $_odIcons = ['fa-star', 'fa-trophy', 'fa-flag', 'fa-chess-rook', 'fa-crown', 'fa
 						<div class="od-dm-ms-icon-opt<?= $_ic === 'fa-star' ? ' od-active' : '' ?>" data-icon="<?= htmlspecialchars($_ic) ?>"><i class="fas <?= htmlspecialchars($_ic) ?>"></i></div>
 						<?php endforeach; ?>
 					</div>
+					<button type="button" class="od-dm-ms-edit-cancel" id="od-dm-ms-edit-cancel" style="display:none"><i class="fas fa-times"></i> Cancel edit</button>
 					<div class="od-dm-hint" id="od-dm-ms-add-err" style="color:#c53030;display:none;margin-top:6px"></div>
 				</div>
 			</div>
@@ -404,6 +419,9 @@ $_odCustomMsJson = array_map(function ($m) {
     'customMs'   => $_odCustomMsJson,
     'sampleName' => $_odName,
     'nameFont'   => $_odFont,
+    'colorPrimary'   => $_odPrimary,
+    'colorAccent'    => $_odAccent,
+    'colorSecondary' => $_odSecond,
     'features'   => [
         'reign'       => $_odHasReign,
         'recruitment' => $_odHasRecruit,

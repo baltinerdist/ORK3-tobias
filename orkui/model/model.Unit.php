@@ -119,8 +119,16 @@ class Model_Unit extends Model {
 		return $this->Unit->GetDerivedUnitMilestones(array('UnitId' => $unit_id));
 	}
 
+	function get_merged_unit_milestones($id) {
+		return $this->Unit->GetMergedUnitMilestones(array('UnitId' => $id));
+	}
+
 	function add_unit_milestone($request) {
 		return $this->Unit->AddUnitMilestone($request);
+	}
+
+	function update_unit_milestone($request) {
+		return $this->Unit->UpdateUnitMilestone($request);
 	}
 
 	function delete_unit_milestone($request) {

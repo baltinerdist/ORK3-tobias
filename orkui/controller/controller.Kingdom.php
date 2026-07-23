@@ -1097,30 +1097,21 @@ class Controller_Kingdom extends Controller
             $this->data['SystemAwards'] = $sysAwards;
         }
 
-		$this->data['PronounList']          = $this->Pronoun->fetch_pronoun_list();
-		$this->data['PronounOptionsCreate'] = $this->Pronoun->fetch_pronoun_option_list(null);
-		$this->data['IcsUrl'] = UIR . 'Kingdom/ics/' . $kingdom_id;
+        $this->data['PronounList']          = $this->Pronoun->fetch_pronoun_list();
+        $this->data['PronounOptionsCreate'] = $this->Pronoun->fetch_pronoun_option_list(null);
+        $this->data['IcsUrl'] = UIR . 'Kingdom/ics/' . $kingdom_id;
 
-		// Custom + derived milestones, merged into one timeline-ready array.
-		$_custom  = $this->Kingdom->get_kingdom_milestones((int)$kingdom_id);
-		$_derived = $this->Kingdom->get_derived_kingdom_milestones((int)$kingdom_id);
-		$milestones = [];
-		foreach (($_custom['Milestones'] ?? []) as $m) {
-			$milestones[] = [
-				'MilestoneId'   => (int)$m['MilestoneId'],
-				'Type'          => 'custom',
-				'Icon'          => $m['Icon'],
-				'Description'   => $m['Description'],
-				'MilestoneDate' => $m['MilestoneDate'],
-				'IsDerived'     => false,
-			];
-		}
-		foreach (($_derived['Milestones'] ?? []) as $m) {
-			$milestones[] = $m + ['MilestoneId' => 0, 'IsDerived' => true];
-		}
-		usort($milestones, function($a, $b) { return strcmp($a['MilestoneDate'], $b['MilestoneDate']); });
-		$this->data['Milestones'] = $milestones;
-	}
+        // Custom + derived milestones, merged into one timeline-ready array.
+        // The timeline only renders when the org has opted into the new About
+        // design (AboutEnabled) or the viewer can manage the kingdom, so only
+        // pay for the fetch+merge in those cases.
+        $milestones = [];
+        $_msAboutEnabled = (int)($this->data['kingdom_info']['Info']['KingdomInfo']['AboutEnabled'] ?? 0);
+        if ($_msAboutEnabled === 1 || !empty($this->data['CanManageKingdom'])) {
+            $milestones = $this->Kingdom->get_merged_kingdom_milestones((int)$kingdom_id);
+        }
+        $this->data['Milestones'] = $milestones;
+    }
 
     // ------------------------------------------------------------------ ICS helpers
     private static function ics_dt($str)

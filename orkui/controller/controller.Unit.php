@@ -224,29 +224,20 @@ class Controller_Unit extends Controller
             header('Location: ' . UIR . 'Unit/unitlist');
             exit;
         }
-        $_custom  = $this->Unit->get_unit_milestones($unit_id_int);
-        $_derived = $this->Unit->get_derived_unit_milestones($unit_id_int);
-        $milestones = [];
-        foreach (($_custom['Milestones'] ?? []) as $m) {
-            $milestones[] = [
-                'MilestoneId'   => (int)$m['MilestoneId'],
-                'Type'          => 'custom',
-                'Icon'          => $m['Icon'],
-                'Description'   => $m['Description'],
-                'MilestoneDate' => $m['MilestoneDate'],
-                'IsDerived'     => false,
-            ];
-        }
-        foreach (($_derived['Milestones'] ?? []) as $m) {
-            $milestones[] = $m + ['MilestoneId' => 0, 'IsDerived' => true];
-        }
-        usort($milestones, function ($a, $b) {
-            return strcmp($a['MilestoneDate'], $b['MilestoneDate']);
-        });
-        $this->data['Milestones'] = $milestones;
         $_uid = isset($this->session->user_id) ? (int)$this->session->user_id : 0;
         $_canEdit = $_uid > 0 && Ork3::$Lib->authorization->HasAuthority($_uid, AUTH_UNIT, (int)$unit_id, AUTH_EDIT);
         $this->data['CanEdit'] = $_canEdit;
+
+        // Custom + derived milestones, merged into one timeline-ready array.
+        // The timeline only renders when the org has opted into the new About
+        // design (AboutEnabled) or the viewer can manage the unit, so only pay
+        // for the fetch+merge in those cases.
+        $milestones = [];
+        $_msAboutEnabled = (int)($this->data['Unit']['Details']['Unit']['AboutEnabled'] ?? 0);
+        if ($_msAboutEnabled === 1 || $_canEdit) {
+            $milestones = $this->Unit->get_merged_unit_milestones($unit_id_int);
+        }
+        $this->data['Milestones'] = $milestones;
 
         // ── Retire / Claim / Transfer state ───────────────────────────────
         // Whether this unit is currently active (vs. retired/soft-deleted).

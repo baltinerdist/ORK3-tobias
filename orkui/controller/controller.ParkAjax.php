@@ -527,11 +527,14 @@ class Controller_ParkAjax extends Controller
                 'set_park_design',
                 'ParkId',
                 $park_id,
-                ['AboutText','AboutEnabled','OurHistory','ColorPrimary','ColorAccent','ColorSecondary','HeroOverlay','NameFont','MilestoneConfig','Tagline','SocialLinks','Announcement','AnnouncementUntil']
+                ['AboutText','AboutEnabled','OurHistory','ColorPrimary','ColorAccent','ColorSecondary','HeroOverlay','NameFont','MilestoneConfig','Tagline','SocialLinks','Announcement','AnnouncementUntil','AnnouncementStarts']
             );
 
         } elseif ($action === 'addmilestone') {
             $this->org_add_milestone($this->Park, 'add_park_milestone', 'ParkId', $park_id);
+
+        } elseif ($action === 'updatemilestone') {
+            $this->org_update_milestone($this->Park, 'update_park_milestone', 'ParkId', $park_id);
 
         } elseif ($action === 'deletemilestone') {
             $this->org_delete_milestone($this->Park, 'delete_park_milestone', 'ParkId', $park_id);
@@ -789,6 +792,13 @@ class Controller_ParkAjax extends Controller
             $detectedType = exif_imagetype($tmp);
             if ($detectedType !== IMAGETYPE_JPEG && $detectedType !== IMAGETYPE_PNG) {
                 echo json_encode(['status' => 1, 'error' => 'Only JPEG and PNG images are supported.']);
+                exit;
+            }
+            // Reject decompression-bomb images before this becomes a public
+            // hero: cap the pixel dimensions in addition to the byte-size check.
+            $dims = getimagesize($tmp);
+            if ($dims === false || $dims[0] > 4000 || $dims[1] > 1500 || ($dims[0] * $dims[1]) > 6000000) {
+                echo json_encode(['status' => 1, 'error' => 'Image dimensions too large (max 4000x1500).']);
                 exit;
             }
             $mime = ($detectedType === IMAGETYPE_PNG) ? 'image/png' : 'image/jpeg';

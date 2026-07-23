@@ -50,6 +50,15 @@
 	var selectedIcon = 'fa-star';
 	var customMs = Array.isArray(boot.customMs) ? boot.customMs.slice() : [];
 
+	// Stored (possibly empty) hero colors, so we can tell "never customized" from
+	// the prefilled placeholder defaults and avoid forcing a solid color on save.
+	var STORED_PRIMARY   = boot.colorPrimary   || '';
+	var STORED_ACCENT    = boot.colorAccent    || '';
+	var STORED_SECONDARY = boot.colorSecondary || '';
+	var colorsDirty = false; // user picked/edited a color control
+	var colorsReset = false; // user hit "reset colors to default"
+	function markColorsDirty() { colorsDirty = true; colorsReset = false; updatePreview(); }
+
 	function endpoint(action) { return BASE_UIR + AJAX_BASE + '/' + ORG_ID + '/' + action; }
 
 	/* --- In-product confirm (tnConfirm if available, else fallback) -------- */
@@ -111,6 +120,7 @@
 		document.body.style.overflow = 'hidden';
 		if (panel) switchPanel(panel);
 		renderCustomMsList();
+		updatePreview();
 	};
 	function closeModal() {
 		overlay.classList.remove('od-open');
@@ -130,6 +140,10 @@
 		var panel = gid('od-dm-panel-' + name);
 		if (tab) tab.classList.add('od-active');
 		if (panel) panel.classList.add('od-active');
+		// FE#32: the font picker lives on the Header panel. Defer loading all the
+		// Google fonts until the manager actually opens it (only the selected font
+		// is eager-loaded at init). loadFont() dedupes, so re-hitting this is safe.
+		if (name === 'header') { hydrateAllFonts(); }
 	}
 	document.querySelectorAll('.od-dm-tab').forEach(function (t) {
 		t.addEventListener('click', function () { switchPanel(t.dataset.odtabDm); });
@@ -153,19 +167,70 @@
 				gid('od-dm-color-secondary-hex').value = '';
 				gid('od-dm-gradient-enabled').checked  = false;
 			}
+			markColorsDirty();
 		});
 	});
 	function syncHex(colorId, hexId) {
 		var c = gid(colorId), h = gid(hexId);
 		if (!c || !h) return;
-		c.addEventListener('input', function () { h.value = this.value; });
+		c.addEventListener('input', function () { h.value = this.value; markColorsDirty(); });
 		h.addEventListener('input', function () {
 			if (/^#[0-9a-f]{6}$/i.test(this.value)) { c.value = this.value; }
+			markColorsDirty();
 		});
 	}
 	syncHex('od-dm-color-primary',   'od-dm-color-primary-hex');
 	syncHex('od-dm-color-accent',    'od-dm-color-accent-hex');
 	syncHex('od-dm-color-secondary', 'od-dm-color-secondary-hex');
+	var gradEnabled = gid('od-dm-gradient-enabled');
+	if (gradEnabled) gradEnabled.addEventListener('change', markColorsDirty);
+
+	/* --- Reset colors to default (FE#17) ---------------------------------- */
+	var colorResetBtn = gid('od-dm-color-reset');
+	if (colorResetBtn) {
+		colorResetBtn.addEventListener('click', function () {
+			colorsReset = true; colorsDirty = false;
+			gid('od-dm-color-primary').value       = '#2c5282';
+			gid('od-dm-color-primary-hex').value   = '';
+			gid('od-dm-color-accent').value        = '#4299e1';
+			gid('od-dm-color-accent-hex').value    = '';
+			gid('od-dm-color-secondary').value     = '#2c5282';
+			gid('od-dm-color-secondary-hex').value = '';
+			gid('od-dm-gradient-enabled').checked  = false;
+			swatches.forEach(function (s) { s.classList.remove('od-selected'); });
+			updatePreview();
+		});
+	}
+
+	/* --- Live hero preview (FE#29) ----------------------------------------- */
+	function updatePreview() {
+		var hero = gid('od-dm-preview-hero');
+		if (!hero) return;
+		var primary   = gid('od-dm-color-primary').value || '#2c5282';
+		var gradOn    = gid('od-dm-gradient-enabled').checked;
+		var secondary = gid('od-dm-color-secondary').value || primary;
+		hero.style.background = gradOn
+			? 'linear-gradient(135deg,' + primary + ',' + secondary + ')'
+			: primary;
+		var ov = (gid('od-dm-hero-overlay') && gid('od-dm-hero-overlay').value) || 'med';
+		var veilMap = { low: 0.06, med: 0.13, high: 0.28, vignette: 0.45 };
+		hero.style.setProperty('--od-preview-overlay', veilMap[ov] != null ? veilMap[ov] : 0.13);
+		hero.classList.toggle('od-preview-vignette', ov === 'vignette');
+		var nameEl = gid('od-dm-preview-name');
+		if (nameEl) {
+			var fam = '';
+			for (var i = 0; i < FONTS.length; i++) {
+				if (FONTS[i].key === selectedFont && FONTS[i].key) { fam = FONTS[i].family + ", 'Cinzel', serif"; break; }
+			}
+			nameEl.style.fontFamily = fam;
+		}
+		var tagEl = gid('od-dm-preview-tagline');
+		if (tagEl) {
+			var tg = (gid('od-dm-tagline') && gid('od-dm-tagline').value || '').trim();
+			if (tg) { tagEl.textContent = tg; tagEl.style.display = ''; }
+			else { tagEl.textContent = ''; tagEl.style.display = 'none'; }
+		}
+	}
 
 	/* --- Overlay strength -------------------------------------------------- */
 	document.querySelectorAll('.od-dm-overlay-btn').forEach(function (btn) {
@@ -173,6 +238,7 @@
 			document.querySelectorAll('.od-dm-overlay-btn').forEach(function (b) { b.classList.remove('od-active'); });
 			btn.classList.add('od-active');
 			gid('od-dm-hero-overlay').value = btn.dataset.overlay;
+			updatePreview();
 		});
 	});
 
@@ -198,6 +264,15 @@
 		link.setAttribute('data-od-font', key);
 		document.head.appendChild(link);
 	}
+	// FE#32: lazy font hydration. At init we eager-load ONLY the currently-selected
+	// font (needed for the live hero preview / name display). The remaining picker
+	// fonts load the first time the Header panel — which hosts the picker — is shown.
+	var fontsHydrated = false;
+	function hydrateAllFonts() {
+		if (fontsHydrated) { return; }
+		fontsHydrated = true;
+		for (var i = 0; i < FONTS.length; i++) { loadFont(FONTS[i].key); }
+	}
 	function renderFontPicker() {
 		var container = gid('od-dm-font-picker');
 		if (!container) return;
@@ -209,19 +284,21 @@
 				 +    '<div class="od-dm-font-sample" style="font-family:' + f.family + '">' + esc(SAMPLE_NAME) + '</div>'
 				 +    '<div class="od-dm-font-label">' + esc(f.label) + '</div>'
 				 + '</div>';
-			loadFont(f.key);
 		}
 		container.innerHTML = html;
 		container.addEventListener('click', function (e) {
 			var card = e.target.closest('.od-dm-font-card');
 			if (!card) return;
 			selectedFont = card.dataset.fontKey;
+			loadFont(selectedFont); // in case fonts weren't hydrated yet
 			container.querySelectorAll('.od-dm-font-card').forEach(function (c) {
 				c.classList.toggle('od-active', c === card);
 			});
+			updatePreview();
 		});
 	}
 	renderFontPicker();
+	loadFont(selectedFont); // FE#32: eager-load only the current hero font at init
 
 	/* --- Counters ---------------------------------------------------------- */
 	function bindCounter(taId, counterId, limit, formatted) {
@@ -238,8 +315,77 @@
 	bindCounter('od-dm-tagline',      'od-dm-tagline-counter',      160);
 	bindCounter('od-dm-announcement', 'od-dm-announcement-counter', 280);
 	bindCounter('od-dm-reign-text',   'od-dm-reign-counter',        2000, '2,000');
+	var taglineInput = gid('od-dm-tagline');
+	if (taglineInput) taglineInput.addEventListener('input', updatePreview);
+
+	/* --- Announcement lifecycle (FE#39) ------------------------------------
+	   Human-readable date pickers for "starts"/"until", a clear-both control, and
+	   a computed Live / Scheduled / Expired indicator. Flatpickr is optional (it's
+	   loaded on Kingdom/Park but not Unit), so everything degrades to the native
+	   date input when it's absent. */
+	var fpAnnounce = {};
+	function annToday() {
+		var d = new Date();
+		var mo = ('0' + (d.getMonth() + 1)).slice(-2);
+		var da = ('0' + d.getDate()).slice(-2);
+		return d.getFullYear() + '-' + mo + '-' + da;
+	}
+	function annHuman(iso) {
+		if (!iso || iso === '0000-00-00') return '';
+		var d = new Date(iso + 'T00:00:00');
+		if (isNaN(d.getTime())) return iso;
+		return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+	}
+	function updateAnnounceStatus() {
+		var el = gid('od-dm-announce-status');
+		if (!el) return;
+		var txt    = (gid('od-dm-announcement').value || '').trim();
+		var sEl    = gid('od-dm-announcement-starts');
+		var starts = sEl ? sEl.value : '';
+		var until  = gid('od-dm-announcement-until').value;
+		var today  = annToday();
+		var label, cls;
+		if (!txt) {
+			label = 'Not currently shown'; cls = 'od-neutral';
+		} else if (until && until !== '0000-00-00' && until < today) {
+			label = 'Expired'; cls = 'od-expired';
+		} else if (starts && starts !== '0000-00-00' && starts > today) {
+			label = 'Scheduled (starts ' + annHuman(starts) + ')'; cls = 'od-scheduled';
+		} else {
+			label = 'Live'; cls = 'od-live';
+		}
+		el.textContent = label;
+		el.className = 'od-dm-announce-status ' + cls;
+		el.style.display = '';
+	}
+	function initAnnounceDatePicker(id) {
+		var el = gid(id);
+		if (!el) return;
+		if (typeof window.flatpickr === 'function') {
+			fpAnnounce[id] = window.flatpickr(el, {
+				altInput: true,
+				altFormat: 'F j, Y',
+				dateFormat: 'Y-m-d',
+				onChange: updateAnnounceStatus
+			});
+		}
+		el.addEventListener('change', updateAnnounceStatus);
+	}
+	function clearAnnounceDate(id) {
+		if (fpAnnounce[id]) { fpAnnounce[id].clear(); }
+		else if (gid(id)) { gid(id).value = ''; }
+	}
+	initAnnounceDatePicker('od-dm-announcement-starts');
+	initAnnounceDatePicker('od-dm-announcement-until');
 	var anClear = gid('od-dm-announcement-clear');
-	if (anClear) anClear.addEventListener('click', function () { gid('od-dm-announcement-until').value = ''; });
+	if (anClear) anClear.addEventListener('click', function () {
+		clearAnnounceDate('od-dm-announcement-starts');
+		clearAnnounceDate('od-dm-announcement-until');
+		updateAnnounceStatus();
+	});
+	var anTextEl = gid('od-dm-announcement');
+	if (anTextEl) anTextEl.addEventListener('input', updateAnnounceStatus);
+	updateAnnounceStatus();
 
 	/* --- Markdown Write/Preview toggles ------------------------------------ */
 	function taIdForField(field) {
@@ -262,7 +408,12 @@
 				ta.style.display = 'none';
 				pv.style.display = '';
 				if (typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined') {
-					pv.innerHTML = DOMPurify.sanitize(marked.parse(ta.value || ''));
+					// Mirror the published server render (org_design_markdown):
+					// Parsedown SafeMode + line-breaks, with <img> stripped. So we
+					// enable breaks and forbid <img> here too, otherwise the manager
+					// previews GFM/images that visitors will never actually see.
+					var _html = marked.parse(ta.value || '', { breaks: true });
+					pv.innerHTML = DOMPurify.sanitize(_html, { FORBID_TAGS: ['img'] });
 				} else {
 					pv.textContent = ta.value;
 				}
@@ -293,6 +444,7 @@
 	});
 
 	/* --- Custom milestones list -------------------------------------------- */
+	var editingMsId = null; // FE#27: id of the milestone currently being edited, or null
 	function renderCustomMsList() {
 		var list = gid('od-dm-ms-list');
 		if (!list) return;
@@ -318,18 +470,60 @@
 				 +    '<i class="fas ' + icon + '"></i>'
 				 +    '<span class="od-dm-ms-desc">' + esc(m.Description) + '</span>'
 				 +    '<span class="od-dm-ms-date">' + dateStr + '</span>'
+				 +    '<button type="button" data-tip="Edit" data-ms-edit="' + m.MilestoneId + '"><i class="fas fa-pencil-alt"></i></button>'
 				 +    '<button type="button" data-tip="Delete" data-ms-del="' + m.MilestoneId + '"><i class="fas fa-trash"></i></button>'
 				 + '</div>';
 		}
 		list.innerHTML = html;
 	}
+	/* Milestone visibility + ordering config (FE#26): shared by the main Save and
+	   the immediate per-change persist below, so toggle state never depends on the
+	   manager remembering to hit Save (previously toggle-then-Cancel lost it). */
+	function buildMilestoneConfig() {
+		var msConfig = {};
+		document.querySelectorAll('#od-dm-ms-toggles input[data-odms-type]').forEach(function (t) {
+			msConfig[t.dataset.odmsType] = t.checked ? 1 : 0;
+		});
+		msConfig['newest_first'] = gid('od-dm-ms-newest-first').checked ? 1 : 0;
+		return msConfig;
+	}
+	// Partial POST — the server only touches milestone_config (fields absent from
+	// the request are left untouched), so this can't clobber other design fields.
+	function persistMilestoneConfig() {
+		var fd = new FormData();
+		fd.append('MilestoneConfig', JSON.stringify(buildMilestoneConfig()));
+		fetch(endpoint('savedesign'), { method: 'POST', body: fd })
+			.then(function (r) { return r.json(); })
+			.then(function (result) {
+				if (!(result && result.status === 0)) {
+					odNotify((result && result.error) || 'Could not save milestone settings.');
+				}
+			})
+			.catch(function () { odNotify('Could not save milestone settings.'); });
+	}
 	var newestFirstToggle = gid('od-dm-ms-newest-first');
-	if (newestFirstToggle) newestFirstToggle.addEventListener('change', renderCustomMsList);
+	if (newestFirstToggle) newestFirstToggle.addEventListener('change', function () {
+		renderCustomMsList();
+		persistMilestoneConfig();
+	});
+	document.querySelectorAll('#od-dm-ms-toggles input[data-odms-type]').forEach(function (t) {
+		t.addEventListener('change', persistMilestoneConfig);
+	});
 
 	// Delegated delete (replaces inline onclick + native confirm()).
 	var msList = gid('od-dm-ms-list');
 	if (msList) {
 		msList.addEventListener('click', function (e) {
+			var editBtn = e.target.closest('[data-ms-edit]');
+			if (editBtn) {
+				var eid = parseInt(editBtn.getAttribute('data-ms-edit'), 10);
+				var m = null;
+				for (var i = 0; i < customMs.length; i++) {
+					if (customMs[i].MilestoneId === eid) { m = customMs[i]; break; }
+				}
+				if (m) enterMsEditMode(m);
+				return;
+			}
 			var delBtn = e.target.closest('[data-ms-del]');
 			if (!delBtn) return;
 			var id = parseInt(delBtn.getAttribute('data-ms-del'), 10);
@@ -349,8 +543,42 @@
 		});
 	}
 
-	/* --- Add milestone ----------------------------------------------------- */
+	/* --- Add / update milestone (FE#27) ------------------------------------ */
 	var addBtn = gid('od-dm-ms-add-btn');
+	function msAddLabel()    { return '<i class="fas fa-plus"></i> Add'; }
+	function msUpdateLabel() { return '<i class="fas fa-save"></i> Update Milestone'; }
+	function selectMsIcon(icon) {
+		selectedIcon = icon || 'fa-star';
+		if (!iconGrid) return;
+		iconGrid.querySelectorAll('.od-dm-ms-icon-opt').forEach(function (o) {
+			o.classList.toggle('od-active', o.dataset.icon === selectedIcon);
+		});
+	}
+	// Load a row into the add-inputs and flip into edit mode.
+	function enterMsEditMode(m) {
+		editingMsId = m.MilestoneId;
+		gid('od-dm-ms-add-desc').value = m.Description || '';
+		gid('od-dm-ms-add-date').value = (m.MilestoneDate && m.MilestoneDate !== '0000-00-00') ? m.MilestoneDate : '';
+		selectMsIcon(m.Icon);
+		if (addBtn) addBtn.innerHTML = msUpdateLabel();
+		var cancel = gid('od-dm-ms-edit-cancel');
+		if (cancel) cancel.style.display = '';
+		var err = gid('od-dm-ms-add-err');
+		if (err) err.style.display = 'none';
+		gid('od-dm-ms-add-desc').focus();
+	}
+	// Reset the add-inputs and return to plain add mode.
+	function exitMsEditMode() {
+		editingMsId = null;
+		gid('od-dm-ms-add-desc').value = '';
+		gid('od-dm-ms-add-date').value = '';
+		selectMsIcon('fa-star');
+		if (addBtn) addBtn.innerHTML = msAddLabel();
+		var cancel = gid('od-dm-ms-edit-cancel');
+		if (cancel) cancel.style.display = 'none';
+	}
+	var msEditCancel = gid('od-dm-ms-edit-cancel');
+	if (msEditCancel) msEditCancel.addEventListener('click', exitMsEditMode);
 	if (addBtn) {
 		addBtn.addEventListener('click', function () {
 			var desc = gid('od-dm-ms-add-desc').value.trim();
@@ -359,35 +587,50 @@
 			err.style.display = 'none';
 			if (!desc) { err.textContent = 'Description is required.'; err.style.display = ''; return; }
 			if (!date) { err.textContent = 'Date is required.'; err.style.display = ''; return; }
+			var editing = editingMsId != null;
 			var btn = this; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
 			var fd = new FormData();
 			fd.append('Description', desc);
 			fd.append('MilestoneDate', date);
 			fd.append('Icon', selectedIcon);
-			fetch(endpoint('addmilestone'), { method: 'POST', body: fd })
+			if (editing) { fd.append('MilestoneId', editingMsId); }
+			fetch(endpoint(editing ? 'updatemilestone' : 'addmilestone'), { method: 'POST', body: fd })
 				.then(function (r) { return r.json(); })
 				.then(function (result) {
 					if (result && result.status === 0) {
-						customMs.push({
-							MilestoneId: result.milestoneId,
-							Icon: selectedIcon,
-							Description: desc,
-							MilestoneDate: date
-						});
-						renderCustomMsList();
-						gid('od-dm-ms-add-desc').value = '';
-						gid('od-dm-ms-add-date').value = '';
-						iconGrid.querySelectorAll('.od-dm-ms-icon-opt').forEach(function (o) { o.classList.remove('od-active'); });
-						var star = iconGrid.querySelector('[data-icon="fa-star"]');
-						if (star) star.classList.add('od-active');
-						selectedIcon = 'fa-star';
+						if (editing) {
+							for (var i = 0; i < customMs.length; i++) {
+								if (customMs[i].MilestoneId === editingMsId) {
+									customMs[i].Description   = desc;
+									customMs[i].MilestoneDate = date;
+									customMs[i].Icon          = selectedIcon;
+									break;
+								}
+							}
+							exitMsEditMode();
+							renderCustomMsList();
+						} else {
+							customMs.push({
+								MilestoneId: result.milestoneId,
+								Icon: selectedIcon,
+								Description: desc,
+								MilestoneDate: date
+							});
+							renderCustomMsList();
+							gid('od-dm-ms-add-desc').value = '';
+							gid('od-dm-ms-add-date').value = '';
+							selectMsIcon('fa-star');
+						}
 					} else {
-						err.textContent = (result && result.error) || 'Failed to add milestone.';
+						err.textContent = (result && result.error) || (editing ? 'Failed to update milestone.' : 'Failed to add milestone.');
 						err.style.display = '';
 					}
 				})
 				.catch(function () { err.textContent = 'Request failed.'; err.style.display = ''; })
-				.finally(function () { btn.disabled = false; btn.innerHTML = '<i class="fas fa-plus"></i> Add'; });
+				.finally(function () {
+					btn.disabled = false;
+					btn.innerHTML = (editingMsId != null) ? msUpdateLabel() : msAddLabel();
+				});
 		});
 	}
 
@@ -425,21 +668,35 @@
 		var fd = new FormData();
 		fd.append('AboutText', gid('od-dm-about-text').value);
 		fd.append('OurHistory', gid('od-dm-history-text').value);
-		fd.append('ColorPrimary', gid('od-dm-color-primary').value);
-		fd.append('ColorAccent', gid('od-dm-color-accent').value);
-		fd.append('ColorSecondary', gid('od-dm-gradient-enabled').checked ? gid('od-dm-color-secondary').value : '');
+
+		// Colors (FE#17): only commit edited values. Untouched → resend the stored
+		// value (which may be empty). Reset → send '' so the server clears the
+		// columns — never the prefilled placeholder default, which would otherwise
+		// force the hero to a solid color on the first save of any field.
+		var primaryOut, accentOut, secondaryOut;
+		if (colorsReset) {
+			primaryOut = ''; accentOut = ''; secondaryOut = '';
+		} else if (colorsDirty) {
+			primaryOut   = gid('od-dm-color-primary').value;
+			accentOut    = gid('od-dm-color-accent').value;
+			secondaryOut = gid('od-dm-gradient-enabled').checked ? gid('od-dm-color-secondary').value : '';
+		} else {
+			primaryOut   = STORED_PRIMARY;
+			accentOut    = STORED_ACCENT;
+			secondaryOut = STORED_SECONDARY;
+		}
+		fd.append('ColorPrimary', primaryOut);
+		fd.append('ColorAccent', accentOut);
+		fd.append('ColorSecondary', secondaryOut);
 		fd.append('HeroOverlay', gid('od-dm-hero-overlay').value);
 		fd.append('NameFont', selectedFont || '');
 
-		var msConfig = {};
-		document.querySelectorAll('#od-dm-ms-toggles input[data-odms-type]').forEach(function (t) {
-			msConfig[t.dataset.odmsType] = t.checked ? 1 : 0;
-		});
-		msConfig['newest_first'] = gid('od-dm-ms-newest-first').checked ? 1 : 0;
-		fd.append('MilestoneConfig', JSON.stringify(msConfig));
+		fd.append('MilestoneConfig', JSON.stringify(buildMilestoneConfig()));
 
 		fd.append('Tagline', gid('od-dm-tagline').value);
 		fd.append('Announcement', gid('od-dm-announcement').value);
+		var _annStartsEl = gid('od-dm-announcement-starts');
+		fd.append('AnnouncementStarts', _annStartsEl ? _annStartsEl.value : '');
 		fd.append('AnnouncementUntil', gid('od-dm-announcement-until').value);
 
 		// Reign (Kingdom)
@@ -492,4 +749,5 @@
 	});
 
 	renderCustomMsList();
+	updatePreview();
 })();

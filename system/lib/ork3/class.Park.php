@@ -539,6 +539,7 @@ class Park extends Ork3
             $response[ 'SocialLinks' ]       = (string)$design->social_links;
             $response[ 'Announcement' ]      = (string)$design->announcement;
             $response[ 'AnnouncementUntil' ] = $design->announcement_until;
+            $response[ 'AnnouncementStarts' ] = $design->announcement_starts;
         } else {
             $response[ 'Status' ] = InvalidParameter();
         }
@@ -858,6 +859,14 @@ class Park extends Ork3
             $_design_seed->clear();
             $_design_seed->park_id      = $new_park_id;
             $_design_seed->hero_overlay = 'med';
+            // Seed the curated About/History from the entered Description/History so the
+            // read-time fallback isn't blank (the LIB#7 sync only seeds an empty About).
+            if (isset($request[ 'Description' ]) && trim((string)$request[ 'Description' ]) !== '') {
+                $_design_seed->about_text = trim((string)$request[ 'Description' ]);
+            }
+            if (isset($request[ 'History' ]) && trim((string)$request[ 'History' ]) !== '') {
+                $_design_seed->our_history = trim((string)$request[ 'History' ]);
+            }
             $_design_seed->save();
             $t = new Treasury();
             $t->create_accounts($mundane_id, 'park', $new_park_id, $request[ 'KingdomId' ]);
@@ -1020,7 +1029,9 @@ class Park extends Ork3
                         $_design_sync = new yapo($this->db, DB_PREFIX . 'park_design');
                         $_design_sync->clear();
                         $_design_sync->park_id = (int)$this->park->park_id;
-                        if ($_design_sync->find() && trim((string)$_design_sync->about_text) !== '') {
+                        // Only seed the design About from the legacy Description when the
+                        // curated About is still EMPTY — never clobber a manager's edits.
+                        if ($_design_sync->find() && trim((string)$_design_sync->about_text) === '') {
                             $_design_sync->about_text = (string)$request[ 'Description' ];
                             $_design_sync->save();
                         }
@@ -1184,7 +1195,7 @@ class Park extends Ork3
 
     /**
      * Save park profile design (header colors/font/overlay, about + our history markdown,
-     * milestone visibility config). Uses the same AUTH_PARK/AUTH_EDIT gate as SetParkDetails.
+     * milestone visibility config). Uses AUTH_PARK/AUTH_CREATE (org admin).
      * Updates only the fields present in $request — callers can save one tab at a time.
      *
      * Thin wrapper: auth -> profanity gate on About/History -> seed row ->
@@ -1198,7 +1209,7 @@ class Park extends Ork3
             return InvalidParameter('ParkId is required.');
         }
         $mundane_id = Ork3::$Lib->authorization->IsAuthorized($request[ 'Token' ]);
-        if (!($mundane_id > 0) || !Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_PARK, $park_id, AUTH_EDIT)) {
+        if (!($mundane_id > 0) || !Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_PARK, $park_id, AUTH_CREATE)) {
             return NoAuthorization();
         }
         require_once(__DIR__ . '/class.ProfanityFilter.php');
@@ -1223,6 +1234,8 @@ class Park extends Ork3
             $design->about_enabled = (!empty($request[ 'AboutEnabled' ]) && (string)$request[ 'AboutEnabled' ] !== '0') ? 1 : 0;
         }
 
+        $design->updated_by = (int)$mundane_id;
+        $design->updated_at = date('Y-m-d H:i:s');
         $design->save();
         return Success($park_id);
     }
@@ -1243,6 +1256,23 @@ class Park extends Ork3
     public function DeleteParkMilestone($request)
     {
         return $this->DeleteDesignMilestone((int)($request[ 'ParkId' ] ?? 0), $request);
+    }
+
+    public function UpdateParkMilestone($request)
+    {
+        return $this->UpdateDesignMilestone((int)($request[ 'ParkId' ] ?? 0), $request);
+    }
+
+    /**
+     * Custom + derived park milestones merged into one sorted timeline list.
+     * Fetches derived via this class's cache-namespaced GetDerivedParkMilestones,
+     * then hands both to the trait merge. Returns a plain list.
+     */
+    public function GetMergedParkMilestones($request)
+    {
+        $park_id = (int)($request[ 'ParkId' ] ?? 0);
+        $derived = $this->GetDerivedParkMilestones($park_id);
+        return $this->GetMergedDesignMilestones($park_id, $derived);
     }
 
     /**
@@ -1284,7 +1314,7 @@ class Park extends Ork3
         }
         // 2) Attendance count crossings — 1000, 5000, 10000, 25000, 50000, 100000.
         $this->db->Clear();
-        $r = $this->db->query("SELECT COUNT(*) AS total FROM " . DB_PREFIX . "attendance WHERE park_id = $park_id");
+        $r = $this->db->query("SELECT COUNT(*) AS total FROM " . DB_PREFIX . "attendance WHERE park_id = $park_id AND date >= '1988-01-01'");
         $total = 0;
         if ($r !== false && $r->size() > 0) {
             $r->next();
@@ -1315,7 +1345,7 @@ class Park extends Ork3
         }
         // 3) Distinct-member crossings — 50, 100, 250, 500, 1000.
         $this->db->Clear();
-        $r = $this->db->query("SELECT COUNT(DISTINCT mundane_id) AS members FROM " . DB_PREFIX . "attendance WHERE park_id = $park_id");
+        $r = $this->db->query("SELECT COUNT(DISTINCT mundane_id) AS members FROM " . DB_PREFIX . "attendance WHERE park_id = $park_id AND date >= '1988-01-01'");
         $members = 0;
         if ($r !== false && $r->size() > 0) {
             $r->next();

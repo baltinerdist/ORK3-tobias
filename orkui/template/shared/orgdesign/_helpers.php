@@ -44,9 +44,9 @@ if (!isset($OD_SOCIAL_PLATFORMS) || !is_array($OD_SOCIAL_PLATFORMS)) {
         'discord'   => ['label' => 'Discord',   'icon' => 'fab fa-discord',   'bg' => '#5865f2', 'placeholder' => 'https://discord.gg/...'],
         'facebook'  => ['label' => 'Facebook',  'icon' => 'fab fa-facebook',  'bg' => '#1877f2', 'placeholder' => 'https://facebook.com/...'],
         'instagram' => ['label' => 'Instagram', 'icon' => 'fab fa-instagram', 'bg' => 'linear-gradient(135deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888)', 'placeholder' => 'https://instagram.com/...'],
-        'threads'   => ['label' => 'Threads',   'icon' => 'fab fa-threads',   'bg' => '#000000', 'placeholder' => 'https://threads.net/...'],
+        'threads'   => ['label' => 'Threads',   'icon' => 'fas fa-at',        'bg' => '#000000', 'placeholder' => 'https://threads.net/...'],
         'bluesky'   => ['label' => 'Bluesky',   'icon' => 'fas fa-cloud',     'bg' => '#1185fe', 'placeholder' => 'https://bsky.app/...'],
-        'twitter'   => ['label' => 'X',         'icon' => 'fab fa-x-twitter', 'bg' => '#000000', 'placeholder' => 'https://x.com/...'],
+        'twitter'   => ['label' => 'X',         'icon' => 'fab fa-twitter',   'bg' => '#000000', 'placeholder' => 'https://x.com/...'],
         'youtube'   => ['label' => 'YouTube',   'icon' => 'fab fa-youtube',   'bg' => '#ff0000', 'placeholder' => 'https://youtube.com/...'],
         'amtwiki'   => ['label' => 'AmtWiki',   'icon' => 'fas fa-book',      'bg' => '#6b7280', 'placeholder' => 'https://amtwiki.net/...'],
     ];

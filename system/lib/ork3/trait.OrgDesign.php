@@ -52,10 +52,14 @@ trait OrgDesign
         $design->clear();
         $design->$fk = $id;
         if (!$design->find()) {
-            $design->clear();
-            $design->$fk          = $id;
-            $design->hero_overlay = 'med';
-            $design->save();
+            // Idempotent seed: a concurrent first-read may have already inserted the
+            // 1:1 design row, so use INSERT IGNORE (the FK is unique) to avoid a
+            // duplicate-key error on the race, then re-find the authoritative row.
+            $this->db->Clear();
+            $this->db->query(
+                'INSERT IGNORE INTO ' . DB_PREFIX . $cfg['design_table']
+                . ' (' . $fk . ', hero_overlay) VALUES (' . (int)$id . ", 'med')"
+            );
             $design->clear();
             $this->db->Clear();
             $design->$fk = $id;
@@ -102,7 +106,8 @@ trait OrgDesign
             }
             $v = trim((string)$request[$req]);
             if ($v === '') {
-                $design->$col = null;
+                // yapo drops nulls from UPDATE — assign '' to actually clear the column.
+                $design->$col = '';
                 continue;
             }
             if (!preg_match('/^#[0-9a-fA-F]{6}$/', $v)) {
@@ -122,7 +127,7 @@ trait OrgDesign
             if ($nf !== '' && !preg_match('/^[A-Za-z0-9 ]{1,100}$/', $nf)) {
                 return InvalidParameter('Font name contains unexpected characters.');
             }
-            $design->name_font = $nf === '' ? null : $nf;
+            $design->name_font = $nf === '' ? '' : $nf;
         }
         if (array_key_exists('MilestoneConfig', $request)) {
             $mc = (string)$request['MilestoneConfig'];
@@ -132,7 +137,7 @@ trait OrgDesign
                     return InvalidParameter('Milestone config must be valid JSON.');
                 }
             }
-            $design->milestone_config = $mc === '' ? null : $mc;
+            $design->milestone_config = $mc === '' ? '' : $mc;
         }
 
         if (array_key_exists('Tagline', $request)) {
@@ -143,7 +148,7 @@ trait OrgDesign
             if ($tg !== '' && $pf->containsProfanity($tg)) {
                 return InvalidParameter('Tagline', ProfanityFilter::ERROR_MESSAGE);
             }
-            $design->tagline = $tg === '' ? null : $tg;
+            $design->tagline = $tg === '' ? '' : $tg;
         }
 
         if (array_key_exists('SocialLinks', $request)) {
@@ -154,9 +159,22 @@ trait OrgDesign
                 if (!is_array($decoded)) {
                     return InvalidParameter('SocialLinks must be valid JSON.');
                 }
-                $allowed = ['discord', 'facebook', 'instagram', 'threads', 'bluesky', 'twitter', 'youtube', 'amtwiki'];
+                // Per-slug host allow-list: a "discord" link must actually point at a
+                // discord host, etc. — otherwise a manager could spoof a platform icon
+                // onto an arbitrary URL. Keys are the accepted slugs; a null value means
+                // any https host is allowed (generic website/other).
+                $hostAllow = [
+                    'discord'   => ['discord.gg', 'discord.com'],
+                    'facebook'  => ['facebook.com'],
+                    'instagram' => ['instagram.com'],
+                    'threads'   => ['threads.net'],
+                    'bluesky'   => ['bsky.app'],
+                    'twitter'   => ['x.com', 'twitter.com'],
+                    'youtube'   => ['youtube.com', 'youtu.be'],
+                    'amtwiki'   => ['amtwiki.net'],
+                ];
                 foreach ($decoded as $slug => $url) {
-                    if (!in_array($slug, $allowed, true)) {
+                    if (!array_key_exists($slug, $hostAllow)) {
                         continue;
                     }
                     $url = trim((string)$url);
@@ -174,10 +192,32 @@ trait OrgDesign
                     if (!filter_var($url, FILTER_VALIDATE_URL)) {
                         return InvalidParameter('SocialLinks.' . $slug . ' is not a valid URL.');
                     }
+                    $allowedHosts = $hostAllow[$slug];
+                    // A null allow-list means "any https host" (generic website/other).
+                    if (is_array($allowedHosts)) {
+                        $host = strtolower((string)parse_url($url, PHP_URL_HOST));
+                        if ($host === '') {
+                            return InvalidParameter('SocialLinks.' . $slug . ' is not a valid URL.');
+                        }
+                        if (strpos($host, 'www.') === 0) {
+                            $host = substr($host, 4);
+                        }
+                        $ok = false;
+                        foreach ($allowedHosts as $allowedHost) {
+                            if ($host === $allowedHost || substr($host, -(strlen($allowedHost) + 1)) === '.' . $allowedHost) {
+                                $ok = true;
+                                break;
+                            }
+                        }
+                        if (!$ok) {
+                            return InvalidParameter('SocialLinks.' . $slug . ' must link to ' . implode(' or ', $allowedHosts) . '.');
+                        }
+                    }
                     $cleanLinks[$slug] = $url;
                 }
             }
-            $design->social_links = empty($cleanLinks) ? null : json_encode($cleanLinks);
+            // yapo drops nulls from UPDATE — assign '' to actually clear the column.
+            $design->social_links = empty($cleanLinks) ? '' : json_encode($cleanLinks);
         }
 
         if (array_key_exists('Announcement', $request)) {
@@ -188,19 +228,34 @@ trait OrgDesign
             if ($an !== '' && $pf->containsProfanity($an)) {
                 return InvalidParameter('Announcement', ProfanityFilter::ERROR_MESSAGE);
             }
-            $design->announcement = $an === '' ? null : $an;
+            $design->announcement = $an === '' ? '' : $an;
         }
 
         if (array_key_exists('AnnouncementUntil', $request)) {
             $au = trim((string)$request['AnnouncementUntil']);
             if ($au === '') {
-                $design->announcement_until = null;
+                // yapo drops nulls from UPDATE; '' persists as '0000-00-00', which templates treat as empty.
+                $design->announcement_until = '';
             } else {
                 $ts = strtotime($au);
                 if ($ts === false) {
                     return InvalidParameter('AnnouncementUntil must be a valid date.');
                 }
                 $design->announcement_until = date('Y-m-d', $ts);
+            }
+        }
+
+        if (array_key_exists('AnnouncementStarts', $request)) {
+            $as = trim((string)$request['AnnouncementStarts']);
+            if ($as === '') {
+                // yapo drops nulls from UPDATE; '' persists as '0000-00-00', which templates treat as empty.
+                $design->announcement_starts = '';
+            } else {
+                $ts = strtotime($as);
+                if ($ts === false) {
+                    return InvalidParameter('AnnouncementStarts must be a valid date.');
+                }
+                $design->announcement_starts = date('Y-m-d', $ts);
             }
         }
 
@@ -260,7 +315,7 @@ trait OrgDesign
             return InvalidParameter($this->fkLabel($fk) . ' is required.');
         }
         $mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
-        if (!($mundane_id > 0) || !Ork3::$Lib->authorization->HasAuthority($mundane_id, $cfg['auth'], $id, AUTH_EDIT)) {
+        if (!($mundane_id > 0) || !Ork3::$Lib->authorization->HasAuthority($mundane_id, $cfg['auth'], $id, AUTH_CREATE)) {
             return NoAuthorization();
         }
         require_once(__DIR__ . '/class.ProfanityFilter.php');
@@ -269,8 +324,8 @@ trait OrgDesign
         if ($desc === '') {
             return InvalidParameter('Description is required.');
         }
-        if (strlen($desc) > 500) {
-            $desc = substr($desc, 0, 500);
+        if (mb_strlen($desc, 'UTF-8') > 500) {
+            $desc = mb_substr($desc, 0, 500, 'UTF-8');
         }
         if ($pf->containsProfanity($desc)) {
             return InvalidParameter('Description', ProfanityFilter::ERROR_MESSAGE);
@@ -294,11 +349,77 @@ trait OrgDesign
         $ms->icon           = $icon;
         $ms->description    = $desc;
         $ms->milestone_date = date('Y-m-d', $ts);
+        $ms->created_by     = (int)$mundane_id;
         $ms->save();
         if ((int)$ms->milestone_id <= 0) {
             return ProcessingError('Failed to save milestone.');
         }
         return Success((int)$ms->milestone_id);
+    }
+
+    /**
+     * Edit an existing custom milestone (auth + profanity + date + icon
+     * validation). Ownership is enforced by loading the row by milestone_id +
+     * $fk = $id; a mismatch yields 'Milestone not found.'. created_by is NOT
+     * touched on update (audit trail preserves the original author).
+     *
+     * @param int   $id
+     * @param array $request
+     * @return mixed Success() or an error response
+     */
+    protected function UpdateDesignMilestone($id, $request)
+    {
+        $cfg = $this->getDesignConfig();
+        $fk  = $cfg['fk'];
+        $id  = (int)$id;
+        if ($id <= 0) {
+            return InvalidParameter($this->fkLabel($fk) . ' is required.');
+        }
+        $mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+        if (!($mundane_id > 0) || !Ork3::$Lib->authorization->HasAuthority($mundane_id, $cfg['auth'], $id, AUTH_CREATE)) {
+            return NoAuthorization();
+        }
+        $milestone_id = (int)($request['MilestoneId'] ?? 0);
+        if ($milestone_id <= 0) {
+            return InvalidParameter('MilestoneId is required.');
+        }
+        $this->db->Clear();
+        $ms = new yapo($this->db, DB_PREFIX . $cfg['milestone_table']);
+        $ms->clear();
+        $ms->milestone_id = $milestone_id;
+        $ms->$fk          = $id;
+        if (!$ms->find()) {
+            return InvalidParameter('Milestone not found.');
+        }
+        require_once(__DIR__ . '/class.ProfanityFilter.php');
+        $pf = new ProfanityFilter();
+        $desc = trim((string)($request['Description'] ?? ''));
+        if ($desc === '') {
+            return InvalidParameter('Description is required.');
+        }
+        if (mb_strlen($desc, 'UTF-8') > 500) {
+            $desc = mb_substr($desc, 0, 500, 'UTF-8');
+        }
+        if ($pf->containsProfanity($desc)) {
+            return InvalidParameter('Description', ProfanityFilter::ERROR_MESSAGE);
+        }
+        $dateRaw = trim((string)($request['MilestoneDate'] ?? ''));
+        if ($dateRaw === '') {
+            return InvalidParameter('Date is required.');
+        }
+        $ts = strtotime($dateRaw);
+        if ($ts === false) {
+            return InvalidParameter('Invalid date.');
+        }
+        $icon = trim((string)($request['Icon'] ?? 'fa-star'));
+        if (!preg_match('/^fa-[a-z0-9-]+$/', $icon)) {
+            $icon = 'fa-star';
+        }
+        $ms->description    = $desc;
+        $ms->icon           = $icon;
+        $ms->milestone_date = date('Y-m-d', $ts);
+        $ms->save();
+        return Success();
     }
 
     /**
@@ -318,7 +439,7 @@ trait OrgDesign
             return InvalidParameter($this->fkLabel($fk) . ' and MilestoneId required.');
         }
         $mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
-        if (!($mundane_id > 0) || !Ork3::$Lib->authorization->HasAuthority($mundane_id, $cfg['auth'], $id, AUTH_EDIT)) {
+        if (!($mundane_id > 0) || !Ork3::$Lib->authorization->HasAuthority($mundane_id, $cfg['auth'], $id, AUTH_CREATE)) {
             return NoAuthorization();
         }
         $this->db->Clear();
@@ -331,6 +452,44 @@ trait OrgDesign
         }
         $ms->delete();
         return Success();
+    }
+
+    /**
+     * Merge custom (stored) + derived milestones into one timeline-ready list,
+     * sorted ascending by date via strcmp. Returns a PLAIN LIST (not wrapped in
+     * ['Milestones'=>...]), replicating exactly what the org controllers built
+     * inline before this was hoisted into the trait.
+     *
+     * The derived result is passed in already-fetched so each org supplies it
+     * through its own GetDerived*Milestones (preserving the per-org cache
+     * namespace); the derived rows are expected under $derivedResult['Milestones'].
+     *
+     * @param int   $id
+     * @param array $derivedResult ['Milestones'=>[...]] from the org's derived fetch
+     * @return array plain list of merged milestone rows
+     */
+    protected function GetMergedDesignMilestones($id, $derivedResult)
+    {
+        $id         = (int)$id;
+        $milestones = [];
+        $custom     = $this->GetDesignMilestones($id);
+        foreach (($custom['Milestones'] ?? []) as $m) {
+            $milestones[] = [
+                'MilestoneId'   => (int)$m['MilestoneId'],
+                'Type'          => 'custom',
+                'Icon'          => $m['Icon'],
+                'Description'   => $m['Description'],
+                'MilestoneDate' => $m['MilestoneDate'],
+                'IsDerived'     => false,
+            ];
+        }
+        foreach ((is_array($derivedResult) ? ($derivedResult['Milestones'] ?? []) : []) as $m) {
+            $milestones[] = $m + ['MilestoneId' => 0, 'IsDerived' => true];
+        }
+        usort($milestones, function ($a, $b) {
+            return strcmp($a['MilestoneDate'], $b['MilestoneDate']);
+        });
+        return $milestones;
     }
 
     // ---------------------------------------------------------------------

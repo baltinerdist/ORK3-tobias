@@ -102,8 +102,16 @@ class Model_Park extends Model {
 		return $this->Park->GetDerivedParkMilestones(array('ParkId' => $park_id));
 	}
 
+	function get_merged_park_milestones($id) {
+		return $this->Park->GetMergedParkMilestones(array('ParkId' => $id));
+	}
+
 	function add_park_milestone($request) {
 		return $this->Park->AddParkMilestone($request);
+	}
+
+	function update_park_milestone($request) {
+		return $this->Park->UpdateParkMilestone($request);
 	}
 
 	function delete_park_milestone($request) {

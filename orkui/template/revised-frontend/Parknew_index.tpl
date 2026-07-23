@@ -139,8 +139,12 @@
 	// --- Phase 2 customizations: tagline, social links, announcement ---
 	$pkTagline           = trim((string)($parkInfo['Tagline'] ?? ''));
 	$pkAnnouncement      = trim((string)($parkInfo['Announcement'] ?? ''));
+	$pkAnnouncementStarts = trim((string)($parkInfo['AnnouncementStarts'] ?? ''));
 	$pkAnnouncementUntil = trim((string)($parkInfo['AnnouncementUntil'] ?? ''));
 	$pkShowAnnouncement  = ($pkAnnouncement !== '');
+	if ($pkShowAnnouncement && $pkAnnouncementStarts !== '' && $pkAnnouncementStarts !== '0000-00-00') {
+		$pkShowAnnouncement = (strtotime($pkAnnouncementStarts) <= strtotime(date('Y-m-d')));
+	}
 	if ($pkShowAnnouncement && $pkAnnouncementUntil !== '' && $pkAnnouncementUntil !== '0000-00-00') {
 		$pkShowAnnouncement = (strtotime($pkAnnouncementUntil) >= strtotime(date('Y-m-d')));
 	}
@@ -186,6 +190,7 @@
 		'name_font'          => $pkNameFont,
 		'tagline'            => $pkTagline,
 		'announcement'       => $pkAnnouncement,
+		'announcement_starts' => $pkAnnouncementStarts,
 		'announcement_until' => $pkAnnouncementUntil,
 		'social_links'       => $pkVisibleSocials,
 		'about_enabled'      => $pkAboutEnabled,
@@ -389,12 +394,14 @@ html[data-theme="dark"] .pk-tab-nav li.pk-tab-active { color: <?= htmlspecialcha
 }
 .pk-kingdom-link a i { color: <?= htmlspecialchars($pkColorAccent) ?>; }
 <?php endif; ?>
+<?php if (!$bannerUrl): /* overlay opacity + vignette mask apply to the heraldry backdrop only; an uploaded banner shows at full opacity (see .pk-hero-has-banner .pk-hero-bg) */ ?>
 .pk-hero-bg { opacity: <?= $pkOverlayOpacity ?> !important; }
 <?php if ($pkOverlay === 'vignette'): ?>
 .pk-hero-bg {
 	-webkit-mask-image: radial-gradient(ellipse at center, rgba(0,0,0,0.95) 38%, rgba(0,0,0,0) 78%);
 	        mask-image: radial-gradient(ellipse at center, rgba(0,0,0,0.95) 38%, rgba(0,0,0,0) 78%);
 }
+<?php endif; ?>
 <?php endif; ?>
 <?php if ($pkNameFont !== '' && $pkHeroFontCss !== ''): ?>
 .pk-park-name { font-family: <?= $pkHeroFontCss ?>, 'Cinzel', serif !important; letter-spacing: 0.02em; }
@@ -412,13 +419,31 @@ html[data-theme="dark"] .pk-history-section { border-top-color: var(--ork-border
      ZONE 1: Hero Header
      ============================================= -->
 <?php if ($pkShowAnnouncement): ?>
-<div class="od-announce" role="status">
+<div class="od-announce" role="status" data-od-announce-key="od-announce-dismissed-park-<?= (int)$park_id ?>" data-od-announce-token="<?= substr(sha1($pkAnnouncement), 0, 16) ?>">
 	<i class="fas fa-bullhorn od-announce-icon"></i>
 	<div class="od-announce-body"><strong>Announcement:</strong><?= htmlspecialchars($pkAnnouncement) ?></div>
 	<?php if ($pkAnnouncementUntil !== '' && $pkAnnouncementUntil !== '0000-00-00'): ?>
 	<div class="od-announce-until">Until <?= date('M j, Y', strtotime($pkAnnouncementUntil)) ?></div>
 	<?php endif; ?>
+	<button type="button" class="od-announce-dismiss" data-tip="Dismiss" aria-label="Dismiss announcement">&times;</button>
 </div>
+<script>
+(function () {
+	var banners = document.querySelectorAll('.od-announce[data-od-announce-key]');
+	for (var i = 0; i < banners.length; i++) {
+		(function (b) {
+			var key = b.getAttribute('data-od-announce-key');
+			var token = b.getAttribute('data-od-announce-token') || '';
+			try { if (key && localStorage.getItem(key) === token) { b.style.display = 'none'; } } catch (e) {}
+			var x = b.querySelector('.od-announce-dismiss');
+			if (x) { x.addEventListener('click', function () {
+				b.style.display = 'none';
+				try { if (key) { localStorage.setItem(key, token); } } catch (e) {}
+			}); }
+		})(banners[i]);
+	}
+})();
+</script>
 <?php endif; ?>
 <?php
 	$_heroBgUrl    = $bannerUrl ?: $heraldryUrl;

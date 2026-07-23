@@ -139,8 +139,16 @@ class Model_Kingdom extends Model {
 		return $this->Kingdom->GetDerivedKingdomMilestones(array('KingdomId' => $kingdom_id));
 	}
 
+	function get_merged_kingdom_milestones($id) {
+		return $this->Kingdom->GetMergedKingdomMilestones(array('KingdomId' => $id));
+	}
+
 	function add_kingdom_milestone($request) {
 		return $this->Kingdom->AddKingdomMilestone($request);
+	}
+
+	function update_kingdom_milestone($request) {
+		return $this->Kingdom->UpdateKingdomMilestone($request);
 	}
 
 	function delete_kingdom_milestone($request) {
