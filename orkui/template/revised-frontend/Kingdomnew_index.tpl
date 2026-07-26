@@ -682,6 +682,43 @@
 				<?php /* [TOURNAMENTS HIDDEN] */ ?>
 
 				<!-- ========== Arts & Sciences Competitions section ========== -->
+				<style>
+				/* --- A&S create modal: pin header/footer, scroll only the body ---
+				   Without a max-height the box grows past the viewport once the
+				   validation feedback appears, pushing the title off the top and
+				   the Create button off the bottom with nothing to scroll. */
+				#kn-as-modal .kn-emod-box{display:flex;flex-direction:column;max-height:calc(100vh - 40px);max-height:calc(100dvh - 40px)}
+				#kn-as-modal .kn-emod-header,
+				#kn-as-modal .kn-emod-footer{flex:0 0 auto}
+				#kn-as-modal .kn-emod-body{flex:1 1 auto;min-height:0;overflow-y:auto}
+				/* --- A&S competition card + status pill (classes, not JS-inlined colours) --- */
+				.kn-as-card{border:1px solid var(--ork-border,#e2e8f0);border-left:4px solid #a0aec0}
+				.kn-as-pill{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;padding:2px 8px;border-radius:999px;white-space:nowrap;background:rgba(226,232,240,0.92);color:#4a5568}
+				.kn-as-status-draft{border-left-color:#a0aec0}
+				.kn-as-status-open{border-left-color:#38a169}
+				.kn-as-status-judging{border-left-color:#d69e2e}
+				.kn-as-status-closed{border-left-color:#e53e3e}
+				.kn-as-status-draft   .kn-as-pill{background:rgba(226,232,240,0.92);color:#4a5568}
+				.kn-as-status-open    .kn-as-pill{background:rgba(198,246,213,0.94);color:#22543d}
+				.kn-as-status-judging .kn-as-pill{background:rgba(250,240,199,0.96);color:#975a16}
+				.kn-as-status-closed  .kn-as-pill{background:rgba(254,215,215,0.96);color:#9b2c2c}
+				html[data-theme="dark"] .kn-as-status-draft   .kn-as-pill{background:rgba(45,55,72,0.85);color:#cbd5e0}
+				html[data-theme="dark"] .kn-as-status-open    .kn-as-pill{background:rgba(34,84,61,0.90);color:#9ae6b4}
+				html[data-theme="dark"] .kn-as-status-judging .kn-as-pill{background:rgba(116,66,16,0.92);color:#fbd38d}
+				html[data-theme="dark"] .kn-as-status-closed  .kn-as-pill{background:rgba(120,30,30,0.92);color:#feb2b2}
+				/* --- A&S icon-only workspace link: sizing parity with its button siblings ---
+				   This one is an <a>, which does NOT inherit the border-box sizing the
+				   <button> siblings get, so revised.css's 30x30 + 1px border rendered larger.
+				   Border-box makes the anchor measure exactly 30x30 like every sibling. */
+				.kn-as-section .kn-view-btn{box-sizing:border-box}
+				/* --- A&S icon-only workspace link: 44px minimum tap target ---
+				   Scoped to phones ONLY. min-width/min-height beat the width/height in
+				   revised.css, so as a base rule this grew the one A&S .kn-view-btn to 44px on
+				   desktop while every other .kn-view-btn on the page stayed 30px. */
+				@media (max-width: 600px) {
+				.kn-as-section .kn-view-btn{min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+				}
+				</style>
 				<div class="kn-as-section" style="margin-top:24px;border-top:1px solid var(--ork-border,#e2e8f0);padding-top:18px">
 					<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">
 						<h4 class="kn-bare-heading" style="margin:0;font-size:14px;font-weight:700"><i class="fas fa-palette" style="margin-right:6px;color:#a0aec0"></i>Arts &amp; Sciences Competitions</h4>
@@ -2579,17 +2616,20 @@ window.AS_CSRF = <?= json_encode($AsCsrf ?? '') ?>;
 						+ '</div>';
 					return;
 				}
-				var statusColors = { draft:'#a0aec0', open:'#38a169', judging:'#d69e2e', closed:'#e53e3e' };
+				// Label map, not the raw value: the card CLASS is coerced to a known status, so
+				// printing escHtml(c.Status) let an unknown/empty status show its own literal
+				// text inside a draft-grey pill -- label and colour disagreeing.
+				var statusLabels = { draft:'Draft', open:'Open', judging:'Judging', closed:'Closed' };
 				host.innerHTML = list.map(function(c){
-					var color = statusColors[c.Status] || '#a0aec0';
+					var status = statusLabels[c.Status] ? c.Status : 'draft';
 					var dateStr = c.StartDateTime ? new Date(c.StartDateTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
-					return '<a href=\"' + UIR + 'ArtsComp/' + c.CompetitionId + '\" '
-						+ 'style=\"display:flex;flex-direction:column;gap:6px;padding:12px 14px;background:var(--ork-card-bg,#fff);border:1px solid var(--ork-border,#e2e8f0);border-left:4px solid ' + color + ';border-radius:8px;text-decoration:none;color:inherit;transition:transform 0.15s,box-shadow 0.15s\" '
+					return '<a class=\"kn-as-card kn-as-status-' + status + '\" href=\"' + UIR + 'ArtsComp/' + c.CompetitionId + '\" '
+						+ 'style=\"display:flex;flex-direction:column;gap:6px;padding:12px 14px;background:var(--ork-card-bg,#fff);border-radius:8px;text-decoration:none;color:inherit;transition:transform 0.15s,box-shadow 0.15s\" '
 						+ 'onmouseover=\"this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 4px 12px rgba(0,0,0,0.08)\'\" '
 						+ 'onmouseout=\"this.style.transform=\'\';this.style.boxShadow=\'\'\">'
 						+ '<div style=\"display:flex;justify-content:space-between;align-items:flex-start;gap:8px\">'
 						+ '<div style=\"font-weight:600;font-size:13px\">' + escHtml(c.Name) + '</div>'
-						+ '<span style=\"font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;padding:2px 7px;border-radius:999px;background:' + color + '22;color:' + color + '\">' + escHtml(c.Status) + '</span>'
+						+ '<span class=\"kn-as-pill\">' + escHtml(statusLabels[status]) + '</span>'
 						+ '</div>'
 						+ '<div style=\"font-size:11px;color:var(--ork-text-muted,#718096);display:flex;gap:10px;flex-wrap:wrap\">'
 						+ (dateStr ? '<span><i class=\"far fa-calendar\"></i> ' + escHtml(dateStr) + '</span>' : '')

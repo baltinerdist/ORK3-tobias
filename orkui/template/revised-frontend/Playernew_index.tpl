@@ -349,6 +349,27 @@ if (!in_array($_pnNameFont, $_pnFontAllowed)) $_pnNameFont = '';
 .pna-as-score-table{width:100%;border-collapse:collapse}
 .pna-as-score-table td{padding:5px 8px;border-bottom:1px solid #edf2f7;font-size:13px;color:#2d3748}
 .pna-as-feedback{background:#f7fafc;border:1px solid #e2e8f0;border-left:3px solid #4299e1;border-radius:4px;padding:9px 12px;font-size:13px;line-height:1.5;color:#2d3748;margin-bottom:8px;white-space:pre-wrap}
+/* Results overlay header: the entry title is injected into the modal title. min-width:0 is
+   width-agnostic (the header is display:flex) and lets the title shrink instead of pushing the
+   close button out; the ellipsis clamp and the 44px floor are phone-only -- see below. */
+#pn-as-results-overlay .pn-modal-title{min-width:0}
+#pn-as-results-overlay .pn-modal-close-btn{flex-shrink:0}
+/* Narrow screens: stack the A&S entry row so the title gets a full-width wrapping line
+   and the competition name, category, date, status and action stay visible. */
+@media(max-width:600px){
+/* Only here does the injected title actually crowd the close button out: on a wide screen the
+   title should keep wrapping inside the 560px box rather than truncating, and the close button
+   should keep the shared 30px circle every other pn modal on this page uses. */
+#pn-as-results-overlay .pn-modal-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#pn-as-results-overlay .pn-modal-close-btn{min-width:44px;min-height:44px}
+.pna-as-row{flex-direction:column;align-items:stretch;gap:4px}
+.pna-as-row .pna-feed-label{order:1;white-space:normal;overflow:visible;text-overflow:clip;line-height:1.35}
+.pna-as-row .pna-feed-sub,
+.pna-as-row .pna-as-tax{display:block}
+.pna-as-row .pna-feed-date{order:2;min-width:0}
+.pna-as-row .pna-as-status{order:3;align-self:flex-start}
+.pna-as-row .pna-as-view-btn{order:4;display:flex;align-items:center;justify-content:center;gap:6px;width:100%;min-height:44px}
+}
 @media(max-width:700px){
 .pna-layout{flex-direction:column;align-items:stretch}
 .pna-sidebar{flex:none;width:100%}
@@ -5736,7 +5757,10 @@ $(function() {
 			}
 
 			var asOverlay = document.getElementById('pn-as-results-overlay');
-			function pnCloseAsResults() { if (asOverlay) asOverlay.classList.remove('pn-open'); }
+			function pnCloseAsResults() {
+				if (asOverlay) asOverlay.classList.remove('pn-open');
+				document.body.style.overflow = '';
+			}
 			function pnOpenAsResults(eid, title) {
 				if (!asOverlay || !(parseInt(eid) > 0)) return;
 				var body    = document.getElementById('pn-as-results-body');
@@ -5744,6 +5768,7 @@ $(function() {
 				if (titleEl) titleEl.innerHTML = '<i class="fas fa-clipboard-check pn-modal-title-icon"></i>' + (title ? asEsc(title) : 'Scores &amp; Feedback');
 				if (body) body.innerHTML = '<div class="pn-empty"><i class="fas fa-spinner fa-spin"></i> Loading&hellip;</div>';
 				asOverlay.classList.add('pn-open');
+				document.body.style.overflow = 'hidden';
 				$.getJSON(PnConfig.uir + 'ArtsSciencesAjax/my_entry_results/' + parseInt(eid), function(r) {
 					if (!body) return;
 					if (!r || r.status !== 0) {
