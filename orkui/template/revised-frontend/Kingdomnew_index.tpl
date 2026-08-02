@@ -244,12 +244,32 @@
 ?>
 
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>revised-frontend/style/revised.css?v=<?= filemtime(DIR_TEMPLATE . 'revised-frontend/style/revised.css') ?>">
+<?php
+	// Only ship the 38KB shared org-design stylesheet when this page can actually
+	// render od-* markup. Union of every od- block's own condition:
+	//   announcement banner, hero tagline, new About design (incl. reign banner and
+	//   milestones), the LEGACY About description card (rendered on the else branch
+	//   of $knShowNewAbout), the About "meta" row (website / parent kingdom), the
+	//   sidebar Connect block, and the manager-only design modal.
+	$_knOdWebsiteUrl = trim((string)($_kInfo['Url'] ?? ''));
+	$_knOdParentId   = (int)($_kInfo['ParentKingdomId'] ?? ($ParentKingdomId ?? 0));
+	$_knNeedsOdCss   = $knShowAnnouncement
+		|| ($knTagline !== '')
+		|| $knShowNewAbout
+		|| (trim($_knLegacyDesc) !== '')
+		|| ($_knOdWebsiteUrl !== '' || $_knOdParentId > 0)
+		|| !empty($knVisibleSocials)
+		|| ($CanManageKingdom ?? false);
+?>
+<?php if ($_knNeedsOdCss): ?>
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>shared/orgdesign/orgdesign.css?v=<?= filemtime(DIR_TEMPLATE . 'shared/orgdesign/orgdesign.css') ?>">
+<?php endif; ?>
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>revised-frontend/style/ork-datatables.css?v=<?= filemtime(__DIR__ . '/style/ork-datatables.css') ?>">
 
 <?php if ($knNameFont !== ''): ?>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=<?= rawurlencode($knNameFont) ?>&display=swap">
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=<?= rawurlencode($knNameFont) ?>&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=<?= rawurlencode($knNameFont) ?>&display=swap"></noscript>
 <?php endif; ?>
 
 <style>
@@ -596,7 +616,7 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
 							$_mInitial = htmlspecialchars(strtoupper(mb_substr($monarch['Persona'] ?? '?', 0, 1)));
 						?>
 						<a href="<?= UIR ?>Player/profile/<?= (int)$monarch['MundaneId'] ?>" class="od-reign-card">
-							<img src="<?= htmlspecialchars($_mImg) ?>" alt="" class="od-reign-avatar" onerror="this.onerror=null;this.src='<?= HTTP_PLAYER_HERALDRY ?>000000.jpg'">
+							<img src="<?= htmlspecialchars($_mImg) ?>" alt="" class="od-reign-avatar" width="64" height="64" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='<?= HTTP_PLAYER_HERALDRY ?>000000.jpg'">
 							<div class="od-reign-card-body">
 								<div class="od-reign-role">Monarch</div>
 								<div class="od-reign-name"><?= htmlspecialchars($monarch['Persona']) ?></div>
@@ -610,7 +630,7 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
 							$_rImg = kn_reign_avatar_url($regent['MundaneId']);
 						?>
 						<a href="<?= UIR ?>Player/profile/<?= (int)$regent['MundaneId'] ?>" class="od-reign-card">
-							<img src="<?= htmlspecialchars($_rImg) ?>" alt="" class="od-reign-avatar" onerror="this.onerror=null;this.src='<?= HTTP_PLAYER_HERALDRY ?>000000.jpg'">
+							<img src="<?= htmlspecialchars($_rImg) ?>" alt="" class="od-reign-avatar" width="64" height="64" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='<?= HTTP_PLAYER_HERALDRY ?>000000.jpg'">
 							<div class="od-reign-card-body">
 								<div class="od-reign-role">Regent</div>
 								<div class="od-reign-name"><?= htmlspecialchars($regent['Persona']) ?></div>
@@ -3643,7 +3663,5 @@ window.OrkRsCfg = {
 	}
 ?>
 <?php if ($ctx['can_manage']): ?>
-<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
 <script src="<?= HTTP_TEMPLATE ?>shared/orgdesign/orgdesign.js?v=<?= filemtime(DIR_TEMPLATE . 'shared/orgdesign/orgdesign.js') ?>"></script>
 <?php endif; ?>

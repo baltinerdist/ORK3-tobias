@@ -357,12 +357,30 @@
 ?>
 
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>revised-frontend/style/revised.css?v=<?= filemtime(DIR_TEMPLATE . 'revised-frontend/style/revised.css') ?>">
+<?php
+	// Perf: the 38KB shared design stylesheet only ships when this page can actually
+	// render od- markup. Union of every od- producer below: announcement banner,
+	// tagline, the new About design (which also gates the connect block + milestones
+	// timeline), social pills, the manager design modal, and the .od-about-text
+	// markdown bodies (About / legacy description / directions).
+	$pkNeedsOdCss = $pkShowAnnouncement
+		|| $pkTagline !== ''
+		|| $pkShowNewAbout
+		|| $pkHasSocial
+		|| !empty($CanAdminPark)
+		|| trim($aboutText) !== ''
+		|| trim($description) !== ''
+		|| trim($directions) !== '';
+?>
+<?php if ($pkNeedsOdCss): ?>
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>shared/orgdesign/orgdesign.css?v=<?= filemtime(DIR_TEMPLATE . 'shared/orgdesign/orgdesign.css') ?>">
+<?php endif; ?>
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>revised-frontend/style/ork-datatables.css?v=<?= filemtime(__DIR__ . '/style/ork-datatables.css') ?>">
 
 <?php if ($pkNameFont !== ''): ?>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=<?= rawurlencode($pkNameFont) ?>&display=swap">
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=<?= rawurlencode($pkNameFont) ?>&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=<?= rawurlencode($pkNameFont) ?>&display=swap"></noscript>
 <?php endif; ?>
 
 <style>
@@ -3596,7 +3614,5 @@ window.OrkRsCfg = {
 	}
 ?>
 <?php if ($ctx['can_manage']): ?>
-<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
 <script src="<?= HTTP_TEMPLATE ?>shared/orgdesign/orgdesign.js?v=<?= filemtime(DIR_TEMPLATE . 'shared/orgdesign/orgdesign.js') ?>"></script>
 <?php endif; ?>

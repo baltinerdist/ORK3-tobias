@@ -61,7 +61,69 @@
 
 	function endpoint(action) { return BASE_UIR + AJAX_BASE + '/' + ORG_ID + '/' + action; }
 
-	/* --- In-product confirm (tnConfirm if available, else fallback) -------- */
+	/* --- On-demand vendor libs (perf) --------------------------------------
+	   marked / DOMPurify / flatpickr are used ONLY inside the design modal, so
+	   the profile templates no longer ship them as blocking <script> tags. They
+	   are injected the first time a manager opens the modal. Everything that
+	   uses them already degrades gracefully, so a failed load must still call
+	   back rather than hang the UI. Note flatpickr may ALREADY be present on
+	   Kingdom/Park (revised.js uses it elsewhere) — handle both cases. */
+	var odScripts = {}; // src -> { done: bool, queue: [cb] }
+	function odLoadScript(src, globalName, cb) {
+		cb = cb || function () {};
+		if (globalName && typeof window[globalName] !== 'undefined') { cb(); return; }
+		var st = odScripts[src];
+		if (st) {
+			if (st.done) { cb(); } else { st.queue.push(cb); }
+			return;
+		}
+		st = odScripts[src] = { done: false, queue: [cb] };
+		var s = document.createElement('script');
+		s.src = src;
+		s.async = true;
+		function settle() {
+			if (st.done) return;
+			st.done = true;
+			var q = st.queue; st.queue = [];
+			for (var i = 0; i < q.length; i++) { q[i](); }
+		}
+		s.addEventListener('load', settle);
+		s.addEventListener('error', settle); // degrade, never hang
+		document.head.appendChild(s);
+	}
+	function odLoadStyle(href) {
+		if (document.querySelector('link[data-od-lib-css="' + href + '"]')) return;
+		if (document.querySelector('link[rel="stylesheet"][href="' + href + '"]')) return;
+		var l = document.createElement('link');
+		l.rel = 'stylesheet';
+		l.href = href;
+		l.setAttribute('data-od-lib-css', href);
+		document.head.appendChild(l);
+	}
+	var libsRequested = false;
+	/* Fire-and-forget: takes no callback, so it cannot promise a "settled"
+	   moment it does not actually track. Each library hydrates its own
+	   dependants as it lands. */
+	function odEnsureLibs() {
+		if (libsRequested) return;
+		libsRequested = true;
+		odLoadScript('https://cdn.jsdelivr.net/npm/marked@12/marked.min.js', 'marked');
+		odLoadScript('https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js', 'DOMPurify');
+		if (typeof window.flatpickr !== 'function') {
+			odLoadStyle('https://cdn.jsdelivr.net/npm/flatpickr@4/dist/flatpickr.min.css');
+		}
+		// Pinned major + explicit dist file: /npm/flatpickr@4 alone resolves the
+		// package main field and serves the UNMINIFIED build via a redirect.
+		odLoadScript('https://cdn.jsdelivr.net/npm/flatpickr@4/dist/flatpickr.min.js', 'flatpickr', function () {
+			hydrateAnnounceDatePickers();
+		});
+	}
+
+	/* --- In-product confirm (tnConfirm if available, else fallback) --------
+	   odConfirmClose holds the close handler for the currently-open fallback
+	   confirm. A single shared Escape listener (registered with the modal's,
+	   below) reads it, so repeat opens never stack listeners. */
+	var odConfirmClose = null;
 	function odConfirm(opts) {
 		opts = opts || {};
 		if (typeof window.tnConfirm === 'function') {
@@ -95,8 +157,9 @@
 		var okBtn = gid('od-confirm-ok');
 		okBtn.textContent = opts.confirmLabel || 'Confirm';
 		okBtn.classList.toggle('od-confirm-btn-danger', !!opts.danger);
-		function closeC() { ov.classList.remove('od-open'); }
+		function closeC() { ov.classList.remove('od-open'); odConfirmClose = null; }
 		ov.classList.add('od-open');
+		odConfirmClose = closeC;
 		gid('od-confirm-cancel').onclick = closeC;
 		ov.onclick = function (e) { if (e.target === ov) closeC(); };
 		okBtn.onclick = function () { closeC(); if (opts.onConfirm) opts.onConfirm(); };
@@ -115,30 +178,75 @@
 	}
 
 	/* --- Open / close ------------------------------------------------------ */
+	/* Scroll lock: body{overflow:hidden} alone does not hold on iOS, so pin the
+	   body with position:fixed at the saved scroll offset and restore whatever
+	   inline values were there before (not a blind clear). */
+	var scrollLock = null;
+	function lockScroll() {
+		if (scrollLock) return;
+		var b = document.body;
+		scrollLock = {
+			y: window.pageYOffset || document.documentElement.scrollTop || 0,
+			overflow: b.style.overflow,
+			position: b.style.position,
+			top: b.style.top,
+			width: b.style.width
+		};
+		b.style.overflow = 'hidden';
+		b.style.position = 'fixed';
+		b.style.top = '-' + scrollLock.y + 'px';
+		b.style.width = '100%';
+	}
+	function unlockScroll() {
+		if (!scrollLock) return;
+		var b = document.body;
+		b.style.overflow = scrollLock.overflow;
+		b.style.position = scrollLock.position;
+		b.style.top      = scrollLock.top;
+		b.style.width    = scrollLock.width;
+		var y = scrollLock.y;
+		scrollLock = null;
+		window.scrollTo(0, y);
+	}
+	function confirmIsOpen() {
+		var c = document.getElementById('od-confirm-overlay');
+		return !!(c && c.classList.contains('od-open'));
+	}
 	window.odOpenDesignModal = function (panel) {
+		odEnsureLibs(); // marked / DOMPurify / flatpickr are modal-only
 		overlay.classList.add('od-open');
-		document.body.style.overflow = 'hidden';
+		lockScroll();
 		if (panel) switchPanel(panel);
 		renderCustomMsList();
 		updatePreview();
 	};
 	function closeModal() {
 		overlay.classList.remove('od-open');
-		document.body.style.overflow = '';
+		unlockScroll();
 	}
 	gid('od-dm-close').addEventListener('click', closeModal);
 	gid('od-dm-cancel').addEventListener('click', closeModal);
 	overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
 	document.addEventListener('keydown', function (e) {
-		if ((e.key === 'Escape' || e.keyCode === 27) && overlay.classList.contains('od-open')) closeModal();
+		if (e.key !== 'Escape' && e.keyCode !== 27) return;
+		// A flatpickr calendar layers above everything and does not stop Escape
+		// propagation — let it close first so unsaved edits survive.
+		if (document.querySelector('.flatpickr-calendar.open')) return;
+		// The confirm dialog layers ABOVE the design modal — dismiss it first and
+		// leave the modal open underneath.
+		if (confirmIsOpen()) { if (odConfirmClose) odConfirmClose(); return; }
+		if (overlay.classList.contains('od-open')) closeModal();
 	});
 
 	function switchPanel(name) {
-		document.querySelectorAll('.od-dm-tab').forEach(function (t) { t.classList.remove('od-active'); });
+		document.querySelectorAll('.od-dm-tab').forEach(function (t) {
+			t.classList.remove('od-active');
+			t.setAttribute('aria-selected', 'false');
+		});
 		document.querySelectorAll('.od-dm-panel').forEach(function (p) { p.classList.remove('od-active'); });
 		var tab = document.querySelector('.od-dm-tab[data-odtab-dm="' + name + '"]');
 		var panel = gid('od-dm-panel-' + name);
-		if (tab) tab.classList.add('od-active');
+		if (tab) { tab.classList.add('od-active'); tab.setAttribute('aria-selected', 'true'); }
 		if (panel) panel.classList.add('od-active');
 		// FE#32: the font picker lives on the Header panel. Defer loading all the
 		// Google fonts until the manager actually opens it (only the selected font
@@ -149,11 +257,61 @@
 		t.addEventListener('click', function () { switchPanel(t.dataset.odtabDm); });
 	});
 
-	/* --- Color presets + custom + hex sync --------------------------------- */
-	var swatches = document.querySelectorAll('.od-dm-swatch');
-	swatches.forEach(function (sw) {
-		sw.addEventListener('click', function () {
-			swatches.forEach(function (s) { s.classList.remove('od-selected'); });
+	/* --- Color presets + custom + hex sync ---------------------------------
+	   The preset/gradient swatches are rendered here from the bootstrap island
+	   (they used to be ~27KB of server markup). Because they no longer exist at
+	   module-init time, the click handling is DELEGATED to the stable grids. */
+	var COLOR_PRESETS    = Array.isArray(boot.colorPresets) ? boot.colorPresets : [];
+	var GRADIENT_PRESETS = Array.isArray(boot.gradientPresets) ? boot.gradientPresets : [];
+	var MS_ICONS         = Array.isArray(boot.msIcons) ? boot.msIcons : [];
+
+	function renderColorPresets() {
+		var c = gid('od-dm-presets');
+		if (!c || !COLOR_PRESETS.length) return;
+		var html = '';
+		for (var i = 0; i < COLOR_PRESETS.length; i++) {
+			var p = COLOR_PRESETS[i];
+			html += '<div class="od-dm-swatch" data-primary="' + esc(p.primary) + '" data-accent="' + esc(p.accent) + '"'
+				 +    ' style="background:' + esc(p.primary) + '"></div>';
+		}
+		c.innerHTML = html;
+	}
+	function renderGradientPresets() {
+		var c = gid('od-dm-gradient-presets');
+		if (!c || !GRADIENT_PRESETS.length) return;
+		var html = '';
+		for (var i = 0; i < GRADIENT_PRESETS.length; i++) {
+			var g = GRADIENT_PRESETS[i];
+			html += '<div class="od-dm-swatch" data-primary="' + esc(g.primary) + '" data-accent="' + esc(g.accent) + '"'
+				 +    ' data-secondary="' + esc(g.secondary) + '" style="background:' + esc(g.css) + '"></div>';
+		}
+		c.innerHTML = html;
+	}
+	function renderMsIcons() {
+		var c = gid('od-dm-ms-icons');
+		if (!c || !MS_ICONS.length) return;
+		var html = '';
+		for (var i = 0; i < MS_ICONS.length; i++) {
+			var ic = MS_ICONS[i];
+			html += '<div class="od-dm-ms-icon-opt' + (ic === selectedIcon ? ' od-active' : '') + '" data-icon="' + esc(ic) + '">'
+				 +    '<i class="fas ' + esc(ic) + '"></i></div>';
+		}
+		c.innerHTML = html;
+	}
+	renderColorPresets();
+	renderGradientPresets();
+	renderMsIcons();
+
+	function clearSwatchSelection() {
+		document.querySelectorAll('.od-dm-swatch').forEach(function (s) { s.classList.remove('od-selected'); });
+	}
+	function bindSwatchGrid(gridId) {
+		var grid = gid(gridId);
+		if (!grid) return;
+		grid.addEventListener('click', function (e) {
+			var sw = e.target.closest('.od-dm-swatch');
+			if (!sw || !grid.contains(sw)) return;
+			clearSwatchSelection();
 			sw.classList.add('od-selected');
 			gid('od-dm-color-primary').value     = sw.dataset.primary;
 			gid('od-dm-color-primary-hex').value = sw.dataset.primary;
@@ -169,7 +327,10 @@
 			}
 			markColorsDirty();
 		});
-	});
+	}
+	bindSwatchGrid('od-dm-presets');
+	bindSwatchGrid('od-dm-gradient-presets');
+
 	function syncHex(colorId, hexId) {
 		var c = gid(colorId), h = gid(hexId);
 		if (!c || !h) return;
@@ -197,7 +358,7 @@
 			gid('od-dm-color-secondary').value     = '#2c5282';
 			gid('od-dm-color-secondary-hex').value = '';
 			gid('od-dm-gradient-enabled').checked  = false;
-			swatches.forEach(function (s) { s.classList.remove('od-selected'); });
+			clearSwatchSelection();
 			updatePreview();
 		});
 	}
@@ -320,9 +481,9 @@
 
 	/* --- Announcement lifecycle (FE#39) ------------------------------------
 	   Human-readable date pickers for "starts"/"until", a clear-both control, and
-	   a computed Live / Scheduled / Expired indicator. Flatpickr is optional (it's
-	   loaded on Kingdom/Park but not Unit), so everything degrades to the native
-	   date input when it's absent. */
+	   a computed Live / Scheduled / Expired indicator. Flatpickr is optional and
+	   now arrives on demand with the modal (odEnsureLibs), so everything degrades
+	   to the native date input until/unless it loads. */
 	var fpAnnounce = {};
 	function annToday() {
 		var d = new Date();
@@ -358,18 +519,29 @@
 		el.className = 'od-dm-announce-status ' + cls;
 		el.style.display = '';
 	}
+	// Idempotent: attaches a flatpickr instance only once per input, and only
+	// once the library exists (it is now loaded on demand with the modal).
+	function attachAnnounceFlatpickr(id) {
+		if (fpAnnounce[id]) return;
+		if (typeof window.flatpickr !== 'function') return;
+		var el = gid(id);
+		if (!el || el._flatpickr) return;
+		fpAnnounce[id] = window.flatpickr(el, {
+			altInput: true,
+			altFormat: 'F j, Y',
+			dateFormat: 'Y-m-d',
+			onChange: updateAnnounceStatus
+		});
+	}
+	function hydrateAnnounceDatePickers() {
+		attachAnnounceFlatpickr('od-dm-announcement-starts');
+		attachAnnounceFlatpickr('od-dm-announcement-until');
+	}
 	function initAnnounceDatePicker(id) {
 		var el = gid(id);
 		if (!el) return;
-		if (typeof window.flatpickr === 'function') {
-			fpAnnounce[id] = window.flatpickr(el, {
-				altInput: true,
-				altFormat: 'F j, Y',
-				dateFormat: 'Y-m-d',
-				onChange: updateAnnounceStatus
-			});
-		}
-		el.addEventListener('change', updateAnnounceStatus);
+		attachAnnounceFlatpickr(id); // no-op when flatpickr isn't loaded yet
+		el.addEventListener('change', updateAnnounceStatus); // bound exactly once
 	}
 	function clearAnnounceDate(id) {
 		if (fpAnnounce[id]) { fpAnnounce[id].clear(); }
@@ -470,8 +642,8 @@
 				 +    '<i class="fas ' + icon + '"></i>'
 				 +    '<span class="od-dm-ms-desc">' + esc(m.Description) + '</span>'
 				 +    '<span class="od-dm-ms-date">' + dateStr + '</span>'
-				 +    '<button type="button" data-tip="Edit" data-ms-edit="' + m.MilestoneId + '"><i class="fas fa-pencil-alt"></i></button>'
-				 +    '<button type="button" data-tip="Delete" data-ms-del="' + m.MilestoneId + '"><i class="fas fa-trash"></i></button>'
+				 +    '<button type="button" data-tip="Edit" aria-label="Edit milestone" data-ms-edit="' + m.MilestoneId + '"><i class="fas fa-pencil-alt" aria-hidden="true"></i></button>'
+				 +    '<button type="button" data-tip="Delete" aria-label="Delete milestone" data-ms-del="' + m.MilestoneId + '"><i class="fas fa-trash" aria-hidden="true"></i></button>'
 				 + '</div>';
 		}
 		list.innerHTML = html;
@@ -732,6 +904,10 @@
 			.then(function (r) { return r.json(); })
 			.then(function (result) {
 				if (result && result.status === 0) {
+					// Release the position:fixed scroll lock BEFORE reloading, or
+					// the document scrollTop is 0 at unload and the browser
+					// restores the manager to the top of the page.
+					unlockScroll();
 					window.location.reload();
 				} else {
 					errEl.textContent = (result && result.error) || 'Save failed.';

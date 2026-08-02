@@ -8,6 +8,12 @@
    ============================================================================ */
 
 /* --- About markdown body + Our History ------------------------------------- */
+/* Global p{text-align:justify} (orkui.css) shreds narrow measures — opt out. */
+.od-about-text, .od-about-text p, .od-history-body, .od-history-body p,
+.od-reign-lore, .od-reign-lore p, .od-dm-md-preview p,
+.od-tagline { text-align: left; }
+/* Raw URLs in author-supplied markdown must not force horizontal scroll. */
+.od-about-text a, .od-history-body a { overflow-wrap: anywhere; }
 .od-about-text { line-height: 1.6; }
 .od-about-text p { margin: 0 0 8px; }
 .od-about-text p:last-child { margin-bottom: 0; }
@@ -86,6 +92,19 @@ html[data-theme="dark"] .od-timeline-row.od-ms-derived .od-timeline-desc { color
 	font-size: 12px; color: #a0aec0; font-style: italic;
 	padding: 10px 0;
 }
+/* Collapsed overflow rows + "show all" toggle (markup/JS live in the template
+   and orgdesign.js). display:flex on expand — .od-timeline-row is a flex row. */
+.od-timeline-row.od-ms-collapsed { display: none; }
+.od-timeline.od-ms-expanded .od-timeline-row.od-ms-collapsed { display: flex; }
+.od-ms-more-btn {
+	background: transparent; border: 0; color: #718096;
+	font-size: 12px; cursor: pointer; padding: 2px 0; text-decoration: underline;
+	display: inline-flex; align-items: center; gap: 5px;
+}
+.od-ms-more-btn:hover { color: #2b6cb0; }
+html[data-theme="dark"] .od-ms-more-btn { color: var(--ork-text-muted); }
+html[data-theme="dark"] .od-ms-more-btn:hover { color: var(--ork-link); }
+@media (max-width: 600px) { .od-ms-more-btn { min-height: 44px; } }
 
 /* --- About-tab section layout (About / History / Milestones / Meta) -------- */
 .od-about-grid { display: block; }
@@ -128,6 +147,7 @@ html[data-theme="dark"] .od-about-meta-row a { color: var(--ork-link); }
 	text-shadow: 0 1px 2px rgba(0,0,0,0.4);
 	line-height: 1.35;
 	max-width: 60ch;
+	overflow-wrap: anywhere;
 }
 
 /* --- Announcement banner --------------------------------------------------- */
@@ -158,6 +178,7 @@ html[data-theme="dark"] .od-announce-until { color: #fbbf24; }
 	background: transparent; border: 0; cursor: pointer; color: #92400e;
 	font-size: 18px; line-height: 1; padding: 2px 6px; border-radius: 4px;
 	flex-shrink: 0; opacity: 0.7; position: relative;
+	margin-left: auto;
 }
 .od-announce-dismiss:hover { opacity: 1; background: rgba(146,64,14,0.12); }
 html[data-theme="dark"] .od-announce-dismiss { color: #fbbf24; }
@@ -170,6 +191,14 @@ html[data-theme="dark"] .od-announce-dismiss:hover { background: rgba(251,191,36
 }
 .od-announce-dismiss[data-tip]:hover::after { opacity: 1; transition-delay: 0.3s; }
 html[data-theme="dark"] .od-announce-dismiss[data-tip]::after { background: var(--ork-bg-tertiary); color: var(--ork-text); border: 1px solid var(--ork-border); }
+/* Narrow: the non-wrapping row needed ~380px inside a 308px box, pushing the
+   dismiss outside every scrollable ancestor (unreachable, not just offscreen). */
+@media (max-width: 600px) {
+	.od-announce { flex-wrap: wrap; }
+	/* order:1 pushes the message to line 2 so line 1 is icon + until + dismiss
+	   (every other child keeps the initial order:0). */
+	.od-announce-body { flex: 1 1 100%; min-width: 0; order: 1; }
+}
 
 /* --- Connect (sidebar) — flat accent pills --------------------------------- */
 .od-connect-block { margin-top: 14px; padding-top: 12px; border-top: 1px dashed #e2e8f0; }
@@ -197,6 +226,10 @@ html[data-theme="dark"] .od-connect-edit:hover { background: var(--ork-bg-tertia
 	position: relative;
 }
 .od-connect-pill:hover { transform: scale(1.08); box-shadow: 0 3px 10px rgba(0,0,0,0.18); }
+@media (prefers-reduced-motion: reduce) {
+	.od-connect-pill { transition: none; }
+	.od-connect-pill:hover { transform: none; }
+}
 .od-connect-pill[data-tip]::after {
 	content: attr(data-tip); position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
 	background: #2d3748; color: #fff; font-size: 11px; white-space: normal; width: max-content; max-width: 240px; line-height: 1.4;
@@ -237,12 +270,12 @@ html[data-theme="dark"] .od-connect-empty { color: var(--ork-text-muted); border
 }
 .od-reign-head i { color: #b7791f; font-size: 14px; }
 .od-reign-grid {
-	display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+	display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;
 	position: relative;
 }
-@media (max-width: 640px) { .od-reign-grid { grid-template-columns: 1fr; } }
 .od-reign-card {
 	display: flex; align-items: center; gap: 12px;
+	min-width: 0;
 	background: rgba(255,255,255,0.78);
 	border: 1px solid rgba(116, 66, 16, 0.25);
 	border-radius: 8px;
@@ -316,6 +349,15 @@ html[data-theme="dark"] .od-reign-edit-btn.od-about-edit-btn:hover { background:
 .od-reign-link:hover { color: #5c340c; }
 html[data-theme="dark"] .od-reign-link { color: #fbbf24; }
 html[data-theme="dark"] .od-reign-link:hover { color: #fde68a; }
+/* Narrow reign layout — MUST stay at the end of the reign section: a media query
+   adds no specificity, so it only wins against the base .od-reign-* rules (and
+   the equal-specificity dark ones) by appearing after them in source order. */
+@media (max-width: 600px) {
+	.od-reign-grid { grid-template-columns: minmax(0, 1fr); }
+	.od-reign-avatar { width: 48px; height: 48px; }
+	/* Long personae ('Neiva Guerrera Scarlet Morningstar') should wrap, not ellipse. */
+	.od-reign-name { white-space: normal; }
+}
 
 /* --- Unpublished badge (manager-only, About not yet enabled) --------------- */
 .od-about-unpublished {
@@ -337,7 +379,11 @@ html[data-theme="dark"] .od-about-unpublished { background: rgba(246,224,94,0.12
 .od-dm-overlay.od-open { display: flex; }
 .od-dm-modal {
 	background: #fff; border-radius: 10px; width: 720px; max-width: calc(100vw - 40px);
-	max-height: 88vh; display: flex; flex-direction: column; overflow: hidden;
+	max-height: 88vh; /* fallback for browsers without svh */
+	/* svh (small viewport), not dvh: dvh makes the modal resize continuously as
+	   the iOS toolbar shows/hides; svh keeps it stable and the footer reachable. */
+	max-height: min(88vh, 88svh);
+	display: flex; flex-direction: column; overflow: hidden;
 	box-shadow: 0 18px 50px rgba(0,0,0,0.35);
 }
 html[data-theme="dark"] .od-dm-modal { background: var(--ork-card-bg); color: var(--ork-text); }
@@ -378,7 +424,34 @@ html[data-theme="dark"] .od-dm-tab.od-active {
 	background: var(--ork-card-bg); color: var(--ork-link); border-color: var(--ork-border);
 	border-bottom-color: var(--ork-card-bg);
 }
-.od-dm-body { padding: 18px; overflow-y: auto; flex: 1; }
+/* Narrow only: the 3-tab strip fits at 451px, so scrolling is a <=600px concern.
+   Unscoped, overflow-x:auto forces overflow-y to auto and clips the active tab's
+   deliberate -1px overhang, leaving a hairline under it at every width.
+   Both blocks MUST follow the base + dark .od-dm-tab(s) rules above — media
+   queries add no specificity. */
+@media (max-width: 600px) {
+	.od-dm-tabs {
+		flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch;
+		scrollbar-width: none;
+	}
+	.od-dm-tabs::-webkit-scrollbar { display: none; }
+	.od-dm-tab { flex: 0 0 auto; }
+}
+@media (max-width: 520px) {
+	.od-dm-tabs { padding-left: 10px; padding-right: 10px; }
+	.od-dm-tab { padding: 8px 10px; }
+}
+.od-dm-body { padding: 18px; overflow-y: auto; overflow-x: hidden; flex: 1; }
+/* Reign date pair — two inputs that could not shrink below their intrinsic
+   width and forced a nested horizontal scroller inside the panel. */
+.od-dm-date-pair {
+	display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 10px; margin-bottom: 10px;
+}
+/* The grid items are wrapper divs, not the inputs — minmax(0,1fr) on the track
+   does not defeat their own min-width:auto. */
+.od-dm-date-pair > * { min-width: 0; }
+@media (max-width: 600px) { .od-dm-date-pair { grid-template-columns: 1fr; } }
 /* Opt-in toggle bar */
 .od-dm-optin {
 	display: flex; align-items: flex-start; gap: 12px;
@@ -450,6 +523,14 @@ html[data-theme="dark"] .od-dm-btn { background: var(--ork-bg-tertiary); border-
 .od-dm-btn-primary { background: #3182ce; color: #fff; border-color: #3182ce; }
 .od-dm-btn-primary:hover { background: #2c5282; border-color: #2c5282; }
 .od-dm-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+/* Must follow html[data-theme="dark"] .od-dm-btn (0,2,1) or the primary fill is
+   erased in dark mode and Save reads identical to Cancel. */
+html[data-theme="dark"] .od-dm-btn-primary { background: var(--ork-link); border-color: var(--ork-link); color: #fff; }
+html[data-theme="dark"] .od-dm-btn-primary:hover { background: #2c5282; border-color: #2c5282; color: #fff; }
+@media (max-width: 600px) {
+	.od-dm-footer { gap: 16px; }
+	.od-dm-btn { min-height: 44px; }
+}
 
 .od-dm-preset-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; }
 .od-dm-swatch {
@@ -457,6 +538,11 @@ html[data-theme="dark"] .od-dm-btn { background: var(--ork-bg-tertiary); border-
 	box-shadow: 0 1px 2px rgba(0,0,0,0.1) inset;
 }
 .od-dm-swatch.od-selected { border-color: #2b6cb0; transform: scale(1.06); box-shadow: 0 0 0 2px #fff, 0 0 0 4px #2b6cb0; }
+/* 8 columns collapse to ~23px swatches at 320px — half a fingertip. */
+@media (max-width: 600px) {
+	.od-dm-preset-grid { grid-template-columns: repeat(4, minmax(44px, 1fr)); }
+	.od-dm-swatch { height: 44px; }
+}
 html[data-theme="dark"] .od-dm-swatch.od-selected { box-shadow: 0 0 0 2px var(--ork-card-bg), 0 0 0 4px var(--ork-link); }
 .od-dm-color-row { display: flex; gap: 12px; flex-wrap: wrap; }
 .od-dm-color-col { flex: 1; min-width: 180px; }
@@ -604,6 +690,17 @@ html[data-theme="dark"] .od-dm-ms-row button[data-ms-edit]:hover { background: v
 html[data-theme="dark"] .od-dm-ms-edit-cancel { color: var(--ork-text-muted); }
 html[data-theme="dark"] .od-dm-ms-edit-cancel:hover { color: #fc8181; }
 
+/* Narrow: drop the inner max-height so the modal body is the only touch
+   scroller, and unclip the destructive delete (was half off the modal edge). */
+@media (max-width: 600px) {
+	.od-dm-ms-list { max-height: none; }
+	.od-dm-ms-row { flex-wrap: wrap; }
+	.od-dm-ms-row .od-dm-ms-desc { flex: 1 1 100%; min-width: 0; }
+	.od-dm-ms-row .od-dm-ms-date { margin-left: auto; }
+	.od-dm-ms-row button { min-width: 44px; min-height: 44px; }
+	.od-dm-ms-row button[data-ms-del] { margin-left: 16px; }
+}
+
 .od-dm-ms-add { display: grid; grid-template-columns: 1fr 140px 90px; gap: 8px; align-items: end; }
 @media (max-width: 600px) { .od-dm-ms-add { grid-template-columns: 1fr; } }
 .od-dm-ms-icons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
@@ -618,7 +715,7 @@ html[data-theme="dark"] .od-dm-ms-icon-opt.od-active { background: var(--ork-lin
 
 /* Social input rows (About panel) */
 .od-dm-social-row {
-	display: grid; grid-template-columns: 110px 1fr; gap: 8px; align-items: center;
+	display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 8px; align-items: center;
 	padding: 5px 0; border-bottom: 1px solid #edf2f7;
 }
 .od-dm-social-row:last-child { border-bottom: none; }
@@ -634,12 +731,21 @@ html[data-theme="dark"] .od-dm-social-label { color: var(--ork-text-secondary); 
 	color: #fff; font-size: 11px;
 }
 .od-dm-social-row input[type="url"] {
-	width: 100%; padding: 6px 8px; font-size: 12px;
+	width: 100%; min-width: 0; padding: 6px 8px; font-size: 12px;
 	border: 1px solid #cbd5e0; border-radius: 4px;
 	background: #fff; color: #2d3748;
+	box-sizing: border-box;
 }
 html[data-theme="dark"] .od-dm-social-row input[type="url"] {
 	background: var(--ork-bg-tertiary); border-color: var(--ork-border); color: var(--ork-text);
+}
+/* Host themes vary on whether input[type=url] is in their iOS zoom-prevention
+   list (revised-frontend omitted it) — make the shared component self-sufficient. */
+@media (max-width: 768px) {
+	.od-dm-social-row input[type="url"] { font-size: 16px; }
+}
+@media (max-width: 600px) {
+	.od-dm-social-row { grid-template-columns: 1fr; gap: 4px; }
 }
 
 /* Recruitment segmented control (Unit only; org-neutral styles) */
@@ -703,6 +809,14 @@ html[data-theme="dark"] .od-confirm-foot { background: var(--ork-bg-secondary); 
 html[data-theme="dark"] .od-confirm-btn { background: var(--ork-bg-tertiary); border-color: var(--ork-border); color: var(--ork-text); }
 .od-confirm-btn-danger { background: #e53e3e; color: #fff; border-color: #e53e3e; }
 .od-confirm-btn-danger:hover { background: #c53030; border-color: #c53030; }
+/* Must follow html[data-theme="dark"] .od-confirm-btn (0,2,1), else the
+   destructive fill is erased and Delete reads identical to Cancel. */
+html[data-theme="dark"] .od-confirm-btn-danger { background: #e53e3e; border-color: #e53e3e; color: #fff; }
+html[data-theme="dark"] .od-confirm-btn-danger:hover { background: #c53030; border-color: #c53030; color: #fff; }
+@media (max-width: 600px) {
+	.od-confirm-foot { gap: 16px; }
+	.od-confirm-btn { min-height: 44px; }
+}
 
 /* Unpublished-badge tooltip (data-tip) — wrapping, on-screen, dark-mode aware */
 .od-about-unpublished[data-tip] { position: relative; }
@@ -713,3 +827,28 @@ html[data-theme="dark"] .od-confirm-btn { background: var(--ork-bg-tertiary); bo
 }
 .od-about-unpublished[data-tip]:hover::after { opacity: 1; transition-delay: 0.4s; }
 html[data-theme="dark"] .od-about-unpublished[data-tip]::after { background: var(--ork-bg-tertiary); color: var(--ork-text); border: 1px solid var(--ork-border); }
+
+/* ============================================================================
+   Touch hit areas (narrow widths only)
+   No od- control reached 44x44 and the gutters are too tight for the WCAG
+   2.5.5 spacing exception. Controls whose visual size must be preserved get an
+   invisible ::before overlay; the rest are padded up.
+   (.od-dm-ms-row buttons and the preset swatches are handled in their own
+   sections above — do not restate them here.)
+   ============================================================================ */
+@media (max-width: 600px) {
+	.od-connect-pill::before {
+		content: ''; position: absolute; top: 50%; left: 50%;
+		transform: translate(-50%, -50%); width: 44px; height: 44px;
+		z-index: 0; /* stays under the [data-tip]::after tooltip (z-index 600) */
+	}
+	/* 34px pill + 8px gutter = 42px pitch, so the 44px ::before overlays overlap;
+	   10px takes the effective target to a true 44px. */
+	.od-connect-pills { gap: 10px; }
+	.od-connect-edit { min-width: 44px; min-height: 44px; }
+	.od-about-edit-btn { min-height: 44px; padding: 4px 12px; }
+	.od-announce-dismiss { min-width: 44px; min-height: 44px; }
+	.od-dm-ms-icon-opt { width: 44px; height: 44px; }
+	.od-dm-recruit-opt { min-height: 44px; }
+	.od-dm-close { width: 44px; height: 44px; }
+}

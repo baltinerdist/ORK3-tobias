@@ -101,10 +101,10 @@ $_odIcons = ['fa-star', 'fa-trophy', 'fa-flag', 'fa-chess-rook', 'fa-crown', 'fa
 			<h3 class="od-dm-title"><i class="fas fa-palette"></i>Design <?= htmlspecialchars($_odName) ?></h3>
 			<button class="od-dm-close" id="od-dm-close" aria-label="Close">&times;</button>
 		</div>
-		<div class="od-dm-tabs">
-			<button class="od-dm-tab od-active" data-odtab-dm="about"><i class="fas fa-scroll"></i> About</button>
-			<button class="od-dm-tab" data-odtab-dm="header"><i class="fas fa-image"></i> Header</button>
-			<button class="od-dm-tab" data-odtab-dm="milestones"><i class="fas fa-stream"></i> Milestones</button>
+		<div class="od-dm-tabs" role="tablist" aria-label="Design sections">
+			<button class="od-dm-tab od-active" data-odtab-dm="about" role="tab" id="od-dm-tab-about" aria-controls="od-dm-panel-about" aria-selected="true"><i class="fas fa-scroll"></i> About</button>
+			<button class="od-dm-tab" data-odtab-dm="header" role="tab" id="od-dm-tab-header" aria-controls="od-dm-panel-header" aria-selected="false"><i class="fas fa-image"></i> Header</button>
+			<button class="od-dm-tab" data-odtab-dm="milestones" role="tab" id="od-dm-tab-milestones" aria-controls="od-dm-panel-milestones" aria-selected="false"><i class="fas fa-stream"></i> Milestones</button>
 		</div>
 		<div class="od-dm-body">
 			<?php if ($_odHasOptIn): ?>
@@ -122,7 +122,7 @@ $_odIcons = ['fa-star', 'fa-trophy', 'fa-flag', 'fa-chess-rook', 'fa-crown', 'fa
 			<div class="od-dm-error" id="od-dm-error"></div>
 
 			<!-- ===== Header panel ===== -->
-			<div class="od-dm-panel" id="od-dm-panel-header">
+			<div class="od-dm-panel" id="od-dm-panel-header" role="tabpanel" aria-labelledby="od-dm-tab-header" tabindex="0">
 				<div class="od-dm-hint" style="margin-bottom:12px"><i class="fas fa-moon" style="margin-right:6px"></i><strong>Dark mode viewers</strong> see your hero with a slight darkening filter so colors stay readable. Preview both themes with the moon icon in the site header before saving.</div>
 
 				<div class="od-dm-field">
@@ -136,30 +136,12 @@ $_odIcons = ['fa-star', 'fa-trophy', 'fa-flag', 'fa-chess-rook', 'fa-crown', 'fa
 
 				<div class="od-dm-field">
 					<label>Color Presets</label>
-					<div class="od-dm-preset-grid" id="od-dm-presets">
-						<div class="od-dm-swatch" data-primary="#2c5282" data-accent="#4299e1" style="background:#2c5282"></div>
-						<div class="od-dm-swatch" data-primary="#276749" data-accent="#48bb78" style="background:#276749"></div>
-						<div class="od-dm-swatch" data-primary="#9b2c2c" data-accent="#fc8181" style="background:#9b2c2c"></div>
-						<div class="od-dm-swatch" data-primary="#553c9a" data-accent="#9f7aea" style="background:#553c9a"></div>
-						<div class="od-dm-swatch" data-primary="#975a16" data-accent="#ecc94b" style="background:#975a16"></div>
-						<div class="od-dm-swatch" data-primary="#2d3748" data-accent="#a0aec0" style="background:#2d3748"></div>
-						<div class="od-dm-swatch" data-primary="#285e61" data-accent="#38b2ac" style="background:#285e61"></div>
-						<div class="od-dm-swatch" data-primary="#744210" data-accent="#ed8936" style="background:#744210"></div>
-					</div>
+					<div class="od-dm-preset-grid" id="od-dm-presets"></div>
 				</div>
 
 				<div class="od-dm-field">
 					<label>Gradient Presets</label>
-					<div class="od-dm-preset-grid" id="od-dm-gradient-presets">
-						<div class="od-dm-swatch" data-primary="#1a365d" data-accent="#4299e1" data-secondary="#553c9a" style="background:linear-gradient(135deg,#1a365d,#553c9a)"></div>
-						<div class="od-dm-swatch" data-primary="#1a4731" data-accent="#48bb78" data-secondary="#2c5282" style="background:linear-gradient(135deg,#1a4731,#2c5282)"></div>
-						<div class="od-dm-swatch" data-primary="#742a2a" data-accent="#fc8181" data-secondary="#975a16" style="background:linear-gradient(135deg,#742a2a,#975a16)"></div>
-						<div class="od-dm-swatch" data-primary="#44337a" data-accent="#d6bcfa" data-secondary="#97266d" style="background:linear-gradient(135deg,#44337a,#97266d)"></div>
-						<div class="od-dm-swatch" data-primary="#234e52" data-accent="#38b2ac" data-secondary="#276749" style="background:linear-gradient(135deg,#234e52,#276749)"></div>
-						<div class="od-dm-swatch" data-primary="#2c5282" data-accent="#4299e1" data-secondary="#285e61" style="background:linear-gradient(135deg,#2c5282,#285e61)"></div>
-						<div class="od-dm-swatch" data-primary="#744210" data-accent="#ecc94b" data-secondary="#9b2c2c" style="background:linear-gradient(135deg,#744210,#9b2c2c)"></div>
-						<div class="od-dm-swatch" data-primary="#1a202c" data-accent="#a0aec0" data-secondary="#2d3748" style="background:linear-gradient(135deg,#1a202c,#2d3748)"></div>
-					</div>
+					<div class="od-dm-preset-grid" id="od-dm-gradient-presets"></div>
 				</div>
 
 				<div class="od-dm-field">
@@ -244,12 +226,12 @@ $_odIcons = ['fa-star', 'fa-trophy', 'fa-flag', 'fa-chess-rook', 'fa-crown', 'fa
 			</div>
 
 			<!-- ===== About panel ===== -->
-			<div class="od-dm-panel od-active" id="od-dm-panel-about">
+			<div class="od-dm-panel od-active" id="od-dm-panel-about" role="tabpanel" aria-labelledby="od-dm-tab-about" tabindex="0">
 				<?php if ($_odHasReign): ?>
 				<div class="od-dm-field">
 					<label>Reign Banner</label>
 					<div class="od-dm-hint" style="margin-bottom:8px">Personae are derived from current Monarch &amp; Regent on the Officers list. Set reign-start dates and add optional lore (Markdown supported, 2,000 char max).</div>
-					<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+					<div class="od-dm-date-pair">
 						<div>
 							<label style="font-size:11px;text-transform:none;letter-spacing:0">Monarch reign started</label>
 							<input type="date" id="od-dm-monarch-reign" value="<?= htmlspecialchars(($_odMonarchStarted !== '' && $_odMonarchStarted !== '0000-00-00') ? $_odMonarchStarted : '') ?>" style="width:100%;padding:6px 8px;font-size:12px;border-radius:4px" />
@@ -292,7 +274,7 @@ $_odIcons = ['fa-star', 'fa-trophy', 'fa-flag', 'fa-chess-rook', 'fa-crown', 'fa
 					<?php foreach ($_odPlatforms as $_slug => $_meta): ?>
 					<div class="od-dm-social-row">
 						<div class="od-dm-social-label"><span class="od-dm-social-icon-chip" style="background:<?= htmlspecialchars($_meta['bg']) ?>"><i class="<?= $_meta['icon'] ?>"></i></span><?= htmlspecialchars($_meta['label']) ?></div>
-						<input type="url" data-odsoc="<?= htmlspecialchars($_slug) ?>" placeholder="<?= htmlspecialchars($_meta['placeholder']) ?>" value="<?= htmlspecialchars((string)($_odSocial[$_slug] ?? '')) ?>" maxlength="500" />
+						<input type="url" inputmode="url" autocapitalize="none" autocorrect="off" spellcheck="false" data-odsoc="<?= htmlspecialchars($_slug) ?>" placeholder="<?= htmlspecialchars($_meta['placeholder']) ?>" value="<?= htmlspecialchars((string)($_odSocial[$_slug] ?? '')) ?>" maxlength="500" />
 					</div>
 					<?php endforeach; ?>
 				</div>
@@ -353,7 +335,7 @@ $_odIcons = ['fa-star', 'fa-trophy', 'fa-flag', 'fa-chess-rook', 'fa-crown', 'fa
 			</div>
 
 			<!-- ===== Milestones panel ===== -->
-			<div class="od-dm-panel" id="od-dm-panel-milestones">
+			<div class="od-dm-panel" id="od-dm-panel-milestones" role="tabpanel" aria-labelledby="od-dm-tab-milestones" tabindex="0">
 				<div class="od-dm-hint" style="margin-bottom:10px">Milestones appear in date order. Some are derived from attendance data (first sign-in, count thresholds); the rest are custom entries you add below.</div>
 
 				<div class="od-dm-field">
@@ -384,11 +366,7 @@ $_odIcons = ['fa-star', 'fa-trophy', 'fa-flag', 'fa-chess-rook', 'fa-crown', 'fa
 							<button type="button" class="od-dm-btn od-dm-btn-primary" id="od-dm-ms-add-btn" style="width:100%"><i class="fas fa-plus"></i> Add</button>
 						</div>
 					</div>
-					<div class="od-dm-ms-icons" id="od-dm-ms-icons" style="margin-top:8px">
-						<?php foreach ($_odIcons as $_ic): ?>
-						<div class="od-dm-ms-icon-opt<?= $_ic === 'fa-star' ? ' od-active' : '' ?>" data-icon="<?= htmlspecialchars($_ic) ?>"><i class="fas <?= htmlspecialchars($_ic) ?>"></i></div>
-						<?php endforeach; ?>
-					</div>
+					<div class="od-dm-ms-icons" id="od-dm-ms-icons" style="margin-top:8px"></div>
 					<button type="button" class="od-dm-ms-edit-cancel" id="od-dm-ms-edit-cancel" style="display:none"><i class="fas fa-times"></i> Cancel edit</button>
 					<div class="od-dm-hint" id="od-dm-ms-add-err" style="color:#c53030;display:none;margin-top:6px"></div>
 				</div>
@@ -412,11 +390,37 @@ $_odCustomMsJson = array_map(function ($m) {
         'MilestoneDate' => (string)($m['MilestoneDate'] ?? ''),
     ];
 }, array_values($_odCustomMs));
+
+// Swatch presets are rendered on demand by orgdesign.js from this island (keeps the
+// modal markup light on first paint).
+$_odColorPresets = [
+    ['primary' => '#2c5282', 'accent' => '#4299e1'],
+    ['primary' => '#276749', 'accent' => '#48bb78'],
+    ['primary' => '#9b2c2c', 'accent' => '#fc8181'],
+    ['primary' => '#553c9a', 'accent' => '#9f7aea'],
+    ['primary' => '#975a16', 'accent' => '#ecc94b'],
+    ['primary' => '#2d3748', 'accent' => '#a0aec0'],
+    ['primary' => '#285e61', 'accent' => '#38b2ac'],
+    ['primary' => '#744210', 'accent' => '#ed8936'],
+];
+$_odGradientPresets = [
+    ['primary' => '#1a365d', 'accent' => '#4299e1', 'secondary' => '#553c9a', 'css' => 'linear-gradient(135deg,#1a365d,#553c9a)'],
+    ['primary' => '#1a4731', 'accent' => '#48bb78', 'secondary' => '#2c5282', 'css' => 'linear-gradient(135deg,#1a4731,#2c5282)'],
+    ['primary' => '#742a2a', 'accent' => '#fc8181', 'secondary' => '#975a16', 'css' => 'linear-gradient(135deg,#742a2a,#975a16)'],
+    ['primary' => '#44337a', 'accent' => '#d6bcfa', 'secondary' => '#97266d', 'css' => 'linear-gradient(135deg,#44337a,#97266d)'],
+    ['primary' => '#234e52', 'accent' => '#38b2ac', 'secondary' => '#276749', 'css' => 'linear-gradient(135deg,#234e52,#276749)'],
+    ['primary' => '#2c5282', 'accent' => '#4299e1', 'secondary' => '#285e61', 'css' => 'linear-gradient(135deg,#2c5282,#285e61)'],
+    ['primary' => '#744210', 'accent' => '#ecc94b', 'secondary' => '#9b2c2c', 'css' => 'linear-gradient(135deg,#744210,#9b2c2c)'],
+    ['primary' => '#1a202c', 'accent' => '#a0aec0', 'secondary' => '#2d3748', 'css' => 'linear-gradient(135deg,#1a202c,#2d3748)'],
+];
 ?>
 <script type="application/json" id="od-dm-bootstrap"><?= json_encode([
     'snippets'   => isset($OD_SNIPPETS) && is_array($OD_SNIPPETS) ? $OD_SNIPPETS : [],
     'fonts'      => isset($OD_FONTS) && is_array($OD_FONTS) ? $OD_FONTS : [],
     'customMs'   => $_odCustomMsJson,
+    'colorPresets'    => $_odColorPresets,
+    'gradientPresets' => $_odGradientPresets,
+    'msIcons'         => $_odIcons,
     'sampleName' => $_odName,
     'nameFont'   => $_odFont,
     'colorPrimary'   => $_odPrimary,

@@ -29,7 +29,7 @@ if (!empty($_odVisible) || $_odCanMng):
 	<div class="od-connect-subhead">
 		<span><i class="fas fa-share-alt"></i> Connect</span>
 		<?php if ($_odCanMng): ?>
-		<button class="od-connect-edit" type="button" onclick="odOpenDesignModal('about')" data-tip="Edit social links"><i class="fas fa-pencil-alt"></i></button>
+		<button class="od-connect-edit" type="button" onclick="odOpenDesignModal('about')" data-tip="Edit social links" aria-label="Edit social links"><i class="fas fa-pencil-alt" aria-hidden="true"></i></button>
 		<?php endif; ?>
 	</div>
 	<?php if (!empty($_odVisible)): ?>
@@ -37,8 +37,8 @@ if (!empty($_odVisible) || $_odCanMng):
 		<?php foreach ($_odVisible as $_slug => $_url):
 			$_meta = $_odPlatforms[$_slug];
 		?>
-		<a class="od-connect-pill" href="<?= htmlspecialchars($_url) ?>" target="_blank" rel="noopener noreferrer" data-tip="<?= htmlspecialchars($_meta['label']) ?>">
-			<i class="<?= $_meta['icon'] ?>"></i>
+		<a class="od-connect-pill" href="<?= htmlspecialchars($_url) ?>" target="_blank" rel="noopener noreferrer" data-tip="<?= htmlspecialchars($_meta['label']) ?>" aria-label="<?= htmlspecialchars($_meta['label']) ?>">
+			<i class="<?= $_meta['icon'] ?>" aria-hidden="true"></i>
 		</a>
 		<?php endforeach; ?>
 	</div>

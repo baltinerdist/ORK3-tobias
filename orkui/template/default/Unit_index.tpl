@@ -180,12 +180,29 @@ $ctx = [
 ];
 ?>
 <link rel="stylesheet" href="<?=HTTP_TEMPLATE?>revised-frontend/style/revised.css?v=<?=filemtime(DIR_TEMPLATE.'revised-frontend/style/revised.css')?>">
+<?php
+// Only load the shared org-design stylesheet when some od-* markup can actually
+// render on this page. Union of every od-* surface below (announcement banner,
+// tagline, About design, recruitment pill, connect block, design modal).
+$_odNeedsCss = $_can_edit
+	|| $_unShowAnnouncement
+	|| $_unTagline !== ''
+	|| $_unShowNewAbout
+	|| $_unRecruitmentStatus !== ''
+	|| $_unHasSocial
+	|| trim($_about_text) !== ''
+	|| trim($_our_history) !== ''
+	|| trim($_unHowToJoin) !== ''
+	|| $_un_has_ms;
+if ($_odNeedsCss): ?>
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>shared/orgdesign/orgdesign.css?v=<?= filemtime(DIR_TEMPLATE . 'shared/orgdesign/orgdesign.css') ?>">
+<?php endif; ?>
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
 <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.dataTables.min.css">
 
 <?php if ($_un_name_font !== ''): ?>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=<?= rawurlencode($_un_name_font) ?>&display=swap">
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=<?= rawurlencode($_un_name_font) ?>&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=<?= rawurlencode($_un_name_font) ?>&display=swap"></noscript>
 <?php endif; ?>
 
 <style>
@@ -455,8 +472,10 @@ html:not([data-theme="light"]):not([data-theme="dark"]) .un-hero-name {
 @media (max-width: 768px) {
 	/* Hero */
 	.un-hero { margin-bottom: 10px; }
-	.un-hero-content { flex-wrap: wrap; padding: 18px 20px; }
-	.un-hero-actions { flex-direction: row; flex-wrap: wrap; justify-content: flex-start; }
+	.un-hero-content { flex-wrap: wrap; align-items: flex-start; padding: 18px 20px; }
+	/* Give the text column a full-line basis so it wraps instead of starving to ~6px. */
+	.un-hero-info { flex: 1 1 100%; min-width: 0; }
+	.un-hero-actions { flex: 0 0 100%; flex-direction: row; flex-wrap: wrap; justify-content: flex-start; }
 	.un-hero-name { font-size: 21px; }
 	/* Sidebar above roster on mobile (override revised.css order values) */
 	.pn-sidebar { order: 1 !important; }
@@ -2430,9 +2449,5 @@ html[data-theme="dark"] .un-retire-note {
 	}
 ?>
 <?php if ($ctx['can_manage']): ?>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
 <script src="<?= HTTP_TEMPLATE ?>shared/orgdesign/orgdesign.js?v=<?= filemtime(DIR_TEMPLATE . 'shared/orgdesign/orgdesign.js') ?>"></script>
 <?php endif; ?>
