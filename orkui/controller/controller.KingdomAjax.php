@@ -612,6 +612,25 @@ class Controller_KingdomAjax extends Controller
             }
             echo json_encode(['status' => 0]);
 
+        } elseif ($action === 'setguestattendance') {
+            $uid = (int)$this->session->user_id;
+            if (!Ork3::$Lib->authorization->HasAuthority($uid, AUTH_KINGDOM, $kingdom_id, AUTH_EDIT)) {
+                echo json_encode(['status' => 5, 'error' => 'Not authorized.']);
+                exit;
+            }
+            $this->load_model('Kingdom');
+            $enabled = (int)($_POST['GuestAttendanceEnabled'] ?? 0) ? 1 : 0;
+            $counts  = (int)($_POST['GuestAttendanceCounts']  ?? 0) ? 1 : 0;
+            $r = $this->Kingdom->set_guest_attendance_settings([
+                'Token'                   => $this->session->token,
+                'KingdomId'               => $kingdom_id,
+                'GuestAttendanceEnabled'  => $enabled,
+                'GuestAttendanceCounts'   => $counts,
+            ]);
+            echo ($r['Status'] == 0)
+                ? json_encode(['status' => 0, 'enabled' => $enabled, 'counts' => ($enabled ? $counts : 0)])
+                : json_encode(['status' => $r['Status'], 'error' => ($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? '')]);
+
         } elseif ($action === 'addauth') {
             $uid = (int)$this->session->user_id;
             if (!Ork3::$Lib->authorization->HasAuthority($uid, AUTH_KINGDOM, $kingdom_id, AUTH_CREATE)) {
@@ -1110,6 +1129,7 @@ class Controller_KingdomAjax extends Controller
 			LEFT JOIN ork_kingdom k ON k.kingdom_id = m.kingdom_id
 			LEFT JOIN ork_park p ON p.park_id = m.park_id
 			WHERE LENGTH(m.persona) > 0
+			  AND m.is_guest = 0
 			  " . ($include_suspended ? "" : "AND m.suspended = 0") . "
 			  " . ($include_inactive ? "" : "AND m.active = 1")    . "
 			  {$kingdom_clause}

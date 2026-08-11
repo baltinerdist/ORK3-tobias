@@ -387,6 +387,9 @@ class Player extends Ork3
                             'BeltDisplay' => $design->belt_display,
                         'BasicFonts' => (int)$this->mundane->basic_fonts,
                         'DyslexiaFonts' => (int)$this->mundane->dyslexia_fonts,
+                        'IsGuest' => (int)$this->mundane->is_guest,
+                        'GuestCapturedAt' => $this->mundane->guest_captured_at,
+                        'GuestSourceEventId' => $this->mundane->guest_source_event_id,
                 );
             $unit = Ork3::$Lib->report->UnitSummary(array( 'MundaneId' => $this->mundane->mundane_id, 'IncludeCompanies' => 1, 'ActiveOnly' => 1 ));
             if ($unit['Status']['Status'] != 0) {
@@ -648,7 +651,7 @@ class Player extends Ork3
 									ssa.mundane_id = '" . mysql_real_escape_string($request['MundaneId']) . "'
 								group by ssa.class_id, ssa.date) a on a.class_id = c.class_id
 						left join " . DB_PREFIX . "class_reconciliation cr on cr.class_id = c.class_id and cr.mundane_id = '" . mysql_real_escape_string($request['MundaneId']) . "'
-                    where c.active = 1
+                    where c.active = 1 and c.is_guest = 0
 					group by c.class_id
 				";
         //echo $sql;
@@ -696,10 +699,568 @@ class Player extends Ork3
         return $username;
     }
 
+    public function EmailIsAvailable($email, $excludeMundaneId = null)
+    {
+        require_once(__DIR__ . '/class.GuestValidator.php');
+        $norm = GuestValidator::normalizeEmail($email);
+        if ($norm === '') {
+            return ['available' => true, 'ownerId' => null, 'ownerIsGuest' => false]; // NULL is always ok
+        }
+        $ex = (int)$excludeMundaneId;
+        // Compare against the raw column (collation utf8mb4_unicode_ci already case-folds
+        // AND folds accents), matching the UNIQUE index exactly. A LOWER() wrapper would
+        // disagree with the index on accented characters. Input is normalized above.
+        // Parameterized: mysql_real_escape_string is a no-op shim here, and normalizeEmail
+        // permits single quotes, so bind the value instead of concatenating it. $ex is (int)-cast.
+        $this->db->Clear();
+        $this->db->email = $norm;
+        $r = $this->db->DataSet("SELECT mundane_id, given_name, surname, is_guest FROM " . DB_PREFIX . "mundane "
+             . "WHERE email = :email"
+             . ($ex > 0 ? " AND mundane_id <> " . $ex : "") . " LIMIT 1");
+        if ($r && $r->next()) {
+            return ['available' => false, 'ownerId' => (int)$r->mundane_id,
+                    'ownerName' => trim($r->given_name . ' ' . $r->surname),
+                    'ownerIsGuest' => (int)$r->is_guest === 1];
+        }
+        return ['available' => true, 'ownerId' => null, 'ownerIsGuest' => false];
+    }
+
+    public function CreateGuest($request)
+    {
+        require_once(__DIR__ . '/class.GuestValidator.php');
+        $creatorId = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+        if (!(valid_id($creatorId) && Ork3::$Lib->authorization->HasAuthority($creatorId, AUTH_PARK, $request['ParkId'], AUTH_CREATE))) {
+            return NoAuthorization();
+        }
+
+        $first = GuestValidator::normalizeName($request['GivenName']);
+        $last  = GuestValidator::normalizeName($request['Surname']);
+        if ($first === '' || $last === '') {
+            return InvalidParameter('A first and last name are required.');
+        }
+
+        $email = GuestValidator::normalizeEmail($request['Email'] ?? '');
+        if ($email !== '') {
+            $avail = $this->EmailIsAvailable($email);
+            if (!$avail['available']) {
+                return InvalidParameter('That email is already on file.', $avail);
+            }
+        }
+
+        $park = new yapo($this->db, DB_PREFIX . 'park');
+        $park->clear();
+        $park->park_id = $request['ParkId'];
+        if (!$park->find()) {
+            return InvalidParameter('Invalid park.');
+        }
+
+        // Guests may only be created where the park's kingdom has opted in to guest attendance.
+        $gk = new yapo($this->db, DB_PREFIX . 'kingdom');
+        $gk->clear();
+        $gk->kingdom_id = (int)$park->kingdom_id;
+        if (!$gk->find() || (int)$gk->guest_attendance_enabled !== 1) {
+            return InvalidParameter('Guest attendance is not enabled for this kingdom.');
+        }
+
+        $this->mundane->clear();
+        $this->mundane->given_name = $first;
+        $this->mundane->surname    = $last;
+        $this->mundane->other_name = '';
+        $this->mundane->persona    = '';
+        $this->mundane->email      = ($email !== '') ? $email : null;
+        $this->mundane->phone      = $request['Phone'] ?? null;
+        $this->mundane->park_id    = $request['ParkId'];
+        $this->mundane->kingdom_id = $park->kingdom_id;
+        $this->mundane->is_guest   = 1;
+        // username intentionally left unset/NULL (no login).
+        $this->mundane->token                 = md5(uniqid(rand(), true));
+        $this->mundane->xtoken                = md5(uniqid(rand(), true));
+        $this->mundane->password_salt         = '';
+        $this->mundane->password_expires      = date('Y-m-d H:i:s');
+        $this->mundane->waiver_ext            = '';
+        $this->mundane->reeve_qualified_until = '0000-00-00';
+        $this->mundane->modified              = date('Y-m-d H:i:s');
+        $this->mundane->active                = 1;
+        $capturedAt = date('Y-m-d H:i:s');
+        $this->mundane->guest_captured_at     = $capturedAt;
+        $this->mundane->guest_created_by_id   = $creatorId;
+        if (valid_id($request['EventId'] ?? 0)) {
+            $this->mundane->guest_source_event_id = (int)$request['EventId'];
+        }
+        $this->mundane->save();
+        $newId = (int)$this->mundane->mundane_id;
+
+        // TOCTOU guard (RELIABLE). Under ERRMODE_WARNING a duplicate-key INSERT does NOT throw.
+        // It is NOT safe to trust lastInsertId(): on a dup-key failure PDO returns the STALE id
+        // of the previous successful insert on this connection, so a `$newId <= 0` check is
+        // bypassed whenever any prior INSERT ran in the same request — yapo then refetches a
+        // DIFFERENT person's row and we'd "succeed" with the wrong mundane_id.
+        //
+        // Robust signal: read the email's GLOBAL owner back (email is UNIQUE) and confirm THAT
+        // row is the one WE just wrote by matching the identity fields we set this call
+        // (guest_created_by_id + guest_captured_at). If the owner is someone else, our INSERT
+        // lost the race and was silently rejected -> surface the collision, leave no orphan.
+        if ($email !== '') {
+            $this->db->Clear();
+            $this->db->email = $email;
+            $rb = $this->db->DataSet("SELECT mundane_id, guest_created_by_id, guest_captured_at FROM " . DB_PREFIX . "mundane "
+                . "WHERE email = :email LIMIT 1");
+            $ours = false;
+            $ownerId = 0;
+            if ($rb && $rb->next()) {
+                $ownerId = (int)$rb->mundane_id;
+                $ours = ((int)$rb->guest_created_by_id === (int)$creatorId
+                    && (string)$rb->guest_captured_at === (string)$capturedAt);
+            }
+            if (!$ours) {
+                // Our insert did not persist (race lost). Belt-and-suspenders: if yapo DID land
+                // a half row under a different/empty key, drop it so no orphan survives.
+                if ($newId > 0 && $newId !== $ownerId) {
+                    $this->db->Clear();
+                    $this->db->email = $email;
+                    $this->db->DataSet("DELETE FROM " . DB_PREFIX . "mundane WHERE mundane_id = " . $newId . " AND email <> :email");
+                }
+                $avail = $this->EmailIsAvailable($email);
+                return InvalidParameter('That email is already on file.', $avail);
+            }
+            // Our row is the owner; trust the authoritative id over the (possibly stale) lastInsertId.
+            $newId = $ownerId;
+        } elseif ($newId <= 0) {
+            // NULL-email guest can't collide on the UNIQUE index, so the only failure mode is a
+            // genuinely failed insert -> no id.
+            return InvalidParameter('The guest could not be created. Please try again.');
+        }
+
+        // Fix: yapo drops null on INSERT; ensure email=NULL not empty string when no email supplied.
+        // $DB->Clear() first: yapo->save() above left stale PDO bindings on the shared $DB.
+        if ($email === '') {
+            $this->db->Clear();
+            $this->db->query("UPDATE " . DB_PREFIX . "mundane SET email = NULL WHERE mundane_id = " . $newId . " AND (email = '' OR email IS NULL)");
+        }
+
+        $design = new yapo($this->db, DB_PREFIX . 'mundane_design');
+        $design->clear();
+        $design->mundane_id = $newId;
+        $design->save();
+
+        return Success($newId);
+    }
+
+    // Convert a guest (is_guest=1) into a full login-capable player. Same mundane_id;
+    // attendance/awards/notes are preserved. Mirrors CreatePlayer's salt/expiry/token setup.
+    public function ConvertGuest($request)
+    {
+        require_once(__DIR__ . '/class.GuestValidator.php');
+        $mundaneId = (int)($request['MundaneId'] ?? 0);
+        if (!valid_id($mundaneId)) {
+            return InvalidParameter('A guest is required.');
+        }
+
+        // Load the guest row.
+        $this->mundane->clear();
+        $this->mundane->mundane_id = $mundaneId;
+        if (!$this->mundane->find()) {
+            return InvalidParameter('No such profile.');
+        }
+        if ((int)$this->mundane->is_guest !== 1) {
+            return InvalidParameter('This profile is not a guest.');
+        }
+        // Already-merged/retired guard: a linked guest is is_guest=1, active=0 but still reachable
+        // by id; without this an officer could re-convert (and re-mint a login for) a retired row.
+        if ((int)$this->mundane->active !== 1) {
+            return InvalidParameter('This guest has already been merged/retired.');
+        }
+        $guestParkId   = (int)$this->mundane->park_id;
+        // Capture the guest's email NOW: unique_username() below mutates $this->mundane.
+        $existingEmail = GuestValidator::normalizeEmail($this->mundane->email);
+
+        // Auth: AUTH_PARK CREATE on the guest's park.
+        $creatorId = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+        if (!(valid_id($creatorId) && Ork3::$Lib->authorization->HasAuthority($creatorId, AUTH_PARK, $guestParkId, AUTH_CREATE))) {
+            return NoAuthorization();
+        }
+
+        // Username: require a usable handle, then run uniqueness/disambiguation.
+        $rawUser = trim((string)($request['UserName'] ?? ''));
+        if (strlen($rawUser) < 4) {
+            return InvalidParameter('UserNames must be at least 4 characters long.');
+        }
+        $username = $this->unique_username($rawUser, 4);
+        if ($username === false) {
+            return InvalidParameter('No UserName could be generated for this player.  Please try again.');
+        }
+
+        // Password required to mint login material.
+        $password = (string)($request['Password'] ?? '');
+        if (trimlen($password) < 1) {
+            return InvalidParameter('A password is required.');
+        }
+
+        // Email: carry the existing one (captured above) or require a fresh unique address.
+        $rawReqEmail = trim((string)($request['Email'] ?? ''));
+        $reqEmail = GuestValidator::normalizeEmail($rawReqEmail);
+        $email = ($reqEmail !== '') ? $reqEmail : $existingEmail;
+        if ($email === '') {
+            // Distinguish "junk" (officer typed something that fails validation) from "missing".
+            if ($rawReqEmail !== '') {
+                return InvalidParameter('That email address is not valid.');
+            }
+            return InvalidParameter('An email address is required to convert this guest.');
+        }
+        $avail = $this->EmailIsAvailable($email, $mundaneId);
+        if (!$avail['available']) {
+            return InvalidParameter('That email is already on file.');
+        }
+
+        // Re-load + set login material (mirror CreatePlayer).
+        $this->mundane->clear();
+        $this->mundane->mundane_id = $mundaneId;
+        if (!$this->mundane->find()) {
+            return InvalidParameter('No such profile.');
+        }
+        $this->mundane->username         = $username;
+        $this->mundane->email            = $email;
+        $this->mundane->is_guest         = 0;
+        $this->mundane->converted_at     = date('Y-m-d H:i:s');
+        $this->mundane->modified         = date('Y-m-d H:i:s');
+        $this->mundane->password_expires = date('Y-m-d H:i:s', time() + 60 * 60 * 24 * 365);
+        $this->mundane->password_salt    = md5(rand() . microtime());
+        // A converted guest is a live player: never leave it inactive.
+        $this->mundane->active           = 1;
+        if (empty($this->mundane->park_member_since) || $this->mundane->park_member_since === '0000-00-00') {
+            $this->mundane->park_member_since = date('Y-m-d');
+        }
+        $this->mundane->save();
+
+        // TOCTOU read-back guard (mirror CreateGuest/CreatePlayer). Under ERRMODE_WARNING a
+        // dup-key UPDATE does NOT throw — a race that made this username/email collide would
+        // silently no-op the save, leaving the row is_guest=1 with no username. Re-read by
+        // mundane_id and confirm it actually converted (is_guest=0 AND our username landed)
+        // BEFORE minting login material, so we never salt a password onto a row that didn't take.
+        $this->db->Clear();
+        $this->db->mundane_id = $mundaneId;
+        $rb = $this->db->DataSet("SELECT is_guest, username FROM " . DB_PREFIX . "mundane WHERE mundane_id = :mundane_id LIMIT 1");
+        if (!($rb && $rb->Next()) || (int)$rb->is_guest !== 0 || (string)$rb->username !== (string)$username) {
+            return InvalidParameter('That username or email is already in use by another account.');
+        }
+
+        // $DB->Clear() before the raw credential INSERT in SaltPassword: yapo->save() above leaves
+        // stale PDO bindings on the shared $DB, which can silently no-op the INSERT -> the converted
+        // player would have no working password row in ork_credential.
+        $this->db->Clear();
+        Authorization::SaltPassword($this->mundane->password_salt, strtoupper(trim($this->mundane->username)) . trim($password), $this->mundane->password_expires);
+
+        // Ensure a paired design row exists (guests created one, but be defensive).
+        $design = new yapo($this->db, DB_PREFIX . 'mundane_design');
+        $design->clear();
+        $design->mundane_id = $mundaneId;
+        if (!($design->find() > 0)) {
+            $design->clear();
+            $design->mundane_id = $mundaneId;
+            $design->save();
+        }
+
+        return Success($mundaneId);
+    }
+
+    // Merge-detection: candidate EXISTING players (is_guest=0) that look like this guest
+    // (email-exact OR fuzzy-name in the same park). Used to offer "link instead of create".
+    public function FindPlayerMatch($request)
+    {
+        require_once(__DIR__ . '/class.GuestValidator.php');
+        $first   = GuestValidator::normalizeName($request['GivenName'] ?? '');
+        $last    = GuestValidator::normalizeName($request['Surname'] ?? '');
+        $email   = GuestValidator::normalizeEmail($request['Email'] ?? '');
+        $parkId  = (int)($request['ParkId'] ?? 0);
+        $exclude = (int)($request['MundaneId'] ?? 0);
+
+        // This returns username/email/persona — PII. Gate it exactly like CreateGuest:
+        // the caller must be able to CREATE in the guest's park. When a guest MundaneId
+        // is given, derive ParkId AUTHORITATIVELY from the guest row (never trust a
+        // client-supplied ParkId, which could point at a park the guest isn't in).
+        if (valid_id($exclude)) {
+            $gm = new yapo($this->db, DB_PREFIX . 'mundane');
+            $gm->clear();
+            $gm->mundane_id = $exclude;
+            // IT4: a MundaneId was supplied but no such row -> do NOT silently fall back to the
+            // client-supplied ParkId (which could point at an unrelated park the caller can CREATE
+            // in). Refuse instead.
+            if (!$gm->find()) {
+                return InvalidParameter('No such guest.');
+            }
+            $parkId = (int)$gm->park_id;
+        }
+        $uid = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+        if (!(valid_id($uid) && valid_id($parkId)
+                && Ork3::$Lib->authorization->HasAuthority($uid, AUTH_PARK, $parkId, AUTH_CREATE))) {
+            return NoAuthorization();
+        }
+
+        $matches = [];
+        $seen    = [];
+
+        $addRow = function ($r) use (&$matches, &$seen) {
+            $id = (int)$r->mundane_id;
+            if (isset($seen[$id])) {
+                return;
+            }
+            $seen[$id] = true;
+            $matches[] = [
+                'MundaneId' => $id,
+                'GivenName' => $r->given_name,
+                'Surname'   => $r->surname,
+                'Persona'   => $r->persona,
+                'UserName'  => $r->username,
+                'ParkName'  => $r->park_name ?? '',
+                'Email'     => $r->email,
+            ];
+        };
+
+        // 1) Exact email match -- GLOBAL (cross-kingdom). email is UNIQUE app-wide, so an exact
+        // match returns at most the single global owner of an address the officer already had to
+        // type in full; it is NOT a PII enumeration vector. Scoping it to the park's kingdom would
+        // produce a FALSE NEGATIVE for a player who moved kingdoms and returned (a duplicate guest
+        // would then be created, defeating dedup). Compare against the raw column (collation already
+        // case/accent-folds, matching the UNIQUE index). The auth gate above still requires
+        // AUTH_PARK CREATE to reach this code at all.
+        if ($email !== '') {
+            $this->db->Clear();
+            $this->db->email = $email;
+            $r = $this->db->DataSet("SELECT m.mundane_id, m.given_name, m.surname, m.persona, m.username, m.email, p.name AS park_name "
+                 . "FROM " . DB_PREFIX . "mundane m LEFT JOIN " . DB_PREFIX . "park p ON p.park_id = m.park_id "
+                 . "WHERE m.is_guest = 0 AND m.email = :email"
+                 . ($exclude > 0 ? " AND m.mundane_id <> " . $exclude : "") . " LIMIT 5");
+            while ($r && $r->next()) {
+                $addRow($r);
+            }
+        }
+
+        // 2) Fuzzy name match within the same park (given+surname). Name is the real enumeration
+        // surface, so it stays park-scoped (tighter than kingdom) for everyone -- including
+        // non-admins -- exactly as before.
+        if ($first !== '' && $last !== '' && valid_id($parkId)) {
+            $this->db->Clear();
+            $this->db->given_name = $first;
+            $this->db->surname = $last;
+            $r = $this->db->DataSet("SELECT m.mundane_id, m.given_name, m.surname, m.persona, m.username, m.email, p.name AS park_name "
+                 . "FROM " . DB_PREFIX . "mundane m LEFT JOIN " . DB_PREFIX . "park p ON p.park_id = m.park_id "
+                 . "WHERE m.is_guest = 0 AND m.park_id = " . $parkId . " "
+                 . "AND TRIM(m.given_name) = :given_name "
+                 . "AND TRIM(m.surname) = :surname"
+                 . ($exclude > 0 ? " AND m.mundane_id <> " . $exclude : "") . " LIMIT 5");
+            while ($r && $r->next()) {
+                $addRow($r);
+            }
+        }
+
+        return Success($matches);
+    }
+
+    // Link a guest to an existing player: re-point the guest's attendance + notes to the
+    // real player, then retire the guest row (active=0). No data destroyed.
+    public function LinkGuestToPlayer($request)
+    {
+        $guestId  = (int)($request['MundaneId'] ?? $request['GuestId'] ?? 0);
+        $playerId = (int)($request['PlayerId'] ?? 0);
+        if (!valid_id($guestId) || !valid_id($playerId) || $guestId === $playerId) {
+            return InvalidParameter('A distinct guest and target player are required.');
+        }
+
+        // Source must be a guest.
+        $src = new yapo($this->db, DB_PREFIX . 'mundane');
+        $src->clear();
+        $src->mundane_id = $guestId;
+        if (!$src->find()) {
+            return InvalidParameter('No such guest.');
+        }
+        if ((int)$src->is_guest !== 1) {
+            return InvalidParameter('Source profile is not a guest.');
+        }
+        // Already-merged/retired guard: a linked guest is is_guest=1, active=0 but still reachable
+        // by id; without this the same guest could be re-linked, double-re-pointing rows.
+        if ((int)$src->active !== 1) {
+            return InvalidParameter('This guest has already been merged/retired.');
+        }
+        $guestParkId    = (int)$src->park_id;
+        $guestKingdomId = (int)$src->kingdom_id;
+
+        // Target must be a real player.
+        $tgt = new yapo($this->db, DB_PREFIX . 'mundane');
+        $tgt->clear();
+        $tgt->mundane_id = $playerId;
+        if (!$tgt->find()) {
+            return InvalidParameter('No such target player.');
+        }
+        if ((int)$tgt->is_guest === 1) {
+            return InvalidParameter('Target must be a full player, not a guest.');
+        }
+        $tgtKingdomId = (int)$tgt->kingdom_id;
+        $tgtParkId    = (int)$tgt->park_id;
+
+        // Auth: AUTH_PARK CREATE on the guest's park.
+        $creatorId = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+        if (!(valid_id($creatorId) && Ork3::$Lib->authorization->HasAuthority($creatorId, AUTH_PARK, $guestParkId, AUTH_CREATE))) {
+            return NoAuthorization();
+        }
+        // IDOR guard: also require authority over the TARGET player's park. Without this an
+        // officer with rights only over the guest's park could fold the guest's data into a
+        // player in a park they have no authority over.
+        if (!Ork3::$Lib->authorization->HasAuthority($creatorId, AUTH_PARK, $tgtParkId, AUTH_CREATE)) {
+            return NoAuthorization();
+        }
+
+        // Re-point every table a guest could plausibly own from the retired guest row to
+        // the real player. The guest's mundane_id is going away (active=0), so anything not
+        // re-pointed here is orphaned. Mirrors MergePlayer's table set; $DB->Clear() before
+        // each raw statement so stale PDO bindings can't silently no-op the UPDATE.
+        $g = (int)$guestId;
+        $p = (int)$playerId;
+
+        // attendance: de-dupe only rows the player already has on the SAME (date, park).
+        // A guest and the target can legitimately attend on the same date at DIFFERENT
+        // parks; keying the dedup on date alone would destroy those non-duplicate rows.
+        $this->db->Clear();
+        $this->db->query("DELETE FROM " . DB_PREFIX . "attendance WHERE mundane_id = " . $g
+            . " AND (date, park_id) IN (SELECT date, park_id FROM (SELECT DISTINCT date, park_id FROM " . DB_PREFIX . "attendance WHERE mundane_id = " . $p . ") AS d)");
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "attendance SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+
+        // notes.
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "mundane_note SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+
+        // awards: recipient and giver.
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "awards SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "awards SET given_by_id = " . $p . " WHERE given_by_id = " . $g);
+
+        // unit membership and unit ownership.
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "unit_mundane SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "unit SET owner_id = " . $p . " WHERE owner_id = " . $g);
+
+        // authorizations / officer roles (rare for a guest, but transfer for parity with MergePlayer).
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "authorization SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "officer SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+
+        // events owned, splits, transactions.
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "event SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "split SET src_mundane_id = " . $p . " WHERE src_mundane_id = " . $g);
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "transaction SET recorded_by = " . $p . " WHERE recorded_by = " . $g);
+
+        // event_rsvp: unique key (mundane_id, event_calendardetail_id) — drop colliding guest rows first.
+        $this->db->Clear();
+        $this->db->query("DELETE FROM " . DB_PREFIX . "event_rsvp WHERE mundane_id = " . $g
+            . " AND event_calendardetail_id IN (SELECT event_calendardetail_id FROM (SELECT event_calendardetail_id FROM " . DB_PREFIX . "event_rsvp WHERE mundane_id = " . $p . ") AS existing)");
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "event_rsvp SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+
+        // class_reconciliation: unique key (class_id, mundane_id) — de-dupe first.
+        $this->db->Clear();
+        $this->db->query("DELETE FROM " . DB_PREFIX . "class_reconciliation WHERE mundane_id = " . $g
+            . " AND class_id IN (SELECT class_id FROM (SELECT class_id FROM " . DB_PREFIX . "class_reconciliation WHERE mundane_id = " . $p . ") AS existing)");
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "class_reconciliation SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+
+        // recommendations: recipient and recommender.
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "recommendations SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "recommendations SET recommended_by_id = " . $p . " WHERE recommended_by_id = " . $g);
+
+        // recommendation_seconds: unique (recommendations_id, supporter_mundane_id) — soft-delete colliders first.
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "recommendation_seconds fr "
+            . "JOIN " . DB_PREFIX . "recommendation_seconds toR ON toR.recommendations_id = fr.recommendations_id AND toR.supporter_mundane_id = " . $p . " "
+            . "SET fr.deleted_at = NOW(), fr.deleted_by = " . $p . " "
+            . "WHERE fr.supporter_mundane_id = " . $g . " AND fr.deleted_at IS NULL");
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "recommendation_seconds SET supporter_mundane_id = " . $p . " WHERE supporter_mundane_id = " . $g . " AND deleted_at IS NULL");
+
+        // dues, tournament officiant/participant, game logs, applications.
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "dues SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "bracket_officiant SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "participant_mundane SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "game SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "application SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+
+        // whats_new_seen: unique key (mundane_id, version) — de-dupe first.
+        $this->db->Clear();
+        $this->db->query("DELETE FROM " . DB_PREFIX . "whats_new_seen WHERE mundane_id = " . $g
+            . " AND version IN (SELECT version FROM (SELECT version FROM " . DB_PREFIX . "whats_new_seen WHERE mundane_id = " . $p . ") AS existing)");
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "whats_new_seen SET mundane_id = " . $p . " WHERE mundane_id = " . $g);
+
+        // The retired guest keeps no paired design row (target keeps its own).
+        $this->db->Clear();
+        $this->db->query("DELETE FROM " . DB_PREFIX . "mundane_design WHERE mundane_id = " . $g);
+
+        // idp_auth: delete the retired guest's IDP link — the target keeps their own login.
+        // Mirrors MergePlayer's idp_auth handling for the FROM player.
+        $this->db->Clear();
+        $this->db->query("DELETE FROM " . DB_PREFIX . "idp_auth WHERE mundane_id = " . $g);
+
+        // Retire the guest row.
+        $this->db->Clear();
+        $this->db->query("UPDATE " . DB_PREFIX . "mundane SET active = 0, modified = '" . date('Y-m-d H:i:s') . "' WHERE mundane_id = " . $g);
+
+        // Cache busts (mirror MergePlayer's tail). Attendance/recs were re-pointed to the
+        // target, so its class cache and both players' award-recs caches are now stale; the
+        // retired guest's profile cache must also drop.
+        $_ck = Ork3::$Lib->ghettocache->key(['MundaneId' => $p]);
+        Ork3::$Lib->ghettocache->bust('Player.GetPlayerClasses', $_ck);
+        $this->bust_player_award_recs_cache($g, $guestKingdomId, $guestParkId);
+        $this->bust_player_award_recs_cache($p, $tgtKingdomId, $tgtParkId);
+        // Retired guest's profile cache.
+        Ork3::$Lib->ghettocache->bust(
+            'Model_Player.fetch_player_details',
+            Ork3::$Lib->ghettocache->key(['MundaneId' => $g])
+        );
+        // Target player's profile cache: its awards/attendance/notes just changed too.
+        Ork3::$Lib->ghettocache->bust(
+            'Model_Player.fetch_player_details',
+            Ork3::$Lib->ghettocache->key(['MundaneId' => $p])
+        );
+
+        return Success($playerId);
+    }
+
     public function CreatePlayer($request)
     {
         if (strlen($request['UserName']) < 4) {
             return InvalidParameter('UserNames must be at least 4 characters long.');
+        }
+
+        // Email is REQUIRED to create a full (login-capable) player. A person with no
+        // email must be captured via CreateGuest (login-less, email-optional) and
+        // converted later. This is the authoritative gate for every caller of
+        // CreatePlayer (staff/kingdom/admin create modals); guests never reach here.
+        require_once(__DIR__ . '/class.GuestValidator.php');
+        $rawEmail = trim((string)($request['Email'] ?? ''));
+        if ($rawEmail === '') {
+            return InvalidParameter('An email address is required to create a player.');
+        }
+        $normEmail = GuestValidator::normalizeEmail($rawEmail);
+        if ($normEmail === '') {
+            return InvalidParameter('Please enter a valid email address.');
+        }
+        // Reject duplicates BEFORE creating any row, so a collision (blocked by the
+        // UNIQUE index) never half-creates a player.
+        $avail = $this->EmailIsAvailable($normEmail);
+        if (!$avail['available']) {
+            return InvalidParameter('That email address is already in use by another account.', $avail);
         }
 
         if (($mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token'])) > 0
@@ -720,7 +1281,7 @@ class Player extends Ork3
                 $this->mundane->other_name = $request['OtherName'];
                 $this->mundane->username = trim($request['UserName']);
                 $this->mundane->persona = trim($request['Persona']);
-                $this->mundane->email = $request['Email'];
+                $this->mundane->email = $normEmail; // required + non-empty (gated above)
                 $this->mundane->park_id = $request['ParkId'];
                 $this->mundane->kingdom_id = $park->kingdom_id;
                 $this->mundane->modified = date('Y-m-d H:i:s', time());
@@ -738,12 +1299,50 @@ class Player extends Ork3
                 $this->mundane->password_expires = date("Y-m-d H:i:s", time() + 60 * 60 * 24 * 365);
                 $this->mundane->password_salt = md5(rand().microtime());
                 $this->mundane->park_member_since = date('Y-m-d');
-                $this->mundane->token                = md5(uniqid(rand(), true));
+                $createToken = md5(uniqid(rand(), true));
+                $this->mundane->token                = $createToken;
                 $this->mundane->xtoken               = md5(uniqid(rand(), true));
                 $this->mundane->waiver_ext           = '';
                 $this->mundane->reeve_qualified_until = '0000-00-00';
                 $this->mundane->save();
                 $new_mundane_id = (int)$this->mundane->mundane_id;
+
+                // TOCTOU guard (RELIABLE). Under ERRMODE_WARNING a duplicate-key INSERT does NOT
+                // throw, and lastInsertId() is NOT 0 on failure -- it returns the STALE id of the
+                // previous successful insert on this connection. So a `$new_mundane_id <= 0` check
+                // is bypassed whenever a prior INSERT ran in the same request, and yapo refetches
+                // a DIFFERENT person's row (wrong-id Success). Robust signal: read the email's
+                // GLOBAL owner back (email is UNIQUE) and confirm that row is the one WE just
+                // wrote by matching the unique token we set this call. If the owner is someone
+                // else, our INSERT lost the race -> surface the collision and leave no orphan.
+                // Email is required + unique, so read its owner back and confirm the row we just
+                // wrote is ours (by our unique token). If the owner is someone else, our INSERT
+                // lost the race -> surface the collision and leave no orphan. Bind the value:
+                // mysql_real_escape_string is a no-op shim and normalizeEmail permits quotes.
+                $this->db->Clear();
+                $this->db->email = $normEmail;
+                $rb = $this->db->DataSet("SELECT mundane_id, token FROM " . DB_PREFIX . "mundane "
+                    . "WHERE email = :email LIMIT 1");
+                $ours = false;
+                $ownerId = 0;
+                if ($rb && $rb->next()) {
+                    $ownerId = (int)$rb->mundane_id;
+                    $ours = ((string)$rb->token === (string)$createToken);
+                }
+                if (!$ours) {
+                    if ($new_mundane_id > 0 && $new_mundane_id !== $ownerId) {
+                        // Bind the email: a raw quote in $normEmail would otherwise break out of
+                        // the string and (via operator precedence on "<> '...'") risk a mass DELETE.
+                        $this->db->Clear();
+                        $this->db->email = $normEmail;
+                        $this->db->Execute("DELETE FROM " . DB_PREFIX . "mundane WHERE mundane_id = " . (int)$new_mundane_id . " AND email <> :email");
+                    }
+                    $avail = $this->EmailIsAvailable($normEmail);
+                    return InvalidParameter('That email address is already in use by another account.', $avail);
+                }
+                // Trust the authoritative id over the (possibly stale) lastInsertId.
+                $new_mundane_id = $ownerId;
+                $this->mundane->mundane_id = $new_mundane_id;
 
                 // Paired design-preferences row (one per mundane, all schema defaults at creation).
                 $design = new yapo($this->db, DB_PREFIX . 'mundane_design');
@@ -1721,7 +2320,23 @@ class Player extends Ork3
                 }
                 $this->mundane->save();
                 logtrace("Mundane DB 1", $this->mundane);
-                $this->mundane->email = is_null($request['Email']) ? $this->mundane->email : $request['Email'];
+                // Email: normalize (junk/blank -> '') and enforce global uniqueness.
+                // Keep-on-null semantics: a null request Email leaves the existing value untouched.
+                require_once(__DIR__ . '/class.GuestValidator.php');
+                $_emailToNull = false;
+                if (!is_null($request['Email'])) {
+                    $_normEmail = GuestValidator::normalizeEmail($request['Email']);
+                    if ($_normEmail === '') {
+                        $this->mundane->email = null; // yapo drops null on save -> clear explicitly post-save
+                        $_emailToNull = true;
+                    } else {
+                        $_avail = $this->EmailIsAvailable($_normEmail, (int)$request['MundaneId']);
+                        if (!$_avail['available']) {
+                            return InvalidParameter('That email is already on file.', $_avail);
+                        }
+                        $this->mundane->email = $_normEmail;
+                    }
+                }
                 if (trimlen($request['Password']) > 0) {
                     logtrace("Update password", $request['Password']);
                     $this->mundane->password_expires = date("Y-m-d H:i:s", time() + 60 * 60 * 24 * 365 * 2);
@@ -1764,6 +2379,13 @@ class Player extends Ork3
                 }
                 logtrace("Player Updated", array($request, $this->mundane->lastSql()));
                 $this->mundane->save();
+                if ($_emailToNull) {
+                    // yapo skips null on save; force NULL so legacy '' callers can't reintroduce
+                    // empty-string emails or break the unique index. $DB->Clear() first: the
+                    // save() above left stale PDO bindings on the shared $DB.
+                    $this->db->Clear();
+                    $this->db->query("UPDATE " . DB_PREFIX . "mundane SET email = NULL WHERE mundane_id = " . (int)$request['MundaneId']);
+                }
                 $post_player = $this->GetPlayer(['MundaneId' => $request['MundaneId']]);
                 $_audit_req = $request;
                 $_audit_req['PasswordChanged'] = trimlen($request['Password'] ?? '') > 0 ? 1 : 0;

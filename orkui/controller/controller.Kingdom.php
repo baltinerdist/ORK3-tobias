@@ -76,6 +76,17 @@ class Controller_Kingdom extends Controller
             echo json_encode($cached);
             exit();
         }
+        global $DB;
+        // Guest-attendance policy (single kingdom): exclude Guest-class rows from
+        // attendance counts/averages when this kingdom does NOT count guests.
+        $gcid = (int)Attendance::GuestClassId();
+        $knCounts = 0;
+        $DB->Clear();
+        $gcRs = $DB->DataSet("SELECT guest_attendance_counts FROM " . DB_PREFIX . "kingdom WHERE kingdom_id = {$kid} LIMIT 1");
+        if ($gcRs && $gcRs->Next()) {
+            $knCounts = (int)$gcRs->guest_attendance_counts;
+        }
+        $guestExcl = ($gcid > 0 && $knCounts === 0) ? " AND a.class_id <> {$gcid} " : "";
         $wkStart  = date('Y-m-d', strtotime('-6 month'));
         $wkEnd    = date('Y-m-d');
         $wkCount  = max(1, (int)ceil((strtotime($wkEnd) - strtotime($wkStart)) / (7 * 86400)));
@@ -100,7 +111,7 @@ class Controller_Kingdom extends Controller
 			FROM ork_attendance a
 			INNER JOIN ork_park p  ON p.park_id  = a.park_id  AND p.kingdom_id IN ({$statsKids})
 			INNER JOIN ork_mundane m ON m.mundane_id = a.mundane_id AND m.suspended = 0 AND m.active = 1
-			WHERE a.date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) AND a.mundane_id > 0
+			WHERE a.date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) AND a.mundane_id > 0 {$guestExcl}
 			GROUP BY a.park_id";
         $DB->Clear();
         $pcResult = $DB->DataSet($pcSql);
@@ -121,7 +132,7 @@ class Controller_Kingdom extends Controller
 				SELECT a.mundane_id FROM " . DB_PREFIX . "attendance a
 				INNER JOIN " . DB_PREFIX . "park p ON p.park_id = a.park_id AND p.kingdom_id IN ({$statsKids})
 				WHERE a.date >= '{$wkStart}'
-					AND a.mundane_id > 0
+					AND a.mundane_id > 0 {$guestExcl}
 				GROUP BY a.date_year, a.date_week3, a.mundane_id
 			) t";
         $DB->Clear();
@@ -137,7 +148,7 @@ class Controller_Kingdom extends Controller
 				FROM " . DB_PREFIX . "attendance a
 				INNER JOIN " . DB_PREFIX . "park p ON p.park_id = a.park_id AND p.kingdom_id IN ({$statsKids})
 				WHERE a.date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
-					AND a.mundane_id > 0
+					AND a.mundane_id > 0 {$guestExcl}
 				GROUP BY a.date_year, a.date_month
 			) sub";
         $DB->Clear();
@@ -161,7 +172,7 @@ class Controller_Kingdom extends Controller
 				     INNER JOIN " . DB_PREFIX . "park pk ON pk.park_id = a.park_id AND pk.kingdom_id IN ({$statsKids})
 				     WHERE a.date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
 				       AND a.date <  DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
-				       AND a.mundane_id > 0
+				       AND a.mundane_id > 0 {$guestExcl}
 				     GROUP BY date_year, date_week3, mundane_id, a.park_id
 				 ) mw ON p.park_id = mw.park_id
 				 WHERE p.kingdom_id IN ({$statsKids}) AND p.active = 'Active'
@@ -186,7 +197,7 @@ class Controller_Kingdom extends Controller
 				     INNER JOIN ork_park p ON p.park_id = a.park_id AND p.kingdom_id IN ({$statsKids})
 				     WHERE a.date >= DATE_SUB(CURDATE(), INTERVAL 24 MONTH)
 				       AND a.date <  DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
-				       AND a.mundane_id > 0
+				       AND a.mundane_id > 0 {$guestExcl}
 				     GROUP BY a.date_year, a.date_month, a.park_id
 				 ) mm
 				 GROUP BY park_id"
@@ -391,7 +402,7 @@ class Controller_Kingdom extends Controller
 			   AND la.kingdom_id = {$kid}
 			LEFT JOIN ork_class c ON la.class_id = c.class_id
 			LEFT JOIN ork_officer o ON o.mundane_id = m.mundane_id AND o.park_id = m.park_id
-			WHERE m.suspended = 0 AND m.active = 1
+			WHERE m.suspended = 0 AND m.active = 1 AND m.is_guest = 0
 			GROUP BY m.mundane_id
 			ORDER BY m.persona";
         $DB->Clear();
@@ -936,6 +947,16 @@ class Controller_Kingdom extends Controller
         $this->data['IsOrkAdmin'] = $uid > 0
             && Ork3::$Lib->authorization->HasAuthority($uid, AUTH_ADMIN, 0, AUTH_ADMIN);
 
+        // Kingdom guest-attendance toggle — gates the "Add Guest" tab on the Create
+        // Player modal so it only appears where the kingdom has opted in.
+        $this->data['GuestAttendanceEnabled'] = 0;
+        global $DB;
+        $DB->Clear();
+        $_kgaRs = $DB->DataSet("SELECT guest_attendance_enabled FROM " . DB_PREFIX . "kingdom WHERE kingdom_id = " . (int)$kingdom_id . " LIMIT 1");
+        if ($_kgaRs && $_kgaRs->Next()) {
+            $this->data['GuestAttendanceEnabled'] = (int)$_kgaRs->guest_attendance_enabled;
+        }
+
         // Park-level officers (within this kingdom) need the calendar-item edit
         // modal rendered too so they can edit park-level calendar items via the
         // kingdom calendar view. Without this, clicking Edit closes the view
@@ -1049,6 +1070,8 @@ class Controller_Kingdom extends Controller
                 'ParentKingdomId'  => $parentKingdomId,
                 'ParentKingdomName' => $parentKingdomName,
                 'Active'           => $kd['KingdomInfo']['Active'] ?? 'Active',
+                'GuestAttendanceEnabled' => (int)($kd['KingdomInfo']['GuestAttendanceEnabled'] ?? 0),
+                'GuestAttendanceCounts'  => (int)($kd['KingdomInfo']['GuestAttendanceCounts']  ?? 0),
             ];
 
             $adminConfig = [];

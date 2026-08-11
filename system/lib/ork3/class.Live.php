@@ -49,24 +49,34 @@ class Live extends Ork3 {
 		$date_floor = date('Y-m-d', time() - 24 * 3600);
 
 		$response = array(
-			'now'       => $now,
-			'active_3h' => 0,
-			'parks'     => array(),
-			'events'    => array(),
+			'now'        => $now,
+			'active_3h'  => 0,
+			'guests_3h'  => 0,
+			'parks'      => array(),
+			'events'     => array(),
 		);
 
 		// Aggregate per (park_id, event_id). park_id=0 with an event_id rolls up
 		// into events; park_id>0 rolls up into parks.
+		$gcid = (int)Attendance::GuestClassId();
+		$keep = "(k.guest_attendance_counts = 1 OR a.class_id <> " . $gcid . ")";
+		// Guest-turnout readout: count Guest-class sign-ins separately, always
+		// (independent of the per-kingdom guest_attendance_counts policy that
+		// governs the member-facing counts above).
+		$isg = $gcid > 0 ? ("a.class_id = " . $gcid) : "0";
 		$sql = "SELECT
-			park_id,
-			event_id,
-			MAX(event_calendardetail_id) AS calendar_detail_id,
-			COUNT(*)                                            AS day_count,
-			SUM(CASE WHEN entered_at >= '" . $cutoff_3h  . "' THEN 1 ELSE 0 END) AS h3_count,
-			SUM(CASE WHEN entered_at >= '" . $cutoff_30m . "' THEN 1 ELSE 0 END) AS m30_count
-		FROM " . DB_PREFIX . "attendance
-		WHERE date >= '" . $date_floor . "' AND entered_at >= '" . $cutoff_24h . "'
-		GROUP BY park_id, event_id";
+			a.park_id,
+			a.event_id,
+			MAX(a.event_calendardetail_id) AS calendar_detail_id,
+			SUM(CASE WHEN " . $keep . " THEN 1 ELSE 0 END) AS day_count,
+			SUM(CASE WHEN a.entered_at >= '" . $cutoff_3h  . "' AND " . $keep . " THEN 1 ELSE 0 END) AS h3_count,
+			SUM(CASE WHEN a.entered_at >= '" . $cutoff_30m . "' AND " . $keep . " THEN 1 ELSE 0 END) AS m30_count,
+			SUM(CASE WHEN " . $isg . " THEN 1 ELSE 0 END) AS guest_day_count,
+			SUM(CASE WHEN a.entered_at >= '" . $cutoff_3h . "' AND " . $isg . " THEN 1 ELSE 0 END) AS guest_h3_count
+		FROM " . DB_PREFIX . "attendance a
+		LEFT JOIN " . DB_PREFIX . "kingdom k ON k.kingdom_id = a.kingdom_id
+		WHERE a.date >= '" . $date_floor . "' AND a.entered_at >= '" . $cutoff_24h . "'
+		GROUP BY a.park_id, a.event_id";
 
 		$rs = $this->db->DataSet($sql);
 		$park_ids  = array();
@@ -78,13 +88,18 @@ class Live extends Ork3 {
 				$day = (int)$rs->day_count;
 				$h3  = (int)$rs->h3_count;
 				$m30 = (int)$rs->m30_count;
+				$gday = (int)$rs->guest_day_count;
+				$gh3  = (int)$rs->guest_h3_count;
 				$response['active_3h'] += $h3;
+				$response['guests_3h'] += $gh3;
 
 				if ($pid > 0) {
 					$response['parks'][$pid] = array(
-						'day'  => $day,
-						'h3'   => $h3,
-						'm30'  => $m30,
+						'day'    => $day,
+						'h3'     => $h3,
+						'm30'    => $m30,
+						'gday'   => $gday,
+						'gh3'    => $gh3,
 					);
 					$park_ids[] = $pid;
 				} elseif ($eid > 0) {
@@ -92,6 +107,8 @@ class Live extends Ork3 {
 						'day'                => $day,
 						'h3'                 => $h3,
 						'm30'                => $m30,
+						'gday'               => $gday,
+						'gh3'                => $gh3,
 						'calendar_detail_id' => (int)$rs->calendar_detail_id,
 					);
 					$event_ids[] = $eid;

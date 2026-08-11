@@ -21,6 +21,8 @@
 
 	$isSuspended = ($Player['Suspended'] == 1);
 	$isActive = ($Player['Active'] == 1 && !$isSuspended);
+	// Guest flag — guests are login-less placeholder profiles captured at demos
+	$isGuest = !empty($Player['IsGuest']) && (int)$Player['IsGuest'] === 1;
 	$pronounDisplay = (!empty($Player['PronounCustomText'])) ? $Player['PronounCustomText'] : $Player['PronounText'];
 	$heraldryUrl = $Player['HasHeraldry'] > 0 ? $Player['Heraldry'] : HTTP_PLAYER_HERALDRY . '000000.jpg';
 	$imageUrl = $Player['HasImage'] > 0 ? $Player['Image'] : HTTP_PLAYER_HERALDRY . '000000.jpg';
@@ -1058,6 +1060,14 @@ html[data-theme="dark"] .dp-anon-row{border-bottom-color:var(--ork-border)}
 #dp-prefs-body.dp-locked{opacity:.35;pointer-events:none;user-select:none}
 html[data-theme="dark"] .dp-no-restrict-row{background:rgba(255,255,255,.04);border-color:var(--ork-border)}
 html[data-theme="dark"] .dp-no-restrict-row:hover{background:rgba(255,255,255,.08)}
+/* ===== Guest profile badge + info banner ===== */
+.pn-guest-banner{display:flex;align-items:flex-start;gap:10px;background:rgba(0,0,0,0.25);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:10px 14px;margin-top:10px;color:rgba(255,255,255,0.9);font-size:13px;line-height:1.5}
+.pn-guest-banner i{font-size:15px;flex-shrink:0;margin-top:2px;color:rgba(255,255,255,0.8)}
+.pn-guest-banner-body{flex:1;min-width:0}
+.pn-guest-banner strong{font-weight:700;color:#fff}
+.pn-guest-meta{margin-top:3px;font-size:12px;opacity:0.8}
+.pn-badge-guest{background:#744210!important;color:#fbd38d!important;border:1px solid #975a16!important}
+html[data-theme="dark"] .pn-badge-guest{background:#5c3108!important;color:#fbd38d!important;border-color:#7a4210!important}
 </style>
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>revised-frontend/style/revised.css?v=<?= filemtime(DIR_TEMPLATE . 'revised-frontend/style/revised.css') ?>">
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
@@ -1117,7 +1127,13 @@ html[data-theme="dark"] .dp-no-restrict-row:hover{background:rgba(255,255,255,.0
 			<?php
 				$_pnDisplayName = '';
 				if (!empty($Player['NamePrefix'])) $_pnDisplayName .= htmlspecialchars($Player['NamePrefix']) . ' ';
-				$_pnDisplayName .= htmlspecialchars($Player['Persona']);
+				// Guests have no persona; show their real name instead
+				if ($isGuest && empty($Player['Persona'])) {
+					$_guestDisplayName = trim(($Player['GivenName'] ?? '') . ' ' . ($Player['Surname'] ?? ''));
+					$_pnDisplayName .= htmlspecialchars($_guestDisplayName ?: 'Guest');
+				} else {
+					$_pnDisplayName .= htmlspecialchars($Player['Persona']);
+				}
 				if (!empty($Player['NameSuffix'])) {
 					$_pnDisplayName .= ((int)($Player['SuffixComma'] ?? 0) ? ', ' : ' ') . htmlspecialchars($Player['NameSuffix']);
 				}
@@ -1158,17 +1174,23 @@ html[data-theme="dark"] .dp-no-restrict-row:hover{background:rgba(255,255,255,.0
 				<?php else: ?>
 					<span class="pn-badge pn-badge-gray"><i class="fas fa-minus-circle"></i> Inactive</span>
 				<?php endif; ?>
-				<?php if (!empty($Player['IsNewPlayer'])): ?>
+				<?php if ($isGuest): ?>
+					<span class="pn-badge pn-badge-guest"><i class="fas fa-user-clock"></i> Guest</span>
+				<?php endif; ?>
+				<?php if (!empty($Player['IsNewPlayer']) && !$isGuest): ?>
 					<span class="pn-badge pn-badge-blue"><i class="fas fa-star"></i> New Player</span>
 				<?php endif; ?>
 				<?php if ($isSuspended): ?>
 					<span class="pn-badge pn-badge-red"><i class="fas fa-ban"></i> Suspended</span>
 				<?php endif; ?>
+				<?php if (!$isGuest): ?>
 				<?php if ($Player['Waivered'] == 1): ?>
 					<span class="pn-badge pn-badge-blue"><i class="fas fa-file-signature"></i> Waivered</span>
 				<?php else: ?>
 					<span class="pn-badge pn-badge-yellow"><i class="fas fa-exclamation-circle"></i> Needs Waiver</span>
 				<?php endif; ?>
+				<?php endif; // !isGuest -- waiver not applicable to guests ?>
+				<?php if (!$isGuest): ?>
 				<?php if ($_duesForLife || (!empty($Player['DuesThrough']) && strtotime($Player['DuesThrough']) >= time())): ?>
 					<span class="pn-badge pn-badge-green"><i class="fas fa-receipt"></i> Dues Paid</span>
 				<?php elseif (!empty($Player['LastDuesThrough'])): ?>
@@ -1176,6 +1198,7 @@ html[data-theme="dark"] .dp-no-restrict-row:hover{background:rgba(255,255,255,.0
 				<?php else: ?>
 					<span class="pn-badge pn-badge-gray"><i class="fas fa-receipt"></i> No Dues on File</span>
 				<?php endif; ?>
+				<?php endif; // !isGuest -- dues not applicable to guests ?>
 				<span id="pn-voting-badge" style="display:none;" class="pn-badge pn-badge-blue"><i class="fas fa-vote-yea"></i> Voting Eligible<span id="pn-voting-badge-sub" class="pn-badge-sub" style="display:none;"></span></span>
 				<?php if (!empty($OfficerRoles)): ?>
 					<?php foreach ($OfficerRoles as $office): ?>
@@ -1204,6 +1227,20 @@ html[data-theme="dark"] .dp-no-restrict-row:hover{background:rgba(255,255,255,.0
 						&mdash; <?= htmlspecialchars($_susReason) ?>
 					<?php endif; ?>
 				</div>
+			<?php endif; ?>
+			<?php if ($isGuest): ?>
+			<div class="pn-guest-banner">
+				<i class="fas fa-user-clock"></i>
+				<div class="pn-guest-banner-body">
+					<strong>Guest profile</strong> &mdash; no login, no class credits.
+					<?php if (!empty($Player['GuestCapturedAt'])): ?>
+					<div class="pn-guest-meta">Captured <?= htmlspecialchars(date('M j, Y', strtotime($Player['GuestCapturedAt']))) ?><?php if (!empty($Player['GuestSourceEventId'])): ?> at event #<?= (int)$Player['GuestSourceEventId'] ?><?php endif; ?>
+						<?php if ($canEditAdmin): ?>
+						<div style="margin-top:8px"><button class="pn-btn pn-btn-white" id="pn-convert-guest-btn" onclick="pnOpenConvertModal()"><i class="fas fa-user-check"></i> Convert to full player</button></div>
+						<?php endif; ?></div>
+					<?php endif; ?>
+				</div>
+			</div>
 			<?php endif; ?>
 		</div>
 		<div class="pn-hero-actions">
@@ -1273,24 +1310,30 @@ html[data-theme="dark"] .dp-no-restrict-row:hover{background:rgba(255,255,255,.0
 				<span class="pn-detail-value"><?= htmlspecialchars($Player['Surname']) ?></span>
 			</div>
 			<?php endif; ?>
+			<?php if (!empty($Player['Persona'])): ?>
 			<div class="pn-detail-row">
 				<span class="pn-detail-label">Persona</span>
 				<span class="pn-detail-value"><?= htmlspecialchars($Player['Persona']) ?></span>
 			</div>
+			<?php endif; ?>
+			<?php if (!$isGuest): ?>
 			<div class="pn-detail-row">
 				<span class="pn-detail-label">Username</span>
 				<span class="pn-detail-value"><?= htmlspecialchars($Player['UserName']) ?></span>
 			</div>
+			<?php endif; ?>
 			<?php if ($showEmail && !empty($Player['Email'])): ?>
 			<div class="pn-detail-row">
 				<span class="pn-detail-label">Email</span>
 				<span class="pn-detail-value"><a href="mailto:<?= htmlspecialchars($Player['Email']) ?>"><?= htmlspecialchars($Player['Email']) ?></a></span>
 			</div>
 			<?php endif; ?>
+			<?php if (!$isGuest): ?>
 			<div class="pn-detail-row"<?= ($passwordExpired || $passwordSoon) ? ' style="background:var(--ork-alert-warning-bg,#fffbe6);border-left:3px solid var(--ork-alert-warning-border,#f6ad55);padding-left:6px;margin-left:-6px;"' : '' ?>>
 				<span class="pn-detail-label">Password Expires</span>
 				<span class="pn-detail-value" style="<?= $passwordExpired ? 'color:#c53030;font-weight:600;' : ($passwordSoon ? 'color:#b7791f;font-weight:600;' : '') ?>"><?= $passwordExpiring ?><?= $passwordSoon ? ' <i class="fas fa-exclamation-triangle" style="margin-left:5px;font-size:12px;" title="Expires within 2 weeks"></i>' : '' ?></span>
 			</div>
+			<?php endif; // !isGuest -- no password for guests ?>
 			<div class="pn-detail-row">
 				<span class="pn-detail-label">Park Member Since</span>
 				<span class="pn-detail-value"><?= (!empty($Player['ParkMemberSince']) && $Player['ParkMemberSince'] !== '0000-00-00') ? htmlspecialchars($Player['ParkMemberSince']) : 'N/A' ?></span>
@@ -1303,6 +1346,12 @@ html[data-theme="dark"] .dp-no-restrict-row:hover{background:rgba(255,255,255,.0
 				<span class="pn-detail-label">Last Sign-In</span>
 				<span class="pn-detail-value"><?= $Player['LastSignInDate'] ? htmlspecialchars($Player['LastSignInDate']) : 'N/A' ?></span>
 			</div>
+			<?php if ($isGuest && !empty($Player['GuestCapturedAt'])): ?>
+			<div class="pn-detail-row">
+				<span class="pn-detail-label">Guest Since</span>
+				<span class="pn-detail-value"><?= htmlspecialchars(date('M j, Y', strtotime($Player['GuestCapturedAt']))) ?></span>
+			</div>
+			<?php endif; ?>
 		</div>
 
 		<!-- Heraldry -->
@@ -3012,6 +3061,60 @@ html[data-theme="dark"] .dp-no-restrict-row:hover{background:rgba(255,255,255,.0
 <?php endif; ?>
 
 <!-- =============================================
+     Convert Guest -> Full Player Modal (officer-only, guest profiles)
+     ============================================= -->
+<?php if ($canEditAdmin && $isGuest): ?>
+<div class="pn-overlay" id="pn-convert-overlay">
+	<div class="pn-modal-box" style="width:520px;max-width:calc(100vw - 40px);">
+		<div class="pn-modal-header">
+			<h3 class="pn-modal-title"><i class="fas fa-user-check pn-modal-title-icon"></i>Convert to Full Player</h3>
+			<button class="pn-modal-close-btn" id="pn-convert-close-btn" aria-label="Close">&times;</button>
+		</div>
+
+		<div class="pn-acct-modal-body">
+			<div class="pn-form-error" id="pn-convert-error"></div>
+
+			<!-- Step: checking for an existing match -->
+			<div id="pn-convert-checking" style="display:none;text-align:center;padding:18px 0;color:var(--ork-text-muted);font-size:14px;">
+				<i class="fas fa-spinner fa-spin"></i> Checking for an existing player&hellip;
+			</div>
+
+			<!-- Step: merge candidates found -->
+			<div id="pn-convert-match" style="display:none;">
+				<div style="font-size:14px;color:var(--ork-text-secondary);margin-bottom:10px;">This guest looks like an existing player. Link the guest's attendance and notes to that player instead of creating a duplicate.</div>
+				<div id="pn-convert-match-list"></div>
+				<div style="margin-top:12px;text-align:center;">
+					<button class="pn-btn pn-btn-secondary" id="pn-convert-newinstead" type="button"><i class="fas fa-user-plus"></i> No, this is a new person &mdash; create a player</button>
+				</div>
+			</div>
+
+			<!-- Step: convert form -->
+			<div id="pn-convert-form" style="display:none;">
+				<div class="pn-acct-field">
+					<label for="pn-convert-username">Username <span class="required-indicator">*</span></label>
+					<input type="text" id="pn-convert-username" name="UserName" autocomplete="off" placeholder="At least 4 characters" />
+				</div>
+				<div class="pn-acct-field">
+					<label for="pn-convert-password">Password <span class="required-indicator">*</span></label>
+					<input type="password" id="pn-convert-password" name="Password" autocomplete="new-password" placeholder="Set a login password" />
+				</div>
+				<div class="pn-acct-field">
+					<label for="pn-convert-email">Email <span class="required-indicator">*</span></label>
+					<input type="email" id="pn-convert-email" name="Email" autocomplete="off" placeholder="player@example.com" />
+					<div style="font-size:12px;color:#718096;margin-top:4px;">A logging-in player needs a unique email on file.</div>
+				</div>
+			</div>
+		</div>
+
+		<div class="pn-modal-footer">
+			<button class="pn-btn pn-btn-secondary" id="pn-convert-cancel" type="button">Cancel</button>
+			<button class="pn-btn pn-btn-primary" id="pn-convert-save" type="button" style="display:none;"><i class="fas fa-user-check"></i> Create Player</button>
+		</div>
+	</div>
+</div>
+<?php endif; ?>
+
+<!-- =============================================
      Add Award / Add Title Modal
      ============================================= -->
 <?php if ($canManageAwards): ?>
@@ -3971,6 +4074,10 @@ var PnConfig = {
 	httpService:    '<?= HTTP_SERVICE ?>',
 	playerId:       <?= (int)($Player['MundaneId'] ?? 0) ?>,
 	parkId:         <?= (int)($Player['ParkId'] ?? 0) ?>,
+	isGuest:        <?= !empty($isGuest) ? 'true' : 'false' ?>,
+	guestGivenName: <?= json_encode($Player['GivenName'] ?? '') ?>,
+	guestSurname:   <?= json_encode($Player['Surname'] ?? '') ?>,
+	guestEmail:     <?= json_encode($Player['Email'] ?? '') ?>,
 	parkName:       <?= json_encode($this->__session->park_name ?? '') ?>,
 	kingdomId:      <?= (int)($KingdomId ?? 0) ?>,
 	recError:       <?= !empty($recError) ? 'true' : 'false' ?>,

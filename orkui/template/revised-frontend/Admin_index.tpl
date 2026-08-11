@@ -407,8 +407,9 @@ html[data-theme="dark"] .cp-warning { background: #744210; border-color: #975a16
 					<input type="text" id="cp-cp-persona" placeholder="In-game name">
 				</div>
 				<div class="cp-field">
-					<label>Email</label>
+					<label>Email <span style="color:#e53e3e">*</span></label>
 					<input type="email" id="cp-cp-email" placeholder="email@example.com">
+					<small style="display:block;color:var(--ork-text-muted);margin-top:4px">No email? Use <strong>Add Guest</strong> instead, then convert later.</small>
 				</div>
 			</div>
 			<div class="cp-field-row">
@@ -1020,10 +1021,14 @@ html[data-theme="dark"] .cp-warning { background: #744210; border-color: #975a16
 		var persona  = document.getElementById('cp-cp-persona').value.trim();
 		var username = document.getElementById('cp-cp-username').value.trim();
 		var password = document.getElementById('cp-cp-password').value;
+		var email    = document.getElementById('cp-cp-email').value.trim();
 		if (!parkId)             { cpShowFeedback('cp-cp-feedback', 'Please select a home park.', false); return; }
 		if (!persona)            { cpShowFeedback('cp-cp-feedback', 'Persona is required.', false); return; }
 		if (!username)           { cpShowFeedback('cp-cp-feedback', 'Username is required.', false); return; }
 		if (username.length < 4) { cpShowFeedback('cp-cp-feedback', 'Username must be at least 4 characters.', false); return; }
+		// Email is required for full players (no email -> use Add Guest instead).
+		if (!email)              { cpShowFeedback('cp-cp-feedback', 'Email is required. No email? Use Add Guest instead.', false); return; }
+		if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { cpShowFeedback('cp-cp-feedback', 'Please enter a valid email address.', false); return; }
 		var restricted = document.querySelector('input[name="cp-cp-restricted"]:checked');
 		var waivered   = document.querySelector('input[name="cp-cp-waivered"]:checked');
 		var btn = this;

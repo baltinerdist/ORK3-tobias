@@ -116,10 +116,21 @@ class Authorization extends Ork3
 	public function ResetPassword($request)
 	{
 		$response = array();
+		$email = trim($request['Email'] ?? '');
 		$this->mundane->clear();
 		$this->mundane->like('username', trim($request['UserName']));
-		$this->mundane->like('email', trim($request['Email']));
+		$this->mundane->is_guest = 0; // guests have no login
+		if ($email !== '') {
+			$this->mundane->like('email', $email);
+		}
 		if ($this->mundane->find()) {
+			// We can only deliver a reset link if the MATCHED account actually has an
+			// email on file. Whether the request supplied an email is irrelevant — an
+			// omitted request email just means we didn't narrow by it, not that the
+			// account lacks one. Fire this branch solely on the stored value.
+			if (trimlen($this->mundane->email) == 0) {
+				return InvalidParameter('No email is on file for this account — please contact an officer.');
+			}
 			$password = substr(md5(microtime()), 2, 11);
 			$this->mundane->password_expires = date("Y-m-d H:i:s", time() + 60 * 60 * 24 * 1);
 			/* Only salt on password change or first password
@@ -321,6 +332,7 @@ class Authorization extends Ork3
 
 		if ($request['Token'] == null) {
 			$this->mundane->like('username', trim($request['UserName']));
+			$this->mundane->is_guest = 0; // guests have no login
 			if ($this->mundane->find()) {
 				$mundane_id = $this->mundane->mundane_id;
 				// Harmonizes old password style with new password style

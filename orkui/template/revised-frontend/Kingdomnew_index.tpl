@@ -873,6 +873,9 @@
 							<?php if ($IsLoggedIn): ?>
 							<li><a href="<?= UIR ?>Reports/park_attendance_explorer"><i class="fas fa-chart-bar"></i> Park Attendance Explorer</a></li>
 							<li><a href="<?= UIR ?>Reports/new_player_attendance"><i class="fas fa-user-plus"></i> New Player Attendance</a></li>
+							<?php if ($CanManageKingdom ?? false): ?>
+							<li><a href="<?= UIR ?>Reports/guest_roster"><i class="fas fa-user-friends"></i> Guest Roster</a></li>
+							<?php endif; ?>
 							<?php endif; ?>
 						</ul>
 					</div>
@@ -1673,7 +1676,41 @@ var KnBannerConfig = {
 				</div>
 			</div>
 
-			<!-- ── Panel: Park Titles ── -->
+			<!-- ── Panel: Guest Attendance ── -->
+				<div class="kn-admin-panel">
+					<button class="kn-admin-panel-hdr" id="kn-admin-hdr-guest" aria-expanded="false">
+						<span><i class="fas fa-user-plus" style="margin-right:6px;color:#a0aec0"></i>Guest Attendance</span>
+						<i class="fas fa-chevron-down kn-admin-chevron" id="kn-admin-chev-guest"></i>
+					</button>
+					<div class="kn-admin-panel-body" id="kn-admin-body-guest" style="display:none">
+						<div id="kn-admin-guest-feedback" class="kn-admin-feedback" style="display:none"></div>
+						<div class="kn-admin-field" style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid var(--ork-border,#e2e8f0);margin-bottom:12px">
+							<div>
+								<div style="font-size:13px;font-weight:600;color:var(--ork-text,#2d3748)">Track guest attendance</div>
+								<div style="font-size:12px;color:var(--ork-text-muted,#718096);margin-top:3px">When On, officers can sign in walk-up guests at demos and events. Guests never receive class levels.</div>
+							</div>
+							<select id="kn-admin-guest-enabled" style="font-size:13px;border:1.5px solid var(--ork-border,#e2e8f0);border-radius:6px;padding:5px 8px;flex-shrink:0;background:var(--ork-card,#fff);color:var(--ork-text,#2d3748)">
+								<option value="1" <?= !empty($AdminInfo['GuestAttendanceEnabled']) ? 'selected' : '' ?>>On</option>
+								<option value="0" <?= empty($AdminInfo['GuestAttendanceEnabled']) ? 'selected' : '' ?>>Off</option>
+							</select>
+						</div>
+						<div class="kn-admin-field" id="kn-admin-guest-counts-row" style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:10px 0">
+							<div>
+								<div style="font-size:13px;font-weight:600;color:var(--ork-text,#2d3748)">Count guest attendance in reports</div>
+								<div style="font-size:12px;color:var(--ork-text-muted,#718096);margin-top:3px">When On, guest turnout is included in official attendance report totals. When Off, guests are tracked but excluded from totals.</div>
+							</div>
+							<select id="kn-admin-guest-counts" style="font-size:13px;border:1.5px solid var(--ork-border,#e2e8f0);border-radius:6px;padding:5px 8px;flex-shrink:0;background:var(--ork-card,#fff);color:var(--ork-text,#2d3748)">
+								<option value="1" <?= !empty($AdminInfo['GuestAttendanceCounts']) ? 'selected' : '' ?>>On</option>
+								<option value="0" <?= empty($AdminInfo['GuestAttendanceCounts']) ? 'selected' : '' ?>>Off</option>
+							</select>
+						</div>
+						<button class="kn-admin-save-btn" id="kn-admin-guest-save">
+							<i class="fas fa-save"></i> Save Guest Settings
+						</button>
+					</div>
+				</div>
+
+				<!-- ── Panel: Park Titles ── -->
 			<div class="kn-admin-panel">
 				<button class="kn-admin-panel-hdr" id="kn-admin-hdr-titles" aria-expanded="false">
 					<span><i class="fas fa-flag" style="margin-right:6px;color:#a0aec0"></i>Park Titles</span>
@@ -2133,6 +2170,13 @@ var KnBannerConfig = {
 					</select>
 				</div>
 			</div>
+<?php if (!empty($GuestAttendanceEnabled)): ?>
+			<div class="pk-att-tabs" id="kn-addplayer-tabs">
+				<button type="button" class="pk-att-tab pk-att-tab-active" data-panel="kn-addplayer-panel-player"><i class="fas fa-user-plus"></i> Register New Player</button>
+				<button type="button" class="pk-att-tab" data-panel="kn-addplayer-panel-guest"><i class="fas fa-user-clock"></i> Add A Guest</button>
+			</div>
+<?php endif; ?>
+			<div id="kn-addplayer-panel-player">
 			<div class="plr-field-row">
 				<div class="plr-field plr-field-grow">
 					<label>Persona <span class="plr-req">*</span></label>
@@ -2151,7 +2195,7 @@ var KnBannerConfig = {
 			</div>
 			<div class="plr-field-row">
 				<div class="plr-field plr-field-grow">
-					<label>Email</label>
+					<label>Email <span class="plr-req">*</span></label>
 					<input type="email" id="kn-addplayer-email" placeholder="email@example.com">
 					<div id="kn-addplayer-email-suggestion" class="esc-suggestion" role="alert">
 						<i class="fas fa-magic"></i>
@@ -2159,6 +2203,9 @@ var KnBannerConfig = {
 						<button type="button" class="esc-suggestion-use">Use it</button>
 						<button type="button" class="esc-suggestion-dismiss" aria-label="Dismiss">&times;</button>
 					</div>
+<?php if (!empty($GuestAttendanceEnabled)): ?>
+					<small style="display:block;color:var(--ork-text-muted);margin-top:4px">No email? Use the <strong>Add A Guest</strong> tab instead, then convert them to a full player later.</small>
+<?php endif; ?>
 				</div>
 			</div>
 			<div class="plr-field-row">
@@ -2195,12 +2242,43 @@ var KnBannerConfig = {
 					<input type="file" id="kn-addplayer-waiver" accept=".pdf,image/png,image/jpeg,image/gif">
 				</div>
 			</div>
+			</div><!-- /#kn-addplayer-panel-player -->
+<?php if (!empty($GuestAttendanceEnabled)): ?>
+			<div id="kn-addplayer-panel-guest" style="display:none">
+				<p class="pk-att-guest-hint">A guest is a login-less profile for a walk-up or newcomer. No username, password, or persona required &mdash; just a name and their park. Convert them to a full player later from their profile or the Guest Roster report.</p>
+				<div class="plr-field-row">
+					<div class="plr-field">
+						<label>First Name <span class="plr-req">*</span></label>
+						<input type="text" id="kn-addguest-first" placeholder="Given name">
+					</div>
+					<div class="plr-field">
+						<label>Last Name <span class="plr-req">*</span></label>
+						<input type="text" id="kn-addguest-last" placeholder="Surname">
+					</div>
+				</div>
+				<div class="plr-field-row">
+					<div class="plr-field plr-field-grow">
+						<label>Email <span class="plr-hint">(optional)</span></label>
+						<input type="email" id="kn-addguest-email" placeholder="email@example.com">
+					</div>
+					<div class="plr-field">
+						<label>Phone <span class="plr-hint">(optional)</span></label>
+						<input type="text" id="kn-addguest-phone" placeholder="Phone">
+					</div>
+				</div>
+			</div>
+<?php endif; ?>
 		</div>
 		<div class="kn-modal-footer">
 			<button class="kn-btn-ghost" id="kn-addplayer-cancel">Cancel</button>
 			<button class="kn-btn kn-btn-primary" id="kn-addplayer-submit">
 				<i class="fas fa-user-plus"></i> Create Player
 			</button>
+<?php if (!empty($GuestAttendanceEnabled)): ?>
+			<button class="kn-btn kn-btn-primary" id="kn-addguest-submit" style="display:none">
+				<i class="fas fa-user-plus"></i> Add Guest
+			</button>
+<?php endif; ?>
 		</div>
 	</div>
 </div>

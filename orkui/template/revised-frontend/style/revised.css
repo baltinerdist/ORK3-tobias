@@ -5828,6 +5828,7 @@ html[data-theme="dark"] .ev-buy-tickets-btn:hover { background: rgba(72,187,120,
 .pk-att-tab.pk-att-tab-active { color:#2b6cb0; border-bottom-color:#2b6cb0; }
 .pk-att-tab-panel { margin-bottom:14px; }
 .pk-att-search-section-inner { padding:4px 0 0; }
+.pk-att-guest-hint { font-size:12px; color:var(--ork-text-muted); line-height:1.5; margin:0 0 12px; }
 /* Entered-today table */
 .pk-att-entered-section { margin-bottom:12px; }
 .pk-att-entered-table { width:100%; border-collapse:collapse; font-size:13px; }

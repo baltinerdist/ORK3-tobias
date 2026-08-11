@@ -295,9 +295,24 @@ class Model_Reports extends Model
     {
         $r = $this->Report->ParkAttendanceSinglePark($request);
         if ($r['Status']['Status'] == 0) {
-            return $r['Attendance'];
+            return array('Attendance' => $r['Attendance'], 'Summary' => $r['Summary'] ?? array());
         }
         return false;
+    }
+
+    public function guest_roster($request)
+    {
+        $r = $this->Report->GetGuestRoster($request);
+        if ($r['Status']['Status'] == 0) {
+            return array('Guests' => $r['Guests'], 'Summary' => $r['Summary'] ?? array());
+        }
+        return false;
+    }
+
+    public function guest_source_events($request)
+    {
+        $r = $this->Report->GetGuestSourceEvents($request);
+        return ($r['Status']['Status'] == 0) ? $r['Events'] : array();
     }
 
     public function new_player_attendance($request)

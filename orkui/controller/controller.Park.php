@@ -381,6 +381,7 @@ class Controller_Park extends Controller
 			WHERE m.park_id = {$pid}
 			  AND m.suspended = 0
 			  AND m.active = 1
+			  AND m.is_guest = 0
 			GROUP BY m.mundane_id
 			ORDER BY m.persona";
             $DB->Clear();
@@ -416,6 +417,19 @@ class Controller_Park extends Controller
         }
         $this->data['park_players'] = $parkPlayers;
 
+        // Guest-attendance policy (single park → its kingdom): exclude Guest-class
+        // rows from attendance averages when that kingdom does NOT count guests.
+        $gcid = (int)Attendance::GuestClassId();
+        $pkGuestCounts = 0;
+        $DB->Clear();
+        $pkGcRs = $DB->DataSet("SELECT k.guest_attendance_counts FROM " . DB_PREFIX . "park p "
+            . "INNER JOIN " . DB_PREFIX . "kingdom k ON k.kingdom_id = p.kingdom_id "
+            . "WHERE p.park_id = {$pid} LIMIT 1");
+        if ($pkGcRs && $pkGcRs->Next()) {
+            $pkGuestCounts = (int)$pkGcRs->guest_attendance_counts;
+        }
+        $guestExcl = ($gcid > 0 && $pkGuestCounts === 0) ? " AND a.class_id <> {$gcid} " : "";
+
         // Monthly average: average of distinct players per month over past year
         $monthlyAvgSql = "
 			SELECT AVG(monthly_unique) AS avg_per_month FROM (
@@ -423,7 +437,7 @@ class Controller_Park extends Controller
 				FROM ork_attendance a
 				WHERE a.park_id = {$pid}
 				  AND a.date > DATE_SUB(CURDATE(), INTERVAL 1 YEAR)
-				  AND a.mundane_id > 0
+				  AND a.mundane_id > 0 {$guestExcl}
 				GROUP BY a.date_year, a.date_month
 			) sub";
         $DB->Clear();
@@ -450,7 +464,7 @@ class Controller_Park extends Controller
 				WHERE a.park_id = {$pid}
 				  AND a.date >= '{$escapedWkStart}'
 				  AND a.date <= '{$escapedWkEnd}'
-				  AND a.mundane_id > 0
+				  AND a.mundane_id > 0 {$guestExcl}
 				GROUP BY a.date_year, a.date_week3, a.mundane_id
 			) sub";
         $DB->Clear();
@@ -477,6 +491,16 @@ class Controller_Park extends Controller
         // enforces this scope; the flag is just for showing the UI button.
         $this->data['CanMergePlayers'] = $uid > 0
             && Ork3::$Lib->authorization->HasAuthority($uid, AUTH_PARK, (int)$park_id, AUTH_CREATE);
+
+        // Kingdom guest-attendance toggle — gates the "Add Guest" tabs so they only
+        // appear where the kingdom has opted in (parity with the attendance-page button).
+        $this->data['GuestAttendanceEnabled'] = 0;
+        global $DB;
+        $DB->Clear();
+        $_gaRs = $DB->DataSet("SELECT guest_attendance_enabled FROM " . DB_PREFIX . "kingdom WHERE kingdom_id = " . (int)$this->session->kingdom_id . " LIMIT 1");
+        if ($_gaRs && $_gaRs->Next()) {
+            $this->data['GuestAttendanceEnabled'] = (int)$_gaRs->guest_attendance_enabled;
+        }
 
         $knConfigs  = Common::get_configs($this->session->kingdom_id, CFG_KINGDOM);
         $recsPublic = isset($knConfigs['AwardRecsPublic'])

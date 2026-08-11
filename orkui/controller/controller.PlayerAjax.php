@@ -79,6 +79,16 @@ class Controller_PlayerAjax extends Controller
                 echo json_encode(['status' => 1, 'error' => 'Username must be at least 4 characters.']);
                 exit;
             }
+            // Email is required for full players (guests use the Add Guest flow instead).
+            // CreatePlayer re-validates authoritatively; this is the early, friendly check.
+            if (!strlen($email)) {
+                echo json_encode(['status' => 1, 'error' => 'Email is required.']);
+                exit;
+            }
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                echo json_encode(['status' => 1, 'error' => 'Please enter a valid email address.']);
+                exit;
+            }
             $request = [
                 'Token'         => $this->session->token,
                 'ParkId'        => $park_id,
@@ -113,6 +123,48 @@ class Controller_PlayerAjax extends Controller
             } else {
                 echo json_encode(['status' => $r['Status'], 'error' => rtrim(($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? ''), ': ')]);
             }
+
+        } elseif ($action === 'createguest') {
+            // Create-only guest capture (login-less, email-optional) from the "Add A Guest"
+            // tab of the Create Player modals. No attendance is logged here — that happens
+            // from the attendance screen. Email collisions are surfaced (status 2) the same
+            // way the attendance-page addguest flow does, so a duplicate offers the owner.
+            $this->load_model('Player');
+            $first = trim($_POST['GivenName'] ?? '');
+            $last  = trim($_POST['Surname']   ?? '');
+            $email = trim($_POST['Email']     ?? '');
+            $phone = trim($_POST['Phone']     ?? '');
+            if ($first === '' || $last === '') {
+                echo json_encode(['status' => 1, 'error' => 'A first and last name are required.']);
+                exit;
+            }
+            $gr = $this->Player->create_guest([
+                'Token'     => $this->session->token,
+                'ParkId'    => $park_id,
+                'GivenName' => $first,
+                'Surname'   => $last,
+                'Email'     => $email,
+                'Phone'     => $phone,
+            ]);
+            if (!isset($gr['Status']) || $gr['Status'] != 0) {
+                // Hardened CreateGuest returns an array Error payload carrying the email
+                // owner on a collision; surface it down the collision UI path (status 2).
+                $gerr = (is_array($gr['Error'] ?? null)) ? $gr['Error'] : null;
+                if ($gerr !== null && (int)($gerr['ownerId'] ?? 0) > 0) {
+                    echo json_encode([
+                        'status'    => 2,
+                        'collision' => !empty($gerr['ownerIsGuest']) ? 'guest' : 'player',
+                        'ownerId'   => (int)$gerr['ownerId'],
+                        'ownerName' => (string)($gerr['ownerName'] ?? ''),
+                    ]);
+                    exit;
+                }
+                $gerrMsg = is_string($gr['Error'] ?? null) ? $gr['Error'] : 'Could not create guest';
+                $gerrDetail = (string)($gr['Detail'] ?? '');
+                echo json_encode(['status' => $gr['Status'] ?? 1, 'error' => $gerrMsg . (($gerrDetail !== '') ? (': ' . $gerrDetail) : '')]);
+                exit;
+            }
+            echo json_encode(['status' => 0, 'mundaneId' => (int)($gr['Detail'] ?? 0)]);
 
         } else {
             echo json_encode(['status' => 1, 'error' => 'Unknown action']);
@@ -515,6 +567,58 @@ class Controller_PlayerAjax extends Controller
                 ? json_encode(['status' => 0])
                 : json_encode(['status' => $r['Status'], 'error' => rtrim(($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? ''), ': ')]);
 
+        } elseif ($action === 'findplayermatch') {
+            // Merge-detection before converting a guest: returns candidate existing players.
+            $r = $this->Player->find_player_match([
+                'Token'     => $this->session->token,
+                'MundaneId' => $player_id,
+                'GivenName' => trim($_POST['GivenName'] ?? ''),
+                'Surname'   => trim($_POST['Surname']   ?? ''),
+                'Email'     => trim($_POST['Email']     ?? ''),
+                'ParkId'    => (int)($_POST['ParkId']   ?? 0),
+            ]);
+            echo ($r['Status'] == 0)
+                ? json_encode(['status' => 0, 'matches' => array_values($r['Detail'] ?? [])])
+                : json_encode(['status' => $r['Status'], 'error' => rtrim(($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? ''), ': ')]);
+
+        } elseif ($action === 'convertguest') {
+            $userName = trim($_POST['UserName'] ?? '');
+            $password = $_POST['Password'] ?? '';
+            $email    = trim($_POST['Email'] ?? '');
+            if (strlen($userName) < 4) {
+                echo json_encode(['status' => 1, 'error' => 'Username must be at least 4 characters.']);
+                exit;
+            }
+            if (trimlen($password) < 1) {
+                echo json_encode(['status' => 1, 'error' => 'A password is required.']);
+                exit;
+            }
+            $r = $this->Player->convert_guest([
+                'Token'     => $this->session->token,
+                'MundaneId' => $player_id,
+                'UserName'  => $userName,
+                'Password'  => $password,
+                'Email'     => $email,
+            ]);
+            echo ($r['Status'] == 0)
+                ? json_encode(['status' => 0, 'mundaneId' => (int)($r['Detail'] ?? $player_id)])
+                : json_encode(['status' => $r['Status'], 'error' => rtrim(($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? ''), ': ')]);
+
+        } elseif ($action === 'linkguest') {
+            $targetId = (int)($_POST['PlayerId'] ?? 0);
+            if (!valid_id($targetId)) {
+                echo json_encode(['status' => 1, 'error' => 'A target player is required.']);
+                exit;
+            }
+            $r = $this->Player->link_guest([
+                'Token'     => $this->session->token,
+                'MundaneId' => $player_id,
+                'PlayerId'  => $targetId,
+            ]);
+            echo ($r['Status'] == 0)
+                ? json_encode(['status' => 0, 'playerId' => (int)($r['Detail'] ?? $targetId)])
+                : json_encode(['status' => $r['Status'], 'error' => rtrim(($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? ''), ': ')]);
+
         } else {
             echo json_encode(['status' => 1, 'error' => 'Unknown action']);
         }
@@ -715,15 +819,37 @@ class Controller_PlayerAjax extends Controller
             echo json_encode(['status' => 1, 'error' => 'Email address is required.']);
             exit;
         }
-        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        // Normalize + format-validate via the shared GuestValidator (mirrors the
+        // cleanup migration so we never re-save junk the migration would null).
+        // GuestValidator is autoloaded at bootstrap (startup.php scans DIR_ORK3).
+        $norm = GuestValidator::normalizeEmail($email);
+        if ($norm === '') {
             echo json_encode(['status' => 1, 'error' => 'Please enter a valid email address.']);
             exit;
         }
         $mundane_id = (int)$this->session->user_id;
+        // Uniqueness check (case-insensitive, excludes self) — friendly message
+        // before the DB UNIQUE index would hard-fail the save.
+        $this->load_model('Player');
+        $avail = $this->Player->email_available($norm, $mundane_id);
+        if (empty($avail['available'])) {
+            echo json_encode(['status' => 1, 'error' => 'That email address is already in use by another account. Please use a different one.']);
+            exit;
+        }
         global $DB;
         $DB->Clear();
-        $DB->email = $email;
+        $DB->email = $norm;
         $DB->Execute("UPDATE ork_mundane SET email = :email WHERE mundane_id = $mundane_id");
+        // Post-write read-back: confirm the email actually landed on THIS user's row. A duplicate
+        // that slipped past the friendly pre-check (concurrent claim) would hit the UNIQUE index and
+        // be silently rejected under ERRMODE_WARNING -- never report success in that case.
+        $DB->Clear();
+        $rb = $DB->DataSet("SELECT email FROM ork_mundane WHERE mundane_id = $mundane_id LIMIT 1");
+        $landed = ($rb && $rb->Next() && (string)$rb->email === (string)$norm);
+        if (!$landed) {
+            echo json_encode(['status' => 1, 'error' => 'That email address could not be saved -- it may already be in use. Please try again.']);
+            exit;
+        }
         echo json_encode(['status' => 0]);
         exit;
     }

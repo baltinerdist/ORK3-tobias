@@ -34,12 +34,15 @@ $stat_total_signins    = 0;
 $stat_unique_players   = 0;
 $stat_unique_members   = 0;
 $stat_parks            = 0;
+/* Guest turnout — counted separately from member totals, shown unconditionally. */
+$stat_guests           = (int)($guest_signins ?? 0);
 
 if ($has_results && ($mode ?? '') == 'all_parks') {
 	$stat_total_signins  = $summary['TotalSignins']  ?? 0;
 	$stat_unique_players = $summary['UniquePlayers'] ?? 0;
 	$stat_unique_members = $summary['UniqueMembers'] ?? 0;
 	$stat_parks          = $summary['RowCount']       ?? 0;
+	$stat_guests         = (int)($summary['GuestSignins'] ?? 0);
 } elseif ($has_results && ($mode ?? '') == 'single_park') {
 	foreach ($players as $p) {
 		$stat_total_signins  += $p['Total'];
@@ -103,6 +106,11 @@ if ($has_results && ($mode ?? '') == 'all_parks') {
 			<div class="rp-stat-label">Parks</div>
 		</div>
 <?php endif; ?>
+		<div class="rp-stat-card">
+			<div class="rp-stat-icon"><i class="fas fa-user-friends"></i></div>
+			<div class="rp-stat-number"><?=$stat_guests?></div>
+			<div class="rp-stat-label">Guests</div>
+		</div>
 	</div>
 <?php endif; ?>
 
@@ -245,6 +253,7 @@ if ($has_results && ($mode ?? '') == 'all_parks') {
 						<th>Total Sign-Ins</th>
 						<th>Unique Players</th>
 						<th>Unique Members</th>
+						<th>Guests</th>
 <?php if ($show_avg_columns) : ?>
 						<th>Avg Weekly <?=$avg_by_uniques ? 'Uniques' : 'Sign-Ins'?></th>
 						<th>Avg Monthly <?=$avg_by_uniques ? 'Uniques' : 'Sign-Ins'?></th>
@@ -263,6 +272,7 @@ if ($has_results && ($mode ?? '') == 'all_parks') {
 					<td><?=(int)$row['TotalSignins']?></td>
 					<td><?=(int)$row['UniquePlayers']?></td>
 					<td><?=(int)$row['UniqueMembers']?></td>
+					<td><?=(int)($row['GuestSignins'] ?? 0)?></td>
 <?php if ($show_avg_columns) : ?>
 <?php $avg_num = $avg_by_uniques ? $row['UniquePlayers'] : $row['TotalSignins']; ?>
 					<td><?=$row['WeeksInPeriod'] > 0 ? number_format($avg_num / $row['WeeksInPeriod'], 1) : '0'?></td>
@@ -280,6 +290,7 @@ if ($has_results && ($mode ?? '') == 'all_parks') {
 					<td><strong><?=(int)$summary['TotalSignins']?></strong></td>
 					<td><strong><?=(int)$summary['UniquePlayers']?></strong></td>
 					<td><strong><?=(int)$summary['UniqueMembers']?></strong></td>
+					<td><strong><?=(int)($summary['GuestSignins'] ?? 0)?></strong></td>
 <?php if ($show_avg_columns) : ?>
 <?php $avg_sum_num = $avg_by_uniques ? $summary['UniquePlayers'] : $summary['TotalSignins']; ?>
 					<td><strong><?=$summary['WeeksInPeriod'] > 0 ? number_format($avg_sum_num / $summary['WeeksInPeriod'], 1) : '0'?></strong></td>
@@ -388,7 +399,7 @@ $(function() {
 	});
 <?php else : ?>
 	var numericCols = [];
-	for (var i = 2; i < 2 + <?= 3 + ($show_avg_columns ? 2 : 0) + 3 ?>; i++) numericCols.push(i);
+	for (var i = 2; i < 2 + <?= 4 + ($show_avg_columns ? 2 : 0) + 3 ?>; i++) numericCols.push(i);
 
 	var apTable = $('#explorer-allparks-table').DataTable({
 		dom: 'lfrtip',

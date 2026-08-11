@@ -16,6 +16,12 @@ class Model_Attendance extends Model
         return $this->Attendance->GetClasses(array());
     }
 
+    // Dynamic Guest class id (never hard-coded). Forwards to Attendance::GuestClassId().
+    public function guest_class_id()
+    {
+        return (int)$this->Attendance->GuestClassId();
+    }
+
     public function add_attendance($token, $date, $park_id, $detail_id, $mundane_id, $class_id, $credits)
     {
         logtrace("Model_Attendance->add_attendance()", array($token, $date, $park_id, $detail_id, $mundane_id, $class_id, $credits));

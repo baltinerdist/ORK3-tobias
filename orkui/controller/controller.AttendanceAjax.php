@@ -9,6 +9,11 @@ class Controller_AttendanceAjax extends Controller
         $park_id = (int)preg_replace('/[^0-9]/', '', $parts[0] ?? '');
         $action  = $parts[1] ?? '';
 
+        if (!isset($this->session->user_id)) {
+            echo json_encode(['status' => 5, 'error' => 'Not logged in']);
+            exit;
+        }
+
         if (!valid_id($park_id)) {
             echo json_encode(['status' => 1, 'error' => 'Invalid park ID']);
             exit;
@@ -48,6 +53,173 @@ class Controller_AttendanceAjax extends Controller
                 echo json_encode(['status' => 0, 'attendanceId' => (int)($r['Detail'] ?? 0), 'reactivated' => $reactivated]);
             } else {
                 echo json_encode(['status' => $r['Status'], 'error' => ($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? '')]);
+            }
+        } elseif ($action === 'addguest') {
+            // Officer quick-add: create a lightweight guest profile and mark them
+            // present on the Guest class in one motion. Email collisions are
+            // surfaced (and create NOTHING) so the officer can choose to mark the
+            // existing person present instead via the markexisting action below.
+            $this->load_model('Player');
+            $this->load_model('Attendance');
+
+            $first = trim($_POST['GivenName'] ?? '');
+            $last  = trim($_POST['Surname']   ?? '');
+            $email = trim($_POST['Email']     ?? '');
+            $phone = trim($_POST['Phone']     ?? '');
+            $date  = $_POST['AttendanceDate'] ?? date('Y-m-d');
+            $credits = (float)($_POST['Credits'] ?? 1);
+            // Optional event provenance — recorded on the guest as guest_source_event_id.
+            $eventId = (int)($_POST['EventId'] ?? 0);
+
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+                echo json_encode(['status' => 1, 'error' => 'Invalid date']);
+                exit;
+            }
+            if ($first === '' || $last === '') {
+                echo json_encode(['status' => 1, 'error' => 'A first and last name are required.']);
+                exit;
+            }
+
+            // Email collision check BEFORE any write. On collision, create nothing
+            // and tell the UI who owns the email so it can offer "mark them present".
+            if ($email !== '') {
+                $avail = $this->Player->email_available($email);
+                if (is_array($avail) && empty($avail['available'])) {
+                    // NON-zero sentinel (status 2) so the UI never mistakes a
+                    // collision for a successful create (status 0). The UI keys off
+                    // the `collision` field regardless of status, but the distinct
+                    // status keeps the two paths unambiguous.
+                    echo json_encode([
+                        'status'    => 2,
+                        'collision' => !empty($avail['ownerIsGuest']) ? 'guest' : 'player',
+                        'ownerId'   => (int)($avail['ownerId'] ?? 0),
+                        'ownerName' => (string)($avail['ownerName'] ?? ''),
+                    ]);
+                    exit;
+                }
+            }
+
+            $guestClassId = $this->Attendance->guest_class_id();
+            if ($guestClassId <= 0) {
+                echo json_encode(['status' => 1, 'error' => 'Guest class is not configured.']);
+                exit;
+            }
+
+            $gr = $this->Player->create_guest([
+                'Token'     => $this->session->token,
+                'ParkId'    => $park_id,
+                'GivenName' => $first,
+                'Surname'   => $last,
+                'Email'     => $email,
+                'Phone'     => $phone,
+                'EventId'   => $eventId,
+            ]);
+            if (!isset($gr['Status']) || $gr['Status'] != 0) {
+                // Tolerate a hardened-backend race collision: CreateGuest returns an
+                // InvalidParameter whose Error payload carries the email owner
+                // (ownerId/ownerName/ownerIsGuest from EmailIsAvailable). When that
+                // shape is present, surface it down the SAME collision UI path
+                // (status 2 + collision fields) rather than reporting a hard error.
+                $gerr = (is_array($gr['Error'] ?? null)) ? $gr['Error'] : null;
+                if ($gerr !== null && (int)($gerr['ownerId'] ?? 0) > 0) {
+                    echo json_encode([
+                        'status'    => 2,
+                        'collision' => !empty($gerr['ownerIsGuest']) ? 'guest' : 'player',
+                        'ownerId'   => (int)$gerr['ownerId'],
+                        'ownerName' => (string)($gerr['ownerName'] ?? ''),
+                    ]);
+                    exit;
+                }
+                $gerrMsg = is_string($gr['Error'] ?? null) ? $gr['Error'] : 'Could not create guest';
+                $gerrDetail = (string)($gr['Detail'] ?? '');
+                echo json_encode(['status' => $gr['Status'] ?? 1, 'error' => $gerrMsg . (($gerrDetail !== '') ? (': ' . $gerrDetail) : '')]);
+                exit;
+            }
+            $mundaneId = (int)($gr['Detail'] ?? 0);
+
+            $ar = $this->Attendance->add_attendance(
+                $this->session->token,
+                $date,
+                $park_id,
+                null,
+                $mundaneId,
+                $guestClassId,
+                $credits
+            );
+            if (!isset($ar['Status']) || $ar['Status'] != 0) {
+                // Guest row was created but attendance failed — report it so the
+                // officer can retry marking present (the guest still exists).
+                echo json_encode([
+                    'status'    => $ar['Status'] ?? 1,
+                    'error'     => ($ar['Error'] ?? 'Guest created but attendance failed') . ((($ar['Detail'] ?? '') !== '') ? (': ' . $ar['Detail']) : ''),
+                    'mundaneId' => $mundaneId,
+                ]);
+                exit;
+            }
+            echo json_encode([
+                'status'       => 0,
+                'mundaneId'    => $mundaneId,
+                'attendanceId' => (int)($ar['Detail'] ?? 0),
+            ]);
+        } elseif ($action === 'markexisting') {
+            // Mark an already-existing mundane (guest or player) present. Used by
+            // the collision/dedupe prompt: "we already have this person — mark
+            // them present?" Guests are forced onto the Guest class; real players
+            // require an explicit ClassId (the cross-validation guards in
+            // Attendance::AddAttendance enforce this server-side too).
+            $this->load_model('Attendance');
+            $mundaneId = (int)($_POST['MundaneId'] ?? 0);
+            $date      = $_POST['AttendanceDate'] ?? date('Y-m-d');
+            $credits   = (float)($_POST['Credits'] ?? 1);
+            if (!valid_id($mundaneId)) {
+                echo json_encode(['status' => 1, 'error' => 'Invalid player']);
+                exit;
+            }
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+                echo json_encode(['status' => 1, 'error' => 'Invalid date']);
+                exit;
+            }
+
+            global $DB;
+            $DB->Clear();
+            $row = $DB->DataSet("SELECT is_guest FROM " . DB_PREFIX . "mundane WHERE mundane_id = " . $mundaneId . " LIMIT 1");
+            if (!$row || $row->Size() === 0 || !$row->Next()) {
+                echo json_encode(['status' => 1, 'error' => 'Player not found']);
+                exit;
+            }
+            $isGuest = ((int)$row->is_guest === 1);
+
+            if ($isGuest) {
+                $classId = $this->Attendance->guest_class_id();
+                if ($classId <= 0) {
+                    echo json_encode(['status' => 1, 'error' => 'Guest class is not configured.']);
+                    exit;
+                }
+            } else {
+                $classId = (int)($_POST['ClassId'] ?? 0);
+                if (!valid_id($classId)) {
+                    echo json_encode(['status' => 1, 'error' => 'Please choose a class for this player.']);
+                    exit;
+                }
+            }
+
+            $ar = $this->Attendance->add_attendance(
+                $this->session->token,
+                $date,
+                $park_id,
+                null,
+                $mundaneId,
+                $classId,
+                $credits
+            );
+            if (isset($ar['Status']) && $ar['Status'] == 0) {
+                echo json_encode([
+                    'status'       => 0,
+                    'mundaneId'    => $mundaneId,
+                    'attendanceId' => (int)($ar['Detail'] ?? 0),
+                ]);
+            } else {
+                echo json_encode(['status' => $ar['Status'] ?? 1, 'error' => ($ar['Error'] ?? 'Error') . ': ' . ($ar['Detail'] ?? '')]);
             }
         } elseif ($action === 'getday') {
             $this->load_model('Attendance');
