@@ -1,0 +1,270 @@
+<?php
+
+/**
+ * ScrollTemplate — slot-based scroll template store.
+ *
+ * Mirrors class.ScrollArtwork.php: extends Ork3 (auto-registered as
+ * Ork3::$Lib->scrolltemplate by startup.php's convention scan), shares the one
+ * global Yapo handle via $this->db, and returns the global Success()/InvalidParameter()
+ * envelope (NOT Errors::). Row columns are read as property access ($r->col).
+ */
+class ScrollTemplate extends Ork3
+{
+    public function __construct()
+    {
+        parent::__construct();
+    }
+
+    /**
+     * Replace {Token} placeholders in $text using $map. Unknown tokens are left
+     * verbatim so the UI can flag them. Keys are case-sensitive. Pure/static.
+     */
+    public static function resolveTokens($text, array $map)
+    {
+        return preg_replace_callback('/\{([A-Za-z][A-Za-z0-9]*)\}/', function ($m) use ($map) {
+            return array_key_exists($m[1], $map) ? $map[$m[1]] : $m[0];
+        }, (string)$text);
+    }
+
+    /**
+     * Create a template. Returns ['Status'=>Success(), 'TemplateId'=>int] or
+     * ['Status'=>InvalidParameter(...)].
+     */
+    public function create($req)
+    {
+        $name = trim($req['Name'] ?? '');
+        if ($name === '') {
+            return array('Status' => InvalidParameter(null, 'Name is required.'));
+        }
+        $orientation = in_array($req['Orientation'] ?? '', array('portrait', 'landscape'), true) ? $req['Orientation'] : 'portrait';
+        $bgType = in_array($req['BgType'] ?? '', array('color', 'texture', 'image'), true) ? $req['BgType'] : 'color';
+        $scope = self::deriveScope($req);
+
+        $this->db->Clear();
+        $this->db->kingdom_id  = $scope['kingdom_id'];
+        $this->db->visibility  = $scope['visibility'];
+        $this->db->park_id     = $scope['park_id'];
+        $this->db->name        = $name;
+        $this->db->orientation = $orientation;
+        $this->db->bg_type     = $bgType;
+        $this->db->bg_value    = (string)($req['BgValue'] ?? '#ffffff');
+        $this->db->bg_fit      = in_array($req['BgFit'] ?? '', array('tile', 'fill', 'stretch'), true) ? $req['BgFit'] : 'tile';
+        $this->db->bg_opacity  = max(0, min(100, (int)($req['BgOpacity'] ?? 100)));
+        $this->db->slots       = json_encode(array_values($req['Slots'] ?? array()));
+        $this->db->zones       = json_encode(array_values($req['Zones'] ?? array()));
+        $this->db->award_keys  = self::encodeAwardKeys($req['AwardKeys'] ?? array());
+        $this->db->knot        = self::encodeKnot($req['Knot'] ?? null);
+        $this->db->is_starter  = $scope['is_starter'];
+        $this->db->created_by  = (int)($req['CreatedBy'] ?? 0);
+        $cols = array('kingdom_id', 'visibility', 'park_id', 'name', 'orientation', 'bg_type', 'bg_value', 'bg_fit', 'bg_opacity', 'slots', 'zones', 'award_keys', 'knot', 'is_starter', 'created_by');
+        $ph = array_map(function ($c) {
+            return ':' . $c;
+        }, $cols);
+        $sql = "INSERT INTO " . DB_PREFIX . "scroll_template (" . implode(', ', $cols) . ") VALUES (" . implode(', ', $ph) . ")";
+        $this->db->Execute($sql);
+        return array('Status' => Success(), 'TemplateId' => (int)$this->db->GetLastInsertId());
+    }
+
+    /**
+     * Fetch a template by id. slots/zones are decoded to arrays.
+     */
+    public function get($id)
+    {
+        $this->db->Clear();
+        $this->db->scroll_template_id = (int)$id;
+        $sql = "SELECT * FROM " . DB_PREFIX . "scroll_template WHERE scroll_template_id = :scroll_template_id";
+        $r = $this->db->DataSet($sql);
+        if ($r->Size() > 0 && $r->Next()) {
+            return array('Template' => $this->format_row($r), 'Status' => Success());
+        }
+        return array('Status' => InvalidParameter(null, 'Template not found.'));
+    }
+
+    /**
+     * Shared starters (is_starter=1) plus the given kingdom's active templates.
+     */
+    public function listForKingdom($kingdomId)
+    {
+        $this->db->Clear();
+        $this->db->kingdom_id = (int)$kingdomId;
+        $sql = "SELECT * FROM " . DB_PREFIX . "scroll_template
+			WHERE status = 'active' AND (is_starter = 1 OR kingdom_id = :kingdom_id)
+			ORDER BY is_starter DESC, name ASC";
+        $r = $this->db->DataSet($sql);
+        $out = array();
+        while ($r->Next()) {
+            $out[] = $this->format_row($r);
+        }
+        return array('Templates' => $out, 'Status' => Success());
+    }
+
+    /**
+     * All active templates visible to a given kingdom/park context: every global
+     * template, the kingdom's own templates, and the park's own templates.
+     * A 0 id omits that branch entirely so it can't match NULL scope columns.
+     */
+    public function visibleTo($kingdomId, $parkId)
+    {
+        $kingdomId = (int)$kingdomId;
+        $parkId    = (int)$parkId;
+        $this->db->Clear();
+        $clauses = array("visibility = 'global'");
+        if ($kingdomId > 0) {
+            $clauses[] = "(visibility = 'kingdom' AND kingdom_id = :kingdom_id)";
+            $this->db->kingdom_id = $kingdomId;
+        }
+        if ($parkId > 0) {
+            $clauses[] = "(visibility = 'park' AND park_id = :park_id)";
+            $this->db->park_id = $parkId;
+        }
+        $sql = "SELECT * FROM " . DB_PREFIX . "scroll_template
+			WHERE status = 'active' AND (" . implode(' OR ', $clauses) . ")
+			ORDER BY visibility ASC, name ASC";
+        $r = $this->db->DataSet($sql);
+        $out = array();
+        while ($r->Next()) {
+            $out[] = $this->format_row($r);
+        }
+        return array('Templates' => $out, 'Status' => Success());
+    }
+
+    /**
+     * Active templates for exactly one tier:
+     *   'global'  -> visibility='global'
+     *   'kingdom' -> visibility='kingdom' AND kingdom_id=:kid
+     *   'park'    -> visibility='park' AND park_id=:pid
+     */
+    public function listForScope($tier, $kingdomId, $parkId)
+    {
+        $tier = in_array($tier, array('global', 'kingdom', 'park'), true) ? $tier : 'global';
+        $this->db->Clear();
+        if ($tier === 'kingdom') {
+            $this->db->kingdom_id = (int)$kingdomId;
+            $where = "visibility = 'kingdom' AND kingdom_id = :kingdom_id";
+        } elseif ($tier === 'park') {
+            $this->db->park_id = (int)$parkId;
+            $where = "visibility = 'park' AND park_id = :park_id";
+        } else {
+            $where = "visibility = 'global'";
+        }
+        $sql = "SELECT * FROM " . DB_PREFIX . "scroll_template
+			WHERE status = 'active' AND " . $where . "
+			ORDER BY name ASC";
+        $r = $this->db->DataSet($sql);
+        $out = array();
+        while ($r->Next()) {
+            $out[] = $this->format_row($r);
+        }
+        return array('Templates' => $out, 'Status' => Success());
+    }
+
+    /**
+     * Update an existing template's editable fields.
+     */
+    public function update($id, $req)
+    {
+        $scope = self::deriveScope($req);
+        $this->db->Clear();
+        $this->db->scroll_template_id = (int)$id;
+        $this->db->kingdom_id  = $scope['kingdom_id'];
+        $this->db->visibility  = $scope['visibility'];
+        $this->db->park_id     = $scope['park_id'];
+        $this->db->is_starter  = $scope['is_starter'];
+        $this->db->name        = trim($req['Name'] ?? '');
+        $this->db->orientation = in_array($req['Orientation'] ?? '', array('portrait', 'landscape'), true) ? $req['Orientation'] : 'portrait';
+        $this->db->bg_type     = in_array($req['BgType'] ?? '', array('color', 'texture', 'image'), true) ? $req['BgType'] : 'color';
+        $this->db->bg_value    = (string)($req['BgValue'] ?? '#ffffff');
+        $this->db->bg_fit      = in_array($req['BgFit'] ?? '', array('tile', 'fill', 'stretch'), true) ? $req['BgFit'] : 'tile';
+        $this->db->bg_opacity  = max(0, min(100, (int)($req['BgOpacity'] ?? 100)));
+        $this->db->slots       = json_encode(array_values($req['Slots'] ?? array()));
+        $this->db->zones       = json_encode(array_values($req['Zones'] ?? array()));
+        $this->db->award_keys  = self::encodeAwardKeys($req['AwardKeys'] ?? array());
+        $this->db->knot        = self::encodeKnot($req['Knot'] ?? null);
+        $sql = "UPDATE " . DB_PREFIX . "scroll_template SET name = :name, orientation = :orientation,
+			bg_type = :bg_type, bg_value = :bg_value, bg_fit = :bg_fit, bg_opacity = :bg_opacity, slots = :slots, zones = :zones, award_keys = :award_keys,
+			knot = :knot, visibility = :visibility, kingdom_id = :kingdom_id, park_id = :park_id, is_starter = :is_starter
+			WHERE scroll_template_id = :scroll_template_id";
+        $this->db->Execute($sql);
+        return array('Status' => Success());
+    }
+
+    /**
+     * Soft delete: archive the template.
+     */
+    public function delete($id)
+    {
+        $this->db->Clear();
+        $this->db->scroll_template_id = (int)$id;
+        $sql = "UPDATE " . DB_PREFIX . "scroll_template SET status = 'archived' WHERE scroll_template_id = :scroll_template_id";
+        $this->db->Execute($sql);
+        return array('Status' => Success());
+    }
+
+    /**
+     * Normalize a DB row into the public shape (slots/zones decoded).
+     */
+    private function format_row($r)
+    {
+        return array(
+            'scroll_template_id' => (int)$r->scroll_template_id,
+            'kingdom_id'  => $r->kingdom_id !== null ? (int)$r->kingdom_id : null,
+            'visibility'  => $r->visibility,
+            'park_id'     => $r->park_id !== null ? (int)$r->park_id : null,
+            'name'        => $r->name,
+            'orientation' => $r->orientation,
+            'bg_type'     => $r->bg_type,
+            'bg_value'    => $r->bg_value,
+            'bg_fit'      => $r->bg_fit,
+            'bg_opacity'  => (int)$r->bg_opacity,
+            'slots'       => json_decode($r->slots ?? '[]', true) ?: array(),
+            'zones'       => json_decode($r->zones ?? '[]', true) ?: array(),
+            'award_keys'  => json_decode($r->award_keys ?? '[]', true) ?: array(),
+            'knot'        => json_decode($r->knot ?? 'null', true),
+            'is_starter'  => (int)$r->is_starter,
+        );
+    }
+
+    /**
+     * Resolve a request's scope into concrete (visibility, kingdom_id, park_id,
+     * is_starter) column values. visibility is the authoritative axis:
+     *   global  -> kingdom_id NULL, park_id NULL, is_starter=1
+     *   kingdom -> kingdom_id set,  park_id NULL, is_starter=0
+     *   park    -> kingdom_id set (the park's kingdom), park_id set, is_starter=0
+     * Unknown/absent visibility defaults to 'kingdom'.
+     */
+    private static function deriveScope($req)
+    {
+        $visibility = in_array($req['Visibility'] ?? '', array('global', 'kingdom', 'park'), true) ? $req['Visibility'] : 'kingdom';
+        $kingdomId  = ($req['KingdomId'] ?? null) ? (int)$req['KingdomId'] : null;
+        $parkId     = ($req['ParkId'] ?? null) ? (int)$req['ParkId'] : null;
+        if ($visibility === 'global') {
+            return array('visibility' => 'global', 'kingdom_id' => null, 'park_id' => null, 'is_starter' => 1);
+        }
+        if ($visibility === 'park') {
+            return array('visibility' => 'park', 'kingdom_id' => $kingdomId, 'park_id' => $parkId, 'is_starter' => 0);
+        }
+        return array('visibility' => 'kingdom', 'kingdom_id' => $kingdomId, 'park_id' => null, 'is_starter' => 0);
+    }
+
+    /** Normalize a list of award ids to a JSON string of unique positive ints. */
+    private static function encodeAwardKeys($keys)
+    {
+        $ids = array();
+        foreach ((array)$keys as $k) {
+            $k = (int)$k;
+            if ($k > 0 && !in_array($k, $ids, true)) {
+                $ids[] = $k;
+            }
+        }
+        return json_encode($ids);
+    }
+
+    /** Normalize the knot (border) config to a JSON string, or null if absent. */
+    private static function encodeKnot($knot)
+    {
+        if (!is_array($knot) || empty($knot)) {
+            return null;
+        }
+        return json_encode($knot);
+    }
+}

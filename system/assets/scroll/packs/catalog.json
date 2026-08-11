@@ -1,0 +1,2598 @@
+[
+ {
+  "file": "borders/black_gold_border_celtic.png",
+  "name": "Black Gold Border Celtic",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 720,
+  "height": 864,
+  "tags": [
+   "black",
+   "border",
+   "celtic",
+   "gold"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Celtic (Gold)"
+ },
+ {
+  "file": "borders/blue_gold_border_celtic.png",
+  "name": "Blue Gold Border Celtic",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 720,
+  "height": 864,
+  "tags": [
+   "blue",
+   "border",
+   "celtic",
+   "gold"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Celtic (Gold)"
+ },
+ {
+  "file": "borders/bluegold.png",
+  "name": "Bluegold",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 540,
+  "height": 739,
+  "tags": [
+   "bluegold",
+   "border"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Celtic (Gold)"
+ },
+ {
+  "file": "borders/bluegold.svg",
+  "name": "Bluegold",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "svg",
+  "width": null,
+  "height": null,
+  "tags": [
+   "bluegold",
+   "border"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Celtic (Gold)"
+ },
+ {
+  "file": "borders/gold_celtic_knot_frame.png",
+  "name": "Gold Celtic Knot Frame",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 1594,
+  "height": 2000,
+  "tags": [
+   "border",
+   "celtic",
+   "gold",
+   "knotwork"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "borders",
+  "group": "Celtic (Gold)"
+ },
+ {
+  "file": "borders/green_gold_border_celtic.png",
+  "name": "Green Gold Border Celtic",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 720,
+  "height": 864,
+  "tags": [
+   "border",
+   "celtic",
+   "gold",
+   "green"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Celtic (Gold)"
+ },
+ {
+  "file": "borders/lightgreen_gold_border_celtic.png",
+  "name": "Lightgreen Gold Border Celtic",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 720,
+  "height": 864,
+  "tags": [
+   "border",
+   "celtic",
+   "gold",
+   "lightgreen"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Celtic (Gold)"
+ },
+ {
+  "file": "borders/orange_gold_border_celtic.png",
+  "name": "Orange Gold Border Celtic",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 720,
+  "height": 864,
+  "tags": [
+   "border",
+   "celtic",
+   "gold",
+   "orange"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Celtic (Gold)"
+ },
+ {
+  "file": "borders/purple_gold_border_celtic.png",
+  "name": "Purple Gold Border Celtic",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 720,
+  "height": 864,
+  "tags": [
+   "border",
+   "celtic",
+   "gold",
+   "purple"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Celtic (Gold)"
+ },
+ {
+  "file": "borders/reg_gold_border_celtic.png",
+  "name": "Reg Gold Border Celtic",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 720,
+  "height": 864,
+  "tags": [
+   "border",
+   "celtic",
+   "gold",
+   "reg"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Celtic (Gold)"
+ },
+ {
+  "file": "borders/silver_gold_border_celtic.png",
+  "name": "Silver Gold Border Celtic",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 720,
+  "height": 864,
+  "tags": [
+   "border",
+   "celtic",
+   "gold",
+   "silver"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Celtic (Gold)"
+ },
+ {
+  "file": "borders/white_gold_border_celtic.png",
+  "name": "White Gold Border Celtic",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 720,
+  "height": 864,
+  "tags": [
+   "border",
+   "celtic",
+   "gold",
+   "white"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Celtic (Gold)"
+ },
+ {
+  "file": "borders/yellow_gold_border_celtic.png",
+  "name": "Yellow Gold Border Celtic",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 720,
+  "height": 864,
+  "tags": [
+   "border",
+   "celtic",
+   "gold",
+   "yellow"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Celtic (Gold)"
+ },
+ {
+  "file": "borders/2ribbon.png",
+  "name": "2ribbon",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 509,
+  "height": 650,
+  "tags": [
+   "2ribbon",
+   "border"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Ribbon"
+ },
+ {
+  "file": "borders/gold_2ribbon.png",
+  "name": "Gold 2ribbon",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 648,
+  "height": 792,
+  "tags": [
+   "2ribbon",
+   "border",
+   "gold"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Ribbon"
+ },
+ {
+  "file": "borders/silver_2ribbon.png",
+  "name": "Silver 2ribbon",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 648,
+  "height": 792,
+  "tags": [
+   "2ribbon",
+   "border",
+   "silver"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Ribbon"
+ },
+ {
+  "file": "borders/floral_spray_frame.png",
+  "name": "Floral Spray Frame",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 1701,
+  "height": 2000,
+  "tags": [
+   "border",
+   "floral",
+   "vine"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "borders",
+  "group": "Rose & Vine"
+ },
+ {
+  "file": "borders/hanging_vine_frame.png",
+  "name": "Hanging Vine Frame",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 1861,
+  "height": 2000,
+  "tags": [
+   "border",
+   "vine"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "borders",
+  "group": "Rose & Vine"
+ },
+ {
+  "file": "borders/ivy_leaf_frame.png",
+  "name": "Ivy Leaf Frame",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 1450,
+  "height": 2000,
+  "tags": [
+   "border",
+   "ivy",
+   "vine"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "borders",
+  "group": "Rose & Vine"
+ },
+ {
+  "file": "borders/rose_border.png",
+  "name": "Rose Border",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 548,
+  "height": 700,
+  "tags": [
+   "border",
+   "rose"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Rose & Vine"
+ },
+ {
+  "file": "borders/rose_border.svg",
+  "name": "Rose Border",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "svg",
+  "width": null,
+  "height": null,
+  "tags": [
+   "border",
+   "rose"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Rose & Vine"
+ },
+ {
+  "file": "borders/rose_circle_border.png",
+  "name": "Rose Circle Border",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 594,
+  "height": 724,
+  "tags": [
+   "border",
+   "circle",
+   "rose"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Rose & Vine"
+ },
+ {
+  "file": "borders/rose_circle_border.svg",
+  "name": "Rose Circle Border",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "svg",
+  "width": null,
+  "height": null,
+  "tags": [
+   "border",
+   "circle",
+   "rose"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Rose & Vine"
+ },
+ {
+  "file": "borders/rose_corner_frame.png",
+  "name": "Rose Corner Frame",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 1416,
+  "height": 2000,
+  "tags": [
+   "border",
+   "rose"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "borders",
+  "group": "Rose & Vine"
+ },
+ {
+  "file": "borders/rose_vine_frame.png",
+  "name": "Rose Vine Frame",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 1380,
+  "height": 2000,
+  "tags": [
+   "border",
+   "rose",
+   "vine"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "borders",
+  "group": "Rose & Vine"
+ },
+ {
+  "file": "borders/celtic_braid_frame.png",
+  "name": "Celtic Braid Frame",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 1892,
+  "height": 1892,
+  "tags": [
+   "border",
+   "knotwork"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "borders",
+  "group": "Knotwork"
+ },
+ {
+  "file": "borders/celtic_knot_accents.png",
+  "name": "Celtic Knot Accents",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 1320,
+  "height": 1906,
+  "tags": [
+   "border",
+   "knotwork"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "borders",
+  "group": "Knotwork"
+ },
+ {
+  "file": "borders/celtic_knot_corner_frame.png",
+  "name": "Celtic Knot Corner Frame",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 1622,
+  "height": 2000,
+  "tags": [
+   "border",
+   "knotwork"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "borders",
+  "group": "Knotwork"
+ },
+ {
+  "file": "borders/celtic_knot_frame.png",
+  "name": "Celtic Knot Frame",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 1455,
+  "height": 1910,
+  "tags": [
+   "border",
+   "knotwork"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "borders",
+  "group": "Knotwork"
+ },
+ {
+  "file": "borders/celtic_knot_ring.png",
+  "name": "Celtic Knot Ring",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 1974,
+  "height": 1974,
+  "tags": [
+   "border",
+   "knotwork",
+   "circle"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "borders",
+  "group": "Knotwork"
+ },
+ {
+  "file": "borders/celtic_ring.png",
+  "name": "Celtic Ring",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 2000,
+  "height": 2000,
+  "tags": [
+   "border",
+   "knotwork",
+   "circle"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "borders",
+  "group": "Knotwork"
+ },
+ {
+  "file": "borders/knotwork_bw_1.png",
+  "name": "Knotwork_bw_1",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 599,
+  "height": 771,
+  "tags": [
+   "border",
+   "bw",
+   "knotwork"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Knotwork"
+ },
+ {
+  "file": "borders/knotwork_goldred_1.png",
+  "name": "Knotwork Goldred 1",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 1249,
+  "height": 1604,
+  "tags": [
+   "border",
+   "knotwork",
+   "gold",
+   "red"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Knotwork"
+ },
+ {
+  "file": "borders/baroque_oval_frame.png",
+  "name": "Baroque Oval Frame",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 1503,
+  "height": 2000,
+  "tags": [
+   "border",
+   "ornate",
+   "scrollwork"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "borders",
+  "group": "Scrollwork"
+ },
+ {
+  "file": "borders/fine_flourish_frame.png",
+  "name": "Fine Flourish Frame",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 1456,
+  "height": 1911,
+  "tags": [
+   "border",
+   "scrollwork"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "borders",
+  "group": "Scrollwork"
+ },
+ {
+  "file": "borders/gold_art_nouveau_frame.png",
+  "name": "Gold Art Nouveau Frame",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 1458,
+  "height": 2000,
+  "tags": [
+   "border",
+   "gold",
+   "scrollwork",
+   "nouveau"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "borders",
+  "group": "Scrollwork"
+ },
+ {
+  "file": "borders/scroll_border.png",
+  "name": "Scroll Border",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 510,
+  "height": 96,
+  "tags": [
+   "border",
+   "scroll"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Scrollwork"
+ },
+ {
+  "file": "borders/scroll_border.svg",
+  "name": "Scroll Border",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "svg",
+  "width": null,
+  "height": null,
+  "tags": [
+   "border",
+   "scroll"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Scrollwork"
+ },
+ {
+  "file": "borders/scrollwork_corners_frame.png",
+  "name": "Scrollwork Corners Frame",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 1456,
+  "height": 1910,
+  "tags": [
+   "border",
+   "scrollwork"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "borders",
+  "group": "Scrollwork"
+ },
+ {
+  "file": "borders/braided_rope_frame.png",
+  "name": "Braided Rope Frame",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 1456,
+  "height": 1910,
+  "tags": [
+   "border",
+   "rope",
+   "braid"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "borders",
+  "group": "Chain & Rope"
+ },
+ {
+  "file": "borders/chain_link_frame.png",
+  "name": "Chain Link Frame",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 1456,
+  "height": 1910,
+  "tags": [
+   "border",
+   "chain"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "borders",
+  "group": "Chain & Rope"
+ },
+ {
+  "file": "borders/geometric_knot_frame.png",
+  "name": "Geometric Knot Frame",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 1330,
+  "height": 1916,
+  "tags": [
+   "border",
+   "geometric"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "borders",
+  "group": "Geometric"
+ },
+ {
+  "file": "borders/greek_key_frame.png",
+  "name": "Greek Key Frame",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 1482,
+  "height": 2000,
+  "tags": [
+   "border",
+   "geometric",
+   "greek"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "borders",
+  "group": "Geometric"
+ },
+ {
+  "file": "borders/blackwhite.png",
+  "name": "Blackwhite",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 540,
+  "height": 739,
+  "tags": [
+   "blackwhite",
+   "border"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Ornamental B&W"
+ },
+ {
+  "file": "borders/blackwhite.svg",
+  "name": "Blackwhite",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "svg",
+  "width": null,
+  "height": null,
+  "tags": [
+   "blackwhite",
+   "border"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Ornamental B&W"
+ },
+ {
+  "file": "borders/warlord.png",
+  "name": "Warlord",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 2023,
+  "height": 2931,
+  "tags": [
+   "border",
+   "warlord"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Warlord"
+ },
+ {
+  "file": "borders/warlordbw.png",
+  "name": "Warlordbw",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "png",
+  "width": 758,
+  "height": 1166,
+  "tags": [
+   "border",
+   "warlordbw"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Warlord"
+ },
+ {
+  "file": "borders/warlordbw.svg",
+  "name": "Warlordbw",
+  "category": "borders",
+  "slot": "full_border",
+  "award_type": null,
+  "format": "svg",
+  "width": null,
+  "height": null,
+  "tags": [
+   "border",
+   "warlordbw"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Warlord"
+ },
+ {
+  "file": "borders/gold_swirl_side.png",
+  "name": "Gold Swirl Side",
+  "category": "borders",
+  "slot": "border_side",
+  "award_type": null,
+  "format": "png",
+  "width": 144,
+  "height": 864,
+  "tags": [
+   "border",
+   "gold",
+   "side",
+   "swirl"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Side Panels"
+ },
+ {
+  "file": "borders/leaf_side.png",
+  "name": "Leaf Side",
+  "category": "borders",
+  "slot": "border_side",
+  "award_type": null,
+  "format": "png",
+  "width": 104,
+  "height": 657,
+  "tags": [
+   "border",
+   "leaf",
+   "side"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Side Panels"
+ },
+ {
+  "file": "borders/leaf_side.svg",
+  "name": "Leaf Side",
+  "category": "borders",
+  "slot": "border_side",
+  "award_type": null,
+  "format": "svg",
+  "width": null,
+  "height": null,
+  "tags": [
+   "border",
+   "leaf",
+   "side"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Side Panels"
+ },
+ {
+  "file": "borders/ornamental_side_strip.png",
+  "name": "Ornamental Side Strip",
+  "category": "borders",
+  "slot": "border_side",
+  "award_type": null,
+  "format": "png",
+  "width": 426,
+  "height": 2000,
+  "tags": [
+   "border",
+   "side"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "borders",
+  "group": "Side Panels"
+ },
+ {
+  "file": "borders/silver_swirl_side.png",
+  "name": "Silver Swirl Side",
+  "category": "borders",
+  "slot": "border_side",
+  "award_type": null,
+  "format": "png",
+  "width": 144,
+  "height": 864,
+  "tags": [
+   "border",
+   "side",
+   "swirl",
+   "silver"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Side Panels"
+ },
+ {
+  "file": "borders/swirl_side.png",
+  "name": "Swirl Side",
+  "category": "borders",
+  "slot": "border_side",
+  "award_type": null,
+  "format": "png",
+  "width": 144,
+  "height": 864,
+  "tags": [
+   "border",
+   "side",
+   "swirl"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "borders",
+  "group": "Side Panels"
+ },
+ {
+  "file": "orders/crown/black_crown.png",
+  "name": "Black Crown",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "crown",
+  "format": "png",
+  "width": 350,
+  "height": 178,
+  "tags": [
+   "black",
+   "crown",
+   "order"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "order_images",
+  "group": "Crown"
+ },
+ {
+  "file": "orders/crown/crown_1.png",
+  "name": "Crown 1",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "crown",
+  "format": "png",
+  "width": 800,
+  "height": 773,
+  "tags": [
+   "crown",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Crown"
+ },
+ {
+  "file": "orders/crown/crown_2.png",
+  "name": "Crown 2",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "crown",
+  "format": "png",
+  "width": 800,
+  "height": 395,
+  "tags": [
+   "crown",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Crown"
+ },
+ {
+  "file": "orders/crown/crown_3.png",
+  "name": "Crown 3",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "crown",
+  "format": "png",
+  "width": 776,
+  "height": 688,
+  "tags": [
+   "crown",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Crown"
+ },
+ {
+  "file": "orders/crown/crown_4.png",
+  "name": "Crown 4",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "crown",
+  "format": "png",
+  "width": 800,
+  "height": 662,
+  "tags": [
+   "crown",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Crown"
+ },
+ {
+  "file": "orders/crown/crown_5.png",
+  "name": "Crown 5",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "crown",
+  "format": "png",
+  "width": 800,
+  "height": 379,
+  "tags": [
+   "crown",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Crown"
+ },
+ {
+  "file": "orders/crown/gold_crown.png",
+  "name": "Gold Crown",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "crown",
+  "format": "png",
+  "width": 350,
+  "height": 178,
+  "tags": [
+   "crown",
+   "gold",
+   "order"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "order_images",
+  "group": "Crown"
+ },
+ {
+  "file": "orders/crown/silver_crown.png",
+  "name": "Silver Crown",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "crown",
+  "format": "png",
+  "width": 350,
+  "height": 178,
+  "tags": [
+   "crown",
+   "order",
+   "silver"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "order_images",
+  "group": "Crown"
+ },
+ {
+  "file": "orders/dragon/dragon_1.png",
+  "name": "Dragon 1",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "dragon",
+  "format": "png",
+  "width": 582,
+  "height": 752,
+  "tags": [
+   "dragon",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Dragon"
+ },
+ {
+  "file": "orders/dragon/dragon_2.png",
+  "name": "Dragon 2",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "dragon",
+  "format": "png",
+  "width": 636,
+  "height": 800,
+  "tags": [
+   "dragon",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Dragon"
+ },
+ {
+  "file": "orders/dragon/dragon_3.png",
+  "name": "Dragon 3",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "dragon",
+  "format": "png",
+  "width": 800,
+  "height": 515,
+  "tags": [
+   "dragon",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Dragon"
+ },
+ {
+  "file": "orders/dragon/dragon_306059.svg",
+  "name": "Dragon-306059",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "dragon",
+  "format": "svg",
+  "width": null,
+  "height": null,
+  "tags": [
+   "dragon",
+   "order"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "order_images",
+  "group": "Dragon"
+ },
+ {
+  "file": "orders/dragon/dragon_4.png",
+  "name": "Dragon 4",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "dragon",
+  "format": "png",
+  "width": 800,
+  "height": 518,
+  "tags": [
+   "dragon",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Dragon"
+ },
+ {
+  "file": "orders/dragon/dragon_5.png",
+  "name": "Dragon 5",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "dragon",
+  "format": "png",
+  "width": 564,
+  "height": 800,
+  "tags": [
+   "dragon",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Dragon"
+ },
+ {
+  "file": "orders/dragon/dragon_green.png",
+  "name": "Dragon Green",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "dragon",
+  "format": "png",
+  "width": 483,
+  "height": 482,
+  "tags": [
+   "dragon",
+   "green",
+   "order"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "order_images",
+  "group": "Dragon"
+ },
+ {
+  "file": "orders/dragon/dragon_green.svg",
+  "name": "Dragon Green",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "dragon",
+  "format": "svg",
+  "width": null,
+  "height": null,
+  "tags": [
+   "dragon",
+   "green",
+   "order"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "order_images",
+  "group": "Dragon"
+ },
+ {
+  "file": "orders/dragon/dragon_red.png",
+  "name": "Dragon Red",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "dragon",
+  "format": "png",
+  "width": 483,
+  "height": 482,
+  "tags": [
+   "dragon",
+   "order",
+   "red"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "order_images",
+  "group": "Dragon"
+ },
+ {
+  "file": "orders/dragon/dragon_red.svg",
+  "name": "Dragon Red",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "dragon",
+  "format": "svg",
+  "width": null,
+  "height": null,
+  "tags": [
+   "dragon",
+   "order",
+   "red"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "order_images",
+  "group": "Dragon"
+ },
+ {
+  "file": "orders/dragon/fire_307384.svg",
+  "name": "Fire-307384",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "dragon",
+  "format": "svg",
+  "width": null,
+  "height": null,
+  "tags": [
+   "dragon",
+   "fire",
+   "order"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "order_images",
+  "group": "Dragon"
+ },
+ {
+  "file": "orders/dragon/gold_dragon.png",
+  "name": "Gold Dragon",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "dragon",
+  "format": "png",
+  "width": 482,
+  "height": 482,
+  "tags": [
+   "dragon",
+   "gold",
+   "order"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "order_images",
+  "group": "Dragon"
+ },
+ {
+  "file": "orders/lion/lion_1.png",
+  "name": "Lion 1",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "lion",
+  "format": "png",
+  "width": 641,
+  "height": 800,
+  "tags": [
+   "lion",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Lion"
+ },
+ {
+  "file": "orders/lion/lion_2.png",
+  "name": "Lion 2",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "lion",
+  "format": "png",
+  "width": 526,
+  "height": 800,
+  "tags": [
+   "lion",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Lion"
+ },
+ {
+  "file": "orders/lion/lion_3.png",
+  "name": "Lion 3",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "lion",
+  "format": "png",
+  "width": 561,
+  "height": 774,
+  "tags": [
+   "lion",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Lion"
+ },
+ {
+  "file": "orders/lion/lion_4.png",
+  "name": "Lion 4",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "lion",
+  "format": "png",
+  "width": 549,
+  "height": 758,
+  "tags": [
+   "lion",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Lion"
+ },
+ {
+  "file": "orders/rose/rose.svg",
+  "name": "Rose",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "rose",
+  "format": "svg",
+  "width": null,
+  "height": null,
+  "tags": [
+   "order",
+   "rose"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "order_images",
+  "group": "Rose"
+ },
+ {
+  "file": "orders/rose/rose_1.png",
+  "name": "Rose 1",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "rose",
+  "format": "png",
+  "width": 800,
+  "height": 765,
+  "tags": [
+   "rose",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Rose"
+ },
+ {
+  "file": "orders/rose/rose_2.png",
+  "name": "Rose 2",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "rose",
+  "format": "png",
+  "width": 796,
+  "height": 800,
+  "tags": [
+   "rose",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Rose"
+ },
+ {
+  "file": "orders/rose/rose_3.png",
+  "name": "Rose 3",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "rose",
+  "format": "png",
+  "width": 584,
+  "height": 800,
+  "tags": [
+   "rose",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Rose"
+ },
+ {
+  "file": "orders/rose/rose_4.png",
+  "name": "Rose 4",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "rose",
+  "format": "png",
+  "width": 2000,
+  "height": 602,
+  "tags": [
+   "rose",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Rose"
+ },
+ {
+  "file": "orders/rose/rose_circle_border.png",
+  "name": "Rose Circle Border",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "rose",
+  "format": "png",
+  "width": 594,
+  "height": 724,
+  "tags": [
+   "border",
+   "circle",
+   "order",
+   "rose"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "order_images",
+  "group": "Rose"
+ },
+ {
+  "file": "orders/owl/owl_1.png",
+  "name": "Owl 1",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "owl",
+  "format": "png",
+  "width": 800,
+  "height": 615,
+  "tags": [
+   "owl",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Owl"
+ },
+ {
+  "file": "orders/owl/owl_2.png",
+  "name": "Owl 2",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "owl",
+  "format": "png",
+  "width": 514,
+  "height": 800,
+  "tags": [
+   "owl",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Owl"
+ },
+ {
+  "file": "orders/owl/owl_3.png",
+  "name": "Owl 3",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "owl",
+  "format": "png",
+  "width": 721,
+  "height": 800,
+  "tags": [
+   "owl",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Owl"
+ },
+ {
+  "file": "orders/owl/owl_4.png",
+  "name": "Owl 4",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "owl",
+  "format": "png",
+  "width": 800,
+  "height": 728,
+  "tags": [
+   "owl",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Owl"
+ },
+ {
+  "file": "orders/warrior/1st_snake.png",
+  "name": "1st Snake",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "warrior",
+  "format": "png",
+  "width": 517,
+  "height": 639,
+  "tags": [
+   "1st",
+   "order",
+   "snake",
+   "warrior"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "order_images",
+  "group": "Warrior"
+ },
+ {
+  "file": "orders/warrior/1st_snake.svg",
+  "name": "1st Snake",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "warrior",
+  "format": "svg",
+  "width": null,
+  "height": null,
+  "tags": [
+   "1st",
+   "order",
+   "snake",
+   "warrior"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "order_images",
+  "group": "Warrior"
+ },
+ {
+  "file": "orders/warrior/warrior_1.png",
+  "name": "Warrior 1",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "warrior",
+  "format": "png",
+  "width": 800,
+  "height": 800,
+  "tags": [
+   "warrior",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Warrior"
+ },
+ {
+  "file": "orders/warrior/warrior_2.png",
+  "name": "Warrior 2",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "warrior",
+  "format": "png",
+  "width": 800,
+  "height": 952,
+  "tags": [
+   "warrior",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Warrior"
+ },
+ {
+  "file": "orders/warrior/warrior_3.png",
+  "name": "Warrior 3",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "warrior",
+  "format": "png",
+  "width": 800,
+  "height": 176,
+  "tags": [
+   "warrior",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Warrior"
+ },
+ {
+  "file": "orders/warrior/warrior_4.png",
+  "name": "Warrior 4",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "warrior",
+  "format": "png",
+  "width": 778,
+  "height": 736,
+  "tags": [
+   "warrior",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Warrior"
+ },
+ {
+  "file": "orders/archery/archery_1.png",
+  "name": "Archery 1",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "archery",
+  "format": "png",
+  "width": 566,
+  "height": 800,
+  "tags": [
+   "archery",
+   "bow",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Archery"
+ },
+ {
+  "file": "orders/archery/archery_2.png",
+  "name": "Archery 2",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "archery",
+  "format": "png",
+  "width": 570,
+  "height": 800,
+  "tags": [
+   "archery",
+   "bow",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Archery"
+ },
+ {
+  "file": "orders/archery/archery_3.png",
+  "name": "Archery 3",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "archery",
+  "format": "png",
+  "width": 541,
+  "height": 800,
+  "tags": [
+   "archery",
+   "bow",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Archery"
+ },
+ {
+  "file": "orders/archery/archery_4.png",
+  "name": "Archery 4",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "archery",
+  "format": "png",
+  "width": 483,
+  "height": 800,
+  "tags": [
+   "archery",
+   "bow",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Archery"
+ },
+ {
+  "file": "orders/griffon/griffon_1.png",
+  "name": "Griffon 1",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "griffon",
+  "format": "png",
+  "width": 438,
+  "height": 447,
+  "tags": [
+   "griffon",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Griffon"
+ },
+ {
+  "file": "orders/griffon/griffon_2.png",
+  "name": "Griffon 2",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "griffon",
+  "format": "png",
+  "width": 768,
+  "height": 610,
+  "tags": [
+   "griffon",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Griffon"
+ },
+ {
+  "file": "orders/griffon/griffon_3.png",
+  "name": "Griffon 3",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "griffon",
+  "format": "png",
+  "width": 572,
+  "height": 800,
+  "tags": [
+   "griffon",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Griffon"
+ },
+ {
+  "file": "orders/griffon/griffon_4.png",
+  "name": "Griffon 4",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "griffon",
+  "format": "png",
+  "width": 800,
+  "height": 787,
+  "tags": [
+   "griffon",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Griffon"
+ },
+ {
+  "file": "orders/griffon/griffon_5.png",
+  "name": "Griffon 5",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "griffon",
+  "format": "png",
+  "width": 686,
+  "height": 800,
+  "tags": [
+   "griffon",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Griffon"
+ },
+ {
+  "file": "orders/hydra/hydra_1.png",
+  "name": "Hydra 1",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "hydra",
+  "format": "png",
+  "width": 786,
+  "height": 685,
+  "tags": [
+   "hydra",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Hydra"
+ },
+ {
+  "file": "orders/hydra/hydra_2.png",
+  "name": "Hydra 2",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "hydra",
+  "format": "png",
+  "width": 640,
+  "height": 800,
+  "tags": [
+   "hydra",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Hydra"
+ },
+ {
+  "file": "orders/flame/flame.png",
+  "name": "Flame",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "flame",
+  "format": "png",
+  "width": 453,
+  "height": 713,
+  "tags": [
+   "flame",
+   "order"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "order_images",
+  "group": "Flame"
+ },
+ {
+  "file": "orders/flame/flame_1.png",
+  "name": "Flame 1",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "flame",
+  "format": "png",
+  "width": 657,
+  "height": 800,
+  "tags": [
+   "flame",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Flame"
+ },
+ {
+  "file": "orders/flame/flame_2.png",
+  "name": "Flame 2",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "flame",
+  "format": "png",
+  "width": 527,
+  "height": 800,
+  "tags": [
+   "flame",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Flame"
+ },
+ {
+  "file": "orders/flame/flame_3.png",
+  "name": "Flame 3",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "flame",
+  "format": "png",
+  "width": 602,
+  "height": 800,
+  "tags": [
+   "flame",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Flame"
+ },
+ {
+  "file": "orders/flame/flame_effect.png",
+  "name": "Flame Effect",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "flame",
+  "format": "png",
+  "width": 451,
+  "height": 712,
+  "tags": [
+   "effect",
+   "flame",
+   "order"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "order_images",
+  "group": "Flame"
+ },
+ {
+  "file": "orders/garber/garber_1.png",
+  "name": "Garber 1",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "garber",
+  "format": "png",
+  "width": 800,
+  "height": 506,
+  "tags": [
+   "garber",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Garber"
+ },
+ {
+  "file": "orders/garber/garber_2.png",
+  "name": "Garber 2",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "garber",
+  "format": "png",
+  "width": 800,
+  "height": 444,
+  "tags": [
+   "garber",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Garber"
+ },
+ {
+  "file": "orders/garber/garber_3.png",
+  "name": "Garber 3",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "garber",
+  "format": "png",
+  "width": 479,
+  "height": 716,
+  "tags": [
+   "garber",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Garber"
+ },
+ {
+  "file": "orders/garber/garber_4.png",
+  "name": "Garber 4",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "garber",
+  "format": "png",
+  "width": 800,
+  "height": 778,
+  "tags": [
+   "garber",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Garber"
+ },
+ {
+  "file": "orders/jovious/jovious_1.png",
+  "name": "Jovious 1",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "jovious",
+  "format": "png",
+  "width": 548,
+  "height": 800,
+  "tags": [
+   "jovious",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Jovious"
+ },
+ {
+  "file": "orders/masks/masks_1.png",
+  "name": "Masks 1",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "masks",
+  "format": "png",
+  "width": 800,
+  "height": 587,
+  "tags": [
+   "masks",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Masks"
+ },
+ {
+  "file": "orders/masks/masks_2.png",
+  "name": "Masks 2",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "masks",
+  "format": "png",
+  "width": 800,
+  "height": 800,
+  "tags": [
+   "masks",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Masks"
+ },
+ {
+  "file": "orders/masterhoods/blank_bw_masterhood_phoenix.png",
+  "name": "Blank Bw Masterhood Phoenix",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "masterhoods",
+  "format": "png",
+  "width": 564,
+  "height": 697,
+  "tags": [
+   "blank",
+   "bw",
+   "masterhood",
+   "masterhoods",
+   "order",
+   "phoenix"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "order_images",
+  "group": "Masterhoods"
+ },
+ {
+  "file": "orders/masterhoods/master_crown.png",
+  "name": "Master Crown",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "masterhoods",
+  "format": "png",
+  "width": 564,
+  "height": 697,
+  "tags": [
+   "masterhood",
+   "crown",
+   "phoenix",
+   "gold"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "order_images",
+  "group": "Masterhoods"
+ },
+ {
+  "file": "orders/masterhoods/master_dragon.png",
+  "name": "Master Dragon",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "masterhoods",
+  "format": "png",
+  "width": 564,
+  "height": 697,
+  "tags": [
+   "dragon",
+   "master",
+   "masterhoods",
+   "order"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "order_images",
+  "group": "Masterhoods"
+ },
+ {
+  "file": "orders/masterhoods/master_garber.png",
+  "name": "Master Garber",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "masterhoods",
+  "format": "png",
+  "width": 564,
+  "height": 697,
+  "tags": [
+   "garber",
+   "master",
+   "masterhoods",
+   "order"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "order_images",
+  "group": "Masterhoods"
+ },
+ {
+  "file": "orders/masterhoods/master_lion.png",
+  "name": "Master Lion",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "masterhoods",
+  "format": "png",
+  "width": 564,
+  "height": 697,
+  "tags": [
+   "lion",
+   "master",
+   "masterhoods",
+   "order"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "order_images",
+  "group": "Masterhoods"
+ },
+ {
+  "file": "orders/masterhoods/master_owl.png",
+  "name": "Master Owl",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "masterhoods",
+  "format": "png",
+  "width": 564,
+  "height": 697,
+  "tags": [
+   "master",
+   "masterhoods",
+   "order",
+   "owl"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "order_images",
+  "group": "Masterhoods"
+ },
+ {
+  "file": "orders/masterhoods/master_rose.png",
+  "name": "Master Rose",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "masterhoods",
+  "format": "png",
+  "width": 564,
+  "height": 697,
+  "tags": [
+   "master",
+   "masterhoods",
+   "order",
+   "rose"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "order_images",
+  "group": "Masterhoods"
+ },
+ {
+  "file": "orders/masterhoods/master_smith.png",
+  "name": "Master Smith",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "masterhoods",
+  "format": "png",
+  "width": 564,
+  "height": 697,
+  "tags": [
+   "master",
+   "masterhoods",
+   "order",
+   "smith"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "order_images",
+  "group": "Masterhoods"
+ },
+ {
+  "file": "orders/masterhoods/warlord.png",
+  "name": "Warlord",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "masterhoods",
+  "format": "png",
+  "width": 564,
+  "height": 697,
+  "tags": [
+   "masterhoods",
+   "order",
+   "warlord"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "order_images",
+  "group": "Masterhoods"
+ },
+ {
+  "file": "orders/sashes/amtgard_sash.png",
+  "name": "Amtgard Sash",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "sashes",
+  "format": "png",
+  "width": 784,
+  "height": 1626,
+  "tags": [
+   "sash"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "order_images",
+  "group": "Sashes"
+ },
+ {
+  "file": "orders/sashes/color_sash.png",
+  "name": "Color Sash",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "sashes",
+  "format": "png",
+  "width": 1567,
+  "height": 3253,
+  "tags": [
+   "color",
+   "order",
+   "sash",
+   "sashes"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "order_images",
+  "group": "Sashes"
+ },
+ {
+  "file": "orders/smith/smith_1.png",
+  "name": "Smith 1",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "smith",
+  "format": "png",
+  "width": 1414,
+  "height": 2000,
+  "tags": [
+   "smith",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Smith"
+ },
+ {
+  "file": "orders/smith/smith_2.png",
+  "name": "Smith 2",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "smith",
+  "format": "png",
+  "width": 488,
+  "height": 466,
+  "tags": [
+   "smith",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Smith"
+ },
+ {
+  "file": "orders/smith/smith_3.png",
+  "name": "Smith 3",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "smith",
+  "format": "png",
+  "width": 800,
+  "height": 773,
+  "tags": [
+   "smith",
+   "emblem"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Smith"
+ },
+ {
+  "file": "logos/amtgard_logo.png",
+  "name": "Amtgard Logo",
+  "category": "orders",
+  "slot": "center_image",
+  "award_type": "logos",
+  "format": "png",
+  "width": 718,
+  "height": 164,
+  "tags": [
+   "logo",
+   "amtgard",
+   "banner"
+  ],
+  "source": "Amtgard clipart (user-provided)",
+  "license": "CC / free clipart (user-provided)",
+  "collection": "order_images",
+  "group": "Logos"
+ },
+ {
+  "file": "backgrounds/brown_tea_stained.png",
+  "name": "Brown Tea Stained",
+  "category": "backgrounds",
+  "slot": "bg_image",
+  "award_type": null,
+  "format": "png",
+  "width": 689,
+  "height": 921,
+  "tags": [
+   "background",
+   "brown",
+   "stained",
+   "tea"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "backgrounds",
+  "group": "Paper & Stone"
+ },
+ {
+  "file": "backgrounds/gray_smoke.png",
+  "name": "Gray Smoke",
+  "category": "backgrounds",
+  "slot": "bg_image",
+  "award_type": null,
+  "format": "png",
+  "width": 612,
+  "height": 792,
+  "tags": [
+   "background",
+   "gray",
+   "smoke"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "backgrounds",
+  "group": "Paper & Stone"
+ },
+ {
+  "file": "backgrounds/white_marble.png",
+  "name": "White Marble",
+  "category": "backgrounds",
+  "slot": "bg_image",
+  "award_type": null,
+  "format": "png",
+  "width": 612,
+  "height": 792,
+  "tags": [
+   "background",
+   "marble",
+   "white"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "backgrounds",
+  "group": "Paper & Stone"
+ },
+ {
+  "file": "backgrounds/dark_corona.png",
+  "name": "Dark Corona",
+  "category": "backgrounds",
+  "slot": "bg_image",
+  "award_type": null,
+  "format": "png",
+  "width": 612,
+  "height": 792,
+  "tags": [
+   "background",
+   "corona",
+   "dark"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "backgrounds",
+  "group": "Scenic"
+ },
+ {
+  "file": "backgrounds/green_forest.png",
+  "name": "Green Forest",
+  "category": "backgrounds",
+  "slot": "bg_image",
+  "award_type": null,
+  "format": "png",
+  "width": 612,
+  "height": 792,
+  "tags": [
+   "background",
+   "forest",
+   "green"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "backgrounds",
+  "group": "Scenic"
+ },
+ {
+  "file": "backgrounds/purple_lightening.png",
+  "name": "Purple Lightening",
+  "category": "backgrounds",
+  "slot": "bg_image",
+  "award_type": null,
+  "format": "png",
+  "width": 612,
+  "height": 792,
+  "tags": [
+   "background",
+   "lightening",
+   "purple"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "backgrounds",
+  "group": "Scenic"
+ },
+ {
+  "file": "backgrounds/warlord.png",
+  "name": "Warlord",
+  "category": "backgrounds",
+  "slot": "bg_image",
+  "award_type": null,
+  "format": "png",
+  "width": 3600,
+  "height": 5400,
+  "tags": [
+   "background",
+   "warlord"
+  ],
+  "source": "Alona of Two Trees",
+  "license": "CC - free personal & commercial use",
+  "collection": "backgrounds",
+  "group": "Scenic"
+ }
+]

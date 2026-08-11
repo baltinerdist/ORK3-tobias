@@ -1294,6 +1294,8 @@
 						<h5><i class="fas fa-cog"></i> Park</h5>
 						<ul>
 							<li><a href="<?= UIR ?>Admin/permissions/Park/<?= $park_id ?>">Roles &amp; Permissions</a></li>
+							<li><a href="<?= UIR ?>Scroll/admin">Scroll Administration</a></li>
+							<li><a href="<?= UIR ?>ScrollGraphics/manage">Scroll Asset Library</a></li>
 						</ul>
 					</div>
 				</div>
@@ -3068,6 +3070,15 @@ html[data-theme="dark"] #pk-addday-startdate { color-scheme:dark; }
 						<button class="kn-admin-ops-btn kn-admin-ops-btn-danger" id="pk-admin-reset-waivers-btn">
 							<i class="fas fa-eraser"></i> Reset Waivers
 						</button>
+					</div>
+					<div class="kn-admin-ops-row">
+						<div class="kn-admin-ops-info">
+							<strong>Scroll Generator</strong>
+							<p>Design and generate custom award scrolls for this park's members.</p>
+						</div>
+						<a class="kn-admin-ops-btn" href="<?= UIR ?>Scroll/builder" style="text-decoration:none;text-align:center">
+							<i class="fas fa-scroll"></i> Open Generator
+						</a>
 					</div>
 				</div>
 			</div>

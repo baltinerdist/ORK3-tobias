@@ -925,6 +925,8 @@
 					<ul>
 						<li><a href="<?= UIR ?>Admin/permissions/Kingdom/<?= $kingdom_id ?>">Roles &amp; Permissions</a></li>
 						<li><a href="#" onclick="knOpenClaimParkModal();return false;">Claim Park</a></li>
+						<li><a href="<?= UIR ?>Scroll/admin">Scroll Administration</a></li>
+						<li><a href="<?= UIR ?>ScrollGraphics/manage">Scroll Asset Library</a></li>
 					</ul>
 				</div>
 				<?php endif; ?>
@@ -1976,6 +1978,15 @@ var KnBannerConfig = {
 						</button>
 					</div>
 					<?php endif; ?>
+					<div class="kn-admin-ops-row">
+						<div class="kn-admin-ops-info">
+							<strong>Scroll Generator</strong>
+							<p>Design and generate custom award scrolls for this <?= $IsPrinz ? 'principality' : 'kingdom' ?>'s members.</p>
+						</div>
+						<a class="kn-admin-ops-btn" href="<?= UIR ?>Scroll/builder" style="text-decoration:none;text-align:center">
+							<i class="fas fa-scroll"></i> Open Generator
+						</a>
+					</div>
 				</div>
 			</div>
 			<?php endif; ?>
