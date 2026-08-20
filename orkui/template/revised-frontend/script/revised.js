@@ -726,24 +726,24 @@ $(document).ready(function() {
         }
     });
 
-    // ---- Class Level Calculation ----
+    // ---- Class Level Calculation (thresholds from ClassLevel via PnConfig) ----
     $('#pn-classes-table tbody tr').each(function() {
         var credits = Number($(this).find('.pn-credits').text());
+        var thresholds = PnConfig.classLevelThresholds || [];
         var level = 1;
-        if (credits >= 53) level = 6;
-        else if (credits >= 34) level = 5;
-        else if (credits >= 21) level = 4;
-        else if (credits >= 12) level = 3;
-        else if (credits >= 5) level = 2;
+        for (var ti = thresholds.length - 1; ti >= 0; ti--) {
+            if (credits >= thresholds[ti]) { level = ti + 2; break; }
+        }
         $(this).find('.pn-level').text(level);
 
-        var thresholds = [5, 12, 21, 34];
+        var maxCredits = thresholds.length ? thresholds[thresholds.length - 1] : null;
+        var nearThresholds = thresholds.length > 1 ? thresholds.slice(0, -1) : [];
         var badge = '';
-        if (credits >= 53) {
+        if (maxCredits !== null && credits >= maxCredits) {
             badge = 'max';
         } else {
-            for (var i = 0; i < thresholds.length; i++) {
-                var t = thresholds[i];
+            for (var i = 0; i < nearThresholds.length; i++) {
+                var t = nearThresholds[i];
                 if (credits === t) { badge = 'leveled'; break; }
                 else if (credits === t - 1 || credits === t - 2) { badge = 'soon'; break; }
             }
@@ -2549,6 +2549,12 @@ window.knInitMap = async function() {
     }
 
     var infowindow = new google.maps.InfoWindow();
+    // Local escaper, matching the knCiEsc/pkCiEsc convention elsewhere in this file —
+    // park names are user-entered and land in InfoWindow HTML.
+    function knMapEsc(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
     for (var i = 0; i < knMapLocations.length; i++) {
         (function(loc) {
             var pinBg = loc.prinz ? '#2C5F8B' : '#8B1A1A';
@@ -2561,8 +2567,16 @@ window.knInitMap = async function() {
             });
             google.maps.event.addListener(marker, 'click', function() {
                 var locLine = [loc.city, loc.province].filter(Boolean).join(', ');
-                var tipHtml = '<b><a href="' + KnConfig.uir + 'Park/profile/' + loc.id + '" style="color:#2b6cb0">' + loc.name + '</a></b>'
-                    + (locLine ? '<div style="font-size:12px;color:#718096;margin-top:3px"><i class="fas fa-map-marker-alt" style="font-size:10px;margin-right:3px"></i>' + locLine + '</div>' : '');
+                // Styling lives in .kn-map-popover (revised.css) rather than inline, so the
+                // popover picks up dark mode and stays readable on the dark InfoWindow chrome.
+                var tipHtml = '<div class="kn-map-popover' + (loc.prinz ? ' kn-map-popover-prinz' : '') + '">'
+                    + '<a class="kn-map-popover-name" href="' + KnConfig.uir + 'Park/profile/' + loc.id + '">'
+                    + knMapEsc(loc.name) + '</a>'
+                    + (locLine
+                        ? '<div class="kn-map-popover-meta"><i class="fas fa-map-marker-alt"></i><span>'
+                          + knMapEsc(locLine) + '</span></div>'
+                        : '')
+                    + '</div>';
                 infowindow.setContent(tipHtml);
                 infowindow.open(map, marker);
                 knRenderMapSidebar(loc);

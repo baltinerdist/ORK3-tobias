@@ -584,7 +584,7 @@ html[data-theme="dark"] .pk-history-section { border-top-color: var(--ork-border
 	<?php
 		// Forecast for the next park day (when within the 7-day cache window)
 		$nextPdForecast = ($nextParkDayDate && $park_weather)
-			? Ork3::$Lib->weather->forecast_for_date($park_id, $nextParkDayDate)
+			? wx_forecast_for_date($park_id, $nextParkDayDate)
 			: null;
 	?>
 	<div class="pk-stat-card<?= count($parkDayList) > 0 ? ' pk-stat-card-link' : '' ?>"<?php if (count($parkDayList) > 0): ?> onclick="pkActivateTab('about')"<?php endif; ?>>
@@ -616,7 +616,7 @@ html[data-theme="dark"] .pk-history-section { border-top-color: var(--ork-border
 						if ($nextPdForecast['lo_f'] !== null) echo ' · <span style="opacity:.7">L ' . round($nextPdForecast['lo_f']) . '/' . $fcLoC . '°</span>';
 						if (!empty($nextPdForecast['precip_pct']) && $nextPdForecast['precip_pct'] >= 20) echo ' · ' . (int)$nextPdForecast['precip_pct'] . '% rain';
 					?>
-					<?php foreach (Ork3::$Lib->weather->badges_for_date($park_id, $nextParkDayDate) as $_b): ?>
+					<?php foreach (wx_badges_for_date($park_id, $nextParkDayDate) as $_b): ?>
 						<span class="pk-wx-badge pk-wx-<?= $_b['severity'] ?>" title="<?= htmlspecialchars($_b['label']) ?>"<?= wx_safety_attrs($_b['label']) ?>><?= $_b['icon'] ?> <?= htmlspecialchars($_b['label']) ?><?= wx_safety_icon_html($_b['label']) ?></span>
 					<?php endforeach; ?>
 				</div>
@@ -1050,7 +1050,7 @@ html[data-theme="dark"] .pk-history-section { border-top-color: var(--ork-border
 								// Forecast for the next occurrence of THIS park day, when in-person and within the 7-day cache window
 								$_pdNext = $pdNextDateById[(int)$day['ParkDayId']] ?? null;
 								$_pdFC   = (empty($day['Online']) && $_pdNext)
-									? Ork3::$Lib->weather->forecast_for_date($park_id, $_pdNext)
+									? wx_forecast_for_date($park_id, $_pdNext)
 									: null;
 								if ($_pdFC && $_pdFC['hi_f'] !== null):
 									$c = (int)$_pdFC['code'];
@@ -1058,7 +1058,7 @@ html[data-theme="dark"] .pk-history-section { border-top-color: var(--ork-border
 									$hiC = round(($_pdFC['hi_f']-32)*5/9);
 									$loC = $_pdFC['lo_f'] !== null ? round(($_pdFC['lo_f']-32)*5/9) : null;
 							?>
-								<?php $_pdBadges = Ork3::$Lib->weather->badges_for_date($park_id, $_pdNext); ?>
+								<?php $_pdBadges = wx_badges_for_date($park_id, $_pdNext); ?>
 								<div class="pk-schedule-forecast" style="margin-top:6px;padding:6px 8px;background:var(--ork-bg-secondary,#f7fafc);border-radius:4px;font-size:11px;color:var(--ork-text-muted,#718096)">
 									<?php if ($_pdNext !== $parkLocalToday): ?><em style="opacity:.75;margin-right:3px">forecast</em><?php endif; ?>
 									<span style="font-size:13px"><?= $ic ?></span>
@@ -1179,7 +1179,7 @@ html[data-theme="dark"] .pk-history-section { border-top-color: var(--ork-border
 												// Forecast badge when the event date is within the 7-day cache window
 												$evDateStr = substr($event['NextDate'], 0, 10);
 												$evFC = (strtotime($event['NextDate']) >= time() && $park_weather)
-													? Ork3::$Lib->weather->forecast_for_date($park_id, $evDateStr)
+													? wx_forecast_for_date($park_id, $evDateStr)
 													: null;
 												if ($evFC && $evFC['hi_f'] !== null):
 													$c = (int)$evFC['code'];
@@ -1188,7 +1188,7 @@ html[data-theme="dark"] .pk-history-section { border-top-color: var(--ork-border
 											?>
 											<br><span style="font-size:11px;color:var(--ork-text-muted,#718096)"><?php if ($evDateStr !== $parkLocalToday): ?><em style="opacity:.7;margin-right:2px">forecast</em> <?php endif; ?><?= $ic ?> <?= round($evFC['hi_f']) ?>/<?= $hiC ?>°<?php
 												if (!empty($evFC['precip_pct']) && $evFC['precip_pct'] >= 20) echo ' · ' . (int)$evFC['precip_pct'] . '%';
-											?><?php foreach (Ork3::$Lib->weather->badges_for_date($park_id, $evDateStr) as $_b): ?> <span class="pk-wx-badge pk-wx-<?= $_b['severity'] ?>" title="<?= htmlspecialchars($_b['label']) ?>"<?= wx_safety_attrs($_b['label']) ?>><?= $_b['icon'] ?></span><?php endforeach; ?></span>
+											?><?php foreach (wx_badges_for_date($park_id, $evDateStr) as $_b): ?> <span class="pk-wx-badge pk-wx-<?= $_b['severity'] ?>" title="<?= htmlspecialchars($_b['label']) ?>"<?= wx_safety_attrs($_b['label']) ?>><?= $_b['icon'] ?></span><?php endforeach; ?></span>
 											<?php endif; ?>
 										<?php endif; ?>
 									</td>
@@ -2084,8 +2084,8 @@ var PkBannerConfig = {
 			<!-- Entered today (always visible, shared by both tabs) -->
 			<div class="pk-att-entered-section">
 				<div class="pk-att-section-label">
-					<?php // fa-tasks, not fa-list-check: the ORK loads Font Awesome 5, where the FA6
-					      // name renders as nothing at all — no icon, no error, no broken glyph. ?>
+					<?php // The ORK now loads Font Awesome 7, where fa-tasks is kept as an
+					      // alias of fa-list-check, so this name still resolves. ?>
 					<i class="fas fa-tasks" style="margin-right:6px;color:#a0aec0"></i>Attendance
 					<span class="pk-att-entered-count" id="pk-att-entered-count"></span>
 				</div>
@@ -2108,7 +2108,7 @@ var PkBannerConfig = {
 </div>
 
 <!-- QR Code Modal -->
-<div id="pk-qr-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:var(--z-modal-top, 10200);align-items:center;justify-content:center" onclick="if(event.target===this)pkCloseQrModal()">
+<div id="pk-qr-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:var(--z-modal-top);align-items:center;justify-content:center" onclick="if(event.target===this)pkCloseQrModal()">
 	<div style="background:#fff;border-radius:12px;padding:28px 28px 20px;box-shadow:0 8px 32px rgba(0,0,0,0.22);max-width:320px;width:calc(100vw - 40px);text-align:center">
 		<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
 			<span style="font-weight:700;font-size:15px;color:var(--ork-text,#2d3748)"><i class="fas fa-qrcode" style="margin-right:8px;color:var(--ork-link,#2b6cb0)"></i>Scan to Sign In</span>
@@ -2530,7 +2530,7 @@ tr:hover .pk-copy-link { opacity: 1; }
 	position: fixed; inset: 0;
 	background: rgba(0,0,0,0.5);
 	display: flex; align-items: center; justify-content: center;
-	z-index: var(--z-modal, 1100);
+	z-index: var(--z-modal);
 	opacity: 0; pointer-events: none; visibility: hidden;
 	transition: opacity 0.2s, visibility 0s 0.2s;
 }
