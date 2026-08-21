@@ -12,9 +12,109 @@ I have no apologies for the following code.  It works well enough.
 
 class Report extends Ork3
 {
+    /**
+     * Ladder-terminal masterhoods that ork_award.peerage still records as 'None'.
+     *
+     * Every Order ladder ends in a masterhood, and most are classified correctly
+     * (Rose, Smith, Lion, Owl, Dragon, Garber, Warlord, Master Crown, Battlemaster
+     * all carry peerage='Master'). These five do not, so filtering on peerage alone
+     * silently drops them from the weekly recap:
+     *
+     *     7 Master Jovius   8 Master Zodiac   9 Master Mask
+     *    10 Master Hydra   11 Master Griffin
+     *
+     * Reported 2026-08-08 ("Week in review missing non-ladder masterhoods").
+     *
+     * This is a recap-scoped compensation, NOT a fix for the underlying data:
+     * ork_award.peerage is deliberately left alone, so the Masters report, the
+     * Knights & Masters report and the State of Amtgard totals still omit these.
+     * Reclassifying the awards would make all of those consistent in one move.
+     */
+    private const RECAP_UNFLAGGED_MASTERHOOD_AWARD_IDS = array(7, 8, 9, 10, 11);
+
     public function __construct()
     {
         parent::__construct();
+    }
+
+    /**
+     * Token + global AUTH_ADMIN (same gate as Administration::PurgeLogs).
+     *
+     * @return array|null error response, or null when authorized
+     */
+    private function _authorizeGlobalAdmin($token): ?array
+    {
+        $actorId = Ork3::$Lib->authorization->IsAuthorized($token ?? '');
+        if (!valid_id($actorId)) {
+            return BadToken();
+        }
+        if (Ork3::$Lib->authorization->HasAuthority($actorId, AUTH_ADMIN, 0, AUTH_CREATE)) {
+            return null;
+        }
+
+        return NoAuthorization();
+    }
+
+    /**
+     * Token + park CREATE, kingdom EDIT, or global admin (Controller_Reports scope gates).
+     *
+     * @return array|null error response, or null when authorized
+     */
+    private function _authorizeKingdomParkReportScope($token, string $scopeType, int $scopeId): ?array
+    {
+        if (!valid_id($scopeId)) {
+            return InvalidParameter('Scope id is required.');
+        }
+        $actorId = Ork3::$Lib->authorization->IsAuthorized($token ?? '');
+        if (!valid_id($actorId)) {
+            return BadToken();
+        }
+        if (Ork3::$Lib->authorization->HasAuthority($actorId, AUTH_ADMIN, 0, AUTH_ADMIN)
+            || Ork3::$Lib->authorization->HasAuthority($actorId, AUTH_ADMIN, 0, AUTH_CREATE)) {
+            return null;
+        }
+        if ($scopeType === 'Park' || $scopeType === AUTH_PARK) {
+            if (Ork3::$Lib->authorization->HasAuthority($actorId, AUTH_PARK, $scopeId, AUTH_CREATE)) {
+                return null;
+            }
+        } elseif ($scopeType === 'Kingdom' || $scopeType === AUTH_KINGDOM) {
+            if (Ork3::$Lib->authorization->HasAuthority($actorId, AUTH_KINGDOM, $scopeId, AUTH_EDIT)) {
+                return null;
+            }
+        }
+
+        return NoAuthorization();
+    }
+
+    /**
+     * Token + self or park CREATE / kingdom EDIT / admin (SetPlayerActiveStatus-style).
+     *
+     * @return array|null error response, or null when authorized
+     */
+    private function _authorizeReportPlayerScope(array $request, int $mundaneId): ?array
+    {
+        if (!valid_id($mundaneId)) {
+            return InvalidParameter('MundaneId is required.');
+        }
+        $actorId = Ork3::$Lib->authorization->IsAuthorized($request['Token'] ?? '');
+        if (!valid_id($actorId)) {
+            return BadToken();
+        }
+        if ((int) $actorId === (int) $mundaneId) {
+            return null;
+        }
+        $mundane = new yapo($this->db, DB_PREFIX . 'mundane');
+        $mundane->mundane_id = $mundaneId;
+        if (!$mundane->find()) {
+            return InvalidParameter('Player not found.');
+        }
+        if (Ork3::$Lib->authorization->HasAuthority($actorId, AUTH_PARK, (int) $mundane->park_id, AUTH_CREATE)
+            || Ork3::$Lib->authorization->HasAuthority($actorId, AUTH_KINGDOM, (int) $mundane->kingdom_id, AUTH_EDIT)
+            || Ork3::$Lib->authorization->HasAuthority($actorId, AUTH_ADMIN, 0, AUTH_EDIT)) {
+            return null;
+        }
+
+        return NoAuthorization();
     }
 
     public function HeraldryReport($request)
@@ -1634,6 +1734,34 @@ class Report extends Ork3
         return $response;
     }
 
+    public function bustKingdomParkAverageCaches(int $kingdomId): void
+    {
+        if ($kingdomId <= 0) {
+            return;
+        }
+        $cache = Ork3::$Lib->ghettocache;
+        $bustKey = $cache->key(['KingdomId' => $kingdomId]);
+        $cache->bust(__CLASS__ . '.GetKingdomParkAverages', $bustKey);
+        $cache->bust(__CLASS__ . '.GetKingdomParkMonthlyAverages', $bustKey);
+        foreach ([0, 1] as $isAdmin) {
+            $cache->bust(
+                __CLASS__ . '.GetKingdomExtendedParkAverages',
+                $cache->key(['KingdomId' => $kingdomId, 'IsAdmin' => $isAdmin])
+            );
+        }
+    }
+
+    public function bustPlayerStatusReconciliationCaches(int $parkId, int $kingdomId): void
+    {
+        $cache = Ork3::$Lib->ghettocache;
+        if ($parkId > 0) {
+            $cache->bust(__CLASS__ . '.GetPlayerStatusReconciliation', $cache->key(['ParkId' => $parkId]));
+        }
+        if ($kingdomId > 0) {
+            $cache->bust(__CLASS__ . '.GetPlayerStatusReconciliation', $cache->key(['KingdomId' => $kingdomId]));
+        }
+    }
+
     public function GetKingdomParkAverages($request)
     {
         $key = Ork3::$Lib->ghettocache->key($request);
@@ -1755,6 +1883,139 @@ class Report extends Ork3
             $response['KingdomParkMonthlySummary'] = $summary;
         }
         return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
+    }
+
+    /**
+     * Extended kingdom park averages overlay (T-KNG-02): tp/tm per park + kingdom dedup totals.
+     *
+     * @param array{KingdomId?: int, IsAdmin?: bool} $request
+     * @return array<string, array<string, int|float>>
+     */
+    public function GetKingdomExtendedParkAverages($request)
+    {
+        $kid = (int) ($request['KingdomId'] ?? 0);
+        $isAdmin = !empty($request['IsAdmin']);
+        $cacheKey = Ork3::$Lib->ghettocache->key(['KingdomId' => $kid, 'IsAdmin' => (int) $isAdmin]);
+        if (($cached = Ork3::$Lib->ghettocache->get(__CLASS__ . '.GetKingdomExtendedParkAverages', $cacheKey, 1200)) !== false) {
+            return $cached;
+        }
+
+        $wkStart = date('Y-m-d', strtotime('-6 month'));
+        $wkEnd = date('Y-m-d');
+        $wkCount = max(1, (int) ceil((strtotime($wkEnd) - strtotime($wkStart)) / (7 * 86400)));
+        $statsKids = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($kid)));
+
+        $weekly = $this->GetKingdomParkAverages(['KingdomId' => $kid, 'AverageMonths' => 6]);
+        $monthly = $this->GetKingdomParkMonthlyAverages(['KingdomId' => $kid]);
+        $result = [];
+        foreach ((array) ($weekly['KingdomParkAveragesSummary'] ?? []) as $park) {
+            $result[$park['ParkId']] = ['att' => (int) $park['AttendanceCount'], 'mo' => 0, 'tp' => 0, 'tm' => 0];
+        }
+        foreach ((array) ($monthly['KingdomParkMonthlySummary'] ?? []) as $park) {
+            if (isset($result[$park['ParkId']])) {
+                $result[$park['ParkId']]['mo'] = (float) $park['MonthlyAvg'];
+            } else {
+                $result[$park['ParkId']] = ['att' => 0, 'mo' => (float) $park['MonthlyAvg'], 'tp' => 0, 'tm' => 0];
+            }
+        }
+
+        $pcSql = "SELECT a.park_id,
+                COUNT(DISTINCT a.mundane_id) AS total_players,
+                COUNT(DISTINCT CASE WHEN m.park_id = a.park_id THEN a.mundane_id END) AS total_members
+            FROM " . DB_PREFIX . "attendance a
+            INNER JOIN " . DB_PREFIX . "park p  ON p.park_id  = a.park_id  AND p.kingdom_id IN ({$statsKids})
+            INNER JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = a.mundane_id AND m.suspended = 0 AND m.active = 1
+            WHERE a.date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) AND a.mundane_id > 0
+            GROUP BY a.park_id";
+        $this->db->Clear();
+        $pcResult = $this->db->DataSet($pcSql);
+        if ($pcResult && $pcResult->Size() > 0) {
+            while ($pcResult->Next()) {
+                $pid = (int) $pcResult->park_id;
+                if (isset($result[$pid])) {
+                    $result[$pid]['tp'] = (int) $pcResult->total_players;
+                    $result[$pid]['tm'] = (int) $pcResult->total_members;
+                } else {
+                    $result[$pid] = ['att' => 0, 'mo' => 0, 'tp' => (int) $pcResult->total_players, 'tm' => (int) $pcResult->total_members];
+                }
+            }
+        }
+
+        $knSql = "SELECT COUNT(*) AS katt FROM (
+                SELECT a.mundane_id FROM " . DB_PREFIX . "attendance a
+                INNER JOIN " . DB_PREFIX . "park p ON p.park_id = a.park_id AND p.kingdom_id IN ({$statsKids})
+                WHERE a.date >= '{$wkStart}'
+                    AND a.mundane_id > 0
+                GROUP BY a.date_year, a.date_week3, a.mundane_id
+            ) t";
+        $this->db->Clear();
+        $knResult = $this->db->DataSet($knSql);
+        $katt = ($knResult && $knResult->Next()) ? (int) $knResult->katt : 0;
+
+        $knMoSql = "SELECT AVG(monthly_unique) AS kmo FROM (
+                SELECT a.date_year, a.date_month, COUNT(DISTINCT a.mundane_id) AS monthly_unique
+                FROM " . DB_PREFIX . "attendance a
+                INNER JOIN " . DB_PREFIX . "park p ON p.park_id = a.park_id AND p.kingdom_id IN ({$statsKids})
+                WHERE a.date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+                    AND a.mundane_id > 0
+                GROUP BY a.date_year, a.date_month
+            ) sub";
+        $this->db->Clear();
+        $knMoResult = $this->db->DataSet($knMoSql);
+        $kmo = ($knMoResult && $knMoResult->Next()) ? round((float) $knMoResult->kmo, 1) : 0;
+        $result['_kingdom'] = ['att' => $katt, 'mo' => $kmo, 'wk_count' => $wkCount];
+
+        if ($isAdmin) {
+            $this->db->Clear();
+            $prevWkResult = $this->db->DataSet(
+                "SELECT COUNT(mw.mundane_id) AS att, p.park_id
+                 FROM " . DB_PREFIX . "park p
+                 LEFT JOIN (
+                     SELECT a.mundane_id, a.park_id
+                     FROM " . DB_PREFIX . "attendance a
+                     INNER JOIN " . DB_PREFIX . "park pk ON pk.park_id = a.park_id AND pk.kingdom_id IN ({$statsKids})
+                     WHERE a.date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+                       AND a.date <  DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+                       AND a.mundane_id > 0
+                     GROUP BY date_year, date_week3, mundane_id, a.park_id
+                 ) mw ON p.park_id = mw.park_id
+                 WHERE p.kingdom_id IN ({$statsKids}) AND p.active = 'Active'
+                 GROUP BY p.park_id"
+            );
+            if ($prevWkResult) {
+                while ($prevWkResult->Next()) {
+                    $pid = (int) $prevWkResult->park_id;
+                    if (isset($result[$pid])) {
+                        $result[$pid]['prev_att'] = (int) $prevWkResult->att;
+                    }
+                }
+            }
+            $this->db->Clear();
+            $prevMoResult = $this->db->DataSet(
+                "SELECT AVG(monthly_unique) AS mo, park_id
+                 FROM (
+                     SELECT a.date_year, a.date_month, a.park_id,
+                            COUNT(DISTINCT a.mundane_id) AS monthly_unique
+                     FROM " . DB_PREFIX . "attendance a
+                     INNER JOIN " . DB_PREFIX . "park p ON p.park_id = a.park_id AND p.kingdom_id IN ({$statsKids})
+                     WHERE a.date >= DATE_SUB(CURDATE(), INTERVAL 24 MONTH)
+                       AND a.date <  DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+                       AND a.mundane_id > 0
+                     GROUP BY a.date_year, a.date_month, a.park_id
+                 ) mm
+                 GROUP BY park_id"
+            );
+            if ($prevMoResult) {
+                while ($prevMoResult->Next()) {
+                    $pid = (int) $prevMoResult->park_id;
+                    if (isset($result[$pid])) {
+                        $result[$pid]['prev_mo'] = round((float) $prevMoResult->mo, 2);
+                    }
+                }
+            }
+        }
+
+        return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.GetKingdomExtendedParkAverages', $cacheKey, $result);
     }
 
     public function GetTopParksByAttendance($request = null)
@@ -3465,6 +3726,8 @@ class Report extends Ork3
 
         $mundane->active = $active;
         $mundane->save();
+        Ork3::$Lib->player->bustPlayerProfileCaches($mundane_id);
+        $this->bustPlayerStatusReconciliationCaches((int) $mundane->park_id, (int) $mundane->kingdom_id);
         return Success();
     }
 
@@ -3473,6 +3736,15 @@ class Report extends Ork3
         $kingdom_id     = (int)($request['KingdomId'] ?? 0);
         $park_id        = valid_id($request['ParkId'] ?? 0) ? (int)$request['ParkId'] : 0;
         $mundane_id     = valid_id($request['MundaneId'] ?? 0) ? (int)$request['MundaneId'] : 0;
+
+        // T-RPT-04: backend-owned voting rules when caller did not pass rule flags.
+        if ($kingdom_id > 0 && !isset($request['AttendanceMode'])) {
+            $storedRules = VotingRules::rulesForKingdom($kingdom_id);
+            if ($storedRules !== null) {
+                $request = array_merge($storedRules, $request);
+            }
+        }
+
         $att_req        = isset($request['AttendanceRequired']) ? (int)$request['AttendanceRequired'] : 6;
         $months_win     = isset($request['MonthsWindow']) ? (int)$request['MonthsWindow'] : 6;
         $min_mem_mo     = isset($request['MinMembershipMonths']) ? (int)$request['MinMembershipMonths'] : 6;
@@ -3977,6 +4249,7 @@ class Report extends Ork3
             'ReturningPlayers' => $this->_RecapReturningPlayers($win, 90),
             'MilestoneEvents'  => $this->_RecapMilestoneEvents($win, 25),
             'PlatformStats'    => $this->_RecapCloudflareStats($win),
+            'HumanUsers'       => $this->_RecapGaHumanUsers($win),
         );
     }
 
@@ -3998,6 +4271,87 @@ class Report extends Ork3
         }
         $payload['ComputedAt'] = $r->computed_at;
         return $payload;
+    }
+
+    /**
+     * Weekly platform trend series for the public Recap/trends page: one entry
+     * per stored recap week with just the headline numbers, extracted from
+     * payload_json in SQL — the full payloads also carry peerage/event lists
+     * that a trends page has no business shipping.
+     *
+     * Values are null for weeks where a source wasn't available (GA not yet
+     * installed, CF beyond retention, deliberately blanked bot-wave weeks) —
+     * the chart renders those as gaps, which is the honest presentation.
+     *
+     * Cached 1h: the underlying table changes once a day (the 6am cron).
+     */
+    public function GetRecapTrendSeries()
+    {
+        $key = Ork3::$Lib->ghettocache->key(array('recap-trend-series'));
+        if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 3600)) !== false) {
+            return $cache;
+        }
+        $sql = "SELECT week_start,
+					   JSON_EXTRACT(payload_json, '$.HumanUsers')                        AS visitors,
+					   JSON_EXTRACT(payload_json, '$.PlatformStats.Requests')            AS requests,
+					   JSON_EXTRACT(payload_json, '$.PlatformStats.BlockedOrChallenged') AS blocked,
+					   JSON_EXTRACT(payload_json, '$.PlatformStats.CacheHits')           AS cache_hits,
+					   JSON_EXTRACT(payload_json, '$.PlatformStats.Bytes')               AS bytes
+				FROM " . DB_PREFIX . "weekly_recap
+				ORDER BY week_start";
+        $r = $this->db->query($sql);
+        $out = array();
+        if ($r !== false && $r->size() > 0) {
+            while ($r->next()) {
+                // JSON_EXTRACT yields the string 'null' for JSON null and PHP
+                // null for a missing key; is_numeric() folds both to null here.
+                $out[] = array(
+                    'WeekStart' => $r->week_start,
+                    'Visitors'  => is_numeric($r->visitors) ? (int)$r->visitors : null,
+                    'Requests'  => is_numeric($r->requests) ? (int)$r->requests : null,
+                    'Blocked'   => is_numeric($r->blocked) ? (int)$r->blocked : null,
+                    'CacheHits' => is_numeric($r->cache_hits) ? (int)$r->cache_hits : null,
+                    'Bytes'     => is_numeric($r->bytes) ? (float)$r->bytes : null,
+                );
+            }
+        }
+        return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $out);
+    }
+
+    /**
+     * Distinct players credited with attendance per week (Monday-anchored,
+     * matching the recap window), across all recorded history — the long
+     * participation curve of the game itself, independent of web analytics.
+     *
+     * This is the expensive one (full aggregation over ork_attendance, ~2s),
+     * so it carries a 24h ghettocache: attendance only ever moves the current
+     * week, and a day of staleness on a decades-long chart is invisible.
+     */
+    public function GetWeeklyActivePlayersSeries()
+    {
+        $key = Ork3::$Lib->ghettocache->key(array('weekly-active-players'));
+        if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 86400)) !== false) {
+            return $cache;
+        }
+        // Date guards drop the stray garbage rows (far-future/ancient dates)
+        // that two decades of hand-entered data inevitably contain.
+        $sql = "SELECT DATE_SUB(date, INTERVAL WEEKDAY(date) DAY) AS wk,
+					   COUNT(DISTINCT mundane_id) AS players
+				FROM " . DB_PREFIX . "attendance
+				WHERE date >= '2005-01-01' AND date <= CURDATE()
+				GROUP BY wk
+				ORDER BY wk";
+        $r = $this->db->query($sql);
+        $out = array();
+        if ($r !== false && $r->size() > 0) {
+            while ($r->next()) {
+                $out[] = array(
+                    'WeekStart' => $r->wk,
+                    'Players'   => (int)$r->players,
+                );
+            }
+        }
+        return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $out);
     }
 
     // Fetches NA-only Cloudflare traffic totals for the week. Returns null on any
@@ -4086,6 +4440,125 @@ class Report extends Ork3
         return json_decode($resp, true);
     }
 
+    /**
+     * Unique human visitors for the recap week, from Google Analytics (GA4).
+     *
+     * This is the only honest "how many people use the site" number we have:
+     * GA only counts clients that execute its JS, which excludes essentially all
+     * bots. (Cloudflare's edge "uniques" counts distinct IPs and is ~99% bot
+     * traffic — see PlatformStats, which is a traffic/security metric, not a
+     * user count. GA undercounts humans somewhat instead: ad-blockers.)
+     *
+     * Auth is a Google service account (GA4 property Viewer) — the JWT-bearer
+     * flow, signed locally with openssl, no SDK. Config lives beside the CF
+     * keys: GA4_PROPERTY_ID (numeric, GA Admin > Property settings) and
+     * GA4_SA_KEY_PATH (the service account's JSON key file, NOT in git).
+     * Returns null on any failure so the recap still ships without it.
+     *
+     * @return int|null distinct activeUsers over the week, or null
+     */
+    private function _RecapGaHumanUsers($win)
+    {
+        return $this->GaActiveUsers($win['WeekStart'], $win['WeekEnd']);
+    }
+
+    /**
+     * Distinct GA4 activeUsers between two Y-m-d dates (inclusive). Public so
+     * ad-hoc callers (bin/ga-probe.php, "how many users this month?") share the
+     * exact plumbing the weekly recap uses. Null on any failure or missing config.
+     *
+     * @param string $start_date Y-m-d
+     * @param string $end_date   Y-m-d
+     * @return int|null
+     */
+    public function GaActiveUsers($start_date, $end_date)
+    {
+        $property = (defined('GA4_PROPERTY_ID') && GA4_PROPERTY_ID !== '') ? GA4_PROPERTY_ID : getenv('GA4_PROPERTY_ID');
+        $key_path = (defined('GA4_SA_KEY_PATH') && GA4_SA_KEY_PATH !== '') ? GA4_SA_KEY_PATH : getenv('GA4_SA_KEY_PATH');
+        if (empty($property) || empty($key_path) || !is_readable($key_path)) {
+            return null;
+        }
+        $token = $this->_gaAccessToken($key_path);
+        if ($token === null) {
+            return null;
+        }
+
+        $ch = curl_init('https://analyticsdata.googleapis.com/v1beta/properties/' . rawurlencode($property) . ':runReport');
+        curl_setopt_array($ch, array(
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => json_encode(array(
+                'dateRanges' => array(array('startDate' => $start_date, 'endDate' => $end_date)),
+                'metrics'    => array(array('name' => 'activeUsers')),
+            )),
+            CURLOPT_HTTPHEADER     => array(
+                'Authorization: Bearer ' . $token,
+                'Content-Type: application/json',
+            ),
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 20,
+            CURLOPT_CONNECTTIMEOUT => 5,
+        ));
+        $resp = curl_exec($ch);
+        $http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($resp === false || $http !== 200) {
+            return null;
+        }
+        $json = json_decode($resp, true);
+        $value = $json['rows'][0]['metricValues'][0]['value'] ?? null;
+        return $value === null ? null : (int)$value;
+    }
+
+    /**
+     * OAuth2 access token for the GA service account (JWT-bearer grant).
+     * Scope is read-only analytics. Returns null on any failure.
+     */
+    private function _gaAccessToken($key_path)
+    {
+        $key = json_decode((string)file_get_contents($key_path), true);
+        if (!is_array($key) || empty($key['client_email']) || empty($key['private_key'])) {
+            return null;
+        }
+
+        $b64 = function ($data) {
+            return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
+        };
+        $now = time();
+        $unsigned = $b64(json_encode(array('alg' => 'RS256', 'typ' => 'JWT')))
+            . '.' . $b64(json_encode(array(
+                'iss'   => $key['client_email'],
+                'scope' => 'https://www.googleapis.com/auth/analytics.readonly',
+                'aud'   => 'https://oauth2.googleapis.com/token',
+                'iat'   => $now,
+                'exp'   => $now + 3600,
+            )));
+        $signature = '';
+        if (!openssl_sign($unsigned, $signature, $key['private_key'], OPENSSL_ALGO_SHA256)) {
+            return null;
+        }
+        $jwt = $unsigned . '.' . $b64($signature);
+
+        $ch = curl_init('https://oauth2.googleapis.com/token');
+        curl_setopt_array($ch, array(
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => http_build_query(array(
+                'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+                'assertion'  => $jwt,
+            )),
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 20,
+            CURLOPT_CONNECTTIMEOUT => 5,
+        ));
+        $resp = curl_exec($ch);
+        $http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($resp === false || $http !== 200) {
+            return null;
+        }
+        $json = json_decode($resp, true);
+        return isset($json['access_token']) ? (string)$json['access_token'] : null;
+    }
+
     // Count of firewall events that actually stopped traffic: outright blocks plus
     // challenges (managed/JS/classic). Excludes "skip", "allow", "log", and the
     // *_solved/*_bypassed actions where the request ultimately got through.
@@ -4167,6 +4640,8 @@ class Report extends Ork3
             'MilestoneEvents'  => $this->_RecapMilestoneEvents($win, 25, $kingdom_id),
             // PlatformStats stays global — CF doesn't tell us per-kingdom traffic.
             'PlatformStats'    => $global['PlatformStats'] ?? null,
+            // Ditto HumanUsers — GA4 counts site visitors, not kingdom members.
+            'HumanUsers'       => $global['HumanUsers'] ?? null,
             'ComputedAt'       => $computed_at,
         );
         return Ork3::$Lib->ghettocache->cache($call, $key, $payload);
@@ -4250,10 +4725,23 @@ class Report extends Ork3
         $start = mysql_real_escape_string($win['WeekStart']);
         $end   = mysql_real_escape_string($win['WeekEnd']);
         $kid_clause = $kingdom_id ? ' AND m.kingdom_id IN (' . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($kingdom_id))) . ')' : '';
+
+        // Resolve peerage and award id through the same alias-then-kingdomaward
+        // precedence, so both agree on which award a grant actually represents.
+        $peerage_expr  = 'COALESCE(alias.peerage, a.peerage)';
+        $award_expr    = 'COALESCE(alias.award_id, ka.award_id)';
+        $peerage_where = "$peerage_expr IN ($list)";
+        if (in_array('Master', $peerages, true)) {
+            // Pick up the masterhoods ork_award.peerage does not flag as such.
+            $unflagged     = implode(',', array_map('intval', self::RECAP_UNFLAGGED_MASTERHOOD_AWARD_IDS));
+            $peerage_where = "($peerage_where OR $award_expr IN ($unflagged))";
+            // Report them as masterhoods so the returned DTO is self-consistent.
+            $peerage_expr  = "CASE WHEN $award_expr IN ($unflagged) THEN 'Master' ELSE $peerage_expr END";
+        }
         $sql = "SELECT ma.awards_id, ma.date, ma.mundane_id, m.persona,
 					   p.park_id, p.name AS park_name,
 					   k.kingdom_id, k.name AS kingdom_name,
-					   COALESCE(alias.peerage, a.peerage) AS peerage,
+					   $peerage_expr AS peerage,
 					   COALESCE(NULLIF(ma.custom_name, ''), ka.name, alias.name, a.name) AS award_name
 				FROM " . DB_PREFIX . "awards ma
 					JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = ma.mundane_id
@@ -4262,7 +4750,7 @@ class Report extends Ork3
 					LEFT JOIN " . DB_PREFIX . "award alias ON alias.award_id = ma.alias_award_id
 					LEFT JOIN " . DB_PREFIX . "park p ON p.park_id = m.park_id
 					LEFT JOIN " . DB_PREFIX . "kingdom k ON k.kingdom_id = m.kingdom_id
-				WHERE COALESCE(alias.peerage, a.peerage) IN ($list)
+				WHERE $peerage_where
 				  AND ma.revoked = 0
 				  AND ma.date >= '$start' AND ma.date <= '$end'
 				  $kid_clause
@@ -5963,6 +6451,497 @@ class Report extends Ork3
             );
         }
         return $chart;
+    }
+
+    /**
+     * Admin dashboard YoY trend stats and prior-period kingdom attendance keys (T-ADM-01).
+     *
+     * @return array{
+     *   TrendStats: array<string, int>,
+     *   PrevWeekly: array<int, int>,
+     *   PrevMonthly: array<int, int>
+     * }
+     */
+    public function GetAdminDashboardStats($Token = null): array
+    {
+        $auth = $this->_authorizeGlobalAdmin($Token);
+        if ($auth !== null) {
+            return $auth;
+        }
+
+        $thisYearStart = date('Y') . '-01-01';
+        $lastYearStart = (date('Y') - 1) . '-01-01';
+        $lastYearEnd = date('Y-m-d', strtotime('-1 year'));
+        $now1yr = date('Y-m-d');
+        $prev1yrStart = date('Y-m-d', strtotime('-2 years'));
+        $prev1yrEnd = date('Y-m-d', strtotime('-1 year'));
+
+        $this->db->Clear();
+        $rs = $this->db->DataSet(
+            "SELECT
+              (SELECT COUNT(*) FROM " . DB_PREFIX . "awards WHERE entered_at >= '$thisYearStart' AND entered_at < '$now1yr') AS awards_cur,
+              (SELECT COUNT(*) FROM " . DB_PREFIX . "awards WHERE entered_at >= '$lastYearStart' AND entered_at < '$lastYearEnd') AS awards_prev,
+              (SELECT COUNT(*) FROM " . DB_PREFIX . "attendance WHERE date >= '$thisYearStart' AND date < '$now1yr' AND mundane_id > 0) AS att_cur,
+              (SELECT COUNT(*) FROM " . DB_PREFIX . "attendance WHERE date >= '$lastYearStart' AND date < '$lastYearEnd' AND mundane_id > 0) AS att_prev,
+              (SELECT COUNT(DISTINCT mundane_id) FROM " . DB_PREFIX . "attendance WHERE date >= '$prev1yrEnd' AND date < '$now1yr' AND mundane_id > 0) AS players_cur,
+              (SELECT COUNT(DISTINCT mundane_id) FROM " . DB_PREFIX . "attendance WHERE date >= '$prev1yrStart' AND date < '$prev1yrEnd' AND mundane_id > 0) AS players_prev,
+              (SELECT COUNT(*) FROM " . DB_PREFIX . "recommendations WHERE date_recommended >= '$thisYearStart' AND date_recommended < '$now1yr' AND deleted_at IS NULL) AS recs_cur,
+              (SELECT COUNT(*) FROM " . DB_PREFIX . "recommendations WHERE date_recommended >= '$lastYearStart' AND date_recommended < '$lastYearEnd' AND deleted_at IS NULL) AS recs_prev"
+        );
+        $trendStats = [
+            'awards_cur' => 0, 'awards_prev' => 0, 'att_cur' => 0, 'att_prev' => 0,
+            'players_cur' => 0, 'players_prev' => 0, 'recs_cur' => 0, 'recs_prev' => 0,
+        ];
+        if ($rs && $rs->Next()) {
+            foreach ($trendStats as $k => $_) {
+                $trendStats[$k] = (int) $rs->$k;
+            }
+        }
+
+        $this->db->Clear();
+        $prevWkRs = $this->db->DataSet(
+            'SELECT COUNT(mw.mundane_id) AS att, mw.kingdom_id
+             FROM (
+                 SELECT mundane_id, date_year, date_week3, kingdom_id
+                 FROM ' . DB_PREFIX . 'attendance
+                 WHERE date >  DATE_SUB(CURDATE(), INTERVAL 52 WEEK)
+                   AND date <= DATE_SUB(CURDATE(), INTERVAL 26 WEEK)
+                   AND mundane_id > 0
+                 GROUP BY date_year, date_week3, mundane_id, kingdom_id
+             ) mw
+             GROUP BY mw.kingdom_id'
+        );
+        $prevWeekly = [];
+        if ($prevWkRs) {
+            while ($prevWkRs->Next()) {
+                $prevWeekly[(int) $prevWkRs->kingdom_id] = (int) $prevWkRs->att;
+            }
+        }
+
+        $this->db->Clear();
+        $prevMoRs = $this->db->DataSet(
+            'SELECT COUNT(mm.mundane_id) AS mo, mm.kingdom_id
+             FROM (
+                 SELECT mundane_id, date_year, date_month, kingdom_id
+                 FROM ' . DB_PREFIX . 'attendance
+                 WHERE date >= DATE_SUB(CURDATE(), INTERVAL 24 MONTH)
+                   AND date <  DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+                   AND mundane_id > 0
+                 GROUP BY date_year, date_month, mundane_id, kingdom_id
+             ) mm
+             GROUP BY mm.kingdom_id'
+        );
+        $prevMonthly = [];
+        if ($prevMoRs) {
+            while ($prevMoRs->Next()) {
+                $prevMonthly[(int) $prevMoRs->kingdom_id] = (int) $prevMoRs->mo;
+            }
+        }
+
+        return [
+            'TrendStats' => $trendStats,
+            'PrevWeekly' => $prevWeekly,
+            'PrevMonthly' => $prevMonthly,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function GetVotingRules($request)
+    {
+        $kingdomId = valid_id($request['KingdomId'] ?? 0) ? (int) $request['KingdomId'] : 0;
+
+        return [
+            'Status' => Success(),
+            'Rules' => VotingRules::allRules(),
+            'SupportedKingdomIds' => VotingRules::supportedKingdomIds(),
+            'KingdomRules' => $kingdomId > 0 ? VotingRules::rulesForKingdom($kingdomId) : null,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function GetVotingEligibleForPlayer($request)
+    {
+        $mundaneId = valid_id($request['MundaneId'] ?? 0) ? (int) $request['MundaneId'] : 0;
+        $kingdomId = valid_id($request['KingdomId'] ?? 0) ? (int) $request['KingdomId'] : 0;
+
+        if ($mundaneId <= 0) {
+            return ['Status' => InvalidParameter(), 'Players' => [], 'KingdomId' => 0];
+        }
+
+        $auth = $this->_authorizeReportPlayerScope($request, $mundaneId);
+        if ($auth !== null) {
+            return array_merge($auth, ['Players' => [], 'KingdomId' => 0]);
+        }
+
+        if ($kingdomId <= 0) {
+            $this->db->Clear();
+            $row = $this->db->DataSet(
+                'SELECT kingdom_id FROM ' . DB_PREFIX . 'mundane WHERE mundane_id = ' . $mundaneId . ' LIMIT 1'
+            );
+            if (!$row || !$row->Next()) {
+                return ['Status' => InvalidParameter(), 'Players' => [], 'KingdomId' => 0];
+            }
+            $kingdomId = (int) $row->kingdom_id;
+        }
+
+        $result = $this->GetVotingEligible([
+            'KingdomId' => $kingdomId,
+            'MundaneId' => $mundaneId,
+        ]);
+        $result['KingdomId'] = $kingdomId;
+
+        return $result;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function GetAttendanceDates($request)
+    {
+        $type = $request['Type'] ?? 'Kingdom';
+        $id = (int) ($request['Id'] ?? 0);
+        if ($id <= 0) {
+            return ['Status' => InvalidParameter(), 'Dates' => []];
+        }
+
+        $auth = $this->_authorizeKingdomParkReportScope($request['Token'] ?? '', $type, $id);
+        if ($auth !== null) {
+            return ['Status' => $auth, 'Dates' => []];
+        }
+
+        $col = ($type === 'Kingdom') ? 'kingdom_id' : 'park_id';
+        $this->db->Clear();
+        $rs = $this->db->DataSet(
+            'SELECT DISTINCT DATE(date) AS att_date FROM ' . DB_PREFIX . "attendance WHERE {$col} = {$id} ORDER BY att_date DESC"
+        );
+        $dates = [];
+        if ($rs) {
+            while ($rs->Next()) {
+                $dates[] = $rs->att_date;
+            }
+        }
+
+        return ['Status' => Success(), 'Dates' => $dates];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function GetKingdomOfficerDirectoryMerged($request)
+    {
+        $kingdomId = valid_id($request['KingdomId'] ?? 0) ? (int) $request['KingdomId'] : null;
+        if ($kingdomId === null) {
+            $auth = $this->_authorizeGlobalAdmin($request['Token'] ?? '');
+        } else {
+            $auth = $this->_authorizeKingdomParkReportScope($request['Token'] ?? '', AUTH_KINGDOM, $kingdomId);
+        }
+        if ($auth !== null) {
+            return [
+                'Status' => $auth,
+                'Rows' => [],
+                'Mode' => 'kingdoms',
+                'Principalities' => [],
+            ];
+        }
+
+        $r = $this->KingdomOfficerDirectory($request);
+        if (($r['Status']['Status'] ?? 1) != 0) {
+            return [
+                'Status' => $r['Status'],
+                'Rows' => [],
+                'Mode' => 'kingdoms',
+                'Principalities' => [],
+            ];
+        }
+
+        $principalities = [];
+        if (valid_id($kingdomId) && Ork3::$Lib->kingdom->StatsIncludesPrincipalities($kingdomId)) {
+            $prList = Ork3::$Lib->kingdom->GetPrincipalities(['KingdomId' => $kingdomId]);
+            foreach (($prList['Principalities'] ?? []) as $pr) {
+                $prId = (int) $pr['KingdomId'];
+                $dir = $this->KingdomOfficerDirectory(['KingdomId' => $prId]);
+                if (($dir['Status']['Status'] ?? 1) == 0 && !empty($dir['Kingdoms'])) {
+                    $principalities[] = [
+                        'KingdomId' => $prId,
+                        'Name' => $pr['Name'],
+                        'Rows' => $dir['Kingdoms'],
+                    ];
+                }
+            }
+        }
+
+        return [
+            'Status' => Success(),
+            'Rows' => $r['Kingdoms'],
+            'Mode' => $r['Mode'],
+            'Principalities' => $principalities,
+        ];
+    }
+
+    /**
+     * Ladder awards grid report assembly (T-RPT-01).
+     *
+     * @return array{ScopeName: string, LadderAwards: array<int, array<string, mixed>>, GridRows: list<array<string, mixed>>}
+     */
+    public function GetLadderAwardGrid($request)
+    {
+        $kingdomId = valid_id($request['KingdomId'] ?? 0) ? (int) $request['KingdomId'] : 0;
+        $parkId = valid_id($request['ParkId'] ?? 0) ? (int) $request['ParkId'] : 0;
+        $type = $parkId > 0 ? 'Park' : 'Kingdom';
+        $id = $parkId > 0 ? $parkId : $kingdomId;
+
+        if ($parkId > 0) {
+            $auth = $this->_authorizeKingdomParkReportScope($request['Token'] ?? '', AUTH_PARK, $parkId);
+        } elseif ($kingdomId > 0) {
+            $auth = $this->_authorizeKingdomParkReportScope($request['Token'] ?? '', AUTH_KINGDOM, $kingdomId);
+        } else {
+            return [
+                'Status' => InvalidParameter(),
+                'ScopeName' => '',
+                'LadderAwards' => [],
+                'GridRows' => [],
+            ];
+        }
+        if ($auth !== null) {
+            return [
+                'Status' => $auth,
+                'ScopeName' => '',
+                'LadderAwards' => [],
+                'GridRows' => [],
+            ];
+        }
+
+        $scopeName = '';
+        if ($parkId > 0) {
+            $this->db->Clear();
+            $nr = $this->db->DataSet(
+                'SELECT p.name AS park_name, k.name AS kingdom_name
+                 FROM ' . DB_PREFIX . 'park p
+                 LEFT JOIN ' . DB_PREFIX . 'kingdom k ON k.kingdom_id = p.kingdom_id
+                 WHERE p.park_id = ' . $parkId . ' LIMIT 1'
+            );
+            if ($nr && $nr->Next()) {
+                $scopeName = $nr->kingdom_name . ' — ' . $nr->park_name;
+            }
+        } elseif ($kingdomId > 0) {
+            $this->db->Clear();
+            $nr = $this->db->DataSet(
+                'SELECT name FROM ' . DB_PREFIX . 'kingdom WHERE kingdom_id = ' . $kingdomId . ' LIMIT 1'
+            );
+            if ($nr && $nr->Next()) {
+                $scopeName = $nr->name;
+            }
+        }
+
+        if ($kingdomId > 0) {
+            $kSql = 'SELECT DISTINCT a.award_id, IFNULL(ka.name, a.name) AS award_name, a.title_class
+                     FROM ' . DB_PREFIX . 'kingdomaward ka
+                     JOIN ' . DB_PREFIX . 'award a ON a.award_id = ka.award_id
+                     WHERE ka.kingdom_id = ' . $kingdomId . "
+                       AND a.is_ladder = 1 AND a.award_id != 31
+                     ORDER BY IFNULL(ka.name, a.name)";
+        } else {
+            $kSql = 'SELECT DISTINCT a.award_id, a.name AS award_name, a.title_class
+                     FROM ' . DB_PREFIX . "award a
+                     WHERE a.is_ladder = 1 AND a.award_id != 31
+                     ORDER BY a.name";
+        }
+
+        $knightGroupMap = self::ladderKnightGroupMap();
+
+        $this->db->Clear();
+        $awardResult = $this->db->DataSet($kSql);
+        $awardCols = [];
+        if ($awardResult) {
+            while ($awardResult->Next()) {
+                if (!$awardResult->award_id) {
+                    continue;
+                }
+                $name = $awardResult->award_name;
+                $awardCols[(int) $awardResult->award_id] = [
+                    'Name' => $name,
+                    'DisplayName' => preg_replace('/^Order of (?:the )?/i', '', $name),
+                    'KnightGroup' => $knightGroupMap[$name] ?? '',
+                ];
+            }
+        }
+
+        if ($awardCols === []) {
+            return ['ScopeName' => $scopeName, 'LadderAwards' => [], 'GridRows' => []];
+        }
+
+        $awardIds = implode(',', array_keys($awardCols));
+        $gridCacheKey = Ork3::$Lib->ghettocache->key(['type' => $type, 'id' => $id, 'awards' => $awardIds]);
+        $cachedGrid = Ork3::$Lib->ghettocache->get(__CLASS__ . '.GetLadderAwardGrid', $gridCacheKey, 1200);
+        if ($cachedGrid !== false) {
+            return [
+                'ScopeName' => $scopeName,
+                'LadderAwards' => $awardCols,
+                'GridRows' => $cachedGrid,
+            ];
+        }
+
+        $locationClause = $parkId > 0
+            ? 'AND m.park_id = ' . $parkId
+            : ($kingdomId > 0 ? 'AND m.kingdom_id = ' . $kingdomId : '');
+
+        $dataSql = "SELECT m.mundane_id, m.persona, p.park_id, p.name AS park_name, a.award_id,
+                           GREATEST(MAX(ma.rank), COUNT(ma.awards_id)) AS award_count
+                    FROM " . DB_PREFIX . 'mundane m
+                    LEFT JOIN ' . DB_PREFIX . 'park p ON p.park_id = m.park_id
+                    JOIN ' . DB_PREFIX . 'awards ma ON ma.mundane_id = m.mundane_id
+                    JOIN ' . DB_PREFIX . 'kingdomaward ka ON ka.kingdomaward_id = ma.kingdomaward_id
+                    JOIN ' . DB_PREFIX . 'award a ON a.award_id = ka.award_id
+                    WHERE m.active = 1 AND a.is_ladder = 1
+                      AND a.award_id IN (' . $awardIds . ")
+                      AND (ma.revoked = 0 OR ma.revoked IS NULL)
+                      {$locationClause}
+                    GROUP BY m.mundane_id, a.award_id
+                    ORDER BY m.persona";
+
+        $this->db->Clear();
+        $dataResult = $this->db->DataSet($dataSql);
+        $playerData = [];
+        if ($dataResult) {
+            while ($dataResult->Next()) {
+                $mid = (int) $dataResult->mundane_id;
+                $aid = (int) $dataResult->award_id;
+                if (!$mid || !$aid) {
+                    continue;
+                }
+                if (!isset($playerData[$mid])) {
+                    $playerData[$mid] = [
+                        'MundaneId' => $mid,
+                        'Persona' => $dataResult->persona,
+                        'ParkId' => (int) $dataResult->park_id,
+                        'ParkName' => $dataResult->park_name ?? '',
+                        'Awards' => [],
+                    ];
+                }
+                $val = (int) $dataResult->award_count;
+                $playerData[$mid]['Awards'][$aid] = ['Rank' => $val > 0 ? $val : null, 'IsMaster' => false];
+            }
+        }
+
+        if ($playerData === []) {
+            return ['ScopeName' => $scopeName, 'LadderAwards' => $awardCols, 'GridRows' => []];
+        }
+
+        $mundaneIds = implode(',', array_keys($playerData));
+        $ladderToMasterMap = Award::GetLadderMasterMap();
+        $masterAwardIds = [];
+        foreach (array_keys($awardCols) as $lid) {
+            if (isset($ladderToMasterMap[$lid])) {
+                foreach ($ladderToMasterMap[$lid]['MasterAwardIds'] as $midAward) {
+                    $masterAwardIds[$midAward] = $lid;
+                }
+            }
+        }
+
+        if ($masterAwardIds !== []) {
+            $masterIds = implode(',', array_keys($masterAwardIds));
+            $masterSql = "SELECT ma.mundane_id, ka.award_id AS master_award_id
+                         FROM " . DB_PREFIX . 'awards ma
+                         JOIN ' . DB_PREFIX . 'kingdomaward ka ON ka.kingdomaward_id = ma.kingdomaward_id
+                         WHERE ma.mundane_id IN (' . $mundaneIds . ")
+                           AND ka.award_id IN ({$masterIds})
+                           AND (ma.revoked = 0 OR ma.revoked IS NULL)
+                         GROUP BY ma.mundane_id, ka.award_id";
+
+            $this->db->Clear();
+            $masterResult = $this->db->DataSet($masterSql);
+            if ($masterResult) {
+                while ($masterResult->Next()) {
+                    $mid = (int) $masterResult->mundane_id;
+                    if (!$mid) {
+                        continue;
+                    }
+                    $masterAid = (int) $masterResult->master_award_id;
+                    $ladderAid = $masterAwardIds[$masterAid] ?? null;
+                    if ($ladderAid !== null && isset($playerData[$mid]['Awards'][$ladderAid])) {
+                        $playerData[$mid]['Awards'][$ladderAid]['IsMaster'] = true;
+                    }
+                }
+            }
+        }
+
+        $this->db->Clear();
+        $recentResult = $this->db->DataSet(
+            'SELECT DISTINCT mundane_id FROM ' . DB_PREFIX . "attendance
+             WHERE mundane_id IN ({$mundaneIds})
+               AND date >= DATE_SUB(NOW(), INTERVAL 12 MONTH)"
+        );
+        $recentIds = [];
+        if ($recentResult) {
+            while ($recentResult->Next()) {
+                $rmid = (int) $recentResult->mundane_id;
+                if ($rmid) {
+                    $recentIds[$rmid] = true;
+                }
+            }
+        }
+        foreach ($playerData as $mid => &$pRow) {
+            $pRow['RecentSignIn'] = isset($recentIds[$mid]);
+            $pRow['KnightGroups'] = [];
+        }
+        unset($pRow);
+
+        $knightSql = "SELECT ma.mundane_id, COALESCE(alias.name, a.name) AS knight_name
+                      FROM " . DB_PREFIX . 'awards ma
+                      JOIN ' . DB_PREFIX . 'kingdomaward ka ON ka.kingdomaward_id = ma.kingdomaward_id
+                      JOIN ' . DB_PREFIX . 'award a ON a.award_id = ka.award_id
+                      LEFT JOIN ' . DB_PREFIX . 'award alias ON alias.award_id = ma.alias_award_id
+                      WHERE ma.mundane_id IN (' . $mundaneIds . ")
+                        AND COALESCE(alias.peerage, a.peerage) = 'Knight'
+                        AND (ma.revoked = 0 OR ma.revoked IS NULL)
+                      GROUP BY ma.mundane_id, COALESCE(alias.award_id, a.award_id)";
+
+        $this->db->Clear();
+        $knightResult = $this->db->DataSet($knightSql);
+        if ($knightResult) {
+            $knightTypeMap = ['Battle' => 'Battle', 'Sword' => 'Sword', 'Crown' => 'Crown', 'Flame' => 'Flame', 'Serpent' => 'Serpent'];
+            while ($knightResult->Next()) {
+                $mid = (int) $knightResult->mundane_id;
+                if (!isset($playerData[$mid])) {
+                    continue;
+                }
+                $knightType = ucfirst(strtolower(preg_replace('/^knight(?:hood)? of (?:the )?/i', '', $knightResult->knight_name)));
+                if (isset($knightTypeMap[$knightType])) {
+                    $playerData[$mid]['KnightGroups'][$knightType] = true;
+                }
+            }
+        }
+
+        $gridRows = array_values($playerData);
+        Ork3::$Lib->ghettocache->cache(__CLASS__ . '.GetLadderAwardGrid', $gridCacheKey, $gridRows);
+
+        return [
+            'ScopeName' => $scopeName,
+            'LadderAwards' => $awardCols,
+            'GridRows' => $gridRows,
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function ladderKnightGroupMap(): array
+    {
+        return [
+            'Order of Battle' => 'Battle',
+            'Order of the Warrior' => 'Sword',
+            'Order of the Crown' => 'Crown',
+            'Order of the Lion' => 'Flame',
+            'Order of the Rose' => 'Flame',
+            'Order of the Smith' => 'Flame',
+            'Order of the Dragon' => 'Serpent',
+            'Order of the Garber' => 'Serpent',
+            'Order of the Owl' => 'Serpent',
+        ];
     }
 
 }
