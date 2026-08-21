@@ -202,32 +202,55 @@ class Model_Kingdom extends Model
         return new Kingdom();
     }
 
-	function set_kingdom_design($request) {
-		return $this->Kingdom->SetKingdomDesign($request);
-	}
+    /** Social platform slugs the domain will persist, in display order. */
+    public function kingdom_design_social_platforms()
+    {
+        return $this->Kingdom->GetDesignSocialPlatforms();
+    }
 
-	function get_kingdom_milestones($kingdom_id) {
-		return $this->Kingdom->GetKingdomMilestones(array('KingdomId' => $kingdom_id));
-	}
+    /**
+     * The design fields SetKingdomDesign accepts, straight from the domain's
+     * getDesignConfig() contract. The AJAX controller reads this instead of
+     * repeating the list, so a field added to the domain is saveable at once.
+     */
+    public function kingdom_design_save_fields()
+    {
+        return $this->Kingdom->GetDesignSaveFields();
+    }
 
-	function get_derived_kingdom_milestones($kingdom_id) {
-		return $this->Kingdom->GetDerivedKingdomMilestones(array('KingdomId' => $kingdom_id));
-	}
+    public function set_kingdom_design($request)
+    {
+        return $this->Kingdom->SetKingdomDesign($request);
+    }
 
-	function get_merged_kingdom_milestones($id) {
-		return $this->Kingdom->GetMergedKingdomMilestones(array('KingdomId' => $id));
-	}
+    public function get_kingdom_milestones($kingdom_id)
+    {
+        return $this->Kingdom->GetKingdomMilestones(array('KingdomId' => $kingdom_id));
+    }
 
-	function add_kingdom_milestone($request) {
-		return $this->Kingdom->AddKingdomMilestone($request);
-	}
+    public function get_derived_kingdom_milestones($kingdom_id)
+    {
+        return $this->Kingdom->GetDerivedKingdomMilestones(array('KingdomId' => $kingdom_id));
+    }
 
-	function update_kingdom_milestone($request) {
-		return $this->Kingdom->UpdateKingdomMilestone($request);
-	}
+    public function get_merged_kingdom_milestones($id)
+    {
+        return $this->Kingdom->GetMergedKingdomMilestones(array('KingdomId' => $id));
+    }
 
-	function delete_kingdom_milestone($request) {
-		return $this->Kingdom->DeleteKingdomMilestone($request);
-	}
+    public function add_kingdom_milestone($request)
+    {
+        return $this->Kingdom->AddKingdomMilestone($request);
+    }
+
+    public function update_kingdom_milestone($request)
+    {
+        return $this->Kingdom->UpdateKingdomMilestone($request);
+    }
+
+    public function delete_kingdom_milestone($request)
+    {
+        return $this->Kingdom->DeleteKingdomMilestone($request);
+    }
 
 }

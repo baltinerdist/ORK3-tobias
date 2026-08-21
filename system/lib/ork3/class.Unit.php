@@ -227,7 +227,7 @@ class Unit extends Ork3
                 $response['Unit']['BannerOffsetY']  = (int)$_bn->banner_offset_y;
             }
             // --- Unit design (1:1 supplemental, always-present row) ---
-            $design = $this->seedDesignRow($this->unit->unit_id);
+            $design = $this->loadDesignRow($this->unit->unit_id);
             $response['Unit']['AboutText']       = (string)$design->about_text;
             $response['Unit']['OurHistory']      = (string)$design->our_history;
             $response['Unit']['ColorPrimary']    = $design->color_primary;
@@ -241,6 +241,7 @@ class Unit extends Ork3
             $response['Unit']['Announcement']       = (string)$design->announcement;
             $response['Unit']['AnnouncementUntil']  = $design->announcement_until;
             $response['Unit']['AnnouncementStarts'] = $design->announcement_starts;
+            $response['Unit']['AnnouncementActive'] = $this->announcementActive($design) ? 1 : 0;
             $response['Unit']['RecruitmentStatus']  = (string)$design->recruitment_status;
             $response['Unit']['HowToJoin']          = (string)$design->how_to_join;
             $response['Unit']['AboutEnabled']        = (int)$design->about_enabled;
@@ -750,6 +751,14 @@ class Unit extends Ork3
             'fk'               => 'unit_id',
             'milestone_table'  => 'unit_milestones',
             'auth'             => AUTH_UNIT,
+            // Request fields SetUnitDesign accepts. The AJAX controller reads
+            // this list rather than repeating it, so adding a field here is enough.
+            'save_fields'      => [
+                'AboutText', 'OurHistory', 'ColorPrimary', 'ColorAccent', 'ColorSecondary',
+                'HeroOverlay', 'NameFont', 'MilestoneConfig', 'Tagline', 'SocialLinks',
+                'Announcement', 'AnnouncementUntil', 'AnnouncementStarts',
+                'RecruitmentStatus', 'HowToJoin', 'AboutEnabled',
+            ],
             'derived'          => [$this, 'getDerivedUnitMilestoneRows'],
         ];
     }

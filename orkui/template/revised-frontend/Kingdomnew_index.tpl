@@ -162,18 +162,16 @@
 	$knAnnouncement       = trim((string)($_kInfo['Announcement'] ?? ''));
 	$knAnnouncementStarts = trim((string)($_kInfo['AnnouncementStarts'] ?? ''));
 	$knAnnouncementUntil  = trim((string)($_kInfo['AnnouncementUntil'] ?? ''));
-	$knShowAnnouncement   = false;
-	if ($knAnnouncement !== '') {
-		$_knToday    = strtotime(date('Y-m-d'));
-		$_knStartsOk = ($knAnnouncementStarts === '' || $knAnnouncementStarts === '0000-00-00'
-			|| (strtotime($knAnnouncementStarts) !== false && strtotime($knAnnouncementStarts) <= $_knToday));
-		$_knUntilOk  = ($knAnnouncementUntil === '' || $knAnnouncementUntil === '0000-00-00'
-			|| (strtotime($knAnnouncementUntil) !== false && strtotime($knAnnouncementUntil) >= $_knToday));
-		$knShowAnnouncement = $_knStartsOk && $_knUntilOk;
-	}
+	// Whether the announcement is live is a business rule, answered once by
+	// Kingdom::announcementActive() and surfaced as AnnouncementActive.
+	$knShowAnnouncement   = ((int)($_kInfo['AnnouncementActive'] ?? 0) === 1);
 
 	$knMonarchReignStarted = trim((string)($_kInfo['MonarchReignStarted'] ?? ''));
 	$knRegentReignStarted  = trim((string)($_kInfo['RegentReignStarted']  ?? ''));
+	// Reign dates are bound to the player who held the seat when the date was saved;
+	// a mismatch means the date belongs to a previous reign and must not render.
+	$knMonarchReignMundaneId = (int)($_kInfo['MonarchReignMundaneId'] ?? 0);
+	$knRegentReignMundaneId  = (int)($_kInfo['RegentReignMundaneId']  ?? 0);
 	$knReignLore           = (string)($_kInfo['ReignLore'] ?? '');
 	$knHasReignContent     = ($monarch && !empty($monarch['MundaneId'])) || ($regent && !empty($regent['MundaneId'])) || trim($knReignLore) !== '';
 
@@ -245,8 +243,9 @@
 	// render od-* markup. Union of every od- block's own condition:
 	//   announcement banner, hero tagline, new About design (incl. reign banner and
 	//   milestones), the LEGACY About description card (rendered on the else branch
-	//   of $knShowNewAbout), the About "meta" row (website / parent kingdom), the
-	//   sidebar Connect block, and the manager-only design modal.
+	//   of $knShowNewAbout), the About "meta" row (website / parent kingdom), and
+	//   the manager-only design modal. (The sidebar Connect block is no longer an
+	//   independent trigger — it now renders only inside $knShowNewAbout.)
 	$_knOdWebsiteUrl = trim((string)($_kInfo['Url'] ?? ''));
 	$_knOdParentId   = (int)($_kInfo['ParentKingdomId'] ?? ($ParentKingdomId ?? 0));
 	$_knNeedsOdCss   = $knShowAnnouncement
@@ -537,7 +536,9 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
 					<a href="<?= UIR ?>Search/event&KingdomId=<?= $kingdom_id ?>">Find Events</a>
 				</li>
 			</ul>
+			<?php if ($knShowNewAbout): ?>
 			<?php include DIR_TEMPLATE . 'shared/orgdesign/_connect_block.tpl'; ?>
+			<?php endif; ?>
 		</div>
 
 	</div>
@@ -616,7 +617,7 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
 							<div class="od-reign-card-body">
 								<div class="od-reign-role">Monarch</div>
 								<div class="od-reign-name"><?= htmlspecialchars($monarch['Persona']) ?></div>
-								<?php if ($knMonarchReignStarted !== '' && $knMonarchReignStarted !== '0000-00-00' && strtotime($knMonarchReignStarted)): ?>
+								<?php if ($knMonarchReignStarted !== '' && $knMonarchReignStarted !== '0000-00-00' && strtotime($knMonarchReignStarted) && $knMonarchReignMundaneId > 0 && $knMonarchReignMundaneId === (int)$monarch['MundaneId']): ?>
 								<div class="od-reign-since">Since <?= date('M Y', strtotime($knMonarchReignStarted)) ?></div>
 								<?php endif; ?>
 							</div>
@@ -630,7 +631,7 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
 							<div class="od-reign-card-body">
 								<div class="od-reign-role">Regent</div>
 								<div class="od-reign-name"><?= htmlspecialchars($regent['Persona']) ?></div>
-								<?php if ($knRegentReignStarted !== '' && $knRegentReignStarted !== '0000-00-00' && strtotime($knRegentReignStarted)): ?>
+								<?php if ($knRegentReignStarted !== '' && $knRegentReignStarted !== '0000-00-00' && strtotime($knRegentReignStarted) && $knRegentReignMundaneId > 0 && $knRegentReignMundaneId === (int)$regent['MundaneId']): ?>
 								<div class="od-reign-since">Since <?= date('M Y', strtotime($knRegentReignStarted)) ?></div>
 								<?php endif; ?>
 							</div>

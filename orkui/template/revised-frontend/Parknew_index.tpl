@@ -141,13 +141,9 @@
 	$pkAnnouncement      = trim((string)($parkInfo['Announcement'] ?? ''));
 	$pkAnnouncementStarts = trim((string)($parkInfo['AnnouncementStarts'] ?? ''));
 	$pkAnnouncementUntil = trim((string)($parkInfo['AnnouncementUntil'] ?? ''));
-	$pkShowAnnouncement  = ($pkAnnouncement !== '');
-	if ($pkShowAnnouncement && $pkAnnouncementStarts !== '' && $pkAnnouncementStarts !== '0000-00-00') {
-		$pkShowAnnouncement = (strtotime($pkAnnouncementStarts) <= strtotime(date('Y-m-d')));
-	}
-	if ($pkShowAnnouncement && $pkAnnouncementUntil !== '' && $pkAnnouncementUntil !== '0000-00-00') {
-		$pkShowAnnouncement = (strtotime($pkAnnouncementUntil) >= strtotime(date('Y-m-d')));
-	}
+	// Whether the announcement is live is a business rule, answered once by
+	// Park::announcementActive() and surfaced as AnnouncementActive.
+	$pkShowAnnouncement  = ((int)($parkInfo['AnnouncementActive'] ?? 0) === 1);
 	$pkSocialRaw   = (string)($parkInfo['SocialLinks'] ?? '');
 	$pkSocialLinks = [];
 	if ($pkSocialRaw !== '') {

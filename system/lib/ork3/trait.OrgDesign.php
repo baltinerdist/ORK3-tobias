@@ -16,6 +16,7 @@
  *     'auth'            => AUTH_KINGDOM,           // HasAuthority scope for design/milestone writes
  *     'profanity_fields'=> [...],                  // (reference only — validators take pf explicitly)
  *     'char_limits'     => [...],                  // (reference only — limits applied inline below)
+ *     'save_fields'     => [...],                  // request fields this org accepts on a design save
  *     'derived'         => callable($id):array,    // returns the derived-milestone rows for this org
  *   ]
  *
@@ -66,6 +67,118 @@ trait OrgDesign
             $design->find();
         }
         return $design;
+    }
+
+    /**
+     * Read-only counterpart to seedDesignRow(): locate the 1:1 design row
+     * WITHOUT inserting one. Profile reads are public and unauthenticated, so
+     * they must not turn a GET into a write (an extra round trip per view, and
+     * a hard failure on a read-only replica).
+     *
+     * When no row exists yet the caller still gets an object it can read every
+     * design column off, yielding the same values a freshly seeded row would.
+     *
+     * @param int $id
+     * @return yapo|OrgDesignDefaults
+     */
+    protected function loadDesignRow($id)
+    {
+        $cfg = $this->getDesignConfig();
+        $fk  = $cfg['fk'];
+        $this->db->Clear();
+        $design = new yapo($this->db, DB_PREFIX . $cfg['design_table']);
+        $design->clear();
+        $design->$fk = $id;
+        if (!$design->find()) {
+            return new OrgDesignDefaults();
+        }
+        return $design;
+    }
+
+    /**
+     * Is an org's announcement live right now? An empty or '0000-00-00' bound
+     * means "open ended" on that end. This is a business rule, not formatting:
+     * every consumer of the design payload — the three profile templates today,
+     * a JSON/mobile client tomorrow — needs the same answer.
+     *
+     * @param yapo|OrgDesignDefaults $design
+     * @return bool
+     */
+    protected function announcementActive($design)
+    {
+        if (trim((string)$design->announcement) === '') {
+            return false;
+        }
+        $today  = strtotime(date('Y-m-d'));
+        $starts = trim((string)$design->announcement_starts);
+        $until  = trim((string)$design->announcement_until);
+        if ($starts !== '' && $starts !== '0000-00-00') {
+            $ts = strtotime($starts);
+            if ($ts === false || $ts > $today) {
+                return false;
+            }
+        }
+        if ($until !== '' && $until !== '0000-00-00') {
+            $ts = strtotime($until);
+            if ($ts === false || $ts < $today) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Authoritative per-slug host allow-list for org social links: a "discord"
+     * link must actually point at a Discord host, etc. — otherwise a manager
+     * could spoof a platform icon onto an arbitrary URL.
+     *
+     * This is the ONLY definition of which platform slugs exist. Presentation
+     * layers derive their icon/label tables from these keys rather than keeping
+     * a second list that can silently drift out of sync (an unknown slug is
+     * dropped without an error on save).
+     *
+     * A null value would mean "any https host is allowed".
+     *
+     * @return array slug => array of allowed hosts (or null for any)
+     */
+    public static function orgSocialPlatformHosts()
+    {
+        return [
+            'discord'   => ['discord.gg', 'discord.com'],
+            'facebook'  => ['facebook.com'],
+            'instagram' => ['instagram.com'],
+            'threads'   => ['threads.net'],
+            'bluesky'   => ['bsky.app'],
+            'twitter'   => ['x.com', 'twitter.com'],
+            'youtube'   => ['youtube.com', 'youtu.be'],
+            'amtwiki'   => ['amtwiki.net'],
+        ];
+    }
+
+    /**
+     * The design fields this org accepts on a save, from its getDesignConfig()
+     * contract. Which fields an org type accepts is domain knowledge; the AJAX
+     * controllers read it from here instead of each keeping a literal copy that
+     * silently drops any field the domain later adds.
+     *
+     * @return array
+     */
+    public function GetDesignSaveFields()
+    {
+        $cfg = $this->getDesignConfig();
+        return $cfg['save_fields'] ?? [];
+    }
+
+    /**
+     * The social platform slugs a design save will actually persist, in display
+     * order. Presentation layers drive their icon/label table from this so they
+     * never offer an input for a slug the domain would silently discard.
+     *
+     * @return array list of slugs
+     */
+    public function GetDesignSocialPlatforms()
+    {
+        return array_keys(self::orgSocialPlatformHosts());
     }
 
     // ---------------------------------------------------------------------
@@ -159,20 +272,7 @@ trait OrgDesign
                 if (!is_array($decoded)) {
                     return InvalidParameter('SocialLinks must be valid JSON.');
                 }
-                // Per-slug host allow-list: a "discord" link must actually point at a
-                // discord host, etc. — otherwise a manager could spoof a platform icon
-                // onto an arbitrary URL. Keys are the accepted slugs; a null value means
-                // any https host is allowed (generic website/other).
-                $hostAllow = [
-                    'discord'   => ['discord.gg', 'discord.com'],
-                    'facebook'  => ['facebook.com'],
-                    'instagram' => ['instagram.com'],
-                    'threads'   => ['threads.net'],
-                    'bluesky'   => ['bsky.app'],
-                    'twitter'   => ['x.com', 'twitter.com'],
-                    'youtube'   => ['youtube.com', 'youtu.be'],
-                    'amtwiki'   => ['amtwiki.net'],
-                ];
+                $hostAllow = self::orgSocialPlatformHosts();
                 foreach ($decoded as $slug => $url) {
                     if (!array_key_exists($slug, $hostAllow)) {
                         continue;
@@ -537,5 +637,28 @@ trait OrgDesign
         // fk 'kingdom_id' -> 'KingdomId', 'park_id' -> 'ParkId', etc.
         $parts = array_map('ucfirst', explode('_', $fk));
         return implode('', $parts);
+    }
+}
+
+/**
+ * Stand-in for an org design row that does not exist yet, so a public profile
+ * read never has to INSERT one just to have something to read from (see
+ * OrgDesign::loadDesignRow). Yields exactly what a freshly seeded row would:
+ * 'med' for hero_overlay, empty for everything else — which the callers' own
+ * (string)/(int) casts then narrow to '' / 0 as before.
+ *
+ * Deliberately read-only: anything that needs to WRITE must go through
+ * seedDesignRow() and get a real yapo.
+ */
+final class OrgDesignDefaults
+{
+    public function __get($field)
+    {
+        return $field === 'hero_overlay' ? 'med' : '';
+    }
+
+    public function __isset($field)
+    {
+        return true;
     }
 }

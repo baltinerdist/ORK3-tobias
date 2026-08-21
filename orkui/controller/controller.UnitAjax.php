@@ -41,7 +41,7 @@ class Controller_UnitAjax extends Controller
                 'set_unit_design',
                 'UnitId',
                 $unit_id,
-                ['AboutText','OurHistory','ColorPrimary','ColorAccent','ColorSecondary','HeroOverlay','NameFont','MilestoneConfig','Tagline','SocialLinks','Announcement','AnnouncementUntil','AnnouncementStarts','RecruitmentStatus','HowToJoin','AboutEnabled']
+                $this->Unit->unit_design_save_fields()
             );
         } elseif ($action === 'addmilestone') {
             $this->org_add_milestone($this->Unit, 'add_unit_milestone', 'UnitId', $unit_id);

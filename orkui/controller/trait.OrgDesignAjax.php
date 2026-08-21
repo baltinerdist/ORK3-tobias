@@ -9,8 +9,12 @@
  * Controller_KingdomAjax, Controller_ParkAjax, and (with one missing branch)
  * Controller_Unit. This trait is the single source of truth; each *Ajax
  * controller supplies only what differs: its model object, the org id field
- * name (KingdomId / ParkId / UnitId), the org id value, and its EXACT field
- * whitelist for the design save.
+ * name (KingdomId / ParkId / UnitId), the org id value, and the save-field
+ * list -- which it reads from its model, NOT from a literal of its own.
+ *
+ * Validation rules are deliberately absent here: they belong to the domain
+ * (system/lib/ork3/trait.OrgDesign.php), which owns the length, date, and
+ * profanity checks. These handlers marshal params and render the answer.
  *
  * Every method echoes the standard JSON response and exits, matching the
  * pre-refactor behavior exactly.
@@ -50,7 +54,7 @@ trait OrgDesignAjax
      * @param string $modelMethod Pass-through method name (set_kingdom_design ...).
      * @param string $idField     Org id key for the payload (KingdomId/ParkId/UnitId).
      * @param int    $orgId       Org id value.
-     * @param array  $whitelist   EXACT list of $_POST fields this org accepts.
+     * @param array  $whitelist   Fields this org accepts, from <model>_design_save_fields().
      */
     protected function org_save_design(object $model, string $modelMethod, string $idField, int $orgId, array $whitelist): void
     {
@@ -74,23 +78,15 @@ trait OrgDesignAjax
      */
     protected function org_add_milestone(object $model, string $modelMethod, string $idField, int $orgId): void
     {
-        $description = trim($_POST['Description']   ?? '');
-        $icon        = trim($_POST['Icon']          ?? 'fa-star');
-        $msDate      = trim($_POST['MilestoneDate'] ?? '');
-        if (!strlen($description)) {
-            echo json_encode(['status' => 1, 'error' => 'Description is required.', 'field' => '']);
-            exit;
-        }
-        if (!strlen($msDate) || !strtotime($msDate)) {
-            echo json_encode(['status' => 1, 'error' => 'A valid date is required.', 'field' => '']);
-            exit;
-        }
+        // Description/date/icon rules live in the domain (AddDesignMilestone),
+        // which also applies the length + profanity checks a controller copy
+        // would miss. Marshal the params and let it answer.
         $r = $model->$modelMethod([
             'Token'         => $this->session->token,
             $idField        => $orgId,
-            'Icon'          => $icon,
-            'Description'   => $description,
-            'MilestoneDate' => $msDate,
+            'Icon'          => trim($_POST['Icon']          ?? ''),
+            'Description'   => trim($_POST['Description']   ?? ''),
+            'MilestoneDate' => trim($_POST['MilestoneDate'] ?? ''),
         ]);
         $this->org_design_emit($r, ['milestoneId' => (int)($r['Detail'] ?? 0)]);
     }
@@ -105,24 +101,14 @@ trait OrgDesignAjax
      */
     protected function org_update_milestone(object $model, string $modelMethod, string $idField, int $orgId): void
     {
-        $description = trim($_POST['Description']   ?? '');
-        $icon        = trim($_POST['Icon']          ?? 'fa-star');
-        $msDate      = trim($_POST['MilestoneDate'] ?? '');
-        if (!strlen($description)) {
-            echo json_encode(['status' => 1, 'error' => 'Description is required.', 'field' => '']);
-            exit;
-        }
-        if (!strlen($msDate) || !strtotime($msDate)) {
-            echo json_encode(['status' => 1, 'error' => 'A valid date is required.', 'field' => '']);
-            exit;
-        }
+        // Same as org_add_milestone: UpdateDesignMilestone owns the rules.
         $r = $model->$modelMethod([
             'Token'         => $this->session->token,
             $idField        => $orgId,
             'MilestoneId'   => (int)($_POST['MilestoneId'] ?? 0),
-            'Icon'          => $icon,
-            'Description'   => $description,
-            'MilestoneDate' => $msDate,
+            'Icon'          => trim($_POST['Icon']          ?? ''),
+            'Description'   => trim($_POST['Description']   ?? ''),
+            'MilestoneDate' => trim($_POST['MilestoneDate'] ?? ''),
         ]);
         $this->org_design_emit($r);
     }

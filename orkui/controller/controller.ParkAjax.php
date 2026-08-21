@@ -467,7 +467,7 @@ class Controller_ParkAjax extends Controller
                 'set_park_design',
                 'ParkId',
                 $park_id,
-                ['AboutText','AboutEnabled','OurHistory','ColorPrimary','ColorAccent','ColorSecondary','HeroOverlay','NameFont','MilestoneConfig','Tagline','SocialLinks','Announcement','AnnouncementUntil','AnnouncementStarts']
+                $this->Park->park_design_save_fields()
             );
 
         } elseif ($action === 'addmilestone') {

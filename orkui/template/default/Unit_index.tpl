@@ -24,7 +24,11 @@ foreach ($_members as $_m) {
 	if (!empty($_m['LastSignIn']) && $_m['LastSignIn'] >= $_cutoff) $_active++;
 }
 
+// AUTH_EDIT — the long-standing member/manager controls.
 $_can_edit   = !empty($CanEdit);
+// AUTH_CREATE — the Mask II design/milestone surfaces, matching what
+// Unit::SetUnitDesign enforces server-side. Strictly stronger than $_can_edit.
+$_can_manage = !empty($CanManageUnit);
 
 $hasBanner       = !empty($_unit['HasBanner']);
 $bannerShowLogo  = !isset($_unit['BannerShowLogo']) || (int)$_unit['BannerShowLogo'] !== 0;
@@ -110,13 +114,9 @@ $_unTagline            = trim((string)($_unit['Tagline'] ?? ''));
 $_unAnnouncement       = trim((string)($_unit['Announcement'] ?? ''));
 $_unAnnouncementStarts = trim((string)($_unit['AnnouncementStarts'] ?? ''));
 $_unAnnouncementUntil  = trim((string)($_unit['AnnouncementUntil'] ?? ''));
-$_unShowAnnouncement   = ($_unAnnouncement !== '');
-if ($_unShowAnnouncement && $_unAnnouncementStarts !== '' && $_unAnnouncementStarts !== '0000-00-00') {
-	$_unShowAnnouncement = (strtotime($_unAnnouncementStarts) <= strtotime(date('Y-m-d')));
-}
-if ($_unShowAnnouncement && $_unAnnouncementUntil !== '' && $_unAnnouncementUntil !== '0000-00-00') {
-	$_unShowAnnouncement = (strtotime($_unAnnouncementUntil) >= strtotime(date('Y-m-d')));
-}
+// Whether the announcement is live is a business rule, answered once by
+// Unit::announcementActive() and surfaced as AnnouncementActive.
+$_unShowAnnouncement   = ((int)($_unit['AnnouncementActive'] ?? 0) === 1);
 $_unSocialRaw   = (string)($_unit['SocialLinks'] ?? '');
 $_unSocialLinks = [];
 if ($_unSocialRaw !== '') {
@@ -137,6 +137,10 @@ foreach ($OD_SOCIAL_PLATFORMS as $_slug => $_meta) {
 }
 $_unRecruitmentStatus = strtolower(trim((string)($_unit['RecruitmentStatus'] ?? '')));
 if (!in_array($_unRecruitmentStatus, ['open','invite','closed'], true)) $_unRecruitmentStatus = '';
+// Stored value still feeds the design modal so a manager save can't wipe it.
+$_unRecruitmentStored = $_unRecruitmentStatus;
+// Display-side only: a retired unit never advertises recruitment.
+if ($_is_retired) $_unRecruitmentStatus = '';
 $_unRecruitMeta = [
 	'open'   => ['label'=>'Recruiting',  'icon'=>'fa-door-open', 'bg'=>'#48bb78', 'bgDark'=>'#22543d'],
 	'invite' => ['label'=>'Invite Only', 'icon'=>'fa-envelope',  'bg'=>'#ed8936', 'bgDark'=>'#7b341e'],
@@ -144,7 +148,7 @@ $_unRecruitMeta = [
 ];
 $_unHowToJoin = (string)($_unit['HowToJoin'] ?? '');
 $_unAboutEnabled = (int)($_unit['AboutEnabled'] ?? 0);
-$_unShowNewAbout = ($_unAboutEnabled === 1) || $_can_edit;
+$_unShowNewAbout = ($_unAboutEnabled === 1) || $_can_manage;
 
 // --- Shared Org Design $ctx contract (helpers already required at top) --------
 // Build the $ctx array the shared design partials read. Derived from this page's
@@ -157,7 +161,7 @@ $ctx = [
 	'id'                 => (int)$_unit_id,
 	'ajax'               => 'UnitAjax/unit',
 	'org_name'           => $_name,
-	'can_manage'         => (bool)$_can_edit,
+	'can_manage'         => (bool)$_can_manage,
 	'about_text'         => $_about_text,
 	'our_history'        => $_our_history,
 	'color_primary'      => $_un_color_primary,
@@ -175,7 +179,7 @@ $ctx = [
 	'milestones'         => $_un_visible_ms,
 	'custom_milestones'  => $_odCustomMilestones,
 	'features'           => ['recruitment' => true, 'how_to_join' => true],
-	'recruitment'        => ['status' => $_unRecruitmentStatus],
+	'recruitment'        => ['status' => $_unRecruitmentStored],
 	'how_to_join'        => $_unHowToJoin,
 ];
 ?>
@@ -184,7 +188,7 @@ $ctx = [
 // Only load the shared org-design stylesheet when some od-* markup can actually
 // render on this page. Union of every od-* surface below (announcement banner,
 // tagline, About design, recruitment pill, connect block, design modal).
-$_odNeedsCss = $_can_edit
+$_odNeedsCss = $_can_manage
 	|| $_unShowAnnouncement
 	|| $_unTagline !== ''
 	|| $_unShowNewAbout
@@ -510,7 +514,7 @@ html[data-theme="dark"] .un-hero {
 <?php if ($_un_color_accent): ?>
 :root { --un-accent: <?= htmlspecialchars($_un_color_accent) ?>; --od-accent: <?= htmlspecialchars($_un_color_accent) ?>; }
 .un-type-badge { border-color: <?= htmlspecialchars($_un_color_accent) ?>; color: <?= htmlspecialchars($_un_color_accent) ?>; background: rgba(255,255,255,0.95); }
-.un-about-edit-btn:hover, .un-card-edit-btn:hover { color: <?= htmlspecialchars($_un_color_accent) ?>; }
+.od-about-edit-btn:hover { color: <?= htmlspecialchars($_un_color_accent) ?>; }
 <?php endif; ?>
 .un-hero-bg { opacity: <?= $_un_overlay_opacity ?> !important; }
 <?php if ($_un_overlay === 'vignette'): ?>
@@ -522,27 +526,6 @@ html[data-theme="dark"] .un-hero {
 <?php if ($_un_name_font !== '' && $_un_hero_font_css !== ''): ?>
 .un-hero-name { font-family: <?= $_un_hero_font_css ?>, 'Cinzel', serif !important; letter-spacing: 0.02em; }
 <?php endif; ?>
-
-/* ── Unit design: About edit button (markdown bodies + timeline now use shared
-   orgdesign.css od-* classes; only the un-about-edit-btn is still Unit-local) ── */
-.un-about-edit-btn {
-	background: transparent; border: 1px solid transparent; color: #a0aec0;
-	padding: 4px 8px; border-radius: 6px; cursor: pointer; font-size: 12px;
-	display: inline-flex; align-items: center; gap: 4px;
-	transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-.un-about-edit-btn:hover { background: rgba(49,130,206,0.08); color: #2b6cb0; border-color: rgba(49,130,206,0.25); }
-html[data-theme="dark"] .un-about-edit-btn { color: var(--ork-text-muted); }
-html[data-theme="dark"] .un-about-edit-btn:hover { background: var(--ork-bg-tertiary); color: var(--ork-link); border-color: var(--ork-border); }
-.un-about-edit-btn[data-tip] { position: relative; }
-.un-about-edit-btn[data-tip]::after {
-	content: attr(data-tip); position: absolute; bottom: calc(100% + 6px); right: 0;
-	background: #2d3748; color: #fff; font-size: 11px; font-style: italic; white-space: nowrap;
-	padding: 4px 10px; border-radius: 4px; pointer-events: none; opacity: 0;
-	transition: opacity 0s; z-index: 500;
-}
-.un-about-edit-btn[data-tip]:hover::after { opacity: 1; transition-delay: 0.4s; }
-html[data-theme="dark"] .un-about-edit-btn[data-tip]::after { background: var(--ork-bg-tertiary); color: var(--ork-text); border: 1px solid var(--ork-border); }
 
 .un-fullwidth-section {
 	background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
@@ -803,7 +786,7 @@ html[data-theme="dark"] .un-btn-danger { color: #fc8181 !important; border-color
 					<i class="fas <?=$_type_icon?>"></i>
 					<?=htmlspecialchars($_type)?>
 				</span>
-<?php if ($_unShowNewAbout && $_unRecruitmentStatus !== ''): $_rm = $_unRecruitMeta[$_unRecruitmentStatus]; ?>
+<?php if ($_unRecruitmentStatus !== ''): $_rm = $_unRecruitMeta[$_unRecruitmentStatus]; ?>
 				<span class="un-recruit-pill un-recruit-<?= htmlspecialchars($_unRecruitmentStatus) ?>" data-tip="Recruitment status">
 					<i class="fas <?= htmlspecialchars($_rm['icon']) ?>"></i>
 					<?= htmlspecialchars($_rm['label']) ?>
@@ -827,6 +810,8 @@ html[data-theme="dark"] .un-btn-danger { color: #fc8181 !important; border-color
 			<button class="pn-btn pn-btn-white" onclick="unOpenModal('un-modal-details')">
 				<i class="fas fa-pen"></i><span class="un-btn-label"> Edit Details</span>
 			</button>
+<?php endif; ?>
+<?php if ($_can_manage): /* Design modal + its JS only load at AUTH_CREATE. */ ?>
 			<button class="pn-btn pn-btn-white" onclick="odOpenDesignModal()">
 				<i class="fas fa-palette"></i><span class="un-btn-label"> Design</span>
 			</button>
@@ -862,7 +847,7 @@ html[data-theme="dark"] .un-btn-danger { color: #fc8181 !important; border-color
 	<!-- ── About tab ─────────────────────────────────────── -->
 	<div class="un-tab-panel un-tab-active" id="un-tab-about">
 
-<?php if ($_can_edit && $_unAboutEnabled !== 1): ?>
+<?php if ($_can_manage && $_unAboutEnabled !== 1): ?>
 		<div class="od-about-unpublished" data-tip="Only managers can see this. Enable the About Page in Customize to publish it.">
 			<i class="fas fa-eye-slash"></i> Unpublished &mdash; only managers can see this
 		</div>
@@ -889,12 +874,12 @@ html[data-theme="dark"] .un-btn-danger { color: #fc8181 !important; border-color
 
 <?php include DIR_TEMPLATE . 'shared/orgdesign/_connect_block.tpl'; ?>
 
-<?php if (trim($_about_text) !== '' || $_can_edit): ?>
+<?php if (trim($_about_text) !== '' || $_can_manage): ?>
 		<div class="un-about-section">
 			<div class="un-fullwidth-head">
 				<h3 class="un-fullwidth-title"><i class="fas fa-align-left"></i> About</h3>
-				<?php if ($_can_edit): ?>
-				<button class="un-about-edit-btn" onclick="odOpenDesignModal('about')" data-tip="Edit About">
+				<?php if ($_can_manage): ?>
+				<button class="od-about-edit-btn" onclick="odOpenDesignModal('about')" data-tip="Edit About">
 					<i class="fas fa-pencil-alt"></i> Edit
 				</button>
 				<?php endif; ?>
@@ -903,7 +888,7 @@ html[data-theme="dark"] .un-btn-danger { color: #fc8181 !important; border-color
 			<div class="od-about-text kn-description-body">
 				<?= org_design_markdown($_about_text) ?>
 			</div>
-			<?php elseif ($_can_edit): ?>
+			<?php elseif ($_can_manage): ?>
 			<div class="od-timeline-empty" style="text-align:left">
 				No About content yet. <a href="#" onclick="event.preventDefault();odOpenDesignModal('about')">Add some</a>.
 			</div>
@@ -911,19 +896,19 @@ html[data-theme="dark"] .un-btn-danger { color: #fc8181 !important; border-color
 		</div>
 <?php endif; ?>
 
-<?php if (trim($_unHowToJoin) !== '' || $_can_edit): ?>
+<?php if (!$_is_retired && (trim($_unHowToJoin) !== '' || $_can_manage)): ?>
 		<div class="un-fullwidth-section un-howto-section">
 			<div class="un-fullwidth-head">
 				<h3 class="un-fullwidth-title"><i class="fas fa-handshake"></i> How to Join</h3>
-				<?php if ($_can_edit): ?>
-				<button class="un-about-edit-btn" onclick="odOpenDesignModal('about')" data-tip="Edit How to Join">
+				<?php if ($_can_manage): ?>
+				<button class="od-about-edit-btn" onclick="odOpenDesignModal('about')" data-tip="Edit How to Join">
 					<i class="fas fa-pencil-alt"></i> Edit
 				</button>
 				<?php endif; ?>
 			</div>
 			<?php if (trim($_unHowToJoin) !== ''): ?>
 			<div class="od-about-text kn-description-body"><?= org_design_markdown($_unHowToJoin) ?></div>
-			<?php elseif ($_can_edit): ?>
+			<?php elseif ($_can_manage): ?>
 			<div class="od-timeline-empty" style="text-align:left">
 				No how-to-join info yet. <a href="#" onclick="event.preventDefault();odOpenDesignModal('about')">Add some</a> to help prospective members understand the process.
 			</div>
@@ -931,20 +916,20 @@ html[data-theme="dark"] .un-btn-danger { color: #fc8181 !important; border-color
 		</div>
 <?php endif; ?>
 
-<?php if (trim($_our_history) !== '' || $_can_edit): ?>
+<?php if (trim($_our_history) !== '' || $_can_manage): ?>
 		<!-- Our History -->
 		<div class="un-fullwidth-section">
 			<div class="un-fullwidth-head">
 				<h3 class="un-fullwidth-title"><i class="fas fa-scroll"></i> Our History</h3>
-				<?php if ($_can_edit): ?>
-				<button class="un-about-edit-btn" onclick="odOpenDesignModal('about')" data-tip="Edit Our History">
+				<?php if ($_can_manage): ?>
+				<button class="od-about-edit-btn" onclick="odOpenDesignModal('about')" data-tip="Edit Our History">
 					<i class="fas fa-pencil-alt"></i> Edit
 				</button>
 				<?php endif; ?>
 			</div>
 			<?php if (trim($_our_history) !== ''): ?>
 			<div class="od-about-text kn-description-body"><?= org_design_markdown($_our_history) ?></div>
-			<?php elseif ($_can_edit): ?>
+			<?php elseif ($_can_manage): ?>
 			<div class="od-timeline-empty">
 				Share the founding story, past officers, or notable moments. <a href="#" onclick="event.preventDefault();odOpenDesignModal('about')">Add Our History</a>.
 			</div>
@@ -952,7 +937,7 @@ html[data-theme="dark"] .un-btn-danger { color: #fc8181 !important; border-color
 		</div>
 <?php endif; ?>
 
-<?php if ($_un_has_ms || $_can_edit): ?>
+<?php if ($_un_has_ms || $_can_manage): ?>
 		<?php include DIR_TEMPLATE . 'shared/orgdesign/_milestones_timeline.tpl'; ?>
 <?php endif; ?>
 
@@ -965,7 +950,7 @@ if ($_can_edit || count($_auths) > 0):
 			<div class="un-fullwidth-head">
 				<h3 class="un-fullwidth-title"><i class="fas fa-user-shield"></i> Managers</h3>
 				<?php if ($_can_edit): ?>
-				<button class="un-about-edit-btn" onclick="unOpenModal('un-modal-add-manager')" data-tip="Add manager">
+				<button class="od-about-edit-btn" onclick="unOpenModal('un-modal-add-manager')" data-tip="Add manager">
 					<i class="fas fa-plus"></i> Add
 				</button>
 				<?php endif; ?>

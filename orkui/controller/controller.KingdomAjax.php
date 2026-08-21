@@ -682,7 +682,7 @@ class Controller_KingdomAjax extends Controller
                 'set_kingdom_design',
                 'KingdomId',
                 $kingdom_id,
-                ['AboutText','OurHistory','ColorPrimary','ColorAccent','ColorSecondary','HeroOverlay','NameFont','MilestoneConfig','Tagline','SocialLinks','Announcement','AnnouncementUntil','AnnouncementStarts','MonarchReignStarted','RegentReignStarted','ReignLore','AboutEnabled']
+                $this->Kingdom->kingdom_design_save_fields()
             );
 
         } elseif ($action === 'addmilestone') {

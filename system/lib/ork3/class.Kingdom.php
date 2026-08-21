@@ -62,7 +62,7 @@ class Kingdom extends Ork3
             $response['KingdomInfo']['Description'] = $this->kingdom->description ?? '';
             $response['KingdomInfo']['Url'] = $this->kingdom->url ?? '';
             // --- Kingdom design (1:1 supplemental, always-present row) ---
-            $design = $this->seedDesignRow($this->kingdom->kingdom_id);
+            $design = $this->loadDesignRow($this->kingdom->kingdom_id);
             $response['KingdomInfo']['AboutText']       = (string)$design->about_text;
             $response['KingdomInfo']['OurHistory']      = (string)$design->our_history;
             $response['KingdomInfo']['ColorPrimary']    = $design->color_primary;
@@ -76,8 +76,11 @@ class Kingdom extends Ork3
             $response['KingdomInfo']['Announcement']        = (string)$design->announcement;
             $response['KingdomInfo']['AnnouncementUntil']   = $design->announcement_until;
             $response['KingdomInfo']['AnnouncementStarts']  = $design->announcement_starts;
+            $response['KingdomInfo']['AnnouncementActive']  = $this->announcementActive($design) ? 1 : 0;
             $response['KingdomInfo']['MonarchReignStarted'] = $design->monarch_reign_started;
             $response['KingdomInfo']['RegentReignStarted']  = $design->regent_reign_started;
+            $response['KingdomInfo']['MonarchReignMundaneId'] = (int)$design->monarch_reign_mundane_id;
+            $response['KingdomInfo']['RegentReignMundaneId']  = (int)$design->regent_reign_mundane_id;
             $response['KingdomInfo']['ReignLore']           = (string)$design->reign_lore;
             $response['KingdomInfo']['AboutEnabled']        = (int)$design->about_enabled;
         } else {
@@ -339,7 +342,7 @@ class Kingdom extends Ork3
             $response['KingdomInfo']['Url'] = $this->kingdom->url ?? '';
 
             // --- Kingdom design (1:1 supplemental, always-present row) ---
-            $design = $this->seedDesignRow($this->kingdom->kingdom_id);
+            $design = $this->loadDesignRow($this->kingdom->kingdom_id);
             $response['KingdomInfo']['AboutText']       = (string)$design->about_text;
             $response['KingdomInfo']['OurHistory']      = (string)$design->our_history;
             $response['KingdomInfo']['ColorPrimary']    = $design->color_primary;
@@ -353,8 +356,11 @@ class Kingdom extends Ork3
             $response['KingdomInfo']['Announcement']        = (string)$design->announcement;
             $response['KingdomInfo']['AnnouncementUntil']   = $design->announcement_until;
             $response['KingdomInfo']['AnnouncementStarts']  = $design->announcement_starts;
+            $response['KingdomInfo']['AnnouncementActive']  = $this->announcementActive($design) ? 1 : 0;
             $response['KingdomInfo']['MonarchReignStarted'] = $design->monarch_reign_started;
             $response['KingdomInfo']['RegentReignStarted']  = $design->regent_reign_started;
+            $response['KingdomInfo']['MonarchReignMundaneId'] = (int)$design->monarch_reign_mundane_id;
+            $response['KingdomInfo']['RegentReignMundaneId']  = (int)$design->regent_reign_mundane_id;
             $response['KingdomInfo']['ReignLore']           = (string)$design->reign_lore;
             $response['KingdomInfo']['AboutEnabled']        = (int)$design->about_enabled;
 
@@ -988,6 +994,14 @@ class Kingdom extends Ork3
             'fk'               => 'kingdom_id',
             'milestone_table'  => 'kingdom_milestones',
             'auth'             => AUTH_KINGDOM,
+            // Request fields SetKingdomDesign accepts. The AJAX controller reads
+            // this list rather than repeating it, so adding a field here is enough.
+            'save_fields'      => [
+                'AboutText', 'OurHistory', 'ColorPrimary', 'ColorAccent', 'ColorSecondary',
+                'HeroOverlay', 'NameFont', 'MilestoneConfig', 'Tagline', 'SocialLinks',
+                'Announcement', 'AnnouncementUntil', 'AnnouncementStarts',
+                'MonarchReignStarted', 'RegentReignStarted', 'ReignLore', 'AboutEnabled',
+            ],
             'derived'          => [$this, 'getDerivedKingdomMilestoneRows'],
         ];
     }
@@ -1027,7 +1041,12 @@ class Kingdom extends Ork3
         }
 
         // Kingdom-specific extra fields.
-        foreach (['MonarchReignStarted' => 'monarch_reign_started', 'RegentReignStarted' => 'regent_reign_started'] as $req => $col) {
+        $reignFields = [
+            'MonarchReignStarted' => ['monarch_reign_started', 'monarch_reign_mundane_id', 'Monarch'],
+            'RegentReignStarted'  => ['regent_reign_started',  'regent_reign_mundane_id',  'Regent'],
+        ];
+        foreach ($reignFields as $req => $meta) {
+            [$col, $holderCol, $role] = $meta;
             if (!array_key_exists($req, $request)) {
                 continue;
             }
@@ -1035,13 +1054,23 @@ class Kingdom extends Ork3
             if ($v === '') {
                 // yapo drops nulls from UPDATE; '' persists as '0000-00-00' (empty date).
                 $design->$col = '';
+                $design->$holderCol = 0;
                 continue;
             }
             $ts = strtotime($v);
             if ($ts === false) {
                 return InvalidParameter($req . ' must be a valid date.');
             }
-            $design->$col = date('Y-m-d', $ts);
+            $newDate = date('Y-m-d', $ts);
+            // The Customize modal always resends the stored date, touched or not, so
+            // only a genuine edit may re-bind the date to whoever is seated now.
+            // Re-stamping unconditionally would re-attach a predecessor's date to the
+            // current officer on any unrelated save (tagline, colors, about toggle).
+            $curDate = trim((string)$design->$col);
+            $design->$col = $newDate;
+            if ($newDate !== $curDate) {
+                $design->$holderCol = $this->getSeatedKingdomOfficerMundaneId($kingdom_id, $role);
+            }
         }
 
         if (array_key_exists('ReignLore', $request)) {
@@ -1063,6 +1092,32 @@ class Kingdom extends Ork3
         $design->updated_at = date('Y-m-d H:i:s');
         $design->save();
         return Success($kingdom_id);
+    }
+
+    /**
+     * mundane_id of the player currently seated in a kingdom-level officer role
+     * (park_id = 0). Returns 0 when the seat is vacant. Role comparison is
+     * case-insensitive: ork_officer.role is stored capitalized ('Monarch'),
+     * but callers/templates lowercase it.
+     */
+    private function getSeatedKingdomOfficerMundaneId($kingdom_id, $role)
+    {
+        $kingdom_id = (int)$kingdom_id;
+        $role = strtolower(trim((string)$role));
+        if ($kingdom_id <= 0 || $role === '' || !preg_match('/^[a-z_ ]+$/', $role)) {
+            return 0;
+        }
+        $this->db->Clear();
+        $r = $this->db->query(
+            "SELECT mundane_id FROM " . DB_PREFIX . "officer"
+            . " WHERE kingdom_id = $kingdom_id AND park_id = 0 AND LOWER(role) = '$role'"
+            . " ORDER BY officer_id DESC LIMIT 1"
+        );
+        if ($r !== false && $r->size() > 0) {
+            $r->next();
+            return (int)$r->mundane_id;
+        }
+        return 0;
     }
 
     public function GetKingdomMilestones($request)

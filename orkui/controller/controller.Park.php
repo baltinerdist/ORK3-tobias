@@ -169,6 +169,10 @@ class Controller_Park extends Controller
         }
         $this->data['Milestones'] = $milestones;
 
+        // Authoritative social-platform slugs, so the template's icon/label table
+        // can never offer an input the domain would silently discard on save.
+        $this->data['OdSocialPlatformSlugs'] = $this->Park->park_design_social_platforms();
+
         $knConfigs  = Common::get_configs($this->session->kingdom_id, CFG_KINGDOM);
         $recsPublic = isset($knConfigs['AwardRecsPublic'])
             ? (bool)(int)$knConfigs['AwardRecsPublic']['Value']

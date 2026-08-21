@@ -518,7 +518,7 @@ class Park extends Ork3
             $response[ 'GoogleGeocode' ] = $this->park->google_geocode;
             $response[ 'Location' ] = $this->park->location;
             // --- Park design (1:1 supplemental, always-present row) ---
-            $design = $this->seedDesignRow($this->park->park_id);
+            $design = $this->loadDesignRow($this->park->park_id);
             $response[ 'AboutText' ]       = (string)$design->about_text;
             $response[ 'AboutEnabled' ]    = (int)$design->about_enabled;
             $response[ 'OurHistory' ]      = (string)$design->our_history;
@@ -533,6 +533,7 @@ class Park extends Ork3
             $response[ 'Announcement' ]      = (string)$design->announcement;
             $response[ 'AnnouncementUntil' ] = $design->announcement_until;
             $response[ 'AnnouncementStarts' ] = $design->announcement_starts;
+            $response[ 'AnnouncementActive' ] = $this->announcementActive($design) ? 1 : 0;
         } else {
             $response[ 'Status' ] = InvalidParameter();
         }
@@ -1183,6 +1184,13 @@ class Park extends Ork3
             'fk'               => 'park_id',
             'milestone_table'  => 'park_milestones',
             'auth'             => AUTH_PARK,
+            // Request fields SetParkDesign accepts. The AJAX controller reads
+            // this list rather than repeating it, so adding a field here is enough.
+            'save_fields'      => [
+                'AboutText', 'AboutEnabled', 'OurHistory', 'ColorPrimary', 'ColorAccent',
+                'ColorSecondary', 'HeroOverlay', 'NameFont', 'MilestoneConfig', 'Tagline',
+                'SocialLinks', 'Announcement', 'AnnouncementUntil', 'AnnouncementStarts',
+            ],
             'derived'          => [ $this, 'getDerivedParkMilestoneRows' ],
         ];
     }

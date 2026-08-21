@@ -1,124 +1,161 @@
 <?php
 
-class Model_Park extends Model {
+class Model_Park extends Model
+{
+    public function __construct()
+    {
+        parent::__construct();
+        $this->Park = new APIModel('Park');
+        $this->Report = new APIModel('Report');
+        $this->Event = new APIModel('Event');
+        $this->Heraldry = new APIModel('Heraldry');
+        $this->Search = new JSONModel('Search');
+    }
 
-	function __construct() {
-		parent::__construct();
-		$this->Park = new APIModel('Park');
-		$this->Report = new APIModel('Report');
-		$this->Event = new APIModel('Event');
-		$this->Heraldry = new APIModel('Heraldry');
-		$this->Search = new JSONModel('Search');
-	}
-	
-    function mergeparks($request) {
+    public function mergeparks($request)
+    {
         return $this->Park->MergeParks($request);
     }
-    
-	function add_park_day($request) {
-		return $this->Park->AddParkDay($request);
-	}
-	
-	function edit_park_day($request) {
-		return $this->Park->EditParkDay($request);
-	}
 
-	function delete_park_day($request) {
-		return $this->Park->RemoveParkDay($request);
-	}
-	
-	function get_park_details($park_id) {
-		$request = array( 'ParkId' => $park_id );
-		return array('ParkConfiguration'=> $this->Park->GetParkConfiguration($request),
-						'ParkDays'=> $this->Park->GetParkDays($request),
-						'ParkInfo' => $this->Park->GetParkDetails($request),
-						'Heraldry' => $this->Heraldry->GetHeraldryUrl(array('Type' => 'Park', 'Id' => $park_id )));
-	}
-	
-	function get_officers($park_id, $token) {
-		$r = $this->Park->GetOfficers(array( 'ParkId' => $park_id, 'Token' => $token ));
-		logtrace("get_officers($park_id)", $r);
-		if ($r['Status']['Status'] == 0)
-			return $r['Officers'];
-		return false;
-	}
-	
-	function set_officers($token, $park_id, $request) {
-		$r = array();
-		foreach ($request as $k => $officer_request) {
-			$officer_request['Token'] = $token;
-			$officer_request['ParkId'] = $park_id;
-			$r[] = $this->Park->SetOfficer($officer_request);
-		}
-		return $r;
-	}
+    public function add_park_day($request)
+    {
+        return $this->Park->AddParkDay($request);
+    }
 
-	function vacate_officer($park_id, $role, $token) {
-		return $this->Park->VacateOfficer(array('ParkId' => $park_id, 'Role' => $role, 'Token' => $token));
-	}
-	
-	function create_park($request) {
-		logtrace("create_park", $request);
-		$r = $this->Park->CreatePark($request);
-		return $r;
-	}
+    public function edit_park_day($request)
+    {
+        return $this->Park->EditParkDay($request);
+    }
 
-	function set_park_details($request) {
-		logtrace("set_park_details", $request);
-		return $this->Park->SetParkDetails($request);
-	}
+    public function delete_park_day($request)
+    {
+        return $this->Park->RemoveParkDay($request);
+    }
 
-	function RemoveParkHeraldry($request) {
-		return $this->Heraldry->RemoveParkHeraldry($request);
-	}
-	
-	function get_park_info($park_id) {
-		return $this->Park->GetParkShortInfo(array('ParkId'=>$park_id));
-	}
+    public function get_park_details($park_id)
+    {
+        $request = array( 'ParkId' => $park_id );
+        return array('ParkConfiguration' => $this->Park->GetParkConfiguration($request),
+                        'ParkDays' => $this->Park->GetParkDays($request),
+                        'ParkInfo' => $this->Park->GetParkDetails($request),
+                        'Heraldry' => $this->Heraldry->GetHeraldryUrl(array('Type' => 'Park', 'Id' => $park_id )));
+    }
 
-	function get_park_name($park_id) {
-		$r = $this->Park->GetParkShortInfo(array('ParkId'=>$park_id));
-		return $r['ParkInfo']['ParkName'];
-	}
-		
-	function get_park_events($park_id) {
-		$r = $this->Search->Search_Event(null, null, $park_id, null, null, null);
-		return $r;
-	}
-	
-	function get_park_parkdays($park_id) {
-		return $this->Park->GetParkDays(array('ParkId'=>$park_id));
-	}
+    public function get_officers($park_id, $token)
+    {
+        $r = $this->Park->GetOfficers(array( 'ParkId' => $park_id, 'Token' => $token ));
+        logtrace("get_officers($park_id)", $r);
+        if ($r['Status']['Status'] == 0) {
+            return $r['Officers'];
+        }
+        return false;
+    }
 
-	function set_park_design($request) {
-		return $this->Park->SetParkDesign($request);
-	}
+    public function set_officers($token, $park_id, $request)
+    {
+        $r = array();
+        foreach ($request as $k => $officer_request) {
+            $officer_request['Token'] = $token;
+            $officer_request['ParkId'] = $park_id;
+            $r[] = $this->Park->SetOfficer($officer_request);
+        }
+        return $r;
+    }
 
-	function get_park_milestones($park_id) {
-		return $this->Park->GetParkMilestones(array('ParkId' => $park_id));
-	}
+    public function vacate_officer($park_id, $role, $token)
+    {
+        return $this->Park->VacateOfficer(array('ParkId' => $park_id, 'Role' => $role, 'Token' => $token));
+    }
 
-	function get_derived_park_milestones($park_id) {
-		return $this->Park->GetDerivedParkMilestones(array('ParkId' => $park_id));
-	}
+    public function create_park($request)
+    {
+        logtrace("create_park", $request);
+        $r = $this->Park->CreatePark($request);
+        return $r;
+    }
 
-	function get_merged_park_milestones($id) {
-		return $this->Park->GetMergedParkMilestones(array('ParkId' => $id));
-	}
+    public function set_park_details($request)
+    {
+        logtrace("set_park_details", $request);
+        return $this->Park->SetParkDetails($request);
+    }
 
-	function add_park_milestone($request) {
-		return $this->Park->AddParkMilestone($request);
-	}
+    public function RemoveParkHeraldry($request)
+    {
+        return $this->Heraldry->RemoveParkHeraldry($request);
+    }
 
-	function update_park_milestone($request) {
-		return $this->Park->UpdateParkMilestone($request);
-	}
+    public function get_park_info($park_id)
+    {
+        return $this->Park->GetParkShortInfo(array('ParkId' => $park_id));
+    }
 
-	function delete_park_milestone($request) {
-		return $this->Park->DeleteParkMilestone($request);
-	}
+    public function get_park_name($park_id)
+    {
+        $r = $this->Park->GetParkShortInfo(array('ParkId' => $park_id));
+        return $r['ParkInfo']['ParkName'];
+    }
+
+    public function get_park_events($park_id)
+    {
+        $r = $this->Search->Search_Event(null, null, $park_id, null, null, null);
+        return $r;
+    }
+
+    public function get_park_parkdays($park_id)
+    {
+        return $this->Park->GetParkDays(array('ParkId' => $park_id));
+    }
+
+    /** Social platform slugs the domain will persist, in display order. */
+    public function park_design_social_platforms()
+    {
+        return $this->Park->GetDesignSocialPlatforms();
+    }
+
+    /**
+     * The design fields SetParkDesign accepts, straight from the domain's
+     * getDesignConfig() contract. The AJAX controller reads this instead of
+     * repeating the list, so a field added to the domain is saveable at once.
+     */
+    public function park_design_save_fields()
+    {
+        return $this->Park->GetDesignSaveFields();
+    }
+
+    public function set_park_design($request)
+    {
+        return $this->Park->SetParkDesign($request);
+    }
+
+    public function get_park_milestones($park_id)
+    {
+        return $this->Park->GetParkMilestones(array('ParkId' => $park_id));
+    }
+
+    public function get_derived_park_milestones($park_id)
+    {
+        return $this->Park->GetDerivedParkMilestones(array('ParkId' => $park_id));
+    }
+
+    public function get_merged_park_milestones($id)
+    {
+        return $this->Park->GetMergedParkMilestones(array('ParkId' => $id));
+    }
+
+    public function add_park_milestone($request)
+    {
+        return $this->Park->AddParkMilestone($request);
+    }
+
+    public function update_park_milestone($request)
+    {
+        return $this->Park->UpdateParkMilestone($request);
+    }
+
+    public function delete_park_milestone($request)
+    {
+        return $this->Park->DeleteParkMilestone($request);
+    }
 
 }
-
-
-?>

@@ -487,6 +487,10 @@ class Controller_Kingdom extends Controller
             $milestones = $this->Kingdom->get_merged_kingdom_milestones((int)$kingdom_id);
         }
         $this->data['Milestones'] = $milestones;
+
+        // Authoritative social-platform slugs, so the template's icon/label table
+        // can never offer an input the domain would silently discard on save.
+        $this->data['OdSocialPlatformSlugs'] = $this->Kingdom->kingdom_design_social_platforms();
     }
 
     // ------------------------------------------------------------------ ICS Feed

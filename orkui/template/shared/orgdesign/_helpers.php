@@ -33,14 +33,18 @@ if (!function_exists('org_design_markdown')) {
 }
 
 /**
- * Social platform metadata used by both the connect pills and the modal social
- * input rows. icon = Font Awesome class, bg = pill/chip background (may be a
- * gradient), label = human-readable, placeholder = input hint.
+ * PRESENTATION ONLY: how each social platform is drawn. icon = Font Awesome
+ * class, bg = pill/chip background (may be a gradient), label = human-readable,
+ * placeholder = input hint.
  *
- * Kept as a guarded global so the partials and helper code share one source.
+ * This table does NOT decide which platforms exist — the domain does, via
+ * OrgDesign::orgSocialPlatformHosts(), surfaced to the view as
+ * $OdSocialPlatformSlugs by the Kingdom/Park/Unit controllers. Keeping a second
+ * slug list here is what let the two drift: a slug rendered as an input but
+ * unknown to the domain is discarded on save with no error shown.
  */
-if (!isset($OD_SOCIAL_PLATFORMS) || !is_array($OD_SOCIAL_PLATFORMS)) {
-    $OD_SOCIAL_PLATFORMS = [
+if (!isset($OD_SOCIAL_CHROME) || !is_array($OD_SOCIAL_CHROME)) {
+    $OD_SOCIAL_CHROME = [
         'discord'   => ['label' => 'Discord',   'icon' => 'fab fa-discord',   'bg' => '#5865f2', 'placeholder' => 'https://discord.gg/...'],
         'facebook'  => ['label' => 'Facebook',  'icon' => 'fab fa-facebook',  'bg' => '#1877f2', 'placeholder' => 'https://facebook.com/...'],
         'instagram' => ['label' => 'Instagram', 'icon' => 'fab fa-instagram', 'bg' => 'linear-gradient(135deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888)', 'placeholder' => 'https://instagram.com/...'],
@@ -50,6 +54,29 @@ if (!isset($OD_SOCIAL_PLATFORMS) || !is_array($OD_SOCIAL_PLATFORMS)) {
         'youtube'   => ['label' => 'YouTube',   'icon' => 'fab fa-youtube',   'bg' => '#ff0000', 'placeholder' => 'https://youtube.com/...'],
         'amtwiki'   => ['label' => 'AmtWiki',   'icon' => 'fas fa-book',      'bg' => '#6b7280', 'placeholder' => 'https://amtwiki.net/...'],
     ];
+}
+
+/**
+ * The platform map the partials actually consume: the domain's slug list, in
+ * the domain's order, dressed with the chrome above. A slug the domain knows
+ * but this file has no entry for still renders (generic link icon) rather than
+ * silently vanishing from the editor.
+ */
+if (!isset($OD_SOCIAL_PLATFORMS) || !is_array($OD_SOCIAL_PLATFORMS)) {
+    $OD_SOCIAL_PLATFORMS = [];
+    $_odSlugs = (isset($OdSocialPlatformSlugs) && is_array($OdSocialPlatformSlugs) && $OdSocialPlatformSlugs)
+        ? $OdSocialPlatformSlugs
+        : array_keys($OD_SOCIAL_CHROME);
+    foreach ($_odSlugs as $_odSlug) {
+        $_odSlug = (string)$_odSlug;
+        $OD_SOCIAL_PLATFORMS[$_odSlug] = $OD_SOCIAL_CHROME[$_odSlug] ?? [
+            'label'       => ucfirst($_odSlug),
+            'icon'        => 'fas fa-link',
+            'bg'          => '#6b7280',
+            'placeholder' => 'https://...',
+        ];
+    }
+    unset($_odSlugs, $_odSlug);
 }
 
 /**
