@@ -1,5 +1,7 @@
 <?php
 	require_once(DIR_LIB . 'Parsedown.php');
+	// Shared Org Design helpers: org_design_markdown(), $OD_SOCIAL_PLATFORMS, $OD_FONTS, $OD_SNIPPETS.
+	require_once(DIR_TEMPLATE . 'shared/orgdesign/_helpers.php');
 	/* -----------------------------------------------
 	   Pre-process template data
 	   ----------------------------------------------- */
@@ -44,8 +46,10 @@
 	// Extract Monarch & Regent for hero display
 	$monarch = null; $regent = null;
 	foreach ($officerList as $o) {
-		if ($o['OfficerRole'] === 'Monarch') $monarch = $o;
-		if ($o['OfficerRole'] === 'Regent')  $regent  = $o;
+		// officer role is stored lowercase in ork_officer.role; compare case-insensitively
+		$_oRole = strtolower(trim((string)($o['OfficerRole'] ?? '')));
+		if ($_oRole === 'monarch') $monarch = $o;
+		if ($_oRole === 'regent')  $regent  = $o;
 	}
 
 	// Players loaded via AJAX (players_json) — not available at render time
@@ -103,15 +107,240 @@
 			];
 		}
 	}
+
+	// --- Kingdom Design (header, About, Milestones customization) -------------------
+	$_kInfo         = $kingdom_info['Info']['KingdomInfo'] ?? [];
+	$aboutText      = (string)($_kInfo['AboutText']  ?? '');
+	$ourHistoryText = (string)($_kInfo['OurHistory'] ?? '');
+	$_knLegacyDesc  = (string)($_kInfo['Description'] ?? '');
+	if (trim($aboutText) === '') { $aboutText = $_knLegacyDesc; }
+
+	$knColorPrimary   = trim((string)($_kInfo['ColorPrimary']   ?? ''));
+	$knColorAccent    = trim((string)($_kInfo['ColorAccent']    ?? ''));
+	$knColorSecondary = trim((string)($_kInfo['ColorSecondary'] ?? ''));
+	$knOverlay        = strtolower(trim((string)($_kInfo['HeroOverlay'] ?? 'med')));
+	if (!in_array($knOverlay, ['low','med','high','vignette'], true)) $knOverlay = 'med';
+	$knNameFont       = trim((string)($_kInfo['NameFont'] ?? ''));
+	$knMilestoneCfg   = [];
+	if (!empty($_kInfo['MilestoneConfig'])) {
+		$_mc = json_decode($_kInfo['MilestoneConfig'], true);
+		if (is_array($_mc)) $knMilestoneCfg = $_mc;
+	}
+	$knMsVisible = function($type) use ($knMilestoneCfg) {
+		if (!array_key_exists($type, $knMilestoneCfg)) return true;
+		return !empty($knMilestoneCfg[$type]);
+	};
+	$knMsNewestFirst = !empty($knMilestoneCfg['newest_first']);
+
+	$knAllMilestones     = is_array($Milestones ?? null) ? $Milestones : [];
+	$knVisibleMilestones = [];
+	foreach ($knAllMilestones as $_knms) {
+		$_t = $_knms['Type'] ?? 'custom';
+		if ($knMsVisible($_t)) $knVisibleMilestones[] = $_knms;
+	}
+	if ($knMsNewestFirst) $knVisibleMilestones = array_reverse($knVisibleMilestones);
+	$knHasMilestones = count($knVisibleMilestones) > 0;
+
+	$knHeroFontCss    = $knNameFont !== '' ? ("'" . str_replace("'", '', $knNameFont) . "'") : '';
+	$knOverlayOpacity = ['low' => 0.06, 'med' => 0.13, 'high' => 0.28, 'vignette' => 0.45][$knOverlay] ?? 0.13;
+
+	// --- Phase 2 extras: tagline, social links, announcement, reign banner ---
+	$knTagline         = trim((string)($_kInfo['Tagline'] ?? ''));
+	$_knSocialRaw      = trim((string)($_kInfo['SocialLinks'] ?? ''));
+	$knSocialLinks     = [];
+	if ($_knSocialRaw !== '') {
+		$_dec = json_decode($_knSocialRaw, true);
+		if (is_array($_dec)) $knSocialLinks = $_dec;
+	}
+	// Social platform metadata now lives in shared/orgdesign/_helpers.php ($OD_SOCIAL_PLATFORMS).
+	$knVisibleSocials = [];
+	foreach ($OD_SOCIAL_PLATFORMS as $_slug => $_meta) {
+		$_u = trim((string)($knSocialLinks[$_slug] ?? ''));
+		if ($_u !== '') $knVisibleSocials[$_slug] = $_u;
+	}
+
+	$knAnnouncement       = trim((string)($_kInfo['Announcement'] ?? ''));
+	$knAnnouncementStarts = trim((string)($_kInfo['AnnouncementStarts'] ?? ''));
+	$knAnnouncementUntil  = trim((string)($_kInfo['AnnouncementUntil'] ?? ''));
+	// Whether the announcement is live is a business rule, answered once by
+	// Kingdom::announcementActive() and surfaced as AnnouncementActive.
+	$knShowAnnouncement   = ((int)($_kInfo['AnnouncementActive'] ?? 0) === 1);
+
+	$knMonarchReignStarted = trim((string)($_kInfo['MonarchReignStarted'] ?? ''));
+	$knRegentReignStarted  = trim((string)($_kInfo['RegentReignStarted']  ?? ''));
+	// Reign dates are bound to the player who held the seat when the date was saved;
+	// a mismatch means the date belongs to a previous reign and must not render.
+	$knMonarchReignMundaneId = (int)($_kInfo['MonarchReignMundaneId'] ?? 0);
+	$knRegentReignMundaneId  = (int)($_kInfo['RegentReignMundaneId']  ?? 0);
+	$knReignLore           = (string)($_kInfo['ReignLore'] ?? '');
+	$knHasReignContent     = ($monarch && !empty($monarch['MundaneId'])) || ($regent && !empty($regent['MundaneId'])) || trim($knReignLore) !== '';
+
+	// --- Opt-in: new About design gating ---
+	$knAboutEnabled  = (int)($_kInfo['AboutEnabled'] ?? 0);
+	$knShowNewAbout  = ($knAboutEnabled === 1) || ($CanManageKingdom ?? false);
+
+	if (!function_exists('kn_reign_avatar_url')) {
+		function kn_reign_avatar_url($mundaneId): string {
+			if ((int)$mundaneId <= 0) return '';
+			return HTTP_PLAYER_IMAGE . Common::resolve_image_ext(DIR_PLAYER_IMAGE, sprintf('%06d', (int)$mundaneId));
+		}
+	}
+
+	// org_design_markdown() is provided by shared/orgdesign/_helpers.php (included below).
+
+	if (!function_exists('kn_officer_role_label')) {
+		// ork_officer.role is stored as a lowercase slug (e.g. prime_minister, gmr);
+		// render a human-readable label for display.
+		function kn_officer_role_label($role): string {
+			$r = strtolower(trim((string)$role));
+			if ($r === '') return '';
+			$special = ['gmr' => 'GMR'];
+			if (isset($special[$r])) return $special[$r];
+			return ucwords(str_replace('_', ' ', $r));
+		}
+	}
+
+	// --- Shared Org Design $ctx contract (helpers already required at top) --------
+	// Build the $ctx array the shared design partials read. Derived from this
+	// page's existing Kingdom design variables; org='kingdom', reign feature on.
+	$_odCustomMilestones = array_values(array_filter($knAllMilestones, function ($m) {
+		return empty($m['IsDerived']);
+	}));
+	$ctx = [
+		'org'                => 'kingdom',
+		'id'                 => (int)$kingdom_id,
+		'ajax'               => 'KingdomAjax/kingdom',
+		'org_name'           => $kingdom_name,
+		'can_manage'         => (bool)($CanManageKingdom ?? false),
+		'about_text'         => $aboutText,
+		'our_history'        => $ourHistoryText,
+		'color_primary'      => $knColorPrimary,
+		'color_accent'       => $knColorAccent,
+		'color_secondary'    => $knColorSecondary,
+		'overlay'            => $knOverlay,
+		'name_font'          => $knNameFont,
+		'tagline'            => $knTagline,
+		'announcement'       => $knAnnouncement,
+		'announcement_starts' => $knAnnouncementStarts,
+		'announcement_until' => $knAnnouncementUntil,
+		'social_links'       => $knVisibleSocials,
+		'about_enabled'      => $knAboutEnabled,
+		'milestone_config'   => $knMilestoneCfg,
+		'milestones'         => $knVisibleMilestones,
+		'custom_milestones'  => $_odCustomMilestones,
+		'features'           => ['reign' => true],
+		'reign'              => [
+			'monarch_started' => $knMonarchReignStarted,
+			'regent_started'  => $knRegentReignStarted,
+			'lore'            => $knReignLore,
+		],
+	];
 ?>
 
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>revised-frontend/style/revised.css?v=<?= filemtime(DIR_TEMPLATE . 'revised-frontend/style/revised.css') ?>">
+<?php
+	// Only ship the 38KB shared org-design stylesheet when this page can actually
+	// render od-* markup. Union of every od- block's own condition:
+	//   announcement banner, hero tagline, new About design (incl. reign banner and
+	//   milestones), the LEGACY About description card (rendered on the else branch
+	//   of $knShowNewAbout), the About "meta" row (website / parent kingdom), and
+	//   the manager-only design modal. (The sidebar Connect block is no longer an
+	//   independent trigger — it now renders only inside $knShowNewAbout.)
+	$_knOdWebsiteUrl = trim((string)($_kInfo['Url'] ?? ''));
+	$_knOdParentId   = (int)($_kInfo['ParentKingdomId'] ?? ($ParentKingdomId ?? 0));
+	$_knNeedsOdCss   = $knShowAnnouncement
+		|| ($knTagline !== '')
+		|| $knShowNewAbout
+		|| (trim($_knLegacyDesc) !== '')
+		|| ($_knOdWebsiteUrl !== '' || $_knOdParentId > 0)
+		|| !empty($knVisibleSocials)
+		|| ($CanManageKingdom ?? false);
+?>
+<?php if ($_knNeedsOdCss): ?>
+<link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>shared/orgdesign/orgdesign.css?v=<?= filemtime(DIR_TEMPLATE . 'shared/orgdesign/orgdesign.css') ?>">
+<?php endif; ?>
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>revised-frontend/style/ork-datatables.css?v=<?= filemtime(__DIR__ . '/style/ork-datatables.css') ?>">
+
+<?php if ($knNameFont !== ''): ?>
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=<?= rawurlencode($knNameFont) ?>&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=<?= rawurlencode($knNameFont) ?>&display=swap"></noscript>
+<?php endif; ?>
+
+<style>
+/* --- Kingdom Design: hero customization ------------------------------------- */
+<?php if ($knColorPrimary): ?>
+.kn-hero {
+	background-color: <?= htmlspecialchars($knColorPrimary) ?> !important;
+<?php if ($knColorSecondary && $knColorSecondary !== $knColorPrimary): ?>
+	background: linear-gradient(135deg, <?= htmlspecialchars($knColorPrimary) ?>, <?= htmlspecialchars($knColorSecondary) ?>) !important;
+<?php endif; ?>
+}
+html[data-theme="dark"] .kn-hero {
+	background-color: <?= htmlspecialchars($knColorPrimary) ?> !important;
+<?php if ($knColorSecondary && $knColorSecondary !== $knColorPrimary): ?>
+	background: linear-gradient(135deg, <?= htmlspecialchars($knColorPrimary) ?>, <?= htmlspecialchars($knColorSecondary) ?>) !important;
+<?php endif; ?>
+	filter: brightness(0.85);
+}
+<?php endif; ?>
+<?php if ($knColorAccent): ?>
+:root { --kn-accent: <?= htmlspecialchars($knColorAccent) ?>; --od-accent: <?= htmlspecialchars($knColorAccent) ?>; }
+.kn-tab-nav li.kn-tab-active { color: <?= htmlspecialchars($knColorAccent) ?> !important; border-bottom-color: <?= htmlspecialchars($knColorAccent) ?> !important; }
+html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialchars($knColorAccent) ?> !important; border-bottom-color: <?= htmlspecialchars($knColorAccent) ?> !important; }
+.kn-stat-card { position: relative; }
+.kn-stat-card::before {
+	content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+	background: <?= htmlspecialchars($knColorAccent) ?>;
+	border-top-left-radius: 8px; border-top-right-radius: 8px;
+}
+.kn-parent-kingdom-link a i { color: <?= htmlspecialchars($knColorAccent) ?>; }
+.kn-link-list .kn-link-icon i { color: <?= htmlspecialchars($knColorAccent) ?>; }
+<?php endif; ?>
+<?php if (!$bannerUrl): /* overlay opacity + vignette mask apply to the heraldry backdrop only; an uploaded banner shows at full opacity (see .kn-hero-has-banner .kn-hero-bg) */ ?>
+.kn-hero-bg { opacity: <?= $knOverlayOpacity ?> !important; }
+<?php if ($knOverlay === 'vignette'): ?>
+.kn-hero-bg {
+	-webkit-mask-image: radial-gradient(ellipse at center, rgba(0,0,0,0.95) 38%, rgba(0,0,0,0) 78%);
+	        mask-image: radial-gradient(ellipse at center, rgba(0,0,0,0.95) 38%, rgba(0,0,0,0) 78%);
+}
+<?php endif; ?>
+<?php endif; ?>
+<?php if ($knNameFont !== '' && $knHeroFontCss !== ''): ?>
+.kn-kingdom-name { font-family: <?= $knHeroFontCss ?>, 'Cinzel', serif !important; letter-spacing: 0.02em; }
+<?php endif; ?>
+</style>
 
 <!-- =============================================
      ZONE 1: Hero Header
      ============================================= -->
+<?php if ($knShowAnnouncement): ?>
+<div class="od-announce" role="status" data-od-announce-key="od-announce-dismissed-kingdom-<?= (int)$kingdom_id ?>" data-od-announce-token="<?= substr(sha1($knAnnouncement), 0, 16) ?>">
+	<i class="fas fa-bullhorn od-announce-icon"></i>
+	<div class="od-announce-body"><strong>Announcement:</strong><?= htmlspecialchars($knAnnouncement) ?></div>
+	<?php if ($knAnnouncementUntil !== '' && $knAnnouncementUntil !== '0000-00-00'): ?>
+	<div class="od-announce-until">Until <?= date('M j, Y', strtotime($knAnnouncementUntil)) ?></div>
+	<?php endif; ?>
+	<button type="button" class="od-announce-dismiss" data-tip="Dismiss" aria-label="Dismiss announcement">&times;</button>
+</div>
+<script>
+(function () {
+	var banners = document.querySelectorAll('.od-announce[data-od-announce-key]');
+	for (var i = 0; i < banners.length; i++) {
+		(function (b) {
+			var key = b.getAttribute('data-od-announce-key');
+			var token = b.getAttribute('data-od-announce-token') || '';
+			try { if (key && localStorage.getItem(key) === token) { b.style.display = 'none'; } } catch (e) {}
+			var x = b.querySelector('.od-announce-dismiss');
+			if (x) { x.addEventListener('click', function () {
+				b.style.display = 'none';
+				try { if (key) { localStorage.setItem(key, token); } } catch (e) {}
+			}); }
+		})(banners[i]);
+	}
+})();
+</script>
+<?php endif; ?>
 <?php
 	$_heroBgUrl    = $bannerUrl ?: $heraldryUrl;
 	$_heroClasses  = 'kn-hero';
@@ -165,6 +394,9 @@
 			</div>
 			<?php endif; ?>
 			<h1 class="kn-kingdom-name"><?= htmlspecialchars($kingdom_name) ?></h1>
+			<?php if ($knTagline !== ''): ?>
+			<div class="od-tagline"><?= htmlspecialchars($knTagline) ?></div>
+			<?php endif; ?>
 			<div class="kn-badges">
 				<span class="kn-badge kn-badge-green">
 					<i class="fas fa-shield-alt"></i> <?= $entityLabel ?>
@@ -193,6 +425,9 @@
 				<i class="fas fa-map"></i> Map
 			</a>
 			<?php if ($CanManageKingdom ?? false): ?>
+			<button class="kn-btn kn-btn-outline" onclick="odOpenDesignModal()">
+				<i class="fas fa-palette"></i> Design
+			</button>
 			<button class="kn-btn kn-btn-outline" onclick="knOpenAdminModal()">
 				<i class="fas fa-cog"></i> Admin
 			</button>
@@ -257,7 +492,7 @@
 			<ul class="kn-officer-list">
 				<?php foreach ($officerList as $o): ?>
 				<li>
-					<span class="kn-officer-role"><?= htmlspecialchars($o['OfficerRole']) ?></span>
+					<span class="kn-officer-role"><?= htmlspecialchars(kn_officer_role_label($o['OfficerRole'])) ?></span>
 					<span class="kn-officer-name">
 						<?php if (!empty($o['MundaneId']) && $o['MundaneId'] > 0): ?>
 							<a href="<?= UIR ?>Player/profile/<?= $o['MundaneId'] ?>"><?= htmlspecialchars($o['Persona']) ?></a>
@@ -271,19 +506,6 @@
 				<li><em style="color:#a0aec0;font-size:12px">No officers on record</em></li>
 				<?php endif; ?>
 			</ul>
-		</div>
-		<?php endif; ?>
-
-		<?php
-			$_knDescription = $kingdom_info['Info']['KingdomInfo']['Description'] ?? '';
-		?>
-		<?php if (!empty($_knDescription)): ?>
-		<div class="kn-card kn-description-card">
-			<h4 class="kn-bare-heading"><i class="fas fa-info-circle"></i> About</h4>
-			<div class="kn-description-body"><?= preg_replace('/<img[^>]*>/i', '', (new Parsedown())->setSafeMode(true)->setBreaksEnabled(true)->text($_knDescription)) ?></div>
-			<?php if (!empty($kingdom_info['Info']['KingdomInfo']['Url'] ?? '')): ?>
-			<a class="kn-description-url" href="<?= htmlspecialchars($kingdom_info['Info']['KingdomInfo']['Url']) ?>" target="_blank" rel="noopener"><i class="fas fa-external-link-alt" style="margin-right:4px;font-size:11px"></i><?= htmlspecialchars($kingdom_info['Info']['KingdomInfo']['Url']) ?></a>
-			<?php endif; ?>
 		</div>
 		<?php endif; ?>
 
@@ -314,6 +536,9 @@
 					<a href="<?= UIR ?>Search/event&KingdomId=<?= $kingdom_id ?>">Find Events</a>
 				</li>
 			</ul>
+			<?php if ($knShowNewAbout): ?>
+			<?php include DIR_TEMPLATE . 'shared/orgdesign/_connect_block.tpl'; ?>
+			<?php endif; ?>
 		</div>
 
 	</div>
@@ -322,7 +547,10 @@
 	<div class="kn-main">
 		<div class="kn-tabs">
 			<ul class="kn-tab-nav">
-				<li class="kn-tab-active" data-kntab="parks">
+				<li class="kn-tab-active" data-kntab="about">
+					<i class="fas fa-info-circle"></i><span class="kn-tab-label"> About</span>
+				</li>
+				<li data-kntab="parks">
 					<i class="fas fa-map-marker-alt"></i><span class="kn-tab-label"> Parks</span>
 					<span class="kn-tab-count">(<?= $StatsParkCount ?? count($parkList) ?>)</span>
 				</li>
@@ -355,10 +583,154 @@
 				</li>
 				<?php endif; ?>
 			</ul>
-			<div class="kn-active-tab-label" id="kn-active-tab-label">Parks</div>
+			<div class="kn-active-tab-label" id="kn-active-tab-label">About</div>
+
+			<!-- About Tab -->
+			<div class="kn-tab-panel" id="kn-tab-about">
+				<?php if ($knShowNewAbout): ?>
+				<?php if (($CanManageKingdom ?? false) && $knAboutEnabled !== 1): ?>
+				<div class="od-about-unpublished" data-tip="Only managers can see this. Enable the About Page in Customize to publish it.">
+					<i class="fas fa-eye-slash"></i> Unpublished — only managers can see this
+				</div>
+				<?php endif; ?>
+				<?php if ($knHasReignContent || ($CanManageKingdom ?? false)): ?>
+				<?php if ($knHasReignContent): ?>
+				<div class="od-reign-banner">
+					<div class="od-reign-head">
+						<i class="fas fa-crown"></i>
+						<span>Current Reign</span>
+						<?php if ($CanManageKingdom ?? false): ?>
+						<button class="od-about-edit-btn od-reign-edit-btn" type="button" onclick="odOpenDesignModal('about')" data-tip="Edit Reign" style="margin-left:auto">
+							<i class="fas fa-pencil-alt"></i> Edit
+						</button>
+						<?php endif; ?>
+					</div>
+					<?php $_hasReignCard = ($monarch && !empty($monarch['MundaneId'])) || ($regent && !empty($regent['MundaneId'])); ?>
+					<?php if ($_hasReignCard): ?>
+					<div class="od-reign-grid">
+						<?php if ($monarch && !empty($monarch['MundaneId']) && $monarch['MundaneId'] > 0):
+							$_mImg = kn_reign_avatar_url($monarch['MundaneId']);
+							$_mInitial = htmlspecialchars(strtoupper(mb_substr($monarch['Persona'] ?? '?', 0, 1)));
+						?>
+						<a href="<?= UIR ?>Player/profile/<?= (int)$monarch['MundaneId'] ?>" class="od-reign-card">
+							<img src="<?= htmlspecialchars($_mImg) ?>" alt="" class="od-reign-avatar" width="64" height="64" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='<?= HTTP_PLAYER_HERALDRY ?>000000.jpg'">
+							<div class="od-reign-card-body">
+								<div class="od-reign-role">Monarch</div>
+								<div class="od-reign-name"><?= htmlspecialchars($monarch['Persona']) ?></div>
+								<?php if ($knMonarchReignStarted !== '' && $knMonarchReignStarted !== '0000-00-00' && strtotime($knMonarchReignStarted) && $knMonarchReignMundaneId > 0 && $knMonarchReignMundaneId === (int)$monarch['MundaneId']): ?>
+								<div class="od-reign-since">Since <?= date('M Y', strtotime($knMonarchReignStarted)) ?></div>
+								<?php endif; ?>
+							</div>
+						</a>
+						<?php endif; ?>
+						<?php if ($regent && !empty($regent['MundaneId']) && $regent['MundaneId'] > 0):
+							$_rImg = kn_reign_avatar_url($regent['MundaneId']);
+						?>
+						<a href="<?= UIR ?>Player/profile/<?= (int)$regent['MundaneId'] ?>" class="od-reign-card">
+							<img src="<?= htmlspecialchars($_rImg) ?>" alt="" class="od-reign-avatar" width="64" height="64" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='<?= HTTP_PLAYER_HERALDRY ?>000000.jpg'">
+							<div class="od-reign-card-body">
+								<div class="od-reign-role">Regent</div>
+								<div class="od-reign-name"><?= htmlspecialchars($regent['Persona']) ?></div>
+								<?php if ($knRegentReignStarted !== '' && $knRegentReignStarted !== '0000-00-00' && strtotime($knRegentReignStarted) && $knRegentReignMundaneId > 0 && $knRegentReignMundaneId === (int)$regent['MundaneId']): ?>
+								<div class="od-reign-since">Since <?= date('M Y', strtotime($knRegentReignStarted)) ?></div>
+								<?php endif; ?>
+							</div>
+						</a>
+						<?php endif; ?>
+					</div>
+					<?php endif; ?>
+					<?php if (trim($knReignLore) !== ''): ?>
+					<div class="od-reign-lore kn-description-body"><?= org_design_markdown($knReignLore) ?></div>
+					<?php endif; ?>
+				</div>
+				<?php elseif ($CanManageKingdom ?? false): ?>
+				<div class="od-reign-banner">
+					<div class="od-reign-head"><i class="fas fa-crown"></i><span>Current Reign</span></div>
+					<div class="od-reign-empty">
+						Showcase the current Monarch &amp; Regent. <a href="#" class="od-reign-link" onclick="event.preventDefault();odOpenDesignModal('about')">Set reign-start dates</a> or add lore.
+					</div>
+				</div>
+				<?php endif; ?>
+				<?php endif; ?>
+
+				<div class="od-about-grid">
+					<?php if (!empty($aboutText) || ($CanManageKingdom ?? false)): ?>
+					<div class="od-about-section">
+						<div class="od-about-section-head">
+							<div class="od-about-label">About</div>
+							<?php if ($CanManageKingdom ?? false): ?>
+							<button class="od-about-edit-btn" type="button" onclick="odOpenDesignModal('about')" data-tip="Edit About">
+								<i class="fas fa-pencil-alt"></i> Edit
+							</button>
+							<?php endif; ?>
+						</div>
+						<?php if (!empty($aboutText)): ?>
+						<div class="od-about-text kn-description-body"><?= org_design_markdown($aboutText) ?></div>
+						<?php elseif ($CanManageKingdom ?? false): ?>
+						<div class="kn-empty" style="text-align:left;font-size:13px;color:#a0aec0">
+							No About content yet. <a href="#" onclick="event.preventDefault();odOpenDesignModal('about')">Add some</a> to introduce <?= htmlspecialchars($kingdom_name) ?> to visitors.
+						</div>
+						<?php endif; ?>
+					</div>
+					<?php endif; ?>
+				</div>
+
+				<?php if (!empty($ourHistoryText) || ($CanManageKingdom ?? false)): ?>
+				<div class="od-about-section od-history-section">
+					<div class="od-about-section-head">
+						<div class="od-about-label"><i class="fas fa-scroll" style="margin-right:6px;color:#a0aec0"></i>Our History</div>
+						<?php if ($CanManageKingdom ?? false): ?>
+						<button class="od-about-edit-btn" type="button" onclick="odOpenDesignModal('about')" data-tip="Edit Our History">
+							<i class="fas fa-pencil-alt"></i> Edit
+						</button>
+						<?php endif; ?>
+					</div>
+					<?php if (!empty($ourHistoryText)): ?>
+					<div class="od-about-text kn-description-body"><?= org_design_markdown($ourHistoryText) ?></div>
+					<?php elseif ($CanManageKingdom ?? false): ?>
+					<div class="kn-empty" style="text-align:left;font-size:13px;color:#a0aec0">
+						Share the founding story, past officers, or notable moments. <a href="#" onclick="event.preventDefault();odOpenDesignModal('about')">Add Our History</a>.
+					</div>
+					<?php endif; ?>
+				</div>
+				<?php endif; ?>
+				<?php else: // $knShowNewAbout false: public, not opted in ?>
+				<?php if (trim($_knLegacyDesc) !== ''): ?>
+				<div class="od-about-section">
+					<div class="od-about-text kn-description-body"><?= org_design_markdown($_knLegacyDesc) ?></div>
+				</div>
+				<?php endif; ?>
+				<?php endif; // /$knShowNewAbout ?>
+
+				<?php
+					$_knWebsiteUrl = trim((string)($_kInfo['Url'] ?? ''));
+					$_knParentId   = (int)($_kInfo['ParentKingdomId'] ?? ($ParentKingdomId ?? 0));
+					$_knParentName = trim((string)($ParentKingdomName ?? ''));
+				?>
+				<?php if ($_knWebsiteUrl !== '' || $_knParentId > 0): ?>
+				<div class="od-about-section od-about-meta">
+					<?php if ($_knWebsiteUrl !== ''): ?>
+					<div class="od-about-meta-row">
+						<i class="fas fa-globe"></i>
+						<a href="<?= htmlspecialchars($_knWebsiteUrl) ?>" target="_blank" rel="noopener"><?= htmlspecialchars($_knWebsiteUrl) ?></a>
+					</div>
+					<?php endif; ?>
+					<?php if ($_knParentId > 0): ?>
+					<div class="od-about-meta-row">
+						<i class="fas fa-chess-rook"></i>
+						<a href="<?= UIR ?>Kingdom/profile/<?= $_knParentId ?>"><?= htmlspecialchars($_knParentName !== '' ? $_knParentName : 'Parent kingdom') ?></a>
+					</div>
+					<?php endif; ?>
+				</div>
+				<?php endif; ?>
+
+				<?php if ($knShowNewAbout && ($knHasMilestones || ($CanManageKingdom ?? false))): ?>
+				<?php include DIR_TEMPLATE . 'shared/orgdesign/_milestones_timeline.tpl'; ?>
+				<?php endif; ?>
+			</div><!-- /kn-tab-about -->
 
 			<!-- Parks Tab -->
-			<div class="kn-tab-panel" id="kn-tab-parks">
+			<div class="kn-tab-panel" id="kn-tab-parks" style="display:none">
 				<?php
 					// Pre-sort alphabetically so tiles match default list order
 					usort($parkList, function($a, $b) { return strcmp($a['ParkName'], $b['ParkName']); });
@@ -3277,4 +3649,16 @@ window.OrkRsCfg = {
 };
 </script>
 <?php include __DIR__ . '/_recommendation_seconds_assets.tpl'; ?>
+<?php endif; ?>
+
+<?php
+	// --- Shared Org Design modal + assets (managers only) ---------------------
+	// $ctx was built near the top of this template. The modal partial renders
+	// nothing for non-managers (it returns early on empty $ctx['can_manage']).
+	if ($ctx['can_manage']) {
+		include DIR_TEMPLATE . 'shared/orgdesign/_design_modal.tpl';
+	}
+?>
+<?php if ($ctx['can_manage']): ?>
+<script src="<?= HTTP_TEMPLATE ?>shared/orgdesign/orgdesign.js?v=<?= filemtime(DIR_TEMPLATE . 'shared/orgdesign/orgdesign.js') ?>"></script>
 <?php endif; ?>

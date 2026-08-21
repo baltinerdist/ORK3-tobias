@@ -88,12 +88,113 @@
 
 	// Render Markdown for display (no images)
 	require_once(DIR_LIB . 'Parsedown.php');
-	if (!function_exists('pk_markdown')) {
-		function pk_markdown(string $text): string {
-			$html = (new Parsedown())->setSafeMode(true)->setBreaksEnabled(true)->text($text);
-			return preg_replace('/<img[^>]*>/i', '', $html);
+	// Shared Org Design helpers: org_design_markdown(), $OD_SOCIAL_PLATFORMS, $OD_FONTS, $OD_SNIPPETS.
+	require_once(DIR_TEMPLATE . 'shared/orgdesign/_helpers.php');
+	// org_design_markdown() (shared) replaces the old per-page pk_markdown().
+
+	// --- Park Design (header, About, Milestones customization) -----------------------
+	$aboutText      = (string)($parkInfo['AboutText']   ?? '');
+	$ourHistoryText = (string)($parkInfo['OurHistory']  ?? '');
+	// Fallback: if no customized about_text yet, keep showing the legacy description.
+	if (trim($aboutText) === '') { $aboutText = $description; }
+
+	// Opt-in gating: the new Mask-II About design is shown publicly only when the park
+	// has enabled it. Managers always see the new design (with an "Unpublished" badge while off).
+	$pkAboutEnabled = (int)($parkInfo['AboutEnabled'] ?? 0);
+	$pkShowNewAbout = ($pkAboutEnabled === 1) || !empty($CanAdminPark);
+
+	$pkColorPrimary   = trim((string)($parkInfo['ColorPrimary']   ?? ''));
+	$pkColorAccent    = trim((string)($parkInfo['ColorAccent']    ?? ''));
+	$pkColorSecondary = trim((string)($parkInfo['ColorSecondary'] ?? ''));
+	$pkOverlay        = strtolower(trim((string)($parkInfo['HeroOverlay'] ?? 'med')));
+	if (!in_array($pkOverlay, ['low','med','high','vignette'], true)) $pkOverlay = 'med';
+	$pkNameFont       = trim((string)($parkInfo['NameFont'] ?? ''));
+	$pkMilestoneCfg   = [];
+	if (!empty($parkInfo['MilestoneConfig'])) {
+		$_mc = json_decode($parkInfo['MilestoneConfig'], true);
+		if (is_array($_mc)) $pkMilestoneCfg = $_mc;
+	}
+	// Visibility default: ON for every known type unless config says 0.
+	$pkMsVisible = function($type) use ($pkMilestoneCfg) {
+		if (!array_key_exists($type, $pkMilestoneCfg)) return true;
+		return !empty($pkMilestoneCfg[$type]);
+	};
+	$pkMsNewestFirst = !empty($pkMilestoneCfg['newest_first']);
+
+	$pkAllMilestones  = is_array($Milestones ?? null) ? $Milestones : [];
+	$pkVisibleMilestones = [];
+	foreach ($pkAllMilestones as $_pkms) {
+		$_t = $_pkms['Type'] ?? 'custom';
+		if ($pkMsVisible($_t)) $pkVisibleMilestones[] = $_pkms;
+	}
+	if ($pkMsNewestFirst) $pkVisibleMilestones = array_reverse($pkVisibleMilestones);
+	$pkHasMilestones = count($pkVisibleMilestones) > 0;
+
+	// Hero font CSS — wrap font name in single quotes for CSS safety; bypass for viewer accessibility fonts is left to a future enhancement.
+	$pkHeroFontCss = $pkNameFont !== '' ? ("'" . str_replace("'", '', $pkNameFont) . "'") : '';
+
+	// Overlay opacity map for the heraldry background image on the hero.
+	$pkOverlayOpacity = ['low' => 0.06, 'med' => 0.13, 'high' => 0.28, 'vignette' => 0.45][$pkOverlay] ?? 0.13;
+
+	// --- Phase 2 customizations: tagline, social links, announcement ---
+	$pkTagline           = trim((string)($parkInfo['Tagline'] ?? ''));
+	$pkAnnouncement      = trim((string)($parkInfo['Announcement'] ?? ''));
+	$pkAnnouncementStarts = trim((string)($parkInfo['AnnouncementStarts'] ?? ''));
+	$pkAnnouncementUntil = trim((string)($parkInfo['AnnouncementUntil'] ?? ''));
+	// Whether the announcement is live is a business rule, answered once by
+	// Park::announcementActive() and surfaced as AnnouncementActive.
+	$pkShowAnnouncement  = ((int)($parkInfo['AnnouncementActive'] ?? 0) === 1);
+	$pkSocialRaw   = (string)($parkInfo['SocialLinks'] ?? '');
+	$pkSocialLinks = [];
+	if ($pkSocialRaw !== '') {
+		$_sl = json_decode($pkSocialRaw, true);
+		if (is_array($_sl)) {
+			foreach ($_sl as $_k => $_v) {
+				$_v = trim((string)$_v);
+				if ($_v !== '' && preg_match('#^https?://#i', $_v)) {
+					$pkSocialLinks[(string)$_k] = $_v;
+				}
+			}
 		}
 	}
+	// Social platform metadata now lives in shared/orgdesign/_helpers.php ($OD_SOCIAL_PLATFORMS).
+	$pkVisibleSocials = [];
+	foreach ($OD_SOCIAL_PLATFORMS as $_slug => $_meta) {
+		$_u = trim((string)($pkSocialLinks[$_slug] ?? ''));
+		if ($_u !== '') $pkVisibleSocials[$_slug] = $_u;
+	}
+	$pkHasSocial = !empty($pkVisibleSocials);
+
+	// --- Shared Org Design $ctx contract (helpers required at top) -------------
+	// Build the $ctx array the shared design partials read. Park has NO per-org
+	// design sections (no reign / recruitment / how-to-join), so features = [].
+	$_pkCustomMilestones = array_values(array_filter($pkAllMilestones, function ($m) {
+		return empty($m['IsDerived']);
+	}));
+	$ctx = [
+		'org'                => 'park',
+		'id'                 => (int)$park_id,
+		'ajax'               => 'ParkAjax/park',
+		'org_name'           => $park_name,
+		'can_manage'         => (bool)($CanAdminPark ?? false),
+		'about_text'         => $aboutText,
+		'our_history'        => $ourHistoryText,
+		'color_primary'      => $pkColorPrimary,
+		'color_accent'       => $pkColorAccent,
+		'color_secondary'    => $pkColorSecondary,
+		'overlay'            => $pkOverlay,
+		'name_font'          => $pkNameFont,
+		'tagline'            => $pkTagline,
+		'announcement'       => $pkAnnouncement,
+		'announcement_starts' => $pkAnnouncementStarts,
+		'announcement_until' => $pkAnnouncementUntil,
+		'social_links'       => $pkVisibleSocials,
+		'about_enabled'      => $pkAboutEnabled,
+		'milestone_config'   => $pkMilestoneCfg,
+		'milestones'         => $pkVisibleMilestones,
+		'custom_milestones'  => $_pkCustomMilestones,
+		'features'           => [],
+	];
 
 
 	// Pre-compute FullCalendar event data
@@ -252,12 +353,112 @@
 ?>
 
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>revised-frontend/style/revised.css?v=<?= filemtime(DIR_TEMPLATE . 'revised-frontend/style/revised.css') ?>">
+<?php
+	// Perf: the 38KB shared design stylesheet only ships when this page can actually
+	// render od- markup. Union of every od- producer below: announcement banner,
+	// tagline, the new About design (which also gates the connect block + milestones
+	// timeline), social pills, the manager design modal, and the .od-about-text
+	// markdown bodies (About / legacy description / directions).
+	$pkNeedsOdCss = $pkShowAnnouncement
+		|| $pkTagline !== ''
+		|| $pkShowNewAbout
+		|| $pkHasSocial
+		|| !empty($CanAdminPark)
+		|| trim($aboutText) !== ''
+		|| trim($description) !== ''
+		|| trim($directions) !== '';
+?>
+<?php if ($pkNeedsOdCss): ?>
+<link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>shared/orgdesign/orgdesign.css?v=<?= filemtime(DIR_TEMPLATE . 'shared/orgdesign/orgdesign.css') ?>">
+<?php endif; ?>
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>revised-frontend/style/ork-datatables.css?v=<?= filemtime(__DIR__ . '/style/ork-datatables.css') ?>">
+
+<?php if ($pkNameFont !== ''): ?>
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=<?= rawurlencode($pkNameFont) ?>&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=<?= rawurlencode($pkNameFont) ?>&display=swap"></noscript>
+<?php endif; ?>
+
+<style>
+/* --- Park Design: hero customization ----------------------------------------- */
+<?php if ($pkColorPrimary): ?>
+.pk-hero {
+	background-color: <?= htmlspecialchars($pkColorPrimary) ?> !important;
+<?php if ($pkColorSecondary && $pkColorSecondary !== $pkColorPrimary): ?>
+	background: linear-gradient(135deg, <?= htmlspecialchars($pkColorPrimary) ?>, <?= htmlspecialchars($pkColorSecondary) ?>) !important;
+<?php endif; ?>
+}
+html[data-theme="dark"] .pk-hero {
+	background-color: <?= htmlspecialchars($pkColorPrimary) ?> !important;
+<?php if ($pkColorSecondary && $pkColorSecondary !== $pkColorPrimary): ?>
+	background: linear-gradient(135deg, <?= htmlspecialchars($pkColorPrimary) ?>, <?= htmlspecialchars($pkColorSecondary) ?>) !important;
+<?php endif; ?>
+	filter: brightness(0.85);
+}
+<?php endif; ?>
+<?php if ($pkColorAccent): ?>
+:root { --pk-accent: <?= htmlspecialchars($pkColorAccent) ?>; --od-accent: <?= htmlspecialchars($pkColorAccent) ?>; }
+.pk-tab-nav li.pk-tab-active { color: <?= htmlspecialchars($pkColorAccent) ?> !important; border-bottom-color: <?= htmlspecialchars($pkColorAccent) ?> !important; }
+html[data-theme="dark"] .pk-tab-nav li.pk-tab-active { color: <?= htmlspecialchars($pkColorAccent) ?> !important; border-bottom-color: <?= htmlspecialchars($pkColorAccent) ?> !important; }
+.pk-stat-card { position: relative; }
+.pk-stat-card::before {
+	content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+	background: <?= htmlspecialchars($pkColorAccent) ?>;
+	border-top-left-radius: 8px; border-top-right-radius: 8px;
+}
+.pk-kingdom-link a i { color: <?= htmlspecialchars($pkColorAccent) ?>; }
+<?php endif; ?>
+<?php if (!$bannerUrl): /* overlay opacity + vignette mask apply to the heraldry backdrop only; an uploaded banner shows at full opacity (see .pk-hero-has-banner .pk-hero-bg) */ ?>
+.pk-hero-bg { opacity: <?= $pkOverlayOpacity ?> !important; }
+<?php if ($pkOverlay === 'vignette'): ?>
+.pk-hero-bg {
+	-webkit-mask-image: radial-gradient(ellipse at center, rgba(0,0,0,0.95) 38%, rgba(0,0,0,0) 78%);
+	        mask-image: radial-gradient(ellipse at center, rgba(0,0,0,0.95) 38%, rgba(0,0,0,0) 78%);
+}
+<?php endif; ?>
+<?php endif; ?>
+<?php if ($pkNameFont !== '' && $pkHeroFontCss !== ''): ?>
+.pk-park-name { font-family: <?= $pkHeroFontCss ?>, 'Cinzel', serif !important; letter-spacing: 0.02em; }
+<?php endif; ?>
+
+/* The tagline, announcement banner, connect pills, About body/edit affordances,
+   and milestones timeline are now provided by the shared design stylesheet
+   shared/orgdesign/orgdesign.css (od- prefixed) + its partials. The Our History
+   section keeps its Park-specific dashed-divider wrapper. */
+.pk-history-section { margin-top: 18px; padding-top: 18px; border-top: 1px dashed #e2e8f0; }
+html[data-theme="dark"] .pk-history-section { border-top-color: var(--ork-border); }
+</style>
 
 <!-- =============================================
      ZONE 1: Hero Header
      ============================================= -->
+<?php if ($pkShowAnnouncement): ?>
+<div class="od-announce" role="status" data-od-announce-key="od-announce-dismissed-park-<?= (int)$park_id ?>" data-od-announce-token="<?= substr(sha1($pkAnnouncement), 0, 16) ?>">
+	<i class="fas fa-bullhorn od-announce-icon"></i>
+	<div class="od-announce-body"><strong>Announcement:</strong><?= htmlspecialchars($pkAnnouncement) ?></div>
+	<?php if ($pkAnnouncementUntil !== '' && $pkAnnouncementUntil !== '0000-00-00'): ?>
+	<div class="od-announce-until">Until <?= date('M j, Y', strtotime($pkAnnouncementUntil)) ?></div>
+	<?php endif; ?>
+	<button type="button" class="od-announce-dismiss" data-tip="Dismiss" aria-label="Dismiss announcement">&times;</button>
+</div>
+<script>
+(function () {
+	var banners = document.querySelectorAll('.od-announce[data-od-announce-key]');
+	for (var i = 0; i < banners.length; i++) {
+		(function (b) {
+			var key = b.getAttribute('data-od-announce-key');
+			var token = b.getAttribute('data-od-announce-token') || '';
+			try { if (key && localStorage.getItem(key) === token) { b.style.display = 'none'; } } catch (e) {}
+			var x = b.querySelector('.od-announce-dismiss');
+			if (x) { x.addEventListener('click', function () {
+				b.style.display = 'none';
+				try { if (key) { localStorage.setItem(key, token); } } catch (e) {}
+			}); }
+		})(banners[i]);
+	}
+})();
+</script>
+<?php endif; ?>
 <?php
 	$_heroBgUrl    = $bannerUrl ?: $heraldryUrl;
 	$_heroClasses  = 'pk-hero';
@@ -314,6 +515,9 @@
 				</a>
 			</div>
 			<h1 class="pk-park-name"><?= htmlspecialchars($park_name) ?></h1>
+			<?php if ($pkTagline !== ''): ?>
+			<div class="od-tagline"><?= htmlspecialchars($pkTagline) ?></div>
+			<?php endif; ?>
 			<div class="pk-hero-badges">
 				<?php if (!empty($parkTitle)): ?>
 					<span class="pk-park-title-badge"><?= htmlspecialchars($parkTitle) ?></span>
@@ -354,6 +558,9 @@
 				<?php if (!empty($CanAdminPark)): ?>
 					<button class="pk-btn pk-btn-outline" onclick="pkOpenAwardModal()">
 						<i class="fas fa-medal"></i> Enter Awards
+					</button>
+					<button class="pk-btn pk-btn-outline" onclick="odOpenDesignModal()">
+						<i class="fas fa-palette"></i> Design
 					</button>
 					<button class="pk-btn pk-btn-outline" onclick="pkOpenAdminModal()">
 						<i class="fas fa-cog"></i> Admin
@@ -576,6 +783,9 @@
 				</li>
 				<?php endif; ?>
 			</ul>
+			<?php if ($pkShowNewAbout): ?>
+			<?php include DIR_TEMPLATE . 'shared/orgdesign/_connect_block.tpl'; ?>
+			<?php endif; ?>
 		</div>
 
 	</aside>
@@ -631,11 +841,38 @@
 					$_addrFull  = implode(', ', array_filter([$_addrLine1, $_addrLine2]));
 				?>
 				<div class="pk-about-grid">
+					<?php if ($pkShowNewAbout): ?>
+					<?php if (!empty($aboutText) || !empty($CanAdminPark)): ?>
+					<div class="pk-about-section">
+						<?php if (!empty($CanAdminPark) && $pkAboutEnabled !== 1): ?>
+						<div class="od-about-unpublished" data-tip="Only managers can see this. Enable the About Page in Customize to publish it.">
+							<i class="fas fa-eye-slash"></i> Unpublished &mdash; only managers can see this
+						</div>
+						<?php endif; ?>
+						<div class="od-about-section-head">
+							<div class="pk-about-label">About</div>
+							<?php if (!empty($CanAdminPark)): ?>
+							<button class="od-about-edit-btn" type="button" onclick="odOpenDesignModal('about')" data-tip="Edit About">
+								<i class="fas fa-pencil-alt"></i> Edit
+							</button>
+							<?php endif; ?>
+						</div>
+						<?php if (!empty($aboutText)): ?>
+						<div class="od-about-text pk-about-text"><?= org_design_markdown($aboutText) ?></div>
+						<?php elseif (!empty($CanAdminPark)): ?>
+						<div class="pk-empty" style="text-align:left;font-size:13px;color:#a0aec0">
+							No About content yet. <a href="#" onclick="event.preventDefault();odOpenDesignModal('about')">Add some</a> to introduce <?= htmlspecialchars($park_name) ?> to visitors.
+						</div>
+						<?php endif; ?>
+					</div>
+					<?php endif; ?>
+					<?php else: ?>
 					<?php if (!empty($description)): ?>
 					<div class="pk-about-section">
 						<div class="pk-about-label">About</div>
-						<div class="pk-about-text kn-description-body"><?= pk_markdown($description) ?></div>
+						<div class="od-about-text pk-about-text"><?= org_design_markdown($description) ?></div>
 					</div>
+					<?php endif; ?>
 					<?php endif; ?>
 
 					<?php if (!empty($directions) || !empty($_addrFull)): ?>
@@ -648,11 +885,31 @@
 						</div>
 						<?php endif; ?>
 						<?php if (!empty($directions)): ?>
-						<div class="pk-about-text kn-description-body"><?= pk_markdown($directions) ?></div>
+						<div class="od-about-text pk-about-text"><?= org_design_markdown($directions) ?></div>
 						<?php endif; ?>
 					</div>
 					<?php endif; ?>
 				</div>
+
+				<?php if ($pkShowNewAbout && (!empty($ourHistoryText) || !empty($CanAdminPark))): ?>
+				<div class="pk-about-section pk-history-section">
+					<div class="od-about-section-head">
+						<div class="pk-about-label"><i class="fas fa-scroll" style="margin-right:6px;color:#a0aec0"></i>Our History</div>
+						<?php if (!empty($CanAdminPark)): ?>
+						<button class="od-about-edit-btn" type="button" onclick="odOpenDesignModal('about')" data-tip="Edit Our History">
+							<i class="fas fa-pencil-alt"></i> Edit
+						</button>
+						<?php endif; ?>
+					</div>
+					<?php if (!empty($ourHistoryText)): ?>
+					<div class="od-about-text pk-about-text"><?= org_design_markdown($ourHistoryText) ?></div>
+					<?php elseif (!empty($CanAdminPark)): ?>
+					<div class="pk-empty" style="text-align:left;font-size:13px;color:#a0aec0">
+						Share the founding story, past officers, or notable moments. <a href="#" onclick="event.preventDefault();odOpenDesignModal('about')">Add Our History</a>.
+					</div>
+					<?php endif; ?>
+				</div>
+				<?php endif; ?>
 
 				<?php if (!empty($websiteUrl) || !empty($parkInfo['MapUrl'])): ?>
 				<div class="pk-about-section pk-about-meta" style="margin-top:12px">
@@ -669,6 +926,11 @@
 					</div>
 					<?php endif; ?>
 				</div>
+				<?php endif; ?>
+
+				<!-- Milestones timeline (derived + custom) -->
+				<?php if ($pkShowNewAbout && ($pkHasMilestones || !empty($CanAdminPark))): ?>
+				<?php include DIR_TEMPLATE . 'shared/orgdesign/_milestones_timeline.tpl'; ?>
 				<?php endif; ?>
 
 				<!-- Schedule sub-section -->
@@ -3337,4 +3599,16 @@ window.OrkRsCfg = {
 };
 </script>
 <?php include __DIR__ . '/_recommendation_seconds_assets.tpl'; ?>
+<?php endif; ?>
+
+<?php
+	// --- Shared Org Design modal + assets (managers only) ---------------------
+	// $ctx was built near the top of this template. The modal partial renders
+	// nothing for non-managers (it returns early on empty $ctx['can_manage']).
+	if ($ctx['can_manage']) {
+		include DIR_TEMPLATE . 'shared/orgdesign/_design_modal.tpl';
+	}
+?>
+<?php if ($ctx['can_manage']): ?>
+<script src="<?= HTTP_TEMPLATE ?>shared/orgdesign/orgdesign.js?v=<?= filemtime(DIR_TEMPLATE . 'shared/orgdesign/orgdesign.js') ?>"></script>
 <?php endif; ?>

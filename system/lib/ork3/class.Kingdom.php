@@ -1,7 +1,11 @@
 <?php
 
+require_once(__DIR__ . '/trait.OrgDesign.php');
+
 class Kingdom extends Ork3
 {
+    use OrgDesign;
+
     // Per-request memo caches for the principality-rollup helpers. These are read
     // dozens of times per kingdom-scoped report page; the Kingdom lib is a single
     // instance per request (see startup.php), so caching here is safe and avoids
@@ -57,6 +61,28 @@ class Kingdom extends Ork3
             $response['KingdomInfo']['Active'] = $this->kingdom->active;
             $response['KingdomInfo']['Description'] = $this->kingdom->description ?? '';
             $response['KingdomInfo']['Url'] = $this->kingdom->url ?? '';
+            // --- Kingdom design (1:1 supplemental, always-present row) ---
+            $design = $this->loadDesignRow($this->kingdom->kingdom_id);
+            $response['KingdomInfo']['AboutText']       = (string)$design->about_text;
+            $response['KingdomInfo']['OurHistory']      = (string)$design->our_history;
+            $response['KingdomInfo']['ColorPrimary']    = $design->color_primary;
+            $response['KingdomInfo']['ColorAccent']     = $design->color_accent;
+            $response['KingdomInfo']['ColorSecondary']  = $design->color_secondary;
+            $response['KingdomInfo']['HeroOverlay']     = $design->hero_overlay ?: 'med';
+            $response['KingdomInfo']['NameFont']        = $design->name_font;
+            $response['KingdomInfo']['MilestoneConfig'] = $design->milestone_config;
+            $response['KingdomInfo']['Tagline']             = (string)$design->tagline;
+            $response['KingdomInfo']['SocialLinks']         = (string)$design->social_links;
+            $response['KingdomInfo']['Announcement']        = (string)$design->announcement;
+            $response['KingdomInfo']['AnnouncementUntil']   = $design->announcement_until;
+            $response['KingdomInfo']['AnnouncementStarts']  = $design->announcement_starts;
+            $response['KingdomInfo']['AnnouncementActive']  = $this->announcementActive($design) ? 1 : 0;
+            $response['KingdomInfo']['MonarchReignStarted'] = $design->monarch_reign_started;
+            $response['KingdomInfo']['RegentReignStarted']  = $design->regent_reign_started;
+            $response['KingdomInfo']['MonarchReignMundaneId'] = (int)$design->monarch_reign_mundane_id;
+            $response['KingdomInfo']['RegentReignMundaneId']  = (int)$design->regent_reign_mundane_id;
+            $response['KingdomInfo']['ReignLore']           = (string)$design->reign_lore;
+            $response['KingdomInfo']['AboutEnabled']        = (int)$design->about_enabled;
         } else {
             $response['Status'] = InvalidParameter();
         }
@@ -315,6 +341,29 @@ class Kingdom extends Ork3
             $response['KingdomInfo']['Description'] = $this->kingdom->description ?? '';
             $response['KingdomInfo']['Url'] = $this->kingdom->url ?? '';
 
+            // --- Kingdom design (1:1 supplemental, always-present row) ---
+            $design = $this->loadDesignRow($this->kingdom->kingdom_id);
+            $response['KingdomInfo']['AboutText']       = (string)$design->about_text;
+            $response['KingdomInfo']['OurHistory']      = (string)$design->our_history;
+            $response['KingdomInfo']['ColorPrimary']    = $design->color_primary;
+            $response['KingdomInfo']['ColorAccent']     = $design->color_accent;
+            $response['KingdomInfo']['ColorSecondary']  = $design->color_secondary;
+            $response['KingdomInfo']['HeroOverlay']     = $design->hero_overlay ?: 'med';
+            $response['KingdomInfo']['NameFont']        = $design->name_font;
+            $response['KingdomInfo']['MilestoneConfig'] = $design->milestone_config;
+            $response['KingdomInfo']['Tagline']             = (string)$design->tagline;
+            $response['KingdomInfo']['SocialLinks']         = (string)$design->social_links;
+            $response['KingdomInfo']['Announcement']        = (string)$design->announcement;
+            $response['KingdomInfo']['AnnouncementUntil']   = $design->announcement_until;
+            $response['KingdomInfo']['AnnouncementStarts']  = $design->announcement_starts;
+            $response['KingdomInfo']['AnnouncementActive']  = $this->announcementActive($design) ? 1 : 0;
+            $response['KingdomInfo']['MonarchReignStarted'] = $design->monarch_reign_started;
+            $response['KingdomInfo']['RegentReignStarted']  = $design->regent_reign_started;
+            $response['KingdomInfo']['MonarchReignMundaneId'] = (int)$design->monarch_reign_mundane_id;
+            $response['KingdomInfo']['RegentReignMundaneId']  = (int)$design->regent_reign_mundane_id;
+            $response['KingdomInfo']['ReignLore']           = (string)$design->reign_lore;
+            $response['KingdomInfo']['AboutEnabled']        = (int)$design->about_enabled;
+
             // Fetch configs
             $response['KingdomConfiguration'] = Common::get_configs($request['KingdomId']);
 
@@ -370,6 +419,9 @@ class Kingdom extends Ork3
             $this->kingdom->parent_kingdom_id = $request['ParentKingdomId'];
             $this->kingdom->modified = date("Y-m-d H:i:s", time());
             $this->kingdom->save();
+            $_new_kingdom_id = (int)$this->kingdom->kingdom_id;
+            // Always-present design row so reads don't need PHP-side defaults.
+            $this->seedDesignRow($_new_kingdom_id);
 
             $c = new Common();
             $c->add_config(
@@ -575,6 +627,18 @@ class Kingdom extends Ork3
                 }
                 $this->kingdom->modified = date("Y-m-d H:i:s", time());
                 $this->kingdom->save();
+                if (isset($request['Description']) && trim((string)$request['Description']) !== '') {
+                    $this->db->Clear();
+                    $_design_sync = new yapo($this->db, DB_PREFIX . 'kingdom_design');
+                    $_design_sync->clear();
+                    $_design_sync->kingdom_id = (int)$this->kingdom->kingdom_id;
+                    // Only seed the design About from the legacy Description when the
+                    // curated About is still EMPTY — never clobber a manager's edits.
+                    if ($_design_sync->find() && trim((string)$_design_sync->about_text) === '') {
+                        $_design_sync->about_text = (string)$request['Description'];
+                        $_design_sync->save();
+                    }
+                }
 
                 Ork3::$Lib->heraldry->SetKingdomHeraldry($request);
 
@@ -917,4 +981,274 @@ class Kingdom extends Ork3
         return $response;
     }
 
+    /**
+     * Per-org design contract consumed by trait OrgDesign. Kingdom-specific
+     * tables/FK/auth, the field lists the shared validators reference, and the
+     * derived-milestone callable (verbatim Kingdom attendance query + its exact
+     * threshold arrays).
+     */
+    public function getDesignConfig()
+    {
+        return [
+            'design_table'     => 'kingdom_design',
+            'fk'               => 'kingdom_id',
+            'milestone_table'  => 'kingdom_milestones',
+            'auth'             => AUTH_KINGDOM,
+            // Request fields SetKingdomDesign accepts. The AJAX controller reads
+            // this list rather than repeating it, so adding a field here is enough.
+            'save_fields'      => [
+                'AboutText', 'OurHistory', 'ColorPrimary', 'ColorAccent', 'ColorSecondary',
+                'HeroOverlay', 'NameFont', 'MilestoneConfig', 'Tagline', 'SocialLinks',
+                'Announcement', 'AnnouncementUntil', 'AnnouncementStarts',
+                'MonarchReignStarted', 'RegentReignStarted', 'ReignLore', 'AboutEnabled',
+            ],
+            'derived'          => [$this, 'getDerivedKingdomMilestoneRows'],
+        ];
+    }
+
+    /**
+     * Save kingdom profile design (header colors/font/overlay, about + our history markdown,
+     * milestone visibility config). Uses AUTH_KINGDOM/AUTH_CREATE (org admin).
+     *
+     * Thin wrapper: auth -> profanity gate on About/History -> seed row ->
+     * shared common-field validators (trait) -> Kingdom-specific extra fields
+     * (reign dates + reign lore) -> about_enabled opt-in -> save.
+     */
+    public function SetKingdomDesign($request)
+    {
+        $kingdom_id = (int)($request['KingdomId'] ?? 0);
+        if ($kingdom_id <= 0) {
+            return InvalidParameter('KingdomId is required.');
+        }
+        $mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+        if (!($mundane_id > 0) || !Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_KINGDOM, $kingdom_id, AUTH_CREATE)) {
+            return NoAuthorization();
+        }
+        require_once(__DIR__ . '/class.ProfanityFilter.php');
+        $pf = new ProfanityFilter();
+        foreach (['AboutText' => 'AboutText', 'OurHistory' => 'OurHistory'] as $field => $label) {
+            if (isset($request[$field]) && trim((string)$request[$field]) !== '') {
+                if ($pf->containsProfanity((string)$request[$field])) {
+                    return InvalidParameter($label, ProfanityFilter::ERROR_MESSAGE);
+                }
+            }
+        }
+        $design = $this->seedDesignRow($kingdom_id);
+
+        $err = $this->applyCommonDesignFields($design, $request, $pf);
+        if ($err !== null) {
+            return $err;
+        }
+
+        // Kingdom-specific extra fields.
+        $reignFields = [
+            'MonarchReignStarted' => ['monarch_reign_started', 'monarch_reign_mundane_id', 'Monarch'],
+            'RegentReignStarted'  => ['regent_reign_started',  'regent_reign_mundane_id',  'Regent'],
+        ];
+        foreach ($reignFields as $req => $meta) {
+            [$col, $holderCol, $role] = $meta;
+            if (!array_key_exists($req, $request)) {
+                continue;
+            }
+            $v = trim((string)$request[$req]);
+            if ($v === '') {
+                // yapo drops nulls from UPDATE; '' persists as '0000-00-00' (empty date).
+                $design->$col = '';
+                $design->$holderCol = 0;
+                continue;
+            }
+            $ts = strtotime($v);
+            if ($ts === false) {
+                return InvalidParameter($req . ' must be a valid date.');
+            }
+            $newDate = date('Y-m-d', $ts);
+            // The Customize modal always resends the stored date, touched or not, so
+            // only a genuine edit may re-bind the date to whoever is seated now.
+            // Re-stamping unconditionally would re-attach a predecessor's date to the
+            // current officer on any unrelated save (tagline, colors, about toggle).
+            $curDate = trim((string)$design->$col);
+            $design->$col = $newDate;
+            if ($newDate !== $curDate) {
+                $design->$holderCol = $this->getSeatedKingdomOfficerMundaneId($kingdom_id, $role);
+            }
+        }
+
+        if (array_key_exists('ReignLore', $request)) {
+            $rl = (string)$request['ReignLore'];
+            if (strlen($rl) > 2000) {
+                return InvalidParameter('ReignLore is limited to 2,000 characters.');
+            }
+            if (trim($rl) !== '' && $pf->containsProfanity($rl)) {
+                return InvalidParameter('ReignLore', ProfanityFilter::ERROR_MESSAGE);
+            }
+            $design->reign_lore = trim($rl) === '' ? '' : $rl;
+        }
+
+        if (array_key_exists('AboutEnabled', $request)) {
+            $design->about_enabled = (!empty($request['AboutEnabled']) && (string)$request['AboutEnabled'] !== '0') ? 1 : 0;
+        }
+
+        $design->updated_by = (int)$mundane_id;
+        $design->updated_at = date('Y-m-d H:i:s');
+        $design->save();
+        return Success($kingdom_id);
+    }
+
+    /**
+     * mundane_id of the player currently seated in a kingdom-level officer role
+     * (park_id = 0). Returns 0 when the seat is vacant. Role comparison is
+     * case-insensitive: ork_officer.role is stored capitalized ('Monarch'),
+     * but callers/templates lowercase it.
+     */
+    private function getSeatedKingdomOfficerMundaneId($kingdom_id, $role)
+    {
+        $kingdom_id = (int)$kingdom_id;
+        $role = strtolower(trim((string)$role));
+        if ($kingdom_id <= 0 || $role === '' || !preg_match('/^[a-z_ ]+$/', $role)) {
+            return 0;
+        }
+        $this->db->Clear();
+        $r = $this->db->query(
+            "SELECT mundane_id FROM " . DB_PREFIX . "officer"
+            . " WHERE kingdom_id = $kingdom_id AND park_id = 0 AND LOWER(role) = '$role'"
+            . " ORDER BY officer_id DESC LIMIT 1"
+        );
+        if ($r !== false && $r->size() > 0) {
+            $r->next();
+            return (int)$r->mundane_id;
+        }
+        return 0;
+    }
+
+    public function GetKingdomMilestones($request)
+    {
+        return $this->GetDesignMilestones((int)($request['KingdomId'] ?? 0));
+    }
+
+    public function AddKingdomMilestone($request)
+    {
+        return $this->AddDesignMilestone((int)($request['KingdomId'] ?? 0), $request);
+    }
+
+    public function DeleteKingdomMilestone($request)
+    {
+        return $this->DeleteDesignMilestone((int)($request['KingdomId'] ?? 0), $request);
+    }
+
+    public function UpdateKingdomMilestone($request)
+    {
+        return $this->UpdateDesignMilestone((int)($request['KingdomId'] ?? 0), $request);
+    }
+
+    /**
+     * Custom + derived kingdom milestones merged into one sorted timeline list.
+     * Fetches derived via this class's cache-namespaced GetDerivedKingdomMilestones,
+     * then hands both to the trait merge. Returns a plain list.
+     */
+    public function GetMergedKingdomMilestones($request)
+    {
+        $kingdom_id = (int)($request['KingdomId'] ?? 0);
+        $derived    = $this->GetDerivedKingdomMilestones($kingdom_id);
+        return $this->GetMergedDesignMilestones($kingdom_id, $derived);
+    }
+
+    /**
+     * Derived kingdom milestones — computed from attendance data scoped by kingdom_id.
+     * Cached at 300s TTL. Caching orchestration lives in trait OrgDesign; the
+     * cache namespace is passed explicitly to preserve the original bucket
+     * (Kingdom.GetDerivedKingdomMilestones).
+     */
+    public function GetDerivedKingdomMilestones($request)
+    {
+        $kingdom_id = (int)(is_array($request) ? ($request['KingdomId'] ?? 0) : $request);
+        return $this->GetDerivedDesignMilestones($kingdom_id, 'Kingdom', 'GetDerivedKingdomMilestones');
+    }
+
+    /**
+     * Kingdom's derived-milestone rows. Verbatim attendance query + threshold
+     * arrays from the original GetDerivedKingdomMilestones; invoked via the
+     * config's `derived` callable. Returns rows in computation order (no sort).
+     */
+    public function getDerivedKingdomMilestoneRows($kingdom_id)
+    {
+        $kingdom_id = (int)$kingdom_id;
+        $out = [];
+        // 1) First recorded attendance anywhere in the kingdom.
+        $this->db->Clear();
+        $r = $this->db->query("SELECT MIN(date) AS first_date FROM " . DB_PREFIX . "attendance WHERE kingdom_id = $kingdom_id AND date >= '1988-01-01'");
+        if ($r !== false && $r->size() > 0) {
+            $r->next();
+            $fd = $r->first_date;
+            if ($fd && $fd !== '0000-00-00') {
+                $out[] = [
+                    'Type'          => 'first_attendance',
+                    'Icon'          => 'fa-door-open',
+                    'Description'   => 'First recorded attendance in the kingdom',
+                    'MilestoneDate' => $fd,
+                    'IsDerived'     => true,
+                ];
+            }
+        }
+        // 2) Attendance count crossings — kingdoms are larger than parks, so scaled up.
+        $this->db->Clear();
+        $r = $this->db->query("SELECT COUNT(*) AS total FROM " . DB_PREFIX . "attendance WHERE kingdom_id = $kingdom_id AND date >= '1988-01-01'");
+        $total = 0;
+        if ($r !== false && $r->size() > 0) {
+            $r->next();
+            $total = (int)$r->total;
+        }
+        $thresholds = [1000, 5000, 10000, 50000, 100000, 500000];
+        foreach ($thresholds as $n) {
+            if ($total < $n) {
+                break;
+            }
+            $this->db->Clear();
+            $offset = $n - 1;
+            $rr = $this->db->query("SELECT date FROM " . DB_PREFIX . "attendance WHERE kingdom_id = $kingdom_id AND date >= '1988-01-01' ORDER BY date ASC LIMIT 1 OFFSET $offset");
+            if ($rr !== false && $rr->size() > 0) {
+                $rr->next();
+                $d = $rr->date;
+                if ($d && $d !== '0000-00-00') {
+                    $out[] = [
+                        'Type'          => 'attendance_count',
+                        'Icon'          => 'fa-clipboard-list',
+                        'Description'   => number_format($n) . 'th attendance recorded',
+                        'MilestoneDate' => $d,
+                        'IsDerived'     => true,
+                    ];
+                }
+            }
+        }
+        // 3) Distinct-member crossings — scaled up for kingdom size.
+        $this->db->Clear();
+        $r = $this->db->query("SELECT COUNT(DISTINCT mundane_id) AS members FROM " . DB_PREFIX . "attendance WHERE kingdom_id = $kingdom_id AND date >= '1988-01-01'");
+        $members = 0;
+        if ($r !== false && $r->size() > 0) {
+            $r->next();
+            $members = (int)$r->members;
+        }
+        $memberThresholds = [100, 500, 1000, 5000, 10000];
+        foreach ($memberThresholds as $n) {
+            if ($members < $n) {
+                break;
+            }
+            $this->db->Clear();
+            $offset = $n - 1;
+            $rr = $this->db->query("SELECT MIN(date) AS first_date FROM " . DB_PREFIX . "attendance WHERE kingdom_id = $kingdom_id AND date >= '1988-01-01' GROUP BY mundane_id ORDER BY first_date ASC LIMIT 1 OFFSET $offset");
+            if ($rr !== false && $rr->size() > 0) {
+                $rr->next();
+                $d = $rr->first_date;
+                if ($d && $d !== '0000-00-00') {
+                    $out[] = [
+                        'Type'          => 'distinct_members',
+                        'Icon'          => 'fa-users',
+                        'Description'   => number_format($n) . 'th distinct member attended',
+                        'MilestoneDate' => $d,
+                        'IsDerived'     => true,
+                    ];
+                }
+            }
+        }
+        return $out;
+    }
 }

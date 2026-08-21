@@ -1,7 +1,11 @@
 <?php
 
+require_once(DIR_CONTROLLER . 'trait.OrgDesignAjax.php');
+
 class Controller_KingdomAjax extends Controller
 {
+    use OrgDesignAjax;
+
     public function kingdom($p = null)
     {
         header('Content-Type: application/json');
@@ -670,6 +674,28 @@ class Controller_KingdomAjax extends Controller
             echo $conflictName !== null
                 ? json_encode(['status' => 0, 'taken' => true, 'name' => $conflictName])
                 : json_encode(['status' => 0, 'taken' => false]);
+
+        } elseif ($action === 'savedesign') {
+            $this->load_model('Kingdom');
+            $this->org_save_design(
+                $this->Kingdom,
+                'set_kingdom_design',
+                'KingdomId',
+                $kingdom_id,
+                $this->Kingdom->kingdom_design_save_fields()
+            );
+
+        } elseif ($action === 'addmilestone') {
+            $this->load_model('Kingdom');
+            $this->org_add_milestone($this->Kingdom, 'add_kingdom_milestone', 'KingdomId', $kingdom_id);
+
+        } elseif ($action === 'updatemilestone') {
+            $this->load_model('Kingdom');
+            $this->org_update_milestone($this->Kingdom, 'update_kingdom_milestone', 'KingdomId', $kingdom_id);
+
+        } elseif ($action === 'deletemilestone') {
+            $this->load_model('Kingdom');
+            $this->org_delete_milestone($this->Kingdom, 'delete_kingdom_milestone', 'KingdomId', $kingdom_id);
 
         } else {
             echo json_encode(['status' => 1, 'error' => 'Unknown action']);

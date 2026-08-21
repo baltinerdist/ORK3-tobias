@@ -1,7 +1,11 @@
 <?php
 
+require_once(__DIR__ . '/trait.OrgDesign.php');
+
 class Park extends Ork3
 {
+    use OrgDesign;
+
     public function __construct()
     {
         parent::__construct();
@@ -513,6 +517,23 @@ class Park extends Ork3
             $response[ 'Description' ] = stripslashes(nl2br($this->park->description));
             $response[ 'GoogleGeocode' ] = $this->park->google_geocode;
             $response[ 'Location' ] = $this->park->location;
+            // --- Park design (1:1 supplemental, always-present row) ---
+            $design = $this->loadDesignRow($this->park->park_id);
+            $response[ 'AboutText' ]       = (string)$design->about_text;
+            $response[ 'AboutEnabled' ]    = (int)$design->about_enabled;
+            $response[ 'OurHistory' ]      = (string)$design->our_history;
+            $response[ 'ColorPrimary' ]    = $design->color_primary;
+            $response[ 'ColorAccent' ]     = $design->color_accent;
+            $response[ 'ColorSecondary' ]  = $design->color_secondary;
+            $response[ 'HeroOverlay' ]     = $design->hero_overlay ?: 'med';
+            $response[ 'NameFont' ]          = $design->name_font;
+            $response[ 'MilestoneConfig' ]   = $design->milestone_config;
+            $response[ 'Tagline' ]           = (string)$design->tagline;
+            $response[ 'SocialLinks' ]       = (string)$design->social_links;
+            $response[ 'Announcement' ]      = (string)$design->announcement;
+            $response[ 'AnnouncementUntil' ] = $design->announcement_until;
+            $response[ 'AnnouncementStarts' ] = $design->announcement_starts;
+            $response[ 'AnnouncementActive' ] = $this->announcementActive($design) ? 1 : 0;
         } else {
             $response[ 'Status' ] = InvalidParameter();
         }
@@ -826,6 +847,21 @@ class Park extends Ork3
             $this->park->directions     = '';
             $this->park->save();
             $new_park_id = (int)$this->park->park_id;
+            // Always-present design row so reads don't need PHP-side defaults.
+            $this->db->Clear();
+            $_design_seed = new yapo($this->db, DB_PREFIX . 'park_design');
+            $_design_seed->clear();
+            $_design_seed->park_id      = $new_park_id;
+            $_design_seed->hero_overlay = 'med';
+            // Seed the curated About/History from the entered Description/History so the
+            // read-time fallback isn't blank (the LIB#7 sync only seeds an empty About).
+            if (isset($request[ 'Description' ]) && trim((string)$request[ 'Description' ]) !== '') {
+                $_design_seed->about_text = trim((string)$request[ 'Description' ]);
+            }
+            if (isset($request[ 'History' ]) && trim((string)$request[ 'History' ]) !== '') {
+                $_design_seed->our_history = trim((string)$request[ 'History' ]);
+            }
+            $_design_seed->save();
             $t = new Treasury();
             $t->create_accounts($mundane_id, 'park', $new_park_id, $request[ 'KingdomId' ]);
             $c = new Common();
@@ -983,6 +1019,18 @@ class Park extends Ork3
                     if ($_changed) {
                         Ork3::$Lib->dangeraudit->audit(__CLASS__ . '::' . __FUNCTION__, $_audit_req, 'Park', (int)$this->park->park_id, $_audit_prior, $_audit_post);
                     }
+                    if (isset($request[ 'Description' ]) && trim((string)$request[ 'Description' ]) !== '') {
+                        $this->db->Clear();
+                        $_design_sync = new yapo($this->db, DB_PREFIX . 'park_design');
+                        $_design_sync->clear();
+                        $_design_sync->park_id = (int)$this->park->park_id;
+                        // Only seed the design About from the legacy Description when the
+                        // curated About is still EMPTY — never clobber a manager's edits.
+                        if ($_design_sync->find() && trim((string)$_design_sync->about_text) === '') {
+                            $_design_sync->about_text = (string)$request[ 'Description' ];
+                            $_design_sync->save();
+                        }
+                    }
                     $response = Success($this->park->park_id);
                 } else {
                     $response = InvalidParameter('ParkId could not be found.');
@@ -1120,5 +1168,215 @@ class Park extends Ork3
             $response = InvalidParameter(null, 'Problem processing request.');
         }
         return $response;
+    }
+
+    /**
+     * Per-org design contract consumed by trait OrgDesign. Park-specific
+     * tables/FK/auth, the field lists the shared validators reference, and the
+     * derived-milestone callable (verbatim Park attendance query + its exact
+     * threshold arrays). Park has no org-specific extra design fields beyond
+     * the shared common set.
+     */
+    public function getDesignConfig()
+    {
+        return [
+            'design_table'     => 'park_design',
+            'fk'               => 'park_id',
+            'milestone_table'  => 'park_milestones',
+            'auth'             => AUTH_PARK,
+            // Request fields SetParkDesign accepts. The AJAX controller reads
+            // this list rather than repeating it, so adding a field here is enough.
+            'save_fields'      => [
+                'AboutText', 'AboutEnabled', 'OurHistory', 'ColorPrimary', 'ColorAccent',
+                'ColorSecondary', 'HeroOverlay', 'NameFont', 'MilestoneConfig', 'Tagline',
+                'SocialLinks', 'Announcement', 'AnnouncementUntil', 'AnnouncementStarts',
+            ],
+            'derived'          => [ $this, 'getDerivedParkMilestoneRows' ],
+        ];
+    }
+
+    /**
+     * Save park profile design (header colors/font/overlay, about + our history markdown,
+     * milestone visibility config). Uses AUTH_PARK/AUTH_CREATE (org admin).
+     * Updates only the fields present in $request — callers can save one tab at a time.
+     *
+     * Thin wrapper: auth -> profanity gate on About/History -> seed row ->
+     * shared common-field validators (trait) -> Park-specific extra fields
+     * (none) -> about_enabled opt-in -> save.
+     */
+    public function SetParkDesign($request)
+    {
+        $park_id = (int)($request[ 'ParkId' ] ?? 0);
+        if ($park_id <= 0) {
+            return InvalidParameter('ParkId is required.');
+        }
+        $mundane_id = Ork3::$Lib->authorization->IsAuthorized($request[ 'Token' ]);
+        if (!($mundane_id > 0) || !Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_PARK, $park_id, AUTH_CREATE)) {
+            return NoAuthorization();
+        }
+        require_once(__DIR__ . '/class.ProfanityFilter.php');
+        $pf = new ProfanityFilter();
+        foreach ([ 'AboutText' => 'AboutText', 'OurHistory' => 'OurHistory' ] as $field => $label) {
+            if (isset($request[ $field ]) && trim((string)$request[ $field ]) !== '') {
+                if ($pf->containsProfanity((string)$request[ $field ])) {
+                    return InvalidParameter($label, ProfanityFilter::ERROR_MESSAGE);
+                }
+            }
+        }
+        $design = $this->seedDesignRow($park_id);
+
+        $err = $this->applyCommonDesignFields($design, $request, $pf);
+        if ($err !== null) {
+            return $err;
+        }
+
+        // Park has no org-specific extra design fields beyond the shared common set.
+
+        if (array_key_exists('AboutEnabled', $request)) {
+            $design->about_enabled = (!empty($request[ 'AboutEnabled' ]) && (string)$request[ 'AboutEnabled' ] !== '0') ? 1 : 0;
+        }
+
+        $design->updated_by = (int)$mundane_id;
+        $design->updated_at = date('Y-m-d H:i:s');
+        $design->save();
+        return Success($park_id);
+    }
+
+    /**
+     * Custom (officer-authored) park milestones. Stored rows; mirrors GetCustomMilestones on Player.
+     */
+    public function GetParkMilestones($request)
+    {
+        return $this->GetDesignMilestones((int)($request[ 'ParkId' ] ?? 0));
+    }
+
+    public function AddParkMilestone($request)
+    {
+        return $this->AddDesignMilestone((int)($request[ 'ParkId' ] ?? 0), $request);
+    }
+
+    public function DeleteParkMilestone($request)
+    {
+        return $this->DeleteDesignMilestone((int)($request[ 'ParkId' ] ?? 0), $request);
+    }
+
+    public function UpdateParkMilestone($request)
+    {
+        return $this->UpdateDesignMilestone((int)($request[ 'ParkId' ] ?? 0), $request);
+    }
+
+    /**
+     * Custom + derived park milestones merged into one sorted timeline list.
+     * Fetches derived via this class's cache-namespaced GetDerivedParkMilestones,
+     * then hands both to the trait merge. Returns a plain list.
+     */
+    public function GetMergedParkMilestones($request)
+    {
+        $park_id = (int)($request[ 'ParkId' ] ?? 0);
+        $derived = $this->GetDerivedParkMilestones($park_id);
+        return $this->GetMergedDesignMilestones($park_id, $derived);
+    }
+
+    /**
+     * Derived park milestones — computed from attendance data scoped by park_id.
+     * Cached at 300s TTL. Caching orchestration lives in trait OrgDesign; the
+     * cache namespace is passed explicitly to preserve the original bucket
+     * (Park.GetDerivedParkMilestones).
+     */
+    public function GetDerivedParkMilestones($request)
+    {
+        $park_id = (int)(is_array($request) ? ($request[ 'ParkId' ] ?? 0) : $request);
+        return $this->GetDerivedDesignMilestones($park_id, 'Park', 'GetDerivedParkMilestones');
+    }
+
+    /**
+     * Park's derived-milestone rows. Verbatim attendance query + threshold
+     * arrays from the original GetDerivedParkMilestones; invoked via the
+     * config's `derived` callable. Returns rows in computation order (no sort).
+     */
+    public function getDerivedParkMilestoneRows($park_id)
+    {
+        $park_id = (int)$park_id;
+        $out = [ ];
+        // 1) First recorded attendance at this park (floor at 1988 to filter junk dates).
+        $this->db->Clear();
+        $r = $this->db->query("SELECT MIN(date) AS first_date FROM " . DB_PREFIX . "attendance WHERE park_id = $park_id AND date >= '1988-01-01'");
+        if ($r !== false && $r->size() > 0) {
+            $r->next();
+            $fd = $r->first_date;
+            if ($fd && $fd !== '0000-00-00') {
+                $out[] = [
+                    'Type'          => 'first_attendance',
+                    'Icon'          => 'fa-door-open',
+                    'Description'   => 'First recorded attendance at the park',
+                    'MilestoneDate' => $fd,
+                    'IsDerived'     => true,
+                ];
+            }
+        }
+        // 2) Attendance count crossings — 1000, 5000, 10000, 25000, 50000, 100000.
+        $this->db->Clear();
+        $r = $this->db->query("SELECT COUNT(*) AS total FROM " . DB_PREFIX . "attendance WHERE park_id = $park_id AND date >= '1988-01-01'");
+        $total = 0;
+        if ($r !== false && $r->size() > 0) {
+            $r->next();
+            $total = (int)$r->total;
+        }
+        $thresholds = [ 1000, 5000, 10000, 25000, 50000, 100000 ];
+        foreach ($thresholds as $n) {
+            if ($total < $n) {
+                break;
+            }
+            // Date of the Nth recorded attendance (chronological order).
+            $this->db->Clear();
+            $offset = $n - 1;
+            $rr = $this->db->query("SELECT date FROM " . DB_PREFIX . "attendance WHERE park_id = $park_id AND date >= '1988-01-01' ORDER BY date ASC LIMIT 1 OFFSET $offset");
+            if ($rr !== false && $rr->size() > 0) {
+                $rr->next();
+                $d = $rr->date;
+                if ($d && $d !== '0000-00-00') {
+                    $out[] = [
+                        'Type'          => 'attendance_count',
+                        'Icon'          => 'fa-clipboard-list',
+                        'Description'   => number_format($n) . 'th attendance recorded',
+                        'MilestoneDate' => $d,
+                        'IsDerived'     => true,
+                    ];
+                }
+            }
+        }
+        // 3) Distinct-member crossings — 50, 100, 250, 500, 1000.
+        $this->db->Clear();
+        $r = $this->db->query("SELECT COUNT(DISTINCT mundane_id) AS members FROM " . DB_PREFIX . "attendance WHERE park_id = $park_id AND date >= '1988-01-01'");
+        $members = 0;
+        if ($r !== false && $r->size() > 0) {
+            $r->next();
+            $members = (int)$r->members;
+        }
+        $memberThresholds = [ 50, 100, 250, 500, 1000 ];
+        foreach ($memberThresholds as $n) {
+            if ($members < $n) {
+                break;
+            }
+            // Date the Nth distinct member first showed up — earliest 'first attendance' across all members,
+            // then take the Nth one in chronological order of first-attendance.
+            $this->db->Clear();
+            $offset = $n - 1;
+            $rr = $this->db->query("SELECT MIN(date) AS first_date FROM " . DB_PREFIX . "attendance WHERE park_id = $park_id AND date >= '1988-01-01' GROUP BY mundane_id ORDER BY first_date ASC LIMIT 1 OFFSET $offset");
+            if ($rr !== false && $rr->size() > 0) {
+                $rr->next();
+                $d = $rr->first_date;
+                if ($d && $d !== '0000-00-00') {
+                    $out[] = [
+                        'Type'          => 'distinct_members',
+                        'Icon'          => 'fa-users',
+                        'Description'   => number_format($n) . 'th distinct member attended',
+                        'MilestoneDate' => $d,
+                        'IsDerived'     => true,
+                    ];
+                }
+            }
+        }
+        return $out;
     }
 }

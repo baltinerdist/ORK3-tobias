@@ -1,7 +1,11 @@
 <?php
 
+require_once(DIR_CONTROLLER . 'trait.OrgDesignAjax.php');
+
 class Controller_ParkAjax extends Controller
 {
+    use OrgDesignAjax;
+
     public function park($p = null)
     {
         header('Content-Type: application/json');
@@ -456,6 +460,24 @@ class Controller_ParkAjax extends Controller
                     'error'  => ($r['Error'] ?? 'Error') . ': ' . ($r['Detail'] ?? ''),
                 ]);
             }
+
+        } elseif ($action === 'savedesign') {
+            $this->org_save_design(
+                $this->Park,
+                'set_park_design',
+                'ParkId',
+                $park_id,
+                $this->Park->park_design_save_fields()
+            );
+
+        } elseif ($action === 'addmilestone') {
+            $this->org_add_milestone($this->Park, 'add_park_milestone', 'ParkId', $park_id);
+
+        } elseif ($action === 'updatemilestone') {
+            $this->org_update_milestone($this->Park, 'update_park_milestone', 'ParkId', $park_id);
+
+        } elseif ($action === 'deletemilestone') {
+            $this->org_delete_milestone($this->Park, 'delete_park_milestone', 'ParkId', $park_id);
 
         } else {
             echo json_encode(['status' => 1, 'error' => 'Unknown action']);

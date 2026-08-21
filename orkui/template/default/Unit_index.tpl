@@ -1,9 +1,9 @@
 <?php
 require_once(DIR_LIB . 'Parsedown.php');
-function un_markdown(string $text): string {
-	$html = (new Parsedown())->setSafeMode(true)->setBreaksEnabled(true)->text($text);
-	return preg_replace('/<img[^>]*>/i', '', $html);
-}
+// Shared Org Design helpers: org_design_markdown(), $OD_SOCIAL_PLATFORMS, $OD_FONTS, $OD_SNIPPETS.
+// Unit_index.tpl lives in template/default/; the shared partials live in template/shared/orgdesign/.
+require_once(DIR_TEMPLATE . 'shared/orgdesign/_helpers.php');
+// org_design_markdown() replaces the old un_markdown() (moved to _helpers.php).
 
 /* ── Data prep ─────────────────────────────────────────── */
 $_unit     = $Unit['Details']['Unit'] ?? [];
@@ -24,7 +24,11 @@ foreach ($_members as $_m) {
 	if (!empty($_m['LastSignIn']) && $_m['LastSignIn'] >= $_cutoff) $_active++;
 }
 
+// AUTH_EDIT — the long-standing member/manager controls.
 $_can_edit   = !empty($CanEdit);
+// AUTH_CREATE — the Mask II design/milestone surfaces, matching what
+// Unit::SetUnitDesign enforces server-side. Strictly stronger than $_can_edit.
+$_can_manage = !empty($CanManageUnit);
 
 $hasBanner       = !empty($_unit['HasBanner']);
 $bannerShowLogo  = !isset($_unit['BannerShowLogo']) || (int)$_unit['BannerShowLogo'] !== 0;
@@ -69,10 +73,141 @@ $_nonmgr_members   = $NonManagerMembers ?? [];
 $_show_retire   = !$_is_retired && ($_can_edit || $_can_officer || $_is_sole);
 // Claim/unmanaged card: any logged-in viewer when the unit has no managers.
 $_show_claim    = !$_is_retired && $_logged_in && $_mgr_count === 0;
+
+/* ── Unit design (header, About, Our History, Milestones) ──────────────── */
+$_about_text   = (string)($_unit['AboutText']  ?? '');
+$_our_history  = (string)($_unit['OurHistory'] ?? '');
+if (trim($_about_text)  === '') { $_about_text  = (string)$_desc; }
+if (trim($_our_history) === '') { $_our_history = (string)$_history; }
+
+$_un_color_primary   = trim((string)($_unit['ColorPrimary']   ?? ''));
+$_un_color_accent    = trim((string)($_unit['ColorAccent']    ?? ''));
+$_un_color_secondary = trim((string)($_unit['ColorSecondary'] ?? ''));
+$_un_overlay         = strtolower(trim((string)($_unit['HeroOverlay'] ?? 'med')));
+if (!in_array($_un_overlay, ['low','med','high','vignette'], true)) $_un_overlay = 'med';
+$_un_name_font       = trim((string)($_unit['NameFont'] ?? ''));
+$_un_milestone_cfg   = [];
+if (!empty($_unit['MilestoneConfig'])) {
+	$_mc = json_decode((string)$_unit['MilestoneConfig'], true);
+	if (is_array($_mc)) $_un_milestone_cfg = $_mc;
+}
+$_un_ms_visible = function($type) use ($_un_milestone_cfg) {
+	if (!array_key_exists($type, $_un_milestone_cfg)) return true;
+	return !empty($_un_milestone_cfg[$type]);
+};
+$_un_ms_newest_first = !empty($_un_milestone_cfg['newest_first']);
+
+$_un_all_ms = is_array($Milestones ?? null) ? $Milestones : [];
+$_un_visible_ms = [];
+foreach ($_un_all_ms as $_msr) {
+	$_t = $_msr['Type'] ?? 'custom';
+	if ($_un_ms_visible($_t)) $_un_visible_ms[] = $_msr;
+}
+if ($_un_ms_newest_first) $_un_visible_ms = array_reverse($_un_visible_ms);
+$_un_has_ms = count($_un_visible_ms) > 0;
+
+$_un_overlay_opacity = ['low' => 0.06, 'med' => 0.13, 'high' => 0.28, 'vignette' => 0.45][$_un_overlay] ?? 0.13;
+$_un_hero_font_css = $_un_name_font !== '' ? ("'" . str_replace("'", '', $_un_name_font) . "'") : '';
+
+/* ── Phase 2 customizations: tagline, social links, announcement, recruitment, how-to-join ── */
+$_unTagline            = trim((string)($_unit['Tagline'] ?? ''));
+$_unAnnouncement       = trim((string)($_unit['Announcement'] ?? ''));
+$_unAnnouncementStarts = trim((string)($_unit['AnnouncementStarts'] ?? ''));
+$_unAnnouncementUntil  = trim((string)($_unit['AnnouncementUntil'] ?? ''));
+// Whether the announcement is live is a business rule, answered once by
+// Unit::announcementActive() and surfaced as AnnouncementActive.
+$_unShowAnnouncement   = ((int)($_unit['AnnouncementActive'] ?? 0) === 1);
+$_unSocialRaw   = (string)($_unit['SocialLinks'] ?? '');
+$_unSocialLinks = [];
+if ($_unSocialRaw !== '') {
+	$_sl = json_decode($_unSocialRaw, true);
+	if (is_array($_sl)) {
+		foreach ($_sl as $_k => $_v) {
+			$_v = trim((string)$_v);
+			if ($_v !== '' && preg_match('#^https?://#i', $_v)) {
+				$_unSocialLinks[(string)$_k] = $_v;
+			}
+		}
+	}
+}
+// Social platform metadata now lives in shared/orgdesign/_helpers.php ($OD_SOCIAL_PLATFORMS).
+$_unHasSocial = false;
+foreach ($OD_SOCIAL_PLATFORMS as $_slug => $_meta) {
+	if (!empty($_unSocialLinks[$_slug])) { $_unHasSocial = true; break; }
+}
+$_unRecruitmentStatus = strtolower(trim((string)($_unit['RecruitmentStatus'] ?? '')));
+if (!in_array($_unRecruitmentStatus, ['open','invite','closed'], true)) $_unRecruitmentStatus = '';
+// Stored value still feeds the design modal so a manager save can't wipe it.
+$_unRecruitmentStored = $_unRecruitmentStatus;
+// Display-side only: a retired unit never advertises recruitment.
+if ($_is_retired) $_unRecruitmentStatus = '';
+$_unRecruitMeta = [
+	'open'   => ['label'=>'Recruiting',  'icon'=>'fa-door-open', 'bg'=>'#48bb78', 'bgDark'=>'#22543d'],
+	'invite' => ['label'=>'Invite Only', 'icon'=>'fa-envelope',  'bg'=>'#ed8936', 'bgDark'=>'#7b341e'],
+	'closed' => ['label'=>'Closed',      'icon'=>'fa-lock',      'bg'=>'#718096', 'bgDark'=>'#2d3748'],
+];
+$_unHowToJoin = (string)($_unit['HowToJoin'] ?? '');
+$_unAboutEnabled = (int)($_unit['AboutEnabled'] ?? 0);
+$_unShowNewAbout = ($_unAboutEnabled === 1) || $_can_manage;
+
+// --- Shared Org Design $ctx contract (helpers already required at top) --------
+// Build the $ctx array the shared design partials read. Derived from this page's
+// existing Unit design variables; org='unit', recruitment + how_to_join on (no reign).
+$_odCustomMilestones = array_values(array_filter($_un_all_ms, function ($m) {
+	return empty($m['IsDerived']);
+}));
+$ctx = [
+	'org'                => 'unit',
+	'id'                 => (int)$_unit_id,
+	'ajax'               => 'UnitAjax/unit',
+	'org_name'           => $_name,
+	'can_manage'         => (bool)$_can_manage,
+	'about_text'         => $_about_text,
+	'our_history'        => $_our_history,
+	'color_primary'      => $_un_color_primary,
+	'color_accent'       => $_un_color_accent,
+	'color_secondary'    => $_un_color_secondary,
+	'overlay'            => $_un_overlay,
+	'name_font'          => $_un_name_font,
+	'tagline'            => $_unTagline,
+	'announcement'       => $_unAnnouncement,
+	'announcement_starts' => $_unAnnouncementStarts,
+	'announcement_until' => $_unAnnouncementUntil,
+	'social_links'       => $_unSocialLinks,
+	'about_enabled'      => $_unAboutEnabled,
+	'milestone_config'   => $_un_milestone_cfg,
+	'milestones'         => $_un_visible_ms,
+	'custom_milestones'  => $_odCustomMilestones,
+	'features'           => ['recruitment' => true, 'how_to_join' => true],
+	'recruitment'        => ['status' => $_unRecruitmentStored],
+	'how_to_join'        => $_unHowToJoin,
+];
 ?>
 <link rel="stylesheet" href="<?=HTTP_TEMPLATE?>revised-frontend/style/revised.css?v=<?=filemtime(DIR_TEMPLATE.'revised-frontend/style/revised.css')?>">
+<?php
+// Only load the shared org-design stylesheet when some od-* markup can actually
+// render on this page. Union of every od-* surface below (announcement banner,
+// tagline, About design, recruitment pill, connect block, design modal).
+$_odNeedsCss = $_can_manage
+	|| $_unShowAnnouncement
+	|| $_unTagline !== ''
+	|| $_unShowNewAbout
+	|| $_unRecruitmentStatus !== ''
+	|| $_unHasSocial
+	|| trim($_about_text) !== ''
+	|| trim($_our_history) !== ''
+	|| trim($_unHowToJoin) !== ''
+	|| $_un_has_ms;
+if ($_odNeedsCss): ?>
+<link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>shared/orgdesign/orgdesign.css?v=<?= filemtime(DIR_TEMPLATE . 'shared/orgdesign/orgdesign.css') ?>">
+<?php endif; ?>
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
 <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.dataTables.min.css">
+
+<?php if ($_un_name_font !== ''): ?>
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=<?= rawurlencode($_un_name_font) ?>&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=<?= rawurlencode($_un_name_font) ?>&display=swap"></noscript>
+<?php endif; ?>
 
 <style>
 /* ── Unit Hero ───────────────────────────────────────────── */
@@ -341,8 +476,10 @@ html:not([data-theme="light"]):not([data-theme="dark"]) .un-hero-name {
 @media (max-width: 768px) {
 	/* Hero */
 	.un-hero { margin-bottom: 10px; }
-	.un-hero-content { flex-wrap: wrap; padding: 18px 20px; }
-	.un-hero-actions { flex-direction: row; flex-wrap: wrap; justify-content: flex-start; }
+	.un-hero-content { flex-wrap: wrap; align-items: flex-start; padding: 18px 20px; }
+	/* Give the text column a full-line basis so it wraps instead of starving to ~6px. */
+	.un-hero-info { flex: 1 1 100%; min-width: 0; }
+	.un-hero-actions { flex: 0 0 100%; flex-direction: row; flex-wrap: wrap; justify-content: flex-start; }
 	.un-hero-name { font-size: 21px; }
 	/* Sidebar above roster on mobile (override revised.css order values) */
 	.pn-sidebar { order: 1 !important; }
@@ -357,6 +494,179 @@ html:not([data-theme="light"]):not([data-theme="dark"]) .un-hero-name {
 	#un-roster-table th:nth-child(5),
 	#un-roster-table td:nth-child(5) { display: none; }
 }
+
+/* ── Unit design: hero customization ─────────────────────── */
+<?php if ($_un_color_primary): ?>
+.un-hero {
+	background-color: <?= htmlspecialchars($_un_color_primary) ?> !important;
+<?php if ($_un_color_secondary && $_un_color_secondary !== $_un_color_primary): ?>
+	background: linear-gradient(135deg, <?= htmlspecialchars($_un_color_primary) ?>, <?= htmlspecialchars($_un_color_secondary) ?>) !important;
+<?php endif; ?>
+}
+html[data-theme="dark"] .un-hero {
+	background-color: <?= htmlspecialchars($_un_color_primary) ?> !important;
+<?php if ($_un_color_secondary && $_un_color_secondary !== $_un_color_primary): ?>
+	background: linear-gradient(135deg, <?= htmlspecialchars($_un_color_primary) ?>, <?= htmlspecialchars($_un_color_secondary) ?>) !important;
+<?php endif; ?>
+	filter: brightness(0.85);
+}
+<?php endif; ?>
+<?php if ($_un_color_accent): ?>
+:root { --un-accent: <?= htmlspecialchars($_un_color_accent) ?>; --od-accent: <?= htmlspecialchars($_un_color_accent) ?>; }
+.un-type-badge { border-color: <?= htmlspecialchars($_un_color_accent) ?>; color: <?= htmlspecialchars($_un_color_accent) ?>; background: rgba(255,255,255,0.95); }
+.od-about-edit-btn:hover { color: <?= htmlspecialchars($_un_color_accent) ?>; }
+<?php endif; ?>
+.un-hero-bg { opacity: <?= $_un_overlay_opacity ?> !important; }
+<?php if ($_un_overlay === 'vignette'): ?>
+.un-hero-bg {
+	-webkit-mask-image: radial-gradient(ellipse at center, rgba(0,0,0,0.95) 38%, rgba(0,0,0,0) 78%);
+	        mask-image: radial-gradient(ellipse at center, rgba(0,0,0,0.95) 38%, rgba(0,0,0,0) 78%);
+}
+<?php endif; ?>
+<?php if ($_un_name_font !== '' && $_un_hero_font_css !== ''): ?>
+.un-hero-name { font-family: <?= $_un_hero_font_css ?>, 'Cinzel', serif !important; letter-spacing: 0.02em; }
+<?php endif; ?>
+
+.un-fullwidth-section {
+	background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+	padding: 18px 22px; margin-bottom: 20px;
+}
+html[data-theme="dark"] .un-fullwidth-section { background: var(--ork-card-bg); border-color: var(--ork-border); }
+.un-fullwidth-head {
+	display: flex; align-items: center; justify-content: space-between;
+	margin-bottom: 10px;
+}
+.un-fullwidth-title {
+	font-size: 13px; font-weight: 700; color: #4a5568;
+	text-transform: uppercase; letter-spacing: 0.5px;
+	margin: 0;
+	background: transparent; border: none; padding: 0; border-radius: 0; text-shadow: none;
+	display: flex; align-items: center; gap: 8px;
+}
+html[data-theme="dark"] .un-fullwidth-title { color: var(--ork-text-secondary); }
+
+/* Milestones timeline + empty-state styling now provided by shared orgdesign.css
+   (.od-timeline*, .od-timeline-empty). */
+
+/* ── Tabs (About / Members) ──────────────────────────────── */
+.un-tabs {
+	background: var(--ork-card-bg);
+	border: 1px solid #cbd5e0;
+	border-radius: 8px;
+	box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+	overflow: hidden;
+	min-height: 50vh;
+	margin-top: 4px;
+}
+html[data-theme="dark"] .un-tabs { border-color: var(--ork-border); }
+.un-tab-nav {
+	list-style: none;
+	margin: 0; padding: 0;
+	display: flex;
+	border-bottom: 2px solid var(--ork-border, #e2e8f0);
+	background: var(--ork-bg-secondary);
+	flex-wrap: nowrap;
+	overflow-x: auto;
+	overflow-y: hidden;
+}
+.un-tab-nav li {
+	padding: 12px 18px;
+	cursor: pointer;
+	font-size: 13px;
+	font-weight: 600;
+	color: #718096;
+	border-bottom: 2px solid transparent;
+	margin-bottom: -2px;
+	transition: color 0.15s, border-color 0.15s, background 0.15s;
+	white-space: nowrap;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-shrink: 0;
+}
+.un-tab-nav li:hover { color: var(--un-accent, #2b6cb0); background: #edf2f7; }
+.un-tab-nav li.un-tab-active {
+	color: var(--un-accent, #2b6cb0);
+	border-bottom-color: var(--un-accent, #2b6cb0);
+	background: var(--ork-card-bg);
+}
+.un-tab-count { font-size: 11px; color: #a0aec0; font-weight: 500; }
+.un-tab-panel { padding: 18px 20px; }
+html[data-theme="dark"] .un-tab-nav { background: var(--ork-bg-secondary); border-color: var(--ork-border); }
+html[data-theme="dark"] .un-tab-nav li { color: var(--ork-text-secondary); }
+html[data-theme="dark"] .un-tab-nav li:hover:not(.un-tab-active) { background: var(--ork-bg-tertiary); color: var(--ork-text); }
+html[data-theme="dark"] .un-tab-nav li.un-tab-active { background: var(--ork-card-bg); color: var(--un-accent, var(--ork-link)); border-bottom-color: var(--un-accent, var(--ork-link)); }
+html[data-theme="dark"] .un-tab-count { color: var(--ork-text-muted); }
+
+/* About tab inner sections — section dividers */
+.un-about-section { margin-bottom: 6px; }
+.un-tab-panel .un-fullwidth-section {
+	background: transparent; border: none; box-shadow: none;
+	padding: 0; margin-bottom: 0;
+}
+.un-tab-panel .un-fullwidth-section + .un-fullwidth-section,
+.un-tab-panel .un-about-section + .un-fullwidth-section {
+	margin-top: 18px; padding-top: 18px; border-top: 1px dashed #e2e8f0;
+}
+html[data-theme="dark"] .un-tab-panel .un-fullwidth-section + .un-fullwidth-section,
+html[data-theme="dark"] .un-tab-panel .un-about-section + .un-fullwidth-section { border-top-color: var(--ork-border); }
+
+/* Managers section inside About tab — officer-style list */
+.un-managers-list { list-style: none; margin: 0; padding: 0; }
+.un-managers-list li {
+	font-size: 13px; padding: 6px 0; border-bottom: 1px solid #f0f0f0;
+	display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.un-managers-list li:last-child { border-bottom: none; }
+html[data-theme="dark"] .un-managers-list li { border-bottom-color: var(--ork-border); }
+.un-mgr-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.un-mgr-role { font-size: 10px; color: #718096; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700; }
+html[data-theme="dark"] .un-mgr-role { color: var(--ork-text-muted); }
+.un-mgr-name a { color: var(--ork-link); text-decoration: none; font-weight: 500; }
+.un-mgr-name a:hover { text-decoration: underline; }
+.un-managers-empty { font-size: 12px; color: var(--ork-text-muted); font-style: italic; margin: 0; padding: 4px 0; }
+
+/* Members tab — section header sits flush at top */
+#un-tab-members .un-section-header { margin-bottom: 14px; }
+#un-tab-members .un-roster-card {
+	border: none; box-shadow: none; background: transparent;
+}
+
+/* Mobile: tab panel padding tightens */
+@media (max-width: 768px) {
+	.un-tab-panel { padding: 14px 14px; }
+	.un-tab-nav li { padding: 10px 14px; font-size: 12px; }
+}
+
+/* Tagline (.od-tagline) and Announcement banner (.od-announce) now come from
+   shared orgdesign.css. */
+
+/* ── Phase 2: Recruitment Pill ────────────────────────── */
+.un-recruit-pill {
+	display: inline-flex; align-items: center; gap: 5px;
+	font-size: 11px; font-weight: 700; letter-spacing: 0.05em;
+	text-transform: uppercase; color: #fff;
+	border-radius: 4px; padding: 3px 8px;
+	margin-left: 6px;
+	border: 1px solid rgba(255,255,255,0.18);
+	box-shadow: 0 1px 2px rgba(0,0,0,0.18);
+}
+.un-recruit-pill i { font-size: 11px; }
+.un-recruit-open   { background: #48bb78; }
+.un-recruit-invite { background: #ed8936; }
+.un-recruit-closed { background: #718096; }
+html[data-theme="dark"] .un-recruit-open   { background: #22543d; border-color: rgba(255,255,255,0.12); }
+html[data-theme="dark"] .un-recruit-invite { background: #7b341e; border-color: rgba(255,255,255,0.12); }
+html[data-theme="dark"] .un-recruit-closed { background: #2d3748; border-color: rgba(255,255,255,0.12); }
+
+/* Connect pills (.od-connect-*) now come from shared orgdesign.css. */
+
+/* ── Phase 2: How to Join section ─────────────────────── */
+.un-howto-section .un-fullwidth-title i { color: #38a169; }
+html[data-theme="dark"] .un-howto-section .un-fullwidth-title i { color: #68d391; }
+
+/* Design-modal styling (social inputs, recruitment radio, section dividers,
+   overlay/panels/fields) now comes from shared orgdesign.css (.od-dm-*). */
 
 /* In-product CSS tooltip for [data-tip] — mirrors the revised.css pattern.
    Native title="" causes a 1–2s browser delay and clashes with our dark theme,
@@ -394,6 +704,34 @@ html[data-theme="dark"] .un-btn-danger { color: #fc8181 !important; border-color
 	<i class="fas fa-exclamation-circle"></i>
 	<?=htmlspecialchars($_err)?>
 </div>
+<?php endif; ?>
+
+<?php if ($_unShowAnnouncement): ?>
+<div class="od-announce" role="status" data-od-announce-key="od-announce-dismissed-unit-<?= (int)$_unit_id ?>" data-od-announce-token="<?= substr(sha1($_unAnnouncement), 0, 16) ?>">
+	<i class="fas fa-bullhorn od-announce-icon"></i>
+	<div class="od-announce-body"><strong>Announcement:</strong><?= htmlspecialchars($_unAnnouncement) ?></div>
+	<?php if ($_unAnnouncementUntil !== '' && $_unAnnouncementUntil !== '0000-00-00'): ?>
+	<div class="od-announce-until">Until <?= date('M j, Y', strtotime($_unAnnouncementUntil)) ?></div>
+	<?php endif; ?>
+	<button type="button" class="od-announce-dismiss" data-tip="Dismiss" aria-label="Dismiss announcement">&times;</button>
+</div>
+<script>
+(function () {
+	var banners = document.querySelectorAll('.od-announce[data-od-announce-key]');
+	for (var i = 0; i < banners.length; i++) {
+		(function (b) {
+			var key = b.getAttribute('data-od-announce-key');
+			var token = b.getAttribute('data-od-announce-token') || '';
+			try { if (key && localStorage.getItem(key) === token) { b.style.display = 'none'; } } catch (e) {}
+			var x = b.querySelector('.od-announce-dismiss');
+			if (x) { x.addEventListener('click', function () {
+				b.style.display = 'none';
+				try { if (key) { localStorage.setItem(key, token); } } catch (e) {}
+			}); }
+		})(banners[i]);
+	}
+})();
+</script>
 <?php endif; ?>
 
 <!-- ── Hero ─────────────────────────────────────────────── -->
@@ -443,11 +781,22 @@ html[data-theme="dark"] .un-btn-danger { color: #fc8181 !important; border-color
 
 		<!-- Name / type -->
 		<div class="un-hero-info">
-			<div class="un-type-badge">
-				<i class="fas <?=$_type_icon?>"></i>
-				<?=htmlspecialchars($_type)?>
+			<div>
+				<span class="un-type-badge">
+					<i class="fas <?=$_type_icon?>"></i>
+					<?=htmlspecialchars($_type)?>
+				</span>
+<?php if ($_unRecruitmentStatus !== ''): $_rm = $_unRecruitMeta[$_unRecruitmentStatus]; ?>
+				<span class="un-recruit-pill un-recruit-<?= htmlspecialchars($_unRecruitmentStatus) ?>" data-tip="Recruitment status">
+					<i class="fas <?= htmlspecialchars($_rm['icon']) ?>"></i>
+					<?= htmlspecialchars($_rm['label']) ?>
+				</span>
+<?php endif; ?>
 			</div>
 			<h1 class="un-hero-name"><?=htmlspecialchars($_name)?></h1>
+<?php if ($_unTagline !== ''): ?>
+			<p class="od-tagline"><?= htmlspecialchars($_unTagline) ?></p>
+<?php endif; ?>
 		</div>
 
 		<!-- Actions -->
@@ -460,6 +809,11 @@ html[data-theme="dark"] .un-btn-danger { color: #fc8181 !important; border-color
 <?php if ($_can_edit): ?>
 			<button class="pn-btn pn-btn-white" onclick="unOpenModal('un-modal-details')">
 				<i class="fas fa-pen"></i><span class="un-btn-label"> Edit Details</span>
+			</button>
+<?php endif; ?>
+<?php if ($_can_manage): /* Design modal + its JS only load at AUTH_CREATE. */ ?>
+			<button class="pn-btn pn-btn-white" onclick="odOpenDesignModal()">
+				<i class="fas fa-palette"></i><span class="un-btn-label"> Design</span>
 			</button>
 <?php endif; ?>
 		</div>
@@ -481,15 +835,29 @@ html[data-theme="dark"] .un-btn-danger { color: #fc8181 !important; border-color
 	</div>
 </div>
 
-<!-- ── Sidebar + Main ────────────────────────────────────── -->
-<div class="pn-layout">
+<?php if ($_unShowNewAbout): ?>
+<!-- ── Tabs ─────────────────────────────────────────────── -->
+<div class="un-tabs">
 
-	<!-- Sidebar -->
-	<aside class="pn-sidebar">
+	<ul class="un-tab-nav">
+		<li data-untab="about" class="un-tab-active"><i class="fas fa-info-circle"></i> About</li>
+		<li data-untab="members"><i class="fas fa-users"></i> Members <span class="un-tab-count">(<?=$_total?>)</span></li>
+	</ul>
+
+	<!-- ── About tab ─────────────────────────────────────── -->
+	<div class="un-tab-panel un-tab-active" id="un-tab-about">
+
+<?php if ($_can_manage && $_unAboutEnabled !== 1): ?>
+		<div class="od-about-unpublished" data-tip="Only managers can see this. Enable the About Page in Customize to publish it.">
+			<i class="fas fa-eye-slash"></i> Unpublished &mdash; only managers can see this
+		</div>
+<?php endif; ?>
 
 <?php if ($_is_retired): ?>
-		<div class="pn-card un-retired-card">
-			<h4 style="display:flex;align-items:center;justify-content:space-between;"><span><i class="fas fa-archive"></i> Retired</span></h4>
+		<div class="un-fullwidth-section un-retired-card">
+			<div class="un-fullwidth-head">
+				<h3 class="un-fullwidth-title"><i class="fas fa-archive"></i> Retired</h3>
+			</div>
 			<p class="un-card-text">This <?=htmlspecialchars($_type_l)?> has been retired and is hidden from listings and search.</p>
 <?php if ($_can_officer): ?>
 			<form method="post" action="<?=htmlspecialchars($_base_url)?>">
@@ -504,6 +872,295 @@ html[data-theme="dark"] .un-btn-danger { color: #fc8181 !important; border-color
 		</div>
 <?php endif; ?>
 
+<?php include DIR_TEMPLATE . 'shared/orgdesign/_connect_block.tpl'; ?>
+
+<?php if (trim($_about_text) !== '' || $_can_manage): ?>
+		<div class="un-about-section">
+			<div class="un-fullwidth-head">
+				<h3 class="un-fullwidth-title"><i class="fas fa-align-left"></i> About</h3>
+				<?php if ($_can_manage): ?>
+				<button class="od-about-edit-btn" onclick="odOpenDesignModal('about')" data-tip="Edit About">
+					<i class="fas fa-pencil-alt"></i> Edit
+				</button>
+				<?php endif; ?>
+			</div>
+			<?php if (trim($_about_text) !== ''): ?>
+			<div class="od-about-text kn-description-body">
+				<?= org_design_markdown($_about_text) ?>
+			</div>
+			<?php elseif ($_can_manage): ?>
+			<div class="od-timeline-empty" style="text-align:left">
+				No About content yet. <a href="#" onclick="event.preventDefault();odOpenDesignModal('about')">Add some</a>.
+			</div>
+			<?php endif; ?>
+		</div>
+<?php endif; ?>
+
+<?php if (!$_is_retired && (trim($_unHowToJoin) !== '' || $_can_manage)): ?>
+		<div class="un-fullwidth-section un-howto-section">
+			<div class="un-fullwidth-head">
+				<h3 class="un-fullwidth-title"><i class="fas fa-handshake"></i> How to Join</h3>
+				<?php if ($_can_manage): ?>
+				<button class="od-about-edit-btn" onclick="odOpenDesignModal('about')" data-tip="Edit How to Join">
+					<i class="fas fa-pencil-alt"></i> Edit
+				</button>
+				<?php endif; ?>
+			</div>
+			<?php if (trim($_unHowToJoin) !== ''): ?>
+			<div class="od-about-text kn-description-body"><?= org_design_markdown($_unHowToJoin) ?></div>
+			<?php elseif ($_can_manage): ?>
+			<div class="od-timeline-empty" style="text-align:left">
+				No how-to-join info yet. <a href="#" onclick="event.preventDefault();odOpenDesignModal('about')">Add some</a> to help prospective members understand the process.
+			</div>
+			<?php endif; ?>
+		</div>
+<?php endif; ?>
+
+<?php if (trim($_our_history) !== '' || $_can_manage): ?>
+		<!-- Our History -->
+		<div class="un-fullwidth-section">
+			<div class="un-fullwidth-head">
+				<h3 class="un-fullwidth-title"><i class="fas fa-scroll"></i> Our History</h3>
+				<?php if ($_can_manage): ?>
+				<button class="od-about-edit-btn" onclick="odOpenDesignModal('about')" data-tip="Edit Our History">
+					<i class="fas fa-pencil-alt"></i> Edit
+				</button>
+				<?php endif; ?>
+			</div>
+			<?php if (trim($_our_history) !== ''): ?>
+			<div class="od-about-text kn-description-body"><?= org_design_markdown($_our_history) ?></div>
+			<?php elseif ($_can_manage): ?>
+			<div class="od-timeline-empty">
+				Share the founding story, past officers, or notable moments. <a href="#" onclick="event.preventDefault();odOpenDesignModal('about')">Add Our History</a>.
+			</div>
+			<?php endif; ?>
+		</div>
+<?php endif; ?>
+
+<?php if ($_un_has_ms || $_can_manage): ?>
+		<?php include DIR_TEMPLATE . 'shared/orgdesign/_milestones_timeline.tpl'; ?>
+<?php endif; ?>
+
+<?php
+$_auths = $Unit['Authorizations']['Authorizations'] ?? [];
+if ($_can_edit || count($_auths) > 0):
+?>
+		<!-- Managers -->
+		<div class="un-fullwidth-section">
+			<div class="un-fullwidth-head">
+				<h3 class="un-fullwidth-title"><i class="fas fa-user-shield"></i> Managers</h3>
+				<?php if ($_can_edit): ?>
+				<button class="od-about-edit-btn" onclick="unOpenModal('un-modal-add-manager')" data-tip="Add manager">
+					<i class="fas fa-plus"></i> Add
+				</button>
+				<?php endif; ?>
+			</div>
+<?php if (count($_auths) > 0): ?>
+			<ul class="un-managers-list">
+<?php foreach ($_auths as $_auth):
+	$__aid    = (int)$_auth['AuthorizationId'];
+	$__mgr_js = addslashes($_auth['Persona'] ?: $_auth['UserName']);
+?>
+				<li>
+					<div class="un-mgr-info">
+						<span class="un-mgr-role">Manager</span>
+						<span class="un-mgr-name">
+							<a href="<?=UIR?>Player/profile/<?=(int)$_auth['MundaneId']?>">
+								<?=htmlspecialchars($_auth['Persona'] ?: $_auth['UserName'])?>
+							</a>
+						</span>
+					</div>
+					<?php if ($_can_edit): ?>
+					<form method="post" action="<?=htmlspecialchars($_base_url)?>" id="un-mgr-form-<?=$__aid?>" style="display:none">
+						<input type="hidden" name="Action" value="deleteauth">
+						<input type="hidden" name="AuthorizationId" value="<?=$__aid?>">
+					</form>
+					<button class="pn-btn pn-btn-ghost pn-btn-sm"
+						onclick="pnConfirm({title:'Remove Manager',message:'Remove <?=$__mgr_js?> as a manager?',confirmText:'Remove',danger:true},function(){document.getElementById('un-mgr-form-<?=$__aid?>').submit()})"
+						data-tip="Remove manager" style="color:#e53e3e;">
+						<i class="fas fa-times"></i>
+					</button>
+					<?php endif; ?>
+				</li>
+<?php endforeach; ?>
+			</ul>
+<?php else: ?>
+			<p class="un-managers-empty">No managers assigned.</p>
+<?php endif; ?>
+		</div>
+<?php endif; ?>
+
+
+<!-- ── Claim / Add-Manager Card (unmanaged units) ───────── -->
+<?php if ($_show_claim): ?>
+		<div class="un-fullwidth-section un-claim-card">
+<?php if ($_can_claim): ?>
+			<h4 style="display:flex;align-items:center;justify-content:space-between;"><span><i class="fas fa-hands-helping"></i> Claim This <?=htmlspecialchars($_type)?></span></h4>
+			<p class="un-card-text">This <?=htmlspecialchars($_type_l)?> has no manager. As a leader of <?=htmlspecialchars($_name)?>, you can take over managing it.</p>
+			<form method="post" action="<?=htmlspecialchars($_base_url)?>">
+				<input type="hidden" name="Action" value="claim_unit">
+				<button type="submit" class="pn-btn pn-btn-primary" style="width:100%;">
+					<i class="fas fa-user-shield"></i> Claim <?=htmlspecialchars($_name)?>
+				</button>
+			</form>
+<?php else: ?>
+			<h4 style="display:flex;align-items:center;justify-content:space-between;"><span><i class="fas fa-user-slash"></i> Unmanaged <?=htmlspecialchars($_type)?></span></h4>
+<?php if (!$_can_officer): ?>
+			<p class="un-card-text">It looks like no players currently have permission to manage this <?=htmlspecialchars($_type_l)?>. If you feel you should be given access to do so, please contact a member of monarchy for your park or kingdom and ask them to transfer the unit to you.</p>
+<?php endif; ?>
+<?php endif; ?>
+<?php if ($_can_officer): ?>
+			<div class="un-card-section">
+				<div class="un-card-subhead"><i class="fas fa-user-plus"></i> Add A Manager</div>
+				<p class="un-card-text">This unit has no managing players. You can add one by clicking the button below. Please be certain the player requesting to claim this unit has a legitimate reason for doing so.</p>
+				<button type="button" class="pn-btn pn-btn-secondary" style="width:100%;" onclick="unOpenModal('un-modal-add-manager')">
+					<i class="fas fa-user-plus"></i> Add A Manager
+				</button>
+			</div>
+<?php endif; ?>
+		</div>
+<?php endif; ?>
+
+<!-- ── Retire Card ──────────────────────────────────────── -->
+<?php if ($_show_retire): ?>
+		<div class="un-fullwidth-section un-retire-card">
+			<h4 style="display:flex;align-items:center;justify-content:space-between;"><span><i class="fas fa-archive"></i> Retire <?=htmlspecialchars($_type)?></span></h4>
+			<p class="un-card-text">If <?=htmlspecialchars($_name)?> is no longer active or has disbanded, you can retire it here.</p>
+			<button type="button" class="pn-btn pn-btn-ghost" style="width:100%;color:#c05621;border-color:#c05621;" onclick="unOpenModal('un-modal-retire')">
+				<i class="fas fa-archive"></i> Retire This Unit
+			</button>
+		</div>
+<?php endif; ?>
+	</div><!-- /un-tab-about -->
+
+	<!-- ── Members tab ───────────────────────────────────── -->
+	<div class="un-tab-panel" id="un-tab-members" style="display:none">
+
+		<div class="un-section-header">
+			<div class="un-section-title">
+				<i class="fas fa-users"></i> Members <span class="un-tab-count">(<?=$_total?>)</span>
+			</div>
+<?php if ($_can_edit): ?>
+			<button class="pn-btn pn-btn-primary pn-btn-sm" onclick="unOpenModal('un-modal-add-member')">
+				<i class="fas fa-plus"></i><span class="un-btn-label"> Add Member</span>
+			</button>
+<?php endif; ?>
+		</div>
+
+		<div class="un-roster-card">
+<?php if ($_total === 0): ?>
+			<div class="pn-empty">
+				<i class="fas fa-users" style="font-size:24px;display:block;margin-bottom:8px;opacity:0.25;"></i>
+				No members found.
+			</div>
+<?php else: ?>
+			<table id="un-roster-table" class="display" style="width:100%">
+				<thead>
+					<tr>
+						<th>Persona</th>
+						<th>Park</th>
+						<th>Kingdom</th>
+						<th>Role</th>
+						<th>Title</th>
+						<th>Last Sign-in</th>
+<?php if ($_can_edit): ?>
+						<th></th>
+<?php endif; ?>
+					</tr>
+				</thead>
+				<tbody>
+<?php foreach ($_members as $_m):
+	$_persona     = trimlen($_m['Persona']) > 0 ? $_m['Persona'] : '(No Persona)';
+	$_um_id       = (int)($_m['UnitMundaneId'] ?? 0);
+	$_role_esc    = htmlspecialchars($_m['UnitRole']  ?? '', ENT_QUOTES);
+	$_title_esc   = htmlspecialchars($_m['UnitTitle'] ?? '', ENT_QUOTES);
+	$_persona_js  = addslashes($_persona);
+	$_last_signin = $_m['LastSignIn'] ?? '';
+	$_is_active   = !empty($_last_signin) && $_last_signin >= $_cutoff;
+?>
+				<tr>
+					<td>
+						<a href="<?=UIR?>Player/profile/<?=(int)$_m['MundaneId']?>"
+							style="color:var(--ork-link);text-decoration:none;font-weight:500;">
+							<?=htmlspecialchars($_persona)?>
+						</a>
+						<?php if (!$_is_active && !empty($_last_signin)): ?>
+						<span style="font-size:10px;color:var(--ork-text-lighter);margin-left:4px;">(inactive)</span>
+						<?php endif; ?>
+					</td>
+					<td>
+						<?php if (!empty($_m['ParkId'])): ?>
+						<a href="<?=UIR?>Park/profile/<?=(int)$_m['ParkId']?>"
+							style="color:var(--ork-text-secondary);text-decoration:none;">
+							<?=htmlspecialchars($_m['ParkName'] ?? '')?>
+						</a>
+						<?php else: ?>
+						<?=htmlspecialchars($_m['ParkName'] ?? '')?>
+						<?php endif; ?>
+					</td>
+					<td>
+						<?php if (!empty($_m['KingdomId'])): ?>
+						<a href="<?=UIR?>Kingdom/profile/<?=(int)$_m['KingdomId']?>"
+							style="color:var(--ork-text-secondary);text-decoration:none;">
+							<?=htmlspecialchars($_m['KingdomName'] ?? '')?>
+						</a>
+						<?php else: ?>
+						<?=htmlspecialchars($_m['KingdomName'] ?? '')?>
+						<?php endif; ?>
+					</td>
+					<td><?=htmlspecialchars(ucfirst($_m['UnitRole'] ?? ''))?></td>
+					<td><?=htmlspecialchars($_m['UnitTitle'] ?? '')?></td>
+					<td data-order="<?=htmlspecialchars($_last_signin)?>">
+						<?=htmlspecialchars($_last_signin ?: '—')?>
+					</td>
+<?php if ($_can_edit): ?>
+					<td style="white-space:nowrap;">
+						<form method="post" action="<?=htmlspecialchars($_base_url)?>" id="un-retire-form-<?=$_um_id?>" style="display:none">
+							<input type="hidden" name="Action" value="retire_member">
+							<input type="hidden" name="UnitMundaneId" value="<?=$_um_id?>">
+						</form>
+						<form method="post" action="<?=htmlspecialchars($_base_url)?>" id="un-remove-form-<?=$_um_id?>" style="display:none">
+							<input type="hidden" name="Action" value="remove_member">
+							<input type="hidden" name="UnitMundaneId" value="<?=$_um_id?>">
+						</form>
+						<div class="un-action-btns">
+							<button class="pn-btn pn-btn-ghost pn-btn-sm"
+								onclick="unOpenEditMember(<?=$_um_id?>, '<?=$_role_esc?>', '<?=$_title_esc?>')"
+								data-tip="Edit role / title">
+								<i class="fas fa-pen"></i>
+							</button>
+							<button class="pn-btn pn-btn-ghost pn-btn-sm"
+								onclick="pnConfirm({title:'Retire Member',message:'Retire <?=$_persona_js?> from the unit?',confirmText:'Retire',danger:true},function(){document.getElementById('un-retire-form-<?=$_um_id?>').submit()})"
+								data-tip="Retire member" style="color:#c05621;">
+								<i class="fas fa-user-minus"></i>
+							</button>
+							<button class="pn-btn pn-btn-ghost pn-btn-sm"
+								onclick="pnConfirm({title:'Remove Member',message:'Permanently remove <?=$_persona_js?> from the unit?',confirmText:'Remove',danger:true},function(){document.getElementById('un-remove-form-<?=$_um_id?>').submit()})"
+								data-tip="Remove member" style="color:#e53e3e;">
+								<i class="fas fa-times"></i>
+							</button>
+						</div>
+					</td>
+<?php endif; ?>
+				</tr>
+<?php endforeach; ?>
+				</tbody>
+			</table>
+<?php endif; ?>
+		</div><!-- /un-roster-card -->
+
+	</div><!-- /un-tab-members -->
+
+</div><!-- /un-tabs -->
+
+<?php else: /* OFF: master sidebar body verbatim */ ?>
+
+<!-- ── Sidebar + Main ────────────────────────────────────── -->
+<div class="pn-layout">
+
+	<!-- Sidebar -->
+	<aside class="pn-sidebar">
+
 <?php if (trimlen($_desc) > 0 || $_can_edit): ?>
 		<div class="pn-card">
 			<h4 style="display:flex;align-items:center;justify-content:space-between;">
@@ -515,7 +1172,7 @@ html[data-theme="dark"] .un-btn-danger { color: #fc8181 !important; border-color
 				<?php endif; ?>
 			</h4>
 			<div class="kn-description-body" style="font-size:13px;color:var(--ork-text-secondary);">
-				<?=un_markdown($_desc)?>
+				<?=org_design_markdown($_desc)?>
 			</div>
 		</div>
 <?php endif; ?>
@@ -531,7 +1188,7 @@ html[data-theme="dark"] .un-btn-danger { color: #fc8181 !important; border-color
 				<?php endif; ?>
 			</h4>
 			<div class="kn-description-body" style="font-size:13px;color:var(--ork-text-secondary);">
-				<?=un_markdown($_history)?>
+				<?=org_design_markdown($_history)?>
 			</div>
 		</div>
 <?php endif; ?>
@@ -578,47 +1235,6 @@ if ($_can_edit && (count($_auths) > 0 || true)):
 		</div>
 <?php endif; ?>
 
-
-<!-- ── Claim / Add-Manager Card (unmanaged units) ───────── -->
-<?php if ($_show_claim): ?>
-		<div class="pn-card un-claim-card">
-<?php if ($_can_claim): ?>
-			<h4 style="display:flex;align-items:center;justify-content:space-between;"><span><i class="fas fa-hand-paper"></i> Claim This <?=htmlspecialchars($_type)?></span></h4>
-			<p class="un-card-text">This <?=htmlspecialchars($_type_l)?> has no manager. As a leader of <?=htmlspecialchars($_name)?>, you can take over managing it.</p>
-			<form method="post" action="<?=htmlspecialchars($_base_url)?>">
-				<input type="hidden" name="Action" value="claim_unit">
-				<button type="submit" class="pn-btn pn-btn-primary" style="width:100%;">
-					<i class="fas fa-user-shield"></i> Claim <?=htmlspecialchars($_name)?>
-				</button>
-			</form>
-<?php else: ?>
-			<h4 style="display:flex;align-items:center;justify-content:space-between;"><span><i class="fas fa-user-slash"></i> Unmanaged <?=htmlspecialchars($_type)?></span></h4>
-<?php if (!$_can_officer): ?>
-			<p class="un-card-text">It looks like no players currently have permission to manage this <?=htmlspecialchars($_type_l)?>. If you feel you should be given access to do so, please contact a member of monarchy for your park or kingdom and ask them to transfer the unit to you.</p>
-<?php endif; ?>
-<?php endif; ?>
-<?php if ($_can_officer): ?>
-			<div class="un-card-section">
-				<div class="un-card-subhead"><i class="fas fa-user-plus"></i> Add A Manager</div>
-				<p class="un-card-text">This unit has no managing players. You can add one by clicking the button below. Please be certain the player requesting to claim this unit has a legitimate reason for doing so.</p>
-				<button type="button" class="pn-btn pn-btn-secondary" style="width:100%;" onclick="unOpenModal('un-modal-add-manager')">
-					<i class="fas fa-user-plus"></i> Add A Manager
-				</button>
-			</div>
-<?php endif; ?>
-		</div>
-<?php endif; ?>
-
-<!-- ── Retire Card ──────────────────────────────────────── -->
-<?php if ($_show_retire): ?>
-		<div class="pn-card un-retire-card">
-			<h4 style="display:flex;align-items:center;justify-content:space-between;"><span><i class="fas fa-archive"></i> Retire <?=htmlspecialchars($_type)?></span></h4>
-			<p class="un-card-text">If <?=htmlspecialchars($_name)?> is no longer active or has disbanded, you can retire it here.</p>
-			<button type="button" class="pn-btn pn-btn-ghost" style="width:100%;color:#c05621;border-color:#c05621;" onclick="unOpenModal('un-modal-retire')">
-				<i class="fas fa-archive"></i> Retire This Unit
-			</button>
-		</div>
-<?php endif; ?>
 	</aside>
 
 	<!-- Main: roster -->
@@ -740,6 +1356,9 @@ if ($_can_edit && (count($_auths) > 0 || true)):
 	</div><!-- /pn-main -->
 
 </div><!-- /pn-layout -->
+
+<?php endif; /* /$_unShowNewAbout */ ?>
+
 
 
 <?php if ($_can_edit): ?>
@@ -1302,6 +1921,28 @@ $(function () {
 			]
 		});
 	}
+
+	// ── Tab switching (About / Members) ──────────────────────
+	function unActivateTab(name) {
+		document.querySelectorAll('.un-tab-nav li').forEach(function(x){ x.classList.remove('un-tab-active'); });
+		document.querySelectorAll('.un-tab-panel').forEach(function(p){ p.style.display = 'none'; });
+		var tab = document.querySelector('.un-tab-nav li[data-untab="' + name + '"]');
+		var panel = document.getElementById('un-tab-' + name);
+		if (tab)   tab.classList.add('un-tab-active');
+		if (panel) panel.style.display = '';
+		// Recalc DataTables column widths if Members tab becomes visible (table init'd while hidden)
+		if (name === 'members' && $.fn.DataTable && $.fn.DataTable.isDataTable('#un-roster-table')) {
+			$('#un-roster-table').DataTable().columns.adjust();
+		}
+	}
+	document.querySelectorAll('.un-tab-nav li').forEach(function(t) {
+		t.addEventListener('click', function() { unActivateTab(t.dataset.untab); });
+	});
+	// Optional URL ?tab=members deep-link
+	var _unUrlTab = new URLSearchParams(window.location.search).get('tab');
+	if (_unUrlTab && document.querySelector('.un-tab-nav li[data-untab="' + _unUrlTab + '"]')) {
+		unActivateTab(_unUrlTab);
+	}
 });
 
 <?php if ($_can_edit || $_show_addmgr || $_show_retire): ?>
@@ -1783,3 +2424,15 @@ html[data-theme="dark"] .un-retire-note {
   color: var(--ork-text-secondary);
 }
 </style>
+
+<?php
+	// --- Shared Org Design modal + assets (managers only) ---------------------
+	// $ctx was built near the top of this template. The modal partial renders
+	// nothing for non-managers (it returns early on empty $ctx['can_manage']).
+	if ($ctx['can_manage']) {
+		include DIR_TEMPLATE . 'shared/orgdesign/_design_modal.tpl';
+	}
+?>
+<?php if ($ctx['can_manage']): ?>
+<script src="<?= HTTP_TEMPLATE ?>shared/orgdesign/orgdesign.js?v=<?= filemtime(DIR_TEMPLATE . 'shared/orgdesign/orgdesign.js') ?>"></script>
+<?php endif; ?>

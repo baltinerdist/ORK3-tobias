@@ -1,0 +1,835 @@
+/* ============================================================================
+   Shared Org Design UI (Kingdom / Park / Unit)
+   Single neutral `od-` prefix. Static, org-agnostic. Dark-mode aware.
+   Ported verbatim from the legacy kn-* design CSS (kn-* -> od-*).
+   NOTE: dynamic hero rules (per-org colors/font/overlay injected at render time)
+   stay inline in each org template — they target that page's own layout classes.
+   The org template must set --od-accent on :root for the connect pills.
+   ============================================================================ */
+
+/* --- About markdown body + Our History ------------------------------------- */
+/* Global p{text-align:justify} (orkui.css) shreds narrow measures — opt out. */
+.od-about-text, .od-about-text p,
+.od-reign-lore, .od-reign-lore p, .od-dm-md-preview p,
+.od-tagline { text-align: left; }
+/* Raw URLs in author-supplied markdown must not force horizontal scroll. */
+.od-about-text a { overflow-wrap: anywhere; }
+.od-about-text { line-height: 1.6; }
+.od-about-text p { margin: 0 0 8px; }
+.od-about-text p:last-child { margin-bottom: 0; }
+.od-about-text ul, .od-about-text ol { margin: 0 0 8px; padding-left: 18px; }
+.od-about-text h1, .od-about-text h2, .od-about-text h3, .od-about-text h4 {
+    margin-top: 1.1em; margin-bottom: 0.4em;
+    background: transparent; border: none; padding: 0; border-radius: 0; text-shadow: none;
+}
+.od-about-section-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; margin-bottom: 6px;
+}
+.od-about-edit-btn {
+    background: transparent; border: 1px solid transparent; color: #a0aec0;
+    padding: 4px 8px; border-radius: 6px; cursor: pointer; font-size: 12px;
+    display: inline-flex; align-items: center; gap: 4px;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.od-about-edit-btn:hover { background: rgba(49,130,206,0.08); color: #2b6cb0; border-color: rgba(49,130,206,0.25); }
+html[data-theme="dark"] .od-about-edit-btn { color: var(--ork-text-muted); }
+html[data-theme="dark"] .od-about-edit-btn:hover { background: var(--ork-bg-tertiary); color: var(--ork-link); border-color: var(--ork-border); }
+.od-about-edit-btn[data-tip] { position: relative; }
+.od-about-edit-btn[data-tip]::after {
+    content: attr(data-tip); position: absolute; bottom: calc(100% + 6px); right: 0;
+    background: #2d3748; color: #fff; font-size: 11px; font-style: italic; white-space: normal; width: max-content; max-width: 240px; line-height: 1.4;
+    padding: 4px 10px; border-radius: 4px; pointer-events: none; opacity: 0;
+    transition: opacity 0s; z-index: 500;
+}
+.od-about-edit-btn[data-tip]:hover::after { opacity: 1; transition-delay: 0.4s; }
+html[data-theme="dark"] .od-about-edit-btn[data-tip]::after { background: var(--ork-bg-tertiary); color: var(--ork-text); border: 1px solid var(--ork-border); }
+
+/* --- Milestones timeline --------------------------------------------------- */
+.od-timeline-heading {
+    font-size: 13px; font-weight: 700; color: #4a5568;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    margin: 0 0 14px 0;
+    background: transparent; border: none; padding: 0; border-radius: 0; text-shadow: none;
+    display: flex; align-items: center; gap: 8px;
+}
+html[data-theme="dark"] .od-timeline-heading { color: var(--ork-text-secondary); }
+.od-timeline { position: relative; padding-left: 36px; }
+.od-timeline::before {
+    content: ''; position: absolute; left: 13px; top: 4px; bottom: 4px; width: 2px;
+    background: linear-gradient(to bottom, #cbd5e0, #cbd5e0 60%, transparent);
+}
+html[data-theme="dark"] .od-timeline::before { background: linear-gradient(to bottom, var(--ork-border), var(--ork-border) 60%, transparent); }
+.od-timeline-row {
+    position: relative; display: flex; align-items: center; gap: 12px;
+    margin-bottom: 14px; min-height: 24px;
+}
+.od-timeline-dot {
+    position: absolute; left: -36px; top: 50%; transform: translateY(-50%);
+    width: 24px; height: 24px; border-radius: 50%;
+    background: #ebf8ff; color: #2b6cb0; display: flex; align-items: center; justify-content: center;
+    font-size: 11px; border: 2px solid #fff; box-shadow: 0 0 0 1px #cbd5e0;
+}
+.od-timeline-row.od-ms-derived .od-timeline-dot { background: #faf5ff; color: #6b46c1; box-shadow: 0 0 0 1px #d6bcfa; }
+html[data-theme="dark"] .od-timeline-dot { background: var(--ork-bg-tertiary); color: var(--ork-link); border-color: var(--ork-card-bg); box-shadow: 0 0 0 1px var(--ork-border); }
+.od-timeline-content {
+    flex: 1; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+    font-size: 13px;
+}
+.od-timeline-date { color: var(--ork-text-muted); font-size: 11px; font-weight: 600; min-width: 80px; }
+.od-timeline-desc { color: var(--ork-text); }
+.od-timeline-row.od-ms-derived .od-timeline-desc { color: #553c9a; }
+html[data-theme="dark"] .od-timeline-row.od-ms-derived .od-timeline-desc { color: hsl(265, 60%, 75%); }
+.od-timeline-empty {
+    font-size: 12px; color: #a0aec0; font-style: italic;
+    padding: 10px 0;
+}
+/* Collapsed overflow rows + "show all" toggle (markup/JS live in the template
+   and orgdesign.js). display:flex on expand — .od-timeline-row is a flex row. */
+.od-timeline-row.od-ms-collapsed { display: none; }
+.od-timeline.od-ms-expanded .od-timeline-row.od-ms-collapsed { display: flex; }
+.od-ms-more-btn {
+    background: transparent; border: 0; color: #718096;
+    font-size: 12px; cursor: pointer; padding: 2px 0; text-decoration: underline;
+    display: inline-flex; align-items: center; gap: 5px;
+}
+.od-ms-more-btn:hover { color: #2b6cb0; }
+html[data-theme="dark"] .od-ms-more-btn { color: var(--ork-text-muted); }
+html[data-theme="dark"] .od-ms-more-btn:hover { color: var(--ork-link); }
+@media (max-width: 600px) { .od-ms-more-btn { min-height: 44px; } }
+
+/* --- About-tab section layout (About / History / Milestones / Meta) -------- */
+.od-about-grid { display: block; }
+.od-about-section {
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+    padding: 16px 18px; margin-bottom: 14px;
+}
+html[data-theme="dark"] .od-about-section {
+    background: var(--ork-card-bg, #2d3748);
+    border-color: var(--ork-border, #4a5568);
+    color: var(--ork-text, #e2e8f0);
+}
+.od-about-label {
+    font-size: 13px; font-weight: 700; color: #4a5568;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    display: flex; align-items: center;
+}
+html[data-theme="dark"] .od-about-label { color: var(--ork-text-secondary); }
+.od-history-section { margin-top: 14px; }
+.od-timeline-section { margin-top: 14px; }
+
+.od-about-meta { padding: 12px 18px; }
+.od-about-meta-row {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; color: #4a5568; padding: 4px 0;
+}
+.od-about-meta-row i { color: #a0aec0; width: 16px; text-align: center; }
+.od-about-meta-row a { color: var(--ork-link); text-decoration: none; }
+.od-about-meta-row a:hover { text-decoration: underline; }
+html[data-theme="dark"] .od-about-meta-row { color: var(--ork-text); }
+html[data-theme="dark"] .od-about-meta-row i { color: var(--ork-text-muted); }
+
+/* --- Tagline --------------------------------------------------------------- */
+.od-tagline {
+    margin: 4px 0 6px 0;
+    font-size: 15px;
+    font-style: italic;
+    color: #e2e8f0;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+    line-height: 1.35;
+    max-width: 60ch;
+    overflow-wrap: anywhere;
+}
+
+/* --- Announcement banner --------------------------------------------------- */
+.od-announce {
+    background: linear-gradient(90deg, #fef3c7, #fde68a);
+    border-bottom: 2px solid #f59e0b;
+    color: #78350f;
+    padding: 10px 18px;
+    display: flex; align-items: center; gap: 12px;
+    font-size: 14px; line-height: 1.4;
+}
+.od-announce i.od-announce-icon {
+    font-size: 18px; color: #b45309; flex-shrink: 0;
+}
+.od-announce-body { flex: 1; }
+.od-announce-body strong { color: #78350f; margin-right: 6px; }
+.od-announce-until { font-size: 11px; color: #92400e; opacity: 0.85; white-space: nowrap; }
+html[data-theme="dark"] .od-announce {
+    background: linear-gradient(90deg, rgba(245,158,11,0.22), rgba(245,158,11,0.32));
+    border-bottom-color: #d97706;
+    color: #fde68a;
+}
+html[data-theme="dark"] .od-announce i.od-announce-icon { color: #fbbf24; }
+html[data-theme="dark"] .od-announce-body strong { color: #fef3c7; }
+html[data-theme="dark"] .od-announce-until { color: #fbbf24; }
+/* Dismiss control (FE#39) — visitor can hide the banner; a new/edited announcement re-appears */
+.od-announce-dismiss {
+    background: transparent; border: 0; cursor: pointer; color: #92400e;
+    font-size: 18px; line-height: 1; padding: 2px 6px; border-radius: 4px;
+    flex-shrink: 0; opacity: 0.7; position: relative;
+    margin-left: auto;
+}
+.od-announce-dismiss:hover { opacity: 1; background: rgba(146,64,14,0.12); }
+html[data-theme="dark"] .od-announce-dismiss { color: #fbbf24; }
+html[data-theme="dark"] .od-announce-dismiss:hover { background: rgba(251,191,36,0.18); }
+.od-announce-dismiss[data-tip]::after {
+    content: attr(data-tip); position: absolute; bottom: calc(100% + 6px); right: 0;
+    background: #2d3748; color: #fff; font-size: 11px; white-space: normal; width: max-content; max-width: 240px; line-height: 1.4;
+    padding: 3px 8px; border-radius: 4px; pointer-events: none; opacity: 0;
+    transition: opacity 0.12s; z-index: 600;
+}
+.od-announce-dismiss[data-tip]:hover::after { opacity: 1; transition-delay: 0.3s; }
+html[data-theme="dark"] .od-announce-dismiss[data-tip]::after { background: var(--ork-bg-tertiary); color: var(--ork-text); border: 1px solid var(--ork-border); }
+/* Narrow: the non-wrapping row needed ~380px inside a 308px box, pushing the
+   dismiss outside every scrollable ancestor (unreachable, not just offscreen). */
+@media (max-width: 600px) {
+    .od-announce { flex-wrap: wrap; }
+    /* order:1 pushes the message to line 2 so line 1 is icon + until + dismiss
+       (every other child keeps the initial order:0). */
+    .od-announce-body { flex: 1 1 100%; min-width: 0; order: 1; }
+}
+
+/* --- Connect (sidebar) — flat accent pills --------------------------------- */
+.od-connect-block { margin-top: 14px; padding-top: 12px; border-top: 1px dashed #e2e8f0; }
+html[data-theme="dark"] .od-connect-block { border-top-color: var(--ork-border); }
+.od-connect-subhead {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: #718096; font-weight: 600; margin-bottom: 8px;
+}
+html[data-theme="dark"] .od-connect-subhead { color: var(--ork-text-muted); }
+.od-connect-subhead i { margin-right: 4px; opacity: 0.6; }
+.od-connect-edit {
+    background: transparent; border: 0; cursor: pointer; color: #a0aec0; font-size: 11px; padding: 2px 6px; border-radius: 4px;
+}
+.od-connect-edit:hover { background: rgba(49,130,206,0.08); color: #2b6cb0; }
+html[data-theme="dark"] .od-connect-edit:hover { background: var(--ork-bg-tertiary); color: var(--ork-link); }
+.od-connect-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+.od-connect-pill {
+    width: 34px; height: 34px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: #fff !important; text-decoration: none !important;
+    font-size: 14px; line-height: 1;
+    background: var(--od-accent, var(--kn-accent, #2b6cb0));
+    transition: transform 0.12s, box-shadow 0.12s;
+    position: relative;
+}
+.od-connect-pill:hover { transform: scale(1.08); box-shadow: 0 3px 10px rgba(0,0,0,0.18); }
+@media (prefers-reduced-motion: reduce) {
+    .od-connect-pill { transition: none; }
+    .od-connect-pill:hover { transform: none; }
+}
+.od-connect-pill[data-tip]::after {
+    content: attr(data-tip); position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+    background: #2d3748; color: #fff; font-size: 11px; white-space: normal; width: max-content; max-width: 240px; line-height: 1.4;
+    padding: 3px 8px; border-radius: 4px; pointer-events: none; opacity: 0;
+    transition: opacity 0.12s; z-index: 600;
+}
+.od-connect-pill[data-tip]:hover::after { opacity: 1; transition-delay: 0.3s; }
+html[data-theme="dark"] .od-connect-pill[data-tip]::after {
+    background: var(--ork-bg-tertiary); color: var(--ork-text); border: 1px solid var(--ork-border);
+}
+.od-connect-empty {
+    display: inline-flex; font-size: 11px; color: #a0aec0; text-decoration: none;
+    padding: 4px 8px; border: 1px dashed #cbd5e0; border-radius: 999px;
+}
+.od-connect-empty:hover { color: #2b6cb0; border-color: #2b6cb0; }
+html[data-theme="dark"] .od-connect-empty { color: var(--ork-text-muted); border-color: var(--ork-border); }
+
+/* --- Reign banner (Kingdom only, but styles are org-neutral) --------------- */
+.od-reign-banner {
+    background: linear-gradient(135deg, #faf089 0%, #f6ad55 60%, #c05621 100%);
+    border: 1px solid #b7791f; border-radius: 10px;
+    padding: 14px 16px; margin-bottom: 14px;
+    color: #1a202c;
+    position: relative; overflow: hidden;
+}
+.od-reign-banner::before {
+    content: ''; position: absolute; inset: 0;
+    background: radial-gradient(circle at top right, rgba(255,255,255,0.18), transparent 60%);
+    pointer-events: none;
+}
+.od-reign-head {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.6px;
+    color: #744210;
+    margin-bottom: 10px;
+    position: relative;
+}
+.od-reign-head i { color: #b7791f; font-size: 14px; }
+.od-reign-grid {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;
+    position: relative;
+}
+.od-reign-card {
+    display: flex; align-items: center; gap: 12px;
+    min-width: 0;
+    background: rgba(255,255,255,0.78);
+    border: 1px solid rgba(116, 66, 16, 0.25);
+    border-radius: 8px;
+    padding: 10px 12px;
+    text-decoration: none;
+    color: #2d3748;
+    transition: background 0.15s, transform 0.12s;
+}
+.od-reign-card:hover { background: rgba(255,255,255,0.92); transform: translateY(-1px); }
+.od-reign-avatar {
+    width: 64px; height: 64px; border-radius: 50%;
+    object-fit: cover; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+    background: #cbd5e0; flex-shrink: 0;
+}
+.od-reign-card-body { flex: 1; min-width: 0; }
+.od-reign-role {
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+    color: #744210; opacity: 0.85;
+}
+.od-reign-name {
+    font-size: 15px; font-weight: 600; color: #1a202c;
+    line-height: 1.2; margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.od-reign-since {
+    font-size: 11px; color: #5c4309; opacity: 0.8; margin-top: 3px;
+}
+.od-reign-lore {
+    margin-top: 12px; position: relative;
+    background: rgba(255,255,255,0.65);
+    border-left: 3px solid #b7791f;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 13px; color: #2d3748;
+}
+.od-reign-empty {
+    position: relative;
+    font-size: 12px; color: #5c4309; font-style: italic;
+    padding: 6px 0;
+}
+html[data-theme="dark"] .od-reign-banner {
+    background: linear-gradient(135deg, #744210 0%, #7c2d12 60%, #4a1d0f 100%);
+    border-color: #b7791f;
+    color: #fef3c7;
+}
+html[data-theme="dark"] .od-reign-head { color: #fbbf24; }
+html[data-theme="dark"] .od-reign-head i { color: #fbd38d; }
+html[data-theme="dark"] .od-reign-card {
+    background: rgba(26, 32, 44, 0.65);
+    border-color: rgba(251, 191, 36, 0.3);
+    color: var(--ork-text);
+}
+html[data-theme="dark"] .od-reign-card:hover { background: rgba(26, 32, 44, 0.85); }
+html[data-theme="dark"] .od-reign-role { color: #fbd38d; }
+html[data-theme="dark"] .od-reign-name { color: var(--ork-text); }
+html[data-theme="dark"] .od-reign-since { color: #fbbf24; opacity: 0.85; }
+html[data-theme="dark"] .od-reign-lore {
+    background: rgba(26, 32, 44, 0.55);
+    color: var(--ork-text);
+    border-left-color: #fbbf24;
+}
+html[data-theme="dark"] .od-reign-empty { color: #fbd38d; }
+/* Edit button + "set dates" link sit on the amber/brown reign banner — need
+   banner-tuned colors that stay legible in BOTH themes (the base .od-about-edit-btn
+   gray is too faint on the banner, and a hardcoded dark brown vanishes in dark mode). */
+.od-reign-edit-btn.od-about-edit-btn { color: #744210; }
+.od-reign-edit-btn.od-about-edit-btn:hover { background: rgba(116,66,16,0.12); color: #5c340c; border-color: rgba(116,66,16,0.3); }
+html[data-theme="dark"] .od-reign-edit-btn.od-about-edit-btn { color: #fbbf24; }
+html[data-theme="dark"] .od-reign-edit-btn.od-about-edit-btn:hover { background: rgba(251,191,36,0.15); color: #fde68a; border-color: rgba(251,191,36,0.35); }
+.od-reign-link { color: #744210; text-decoration: underline; }
+.od-reign-link:hover { color: #5c340c; }
+html[data-theme="dark"] .od-reign-link { color: #fbbf24; }
+html[data-theme="dark"] .od-reign-link:hover { color: #fde68a; }
+/* Narrow reign layout — MUST stay at the end of the reign section: a media query
+   adds no specificity, so it only wins against the base .od-reign-* rules (and
+   the equal-specificity dark ones) by appearing after them in source order. */
+@media (max-width: 600px) {
+    .od-reign-grid { grid-template-columns: minmax(0, 1fr); }
+    .od-reign-avatar { width: 48px; height: 48px; }
+    /* Long personae ('Neiva Guerrera Scarlet Morningstar') should wrap, not ellipse. */
+    .od-reign-name { white-space: normal; }
+}
+
+/* --- Unpublished badge (manager-only, About not yet enabled) --------------- */
+.od-about-unpublished {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #fffaf0; border: 1px solid #f6e05e; color: #975a16;
+    border-radius: 6px; padding: 6px 12px; font-size: 12px; font-weight: 600;
+    margin-bottom: 14px;
+}
+.od-about-unpublished i { font-size: 11px; }
+html[data-theme="dark"] .od-about-unpublished { background: rgba(246,224,94,0.12); border-color: rgba(246,224,94,0.4); color: #f6e05e; }
+
+/* ============================================================================
+   Design Modal (od-dm-*)
+   ============================================================================ */
+.od-dm-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 10000;
+    display: none; align-items: center; justify-content: center; padding: 20px;
+}
+.od-dm-overlay.od-open { display: flex; }
+.od-dm-modal {
+    background: #fff; border-radius: 10px; width: 720px; max-width: calc(100vw - 40px);
+    max-height: 88vh; /* fallback for browsers without svh */
+    /* svh (small viewport), not dvh: dvh makes the modal resize continuously as
+       the iOS toolbar shows/hides; svh keeps it stable and the footer reachable. */
+    max-height: min(88vh, 88svh);
+    display: flex; flex-direction: column; overflow: hidden;
+    box-shadow: 0 18px 50px rgba(0,0,0,0.35);
+}
+html[data-theme="dark"] .od-dm-modal { background: var(--ork-card-bg); color: var(--ork-text); }
+.od-dm-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px; border-bottom: 1px solid #e2e8f0;
+}
+html[data-theme="dark"] .od-dm-header { border-color: var(--ork-border); background: var(--ork-bg-secondary); }
+.od-dm-title {
+    margin: 0; font-size: 16px; font-weight: 700; color: var(--ork-text);
+    background: transparent; border: none; padding: 0; border-radius: 0; text-shadow: none;
+    display: inline-flex; align-items: center; gap: 8px;
+}
+.od-dm-close {
+    background: transparent; border: 0; font-size: 22px; cursor: pointer; color: var(--ork-text-muted);
+    width: 32px; height: 32px; border-radius: 6px;
+}
+.od-dm-close:hover { background: #f7fafc; color: #2d3748; }
+html[data-theme="dark"] .od-dm-close:hover { background: var(--ork-bg-tertiary); color: var(--ork-text); }
+.od-dm-tabs {
+    display: flex; gap: 4px; padding: 8px 18px 0 18px; border-bottom: 1px solid #e2e8f0;
+    background: #f7fafc;
+}
+html[data-theme="dark"] .od-dm-tabs { background: var(--ork-bg-secondary); border-color: var(--ork-border); }
+.od-dm-tab {
+    background: transparent; border: 1px solid transparent; border-bottom: none;
+    padding: 8px 14px; font-size: 13px; font-weight: 600; color: #718096; cursor: pointer;
+    border-radius: 6px 6px 0 0; display: inline-flex; align-items: center; gap: 6px;
+}
+.od-dm-tab.od-active {
+    background: #fff; color: #2b6cb0; border-color: #e2e8f0; border-bottom: 1px solid #fff;
+    margin-bottom: -1px;
+}
+html[data-theme="dark"] .od-dm-tab { color: var(--ork-text-secondary); }
+html[data-theme="dark"] .od-dm-tab.od-active {
+    background: var(--ork-card-bg); color: var(--ork-link); border-color: var(--ork-border);
+    border-bottom-color: var(--ork-card-bg);
+}
+/* Narrow only: the 3-tab strip fits at 451px, so scrolling is a <=600px concern.
+   Unscoped, overflow-x:auto forces overflow-y to auto and clips the active tab's
+   deliberate -1px overhang, leaving a hairline under it at every width.
+   Both blocks MUST follow the base + dark .od-dm-tab(s) rules above — media
+   queries add no specificity. */
+@media (max-width: 600px) {
+    .od-dm-tabs {
+        flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch;
+        scrollbar-width: none; padding-left: 10px; padding-right: 10px;
+    }
+    .od-dm-tabs::-webkit-scrollbar { display: none; }
+    .od-dm-tab { flex: 0 0 auto; padding: 8px 10px; }
+}
+.od-dm-body { padding: 18px; overflow-y: auto; overflow-x: hidden; flex: 1; }
+/* Reign date pair — two inputs that could not shrink below their intrinsic
+   width and forced a nested horizontal scroller inside the panel. */
+.od-dm-date-pair {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px; margin-bottom: 10px;
+}
+/* The grid items are wrapper divs, not the inputs — minmax(0,1fr) on the track
+   does not defeat their own min-width:auto. */
+.od-dm-date-pair > * { min-width: 0; }
+@media (max-width: 600px) { .od-dm-date-pair { grid-template-columns: 1fr; } }
+/* Opt-in toggle bar */
+.od-dm-optin {
+    display: flex; align-items: flex-start; gap: 12px;
+    background: #ebf8ff; border: 1px solid #bee3f8; border-radius: 8px;
+    padding: 12px 14px; margin-bottom: 14px;
+}
+html[data-theme="dark"] .od-dm-optin { background: rgba(43,108,176,0.12); border-color: var(--ork-border); }
+.od-dm-optin-switch { position: relative; display: inline-block; width: 42px; height: 24px; flex: 0 0 auto; margin-top: 2px; cursor: pointer; }
+.od-dm-optin-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.od-dm-optin-slider {
+    position: absolute; inset: 0; background: #cbd5e0; border-radius: 999px;
+    transition: background .15s ease;
+}
+.od-dm-optin-slider::before {
+    content: ''; position: absolute; height: 18px; width: 18px; left: 3px; top: 3px;
+    background: #fff; border-radius: 50%; transition: transform .15s ease;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+}
+.od-dm-optin-switch input:checked + .od-dm-optin-slider { background: #2b6cb0; }
+.od-dm-optin-switch input:checked + .od-dm-optin-slider::before { transform: translateX(18px); }
+.od-dm-optin-switch input:focus-visible + .od-dm-optin-slider { box-shadow: 0 0 0 2px #2b6cb0; }
+html[data-theme="dark"] .od-dm-optin-slider { background: var(--ork-border); }
+html[data-theme="dark"] .od-dm-optin-switch input:checked + .od-dm-optin-slider { background: var(--ork-link); }
+.od-dm-optin-text { flex: 1; }
+.od-dm-optin-label { font-size: 13px; font-weight: 700; color: #2c5282; background: transparent; border: none; padding: 0; border-radius: 0; margin: 0; }
+.od-dm-optin-hint { font-size: 12px; color: #4a5568; margin-top: 3px; line-height: 1.4; }
+html[data-theme="dark"] .od-dm-optin-label { color: var(--ork-link); }
+html[data-theme="dark"] .od-dm-optin-hint { color: var(--ork-text-secondary); }
+.od-dm-panel { display: none; }
+.od-dm-panel.od-active { display: block; }
+.od-dm-error {
+    display: none; background: #fff5f5; border: 1px solid #fc8181; color: #9b2c2c;
+    border-radius: 6px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px;
+}
+html[data-theme="dark"] .od-dm-error { background: rgba(252,129,129,0.1); color: #fc8181; }
+.od-dm-field { margin-bottom: 14px; }
+.od-dm-field label {
+    display: block; font-size: 12px; font-weight: 700; color: #4a5568;
+    text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 4px;
+}
+html[data-theme="dark"] .od-dm-field label { color: var(--ork-text-secondary); }
+.od-dm-field input[type="text"],
+.od-dm-field input[type="date"],
+.od-dm-field textarea,
+.od-dm-field select {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--ork-input-border); border-radius: 6px;
+    font-size: 14px; color: var(--ork-text); box-sizing: border-box; background: var(--ork-input-bg);
+    font-family: inherit;
+}
+.od-dm-field textarea { min-height: 140px; resize: vertical; line-height: 1.5; }
+.od-dm-hint { font-size: 12px; color: var(--ork-text-muted); margin-top: 4px; }
+.od-dm-footer {
+    border-top: 1px solid #e2e8f0; padding: 12px 18px;
+    display: flex; justify-content: flex-end; gap: 8px; background: #f7fafc;
+}
+html[data-theme="dark"] .od-dm-footer { background: var(--ork-bg-secondary); border-color: var(--ork-border); }
+.od-dm-btn {
+    padding: 8px 16px; font-size: 13px; font-weight: 600; border-radius: 6px;
+    border: 1px solid #cbd5e0; background: #fff; color: #2d3748; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+}
+html[data-theme="dark"] .od-dm-btn { background: var(--ork-bg-tertiary); border-color: var(--ork-border); color: var(--ork-text); }
+.od-dm-btn-primary { background: #3182ce; color: #fff; border-color: #3182ce; }
+.od-dm-btn-primary:hover { background: #2c5282; border-color: #2c5282; }
+.od-dm-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+/* Must follow html[data-theme="dark"] .od-dm-btn (0,2,1) or the primary fill is
+   erased in dark mode and Save reads identical to Cancel. */
+html[data-theme="dark"] .od-dm-btn-primary { background: var(--ork-link); border-color: var(--ork-link); color: #fff; }
+html[data-theme="dark"] .od-dm-btn-primary:hover { background: #2c5282; border-color: #2c5282; color: #fff; }
+@media (max-width: 600px) {
+    .od-dm-footer { gap: 16px; }
+    .od-dm-btn { min-height: 44px; }
+}
+
+.od-dm-preset-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; }
+.od-dm-swatch {
+    height: 40px; border-radius: 6px; cursor: pointer; border: 2px solid transparent;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1) inset;
+}
+.od-dm-swatch.od-selected { border-color: #2b6cb0; transform: scale(1.06); box-shadow: 0 0 0 2px #fff, 0 0 0 4px #2b6cb0; }
+/* 8 columns collapse to ~23px swatches at 320px — half a fingertip. */
+@media (max-width: 600px) {
+    .od-dm-preset-grid { grid-template-columns: repeat(4, minmax(44px, 1fr)); }
+    .od-dm-swatch { height: 44px; }
+}
+html[data-theme="dark"] .od-dm-swatch.od-selected { box-shadow: 0 0 0 2px var(--ork-card-bg), 0 0 0 4px var(--ork-link); }
+.od-dm-color-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.od-dm-color-col { flex: 1; min-width: 180px; }
+.od-dm-color-input { display: flex; align-items: center; gap: 6px; }
+.od-dm-color-input input[type="color"] {
+    width: 38px; height: 36px; border: 1px solid var(--ork-input-border); border-radius: 6px;
+    padding: 0; background: transparent; cursor: pointer;
+}
+.od-dm-color-input input[type="text"] { flex: 1; }
+
+/* Reset colors to default (sends empty so the server clears the columns) */
+.od-dm-color-reset {
+    margin-top: 10px; background: transparent; border: 0; color: #718096;
+    font-size: 12px; cursor: pointer; padding: 2px 0; text-decoration: underline;
+    display: inline-flex; align-items: center; gap: 5px;
+}
+.od-dm-color-reset:hover { color: #2b6cb0; }
+html[data-theme="dark"] .od-dm-color-reset { color: var(--ork-text-muted); }
+html[data-theme="dark"] .od-dm-color-reset:hover { color: var(--ork-link); }
+
+/* Live hero preview (Header tab) — approximates the emitted hero: primary /
+   gradient background, name font, overlay wash, vignette, and tagline. The hero
+   itself is a colored surface with white text in both themes (like the real
+   hero), so only its border needs a dark-mode rule. */
+.od-dm-preview-hero {
+    position: relative; overflow: hidden; min-height: 96px;
+    border-radius: 8px; border: 1px solid #cbd5e0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 18px 16px; text-align: center; gap: 4px; background: #2c5282;
+}
+html[data-theme="dark"] .od-dm-preview-hero { border-color: var(--ork-border); }
+.od-dm-preview-hero::before {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(circle at 50% 40%, rgba(255,255,255,var(--od-preview-overlay, 0.13)), rgba(255,255,255,0) 70%);
+}
+.od-dm-preview-hero.od-preview-vignette::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center, rgba(0,0,0,0) 40%, rgba(0,0,0,0.45) 100%);
+}
+.od-dm-preview-name {
+    position: relative; z-index: 1; font-size: 26px; font-weight: 700;
+    color: #fff; line-height: 1.15; text-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
+.od-dm-preview-tagline {
+    position: relative; z-index: 1; font-size: 13px; font-style: italic;
+    color: #e2e8f0; text-shadow: 0 1px 2px rgba(0,0,0,0.4); max-width: 40ch;
+}
+
+.od-dm-overlay-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.od-dm-overlay-btn {
+    flex: 1; min-width: 80px; padding: 8px 10px; font-size: 12px; font-weight: 600;
+    border: 1px solid #cbd5e0; border-radius: 6px; background: #fff; color: #4a5568; cursor: pointer;
+}
+.od-dm-overlay-btn.od-active { background: #2b6cb0; color: #fff; border-color: #2b6cb0; }
+html[data-theme="dark"] .od-dm-overlay-btn { background: var(--ork-bg-tertiary); border-color: var(--ork-border); color: var(--ork-text-secondary); }
+html[data-theme="dark"] .od-dm-overlay-btn.od-active { background: var(--ork-link); color: var(--ork-bg-secondary); border-color: var(--ork-link); }
+
+.od-dm-font-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.od-dm-font-card {
+    border: 1px solid #cbd5e0; border-radius: 8px; padding: 10px 8px; cursor: pointer;
+    text-align: center; background: #fff;
+}
+.od-dm-font-card.od-active { border-color: #2b6cb0; background: #ebf8ff; box-shadow: 0 0 0 1px #2b6cb0; }
+html[data-theme="dark"] .od-dm-font-card { background: var(--ork-bg-tertiary); border-color: var(--ork-border); }
+html[data-theme="dark"] .od-dm-font-card.od-active { background: rgba(43,108,176,0.15); border-color: var(--ork-link); box-shadow: 0 0 0 1px var(--ork-link); }
+.od-dm-font-sample { font-size: 19px; font-weight: 600; color: #2d3748; line-height: 1.2; margin-bottom: 4px; }
+html[data-theme="dark"] .od-dm-font-sample { color: var(--ork-text); }
+.od-dm-font-label { font-size: 11px; color: #718096; }
+html[data-theme="dark"] .od-dm-font-label { color: var(--ork-text-muted); }
+
+.od-dm-md-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
+.od-dm-md-toggle { display: inline-flex; background: #edf2f7; border-radius: 6px; padding: 3px; gap: 3px; }
+.od-dm-md-toggle button {
+    background: transparent; border: 0; padding: 5px 10px; font-size: 12px; font-weight: 600;
+    cursor: pointer; border-radius: 4px; color: #718096;
+}
+.od-dm-md-toggle button.od-active { background: #fff; color: #2b6cb0; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+html[data-theme="dark"] .od-dm-md-toggle { background: var(--ork-bg-tertiary); }
+html[data-theme="dark"] .od-dm-md-toggle button.od-active { background: var(--ork-card-bg); color: var(--ork-link); }
+.od-dm-md-quick { display: flex; flex-wrap: wrap; gap: 6px; }
+.od-dm-md-quick-btn {
+    background: #fff; border: 1px solid #cbd5e0; color: #4a5568;
+    padding: 5px 10px; border-radius: 14px; font-size: 11px; font-weight: 600;
+    cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
+}
+.od-dm-md-quick-btn:hover { background: #ebf8ff; color: #2b6cb0; border-color: #90cdf4; }
+html[data-theme="dark"] .od-dm-md-quick-btn { background: var(--ork-bg-tertiary); border-color: var(--ork-border); color: var(--ork-text-secondary); }
+html[data-theme="dark"] .od-dm-md-quick-btn:hover { background: var(--ork-bg-secondary); color: var(--ork-link); border-color: var(--ork-link); }
+.od-dm-md-preview {
+    border: 1px solid #cbd5e0; border-radius: 6px; padding: 12px 14px;
+    min-height: 140px; background: #fafafa; font-size: 14px; line-height: 1.55; color: #2d3748;
+}
+html[data-theme="dark"] .od-dm-md-preview { background: var(--ork-bg-secondary); border-color: var(--ork-border); color: var(--ork-text); }
+.od-dm-md-preview h1, .od-dm-md-preview h2, .od-dm-md-preview h3, .od-dm-md-preview h4 {
+    background: transparent; border: none; padding: 0; border-radius: 0; text-shadow: none;
+    margin-top: 0.9em; margin-bottom: 0.3em;
+}
+
+.od-dm-ms-toggles { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-bottom: 14px; }
+.od-dm-ms-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #4a5568; }
+html[data-theme="dark"] .od-dm-ms-toggle { color: var(--ork-text-secondary); }
+/* No inner scroller: .od-dm-body is the only one. An overflow value other than
+   visible clips on BOTH axes, which ate the row buttons' data-tip bubbles. */
+.od-dm-ms-list { border: 1px solid #e2e8f0; border-radius: 6px; margin-bottom: 12px; }
+html[data-theme="dark"] .od-dm-ms-list { border-color: var(--ork-border); background: var(--ork-bg-secondary); }
+.od-dm-ms-row {
+    display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #edf2f7;
+    font-size: 13px;
+}
+html[data-theme="dark"] .od-dm-ms-row { border-color: var(--ork-border); }
+.od-dm-ms-row:last-child { border-bottom: none; }
+.od-dm-ms-row > i { color: #2b6cb0; width: 18px; text-align: center; }
+.od-dm-ms-row .od-dm-ms-desc { flex: 1; color: #2d3748; }
+html[data-theme="dark"] .od-dm-ms-row .od-dm-ms-desc { color: var(--ork-text); }
+.od-dm-ms-row .od-dm-ms-date { color: #718096; font-size: 11px; min-width: 90px; }
+html[data-theme="dark"] .od-dm-ms-row .od-dm-ms-date { color: var(--ork-text-muted); }
+html[data-theme="dark"] .od-dm-ms-row > i { color: var(--ork-link); }
+html[data-theme="dark"] .od-dm-ms-row button { color: #fc8181; }
+html[data-theme="dark"] .od-dm-ms-row button:hover { background: var(--ork-bg-tertiary); }
+.od-dm-ms-row button {
+    background: transparent; border: 0; color: #e53e3e; cursor: pointer; padding: 4px 6px;
+}
+.od-dm-ms-row button[data-tip] { position: relative; }
+.od-dm-ms-row button[data-tip]::after {
+    /* Below the button: an upward tip on the first row would sit above the list's
+       top edge, where the modal body's own scroll boundary can cut it off. */
+    content: attr(data-tip); position: absolute; top: calc(100% + 4px); right: 0;
+    background: #2d3748; color: #fff; font-size: 11px; white-space: normal; width: max-content; max-width: 240px; line-height: 1.4;
+    padding: 3px 8px; border-radius: 4px; pointer-events: none; opacity: 0;
+    transition: opacity 0.12s; z-index: 600;
+}
+.od-dm-ms-row button[data-tip]:hover::after { opacity: 1; transition-delay: 0.3s; }
+html[data-theme="dark"] .od-dm-ms-row button[data-tip]::after {
+    background: var(--ork-bg-tertiary); color: var(--ork-text); border: 1px solid var(--ork-border);
+}
+/* Edit affordance (FE#27) — neutral color so it reads distinct from the red delete */
+.od-dm-ms-row button[data-ms-edit] { color: #718096; }
+.od-dm-ms-row button[data-ms-edit]:hover { background: rgba(49,130,206,0.08); color: #2b6cb0; }
+html[data-theme="dark"] .od-dm-ms-row button[data-ms-edit] { color: var(--ork-text-muted); }
+html[data-theme="dark"] .od-dm-ms-row button[data-ms-edit]:hover { background: var(--ork-bg-tertiary); color: var(--ork-link); }
+
+/* Cancel-edit control (FE#27) — returns the add-row to plain add mode */
+.od-dm-ms-edit-cancel {
+    margin-top: 8px; background: transparent; border: 0; color: #718096;
+    font-size: 12px; cursor: pointer; padding: 2px 0; text-decoration: underline;
+    display: inline-flex; align-items: center; gap: 5px;
+}
+.od-dm-ms-edit-cancel:hover { color: #c53030; }
+html[data-theme="dark"] .od-dm-ms-edit-cancel { color: var(--ork-text-muted); }
+html[data-theme="dark"] .od-dm-ms-edit-cancel:hover { color: #fc8181; }
+
+/* Narrow: unclip the destructive delete (was half off the modal edge). */
+@media (max-width: 600px) {
+    .od-dm-ms-row { flex-wrap: wrap; }
+    .od-dm-ms-row .od-dm-ms-desc { flex: 1 1 100%; min-width: 0; }
+    .od-dm-ms-row .od-dm-ms-date { margin-left: auto; }
+    .od-dm-ms-row button { min-width: 44px; min-height: 44px; }
+    .od-dm-ms-row button[data-ms-del] { margin-left: 16px; }
+}
+
+.od-dm-ms-add { display: grid; grid-template-columns: 1fr 140px 90px; gap: 8px; align-items: end; }
+@media (max-width: 600px) { .od-dm-ms-add { grid-template-columns: 1fr; } }
+.od-dm-ms-icons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.od-dm-ms-icon-opt {
+    width: 28px; height: 28px; border: 1px solid #cbd5e0; border-radius: 6px;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+    background: #fff; color: #4a5568;
+}
+.od-dm-ms-icon-opt.od-active { background: #2b6cb0; color: #fff; border-color: #2b6cb0; }
+html[data-theme="dark"] .od-dm-ms-icon-opt { background: var(--ork-bg-tertiary); border-color: var(--ork-border); color: var(--ork-text-secondary); }
+html[data-theme="dark"] .od-dm-ms-icon-opt.od-active { background: var(--ork-link); color: var(--ork-bg-secondary); border-color: var(--ork-link); }
+
+/* Social input rows (About panel) */
+.od-dm-social-row {
+    display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 8px; align-items: center;
+    padding: 5px 0; border-bottom: 1px solid #edf2f7;
+}
+.od-dm-social-row:last-child { border-bottom: none; }
+html[data-theme="dark"] .od-dm-social-row { border-bottom-color: var(--ork-border); }
+.od-dm-social-label {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 600; color: #4a5568;
+}
+html[data-theme="dark"] .od-dm-social-label { color: var(--ork-text-secondary); }
+.od-dm-social-icon-chip {
+    width: 22px; height: 22px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 11px;
+}
+.od-dm-social-row input[type="url"] {
+    width: 100%; min-width: 0; padding: 6px 8px; font-size: 12px;
+    border: 1px solid #cbd5e0; border-radius: 4px;
+    background: #fff; color: #2d3748;
+    box-sizing: border-box;
+}
+html[data-theme="dark"] .od-dm-social-row input[type="url"] {
+    background: var(--ork-bg-tertiary); border-color: var(--ork-border); color: var(--ork-text);
+}
+/* Host themes vary on whether input[type=url] is in their iOS zoom-prevention
+   list (revised-frontend omitted it) — make the shared component self-sufficient. */
+@media (max-width: 768px) {
+    .od-dm-social-row input[type="url"] { font-size: 16px; }
+}
+@media (max-width: 600px) {
+    .od-dm-social-row { grid-template-columns: 1fr; gap: 4px; }
+}
+
+/* Recruitment segmented control (Unit only; org-neutral styles) */
+.od-dm-recruit-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.od-dm-recruit-opt {
+    padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer;
+    border: 1px solid #e2e8f0; border-radius: 6px; background: #fff; color: #4a5568;
+}
+.od-dm-recruit-opt:hover { border-color: #cbd5e0; }
+.od-dm-recruit-opt.od-active { background: #2b6cb0; color: #fff; border-color: #2b6cb0; }
+html[data-theme="dark"] .od-dm-recruit-opt { background: var(--ork-bg-tertiary); border-color: var(--ork-border); color: var(--ork-text-secondary); }
+html[data-theme="dark"] .od-dm-recruit-opt.od-active { background: var(--ork-link); color: var(--ork-bg-secondary); border-color: var(--ork-link); }
+
+.od-dm-counter {
+    font-size: 11px; color: #718096; text-align: right; margin-top: 4px;
+}
+html[data-theme="dark"] .od-dm-counter { color: var(--ork-text-muted); }
+.od-dm-counter.od-over { color: #c53030; font-weight: 600; }
+
+/* Announcement lifecycle indicator (FE#39) — Live / Scheduled / Expired pill */
+.od-dm-announce-status {
+    display: inline-block; margin-top: 8px; padding: 3px 10px; border-radius: 999px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+}
+.od-dm-announce-status.od-live      { background: #c6f6d5; color: #22543d; }
+.od-dm-announce-status.od-scheduled { background: #bee3f8; color: #2a4365; }
+.od-dm-announce-status.od-expired   { background: #fed7d7; color: #822727; }
+.od-dm-announce-status.od-neutral   { background: #edf2f7; color: #4a5568; }
+html[data-theme="dark"] .od-dm-announce-status.od-live      { background: rgba(72,187,120,0.2); color: #9ae6b4; }
+html[data-theme="dark"] .od-dm-announce-status.od-scheduled { background: rgba(66,153,225,0.2); color: #90cdf4; }
+html[data-theme="dark"] .od-dm-announce-status.od-expired   { background: rgba(252,129,129,0.18); color: #feb2b2; }
+html[data-theme="dark"] .od-dm-announce-status.od-neutral   { background: var(--ork-bg-tertiary); color: var(--ork-text-secondary); }
+
+/* --- In-product confirm fallback (no native confirm/alert) ----------------- */
+.od-confirm-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 10010;
+    display: none; align-items: center; justify-content: center; padding: 20px;
+}
+.od-confirm-overlay.od-open { display: flex; }
+.od-confirm-box {
+    background: #fff; border-radius: 10px; width: 380px; max-width: calc(100vw - 40px);
+    box-shadow: 0 18px 50px rgba(0,0,0,0.35); overflow: hidden;
+}
+html[data-theme="dark"] .od-confirm-box { background: var(--ork-card-bg); color: var(--ork-text); }
+.od-confirm-head {
+    font-size: 15px; font-weight: 700; color: #2d3748; padding: 16px 18px 4px 18px;
+    background: transparent; border: none;
+}
+html[data-theme="dark"] .od-confirm-head { color: var(--ork-text); }
+.od-confirm-body { font-size: 13px; color: #4a5568; padding: 4px 18px 16px 18px; line-height: 1.45; }
+html[data-theme="dark"] .od-confirm-body { color: var(--ork-text-secondary); }
+.od-confirm-foot {
+    display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px;
+    border-top: 1px solid #e2e8f0; background: #f7fafc;
+}
+html[data-theme="dark"] .od-confirm-foot { background: var(--ork-bg-secondary); border-color: var(--ork-border); }
+.od-confirm-btn {
+    padding: 8px 16px; font-size: 13px; font-weight: 600; border-radius: 6px;
+    border: 1px solid #cbd5e0; background: #fff; color: #2d3748; cursor: pointer;
+}
+html[data-theme="dark"] .od-confirm-btn { background: var(--ork-bg-tertiary); border-color: var(--ork-border); color: var(--ork-text); }
+.od-confirm-btn-danger { background: #e53e3e; color: #fff; border-color: #e53e3e; }
+.od-confirm-btn-danger:hover { background: #c53030; border-color: #c53030; }
+/* Must follow html[data-theme="dark"] .od-confirm-btn (0,2,1), else the
+   destructive fill is erased and Delete reads identical to Cancel. */
+html[data-theme="dark"] .od-confirm-btn-danger { background: #e53e3e; border-color: #e53e3e; color: #fff; }
+html[data-theme="dark"] .od-confirm-btn-danger:hover { background: #c53030; border-color: #c53030; color: #fff; }
+@media (max-width: 600px) {
+    .od-confirm-foot { gap: 16px; }
+    .od-confirm-btn { min-height: 44px; }
+}
+
+/* Unpublished-badge tooltip (data-tip) — wrapping, on-screen, dark-mode aware */
+.od-about-unpublished[data-tip] { position: relative; }
+.od-about-unpublished[data-tip]::after {
+    content: attr(data-tip); position: absolute; top: calc(100% + 6px); left: 0;
+    background: #2d3748; color: #fff; font-size: 11px; white-space: normal; width: max-content; max-width: 240px; line-height: 1.4;
+    padding: 6px 10px; border-radius: 4px; pointer-events: none; opacity: 0; transition: opacity 0s; z-index: 500;
+}
+.od-about-unpublished[data-tip]:hover::after { opacity: 1; transition-delay: 0.4s; }
+html[data-theme="dark"] .od-about-unpublished[data-tip]::after { background: var(--ork-bg-tertiary); color: var(--ork-text); border: 1px solid var(--ork-border); }
+
+/* ============================================================================
+   Touch hit areas (narrow widths only)
+   No od- control reached 44x44 and the gutters are too tight for the WCAG
+   2.5.5 spacing exception. Controls whose visual size must be preserved get an
+   invisible ::before overlay; the rest are padded up.
+   (.od-dm-ms-row buttons and the preset swatches are handled in their own
+   sections above — do not restate them here.)
+   ============================================================================ */
+@media (max-width: 600px) {
+    .od-connect-pill::before {
+        content: ''; position: absolute; top: 50%; left: 50%;
+        transform: translate(-50%, -50%); width: 44px; height: 44px;
+        z-index: 0; /* stays under the [data-tip]::after tooltip (z-index 600) */
+    }
+    /* 34px pill + 8px gutter = 42px pitch, so the 44px ::before overlays overlap;
+       10px takes the effective target to a true 44px. */
+    .od-connect-pills { gap: 10px; }
+    .od-connect-edit { min-width: 44px; min-height: 44px; }
+    .od-about-edit-btn { min-height: 44px; padding: 4px 12px; }
+    .od-announce-dismiss { min-width: 44px; min-height: 44px; }
+    .od-dm-ms-icon-opt { width: 44px; height: 44px; }
+    .od-dm-recruit-opt { min-height: 44px; }
+    .od-dm-close { width: 44px; height: 44px; }
+}

@@ -476,6 +476,21 @@ class Controller_Kingdom extends Controller
         $this->data['PronounList']          = $this->Pronoun->fetch_pronoun_list();
         $this->data['PronounOptionsCreate'] = $this->Pronoun->fetch_pronoun_option_list(null);
         $this->data['IcsUrl'] = self::ics_feed_url((int)$kingdom_id);
+
+        // Custom + derived milestones, merged into one timeline-ready array.
+        // The timeline only renders when the org has opted into the new About
+        // design (AboutEnabled) or the viewer can manage the kingdom, so only
+        // pay for the fetch+merge in those cases.
+        $milestones = [];
+        $_msAboutEnabled = (int)($this->data['kingdom_info']['Info']['KingdomInfo']['AboutEnabled'] ?? 0);
+        if ($_msAboutEnabled === 1 || !empty($this->data['CanManageKingdom'])) {
+            $milestones = $this->Kingdom->get_merged_kingdom_milestones((int)$kingdom_id);
+        }
+        $this->data['Milestones'] = $milestones;
+
+        // Authoritative social-platform slugs, so the template's icon/label table
+        // can never offer an input the domain would silently discard on save.
+        $this->data['OdSocialPlatformSlugs'] = $this->Kingdom->kingdom_design_social_platforms();
     }
 
     // ------------------------------------------------------------------ ICS Feed

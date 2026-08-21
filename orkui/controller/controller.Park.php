@@ -158,6 +158,21 @@ class Controller_Park extends Controller
         $this->data['CanMergePlayers'] = $uid > 0
             && $this->Authorization->has_authority($uid, AUTH_PARK, (int)$park_id, AUTH_CREATE);
 
+        // Custom + derived milestones, merged into one timeline-ready array.
+        // The timeline only renders when the org has opted into the new About
+        // design (AboutEnabled) or the viewer can admin the park, so only pay
+        // for the fetch+merge in those cases.
+        $milestones = [];
+        $_msAboutEnabled = (int)($this->data['park_info']['ParkInfo']['AboutEnabled'] ?? 0);
+        if ($_msAboutEnabled === 1 || !empty($this->data['CanAdminPark'])) {
+            $milestones = $this->Park->get_merged_park_milestones((int)$park_id);
+        }
+        $this->data['Milestones'] = $milestones;
+
+        // Authoritative social-platform slugs, so the template's icon/label table
+        // can never offer an input the domain would silently discard on save.
+        $this->data['OdSocialPlatformSlugs'] = $this->Park->park_design_social_platforms();
+
         $knConfigs  = Common::get_configs($this->session->kingdom_id, CFG_KINGDOM);
         $recsPublic = isset($knConfigs['AwardRecsPublic'])
             ? (bool)(int)$knConfigs['AwardRecsPublic']['Value']
