@@ -54,7 +54,7 @@ class Controller_Park extends Controller
         $this->data[ 'park_info' ] = $this->Park->get_park_details($park_id);
         $_park_officers = $this->Park->get_officers($park_id, $this->session->token);
         $this->data[ 'park_officers' ] = array('Officers' => is_array($_park_officers) ? $_park_officers : array());
-        // [TOURNAMENTS HIDDEN] $this->data['park_tournaments'] = [];
+        $this->data['park_tournaments'] = $this->Reports->get_tournaments(null, null, $park_id);
     }
 
     public function profile($park_id = null)

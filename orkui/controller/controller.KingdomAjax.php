@@ -722,8 +722,9 @@ class Controller_KingdomAjax extends Controller
         }
 
         $q                = trim($_GET['q']               ?? '');
-        $scope            = trim($_GET['scope']           ?? 'own'); // 'own' | 'exclude'
+        $scope            = trim($_GET['scope']           ?? 'own'); // 'own' | 'exclude' | 'all' | 'tiered'
         $park_id          = (int)($_GET['park_id']        ?? 0);
+        $tier_park        = (int)($_GET['ParkId']         ?? 0); // tiered-scope park ranking
         $include_inactive  = !empty($_GET['include_inactive']);
         $include_suspended = !empty($_GET['include_suspended']);
         if (strlen($q) < 2) {
@@ -736,6 +737,10 @@ class Controller_KingdomAjax extends Controller
             $scopeKey = 'kingdom_exclude';
         } elseif ($scope === 'all') {
             $scopeKey = 'kingdom_all';
+        } elseif ($scope === 'tiered') {
+            // Non-exclusionary: include every kingdom, but rank by proximity to the
+            // event (same-park first when supplied, then same-kingdom, then everyone).
+            $scopeKey = $tier_park > 0 ? 'park_all' : 'kingdom_all';
         }
 
         $this->load_model('Search');
@@ -743,6 +748,8 @@ class Controller_KingdomAjax extends Controller
             'Query'            => $q,
             'Scope'            => $scopeKey,
             'KingdomId'        => $kingdom_id,
+            'ParkId'           => $tier_park,
+            'Prioritize'       => ($scope === 'tiered' && $tier_park > 0),
             'ScopeParkId'      => $park_id,
             'IncludeInactive'  => $include_inactive,
             'IncludeSuspended' => $include_suspended,

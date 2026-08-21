@@ -2283,6 +2283,7 @@ if (PnConfig.recError) {
     pnInitDataTable('#pn-classes-table',        { order: [[2, 'desc']],              filename: 'Class Levels' });
     pnInitDataTable('#pn-revoked-awards-table', { order: [[3, 'desc']],              filename: 'Revoked Awards' });
     pnInitDataTable('#pn-revoked-titles-table', { order: [[3, 'desc']],              filename: 'Revoked Titles' });
+    pnInitDataTable('#pn-tourneys-table',       { order: [[0, 'desc']],              filename: 'Tournaments' });
 
 });
 
@@ -2332,9 +2333,9 @@ function knToggleFilter(btn, type) {
     knFilters[type] = !knFilters[type];
     var isOn = knFilters[type];
     $(btn).toggleClass('kn-filter-on', isOn);
-    $('#kn-events-table').find('tr[data-type="' + type + '"]').css('display', isOn ? '' : 'none');
+    $('#kn-events-table, #kn-tournaments-table').find('tr[data-type="' + type + '"]').css('display', isOn ? '' : 'none');
     knPaginate($('#kn-events-table'), 1);
-    // [TOURNAMENTS HIDDEN] knPaginate($('#kn-tournaments-table'), 1);
+    knPaginate($('#kn-tournaments-table'), 1);
     // Sync calendar — refetch re-runs our events function which re-applies knFilters from cache (no extra HTTP request)
     if (knCalendar) knCalendar.refetchEvents();
 }
@@ -3069,8 +3070,8 @@ $(document).ready(function() {
     knSortAsc($('#kn-events-table'), 0, 'date');
     knPaginate($('#kn-events-table'), 1);
 
-    // [TOURNAMENTS HIDDEN] knSortDesc($('#kn-tournaments-table'), 0, 'date');
-    // [TOURNAMENTS HIDDEN] knPaginate($('#kn-tournaments-table'), 1);
+    knSortDesc($('#kn-tournaments-table'), 0, 'date');
+    knPaginate($('#kn-tournaments-table'), 1);
 
 });
 (function() {
@@ -15013,9 +15014,103 @@ window.pnCloseUnitCreateModal = function() {
     });
 })();
 
-/* [TOURNAMENTS HIDDEN] KN add tournament modal */
 
-/* [TOURNAMENTS HIDDEN] PK add tournament modal */
+// ── Add Tournament Modal (shared factory) ────────────────────────────────────
+// Wires up the Kingdom/Park add-tournament modal. The two callers differ only by
+// id prefix, config object, create endpoint, and one extra POST param (Park sends
+// KingdomId). `endpoint`/`extra` are called with the (guarded, present) config.
+function initAddTournamentModal(opts) {
+    var prefix = opts.prefix;
+    var config = opts.config;
+    if (!config || !config.canManage) return;
+    var overlay = document.getElementById(prefix + '-addtournament-overlay');
+    if (!overlay) return;
+
+    var openClass = prefix + '-open';
+    function el(suffix) { return document.getElementById(prefix + '-addtournament-' + suffix); }
+
+    function showFb(msg, ok) {
+        var fb = el('feedback');
+        if (!fb) return;
+        fb.textContent = msg;
+        fb.style.display = 'block';
+        fb.style.color      = ok ? '#276749' : '#c53030';
+        fb.style.background = ok ? '#f0fff4' : '#fff5f5';
+        fb.style.border     = ok ? '1px solid #c6f6d5' : '1px solid #fed7d7';
+    }
+
+    function openModal() {
+        el('name').value = '';
+        el('when').value = '';
+        el('desc').value = '';
+        el('url').value  = '';
+        var fb = el('feedback');
+        if (fb) { fb.style.display = 'none'; fb.textContent = ''; }
+        overlay.classList.add(openClass);
+    }
+
+    function closeModal() {
+        overlay.classList.remove(openClass);
+    }
+
+    window[prefix + 'OpenAddTournamentModal'] = openModal;
+
+    el('close-btn').addEventListener('click', closeModal);
+    el('cancel').addEventListener('click', closeModal);
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) closeModal(); });
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && overlay.classList.contains(openClass)) closeModal();
+    });
+
+    el('submit').addEventListener('click', function() {
+        var btn  = this;
+        var name = el('name').value.trim();
+        var when = el('when').value.trim();
+        var desc = el('desc').value.trim();
+        var url  = el('url').value.trim();
+
+        if (!name) { showFb('Tournament name is required.', false); return; }
+        if (!when) { showFb('Tournament date is required.', false); return; }
+
+        var data = { Name: name, When: when, Description: desc, Url: url };
+        if (opts.extra) {
+            var ex = opts.extra(config);
+            for (var k in ex) { if (ex.hasOwnProperty(k)) data[k] = ex[k]; }
+        }
+
+        btn.disabled = true;
+        jQuery.post(
+            opts.endpoint(config),
+            data,
+            function(r) {
+                if (r && r.status === 0) {
+                    // Leave the button disabled through the redirect window so a second click can't create a duplicate tournament.
+                    showFb('Tournament created!', true);
+                    setTimeout(function() { closeModal(); window.location.href = config.uir + 'Tournament/profile/' + r.tournamentId; }, 900);
+                } else {
+                    btn.disabled = false;
+                    showFb((r && r.error) ? r.error : 'Failed to create tournament.', false);
+                }
+            }, 'json'
+        ).fail(function() {
+            btn.disabled = false;
+            showFb('Request failed. Please try again.', false);
+        });
+    });
+}
+
+initAddTournamentModal({
+    prefix:   'kn',
+    config:   window.KnConfig,
+    endpoint: function(c) { return c.uir + 'KingdomAjax/kingdom/' + c.kingdomId + '/createtournament'; }
+});
+
+initAddTournamentModal({
+    prefix:   'pk',
+    config:   window.PkConfig,
+    endpoint: function(c) { return c.uir + 'ParkAjax/park/' + c.parkId + '/createtournament'; },
+    extra:    function(c) { return { KingdomId: c.kingdomId }; }
+});
 
 
 // ---- Merge Players Modal (Parknew) ----
