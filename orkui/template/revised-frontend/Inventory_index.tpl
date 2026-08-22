@@ -10,7 +10,12 @@
 $uir      = UIR;
 $ajaxBase = $uir . 'InventoryAjax/handle/' . $owner_type . '/' . $owner_id . '/';
 $fmt      = fn($n) => '$' . number_format((float)$n, 2);
-$condLabels = ['new' => 'New', 'good' => 'Good', 'fair' => 'Fair', 'poor' => 'Poor', 'needs_repair' => 'Needs Repair'];
+// Condition vocabulary is owned by the domain (Inventory::$CONDITIONS, passed in
+// as $conditions); label them here rather than keeping a second hardcoded list.
+$condLabels = [];
+foreach ((array)($conditions ?? []) as $c) {
+    $condLabels[$c] = ucwords(str_replace('_', ' ', (string)$c));
+}
 
 // Defensive defaults (controller supplies these, but render must never fatal).
 $summary = is_array($summary ?? null) ? $summary : [];
@@ -18,51 +23,46 @@ $summary += ['TotalValue' => 0, 'TotalUnits' => 0, 'LineItems' => 0, 'NeedsRepai
 $items   = is_array($items ?? null) ? $items : ['Rows' => [], 'Total' => 0];
 $categories      = (array)($categories ?? []);
 $removal_reasons = (array)($removal_reasons ?? []);
+
+// Header scope chip — links back to the org this register belongs to.
+$isPark          = ($owner_type === 'park');
+$ownerLabel      = $isPark ? 'Park' : 'Kingdom';
+$ownerLabelLower = $isPark ? 'park' : 'kingdom';
+$scopeIcon       = $isPark ? 'fa-tree' : 'fa-chess-rook';
+$scopeLink       = $uir . ($isPark ? 'Park/profile/' : 'Kingdom/profile/') . (int)$owner_id;
+// Sibling officer tool for the same org — Treasury and Inventory are a pair.
+$siblingLink     = $uir . 'Treasury/' . $owner_type . '/' . (int)$owner_id;
+$org_name        = (string)($org_name ?? '');
 ?>
 <script src="https://code.highcharts.com/highcharts.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>default/style/reports.css?v=<?= filemtime(__DIR__ . '/../default/style/reports.css') ?>">
+<script src="<?= HTTP_TEMPLATE ?>default/script/rp-tooltip.js?v=<?= filemtime(__DIR__ . '/../default/script/rp-tooltip.js') ?>"></script>
 <style>
 /* =====================================================
-   Inventory tool — .inv-* (light defaults; dark via --ork-* + overrides)
+   Inventory tool — .inv-* additions on top of the shared
+   report chrome (.rp-*, reports.css). Only what the shared
+   sheet doesn't provide lives here: the item table, the
+   modals, and the form controls inside them.
+   Light defaults; dark via --ork-* + overrides.
    ===================================================== */
-.inv-wrap { max-width: 1100px; margin: 0 auto; padding: 16px 16px 48px; color: var(--ork-text); }
+/* Full-bleed: the register is a wide table and wants every pixel. */
+.inv-root { width: 100%; margin: 0; padding: 16px 16px 48px; box-sizing: border-box; color: var(--ork-text); }
 
-/* Hero heading — reset the global h1-h6 gray-box */
-.inv-hero { margin: 4px 0 18px; }
-.inv-hero h1 {
-    background: transparent; border: none; padding: 0; border-radius: 0; text-shadow: none;
-    margin: 0; font-size: 1.55rem; font-weight: 700; color: var(--ork-text);
-}
-.inv-hero .inv-hero-sub { color: var(--ork-text-muted); font-size: 0.9rem; margin-top: 2px; }
+/* Needs-Repair reads as a warning on the shared stat card */
+#inv-repair-card .rp-stat-number { color: #c05621; }
+html[data-theme="dark"] #inv-repair-card .rp-stat-number { color: #f6ad55; }
 
-/* Summary cards */
-.inv-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
-.inv-card {
-    background: var(--ork-card-bg); border: 1px solid var(--ork-border);
-    border-radius: 10px; padding: 14px 16px;
-}
-.inv-card-lbl { font-size: 0.74rem; text-transform: uppercase; letter-spacing: .04em; color: var(--ork-text-muted); margin-bottom: 6px; }
-.inv-card-val { font-size: 1.4rem; font-weight: 700; color: var(--ork-text); }
-.inv-card.inv-card-repair .inv-card-val { color: #c05621; }
-html[data-theme="dark"] .inv-card.inv-card-repair .inv-card-val { color: #f6ad55; }
+/* Charts sit two-up under the stat row (the shared row stacks by default) */
+.rp-charts-row.inv-charts { flex-direction: row; flex-wrap: wrap; }
 
-/* Charts */
-.inv-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px; }
-.inv-chart-card {
-    background: var(--ork-card-bg); border: 1px solid var(--ork-border);
-    border-radius: 10px; padding: 8px 12px 12px;
+/* Sidebar filter form */
+.inv-filter-reset {
+    background: none; border: none; padding: 0; margin-top: 2px;
+    color: var(--ork-link); font-size: 12px; cursor: pointer; text-align: left;
 }
-.inv-chart-card .inv-chart-title { font-size: 0.8rem; font-weight: 600; color: var(--ork-text-secondary); margin: 4px 2px 6px; }
-
-/* Toolbar */
-.inv-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
-.inv-toolbar input[type="text"], .inv-toolbar select {
-    background: var(--ork-input-bg); border: 1px solid var(--ork-input-border); color: var(--ork-text);
-    border-radius: 6px; padding: 6px 10px; font-size: 0.85rem;
-}
-.inv-toolbar input[type="text"] { width: 150px; }
-.inv-toolbar .inv-spacer { flex: 1 1 auto; }
+.inv-filter-reset:hover { text-decoration: underline; }
 
 /* Buttons */
 .inv-btn {
@@ -76,8 +76,9 @@ html[data-theme="dark"] .inv-card.inv-card-repair .inv-card-val { color: #f6ad55
 html[data-theme="dark"] .inv-btn.inv-btn-primary { background: #6366f1; border-color: #6366f1; }
 html[data-theme="dark"] .inv-btn.inv-btn-primary:hover { background: #818cf8; }
 
-/* Item table */
-.inv-table { width: 100%; border-collapse: collapse; background: var(--ork-card-bg); border: 1px solid var(--ork-border); border-radius: 10px; overflow: hidden; }
+/* Item table — the .rp-table-area wrapper already supplies the card
+   surface, so the table itself stays flat (no second border/background). */
+.inv-table { width: 100%; border-collapse: collapse; }
 .inv-table thead th {
     text-align: left; font-size: 0.72rem; text-transform: uppercase; letter-spacing: .03em;
     color: var(--ork-text-muted); background: var(--ork-bg-secondary);
@@ -89,17 +90,11 @@ html[data-theme="dark"] .inv-btn.inv-btn-primary:hover { background: #818cf8; }
 .inv-table tbody td { padding: 9px 12px; font-size: 0.86rem; color: var(--ork-text); border-bottom: 1px solid var(--ork-border); vertical-align: top; }
 .inv-table tbody tr:last-child td { border-bottom: none; }
 .inv-table .inv-num { text-align: right; font-variant-numeric: tabular-nums; }
-.inv-table .inv-empty-row td { text-align: center; color: var(--ork-text-muted); padding: 22px 12px; font-style: italic; }
-.inv-link { background: none; border: none; color: var(--ork-link); cursor: pointer; font-size: 0.82rem; padding: 0 2px; }
-.inv-link:hover { text-decoration: underline; }
-.inv-link.inv-link-quiet { color: var(--ork-text-muted); }
-.inv-link.inv-link-quiet:hover { color: var(--ork-text); }
+.inv-table .inv-actions { text-align: right; white-space: nowrap; }
+.inv-table tbody td:last-child { text-align: right; }
 
 /* Empty state */
-.inv-empty {
-    background: var(--ork-card-bg); border: 1px solid var(--ork-border); border-radius: 10px;
-    padding: 28px 16px; text-align: center; color: var(--ork-text-muted); font-style: italic;
-}
+.inv-empty { padding: 28px 16px; text-align: center; color: var(--ork-text-muted); font-style: italic; }
 
 /* Pager */
 .inv-pager { display: flex; gap: 6px; align-items: center; justify-content: flex-end; margin-top: 12px; font-size: 0.85rem; color: var(--ork-text-muted); }
@@ -114,10 +109,8 @@ html[data-theme="dark"] .inv-btn.inv-btn-primary:hover { background: #818cf8; }
     display: inline-block; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
     border-radius: 999px; padding: 2px 8px;
 }
-.inv-badge-repair { background: #fed7aa; color: #9c4221; }
-html[data-theme="dark"] .inv-badge-repair { background: #7b341e; color: #fbd38d; }
-.inv-badge-reason { background: #e2e8f0; color: #4a5568; }
-html[data-theme="dark"] .inv-badge-reason { background: #2d3748; color: #cbd5e0; }
+.inv-badge-repair { background: var(--ork-badge-orange-bg); color: var(--ork-badge-orange-text); }
+.inv-badge-reason { background: var(--ork-badge-gray-bg); color: var(--ork-badge-gray-text); }
 .inv-reason-note { display: block; color: var(--ork-text-muted); font-size: 0.76rem; margin-top: 3px; }
 
 /* Modal (in-product; no native dialogs) */
@@ -193,91 +186,180 @@ html[data-theme="dark"] .inv-seg button.inv-seg-on { background: #6366f1; }
 .inv-confirm-box .inv-modal-body { font-size: 0.9rem; color: var(--ork-text); }
 
 @media (max-width: 820px) {
-    .inv-cards { grid-template-columns: repeat(2, 1fr); }
-    .inv-charts { grid-template-columns: 1fr; }
+    .rp-charts-row.inv-charts .rp-chart-card { flex: 1 1 100%; }
 }
 </style>
 
-<div class="inv-wrap" id="inv-app"
+<div class="rp-root inv-root" id="inv-app"
      data-ajax="<?= htmlspecialchars($ajaxBase) ?>"
      data-kingdom="<?= (int)$kingdom_id ?>">
 
-    <div class="inv-hero">
-        <h1>Inventory &mdash; <?= htmlspecialchars($org_name ?? '') ?></h1>
-        <div class="inv-hero-sub"><?= $owner_type === 'park' ? 'Park' : 'Kingdom' ?> equipment &amp; goods register</div>
+    <!-- ── Header ─────────────────────────────────────── -->
+    <div class="rp-header">
+        <div class="rp-header-left">
+            <div class="rp-header-icon-title">
+                <i class="fas fa-boxes rp-header-icon"></i>
+                <h1 class="rp-header-title">Inventory</h1>
+            </div>
+            <div class="rp-header-scope">
+                <span class="rp-scope-chip-label"><?= $ownerLabel ?> register</span>
+                <?php if ($org_name !== ''): ?>
+                <a class="rp-scope-chip" href="<?= htmlspecialchars($scopeLink) ?>">
+                    <i class="fas <?= $scopeIcon ?>"></i>
+                    <?= htmlspecialchars($org_name) ?>
+                </a>
+                <?php endif; ?>
+            </div>
+        </div>
+        <div class="rp-header-actions">
+            <button class="rp-btn-ghost" id="inv-add" type="button"><i class="fas fa-plus"></i> Add Item</button>
+            <a class="rp-btn-ghost" id="inv-export" href="<?= htmlspecialchars($ajaxBase) ?>export"><i class="fas fa-download"></i> Export CSV</a>
+            <span class="rp-header-sep" aria-hidden="true"></span>
+            <a class="rp-btn-ghost" href="<?= htmlspecialchars($siblingLink) ?>"><i class="fas fa-coins"></i> Go to Treasury <i class="fas fa-arrow-right rp-btn-arrow"></i></a>
+        </div>
     </div>
 
-    <div class="inv-cards">
-        <div class="inv-card">
-            <div class="inv-card-lbl">Total Value</div>
-            <div class="inv-card-val" id="inv-total-value"><?= $fmt($summary['TotalValue']) ?></div>
+    <!-- ── Context strip ──────────────────────────────── -->
+    <div class="rp-context">
+        <i class="fas fa-info-circle rp-context-icon"></i>
+        <span>The <?= $ownerLabelLower ?>&rsquo;s durable goods &mdash; loaner gear, regalia, pavilions, event equipment &mdash; with what each is worth,
+              what condition it&rsquo;s in, and who is holding it. Removing an item keeps it on the books under
+              <strong>Removed</strong> with a reason, so nothing silently disappears between officer terms.</span>
+    </div>
+
+    <!-- ── Stats row ─────────────────────────────────── -->
+    <div class="rp-stats-row">
+        <div class="rp-stat-card">
+            <div class="rp-stat-icon"><i class="fas fa-coins"></i></div>
+            <div class="rp-stat-number" id="inv-total-value"><?= $fmt($summary['TotalValue']) ?></div>
+            <div class="rp-stat-label">Total Value</div>
         </div>
-        <div class="inv-card">
-            <div class="inv-card-lbl">Total Units</div>
-            <div class="inv-card-val" id="inv-total-units"><?= (int)$summary['TotalUnits'] ?></div>
+        <div class="rp-stat-card">
+            <div class="rp-stat-icon"><i class="fas fa-cubes"></i></div>
+            <div class="rp-stat-number" id="inv-total-units"><?= (int)$summary['TotalUnits'] ?></div>
+            <div class="rp-stat-label">Total Units</div>
         </div>
-        <div class="inv-card">
-            <div class="inv-card-lbl">Line Items</div>
-            <div class="inv-card-val" id="inv-line-items"><?= (int)$summary['LineItems'] ?></div>
+        <div class="rp-stat-card">
+            <div class="rp-stat-icon"><i class="fas fa-list-ul"></i></div>
+            <div class="rp-stat-number" id="inv-line-items"><?= (int)$summary['LineItems'] ?></div>
+            <div class="rp-stat-label">Line Items</div>
         </div>
-        <div class="inv-card inv-card-repair">
-            <div class="inv-card-lbl">Needs Repair</div>
-            <div class="inv-card-val" id="inv-needs-repair"><?= (int)$summary['NeedsRepair'] ?></div>
+        <div class="rp-stat-card" id="inv-repair-card">
+            <div class="rp-stat-icon"><i class="fas fa-tools"></i></div>
+            <div class="rp-stat-number" id="inv-needs-repair"><?= (int)$summary['NeedsRepair'] ?></div>
+            <div class="rp-stat-label">Needs Repair</div>
         </div>
     </div>
 
-    <div class="inv-charts">
-        <div class="inv-chart-card">
-            <div class="inv-chart-title">Value by Category</div>
+    <!-- ── Charts ────────────────────────────────────── -->
+    <div class="rp-charts-row rp-charts-visible inv-charts">
+        <div class="rp-chart-card">
+            <div class="rp-chart-card-title">Value by Category</div>
             <div id="inv-chart-category" style="height:240px"></div>
         </div>
-        <div class="inv-chart-card">
-            <div class="inv-chart-title">Items by Condition</div>
+        <div class="rp-chart-card">
+            <div class="rp-chart-card-title">Items by Condition</div>
             <div id="inv-chart-condition" style="height:240px"></div>
         </div>
     </div>
 
-    <div class="inv-toolbar">
-        <input type="text" id="inv-f-q" placeholder="Search name&hellip;" autocomplete="off">
-        <select id="inv-f-cat">
-            <option value="">All categories</option>
-            <?php foreach ($categories as $k => $lbl): ?>
-            <option value="<?= htmlspecialchars($k) ?>"><?= htmlspecialchars($lbl) ?></option>
-            <?php endforeach; ?>
-        </select>
-        <select id="inv-f-cond">
-            <option value="">Any condition</option>
-            <?php foreach ($condLabels as $k => $lbl): ?>
-            <option value="<?= htmlspecialchars($k) ?>"><?= htmlspecialchars($lbl) ?></option>
-            <?php endforeach; ?>
-        </select>
-        <select id="inv-f-status">
-            <option value="active">Active</option>
-            <option value="removed">Removed</option>
-        </select>
-        <span class="inv-spacer"></span>
-        <button class="inv-btn inv-btn-primary" id="inv-add" type="button">+ Add Item</button>
-        <a class="inv-btn" id="inv-export" href="<?= htmlspecialchars($ajaxBase) ?>export">Export CSV</a>
-    </div>
+    <!-- ── Body: sidebar + main ───────────────────────── -->
+    <div class="rp-body">
 
-    <table class="inv-table" id="inv-table">
-        <thead>
-            <tr>
-                <th data-sort="name">Name</th>
-                <th data-sort="category">Category</th>
-                <th class="inv-num" data-sort="quantity">Qty</th>
-                <th data-sort="condition">Condition</th>
-                <th class="inv-num" data-sort="unit_value">Unit Value</th>
-                <th class="inv-num" data-sort="total_value">Total Value</th>
-                <th data-sort="location">Location</th>
-                <th>Held By</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody id="inv-table-body"><!-- rendered by JS --></tbody>
-    </table>
-    <div class="inv-empty" id="inv-empty" style="display:none">No items yet &mdash; add your first item.</div>
-    <div class="inv-pager" id="inv-pager"></div>
+        <!-- Sidebar -->
+        <div class="rp-sidebar">
+
+            <div class="rp-filter-card">
+                <div class="rp-filter-card-header">
+                    <i class="fas fa-sliders-h"></i> Filters
+                </div>
+                <div class="rp-filter-card-body">
+                    <div class="rp-param-form">
+                        <div class="rp-form-group">
+                            <label for="inv-f-q">Search</label>
+                            <input type="text" id="inv-f-q" class="rp-form-input" placeholder="Item name&hellip;" autocomplete="off">
+                        </div>
+                        <div class="rp-form-group">
+                            <label for="inv-f-cat">Category</label>
+                            <select id="inv-f-cat" class="rp-form-input">
+                                <option value="">All categories</option>
+                                <?php foreach ($categories as $k => $lbl): ?>
+                                <option value="<?= htmlspecialchars($k) ?>"><?= htmlspecialchars($lbl) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="rp-form-group">
+                            <label for="inv-f-cond">Condition</label>
+                            <select id="inv-f-cond" class="rp-form-input">
+                                <option value="">Any condition</option>
+                                <?php foreach ($condLabels as $k => $lbl): ?>
+                                <option value="<?= htmlspecialchars($k) ?>"><?= htmlspecialchars($lbl) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="rp-form-group">
+                            <label for="inv-f-status">Status</label>
+                            <select id="inv-f-status" class="rp-form-input">
+                                <option value="active">Active</option>
+                                <option value="removed">Removed</option>
+                            </select>
+                        </div>
+                        <button type="button" class="inv-filter-reset" id="inv-f-reset">Clear filters</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="rp-filter-card">
+                <div class="rp-filter-card-header">
+                    <i class="fas fa-book-open"></i> About This Tool
+                </div>
+                <div class="rp-filter-card-body">
+                    <div class="rp-col-guide-item">
+                        <span class="rp-col-guide-name">Total Value</span>
+                        <span class="rp-col-guide-desc">Quantity &times; unit value across every active line item. Removed items are excluded.</span>
+                    </div>
+                    <div class="rp-col-guide-item">
+                        <span class="rp-col-guide-name">Held By</span>
+                        <span class="rp-col-guide-desc">Who physically has the item. Link a player so the gear can be tracked down when they step back.</span>
+                    </div>
+                    <div class="rp-col-guide-item">
+                        <span class="rp-col-guide-name">Mark Removed <span class="rp-col-guide-desc">vs.</span> Delete Record</span>
+                        <span class="rp-col-guide-desc"><strong>Mark Removed</strong> is about the item: the <?= $ownerLabelLower ?> had it and no longer does
+                            (sold, lost, donated, worn out). It keeps the history &mdash; switch <strong>Status</strong> to Removed to see it, or restore it.
+                            <strong>Delete Record</strong> is about the row: it was a typo or a duplicate and should never have existed. Nothing is kept.</span>
+                    </div>
+                    <div class="rp-col-guide-item">
+                        <span class="rp-col-guide-name">Export CSV</span>
+                        <span class="rp-col-guide-desc">Exports the current view with the filters above applied &mdash; handy for a handoff at the end of a term.</span>
+                    </div>
+                </div>
+            </div>
+
+        </div><!-- /rp-sidebar -->
+
+        <!-- Main column -->
+        <div class="rp-table-area">
+            <table class="inv-table" id="inv-table">
+                <thead>
+                    <tr>
+                        <th data-sort="name">Name</th>
+                        <th data-sort="category">Category</th>
+                        <th class="inv-num" data-sort="quantity">Qty</th>
+                        <th data-sort="condition">Condition</th>
+                        <th class="inv-num" data-sort="unit_value">Unit Value</th>
+                        <th class="inv-num" data-sort="total_value">Total Value</th>
+                        <th data-sort="location">Location</th>
+                        <th>Held By</th>
+                        <th class="inv-actions">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="inv-table-body"><!-- rendered by JS --></tbody>
+            </table>
+            <div class="inv-empty" id="inv-empty" style="display:none">No items yet &mdash; add your first item.</div>
+            <div class="inv-pager" id="inv-pager"></div>
+        </div>
+
+    </div><!-- /rp-body -->
 </div>
 
 <!-- Add / Edit item modal (built/populated by JS) -->
@@ -350,15 +432,17 @@ html[data-theme="dark"] .inv-seg button.inv-seg-on { background: #6366f1; }
 <div class="inv-modal-overlay" id="inv-remove-overlay" aria-hidden="true">
     <div class="inv-modal inv-confirm-box" role="dialog" aria-modal="true" aria-labelledby="inv-remove-title">
         <div class="inv-modal-head">
-            <h2 id="inv-remove-title">Remove from Inventory</h2>
+            <h2 id="inv-remove-title">Mark Removed from Inventory</h2>
             <button class="inv-modal-close" type="button" data-inv-remove-close aria-label="Close">&times;</button>
         </div>
         <form id="inv-remove-form" autocomplete="off">
             <div class="inv-modal-body">
                 <input type="hidden" name="id" id="inv-r-id" value="">
                 <p style="margin:0 0 14px;color:var(--ork-text-muted);font-size:0.85rem;">
-                    Mark this item as no longer owned by the org. It moves to the Removed list
-                    and is excluded from active totals (the record and its audit trail are kept).
+                    For an item the org genuinely no longer has. It moves to the <strong>Removed</strong>
+                    list with the reason below, drops out of the active totals, and can be restored later
+                    &mdash; the record and its audit trail are kept either way.
+                    If the row was simply entered by mistake, cancel and use <strong>Delete Record</strong> instead.
                 </p>
                 <div class="inv-field">
                     <label class="inv-label" for="inv-r-reason">Reason</label>
@@ -379,7 +463,7 @@ html[data-theme="dark"] .inv-seg button.inv-seg-on { background: #6366f1; }
             <div class="inv-modal-foot">
                 <button class="inv-btn" type="button" data-inv-remove-close>Cancel</button>
                 <button class="inv-btn inv-btn-primary" type="submit" id="inv-r-save"
-                        style="background:#c53030;border-color:#c53030;">Remove Item</button>
+                        style="background:#c53030;border-color:#c53030;">Mark Removed</button>
             </div>
         </form>
     </div>
@@ -491,14 +575,32 @@ window.InvConfig = {
         }
         return escapeHtml(condLabel(r.Condition));
     }
+    /* Two different destructive verbs, so the labels have to carry the difference:
+       "Mark Removed" acts on the OBJECT (the org no longer has it — it stays on the
+       books under the Removed view and can be restored); "Delete Record" acts on the
+       ROW (it was never real — a typo or a duplicate — and leaves no trace here). */
+    var TIP_EDIT    = 'Correct this item\u2019s details \u2014 name, quantity, condition, value, location, or who is holding it.';
+    var TIP_REMOVE  = 'The org no longer has this item \u2014 sold, lost, donated, or worn out. It stays on the books under Removed, with a reason, and can be restored.';
+    var TIP_RESTORE = 'Put this item back into active inventory.';
+    var TIP_DELETE  = 'Erase this record entirely \u2014 only for a row added by mistake. Nothing is left in the register. To log an item the org disposed of, use Mark Removed instead.';
+
     function actionCell(r) {
         if (state.status === 'removed') {
-            return '<button class="inv-link" type="button" data-restore="' + r.Id + '">Restore</button> ' +
-                '<button class="inv-link inv-link-quiet" type="button" data-del="' + r.Id + '">Delete</button>';
+            return '<div class="rp-row-actions">' +
+                '<button class="rp-row-btn rp-row-btn-primary" type="button" data-restore="' + r.Id + '" data-tip="' + TIP_RESTORE + '">' +
+                '<i class="fas fa-undo"></i> Restore</button>' +
+                '<button class="rp-row-btn rp-row-btn-danger" type="button" data-del="' + r.Id + '" data-tip="' + TIP_DELETE + '">' +
+                '<i class="fas fa-trash-alt"></i> Delete Record</button>' +
+                '</div>';
         }
-        return '<button class="inv-link" type="button" data-edit="' + r.Id + '">Edit</button> ' +
-            '<button class="inv-link" type="button" data-remove="' + r.Id + '">Remove</button> ' +
-            '<button class="inv-link inv-link-quiet" type="button" data-del="' + r.Id + '">Delete</button>';
+        return '<div class="rp-row-actions">' +
+            '<button class="rp-row-btn" type="button" data-edit="' + r.Id + '" data-tip="' + TIP_EDIT + '">' +
+            '<i class="fas fa-pen"></i> Edit</button>' +
+            '<button class="rp-row-btn" type="button" data-remove="' + r.Id + '" data-tip="' + TIP_REMOVE + '">' +
+            '<i class="fas fa-box-open"></i> Mark Removed</button>' +
+            '<button class="rp-row-btn rp-row-btn-danger" type="button" data-del="' + r.Id + '" data-tip="' + TIP_DELETE + '">' +
+            '<i class="fas fa-trash-alt"></i> Delete Record</button>' +
+            '</div>';
     }
 
     function renderRows(d) {
@@ -632,6 +734,20 @@ window.InvConfig = {
         if (catSel)  { catSel.addEventListener('change', function () { state.category = catSel.value; state.page = 1; loadItems(); loadSummary(); }); }
         if (condSel) { condSel.addEventListener('change', function () { state.condition = condSel.value; state.page = 1; loadItems(); loadSummary(); }); }
         if (statSel) { statSel.addEventListener('change', function () { state.status = statSel.value === 'removed' ? 'removed' : 'active'; state.page = 1; loadItems(); }); }
+
+        var reset = document.getElementById('inv-f-reset');
+        if (reset) {
+            reset.addEventListener('click', function () {
+                clearTimeout(qTimer);
+                if (qIn)     { qIn.value = ''; }
+                if (catSel)  { catSel.value = ''; }
+                if (condSel) { condSel.value = ''; }
+                if (statSel) { statSel.value = 'active'; }
+                state.q = ''; state.category = ''; state.condition = ''; state.status = 'active'; state.page = 1;
+                loadItems();
+                loadSummary();
+            });
+        }
 
         // Sortable headers.
         Array.prototype.forEach.call(table.querySelectorAll('thead th[data-sort]'), function (th) {
@@ -978,9 +1094,10 @@ window.InvConfig = {
     }
     function deleteItem(id) {
         invConfirm({
-            title: 'Delete entry',
-            body: 'This removes a mis-entered item entirely. Use “Remove from Inventory” for items the org disposed of.',
-            confirmLabel: 'Delete',
+            title: 'Delete this record?',
+            body: 'The item disappears from the register entirely, active and removed views alike — this is for a row that was entered by mistake. '
+                + 'If the org actually had this item and no longer does, cancel and use “Mark Removed” instead so the history is kept.',
+            confirmLabel: 'Delete Record',
             danger: true,
             onConfirm: function () {
                 postForm('deleteitem', { id: id }).then(function (j) {

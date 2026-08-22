@@ -127,6 +127,22 @@
 	color       : #fff;
 }
 
+/* Trailing chevron on a "go somewhere else" header button */
+.rp-btn-arrow {
+	font-size  : 10px;
+	opacity    : 0.65;
+	margin-left: -1px;
+}
+
+/* Divider between the page's own actions and a link off to another tool */
+.rp-header-sep {
+	width      : 1px;
+	align-self : stretch;
+	margin     : 4px 2px;
+	background : rgba(255,255,255,0.2);
+	flex-shrink: 0;
+}
+
 
 /* ── Context strip ───────────────────────────────────────── */
 
@@ -297,6 +313,13 @@
 	flex-shrink: 0;
 }
 
+/* Main column, for pages that stack more than one card beside the sidebar
+   (a single card can just be .rp-table-area directly inside .rp-body).    */
+.rp-main {
+	flex     : 1;
+	min-width: 0;
+}
+
 .rp-filter-card {
 	background   : var(--rp-card-bg, #fff);
 	border       : 1px solid var(--rp-border);
@@ -384,6 +407,157 @@
 	border-color: #a0aec0;
 	color       : var(--rp-text-body);
 }
+
+
+/* ── Sidebar form controls ───────────────────────────────── */
+/* Light-mode defaults for the sidebar parameter forms. The dark-mode
+   counterparts already live in the dark block near the bottom of this
+   file. Several older templates still inline an identical copy of these
+   rules; those inline copies simply win by source order, so promoting
+   them here changes nothing on those pages and saves new tools from
+   pasting a sixth copy.                                                */
+
+.rp-param-form {
+	display       : flex;
+	flex-direction: column;
+	gap           : 10px;
+}
+
+.rp-form-group {
+	display       : flex;
+	flex-direction: column;
+	gap           : 3px;
+}
+
+.rp-form-group label {
+	font-size     : 11px;
+	font-weight   : 700;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color         : var(--rp-text-muted);
+}
+
+.rp-form-input {
+	width        : 100%;
+	border       : 1px solid var(--rp-border);
+	border-radius: 5px;
+	padding      : 6px 8px;
+	font-size    : 13px;
+	color        : var(--rp-text);
+	background   : var(--rp-card-bg, #fff);
+	box-sizing   : border-box;
+}
+
+.rp-form-input:focus {
+	outline     : none;
+	border-color: #6366f1;
+}
+
+/* Also matched as `.rp-form-group label` (uppercase mini-label), so the
+   checkbox variant needs the extra specificity to win it back.          */
+.rp-form-check,
+.rp-form-group label.rp-form-check {
+	display       : flex;
+	align-items   : center;
+	gap           : 7px;
+	font-size     : 13px;
+	font-weight   : 400;
+	text-transform: none;
+	letter-spacing: 0;
+	color         : var(--rp-text-body);
+	cursor        : pointer;
+}
+
+.rp-btn-run {
+	width        : 100%;
+	padding      : 8px 0;
+	background   : #4338ca;
+	color        : #fff;
+	border       : none;
+	border-radius: 6px;
+	font-size    : 13px;
+	font-weight  : 700;
+	cursor       : pointer;
+	transition   : background 0.15s;
+}
+
+.rp-btn-run:hover { background: #3730a3; }
+
+.rp-empty-state {
+	padding   : 32px 16px;
+	text-align: center;
+	color     : var(--rp-text-muted);
+	font-size : 14px;
+}
+
+
+/* ── Row action buttons ──────────────────────────────────── */
+/* Controls in a table's Actions column are BUTTONS, not text links —
+   a link reads as navigation, and these all mutate a record.          */
+
+.rp-row-actions {
+	display        : flex;
+	gap            : 6px;
+	justify-content: flex-end;
+	white-space    : nowrap;
+}
+
+.rp-row-btn {
+	display        : inline-flex;
+	align-items    : center;
+	gap            : 5px;
+	padding        : 4px 9px;
+	border         : 1px solid var(--rp-border);
+	border-radius  : 5px;
+	background     : var(--rp-card-bg, #fff);
+	color          : var(--rp-text-body);
+	font-size      : 12px;
+	font-weight    : 600;
+	line-height    : 1.35;
+	cursor         : pointer;
+	white-space    : nowrap;
+	text-decoration: none;
+	transition     : background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.rp-row-btn i { font-size: 11px; opacity: 0.75; }
+.rp-row-btn:hover { background: var(--rp-bg-light); border-color: #a0aec0; color: var(--rp-text); }
+
+.rp-row-btn-primary { border-color: var(--rp-accent); color: var(--rp-accent); }
+.rp-row-btn-primary:hover { background: var(--rp-accent); border-color: var(--rp-accent); color: #fff; }
+
+.rp-row-btn-danger { border-color: #feb2b2; color: #c53030; }
+.rp-row-btn-danger:hover { background: #c53030; border-color: #c53030; color: #fff; }
+
+/* Instant tooltip (never a native title=). NOT a ::after on the button:
+   the host .rp-table-area is overflow-x:auto, which per CSS makes the
+   vertical axis compute to auto as well, so an in-flow pseudo-element
+   is clipped above the first row and adds permanent scroll overflow
+   below the last one. rp-tooltip.js instead positions ONE shared
+   position:fixed node from the [data-tip] attribute on hover/focus, the
+   same escape hatch tnFixedAcPosition() uses for autocomplete dropdowns
+   inside modals. Nothing is laid out while nothing is hovered.          */
+.rp-tip {
+	position      : fixed;
+	z-index       : 9000;
+	white-space   : normal;
+	width         : max-content;
+	max-width     : 240px;
+	background    : #1a202c;
+	color         : #fff;
+	font-size     : 11px;
+	font-weight   : 400;
+	line-height   : 1.3;
+	text-align    : left;
+	padding       : 7px 9px;
+	border-radius : 6px;
+	box-shadow    : 0 4px 12px rgba(0,0,0,0.25);
+	opacity       : 0;
+	pointer-events: none;
+	transition    : opacity 0.08s;
+}
+
+.rp-tip.rp-tip-on { opacity: 1; }
 
 
 /* ── Table area ──────────────────────────────────────────── */
@@ -598,8 +772,15 @@
 @media (max-width: 900px) {
 	.rp-body {
 		flex-direction: column;
+		/* The row layout wants flex-start, but once this is a column that same
+		   value sizes each child to its CONTENT width — a wide table then pushes
+		   the main column past the viewport instead of scrolling inside it. */
+		align-items   : stretch;
 	}
 	.rp-sidebar {
+		width: 100%;
+	}
+	.rp-main {
 		width: 100%;
 	}
 	.rp-filter-card {
@@ -630,11 +811,19 @@
 		border-radius : 6px 6px 0 0;
 	}
 	.rp-header-actions {
-		width: 100%;
+		width    : 100%;
+		flex-wrap: wrap;
 	}
+	/* Wrap to a second line rather than squeezing every label onto one row —
+	   a header with four actions turns into shredded two-line text otherwise. */
 	.rp-btn-ghost {
-		flex           : 1;
+		flex           : 1 1 auto;
+		min-width      : 132px;
 		justify-content: center;
+	}
+	/* The vertical rule reads as a stray tick once the buttons wrap. */
+	.rp-header-sep {
+		display: none;
 	}
 	.rp-stat-card {
 		flex    : 1 1 calc(50% - 7px);
@@ -896,6 +1085,36 @@ html[data-theme="dark"] .rp-filter-pill:hover:not(.active) {
 html[data-theme="dark"] .rp-filter-pill.active {
   background: var(--ork-accent, #4f86c6);
   border-color: var(--ork-accent, #4f86c6);
+  color: #fff;
+}
+
+/* Row action buttons */
+html[data-theme="dark"] .rp-row-btn {
+  background: #2d3748;
+  border-color: #4a5568;
+  color: #cbd5e0;
+}
+html[data-theme="dark"] .rp-row-btn:hover {
+  background: #374151;
+  border-color: #718096;
+  color: #f7fafc;
+}
+html[data-theme="dark"] .rp-row-btn-primary {
+  border-color: #6366f1;
+  color: #a5b4fc;
+}
+html[data-theme="dark"] .rp-row-btn-primary:hover {
+  background: #6366f1;
+  border-color: #6366f1;
+  color: #fff;
+}
+html[data-theme="dark"] .rp-row-btn-danger {
+  border-color: #742a2a;
+  color: #feb2b2;
+}
+html[data-theme="dark"] .rp-row-btn-danger:hover {
+  background: #c53030;
+  border-color: #c53030;
   color: #fff;
 }
 

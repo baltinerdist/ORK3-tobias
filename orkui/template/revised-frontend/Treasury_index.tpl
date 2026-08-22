@@ -20,6 +20,16 @@ foreach ((array)$categories as $grp => $items) {
 $ajaxBase = $uir . 'TreasuryAjax/handle/' . $owner_type . '/' . $owner_id . '/';
 $fmt      = fn($n) => '$' . number_format((float)$n, 2);
 
+// Header scope chip — links back to the org this ledger belongs to.
+$isPark          = ($owner_type === 'park');
+$ownerLabel      = $isPark ? 'Park' : 'Kingdom';
+$ownerLabelLower = $isPark ? 'park' : 'kingdom';
+$scopeIcon       = $isPark ? 'fa-tree' : 'fa-chess-rook';
+$scopeLink       = $uir . ($isPark ? 'Park/profile/' : 'Kingdom/profile/') . (int)$owner_id;
+// Sibling officer tool for the same org — Treasury and Inventory are a pair.
+$siblingLink     = $uir . 'Inventory/' . $owner_type . '/' . (int)$owner_id;
+$org_name        = (string)($org_name ?? '');
+
 // Defensive defaults (controller already supplies these, but render must never fatal).
 $summary         = is_array($summary ?? null) ? $summary : ['CurrentBalance' => 0, 'TotalIn' => 0, 'TotalOut' => 0, 'ByCategory' => []];
 $ledger          = is_array($ledger ?? null) ? $ledger : ['Rows' => [], 'Total' => 0];
@@ -30,19 +40,28 @@ $summary += ['CurrentBalance' => 0, 'TotalIn' => 0, 'TotalOut' => 0, 'ByCategory
 <script src="https://code.highcharts.com/highcharts.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>default/style/reports.css?v=<?= filemtime(__DIR__ . '/../default/style/reports.css') ?>">
+<script src="<?= HTTP_TEMPLATE ?>default/script/rp-tooltip.js?v=<?= filemtime(__DIR__ . '/../default/script/rp-tooltip.js') ?>"></script>
 <style>
 /* =====================================================
-   Treasury tool — .tr-* (light defaults; dark via --ork-* + overrides)
+   Treasury tool — .tr-* additions on top of the shared
+   report chrome (.rp-*, reports.css). Only what the shared
+   sheet doesn't already provide lives here: the ledger and
+   reconciliation tables, the modals, and the form controls
+   inside them. Light defaults; dark via --ork-* + overrides.
    ===================================================== */
-.tr-wrap { max-width: 1100px; margin: 0 auto; padding: 16px 16px 48px; color: var(--ork-text); }
+/* Full-bleed: the ledger has nine columns and wants every pixel. */
+.tr-root { width: 100%; margin: 0; padding: 16px 16px 48px; box-sizing: border-box; color: var(--ork-text); }
 
-/* Hero heading — reset the global h1-h6 gray-box */
-.tr-hero { margin: 4px 0 18px; }
-.tr-hero h1 {
-    background: transparent; border: none; padding: 0; border-radius: 0; text-shadow: none;
-    margin: 0; font-size: 1.55rem; font-weight: 700; color: var(--ork-text);
-}
-.tr-hero .tr-hero-sub { color: var(--ork-text-muted); font-size: 0.9rem; margin-top: 2px; }
+/* Credit/debit colour on the shared stat cards */
+#tr-in-card  .rp-stat-number { color: #2f855a; }
+#tr-out-card .rp-stat-number { color: #c53030; }
+html[data-theme="dark"] #tr-in-card  .rp-stat-number { color: #9ae6b4; }
+html[data-theme="dark"] #tr-out-card .rp-stat-number { color: #feb2b2; }
+
+/* Charts sit two-up under the stat row (the shared row stacks by default) */
+.rp-charts-row.tr-charts { flex-direction: row; flex-wrap: wrap; }
+.tr-charts .tr-chart-full { flex: 1 1 100%; }
 
 /* First-run banner */
 .tr-firstrun {
@@ -52,36 +71,14 @@ $summary += ['CurrentBalance' => 0, 'TotalIn' => 0, 'TotalOut' => 0, 'ByCategory
 }
 .tr-firstrun p { margin: 0; font-size: 0.92rem; }
 
-/* Summary cards */
-.tr-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
-.tr-card {
-    background: var(--ork-card-bg); border: 1px solid var(--ork-border);
-    border-radius: 10px; padding: 14px 16px;
+/* Sidebar filter form — flatpickr swaps in an altInput sibling, which
+   needs the same shell as the field it replaces. */
+.tr-filter-form .rp-form-input.form-control { width: 100%; box-sizing: border-box; }
+.tr-filter-reset {
+    background: none; border: none; padding: 0; margin-top: 2px;
+    color: var(--ork-link); font-size: 12px; cursor: pointer; text-align: left;
 }
-.tr-card-lbl { font-size: 0.74rem; text-transform: uppercase; letter-spacing: .04em; color: var(--ork-text-muted); margin-bottom: 6px; }
-.tr-card-val { font-size: 1.4rem; font-weight: 700; color: var(--ork-text); }
-.tr-card.tr-card-in  .tr-card-val { color: #2f855a; }
-.tr-card.tr-card-out .tr-card-val { color: #c53030; }
-html[data-theme="dark"] .tr-card.tr-card-in  .tr-card-val { color: #9ae6b4; }
-html[data-theme="dark"] .tr-card.tr-card-out .tr-card-val { color: #feb2b2; }
-
-/* Charts */
-.tr-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px; }
-.tr-charts .tr-chart-full { grid-column: 1 / -1; }
-.tr-chart-card {
-    background: var(--ork-card-bg); border: 1px solid var(--ork-border);
-    border-radius: 10px; padding: 8px 12px 12px;
-}
-.tr-chart-card .tr-chart-title { font-size: 0.8rem; font-weight: 600; color: var(--ork-text-secondary); margin: 4px 2px 6px; }
-
-/* Toolbar */
-.tr-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
-.tr-toolbar input[type="text"], .tr-toolbar select {
-    background: var(--ork-input-bg); border: 1px solid var(--ork-input-border); color: var(--ork-text);
-    border-radius: 6px; padding: 6px 10px; font-size: 0.85rem;
-}
-.tr-toolbar input[type="text"] { width: 130px; }
-.tr-toolbar .tr-spacer { flex: 1 1 auto; }
+.tr-filter-reset:hover { text-decoration: underline; }
 
 /* Buttons */
 .tr-btn {
@@ -90,13 +87,15 @@ html[data-theme="dark"] .tr-card.tr-card-out .tr-card-val { color: #feb2b2; }
     cursor: pointer; text-decoration: none; line-height: 1.2;
 }
 .tr-btn:hover { background: var(--ork-bg-tertiary); }
+.tr-btn:disabled, .tr-btn[disabled] { opacity: .45; cursor: not-allowed; }
 .tr-btn.tr-btn-primary { background: #4338ca; border-color: #4338ca; color: #fff; }
 .tr-btn.tr-btn-primary:hover { background: #3730a3; }
 html[data-theme="dark"] .tr-btn.tr-btn-primary { background: #6366f1; border-color: #6366f1; }
 html[data-theme="dark"] .tr-btn.tr-btn-primary:hover { background: #818cf8; }
 
-/* Ledger table */
-.tr-ledger { width: 100%; border-collapse: collapse; background: var(--ork-card-bg); border: 1px solid var(--ork-border); border-radius: 10px; overflow: hidden; }
+/* Ledger table — the .rp-table-area wrapper already supplies the card
+   surface, so the table itself stays flat (no second border/background). */
+.tr-ledger { width: 100%; border-collapse: collapse; }
 .tr-ledger thead th {
     text-align: left; font-size: 0.72rem; text-transform: uppercase; letter-spacing: .03em;
     color: var(--ork-text-muted); background: var(--ork-bg-secondary);
@@ -105,9 +104,9 @@ html[data-theme="dark"] .tr-btn.tr-btn-primary:hover { background: #818cf8; }
 .tr-ledger tbody td { padding: 9px 12px; font-size: 0.86rem; color: var(--ork-text); border-bottom: 1px solid var(--ork-border); }
 .tr-ledger tbody tr:last-child td { border-bottom: none; }
 .tr-ledger .tr-num { text-align: right; font-variant-numeric: tabular-nums; }
+.tr-ledger .tr-actions { text-align: right; white-space: nowrap; }
+.tr-ledger tbody td:last-child { text-align: right; }
 .tr-ledger .tr-empty td { text-align: center; color: var(--ork-text-muted); padding: 22px 12px; font-style: italic; }
-.tr-link { background: none; border: none; color: var(--ork-link); cursor: pointer; font-size: 0.82rem; padding: 0 2px; }
-.tr-link:hover { text-decoration: underline; }
 
 /* Pager */
 .tr-pager { display: flex; gap: 6px; align-items: center; justify-content: flex-end; margin-top: 12px; font-size: 0.85rem; color: var(--ork-text-muted); }
@@ -217,13 +216,13 @@ html[data-theme="dark"] .tr-recon-status.tr-recon-match    { color: #9ae6b4; }
 html[data-theme="dark"] .tr-recon-status.tr-recon-mismatch { color: #feb2b2; }
 .tr-recon-var { font-variant-numeric: tabular-nums; }
 
-/* Reconciliation history (below the ledger) */
-.tr-recon-history { margin-top: 28px; }
+/* Reconciliation history — its own .rp-table-area card below the ledger */
+.tr-recon-history { margin-top: 16px; }
 .tr-recon-history h2 {
     background: transparent; border: none; padding: 0; border-radius: 0; text-shadow: none;
-    margin: 0 0 10px; font-size: 1.05rem; font-weight: 700; color: var(--ork-text);
+    margin: 0 0 10px; font-size: 0.95rem; font-weight: 700; color: var(--ork-text);
 }
-.tr-recon-table { width: 100%; border-collapse: collapse; background: var(--ork-card-bg); border: 1px solid var(--ork-border); border-radius: 10px; overflow: hidden; }
+.tr-recon-table { width: 100%; border-collapse: collapse; }
 .tr-recon-table thead th {
     text-align: left; font-size: 0.72rem; text-transform: uppercase; letter-spacing: .03em;
     color: var(--ork-text-muted); background: var(--ork-bg-secondary);
@@ -240,20 +239,44 @@ html[data-theme="dark"] .tr-var-pos { color: #9ae6b4; } html[data-theme="dark"] 
     background: #4338ca; color: #fff; border-radius: 999px; padding: 2px 8px; margin-left: 6px;
 }
 html[data-theme="dark"] .tr-badge-opening { background: #6366f1; }
-
-@media (max-width: 820px) {
-    .tr-cards { grid-template-columns: repeat(2, 1fr); }
-    .tr-charts { grid-template-columns: 1fr; }
-}
 </style>
 
-<div class="tr-wrap" id="tr-app"
+<div class="rp-root tr-root" id="tr-app"
      data-ajax="<?= htmlspecialchars($ajaxBase) ?>"
      data-hasopening="<?= $has_opening ? '1' : '0' ?>">
 
-    <div class="tr-hero">
-        <h1>Treasury &mdash; <?= htmlspecialchars($org_name ?? '') ?></h1>
-        <div class="tr-hero-sub"><?= $owner_type === 'park' ? 'Park' : 'Kingdom' ?> financial ledger</div>
+    <!-- ── Header ─────────────────────────────────────────── -->
+    <div class="rp-header">
+        <div class="rp-header-left">
+            <div class="rp-header-icon-title">
+                <i class="fas fa-coins rp-header-icon"></i>
+                <h1 class="rp-header-title">Treasury</h1>
+            </div>
+            <div class="rp-header-scope">
+                <span class="rp-scope-chip-label"><?= $ownerLabel ?> ledger</span>
+                <?php if ($org_name !== ''): ?>
+                <a class="rp-scope-chip" href="<?= htmlspecialchars($scopeLink) ?>">
+                    <i class="fas <?= $scopeIcon ?>"></i>
+                    <?= htmlspecialchars($org_name) ?>
+                </a>
+                <?php endif; ?>
+            </div>
+        </div>
+        <div class="rp-header-actions">
+            <button class="rp-btn-ghost" id="tr-add" type="button"><i class="fas fa-plus"></i> Add Entry</button>
+            <button class="rp-btn-ghost" id="tr-reconcile" type="button"><i class="fas fa-balance-scale"></i> Reconcile</button>
+            <a class="rp-btn-ghost" id="tr-export" href="<?= htmlspecialchars($ajaxBase) ?>export"><i class="fas fa-download"></i> Export CSV</a>
+            <span class="rp-header-sep" aria-hidden="true"></span>
+            <a class="rp-btn-ghost" href="<?= htmlspecialchars($siblingLink) ?>"><i class="fas fa-boxes"></i> Go to Inventory <i class="fas fa-arrow-right rp-btn-arrow"></i></a>
+        </div>
+    </div>
+
+    <!-- ── Context strip ──────────────────────────────────── -->
+    <div class="rp-context">
+        <i class="fas fa-info-circle rp-context-icon"></i>
+        <span>Every credit and debit against the <?= $ownerLabelLower ?>&rsquo;s funds, running to a live balance.
+              <strong>Reconcile</strong> periodically to compare the book against the real-world account and record any variance.
+              Only officers with edit authority over this <?= $ownerLabelLower ?> can see or change this ledger.</span>
     </div>
 
     <?php if (!$has_opening): ?>
@@ -263,87 +286,150 @@ html[data-theme="dark"] .tr-badge-opening { background: #6366f1; }
     </div>
     <?php endif; ?>
 
-    <div class="tr-cards">
-        <div class="tr-card">
-            <div class="tr-card-lbl">Current Balance</div>
-            <div class="tr-card-val" id="tr-bal"><?= $fmt($summary['CurrentBalance']) ?></div>
+    <!-- ── Stats row ──────────────────────────────────────── -->
+    <div class="rp-stats-row">
+        <div class="rp-stat-card">
+            <div class="rp-stat-icon"><i class="fas fa-wallet"></i></div>
+            <div class="rp-stat-number" id="tr-bal"><?= $fmt($summary['CurrentBalance']) ?></div>
+            <div class="rp-stat-label">Current Balance</div>
         </div>
-        <div class="tr-card tr-card-in">
-            <div class="tr-card-lbl">Total In</div>
-            <div class="tr-card-val" id="tr-in"><?= $fmt($summary['TotalIn']) ?></div>
+        <div class="rp-stat-card" id="tr-in-card">
+            <div class="rp-stat-icon"><i class="fas fa-arrow-down"></i></div>
+            <div class="rp-stat-number" id="tr-in"><?= $fmt($summary['TotalIn']) ?></div>
+            <div class="rp-stat-label">Total In</div>
         </div>
-        <div class="tr-card tr-card-out">
-            <div class="tr-card-lbl">Total Out</div>
-            <div class="tr-card-val" id="tr-out"><?= $fmt($summary['TotalOut']) ?></div>
+        <div class="rp-stat-card" id="tr-out-card">
+            <div class="rp-stat-icon"><i class="fas fa-arrow-up"></i></div>
+            <div class="rp-stat-number" id="tr-out"><?= $fmt($summary['TotalOut']) ?></div>
+            <div class="rp-stat-label">Total Out</div>
         </div>
-        <div class="tr-card">
-            <div class="tr-card-lbl">Entries</div>
-            <div class="tr-card-val" id="tr-count"><?= (int)$ledger['Total'] ?></div>
+        <div class="rp-stat-card">
+            <div class="rp-stat-icon"><i class="fas fa-list-ol"></i></div>
+            <div class="rp-stat-number" id="tr-count"><?= (int)$ledger['Total'] ?></div>
+            <div class="rp-stat-label">Entries</div>
         </div>
     </div>
 
-    <div class="tr-charts">
-        <div class="tr-chart-card tr-chart-full">
-            <div class="tr-chart-title">Balance Over Time</div>
+    <!-- ── Charts ─────────────────────────────────────────── -->
+    <div class="rp-charts-row rp-charts-visible tr-charts">
+        <div class="rp-chart-card tr-chart-full">
+            <div class="rp-chart-card-title">Balance Over Time</div>
             <div id="tr-chart-balance" style="height:120px"></div>
         </div>
-        <div class="tr-chart-card">
-            <div class="tr-chart-title">Income by Category</div>
+        <div class="rp-chart-card">
+            <div class="rp-chart-card-title">Income by Category</div>
             <div id="tr-chart-income" style="height:240px"></div>
         </div>
-        <div class="tr-chart-card">
-            <div class="tr-chart-title">Expenses by Category</div>
+        <div class="rp-chart-card">
+            <div class="rp-chart-card-title">Expenses by Category</div>
             <div id="tr-chart-expense" style="height:240px"></div>
         </div>
     </div>
 
-    <div class="tr-toolbar">
-        <input type="text" id="tr-f-from" placeholder="From" autocomplete="off">
-        <input type="text" id="tr-f-to" placeholder="To" autocomplete="off">
-        <select id="tr-f-cat">
-            <option value="">All categories</option>
-            <?php foreach ($catFlat as $k => $lbl): ?>
-            <option value="<?= htmlspecialchars($k) ?>"><?= htmlspecialchars($lbl) ?></option>
-            <?php endforeach; ?>
-        </select>
-        <select id="tr-f-dir">
-            <option value="">In &amp; Out</option>
-            <option value="credit">In</option>
-            <option value="debit">Out</option>
-        </select>
-        <span class="tr-spacer"></span>
-        <button class="tr-btn tr-btn-primary" id="tr-add" type="button">+ Add Entry</button>
-        <button class="tr-btn" id="tr-reconcile" type="button">Reconcile</button>
-        <a class="tr-btn" id="tr-export" href="<?= htmlspecialchars($ajaxBase) ?>export">Export CSV</a>
-    </div>
+    <!-- ── Body: sidebar + main ───────────────────────────── -->
+    <div class="rp-body">
 
-    <table class="tr-ledger" id="tr-ledger">
-        <thead>
-            <tr>
-                <th>Date</th><th>Category</th><th>Method</th><th>Description</th><th>Counterparty</th>
-                <th class="tr-num">In</th><th class="tr-num">Out</th><th class="tr-num">Balance</th><th></th>
-            </tr>
-        </thead>
-        <tbody id="tr-ledger-body"><!-- rendered by JS --></tbody>
-    </table>
-    <div class="tr-pager" id="tr-pager"></div>
+        <!-- Sidebar -->
+        <div class="rp-sidebar">
 
-    <div class="tr-recon-history" id="tr-recon-history">
-        <h2>Reconciliation History</h2>
-        <table class="tr-recon-table" id="tr-recon-table">
-            <thead>
-                <tr>
-                    <th>As Of</th>
-                    <th class="tr-num">Actual</th>
-                    <th class="tr-num">Computed</th>
-                    <th class="tr-num">Variance</th>
-                    <th>Explanation</th>
-                    <th>Recorded</th>
-                </tr>
-            </thead>
-            <tbody id="tr-recon-body"><!-- rendered by JS --></tbody>
-        </table>
-    </div>
+            <div class="rp-filter-card">
+                <div class="rp-filter-card-header">
+                    <i class="fas fa-sliders-h"></i> Filters
+                </div>
+                <div class="rp-filter-card-body">
+                    <div class="rp-param-form tr-filter-form">
+                        <div class="rp-form-group">
+                            <label for="tr-f-from">From</label>
+                            <input type="text" id="tr-f-from" class="rp-form-input" placeholder="Any date" autocomplete="off">
+                        </div>
+                        <div class="rp-form-group">
+                            <label for="tr-f-to">To</label>
+                            <input type="text" id="tr-f-to" class="rp-form-input" placeholder="Any date" autocomplete="off">
+                        </div>
+                        <div class="rp-form-group">
+                            <label for="tr-f-cat">Category</label>
+                            <select id="tr-f-cat" class="rp-form-input">
+                                <option value="">All categories</option>
+                                <?php foreach ($catFlat as $k => $lbl): ?>
+                                <option value="<?= htmlspecialchars($k) ?>"><?= htmlspecialchars($lbl) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="rp-form-group">
+                            <label for="tr-f-dir">Direction</label>
+                            <select id="tr-f-dir" class="rp-form-input">
+                                <option value="">In &amp; Out</option>
+                                <option value="credit">In only</option>
+                                <option value="debit">Out only</option>
+                            </select>
+                        </div>
+                        <button type="button" class="tr-filter-reset" id="tr-f-reset">Clear filters</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="rp-filter-card">
+                <div class="rp-filter-card-header">
+                    <i class="fas fa-book-open"></i> About This Tool
+                </div>
+                <div class="rp-filter-card-body">
+                    <div class="rp-col-guide-item">
+                        <span class="rp-col-guide-name">Balance</span>
+                        <span class="rp-col-guide-desc">Runs from the opening balance forward, oldest entry first, so each row shows the funds on hand at that point.</span>
+                    </div>
+                    <div class="rp-col-guide-item">
+                        <span class="rp-col-guide-name">Reconcile</span>
+                        <span class="rp-col-guide-desc">Records what the account actually held on a date. A variance is kept, not corrected &mdash; explain it in the note.</span>
+                    </div>
+                    <div class="rp-col-guide-item">
+                        <span class="rp-col-guide-name">Counterparty</span>
+                        <span class="rp-col-guide-desc">Who the money came from or went to. Link a player for reimbursements and donations so it shows on their record.</span>
+                    </div>
+                    <div class="rp-col-guide-item">
+                        <span class="rp-col-guide-name">Export CSV</span>
+                        <span class="rp-col-guide-desc">Exports the ledger with the filters above applied &mdash; useful for a term-end report to the <?= $ownerLabelLower ?>.</span>
+                    </div>
+                </div>
+            </div>
+
+        </div><!-- /rp-sidebar -->
+
+        <!-- Main column -->
+        <div class="rp-main">
+
+            <div class="rp-table-area">
+                <table class="tr-ledger" id="tr-ledger">
+                    <thead>
+                        <tr>
+                            <th>Date</th><th>Category</th><th>Method</th><th>Description</th><th>Counterparty</th>
+                            <th class="tr-num">In</th><th class="tr-num">Out</th><th class="tr-num">Balance</th>
+                            <th class="tr-actions">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tr-ledger-body"><!-- rendered by JS --></tbody>
+                </table>
+                <div class="tr-pager" id="tr-pager"></div>
+            </div>
+
+            <div class="rp-table-area tr-recon-history" id="tr-recon-history">
+                <h2>Reconciliation History</h2>
+                <table class="tr-recon-table" id="tr-recon-table">
+                    <thead>
+                        <tr>
+                            <th>As Of</th>
+                            <th class="tr-num">Actual</th>
+                            <th class="tr-num">Computed</th>
+                            <th class="tr-num">Variance</th>
+                            <th>Explanation</th>
+                            <th>Recorded</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tr-recon-body"><!-- rendered by JS --></tbody>
+                </table>
+            </div>
+
+        </div><!-- /rp-main -->
+    </div><!-- /rp-body -->
 </div>
 
 <!-- Add / Edit entry modal (built/populated by JS) -->
@@ -582,8 +668,14 @@ window.TrConfig = {
                     '<td class="tr-num">' + (r.Direction === 'credit' ? money(r.Amount) : '') + '</td>' +
                     '<td class="tr-num">' + (r.Direction === 'debit' ? money(r.Amount) : '') + '</td>' +
                     '<td class="tr-num">' + money(r.RunningBalance) + '</td>' +
-                    '<td><button class="tr-link" type="button" data-edit="' + r.Id + '">Edit</button> ' +
-                    '<button class="tr-link" type="button" data-del="' + r.Id + '">Delete</button></td>';
+                    '<td><div class="rp-row-actions">' +
+                    '<button class="rp-row-btn" type="button" data-edit="' + r.Id + '" ' +
+                    'data-tip="Correct this entry — date, amount, category, description, or counterparty.">' +
+                    '<i class="fas fa-pen"></i> Edit</button>' +
+                    '<button class="rp-row-btn rp-row-btn-danger" type="button" data-del="' + r.Id + '" ' +
+                    'data-tip="Take this entry off the ledger and out of the balance. The row and its audit trail are kept for the record.">' +
+                    '<i class="fas fa-trash-alt"></i> Delete</button>' +
+                    '</div></td>';
                 body.appendChild(tr);
             });
         }
@@ -591,6 +683,10 @@ window.TrConfig = {
             var balEl = document.getElementById('tr-bal');
             if (balEl) { balEl.textContent = money(d.CurrentBalance); }
         }
+        // Entries stat card tracks the filtered row count (it was server-rendered
+        // only, so it went stale after an add/delete or a filter change).
+        var cntEl = document.getElementById('tr-count');
+        if (cntEl && typeof d.Total !== 'undefined') { cntEl.textContent = d.Total; }
         renderPager(d);
     }
 
@@ -693,13 +789,27 @@ window.TrConfig = {
         if (catSel) { catSel.addEventListener('change', function () { state.category = catSel.value; state.page = 1; loadLedger(); }); }
         if (dirSel) { dirSel.addEventListener('change', function () { state.direction = dirSel.value; state.page = 1; loadLedger(); }); }
         var fpOpts = { dateFormat: 'Y-m-d', altInput: true, altFormat: 'F j, Y', allowInput: false };
+        var fpFrom = null, fpTo = null;
         if (window.flatpickr) {
-            flatpickr('#tr-f-from', Object.assign({}, fpOpts, {
+            fpFrom = flatpickr('#tr-f-from', Object.assign({}, fpOpts, {
                 onChange: function (sel, str) { state.from = str || ''; state.page = 1; loadLedger(); refreshSummary(); }
             }));
-            flatpickr('#tr-f-to', Object.assign({}, fpOpts, {
+            fpTo = flatpickr('#tr-f-to', Object.assign({}, fpOpts, {
                 onChange: function (sel, str) { state.to = str || ''; state.page = 1; loadLedger(); refreshSummary(); }
             }));
+        }
+        var reset = document.getElementById('tr-f-reset');
+        if (reset) {
+            reset.addEventListener('click', function () {
+                // clear(false) — don't fire onChange, we reload once at the end.
+                if (fpFrom) { fpFrom.clear(false); } else { var f = document.getElementById('tr-f-from'); if (f) { f.value = ''; } }
+                if (fpTo)   { fpTo.clear(false); }  else { var t = document.getElementById('tr-f-to');   if (t) { t.value = ''; } }
+                if (catSel) { catSel.value = ''; }
+                if (dirSel) { dirSel.value = ''; }
+                state.from = ''; state.to = ''; state.category = ''; state.direction = ''; state.page = 1;
+                loadLedger();
+                refreshSummary();
+            });
         }
         // Keep the export link in sync with active filters.
         var exp = document.getElementById('tr-export');
