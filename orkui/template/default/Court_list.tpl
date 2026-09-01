@@ -1,6 +1,7 @@
 <?php
 $courtList      = $CourtList      ?? [];
 $upcomingEvents = $UpcomingEvents ?? [];
+$unrecordedCourts = $UnrecordedCourts ?? [];
 $kingdom_id     = $KingdomId      ?? 0;
 $park_id        = $ParkId         ?? 0;
 $context        = $Context        ?? 'kingdom';
@@ -36,6 +37,10 @@ $backUrl = $context === 'park'
 .cp-btn-link { background: none; border: 1px solid #cbd5e0; color: #4a5568; padding: 5px 12px; border-radius: 5px; font-size: 12px; cursor: pointer; text-decoration: none; display: inline-block; }
 .cp-btn-link:hover { background: #f7fafc; color: #2d3748; }
 .cp-empty { text-align: center; padding: 48px 24px; color: #718096; font-size: 15px; border: 1px dashed #e2e8f0; border-radius: 8px; }
+.cp-unrecorded-banner { display:flex; gap:10px; align-items:flex-start; background:#fffaf0; border:1px solid #dd6b20; border-radius:6px; padding:10px 14px; margin-bottom:14px; color:#7b341e; font-size:14px; }
+.cp-unrecorded-banner i { margin-top:2px; color:#dd6b20; }
+.cp-unrec-line + .cp-unrec-line { margin-top:4px; }
+.cp-unrec-line a { color: inherit; font-weight: 700; text-decoration: underline; }
 
 /* New Court Modal */
 .cp-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 1000; align-items: center; justify-content: center; }
@@ -78,6 +83,7 @@ html[data-theme="dark"] .cp-badge-count { background: #1f2733; color: #cbd5e0; }
 html[data-theme="dark"] .cp-btn-link { background: #1f2733; border-color: #2d3748; color: #cbd5e0; }
 html[data-theme="dark"] .cp-btn-link:hover { background: #2d3748; color: #e2e8f0; }
 html[data-theme="dark"] .cp-empty { color: #a0aec0; border-color: #2d3748; }
+html[data-theme="dark"] .cp-unrecorded-banner { background:#2d1b0e; border-color:#dd6b20; color:#fbd38d; }
 html[data-theme="dark"] .cp-overlay { background: rgba(0,0,0,.65); }
 html[data-theme="dark"] .cp-modal { background: #161b22; box-shadow: 0 8px 32px rgba(0,0,0,.6); }
 html[data-theme="dark"] .cp-modal-header { border-bottom-color: #2d3748; }
@@ -118,6 +124,7 @@ html[data-theme="dark"] .cp-badge { box-shadow: inset 0 0 0 1px rgba(255,255,255
 @media (max-width: 600px) {
     .cp-header { flex-wrap: wrap; row-gap: 10px; }
     .cp-header h1 { flex: 1 1 100%; }
+    .cp-unrecorded-banner { padding: 10px 12px; font-size: 13px; }
     .cp-court-card { flex-wrap: wrap; align-items: flex-start; }
     .cp-court-date { white-space: normal; min-width: 0; }
     .cp-court-badges { flex-wrap: wrap; flex-shrink: 1; }
@@ -153,6 +160,24 @@ html[data-theme="dark"] .cp-badge { box-shadow: inset 0 0 0 1px rgba(255,255,255
             <i class="fas fa-plus"></i> Plan a Court
         </button>
     </div>
+
+    <?php if (!empty($unrecordedCourts)): ?>
+    <div class="cp-unrecorded-banner" role="status">
+        <i class="fas fa-exclamation-triangle"></i>
+        <div>
+            <?php foreach ($unrecordedCourts as $uc): ?>
+            <div class="cp-unrec-line">
+                <a href="<?= UIR ?>Court/detail/<?= (int)$uc['CourtId'] ?>"><?= htmlspecialchars($uc['Name']) ?></a>
+                <?php if (empty($uc['CourtDate'])): ?>
+                    &mdash; published with no date set, and nothing recorded yet.
+                <?php else: ?>
+                    &mdash; held <?= (int)$uc['DaysSince'] ?> day<?= (int)$uc['DaysSince'] === 1 ? '' : 's' ?> ago, nothing recorded yet.
+                <?php endif; ?>
+            </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    <?php endif; ?>
 
     <?php if (empty($courtList)): ?>
         <div class="cp-empty">

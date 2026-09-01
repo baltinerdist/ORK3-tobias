@@ -1928,4 +1928,57 @@ class Court
         return ['Court' => $court, 'Awards' => array_values($awards)];
     }
 
+    /**
+     * Published courts in this scope with nothing recorded yet — the silence
+     * failure mode of the print-and-catch-up workflow (spec 0.5).
+     *
+     * Includes undated courts: an undated court is the exact case that stamps
+     * every award with the catch-up day, so it must never be invisible here.
+     */
+    public function getUnrecordedCourts($kingdom_id, $park_id = 0)
+    {
+        $kingdom_id = (int)$kingdom_id;
+        $park_id    = (int)$park_id;
+        if (!valid_id($kingdom_id)) {
+            return [];
+        }
+
+        $scope = $park_id > 0
+            ? 'c.park_id = ' . $park_id
+            : 'c.kingdom_id = ' . $kingdom_id;
+
+        $this->db->Clear();
+        $rs = $this->db->DataSet(
+            'SELECT c.court_id, c.name, c.court_date, c.park_id, c.recorder_mundane_id,
+                    CASE WHEN c.court_date IS NULL OR c.court_date = \'0000-00-00\'
+                         THEN 0 ELSE DATEDIFF(CURDATE(), c.court_date) END AS days_since
+               FROM ' . DB_PREFIX . 'court c
+              WHERE c.status = \'published\'
+                AND ' . $scope . '
+                AND (c.court_date IS NULL OR c.court_date = \'0000-00-00\' OR c.court_date < CURDATE())
+                AND NOT EXISTS (
+                    SELECT 1 FROM ' . DB_PREFIX . 'court_award ca
+                     WHERE ca.court_id = c.court_id
+                       AND ca.status IN (\'staged\', \'given\')
+                )
+              ORDER BY c.court_date IS NULL DESC, c.court_date ASC'
+        );
+
+        $out = [];
+        if ($rs) {
+            while ($rs->Next()) {
+                $out[] = [
+                    'CourtId'   => (int)$rs->court_id,
+                    'Name'      => $rs->name,
+                    'CourtDate' => $rs->court_date,
+                    'ParkId'    => (int)$rs->park_id,
+                    'DaysSince' => (int)$rs->days_since,
+                    'RecorderMundaneId' => (int)$rs->recorder_mundane_id,
+                ];
+            }
+        }
+
+        return $out;
+    }
+
 }

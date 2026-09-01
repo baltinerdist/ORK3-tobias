@@ -54,6 +54,7 @@ class Controller_Court extends Controller
 
         $courtList     = $this->Court->get_court_list($kingdom_id, $park_id);
         $upcomingEvents = $this->Court->get_upcoming_events($kingdom_id);
+        $unrecordedCourts = $this->Court->get_unrecorded_courts($kingdom_id, $park_id);
 
         // Location name
         $locationName = '';
@@ -71,6 +72,7 @@ class Controller_Court extends Controller
 
         $this->data['CourtList']      = $courtList;
         $this->data['UpcomingEvents'] = $upcomingEvents;
+        $this->data['UnrecordedCourts'] = $unrecordedCourts;
         $this->data['KingdomId']      = $kingdom_id;
         $this->data['ParkId']         = $park_id;
         $this->data['Context']        = $context;

@@ -32,6 +32,11 @@ class Model_Court extends Model
         return $this->_court()->getCourtDetail($court_id);
     }
 
+    public function get_unrecorded_courts($kingdom_id, $park_id = 0)
+    {
+        return $this->_court()->getUnrecordedCourts($kingdom_id, $park_id);
+    }
+
     public function create_court($kingdom_id, $park_id, $name, $court_date, $event_cd, $created_by)
     {
         return $this->_court()->createCourt($kingdom_id, $park_id, $name, $court_date, $event_cd, $created_by);
