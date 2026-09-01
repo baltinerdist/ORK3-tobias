@@ -71,26 +71,23 @@ final class CourtFixture
             throw new RuntimeException('No template mundane row to clone.');
         }
 
+        $persona = self::MARKER . '-' . $tag . '-' . bin2hex(random_bytes(3));
+
+        // ork_mundane.username carries a UNIQUE key, so it must be supplied
+        // fresh in the INSERT itself — cloning it and fixing it up afterwards
+        // fails on the INSERT with "Duplicate entry ... for key 'username'".
         $cols = $this->pdo->query('SHOW COLUMNS FROM ' . DB_PREFIX . 'mundane')
             ->fetchAll(PDO::FETCH_COLUMN, 0);
-        $cols = array_values(array_filter($cols, static fn ($c) => $c !== 'mundane_id'));
+        $cols = array_values(array_diff($cols, ['mundane_id', 'username', 'persona', 'kingdom_id', 'park_id']));
         $list = '`' . implode('`, `', $cols) . '`';
 
         $st = $this->pdo->prepare(
-            'INSERT INTO ' . DB_PREFIX . 'mundane (' . $list . ')
-             SELECT ' . $list . ' FROM ' . DB_PREFIX . 'mundane WHERE mundane_id = ?'
+            'INSERT INTO ' . DB_PREFIX . 'mundane (`username`, `persona`, `kingdom_id`, `park_id`, ' . $list . ')
+             SELECT ?, ?, ?, ?, ' . $list . ' FROM ' . DB_PREFIX . 'mundane WHERE mundane_id = ?'
         );
-        $st->execute([$template]);
+        $st->execute([$persona, $persona, $kingdomId, $parkId, $template]);
         $id = (int) $this->pdo->lastInsertId();
         $this->mundaneIds[] = $id;
-
-        $persona = self::MARKER . '-' . $tag . '-' . bin2hex(random_bytes(3));
-        $up = $this->pdo->prepare(
-            'UPDATE ' . DB_PREFIX . 'mundane
-                SET persona = ?, username = ?, kingdom_id = ?, park_id = ?
-              WHERE mundane_id = ?'
-        );
-        $up->execute([$persona, $persona, $kingdomId, $parkId, $id]);
 
         return ['mundane_id' => $id, 'persona' => $persona];
     }
