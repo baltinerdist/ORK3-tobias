@@ -146,11 +146,9 @@ html[data-theme="dark"] .cp-award-row-main:has(+ .cp-award-row-expand.open) { ba
 /* Empty */
 .cp-award-empty { text-align: center; padding: 36px 24px; color: #a0aec0; font-size: 14px; }
 
-/* Rank pill picker (ad-hoc Add Award modal) — clickable .ladder-rank pills */
-.cp-rank-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
-.cp-rank-pill { width: auto; padding: 3px 11px; font-size: 12px; cursor: pointer; opacity: .5; transition: opacity .12s ease, box-shadow .12s ease; }
-.cp-rank-pill:hover { opacity: .85; }
-.cp-rank-pill-selected { opacity: 1; box-shadow: 0 0 0 2px #fff, 0 0 0 4px #2b6cb0; }
+/* Rank pill picker (ad-hoc Add Award modal) — .cp-rank-pills/.cp-rank-pill live in the
+   shared court-planner.css (Task 8 moved them there so Court_record.tpl's rank popover
+   reuses the same rule instead of a second copy). */
 .cp-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
 /* Rec list */
@@ -789,8 +787,7 @@ html[data-theme="dark"] .cp-btn-grant:hover { background: #22543d; }
 /* Empty state */
 html[data-theme="dark"] .cp-award-empty { color: #4a5568; }
 
-
-html[data-theme="dark"] .cp-rank-pill-selected { box-shadow: 0 0 0 2px #1f2733, 0 0 0 4px #63b3ed; }
+/* .cp-rank-pill-selected dark rule lives in the shared court-planner.css. */
 
 /* Recommendation modal */
 html[data-theme="dark"] .cp-rm-search { background: #1f2733; border-color: #2d3748; color: #e2e8f0; }
@@ -896,16 +893,10 @@ html[data-theme="dark"] .cp-award-drop-line { border-top-color: #63b3ed; }
 /* Grant modal — giver pills + fields */
 .cp-grant-ro { background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 9px 12px; font-size: 14px; color: #2d3748; }
 .cp-grant-ro .cp-grant-ro-award { color: #4a5568; font-size: 13px; margin-top: 2px; }
-.cp-giver-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
-.cp-giver-pill { background: #edf2f7; border: 1px solid #cbd5e0; color: #4a5568; padding: 5px 11px; border-radius: 16px; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; transition: background .1s, border-color .1s, color .1s; }
-.cp-giver-pill:hover { background: #e2e8f0; }
-.cp-giver-pill.active { background: #2c5282; border-color: #2c5282; color: #fff; }
-.cp-giver-pill .cp-giver-role { font-size: 10px; opacity: .75; text-transform: uppercase; letter-spacing: .03em; }
+/* .cp-giver-pills/.cp-giver-pill (light+dark) live in the shared court-planner.css —
+   Task 8 moved them there so Court_record.tpl's giver popover reuses the same rule. */
 html[data-theme="dark"] .cp-grant-ro { background: #1f2733; border-color: #2d3748; color: #e2e8f0; }
 html[data-theme="dark"] .cp-grant-ro .cp-grant-ro-award { color: #a0aec0; }
-html[data-theme="dark"] .cp-giver-pill { background: #1f2733; border-color: #2d3748; color: #cbd5e0; }
-html[data-theme="dark"] .cp-giver-pill:hover { background: #2d3748; }
-html[data-theme="dark"] .cp-giver-pill.active { background: #2b6cb0; border-color: #2b6cb0; color: #fff; }
 
 
 

@@ -101,6 +101,20 @@
 .cp-ac-item:hover { background: #ebf8ff; }
 .cp-ac-group { padding: 5px 12px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #718096; background: #f7fafc; border-bottom: 1px solid #edf2f7; cursor: default; position: sticky; top: 0; }
 
+/* ---- Giver quick-pick pills (grant modal, Record view's giver popover) ---- */
+.cp-giver-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.cp-giver-pill { background: #edf2f7; border: 1px solid #cbd5e0; color: #4a5568; padding: 5px 11px; border-radius: 16px; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; transition: background .1s, border-color .1s, color .1s; }
+.cp-giver-pill:hover { background: #e2e8f0; }
+.cp-giver-pill.active { background: #2c5282; border-color: #2c5282; color: #fff; }
+.cp-giver-pill .cp-giver-role { font-size: 10px; opacity: .75; text-transform: uppercase; letter-spacing: .03em; }
+
+/* ---- Rank pill picker (ad-hoc Add Award modal, Record view's rank popover) —
+   clickable .ladder-rank pills, dimmed until selected. ---- */
+.cp-rank-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.cp-rank-pill { width: auto; padding: 3px 11px; font-size: 12px; cursor: pointer; opacity: .5; transition: opacity .12s ease, box-shadow .12s ease; }
+.cp-rank-pill:hover { opacity: .85; }
+.cp-rank-pill-selected { opacity: 1; box-shadow: 0 0 0 2px #fff, 0 0 0 4px #2b6cb0; }
+
 /* ---- Tracking icons ---- */
 .cp-tracking-icon {
     display: inline-block;
@@ -212,6 +226,11 @@ html[data-theme="dark"] .cp-ac-dropdown { background: #1f2733 !important; border
 html[data-theme="dark"] .cp-ac-item { color: #cbd5e0; }
 html[data-theme="dark"] .cp-ac-item:hover { background: #2d3748 !important; }
 html[data-theme="dark"] .cp-ac-group { color: #a0aec0; background: #171e28 !important; border-bottom-color: #2d3748 !important; }
+
+html[data-theme="dark"] .cp-giver-pill { background: #1f2733; border-color: #2d3748; color: #cbd5e0; }
+html[data-theme="dark"] .cp-giver-pill:hover { background: #2d3748; }
+html[data-theme="dark"] .cp-giver-pill.active { background: #2b6cb0; border-color: #2b6cb0; color: #fff; }
+html[data-theme="dark"] .cp-rank-pill-selected { box-shadow: 0 0 0 2px #1f2733, 0 0 0 4px #63b3ed; }
 
 html[data-theme="dark"] .cp-error { color: #fc8181; }
 html[data-theme="dark"] .cp-error-box { background: rgba(229,62,62,.12); border-color: rgba(229,62,62,.4); color: #fc8181; }

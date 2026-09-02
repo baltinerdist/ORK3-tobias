@@ -118,6 +118,36 @@ html[data-theme="dark"] .cp-rec-empty { color: #718096; border-color: #2d3748; }
 .cp-rec-row[data-mark="skipped"] .cp-rec-seg-skipped { background: #c53030; color: #fff; }
 .cp-rec-row[data-mark="none"] .cp-rec-seg-none { background: #edf2f7; color: #2d3748; }
 
+/* ---- Given-by chip + rank chip (Task 8) — the row-level controls that open the
+   two shared floating popovers below. Unconditional 44px (not gated behind
+   pointer:coarse or the 600px block) — these are called out by name in the house
+   mobile rules as the risk on this page, so the hit area is padding-driven and
+   present at every width, checked at both 390 and 768. ---- */
+.cp-rec-giver-chip { background: #edf2f7; border: 1px solid #cbd5e0; color: #2d3748; padding: 4px 10px; border-radius: 14px; font-size: 12px; font-weight: 600; cursor: pointer; max-width: 100%; min-height: 44px; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp-rec-giver-chip:hover:not(:disabled) { background: #e2e8f0; }
+.cp-rec-giver-chip:disabled { cursor: not-allowed; opacity: .6; }
+.cp-rec-giver-chip.cp-rec-chip-custom { background: #ebf8ff; border-color: #90cdf4; color: #2b6cb0; }
+.cp-rec-rank-chip { cursor: pointer; min-height: 44px; box-sizing: border-box; display: inline-flex; align-items: center; }
+.cp-rec-rank-chip:disabled { cursor: not-allowed; opacity: .6; }
+
+/* Shared floating popover (giver + rank) — same fixed-position idiom as
+   Court_detail.tpl's #cp-note-popup, positioned next to the chip that opened it. */
+.cp-rec-pop { display: none; position: fixed; background: #fff; border: 1px solid #cbd5e0; border-radius: 8px; padding: 12px; width: 270px; max-width: calc(100vw - 20px); box-shadow: 0 6px 20px rgba(0,0,0,.18); z-index: 1150; }
+.cp-rec-pop-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.cp-rec-pop-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: #718096; }
+.cp-rec-pop-close { background: none; border: none; color: #718096; cursor: pointer; font-size: 16px; line-height: 1; padding: 10px; margin: -10px; min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+.cp-rec-pop-close:hover { color: #2d3748; }
+/* Popover pills get the same unconditional 44px — they're the giver/rank quick-picks
+   called out by name in the house mobile rules. */
+#cp-rec-giver-pop .cp-giver-pill,
+#cp-rec-rank-pop .cp-rank-pill { min-height: 44px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; }
+/* The rank digits (1..12) are narrow single/double-character labels — height alone
+   isn't enough of a hit area, so give them an explicit minimum width too. */
+#cp-rec-rank-pop .cp-rank-pill { min-width: 44px; padding-left: 0; padding-right: 0; }
+.cp-rec-pop-apply-btn { display: none; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 10px; background: #edf2f7; border: 1px solid #cbd5e0; color: #2c5282; padding: 8px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; min-height: 44px; box-sizing: border-box; }
+.cp-rec-pop-apply-btn:hover { background: #e2e8f0; }
+.cp-rec-pop-apply-btn.show { display: flex; }
+
 html[data-theme="dark"] .cp-rec-list { background: #161b22; border-color: #2d3748; }
 html[data-theme="dark"] .cp-rec-row { border-color: #22272e; }
 html[data-theme="dark"] .cp-rec-row-header { background: #1a202c; color: #97a3b4; }
@@ -134,6 +164,16 @@ html[data-theme="dark"] .cp-rec-seg-btn:hover:not(:disabled) { background: #2d37
 html[data-theme="dark"] .cp-rec-row[data-mark="given"] .cp-rec-seg-given { background: #276749; color: #fff; }
 html[data-theme="dark"] .cp-rec-row[data-mark="skipped"] .cp-rec-seg-skipped { background: #9b2c2c; color: #fff; }
 html[data-theme="dark"] .cp-rec-row[data-mark="none"] .cp-rec-seg-none { background: #2d3748; color: #e2e8f0; }
+
+html[data-theme="dark"] .cp-rec-giver-chip { background: #1f2733; border-color: #2d3748; color: #e2e8f0; }
+html[data-theme="dark"] .cp-rec-giver-chip:hover:not(:disabled) { background: #2d3748; }
+html[data-theme="dark"] .cp-rec-giver-chip.cp-rec-chip-custom { background: rgba(43,108,176,.22); border-color: #2b6cb0; color: #90cdf4; }
+html[data-theme="dark"] .cp-rec-pop { background: #161b22; border-color: #2d3748; box-shadow: 0 6px 20px rgba(0,0,0,.5); }
+html[data-theme="dark"] .cp-rec-pop-title { color: #97a3b4; }
+html[data-theme="dark"] .cp-rec-pop-close { color: #718096; }
+html[data-theme="dark"] .cp-rec-pop-close:hover { color: #e2e8f0; }
+html[data-theme="dark"] .cp-rec-pop-apply-btn { background: #1f2733; border-color: #2d3748; color: #90cdf4; }
+html[data-theme="dark"] .cp-rec-pop-apply-btn:hover { background: #2d3748; }
 
 @media (max-width: 600px) {
     .cp-rec-topstrip { flex-direction: column; align-items: stretch; gap: 12px; padding: 14px; }
@@ -311,7 +351,6 @@ html[data-theme="dark"] .cp-rec-row[data-mark="none"] .cp-rec-seg-none { backgro
             </div>
             <?php
             $canMark = $courtSt === 'published';
-            $defaultGiverPersona = $giverOptions['default']['persona'] ?? '—';
             foreach ($courtAwards as $__i => $aw):
                 $caid = (int)($aw['CourtAwardId'] ?? 0);
                 $mark = in_array($aw['Status'] ?? '', ['given', 'staged'], true) ? 'given'
@@ -335,13 +374,27 @@ html[data-theme="dark"] .cp-rec-row[data-mark="none"] .cp-rec-seg-none { backgro
                 </span>
                 <span class="cp-rec-c cp-rec-c-rank">
                     <span class="cp-rec-c-label">Rank</span>
-                    <?php if (!empty($aw['IsLadder']) && (int)($aw['Rank'] ?? 0) > 0): ?>
-                    <span class="ladder-rank" data-lvl="<?= min((int)$aw['Rank'], 10) ?>">Rank <?= (int)$aw['Rank'] ?></span>
+                    <?php if (!empty($aw['IsLadder'])):
+                        $initRank = (int)($aw['Rank'] ?? 0) > 0 ? (int)$aw['Rank'] : 1;
+                    ?>
+                    <button type="button" class="ladder-rank cp-rec-rank-chip" id="cp-rec-rank-chip-<?= $caid ?>"
+                            data-lvl="<?= min($initRank, 10) ?>" data-rank="<?= $initRank ?>"
+                            data-award="<?= htmlspecialchars($aw['AwardName'] ?? '') ?>"
+                            onclick="cpRecOpenRankPop(<?= $caid ?>, this)" data-tip="Change the rank granted"
+                            <?= $canMark ? '' : 'disabled' ?>>Rank <?= $initRank ?></button>
                     <?php else: ?>&mdash;<?php endif; ?>
                 </span>
-                <span class="cp-rec-c cp-rec-c-giver" id="cp-rec-giver-<?= $caid ?>">
+                <span class="cp-rec-c cp-rec-c-giver">
                     <span class="cp-rec-c-label">Given by</span>
-                    <?= htmlspecialchars($defaultGiverPersona) ?>
+                    <?php
+                    $rowGiverId = (int)($aw['GivenByMundaneId'] ?? 0);
+                    $rowGiverPersona = $rowGiverId > 0 ? $aw['GivenByPersona'] : ($giverOptions['default']['persona'] ?? '');
+                    $rowGiverId = $rowGiverId > 0 ? $rowGiverId : (int)($giverOptions['default']['mundane_id'] ?? 0);
+                    ?>
+                    <button type="button" class="cp-rec-giver-chip" id="cp-rec-giver-chip-<?= $caid ?>"
+                            data-mundane-id="<?= $rowGiverId ?>" data-persona="<?= htmlspecialchars($rowGiverPersona) ?>"
+                            onclick="cpRecOpenGiverPop(<?= $caid ?>, this)" data-tip="Change who gave this award"
+                            <?= $canMark ? '' : 'disabled' ?>><?= htmlspecialchars($rowGiverPersona !== '' ? $rowGiverPersona : '—') ?></button>
                 </span>
                 <span class="cp-rec-c cp-rec-c-ptl">
                     <span class="cp-rec-c-label">PTL</span>
@@ -354,6 +407,43 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
         <?php endif; ?>
     </div>
 
+</div>
+
+<!-- Given-by popover (Task 8) — a single shared floating panel, not one per row (22+
+     rows would mean 22+ copies of the giver pills + search). Reuses cpGiverOptions'
+     pills/search idiom from the grant modal's .cp-giver-pill / .cp-ac-* chrome (shared
+     court-planner.css), positioned fixed next to the chip that opened it (same idiom as
+     Court_detail.tpl's #cp-note-popup). "Apply to the rest below" lives here too — it
+     acts on whichever row is currently open, and only updates rows below it in the
+     list; it never marks a row. -->
+<div class="cp-rec-pop" id="cp-rec-giver-pop" role="dialog" aria-modal="false" aria-labelledby="cp-rec-giver-pop-title">
+    <div class="cp-rec-pop-header">
+        <span class="cp-rec-pop-title" id="cp-rec-giver-pop-title">Given by</span>
+        <button type="button" class="cp-rec-pop-close" onclick="cpRecGiverPopClose()" aria-label="Close">&times;</button>
+    </div>
+    <div class="cp-giver-pills" id="cp-rec-giver-pop-pills"></div>
+    <div class="cp-ac-wrap">
+        <input type="text" id="cp-rec-giver-pop-text" placeholder="Search for another giver…" autocomplete="off"
+               oninput="cpRecGiverPopInput(this)">
+        <div class="cp-ac-dropdown" id="cp-rec-giver-pop-ac"></div>
+    </div>
+    <input type="hidden" id="cp-rec-giver-pop-caid" value="0">
+    <input type="hidden" id="cp-rec-giver-pop-hidden" value="0">
+    <button type="button" class="cp-rec-pop-apply-btn" id="cp-rec-apply-rest-btn" onclick="cpRecApplyRest()">
+        <i class="fas fa-arrow-down"></i> Apply to the rest below
+    </button>
+</div>
+
+<!-- Rank popover (Task 8) — same shared-floating-panel idiom, reusing the ad-hoc
+     modal's .cp-rank-pill / .ladder-rank chrome (shared court-planner.css). Non-ladder
+     rows never get a rank control (getCourtAwards' IsLadder gate on the PHP side). -->
+<div class="cp-rec-pop" id="cp-rec-rank-pop" role="dialog" aria-modal="false" aria-labelledby="cp-rec-rank-pop-title">
+    <div class="cp-rec-pop-header">
+        <span class="cp-rec-pop-title" id="cp-rec-rank-pop-title">Rank</span>
+        <button type="button" class="cp-rec-pop-close" onclick="cpRecRankPopClose()" aria-label="Close">&times;</button>
+    </div>
+    <div class="cp-rank-pills" id="cp-rec-rank-pop-pills"></div>
+    <input type="hidden" id="cp-rec-rank-pop-caid" value="0">
 </div>
 
 <!-- Finalize & Complete modal — identical flow to the planner's (spec §6.6). -->
@@ -783,21 +873,244 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
     cpUpdateStagedIndicator(cpStagedCount);
 
     // ---- Per-row marks (spec §5.1) ----
-    // Stubs — Task 8 replaces the first two with real per-row giver/rank controls,
-    // Task 9 replaces the third with a citation editor. Defined now so cpRecMark
-    // (below) doesn't throw; each returns the sensible default a row would use if
-    // marked Given right now under the court's own default giver.
-    window.cpRecGiverFor = function(caid) {
-        return (cpGiverOptions && cpGiverOptions.default) ? cpGiverOptions.default.mundane_id : 0;
-    };
-    window.cpRecRankFor = function(caid) {
-        var a = courtAwards.find(function(x) { return String(x.CourtAwardId) === String(caid); });
-        return a ? (a.Rank || 0) : 0;
-    };
+    // Task 9 still owns cpRecCitationFor (a stub for now). cpRecGiverFor/cpRecRankFor
+    // are the real thing: cpRecMark reads whatever the officer left in cpRecGivers/
+    // cpRecRanks (populated below from the server's per-row GivenByMundaneId/Rank, and
+    // updated live by the giver/rank popovers) — never re-derives the court default at
+    // mark time, so a chip the officer changed sticks even if they never touch it again.
     window.cpRecCitationFor = function(caid) {
         var a = courtAwards.find(function(x) { return String(x.CourtAwardId) === String(caid); });
         return a ? (a.PublicComment || '') : '';
     };
+
+    // ---- Given-by chip + "apply to the rest below" (spec §5, Task 8) ----
+    // caid (string, matches data-caid) -> {id, persona}. Seeded from the row's own
+    // persisted GivenByMundaneId/GivenByPersona (Task 8 added these to getCourtAwards())
+    // when the row was already staged/given by someone other than the default — e.g. a
+    // page reload after a partial pass must not silently repaint every row back to the
+    // default giver. Everything else seeds from the court's default giver, exactly like
+    // the printed sheet pre-prints it.
+    var cpRecGivers = {};
+    courtAwards.forEach(function(a) {
+        var hasOwn = a.GivenByMundaneId && a.GivenByMundaneId > 0;
+        cpRecGivers[a.CourtAwardId] = {
+            id: hasOwn ? a.GivenByMundaneId : ((cpGiverOptions && cpGiverOptions.default) ? cpGiverOptions.default.mundane_id : 0),
+            persona: hasOwn ? a.GivenByPersona : ((cpGiverOptions && cpGiverOptions.default) ? cpGiverOptions.default.persona : '')
+        };
+    });
+    window.cpRecGiverFor = function(caid) {
+        var g = cpRecGivers[caid];
+        return g ? (g.id || 0) : 0;
+    };
+
+    // caid (string) -> rank. Ladder rows only (non-ladder rows have no chip and are
+    // never marked with a rank — grant_award still gets Rank=0 for them via cpRecMark's
+    // FormData, same as before).
+    var cpRecRanks = {};
+    courtAwards.forEach(function(a) {
+        if (a.IsLadder) cpRecRanks[a.CourtAwardId] = a.Rank > 0 ? a.Rank : 1;
+    });
+    window.cpRecRankFor = function(caid) {
+        return cpRecRanks[caid] || 0;
+    };
+
+    function cpRecIsDefaultGiver(mundaneId) {
+        return !!(cpGiverOptions && cpGiverOptions.default && String(cpGiverOptions.default.mundane_id) === String(mundaneId));
+    }
+
+    // Updates the map AND the visible chip together — every write path (pill pick,
+    // search pick, apply-to-rest) funnels through this so the two can't drift.
+    function cpRecSetGiverChip(caid, mundaneId, persona) {
+        cpRecGivers[caid] = { id: mundaneId, persona: persona };
+        var chip = gid('cp-rec-giver-chip-' + caid);
+        if (!chip) return;
+        chip.textContent = persona || '—';
+        chip.dataset.mundaneId = mundaneId;
+        chip.dataset.persona = persona;
+        // Faint-default vs write-in, same idea as the printed sheet: a chip that still
+        // matches the court default looks like the rest of the row; one that deviates
+        // is visually called out so the recorder can see at a glance which rows they
+        // touched.
+        chip.classList.toggle('cp-rec-chip-custom', !cpRecIsDefaultGiver(mundaneId));
+    }
+
+    function cpRecSetRankChip(caid, rank) {
+        cpRecRanks[caid] = rank;
+        var chip = gid('cp-rec-rank-chip-' + caid);
+        if (!chip) return;
+        chip.textContent = 'Rank ' + rank;
+        chip.dataset.rank = rank;
+        chip.dataset.lvl = Math.min(rank, 10);
+    }
+
+    // Every .cp-rec-row that comes AFTER the given row in DOM order (the row list's
+    // markup order IS its display order — same convention the mark-column comment
+    // above relies on). "Apply to the rest below" only ever touches these; it never
+    // looks upward and never touches the row itself twice.
+    function cpRecRowsBelow(row) {
+        var out = [];
+        var el = row && row.nextElementSibling;
+        while (el) {
+            if (el.classList && el.classList.contains('cp-rec-row')) out.push(el);
+            el = el.nextElementSibling;
+        }
+        return out;
+    }
+
+    // Shared positioning for both popovers — identical idiom to Court_detail.tpl's
+    // cpShowNote(): fixed, flips above the anchor if it would run off the bottom of
+    // the viewport, clamped to stay on-screen horizontally. Works the same whether the
+    // anchor sits in a normally-flowing row or (at <=600px) a stacked card.
+    function cpRecPositionPop(pop, anchor) {
+        pop.style.display = 'block';
+        var r  = anchor.getBoundingClientRect();
+        var pw = pop.offsetWidth;
+        var ph = pop.offsetHeight;
+        // clientWidth/clientHeight (not window.innerWidth/innerHeight) — those include
+        // the scrollbar gutter, which let the popover's right edge land a few px past
+        // the actual visible content area on a page tall enough to scroll (caught at
+        // 768px width during Task 8's own mobile check).
+        var vh = document.documentElement.clientHeight;
+        var vw = document.documentElement.clientWidth;
+        var top = r.bottom + 6;
+        if (top + ph > vh - 10) top = r.top - ph - 6;
+        var left = r.left;
+        if (left + pw > vw - 10) left = vw - pw - 10;
+        pop.style.top  = Math.max(10, top)  + 'px';
+        pop.style.left = Math.max(10, left) + 'px';
+    }
+
+    // ---- Given-by popover ----
+    var cpRecGiverPopCaid = 0;
+    function cpRecBuildGiverPopPills(activeId) {
+        var wrap = gid('cp-rec-giver-pop-pills');
+        if (!wrap) return;
+        wrap.innerHTML = '';
+        var list = [];
+        if (cpGiverOptions && cpGiverOptions.default) list.push(cpGiverOptions.default);
+        if (cpGiverOptions && cpGiverOptions.pills) cpGiverOptions.pills.forEach(function(p) { list.push(p); });
+        if (!list.length) { wrap.style.display = 'none'; return; }
+        wrap.style.display = 'flex';
+        list.forEach(function(g) {
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'cp-giver-pill' + (String(g.mundane_id) === String(activeId) ? ' active' : '');
+            btn.innerHTML = esc(g.persona) + ' <span class="cp-giver-role">' + esc(g.role || '') + '</span>';
+            btn.onclick = function() { cpRecGiverPopPick(g.mundane_id, g.persona); };
+            wrap.appendChild(btn);
+        });
+    }
+    function cpRecGiverPopPick(mundaneId, persona) {
+        if (!cpRecGiverPopCaid) return;
+        cpRecSetGiverChip(cpRecGiverPopCaid, mundaneId, persona);
+        cpRecBuildGiverPopPills(mundaneId);
+        var acDrop = gid('cp-rec-giver-pop-ac');
+        if (acDrop) { acDrop.style.display = 'none'; acDrop.innerHTML = ''; }
+        gid('cp-rec-giver-pop-text').value = '';
+    }
+    window.cpRecOpenGiverPop = function(caid, chip) {
+        cpRecGiverPopCaid = caid;
+        gid('cp-rec-giver-pop-caid').value = caid;
+        var cur = cpRecGivers[caid] || {};
+        cpRecBuildGiverPopPills(cur.id);
+        var txt = gid('cp-rec-giver-pop-text');
+        if (txt) txt.value = '';
+        var acDrop = gid('cp-rec-giver-pop-ac');
+        if (acDrop) { acDrop.style.display = 'none'; acDrop.innerHTML = ''; }
+        var row = chip.closest('.cp-rec-row');
+        var below = cpRecRowsBelow(row);
+        var applyBtn = gid('cp-rec-apply-rest-btn');
+        if (applyBtn) {
+            applyBtn.classList.toggle('show', below.length > 0);
+            applyBtn.innerHTML = '<i class="fas fa-arrow-down"></i> Apply to the ' + below.length +
+                ' row' + (below.length === 1 ? '' : 's') + ' below';
+        }
+        cpRecPositionPop(gid('cp-rec-giver-pop'), chip);
+    };
+    window.cpRecGiverPopClose = function() {
+        var p = gid('cp-rec-giver-pop'); if (p) p.style.display = 'none';
+        var acDrop = gid('cp-rec-giver-pop-ac'); if (acDrop) { acDrop.style.display = 'none'; acDrop.innerHTML = ''; }
+        cpRecGiverPopCaid = 0;
+    };
+    // Wraps the page's shared cpAcSearch (scoped to this court's kingdom, &q=, custom
+    // dropdown — house rules) with a pick callback that routes through the same
+    // cpRecGiverPopPick() the quick-pick pills use.
+    window.cpRecGiverPopInput = function(input) {
+        cpAcSearch(input, 'cp-rec-giver-pop-ac', 'cp-rec-giver-pop-hidden', function(p) {
+            cpRecGiverPopPick(p.MundaneId, p.Persona);
+        });
+    };
+    // "Apply to the rest below" — updates every row below the currently-open one to
+    // the giver just picked for THIS row. Deliberately calls cpRecSetGiverChip() only
+    // (never cpRecMark/cpRecPost): the giver reaches the database the same way it
+    // always does, when that row is individually marked Given.
+    window.cpRecApplyRest = function() {
+        if (!cpRecGiverPopCaid) return;
+        var cur = cpRecGivers[cpRecGiverPopCaid];
+        if (!cur) return;
+        var row = document.querySelector('.cp-rec-row[data-caid="' + cpRecGiverPopCaid + '"]');
+        if (!row) return;
+        var below = cpRecRowsBelow(row);
+        below.forEach(function(r) {
+            cpRecSetGiverChip(r.getAttribute('data-caid'), cur.id, cur.persona);
+        });
+        cpNotice('Applied "' + cur.persona + '" as the giver for ' + below.length +
+            ' row' + (below.length === 1 ? '' : 's') + ' below. Nothing was marked.');
+        cpRecGiverPopClose();
+    };
+
+    // ---- Rank popover (ladder rows only) ----
+    var cpRecRankPopCaid = 0;
+    // Same zodiac-award heuristic as the ad-hoc modal's cpBuildAdhocRankPills().
+    function cpRecMaxRank(awardName) {
+        return /zodiac/i.test(awardName || '') ? 12 : 10;
+    }
+    function cpRecBuildRankPopPills(awardName, activeRank) {
+        var wrap = gid('cp-rec-rank-pop-pills');
+        if (!wrap) return;
+        var maxRank = cpRecMaxRank(awardName);
+        var html = '';
+        for (var i = 1; i <= maxRank; i++) {
+            html += '<button type="button" class="ladder-rank cp-rank-pill' + (i === activeRank ? ' cp-rank-pill-selected' : '') +
+                '" data-lvl="' + Math.min(i, 10) + '" data-rank="' + i + '" onclick="cpRecRankPopPick(' + i + ')">' + i + '</button>';
+        }
+        wrap.innerHTML = html;
+    }
+    window.cpRecOpenRankPop = function(caid, chip) {
+        cpRecRankPopCaid = caid;
+        gid('cp-rec-rank-pop-caid').value = caid;
+        var rank = cpRecRanks[caid] || 1;
+        cpRecBuildRankPopPills(chip.dataset.award, rank);
+        cpRecPositionPop(gid('cp-rec-rank-pop'), chip);
+    };
+    window.cpRecRankPopPick = function(rank) {
+        if (!cpRecRankPopCaid) return;
+        cpRecSetRankChip(cpRecRankPopCaid, rank);
+        var wrap = gid('cp-rec-rank-pop-pills');
+        if (wrap) {
+            wrap.querySelectorAll('.cp-rank-pill').forEach(function(p) {
+                p.classList.toggle('cp-rank-pill-selected', String(p.dataset.rank) === String(rank));
+            });
+        }
+    };
+    window.cpRecRankPopClose = function() {
+        var p = gid('cp-rec-rank-pop'); if (p) p.style.display = 'none';
+        cpRecRankPopCaid = 0;
+    };
+    // Dismiss either popover on an outside click — mousedown so it fires before the
+    // click that might be opening a DIFFERENT chip's popover.
+    document.addEventListener('mousedown', function(e) {
+        var giverPop = gid('cp-rec-giver-pop');
+        if (giverPop && giverPop.style.display !== 'none' &&
+            !e.target.closest('#cp-rec-giver-pop') && !e.target.closest('.cp-rec-giver-chip')) {
+            cpRecGiverPopClose();
+        }
+        var rankPop = gid('cp-rec-rank-pop');
+        if (rankPop && rankPop.style.display !== 'none' &&
+            !e.target.closest('#cp-rec-rank-pop') && !e.target.closest('.cp-rec-rank-chip')) {
+            cpRecRankPopClose();
+        }
+    });
 
     // caid -> in-flight XHR guard, so a fast double-click (or a stuck network
     // request) can't fire two writes for the same row.
@@ -931,6 +1244,8 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
             var m = gid('cp-complete-modal'); if (m) m.style.display = 'none';
             cpHideAcDropdowns();
             cpSyncScrollLock();
+            cpRecGiverPopClose();
+            cpRecRankPopClose();
         }
     });
 })();

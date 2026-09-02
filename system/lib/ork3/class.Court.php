@@ -1561,6 +1561,7 @@ class Court
                     ca.recommendations_id, ca.sort_order, ca.pass_to_local,
                     ca.notes, ca.public_comment, ca.status, ca.scroll_status, ca.regalia_status,
                     ca.scroll_maker_id, ca.regalia_maker_id, ca.row_version,
+                    ca.given_by_mundane_id, gb.persona AS given_by_persona,
                     sm.persona AS scroll_maker_persona, rm.persona AS regalia_maker_persona,
                     m.persona, p.abbreviation AS park_abbrev,
                     IFNULL(ka.name, a.name) AS award_name,
@@ -1574,6 +1575,7 @@ class Court
              LEFT JOIN ' . DB_PREFIX . 'award a         ON a.award_id           = ka.award_id
              LEFT JOIN ' . DB_PREFIX . 'mundane sm      ON sm.mundane_id        = ca.scroll_maker_id
              LEFT JOIN ' . DB_PREFIX . 'mundane rm      ON rm.mundane_id        = ca.regalia_maker_id
+             LEFT JOIN ' . DB_PREFIX . 'mundane gb      ON gb.mundane_id        = ca.given_by_mundane_id
              LEFT JOIN ' . DB_PREFIX . 'recommendations rec ON rec.recommendations_id = ca.recommendations_id
              LEFT JOIN ' . DB_PREFIX . 'mundane rb      ON rb.mundane_id        = rec.recommended_by_id
              WHERE ca.court_id = ' . (int)$court_id . '
@@ -1596,6 +1598,8 @@ class Court
                     'RecommendationsId' => $rs->recommendations_id ? (int)$rs->recommendations_id : null,
                     'SortOrder'         => (int)$rs->sort_order,
                     'RowVersion'        => (int)$rs->row_version,
+                    'GivenByMundaneId'  => $rs->given_by_mundane_id ? (int)$rs->given_by_mundane_id : 0,
+                    'GivenByPersona'    => $rs->given_by_persona ?? '',
                     'PassToLocal'       => (bool)(int)$rs->pass_to_local,
                     'Notes'             => $rs->notes ?? '',
                     'PublicComment'     => $rs->public_comment ?? '',
