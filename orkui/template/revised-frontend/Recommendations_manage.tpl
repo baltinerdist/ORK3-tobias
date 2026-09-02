@@ -293,8 +293,9 @@ html[data-theme="dark"] .rm-passlocal-tip, html[data-theme="dark"] .rm-snooze-ti
     color: var(--rm-muted);
     border-top: 1px solid var(--rm-line);
 }
+/* --rm-muted is already redefined per theme, so the base rule is correct in
+   both; a dark-mode override repeating the same token was a no-op. */
 .rm-loadnote { color: var(--rm-muted); font-style: italic; }
-html[data-theme="dark"] .rm-loadnote { color: var(--rm-muted); }
 
 /* Detail rows (Task 5) */
 .rm-detailrow td { background: var(--rm-bg2); }
@@ -557,14 +558,43 @@ html[data-theme="dark"] .rm-modal {
 .rm-rank-pill.rm-rank-selected { outline: 2px solid var(--rm-accent); outline-offset: 1px; }
 html[data-theme="dark"] .rm-rank-pill.rm-rank-held { background: #38a169; border-color: #38a169; }
 
-/* Responsive card collapse (spec 0.8) — below 700px the grid becomes stacked
-   cards; threads 3, 4 and 6 extend this rather than owning it. */
+/* Responsive card collapse (spec 0.8) — below 1250px the grid becomes stacked
+   cards; threads 3, 4 and 6 extend this rather than owning it.
+
+   Breakpoint raised from 700px to 1250px. The desktop <table> lays out at
+   1096-1136px natural width (measured across kingdoms 1/3/5/6/8/10 — it is
+   content-driven, several columns being white-space:nowrap) on top of ~111px of
+   page chrome, so anything under ~1250px overflowed a wrapper with no scroll
+   container, and the sitewide html{overflow-x:hidden} / body{overflow-x:clip}
+   swallowed the overflow — putting the ENTIRE Actions column (Grant / Add to
+   Court / Snooze / Pass down / Dismiss / More), the only mutating controls on
+   the page, out of reach on iPad portrait and landscape, Surface, and any
+   half-screen laptop. 1250 rather than the ~1150 the natural table width alone
+   suggests: at 1160 the widest kingdom still spilled 25px of the last column.
+
+   The obvious fix — overflow-x:auto on .rm-gridwrap for just that band — was
+   built and measured at 900px, and rejected on three counts:
+     1. Making the wrapper a scrollport re-scopes the sticky thead to it. The
+        wrapper never scrolls vertically, so the frozen header stopped freezing:
+        after a 1500px page scroll the header sat at -1114px instead of +94px.
+        (This is exactly what the .rm-gridwrap comment above warns about.)
+     2. It clips the rich hover tooltips. .rm-passlocal-tip / .rm-snooze-tip are
+        absolutely positioned ABOVE their button (bottom: 100% + 4px), so the
+        first row's tooltip rendered at y=250 against a wrapper starting at
+        y=292 — 42px of a 72px tooltip cut off, losing the entire bold title
+        line. Those tooltips live in the very Actions column the fix exists to
+        reach.
+     3. overflow-x:auto forces overflow-y to compute to auto, and the resulting
+        horizontal scrollbar sits at the bottom of a ~15,000px-tall wrapper —
+        an affordance that is never actually on screen.
+   Cards need no scroll container, so the sticky header keeps working at every
+   width and both tooltips fall back to their inline (.rm-act-help) form. */
 /* Base (desktop) state for the mobile-only overflow toggle and its help text.
    Without this, both inherit the generic .rm-act/div display and appear on the
    desktop table too, since the media query below only sets their *open* state. */
 .rm-act-more { display: none; }
 .rm-act-help { display: none; }
-@media (max-width: 700px) {
+@media (max-width: 1250px) {
   .rm-grid thead { display: none; }
   .rm-grid, .rm-grid tbody, .rm-grid tr, .rm-grid td { display: block; width: 100%; }
   .rm-grid tr.rm-row {
@@ -591,7 +621,12 @@ html[data-theme="dark"] .rm-rank-pill.rm-rank-held { background: #38a169; border
   /* margin:0 — Chrome's UA default on <input> is 3px 3px 3px 4px, which
      would otherwise pad the label's tap area out past 44px. */
   .rm-col-sel input { width: 22px; height: 22px; margin: 0; }
-  .rm-col-recip { font-size: 16px; font-weight: 700; padding-right: 40px !important; }
+  /* box-sizing: the generic ".rm-grid td { width: 100% }" above is a
+     content-box width here, so the 40px gutter that keeps the name clear of the
+     absolutely-positioned select checkbox was ADDED to a full-width card,
+     pushing the cell's right edge past the viewport. Harmless only because the
+     sitewide overflow clip hid it. */
+  .rm-col-recip { font-size: 16px; font-weight: 700; padding-right: 40px !important; box-sizing: border-box; }
   .rm-col-park::before  { content: none; }
   .rm-col-award { font-size: 14px; }
   .rm-col-rank, .rm-col-rec, .rm-col-supp { display: inline-block !important; width: auto !important; margin-right: 10px; }
@@ -619,7 +654,7 @@ html[data-theme="dark"] .rm-rank-pill.rm-rank-held { background: #38a169; border
   .rm-bulkbar { position: fixed; left: 0; right: 0; bottom: 0; border-radius: 0; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); flex-wrap: wrap; }
   .rm-bulkbar .rm-bulk { min-height: 44px; }
 }
-@media (max-width: 700px) {
+@media (max-width: 1250px) {
   html[data-theme="dark"] .rm-grid tr.rm-row { background: var(--rm-bg2); }
 }
 </style>
