@@ -293,6 +293,8 @@ html[data-theme="dark"] .rm-passlocal-tip, html[data-theme="dark"] .rm-snooze-ti
     color: var(--rm-muted);
     border-top: 1px solid var(--rm-line);
 }
+.rm-loadnote { color: var(--rm-muted); font-style: italic; }
+html[data-theme="dark"] .rm-loadnote { color: var(--rm-muted); }
 
 /* Detail rows (Task 5) */
 .rm-detailrow td { background: var(--rm-bg2); }
@@ -684,7 +686,7 @@ html[data-theme="dark"] .rm-rank-pill.rm-rank-held { background: #38a169; border
   <table class="rm-grid" id="rm-grid">
     <thead>
       <tr>
-        <th class="rm-col-sel"><input type="checkbox" id="rm-selall"></th>
+        <th class="rm-col-sel"><input type="checkbox" id="rm-selall" aria-label="Select all loaded rows" data-tip="Selects the rows loaded so far, not every row matching your filters"></th>
         <th class="rm-col-recip rm-sortable" data-sort="recip">Recipient</th>
         <th class="rm-col-park">Park</th>
         <th class="rm-col-award rm-sortable" data-sort="award">Award</th>
@@ -703,7 +705,11 @@ html[data-theme="dark"] .rm-rank-pill.rm-rank-held { background: #38a169; border
   </div>
   <div id="rm-loading" class="rm-loading" style="display:none">Loading&hellip;</div>
   <div id="rm-sentinel" style="height:1px"></div>
-  <div class="rm-foot">Showing <span id="rm-count"><?= count($Groups) ?></span> of <span id="rm-total"><?= (int)($Total ?? 0) ?></span> &middot; <span id="rm-selcount">0</span> selected</div>
+  <div class="rm-foot">
+    Showing <span id="rm-count"><?= count($Groups) ?></span> of <span id="rm-total"><?= (int)($Total ?? 0) ?></span>
+    <span id="rm-loadnote" class="rm-loadnote"></span>
+    &middot; <span id="rm-selcount">0</span> selected
+  </div>
 
   <div class="rm-bulkbar" id="rm-bulkbar" hidden>
     <span id="rm-bulklabel">0 selected</span>
@@ -984,7 +990,18 @@ function rmUpdateSelCount() {
     document.getElementById('rm-selcount').textContent = n;
     var bar = document.getElementById('rm-bulkbar');
     bar.hidden = n === 0;
-    document.getElementById('rm-bulklabel').textContent = n + ' selected';
+
+    // Say plainly that selection covers loaded rows only while more remain.
+    var partial = !!rmState.hasMore;
+    document.getElementById('rm-bulklabel').textContent =
+        partial ? n + ' selected (loaded rows)' : n + ' selected';
+
+    var note = document.getElementById('rm-loadnote');
+    if (note) {
+        note.textContent = partial
+            ? '— select-all covers loaded rows only'
+            : '';
+    }
 }
 document.getElementById('rm-tbody').addEventListener('click', function (e) {
     var cb = e.target.closest('.rm-rowsel'); if (!cb) return;
@@ -1006,6 +1023,9 @@ document.querySelector('.rm-bulk-clear').addEventListener('click', function () {
     document.getElementById('rm-selall').checked = false;
     rmUpdateSelCount();
 });
+// Reflect the server-rendered first page's hasMore state in the footer immediately,
+// before any selection or scroll-triggered fetch happens.
+rmUpdateSelCount();
 
 /* ---------- Task 8: snooze/dismiss (row + bulk), toast, config ---------- */
 function rmToast(msg, isErr) {
