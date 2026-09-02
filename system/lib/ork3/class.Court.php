@@ -246,7 +246,30 @@ class Court
               WHERE court_id = ' . $court_id . ' AND status <> \'complete\''
         );
 
-        return $rs && $rs->Size() >= 1;
+        if (!$rs) {
+            return false;
+        }
+        if ($rs->Size() >= 1) {
+            return true;
+        }
+
+        // Size() is PDO rowCount() — CHANGED rows, not matched rows. ork_court
+        // has no row_version and this UPDATE bumps nothing, so an edit whose
+        // values all equal what is already stored reports 0 and is
+        // indistinguishable from "the status <> 'complete' guard refused".
+        // The Edit Details modal always posts all four fields, so a save with
+        // no net change hit that path and told the officer a *draft* court
+        // could not be edited because it was complete. Read the row back to
+        // tell the two apart: still editable means nothing simply differed.
+        // (updateAward is immune only because it always appends
+        // 'row_version = row_version + 1', so its UPDATE always changes a row.)
+        $this->db->Clear();
+        $chk = $this->db->DataSet(
+            'SELECT 1 FROM ' . DB_PREFIX . 'court
+              WHERE court_id = ' . $court_id . ' AND status <> \'complete\' LIMIT 1'
+        );
+
+        return (bool)($chk && $chk->Next());
     }
 
     /**
@@ -569,6 +592,18 @@ class Court
     {
         $court_award_id = (int)$court_award_id;
         if (!valid_id($court_award_id) || !$fields) {
+            return false;
+        }
+
+        // Reject the whole write if any key is unrecognized rather than
+        // silently dropping it. An all-unrecognized $fields already returned
+        // false via the empty-$sets guard below; the MIXED case did not — a
+        // typo'd key was dropped while its siblings saved, and the caller was
+        // told the write succeeded. Nothing can reach that over HTTP today
+        // (controller.CourtAjax whitelists these same five keys), but partial
+        // callers are coming and a silent drop is the wrong default for them.
+        $known = ['Notes', 'PublicComment', 'PassToLocal', 'ScrollMakerId', 'RegaliaMakerId'];
+        if (array_diff(array_keys($fields), $known)) {
             return false;
         }
 
@@ -2061,9 +2096,14 @@ class Court
             return [];
         }
 
+        // Mirror getCourtList's scoping exactly. Filtering kingdom context on
+        // kingdom_id alone leaked every park's courts onto the kingdom list —
+        // a banner about courts not on the page, and a notification fired at
+        // every park recorder in the kingdom whenever one kingdom officer
+        // opened the planner.
         $scope = $park_id > 0
             ? 'c.park_id = ' . $park_id
-            : 'c.kingdom_id = ' . $kingdom_id;
+            : 'c.kingdom_id = ' . $kingdom_id . ' AND c.park_id = 0';
 
         $this->db->Clear();
         $rs = $this->db->DataSet(
@@ -2117,7 +2157,12 @@ class Court
             if ($recorder <= 0) {
                 continue;
             }
-            $link = 'Court/detail/' . (int)$c['CourtId'];
+            // This app has no clean URLs, and the notification bell emits the
+            // stored link verbatim into href — a bare 'Court/detail/2' resolves
+            // to /orkui/Court/detail/2 and 404s. Store the routed absolute URL.
+            // Guarded exactly as class.Notification.php:126 does, for the
+            // non-web contexts that never define UIR.
+            $link = (defined('UIR') ? UIR : '') . 'Court/detail/' . (int)$c['CourtId'];
 
             $this->db->Clear();
             $existing = $this->db->DataSet(
