@@ -88,7 +88,13 @@ html[data-theme="dark"] .cp-rec-strip-status.cp-rec-strip-error { color: #fc8181
 html[data-theme="dark"] .cp-rec-empty { color: #718096; border-color: #2d3748; }
 
 .cp-rec-list { border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background: #fff; }
-.cp-rec-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #edf2f7; }
+/* flex-wrap: wrap so .cp-rec-cite (flex-basis 100%, added below) always lands on its
+   own line under the existing columns, at every width — a flex item whose basis IS
+   the full container width can never share a line with anything else, so this needs
+   no extra media-query handling. The existing columns' own widths never sum anywhere
+   near the container width at 768px+ (verified Task 7/8), so this doesn't change how
+   they wrap; it only gives the citation strip somewhere to land. */
+.cp-rec-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #edf2f7; }
 .cp-rec-row:last-child { border-bottom: none; }
 .cp-rec-row-header { background: #f7fafc; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #718096; }
 .cp-rec-c-label { display: none; }
@@ -108,6 +114,33 @@ html[data-theme="dark"] .cp-rec-empty { color: #718096; border-color: #2d3748; }
 .cp-rec-c-ptl { flex: 0 0 30px; text-align: center; color: #718096; }
 .cp-rec-row.cp-rec-row-given { background: #f0fff4; }
 .cp-rec-row.cp-rec-row-skipped { background: #fff5f5; opacity: .8; }
+
+/* ---- Citation (Task 9) — the public, permanent ork_awards.note-to-be. A truncated
+   preview by default (zero clicks in the common case: it was written during
+   planning and is already correct) that expands to a textarea on one click, saves
+   on blur via CourtAjax/update_award — a PARTIAL write (spec 0.6: CourtAwardId,
+   PublicComment, RowVersion only) so this can never clobber Notes/PassToLocal/
+   ScrollMakerId/RegaliaMakerId, none of which this view even shows. Deliberately
+   NOT locked by row mark state the way the giver/rank chips are (Task 8's fix
+   round): update_award's WHERE clause has no status condition (unlike
+   grant_award/skip_award/unstage_award), so editing a citation after marking a
+   row Given is a real, safe write, not a doomed one — locking it here would just
+   block a legitimate correction. It IS locked when the court itself isn't
+   'published' (same $canMark the mark buttons use), since a post-finalize edit
+   here no longer reaches ork_awards.note at all. */
+.cp-rec-cite { flex: 1 1 100%; }
+.cp-rec-cite-preview { display: flex; align-items: center; gap: 8px; width: 100%; background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px; min-height: 44px; box-sizing: border-box; cursor: pointer; text-align: left; font-size: 12px; color: #4a5568; }
+.cp-rec-cite-preview:hover { background: #edf2f7; }
+.cp-rec-cite-icon,
+.cp-rec-cite-edit-icon { flex: 0 0 auto; color: #a0aec0; font-size: 11px; }
+.cp-rec-cite-preview-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp-rec-cite-preview-text.cp-rec-cite-empty { color: #a0aec0; font-style: italic; }
+.cp-rec-cite-textarea { width: 100%; min-height: 64px; padding: 8px 10px; border: 1px solid #90cdf4; border-radius: 6px; font-size: 13px; font-family: inherit; line-height: 1.4; box-sizing: border-box; resize: vertical; }
+.cp-rec-cite-textarea:disabled,
+.cp-rec-cite-textarea[readonly] { background: #f7fafc; color: #718096; cursor: not-allowed; }
+.cp-rec-cite-status { display: block; min-height: 14px; margin-top: 3px; font-size: 11px; color: #718096; }
+.cp-rec-cite-status.cp-rec-cite-status-error { color: #c53030; font-weight: 600; }
+.cp-rec-hidden { display: none !important; }
 
 .cp-rec-seg { display: inline-flex; border: 1px solid #cbd5e0; border-radius: 6px; overflow: hidden; }
 .cp-rec-seg-btn { background: #fff; border: none; border-right: 1px solid #e2e8f0; padding: 0 12px; min-height: 44px; font-size: 12px; font-weight: 600; color: #4a5568; cursor: pointer; }
@@ -175,6 +208,23 @@ html[data-theme="dark"] .cp-rec-pop-close:hover { color: #e2e8f0; }
 html[data-theme="dark"] .cp-rec-pop-apply-btn { background: #1f2733; border-color: #2d3748; color: #90cdf4; }
 html[data-theme="dark"] .cp-rec-pop-apply-btn:hover { background: #2d3748; }
 
+html[data-theme="dark"] .cp-rec-cite-preview { background: #1a202c; border-color: #2d3748; color: #cbd5e0; }
+html[data-theme="dark"] .cp-rec-cite-preview:hover { background: #22272e; }
+html[data-theme="dark"] .cp-rec-cite-preview-text.cp-rec-cite-empty { color: #718096; }
+/* #theme_container wraps every page and already carries a dark-mode rule for bare
+   textareas (orkui.css: html[data-theme="dark"] #theme_container textarea) — an ID
+   selector, so it beats a plain .cp-rec-cite-textarea override regardless of source
+   order (found by computed-style check, not by eye: the "blue while editing" accent
+   below was silently dead until #theme_container was added to match/exceed its
+   specificity). Its background/text color are left alone here — same tokens as every
+   other dark-mode input on the site — only the border is reasserted, for the same
+   "you're editing this" accent the light-mode rule above gives it. */
+html[data-theme="dark"] #theme_container .cp-rec-cite-textarea { border-color: #63b3ed; }
+html[data-theme="dark"] #theme_container .cp-rec-cite-textarea:disabled,
+html[data-theme="dark"] #theme_container .cp-rec-cite-textarea[readonly] { background-color: #161b22; color: #718096; border-color: #2d3748; }
+html[data-theme="dark"] .cp-rec-cite-status { color: #97a3b4; }
+html[data-theme="dark"] .cp-rec-cite-status.cp-rec-cite-status-error { color: #fc8181; }
+
 @media (max-width: 600px) {
     .cp-rec-topstrip { flex-direction: column; align-items: stretch; gap: 12px; padding: 14px; }
     .cp-rec-strip-field { flex: 1 1 auto; min-width: 0; }
@@ -198,7 +248,7 @@ html[data-theme="dark"] .cp-rec-pop-apply-btn:hover { background: #2d3748; }
     .cp-rec-toolbar { flex-direction: column; align-items: stretch; }
     #cp-rec-bulk-btn { justify-content: center; }
     .cp-rec-row-header { display: none; }
-    .cp-rec-row { flex-wrap: wrap; row-gap: 8px; }
+    .cp-rec-row { row-gap: 8px; } /* flex-wrap already set at base — see above */
     .cp-rec-c-num { flex: 0 0 auto; }
     .cp-rec-c-recip,
     .cp-rec-c-award,
@@ -404,6 +454,37 @@ html[data-theme="dark"] .cp-rec-pop-apply-btn:hover { background: #2d3748; }
                     <span class="cp-rec-c-label">PTL</span>
                     <?php if (!empty($aw['PassToLocal'])): ?><i class="fas fa-arrow-down" data-tip="Pass to Local" aria-label="Pass to Local"></i><?php else: ?>&mdash;<?php endif; ?>
                 </span>
+                <?php
+                // Citation (Task 9) — becomes ork_awards.note on commit (spec 6.1
+                // precedence: PublicComment, else the recommendation's reason). Truncate
+                // BEFORE escaping so htmlspecialchars() never splits an entity mid-code.
+                // Walk-on rows (Task 10) pass IsWalkOn=true to start expanded — a walk-on
+                // has no recommendation and no planned citation, so it exists nowhere
+                // else in the system and must not be missable as a truncated preview.
+                $citation = (string)($aw['PublicComment'] ?? '');
+                $citationEmpty = $citation === '';
+                $citationTrunc = mb_strlen($citation) > 90 ? mb_substr($citation, 0, 90) . '…' : $citation;
+                $citeExpanded = !empty($aw['IsWalkOn']);
+                ?>
+                <div class="cp-rec-cite" data-caid="<?= $caid ?>">
+                    <button type="button" class="cp-rec-cite-preview<?= $citeExpanded ? ' cp-rec-hidden' : '' ?>"
+                            id="cp-rec-cite-preview-<?= $caid ?>"
+                            onclick="cpRecCiteExpand(<?= $caid ?>)"
+                            data-tip="<?= $citationEmpty ? 'Add a citation for the public record' : 'Edit this citation' ?>">
+                        <i class="fas fa-quote-left cp-rec-cite-icon" aria-hidden="true"></i>
+                        <span class="cp-rec-c-label">Citation</span>
+                        <span class="cp-rec-cite-preview-text<?= $citationEmpty ? ' cp-rec-cite-empty' : '' ?>"><?= $citationEmpty ? 'No citation — click to add one' : htmlspecialchars($citationTrunc) ?></span>
+                        <i class="fas fa-pen cp-rec-cite-edit-icon" aria-hidden="true"></i>
+                    </button>
+                    <textarea class="cp-rec-cite-textarea<?= $citeExpanded ? '' : ' cp-rec-hidden' ?>"
+                              id="cp-rec-cite-textarea-<?= $caid ?>"
+                              data-saved="<?= htmlspecialchars($citation) ?>"
+                              placeholder="Citation for the public record — becomes this award's permanent public note when the court is finalized"
+                              maxlength="1000"
+                              onblur="cpRecCiteBlur(<?= $caid ?>)"
+                              <?= $canMark ? '' : 'readonly' ?>><?= htmlspecialchars($citation) ?></textarea>
+                    <span class="cp-rec-cite-status" id="cp-rec-cite-status-<?= $caid ?>"></span>
+                </div>
             </div>
             <?php endforeach;
 unset($__i, $aw, $caid, $mark, $rowClass); ?>
@@ -877,14 +958,113 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
     cpUpdateStagedIndicator(cpStagedCount);
 
     // ---- Per-row marks (spec §5.1) ----
-    // Task 9 still owns cpRecCitationFor (a stub for now). cpRecGiverFor/cpRecRankFor
-    // are the real thing: cpRecMark reads whatever the officer left in cpRecGivers/
-    // cpRecRanks (populated below from the server's per-row GivenByMundaneId/Rank, and
-    // updated live by the giver/rank popovers) — never re-derives the court default at
-    // mark time, so a chip the officer changed sticks even if they never touch it again.
+    // cpRecGiverFor/cpRecRankFor/cpRecCitationFor: cpRecMark reads whatever the
+    // officer left for each, so a value the officer changed sticks even if they
+    // never touch it again. Citation is the odd one out — its live value lives in
+    // the textarea itself (always present in the DOM, just hidden behind the
+    // preview when collapsed), not in a separate JS map, so cpRecCitationFor
+    // always returns whatever's actually typed right now, saved or not — the same
+    // guarantee grant_award needs when Given is clicked mid-edit (see cpRecMark).
     window.cpRecCitationFor = function(caid) {
+        var ta = gid('cp-rec-cite-textarea-' + caid);
+        if (ta) return ta.value;
         var a = courtAwards.find(function(x) { return String(x.CourtAwardId) === String(caid); });
         return a ? (a.PublicComment || '') : '';
+    };
+
+    // caid -> in-flight Promise for a citation save. Exists so cpRecMark (below) can
+    // wait out a save that's already in flight instead of racing it: clicking Given
+    // right after typing a citation blurs the textarea (starting a cpRecCiteBlur
+    // save) BEFORE the click handler runs, so without this a grant_award request
+    // could reach the server with a RowVersion the citation save is about to bump
+    // out from under it — the same misleading "this row changed" conflict class the
+    // giver/rank chip lock (fix round 1) exists to avoid, just on the write side.
+    var cpRecCiteInFlight = {};
+
+    function cpRecCiteTruncate(s, n) {
+        return s.length > n ? s.slice(0, n) + '…' : s;
+    }
+
+    // Collapses back to the preview line, refreshing its truncated text/empty-state
+    // from whatever's currently in the textarea (used after a successful save AND
+    // when a blur finds nothing changed — no need to round-trip the server either
+    // way). Uses textContent, never innerHTML, so a citation containing & < > can
+    // never mangle the markup or get double-escaped on the next edit.
+    function cpRecCiteCollapse(caid) {
+        var preview = gid('cp-rec-cite-preview-' + caid);
+        var ta = gid('cp-rec-cite-textarea-' + caid);
+        if (!ta) return;
+        ta.classList.add('cp-rec-hidden');
+        if (!preview) return;
+        preview.classList.remove('cp-rec-hidden');
+        var val = ta.value.trim();
+        var textEl = preview.querySelector('.cp-rec-cite-preview-text');
+        if (textEl) {
+            textEl.textContent = val === '' ? 'No citation — click to add one' : cpRecCiteTruncate(val, 90);
+            textEl.classList.toggle('cp-rec-cite-empty', val === '');
+        }
+        preview.setAttribute('data-tip', val === '' ? 'Add a citation for the public record' : 'Edit this citation');
+    }
+
+    // One click, per the spec: expand to the textarea and focus it, caret at the end
+    // (not the start — the common case is appending/correcting a citation that's
+    // already mostly right, not retyping it from scratch).
+    window.cpRecCiteExpand = function(caid) {
+        var preview = gid('cp-rec-cite-preview-' + caid);
+        var ta = gid('cp-rec-cite-textarea-' + caid);
+        if (!ta) return;
+        if (preview) preview.classList.add('cp-rec-hidden');
+        ta.classList.remove('cp-rec-hidden');
+        ta.focus();
+        try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch (e) { /* unsupported — harmless */ }
+    };
+
+    // Saves on blur — PARTIAL write, exactly the three keys spec 0.6 allows
+    // (CourtAwardId, PublicComment, RowVersion). Omitting Notes/PassToLocal/
+    // ScrollMakerId/RegaliaMakerId is what makes this safe: update_award (unlike
+    // grant_award/skip_award/unstage_award) carries no status condition in its
+    // WHERE clause, so this write lands regardless of whether the row is still
+    // planned or already given/skipped — see the CSS comment above the .cp-rec-cite
+    // rules for why the control itself is deliberately NOT locked by row mark
+    // state. It IS skipped entirely once the court isn't 'published' (courtStatus),
+    // matching every other write on this page — a post-finalize edit here would
+    // never reach ork_awards.note, so there's nothing honest to save.
+    window.cpRecCiteBlur = function(caid) {
+        var row = document.querySelector('.cp-rec-row[data-caid="' + caid + '"]');
+        var ta  = gid('cp-rec-cite-textarea-' + caid);
+        if (!row || !ta) return;
+        if (courtStatus !== 'published') { cpRecCiteCollapse(caid); return; }
+        var val = ta.value;
+        if (val === ta.dataset.saved) { cpRecCiteCollapse(caid); return; } // nothing changed — no write
+        var statusEl = gid('cp-rec-cite-status-' + caid);
+        if (statusEl) { statusEl.textContent = 'Saving…'; statusEl.classList.remove('cp-rec-cite-status-error'); }
+        var fd = new FormData();
+        fd.append('CourtAwardId', caid);
+        fd.append('PublicComment', val);
+        fd.append('RowVersion', row.getAttribute('data-rowversion') || '');
+        var p = post('CourtAjax/update_award', fd).then(function(d) {
+            delete cpRecCiteInFlight[caid];
+            if (d && d.status === 0) {
+                var newVersion = (parseInt(row.getAttribute('data-rowversion'), 10) || 0) + 1;
+                row.setAttribute('data-rowversion', newVersion);
+                ta.dataset.saved = val;
+                var a = courtAwards.find(function(x) { return String(x.CourtAwardId) === String(caid); });
+                if (a) { a.RowVersion = newVersion; a.PublicComment = val; }
+                if (statusEl) statusEl.textContent = '';
+                cpRecCiteCollapse(caid);
+                return;
+            }
+            // Non-destructive on failure — the typed text is untouched in the
+            // textarea (never cleared), and the control stays expanded so nothing
+            // looks silently lost.
+            if (statusEl) { statusEl.textContent = 'Not saved — try again'; statusEl.classList.add('cp-rec-cite-status-error'); }
+            if (d && d.status === 9) {
+                cpNotice('This row changed — reload to see the latest.');
+            } else if (!d._postFailed) {
+                cpAlert(d.error || 'Could not save this citation.');
+            }
+        });
+        cpRecCiteInFlight[caid] = p;
     };
 
     // ---- Given-by chip + "apply to the rest below" (spec §5, Task 8) ----
@@ -1205,6 +1385,13 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
     // Given -> stage, Skipped -> skip, — -> unstage. All three already exist and all
     // three are pre-finalize, so any of them can be undone by pressing another.
     window.cpRecMark = function(caid, state) {
+        // A citation blur-save started by this very click (see cpRecCiteInFlight)
+        // may still be in flight — wait for it rather than racing it on RowVersion.
+        // Re-entrant: cpRecCitationFor below still reads the textarea live either way.
+        if (cpRecCiteInFlight[caid]) {
+            cpRecCiteInFlight[caid].then(function() { cpRecMark(caid, state); });
+            return;
+        }
         var row = document.querySelector('.cp-rec-row[data-caid="' + caid + '"]');
         if (!row) return;
         var current = row.getAttribute('data-mark') || 'none';
