@@ -854,18 +854,31 @@ class Court
      * rejected giver and citation to the permanent record: commitStagedAward's
      * backstop only refuses a row with NO giver, and this row would still have one.
      * Assigns '' rather than null because yapo drops nulls from an UPDATE.
+     *
+     * S5 optimistic lock: pass $expectedRowVersion to require the client's token
+     * still be current (mirrors stageAward/skipAward — same WHERE-clause guard,
+     * same DataSet()+Size()==1 shape). Uses DataSet rather than Execute()
+     * specifically so the affected-row count is observable: Execute() returns
+     * void, which is how this method previously reported success unconditionally
+     * even when its WHERE matched nothing (a concurrent skip had already moved
+     * the row out of 'staged').
      */
-    public function unstageAward($court_award_id)
+    public function unstageAward($court_award_id, $expectedRowVersion = null)
     {
+        $where = 'court_award_id = ' . (int)$court_award_id . ' AND status = \'staged\'';
+        if ($expectedRowVersion !== null) {
+            $where .= ' AND row_version = ' . (int)$expectedRowVersion;
+        }
         $this->db->Clear();
-        $this->db->Execute(
+        $rs = $this->db->DataSet(
             'UPDATE ' . DB_PREFIX . 'court_award
                 SET status = \'planned\',
                     given_by_mundane_id = 0,
                     public_comment = \'\',
                     row_version = row_version + 1
-              WHERE court_award_id = ' . (int)$court_award_id . ' AND status = \'staged\''
+              WHERE ' . $where
         );
+        return $rs && $rs->Size() == 1;
     }
 
     /**

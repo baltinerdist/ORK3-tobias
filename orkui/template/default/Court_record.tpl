@@ -94,11 +94,16 @@ html[data-theme="dark"] .cp-rec-empty { color: #718096; border-color: #2d3748; }
 .cp-rec-c-label { display: none; }
 .cp-rec-c-num { flex: 0 0 26px; color: #a0aec0; font-size: 12px; }
 .cp-rec-row-header .cp-rec-c-num { color: #718096; }
+/* Fix round 1 / Finding 1: mark control sits right after # — same position as
+   the paper's ✓/✕ columns (cpSheetRecord in Court_detail.tpl: # · ✓ · ✕ ·
+   Recipient · Award · Rank · Given by · PTL). DOM order carries the visual
+   order here (no flex `order` trick), so the header row and each data row's
+   markup were both moved, not just this rule. */
+.cp-rec-c-mark { flex: 0 0 auto; }
 .cp-rec-c-recip { flex: 1 1 180px; min-width: 0; font-weight: 600; color: #1a202c; }
 .cp-rec-park { font-size: 11px; color: #718096; font-weight: 400; margin-left: 4px; }
 .cp-rec-c-award { flex: 1 1 200px; min-width: 0; }
 .cp-rec-c-rank { flex: 0 0 84px; }
-.cp-rec-c-mark { flex: 0 0 auto; }
 .cp-rec-c-giver { flex: 0 0 130px; font-size: 13px; color: #4a5568; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cp-rec-c-ptl { flex: 0 0 30px; text-align: center; color: #718096; }
 .cp-rec-row.cp-rec-row-given { background: #f0fff4; }
@@ -297,10 +302,10 @@ html[data-theme="dark"] .cp-rec-row[data-mark="none"] .cp-rec-seg-none { backgro
         <div class="cp-rec-list" id="cp-rec-list">
             <div class="cp-rec-row cp-rec-row-header" aria-hidden="true">
                 <span class="cp-rec-c cp-rec-c-num">#</span>
+                <span class="cp-rec-c cp-rec-c-mark">Mark</span>
                 <span class="cp-rec-c cp-rec-c-recip">Recipient</span>
                 <span class="cp-rec-c cp-rec-c-award">Award</span>
                 <span class="cp-rec-c cp-rec-c-rank">Rank</span>
-                <span class="cp-rec-c cp-rec-c-mark">Mark</span>
                 <span class="cp-rec-c cp-rec-c-giver">Given by</span>
                 <span class="cp-rec-c cp-rec-c-ptl">PTL</span>
             </div>
@@ -315,6 +320,11 @@ html[data-theme="dark"] .cp-rec-row[data-mark="none"] .cp-rec-seg-none { backgro
                 ?>
             <div class="cp-rec-row<?= $rowClass ?>" data-caid="<?= $caid ?>" data-rowversion="<?= (int)($aw['RowVersion'] ?? 0) ?>" data-mark="<?= $mark ?>">
                 <span class="cp-rec-c cp-rec-c-num"><?= $__i + 1 ?></span>
+                <span class="cp-rec-c cp-rec-c-mark cp-rec-seg" role="group" aria-label="Mark <?= htmlspecialchars($aw['Persona'] ?? 'this award') ?> — <?= htmlspecialchars($aw['AwardName'] ?? '') ?>">
+                    <button type="button" class="cp-rec-seg-btn cp-rec-seg-given" aria-pressed="<?= $mark === 'given' ? 'true' : 'false' ?>" onclick="cpRecMark(<?= $caid ?>,'given')" <?= $canMark ? '' : 'disabled' ?>>Given</button>
+                    <button type="button" class="cp-rec-seg-btn cp-rec-seg-skipped" aria-pressed="<?= $mark === 'skipped' ? 'true' : 'false' ?>" onclick="cpRecMark(<?= $caid ?>,'skipped')" <?= $canMark ? '' : 'disabled' ?>>Skipped</button>
+                    <button type="button" class="cp-rec-seg-btn cp-rec-seg-none" aria-pressed="<?= $mark === 'none' ? 'true' : 'false' ?>" onclick="cpRecMark(<?= $caid ?>,'none')" data-tip="Clear this mark" <?= $canMark ? '' : 'disabled' ?>>&mdash;</button>
+                </span>
                 <span class="cp-rec-c cp-rec-c-recip">
                     <span class="cp-rec-c-label">Recipient</span>
                     <?= htmlspecialchars($aw['Persona'] ?? '') ?><?php if (!empty($aw['ParkAbbrev'])): ?> <span class="cp-rec-park"><?= htmlspecialchars($aw['ParkAbbrev']) ?></span><?php endif; ?>
@@ -328,11 +338,6 @@ html[data-theme="dark"] .cp-rec-row[data-mark="none"] .cp-rec-seg-none { backgro
                     <?php if (!empty($aw['IsLadder']) && (int)($aw['Rank'] ?? 0) > 0): ?>
                     <span class="ladder-rank" data-lvl="<?= min((int)$aw['Rank'], 10) ?>">Rank <?= (int)$aw['Rank'] ?></span>
                     <?php else: ?>&mdash;<?php endif; ?>
-                </span>
-                <span class="cp-rec-c cp-rec-c-mark cp-rec-seg" role="group" aria-label="Mark <?= htmlspecialchars($aw['Persona'] ?? 'this award') ?> — <?= htmlspecialchars($aw['AwardName'] ?? '') ?>">
-                    <button type="button" class="cp-rec-seg-btn cp-rec-seg-given" aria-pressed="<?= $mark === 'given' ? 'true' : 'false' ?>" onclick="cpRecMark(<?= $caid ?>,'given')" <?= $canMark ? '' : 'disabled' ?>>Given</button>
-                    <button type="button" class="cp-rec-seg-btn cp-rec-seg-skipped" aria-pressed="<?= $mark === 'skipped' ? 'true' : 'false' ?>" onclick="cpRecMark(<?= $caid ?>,'skipped')" <?= $canMark ? '' : 'disabled' ?>>Skipped</button>
-                    <button type="button" class="cp-rec-seg-btn cp-rec-seg-none" aria-pressed="<?= $mark === 'none' ? 'true' : 'false' ?>" onclick="cpRecMark(<?= $caid ?>,'none')" data-tip="Clear this mark" <?= $canMark ? '' : 'disabled' ?>>&mdash;</button>
                 </span>
                 <span class="cp-rec-c cp-rec-c-giver" id="cp-rec-giver-<?= $caid ?>">
                     <span class="cp-rec-c-label">Given by</span>
@@ -850,16 +855,34 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
     window.cpRecMark = function(caid, state) {
         var row = document.querySelector('.cp-rec-row[data-caid="' + caid + '"]');
         if (!row) return;
-        var url = state === 'given'   ? 'CourtAjax/grant_award'
-                : state === 'skipped' ? 'CourtAjax/skip_award'
-                :                       'CourtAjax/unstage_award';
+        var current = row.getAttribute('data-mark') || 'none';
+        // Clearing to "-" is NOT a single endpoint: unstage_award only clears a
+        // STAGED row (its WHERE requires status='staged' — it refuses a cancelled
+        // one, by design, same as grant_award refuses staging a cancelled row
+        // directly). A currently-Skipped row is cleared the same way Court_detail.tpl's
+        // "Un-skip" does it: set_award_status(Status=planned), which (like skip_award)
+        // guards only against 'given'. Discovered via fix-round Finding 2's own
+        // repair: before unstage_award honestly reported failure, a stale "-" click
+        // on a Skipped row silently no-op'd server-side while the client showed it
+        // as cleared anyway — the same class of desync, just single-recorder instead
+        // of cross-recorder.
+        if (state === 'none' && current === 'none') return; // already clear — nothing to do
+        var url;
         var fd = new FormData();
         fd.append('CourtAwardId', caid);
         fd.append('RowVersion', row.getAttribute('data-rowversion') || '');
         if (state === 'given') {
+            url = 'CourtAjax/grant_award';
             fd.append('GivenById', cpRecGiverFor(caid));
             fd.append('PublicComment', cpRecCitationFor(caid));
             fd.append('Rank', cpRecRankFor(caid));
+        } else if (state === 'skipped') {
+            url = 'CourtAjax/skip_award';
+        } else if (current === 'skipped') {
+            url = 'CourtAjax/set_award_status';
+            fd.append('Status', 'planned');
+        } else {
+            url = 'CourtAjax/unstage_award';
         }
         cpRecPost(url, fd, row, state);
     };

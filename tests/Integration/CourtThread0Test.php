@@ -174,6 +174,57 @@ final class CourtThread0Test extends TestCase
         $this->assertSame('planned', $this->fixture->fetchAward($awardId)['status']);
     }
 
+    /**
+     * Fix round 1 / Finding 2 (Task 7 review): unstageAward() had zero RowVersion
+     * references while stageAward/skipAward had four each — the third mark had
+     * no optimistic lock at all, and reported success even when its WHERE
+     * (status='staged') matched nothing, because it used Execute() (void return)
+     * instead of DataSet()+Size(). Reproduces the reviewer's exact scenario:
+     * Recorder A stages a row, Recorder B skips it out from under A, and A's
+     * unstage attempt (holding the now-stale pre-skip token) must be refused —
+     * not silently accepted while the DB stays 'cancelled'.
+     */
+    public function testUnstageAwardRejectsStaleRowVersion(): void
+    {
+        $kid = $this->fixture->firstKingdomId();
+        $player = $this->fixture->createPlayer('unstale', $kid);
+        $giver  = $this->fixture->createPlayer('unstalegiver', $kid);
+        $courtId = $this->fixture->createCourt(['kingdom_id' => $kid]);
+        $awardId = $this->fixture->createAward($courtId, $player['mundane_id']);
+
+        // Recorder A stages the row and remembers the row_version stageAward left.
+        $this->assertTrue($this->court->stageAward($awardId, $giver['mundane_id'], '', 0, 0));
+        $staleToken = (int) $this->fixture->fetchAward($awardId)['row_version'];
+
+        // Recorder B skips the same row out from under A, bumping row_version again.
+        $this->assertTrue($this->court->skipAward($awardId));
+        $this->assertSame('cancelled', $this->fixture->fetchAward($awardId)['status']);
+
+        // Recorder A's unstage, holding the pre-skip token, must be refused —
+        // not fabricate 'planned' over a row the database holds as 'cancelled'.
+        $this->assertFalse($this->court->unstageAward($awardId, $staleToken));
+        $this->assertSame('cancelled', $this->fixture->fetchAward($awardId)['status']);
+    }
+
+    /**
+     * Companion to the stale-token case above: even with NO token supplied,
+     * unstageAward's WHERE (status='staged') matching zero rows must report
+     * failure, not synthesize success — this is what let the controller return
+     * {status:0, award_status:'planned'} while the database still held
+     * 'cancelled', independent of any concurrency race.
+     */
+    public function testUnstageAwardReportsFailureWhenNothingStaged(): void
+    {
+        $kid = $this->fixture->firstKingdomId();
+        $player = $this->fixture->createPlayer('unstagenoop', $kid);
+        $courtId = $this->fixture->createCourt(['kingdom_id' => $kid]);
+        $awardId = $this->fixture->createAward($courtId, $player['mundane_id']);
+
+        // Never staged — still 'planned'. unstageAward has nothing to undo.
+        $this->assertFalse($this->court->unstageAward($awardId));
+        $this->assertSame('planned', $this->fixture->fetchAward($awardId)['status']);
+    }
+
     public function testDefaultRecorderPrefersParkPrimeMinister(): void
     {
         $kid = $this->fixture->firstKingdomId();

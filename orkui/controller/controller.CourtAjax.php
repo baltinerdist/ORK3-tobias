@@ -585,7 +585,21 @@ class Controller_CourtAjax extends Controller
             $this->jsonOut(['status' => 1, 'error' => 'Court must be published to un-stage awards.']);
         }
 
-        $this->Court->unstage_award($court_award_id);
+        // S5 optimistic lock: honor the client's row_version token when supplied.
+        $expectedRowVersion = (isset($_POST['RowVersion']) && $_POST['RowVersion'] !== '')
+            ? (int)$_POST['RowVersion'] : null;
+
+        // Fix round 1 / Finding 2: unstageAward's WHERE guards on status = 'staged',
+        // so a row a concurrent skip already moved to 'cancelled' (or a stale token)
+        // matches nothing — false => not actually unstaged. Report that honestly
+        // instead of synthesizing 'planned' the database doesn't hold.
+        if (!$this->Court->unstage_award($court_award_id, $expectedRowVersion)) {
+            if ($expectedRowVersion !== null) {
+                // status 9 = optimistic-lock conflict; non-destructive reload.
+                $this->jsonOut(['status' => 9, 'stale' => true, 'message' => 'This row changed — reload.']);
+            }
+            $this->jsonOut(['status' => 1, 'error' => 'This award is no longer staged and cannot be undone.']);
+        }
 
         $this->jsonOut([
             'status'       => 0,
@@ -887,7 +901,14 @@ class Controller_CourtAjax extends Controller
             $this->jsonOut(['status' => 1, 'error' => 'This award was already granted and can no longer be skipped.']);
         }
 
-        $this->jsonOut(['status' => 0]);
+        // Fix round 1 / Finding 3: skip_award can move an already-staged row to
+        // 'cancelled' too, changing the staged count — match grant_award/
+        // unstage_award and report it, so the "N to record on Complete" indicator
+        // stays correct without a reload.
+        $this->jsonOut([
+            'status'       => 0,
+            'staged_count' => $this->Court->count_staged_awards($court_id),
+        ]);
     }
 
     // -----------------------------------------------------------------------
