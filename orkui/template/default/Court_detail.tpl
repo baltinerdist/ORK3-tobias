@@ -390,6 +390,13 @@ html[data-theme="dark"] .cp-tracking-icon[data-status="2"]::after { color: #9ae6
 .cp-script-cite-text { margin-top: 4px; color: #2d3748; line-height: 1.5; }
 .cp-script-cite-artisans { margin-top: 4px; color: #4a5568; font-size: 13px; }
 .cp-script-cite-artisans strong { color: #2d3748; }
+/* skipped rows: struck through, dimmed, marked, on both densities */
+.cp-script-skipped { opacity: .65; }
+.cp-script-skipped .cp-script-recip,
+.cp-script-skipped .cp-script-award,
+.cp-script-skipped .cp-script-cite-recip,
+.cp-script-skipped .cp-script-cite-award { text-decoration: line-through; }
+.cp-script-skipmark { font-size: 11px; font-style: italic; color: #718096; text-decoration: none; }
 /* dark mode (on-screen preview only) */
 html[data-theme="dark"] .cp-script-modal { background: #161b22; color: #e2e8f0; }
 html[data-theme="dark"] .cp-script-chrome { border-color: #2d3748; }
@@ -424,6 +431,8 @@ html[data-theme="dark"] .cp-script-cite-artisans { color: #a0aec0; }
     body.cp-script-open .cp-script-cite-recip,
     body.cp-script-open .cp-script-cite-award,
     body.cp-script-open .cp-script-cite-text { color: #000; }
+    body.cp-script-open .cp-script-skipped { opacity: 1; color: #000; }
+    body.cp-script-open .cp-script-skipmark { color: #000; }
     @page { margin: 0.6in; }
 }
 
@@ -4420,8 +4429,10 @@ window.cpApplyHeroColor = function(img) {
     // ---- Court Script ----
     var cpScriptDensity = 'compact';
 
+    // Skipped rows stay on the sheet, struck through: a reprint that silently
+    // dropped them would remove the only prompt to reconsider them (spec 0.3).
     function cpScriptActiveAwards() {
-        return (window.courtAwards || []).filter(function (a) { return a.Status !== 'cancelled'; });
+        return (window.courtAwards || []);
     }
     function cpScriptAwardLabel(a) {
         var s = esc(a.AwardName || '');
@@ -4450,11 +4461,13 @@ window.cpApplyHeroColor = function(img) {
     function cpScriptCompact(awards) {
         if (!awards.length) return '<p class="cp-script-empty">No awards to present.</p>';
         var rows = awards.map(function (a, i) {
-            return '<tr>' +
+            var skipped = a.Status === 'cancelled';
+            return '<tr' + (skipped ? ' class="cp-script-skipped"' : '') + '>' +
                 '<td class="cp-script-num">' + (i + 1) + '</td>' +
                 '<td class="cp-script-check">' + (a.Status === 'given' || a.Status === 'staged' ? '☑' : '☐') + '</td>' +
                 '<td class="cp-script-recip">' + cpScriptRecipient(a) + '</td>' +
-                '<td class="cp-script-award">' + cpScriptAwardLabel(a) + cpScriptPtlMark(a) + '</td>' +
+                '<td class="cp-script-award">' + cpScriptAwardLabel(a) + cpScriptPtlMark(a) +
+                    (skipped ? ' <span class="cp-script-skipmark">(skipped)</span>' : '') + '</td>' +
                 '</tr>';
         }).join('');
         return '<table class="cp-script-compact"><tbody>' + rows + '</tbody></table>';
@@ -4462,11 +4475,13 @@ window.cpApplyHeroColor = function(img) {
     function cpScriptCitation(awards) {
         if (!awards.length) return '<p class="cp-script-empty">No awards to present.</p>';
         return awards.map(function (a, i) {
-            var html = '<div class="cp-script-cite">' +
+            var skipped = a.Status === 'cancelled';
+            var html = '<div class="cp-script-cite' + (skipped ? ' cp-script-skipped' : '') + '">' +
                 '<div class="cp-script-cite-head">' +
                     '<span class="cp-script-cite-num">' + (i + 1) + '.</span> ' +
                     '<span class="cp-script-cite-recip">' + cpScriptRecipient(a) + '</span> ' +
                     '<span class="cp-script-cite-award">' + cpScriptAwardLabel(a) + cpScriptPtlMark(a) + '</span>' +
+                    (skipped ? ' <span class="cp-script-skipmark">(skipped)</span>' : '') +
                 '</div>';
             if (a.PublicComment) html += '<div class="cp-script-cite-text">' + esc(a.PublicComment) + '</div>';
             var art = cpScriptArtisans(a);
