@@ -407,6 +407,11 @@ html[data-theme="dark"] .cp-script-density button + button { border-color: #2d37
 html[data-theme="dark"] .cp-script-density button.active { background: #2b6cb0; color: #fff; }
 html[data-theme="dark"] .cp-script-compact td,
 html[data-theme="dark"] .cp-script-cite { border-color: #2d3748; }
+/* Sheet 1 (Order of Court) is read aloud at arm's length — larger than the screen default. */
+.cp-sheet-order { font-family: Georgia, 'Times New Roman', serif; }
+.cp-sheet-order .cp-script-cite-head { font-size: 16px; line-height: 1.5; }
+.cp-sheet-order .cp-script-cite-text { font-size: 14px; line-height: 1.55; margin-top: 4px; }
+.cp-sheet-box { font-size: 15px; }
 /* Shared chrome (printed stamp + court URL footer) every sheet embeds. */
 .cp-sheet-stamp { text-align: right; font-size: 11px; color: #718096; margin-bottom: 6px; }
 .cp-sheet-foot { margin-top: 14px; padding-top: 8px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #718096; word-break: break-all; }
@@ -441,6 +446,9 @@ html[data-theme="dark"] .cp-script-cite-artisans { color: #a0aec0; }
     body.cp-script-open .cp-script-skipmark { color: #000; }
     body.cp-script-open .cp-sheet-stamp,
     body.cp-script-open .cp-sheet-foot { color: #000; }
+    /* Sheet 1 read-aloud sizing: paper is read further away than a screen. */
+    body.cp-script-open .cp-sheet-order .cp-script-cite-head { font-size: 13pt; }
+    body.cp-script-open .cp-sheet-order .cp-script-cite-text { font-size: 11pt; }
     /* Multi-page records must keep their column labels. */
     body.cp-script-open thead { display: table-header-group; }
     body.cp-script-open tr { break-inside: avoid; }
@@ -4592,8 +4600,29 @@ window.cpApplyHeroColor = function(img) {
         cpRenderSheet();
     }
 
-    // Stubs — filled in by Tasks 3 (order), 4 (record) and 5 (prep).
-    function cpSheetOrder(awards) { return ''; }
+    // Sheet 1 — Order of Court: what the herald reads aloud, standing, at arm's
+    // length. Existing citation density plus the checkbox it dropped, and skipped
+    // rows stay struck through and marked rather than omitted (spec 0.3).
+    function cpSheetOrder(awards) {
+        if (!awards.length) return '<p class="cp-script-empty">No awards to present.</p>';
+        return '<div class="cp-sheet-order">' + awards.map(function (a, i) {
+            var skipped = a.Status === 'cancelled';
+            var html = '<div class="cp-script-cite' + (skipped ? ' cp-script-skipped' : '') + '">' +
+                '<div class="cp-script-cite-head">' +
+                    '<span class="cp-script-cite-num">' + (i + 1) + '.</span> ' +
+                    '<span class="cp-sheet-box">' + (a.Status === 'given' || a.Status === 'staged' ? '&#9745;' : '&#9744;') + '</span> ' +
+                    '<span class="cp-script-cite-recip">' + cpScriptRecipient(a) + '</span> ' +
+                    '<span class="cp-script-cite-award">' + cpScriptAwardLabel(a) + cpScriptPtlMark(a) + '</span>' +
+                    (skipped ? ' <span class="cp-script-skipmark">(skipped)</span>' : '') +
+                '</div>';
+            if (a.PublicComment) html += '<div class="cp-script-cite-text">' + esc(a.PublicComment) + '</div>';
+            var art = cpScriptArtisans(a);
+            // cpScriptArtisans() already esc()s each persona/contribution before joining
+            // (see above); esc()-ing the joined string again would double-encode entities.
+            if (art) html += '<div class="cp-script-cite-artisans"><strong>Artisans to thank:</strong> ' + art + '</div>';
+            return html + '</div>';
+        }).join('') + '</div>';
+    }
     function cpSheetRecord(awards) { return ''; }
     function cpSheetPrep(awards) { return ''; }
 
