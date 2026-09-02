@@ -24,6 +24,14 @@ $courtSt = $court['Status'] ?? 'draft';
 $statusLabel      = ['draft' => 'Draft', 'published' => 'Published', 'complete' => 'Complete'];
 $statusBadgeClass = ['draft' => 'cp-badge-draft', 'published' => 'cp-badge-published', 'complete' => 'cp-badge-complete'];
 
+// Scope chip (rp-header shell) — park if the court is park-scoped, else kingdom.
+$scopeIsPark = ($court['ParkId'] ?? 0) > 0 && !empty($court['ParkName']);
+$scopeLabel  = $scopeIsPark ? $court['ParkName'] : ($court['KingdomName'] ?? '');
+$scopeLink   = $scopeIsPark
+    ? UIR . 'Park/profile/' . (int)$court['ParkId']
+    : UIR . 'Kingdom/profile/' . (int)($court['KingdomId'] ?? 0);
+$scopeIcon   = $scopeIsPark ? 'fa-map-marker-alt' : 'fa-chess-rook';
+
 // Initial staged-safeguard count (spec §5.3), computed from the same CourtAwards
 // payload the JS globals below carry — every mark is a real server write the
 // moment it happens (spec §5), so this count is exact at render time. The
@@ -38,6 +46,7 @@ foreach ($courtAwards as $__a) {
 }
 unset($__a);
 ?>
+<link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>default/style/reports.css?v=<?= filemtime(DIR_TEMPLATE . 'default/style/reports.css') ?>">
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>default/style/court-planner.css?v=<?= filemtime(DIR_TEMPLATE . 'default/style/court-planner.css') ?>">
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>revised-frontend/style/rank-pill.css?v=<?= filemtime(DIR_TEMPLATE . 'revised-frontend/style/rank-pill.css') ?>">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
@@ -50,37 +59,48 @@ unset($__a);
    also links. Nothing in this block should duplicate a cp-* rule that already
    lives there. */
 
-/* ---- Record Court top strip (spec §5: "top strip — court date, event, and
+/* ---- Court Details sidebar card (spec §5: "top strip — court date, event, and
    default giver — edited through the new update_court endpoint"). The court's
    own date, event link, and recorder are the persisted, update_court-backed
-   fields (0.1/0.7); this strip surfaces them as inline edit-in-place controls
-   instead of a modal, since correcting them IS the catch-up pass. ---- */
-.cp-rec-topstrip { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px; }
-.cp-rec-strip-field { flex: 1 1 200px; min-width: 160px; }
+   fields (0.1/0.7); this card surfaces them as inline edit-in-place controls
+   instead of a modal, since correcting them IS the catch-up pass. Now a
+   vertical stack inside the standard 220px .rp-sidebar (density pass 2b)
+   rather than a horizontal full-width strip above the grid — same fields,
+   same ids, same JS (cpRecSaveField/flatpickr/cpAcSearch), just relaid out. */
+.cp-rec-topstrip { display: flex; flex-direction: column; gap: 12px; }
 .cp-rec-strip-field label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: #718096; margin-bottom: 4px; }
 .cp-rec-strip-field input,
 .cp-rec-strip-field select { width: 100%; padding: 8px 10px; border: 1px solid #cbd5e0; border-radius: 5px; font-size: 14px; box-sizing: border-box; min-height: 38px; }
-.cp-rec-strip-status { flex: 0 0 auto; font-size: 12px; color: #718096; min-width: 70px; padding-bottom: 9px; }
+.cp-rec-strip-status { display: block; font-size: 12px; color: #718096; min-height: 16px; }
 .cp-rec-strip-status.cp-rec-strip-saved { color: #276749; font-weight: 600; }
 .cp-rec-strip-status.cp-rec-strip-error { color: #c53030; font-weight: 600; }
-html[data-theme="dark"] .cp-rec-topstrip { background: #161b22; border-color: #2d3748; }
 html[data-theme="dark"] .cp-rec-strip-field label { color: #97a3b4; }
+/* #theme_container carries orkui.css's broad dark-mode input rule
+   (html[data-theme="dark"] #theme_container input[type="text"], ...) — an ID
+   selector, which outranks a same-scoped class selector on specificity
+   regardless of source order (0,2,2 beats 0,2,1). It was silently winning here
+   too (computed-style check, not by eye — same failure mode Task 9/10 already
+   hit twice on this file): the flatpickr alt-input for Court Date is a plain
+   input[type=text] inside #theme_container, so the broad rule's #374151 beat
+   this rule's #1f2733 outright. Matching input[type="text"]/select with the
+   class appended, same as .cp-rec-walkon-input above, guarantees this wins. */
+html[data-theme="dark"] #theme_container input[type="text"].cp-rec-strip-input,
+html[data-theme="dark"] #theme_container select.cp-rec-strip-input,
 html[data-theme="dark"] .cp-rec-strip-field input,
 html[data-theme="dark"] .cp-rec-strip-field select { background: #1f2733; border-color: #2d3748; color: #e2e8f0; }
 html[data-theme="dark"] .cp-rec-strip-status { color: #97a3b4; }
 html[data-theme="dark"] .cp-rec-strip-status.cp-rec-strip-saved { color: #68d391; }
 html[data-theme="dark"] .cp-rec-strip-status.cp-rec-strip-error { color: #fc8181; }
 
-/* Lean hero-actions row for this view (no heraldry, fewer buttons than the planner). */
-.cp-rec-hero-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-
 /* ---- Row list (spec §5.1) — per-row marks, same column order as the printed
    Sheet 2: # · Recipient · Award · Rank · [mark] · Given by · PTL. The paper's
    separate check/x columns collapse into one three-state control here. Every
    mark is a real server write the moment it's made (CourtAjax/grant_award,
    skip_award, unstage_award) — nothing here batches client-side. ---- */
+/* The three-sentence explanation that used to sit beside this button now lives
+   in the sidebar's "About This Tool" card (density pass 2b) — a short data-tip
+   on the button covers the zero-context case. */
 .cp-rec-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
-.cp-rec-toolbar-hint { flex: 1 1 240px; font-size: 12px; color: #718096; }
 /* House rule: no interactive target under 44px, checked at 390 AND 768 — not just
    the <=600px stacked layout. .cp-btn-primary's own padding lands at ~31px, so
    this must not be gated behind the mobile media query below. */
@@ -89,13 +109,12 @@ html[data-theme="dark"] .cp-rec-strip-status.cp-rec-strip-error { color: #fc8181
 html[data-theme="dark"] .cp-rec-empty { color: #718096; border-color: #2d3748; }
 
 .cp-rec-list { border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background: #fff; }
-/* flex-wrap: wrap so .cp-rec-cite (flex-basis 100%, added below) always lands on its
-   own line under the existing columns, at every width — a flex item whose basis IS
-   the full container width can never share a line with anything else, so this needs
-   no extra media-query handling. The existing columns' own widths never sum anywhere
-   near the container width at 768px+ (verified Task 7/8), so this doesn't change how
-   they wrap; it only gives the citation strip somewhere to land. */
-.cp-rec-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #edf2f7; }
+/* flex-wrap: wrap so the citation (inline by default, see .cp-rec-cite below) can
+   drop to its own line at narrow widths, or forces one when expanded for editing
+   (its :has()-driven flex-basis:100% below). Density pass 2b: the citation is no
+   longer an unconditional full-width second row — see .cp-rec-cite — so this row
+   is now sized to its tallest control, not doubled by a citation banner. */
+.cp-rec-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 5px; padding: 5px 12px; border-bottom: 1px solid #edf2f7; }
 .cp-rec-row:last-child { border-bottom: none; }
 .cp-rec-row-header { background: #f7fafc; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #718096; }
 .cp-rec-c-label { display: none; }
@@ -107,11 +126,14 @@ html[data-theme="dark"] .cp-rec-empty { color: #718096; border-color: #2d3748; }
    order here (no flex `order` trick), so the header row and each data row's
    markup were both moved, not just this rule. */
 .cp-rec-c-mark { flex: 0 0 auto; }
-.cp-rec-c-recip { flex: 1 1 180px; min-width: 0; font-weight: 600; color: #1a202c; }
+/* Density pass 2b: recipient is bounded (flex-grow:0), not one of the two columns
+   fighting over slack — a ~200px cap is comfortably wider than any real persona,
+   and the reclaimed width goes to the award name and the now-inline citation. */
+.cp-rec-c-recip { flex: 0 1 170px; min-width: 90px; font-weight: 600; color: #1a202c; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cp-rec-park { font-size: 11px; color: #718096; font-weight: 400; margin-left: 4px; }
-.cp-rec-c-award { flex: 1 1 200px; min-width: 0; }
-.cp-rec-c-rank { flex: 0 0 84px; }
-.cp-rec-c-giver { flex: 0 0 130px; font-size: 13px; color: #4a5568; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp-rec-c-award { flex: 1 1 140px; min-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp-rec-c-rank { flex: 0 0 62px; }
+.cp-rec-c-giver { flex: 0 0 110px; font-size: 12px; color: #4a5568; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cp-rec-c-ptl { flex: 0 0 30px; text-align: center; color: #718096; }
 .cp-rec-row.cp-rec-row-given { background: #f0fff4; }
 .cp-rec-row.cp-rec-row-skipped { background: #fff5f5; opacity: .8; }
@@ -128,12 +150,34 @@ html[data-theme="dark"] .cp-rec-empty { color: #718096; border-color: #2d3748; }
    row Given is a real, safe write, not a doomed one — locking it here would just
    block a legitimate correction. It IS locked when the court itself isn't
    'published' (same $canMark the mark buttons use), since a post-finalize edit
-   here no longer reaches ork_awards.note at all. */
-.cp-rec-cite { flex: 1 1 100%; }
-.cp-rec-cite-preview { display: flex; align-items: center; gap: 8px; width: 100%; background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px; min-height: 44px; box-sizing: border-box; cursor: pointer; text-align: left; font-size: 12px; color: #4a5568; }
-.cp-rec-cite-preview:hover { background: #edf2f7; }
+   here no longer reaches ork_awards.note at all.
+
+   Density pass 2b: the citation used to be an unconditional flex-basis:100%
+   item, forcing a second full-width row under every award even when the only
+   content was the italic "No citation" placeholder — ~46px spent announcing an
+   absence, on every one of ~25 rows. It's now an ordinary inline cell (bounded
+   width, single truncated line, no border/background/min-height) that sits in
+   the row alongside recipient/award/rank/giver/PTL. It only reclaims the full
+   row width — and becomes the roomy textarea — while actually being edited:
+   the :has() selector below tracks the textarea's own .cp-rec-hidden toggle
+   (already flipped by cpRecCiteExpand/cpRecCiteCollapse in JS, unchanged), so
+   no extra class bookkeeping was added anywhere. A walk-on's citation (Task 9's
+   IsWalkOn hook) never carries .cp-rec-hidden on its textarea in the first
+   place, so it's always matched by this same rule and stays full-width — the
+   "must not be missable" requirement, now met by plain CSS instead of a
+   special case. */
+.cp-rec-cite { flex: 1 1 150px; min-width: 100px; display: flex; align-items: center; }
+.cp-rec-cite:has(.cp-rec-cite-textarea:not(.cp-rec-hidden)) { flex: 1 1 100%; }
+.cp-rec-cite-preview { display: flex; align-items: center; gap: 6px; width: 100%; background: none; border: none; border-radius: 4px; padding: 3px 6px; box-sizing: border-box; cursor: pointer; text-align: left; font-size: 12px; color: #718096; }
+.cp-rec-cite-preview:hover { background: #f7fafc; }
+/* House convention: a coarse pointer still gets a real ≥44px hit area, added
+   via padding (not by inflating the compact mouse-facing glyph/line-height). */
+@media (pointer: coarse) {
+    .cp-rec-cite-preview { min-height: 44px; padding: 10px 6px; }
+}
 .cp-rec-cite-icon,
-.cp-rec-cite-edit-icon { flex: 0 0 auto; color: #a0aec0; font-size: 11px; }
+.cp-rec-cite-edit-icon { flex: 0 0 auto; color: #cbd5e0; font-size: 10px; }
+.cp-rec-cite-edit-icon { display: none; }
 .cp-rec-cite-preview-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cp-rec-cite-preview-text.cp-rec-cite-empty { color: #a0aec0; font-style: italic; }
 .cp-rec-cite-textarea { width: 100%; min-height: 64px; padding: 8px 10px; border: 1px solid #90cdf4; border-radius: 6px; font-size: 13px; font-family: inherit; line-height: 1.4; box-sizing: border-box; resize: vertical; }
@@ -177,7 +221,11 @@ html[data-theme="dark"] .cp-rec-walkon-add-btn { background: #2b6cb0; border-col
 .cp-rec-ptl-check { width: 18px; height: 18px; flex: 0 0 auto; }
 
 .cp-rec-seg { display: inline-flex; border: 1px solid #cbd5e0; border-radius: 6px; overflow: hidden; }
-.cp-rec-seg-btn { background: #fff; border: none; border-right: 1px solid #e2e8f0; padding: 0 12px; min-height: 44px; font-size: 12px; font-weight: 600; color: #4a5568; cursor: pointer; }
+/* Density pass 2b: these fire on every one of ~25 rows, so their height sets the
+   row's floor. Per the house convention, the hit area only needs to resolve to
+   >=44px under a coarse pointer (added via padding below); a mouse gets a visually
+   compact control instead of one double the height of its own label. */
+.cp-rec-seg-btn { background: #fff; border: none; border-right: 1px solid #e2e8f0; padding: 4px 7px; min-height: 28px; font-size: 11px; font-weight: 600; color: #4a5568; cursor: pointer; box-sizing: border-box; }
 .cp-rec-seg-btn:last-child { border-right: none; }
 .cp-rec-seg-btn:hover:not(:disabled) { background: #f7fafc; }
 .cp-rec-seg-btn:disabled { cursor: not-allowed; opacity: .5; }
@@ -186,16 +234,20 @@ html[data-theme="dark"] .cp-rec-walkon-add-btn { background: #2b6cb0; border-col
 .cp-rec-row[data-mark="none"] .cp-rec-seg-none { background: #edf2f7; color: #2d3748; }
 
 /* ---- Given-by chip + rank chip (Task 8) — the row-level controls that open the
-   two shared floating popovers below. Unconditional 44px (not gated behind
-   pointer:coarse or the 600px block) — these are called out by name in the house
-   mobile rules as the risk on this page, so the hit area is padding-driven and
-   present at every width, checked at both 390 and 768. ---- */
-.cp-rec-giver-chip { background: #edf2f7; border: 1px solid #cbd5e0; color: #2d3748; padding: 4px 10px; border-radius: 14px; font-size: 12px; font-weight: 600; cursor: pointer; max-width: 100%; min-height: 44px; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+   two shared floating popovers below. Same density-pass-2b treatment as the mark
+   buttons above: visually compact by default, >=44px only under pointer:coarse
+   (padding-driven, not a bigger glyph), checked at both 390 and 768. ---- */
+.cp-rec-giver-chip { background: #edf2f7; border: 1px solid #cbd5e0; color: #2d3748; padding: 4px 8px; border-radius: 14px; font-size: 11px; font-weight: 600; cursor: pointer; max-width: 100%; min-height: 28px; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cp-rec-giver-chip:hover:not(:disabled) { background: #e2e8f0; }
 .cp-rec-giver-chip:disabled { cursor: not-allowed; opacity: .6; }
 .cp-rec-giver-chip.cp-rec-chip-custom { background: #ebf8ff; border-color: #90cdf4; color: #2b6cb0; }
-.cp-rec-rank-chip { cursor: pointer; min-height: 44px; box-sizing: border-box; display: inline-flex; align-items: center; }
+.cp-rec-rank-chip { cursor: pointer; min-height: 28px; box-sizing: border-box; display: inline-flex; align-items: center; }
 .cp-rec-rank-chip:disabled { cursor: not-allowed; opacity: .6; }
+@media (pointer: coarse) {
+    .cp-rec-seg-btn,
+    .cp-rec-giver-chip,
+    .cp-rec-rank-chip { min-height: 44px; }
+}
 
 /* Shared floating popover (giver + rank) — same fixed-position idiom as
    Court_detail.tpl's #cp-note-popup, positioned next to the chip that opened it. */
@@ -221,8 +273,7 @@ html[data-theme="dark"] .cp-rec-row-header { background: #1a202c; color: #97a3b4
 html[data-theme="dark"] .cp-rec-c-num { color: #718096; }
 html[data-theme="dark"] .cp-rec-c-recip { color: #e2e8f0; }
 html[data-theme="dark"] .cp-rec-park,
-html[data-theme="dark"] .cp-rec-c-giver,
-html[data-theme="dark"] .cp-rec-toolbar-hint { color: #97a3b4; }
+html[data-theme="dark"] .cp-rec-c-giver { color: #97a3b4; }
 html[data-theme="dark"] .cp-rec-row.cp-rec-row-given { background: rgba(39,103,73,.18); }
 html[data-theme="dark"] .cp-rec-row.cp-rec-row-skipped { background: rgba(197,48,48,.14); }
 html[data-theme="dark"] .cp-rec-seg { border-color: #2d3748; }
@@ -242,7 +293,7 @@ html[data-theme="dark"] .cp-rec-pop-close:hover { color: #e2e8f0; }
 html[data-theme="dark"] .cp-rec-pop-apply-btn { background: #1f2733; border-color: #2d3748; color: #90cdf4; }
 html[data-theme="dark"] .cp-rec-pop-apply-btn:hover { background: #2d3748; }
 
-html[data-theme="dark"] .cp-rec-cite-preview { background: #1a202c; border-color: #2d3748; color: #cbd5e0; }
+html[data-theme="dark"] .cp-rec-cite-preview { color: #97a3b4; }
 html[data-theme="dark"] .cp-rec-cite-preview:hover { background: #22272e; }
 html[data-theme="dark"] .cp-rec-cite-preview-text.cp-rec-cite-empty { color: #718096; }
 /* #theme_container wraps every page and already carries a dark-mode rule for bare
@@ -260,21 +311,13 @@ html[data-theme="dark"] .cp-rec-cite-status { color: #97a3b4; }
 html[data-theme="dark"] .cp-rec-cite-status.cp-rec-cite-status-error { color: #fc8181; }
 
 @media (max-width: 600px) {
-    .cp-rec-topstrip { flex-direction: column; align-items: stretch; gap: 12px; padding: 14px; }
-    .cp-rec-strip-field { flex: 1 1 auto; min-width: 0; }
     /* House rule: >=44px hit area via padding, not larger glyphs. .cp-field's base
        8px vertical padding leaves these at ~38px on a 14px input; pad up, don't
-       just embiggen the text. This is the one fix of the original three that
-       does NOT propagate to court-planner.css: .cp-rec-strip-field doesn't
-       exist on Court_detail.tpl, so there is nothing there to fix. The other
-       two (.cp-si-btn, .cp-back) are shared classes and now live in
-       court-planner.css's own 600px block instead of being duplicated here. */
+       just embiggen the text. (.cp-rec-topstrip/.cp-rec-strip-field no longer need
+       a flex-direction override here — the Court Details card is a vertical stack
+       at every width now that it lives in the sidebar, not a horizontal strip.) */
     .cp-rec-strip-field input,
     .cp-rec-strip-field select { min-height: 44px; padding-top: 12px; padding-bottom: 12px; box-sizing: border-box; }
-    .cp-rec-strip-status { padding-bottom: 0; }
-    .cp-rec-hero-actions { width: 100%; }
-    .cp-rec-hero-actions > a,
-    .cp-rec-hero-actions > button { flex: 1 1 auto; min-height: 44px; justify-content: center; }
 
     /* Row list collapses to stacked cards — a table/flex-row layout at this width
        either overflows horizontally or forces sub-44px controls; neither is
@@ -294,6 +337,9 @@ html[data-theme="dark"] .cp-rec-cite-status.cp-rec-cite-status-error { color: #f
     .cp-rec-seg { width: 100%; }
     .cp-rec-seg-btn { flex: 1 1 33%; }
     .cp-rec-c-ptl { flex: 1 1 100%; text-align: left; display: flex; align-items: center; gap: 6px; }
+    /* Inline citation cell (density pass 2b) also goes full-width once the row
+       itself is a stack of full-width cards — same as every other column here. */
+    .cp-rec-cite { flex: 1 1 100%; }
 }
 </style>
 
@@ -305,94 +351,125 @@ html[data-theme="dark"] .cp-rec-cite-status.cp-rec-cite-status-error { color: #f
 </div>
 <?php else: ?>
 
-<div class="cp-page" style="padding-top:0;padding-bottom:0;margin-bottom:0">
+<div class="rp-root cp-page" style="padding-top:0;padding-bottom:0;margin-bottom:0">
 
-    <div class="cp-hero-back-row">
-        <a class="cp-back" href="<?= UIR ?>Court/detail/<?= $courtId ?>" style="color:#4a5568">
-            <i class="fas fa-arrow-left"></i> Back to Planner
-        </a>
-    </div>
-
-    <!-- Hero: name, date, mode badge — a lean read-only summary. The editable
-         date/event/recorder live in the top strip below (spec §5). -->
-    <div class="cp-hero" id="cp-hero">
-        <div class="cp-hero-content">
-            <div class="cp-hero-info">
-                <div class="cp-hero-supertitle">
-                    <?php if (($court['ParkId'] ?? 0) > 0 && !empty($court['ParkName'])): ?>
-                    <?= htmlspecialchars($court['ParkName']) ?> &bull;
-                    <?php endif; ?>
-                    <?= htmlspecialchars($court['KingdomName'] ?? '') ?>
-                </div>
-                <h1 class="cp-hero-name"><?= htmlspecialchars($court['Name'] ?? '') ?></h1>
-                <div class="cp-hero-meta">
-                    <?php if (!empty($court['CourtDate'])): ?>
-                    <span><i class="fas fa-calendar"></i><?= date('l, F j, Y', strtotime($court['CourtDate'])) ?></span>
-                    <?php endif; ?>
-                    <?php if (!empty($court['EventName'])): ?>
-                    <span><i class="fas fa-flag"></i><?= htmlspecialchars($court['EventName']) ?></span>
-                    <?php endif; ?>
-                </div>
-            </div>
-            <div class="cp-hero-actions">
-                <div class="cp-rec-hero-actions">
-                    <span class="cp-badge <?= $statusBadgeClass[$courtSt] ?? 'cp-badge-draft' ?>" id="cp-rec-status-badge">
-                        <?= $statusLabel[$courtSt] ?? $courtSt ?>
-                    </span>
-                    <?php if (in_array($courtSt, ['published', 'complete'], true)): ?>
-                    <span class="cp-mode-badge <?= $courtMode === 'plan' ? 'cp-mode-plan' : 'cp-mode-run' ?>" id="cp-rec-mode-badge">
-                        <i class="fas fa-<?= $courtMode === 'plan' ? 'clipboard-list' : 'bullhorn' ?>"></i>
-                        <?= $courtMode === 'plan' ? 'Plan' : 'Run at Court' ?>
-                    </span>
-                    <?php endif; ?>
-                </div>
-                <?php if ($courtSt !== 'complete'): ?>
-                <button class="cp-btn-primary" onclick="cpOpenCompleteModal()" data-tip="Nothing reaches the permanent record until this runs">
-                    <i class="fas fa-stamp"></i> Finalize &amp; Complete
-                </button>
+    <!-- Standard tool-page header plate (.rp-* shell, shared reports.css — see
+         orkui/template/revised-frontend/Recommendations_manage.tpl for the
+         worked example this follows). Replaces the old bespoke .cp-hero; the
+         read-only date/event line it used to carry now lives in the Court
+         Details sidebar card below, always visible, edit-in-place. -->
+    <div class="rp-header">
+        <div class="rp-header-left">
+            <div class="rp-header-icon-title">
+                <i class="fas fa-gavel rp-header-icon"></i>
+                <h1 class="rp-header-title"><?= htmlspecialchars($court['Name'] ?? '') ?></h1>
+                <span class="cp-badge <?= $statusBadgeClass[$courtSt] ?? 'cp-badge-draft' ?>" id="cp-rec-status-badge">
+                    <?= $statusLabel[$courtSt] ?? $courtSt ?>
+                </span>
+                <?php if (in_array($courtSt, ['published', 'complete'], true)): ?>
+                <span class="cp-mode-badge <?= $courtMode === 'plan' ? 'cp-mode-plan' : 'cp-mode-run' ?>" id="cp-rec-mode-badge">
+                    <i class="fas fa-<?= $courtMode === 'plan' ? 'clipboard-list' : 'bullhorn' ?>"></i>
+                    <?= $courtMode === 'plan' ? 'Plan' : 'Run at Court' ?>
+                </span>
                 <?php endif; ?>
             </div>
+            <?php if ($scopeLabel !== ''): ?>
+            <div class="rp-header-scope">
+                <a class="rp-scope-chip" href="<?= $scopeLink ?>">
+                    <i class="fas <?= $scopeIcon ?>"></i> <?= htmlspecialchars($scopeLabel) ?>
+                </a>
+            </div>
+            <?php endif; ?>
+        </div>
+        <div class="rp-header-actions">
+            <a class="rp-btn-ghost" href="<?= UIR ?>Court/detail/<?= $courtId ?>"><i class="fas fa-arrow-left"></i> Back to Planner</a>
+            <?php if ($courtSt !== 'complete'): ?>
+            <button type="button" class="rp-btn-ghost" onclick="cpOpenCompleteModal()" data-tip="Nothing reaches the permanent record until this runs">
+                <i class="fas fa-stamp"></i> Finalize &amp; Complete
+            </button>
+            <?php endif; ?>
         </div>
     </div>
 
-    <!-- Top strip (spec §5): court date, event, and recorder — the same three
-         fields 0.1/0.7 made editable via CourtAjax/update_court, surfaced here
-         as inline edit-in-place controls rather than the planner's modal. -->
-    <div class="cp-rec-topstrip" id="cp-rec-topstrip">
-        <div class="cp-rec-strip-field">
-            <label for="cp-rec-date">Court Date</label>
-            <input type="text" id="cp-rec-date" placeholder="Select a date…" autocomplete="off"
-                   <?= $courtSt === 'complete' ? 'disabled' : '' ?>>
-        </div>
-        <?php if (!empty($upcomingEvents)): ?>
-        <div class="cp-rec-strip-field">
-            <label for="cp-rec-event">Event</label>
-            <select id="cp-rec-event" onchange="cpRecSaveField({EventCalendarDetailId: this.value})"
-                    <?= $courtSt === 'complete' ? 'disabled' : '' ?>>
-                <option value="0">&mdash; None &mdash;</option>
-                <?php foreach ($upcomingEvents as $ev): ?>
-                <option value="<?= (int)$ev['EventCalendarDetailId'] ?>"
-                    <?= ((int)$ev['EventCalendarDetailId'] === (int)($court['EventCalendarDetailId'] ?? 0)) ? 'selected' : '' ?>>
-                    <?= htmlspecialchars($ev['Name']) ?><?= $ev['EventStart'] ? ' (' . date('M j', strtotime($ev['EventStart'])) . ')' : '' ?>
-                </option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-        <?php endif; ?>
-        <div class="cp-rec-strip-field">
-            <label for="cp-rec-recorder-text">Recorder <span style="font-weight:400;text-transform:none;letter-spacing:0"> — who records this court's grants</span></label>
-            <div class="cp-ac-wrap">
-                <input type="text" id="cp-rec-recorder-text" placeholder="Search player name…" autocomplete="off"
-                       value="<?= htmlspecialchars($court['RecorderPersona'] ?? '') ?>"
-                       oninput="cpAcSearch(this,'cp-rec-recorder-ac','cp-rec-recorder-id',cpRecRecorderPick)"
-                       onblur="cpRecRecorderBlur()"
-                       <?= $courtSt === 'complete' ? 'disabled' : '' ?>>
-                <div class="cp-ac-dropdown" id="cp-rec-recorder-ac"></div>
-            </div>
-            <input type="hidden" id="cp-rec-recorder-id" value="<?= (int)($court['RecorderMundaneId'] ?? 0) ?>">
-        </div>
-        <span class="cp-rec-strip-status" id="cp-rec-strip-status" role="status" aria-live="polite"></span>
+    <div class="rp-context">
+        <i class="fas fa-info-circle rp-context-icon"></i>
+        <span>Record what actually happened at court, checked off against the printed sheet — mark each award Given or Skipped, correct the giver or rank if the ceremony diverged from plan, and add any walk-ons.</span>
     </div>
+
+    <div class="rp-body">
+        <div class="rp-sidebar">
+
+            <!-- Court Details (spec §5): court date, event, and recorder — the
+                 same three fields 0.1/0.7 made editable via CourtAjax/update_court,
+                 surfaced here as inline edit-in-place controls rather than the
+                 planner's modal. Same ids/JS as before; just relocated from a
+                 horizontal strip above the grid (density pass 2b — that strip
+                 was a whole reclaimable band). -->
+            <div class="rp-filter-card">
+                <div class="rp-filter-card-header"><i class="fas fa-calendar-alt"></i> Court Details</div>
+                <div class="rp-filter-card-body">
+                    <div class="cp-rec-topstrip" id="cp-rec-topstrip">
+                        <div class="cp-rec-strip-field">
+                            <label for="cp-rec-date">Court Date</label>
+                            <input type="text" id="cp-rec-date" class="cp-rec-strip-input" placeholder="Select a date…" autocomplete="off"
+                                   <?= $courtSt === 'complete' ? 'disabled' : '' ?>>
+                        </div>
+                        <?php if (!empty($upcomingEvents)): ?>
+                        <div class="cp-rec-strip-field">
+                            <label for="cp-rec-event">Event</label>
+                            <select id="cp-rec-event" class="cp-rec-strip-input" onchange="cpRecSaveField({EventCalendarDetailId: this.value})"
+                                    <?= $courtSt === 'complete' ? 'disabled' : '' ?>>
+                                <option value="0">&mdash; None &mdash;</option>
+                                <?php foreach ($upcomingEvents as $ev): ?>
+                                <option value="<?= (int)$ev['EventCalendarDetailId'] ?>"
+                                    <?= ((int)$ev['EventCalendarDetailId'] === (int)($court['EventCalendarDetailId'] ?? 0)) ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($ev['Name']) ?><?= $ev['EventStart'] ? ' (' . date('M j', strtotime($ev['EventStart'])) . ')' : '' ?>
+                                </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <?php endif; ?>
+                        <div class="cp-rec-strip-field">
+                            <label for="cp-rec-recorder-text">Recorder <span style="font-weight:400;text-transform:none;letter-spacing:0"> — who records this court's grants</span></label>
+                            <div class="cp-ac-wrap">
+                                <input type="text" id="cp-rec-recorder-text" class="cp-rec-strip-input" placeholder="Search player name…" autocomplete="off"
+                                       value="<?= htmlspecialchars($court['RecorderPersona'] ?? '') ?>"
+                                       oninput="cpAcSearch(this,'cp-rec-recorder-ac','cp-rec-recorder-id',cpRecRecorderPick)"
+                                       onblur="cpRecRecorderBlur()"
+                                       <?= $courtSt === 'complete' ? 'disabled' : '' ?>>
+                                <div class="cp-ac-dropdown" id="cp-rec-recorder-ac"></div>
+                            </div>
+                            <input type="hidden" id="cp-rec-recorder-id" value="<?= (int)($court['RecorderMundaneId'] ?? 0) ?>">
+                        </div>
+                        <span class="cp-rec-strip-status" id="cp-rec-strip-status" role="status" aria-live="polite"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- About This Tool — the explanation that used to sit beside the
+                 bulk button now lives here (kept, not deleted), split into its
+                 three natural points; the button itself keeps a short data-tip. -->
+            <div class="rp-filter-card">
+                <div class="rp-filter-card-header"><i class="fas fa-info-circle"></i> About This Tool</div>
+                <div class="rp-filter-card-body">
+                    <div class="rp-col-guide-item">
+                        <span class="rp-col-guide-name">Mark all remaining Given</span>
+                        <span class="rp-col-guide-desc">Stages every still-planned award as Given, under the court's default giver.</span>
+                    </div>
+                    <div class="rp-col-guide-item">
+                        <span class="rp-col-guide-name">Handle exceptions first</span>
+                        <span class="rp-col-guide-desc">Mark Skipped rows — or anything unusual — before using the bulk button for the rest.</span>
+                    </div>
+                    <div class="rp-col-guide-item">
+                        <span class="rp-col-guide-name">Safe to repeat</span>
+                        <span class="rp-col-guide-desc">Safe to click again after adding walk-ons; it only ever touches rows still planned.</span>
+                    </div>
+                </div>
+            </div>
+
+        </div><!-- /rp-sidebar -->
+
+        <div class="rp-table-area">
 
     <!-- Unfinalized-staged safeguard indicator (spec §5.3) — same idiom as the
          planner's #cp-staged-indicator, reused so the running total is visible
@@ -414,10 +491,10 @@ html[data-theme="dark"] .cp-rec-cite-status.cp-rec-cite-status-error { color: #f
     <div id="cp-rec-rows">
         <div class="cp-rec-toolbar">
             <button type="button" class="cp-btn-primary" id="cp-rec-bulk-btn" onclick="cpRecMarkAllGiven()"
+                    data-tip="Stages every still-planned award as Given under the default giver — see About This Tool"
                     <?= $courtSt !== 'published' ? 'disabled' : '' ?>>
                 <i class="fas fa-check-double"></i> Mark all remaining Given
             </button>
-            <span class="cp-rec-toolbar-hint">Stages every still-planned award as Given under the default giver. Mark the exceptions — Skipped, or anything unusual — first, then use this for the rest. Safe to click again after adding walk-ons; it only ever touches rows still planned.</span>
         </div>
 
         <?php
@@ -459,11 +536,11 @@ html[data-theme="dark"] .cp-rec-cite-status.cp-rec-cite-status-error { color: #f
                     <button type="button" class="cp-rec-seg-btn cp-rec-seg-skipped" aria-pressed="<?= $mark === 'skipped' ? 'true' : 'false' ?>" onclick="cpRecMark(<?= $caid ?>,'skipped')" <?= $canMark ? '' : 'disabled' ?>>Skipped</button>
                     <button type="button" class="cp-rec-seg-btn cp-rec-seg-none" aria-pressed="<?= $mark === 'none' ? 'true' : 'false' ?>" onclick="cpRecMark(<?= $caid ?>,'none')" data-tip="Clear this mark" <?= $canMark ? '' : 'disabled' ?>>&mdash;</button>
                 </span>
-                <span class="cp-rec-c cp-rec-c-recip">
+                <span class="cp-rec-c cp-rec-c-recip" data-tip="<?= htmlspecialchars($aw['Persona'] ?? '') ?>">
                     <span class="cp-rec-c-label">Recipient</span>
                     <?= htmlspecialchars($aw['Persona'] ?? '') ?><?php if (!empty($aw['ParkAbbrev'])): ?> <span class="cp-rec-park"><?= htmlspecialchars($aw['ParkAbbrev']) ?></span><?php endif; ?>
                 </span>
-                <span class="cp-rec-c cp-rec-c-award">
+                <span class="cp-rec-c cp-rec-c-award" data-tip="<?= htmlspecialchars($aw['AwardName'] ?? '') ?>">
                     <span class="cp-rec-c-label">Award</span>
                     <?= htmlspecialchars($aw['AwardName'] ?? '') ?>
                 </span>
@@ -606,7 +683,9 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
         <?php endif; ?>
     </div>
 
-</div>
+        </div><!-- /rp-table-area -->
+    </div><!-- /rp-body -->
+</div><!-- /rp-root -->
 
 <!-- Given-by popover (Task 8) — a single shared floating panel, not one per row (22+
      rows would mean 22+ copies of the giver pills + search). Reuses cpGiverOptions'
@@ -967,6 +1046,7 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
 
     var cpRecFp = flatpickr('#cp-rec-date', {
         dateFormat: 'Y-m-d', altInput: true, altFormat: 'F j, Y', allowInput: true,
+        altInputClass: 'cp-rec-strip-input',
         onClose: function(selectedDates, dateStr) {
             if (dateStr !== (courtMeta.date || '')) {
                 cpRecSaveField({ CourtDate: dateStr });
@@ -1741,9 +1821,9 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
             '<button type="button" class="cp-rec-seg-btn cp-rec-seg-skipped" aria-pressed="false" onclick="cpRecMark(' + caid + ',\'skipped\')">Skipped</button>' +
             '<button type="button" class="cp-rec-seg-btn cp-rec-seg-none" aria-pressed="true" onclick="cpRecMark(' + caid + ',\'none\')" data-tip="Clear this mark">&mdash;</button>' +
             '</span>';
-        html += '<span class="cp-rec-c cp-rec-c-recip"><span class="cp-rec-c-label">Recipient</span>' + esc(aw.Persona || '') +
+        html += '<span class="cp-rec-c cp-rec-c-recip" data-tip="' + esc(aw.Persona || '') + '"><span class="cp-rec-c-label">Recipient</span>' + esc(aw.Persona || '') +
             (aw.ParkAbbrev ? ' <span class="cp-rec-park">' + esc(aw.ParkAbbrev) + '</span>' : '') + '</span>';
-        html += '<span class="cp-rec-c cp-rec-c-award"><span class="cp-rec-c-label">Award</span>' + esc(aw.AwardName || '') + '</span>';
+        html += '<span class="cp-rec-c cp-rec-c-award" data-tip="' + esc(aw.AwardName || '') + '"><span class="cp-rec-c-label">Award</span>' + esc(aw.AwardName || '') + '</span>';
 
         html += '<span class="cp-rec-c cp-rec-c-rank"><span class="cp-rec-c-label">Rank</span>';
         if (aw.IsLadder) {
