@@ -66,4 +66,34 @@ final class CourtThread0Test extends TestCase
         $this->assertNotContains($future, $ids, 'A court that has not happened yet is not overdue.');
         $this->assertNotContains($draft, $ids, 'A draft court was never published.');
     }
+
+    public function testUpdateCourtWritesOnlyProvidedFields(): void
+    {
+        $kid = $this->fixture->firstKingdomId();
+        $courtId = $this->fixture->createCourt([
+            'kingdom_id' => $kid,
+            'name'       => 'T0CRT-original',
+            'court_date' => null,
+        ]);
+
+        $ok = $this->court->updateCourt($courtId, ['CourtDate' => '2026-09-12']);
+        $this->assertTrue($ok);
+
+        $row = $this->fixture->fetchCourt($courtId);
+        $this->assertSame('2026-09-12', $row['court_date']);
+        $this->assertSame('T0CRT-original', $row['name'], 'A date-only update must not rewrite the name.');
+    }
+
+    public function testUpdateCourtIsRefusedOnCompleteCourts(): void
+    {
+        $kid = $this->fixture->firstKingdomId();
+        $courtId = $this->fixture->createCourt([
+            'kingdom_id' => $kid,
+            'status'     => 'complete',
+            'court_date' => '2026-01-01',
+        ]);
+
+        $this->assertFalse($this->court->updateCourt($courtId, ['CourtDate' => '2026-09-12']));
+        $this->assertSame('2026-01-01', $this->fixture->fetchCourt($courtId)['court_date']);
+    }
 }

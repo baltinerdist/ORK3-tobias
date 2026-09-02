@@ -120,6 +120,39 @@ class Controller_CourtAjax extends Controller
     }
 
     // -----------------------------------------------------------------------
+    // update_court
+    // POST: CourtId, Name (opt), CourtDate (opt), EventCalendarDetailId (opt),
+    //       RecorderMundaneId (opt) — only the keys present are written.
+    // -----------------------------------------------------------------------
+    public function update_court($p = null)
+    {
+        $court_id = (int)($_POST['CourtId'] ?? 0);
+        if (!valid_id($court_id)) {
+            $this->jsonOut(['status' => 1, 'error' => 'Invalid court.']);
+        }
+
+        $this->requireCourtAuth($court_id);
+
+        // Partial: only the keys the client actually sent are written.
+        $fields = [];
+        foreach (['Name', 'CourtDate', 'EventCalendarDetailId', 'RecorderMundaneId'] as $key) {
+            if (array_key_exists($key, $_POST)) {
+                $fields[$key] = $_POST[$key];
+            }
+        }
+
+        if (!$fields) {
+            $this->jsonOut(['status' => 1, 'error' => 'Nothing to update.']);
+        }
+
+        if (!$this->Court->update_court($court_id, $fields)) {
+            $this->jsonOut(['status' => 1, 'error' => 'This court could not be updated. A completed court cannot be edited.']);
+        }
+
+        $this->jsonOut(['status' => 0]);
+    }
+
+    // -----------------------------------------------------------------------
     // add_award
     // POST: CourtId, MundaneId, KingdomAwardId, Rank, RecommendationsId (opt),
     //       PassToLocal, Notes

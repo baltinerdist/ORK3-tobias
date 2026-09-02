@@ -196,6 +196,56 @@ class Court
     }
 
     /**
+     * Edit a court's own metadata (spec 0.1). Permitted in draft and published;
+     * refused once complete, because finalized rows already carry the date.
+     *
+     * Partial by design: only the keys supplied are written.
+     */
+    public function updateCourt($court_id, array $fields)
+    {
+        $court_id = (int)$court_id;
+        if (!valid_id($court_id) || !$fields) {
+            return false;
+        }
+
+        $map = [
+            'Name'                  => 'name',
+            'CourtDate'             => 'court_date',
+            'EventCalendarDetailId' => 'event_calendardetail_id',
+            'RecorderMundaneId'     => 'recorder_mundane_id',
+        ];
+
+        $sets = [];
+        foreach ($map as $key => $column) {
+            if (!array_key_exists($key, $fields)) {
+                continue;
+            }
+            $value = $fields[$key];
+            if ($column === 'name') {
+                $sets[] = 'name = \'' . $this->esc((string)$value) . '\'';
+            } elseif ($column === 'court_date') {
+                $sets[] = $value === null || $value === ''
+                    ? 'court_date = NULL'
+                    : 'court_date = \'' . $this->esc((string)$value) . '\'';
+            } else {
+                $sets[] = $column . ' = ' . ((int)$value > 0 ? (int)$value : 'NULL');
+            }
+        }
+
+        if (!$sets) {
+            return false;
+        }
+
+        $this->db->Clear();
+        $rs = $this->db->DataSet(
+            'UPDATE ' . DB_PREFIX . 'court SET ' . implode(', ', $sets) . '
+              WHERE court_id = ' . $court_id . ' AND status <> \'complete\''
+        );
+
+        return $rs && $rs->Size() >= 1;
+    }
+
+    /**
      * Add an award to a court. Enforces object-level authorization: the
      * kingdomaward must belong to $kingdom_id (the court's own kingdom), else
      * an officer could attach another kingdom's award id. Returns the assembled

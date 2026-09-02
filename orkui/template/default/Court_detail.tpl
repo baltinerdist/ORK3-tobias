@@ -56,6 +56,8 @@ if (!function_exists('cp_track_label')) {
 }
 ?>
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>revised-frontend/style/rank-pill.css?v=<?= filemtime(DIR_TEMPLATE . 'revised-frontend/style/rank-pill.css') ?>">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <style>
 .cp-page { padding: 0 16px 24px; font-family: inherit; }
 .cp-back { color: rgba(255,255,255,.8); font-size: 13px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; }
@@ -1285,6 +1287,11 @@ html[data-theme="dark"] #cp-mobile-runbar .cp-mrb-name { color: #e2e8f0; }
                 </span>
                 <?php endif; ?>
             </div>
+            <?php if ($courtSt !== 'complete'): ?>
+            <button class="cp-btn-outline" style="margin-top:5px" onclick="cpOpenCourtMetaModal()" data-tip="Edit the court's name, date, and event link">
+                <i class="fas fa-pen"></i> Edit Details
+            </button>
+            <?php endif; ?>
             <?php if ($nextSt): ?>
             <button class="cp-btn-primary" onclick="cpAdvanceStatus('<?= $nextSt ?>')">
                 <?= $nextLabel[$courtSt] ?? 'Advance' ?> <i class="fas fa-arrow-right"></i>
@@ -1935,6 +1942,41 @@ $_total_awards = count($courtAwards ?? []);
     </div>
 </div>
 
+<!-- Edit Court Details Modal (spec 0.1) -->
+<div class="cp-overlay" id="cp-courtmeta-modal">
+    <div class="cp-modal cp-modal-sm" role="dialog" aria-modal="true" aria-labelledby="cp-courtmeta-modal-title">
+        <div class="cp-modal-header">
+            <h3 id="cp-courtmeta-modal-title"><i class="fas fa-pen" style="margin-right:8px;color:#4a5568"></i>Edit Court Details</h3>
+            <button class="cp-modal-close" onclick="cpCloseCourtMetaModal()" aria-label="Close">&times;</button>
+        </div>
+        <div class="cp-modal-body">
+            <div class="cp-field">
+                <label for="cp-cm-name">Court Name <span style="color:#e53e3e">*</span></label>
+                <input type="text" id="cp-cm-name" placeholder="Summer Coronation Court, Crown Quals Court…" autocomplete="off">
+            </div>
+            <div class="cp-field">
+                <label for="cp-cm-date">Date</label>
+                <input type="text" id="cp-cm-date" placeholder="Select a date…" autocomplete="off">
+            </div>
+            <div class="cp-field" id="cp-cm-event-wrap">
+                <label>Event</label>
+                <div class="cp-cm-event-current" id="cp-cm-event-current" style="font-size:13px;color:#4a5568"></div>
+                <label class="cp-ptl-label" id="cp-cm-unlink-wrap" style="font-size:13px;color:#4a5568;margin-top:6px;display:none">
+                    <input type="checkbox" class="cp-ptl-check" id="cp-cm-unlink-event">
+                    Unlink this court from its event
+                </label>
+            </div>
+            <div class="cp-error" id="cp-cm-error"></div>
+        </div>
+        <div class="cp-modal-footer">
+            <button class="cp-btn-outline" onclick="cpCloseCourtMetaModal()">Cancel</button>
+            <button class="cp-btn-primary" id="cp-cm-save" onclick="cpSubmitCourtMeta()">
+                <i class="fas fa-check"></i> Save Changes
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- Add Artisan Modal -->
 <div class="cp-overlay" id="cp-artisan-modal">
     <div class="cp-modal cp-modal-sm" role="dialog" aria-modal="true" aria-labelledby="cp-artisan-modal-title">
@@ -2084,7 +2126,12 @@ $_total_awards = count($courtAwards ?? []);
     var kidId       = <?= (int)($court['KingdomId'] ?? 0) ?>;
     var courtStatus = <?= json_encode($court['Status'] ?? 'draft') ?>;
     var courtAwards = window.courtAwards = <?= json_encode($courtAwards) ?>;
-    var courtMeta   = window.courtMeta   = { name: <?= json_encode($court['Name'] ?? '') ?>, date: <?= json_encode($court['CourtDate'] ?? '') ?> };
+    var courtMeta   = window.courtMeta   = {
+        name: <?= json_encode($court['Name'] ?? '') ?>,
+        date: <?= json_encode($court['CourtDate'] ?? '') ?>,
+        eventId: <?= (int)($court['EventCalendarDetailId'] ?? 0) ?>,
+        eventName: <?= json_encode($court['EventName'] ?? '') ?>
+    };
     var currentArtisanCourtAwardId = 0;
 
     // Ad-hoc "Add Award to Court" picker options (typeable autocomplete). Emitted
@@ -2295,6 +2342,71 @@ $_total_awards = count($courtAwards ?? []);
                     if (d.status === 0) location.reload();
                     else if (!d._postFailed) cpAlert(d.error || 'Could not update status.');
                 });
+            }
+        });
+    };
+
+    // ---- Edit court details (spec 0.1: name/date/event editable after creation) ----
+    var cpCmFp = null;
+    window.cpOpenCourtMetaModal = function() {
+        gid('cp-cm-name').value = courtMeta.name || '';
+        if (!cpCmFp) {
+            cpCmFp = flatpickr('#cp-cm-date', { dateFormat: 'Y-m-d', altInput: true, altFormat: 'F j, Y', allowInput: true });
+        }
+        cpCmFp.setDate(courtMeta.date || null, false);
+
+        var curEl       = gid('cp-cm-event-current');
+        var unlinkWrap  = gid('cp-cm-unlink-wrap');
+        gid('cp-cm-unlink-event').checked = false;
+        if (courtMeta.eventId > 0) {
+            curEl.textContent = 'Linked to: ' + (courtMeta.eventName || ('Event #' + courtMeta.eventId));
+            unlinkWrap.style.display = 'flex';
+        } else {
+            curEl.textContent = 'Not linked to an event.';
+            unlinkWrap.style.display = 'none';
+        }
+
+        gid('cp-cm-error').style.display = 'none';
+        gid('cp-courtmeta-modal').style.display = 'flex';
+        cpSyncScrollLock();
+        setTimeout(function() { gid('cp-cm-name').focus(); }, 50);
+    };
+
+    window.cpCloseCourtMetaModal = function() {
+        gid('cp-courtmeta-modal').style.display = 'none';
+        cpSyncScrollLock();
+    };
+
+    window.cpSubmitCourtMeta = function() {
+        var name  = gid('cp-cm-name').value.trim();
+        var errEl = gid('cp-cm-error');
+        if (!name) {
+            errEl.textContent = 'Please enter a court name.';
+            errEl.style.display = 'block';
+            return;
+        }
+        errEl.style.display = 'none';
+
+        var dateVal = (cpCmFp && cpCmFp.selectedDates.length)
+            ? cpCmFp.formatDate(cpCmFp.selectedDates[0], 'Y-m-d')
+            : '';
+
+        var fd = new FormData();
+        fd.append('CourtId',   courtId);
+        fd.append('Name',      name);
+        fd.append('CourtDate', dateVal);
+        if (gid('cp-cm-unlink-event').checked) {
+            fd.append('EventCalendarDetailId', '0');
+        }
+
+        var btn = gid('cp-cm-save');
+        btn.disabled = true;
+        post('CourtAjax/update_court', fd).then(function(d) {
+            btn.disabled = false;
+            if (d.status === 0) { location.reload(); return; }
+            if (!d._postFailed) {
+                errEl.textContent = d.error || 'Could not save changes.';
+                errEl.style.display = 'block';
             }
         });
     };
