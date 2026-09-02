@@ -436,6 +436,24 @@ html[data-theme="dark"] .cp-sheet-record th { color: #cbd5e0; border-bottom-colo
 html[data-theme="dark"] .cp-sheet-record td { border-bottom-color: #2d3748; }
 html[data-theme="dark"] .cp-rec-giver { color: rgba(226,232,240,.6); }
 html[data-theme="dark"] .cp-rule { border-bottom-color: #4a5568; }
+/* Sheet 3 (Prep Sheet) groups scroll/regalia work BY MAKER — see the "background:
+   none; border: none; padding: 0; border-radius: 0" resets below: global h1-h6
+   rules in orkui.css give headings a grey pill box, so every heading here has to
+   reset it or the sheet prints a grey slab. */
+.cp-prep-head { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: #4a5568; margin: 16px 0 6px; padding-bottom: 4px; border-bottom: 1.5px solid #333; background: none; border-radius: 0; }
+.cp-prep-group { margin-bottom: 12px; break-inside: avoid; }
+.cp-prep-group h4 { font-size: 13px; margin: 8px 0 2px; background: none; border: none; padding: 0; border-radius: 0; }
+.cp-prep-group h4 span { color: #a0aec0; font-weight: 400; }
+.cp-prep-status { color: #718096; font-size: 11px; }
+html[data-theme="dark"] .cp-prep-head { color: #cbd5e0; border-bottom-color: #cbd5e0; background: none; }
+html[data-theme="dark"] .cp-prep-group h4 { background: none; }
+html[data-theme="dark"] .cp-prep-group h4 span,
+html[data-theme="dark"] .cp-prep-status { color: #97a3b4; }
+/* The class-only reset above loses the background-color cascade to the global
+   html[data-theme="dark"] h1..h6 pill-box rule (equal class-count, higher type-
+   selector count breaks the tie in its favor) — these dark-scoped duplicates
+   have one more class component and reliably win. Confirmed via computed style:
+   without this, both headings print/show the dark #374151 pill box (spec 4). */
 /* Shared chrome (printed stamp + court URL footer) every sheet embeds. */
 .cp-sheet-stamp { text-align: right; font-size: 11px; color: #718096; margin-bottom: 6px; }
 .cp-sheet-foot { margin-top: 14px; padding-top: 8px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #718096; word-break: break-all; }
@@ -478,6 +496,16 @@ html[data-theme="dark"] .cp-script-cite-artisans { color: #a0aec0; }
     body.cp-script-open .cp-sheet-record td { border-bottom-color: #999; }
     body.cp-script-open .cp-rec-giver { color: #666; }   /* faint, but legible on paper */
     body.cp-script-open .cp-rule { border-bottom-color: #000; }
+    /* Sheet 3 (Prep Sheet): html[data-theme="dark"] recolors these for on-screen
+       legibility against a dark background — force paper contrast instead, or a
+       print triggered from dark mode leaves faint text on white (matches the
+       cp-sheet-stamp/foot treatment above). Selectors are written to match the
+       dark-mode rule's specificity exactly; source order (this block is later)
+       breaks the tie in favor of print. */
+    body.cp-script-open .cp-prep-head,
+    body.cp-script-open .cp-prep-group h4 { color: #000; }
+    body.cp-script-open .cp-prep-group h4 span,
+    body.cp-script-open .cp-prep-status { color: #444; }
     /* Multi-page records must keep their column labels. */
     body.cp-script-open thead { display: table-header-group; }
     body.cp-script-open tr { break-inside: avoid; }
@@ -2265,6 +2293,10 @@ $_total_awards = count($courtAwards ?? []);
         return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
     window.esc = esc;
+    // cpTrackLabel (defined below) is the single source of scroll/regalia status
+    // labels; the Court Packet sheet builders live outside this IIFE (see below)
+    // and need it too — export rather than duplicate the status-label mapping.
+    window.cpTrackLabel = cpTrackLabel;
     // The Court Packet sheet builders (cpSheetChrome et al.) live outside this
     // IIFE and need the court id for the print-stamp footer + mark_printed POST.
     window.courtId = courtId;
@@ -4704,7 +4736,47 @@ window.cpApplyHeroColor = function(img) {
             '<tr class="cp-rec-sep"><td colspan="8">WALK-ONS</td></tr>' + walkons +
             '</tbody></table>';
     }
-    function cpSheetPrep(awards) { return ''; }
+    // Sheet 3 — Prep Sheet: pre-court production tracking for scribes and regalia
+    // crafters. Grouped BY MAKER, because the scribe who made eight scrolls is one
+    // person and wants one list — not eight rows scattered through the order of
+    // court. Client-side from data already on the page — no new query is needed,
+    // and adding one would duplicate getCourtAwards (spec §4).
+    function cpSheetPrep(awards) {
+        function group(kind) {
+            var by = {};
+            awards.forEach(function (a) {
+                if (a.Status === 'cancelled') return;
+                var who = (kind === 'scroll' ? a.ScrollMakerPersona : a.RegaliaMakerPersona) || '(unassigned)';
+                (by[who] = by[who] || []).push(a);
+            });
+            var names = Object.keys(by).sort(function (x, y) {
+                if (x === '(unassigned)') return 1;
+                if (y === '(unassigned)') return -1;
+                return x.localeCompare(y);
+            });
+            if (!names.length) return '';
+            return names.map(function (who) {
+                var items = by[who].map(function (a) {
+                    var st = kind === 'scroll' ? a.ScrollStatus : a.RegaliaStatus;
+                    return '<tr>' +
+                        '<td class="cp-rec-box">' + (st === 2 ? '&#9745;' : '&#9744;') + '</td>' +
+                        '<td>' + cpScriptRecipient(a) + '</td>' +
+                        '<td>' + cpScriptAwardLabel(a) + '</td>' +
+                        '<td class="cp-prep-status">' + window.cpTrackLabel(kind, st) + '</td>' +
+                        '</tr>';
+                }).join('');
+                return '<div class="cp-prep-group"><h4>' + esc(who) + ' <span>(' + by[who].length + ')</span></h4>' +
+                    '<table class="cp-sheet-record"><tbody>' + items + '</tbody></table></div>';
+            }).join('');
+        }
+
+        var scroll  = group('scroll');
+        var regalia = group('regalia');
+        if (!scroll && !regalia) return '<p class="cp-script-empty">No scroll or regalia work tracked for this court.</p>';
+
+        return (scroll  ? '<h3 class="cp-prep-head">Scrolls</h3>' + scroll   : '') +
+               (regalia ? '<h3 class="cp-prep-head">Regalia</h3>' + regalia : '');
+    }
 
     function cpRenderSheet() {
         var body = document.getElementById('cp-script-body');
