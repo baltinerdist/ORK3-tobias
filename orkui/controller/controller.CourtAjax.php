@@ -132,6 +132,26 @@ class Controller_CourtAjax extends Controller
     }
 
     // -----------------------------------------------------------------------
+    // mark_printed
+    // POST: CourtId
+    // -----------------------------------------------------------------------
+    public function mark_printed($p = null)
+    {
+        $court_id = (int)($_POST['CourtId'] ?? 0);
+        if (!valid_id($court_id)) {
+            $this->jsonOut(['status' => 1, 'error' => 'Invalid court.']);
+        }
+
+        $this->requireCourtAuth($court_id);
+
+        if (!$this->Court->mark_court_printed($court_id)) {
+            $this->jsonOut(['status' => 1, 'error' => 'Could not record the print.']);
+        }
+
+        $this->jsonOut(['status' => 0]);
+    }
+
+    // -----------------------------------------------------------------------
     // update_court
     // POST: CourtId, Name (opt), CourtDate (opt), EventCalendarDetailId (opt),
     //       RecorderMundaneId (opt) — only the keys present are written.

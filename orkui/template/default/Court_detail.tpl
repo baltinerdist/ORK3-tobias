@@ -407,6 +407,12 @@ html[data-theme="dark"] .cp-script-density button + button { border-color: #2d37
 html[data-theme="dark"] .cp-script-density button.active { background: #2b6cb0; color: #fff; }
 html[data-theme="dark"] .cp-script-compact td,
 html[data-theme="dark"] .cp-script-cite { border-color: #2d3748; }
+/* Shared chrome (printed stamp + court URL footer) every sheet embeds. */
+.cp-sheet-stamp { text-align: right; font-size: 11px; color: #718096; margin-bottom: 6px; }
+.cp-sheet-foot { margin-top: 14px; padding-top: 8px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #718096; word-break: break-all; }
+html[data-theme="dark"] .cp-sheet-stamp,
+html[data-theme="dark"] .cp-sheet-foot { color: #97a3b4; }
+html[data-theme="dark"] .cp-sheet-foot { border-top-color: #2d3748; }
 html[data-theme="dark"] .cp-script-recip,
 html[data-theme="dark"] .cp-script-award,
 html[data-theme="dark"] .cp-script-cite-recip,
@@ -433,6 +439,11 @@ html[data-theme="dark"] .cp-script-cite-artisans { color: #a0aec0; }
     body.cp-script-open .cp-script-cite-text { color: #000; }
     body.cp-script-open .cp-script-skipped { opacity: 1; color: #000; }
     body.cp-script-open .cp-script-skipmark { color: #000; }
+    body.cp-script-open .cp-sheet-stamp,
+    body.cp-script-open .cp-sheet-foot { color: #000; }
+    /* Multi-page records must keep their column labels. */
+    body.cp-script-open thead { display: table-header-group; }
+    body.cp-script-open tr { break-inside: avoid; }
     @page { margin: 0.6in; }
 }
 
@@ -2217,6 +2228,9 @@ $_total_awards = count($courtAwards ?? []);
         return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
     window.esc = esc;
+    // The Court Packet sheet builders (cpSheetChrome et al.) live outside this
+    // IIFE and need the court id for the print-stamp footer + mark_printed POST.
+    window.courtId = courtId;
     function gid(id) { return document.getElementById(id); }
 
     // Transient error toast — the shared failure surface for AJAX/network problems.
@@ -4545,6 +4559,55 @@ window.cpApplyHeroColor = function(img) {
         });
         cpRenderScript(cpScriptDensity);
     }
+
+    // ---- Court Packet sheet selector (spec §4) ----
+    // Three sheets share one printed page: Order of Court (Task 3), Court Record
+    // (Task 4), Prep Sheet (Task 5). Density is a property of the Order sheet only
+    // and is wired up in Task 3; cpScriptCompact/cpScriptCitation above stay as its
+    // building blocks.
+    var cpSheet = 'order';
+
+    // Shared header/footer every sheet embeds. The URL is what lets whoever is
+    // holding the paper reach the right screen without hunting (spec 0.7).
+    function cpSheetChrome() {
+        var printed = new Date().toLocaleString(undefined, {
+            year: 'numeric', month: 'short', day: 'numeric',
+            hour: 'numeric', minute: '2-digit'
+        });
+        // UIR is already an absolute URL (protocol + host + /orkui/index.php?Route=),
+        // so it is NOT combined with window.location.origin here — doing so
+        // double-prepends the origin (http://hosthttp://host/...).
+        var url = '<?= UIR ?>' + 'Court/record/' + window.courtId;
+        return {
+            head: '<div class="cp-sheet-stamp">printed ' + esc(printed) + '</div>',
+            foot: '<div class="cp-sheet-foot">Record this court at: ' + esc(url) + '</div>'
+        };
+    }
+
+    function cpSetSheet(name) {
+        cpSheet = (name === 'record' || name === 'prep') ? name : 'order';
+        document.querySelectorAll('.cp-script-density button').forEach(function (b) {
+            b.classList.toggle('active', b.getAttribute('data-sheet') === cpSheet);
+        });
+        cpRenderSheet();
+    }
+
+    // Stubs — filled in by Tasks 3 (order), 4 (record) and 5 (prep).
+    function cpSheetOrder(awards) { return ''; }
+    function cpSheetRecord(awards) { return ''; }
+    function cpSheetPrep(awards) { return ''; }
+
+    function cpRenderSheet() {
+        var body = document.getElementById('cp-script-body');
+        if (!body) return;
+        var awards = cpScriptActiveAwards();
+        var chrome = cpSheetChrome();
+        var inner = cpSheet === 'record' ? cpSheetRecord(awards)
+                  : cpSheet === 'prep'   ? cpSheetPrep(awards)
+                  :                        cpSheetOrder(awards);
+        body.innerHTML = chrome.head + inner + chrome.foot;
+    }
+
     function cpOpenScript() {
         var overlay = document.getElementById('cp-script-overlay');
         if (!overlay) return;
@@ -4559,7 +4622,7 @@ window.cpApplyHeroColor = function(img) {
                 dateEl.textContent = '';
             }
         }
-        cpRenderScript(cpScriptDensity);
+        cpRenderSheet();
         // Move overlay to be a direct child of <body> so the print selector
         // (body.cp-script-open > *:not(#cp-script-overlay)) hides everything else.
         document.body.appendChild(overlay);
@@ -4572,6 +4635,15 @@ window.cpApplyHeroColor = function(img) {
         document.body.classList.remove('cp-script-open');
     }
     function cpPrintScript() {
+        // Fire-and-forget: a failed stamp must never block printing.
+        try {
+            var fd = new FormData();
+            fd.append('CourtId', window.courtId);
+            fetch('<?= UIR ?>' + 'CourtAjax/mark_printed', {
+                method: 'POST', body: fd,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            }).catch(function() {});
+        } catch (e) {}
         window.print();
     }
 </script>
@@ -4584,9 +4656,10 @@ window.cpApplyHeroColor = function(img) {
                 <p id="cp-script-date" class="cp-script-date"></p>
             </div>
             <div class="cp-script-controls">
-                <div class="cp-script-density" role="group" aria-label="Script density">
-                    <button type="button" data-density="compact" class="active" onclick="cpSetScriptDensity('compact')">Compact</button>
-                    <button type="button" data-density="citation" onclick="cpSetScriptDensity('citation')">Citation</button>
+                <div class="cp-script-density" role="group" aria-label="Sheet">
+                    <button type="button" data-sheet="order"  class="active" onclick="cpSetSheet('order')">Order of Court</button>
+                    <button type="button" data-sheet="record"           onclick="cpSetSheet('record')">Court Record</button>
+                    <button type="button" data-sheet="prep"             onclick="cpSetSheet('prep')">Prep Sheet</button>
                 </div>
                 <div class="cp-script-actions">
                     <button type="button" class="cp-btn cp-btn-outline cp-btn-sm" onclick="cpCloseScript()">Close</button>

@@ -154,6 +154,7 @@ class Court
             'CreatedBy'             => (int)$rs->created_by,
             'RecorderMundaneId'     => (int)$rs->recorder_mundane_id,
             'RecorderPersona'       => $rs->recorder_persona ?? '',
+            'LastPrintedAt'         => $rs->last_printed_at,
         ];
     }
 
@@ -197,6 +198,25 @@ class Court
             'UPDATE ' . DB_PREFIX . 'court SET status = \'' . $this->esc($status) . '\'
              WHERE court_id = ' . (int)$court_id
         );
+    }
+
+    /**
+     * Stamp when the court packet was last printed (spec §4). Backs the paper's
+     * "printed <date>" line and the Record Court drift warning.
+     */
+    public function markCourtPrinted($court_id)
+    {
+        $court_id = (int)$court_id;
+        if (!valid_id($court_id)) {
+            return false;
+        }
+
+        $this->db->Clear();
+        $rs = $this->db->DataSet(
+            'UPDATE ' . DB_PREFIX . 'court SET last_printed_at = NOW() WHERE court_id = ' . $court_id
+        );
+
+        return $rs && $rs->Size() >= 1;
     }
 
     /**

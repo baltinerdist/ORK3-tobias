@@ -57,6 +57,11 @@ class Model_Court extends Model
         return $this->_court()->updateCourtStatus($court_id, $status);
     }
 
+    public function mark_court_printed($court_id)
+    {
+        return $this->_court()->markCourtPrinted($court_id);
+    }
+
     public function update_court($court_id, array $fields)
     {
         return $this->_court()->updateCourt($court_id, $fields);
