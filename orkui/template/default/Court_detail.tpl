@@ -4552,8 +4552,6 @@ window.cpApplyHeroColor = function(img) {
 
 
     // ---- Court Script ----
-    var cpScriptDensity = 'compact';
-
     // Skipped rows stay on the sheet, struck through: a reprint that silently
     // dropped them would remove the only prompt to reconsider them (spec 0.3).
     function cpScriptActiveAwards() {
@@ -4583,57 +4581,9 @@ window.cpApplyHeroColor = function(img) {
         });
         return parts.join(', ');
     }
-    function cpScriptCompact(awards) {
-        if (!awards.length) return '<p class="cp-script-empty">No awards to present.</p>';
-        var rows = awards.map(function (a, i) {
-            var skipped = a.Status === 'cancelled';
-            return '<tr' + (skipped ? ' class="cp-script-skipped"' : '') + '>' +
-                '<td class="cp-script-num">' + (i + 1) + '</td>' +
-                '<td class="cp-script-check">' + (a.Status === 'given' || a.Status === 'staged' ? '☑' : '☐') + '</td>' +
-                '<td class="cp-script-recip">' + cpScriptRecipient(a) + '</td>' +
-                '<td class="cp-script-award">' + cpScriptAwardLabel(a) + cpScriptPtlMark(a) +
-                    (skipped ? ' <span class="cp-script-skipmark">(skipped)</span>' : '') + '</td>' +
-                '</tr>';
-        }).join('');
-        return '<table class="cp-script-compact"><tbody>' + rows + '</tbody></table>';
-    }
-    function cpScriptCitation(awards) {
-        if (!awards.length) return '<p class="cp-script-empty">No awards to present.</p>';
-        return awards.map(function (a, i) {
-            var skipped = a.Status === 'cancelled';
-            var html = '<div class="cp-script-cite' + (skipped ? ' cp-script-skipped' : '') + '">' +
-                '<div class="cp-script-cite-head">' +
-                    '<span class="cp-script-cite-num">' + (i + 1) + '.</span> ' +
-                    '<span class="cp-script-cite-recip">' + cpScriptRecipient(a) + '</span> ' +
-                    '<span class="cp-script-cite-award">' + cpScriptAwardLabel(a) + cpScriptPtlMark(a) + '</span>' +
-                    (skipped ? ' <span class="cp-script-skipmark">(skipped)</span>' : '') +
-                '</div>';
-            if (a.PublicComment) html += '<div class="cp-script-cite-text">' + esc(a.PublicComment) + '</div>';
-            var art = cpScriptArtisans(a);
-            if (art) html += '<div class="cp-script-cite-artisans"><strong>Artisans to thank:</strong> ' + art + '</div>';
-            html += '</div>';
-            return html;
-        }).join('');
-    }
-    function cpRenderScript(density) {
-        var body = document.getElementById('cp-script-body');
-        if (!body) return;
-        var awards = cpScriptActiveAwards();
-        body.innerHTML = (density === 'citation') ? cpScriptCitation(awards) : cpScriptCompact(awards);
-    }
-    function cpSetScriptDensity(d) {
-        cpScriptDensity = (d === 'citation') ? 'citation' : 'compact';
-        document.querySelectorAll('.cp-script-density button').forEach(function (b) {
-            b.classList.toggle('active', b.getAttribute('data-density') === cpScriptDensity);
-        });
-        cpRenderScript(cpScriptDensity);
-    }
-
     // ---- Court Packet sheet selector (spec §4) ----
     // Three sheets share one printed page: Order of Court (Task 3), Court Record
-    // (Task 4), Prep Sheet (Task 5). Density is a property of the Order sheet only
-    // and is wired up in Task 3; cpScriptCompact/cpScriptCitation above stay as its
-    // building blocks.
+    // (Task 4), Prep Sheet (Task 5).
     var cpSheet = 'order';
 
     // Shared header/footer every sheet embeds. The URL is what lets whoever is
