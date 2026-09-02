@@ -1867,6 +1867,8 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
     // brief deliberately omits from this row). Recipient and award are the only
     // required fields; PTL, rank and citation are all optional.
     window.cpRecWalkOnCommit = function() {
+        var btn = gid('cp-rec-walkon-add-btn');
+        if (btn && btn.disabled) return;
         var mundaneId = gid('cp-rec-walkon-mundane-id').value;
         var awardId   = gid('cp-rec-walkon-award-id').value;
         var statusEl  = gid('cp-rec-walkon-status');
@@ -1885,8 +1887,7 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
         var ptl  = gid('cp-rec-walkon-ptl').checked ? 1 : 0;
         var cite = gid('cp-rec-walkon-cite').value;
 
-        var btn = gid('cp-rec-walkon-add-btn');
-        if (btn) btn.disabled = true;
+        btn.disabled = true;
         if (statusEl) { statusEl.textContent = 'Adding…'; statusEl.classList.remove('cp-rec-cite-status-error'); }
 
         var fd = new FormData();

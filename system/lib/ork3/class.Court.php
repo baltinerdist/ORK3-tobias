@@ -1596,6 +1596,7 @@ class Court
                     'IsTitle'           => (bool)(int)$rs->is_title,
                     'Rank'              => (int)$rs->rank,
                     'RecommendationsId' => $rs->recommendations_id ? (int)$rs->recommendations_id : null,
+                    'IsWalkOn'          => $rs->recommendations_id === null,
                     'SortOrder'         => (int)$rs->sort_order,
                     'RowVersion'        => (int)$rs->row_version,
                     'GivenByMundaneId'  => $rs->given_by_mundane_id ? (int)$rs->given_by_mundane_id : 0,
