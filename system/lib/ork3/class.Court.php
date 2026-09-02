@@ -124,13 +124,15 @@ class Court
                     e.name   AS event_name,
                     p.name   AS park_name,
                     k.name   AS kingdom_name,
-                    cd.event_start
+                    cd.event_start,
+                    rm.persona AS recorder_persona
              FROM ' . DB_PREFIX . 'court c
              LEFT JOIN ' . DB_PREFIX . 'event_calendardetail cd
                     ON cd.event_calendardetail_id = c.event_calendardetail_id
              LEFT JOIN ' . DB_PREFIX . 'event e ON e.event_id = cd.event_id
              LEFT JOIN ' . DB_PREFIX . 'park p   ON p.park_id   = c.park_id
              LEFT JOIN ' . DB_PREFIX . 'kingdom k ON k.kingdom_id = c.kingdom_id
+             LEFT JOIN ' . DB_PREFIX . 'mundane rm ON rm.mundane_id = c.recorder_mundane_id
              WHERE c.court_id = ' . (int)$court_id . '
              LIMIT 1'
         );
@@ -150,6 +152,8 @@ class Court
             'ParkName'              => $rs->park_name,
             'KingdomName'           => $rs->kingdom_name,
             'CreatedBy'             => (int)$rs->created_by,
+            'RecorderMundaneId'     => (int)$rs->recorder_mundane_id,
+            'RecorderPersona'       => $rs->recorder_persona ?? '',
         ];
     }
 
@@ -1211,6 +1215,37 @@ class Court
     }
 
     /**
+     * The officer who should record this court's grants (spec 0.7).
+     *
+     * Recording court is the Prime Minister's responsibility under Corpora. Park
+     * courts prefer the park's own officers over kingdom officers: a kingdom PM
+     * auto-assigned to a park's court is a cross-scope assignment nobody asked for.
+     *
+     * Returns 0 when nothing matches; the caller falls back to the publisher.
+     */
+    public function getDefaultRecorder($kingdom_id, $park_id = 0)
+    {
+        $kingdom_id = (int)$kingdom_id;
+        $park_id    = (int)$park_id;
+
+        $candidates = $park_id > 0
+            ? [[$park_id, 'Prime Minister'], [$park_id, 'Monarch'], [$park_id, 'Regent'], [0, 'Prime Minister']]
+            : [[0, 'Prime Minister']];
+
+        foreach ($candidates as $c) {
+            // lookupOfficerGiver returns ['mundane_id' => int, 'persona' => string,
+            // 'role' => string] — lowercase keys. Reading 'MundaneId' here would
+            // always miss and silently fall through to the publisher.
+            $officer = $this->lookupOfficerGiver($kingdom_id, $c[0], $c[1], $c[1]);
+            if (!empty($officer['mundane_id'])) {
+                return (int)$officer['mundane_id'];
+            }
+        }
+
+        return 0;
+    }
+
+    /**
      * Grant-modal giver options: the court-level Monarch as the default plus
      * ordered quick-pick pills (spec 6.1). Vacant seats are omitted.
      *   Kingdom court: default = Kingdom Monarch; pill = Kingdom Regent.
@@ -2062,6 +2097,55 @@ class Court
         }
 
         return $out;
+    }
+
+    /**
+     * One notification per unrecorded court, addressed to its recorder.
+     * Non-blocking: a notification failure never affects court state.
+     *
+     * At most one notification per court per day — a reload of the court list
+     * must not spam the recorder with a duplicate every time it loads.
+     */
+    public function notifyUnrecordedCourts($kingdom_id, $park_id = 0)
+    {
+        $sent = 0;
+        foreach ($this->getUnrecordedCourts($kingdom_id, $park_id) as $c) {
+            // getUnrecordedCourts returns RecorderMundaneId directly — there is
+            // no single-court getter on this class, and adding one would be a
+            // second query per court for no gain.
+            $recorder = (int)($c['RecorderMundaneId'] ?? 0);
+            if ($recorder <= 0) {
+                continue;
+            }
+            $link = 'Court/detail/' . (int)$c['CourtId'];
+
+            $this->db->Clear();
+            $existing = $this->db->DataSet(
+                'SELECT 1 FROM ' . DB_PREFIX . 'notification
+                  WHERE mundane_id = ' . $recorder . '
+                    AND type = \'court_awaiting_record\'
+                    AND link = \'' . $this->esc($link) . '\'
+                    AND DATE(created_at) = CURDATE()
+                  LIMIT 1'
+            );
+            if ($existing && $existing->Next()) {
+                continue;
+            }
+
+            try {
+                Ork3::$Lib->notification->Add(
+                    $recorder,
+                    'court_awaiting_record',
+                    'Court "' . $c['Name'] . '" has not been recorded yet.',
+                    $link
+                );
+                $sent++;
+            } catch (\Throwable $e) {
+                // Non-blocking by design.
+            }
+        }
+
+        return $sent;
     }
 
 }

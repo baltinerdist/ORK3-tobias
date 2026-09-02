@@ -173,4 +173,24 @@ final class CourtThread0Test extends TestCase
 
         $this->assertSame('planned', $this->fixture->fetchAward($awardId)['status']);
     }
+
+    public function testDefaultRecorderPrefersParkPrimeMinister(): void
+    {
+        $kid = $this->fixture->firstKingdomId();
+        $pid = $this->fixture->firstParkId($kid);
+        if ($pid <= 0) {
+            $this->markTestSkipped('No park available in this kingdom.');
+        }
+
+        $kingdomPm = $this->fixture->createPlayer('kpm', $kid);
+        $this->fixture->insertOfficer($kingdomPm['mundane_id'], $kid, 0, 'Prime Minister');
+
+        // With only a kingdom PM, a park court falls through to it.
+        $this->assertSame($kingdomPm['mundane_id'], $this->court->getDefaultRecorder($kid, $pid));
+
+        // A park PM outranks the kingdom PM for that park's court.
+        $parkPm = $this->fixture->createPlayer('ppm', $kid, $pid);
+        $this->fixture->insertOfficer($parkPm['mundane_id'], $kid, $pid, 'Prime Minister');
+        $this->assertSame($parkPm['mundane_id'], $this->court->getDefaultRecorder($kid, $pid));
+    }
 }

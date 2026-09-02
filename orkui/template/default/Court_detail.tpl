@@ -1281,6 +1281,9 @@ html[data-theme="dark"] #cp-mobile-runbar .cp-mrb-name { color: #e2e8f0; }
                 <?php if ($court['EventName']): ?>
                 <span><i class="fas fa-flag"></i><?= htmlspecialchars($court['EventName']) ?></span>
                 <?php endif; ?>
+                <?php if (!empty($court['RecorderPersona'])): ?>
+                <span><i class="fas fa-user-check"></i>Recorder: <?= htmlspecialchars($court['RecorderPersona']) ?></span>
+                <?php endif; ?>
             </div>
         </div>
 
@@ -1981,6 +1984,15 @@ $_total_awards = count($courtAwards ?? []);
                 </select>
             </div>
             <?php endif; ?>
+            <div class="cp-field">
+                <label for="cp-cm-recorder-text">Recorder <span style="font-weight:400;color:#a0aec0">— who records this court's grants; defaults to the Prime Minister</span></label>
+                <div class="cp-ac-wrap">
+                    <input type="text" id="cp-cm-recorder-text" placeholder="Search player name…" autocomplete="off"
+                           oninput="cpAcSearch(this,'cp-cm-recorder-ac','cp-cm-recorder-id')">
+                    <div class="cp-ac-dropdown" id="cp-cm-recorder-ac"></div>
+                </div>
+                <input type="hidden" id="cp-cm-recorder-id">
+            </div>
             <div class="cp-error" id="cp-cm-error"></div>
         </div>
         <div class="cp-modal-footer">
@@ -2145,7 +2157,9 @@ $_total_awards = count($courtAwards ?? []);
         name: <?= json_encode($court['Name'] ?? '') ?>,
         date: <?= json_encode($court['CourtDate'] ?? '') ?>,
         eventId: <?= (int)($court['EventCalendarDetailId'] ?? 0) ?>,
-        eventName: <?= json_encode($court['EventName'] ?? '') ?>
+        eventName: <?= json_encode($court['EventName'] ?? '') ?>,
+        recorderId: <?= (int)($court['RecorderMundaneId'] ?? 0) ?>,
+        recorderPersona: <?= json_encode($court['RecorderPersona'] ?? '') ?>
     };
     var currentArtisanCourtAwardId = 0;
 
@@ -2376,6 +2390,9 @@ $_total_awards = count($courtAwards ?? []);
         var evEl = gid('cp-cm-event');
         if (evEl) evEl.value = String(courtMeta.eventId || 0);
 
+        gid('cp-cm-recorder-text').value = courtMeta.recorderPersona || '';
+        gid('cp-cm-recorder-id').value = courtMeta.recorderId || 0;
+
         gid('cp-cm-error').style.display = 'none';
         gid('cp-courtmeta-modal').style.display = 'flex';
         cpSyncScrollLock();
@@ -2412,6 +2429,7 @@ $_total_awards = count($courtAwards ?? []);
         if (evEl) {
             fd.append('EventCalendarDetailId', evEl.value);
         }
+        fd.append('RecorderMundaneId', gid('cp-cm-recorder-id').value || 0);
 
         var btn = gid('cp-cm-save');
         btn.disabled = true;

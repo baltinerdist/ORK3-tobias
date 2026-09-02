@@ -113,6 +113,18 @@ class Controller_CourtAjax extends Controller
         if ($status === 'published') {
             $mode = ($_POST['Mode'] ?? 'run') === 'plan' ? 'plan' : 'run';
             $this->Court->set_court_mode($court_id, $mode);
+
+            // Recording court is the Prime Minister's responsibility under Corpora
+            // (spec 0.7). Resolve and store a recorder the first time this court is
+            // published; a court returned to draft and republished, or one whose
+            // recorder was set manually, is left alone by the empty() guard.
+            if (empty($court['RecorderMundaneId'])) {
+                $recorder = $this->Court->get_default_recorder($court['KingdomId'], $court['ParkId']);
+                if ($recorder <= 0) {
+                    $recorder = $uid;
+                }
+                $this->Court->update_court($court_id, ['RecorderMundaneId' => $recorder]);
+            }
         }
 
         $this->Court->update_court_status($court_id, $status);

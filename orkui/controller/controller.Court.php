@@ -55,6 +55,10 @@ class Controller_Court extends Controller
         $courtList     = $this->Court->get_court_list($kingdom_id, $park_id);
         $upcomingEvents = $this->Court->get_upcoming_events($kingdom_id);
         $unrecordedCourts = $this->Court->get_unrecorded_courts($kingdom_id, $park_id);
+        // Notify each unrecorded court's recorder (spec 0.7). Guarded to at most
+        // once per court per day inside notify_unrecorded_courts, so a reload of
+        // this list does not spam a duplicate notification on every visit.
+        $this->Court->notify_unrecorded_courts($kingdom_id, $park_id);
 
         // Location name
         $locationName = '';
