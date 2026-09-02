@@ -160,9 +160,17 @@ final class CourtThread0Test extends TestCase
         // First writer wins and bumps row_version.
         $this->assertTrue($this->court->stageAward($awardId, $giver['mundane_id'], '', 0, $before));
 
+        // Return the row to an eligible status so the ONLY thing that can reject
+        // the next call is the stale row_version. Without this, stageAward's own
+        // `status NOT IN ('given','cancelled','staged')` guard rejects the second
+        // call by itself, and the test would pass even if the row_version
+        // predicate were deleted entirely. unstageAward() also bumps row_version
+        // again, which is what makes $before ($before === 0) definitely stale.
+        $this->court->unstageAward($awardId);
+
         // Second writer holds the now-stale token and must be refused.
         $this->assertFalse($this->court->stageAward($awardId, $giver['mundane_id'], '', 0, $before));
 
-        $this->assertSame('staged', $this->fixture->fetchAward($awardId)['status']);
+        $this->assertSame('planned', $this->fixture->fetchAward($awardId)['status']);
     }
 }
