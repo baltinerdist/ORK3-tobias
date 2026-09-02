@@ -395,7 +395,9 @@ html[data-theme="dark"] .cp-tracking-icon[data-status="2"]::after { color: #9ae6
 .cp-script-skipped .cp-script-recip,
 .cp-script-skipped .cp-script-award,
 .cp-script-skipped .cp-script-cite-recip,
-.cp-script-skipped .cp-script-cite-award { text-decoration: line-through; }
+.cp-script-skipped .cp-script-cite-award,
+.cp-script-skipped .cp-rec-recip,
+.cp-script-skipped .cp-rec-award { text-decoration: line-through; }
 .cp-script-skipmark { font-size: 11px; font-style: italic; color: #718096; text-decoration: none; }
 /* dark mode (on-screen preview only) */
 html[data-theme="dark"] .cp-script-modal { background: #161b22; color: #e2e8f0; }
@@ -412,6 +414,28 @@ html[data-theme="dark"] .cp-script-cite { border-color: #2d3748; }
 .cp-sheet-order .cp-script-cite-head { font-size: 16px; line-height: 1.5; }
 .cp-sheet-order .cp-script-cite-text { font-size: 14px; line-height: 1.55; margin-top: 4px; }
 .cp-sheet-box { font-size: 15px; }
+/* Sheet 2 (Court Record) is the instrument the recorder writes on: tabular sans,
+   tabular-nums, ruled write-in fields, ~1.6em row height for real pen room. */
+.cp-sheet-record { width: 100%; border-collapse: collapse; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-variant-numeric: tabular-nums; }
+.cp-sheet-record th { text-align: left; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: #4a5568; border-bottom: 1.5px solid #333; padding: 4px 6px; }
+.cp-sheet-record td { padding: 6px; border-bottom: 1px solid #e2e8f0; height: 1.6em; vertical-align: bottom; }
+.cp-rec-num { width: 26px; color: #a0aec0; }
+.cp-rec-box { width: 22px; text-align: center; font-size: 14px; }
+.cp-rec-rank { width: 46px; }
+.cp-rec-recip { font-weight: 700; }
+/* The giver is PRE-PRINTED FAINTLY so the common case is a tick, not a write-in.
+   The faintness IS the design — solid black would read as fixed rather than default. */
+.cp-rec-giver { color: rgba(0,0,0,.6); }
+.cp-rule { display: inline-block; width: 100%; border-bottom: 1px solid #999; height: 1.1em; }
+.cp-rule-sm { width: 40px; }
+.cp-rule-full { width: 88%; }
+.cp-rec-sep td { font-size: 10px; letter-spacing: .08em; font-weight: 700; color: #4a5568; border-bottom: 1.5px solid #333; padding-top: 14px; }
+.cp-rec-citelabel { font-size: 9px; text-transform: uppercase; letter-spacing: .06em; color: #a0aec0; }
+.cp-rec-walkon td, .cp-rec-walkon-cite td { border-bottom: none; height: 1.9em; }
+html[data-theme="dark"] .cp-sheet-record th { color: #cbd5e0; border-bottom-color: #cbd5e0; }
+html[data-theme="dark"] .cp-sheet-record td { border-bottom-color: #2d3748; }
+html[data-theme="dark"] .cp-rec-giver { color: rgba(226,232,240,.6); }
+html[data-theme="dark"] .cp-rule { border-bottom-color: #4a5568; }
 /* Shared chrome (printed stamp + court URL footer) every sheet embeds. */
 .cp-sheet-stamp { text-align: right; font-size: 11px; color: #718096; margin-bottom: 6px; }
 .cp-sheet-foot { margin-top: 14px; padding-top: 8px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #718096; word-break: break-all; }
@@ -449,6 +473,11 @@ html[data-theme="dark"] .cp-script-cite-artisans { color: #a0aec0; }
     /* Sheet 1 read-aloud sizing: paper is read further away than a screen. */
     body.cp-script-open .cp-sheet-order .cp-script-cite-head { font-size: 13pt; }
     body.cp-script-open .cp-sheet-order .cp-script-cite-text { font-size: 11pt; }
+    /* Sheet 2 (Court Record): keep the write-in rules and faint giver legible on paper. */
+    body.cp-script-open .cp-sheet-record { font-size: 10pt; }
+    body.cp-script-open .cp-sheet-record td { border-bottom-color: #999; }
+    body.cp-script-open .cp-rec-giver { color: #666; }   /* faint, but legible on paper */
+    body.cp-script-open .cp-rule { border-bottom-color: #000; }
     /* Multi-page records must keep their column labels. */
     body.cp-script-open thead { display: table-header-group; }
     body.cp-script-open tr { break-inside: avoid; }
@@ -4623,7 +4652,58 @@ window.cpApplyHeroColor = function(img) {
             return html + '</div>';
         }).join('') + '</div>';
     }
-    function cpSheetRecord(awards) { return ''; }
+    // Sheet 2 — Court Record: the instrument the recorder writes on. Every column
+    // exists because something has to be typed back in afterwards (spec §4).
+    function cpSheetRecord(awards) {
+        // Reuse the existing cpGiverOptions payload — do not add a new global.
+        var giver = (window.cpGiverOptions && window.cpGiverOptions.default
+                     && window.cpGiverOptions.default.persona) || '';
+        var rows = awards.map(function (a, i) {
+            var skipped = a.Status === 'cancelled';
+            var given   = a.Status === 'given' || a.Status === 'staged';
+            return '<tr' + (skipped ? ' class="cp-script-skipped"' : '') + '>' +
+                '<td class="cp-rec-num">' + (i + 1) + '</td>' +
+                '<td class="cp-rec-box">' + (given ? '&#9745;' : '&#9744;') + '</td>' +
+                '<td class="cp-rec-box">' + (skipped ? '&#9745;' : '&#9744;') + '</td>' +
+                '<td class="cp-rec-recip">' + cpScriptRecipient(a) + '</td>' +
+                '<td class="cp-rec-award">' + esc(a.AwardName || '') +
+                    (skipped ? ' <span class="cp-script-skipmark">(skipped)</span>' : '') + '</td>' +
+                '<td class="cp-rec-rank">' + (a.IsLadder && a.Rank ? a.Rank : '&mdash;') + '</td>' +
+                '<td class="cp-rec-giver">' + esc(giver) + '</td>' +
+                '<td class="cp-rec-box">' + (a.PassToLocal ? '&#9745;' : '&#9744;') + '</td>' +
+                '</tr>';
+        }).join('');
+
+        // Blank numbered rows for awards added spontaneously at court. A walk-on has
+        // no recommendation and no planned citation, so if it is not written here it
+        // gets invented at a keyboard days later — hence the citation rule.
+        var walkons = '';
+        for (var w = 0; w < 6; w++) {
+            var n = awards.length + w + 1;
+            walkons +=
+                '<tr class="cp-rec-walkon">' +
+                '<td class="cp-rec-num">' + n + '</td>' +
+                '<td class="cp-rec-box">&#9744;</td>' +
+                '<td class="cp-rec-box">&#9744;</td>' +
+                '<td class="cp-rec-recip"><span class="cp-rule"></span></td>' +
+                '<td class="cp-rec-award"><span class="cp-rule"></span></td>' +
+                '<td class="cp-rec-rank"><span class="cp-rule cp-rule-sm"></span></td>' +
+                '<td class="cp-rec-giver"><span class="cp-rule"></span></td>' +
+                '<td class="cp-rec-box">&#9744;</td>' +
+                '</tr>' +
+                '<tr class="cp-rec-walkon-cite"><td></td><td colspan="7">' +
+                '<span class="cp-rec-citelabel">citation</span> <span class="cp-rule cp-rule-full"></span>' +
+                '</td></tr>';
+        }
+
+        return '<table class="cp-sheet-record">' +
+            '<thead><tr>' +
+            '<th class="cp-rec-num">#</th><th class="cp-rec-box">&#10003;</th><th class="cp-rec-box">&#10007;</th>' +
+            '<th>Recipient</th><th>Award</th><th class="cp-rec-rank">Rank</th><th>Given by</th><th class="cp-rec-box">PTL</th>' +
+            '</tr></thead><tbody>' + rows +
+            '<tr class="cp-rec-sep"><td colspan="8">WALK-ONS</td></tr>' + walkons +
+            '</tbody></table>';
+    }
     function cpSheetPrep(awards) { return ''; }
 
     function cpRenderSheet() {
