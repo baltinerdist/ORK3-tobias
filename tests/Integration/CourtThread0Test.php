@@ -144,4 +144,25 @@ final class CourtThread0Test extends TestCase
             'The scroll maker credit must survive a citation-only save.'
         );
     }
+
+    public function testStageAwardRejectsStaleRowVersion(): void
+    {
+        $kid = $this->fixture->firstKingdomId();
+        $player = $this->fixture->createPlayer('stale', $kid);
+        $giver  = $this->fixture->createPlayer('giver', $kid);
+        $courtId = $this->fixture->createCourt(['kingdom_id' => $kid]);
+        $awardId = $this->fixture->createAward($courtId, $player['mundane_id']);
+
+        $before = (int) $this->fixture->fetchAward($awardId)['row_version'];
+
+        // Signature is stageAward($court_award_id, $given_by_mundane_id, $public_comment, $rank)
+        // with $expectedRowVersion appended by this task as the 5th parameter.
+        // First writer wins and bumps row_version.
+        $this->assertTrue($this->court->stageAward($awardId, $giver['mundane_id'], '', 0, $before));
+
+        // Second writer holds the now-stale token and must be refused.
+        $this->assertFalse($this->court->stageAward($awardId, $giver['mundane_id'], '', 0, $before));
+
+        $this->assertSame('staged', $this->fixture->fetchAward($awardId)['status']);
+    }
 }

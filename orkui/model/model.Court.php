@@ -140,9 +140,9 @@ class Model_Court extends Model
     // Staging / granting
     // -----------------------------------------------------------------------
 
-    public function stage_award($court_award_id, $given_by_mundane_id, $public_comment, $rank)
+    public function stage_award($court_award_id, $given_by_mundane_id, $public_comment, $rank, $expectedRowVersion = null)
     {
-        return $this->_court()->stageAward($court_award_id, $given_by_mundane_id, $public_comment, $rank);
+        return $this->_court()->stageAward($court_award_id, $given_by_mundane_id, $public_comment, $rank, $expectedRowVersion);
     }
 
     public function unstage_award($court_award_id)

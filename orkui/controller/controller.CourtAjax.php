@@ -492,9 +492,17 @@ class Controller_CourtAjax extends Controller
         $public_comment = trim($_POST['PublicComment'] ?? '');
         $rank           = (int)($_POST['Rank'] ?? $ca['Rank']);
 
+        // S5 optimistic lock: honor the client's row_version token when supplied.
+        $expectedRowVersion = (isset($_POST['RowVersion']) && $_POST['RowVersion'] !== '')
+            ? (int)$_POST['RowVersion'] : null;
+
         // Atomic stage: won't touch a row already given/cancelled/staged, so a
-        // double-submit can't double-stage. Loser gets "already resolved".
-        if (!$this->Court->stage_award($court_award_id, $given_by_id, $public_comment, $rank)) {
+        // double-submit can't double-stage. Loser gets "already resolved" (or, with
+        // a token present, status 9 — the two-officers-same-printout case).
+        if (!$this->Court->stage_award($court_award_id, $given_by_id, $public_comment, $rank, $expectedRowVersion)) {
+            if ($expectedRowVersion !== null) {
+                $this->jsonOut(['status' => 9, 'stale' => true, 'message' => 'This row changed — reload.']);
+            }
             $this->jsonOut(['status' => 1, 'error' => 'Award already resolved.']);
         }
 

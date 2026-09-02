@@ -759,11 +759,20 @@ class Court
     /**
      * Stage a grant in a single atomic UPDATE: capture giver/citation/rank and
      * mark the row 'staged'. Guarded so a double-submit can't double-stage
-     * (won't touch rows already given/cancelled/staged). Returns true iff exactly
-     * one row changed.
+     * (won't touch rows already given/cancelled/staged). Optional S5 optimistic
+     * lock via $expectedRowVersion, mirroring skipAward/setAwardStatus, so two
+     * officers granting the same award from two annotated printouts can't
+     * clobber each other. row_version is always bumped on a match, so 0 rows
+     * changed == guard hit / stale / gone. Returns true iff exactly one row
+     * changed.
      */
-    public function stageAward($court_award_id, $given_by_mundane_id, $public_comment, $rank)
+    public function stageAward($court_award_id, $given_by_mundane_id, $public_comment, $rank, $expectedRowVersion = null)
     {
+        $where = 'court_award_id = ' . (int)$court_award_id . '
+                AND status NOT IN (\'given\', \'cancelled\', \'staged\')';
+        if ($expectedRowVersion !== null) {
+            $where .= ' AND row_version = ' . (int)$expectedRowVersion;
+        }
         $this->db->Clear();
         $rs = $this->db->DataSet(
             'UPDATE ' . DB_PREFIX . 'court_award SET
@@ -772,8 +781,7 @@ class Court
                  public_comment = \'' . $this->esc($public_comment) . '\',
                  rank = ' . (int)$rank . ',
                  row_version = row_version + 1
-              WHERE court_award_id = ' . (int)$court_award_id . '
-                AND status NOT IN (\'given\', \'cancelled\', \'staged\')'
+              WHERE ' . $where
         );
         return $rs && $rs->Size() == 1;
     }

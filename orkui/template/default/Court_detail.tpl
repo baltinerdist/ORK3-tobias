@@ -3126,8 +3126,11 @@ $_total_awards = count($courtAwards ?? []);
         fd.append('GivenById',     giverId);
         fd.append('PublicComment', reason);
         fd.append('Rank',          rank);
+        // S5 optimistic lock: thread our last-known row_version.
+        fd.append('RowVersion', cpGetRowVersion(caid));
         post('CourtAjax/grant_award', fd).then(function(d) {
             btn.disabled = false;
+            if (d && d.status === 9) { cpStale(caid); cpCloseGrantModal(); return; }
             if (d.status === 0) {
                 var a = courtAwards.find(function(x) { return String(x.CourtAwardId) === String(caid); });
                 if (a) { a.PublicComment = reason; a.Rank = rank; a.GivenByMundaneId = giverId; }
