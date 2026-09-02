@@ -1386,10 +1386,10 @@ html[data-theme="dark"] #cp-mobile-runbar .cp-mrb-name { color: #e2e8f0; }
                 <?= $nextLabel[$courtSt] ?? 'Advance' ?> <i class="fas fa-arrow-right"></i>
             </button>
             <?php endif; ?>
-            <?php if ($courtSt === 'published' && $courtMode === 'plan'): ?>
-            <button class="cp-btn-record" style="margin-top:5px" onclick="cpBulkRecord()">
-                <i class="fas fa-clipboard-check"></i> Record All Grants
-            </button>
+            <?php if ($courtSt === 'published'): ?>
+            <a class="cp-btn-primary" style="margin-top:5px" href="<?= UIR ?>Court/record/<?= (int)$court['CourtId'] ?>">
+                <i class="fas fa-clipboard-check"></i> Record Court
+            </a>
             <?php endif; ?>
             <?php if ($courtSt === 'published'): ?>
             <button class="cp-btn-outline" style="margin-top: 5px;" onclick="cpReturnToPlanning('draft')">

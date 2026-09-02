@@ -41,4 +41,16 @@ final class CourtPacketTest extends TestCase
         $this->assertNotNull($stamped, 'Printing must record when it happened.');
         $this->assertGreaterThan(0, strtotime((string)$stamped));
     }
+
+    public function testRecordViewIsRefusedToNonManagers(): void
+    {
+        $kid = $this->fixture->firstKingdomId();
+        $courtId = $this->fixture->createCourt(['kingdom_id' => $kid, 'status' => 'published']);
+        $stranger = $this->fixture->createPlayer('stranger', $kid);
+
+        $this->assertFalse(
+            $this->court->canManage($stranger['mundane_id'], $kid, 0),
+            'A player with no officer role and no edit authority must not manage this court.'
+        );
+    }
 }

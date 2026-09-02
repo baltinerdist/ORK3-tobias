@@ -193,4 +193,60 @@ class Controller_Court extends Controller
 
         $this->template = 'Court_detail.tpl';
     }
+
+    // -----------------------------------------------------------------------
+    // Record Court — the catch-up pass (spec §5)
+    // Route: ?Route=Court/record/{court_id}
+    // -----------------------------------------------------------------------
+    public function record($court_id = null)
+    {
+        $court_id = (int)preg_replace('/[^0-9]/', '', $court_id ?? '');
+        $uid      = isset($this->session->user_id) ? (int)$this->session->user_id : 0;
+
+        if (!valid_id($court_id)) {
+            $this->data['Error'] = 'Invalid court.';
+            return;
+        }
+
+        $court = $this->Court->get_court_detail($court_id);
+        if (!$court) {
+            $this->data['Error'] = 'Court not found.';
+            return;
+        }
+
+        if (!$this->Court->can_manage($uid, $court['KingdomId'], $court['ParkId'])) {
+            $this->data['Error'] = 'You do not have permission to record this court.';
+            return;
+        }
+
+        // Event options for the top strip's re-link select — mirrors detail()'s
+        // identical call; scoped to the COURT's kingdom, not the session's.
+        $upcomingEvents = $this->Court->get_upcoming_events($court['KingdomId']);
+        // Keep the court's OWN currently-linked event selectable even if it fell outside
+        // the "upcoming" window (e.g. a past event) — otherwise re-opening the strip on
+        // an already-linked court would silently preselect "— None —" and a save would
+        // then unlink it. Copied verbatim from detail().
+        if (
+            $court['EventCalendarDetailId'] > 0
+            && !in_array($court['EventCalendarDetailId'], array_column($upcomingEvents, 'EventCalendarDetailId'), true)
+        ) {
+            $upcomingEvents[] = [
+                'EventCalendarDetailId' => $court['EventCalendarDetailId'],
+                'Name'                  => $court['EventName'] ?: ('Event #' . $court['EventCalendarDetailId']),
+                'EventStart'            => null,
+            ];
+        }
+
+        // Cheap heartbeat state doubles as the source of the stored run/plan `mode`
+        // (getCourtDetail does not expose it) — needed for the hero's mode badge.
+        $courtState = $this->Court->get_court_state($court_id);
+
+        $this->data['Court']          = $court;
+        $this->data['CourtAwards']    = $this->Court->get_court_awards($court_id);
+        $this->data['GiverOptions']   = $this->Court->get_court_giver_options($court_id);
+        $this->data['UpcomingEvents'] = $upcomingEvents;
+        $this->data['CourtMode']      = $courtState['mode'] ?? 'run';
+        $this->data['Uid']            = $uid;
+        $this->template               = 'Court_record.tpl';
+    }
 }
