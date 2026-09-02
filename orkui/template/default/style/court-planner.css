@@ -227,7 +227,6 @@ html[data-theme="dark"] .cp-complete-opt .cp-co-desc { color: #a0aec0; }
 html[data-theme="dark"] .cp-complete-fail { background: rgba(229,62,62,.12); border-color: rgba(229,62,62,.4); color: #fc8181; }
 
 html[data-theme="dark"] .cp-modal-lead { color: #a0aec0; }
-html[data-theme="dark"] .cp-toast-info { background: #2b6cb0; }
 
 /* ---- Rescued from light-mode section (dedup pass) ---- */
 
@@ -236,6 +235,16 @@ html[data-theme="dark"] .cp-tracking-icon::after { background: #161b22; box-shad
 html[data-theme="dark"] .cp-page [data-tip]:hover::after, html[data-theme="dark"] #cp-note-popup [data-tip]:hover::after, html[data-theme="dark"] .cp-overlay [data-tip]:hover::after { background: #000; }
 
 html[data-theme="dark"] .cp-toast { background: #9b2c2c; }
+/* .cp-toast-info MUST be declared after the plain .cp-toast rule above — same
+   specificity (one class each under the same html[data-theme="dark"] prefix),
+   so source order decides the cascade. Task 7 (Record Court) is the first
+   call site to actually exercise cpNotice()'s calm "info" toast in dark mode
+   (the S5 stale-row-changed notice); the dedup pass that split these two
+   rules left .cp-toast-info BEFORE .cp-toast, so the info toast rendered in
+   the alarming red error color instead of navy in dark mode. Caught by
+   computed-style check, not by eye — same failure mode this project's
+   checklist warns about. */
+html[data-theme="dark"] .cp-toast-info { background: #2b6cb0; }
 
 html[data-theme="dark"] .cp-tracking-icon[data-status="0"]::after { color: #a0aec0; }
 

@@ -73,19 +73,62 @@ html[data-theme="dark"] .cp-rec-strip-status.cp-rec-strip-error { color: #fc8181
 /* Lean hero-actions row for this view (no heraldry, fewer buttons than the planner). */
 .cp-rec-hero-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
-/* Placeholder container Task 7 fills with per-row Given/Skipped/— controls,
-   Given-by chips, rank pills, citation editors, and the walk-on row. */
-#cp-rec-rows:empty::before {
-    content: 'Rows load here once Task 7 ships.';
-    display: block;
-    padding: 30px 16px;
-    text-align: center;
-    color: #a0aec0;
-    font-size: 13px;
-    border: 1px dashed #cbd5e0;
-    border-radius: 8px;
-}
-html[data-theme="dark"] #cp-rec-rows:empty::before { color: #718096; border-color: #2d3748; }
+/* ---- Row list (spec §5.1) — per-row marks, same column order as the printed
+   Sheet 2: # · Recipient · Award · Rank · [mark] · Given by · PTL. The paper's
+   separate check/x columns collapse into one three-state control here. Every
+   mark is a real server write the moment it's made (CourtAjax/grant_award,
+   skip_award, unstage_award) — nothing here batches client-side. ---- */
+.cp-rec-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.cp-rec-toolbar-hint { flex: 1 1 240px; font-size: 12px; color: #718096; }
+/* House rule: no interactive target under 44px, checked at 390 AND 768 — not just
+   the <=600px stacked layout. .cp-btn-primary's own padding lands at ~31px, so
+   this must not be gated behind the mobile media query below. */
+#cp-rec-bulk-btn { min-height: 44px; }
+.cp-rec-empty { padding: 30px 16px; text-align: center; color: #a0aec0; font-size: 13px; border: 1px dashed #cbd5e0; border-radius: 8px; }
+html[data-theme="dark"] .cp-rec-empty { color: #718096; border-color: #2d3748; }
+
+.cp-rec-list { border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background: #fff; }
+.cp-rec-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #edf2f7; }
+.cp-rec-row:last-child { border-bottom: none; }
+.cp-rec-row-header { background: #f7fafc; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #718096; }
+.cp-rec-c-label { display: none; }
+.cp-rec-c-num { flex: 0 0 26px; color: #a0aec0; font-size: 12px; }
+.cp-rec-row-header .cp-rec-c-num { color: #718096; }
+.cp-rec-c-recip { flex: 1 1 180px; min-width: 0; font-weight: 600; color: #1a202c; }
+.cp-rec-park { font-size: 11px; color: #718096; font-weight: 400; margin-left: 4px; }
+.cp-rec-c-award { flex: 1 1 200px; min-width: 0; }
+.cp-rec-c-rank { flex: 0 0 84px; }
+.cp-rec-c-mark { flex: 0 0 auto; }
+.cp-rec-c-giver { flex: 0 0 130px; font-size: 13px; color: #4a5568; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp-rec-c-ptl { flex: 0 0 30px; text-align: center; color: #718096; }
+.cp-rec-row.cp-rec-row-given { background: #f0fff4; }
+.cp-rec-row.cp-rec-row-skipped { background: #fff5f5; opacity: .8; }
+
+.cp-rec-seg { display: inline-flex; border: 1px solid #cbd5e0; border-radius: 6px; overflow: hidden; }
+.cp-rec-seg-btn { background: #fff; border: none; border-right: 1px solid #e2e8f0; padding: 0 12px; min-height: 44px; font-size: 12px; font-weight: 600; color: #4a5568; cursor: pointer; }
+.cp-rec-seg-btn:last-child { border-right: none; }
+.cp-rec-seg-btn:hover:not(:disabled) { background: #f7fafc; }
+.cp-rec-seg-btn:disabled { cursor: not-allowed; opacity: .5; }
+.cp-rec-row[data-mark="given"] .cp-rec-seg-given { background: #276749; color: #fff; }
+.cp-rec-row[data-mark="skipped"] .cp-rec-seg-skipped { background: #c53030; color: #fff; }
+.cp-rec-row[data-mark="none"] .cp-rec-seg-none { background: #edf2f7; color: #2d3748; }
+
+html[data-theme="dark"] .cp-rec-list { background: #161b22; border-color: #2d3748; }
+html[data-theme="dark"] .cp-rec-row { border-color: #22272e; }
+html[data-theme="dark"] .cp-rec-row-header { background: #1a202c; color: #97a3b4; }
+html[data-theme="dark"] .cp-rec-c-num { color: #718096; }
+html[data-theme="dark"] .cp-rec-c-recip { color: #e2e8f0; }
+html[data-theme="dark"] .cp-rec-park,
+html[data-theme="dark"] .cp-rec-c-giver,
+html[data-theme="dark"] .cp-rec-toolbar-hint { color: #97a3b4; }
+html[data-theme="dark"] .cp-rec-row.cp-rec-row-given { background: rgba(39,103,73,.18); }
+html[data-theme="dark"] .cp-rec-row.cp-rec-row-skipped { background: rgba(197,48,48,.14); }
+html[data-theme="dark"] .cp-rec-seg { border-color: #2d3748; }
+html[data-theme="dark"] .cp-rec-seg-btn { background: #1f2733; border-color: #2d3748; color: #cbd5e0; }
+html[data-theme="dark"] .cp-rec-seg-btn:hover:not(:disabled) { background: #2d3748; }
+html[data-theme="dark"] .cp-rec-row[data-mark="given"] .cp-rec-seg-given { background: #276749; color: #fff; }
+html[data-theme="dark"] .cp-rec-row[data-mark="skipped"] .cp-rec-seg-skipped { background: #9b2c2c; color: #fff; }
+html[data-theme="dark"] .cp-rec-row[data-mark="none"] .cp-rec-seg-none { background: #2d3748; color: #e2e8f0; }
 
 @media (max-width: 600px) {
     .cp-rec-topstrip { flex-direction: column; align-items: stretch; gap: 12px; padding: 14px; }
@@ -103,6 +146,25 @@ html[data-theme="dark"] #cp-rec-rows:empty::before { color: #718096; border-colo
     .cp-rec-hero-actions { width: 100%; }
     .cp-rec-hero-actions > a,
     .cp-rec-hero-actions > button { flex: 1 1 auto; min-height: 44px; justify-content: center; }
+
+    /* Row list collapses to stacked cards — a table/flex-row layout at this width
+       either overflows horizontally or forces sub-44px controls; neither is
+       acceptable per the house mobile rules. */
+    .cp-rec-toolbar { flex-direction: column; align-items: stretch; }
+    #cp-rec-bulk-btn { justify-content: center; }
+    .cp-rec-row-header { display: none; }
+    .cp-rec-row { flex-wrap: wrap; row-gap: 8px; }
+    .cp-rec-c-num { flex: 0 0 auto; }
+    .cp-rec-c-recip,
+    .cp-rec-c-award,
+    .cp-rec-c-rank,
+    .cp-rec-c-giver { flex: 1 1 100%; }
+    .cp-rec-c-label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #a0aec0; margin-bottom: 2px; }
+    html[data-theme="dark"] .cp-rec-c-label { color: #718096; }
+    .cp-rec-c-mark { flex: 1 1 100%; }
+    .cp-rec-seg { width: 100%; }
+    .cp-rec-seg-btn { flex: 1 1 33%; }
+    .cp-rec-c-ptl { flex: 1 1 100%; text-align: left; display: flex; align-items: center; gap: 6px; }
 }
 </style>
 
@@ -213,10 +275,79 @@ html[data-theme="dark"] #cp-rec-rows:empty::before { color: #718096; border-colo
         <button class="cp-si-btn" onclick="cpOpenCompleteModal()"><i class="fas fa-stamp"></i> Finalize &amp; Complete</button>
     </div>
 
-    <!-- Task 7 fills this with the per-row Given/Skipped/— controls (same
-         column order as the paper: # · check · x · Recipient · Award · Rank ·
-         Given by · PTL) and the walk-on inline row. -->
-    <div id="cp-rec-rows"></div>
+    <!-- Per-row marks (spec §5.1) — same column order as the printed Sheet 2
+         (# · check · x · Recipient · Award · Rank · Given by · PTL), with the
+         paper's separate check/x columns collapsed into one three-state
+         control. Every mark is a real server write the moment it's made
+         (grant_award/skip_award/unstage_award) — nothing here batches
+         client-side, so a recorder who closes the laptop mid-pass loses
+         nothing. Walk-ons (Task 10) land below this list. -->
+    <div id="cp-rec-rows">
+        <div class="cp-rec-toolbar">
+            <button type="button" class="cp-btn-primary" id="cp-rec-bulk-btn" onclick="cpRecMarkAllGiven()"
+                    <?= $courtSt !== 'published' ? 'disabled' : '' ?>>
+                <i class="fas fa-check-double"></i> Mark all remaining Given
+            </button>
+            <span class="cp-rec-toolbar-hint">Stages every still-planned award as Given under the default giver. Mark the exceptions — Skipped, or anything unusual — first, then use this for the rest. Safe to click again after adding walk-ons; it only ever touches rows still planned.</span>
+        </div>
+
+        <?php if (empty($courtAwards)): ?>
+        <div class="cp-rec-empty">No awards on this court's plan.</div>
+        <?php else: ?>
+        <div class="cp-rec-list" id="cp-rec-list">
+            <div class="cp-rec-row cp-rec-row-header" aria-hidden="true">
+                <span class="cp-rec-c cp-rec-c-num">#</span>
+                <span class="cp-rec-c cp-rec-c-recip">Recipient</span>
+                <span class="cp-rec-c cp-rec-c-award">Award</span>
+                <span class="cp-rec-c cp-rec-c-rank">Rank</span>
+                <span class="cp-rec-c cp-rec-c-mark">Mark</span>
+                <span class="cp-rec-c cp-rec-c-giver">Given by</span>
+                <span class="cp-rec-c cp-rec-c-ptl">PTL</span>
+            </div>
+            <?php
+            $canMark = $courtSt === 'published';
+            $defaultGiverPersona = $giverOptions['default']['persona'] ?? '—';
+            foreach ($courtAwards as $__i => $aw):
+                $caid = (int)($aw['CourtAwardId'] ?? 0);
+                $mark = in_array($aw['Status'] ?? '', ['given', 'staged'], true) ? 'given'
+                      : (($aw['Status'] ?? '') === 'cancelled' ? 'skipped' : 'none');
+                $rowClass = $mark === 'given' ? ' cp-rec-row-given' : ($mark === 'skipped' ? ' cp-rec-row-skipped' : '');
+                ?>
+            <div class="cp-rec-row<?= $rowClass ?>" data-caid="<?= $caid ?>" data-rowversion="<?= (int)($aw['RowVersion'] ?? 0) ?>" data-mark="<?= $mark ?>">
+                <span class="cp-rec-c cp-rec-c-num"><?= $__i + 1 ?></span>
+                <span class="cp-rec-c cp-rec-c-recip">
+                    <span class="cp-rec-c-label">Recipient</span>
+                    <?= htmlspecialchars($aw['Persona'] ?? '') ?><?php if (!empty($aw['ParkAbbrev'])): ?> <span class="cp-rec-park"><?= htmlspecialchars($aw['ParkAbbrev']) ?></span><?php endif; ?>
+                </span>
+                <span class="cp-rec-c cp-rec-c-award">
+                    <span class="cp-rec-c-label">Award</span>
+                    <?= htmlspecialchars($aw['AwardName'] ?? '') ?>
+                </span>
+                <span class="cp-rec-c cp-rec-c-rank">
+                    <span class="cp-rec-c-label">Rank</span>
+                    <?php if (!empty($aw['IsLadder']) && (int)($aw['Rank'] ?? 0) > 0): ?>
+                    <span class="ladder-rank" data-lvl="<?= min((int)$aw['Rank'], 10) ?>">Rank <?= (int)$aw['Rank'] ?></span>
+                    <?php else: ?>&mdash;<?php endif; ?>
+                </span>
+                <span class="cp-rec-c cp-rec-c-mark cp-rec-seg" role="group" aria-label="Mark <?= htmlspecialchars($aw['Persona'] ?? 'this award') ?> — <?= htmlspecialchars($aw['AwardName'] ?? '') ?>">
+                    <button type="button" class="cp-rec-seg-btn cp-rec-seg-given" aria-pressed="<?= $mark === 'given' ? 'true' : 'false' ?>" onclick="cpRecMark(<?= $caid ?>,'given')" <?= $canMark ? '' : 'disabled' ?>>Given</button>
+                    <button type="button" class="cp-rec-seg-btn cp-rec-seg-skipped" aria-pressed="<?= $mark === 'skipped' ? 'true' : 'false' ?>" onclick="cpRecMark(<?= $caid ?>,'skipped')" <?= $canMark ? '' : 'disabled' ?>>Skipped</button>
+                    <button type="button" class="cp-rec-seg-btn cp-rec-seg-none" aria-pressed="<?= $mark === 'none' ? 'true' : 'false' ?>" onclick="cpRecMark(<?= $caid ?>,'none')" data-tip="Clear this mark" <?= $canMark ? '' : 'disabled' ?>>&mdash;</button>
+                </span>
+                <span class="cp-rec-c cp-rec-c-giver" id="cp-rec-giver-<?= $caid ?>">
+                    <span class="cp-rec-c-label">Given by</span>
+                    <?= htmlspecialchars($defaultGiverPersona) ?>
+                </span>
+                <span class="cp-rec-c cp-rec-c-ptl">
+                    <span class="cp-rec-c-label">PTL</span>
+                    <?php if (!empty($aw['PassToLocal'])): ?><i class="fas fa-arrow-down" data-tip="Pass to Local" aria-label="Pass to Local"></i><?php else: ?>&mdash;<?php endif; ?>
+                </span>
+            </div>
+            <?php endforeach;
+unset($__i, $aw, $caid, $mark, $rowClass); ?>
+        </div>
+        <?php endif; ?>
+    </div>
 
 </div>
 
@@ -282,6 +413,22 @@ html[data-theme="dark"] #cp-rec-rows:empty::before { color: #718096; border-colo
         setTimeout(function() { t.remove(); }, 5000);
     }
     window.cpGlobalError = cpGlobalError;
+
+    // Informational toast (calm navy, .cp-toast-info) — distinct from cpGlobalError's
+    // alarming red — for the S5 optimistic-lock "this row changed" notice (spec §0.4):
+    // nothing failed, another recorder just got there first. Same idiom as
+    // Court_detail.tpl's own cpNotice(), which is local to ITS IIFE and not exported —
+    // this view needs its own copy.
+    function cpNotice(msg) {
+        var t = document.createElement('div');
+        t.className = 'cp-toast cp-toast-info';
+        t.setAttribute('role', 'status');
+        t.setAttribute('aria-live', 'polite');
+        t.textContent = msg || '';
+        document.body.appendChild(t);
+        setTimeout(function() { t.remove(); }, 4000);
+    }
+    window.cpNotice = cpNotice;
 
     // Non-blocking message/confirm dialogs — no native alert()/confirm()/prompt()
     // anywhere; those freeze in-app browser automation.
@@ -629,6 +776,120 @@ html[data-theme="dark"] #cp-rec-rows:empty::before { color: #718096; border-colo
         ind.classList.toggle('show', count > 0 && courtStatus !== 'complete');
     };
     cpUpdateStagedIndicator(cpStagedCount);
+
+    // ---- Per-row marks (spec §5.1) ----
+    // Stubs — Task 8 replaces the first two with real per-row giver/rank controls,
+    // Task 9 replaces the third with a citation editor. Defined now so cpRecMark
+    // (below) doesn't throw; each returns the sensible default a row would use if
+    // marked Given right now under the court's own default giver.
+    window.cpRecGiverFor = function(caid) {
+        return (cpGiverOptions && cpGiverOptions.default) ? cpGiverOptions.default.mundane_id : 0;
+    };
+    window.cpRecRankFor = function(caid) {
+        var a = courtAwards.find(function(x) { return String(x.CourtAwardId) === String(caid); });
+        return a ? (a.Rank || 0) : 0;
+    };
+    window.cpRecCitationFor = function(caid) {
+        var a = courtAwards.find(function(x) { return String(x.CourtAwardId) === String(caid); });
+        return a ? (a.PublicComment || '') : '';
+    };
+
+    // caid -> in-flight XHR guard, so a fast double-click (or a stuck network
+    // request) can't fire two writes for the same row.
+    var cpRecInFlight = {};
+
+    function cpRecSetRowUi(row, state) {
+        row.dataset.mark = state;
+        row.classList.remove('cp-rec-row-given', 'cp-rec-row-skipped');
+        if (state === 'given') row.classList.add('cp-rec-row-given');
+        else if (state === 'skipped') row.classList.add('cp-rec-row-skipped');
+        row.querySelectorAll('.cp-rec-seg-btn').forEach(function(btn) {
+            var btnState = btn.classList.contains('cp-rec-seg-given') ? 'given'
+                         : btn.classList.contains('cp-rec-seg-skipped') ? 'skipped' : 'none';
+            btn.setAttribute('aria-pressed', btnState === state ? 'true' : 'false');
+        });
+    }
+
+    // cpRecPost handles the shared response contract for grant_award/skip_award/
+    // unstage_award: status 9 = another recorder changed this row first (S5
+    // optimistic lock, spec §0.4) — show the non-destructive notice and leave the
+    // row exactly as it was, never clobber it. status 0 = the write landed; patch
+    // the row's visual state and bump its row_version so the NEXT mark on this row
+    // (Given -> Skipped -> — are all just re-marks) threads the fresh token.
+    window.cpRecPost = function(url, fd, row, state) {
+        var caid = row.getAttribute('data-caid');
+        if (cpRecInFlight[caid]) return;
+        cpRecInFlight[caid] = true;
+        row.querySelectorAll('.cp-rec-seg-btn').forEach(function(b) { b.disabled = true; });
+        post(url, fd).then(function(d) {
+            delete cpRecInFlight[caid];
+            var canMark = courtStatus === 'published';
+            row.querySelectorAll('.cp-rec-seg-btn').forEach(function(b) { b.disabled = !canMark; });
+            if (d && d.status === 9) {
+                cpNotice('This row changed — reload to see the latest.');
+                return;
+            }
+            if (d && d.status === 0) {
+                var newVersion = (parseInt(row.getAttribute('data-rowversion'), 10) || 0) + 1;
+                row.setAttribute('data-rowversion', newVersion);
+                cpRecSetRowUi(row, state);
+                var a = courtAwards.find(function(x) { return String(x.CourtAwardId) === String(caid); });
+                if (a) {
+                    a.RowVersion = newVersion;
+                    a.Status = state === 'given' ? 'staged' : (state === 'skipped' ? 'cancelled' : 'planned');
+                }
+                if (typeof d.staged_count !== 'undefined') cpUpdateStagedIndicator(d.staged_count);
+            } else if (!d._postFailed) {
+                cpAlert(d.error || 'Could not save this mark.');
+            }
+        });
+    };
+
+    // Given -> stage, Skipped -> skip, — -> unstage. All three already exist and all
+    // three are pre-finalize, so any of them can be undone by pressing another.
+    window.cpRecMark = function(caid, state) {
+        var row = document.querySelector('.cp-rec-row[data-caid="' + caid + '"]');
+        if (!row) return;
+        var url = state === 'given'   ? 'CourtAjax/grant_award'
+                : state === 'skipped' ? 'CourtAjax/skip_award'
+                :                       'CourtAjax/unstage_award';
+        var fd = new FormData();
+        fd.append('CourtAwardId', caid);
+        fd.append('RowVersion', row.getAttribute('data-rowversion') || '');
+        if (state === 'given') {
+            fd.append('GivenById', cpRecGiverFor(caid));
+            fd.append('PublicComment', cpRecCitationFor(caid));
+            fd.append('Rank', cpRecRankFor(caid));
+        }
+        cpRecPost(url, fd, row, state);
+    };
+
+    // ---- "Mark all remaining Given" (spec §5, the old Record All Grants,
+    // relabelled) — the only bulk action. There is no "stage all marked" button:
+    // bulk_record_grants is a set-based UPDATE ... WHERE status = 'planned' that
+    // already writes staged server-side, over whatever is still planned right
+    // now — so it stays live and clicking it again after walk-ons land catches
+    // them too. Rows are never silently defaulted to Given; this button is the
+    // one explicit, visible way that happens. Reloads on success so row states
+    // come back from the server rather than being guessed client-side. ----
+    window.cpRecMarkAllGiven = function() {
+        cpConfirm({
+            title: 'Mark all remaining Given',
+            body: 'Stage every still-planned award on this court as Given, under the default giver? Rows you already marked Given or Skipped are left alone. You can still undo individual grants before finalizing.',
+            confirmLabel: 'Mark All Given',
+            onConfirm: function() {
+                var btn = gid('cp-rec-bulk-btn');
+                if (btn) btn.disabled = true;
+                var fd = new FormData();
+                fd.append('CourtId', courtId);
+                post('CourtAjax/bulk_record_grants', fd).then(function(d) {
+                    if (d.status === 0) { location.reload(); return; }
+                    if (btn) btn.disabled = false;
+                    if (!d._postFailed) cpAlert(d.error || 'Could not record grants.');
+                });
+            }
+        });
+    };
 
     // Close dropdowns on outside click; close the complete modal on backdrop
     // click / Escape (same idiom as Court_detail.tpl).

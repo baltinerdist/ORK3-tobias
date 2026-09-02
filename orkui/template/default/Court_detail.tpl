@@ -3830,23 +3830,6 @@ $_total_awards = count($courtAwards ?? []);
         });
     };
 
-    // ---- Bulk "Record grants" (plan mode) ----
-    window.cpBulkRecord = function() {
-        cpConfirm({
-            title: 'Record all grants',
-            body: 'Stage every remaining planned award using the default giver? You can still undo individual grants before finalizing.',
-            confirmLabel: 'Record All',
-            onConfirm: function() {
-                var fd = new FormData();
-                fd.append('CourtId', courtId);
-                post('CourtAjax/bulk_record_grants', fd).then(function(d) {
-                    if (d.status === 0) { location.reload(); }
-                    else if (!d._postFailed) cpAlert(d.error || 'Could not record grants.');
-                });
-            }
-        });
-    };
-
     // ---- Prepopulate skipped-from-last-court (spec §6.5) ----
     window.cpPrepopulate = function() {
         var btn = gid('cp-prev-btn');
