@@ -554,6 +554,55 @@ html[data-theme="dark"] .rm-modal {
 .rm-rank-pill.rm-rank-forward { background: rgba(44, 95, 139, 0.14); border-color: var(--rm-accent); }
 .rm-rank-pill.rm-rank-selected { outline: 2px solid var(--rm-accent); outline-offset: 1px; }
 html[data-theme="dark"] .rm-rank-pill.rm-rank-held { background: #38a169; border-color: #38a169; }
+
+/* Responsive card collapse (spec 0.8) — below 700px the grid becomes stacked
+   cards; threads 3, 4 and 6 extend this rather than owning it. */
+/* Base (desktop) state for the mobile-only overflow toggle and its help text.
+   Without this, both inherit the generic .rm-act/div display and appear on the
+   desktop table too, since the media query below only sets their *open* state. */
+.rm-act-more { display: none; }
+.rm-act-help { display: none; }
+@media (max-width: 700px) {
+  .rm-grid thead { display: none; }
+  .rm-grid, .rm-grid tbody, .rm-grid tr, .rm-grid td { display: block; width: 100%; }
+  .rm-grid tr.rm-row {
+    border: 1px solid var(--rm-line); border-radius: 8px; margin-bottom: 10px;
+    padding: 10px 12px; background: var(--rm-bg); position: relative;
+  }
+  .rm-grid tr.rm-row td { border: none; padding: 2px 0; }
+  .rm-col-sel { position: absolute; top: 10px; right: 10px; }
+  .rm-col-sel input { width: 22px; height: 22px; }
+  .rm-col-recip { font-size: 16px; font-weight: 700; padding-right: 40px !important; }
+  .rm-col-park::before  { content: none; }
+  .rm-col-award { font-size: 14px; }
+  .rm-col-rank, .rm-col-rec, .rm-col-supp { display: inline-block !important; width: auto !important; margin-right: 10px; }
+  .rm-col-reason { color: var(--rm-muted); font-size: 13px; }
+
+  /* Actions: primary two inline, the rest behind an overflow toggle. */
+  .rm-col-act { display: flex !important; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .rm-col-act .rm-act { min-height: 44px; min-width: 44px; flex: 0 0 auto; padding: 0 14px; }
+  .rm-col-act .rm-act-grant, .rm-col-act .rm-act-court { flex: 1 1 auto; }
+  .rm-col-act .rm-act-snooze,
+  .rm-col-act .rm-act-passlocal,
+  .rm-col-act .rm-act-dismiss { display: none; }
+  .rm-col-act.rm-act-open .rm-act-snooze,
+  .rm-col-act.rm-act-open .rm-act-passlocal,
+  .rm-col-act.rm-act-open .rm-act-dismiss { display: inline-flex; }
+  .rm-act-more { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 44px; }
+
+  /* Hover-only tooltips have no home on a phone — show the copy inline. */
+  .rm-act .rm-snooze-tip,
+  .rm-act .rm-passlocal-tip { position: static; display: none; }
+  .rm-col-act.rm-act-open .rm-act-help { display: block; font-size: 12px; color: var(--rm-muted); margin-top: 6px; flex: 1 1 100%; }
+
+  .rm-filterbar { flex-wrap: wrap; gap: 8px; }
+  .rm-filterbar .rm-fsel, .rm-filterbar .rm-search { flex: 1 1 100%; min-height: 44px; }
+  .rm-bulkbar { position: fixed; left: 0; right: 0; bottom: 0; border-radius: 0; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); flex-wrap: wrap; }
+  .rm-bulkbar .rm-bulk { min-height: 44px; }
+}
+@media (max-width: 700px) {
+  html[data-theme="dark"] .rm-grid tr.rm-row { background: var(--rm-bg2); }
+}
 </style>
 
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>default/style/reports.css?v=<?= filemtime(DIR_TEMPLATE . 'default/style/reports.css') ?>">
@@ -1459,6 +1508,18 @@ document.querySelector('.rm-bulk-court').addEventListener('click', function () {
         rec._tr = tr; return rec;
     });
     if (targets.length) rmOpenCourtModal(targets);
+});
+
+// Mobile card overflow toggle (spec 0.8) — reveals the snooze/pass-down/dismiss
+// actions plus their hover-only explanations, which have no hover on a phone.
+document.getElementById('rm-tbody').addEventListener('click', function (e) {
+    var more = e.target.closest('.rm-act-more');
+    if (!more) return;
+    var cell = more.closest('.rm-col-act');
+    var open = cell.classList.toggle('rm-act-open');
+    more.setAttribute('aria-expanded', open ? 'true' : 'false');
+    var help = cell.querySelector('.rm-act-help');
+    if (help) help.hidden = !open;
 });
 
 // Refresh the Court cell badge link after a rec is added to a court.

@@ -93,5 +93,11 @@
           <button type="button" class="rm-act rm-act-snooze"><span class="rm-snooze-ico"><?= $snoozed ? '&#128276;' : '&#128164;' ?></span><span class="rm-snooze-tip"><?php if ($snoozed) { ?><strong>Unsnooze</strong>Restore this recommendation to the active list.<?php } else { ?><strong>Snooze to Next Monarchy</strong>Temporarily dismiss this recommendation until either the Monarch or Regent officer at this level changes.<?php } ?></span></button>
           <?php if (($Context ?? '') === 'kingdom') { ?><button type="button" class="rm-act rm-act-passlocal<?= !empty($group['PassedToLocal']) ? ' rm-act-active' : '' ?>"><i class="fas fa-arrow-down"></i><span class="rm-passlocal-tip"><strong>Send to Local Park</strong>For recommendations at a higher level than the park can provide, you are granting authority for that park to award at this level.</span></button><?php } ?>
           <button type="button" class="rm-act rm-act-dismiss" data-tip="Already given out previously? No plans to award this? You can dismiss this rec.">&#10005;</button>
+          <button type="button" class="rm-act rm-act-more" data-tip="More actions" aria-label="More actions" aria-expanded="false">&hellip;</button>
+          <div class="rm-act-help" hidden>
+            <strong>Snooze</strong> sets this aside until the Monarch or Regent changes.
+            <?php if (($Context ?? '') === 'kingdom') { ?><strong>Pass down</strong> grants the local park authority to award at this level. <?php } ?>
+            <strong>Dismiss</strong> removes it from the pending list.
+          </div>
         </td>
       </tr>
