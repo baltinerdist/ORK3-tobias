@@ -117,4 +117,31 @@ final class CourtThread0Test extends TestCase
             'A re-link must overwrite the previous event, not just accept an unlink to 0.'
         );
     }
+
+    public function testUpdateAwardLeavesOmittedFieldsIntact(): void
+    {
+        $kid = $this->fixture->firstKingdomId();
+        $player = $this->fixture->createPlayer('partial', $kid);
+        $maker  = $this->fixture->createPlayer('maker', $kid);
+        $courtId = $this->fixture->createCourt(['kingdom_id' => $kid]);
+
+        $awardId = $this->fixture->createAward($courtId, $player['mundane_id'], [
+            'notes'           => 'hold until the drama settles',
+            'pass_to_local'   => 1,
+            'scroll_maker_id' => $maker['mundane_id'],
+        ]);
+
+        // A citation-only save, as the Record Court view will make.
+        $this->assertTrue($this->court->updateAward($awardId, ['PublicComment' => 'For steadfast service.']));
+
+        $row = $this->fixture->fetchAward($awardId);
+        $this->assertSame('For steadfast service.', $row['public_comment']);
+        $this->assertSame('hold until the drama settles', $row['notes'], 'Internal notes must survive a citation-only save.');
+        $this->assertSame(1, (int) $row['pass_to_local'], 'Pass-to-local must survive a citation-only save.');
+        $this->assertSame(
+            $maker['mundane_id'],
+            (int) $row['scroll_maker_id'],
+            'The scroll maker credit must survive a citation-only save.'
+        );
+    }
 }

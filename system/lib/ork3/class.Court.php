@@ -546,36 +546,61 @@ class Court
     }
 
     /**
-     * Update the editable FIELDS of a court_award — never its status (QW4). The
-     * lifecycle moves solely through stage/unstage/skip/set-status/commit, so a
-     * stale field-save can no longer drag a row's status backward. S5 optimistic
+     * Field-only edit of a court award — never its status (QW4). The lifecycle
+     * moves solely through stage/unstage/skip/set-status/commit, so a stale
+     * field-save can no longer drag a row's status backward. S5 optimistic
      * lock: pass $expectedRowVersion to require the client's token still be
      * current. row_version is always bumped on a match, so a matched row always
      * reports one affected row: returns true iff exactly one row changed (0 ==
      * stale row_version / gone).
+     *
+     * PARTIAL by design (spec 0.6): only the keys present in $fields are
+     * written. The previous six-positional-parameter version wrote all five
+     * columns unconditionally, so any caller that did not send every field
+     * silently erased internal notes, pass-to-local, and both maker credits.
+     * $fields may contain any of: Notes, PublicComment, PassToLocal,
+     * ScrollMakerId, RegaliaMakerId.
      */
-    public function updateAward($court_award_id, $notes, $public_comment, $pass_to_local, $scroll_maker_id, $regalia_maker_id, $expectedRowVersion = null)
+    public function updateAward($court_award_id, array $fields, $expectedRowVersion = null)
     {
-        $court_award_id   = (int)$court_award_id;
-        $pass_to_local    = $pass_to_local ? 1 : 0;
-        $scroll_maker_id  = (int)$scroll_maker_id;
-        $regalia_maker_id = (int)$regalia_maker_id;
+        $court_award_id = (int)$court_award_id;
+        if (!valid_id($court_award_id) || !$fields) {
+            return false;
+        }
+
+        $sets = [];
+        if (array_key_exists('Notes', $fields)) {
+            $sets[] = 'notes = \'' . $this->esc((string)$fields['Notes']) . '\'';
+        }
+        if (array_key_exists('PublicComment', $fields)) {
+            $sets[] = 'public_comment = \'' . $this->esc((string)$fields['PublicComment']) . '\'';
+        }
+        if (array_key_exists('PassToLocal', $fields)) {
+            $sets[] = 'pass_to_local = ' . ((int)$fields['PassToLocal'] ? 1 : 0);
+        }
+        if (array_key_exists('ScrollMakerId', $fields)) {
+            $sets[] = 'scroll_maker_id = ' . ((int)$fields['ScrollMakerId'] > 0 ? (int)$fields['ScrollMakerId'] : 'NULL');
+        }
+        if (array_key_exists('RegaliaMakerId', $fields)) {
+            $sets[] = 'regalia_maker_id = ' . ((int)$fields['RegaliaMakerId'] > 0 ? (int)$fields['RegaliaMakerId'] : 'NULL');
+        }
+
+        if (!$sets) {
+            return false;
+        }
+
+        $sets[] = 'row_version = row_version + 1';
 
         $where = 'court_award_id = ' . $court_award_id;
         if ($expectedRowVersion !== null) {
             $where .= ' AND row_version = ' . (int)$expectedRowVersion;
         }
+
         $this->db->Clear();
         $rs = $this->db->DataSet(
-            'UPDATE ' . DB_PREFIX . 'court_award SET
-             notes = \'' . $this->esc($notes) . '\',
-             public_comment = \'' . $this->esc($public_comment) . '\',
-             pass_to_local = ' . $pass_to_local . ',
-             scroll_maker_id  = ' . ($scroll_maker_id  > 0 ? $scroll_maker_id : 'NULL') . ',
-             regalia_maker_id = ' . ($regalia_maker_id > 0 ? $regalia_maker_id : 'NULL') . ',
-             row_version = row_version + 1
-             WHERE ' . $where
+            'UPDATE ' . DB_PREFIX . 'court_award SET ' . implode(', ', $sets) . ' WHERE ' . $where
         );
+
         return $rs && $rs->Size() == 1;
     }
 

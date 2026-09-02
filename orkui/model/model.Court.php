@@ -86,9 +86,9 @@ class Model_Court extends Model
         return $this->_court()->addAward($court_id, $kingdom_id, $mundane_id, $kingdomaward_id, $rank, $rec_id, $pass_to_local, $notes, $public_comment);
     }
 
-    public function update_award($court_award_id, $notes, $public_comment, $pass_to_local, $scroll_maker_id, $regalia_maker_id, $expectedRowVersion = null)
+    public function update_award($court_award_id, array $fields, $expectedRowVersion = null)
     {
-        return $this->_court()->updateAward($court_award_id, $notes, $public_comment, $pass_to_local, $scroll_maker_id, $regalia_maker_id, $expectedRowVersion);
+        return $this->_court()->updateAward($court_award_id, $fields, $expectedRowVersion);
     }
 
     public function remove_award($court_award_id)

@@ -347,11 +347,28 @@ class Controller_CourtAjax extends Controller
 
         $this->requireCourtAuth($court_id);
 
-        $notes            = trim($_POST['Notes']          ?? '');
-        $public_comment   = trim($_POST['PublicComment']  ?? '');
-        $pass_to_local    = (int)($_POST['PassToLocal']    ?? 0) ? 1 : 0;
-        $scroll_maker_id  = (int)($_POST['ScrollMakerId']  ?? 0);
-        $regalia_maker_id = (int)($_POST['RegaliaMakerId'] ?? 0);
+        // PARTIAL by design (spec 0.6): only keys present in $_POST are written —
+        // an omitted key now means "leave that column alone", never "clear it".
+        $fields = [];
+        if (array_key_exists('Notes', $_POST)) {
+            $fields['Notes'] = trim((string)$_POST['Notes']);
+        }
+        if (array_key_exists('PublicComment', $_POST)) {
+            $fields['PublicComment'] = trim((string)$_POST['PublicComment']);
+        }
+        if (array_key_exists('PassToLocal', $_POST)) {
+            $fields['PassToLocal'] = (int)$_POST['PassToLocal'] ? 1 : 0;
+        }
+        if (array_key_exists('ScrollMakerId', $_POST)) {
+            $fields['ScrollMakerId'] = (int)$_POST['ScrollMakerId'];
+        }
+        if (array_key_exists('RegaliaMakerId', $_POST)) {
+            $fields['RegaliaMakerId'] = (int)$_POST['RegaliaMakerId'];
+        }
+
+        if (!$fields) {
+            $this->jsonOut(['status' => 1, 'error' => 'Nothing to update.']);
+        }
 
         // QW#4: update_award writes editable FIELDS only — NEVER status. Lifecycle
         // moves solely through stage/unstage/skip/set-status/commit, so a stale
@@ -360,15 +377,7 @@ class Controller_CourtAjax extends Controller
         $expectedRowVersion = (isset($_POST['RowVersion']) && $_POST['RowVersion'] !== '')
             ? (int)$_POST['RowVersion'] : null;
 
-        $ok = $this->Court->update_award(
-            $court_award_id,
-            $notes,
-            $public_comment,
-            $pass_to_local,
-            $scroll_maker_id,
-            $regalia_maker_id,
-            $expectedRowVersion
-        );
+        $ok = $this->Court->update_award($court_award_id, $fields, $expectedRowVersion);
         if (!$ok && $expectedRowVersion !== null) {
             // status 9 = optimistic-lock conflict: the client's row_version was stale.
             // Non-destructive "this row changed — reload" toast.
@@ -380,7 +389,7 @@ class Controller_CourtAjax extends Controller
             $this->jsonOut(['status' => 1, 'error' => 'This award could not be updated — it may have changed. Reload.']);
         }
 
-        $this->jsonOut(['status' => 0, 'notes' => $notes, 'public_comment' => $public_comment, 'pass_to_local' => $pass_to_local]);
+        $this->jsonOut(array_merge(['status' => 0], $fields));
     }
 
     // -----------------------------------------------------------------------
