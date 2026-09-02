@@ -193,4 +193,124 @@ final class CourtThread0Test extends TestCase
         $this->fixture->insertOfficer($parkPm['mundane_id'], $kid, $pid, 'Prime Minister');
         $this->assertSame($parkPm['mundane_id'], $this->court->getDefaultRecorder($kid, $pid));
     }
+
+    /**
+     * The sibling of testUpdateAwardLeavesOmittedFieldsIntact, guarding the
+     * other half of the array_key_exists contract.
+     *
+     * That test proves an OMITTED key survives. This one proves a key that IS
+     * present but empty actually CLEARS — the case that silently regresses the
+     * moment someone "tidies" array_key_exists into isset(), !empty() or a bare
+     * truthiness check, none of which can tell "clear this field" apart from
+     * "don't touch this field". Without it, an officer deleting a stale internal
+     * note, or unticking Pass-to-Local, would appear to save and change nothing.
+     */
+    public function testUpdateAwardClearsFieldsExplicitlySetEmpty(): void
+    {
+        $kid = $this->fixture->firstKingdomId();
+        $player = $this->fixture->createPlayer('clearing', $kid);
+        $maker  = $this->fixture->createPlayer('clearmaker', $kid);
+        $courtId = $this->fixture->createCourt(['kingdom_id' => $kid]);
+
+        $awardId = $this->fixture->createAward($courtId, $player['mundane_id'], [
+            'notes'           => 'stale note to delete',
+            'public_comment'  => 'For steadfast service.',
+            'pass_to_local'   => 1,
+            'scroll_maker_id' => $maker['mundane_id'],
+        ]);
+
+        // Every value here is falsy — '' , 0, 0 — so any truthiness-based guard
+        // would drop all three and report success anyway.
+        $this->assertTrue($this->court->updateAward($awardId, [
+            'Notes'         => '',
+            'PassToLocal'   => 0,
+            'ScrollMakerId' => 0,
+        ]));
+
+        $row = $this->fixture->fetchAward($awardId);
+        $this->assertSame('', $row['notes'], 'An explicitly emptied note must actually clear.');
+        $this->assertSame(0, (int) $row['pass_to_local'], 'Unticking Pass-to-Local must actually clear it.');
+        $this->assertNull($row['scroll_maker_id'], 'A cleared scroll maker must become NULL.');
+
+        // …and the omitted sibling is still untouched, so "clear" did not
+        // degenerate into "overwrite everything".
+        $this->assertSame(
+            'For steadfast service.',
+            $row['public_comment'],
+            'An omitted field must survive a save that clears its siblings.'
+        );
+    }
+
+    /**
+     * A typo'd field name must fail loudly rather than being dropped while its
+     * valid siblings save and the caller is told everything worked.
+     */
+    public function testUpdateAwardRejectsUnrecognizedFields(): void
+    {
+        $kid = $this->fixture->firstKingdomId();
+        $player = $this->fixture->createPlayer('badkey', $kid);
+        $courtId = $this->fixture->createCourt(['kingdom_id' => $kid]);
+        $awardId = $this->fixture->createAward($courtId, $player['mundane_id'], [
+            'notes' => 'original',
+        ]);
+
+        $this->assertFalse(
+            $this->court->updateAward($awardId, ['Notes' => 'changed', 'Nnotes' => 'typo']),
+            'A mixed valid/invalid field set must be rejected outright.'
+        );
+        $this->assertSame(
+            'original',
+            $this->fixture->fetchAward($awardId)['notes'],
+            'A rejected write must not have partially applied.'
+        );
+    }
+
+    /**
+     * A save whose values all match what is already stored changes 0 rows.
+     * Reporting that as failure told officers a *draft* court could not be
+     * edited because it was complete (the Edit Details modal posts all four
+     * fields, so a no-op save is routine).
+     */
+    public function testUpdateCourtSucceedsWhenNothingChanged(): void
+    {
+        $kid = $this->fixture->firstKingdomId();
+        $courtId = $this->fixture->createCourt(['kingdom_id' => $kid, 'name' => 'Midwinter Court']);
+
+        $this->assertTrue($this->court->updateCourt($courtId, ['Name' => 'Midwinter Court']));
+        // Twice: the second call is guaranteed to change nothing at all.
+        $this->assertTrue(
+            $this->court->updateCourt($courtId, ['Name' => 'Midwinter Court']),
+            'A save with no net change must not be reported as a failure.'
+        );
+    }
+
+    /**
+     * getUnrecordedCourts must scope exactly as getCourtList does. Filtering
+     * kingdom context on kingdom_id alone leaked every park court onto the
+     * kingdom list — and fired a notification at every park recorder in the
+     * kingdom whenever one kingdom officer opened the planner.
+     */
+    public function testUnrecordedCourtsExcludeParkCourtsFromKingdomScope(): void
+    {
+        $kid = $this->fixture->firstKingdomId();
+        $pid = $this->fixture->firstParkId($kid);
+        if ($pid <= 0) {
+            $this->markTestSkipped('No park available in this kingdom.');
+        }
+
+        $kingdomCourt = $this->fixture->createCourt([
+            'kingdom_id' => $kid, 'park_id' => 0, 'court_date' => '2026-01-01',
+        ]);
+        $parkCourt = $this->fixture->createCourt([
+            'kingdom_id' => $kid, 'park_id' => $pid, 'court_date' => '2026-01-01',
+        ]);
+
+        $kingdomIds = array_column($this->court->getUnrecordedCourts($kid), 'CourtId');
+        $this->assertContains($kingdomCourt, $kingdomIds);
+        $this->assertNotContains($parkCourt, $kingdomIds, 'A park court must not appear in kingdom scope.');
+
+        $parkIds = array_column($this->court->getUnrecordedCourts($kid, $pid), 'CourtId');
+        $this->assertContains($parkCourt, $parkIds);
+        $this->assertNotContains($kingdomCourt, $parkIds, 'A kingdom court must not appear in park scope.');
+    }
 }
