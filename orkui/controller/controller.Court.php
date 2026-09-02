@@ -109,6 +109,22 @@ class Controller_Court extends Controller
 
         $courtAwards  = $this->Court->get_court_awards($court_id);
         $pendingRecs  = $this->Court->get_pending_recommendations($court['KingdomId'], $court['ParkId'], $uid, $court_id);
+        // Event options for the Edit Details modal's re-link select (spec 0.1) — mirrors
+        // list()'s identical call; scoped to the COURT's kingdom, not the session's.
+        $upcomingEvents = $this->Court->get_upcoming_events($court['KingdomId']);
+        // Keep the court's OWN currently-linked event selectable even if it fell outside
+        // the "upcoming" window (e.g. a past event) — otherwise re-opening the editor on
+        // an already-linked court would silently preselect "— None —".
+        if (
+            $court['EventCalendarDetailId'] > 0
+            && !in_array($court['EventCalendarDetailId'], array_column($upcomingEvents, 'EventCalendarDetailId'), true)
+        ) {
+            $upcomingEvents[] = [
+                'EventCalendarDetailId' => $court['EventCalendarDetailId'],
+                'Name'                  => $court['EventName'] ?: ('Event #' . $court['EventCalendarDetailId']),
+                'EventStart'            => null,
+            ];
+        }
         // Grouped ad-hoc award/title picker options (mirrors the player Add Award
         // modal grouping). Scoped to the COURT's kingdom, not the session's.
         $this->load_model('Award');
@@ -169,6 +185,7 @@ class Controller_Court extends Controller
         $this->data['StateVersion'] = $courtState['version'] ?? '';
         $this->data['StagedCount']  = $stagedCount;
         $this->data['PrevSkipped']  = $prevSkipped;
+        $this->data['UpcomingEvents'] = $upcomingEvents;
 
         $this->template = 'Court_detail.tpl';
     }

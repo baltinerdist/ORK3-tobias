@@ -15,6 +15,7 @@ $courtMode    = $CourtMode    ?? 'run';
 $stateVersion = $StateVersion ?? '';
 $stagedCount  = (int)($StagedCount ?? 0);
 $prevSkipped  = $PrevSkipped  ?? [];
+$upcomingEvents = $UpcomingEvents ?? [];
 
 $statusLabel = ['draft' => 'Draft', 'published' => 'Published', 'complete' => 'Complete'];
 // Class-driven so html[data-theme="dark"] can reach the badge; an inline style could not
@@ -1958,14 +1959,19 @@ $_total_awards = count($courtAwards ?? []);
                 <label for="cp-cm-date">Date</label>
                 <input type="text" id="cp-cm-date" placeholder="Select a date…" autocomplete="off">
             </div>
+            <?php if (!empty($upcomingEvents)): ?>
             <div class="cp-field" id="cp-cm-event-wrap">
-                <label>Event</label>
-                <div class="cp-cm-event-current" id="cp-cm-event-current" style="font-size:13px;color:#4a5568"></div>
-                <label class="cp-ptl-label" id="cp-cm-unlink-wrap" style="font-size:13px;color:#4a5568;margin-top:6px;display:none">
-                    <input type="checkbox" class="cp-ptl-check" id="cp-cm-unlink-event">
-                    Unlink this court from its event
-                </label>
+                <label for="cp-cm-event">Link to Event (optional)</label>
+                <select id="cp-cm-event">
+                    <option value="0" data-start="">&mdash; None &mdash;</option>
+                    <?php foreach ($upcomingEvents as $ev): ?>
+                    <option value="<?= (int)$ev['EventCalendarDetailId'] ?>" data-start="<?= $ev['EventStart'] ? date('Y-m-d', strtotime($ev['EventStart'])) : '' ?>">
+                        <?= htmlspecialchars($ev['Name']) ?><?= $ev['EventStart'] ? ' (' . date('M j', strtotime($ev['EventStart'])) . ')' : '' ?>
+                    </option>
+                    <?php endforeach; ?>
+                </select>
             </div>
+            <?php endif; ?>
             <div class="cp-error" id="cp-cm-error"></div>
         </div>
         <div class="cp-modal-footer">
@@ -2355,16 +2361,11 @@ $_total_awards = count($courtAwards ?? []);
         }
         cpCmFp.setDate(courtMeta.date || null, false);
 
-        var curEl       = gid('cp-cm-event-current');
-        var unlinkWrap  = gid('cp-cm-unlink-wrap');
-        gid('cp-cm-unlink-event').checked = false;
-        if (courtMeta.eventId > 0) {
-            curEl.textContent = 'Linked to: ' + (courtMeta.eventName || ('Event #' + courtMeta.eventId));
-            unlinkWrap.style.display = 'flex';
-        } else {
-            curEl.textContent = 'Not linked to an event.';
-            unlinkWrap.style.display = 'none';
-        }
+        // Preselect the court's currently-linked event. controller.Court.php::detail()
+        // guarantees it is present as an <option> even if it fell outside the "upcoming"
+        // window, so this always finds a match when the select exists.
+        var evEl = gid('cp-cm-event');
+        if (evEl) evEl.value = String(courtMeta.eventId || 0);
 
         gid('cp-cm-error').style.display = 'none';
         gid('cp-courtmeta-modal').style.display = 'flex';
@@ -2395,8 +2396,12 @@ $_total_awards = count($courtAwards ?? []);
         fd.append('CourtId',   courtId);
         fd.append('Name',      name);
         fd.append('CourtDate', dateVal);
-        if (gid('cp-cm-unlink-event').checked) {
-            fd.append('EventCalendarDetailId', '0');
+        // Present whenever the kingdom has at least one upcoming event (or the court's
+        // own current event, which detail() always injects) — absent only when there is
+        // truly nothing to pick from, in which case the event link is left untouched.
+        var evEl = gid('cp-cm-event');
+        if (evEl) {
+            fd.append('EventCalendarDetailId', evEl.value);
         }
 
         var btn = gid('cp-cm-save');

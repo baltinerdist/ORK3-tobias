@@ -96,4 +96,25 @@ final class CourtThread0Test extends TestCase
         $this->assertFalse($this->court->updateCourt($courtId, ['CourtDate' => '2026-09-12']));
         $this->assertSame('2026-01-01', $this->fixture->fetchCourt($courtId)['court_date']);
     }
+
+    public function testUpdateCourtRelinksToADifferentEvent(): void
+    {
+        $kid = $this->fixture->firstKingdomId();
+        $courtId = $this->fixture->createCourt(['kingdom_id' => $kid]);
+
+        // ork_court.event_calendardetail_id carries no FOREIGN KEY constraint (verified
+        // via SHOW CREATE TABLE ork_court on both the dev and test databases), so this
+        // pins re-link behavior with two arbitrary non-zero ids rather than depending on
+        // seeded ork_event_calendardetail rows existing in every environment this suite
+        // runs against.
+        $this->assertTrue($this->court->updateCourt($courtId, ['EventCalendarDetailId' => 101]));
+        $this->assertSame(101, (int) $this->fixture->fetchCourt($courtId)['event_calendardetail_id']);
+
+        $this->assertTrue($this->court->updateCourt($courtId, ['EventCalendarDetailId' => 202]));
+        $this->assertSame(
+            202,
+            (int) $this->fixture->fetchCourt($courtId)['event_calendardetail_id'],
+            'A re-link must overwrite the previous event, not just accept an unlink to 0.'
+        );
+    }
 }
