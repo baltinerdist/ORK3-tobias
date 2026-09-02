@@ -570,8 +570,25 @@ html[data-theme="dark"] .rm-rank-pill.rm-rank-held { background: #38a169; border
     padding: 10px 12px; background: var(--rm-bg); position: relative;
   }
   .rm-grid tr.rm-row td { border: none; padding: 2px 0; }
-  .rm-col-sel { position: absolute; top: 10px; right: 10px; }
-  .rm-col-sel input { width: 22px; height: 22px; }
+  /* Tap area is 44px; the glyph stays 22px. House pattern, stated at
+     Court_detail.tpl:1058 — "coarse pointers get >=44px hit area (padding,
+     not larger glyphs)". A literally 44px checkbox looks broken.
+     Padding lives on the wrapping <label>, not the <td>: a <td> has no
+     native click-forwarding to a child checkbox, so padding placed directly
+     on .rm-col-sel would create a visually 44px box whose outer ring does
+     not actually toggle the input on tap. A <label> does forward clicks to
+     the control it wraps, so the label is the element that must be 44px. */
+  /* Specificity note: the generic ".rm-grid td { width: 100% }" rule above
+     would otherwise stretch this absolutely-positioned td across the whole
+     row (and drag the checkbox to the row's left edge with it), so this
+     selector is deliberately ".rm-grid .rm-col-sel" (two classes) rather
+     than the bare ".rm-col-sel" to win that cascade fight and shrink back
+     to fit its content in the top-right corner. */
+  .rm-grid .rm-col-sel { position: absolute; top: 2px; right: 2px; width: auto; }
+  .rm-col-sel label { padding: 11px; box-sizing: content-box; display: inline-flex; align-items: center; justify-content: center; }
+  /* margin:0 — Chrome's UA default on <input> is 3px 3px 3px 4px, which
+     would otherwise pad the label's tap area out past 44px. */
+  .rm-col-sel input { width: 22px; height: 22px; margin: 0; }
   .rm-col-recip { font-size: 16px; font-weight: 700; padding-right: 40px !important; }
   .rm-col-park::before  { content: none; }
   .rm-col-award { font-size: 14px; }

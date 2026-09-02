@@ -48,7 +48,7 @@
           data-rec='<?= $gpayload ?>'
           data-members='<?= $membersJson ?>'
           data-membersfull='<?= $membersFullJson ?>'>
-        <td class="rm-col-sel"><input type="checkbox" class="rm-rowsel"></td>
+        <td class="rm-col-sel"><label><input type="checkbox" class="rm-rowsel"></label></td>
         <td class="rm-col-recip">
           <a href="<?= UIR ?>Playernew/index/<?= $gMid ?>"><?= htmlspecialchars($group['Persona'] ?? '') ?></a>
         </td>
