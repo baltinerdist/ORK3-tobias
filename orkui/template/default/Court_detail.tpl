@@ -56,37 +56,12 @@ if (!function_exists('cp_track_label')) {
     }
 }
 ?>
+<link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>default/style/court-planner.css?v=<?= filemtime(DIR_TEMPLATE . 'default/style/court-planner.css') ?>">
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>revised-frontend/style/rank-pill.css?v=<?= filemtime(DIR_TEMPLATE . 'revised-frontend/style/rank-pill.css') ?>">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <style>
-.cp-page { padding: 0 16px 24px; font-family: inherit; }
-.cp-back { color: rgba(255,255,255,.8); font-size: 13px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; }
-.cp-back:hover { color: #fff; }
 
-/* Hero */
-.cp-hero { position: relative; background: #1a2744; min-height: 160px; display: flex; align-items: center; margin-top: 3px; margin-bottom: 20px; overflow: hidden; border-radius: 10px; }
-.cp-hero-bg { position: absolute; top: -10px; left: -10px; right: -10px; bottom: -10px; background-size: cover; background-position: center; opacity: 0.14; filter: blur(6px); }
-.cp-hero-content { position: relative; z-index: 1; width: 100%; padding: 24px 30px; display: flex; align-items: center; gap: 24px; box-sizing: border-box; }
-.cp-heraldry-wrap { position: relative; flex-shrink: 0; }
-.cp-heraldry-frame { width: 110px; height: 110px; border-radius: 8px; border: 3px solid rgba(255,255,255,0.8); background: rgba(0,0,0,0.15); display: flex; align-items: center; justify-content: center; overflow: hidden; }
-.cp-heraldry-frame img { width: 100%; height: 100%; object-fit: contain; margin: 0; padding: 0; border: none; border-radius: 0; }
-.cp-hero-heraldry-placeholder { width: 110px; height: 110px; border-radius: 8px; border: 3px solid rgba(255,255,255,0.4); background: rgba(0,0,0,0.15); flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,.4); font-size: 36px; }
-.cp-hero-info { flex: 1; min-width: 0; }
-.cp-hero-supertitle { font-size: 12px; color: rgba(255,255,255,.7); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 4px; }
-.cp-hero-supertitle a { color: rgba(255,255,255,.7); text-decoration: none; }
-.cp-hero-supertitle a:hover { color: #fff; }
-/* Promoted to <h1> (QW#8) — reset the global orkui heading pill box (bg/border/padding/radius). */
-.cp-hero-name { font-size: 26px; font-weight: 700; color: #fff; margin: 0 0 6px; line-height: 1.2; background: none; border: none; padding: 0; border-radius: 0; text-shadow: 0 1px 4px rgba(0,0,0,.4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cp-hero-meta { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: rgba(255,255,255,.75); }
-.cp-hero-meta span { display: flex; align-items: center; gap: 5px; }
-.cp-hero-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; flex-direction: column; align-items: flex-end; }
-.cp-hero-back-row { padding: 10px 24px 0; }
-.cp-badge { display: inline-block; padding: 4px 11px; border-radius: 12px; font-size: 12px; font-weight: 700; }
-/* Court status modifiers — same palette the inline style used, now themeable. */
-.cp-badge-draft     { background: #edf2f7; color: #718096; }
-.cp-badge-published { background: #ebf8ff; color: #2b6cb0; }
-.cp-badge-complete  { background: #f0fff4; color: #276749; }
 
 /* Published mode: Grant / Skip */
 .cp-grant-actions { display: flex; gap: 6px; justify-content: flex-end; }
@@ -101,18 +76,10 @@ if (!function_exists('cp_track_label')) {
 .cp-award-row.cp-granted .cp-reorder-btns,
 .cp-award-row.cp-skipped  .cp-reorder-btns { visibility: hidden; }
 
-/* Award status badge (small) */
-.cp-aw-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; }
 
 /* Section */
 .cp-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .cp-section-header h2 { font-size: 16px; font-weight: 700; color: #2d3748; margin: 0; background: none; border: none; padding: 0; text-shadow: none; border-radius: 0; }
-.cp-btn-primary { background: #2c5282; color: #fff; border: none; padding: 8px 14px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
-.cp-btn-primary:hover { background: #2a4a7f; }
-.cp-btn-sm { padding: 5px 10px; font-size: 12px; border-radius: 5px; border: none; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; }
-.cp-btn-outline { background: #fff; border: 1px solid #cbd5e0; color: #4a5568; padding: 7px 14px; border-radius: 5px; font-size: 13px; cursor: pointer; }
-.cp-btn-outline:hover { background: #f7fafc; }
-.cp-btn-danger-sm { background: none; border: none; color: #e53e3e; cursor: pointer; font-size: 14px; padding: 2px 4px; }
 
 /* Award rows */
 /* QW#1a / S3: horizontal scroll so the Grant/Skip columns are reachable on narrow
@@ -179,25 +146,12 @@ html[data-theme="dark"] .cp-award-row-main:has(+ .cp-award-row-expand.open) { ba
 /* Empty */
 .cp-award-empty { text-align: center; padding: 36px 24px; color: #a0aec0; font-size: 14px; }
 
-/* Modals */
-.cp-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 1000; align-items: center; justify-content: center; }
-.cp-modal { background: #fff; border-radius: 10px; width: 100%; max-width: 600px; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0,0,0,.2); }
-.cp-modal-sm { max-width: 420px; }
-.cp-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid #e2e8f0; flex-shrink: 0; }
-.cp-modal-header h3 { margin: 0; font-size: 16px; font-weight: 700; color: #2d3748; background: none; border: none; padding: 0; text-shadow: none; border-radius: 0; }
-.cp-modal-close { background: none; border: none; font-size: 20px; cursor: pointer; color: #718096; }
-.cp-modal-body { padding: 16px 20px; overflow-y: auto; flex: 1; }
-.cp-modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid #e2e8f0; flex-shrink: 0; }
-.cp-field { margin-bottom: 14px; }
-.cp-field label { display: block; font-size: 12px; font-weight: 600; color: #4a5568; margin-bottom: 4px; text-transform: uppercase; letter-spacing: .4px; }
-.cp-field input, .cp-field select, .cp-field textarea { width: 100%; padding: 8px 10px; border: 1px solid #cbd5e0; border-radius: 5px; font-size: 14px; box-sizing: border-box; }
 /* Rank pill picker (ad-hoc Add Award modal) — clickable .ladder-rank pills */
 .cp-rank-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
 .cp-rank-pill { width: auto; padding: 3px 11px; font-size: 12px; cursor: pointer; opacity: .5; transition: opacity .12s ease, box-shadow .12s ease; }
 .cp-rank-pill:hover { opacity: .85; }
 .cp-rank-pill-selected { opacity: 1; box-shadow: 0 0 0 2px #fff, 0 0 0 4px #2b6cb0; }
 .cp-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.cp-error { color: #c53030; font-size: 13px; margin-top: 8px; display: none; }
 
 /* Rec list */
 /* Rec modal redesign */
@@ -242,16 +196,6 @@ html[data-theme="dark"] .cp-flag-rec[data-tip]:hover::after { background: #000; 
 .cp-send-local-btn { position: relative; }
 .cp-send-local-btn[data-tip]:hover::after { content: attr(data-tip); position: absolute; top: 100%; left: 0; margin-top: 4px; width: max-content; max-width: 240px; white-space: normal; background: #2d3748; color: #fff; padding: 6px 8px; border-radius: 4px; font-size: 11px; line-height: 1.35; text-align: left; box-shadow: 0 2px 6px rgba(0,0,0,0.25); z-index: 50; pointer-events: none; }
 html[data-theme="dark"] .cp-send-local-btn[data-tip]:hover::after { background: #000; }
-/* Generic data-tip tooltips (converted from native title=) — reuses the pattern above */
-.cp-page [data-tip], #cp-note-popup [data-tip], .cp-overlay [data-tip] { position: relative; }
-.cp-page [data-tip]:hover::after, #cp-note-popup [data-tip]:hover::after, .cp-overlay [data-tip]:hover::after { content: attr(data-tip); position: absolute; top: 100%; left: 0; margin-top: 4px; width: max-content; max-width: 240px; white-space: normal; background: #2d3748; color: #fff; padding: 6px 8px; border-radius: 4px; font-size: 11px; line-height: 1.35; text-align: left; box-shadow: 0 2px 6px rgba(0,0,0,0.25); z-index: 1001; pointer-events: none; }
-html[data-theme="dark"] .cp-page [data-tip]:hover::after, html[data-theme="dark"] #cp-note-popup [data-tip]:hover::after, html[data-theme="dark"] .cp-overlay [data-tip]:hover::after { background: #000; }
-/* Right-anchor tooltips in the tracking / flags columns so they don't overflow the row edge */
-.cp-tracking-icon[data-tip]:hover::after, .cp-hdr-scroll[data-tip]:hover::after, .cp-hdr-regalia[data-tip]:hover::after, .cp-flag-local[data-tip]:hover::after,
-.cp-rm-qualified[data-tip]:hover::after, .cp-rm-snooze-chip[data-tip]:hover::after, .cp-rm-onother[data-tip]:hover::after, .cp-rm-seconds[data-tip]:hover::after, .cp-rm-age-badge[data-tip]:hover::after, .cp-btn-undo[data-tip]:hover::after { left: auto; right: 0; }
-/* Toast surface for network/AJAX failures */
-.cp-toast { position: fixed; top: 20px; right: 20px; z-index: 9999; background: #c53030; color: #fff; padding: 12px 16px; border-radius: 6px; font-size: 13px; line-height: 1.4; max-width: 320px; box-shadow: 0 4px 14px rgba(0,0,0,0.25); }
-html[data-theme="dark"] .cp-toast { background: #9b2c2c; }
 .cp-rm-row.dismissing { opacity: 0; transition: opacity .3s; }
 .cp-rm-add-count { font-size: 12px; color: #718096; align-self: center; margin-right: 4px; }
 .cp-rm-controls { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
@@ -287,46 +231,6 @@ html[data-theme="dark"] .cp-toast { background: #9b2c2c; }
 /* Snoozed rows render with a slight muting */
 .cp-rm-row.cp-rm-snoozed:not(.already) { opacity: .8; }
 
-/* Autocomplete */
-.cp-ac-wrap { position: relative; }
-.cp-ac-dropdown { position: fixed; top: 0; left: 0; width: 0; background: #fff; border: 1px solid #cbd5e0; border-radius: 5px; box-shadow: 0 4px 12px rgba(0,0,0,.1); z-index: 1100; max-height: 200px; overflow-y: auto; display: none; }
-.cp-ac-item { padding: 8px 12px; cursor: pointer; font-size: 13px; }
-.cp-ac-item:hover { background: #ebf8ff; }
-.cp-ac-group { padding: 5px 12px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #718096; background: #f7fafc; border-bottom: 1px solid #edf2f7; cursor: default; position: sticky; top: 0; }
-
-.cp-tracking-icon {
-    display: inline-block;
-    position: relative;
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    text-align: center;
-    line-height: 24px;
-    cursor: pointer;
-    font-size: 14px;
-    margin-left: 4px;
-}
-/* Always rendered, hidden until the stacked-card layout — the tracking state must not be
-   hover-only on touch. Text comes from cp_track_label()/cpTrackLabel(), never a 3rd copy. */
-.cp-track-label { display: none; }
-.cp-tracking-icon[data-status="0"] { background-color: #ccc; color: #fff; } /* Gray */
-.cp-tracking-icon[data-status="1"] { background-color: #e53e3e; color: #fff; } /* Red */
-.cp-tracking-icon[data-status="2"] { background-color: #38a169; color: #fff; } /* Green */
-/* QW#8: state must not be color-alone — a corner glyph distinguishes the three states
-   (− not tracked, … in progress, ✓ done). aria-label/data-tip are kept in sync in JS. */
-.cp-tracking-icon::after {
-    content: ''; position: absolute; right: -3px; bottom: -3px;
-    min-width: 12px; height: 12px; padding: 0 1px; border-radius: 6px; box-sizing: border-box;
-    font-size: 9px; font-weight: 700; line-height: 12px; text-align: center;
-    background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.10);
-}
-.cp-tracking-icon[data-status="0"]::after { content: '\2212'; color: #718096; } /* minus */
-.cp-tracking-icon[data-status="1"]::after { content: '\2026'; color: #c05621; } /* ellipsis */
-.cp-tracking-icon[data-status="2"]::after { content: '\2713'; color: #276749; } /* check */
-html[data-theme="dark"] .cp-tracking-icon::after { background: #161b22; box-shadow: 0 0 0 1px rgba(255,255,255,.14); }
-html[data-theme="dark"] .cp-tracking-icon[data-status="0"]::after { color: #a0aec0; }
-html[data-theme="dark"] .cp-tracking-icon[data-status="1"]::after { color: #fbd38d; }
-html[data-theme="dark"] .cp-tracking-icon[data-status="2"]::after { color: #9ae6b4; }
 
 /* Sidebar layout */
 .cp-body { display: flex; gap: 20px; align-items: flex-start; }
@@ -767,7 +671,6 @@ html[data-theme="dark"] .cp-script-cite-artisans { color: #a0aec0; }
 .cp-body.cp-sidebar-collapsed .cp-sidebar-collapse-btn .cp-side-arrow-expand   { display: inline-block; }
 
 /* ----- Error box + section-header reusable bits ----- */
-.cp-error-box { background: #fff5f5; border: 1px solid #feb2b2; color: #c53030; padding: 14px 18px; border-radius: 6px; }
 .cp-h2-icon   { color: #4a5568; margin-right: 6px; }
 .cp-count     { font-size: 13px; color: #718096; font-weight: 400; }
 .cp-btn-danger-inline { background: #fff5f5 !important; border: 1px solid #fc8181 !important; color: #c53030 !important; }
@@ -847,9 +750,6 @@ html[data-theme="dark"] .cp-about-legend { background: #1f2733; border-color: #2
 html[data-theme="dark"] .cp-pill-draft     { background: rgba(160,174,192,.15);  color: #cbd5e0; }
 html[data-theme="dark"] .cp-pill-published { background: rgba(99,179,237,.18);   color: #90cdf4; }
 html[data-theme="dark"] .cp-pill-complete  { background: rgba(72,187,120,.18);   color: #9ae6b4; }
-html[data-theme="dark"] .cp-badge-draft     { background: rgba(160,174,192,.15); color: #cbd5e0; }
-html[data-theme="dark"] .cp-badge-published { background: rgba(99,179,237,.18);  color: #90cdf4; }
-html[data-theme="dark"] .cp-badge-complete  { background: rgba(72,187,120,.18);  color: #9ae6b4; }
 html[data-theme="dark"] .cp-pill-grant     { background: rgba(72,187,120,.18);   color: #9ae6b4; border-color: rgba(72,187,120,.4); }
 html[data-theme="dark"] .cp-pill-skip      { background: rgba(160,174,192,.15);  color: #cbd5e0; border-color: rgba(160,174,192,.3); }
 
@@ -859,7 +759,6 @@ html[data-theme="dark"] .cp-type-ladder { background: rgba(159,122,234,.20); col
 html[data-theme="dark"] .cp-type-award  { background: rgba(72,187,120,.18);  color: #9ae6b4; border-color: rgba(72,187,120,.4); }
 
 /* Status badge backgrounds use inline styles — apply darker, more readable variants by status class */
-html[data-theme="dark"] .cp-aw-badge { background: #1f2733 !important; color: #cbd5e0 !important; box-shadow: inset 0 0 0 1px #2d3748; }
 html[data-theme="dark"] .cp-award-row[data-status-tone="given"]      .cp-aw-badge,
 html[data-theme="dark"] .cp-award-row.cp-granted .cp-aw-badge { background: rgba(72,187,120,.18) !important; color: #9ae6b4 !important; box-shadow: inset 0 0 0 1px rgba(72,187,120,.35); }
 html[data-theme="dark"] .cp-award-row.cp-skipped .cp-aw-badge { background: rgba(229,62,62,.16) !important; color: #fc8181 !important; box-shadow: inset 0 0 0 1px rgba(229,62,62,.35); }
@@ -880,42 +779,18 @@ html[data-theme="dark"] .cp-note-btn:hover { color: #cbd5e0; }
 html[data-theme="dark"] .cp-award-park { color: #718096; }
 
 /* Buttons */
-html[data-theme="dark"] .cp-btn-outline { background: #1f2733; border-color: #2d3748; color: #cbd5e0; }
-html[data-theme="dark"] .cp-btn-outline:hover { background: #2d3748; }
 html[data-theme="dark"] .cp-btn-skip   { background: #1f2733; border-color: #2d3748; color: #cbd5e0; }
 html[data-theme="dark"] .cp-btn-skip:hover { background: #2d3748; color: #e2e8f0; }
 html[data-theme="dark"] .cp-btn-grant  { background: #276749; color: #fff; }
 html[data-theme="dark"] .cp-btn-grant:hover { background: #22543d; }
-html[data-theme="dark"] .cp-btn-danger-sm { color: #fc8181; }
 
 /* Tracking icons — status 0 (gray) needs to recede on dark bg */
-html[data-theme="dark"] .cp-tracking-icon[data-status="0"] { background-color: #2d3748; color: #718096; }
-html[data-theme="dark"] .cp-tracking-icon[data-status="1"] { background-color: #c53030; color: #fff; }
-html[data-theme="dark"] .cp-tracking-icon[data-status="2"] { background-color: #276749; color: #fff; }
 
 /* Empty state */
 html[data-theme="dark"] .cp-award-empty { color: #4a5568; }
 
-/* Modal */
-html[data-theme="dark"] .cp-overlay { background: rgba(0,0,0,.65); }
-html[data-theme="dark"] .cp-modal { background: #161b22; box-shadow: 0 8px 32px rgba(0,0,0,.6); }
-html[data-theme="dark"] .cp-modal-header { border-bottom-color: #2d3748; }
-html[data-theme="dark"] .cp-modal-header h3 { color: #e2e8f0; }
-html[data-theme="dark"] .cp-modal-close { color: #718096; }
-html[data-theme="dark"] .cp-modal-close:hover { color: #cbd5e0; }
-html[data-theme="dark"] .cp-modal-footer { border-top-color: #2d3748; }
 
-/* Form fields inside modals */
-html[data-theme="dark"] .cp-field label { color: #a0aec0; }
-html[data-theme="dark"] .cp-field input,
-html[data-theme="dark"] .cp-field select,
-html[data-theme="dark"] .cp-field textarea { background: #1f2733; border-color: #2d3748; color: #e2e8f0; }
-html[data-theme="dark"] .cp-field input::placeholder,
-html[data-theme="dark"] .cp-field textarea::placeholder { color: #4a5568; }
 html[data-theme="dark"] .cp-rank-pill-selected { box-shadow: 0 0 0 2px #1f2733, 0 0 0 4px #63b3ed; }
-html[data-theme="dark"] .cp-field input:focus,
-html[data-theme="dark"] .cp-field select:focus,
-html[data-theme="dark"] .cp-field textarea:focus { border-color: #4299e1; box-shadow: 0 0 0 3px rgba(66,153,225,.2); outline: none; }
 
 /* Recommendation modal */
 html[data-theme="dark"] .cp-rm-search { background: #1f2733; border-color: #2d3748; color: #e2e8f0; }
@@ -966,15 +841,8 @@ html[data-theme="dark"] .cp-artisan-row { color: #cbd5e0; }
 html[data-theme="dark"] .cp-maker-ac    { background: #1f2733 !important; border-color: #2d3748 !important; color: #e2e8f0 !important; }
 html[data-theme="dark"] .cp-maker-ac::placeholder { color: #4a5568; }
 
-/* Autocomplete dropdown (inline styles on some instances — need !important) */
-html[data-theme="dark"] .cp-ac-dropdown { background: #1f2733 !important; border-color: #2d3748 !important; box-shadow: 0 4px 12px rgba(0,0,0,.4) !important; }
-html[data-theme="dark"] .cp-ac-item { color: #cbd5e0; }
-html[data-theme="dark"] .cp-ac-item:hover { background: #2d3748 !important; }
-html[data-theme="dark"] .cp-ac-group { color: #a0aec0; background: #171e28 !important; border-bottom-color: #2d3748 !important; }
 
 /* Error inline */
-html[data-theme="dark"] .cp-error { color: #fc8181; }
-html[data-theme="dark"] .cp-error-box { background: rgba(229,62,62,.12); border-color: rgba(229,62,62,.4); color: #fc8181; }
 html[data-theme="dark"] .cp-h2-icon { color: #a0aec0; }
 html[data-theme="dark"] .cp-count   { color: #718096; }
 html[data-theme="dark"] .cp-btn-danger-inline { background: rgba(229,62,62,.12) !important; border-color: rgba(229,62,62,.4) !important; color: #fc8181 !important; }
@@ -983,22 +851,7 @@ html[data-theme="dark"] .cp-btn-danger-inline { background: rgba(229,62,62,.12) 
    STAGE / FINALIZE — Court Planner v3 (spec §6)
    ============================================================ */
 
-/* Mode badge in hero (Run at Court / Locked as Plan) */
-.cp-mode-badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; letter-spacing: .02em; }
-.cp-mode-run  { background: rgba(255,255,255,.16); color: #fff; }
-.cp-mode-plan { background: rgba(214,158,46,.9); color: #1a2744; }
 
-/* Staged-not-finalized safeguard indicator (spec §5.3) */
-.cp-staged-indicator { display: none; align-items: center; gap: 12px; background: #fffbeb; border: 1px solid #f6e05e; color: #744210; border-radius: 8px; padding: 11px 16px; margin-bottom: 14px; font-size: 13px; }
-.cp-staged-indicator.show { display: flex; }
-.cp-staged-indicator i.cp-si-icon { font-size: 18px; color: #b7791f; flex-shrink: 0; }
-.cp-staged-indicator .cp-si-text { flex: 1; min-width: 0; }
-.cp-staged-indicator .cp-si-text strong { color: #744210; }
-.cp-staged-indicator .cp-si-btn { background: #b7791f; color: #fff; border: none; padding: 7px 14px; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
-.cp-staged-indicator .cp-si-btn:hover { background: #975a16; }
-html[data-theme="dark"] .cp-staged-indicator { background: rgba(214,158,46,.12); border-color: rgba(214,158,46,.4); color: #f6e05e; }
-html[data-theme="dark"] .cp-staged-indicator .cp-si-text strong { color: #f6e05e; }
-html[data-theme="dark"] .cp-staged-indicator i.cp-si-icon { color: #f6e05e; }
 
 /* Prev-court skipped banner (spec §6.5) */
 .cp-prev-banner { display: none; align-items: center; gap: 12px; background: #ebf8ff; border: 1px solid #90cdf4; color: #2c5282; border-radius: 8px; padding: 11px 16px; margin-bottom: 14px; font-size: 13px; }
@@ -1054,30 +907,8 @@ html[data-theme="dark"] .cp-giver-pill { background: #1f2733; border-color: #2d3
 html[data-theme="dark"] .cp-giver-pill:hover { background: #2d3748; }
 html[data-theme="dark"] .cp-giver-pill.active { background: #2b6cb0; border-color: #2b6cb0; color: #fff; }
 
-/* Complete-court three-option modal (spec §6.6) */
-.cp-complete-opts { display: flex; flex-direction: column; gap: 10px; }
-.cp-complete-opt { text-align: left; background: #fff; border: 1px solid #cbd5e0; border-radius: 8px; padding: 13px 15px; cursor: pointer; display: flex; align-items: flex-start; gap: 12px; transition: border-color .12s, background .12s; }
-.cp-complete-opt:hover { border-color: #2c5282; background: #f7fafc; }
-.cp-complete-opt i { font-size: 18px; margin-top: 1px; flex-shrink: 0; }
-.cp-complete-opt .cp-co-title { font-size: 14px; font-weight: 700; color: #2d3748; }
-.cp-complete-opt .cp-co-desc { font-size: 12px; color: #718096; margin-top: 2px; line-height: 1.4; }
-.cp-complete-opt.cp-co-primary i { color: #276749; }
-.cp-complete-opt.cp-co-danger i { color: #c05621; }
-.cp-complete-opt.cp-co-neutral i { color: #718096; }
-.cp-complete-fail { display: none; margin-top: 12px; background: #fff5f5; border: 1px solid #feb2b2; color: #c53030; border-radius: 6px; padding: 10px 12px; font-size: 12px; line-height: 1.5; }
-html[data-theme="dark"] .cp-complete-opt { background: #161b22; border-color: #2d3748; }
-html[data-theme="dark"] .cp-complete-opt:hover { border-color: #2b6cb0; background: #1f2733; }
-html[data-theme="dark"] .cp-complete-opt .cp-co-title { color: #e2e8f0; }
-html[data-theme="dark"] .cp-complete-opt .cp-co-desc { color: #a0aec0; }
-html[data-theme="dark"] .cp-complete-fail { background: rgba(229,62,62,.12); border-color: rgba(229,62,62,.4); color: #fc8181; }
 
-/* Publish choice (Run vs Plan) — reuses cp-complete-opt look */
-.cp-complete-opt.cp-co-run i { color: #2b6cb0; }
-.cp-complete-opt.cp-co-plan i { color: #b7791f; }
 
-/* Shared modal lead paragraph */
-.cp-modal-lead { font-size: 13px; color: #4a5568; margin: 0 0 14px; line-height: 1.5; }
-html[data-theme="dark"] .cp-modal-lead { color: #a0aec0; }
 
 /* ============================================================
    PHASE 3b — presentation: mobile, tap targets, a11y, un-skip
@@ -1089,9 +920,6 @@ html[data-theme="dark"] .cp-modal-lead { color: #a0aec0; }
 html[data-theme="dark"] .cp-btn-unskip { background: #1f2733; border-color: #2d3748; color: #cbd5e0; }
 html[data-theme="dark"] .cp-btn-unskip:hover { background: #2d3748; color: #e2e8f0; }
 
-/* cp-toast-info (S5 stale-reload notice) — calm navy, never the red error look */
-.cp-toast-info { background: #2c5282; }
-html[data-theme="dark"] .cp-toast-info { background: #2b6cb0; }
 
 /* Published-mode "+ Add award" toolbar (QW#6) — compact/inline */
 #cp-published-add-tools { align-items: center; }
@@ -1128,52 +956,8 @@ html[data-theme="dark"] .cp-cell-recipient .cp-award-park,
 html[data-theme="dark"] .cp-rm-park,
 html[data-theme="dark"] .cp-script-park { color: #97a3b4; }
 
-/* QW#8 shared focus ring for the custom court controls (scoped) */
-.cp-page :focus-visible,
-.cp-hero :focus-visible,
-.cp-overlay :focus-visible,
-#cp-note-popup :focus-visible { outline: 2px solid #4299e1; outline-offset: 2px; border-radius: 3px; }
 
-/* QW#8 reduced motion — scoped to the court page surfaces */
-@media (prefers-reduced-motion: reduce) {
-    .cp-page *, .cp-hero *, .cp-overlay *, #cp-note-popup *,
-    .cp-staged-indicator, .cp-prev-banner { transition: none !important; animation: none !important; }
-}
 
-/* QW#7 tap targets — coarse pointers get ≥44px hit area (padding, not larger glyphs) */
-@media (pointer: coarse) {
-    /* NOTE: the tracking-icon and reorder-arrow touch sizes are deliberately NOT here.
-       Above 600px .cp-row-grid is still the fixed spreadsheet grid (…30px 30px 96px 22px
-       with an 8px column-gap), so 44px controls overflow their tracks and the scroll and
-       regalia pills overlap — on any touch device at tablet width. Those rules live in the
-       @media (max-width: 600px) block instead, where the grid has already collapsed to
-       stacked cards. Same for .cp-script-check, sized in the ≤600px script-stacking block. */
-    .cp-btn-grant, .cp-btn-skip, .cp-btn-undo, .cp-btn-unskip { min-height: 44px; }
-    .cp-list-published .cp-grant-actions .cp-btn-grant,
-    .cp-list-published .cp-grant-actions .cp-btn-skip { padding: 10px 12px; }
-    .cp-modal-close { min-width: 44px; min-height: 44px; }
-    .cp-note-btn, .cp-btn-danger-sm, .cp-rm-trash, #cp-note-popup-close, .cp-pb-dismiss { min-width: 44px; min-height: 44px; }
-    .cp-ac-item { min-height: 44px; display: flex; align-items: center; }
-    /* The controls that actually carry the workflow, not just the icons. 16px on inputs
-       keeps iOS from zooming the viewport on focus. */
-    .cp-field input, .cp-field select, .cp-field textarea,
-    .cp-rm-search, .cp-maker-ac { min-height: 44px; font-size: 16px; }
-    .cp-notes-area { font-size: 16px; }
-    .cp-modal-footer { gap: 16px; }
-    .cp-modal-footer button { min-height: 44px; padding: 10px 16px; }
-    /* Terminal action of the ceremony — real width, real separation from Cancel. */
-    #cp-grant-confirm { min-width: 140px; justify-content: center; }
-    .cp-rm-row { min-height: 44px; }
-    .cp-rm-check { width: 28px; height: 28px; font-size: 14px; }
-    .cp-rm-sort-btn, .cp-rm-view-btn { min-height: 44px; padding: 6px 14px; }
-    .cp-giver-pill { min-height: 44px; padding: 6px 14px; }
-    .cp-expand-actions button { min-height: 44px; }
-    .cp-script-density button, .cp-script-actions button { min-height: 44px; }
-    /* Pass to Local: the whole label strip is the hit area — padding on the LABEL, not a
-       bigger checkbox glyph. */
-    .cp-ptl-label { min-height: 44px; gap: 12px; padding: 4px 2px; }
-    .cp-ptl-check { width: 20px; height: 20px; flex: 0 0 auto; }
-}
 
 /* QW#1 / S3 — mobile stacked-card award list (also the run-mode touch layout).
    House breakpoint (600px); the module's only other breakpoint is 768px above. */
@@ -1227,19 +1011,6 @@ html[data-theme="dark"] .cp-script-park { color: #97a3b4; }
     /* Compact the toolbar so it doesn't wrap awkwardly */
     .cp-list-toolbar { gap: 6px; }
 
-    /* --- Hero: stack so the <h1> court name isn't squeezed to 0px and the run-mode
-       controls stay inside the viewport. Keep every global-h1 pill-box reset. --- */
-    .cp-hero { min-height: 0; }
-    .cp-hero-content { flex-direction: column; align-items: flex-start; gap: 12px; padding: 16px; }
-    .cp-heraldry-frame,
-    .cp-hero-heraldry-placeholder { width: 64px; height: 64px; }
-    .cp-hero-heraldry-placeholder { font-size: 22px; }
-    .cp-hero-info { width: 100%; }
-    .cp-hero-supertitle { overflow-wrap: anywhere; line-height: 1.5; }
-    .cp-hero-name { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; min-width: 0; font-size: 20px;
-                    background: none; border: none; padding: 0; border-radius: 0; text-shadow: 0 1px 4px rgba(0,0,0,.4); }
-    .cp-hero-actions { flex-direction: row; flex-wrap: wrap; flex-shrink: 1; width: 100%; align-items: stretch; }
-    .cp-hero-actions > button { flex: 1 1 auto; min-height: 44px; margin-top: 0 !important; justify-content: center; }
 
     /* --- Expanded award row: the fixed 2-column grid put Pass to Local and
        Regalia Maker off-screen. One column, and children must be shrinkable. --- */
@@ -1263,17 +1034,6 @@ html[data-theme="dark"] .cp-script-park { color: #97a3b4; }
     /* Don't let the fixed bar cover the last award row / page footer */
     body:has(#cp-mobile-runbar) { padding-bottom: 48px; }
 
-    /* --- Overlays: below 600px max-width never engages, so every sheet was bezel-to-bezel
-       with its corners off-screen. Give it gutters, and size to the DYNAMIC viewport so a
-       mobile browser toolbar can't sit on top of the modal footer buttons. The 90vh
-       fallback stays immediately before the dvh line for engines without dvh. --- */
-    .cp-overlay { padding: 16px 16px 0; align-items: flex-end; }
-    .cp-modal { max-height: 90vh; max-height: 88dvh; border-radius: 12px 12px 0 0; }
-    .cp-modal-body { overscroll-behavior: contain; }
-    /* Full-width footer with the confirm on top (column-reverse: last child first), so the
-       terminal action is a full-width target well clear of Cancel. */
-    .cp-modal-footer { flex-direction: column-reverse; gap: 12px; }
-    .cp-modal-footer button { width: 100%; min-height: 44px; justify-content: center; text-align: center; }
 
     /* --- Recommendation rows: .cp-rm-head was nowrap + overflow:hidden with a fixed-width
        tail, so the award name, rank, date and the colour-coded age badge were destroyed off
