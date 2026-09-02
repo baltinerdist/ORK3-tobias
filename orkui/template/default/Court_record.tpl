@@ -377,11 +377,13 @@ html[data-theme="dark"] .cp-rec-pop-apply-btn:hover { background: #2d3748; }
                     <?php if (!empty($aw['IsLadder'])):
                         $initRank = (int)($aw['Rank'] ?? 0) > 0 ? (int)$aw['Rank'] : 1;
                     ?>
+                    <?php $rankLocked = !$canMark || $mark !== 'none'; ?>
                     <button type="button" class="ladder-rank cp-rec-rank-chip" id="cp-rec-rank-chip-<?= $caid ?>"
                             data-lvl="<?= min($initRank, 10) ?>" data-rank="<?= $initRank ?>"
                             data-award="<?= htmlspecialchars($aw['AwardName'] ?? '') ?>"
-                            onclick="cpRecOpenRankPop(<?= $caid ?>, this)" data-tip="Change the rank granted"
-                            <?= $canMark ? '' : 'disabled' ?>>Rank <?= $initRank ?></button>
+                            onclick="cpRecOpenRankPop(<?= $caid ?>, this)"
+                            data-tip="<?= $mark !== 'none' ? 'Clear this row&#39;s mark (&mdash;) to change the rank' : 'Change the rank granted' ?>"
+                            <?= $rankLocked ? 'disabled' : '' ?>>Rank <?= $initRank ?></button>
                     <?php else: ?>&mdash;<?php endif; ?>
                 </span>
                 <span class="cp-rec-c cp-rec-c-giver">
@@ -391,10 +393,12 @@ html[data-theme="dark"] .cp-rec-pop-apply-btn:hover { background: #2d3748; }
                     $rowGiverPersona = $rowGiverId > 0 ? $aw['GivenByPersona'] : ($giverOptions['default']['persona'] ?? '');
                     $rowGiverId = $rowGiverId > 0 ? $rowGiverId : (int)($giverOptions['default']['mundane_id'] ?? 0);
                     ?>
+                    <?php $giverLocked = !$canMark || $mark !== 'none'; ?>
                     <button type="button" class="cp-rec-giver-chip" id="cp-rec-giver-chip-<?= $caid ?>"
                             data-mundane-id="<?= $rowGiverId ?>" data-persona="<?= htmlspecialchars($rowGiverPersona) ?>"
-                            onclick="cpRecOpenGiverPop(<?= $caid ?>, this)" data-tip="Change who gave this award"
-                            <?= $canMark ? '' : 'disabled' ?>><?= htmlspecialchars($rowGiverPersona !== '' ? $rowGiverPersona : '—') ?></button>
+                            onclick="cpRecOpenGiverPop(<?= $caid ?>, this)"
+                            data-tip="<?= $mark !== 'none' ? 'Clear this row&#39;s mark (&mdash;) to change the giver' : 'Change who gave this award' ?>"
+                            <?= $giverLocked ? 'disabled' : '' ?>><?= htmlspecialchars($rowGiverPersona !== '' ? $rowGiverPersona : '—') ?></button>
                 </span>
                 <span class="cp-rec-c cp-rec-c-ptl">
                     <span class="cp-rec-c-label">PTL</span>
@@ -1126,6 +1130,41 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
                          : btn.classList.contains('cp-rec-seg-skipped') ? 'skipped' : 'none';
             btn.setAttribute('aria-pressed', btnState === state ? 'true' : 'false');
         });
+        // Fix round 1: the giver/rank chips are meaningless on a resolved row (Given
+        // or Skipped) — editing one there can never reach the database (stageAward()'s
+        // WHERE clause only accepts a row still 'planned') and the client then reports
+        // a false "this row changed" conflict instead of the real reason. Mirrors
+        // Court_detail.tpl's convention of hiding/disabling edit affordances on a
+        // resolved row (:1438-1440) rather than inventing a new one. The clear-to-"—"
+        // path already re-plans the row, so re-locking here on 'none' is what makes
+        // that the officer's way back into editing, live, without a reload.
+        var caid = row.getAttribute('data-caid');
+        var locked = courtStatus !== 'published' || state !== 'none';
+        var giverChip = gid('cp-rec-giver-chip-' + caid);
+        var rankChip = gid('cp-rec-rank-chip-' + caid);
+        if (giverChip) {
+            giverChip.disabled = locked;
+            giverChip.setAttribute('data-tip', state !== 'none'
+                ? 'Clear this row\u2019s mark (\u2014) to change the giver'
+                : 'Change who gave this award');
+        }
+        if (rankChip) {
+            rankChip.disabled = locked;
+            rankChip.setAttribute('data-tip', state !== 'none'
+                ? 'Clear this row\u2019s mark (\u2014) to change the rank'
+                : 'Change the rank granted');
+        }
+        // A chip that just got locked might have its popover open right now (e.g. the
+        // officer opened the rank picker, then clicked Given before picking anything) —
+        // close it rather than leave an editable popover pointed at a now-disabled chip.
+        if (locked) {
+            if (typeof cpRecGiverPopCaid !== 'undefined' && String(cpRecGiverPopCaid) === String(caid) && typeof cpRecGiverPopClose === 'function') {
+                cpRecGiverPopClose();
+            }
+            if (typeof cpRecRankPopCaid !== 'undefined' && String(cpRecRankPopCaid) === String(caid) && typeof cpRecRankPopClose === 'function') {
+                cpRecRankPopClose();
+            }
+        }
     }
 
     // cpRecPost handles the shared response contract for grant_award/skip_award/
