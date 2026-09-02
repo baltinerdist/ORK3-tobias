@@ -2429,7 +2429,21 @@ $_total_awards = count($courtAwards ?? []);
         if (evEl) {
             fd.append('EventCalendarDetailId', evEl.value);
         }
-        fd.append('RecorderMundaneId', gid('cp-cm-recorder-id').value || 0);
+        // cpAcSearch clears the hidden id on EVERY keystroke, so an officer who
+        // merely touches the prefilled Recorder box and then saves the date fix
+        // they came for would post 0 and NULL the recorder — and the
+        // publish-time re-default only runs on publish, so it never came back.
+        // Omitting the key entirely leaves the stored recorder alone (the
+        // endpoint is partial), so post it only when we actually mean something:
+        // a picked id, or a deliberately emptied box.
+        var cmRecId  = gid('cp-cm-recorder-id').value;
+        var cmRecTxt = gid('cp-cm-recorder-text').value.trim();
+        if (cmRecId) {
+            fd.append('RecorderMundaneId', cmRecId);
+        } else if (!cmRecTxt) {
+            fd.append('RecorderMundaneId', 0); // box cleared on purpose
+        }
+        // else: typed-but-unpicked — leave the recorder untouched.
 
         var btn = gid('cp-cm-save');
         btn.disabled = true;
@@ -2794,7 +2808,11 @@ $_total_awards = count($courtAwards ?? []);
         fd.append('CourtAwardId',  caid);
         fd.append('Notes',         notes);
         fd.append('PublicComment', publicComment);
-        fd.append('PassToLocal',   ptl);
+        // The cp-ptl checkbox only renders on a PARK court. On a kingdom court
+        // the element is absent, and posting the fallback 0 blind-cleared a flag
+        // the kingdom UI never shows. Now that an omitted key means "leave
+        // alone", simply not sending it is the whole fix.
+        if (ptlEl) { fd.append('PassToLocal', ptl); }
         // QW#4: update_award writes FIELDS only — never status (the server ignores it
         // now). Lifecycle moves solely through grant/skip/stage/set-status, so a stale
         // field-save can no longer drag a row's status backward.
@@ -2808,8 +2826,11 @@ $_total_awards = count($courtAwards ?? []);
                 // Guarded write won: the server row is now old+1. update_award does not
                 // return the new token, so bump locally (the heartbeat also reconciles it).
                 cpBumpRowVersion(caid);
-                // Update Pass-to-Local badge in row header
-                var flagsEl = document.querySelector('#cp-aw-' + caid + ' .cp-award-flags');
+                // Update Pass-to-Local badge in row header — but ONLY when this
+                // save actually carried the flag. On a kingdom court the checkbox
+                // does not render, so ptl is a meaningless 0; syncing on it would
+                // strip a badge whose flag the server (correctly) left untouched.
+                var flagsEl = ptlEl ? document.querySelector('#cp-aw-' + caid + ' .cp-award-flags') : null;
                 if (flagsEl) {
                     var existing = flagsEl.querySelector('.cp-flag-local');
                     if (ptl && !existing) {

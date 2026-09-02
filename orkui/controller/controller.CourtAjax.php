@@ -143,7 +143,7 @@ class Controller_CourtAjax extends Controller
             $this->jsonOut(['status' => 1, 'error' => 'Invalid court.']);
         }
 
-        $this->requireCourtAuth($court_id);
+        [, $court] = $this->requireCourtAuth($court_id);
 
         // Partial: only the keys the client actually sent are written.
         $fields = [];
@@ -155,6 +155,22 @@ class Controller_CourtAjax extends Controller
 
         if (!$fields) {
             $this->jsonOut(['status' => 1, 'error' => 'Nothing to update.']);
+        }
+
+        // Spec 0.7: recording a court is an officer duty, so the recorder must
+        // be someone who could manage this court themselves. Without this, any
+        // player id at all could be parked in recorder_mundane_id — and that
+        // person then receives the "not recorded yet" notifications for a court
+        // they have no access to open. A zero clears the recorder, which the
+        // publish-time default re-fills, so only a non-zero id is checked.
+        $recorder = (int)($fields['RecorderMundaneId'] ?? 0);
+        if ($recorder > 0 && !$this->Court->can_manage($recorder, $court['KingdomId'], $court['ParkId'])) {
+            $this->jsonOut([
+                'status' => 1,
+                'error'  => 'That player cannot be the recorder for this court. The recorder has to be an officer '
+                    . 'who can manage courts here — usually the Prime Minister, or a Monarch or Regent. '
+                    . 'Pick one of those officers, or ask your Prime Minister to record this court.',
+            ]);
         }
 
         if (!$this->Court->update_court($court_id, $fields)) {
