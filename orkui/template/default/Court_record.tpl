@@ -15,6 +15,7 @@ $courtAwards    = $CourtAwards    ?? [];
 $giverOptions   = $GiverOptions   ?? ['default' => null, 'pills' => []];
 $upcomingEvents = $UpcomingEvents ?? [];
 $courtMode      = $CourtMode      ?? 'run';
+$awardOptions   = $AwardOptions   ?? [];
 $error          = $Error          ?? '';
 
 $courtId = (int)($court['CourtId'] ?? 0);
@@ -141,6 +142,39 @@ html[data-theme="dark"] .cp-rec-empty { color: #718096; border-color: #2d3748; }
 .cp-rec-cite-status { display: block; min-height: 14px; margin-top: 3px; font-size: 11px; color: #718096; }
 .cp-rec-cite-status.cp-rec-cite-status-error { color: #c53030; font-weight: 600; }
 .cp-rec-hidden { display: none !important; }
+
+/* ---- Walk-on row (Task 10) — the permanent blank row at the foot of the list.
+   A faster path to Court_detail.tpl's existing Add Award / Add Title modals,
+   not a new capability: recipient search + one combined award/title search
+   (fetch_award_option_groups already covers titles — no second entry point) +
+   the SAME shared rank popover every other row uses (Task 8's #cp-rec-rank-pop,
+   opened here with caid 'walkon') + a Pass-to-Local checkbox (the printed
+   sheet's PTL box needs somewhere to land) + an always-expanded citation
+   (Task 9's IsWalkOn hook — a walk-on has no planned citation anywhere else).
+   Internal Notes are deliberately omitted; they stay editable on the planner.
+   Unconditional >=44px hit areas throughout (not gated behind pointer:coarse
+   or the 600px block), matching this file's own established convention for
+   the giver/rank chips above. ---- */
+.cp-rec-row-walkon { background: #f7fafc; border-top: 2px dashed #cbd5e0; }
+html[data-theme="dark"] .cp-rec-row-walkon { background: #171e28; border-top-color: #2d3748; }
+.cp-rec-walkon-input { width: 100%; padding: 8px 10px; border: 1px solid #cbd5e0; border-radius: 5px; font-size: 13px; box-sizing: border-box; min-height: 44px; }
+/* #theme_container wraps every page and already carries orkui.css's broad dark-mode
+   input rule (html[data-theme="dark"] #theme_container input[type="text"]) — an
+   ID selector PLUS a type+attribute selector, which outranks a same-scoped class
+   selector on specificity, not just source order (0,2,2 beats 0,2,1 — adding
+   #theme_container alone still lost). Found the same way Task 9 found the
+   identical citation-textarea bug: a computed-style check, not by eye (the two
+   shades of dark gray were close enough to pass a screenshot). Matching the
+   input[type="text"] shape here, with the class appended on top, guarantees this
+   wins regardless of source order. */
+html[data-theme="dark"] #theme_container input[type="text"].cp-rec-walkon-input { background: #1f2733; border-color: #2d3748; color: #e2e8f0; }
+html[data-theme="dark"] #theme_container input[type="text"].cp-rec-walkon-input::placeholder { color: #718096; }
+.cp-rec-walkon-add-btn { display: inline-flex; align-items: center; gap: 6px; background: #2c5282; border: 1px solid #2c5282; color: #fff; padding: 0 14px; min-height: 44px; box-sizing: border-box; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.cp-rec-walkon-add-btn:hover:not(:disabled) { background: #2b6cb0; }
+.cp-rec-walkon-add-btn:disabled { opacity: .6; cursor: not-allowed; }
+html[data-theme="dark"] .cp-rec-walkon-add-btn { background: #2b6cb0; border-color: #2b6cb0; }
+.cp-rec-ptl-label { display: flex; align-items: center; gap: 6px; cursor: pointer; min-height: 44px; padding: 4px 2px; box-sizing: border-box; }
+.cp-rec-ptl-check { width: 18px; height: 18px; flex: 0 0 auto; }
 
 .cp-rec-seg { display: inline-flex; border: 1px solid #cbd5e0; border-radius: 6px; overflow: hidden; }
 .cp-rec-seg-btn { background: #fff; border: none; border-right: 1px solid #e2e8f0; padding: 0 12px; min-height: 44px; font-size: 12px; font-weight: 600; color: #4a5568; cursor: pointer; }
@@ -386,7 +420,16 @@ html[data-theme="dark"] .cp-rec-cite-status.cp-rec-cite-status-error { color: #f
             <span class="cp-rec-toolbar-hint">Stages every still-planned award as Given under the default giver. Mark the exceptions — Skipped, or anything unusual — first, then use this for the rest. Safe to click again after adding walk-ons; it only ever touches rows still planned.</span>
         </div>
 
-        <?php if (empty($courtAwards)): ?>
+        <?php
+        $canMark = $courtSt === 'published';
+        // The walk-on row (Task 10) only ever appears while a court is
+        // published — CourtAjax/add_award has no status gate of its own, but a
+        // row added after finalize could never be marked (every mark button
+        // is already gated on the same $canMark) and would sit invisible,
+        // unrecordable, forever. Empty-and-not-publishable is the one case
+        // that still gets the plain empty message instead of the list shell.
+        ?>
+        <?php if (empty($courtAwards) && !$canMark): ?>
         <div class="cp-rec-empty">No awards on this court's plan.</div>
         <?php else: ?>
         <div class="cp-rec-list" id="cp-rec-list">
@@ -399,8 +442,10 @@ html[data-theme="dark"] .cp-rec-cite-status.cp-rec-cite-status-error { color: #f
                 <span class="cp-rec-c cp-rec-c-giver">Given by</span>
                 <span class="cp-rec-c cp-rec-c-ptl">PTL</span>
             </div>
+            <?php if (empty($courtAwards)): ?>
+            <div class="cp-rec-empty" style="border:none;padding:18px 16px">No awards on this court's plan yet — add the first one below.</div>
+            <?php endif; ?>
             <?php
-            $canMark = $courtSt === 'published';
             foreach ($courtAwards as $__i => $aw):
                 $caid = (int)($aw['CourtAwardId'] ?? 0);
                 $mark = in_array($aw['Status'] ?? '', ['given', 'staged'], true) ? 'given'
@@ -488,6 +533,75 @@ html[data-theme="dark"] .cp-rec-cite-status.cp-rec-cite-status-error { color: #f
             </div>
             <?php endforeach;
 unset($__i, $aw, $caid, $mark, $rowClass); ?>
+            <?php if ($canMark): ?>
+            <!-- Walk-on row (Task 10) — the permanent blank row at the foot of the
+                 list. A faster path to Court_detail.tpl's Add Award / Add Title
+                 modals, not a new capability: those two buttons stay on the planner
+                 page, and this replaces them here. Recipient + one combined
+                 award/title search (fetch_award_option_groups already covers
+                 titles), a rank chip that opens the SAME shared #cp-rec-rank-pop
+                 popover every other row uses (caid 'walkon'), a Pass-to-Local
+                 checkbox, and an always-expanded citation (Task 9's IsWalkOn
+                 hook — a walk-on has no planned citation anywhere else in the
+                 system). Internal Notes are deliberately omitted; they stay
+                 editable on the planner page. Enter, from any field, commits via
+                 CourtAjax/add_award and re-focuses the recipient search on a fresh
+                 blank row (cpRecWalkOnKeydown/cpRecWalkOnCommit), so three
+                 walk-ons in a row never need the mouse. -->
+            <div class="cp-rec-row cp-rec-row-walkon" id="cp-rec-walkon-row" data-caid="0">
+                <span class="cp-rec-c cp-rec-c-num" aria-hidden="true"><i class="fas fa-plus"></i></span>
+                <span class="cp-rec-c cp-rec-c-mark">
+                    <button type="button" class="cp-rec-walkon-add-btn" id="cp-rec-walkon-add-btn" onclick="cpRecWalkOnCommit()" data-tip="Add this walk-on to the court record">
+                        <i class="fas fa-plus"></i> Add
+                    </button>
+                </span>
+                <span class="cp-rec-c cp-rec-c-recip">
+                    <span class="cp-rec-c-label">Recipient</span>
+                    <div class="cp-ac-wrap">
+                        <input type="text" id="cp-rec-walkon-persona" class="cp-rec-walkon-input" placeholder="Search player name…" autocomplete="off"
+                               oninput="cpAcSearch(this,'cp-rec-walkon-ac','cp-rec-walkon-mundane-id')"
+                               onkeydown="cpRecWalkOnKeydown(event,'recipient')">
+                        <div class="cp-ac-dropdown" id="cp-rec-walkon-ac"></div>
+                    </div>
+                    <input type="hidden" id="cp-rec-walkon-mundane-id" value="">
+                </span>
+                <span class="cp-rec-c cp-rec-c-award">
+                    <span class="cp-rec-c-label">Award</span>
+                    <div class="cp-ac-wrap">
+                        <input type="text" id="cp-rec-walkon-award" class="cp-rec-walkon-input" placeholder="Search awards &amp; titles…" autocomplete="off" data-ladder="0"
+                               oninput="cpRecWalkOnAwardSearch()" onfocus="cpRecWalkOnAwardSearch()"
+                               onkeydown="cpRecWalkOnKeydown(event,'award')">
+                        <div class="cp-ac-dropdown" id="cp-rec-walkon-award-ac"></div>
+                    </div>
+                    <input type="hidden" id="cp-rec-walkon-award-id" value="">
+                </span>
+                <span class="cp-rec-c cp-rec-c-rank">
+                    <span class="cp-rec-c-label">Rank</span>
+                    <button type="button" class="ladder-rank cp-rec-rank-chip cp-rec-hidden" id="cp-rec-rank-chip-walkon"
+                            data-lvl="1" data-rank="1" data-award=""
+                            onclick="cpRecOpenRankPop('walkon', this)"
+                            onkeydown="cpRecWalkOnKeydown(event,'rank')"
+                            data-tip="Change the rank granted">Rank 1</button>
+                </span>
+                <span class="cp-rec-c cp-rec-c-giver">
+                    <span class="cp-rec-c-label">Given by</span>
+                    &mdash;
+                </span>
+                <span class="cp-rec-c cp-rec-c-ptl">
+                    <label class="cp-rec-ptl-label" for="cp-rec-walkon-ptl" data-tip="Pass to Local">
+                        <input type="checkbox" id="cp-rec-walkon-ptl" class="cp-rec-ptl-check" onkeydown="cpRecWalkOnKeydown(event,'ptl')">
+                        <span class="cp-rec-c-label" style="margin:0">PTL</span>
+                    </label>
+                </span>
+                <div class="cp-rec-cite" data-caid="walkon">
+                    <textarea class="cp-rec-cite-textarea" id="cp-rec-walkon-cite"
+                              placeholder="Citation for the public record — becomes this award's permanent public note when the court is finalized"
+                              maxlength="1000"
+                              onkeydown="cpRecWalkOnKeydown(event,'cite')"></textarea>
+                    <span class="cp-rec-cite-status" id="cp-rec-walkon-status"></span>
+                </div>
+            </div>
+            <?php endif; ?>
         </div>
         <?php endif; ?>
     </div>
@@ -575,6 +689,32 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
     var cpGiverOptions = window.cpGiverOptions = <?= json_encode($giverOptions) ?>;
     var cpMode          = window.cpMode        = <?= json_encode($courtMode) ?>;
     var cpStagedCount    = window.cpStagedCount = <?= $initialStagedCount ?>;
+
+    // Ad-hoc award/title picker options for the walk-on row (Task 10) — flattened
+    // from Model_Award::fetch_award_option_groups(), the SAME source
+    // Court_detail.tpl's Add Award/Add Title modals use, so the two can never
+    // drift apart. There is no live AwardAjax search endpoint in this codebase;
+    // Court_detail.tpl's own ad-hoc picker already filters this same shape of
+    // list client-side, so this mirrors that rather than inventing a new pattern.
+    // Deliberately ONE flat list covering both awards and titles together (the
+    // brief is explicit: no second title-only entry point) — group order is
+    // whatever order the groups first appear in this list, so it never needs to
+    // be duplicated as a separate hardcoded constant on the client.
+    var cpRecAwardOptions = <?= json_encode((function ($groups) {
+        $flat = [];
+        foreach (($groups ?? []) as $g) {
+            foreach (($g['options'] ?? []) as $o) {
+                $flat[] = [
+                    'id'     => (int)$o['KingdomAwardId'],
+                    'name'   => $o['Name'],
+                    'ladder' => (bool)$o['IsLadder'],
+                    'title'  => (bool)$o['IsTitle'],
+                    'group'  => $g['label'],
+                ];
+            }
+        }
+        return $flat;
+    })($awardOptions)) ?>;
 
     // ---- Utilities (mirrors Court_detail.tpl's own copies) ----
     function esc(s) {
@@ -1266,6 +1406,16 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
         var rank = cpRecRanks[caid] || 1;
         cpRecBuildRankPopPills(chip.dataset.award, rank);
         cpRecPositionPop(gid('cp-rec-rank-pop'), chip);
+        // Task 10 fix: the popover is a floating panel that sits AFTER the whole
+        // row list in DOM order, so a plain Tab from the chip that opened it never
+        // reaches its pills — found while building the walk-on row's keyboard-only
+        // flow (Tab landed on the PTL checkbox instead). Focusing the already-
+        // selected pill here makes every rank chip's popover keyboard-reachable,
+        // not just the walk-on row's — a real row's rank chip had the exact same
+        // gap. Clicking a pill with the mouse is unaffected either way.
+        var wrap = gid('cp-rec-rank-pop-pills');
+        var selPill = wrap && wrap.querySelector('.cp-rank-pill-selected');
+        if (selPill) setTimeout(function() { selPill.focus(); }, 0);
     };
     window.cpRecRankPopPick = function(rank) {
         if (!cpRecRankPopCaid) return;
@@ -1275,6 +1425,15 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
             wrap.querySelectorAll('.cp-rank-pill').forEach(function(p) {
                 p.classList.toggle('cp-rank-pill-selected', String(p.dataset.rank) === String(rank));
             });
+        }
+        // Walk-on keyboard flow (Task 10): picking a rank is this row's next step
+        // toward PTL/citation, so auto-advance the same way selecting a recipient
+        // or award does. Real per-row rank EDITS (caid is a numeric CourtAwardId,
+        // never the 'walkon' sentinel) keep the popover open, unchanged.
+        if (cpRecRankPopCaid === 'walkon') {
+            cpRecRankPopClose();
+            var ptl = gid('cp-rec-walkon-ptl');
+            if (ptl) ptl.focus();
         }
     };
     window.cpRecRankPopClose = function() {
@@ -1424,6 +1583,334 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
             url = 'CourtAjax/unstage_award';
         }
         cpRecPost(url, fd, row, state);
+    };
+
+    // ---- Walk-on row (spec §5, Task 10) — the permanent blank row at the foot
+    // of the list. A faster path to Court_detail.tpl's Add Award/Add Title
+    // modals (add_award already permits adds while published), not a new
+    // capability. Deliberately no giver field here (a walk-on's giver is set
+    // the same way every other row's is — the giver chip, once it's a real
+    // row) and no Internal Notes (stay editable on the planner page). ----
+    // Running display-number counter, seeded from however many rows the server
+    // already rendered — the printed sheet numbers walk-ons AFTER the plan, and
+    // this keeps that true across any number of adds in one sitting.
+    var cpRecWalkOnNum = courtAwards.length;
+
+    function cpRecCiteTruncatePreview(s, n) {
+        return s.length > n ? s.slice(0, n) + '…' : s;
+    }
+
+    // ---- Award/title search (client-side filter over cpRecAwardOptions — the
+    // same list Court_detail.tpl's ad-hoc picker filters, and there is no live
+    // AwardAjax search endpoint in this codebase). One combined field for both
+    // awards and titles, per the brief: group headers render in whatever order
+    // groups first appear in cpRecAwardOptions, so there is nothing to keep in
+    // sync with a separate hardcoded group-order constant. ----
+    window.cpRecWalkOnAwardSearch = function() {
+        var input = gid('cp-rec-walkon-award');
+        var drop  = gid('cp-rec-walkon-award-ac');
+        var q = (input.value || '').trim().toLowerCase();
+        // Drop a stale selection as soon as the text stops matching it — same
+        // rule Court_detail.tpl's cpAwardSearch uses, for the same reason: the
+        // visible text and the posted award id must never disagree.
+        if ((input.value || '').trim() !== (input.dataset.selectedName || '')) {
+            gid('cp-rec-walkon-award-id').value = '';
+            input.dataset.selectedName = '';
+            input.dataset.ladder = '0';
+            cpRecWalkOnAwardChange();
+        }
+        drop.innerHTML = '';
+        var order = [];
+        var byGroup = {};
+        cpRecAwardOptions.forEach(function(o) {
+            if (q && String(o.name).toLowerCase().indexOf(q) === -1) return;
+            if (!byGroup[o.group]) { byGroup[o.group] = []; order.push(o.group); }
+            byGroup[o.group].push(o);
+        });
+        var any = false;
+        order.forEach(function(label) {
+            any = true;
+            var hdr = document.createElement('div');
+            hdr.className = 'cp-ac-group';
+            hdr.textContent = label;
+            drop.appendChild(hdr);
+            byGroup[label].forEach(function(o) {
+                var div = document.createElement('div');
+                div.className = 'cp-ac-item';
+                div.textContent = o.name;
+                div.addEventListener('mousedown', function(e) { e.preventDefault(); });
+                div.addEventListener('click', function(e) { e.stopPropagation(); cpRecWalkOnSelectAward(o); });
+                drop.appendChild(div);
+            });
+        });
+        if (!any) {
+            drop.innerHTML = '<div class="cp-ac-item" style="color:#a0aec0;cursor:default">No awards or titles found</div>';
+        }
+        cpPositionAc(input, drop);
+        drop.style.display = 'block';
+    };
+
+    window.cpRecWalkOnSelectAward = function(o) {
+        var input = gid('cp-rec-walkon-award');
+        input.value = o.name;
+        input.dataset.selectedName = o.name;
+        input.dataset.ladder = o.ladder ? '1' : '0';
+        gid('cp-rec-walkon-award-id').value = o.id;
+        var drop = gid('cp-rec-walkon-award-ac');
+        drop.style.display = 'none';
+        drop.innerHTML = '';
+        if (cpAcOpenDrop === drop) cpAcUnbind();
+        cpRecWalkOnAwardChange();
+    };
+
+    // Toggle the rank chip based on the currently selected award — reuses the
+    // SAME shared #cp-rec-rank-pop popover every real row's rank chip opens
+    // (cpRecOpenRankPop / cpRecRankPopPick / cpRecSetRankChip above), keyed
+    // under the 'walkon' sentinel caid instead of a real CourtAwardId.
+    function cpRecWalkOnAwardChange() {
+        var input = gid('cp-rec-walkon-award');
+        var chip  = gid('cp-rec-rank-chip-walkon');
+        if (!input || !chip) return;
+        if (gid('cp-rec-walkon-award-id').value && input.dataset.ladder === '1') {
+            chip.classList.remove('cp-rec-hidden');
+            chip.dataset.award = input.value;
+            cpRecSetRankChip('walkon', 1);
+        } else {
+            chip.classList.add('cp-rec-hidden');
+            delete cpRecRanks.walkon;
+        }
+    }
+
+    // Enter-from-any-field keyboard flow: resolves whatever the currently open
+    // autocomplete dropdown's top match is (if any), then advances focus to the
+    // row's next field — recipient -> award -> rank (if ladder) -> PTL -> citation
+    // -> commit. Never touches the mouse. Shift+Enter in the citation field still
+    // inserts a newline, same as any other multi-line field.
+    window.cpRecWalkOnKeydown = function(e, field) {
+        if (e.key !== 'Enter') return;
+        if (field === 'cite' && e.shiftKey) return;
+        e.preventDefault();
+        if (field === 'recipient') {
+            var drop = gid('cp-rec-walkon-ac');
+            var first = drop && drop.style.display !== 'none' ? drop.querySelector('.cp-ac-item') : null;
+            if (first) first.click();
+            gid('cp-rec-walkon-award').focus();
+            return;
+        }
+        if (field === 'award') {
+            var adrop = gid('cp-rec-walkon-award-ac');
+            var afirst = adrop && adrop.style.display !== 'none' ? adrop.querySelector('.cp-ac-item') : null;
+            if (afirst) afirst.click();
+            var chip = gid('cp-rec-rank-chip-walkon');
+            if (chip && !chip.classList.contains('cp-rec-hidden')) chip.focus();
+            else { var ptl1 = gid('cp-rec-walkon-ptl'); if (ptl1) ptl1.focus(); }
+            return;
+        }
+        if (field === 'rank') {
+            // Browser default Enter-triggers-click on a focused <button> is exactly
+            // what's needed here (opens the rank popover) — preventDefault() above
+            // suppresses it, so fire it explicitly instead of duplicating the logic.
+            e.target.click();
+            return;
+        }
+        if (field === 'ptl') {
+            // Space toggles a checkbox; Enter never should (most browsers already
+            // agree), so this is just the advance-to-citation step.
+            var cite = gid('cp-rec-walkon-cite');
+            if (cite) cite.focus();
+            return;
+        }
+        if (field === 'cite') {
+            cpRecWalkOnCommit();
+            return;
+        }
+    };
+
+    // Builds one row's markup exactly as the PHP loop above does (same classes,
+    // same ids), so every existing per-row control — cpRecMark, the giver/rank
+    // popovers, citation expand/collapse — works on a walk-on-added row without
+    // any special-casing. mark is always 'none' / row-version 0 / unlocked: a
+    // row can only be added here while $canMark was true server-side.
+    function cpRecWalkOnRowHtml(aw, num) {
+        var caid = aw.CourtAwardId;
+        var html = '<div class="cp-rec-row" data-caid="' + caid + '" data-rowversion="0" data-mark="none">';
+        html += '<span class="cp-rec-c cp-rec-c-num">' + num + '</span>';
+        html += '<span class="cp-rec-c cp-rec-c-mark cp-rec-seg" role="group" aria-label="Mark ' +
+            esc(aw.Persona || 'this award') + ' — ' + esc(aw.AwardName || '') + '">' +
+            '<button type="button" class="cp-rec-seg-btn cp-rec-seg-given" aria-pressed="false" onclick="cpRecMark(' + caid + ',\'given\')">Given</button>' +
+            '<button type="button" class="cp-rec-seg-btn cp-rec-seg-skipped" aria-pressed="false" onclick="cpRecMark(' + caid + ',\'skipped\')">Skipped</button>' +
+            '<button type="button" class="cp-rec-seg-btn cp-rec-seg-none" aria-pressed="true" onclick="cpRecMark(' + caid + ',\'none\')" data-tip="Clear this mark">&mdash;</button>' +
+            '</span>';
+        html += '<span class="cp-rec-c cp-rec-c-recip"><span class="cp-rec-c-label">Recipient</span>' + esc(aw.Persona || '') +
+            (aw.ParkAbbrev ? ' <span class="cp-rec-park">' + esc(aw.ParkAbbrev) + '</span>' : '') + '</span>';
+        html += '<span class="cp-rec-c cp-rec-c-award"><span class="cp-rec-c-label">Award</span>' + esc(aw.AwardName || '') + '</span>';
+
+        html += '<span class="cp-rec-c cp-rec-c-rank"><span class="cp-rec-c-label">Rank</span>';
+        if (aw.IsLadder) {
+            var initRank = aw.Rank > 0 ? aw.Rank : 1;
+            html += '<button type="button" class="ladder-rank cp-rec-rank-chip" id="cp-rec-rank-chip-' + caid + '" ' +
+                'data-lvl="' + Math.min(initRank, 10) + '" data-rank="' + initRank + '" data-award="' + esc(aw.AwardName || '') + '" ' +
+                'onclick="cpRecOpenRankPop(' + caid + ', this)" data-tip="Change the rank granted">Rank ' + initRank + '</button>';
+        } else {
+            html += '&mdash;';
+        }
+        html += '</span>';
+
+        var giverId = (cpGiverOptions && cpGiverOptions.default) ? cpGiverOptions.default.mundane_id : 0;
+        var giverPersona = (cpGiverOptions && cpGiverOptions.default) ? cpGiverOptions.default.persona : '';
+        html += '<span class="cp-rec-c cp-rec-c-giver"><span class="cp-rec-c-label">Given by</span>' +
+            '<button type="button" class="cp-rec-giver-chip" id="cp-rec-giver-chip-' + caid + '" ' +
+            'data-mundane-id="' + giverId + '" data-persona="' + esc(giverPersona) + '" ' +
+            'onclick="cpRecOpenGiverPop(' + caid + ', this)" data-tip="Change who gave this award">' +
+            esc(giverPersona !== '' ? giverPersona : '—') + '</button></span>';
+
+        html += '<span class="cp-rec-c cp-rec-c-ptl"><span class="cp-rec-c-label">PTL</span>' +
+            (aw.PassToLocal ? '<i class="fas fa-arrow-down" data-tip="Pass to Local" aria-label="Pass to Local"></i>' : '&mdash;') + '</span>';
+
+        // Citation — always rendered EXPANDED (Task 9's IsWalkOn hook), never the
+        // truncated preview: a walk-on has no recommendation and no planned
+        // citation, so it must not be missable behind a click.
+        var citation = aw.PublicComment || '';
+        html += '<div class="cp-rec-cite" data-caid="' + caid + '">' +
+            '<button type="button" class="cp-rec-cite-preview cp-rec-hidden" id="cp-rec-cite-preview-' + caid + '" ' +
+            'onclick="cpRecCiteExpand(' + caid + ')" data-tip="' + (citation === '' ? 'Add a citation for the public record' : 'Edit this citation') + '">' +
+            '<i class="fas fa-quote-left cp-rec-cite-icon" aria-hidden="true"></i>' +
+            '<span class="cp-rec-c-label">Citation</span>' +
+            '<span class="cp-rec-cite-preview-text' + (citation === '' ? ' cp-rec-cite-empty' : '') + '">' +
+            esc(citation === '' ? 'No citation — click to add one' : cpRecCiteTruncatePreview(citation, 90)) + '</span>' +
+            '<i class="fas fa-pen cp-rec-cite-edit-icon" aria-hidden="true"></i></button>' +
+            '<textarea class="cp-rec-cite-textarea" id="cp-rec-cite-textarea-' + caid + '" data-saved="' + esc(citation) + '" ' +
+            'placeholder="Citation for the public record — becomes this award\'s permanent public note when the court is finalized" maxlength="1000" ' +
+            'onblur="cpRecCiteBlur(' + caid + ')">' + esc(citation) + '</textarea>' +
+            '<span class="cp-rec-cite-status" id="cp-rec-cite-status-' + caid + '"></span></div>';
+
+        html += '</div>';
+        return html;
+    }
+
+    // Inserts the just-added award as a real row (same shape courtAwards' other
+    // entries carry, so cpRecMark/cpRecCitationFor's courtAwards.find() sees it
+    // too), directly before the walk-on row so it lands at the end of the list —
+    // published courts can't be reordered, which is exactly why the printed
+    // sheet numbers walk-ons after the plan.
+    function cpRecWalkOnInsertRow(aw) {
+        if (!aw || !aw.CourtAwardId) return;
+        var full = {
+            CourtAwardId: aw.CourtAwardId,
+            MundaneId: aw.MundaneId,
+            Persona: aw.Persona,
+            ParkAbbrev: aw.ParkAbbrev || '',
+            KingdomAwardId: aw.KingdomAwardId,
+            AwardName: aw.AwardName,
+            IsLadder: !!aw.IsLadder,
+            IsTitle: !!aw.IsTitle,
+            Rank: aw.Rank || 0,
+            RecommendationsId: aw.RecommendationsId || null,
+            SortOrder: aw.SortOrder,
+            RowVersion: 0,
+            GivenByMundaneId: 0,
+            GivenByPersona: '',
+            PassToLocal: !!aw.PassToLocal,
+            Notes: aw.Notes || '',
+            PublicComment: aw.PublicComment || '',
+            Status: aw.Status || 'planned',
+            ScrollStatus: aw.ScrollStatus || 0,
+            RegaliaStatus: aw.RegaliaStatus || 0,
+            ScrollMakerId: null,
+            ScrollMakerPersona: '',
+            RegaliaMakerId: null,
+            RegaliaMakerPersona: '',
+            RecReason: aw.RecReason || '',
+            RecByPersona: null,
+            Artisans: aw.Artisans || []
+        };
+        courtAwards.push(full);
+        cpRecWalkOnNum++;
+
+        var walkonRow = gid('cp-rec-walkon-row');
+        if (walkonRow && walkonRow.parentNode) {
+            var wrap = document.createElement('div');
+            wrap.innerHTML = cpRecWalkOnRowHtml(full, cpRecWalkOnNum);
+            walkonRow.parentNode.insertBefore(wrap.firstElementChild, walkonRow);
+        }
+
+        // Seed the giver/rank maps exactly like the initial page-load loops do
+        // (above), so cpRecGiverFor/cpRecRankFor and the popovers behave
+        // identically for a walk-on-added row as for a planned one.
+        cpRecGivers[full.CourtAwardId] = {
+            id: (cpGiverOptions && cpGiverOptions.default) ? cpGiverOptions.default.mundane_id : 0,
+            persona: (cpGiverOptions && cpGiverOptions.default) ? cpGiverOptions.default.persona : ''
+        };
+        if (full.IsLadder) cpRecRanks[full.CourtAwardId] = full.Rank > 0 ? full.Rank : 1;
+    }
+
+    function cpRecWalkOnReset() {
+        var persona = gid('cp-rec-walkon-persona');
+        var award = gid('cp-rec-walkon-award');
+        var chip = gid('cp-rec-rank-chip-walkon');
+        var statusEl = gid('cp-rec-walkon-status');
+        if (persona) persona.value = '';
+        gid('cp-rec-walkon-mundane-id').value = '';
+        if (award) { award.value = ''; award.dataset.selectedName = ''; award.dataset.ladder = '0'; }
+        gid('cp-rec-walkon-award-id').value = '';
+        if (chip) chip.classList.add('cp-rec-hidden');
+        delete cpRecRanks.walkon;
+        gid('cp-rec-walkon-ptl').checked = false;
+        gid('cp-rec-walkon-cite').value = '';
+        if (statusEl) { statusEl.textContent = ''; statusEl.classList.remove('cp-rec-cite-status-error'); }
+        cpHideAcDropdowns();
+    }
+
+    // Commits the walk-on row via CourtAjax/add_award — the exact same endpoint
+    // and fields Court_detail.tpl's Add Award/Add Title modals post (minus
+    // GivenById, which no add-time control here carries; minus Notes, which the
+    // brief deliberately omits from this row). Recipient and award are the only
+    // required fields; PTL, rank and citation are all optional.
+    window.cpRecWalkOnCommit = function() {
+        var mundaneId = gid('cp-rec-walkon-mundane-id').value;
+        var awardId   = gid('cp-rec-walkon-award-id').value;
+        var statusEl  = gid('cp-rec-walkon-status');
+        if (!mundaneId) {
+            if (statusEl) { statusEl.textContent = 'Pick a recipient first.'; statusEl.classList.add('cp-rec-cite-status-error'); }
+            var p = gid('cp-rec-walkon-persona'); if (p) p.focus();
+            return;
+        }
+        if (!awardId) {
+            if (statusEl) { statusEl.textContent = 'Pick an award or title first.'; statusEl.classList.add('cp-rec-cite-status-error'); }
+            var a = gid('cp-rec-walkon-award'); if (a) a.focus();
+            return;
+        }
+        var rankChip = gid('cp-rec-rank-chip-walkon');
+        var rank = (rankChip && !rankChip.classList.contains('cp-rec-hidden')) ? (cpRecRanks.walkon || 1) : 0;
+        var ptl  = gid('cp-rec-walkon-ptl').checked ? 1 : 0;
+        var cite = gid('cp-rec-walkon-cite').value;
+
+        var btn = gid('cp-rec-walkon-add-btn');
+        if (btn) btn.disabled = true;
+        if (statusEl) { statusEl.textContent = 'Adding…'; statusEl.classList.remove('cp-rec-cite-status-error'); }
+
+        var fd = new FormData();
+        fd.append('CourtId', courtId);
+        fd.append('MundaneId', mundaneId);
+        fd.append('KingdomAwardId', awardId);
+        fd.append('Rank', rank);
+        fd.append('PassToLocal', ptl);
+        fd.append('Notes', ''); // Internal Notes deliberately omitted from this row
+        fd.append('PublicComment', cite);
+        post('CourtAjax/add_award', fd).then(function(d) {
+            if (btn) btn.disabled = false;
+            if (!d || d.status !== 0) {
+                if (statusEl) {
+                    statusEl.textContent = (d && d.error) ? d.error : 'Could not add this award.';
+                    statusEl.classList.add('cp-rec-cite-status-error');
+                }
+                return;
+            }
+            cpRecWalkOnInsertRow(d.award);
+            cpRecWalkOnReset();
+            var recip = gid('cp-rec-walkon-persona');
+            if (recip) recip.focus();
+        });
     };
 
     // ---- "Mark all remaining Given" (spec §5, the old Record All Grants,

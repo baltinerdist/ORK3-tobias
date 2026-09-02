@@ -241,11 +241,19 @@ class Controller_Court extends Controller
         // (getCourtDetail does not expose it) — needed for the hero's mode badge.
         $courtState = $this->Court->get_court_state($court_id);
 
+        // Grouped ad-hoc award/title picker options for the walk-on row (Task 10) —
+        // identical call to detail()'s, scoped to the COURT's kingdom. This is the
+        // SAME source Court_detail.tpl's Add Award/Add Title modals use, so the
+        // walk-on row's single combined field can never drift from them.
+        $this->load_model('Award');
+        $awardOptions = $this->Award->fetch_award_option_groups($court['KingdomId'], 'Awards');
+
         $this->data['Court']          = $court;
         $this->data['CourtAwards']    = $this->Court->get_court_awards($court_id);
         $this->data['GiverOptions']   = $this->Court->get_court_giver_options($court_id);
         $this->data['UpcomingEvents'] = $upcomingEvents;
         $this->data['CourtMode']      = $courtState['mode'] ?? 'run';
+        $this->data['AwardOptions']   = $awardOptions;
         $this->data['Uid']            = $uid;
         $this->template               = 'Court_record.tpl';
     }
