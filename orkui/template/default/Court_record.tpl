@@ -1309,13 +1309,20 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
     // way). Uses textContent, never innerHTML, so a citation containing & < > can
     // never mangle the markup or get double-escaped on the next edit.
     //
-    // Three states (bugfix): an own (typed) value wins outright; a blank textarea
-    // falls back to the row's RecReason (still "inherited" — the commit-time
-    // precedence would fall back too), and only truly shows "No citation" when
-    // both are blank. This runs after every blur, including one that saved a
-    // just-cleared own citation back to '' — which correctly redisplays as
-    // inherited if a rec reason still exists, matching what commitStagedAward
-    // will actually publish.
+    // Three states (bugfix): an own (SAVED, non-empty) value wins outright; a
+    // blank saved value falls back to the row's RecReason (still "inherited" —
+    // the commit-time precedence would fall back too), and only truly shows "No
+    // citation" when both are blank. Deliberately keys off data-saved (the true
+    // persisted PublicComment), NOT the live ta.value: cpRecCiteExpand pre-fills
+    // ta.value with the borrowed rec text for an inherited row, so if this ran
+    // off ta.value instead, collapsing right after an unedited expand+blur (a
+    // real no-write path — see cpRecCiteBlur) would misread that untouched
+    // borrowed text as an authored citation. Runs after every blur, including
+    // one that saved a just-cleared own citation back to '' — which correctly
+    // redisplays as inherited if a rec reason still exists, matching what
+    // commitStagedAward will actually publish. Resyncs ta.value/data-prefill to
+    // the resolved display text too, so a later reopen (or cpRecCitationFor)
+    // never reads stale borrowed text left over from a prior expand.
     function cpRecCiteCollapse(caid) {
         var preview = gid('cp-rec-cite-preview-' + caid);
         var ta = gid('cp-rec-cite-textarea-' + caid);
@@ -1323,11 +1330,13 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
         ta.classList.add('cp-rec-hidden');
         if (!preview) return;
         preview.classList.remove('cp-rec-hidden');
-        var val = ta.value.trim();
+        var saved = (ta.dataset.saved || '').trim();
         var recReason = cpRecCiteRecReason(caid);
-        var isOwn = val !== '';
+        var isOwn = saved !== '';
         var isInherited = !isOwn && recReason !== '';
-        var display = isOwn ? val : recReason; // '' when genuinely empty (state 3)
+        var display = isOwn ? saved : recReason; // '' when genuinely empty (state 3)
+        ta.value = display;
+        ta.dataset.prefill = display;
         var textEl = preview.querySelector('.cp-rec-cite-preview-text');
         var tagEl = gid('cp-rec-cite-tag-' + caid);
         if (textEl) {
