@@ -155,6 +155,9 @@ class Court
             'RecorderMundaneId'     => (int)$rs->recorder_mundane_id,
             'RecorderPersona'       => $rs->recorder_persona ?? '',
             'LastPrintedAt'         => $rs->last_printed_at,
+            'LastPrintedAwardCount' => isset($rs->last_printed_award_count) && $rs->last_printed_award_count !== null
+                ? (int)$rs->last_printed_award_count
+                : null,
         ];
     }
 
@@ -202,7 +205,12 @@ class Court
 
     /**
      * Stamp when the court packet was last printed (spec §4). Backs the paper's
-     * "printed <date>" line and the Record Court drift warning.
+     * "printed <date>" line and the Record Court drift warning. Also records the
+     * award count at that moment (courtChangedSincePrint() below compares against
+     * it) — court_award.modified is ON UPDATE CURRENT_TIMESTAMP, so a timestamp
+     * comparison would false-positive on every mark (Given/Skipped/giver change);
+     * a row-count comparison only fires when a walk-on is added or a row is
+     * removed, which is the only thing that actually renumbers the sheet.
      */
     public function markCourtPrinted($court_id)
     {
@@ -213,10 +221,55 @@ class Court
 
         $this->db->Clear();
         $rs = $this->db->DataSet(
-            'UPDATE ' . DB_PREFIX . 'court SET last_printed_at = NOW() WHERE court_id = ' . $court_id
+            'UPDATE ' . DB_PREFIX . 'court c
+                SET c.last_printed_at = NOW(),
+                    c.last_printed_award_count = (
+                        SELECT COUNT(*) FROM ' . DB_PREFIX . 'court_award ca
+                         WHERE ca.court_id = c.court_id
+                    )
+              WHERE c.court_id = ' . $court_id
         );
 
         return $rs && $rs->Size() >= 1;
+    }
+
+    /**
+     * True when the court's current award count differs from the count recorded
+     * at last print (spec §5) — i.e. a walk-on was added, or a row removed, since
+     * the paper was printed, so the numbering on screen no longer matches the
+     * numbering the recorder is holding.
+     *
+     * Deliberately NOT a timestamp comparison against court_award.modified: that
+     * column is ON UPDATE CURRENT_TIMESTAMP, so it bumps on every mark (Given /
+     * Skipped / giver change) even though marking never changes the row count or
+     * renumbers anything. A count comparison is the only signal that tracks what
+     * actually invalidates the paper.
+     *
+     * Never printed => false: there is no paper to diverge from.
+     * Printed before this column existed (count is NULL) => false: nothing to
+     * compare against, so don't guess.
+     */
+    public function courtChangedSincePrint($court_id)
+    {
+        $court_id = (int)$court_id;
+        if (!valid_id($court_id)) {
+            return false;
+        }
+
+        $this->db->Clear();
+        $rs = $this->db->DataSet(
+            'SELECT c.last_printed_at, c.last_printed_award_count,
+                    (SELECT COUNT(*) FROM ' . DB_PREFIX . 'court_award ca
+                      WHERE ca.court_id = c.court_id) AS current_count
+               FROM ' . DB_PREFIX . 'court c
+              WHERE c.court_id = ' . $court_id
+        );
+
+        if (!$rs || !$rs->Next() || empty($rs->last_printed_at) || $rs->last_printed_award_count === null) {
+            return false;
+        }
+
+        return (int)$rs->current_count !== (int)$rs->last_printed_award_count;
     }
 
     /**

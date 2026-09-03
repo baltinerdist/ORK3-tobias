@@ -95,6 +95,7 @@
     "2026-08-18-session-device-metadata-columns.sql": { "class": "S", "render": "full", "notes": "Idempotent repair: adds ork_session user_agent/ip on DBs that ran the pre-metadata version of the 2026-07-13 migration" },
     "2026-09-01-court-recorder.sql": { "class": "S", "render": "full", "notes": "Names the officer responsible for recording a court's grants" },
     "2026-09-02-court-last-printed.sql": { "class": "S", "render": "full", "notes": "Timestamp of the last court-packet print, for the paper stamp and drift warning" },
+    "2026-09-03-court-last-printed-count.sql": { "class": "S", "render": "full", "notes": "Award count at last print time, so marking rows never trips the drift warning" },
     "dev-set-test-logins.php": { "class": "ES", "render": "skip", "notes": "Local-dev credential helper; not a schema migration" }
   }
 }

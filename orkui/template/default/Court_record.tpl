@@ -21,6 +21,14 @@ $error          = $Error          ?? '';
 $courtId = (int)($court['CourtId'] ?? 0);
 $courtSt = $court['Status'] ?? 'draft';
 
+// Drift warning (spec §5): true when the award COUNT differs from the count
+// recorded the last time the packet was printed — the only thing that
+// actually renumbers the paper. See Court::courtChangedSincePrint() for why
+// this is a count, not a court_award.modified timestamp comparison (that
+// column is ON UPDATE CURRENT_TIMESTAMP, so it would fire on every mark).
+$courtChangedSincePrint = $CourtChangedSincePrint ?? false;
+$lastPrintedHuman = !empty($court['LastPrintedAt']) ? date('F j, Y', strtotime($court['LastPrintedAt'])) : '';
+
 $statusLabel      = ['draft' => 'Draft', 'published' => 'Published', 'complete' => 'Complete'];
 $statusBadgeClass = ['draft' => 'cp-badge-draft', 'published' => 'cp-badge-published', 'complete' => 'cp-badge-complete'];
 
@@ -90,6 +98,48 @@ html[data-theme="dark"] .cp-rec-strip-field input,
 html[data-theme="dark"] .cp-rec-strip-field select { background: #1f2733; border-color: #2d3748; color: #e2e8f0; }
 html[data-theme="dark"] .cp-rec-strip-status { color: #97a3b4; }
 html[data-theme="dark"] .cp-rec-strip-status.cp-rec-strip-saved { color: #68d391; }
+
+/* ---- Drift warning banner (spec §5) — sits between .rp-context and
+   .rp-body, in the rp-* shell's own idiom (compare Reports_eventattendance.tpl's
+   .rp-stats-filter-notice: a warning-toned note above the table area). Uses the
+   global --ork-alert-warning-* tokens from orkui.css directly rather than
+   hardcoding light/dark pairs — those tokens already flip correctly under
+   html[data-theme="dark"], so there is nothing left for this file to override. */
+.cp-rec-drift-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--ork-alert-warning-bg);
+    border: 1px solid var(--ork-alert-warning-border);
+    color: var(--ork-alert-warning-text);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+    font-size: 13px;
+    line-height: 1.45;
+}
+.cp-rec-drift-banner.cp-rec-drift-dismissed { display: none; }
+.cp-rec-drift-icon { font-size: 16px; flex-shrink: 0; }
+.cp-rec-drift-text { flex: 1; min-width: 0; }
+.cp-rec-drift-dismiss {
+    background: none;
+    border: none;
+    color: inherit;
+    opacity: .65;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 2px 4px;
+    flex-shrink: 0;
+    box-sizing: border-box;
+}
+.cp-rec-drift-dismiss:hover { opacity: 1; }
+/* House convention: compact by default, >=44px hit area only under a coarse
+   pointer (padding-driven, not a bigger glyph) — matches every other icon
+   button on this page (.cp-rec-cite-preview, .cp-rec-giver-chip, etc). */
+@media (pointer: coarse) {
+    .cp-rec-drift-dismiss { min-width: 44px; min-height: 44px; }
+}
 html[data-theme="dark"] .cp-rec-strip-status.cp-rec-strip-error { color: #fc8181; }
 
 /* ---- Row list (spec §5.1) — per-row marks, same column order as the printed
@@ -438,6 +488,18 @@ html[data-theme="dark"] .cp-rec-cite-status.cp-rec-cite-status-error { color: #f
         <i class="fas fa-info-circle rp-context-icon"></i>
         <span>Record what actually happened at court, checked off against the printed sheet — mark each award Given or Skipped, correct the giver or rank if the ceremony diverged from plan, and add any walk-ons.</span>
     </div>
+
+    <?php if ($courtChangedSincePrint): ?>
+    <!-- Drift warning (spec §5) — the plan changed (a walk-on added, or a row
+         removed) since the packet was last printed, so the numbering below no
+         longer matches the paper in the recorder's hand. Dismissible per
+         session, same idiom as Court_detail.tpl's cp-prev-banner. -->
+    <div class="cp-rec-drift-banner" id="cp-rec-drift-banner">
+        <i class="fas fa-triangle-exclamation cp-rec-drift-icon"></i>
+        <span class="cp-rec-drift-text">The plan changed since this was printed<?= $lastPrintedHuman !== '' ? ' on ' . htmlspecialchars($lastPrintedHuman) : '' ?> — the paper you are holding may not match the numbering below.</span>
+        <button type="button" class="cp-rec-drift-dismiss" onclick="cpRecDismissDriftBanner()" data-tip="Dismiss" aria-label="Dismiss">&times;</button>
+    </div>
+    <?php endif; ?>
 
     <div class="rp-body">
         <div class="rp-sidebar">
@@ -2171,6 +2233,19 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
             }
         });
     };
+
+    // ---- Drift banner session-dismiss (mirrors Court_detail.tpl's cp-prev-banner) ----
+    window.cpRecDismissDriftBanner = function() {
+        var b = gid('cp-rec-drift-banner');
+        if (b) b.classList.add('cp-rec-drift-dismissed');
+        try { sessionStorage.setItem('cp.recDriftDismissed.' + courtId, '1'); } catch (e) {}
+    };
+    try {
+        if (sessionStorage.getItem('cp.recDriftDismissed.' + courtId) === '1') {
+            var _db = gid('cp-rec-drift-banner');
+            if (_db) _db.classList.add('cp-rec-drift-dismissed');
+        }
+    } catch (e) {}
 
     // Close dropdowns on outside click; close the complete modal on backdrop
     // click / Escape (same idiom as Court_detail.tpl).

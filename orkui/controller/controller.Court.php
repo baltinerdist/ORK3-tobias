@@ -248,13 +248,14 @@ class Controller_Court extends Controller
         $this->load_model('Award');
         $awardOptions = $this->Award->fetch_award_option_groups($court['KingdomId'], 'Awards');
 
-        $this->data['Court']          = $court;
-        $this->data['CourtAwards']    = $this->Court->get_court_awards($court_id);
-        $this->data['GiverOptions']   = $this->Court->get_court_giver_options($court_id);
-        $this->data['UpcomingEvents'] = $upcomingEvents;
-        $this->data['CourtMode']      = $courtState['mode'] ?? 'run';
-        $this->data['AwardOptions']   = $awardOptions;
-        $this->data['Uid']            = $uid;
-        $this->template               = 'Court_record.tpl';
+        $this->data['Court']                  = $court;
+        $this->data['CourtAwards']            = $this->Court->get_court_awards($court_id);
+        $this->data['GiverOptions']           = $this->Court->get_court_giver_options($court_id);
+        $this->data['UpcomingEvents']         = $upcomingEvents;
+        $this->data['CourtMode']              = $courtState['mode'] ?? 'run';
+        $this->data['AwardOptions']           = $awardOptions;
+        $this->data['Uid']                    = $uid;
+        $this->data['CourtChangedSincePrint'] = $this->Court->court_changed_since_print($court_id);
+        $this->template                       = 'Court_record.tpl';
     }
 }

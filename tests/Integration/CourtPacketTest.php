@@ -53,4 +53,35 @@ final class CourtPacketTest extends TestCase
             'A player with no officer role and no edit authority must not manage this court.'
         );
     }
+
+    /**
+     * courtChangedSincePrint() must track the award COUNT, never a timestamp
+     * against ork_court_award.modified — that column is ON UPDATE
+     * CURRENT_TIMESTAMP, so every mark (Given/Skipped/giver change) bumps it.
+     * A timestamp comparison would fire on the very first mark of every
+     * session; this is the regression guard for that design flaw.
+     */
+    public function testCourtChangedSincePrintTracksCountNotMarks(): void
+    {
+        $kid = $this->fixture->firstKingdomId();
+        $player = $this->fixture->createPlayer('drift', $kid);
+        $courtId = $this->fixture->createCourt(['kingdom_id' => $kid, 'status' => 'published']);
+
+        $this->assertFalse($this->court->courtChangedSincePrint($courtId), 'Never printed is not drift.');
+
+        $awardId = $this->fixture->createAward($courtId, $player['mundane_id']);
+        $this->court->markCourtPrinted($courtId);
+        $this->assertFalse($this->court->courtChangedSincePrint($courtId), 'Nothing changed since the print.');
+
+        // Marking a row (Given) is a real write and bumps court_award.modified,
+        // but it must NOT trip the drift warning — the row count is unchanged.
+        $this->court->setAwardStatus($awardId, 'given');
+        $this->assertFalse(
+            $this->court->courtChangedSincePrint($courtId),
+            'Marking a row Given must never trigger the drift warning — the sheet still has the same number of rows.'
+        );
+
+        $this->fixture->createAward($courtId, $player['mundane_id']);
+        $this->assertTrue($this->court->courtChangedSincePrint($courtId), 'A walk-on added after printing is drift.');
+    }
 }
