@@ -206,6 +206,14 @@ html[data-theme="dark"] .cp-rec-empty { color: #718096; border-color: #2d3748; }
 .cp-rec-cite-edit-icon { display: none; }
 .cp-rec-cite-preview-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cp-rec-cite-preview-text.cp-rec-cite-empty { color: #a0aec0; font-style: italic; }
+/* Inherited (state 2, bugfix) — the recommendation's reason, shown because it IS
+   what publishes if nobody edits it (spec 6.1 precedence). Deliberately NOT the
+   same treatment as the empty placeholder above (that's lighter + italic, reads
+   as "there's nothing here") — this needs to read as real, legible content
+   awaiting review, so a darker/warmer tone plus the "from recommendation" tag
+   carries the distinction instead of italics-and-fade. */
+.cp-rec-cite-tag { flex: 0 0 auto; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; color: #975a16; background: #fffaf0; border: 1px solid #f6e05e; border-radius: 3px; padding: 1px 5px; white-space: nowrap; }
+.cp-rec-cite-preview-text.cp-rec-cite-inherited { color: #744210; }
 .cp-rec-cite-textarea { width: 100%; min-height: 64px; padding: 8px 10px; border: 1px solid #90cdf4; border-radius: 6px; font-size: 13px; font-family: inherit; line-height: 1.4; box-sizing: border-box; resize: vertical; }
 .cp-rec-cite-textarea:disabled,
 .cp-rec-cite-textarea[readonly] { background: #f7fafc; color: #718096; cursor: not-allowed; }
@@ -329,6 +337,8 @@ html[data-theme="dark"] .cp-rec-pop-apply-btn:hover { background: #2d3748; }
 html[data-theme="dark"] .cp-rec-cite-preview { color: #97a3b4; }
 html[data-theme="dark"] .cp-rec-cite-preview:hover { background: #22272e; }
 html[data-theme="dark"] .cp-rec-cite-preview-text.cp-rec-cite-empty { color: #718096; }
+html[data-theme="dark"] .cp-rec-cite-tag { color: #f6d78e; background: #2d2411; border-color: #6b5416; }
+html[data-theme="dark"] .cp-rec-cite-preview-text.cp-rec-cite-inherited { color: #ecc94b; }
 /* #theme_container wraps every page and already carries a dark-mode rule for bare
    textareas (orkui.css: html[data-theme="dark"] #theme_container textarea) — an ID
    selector, so it beats a plain .cp-rec-cite-textarea override regardless of source
@@ -617,28 +627,58 @@ html[data-theme="dark"] .cp-rec-cite-status.cp-rec-cite-status-error { color: #f
                 // Walk-on rows (Task 10) pass IsWalkOn=true to start expanded — a walk-on
                 // has no recommendation and no planned citation, so it exists nowhere
                 // else in the system and must not be missable as a truncated preview.
+                //
+                // Three states, not two (bugfix: a rec-derived award with no public
+                // comment yet was reading as "No citation" even though the commit-time
+                // precedence above means the recommendation's reason IS what publishes).
+                // 1. Own    — PublicComment is set; render as-is (unchanged from before).
+                // 2. Inherited — PublicComment empty, RecReason non-empty: show the
+                //    rec's text, muted + tagged "from recommendation" so it reads as
+                //    borrowed rather than authored, with a data-tip spelling out that
+                //    it publishes as-is unless edited.
+                // 3. Genuinely empty — both blank. Only this state says "No citation".
+                // The textarea is pre-filled with the same effective text (own citation,
+                // else the rec reason) so opening an inherited row edits FROM the rec
+                // text (mirrors Court_detail.tpl's "(Start from Rec)" convention) rather
+                // than retyping it. This does NOT write public_comment anywhere — the
+                // save path (cpRecCiteBlur) and the grant-citation reader
+                // (cpRecCitationFor) both compare the live value against data-prefill
+                // (the effective text shown, not the raw saved value) and treat an
+                // unedited textarea as nothing-to-save, so an officer's silence is never
+                // recorded as authorship — see the JS comments below.
                 $citation = (string)($aw['PublicComment'] ?? '');
-                $citationEmpty = $citation === '';
-                $citationTrunc = mb_strlen($citation) > 90 ? mb_substr($citation, 0, 90) . '…' : $citation;
+                $recReason = (string)($aw['RecReason'] ?? '');
+                $citationOwn = $citation !== '';
+                $citationInherited = !$citationOwn && $recReason !== '';
+                $citationEmpty = !$citationOwn && !$citationInherited;
+                $citationDisplay = $citationOwn ? $citation : $recReason;
+                $citationTrunc = mb_strlen($citationDisplay) > 90 ? mb_substr($citationDisplay, 0, 90) . '…' : $citationDisplay;
                 $citeExpanded = !empty($aw['IsWalkOn']);
+                $citeTip = $citationOwn
+                    ? 'Edit this citation'
+                    : ($citationInherited
+                        ? 'Inherited from the recommendation — this text will be published as the citation unless you edit it. Click to edit.'
+                        : 'Add a citation for the public record');
                 ?>
                 <div class="cp-rec-cite" data-caid="<?= $caid ?>">
                     <button type="button" class="cp-rec-cite-preview<?= $citeExpanded ? ' cp-rec-hidden' : '' ?>"
                             id="cp-rec-cite-preview-<?= $caid ?>"
                             onclick="cpRecCiteExpand(<?= $caid ?>)"
-                            data-tip="<?= $citationEmpty ? 'Add a citation for the public record' : 'Edit this citation' ?>">
+                            data-tip="<?= htmlspecialchars($citeTip) ?>">
                         <i class="fas fa-quote-left cp-rec-cite-icon" aria-hidden="true"></i>
                         <span class="cp-rec-c-label">Citation</span>
-                        <span class="cp-rec-cite-preview-text<?= $citationEmpty ? ' cp-rec-cite-empty' : '' ?>"><?= $citationEmpty ? 'No citation — click to add one' : htmlspecialchars($citationTrunc) ?></span>
+                        <span class="cp-rec-cite-tag<?= $citationInherited ? '' : ' cp-rec-hidden' ?>" id="cp-rec-cite-tag-<?= $caid ?>">from recommendation</span>
+                        <span class="cp-rec-cite-preview-text<?= $citationEmpty ? ' cp-rec-cite-empty' : '' ?><?= $citationInherited ? ' cp-rec-cite-inherited' : '' ?>"><?= $citationEmpty ? 'No citation — click to add one' : htmlspecialchars($citationTrunc) ?></span>
                         <i class="fas fa-pen cp-rec-cite-edit-icon" aria-hidden="true"></i>
                     </button>
                     <textarea class="cp-rec-cite-textarea<?= $citeExpanded ? '' : ' cp-rec-hidden' ?>"
                               id="cp-rec-cite-textarea-<?= $caid ?>"
                               data-saved="<?= htmlspecialchars($citation) ?>"
+                              data-prefill="<?= htmlspecialchars($citationDisplay) ?>"
                               placeholder="Citation for the public record — becomes this award's permanent public note when the court is finalized"
                               maxlength="1000"
                               onblur="cpRecCiteBlur(<?= $caid ?>)"
-                              <?= $canMark ? '' : 'readonly' ?>><?= htmlspecialchars($citation) ?></textarea>
+                              <?= $canMark ? '' : 'readonly' ?>><?= htmlspecialchars($citationDisplay) ?></textarea>
                     <span class="cp-rec-cite-status" id="cp-rec-cite-status-<?= $caid ?>"></span>
                 </div>
             </div>
@@ -1219,12 +1259,36 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
     // preview when collapsed), not in a separate JS map, so cpRecCitationFor
     // always returns whatever's actually typed right now, saved or not — the same
     // guarantee grant_award needs when Given is clicked mid-edit (see cpRecMark).
+    //
+    // Bugfix: an inherited (state 2) row's textarea is pre-filled with the
+    // recommendation's reason (see cpRecCiteExpand/the PHP render) purely for
+    // display/editing — that text was never saved as PublicComment. If the value
+    // still matches data-prefill (what's currently shown, whether authored or
+    // just borrowed from the rec), nothing was actually typed, so this returns
+    // the true saved value (data-saved — '' for a never-touched inherited row)
+    // instead of the borrowed rec text. Otherwise the officer clicked Given right
+    // after opening an inherited citation without editing it would silently
+    // promote the rec's wording into an authored public_comment via grant_award's
+    // stage write — exactly the "officer's silence recorded as authorship" the
+    // fix must not do.
     window.cpRecCitationFor = function(caid) {
         var ta = gid('cp-rec-cite-textarea-' + caid);
-        if (ta) return ta.value;
+        if (ta) {
+            var prefill = ta.dataset.prefill !== undefined ? ta.dataset.prefill : ta.dataset.saved;
+            return (ta.value === prefill) ? (ta.dataset.saved || '') : ta.value;
+        }
         var a = courtAwards.find(function(x) { return String(x.CourtAwardId) === String(caid); });
         return a ? (a.PublicComment || '') : '';
     };
+
+    // Looks up the recommendation's reason for a row from the same courtAwards
+    // data the initial render used (RecReason — Court::getCourtAwards() has
+    // always returned this; the bug was the view never reading it). Used to
+    // determine/redisplay the inherited (state 2) citation state after an edit.
+    function cpRecCiteRecReason(caid) {
+        var a = courtAwards.find(function(x) { return String(x.CourtAwardId) === String(caid); });
+        return a ? (a.RecReason || '') : '';
+    }
 
     // caid -> in-flight Promise for a citation save. Exists so cpRecMark (below) can
     // wait out a save that's already in flight instead of racing it: clicking Given
@@ -1244,6 +1308,14 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
     // when a blur finds nothing changed — no need to round-trip the server either
     // way). Uses textContent, never innerHTML, so a citation containing & < > can
     // never mangle the markup or get double-escaped on the next edit.
+    //
+    // Three states (bugfix): an own (typed) value wins outright; a blank textarea
+    // falls back to the row's RecReason (still "inherited" — the commit-time
+    // precedence would fall back too), and only truly shows "No citation" when
+    // both are blank. This runs after every blur, including one that saved a
+    // just-cleared own citation back to '' — which correctly redisplays as
+    // inherited if a rec reason still exists, matching what commitStagedAward
+    // will actually publish.
     function cpRecCiteCollapse(caid) {
         var preview = gid('cp-rec-cite-preview-' + caid);
         var ta = gid('cp-rec-cite-textarea-' + caid);
@@ -1252,21 +1324,48 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
         if (!preview) return;
         preview.classList.remove('cp-rec-hidden');
         var val = ta.value.trim();
+        var recReason = cpRecCiteRecReason(caid);
+        var isOwn = val !== '';
+        var isInherited = !isOwn && recReason !== '';
+        var display = isOwn ? val : recReason; // '' when genuinely empty (state 3)
         var textEl = preview.querySelector('.cp-rec-cite-preview-text');
+        var tagEl = gid('cp-rec-cite-tag-' + caid);
         if (textEl) {
-            textEl.textContent = val === '' ? 'No citation — click to add one' : cpRecCiteTruncate(val, 90);
-            textEl.classList.toggle('cp-rec-cite-empty', val === '');
+            textEl.textContent = display === '' ? 'No citation — click to add one' : cpRecCiteTruncate(display, 90);
+            textEl.classList.toggle('cp-rec-cite-empty', display === '');
+            textEl.classList.toggle('cp-rec-cite-inherited', isInherited);
         }
-        preview.setAttribute('data-tip', val === '' ? 'Add a citation for the public record' : 'Edit this citation');
+        if (tagEl) tagEl.classList.toggle('cp-rec-hidden', !isInherited);
+        preview.setAttribute('data-tip', isOwn
+            ? 'Edit this citation'
+            : (isInherited
+                ? 'Inherited from the recommendation — this text will be published as the citation unless you edit it. Click to edit.'
+                : 'Add a citation for the public record'));
     }
 
     // One click, per the spec: expand to the textarea and focus it, caret at the end
     // (not the start — the common case is appending/correcting a citation that's
     // already mostly right, not retyping it from scratch).
+    //
+    // Bugfix: if the textarea is blank but the row has a recommendation reason
+    // (inherited, state 2 — or a just-cleared own citation that fell back to
+    // inherited on the last collapse), re-prime it with that text before
+    // showing/focusing, same as the initial server render already does for a
+    // never-touched inherited row — so opening it always edits FROM the rec
+    // text rather than from a blank box, per spec. data-prefill tracks it too,
+    // so cpRecCiteBlur/cpRecCitationFor still treat it as unedited until the
+    // officer actually changes it.
     window.cpRecCiteExpand = function(caid) {
         var preview = gid('cp-rec-cite-preview-' + caid);
         var ta = gid('cp-rec-cite-textarea-' + caid);
         if (!ta) return;
+        if (ta.value.trim() === '') {
+            var recReason = cpRecCiteRecReason(caid);
+            if (recReason !== '') {
+                ta.value = recReason;
+                ta.dataset.prefill = recReason;
+            }
+        }
         if (preview) preview.classList.add('cp-rec-hidden');
         ta.classList.remove('cp-rec-hidden');
         ta.focus();
@@ -1289,7 +1388,15 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
         if (!row || !ta) return;
         if (courtStatus !== 'published') { cpRecCiteCollapse(caid); return; }
         var val = ta.value;
-        if (val === ta.dataset.saved) { cpRecCiteCollapse(caid); return; } // nothing changed — no write
+        // Compare against data-prefill (what's currently shown — the saved value
+        // for an own/empty row, or the borrowed rec text for an untouched
+        // inherited row), not data-saved: an inherited row's prefilled value
+        // never equals its saved '' by design, so comparing against data-saved
+        // here would fire a write on every blur of an unedited inherited
+        // citation — recording the officer's silence as authorship, which the
+        // fix must not do.
+        var prefill = ta.dataset.prefill !== undefined ? ta.dataset.prefill : ta.dataset.saved;
+        if (val === prefill) { cpRecCiteCollapse(caid); return; } // nothing changed — no write
         var statusEl = gid('cp-rec-cite-status-' + caid);
         if (statusEl) { statusEl.textContent = 'Saving…'; statusEl.classList.remove('cp-rec-cite-status-error'); }
         var fd = new FormData();
@@ -1302,6 +1409,7 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
                 var newVersion = (parseInt(row.getAttribute('data-rowversion'), 10) || 0) + 1;
                 row.setAttribute('data-rowversion', newVersion);
                 ta.dataset.saved = val;
+                ta.dataset.prefill = val; // now an own (or genuinely empty) row either way
                 var a = courtAwards.find(function(x) { return String(x.CourtAwardId) === String(caid); });
                 if (a) { a.RowVersion = newVersion; a.PublicComment = val; }
                 if (statusEl) statusEl.textContent = '';
