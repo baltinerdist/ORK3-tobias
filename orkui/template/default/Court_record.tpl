@@ -124,8 +124,17 @@ html[data-theme="dark"] .cp-rec-empty { color: #718096; border-color: #2d3748; }
    the paper's ✓/✕ columns (cpSheetRecord in Court_detail.tpl: # · ✓ · ✕ ·
    Recipient · Award · Rank · Given by · PTL). DOM order carries the visual
    order here (no flex `order` trick), so the header row and each data row's
-   markup were both moved, not just this rule. */
-.cp-rec-c-mark { flex: 0 0 auto; }
+   markup were both moved, not just this rule.
+   Column-alignment fix: pinned to a fixed basis (was flex: 0 0 auto) so the
+   header cell — plain text "Mark" — renders at the SAME width as the data
+   row's three-button .cp-rec-seg group, instead of hugging its own (much
+   narrower) content. box-sizing: border-box makes that basis denote the
+   same border-box width in both places: the data cell also carries
+   .cp-rec-seg's 1px border, which a content-box basis would otherwise add
+   on top of, reintroducing a 2px header/data mismatch. 131px is the
+   measured min-content width of the three buttons; verified equal
+   (getBoundingClientRect) in both rows after this change. */
+.cp-rec-c-mark { flex: 0 0 131px; box-sizing: border-box; }
 /* Density pass 2b: recipient is bounded (flex-grow:0), not one of the two columns
    fighting over slack — a ~200px cap is comfortably wider than any real persona,
    and the reclaimed width goes to the award name and the now-inline citation. */
@@ -134,7 +143,24 @@ html[data-theme="dark"] .cp-rec-empty { color: #718096; border-color: #2d3748; }
 .cp-rec-c-award { flex: 1 1 140px; min-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cp-rec-c-rank { flex: 0 0 62px; }
 .cp-rec-c-giver { flex: 0 0 110px; font-size: 12px; color: #4a5568; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cp-rec-c-ptl { flex: 0 0 30px; text-align: center; color: #718096; }
+/* Widened from 30px (icon-only) to fit the "To Local" header label — see the
+   header-cell comment below for why the full "Pass to Local" doesn't fit
+   without pushing the >=1150px single-line row-height breakpoint higher
+   (measured regression to ~1300-1350px; 62px keeps the existing ~1300px
+   breakpoint unchanged). Must stay identical between header and data cells
+   (shared class) or the .cp-rec-c-cite column that follows it would drift
+   between the two rows exactly the way this whole fix is undoing. */
+.cp-rec-c-ptl { flex: 0 0 62px; text-align: center; color: #718096; }
+/* Column-alignment fix: the header row (7 cells: #, Mark, Recipient, Award,
+   Rank, Given by, PTL) was missing a counterpart for each data row's 8th
+   cell, the inline citation (.cp-rec-cite, flex: 1 1 150px; min-width: 100px
+   — Task 9 / density pass 2b). With no competing header item to share
+   flex-grow with, the header's Award cell alone soaked up all the slack
+   that Award+Citation split between them in the data rows, so every header
+   cell from Rank rightward rendered to the right of its data-row column.
+   This is that counterpart — same flex-basis/min-width as .cp-rec-cite —
+   used only by the header's new "Citation" label. */
+.cp-rec-c-cite { flex: 1 1 150px; min-width: 100px; }
 .cp-rec-row.cp-rec-row-given { background: #f0fff4; }
 .cp-rec-row.cp-rec-row-skipped { background: #fff5f5; opacity: .8; }
 
@@ -274,6 +300,13 @@ html[data-theme="dark"] .cp-rec-c-num { color: #718096; }
 html[data-theme="dark"] .cp-rec-c-recip { color: #e2e8f0; }
 html[data-theme="dark"] .cp-rec-park,
 html[data-theme="dark"] .cp-rec-c-giver { color: #97a3b4; }
+/* .cp-rec-c-ptl carries its own explicit color (like -giver above), so it
+   doesn't inherit .cp-rec-row-header's dark-mode override — found via the
+   same computed-style check this file's other dark-mode fixes used (not
+   visible by eye: #718096 on the dark header background still reads, just
+   the wrong, light-mode shade). Same target color as -giver/-park for
+   consistency. */
+html[data-theme="dark"] .cp-rec-c-ptl { color: #97a3b4; }
 html[data-theme="dark"] .cp-rec-row.cp-rec-row-given { background: rgba(39,103,73,.18); }
 html[data-theme="dark"] .cp-rec-row.cp-rec-row-skipped { background: rgba(197,48,48,.14); }
 html[data-theme="dark"] .cp-rec-seg { border-color: #2d3748; }
@@ -517,7 +550,8 @@ html[data-theme="dark"] .cp-rec-cite-status.cp-rec-cite-status-error { color: #f
                 <span class="cp-rec-c cp-rec-c-award">Award</span>
                 <span class="cp-rec-c cp-rec-c-rank">Rank</span>
                 <span class="cp-rec-c cp-rec-c-giver">Given by</span>
-                <span class="cp-rec-c cp-rec-c-ptl">PTL</span>
+                <span class="cp-rec-c cp-rec-c-ptl" data-tip="Pass to Local — this award will be handed down to the recipient's home park to grant at their court.">To Local</span>
+                <span class="cp-rec-c cp-rec-c-cite">Citation</span>
             </div>
             <?php if (empty($courtAwards)): ?>
             <div class="cp-rec-empty" style="border:none;padding:18px 16px">No awards on this court's plan yet — add the first one below.</div>
@@ -573,7 +607,7 @@ html[data-theme="dark"] .cp-rec-cite-status.cp-rec-cite-status-error { color: #f
                             <?= $giverLocked ? 'disabled' : '' ?>><?= htmlspecialchars($rowGiverPersona !== '' ? $rowGiverPersona : '—') ?></button>
                 </span>
                 <span class="cp-rec-c cp-rec-c-ptl">
-                    <span class="cp-rec-c-label">PTL</span>
+                    <span class="cp-rec-c-label">To Local</span>
                     <?php if (!empty($aw['PassToLocal'])): ?><i class="fas fa-arrow-down" data-tip="Pass to Local" aria-label="Pass to Local"></i><?php else: ?>&mdash;<?php endif; ?>
                 </span>
                 <?php
@@ -667,7 +701,7 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
                 <span class="cp-rec-c cp-rec-c-ptl">
                     <label class="cp-rec-ptl-label" for="cp-rec-walkon-ptl" data-tip="Pass to Local">
                         <input type="checkbox" id="cp-rec-walkon-ptl" class="cp-rec-ptl-check" onkeydown="cpRecWalkOnKeydown(event,'ptl')">
-                        <span class="cp-rec-c-label" style="margin:0">PTL</span>
+                        <span class="cp-rec-c-label" style="margin:0">To Local</span>
                     </label>
                 </span>
                 <div class="cp-rec-cite" data-caid="walkon">
@@ -1844,7 +1878,7 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
             'onclick="cpRecOpenGiverPop(' + caid + ', this)" data-tip="Change who gave this award">' +
             esc(giverPersona !== '' ? giverPersona : '—') + '</button></span>';
 
-        html += '<span class="cp-rec-c cp-rec-c-ptl"><span class="cp-rec-c-label">PTL</span>' +
+        html += '<span class="cp-rec-c cp-rec-c-ptl"><span class="cp-rec-c-label">To Local</span>' +
             (aw.PassToLocal ? '<i class="fas fa-arrow-down" data-tip="Pass to Local" aria-label="Pass to Local"></i>' : '&mdash;') + '</span>';
 
         // Citation — always rendered EXPANDED (Task 9's IsWalkOn hook), never the
