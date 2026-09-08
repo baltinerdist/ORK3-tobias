@@ -18,6 +18,8 @@ final class CourtFixture
     private array $awardIds = [];
     /** @var list<int> */
     private array $officerIds = [];
+    /** @var list<array{officer_id: int, mundane_id: int}> */
+    private array $officerSeats = [];
 
     public function __construct(private readonly PDO $pdo)
     {
@@ -149,8 +151,36 @@ final class CourtFixture
         return $id;
     }
 
+    /**
+     * Seat a player in an officer role.
+     *
+     * ork_officer is UNIQUE on (kingdom_id, park_id, role) — one holder per seat —
+     * and the sandbox already seats most roles, so a blind INSERT collides. Take
+     * over an occupied seat instead and remember who held it, so cleanup() puts
+     * the original officer back rather than leaving the shared sandbox altered.
+     */
     public function insertOfficer(int $mundaneId, int $kingdomId, int $parkId, string $role): void
     {
+        $st = $this->pdo->prepare(
+            'SELECT officer_id, mundane_id FROM ' . DB_PREFIX . 'officer
+             WHERE kingdom_id = ? AND park_id = ? AND role = ?'
+        );
+        $st->execute([$kingdomId, $parkId, $role]);
+        $existing = $st->fetch(PDO::FETCH_ASSOC);
+
+        if ($existing) {
+            $this->officerSeats[] = [
+                'officer_id' => (int) $existing['officer_id'],
+                'mundane_id' => (int) $existing['mundane_id'],
+            ];
+            $up = $this->pdo->prepare(
+                'UPDATE ' . DB_PREFIX . 'officer SET mundane_id = ? WHERE officer_id = ?'
+            );
+            $up->execute([$mundaneId, (int) $existing['officer_id']]);
+
+            return;
+        }
+
         // system and authorization_id are NOT NULL without defaults — match
         // ReportsFixture and pass 0 for both.
         $st = $this->pdo->prepare(
@@ -182,6 +212,16 @@ final class CourtFixture
     {
         $this->deleteIn('court_award', 'court_award_id', $this->awardIds);
         $this->deleteIn('court', 'court_id', $this->courtIds);
+
+        // Put borrowed officer seats back before the stand-in players go away.
+        $restore = $this->pdo->prepare(
+            'UPDATE ' . DB_PREFIX . 'officer SET mundane_id = ? WHERE officer_id = ?'
+        );
+        foreach ($this->officerSeats as $seat) {
+            $restore->execute([$seat['mundane_id'], $seat['officer_id']]);
+        }
+        $this->officerSeats = [];
+
         $this->deleteIn('officer', 'officer_id', $this->officerIds);
         $this->deleteIn('mundane', 'mundane_id', $this->mundaneIds);
         $this->awardIds = $this->courtIds = $this->officerIds = $this->mundaneIds = [];
