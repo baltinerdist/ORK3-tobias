@@ -1556,6 +1556,8 @@ html[data-theme="dark"] .dp-no-restrict-row:hover{background:rgba(255,255,255,.0
 					<!-- Sidebar -->
 					<div class="pna-sidebar">
 
+						<div id="pna-surveys-body"></div>
+
 						<!-- Tenure -->
 						<?php $_maFirstDate = (!empty($Player['PlayerSinceDate']) && $Player['PlayerSinceDate'] !== '0000-00-00' && $Player['PlayerSinceDate'] !== '1970-01-01') ? $Player['PlayerSinceDate'] : null; ?>
 						<?php if ($_maFirstDate): ?>
@@ -7450,6 +7452,36 @@ $(function() {
 
 			// ---- My Amtgard sections (own profile only) ----
 			if (!PnConfig.isOwnProfile) return;
+
+			// Available Surveys
+			var svBody = document.getElementById('pna-surveys-body');
+			if (svBody) {
+				fetch(PnConfig.uir + 'SurveyAjax/available', { method: 'POST', body: new FormData() })
+					.then(function(resp) { return resp.json(); })
+					.then(function(r) {
+						var surveys = (r.status === 0) ? (r.surveys || []) : [];
+						if (!surveys.length) { svBody.innerHTML = ''; return; }
+						var months3 = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+						var esc = function(s) { return $('<div>').text(s || '').html(); };
+						var svHtml = '<div class="pna-card"><div class="pna-card-title"><i class="fas fa-poll"></i> Available Surveys</div>';
+						surveys.forEach(function(sv) {
+							var sub = esc(sv.scope_label || '');
+							if (sv.close_at) {
+								var cd = new Date(sv.close_at.replace(' ', 'T'));
+								if (!isNaN(cd.getTime())) {
+									sub += (sub ? ' &middot; ' : '') + 'closes ' + months3[cd.getMonth()] + ' ' + cd.getDate();
+								}
+							}
+							svHtml += '<div class="pna-feed-row">'
+								+ '<span class="pna-feed-label">' + esc(sv.title) + '</span>'
+								+ (sub ? '<span class="pna-feed-sub">' + sub + '</span>' : '')
+								+ '<a href="' + PnConfig.uir + 'Survey/take/' + parseInt(sv.survey_id) + '" style="margin-left:auto;font-weight:600;font-size:11px;color:#4299e1;text-decoration:none;flex-shrink:0">' + (sv.in_progress ? 'Continue' : 'Take survey') + '</a>'
+								+ '</div>';
+						});
+						svBody.innerHTML = svHtml + '</div>';
+					})
+					.catch(function() { /* widget silently omits itself on error */ });
+			}
 
 			// Class Progress
 			var cpBody = document.getElementById('pna-class-progress-body');

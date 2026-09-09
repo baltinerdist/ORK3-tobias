@@ -120,6 +120,16 @@ class Controller
             }
         }
 
+        // Survey promotion banner — a single indexed lookup for the one
+        // show_banner survey the viewer is eligible for and has not
+        // dismissed. Skipped on Ajax controllers so the banner never rides
+        // along on a JSON response.
+        $this->data['SurveyBanner'] = null;
+        if ($_uid > 0 && substr(get_class($this), -4) !== 'Ajax') {
+            $this->load_model('Survey');
+            $this->data['SurveyBanner'] = $this->Survey->banner_for($_uid);
+        }
+
         $this->data[ 'controller_title' ] = get_class($this);
         $this->data[ 'path' ] = [ get_class($this), $method ];
 
