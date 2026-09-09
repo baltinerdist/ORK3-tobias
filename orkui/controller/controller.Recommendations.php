@@ -246,10 +246,15 @@ class Controller_Recommendations extends Controller
                     'Granted'           => 0,
                 ]);
             } elseif ($action === 'snooze') {
-                $r = $this->Player->snooze_recommendation([
+                // Same throne the per-row Snooze writes (KingdomAjax/ParkAjax): a park-scope
+                // Manager snapshots that park's monarchy, a kingdom-scope one the Crown.
+                // Without this the two Snooze buttons on the same page wrote different seats.
+                $r = $this->Player->snooze_recommendation(array_merge([
                     'Token'             => $token,
                     'RecommendationsId' => $rec_id,
-                ]);
+                ], $park_id > 0
+                    ? ['ScopeParkId' => $park_id]
+                    : ['ScopeKingdomId' => $kingdom_id, 'ScopeParkId' => 0]));
             } elseif ($action === 'unsnooze') {
                 $r = $this->Player->unsnooze_recommendation([
                     'Token'             => $token,

@@ -2615,9 +2615,55 @@ $_total_awards = count($courtAwards ?? []);
     // Initialise progress counter on page load
     if (document.querySelector('#cp-sb-progress')) cpRefreshProgress();
 
+    // Drop an award from the client model when its DOM row is removed. Removing only the
+    // row left the entry in window.courtAwards, so the Court Script sheets — which read
+    // the model, not the DOM — kept printing an award the officer had already removed.
+    // Spliced in place so the bare `courtAwards` reference elsewhere sees it too.
+    function cpDropAwardFromModel(caid) {
+        var awards = window.courtAwards;
+        if (!Array.isArray(awards)) return;
+        for (var i = awards.length - 1; i >= 0; i--) {
+            if (String(awards[i].CourtAwardId) === String(caid)) awards.splice(i, 1);
+        }
+    }
+
+    // Re-sort the client model (window.courtAwards) into the given DOM id order and
+    // restamp SortOrder. Every reorder path (drag, the up/down arrows, the two sort
+    // buttons) funnels through cpSaveOrder(), so doing this here keeps the model in
+    // step with the screen for all of them at once. Without it the Court Script sheet
+    // builders — which read window.courtAwards via cpScriptActiveAwards() — would print
+    // the original server order after an unreloaded reorder. The heartbeat reconcile
+    // paths call it too, so a peer whose rows the server moves also prints in step.
+    // Called BEFORE the POST, not in .then(): on a failed save the DOM has already
+    // moved, and leaving the model behind would recreate exactly the screen-vs-paper
+    // mismatch this guards against. The existing failure path tells the officer to
+    // refresh, which reloads DOM and model together from the server's canonical order.
+    function cpSyncAwardOrder(order) {
+        var awards = window.courtAwards;
+        if (!Array.isArray(awards)) return;
+        var byId = {};
+        awards.forEach(function(a) { byId[String(a.CourtAwardId)] = a; });
+        var ordered = [];
+        order.forEach(function(id) {
+            var a = byId[String(id)];
+            if (a && ordered.indexOf(a) === -1) ordered.push(a);
+        });
+        // Anything the caller's id list does not name keeps its relative order at the
+        // end. Both removal paths (cpDoRemoveAward and cpRemoveAwardRow/Send-to-Local)
+        // now splice the model alongside the DOM row, so a removed award never lands
+        // here. What can still reach it is the legacy light reconcile payload, which
+        // has no removal handling of its own — not a filtered view: cpSaveOrder reads
+        // querySelectorAll, which includes the rows the Printing List hides.
+        awards.forEach(function(a) { if (ordered.indexOf(a) === -1) ordered.push(a); });
+        ordered.forEach(function(a, i) { a.SortOrder = i + 1; });
+        awards.length = 0;
+        Array.prototype.push.apply(awards, ordered);
+    }
+
     function cpSaveOrder() {
         var rows  = Array.from(document.querySelectorAll('#cp-award-list .cp-award-row'));
         var order = rows.map(function(r) { return parseInt(r.dataset.courtAwardId, 10); });
+        cpSyncAwardOrder(order);
         var fd    = new FormData();
         fd.append('CourtId', courtId);
         fd.append('Order',   JSON.stringify(order));
@@ -2724,6 +2770,7 @@ $_total_awards = count($courtAwards ?? []);
     function cpRemoveAwardRow(caid) {
         var row = gid('cp-aw-' + caid);
         if (row) row.remove();
+        cpDropAwardFromModel(caid);
         var remaining = document.querySelectorAll('#cp-award-list .cp-award-row').length;
         if (remaining === 0 && !gid('cp-award-empty')) {
             var list = gid('cp-award-list');
@@ -3087,6 +3134,7 @@ $_total_awards = count($courtAwards ?? []);
             if (d.status === 0) {
                 var row = gid('cp-aw-' + caid);
                 if (row) row.remove();
+                cpDropAwardFromModel(caid);
                 var remaining = document.querySelectorAll('#cp-award-list .cp-award-row').length;
                 if (remaining === 0 && !gid('cp-award-empty')) {
                     var list = gid('cp-award-list');
@@ -3966,6 +4014,10 @@ $_total_awards = count($courtAwards ?? []);
             var row = gid('cp-aw-' + sa.CourtAwardId);
             if (row) list.appendChild(row);
         });
+        // The sheet builders number by array index, so the model has to follow the
+        // canonical order too — otherwise an officer who did not perform the reorder
+        // sees the new DOM order on screen but prints the stale one.
+        cpSyncAwardOrder(ordered.map(function(sa) { return sa.CourtAwardId; }));
         cpRenumberRows();
     }
 
@@ -4100,12 +4152,15 @@ $_total_awards = count($courtAwards ?? []);
             if (a) { a.GivenByMundaneId = sa.given_by_mundane_id; a.SortOrder = sa.sort_order; }
         });
         if (list) {
-            (d.awards || []).slice().sort(function(a, b) {
+            var ordered = (d.awards || []).slice().sort(function(a, b) {
                 return (a.sort_order - b.sort_order) || (a.court_award_id - b.court_award_id);
-            }).forEach(function(sa) {
+            });
+            ordered.forEach(function(sa) {
                 var row = gid('cp-aw-' + sa.court_award_id);
                 if (row) list.appendChild(row);
             });
+            // Keep the model in step with the DOM — the sheet builders read array order.
+            cpSyncAwardOrder(ordered.map(function(sa) { return sa.court_award_id; }));
             cpRenumberRows();
         }
         cpUpdateStagedIndicator(staged);

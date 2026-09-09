@@ -3975,12 +3975,69 @@ class Player extends Ork3
             return NoAuthorization();
         }
 
-        // Resolve current monarch and regent for the recipient's park
-        $pid = (int)$recipientInfo['ParkId'];
+        // Resolve the monarchy of the scope the officer is MANAGING, not the recipient's
+        // park: a kingdom-scope snooze must be lifted by a Coronation, not by an unrelated
+        // local park election. Callers that know their scope pass it; anything that does
+        // not falls back to the recipient's park (the historical behavior).
+        $scopeParkId    = isset($request['ScopeParkId']) ? (int)$request['ScopeParkId'] : -1;
+        $scopeKingdomId = isset($request['ScopeKingdomId']) ? (int)$request['ScopeKingdomId'] : 0;
+        if ($scopeParkId < 0) {
+            $scopeParkId    = (int)$recipientInfo['ParkId'];
+            $scopeKingdomId = 0;
+        }
+        if ($scopeKingdomId <= 0) {
+            $scopeKingdomId = (int)$recipientInfo['KingdomId'];
+            if ($scopeParkId > 0) {
+                $this->db->Clear();
+                $pk = $this->db->query("SELECT kingdom_id FROM " . DB_PREFIX . "park WHERE park_id = {$scopeParkId}");
+                if ($pk && $pk->size() > 0 && $pk->next()) {
+                    $scopeKingdomId = (int)$pk->kingdom_id;
+                }
+            }
+        }
+
+        // The scope arrives from the ROUTE, and the auth check above only proves authority
+        // over the RECIPIENT's park — nothing tied the two together, so a caller could pin a
+        // snooze to an unrelated kingdom's Crown, where it would never lift. Validate here
+        // rather than in each controller: this also covers the park route and the bulk
+        // endpoint, which share this one entry point.
+        //
+        // PRINCIPALITY DECISION (concern 4): a parent-kingdom manager sees principality
+        // recipients folded in by GetStatsKingdomIds, and snoozing one pins it to the PARENT
+        // kingdom's Crown. That is deliberate — the snooze means "not for THIS court's next
+        // agenda", and the court doing the reviewing is the parent kingdom's. So the parent
+        // kingdom is an accepted scope alongside the recipient's own kingdom, and nothing
+        // else is.
+        // The READ side is scope-agnostic and follows from this: $snoozedExpr resolves the
+        // seat from the stored scope regardless of who is looking, so a rec the parent
+        // snoozed also reads as snoozed in the PRINCIPALITY's own Manager and lifts only at
+        // the parent's Coronation — which the principality's own officers cannot cycle. That
+        // is not a regression (snooze state was equally global before this change), but it is
+        // the half of the decision a future reader will trip on, so it is written down here.
+        $recipientKingdomId = (int)$recipientInfo['KingdomId'];
+        $allowedKingdomIds  = [$recipientKingdomId];
+        if ($recipientKingdomId > 0) {
+            $this->db->Clear();
+            $pk = $this->db->query("SELECT parent_kingdom_id FROM " . DB_PREFIX . "kingdom WHERE kingdom_id = {$recipientKingdomId}");
+            if ($pk && $pk->size() > 0 && $pk->next() && (int)$pk->parent_kingdom_id > 0) {
+                $allowedKingdomIds[] = (int)$pk->parent_kingdom_id;
+            }
+        }
+        if (!in_array($scopeKingdomId, $allowedKingdomIds, true)) {
+            return InvalidParameter('Snooze scope does not match this recommendation.');
+        }
+        // A park scope must likewise be the recipient's own park; any other park's
+        // monarchy is as unrelated as another kingdom's Crown.
+        if ($scopeParkId > 0 && $scopeParkId !== (int)$recipientInfo['ParkId']) {
+            return InvalidParameter('Snooze scope does not match this recommendation.');
+        }
+
+        // ORDER BY officer_id DESC LIMIT 1: a seat can carry more than one officer row,
+        // and MAX(mundane_id) picked an arbitrary one.
+        $this->db->Clear();
         $sql = "SELECT
-			COALESCE(MAX(CASE WHEN role='Monarch' THEN mundane_id END), 0) AS monarch_id,
-			COALESCE(MAX(CASE WHEN role='Regent'  THEN mundane_id END), 0) AS regent_id
-			FROM " . DB_PREFIX . "officer WHERE park_id = {$pid}";
+			COALESCE((SELECT o.mundane_id FROM " . DB_PREFIX . "officer o WHERE o.kingdom_id = {$scopeKingdomId} AND o.park_id = {$scopeParkId} AND o.role = 'Monarch' ORDER BY o.officer_id DESC LIMIT 1), 0) AS monarch_id,
+			COALESCE((SELECT o.mundane_id FROM " . DB_PREFIX . "officer o WHERE o.kingdom_id = {$scopeKingdomId} AND o.park_id = {$scopeParkId} AND o.role = 'Regent'  ORDER BY o.officer_id DESC LIMIT 1), 0) AS regent_id";
         $r = $this->db->query($sql);
         $monarch_id = 0;
         $regent_id = 0;
@@ -3989,9 +4046,20 @@ class Player extends Ork3
             $regent_id  = (int)$r->regent_id;
         }
 
+        // A snooze lifts when the snapshotted seats change, and the IsSnoozed recompute
+        // COALESCEs a missing seat to 0 — so a snapshot of (0, 0) taken while both seats
+        // are vacant compares equal forever and the snooze can never lift. Refuse it with
+        // a message instead of writing a permanent hide.
+        if ($monarch_id === 0 && $regent_id === 0) {
+            return InvalidParameter('No Monarch or Regent is recorded for this scope, so a snooze could never expire. Record the Crown first.');
+        }
+
         $awardRec->snoozed_by_id      = $mundane_id;
         $awardRec->snoozed_monarch_id = $monarch_id;
         $awardRec->snoozed_regent_id  = $regent_id;
+        // Persist WHICH throne was snapshotted so the IsSnoozed recomputes read the same seat.
+        $awardRec->snoozed_kingdom_id = $scopeKingdomId;
+        $awardRec->snoozed_park_id    = $scopeParkId;
         $awardRec->save();
         return Success('Recommendation snoozed.');
     }
@@ -4022,9 +4090,11 @@ class Player extends Ork3
         // yapo's save() skips null-valued fields (isset() guard in YapoSave), so
         // assigning null above never cleared these columns and unsnooze silently
         // no-op'd. Clear them with a direct UPDATE instead.
+        $this->db->Clear();
         $this->db->query(
             "UPDATE " . DB_PREFIX . "recommendations
-			 SET snoozed_by_id = NULL, snoozed_monarch_id = NULL, snoozed_regent_id = NULL
+			 SET snoozed_by_id = NULL, snoozed_monarch_id = NULL, snoozed_regent_id = NULL,
+			     snoozed_kingdom_id = NULL, snoozed_park_id = NULL
 			 WHERE recommendations_id = " . (int)$rec_id
         );
         return Success('Recommendation unsnoozed.');

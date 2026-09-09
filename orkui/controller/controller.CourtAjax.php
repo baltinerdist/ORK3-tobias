@@ -688,6 +688,21 @@ class Controller_CourtAjax extends Controller
                     ]);
                 } catch (\Throwable $e) { /* recommendation cleanup is best-effort */
                 }
+            } elseif ($res['status'] === 'duplicate') {
+                // commitStagedAward found this honor already on the permanent record
+                // (a retried finalize, or the same honor staged on another court) and
+                // cancelled the line without writing a second ork_awards row. Report it
+                // through the same channel as a same-run duplicate so the officer's
+                // count matches the ledger. Tag it: the same-run copy says "already
+                // been granted by another line in this court", which is WRONG here —
+                // the other grant is on a different court or was entered manually.
+                // No template reads any key but .length today, so this is inert
+                // until the copy is split.
+                $duplicates[] = [
+                    'court_award_id' => $res['court_award_id'],
+                    'granted_as'     => 0,
+                    'reason'         => 'ledger',
+                ];
             } elseif ($res['status'] === 'error') {
                 $failed[] = [
                     'court_award_id' => $res['court_award_id'],

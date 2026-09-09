@@ -1089,6 +1089,9 @@ class Court
      * Returns one of:
      *   ['status' => 'ok',    'award_id' => int, 'row' => array]  committed now
      *   ['status' => 'noop']                                       already resolved
+     *   ['status' => 'duplicate', 'court_award_id' => int, 'row' => array]
+     *        the permanent ledger already carries this honor — line cancelled,
+     *        nothing written (see ledgerAlreadyHasHonor)
      *   ['status' => 'error', 'error' => string, 'court_award_id' => int]
      */
     public function commitStagedAward($court_award_id, $ctx)
@@ -1122,8 +1125,31 @@ class Court
             ];
         }
 
+        // Permanent-ledger duplicate guard. Every other guard on this path is
+        // per-REQUEST (finalize's $committedClusters) or per-COURT (addAward's probe
+        // is scoped WHERE court_id = ...), and claimStagedForGrant only guarantees
+        // one LINE commits once — not that one HONOR is granted once. A retried
+        // finalize with a freshly staged walk-on, or the same honor staged on two
+        // courts, therefore reached AddAward (which has no duplicate guard and saves
+        // unconditionally) twice. Check ork_awards itself immediately before the
+        // write, and resolve the line without granting when it is already there.
+        // Computed here rather than below because the guard must test exactly the
+        // date AddAward is about to write — that identity is what makes a retried
+        // finalize match by construction.
+        $date = $row['CourtDate'] ?: date('Y-m-d');
+        if ($this->ledgerAlreadyHasHonor($row['MundaneId'], $row['KingdomAwardId'], $row['Rank'], $date)) {
+            // Cancel rather than revert to 'staged': a staged line would simply
+            // re-attempt (and re-skip) on every later finalize. Same terminal state
+            // the same-run duplicate path uses.
+            $this->revertAwardStatus($court_award_id, 'cancelled');
+            return [
+                'status'         => 'duplicate',
+                'court_award_id' => $court_award_id,
+                'row'            => $row,
+            ];
+        }
+
         $event_id = $this->getEventIdFromCalendarDetail($row['EventCalendarDetailId']);
-        $date     = $row['CourtDate'] ?: date('Y-m-d');
         // Public citation precedence, per spec 6.1: the officer's public comment,
         // else the originating recommendation's reason, else nothing. `Notes` is the
         // INTERNAL officer note ("hold until the drama settles", "Regent objects") —
@@ -1179,6 +1205,100 @@ class Court
             'award_id' => $award_id,
             'row'      => $row,
         ];
+    }
+
+    /**
+     * True when the permanent record already carries this honor for this player.
+     *
+     * Match: same recipient, same kingdomaward, the EXACT same rank, not revoked.
+     *
+     * EXACT EQUALITY, NOT `rank >=` — do not "tighten" this back. `>=` is the right
+     * reading for SUGGESTING ungranted awards (getUngrantedFromLastCourt), where a
+     * held rank 5 does cover rank 3. It is wrong as a duplicate guard, because
+     * recording a LOWER rank after a higher one is a routine officer pattern, not a
+     * duplicate: officers backfill ladder history all the time (measured on the
+     * prod-derived DB: 11,370 ork_awards rows since 2022 on is_ladder awards are a
+     * same-or-lower rank recorded after a higher one for the same player +
+     * kingdomaward). With `>=` this guard would silently CANCEL such a line —
+     * refusing to record an honor an officer announced at court, a worse failure
+     * than the duplicate it exists to prevent. It also made the guard depend on
+     * commit order: getStagedAwards orders by ca.sort_order, and real courts carry
+     * a rank 4 line sorted ahead of a rank 3 line for the same player+award.
+     *
+     * Equality alone is still NOT a duplicate predicate, because it is time-blind:
+     * the same honor at the same rank is legitimately re-earned years apart. On the
+     * prod-derived DB, exact-rank repeats since 2022 on the awards this guard covers
+     * break down as 1,123 same-day, 382 within a month, 1,044 within a year and
+     * 1,584 MORE THAN A YEAR apart — e.g. Order of the Warrior rank 6 re-earned in
+     * 2026 after 2004. Equality alone would refuse all of those.
+     *
+     * So the guard is scoped to the COURT DATE: a duplicate is the same honor, at
+     * the same rank, on the same day — one ceremony recorded twice. The date passed
+     * in is the exact value AddAward is about to write, so (a) a retried finalize
+     * matches by construction, and (b) the same honor staged on two courts is caught
+     * whenever they share a date. When the dates differ, the second grant is
+     * indistinguishable from a legitimate re-earning, and cancelling it would be
+     * refusing to record an honor an officer announced — so it is allowed through,
+     * and the in-run $committedClusters guard in finalize_court still catches true
+     * same-run siblings.
+     *
+     * Rank is normalized identically on both sides (absent/NULL and 0 compare
+     * equal), so a rank-0 line is only blocked by another rank-0 row.
+     *
+     * Scope: awards not ordinarily held twice on one day. NOTE this is narrower than
+     * "held once": repeatable tournament titles (Weaponmaster, Squire, Man-at-Arms,
+     * Custom Title) carry is_title = 1 and ARE re-earned — which is precisely why
+     * the date predicate above, not the flag test below, is what keeps them working.
+     * A CUSTOM award (class.Report.php's
+     * isCustom: base award is_ladder = 0 AND is_title = 0) is legitimately
+     * repeatable and must never be blocked. ka.is_title is read alongside the base
+     * award's flags because the per-kingdom is_title override is authoritative for
+     * that kingdom; an award flagged either way is non-repeatable, and only a row
+     * that is custom by both readings is treated as repeatable. (ka.is_ladder is
+     * deliberately not referenced — it is absent from some schemas, and a missing
+     * column would fail the whole probe open.)
+     *
+     * TODO(ka.is_ladder): ork_kingdomaward.is_ladder exists in dev/prod but NOT in
+     * the ork_test schema, so referencing it here would make the probe throw under
+     * test. Consequence: a kingdom that flags a BASE CUSTOM award as a ladder award
+     * for itself is not covered by this guard — those honors can still be granted
+     * twice at the same rank. Measured on the dev DB, 26 kingdomawards are in that
+     * state (ka.is_ladder = 1 while the base award is neither is_ladder nor
+     * is_title and ka.is_title = 0): kingdomaward_id 94, 5813, 6045, 6050, 6171,
+     * 6283, 6297, 6310, 6311, 6318, 6403, 6411, 6430, 6574, 6577, 6628, 6771,
+     * 7055, 7067, 7070, 7084, 7249, 7254, 7273, 7277, 7525. Add the column to the
+     * ork_test schema, then add `OR COALESCE(ka.is_ladder, 0) = 1` to the
+     * non-repeatable test above.
+     */
+    private function ledgerAlreadyHasHonor($mundane_id, $kingdomaward_id, $rank, $award_date)
+    {
+        $mundane_id      = (int)$mundane_id;
+        $kingdomaward_id = (int)$kingdomaward_id;
+        $rank            = (int)$rank;
+        $award_date      = trim((string)$award_date);
+        if ($mundane_id <= 0 || $kingdomaward_id <= 0 || !$this->validDate($award_date)) {
+            return false;
+        }
+
+        $this->db->Clear();
+        $rs = $this->db->DataSet(
+            'SELECT 1 AS dup
+             FROM ' . DB_PREFIX . 'kingdomaward ka
+             LEFT JOIN ' . DB_PREFIX . 'award a ON a.award_id = ka.award_id
+             WHERE ka.kingdomaward_id = ' . $kingdomaward_id . '
+               AND (COALESCE(a.is_ladder, 0) = 1 OR COALESCE(a.is_title, 0) = 1
+                    OR COALESCE(ka.is_title, 0) = 1)
+               AND EXISTS (
+                   SELECT 1 FROM ' . DB_PREFIX . 'awards oa
+                    WHERE oa.mundane_id = ' . $mundane_id . '
+                      AND oa.kingdomaward_id = ' . $kingdomaward_id . '
+                      AND COALESCE(oa.rank, 0) = ' . $rank . '
+                      AND oa.date = \'' . $this->esc($award_date) . '\'
+                      AND (oa.revoked = 0 OR oa.revoked IS NULL)
+               )
+             LIMIT 1'
+        );
+        return (bool)($rs && $rs->Next());
     }
 
     /**
@@ -2061,11 +2181,19 @@ class Court
     }
 
     /**
-     * Courts in [$from_date, $until_date] (inclusive on court_date) that have at
-     * least one award with status='given'.
+     * COMPLETE courts in [$from_date, $until_date] (inclusive on court_date) that
+     * have at least one award with status='given'.
      *   Kingdom report ($kingdom_id set, $park_id = 0): courts in that kingdom.
      *   Park report ($park_id set): courts owned by the park OR any court holding a
      *     given award whose recipient's home park is $park_id.
+     *
+     * c.status = 'complete' is required (ork_court.status enum is
+     * draft|published|complete). This report is served without a login, and a line
+     * on a DRAFT or PUBLISHED court can already read 'given' — reconcileGrantForRecommendation
+     * flips one whenever an officer grants that recommendation from the Recs
+     * Manager with "Grant & Leave on Court". Without this filter, a draft court
+     * planned for a future date published its honors — and its date — publicly
+     * before the ceremony was held.
      */
     public function getCourtReportList($kingdom_id, $park_id, $from_date, $until_date)
     {
@@ -2099,6 +2227,7 @@ class Court
              LEFT JOIN ' . DB_PREFIX . 'event e ON e.event_id = cd.event_id
              LEFT JOIN ' . DB_PREFIX . 'park p ON p.park_id = c.park_id
              WHERE c.court_date BETWEEN \'' . $from . '\' AND \'' . $until . '\'
+               AND c.status = \'complete\'
                AND ' . $scopeWhere . '
              GROUP BY c.court_id
              ORDER BY c.court_date DESC, c.court_id DESC'
@@ -2124,7 +2253,10 @@ class Court
 
     /**
      * One court's header plus its status='given' awards (public fields only) with
-     * artisans batch-loaded. Returns null if the court does not exist.
+     * artisans batch-loaded. Returns null if the court does not exist OR has not
+     * been finalized (c.status != 'complete') — the ceremony has not happened, so
+     * there is nothing to publish; callers (controller.Reports::court) redirect on
+     * null. Same reasoning as getCourtReportList.
      */
     public function getCourtReportDetail($court_id)
     {
@@ -2140,7 +2272,8 @@ class Court
              LEFT JOIN ' . DB_PREFIX . 'event e ON e.event_id = cd.event_id
              LEFT JOIN ' . DB_PREFIX . 'park p ON p.park_id = c.park_id
              LEFT JOIN ' . DB_PREFIX . 'kingdom k ON k.kingdom_id = c.kingdom_id
-             WHERE c.court_id = ' . (int)$court_id . ' LIMIT 1'
+             WHERE c.court_id = ' . (int)$court_id . '
+               AND c.status = \'complete\' LIMIT 1'
         );
         if (!$hr || !$hr->Next()) {
             return null;

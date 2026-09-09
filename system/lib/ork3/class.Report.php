@@ -596,6 +596,10 @@ class Report extends Ork3
                     'Persona'        => $rec['Persona'] ?? '',
                     'AwardName'      => $rec['AwardName'] ?? '',
                     'ParkId'         => (int)($rec['ParkId'] ?? 0),
+                    // Retirement is a property of the RECIPIENT and the cluster key
+                    // already includes MundaneId, so every member shares it — no
+                    // aggregation needed, just carry it through to the template layer.
+                    'IsRetired'      => !empty($rec['IsRetired']),
                     'AlreadyHas'     => !empty($rec['AlreadyHas']),
                     'CurrentRank'    => isset($rec['CurrentRank']) ? (int)$rec['CurrentRank'] : null,
                     'HeldRank'       => (int)($rec['HeldRank'] ?? 0),
@@ -677,6 +681,11 @@ class Report extends Ork3
             'PlayerId'         => (int)($request['PlayerId']  ?? 0),
             // Two different row sets must never share a cache entry.
             'IncludeDismissed' => $includeDismissed ? 1 : 0,
+            // Bumped when the selected predicate changes, so entries cached under the
+            // previous rule are not served for the rest of their TTL. Kept in step with
+            // PlayerAwardRecommendationsCount's key or the badge and the list disagree
+            // for a whole TTL after deploy.
+            'V'                => 2,
         ]);
         if (!$skipCache && ($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 300)) !== false) {
             return $this->applyViewerFlags($cache, $viewer_id);
@@ -712,6 +721,7 @@ class Report extends Ork3
 			m.mundane_id,
 			m.park_id,
 			m.kingdom_id,
+			m.active as m_active,
 			p.name as park_name,
 			k.name as kingdom_name,
 			recs.rank,
@@ -728,8 +738,8 @@ class Report extends Ork3
 			recs.passed_to_local,
 			recs.passed_to_local_by,
 			recs.passed_to_local_at,
-			(SELECT COALESCE(MAX(CASE WHEN role='Monarch' THEN mundane_id END), 0) FROM " . DB_PREFIX . "officer WHERE park_id = m.park_id) AS current_monarch_id,
-			(SELECT COALESCE(MAX(CASE WHEN role='Regent'  THEN mundane_id END), 0) FROM " . DB_PREFIX . "officer WHERE park_id = m.park_id) AS current_regent_id,
+			COALESCE((SELECT o.mundane_id FROM " . DB_PREFIX . "officer o WHERE o.kingdom_id = COALESCE(recs.snoozed_kingdom_id, m.kingdom_id) AND o.park_id = COALESCE(recs.snoozed_park_id, m.park_id) AND o.role = 'Monarch' ORDER BY o.officer_id DESC LIMIT 1), 0) AS current_monarch_id,
+			COALESCE((SELECT o.mundane_id FROM " . DB_PREFIX . "officer o WHERE o.kingdom_id = COALESCE(recs.snoozed_kingdom_id, m.kingdom_id) AND o.park_id = COALESCE(recs.snoozed_park_id, m.park_id) AND o.role = 'Regent'  ORDER BY o.officer_id DESC LIMIT 1), 0) AS current_regent_id,
 			(SELECT COUNT(*) FROM " . DB_PREFIX . "court_award ca WHERE ca.recommendations_id = recs.recommendations_id AND ca.status != 'cancelled') AS on_court_count,
 			ka.award_id as ka_award_id,
 			ka.kingdomaward_id as ka_kaward_id,
@@ -752,7 +762,7 @@ class Report extends Ork3
 			LEFT join " . DB_PREFIX . "park p on p.park_id = m.park_id
 			LEFT join " . DB_PREFIX . "kingdom k on k.kingdom_id = m.kingdom_id
 			WHERE $dismissedClause
-			  AND m.active = 1 AND (m.suspended IS NULL OR m.suspended = 0)
+			  AND (m.suspended IS NULL OR m.suspended = 0)
 			  $location_clause
 			  $idClause
 			order by m.persona, a.name, recs.rank, m.persona";
@@ -789,6 +799,10 @@ class Report extends Ork3
                     'recs_award_id'      => (int)$r->award_id,
                     'park_id'            => $r->park_id,
                     'kingdom_id'         => $r->kingdom_id,
+                    // Recipient is inactive (Retired). Retirement/memorial honors are
+                    // precisely the awards given to players who have stopped playing, so
+                    // these rows stay visible; the flag lets the UI badge them.
+                    'm_active'           => (int)$r->m_active,
                     'park_name'          => $r->park_name,
                     'kingdom_name'       => $r->kingdom_name,
                     'kacount'            => (int)$r->kacount,
@@ -900,6 +914,7 @@ class Report extends Ork3
                     'KingdomId' => $row->kingdom_id,
                     'ParkName' => $row->park_name,
                     'KingdomName' => $row->kingdom_name,
+                    'IsRetired' => ((int)$row->m_active !== 1),
                     'AlreadyHas' => $alreadyHas,
                     'CoveredByMaster' => $coveredByMaster,
                     'CurrentRank' => $alreadyHas ? ($row->player_ka_rank ?: null) : null,
@@ -989,9 +1004,18 @@ class Report extends Ork3
             $cid = (int)substr($court, 6);
             $where[] = 'EXISTS (SELECT 1 FROM ' . DB_PREFIX . "court_award ca WHERE ca.recommendations_id = recs.recommendations_id AND ca.court_id = $cid AND ca.status != 'cancelled')";
         }
+        // Read the snoozed seat back from the scope the snooze was TAKEN at
+        // (snoozed_kingdom_id/snoozed_park_id); pre-scope snoozes stored NULL there and
+        // fall back to the recipient's own park, which is what they were written against.
+        $seatSub = function ($role) {
+            return "COALESCE((SELECT o.mundane_id FROM " . DB_PREFIX . "officer o"
+                . " WHERE o.kingdom_id = COALESCE(recs.snoozed_kingdom_id, m.kingdom_id)"
+                . " AND o.park_id = COALESCE(recs.snoozed_park_id, m.park_id)"
+                . " AND o.role = '" . $role . "' ORDER BY o.officer_id DESC LIMIT 1), 0)";
+        };
         $snoozedExpr = "(recs.snoozed_monarch_id IS NOT NULL"
-            . " AND recs.snoozed_monarch_id = (SELECT COALESCE(MAX(CASE WHEN role='Monarch' THEN mundane_id END),0) FROM " . DB_PREFIX . "officer WHERE park_id = m.park_id)"
-            . " AND recs.snoozed_regent_id  = (SELECT COALESCE(MAX(CASE WHEN role='Regent'  THEN mundane_id END),0) FROM " . DB_PREFIX . "officer WHERE park_id = m.park_id))";
+            . " AND recs.snoozed_monarch_id = " . $seatSub('Monarch')
+            . " AND recs.snoozed_regent_id  = " . $seatSub('Regent') . ")";
         // Master-peerage coverage: holding a Master/peerage award covers its ladder. Mirror the
         // PHP AlreadyHas refinement (Award::GetLadderMasterMap) in SQL so the page count is EXACT
         // (no over-count of open/ator, no short batches).
@@ -1061,7 +1085,7 @@ class Report extends Ork3
             . " LEFT JOIN " . DB_PREFIX . "award a ON a.award_id = ka.award_id"
             . " LEFT JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = recs.mundane_id"
             . " WHERE $pageDismissedClause"
-            . " AND m.active = 1 AND (m.suspended IS NULL OR m.suspended = 0)"
+            . " AND (m.suspended IS NULL OR m.suspended = 0)"
             . $scope . $whereSql;
 
         $this->db->Clear();
@@ -1263,12 +1287,19 @@ class Report extends Ork3
         $key = Ork3::$Lib->ghettocache->key([
             'KingdomIds'    => $kidList,
             'RecommendedBy' => (int)($request['RecommendedBy'] ?? 0),
+            // Bumped when the counted predicate changes, so entries cached under the
+            // previous rule are not served for the rest of their TTL.
+            'V'             => 2,
         ]);
         if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 300)) !== false) {
             return (int)$cache;
         }
 
-        $where = "m.kingdom_id IN ($kidList) AND (recs.deleted_by IS NULL OR recs.deleted_by = 0)";
+        // Must carry the same recipient-status predicate as PlayerAwardRecommendations and
+        // PlayerAwardRecommendationsPage, or the badge counts rows the Manager can never
+        // show and the counter can never be worked down to zero.
+        $where = "m.kingdom_id IN ($kidList) AND (m.suspended IS NULL OR m.suspended = 0)"
+            . " AND (recs.deleted_by IS NULL OR recs.deleted_by = 0)";
         if (!empty($request['RecommendedBy'])) {
             $rb = (int)$request['RecommendedBy'];
             $where .= " AND recs.recommended_by_id = $rb";

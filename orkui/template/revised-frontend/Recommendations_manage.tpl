@@ -1241,6 +1241,16 @@ function rmJsonOk(j) { return !!j && j.status === 0; }
 // How many of a cluster's member writes actually landed. Partial success is real —
 // the successful writes are already committed server-side — so the UI must report
 // what happened instead of a flat "Failed."
+// First server-supplied error in a results array, for toasts that would otherwise
+// collapse a specific refusal into a bare "Failed.".
+function rmFirstError(results) {
+    if (!Array.isArray(results)) return '';
+    for (var i = 0; i < results.length; i++) {
+        var e = results[i] && results[i].error;
+        if (typeof e === 'string' && e.trim() !== '') return e.replace(/^\s*:\s*/, '').trim();
+    }
+    return '';
+}
 function rmCountOk(results) {
     var n = 0;
     (results || []).forEach(function (j) { if (rmJsonOk(j)) n++; });
@@ -1321,9 +1331,12 @@ document.getElementById('rm-tbody').addEventListener('click', function (e) {
             if (failN > 0) {
                 // Some member recs may already have flipped server-side. Leave the row
                 // as it is (its state is now mixed) and say exactly what landed.
+                // Surface the server's reason when it gave one: a refusal like "no
+                // Monarch or Regent is recorded for this scope" is actionable, and a
+                // bare "Failed." reads as a dead button.
                 rmToast(okN
                     ? (snoozed ? 'Unsnoozed ' : 'Snoozed ') + okN + ', ' + failN + ' failed.'
-                    : 'Failed.', true);
+                    : (rmFirstError(results) || 'Failed.'), true);
                 return;
             }
             var nowSnoozed = !snoozed;
@@ -1433,6 +1446,9 @@ function rmBulkRequest(action, ids, passed) {
         if (!rmJsonOk(j) || !Array.isArray(j.results)) throw new Error('bulk failed');
         var map = {};
         j.results.forEach(function (r) { map[String(r.id)] = !!r.ok; });
+        // Carried on the map (non-numeric key, so it cannot collide with an id) so a
+        // uniform server refusal survives to the toast instead of becoming "N failed".
+        map._firstError = rmFirstError(j.results);
         return map;
     });
 }
@@ -1450,7 +1466,15 @@ function rmBulkRequestChunked(action, ids, passed) {
         var slice = ids.slice(i, i + RM_BULK_CHUNK);
         i += RM_BULK_CHUNK;
         return rmBulkRequest(action, slice, passed).then(function (part) {
-            for (var k in part) { if (Object.prototype.hasOwnProperty.call(part, k)) map[k] = part[k]; }
+            for (var k in part) {
+                if (!Object.prototype.hasOwnProperty.call(part, k)) continue;
+                // Keep the FIRST reason seen: a later clean chunk must not blank it.
+                if (k === '_firstError') {
+                    if (!map._firstError && part._firstError) map._firstError = part._firstError;
+                    continue;
+                }
+                map[k] = part[k];
+            }
             return step();
         });
     }
@@ -1492,7 +1516,11 @@ function rmBulkRun(action, rows, opts) {
             opts.apply(tr);
         });
         rmUpdateSelCount();
-        rmToast(opts.msg(okRows, failRows), failRows > 0);
+        // When NOTHING landed the tally alone is useless ("0 done, 12 failed"), and a
+        // uniform server refusal is exactly the case an officer can act on — so lead
+        // with the server's reason and keep the tally as context.
+        var reason = (okRows === 0 && failRows > 0) ? map._firstError : '';
+        rmToast(reason ? reason + ' (' + failRows + ' not changed.)' : opts.msg(okRows, failRows), failRows > 0);
         rmBulkBusy(false);
     // A throw here means one chunk failed (403, transport, timeout, malformed body).
     // Earlier chunks — and possibly part of this one — are already committed, so we
