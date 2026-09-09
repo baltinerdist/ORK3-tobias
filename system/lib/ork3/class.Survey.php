@@ -215,6 +215,30 @@ class Survey
         return $this->fetchRow('SELECT * FROM ' . DB_PREFIX . 'survey WHERE slug = \'' . $this->esc($slug) . '\'');
     }
 
+    /**
+     * The owning survey's row for a page/question/image id, or null. Lets a
+     * caller (the AJAX controller) resolve authority from a child id WITHOUT
+     * trusting a survey id supplied alongside it in the same request (the
+     * QualTest::export lesson) and without reaching for $DB itself.
+     */
+    public function surveyForPage(int $pageId): ?array
+    {
+        $row = $this->fetchRow('SELECT survey_id FROM ' . DB_PREFIX . 'survey_page WHERE page_id = ' . (int) $pageId);
+        return $row === null ? null : $this->getRow((int) $row['survey_id']);
+    }
+
+    public function surveyForQuestion(int $questionId): ?array
+    {
+        $row = $this->fetchRow('SELECT survey_id FROM ' . DB_PREFIX . 'survey_question WHERE question_id = ' . (int) $questionId);
+        return $row === null ? null : $this->getRow((int) $row['survey_id']);
+    }
+
+    public function surveyForImage(int $imageId): ?array
+    {
+        $row = $this->fetchRow('SELECT survey_id FROM ' . DB_PREFIX . 'survey_image WHERE image_id = ' . (int) $imageId);
+        return $row === null ? null : $this->getRow((int) $row['survey_id']);
+    }
+
     /** Structure is frozen once a survey has ever been opened (spec §1). */
     public function isStructureLocked(array $surveyRow): bool
     {
