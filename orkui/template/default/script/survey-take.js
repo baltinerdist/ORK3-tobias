@@ -66,8 +66,8 @@
         },
         {
             value: 'partial',
-            title: 'My Kingdom and How Long I’ve Been Playing',
-            desc: 'record only my kingdom and how many years I’ve played. No name, no profile link.'
+            title: 'My Kingdom and How Long I\'ve Been Playing',
+            desc: 'record only my kingdom and how many years I\'ve played. No name, no profile link.'
         },
         {
             value: 'anonymous',
@@ -458,10 +458,15 @@
             html += '<div class="sv-consent" role="radiogroup" aria-label="' + esc(CONSENT_HEADING) + '">';
             for (i = 0; i < CONSENT_OPTIONS.length; i++) {
                 o = CONSENT_OPTIONS[i];
+                // Rendered exactly as spec §2 writes the bullet: bold label,
+                // em dash, sentence. Do not split it into two lines — the
+                // sentence continues the label and reads wrong on its own.
                 html += '<label class="sv-consent-opt">' +
                     '<input type="radio" class="sv-consent-input" name="sv-consent" value="' + o.value + '"' +
                     (consent === o.value ? ' checked' : '') + '>' +
-                    '<span><span class="sv-consent-title">' + esc(o.title) + '</span>' +
+                    '<span class="sv-consent-copy">' +
+                    '<span class="sv-consent-title">' + esc(o.title) + '</span>' +
+                    ' — ' +
                     '<span class="sv-consent-desc">' + esc(o.desc) + '</span></span></label>';
             }
             html += '</div>';

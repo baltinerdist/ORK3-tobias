@@ -653,19 +653,22 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
     cursor: pointer;
 }
 
-.sv-consent-title {
+/* The three choices are one flowing sentence each — "Label — explanation" —
+   because the spec §2 copy is fixed and its explanation continues the label. */
+.sv-consent-copy {
     display: block;
     font-size: 15px;
+    line-height: 1.5;
+    color: var(--sv-text-muted);
+}
+
+.sv-consent-title {
     font-weight: var(--ork-font-weight-semibold);
     color: var(--sv-text);
-    margin-bottom: 2px;
 }
 
 .sv-consent-desc {
-    display: block;
-    font-size: 13px;
-    line-height: 1.5;
-    color: var(--sv-text-muted);
+    color: inherit;
 }
 
 /* ── Responsive ───────────────────────────────────────────────────────── */
