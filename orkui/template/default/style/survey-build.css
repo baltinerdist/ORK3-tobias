@@ -1,0 +1,1054 @@
+/* ==========================================================================
+   ORK3 Surveys — builder surface  (.svb-*)
+
+   LAYOUT AND CHROME ONLY. Question markup, form controls, buttons, notices and
+   every --sv-* token come from survey.css; the page frame, header, context
+   strip and scope chip come from reports.css. Nothing in this file is copied
+   from either.
+
+   The canvas is the editor (spec §7 "Builder"): one centred column of page
+   cards, and the card you click swaps its SvRender preview for inline editors.
+   There is no palette and no inspector; survey-level settings live in the
+   drawer the header's Settings button opens.
+
+   Structure:
+     .svb-layout > .svb-canvas > .svb-page > .svb-items > .svb-item
+     .svb-item.svb-selected  →  .svb-edit (prompt, help, type editor, ⋯, foot)
+     .svb-drawer             →  survey settings
+
+   Dark mode: html[data-theme="dark"] block at the bottom.
+   Breakpoints: 900px (single column chrome, drawer becomes a sheet) and 420px.
+   ========================================================================== */
+
+/* ── Header pieces ────────────────────────────────────────────────────── */
+
+.svb-title-input {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--ork-radius-md);
+    color: inherit;
+    font: inherit;
+    font-size: 22px;
+    font-weight: var(--ork-font-weight-bold);
+    padding: 4px 8px;
+    margin: -4px 0 -4px -8px;
+    width: min(420px, 60vw);
+    max-width: 100%;
+    box-sizing: border-box;
+    min-height: 44px;
+}
+
+.svb-title-input::placeholder { color: rgba(255, 255, 255, 0.6); }
+
+.svb-title-input:focus {
+    outline: none;
+    background: rgba(255, 255, 255, 0.14);
+    border-color: rgba(255, 255, 255, 0.5);
+}
+
+.svb-status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    background: rgba(255, 255, 255, 0.16);
+    font-size: 11px;
+    font-weight: var(--ork-font-weight-bold);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.svb-status-open     { background: rgba(72, 187, 120, 0.28); border-color: rgba(72, 187, 120, 0.6); }
+.svb-status-closed   { background: rgba(237, 137, 54, 0.28); border-color: rgba(237, 137, 54, 0.6); }
+.svb-status-archived { background: rgba(160, 174, 192, 0.25); }
+
+.svb-savestate {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.85);
+    white-space: nowrap;
+    padding: 0 4px;
+}
+
+.svb-savestate-saving::before,
+.svb-savestate-saved::before,
+.svb-savestate-error::before {
+    font-family: "Font Awesome 6 Free", "Font Awesome 5 Free";
+    font-weight: 900;
+    content: "\f0c7";
+}
+
+.svb-savestate-saving::before { content: "\f110"; animation: svb-spin 1.1s linear infinite; }
+.svb-savestate-error::before  { content: "\f071"; }
+.svb-savestate-saved { color: #9ae6b4; }
+.svb-savestate-error { color: #feb2b2; }
+
+@keyframes svb-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+    .svb-savestate-saving::before { animation: none; }
+}
+
+/* ── Strips under the header ──────────────────────────────────────────── */
+
+.svb-lockbar,
+.svb-confirm {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    border-radius: var(--ork-radius-md);
+    font-size: 14px;
+    line-height: 1.45;
+}
+
+.svb-lockbar {
+    background: var(--ork-alert-warning-bg);
+    border: 1px solid var(--ork-alert-warning-border);
+    color: var(--ork-alert-warning-text);
+}
+
+.svb-confirm {
+    background: var(--ork-card-bg);
+    border: 1px solid var(--ork-border-dark);
+    box-shadow: var(--ork-shadow-card);
+    color: var(--ork-text);
+}
+
+.svb-confirm-text { flex: 1 1 260px; }
+
+.svb-notice-slot { margin-bottom: 12px; }
+
+.svb-danger {
+    border-color: var(--sv-danger);
+    color: var(--sv-danger);
+    background: transparent;
+}
+
+.svb-danger:hover:not([disabled]) { background: var(--sv-danger-bg); }
+
+/* ── Canvas column ────────────────────────────────────────────────────── */
+
+.svb-layout { padding-bottom: 48px; }
+
+.svb-canvas {
+    max-width: 860px;
+    margin: 0 auto;
+    min-width: 0;
+}
+
+/* ── Page card ────────────────────────────────────────────────────────── */
+
+.svb-page {
+    background: var(--ork-card-bg);
+    border: 1px solid var(--ork-border);
+    border-radius: var(--ork-radius-lg);
+    box-shadow: var(--ork-shadow-card);
+    margin-bottom: 18px;
+    overflow: hidden;
+}
+
+.svb-page-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    background: var(--ork-bg-secondary);
+    border-bottom: 1px solid var(--ork-border);
+}
+
+.svb-page-handle,
+.svb-handle,
+.svb-opthandle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    min-height: 28px;
+    border: 0;
+    background: none;
+    color: var(--ork-text-hint);
+    cursor: grab;
+    padding: 0;
+    flex: 0 0 auto;
+}
+
+.svb-page-handle[disabled] { cursor: not-allowed; opacity: 0.4; }
+.svb-page-handle:active,
+.svb-handle:active,
+.svb-opthandle:active { cursor: grabbing; }
+
+.svb-page-num {
+    font-family: var(--ork-font-heading);
+    font-size: 12px;
+    font-weight: var(--ork-font-weight-bold);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ork-text-muted);
+    white-space: nowrap;
+}
+
+.svb-page-title {
+    flex: 1 1 180px;
+    min-width: 0;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--ork-radius-sm);
+    color: var(--ork-text);
+    font-family: inherit;
+    font-size: 16px;
+    padding: 8px 10px;
+    min-height: 44px;
+    box-sizing: border-box;
+}
+
+.svb-page-title:hover { border-color: var(--ork-border); }
+
+.svb-page-title:focus {
+    outline: none;
+    background: var(--ork-input-bg);
+    border-color: var(--sv-accent);
+    box-shadow: var(--ork-shadow-focus);
+}
+
+.svb-page-count {
+    font-size: 12px;
+    color: var(--ork-text-muted);
+    white-space: nowrap;
+}
+
+.svb-page-actions { margin-left: auto; display: flex; gap: 2px; flex: 0 0 auto; }
+
+.svb-page-more {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--ork-border);
+    background: var(--ork-bg-secondary);
+}
+
+.svb-items { padding: 10px 12px 4px; min-height: 48px; }
+
+.svb-page-empty {
+    margin: 4px 0 10px;
+    padding: 14px;
+    border: 1px dashed var(--ork-border-dark);
+    border-radius: var(--ork-radius-md);
+    text-align: center;
+    color: var(--ork-text-muted);
+    font-size: 13px;
+}
+
+.svb-page-foot { padding: 0 12px 12px; }
+
+/* ── Add controls ─────────────────────────────────────────────────────── */
+
+.svb-addbtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 16px;
+    border: 1px dashed var(--ork-border-dark);
+    border-radius: var(--ork-radius-md);
+    background: transparent;
+    color: var(--sv-accent);
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: var(--ork-font-weight-semibold);
+    cursor: pointer;
+}
+
+.svb-addbtn:hover:not([disabled]) { background: var(--sv-accent-soft); border-style: solid; }
+.svb-addbtn:focus-visible { outline: 2px solid var(--sv-accent); outline-offset: 2px; }
+.svb-addbtn[disabled] { opacity: 0.45; cursor: not-allowed; }
+
+/* The small "+" between cards: quiet until the row is hovered or focused. */
+.svb-addinline {
+    display: flex;
+    justify-content: center;
+    height: 12px;
+    margin: -2px 0;
+    position: relative;
+    z-index: 1;
+}
+
+.svb-addinline-btn {
+    width: 28px;
+    height: 28px;
+    margin-top: -8px;
+    border-radius: 50%;
+    border: 1px solid var(--ork-border-dark);
+    background: var(--ork-card-bg);
+    color: var(--sv-accent);
+    font-size: 11px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.12s;
+    padding: 0;
+}
+
+.svb-addinline:hover .svb-addinline-btn,
+.svb-addinline-btn:focus-visible,
+.svb-item.svb-selected + .svb-addinline .svb-addinline-btn { opacity: 1; }
+
+.svb-addinline-btn[disabled] { display: none; }
+
+.svb-pagediv {
+    display: flex;
+    justify-content: center;
+    padding: 4px 0 8px;
+}
+
+.svb-addpage { font-size: 14px; }
+
+/* ── Item card ────────────────────────────────────────────────────────── */
+
+.svb-item {
+    border: 1px solid var(--ork-border);
+    border-left: 3px solid transparent;
+    border-radius: var(--ork-radius-md);
+    background: var(--ork-card-bg);
+    margin-bottom: 10px;
+    cursor: pointer;
+}
+
+.svb-item:hover { border-color: var(--ork-border-dark); }
+.svb-item:focus-visible { outline: 2px solid var(--sv-accent); outline-offset: 2px; }
+
+.svb-item.svb-selected {
+    border-color: var(--ork-border-dark);
+    border-left-color: var(--sv-accent);
+    box-shadow: var(--ork-shadow-card-hover);
+    cursor: default;
+}
+
+.svb-item-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding: 6px 10px 0;
+}
+
+.svb-type-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: var(--ork-font-weight-semibold);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ork-text-muted);
+    white-space: nowrap;
+}
+
+.svb-type-badge i { color: var(--sv-accent); }
+
+.svb-req-dot {
+    color: var(--sv-danger);
+    font-size: 20px;
+    line-height: 1;
+    cursor: help;
+}
+
+.svb-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--ork-border-dark);
+    background: var(--ork-bg-secondary);
+    font-size: 11px;
+    color: var(--ork-text-secondary);
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+.svb-chip-showif i { color: var(--sv-accent); }
+
+.svb-item-body { padding: 4px 10px 10px; }
+
+/* SvRender draws its own card; inside a builder item that frame is redundant. */
+.svb-item-body .sv-q {
+    background: none;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    margin: 0;
+}
+
+.svb-ghost { opacity: 0.45; }
+
+/* ── Icon buttons ─────────────────────────────────────────────────────── */
+
+.svb-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--ork-radius-sm);
+    background: transparent;
+    color: var(--ork-text-muted);
+    cursor: pointer;
+    font-size: 13px;
+    flex: 0 0 auto;
+}
+
+.svb-icon-btn:hover:not([disabled]) {
+    background: var(--ork-surface-hover);
+    border-color: var(--ork-border);
+    color: var(--ork-text);
+}
+
+.svb-icon-btn:focus-visible { outline: 2px solid var(--sv-accent); outline-offset: 1px; }
+.svb-icon-btn[disabled] { opacity: 0.35; cursor: not-allowed; }
+.svb-icon-btn.svb-icon-on { background: var(--sv-accent-soft); color: var(--sv-accent); border-color: var(--sv-accent); }
+.svb-icon-danger:hover:not([disabled]) { color: var(--sv-danger); border-color: var(--sv-danger); }
+
+/* ── Inline text links ────────────────────────────────────────────────── */
+
+.svb-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 44px;
+    padding: 8px 6px;
+    border: 0;
+    background: none;
+    color: var(--sv-accent);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: var(--ork-font-weight-semibold);
+    cursor: pointer;
+}
+
+.svb-link:hover:not([disabled]) { text-decoration: underline; }
+.svb-link:focus-visible { outline: 2px solid var(--sv-accent); outline-offset: 2px; }
+.svb-link[disabled] { opacity: 0.45; cursor: not-allowed; text-decoration: none; }
+.svb-link-danger { color: var(--sv-danger); }
+
+/* ── The in-place editor ──────────────────────────────────────────────── */
+
+.svb-edit { display: block; }
+
+.svb-prompt {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--ork-border);
+    border-radius: 0;
+    color: var(--ork-text);
+    font-family: inherit;
+    font-size: 16px;
+    font-weight: var(--ork-font-weight-semibold);
+    line-height: 1.4;
+    padding: 8px 2px;
+    resize: none;
+    overflow: hidden;
+    min-height: 44px;
+}
+
+.svb-prompt:focus {
+    outline: none;
+    border-bottom-color: var(--sv-accent);
+    box-shadow: 0 1px 0 0 var(--sv-accent);
+}
+
+.svb-prompt::placeholder { color: var(--ork-text-hint); font-weight: 400; }
+
+.svb-help-add { margin: 2px 0 0; }
+
+.svb-cardimg {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin: 10px 0;
+}
+
+.svb-cardimg-thumb {
+    width: 84px;
+    height: 60px;
+    object-fit: cover;
+    border-radius: var(--ork-radius-sm);
+    border: 1px solid var(--ork-border);
+}
+
+.svb-typeedit { margin-top: 10px; }
+
+/* A live SvRender control shown for reference, not for answering. */
+.svb-preview-lock {
+    pointer-events: none;
+    user-select: none;
+    opacity: 0.92;
+}
+
+/* ── Option rows ──────────────────────────────────────────────────────── */
+
+.svb-opts + .svb-opts { margin-top: 14px; }
+
+.svb-optlist { display: flex; flex-direction: column; gap: 2px; }
+
+.svb-optrow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.svb-glyph {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+    border: 2px solid var(--ork-border-dark);
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: var(--ork-text-muted);
+}
+
+.svb-glyph-dot { border-radius: 50%; }
+.svb-glyph-box { border-radius: 3px; }
+.svb-glyph-num { border-radius: 3px; border-style: dashed; }
+
+.svb-optrow .svb-optlabel {
+    flex: 1 1 auto;
+    min-width: 0;
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid transparent;
+    border-radius: 0;
+    padding: 8px 4px;
+}
+
+.svb-optrow .svb-optlabel:hover { border-bottom-color: var(--ork-border); }
+
+.svb-optrow .svb-optlabel:focus {
+    background: transparent;
+    border-bottom-color: var(--sv-accent);
+    box-shadow: none;
+}
+
+.svb-optrow .svb-optweight {
+    flex: 0 0 84px;
+    min-height: 44px;
+    padding: 8px;
+}
+
+.svb-other-tag {
+    flex: 0 0 auto;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--sv-accent-soft);
+    color: var(--sv-accent);
+    font-size: 11px;
+    font-weight: var(--ork-font-weight-semibold);
+    cursor: help;
+}
+
+.svb-optadd { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+
+/* ── Matrix ───────────────────────────────────────────────────────────── */
+
+.svb-mx { display: block; }
+
+.svb-mx-caption {
+    display: block;
+    font-family: var(--ork-font-heading);
+    font-size: 11px;
+    font-weight: var(--ork-font-weight-bold);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ork-text-muted);
+    margin-bottom: 4px;
+}
+
+.svb-mx-colstrip {
+    flex-direction: row;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 6px;
+}
+
+.svb-mx-colstrip .svb-optrow-col {
+    flex: 0 0 190px;
+    align-items: center;
+    border: 1px solid var(--ork-border);
+    border-radius: var(--ork-radius-md);
+    padding: 4px 6px;
+    background: var(--ork-bg-secondary);
+}
+
+.svb-mx-colstrip .svb-optlabel { flex: 1 1 60px; }
+
+/* ── Setting lines ────────────────────────────────────────────────────── */
+
+.svb-settingline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--ork-border);
+}
+
+.svb-settingline .svb-field { margin-bottom: 0; flex: 1 1 150px; min-width: 0; }
+.svb-settingline .svb-field-check { flex: 1 1 100%; }
+
+.svb-scale-ends {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+}
+
+.svb-endlabel { flex: 1 1 0; min-width: 0; display: block; }
+.svb-endlabel-max .sv-input { text-align: right; }
+
+.svb-endlabel .sv-input {
+    background: transparent;
+    border: 0;
+    border-bottom: 1px dashed var(--ork-border-dark);
+    border-radius: 0;
+    padding: 8px 2px;
+    min-height: 44px;
+}
+
+.svb-endlabel .sv-input:focus { border-bottom-style: solid; border-bottom-color: var(--sv-accent); box-shadow: none; }
+
+/* ── ⋯ menu and card footer ───────────────────────────────────────────── */
+
+.svb-more {
+    margin-top: 12px;
+    padding: 12px;
+    border: 1px solid var(--ork-border);
+    border-radius: var(--ork-radius-md);
+    background: var(--ork-bg-secondary);
+}
+
+.svb-sub {
+    font-family: var(--ork-font-heading);
+    font-size: 11px;
+    font-weight: var(--ork-font-weight-bold);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ork-text-muted);
+    margin: 14px 0 6px;
+}
+
+.svb-more > .svb-sub:first-child,
+.svb-drawer-body > .svb-sub:first-child { margin-top: 0; }
+
+.svb-foot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--ork-border);
+}
+
+.svb-foot-type { flex: 0 1 200px; min-width: 0; }
+.svb-foot-type .sv-select { min-height: 44px; }
+.svb-foot-req { margin: 0; }
+.svb-foot-spacer { flex: 1 1 auto; }
+
+/* ── Generic fields (cards, ⋯ menu and drawer share these) ────────────── */
+
+.svb-field { margin-bottom: 12px; }
+
+.svb-label {
+    display: block;
+    font-family: var(--ork-font-heading);
+    font-size: 11px;
+    font-weight: var(--ork-font-weight-bold);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--ork-text-muted);
+    margin-bottom: 4px;
+}
+
+.svb-label-wrap > span {
+    display: block;
+    margin-bottom: 4px;
+}
+
+.svb-hint { margin: 4px 0 0; font-size: 11px; line-height: 1.45; color: var(--ork-text-muted); }
+
+.svb-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    font-size: 14px;
+    color: var(--ork-text);
+    cursor: pointer;
+}
+
+.svb-check input[type="checkbox"] { width: 20px; height: 20px; flex: 0 0 auto; accent-color: var(--sv-accent); }
+.svb-check input[disabled] { cursor: not-allowed; }
+
+.svb-multi { min-height: 150px; padding: 6px; }
+
+.svb-color { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+.svb-color-input {
+    width: 56px;
+    height: 44px;
+    padding: 2px;
+    border: 1px solid var(--ork-input-border);
+    border-radius: var(--ork-radius-md);
+    background: var(--ork-input-bg);
+    cursor: pointer;
+}
+
+.svb-showif { margin-top: 4px; }
+
+/* ── Markdown editor ──────────────────────────────────────────────────── */
+
+.svb-md-tools { display: flex; gap: 2px; margin-bottom: 4px; flex-wrap: wrap; }
+
+.svb-md-btn {
+    width: 34px;
+    height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--ork-border);
+    border-radius: var(--ork-radius-sm);
+    background: var(--ork-bg-secondary);
+    color: var(--ork-text-secondary);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0;
+}
+
+.svb-md-btn:hover { background: var(--ork-surface-hover); border-color: var(--ork-border-dark); }
+.svb-md-btn:focus-visible { outline: 2px solid var(--sv-accent); outline-offset: 1px; }
+
+.svb-md-input { min-height: 84px; }
+
+.svb-md-preview {
+    margin-top: 6px;
+    padding: 8px 10px;
+    border: 1px dashed var(--ork-border);
+    border-radius: var(--ork-radius-md);
+    background: var(--ork-bg-secondary);
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--ork-text-secondary);
+    overflow-wrap: anywhere;
+}
+
+.svb-md-preview:empty { display: none; }
+.svb-md-preview > :first-child { margin-top: 0; }
+.svb-md-preview > :last-child { margin-bottom: 0; }
+.svb-md-preview img { max-width: 100%; height: auto; border-radius: var(--ork-radius-sm); }
+
+/* ── Image picker ─────────────────────────────────────────────────────── */
+
+.svb-imgpick { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+.svb-imgpick-thumb {
+    width: 96px;
+    height: 68px;
+    object-fit: cover;
+    border-radius: var(--ork-radius-sm);
+    border: 1px solid var(--ork-border);
+}
+
+.svb-imgpick-empty {
+    width: 96px;
+    height: 68px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px dashed var(--ork-border-dark);
+    border-radius: var(--ork-radius-sm);
+    color: var(--ork-text-hint);
+    font-size: 11px;
+}
+
+.svb-imgpick-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ── Settings drawer ──────────────────────────────────────────────────── */
+
+.svb-drawer { position: fixed; inset: 0; z-index: var(--z-modal); }
+
+.svb-drawer-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    border: 0;
+    width: 100%;
+    padding: 0;
+}
+
+.svb-drawer-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(440px, 100%);
+    display: flex;
+    flex-direction: column;
+    background: var(--ork-card-bg);
+    border-left: 1px solid var(--ork-border);
+    box-shadow: var(--ork-shadow-dropdown);
+}
+
+.svb-drawer-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--ork-border);
+    background: var(--ork-bg-secondary);
+    flex: 0 0 auto;
+}
+
+.svb-drawer-title {
+    font-family: var(--ork-font-heading);
+    font-size: 15px;
+    font-weight: var(--ork-font-weight-bold);
+    color: var(--ork-text);
+    margin: 0;
+    background: none;
+    border: 0;
+    padding: 0;
+}
+
+.svb-drawer-close { margin-left: auto; }
+
+.svb-drawer-body {
+    padding: 14px;
+    overflow-y: auto;
+    flex: 1 1 auto;
+    min-height: 0;
+    -webkit-overflow-scrolling: touch;
+}
+
+body.svb-drawer-lock { overflow: hidden; }
+
+/* ── Help modal ───────────────────────────────────────────────────────── */
+
+.svb-modal { position: fixed; inset: 0; z-index: var(--z-modal); }
+
+.svb-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    border: 0;
+    width: 100%;
+    padding: 0;
+}
+
+.svb-modal-panel {
+    position: relative;
+    max-width: 720px;
+    width: calc(100% - 32px);
+    max-height: calc(100vh - 64px);
+    margin: 32px auto;
+    display: flex;
+    flex-direction: column;
+    background: var(--ork-card-bg);
+    border: 1px solid var(--ork-border);
+    border-radius: var(--ork-radius-lg);
+    box-shadow: var(--ork-shadow-dropdown);
+    overflow: hidden;
+}
+
+.svb-modal-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--ork-border);
+    background: var(--ork-bg-secondary);
+    flex: 0 0 auto;
+}
+
+.svb-modal-title,
+.svb-modal-body h1,
+.svb-modal-body h2,
+.svb-modal-body h3,
+.svb-modal-body h4 {
+    font-family: var(--ork-font-heading);
+    color: var(--ork-text);
+    background: none;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    margin: 0;
+}
+
+.svb-modal-title { font-size: 15px; font-weight: var(--ork-font-weight-bold); }
+.svb-modal-close { margin-left: auto; }
+
+.svb-modal-body {
+    padding: 16px;
+    overflow-y: auto;
+    flex: 1 1 auto;
+    min-height: 0;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--ork-text-secondary);
+}
+
+.svb-modal-body h1, .svb-modal-body h2, .svb-modal-body h3, .svb-modal-body h4 { margin: 16px 0 6px; }
+.svb-modal-body > :first-child { margin-top: 0; }
+.svb-modal-body table { border-collapse: collapse; width: 100%; }
+.svb-modal-body th, .svb-modal-body td { border: 1px solid var(--ork-border); padding: 6px 8px; text-align: left; }
+.svb-modal-body pre { overflow-x: auto; background: var(--ork-bg-secondary); padding: 10px; border-radius: var(--ork-radius-md); }
+
+/* ── Touch: every control the rule cares about reaches 44px ───────────── */
+
+@media (pointer: coarse), (max-width: 900px) {
+    .svb-icon-btn,
+    .svb-md-btn,
+    .svb-page-handle,
+    .svb-handle,
+    .svb-opthandle,
+    .svb-addinline-btn {
+        min-width: 44px;
+        min-height: 44px;
+    }
+
+    .svb-addinline { height: 16px; }
+    .svb-addinline-btn { width: 44px; height: 44px; margin-top: -14px; border-radius: 50%; }
+}
+
+/* ── Narrow ───────────────────────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+    .svb-title-input { width: 100%; }
+
+    .svb-drawer-panel {
+        top: auto;
+        left: 0;
+        width: 100%;
+        max-height: 88vh;
+        border-left: 0;
+        border-top: 1px solid var(--ork-border);
+        border-radius: var(--ork-radius-lg) var(--ork-radius-lg) 0 0;
+    }
+
+    /* Touch has no hover, so the between-card "+" is always available. */
+    .svb-addinline-btn { opacity: 1; }
+}
+
+@media (max-width: 420px) {
+    .svb-items { padding: 8px 8px 4px; }
+    .svb-item-body { padding: 4px 8px 8px; }
+    .svb-page-head { padding: 8px; }
+    .svb-page-num { flex: 1 1 100%; }
+    .svb-page-title { flex: 1 1 100%; }
+    .svb-foot-type { flex: 1 1 100%; }
+    .svb-settingline .svb-field { flex: 1 1 100%; }
+    .svb-mx-colstrip .svb-optrow-col { flex: 0 0 160px; }
+    .svb-scale-ends { flex-direction: column; gap: 4px; }
+    .svb-endlabel-max .sv-input { text-align: left; }
+    .svb-modal-panel { width: 100%; margin: 0; max-height: 100vh; border-radius: 0; border: 0; }
+}
+
+/* ── Dark mode ────────────────────────────────────────────────────────── */
+
+html[data-theme="dark"] .svb-confirm {
+    background: var(--ork-card-bg);
+    border-color: var(--ork-border);
+    color: var(--ork-text);
+}
+
+html[data-theme="dark"] .svb-page,
+html[data-theme="dark"] .svb-item,
+html[data-theme="dark"] .svb-drawer-panel,
+html[data-theme="dark"] .svb-modal-panel,
+html[data-theme="dark"] .svb-addinline-btn {
+    background: var(--ork-card-bg);
+    border-color: var(--ork-border);
+}
+
+html[data-theme="dark"] .svb-page-head,
+html[data-theme="dark"] .svb-page-more,
+html[data-theme="dark"] .svb-more,
+html[data-theme="dark"] .svb-drawer-head,
+html[data-theme="dark"] .svb-modal-head,
+html[data-theme="dark"] .svb-md-btn,
+html[data-theme="dark"] .svb-md-preview,
+html[data-theme="dark"] .svb-chip,
+html[data-theme="dark"] .svb-mx-colstrip .svb-optrow-col,
+html[data-theme="dark"] .svb-modal-body pre {
+    background: var(--ork-bg-secondary);
+    border-color: var(--ork-border);
+}
+
+html[data-theme="dark"] .svb-icon-btn:hover:not([disabled]),
+html[data-theme="dark"] .svb-md-btn:hover,
+html[data-theme="dark"] .svb-addbtn:hover:not([disabled]) { background: var(--ork-surface-hover); }
+
+html[data-theme="dark"] .svb-item:hover { border-color: var(--ork-text-muted); }
+html[data-theme="dark"] .svb-item.svb-selected { border-left-color: var(--sv-accent); }
+
+html[data-theme="dark"] .svb-page-title:focus,
+html[data-theme="dark"] .svb-color-input,
+html[data-theme="dark"] .svb-multi { background: var(--ork-input-bg); border-color: var(--ork-border); }
+
+/* orkui.css gives every global h1–h6 a grey pill box, and its dark-mode rule
+   carries more type selectors than a bare class — so the reset is repeated
+   here for both themes. Verified against computed styles, not by eye. */
+html[data-theme="dark"] .svb-page-num,
+html[data-theme="dark"] .svb-sub,
+html[data-theme="dark"] .svb-mx-caption,
+html[data-theme="dark"] .svb-label,
+html[data-theme="dark"] .svb-drawer-title,
+html[data-theme="dark"] .svb-modal-title,
+html[data-theme="dark"] .svb-modal-body h1,
+html[data-theme="dark"] .svb-modal-body h2,
+html[data-theme="dark"] .svb-modal-body h3,
+html[data-theme="dark"] .svb-modal-body h4 {
+    background: none;
+    border: 0;
+    padding: 0;
+}
+
+html[data-theme="dark"] .svb-drawer-title,
+html[data-theme="dark"] .svb-modal-title,
+html[data-theme="dark"] .svb-modal-body h1,
+html[data-theme="dark"] .svb-modal-body h2,
+html[data-theme="dark"] .svb-modal-body h3,
+html[data-theme="dark"] .svb-modal-body h4 { color: var(--ork-text); }
+
+/* ── Print ────────────────────────────────────────────────────────────── */
+
+@media print {
+    .svb-page-actions,
+    .svb-item-bar .svb-handle,
+    .svb-page-handle,
+    .svb-addbtn,
+    .svb-addinline,
+    .svb-pagediv,
+    .svb-foot,
+    .svb-more,
+    .svb-drawer,
+    .svb-modal,
+    .svb-confirm { display: none !important; }
+
+    .svb-page, .svb-item { box-shadow: none; break-inside: avoid; }
+}
