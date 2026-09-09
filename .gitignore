@@ -67,3 +67,5 @@ htmlcov/
 .pytest_cache/
 test-results/
 ga-service-account.json
+assets/survey/*
+!assets/survey/.gitkeep
