@@ -15,7 +15,12 @@
 				<button class="kn-btn kn-btn-secondary" onclick="knOpenRecModal()">
 					<i class="fas fa-star"></i> Recommend an Award
 				</button>
-				<?php if (($CanManageKingdom ?? false) || !empty($ViewerHasCircle)): ?>
+				<?php /* Manage Recs is gated on the manage right ALONE. $ViewerHasCircle
+				   only means the viewer holds a circle award, which grants the read-only
+				   "My Circles" filter below and nothing more — Recommendations::manage
+				   enforces can_manage() server-side, so circle holders without recs
+				   authority were shown a primary CTA that always 403s. */ ?>
+				<?php if ($CanManageKingdom ?? false): ?>
 				<a class="kn-btn kn-btn-primary kn-manage-recs" href="<?= UIR ?>Recommendations/manage/kingdom/<?= (int)$kingdom_id ?>"><i class="fas fa-tasks"></i> Manage Recs</a>
 				<?php endif; ?>
 			</div>

@@ -340,7 +340,7 @@ class Controller_ParkAjax extends Controller
 
         } elseif ($action === 'resolverecommendationcluster') {
             $uid = (int)$this->session->user_id;
-            if (!Ork3::$Lib->authorization->HasAuthority($uid, AUTH_PARK, $park_id, AUTH_CREATE)) {
+            if (!$this->Authorization->has_authority($uid, AUTH_PARK, $park_id, AUTH_CREATE)) {
                 echo json_encode(['status' => 5, 'error' => 'Not authorized.']);
                 exit;
             }
@@ -363,8 +363,20 @@ class Controller_ParkAjax extends Controller
                 exit;
             }
             $this->load_model('Reports');
-            $recs = $this->Reports->deleted_recommended_awards(['ParkId' => $park_id, 'KingdomId' => 0, 'PlayerId' => 0]);
-            echo json_encode(['status' => 0, 'recommendations' => is_array($recs) ? array_values($recs) : []]);
+            // Paged: dismissals are soft deletes that are never purged, so an
+            // unbounded fetch grows forever. Limit/Offset are honoured by
+            // Report::DeletedAwardRecommendations; hasMore lets the panel page.
+            $limit  = (int)($_POST['Limit'] ?? $_GET['Limit'] ?? 200);
+            $limit  = ($limit > 0 && $limit <= 500) ? $limit : 200;
+            $offset = max(0, (int)($_POST['Offset'] ?? $_GET['Offset'] ?? 0));
+            $recs = $this->Reports->deleted_recommended_awards(['ParkId' => $park_id, 'KingdomId' => 0, 'PlayerId' => 0, 'Limit' => $limit, 'Offset' => $offset]);
+            $recs = is_array($recs) ? array_values($recs) : [];
+            echo json_encode([
+                'status'          => 0,
+                'recommendations' => $recs,
+                'offset'          => $offset + count($recs),
+                'hasMore'         => count($recs) >= $limit,
+            ]);
 
         } elseif ($action === 'restorerecommendation') {
             $uid = (int)$this->session->user_id;

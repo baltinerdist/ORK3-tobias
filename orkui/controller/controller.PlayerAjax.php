@@ -188,6 +188,22 @@ class Controller_PlayerAjax extends Controller
                 echo json_encode(['status' => 1, 'error' => 'A date is required.']);
                 exit;
             }
+            // Ledger duplicate probe. The Manager's Grant has no guard at all, and its
+            // rows are stale 500-row batches, so two officers triaging the same backlog
+            // write two identical ork_awards rows. Predicate: same kingdomaward, same
+            // normalized rank, same date, and the award is non-repeatable (ladder or
+            // title) — a CUSTOM award (neither flag) is legitimately repeatable and is
+            // never flagged.
+            //
+            // ADVISORY ONLY — this can never refuse a grant. It is read BEFORE the
+            // write (afterwards the new row would match itself) and reported ALONGSIDE
+            // the successful grant on the normal status:0 payload, exactly like
+            // courtWarning below. There is deliberately NO confirm flag: a two-step
+            // "grant anyway?" needs a client that can send the override, and any path
+            // where the client cannot is a hard block sitting on the correction path
+            // (grant -> revoke a typo -> re-grant on the same date). Advisory keeps the
+            // officer informed without a dead end, and needs nothing from the client.
+            $dupDate = $this->ledgerDuplicateAwardDate($player_id, $kingdomaward_id, $rank, $date);
             $r = $this->Player->add_player_award([
                 'Token'          => $this->session->token,
                 'RecipientId'    => $player_id,
@@ -220,18 +236,44 @@ class Controller_PlayerAjax extends Controller
             // (including a missing value) means leave-on-court.
             $court_action = ($_POST['CourtAction'] ?? '') === 'remove' ? 'remove' : 'leave';
             $court_lines  = 0;
+            $courtWarning = '';
             if ($rec_id > 0) {
-                // Pass the cluster key too so a court line under a sibling/older
-                // representative rec id (or an ad-hoc line for the same
-                // person+award+rank) is still reconciled and can't re-grant.
-                $this->load_model('Court');
-                // The acting officer's id scopes the reconcile: only court lines on
-                // courts they can manage, and never on a completed court.
-                $court_lines = $this->Court->reconcile_grant_for_recommendation($rec_id, $new_award_id, $given_by_id, $rank, $player_id, $kingdomaward_id, $court_action, (int)$this->session->user_id);
+                // Best-effort reconcile: the permanent ork_awards row is ALREADY
+                // committed above. If this throws the request would 500, the client
+                // would never set its `granted` flag, the modal would say "Grant
+                // failed." and re-enable Submit — and AddAward has no duplicate guard,
+                // so the second click writes a SECOND permanent award row. Swallow it
+                // (mirroring the audit try/catch inside AddAward), report the money
+                // write as the success it was, and surface the court miss separately.
+                try {
+                    // Inside the try: load_model can itself throw, and a throw here is
+                    // the same 500-after-the-money-write this catch exists to prevent.
+                    // Pass the cluster key too so a court line under a sibling/older
+                    // representative rec id (or an ad-hoc line for the same
+                    // person+award+rank) is still reconciled and can't re-grant.
+                    $this->load_model('Court');
+                    // The acting officer's id scopes the reconcile: only court lines on
+                    // courts they can manage, and never on a completed court.
+                    $court_lines = $this->Court->reconcile_grant_for_recommendation($rec_id, $new_award_id, $given_by_id, $rank, $player_id, $kingdomaward_id, $court_action, (int)$this->session->user_id);
+                } catch (\Throwable $e) {
+                    error_log('PlayerAjax::grantaward court reconcile failed (award ' . $new_award_id . ', rec ' . $rec_id . '): ' . $e->getMessage());
+                    $courtWarning = 'The award was recorded, but its court line could not be updated. Check the court plan.';
+                }
             }
             // courtLines lets the client repaint the row's court badges from what the
             // server actually did, instead of issuing its own follow-up court calls.
-            echo json_encode(['status' => 0, 'awardId' => $new_award_id, 'courtLines' => $court_lines, 'courtAction' => $court_action]);
+            $out = ['status' => 0, 'awardId' => $new_award_id, 'courtLines' => $court_lines, 'courtAction' => $court_action];
+            if ($courtWarning !== '') {
+                $out['courtWarning'] = $courtWarning;
+            }
+            // Advisory, not a refusal: the grant above already succeeded. The client
+            // shows this next to the confirmation so the officer can revoke the
+            // duplicate if it really was one.
+            if ($dupDate !== '') {
+                $out['duplicateDate']    = $dupDate;
+                $out['duplicateWarning'] = 'Heads up: this player already had this award recorded on ' . $dupDate . '. The grant was saved — revoke one of them if it is a duplicate.';
+            }
+            echo json_encode($out);
             exit;
 
         } elseif ($action === 'addnote') {
@@ -762,6 +804,55 @@ class Controller_PlayerAjax extends Controller
         exit;
     }
 
+    /**
+     * Ledger duplicate probe for the Recs Manager's Grant Award path.
+     *
+     * Reads the recipient's committed awards through the existing model membrane
+     * (Model_Player::fetch_player_details) — no SQL here — and applies the same
+     * predicate the Court path's private ledger probe uses: a non-repeatable award
+     * (ladder or title) already recorded for this kingdomaward at this normalized
+     * rank on this exact date. Returns the matching date, or '' when clear.
+     *
+     * REVOKED ROWS: Player::revoke_award moves the row off the player entirely
+     * (mundane_id = 0, stripped_from = the original recipient), so a revoked award is
+     * already absent from this seam — 2,797 of the 2,856 revoked rows on the
+     * prod-derived DB. The remaining 59 are legacy rows that kept mundane_id with
+     * stripped_from = 0; AwardsForPlayer emits no `revoked` key and no other
+     * controller-reachable seam exposes them, so those can still produce a stale
+     * notice. Harmless here precisely BECAUSE this is advisory: the caller has already
+     * committed the grant when it reads this, so a grant -> revoke -> re-grant
+     * correction on the same date always goes through. Filtering them exactly needs
+     * the court predicate (oa.revoked = 0 OR oa.revoked IS NULL) pushed into the lib
+     * query, which is outside this change's file scope.
+     */
+    private function ledgerDuplicateAwardDate($mundane_id, $kingdomaward_id, $rank, $date)
+    {
+        $mundane_id      = (int)$mundane_id;
+        $kingdomaward_id = (int)$kingdomaward_id;
+        $rank            = (int)$rank;
+        $date            = trim((string)$date);
+        if ($mundane_id <= 0 || $kingdomaward_id <= 0 || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            return '';
+        }
+        $details = $this->Player->fetch_player_details($mundane_id);
+        foreach ((array)($details['Awards'] ?? []) as $a) {
+            if ((int)($a['KingdomAwardId'] ?? 0) !== $kingdomaward_id) {
+                continue;
+            }
+            if ((int)($a['Rank'] ?? 0) !== $rank) {
+                continue;
+            }
+            // Custom award (neither ladder nor title) is legitimately repeatable.
+            if (empty($a['IsLadder']) && empty($a['IsTitle'])) {
+                continue;
+            }
+            if (trim((string)($a['Date'] ?? '')) === $date) {
+                return $date;
+            }
+        }
+        return '';
+    }
+
     public function dismiss_notification($p = null)
     {
         header('Content-Type: application/json');
@@ -774,7 +865,8 @@ class Controller_PlayerAjax extends Controller
             echo json_encode(['status' => 1, 'error' => 'Invalid notification']);
             exit;
         }
-        Ork3::$Lib->notification->Dismiss($nid, (int)$this->session->user_id);
+        $this->load_model('Notification');
+        $this->Notification->dismiss($nid, (int)$this->session->user_id);
         echo json_encode(['status' => 0]);
         exit;
     }
@@ -786,7 +878,8 @@ class Controller_PlayerAjax extends Controller
             echo json_encode(['status' => 5, 'error' => 'Not logged in']);
             exit;
         }
-        Ork3::$Lib->notification->DismissAll((int)$this->session->user_id);
+        $this->load_model('Notification');
+        $this->Notification->dismiss_all((int)$this->session->user_id);
         echo json_encode(['status' => 0]);
         exit;
     }

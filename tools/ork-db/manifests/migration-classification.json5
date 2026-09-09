@@ -97,6 +97,8 @@
     "2026-09-02-court-last-printed.sql": { "class": "S", "render": "full", "notes": "Timestamp of the last court-packet print, for the paper stamp and drift warning" },
     "2026-09-03-court-last-printed-count.sql": { "class": "S", "render": "full", "notes": "Award count at last print time, so marking rows never trips the drift warning" },
     "2026-09-09-recommendation-snooze-scope.sql": { "class": "S", "render": "full", "notes": "Records which kingdom/park throne a recommendation snooze was taken against" },
+    "2026-09-09-court-planner-review-fixes.sql": { "class": "S", "render": "full", "notes": "Unique court/recommendation pair, finalize-error column, giver snapshot, cleared-citation flag" },
+    "2026-09-09-recommendations-cluster-index.sql": { "class": "S", "render": "full", "notes": "Composite index backing the Recommendations Manager cluster paging query" },
     "dev-set-test-logins.php": { "class": "ES", "render": "skip", "notes": "Local-dev credential helper; not a schema migration" }
   }
 }

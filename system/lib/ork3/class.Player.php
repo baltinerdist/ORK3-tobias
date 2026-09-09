@@ -2197,9 +2197,17 @@ class Player extends Ork3
     // Bust caches affected by a change to this player's recommendation data:
     //   - Report.PlayerAwardRecommendations under the three scopes (player,
     //     kingdom, park) that could hold this player's row.
+    //   - Report.DeletedAwardRecommendations (the Show Dismissed panel) under the
+    //     same three scopes — a dismiss or undelete changes that list too, and
+    //     nothing was clearing it, so the panel disagreed with the DB for 5 minutes.
+    //   - Report.PlayerAwardRecommendationsCount (the profile tab badge), which is
+    //     keyed on the ROLLED-UP kingdom id list, so it is busted per kingdom in the
+    //     rollup rather than by the recipient's own kingdom id alone.
     //   - Player.GetPlayerProfileDetails — recommendation/second changes
     //     show up on the player's awards tab and the 60s cache there
     //     needs invalidating.
+    // Every recommendation cache namespace must be busted from here; adding one
+    // without wiring it in is how the app and the DB drift apart for a whole TTL.
     // Pass kingdom_id/park_id when the caller already knows them (e.g.
     // merge/delete after the row is gone); otherwise we look them up.
     private function bust_player_award_recs_cache($mundane_id, $kingdom_id = null, $park_id = null)
@@ -2224,18 +2232,67 @@ class Player extends Ork3
         $mid = (int)$mundane_id;
         $keys = [['KingdomId' => 0, 'ParkId' => 0, 'PlayerId' => $mid]];
         if ($kid > 0) {
-            $keys[] = ['KingdomId' => $kid, 'ParkId' => 0,    'PlayerId' => 0];
+            // Both list namespaces scope through Kingdom::GetStatsKingdomIds(), so a
+            // parent kingdom that folds this principality into its statistics caches
+            // this player's recs under the PARENT's id. Bust the same id set the badge
+            // does, or the badge count updates and the list it labels does not.
+            foreach ($this->recCountBadgeKingdomIds($kid) as $listKid) {
+                $keys[] = ['KingdomId' => $listKid, 'ParkId' => 0, 'PlayerId' => 0];
+            }
         }
         if ($pid > 0) {
             $keys[] = ['KingdomId' => 0,    'ParkId' => $pid, 'PlayerId' => 0];
         }
         foreach ($keys as $kd) {
+            // Report.PlayerAwardRecommendations keys on the scope PLUS IncludeDismissed
+            // and a schema version; ghettocache->key() is a positional implode, so a
+            // bust that omits either tail field deletes nothing at all. Keep both in
+            // step with class.Report.php's key.
+            foreach ([0, 1] as $incl) {
+                Ork3::$Lib->ghettocache->bust(
+                    'Report.PlayerAwardRecommendations',
+                    Ork3::$Lib->ghettocache->key($kd + ['IncludeDismissed' => $incl, 'V' => Report::REC_CACHE_VERSION])
+                );
+            }
+            // Show Dismissed panel — same three scope shapes, plus the namespace's
+            // trailing Deleted marker.
             Ork3::$Lib->ghettocache->bust(
-                'Report.PlayerAwardRecommendations',
-                Ork3::$Lib->ghettocache->key($kd)
+                'Report.DeletedAwardRecommendations',
+                Ork3::$Lib->ghettocache->key($kd + ['Deleted' => 1, 'V' => Report::REC_CACHE_VERSION])
             );
         }
+        // Profile tab badge. Its key is the ROLLED-UP kingdom id list, so bust it for
+        // the player's own kingdom and for a parent kingdom that folds this one into
+        // its statistics — RecommendedBy 0 is the badge every viewer sees.
+        if ($kid > 0) {
+            foreach ($this->recCountBadgeKingdomIds($kid) as $badgeKid) {
+                $kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($badgeKid)));
+                Ork3::$Lib->ghettocache->bust(
+                    'Report.PlayerAwardRecommendationsCount',
+                    Ork3::$Lib->ghettocache->key([
+                        'KingdomIds'    => $kidList,
+                        'RecommendedBy' => 0,
+                        'V'             => Report::REC_CACHE_VERSION,
+                    ])
+                );
+            }
+        }
         $this->bustPlayerProfileCaches($mid);
+    }
+
+    // The kingdom itself plus its parent, when it is a principality — the two ids whose
+    // rolled-up badge count can include this player's recommendations.
+    private function recCountBadgeKingdomIds($kingdom_id)
+    {
+        $ids = [(int)$kingdom_id];
+        $this->db->Clear();
+        $rs = $this->db->DataSet(
+            'SELECT parent_kingdom_id FROM ' . DB_PREFIX . 'kingdom WHERE kingdom_id = ' . (int)$kingdom_id
+        );
+        if ($rs && $rs->Next() && (int)$rs->parent_kingdom_id > 0) {
+            $ids[] = (int)$rs->parent_kingdom_id;
+        }
+        return $ids;
     }
 
     public function MergePlayer($request)
@@ -4206,6 +4263,26 @@ class Player extends Ork3
         }
     }
 
+    /**
+     * The one definition of "this recommendation is still live", as a SQL fragment.
+     *
+     * A soft delete stamps deleted_by; historic rows (and any caller that omitted
+     * RequestedBy before the guard above rejected it) carry deleted_by = 0, which is
+     * NOT a deletion. Reading deleted_at instead — as the cluster resolver used to —
+     * makes those rows invisible to the resolver while the Manager still lists them
+     * as pending, so a granted award can be granted again.
+     *
+     * NOT yet the single source of truth: class.Report.php (PlayerAwardRecommendations,
+     * PlayerAwardRecommendationsPage and the two count queries) still inlines the
+     * identical string, and class.Notification.php still filters on deleted_at. Route
+     * new liveness tests through here, and fold those call sites in when they are next
+     * touched.
+     */
+    public static function LiveRecommendationClause($alias = 'recs')
+    {
+        return "({$alias}.deleted_by IS NULL OR {$alias}.deleted_by = 0)";
+    }
+
     // Resolve every live recommendation in a (recipient, kingdomaward, rank) cluster
     // as "granted": each member runs through DeleteAwardRecommendation(Granted=1), which
     // notifies that rec's advocates BEFORE soft-deleting it and cascading its seconds.
@@ -4220,11 +4297,11 @@ class Player extends Ork3
         }
         $this->db->Clear();
         $rs = $this->db->DataSet(
-            'SELECT recommendations_id FROM ' . DB_PREFIX . 'recommendations
+            'SELECT recommendations_id FROM ' . DB_PREFIX . 'recommendations recs
 			  WHERE mundane_id = ' . $mundane_id . '
 			    AND kingdomaward_id = ' . $ka_id . '
-			    AND rank = ' . $rank . '
-			    AND deleted_at IS NULL'
+			    AND COALESCE(recs.rank, 0) = ' . $rank . '
+			    AND ' . self::LiveRecommendationClause('recs')
         );
         $ids = [];
         if ($rs) {
@@ -4572,7 +4649,9 @@ class Player extends Ork3
         $rank               = (int)$rank;
         $exclude_mundane_id = (int)$exclude_mundane_id;
 
-        $rank_clause = $rank > 0 ? ' AND r.rank = ' . $rank : ' AND r.rank = 0';
+        // COALESCE, not a bare compare: a non-ladder recommendation may store NULL rank,
+        // and `r.rank = 0` silently drops those rows.
+        $rank_clause = ' AND COALESCE(r.rank, 0) = ' . ($rank > 0 ? $rank : 0);
 
         $this->db->Clear();
         $rs = $this->db->DataSet(
@@ -4582,7 +4661,7 @@ class Player extends Ork3
 			 WHERE r.mundane_id = ' . $mundane_id .
              ' AND r.kingdomaward_id = ' . $kingdomaward_id .
              $rank_clause .
-             ' AND (r.deleted_by IS NULL OR r.deleted_by = 0)
+             ' AND ' . self::LiveRecommendationClause('r') . '
 			 AND r.recommended_by_id != ' . $exclude_mundane_id .
             ' LIMIT 5'
         );

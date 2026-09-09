@@ -40,9 +40,27 @@ class Controller_CourtAjax extends Controller
         return [$uid, $court];
     }
 
-    private function esc($v)
+    /**
+     * A court date is either empty ("undated") or a real calendar date.
+     *
+     * Not decoration: this value is copied verbatim onto every award the court
+     * commits to the permanent record. Under this codebase's non-strict sql_mode
+     * a malformed one is stored as '0000-00-00', which is shaped like a date and
+     * is truthy — so it survived the commit-time fallback, became the awarded date
+     * on players' permanent records, and printed as "December 31, 1969" on the
+     * login-free public report. Court::createCourt/updateCourt re-check the same
+     * rule so no future caller can bypass this.
+     */
+    private function validCourtDate($d)
     {
-        return str_replace(["'", '\\'], ["''", '\\\\'], $v);
+        $d = trim((string)$d);
+        if ($d === '') {
+            return true;
+        }
+        if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $d, $m)) {
+            return false;
+        }
+        return checkdate((int)$m[2], (int)$m[3], (int)$m[1]);
     }
 
     // -----------------------------------------------------------------------
@@ -71,8 +89,14 @@ class Controller_CourtAjax extends Controller
         if (!$name) {
             $this->jsonOut(['status' => 1, 'error' => 'A name is required.']);
         }
+        if (!$this->validCourtDate($court_date)) {
+            $this->jsonOut(['status' => 1, 'error' => 'That court date is not a real date. Use YYYY-MM-DD, or leave it blank.']);
+        }
 
         $court_id = $this->Court->create_court($kingdom_id, $park_id, $name, $court_date, $event_cd, $uid);
+        if (!valid_id($court_id)) {
+            $this->jsonOut(['status' => 1, 'error' => 'This court could not be created.']);
+        }
 
         // Optional initial run-vs-plan intent (spec 5.2); defaults to 'run'. The
         // lib rejects anything but run/plan, so an unexpected value is a no-op.
@@ -125,6 +149,12 @@ class Controller_CourtAjax extends Controller
                 }
                 $this->Court->update_court($court_id, ['RecorderMundaneId' => $recorder]);
             }
+
+            // Freeze the Crown that will confer these honors. ork_officer is
+            // replaced in place and keeps no history, so a court recorded after a
+            // Coronation would otherwise credit the incoming monarch on every
+            // line. First write wins; a republish leaves the original alone.
+            $this->Court->snapshot_court_givers($court_id);
         }
 
         $this->Court->update_court_status($court_id, $status);
@@ -177,6 +207,10 @@ class Controller_CourtAjax extends Controller
             $this->jsonOut(['status' => 1, 'error' => 'Nothing to update.']);
         }
 
+        if (array_key_exists('CourtDate', $fields) && !$this->validCourtDate($fields['CourtDate'])) {
+            $this->jsonOut(['status' => 1, 'error' => 'That court date is not a real date. Use YYYY-MM-DD, or leave it blank.']);
+        }
+
         // Spec 0.7: recording a court is an officer duty, so the recorder must
         // be someone who could manage this court themselves. Without this, any
         // player id at all could be parked in recorder_mundane_id — and that
@@ -209,6 +243,22 @@ class Controller_CourtAjax extends Controller
     {
         $court_id = (int)($_POST['CourtId'] ?? 0);
         [$uid, $court] = $this->requireCourtAuth($court_id);
+
+        // INTERIM GATE. A completed court is finalized: Edit Details, Record Court
+        // and Return to Planning are all closed off, and nothing in the UI can
+        // surface a line added afterwards — it inserts as 'planned' and sits there
+        // forever, invisible to the public report and to finalize alike. Refuse the
+        // write rather than accept one that can never be seen or undone.
+        // FOLLOW-UP: an explicit, AUDITED amend path (a late line committed
+        // directly through commitStagedAward, and a 'given' line voided by
+        // revoking its ork_awards row, both stamped with who and when) is the real
+        // answer here. That is a product decision, not something to improvise.
+        if ($court['Status'] === 'complete') {
+            $this->jsonOut([
+                'status' => 1,
+                'error'  => 'This court is complete. Awards can no longer be added to it — record the honor from the recipient\'s profile, or on the next court.',
+            ]);
+        }
 
         $mundane_id      = (int)($_POST['MundaneId']         ?? 0);
         $kingdomaward_id = (int)($_POST['KingdomAwardId']    ?? 0);
@@ -300,6 +350,24 @@ class Controller_CourtAjax extends Controller
             $this->jsonOut(['status' => 1, 'error' => 'This award is not from a recommendation, so it cannot be passed to local.']);
         }
 
+        // Refuse BEFORE the passed_to_local write, not after. This endpoint marks
+        // the recommendation as deferred to the local park and only then calls
+        // remove_award — and remove_award is the only step guarded against a
+        // committed row. On an already-granted line the officer got "already
+        // granted and cannot be removed" while the recommendation stayed durably,
+        // wrongly flagged as passed down, with no rollback. A resolved line has
+        // nothing to hand to the park: the honor was already conferred, skipped,
+        // or is mid-commit.
+        $ca_status = (string)($info['status'] ?? '');
+        if (in_array($ca_status, ['given', 'staged', 'cancelled'], true)) {
+            $this->jsonOut([
+                'status' => 1,
+                'error'  => $ca_status === 'given'
+                    ? 'This award was already granted, so it cannot be passed to the local park.'
+                    : 'This award is already resolved on this court, so it cannot be passed to the local park.',
+            ]);
+        }
+
         $this->load_model('Player');
         $res = $this->Player->set_recommendation_passed_to_local([
             'Token'             => $this->session->token,
@@ -378,8 +446,8 @@ class Controller_CourtAjax extends Controller
 
     // -----------------------------------------------------------------------
     // update_award
-    // POST: CourtAwardId, Notes, PublicComment, PassToLocal, ScrollMakerId,
-    //       RegaliaMakerId, RowVersion (opt). Field edits only — never status (QW#4).
+    // POST: CourtAwardId, Notes, PublicComment, PublicCommentCleared,
+    //       PassToLocal, ScrollMakerId, RegaliaMakerId, RowVersion (opt). Field edits only — never status (QW#4).
     // -----------------------------------------------------------------------
     public function update_award($p = null)
     {
@@ -403,6 +471,13 @@ class Controller_CourtAjax extends Controller
         }
         if (array_key_exists('PublicComment', $_POST)) {
             $fields['PublicComment'] = trim((string)$_POST['PublicComment']);
+        }
+        if (array_key_exists('PublicCommentCleared', $_POST)) {
+            // The editor's "(Clear)" marker. Persisting the officer's explicit
+            // intent is what lets commitStagedAward tell "blank because cleared"
+            // (publish nothing) from "blank because untouched" (inherit the
+            // recommendation's reason, as it always has).
+            $fields['PublicCommentCleared'] = (int)$_POST['PublicCommentCleared'] ? 1 : 0;
         }
         if (array_key_exists('PassToLocal', $_POST)) {
             $fields['PassToLocal'] = (int)$_POST['PassToLocal'] ? 1 : 0;
@@ -447,7 +522,20 @@ class Controller_CourtAjax extends Controller
     public function reorder_awards($p = null)
     {
         $court_id = (int)($_POST['CourtId'] ?? 0);
-        $this->requireCourtAuth($court_id);
+        [, $court] = $this->requireCourtAuth($court_id);
+
+        // INTERIM GATE. Reorder had no status check at all, so a completed court's
+        // rows could still be resorted — silently changing the running order shown
+        // on the login-free public Court Report for a ceremony that already
+        // happened. reorderAwards additionally refuses to move any 'given' row.
+        // FOLLOW-UP: the audited amend path described on add_award above is where
+        // a legitimate post-finalize correction belongs.
+        if ($court['Status'] === 'complete') {
+            $this->jsonOut([
+                'status' => 1,
+                'error'  => 'This court is complete. Its running order is the public record of a ceremony that has already happened and can no longer be changed.',
+            ]);
+        }
 
         $order = json_decode($_POST['Order'] ?? '[]', true);
         if (!is_array($order)) {
@@ -645,6 +733,17 @@ class Controller_CourtAjax extends Controller
         // what this run has committed and cancel any later line for the same honor.
         $committedClusters = [];
         $duplicates        = [];
+        // The event is a property of the COURT, so resolve it ONCE rather than
+        // paying the identical lookup inside every commit.
+        $event_id = $this->Court->get_event_id_from_calendar_detail(
+            (int)($staged[0]['EventCalendarDetailId'] ?? 0)
+        );
+        // Recommendation-cluster resolves are collected here and run in one pass
+        // AFTER the commit loop. Each is several queries plus notification writes,
+        // and clusters repeat across sibling lines — running them inline made a
+        // large court's finalize a timeout risk for work that is best-effort
+        // cleanup, not part of the grant.
+        $clusterResolves = [];
 
         foreach ($staged as $row) {
             $clusterKey = (int)$row['MundaneId'] . ':' . (int)$row['KingdomAwardId'] . ':' . (int)$row['Rank'];
@@ -666,9 +765,16 @@ class Controller_CourtAjax extends Controller
             // linking award_id from the RETURNED insert id (no date heuristic). The
             // giver backstop now lives inside it, so a double-click / concurrent
             // finalize is a safe no-op.
+            // 'Row' and 'EventId' let the commit reuse what this loop already
+            // bulk-loaded instead of re-fetching it per line; it still re-reads
+            // the only fields that can change while a line sits 'staged'.
             $res = $this->Court->commit_staged_award(
                 $row['CourtAwardId'],
-                ['Token' => $this->session->token]
+                [
+                    'Token'   => $this->session->token,
+                    'Row'     => $row,
+                    'EventId' => $event_id,
+                ]
             );
 
             if ($res['status'] === 'ok') {
@@ -677,17 +783,13 @@ class Controller_CourtAjax extends Controller
 
                 // Best-effort rec-cluster resolve: soft-delete parallel recs + notify
                 // advocates. Fed from the committed row; never fails finalize.
+                // Queued (deduped by cluster) and run after the commit loop.
                 $crow = $res['row'];
-                try {
-                    $this->Player->resolve_player_recommendation_cluster([
-                        'Token'          => $this->session->token,
-                        'MundaneId'      => $crow['MundaneId'],
-                        'KingdomAwardId' => $crow['KingdomAwardId'],
-                        'Rank'           => $crow['Rank'],
-                        'RequestedBy'    => $uid,
-                    ]);
-                } catch (\Throwable $e) { /* recommendation cleanup is best-effort */
-                }
+                $clusterResolves[$clusterKey] = [
+                    'MundaneId'      => $crow['MundaneId'],
+                    'KingdomAwardId' => $crow['KingdomAwardId'],
+                    'Rank'           => $crow['Rank'],
+                ];
             } elseif ($res['status'] === 'duplicate') {
                 // commitStagedAward found this honor already on the permanent record
                 // (a retried finalize, or the same honor staged on another court) and
@@ -710,6 +812,21 @@ class Controller_CourtAjax extends Controller
                 ];
             }
             // 'noop' => already resolved (double-click / concurrent finalize); skip.
+        }
+
+        // One pass of recommendation cleanup after every grant has landed. Purely
+        // best-effort: a failure here never affects what was committed.
+        foreach ($clusterResolves as $cluster) {
+            try {
+                $this->Player->resolve_player_recommendation_cluster([
+                    'Token'          => $this->session->token,
+                    'MundaneId'      => $cluster['MundaneId'],
+                    'KingdomAwardId' => $cluster['KingdomAwardId'],
+                    'Rank'           => $cluster['Rank'],
+                    'RequestedBy'    => $uid,
+                ]);
+            } catch (\Throwable $e) { /* recommendation cleanup is best-effort */
+            }
         }
 
         // Complete only when nothing failed unrecoverably; else leave the court
@@ -773,12 +890,20 @@ class Controller_CourtAjax extends Controller
 
         $rows = $this->Court->get_ungranted_from_last_court($court['KingdomId'], $court['ParkId']);
 
+        // One up-front read of what this court already carries, filtered in PHP —
+        // this used to be one probe per candidate row, on top of the ~7 queries
+        // each add_award costs.
+        $existing = $this->Court->get_court_award_keys($court_id);
+
         $added = 0;
         foreach ($rows as $row) {
             // Skip anything already carried on this court (same recipient/award/rank).
-            if ($this->Court->court_has_award($court_id, $row['MundaneId'], $row['KingdomAwardId'], $row['Rank'])) {
+            $key = (int)$row['MundaneId'] . ':' . (int)$row['KingdomAwardId'] . ':' . (int)$row['Rank'];
+            if (isset($existing[$key])) {
                 continue;
             }
+            // $enrich = false: this loop reads nothing but the success flag, so the
+            // per-row persona / award-name / rec-reason lookups are wasted work.
             $res = $this->Court->add_award(
                 $court_id,
                 (int)$court['KingdomId'],
@@ -788,10 +913,12 @@ class Controller_CourtAjax extends Controller
                 $row['RecommendationsId'],
                 $row['PassToLocal'] ? 1 : 0,
                 $row['Notes'],
-                $row['PublicComment']
+                $row['PublicComment'],
+                false
             );
             if ($res !== false) {
                 $added++;
+                $existing[$key] = true;
             }
         }
 
@@ -810,19 +937,34 @@ class Controller_CourtAjax extends Controller
     //                client can do a full-field reconcile — add/remove rows plus
     //                notes/public_comment/pass_to_local/makers/status/giver/row_version
     //   presence     roster of officers currently viewing (S5): [{uid,name,last_seen}]
-    // POST/GET: CourtId
+    //   unchanged    true when SinceVersion matched, i.e. awards_full was skipped
+    // POST/GET: CourtId, SinceVersion (opt)
     // -----------------------------------------------------------------------
     public function court_state($p = null)
     {
         $court_id = (int)($_POST['CourtId'] ?? $_GET['CourtId'] ?? 0);
         [$uid, $court] = $this->requireCourtAuth($court_id);
 
+        // get_court_state is the CHEAP probe (one light query over this court's
+        // rows) and it already yields the md5 version stamp the client compares
+        // against. Compute it FIRST: when the client tells us which version it is
+        // holding and nothing has changed, there is no reason to build and
+        // serialize the full 8-join award payload plus its batched artisan query.
+        // Three reeves with the planner open for a two-hour event poll every 15s.
         $state = $this->Court->get_court_state($court_id);
+
+        $since     = (string)($_POST['SinceVersion'] ?? $_GET['SinceVersion'] ?? '');
+        $unchanged = ($since !== '' && $since === (string)($state['version'] ?? ''));
 
         // Full per-award payload for a FULL-FIELD client reconcile (the same shape
         // the initial page render uses), so the heartbeat can add/remove rows and
-        // pick up field edits — not just status/giver/sort.
-        $state['awards_full'] = $this->Court->get_court_awards($court_id);
+        // pick up field edits — not just status/giver/sort. Omitted only when the
+        // client has confirmed it is already holding this exact version; a client
+        // that sends no SinceVersion still gets the complete payload every poll.
+        if (!$unchanged) {
+            $state['awards_full'] = $this->Court->get_court_awards($court_id);
+        }
+        $state['unchanged'] = $unchanged;
 
         // Presence (S5): record this officer's heartbeat and return the roster.
         $state['presence'] = $this->recordCourtPresence($court_id, $uid);
@@ -832,7 +974,7 @@ class Controller_CourtAjax extends Controller
 
     // -----------------------------------------------------------------------
     // Presence roster (S5) — memcache-only (no schema). Stored in GhettoCache
-    // (Ork3::$Lib->ghettocache, the app's Memcached wrapper) keyed by court id as
+    // (the app's Memcached wrapper, reached through Model_Court) keyed by court id as
     // an assoc map uid => {uid, name, last_seen(epoch)}, ~45s TTL. Every poll upserts
     // the calling officer and prunes anyone whose last heartbeat aged out, so a
     // departed officer drops off within one TTL window. Best-effort: the read-modify-
@@ -847,10 +989,9 @@ class Controller_CourtAjax extends Controller
         $call = 'CourtAjax.presence';
         $key  = (string)(int)$court_id;
 
-        $cache = Ork3::$Lib->ghettocache;
         // get() also arms cache() to use $ttl as the write expiration (the GhettoCache
         // lifetime API is inverted — the TTL is captured on the matching get()).
-        $roster = $cache->get($call, $key, $ttl);
+        $roster = $this->Court->presence_get($call, $key, $ttl);
         if (!is_array($roster)) {
             $roster = [];
         }
@@ -869,7 +1010,7 @@ class Controller_CourtAjax extends Controller
             'last_seen' => $now,
         ];
 
-        $cache->cache($call, $key, $roster);
+        $this->Court->presence_put($call, $key, $roster);
 
         return array_values($roster);
     }
@@ -877,7 +1018,7 @@ class Controller_CourtAjax extends Controller
     /** Persona for a mundane id (presence display), or '' if unknown. */
     private function lookupPersona($uid)
     {
-        return Ork3::$Lib->player->GetPersona((int)$uid);
+        return $this->Court->get_persona($uid);
     }
 
     // -----------------------------------------------------------------------

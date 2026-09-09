@@ -17,14 +17,28 @@ $backUrl = $context === 'park'
     ? UIR . 'Park/profile/' . $park_id
     : UIR . 'Kingdom/profile/' . $kingdom_id;
 ?>
+<link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>default/style/court-planner.css?v=<?= filemtime(DIR_TEMPLATE . 'default/style/court-planner.css') ?>">
 <style>
-.cp-page { max-width: 900px; margin: 24px auto; padding: 0 16px; font-family: inherit; }
-.cp-back  { color: #4a5568; font-size: 13px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; margin-bottom: 14px; }
-.cp-back:hover { color: #2d3748; }
+/* Court Planner LIST — only the rules this surface actually adds.
+   The cp-* shell (page, buttons, badges, overlay/modal, fields, errors,
+   tooltips, the coarse-pointer and dark blocks) comes from the linked
+   court-planner.css, exactly as Court_detail.tpl and Court_record.tpl get it.
+   Before this pass the list carried its own ~120-line fork of that chrome,
+   which had already drifted (button padding, modal max-width, tooltip
+   z-index/anchor) and whose color-only dark heading rules let orkui.css's
+   global html[data-theme="dark"] h1..h6 pill box back in. */
+
+/* The list is a standalone centred page — the shared .cp-page is the
+   full-bleed hero shell used by the other two surfaces, so width/centring
+   and the non-hero (dark-on-light) back link are this page's own. */
+.cp-list-page { max-width: 900px; margin: 24px auto; }
+.cp-list-page .cp-back { color: #4a5568; margin-bottom: 14px; }
+.cp-list-page .cp-back:hover { color: #2d3748; }
+
 .cp-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
 .cp-header h1 { font-size: 22px; font-weight: 700; color: #2d3748; margin: 0; background: none; border: none; padding: 0; text-shadow: none; border-radius: 0; }
-.cp-btn-primary { background: #2c5282; color: #fff; border: none; padding: 9px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
-.cp-btn-primary:hover { background: #2a4a7f; color: #fff; }
+.cp-h1-icon { color: #4a5568; margin-right: 8px; }
+
 .cp-court-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin-bottom: 12px; display: flex; align-items: center; gap: 16px; transition: box-shadow .15s; }
 .cp-court-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,.1); }
 .cp-court-date { font-size: 13px; color: #718096; white-space: nowrap; min-width: 90px; }
@@ -32,7 +46,6 @@ $backUrl = $context === 'park'
 .cp-court-name { font-weight: 700; font-size: 15px; color: #2d3748; }
 .cp-court-meta { font-size: 12px; color: #718096; margin-top: 2px; }
 .cp-court-badges { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-.cp-badge { display: inline-block; padding: 3px 9px; border-radius: 12px; font-size: 11px; font-weight: 700; }
 .cp-badge-count { background: #edf2f7; color: #4a5568; padding: 3px 9px; border-radius: 12px; font-size: 11px; }
 .cp-btn-link { background: none; border: 1px solid #cbd5e0; color: #4a5568; padding: 5px 12px; border-radius: 5px; font-size: 12px; cursor: pointer; text-decoration: none; display: inline-block; }
 .cp-btn-link:hover { background: #f7fafc; color: #2d3748; }
@@ -42,38 +55,44 @@ $backUrl = $context === 'park'
 .cp-unrec-line + .cp-unrec-line { margin-top:4px; }
 .cp-unrec-line a { color: inherit; font-weight: 700; text-decoration: underline; }
 
-/* New Court Modal */
-.cp-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 1000; align-items: center; justify-content: center; }
-.cp-modal  { background: #fff; border-radius: 10px; width: 100%; max-width: 480px; box-shadow: 0 8px 32px rgba(0,0,0,.2); overflow: hidden; }
-.cp-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid #e2e8f0; }
-.cp-modal-header h3 { margin: 0; font-size: 16px; font-weight: 700; color: #2d3748; background: none; border: none; padding: 0; text-shadow: none; border-radius: 0; }
-.cp-modal-close { background: none; border: none; font-size: 20px; cursor: pointer; color: #718096; line-height: 1; }
-.cp-modal-body  { padding: 20px; }
-.cp-field { margin-bottom: 14px; }
-.cp-field label { display: block; font-size: 12px; font-weight: 600; color: #4a5568; margin-bottom: 4px; text-transform: uppercase; letter-spacing: .4px; }
-.cp-field input, .cp-field select { width: 100%; padding: 8px 10px; border: 1px solid #cbd5e0; border-radius: 5px; font-size: 14px; box-sizing: border-box; }
-.cp-modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid #e2e8f0; }
-.cp-btn-outline { background: #fff; border: 1px solid #cbd5e0; color: #4a5568; padding: 8px 16px; border-radius: 5px; font-size: 13px; cursor: pointer; }
-.cp-error { color: #c53030; font-size: 13px; margin-top: 8px; display: none; }
-.cp-error-box { background: #fff5f5; border: 1px solid #feb2b2; color: #c53030; padding: 14px 18px; border-radius: 6px; margin-bottom: 16px; }
-.cp-h1-icon { color: #4a5568; margin-right: 8px; }
+/* Item 47 follow-up: the shared .cp-badge is 4px 11px / 12px, which renders 25px tall
+   against the 21px .cp-badge-mode / -staged / -count sitting beside it, so the badge row
+   lost its alignment when the local rule was deleted. Re-scope the list's original
+   3px 9px / 11px to the card badge row only (the shared rule stands everywhere else). */
+.cp-court-badges .cp-badge { padding: 3px 9px; font-size: 11px; }
+/* And the shared .cp-error-box carries no margin, so the banner butted the header. */
+.cp-error-box { margin-bottom: 16px; }
 
-/* Mode + staged badges */
+/* Mode + staged badges (list-only; .cp-badge itself is shared) */
 .cp-badge-mode { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 12px; font-size: 11px; font-weight: 700; background: #ebf8ff; color: #2b6cb0; }
 .cp-badge-mode-plan { background: #faf089; color: #744210; }
 .cp-badge-staged { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 12px; font-size: 11px; font-weight: 700; background: #fefcbf; color: #975a16; box-shadow: inset 0 0 0 1px rgba(151,90,22,.25); }
 
-/* data-tip tooltip (no global handler on this standalone page) */
-.cp-page [data-tip], .cp-court-badges [data-tip] { position: relative; }
-.cp-page [data-tip]:hover::after { content: attr(data-tip); position: absolute; top: 100%; right: 0; margin-top: 4px; width: max-content; max-width: 240px; white-space: normal; background: #2d3748; color: #fff; padding: 6px 8px; border-radius: 4px; font-size: 11px; line-height: 1.35; font-weight: 500; text-align: left; box-shadow: 0 2px 6px rgba(0,0,0,.25); z-index: 50; pointer-events: none; }
+/* The badge row sits hard against the card's right edge, so its tooltips
+   right-anchor (the shared block left-anchors by default and lists the other
+   right-anchored surfaces the same way). */
+.cp-court-badges [data-tip]:hover::after { left: auto; right: 0; }
 
-/* ----- Dark mode overrides ----- */
-html[data-theme="dark"] .cp-error-box { background: rgba(229,62,62,.12); border-color: rgba(229,62,62,.4); color: #fc8181; }
-html[data-theme="dark"] .cp-h1-icon { color: #a0aec0; }
-html[data-theme="dark"] .cp-back { color: #a0aec0; }
-html[data-theme="dark"] .cp-back:hover { color: #e2e8f0; }
-html[data-theme="dark"] .cp-header h1 { color: #e2e8f0; }
+/* Mode selector (create-court modal) */
+.cp-mode-opts { display: flex; gap: 10px; }
+.cp-mode-opt { flex: 1; border: 1px solid #cbd5e0; border-radius: 6px; padding: 10px 12px; cursor: pointer; display: block; transition: border-color .12s, background .12s, box-shadow .12s; }
+.cp-mode-opt input { position: absolute; opacity: 0; pointer-events: none; }
+.cp-mode-title { font-size: 13px; font-weight: 700; color: #2d3748; display: flex; align-items: center; gap: 6px; text-transform: none; letter-spacing: 0; }
+.cp-mode-desc { font-size: 11px; color: #718096; margin-top: 3px; line-height: 1.35; text-transform: none; letter-spacing: 0; font-weight: 400; }
+.cp-mode-opt.cp-mode-sel { border-color: #2c5282; background: #ebf2fb; box-shadow: 0 0 0 1px #2c5282; }
+
+/* ----- Dark mode (list-only rules; the shared chrome brings its own) ----- */
+/* orkui.css's html[data-theme="dark"] h1..h6 (b=1,c=2) outranks a plain class
+   reset (b=1,c=0) and repaints the grey #374151 pill box, so this dark-scoped
+   duplicate carries the extra class component (b=2) AND repeats every box
+   property — not just color. Verified with getComputedStyle in both themes,
+   never by eye; the same pattern court-planner.css uses for .cp-hero-name.
+   (.cp-modal-header h3's dark reset now comes from the shared file.) */
+html[data-theme="dark"] .cp-header h1 { color: #e2e8f0; background: none; border: none; padding: 0; border-radius: 0; text-shadow: none; }
 html[data-theme="dark"] .cp-header h1 i { color: #a0aec0 !important; }
+html[data-theme="dark"] .cp-h1-icon { color: #a0aec0; }
+html[data-theme="dark"] .cp-list-page .cp-back { color: #a0aec0; }
+html[data-theme="dark"] .cp-list-page .cp-back:hover { color: #e2e8f0; }
 html[data-theme="dark"] .cp-court-card { background: #161b22; border-color: #2d3748; }
 html[data-theme="dark"] .cp-court-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,.4); border-color: #4a5568; }
 html[data-theme="dark"] .cp-court-date { color: #a0aec0; }
@@ -84,43 +103,17 @@ html[data-theme="dark"] .cp-btn-link { background: #1f2733; border-color: #2d374
 html[data-theme="dark"] .cp-btn-link:hover { background: #2d3748; color: #e2e8f0; }
 html[data-theme="dark"] .cp-empty { color: #a0aec0; border-color: #2d3748; }
 html[data-theme="dark"] .cp-unrecorded-banner { background:#2d1b0e; border-color:#dd6b20; color:#fbd38d; }
-html[data-theme="dark"] .cp-overlay { background: rgba(0,0,0,.65); }
-html[data-theme="dark"] .cp-modal { background: #161b22; box-shadow: 0 8px 32px rgba(0,0,0,.6); }
-html[data-theme="dark"] .cp-modal-header { border-bottom-color: #2d3748; }
-html[data-theme="dark"] .cp-modal-header h3 { color: #e2e8f0; }
-html[data-theme="dark"] .cp-modal-close { color: #a0aec0; }
-html[data-theme="dark"] .cp-modal-close:hover { color: #e2e8f0; }
-html[data-theme="dark"] .cp-modal-footer { border-top-color: #2d3748; }
-html[data-theme="dark"] .cp-field label { color: #a0aec0; }
-html[data-theme="dark"] .cp-field input,
-html[data-theme="dark"] .cp-field select { background: #1f2733; border-color: #2d3748; color: #e2e8f0; }
-html[data-theme="dark"] .cp-field input::placeholder { color: #4a5568; }
-html[data-theme="dark"] .cp-field input:focus,
-html[data-theme="dark"] .cp-field select:focus { border-color: #4299e1; box-shadow: 0 0 0 3px rgba(66,153,225,.2); outline: none; }
-html[data-theme="dark"] .cp-btn-outline { background: #1f2733; border-color: #2d3748; color: #cbd5e0; }
-html[data-theme="dark"] .cp-btn-outline:hover { background: #2d3748; }
-html[data-theme="dark"] .cp-error { color: #fc8181; }
 html[data-theme="dark"] .cp-badge-mode { background: #1a2f45; color: #90cdf4; }
 html[data-theme="dark"] .cp-badge-mode-plan { background: #3d3512; color: #f6e05e; }
 html[data-theme="dark"] .cp-badge-staged { background: #3d3512; color: #f6e05e; box-shadow: inset 0 0 0 1px rgba(246,224,94,.3); }
-html[data-theme="dark"] .cp-page [data-tip]:hover::after { background: #000; }
-
-/* Mode selector (create-court modal) */
-.cp-mode-opts { display: flex; gap: 10px; }
-.cp-mode-opt { flex: 1; border: 1px solid #cbd5e0; border-radius: 6px; padding: 10px 12px; cursor: pointer; display: block; transition: border-color .12s, background .12s, box-shadow .12s; }
-.cp-mode-opt input { position: absolute; opacity: 0; pointer-events: none; }
-.cp-mode-title { font-size: 13px; font-weight: 700; color: #2d3748; display: flex; align-items: center; gap: 6px; text-transform: none; letter-spacing: 0; }
-.cp-mode-desc { font-size: 11px; color: #718096; margin-top: 3px; line-height: 1.35; text-transform: none; letter-spacing: 0; font-weight: 400; }
-.cp-mode-opt.cp-mode-sel { border-color: #2c5282; background: #ebf2fb; box-shadow: 0 0 0 1px #2c5282; }
 html[data-theme="dark"] .cp-mode-opt { border-color: #2d3748; }
 html[data-theme="dark"] .cp-mode-title { color: #e2e8f0; }
 html[data-theme="dark"] .cp-mode-desc { color: #a0aec0; }
 html[data-theme="dark"] .cp-mode-opt.cp-mode-sel { border-color: #4299e1; background: #1a2f45; box-shadow: 0 0 0 1px #4299e1; }
-
-/* Status badges (inline style!important: override common pastels) */
+/* Status badges carry inline pastel background/color — soften the edge only. */
 html[data-theme="dark"] .cp-badge { box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); }
 
-/* ----- Mobile ----- */
+/* ----- Mobile (list-only; the shared file handles the overlay/modal) ----- */
 @media (max-width: 600px) {
     .cp-header { flex-wrap: wrap; row-gap: 10px; }
     .cp-header h1 { flex: 1 1 100%; }
@@ -129,21 +122,19 @@ html[data-theme="dark"] .cp-badge { box-shadow: inset 0 0 0 1px rgba(255,255,255
     .cp-court-date { white-space: normal; min-width: 0; }
     .cp-court-badges { flex-wrap: wrap; flex-shrink: 1; }
     .cp-btn-link { flex: 1 1 100%; width: 100%; text-align: center; min-height: 44px; line-height: 44px; padding-top: 0; padding-bottom: 0; margin-top: 8px; }
-    .cp-overlay { padding: 16px; }
-    .cp-modal { max-height: 88vh; max-height: 88dvh; overflow-y: auto; }
     .cp-mode-opts { flex-direction: column; }
     .cp-mode-opt { width: 100%; }
 }
 
 @media (pointer: coarse) {
-    .cp-modal-close { min-width: 44px; min-height: 44px; }
+    /* .cp-modal-close / .cp-field inputs / .cp-modal-footer buttons are sized by
+       the shared coarse block; these three are list-only. */
     .cp-btn-primary, .cp-btn-outline { min-height: 44px; box-sizing: border-box; }
     .cp-btn-link { min-height: 44px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; }
-    .cp-field input, .cp-field select { min-height: 44px; }
 }
 </style>
 
-<div class="cp-page">
+<div class="cp-page cp-list-page">
     <a href="<?= htmlspecialchars($backUrl) ?>" class="cp-back">
         <i class="fas fa-arrow-left"></i> Back to <?= htmlspecialchars($locationName) ?>
     </a>

@@ -37,14 +37,19 @@ class Model_Court extends Model
         return $this->_court()->getUnrecordedCourts($kingdom_id, $park_id);
     }
 
+    public function get_stalled_courts($kingdom_id, $park_id = 0)
+    {
+        return $this->_court()->getStalledCourts($kingdom_id, $park_id);
+    }
+
     public function get_default_recorder($kingdom_id, $park_id = 0)
     {
         return $this->_court()->getDefaultRecorder($kingdom_id, $park_id);
     }
 
-    public function notify_unrecorded_courts($kingdom_id, $park_id = 0)
+    public function notify_unrecorded_courts($kingdom_id, $park_id = 0, $unrecorded = null)
     {
-        return $this->_court()->notifyUnrecordedCourts($kingdom_id, $park_id);
+        return $this->_court()->notifyUnrecordedCourts($kingdom_id, $park_id, $unrecorded);
     }
 
     public function create_court($kingdom_id, $park_id, $name, $court_date, $event_cd, $created_by)
@@ -92,6 +97,11 @@ class Model_Court extends Model
         return $this->_court()->getCourtGiverOptions($court_id);
     }
 
+    public function snapshot_court_givers($court_id)
+    {
+        return $this->_court()->snapshotCourtGivers($court_id);
+    }
+
     // -----------------------------------------------------------------------
     // Court awards
     // -----------------------------------------------------------------------
@@ -101,9 +111,9 @@ class Model_Court extends Model
         return $this->_court()->getCourtAwards($court_id);
     }
 
-    public function add_award($court_id, $kingdom_id, $mundane_id, $kingdomaward_id, $rank, $rec_id, $pass_to_local, $notes, $public_comment)
+    public function add_award($court_id, $kingdom_id, $mundane_id, $kingdomaward_id, $rank, $rec_id, $pass_to_local, $notes, $public_comment, $enrich = true)
     {
-        return $this->_court()->addAward($court_id, $kingdom_id, $mundane_id, $kingdomaward_id, $rank, $rec_id, $pass_to_local, $notes, $public_comment);
+        return $this->_court()->addAward($court_id, $kingdom_id, $mundane_id, $kingdomaward_id, $rank, $rec_id, $pass_to_local, $notes, $public_comment, $enrich);
     }
 
     public function update_award($court_award_id, array $fields, $expectedRowVersion = null)
@@ -154,6 +164,16 @@ class Model_Court extends Model
     public function court_has_award($court_id, $mundane_id, $kingdomaward_id, $rank)
     {
         return $this->_court()->courtHasAward($court_id, $mundane_id, $kingdomaward_id, $rank);
+    }
+
+    public function get_court_award_keys($court_id)
+    {
+        return $this->_court()->getCourtAwardKeys($court_id);
+    }
+
+    public function get_event_id_from_calendar_detail($event_calendardetail_id)
+    {
+        return $this->_court()->getEventIdFromCalendarDetail($event_calendardetail_id);
     }
 
     // -----------------------------------------------------------------------
@@ -264,6 +284,58 @@ class Model_Court extends Model
     public function get_court_report_detail($court_id)
     {
         return $this->_court()->getCourtReportDetail($court_id);
+    }
+
+    // -----------------------------------------------------------------------
+    // Cross-domain pass-throughs used by the Court controllers
+    //
+    // The Court Planner pages need a handful of things that are not Court domain
+    // data: the owning kingdom of a park, display names for the page heading, the
+    // heraldry URL for the hero, a persona for the presence roster, and the
+    // presence cache itself. The controllers reached straight into Ork3::$Lib for
+    // those, which is exactly the membrane bypass this model exists to prevent —
+    // once a controller holds a lib handle, the next hand builds a query with it.
+    // Same rule as everything above: forward the arguments, hold no logic.
+    // -----------------------------------------------------------------------
+
+    public function get_park_kingdom_id($park_id)
+    {
+        return Ork3::$Lib->park->GetParkKingdomId((int)$park_id);
+    }
+
+    public function get_park_short_info($park_id)
+    {
+        return Ork3::$Lib->park->GetParkShortInfo(['ParkId' => (int)$park_id]);
+    }
+
+    public function get_kingdom_short_info($kingdom_id)
+    {
+        return Ork3::$Lib->kingdom->GetKingdomShortInfo(['KingdomId' => (int)$kingdom_id]);
+    }
+
+    public function get_heraldry_url($type, $id)
+    {
+        return Ork3::$Lib->heraldry->GetHeraldryUrl(['Type' => $type, 'Id' => (int)$id]);
+    }
+
+    public function get_persona($mundane_id)
+    {
+        return Ork3::$Lib->player->GetPersona((int)$mundane_id);
+    }
+
+    /**
+     * Presence roster cache (S5). GhettoCache's lifetime API is inverted: the TTL
+     * is captured on the matching get(), which arms the following cache() write —
+     * so both halves stay together here rather than in the controller.
+     */
+    public function presence_get($call, $key, $ttl)
+    {
+        return Ork3::$Lib->ghettocache->get($call, $key, $ttl);
+    }
+
+    public function presence_put($call, $key, $value)
+    {
+        return Ork3::$Lib->ghettocache->cache($call, $key, $value);
     }
 
     private function _court(): Court

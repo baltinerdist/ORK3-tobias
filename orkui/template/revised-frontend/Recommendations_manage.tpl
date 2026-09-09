@@ -5,682 +5,10 @@
     ? UIR . 'Park/index/' . (int)$ParkId
     : UIR . 'Kingdom/index/' . (int)$KingdomId;
 ?>
-<style>
-.rm-wrap {
-    --rm-line: #d8d8d8;
-    --rm-bg: #fff;
-    --rm-bg2: #f6f6f6;
-    --rm-fg: #222;
-    --rm-muted: #777;
-    --rm-accent: #2c5f8b;
-    --rm-danger: #b03030;
-    max-width: 100%;
-    margin: 0 auto;
-    padding: 0 12px 80px;
-    box-sizing: border-box;
-    color: var(--rm-fg);
-}
-html[data-theme="dark"] .rm-wrap {
-    --rm-line: #3a3f47;
-    --rm-bg: #1e2127;
-    --rm-bg2: #23262d;
-    --rm-fg: #e6e6e6;
-    --rm-muted: #9aa0a8;
-    --rm-accent: #6fb0e6;
-    --rm-danger: #e07070;
-}
-
-/* Hero */
-.rm-hero { padding: 14px 4px 10px; }
-.rm-back {
-    display: inline-block;
-    font-size: 13px;
-    color: var(--rm-accent);
-    text-decoration: none;
-    margin-bottom: 6px;
-}
-.rm-back:hover { text-decoration: underline; }
-.rm-sub { font-size: 13px; color: var(--rm-muted); margin-top: 2px; }
-
-/* Filter bar */
-.rm-filterbar {
-    position: sticky;
-    top: 48px; /* below the app's 48px fixed top nav */
-    z-index: 5;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    align-items: center;
-    padding: 8px 4px;
-    background: var(--rm-bg);
-    border-bottom: 1px solid var(--rm-line);
-}
-.rm-search, .rm-fsel {
-    font-size: 13px;
-    padding: 5px 8px;
-    border: 1px solid var(--rm-line);
-    border-radius: 4px;
-    background: var(--rm-bg);
-    color: var(--rm-fg);
-}
-.rm-search { min-width: 200px; }
-.rm-search::placeholder { color: var(--rm-muted); }
-.rm-fcheck { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; color: var(--rm-fg); cursor: pointer; }
-.rm-fcheck input { margin: 0; }
-/* Export button — right-aligned in the filter bar. */
-.rm-fbtn {
-    margin-left: auto;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    cursor: pointer;
-    font-size: 13px;
-    padding: 5px 10px;
-    border: 1px solid var(--rm-line);
-    border-radius: 4px;
-    background: var(--rm-bg);
-    color: var(--rm-fg);
-    white-space: nowrap;
-}
-.rm-fbtn:hover { border-color: var(--rm-accent); color: var(--rm-accent); }
-.rm-fbtn[disabled] { opacity: .6; cursor: default; }
-.rm-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.rm-chip {
-    cursor: pointer;
-    font-size: 12px;
-    padding: 3px 8px;
-    border-radius: 12px;
-    background: var(--rm-bg2);
-    border: 1px solid var(--rm-line);
-    color: var(--rm-fg);
-}
-.rm-chip:hover { border-color: var(--rm-accent); }
-
-/* Grid */
-/* NOTE: no overflow here — an overflow context would scope the sticky thead to
-   this wrapper (which never scrolls vertically) and break the frozen header on
-   window scroll. The table is full-width; very narrow viewports scroll the page. */
-.rm-gridwrap { }
-.rm-grid {
-    border-collapse: collapse;
-    width: 100%;
-    font-size: 13px;
-    background: var(--rm-bg);
-    color: var(--rm-fg);
-}
-.rm-grid th, .rm-grid td {
-    border: 1px solid var(--rm-line);
-    padding: 4px 8px;
-    text-align: left;
-    vertical-align: top;
-}
-.rm-grid thead th {
-    position: sticky;
-    top: 94px; /* 48px fixed nav + 46px sticky filter bar */
-    z-index: 4;
-    background: var(--rm-bg2);
-    font-weight: 700;
-    white-space: nowrap;
-}
-.rm-row:nth-child(even) { background: var(--rm-bg2); }
-.rm-row:hover { background: rgba(127, 127, 127, 0.10); }
-
-/* Sticky recipient column */
-.rm-col-recip { position: sticky; left: 0; z-index: 1; background: var(--rm-bg); }
-.rm-row:nth-child(even) .rm-col-recip { background: var(--rm-bg2); }
-thead .rm-col-recip { z-index: 6; background: var(--rm-bg2); }
-
-/* tabular numbers */
-.rm-date, .rm-age, .rm-rank, .rm-supp-chip { font-variant-numeric: tabular-nums; }
-
-.rm-col-sel { width: 28px; text-align: center; }
-thead .rm-col-sel { text-align: center; }
-.rm-col-act { white-space: nowrap; }
-
-.rm-sortable { cursor: pointer; user-select: none; }
-.rm-sort-asc::after { content: " \25B2"; font-size: 9px; }
-.rm-sort-desc::after { content: " \25BC"; font-size: 9px; }
-
-/* Recipient cell */
-.rm-col-recip a { color: var(--rm-accent); text-decoration: none; font-weight: 600; }
-.rm-col-recip a:hover { text-decoration: underline; }
-.rm-park {
-    display: inline-block;
-    margin-left: 4px;
-    font-size: 11px;
-    color: var(--rm-muted);
-    border: 1px solid var(--rm-line);
-    border-radius: 3px;
-    padding: 0 4px;
-}
-a.rm-park { text-decoration: none; cursor: pointer; }
-a.rm-park:hover { color: var(--rm-accent); border-color: var(--rm-accent); }
-/* Park column (split out of the Recipient cell) */
-.rm-col-park { white-space: nowrap; }
-.rm-col-park .rm-park { margin-left: 0; }
-
-/* Award cell */
-.rm-rank {
-    display: inline-block;
-    margin-left: 6px;
-    font-size: 11px;
-    color: var(--rm-muted);
-}
-.rm-rank.rm-nonladder { font-style: italic; }
-
-/* Rank column (split out of the Award cell) */
-.rm-col-rank { white-space: nowrap; }
-.rm-col-rank .rm-rank { margin-left: 0; }
-.rm-badge {
-    display: inline-block;
-    margin-left: 6px;
-    font-size: 11px;
-    padding: 0 5px;
-    border-radius: 3px;
-    border: 1px solid var(--rm-line);
-}
-.rm-badge-has { color: #8a6d00; background: rgba(240, 200, 0, 0.14); border-color: rgba(240, 200, 0, 0.4); }
-.rm-badge-below { color: var(--rm-danger); background: rgba(176, 48, 48, 0.10); border-color: rgba(176, 48, 48, 0.35); }
-html[data-theme="dark"] .rm-badge-has { color: #e0c860; }
-.rm-badge-passlocal { color: #2c5f8b; background: rgba(44, 95, 139, 0.12); border-color: rgba(44, 95, 139, 0.4); }
-html[data-theme="dark"] .rm-badge-passlocal { color: #6fb0e6; }
-.rm-act-passlocal.rm-act-active { background: var(--rm-accent); color: #fff; border-color: var(--rm-accent); }
-.rm-row[data-passlocal="1"] { box-shadow: inset 3px 0 0 var(--rm-accent); }
-/* A dismissed cluster is history, not a candidate: muted, with a neutral grey
-   rule that cannot be confused with the blue pass-to-local one above. */
-.rm-row[data-dismissed="1"] { box-shadow: inset 3px 0 0 #9aa0a8; opacity: 0.72; }
-.rm-row[data-dismissed="1"]:hover { opacity: 1; }
-.rm-badge-dismissed { color: #5a6472; background: rgba(90, 100, 114, 0.12); border-color: rgba(90, 100, 114, 0.4); }
-html[data-theme="dark"] .rm-badge-dismissed { color: #b7bec9; background: rgba(183, 190, 201, 0.14); border-color: rgba(183, 190, 201, 0.35); }
-/* Two classes, not one: the base .rm-act rule below also sets color at (0,1,0)
-   and comes later in source order, so a bare .rm-act-undelete silently loses. */
-.rm-act.rm-act-undelete { color: #2f855a; }
-html[data-theme="dark"] .rm-act.rm-act-undelete { color: #68d391; }
-/* Pass-down tooltip: rich (bold title line + body) — data-tip can't bold/format,
-   so this button uses a child tooltip span shown on hover. Right-anchored so it
-   never clips off the right edge. */
-.rm-act-passlocal { position: relative; }
-/* Shared rich-tooltip body — Pass-down (.rm-passlocal-tip) and Snooze
-   (.rm-snooze-tip) render byte-identical tooltips; only the :hover trigger
-   selectors differ. (The spans carry these class names from _rm_row.tpl.) */
-.rm-passlocal-tip, .rm-snooze-tip {
-    display: none;
-    position: absolute;
-    right: 0;
-    bottom: calc(100% + 4px);
-    width: max-content;
-    max-width: 240px;
-    background: #222;
-    color: #fff;
-    font-size: 11px;
-    font-weight: 400;
-    line-height: 1.35;
-    text-align: left;
-    padding: 5px 8px;
-    border-radius: 4px;
-    white-space: normal;
-    z-index: 50;
-    pointer-events: none;
-}
-.rm-act-passlocal:hover .rm-passlocal-tip { display: block; }
-.rm-passlocal-tip strong, .rm-snooze-tip strong { display: block; font-weight: 700; margin-bottom: 3px; }
-html[data-theme="dark"] .rm-passlocal-tip, html[data-theme="dark"] .rm-snooze-tip { background: #000; }
-
-/* Recommended cell */
-.rm-by { display: block; }
-.rm-date { display: inline-block; color: var(--rm-muted); }
-.rm-age { display: inline-block; margin-left: 6px; color: var(--rm-muted); font-size: 11px; }
-
-/* Reason + support */
-.rm-empty { color: var(--rm-muted); }
-.rm-reason-trunc {
-    display: inline-block;
-    max-width: 320px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    vertical-align: bottom;
-}
-.rm-expand-reason, .rm-supp-chip, .rm-expand-members {
-    cursor: pointer;
-    font-size: 12px;
-    padding: 1px 6px;
-    margin-left: 4px;
-    border: 1px solid var(--rm-line);
-    border-radius: 3px;
-    background: var(--rm-bg);
-    color: var(--rm-fg);
-}
-.rm-expand-reason:hover, .rm-supp-chip:hover, .rm-expand-members:hover { border-color: var(--rm-accent); }
-
-/* Court badge */
-.rm-courtbadge {
-    display: inline-block;
-    font-size: 12px;
-    /* !important + fixed steel-blue bg: the app's global `a` link color
-       otherwise wins over this class, rendering light-blue-on-light-blue. */
-    color: #fff !important;
-    background: #2c5f8b;
-    border-radius: 3px;
-    padding: 1px 6px;
-    text-decoration: none;
-}
-.rm-courtbadge:hover { opacity: 0.9; }
-.rm-courtmore { font-weight: 700; }
-
-/* Action buttons */
-.rm-act {
-    cursor: pointer;
-    font-size: 14px;
-    line-height: 1;
-    padding: 3px 5px;
-    margin: 0 1px;
-    border: 1px solid var(--rm-line);
-    border-radius: 4px;
-    background: var(--rm-bg);
-    color: var(--rm-fg);
-}
-.rm-act:hover { border-color: var(--rm-accent); background: var(--rm-bg2); }
-.rm-act-dismiss:hover { border-color: var(--rm-danger); }
-
-.rm-loading { text-align:center; padding:14px; color:var(--rm-muted); font-size:13px; }
-
-/* Footer */
-.rm-foot {
-    padding: 8px 4px;
-    font-size: 12px;
-    color: var(--rm-muted);
-    border-top: 1px solid var(--rm-line);
-}
-/* --rm-muted is already redefined per theme, so the base rule is correct in
-   both; a dark-mode override repeating the same token was a no-op. */
-.rm-loadnote { color: var(--rm-muted); font-style: italic; }
-
-/* Detail rows (Task 5) */
-.rm-detailrow td { background: var(--rm-bg2); }
-.rm-detailrow .rm-col-recip { background: var(--rm-bg2); }
-.rm-seclist {
-    margin: 0;
-    padding: 4px 0 4px 8px;
-    list-style: none;
-    font-size: 13px;
-}
-.rm-seclist li { padding: 1px 0; }
-.rm-reason-full {
-    white-space: pre-wrap;
-    font-size: 13px;
-    padding: 2px 0;
-}
-
-/* data-tip tooltips (no native title) */
-[data-tip] { position: relative; }
-[data-tip]:hover::after {
-    content: attr(data-tip);
-    position: absolute;
-    left: 50%;
-    bottom: calc(100% + 4px);
-    transform: translateX(-50%);
-    /* wrap long tooltips instead of running off-screen: compact for short text
-       (max-content), wraps once it would exceed max-width. */
-    white-space: normal;
-    width: max-content;
-    max-width: 240px;
-    line-height: 1.3;
-    text-align: left;
-    background: #222;
-    color: #fff;
-    font-size: 11px;
-    padding: 4px 7px;
-    border-radius: 4px;
-    z-index: 50;
-    pointer-events: none;
-}
-/* Actions-column buttons sit at the right edge — anchor their tooltip to the
-   button's right so a wrapped tooltip extends leftward and never clips off-screen. */
-.rm-col-act [data-tip]:hover::after {
-    left: auto;
-    right: 0;
-    transform: none;
-}
-html[data-theme="dark"] [data-tip]:hover::after { background: #000; }
-/* Snooze button uses a rich tooltip (bold title + description) rather than the
-   plain data-tip; mirrors .rm-passlocal-tip and right-anchors so it never clips. */
-.rm-act-snooze { position: relative; }
-/* Body/strong/dark styles are shared with .rm-passlocal-tip above; only the
-   distinct :hover trigger lives here. */
-.rm-act-snooze:hover .rm-snooze-tip { display: block; }
-
-/* Bulk action bar (Task 7) */
-.rm-bulkbar {
-    position: sticky;
-    bottom: 0;
-    z-index: 6;
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    flex-wrap: wrap;
-    padding: 8px 10px;
-    margin-top: 6px;
-    /* Brand header blue so the bar clearly stands out once rows are selected. */
-    background: #2c5f8b;
-    border: 1px solid #234d73;
-    border-radius: 6px;
-    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.22);
-}
-html[data-theme="dark"] .rm-bulkbar { background: #23557f; border-color: #16344d; }
-.rm-bulkbar[hidden] { display: none; }
-#rm-bulklabel { font-size: 13px; font-weight: 700; color: #fff; margin-right: 4px; }
-.rm-bulk {
-    cursor: pointer;
-    font-size: 13px;
-    padding: 5px 10px;
-    border: 1px solid rgba(255, 255, 255, 0.55);
-    border-radius: 4px;
-    background: rgba(255, 255, 255, 0.12);
-    color: #fff;
-}
-.rm-bulk:hover { border-color: #fff; background: rgba(255, 255, 255, 0.24); }
-.rm-bulk-dismiss:hover { border-color: #ffd4d4; background: rgba(176, 48, 48, 0.55); color: #fff; }
-/* Disabled while a bulk batch is in flight (same in light and dark: the bar is navy). */
-.rm-bulk:disabled, .rm-bulk:disabled:hover { opacity: 0.5; cursor: default; border-color: rgba(255, 255, 255, 0.55); background: rgba(255, 255, 255, 0.12); }
-
-/* Toast (Task 8) */
-.rm-toast {
-    position: fixed;
-    bottom: 18px;
-    right: 18px;
-    z-index: 9999;
-    max-width: 320px;
-    padding: 10px 14px;
-    font-size: 13px;
-    color: #fff;
-    background: #2c3a4a;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-left: 4px solid var(--rm-accent, #2c5f8b);
-    border-radius: 5px;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
-    opacity: 1;
-    transition: opacity 0.4s ease;
-}
-.rm-toast-err {
-    background: #4a2c2c;
-    border-left-color: var(--rm-danger, #b03030);
-}
-.rm-toast-out { opacity: 0; }
-html[data-theme="dark"] .rm-toast { background: #2a2f37; }
-html[data-theme="dark"] .rm-toast-err { background: #3a2424; }
-
-.rm-error {
-    padding: 16px;
-    margin: 24px auto;
-    max-width: 480px;
-    border: 1px solid var(--rm-danger, #b03030);
-    border-radius: 6px;
-    color: #b03030;
-    background: rgba(176, 48, 48, 0.08);
-    text-align: center;
-}
-
-/* Add-to-Court modal (Task 10) */
-.rm-modal-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 9998;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-    background: rgba(0, 0, 0, 0.45);
-}
-.rm-modal-overlay[hidden] { display: none; }
-.rm-modal {
-    --rm-line: #d8d8d8;
-    --rm-bg: #fff;
-    --rm-bg2: #f6f6f6;
-    --rm-fg: #222;
-    --rm-muted: #777;
-    --rm-accent: #2c5f8b;
-    width: 100%;
-    max-width: 440px;
-    background: var(--rm-bg);
-    color: var(--rm-fg);
-    border: 1px solid var(--rm-line);
-    border-radius: 8px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
-    padding: 18px 20px 16px;
-    box-sizing: border-box;
-}
-html[data-theme="dark"] .rm-modal {
-    --rm-line: #3a3f47;
-    --rm-bg: #23262d;
-    --rm-bg2: #1e2127;
-    --rm-fg: #e6e6e6;
-    --rm-muted: #9aa0a8;
-    --rm-accent: #6fb0e6;
-}
-.rm-modal-title {
-    background: transparent;
-    border: none;
-    padding: 0;
-    border-radius: 0;
-    text-shadow: none;
-    margin: 0 0 4px;
-    font-size: 18px;
-    font-weight: 700;
-    color: var(--rm-fg);
-}
-/* orkui.css styles h1-h6 globally with a gray pill box, and its dark-mode rule
-   (html[data-theme="dark"] h1..h6) carries more type selectors than a bare
-   class, so it wins the tie and the pill returns in dark mode. Repeat the
-   reset at matching specificity for both headings. */
-html[data-theme="dark"] .rm-modal-title {
-    background: transparent;
-    border: none;
-    padding: 0;
-    border-radius: 0;
-    text-shadow: none;
-    color: var(--rm-fg);
-}
-.rm-modal-sub { font-size: 13px; color: var(--rm-muted); margin-bottom: 12px; }
-.rm-modal-modes {
-    display: flex;
-    gap: 16px;
-    margin-bottom: 12px;
-    font-size: 13px;
-    color: var(--rm-fg);
-}
-.rm-modal-modes label { cursor: pointer; }
-#rm-court-existing, #rm-court-new { margin-bottom: 12px; }
-.rm-modal .rm-fsel, .rm-modal .rm-input {
-    width: 100%;
-    box-sizing: border-box;
-    font-size: 13px;
-    padding: 7px 9px;
-    border: 1px solid var(--rm-line);
-    border-radius: 4px;
-    background: var(--rm-bg);
-    color: var(--rm-fg);
-}
-.rm-modal .rm-input { margin-bottom: 8px; }
-.rm-modal .rm-input:last-child { margin-bottom: 0; }
-.rm-modal .rm-input::placeholder { color: var(--rm-muted); }
-.rm-modal .rm-empty { font-size: 13px; }
-.rm-modal-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
-    margin-top: 4px;
-}
-.rm-modal-actions-stack {
-    flex-direction: column;
-    align-items: stretch;
-}
-.rm-modal-actions-stack .rm-btn { text-align: center; }
-.rm-btn {
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: 600;
-    padding: 7px 16px;
-    border-radius: 4px;
-    border: 1px solid var(--rm-line);
-}
-.rm-btn-ghost {
-    background: transparent;
-    color: var(--rm-fg);
-}
-.rm-btn-ghost:hover { background: var(--rm-bg2); border-color: var(--rm-accent); }
-.rm-btn-primary {
-    background: var(--rm-accent);
-    border-color: var(--rm-accent);
-    color: #fff;
-}
-.rm-btn-primary:hover { opacity: 0.92; }
-.rm-btn-primary:disabled { opacity: 0.55; cursor: default; }
-/* Grant Award modal fields */
-.rm-field { margin-bottom: 12px; }
-.rm-field > label { display: block; font-size: 12px; font-weight: 600; color: var(--rm-fg); margin-bottom: 4px; }
-.rm-field .rm-input, .rm-field textarea.rm-input { margin-bottom: 0; }
-.rm-field textarea.rm-input { resize: vertical; min-height: 56px; font-family: inherit; }
-.rm-field-hint { font-size: 11px; color: var(--rm-muted); margin-top: 4px; line-height: 1.4; }
-.rm-form-error { background: rgba(176, 48, 48, 0.12); border: 1px solid var(--rm-danger); color: var(--rm-danger); font-size: 13px; padding: 7px 10px; border-radius: 5px; margin-bottom: 12px; }
-.rm-form-error[hidden] { display: none; }
-.rm-radio-row { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 400; color: var(--rm-fg); margin: 4px 0; cursor: pointer; }
-.rm-radio-row input { margin: 0; }
-/* Given-By autocomplete dropdown */
-.rm-ac-wrap { position: relative; }
-.rm-ac-results { position: absolute; left: 0; right: 0; top: calc(100% + 2px); z-index: 20; background: var(--rm-bg); border: 1px solid var(--rm-line); border-radius: 5px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25); max-height: 220px; overflow-y: auto; display: none; }
-.rm-ac-results.rm-ac-open { display: block; }
-.rm-ac-item { padding: 7px 10px; font-size: 13px; color: var(--rm-fg); cursor: pointer; }
-.rm-ac-item:hover, .rm-ac-item.rm-ac-active { background: var(--rm-bg2); }
-.rm-ac-none { padding: 7px 10px; font-size: 12px; color: var(--rm-muted); }
-/* Officer quick-pick chips (Given By) */
-.rm-officer-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
-.rm-officer-chip { font-size: 12px; padding: 4px 9px; border: 1px solid var(--rm-line); border-radius: 14px; background: var(--rm-bg2); color: var(--rm-fg); cursor: pointer; }
-.rm-officer-chip span { color: var(--rm-muted); }
-.rm-officer-chip:hover { border-color: var(--rm-accent); }
-.rm-officer-chip.rm-selected { background: var(--rm-accent); border-color: var(--rm-accent); color: #fff; }
-.rm-officer-chip.rm-selected span { color: rgba(255, 255, 255, 0.85); }
-/* Inline field hints */
-.rm-field-hint-inline { color: var(--rm-muted); font-weight: 400; font-size: 11px; }
-/* Rank pills (select the rank being granted; green = already held) */
-.rm-rank-pills { display: flex; flex-wrap: wrap; gap: 5px; }
-.rm-rank-pill { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; border: 1px solid var(--rm-line); border-radius: 6px; background: var(--rm-bg); color: var(--rm-fg); cursor: pointer; user-select: none; }
-.rm-rank-pill:hover { border-color: var(--rm-accent); }
-.rm-rank-pill.rm-rank-held { background: #2f855a; border-color: #2f855a; color: #fff; }
-.rm-rank-pill.rm-rank-forward { background: rgba(44, 95, 139, 0.14); border-color: var(--rm-accent); }
-.rm-rank-pill.rm-rank-selected { outline: 2px solid var(--rm-accent); outline-offset: 1px; }
-html[data-theme="dark"] .rm-rank-pill.rm-rank-held { background: #38a169; border-color: #38a169; }
-
-/* Responsive card collapse (spec 0.8) — below 1250px the grid becomes stacked
-   cards; threads 3, 4 and 6 extend this rather than owning it.
-
-   Breakpoint raised from 700px to 1250px. The desktop <table> lays out at
-   1096-1136px natural width (measured across kingdoms 1/3/5/6/8/10 — it is
-   content-driven, several columns being white-space:nowrap) on top of ~111px of
-   page chrome, so anything under ~1250px overflowed a wrapper with no scroll
-   container, and the sitewide html{overflow-x:hidden} / body{overflow-x:clip}
-   swallowed the overflow — putting the ENTIRE Actions column (Grant / Add to
-   Court / Snooze / Pass down / Dismiss / More), the only mutating controls on
-   the page, out of reach on iPad portrait and landscape, Surface, and any
-   half-screen laptop. 1250 rather than the ~1150 the natural table width alone
-   suggests: at 1160 the widest kingdom still spilled 25px of the last column.
-
-   The obvious fix — overflow-x:auto on .rm-gridwrap for just that band — was
-   built and measured at 900px, and rejected on three counts:
-     1. Making the wrapper a scrollport re-scopes the sticky thead to it. The
-        wrapper never scrolls vertically, so the frozen header stopped freezing:
-        after a 1500px page scroll the header sat at -1114px instead of +94px.
-        (This is exactly what the .rm-gridwrap comment above warns about.)
-     2. It clips the rich hover tooltips. .rm-passlocal-tip / .rm-snooze-tip are
-        absolutely positioned ABOVE their button (bottom: 100% + 4px), so the
-        first row's tooltip rendered at y=250 against a wrapper starting at
-        y=292 — 42px of a 72px tooltip cut off, losing the entire bold title
-        line. Those tooltips live in the very Actions column the fix exists to
-        reach.
-     3. overflow-x:auto forces overflow-y to compute to auto, and the resulting
-        horizontal scrollbar sits at the bottom of a ~15,000px-tall wrapper —
-        an affordance that is never actually on screen.
-   Cards need no scroll container, so the sticky header keeps working at every
-   width and both tooltips fall back to their inline (.rm-act-help) form. */
-/* Base (desktop) state for the mobile-only overflow toggle and its help text.
-   Without this, both inherit the generic .rm-act/div display and appear on the
-   desktop table too, since the media query below only sets their *open* state. */
-.rm-act-more { display: none; }
-.rm-act-help { display: none; }
-@media (max-width: 1250px) {
-  .rm-grid thead { display: none; }
-  .rm-grid, .rm-grid tbody, .rm-grid tr, .rm-grid td { display: block; width: 100%; }
-  .rm-grid tr.rm-row {
-    border: 1px solid var(--rm-line); border-radius: 8px; margin-bottom: 10px;
-    padding: 10px 12px; background: var(--rm-bg); position: relative;
-  }
-  .rm-grid tr.rm-row td { border: none; padding: 2px 0; }
-  /* Tap area is 44px; the glyph stays 22px. House pattern, stated at
-     Court_detail.tpl:1058 — "coarse pointers get >=44px hit area (padding,
-     not larger glyphs)". A literally 44px checkbox looks broken.
-     Padding lives on the wrapping <label>, not the <td>: a <td> has no
-     native click-forwarding to a child checkbox, so padding placed directly
-     on .rm-col-sel would create a visually 44px box whose outer ring does
-     not actually toggle the input on tap. A <label> does forward clicks to
-     the control it wraps, so the label is the element that must be 44px. */
-  /* Specificity note: the generic ".rm-grid td { width: 100% }" rule above
-     would otherwise stretch this absolutely-positioned td across the whole
-     row (and drag the checkbox to the row's left edge with it), so this
-     selector is deliberately ".rm-grid .rm-col-sel" (two classes) rather
-     than the bare ".rm-col-sel" to win that cascade fight and shrink back
-     to fit its content in the top-right corner. */
-  .rm-grid .rm-col-sel { position: absolute; top: 2px; right: 2px; width: auto; }
-  .rm-col-sel label { padding: 11px; box-sizing: content-box; display: inline-flex; align-items: center; justify-content: center; }
-  /* margin:0 — Chrome's UA default on <input> is 3px 3px 3px 4px, which
-     would otherwise pad the label's tap area out past 44px. */
-  .rm-col-sel input { width: 22px; height: 22px; margin: 0; }
-  /* box-sizing: the generic ".rm-grid td { width: 100% }" above is a
-     content-box width here, so the 40px gutter that keeps the name clear of the
-     absolutely-positioned select checkbox was ADDED to a full-width card,
-     pushing the cell's right edge past the viewport. Harmless only because the
-     sitewide overflow clip hid it. */
-  .rm-col-recip { font-size: 16px; font-weight: 700; padding-right: 40px !important; box-sizing: border-box; }
-  .rm-col-park::before  { content: none; }
-  .rm-col-award { font-size: 14px; }
-  .rm-col-rank, .rm-col-rec, .rm-col-supp { display: inline-block !important; width: auto !important; margin-right: 10px; }
-  .rm-col-reason { color: var(--rm-muted); font-size: 13px; }
-
-  /* Actions: primary two inline, the rest behind an overflow toggle. */
-  .rm-col-act { display: flex !important; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-  .rm-col-act .rm-act { min-height: 44px; min-width: 44px; flex: 0 0 auto; padding: 0 14px; }
-  .rm-col-act .rm-act-grant, .rm-col-act .rm-act-court { flex: 1 1 auto; }
-  .rm-col-act .rm-act-snooze,
-  .rm-col-act .rm-act-passlocal,
-  .rm-col-act .rm-act-dismiss { display: none; }
-  .rm-col-act.rm-act-open .rm-act-snooze,
-  .rm-col-act.rm-act-open .rm-act-passlocal,
-  .rm-col-act.rm-act-open .rm-act-dismiss { display: inline-flex; }
-  .rm-act-more { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 44px; }
-
-  /* Hover-only tooltips have no home on a phone — show the copy inline. */
-  .rm-act .rm-snooze-tip,
-  .rm-act .rm-passlocal-tip { position: static; display: none; }
-  .rm-col-act.rm-act-open .rm-act-help { display: block; font-size: 12px; color: var(--rm-muted); margin-top: 6px; flex: 1 1 100%; }
-
-  .rm-filterbar { flex-wrap: wrap; gap: 8px; }
-  .rm-filterbar .rm-fsel, .rm-filterbar .rm-search { flex: 1 1 100%; min-height: 44px; }
-  .rm-bulkbar { position: fixed; left: 0; right: 0; bottom: 0; border-radius: 0; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); flex-wrap: wrap; }
-  .rm-bulkbar .rm-bulk { min-height: 44px; }
-
-  /* The row action buttons above are already 44px; these were missed. Same
-     house pattern — grow the hit area with padding, leave the glyph alone.
-     The modal buttons matter most: both modals are fully usable on a phone. */
-  .rm-fbtn,
-  .rm-modal .rm-btn { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
-  .rm-expand-members,
-  .rm-supp-chip,
-  .rm-courtbadge,
-  a.rm-park { min-height: 44px; display: inline-flex; align-items: center; }
-}
-@media (max-width: 1250px) {
-  html[data-theme="dark"] .rm-grid tr.rm-row { background: var(--rm-bg2); }
-}
-</style>
+<!-- The ~676-line inline <style> that used to live here is now
+     default/style/recs-manager.css (cacheable, parsed once, and visible to the
+     CSS boundary tooling). -->
+<link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>default/style/recs-manager.css?v=<?= filemtime(DIR_TEMPLATE . 'default/style/recs-manager.css') ?>">
 
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>default/style/reports.css?v=<?= filemtime(DIR_TEMPLATE . 'default/style/reports.css') ?>">
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>revised-frontend/style/rank-pill.css?v=<?= filemtime(DIR_TEMPLATE . 'revised-frontend/style/rank-pill.css') ?>">
@@ -793,9 +121,9 @@ html[data-theme="dark"] .rm-rank-pill.rm-rank-held { background: #38a169; border
   </div>
 
   <!-- Task 10: Add-to-Court modal -->
-  <div class="rm-modal-overlay" id="rm-court-overlay" hidden>
+  <div class="rm-modal-overlay" id="rm-court-overlay" role="dialog" aria-modal="true" aria-labelledby="rm-court-title" hidden>
     <div class="rm-modal">
-      <h2 class="rm-modal-title">Add to Court</h2>
+      <h2 class="rm-modal-title" id="rm-court-title">Add to Court</h2>
       <div class="rm-modal-sub" id="rm-court-sub"></div>
       <div class="rm-modal-modes">
         <label><input type="radio" name="rm-court-mode" value="existing" checked> Existing court</label>
@@ -827,9 +155,9 @@ html[data-theme="dark"] .rm-rank-pill.rm-rank-held { background: #38a169; border
   <!-- Grant Award modal: pre-filled from the rec. The ⚡ button always opens this —
        we never insta-grant. When the rec is on a court plan, the officer also picks
        what happens to the planned court award. -->
-  <div class="rm-modal-overlay" id="rm-grant-overlay" hidden>
+  <div class="rm-modal-overlay" id="rm-grant-overlay" role="dialog" aria-modal="true" aria-labelledby="rm-grant-title" hidden>
     <div class="rm-modal">
-      <h2 class="rm-modal-title">Grant Award</h2>
+      <h2 class="rm-modal-title" id="rm-grant-title">Grant Award</h2>
       <div class="rm-modal-sub" id="rm-grant-sub"></div>
       <div class="rm-form-error" id="rm-grant-error" hidden></div>
       <div class="rm-field" id="rm-grant-rank-wrap" hidden>
@@ -912,45 +240,45 @@ function rmEsc(s) {
     return d.innerHTML;
 }
 
-// Confirm dialog for this page.
+// Confirm dialog for this page — now a thin alias over the shared helper.
 //
-// Despite living in revised-frontend/, this template renders under
-// default.theme, which loads script/orkui.js and NOT revised.js — so
-// orkConfirm/pnConfirm do not exist here. Native confirm() is banned (it
-// freezes the in-app browser), so the page builds its own, the same way
-// Court_detail.tpl does with cpConfirm. Reuses the .rm-modal* styling, so it
-// inherits dark mode and the mobile tap sizes for free.
+// This template renders under default.theme, which loads script/orkui.js, and
+// orkui.js is where the one Promise-returning, focus-trapping, focus-restoring
+// orkConfirm(opts) now lives (same {title, body, confirmLabel, cancelLabel,
+// danger, onConfirm} shape this page and the Court templates were each
+// hand-rolling). Kept as a named function so every existing call site is
+// unchanged.
+// default.theme links orkui.js with no ?v=filemtime cache-bust (it busts
+// stylesheets only), so a client can hold a bundle predating orkConfirm. Without
+// a guard that is a TypeError inside the click handler and Dismiss/Grant-again
+// become silently dead buttons — a failure mode the old self-contained rmConfirm
+// did not have. Guarded: never auto-confirm (these are destructive), say why, and
+// keep the same Promise<boolean> contract every call site awaits.
 function rmConfirm(opts) {
+    if (typeof window.orkConfirm === 'function') { return window.orkConfirm(opts); }
+    rmToast('This action needs a confirmation dialog that failed to load. Reload the page (Ctrl+Shift+R) and try again.', true);
+    if (opts && typeof opts.onCancel === 'function') { opts.onCancel(); }
+    return Promise.resolve(false);
+}
+// Same reasoning for the focus trap: if it is missing, the modal must still open
+// and still close on Escape. Fallback = Escape + focus only, no Tab wrapping.
+function rmDialogTrap(el, opts) {
+    if (typeof window.orkDialogTrap === 'function') { return window.orkDialogTrap(el, opts); }
     opts = opts || {};
-    var ov = document.createElement('div');
-    ov.className = 'rm-modal-overlay';
-    ov.setAttribute('role', 'dialog');
-    ov.setAttribute('aria-modal', 'true');
-    ov.innerHTML =
-        '<div class="rm-modal">' +
-          '<h2 class="rm-modal-title">' + rmEsc(opts.title || 'Confirm') + '</h2>' +
-          '<div class="rm-modal-sub">' + rmEsc(opts.body || '') + '</div>' +
-          '<div class="rm-modal-actions">' +
-            '<button type="button" class="rm-btn rm-btn-ghost" data-rm-cancel>' + rmEsc(opts.cancelLabel || 'Cancel') + '</button>' +
-            '<button type="button" class="rm-btn rm-btn-primary" data-rm-ok' + (opts.danger ? ' style="background:#c53030;border-color:#c53030"' : '') + '>' + rmEsc(opts.confirmLabel || 'OK') + '</button>' +
-          '</div>' +
-        '</div>';
-    function close() {
-        ov.remove();
-        document.removeEventListener('keydown', onKey);
+    var prev = document.activeElement;
+    function onKey(e) {
+        if ((e.key === 'Escape' || e.key === 'Esc') && typeof opts.onEscape === 'function') { e.preventDefault(); opts.onEscape(); }
     }
-    function onKey(e) { if (e.key === 'Escape') close(); }
-    ov.addEventListener('click', function (e) {
-        if (e.target === ov || e.target.closest('[data-rm-cancel]')) { close(); return; }
-        if (e.target.closest('[data-rm-ok]')) {
-            close();
-            if (typeof opts.onConfirm === 'function') opts.onConfirm();
-        }
-    });
-    document.addEventListener('keydown', onKey);
-    document.body.appendChild(ov);
-    var ok = ov.querySelector('[data-rm-ok]');
-    if (ok) setTimeout(function () { ok.focus(); }, 30);
+    document.addEventListener('keydown', onKey, true);
+    var first = opts.initialFocus || el.querySelector('button,input,select,textarea,a[href]');
+    if (first && first.focus) { setTimeout(function () { first.focus(); }, 30); }
+    var released = false;
+    return function () {
+        if (released) { return; }
+        released = true;
+        document.removeEventListener('keydown', onKey, true);
+        if (prev && prev.focus && document.contains(prev)) { prev.focus(); }
+    };
 }
 
 // Insert (or toggle off) an inline detail row directly after `tr`.
@@ -1016,6 +344,59 @@ function rmReadFilters() {
 	rmState.dismissed = document.getElementById('rm-filter-dismissed').checked;
 }
 function rmRowKey(tr) { return tr.getAttribute('data-rec-cluster') || tr.getAttribute('data-rec-id'); }
+/* Empty / error state. A completed fetch that matched nothing used to leave the
+   tbody literally empty under a "Showing 0 of 0" footer — the same screen a
+   failed load produced once its 2.6s toast expired, so a load error read as
+   "nothing to triage". These two states now say which one happened, and the
+   error one stays on screen until it is retried. */
+function rmClearStateRow() {
+    var s = document.getElementById('rm-staterow');
+    if (s) s.remove();
+}
+// `reset` = this came from a full re-query (a filter/search/sort change). On that
+// path the tbody is only emptied inside the SUCCESS branch, so a failed reset
+// leaves every stale row in place and an appended error row lands past the last
+// one — measured 17,170px below the fold on a 362-row list. Prepend it instead,
+// so the officer sees "couldn't load" above rows that no longer match the filters.
+function rmShowStateRow(kind, reset) {
+    rmClearStateRow();
+    var tr = document.createElement('tr');
+    tr.id = 'rm-staterow';
+    tr.className = 'rm-staterow' + (kind === 'error' ? ' rm-staterow-err' : '');
+    if (kind === 'error') {
+        tr.innerHTML = '<td colspan="10"><strong>Couldn’t load recommendations.</strong>'
+            + (reset
+                ? 'The rows below are still the previous view — they do not match the filters you just set.'
+                : 'The list below may be incomplete.')
+            + '<div><button type="button" class="rm-btn rm-btn-primary" id="rm-state-retry">Retry</button></div></td>';
+    } else {
+        tr.innerHTML = '<td colspan="10"><strong>No recommendations match these filters.</strong>'
+            + 'Nothing is hidden by an error — the search and filters above simply matched no honors.'
+            + '<div><button type="button" class="rm-btn rm-btn-ghost" id="rm-state-clear">Clear filters</button></div></td>';
+    }
+    var tb = document.getElementById('rm-tbody');
+    if (kind === 'error' && reset && tb.firstChild) { tb.insertBefore(tr, tb.firstChild); }
+    else { tb.appendChild(tr); }
+    // An append-error (infinite scroll) lands where the officer already is; a
+    // prepended one may still be off-screen if they scrolled. Either way, put it
+    // in view without yanking the page around.
+    if (kind === 'error' && tr.scrollIntoView) { tr.scrollIntoView({ block: 'nearest' }); }
+    var retry = document.getElementById('rm-state-retry');
+    if (retry) retry.addEventListener('click', function () { rmClearStateRow(); rmFetch(true); });
+    var clear = document.getElementById('rm-state-clear');
+    if (clear) clear.addEventListener('click', rmClearFilters);
+}
+// Reset every filter input to its default and re-query.
+function rmClearFilters() {
+    var s = document.getElementById('rm-search'); if (s) s.value = '';
+    var el = document.getElementById('rm-filter-elig'); if (el) el.value = 'open';
+    var ct = document.getElementById('rm-filter-court'); if (ct) ct.value = 'all';
+    var pk = document.getElementById('rm-filter-park'); if (pk) pk.value = 'all';
+    var plc = document.getElementById('rm-filter-passlocal'); if (plc) plc.checked = false;
+    var dis = document.getElementById('rm-filter-dismissed'); if (dis) dis.checked = false;
+    rmReadFilters();
+    rmFetch(true);
+}
 function rmIndexSeen() { rmState.seen = {}; RM.rows().forEach(function (tr) { rmState.seen[rmRowKey(tr)] = true; }); }
 function rmFetch(reset) {
 	if (rmState.loading) return;
@@ -1028,6 +409,7 @@ function rmFetch(reset) {
 		dir: rmState.dir, offset: String(rmState.offset)
 	});
 	var tbody = document.getElementById('rm-tbody');
+	rmClearStateRow();
 	document.getElementById('rm-loading').style.display = '';
 	fetch(RmConfig.rowsUrl + (RmConfig.rowsUrl.indexOf('?') >= 0 ? '&' : '?') + q.toString(), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
 		.then(function (r) { if (!r.ok) throw new Error('rows http ' + r.status); return r.json(); })
@@ -1054,8 +436,13 @@ function rmFetch(reset) {
 			document.getElementById('rm-total').textContent = d.total;
 			if (typeof rmUpdateSelCount === 'function') rmUpdateSelCount();
 			if (typeof rmSyncReasonExpanders === 'function') rmSyncReasonExpanders();
+			if (!RM.rows().length) rmShowStateRow('empty');
 		})
-		.catch(function () { if (typeof rmToast === 'function') rmToast('Failed to load.', true); })
+		.catch(function () {
+			// Persistent, not just a toast that self-dismisses in 2.6s.
+			rmShowStateRow('error', reset);
+			if (typeof rmToast === 'function') rmToast('Failed to load.', true);
+		})
 		.finally(function () {
 			rmState.loading = false;
 			document.getElementById('rm-loading').style.display = 'none';
@@ -1075,8 +462,11 @@ function rmAfterRowRemoved(serverGone) {
 		if (rmState.offset > 0) rmState.offset -= 1;
 	}
 	if (typeof rmUpdateSelCount === 'function') rmUpdateSelCount();
+	if (!RM.rows().length) rmShowStateRow('empty');
 }
 rmIndexSeen();
+// The server-rendered first page can itself be empty (a scope with nothing pending).
+if (!RM.rows().length) rmShowStateRow('empty');
 // filter inputs (debounced search) -> reset fetch
 var rmDeb;
 ['rm-search', 'rm-filter-elig', 'rm-filter-court', 'rm-filter-park', 'rm-filter-dismissed'].forEach(function (idv) {
@@ -1215,11 +605,27 @@ document.querySelector('.rm-bulk-clear').addEventListener('click', function () {
 rmUpdateSelCount();
 
 /* ---------- Task 8: snooze/dismiss (row + bulk), toast, config ---------- */
+// The live region is created ONCE and lives in the DOM empty: a role="status"
+// node inserted at the same moment as its text is not reliably announced, so
+// every toast is appended into this pre-existing region instead.
+function rmToastRegion() {
+    var r = document.getElementById('rm-toast-region');
+    if (!r) {
+        r = document.createElement('div');
+        r.id = 'rm-toast-region';
+        r.setAttribute('role', 'status');
+        r.setAttribute('aria-live', 'polite');
+        r.setAttribute('aria-atomic', 'false');
+        document.body.appendChild(r);
+    }
+    return r;
+}
+rmToastRegion();
 function rmToast(msg, isErr) {
     var t = document.createElement('div');
     t.className = 'rm-toast' + (isErr ? ' rm-toast-err' : '');
     t.textContent = msg;
-    document.body.appendChild(t);
+    rmToastRegion().appendChild(t);
     setTimeout(function () { t.classList.add('rm-toast-out'); setTimeout(function () { t.remove(); }, 400); }, 2600);
 }
 // Build the snooze/dismiss endpoint base for the current scope.
@@ -1295,6 +701,28 @@ function rmMemberIds(tr) {
     var ids = []; try { ids = JSON.parse(tr.getAttribute('data-members') || '[]'); } catch (x) {}
     return ids;
 }
+function rmRecOf(tr) {
+    var rec = {}; try { rec = JSON.parse(tr.getAttribute('data-rec') || '{}'); } catch (x) {}
+    return rec;
+}
+// "4 recommendations" / "1 recommendation" — a row is a CLUSTER of filings, and
+// every write on it acts on all of them, so the copy must count filings.
+function rmRecCount(n) { return n + ' recommendation' + (n === 1 ? '' : 's'); }
+// "Sir Aldric (Order of the Flame, rank 3)" for confirm copy.
+function rmRecLabel(tr) {
+    var rec = rmRecOf(tr);
+    var who = rec.Persona || 'this recipient';
+    var what = rec.AwardName || 'this award';
+    var rank = (parseInt(rec.Rank, 10) || 0);
+    return who + ' (' + what + (rank > 0 ? ', rank ' + rank : '') + ')';
+}
+// Both dismiss paths say the same thing about what dismissal is.
+var RM_DISMISS_KEPT = 'Dismissed recommendations are kept, not deleted — turn on “Show dismissed” to see them and undelete any retired by mistake.';
+// The first reason in the cluster (the row no longer duplicates it in data-rec).
+function rmFirstReason(tr) {
+    var m = []; try { m = JSON.parse(tr.getAttribute('data-membersfull') || '[]'); } catch (x) {}
+    return (m[0] && m[0].Reason) ? m[0].Reason : '';
+}
 
 // Repaint a snooze button for its new state. Both the icon AND the rich tooltip
 // have to move: writing textContent on the button itself would destroy the
@@ -1303,6 +731,9 @@ function rmMemberIds(tr) {
 // Mirrors the server-side markup in _rm_row.tpl.
 function rmPaintSnooze(btn, nowSnoozed) {
     if (!btn) return;
+    // The accessible name has to move with the icon and the tooltip: the tooltip
+    // span is aria-hidden, so aria-label is the ONLY name this button has.
+    btn.setAttribute('aria-label', nowSnoozed ? 'Unsnooze this recommendation' : 'Snooze until the next monarchy');
     var ico = btn.querySelector('.rm-snooze-ico');
     if (ico) ico.innerHTML = nowSnoozed ? '&#128276;' : '&#128164;';
     var tip = btn.querySelector('.rm-snooze-tip');
@@ -1352,9 +783,18 @@ document.getElementById('rm-tbody').addEventListener('click', function (e) {
     var ds = e.target.closest('.rm-act-dismiss');
     if (ds) {
         var tr2 = ds.closest('tr');
-        rmConfirm({ title: 'Dismiss recommendation?', body: 'This removes the recommendation(s) from the pending list.', confirmLabel: 'Dismiss', danger: true, onConfirm: function () {
-            var ids = rmMemberIds(tr2);
-            if (!ids.length) { rmToast('No recommendations found.', true); return; }
+        // Count what actually gets retired: the row is a cluster and this acts on
+        // every member filing, so confirming "the recommendation(s)" understated a
+        // 4-recommender row by 3.
+        var dsIds = rmMemberIds(tr2);
+        if (!dsIds.length) { rmToast('No recommendations found.', true); return; }
+        rmConfirm({
+            title: 'Dismiss ' + rmRecCount(dsIds.length) + ' for ' + rmRecLabel(tr2) + '?',
+            body: (dsIds.length === 1 ? 'This filing leaves' : 'All ' + dsIds.length + ' filings for this honor leave')
+                + ' the pending list. ' + RM_DISMISS_KEPT,
+            confirmLabel: 'Dismiss ' + rmRecCount(dsIds.length),
+            danger: true, onConfirm: function () {
+            var ids = dsIds;
             Promise.all(ids.map(function (id) {
                 var fd = new FormData(); fd.append('RecommendationsId', id);
                 return rmPost(rmRecAjaxBase('dismissrecommendation'), fd);
@@ -1363,10 +803,10 @@ document.getElementById('rm-tbody').addEventListener('click', function (e) {
                 if (failN > 0) {
                     // Keep the row: the ids that failed are still pending, so removing it
                     // would hide live recommendations behind a "Dismissed" that isn't true.
-                    rmToast(okN ? 'Dismissed ' + okN + ', ' + failN + ' failed.' : 'Failed.', true);
+                    rmToast(okN ? 'Dismissed ' + rmRecCount(okN) + ', ' + failN + ' failed.' : 'Failed.', true);
                     return;
                 }
-                rmRemoveRow(tr2); rmToast('Dismissed.');
+                rmRemoveRow(tr2); rmToast('Dismissed ' + rmRecCount(okN) + '.');
             }).catch(function () { rmToast('Failed.', true); });
         } });
     }
@@ -1419,6 +859,9 @@ document.getElementById('rm-tbody').addEventListener('click', function (e) {
         var nowPassed = !passed;
         tr.setAttribute('data-passlocal', nowPassed ? '1' : '0');
         pl.classList.toggle('rm-act-active', nowPassed);
+        // aria-label is this button's only accessible name (its tooltip span is
+        // aria-hidden), so it has to describe the action it now performs.
+        pl.setAttribute('aria-label', nowPassed ? 'Remove the pass to the local park' : 'Pass to the local park');
         rmSetPasslocalBadge(tr, nowPassed);
         // Only refetch if the "Passed to local" filter is active and this row just
         // dropped out of it; otherwise the in-place badge/state update is enough.
@@ -1561,7 +1004,7 @@ document.querySelector('.rm-bulk-snooze').addEventListener('click', function () 
             apply: function (tr) {
                 tr.setAttribute('data-passlocal', '1');
                 var pl = tr.querySelector('.rm-act-passlocal');
-                if (pl) pl.classList.add('rm-act-active');
+                if (pl) { pl.classList.add('rm-act-active'); pl.setAttribute('aria-label', 'Remove the pass to the local park'); }
                 rmSetPasslocalBadge(tr, true);
                 // A newly-passed row still satisfies the "Passed to local" filter, so
                 // it stays right where it is.
@@ -1572,11 +1015,28 @@ document.querySelector('.rm-bulk-snooze').addEventListener('click', function () 
 })();
 document.querySelector('.rm-bulk-dismiss').addEventListener('click', function () {
     var rows = rmSelectedLive();
-    rmConfirm({ title: 'Dismiss ' + rows.length + ' recommendation(s)?', body: 'They will be removed from the pending list.', confirmLabel: 'Dismiss all', danger: true, onConfirm: function () {
+    // Selected rows are clusters; the write goes to every member filing. Ten
+    // rows averaging four recommenders retires forty people's recommendations,
+    // so confirm (and later report) in filings, with the honor count as context.
+    var memberTotal = rows.reduce(function (n, tr) { return n + rmMemberIds(tr).length; }, 0);
+    if (!memberTotal) { rmToast('No recommendations found.', true); return; }
+    rmConfirm({
+        title: 'Dismiss ' + rmRecCount(memberTotal) + ' across ' + rows.length + ' honor' + (rows.length === 1 ? '' : 's') + '?',
+        body: 'Every filing on the selected ' + (rows.length === 1 ? 'row' : 'rows') + ' leaves the pending list. ' + RM_DISMISS_KEPT,
+        confirmLabel: 'Dismiss ' + rmRecCount(memberTotal),
+        danger: true, onConfirm: function () {
+        // apply() runs once per row that fully succeeded, before msg() is called,
+        // so this is the exact filing count that landed — not an assumption that
+        // the successful rows were the first N.
+        var doneFilings = 0;
         rmBulkRun('dismiss', rows, {
             // rmRemoveRow keeps the "Showing X of Y" counters in step for each row.
-            apply: function (tr) { rmRemoveRow(tr); },
-            msg: function (ok, fail) { return 'Dismissed ' + ok + (fail ? ', ' + fail + ' failed' : '') + '.'; }
+            apply: function (tr) { doneFilings += rmMemberIds(tr).length; rmRemoveRow(tr); },
+            // ok/fail are ROW tallies; report the filings those rows carried.
+            msg: function (ok, fail) {
+                return 'Dismissed ' + rmRecCount(doneFilings) + ' across ' + ok + ' honor' + (ok === 1 ? '' : 's')
+                    + (fail ? ', ' + fail + ' honor' + (fail === 1 ? '' : 's') + ' failed' : '') + '.';
+            }
         });
     } });
 });
@@ -1605,25 +1065,60 @@ function rmTodayYMD() {
 function rmDoGrant(rec, tr, opts) {
     opts = opts || {};
     var granted = false;
-    var fd = new FormData();
-    fd.append('KingdomAwardId', rec.KingdomAwardId);
-    fd.append('GivenById', opts.givenById || RmConfig.userId);
-    fd.append('Date', opts.date || rmTodayYMD());
-    fd.append('ParkId', opts.parkId != null ? opts.parkId : (RmConfig.parkId || '0'));
-    fd.append('KingdomId', opts.kingdomId != null ? opts.kingdomId : (RmConfig.kingdomId || '0'));
-    fd.append('EventId', opts.eventId != null ? opts.eventId : '0');
-    fd.append('Note', opts.note != null ? opts.note : (rec.Reason || ''));
-    fd.append('Rank', opts.rank != null ? opts.rank : (rec.Rank || 0));
-    // Thread the granted recommendation id so the server can reconcile the matching
-    // court line and a later court finalize can't double-grant it.
-    var recId = (opts.recommendationsId != null) ? opts.recommendationsId : rec.RepRecId;
-    if (recId) { fd.append('RecommendationsId', recId); }
-    // 'remove' cancels the court line, 'leave' marks it given. Server-side only.
-    fd.append('CourtAction', opts.courtAction === 'remove' ? 'remove' : 'leave');
-    return rmPost(RmConfig.uir + 'PlayerAjax/player/' + rec.MundaneId + '/grantaward', fd)
+    // Rebuildable: a confirmed duplicate is re-POSTed with ConfirmDuplicate=1, and a
+    // FormData that has already been sent cannot be reused safely.
+    function rmGrantForm(confirmDuplicate) {
+        var fd = new FormData();
+        fd.append('KingdomAwardId', rec.KingdomAwardId);
+        fd.append('GivenById', opts.givenById || RmConfig.userId);
+        fd.append('Date', opts.date || rmTodayYMD());
+        fd.append('ParkId', opts.parkId != null ? opts.parkId : (RmConfig.parkId || '0'));
+        fd.append('KingdomId', opts.kingdomId != null ? opts.kingdomId : (RmConfig.kingdomId || '0'));
+        fd.append('EventId', opts.eventId != null ? opts.eventId : '0');
+        fd.append('Note', opts.note != null ? opts.note : (rec.Reason || ''));
+        fd.append('Rank', opts.rank != null ? opts.rank : (rec.Rank || 0));
+        // Thread the granted recommendation id so the server can reconcile the matching
+        // court line and a later court finalize can't double-grant it.
+        var recId = (opts.recommendationsId != null) ? opts.recommendationsId : rec.RepRecId;
+        if (recId) { fd.append('RecommendationsId', recId); }
+        // 'remove' cancels the court line, 'leave' marks it given. Server-side only.
+        fd.append('CourtAction', opts.courtAction === 'remove' ? 'remove' : 'leave');
+        if (confirmDuplicate) { fd.append('ConfirmDuplicate', '1'); }
+        return fd;
+    }
+    var grantUrl = RmConfig.uir + 'PlayerAjax/player/' + rec.MundaneId + '/grantaward';
+    // PlayerAjax::grantaward runs a ledger duplicate probe (ledgerDuplicateAwardDate)
+    // BEFORE the write. As merged the server settled on ADVISORY-ONLY: the grant always
+    // goes through and the hit comes back on the normal status:0 payload as
+    // {duplicateDate:'Y-m-d', duplicateWarning:'…'} — there is no ConfirmDuplicate flag
+    // server-side today. That branch is handled after rmJsonOk below (toast, no block).
+    // The blocking shape is kept as a defensive second contract: if the probe is ever
+    // moved to {status:'duplicate'} / {duplicate:true} + ConfirmDuplicate=1, rmJsonOk()
+    // (status===0 only) would read it as a hard failure and the officer would be told
+    // "already recorded" with no way to say yes. Recognise either flag alone, since the
+    // server could settle on one.
+    function rmIsDuplicate(j) { return !!j && (j.status === 'duplicate' || j.duplicate === true); }
+    return rmPost(grantUrl, rmGrantForm(false))
+        .then(function (j) {
+            if (!rmIsDuplicate(j)) { return j; }
+            var when = j.duplicateDate ? rmNiceDateJS(j.duplicateDate) : '';
+            return rmConfirm({
+                title: 'Already recorded',
+                body: 'This honor is already recorded' + (when ? ' on ' + when : '') + '. Grant it again?',
+                confirmLabel: 'Grant again',
+                cancelLabel: 'Cancel'
+            }).then(function (ok) {
+                if (!ok) { var c = new Error('Cancelled — nothing was granted.'); c.granted = false; c.cancelled = true; throw c; }
+                return rmPost(grantUrl, rmGrantForm(true));
+            });
+        })
         .then(function (j) {
             if (!rmJsonOk(j)) { var e = new Error(j && j.error ? j.error : 'Could not grant the award.'); e.granted = false; throw e; }
             granted = true;
+            // Advisory shape: if the server instead lets the grant through and reports
+            // the duplicate as a warning, surface it rather than blocking anything.
+            if (j.duplicateWarning) { rmToast(j.duplicateWarning, true); }
+            else if (j.duplicate && j.duplicateDate) { rmToast('Note: this honor was already recorded on ' + rmNiceDateJS(j.duplicateDate) + '.', true); }
             var fd2 = new FormData();
             fd2.append('MundaneId', rec.MundaneId);
             fd2.append('KingdomAwardId', rec.KingdomAwardId);
@@ -1641,7 +1136,34 @@ function rmDoGrant(rec, tr, opts) {
 
 /* ----- Grant Award modal ----- */
 var rmGrantCtx = null; // { rec, tr, courts }
+var rmGrantRelease = null; // focus-trap release fn while the Grant modal is open
 function rmGid(id) { return document.getElementById(id); }
+// Y-m-d -> "March 4, 2026". Parsed by parts, never `new Date('2026-03-04')`,
+// which is read as UTC and slips a day in western timezones.
+function rmNiceDateJS(ymd) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(ymd || ''));
+    if (!m || m[1] === '0000') return String(ymd || '');
+    var names = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    var mo = parseInt(m[2], 10);
+    if (mo < 1 || mo > 12) return String(ymd);
+    return names[mo - 1] + ' ' + parseInt(m[3], 10) + ', ' + m[1];
+}
+// The Grant date field is a flatpickr with altInput — the officer reads
+// "March 4, 2026" while the posted value stays Y-m-d for add_player_award (the
+// same init the Add-to-Court date field already had). If the CDN is unreachable
+// the markup's own type=date is left alone, so the field still picks a date.
+var rmGrantFp = null;
+(function () {
+    var el = document.getElementById('rm-grant-date');
+    if (!el || typeof flatpickr === 'undefined') return;
+    rmGrantFp = flatpickr(el, { altInput: true, altFormat: 'F j, Y', dateFormat: 'Y-m-d' });
+    // altInput does not inherit the id the <label for> points at.
+    if (rmGrantFp.altInput) rmGrantFp.altInput.setAttribute('aria-label', 'Date');
+})();
+function rmSetGrantDate(ymd) {
+    if (rmGrantFp) { rmGrantFp.setDate(ymd, false); return; }
+    rmGid('rm-grant-date').value = ymd;
+}
 function rmGrantErr(msg) {
     var box = rmGid('rm-grant-error');
     if (!msg) { box.hidden = true; box.textContent = ''; return; }
@@ -1650,9 +1172,13 @@ function rmGrantErr(msg) {
 function rmOpenGrantModal(rec, tr, courts) {
     rmGrantCtx = { rec: rec, tr: tr, courts: (courts && courts.length) ? courts : [] };
     var rankTxt = rec.Rank ? (' — Rank ' + rec.Rank) : '';
-    rmGid('rm-grant-sub').textContent = 'Grant ' + (rec.AwardName || 'this award') + rankTxt + ' to “' + (rec.Persona || '') + '”.';
+    // data-rec carries IsRetired so the signal reaches the MOMENT OF THE ACTION, not
+    // just the row badge the officer scrolled past. Memorial honors are legitimate —
+    // this states the fact, it does not block.
+    rmGid('rm-grant-sub').textContent = 'Grant ' + (rec.AwardName || 'this award') + rankTxt + ' to “' + (rec.Persona || '') + '”.'
+        + (rec.IsRetired ? ' This recipient is retired or deceased in the ORK — confirm this is an intended memorial honor.' : '');
     rmGrantErr('');
-    rmGid('rm-grant-date').value = rmTodayYMD();
+    rmSetGrantDate(rmTodayYMD());
     rmGid('rm-grant-givenby').value = RmConfig.userName || '';
     rmGid('rm-grant-givenby-id').value = RmConfig.userId || '';
     rmGid('rm-grant-note').value = rec.Reason || '';
@@ -1666,7 +1192,9 @@ function rmOpenGrantModal(rec, tr, courts) {
     var gaRes = rmGid('rm-grant-givenat-results'); if (gaRes) { gaRes.classList.remove('rm-ac-open'); gaRes.innerHTML = ''; }
     var courtWrap = rmGid('rm-grant-court-wrap');
     if (rmGrantCtx.courts.length) {
-        var names = rmGrantCtx.courts.map(function (c) { return c.Name + (c.CourtDate ? ' (' + c.CourtDate + ')' : ''); }).join(', ');
+        // rmNiceDateJS, not the raw Y-m-d: this label sat directly above a court
+        // <select> rendering the very same date as "March 4, 2026".
+        var names = rmGrantCtx.courts.map(function (c) { return c.Name + (c.CourtDate ? ' (' + rmNiceDateJS(c.CourtDate) + ')' : ''); }).join(', ');
         rmGid('rm-grant-court-label').textContent = 'Already on ' + (rmGrantCtx.courts.length === 1 ? 'court: ' : rmGrantCtx.courts.length + ' courts: ') + names;
         var rm = document.querySelector('input[name="rm-grant-court"][value="remove"]'); if (rm) rm.checked = true;
         courtWrap.hidden = false;
@@ -1676,18 +1204,35 @@ function rmOpenGrantModal(rec, tr, courts) {
     var results = rmGid('rm-grant-givenby-results'); if (results) { results.classList.remove('rm-ac-open'); results.innerHTML = ''; }
     rmGid('rm-grant-submit').disabled = false;
     rmGid('rm-grant-overlay').hidden = false;
-    setTimeout(function () { rmGid('rm-grant-date').focus(); }, 30);
+    // Escape, Tab wrapping and focus restore for this overlay. Without it, Tab
+    // past Submit walked into the 362-row table behind the modal and closing
+    // dropped focus on <body> at the top of the list.
+    rmGrantRelease = rmDialogTrap(rmGid('rm-grant-overlay'), {
+        // Escape closes an open autocomplete dropdown first; only a second
+        // Escape (with no dropdown open) closes the modal itself.
+        onEscape: function () {
+            var open = rmGid('rm-grant-overlay').querySelectorAll('.rm-ac-results.rm-ac-open');
+            if (open.length) { Array.prototype.forEach.call(open, function (n) { n.classList.remove('rm-ac-open'); }); return; }
+            rmCloseGrantModal();
+        },
+        // With flatpickr's altInput the real <input> is hidden and cannot take focus.
+        initialFocus: (rmGrantFp && rmGrantFp.altInput) ? rmGrantFp.altInput : rmGid('rm-grant-date')
+    });
 }
 function rmCloseGrantModal() {
     rmGid('rm-grant-overlay').hidden = true;
     var results = rmGid('rm-grant-givenby-results'); if (results) results.classList.remove('rm-ac-open');
+    if (rmGrantRelease) { rmGrantRelease(); rmGrantRelease = null; } // restores focus to the invoking button
     rmGrantCtx = null;
 }
 // The row's lightning-bolt always opens the modal (pre-filled). Never insta-grant.
 document.getElementById('rm-tbody').addEventListener('click', function (e) {
     var g = e.target.closest('.rm-act-grant'); if (!g) return;
     var tr = g.closest('tr');
-    var rec = {}; try { rec = JSON.parse(tr.getAttribute('data-rec') || '{}'); } catch (x) {}
+    var rec = rmRecOf(tr);
+    // The reason is no longer duplicated into data-rec (it is already in
+    // data-membersfull on every row); read it at click time instead.
+    rec.Reason = rmFirstReason(tr);
     var courts = []; try { courts = JSON.parse(tr.getAttribute('data-courts') || '[]'); } catch (x) {}
     rmOpenGrantModal(rec, tr, courts);
 });
@@ -1720,6 +1265,13 @@ rmGid('rm-grant-submit').addEventListener('click', function () {
     })
         .then(function () { rmCloseGrantModal(); })
         .catch(function (err) {
+            if (err && err.cancelled) {
+                // Declined the duplicate confirmation: nothing was written, the modal
+                // stays open with the officer's inputs so they can change the date.
+                submitBtn.disabled = false;
+                rmGrantErr('');
+                return;
+            }
             if (err && err.granted) {
                 // The award row landed. Player::AddAward has no duplicate guard, so a
                 // retry would write a SECOND permanent award — retire the row here
@@ -1853,19 +1405,60 @@ rmGid('rm-grant-rank-pills').addEventListener('click', function (e) {
     document.addEventListener('click', function (e) {
         if (!input.contains(e.target) && !results.contains(e.target)) results.classList.remove('rm-ac-open');
     });
-    if (typeof acKeyNav === 'function') acKeyNav(input, results, 'rm-ac-open', '.rm-ac-item');
+    // Keyboard navigation. This used to be `if (typeof acKeyNav === 'function')`,
+    // but acKeyNav is defined only in revised.js and this page renders under
+    // default.theme (which loads orkui.js) — so the guard was always false and
+    // arrow/Enter navigation never worked for anyone. Local handler instead.
+    function rmAcItems() { return Array.prototype.slice.call(results.querySelectorAll('.rm-ac-item')); }
+    function rmAcMove(delta) {
+        var items = rmAcItems();
+        if (!items.length) return;
+        var cur = items.findIndex(function (n) { return n.classList.contains('rm-ac-active'); });
+        var next = cur < 0 ? (delta > 0 ? 0 : items.length - 1) : (cur + delta + items.length) % items.length;
+        items.forEach(function (n) { n.classList.remove('rm-ac-active'); });
+        items[next].classList.add('rm-ac-active');
+        if (items[next].scrollIntoView) items[next].scrollIntoView({ block: 'nearest' });
+    }
+    input.addEventListener('keydown', function (e) {
+        var open = results.classList.contains('rm-ac-open');
+        if (e.key === 'ArrowDown') { if (open) { e.preventDefault(); rmAcMove(1); } return; }
+        if (e.key === 'ArrowUp')   { if (open) { e.preventDefault(); rmAcMove(-1); } return; }
+        // Escape is handled by the modal's shared trap, which closes an open
+        // dropdown first and the modal only when none is open.
+        if (e.key === 'Enter' && open) {
+            var act = results.querySelector('.rm-ac-item.rm-ac-active');
+            if (act) { e.preventDefault(); act.click(); }
+        }
+    });
+    // Typing rebuilds the list, so the old highlight must not survive it.
+    input.addEventListener('input', function () {
+        rmAcItems().forEach(function (n) { n.classList.remove('rm-ac-active'); });
+    });
 })();
 
 /* ---------- Task 10: Add to Court modal (single + bulk) ---------- */
 var rmCourtTargets = []; // array of rec payloads (each with ._tr) to add
 
+var rmCourtRelease = null; // focus-trap release fn while the Add-to-Court modal is open
 function rmOpenCourtModal(targets) {
     rmCourtTargets = targets;
-    document.getElementById('rm-court-sub').textContent = targets.length === 1
-        ? 'Adding 1 recommendation.' : 'Adding ' + targets.length + ' recommendations.';
+    // Same retired signal as the Grant modal: staging a memorial honor on a live
+    // court agenda is legitimate, but the officer must be told at the moment of it.
+    var retired = targets.filter(function (t) { return t && t.IsRetired; });
+    var retTxt = !retired.length ? ''
+        : (retired.length === 1
+            ? ' “' + (retired[0].Persona || 'One recipient') + '” is retired or deceased in the ORK — confirm this is an intended memorial honor.'
+            : ' ' + retired.length + ' of these recipients are retired or deceased in the ORK — confirm these are intended memorial honors.');
+    document.getElementById('rm-court-sub').textContent = (targets.length === 1
+        ? 'Adding 1 recommendation.' : 'Adding ' + targets.length + ' recommendations.') + retTxt;
     document.getElementById('rm-court-overlay').hidden = false;
+    // Same shared trap as the Grant modal: Escape, Tab wrapping, focus restore.
+    rmCourtRelease = rmDialogTrap(document.getElementById('rm-court-overlay'), { onEscape: rmCloseCourtModal });
 }
-function rmCloseCourtModal() { document.getElementById('rm-court-overlay').hidden = true; }
+function rmCloseCourtModal() {
+    document.getElementById('rm-court-overlay').hidden = true;
+    if (rmCourtRelease) { rmCourtRelease(); rmCourtRelease = null; }
+}
 document.getElementById('rm-court-cancel').addEventListener('click', rmCloseCourtModal);
 document.getElementById('rm-court-overlay').addEventListener('click', function (e) {
     if (e.target === this) rmCloseCourtModal(); // click backdrop closes

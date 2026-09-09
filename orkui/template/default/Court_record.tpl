@@ -56,6 +56,7 @@ unset($__a);
 ?>
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>default/style/reports.css?v=<?= filemtime(DIR_TEMPLATE . 'default/style/reports.css') ?>">
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>default/style/court-planner.css?v=<?= filemtime(DIR_TEMPLATE . 'default/style/court-planner.css') ?>">
+<script src="<?= HTTP_TEMPLATE ?>default/script/court-planner.js?v=<?= filemtime(DIR_TEMPLATE . 'default/script/court-planner.js') ?>"></script>
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>revised-frontend/style/rank-pill.css?v=<?= filemtime(DIR_TEMPLATE . 'revised-frontend/style/rank-pill.css') ?>">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
@@ -595,10 +596,21 @@ html[data-theme="dark"] .cp-rec-cite-status.cp-rec-cite-status-error { color: #f
          nothing. Walk-ons (Task 10) land below this list. -->
     <div id="cp-rec-rows">
         <div class="cp-rec-toolbar">
+            <?php
+            // The label and tooltip are rebuilt by cpRecSyncBulkBtn() on load and after
+            // every mark, so the count an officer reads is the count that will be staged.
+            $plannedNow = 0;
+            foreach ($courtAwards as $__a) {
+                $__st = $__a['Status'] ?? '';
+                if (!in_array($__st, ['given', 'staged', 'cancelled'], true)) {
+                    $plannedNow++;
+                }
+            }
+            ?>
             <button type="button" class="cp-btn-primary" id="cp-rec-bulk-btn" onclick="cpRecMarkAllGiven()"
-                    data-tip="Stages every still-planned award as Given under the default giver — see About This Tool"
-                    <?= $courtSt !== 'published' ? 'disabled' : '' ?>>
-                <i class="fas fa-check-double"></i> Mark all remaining Given
+                    data-tip="Stages every still-planned award as Given under the court's default giver — see About This Tool"
+                    <?= ($courtSt !== 'published' || $plannedNow === 0) ? 'disabled' : '' ?>>
+                <i class="fas fa-check-double"></i> <span class="cp-rec-bulk-label"><?= $plannedNow === 0 ? 'Nothing left to mark' : 'Mark ' . $plannedNow . ' remaining Given' ?></span>
             </button>
         </div>
 
@@ -885,6 +897,10 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
     var uir      = '<?= UIR ?>';
     var courtId  = <?= $courtId ?>;
     var kidId    = <?= (int)($court['KingdomId'] ?? 0) ?>;
+
+    // Config for the shared scoped player-search autocomplete (court-planner.js).
+    // Read at call time, so this can be set anywhere before the first keystroke.
+    window.cpAcConfig = { uir: uir, kingdomId: kidId };
     var courtStatus = <?= json_encode($courtSt) ?>;
 
     // Same JS globals Court_detail.tpl emits, so Tasks 7-10 reuse its idioms
@@ -965,9 +981,15 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
     }
     window.cpNotice = cpNotice;
 
-    // Non-blocking message/confirm dialogs — no native alert()/confirm()/prompt()
-    // anywhere; those freeze in-app browser automation.
+    // ---- Non-blocking dialogs (no native alert()/confirm()/prompt() anywhere) ----
+    // cpAlert/cpConfirm are now thin aliases over the app-wide orkAlert/orkConfirm in
+    // orkui.js — one implementation (Promise-returning, focus-trapping, focus-restoring)
+    // instead of the three hand-rolled copies this module and the Recs Manager grew, and
+    // it makes the house rule greppable: `confirm(` with no ork/cp prefix is a violation.
+    // The tnConfirm and cpFallbackConfirm branches below stay as a defensive ladder —
+    // this page must never lose its confirm dialog because orkui.js is stale in a cache.
     function cpAlert(msg, title) {
+        if (typeof window.orkAlert === 'function') { window.orkAlert({ title: title || 'Court Planner', body: msg, confirmLabel: 'OK' }); return; }
         if (typeof tnConfirm === 'function') tnConfirm({ title: title || 'Court Planner', body: msg, confirmLabel: 'OK' });
         else cpGlobalError(msg);
     }
@@ -1000,6 +1022,20 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
         if (okBtn) setTimeout(function() { okBtn.focus(); }, 30);
     }
     function cpConfirm(opts) {
+        opts = opts || {};
+        if (typeof window.orkConfirm === 'function') {
+            // orkConfirm resolves true/false; every call site here passes an onConfirm
+            // callback, so the two shapes are bridged once, here, instead of at ~20 sites.
+            // onConfirm is withheld from the options handed over so a shared helper that
+            // also honours it cannot fire the callback twice.
+            var passed = {};
+            Object.keys(opts).forEach(function(k) { if (k !== 'onConfirm') passed[k] = opts[k]; });
+            var p = window.orkConfirm(passed);
+            if (p && typeof p.then === 'function') {
+                p.then(function(ok) { if (ok && typeof opts.onConfirm === 'function') opts.onConfirm(); });
+            }
+            return p;
+        }
         if (typeof tnConfirm === 'function') tnConfirm(opts);
         else cpFallbackConfirm(opts);
     }
@@ -1038,103 +1074,16 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
         }
     }
 
-    // ---- Autocomplete (identical idiom to Court_detail.tpl's cpAcSearch, plus
-    // an optional onPick callback so a strip field can auto-save on pick — the
-    // hidden id clears on every keystroke, so saving on blur alone would post
-    // a stale/empty id before the click that fills it back in ever lands). ----
-    function cpPositionAc(input, drop) {
-        var vv = window.visualViewport;
-        var vh = vv ? vv.height : window.innerHeight;
-        var vw = vv ? vv.width  : window.innerWidth;
-        var r  = input.getBoundingClientRect();
-        drop.style.width   = r.width + 'px';
-        drop.style.display = 'block';
-        var dh = drop.offsetHeight;
-        var dw = drop.offsetWidth || r.width;
-        var top = r.bottom + 2;
-        if (top + dh > vh - 8) top = r.top - dh - 2;
-        var left = r.left;
-        if (left + dw > vw - 8) left = vw - dw - 8;
-        drop.style.top  = Math.max(8, top)  + 'px';
-        drop.style.left = Math.max(8, left) + 'px';
-        cpAcBind(drop);
-    }
-    var cpAcOpenDrop = null;
-    function cpAcDismiss(e) {
-        if (e && e.target && cpAcOpenDrop && e.target.nodeType === 1 &&
-            (e.target === cpAcOpenDrop || cpAcOpenDrop.contains(e.target))) return;
-        if (cpAcOpenDrop) cpAcOpenDrop.style.display = 'none';
-        cpAcUnbind();
-    }
-    function cpAcBind(drop) {
-        if (cpAcOpenDrop === drop) return;
-        cpAcUnbind();
-        cpAcOpenDrop = drop;
-        window.addEventListener('scroll', cpAcDismiss, true);
-        window.addEventListener('resize', cpAcDismiss);
-        if (window.visualViewport) {
-            window.visualViewport.addEventListener('resize', cpAcDismiss);
-            window.visualViewport.addEventListener('scroll', cpAcDismiss);
-        }
-    }
-    function cpAcUnbind() {
-        if (!cpAcOpenDrop) return;
-        cpAcOpenDrop = null;
-        window.removeEventListener('scroll', cpAcDismiss, true);
-        window.removeEventListener('resize', cpAcDismiss);
-        if (window.visualViewport) {
-            window.visualViewport.removeEventListener('resize', cpAcDismiss);
-            window.visualViewport.removeEventListener('scroll', cpAcDismiss);
-        }
-    }
-    function cpHideAcDropdowns(except) {
-        document.querySelectorAll('.cp-ac-dropdown').forEach(function(d) {
-            if (except && d.parentElement && d.parentElement.contains(except)) return;
-            d.style.display = 'none';
-            if (!except) d.innerHTML = '';
-        });
-        if (cpAcOpenDrop && cpAcOpenDrop.style.display === 'none') cpAcUnbind();
-    }
-
-    var cpAcTimer = null;
-    // Scoped to this court's own kingdom (KingdomAjax/playersearch/{kidId}), never
-    // the session's — the recorder search must find players in the COURT's kingdom.
-    window.cpAcSearch = function(input, dropdownId, hiddenId, onPick) {
-        var q = input.value.trim();
-        var drop = gid(dropdownId);
-        gid(hiddenId).value = '';
-        if (q.length < 2) { drop.style.display = 'none'; drop.innerHTML = ''; if (cpAcOpenDrop === drop) cpAcUnbind(); return; }
-        clearTimeout(cpAcTimer);
-        cpAcTimer = setTimeout(function() {
-            fetch(uir + 'KingdomAjax/playersearch/' + kidId + '&q=' + encodeURIComponent(q))
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                drop.innerHTML = '';
-                if (!data || !data.length) {
-                    drop.innerHTML = '<div class="cp-ac-item" style="color:#a0aec0;cursor:default">No players found</div>';
-                    cpPositionAc(input, drop);
-                    drop.style.display = 'block';
-                    return;
-                }
-                data.slice(0, 12).forEach(function(p) {
-                    var div = document.createElement('div');
-                    div.className = 'cp-ac-item';
-                    div.innerHTML = esc(p.Persona) + ' <span style="color:#a0aec0;font-size:11px">(' + esc(p.KAbbr || '') + ':' + esc(p.PAbbr || '') + ')</span>';
-                    div.addEventListener('click', function() {
-                        input.value = p.Persona;
-                        gid(hiddenId).value = p.MundaneId;
-                        drop.style.display = 'none';
-                        if (cpAcOpenDrop === drop) cpAcUnbind();
-                        if (typeof onPick === 'function') onPick(p);
-                    });
-                    drop.appendChild(div);
-                });
-                cpPositionAc(input, drop);
-                drop.style.display = 'block';
-            })
-            .catch(function() { drop.style.display = 'none'; if (cpAcOpenDrop === drop) cpAcUnbind(); });
-        }, 200);
-    };
+    // ---- Autocomplete ----
+    // cpPositionAc / cpAcBind / cpAcUnbind / cpAcDismiss / cpHideAcDropdowns / cpAcSearch
+    // now live in the shared default/script/court-planner.js (linked at the top of this
+    // template), which Court_detail.tpl carried a near-verbatim second copy of. The
+    // shared cpAcSearch keeps this page's optional 4th argument, onPick — the strip
+    // fields auto-save on pick because the hidden id is cleared on every keystroke, so
+    // saving on blur alone would post a stale/empty id before the click that fills it
+    // back in ever lands. It reads window.cpAcConfig (set below) for the UIR and the
+    // COURT's kingdom id, and still publishes cpAcOpenDrop on window so this file's
+    // `if (cpAcOpenDrop === drop) cpAcUnbind();` checks keep working.
 
     // ---- Top strip: date / event / recorder, each posting to CourtAjax/update_court
     // (spec §5, §3 0.1). Partial by design — only the changed field is sent, and a
@@ -1192,6 +1141,14 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
     cpRecFp.setDate(courtMeta.date || null, false);
 
     // ---- Complete-court modal (identical flow to Court_detail.tpl's, spec §6.6) ----
+    // Completing is one-way in this release (no amend/void path yet, and a complete
+    // court closes every guarded write) — say so before the officer commits. Same
+    // note, same wording, as the planner's Complete modal.
+    var CP_ONE_WAY_NOTE = '<span class="cp-one-way-note"><i class="fas fa-exclamation-triangle"></i> ' +
+        'Completing is final — a complete court cannot be reopened, edited or re-recorded, ' +
+        'and grants written to the registry can only be corrected by revoking the award on ' +
+        'the player\u2019s record. Resolve anything questionable first.</span>';
+
     window.cpOpenCompleteModal = function() {
         var unresolved = 0, staged = 0;
         courtAwards.forEach(function(a) {
@@ -1207,7 +1164,7 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
             lead.innerHTML = '<strong>' + unresolved + '</strong> award' + (unresolved === 1 ? ' is' : 's are') +
                 ' still unresolved (not granted or skipped)' +
                 (staged > 0 ? ', and <strong>' + staged + '</strong> grant' + (staged === 1 ? ' is' : 's are') + ' staged to finalize' : '') +
-                '. How would you like to complete this court?';
+                '. How would you like to complete this court?' + CP_ONE_WAY_NOTE;
             opts.innerHTML =
                 '<div class="cp-complete-opt cp-co-danger" onclick="cpDoFinalize(1)"><i class="fas fa-forward"></i><div>' +
                     '<div class="cp-co-title">Skip Remaining Awards</div>' +
@@ -1218,12 +1175,14 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
         } else if (staged > 0) {
             lead.innerHTML = 'Finalize <strong>' + staged + '</strong> staged grant' + (staged === 1 ? '' : 's') +
                 ' and complete this court? This records ' + (staged === 1 ? 'it' : 'them') + ' in the player registry.';
+            lead.innerHTML += CP_ONE_WAY_NOTE;
             opts.innerHTML =
                 '<div class="cp-complete-opt cp-co-primary" onclick="cpDoFinalize(0)"><i class="fas fa-stamp"></i><div>' +
                     '<div class="cp-co-title">Finalize &amp; Complete</div>' +
                     '<div class="cp-co-desc">Commit ' + staged + ' staged grant' + (staged === 1 ? '' : 's') + ' to the permanent record and mark the court complete.</div></div></div>';
         } else {
             lead.innerHTML = 'There are no staged grants or unresolved awards. Mark this court complete?';
+            lead.innerHTML += CP_ONE_WAY_NOTE;
             opts.innerHTML =
                 '<div class="cp-complete-opt cp-co-primary" onclick="cpDoFinalize(0)"><i class="fas fa-check"></i><div>' +
                     '<div class="cp-co-title">Complete Court</div>' +
@@ -1797,6 +1756,9 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
                 cpRecRankPopClose();
             }
         }
+        // Every mark changes how many rows are still planned, which is what the bulk
+        // button now names — keep its count, label and tooltip honest as they change.
+        if (typeof window.cpRecSyncBulkBtn === 'function') window.cpRecSyncBulkBtn();
     }
 
     // cpRecPost handles the shared response contract for grant_award/skip_award/
@@ -2215,11 +2177,44 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
     // them too. Rows are never silently defaulted to Given; this button is the
     // one explicit, visible way that happens. Reloads on success so row states
     // come back from the server rather than being guessed client-side. ----
+    // Rows still to be marked = every .cp-rec-row carrying data-mark="none" (the
+    // walk-on entry row and the header row carry no data-mark, so they are excluded).
+    function cpRecPlannedCount() {
+        return document.querySelectorAll('#cp-rec-rows .cp-rec-row[data-mark="none"]').length;
+    }
+    function cpRecDefaultGiverName() {
+        return (cpGiverOptions && cpGiverOptions.default && cpGiverOptions.default.persona) || '';
+    }
+    // The bulk button names what it is about to do: how many rows, under whom — and
+    // says "Nothing left to mark" (disabled) instead of confirming a no-op.
+    window.cpRecSyncBulkBtn = function() {
+        var btn = gid('cp-rec-bulk-btn');
+        if (!btn || courtStatus !== 'published') return;
+        var n     = cpRecPlannedCount();
+        var giver = cpRecDefaultGiverName();
+        var lbl   = btn.querySelector('.cp-rec-bulk-label');
+        btn.disabled = (n === 0);
+        if (lbl) lbl.textContent = n === 0 ? 'Nothing left to mark' : ('Mark ' + n + ' remaining Given');
+        btn.setAttribute('data-tip', n === 0
+            ? 'Every award on this court is already marked Given or Skipped.'
+            : 'Stages the ' + n + ' still-planned award' + (n === 1 ? '' : 's') + ' as Given under ' +
+              (giver || 'the court\u2019s default giver') + ' \u2014 see About This Tool');
+    };
+
     window.cpRecMarkAllGiven = function() {
+        var n     = cpRecPlannedCount();
+        var giver = cpRecDefaultGiverName();
+        if (n === 0) { cpAlert('Every award on this court is already marked Given or Skipped.', 'Nothing left to mark'); return; }
         cpConfirm({
             title: 'Mark all remaining Given',
-            body: 'Stage every still-planned award on this court as Given, under the default giver? Rows you already marked Given or Skipped are left alone. You can still undo individual grants before finalizing.',
-            confirmLabel: 'Mark All Given',
+            // bulk_record_grants is set-based over whatever is still 'planned' server-side,
+            // so the real total can differ from this page's view if another officer has
+            // been marking or adding rows — say so rather than implying an exact promise.
+            body: 'Stage ' + n + ' still-planned award' + (n === 1 ? '' : 's') + ' as Given, under ' +
+                  (giver || 'the court\u2019s default giver') + '? Rows you already marked Given or Skipped are ' +
+                  'left alone, and anything another officer has added since this page loaded is included too. ' +
+                  'You can still undo individual grants before finalizing.',
+            confirmLabel: n === 1 ? 'Mark 1 Given' : ('Mark ' + n + ' Given'),
             onConfirm: function() {
                 var btn = gid('cp-rec-bulk-btn');
                 if (btn) btn.disabled = true;
@@ -2227,12 +2222,13 @@ unset($__i, $aw, $caid, $mark, $rowClass); ?>
                 fd.append('CourtId', courtId);
                 post('CourtAjax/bulk_record_grants', fd).then(function(d) {
                     if (d.status === 0) { location.reload(); return; }
-                    if (btn) btn.disabled = false;
+                    cpRecSyncBulkBtn();
                     if (!d._postFailed) cpAlert(d.error || 'Could not record grants.');
                 });
             }
         });
     };
+    cpRecSyncBulkBtn();
 
     // ---- Drift banner session-dismiss (mirrors Court_detail.tpl's cp-prev-banner) ----
     window.cpRecDismissDriftBanner = function() {

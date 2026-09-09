@@ -13,6 +13,14 @@ I have no apologies for the following code.  It works well enough.
 class Report extends Ork3
 {
     /**
+     * Schema version folded into every recommendation cache key. Bump it whenever the
+     * selected predicate or the row shape changes, so entries written under the old
+     * rule are not served for the rest of their TTL. Player::bust_player_award_recs_cache
+     * reads this constant, so the bust keys can never drift out of step with the reads.
+     */
+    public const REC_CACHE_VERSION = 3;
+
+    /**
      * Ladder-terminal masterhoods that ork_award.peerage still records as 'None'.
      *
      * Every Order ladder ends in a masterhood, and most are classified correctly
@@ -685,7 +693,7 @@ class Report extends Ork3
             // previous rule are not served for the rest of their TTL. Kept in step with
             // PlayerAwardRecommendationsCount's key or the badge and the list disagree
             // for a whole TTL after deploy.
-            'V'                => 2,
+            'V'                => self::REC_CACHE_VERSION,
         ]);
         if (!$skipCache && ($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 300)) !== false) {
             return $this->applyViewerFlags($cache, $viewer_id);
@@ -742,6 +750,8 @@ class Report extends Ork3
 			COALESCE((SELECT o.mundane_id FROM " . DB_PREFIX . "officer o WHERE o.kingdom_id = COALESCE(recs.snoozed_kingdom_id, m.kingdom_id) AND o.park_id = COALESCE(recs.snoozed_park_id, m.park_id) AND o.role = 'Regent'  ORDER BY o.officer_id DESC LIMIT 1), 0) AS current_regent_id,
 			(SELECT COUNT(*) FROM " . DB_PREFIX . "court_award ca WHERE ca.recommendations_id = recs.recommendations_id AND ca.status != 'cancelled') AS on_court_count,
 			ka.award_id as ka_award_id,
+			ka.is_title as ka_is_title,
+			ka.is_ladder as ka_is_ladder,
 			ka.kingdomaward_id as ka_kaward_id,
 			(SELECT COUNT(suboa.awards_id) FROM " . DB_PREFIX . "awards suboa WHERE suboa.mundane_id = recs.mundane_id AND suboa.kingdomaward_id = ka.kingdomaward_id AND suboa.rank >= COALESCE(recs.rank, 0)) as kacount,
 			(SELECT COUNT(suboa2.awards_id) FROM " . DB_PREFIX . "awards suboa2 WHERE suboa2.mundane_id = recs.mundane_id AND suboa2.award_id = recs.award_id AND suboa2.rank >= COALESCE(recs.rank, 0)) as awcount,
@@ -811,6 +821,14 @@ class Report extends Ork3
                     'player_ka_date'     => $r->player_ka_date,
                     'a_is_ladder'        => (int)$r->a_is_ladder,
                     'a_is_title'         => (int)$r->a_is_title,
+                    // Per-kingdom title flag. `tinyint(1) NOT NULL DEFAULT 0`, and the
+                    // award LEFT JOIN hangs off ka.award_id, so ka missing means a is
+                    // missing too — there is no "kingdom said nothing" state to preserve.
+                    // Combined with a_is_title by GREATEST, never COALESCE, below.
+                    'ka_is_title'        => (int)$r->ka_is_title,
+                    // Whitelist snapshot: a column selected but not copied here is
+                    // silently invisible downstream.
+                    'ka_is_ladder'       => (int)$r->ka_is_ladder,
                     'snoozed_monarch_id' => $r->snoozed_monarch_id,
                     'snoozed_regent_id'  => $r->snoozed_regent_id,
                     'passed_to_local'    => (int)$r->passed_to_local,
@@ -857,12 +875,22 @@ class Report extends Ork3
             }
 
             // Final pass: build response, flipping AlreadyHas when a Master peerage covers a ladder rec.
-            // Custom awards (base Award with is_ladder=0 AND is_title=0) can legitimately be held many
-            // times, so they must never be filtered out as "already has".
+            // Custom awards (is_ladder=0 AND is_title=0) can legitimately be held many
+            // times, so they must never be filtered out as "already has". The title flag
+            // is read through the per-kingdom override: a kingdom that flags its own
+            // award as a title otherwise looked infinitely repeatable here and never got
+            // an AlreadyHas / green-rank signal in the Manager.
             $response['AwardRecommendations'] = array();
             foreach ($rawRows as $row) {
                 $recAwardId = $row->ka_award_id ?: $row->recs_award_id;
-                $isCustom   = ($row->a_is_ladder === 0 && $row->a_is_title === 0);
+                // Effective title flag is GREATEST, not COALESCE: ork_kingdomaward.is_title
+                // is `tinyint(1) NOT NULL DEFAULT 0`, so COALESCE(ka.is_title, a.is_title)
+                // never falls through to the catalog and a base-catalog title whose kingdom
+                // row still reads 0 would look infinitely repeatable here. "Either side says
+                // so" — the same reading as Court::SQL_EFFECTIVE_IS_TITLE.
+                $effIsTitle  = max((int)$row->ka_is_title, (int)$row->a_is_title);
+                $effIsLadder = max((int)$row->ka_is_ladder, (int)$row->a_is_ladder);
+                $isCustom    = ($effIsLadder === 0 && $effIsTitle === 0);
                 $alreadyHas = $isCustom ? false : ($row->kacount > 0 || $row->awcount > 0);
                 $coveredByMaster = false;
                 if (!$isCustom && !$alreadyHas && isset($ladderMap[$recAwardId])) {
@@ -962,11 +990,22 @@ class Report extends Ork3
      * One 500-row (cluster) page of Manager recommendations, fully server-side
      * filtered/sorted. Never selects the full set. Returns:
      *   ['Groups' => [...≤Limit grouped rows...], 'Total' => int, 'HasMore' => bool]
+     *
+     * SkipCount (optional): the caller has established that the filter set is unchanged
+     * since it last got a Total — an offset-only infinite-scroll batch. The grouped
+     * COUNT (the same correlated subqueries as the page query, over the whole scope) is
+     * then not run at all and Total comes back NULL, meaning "keep the one you have";
+     * HasMore falls back to "this page came back full". Pass KnownTotal instead to have
+     * that previous total echoed back in place of a recomputed one.
      */
     public function PlayerAwardRecommendationsPage($request)
     {
         $limit  = max(1, (int)($request['Limit']  ?? 500));
         $offset = max(0, (int)($request['Offset'] ?? 0));
+        $knownTotal = (isset($request['KnownTotal']) && $request['KnownTotal'] !== '' && is_numeric($request['KnownTotal']))
+            ? max(0, (int)$request['KnownTotal'])
+            : null;
+        $skipCount = ($knownTotal === null) && !empty($request['SkipCount']);
 
         // "Show dismissed": relax the soft-delete filter. It has to move in BOTH the
         // paging query and the hydration id lookup below, or dismissed clusters would
@@ -1033,7 +1072,17 @@ class Report extends Ork3
         $alreadyExpr = "((SELECT COUNT(*) FROM " . DB_PREFIX . "awards oa WHERE oa.mundane_id = recs.mundane_id AND oa.kingdomaward_id = ka.kingdomaward_id AND oa.rank >= COALESCE(recs.rank,0)) > 0"
             . " OR (SELECT COUNT(*) FROM " . DB_PREFIX . "awards oa2 WHERE oa2.mundane_id = recs.mundane_id AND oa2.award_id = recs.award_id AND oa2.rank >= COALESCE(recs.rank,0)) > 0"
             . " OR " . $masterCoverExpr . ")";
-        $customExpr = '(a.is_ladder = 0 AND a.is_title = 0)';
+        // Must stay the exact SQL twin of the $isCustom test in PlayerAwardRecommendations
+        // (per-kingdom title override folded in), or the count/paging prefilter and the PHP
+        // post-filter disagree and batches come back short.
+        // Both axes use GREATEST, not COALESCE, and both must — matching class.Court.php.
+        // ork_kingdomaward.is_ladder/.is_title are tinyint NOT NULL DEFAULT 0, so
+        // COALESCE(ka.x, a.x) can never fall through to the base award. Measured on the
+        // dev snapshot: 9 kingdomawards mark a non-ladder base award as their own ladder,
+        // and those were classified "custom" (infinitely repeatable) while the title axis
+        // was already fixed. A custom award is one that is neither, under either reading.
+        $customExpr = '(GREATEST(COALESCE(ka.is_ladder, 0), COALESCE(a.is_ladder, 0)) = 0'
+            . ' AND GREATEST(COALESCE(ka.is_title, 0), COALESCE(a.is_title, 0)) = 0)';
 
         $elig = (string)($request['Eligibility'] ?? 'open');
         if ($elig === 'snoozed') {
@@ -1088,9 +1137,16 @@ class Report extends Ork3
             . " AND (m.suspended IS NULL OR m.suspended = 0)"
             . $scope . $whereSql;
 
-        $this->db->Clear();
-        $cnt = $this->db->query("SELECT COUNT(*) AS n FROM (SELECT recs.mundane_id $base GROUP BY recs.mundane_id, recs.kingdomaward_id, COALESCE(recs.rank,0)) t");
-        $total = ($cnt !== false && $cnt->next()) ? (int)$cnt->n : 0;
+        if ($knownTotal !== null) {
+            $total = $knownTotal;
+        } elseif ($skipCount) {
+            // NULL, not 0: "not recomputed", so the caller keeps the count it has.
+            $total = null;
+        } else {
+            $this->db->Clear();
+            $cnt = $this->db->query("SELECT COUNT(*) AS n FROM (SELECT recs.mundane_id $base GROUP BY recs.mundane_id, recs.kingdomaward_id, COALESCE(recs.rank,0)) t");
+            $total = ($cnt !== false && $cnt->next()) ? (int)$cnt->n : 0;
+        }
 
         $this->db->Clear();
         $pageSql = "SELECT recs.mundane_id, recs.kingdomaward_id, COALESCE(recs.rank,0) AS rk,"
@@ -1164,7 +1220,9 @@ class Report extends Ork3
         });
 
         $nextOffset = $offset + count($clusters);   // advance by SQL page size, not post-filtered count
-        $hasMore = $nextOffset < $total;
+        // With the count skipped there is no total to compare against, so a page that
+        // came back full is the "there is probably more" signal.
+        $hasMore = ($total === null) ? (count($clusters) >= $limit) : ($nextOffset < $total);
         return ['Groups' => $groups, 'Total' => $total, 'HasMore' => $hasMore, 'NextOffset' => $nextOffset];
     }
 
@@ -1289,7 +1347,7 @@ class Report extends Ork3
             'RecommendedBy' => (int)($request['RecommendedBy'] ?? 0),
             // Bumped when the counted predicate changes, so entries cached under the
             // previous rule are not served for the rest of their TTL.
-            'V'             => 2,
+            'V'             => self::REC_CACHE_VERSION,
         ]);
         if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 300)) !== false) {
             return (int)$cache;
@@ -1316,15 +1374,32 @@ class Report extends Ork3
         return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $n);
     }
 
+    /**
+     * Soft-deleted (dismissed) recommendations for a scope, most recently dismissed
+     * first. Dismissals are never purged, so this is PAGED: Limit defaults to 200 and
+     * Offset walks back through the history, mirroring PlayerAwardRecommendationsPage.
+     * The response carries NextOffset; a total is deliberately NOT computed. The only
+     * consumers reach this through Model_Reports::deleted_recommended_awards, which
+     * returns just the rows, and the Kingdom/Park AJAX panels derive hasMore from a
+     * short batch — a COUNT(*) here would be a full scan nothing can read.
+     */
     public function DeletedAwardRecommendations($request)
     {
+        $limit  = max(1, min(1000, (int)($request['Limit'] ?? 200)));
+        $offset = max(0, (int)($request['Offset'] ?? 0));
+        // Only the default first page is cached. Deeper slices are rare (someone
+        // walking back through years of dismissals) and there is no wildcard bust, so
+        // caching them would leave entries no dismiss/undelete could ever clear —
+        // Player::bust_player_award_recs_cache busts this exact key shape.
+        $cacheable = ($offset === 0 && $limit === 200);
         $key = Ork3::$Lib->ghettocache->key([
             'KingdomId' => (int)($request['KingdomId'] ?? 0),
             'ParkId'    => (int)($request['ParkId']    ?? 0),
             'PlayerId'  => (int)($request['PlayerId']  ?? 0),
             'Deleted'   => 1,
+            'V'         => self::REC_CACHE_VERSION,
         ]);
-        if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 300)) !== false) {
+        if ($cacheable && ($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 300)) !== false) {
             return $cache;
         }
 
@@ -1369,7 +1444,8 @@ class Report extends Ork3
 			LEFT join " . DB_PREFIX . "park p on p.park_id = m.park_id
 			LEFT join " . DB_PREFIX . "kingdom k on k.kingdom_id = m.kingdom_id
 			WHERE recs.deleted_at IS NOT NULL $location_clause
-			order by recs.deleted_at DESC";
+			order by recs.deleted_at DESC
+			LIMIT " . (int)$limit . " OFFSET " . (int)$offset;
         $this->db->Clear();
         $r = $this->db->query($sql);
         $response = ['AwardRecommendations' => []];
@@ -1400,6 +1476,10 @@ class Report extends Ork3
             $response['Status'] = Success();
         } else {
             $response['Status'] = Success();
+        }
+        $response['NextOffset'] = $offset + count($response['AwardRecommendations']);
+        if (!$cacheable) {
+            return $response;
         }
         return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
     }

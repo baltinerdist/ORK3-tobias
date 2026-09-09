@@ -35,7 +35,7 @@ class Controller_Court extends Controller
 
         if ($context === 'park') {
             $park_id = $id;
-            $kingdom_id = (int)Ork3::$Lib->park->GetParkKingdomId($park_id);
+            $kingdom_id = (int)$this->Court->get_park_kingdom_id($park_id);
         } else {
             $kingdom_id = $id;
         }
@@ -55,20 +55,26 @@ class Controller_Court extends Controller
         $courtList     = $this->Court->get_court_list($kingdom_id, $park_id);
         $upcomingEvents = $this->Court->get_upcoming_events($kingdom_id);
         $unrecordedCourts = $this->Court->get_unrecorded_courts($kingdom_id, $park_id);
-        // Notify each unrecorded court's recorder (spec 0.7). Guarded to at most
-        // once per court per day inside notify_unrecorded_courts, so a reload of
-        // this list does not spam a duplicate notification on every visit.
-        $this->Court->notify_unrecorded_courts($kingdom_id, $park_id);
+        // Started-but-never-finalized courts — grants marked live and Complete
+        // Court never pressed, so nothing reached anyone's record. Separate from
+        // the list above, which is the "nothing recorded at all" case.
+        $stalledCourts = $this->Court->get_stalled_courts($kingdom_id, $park_id);
+        // Notify each court's recorder (spec 0.7). Guarded to at most once per
+        // court per recipient per day inside notify_unrecorded_courts, so a reload
+        // of this list does not spam a duplicate notification on every visit.
+        // The already-fetched list is handed over: the sweep used to re-run the
+        // identical correlated-subquery scan on every page load.
+        $this->Court->notify_unrecorded_courts($kingdom_id, $park_id, $unrecordedCourts);
 
         // Location name
         $locationName = '';
         if ($park_id > 0) {
-            $pInfo = Ork3::$Lib->park->GetParkShortInfo(['ParkId' => $park_id]);
+            $pInfo = $this->Court->get_park_short_info($park_id);
             if (isset($pInfo['ParkInfo']['ParkName'])) {
                 $locationName = $pInfo['ParkInfo']['ParkName'];
             }
         } else {
-            $kInfo = Ork3::$Lib->kingdom->GetKingdomShortInfo(['KingdomId' => $kingdom_id]);
+            $kInfo = $this->Court->get_kingdom_short_info($kingdom_id);
             if (isset($kInfo['KingdomInfo']['KingdomName'])) {
                 $locationName = $kInfo['KingdomInfo']['KingdomName'];
             }
@@ -77,6 +83,7 @@ class Controller_Court extends Controller
         $this->data['CourtList']      = $courtList;
         $this->data['UpcomingEvents'] = $upcomingEvents;
         $this->data['UnrecordedCourts'] = $unrecordedCourts;
+        $this->data['StalledCourts']    = $stalledCourts;
         $this->data['KingdomId']      = $kingdom_id;
         $this->data['ParkId']         = $park_id;
         $this->data['Context']        = $context;
@@ -159,18 +166,18 @@ class Controller_Court extends Controller
         $heraldryUrl = '';
         $hasHeraldry = false;
         if ($court['ParkId'] > 0) {
-            $pInfo = Ork3::$Lib->park->GetParkShortInfo(['ParkId' => (int)$court['ParkId']]);
+            $pInfo = $this->Court->get_park_short_info((int)$court['ParkId']);
             if (!empty($pInfo['ParkInfo']['HasHeraldry'])) {
                 $hasHeraldry = true;
-                $h = Ork3::$Lib->heraldry->GetHeraldryUrl(['Type' => 'Park', 'Id' => (int)$court['ParkId']]);
+                $h = $this->Court->get_heraldry_url('Park', (int)$court['ParkId']);
                 $heraldryUrl = $h['Url'] ?? '';
             }
         }
         if (!$hasHeraldry && $court['KingdomId'] > 0) {
-            $kInfo = Ork3::$Lib->kingdom->GetKingdomShortInfo(['KingdomId' => (int)$court['KingdomId']]);
+            $kInfo = $this->Court->get_kingdom_short_info((int)$court['KingdomId']);
             if (!empty($kInfo['KingdomInfo']['HasHeraldry'])) {
                 $hasHeraldry = true;
-                $h = Ork3::$Lib->heraldry->GetHeraldryUrl(['Type' => 'Kingdom', 'Id' => (int)$court['KingdomId']]);
+                $h = $this->Court->get_heraldry_url('Kingdom', (int)$court['KingdomId']);
                 $heraldryUrl = $h['Url'] ?? '';
             }
         }

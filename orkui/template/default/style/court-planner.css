@@ -247,6 +247,22 @@ html[data-theme="dark"] .cp-complete-fail { background: rgba(229,62,62,.12); bor
 
 html[data-theme="dark"] .cp-modal-lead { color: #a0aec0; }
 
+/* Complete-court modal: the one-way warning under the lead. Finalize commits every
+   staged grant to the permanent record and closes the court to further edits, and
+   there is no amend/void path yet — this is the last screen that can say so. */
+.cp-one-way-note { display: block; margin-top: 10px; padding: 8px 10px; border-radius: 6px; background: #fffbeb; border: 1px solid #f6e05e; color: #744210; font-size: 12px; line-height: 1.45; }
+.cp-one-way-note i { margin-right: 5px; color: #b7791f; }
+html[data-theme="dark"] .cp-one-way-note { background: rgba(214,158,46,.12); border-color: rgba(214,158,46,.4); color: #f6e05e; }
+html[data-theme="dark"] .cp-one-way-note i { color: #f6e05e; }
+
+/* Complete-court modal: what each staged line is about to publish as its public
+   citation (inherited from the recommendation, or nothing) — the last screen before
+   ork_awards.note becomes permanent and public. */
+.cp-cite-note { display: block; margin-top: 10px; padding: 8px 10px; border-radius: 6px; background: #ebf8ff; border: 1px solid #bee3f8; color: #2c5282; font-size: 12px; line-height: 1.45; }
+.cp-cite-note i { margin-right: 5px; color: #2b6cb0; }
+html[data-theme="dark"] .cp-cite-note { background: rgba(66,153,225,.12); border-color: rgba(66,153,225,.35); color: #90cdf4; }
+html[data-theme="dark"] .cp-cite-note i { color: #90cdf4; }
+
 /* ---- Rescued from light-mode section (dedup pass) ---- */
 
 

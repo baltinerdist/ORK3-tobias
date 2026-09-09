@@ -22,6 +22,10 @@ if (!function_exists('rmNiceDate')) {
 
 class Controller_Recommendations extends Controller
 {
+    // Per-request memoization for the two scope-wide maps every rendered row needs.
+    private $rmCourtMapMemo = [];
+    private $rmParkMapMemo  = [];
+
     public function __construct($call = null, $id = null)
     {
         parent::__construct($call, $id);
@@ -162,9 +166,25 @@ class Controller_Recommendations extends Controller
             'Offset'      => max(0, (int)($_GET['offset'] ?? 0)),
         ];
 
+        // An offset-only scroll batch cannot change the grouped total: the filter
+        // set is identical, only the window moved. When the client echoes back both
+        // the fingerprint this endpoint handed it AND the total it is displaying,
+        // hand that total to the lib as KnownTotal: the grouped COUNT (the same
+        // correlated subqueries as the page query) is skipped and the known value is
+        // echoed straight back. Deliberately KnownTotal and not SkipCount — SkipCount
+        // returns Total as NULL, and `total: null` renders as the literal string
+        // "null" in #rm-total. This way `total` is ALWAYS an int.
+        $fp = $this->rmFilterFingerprint($req);
+        $knownTotal = (string)($_GET['total'] ?? '');
+        if ($req['Offset'] > 0 && $knownTotal !== '' && is_numeric($knownTotal) && (string)($_GET['fp'] ?? '') === $fp) {
+            $req['KnownTotal'] = max(0, (int)$knownTotal);
+        }
+
         $this->load_model('Reports');
         $page = $this->Reports->recommended_awards_page($req);
 
+        // Memoized per request: both maps are scope-wide and unchanged between the
+        // pages of one scroll, and export() now calls them once per streamed batch.
         $CourtMap = $this->rmCourtMap($kingdom_id, $park_id);
         $Parks    = $this->rmParkMap($kingdom_id);
         $Context  = $context;
@@ -177,9 +197,11 @@ class Controller_Recommendations extends Controller
         }
         echo json_encode([
             'html'    => $html,
-            'total'   => (int)$page['Total'],
+            // Always an int: either freshly counted, or the KnownTotal echoed back.
+            'total'   => (int)($page['Total'] ?? 0),
             'hasMore' => (bool)$page['HasMore'],
             'offset'  => (int)$page['NextOffset'],
+            'fp'      => $fp,
         ]);
         exit;
     }
@@ -323,7 +345,8 @@ class Controller_Recommendations extends Controller
     }
 
     // Route: ?Route=Recommendations/export/kingdom/{id} or /export/park/{id}  (GET: same filters as rows)
-    // Streams the FULL current filtered/sorted set (not paged) as a CSV download.
+    // Streams the FULL current filtered/sorted set as a CSV download, fetched and
+    // flushed in 500-row batches rather than materialized in one pass.
     public function export($context = null, $id = null)
     {
         [$kingdom_id, $park_id, $context, $uid, $authStatus] = $this->resolveContext($context, $id);
@@ -334,12 +357,11 @@ class Controller_Recommendations extends Controller
             exit;
         }
 
-        // Assembling the full set for a large kingdom hydrates thousands of recs in one
-        // pass, so give it headroom over the default request time limit.
-        @set_time_limit(120);
-
-        $this->load_model('Reports');
-        $page = $this->Reports->recommended_awards_page([
+        // Streamed in the same 500-row batches the Manager scrolls in, rather than
+        // materializing the whole filtered set in PHP first: memory stays bounded and
+        // rows reach the browser continuously, so a slow query or a proxy read timeout
+        // can no longer produce a silently truncated (or zero-byte) CSV.
+        $req = [
             'RequestedBy' => $uid,
             'KingdomId'   => $park_id > 0 ? 0 : $kingdom_id,
             'ParkId'      => $park_id,
@@ -352,10 +374,15 @@ class Controller_Recommendations extends Controller
             'IncludeDismissed' => !empty($_GET['dismissed']),
             'SortKey'     => (string)($_GET['sort'] ?? 'date'),
             'SortDir'     => (string)($_GET['dir'] ?? 'desc'),
-            'Limit'       => 1000000, // full set — export is never paged
+            'Limit'       => 500,
             'Offset'      => 0,
-        ]);
-        $groups   = is_array($page['Groups'] ?? null) ? $page['Groups'] : [];
+            // Export never reads Total — it pages until HasMore goes false. Without
+            // this every one of the N batches re-runs the grouped COUNT over the same
+            // correlated subqueries (40 counts on a 20k-row export instead of 0).
+            'SkipCount'   => true,
+        ];
+
+        $this->load_model('Reports');
         $courtMap = $this->rmCourtMap($kingdom_id, $park_id);
         $parks    = $this->rmParkMap($kingdom_id);
 
@@ -366,13 +393,62 @@ class Controller_Recommendations extends Controller
         header('Content-Disposition: attachment; filename="' . $fname . '"');
         header('Cache-Control: no-store');
 
+        // Discard any stray output (PHP notices, logtrace, etc.) and drop the buffers
+        // so each flushed batch actually leaves the process. DISCARD, not flush: the
+        // BOM is written below, so flushing buffered notices would put them AHEAD of
+        // it and break the file for Excel. The @ob_end_clean() in the condition also
+        // terminates the loop on an unremovable buffer (zlib.output_compression)
+        // instead of spinning on it forever.
+        while (ob_get_level() > 0 && @ob_end_clean()) {
+        }
+
         $out = fopen('php://output', 'w');
         fwrite($out, "\xEF\xBB\xBF"); // UTF-8 BOM so Excel reads accented personas correctly
         fputcsv($out, [
             'Recipient', 'Park', 'Award', 'Rank', 'Recommended By', 'Date', 'Age (days)',
-            'Support', 'Already Has', 'Snoozed', 'Passed To Local', 'On Court', 'Reason',
+            'Support', 'Already Has', 'Retired', 'Snoozed', 'Passed To Local', 'On Court', 'Reason',
         ]);
 
+        // Headers, BOM and the header row are already on the wire, so a failure
+        // mid-stream cannot be reported as an HTTP error — the browser would save a
+        // short file that looks complete. Every abnormal exit therefore writes a
+        // terminal sentinel row as the last line of the CSV.
+        $batches = 0;
+        $more    = false;
+        try {
+            do {
+                // Each batch gets its own slice of wall clock; the export as a whole is
+                // bounded by the batch cap below, not by one giant query.
+                @set_time_limit(60);
+                $page   = $this->Reports->recommended_awards_page($req);
+                $groups = is_array($page['Groups'] ?? null) ? $page['Groups'] : [];
+                $this->exportBatch($out, $groups, $parks, $courtMap);
+                fflush($out);
+                flush();
+
+                $next = (int)($page['NextOffset'] ?? 0);
+                $more = !empty($page['HasMore']) && $next > $req['Offset'];
+                $req['Offset'] = $next;
+            } while ($more && ++$batches < 2000);
+        } catch (\Throwable $e) {
+            error_log('Recommendations::export failed at offset ' . (int)$req['Offset'] . ': ' . $e->getMessage());
+            fputcsv($out, ['ERROR — export incomplete: the download stopped after ' . (int)$req['Offset'] . ' rows. Re-run the export.']);
+            fclose($out);
+            exit;
+        }
+        if ($more) {
+            // Batch cap reached with rows still pending — also a truncated file.
+            fputcsv($out, ['ERROR — export incomplete: hit the batch limit after ' . (int)$req['Offset'] . ' rows. Narrow the filters and re-run.']);
+        }
+
+        fclose($out);
+        exit;
+    }
+
+    // One streamed CSV batch. Split out of export() only so the paging loop above
+    // stays readable — the row shaping is unchanged.
+    private function exportBatch($out, array $groups, array $parks, array $courtMap)
+    {
         foreach ($groups as $g) {
             $rank      = (int)($g['Rank'] ?? 0);
             $rankLabel = $rank > 0 ? (string)$rank : 'non-ladder';
@@ -416,14 +492,15 @@ class Controller_Recommendations extends Controller
                 (int)($g['OldestAgeDays'] ?? 0),
                 (int)($g['SupportCount'] ?? 0),
                 !empty($g['AlreadyHas']) ? 'Yes' : 'No',
+                // Retired/deceased recipients rejoin the pending list looking identical
+                // to active ones; the flag is computed upstream, so surface it here too.
+                !empty($g['IsRetired']) ? 'Yes' : 'No',
                 !empty($g['IsSnoozed']) ? 'Yes' : 'No',
                 !empty($g['PassedToLocal']) ? 'Yes' : 'No',
                 $this->csvSafe(implode('; ', array_keys($courtNames))),
                 $this->csvSafe($g['Members'][0]['Reason'] ?? ''),
             ]);
         }
-        fclose($out);
-        exit;
     }
 
     // Parse the route (`kingdom/6` joined segment) + resolve the scope ids, then
@@ -470,13 +547,20 @@ class Controller_Recommendations extends Controller
     {
         // Park courts included, matching the court list above — badges and filter must
         // cover the whole tree in scope or the Manager reports a mismatched court set.
-        return $this->Court->get_recommendation_court_map($kingdom_id, $park_id, true);
+        $key = (int)$kingdom_id . ':' . (int)$park_id;
+        if (!array_key_exists($key, $this->rmCourtMapMemo)) {
+            $this->rmCourtMapMemo[$key] = $this->Court->get_recommendation_court_map($kingdom_id, $park_id, true);
+        }
+        return $this->rmCourtMapMemo[$key];
     }
 
     // Park map for the kingdom-scope filter + row abbrev. DB lives in the lib
     // (Kingdom::GetParks); this only reshapes the result into pid => Name/Abbrev.
     private function rmParkMap($kingdom_id)
     {
+        if (array_key_exists((int)$kingdom_id, $this->rmParkMapMemo)) {
+            return $this->rmParkMapMemo[(int)$kingdom_id];
+        }
         $map = [];
         $res = $this->Kingdom->get_parks((int)$kingdom_id);
         $rows = (isset($res['Parks']) && is_array($res['Parks'])) ? $res['Parks'] : [];
@@ -489,6 +573,17 @@ class Controller_Recommendations extends Controller
                 ];
             }
         }
+        $this->rmParkMapMemo[(int)$kingdom_id] = $map;
         return $map;
+    }
+
+    // Identity of the filter set behind a rows() request — everything except the
+    // Limit/Offset window. The client echoes it back on scroll batches so rows()
+    // can tell an offset-only page from a filter change.
+    private function rmFilterFingerprint(array $req)
+    {
+        unset($req['Limit'], $req['Offset']);
+        ksort($req);
+        return md5(json_encode($req));
     }
 }
