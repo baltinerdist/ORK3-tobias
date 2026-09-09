@@ -70,12 +70,27 @@ class Court
     // Courts
     // -----------------------------------------------------------------------
 
-    public function getCourtList($kingdom_id, $park_id = 0)
+    /**
+     * Courts in scope.
+     *
+     * SCOPE. A park request is always that park's courts alone. A kingdom request
+     * defaults to the kingdom's OWN courts (park_id = 0) — the Court Planner and the
+     * Kingdom profile's court tab both mean "the courts this kingdom runs", and
+     * folding every subordinate park's courts into those lists is the leak that
+     * getUnrecordedCourts documents. Callers that instead need the whole tree —
+     * notably the Recommendations Manager, whose court badges come from
+     * getRecommendationCourtMap and must name courts the officer can also pick in the
+     * court filter — pass $include_park_courts = true, which is exactly the scope
+     * getRecommendationCourtMap($kingdom_id, 0, true) returns.
+     */
+    public function getCourtList($kingdom_id, $park_id = 0, $include_park_courts = false)
     {
         $where = 'c.kingdom_id = ' . (int)$kingdom_id;
-        $where .= $park_id > 0
-            ? ' AND c.park_id = ' . (int)$park_id
-            : ' AND c.park_id = 0';
+        if ($park_id > 0) {
+            $where .= ' AND c.park_id = ' . (int)$park_id;
+        } elseif (!$include_park_courts) {
+            $where .= ' AND c.park_id = 0';
+        }
 
         $this->db->Clear();
         $rs = $this->db->DataSet(
@@ -85,13 +100,15 @@ class Court
                     (SELECT COUNT(*) FROM ' . DB_PREFIX . 'court_award sca
                         WHERE sca.court_id = c.court_id
                           AND sca.status = \'staged\') AS staged_count,
-                    e.name AS event_name
+                    e.name AS event_name,
+                    c.park_id, p.name AS park_name
              FROM ' . DB_PREFIX . 'court c
              LEFT JOIN ' . DB_PREFIX . 'court_award ca
                     ON ca.court_id = c.court_id AND ca.status != \'cancelled\'
              LEFT JOIN ' . DB_PREFIX . 'event_calendardetail cd
                     ON cd.event_calendardetail_id = c.event_calendardetail_id
              LEFT JOIN ' . DB_PREFIX . 'event e ON e.event_id = cd.event_id
+             LEFT JOIN ' . DB_PREFIX . 'park p ON p.park_id = c.park_id
              WHERE ' . $where . '
              GROUP BY c.court_id
              ORDER BY c.court_date DESC, c.court_id DESC'
@@ -110,6 +127,10 @@ class Court
                     'StagedCount'           => (int)$rs->staged_count,
                     'EventName'             => $rs->event_name,
                     'EventCalendarDetailId' => (int)$rs->event_calendardetail_id,
+                    // ParkId/ParkName let a caller that passed $include_park_courts
+                    // tell two same-named park courts apart; 0/'' for kingdom courts.
+                    'ParkId'                => (int)$rs->park_id,
+                    'ParkName'              => $rs->park_name ?: '',
                 ];
             }
         }
@@ -1264,21 +1285,39 @@ class Court
         $giver    = (int)$given_by_mundane_id;
 
         $terminal = ($court_action === 'remove') ? 'cancelled' : 'given';
-        $sets = 'status = \'' . $terminal . '\', row_version = row_version + 1';
+        $sets = 'ca.status = \'' . $terminal . '\', ca.row_version = ca.row_version + 1';
         if ($award_id > 0) {
-            $sets .= ', award_id = ' . $award_id;
+            $sets .= ', ca.award_id = ' . $award_id;
         }
         if ($giver > 0) {
-            $sets .= ', given_by_mundane_id = ' . $giver;
+            $sets .= ', ca.given_by_mundane_id = ' . $giver;
         }
 
+        // The UPDATE re-asserts every condition the candidate SELECT relied on that
+        // SQL can express — the open line status AND `c.status <> 'complete'` — by
+        // joining the court again. Between the SELECT above and this write another
+        // officer can finalize the court; without the re-check the write would flip a
+        // line on a now-finalized court to 'given' and publish an honor on the
+        // login-free Court Report for a ceremony where it was never announced. With
+        // it, that row simply fails to match and is left alone. (Per-row canManage()
+        // cannot be expressed in SQL; it is already baked into $ids, which name the
+        // only rows this statement can touch.)
         $this->db->Clear();
         $rs = $this->db->DataSet(
-            'UPDATE ' . DB_PREFIX . 'court_award SET ' . $sets . '
-              WHERE court_award_id IN (' . implode(',', $ids) . ')
-                AND status IN (\'planned\', \'announced\', \'staged\')'
+            'UPDATE ' . DB_PREFIX . 'court_award ca
+               JOIN ' . DB_PREFIX . 'court c ON c.court_id = ca.court_id
+                SET ' . $sets . '
+              WHERE ca.court_award_id IN (' . implode(',', $ids) . ')
+                AND ca.status IN (\'planned\', \'announced\', \'staged\')
+                AND c.status <> \'complete\''
         );
-        return $rs ? (int)$rs->Size() : 0;
+
+        // Report what was actually written, never what was intended. A shortfall
+        // against the candidate set means a court finalized (or a line changed)
+        // underneath us and those lines were deliberately not rewritten; the caller
+        // surfaces this count to the officer as the number of court lines reconciled.
+        $affected = $rs ? (int)$rs->Size() : 0;
+        return max(0, $affected);
     }
 
     /** Mark a court complete + finalized (audit: who/when). */
@@ -1842,8 +1881,15 @@ class Court
     /**
      * Map of recommendation_id => list of courts it currently sits on, scoped.
      * Used by the Recommendations Manager to show court badges and the court filter.
+     *
+     * SCOPE. Identical to getCourtList() for the same arguments, and it has to be:
+     * a badge naming a court that is missing from the filter dropdown makes the
+     * Court='court:N' filter unreachable for that row (and the CSV export inherits
+     * the mismatch). A kingdom request therefore also defaults to the kingdom's own
+     * courts; pass $include_park_courts = true — on BOTH calls — to see, and filter
+     * by, recommendations already scheduled on a subordinate park's court.
      */
-    public function getRecommendationCourtMap($kingdom_id, $park_id = 0)
+    public function getRecommendationCourtMap($kingdom_id, $park_id = 0, $include_park_courts = false)
     {
         if (!valid_id($kingdom_id)) {
             return [];
@@ -1851,6 +1897,8 @@ class Court
         $scope = 'c.kingdom_id = ' . (int)$kingdom_id;
         if ($park_id > 0) {
             $scope .= ' AND c.park_id = ' . (int)$park_id;
+        } elseif (!$include_park_courts) {
+            $scope .= ' AND c.park_id = 0';
         }
 
         $this->db->Clear();

@@ -40,17 +40,6 @@ html[data-theme="dark"] .rm-wrap {
     margin-bottom: 6px;
 }
 .rm-back:hover { text-decoration: underline; }
-.rm-title {
-    background: transparent;
-    border: none;
-    padding: 0;
-    border-radius: 0;
-    text-shadow: none;
-    margin: 0;
-    font-size: 24px;
-    font-weight: 700;
-    color: var(--rm-fg);
-}
 .rm-sub { font-size: 13px; color: var(--rm-muted); margin-top: 2px; }
 
 /* Filter bar */
@@ -197,6 +186,16 @@ html[data-theme="dark"] .rm-badge-has { color: #e0c860; }
 html[data-theme="dark"] .rm-badge-passlocal { color: #6fb0e6; }
 .rm-act-passlocal.rm-act-active { background: var(--rm-accent); color: #fff; border-color: var(--rm-accent); }
 .rm-row[data-passlocal="1"] { box-shadow: inset 3px 0 0 var(--rm-accent); }
+/* A dismissed cluster is history, not a candidate: muted, with a neutral grey
+   rule that cannot be confused with the blue pass-to-local one above. */
+.rm-row[data-dismissed="1"] { box-shadow: inset 3px 0 0 #9aa0a8; opacity: 0.72; }
+.rm-row[data-dismissed="1"]:hover { opacity: 1; }
+.rm-badge-dismissed { color: #5a6472; background: rgba(90, 100, 114, 0.12); border-color: rgba(90, 100, 114, 0.4); }
+html[data-theme="dark"] .rm-badge-dismissed { color: #b7bec9; background: rgba(183, 190, 201, 0.14); border-color: rgba(183, 190, 201, 0.35); }
+/* Two classes, not one: the base .rm-act rule below also sets color at (0,1,0)
+   and comes later in source order, so a bare .rm-act-undelete silently loses. */
+.rm-act.rm-act-undelete { color: #2f855a; }
+html[data-theme="dark"] .rm-act.rm-act-undelete { color: #68d391; }
 /* Pass-down tooltip: rich (bold title line + body) — data-tip can't bold/format,
    so this button uses a child tooltip span shown on hover. Right-anchored so it
    never clips off the right edge. */
@@ -382,6 +381,8 @@ html[data-theme="dark"] .rm-bulkbar { background: #23557f; border-color: #16344d
 }
 .rm-bulk:hover { border-color: #fff; background: rgba(255, 255, 255, 0.24); }
 .rm-bulk-dismiss:hover { border-color: #ffd4d4; background: rgba(176, 48, 48, 0.55); color: #fff; }
+/* Disabled while a bulk batch is in flight (same in light and dark: the bar is navy). */
+.rm-bulk:disabled, .rm-bulk:disabled:hover { opacity: 0.5; cursor: default; border-color: rgba(255, 255, 255, 0.55); background: rgba(255, 255, 255, 0.12); }
 
 /* Toast (Task 8) */
 .rm-toast {
@@ -466,6 +467,18 @@ html[data-theme="dark"] .rm-modal {
     margin: 0 0 4px;
     font-size: 18px;
     font-weight: 700;
+    color: var(--rm-fg);
+}
+/* orkui.css styles h1-h6 globally with a gray pill box, and its dark-mode rule
+   (html[data-theme="dark"] h1..h6) carries more type selectors than a bare
+   class, so it wins the tie and the pill returns in dark mode. Repeat the
+   reset at matching specificity for both headings. */
+html[data-theme="dark"] .rm-modal-title {
+    background: transparent;
+    border: none;
+    padding: 0;
+    border-radius: 0;
+    text-shadow: none;
     color: var(--rm-fg);
 }
 .rm-modal-sub { font-size: 13px; color: var(--rm-muted); margin-bottom: 12px; }
@@ -653,6 +666,16 @@ html[data-theme="dark"] .rm-rank-pill.rm-rank-held { background: #38a169; border
   .rm-filterbar .rm-fsel, .rm-filterbar .rm-search { flex: 1 1 100%; min-height: 44px; }
   .rm-bulkbar { position: fixed; left: 0; right: 0; bottom: 0; border-radius: 0; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); flex-wrap: wrap; }
   .rm-bulkbar .rm-bulk { min-height: 44px; }
+
+  /* The row action buttons above are already 44px; these were missed. Same
+     house pattern — grow the hit area with padding, leave the glyph alone.
+     The modal buttons matter most: both modals are fully usable on a phone. */
+  .rm-fbtn,
+  .rm-modal .rm-btn { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+  .rm-expand-members,
+  .rm-supp-chip,
+  .rm-courtbadge,
+  a.rm-park { min-height: 44px; display: inline-flex; align-items: center; }
 }
 @media (max-width: 1250px) {
   html[data-theme="dark"] .rm-grid tr.rm-row { background: var(--rm-bg2); }
@@ -661,6 +684,12 @@ html[data-theme="dark"] .rm-rank-pill.rm-rank-held { background: #38a169; border
 
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>default/style/reports.css?v=<?= filemtime(DIR_TEMPLATE . 'default/style/reports.css') ?>">
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>revised-frontend/style/rank-pill.css?v=<?= filemtime(DIR_TEMPLATE . 'revised-frontend/style/rank-pill.css') ?>">
+<!-- flatpickr for the "create court" date field. Loaded here (same CDN pair as
+     default/Court_detail.tpl) so the script is parsed before the inline init far
+     below runs — that init used to be permanently dead because nothing on this
+     page ever defined flatpickr. -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 
 <div class="rp-root">
 <div class="rm-wrap">
@@ -700,8 +729,12 @@ html[data-theme="dark"] .rm-rank-pill.rm-rank-held { background: #38a169; border
       <option value="all">Any court status</option>
       <option value="none">Not on a court</option>
       <option value="any">On any court</option>
-      <?php foreach ($Courts as $c) { ?>
-        <option value="court:<?= (int)$c['CourtId'] ?>">On: <?= htmlspecialchars($c['Name']) ?></option>
+      <?php foreach ($Courts as $c) {
+          // Kingdom scope now lists subordinate park courts too, so a bare name is
+          // ambiguous when two parks both run a "Midreign" — qualify with the park.
+          $cLabel = $c['Name'] . (!empty($c['ParkName']) ? ' (' . $c['ParkName'] . ')' : '');
+      ?>
+        <option value="court:<?= (int)$c['CourtId'] ?>">On: <?= htmlspecialchars($cLabel) ?></option>
       <?php } ?>
     </select>
     <?php if ($ParkId === 0 && count($Parks)) { ?>
@@ -713,6 +746,7 @@ html[data-theme="dark"] .rm-rank-pill.rm-rank-held { background: #38a169; border
     </select>
     <?php } ?>
     <label class="rm-fcheck"><input type="checkbox" id="rm-filter-passlocal"> Passed to local</label>
+    <label class="rm-fcheck" data-tip="Dismissed recommendations are kept, not deleted. Turn this on to see them and undelete any that were retired by mistake."><input type="checkbox" id="rm-filter-dismissed"> Show dismissed</label>
     <div id="rm-chips" class="rm-chips"></div>
     <button type="button" id="rm-export" class="rm-fbtn" data-tip="Download the full current filtered list as a CSV file"><i class="fas fa-download"></i> Export CSV</button>
   </div>
@@ -721,7 +755,9 @@ html[data-theme="dark"] .rm-rank-pill.rm-rank-held { background: #38a169; border
   <table class="rm-grid" id="rm-grid">
     <thead>
       <tr>
-        <th class="rm-col-sel"><input type="checkbox" id="rm-selall" aria-label="Select all loaded rows" data-tip="Selects the rows loaded so far, not every row matching your filters"></th>
+        <!-- data-tip renders via ::after, which a replaced element like <input>
+             cannot generate — it has to live on the wrapping label. -->
+        <th class="rm-col-sel"><label data-tip="Selects the rows loaded so far, not every row matching your filters"><input type="checkbox" id="rm-selall" aria-label="Select all loaded rows"></label></th>
         <th class="rm-col-recip rm-sortable" data-sort="recip">Recipient</th>
         <th class="rm-col-park">Park</th>
         <th class="rm-col-award rm-sortable" data-sort="award">Award</th>
@@ -752,6 +788,7 @@ html[data-theme="dark"] .rm-rank-pill.rm-rank-held { background: #38a169; border
     <button type="button" class="rm-bulk rm-bulk-snooze">Snooze</button>
     <?php if (($Context ?? '') === 'kingdom') { ?><button type="button" class="rm-bulk rm-bulk-passlocal" data-tip="For recommendations at a higher level than the park can provide, you are granting authority for that park to award at this level.">Pass down</button><?php } ?>
     <button type="button" class="rm-bulk rm-bulk-dismiss" data-tip="Already given out previously? No plans to award this? You can dismiss this rec.">Dismiss</button>
+    <button type="button" class="rm-bulk rm-bulk-undelete"><i class="fas fa-trash-can-arrow-up"></i> Undelete</button>
     <button type="button" class="rm-bulk rm-bulk-clear">Clear</button>
   </div>
 
@@ -766,8 +803,12 @@ html[data-theme="dark"] .rm-rank-pill.rm-rank-held { background: #38a169; border
       </div>
       <div id="rm-court-existing">
         <select id="rm-court-select" class="rm-fsel">
-          <?php foreach ($Courts as $c) { ?>
-            <option value="<?= (int)$c['CourtId'] ?>"><?= htmlspecialchars($c['Name']) ?><?= !empty($c['CourtDate']) ? ' &mdash; ' . htmlspecialchars($c['CourtDate']) : '' ?> (<?= htmlspecialchars($c['Status']) ?>)</option>
+          <?php foreach ($Courts as $c) {
+              // data-name is the name stored on the row badge; the visible label adds
+              // the park (kingdom scope lists park courts), date and status.
+              $cName  = $c['Name'] . (!empty($c['ParkName']) ? ' (' . $c['ParkName'] . ')' : '');
+          ?>
+            <option value="<?= (int)$c['CourtId'] ?>" data-name="<?= htmlspecialchars($cName) ?>"><?= htmlspecialchars($cName) ?><?= !empty($c['CourtDate']) ? ' &mdash; ' . htmlspecialchars(rmNiceDate($c['CourtDate'])) : '' ?> (<?= htmlspecialchars($c['Status']) ?>)</option>
           <?php } ?>
         </select>
         <?php if (!count($Courts)) { ?><div class="rm-empty">No courts yet &mdash; create one.</div><?php } ?>
@@ -855,6 +896,7 @@ window.RmConfig = {
   httpService: <?= json_encode((string)(defined('HTTP_SERVICE') ? HTTP_SERVICE : '')) ?>,
   locationName: <?= json_encode((string)($LocationName ?? '')) ?>,
   rowsUrl:    '<?= UIR ?>Recommendations/rows/<?= $Context ?>/<?= $Context === 'park' ? (int)$ParkId : (int)$KingdomId ?>',
+  bulkUrl:    '<?= UIR ?>Recommendations/bulk/<?= $Context ?>/<?= $Context === 'park' ? (int)$ParkId : (int)$KingdomId ?>',
   exportUrl:  '<?= UIR ?>Recommendations/export/<?= $Context ?>/<?= $Context === 'park' ? (int)$ParkId : (int)$KingdomId ?>',
   total:      <?= (int)($Total ?? 0) ?>,
   hasMore:    <?= !empty($HasMore) ? 'true' : 'false' ?>,
@@ -868,6 +910,47 @@ function rmEsc(s) {
     var d = document.createElement('div');
     d.textContent = (s == null) ? '' : String(s);
     return d.innerHTML;
+}
+
+// Confirm dialog for this page.
+//
+// Despite living in revised-frontend/, this template renders under
+// default.theme, which loads script/orkui.js and NOT revised.js — so
+// orkConfirm/pnConfirm do not exist here. Native confirm() is banned (it
+// freezes the in-app browser), so the page builds its own, the same way
+// Court_detail.tpl does with cpConfirm. Reuses the .rm-modal* styling, so it
+// inherits dark mode and the mobile tap sizes for free.
+function rmConfirm(opts) {
+    opts = opts || {};
+    var ov = document.createElement('div');
+    ov.className = 'rm-modal-overlay';
+    ov.setAttribute('role', 'dialog');
+    ov.setAttribute('aria-modal', 'true');
+    ov.innerHTML =
+        '<div class="rm-modal">' +
+          '<h2 class="rm-modal-title">' + rmEsc(opts.title || 'Confirm') + '</h2>' +
+          '<div class="rm-modal-sub">' + rmEsc(opts.body || '') + '</div>' +
+          '<div class="rm-modal-actions">' +
+            '<button type="button" class="rm-btn rm-btn-ghost" data-rm-cancel>' + rmEsc(opts.cancelLabel || 'Cancel') + '</button>' +
+            '<button type="button" class="rm-btn rm-btn-primary" data-rm-ok' + (opts.danger ? ' style="background:#c53030;border-color:#c53030"' : '') + '>' + rmEsc(opts.confirmLabel || 'OK') + '</button>' +
+          '</div>' +
+        '</div>';
+    function close() {
+        ov.remove();
+        document.removeEventListener('keydown', onKey);
+    }
+    function onKey(e) { if (e.key === 'Escape') close(); }
+    ov.addEventListener('click', function (e) {
+        if (e.target === ov || e.target.closest('[data-rm-cancel]')) { close(); return; }
+        if (e.target.closest('[data-rm-ok]')) {
+            close();
+            if (typeof opts.onConfirm === 'function') opts.onConfirm();
+        }
+    });
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(ov);
+    var ok = ov.querySelector('[data-rm-ok]');
+    if (ok) setTimeout(function () { ok.focus(); }, 30);
 }
 
 // Insert (or toggle off) an inline detail row directly after `tr`.
@@ -915,7 +998,14 @@ var rmState = {
 	search: '', elig: 'open', court: 'all', park: 'all', passlocal: false,
 	sort: 'date', dir: 'desc',
 	offset: RmConfig.nextOffset || 0, total: RmConfig.total || 0,
-	hasMore: !!RmConfig.hasMore, loading: false, seen: {}
+	hasMore: !!RmConfig.hasMore, loading: false, seen: {},
+	// Live count of checked rows. Kept incrementally so rmUpdateSelCount() never has
+	// to re-scan the (up to 500) loaded rows on a checkbox click.
+	selCount: 0,
+	selDismissed: 0,
+	// True while a bulk batch is in flight, so a second click cannot fire a
+	// duplicate batch at the endpoint that is already the slow part.
+	bulking: false
 };
 function rmReadFilters() {
 	rmState.search = (document.getElementById('rm-search').value || '').trim();
@@ -923,6 +1013,7 @@ function rmReadFilters() {
 	rmState.court  = document.getElementById('rm-filter-court').value;
 	var pk = document.getElementById('rm-filter-park'); rmState.park = pk ? pk.value : 'all';
 	rmState.passlocal = document.getElementById('rm-filter-passlocal').checked;
+	rmState.dismissed = document.getElementById('rm-filter-dismissed').checked;
 }
 function rmRowKey(tr) { return tr.getAttribute('data-rec-cluster') || tr.getAttribute('data-rec-id'); }
 function rmIndexSeen() { rmState.seen = {}; RM.rows().forEach(function (tr) { rmState.seen[rmRowKey(tr)] = true; }); }
@@ -932,7 +1023,8 @@ function rmFetch(reset) {
 	if (reset) { rmState.offset = 0; }
 	var q = new URLSearchParams({
 		search: rmState.search, elig: rmState.elig, court: rmState.court,
-		park: rmState.park, passlocal: rmState.passlocal ? '1' : '', sort: rmState.sort,
+		park: rmState.park, passlocal: rmState.passlocal ? '1' : '',
+		dismissed: rmState.dismissed ? '1' : '', sort: rmState.sort,
 		dir: rmState.dir, offset: String(rmState.offset)
 	});
 	var tbody = document.getElementById('rm-tbody');
@@ -942,7 +1034,11 @@ function rmFetch(reset) {
 		.then(function (d) {
 			// A 200 with an error field (or missing paging data) is not a valid page — surface it.
 			if (!d || d.error || typeof d.total === 'undefined') { throw new Error(d && d.error ? d.error : 'bad page'); }
-			if (reset) { tbody.innerHTML = ''; rmState.seen = {}; }
+			if (reset) {
+				// The old rows (and therefore the old selection) are gone.
+				tbody.innerHTML = ''; rmState.seen = {}; rmState.selCount = 0; rmState.selDismissed = 0;
+				var sa = document.getElementById('rm-selall'); if (sa) sa.checked = false;
+			}
 			var tmp = document.createElement('tbody'); tmp.innerHTML = d.html;
 			Array.prototype.slice.call(tmp.children).forEach(function (tr) {
 				if (!tr.classList || !tr.classList.contains('rm-row')) { tbody.appendChild(tr); return; }
@@ -965,15 +1061,25 @@ function rmFetch(reset) {
 			document.getElementById('rm-loading').style.display = 'none';
 		});
 }
-function rmAfterRowRemoved() {
+// serverGone: did the row leave the SERVER's result set, or only this client-side
+// bucket? Dismiss soft-deletes, and the paging query filters on deleted_by, so the
+// cluster really is gone — total shrinks, and rmState.offset (a CLUSTER offset into
+// that set) must shrink with it or the next infinite-scroll page starts N clusters
+// too far in and silently skips N recommendations. Snooze changes nothing the base
+// query filters on: the row leaves the current eligibility bucket but the server
+// still counts it, so neither counter may move.
+function rmAfterRowRemoved(serverGone) {
 	document.getElementById('rm-count').textContent = RM.rows().length;
-	if (rmState.total > 0) { rmState.total -= 1; document.getElementById('rm-total').textContent = rmState.total; }
+	if (serverGone) {
+		if (rmState.total > 0) { rmState.total -= 1; document.getElementById('rm-total').textContent = rmState.total; }
+		if (rmState.offset > 0) rmState.offset -= 1;
+	}
 	if (typeof rmUpdateSelCount === 'function') rmUpdateSelCount();
 }
 rmIndexSeen();
 // filter inputs (debounced search) -> reset fetch
 var rmDeb;
-['rm-search', 'rm-filter-elig', 'rm-filter-court', 'rm-filter-park'].forEach(function (idv) {
+['rm-search', 'rm-filter-elig', 'rm-filter-court', 'rm-filter-park', 'rm-filter-dismissed'].forEach(function (idv) {
 	var el = document.getElementById(idv); if (!el) return;
 	el.addEventListener('input', function () { rmReadFilters(); clearTimeout(rmDeb); rmDeb = setTimeout(function () { rmFetch(true); }, 250); });
 	el.addEventListener('change', function () { rmReadFilters(); clearTimeout(rmDeb); rmFetch(true); });
@@ -997,6 +1103,7 @@ if (rmExportBtn) rmExportBtn.addEventListener('click', function () {
 	var q = new URLSearchParams({
 		search: rmState.search, elig: rmState.elig, court: rmState.court,
 		park: rmState.park, passlocal: rmState.passlocal ? '1' : '',
+		dismissed: rmState.dismissed ? '1' : '',
 		sort: rmState.sort, dir: rmState.dir
 	});
 	// brief disabled state — a large scope can take a moment to assemble server-side
@@ -1019,9 +1126,33 @@ var rmLastIdx = null;
 // All rows currently loaded in the DOM. (Filtering is server-side now, so there is
 // no client-side hidden state to skip — every loaded row is a visible row.)
 function rmLoadedRows() { return RM.rows(); }
+// Still used by the bulk handlers, which run once per action — never on the
+// per-click path (that reads the incrementally maintained rmState.selCount).
 function rmSelected() { return RM.rows().filter(function (tr) { return tr.querySelector('.rm-rowsel').checked; }); }
+// Single choke point for changing a row's checked state so rmState.selCount stays
+// exact. Every place that checks/unchecks a row programmatically must go through it.
+function rmSetRowChecked(tr, on) {
+    var cb = tr && tr.querySelector('.rm-rowsel');
+    if (!cb || cb.checked === !!on) return;
+    cb.checked = !!on;
+    rmState.selCount += on ? 1 : -1;
+    if (rmState.selCount < 0) rmState.selCount = 0;
+    // A selection can mix live and dismissed rows, and the two support different
+    // verbs. Count the dismissed half here rather than rescanning the table on
+    // every click — same reason selCount is incremental.
+    if (tr.getAttribute('data-dismissed') === '1') {
+        rmState.selDismissed += on ? 1 : -1;
+        if (rmState.selDismissed < 0) rmState.selDismissed = 0;
+    }
+}
+function rmSelectedLive() {
+    return rmSelected().filter(function (tr) { return tr.getAttribute('data-dismissed') !== '1'; });
+}
+function rmSelectedDismissed() {
+    return rmSelected().filter(function (tr) { return tr.getAttribute('data-dismissed') === '1'; });
+}
 function rmUpdateSelCount() {
-    var n = rmSelected().length;
+    var n = rmState.selCount;
     document.getElementById('rm-selcount').textContent = n;
     var bar = document.getElementById('rm-bulkbar');
     bar.hidden = n === 0;
@@ -1030,6 +1161,15 @@ function rmUpdateSelCount() {
     var partial = !!rmState.hasMore;
     document.getElementById('rm-bulklabel').textContent =
         partial ? n + ' selected (loaded rows)' : n + ' selected';
+
+    // Undelete applies only to dismissed rows, every other verb only to live ones.
+    // Disable rather than hide, so the bar does not reflow as the selection changes.
+    var nDismissed = rmState.selDismissed;
+    var nLive      = Math.max(0, n - nDismissed);
+    document.querySelectorAll('#rm-bulkbar .rm-bulk').forEach(function (b) {
+        if (b.classList.contains('rm-bulk-clear')) return;
+        b.disabled = b.classList.contains('rm-bulk-undelete') ? nDismissed === 0 : nLive === 0;
+    });
 
     var note = document.getElementById('rm-loadnote');
     if (note) {
@@ -1041,20 +1181,32 @@ function rmUpdateSelCount() {
 document.getElementById('rm-tbody').addEventListener('click', function (e) {
     var cb = e.target.closest('.rm-rowsel'); if (!cb) return;
     var vis = rmLoadedRows();
-    var idx = vis.indexOf(cb.closest('tr'));
+    var row = cb.closest('tr');
+    var idx = vis.indexOf(row);
+    // The browser already flipped this checkbox before the click bubbled here, so
+    // count it directly rather than re-scanning every loaded row.
+    rmState.selCount += cb.checked ? 1 : -1;
+    if (rmState.selCount < 0) rmState.selCount = 0;
+    if (row.getAttribute('data-dismissed') === '1') {
+        rmState.selDismissed += cb.checked ? 1 : -1;
+        if (rmState.selDismissed < 0) rmState.selDismissed = 0;
+    }
     if (e.shiftKey && rmLastIdx !== null) {
         var lo = Math.min(idx, rmLastIdx), hi = Math.max(idx, rmLastIdx);
-        for (var i = lo; i <= hi; i++) vis[i].querySelector('.rm-rowsel').checked = cb.checked;
+        for (var i = lo; i <= hi; i++) { if (vis[i] !== row) rmSetRowChecked(vis[i], cb.checked); }
     }
     rmLastIdx = idx;
     rmUpdateSelCount();
 });
 document.getElementById('rm-selall').addEventListener('change', function () {
-    rmLoadedRows().forEach(function (tr) { tr.querySelector('.rm-rowsel').checked = this.checked; }, this);
+    var on = this.checked;
+    rmLoadedRows().forEach(function (tr) { rmSetRowChecked(tr, on); });
     rmUpdateSelCount();
 });
 document.querySelector('.rm-bulk-clear').addEventListener('click', function () {
     RM.rows().forEach(function (tr) { tr.querySelector('.rm-rowsel').checked = false; });
+    rmState.selCount = 0;
+    rmState.selDismissed = 0;
     document.getElementById('rm-selall').checked = false;
     rmUpdateSelCount();
 });
@@ -1077,11 +1229,23 @@ function rmRecAjaxBase(action) {
     return RmConfig.uir + 'KingdomAjax/kingdom/' + RmConfig.kingdomId + '/' + action;
 }
 function rmPost(url, fd) {
-    return fetch(url, { method: 'POST', body: fd, credentials: 'same-origin' }).then(function (r) { return r.json(); });
+    return fetch(url, { method: 'POST', body: fd, credentials: 'same-origin' }).then(function (r) {
+        // Match rmFetch: a 403/500 returns an HTML error page, and parsing that as
+        // JSON throws a SyntaxError that reads like a network blip in the catch.
+        if (!r.ok) throw new Error('post http ' + r.status);
+        return r.json();
+    });
 }
 // These rec AJAX endpoints all echo {status:0} on success, {status:N,error} on failure.
 function rmJsonOk(j) { return !!j && j.status === 0; }
-function rmAllOk(results) { return Array.isArray(results) && results.every(rmJsonOk); }
+// How many of a cluster's member writes actually landed. Partial success is real —
+// the successful writes are already committed server-side — so the UI must report
+// what happened instead of a flat "Failed."
+function rmCountOk(results) {
+    var n = 0;
+    (results || []).forEach(function (j) { if (rmJsonOk(j)) n++; });
+    return n;
+}
 // Does the active eligibility filter hide a row given its snoozed state?
 // ('snoozed' shows only snoozed; 'all' shows both; every other bucket excludes snoozed.)
 function rmEligHides(elig, isSnoozed) {
@@ -1106,17 +1270,37 @@ function rmSetPasslocalBadge(tr, passed) {
 }
 
 // Remove a row (and any open detail row) then re-sync filters/counts.
-function rmRemoveRow(tr) {
+// serverGone defaults to true (the dismiss/grant case). Pass false when the row is
+// only leaving the current filter bucket, e.g. a snooze under the 'open' filter.
+function rmRemoveRow(tr, serverGone) {
+    rmSetRowChecked(tr, false); // a removed row must not keep counting as selected
     var dr = tr.nextElementSibling;
     if (dr && dr.classList.contains('rm-detailrow')) dr.remove();
     tr.remove();
-    rmAfterRowRemoved();
+    rmAfterRowRemoved(serverGone !== false);
 }
 
 // Read the member rec ids for a group row.
 function rmMemberIds(tr) {
     var ids = []; try { ids = JSON.parse(tr.getAttribute('data-members') || '[]'); } catch (x) {}
     return ids;
+}
+
+// Repaint a snooze button for its new state. Both the icon AND the rich tooltip
+// have to move: writing textContent on the button itself would destroy the
+// .rm-snooze-ico / .rm-snooze-tip children the CSS hover tip is built from, and
+// leaving the tip alone makes it describe the action the button no longer does.
+// Mirrors the server-side markup in _rm_row.tpl.
+function rmPaintSnooze(btn, nowSnoozed) {
+    if (!btn) return;
+    var ico = btn.querySelector('.rm-snooze-ico');
+    if (ico) ico.innerHTML = nowSnoozed ? '&#128276;' : '&#128164;';
+    var tip = btn.querySelector('.rm-snooze-tip');
+    if (tip) {
+        tip.innerHTML = nowSnoozed
+            ? '<strong>Unsnooze</strong>Restore this recommendation to the active list.'
+            : '<strong>Snooze to Next Monarchy</strong>Temporarily dismiss this recommendation until either the Monarch or Regent officer at this level changes.';
+    }
 }
 
 // Per-row Snooze + Dismiss (third tbody click handler; early-returns on non-match).
@@ -1133,11 +1317,18 @@ document.getElementById('rm-tbody').addEventListener('click', function (e) {
             var fd = new FormData(); fd.append('RecommendationsId', id);
             return rmPost(rmRecAjaxBase(action), fd);
         })).then(function (results) {
-            if (!rmAllOk(results)) { rmToast('Failed.', true); return; }
+            var okN = rmCountOk(results), failN = results.length - okN;
+            if (failN > 0) {
+                // Some member recs may already have flipped server-side. Leave the row
+                // as it is (its state is now mixed) and say exactly what landed.
+                rmToast(okN
+                    ? (snoozed ? 'Unsnoozed ' : 'Snoozed ') + okN + ', ' + failN + ' failed.'
+                    : 'Failed.', true);
+                return;
+            }
             var nowSnoozed = !snoozed;
             tr.setAttribute('data-snoozed', nowSnoozed ? '1' : '0');
-            var sIco = sn.querySelector('.rm-snooze-ico') || sn;
-            sIco.textContent = nowSnoozed ? '🔔' : '💤';
+            rmPaintSnooze(sn, nowSnoozed);
             // Refetch only if the toggle moves the row out of the current bucket;
             // otherwise leave it in place (cheap — no 500-row re-render).
             if (rmEligHides(rmState.elig, nowSnoozed)) rmFetch(true);
@@ -1148,18 +1339,50 @@ document.getElementById('rm-tbody').addEventListener('click', function (e) {
     var ds = e.target.closest('.rm-act-dismiss');
     if (ds) {
         var tr2 = ds.closest('tr');
-        tnConfirm({ title: 'Dismiss recommendation?', body: 'This removes the recommendation(s) from the pending list.', confirmLabel: 'Dismiss', danger: true, onConfirm: function () {
+        rmConfirm({ title: 'Dismiss recommendation?', body: 'This removes the recommendation(s) from the pending list.', confirmLabel: 'Dismiss', danger: true, onConfirm: function () {
             var ids = rmMemberIds(tr2);
             if (!ids.length) { rmToast('No recommendations found.', true); return; }
             Promise.all(ids.map(function (id) {
                 var fd = new FormData(); fd.append('RecommendationsId', id);
                 return rmPost(rmRecAjaxBase('dismissrecommendation'), fd);
             })).then(function (results) {
-                if (!rmAllOk(results)) { rmToast('Failed.', true); return; }
+                var okN = rmCountOk(results), failN = results.length - okN;
+                if (failN > 0) {
+                    // Keep the row: the ids that failed are still pending, so removing it
+                    // would hide live recommendations behind a "Dismissed" that isn't true.
+                    rmToast(okN ? 'Dismissed ' + okN + ', ' + failN + ' failed.' : 'Failed.', true);
+                    return;
+                }
                 rmRemoveRow(tr2); rmToast('Dismissed.');
             }).catch(function () { rmToast('Failed.', true); });
         } });
     }
+});
+
+// Per-row Undelete (rendered only on a dismissed row, in place of every other
+// action). Goes through the same batch endpoint as the bulk verb so there is one
+// undelete path, and reports a partial cluster restore honestly.
+document.getElementById('rm-tbody').addEventListener('click', function (e) {
+    var ud = e.target.closest('.rm-act-undelete'); if (!ud) return;
+    var tr = ud.closest('tr');
+    var ids = rmMemberIds(tr);
+    if (!ids.length) { rmToast('No recommendations found.', true); return; }
+    ud.disabled = true;
+    rmBulkRequestChunked('undelete', ids, 0).then(function (map) {
+        var okN = ids.filter(function (id) { return map[String(id)] === true; }).length;
+        if (okN !== ids.length) {
+            ud.disabled = false;
+            rmToast(okN ? 'Undeleted ' + okN + ', ' + (ids.length - okN) + ' failed.' : 'Failed.', true);
+            return;
+        }
+        // serverGone=false: with "Show dismissed" on, the row was already part of the
+        // current result set — it changes category, it does not leave the set.
+        rmRemoveRow(tr, false);
+        rmToast('Undeleted.');
+    }).catch(function () {
+        ud.disabled = false;
+        rmToast('Undelete was interrupted — refresh to confirm what landed.', true);
+    });
 });
 
 // Per-row Pass-to-local toggle (kingdom scope only; button only rendered there).
@@ -1174,7 +1397,12 @@ document.getElementById('rm-tbody').addEventListener('click', function (e) {
         var fd = new FormData(); fd.append('RecommendationsId', id); fd.append('Passed', passed ? '0' : '1');
         return rmPost(rmRecAjaxBase('passtolocalrecommendation'), fd);
     })).then(function (results) {
-        if (!rmAllOk(results)) { rmToast('Update failed.', true); return; }
+        var okN = rmCountOk(results), failN = results.length - okN;
+        if (failN > 0) {
+            // Partial: some ids already moved. Leave the toggle alone and report honestly.
+            rmToast(okN ? 'Updated ' + okN + ', ' + failN + ' failed.' : 'Update failed.', true);
+            return;
+        }
         var nowPassed = !passed;
         tr.setAttribute('data-passlocal', nowPassed ? '1' : '0');
         pl.classList.toggle('rm-act-active', nowPassed);
@@ -1186,78 +1414,142 @@ document.getElementById('rm-tbody').addEventListener('click', function (e) {
     }).catch(function () { rmToast('Update failed.', true); });
 });
 
-// Bulk: run fn over rows with a bounded concurrency pool (up to 6 in flight),
-// tally results, toast + refetch once at the end. `fn(tr)` resolves true/false.
-function rmBulkSequential(rows, fn, doneMsg) {
-    var ok = 0, fail = 0, i = 0, active = 0, POOL = 6;
-    function done() { rmToast(doneMsg(ok, fail), fail > 0); rmFetch(true); }
-    function pump() {
-        if (i >= rows.length && active === 0) { done(); return; }
-        while (active < POOL && i < rows.length) {
-            active++;
-            fn(rows[i++])
-                .then(function (good) { good ? ok++ : fail++; })
-                .catch(function () { fail++; })
-                .then(function () { active--; pump(); });
-        }
+// Bulk: ONE request for the whole action.
+//
+// This used to fan out N x M POSTs — one per member rec id of every selected row —
+// so dismissing 40 clustered rows meant hundreds of round trips. Recommendations/bulk
+// takes every id at once and answers with a per-id results array, which is also what
+// lets us give each row an individual verdict instead of an all-or-nothing one.
+//
+// Contract: POST RmConfig.bulkUrl with Action (dismiss|snooze|unsnooze|passlocal),
+// Ids (comma-separated) and, for passlocal only, Passed (0|1). Response:
+// { status:0, ok:N, failed:N, results:[{id, ok, error}, ...] }; 403 on a scope failure.
+function rmBulkRequest(action, ids, passed) {
+    var fd = new FormData();
+    fd.append('Action', action);
+    fd.append('Ids', ids.join(','));
+    if (action === 'passlocal') fd.append('Passed', passed ? '1' : '0');
+    return rmPost(RmConfig.bulkUrl, fd).then(function (j) {
+        if (!rmJsonOk(j) || !Array.isArray(j.results)) throw new Error('bulk failed');
+        var map = {};
+        j.results.forEach(function (r) { map[String(r.id)] = !!r.ok; });
+        return map;
+    });
+}
+// Ids per request. The endpoint caps a batch at 1000 ids and does one synchronous
+// model write per id, so a select-all over clustered rows could both blow past the cap
+// (ids over it come back with no result and would be misreported as failures) and run
+// long enough to hit max_execution_time. Chunks are issued SEQUENTIALLY on purpose:
+// the point is to bound the server work in flight, which parallel chunks would defeat.
+var RM_BULK_CHUNK = 150;
+// Run the id list as sequential rmBulkRequest calls and merge the per-id maps.
+function rmBulkRequestChunked(action, ids, passed) {
+    var map = {}, i = 0;
+    function step() {
+        if (i >= ids.length) return Promise.resolve(map);
+        var slice = ids.slice(i, i + RM_BULK_CHUNK);
+        i += RM_BULK_CHUNK;
+        return rmBulkRequest(action, slice, passed).then(function (part) {
+            for (var k in part) { if (Object.prototype.hasOwnProperty.call(part, k)) map[k] = part[k]; }
+            return step();
+        });
     }
-    if (!rows.length) { done(); return; }
-    pump();
+    return step();
+}
+// Enable/disable the bulk bar buttons while a batch is running.
+// Clear stays live: abandoning a selection mid-batch is always safe, and locking the
+// only escape hatch during a multi-second request is the wrong trade.
+function rmBulkBusy(on) {
+    rmState.bulking = !!on;
+    document.querySelectorAll('#rm-bulkbar .rm-bulk').forEach(function (b) {
+        if (b.classList.contains('rm-bulk-clear')) return;
+        b.disabled = !!on;
+    });
+}
+// Settle each selected row from the per-id results: a row whose member ids ALL
+// succeeded is applied in place (removed / repainted) and deselected; a row with any
+// failure stays put and stays selected so the officer can retry just those. The toast
+// reports both tallies — it never claims total failure when some writes landed.
+//
+// opts.apply(tr) performs the in-place DOM mutation — removing the row itself when the
+// change pushes it out of the current eligibility bucket. Nothing here refetches: the
+// whole point of mutating in place is to keep every infinitely-scrolled page the
+// officer has already loaded, which the old rmFetch(true) threw away on every action.
+function rmBulkRun(action, rows, opts) {
+    if (rmState.bulking) return; // a batch is already running
+    var ids = [];
+    var rowIds = rows.map(function (tr) { var m = rmMemberIds(tr); ids = ids.concat(m); return m; });
+    if (!rows.length || !ids.length) { rmToast('No recommendations found.', true); return; }
+    rmBulkBusy(true);
+    rmBulkRequestChunked(action, ids, opts.passed).then(function (map) {
+        var okRows = 0, failRows = 0;
+        rows.forEach(function (tr, n) {
+            var mine = rowIds[n];
+            var allOk = mine.length > 0 && mine.every(function (id) { return map[String(id)] === true; });
+            if (!allOk) { failRows++; return; }
+            okRows++;
+            rmSetRowChecked(tr, false);
+            opts.apply(tr);
+        });
+        rmUpdateSelCount();
+        rmToast(opts.msg(okRows, failRows), failRows > 0);
+        rmBulkBusy(false);
+    // A throw here means one chunk failed (403, transport, timeout, malformed body).
+    // Earlier chunks — and possibly part of this one — are already committed, so we
+    // must NOT claim nothing happened. Resync from the server and say the outcome of
+    // the interrupted batch is unknown.
+    }).catch(function () {
+        rmBulkBusy(false);
+        rmToast('Bulk update was interrupted — some changes may have been saved. Refresh to confirm what landed.', true);
+        // rmFetch early-returns while another fetch is in flight, so this resync is
+        // best-effort; the toast tells the officer to refresh either way rather than
+        // promising a refresh that may never run.
+        rmFetch(true);
+    });
 }
 document.querySelector('.rm-bulk-snooze').addEventListener('click', function () {
-    var rows = rmSelected().filter(function (tr) { return tr.getAttribute('data-snoozed') !== '1'; });
-    rmBulkSequential(rows, function (tr) {
-        var ids = rmMemberIds(tr);
-        return Promise.all(ids.map(function (id) {
-            var fd = new FormData(); fd.append('RecommendationsId', id);
-            return rmPost(rmRecAjaxBase('snoozerecommendation'), fd);
-        })).then(function (results) {
-            if (!rmAllOk(results)) return false;
+    var rows = rmSelectedLive().filter(function (tr) { return tr.getAttribute('data-snoozed') !== '1'; });
+    rmBulkRun('snooze', rows, {
+        apply: function (tr) {
+            // A snoozed row leaves every bucket but 'all'/'snoozed'. Drop it in place
+            // rather than refetching, which would discard the loaded pages and the
+            // still-selected failed rows.
+            // serverGone=false: snooze does not remove the cluster from the paging
+            // query's result set, so total and offset must not move.
+            if (rmEligHides(rmState.elig, true)) { rmRemoveRow(tr, false); return; }
             tr.setAttribute('data-snoozed', '1');
-            var b = tr.querySelector('.rm-act-snooze');
-            if (b) { b.textContent = '🔔'; b.setAttribute('data-tip', 'Unsnooze'); }
-            tr.querySelector('.rm-rowsel').checked = false;
-            return true;
-        }).catch(function () { return false; });
-    }, function (ok, fail) { return 'Snoozed ' + ok + (fail ? ', ' + fail + ' failed' : '') + '.'; });
-    rmUpdateSelCount();
+            rmPaintSnooze(tr.querySelector('.rm-act-snooze'), true);
+        },
+        msg: function (ok, fail) { return 'Snoozed ' + ok + (fail ? ', ' + fail + ' failed' : '') + '.'; }
+    });
 });
 // Bulk Pass down (kingdom scope only; button absent in park scope).
 (function () {
     var btn = document.querySelector('.rm-bulk-passlocal'); if (!btn) return;
     btn.addEventListener('click', function () {
-        var rows = rmSelected().filter(function (tr) { return tr.getAttribute('data-passlocal') !== '1'; });
-        rmBulkSequential(rows, function (tr) {
-            var ids = rmMemberIds(tr);
-            return Promise.all(ids.map(function (id) {
-                var fd = new FormData(); fd.append('RecommendationsId', id); fd.append('Passed', '1');
-                return rmPost(rmRecAjaxBase('passtolocalrecommendation'), fd);
-            })).then(function (results) {
-                if (!rmAllOk(results)) return false;
+        var rows = rmSelectedLive().filter(function (tr) { return tr.getAttribute('data-passlocal') !== '1'; });
+        rmBulkRun('passlocal', rows, {
+            passed: true,
+            apply: function (tr) {
                 tr.setAttribute('data-passlocal', '1');
                 var pl = tr.querySelector('.rm-act-passlocal');
                 if (pl) pl.classList.add('rm-act-active');
                 rmSetPasslocalBadge(tr, true);
-                tr.querySelector('.rm-rowsel').checked = false;
-                return true;
-            }).catch(function () { return false; });
-        }, function (ok, fail) { return 'Passed ' + ok + (fail ? ', ' + fail + ' failed' : '') + ' to local.'; });
-        rmUpdateSelCount();
+                // A newly-passed row still satisfies the "Passed to local" filter, so
+                // it stays right where it is.
+            },
+            msg: function (ok, fail) { return 'Passed ' + ok + (fail ? ', ' + fail + ' failed' : '') + ' to local.'; }
+        });
     });
 })();
 document.querySelector('.rm-bulk-dismiss').addEventListener('click', function () {
-    var rows = rmSelected();
-    tnConfirm({ title: 'Dismiss ' + rows.length + ' recommendation(s)?', body: 'They will be removed from the pending list.', confirmLabel: 'Dismiss all', danger: true, onConfirm: function () {
-        rmBulkSequential(rows, function (tr) {
-            var ids = rmMemberIds(tr);
-            return Promise.all(ids.map(function (id) {
-                var fd = new FormData(); fd.append('RecommendationsId', id);
-                return rmPost(rmRecAjaxBase('dismissrecommendation'), fd);
-            })).then(function (results) {
-                if (!rmAllOk(results)) return false;
-                rmRemoveRow(tr); return true;
-            }).catch(function () { return false; });
-        }, function (ok, fail) { return 'Dismissed ' + ok + (fail ? ', ' + fail + ' failed' : '') + '.'; });
+    var rows = rmSelectedLive();
+    rmConfirm({ title: 'Dismiss ' + rows.length + ' recommendation(s)?', body: 'They will be removed from the pending list.', confirmLabel: 'Dismiss all', danger: true, onConfirm: function () {
+        rmBulkRun('dismiss', rows, {
+            // rmRemoveRow keeps the "Showing X of Y" counters in step for each row.
+            apply: function (tr) { rmRemoveRow(tr); },
+            msg: function (ok, fail) { return 'Dismissed ' + ok + (fail ? ', ' + fail + ' failed' : '') + '.'; }
+        });
     } });
 });
 
@@ -1558,7 +1850,10 @@ document.querySelectorAll('input[name="rm-court-mode"]').forEach(function (r) {
     });
 });
 
-// flatpickr is not loaded on this page; if it ever is, give the date a human-readable display.
+// flatpickr is loaded at the top of this template, so this init is live: the officer
+// sees a readable date ("March 3, 2026") while the posted value stays Y-m-d, which is
+// what CourtAjax/create_court expects for CourtDate. The guard stays as a safety net
+// in case the CDN is unreachable.
 if (typeof flatpickr !== 'undefined') {
     flatpickr('#rm-court-date', { altInput: true, altFormat: 'F j, Y', dateFormat: 'Y-m-d' });
 }
@@ -1572,9 +1867,20 @@ document.getElementById('rm-tbody').addEventListener('click', function (e) {
     rec._tr = tr;
     rmOpenCourtModal([rec]);
 });
+// Bulk Undelete — only ever runs on the dismissed half of the selection, so a
+// mixed selection restores what it can and leaves live rows alone.
+document.querySelector('.rm-bulk-undelete').addEventListener('click', function () {
+    var rows = rmSelectedDismissed();
+    rmBulkRun('undelete', rows, {
+        // The row rejoins the live list. serverGone=false: with "Show dismissed" on
+        // it was already inside the current result set, so total must not move.
+        apply: function (tr) { rmRemoveRow(tr, false); },
+        msg: function (ok, fail) { return 'Undeleted ' + ok + (fail ? ', ' + fail + ' failed' : '') + '.'; }
+    });
+});
 // Bulk opener.
 document.querySelector('.rm-bulk-court').addEventListener('click', function () {
-    var targets = rmSelected().map(function (tr) {
+    var targets = rmSelectedLive().map(function (tr) {
         var rec = {}; try { rec = JSON.parse(tr.getAttribute('data-rec') || '{}'); } catch (x) {}
         rec.RecommendationsId = rec.RepRecId;
         rec._tr = tr; return rec;
@@ -1623,7 +1929,10 @@ document.getElementById('rm-court-submit').addEventListener('click', function ()
         } else {
             var sel = document.getElementById('rm-court-select');
             if (!sel || !sel.value) { rmToast('Pick a court.', true); btn.disabled = false; return; }
-            cb(parseInt(sel.value, 10), sel.selectedOptions[0].text);
+            // data-name carries the bare court name; .text is decorated with the
+            // date and status and would land in the badge and the Grant modal.
+            var opt = sel.selectedOptions[0];
+            cb(parseInt(sel.value, 10), opt.dataset.name || opt.text);
         }
     }
     withCourtId(function (courtId, courtName) {
@@ -1649,7 +1958,7 @@ document.getElementById('rm-court-submit').addEventListener('click', function ()
                     existing.push({ CourtId: courtId, CourtAwardId: (j.award && j.award.CourtAwardId) || 0, Name: courtName, CourtDate: '', Status: 'draft' });
                     rec._tr.setAttribute('data-courts', JSON.stringify(existing));
                     rmUpdateCourtBadge(rec._tr, existing);
-                    var box = rec._tr.querySelector('.rm-rowsel'); if (box) box.checked = false;
+                    rmSetRowChecked(rec._tr, false); // must go through the choke point or selCount drifts
                 } else fail++;
                 next();
             }).catch(function () { fail++; next(); });

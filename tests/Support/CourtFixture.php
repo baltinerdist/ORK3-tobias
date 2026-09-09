@@ -20,6 +20,8 @@ final class CourtFixture
     private array $officerIds = [];
     /** @var list<array{officer_id: int, mundane_id: int}> */
     private array $officerSeats = [];
+    /** @var list<int> */
+    private array $recIds = [];
 
     public function __construct(private readonly PDO $pdo)
     {
@@ -192,6 +194,63 @@ final class CourtFixture
         $this->officerIds[] = (int) $this->pdo->lastInsertId();
     }
 
+    /**
+     * First kingdomaward in a kingdom — recommendations need a real one to join to.
+     */
+    public function firstKingdomAwardId(int $kingdomId): array
+    {
+        $st = $this->pdo->prepare(
+            'SELECT kingdomaward_id, award_id FROM ' . DB_PREFIX . 'kingdomaward
+             WHERE kingdom_id = ? ORDER BY kingdomaward_id ASC LIMIT 1'
+        );
+        $st->execute([$kingdomId]);
+
+        return $st->fetch(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    /**
+     * Create an award recommendation. Pass dismissed_by to soft-delete it the way
+     * Player::DeleteAwardRecommendation does (both columns together — the active
+     * queries filter on deleted_by while the deleted-recs report keys on deleted_at,
+     * so a row with only one set would be invisible to both).
+     */
+    public function createRecommendation(int $mundaneId, int $kaId, int $awardId, array $overrides = []): int
+    {
+        $row = array_merge([
+            'rank'              => 1,
+            'recommended_by_id' => $mundaneId,
+            'date_recommended'  => date('Y-m-d'),
+            'mask_giver'        => 0,
+            'reason'            => 'Fixture recommendation.',
+            'dismissed_by'      => null,
+        ], $overrides);
+
+        $st = $this->pdo->prepare(
+            'INSERT INTO ' . DB_PREFIX . 'recommendations
+             (mundane_id, kingdomaward_id, award_id, rank, recommended_by_id,
+              date_recommended, mask_giver, reason, deleted_at, deleted_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        );
+        $st->execute([
+            $mundaneId, $kaId, $awardId, $row['rank'], $row['recommended_by_id'],
+            $row['date_recommended'], $row['mask_giver'], $row['reason'],
+            $row['dismissed_by'] ? date('Y-m-d H:i:s') : null,
+            $row['dismissed_by'] ?: null,
+        ]);
+        $id = (int) $this->pdo->lastInsertId();
+        $this->recIds[] = $id;
+
+        return $id;
+    }
+
+    public function fetchRecommendation(int $recId): array
+    {
+        $st = $this->pdo->prepare('SELECT * FROM ' . DB_PREFIX . 'recommendations WHERE recommendations_id = ?');
+        $st->execute([$recId]);
+
+        return $st->fetch(PDO::FETCH_ASSOC) ?: [];
+    }
+
     public function fetchCourt(int $courtId): array
     {
         $st = $this->pdo->prepare('SELECT * FROM ' . DB_PREFIX . 'court WHERE court_id = ?');
@@ -212,6 +271,7 @@ final class CourtFixture
     {
         $this->deleteIn('court_award', 'court_award_id', $this->awardIds);
         $this->deleteIn('court', 'court_id', $this->courtIds);
+        $this->deleteIn('recommendations', 'recommendations_id', $this->recIds);
 
         // Put borrowed officer seats back before the stand-in players go away.
         $restore = $this->pdo->prepare(
@@ -224,7 +284,7 @@ final class CourtFixture
 
         $this->deleteIn('officer', 'officer_id', $this->officerIds);
         $this->deleteIn('mundane', 'mundane_id', $this->mundaneIds);
-        $this->awardIds = $this->courtIds = $this->officerIds = $this->mundaneIds = [];
+        $this->awardIds = $this->courtIds = $this->officerIds = $this->mundaneIds = $this->recIds = [];
     }
 
     private function deleteIn(string $table, string $pk, array $ids): void

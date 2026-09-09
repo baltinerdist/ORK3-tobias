@@ -7,6 +7,9 @@
         // for every not-yet-earned rec, so the old $cur comparison never yielded 'below'.
         $elig    = !$isLad ? 'nonladder' : (!empty($group['AlreadyHas']) ? 'ator' : 'below');
         $snoozed = !empty($group['IsSnoozed']) ? 1 : 0;
+        // A cluster is dismissed only when every member recommendation is; live
+        // clusters never carry this even with the Show-dismissed filter on.
+        $dismissed = !empty($group['IsDismissed']) ? 1 : 0;
         $pid     = (int)$group['ParkId'];
         $abbrev  = $Parks[$pid]['Abbrev'] ?? '';
         $memberIds = $group['MemberRecIds'];
@@ -21,7 +24,7 @@
         $membersFull = array_map(function ($m) {
             return [
                 'By'      => $m['RecommendedByName'] ?? (!empty($m['IsAnonymous']) ? 'Anonymous' : ''),
-                'Date'    => $m['DateRecommended'] ?? '',
+                'Date'    => rmNiceDate($m['DateRecommended'] ?? ''),
                 'Reason'  => $m['Reason'] ?? '',
                 'Seconds' => array_map(function ($s) {
                     return ['Name' => $s['SupporterName'] ?? '', 'Notes' => $s['Notes'] ?? ''];
@@ -42,7 +45,7 @@
         ]), ENT_QUOTES);
         $membersJson = htmlspecialchars(json_encode($memberIds), ENT_QUOTES);
     ?>
-      <tr class="rm-row" data-rec-cluster="<?= (int)$group['MundaneId'] ?>:<?= (int)$group['KingdomAwardId'] ?>:<?= (int)$group['Rank'] ?>" data-snoozed="<?= $snoozed ?>"
+      <tr class="rm-row" data-rec-cluster="<?= (int)$group['MundaneId'] ?>:<?= (int)$group['KingdomAwardId'] ?>:<?= (int)$group['Rank'] ?>" data-snoozed="<?= $snoozed ?>" data-dismissed="<?= $dismissed ?>"
           data-passlocal="<?= !empty($group['PassedToLocal']) ? 1 : 0 ?>"
           data-courts='<?= $courtJson ?>'
           data-rec='<?= $gpayload ?>'
@@ -60,12 +63,21 @@
           <?php if (!empty($group['AlreadyHas'])) { ?><span class="rm-badge rm-badge-has">already has</span><?php } ?>
           <?php if (!empty($group['PassedToLocal'])) { ?><span class="rm-badge rm-badge-passlocal" data-tip="Passed to the local park to award."><i class="fas fa-arrow-down"></i> passed to local</span><?php } ?>
           <?php if ($elig === 'below') { ?><span class="rm-badge rm-badge-below">below rec.</span><?php } ?>
+          <?php if ($dismissed) {
+              // Keep the badge the size of its siblings and put the provenance in the
+              // tooltip — who retired it and when is detail, not a label.
+              $dBy  = trim((string)($group['DismissedByPersona'] ?? ''));
+              $dAt  = rmNiceDate($group['DismissedAt'] ?? '');
+              $dWho = $dBy !== '' ? ' by ' . $dBy : '';
+              $dWhen = $dAt !== '' ? ' on ' . $dAt : '';
+              $dTip = 'Dismissed' . $dWho . $dWhen . '. Dismissed recommendations are kept, not deleted — undelete returns this to the pending list.';
+          ?><span class="rm-badge rm-badge-dismissed" data-tip="<?= htmlspecialchars($dTip) ?>">dismissed</span><?php } ?>
         </td>
         <td class="rm-col-rank">
           <?php if ($isLad) { ?><span class="ladder-rank" data-lvl="<?= min($gRank, 10) ?>"><?= $gRank ?></span><?php } else { ?><span class="rm-rank rm-nonladder">non-ladder</span><?php } ?>
         </td>
         <td class="rm-col-rec">
-          <span class="rm-date"><?= htmlspecialchars($group['OldestDate'] ?? '') ?></span>
+          <span class="rm-date"><?= htmlspecialchars(rmNiceDate($group['OldestDate'] ?? '')) ?></span>
           <span class="rm-age"><?= (int)$group['OldestAgeDays'] ?>d</span>
           <?php if ($memberCount > 1) { ?><span class="rm-by"><?= $memberCount ?> recommenders</span><?php } else { ?><span class="rm-by"><?= htmlspecialchars($membersFull[0]['By'] ?? '') ?></span><?php } ?>
         </td>
@@ -88,12 +100,16 @@
           <?php } else { ?><span class="rm-empty">&mdash;</span><?php } ?>
         </td>
         <td class="rm-col-act">
+          <?php if ($dismissed) { ?>
+          <button type="button" class="rm-act rm-act-undelete" data-tip="Undelete &mdash; return this recommendation to the pending list" aria-label="Undelete recommendation"><i class="fas fa-trash-can-arrow-up"></i></button>
+          <?php } else { ?>
           <button type="button" class="rm-act rm-act-grant"  data-tip="Grant now">&#9889;</button>
           <button type="button" class="rm-act rm-act-court"  data-tip="Add to court">&#65291;</button>
           <button type="button" class="rm-act rm-act-snooze"><span class="rm-snooze-ico"><?= $snoozed ? '&#128276;' : '&#128164;' ?></span><span class="rm-snooze-tip"><?php if ($snoozed) { ?><strong>Unsnooze</strong>Restore this recommendation to the active list.<?php } else { ?><strong>Snooze to Next Monarchy</strong>Temporarily dismiss this recommendation until either the Monarch or Regent officer at this level changes.<?php } ?></span></button>
           <?php if (($Context ?? '') === 'kingdom') { ?><button type="button" class="rm-act rm-act-passlocal<?= !empty($group['PassedToLocal']) ? ' rm-act-active' : '' ?>"><i class="fas fa-arrow-down"></i><span class="rm-passlocal-tip"><strong>Send to Local Park</strong>For recommendations at a higher level than the park can provide, you are granting authority for that park to award at this level.</span></button><?php } ?>
           <button type="button" class="rm-act rm-act-dismiss" data-tip="Already given out previously? No plans to award this? You can dismiss this rec.">&#10005;</button>
           <button type="button" class="rm-act rm-act-more" data-tip="More actions" aria-label="More actions" aria-expanded="false">&hellip;</button>
+          <?php } ?>
           <div class="rm-act-help" hidden>
             <strong>Snooze</strong> sets this aside until the Monarch or Regent changes.
             <?php if (($Context ?? '') === 'kingdom') { ?><strong>Pass down</strong> grants the local park authority to award at this level. <?php } ?>

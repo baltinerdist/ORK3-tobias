@@ -562,12 +562,32 @@ class Report extends Ork3
      */
     public function groupRecommendations($recs)
     {
+        // Dismissal is a CLUSTER-level property, not a member-level one. Several
+        // people can recommend the same honor, and each of those recommendations can
+        // be dismissed independently — but the honor is still live while any one of
+        // them stands. So: a cluster counts as dismissed only when EVERY member is,
+        // and the dismissed members of a still-live cluster are dropped rather than
+        // folded in, leaving live rows (and their support counts) exactly as they
+        // look without the flag. Without IncludeDismissed no dismissed rows reach
+        // here at all, so this is inert on the default path.
+        $liveByKey = [];
+        foreach ((array)$recs as $rec) {
+            if (empty($rec['IsDismissed'])) {
+                $liveByKey[(int)($rec['MundaneId'] ?? 0) . ':'
+                    . (int)($rec['KingdomAwardId'] ?? 0) . ':'
+                    . (int)($rec['Rank'] ?? 0)] = true;
+            }
+        }
+
         $groups = [];
         foreach ((array)$recs as $rec) {
             $mid  = (int)($rec['MundaneId'] ?? 0);
             $kaid = (int)($rec['KingdomAwardId'] ?? 0);
             $rank = (int)($rec['Rank'] ?? 0);
             $key  = $mid . ':' . $kaid . ':' . $rank;
+            if (!empty($rec['IsDismissed']) && isset($liveByKey[$key])) {
+                continue;
+            }
             if (!isset($groups[$key])) {
                 $groups[$key] = [
                     'MundaneId'      => $mid,
@@ -584,6 +604,9 @@ class Report extends Ork3
                     'OldestAgeDays'  => 0,
                     'OldestDate'     => $rec['DateRecommended'] ?? '',
                     'RepRecId'       => (int)($rec['RecommendationsId'] ?? 0),
+                    'IsDismissed'        => false,
+                    'DismissedAt'        => null,
+                    'DismissedByPersona' => '',
                     '_advocates'     => [],
                     '_hasNamedRec'   => false,
                     '_allSnoozed'    => true,
@@ -598,6 +621,12 @@ class Report extends Ork3
                 $g['OldestAgeDays'] = $age;
                 $g['OldestDate']    = $rec['DateRecommended'] ?? '';
                 $g['RepRecId']      = (int)($rec['RecommendationsId'] ?? 0);
+            }
+            if (!empty($rec['IsDismissed'])
+                && ($g['DismissedAt'] === null || (string)($rec['DismissedAt'] ?? '') > (string)$g['DismissedAt'])
+            ) {
+                $g['DismissedAt']        = $rec['DismissedAt'] ?? null;
+                $g['DismissedByPersona'] = $rec['DismissedByPersona'] ?? '';
             }
             if (!empty($rec['RecommendedById'])) {
                 $g['_advocates'][(int)$rec['RecommendedById']] = true;
@@ -619,6 +648,7 @@ class Report extends Ork3
         foreach ($groups as $k => $g) {
             unset($g['_advocates'][$g['MundaneId']]);
             $groups[$k]['SupportCount']  = max(0, count($g['_advocates']) - ($g['_hasNamedRec'] ? 1 : 0));
+            $groups[$k]['IsDismissed']   = !isset($liveByKey[$k]);
             $groups[$k]['IsSnoozed']     = $g['_allSnoozed'];
             $groups[$k]['PassedToLocal'] = $g['_allPassed'];
             unset($groups[$k]['_advocates'], $groups[$k]['_hasNamedRec'], $groups[$k]['_allSnoozed'], $groups[$k]['_allPassed']);
@@ -635,10 +665,18 @@ class Report extends Ork3
         $viewer_id = (int)($request['RequestedBy'] ?? 0);
         $recIdList = isset($request['RecommendationsIdIn']) ? (array)$request['RecommendationsIdIn'] : null;
         $skipCache = !empty($request['SkipCache']) || $recIdList !== null;
+        // Opt-in: fold soft-deleted (dismissed) recommendations back in. Off by
+        // default, so every existing caller keeps the live-only view.
+        $includeDismissed = !empty($request['IncludeDismissed']);
+        $dismissedClause  = $includeDismissed
+            ? '1 = 1'
+            : '(recs.deleted_by IS NULL OR recs.deleted_by = 0)';
         $key = Ork3::$Lib->ghettocache->key([
-            'KingdomId' => (int)($request['KingdomId'] ?? 0),
-            'ParkId'    => (int)($request['ParkId']    ?? 0),
-            'PlayerId'  => (int)($request['PlayerId']  ?? 0),
+            'KingdomId'        => (int)($request['KingdomId'] ?? 0),
+            'ParkId'           => (int)($request['ParkId']    ?? 0),
+            'PlayerId'         => (int)($request['PlayerId']  ?? 0),
+            // Two different row sets must never share a cache entry.
+            'IncludeDismissed' => $includeDismissed ? 1 : 0,
         ]);
         if (!$skipCache && ($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 300)) !== false) {
             return $this->applyViewerFlags($cache, $viewer_id);
@@ -684,6 +722,7 @@ class Report extends Ork3
 			recs.mask_giver,
 			recs.deleted_at,
 			recs.deleted_by,
+			dbm.persona as deleted_by_persona,
 			recs.snoozed_monarch_id,
 			recs.snoozed_regent_id,
 			recs.passed_to_local,
@@ -709,9 +748,10 @@ class Report extends Ork3
 			LEFT JOIN " . DB_PREFIX . "award a on a.award_id = ka.award_id
 			LEFT join " . DB_PREFIX . "mundane m on m.mundane_id = recs.mundane_id
 			LEFT join " . DB_PREFIX . "mundane rbi on rbi.mundane_id = recs.recommended_by_id
+			LEFT join " . DB_PREFIX . "mundane dbm on dbm.mundane_id = recs.deleted_by
 			LEFT join " . DB_PREFIX . "park p on p.park_id = m.park_id
 			LEFT join " . DB_PREFIX . "kingdom k on k.kingdom_id = m.kingdom_id
-			WHERE (recs.deleted_by IS NULL OR recs.deleted_by = 0)
+			WHERE $dismissedClause
 			  AND m.active = 1 AND (m.suspended IS NULL OR m.suspended = 0)
 			  $location_clause
 			  $idClause
@@ -765,6 +805,11 @@ class Report extends Ork3
                     'current_monarch_id' => (int)$r->current_monarch_id,
                     'current_regent_id'  => (int)$r->current_regent_id,
                     'on_court_count'     => (int)$r->on_court_count,
+                    // This snapshot is an explicit whitelist — a column added to the
+                    // SELECT but not copied here is silently invisible downstream.
+                    'deleted_by'         => $r->deleted_by,
+                    'deleted_at'         => $r->deleted_at,
+                    'deleted_by_persona' => $r->deleted_by_persona,
                 ];
                 $recAwardId = $row->ka_award_id ?: $row->recs_award_id;
                 if (isset($ladderMap[$recAwardId])) {
@@ -841,6 +886,11 @@ class Report extends Ork3
                     'AwardName' => $row->award_name,
                     'Reason' => $row->reason,
                     'IsAnonymous' => $isAnon,
+                    // Dismissal is surfaced only when the caller asked for it; a
+                    // live-only page never carries these.
+                    'IsDismissed'        => !empty($row->deleted_by),
+                    'DismissedAt'        => $row->deleted_at,
+                    'DismissedByPersona' => $row->deleted_by_persona,
                     'RecommendedByName' => $row->recommended_by_persona,
                     'RecommendedById'   => $row->recommended_by_id,
                     'MaskGiver' => $row->mask_giver,
@@ -902,6 +952,14 @@ class Report extends Ork3
     {
         $limit  = max(1, (int)($request['Limit']  ?? 500));
         $offset = max(0, (int)($request['Offset'] ?? 0));
+
+        // "Show dismissed": relax the soft-delete filter. It has to move in BOTH the
+        // paging query and the hydration id lookup below, or dismissed clusters would
+        // be counted and paged but then hydrate to nothing.
+        $includeDismissed     = !empty($request['IncludeDismissed']);
+        $pageDismissedClause  = $includeDismissed
+            ? '1 = 1'
+            : '(recs.deleted_by IS NULL OR recs.deleted_by = 0)';
 
         $scope = '';
         if (valid_id($request['KingdomId'] ?? 0)) {
@@ -1002,7 +1060,7 @@ class Report extends Ork3
             . " LEFT JOIN " . DB_PREFIX . "kingdomaward ka ON ka.kingdomaward_id = recs.kingdomaward_id"
             . " LEFT JOIN " . DB_PREFIX . "award a ON a.award_id = ka.award_id"
             . " LEFT JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = recs.mundane_id"
-            . " WHERE (recs.deleted_by IS NULL OR recs.deleted_by = 0)"
+            . " WHERE $pageDismissedClause"
             . " AND m.active = 1 AND (m.suspended IS NULL OR m.suspended = 0)"
             . $scope . $whereSql;
 
@@ -1035,7 +1093,7 @@ class Report extends Ork3
             $orParts[] = '(recs.mundane_id = ' . $c[0] . ' AND recs.kingdomaward_id = ' . $c[1] . ' AND COALESCE(recs.rank,0) = ' . $c[2] . ')';
         }
         $this->db->Clear();
-        $ir = $this->db->query("SELECT recs.recommendations_id FROM " . DB_PREFIX . "recommendations recs LEFT JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = recs.mundane_id WHERE (recs.deleted_by IS NULL OR recs.deleted_by = 0) AND (" . implode(' OR ', $orParts) . ")");
+        $ir = $this->db->query("SELECT recs.recommendations_id FROM " . DB_PREFIX . "recommendations recs LEFT JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = recs.mundane_id WHERE $pageDismissedClause AND (" . implode(' OR ', $orParts) . ")");
         $pageRecIds = [];
         if ($ir !== false) {
             while ($ir->next()) {
@@ -1050,6 +1108,7 @@ class Report extends Ork3
             'RequestedBy' => (int)($request['RequestedBy'] ?? 0),
             'RecommendationsIdIn' => $pageRecIds,
             'SkipCache'   => true,
+            'IncludeDismissed' => $includeDismissed,
         ]);
         $rows = is_array($hyd) && isset($hyd['AwardRecommendations']) ? $hyd['AwardRecommendations'] : [];
 

@@ -1,11 +1,36 @@
 <?php
 
+/**
+ * Render a DB date as a human-readable one for the Recommendations Manager.
+ *
+ * Defined here rather than in a template because both include sites for
+ * _rm_row.tpl (manage() and the rows() JSON batch) need it, and rows() never
+ * loads Recommendations_manage.tpl. Empty and zero dates pass through as ''
+ * so callers can keep using empty() checks.
+ */
+if (!function_exists('rmNiceDate')) {
+    function rmNiceDate($date)
+    {
+        $date = trim((string)$date);
+        if ($date === '' || strpos($date, '0000-00-00') === 0) {
+            return '';
+        }
+        $ts = strtotime($date);
+        return $ts === false ? $date : date('M j, Y', $ts);
+    }
+}
+
 class Controller_Recommendations extends Controller
 {
     public function __construct($call = null, $id = null)
     {
         parent::__construct($call, $id);
         $this->load_model('Court');
+        // orkui/model is the only membrane to the lib; these back the location
+        // lookups, officer preloads and per-recommendation writes below.
+        $this->load_model('Kingdom');
+        $this->load_model('Park');
+        $this->load_model('Player');
     }
 
     // Route: ?Route=Recommendations/manage/kingdom/{kingdom_id}
@@ -29,10 +54,10 @@ class Controller_Recommendations extends Controller
         // Location name (DB lives in the lib short-info getters).
         $locationName = '';
         if ($park_id > 0) {
-            $pi = Ork3::$Lib->park->GetParkShortInfo(['ParkId' => $park_id]);
+            $pi = $this->Park->get_park_info($park_id);
             $locationName = $pi['ParkInfo']['ParkName'] ?? '';
         } else {
-            $ki = Ork3::$Lib->kingdom->GetKingdomShortInfo(['KingdomId' => $kingdom_id]);
+            $ki = $this->Kingdom->get_kingdom_info($kingdom_id);
             $locationName = $ki['KingdomInfo']['KingdomName'] ?? '';
         }
 
@@ -58,7 +83,10 @@ class Controller_Recommendations extends Controller
         $courtMap = $this->rmCourtMap($kingdom_id, $park_id);
 
         // Courts in scope (Add-to-Court existing-court picker + specific-court filter).
-        $courts = $this->Court->get_court_list($kingdom_id, $park_id);
+        // Include subordinate park courts: the Manager's badges and its court filter must
+        // describe the SAME set of courts, so a kingdom officer sees a rec already staged
+        // on a park court and is not able to double-book the honor.
+        $courts = $this->Court->get_court_list($kingdom_id, $park_id, true);
 
         $this->data['CourtMap'] = $courtMap;
         $this->data['Courts']   = $courts;
@@ -71,7 +99,7 @@ class Controller_Recommendations extends Controller
         $this->data['LocationName'] = $locationName;
         $this->data['Uid']          = $uid;
         // Granting officer's persona — the default "Given By" in the Grant Award modal.
-        $me = $uid > 0 ? Ork3::$Lib->player->player_info($uid) : false;
+        $me = $uid > 0 ? $this->Player->player_info($uid) : false;
         $this->data['UserName'] = is_array($me) ? ($me['Persona'] ?? '') : '';
 
         // Preloaded Monarch/Regent officers — quick-pick chips for "Given By" in the
@@ -90,9 +118,12 @@ class Controller_Recommendations extends Controller
             }
         };
         if ($park_id > 0) {
-            $addOfficers(Ork3::$Lib->park->GetOfficers(['ParkId' => $park_id, 'Token' => $token]), '');
+            // Model_Park::get_officers() returns the officer list (or false); the
+            // closure reads the ['Officers'] shape the lib getter used to hand back.
+            $parkOfficers = $this->Park->get_officers($park_id, $token);
+            $addOfficers(['Officers' => is_array($parkOfficers) ? $parkOfficers : []], '');
         }
-        $addOfficers(Ork3::$Lib->kingdom->GetOfficers(['KingdomId' => $kingdom_id, 'Token' => $token]), $park_id > 0 ? 'Kingdom ' : '');
+        $addOfficers($this->Kingdom->get_officers_bundle($kingdom_id, $token), $park_id > 0 ? 'Kingdom ' : '');
         $this->data['PreloadOfficers'] = $preloadOfficers;
     }
 
@@ -104,6 +135,10 @@ class Controller_Recommendations extends Controller
         [$kingdom_id, $park_id, $context, $uid, $authStatus] = $this->resolveContext($context, $id);
 
         header('Content-Type: application/json');
+        // Rows carry per-viewer content (anonymous recommenders are unmasked only
+        // for admins), so this must never sit in a shared or browser cache —
+        // export() already sets the same header.
+        header('Cache-Control: no-store');
         if ($authStatus !== null) {
             http_response_code(403);
             echo json_encode(['error' => 'forbidden']);
@@ -119,6 +154,8 @@ class Controller_Recommendations extends Controller
             'Court'       => (string)($_GET['court'] ?? 'all'),
             'Park'        => (string)($_GET['park'] ?? 'all'),
             'PassLocal'   => !empty($_GET['passlocal']),
+            // Opt-in: fold dismissed (soft-deleted) recommendations into the list.
+            'IncludeDismissed' => !empty($_GET['dismissed']),
             'SortKey'     => (string)($_GET['sort'] ?? 'date'),
             'SortDir'     => (string)($_GET['dir'] ?? 'desc'),
             'Limit'       => 500,
@@ -143,6 +180,118 @@ class Controller_Recommendations extends Controller
             'total'   => (int)$page['Total'],
             'hasMore' => (bool)$page['HasMore'],
             'offset'  => (int)$page['NextOffset'],
+        ]);
+        exit;
+    }
+
+    // Route: POST ?Route=Recommendations/bulk/kingdom/{id} or /bulk/park/{id}
+    // POST: Action=dismiss|snooze|unsnooze|passlocal, Ids=comma-separated rec ids,
+    // Passed=0|1 (passlocal only).
+    //
+    // One round trip for a whole bulk selection instead of one POST per rec. Each id
+    // still goes through the SAME model call the per-row endpoints use, because the
+    // lib enforces authority against the recommendation's OWN park/kingdom — tighter
+    // than the route scope resolved here. Per-id outcomes are reported individually
+    // so a partial failure is not shown to the officer as a total failure.
+    public function bulk($context = null, $id = null)
+    {
+        [$kingdom_id, $park_id, $context, $uid, $authStatus] = $this->resolveContext($context, $id);
+
+        header('Content-Type: application/json');
+        header('Cache-Control: no-store');
+        if ($authStatus !== null) {
+            http_response_code(403);
+            echo json_encode(['error' => 'forbidden']);
+            exit;
+        }
+
+        // Ids/Action must be scalar: a stray Ids[]=/Action[]= would make PHP emit an
+        // "Array to string conversion" warning INTO the already-started JSON body.
+        $action = is_array($_POST['Action'] ?? null) ? '' : (string)($_POST['Action'] ?? '');
+        if (!in_array($action, ['dismiss', 'snooze', 'unsnooze', 'passlocal', 'undelete'], true)) {
+            echo json_encode(['status' => 1, 'ok' => 0, 'failed' => 0, 'results' => [], 'error' => 'Invalid action.']);
+            exit;
+        }
+        $passed = !empty($_POST['Passed']) ? 1 : 0;
+        $token  = $this->session->token;
+
+        $ids = is_array($_POST['Ids'] ?? null) ? '' : (string)($_POST['Ids'] ?? '');
+        $raw = array_filter(array_map('trim', explode(',', $ids)), 'strlen');
+        // Sane batch cap. Anything past it is NOT silently dropped: the client reads a
+        // missing id as a failed row, so truncation must report itself per id.
+        $overflow = array_slice($raw, 1000);
+        $raw      = array_slice($raw, 0, 1000);
+
+        $results = [];
+        $ok      = 0;
+        $failed  = 0;
+        foreach ($overflow as $rawId) {
+            $results[] = ['id' => (int)$rawId, 'ok' => false, 'error' => 'Batch limit exceeded (1000).'];
+            $failed++;
+        }
+        foreach ($raw as $rawId) {
+            $rec_id = (int)$rawId;
+            if (!valid_id($rec_id)) {
+                // A bad id fails on its own; the rest of the batch still runs.
+                $results[] = ['id' => $rec_id, 'ok' => false, 'error' => 'Invalid recommendation.'];
+                $failed++;
+                continue;
+            }
+
+            if ($action === 'dismiss') {
+                $r = $this->Player->delete_player_recommendation([
+                    'Token'             => $token,
+                    'RecommendationsId' => $rec_id,
+                    'RequestedBy'       => $uid,
+                    'Granted'           => 0,
+                ]);
+            } elseif ($action === 'snooze') {
+                $r = $this->Player->snooze_recommendation([
+                    'Token'             => $token,
+                    'RecommendationsId' => $rec_id,
+                ]);
+            } elseif ($action === 'unsnooze') {
+                $r = $this->Player->unsnooze_recommendation([
+                    'Token'             => $token,
+                    'RecommendationsId' => $rec_id,
+                ]);
+            } elseif ($action === 'undelete') {
+                // Restore clears deleted_at AND deleted_by, and cascades back only to
+                // the seconds retired in the same operation. Authority is checked per
+                // recommendation inside the lib, as with every other verb here.
+                $r = $this->Player->restore_player_recommendation([
+                    'Token'             => $token,
+                    'RecommendationsId' => $rec_id,
+                    'RequestedBy'       => $uid,
+                ]);
+            } else {
+                $r = $this->Player->set_recommendation_passed_to_local([
+                    'Token'             => $token,
+                    'RecommendationsId' => $rec_id,
+                    'Passed'            => $passed,
+                    'RequestedBy'       => $uid,
+                ]);
+            }
+
+            if (is_array($r) && (int)($r['Status'] ?? 1) === 0) {
+                $results[] = ['id' => $rec_id, 'ok' => true, 'error' => null];
+                $ok++;
+            } else {
+                $results[] = [
+                    'id'    => $rec_id,
+                    'ok'    => false,
+                    'error' => (is_array($r) ? ($r['Error'] ?? 'Error') : 'Error')
+                        . ': ' . (is_array($r) ? ($r['Detail'] ?? '') : ''),
+                ];
+                $failed++;
+            }
+        }
+
+        echo json_encode([
+            'status'  => 0,
+            'ok'      => $ok,
+            'failed'  => $failed,
+            'results' => $results,
         ]);
         exit;
     }
@@ -194,6 +343,8 @@ class Controller_Recommendations extends Controller
             'Court'       => (string)($_GET['court'] ?? 'all'),
             'Park'        => (string)($_GET['park'] ?? 'all'),
             'PassLocal'   => !empty($_GET['passlocal']),
+            // Opt-in: fold dismissed (soft-deleted) recommendations into the list.
+            'IncludeDismissed' => !empty($_GET['dismissed']),
             'SortKey'     => (string)($_GET['sort'] ?? 'date'),
             'SortDir'     => (string)($_GET['dir'] ?? 'desc'),
             'Limit'       => 1000000, // full set — export is never paged
@@ -291,7 +442,10 @@ class Controller_Recommendations extends Controller
         $park_id    = 0;
         if ($context === 'park') {
             $park_id    = $id;
-            $kingdom_id = (int)Ork3::$Lib->park->GetParkKingdomId($park_id);
+            // get_park_info() (GetParkShortInfo) already carries KingdomId, so the
+            // parent lookup needs no second membrane method.
+            $pi         = $this->Park->get_park_info($park_id);
+            $kingdom_id = (int)($pi['ParkInfo']['KingdomId'] ?? 0);
         } else {
             $kingdom_id = $id;
         }
@@ -309,7 +463,9 @@ class Controller_Recommendations extends Controller
     // (Court::getRecommendationCourtMap); this is a thin scope-typed accessor.
     private function rmCourtMap($kingdom_id, $park_id)
     {
-        return $this->Court->get_recommendation_court_map($kingdom_id, $park_id);
+        // Park courts included, matching the court list above — badges and filter must
+        // cover the whole tree in scope or the Manager reports a mismatched court set.
+        return $this->Court->get_recommendation_court_map($kingdom_id, $park_id, true);
     }
 
     // Park map for the kingdom-scope filter + row abbrev. DB lives in the lib
@@ -317,7 +473,7 @@ class Controller_Recommendations extends Controller
     private function rmParkMap($kingdom_id)
     {
         $map = [];
-        $res = Ork3::$Lib->kingdom->GetParks(['KingdomId' => (int)$kingdom_id]);
+        $res = $this->Kingdom->get_parks((int)$kingdom_id);
         $rows = (isset($res['Parks']) && is_array($res['Parks'])) ? $res['Parks'] : [];
         foreach ($rows as $p) {
             $pid = (int)($p['ParkId'] ?? $p['park_id'] ?? 0);

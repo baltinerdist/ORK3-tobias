@@ -22,9 +22,9 @@ class Model_Court extends Model
     // Courts
     // -----------------------------------------------------------------------
 
-    public function get_court_list($kingdom_id, $park_id = 0)
+    public function get_court_list($kingdom_id, $park_id = 0, $include_park_courts = false)
     {
-        return $this->_court()->getCourtList($kingdom_id, $park_id);
+        return $this->_court()->getCourtList($kingdom_id, $park_id, $include_park_courts);
     }
 
     public function get_court_detail($court_id)
@@ -228,9 +228,9 @@ class Model_Court extends Model
         return $this->_court()->getPendingRecommendations($kingdom_id, $park_id, $caller_uid, $court_id);
     }
 
-    public function get_recommendation_court_map($kingdom_id, $park_id = 0)
+    public function get_recommendation_court_map($kingdom_id, $park_id = 0, $include_park_courts = false)
     {
-        return $this->_court()->getRecommendationCourtMap($kingdom_id, $park_id);
+        return $this->_court()->getRecommendationCourtMap($kingdom_id, $park_id, $include_park_courts);
     }
 
     public function get_ungranted_from_last_court($kingdom_id, $park_id)
