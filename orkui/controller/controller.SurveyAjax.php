@@ -338,6 +338,11 @@ class Controller_SurveyAjax extends Controller
         $this->jsonOut(['status' => 0, 'question' => $this->renderQuestion($r['Question'])]);
     }
 
+    /**
+     * Update one question. `Type` retypes the card in place (builder footer type
+     * picker) and is refused on a locked survey by the domain, like every other
+     * structural field.
+     */
     public function question_update($p = null)
     {
         $uid        = $this->requireLogin();
@@ -345,7 +350,7 @@ class Controller_SurveyAjax extends Controller
         $this->requireManageRow($uid, $this->Survey->survey_for_question($questionId));
 
         $fields = [];
-        foreach (['Prompt', 'HelpMd', 'ImageId', 'Required', 'ShowIfQuestionId', 'ShowIfOptionId'] as $key) {
+        foreach (['Type', 'Prompt', 'HelpMd', 'ImageId', 'Required', 'ShowIfQuestionId', 'ShowIfOptionId'] as $key) {
             if (array_key_exists($key, $_POST)) {
                 $fields[$key] = $_POST[$key];
             }

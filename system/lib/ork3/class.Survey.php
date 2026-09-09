@@ -1000,7 +1000,11 @@ class Survey
 
     /**
      * Update a question. Prompt / HelpMd / ImageId are copy and stay editable on a
-     * locked survey; Required, Settings and the show_if condition are structural.
+     * locked survey; Type, Required, Settings and the show_if condition are structural.
+     *
+     * Type retypes the card in place (the builder's footer type picker): the prompt,
+     * help text and illustration survive, options survive where the new type owns
+     * their role, and settings reset to the new type's defaults. Unlocked only.
      */
     public function questionUpdate(int $questionId, array $fields): array
     {
@@ -1013,6 +1017,27 @@ class Survey
         $type       = (string) $question['type'];
         $survey     = $this->getRow($surveyId);
         $locked     = $survey !== null && $this->isStructureLocked($survey);
+
+        // Retype first: everything below validates against the type the question
+        // ends up with, not the one it arrived as.
+        if (array_key_exists('Type', $fields)) {
+            $newType = trim((string) $fields['Type']);
+            if ($newType !== '' && $newType !== $type) {
+                if (!SurveyTypes::isType($newType)) {
+                    return $this->fail('That is not a question type.');
+                }
+                if ($locked) {
+                    return $this->fail(self::LOCKED_ERROR);
+                }
+                $this->retypeQuestion($question, $newType);
+                $question = $this->fetchRow('SELECT * FROM ' . DB_PREFIX . 'survey_question
+                                             WHERE question_id = ' . $questionId);
+                if ($question === null) {
+                    return $this->fail('Question not found.');
+                }
+                $type = $newType;
+            }
+        }
 
         $sets = [];
 
@@ -1124,6 +1149,135 @@ class Survey
         $this->touch($surveyId);
 
         return $this->ok();
+    }
+
+    /**
+     * Change a question's type in place, keeping everything the new type can still use.
+     *
+     * Called only from questionUpdate(), which has already proved the type is real and
+     * the survey unlocked. The rules, in the order they are applied:
+     *   - options whose role the new type does not own are dropped (a matrix has no
+     *     'choice' rows, a rating has no options at all);
+     *   - "Other (please specify)" survives only on single / multi / dropdown;
+     *   - yes/no keeps exactly its first two choices, relabelled Yes / No;
+     *   - a role the question has none of gets the full starter set, and a role that
+     *     still has content is topped up to the type's minimum with the seed labels;
+     *   - settings reset to the new type's defaults, and a presentational type forces
+     *     required off (spec §4);
+     *   - conditions elsewhere in the survey that pointed at this question let go when
+     *     it can no longer be a show-if source, or when their option is now gone.
+     */
+    private function retypeQuestion(array $question, string $newType): void
+    {
+        $questionId = (int) $question['question_id'];
+        $surveyId   = (int) $question['survey_id'];
+
+        $roles    = SurveyTypes::OPTION_ROLES[$newType] ?? [];
+        $minimums = SurveyTypes::minOptions($newType);
+        $settings = json_encode(SurveyTypes::defaultSettings($newType));
+        $required = SurveyTypes::isAnswerable($newType) ? (int) $question['required'] : 0;
+
+        $seedsByRole = [];
+        foreach (SurveyTypes::seedOptions($newType) as $seed) {
+            $seedsByRole[(string) $seed['role']][] = (string) $seed['label'];
+        }
+
+        $this->exec('START TRANSACTION');
+
+        if (!$roles) {
+            $this->exec('DELETE FROM ' . DB_PREFIX . 'survey_option WHERE question_id = ' . $questionId);
+        } else {
+            $quoted = [];
+            foreach ($roles as $role) {
+                $quoted[] = '\'' . $this->esc((string) $role) . '\'';
+            }
+            $this->exec('DELETE FROM ' . DB_PREFIX . 'survey_option
+                         WHERE question_id = ' . $questionId . ' AND role NOT IN (' . implode(', ', $quoted) . ')');
+        }
+
+        if (!in_array($newType, ['single', 'multi', 'dropdown'], true)) {
+            $this->exec('UPDATE ' . DB_PREFIX . 'survey_option SET is_other = 0 WHERE question_id = ' . $questionId);
+        }
+
+        if ($newType === 'yesno') {
+            // Yes/No owns its two labels: "Option 1 / Option 2" would be a broken
+            // question. Trim to two rows, then relabel them in place.
+            $keep = $this->fetchAll('SELECT option_id FROM ' . DB_PREFIX . 'survey_option
+                                     WHERE question_id = ' . $questionId . ' AND role = \'choice\'
+                                     ORDER BY sort_order ASC, option_id ASC');
+            $extra = [];
+            foreach (array_slice($keep, 2) as $row) {
+                $extra[] = (int) $row['option_id'];
+            }
+            if ($extra) {
+                $this->exec('DELETE FROM ' . DB_PREFIX . 'survey_option
+                             WHERE option_id IN (' . implode(', ', $extra) . ')');
+            }
+            foreach (array_slice($keep, 0, 2) as $i => $row) {
+                $this->exec('UPDATE ' . DB_PREFIX . 'survey_option
+                             SET label = \'' . $this->esc($seedsByRole['choice'][$i] ?? 'Yes') . '\',
+                                 sort_order = ' . (int) $i . '
+                             WHERE option_id = ' . (int) $row['option_id']);
+            }
+        }
+
+        foreach ($minimums as $role => $min) {
+            $role  = (string) $role;
+            $min   = (int) $min;
+            $count = $this->fetchRow('SELECT COUNT(*) AS c FROM ' . DB_PREFIX . 'survey_option
+                                      WHERE question_id = ' . $questionId . ' AND role = \'' . $this->esc($role) . '\'');
+            $have  = $count === null ? 0 : (int) $count['c'];
+            // An empty role gets the whole starter set (a matrix wants 2 rows and 3
+            // columns to be usable); a role that already has content is only topped
+            // up to the minimum the type demands.
+            $want = $have === 0 ? max($min, count($seedsByRole[$role] ?? [])) : $min;
+            if ($have >= $want) {
+                continue;
+            }
+            $max   = $this->fetchRow('SELECT COALESCE(MAX(sort_order), -1) AS mx FROM ' . DB_PREFIX . 'survey_option
+                                      WHERE question_id = ' . $questionId . ' AND role = \'' . $this->esc($role) . '\'');
+            $order = ($max === null ? 0 : (int) $max['mx'] + 1);
+            $noun  = $role === 'choice' ? 'Option' : ucfirst($role);
+            for ($i = $have; $i < $want; $i++) {
+                $label = $seedsByRole[$role][$i] ?? ($noun . ' ' . ($i + 1));
+                $this->exec(
+                    'INSERT INTO ' . DB_PREFIX . 'survey_option (question_id, role, sort_order, label)
+                     VALUES (' . $questionId . ', \'' . $this->esc($role) . '\', ' . $order . ',
+                             \'' . $this->esc($label) . '\')'
+                );
+                $order++;
+            }
+        }
+
+        if (!in_array($newType, SurveyTypes::SHOW_IF_SOURCES, true)) {
+            $this->exec('UPDATE ' . DB_PREFIX . 'survey_question
+                         SET show_if_question_id = NULL, show_if_option_id = NULL, updated_at = NOW()
+                         WHERE show_if_question_id = ' . $questionId);
+            $this->exec('UPDATE ' . DB_PREFIX . 'survey_page
+                         SET show_if_question_id = NULL, show_if_option_id = NULL
+                         WHERE show_if_question_id = ' . $questionId);
+        } else {
+            $this->exec('UPDATE ' . DB_PREFIX . 'survey_question
+                         SET show_if_question_id = NULL, show_if_option_id = NULL, updated_at = NOW()
+                         WHERE show_if_question_id = ' . $questionId . '
+                           AND show_if_option_id NOT IN (SELECT option_id FROM ' . DB_PREFIX . 'survey_option
+                                                          WHERE question_id = ' . $questionId . ')');
+            $this->exec('UPDATE ' . DB_PREFIX . 'survey_page
+                         SET show_if_question_id = NULL, show_if_option_id = NULL
+                         WHERE show_if_question_id = ' . $questionId . '
+                           AND show_if_option_id NOT IN (SELECT option_id FROM ' . DB_PREFIX . 'survey_option
+                                                          WHERE question_id = ' . $questionId . ')');
+        }
+
+        $this->exec('UPDATE ' . DB_PREFIX . 'survey_question
+                     SET type = \'' . $this->esc($newType) . '\',
+                         settings = \'' . $this->esc((string) $settings) . '\',
+                         required = ' . $required . ',
+                         updated_at = NOW()
+                     WHERE question_id = ' . $questionId);
+
+        $this->exec('COMMIT');
+        $this->touch($surveyId);
     }
 
     /** Reorder the questions on one page. Structural. */

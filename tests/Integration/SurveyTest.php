@@ -208,6 +208,102 @@ final class SurveyTest extends TestCase
         $this->assertSame('draft', (string) $this->survey->getRow($surveyId)['status']);
     }
 
+    /**
+     * questionUpdate(['Type' => …]) is what the builder's footer type picker calls
+     * (plan Task 10 Step 2). The prompt survives, options survive where the new
+     * type owns their role, and settings reset to the new type's defaults.
+     */
+    public function testRetypeKeepsThePromptAndReusesOptionsTheNewTypeOwns(): void
+    {
+        $ctx = $this->buildSurvey();
+        $questionId = $ctx['q_single'];
+        $before = $this->optionIds($questionId, 'choice');
+        $this->assertCount(3, $before);
+
+        // single -> multi: same role, so the option rows keep their ids (and any
+        // answers already attached to them).
+        $toMulti = $this->survey->questionUpdate($questionId, ['Type' => 'multi']);
+        $this->assertSame(0, $toMulti['Status'], (string) ($toMulti['Error'] ?? ''));
+        $this->assertSame('multi', (string) $toMulti['Question']['type']);
+        $this->assertSame(self::MARKER . ' Which weapon style?', (string) $toMulti['Question']['prompt']);
+        $this->assertSame($before, $this->optionIds($questionId, 'choice'));
+        $this->assertSame(false, $toMulti['Question']['settings']['randomize']);
+        $this->assertSame(0, (int) $toMulti['Question']['settings']['min_select']);
+        $this->assertSame(0, (int) $toMulti['Question']['settings']['max_select']);
+
+        // multi -> yesno: exactly two choices, relabelled, and the "other" flag
+        // (which only single/multi/dropdown support) is cleared.
+        $toYesNo = $this->survey->questionUpdate($questionId, ['Type' => 'yesno']);
+        $this->assertSame(0, $toYesNo['Status'], (string) ($toYesNo['Error'] ?? ''));
+        $labels = [];
+        $others = [];
+        foreach ($toYesNo['Question']['Options'] as $o) {
+            $labels[] = (string) $o['label'];
+            $others[] = (int) $o['is_other'];
+        }
+        $this->assertSame(['Yes', 'No'], $labels);
+        $this->assertSame([0, 0], $others);
+
+        // yesno -> matrix: 'choice' is not a matrix role, so those rows go and the
+        // starter grid is seeded in their place.
+        $toMatrix = $this->survey->questionUpdate($questionId, ['Type' => 'matrix']);
+        $this->assertSame(0, $toMatrix['Status'], (string) ($toMatrix['Error'] ?? ''));
+        $this->assertSame([], $this->optionIds($questionId, 'choice'));
+        $this->assertCount(2, $this->optionIds($questionId, 'row'));
+        $this->assertCount(3, $this->optionIds($questionId, 'column'));
+
+        // matrix -> short_text: no options at all.
+        $toText = $this->survey->questionUpdate($questionId, ['Type' => 'short_text']);
+        $this->assertSame(0, $toText['Status'], (string) ($toText['Error'] ?? ''));
+        $this->assertSame([], $this->optionIds($questionId, 'row'));
+        $this->assertSame([], $this->optionIds($questionId, 'column'));
+        $this->assertSame(200, (int) $toText['Question']['settings']['max_length']);
+    }
+
+    public function testRetypeAwayFromAChoiceTypeReleasesConditionsPointingAtIt(): void
+    {
+        $ctx = $this->buildSurvey();
+
+        // The paragraph on page 2 is shown only when the page-1 single answers opt_a.
+        $cond = $this->survey->questionUpdate($ctx['q_paragraph'], [
+            'ShowIfQuestionId' => $ctx['q_single'],
+            'ShowIfOptionId'   => $ctx['opt_a'],
+        ]);
+        $this->assertSame(0, $cond['Status'], (string) ($cond['Error'] ?? ''));
+        $this->assertSame($ctx['q_single'], (int) $cond['Question']['show_if_question_id']);
+
+        // A rating cannot be a show-if source, so the condition must let go.
+        $retype = $this->survey->questionUpdate($ctx['q_single'], ['Type' => 'rating']);
+        $this->assertSame(0, $retype['Status'], (string) ($retype['Error'] ?? ''));
+
+        $row = $this->pdo->query(
+            'SELECT show_if_question_id, show_if_option_id FROM ' . DB_PREFIX . 'survey_question
+              WHERE question_id = ' . $ctx['q_paragraph']
+        )->fetch(PDO::FETCH_ASSOC);
+        $this->assertNull($row['show_if_question_id']);
+        $this->assertNull($row['show_if_option_id']);
+    }
+
+    public function testRetypeIsRefusedOnALockedSurveyAndForAnUnknownType(): void
+    {
+        $ctx = $this->buildSurvey();
+
+        $bogus = $this->survey->questionUpdate($ctx['q_single'], ['Type' => 'telepathy']);
+        $this->assertSame(1, $bogus['Status']);
+        $this->assertSame('That is not a question type.', $bogus['Error']);
+        $this->assertSame('single', (string) $this->survey->get($ctx['survey_id'])['Questions'][0]['type']);
+
+        $this->assertSame(0, $this->survey->setStatus($ctx['survey_id'], 'open')['Status']);
+
+        $locked = $this->survey->questionUpdate($ctx['q_single'], ['Type' => 'dropdown']);
+        $this->assertSame(1, $locked['Status']);
+        $this->assertSame(Survey::LOCKED_ERROR, $locked['Error']);
+
+        // Wording still saves on the same call path.
+        $copy = $this->survey->questionUpdate($ctx['q_single'], ['Prompt' => self::MARKER . ' still editable']);
+        $this->assertSame(0, $copy['Status'], (string) ($copy['Error'] ?? ''));
+    }
+
     // ------------------------------------------------------------------
     // Case 3 — submissions and the consent data gate
     // ------------------------------------------------------------------
