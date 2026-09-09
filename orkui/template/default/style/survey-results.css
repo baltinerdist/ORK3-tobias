@@ -43,6 +43,9 @@
 .svr-status-open   { background: rgba(72,187,120,0.28); border-color: rgba(72,187,120,0.5); }
 .svr-status-closed { background: rgba(160,174,192,0.28); border-color: rgba(160,174,192,0.5); }
 .svr-status-draft  { background: rgba(237,137,54,0.28); border-color: rgba(237,137,54,0.5); }
+/* 'archived' is the fourth value Survey::set_status accepts; without its own
+   rule it fell through to the bare pill and read identically to 'open'. */
+.svr-status-archived { background: rgba(113,128,150,0.34); border-color: rgba(113,128,150,0.55); }
 
 
 /* ── Consent split inside a stat card ────────────────────── */
