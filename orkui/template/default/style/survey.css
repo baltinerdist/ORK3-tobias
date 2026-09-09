@@ -753,3 +753,116 @@ html[data-theme="dark"] .sv-rank-btn:hover,
 html[data-theme="dark"] .sv-consent-opt:hover { background: var(--ork-bg-tertiary); }
 
 html[data-theme="dark"] .sv-figure-empty { color: var(--ork-text-muted); }
+
+/* ── Runner chrome (Survey_take) ──────────────────────────────────────────
+   The take page is the only survey surface that loads no .rp-* shell, so its
+   frame — accent header, preview strip, page headings, consent/thanks cards —
+   lives here with the rest of the base vocabulary. Nothing below is copied
+   from reports.css. */
+
+.sv-header {
+    border-left: 4px solid var(--sv-accent);
+    background: var(--sv-accent-soft);
+    border-radius: var(--sv-radius);
+    padding: 14px 16px;
+    margin-bottom: var(--sv-gap);
+    box-sizing: border-box;
+}
+
+.sv-header .sv-title { margin: 0; }
+
+.sv-header .sv-progress { margin-top: 12px; margin-bottom: 6px; }
+
+.sv-header .sv-progress-text { margin-bottom: 0; }
+
+.sv-preview-strip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    background: var(--ork-alert-warning-bg);
+    border: 1px solid var(--ork-alert-warning-border);
+    color: var(--ork-alert-warning-text);
+    border-radius: var(--ork-radius-md);
+    padding: 10px 14px;
+    margin-bottom: var(--sv-gap);
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.sv-preview-text { flex: 1 1 200px; }
+
+.sv-preview-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 12px;
+    color: inherit;
+    font-weight: var(--ork-font-weight-semibold);
+    text-decoration: underline;
+}
+
+.sv-stage { display: block; }
+
+.sv-page { display: block; }
+
+.sv-page-title {
+    font-size: 19px;
+    font-weight: var(--ork-font-weight-bold);
+}
+
+.sv-page-desc { margin-bottom: var(--sv-gap); }
+
+.sv-card-title {
+    font-size: 19px;
+    font-weight: var(--ork-font-weight-bold);
+}
+
+.sv-final .sv-intro { margin-bottom: 12px; }
+
+.sv-thanks .sv-card-title { color: var(--sv-accent); }
+
+.sv-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    min-height: 44px;
+    padding: 10px 0;
+    font-size: 14px;
+    line-height: 1.45;
+    color: var(--sv-text-body);
+    cursor: pointer;
+}
+
+.sv-check-input {
+    width: 22px;
+    height: 22px;
+    min-width: 22px;
+    margin: 0;
+    accent-color: var(--sv-accent);
+    cursor: pointer;
+}
+
+/* Screen-reader-only live region for validation announcements. */
+.sv-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+@media (max-width: 420px) {
+    .sv-header { padding: 12px 14px; }
+    .sv-preview-link { padding: 0 8px; }
+}
+
+html[data-theme="dark"] .sv-preview-strip {
+    background: rgba(214, 158, 46, 0.14);
+    border-color: #975a16;
+    color: #fbd38d;
+}
