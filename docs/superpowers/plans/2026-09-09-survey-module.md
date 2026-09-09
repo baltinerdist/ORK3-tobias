@@ -20,7 +20,7 @@
 - Status codes in JSON: `0` ok, `1` bad request/validation, `3` not authorized, `5` not logged in.
 - Class prefix `sv-` for all new CSS; dark mode via `html[data-theme="dark"]`; no native `alert/confirm/prompt`; tooltips via `data-tip`; tap targets ≥ 44 px; text inputs 16 px.
 - Every AJAX action calls `requireLogin()` first; every manage action resolves the survey by id and checks `canManage` against that survey's own scope.
-- Local login: `POST http://localhost:19080/orkui/Login/login` with `Username=heraldsbridge&Password=x&Action=Sign+In` into a cookie jar (auth bypass accepts any password; `heraldsbridge` is mundane 46193, kingdom 17, park 1049, ORK admin).
+- Local login: `POST http://localhost:19080/orkui/Login/login` with `username=heraldsbridge&password=x&Action=Sign+In` into a cookie jar (auth bypass accepts any password; `heraldsbridge` is mundane 46193, kingdom 17, park 1049, ORK admin).
 - After the migration: `docker restart ork3-php8-app` (APCu schema cache) and refresh the sandbox for PHPUnit.
 - Commit prefix `Enhancement: Survey — <what>`; commit trailer per session instructions.
 
@@ -368,7 +368,7 @@ class SurveyReport
 
 ```bash
 J=/tmp/sv-cookies.txt; U=http://localhost:19080/orkui
-curl -s -c $J -b $J -X POST -d "Username=heraldsbridge&Password=x&Action=Sign+In" $U/Login/login -o /dev/null
+curl -s -c $J -b $J -X POST -d "username=heraldsbridge&password=x&Action=Sign+In" $U/Login/login -o /dev/null
 curl -s -b $J -X POST $U/index.php?Route=SurveyAjax/scopes | head -c 300                       # {"status":0,"scopes":[...]}
 SID=$(curl -s -b $J -X POST -d "ScopeType=kingdom&ScopeId=17&Title=Curl+Survey" "$U/index.php?Route=SurveyAjax/create" | python3 -c 'import sys,json;print(json.load(sys.stdin)["survey_id"])')
 PID=$(curl -s -b $J -X POST -d "SurveyId=$SID" "$U/index.php?Route=SurveyAjax/get" | python3 -c 'import sys,json;print(json.load(sys.stdin)["pages"][0]["page_id"])')

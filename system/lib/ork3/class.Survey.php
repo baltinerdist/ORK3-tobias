@@ -1224,7 +1224,7 @@ class Survey
         $type       = (string) $question['type'];
         $roles      = SurveyTypes::OPTION_ROLES[$type] ?? [];
         if (!in_array($role, $roles, true)) {
-            return $this->fail('This question type has no ' . $role . ' options.');
+            return $this->fail($role === '' ? 'An option role is required.' : 'This question type has no ' . $role . ' options.');
         }
 
         $existing = $this->fetchAll('SELECT * FROM ' . DB_PREFIX . 'survey_option

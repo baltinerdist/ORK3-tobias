@@ -31,7 +31,7 @@ const COMMON = [
   '- Stage EXPLICIT paths only. Never git add -A / git add . Never stage system/lib/ork3/class.Authorization.php, CLAUDE.md, agent-instructions/claude.md.',
   '- Never push. Never git stash. Never create git worktrees.',
   '- Before editing an EXISTING PHP/.tpl/.theme file run: awk \'/^\\t/{c++}END{print c+0}\' <file>; PHP files with a non-zero count get tools/php-cs-fixer/php-cs-fixer.phar fix <file> first (separate commit). .tpl/.theme keep their existing indentation style — match it.',
-  '- Local facts: app http://localhost:19080/orkui/ ; routes index.php?Route=Controller/action/arg ; login POST Username=heraldsbridge&Password=x&Action=Sign+In to Login/login into a cookie jar; heraldsbridge = mundane 46193, kingdom 17, park 1049, ORK admin. DB: docker exec ork3-php8-db mariadb -uroot -proot ork.',
+  '- Local facts: app http://localhost:19080/orkui/ ; routes index.php?Route=Controller/action/arg ; login POST username=heraldsbridge&password=x&Action=Sign+In to Login/login into a cookie jar; heraldsbridge = mundane 46193, kingdom 17, park 1049, ORK admin. DB: docker exec ork3-php8-db mariadb -uroot -proot ork.',
   '- Commit message prefix "Enhancement: Survey — …" and end the message with the trailer lines:',
   '    Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>',
   '    Claude-Session: https://claude.ai/code/session_016XHnYr7jkzChUZkaaKgKHb',

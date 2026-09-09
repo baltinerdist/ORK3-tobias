@@ -23,7 +23,7 @@ const COMMON = [
   '- Stage EXPLICIT paths only. Never git add -A / git add . Never stage system/lib/ork3/class.Authorization.php, CLAUDE.md, agent-instructions/claude.md.',
   '- Never push. Never git stash. Never create git worktrees.',
   '- .tpl files are PLAIN PHP. Under orkui/ never $DB->, Ork3::$Lib, or new <DomainClass>( outside orkui/model/.',
-  '- Local facts: app http://localhost:19080/orkui/ ; routes index.php?Route=Controller/action/arg ; login POST Username=heraldsbridge&Password=x&Action=Sign+In to Login/login into a cookie jar; heraldsbridge = mundane 46193, kingdom 17, park 1049, ORK admin. DB: docker exec ork3-php8-db mariadb -uroot -proot ork. Unit tests: ENVIRONMENT=TEST php vendor/bin/phpunit -c phpunit.xml.dist --filter Survey.',
+  '- Local facts: app http://localhost:19080/orkui/ ; routes index.php?Route=Controller/action/arg ; login POST username=heraldsbridge&password=x&Action=Sign+In to Login/login into a cookie jar; heraldsbridge = mundane 46193, kingdom 17, park 1049, ORK admin. DB: docker exec ork3-php8-db mariadb -uroot -proot ork. Unit tests: ENVIRONMENT=TEST php vendor/bin/phpunit -c phpunit.xml.dist --filter Survey.',
   '- Commit message prefix "Enhancement: Survey — …" and end the message with the trailer lines:',
   '    Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>',
   '    Claude-Session: https://claude.ai/code/session_016XHnYr7jkzChUZkaaKgKHb',
