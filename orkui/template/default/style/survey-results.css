@@ -1,0 +1,397 @@
+/* ============================================================
+   ORK3 Survey — Results surface  (.svr-*)
+
+   Surface-specific rules ONLY. The page frame (header, context
+   strip, stat cards, sidebar, filter card, DataTable chrome)
+   comes from reports.css (.rp-*); nothing from that file — or
+   from survey.css — is duplicated here.
+
+   Colour comes from the global --ork-* tokens (tokens.css) so
+   dark mode mostly follows for free; the explicit
+   html[data-theme="dark"] block below covers the handful of
+   values that cannot be expressed as a token.
+   ============================================================ */
+
+.svr-root {
+    /* Chart surface, handed to Highcharts as the segment-gap colour. */
+    --svr-surface     : var(--ork-card-bg, #fff);
+    --svr-border      : var(--rp-border, #e2e8f0);
+    --svr-text        : var(--ork-text, #2d3748);
+    --svr-text-muted  : var(--ork-text-muted, #718096);
+    --svr-accent      : var(--rp-accent, #4338ca);
+    --svr-badge-bg    : var(--rp-bg-tertiary, #e2e8f0);
+    --svr-input-bg    : var(--ork-input-bg, #fff);
+    --svr-chart-height: 300px;
+}
+
+
+/* ── Status pill in the header ───────────────────────────── */
+
+.svr-status-pill {
+    display       : inline-flex;
+    align-items   : center;
+    border-radius : 20px;
+    padding       : 3px 11px;
+    font-size     : 0.78rem;
+    font-weight   : 600;
+    white-space   : nowrap;
+    background    : rgba(255,255,255,0.15);
+    border        : 1px solid rgba(255,255,255,0.25);
+    color         : rgba(255,255,255,0.92);
+}
+
+.svr-status-open   { background: rgba(72,187,120,0.28); border-color: rgba(72,187,120,0.5); }
+.svr-status-closed { background: rgba(160,174,192,0.28); border-color: rgba(160,174,192,0.5); }
+.svr-status-draft  { background: rgba(237,137,54,0.28); border-color: rgba(237,137,54,0.5); }
+
+
+/* ── Consent split inside a stat card ────────────────────── */
+
+.svr-consent-split {
+    display        : flex;
+    justify-content: center;
+    gap            : 12px;
+    flex-wrap      : wrap;
+    line-height    : 1.2;
+}
+
+.svr-consent-part {
+    font-size: 10px;
+    color    : var(--svr-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.svr-consent-part b {
+    display    : block;
+    font-size  : 20px;
+    font-weight: 700;
+    color      : var(--svr-accent);
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+
+/* ── Filter controls ─────────────────────────────────────── */
+
+.svr-field { margin-bottom: 14px; }
+.svr-field:last-child { margin-bottom: 0; }
+
+.svr-field-label {
+    display       : block;
+    font-size     : 11px;
+    font-weight   : 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color         : var(--svr-text-muted);
+    margin-bottom : 5px;
+}
+
+.svr-field-hint {
+    margin    : 6px 0 0;
+    font-size : 11px;
+    line-height: 1.45;
+    color     : var(--svr-text-muted);
+}
+
+/* Text controls, buttons and notices are reused verbatim from survey.css
+   (.sv-input / .sv-select / .sv-btn / .sv-btn-primary / .sv-notice); the
+   .rp-body carries .sv-scope so their --sv-* tokens resolve. Nothing from
+   that file is restated here. */
+
+.svr-checklist {
+    max-height : 190px;
+    overflow-y : auto;
+    border     : 1px solid var(--svr-border);
+    border-radius: var(--ork-radius-md, 6px);
+    padding    : 4px;
+}
+
+.svr-check {
+    display     : flex;
+    align-items : center;
+    gap         : 8px;
+    min-height  : 44px;
+    padding     : 2px 6px;
+    font-size   : 13px;
+    line-height : 1.3;
+    color       : var(--svr-text);
+    cursor      : pointer;
+    border-radius: var(--ork-radius-sm, 4px);
+}
+
+.svr-check:hover { background: var(--ork-surface-hover, #edf2f7); }
+
+.svr-check input[type="checkbox"] {
+    width      : 20px;
+    height     : 20px;
+    flex-shrink: 0;
+    accent-color: var(--svr-accent);
+    margin     : 0;
+}
+
+.svr-filter-actions {
+    display  : flex;
+    gap      : 8px;
+    margin-top: 14px;
+}
+
+/* ── Main column ─────────────────────────────────────────── */
+
+.svr-main {
+    flex     : 1;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.svr-cards {
+    display              : grid;
+    grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+    gap                  : 14px;
+    margin-bottom        : 16px;
+    align-items          : start;
+}
+
+.svr-card {
+    min-width: 0;   /* so a wide chart cannot blow the grid track out */
+}
+
+.svr-card-head {
+    display        : flex;
+    align-items    : flex-start;
+    justify-content: space-between;
+    gap            : 10px;
+    margin-bottom  : 10px;
+}
+
+.svr-root .svr-card-title {
+    /* .rp-chart-card-title is uppercase micro-type; question prompts are prose. */
+    margin        : 0;
+    font-size     : 14px;
+    font-weight   : 700;
+    line-height   : 1.35;
+    text-transform: none;
+    letter-spacing: 0;
+    color         : var(--svr-text);
+    /* Fight the global orkui.css h1–h6 pill box. */
+    background    : transparent;
+    border        : none;
+    padding       : 0;
+    border-radius : 0;
+}
+
+.svr-card-type {
+    display       : block;
+    font-size     : 10px;
+    font-weight   : 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color         : var(--svr-text-muted);
+    margin-top    : 3px;
+}
+
+.svr-badge {
+    flex-shrink   : 0;
+    align-self    : flex-start;
+    font-size     : 11px;
+    font-weight   : 700;
+    padding       : 3px 9px;
+    border-radius : 20px;
+    white-space   : nowrap;
+    background    : var(--svr-badge-bg);
+    color         : var(--svr-text-muted);
+}
+
+.svr-chart { width: 100%; min-height: var(--svr-chart-height); }
+.svr-chart-tall { --svr-chart-height: 360px; }
+
+.svr-empty {
+    padding    : 26px 12px;
+    text-align : center;
+    font-size  : 13px;
+    font-style : italic;
+    color      : var(--svr-text-muted);
+}
+
+
+/* ── Callout figures under a chart ───────────────────────── */
+
+.svr-callouts {
+    display  : flex;
+    flex-wrap: wrap;
+    gap      : 8px;
+    margin-top: 10px;
+}
+
+.svr-callout {
+    flex         : 1 1 92px;
+    min-width    : 0;
+    text-align   : center;
+    padding      : 8px 6px;
+    border       : 1px solid var(--svr-border);
+    border-radius: var(--ork-radius-md, 6px);
+    background   : var(--ork-surface-light, #f7fafc);
+}
+
+.svr-callout-value {
+    font-size  : 18px;
+    font-weight: 700;
+    line-height: 1.2;
+    color      : var(--svr-text);
+}
+
+.svr-callout-label {
+    margin-top    : 2px;
+    font-size     : 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color         : var(--svr-text-muted);
+}
+
+/* NPS score tile — the headline number for the card. */
+.svr-nps-tile {
+    flex        : 1 1 130px;
+    border-color: var(--svr-accent);
+}
+
+.svr-nps-tile .svr-callout-value {
+    font-size: 30px;
+    color    : var(--svr-accent);
+}
+
+
+/* ── "Other" free text + text-question response list ─────── */
+
+.svr-other {
+    margin-top : 10px;
+    font-size  : 13px;
+    border-top : 1px solid var(--svr-border);
+    padding-top: 8px;
+}
+
+.svr-other > summary {
+    cursor     : pointer;
+    min-height : 44px;
+    display    : flex;
+    align-items: center;
+    gap        : 6px;
+    font-weight: 600;
+    color      : var(--svr-accent);
+}
+
+.svr-textlist {
+    margin    : 8px 0 0;
+    padding   : 0;
+    list-style: none;
+    max-height: 260px;
+    overflow-y: auto;
+}
+
+.svr-textlist li {
+    padding    : 7px 10px;
+    margin     : 0 0 6px;
+    font-size  : 13px;
+    line-height: 1.5;
+    color      : var(--svr-text);
+    background : var(--ork-surface-light, #f7fafc);
+    border-left: 3px solid var(--svr-accent);
+    border-radius: 0 var(--ork-radius-sm, 4px) var(--ork-radius-sm, 4px) 0;
+    overflow-wrap: anywhere;
+}
+
+.svr-textlist li:last-child { margin-bottom: 0; }
+
+.svr-showmore { margin-top: 8px; }
+
+
+/* ── Rows table ──────────────────────────────────────────── */
+
+.svr-rows-area { padding-top: 12px; }
+
+.svr-root .svr-section-title {
+    display       : flex;
+    align-items   : center;
+    gap           : 7px;
+    margin        : 0 0 4px;
+    font-size     : 14px;
+    font-weight   : 700;
+    color         : var(--svr-text);
+    /* Fight the global orkui.css h1–h6 pill box. */
+    background    : transparent;
+    border        : none;
+    padding       : 0;
+    border-radius : 0;
+}
+
+.svr-table-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-top: 10px;
+}
+
+.svr-cell-anon { color: var(--svr-text-muted); }
+
+.svr-tag {
+    display       : inline-block;
+    font-size     : 10px;
+    font-weight    : 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding       : 2px 7px;
+    border-radius : 20px;
+    background    : var(--svr-badge-bg);
+    color         : var(--svr-text-muted);
+    white-space   : nowrap;
+}
+
+
+/* ── Dark mode ───────────────────────────────────────────── */
+
+/* Every --svr-* value above resolves through a token that already flips
+   (tokens.css / orkui.css :root pair, and --rp-* on the same .rp-root element),
+   so the palette needs no restatement here. Only the values that cannot come
+   from a token are repeated. */
+
+html[data-theme="dark"] .svr-status-pill { color: #fff; }
+
+/* Fight the global html[data-theme="dark"] h1–h6 pill box, which carries more
+   type selectors than a bare class and otherwise wins the tie. */
+html[data-theme="dark"] .svr-card-title,
+html[data-theme="dark"] .svr-root .svr-section-title {
+    background-color: transparent !important;
+    border          : none !important;
+    padding         : 0 !important;
+    color           : var(--svr-text) !important;
+}
+
+
+/* ── Responsive ──────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+    .svr-cards { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 768px) {
+    .svr-consent-part b { font-size: 17px; }
+    .svr-chart { --svr-chart-height: 260px; }
+    .svr-checklist { max-height: 150px; }
+    .svr-filter-actions { flex-wrap: wrap; }
+}
+
+@media (max-width: 420px) {
+    .svr-card-head { flex-direction: column; gap: 6px; }
+    .svr-callout { flex: 1 1 100%; }
+}
+
+
+/* ── Print ───────────────────────────────────────────────── */
+
+@media print {
+    .rp-sidebar,
+    .rp-header-actions,
+    .svr-rows-area .dataTables_paginate,
+    .svr-rows-area .dataTables_info { display: none !important; }
+
+    .svr-cards { grid-template-columns: 1fr; }
+    .svr-card { break-inside: avoid; page-break-inside: avoid; }
+}
