@@ -3183,7 +3183,12 @@ $_total_awards = count($courtAwards ?? []);
         else          { rankWrap.style.display = 'none'; gid('cp-grant-rank').value = aw.Rank || 0; }
         gid('cp-grant-date').value = cpCourtDateHuman || 'Today';
         // Reason precedence: saved public comment → originating rec reason → blank.
-        gid('cp-grant-reason').value = aw.PublicComment || aw.RecReason || '';
+        // Precedence must mirror commitStagedAward: an explicitly CLEARED line inherits
+        // nothing. Prefilling the recommendation's reason here would write it to
+        // public_comment via stageAward, and commit then takes the PublicComment!==''
+        // branch and never re-reads the flag — publishing permanently, on the primary
+        // Run-mode path, exactly the text the officer suppressed.
+        gid('cp-grant-reason').value = aw.PublicComment || (aw.PublicCommentCleared ? '' : (aw.RecReason || ''));
         cpBuildGiverPills();
         var def = cpGiverOptions && cpGiverOptions.default;
         if (def) {
@@ -4003,7 +4008,7 @@ $_total_awards = count($courtAwards ?? []);
         var inherited = 0, none = 0;
         rows.forEach(function(a) {
             if ((a.PublicComment || '') !== '') return;
-            if ((a.RecReason || '') !== '') inherited++;
+            if ((a.RecReason || '') !== '' && !a.PublicCommentCleared) inherited++;
             else none++;
         });
         if (!inherited && !none) return '';
@@ -4249,6 +4254,7 @@ $_total_awards = count($courtAwards ?? []);
                 a.SortOrder = sa.SortOrder;
                 a.Notes = sa.Notes || '';
                 a.PublicComment = sa.PublicComment || '';
+                a.PublicCommentCleared = !!sa.PublicCommentCleared;
                 a.PassToLocal = sa.PassToLocal;
                 a.ScrollMakerId = sa.ScrollMakerId || null;
                 a.ScrollMakerPersona = sa.ScrollMakerPersona || '';
@@ -4634,7 +4640,7 @@ window.cpApplyHeroColor = function(img) {
             // Crown's.
             if (a.PublicComment) {
                 html += '<div class="cp-script-cite-text">' + esc(a.PublicComment) + '</div>';
-            } else if (a.RecReason) {
+            } else if (a.RecReason && !a.PublicCommentCleared) {
                 html += '<div class="cp-script-cite-text cp-script-cite-inherited">' +
                         '<span class="cp-script-cite-src">from recommendation \u2014 unvetted</span> ' +
                         esc(a.RecReason) + '</div>';
