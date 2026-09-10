@@ -338,6 +338,24 @@ class SurveyResponse
         return ['eligible' => false, 'reason' => $reason];
     }
 
+    /**
+     * "Now" for every timestamp this module writes or compares.
+     *
+     * The module keeps ONE clock: PHP's. The app sets America/Chicago while the
+     * database server runs on its own zone (UTC in the shipped stack), so SQL
+     * `NOW()` can be hours away from PHP `time()`. `open_at`/`close_at` are
+     * stored verbatim as the builder's local wall time and are read back with
+     * PHP `strtotime()` in `eligibility()`, so any SQL that compares them — or
+     * any row whose timestamp is later compared with one of these — has to use
+     * this stamp rather than `NOW()`, otherwise the widget and the banner drop
+     * still-open surveys hours early and a resumed response records a
+     * `started_at` after its own `submitted_at`.
+     */
+    private static function nowStamp(): string
+    {
+        return date('Y-m-d H:i:s');
+    }
+
     /** 'Y-m-d H:i:s' or null => unix timestamp or null. */
     private static function stamp($v): ?int
     {
@@ -737,16 +755,18 @@ class SurveyResponse
         }
 
         $pageIndex = max(0, min(65535, (int) $pageIndex));
+        $nowStamp  = self::nowStamp();
 
         $this->db->Clear();
         $this->db->Execute(
             'INSERT INTO ' . DB_PREFIX . 'survey_draft
              (survey_id, mundane_id, answers_json, page_index, started_at, updated_at)
-             VALUES (' . $surveyId . ', ' . $uid . ', \'' . $this->esc($json) . '\', ' . $pageIndex . ', NOW(), NOW())
+             VALUES (' . $surveyId . ', ' . $uid . ', \'' . $this->esc($json) . '\', ' . $pageIndex . ',
+                     \'' . $nowStamp . '\', \'' . $nowStamp . '\')
              ON DUPLICATE KEY UPDATE
                 answers_json = VALUES(answers_json),
                 page_index   = VALUES(page_index),
-                updated_at   = NOW()'
+                updated_at   = VALUES(updated_at)'
         );
 
         return ['Status' => 0, 'Error' => '', 'Saved' => true];
@@ -938,8 +958,8 @@ class SurveyResponse
             'mundane_id'       => $uid,
             'kingdom_id'       => $player ? (int) $player['kingdom_id'] : null,
             'tenure_months'    => $this->tenureMonths($uid),
-            'started_at'       => ($draft && !empty($draft['started_at'])) ? $draft['started_at'] : date('Y-m-d H:i:s'),
-            'submitted_at'     => date('Y-m-d H:i:s'),
+            'started_at'       => ($draft && !empty($draft['started_at'])) ? $draft['started_at'] : self::nowStamp(),
+            'submitted_at'     => self::nowStamp(),
             'duration_seconds' => $duration > 0 ? $duration : null,
         ], $storedConsent);
 
@@ -1131,8 +1151,8 @@ class SurveyResponse
         $this->db->Clear();
         $this->db->Execute(
             'INSERT INTO ' . DB_PREFIX . 'survey_dismissal (survey_id, mundane_id, dismissed_at)
-             VALUES (' . $surveyId . ', ' . $uid . ', NOW())
-             ON DUPLICATE KEY UPDATE dismissed_at = NOW()'
+             VALUES (' . $surveyId . ', ' . $uid . ', \'' . self::nowStamp() . '\')
+             ON DUPLICATE KEY UPDATE dismissed_at = VALUES(dismissed_at)'
         );
     }
 
@@ -1159,8 +1179,8 @@ class SurveyResponse
 
         $sql = 'SELECT s.* FROM ' . DB_PREFIX . 'survey s
                 WHERE s.status = \'open\'
-                  AND (s.open_at IS NULL OR s.open_at <= NOW())
-                  AND (s.close_at IS NULL OR s.close_at > NOW())
+                  AND (s.open_at IS NULL OR s.open_at <= \'' . self::nowStamp() . '\')
+                  AND (s.close_at IS NULL OR s.close_at > \'' . self::nowStamp() . '\')
                   AND (
                         s.scope_type = \'ork\'
                      OR (s.scope_type = \'kingdom\' AND s.scope_id IN (' . $kingdomList . '))
