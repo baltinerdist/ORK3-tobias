@@ -12,9 +12,15 @@
  * SurveyAjax/get returns, so survey-build.js sees one shape whether the data
  * came from this bootstrap or from a later re-fetch.
  *
- * The canvas IS the editor: there is no palette and no inspector. Everything
- * on this page is either the header, the canvas column, or the survey-settings
- * drawer that the header opens.
+ * The canvas IS the editor: there is no palette and no content inspector.
+ * The page wears the standard Reports shell (spec §7 "Builder"):
+ *
+ *   .rp-root > .rp-header
+ *            > .rp-body > .rp-sidebar  (survey settings, collapsible sections)
+ *                       > .rp-main     (the canvas column of page cards)
+ *
+ * The sidebar's sections are painted by survey-build.js (renderSettings), so
+ * every field autosaves through the same `update` path the drawer used to.
  */
 
 if (!empty($Error)) {
@@ -82,7 +88,6 @@ $_svShareLink = HTTP_UI_REMOTE . 'index.php?Route=Survey/s/' . rawurlencode((str
 		</div>
 		<div class="rp-header-actions">
 			<span class="svb-savestate svb-savestate-saved" id="svb-savestate" role="status" aria-live="polite">Saved</span>
-			<button type="button" class="rp-btn-ghost" id="svb-settings" data-tip="Welcome and thank-you screens, audience, schedule, data gate, banner"><i class="fas fa-sliders-h" aria-hidden="true"></i> Settings</button>
 			<a class="rp-btn-ghost" href="<?= UIR ?>Survey/take/<?= (int) $SurveyId ?>/preview" target="_blank" rel="noopener" data-tip="Take the survey without saving anything"><i class="fas fa-eye" aria-hidden="true"></i> Preview</a>
 			<button type="button" class="rp-btn-ghost" id="svb-openclose" data-target="open"><i class="fas fa-paper-plane" aria-hidden="true"></i> Open survey</button>
 			<a class="rp-btn-ghost" href="<?= UIR ?>Survey/results/<?= (int) $SurveyId ?>"><i class="fas fa-chart-column" aria-hidden="true"></i> Results</a>
@@ -110,23 +115,16 @@ $_svShareLink = HTTP_UI_REMOTE . 'index.php?Route=Survey/s/' . rawurlencode((str
 
 	<div class="sv-notice svb-notice-slot" id="svb-notice" role="status" aria-live="polite" hidden></div>
 
-	<div class="svb-layout sv-scope">
-		<main class="svb-canvas" id="svb-canvas" aria-label="Survey canvas"></main>
+	<div class="rp-body sv-scope">
+
+		<!-- Survey settings. Sections are painted by survey-build.js. -->
+		<aside class="rp-sidebar svb-settings" id="svb-settings" aria-label="Survey settings"></aside>
+
+		<main class="rp-main svb-canvas" id="svb-canvas" aria-label="Survey canvas"></main>
+
 	</div>
 
 	<input type="file" id="svb-file" accept="image/jpeg,image/png" hidden>
-
-	<!-- Survey settings drawer (opened from the header) -->
-	<div class="svb-drawer" id="svb-drawer" role="dialog" aria-modal="true" aria-labelledby="svb-drawer-title" hidden>
-		<button type="button" class="svb-drawer-backdrop" tabindex="-1" aria-label="Close settings"></button>
-		<div class="svb-drawer-panel sv-scope">
-			<div class="svb-drawer-head">
-				<h2 class="svb-drawer-title" id="svb-drawer-title">Survey settings</h2>
-				<button type="button" class="svb-icon-btn svb-drawer-close" aria-label="Close settings"><i class="fas fa-xmark" aria-hidden="true"></i></button>
-			</div>
-			<div class="svb-drawer-body" id="svb-drawer-body"></div>
-		</div>
-	</div>
 
 	<!-- Help -->
 	<div class="svb-modal" id="svb-modal" role="dialog" aria-modal="true" aria-labelledby="svb-modal-title" hidden>

@@ -87,7 +87,7 @@ html[data-theme="dark"] .sv-status-pill-archived { background: #2d3748; color: #
 button.rp-filter-pill { font: inherit; font-size: 11px; font-weight: 600; line-height: 1.4; text-align: center; }
 
 .sv-empty-state { padding: 32px 16px; text-align: center; color: var(--rp-text-muted); font-size: var(--ork-font-size-base); }
-.sv-empty-state i { font-size: 26px; display: block; margin-bottom: 12px; opacity: 0.4; }
+.sv-empty-state i { font-size: 24px; display: block; margin-bottom: 12px; opacity: 0.4; }
 
 .sv-survey-table { width: 100%; border-collapse: collapse; }
 .sv-survey-table th {

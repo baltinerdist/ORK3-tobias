@@ -33,7 +33,8 @@
    select limits, require-all-rows, rank-all, image).
 
    Survey-level settings (welcome/thanks copy, audience, schedule, data gate,
-   banner, accent…) live in the drawer the header's Settings button opens.
+   banner, accent…) live in the LEFT SIDEBAR (.rp-sidebar) as a stack of
+   collapsible .rp-filter-card sections, per spec §7 "Builder".
 
    Everything a type can be configured with comes from FIELD_DEFS, which
    mirrors spec §4 key for key. `where` decides whether a key is edited on the
@@ -77,8 +78,19 @@
     var sortables = [];     // page + item lists
     var optSorts  = [];     // option rows inside the selected card
     var helpOpen  = {};     // question_id -> the help editor is showing
-    var drawerOpener = null; // what to hand focus back to when the drawer closes
-    var modalOpener  = null; // ditto for the modal
+    var modalOpener  = null; // what to hand focus back to when the modal closes
+
+    /* The data-gate wording the runner shows (survey-take.js CONSENT_*). Kept
+       here read-only for the Privacy section so a builder can see exactly what
+       they are asking; the runner remains the single place it is authored. */
+    var CONSENT_COPY = {
+        intro: 'Your answers are recorded either way. Choose what the ORK may attach to them:',
+        options: [
+            ['Any ORK Data', 'link this response to my ORK profile so analysts can slice results by things like awards, attendance, and class history.'],
+            ['My Kingdom and How Long I\'ve Been Playing', 'record only my kingdom and how many years I\'ve played. No name, no profile link.'],
+            ['Nothing About Me', 'store this response with no identifying data at all.']
+        ]
+    };
 
     /* ------------------------------------------------------------- catalogue */
 
@@ -1256,93 +1268,229 @@
     function renderAll() {
         renderHeader();
         renderCanvas();
-        if (drawerOpen()) { renderDrawer(); }
+        renderSettings();
     }
 
-    /* ------------------------------------------------------ settings drawer */
+    /* ----------------------------------------------------- settings sidebar */
 
-    function drawerOpen() {
-        var d = $('svb-drawer');
-        return !!(d && !d.hidden);
+    /* The survey's settings are the page's left .rp-sidebar, not a drawer: a
+       stack of .rp-filter-card sections whose header is a button that folds the
+       body away. Which ones are open is remembered per survey, and under 900px
+       reports.css stacks the sidebar ABOVE the canvas, so everything starts
+       collapsed there to keep the questions reachable. */
+
+    var SECTION_KEY = 'sv-build-sections-' + SURVEY_ID;
+    var NARROW_MQ   = '(max-width: 900px)';
+
+    function isNarrow() {
+        return !!(window.matchMedia && window.matchMedia(NARROW_MQ).matches);
     }
 
-    function openDrawer() {
-        var d = $('svb-drawer');
-        var close;
-        if (!d) { return; }
-        if (d.hidden) { drawerOpener = document.activeElement; }
-        renderDrawer();
-        d.hidden = false;
-        document.body.classList.add('svb-drawer-lock');
-        close = el('.svb-drawer-close', d);
-        if (close) { close.focus(); }
+    /* Desktop and narrow are different layouts with different right answers —
+       under 900px the sidebar sits ON TOP of the questions — so each keeps its
+       own record. Sharing one would let a desktop expansion bury the canvas on
+       a phone, which is exactly what the collapsed-by-default rule prevents. */
+    function stateKey(id) {
+        return (isNarrow() ? 'n:' : 'd:') + id;
     }
 
-    function closeDrawer() {
-        var d = $('svb-drawer');
-        if (d) { d.hidden = true; }
-        document.body.classList.remove('svb-drawer-lock');
-        restoreFocus('drawer');
+    /** { 'd:sectionId': true|false }. Absent = the section's default. */
+    function sectionState() {
+        var raw;
+        try {
+            raw = window.localStorage.getItem(SECTION_KEY);
+        } catch (e) {
+            return {};
+        }
+        if (!raw) { return {}; }
+        try {
+            raw = JSON.parse(raw);
+        } catch (e2) {
+            return {};
+        }
+        return (raw && typeof raw === 'object') ? raw : {};
     }
 
-    function renderDrawer() {
-        var box = $('svb-drawer-body');
+    function rememberSection(id, open) {
+        var st = sectionState();
+        st[stateKey(id)] = !!open;
+        try {
+            window.localStorage.setItem(SECTION_KEY, JSON.stringify(st));
+        } catch (e) { /* private browsing: the sidebar still works, it just forgets */ }
+    }
+
+    /** Basics only on desktop; nothing at all once the sidebar sits on top. */
+    function sectionOpen(id) {
+        var st  = sectionState();
+        var key = stateKey(id);
+        if (Object.prototype.hasOwnProperty.call(st, key)) { return !!st[key]; }
+        return id === 'basics' && !isNarrow();
+    }
+
+    /** One collapsible .rp-filter-card. `icon` is a FontAwesome class. */
+    function section(id, title, icon, body) {
+        var open = sectionOpen(id);
+        return '<div class="rp-filter-card svb-sec" data-sec="' + id + '">' +
+               '<button type="button" class="rp-filter-card-header svb-sec-head" data-sec-toggle="' + id + '"' +
+               ' aria-expanded="' + (open ? 'true' : 'false') + '" aria-controls="svb-sec-' + id + '">' +
+               '<i class="fas ' + icon + '" aria-hidden="true"></i>' +
+               '<span class="svb-sec-title">' + esc(title) + '</span>' +
+               '<i class="fas fa-chevron-down svb-sec-caret" aria-hidden="true"></i>' +
+               '</button>' +
+               '<div class="rp-filter-card-body svb-sec-body" id="svb-sec-' + id + '"' +
+               (open ? '' : ' hidden') + '>' + body + '</div>' +
+               '</div>';
+    }
+
+    function toggleSection(id) {
+        var card = el('.svb-sec[data-sec="' + id + '"]');
+        var head = card ? el('.svb-sec-head', card) : null;
+        var body = card ? el('.svb-sec-body', card) : null;
+        var open;
+        if (!head || !body) { return; }
+        open = head.getAttribute('aria-expanded') !== 'true';
+        head.setAttribute('aria-expanded', open ? 'true' : 'false');
+        body.hidden = !open;
+        rememberSection(id, open);
+    }
+
+    function renderSettings() {
+        var box = $('svb-settings');
         var s   = S.survey || {};
         var html = '';
-        var kingdomList;
+        var body, kingdomList;
         if (!box) { return; }
 
-        html += '<h4 class="svb-sub">Basics</h4>';
-        html += fieldRow(textInput({ id: 'svb-f-title', max: 200 }, s.title, 'data-sv-field="Title"'),
-                         'Title', null, 'svb-f-title');
-        html += fieldRow('<textarea class="sv-textarea" id="svb-f-desc" rows="2" maxlength="500" data-sv-field="Description">' +
-                         esc(s.description || '') + '</textarea>',
-                         'Short description', 'Plain text. Shown in lists, the Available Surveys widget and the banner.', 'svb-f-desc');
+        /* The sidebar is always on screen now, so a structural renderAll() can
+           land while someone is mid-word in the description or the welcome
+           markdown. Repainting would eat the caret and the un-flushed keystroke,
+           so leave the sidebar alone whenever it holds the focus — the next
+           render after they tab out picks the new state up. */
+        if (box.contains(document.activeElement)) { return; }
 
-        html += '<h4 class="svb-sub">Welcome screen</h4>';
-        html += mdEditor('svb-f-welcome', 'Welcome text (markdown)', s.welcome_md, 'data-sv-field="WelcomeMd"',
+        /* Basics — the title lives in the header, inline-editable, so the only
+           thing left here is the description every list and the banner reuse. */
+        html += section('basics', 'Basics', 'fa-circle-info',
+            fieldRow('<textarea class="sv-textarea" id="svb-f-desc" rows="3" maxlength="500" data-sv-field="Description">' +
+                     esc(s.description || '') + '</textarea>',
+                     'Short description',
+                     'Plain text. Shown in lists, the Available Surveys widget and the banner.',
+                     'svb-f-desc'));
+
+        /* Screens */
+        body  = mdEditor('svb-f-welcome', 'Welcome text (markdown)', s.welcome_md, 'data-sv-field="WelcomeMd"',
                          'Leave blank to send respondents straight to page 1.');
-        html += imagePicker('Welcome image', s.welcome_image_id, 'survey-welcome');
-
-        html += '<h4 class="svb-sub">Thank-you screen</h4>';
-        html += mdEditor('svb-f-thanks', 'Thank-you text (markdown)', s.thanks_md, 'data-sv-field="ThanksMd"',
+        body += imagePicker('Welcome image', s.welcome_image_id, 'survey-welcome');
+        body += '<hr class="svb-sec-rule">';
+        body += mdEditor('svb-f-thanks', 'Thank-you text (markdown)', s.thanks_md, 'data-sv-field="ThanksMd"',
                          'Leave blank for the default thank-you.');
-        html += imagePicker('Thank-you image', s.thanks_image_id, 'survey-thanks');
+        body += imagePicker('Thank-you image', s.thanks_image_id, 'survey-thanks');
+        html += section('screens', 'Screens', 'fa-window-maximize', body);
 
-        html += '<h4 class="svb-sub">Schedule</h4>';
-        html += fieldRow('<input type="datetime-local" class="sv-input" id="svb-f-openat" data-sv-field="OpenAt" data-echo="svb-echo-open" value="' +
+        /* Audience */
+        /* NOT .rp-scope-chip: that chip is authored for the dark navy .rp-header
+           (translucent white on navy) and is unreadable on the light sidebar.
+           The sidebar gets its own chip on the page's own surface tokens. */
+        body  = '<div class="svb-field"><span class="svb-label">Scope</span>' +
+                '<span class="svb-scope-chip"><i class="fas ' + esc(scopeIcon(s.scope_type)) + '" aria-hidden="true"></i> ' +
+                esc(scopeName(s)) + '</span></div>';
+        if (String(s.scope_type) === 'ork') {
+            kingdomList = (scopes || []).filter(function (x) { return x.scope_type === 'kingdom'; });
+            body += fieldRow(kingdomPicker(s, kingdomList), 'Kingdoms', 'Select none to invite every kingdom.');
+        }
+        body += checkRow('Active players only', truthy(s.audience_active_only), 'data-sv-field="AudienceActiveOnly"', false);
+        body += fieldRow(textInput({ id: 'svb-f-tenure', type: 'number', min: 0, hi: 1200, step: 1 },
+                                   s.audience_min_tenure_months, 'data-sv-field="AudienceMinTenureMonths" inputmode="numeric"'),
+                         'Minimum months played', '0 lets everyone in scope answer.', 'svb-f-tenure');
+        html += section('audience', 'Audience', 'fa-users', body);
+
+        /* Schedule */
+        body  = fieldRow('<input type="datetime-local" class="sv-input" id="svb-f-openat" data-sv-field="OpenAt" data-echo="svb-echo-open" value="' +
                          esc(toLocalInput(s.open_at)) + '">' +
                          '<p class="svb-hint" id="svb-echo-open">' + esc(prettyDate(s.open_at, 'No opening date set.')) + '</p>',
                          'Opens', 'A survey never opens by itself — this only stops it being taken early.', 'svb-f-openat');
-        html += fieldRow('<input type="datetime-local" class="sv-input" id="svb-f-closeat" data-sv-field="CloseAt" data-echo="svb-echo-close" value="' +
+        body += fieldRow('<input type="datetime-local" class="sv-input" id="svb-f-closeat" data-sv-field="CloseAt" data-echo="svb-echo-close" value="' +
                          esc(toLocalInput(s.close_at)) + '">' +
                          '<p class="svb-hint" id="svb-echo-close">' + esc(prettyDate(s.close_at, 'No closing date set.')) + '</p>',
                          'Closes', null, 'svb-f-closeat');
+        html += section('schedule', 'Schedule', 'fa-calendar-days', body);
 
-        html += '<h4 class="svb-sub">Audience</h4>';
-        html += checkRow('Active players only', truthy(s.audience_active_only), 'data-sv-field="AudienceActiveOnly"', false);
-        html += fieldRow(textInput({ id: 'svb-f-tenure', type: 'number', min: 0, hi: 1200, step: 1 },
-                                   s.audience_min_tenure_months, 'data-sv-field="AudienceMinTenureMonths" inputmode="numeric"'),
-                         'Minimum months played', '0 lets everyone in scope answer.', 'svb-f-tenure');
-
-        if (String(s.scope_type) === 'ork') {
-            kingdomList = (scopes || []).filter(function (x) { return x.scope_type === 'kingdom'; });
-            html += fieldRow(kingdomPicker(s, kingdomList), 'Kingdoms', 'Select none to invite every kingdom.');
-        }
-
-        html += '<h4 class="svb-sub">Behaviour</h4>';
-        html += checkRow('Ask the data-gate consent question before submitting',
+        /* Privacy — the consent wording is fixed, and shown here so the builder
+           knows exactly what the respondent is agreeing to. */
+        body  = checkRow('Ask the data-gate consent question before submitting',
                          truthy(s.data_gate_enabled), 'data-sv-field="DataGateEnabled"', false,
                          'Turn this off and every response is stored anonymously.');
-        html += checkRow('Promote with a site banner', truthy(s.show_banner), 'data-sv-field="ShowBanner"', false);
-        html += checkRow('Show a progress bar', truthy(s.show_progress), 'data-sv-field="ShowProgress"', false);
-        html += checkRow('Let respondents resume a part-finished survey', truthy(s.allow_resume), 'data-sv-field="AllowResume"', false);
-        html += fieldRow('<div class="svb-color"><input type="color" class="svb-color-input" id="svb-f-accent" data-sv-field="AccentColor" value="' +
+        body += consentQuote();
+        html += section('privacy', 'Privacy', 'fa-user-shield', body);
+
+        /* Promotion */
+        body  = checkRow('Promote with a site banner', truthy(s.show_banner), 'data-sv-field="ShowBanner"', false,
+                         'Shows a dismissible strip at the top of every page for everyone in scope.');
+        body += fieldRow('<div class="svb-sharelink">' +
+                         '<input type="text" class="sv-input" id="svb-f-share" readonly value="' + esc(shareLink()) + '">' +
+                         '<button type="button" class="sv-btn" data-act="share-copy" data-tip="Copy the share link">' +
+                         '<i class="fas fa-link" aria-hidden="true"></i></button></div>',
+                         'Share link', null, 'svb-f-share');
+        html += section('promotion', 'Promotion', 'fa-bullhorn', body);
+
+        /* Experience */
+        body  = checkRow('Show a progress bar', truthy(s.show_progress), 'data-sv-field="ShowProgress"', false);
+        body += checkRow('Let respondents resume a part-finished survey', truthy(s.allow_resume), 'data-sv-field="AllowResume"', false);
+        body += fieldRow('<div class="svb-color"><input type="color" class="svb-color-input" id="svb-f-accent" data-sv-field="AccentColor" value="' +
                          esc(s.accent_color || '#2c5282') + '">' +
                          '<button type="button" class="sv-btn" data-act="accent-clear">Use the ORK default</button></div>',
                          'Accent colour', null, 'svb-f-accent');
+        html += section('experience', 'Experience', 'fa-wand-magic-sparkles', body);
+
+        /* About This Tool — the standard sidebar closer on every rp-* page. */
+        html += '<div class="rp-filter-card">' +
+                '<div class="rp-filter-card-header"><i class="fas fa-book-open" aria-hidden="true"></i> About This Tool</div>' +
+                '<div class="rp-filter-card-body rp-about-body">' +
+                '<p>Click any card on the canvas to edit it where it sits. <strong>Add Element</strong> starts a new question; its Type menu turns it into any of the twelve question types, a section or an image.</p>' +
+                '<p>Every change saves itself — the pill beside the header actions says when.</p>' +
+                '<p>Opening a survey <strong>locks its structure</strong>: questions, options and pages stop moving so the answers stay comparable. Wording stays editable for good.</p>' +
+                '<p><button type="button" class="svb-link" data-act="help">Open the full guide</button></p>' +
+                '</div></div>';
 
         box.innerHTML = html;
+    }
+
+    /* The consent wording is fixed in the runner (survey-take.js) and repeated
+       here read-only, so a builder can see exactly what they are asking. */
+    function consentQuote() {
+        var i, html;
+        html = '<div class="svb-consent-quote"><span class="svb-label">Respondents are asked</span>' +
+               '<p class="svb-consent-lead">' + esc(CONSENT_COPY.intro) + '</p><ul>';
+        for (i = 0; i < CONSENT_COPY.options.length; i++) {
+            html += '<li><strong>' + esc(CONSENT_COPY.options[i][0]) + '</strong> — ' +
+                    esc(CONSENT_COPY.options[i][1]) + '</li>';
+        }
+        return html + '</ul></div>';
+    }
+
+    function scopeIcon(type) {
+        if (String(type) === 'park') { return 'fa-campground'; }
+        if (String(type) === 'ork') { return 'fa-globe'; }
+        return 'fa-crown';
+    }
+
+    /** The scope's real name once `scopes` has landed, its type word until then. */
+    function scopeName(s) {
+        var i, sc;
+        for (i = 0; i < (scopes || []).length; i++) {
+            sc = scopes[i];
+            if (sc.scope_type === s.scope_type && parseInt(sc.scope_id, 10) === parseInt(s.scope_id, 10)) {
+                return sc.name;
+            }
+        }
+        if (String(s.scope_type) === 'park') { return 'Park'; }
+        if (String(s.scope_type) === 'ork') { return 'All of Amtgard'; }
+        return 'Kingdom';
+    }
+
+    function shareLink() {
+        var btn = $('svb-copylink');
+        return btn ? (btn.getAttribute('data-link') || '') : '';
     }
 
     function kingdomPicker(s, list) {
@@ -1533,7 +1681,7 @@
                 ? { SurveyId: SURVEY_ID, WelcomeImageId: data.image_id }
                 : { SurveyId: SURVEY_ID, ThanksImageId: data.image_id }, function (r) {
                 S.survey = r.survey || S.survey;
-                renderDrawer();
+                renderSettings();
             });
         } else if (job.indexOf('md:') === 0) {
             area = $(job.slice(3));
@@ -1555,7 +1703,7 @@
                 ? { SurveyId: SURVEY_ID, WelcomeImageId: 0 }
                 : { SurveyId: SURVEY_ID, ThanksImageId: 0 }, function (r) {
                 S.survey = r.survey || S.survey;
-                renderDrawer();
+                renderSettings();
             });
         }
     }
@@ -1607,9 +1755,9 @@
      * aria-modal="true" is only true if Tab cannot walk out of the panel, and a
      * dialog that closes must hand the keyboard back to whatever opened it.
      */
-    function restoreFocus(which) {
-        var node = which === 'modal' ? modalOpener : drawerOpener;
-        if (which === 'modal') { modalOpener = null; } else { drawerOpener = null; }
+    function restoreFocus() {
+        var node = modalOpener;
+        modalOpener = null;
         if (node && node.focus && document.contains(node)) { node.focus(); }
     }
 
@@ -1622,9 +1770,7 @@
     /** The open dialog panel, if one is open. */
     function openPanel() {
         var m = $('svb-modal');
-        var d = $('svb-drawer');
         if (m && !m.hidden) { return el('.svb-modal-panel', m); }
-        if (d && !d.hidden) { return el('.svb-drawer-panel', d); }
         return null;
     }
 
@@ -2162,11 +2308,21 @@
                 post('page_add', { SurveyId: SURVEY_ID }, function () { reload(); });
                 break;
 
+            case 'share-copy':
+                copyLink(shareLink());
+                break;
+
+            case 'help':
+                post('help', { Doc: 'surveys' }, function (data) {
+                    openModal('Building surveys', data.html || '');
+                });
+                break;
+
             case 'accent-clear':
                 S.survey.accent_color = null;
                 post('update', { SurveyId: SURVEY_ID, AccentColor: '' }, function (r) {
                     S.survey = r.survey || S.survey;
-                    renderDrawer();
+                    renderSettings();
                 });
                 break;
 
@@ -2369,7 +2525,7 @@
         });
     }
 
-    function onDrawerInput(e) {
+    function onSettingsInput(e) {
         var t = e.target, key, echo;
         if (t.classList && t.classList.contains('svb-md-input')) { refreshMdPreview(t); }
         if (!t.hasAttribute('data-sv-field')) { return; }
@@ -2383,8 +2539,15 @@
         saveSurveyField(key, t);
     }
 
-    function onDrawerClick(e) {
-        var btn = e.target.closest ? e.target.closest('[data-act], [data-upload], [data-imgclear], [data-md-cmd]') : null;
+    function onSettingsClick(e) {
+        var head = e.target.closest ? e.target.closest('[data-sec-toggle]') : null;
+        var btn;
+        if (head) {
+            e.preventDefault();
+            toggleSection(head.getAttribute('data-sec-toggle'));
+            return;
+        }
+        btn = e.target.closest ? e.target.closest('[data-act], [data-upload], [data-imgclear], [data-md-cmd]') : null;
         if (!btn || btn.disabled) { return; }
         e.preventDefault();
         handleAct(btn);
@@ -2455,21 +2618,9 @@
             requestStatus(this.getAttribute('data-target') || 'open');
         });
 
-        on($('svb-settings'), 'click', function (e) {
-            e.preventDefault();
-            openDrawer();
-        });
-
         on($('svb-copylink'), 'click', function (e) {
-            var link = this.getAttribute('data-link') || '';
             e.preventDefault();
-            if (window.navigator.clipboard && window.navigator.clipboard.writeText) {
-                window.navigator.clipboard.writeText(link).then(function () {
-                    notice('Share link copied to the clipboard.', 'ok');
-                })['catch'](function () { notice('Copy this share link: ' + link, 'warn'); });
-            } else {
-                notice('Copy this share link: ' + link, 'warn');
-            }
+            copyLink(this.getAttribute('data-link') || '');
         });
 
         on($('svb-help'), 'click', function (e) {
@@ -2492,9 +2643,6 @@
         els('.svb-modal-close, .svb-modal-backdrop').forEach(function (n) {
             n.addEventListener('click', function (e) { e.preventDefault(); closeModal(); });
         });
-        els('.svb-drawer-close, .svb-drawer-backdrop').forEach(function (n) {
-            n.addEventListener('click', function (e) { e.preventDefault(); flush(); closeDrawer(); });
-        });
 
         document.addEventListener('keydown', function (e) {
             var panel;
@@ -2506,9 +2654,20 @@
             if (e.key !== 'Escape') { return; }
             var m = $('svb-modal');
             if (m && !m.hidden) { closeModal(); return; }
-            if (drawerOpen()) { flush(); closeDrawer(); return; }
             if ($('svb-confirm') && !$('svb-confirm').hidden) { hideConfirm(); }
         });
+    }
+
+    /** Clipboard with a spoken fallback — never a native prompt. */
+    function copyLink(link) {
+        if (!link) { return; }
+        if (window.navigator.clipboard && window.navigator.clipboard.writeText) {
+            window.navigator.clipboard.writeText(link).then(function () {
+                notice('Share link copied to the clipboard.', 'ok');
+            })['catch'](function () { notice('Copy this share link: ' + link, 'warn'); });
+        } else {
+            notice('Copy this share link: ' + link, 'warn');
+        }
     }
 
     function on(node, type, fn) {
@@ -2518,8 +2677,8 @@
     /* ----------------------------------------------------------------- init */
 
     function init() {
-        var canvas = $('svb-canvas');
-        var drawer = $('svb-drawer');
+        var canvas   = $('svb-canvas');
+        var settings = $('svb-settings');
 
         if (!canvas || !window.SvRender) { return; }
 
@@ -2541,10 +2700,10 @@
         canvas.addEventListener('change', onCanvasChange, false);
         canvas.addEventListener('keydown', onCanvasKeydown, false);
 
-        if (drawer) {
-            drawer.addEventListener('input', onDrawerInput, false);
-            drawer.addEventListener('change', onDrawerInput, false);
-            drawer.addEventListener('click', onDrawerClick, false);
+        if (settings) {
+            settings.addEventListener('input', onSettingsInput, false);
+            settings.addEventListener('change', onSettingsInput, false);
+            settings.addEventListener('click', onSettingsClick, false);
         }
 
         // Scope name for the header chip, and the kingdom list for an ork-scoped audience.
@@ -2558,7 +2717,7 @@
                     break;
                 }
             }
-            if (drawerOpen()) { renderDrawer(); }
+            renderSettings();
         });
 
         window.addEventListener('beforeunload', function () {

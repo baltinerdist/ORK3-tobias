@@ -8,25 +8,26 @@
 
    The canvas is the editor (spec §7 "Builder"): one centred column of page
    cards, and the card you click swaps its SvRender preview for inline editors.
-   There is no palette and no inspector; survey-level settings live in the
-   drawer the header's Settings button opens.
+   There is no palette and no content inspector; survey-level settings are the
+   page's LEFT SIDEBAR — a stack of collapsible reports.css .rp-filter-card
+   sections that survey-build.js paints into .rp-sidebar#svb-settings.
 
    Structure:
-     .svb-layout > .svb-canvas > .svb-page > .svb-items > .svb-item
+     .rp-body > .rp-sidebar.svb-settings   (Basics … About This Tool)
+              > .rp-main.svb-canvas > .svb-page > .svb-items > .svb-item
      .svb-item                →  .svb-grip (⋮⋮ + keyboard reorder, 16px)
      .svb-item.svb-selected   →  .svb-edit
                                    .svb-card-top  (prompt, image, type picker)
                                    .svb-typeedit  (options / scale / limits)
                                    .svb-more      (⋯ menu, hidden)
                                    .svb-card-foot (duplicate, delete, switch, ⋯)
-     .svb-drawer              →  survey settings
 
    DENSITY (spec §7 "Density"): the rules below are the DESKTOP scale, and it
    is the app's own scale, not a larger one — 13px base (--ork-font-size-base),
    12px meta (--ork-font-size-sm), 11px uppercase section labels, 14px prompts
    and card titles, 20px survey title (.rp-header-title). Geometry: 32px option
    rows, a 36px card footer, a 34px type picker, 28px inline settings controls
-   and 30–32px drawer/header controls. The `(pointer: coarse),
+   and 30–32px sidebar/header controls. The `(pointer: coarse),
    (max-width: 900px)` block near the bottom puts every one of those controls
    back to a 44px tap target, so anything sized under 44px here has to be
    listed there too.
@@ -159,16 +160,16 @@
    prompt and card titles step up to 14px; meta, hints and settings lines drop
    to 12px; section labels are 11px uppercase. Nothing here is larger than the
    equivalent control elsewhere in the app. Spec §7 Density, "Typography". */
-.svb-layout,
-.svb-drawer-panel,
+.rp-root .rp-body,
 .svb-modal-panel { font-size: var(--ork-font-size-base); }
 
-.svb-layout { padding-bottom: 48px; }
-
+/* reports.css owns .rp-body/.rp-sidebar; the canvas is the right-hand column,
+   which reports.css has no rule for, so its own flex sizing lives here. */
 .svb-canvas {
-    max-width: 860px;
-    margin: 0 auto;
+    flex: 1 1 auto;
     min-width: 0;
+    max-width: 860px;
+    padding-bottom: 48px;
 }
 
 /* ── Page card ────────────────────────────────────────────────────────── */
@@ -844,8 +845,7 @@
     margin: 14px 0 6px;
 }
 
-.svb-more > .svb-sub:first-child,
-.svb-drawer-body > .svb-sub:first-child { margin-top: 0; }
+.svb-more > .svb-sub:first-child { margin-top: 0; }
 
 /* 36px, right-aligned, nothing bordered in it (spec §7 Density). */
 .svb-card-foot {
@@ -917,27 +917,27 @@
 .svb-switch input[disabled] { cursor: not-allowed; }
 .svb-switch input[disabled] + .svb-switch-track { opacity: 0.5; }
 
-/* ── Generic fields (cards, ⋯ menu and drawer share these) ────────────── */
+/* ── Generic fields (cards, ⋯ menu and sidebar share these) ──────────── */
 
 .svb-field { margin-bottom: 10px; }
 
-/* Drawer and ⋯-menu controls: 32px at the 13px base (spec §7 Density). */
+/* Sidebar and ⋯-menu controls: 32px at the 13px base (spec §7 Density). */
 .svb-more .sv-input,
 .svb-more .sv-select,
 .svb-more .sv-btn,
-.svb-drawer .sv-input,
-.svb-drawer .sv-select,
-.svb-drawer .sv-btn {
+.svb-settings .sv-input,
+.svb-settings .sv-select,
+.svb-settings .sv-btn {
     min-height: 32px;
     font-size: var(--ork-font-size-base);
     padding: 5px 10px;
 }
 
 .svb-more .sv-select,
-.svb-drawer .sv-select { padding-right: 32px; }
+.svb-settings .sv-select { padding-right: 32px; }
 
 .svb-more .sv-textarea,
-.svb-drawer .sv-textarea { font-size: var(--ork-font-size-base); padding: 6px 10px; }
+.svb-settings .sv-textarea { font-size: var(--ork-font-size-base); padding: 6px 10px; }
 
 .svb-label {
     display: block;
@@ -1053,64 +1053,95 @@
 
 .svb-imgpick-btns { display: flex; gap: 6px; flex-wrap: wrap; }
 
-/* ── Settings drawer ──────────────────────────────────────────────────── */
+/* ── Settings sidebar ─────────────────────────────────────────────────── */
 
-.svb-drawer { position: fixed; inset: 0; z-index: var(--z-modal); }
+/* The shell — .rp-sidebar, .rp-filter-card, .rp-filter-card-header and
+   .rp-filter-card-body — is reports.css's, and none of it is re-declared here.
+   What follows is only what a *collapsible* card needs: the header has to
+   become a real <button> without looking like one, and it grows a caret. */
 
-.svb-drawer-backdrop {
-    position: absolute;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.45);
-    border: 0;
+.svb-settings { padding-bottom: 48px; }
+
+.svb-sec-head {
     width: 100%;
-    padding: 0;
+    box-sizing: border-box;
+    /* .rp-filter-card-header is authored for a <div>; a <button> brings its own
+       font, border-radius and centring that would fight it. */
+    font-family: inherit;
+    text-align: left;
+    border-width: 0 0 1px 0;
+    border-style: solid;
+    border-radius: 0;
+    cursor: pointer;
 }
 
-.svb-drawer-panel {
-    position: absolute;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    width: min(440px, 100%);
-    display: flex;
-    flex-direction: column;
-    background: var(--ork-card-bg);
-    border-left: 1px solid var(--ork-border);
-    box-shadow: var(--ork-shadow-dropdown);
+.svb-sec-head:hover { background: var(--ork-surface-hover); }
+
+.svb-sec-head:focus-visible {
+    outline: 2px solid var(--sv-accent);
+    outline-offset: -2px;
 }
 
-.svb-drawer-head {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--ork-border);
-    background: var(--ork-bg-secondary);
+.svb-sec-title { flex: 1 1 auto; min-width: 0; }
+
+.svb-sec-caret {
     flex: 0 0 auto;
+    font-size: 10px;
+    transition: transform 0.15s ease;
 }
 
-.svb-drawer-title {
-    font-family: var(--ork-font-heading);
-    font-size: 14px;
-    font-weight: var(--ork-font-weight-bold);
-    color: var(--ork-text);
-    margin: 0;
-    background: none;
+.svb-sec-head[aria-expanded="false"] .svb-sec-caret { transform: rotate(-90deg); }
+
+/* A collapsed card is a lone header, so it must not keep a dangling border. */
+.svb-sec-head[aria-expanded="false"] { border-bottom-width: 0; }
+
+/* Separates the welcome screen from the thank-you screen inside one section. */
+.svb-sec-rule {
     border: 0;
-    padding: 0;
+    border-top: 1px solid var(--ork-border);
+    margin: 12px 0;
 }
 
-.svb-drawer-close { margin-left: auto; }
-
-.svb-drawer-body {
-    padding: 14px;
-    overflow-y: auto;
-    flex: 1 1 auto;
-    min-height: 0;
-    -webkit-overflow-scrolling: touch;
+/* The sidebar's own scope chip. reports.css's .rp-scope-chip cannot be reused
+   here — it paints white-on-translucent for the navy header and disappears on
+   a light card. Same shape, page-surface colours. */
+.svb-scope-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 2px;
+    padding: 3px 8px;
+    border: 1px solid var(--ork-border);
+    border-radius: 999px;
+    background: var(--ork-surface-light);
+    color: var(--ork-text);
+    font-size: var(--ork-font-size-sm);
+    font-weight: var(--ork-font-weight-semibold);
+    line-height: 1.4;
 }
 
-body.svb-drawer-lock { overflow: hidden; }
+.svb-scope-chip i { color: var(--sv-accent); font-size: 10px; }
+
+/* The fixed data-gate wording, quoted for reference — read-only, so it is set
+   at the 12px meta size rather than the 13px base of the live controls. */
+.svb-consent-quote {
+    margin: 0 0 10px;
+    padding: 8px 10px;
+    border-left: 2px solid var(--ork-border);
+    background: var(--ork-surface-light);
+    border-radius: 0 var(--ork-radius-sm) var(--ork-radius-sm) 0;
+    font-size: var(--ork-font-size-sm);
+    color: var(--sv-text-muted);
+}
+
+.svb-consent-quote p { margin: 0 0 6px; }
+.svb-consent-quote ul { margin: 0; padding-left: 16px; }
+.svb-consent-quote li { margin-bottom: 4px; }
+.svb-consent-quote li:last-child { margin-bottom: 0; }
+
+.svb-sharelink { display: flex; gap: 6px; align-items: stretch; }
+.svb-sharelink .sv-input { flex: 1 1 auto; min-width: 0; }
+.svb-sharelink .sv-btn { flex: 0 0 auto; }
 
 /* ── Help modal ───────────────────────────────────────────────────────── */
 
@@ -1240,9 +1271,11 @@ body.svb-drawer-lock { overflow: hidden; }
     .svb-more .sv-input,
     .svb-more .sv-select,
     .svb-more .sv-btn,
-    .svb-drawer .sv-input,
-    .svb-drawer .sv-select,
-    .svb-drawer .sv-btn { min-height: 44px; font-size: 16px; }
+    .svb-settings .sv-input,
+    .svb-settings .sv-select,
+    .svb-settings .sv-btn { min-height: 44px; font-size: 16px; }
+
+    .svb-sec-head { min-height: 44px; }
 
     .svb-addinline { height: 16px; }
     .svb-addinline-btn { width: 44px; height: 44px; margin-top: -14px; border-radius: 50%; }
@@ -1253,15 +1286,20 @@ body.svb-drawer-lock { overflow: hidden; }
 @media (max-width: 900px) {
     .svb-title-input { width: 100%; }
 
-    .svb-drawer-panel {
-        top: auto;
-        left: 0;
-        width: 100%;
-        max-height: 88vh;
-        border-left: 0;
-        border-top: 1px solid var(--ork-border);
-        border-radius: var(--ork-radius-lg) var(--ork-radius-lg) 0 0;
+    /* reports.css stacks .rp-body, so the sidebar lands ON TOP of the canvas.
+       renderSettings() starts every section collapsed at this width, and the
+       cap keeps even an all-expanded sidebar from burying the questions. */
+    .svb-settings {
+        max-height: 60vh;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 0;
     }
+
+    /* reports.css gives the stacked .rp-sidebar width:100%; the canvas is this
+       file's own column, so it has to claim the row for itself or flex-start
+       shrinks it to its widest card. */
+    .svb-canvas { width: 100%; max-width: 100%; box-sizing: border-box; }
 
     /* Touch has no hover, so the between-card "+" is always available. */
     .svb-addinline-btn { opacity: 1; }
@@ -1292,7 +1330,6 @@ html[data-theme="dark"] .svb-confirm {
 
 html[data-theme="dark"] .svb-page,
 html[data-theme="dark"] .svb-item,
-html[data-theme="dark"] .svb-drawer-panel,
 html[data-theme="dark"] .svb-modal-panel,
 html[data-theme="dark"] .svb-addinline-btn {
     background: var(--ork-card-bg);
@@ -1302,7 +1339,6 @@ html[data-theme="dark"] .svb-addinline-btn {
 html[data-theme="dark"] .svb-page-head,
 html[data-theme="dark"] .svb-page-more,
 html[data-theme="dark"] .svb-more,
-html[data-theme="dark"] .svb-drawer-head,
 html[data-theme="dark"] .svb-modal-head,
 html[data-theme="dark"] .svb-md-btn,
 html[data-theme="dark"] .svb-md-preview,
@@ -1353,7 +1389,6 @@ html[data-theme="dark"] .svb-page-num,
 html[data-theme="dark"] .svb-sub,
 html[data-theme="dark"] .svb-mx-caption,
 html[data-theme="dark"] .svb-label,
-html[data-theme="dark"] .svb-drawer-title,
 html[data-theme="dark"] .svb-modal-title,
 html[data-theme="dark"] .svb-modal-body h1,
 html[data-theme="dark"] .svb-modal-body h2,
@@ -1364,12 +1399,33 @@ html[data-theme="dark"] .svb-modal-body h4 {
     padding: 0;
 }
 
-html[data-theme="dark"] .svb-drawer-title,
 html[data-theme="dark"] .svb-modal-title,
 html[data-theme="dark"] .svb-modal-body h1,
 html[data-theme="dark"] .svb-modal-body h2,
 html[data-theme="dark"] .svb-modal-body h3,
 html[data-theme="dark"] .svb-modal-body h4 { color: var(--ork-text); }
+
+/* Sidebar sections. reports.css already paints .rp-filter-card and its header
+   dark; only the pieces this file added need a dark rule of their own. */
+html[data-theme="dark"] .svb-sec-head:hover { background: var(--ork-border); }
+
+html[data-theme="dark"] .svb-scope-chip {
+    background: var(--ork-surface-hover);
+    border-color: var(--ork-border);
+    color: var(--ork-text);
+}
+
+html[data-theme="dark"] .svb-sec-rule { border-top-color: var(--ork-border); }
+
+/* --ork-surface-light, --ork-bg-secondary and --ork-card-bg all collapse onto
+   #2d3748 in dark mode, so the quote would vanish into the card it sits on.
+   --ork-surface-hover (#374151) is the one step lighter that still reads as
+   inset — the same tone reports.css gives the filter-card header. Confirmed
+   against computed styles, not by eye. */
+html[data-theme="dark"] .svb-consent-quote {
+    background: var(--ork-surface-hover);
+    border-left-color: var(--ork-border);
+}
 
 /* ── Print ────────────────────────────────────────────────────────────── */
 
@@ -1383,7 +1439,7 @@ html[data-theme="dark"] .svb-modal-body h4 { color: var(--ork-text); }
     .svb-pagediv,
     .svb-card-foot,
     .svb-more,
-    .svb-drawer,
+    .svb-settings,
     .svb-modal,
     .svb-confirm { display: none !important; }
 

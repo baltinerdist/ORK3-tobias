@@ -1007,7 +1007,10 @@ html[data-theme="dark"] .sv-md h5, html[data-theme="dark"] .sv-md h6 {
     .sv-root .sv-choice-label { font-size: 14px; }
 
     .sv-root .sv-scale-face { min-width: 44px; min-height: 44px; font-size: 16px; }
-    .sv-root .sv-scale-star .sv-scale-face { font-size: 26px; padding: 0 4px; }
+    /* The glyph steps up over the 16px numeric face so a star is still legible,
+       but the 44px tap target above is what makes it reachable — not the size
+       of the character. 20px keeps it on the app's scale (spec §7 Density). */
+    .sv-root .sv-scale-star .sv-scale-face { font-size: 20px; padding: 0 4px; }
     .sv-root .sv-scale-clear { min-height: 44px; min-width: 44px; }
 
     .sv-root .sv-matrix-opt { min-height: 44px; }
