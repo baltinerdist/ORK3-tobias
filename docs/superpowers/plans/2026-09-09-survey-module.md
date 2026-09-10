@@ -533,6 +533,23 @@ CSS contract: `.sv-root` (page column, `max-width:720px`), `--sv-accent` (defaul
 - [ ] **Step 2: Commit** — `git add orkui/whats_new_content.php && git commit -m "Enhancement: Survey — release note"`
 - [ ] **Step 3: Open the PR** to `baltinerdist/ORK3-tobias` (memory: default fork destination) with `gh pr create --title "Enhancement: Survey module" --body "$(cat <<'EOF' … EOF)"` — summary of spec §Goal, the data-gate behaviour, migration + classification note, test plan (unit, integration, curl, browser matrix), and the required footer. **Only after the user says to push.**
 
+## Phase 4 — Density pass (workflow `survey-4-density.js`)
+
+### Task 17: Builder and survey chrome density
+
+**Model:** opus · effort medium (implementer, alone, browser allowed) · verifier opus · effort medium · fixer opus · effort medium
+
+**Files:**
+- Modify: `orkui/template/default/style/survey-build.css`, `orkui/template/default/script/survey-build.js`, `orkui/template/default/Survey_build.tpl`; and only where a target in spec §7 "Density" names them: `survey.css` (desktop type scale), `Survey_index.tpl`, `Survey_results.tpl`, `survey-results.css`.
+- Reference: spec §7 Builder → **Density** bullet (the targets); the owner's reference is Google Forms' question card (drag handle top-centre, filled prompt field with the type picker top-right, radio glyph + label + × rows, "Add option or add 'Other'", slim footer with duplicate/delete/divider/Required switch/⋯). Take inspiration, do not copy.
+
+- [ ] **Step 1: Measure before** — with Claude-in-Chrome on `Survey/build/<unlocked clone of 999012>` at 1280 px, record for the selected card: card padding, prompt field height, type picker height and position, option row height, footer height, and the rendered pixel size of the type select and required control. Paste the numbers.
+- [ ] **Step 2: Restructure the selected-card markup** in `survey-build.js` `renderEditCard`: move the Type `<select>` into a `.svb-card-top` row beside the prompt field (icon + label + caret, 34 px), add the centred `.svb-handle` above it, make the prompt a filled borderless `textarea`, render option rows as `.svb-opt` at 36 px (glyph, label input, ×), and the footer as `.svb-card-foot` (duplicate, delete, divider, Required `.svb-switch`, ⋯). Keep every existing action, keyboard behaviour and autosave path; only the layout changes.
+- [ ] **Step 3: Rewrite the sizing rules** in `survey-build.css` to the §7 Density targets (padding, heights, 14/16 px type scale, 32–34 px controls in the drawer and header), delete rules that only existed to support the old large footer controls, and keep dark mode and the 900/420 px breakpoints.
+- [ ] **Step 4: Trim desktop density** on the list and results headers (32 px buttons, 12 px labels) and set the 14 px base in `survey.css` for desktop widths without changing touch-width tap targets.
+- [ ] **Step 5: Measure after** — repeat Step 1 and paste both columns side by side; every target in §7 Density must be met in both themes; console clean; `node --check` on the JS.
+- [ ] **Step 6: Commit** — `git add` the touched files explicitly, `git commit -m "Enhancement: Survey — compact builder chrome"`.
+
 ---
 
 ## Plan Self-Review Notes
