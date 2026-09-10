@@ -96,8 +96,12 @@
 
 /* ── Strips under the header ──────────────────────────────────────────── */
 
-.svb-lockbar,
-.svb-confirm {
+/* :not([hidden]) is load-bearing: a bare `display:flex` on a class selector
+   outranks the UA's `[hidden] { display:none }`, which would pin the lock bar
+   and the confirm strip open on every draft survey. Both are toggled through
+   the `hidden` attribute (survey-build.js askConfirm/hideConfirm). */
+.svb-lockbar:not([hidden]),
+.svb-confirm:not([hidden]) {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -1051,4 +1055,17 @@ html[data-theme="dark"] .svb-modal-body h4 { color: var(--ork-text); }
     .svb-confirm { display: none !important; }
 
     .svb-page, .svb-item { box-shadow: none; break-inside: avoid; }
+}
+
+/* ── Narrow header actions ────────────────────────────────────────────── */
+
+/* reports.css gives every .rp-btn-ghost `flex:1; min-width:0` under 600px. The
+   builder puts six long-labelled buttons in that row, so each is squeezed to
+   ~35px and the labels overlap. Let them size to their own content and wrap
+   onto as many rows as they need instead. */
+@media (max-width: 600px) {
+    .rp-root .rp-header-actions .rp-btn-ghost {
+        flex     : 0 1 auto;
+        min-width: fit-content;
+    }
 }
