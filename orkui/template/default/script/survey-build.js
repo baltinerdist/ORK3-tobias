@@ -1664,13 +1664,19 @@
         var wrap = card ? el('.svb-opts[data-role="' + role + '"]', card) : null;
         var q    = questionById(questionId);
         var list = [];
+        var blank = false;
         if (!wrap || !q) { return; }
 
+        // A row whose label is momentarily empty (the author cleared it to
+        // retype) must not be sent: the domain deletes every option missing
+        // from the payload, which would drop a live option id mid-keystroke
+        // and wedge every later save on "That option does not belong to this
+        // question." Hold the commit until no row is blank.
         els('.svb-optrow', wrap).forEach(function (row) {
             var labelEl  = el('.svb-optlabel', row);
             var weightEl = el('.svb-optweight', row);
             var label    = labelEl ? String(labelEl.value || '').trim() : '';
-            if (label === '') { return; }
+            if (label === '') { blank = true; return; }
             list.push({
                 option_id: parseInt(row.getAttribute('data-oid'), 10) || 0,
                 label:     label,
@@ -1678,6 +1684,7 @@
                 is_other:  row.getAttribute('data-other') === '1' ? 1 : 0
             });
         });
+        if (blank) { return; }
 
         save('opts:' + questionId + ':' + role, 'option_set', {
             QuestionId: questionId,
@@ -1948,7 +1955,7 @@
                 e.preventDefault();
                 if (wrap.getAttribute('data-fixed') === '1' || S.locked) { return; }
                 commitOptions(q.question_id, wrap.getAttribute('data-role'));
-                addOptionRow(wrap, wrap.getAttribute('data-role'), false);
+                addOptionRow(q, wrap, false);
                 return;
             }
             if (e.key === 'Backspace' && String(t.value) === '' && !S.locked &&
