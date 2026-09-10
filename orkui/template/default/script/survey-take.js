@@ -41,7 +41,9 @@
     var SURVEY_ID = parseInt(CFG.surveyId, 10) || 0;
     var IS_PREVIEW = CFG.preview === true;
     var UIR = String(CFG.uir || 'index.php?Route=');
-    var SS_KEY = 'sv:answers:' + SURVEY_ID;
+    // Preview keeps its own mirror: a manager's abandoned preview must never
+    // pre-fill their real run of the same survey (and vice versa).
+    var SS_KEY = 'sv:answers:' + SURVEY_ID + (IS_PREVIEW ? ':preview' : '');
 
     // Ineligibility reasons come from SurveyResponse::eligibility().
     var REASONS = {
@@ -387,12 +389,67 @@
         progressTextEl.textContent = label;
     }
 
+    /** #rgb / #rgba / #rrggbb / #rrggbbaa -> [r, g, b] (alpha ignored). */
+    function accentRgb(hex) {
+        var h = String(hex || '').replace(/^#/, '');
+        var n;
+        if (h.length === 3 || h.length === 4) {
+            h = h.charAt(0) + h.charAt(0) + h.charAt(1) + h.charAt(1) + h.charAt(2) + h.charAt(2);
+        }
+        h = h.slice(0, 6);
+        if (!/^[0-9a-fA-F]{6}$/.test(h)) { return null; }
+        n = parseInt(h, 16);
+        return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    }
+
+    /** Perceived luminance, 0 (black) to 1 (white). */
+    function accentLum(rgb) {
+        return (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255;
+    }
+
+    function accentMix(rgb, target, amt) {
+        var out = [], i;
+        for (i = 0; i < 3; i++) { out.push(Math.round(rgb[i] + (target - rgb[i]) * amt)); }
+        return out;
+    }
+
+    function accentHex(rgb) {
+        var s = '#', i, p;
+        for (i = 0; i < 3; i++) {
+            p = rgb[i].toString(16);
+            s += p.length === 1 ? '0' + p : p;
+        }
+        return s;
+    }
+
+    /* A custom accent has to work as BOTH a fill (primary button, progress
+       bar) and a foreground (ghost button, selected choice border, thanks
+       heading) against the CURRENT theme's card, so it cannot be applied raw:
+       a navy accent all but disappears on the dark card and a lemon one on the
+       light card. Nudge it into range for the active theme, then hand the
+       paired text colour to --sv-accent-contrast — survey.css declares that
+       token but nothing else ever sets it, and in dark mode the stylesheet
+       prints near-black text on the primary button. */
     function accentPaint() {
         var s = (def && def.survey) || {};
         var root = el('sv-root');
-        if (root && s.accent_color && /^#[0-9a-fA-F]{3,8}$/.test(String(s.accent_color))) {
-            root.style.setProperty('--sv-accent', s.accent_color);
+        var dark, rgb, guard = 0;
+
+        if (!root || !s.accent_color || !/^#[0-9a-fA-F]{3,8}$/.test(String(s.accent_color))) { return; }
+        rgb = accentRgb(s.accent_color);
+        if (!rgb) { return; }
+
+        dark = document.documentElement.getAttribute('data-theme') === 'dark';
+        if (dark) {
+            while (accentLum(rgb) < 0.6 && guard++ < 12) { rgb = accentMix(rgb, 255, 0.25); }
+        } else {
+            while (accentLum(rgb) > 0.5 && guard++ < 12) { rgb = accentMix(rgb, 0, 0.2); }
         }
+
+        root.style.setProperty('--sv-accent', accentHex(rgb));
+        root.style.setProperty('--sv-accent-contrast', accentLum(rgb) > 0.55 ? '#1a202c' : '#ffffff');
+        root.style.setProperty('--sv-accent-soft',
+            'rgba(' + rgb[0] + ', ' + rgb[1] + ', ' + rgb[2] + ', ' + (dark ? 0.16 : 0.1) + ')');
     }
 
     function resumeNote() {
@@ -836,6 +893,13 @@
         stage.addEventListener('click', onStageClick);
         stage.addEventListener('change', onStageChange);
         stage.addEventListener('input', onStageInput);
+
+        /* Re-derive the accent when the theme toggle stamps html[data-theme]:
+           the same accent_color needs a different treatment per theme. */
+        if (window.MutationObserver) {
+            new window.MutationObserver(function () { accentPaint(); })
+                .observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+        }
 
         post('definition', { SurveyId: SURVEY_ID, Preview: IS_PREVIEW ? 1 : 0 }).then(function (r) {
             if (!r || r.status === 5) {
