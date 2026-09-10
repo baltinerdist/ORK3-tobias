@@ -1387,6 +1387,8 @@ html[data-theme="dark"] .flatpickr-time .numInputWrapper span.arrowDown:after { 
     .svb-page-title { min-height: 44px; font-size: 16px; }
     .svb-addbtn { min-height: 44px; font-size: var(--ork-font-size-base); }
     .svb-link { min-height: 44px; padding: 8px 6px; }
+    /* "Add option" / "add 'Other'" are the builder's most-used controls: give them a real tap target. */
+    .svb-optadd-link { min-height: 44px; padding: 8px 6px; display: inline-flex; align-items: center; }
     .svb-help-add { min-height: 44px; font-size: var(--ork-font-size-base); }
     .svb-card-foot { height: auto; min-height: 52px; flex-wrap: wrap; padding: 4px 0; }
     .svb-switch { width: 44px; height: 24px; }
