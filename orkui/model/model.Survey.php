@@ -67,6 +67,12 @@ class Model_Survey extends Model
         return $this->_survey()->isStructureLocked($surveyRow);
     }
 
+    /** Message the domain uses when a structural mutation hits a locked survey. */
+    public function locked_error(): string
+    {
+        return Survey::LOCKED_ERROR;
+    }
+
     public function get(int $surveyId): array
     {
         return $this->_survey()->get($surveyId);
@@ -175,6 +181,12 @@ class Model_Survey extends Model
     // -----------------------------------------------------------------------
     // SurveyResponse — eligibility, drafts, consent, submit
     // -----------------------------------------------------------------------
+
+    /** Byte ceiling the domain applies to an answers JSON payload. */
+    public function max_answer_bytes(): int
+    {
+        return SurveyResponse::MAX_DRAFT_BYTES;
+    }
 
     public function tenure_months(int $uid): int
     {

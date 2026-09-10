@@ -62,16 +62,26 @@ class Controller_SurveyAjax extends Controller
     private function requireUnlocked(array $surveyRow): void
     {
         if ($this->Survey->is_structure_locked($surveyRow)) {
-            $this->jsonOut(['status' => 1, 'error' => Survey::LOCKED_ERROR]);
+            $this->jsonOut(['status' => 1, 'error' => $this->Survey->locked_error()]);
         }
     }
 
-    /** Decode a JSON-bearing POST field into an array, or bail with status 1. */
-    private function jsonField(string $key, $default = []): array
+    /**
+     * Decode a JSON-bearing POST field into an array, or bail with status 1.
+     *
+     * $maxBytes caps the RAW string before json_decode: the draft path caps the
+     * re-encoded answers inside the domain, but submit fed whatever
+     * post_max_size allowed straight into per-entry validation, so an absurd
+     * multi-select array was decoded and walked before being rejected.
+     */
+    private function jsonField(string $key, $default = [], int $maxBytes = 0): array
     {
         $raw = $_POST[$key] ?? null;
         if ($raw === null || $raw === '') {
             return $default;
+        }
+        if ($maxBytes > 0 && strlen((string) $raw) > $maxBytes) {
+            $this->jsonOut(['status' => 1, 'error' => $key . ' payload is too large.']);
         }
         $decoded = json_decode((string) $raw, true);
         if (!is_array($decoded)) {
@@ -504,7 +514,7 @@ class Controller_SurveyAjax extends Controller
     {
         $uid      = $this->requireLogin();
         $surveyId = (int) ($_POST['SurveyId'] ?? 0);
-        $answers  = $this->jsonField('Answers', []);
+        $answers  = $this->jsonField('Answers', [], $this->Survey->max_answer_bytes());
         $pageIndex = (int) ($_POST['PageIndex'] ?? 0);
 
         $r = $this->Survey->draft_save($surveyId, $uid, $answers, $pageIndex);
@@ -518,7 +528,7 @@ class Controller_SurveyAjax extends Controller
     {
         $uid      = $this->requireLogin();
         $surveyId = (int) ($_POST['SurveyId'] ?? 0);
-        $answers  = $this->jsonField('Answers', []);
+        $answers  = $this->jsonField('Answers', [], $this->Survey->max_answer_bytes());
         $consent  = (string) ($_POST['Consent'] ?? 'anonymous');
         $duration = (int) ($_POST['DurationSeconds'] ?? 0);
         $isTest   = $this->truthy($_POST['IsTest'] ?? 0);
@@ -527,6 +537,9 @@ class Controller_SurveyAjax extends Controller
         if ((int) $r['Status'] !== 0) {
             $this->envelopeFail($r);
         }
+        // The banner is memoised per viewer in the session; a finished survey
+        // must stop being promoted on the very next page load.
+        $this->bust_survey_banner_cache();
         $this->jsonOut(['status' => 0, 'thanks_html' => $r['ThanksHtml']]);
     }
 
@@ -541,6 +554,7 @@ class Controller_SurveyAjax extends Controller
         $uid      = $this->requireLogin();
         $surveyId = (int) ($_POST['SurveyId'] ?? 0);
         $this->Survey->dismiss_banner($surveyId, $uid);
+        $this->bust_survey_banner_cache();
         $this->jsonOut(['status' => 0]);
     }
 
