@@ -7475,6 +7475,7 @@ $(function() {
 						if (!surveys.length) { svBody.innerHTML = ''; return; }
 						var months3 = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 						var esc = function(s) { return $('<div>').text(s || '').html(); };
+						var escAttr = function(s) { return esc(s).replace(/"/g, '&quot;'); };
 						var svHtml = '<div class="pna-card"><div class="pna-card-title"><i class="fas fa-poll"></i> Available Surveys</div>';
 						surveys.forEach(function(sv) {
 							var sub = esc(sv.scope_label || '');
@@ -7488,7 +7489,7 @@ $(function() {
 								+ '<span class="pna-feed-label">' + esc(sv.title) + '</span>'
 								+ '<span class="pna-survey-meta">'
 								+ (sub ? '<span class="pna-feed-sub">' + sub + '</span>' : '')
-								+ '<a class="pna-survey-cta" href="' + PnConfig.uir + 'Survey/take/' + parseInt(sv.survey_id) + '">' + (sv.in_progress ? 'Continue' : 'Take survey') + '</a>'
+								+ '<a class="pna-survey-cta" aria-label="' + escAttr((sv.in_progress ? 'Continue' : 'Take survey') + ': ' + (sv.title || '')) + '" href="' + PnConfig.uir + 'Survey/take/' + parseInt(sv.survey_id) + '">' + (sv.in_progress ? 'Continue' : 'Take survey') + '</a>'
 								+ '</span></div>';
 						});
 						svBody.innerHTML = svHtml + '</div>';
