@@ -449,7 +449,10 @@
     function renderFinal() {
         var s = def.survey;
         var gate = parseInt(s.data_gate_enabled, 10) === 1;
-        var html = '<section class="sv-card sv-final">';
+        /* A draft can resume straight onto this screen (last page answered,
+           Next pressed, then the tab closed), so the resume note belongs here
+           too - not only on the welcome and page renderers. */
+        var html = resumeNote() + '<section class="sv-card sv-final">';
         var i, o;
 
         if (gate) {
