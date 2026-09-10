@@ -22,6 +22,9 @@ class Survey
     private const IMAGE_MAX_BYTES = 2097152;   // 2 MB
     private const IMAGE_MAX_EDGE  = 1600;      // longest edge after the GD re-encode
 
+    /** Days an untouched in-progress answer set survives (spec §2: pre-consent data). */
+    private const DRAFT_RETENTION_DAYS = 60;
+
     /** Fields `update()` accepts, mapped to their column and coercion. */
     private const UPDATE_FIELDS = [
         'Title'                    => ['title', 'title'],
@@ -514,6 +517,12 @@ class Survey
                 . ', updated_at = NOW() WHERE survey_id = ' . $surveyId);
         }
 
+        // Turning resume off means the saved half-answers can never be resumed;
+        // they are identified and pre-consent, so they go rather than linger.
+        if (array_key_exists('AllowResume', $fields) && !$this->truthy($fields['AllowResume'])) {
+            $this->purgeDrafts($surveyId);
+        }
+
         return $this->ok(['Survey' => $this->getRow($surveyId)]);
     }
 
@@ -555,7 +564,37 @@ class Survey
         $this->exec('UPDATE ' . DB_PREFIX . 'survey SET ' . implode(', ', $sets)
             . ', updated_at = NOW() WHERE survey_id = ' . $surveyId);
 
+        if ($status !== 'open') {
+            // Nobody can finish this survey any more, so the half-finished
+            // answers are unreachable — and they are identified and stored
+            // BEFORE the consent screen, so they must not outlive the survey.
+            $this->purgeDrafts($surveyId);
+        } else {
+            $this->purgeStaleDrafts($surveyId);
+        }
+
         return $this->ok(['Survey' => $this->getRow($surveyId)]);
+    }
+
+    /** Drop every in-progress answer set for a survey. */
+    private function purgeDrafts(int $surveyId): void
+    {
+        $this->exec('DELETE FROM ' . DB_PREFIX . 'survey_draft WHERE survey_id = ' . (int) $surveyId);
+    }
+
+    /**
+     * Retention sweep for one survey: an answer set nobody has touched in
+     * DRAFT_RETENTION_DAYS was abandoned, and it is identified, pre-consent
+     * data — it does not get to sit there forever waiting for a resume that is
+     * not coming.
+     */
+    private function purgeStaleDrafts(int $surveyId): void
+    {
+        $this->exec(
+            'DELETE FROM ' . DB_PREFIX . 'survey_draft
+             WHERE survey_id = ' . (int) $surveyId . '
+               AND updated_at < \'' . date('Y-m-d H:i:s', time() - (self::DRAFT_RETENTION_DAYS * 86400)) . '\''
+        );
     }
 
     /** Copy a survey (definition + images) into a new draft owned by $uid. */
