@@ -21,6 +21,7 @@ class Survey
     /** Upload limits for survey illustrations (spec §3). */
     private const IMAGE_MAX_BYTES = 2097152;   // 2 MB
     private const IMAGE_MAX_EDGE  = 1600;      // longest edge after the GD re-encode
+    private const IMAGE_MAX_PIXELS = 40000000; // 40 MP: GD needs ~4 bytes/pixel to decode
 
     /** Days an untouched in-progress answer set survives (spec §2: pre-consent data). */
     private const DRAFT_RETENTION_DAYS = 60;
@@ -1556,6 +1557,19 @@ class Survey
         $detected = @exif_imagetype($tmpPath);
         if ($detected !== IMAGETYPE_JPEG && $detected !== IMAGETYPE_PNG) {
             return $this->fail('Only JPEG and PNG images are supported.');
+        }
+
+        // exif_imagetype sniffs the magic bytes, not the pixel dimensions, and the
+        // 2 MB cap is on the COMPRESSED file: a 40 KB single-colour 30000x30000
+        // PNG decodes to gigabytes and takes the worker with it. Read the header
+        // first and refuse anything GD would not fit in memory.
+        $info = @getimagesize($tmpPath);
+        if (!is_array($info) || empty($info[0]) || empty($info[1])) {
+            return $this->fail('That image could not be read.');
+        }
+        if (((int) $info[0] * (int) $info[1]) > self::IMAGE_MAX_PIXELS) {
+            return $this->fail('That image has too many pixels (max '
+                . (int) (self::IMAGE_MAX_PIXELS / 1000000) . ' megapixels).');
         }
 
         $img = ($detected === IMAGETYPE_PNG) ? @imagecreatefrompng($tmpPath) : @imagecreatefromjpeg($tmpPath);
