@@ -775,7 +775,7 @@ class SurveyReport
             $total = (int)$rs->c;
         }
 
-        $rows = $this->responsePage($where, $offset, $limit);
+        $rows = $this->responsePage($surveyId, $where, $offset, $limit);
         if ($rows) {
             $this->attachAnswers($rows, $questions, $this->options($surveyId));
         }
@@ -812,7 +812,7 @@ class SurveyReport
         $offset = 0;
         $batch = 500;
         while (true) {
-            $rows = $this->responsePage($where, $offset, $batch);
+            $rows = $this->responsePage($surveyId, $where, $offset, $batch);
             if (!$rows) {
                 break;
             }
@@ -875,12 +875,34 @@ class SurveyReport
     }
 
     /**
+     * A key that shuffles the row order deterministically without revealing it.
+     *
+     * Derived from an install secret, so a manager cannot recompute the
+     * permutation from ids they can see (the slug and the survey id are both on
+     * screen); stable for the life of the install, so pagination is stable.
+     */
+    private static function orderKey(int $surveyId): string
+    {
+        $secret = defined('DB_PASSWORD') ? (string)DB_PASSWORD : '';
+        return substr(md5($secret . '|survey-row-order|' . $surveyId), 0, 16);
+    }
+
+    /**
      * One page of responses with consent masking applied (spec §2/§7).
      *
-     * @return array<int,array> keyed by response_id
+     * Rows are NOT ordered by response_id, and the outward `response_id` field
+     * is a display ordinal rather than the database id: the id is a global
+     * auto-increment, so emitting it (or ordering by it) hands back the exact
+     * submission order and undoes the day-truncation of `submitted_at` that
+     * keeps anonymous responses unlinkable. Order is submission DAY, then an
+     * install-keyed hash; the array key stays the real id so answers can be
+     * attached.
+     *
+     * @return array<int,array> keyed by the real response_id
      */
-    private function responsePage(string $where, int $offset, int $limit): array
+    private function responsePage(int $surveyId, string $where, int $offset, int $limit): array
     {
+        $offset = max(0, (int)$offset);
         $this->db->Clear();
         $rs = $this->db->DataSet(
             'SELECT r.response_id, r.consent, r.mundane_id, r.kingdom_id, r.tenure_months,
@@ -890,20 +912,24 @@ class SurveyReport
                LEFT JOIN ' . DB_PREFIX . 'mundane m ON m.mundane_id = r.mundane_id
                LEFT JOIN ' . DB_PREFIX . 'kingdom k ON k.kingdom_id = r.kingdom_id
               WHERE ' . $where . '
-              ORDER BY r.response_id ASC
-              LIMIT ' . (int)$offset . ', ' . (int)$limit
+              ORDER BY DATE(r.submitted_at) ASC,
+                       MD5(CONCAT(r.response_id, \'' . self::orderKey($surveyId) . '\')) ASC
+              LIMIT ' . $offset . ', ' . (int)$limit
         );
 
         $rows = [];
+        $seq = $offset;
         if ($rs) {
             while ($rs->Next()) {
+                $seq++;
                 $consent = (string)$rs->consent;
                 $full = ($consent === 'full');
                 $identified = ($consent === 'full' || $consent === 'partial');
                 $tenure = $rs->tenure_months;
                 $rid = (int)$rs->response_id;
                 $rows[$rid] = [
-                    'response_id'      => $rid,
+                    // Display ordinal within this filtered listing, NOT the DB id.
+                    'response_id'      => $seq,
                     'consent'          => $consent,
                     'is_test'          => (int)$rs->is_test,
                     'persona'          => $full ? ($rs->persona ?? null) : null,
