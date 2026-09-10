@@ -847,10 +847,31 @@ class SurveyReport
     {
         $cells = [];
         foreach ($fields as $v) {
-            $v = (string)$v;
+            $v = self::csvSafe((string)$v);
             $cells[] = '"' . str_replace('"', '""', $v) . '"';
         }
         return implode(',', $cells) . "\r\n";
+    }
+
+    /**
+     * Neutralise spreadsheet formula injection.
+     *
+     * Every cell in this export is officer- or respondent-authored text, and
+     * Excel/LibreOffice treat a leading =, +, -, @, TAB or CR as the start of a
+     * formula — so a respondent could put =HYPERLINK(...) in a paragraph answer
+     * and have it fire in the exporting officer's spreadsheet, next to the
+     * identified columns. A leading apostrophe forces the cell to text; it is
+     * invisible in the spreadsheet and only shows in a raw file read.
+     */
+    private static function csvSafe(string $v): string
+    {
+        if ($v === '' || is_numeric($v)) {
+            return $v;
+        }
+        if (strpos("=+-@\t\r", $v[0]) !== false) {
+            return "'" . $v;
+        }
+        return $v;
     }
 
     /**
