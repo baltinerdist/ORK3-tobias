@@ -185,7 +185,7 @@
     flex: 0 0 auto;
 }
 
-.svb-page-handle[disabled] { cursor: not-allowed; opacity: 0.4; }
+.svb-page-handle.svb-handle-locked { cursor: not-allowed; opacity: 0.4; }
 .svb-page-handle:active,
 .svb-handle:active,
 .svb-opthandle:active { cursor: grabbing; }
@@ -423,6 +423,10 @@
 .svb-icon-btn[disabled] { opacity: 0.35; cursor: not-allowed; }
 .svb-icon-btn.svb-icon-on { background: var(--sv-accent-soft); color: var(--sv-accent); border-color: var(--sv-accent); }
 .svb-icon-danger:hover:not([disabled]) { color: var(--sv-danger); border-color: var(--sv-danger); }
+
+/* The keyboard reorder pair. Narrower than a normal icon button so the two of
+   them together take about the room the grip they sit beside does. */
+.svb-move-btn { width: 26px; font-size: 11px; }
 
 /* ── Inline text links ────────────────────────────────────────────────── */
 
@@ -1045,6 +1049,7 @@ html[data-theme="dark"] .svb-modal-body h4 { color: var(--ork-text); }
 
 @media print {
     .svb-page-actions,
+    .svb-move-btn,
     .svb-item-bar .svb-handle,
     .svb-page-handle,
     .svb-addbtn,

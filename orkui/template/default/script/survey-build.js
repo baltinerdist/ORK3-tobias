@@ -478,6 +478,18 @@
     }
 
     /**
+     * A reorder step button. Unlike iconBtn it keeps its own tip when it is
+     * disabled at the end of a list, so "Move up" on the first item does not
+     * claim the survey is locked.
+     */
+    function moveBtn(act, dir, tip, disabled, dataAttrs) {
+        return '<button type="button" class="svb-icon-btn svb-move-btn" data-act="' + act + '"' +
+               (dataAttrs || '') + ' data-tip="' + esc(S.locked ? LOCK_TIP : tip) + '" aria-label="' + esc(tip) + '"' +
+               (disabled ? ' disabled' : '') + '><i class="fas fa-chevron-' + (dir < 0 ? 'up' : 'down') +
+               '" aria-hidden="true"></i></button>';
+    }
+
+    /**
      * One labelled control. With an id the label points at it; without one the
      * label WRAPS the control, so nothing here is ever an unlabelled input.
      */
@@ -655,9 +667,15 @@
         var pid  = parseInt(page.page_id, 10);
         var html = '<header class="svb-page-head">';
 
-        html += '<button type="button" class="svb-page-handle" aria-label="Reorder page" data-tip="' +
-                esc(S.locked ? LOCK_TIP : 'Drag to reorder this page') + '"' + (S.locked ? ' disabled' : '') +
-                '><i class="fas fa-grip-vertical" aria-hidden="true"></i></button>';
+        // The grip is pointer-only decoration, so it stays out of the tab order;
+        // the two step buttons beside it are the keyboard path (WCAG 2.1.1).
+        html += '<span class="svb-page-handle' + (S.locked ? ' svb-handle-locked' : '') + '" data-tip="' +
+                esc(S.locked ? LOCK_TIP : 'Drag to reorder this page') + '" aria-hidden="true">' +
+                '<i class="fas fa-grip-vertical"></i></span>';
+        html += moveBtn('page-up', -1, 'Move this page up', S.locked || index === 0,
+                        ' data-page="' + pid + '"');
+        html += moveBtn('page-down', 1, 'Move this page down', S.locked || index >= S.pages.length - 1,
+                        ' data-page="' + pid + '"');
         html += '<span class="svb-page-num">Page ' + (index + 1) + ' of ' + S.pages.length + '</span>';
         html += '<input type="text" class="svb-page-title" maxlength="200" placeholder="Page title (optional)" ' +
                 'aria-label="Page ' + (index + 1) + ' title" data-p-field="Title" value="' + esc(page.title || '') + '">';
@@ -701,12 +719,16 @@
     function cardHtml(q) {
         var qid      = parseInt(q.question_id, 10);
         var selected = qid === sel;
+        var pos      = questionIndex(qid);
+        var total    = orderedQuestions().length;
         var html = '<article class="svb-item' + (selected ? ' svb-selected svb-editing' : '') +
                    '" data-qid="' + qid + '" data-type="' + esc(q.type) + '" tabindex="0">';
 
         html += '<div class="svb-item-bar">';
         html += '<span class="svb-handle" data-tip="' + esc(S.locked ? LOCK_TIP : 'Drag to reorder') + '" aria-hidden="true">' +
                 '<i class="fas fa-grip-vertical"></i></span>';
+        html += moveBtn('q-up', -1, 'Move this element up', S.locked || pos === 0, ' data-qid="' + qid + '"');
+        html += moveBtn('q-down', 1, 'Move this element down', S.locked || pos >= total - 1, ' data-qid="' + qid + '"');
         html += typeBadge(q.type);
         if (!selected && truthy(q.required)) {
             html += '<span class="svb-req-dot" data-tip="Required" aria-label="Required">•</span>';
@@ -814,6 +836,10 @@
         if (!spec.fixed) {
             html += '<span class="svb-opthandle" data-tip="' + esc(S.locked ? LOCK_TIP : 'Drag to reorder') +
                     '" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>';
+            html += moveBtn('opt-up', -1, 'Move this ' + noun.toLowerCase() + ' up',
+                            S.locked || index === 0, '');
+            html += moveBtn('opt-down', 1, 'Move this ' + noun.toLowerCase() + ' down',
+                            S.locked || index >= count - 1, '');
         }
         html += '<input type="text" class="sv-input svb-optlabel" maxlength="255" value="' + esc(o.label || '') +
                 '" placeholder="' + noun + '" aria-label="' + noun + ' ' + (index + 1) + '">';
@@ -1568,6 +1594,94 @@
         post('page_reorder', { SurveyId: SURVEY_ID, PageIds: JSON.stringify(ids) }, null);
     }
 
+    /* -------------------------------------------------- keyboard reordering */
+
+    /**
+     * The keyboard equivalent of a question drag. Within a page it is a swap;
+     * at the top or bottom of a page it hops to the neighbouring page, which is
+     * what dragging across the gap does.
+     */
+    function moveQuestion(questionId, dir) {
+        var q = questionById(questionId);
+        var list, idx, pageIdx, target, ids, i;
+        if (!q || S.locked) { return; }
+
+        list    = questionsOfPage(q.page_id);
+        pageIdx = -1;
+        idx     = -1;
+        for (i = 0; i < list.length; i++) {
+            if (parseInt(list[i].question_id, 10) === parseInt(questionId, 10)) { idx = i; }
+        }
+        for (i = 0; i < S.pages.length; i++) {
+            if (parseInt(S.pages[i].page_id, 10) === parseInt(q.page_id, 10)) { pageIdx = i; }
+        }
+        if (idx < 0) { return; }
+
+        if (idx + dir >= 0 && idx + dir < list.length) {
+            list.splice(idx + dir, 0, list.splice(idx, 1)[0]);
+            ids = list.map(function (n) { return parseInt(n.question_id, 10); });
+            reorderLocal(parseInt(q.page_id, 10), ids);
+            renderCanvas();
+            focusMove(questionId, dir);
+            post('question_reorder', { PageId: parseInt(q.page_id, 10), QuestionIds: JSON.stringify(ids) }, null);
+            return;
+        }
+
+        target = S.pages[pageIdx + dir];
+        if (!target) { return; }
+        post('question_move', {
+            QuestionId: questionId,
+            PageId:     parseInt(target.page_id, 10),
+            Index:      dir < 0 ? questionsOfPage(target.page_id).length : 0
+        }, function () {
+            reload(function () { focusMove(questionId, dir); });
+        });
+    }
+
+    /** Keep the keyboard on the control the author just used. */
+    function focusMove(questionId, dir) {
+        var card = cardEl(questionId);
+        var btn  = card ? el('[data-act="' + (dir < 0 ? 'q-up' : 'q-down') + '"]', card) : null;
+        if (!card) { return; }
+        if (btn && !btn.disabled) { btn.focus(); } else { card.focus(); }
+        if (card.scrollIntoView) { card.scrollIntoView({ block: 'nearest' }); }
+    }
+
+    function movePage(pageId, dir) {
+        var i, at = -1, swap, ids, btn, head;
+        if (S.locked) { return; }
+        for (i = 0; i < S.pages.length; i++) {
+            if (parseInt(S.pages[i].page_id, 10) === parseInt(pageId, 10)) { at = i; }
+        }
+        if (at < 0 || at + dir < 0 || at + dir >= S.pages.length) { return; }
+
+        swap = S.pages[at];
+        S.pages[at] = S.pages[at + dir];
+        S.pages[at + dir] = swap;
+        ids = S.pages.map(function (p) { return parseInt(p.page_id, 10); });
+        renderCanvas();
+
+        head = el('.svb-page[data-page="' + parseInt(pageId, 10) + '"]');
+        btn  = head ? el('[data-act="' + (dir < 0 ? 'page-up' : 'page-down') + '"]', head) : null;
+        if (btn && !btn.disabled) { btn.focus(); }
+        if (head && head.scrollIntoView) { head.scrollIntoView({ block: 'nearest' }); }
+
+        post('page_reorder', { SurveyId: SURVEY_ID, PageIds: JSON.stringify(ids) }, null);
+    }
+
+    /** Keyboard option reorder — the same commit the option drag makes. */
+    function moveOptionRow(q, wrap, row, dir) {
+        var host = row.parentNode;
+        var sib  = dir < 0 ? row.previousElementSibling : row.nextElementSibling;
+        var btn;
+        if (S.locked || !sib || !sib.classList.contains('svb-optrow')) { return; }
+        if (dir < 0) { host.insertBefore(row, sib); } else { host.insertBefore(sib, row); }
+        refreshOptionRowStates(wrap);
+        commitOptions(q.question_id, wrap.getAttribute('data-role'));
+        btn = el('[data-act="' + (dir < 0 ? 'opt-up' : 'opt-down') + '"]', row);
+        if (btn && !btn.disabled) { btn.focus(); }
+    }
+
     /* ----------------------------------------------------------- structure */
 
     /** "+ Add Element" — a starter single-choice card, selected, prompt focused. */
@@ -1720,9 +1834,13 @@
     function refreshOptionRowStates(wrap) {
         var rows = els('.svb-optrow', wrap);
         var min  = parseInt(wrap.getAttribute('data-min'), 10) || 0;
-        rows.forEach(function (row) {
+        rows.forEach(function (row, i) {
             var rm = el('[data-act="opt-remove"]', row);
+            var up = el('[data-act="opt-up"]', row);
+            var dn = el('[data-act="opt-down"]', row);
             if (rm) { rm.disabled = S.locked || rows.length <= min; }
+            if (up) { up.disabled = S.locked || i === 0; }
+            if (dn) { dn.disabled = S.locked || i === rows.length - 1; }
         });
     }
 
@@ -1840,6 +1958,20 @@
                 commitOptions(q.question_id, wrap.getAttribute('data-role'));
                 break;
 
+            case 'q-up':
+            case 'q-down':
+                moveQuestion(parseInt(btn.getAttribute('data-qid'), 10), act === 'q-up' ? -1 : 1);
+                break;
+
+            case 'opt-up':
+            case 'opt-down':
+                if (!q) { return; }
+                row  = btn.closest('.svb-optrow');
+                wrap = btn.closest('.svb-opts');
+                if (!row || !wrap) { return; }
+                moveOptionRow(q, wrap, row, act === 'opt-up' ? -1 : 1);
+                break;
+
             case 'q-duplicate':
                 qid = parseInt(btn.getAttribute('data-qid'), 10);
                 if (questionById(qid)) { duplicateQuestion(questionById(qid)); }
@@ -1869,6 +2001,11 @@
                 askConfirm('Delete this page? Any questions on it move to the page before.', 'Delete page', true, function () {
                     post('page_delete', { PageId: pid }, function () { reload(); });
                 });
+                break;
+
+            case 'page-up':
+            case 'page-down':
+                movePage(parseInt(btn.getAttribute('data-page'), 10), act === 'page-up' ? -1 : 1);
                 break;
 
             case 'page-add':
