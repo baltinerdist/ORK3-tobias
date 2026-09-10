@@ -1132,7 +1132,7 @@ class SurveyResponse
      */
     public function bannerFor(int $uid): ?array
     {
-        $rows = $this->candidateSurveys($uid, true, 10);
+        $rows = $this->candidateSurveys($uid, true, 50); // eligibility is evaluated after the query; keep the window wide
         foreach ($rows as $survey) {
             if ($this->eligibility($survey, $uid)['eligible']) {
                 return $this->widgetRow($survey, $uid);

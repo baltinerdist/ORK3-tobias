@@ -153,7 +153,7 @@
             ramp   : dk ? SV_RAMP.dark : SV_RAMP.light,
             div    : dk ? SV_DIVERGING.dark : SV_DIVERGING.light,
             text   : dk ? '#e2e8f0' : '#2d3748',
-            muted  : dk ? '#a0aec0' : '#718096',
+            muted  : dk ? '#a0aec0' : '#556270', // 6.2:1 on white, 5.1:1 on the badge fill (AA at 11px)
             grid   : dk ? '#3a4557' : '#e6e6e6',
             line   : dk ? '#4a5568' : '#ccd6eb',
             /* Card background — the 2px gap colour between stacked segments. */

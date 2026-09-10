@@ -769,7 +769,12 @@ class Survey
         if ((string) $survey['status'] !== 'draft') {
             return $this->fail('Only a draft survey can be deleted. Archive this one instead.');
         }
-        $count = $this->fetchRow('SELECT COUNT(*) AS cnt FROM ' . DB_PREFIX . 'survey_response WHERE survey_id = ' . $surveyId);
+        // Test rows are the builder's own preview submissions: they are excluded
+        // from the response count the list page shows, so counting them here made
+        // a still-draft survey undeletable while its row read "0 responses", with
+        // no UI anywhere to remove the test row.
+        $count = $this->fetchRow('SELECT COUNT(*) AS cnt FROM ' . DB_PREFIX . 'survey_response
+                                  WHERE survey_id = ' . $surveyId . ' AND is_test = 0');
         if ($count !== null && (int) $count['cnt'] > 0) {
             return $this->fail('This survey has responses and cannot be deleted. Archive it instead.');
         }

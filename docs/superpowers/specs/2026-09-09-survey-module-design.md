@@ -341,7 +341,7 @@ Respondent:
 
 | Action | POST | Returns |
 |---|---|---|
-| `definition` | `SurveyId, Preview(0/1)` | `{survey{title, welcome_html, thanks_html, show_progress, data_gate_enabled, accent_color, welcome_image_url, thanks_image_url}, pages[{page_id, title, description_html, show_if_question_id, show_if_option_id, questions[…]}], draft{answers, page_index}|null, eligible:bool, reason}` — never includes builder-only fields |
+| `definition` | `SurveyId, Preview(0/1)` | `{survey{title, welcome_html, thanks_html, show_progress, data_gate_enabled, accent_color, welcome_image_url, thanks_image_url}, pages[{page_id, title, description_html, show_if_question_id, show_if_option_id, questions[…]}], draft{answers, page_index}|null, eligible:bool, reason}` — never includes builder-only fields. **A survey outside the caller's scope (or not open, for non-managers) returns `{status:1, error:'Survey not found.'}` rather than `eligible:false`, so its title, copy and slug stay unpublished; `eligible:false` + `reason` is only returned for in-scope reasons (`completed`, `inactive`, `tenure`, `closed`, `not_open_yet`).** |
 | `draft_save` | `SurveyId, Answers(JSON), PageIndex` | `{}` (no-op with `status:0` when `allow_resume = 0`) |
 | `submit` | `SurveyId, Answers(JSON), Consent, DurationSeconds, IsTest(0/1)` | `{thanks_html}` or `{status:1, errors{question_id: msg}}` |
 | `available` | — | `{surveys:[{survey_id, title, description, scope_label, close_at, in_progress:bool}]}` |

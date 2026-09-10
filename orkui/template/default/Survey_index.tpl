@@ -5,6 +5,12 @@
  * Vars from Controller_Survey::index(): $Surveys, $Scopes, $ScopeType, $ScopeId,
  * $ScopeName, $IsOrkAdmin.
  */
+if (!empty($Error)) {
+	echo '<div class="rp-root"><div class="sv-notice sv-notice-error" style="margin:20px;">'
+		. htmlspecialchars($Error) . '</div></div>';
+	return;
+}
+
 $_status_labels = ['draft' => 'Draft', 'open' => 'Open', 'closed' => 'Closed', 'archived' => 'Archived'];
 
 $_total    = count($Surveys);

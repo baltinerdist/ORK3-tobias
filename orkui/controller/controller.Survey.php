@@ -202,6 +202,10 @@ class Controller_Survey extends Controller
             return;
         }
         if (!$this->Survey->can_manage($uid, $row)) {
+            if ($uid > 0) {
+                // A CSV route should not answer 200 with an HTML page to a scripted client.
+                http_response_code(403);
+            }
             $this->no_authorization('', 'You do not have permission to export this survey.');
             return;
         }

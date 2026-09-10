@@ -22,7 +22,7 @@
        uses module-wide (--sv-text-muted); the dark block hands the job back to
        the global token. The value is repeated rather than referenced because
        .sv-scope sits on a descendant (.rp-body), not on .svr-root. */
-    --svr-text-muted  : #5f6b7a;
+    --svr-text-muted  : #556270; /* 6.2:1 on white, 5.1:1 on --svr-badge-bg */
     --svr-accent      : var(--rp-accent, #4338ca);
     --svr-badge-bg    : var(--rp-bg-tertiary, #e2e8f0);
     --svr-input-bg    : var(--ork-input-bg, #fff);
