@@ -30,7 +30,11 @@
     --sv-border-strong:   var(--ork-border-dark);
     --sv-text:            var(--ork-text);
     --sv-text-body:       var(--ork-text-secondary);
-    --sv-text-muted:      var(--ork-text-muted);
+    /* --ork-text-muted (#718096) is only 4.02:1 on white and 3.83:1 on the
+       #f7fafc builder rail — under AA for the 11-13px meta text this module
+       uses. Surveys carry their own darker muted so every caption passes; the
+       dark-mode value below hands the job back to the global token. */
+    --sv-text-muted:      #5f6b7a;
     --sv-danger:          var(--ork-red-danger);
     --sv-danger-bg:       var(--ork-alert-danger-bg);
     --sv-input-bg:        var(--ork-input-bg);
@@ -47,6 +51,11 @@ html[data-theme="dark"] .sv-root,
 html[data-theme="dark"] .sv-scope {
     --sv-accent-soft: rgba(99, 179, 237, 0.16);
     --sv-star-on:     #f6ad55;
+    /* --ork-border-dark is #374151 in dark mode - 1.16:1 on the #2d3748 card,
+       which makes an unanswered rating question read as blank. Empty stars are
+       a meaningful graphic, so they get their own 3.8:1 grey here. */
+    --sv-star-off:    #8592a5;
+    --sv-text-muted:  var(--ork-text-muted);
 }
 
 /* orkui.css carries a global `p { text-align: justify }` (orkui.css:786). That
@@ -504,7 +513,8 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
 .sv-scale-clear {
     align-self: flex-start;
     min-height: 44px;
-    padding: 0 4px;
+    min-width: 44px;
+    padding: 0 8px;
     border: 0;
     background: none;
     color: var(--sv-accent);
