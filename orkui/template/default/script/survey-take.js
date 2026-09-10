@@ -594,12 +594,15 @@
         collect();
         rebuildScreens();
         if (!validateCurrentPage()) { return; }
-        draftSave();
         if (isLastAnswerScreen(idx)) {
+            draftSave();
             submit();
             return;
         }
         idx++;
+        // AFTER the advance, never before: the draft's PageIndex is where the
+        // respondent resumes, so saving it first parks them a page behind.
+        draftSave();
         mirrorSave();
         render();
     }
@@ -608,6 +611,7 @@
         collect();
         rebuildScreens();
         if (idx > 0) { idx--; }
+        draftSave();
         mirrorSave();
         render();
     }
@@ -791,9 +795,10 @@
 
         // The session mirror restores a reload instantly; the server draft, when
         // there is one, then wins because it is the durable record.
+        var mirroredIdx = false;
         if (mirror && mirror.answers && typeof mirror.answers === 'object') {
             answers = mirror.answers;
-            if (typeof mirror.idx === 'number') { idx = mirror.idx; }
+            if (typeof mirror.idx === 'number') { idx = mirror.idx; mirroredIdx = true; }
         }
         if (draft && draft.answers && typeof draft.answers === 'object') {
             for (k in draft.answers) {
@@ -801,7 +806,9 @@
                     answers[toInt(k)] = draft.answers[k];
                 }
             }
-            if (typeof draft.page_index === 'number') { idx = draft.page_index; }
+            // The server draft is the durable record of the answers, but this
+            // tab's own mirror is the fresher record of where they were.
+            if (!mirroredIdx && typeof draft.page_index === 'number') { idx = draft.page_index; }
             resumed = true;
         }
         if (draft && draft.started_at) {
