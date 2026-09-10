@@ -955,10 +955,9 @@ html[data-theme="dark"] .rp-filter-pill:hover:not(.active) {
   border-color: #718096;
   color: var(--ork-text, #e2e8f0);
 }
-/* #4f86c6 under white is only 3.78:1; #3a6ea8 keeps the same hue at 5.28:1. */
 html[data-theme="dark"] .rp-filter-pill.active {
-  background: var(--ork-accent, #3a6ea8);
-  border-color: var(--ork-accent, #3a6ea8);
+  background: var(--ork-accent, #4f86c6);
+  border-color: var(--ork-accent, #4f86c6);
   color: #fff;
 }
 

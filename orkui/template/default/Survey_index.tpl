@@ -33,6 +33,15 @@ if ($ScopeType === 'kingdom') {
 /* Local additions for the survey list page. Prefixed sv- per module convention;
    the shared .rp-* shell (header/context/stats/sidebar/table) comes from reports.css. */
 .sv-scope-select-wrap { display: flex; flex-direction: column; gap: 4px; }
+
+/* Survey-only contrast bump for the active status filter pill: the shared
+   dark-mode #4f86c6 is 3.78:1 under white, #3a6ea8 keeps the hue at 5.28:1.
+   Scoped to this page's pills so the shared .rp-filter-pill rule (used by
+   seven other report pages) is left untouched. */
+html[data-theme="dark"] .rp-filter-pill[data-sv-filter].active {
+	background: #3a6ea8;
+	border-color: #3a6ea8;
+}
 .sv-status-pill {
 	display: inline-block; padding: 3px 10px; border-radius: 20px;
 	font-size: 11px; font-weight: 700; white-space: nowrap;
