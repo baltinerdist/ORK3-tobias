@@ -75,7 +75,8 @@ html[data-theme="dark"] .sv-status-pill-archived { background: #2d3748; color: #
 .sv-survey-table tr[hidden] { display: none; }
 .sv-survey-title a { color: var(--rp-text); font-weight: 700; text-decoration: none; }
 .sv-survey-title a:hover { color: var(--rp-accent); text-decoration: underline; }
-.sv-survey-meta { font-size: 11px; color: var(--rp-text-muted); margin-top: 2px; }
+.sv-survey-meta { font-size: 11px; color: var(--ork-text-secondary); margin-top: 2px; }
+html[data-theme="dark"] .sv-survey-meta { color: var(--ork-text-muted); }
 html[data-theme="dark"] .sv-survey-table th,
 html[data-theme="dark"] .sv-survey-table td { border-bottom-color: #4a5568; }
 html[data-theme="dark"] .sv-survey-title a { color: #e2e8f0; }
