@@ -295,8 +295,13 @@ if (!in_array($_pnNameFont, $_pnFontAllowed)) $_pnNameFont = '';
    (the only flexible child) to 0-28px. Stack them instead. */
 .pna-survey-row{flex-direction:column;align-items:stretch;gap:2px}
 .pna-survey-row .pna-feed-label{flex:0 0 auto;white-space:normal;overflow:visible;text-overflow:clip}
-.pna-survey-meta{display:flex;align-items:baseline;gap:8px}
-.pna-survey-meta .pna-feed-sub{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pna-survey-meta{display:flex;align-items:center;gap:8px;min-height:44px}
+.pna-survey-meta .pna-feed-sub{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+/* The generic .pna-feed-sub is display:none under 420px; the survey row is the
+   mobile entry point for the module and its scope + close date is the whole
+   subtitle, so it stays visible (two-class rule wins the cascade). */
+.pna-survey-cta{margin-left:auto;flex-shrink:0;display:inline-flex;align-items:center;min-height:44px;padding:0 10px;font-weight:600;font-size:12px;color:var(--ork-link);text-decoration:none}
+.pna-survey-cta:hover{text-decoration:underline}
 .pna-feed-rank{display:inline-block;background:#e9d8fd;color:#553c9a;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:4px;vertical-align:middle}
 .pna-feed-more{font-size:11px;color:var(--ork-text-muted);padding-top:6px;text-align:center}
 .pna-congrats-banner{background:linear-gradient(90deg,#fffff0,#fefcbf);border:1px solid #f6e05e;border-radius:6px;padding:9px 13px;font-size:12.5px;font-weight:600;color:#744210;margin-bottom:10px;display:flex;align-items:center;gap:8px}
@@ -7483,7 +7488,7 @@ $(function() {
 								+ '<span class="pna-feed-label">' + esc(sv.title) + '</span>'
 								+ '<span class="pna-survey-meta">'
 								+ (sub ? '<span class="pna-feed-sub">' + sub + '</span>' : '')
-								+ '<a href="' + PnConfig.uir + 'Survey/take/' + parseInt(sv.survey_id) + '" style="margin-left:auto;font-weight:600;font-size:11px;color:#4299e1;text-decoration:none;flex-shrink:0">' + (sv.in_progress ? 'Continue' : 'Take survey') + '</a>'
+								+ '<a class="pna-survey-cta" href="' + PnConfig.uir + 'Survey/take/' + parseInt(sv.survey_id) + '">' + (sv.in_progress ? 'Continue' : 'Take survey') + '</a>'
 								+ '</span></div>';
 						});
 						svBody.innerHTML = svHtml + '</div>';
