@@ -247,7 +247,7 @@
     border: 1px dashed var(--ork-border-dark);
     border-radius: var(--ork-radius-md);
     text-align: center;
-    color: var(--ork-text-muted);
+    color: var(--sv-text-muted);
     font-size: 13px;
 }
 
@@ -353,7 +353,7 @@
     font-weight: var(--ork-font-weight-semibold);
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: var(--ork-text-muted);
+    color: var(--sv-text-muted);
     white-space: nowrap;
 }
 
@@ -527,7 +527,7 @@
     align-items: center;
     justify-content: center;
     font-size: 10px;
-    color: var(--ork-text-muted);
+    color: var(--sv-text-muted);
 }
 
 .svb-glyph-dot { border-radius: 50%; }
@@ -582,7 +582,7 @@
     font-weight: var(--ork-font-weight-bold);
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--ork-text-muted);
+    color: var(--sv-text-muted);
     margin-bottom: 4px;
 }
 
@@ -654,7 +654,7 @@
     font-weight: var(--ork-font-weight-bold);
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--ork-text-muted);
+    color: var(--sv-text-muted);
     margin: 14px 0 6px;
 }
 
@@ -687,7 +687,7 @@
     font-weight: var(--ork-font-weight-bold);
     letter-spacing: 0.05em;
     text-transform: uppercase;
-    color: var(--ork-text-muted);
+    color: var(--sv-text-muted);
     margin-bottom: 4px;
 }
 
@@ -696,7 +696,7 @@
     margin-bottom: 4px;
 }
 
-.svb-hint { margin: 4px 0 0; font-size: 11px; line-height: 1.45; color: var(--ork-text-muted); }
+.svb-hint { margin: 4px 0 0; font-size: 11px; line-height: 1.45; color: var(--sv-text-muted); }
 
 .svb-check {
     display: inline-flex;
