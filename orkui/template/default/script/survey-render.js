@@ -52,15 +52,19 @@
           data-required="0|1">
        <div class="sv-q-prompt" id="sv-p-12">
          Prompt text<span class="sv-q-required" aria-hidden="true">*</span>
+         <span class="sv-visually-hidden"> (required)</span>       (required only)
        </div>
        <div class="sv-q-help">…rendered markdown HTML…</div>       (optional)
        <div class="sv-q-image"><img class="sv-q-image-img" …></div> (optional)
        <div class="sv-q-body"> …type-specific, described below… </div>
-       <div class="sv-q-error" role="alert" hidden></div>
+       <div class="sv-q-error" role="alert" id="sv-e-12-N" hidden></div>
      </div>
 
    The .sv-q-error element is always present but starts `hidden`; setError()
-   only toggles it. Nothing outside .sv-q-body varies by type.
+   only toggles it (and aria-invalid on the control). Nothing outside
+   .sv-q-body varies by type. Every type's control — or, for the composite
+   types, its group wrapper — carries aria-describedby="<the error id>" and,
+   when the question is required, aria-required="true".
 
    single / yesno  ─ radio list
      <div class="sv-choices" role="radiogroup" aria-labelledby="sv-p-12">
@@ -143,17 +147,19 @@
      and turns each row into a stacked card.
 
    ranking  ─ ordered list; the DOM order IS the answer
+     <div class="sv-rank-group" role="group" aria-labelledby="sv-p-12">
      <ol class="sv-rank" data-qid="12">
        <li class="sv-rank-item" data-option="101">
          <span class="sv-rank-handle" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>
          <span class="sv-rank-pos">1</span>
          <span class="sv-rank-label">Label</span>
          <span class="sv-rank-btns">
-           <button type="button" class="sv-rank-btn sv-rank-up"   data-tip="Move up"   aria-label="Move up"><i class="fas fa-chevron-up"></i></button>
-           <button type="button" class="sv-rank-btn sv-rank-down" data-tip="Move down" aria-label="Move down"><i class="fas fa-chevron-down"></i></button>
+           <button type="button" class="sv-rank-btn sv-rank-up"   data-tip="Move up"   aria-label="Move Label up"><i class="fas fa-chevron-up"></i></button>
+           <button type="button" class="sv-rank-btn sv-rank-down" data-tip="Move down" aria-label="Move Label down"><i class="fas fa-chevron-down"></i></button>
          </span>
        </li>…
      </ol>
+     </div>
      The ▲▼ buttons are handled by this file (one delegated listener) and fire
      a bubbling `change` from the <ol> afterwards, so autosave just listens for
      `change` on the form. Attach SortableJS to .sv-rank for drag if wanted;
@@ -335,7 +341,7 @@
         var inline = (q.type === 'yesno') ? ' sv-choices-inline' : '';
         html += hint ? '<div class="sv-choice-hint">' + escapeHtml(hint) + '</div>' : '';
         html += '<div class="sv-choices' + inline + '" role="' + (multi ? 'group' : 'radiogroup') +
-                '" aria-labelledby="' + ctx.promptId + '">';
+                '" aria-labelledby="' + ctx.promptId + '"' + ctx.req + ctx.desc + '>';
 
         for (i = 0; i < opts.length; i++) {
             o = opts[i];
@@ -364,7 +370,7 @@
         var sel = splitChoice(state);
         var i, o, id, html = '';
 
-        html += '<select class="sv-select" name="' + ctx.name + '"' + ctx.tab + '>';
+        html += '<select class="sv-select" name="' + ctx.name + '"' + ctx.req + ctx.desc + ctx.tab + '>';
         html += '<option value="">— Select —</option>';
         for (i = 0; i < opts.length; i++) {
             o = opts[i];
@@ -399,21 +405,31 @@
         if (max < min) { max = min; }
         if (max - min > 100) { max = min + 100; }   // defensive: never render a runaway row
 
+        // The end labels are the only thing that gives the numbers meaning, so
+        // they are described by the group AND folded into the extreme options'
+        // accessible names — a bare "0"/"10" tells a screen reader nothing.
+        var endsId = ctx.promptId + '-ends';
+        var hasEnds = !!(minLabel || maxLabel);
+
         html += '<div class="sv-scale-wrap">';
         html += '<div class="sv-scale' + (nps ? ' sv-scale-nps' : '') + ' sv-scale-' + icon +
-                '" role="radiogroup" aria-labelledby="' + ctx.promptId + '">';
+                '" role="radiogroup" aria-labelledby="' + ctx.promptId + '"' + ctx.req +
+                ' aria-describedby="' + (hasEnds ? endsId + ' ' : '') + ctx.errId + '">';
         for (v = min; v <= max; v++) {
+            var vLabel = v + ' of ' + max;
+            if (v === min && minLabel) { vLabel += ', ' + minLabel; }
+            if (v === max && maxLabel) { vLabel += ', ' + maxLabel; }
             html += '<label class="sv-scale-opt">';
             html += '<input type="radio" class="sv-scale-input" name="' + ctx.name + '" value="' + v + '"' +
-                    (cur !== null && cur === v ? ' checked' : '') + ' aria-label="' + v + '"' + ctx.tab + '>';
+                    (cur !== null && cur === v ? ' checked' : '') + ' aria-label="' + escapeHtml(vLabel) + '"' + ctx.tab + '>';
             html += '<span class="sv-scale-face">';
             if (icon === 'star') { html += '<i class="fas fa-star" aria-hidden="true"></i>'; }
             html += '<span class="sv-scale-num">' + v + '</span>';
             html += '</span></label>';
         }
         html += '</div>';
-        if (minLabel || maxLabel) {
-            html += '<div class="sv-scale-ends">' +
+        if (hasEnds) {
+            html += '<div class="sv-scale-ends" id="' + endsId + '">' +
                     '<span class="sv-scale-end sv-scale-end-min">' + escapeHtml(minLabel) + '</span>' +
                     '<span class="sv-scale-end sv-scale-end-max">' + escapeHtml(maxLabel) + '</span></div>';
         }
@@ -438,7 +454,8 @@
             }
         }
 
-        html += '<div class="sv-matrix-wrap"><table class="sv-matrix"><thead><tr>';
+        html += '<div class="sv-matrix-wrap" role="group" aria-labelledby="' + ctx.promptId + '"' +
+                ctx.req + ctx.desc + '><table class="sv-matrix"><thead><tr>';
         html += '<th class="sv-matrix-corner"></th>';
         for (c = 0; c < cols.length; c++) {
             html += '<th class="sv-matrix-col" scope="col">' + escapeHtml(cols[c].label) + '</th>';
@@ -479,20 +496,31 @@
             if (!seen[id]) { seen[id] = true; order.push(opts[i]); }
         }
 
+        // The group attributes go on a wrapper, not on the <ol>: role="group"
+        // on the list itself would strip its list semantics ("list, 6 items"),
+        // and aria-required is not valid on a list role.
+        html += '<div class="sv-rank-group" role="group" aria-labelledby="' + ctx.promptId + '"' +
+                ctx.req + ctx.desc + '>';
         html += '<ol class="sv-rank" data-qid="' + ctx.qid + '">';
         for (i = 0; i < order.length; i++) {
             o = order[i];
-            html += '<li class="sv-rank-item" data-option="' + parseInt(o.option_id, 10) + '">';
+            // Every item gets the SAME "Move up"/"Move down" name unless the
+            // item's own label is folded in — a screen reader's button list is
+            // otherwise N indistinguishable pairs.
+            var moveUp = escapeHtml('Move ' + o.label + ' up');
+            var moveDn = escapeHtml('Move ' + o.label + ' down');
+            html += '<li class="sv-rank-item" data-option="' + parseInt(o.option_id, 10) +
+                    '" data-label="' + escapeHtml(o.label) + '">';
             html += '<span class="sv-rank-handle" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>';
             html += '<span class="sv-rank-pos">' + (i + 1) + '</span>';
             html += '<span class="sv-rank-label">' + escapeHtml(o.label) + '</span>';
             html += '<span class="sv-rank-btns">' +
-                    '<button type="button" class="sv-rank-btn sv-rank-up" data-tip="Move up" aria-label="Move up"' + ctx.tab + '><i class="fas fa-chevron-up" aria-hidden="true"></i></button>' +
-                    '<button type="button" class="sv-rank-btn sv-rank-down" data-tip="Move down" aria-label="Move down"' + ctx.tab + '><i class="fas fa-chevron-down" aria-hidden="true"></i></button>' +
+                    '<button type="button" class="sv-rank-btn sv-rank-up" data-tip="Move up" aria-label="' + moveUp + '"' + ctx.tab + '><i class="fas fa-chevron-up" aria-hidden="true"></i></button>' +
+                    '<button type="button" class="sv-rank-btn sv-rank-down" data-tip="Move down" aria-label="' + moveDn + '"' + ctx.tab + '><i class="fas fa-chevron-down" aria-hidden="true"></i></button>' +
                     '</span>';
             html += '</li>';
         }
-        html += '</ol>';
+        html += '</ol></div>';
         return html;
     }
 
@@ -503,13 +531,13 @@
             return '<textarea class="sv-textarea" rows="4"' +
                    attrIf('maxlength', num(s.max_length, 4000)) +
                    attrIf('placeholder', s.placeholder || '') +
-                   ' aria-labelledby="' + ctx.promptId + '"' + ctx.tab + '>' + escapeHtml(v) + '</textarea>';
+                   ' aria-labelledby="' + ctx.promptId + '"' + ctx.req + ctx.desc + ctx.tab + '>' + escapeHtml(v) + '</textarea>';
         }
         return '<input type="text" class="sv-input"' +
                attrIf('maxlength', num(s.max_length, 200)) +
                attrIf('placeholder', s.placeholder || '') +
                attrIf('value', v) +
-               ' aria-labelledby="' + ctx.promptId + '"' + ctx.tab + '>';
+               ' aria-labelledby="' + ctx.promptId + '"' + ctx.req + ctx.desc + ctx.tab + '>';
     }
 
     function bodyNumber(q, state, ctx) {
@@ -520,7 +548,7 @@
                    (s.max === null || s.max === undefined || s.max === '' ? '' : attrIf('max', s.max)) +
                    attrIf('step', s.step === null || s.step === undefined || s.step === '' ? 1 : s.step) +
                    attrIf('value', v) +
-                   ' aria-labelledby="' + ctx.promptId + '"' + ctx.tab + '>';
+                   ' aria-labelledby="' + ctx.promptId + '"' + ctx.req + ctx.desc + ctx.tab + '>';
         if (s.unit) { html += '<span class="sv-unit">' + escapeHtml(s.unit) + '</span>'; }
         html += '</div>';
         return html;
@@ -533,7 +561,7 @@
                (s.min ? attrIf('min', s.min) : '') +
                (s.max ? attrIf('max', s.max) : '') +
                attrIf('value', v) +
-               ' aria-labelledby="' + ctx.promptId + '"' + ctx.tab + '>';
+               ' aria-labelledby="' + ctx.promptId + '"' + ctx.req + ctx.desc + ctx.tab + '>';
     }
 
     // --------------------------------------------------------------- rendering
@@ -583,6 +611,13 @@
             tab: preview ? ' tabindex="-1"' : '',
             required: required
         };
+        // Requiredness and the validation message must be exposed
+        // programmatically, not by a red asterisk and a detached error box:
+        // every body renderer stamps ctx.req + ctx.desc onto its control (or,
+        // for the composite types, onto the group wrapper).
+        ctx.errId = 'sv-e-' + qid + '-' + seq;
+        ctx.req = required ? ' aria-required="true"' : '';
+        ctx.desc = ' aria-describedby="' + ctx.errId + '"';
 
         var body;
         switch (type) {
@@ -606,13 +641,14 @@
         var html = '<div class="sv-q sv-q-' + escapeHtml(type || 'unknown') + (preview ? ' sv-q-preview' : '') +
                    '" data-qid="' + qid + '" data-type="' + escapeHtml(type) + '" data-required="' + (required ? 1 : 0) + '">';
         html += '<div class="sv-q-prompt" id="' + ctx.promptId + '">' + escapeHtml(q.prompt || '') +
-                (required ? '<span class="sv-q-required" aria-hidden="true">*</span>' : '') + '</div>';
+                (required ? '<span class="sv-q-required" aria-hidden="true">*</span>' +
+                            '<span class="sv-visually-hidden"> (required)</span>' : '') + '</div>';
         if (help) { html += '<div class="sv-q-help">' + help + '</div>'; }
         if (q.image_url) {
             html += '<div class="sv-q-image"><img class="sv-q-image-img" src="' + escapeHtml(q.image_url) + '" alt=""></div>';
         }
         html += '<div class="sv-q-body">' + body + '</div>';
-        html += '<div class="sv-q-error" role="alert" hidden></div>';
+        html += '<div class="sv-q-error" role="alert" id="' + ctx.errId + '" hidden></div>';
         html += '</div>';
         return html;
     }
@@ -816,6 +852,10 @@
 
     // --------------------------------------------------------------- setError
 
+    // The control (or group wrapper) that carries aria-describedby to the error
+    // box, so aria-invalid lands on the same element the reader is focused in.
+    var INVALID_TARGETS = '.sv-choices, .sv-select, .sv-scale, .sv-matrix-wrap, .sv-rank-group, .sv-input:not(.sv-other-input), .sv-textarea';
+
     function setError(root, message) {
         if (!root) { return; }
         var box = root.querySelector('.sv-q-error');
@@ -825,14 +865,17 @@
             box.setAttribute('role', 'alert');
             root.appendChild(box);
         }
+        var targets = root.querySelectorAll(INVALID_TARGETS), i;
         if (message === null || message === undefined || message === '') {
             box.textContent = '';
             box.hidden = true;
             root.classList.remove('sv-q-invalid');
+            for (i = 0; i < targets.length; i++) { targets[i].removeAttribute('aria-invalid'); }
         } else {
             box.textContent = String(message);
             box.hidden = false;
             root.classList.add('sv-q-invalid');
+            for (i = 0; i < targets.length; i++) { targets[i].setAttribute('aria-invalid', 'true'); }
         }
     }
 
@@ -847,6 +890,26 @@
             items[i].classList.toggle('sv-rank-first', i === 0);
             items[i].classList.toggle('sv-rank-last', i === items.length - 1);
         }
+    }
+
+    // A reorder only rewrites a position badge, which is not part of any
+    // control's name — without this the refocused button just says "Move X up"
+    // again and the user has no idea whether anything moved.
+    function announceRank(item, ol) {
+        if (!item || !ol) { return; }
+        var live = document.getElementById('sv-rank-live');
+        if (!live) {
+            live = document.createElement('div');
+            live.id = 'sv-rank-live';
+            live.className = 'sv-visually-hidden';
+            live.setAttribute('role', 'status');
+            live.setAttribute('aria-live', 'polite');
+            document.body.appendChild(live);
+        }
+        var items = ol.querySelectorAll('.sv-rank-item');
+        var pos = Array.prototype.indexOf.call(items, item) + 1;
+        var label = item.getAttribute('data-label') || '';
+        live.textContent = label + ', position ' + pos + ' of ' + items.length + '.';
     }
 
     function fireChange(el) {
@@ -877,6 +940,7 @@
                 reindexRank(ol);
                 fireChange(ol);
                 rankBtn.focus();
+                announceRank(item, ol);
             }
             e.preventDefault();
             return;
