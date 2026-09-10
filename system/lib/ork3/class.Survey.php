@@ -1469,14 +1469,23 @@ class Survey
 
         $survey = $this->getRow($surveyId);
         if ($survey !== null && $this->isStructureLocked($survey)) {
-            // Locked: same ids, same count, same order — labels only.
+            // Locked: same ids, same count, same order — labels only. `is_other`
+            // and `value_num` are part of the structure, not the wording: setting
+            // is_other mid-collection starts rejecting that choice unless the
+            // respondent fills the "other" box, and a matrix column's value_num
+            // is applied at REPORT time, so rewriting it retroactively changes
+            // the weighted mean of responses already collected.
             $before = [];
             foreach ($existing as $o) {
-                $before[] = (int) $o['option_id'];
+                $before[] = (int) $o['option_id']
+                    . ':' . ((int) $o['is_other'])
+                    . ':' . ($o['value_num'] === null ? '' : (string) (float) $o['value_num']);
             }
             $after = [];
             foreach ($clean as $c) {
-                $after[] = (int) $c['option_id'];
+                $after[] = (int) $c['option_id']
+                    . ':' . ((int) $c['is_other'])
+                    . ':' . ($c['value_num'] === null ? '' : (string) (float) $c['value_num']);
             }
             if ($before !== $after) {
                 return $this->fail(self::LOCKED_ERROR);
@@ -1490,6 +1499,18 @@ class Survey
             }
         }
 
+        // Options about to disappear: any condition waiting on one has to be
+        // cleared with it, exactly as questionDelete/retypeQuestion do. Left
+        // dangling, the builder's picker silently shows a DIFFERENT option as
+        // selected and validateDefinition then refuses to open the survey with
+        // an error keyed to a question the officer never touched.
+        $dropped = [];
+        foreach ($existing as $o) {
+            if (!in_array((int) $o['option_id'], $keep, true)) {
+                $dropped[] = (int) $o['option_id'];
+            }
+        }
+
         $this->exec('START TRANSACTION');
         $delete = 'DELETE FROM ' . DB_PREFIX . 'survey_option
                    WHERE question_id = ' . $questionId . ' AND role = \'' . $this->esc($role) . '\'';
@@ -1497,6 +1518,16 @@ class Survey
             $delete .= ' AND option_id NOT IN (' . implode(',', array_map('intval', $keep)) . ')';
         }
         $this->exec($delete);
+
+        if ($dropped) {
+            $list = implode(',', $dropped);
+            $this->exec('UPDATE ' . DB_PREFIX . 'survey_question
+                         SET show_if_question_id = NULL, show_if_option_id = NULL, updated_at = NOW()
+                         WHERE show_if_option_id IN (' . $list . ')');
+            $this->exec('UPDATE ' . DB_PREFIX . 'survey_page
+                         SET show_if_question_id = NULL, show_if_option_id = NULL
+                         WHERE show_if_option_id IN (' . $list . ')');
+        }
 
         foreach ($clean as $order => $c) {
             $valueNum = $c['value_num'] === null ? 'NULL' : (float) $c['value_num'];
