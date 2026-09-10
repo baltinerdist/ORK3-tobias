@@ -261,6 +261,12 @@ window.__svPrevHighcharts = window.Highcharts;
 try { delete window.Highcharts; } catch (e) { window.Highcharts = undefined; }
 </script>
 <script src="https://code.highcharts.com/11.4.8/highcharts.js"></script>
+<!--
+	The accessibility module must load while 11.4.8 still owns window.Highcharts
+	(it installs onto that global). Without it every chart build logs a console
+	warning; with it the charts get keyboard navigation and screen-reader text.
+-->
+<script src="https://code.highcharts.com/11.4.8/modules/accessibility.js"></script>
 <script>
 window.SvHighcharts = window.Highcharts;
 if (window.__svPrevHighcharts) { window.Highcharts = window.__svPrevHighcharts; }

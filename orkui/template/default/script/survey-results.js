@@ -637,6 +637,17 @@
         state.charts = [];
     }
 
+    function afterPaint(fn) {
+        var done = false;
+        var run = function () {
+            if (done) { return; }
+            done = true;
+            fn();
+        };
+        if (window.requestAnimationFrame) { window.requestAnimationFrame(run); }
+        window.setTimeout(run, 250);
+    }
+
     function buildCharts() {
         destroyCharts();
         var HC = window.SvHighcharts;
@@ -863,8 +874,11 @@
                 renderSummary(state.payload.summary, filters);
                 renderCards(state.payload.questions);
                 /* Cards are in the DOM but not yet laid out; wait one frame so
-                   every chart container has a real width. */
-                window.requestAnimationFrame(buildCharts);
+                   every chart container has a real width. A context that is
+                   never painted (hidden tab, print/screenshot harness, a
+                   background restore) never fires that frame, so a timer backs
+                   it up and whichever arrives first wins. */
+                afterPaint(buildCharts);
             })
             .catch(function () {
                 state.loading = false;
