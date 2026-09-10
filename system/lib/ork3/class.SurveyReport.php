@@ -135,17 +135,40 @@ class SurveyReport
             }
         }
 
-        // Open drafts are the denominator's other half: completion = finished / started.
+        // Open drafts are the denominator's other half: completion = finished /
+        // started. Both halves must describe the SAME population, so the drafts
+        // carry the kingdom and date filters too (a draft's kingdom is the
+        // player's current one, the same value a response records at submit).
+        // The consent filter has no draft analogue — nobody has consented while
+        // they are still answering — so it is dropped from BOTH halves rather
+        // than shrinking the numerator alone.
+        $finished = $responses;
+        if (!empty($f['consent']) && $f['consent'] !== 'any') {
+            $finished = 0;
+            $this->db->Clear();
+            $rs = $this->db->DataSet(
+                'SELECT COUNT(*) AS c
+                   FROM ' . DB_PREFIX . 'survey_response r
+                  WHERE ' . $this->responseWhere($surveyId, $f, false, true)
+            );
+            if ($rs && $rs->Next()) {
+                $finished = (int)$rs->c;
+            }
+        }
+
         $drafts = 0;
         $this->db->Clear();
         $rs = $this->db->DataSet(
-            'SELECT COUNT(*) AS c FROM ' . DB_PREFIX . 'survey_draft WHERE survey_id = ' . $surveyId
+            'SELECT COUNT(*) AS c
+               FROM ' . DB_PREFIX . 'survey_draft d
+               LEFT JOIN ' . DB_PREFIX . 'mundane m ON m.mundane_id = d.mundane_id
+              WHERE ' . $this->draftWhere($surveyId, $f)
         );
         if ($rs && $rs->Next()) {
             $drafts = (int)$rs->c;
         }
-        $started = $responses + $drafts;
-        $completion = $started > 0 ? round($responses / $started, 4) : 0.0;
+        $started = $finished + $drafts;
+        $completion = $started > 0 ? round($finished / $started, 4) : 0.0;
 
         $durations = [];
         $this->db->Clear();
@@ -1088,14 +1111,14 @@ class SurveyReport
      * WHERE fragment over `ork_survey_response r` for the given filters.
      * $ignoreKingdom drops only the kingdom clause (used for excluded_anonymous).
      */
-    private function responseWhere(int $surveyId, array $f, bool $ignoreKingdom = false): string
+    private function responseWhere(int $surveyId, array $f, bool $ignoreKingdom = false, bool $ignoreConsent = false): string
     {
         $w = ['r.survey_id = ' . (int)$surveyId];
 
         if (empty($f['include_test'])) {
             $w[] = 'r.is_test = 0';
         }
-        if (!empty($f['consent']) && $f['consent'] !== 'any') {
+        if (!$ignoreConsent && !empty($f['consent']) && $f['consent'] !== 'any') {
             $w[] = "r.consent = '" . $this->esc((string)$f['consent']) . "'";
         }
         if (!$ignoreKingdom && !empty($f['kingdom_ids'])) {
@@ -1107,6 +1130,33 @@ class SurveyReport
         }
         if (!empty($f['date_to'])) {
             $w[] = "r.submitted_at <= '" . $this->esc((string)$f['date_to']) . " 23:59:59'";
+        }
+
+        return implode(' AND ', $w);
+    }
+
+    /**
+     * The draft half of the completion denominator, filtered to match the
+     * response half. Assumes the caller joined `mundane m` for the kingdom.
+     *
+     * `consent` and `include_test` have no draft equivalent: a draft has no
+     * consent yet and cannot be a test row.
+     *
+     * @param array<string,mixed> $f
+     */
+    private function draftWhere(int $surveyId, array $f): string
+    {
+        $w = ['d.survey_id = ' . (int)$surveyId];
+
+        if (!empty($f['kingdom_ids'])) {
+            $ids = array_map('intval', $f['kingdom_ids']);
+            $w[] = 'm.kingdom_id IN (' . implode(',', $ids) . ')';
+        }
+        if (!empty($f['date_from'])) {
+            $w[] = "d.started_at >= '" . $this->esc((string)$f['date_from']) . " 00:00:00'";
+        }
+        if (!empty($f['date_to'])) {
+            $w[] = "d.started_at <= '" . $this->esc((string)$f['date_to']) . " 23:59:59'";
         }
 
         return implode(' AND ', $w);
