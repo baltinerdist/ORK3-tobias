@@ -99,24 +99,62 @@
         image:      { label: 'Image',           icon: 'fa-image',             hint: 'An illustration; records nothing.' }
     };
 
-    /** Every element the footer Type picker offers, in spec §4 order. */
-    var TYPE_ORDER = ['single', 'multi', 'dropdown', 'yesno', 'rating', 'nps', 'matrix', 'ranking',
-                      'short_text', 'paragraph', 'number', 'date', 'section', 'image'];
+    /**
+     * WHAT a type is comes from the server, not from here: the type list and
+     * its order, which types a show_if rule may read, and which option roles a
+     * type owns are fetched once from SurveyAjax/types (SurveyTypes, the one
+     * catalogue the builder, the runner and the aggregator share). This file
+     * keeps only the presentation of a type — its label, icon, hint and the
+     * editor chrome for a role — so adding or reordering a type server-side
+     * needs no change here beyond a TYPE_META entry.
+     */
+
+    /** Every element the footer Type picker offers, in server order. */
+    var TYPE_ORDER = [];
 
     /** The type "+ Add Element" starts from. */
     var STARTER_TYPE = 'single';
 
-    var SHOW_IF_SOURCES = ['single', 'dropdown', 'yesno', 'multi'];
+    /** Types a show_if condition may depend on. */
+    var SHOW_IF_SOURCES = [];
 
-    var OPTION_ROLES = {
-        single:   [{ role: 'choice', label: 'Options', min: 2, other: true }],
-        multi:    [{ role: 'choice', label: 'Options', min: 2, other: true }],
-        dropdown: [{ role: 'choice', label: 'Options', min: 2, other: true }],
-        ranking:  [{ role: 'choice', label: 'Options', min: 2, other: false }],
-        yesno:    [{ role: 'choice', label: 'Labels',  min: 2, other: false, fixed: true }],
-        matrix:   [{ role: 'row',    label: 'Rows',    min: 1, other: false },
-                   { role: 'column', label: 'Columns', min: 2, other: false, weight: true }]
+    /** type -> [spec], built from the server's option roles at boot. */
+    var OPTION_ROLES = {};
+
+    /** Editor chrome for one option role, whichever type owns it. */
+    var ROLE_UI = {
+        choice: { label: 'Options', min: 2, other: true },
+        row:    { label: 'Rows',    min: 1, other: false },
+        column: { label: 'Columns', min: 2, other: false, weight: true }
     };
+
+    /** Per-type departures from ROLE_UI (yes/no labels are fixed at two; ranking takes no "Other"). */
+    var ROLE_UI_BY_TYPE = {
+        yesno:   { choice: { label: 'Labels', other: false, fixed: true } },
+        ranking: { choice: { other: false } }
+    };
+
+    /**
+     * Adopt the server catalogue: {types, show_if_sources, option_roles}.
+     * Every role spec is ROLE_UI merged with any per-type override, so the
+     * server decides WHICH roles exist and this file decides how they look.
+     */
+    function applyCatalog(cat) {
+        var roles = (cat && cat.option_roles) || {};
+        TYPE_ORDER      = ((cat && cat.types) || []).slice();
+        SHOW_IF_SOURCES = ((cat && cat.show_if_sources) || []).slice();
+        OPTION_ROLES    = {};
+
+        Object.keys(roles).forEach(function (type) {
+            OPTION_ROLES[type] = (roles[type] || []).map(function (role) {
+                var spec = { role: role, label: role, min: 1, other: false };
+                [ROLE_UI[role], (ROLE_UI_BY_TYPE[type] || {})[role]].forEach(function (src) {
+                    Object.keys(src || {}).forEach(function (k) { spec[k] = src[k]; });
+                });
+                return spec;
+            });
+        });
+    }
 
     /**
      * Per-type settings controls — spec §4, key for key.
@@ -799,7 +837,7 @@
             case 'dropdown':
             case 'yesno':
             case 'ranking':
-                return optionRowsHtml(q, OPTION_ROLES[q.type][0]);
+                return optionRowsHtml(q, specFor(q, 'choice'));
             case 'matrix':
                 return matrixEditorHtml(q);
             case 'rating':
@@ -911,10 +949,9 @@
 
     /** Columns across the top (scrolling strip), rows down the left. */
     function matrixEditorHtml(q) {
-        var specs = OPTION_ROLES.matrix;
-        var html  = '<div class="svb-mx">';
-        html += optionGroupHtml(q, specs[1], 'Columns', 'svb-mx-colstrip');
-        html += optionGroupHtml(q, specs[0], 'Rows', null);
+        var html = '<div class="svb-mx">';
+        html += optionGroupHtml(q, specFor(q, 'column'), 'Columns', 'svb-mx-colstrip');
+        html += optionGroupHtml(q, specFor(q, 'row'), 'Rows', null);
         html += '</div>';
         return html;
     }
@@ -2429,8 +2466,17 @@
         if (!canvas || !window.SvRender) { return; }
 
         adopt(CFG.survey || {});
-        renderAll();
         wireHeader();
+
+        // The question catalogue is the server's (SurveyTypes), so nothing is
+        // drawn until it lands — a card cannot offer a type list, an option
+        // editor or a show-if source without it.
+        post('types', {}, function (data) {
+            applyCatalog(data.catalog || {});
+            renderAll();
+        }, function (data) {
+            notice((data && data.error) || 'The builder could not load its question catalogue. Reload the page to try again.', 'error');
+        });
 
         canvas.addEventListener('click', onCanvasClick, false);
         canvas.addEventListener('input', onCanvasInput, false);

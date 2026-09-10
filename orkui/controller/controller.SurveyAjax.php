@@ -158,6 +158,16 @@ class Controller_SurveyAjax extends Controller
     // Builder
     // =========================================================================
 
+    /**
+     * The question type catalogue (SurveyTypes) — the client's only source for
+     * the type list, the show_if sources, the option roles and the write-in cap.
+     */
+    public function types($p = null)
+    {
+        $this->requireLogin();
+        $this->jsonOut(['status' => 0, 'catalog' => $this->Survey->type_catalog()]);
+    }
+
     public function scopes($p = null)
     {
         $uid = $this->requireLogin();

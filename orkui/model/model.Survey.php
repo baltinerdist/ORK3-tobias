@@ -178,6 +178,22 @@ class Model_Survey extends Model
         return $this->_survey()->renderMarkdown($md);
     }
 
+    /**
+     * The question type catalogue the builder and the runner draw from, so the
+     * client never keeps its own copy of SurveyTypes (spec §4).
+     *
+     * @return array{types: string[], show_if_sources: string[], option_roles: array<string, string[]>, other_max_length: int}
+     */
+    public function type_catalog(): array
+    {
+        return [
+            'types'            => SurveyTypes::TYPES,
+            'show_if_sources'  => SurveyTypes::SHOW_IF_SOURCES,
+            'option_roles'     => SurveyTypes::OPTION_ROLES,
+            'other_max_length' => SurveyTypes::OTHER_MAX_LENGTH,
+        ];
+    }
+
     // -----------------------------------------------------------------------
     // SurveyResponse — eligibility, drafts, consent, submit
     // -----------------------------------------------------------------------
