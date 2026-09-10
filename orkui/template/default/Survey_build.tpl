@@ -18,6 +18,8 @@
  *   .rp-root > .rp-header
  *            > .rp-body > .rp-sidebar  (survey settings, collapsible sections)
  *                       > .rp-main     (the canvas column of page cards)
+ *                       > .svb-toc     (sticky outline; only above 1450px,
+ *                                       where the canvas still gets its 860px)
  *
  * The sidebar's sections are painted by survey-build.js (renderSettings), so
  * every field autosaves through the same `update` path the drawer used to.
@@ -125,6 +127,11 @@ $_svShareLink = HTTP_UI_REMOTE . 'index.php?Route=Survey/s/' . rawurlencode((str
 		<aside class="rp-sidebar svb-settings" id="svb-settings" aria-label="Survey settings"></aside>
 
 		<main class="rp-main svb-canvas" id="svb-canvas" aria-label="Survey canvas"></main>
+
+		<!-- Outline: a sticky table of contents for the canvas, painted by
+		     survey-build.js (renderToc). It only appears once the row is wide
+		     enough that the canvas still gets its full 860px. -->
+		<nav class="svb-toc" id="svb-toc" aria-label="Survey outline"></nav>
 
 	</div>
 

@@ -720,6 +720,201 @@
         els('.svb-autogrow', canvas).forEach(autoGrow);
         wireSortables();
         wireOptionSortables();
+        renderToc();
+    }
+
+    /* ------------------------------------------------------------- outline */
+
+    /* The right-hand .svb-toc is a table of contents for the canvas: one row
+       per element, in canvas order, showing only its type icon and its title.
+       Nothing else — no counts, no required dots — so the eye reads it as a
+       list of names, not a second copy of the cards.
+
+       It is rebuilt by renderCanvas(), which every structural change already
+       goes through (add, delete, duplicate, retype, drag, keyboard move, page
+       add / delete / reorder). While someone is TYPING a prompt, heading,
+       caption or page title, only that one row's text is written — rebuilding
+       the list under the pointer would make it jump. */
+
+    /** question_id -> the card is inside the spy's band right now. */
+    var tocSeen  = {};
+    var tocObs   = null;   // IntersectionObserver over the card roots
+    var tocTimer = null;   // the live-typing debounce
+
+    var TOC_MS = 150;
+
+    function oneLine(s) {
+        return String(s === null || s === undefined ? '' : s).replace(/\s+/g, ' ').trim();
+    }
+
+    /** The single line an element shows in the outline. */
+    function tocTitle(q) {
+        var text;
+        if (!q) { return ''; }
+        if (q.type === 'image') {
+            // An image block's own label is its caption; the prompt is its alt
+            // text, which is the next best thing to show when there is no caption.
+            text = oneLine(settingOf(q, { key: 'caption', def: '' })) || oneLine(q.prompt);
+            return text || 'Image';
+        }
+        return oneLine(q.prompt) || 'Untitled question';
+    }
+
+    /** "Page 2" on its own, or with the page's title when one is set. */
+    function tocPageLabel(page, index) {
+        var title = oneLine(page.title);
+        return 'Page ' + (index + 1) + (title ? ' · ' + title : '');
+    }
+
+    function tocRowHtml(q) {
+        var qid  = parseInt(q.question_id, 10);
+        var text = tocTitle(q);
+        return '<a class="svb-toc-item" href="#svb-item-' + qid + '" data-qid="' + qid +
+               '" title="' + esc(text) + '">' +
+               '<i class="fas ' + esc(typeIcon(q.type)) + ' svb-toc-icon" aria-hidden="true"></i>' +
+               '<span class="svb-toc-text">' + esc(text) + '</span></a>';
+    }
+
+    function renderToc() {
+        var nav = $('svb-toc');
+        var html = '', total = 0, label, page, qs, i, j;
+        if (!nav) { return; }
+
+        for (i = 0; i < S.pages.length; i++) { total += questionsOfPage(S.pages[i].page_id).length; }
+
+        html += '<div class="svb-toc-card">';
+        html += '<div class="svb-toc-head"><i class="fas fa-list-ul" aria-hidden="true"></i> Outline</div>';
+        html += '<div class="svb-toc-body">';
+
+        if (!total) {
+            html += '<p class="svb-toc-empty">No questions yet</p>';
+        } else {
+            for (i = 0; i < S.pages.length; i++) {
+                page  = S.pages[i];
+                qs    = questionsOfPage(page.page_id);
+                label = tocPageLabel(page, i);
+                html += '<div class="svb-toc-page" data-page="' + parseInt(page.page_id, 10) +
+                        '" title="' + esc(label) + '">' + esc(label) + '</div>';
+                if (!qs.length) {
+                    html += '<p class="svb-toc-none">Nothing here yet</p>';
+                    continue;
+                }
+                for (j = 0; j < qs.length; j++) { html += tocRowHtml(qs[j]); }
+            }
+        }
+
+        html += '</div></div>';
+        nav.innerHTML = html;
+
+        markToc();
+        wireTocSpy();
+    }
+
+    /** The selected card's row carries aria-current; the spy paints the rest. */
+    function markToc() {
+        var nav = $('svb-toc');
+        if (!nav) { return; }
+        els('.svb-toc-item', nav).forEach(function (a) {
+            if (sel && parseInt(a.getAttribute('data-qid'), 10) === sel) {
+                a.setAttribute('aria-current', 'true');
+            } else {
+                a.removeAttribute('aria-current');
+            }
+        });
+        markTocNear();
+    }
+
+    /**
+     * Scroll spy. When nothing is selected — or the selected card has scrolled
+     * out of the band — the topmost card in view gets the quieter .svb-toc-near
+     * mark, so the outline still says where you are.
+     */
+    function markTocNear() {
+        var nav = $('svb-toc');
+        var all, top = 0, i, qid;
+        if (!nav) { return; }
+        all = orderedQuestions();
+        for (i = 0; i < all.length; i++) {
+            qid = parseInt(all[i].question_id, 10);
+            if (tocSeen[qid]) { top = qid; break; }
+        }
+        if (sel && tocSeen[sel]) { top = 0; }
+        els('.svb-toc-item', nav).forEach(function (a) {
+            var id = parseInt(a.getAttribute('data-qid'), 10);
+            a.classList.toggle('svb-toc-near', !!top && id === top && id !== sel);
+        });
+    }
+
+    function wireTocSpy() {
+        var canvas = $('svb-canvas');
+        if (tocObs) { tocObs.disconnect(); tocObs = null; }
+        tocSeen = {};
+        if (!canvas || !$('svb-toc') || !window.IntersectionObserver) { return; }
+        // The band starts just under the sticky site nav and stops at the
+        // halfway line, so "topmost in view" means the card you are reading.
+        tocObs = new window.IntersectionObserver(onTocIntersect, {
+            rootMargin: '-60px 0px -50% 0px',
+            threshold:  0
+        });
+        els('.svb-item', canvas).forEach(function (n) { tocObs.observe(n); });
+    }
+
+    function onTocIntersect(entries) {
+        entries.forEach(function (entry) {
+            var qid = parseInt(entry.target.getAttribute('data-qid'), 10);
+            if (!qid) { return; }
+            if (entry.isIntersecting) { tocSeen[qid] = true; } else { delete tocSeen[qid]; }
+        });
+        markTocNear();
+    }
+
+    /**
+     * Live text only. Called on every keystroke in a prompt, heading, caption
+     * or page title; after a short pause it writes that ONE row's text and
+     * leaves the rest of the list exactly where the pointer left it.
+     */
+    function tocLiveText() {
+        if (tocTimer) { window.clearTimeout(tocTimer); }
+        tocTimer = window.setTimeout(function () {
+            var nav = $('svb-toc'), i, page, label, row, text, node;
+            tocTimer = null;
+            if (!nav) { return; }
+
+            for (i = 0; i < S.questions.length; i++) {
+                row = el('.svb-toc-item[data-qid="' + parseInt(S.questions[i].question_id, 10) + '"]', nav);
+                if (!row) { continue; }
+                text = tocTitle(S.questions[i]);
+                node = el('.svb-toc-text', row);
+                if (node && node.textContent !== text) {
+                    node.textContent = text;
+                    row.setAttribute('title', text);
+                }
+            }
+            for (i = 0; i < S.pages.length; i++) {
+                page  = S.pages[i];
+                row   = el('.svb-toc-page[data-page="' + parseInt(page.page_id, 10) + '"]', nav);
+                label = tocPageLabel(page, i);
+                if (row && row.textContent !== label) {
+                    row.textContent = label;
+                    row.setAttribute('title', label);
+                }
+            }
+        }, TOC_MS);
+    }
+
+    /** A row is a real anchor, so Enter arrives here as a click too. */
+    function onTocClick(e) {
+        var a = e.target.closest ? e.target.closest('.svb-toc-item') : null;
+        var qid, card;
+        if (!a) { return; }
+        e.preventDefault();
+        qid  = parseInt(a.getAttribute('data-qid'), 10);
+        card = cardEl(qid);
+        if (card && card.scrollIntoView) { card.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
+        // false: open the card for editing without pulling the caret out of
+        // wherever the keyboard user was.
+        select(qid, false);
+        markToc();
     }
 
     function renderPageHead(page, index, count) {
@@ -780,8 +975,11 @@
         var selected = qid === sel;
         var pos      = questionIndex(qid);
         var total    = orderedQuestions().length;
+        // The id is the outline's anchor target (.svb-toc-item href), so it has
+        // to survive every redraw of the card, selected or not.
         var html = '<article class="svb-item' + (selected ? ' svb-selected svb-editing' : '') +
-                   '" data-qid="' + qid + '" data-type="' + esc(q.type) + '" tabindex="0">';
+                   '" id="svb-item-' + qid + '" data-qid="' + qid + '" data-type="' + esc(q.type) +
+                   '" tabindex="0">';
 
         /* The grip strip (spec §7 Density): a 16px band at the top of every
            card holding the centred ⋮⋮ handle and, at its right, the keyboard
@@ -1170,6 +1368,10 @@
         if (prev && prev !== sel) { refreshCard(prev); }
         if (sel) { refreshCard(sel, focusPrompt); }
         wireOptionSortables();
+        // refreshCard swaps the card's DOM node, so the spy has to be pointed
+        // at the new one before the outline can say where we are.
+        wireTocSpy();
+        markToc();
     }
 
     /** Open the ⋯ menu of a card and focus one control inside it. */
@@ -2398,15 +2600,18 @@
         if (t.hasAttribute('data-q-field') && q) {
             key = t.getAttribute('data-q-field');
             saveQuestionField(q, key, t);
+            if (key === 'Prompt') { tocLiveText(); }
             return;
         }
         if (t.hasAttribute('data-p-field')) {
             page = pageOfNode(t);
             if (page) { savePageField(page, t.getAttribute('data-p-field'), t); }
+            if (t.getAttribute('data-p-field') === 'Title') { tocLiveText(); }
             return;
         }
         if (t.hasAttribute('data-q-setting') && q) {
             saveSettings(q);
+            if (t.getAttribute('data-q-setting') === 'caption') { tocLiveText(); }
             return;
         }
         if (t.classList && (t.classList.contains('svb-optlabel') || t.classList.contains('svb-optweight')) && q) {
@@ -2729,6 +2934,7 @@
     function init() {
         var canvas   = $('svb-canvas');
         var settings = $('svb-settings');
+        var toc      = $('svb-toc');
 
         if (!canvas || !window.SvRender) { return; }
 
@@ -2749,6 +2955,8 @@
         canvas.addEventListener('input', onCanvasInput, false);
         canvas.addEventListener('change', onCanvasChange, false);
         canvas.addEventListener('keydown', onCanvasKeydown, false);
+
+        if (toc) { toc.addEventListener('click', onTocClick, false); }
 
         if (settings) {
             settings.addEventListener('input', onSettingsInput, false);

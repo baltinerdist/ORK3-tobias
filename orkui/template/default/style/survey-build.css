@@ -172,6 +172,151 @@
     padding-bottom: 48px;
 }
 
+
+/* ── Outline (right rail) ─────────────────────────────────────────────── */
+
+/* orkui.css:739 clamps `html, body { overflow-x: hidden }`. On BODY that makes
+   overflow-y compute to auto, so the body becomes the nearest scrollport — one
+   that never scrolls, because it grows with its content. A position:sticky
+   element resolved against it can therefore never pin, which is exactly what
+   the rail below does. `clip` is the one non-visible value that does NOT
+   establish a scroll container, so overflow-y stays visible and the rail binds
+   to the viewport instead. :has() keeps this to the builder page and to
+   browsers that would honour the sticky anyway; the horizontal clamp itself is
+   unchanged. Measured, not assumed: without this the rail's top runs to
+   -617px at scrollY 900; with it, it holds at 60px. */
+body:has(#svb-toc) { overflow-x: clip; }
+
+/* A table of contents for the canvas: type icon + title, nothing else. It is
+   the .rp-body's third column, so it only appears when there is room for the
+   canvas to keep its full 860px — see the 1449px rule below. Chrome is the
+   Reports sidebar's: a card with an 11px uppercase header, 13px rows.
+
+   #newmenu is a 48px fixed bar, so the rail pins 12px under it and caps its
+   own height at whatever is left of the viewport. */
+.svb-toc {
+    flex: 0 0 220px;
+    width: 220px;
+    margin-left: 16px;
+    position: sticky;
+    top: 60px;
+    max-height: calc(100vh - 76px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.svb-toc-card {
+    background: var(--ork-card-bg);
+    border: 1px solid var(--ork-border);
+    border-radius: var(--ork-radius-lg);
+    box-shadow: var(--ork-shadow-card);
+    overflow: hidden;
+}
+
+/* Every muted tone in the rail is --sv-text-muted, not --ork-text-muted: at
+   11-12px on white the global token is 4.02:1, under AA. survey.css carries
+   the darker survey value for exactly this, and hands the job back to the
+   global token in dark mode. */
+.svb-toc-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 12px;
+    background: var(--ork-bg-secondary);
+    border-bottom: 1px solid var(--ork-border);
+    font-size: 11px;
+    font-weight: var(--ork-font-weight-bold);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--sv-text-muted);
+}
+
+.svb-toc-body { padding: 4px 0 8px; }
+
+.svb-toc-page {
+    padding: 10px 12px 4px;
+    font-size: 11px;
+    font-weight: var(--ork-font-weight-bold);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--sv-text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* One row. A real <a>, so Tab reaches it and Enter follows it; the click
+   handler turns that into a smooth scroll plus a selection. */
+.svb-toc .svb-toc-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 4px 12px 4px 10px;
+    border-left: 2px solid transparent;
+    font-size: var(--ork-font-size-base);
+    line-height: 1.5;
+    color: var(--ork-text-secondary);
+    text-decoration: none;
+}
+
+.svb-toc .svb-toc-item:hover {
+    background: var(--ork-surface-hover);
+    color: var(--ork-text);
+    text-decoration: none;
+}
+
+.svb-toc .svb-toc-item:focus-visible {
+    outline: 2px solid var(--sv-accent);
+    outline-offset: -2px;
+}
+
+.svb-toc-icon {
+    flex: 0 0 14px;
+    width: 14px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--sv-text-muted);
+}
+
+.svb-toc-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* The open card. */
+.svb-toc .svb-toc-item[aria-current="true"] {
+    background: var(--sv-accent-soft);
+    border-left-color: var(--sv-accent);
+    color: var(--sv-accent);
+    font-weight: var(--ork-font-weight-bold);
+}
+
+.svb-toc .svb-toc-item[aria-current="true"] .svb-toc-icon { color: var(--sv-accent); }
+
+/* Scroll spy: where you are reading, when that is not where you are editing. */
+.svb-toc .svb-toc-item.svb-toc-near {
+    border-left-color: var(--ork-border-dark);
+    color: var(--ork-text);
+}
+
+.svb-toc-empty,
+.svb-toc-none {
+    margin: 0;
+    padding: 4px 12px 6px;
+    font-size: var(--ork-font-size-sm);
+    font-style: italic;
+    color: var(--sv-text-muted);
+}
+
+.svb-toc-empty { padding: 10px 12px; }
+
+/* The rail pins under the fixed navbar, so an anchored card has to clear it. */
+.svb-item { scroll-margin-top: 64px; }
+
 /* ── Page card ────────────────────────────────────────────────────────── */
 
 .svb-page {
@@ -1339,6 +1484,21 @@ html[data-theme="dark"] .flatpickr-time .numInputWrapper span.arrowDown:after { 
 .svb-modal-body th, .svb-modal-body td { border: 1px solid var(--ork-border); padding: 6px 8px; text-align: left; }
 .svb-modal-body pre { overflow-x: auto; background: var(--ork-bg-secondary); padding: 10px; border-radius: var(--ork-radius-md); }
 
+/* ── Outline: only when the canvas can still have its full width ──────── */
+
+/* The rail may never cost the canvas a pixel — it exists to use space the
+   canvas was already leaving empty. The chrome around the canvas is 488px
+   (220 sidebar + 16 gap + 16 margin + 220 rail + 16 gap), so the canvas keeps
+   its full 860px only once #theme_container (95% of the viewport, less its
+   12px padding and the ~15px scrollbar) is 1348px wide — that is a 1450px
+   viewport. Measured, not derived: at 1450px the canvas is 860.0, at 1440px it
+   is 850.5. So the rail shows from 1450px up and steps out below, where the
+   canvas needs the whole row. It is an aid, not a control — nothing on the
+   page is reachable only through it. */
+@media (max-width: 1449px) {
+    .svb-toc { display: none; }
+}
+
 /* ── Touch: every control the rule cares about reaches 44px ───────────── */
 
 /* The density pass above is the DESKTOP scale. Every control it shrank comes
@@ -1412,6 +1572,11 @@ html[data-theme="dark"] .flatpickr-time .numInputWrapper span.arrowDown:after { 
 
     .svb-addinline { height: 16px; }
     .svb-addinline-btn { width: 44px; height: 44px; margin-top: -14px; border-radius: 50%; }
+
+    /* The outline is a pointer convenience on a wide screen; on touch or in a
+       stacked layout it would just be another screen of links above the
+       questions. It has no control of its own, so it simply goes. */
+    .svb-toc { display: none; }
 }
 
 /* ── Narrow ───────────────────────────────────────────────────────────── */
@@ -1550,6 +1715,42 @@ html[data-theme="dark"] .svb-scope-chip {
 
 html[data-theme="dark"] .svb-sec-rule { border-top-color: var(--ork-border); }
 
+/* Outline. --ork-card-bg and --ork-bg-secondary both collapse onto #2d3748 in
+   dark mode, so the card header needs the one step lighter that still reads as
+   a header — the same --ork-surface-hover reports.css gives .rp-filter-card-header.
+   Confirmed against computed styles, not by eye. */
+html[data-theme="dark"] .svb-toc-card {
+    background: var(--ork-card-bg);
+    border-color: var(--ork-border);
+}
+
+html[data-theme="dark"] .svb-toc-head {
+    background: var(--ork-surface-hover);
+    border-bottom-color: var(--ork-border);
+}
+
+/* Every row colour below is qualified with #theme_container so it outranks
+   default.theme's `html[data-theme="dark"] #theme_container a` (1,1,2) — the
+   same trap reports.css documents for .rp-scope-chip. A bare class pair is
+   (0,2,0) and loses, which repaints every row link-blue. Read off computed
+   styles: without the id the rows compute to #63b3ed, with it to #cbd5e0. */
+html[data-theme="dark"] #theme_container .svb-toc .svb-toc-item {
+    color: var(--ork-text-secondary);
+}
+
+html[data-theme="dark"] #theme_container .svb-toc .svb-toc-item:hover {
+    background: var(--ork-surface-hover);
+    color: var(--ork-text);
+}
+
+html[data-theme="dark"] #theme_container .svb-toc .svb-toc-item[aria-current="true"] {
+    background: var(--sv-accent-soft);
+    border-left-color: var(--sv-accent);
+    color: var(--sv-accent);
+}
+
+html[data-theme="dark"] #theme_container .svb-toc .svb-toc-item.svb-toc-near { color: var(--ork-text); }
+
 /* --ork-surface-light, --ork-bg-secondary and --ork-card-bg all collapse onto
    #2d3748 in dark mode, so the quote would vanish into the card it sits on.
    --ork-surface-hover (#374151) is the one step lighter that still reads as
@@ -1573,6 +1774,7 @@ html[data-theme="dark"] .svb-consent-quote {
     .svb-card-foot,
     .svb-more,
     .svb-settings,
+    .svb-toc,
     .svb-modal,
     .svb-confirm { display: none !important; }
 
