@@ -206,9 +206,9 @@ body:has(#svb-toc) { overflow-x: clip; }
 }
 
 .svb-toc-card {
-    background: var(--ork-card-bg);
-    border: 1px solid var(--ork-border);
-    border-radius: var(--ork-radius-lg);
+    background: var(--sv-l1);
+    border: 1px solid var(--sv-line-1);
+    border-radius: var(--sv-radius-l1);
     box-shadow: var(--ork-shadow-card);
     overflow: hidden;
 }
@@ -319,10 +319,11 @@ body:has(#svb-toc) { overflow-x: clip; }
 
 /* ── Page card ────────────────────────────────────────────────────────── */
 
+/* L1 — see the surface-ladder block at the top of survey.css. */
 .svb-page {
-    background: var(--ork-card-bg);
-    border: 1px solid var(--ork-border);
-    border-radius: var(--ork-radius-lg);
+    background: var(--sv-l1);
+    border: 1px solid var(--sv-line-1);
+    border-radius: var(--sv-radius-l1);
     box-shadow: var(--ork-shadow-card);
     margin-bottom: 18px;
     overflow: hidden;
@@ -334,8 +335,11 @@ body:has(#svb-toc) { overflow-x: clip; }
     gap: 8px;
     flex-wrap: wrap;
     padding: 5px 10px;
-    background: var(--ork-bg-secondary);
-    border-bottom: 1px solid var(--ork-border);
+    /* Transparent, not a fill: a tinted strip here sat at roughly the same
+       value as the L2 question cards below it and the two read as one
+       surface. The rule alone is enough to separate title from canvas. */
+    background: transparent;
+    border-bottom: 1px solid var(--sv-line-2);
 }
 
 .svb-page-handle,
@@ -488,12 +492,14 @@ body:has(#svb-toc) { overflow-x: clip; }
 
 /* ── Item card ────────────────────────────────────────────────────────── */
 
+/* L2 — flat and tinted, so a closed card reads as content sitting IN the
+   page card rather than as another card floating on it. */
 .svb-item {
     position: relative;
-    border: 1px solid var(--ork-border);
+    border: 1px solid var(--sv-line-2);
     border-left: 4px solid transparent;
-    border-radius: 8px;
-    background: var(--ork-card-bg);
+    border-radius: var(--sv-radius-l2);
+    background: var(--sv-l2);
     margin-bottom: 10px;
     cursor: pointer;
 }
@@ -501,8 +507,11 @@ body:has(#svb-toc) { overflow-x: clip; }
 .svb-item:hover { border-color: var(--ork-border-dark); }
 .svb-item:focus-visible { outline: 2px solid var(--sv-accent); outline-offset: 2px; }
 
+/* The card being edited lifts off the tint: white, a heavier shadow and the
+   accent left edge it already had. */
 .svb-item.svb-selected {
-    border-color: var(--ork-border-dark);
+    background: var(--sv-l2-lift);
+    border-color: var(--sv-line-3);
     border-left-color: var(--sv-accent);
     box-shadow: var(--ork-shadow-card-hover);
     cursor: default;
@@ -675,10 +684,10 @@ body:has(#svb-toc) { overflow-x: clip; }
     flex: 1 1 auto;
     min-width: 0;
     box-sizing: border-box;
-    background: var(--ork-surface-light);
+    background: var(--sv-l3);
     border: 0;
-    border-bottom: 1px solid var(--ork-border-dark);
-    border-radius: 4px 4px 0 0;
+    border-bottom: 1px solid var(--sv-line-3);
+    border-radius: var(--sv-radius-l3) var(--sv-radius-l3) 0 0;
     color: var(--ork-text);
     font-family: inherit;
     font-size: 14px;
@@ -1626,15 +1635,16 @@ html[data-theme="dark"] .svb-confirm {
     color: var(--ork-text);
 }
 
-html[data-theme="dark"] .svb-page,
-html[data-theme="dark"] .svb-item,
+/* .svb-page, .svb-item and .svb-page-head used to be re-stated here; they now
+   paint from the L1/L2 tokens in survey.css, which already carry their dark
+   values (page #2d3748, item #26303f, head transparent over the page card),
+   so re-stating them would flatten the ladder back to one colour. */
 html[data-theme="dark"] .svb-modal-panel,
 html[data-theme="dark"] .svb-addinline-btn {
     background: var(--ork-card-bg);
     border-color: var(--ork-border);
 }
 
-html[data-theme="dark"] .svb-page-head,
 html[data-theme="dark"] .svb-page-more,
 html[data-theme="dark"] .svb-more,
 html[data-theme="dark"] .svb-modal-head,

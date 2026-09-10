@@ -27,6 +27,67 @@
    Breakpoints: 700px (matrix collapses, runner touch sizing) and 420px.
    ========================================================================== */
 
+/* ── Surface ladder (L0 → L3) ─────────────────────────────────────────────
+   Light mode used to paint every layer the same #fff: ground, page card,
+   question card and control all measured rgb(255,255,255) with a single
+   #e2e8f0 hairline between them, so a survey read as one flat sheet. The
+   four L-tokens below alternate instead — grey ground, white page, tinted
+   question, white control — with the radius stepping 8 → 6 → 4 and a shadow
+   only on L1 (plus the one question card the builder has selected, which
+   lifts back to white). L2 stays flat on purpose: the tint IS its edge.
+
+   Declared on :root rather than on .sv-scope because the runner paints its
+   ground on <body> (`body:has(#sv-root)` near the bottom of this file) and a
+   token scoped to .sv-scope would be out of reach there. survey.css is linked
+   by the four Survey_*.tpl templates and by nothing else in the app, so :root
+   here is already scoped to a survey page.
+
+   Dark mode keeps every value it already computed, with one deliberate
+   exception: L2 used to equal the page card (#2d3748 on #2d3748), so it now
+   steps one shade darker and the nesting reads in both themes. */
+:root {
+    --sv-l0: #eef2f7;   /* ground   — behind the page cards               */
+    --sv-l1: #ffffff;   /* page     — page card, sidebar cards, rail      */
+    --sv-l2: #f5f8fb;   /* question — one question card                   */
+    --sv-l3: #ffffff;   /* control  — choice row, scale face, rank row    */
+
+    --sv-line-1: #d5dde8;
+    --sv-line-2: #e2e8f0;
+    --sv-line-3: #cbd5e0;
+
+    /* The selected builder card lifts off L2 rather than tinting further. */
+    --sv-l2-lift:   #ffffff;
+    --sv-l3-hover:  var(--ork-surface-hover);
+
+    /* The runner's accent header is a translucent wash, so whatever sits
+       behind it changes the composite. On light's new L0 ground it dropped
+       .sv-progress-text to 4.16:1; an opaque L1 base restores the 4.66:1 it
+       had on white. Dark mode wants the opposite — the ground there is
+       already darker than the card, and an L1 base would LIFT the header to
+       3.98:1 — so dark keeps the ground and stays exactly where it was. */
+    --sv-header-base: var(--sv-l1);
+
+    --sv-radius-l1: var(--ork-radius-lg);
+    --sv-radius-l2: var(--ork-radius-md);
+    --sv-radius-l3: var(--ork-radius-sm);
+}
+
+html[data-theme="dark"] {
+    --sv-l0: var(--ork-bg);                 /* #1a202c — unchanged */
+    --sv-l1: var(--ork-card-bg);            /* #2d3748 — unchanged */
+    --sv-l2: #26303f;                       /* one step under the page card */
+    --sv-l3: var(--ork-card-bg);            /* #2d3748 — unchanged */
+
+    --sv-line-1: var(--ork-border);         /* #4a5568 — unchanged */
+    --sv-line-2: var(--ork-border);
+    --sv-line-3: var(--ork-border);
+
+    --sv-l2-lift:  var(--ork-card-bg);      /* #2d3748 + the accent edge */
+    --sv-l3-hover: var(--ork-surface-hover);/* #374151 — unchanged */
+
+    --sv-header-base: transparent;          /* the ground — unchanged */
+}
+
 .sv-root,
 .sv-scope {
     --sv-accent:          var(--ork-blue-primary);
@@ -79,6 +140,30 @@ html[data-theme="dark"] .sv-scope {
     text-align: left;
 }
 
+/* ── The .rp-* shell, re-grounded ─────────────────────────────────────────
+   reports.css is shared by a dozen report pages and is not edited from this
+   module. The three survey surfaces that wear its shell (builder, results,
+   list) all carry .sv-scope on their .rp-body, so the overrides below reach
+   those pages and nothing else: the shell's content row becomes the L0
+   ground, and its cards become L1 on top of it.
+
+   .rp-table-area keeps its own fill on purpose — dark mode gives it a
+   deliberately deeper well (#1e2433) that L1 would flatten — so only its
+   hairline joins the ladder. */
+.rp-body.sv-scope {
+    background: var(--sv-l0);
+}
+
+.sv-scope .rp-filter-card,
+.sv-scope .rp-chart-card {
+    background: var(--sv-l1);
+    border-color: var(--sv-line-1);
+}
+
+.sv-scope .rp-table-area {
+    border-color: var(--sv-line-1);
+}
+
 /* ── Page column ──────────────────────────────────────────────────────── */
 
 .sv-root {
@@ -89,9 +174,9 @@ html[data-theme="dark"] .sv-scope {
 }
 
 .sv-card {
-    background: var(--sv-card-bg);
-    border: 1px solid var(--sv-border);
-    border-radius: var(--sv-radius);
+    background: var(--sv-l1);
+    border: 1px solid var(--sv-line-1);
+    border-radius: var(--sv-radius-l1);
     box-shadow: var(--ork-shadow-card);
     padding: var(--ork-space-card);
     margin-bottom: var(--sv-gap);
@@ -235,10 +320,11 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
 
 /* ── Question shell ───────────────────────────────────────────────────── */
 
+/* L2. Flat by design — the tint is the edge, so no shadow here. */
 .sv-q {
-    background: var(--sv-card-bg);
-    border: 1px solid var(--sv-border);
-    border-radius: var(--sv-radius);
+    background: var(--sv-l2);
+    border: 1px solid var(--sv-line-2);
+    border-radius: var(--sv-radius-l2);
     padding: var(--ork-space-card);
     margin-bottom: var(--sv-gap);
     box-sizing: border-box;
@@ -352,8 +438,8 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
     line-height: 1.4;
     color: var(--sv-text);
     background: var(--sv-input-bg);
-    border: 1px solid var(--ork-input-border);
-    border-radius: var(--ork-radius-md);
+    border: 1px solid var(--sv-line-3);
+    border-radius: var(--sv-radius-l3);
     transition: var(--ork-transition-base);
 }
 
@@ -406,15 +492,15 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
     gap: 10px;
     min-height: 32px;
     padding: 5px 10px;
-    border: 1px solid var(--sv-border);
-    border-radius: var(--ork-radius-md);
-    background: var(--sv-card-bg);
+    border: 1px solid var(--sv-line-3);
+    border-radius: var(--sv-radius-l3);
+    background: var(--sv-l3);
     cursor: pointer;
     box-sizing: border-box;
     transition: var(--ork-transition-base);
 }
 
-.sv-choice:hover { background: var(--ork-surface-hover); border-color: var(--sv-border-strong); }
+.sv-choice:hover { background: var(--sv-l3-hover); border-color: var(--sv-border-strong); }
 
 .sv-choice-input {
     width: 16px;
@@ -480,9 +566,9 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
     min-height: 32px;
     padding: 0 8px;
     box-sizing: border-box;
-    border: 1px solid var(--sv-border-strong);
-    border-radius: var(--ork-radius-md);
-    background: var(--sv-card-bg);
+    border: 1px solid var(--sv-line-3);
+    border-radius: var(--sv-radius-l3);
+    background: var(--sv-l3);
     color: var(--sv-text-body);
     font-size: 14px;
     font-weight: var(--ork-font-weight-semibold);
@@ -558,9 +644,13 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
     font-size: var(--ork-font-size-base);
 }
 
+/* L3: the answer grid is the control surface, so its body rows carry the
+   control fill and the L2 card tint shows through the header strip. */
+.sv-matrix tbody tr { background: var(--sv-l3); }
+
 .sv-matrix th,
 .sv-matrix td {
-    border-bottom: 1px solid var(--sv-border);
+    border-bottom: 1px solid var(--sv-line-3);
     padding: 6px 6px;
     text-align: center;
     vertical-align: middle;
@@ -617,9 +707,9 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
     gap: 10px;
     min-height: 34px;
     padding: 4px 8px;
-    border: 1px solid var(--sv-border);
-    border-radius: var(--ork-radius-md);
-    background: var(--sv-card-bg);
+    border: 1px solid var(--sv-line-3);
+    border-radius: var(--sv-radius-l3);
+    background: var(--sv-l3);
     box-sizing: border-box;
 }
 
@@ -657,7 +747,7 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
     font-size: var(--ork-font-size-sm);
 }
 
-.sv-rank-btn:hover { background: var(--ork-surface-hover); border-color: var(--sv-border-strong); }
+.sv-rank-btn:hover { background: var(--sv-l3-hover); border-color: var(--sv-border-strong); }
 .sv-rank-first .sv-rank-up,
 .sv-rank-last .sv-rank-down { opacity: 0.35; cursor: default; }
 
@@ -673,15 +763,15 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
     gap: 10px;
     padding: 10px 12px;
     min-height: 32px;
-    border: 1px solid var(--sv-border);
-    border-radius: var(--sv-radius);
-    background: var(--sv-card-bg);
+    border: 1px solid var(--sv-line-3);
+    border-radius: var(--sv-radius-l3);
+    background: var(--sv-l3);
     cursor: pointer;
     box-sizing: border-box;
     transition: var(--ork-transition-base);
 }
 
-.sv-consent-opt:hover { border-color: var(--sv-border-strong); background: var(--ork-surface-hover); }
+.sv-consent-opt:hover { border-color: var(--sv-border-strong); background: var(--sv-l3-hover); }
 
 .sv-consent-opt:has(input:checked) {
     border-color: var(--sv-accent);
@@ -731,8 +821,8 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
     .sv-matrix thead { display: none; }
 
     .sv-matrix-row {
-        border: 1px solid var(--sv-border);
-        border-radius: var(--ork-radius-md);
+        border: 1px solid var(--sv-line-3);
+        border-radius: var(--sv-radius-l3);
         padding: 8px;
         margin-bottom: 10px;
     }
@@ -742,7 +832,7 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
 
     .sv-matrix-rowlabel { margin-bottom: 6px; min-width: 0; }
 
-    .sv-matrix-cell + .sv-matrix-cell { border-top: 1px solid var(--sv-border); }
+    .sv-matrix-cell + .sv-matrix-cell { border-top: 1px solid var(--sv-line-3); }
 
     .sv-matrix-opt { justify-content: flex-start; gap: 12px; padding: 0 4px; }
 
@@ -795,10 +885,6 @@ html[data-theme="dark"] .sv-progress { background: var(--ork-bg-tertiary); }
 
 html[data-theme="dark"] .sv-btn-primary { color: #1a202c; }
 
-html[data-theme="dark"] .sv-choice:hover,
-html[data-theme="dark"] .sv-rank-btn:hover,
-html[data-theme="dark"] .sv-consent-opt:hover { background: var(--ork-bg-tertiary); }
-
 html[data-theme="dark"] .sv-figure-empty { color: var(--ork-text-muted); }
 
 /* ── Runner chrome (Survey_take) ──────────────────────────────────────────
@@ -807,10 +893,12 @@ html[data-theme="dark"] .sv-figure-empty { color: var(--ork-text-muted); }
    lives here with the rest of the base vocabulary. Nothing below is copied
    from reports.css. */
 
+/* The wash rides on --sv-header-base so the composite behind
+   .sv-progress-text stays AA in both themes — see that token's note above. */
 .sv-header {
     border-left: 4px solid var(--sv-accent);
-    background: var(--sv-accent-soft);
-    border-radius: var(--sv-radius);
+    background: linear-gradient(var(--sv-accent-soft), var(--sv-accent-soft)), var(--sv-header-base);
+    border-radius: var(--sv-radius-l1);
     padding: 14px 16px;
     margin-bottom: var(--sv-gap);
     box-sizing: border-box;
@@ -849,9 +937,31 @@ html[data-theme="dark"] .sv-figure-empty { color: var(--ork-text-muted); }
     text-decoration: underline;
 }
 
+/* The runner ground (L0). The take page is a standalone document with no
+   .rp-* shell, so its ground is the page itself — scoped by :has() to the
+   runner's own root, which no other surface in the app has. */
+body:has(#sv-root) { background: var(--sv-l0); }
+
 .sv-stage { display: block; }
 
-.sv-page { display: block; }
+/* L1. The stage used to be transparent, which put the question cards
+   straight onto the ground with nothing between them; the page is now the
+   white card the questions nest inside. .sv-actions stays outside it, on the
+   ground, so Back/Next still read as page chrome rather than page content. */
+.sv-page {
+    display: block;
+    background: var(--sv-l1);
+    border: 1px solid var(--sv-line-1);
+    border-radius: var(--sv-radius-l1);
+    box-shadow: var(--ork-shadow-card);
+    padding: var(--ork-space-card);
+    margin-bottom: var(--sv-gap);
+    box-sizing: border-box;
+}
+
+/* The card's own padding closes the column, so the last question inside it
+   does not also carry the between-questions gap. */
+.sv-page > .sv-q:last-child { margin-bottom: 0; }
 
 .sv-page-title {
     font-size: 14px;

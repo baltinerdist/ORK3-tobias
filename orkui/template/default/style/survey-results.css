@@ -247,9 +247,11 @@
     min-width    : 0;
     text-align   : center;
     padding      : 8px 6px;
-    border       : 1px solid var(--svr-border);
-    border-radius: var(--ork-radius-md, 6px);
-    background   : var(--ork-surface-light, #f7fafc);
+    border       : 1px solid var(--sv-line-2);
+    border-radius: var(--sv-radius-l2);
+    /* L2 — the surface ladder at the top of survey.css. Was
+       --ork-surface-light, which is the card's own colour in dark mode. */
+    background   : var(--sv-l2);
 }
 
 .svr-callout-value {
@@ -312,9 +314,9 @@
     font-size  : var(--ork-font-size-base);
     line-height: 1.5;
     color      : var(--svr-text);
-    background : var(--ork-surface-light, #f7fafc);
+    background : var(--sv-l2);
     border-left: 3px solid var(--svr-accent);
-    border-radius: 0 var(--ork-radius-sm, 4px) var(--ork-radius-sm, 4px) 0;
+    border-radius: 0 var(--sv-radius-l3) var(--sv-radius-l3) 0;
     overflow-wrap: anywhere;
 }
 
