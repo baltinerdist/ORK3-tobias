@@ -168,15 +168,15 @@ foreach ($_svr_qs as $_q) {
 				<div class="rp-filter-card-body">
 
 <?php if ($_svr_kingdoms) : ?>
-					<div class="svr-field">
-						<span class="svr-field-label">Kingdom</span>
-						<div class="svr-checklist">
+					<fieldset class="svr-fieldset">
+						<legend class="svr-field-label">Kingdom</legend>
+						<div class="svr-checklist" aria-describedby="svr-kingdom-hint">
 <?php foreach ($_svr_kingdoms as $_k) : ?>
 							<label class="svr-check"><input type="checkbox" class="svr-kingdom" value="<?=(int) ($_k['scope_id'] ?? 0)?>"> <span><?=htmlspecialchars((string) ($_k['name'] ?? ''))?></span></label>
 <?php endforeach; ?>
 						</div>
-						<p class="svr-field-hint">Anonymous responses have no kingdom and are excluded when this filter is set.</p>
-					</div>
+						<p class="svr-field-hint" id="svr-kingdom-hint">Anonymous responses have no kingdom and are excluded when this filter is set.</p>
+					</fieldset>
 <?php endif; ?>
 
 					<div class="svr-field">
@@ -224,8 +224,14 @@ foreach ($_svr_qs as $_q) {
 
 		<!-- Charts + rows -->
 		<div class="svr-main">
-			<div class="sv-notice sv-notice-warn" id="svr-notice" hidden></div>
-			<div class="svr-cards" id="svr-cards" aria-live="polite"></div>
+			<div class="sv-notice sv-notice-warn" id="svr-notice" role="status" hidden></div>
+			<!--
+				The live region is this short status line, NOT the card grid:
+				every filter apply replaces the whole grid, and a live region
+				around it would read every chart card end to end.
+			-->
+			<p class="sv-visually-hidden" id="svr-live" role="status" aria-live="polite"></p>
+			<div class="svr-cards" id="svr-cards"></div>
 
 			<div class="rp-table-area svr-rows-area">
 				<h2 class="svr-section-title"><i class="fas fa-table"></i> Responses</h2>

@@ -17,7 +17,12 @@
     --svr-surface     : var(--ork-card-bg, #fff);
     --svr-border      : var(--rp-border, #e2e8f0);
     --svr-text        : var(--ork-text, #2d3748);
-    --svr-text-muted  : var(--ork-text-muted, #718096);
+    /* --ork-text-muted (#718096) is only 4.02:1 on the white card — under AA
+       for the 10-13px labels below. Match the darker muted survey.css already
+       uses module-wide (--sv-text-muted); the dark block hands the job back to
+       the global token. The value is repeated rather than referenced because
+       .sv-scope sits on a descendant (.rp-body), not on .svr-root. */
+    --svr-text-muted  : #5f6b7a;
     --svr-accent      : var(--rp-accent, #4338ca);
     --svr-badge-bg    : var(--rp-bg-tertiary, #e2e8f0);
     --svr-input-bg    : var(--ork-input-bg, #fff);
@@ -79,6 +84,17 @@
 
 .svr-field { margin-bottom: 14px; }
 .svr-field:last-child { margin-bottom: 0; }
+
+/* The kingdom filter is a real <fieldset>/<legend> so the checkbox group is
+   announced as a group; strip the UA chrome so it still looks like a field. */
+.svr-fieldset {
+    border   : 0;
+    margin   : 0 0 14px;
+    padding  : 0;
+    min-width: 0;
+}
+
+.svr-fieldset > legend { display: block; width: 100%; padding: 0; }
 
 .svr-field-label {
     display       : block;
@@ -355,6 +371,10 @@
    so the palette needs no restatement here. Only the values that cannot come
    from a token are repeated. */
 
+/* Light mode pins its own darker muted for contrast (see .svr-root); on the
+   dark card the global token is already well past AA, so hand it back. */
+html[data-theme="dark"] .svr-root { --svr-text-muted: var(--ork-text-muted, #a0aec0); }
+
 html[data-theme="dark"] .svr-status-pill { color: #fff; }
 
 /* Fight the global html[data-theme="dark"] h1–h6 pill box, which carries more
@@ -400,14 +420,66 @@ html[data-theme="dark"] .svr-card .highcharts-data-label tspan {
 }
 
 
+/* reports.css gives every .rp-btn-ghost `flex:1; min-width:0` under 600px.
+   This header carries four long-labelled buttons, so each is squeezed below
+   its own min-content width and the labels paint over their neighbours. Let
+   them size to their content and wrap onto as many rows as they need. */
+@media (max-width: 600px) {
+    .rp-root .rp-header-actions .rp-btn-ghost {
+        flex     : 0 1 auto;
+        min-width: fit-content;
+    }
+}
+
+
 /* ── Print ───────────────────────────────────────────────── */
 
 @media print {
     .rp-sidebar,
     .rp-header-actions,
+    .svr-showmore,
     .svr-rows-area .dataTables_paginate,
     .svr-rows-area .dataTables_info { display: none !important; }
 
     .svr-cards { grid-template-columns: 1fr; }
     .svr-card { break-inside: avoid; page-break-inside: avoid; }
+
+    /* Paper is white whatever the screen theme was: browsers drop background
+       colours by default, so the dark palette would print near-white text on
+       white. Restate the light values for both themes. survey-results.js
+       redraws the charts with the light theme on beforeprint for the same
+       reason. */
+    .svr-root {
+        --svr-text       : #000;
+        --svr-text-muted : #333;
+        --svr-border     : #999;
+        --svr-surface    : #fff;
+    }
+
+    /* Same trap on the shared header: its indigo background is dropped while
+       reports.css keeps the text #fff, leaving an invisible title band. */
+    .rp-header {
+        background   : #fff !important;
+        color        : #000 !important;
+        border-bottom: 1px solid #000;
+    }
+
+    .rp-header-icon,
+    .rp-header-title,
+    .rp-scope-chip-label,
+    .rp-scope-chip,
+    .svr-status-pill {
+        color       : #000 !important;
+        background  : none !important;
+        border-color: #999 !important;
+    }
+
+    /* Nothing may be clipped by a scroller on paper. */
+    .svr-textlist {
+        max-height: none !important;
+        overflow  : visible !important;
+    }
+
+    .svr-table-scroll { overflow: visible !important; }
+    .svr-checklist { max-height: none !important; overflow: visible !important; }
 }

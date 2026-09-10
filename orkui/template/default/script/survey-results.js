@@ -132,7 +132,13 @@
        Theme
        --------------------------------------------------------- */
 
+    /* Set while the browser is producing print output: paper is white whatever
+       the screen theme is, and browsers drop the dark card background, so the
+       dark chart palette would print near-white labels on white. */
+    var printingLight = false;
+
     function svIsDark() {
+        if (printingLight) { return false; }
         var a = document.documentElement.getAttribute('data-theme');
         if (a === 'dark') { return true; }
         if (a === 'light') { return false; }
@@ -586,7 +592,8 @@
         var qid = q.question_id;
         var html = '<section class="rp-chart-card svr-card" data-qid="' + qid + '">' +
             '<div class="svr-card-head">' +
-            '<div><h3 class="svr-card-title">' + esc(q.prompt || ('Question ' + qid)) + '</h3>' +
+            '<div><h3 class="svr-card-title" id="svr-title-' + qid + '">' +
+            esc(q.prompt || ('Question ' + qid)) + '</h3>' +
             '<span class="svr-card-type">' + esc(typeLabel(q.type)) + '</span></div>' +
             '<span class="svr-badge">n = ' + n + '</span>' +
             '</div>';
@@ -606,8 +613,12 @@
             html += '<p class="svr-field-hint">Split by: <strong>' + esc(q.crosstab.prompt) + '</strong></p>';
         }
 
+        /* aria-labelledby, not aria-label: the Highcharts accessibility module
+           writes its own aria-label onto this container, and labelledby wins
+           the accessible-name computation, so every chart region is announced
+           with the question it belongs to instead of a generic label. */
         html += '<div class="svr-chart' + (q.type === 'matrix' || q.type === 'ranking' ? ' svr-chart-tall' : '') +
-            '" id="svr-chart-' + qid + '"></div>';
+            '" id="svr-chart-' + qid + '" aria-labelledby="svr-title-' + qid + '"></div>';
         html += calloutsFor(q);
 
         var others = a.other_texts || [];
@@ -660,6 +671,7 @@
             var cfg = specFor(q, theme);
             if (!cfg) { return; }
             cfg.chart.renderTo = el;
+            cfg.accessibility = { description: q.prompt || ('Question ' + q.question_id) };
             try {
                 state.charts.push(new HC.Chart(cfg));
             } catch (e) {
@@ -723,8 +735,17 @@
         var el = $('svr-notice');
         if (!el) { return; }
         if (!show) { el.hidden = true; el.innerHTML = ''; return; }
-        el.innerHTML = '<i class="fas fa-circle-info"></i><span>' + esc(msg) + '</span>';
+        /* Unhide first: a role="status" mutation inside a hidden element is not
+           announced. */
         el.hidden = false;
+        el.innerHTML = '<i class="fas fa-circle-info"></i><span>' + esc(msg) + '</span>';
+    }
+
+    /* Short screen-reader status line. The card grid itself is deliberately not
+       a live region — re-rendering it would read every chart card aloud. */
+    function announce(msg) {
+        var el = $('svr-live');
+        if (el) { el.textContent = msg; }
     }
 
     function statusMessage(r) {
@@ -764,6 +785,13 @@
             return;
         }
         host.innerHTML = questions.map(cardHtml).join('');
+    }
+
+    function announceCards(payload) {
+        var qn = (payload.questions || []).length;
+        var rn = parseInt((payload.summary || {}).responses, 10) || 0;
+        announce(qn + (qn === 1 ? ' question' : ' questions') + ', ' +
+            rn + (rn === 1 ? ' response' : ' responses') + ' shown.');
     }
 
     /* ---------------------------------------------------------
@@ -873,6 +901,7 @@
                 state.payload = { summary: r.summary || {}, questions: r.questions || [] };
                 renderSummary(state.payload.summary, filters);
                 renderCards(state.payload.questions);
+                announceCards(state.payload);
                 /* Cards are in the DOM but not yet laid out; wait one frame so
                    every chart container has a real width. A context that is
                    never painted (hidden tab, print/screenshot harness, a
@@ -890,6 +919,46 @@
        Wiring
        --------------------------------------------------------- */
 
+    /* Expands one truncated text list. The button is relabelled in place rather
+       than removed: removing the element that currently has focus drops focus
+       to <body> and throws a keyboard or screen-reader user back to the top of
+       the page. */
+    function expandTextList(btn, tell) {
+        if (btn.getAttribute('aria-disabled') === 'true') { return; }
+        var prefix = btn.getAttribute('data-more');
+        var list   = $(prefix + '-list');
+        if (!list || !state.payload) { return; }
+        var qid = parseInt(prefix.replace(/^svr-(txt|oth)-/, ''), 10);
+        var kind = prefix.indexOf('svr-oth-') === 0 ? 'other_texts' : 'texts';
+        var q = null;
+        state.payload.questions.forEach(function (x) { if (x.question_id === qid) { q = x; } });
+        if (!q) { return; }
+        var all = (q.agg && q.agg[kind]) || [];
+        list.innerHTML = all.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('');
+        btn.setAttribute('aria-disabled', 'true');
+        btn.textContent = 'All ' + all.length + ' responses shown';
+        if (tell) { announce('All ' + all.length + ' responses shown.'); }
+    }
+
+    /* Everything must be on the paper: expand every truncated list and open
+       every collapsed "Other" block, and redraw the charts in the light theme
+       because the browser drops the dark background. */
+    function expandForPrint() {
+        Array.prototype.forEach.call(document.querySelectorAll('.svr-showmore'), function (b) {
+            expandTextList(b, false);
+        });
+        Array.prototype.forEach.call(document.querySelectorAll('details.svr-other'), function (d) {
+            if (!d.open) { d.open = true; d.setAttribute('data-svr-print-open', '1'); }
+        });
+    }
+
+    function restoreAfterPrint() {
+        Array.prototype.forEach.call(document.querySelectorAll('details.svr-other[data-svr-print-open]'), function (d) {
+            d.open = false;
+            d.removeAttribute('data-svr-print-open');
+        });
+    }
+
     function onApply() {
         load();
         if (state.table) { state.table.ajax.reload(null, true); }
@@ -905,17 +974,7 @@
         document.addEventListener('click', function (e) {
             var btn = e.target.closest ? e.target.closest('.svr-showmore') : null;
             if (!btn) { return; }
-            var prefix = btn.getAttribute('data-more');
-            var list   = $(prefix + '-list');
-            if (!list || !state.payload) { return; }
-            var qid = parseInt(prefix.replace(/^svr-(txt|oth)-/, ''), 10);
-            var kind = prefix.indexOf('svr-oth-') === 0 ? 'other_texts' : 'texts';
-            var q = null;
-            state.payload.questions.forEach(function (x) { if (x.question_id === qid) { q = x; } });
-            if (!q) { return; }
-            var all = (q.agg && q.agg[kind]) || [];
-            list.innerHTML = all.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('');
-            btn.remove();
+            expandTextList(btn, true);
         });
 
         /* Redraw on a theme change — the toggle stamps html[data-theme], and the
@@ -930,6 +989,16 @@
                 mq.addListener(function () { buildCharts(); });
             }
         }
+
+        window.addEventListener('beforeprint', function () {
+            expandForPrint();
+            if (svIsDark()) { printingLight = true; buildCharts(); }
+        });
+
+        window.addEventListener('afterprint', function () {
+            restoreAfterPrint();
+            if (printingLight) { printingLight = false; buildCharts(); }
+        });
 
         /* Charts do not reflow on their own when the grid changes track count. */
         var rt = null;
