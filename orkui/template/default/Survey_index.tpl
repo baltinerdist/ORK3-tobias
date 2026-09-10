@@ -46,17 +46,21 @@ html[data-theme="dark"] .sv-status-pill-open     { background: #22543d; color: #
 html[data-theme="dark"] .sv-status-pill-closed   { background: #744210; color: #fbd38d; }
 html[data-theme="dark"] .sv-status-pill-archived { background: #2d3748; color: #a0aec0; }
 
+/* Both the <a> and the <button> variants land on the same box so the row reads
+   as one control strip, and both clear the 44px tap-target floor. Colours come
+   from the theme-aware --rp- and --ork- tokens, so there is no dark override. */
 .sv-row-btn {
-	display: inline-flex; align-items: center; gap: 5px;
-	padding: 5px 10px; min-height: 30px; border-radius: 5px;
-	border: 1px solid var(--rp-border-mid); background: #fff; color: var(--rp-text-body);
-	font-size: 11.5px; font-weight: 600; cursor: pointer; white-space: nowrap; text-decoration: none;
+	display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+	padding: 5px 10px; min-height: 44px; box-sizing: border-box; border-radius: 5px;
+	border: 1px solid var(--rp-border-mid); background: var(--ork-card-bg); color: var(--rp-text-body);
+	font-size: 11.5px; font-weight: 600; line-height: 1.2; cursor: pointer; white-space: nowrap; text-decoration: none;
 }
 .sv-row-btn:hover  { background: var(--rp-bg-light); border-color: var(--rp-border-strong); color: var(--rp-text); }
 .sv-row-btn i      { font-size: 11px; }
 .sv-row-actions    { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
-html[data-theme="dark"] .sv-row-btn { background: #2d3748; border-color: #4a5568; color: #cbd5e0; }
-html[data-theme="dark"] .sv-row-btn:hover { background: #4a5568; color: #f7fafc; }
+
+/* orkui.css sets a global `p { text-align: justify }`; survey copy is ragged-right. */
+.rp-root p { text-align: left; }
 
 .sv-empty-state { padding: 40px 16px; text-align: center; color: var(--rp-text-muted); font-size: 14px; }
 .sv-empty-state i { font-size: 30px; display: block; margin-bottom: 12px; opacity: 0.4; }
