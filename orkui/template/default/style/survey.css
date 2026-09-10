@@ -93,6 +93,7 @@ html[data-theme="dark"] {
     --sv-accent:          var(--ork-blue-primary);
     --sv-accent-contrast: #fff;
     --sv-accent-soft:     rgba(44, 82, 130, 0.10);
+    --sv-header-wash:     rgba(44, 82, 130, 0.05);   /* lighter than accent-soft: a 10% wash on white reads as a disabled panel */
 
     --sv-bg:              var(--ork-bg);
     --sv-card-bg:         var(--ork-card-bg);
@@ -108,7 +109,7 @@ html[data-theme="dark"] {
     --sv-danger:          var(--ork-red-danger);
     --sv-danger-bg:       var(--ork-alert-danger-bg);
     --sv-input-bg:        var(--ork-input-bg);
-    --sv-star-off:        var(--ork-border-dark);
+    --sv-star-off:        #7b8ba0;               /* 3.3:1 on the L2 tint, 3.5:1 on white (non-text 3:1 floor) */
     --sv-star-on:         #d69e2e;
     --sv-radius:          var(--ork-radius-lg);
     --sv-gap:             16px;
@@ -120,6 +121,7 @@ html[data-theme="dark"] {
 html[data-theme="dark"] .sv-root,
 html[data-theme="dark"] .sv-scope {
     --sv-accent-soft: rgba(99, 179, 237, 0.16);
+    --sv-header-wash: rgba(99, 179, 237, 0.16);
     --sv-star-on:     #f6ad55;
     /* --ork-border-dark is #374151 in dark mode - 1.16:1 on the #2d3748 card,
        which makes an unanswered rating question read as blank. Empty stars are
@@ -897,7 +899,7 @@ html[data-theme="dark"] .sv-figure-empty { color: var(--ork-text-muted); }
    .sv-progress-text stays AA in both themes — see that token's note above. */
 .sv-header {
     border-left: 4px solid var(--sv-accent);
-    background: linear-gradient(var(--sv-accent-soft), var(--sv-accent-soft)), var(--sv-header-base);
+    background: linear-gradient(var(--sv-header-wash), var(--sv-header-wash)), var(--sv-header-base);
     border-radius: var(--sv-radius-l1);
     padding: 14px 16px;
     margin-bottom: var(--sv-gap);
