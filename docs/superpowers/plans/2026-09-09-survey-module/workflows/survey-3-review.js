@@ -63,9 +63,11 @@ const LENSES = [
   { key: 'a11y', effort: 'medium', prompt: 'ACCESSIBILITY. Labels for every control (rating/NPS buttons need aria-label with the value and end labels), fieldset/legend for choice groups, aria-live for validation and autosave state, focus moved to the first error on Next/submit, keyboard-operable ranking (up/down buttons, not only drag), keyboard-operable builder canvas selection, the banner close button labelled, Highcharts containers with an accessible summary or table fallback, colour-only meaning (required dot, status pills).' },
 ]
 
+const RECHECK = (Array.isArray(A.recheck) && A.recheck.length) ? '\n\nRecently fixed browser findings in your area (verify the fixes by reading the code; regressions here are findings):\n' + A.recheck.map(s => '- ' + s).join('\n') : ''
+
 phase('Review')
 const reviews = await parallel(LENSES.map(l => () =>
-  agent(COMMON + NO_BROWSER + '\n\n## YOU ARE A REVIEWER — lens: ' + l.key + '\n' + l.prompt +
+  agent(COMMON + NO_BROWSER + '\n\n## YOU ARE A REVIEWER — lens: ' + l.key + '\n' + l.prompt + ((l.key === 'mobile' || l.key === 'darkmode' || l.key === 'a11y') ? RECHECK : '') +
     '\n\nOnly report defects INTRODUCED BY THIS BRANCH (git diff master...HEAD). Every finding needs a file, a line, a concrete failure scenario (inputs → wrong behaviour) and a severity. No style nits. Be exhaustive within your lens; another agent will try to refute each finding, so include the evidence that makes it real.',
     { label: 'review:' + l.key, phase: 'Review', model: 'opus', effort: l.effort, schema: FINDINGS })))
 
@@ -139,6 +141,7 @@ const FINAL = {
 }
 const final = await agent(COMMON + '\n\n## YOU ARE THE FINAL VERIFIER. You did not write any of this. Do NOT fix anything. You are alone, so Claude-in-Chrome is allowed (load tools with one ToolSearch call).\n' +
   'Fix groups just landed:\n' + JSON.stringify(fixReports).slice(0, 5000) +
+  (Array.isArray(A.recheck) && A.recheck.length ? '\n\nRE-CHECK FIRST — these Phase 2 browser findings were fixed in the last round but never independently re-verified; confirm each one is actually resolved on the real page (same viewport/theme) and report any that is not as a remaining item:\n' + A.recheck.map((s, i) => (i + 1) + '. ' + s).join('\n') : '') +
   '\n\n1. ENVIRONMENT=TEST php vendor/bin/phpunit -c phpunit.xml.dist --filter Survey — paste the summary line.' +
   '\n2. php -l on every PHP file in git diff master...HEAD --name-only; node --check on every new .js.' +
   '\n3. Layering grep under orkui/ (only orkui/model/model.Survey.php may match).' +
