@@ -24,9 +24,11 @@
      label, and the full row-level table below the charts is the
      table view.
 
-   Highcharts: orkui.js inlines Highcharts 3, and the page loads
-   11.4.8 from the CDN AFTER it. Highcharts is therefore only ever
-   referenced from inside this IIFE, after that script has run.
+   Highcharts: orkui.js inlines Highcharts 3.0.7 and owns the
+   window.Highcharts global. Survey_results.tpl loads 11.4.8 inside a
+   sandbox that hides that global for the duration of the load and
+   republishes the fresh copy as window.SvHighcharts, so this file must
+   never touch window.Highcharts - that is still the 3.0.7 build.
    ============================================================ */
 (function () {
     'use strict';
@@ -199,6 +201,26 @@
         return { color: theme.text, textOutline: 'none', fontWeight: '600', fontSize: '11px' };
     }
 
+    /* Perceived luminance of a #rrggbb fill. A label printed INSIDE a stacked
+       segment sits on that segment's colour, not on the card, so the theme
+       foreground is the wrong choice: in dark mode the ramp's lightest steps
+       are near-white and a white label vanishes on them. */
+    function onFill(hex) {
+        var m = /^#([0-9a-f]{6})$/i.exec(String(hex || ''));
+        if (!m) { return null; }
+        var n = parseInt(m[1], 16);
+        var lum = (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255;
+        return lum > 0.55 ? '#1a202c' : '#ffffff';
+    }
+
+    /* labelStyle for a label that sits on top of `fill`. */
+    function labelStyleOn(theme, fill) {
+        var st = labelStyle(theme);
+        var c = onFill(fill);
+        if (c) { st.color = c; }
+        return st;
+    }
+
     /* ---------------------------------------------------------
        Chart specs, one per question type (spec §7 table)
        --------------------------------------------------------- */
@@ -279,9 +301,12 @@
             }
         };
         cfg.series = [
-            { name: 'Detractors (0–6)', color: theme.div.neg, data: [a.detractors || 0] },
-            { name: 'Passives (7–8)', color: theme.div.mid, data: [a.passives || 0] },
-            { name: 'Promoters (9–10)', color: theme.div.pos, data: [a.promoters || 0] }
+            { name: 'Detractors (0–6)', color: theme.div.neg, data: [a.detractors || 0],
+                dataLabels: { style: labelStyleOn(theme, theme.div.neg) } },
+            { name: 'Passives (7–8)', color: theme.div.mid, data: [a.passives || 0],
+                dataLabels: { style: labelStyleOn(theme, theme.div.mid) } },
+            { name: 'Promoters (9–10)', color: theme.div.pos, data: [a.promoters || 0],
+                dataLabels: { style: labelStyleOn(theme, theme.div.pos) } }
         ];
         return cfg;
     }
@@ -319,8 +344,9 @@
         };
         cfg.series = cols.map(function (c, i) {
             return {
-                name : c.label,
-                color: colors[i],
+                name      : c.label,
+                color     : colors[i],
+                dataLabels: { style: labelStyleOn(theme, colors[i]) },
                 data : rows.map(function (r) {
                     var cell = 0;
                     (r.counts || []).forEach(function (x) {
@@ -469,6 +495,7 @@
                 /* Fixed slot order, never cycled — past eight groups the ninth
                    would repeat, so cap the split at the palette length. */
                 color: theme.colors[i],
+                dataLabels: { style: labelStyleOn(theme, theme.colors[i]) },
                 data : counts.map(function (c) { return byId[c.option_id] || 0; })
             };
         }).slice(0, theme.colors.length);
@@ -612,7 +639,8 @@
 
     function buildCharts() {
         destroyCharts();
-        if (!state.payload || !window.Highcharts) { return; }
+        var HC = window.SvHighcharts;
+        if (!state.payload || !HC || !HC.Chart) { return; }
         var theme = svChartTheme();
         state.payload.questions.forEach(function (q) {
             var el = $('svr-chart-' + q.question_id);
@@ -622,7 +650,7 @@
             if (!cfg) { return; }
             cfg.chart.renderTo = el;
             try {
-                state.charts.push(new window.Highcharts.Chart(cfg));
+                state.charts.push(new HC.Chart(cfg));
             } catch (e) {
                 el.innerHTML = '<div class="svr-empty">This chart could not be drawn.</div>';
             }

@@ -49,6 +49,16 @@ html[data-theme="dark"] .sv-scope {
     --sv-star-on:     #f6ad55;
 }
 
+/* orkui.css carries a global `p { text-align: justify }` (orkui.css:786). That
+   is the documented global-element-selector trap: it leaks into every survey
+   surface and opens rivers in the narrow sidebar and card copy. Survey prose is
+   ragged-right everywhere, on the page column and inside the .rp-* shell. */
+.sv-root p,
+.sv-scope p,
+.rp-root p {
+    text-align: left;
+}
+
 /* ── Page column ──────────────────────────────────────────────────────── */
 
 .sv-root {

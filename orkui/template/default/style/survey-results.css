@@ -367,6 +367,19 @@ html[data-theme="dark"] .svr-root .svr-section-title {
     color           : var(--svr-text) !important;
 }
 
+/* Same trap, second instance: orkui.css:2106 forces
+   `html[data-theme="dark"] .highcharts-data-label text { fill: … !important }`,
+   which repaints EVERY data label the theme foreground — including the labels
+   printed inside a stacked segment, where survey-results.js has already picked
+   a colour that contrasts with that segment's own fill (near-white on the
+   ramp's lightest steps is illegible). Highcharts writes both `color` and
+   `fill` inline, so handing the fill back to `currentColor` restores the
+   per-segment choice without hardcoding a colour here. */
+html[data-theme="dark"] .svr-card .highcharts-data-label text,
+html[data-theme="dark"] .svr-card .highcharts-data-label tspan {
+    fill: currentColor !important;
+}
+
 
 /* ── Responsive ──────────────────────────────────────────── */
 

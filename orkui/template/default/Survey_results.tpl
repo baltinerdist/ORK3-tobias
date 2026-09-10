@@ -247,7 +247,25 @@ window.SvConfig = {
 };
 </script>
 <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+<!--
+	orkui.js inlines Highcharts 3.0.7 and defines window.Highcharts before this
+	point. Highcharts 11 refuses to install over an existing global: it calls
+	win.Highcharts.error(16, true), which 3.0.7 does not implement, so the whole
+	11.x module aborts with an uncaught TypeError and the charts silently fall
+	back to the 12-year-old build. Hide the old global while 11.4.8 loads, hand
+	the fresh copy to survey-results.js as window.SvHighcharts, then put the
+	original back so nothing else on the page changes behaviour.
+-->
+<script>
+window.__svPrevHighcharts = window.Highcharts;
+try { delete window.Highcharts; } catch (e) { window.Highcharts = undefined; }
+</script>
 <script src="https://code.highcharts.com/11.4.8/highcharts.js"></script>
+<script>
+window.SvHighcharts = window.Highcharts;
+if (window.__svPrevHighcharts) { window.Highcharts = window.__svPrevHighcharts; }
+try { delete window.__svPrevHighcharts; } catch (e) { window.__svPrevHighcharts = undefined; }
+</script>
 <script src="<?=HTTP_TEMPLATE?>default/script/survey-results.js?v=<?=filemtime(__DIR__ . '/script/survey-results.js')?>"></script>
 
 <?php endif; ?>
