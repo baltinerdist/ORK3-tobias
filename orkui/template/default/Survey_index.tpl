@@ -29,9 +29,12 @@ if ($ScopeType === 'kingdom') {
 }
 ?>
 <link rel="stylesheet" href="<?=HTTP_TEMPLATE?>default/style/reports.css?v=<?=filemtime(__DIR__.'/style/reports.css')?>">
+<link rel="stylesheet" href="<?=HTTP_TEMPLATE?>default/style/survey.css?v=<?=filemtime(__DIR__.'/style/survey.css')?>">
 <style>
 /* Local additions for the survey list page. Prefixed sv- per module convention;
-   the shared .rp-* shell (header/context/stats/sidebar/table) comes from reports.css. */
+   the shared .rp-* shell (header/context/stats/sidebar/table) comes from
+   reports.css, and the module vocabulary (.sv-scope tokens + heading/paragraph
+   resets, .sv-md for the rendered guide) comes from survey.css. */
 .sv-scope-select-wrap { display: flex; flex-direction: column; gap: 4px; }
 
 /* Survey-only contrast bump for the active status filter pill: the shared
@@ -48,8 +51,11 @@ html[data-theme="dark"] .rp-filter-pill[data-sv-filter].active {
 }
 .sv-status-pill-draft    { background: #edf2f7; color: #4a5568; }
 .sv-status-pill-open     { background: #c6f6d5; color: #276749; }
-.sv-status-pill-closed   { background: #fef3c7; color: #b7791f; }
-.sv-status-pill-archived { background: #e2e8f0; color: #718096; }
+/* Foregrounds are chosen for >= 4.5:1 on their own fill: the pill is 11px/700,
+   which is not WCAG "large text", so the 3:1 allowance does not apply.
+   (#b7791f on #fef3c7 was 3.27:1; #718096 on #e2e8f0 was 3.26:1.) */
+.sv-status-pill-closed   { background: #fef3c7; color: #8a5a12; }
+.sv-status-pill-archived { background: #e2e8f0; color: #4a5568; }
 html[data-theme="dark"] .sv-status-pill-draft    { background: #4a5568; color: #e2e8f0; }
 html[data-theme="dark"] .sv-status-pill-open     { background: #22543d; color: #9ae6b4; }
 html[data-theme="dark"] .sv-status-pill-closed   { background: #744210; color: #fbd38d; }
@@ -68,8 +74,10 @@ html[data-theme="dark"] .sv-status-pill-archived { background: #2d3748; color: #
 .sv-row-btn i      { font-size: 11px; }
 .sv-row-actions    { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
 
-/* orkui.css sets a global `p { text-align: justify }`; survey copy is ragged-right. */
-.rp-root p { text-align: left; }
+/* The status pills are real <button>s so the filter is keyboard-operable; the
+   shared .rp-filter-pill rule assumes a <span>, so the UA button defaults
+   (font, line-height, text-align) are normalised here. */
+button.rp-filter-pill { font: inherit; font-size: 11px; font-weight: 600; line-height: 1.4; text-align: center; }
 
 .sv-empty-state { padding: 40px 16px; text-align: center; color: var(--rp-text-muted); font-size: 14px; }
 .sv-empty-state i { font-size: 30px; display: block; margin-bottom: 12px; opacity: 0.4; }
@@ -91,10 +99,14 @@ html[data-theme="dark"] .sv-survey-table td { border-bottom-color: #4a5568; }
 html[data-theme="dark"] .sv-survey-title a { color: #e2e8f0; }
 
 /* ---- Non-native modal shell (no alert/confirm/prompt anywhere) ---- */
-.sv-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 9500; align-items: center; justify-content: center; padding: 16px; }
+/* z-index comes from the shared --z-* scale in tokens.css, so these sit above
+   the site-wide overlays (nav 9999, What's New 10000) like every other modal. */
+.sv-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: var(--z-modal-backdrop, 10040); align-items: center; justify-content: center; padding: 16px; }
 .sv-overlay.sv-open { display: flex; }
-.sv-modal { background: #fff; border-radius: 8px; padding: 22px 24px; box-sizing: border-box; max-width: 440px; width: 100%; box-shadow: 0 4px 24px rgba(0,0,0,0.18); max-height: 82vh; overflow-y: auto; }
-.sv-modal-title { margin: 0 0 14px; font-size: 1.05rem; font-weight: 700; color: #2d3748; background: none; border: none; box-shadow: none; text-shadow: none; padding: 0; border-radius: 0; }
+.sv-modal { position: relative; z-index: var(--z-modal, 10100); background: #fff; border-radius: 8px; padding: 22px 24px; box-sizing: border-box; max-width: 440px; width: 100%; box-shadow: 0 4px 24px rgba(0,0,0,0.18); max-height: 82vh; overflow-y: auto; }
+/* .sv-scope on the panel already resets the global h1–h6 pill box in both
+   themes (survey.css); this only re-states the type scale and spacing. */
+.sv-modal > .sv-modal-title { margin: 0 0 14px; font-size: 1.05rem; font-weight: 700; color: #2d3748; }
 .sv-modal-body { font-size: 0.9rem; color: #4a5568; line-height: 1.5; }
 .sv-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
 .sv-field label { font-size: 12px; font-weight: 700; color: #4a5568; }
@@ -112,7 +124,10 @@ html[data-theme="dark"] .sv-survey-title a { color: #e2e8f0; }
 .sv-modal-ok.sv-modal-danger:hover { background: #c53030; }
 .sv-modal-error { color: #c53030; font-size: 12px; margin-top: 4px; display: none; }
 html[data-theme="dark"] .sv-modal { background: var(--ork-bg-secondary, #2d3748); }
-html[data-theme="dark"] .sv-modal-title { color: var(--ork-text, #e2e8f0); }
+html[data-theme="dark"] .sv-modal > .sv-modal-title { color: var(--ork-text, #e2e8f0); }
+/* #c53030 is 2.19:1 on the dark panel — the same swap survey.css makes for
+   .sv-notice-error / .sv-q-error. */
+html[data-theme="dark"] .sv-modal-error { color: #feb2b2; }
 html[data-theme="dark"] .sv-modal-body { color: var(--ork-text-secondary, #cbd5e0); }
 html[data-theme="dark"] .sv-field label { color: #cbd5e0; }
 html[data-theme="dark"] .sv-field input[type=text], html[data-theme="dark"] .sv-field select {
@@ -121,14 +136,16 @@ html[data-theme="dark"] .sv-field input[type=text], html[data-theme="dark"] .sv-
 html[data-theme="dark"] .sv-modal-cancel { background: #4a5568; color: #e2e8f0; }
 html[data-theme="dark"] .sv-modal-cancel:hover { background: #718096; }
 
-.sv-notice {
+/* Named .sv-toast, not .sv-notice: survey.css owns .sv-notice as an in-flow
+   alert block, and a single-class collision would be settled by load order. */
+.sv-toast {
 	position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
 	background: #2d3748; color: #fff; padding: 9px 18px; border-radius: 20px;
-	font-size: 12.5px; font-weight: 600; z-index: 9600; opacity: 0; pointer-events: none;
+	font-size: 12.5px; font-weight: 600; z-index: var(--z-modal-top, 10200); opacity: 0; pointer-events: none;
 	transition: opacity 0.2s;
 }
-.sv-notice.sv-notice-show { opacity: 1; }
-html[data-theme="dark"] .sv-notice { background: #1a202c; border: 1px solid #4a5568; }
+.sv-toast.sv-toast-show { opacity: 1; }
+html[data-theme="dark"] .sv-toast { background: #1a202c; border: 1px solid #4a5568; }
 
 @media (max-width: 640px) {
 	.sv-row-actions { justify-content: flex-start; }
@@ -136,14 +153,19 @@ html[data-theme="dark"] .sv-notice { background: #1a202c; border: 1px solid #4a5
 	.sv-survey-table, .sv-survey-table tbody, .sv-survey-table tr, .sv-survey-table td { display: block; width: 100%; }
 	.sv-survey-table tr { border-bottom: 1px solid var(--rp-border); padding: 10px 0; }
 	.sv-survey-table td { border-bottom: none; padding: 4px 0; }
+	/* These pseudo-elements replace the <thead> below 640px, so they are the
+	   only column identifiers on a phone: --rp-text-muted (#718096) is 4.02:1
+	   on the white table area, under AA for 10px text — use the body colour. */
 	.sv-survey-table td[data-label]::before {
 		content: attr(data-label); display: block; font-size: 10px; text-transform: uppercase;
-		letter-spacing: 0.04em; color: var(--rp-text-muted); margin-bottom: 2px;
+		letter-spacing: 0.04em; color: var(--rp-text-body); margin-bottom: 2px;
 	}
 }
 </style>
 
-<div class="rp-root">
+<!-- .qt-page: the sidebar here is filters + a prose card, so on a phone the
+     table comes first (reports.css opt-in, see its 900px block). -->
+<div class="rp-root qt-page">
 
 	<!-- Header -->
 	<div class="rp-header">
@@ -193,7 +215,7 @@ html[data-theme="dark"] .sv-notice { background: #1a202c; border: 1px solid #4a5
 	</div>
 
 	<!-- Body -->
-	<div class="rp-body">
+	<div class="rp-body sv-scope">
 
 		<!-- Sidebar -->
 		<div class="rp-sidebar">
@@ -202,11 +224,11 @@ html[data-theme="dark"] .sv-notice { background: #1a202c; border: 1px solid #4a5
 				<div class="rp-filter-card-header"><i class="fas fa-filter"></i> Status</div>
 				<div class="rp-filter-card-body">
 					<div class="rp-filter-pills">
-						<span class="rp-filter-pill active" data-sv-filter="all">All</span>
-						<span class="rp-filter-pill" data-sv-filter="draft">Draft</span>
-						<span class="rp-filter-pill" data-sv-filter="open">Open</span>
-						<span class="rp-filter-pill" data-sv-filter="closed">Closed</span>
-						<span class="rp-filter-pill" data-sv-filter="archived">Archived</span>
+						<button type="button" class="rp-filter-pill active" data-sv-filter="all" aria-pressed="true">All</button>
+						<button type="button" class="rp-filter-pill" data-sv-filter="draft" aria-pressed="false">Draft</button>
+						<button type="button" class="rp-filter-pill" data-sv-filter="open" aria-pressed="false">Open</button>
+						<button type="button" class="rp-filter-pill" data-sv-filter="closed" aria-pressed="false">Closed</button>
+						<button type="button" class="rp-filter-pill" data-sv-filter="archived" aria-pressed="false">Archived</button>
 					</div>
 				</div>
 			</div>
@@ -216,7 +238,7 @@ html[data-theme="dark"] .sv-notice { background: #1a202c; border: 1px solid #4a5
 				<div class="rp-filter-card-body" style="font-size:12px;line-height:1.55;color:var(--rp-text-body);">
 					<p style="margin:0 0 8px;">Create a survey, add questions in the builder, then open it to your audience. Once opened its questions and pages are locked — clone it if you need to make structural changes.</p>
 					<p style="margin:0 0 10px;">Results update live as responses come in, with charts, a row-level export, and a consent-aware privacy model.</p>
-					<button type="button" class="rp-btn-ghost" id="sv-help-btn" style="width:100%;justify-content:center;"><i class="fas fa-book"></i> Read the guide</button>
+					<button type="button" class="sv-row-btn" id="sv-help-btn" style="width:100%;justify-content:center;"><i class="fas fa-book"></i> Read the guide</button>
 				</div>
 			</div>
 
@@ -228,7 +250,7 @@ html[data-theme="dark"] .sv-notice { background: #1a202c; border: 1px solid #4a5
 			<div class="sv-empty-state">
 				<i class="fas fa-poll"></i>
 				No surveys yet for this scope.<br>
-				<button type="button" class="rp-btn-ghost" id="sv-empty-new-btn" style="margin-top:14px;"><i class="fas fa-plus"></i> Create your first survey</button>
+				<button type="button" class="sv-row-btn" id="sv-empty-new-btn" style="margin-top:14px;"><i class="fas fa-plus"></i> Create your first survey</button>
 			</div>
 <?php else: ?>
 			<table class="sv-survey-table" id="sv-table">
@@ -284,8 +306,8 @@ html[data-theme="dark"] .sv-notice { background: #1a202c; border: 1px solid #4a5
 
 <!-- New Survey modal -->
 <div class="sv-overlay" id="sv-new-overlay">
-	<div class="sv-modal">
-		<h4 class="sv-modal-title">New Survey</h4>
+	<div class="sv-modal sv-scope" role="dialog" aria-modal="true" aria-labelledby="sv-new-heading">
+		<h4 class="sv-modal-title" id="sv-new-heading">New Survey</h4>
 		<div class="sv-modal-body">
 			<div class="sv-field">
 				<label for="sv-new-title">Title</label>
@@ -310,8 +332,8 @@ html[data-theme="dark"] .sv-notice { background: #1a202c; border: 1px solid #4a5
 
 <!-- Archive confirm modal -->
 <div class="sv-overlay" id="sv-archive-overlay">
-	<div class="sv-modal">
-		<h4 class="sv-modal-title">Archive Survey</h4>
+	<div class="sv-modal sv-scope" role="dialog" aria-modal="true" aria-labelledby="sv-archive-heading">
+		<h4 class="sv-modal-title" id="sv-archive-heading">Archive Survey</h4>
 		<div class="sv-modal-body" id="sv-archive-body"></div>
 		<div class="sv-modal-footer">
 			<button type="button" class="sv-modal-btn sv-modal-cancel" id="sv-archive-cancel">Cancel</button>
@@ -322,34 +344,100 @@ html[data-theme="dark"] .sv-notice { background: #1a202c; border: 1px solid #4a5
 
 <!-- Help modal -->
 <div class="sv-overlay" id="sv-help-overlay">
-	<div class="sv-modal" style="max-width:640px;">
-		<h4 class="sv-modal-title">Survey Guide</h4>
-		<div class="sv-modal-body" id="sv-help-body">Loading&hellip;</div>
+	<div class="sv-modal sv-scope" role="dialog" aria-modal="true" aria-labelledby="sv-help-heading" style="max-width:640px;">
+		<h4 class="sv-modal-title" id="sv-help-heading">Survey Guide</h4>
+		<div class="sv-modal-body sv-md" id="sv-help-body">Loading&hellip;</div>
 		<div class="sv-modal-footer">
 			<button type="button" class="sv-modal-btn sv-modal-cancel" id="sv-help-close">Close</button>
 		</div>
 	</div>
 </div>
 
-<div class="sv-notice" id="sv-notice"></div>
+<!-- Share link fallback: when the clipboard API is unavailable or refused, the
+     URL needs a persistent, selectable home — a 2.2s toast is unreadable and
+     untargetable with a screen reader or a slow hand. -->
+<div class="sv-overlay" id="sv-link-overlay">
+	<div class="sv-modal sv-scope" role="dialog" aria-modal="true" aria-labelledby="sv-link-heading">
+		<h4 class="sv-modal-title" id="sv-link-heading">Share Link</h4>
+		<div class="sv-modal-body">
+			<div class="sv-field">
+				<label for="sv-link-input">Copy this link</label>
+				<input type="text" id="sv-link-input" readonly>
+			</div>
+		</div>
+		<div class="sv-modal-footer">
+			<button type="button" class="sv-modal-btn sv-modal-cancel" id="sv-link-close">Close</button>
+		</div>
+	</div>
+</div>
+
+<div class="sv-toast" id="sv-toast" role="status" aria-live="polite"></div>
 
 <script>
 (function() {
 	'use strict';
 	var UIR_BASE = '<?= UIR ?>';
 
+	// #sv-toast is role="status" aria-live="polite", so every message below is
+	// announced as well as shown.
 	function notice(msg) {
-		var el = document.getElementById('sv-notice');
+		var el = document.getElementById('sv-toast');
 		el.textContent = msg;
-		el.classList.add('sv-notice-show');
+		el.classList.add('sv-toast-show');
 		clearTimeout(el._t);
-		el._t = setTimeout(function() { el.classList.remove('sv-notice-show'); }, 2200);
+		el._t = setTimeout(function() { el.classList.remove('sv-toast-show'); }, 2200);
 	}
 
-	function openOverlay(id) { document.getElementById(id).classList.add('sv-open'); }
-	function closeOverlay(id) { document.getElementById(id).classList.remove('sv-open'); }
+	// ----- Dialog plumbing: focus in, focus trapped, Escape out, focus back -----
+	var openOv = null, lastFocus = null;
+	var FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+	function focusables(ov) {
+		return Array.prototype.filter.call(ov.querySelectorAll(FOCUSABLE), function(el) {
+			return el.offsetParent !== null;
+		});
+	}
+
+	function openOverlay(id, focusId) {
+		var ov = document.getElementById(id);
+		lastFocus = document.activeElement;
+		ov.classList.add('sv-open');
+		openOv = ov;
+		var first = focusId ? document.getElementById(focusId) : null;
+		if (!first) { first = focusables(ov)[0]; }
+		if (first) { first.focus(); }
+	}
+
+	function closeOverlay(id) {
+		var ov = document.getElementById(id);
+		ov.classList.remove('sv-open');
+		if (openOv === ov) { openOv = null; }
+		if (lastFocus && lastFocus.focus) { lastFocus.focus(); }
+		lastFocus = null;
+	}
+
 	document.querySelectorAll('.sv-overlay').forEach(function(ov) {
-		ov.addEventListener('click', function(e) { if (e.target === ov) { ov.classList.remove('sv-open'); } });
+		ov.addEventListener('click', function(e) { if (e.target === ov) { closeOverlay(ov.id); } });
+	});
+
+	document.addEventListener('keydown', function(e) {
+		if (!openOv) { return; }
+		if (e.key === 'Escape' || e.key === 'Esc') {
+			e.preventDefault();
+			closeOverlay(openOv.id);
+			return;
+		}
+		if (e.key !== 'Tab') { return; }
+		var f = focusables(openOv);
+		if (!f.length) { return; }
+		var first = f[0], last = f[f.length - 1];
+		if (e.shiftKey && (document.activeElement === first || !openOv.contains(document.activeElement))) {
+			e.preventDefault();
+			last.focus();
+		} else if (!e.shiftKey && (document.activeElement === last || !openOv.contains(document.activeElement))) {
+			e.preventDefault();
+			first.focus();
+		}
 	});
 
 	// ----- Status filter pills -----
@@ -357,8 +445,9 @@ html[data-theme="dark"] .sv-notice { background: #1a202c; border: 1px solid #4a5
 	var rows  = document.querySelectorAll('#sv-table tbody tr');
 	pills.forEach(function(pill) {
 		pill.addEventListener('click', function() {
-			pills.forEach(function(p) { p.classList.remove('active'); });
+			pills.forEach(function(p) { p.classList.remove('active'); p.setAttribute('aria-pressed', 'false'); });
 			pill.classList.add('active');
+			pill.setAttribute('aria-pressed', 'true');
 			var f = pill.getAttribute('data-sv-filter');
 			rows.forEach(function(row) {
 				row.hidden = (f !== 'all' && row.getAttribute('data-sv-status') !== f);
@@ -370,8 +459,7 @@ html[data-theme="dark"] .sv-notice { background: #1a202c; border: 1px solid #4a5
 	function openNewModal() {
 		document.getElementById('sv-new-title').value = '';
 		document.getElementById('sv-new-error').style.display = 'none';
-		openOverlay('sv-new-overlay');
-		document.getElementById('sv-new-title').focus();
+		openOverlay('sv-new-overlay', 'sv-new-title');
 	}
 	var newBtn = document.getElementById('sv-new-btn');
 	if (newBtn) { newBtn.addEventListener('click', openNewModal); }
@@ -436,10 +524,10 @@ html[data-theme="dark"] .sv-notice { background: #1a202c; border: 1px solid #4a5
 				navigator.clipboard.writeText(url).then(function() {
 					notice('Share link copied.');
 				}, function() {
-					notice(url);
+					showLink(url);
 				});
 			} else {
-				notice(url);
+				showLink(url);
 			}
 		});
 	});
@@ -451,7 +539,7 @@ html[data-theme="dark"] .sv-notice { background: #1a202c; border: 1px solid #4a5
 			archiveSid = btn.getAttribute('data-sid');
 			document.getElementById('sv-archive-body').textContent =
 				'Archive "' + btn.getAttribute('data-title') + '"? It will stop collecting responses and be hidden from Available Surveys.';
-			openOverlay('sv-archive-overlay');
+			openOverlay('sv-archive-overlay', 'sv-archive-cancel');
 		});
 	});
 	document.getElementById('sv-archive-cancel').addEventListener('click', function() { closeOverlay('sv-archive-overlay'); });
@@ -473,9 +561,18 @@ html[data-theme="dark"] .sv-notice { background: #1a202c; border: 1px solid #4a5
 			.catch(function() { closeOverlay('sv-archive-overlay'); notice('Network error archiving the survey.'); });
 	});
 
+	// ----- Share link fallback modal -----
+	function showLink(url) {
+		var input = document.getElementById('sv-link-input');
+		input.value = url;
+		openOverlay('sv-link-overlay', 'sv-link-input');
+		input.select();
+	}
+	document.getElementById('sv-link-close').addEventListener('click', function() { closeOverlay('sv-link-overlay'); });
+
 	// ----- Help modal -----
 	function openHelp() {
-		openOverlay('sv-help-overlay');
+		openOverlay('sv-help-overlay', 'sv-help-close');
 		var body = document.getElementById('sv-help-body');
 		body.innerHTML = 'Loading&hellip;';
 		var fd = new FormData();

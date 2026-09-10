@@ -61,10 +61,12 @@ html[data-theme="dark"] .sv-scope {
 /* orkui.css carries a global `p { text-align: justify }` (orkui.css:786). That
    is the documented global-element-selector trap: it leaks into every survey
    surface and opens rivers in the narrow sidebar and card copy. Survey prose is
-   ragged-right everywhere, on the page column and inside the .rp-* shell. */
+   ragged-right everywhere. This reset stays inside the .sv-* namespace — a
+   survey surface built on the .rp-* shell opts in by putting .sv-scope on the
+   wrapper that holds its copy (Survey_results, Survey_build, Survey_index all
+   do), so this file never restyles a class reports.css owns. */
 .sv-root p,
-.sv-scope p,
-.rp-root p {
+.sv-scope p {
     text-align: left;
 }
 
@@ -236,6 +238,19 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
 .sv-q-invalid { border-color: var(--sv-danger); }
 
 .sv-q-preview { pointer-events: none; user-select: none; }
+
+/* Author-entered copy: a single unbreakable token (a pasted URL) would be
+   clipped unreachably, because orkui.css clamps html/body with
+   `overflow-x: hidden` and no survey surface is a scroll container. Every
+   selector that renders user content breaks anywhere — same treatment as
+   .sv-choice-label / .sv-rank-label / .sv-matrix-echo below. */
+.sv-title,
+.sv-page-title,
+.sv-card-title,
+.sv-block-title,
+.sv-q-prompt {
+    overflow-wrap: anywhere;
+}
 
 .sv-q-prompt {
     font-size: 16px;
@@ -864,6 +879,74 @@ html[data-theme="dark"] .sv-figure-empty { color: var(--ork-text-muted); }
     margin: 0;
     accent-color: var(--sv-accent);
     cursor: pointer;
+}
+
+/* ── Rendered markdown (help guides) ──────────────────────────────────────
+   SurveyAjax/help hands back Parsedown output that gets injected into a modal.
+   orkui.css gives every global h1–h6 a grey pill box (and a different one in
+   dark mode, with more type selectors than a bare class — so the reset is
+   repeated for both themes), and nothing in the codebase styles a bare
+   <table>. Any surface that shows a guide adds .sv-md to the container. */
+.sv-md h1, .sv-md h2, .sv-md h3, .sv-md h4, .sv-md h5, .sv-md h6,
+html[data-theme="dark"] .sv-md h1, html[data-theme="dark"] .sv-md h2,
+html[data-theme="dark"] .sv-md h3, html[data-theme="dark"] .sv-md h4,
+html[data-theme="dark"] .sv-md h5, html[data-theme="dark"] .sv-md h6 {
+    background: none;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    box-shadow: none;
+    text-shadow: none;
+    margin: 16px 0 6px;
+    color: var(--sv-text);
+    font-family: var(--ork-font-heading);
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+}
+
+.sv-md h1 { font-size: 18px; }
+.sv-md h2 { font-size: 16px; }
+.sv-md h3, .sv-md h4, .sv-md h5, .sv-md h6 { font-size: 14px; }
+
+.sv-md > :first-child { margin-top: 0; }
+.sv-md p { margin: 0 0 10px; }
+.sv-md ul, .sv-md ol { margin: 8px 0; padding-left: 20px; }
+.sv-md li { margin-bottom: 4px; }
+.sv-md a { color: var(--sv-accent); }
+
+.sv-md table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 10px 0;
+    font-size: 13px;
+}
+
+.sv-md th,
+.sv-md td {
+    border: 1px solid var(--sv-border);
+    padding: 6px 8px;
+    text-align: left;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+}
+
+.sv-md th {
+    background: var(--ork-bg-secondary);
+    color: var(--sv-text);
+    font-weight: var(--ork-font-weight-bold);
+}
+
+.sv-md code {
+    background: var(--ork-bg-secondary);
+    padding: 1px 4px;
+    border-radius: var(--ork-radius-sm);
+}
+
+.sv-md pre {
+    background: var(--ork-bg-secondary);
+    padding: 10px;
+    border-radius: var(--ork-radius-md);
+    overflow-x: auto;
 }
 
 /* Screen-reader-only live region for validation announcements. */
