@@ -77,6 +77,8 @@
     var sortables = [];     // page + item lists
     var optSorts  = [];     // option rows inside the selected card
     var helpOpen  = {};     // question_id -> the help editor is showing
+    var drawerOpener = null; // what to hand focus back to when the drawer closes
+    var modalOpener  = null; // ditto for the modal
 
     /* ------------------------------------------------------------- catalogue */
 
@@ -1171,11 +1173,13 @@
 
     function openDrawer() {
         var d = $('svb-drawer');
+        var close;
         if (!d) { return; }
+        if (d.hidden) { drawerOpener = document.activeElement; }
         renderDrawer();
         d.hidden = false;
         document.body.classList.add('svb-drawer-lock');
-        var close = el('.svb-drawer-close', d);
+        close = el('.svb-drawer-close', d);
         if (close) { close.focus(); }
     }
 
@@ -1183,6 +1187,7 @@
         var d = $('svb-drawer');
         if (d) { d.hidden = true; }
         document.body.classList.remove('svb-drawer-lock');
+        restoreFocus('drawer');
     }
 
     function renderDrawer() {
@@ -1488,6 +1493,7 @@
     function openModal(title, html) {
         var m = $('svb-modal');
         if (!m) { return; }
+        if (m.hidden) { modalOpener = document.activeElement; }
         el('.svb-modal-title', m).textContent = title;
         el('.svb-modal-body', m).innerHTML = html;
         m.hidden = false;
@@ -1497,6 +1503,50 @@
     function closeModal() {
         var m = $('svb-modal');
         if (m) { m.hidden = true; }
+        restoreFocus('modal');
+    }
+
+    /* ------------------------------------------------- dialog focus handling */
+
+    /**
+     * aria-modal="true" is only true if Tab cannot walk out of the panel, and a
+     * dialog that closes must hand the keyboard back to whatever opened it.
+     */
+    function restoreFocus(which) {
+        var node = which === 'modal' ? modalOpener : drawerOpener;
+        if (which === 'modal') { modalOpener = null; } else { drawerOpener = null; }
+        if (node && node.focus && document.contains(node)) { node.focus(); }
+    }
+
+    function focusablesIn(root) {
+        return els('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]),' +
+                   ' textarea:not([disabled]), [tabindex]:not([tabindex="-1"])', root)
+            .filter(function (n) { return n.offsetParent !== null; });
+    }
+
+    /** The open dialog panel, if one is open. */
+    function openPanel() {
+        var m = $('svb-modal');
+        var d = $('svb-drawer');
+        if (m && !m.hidden) { return el('.svb-modal-panel', m); }
+        if (d && !d.hidden) { return el('.svb-drawer-panel', d); }
+        return null;
+    }
+
+    function trapTab(e, panel) {
+        var list = focusablesIn(panel);
+        var first, last, at;
+        if (!list.length) { e.preventDefault(); return; }
+        first = list[0];
+        last  = list[list.length - 1];
+        at    = document.activeElement;
+        if (!panel.contains(at)) {
+            e.preventDefault();
+            (e.shiftKey ? last : first).focus();
+            return;
+        }
+        if (e.shiftKey && at === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && at === last) { e.preventDefault(); first.focus(); }
     }
 
     /* ------------------------------------------------------------ sortables */
@@ -2352,6 +2402,12 @@
         });
 
         document.addEventListener('keydown', function (e) {
+            var panel;
+            if (e.key === 'Tab') {
+                panel = openPanel();
+                if (panel) { trapTab(e, panel); }
+                return;
+            }
             if (e.key !== 'Escape') { return; }
             var m = $('svb-modal');
             if (m && !m.hidden) { closeModal(); return; }
