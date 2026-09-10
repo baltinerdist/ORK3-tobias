@@ -731,7 +731,12 @@
         html += moveBtn('q-down', 1, 'Move this element down', S.locked || pos >= total - 1, ' data-qid="' + qid + '"');
         html += typeBadge(q.type);
         if (!selected && truthy(q.required)) {
-            html += '<span class="svb-req-dot" data-tip="Required" aria-label="Required">•</span>';
+            // A chip, not a coloured dot: aria-label on a bare span is not
+            // exposed (role=generic prohibits naming) and a red bullet is
+            // colour-and-shape only. The open card shows the Required
+            // checkbox instead, so this is the collapsed-state signal.
+            html += '<span class="svb-chip svb-chip-req" data-tip="Respondents must answer this">' +
+                    '<i class="fas fa-asterisk" aria-hidden="true"></i>Required</span>';
         }
         html += showIfChip(q);
         html += '</div>';

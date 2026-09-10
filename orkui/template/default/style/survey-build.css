@@ -359,13 +359,6 @@
 
 .svb-type-badge i { color: var(--sv-accent); }
 
-.svb-req-dot {
-    color: var(--sv-danger);
-    font-size: 20px;
-    line-height: 1;
-    cursor: help;
-}
-
 .svb-chip {
     display: inline-flex;
     align-items: center;
@@ -381,6 +374,7 @@
 }
 
 .svb-chip-showif i { color: var(--sv-accent); }
+.svb-chip-req i { color: var(--sv-danger); }
 
 .svb-item-body { padding: 4px 10px 10px; }
 
