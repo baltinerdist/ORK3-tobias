@@ -421,8 +421,6 @@ class SurveyResponse
             return ['Status' => 1, 'Error' => 'Survey not found.'];
         }
 
-        $public = $this->publicSurveyFields($survey);
-
         if ($preview) {
             $eligible = true;
             $reason   = 'preview';
@@ -433,17 +431,32 @@ class SurveyResponse
         }
 
         if (!$eligible) {
-            // Nothing about the questions leaks to someone who may not answer.
+            // A survey this player was never in the audience for — a draft, or one
+            // scoped to another org — does not exist as far as they are concerned:
+            // its title, description, welcome copy and share slug stay unpublished.
+            if ($this->hiddenFromRespondent($survey, $uid, $reason)) {
+                return ['Status' => 1, 'Error' => 'Survey not found.'];
+            }
+
+            // In-audience but unable to answer right now (closed, already done,
+            // inactive, too new, banned): the title is enough to caption the
+            // notice. Nothing about the questions or the copy leaks.
             return [
                 'Status'   => 0,
                 'Error'    => '',
-                'Survey'   => $public,
+                'Survey'   => [
+                    'survey_id'    => (int) $survey['survey_id'],
+                    'title'        => (string) $survey['title'],
+                    'accent_color' => $survey['accent_color'] ?: null,
+                ],
                 'Pages'    => [],
                 'Draft'    => null,
                 'Eligible' => false,
                 'Reason'   => $reason,
             ];
         }
+
+        $public = $this->publicSurveyFields($survey);
 
         $pages = $this->loadStructure($surveyId);
         $seed  = (int) crc32($surveyId . '-' . $uid);
@@ -463,6 +476,27 @@ class SurveyResponse
             'Eligible' => true,
             'Reason'   => $reason,
         ];
+    }
+
+    /**
+     * Should this survey be denied even to the point of its existence?
+     *
+     * True for a draft (nobody outside the builder may see unpublished copy) and
+     * for a player the audience never covered — those get "Survey not found."
+     * rather than a survey they may not answer.
+     *
+     * @param array<string, mixed> $survey raw ork_survey row
+     */
+    private function hiddenFromRespondent(array $survey, int $uid, string $reason): bool
+    {
+        if ('draft' === (string) ($survey['status'] ?? 'draft')) {
+            return true;
+        }
+        if ('scope' === $reason) {
+            return true;
+        }
+        $player = $this->player($uid);
+        return null === $player || !$this->matchesScope($survey, $player);
     }
 
     /**
