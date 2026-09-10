@@ -17,7 +17,8 @@ const PLAN = 'docs/superpowers/plans/2026-09-09-survey-module.md'
 const COMMON = [
   'You are working in the git repo at ' + REPO + ' on branch feature/survey-module. The survey module is built, reviewed and fixed (Phases 1–3 of ' + PLAN + ').',
   'Read spec §7 Builder (especially the **Density** bullet) in ' + SPEC + ' and Task 17 in ' + PLAN + ' FIRST.',
-  'The owner\'s words: "all of your chrome of this is very large ... Look at how nice a clean / compact Google Forms is. Don\'t directly copy this but take inspiration."',
+  'The owner\'s words: "all of your chrome of this is very large ... Look at how nice a clean / compact Google Forms is. Don\'t directly copy this but take inspiration." and then: "Don\'t limit the density work to just spacing. Font sizing also applies. Things can be sized down there to normal body text and header styles that would be found elsewhere in the CSS of the app." The app scale is tokens.css (--ork-font-size-base 13px, --ork-font-size-sm 12px) and reports.css (.rp-header-title 20px, .rp-chart-card-title 14px, card labels 11px uppercase, .rp-btn-ghost padding 7px 14px). Read those before sizing anything.',
+  'A previous run of this task was stopped mid-way and left UNCOMMITTED edits in survey-build.js, survey-build.css, survey-results.css and survey.css — read `git diff` first and continue from them; they were done against the older 14/16px targets, so re-check every size against the new spec text.',
   '',
   'HARD RULES:',
   '- .tpl files are PLAIN PHP. Under orkui/ never $DB->, Ork3::$Lib, or new <DomainClass>( outside orkui/model/.',
