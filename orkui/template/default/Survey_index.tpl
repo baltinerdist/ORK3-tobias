@@ -154,12 +154,8 @@ html[data-theme="dark"] .sv-modal-cancel:hover { background: #718096; }
 .sv-toast.sv-toast-show { opacity: 1; }
 html[data-theme="dark"] .sv-toast { background: #1a202c; border: 1px solid #4a5568; }
 
-/* reports.css paints .rp-btn-ghost at 34px (7px 14px / 13px). On a fine
-   pointer this page's header button trims to the 30px / 12px scale spec §7
-   Density asks for; reports.css keeps its own touch sizing under 600px. */
-@media (min-width: 601px) and (pointer: fine) {
-	.rp-root .rp-header-actions .rp-btn-ghost { min-height: 30px; box-sizing: border-box; padding: 5px 12px; font-size: var(--ork-font-size-sm); }
-}
+/* Header actions: the .rp-btn-ghost sizing every survey .rp-* page needs is
+   declared once in survey.css, which this page loads above. */
 
 /* The compact sizes above are the desktop scale. On a coarse pointer the row
    buttons and the modal controls go back to 44px tap targets, and the modal's

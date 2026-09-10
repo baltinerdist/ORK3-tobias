@@ -63,6 +63,10 @@ $_svShareLink = HTTP_UI_REMOTE . 'index.php?Route=Survey/s/' . rawurlencode((str
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>default/style/reports.css?v=<?= filemtime(__DIR__ . '/style/reports.css') ?>">
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>default/style/survey.css?v=<?= filemtime(__DIR__ . '/style/survey.css') ?>">
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>default/style/survey-build.css?v=<?= filemtime(__DIR__ . '/style/survey-build.css') ?>">
+<!-- Flatpickr: the same CDN build every other ORK date field uses (see
+     Eventnew_index.tpl / Reports_roster.tpl). The Schedule sidebar section
+     shows its dates human-readably through altInput/altFormat. -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 
 <div class="rp-root">
 
@@ -148,6 +152,7 @@ window.SvConfig = {
 };
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
 <script src="<?= HTTP_TEMPLATE ?>default/script/survey-render.js?v=<?= filemtime(__DIR__ . '/script/survey-render.js') ?>"></script>

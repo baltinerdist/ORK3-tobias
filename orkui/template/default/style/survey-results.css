@@ -420,18 +420,6 @@ html[data-theme="dark"] .svr-card .highcharts-data-label tspan {
 }
 
 
-/* reports.css gives every .rp-btn-ghost `flex:1; min-width:0` under 600px.
-   This header carries four long-labelled buttons, so each is squeezed below
-   its own min-content width and the labels paint over their neighbours. Let
-   them size to their content and wrap onto as many rows as they need. */
-@media (max-width: 600px) {
-    .rp-root .rp-header-actions .rp-btn-ghost {
-        flex     : 0 1 auto;
-        min-width: fit-content;
-    }
-}
-
-
 /* ── Print ───────────────────────────────────────────────── */
 
 @media print {
@@ -496,15 +484,5 @@ html[data-theme="dark"] .svr-card .highcharts-data-label tspan {
 }
 
 
-/* ── Header actions ──────────────────────────────────────
-   reports.css sizes .rp-btn-ghost at 7px 14px / 13px, which paints a 34px
-   button. On a fine pointer this header trims to the 30px / 12px scale spec
-   §7 Density asks for; the 600px block above keeps the touch sizing. */
-@media (min-width: 601px) and (pointer: fine) {
-    .rp-root .rp-header-actions .rp-btn-ghost {
-        min-height: 30px;
-        box-sizing: border-box;
-        padding   : 5px 12px;
-        font-size : var(--ork-font-size-sm);
-    }
-}
+/* Header actions: the .rp-btn-ghost sizing every survey .rp-* page needs is
+   declared once in survey.css, which this page also loads. */

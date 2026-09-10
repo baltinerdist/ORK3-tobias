@@ -1319,16 +1319,18 @@
         } catch (e) { /* private browsing: the sidebar still works, it just forgets */ }
     }
 
-    /** Basics only on desktop; nothing at all once the sidebar sits on top. */
+    /** Basics and About on desktop; nothing at all once the sidebar sits on
+        top of the canvas. */
     function sectionOpen(id) {
         var st  = sectionState();
         var key = stateKey(id);
         if (Object.prototype.hasOwnProperty.call(st, key)) { return !!st[key]; }
-        return id === 'basics' && !isNarrow();
+        return (id === 'basics' || id === 'about') && !isNarrow();
     }
 
-    /** One collapsible .rp-filter-card. `icon` is a FontAwesome class. */
-    function section(id, title, icon, body) {
+    /** One collapsible .rp-filter-card. `icon` is a FontAwesome class;
+        `bodyClass` is an optional extra class for the body (rp-about-body). */
+    function section(id, title, icon, body, bodyClass) {
         var open = sectionOpen(id);
         return '<div class="rp-filter-card svb-sec" data-sec="' + id + '">' +
                '<button type="button" class="rp-filter-card-header svb-sec-head" data-sec-toggle="' + id + '"' +
@@ -1337,7 +1339,8 @@
                '<span class="svb-sec-title">' + esc(title) + '</span>' +
                '<i class="fas fa-chevron-down svb-sec-caret" aria-hidden="true"></i>' +
                '</button>' +
-               '<div class="rp-filter-card-body svb-sec-body" id="svb-sec-' + id + '"' +
+               '<div class="rp-filter-card-body svb-sec-body' + (bodyClass ? ' ' + bodyClass : '') +
+               '" id="svb-sec-' + id + '"' +
                (open ? '' : ' hidden') + '>' + body + '</div>' +
                '</div>';
     }
@@ -1404,14 +1407,14 @@
                          'Minimum months played', '0 lets everyone in scope answer.', 'svb-f-tenure');
         html += section('audience', 'Audience', 'fa-users', body);
 
-        /* Schedule */
-        body  = fieldRow('<input type="datetime-local" class="sv-input" id="svb-f-openat" data-sv-field="OpenAt" data-echo="svb-echo-open" value="' +
-                         esc(toLocalInput(s.open_at)) + '">' +
-                         '<p class="svb-hint" id="svb-echo-open">' + esc(prettyDate(s.open_at, 'No opening date set.')) + '</p>',
+        /* Schedule. Both fields are Flatpickr pickers with altInput on, so the
+           box a builder reads says "September 12, 2026  6:00 PM" while the
+           real input underneath still carries the 'Y-m-d H:i:S' string the
+           `update` action stores (empty clears the date). initSchedulePickers()
+           attaches them after this HTML lands. */
+        body  = fieldRow(dateField('svb-f-openat', 'OpenAt', s.open_at, 'No opening date set.'),
                          'Opens', 'A survey never opens by itself — this only stops it being taken early.', 'svb-f-openat');
-        body += fieldRow('<input type="datetime-local" class="sv-input" id="svb-f-closeat" data-sv-field="CloseAt" data-echo="svb-echo-close" value="' +
-                         esc(toLocalInput(s.close_at)) + '">' +
-                         '<p class="svb-hint" id="svb-echo-close">' + esc(prettyDate(s.close_at, 'No closing date set.')) + '</p>',
+        body += fieldRow(dateField('svb-f-closeat', 'CloseAt', s.close_at, 'No closing date set.'),
                          'Closes', null, 'svb-f-closeat');
         html += section('schedule', 'Schedule', 'fa-calendar-days', body);
 
@@ -1442,17 +1445,21 @@
                          'Accent colour', null, 'svb-f-accent');
         html += section('experience', 'Experience', 'fa-wand-magic-sparkles', body);
 
-        /* About This Tool — the standard sidebar closer on every rp-* page. */
-        html += '<div class="rp-filter-card">' +
-                '<div class="rp-filter-card-header"><i class="fas fa-book-open" aria-hidden="true"></i> About This Tool</div>' +
-                '<div class="rp-filter-card-body rp-about-body">' +
-                '<p>Click any card on the canvas to edit it where it sits. <strong>Add Element</strong> starts a new question; its Type menu turns it into any of the twelve question types, a section or an image.</p>' +
+        /* About This Tool — the standard sidebar closer on every rp-* page.
+           It folds like every section above it: under 900px the sidebar sits
+           ON TOP of the canvas, and ~250px of static prose between the
+           settings and the first question is 250px of scrolling before a
+           builder reaches their own survey. Open by default on desktop,
+           collapsed by default once it is in the way. */
+        body  = '<p>Click any card on the canvas to edit it where it sits. <strong>Add Element</strong> starts a new question; its Type menu turns it into any of the twelve question types, a section or an image.</p>' +
                 '<p>Every change saves itself — the pill beside the header actions says when.</p>' +
                 '<p>Opening a survey <strong>locks its structure</strong>: questions, options and pages stop moving so the answers stay comparable. Wording stays editable for good.</p>' +
-                '<p><button type="button" class="svb-link" data-act="help">Open the full guide</button></p>' +
-                '</div></div>';
+                '<p><button type="button" class="svb-link" data-act="help">Open the full guide</button></p>';
+        html += section('about', 'About This Tool', 'fa-book-open', body, 'rp-about-body');
 
+        destroySchedulePickers();
         box.innerHTML = html;
+        initSchedulePickers();
     }
 
     /* The consent wording is fixed in the runner (survey-take.js) and repeated
@@ -1514,22 +1521,61 @@
 
     /* --------------------------------------------------------- date helpers */
 
-    /** 'YYYY-MM-DD HH:MM:SS' -> the value a datetime-local input wants. */
-    function toLocalInput(sqlDate) {
-        if (!sqlDate) { return ''; }
-        return String(sqlDate).replace(' ', 'T').slice(0, 16);
+    /* A raw <input type="datetime-local"> shows "2026-09-12T18:00", which is
+       not how this project writes a date to a human (see the Flatpickr
+       altInput/altFormat pairing every other date field in the app uses). The
+       real input below keeps the exact 'Y-m-d H:i:S' string the `update`
+       action already expects — Flatpickr only paints a readable twin over it. */
+
+    var FP_SQL    = 'Y-m-d H:i:S';
+    var FP_PRETTY = 'F j, Y  h:i K';
+    var schedFps  = [];
+
+    /** The real (Flatpickr-backed) datetime input for a schedule field, plus
+        the clear button that replaces the native datetime-local one. */
+    function dateField(id, field, value, placeholder) {
+        return '<div class="svb-daterow">' +
+               '<input type="text" class="sv-input svb-date" id="' + id + '"' +
+               ' data-sv-field="' + field + '" autocomplete="off"' +
+               ' placeholder="' + esc(placeholder) + '"' +
+               ' value="' + esc(value ? String(value) : '') + '">' +
+               '<button type="button" class="svb-link svb-date-clear" data-act="date-clear"' +
+               ' data-field="' + field + '"' +
+               (value ? '' : ' disabled') + '>' +
+               '<i class="fas fa-xmark" aria-hidden="true"></i> Clear</button>' +
+               '</div>';
     }
 
-    /** Human-readable echo under a datetime field: "September 12, 2026 6:00 PM". */
-    function prettyDate(value, fallback) {
-        var iso, d;
-        if (!value) { return fallback || ''; }
-        iso = String(value).replace(' ', 'T');
-        d   = new Date(iso);
-        if (isNaN(d.getTime())) { return fallback || ''; }
-        return d.toLocaleString(undefined, {
-            month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit'
-        });
+    /* Flatpickr hangs its calendar off document.body, so a sidebar repaint
+       that only replaced innerHTML would leak one calendar per render. */
+    function destroySchedulePickers() {
+        var i;
+        for (i = 0; i < schedFps.length; i++) {
+            try { schedFps[i].destroy(); } catch (e) { /* already gone */ }
+        }
+        schedFps = [];
+    }
+
+    function initSchedulePickers() {
+        var ids = ['svb-f-openat', 'svb-f-closeat'], i, node, fp;
+        if (typeof window.flatpickr !== 'function') { return; }
+        for (i = 0; i < ids.length; i++) {
+            node = $(ids[i]);
+            if (!node) { continue; }
+            fp = window.flatpickr(node, {
+                enableTime:    true,
+                dateFormat:    FP_SQL,
+                altInput:      true,
+                altFormat:     FP_PRETTY,
+                altInputClass: 'sv-input svb-date svb-date-alt',
+                time_24hr:     false,
+                allowInput:    false
+            });
+            /* Flatpickr copies the placeholder onto the alt input at build
+               time only, so restate it for the empty state. */
+            if (fp.altInput) { fp.altInput.placeholder = node.placeholder; }
+            schedFps.push(fp);
+        }
     }
 
     /* ------------------------------------------------------------- markdown */
@@ -2196,7 +2242,7 @@
     function handleAct(btn) {
         var act  = btn.getAttribute('data-act');
         var q    = questionById(sel);
-        var qid, pid, wrap, row, more, cmd, area, job;
+        var qid, pid, wrap, row, more, cmd, area, job, fields;
 
         if (btn.hasAttribute('data-md-cmd')) {
             cmd  = btn.getAttribute('data-md-cmd');
@@ -2315,6 +2361,16 @@
             case 'help':
                 post('help', { Doc: 'surveys' }, function (data) {
                     openModal('Building surveys', data.html || '');
+                });
+                break;
+
+            case 'date-clear':
+                fields = {};
+                fields.SurveyId = SURVEY_ID;
+                fields[btn.getAttribute('data-field')] = '';
+                post('update', fields, function (r) {
+                    S.survey = r.survey || S.survey;
+                    renderSettings();
                 });
                 break;
 
@@ -2526,16 +2582,10 @@
     }
 
     function onSettingsInput(e) {
-        var t = e.target, key, echo;
+        var t = e.target, key;
         if (t.classList && t.classList.contains('svb-md-input')) { refreshMdPreview(t); }
         if (!t.hasAttribute('data-sv-field')) { return; }
         key = t.getAttribute('data-sv-field');
-        if (key === 'OpenAt' || key === 'CloseAt') {
-            echo = $(t.getAttribute('data-echo'));
-            if (echo) {
-                echo.textContent = prettyDate(t.value, key === 'OpenAt' ? 'No opening date set.' : 'No closing date set.');
-            }
-        }
         saveSurveyField(key, t);
     }
 

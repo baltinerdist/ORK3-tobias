@@ -999,12 +999,12 @@ html[data-theme="dark"] .sv-md h5, html[data-theme="dark"] .sv-md h6 {
     .sv-root .sv-btn {
         min-height: 44px;
         padding: 10px 20px;
-        font-size: 14px;
+        font-size: var(--ork-font-size-base);
     }
 
     .sv-root .sv-choice { min-height: 44px; padding: 8px 12px; gap: 12px; }
     .sv-root .sv-choice-input { width: 22px; height: 22px; min-width: 22px; }
-    .sv-root .sv-choice-label { font-size: 14px; }
+    .sv-root .sv-choice-label { font-size: var(--ork-font-size-base); }
 
     .sv-root .sv-scale-face { min-width: 44px; min-height: 44px; font-size: 16px; }
     /* The glyph steps up over the 16px numeric face so a star is still legible,
@@ -1017,12 +1017,12 @@ html[data-theme="dark"] .sv-md h5, html[data-theme="dark"] .sv-md h6 {
     .sv-root .sv-matrix-input { width: 22px; height: 22px; }
 
     .sv-root .sv-rank-item { min-height: 48px; padding: 6px 8px; }
-    .sv-root .sv-rank-btn { width: 44px; height: 44px; font-size: 14px; }
-    .sv-root .sv-rank-label { font-size: 14px; }
+    .sv-root .sv-rank-btn { width: 44px; height: 44px; font-size: var(--ork-font-size-base); }
+    .sv-root .sv-rank-label { font-size: var(--ork-font-size-base); }
 
     .sv-root .sv-consent-opt { min-height: 44px; padding: 14px; gap: 12px; }
     .sv-root .sv-consent-input { width: 22px; height: 22px; min-width: 22px; }
-    .sv-root .sv-consent-copy { font-size: 14px; }
+    .sv-root .sv-consent-copy { font-size: var(--ork-font-size-base); }
 
     .sv-root .sv-check { min-height: 44px; padding: 10px 0; }
     .sv-root .sv-check-input { width: 22px; height: 22px; min-width: 22px; }
@@ -1039,4 +1039,38 @@ html[data-theme="dark"] .sv-preview-strip {
     background: rgba(214, 158, 46, 0.14);
     border-color: #975a16;
     color: #fbd38d;
+}
+
+
+/* ── Reports header actions (shared by every .rp-* survey page) ──────────
+   The survey list, the builder and the results page all wear the Reports
+   shell and all three crowd four-to-six long-labelled ghost buttons into one
+   .rp-header-actions row, so both corrections below are declared ONCE here —
+   survey.css is loaded by all three — rather than copied into
+   survey-build.css, survey-results.css and Survey_index.tpl.
+
+   reports.css paints .rp-btn-ghost at 7px 14px / 13px, which is a 34px
+   button; on a fine pointer these headers trim to the 30px / 12px scale spec
+   §7 Density asks for. Touch widths keep the bigger target.
+
+   All three sheets load AFTER reports.css and this selector carries three
+   classes to reports.css's one, so it wins on both counts. */
+@media (min-width: 601px) and (pointer: fine) {
+    .rp-root .rp-header-actions .rp-btn-ghost {
+        min-height: 30px;
+        box-sizing: border-box;
+        padding   : 5px 12px;
+        font-size : var(--ork-font-size-sm);
+    }
+}
+
+/* Under 600px reports.css gives every .rp-btn-ghost `flex: 1; min-width: 0`,
+   which squeezes these long labels below their own min-content width and
+   paints them over each other. Let them size to their content and wrap onto
+   as many rows as they need. */
+@media (max-width: 600px) {
+    .rp-root .rp-header-actions .rp-btn-ghost {
+        flex     : 0 1 auto;
+        min-width: fit-content;
+    }
 }

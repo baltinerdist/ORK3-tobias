@@ -397,6 +397,24 @@
 .svb-item:focus-within .svb-grip-keys,
 .svb-item.svb-selected .svb-grip-keys { opacity: 1; }
 
+/* The shared .svb-handle box is 20px, which is 4px taller than the strip it
+   sits in: it overhangs the card's top border by 2px and pushes 2px down into
+   the prompt row. Spec §7 Density asks for "a centred ⋮⋮ drag handle 16px
+   tall in its top margin", so the visible box is clamped to the strip and the
+   comfortable pointer target is restored by a ::after that costs no layout.
+   The touch block below puts the real 44px target back. */
+.svb-grip .svb-handle {
+    position: relative;
+    height: 16px;
+    min-height: 16px;
+}
+
+.svb-grip .svb-handle::after {
+    content: "";
+    position: absolute;
+    inset: -5px -8px;
+}
+
 /* A closed conditional card keeps one 16px marker — skip logic is the only
    thing a SvRender preview cannot show on its own. */
 .svb-flag {
@@ -428,7 +446,7 @@
 
 .svb-chip-showif i { color: var(--sv-accent); }
 
-.svb-item-body { padding: 0 16px 12px; }
+.svb-item-body { padding: 0 16px 16px; }
 
 /* SvRender draws its own card; inside a builder item that frame is redundant. */
 .svb-item-body .sv-q {
@@ -1143,6 +1161,113 @@
 .svb-sharelink .sv-input { flex: 1 1 auto; min-width: 0; }
 .svb-sharelink .sv-btn { flex: 0 0 auto; }
 
+/* ── Schedule pickers ─────────────────────────────────────────────────── */
+
+/* The Opens/Closes fields are Flatpickr pickers with altInput on, so the real
+   input is hidden and the visible box is Flatpickr's readable twin (see
+   survey-build.js initSchedulePickers). Unlike the share-link row above, the
+   clear button sits on its own line underneath rather than beside the field:
+   "December 24, 2026  5:30 PM" needs the whole 220px sidebar column, and a
+   trailing button would truncate the date it is there to clear. */
+.svb-daterow { display: flex; flex-wrap: wrap; align-items: center; }
+.svb-daterow .sv-input {
+    flex: 1 1 100%;
+    min-width: 0;
+    /* The readable format is long ("December 24, 2026  5:30 PM") and the
+       Reports sidebar is 220px, so the field trades 6px of side padding for
+       6px of date. */
+    padding-left: 7px;
+    padding-right: 7px;
+    text-overflow: ellipsis;
+}
+
+.svb-date-clear { margin: 2px 0 0 -6px; font-size: var(--ork-font-size-sm); }
+.svb-date-clear .fa-xmark { font-size: 11px; }
+
+/* Flatpickr hangs its calendar off <body>, so this page's copy of the dark
+   palette cannot be scoped to .sv-scope. revised.css already carries these
+   rules for the event pages, but no .rp-* page loads that sheet (it is a
+   whole-frontend stylesheet and would restyle this one), so the calendar's
+   dark palette is restated here against the same tokens. */
+html[data-theme="dark"] .flatpickr-calendar {
+    background: var(--ork-card-bg);
+    border-color: var(--ork-border);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+html[data-theme="dark"] .flatpickr-months,
+html[data-theme="dark"] .flatpickr-month {
+    background: var(--ork-bg-tertiary);
+    color: var(--ork-text);
+}
+
+html[data-theme="dark"] .flatpickr-months .flatpickr-prev-month,
+html[data-theme="dark"] .flatpickr-months .flatpickr-next-month { fill: var(--ork-text-secondary); }
+html[data-theme="dark"] .flatpickr-months .flatpickr-prev-month svg,
+html[data-theme="dark"] .flatpickr-months .flatpickr-next-month svg { fill: var(--ork-text-secondary); }
+html[data-theme="dark"] .flatpickr-months .flatpickr-prev-month:hover svg,
+html[data-theme="dark"] .flatpickr-months .flatpickr-next-month:hover svg { fill: var(--ork-text); }
+
+html[data-theme="dark"] .flatpickr-current-month .flatpickr-monthDropdown-months {
+    background: var(--ork-bg-tertiary);
+    color: var(--ork-text);
+}
+
+html[data-theme="dark"] .flatpickr-current-month input.cur-year { color: var(--ork-text); }
+
+html[data-theme="dark"] .flatpickr-weekdays { background: var(--ork-bg-secondary); }
+
+html[data-theme="dark"] span.flatpickr-weekday {
+    color: var(--ork-text-muted);
+    background: var(--ork-bg-secondary);
+}
+
+html[data-theme="dark"] .flatpickr-day { color: var(--ork-text); }
+
+html[data-theme="dark"] .flatpickr-day:hover {
+    background: var(--ork-bg-tertiary);
+    border-color: var(--ork-bg-tertiary);
+}
+
+html[data-theme="dark"] .flatpickr-day.today { border-color: #63b3ed; }
+
+html[data-theme="dark"] .flatpickr-day.today:hover {
+    background: rgba(99, 179, 237, 0.15);
+    border-color: #63b3ed;
+    color: #63b3ed;
+}
+
+html[data-theme="dark"] .flatpickr-day.selected,
+html[data-theme="dark"] .flatpickr-day.selected:hover {
+    background: #2b6cb0;
+    border-color: #2b6cb0;
+    color: #fff;
+}
+
+html[data-theme="dark"] .flatpickr-day.prevMonthDay,
+html[data-theme="dark"] .flatpickr-day.nextMonthDay,
+html[data-theme="dark"] .flatpickr-day.flatpickr-disabled { color: var(--ork-text-lighter); }
+
+html[data-theme="dark"] .flatpickr-time {
+    background: var(--ork-card-bg);
+    border-top-color: var(--ork-border);
+}
+
+html[data-theme="dark"] .flatpickr-time input,
+html[data-theme="dark"] .flatpickr-time .numInputWrapper,
+html[data-theme="dark"] .flatpickr-time .flatpickr-am-pm {
+    background: var(--ork-card-bg);
+    color: var(--ork-text);
+}
+
+html[data-theme="dark"] .flatpickr-time input:hover,
+html[data-theme="dark"] .flatpickr-time input:focus,
+html[data-theme="dark"] .flatpickr-time .flatpickr-am-pm:hover,
+html[data-theme="dark"] .flatpickr-time .flatpickr-am-pm:focus { background: var(--ork-bg-tertiary); }
+
+html[data-theme="dark"] .flatpickr-time .numInputWrapper span.arrowUp:after { border-bottom-color: var(--ork-text-secondary); }
+html[data-theme="dark"] .flatpickr-time .numInputWrapper span.arrowDown:after { border-top-color: var(--ork-text-secondary); }
+
 /* ── Help modal ───────────────────────────────────────────────────────── */
 
 .svb-modal { position: fixed; inset: 0; z-index: var(--z-modal); }
@@ -1245,18 +1370,24 @@
     .svb-opt > .svb-icon-btn { opacity: 1; }
 
     .svb-grip { height: 44px; }
+
+    /* Undo the 16px desktop clamp above — on touch the handle is the 44px
+       target, and the pointer-target pseudo-element is no longer needed. */
+    .svb-grip .svb-handle { height: auto; min-height: 44px; }
+    .svb-grip .svb-handle::after { content: none; }
+
     .svb-opt { min-height: 44px; }
     .svb-optrow .svb-optlabel { min-height: 44px; font-size: 16px; padding: 8px 4px; }
     .svb-optrow .svb-optweight { min-height: 44px; font-size: 16px; }
-    .svb-optadd-line { font-size: 14px; }
+    .svb-optadd-line { font-size: var(--ork-font-size-base); }
     .svb-prompt { min-height: 44px; font-size: 16px; padding: 10px 12px; }
     .svb-typesel { height: 44px; font-size: 16px; }
     .svb-typepick { max-width: 100%; }
     .svb-title-input { min-height: 44px; font-size: 20px; }
     .svb-page-title { min-height: 44px; font-size: 16px; }
-    .svb-addbtn { min-height: 44px; font-size: 14px; }
+    .svb-addbtn { min-height: 44px; font-size: var(--ork-font-size-base); }
     .svb-link { min-height: 44px; padding: 8px 6px; }
-    .svb-help-add { min-height: 44px; font-size: 14px; }
+    .svb-help-add { min-height: 44px; font-size: var(--ork-font-size-base); }
     .svb-card-foot { height: auto; min-height: 52px; flex-wrap: wrap; padding: 4px 0; }
     .svb-switch { width: 44px; height: 24px; }
     .svb-switch-track::after { width: 20px; height: 20px; }
@@ -1446,30 +1577,5 @@ html[data-theme="dark"] .svb-consent-quote {
     .svb-page, .svb-item { box-shadow: none; break-inside: avoid; }
 }
 
-/* ── Header actions ───────────────────────────────────────────────────── */
-
-/* reports.css sizes .rp-btn-ghost at 7px 14px / 13px, which paints a 34px
-   button. The builder header carries six of them, so on a fine pointer they
-   trim to the 30px / 12px scale spec §7 Density asks for. The 600px block
-   below leaves touch widths alone. */
-@media (min-width: 601px) and (pointer: fine) {
-    .rp-root .rp-header-actions .rp-btn-ghost {
-        min-height: 30px;
-        box-sizing: border-box;
-        padding   : 5px 12px;
-        font-size : var(--ork-font-size-sm);
-    }
-}
-
-/* ── Narrow header actions ────────────────────────────────────────────── */
-
-/* reports.css gives every .rp-btn-ghost `flex:1; min-width:0` under 600px. The
-   builder puts six long-labelled buttons in that row, so each is squeezed to
-   ~35px and the labels overlap. Let them size to their own content and wrap
-   onto as many rows as they need instead. */
-@media (max-width: 600px) {
-    .rp-root .rp-header-actions .rp-btn-ghost {
-        flex     : 0 1 auto;
-        min-width: fit-content;
-    }
-}
+/* Header actions: the .rp-btn-ghost sizing every survey .rp-* page needs is
+   declared once in survey.css, which this page also loads. */
