@@ -346,10 +346,25 @@
 
     // ------------------------------------------------------------- rendering
 
+    /* "Page 2 of 6" / "Welcome" / "Almost done" — the progress caption, also
+       spoken on every page turn whether or not the bar is shown. */
+    function screenLabel() {
+        var pageScreens = 0, pageNo = 0, i;
+        if (!screens.length || !screens[idx]) { return ''; }
+        for (i = 0; i < screens.length; i++) {
+            if (screens[i].kind !== 'page') { continue; }
+            pageScreens++;
+            if (i <= idx) { pageNo = pageScreens; }
+        }
+        if (screens[idx].kind === 'page' && pageScreens > 0) { return 'Page ' + pageNo + ' of ' + pageScreens; }
+        if (screens[idx].kind === 'welcome') { return 'Welcome'; }
+        return 'Almost done';
+    }
+
     function headerPaint() {
         var s = (def && def.survey) || {};
         var showProgress = parseInt(s.show_progress, 10) === 1;
-        var pageScreens = 0, pageNo = 0, i, pct, label;
+        var pct, label;
 
         titleEl.textContent = s.title || 'Survey';
         document.title = (s.title || 'Survey') + ' — ORK';
@@ -360,23 +375,11 @@
             return;
         }
 
-        for (i = 0; i < screens.length; i++) {
-            if (screens[i].kind !== 'page') { continue; }
-            pageScreens++;
-            if (i <= idx) { pageNo = pageScreens; }
-        }
-
         pct = screens.length > 1 ? Math.round((idx / (screens.length - 1)) * 100) : 100;
         if (pct < 0) { pct = 0; }
         if (pct > 100) { pct = 100; }
 
-        if (screens[idx].kind === 'page' && pageScreens > 0) {
-            label = 'Page ' + pageNo + ' of ' + pageScreens;
-        } else if (screens[idx].kind === 'welcome') {
-            label = 'Welcome';
-        } else {
-            label = 'Almost done';
-        }
+        label = screenLabel();
 
         progressEl.hidden = false;
         progressTextEl.hidden = false;
@@ -556,6 +559,8 @@
         stage.innerHTML = out;
         progressEl.hidden = true;
         progressTextEl.hidden = true;
+        // The submit button just vanished from under the user's focus.
+        focusScreenStart();
         announce('Thank you. Your response has been recorded.');
         window.scrollTo(0, 0);
     }
@@ -604,6 +609,29 @@
         headerPaint();
         paintServerErrors();
         window.scrollTo(0, 0);
+    }
+
+    /* render() throws away the whole stage, and with it the Next/Back button
+       that had focus — leaving a keyboard user back at <body> and tabbing down
+       through the site chrome again on every page turn. Send focus to the top
+       of the new screen instead. Only deliberate navigation does this: a
+       show-if redraw must not yank focus out of the field being typed in. */
+    function focusScreenStart() {
+        var target = stage.querySelector('.sv-page-title, .sv-card-title, .sv-notice') ||
+            stage.firstElementChild;
+        if (!target) { return; }
+        if (!target.hasAttribute('tabindex')) { target.setAttribute('tabindex', '-1'); }
+        try { target.focus({ preventScroll: true }); } catch (e) { target.focus(); }
+    }
+
+    /** render() plus the focus move and announcement a page turn owes the user. */
+    function renderNav() {
+        var label, title;
+        render();
+        focusScreenStart();
+        label = screenLabel();
+        title = stage.querySelector('.sv-page-title, .sv-card-title');
+        announce(label + (title && title.textContent ? ': ' + title.textContent : ''));
     }
 
     function focusQuestion(root) {
@@ -664,7 +692,7 @@
         // respondent resumes, so saving it first parks them a page behind.
         draftSave();
         mirrorSave();
-        render();
+        renderNav();
     }
 
     function goBack() {
@@ -673,7 +701,7 @@
         if (idx > 0) { idx--; }
         draftSave();
         mirrorSave();
-        render();
+        renderNav();
     }
 
     /** Recompute screens after an answer change, keeping the current screen. */
