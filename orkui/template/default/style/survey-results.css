@@ -37,7 +37,7 @@
     align-items   : center;
     border-radius : 20px;
     padding       : 3px 11px;
-    font-size     : 0.78rem;
+    font-size     : var(--ork-font-size-sm);
     font-weight   : 600;
     white-space   : nowrap;
     background    : rgba(255,255,255,0.15);
@@ -64,7 +64,7 @@
 }
 
 .svr-consent-part {
-    font-size: 10px;
+    font-size: 11px;
     color    : var(--svr-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.03em;
@@ -72,7 +72,7 @@
 
 .svr-consent-part b {
     display    : block;
-    font-size  : 20px;
+    font-size  : 18px;
     font-weight: 700;
     color      : var(--svr-accent);
     letter-spacing: 0;
@@ -82,14 +82,14 @@
 
 /* ── Filter controls ─────────────────────────────────────── */
 
-.svr-field { margin-bottom: 14px; }
+.svr-field { margin-bottom: 10px; }
 .svr-field:last-child { margin-bottom: 0; }
 
 /* The kingdom filter is a real <fieldset>/<legend> so the checkbox group is
    announced as a group; strip the UA chrome so it still looks like a field. */
 .svr-fieldset {
     border   : 0;
-    margin   : 0 0 14px;
+    margin   : 0 0 10px;
     padding  : 0;
     min-width: 0;
 }
@@ -130,9 +130,9 @@
     display     : flex;
     align-items : center;
     gap         : 8px;
-    min-height  : 44px;
+    min-height  : 28px;
     padding     : 2px 6px;
-    font-size   : 13px;
+    font-size   : var(--ork-font-size-base);
     line-height : 1.3;
     color       : var(--svr-text);
     cursor      : pointer;
@@ -142,8 +142,8 @@
 .svr-check:hover { background: var(--ork-surface-hover, #edf2f7); }
 
 .svr-check input[type="checkbox"] {
-    width      : 20px;
-    height     : 20px;
+    width      : 16px;
+    height     : 16px;
     flex-shrink: 0;
     accent-color: var(--svr-accent);
     margin     : 0;
@@ -152,7 +152,7 @@
 .svr-filter-actions {
     display  : flex;
     gap      : 8px;
-    margin-top: 14px;
+    margin-top: 12px;
 }
 
 /* ── Main column ─────────────────────────────────────────── */
@@ -201,7 +201,7 @@
 
 .svr-card-type {
     display       : block;
-    font-size     : 10px;
+    font-size     : 11px;
     font-weight   : 700;
     text-transform: uppercase;
     letter-spacing: 0.06em;
@@ -225,9 +225,9 @@
 .svr-chart-tall { --svr-chart-height: 360px; }
 
 .svr-empty {
-    padding    : 26px 12px;
+    padding    : 20px 12px;
     text-align : center;
-    font-size  : 13px;
+    font-size  : var(--ork-font-size-base);
     font-style : italic;
     color      : var(--svr-text-muted);
 }
@@ -261,7 +261,7 @@
 
 .svr-callout-label {
     margin-top    : 2px;
-    font-size     : 10px;
+    font-size     : 11px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color         : var(--svr-text-muted);
@@ -274,7 +274,7 @@
 }
 
 .svr-nps-tile .svr-callout-value {
-    font-size: 30px;
+    font-size: 24px;
     color    : var(--svr-accent);
 }
 
@@ -283,14 +283,14 @@
 
 .svr-other {
     margin-top : 10px;
-    font-size  : 13px;
+    font-size  : var(--ork-font-size-base);
     border-top : 1px solid var(--svr-border);
     padding-top: 8px;
 }
 
 .svr-other > summary {
     cursor     : pointer;
-    min-height : 44px;
+    min-height : 28px;
     display    : flex;
     align-items: center;
     gap        : 6px;
@@ -307,9 +307,9 @@
 }
 
 .svr-textlist li {
-    padding    : 7px 10px;
-    margin     : 0 0 6px;
-    font-size  : 13px;
+    padding    : 6px 10px;
+    margin     : 0 0 5px;
+    font-size  : var(--ork-font-size-base);
     line-height: 1.5;
     color      : var(--svr-text);
     background : var(--ork-surface-light, #f7fafc);
@@ -352,7 +352,7 @@
 
 .svr-tag {
     display       : inline-block;
-    font-size     : 10px;
+    font-size     : 11px;
     font-weight    : 700;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -408,7 +408,7 @@ html[data-theme="dark"] .svr-card .highcharts-data-label tspan {
 }
 
 @media (max-width: 768px) {
-    .svr-consent-part b { font-size: 17px; }
+    .svr-consent-part b { font-size: 14px; }
     .svr-chart { --svr-chart-height: 260px; }
     .svr-checklist { max-height: 150px; }
     .svr-filter-actions { flex-wrap: wrap; }
@@ -482,4 +482,29 @@ html[data-theme="dark"] .svr-card .highcharts-data-label tspan {
 
     .svr-table-scroll { overflow: visible !important; }
     .svr-checklist { max-height: none !important; overflow: visible !important; }
+}
+
+/* ── Touch restore (spec §7 "Density", added 2026-09-10) ─────────────────
+   The rules above are the app's compact scale — 28-32px rows, 13px text —
+   which is what this manage surface wants on a desktop. On a coarse pointer
+   (or a phone-width window) the filter rows and the "show more" summaries go
+   back to 44px tap targets; only the hit areas grow, the type stays put. */
+@media (pointer: coarse), (max-width: 700px) {
+    .svr-check { min-height: 44px; }
+    .svr-check input[type="checkbox"] { width: 20px; height: 20px; }
+    .svr-other > summary { min-height: 44px; }
+}
+
+
+/* ── Header actions ──────────────────────────────────────
+   reports.css sizes .rp-btn-ghost at 7px 14px / 13px, which paints a 34px
+   button. On a fine pointer this header trims to the 30px / 12px scale spec
+   §7 Density asks for; the 600px block above keeps the touch sizing. */
+@media (min-width: 601px) and (pointer: fine) {
+    .rp-root .rp-header-actions .rp-btn-ghost {
+        min-height: 30px;
+        box-sizing: border-box;
+        padding   : 5px 12px;
+        font-size : var(--ork-font-size-sm);
+    }
 }

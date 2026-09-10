@@ -488,10 +488,8 @@
         return '<div class="svb-preview-lock">' + body.innerHTML + '</div>';
     }
 
-    function typeBadge(type) {
-        var meta = TYPE_META[type] || { label: type, icon: 'fa-question' };
-        return '<span class="svb-type-badge"><i class="fas ' + meta.icon + '" aria-hidden="true"></i>' +
-               esc(meta.label) + '</span>';
+    function typeIcon(type) {
+        return (TYPE_META[type] || {}).icon || 'fa-question';
     }
 
     function showIfChip(item) {
@@ -509,6 +507,15 @@
         return '<span class="svb-chip svb-chip-showif" data-tip="Shown only when the earlier question is answered this way">' +
                '<i class="fas fa-code-branch" aria-hidden="true"></i> ' +
                esc(label ? 'Shown when “' + label + '”' : 'Conditional') + '</span>';
+    }
+
+    /** The closed card's one-glyph version of showIfChip (spec §7 Density). */
+    function showIfFlag(item) {
+        if (!(parseInt(item.show_if_question_id, 10) || 0) ||
+                !(parseInt(item.show_if_option_id, 10) || 0)) { return ''; }
+        return '<span class="svb-flag" data-tip="Shown only when an earlier question is answered a certain way">' +
+               '<i class="fas fa-code-branch" aria-hidden="true"></i>' +
+               '<span class="sv-visually-hidden">Conditional</span></span>';
     }
 
     function iconBtn(act, icon, tip, extraClass, disabled, dataAttrs) {
@@ -764,22 +771,26 @@
         var html = '<article class="svb-item' + (selected ? ' svb-selected svb-editing' : '') +
                    '" data-qid="' + qid + '" data-type="' + esc(q.type) + '" tabindex="0">';
 
-        html += '<div class="svb-item-bar">';
+        /* The grip strip (spec §7 Density): a 16px band at the top of every
+           card holding the centred ⋮⋮ handle and, at its right, the keyboard
+           reorder pair. It is transparent until the card is hovered, focused
+           or selected, so an unselected card reads as pure preview — but the
+           handle is always in the DOM, because SortableJS drags by it and the
+           two step buttons are the keyboard path (WCAG 2.1.1). */
+        html += '<div class="svb-grip">';
         html += '<span class="svb-handle" data-tip="' + esc(S.locked ? LOCK_TIP : 'Drag to reorder') + '" aria-hidden="true">' +
                 '<i class="fas fa-grip-vertical"></i></span>';
+        html += '<span class="svb-grip-keys">';
         html += moveBtn('q-up', -1, 'Move this element up', S.locked || pos === 0, ' data-qid="' + qid + '"');
         html += moveBtn('q-down', 1, 'Move this element down', S.locked || pos >= total - 1, ' data-qid="' + qid + '"');
-        html += typeBadge(q.type);
-        if (!selected && truthy(q.required)) {
-            // A chip, not a coloured dot: aria-label on a bare span is not
-            // exposed (role=generic prohibits naming) and a red bullet is
-            // colour-and-shape only. The open card shows the Required
-            // checkbox instead, so this is the collapsed-state signal.
-            html += '<span class="svb-chip svb-chip-req" data-tip="Respondents must answer this">' +
-                    '<i class="fas fa-asterisk" aria-hidden="true"></i>Required</span>';
-        }
-        html += showIfChip(q);
+        html += '</span>';
         html += '</div>';
+
+        /* A conditional card still has to say so when it is closed: the type
+           badge and Required chip are gone (the preview already renders the
+           required asterisk, and the type is obvious from the control), but
+           skip logic is invisible in a preview. One 16px flag, no extra row. */
+        if (!selected) { html += showIfFlag(q); }
 
         html += '<div class="svb-item-body">';
         html += selected ? editCardHtml(q) : SvRender.question(forRender(q), undefined, 'preview');
@@ -794,9 +805,22 @@
         var qid  = parseInt(q.question_id, 10);
         var html = '<div class="svb-edit">';
 
+        /* Top row (spec §7 Density): the filled prompt field, the small image
+           button beside it, and the Type picker at the top-right. The picker
+           is still the native <select> the change handler and retype() path
+           expect — the icon and caret are painted around it in CSS, so no
+           behaviour moves into a custom widget. */
+        html += '<div class="svb-card-top">';
         html += '<textarea class="svb-prompt svb-autogrow" rows="1" data-q-field="Prompt" ' +
                 'aria-label="' + (q.type === 'section' ? 'Section heading' : 'Question') + '" placeholder="' +
                 (q.type === 'section' ? 'Section heading' : 'Question') + '">' + esc(q.prompt || '') + '</textarea>';
+        if (q.type !== 'image') {
+            html += '<button type="button" class="svb-icon-btn svb-top-img" data-upload="question-image" ' +
+                    'data-tip="Add a picture above the answers" aria-label="Add a picture above the answers">' +
+                    '<i class="fas fa-image" aria-hidden="true"></i></button>';
+        }
+        html += typePickerHtml(q);
+        html += '</div>';
 
         html += helpSlotHtml(q);
         if (q.type !== 'image' && imageUrl(q.image_id)) {
@@ -874,18 +898,17 @@
     function optionRowHtml(q, spec, o, index, count) {
         var isOther = truthy(o.is_other);
         var noun    = spec.role === 'choice' ? 'Option' : (spec.role === 'row' ? 'Row' : 'Column');
-        var html    = '<div class="svb-optrow' + (spec.weight ? ' svb-optrow-col' : '') +
+        /* .svb-opt is the density class (spec §7: 32px rows); .svb-optrow stays
+           the behaviour hook every handler and SortableJS already binds to. */
+        var html    = '<div class="svb-optrow svb-opt' + (spec.weight ? ' svb-optrow-col' : '') +
                       '" data-oid="' + (parseInt(o.option_id, 10) || 0) + '" data-other="' + (isOther ? 1 : 0) + '">';
 
+        /* Order matters to the eye, not to the handlers (everything is found
+           by data-act): the glyph and the label sit hard left like a real
+           choice, and the grip, the reorder pair and the × live in a quiet
+           gutter on the right. They keep their space when hidden so the row
+           never jumps under the pointer. */
         if (spec.glyph) { html += optionGlyph(q.type, index); }
-        if (!spec.fixed) {
-            html += '<span class="svb-opthandle" data-tip="' + esc(S.locked ? LOCK_TIP : 'Drag to reorder') +
-                    '" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>';
-            html += moveBtn('opt-up', -1, 'Move this ' + noun.toLowerCase() + ' up',
-                            S.locked || index === 0, '');
-            html += moveBtn('opt-down', 1, 'Move this ' + noun.toLowerCase() + ' down',
-                            S.locked || index >= count - 1, '');
-        }
         html += '<input type="text" class="sv-input svb-optlabel" maxlength="255" value="' + esc(o.label || '') +
                 '" placeholder="' + noun + '" aria-label="' + noun + ' ' + (index + 1) + '">';
         if (isOther) {
@@ -896,6 +919,14 @@
                     'data-tip="Optional weight — set one on every column to get a weighted mean" ' +
                     'aria-label="Weight for ' + noun + ' ' + (index + 1) + '" value="' +
                     esc(o.value_num === null || o.value_num === undefined ? '' : o.value_num) + '"' + lockAttr() + '>';
+        }
+        if (!spec.fixed) {
+            html += '<span class="svb-opthandle" data-tip="' + esc(S.locked ? LOCK_TIP : 'Drag to reorder') +
+                    '" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>';
+            html += moveBtn('opt-up', -1, 'Move this ' + noun.toLowerCase() + ' up',
+                            S.locked || index === 0, '');
+            html += moveBtn('opt-down', 1, 'Move this ' + noun.toLowerCase() + ' down',
+                            S.locked || index >= count - 1, '');
         }
         html += iconBtn('opt-remove', 'fa-xmark',
                         spec.fixed ? 'A yes/no question keeps exactly two options' : ('Remove this ' + noun.toLowerCase()),
@@ -919,15 +950,21 @@
         }
         html += '</div>';
 
+        /* The last row of the list reads as one sentence — "Add option or add
+           'Other'" — with the two verbs as accent links, sitting on the same
+           32px grid as the rows above it (spec §7 Density). */
         if (!spec.fixed) {
-            html += '<div class="svb-optadd">';
-            html += '<button type="button" class="svb-link" data-act="opt-add"' + lockAttr() + '>' +
-                    '<i class="fas fa-plus" aria-hidden="true"></i> Add ' + esc(noun) + '</button>';
+            html += '<div class="svb-optadd svb-opt">';
+            if (spec.glyph) { html += '<span class="svb-glyph svb-glyph-ghost" aria-hidden="true"></span>'; }
+            html += '<span class="svb-optadd-line">';
+            html += '<button type="button" class="svb-optadd-link" data-act="opt-add"' + lockAttr() + '>Add ' +
+                    esc(noun) + '</button>';
             if (spec.other && !hasOther(q)) {
-                html += '<button type="button" class="svb-link" data-act="opt-add-other"' + lockAttr() +
-                        ' data-tip="A write-in row respondents fill in themselves">' +
-                        '<i class="fas fa-plus" aria-hidden="true"></i> Add “Other”</button>';
+                html += '<span class="svb-optadd-or"> or </span>';
+                html += '<button type="button" class="svb-optadd-link" data-act="opt-add-other"' + lockAttr() +
+                        ' data-tip="A write-in row respondents fill in themselves">add “Other”</button>';
             }
+            html += '</span>';
             html += '</div>';
         }
 
@@ -1063,27 +1100,48 @@
         return html;
     }
 
-    function footerHtml(q, qid) {
-        var html = '<div class="svb-foot">';
+    /**
+     * The Type picker that sits at the top-right of the open card. It is a
+     * plain <select class="svb-typesel"> — the same element onCanvasChange
+     * listens for — with the type's icon and a caret drawn behind it by
+     * survey-build.css, so it reads as "icon + label + caret" at 34px.
+     */
+    function typePickerHtml(q) {
+        var html = '<span class="svb-typepick">';
         var i, t;
 
-        html += '<label class="svb-foot-type"><span class="sv-visually-hidden">Element type</span>' +
-                '<select class="sv-select svb-typesel"' + lockAttr() + '>';
+        html += '<i class="fas ' + typeIcon(q.type) + ' svb-typepick-icon" aria-hidden="true"></i>';
+        html += '<select class="svb-typesel" aria-label="Element type"' + lockAttr() + '>';
         for (i = 0; i < TYPE_ORDER.length; i++) {
             t = TYPE_ORDER[i];
             html += '<option value="' + t + '"' + (t === q.type ? ' selected' : '') + '>' +
                     esc((TYPE_META[t] || {}).label || t) + '</option>';
         }
-        html += '</select></label>';
+        html += '</select>';
+        html += '</span>';
+        return html;
+    }
 
-        if (SvRender.isAnswerable(q.type)) {
-            html += '<label class="svb-check svb-foot-req"><input type="checkbox" data-q-field="Required"' +
-                    (truthy(q.required) ? ' checked' : '') + lockAttr() + '><span>Required</span></label>';
-        }
+    /**
+     * The slim card footer (spec §7 Density): 36px, right-aligned, duplicate
+     * and delete as icon buttons, a hairline divider, Required as a switch,
+     * then the ⋯ menu. The Type picker left this row for the card top.
+     */
+    function footerHtml(q, qid) {
+        var html = '<div class="svb-card-foot">';
 
-        html += '<span class="svb-foot-spacer"></span>';
         html += iconBtn('q-duplicate', 'fa-clone', 'Duplicate this element', '', S.locked, ' data-qid="' + qid + '"');
         html += iconBtn('q-delete', 'fa-trash', 'Delete this element', 'svb-icon-danger', S.locked, ' data-qid="' + qid + '"');
+
+        if (SvRender.isAnswerable(q.type)) {
+            html += '<span class="svb-foot-div" aria-hidden="true"></span>';
+            html += '<label class="svb-switchwrap"><span class="svb-switchlabel">Required</span>' +
+                    '<span class="svb-switch"><input type="checkbox" data-q-field="Required"' +
+                    (truthy(q.required) ? ' checked' : '') + lockAttr() +
+                    '><span class="svb-switch-track" aria-hidden="true"></span></span></label>';
+        }
+
+        html += '<span class="svb-foot-div" aria-hidden="true"></span>';
         html += iconBtn('more-toggle', 'fa-ellipsis', 'More settings', '', false, '');
         html += '</div>';
         return html;

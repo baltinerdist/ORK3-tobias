@@ -13,8 +13,23 @@
 
    Structure:
      .svb-layout > .svb-canvas > .svb-page > .svb-items > .svb-item
-     .svb-item.svb-selected  →  .svb-edit (prompt, help, type editor, ⋯, foot)
-     .svb-drawer             →  survey settings
+     .svb-item                →  .svb-grip (⋮⋮ + keyboard reorder, 16px)
+     .svb-item.svb-selected   →  .svb-edit
+                                   .svb-card-top  (prompt, image, type picker)
+                                   .svb-typeedit  (options / scale / limits)
+                                   .svb-more      (⋯ menu, hidden)
+                                   .svb-card-foot (duplicate, delete, switch, ⋯)
+     .svb-drawer              →  survey settings
+
+   DENSITY (spec §7 "Density"): the rules below are the DESKTOP scale, and it
+   is the app's own scale, not a larger one — 13px base (--ork-font-size-base),
+   12px meta (--ork-font-size-sm), 11px uppercase section labels, 14px prompts
+   and card titles, 20px survey title (.rp-header-title). Geometry: 32px option
+   rows, a 36px card footer, a 34px type picker, 28px inline settings controls
+   and 30–32px drawer/header controls. The `(pointer: coarse),
+   (max-width: 900px)` block near the bottom puts every one of those controls
+   back to a 44px tap target, so anything sized under 44px here has to be
+   listed there too.
 
    Dark mode: html[data-theme="dark"] block at the bottom.
    Breakpoints: 900px (single column chrome, drawer becomes a sheet) and 420px.
@@ -28,14 +43,14 @@
     border-radius: var(--ork-radius-md);
     color: inherit;
     font: inherit;
-    font-size: 22px;
+    font-size: 20px;
     font-weight: var(--ork-font-weight-bold);
-    padding: 4px 8px;
-    margin: -4px 0 -4px -8px;
+    padding: 3px 8px;
+    margin: -3px 0 -3px -8px;
     width: min(420px, 60vw);
     max-width: 100%;
     box-sizing: border-box;
-    min-height: 44px;
+    min-height: 32px;
 }
 
 .svb-title-input::placeholder { color: rgba(255, 255, 255, 0.6); }
@@ -106,10 +121,10 @@
     align-items: center;
     gap: 10px;
     flex-wrap: wrap;
-    padding: 10px 14px;
-    margin-bottom: 12px;
+    padding: 8px 12px;
+    margin-bottom: 10px;
     border-radius: var(--ork-radius-md);
-    font-size: 14px;
+    font-size: var(--ork-font-size-base);
     line-height: 1.45;
 }
 
@@ -140,6 +155,14 @@
 
 /* ── Canvas column ────────────────────────────────────────────────────── */
 
+/* The app's base scale (13px, tokens.css) for every builder surface. The
+   prompt and card titles step up to 14px; meta, hints and settings lines drop
+   to 12px; section labels are 11px uppercase. Nothing here is larger than the
+   equivalent control elsewhere in the app. Spec §7 Density, "Typography". */
+.svb-layout,
+.svb-drawer-panel,
+.svb-modal-panel { font-size: var(--ork-font-size-base); }
+
 .svb-layout { padding-bottom: 48px; }
 
 .svb-canvas {
@@ -164,7 +187,7 @@
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
-    padding: 8px 12px;
+    padding: 5px 10px;
     background: var(--ork-bg-secondary);
     border-bottom: 1px solid var(--ork-border);
 }
@@ -175,8 +198,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 28px;
-    min-height: 28px;
+    min-width: 20px;
+    min-height: 20px;
     border: 0;
     background: none;
     color: var(--ork-text-hint);
@@ -210,9 +233,10 @@
     border-radius: var(--ork-radius-sm);
     color: var(--ork-text);
     font-family: inherit;
-    font-size: 16px;
-    padding: 8px 10px;
-    min-height: 44px;
+    font-size: 14px;
+    font-weight: var(--ork-font-weight-semibold);
+    padding: 4px 8px;
+    min-height: 30px;
     box-sizing: border-box;
 }
 
@@ -239,7 +263,7 @@
     background: var(--ork-bg-secondary);
 }
 
-.svb-items { padding: 10px 12px 4px; min-height: 48px; }
+.svb-items { padding: 8px 10px 2px; min-height: 40px; }
 
 .svb-page-empty {
     margin: 4px 0 10px;
@@ -251,7 +275,7 @@
     font-size: 13px;
 }
 
-.svb-page-foot { padding: 0 12px 12px; }
+.svb-page-foot { padding: 0 10px 10px; }
 
 /* ── Add controls ─────────────────────────────────────────────────────── */
 
@@ -261,14 +285,14 @@
     justify-content: center;
     gap: 8px;
     width: 100%;
-    min-height: 44px;
-    padding: 10px 16px;
+    min-height: 32px;
+    padding: 5px 14px;
     border: 1px dashed var(--ork-border-dark);
     border-radius: var(--ork-radius-md);
     background: transparent;
     color: var(--sv-accent);
     font-family: inherit;
-    font-size: 15px;
+    font-size: var(--ork-font-size-base);
     font-weight: var(--ork-font-weight-semibold);
     cursor: pointer;
 }
@@ -314,14 +338,15 @@
     padding: 4px 0 8px;
 }
 
-.svb-addpage { font-size: 14px; }
+.svb-addpage { font-size: var(--ork-font-size-base); }
 
 /* ── Item card ────────────────────────────────────────────────────────── */
 
 .svb-item {
+    position: relative;
     border: 1px solid var(--ork-border);
-    border-left: 3px solid transparent;
-    border-radius: var(--ork-radius-md);
+    border-left: 4px solid transparent;
+    border-radius: 8px;
     background: var(--ork-card-bg);
     margin-bottom: 10px;
     cursor: pointer;
@@ -337,27 +362,54 @@
     cursor: default;
 }
 
-.svb-item-bar {
+/* The grip strip: a 16px band across the top of every card holding the
+   centred ⋮⋮ handle and the keyboard reorder pair at its right. It is
+   invisible until the card is hovered, focused or selected, so a closed card
+   reads as pure preview while SortableJS still has a handle to drag by. */
+.svb-grip {
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
-    padding: 6px 10px 0;
+    justify-content: center;
+    height: 16px;
 }
 
-.svb-type-badge {
+.svb-grip-keys {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    gap: 2px;
+}
+
+.svb-grip .svb-handle,
+.svb-grip-keys {
+    opacity: 0;
+    transition: opacity 0.12s;
+}
+
+.svb-item:hover .svb-grip .svb-handle,
+.svb-item:focus-within .svb-grip .svb-handle,
+.svb-item.svb-selected .svb-grip .svb-handle,
+.svb-item:hover .svb-grip-keys,
+.svb-item:focus-within .svb-grip-keys,
+.svb-item.svb-selected .svb-grip-keys { opacity: 1; }
+
+/* A closed conditional card keeps one 16px marker — skip logic is the only
+   thing a SvRender preview cannot show on its own. */
+.svb-flag {
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    width: 16px;
+    height: 16px;
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    justify-content: center;
     font-size: 11px;
-    font-weight: var(--ork-font-weight-semibold);
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--sv-text-muted);
-    white-space: nowrap;
+    color: var(--sv-accent);
 }
-
-.svb-type-badge i { color: var(--sv-accent); }
 
 .svb-chip {
     display: inline-flex;
@@ -374,9 +426,8 @@
 }
 
 .svb-chip-showif i { color: var(--sv-accent); }
-.svb-chip-req i { color: var(--sv-danger); }
 
-.svb-item-body { padding: 4px 10px 10px; }
+.svb-item-body { padding: 0 16px 12px; }
 
 /* SvRender draws its own card; inside a builder item that frame is redundant. */
 .svb-item-body .sv-q {
@@ -395,8 +446,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
+    width: 26px;
+    height: 26px;
     padding: 0;
     border: 1px solid transparent;
     border-radius: var(--ork-radius-sm);
@@ -420,7 +471,7 @@
 
 /* The keyboard reorder pair. Narrower than a normal icon button so the two of
    them together take about the room the grip they sit beside does. */
-.svb-move-btn { width: 26px; font-size: 11px; }
+.svb-move-btn { width: 18px; height: 18px; font-size: 10px; }
 
 /* ── Inline text links ────────────────────────────────────────────────── */
 
@@ -428,13 +479,13 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    min-height: 44px;
-    padding: 8px 6px;
+    min-height: 28px;
+    padding: 3px 6px;
     border: 0;
     background: none;
     color: var(--sv-accent);
     font-family: inherit;
-    font-size: 14px;
+    font-size: var(--ork-font-size-base);
     font-weight: var(--ork-font-weight-semibold);
     cursor: pointer;
 }
@@ -448,23 +499,31 @@
 
 .svb-edit { display: block; }
 
+/* Top row: prompt, the small image button, and the Type picker hard right. */
+.svb-card-top {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
 .svb-prompt {
     display: block;
-    width: 100%;
+    flex: 1 1 auto;
+    min-width: 0;
     box-sizing: border-box;
-    background: transparent;
+    background: var(--ork-surface-light);
     border: 0;
-    border-bottom: 1px solid var(--ork-border);
-    border-radius: 0;
+    border-bottom: 1px solid var(--ork-border-dark);
+    border-radius: 4px 4px 0 0;
     color: var(--ork-text);
     font-family: inherit;
-    font-size: 16px;
+    font-size: 14px;
     font-weight: var(--ork-font-weight-semibold);
-    line-height: 1.4;
-    padding: 8px 2px;
+    line-height: 1.35;
+    padding: 6px 10px;
     resize: none;
     overflow: hidden;
-    min-height: 44px;
+    min-height: 32px;
 }
 
 .svb-prompt:focus {
@@ -475,7 +534,64 @@
 
 .svb-prompt::placeholder { color: var(--ork-text-hint); font-weight: 400; }
 
-.svb-help-add { margin: 2px 0 0; }
+.svb-top-img { margin-top: 2px; }
+
+/* The Type picker. The <select> stays the real control (onCanvasChange binds
+   to .svb-typesel); the icon and caret are painted around it here. */
+.svb-typepick {
+    position: relative;
+    flex: 0 0 auto;
+    width: 178px;
+    max-width: 46%;
+    display: block;
+}
+
+.svb-typepick-icon {
+    position: absolute;
+    left: 9px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 12px;
+    color: var(--sv-accent);
+    pointer-events: none;
+}
+
+.svb-typepick::after {
+    content: "";
+    position: absolute;
+    right: 11px;
+    top: 50%;
+    width: 6px;
+    height: 6px;
+    margin-top: -4px;
+    border-right: 1.5px solid var(--ork-text-muted);
+    border-bottom: 1.5px solid var(--ork-text-muted);
+    transform: rotate(45deg);
+    pointer-events: none;
+}
+
+.svb-typesel {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 100%;
+    height: 34px;
+    box-sizing: border-box;
+    padding: 0 26px 0 27px;
+    border: 1px solid var(--ork-border);
+    border-radius: var(--ork-radius-sm);
+    background: var(--ork-card-bg);
+    color: var(--ork-text);
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1.2;
+    cursor: pointer;
+}
+
+.svb-typesel:hover:not([disabled]) { border-color: var(--ork-border-dark); }
+.svb-typesel:focus-visible { outline: 2px solid var(--sv-accent); outline-offset: 1px; }
+.svb-typesel[disabled] { opacity: 0.5; cursor: not-allowed; }
+
+.svb-help-add { margin: 2px 0 0; min-height: 26px; padding: 3px 2px; font-size: var(--ork-font-size-base); }
 
 .svb-cardimg {
     display: flex;
@@ -511,9 +627,30 @@
 .svb-optrow {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
     min-width: 0;
 }
+
+/* The 36px density grid (spec §7): 20px glyph, 14px label, the × and the
+   reorder pair quiet until the row is hovered or holds focus. */
+.svb-opt { min-height: 32px; }
+
+.svb-opt .svb-opthandle,
+.svb-opt .svb-move-btn,
+.svb-opt > .svb-icon-btn {
+    opacity: 0;
+    transition: opacity 0.12s;
+}
+
+.svb-opt:hover .svb-opthandle,
+.svb-opt:focus-within .svb-opthandle,
+.svb-opt:hover .svb-move-btn,
+.svb-opt:focus-within .svb-move-btn,
+.svb-opt:hover > .svb-icon-btn,
+.svb-opt:focus-within > .svb-icon-btn,
+.svb-opt .svb-icon-btn:focus-visible { opacity: 1; }
+
+.svb-opt > .svb-icon-btn { width: 18px; height: 18px; font-size: 12px; }
 
 .svb-glyph {
     width: 18px;
@@ -529,6 +666,8 @@
 }
 
 .svb-glyph-dot { border-radius: 50%; }
+/* Keeps the "Add option or add 'Other'" line on the same left rail. */
+.svb-glyph-ghost { border-color: transparent; }
 .svb-glyph-box { border-radius: 3px; }
 .svb-glyph-num { border-radius: 3px; border-style: dashed; }
 
@@ -536,10 +675,17 @@
     flex: 1 1 auto;
     min-width: 0;
     background: transparent;
+    /* Borderless in BOTH themes: .sv-input paints --sv-input-bg, which is
+       invisible on a white card but a distinct dark fill under
+       html[data-theme="dark"] — the row would read as a boxed field instead
+       of the plain label spec §7 Density asks for. */
+    background: transparent;
     border: 0;
     border-bottom: 1px solid transparent;
     border-radius: 0;
-    padding: 8px 4px;
+    font-size: var(--ork-font-size-base);
+    min-height: 26px;
+    padding: 3px 4px;
 }
 
 .svb-optrow .svb-optlabel:hover { border-bottom-color: var(--ork-border); }
@@ -551,9 +697,10 @@
 }
 
 .svb-optrow .svb-optweight {
-    flex: 0 0 84px;
-    min-height: 44px;
-    padding: 8px;
+    flex: 0 0 70px;
+    min-height: 26px;
+    font-size: var(--ork-font-size-sm);
+    padding: 3px 6px;
 }
 
 .svb-other-tag {
@@ -567,7 +714,22 @@
     cursor: help;
 }
 
-.svb-optadd { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.svb-optadd { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.svb-optadd-line { font-size: var(--ork-font-size-base); color: var(--sv-text-muted); }
+
+.svb-optadd-link {
+    border: 0;
+    background: none;
+    padding: 0;
+    font: inherit;
+    color: var(--sv-accent);
+    font-weight: var(--ork-font-weight-semibold);
+    cursor: pointer;
+}
+
+.svb-optadd-link:hover:not([disabled]) { text-decoration: underline; }
+.svb-optadd-link:focus-visible { outline: 2px solid var(--sv-accent); outline-offset: 2px; }
+.svb-optadd-link[disabled] { opacity: 0.45; cursor: not-allowed; text-decoration: none; }
 
 /* ── Matrix ───────────────────────────────────────────────────────────── */
 
@@ -591,27 +753,52 @@
     padding-bottom: 6px;
 }
 
+/* A column card wraps onto two lines: the label owns the first one, and the
+   weight field plus the reorder/remove controls sit under it. Inline, the
+   label was squeezed to three characters at the compact scale — and spec §7
+   puts the weight "under each column header" in any case. */
 .svb-mx-colstrip .svb-optrow-col {
     flex: 0 0 190px;
+    flex-wrap: wrap;
     align-items: center;
+    row-gap: 2px;
     border: 1px solid var(--ork-border);
     border-radius: var(--ork-radius-md);
     padding: 4px 6px;
     background: var(--ork-bg-secondary);
 }
 
-.svb-mx-colstrip .svb-optlabel { flex: 1 1 60px; }
+.svb-mx-colstrip .svb-optlabel { flex: 1 1 100%; min-width: 0; }
+.svb-mx-colstrip .svb-optweight { flex: 0 0 62px; }
+
+/* The column strip is a row of little cards, not a list: its controls have no
+   quiet gutter to hide in, so they stay put. */
+.svb-mx-colstrip .svb-opt .svb-opthandle,
+.svb-mx-colstrip .svb-opt .svb-move-btn,
+.svb-mx-colstrip .svb-opt > .svb-icon-btn { opacity: 1; }
 
 /* ── Setting lines ────────────────────────────────────────────────────── */
 
 .svb-settingline {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px 14px;
-    margin-top: 12px;
-    padding-top: 10px;
+    gap: 6px 14px;
+    margin-top: 10px;
+    padding-top: 8px;
     border-top: 1px dashed var(--ork-border);
+    font-size: var(--ork-font-size-sm);
 }
+
+/* Inline settings: 28px controls at the 13px base (spec §7 Density). */
+.svb-settingline .sv-input,
+.svb-settingline .sv-select {
+    min-height: 28px;
+    font-size: var(--ork-font-size-base);
+    padding: 3px 8px;
+}
+
+.svb-settingline .sv-select { padding-right: 30px; }
+.svb-settingline .svb-check { min-height: 28px; font-size: var(--ork-font-size-sm); }
 
 .svb-settingline .svb-field { margin-bottom: 0; flex: 1 1 150px; min-width: 0; }
 .svb-settingline .svb-field-check { flex: 1 1 100%; }
@@ -630,8 +817,9 @@
     border: 0;
     border-bottom: 1px dashed var(--ork-border-dark);
     border-radius: 0;
-    padding: 8px 2px;
-    min-height: 44px;
+    font-size: var(--ork-font-size-base);
+    padding: 3px 2px;
+    min-height: 28px;
 }
 
 .svb-endlabel .sv-input:focus { border-bottom-style: solid; border-bottom-color: var(--sv-accent); box-shadow: none; }
@@ -639,8 +827,8 @@
 /* ── ⋯ menu and card footer ───────────────────────────────────────────── */
 
 .svb-more {
-    margin-top: 12px;
-    padding: 12px;
+    margin-top: 10px;
+    padding: 10px 12px;
     border: 1px solid var(--ork-border);
     border-radius: var(--ork-radius-md);
     background: var(--ork-bg-secondary);
@@ -659,24 +847,97 @@
 .svb-more > .svb-sub:first-child,
 .svb-drawer-body > .svb-sub:first-child { margin-top: 0; }
 
-.svb-foot {
+/* 36px, right-aligned, nothing bordered in it (spec §7 Density). */
+.svb-card-foot {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
     gap: 8px;
-    flex-wrap: wrap;
-    margin-top: 12px;
-    padding-top: 10px;
+    height: 36px;
+    margin-top: 6px;
     border-top: 1px solid var(--ork-border);
 }
 
-.svb-foot-type { flex: 0 1 200px; min-width: 0; }
-.svb-foot-type .sv-select { min-height: 44px; }
-.svb-foot-req { margin: 0; }
-.svb-foot-spacer { flex: 1 1 auto; }
+.svb-card-foot .svb-icon-btn { width: 18px; height: 18px; font-size: 12px; }
+
+.svb-foot-div {
+    width: 1px;
+    align-self: stretch;
+    margin: 7px 2px;
+    background: var(--ork-border);
+}
+
+.svb-switchwrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.svb-switchlabel { font-size: var(--ork-font-size-sm); color: var(--ork-text-secondary); }
+
+.svb-switch { position: relative; display: inline-block; width: 32px; height: 18px; flex: 0 0 auto; }
+
+.svb-switch input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.svb-switch-track {
+    position: absolute;
+    inset: 0;
+    border-radius: 999px;
+    background: var(--ork-border-dark);
+    transition: background 0.15s;
+    pointer-events: none;
+}
+
+.svb-switch-track::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: var(--ork-shadow-card);
+    transition: transform 0.15s;
+}
+
+.svb-switch input:checked + .svb-switch-track { background: var(--sv-accent); }
+.svb-switch input:checked + .svb-switch-track::after { transform: translateX(14px); }
+.svb-switch input:focus-visible + .svb-switch-track { outline: 2px solid var(--sv-accent); outline-offset: 2px; }
+.svb-switch input[disabled] { cursor: not-allowed; }
+.svb-switch input[disabled] + .svb-switch-track { opacity: 0.5; }
 
 /* ── Generic fields (cards, ⋯ menu and drawer share these) ────────────── */
 
-.svb-field { margin-bottom: 12px; }
+.svb-field { margin-bottom: 10px; }
+
+/* Drawer and ⋯-menu controls: 32px at the 13px base (spec §7 Density). */
+.svb-more .sv-input,
+.svb-more .sv-select,
+.svb-more .sv-btn,
+.svb-drawer .sv-input,
+.svb-drawer .sv-select,
+.svb-drawer .sv-btn {
+    min-height: 32px;
+    font-size: var(--ork-font-size-base);
+    padding: 5px 10px;
+}
+
+.svb-more .sv-select,
+.svb-drawer .sv-select { padding-right: 32px; }
+
+.svb-more .sv-textarea,
+.svb-drawer .sv-textarea { font-size: var(--ork-font-size-base); padding: 6px 10px; }
 
 .svb-label {
     display: block;
@@ -694,28 +955,28 @@
     margin-bottom: 4px;
 }
 
-.svb-hint { margin: 4px 0 0; font-size: 11px; line-height: 1.45; color: var(--sv-text-muted); }
+.svb-hint { margin: 3px 0 0; font-size: var(--ork-font-size-sm); line-height: 1.45; color: var(--sv-text-muted); }
 
 .svb-check {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    min-height: 44px;
-    font-size: 14px;
+    min-height: 30px;
+    font-size: var(--ork-font-size-base);
     color: var(--ork-text);
     cursor: pointer;
 }
 
-.svb-check input[type="checkbox"] { width: 20px; height: 20px; flex: 0 0 auto; accent-color: var(--sv-accent); }
+.svb-check input[type="checkbox"] { width: 16px; height: 16px; flex: 0 0 auto; accent-color: var(--sv-accent); }
 .svb-check input[disabled] { cursor: not-allowed; }
 
-.svb-multi { min-height: 150px; padding: 6px; }
+.svb-multi { min-height: 132px; padding: 6px; }
 
 .svb-color { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
 .svb-color-input {
-    width: 56px;
-    height: 44px;
+    width: 48px;
+    height: 32px;
     padding: 2px;
     border: 1px solid var(--ork-input-border);
     border-radius: var(--ork-radius-md);
@@ -730,8 +991,8 @@
 .svb-md-tools { display: flex; gap: 2px; margin-bottom: 4px; flex-wrap: wrap; }
 
 .svb-md-btn {
-    width: 34px;
-    height: 34px;
+    width: 26px;
+    height: 26px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -747,7 +1008,7 @@
 .svb-md-btn:hover { background: var(--ork-surface-hover); border-color: var(--ork-border-dark); }
 .svb-md-btn:focus-visible { outline: 2px solid var(--sv-accent); outline-offset: 1px; }
 
-.svb-md-input { min-height: 84px; }
+.svb-md-input { min-height: 72px; }
 
 .svb-md-preview {
     margin-top: 6px;
@@ -822,7 +1083,7 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 12px 14px;
+    padding: 10px 12px;
     border-bottom: 1px solid var(--ork-border);
     background: var(--ork-bg-secondary);
     flex: 0 0 auto;
@@ -830,7 +1091,7 @@
 
 .svb-drawer-title {
     font-family: var(--ork-font-heading);
-    font-size: 15px;
+    font-size: 14px;
     font-weight: var(--ork-font-weight-bold);
     color: var(--ork-text);
     margin: 0;
@@ -883,7 +1144,7 @@ body.svb-drawer-lock { overflow: hidden; }
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 12px 14px;
+    padding: 10px 12px;
     border-bottom: 1px solid var(--ork-border);
     background: var(--ork-bg-secondary);
     flex: 0 0 auto;
@@ -903,7 +1164,7 @@ body.svb-drawer-lock { overflow: hidden; }
     margin: 0;
 }
 
-.svb-modal-title { font-size: 15px; font-weight: var(--ork-font-weight-bold); }
+.svb-modal-title { font-size: 14px; font-weight: var(--ork-font-weight-bold); }
 .svb-modal-close { margin-left: auto; }
 
 .svb-modal-body {
@@ -911,7 +1172,7 @@ body.svb-drawer-lock { overflow: hidden; }
     overflow-y: auto;
     flex: 1 1 auto;
     min-height: 0;
-    font-size: 14px;
+    font-size: var(--ork-font-size-base);
     line-height: 1.6;
     color: var(--ork-text-secondary);
 }
@@ -924,16 +1185,64 @@ body.svb-drawer-lock { overflow: hidden; }
 
 /* ── Touch: every control the rule cares about reaches 44px ───────────── */
 
+/* The density pass above is the DESKTOP scale. Every control it shrank comes
+   back to a 44px tap target here — this block is the accessibility contract,
+   so anything sized under 44px above must appear in it. */
 @media (pointer: coarse), (max-width: 900px) {
     .svb-icon-btn,
+    .svb-card-foot .svb-icon-btn,
+    .svb-opt > .svb-icon-btn,
     .svb-md-btn,
     .svb-page-handle,
     .svb-handle,
     .svb-opthandle,
+    .svb-move-btn,
     .svb-addinline-btn {
         min-width: 44px;
         min-height: 44px;
+        width: auto;
+        height: auto;
     }
+
+    .svb-move-btn { min-width: 34px; }
+
+    /* No hover on touch: nothing may hide behind it. */
+    .svb-grip .svb-handle,
+    .svb-grip-keys,
+    .svb-opt .svb-opthandle,
+    .svb-opt .svb-move-btn,
+    .svb-opt > .svb-icon-btn { opacity: 1; }
+
+    .svb-grip { height: 44px; }
+    .svb-opt { min-height: 44px; }
+    .svb-optrow .svb-optlabel { min-height: 44px; font-size: 16px; padding: 8px 4px; }
+    .svb-optrow .svb-optweight { min-height: 44px; font-size: 16px; }
+    .svb-optadd-line { font-size: 14px; }
+    .svb-prompt { min-height: 44px; font-size: 16px; padding: 10px 12px; }
+    .svb-typesel { height: 44px; font-size: 16px; }
+    .svb-typepick { max-width: 100%; }
+    .svb-title-input { min-height: 44px; font-size: 20px; }
+    .svb-page-title { min-height: 44px; font-size: 16px; }
+    .svb-addbtn { min-height: 44px; font-size: 14px; }
+    .svb-link { min-height: 44px; padding: 8px 6px; }
+    .svb-help-add { min-height: 44px; font-size: 14px; }
+    .svb-card-foot { height: auto; min-height: 52px; flex-wrap: wrap; padding: 4px 0; }
+    .svb-switch { width: 44px; height: 24px; }
+    .svb-switch-track::after { width: 20px; height: 20px; }
+    .svb-switch input:checked + .svb-switch-track::after { transform: translateX(20px); }
+    .svb-switchlabel { font-size: var(--ork-font-size-base); }
+    .svb-check { min-height: 44px; }
+    .svb-check input[type="checkbox"] { width: 20px; height: 20px; }
+    .svb-color-input { height: 44px; }
+    .svb-settingline .sv-input,
+    .svb-settingline .sv-select,
+    .svb-endlabel .sv-input,
+    .svb-more .sv-input,
+    .svb-more .sv-select,
+    .svb-more .sv-btn,
+    .svb-drawer .sv-input,
+    .svb-drawer .sv-select,
+    .svb-drawer .sv-btn { min-height: 44px; font-size: 16px; }
 
     .svb-addinline { height: 16px; }
     .svb-addinline-btn { width: 44px; height: 44px; margin-top: -14px; border-radius: 50%; }
@@ -960,11 +1269,12 @@ body.svb-drawer-lock { overflow: hidden; }
 
 @media (max-width: 420px) {
     .svb-items { padding: 8px 8px 4px; }
-    .svb-item-body { padding: 4px 8px 8px; }
+    .svb-item-body { padding: 0 10px 10px; }
     .svb-page-head { padding: 8px; }
     .svb-page-num { flex: 1 1 100%; }
     .svb-page-title { flex: 1 1 100%; }
-    .svb-foot-type { flex: 1 1 100%; }
+    .svb-card-top { flex-wrap: wrap; }
+    .svb-typepick { flex: 1 1 100%; width: 100%; }
     .svb-settingline .svb-field { flex: 1 1 100%; }
     .svb-mx-colstrip .svb-optrow-col { flex: 0 0 160px; }
     .svb-scale-ends { flex-direction: column; gap: 4px; }
@@ -1014,6 +1324,28 @@ html[data-theme="dark"] .svb-page-title:focus,
 html[data-theme="dark"] .svb-color-input,
 html[data-theme="dark"] .svb-multi { background: var(--ork-input-bg); border-color: var(--ork-border); }
 
+/* --ork-surface-light collapses onto --ork-card-bg in dark mode, so the
+   filled prompt would vanish into the card. It gets its own fill and the
+   picker/switch get the dark card colours. */
+html[data-theme="dark"] .svb-prompt {
+    background: var(--ork-bg-secondary);
+    border-bottom-color: var(--ork-text-muted);
+}
+
+html[data-theme="dark"] .svb-typesel {
+    background: var(--ork-bg-secondary);
+    border-color: var(--ork-border);
+    color: var(--ork-text);
+}
+
+html[data-theme="dark"] .svb-typesel:hover:not([disabled]) { border-color: var(--ork-text-muted); }
+html[data-theme="dark"] .svb-typepick::after { border-color: var(--ork-text-muted); }
+html[data-theme="dark"] .svb-switch-track { background: var(--ork-text-muted); }
+html[data-theme="dark"] .svb-switch-track::after { background: var(--ork-card-bg); }
+html[data-theme="dark"] .svb-switch input:checked + .svb-switch-track { background: var(--sv-accent); }
+html[data-theme="dark"] .svb-switch input:checked + .svb-switch-track::after { background: #fff; }
+html[data-theme="dark"] .svb-foot-div { background: var(--ork-border); }
+
 /* orkui.css gives every global h1–h6 a grey pill box, and its dark-mode rule
    carries more type selectors than a bare class — so the reset is repeated
    here for both themes. Verified against computed styles, not by eye. */
@@ -1044,18 +1376,33 @@ html[data-theme="dark"] .svb-modal-body h4 { color: var(--ork-text); }
 @media print {
     .svb-page-actions,
     .svb-move-btn,
-    .svb-item-bar .svb-handle,
+    .svb-grip,
     .svb-page-handle,
     .svb-addbtn,
     .svb-addinline,
     .svb-pagediv,
-    .svb-foot,
+    .svb-card-foot,
     .svb-more,
     .svb-drawer,
     .svb-modal,
     .svb-confirm { display: none !important; }
 
     .svb-page, .svb-item { box-shadow: none; break-inside: avoid; }
+}
+
+/* ── Header actions ───────────────────────────────────────────────────── */
+
+/* reports.css sizes .rp-btn-ghost at 7px 14px / 13px, which paints a 34px
+   button. The builder header carries six of them, so on a fine pointer they
+   trim to the 30px / 12px scale spec §7 Density asks for. The 600px block
+   below leaves touch widths alone. */
+@media (min-width: 601px) and (pointer: fine) {
+    .rp-root .rp-header-actions .rp-btn-ghost {
+        min-height: 30px;
+        box-sizing: border-box;
+        padding   : 5px 12px;
+        font-size : var(--ork-font-size-sm);
+    }
 }
 
 /* ── Narrow header actions ────────────────────────────────────────────── */

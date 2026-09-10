@@ -14,8 +14,17 @@
    survey can be re-accented at runtime: the runner sets
    `style="--sv-accent: #….; --sv-accent-contrast: #…"` from accent_color.
 
-   Mobile-first: tap targets >= 44px, text inputs 16px (iOS will not zoom),
-   breakpoints at 700px (matrix collapses) and 420px (scale row wraps).
+   Type scale (spec §7 "Density", 2026-09-10): the app's own scale from
+   tokens.css / reports.css — 13px base (--ork-font-size-base), 12px meta
+   (--ork-font-size-sm), 11px uppercase section labels, 14px prompts and card
+   titles, 20px page/survey titles. Nothing in this module is bigger than the
+   equivalent control elsewhere in the ORK.
+
+   Desktop-first sizing with one accessibility exception: the RUNNER (.sv-root)
+   gets its 44px tap targets and 16px real form controls back in the
+   `(max-width: 700px), (pointer: coarse)` block near the bottom — 16px so iOS
+   does not zoom on focus. Labels around those controls stay on the 13px base.
+   Breakpoints: 700px (matrix collapses, runner touch sizing) and 420px.
    ========================================================================== */
 
 .sv-root,
@@ -108,13 +117,13 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
 }
 
 .sv-title {
-    font-size: 22px;
+    font-size: 20px;
     font-weight: var(--ork-font-weight-bold);
 }
 
 .sv-intro {
     color: var(--sv-text-body);
-    font-size: 15px;
+    font-size: var(--ork-font-size-base);
     line-height: 1.55;
 }
 
@@ -128,8 +137,8 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
     border: 1px solid var(--ork-alert-info-border);
     color: var(--ork-alert-info-text);
     border-radius: var(--ork-radius-md);
-    padding: 12px 14px;
-    font-size: 14px;
+    padding: 10px 12px;
+    font-size: var(--ork-font-size-base);
     line-height: 1.5;
     margin-bottom: var(--sv-gap);
 }
@@ -149,7 +158,7 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
 /* ── Progress ─────────────────────────────────────────────────────────── */
 
 .sv-progress {
-    height: 8px;
+    height: 6px;
     border-radius: 999px;
     background: var(--ork-bg-tertiary);
     overflow: hidden;
@@ -177,15 +186,15 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    min-height: 44px;
-    padding: 10px 20px;
+    gap: 6px;
+    min-height: 32px;
+    padding: 6px 14px;
     border: 1px solid var(--sv-border-strong);
     border-radius: var(--ork-radius-md);
     background: var(--sv-card-bg);
     color: var(--sv-text);
     font-family: inherit;
-    font-size: 15px;
+    font-size: var(--ork-font-size-base);
     font-weight: var(--ork-font-weight-semibold);
     line-height: 1.2;
     cursor: pointer;
@@ -253,7 +262,7 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
 }
 
 .sv-q-prompt {
-    font-size: 16px;
+    font-size: 14px;
     font-weight: var(--ork-font-weight-semibold);
     line-height: 1.4;
     color: var(--sv-text);
@@ -267,7 +276,7 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
 }
 
 .sv-q-help {
-    font-size: 14px;
+    font-size: var(--ork-font-size-sm);
     line-height: 1.5;
     color: var(--sv-text-muted);
     margin-bottom: 10px;
@@ -295,7 +304,7 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
     background: var(--sv-danger-bg);
     color: var(--ork-alert-danger-text);
     border: 1px solid var(--ork-alert-danger-border);
-    font-size: 13px;
+    font-size: var(--ork-font-size-base);
     line-height: 1.4;
 }
 
@@ -303,10 +312,10 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
 
 .sv-block { background: transparent; border-style: dashed; }
 
-.sv-block-title { font-size: 18px; font-weight: var(--ork-font-weight-bold); }
+.sv-block-title { font-size: 14px; font-weight: var(--ork-font-weight-bold); }
 
 .sv-block-body {
-    font-size: 15px;
+    font-size: var(--ork-font-size-base);
     line-height: 1.6;
     color: var(--sv-text-body);
 }
@@ -315,7 +324,7 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
 
 .sv-figure-caption {
     margin-top: 6px;
-    font-size: 13px;
+    font-size: var(--ork-font-size-sm);
     color: var(--sv-text-muted);
     text-align: center;
 }
@@ -326,7 +335,7 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
     color: var(--sv-text-muted);
     border: 1px dashed var(--sv-border-strong);
     border-radius: var(--ork-radius-md);
-    font-size: 13px;
+    font-size: var(--ork-font-size-sm);
 }
 
 /* ── Text controls ────────────────────────────────────────────────────── */
@@ -336,10 +345,10 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
 .sv-select {
     width: 100%;
     box-sizing: border-box;
-    min-height: 44px;
-    padding: 10px 12px;
+    min-height: 32px;
+    padding: 6px 10px;
     font-family: inherit;
-    font-size: 16px;          /* 16px: iOS refuses to zoom on focus */
+    font-size: var(--ork-font-size-base);
     line-height: 1.4;
     color: var(--sv-text);
     background: var(--sv-input-bg);
@@ -348,7 +357,7 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
     transition: var(--ork-transition-base);
 }
 
-.sv-textarea { min-height: 110px; resize: vertical; }
+.sv-textarea { min-height: 84px; resize: vertical; }
 
 .sv-select {
     appearance: none;
@@ -374,12 +383,12 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
 
 .sv-number-wrap { display: flex; align-items: center; gap: 8px; }
 .sv-number-wrap .sv-input-number { max-width: 180px; }
-.sv-unit { font-size: 14px; color: var(--sv-text-muted); }
+.sv-unit { font-size: var(--ork-font-size-sm); color: var(--sv-text-muted); }
 
 /* ── Choices: single / multi / yesno ──────────────────────────────────── */
 
 .sv-choice-hint {
-    font-size: 13px;
+    font-size: var(--ork-font-size-sm);
     color: var(--sv-text-muted);
     margin-bottom: 8px;
 }
@@ -394,9 +403,9 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
 .sv-choice {
     display: flex;
     align-items: center;
-    gap: 12px;
-    min-height: 44px;
-    padding: 8px 12px;
+    gap: 10px;
+    min-height: 32px;
+    padding: 5px 10px;
     border: 1px solid var(--sv-border);
     border-radius: var(--ork-radius-md);
     background: var(--sv-card-bg);
@@ -408,16 +417,16 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
 .sv-choice:hover { background: var(--ork-surface-hover); border-color: var(--sv-border-strong); }
 
 .sv-choice-input {
-    width: 24px;
-    height: 24px;
-    min-width: 24px;
+    width: 16px;
+    height: 16px;
+    min-width: 16px;
     margin: 0;
     accent-color: var(--sv-accent);
     cursor: pointer;
 }
 
 .sv-choice-label {
-    font-size: 15px;
+    font-size: var(--ork-font-size-base);
     line-height: 1.4;
     color: var(--sv-text);
     overflow-wrap: anywhere;
@@ -467,15 +476,15 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
     display: flex;
     align-items: center;
     justify-content: center;
-    min-width: 44px;
-    min-height: 44px;
+    min-width: 32px;
+    min-height: 32px;
     padding: 0 8px;
     box-sizing: border-box;
     border: 1px solid var(--sv-border-strong);
     border-radius: var(--ork-radius-md);
     background: var(--sv-card-bg);
     color: var(--sv-text-body);
-    font-size: 16px;
+    font-size: 14px;
     font-weight: var(--ork-font-weight-semibold);
     transition: var(--ork-transition-base);
 }
@@ -505,9 +514,9 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
     border-color: transparent;
     background: transparent;
     color: var(--sv-star-off);
-    font-size: 26px;
-    padding: 0 4px;
-    min-width: 44px;
+    font-size: 20px;
+    padding: 0 3px;
+    min-width: 30px;
 }
 
 .sv-scale-star .sv-scale-input:checked + .sv-scale-face,
@@ -527,14 +536,14 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
 
 .sv-scale-clear {
     align-self: flex-start;
-    min-height: 44px;
-    min-width: 44px;
+    min-height: 28px;
+    min-width: 28px;
     padding: 0 8px;
     border: 0;
     background: none;
     color: var(--sv-accent);
     font-family: inherit;
-    font-size: 13px;
+    font-size: var(--ork-font-size-sm);
     cursor: pointer;
     text-decoration: underline;
 }
@@ -546,13 +555,13 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
 .sv-matrix {
     width: 100%;
     border-collapse: collapse;
-    font-size: 14px;
+    font-size: var(--ork-font-size-base);
 }
 
 .sv-matrix th,
 .sv-matrix td {
     border-bottom: 1px solid var(--sv-border);
-    padding: 8px 6px;
+    padding: 6px 6px;
     text-align: center;
     vertical-align: middle;
 }
@@ -575,13 +584,13 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: 44px;
+    min-height: 30px;
     cursor: pointer;
 }
 
 .sv-matrix-input {
-    width: 24px;
-    height: 24px;
+    width: 16px;
+    height: 16px;
     margin: 0;
     accent-color: var(--sv-accent);
     cursor: pointer;
@@ -606,37 +615,37 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
     display: flex;
     align-items: center;
     gap: 10px;
-    min-height: 48px;
-    padding: 6px 8px;
+    min-height: 34px;
+    padding: 4px 8px;
     border: 1px solid var(--sv-border);
     border-radius: var(--ork-radius-md);
     background: var(--sv-card-bg);
     box-sizing: border-box;
 }
 
-.sv-rank-handle { color: var(--ork-text-hint); cursor: grab; font-size: 14px; }
+.sv-rank-handle { color: var(--ork-text-hint); cursor: grab; font-size: var(--ork-font-size-sm); }
 
 .sv-rank-pos {
     flex: 0 0 auto;
-    min-width: 26px;
-    height: 26px;
+    min-width: 22px;
+    height: 22px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     border-radius: 999px;
     background: var(--sv-accent-soft);
     color: var(--sv-accent);
-    font-size: 13px;
+    font-size: var(--ork-font-size-sm);
     font-weight: var(--ork-font-weight-bold);
 }
 
-.sv-rank-label { flex: 1 1 auto; font-size: 15px; line-height: 1.35; overflow-wrap: anywhere; }
+.sv-rank-label { flex: 1 1 auto; font-size: var(--ork-font-size-base); line-height: 1.35; overflow-wrap: anywhere; }
 
 .sv-rank-btns { display: flex; gap: 4px; flex: 0 0 auto; }
 
 .sv-rank-btn {
-    width: 44px;
-    height: 44px;
+    width: 26px;
+    height: 26px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -645,7 +654,7 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
     background: var(--sv-card-bg);
     color: var(--sv-text-body);
     cursor: pointer;
-    font-size: 14px;
+    font-size: var(--ork-font-size-sm);
 }
 
 .sv-rank-btn:hover { background: var(--ork-surface-hover); border-color: var(--sv-border-strong); }
@@ -661,9 +670,9 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
 .sv-consent-opt {
     display: flex;
     align-items: flex-start;
-    gap: 12px;
-    padding: 14px;
-    min-height: 44px;
+    gap: 10px;
+    padding: 10px 12px;
+    min-height: 32px;
     border: 1px solid var(--sv-border);
     border-radius: var(--sv-radius);
     background: var(--sv-card-bg);
@@ -680,9 +689,9 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
 }
 
 .sv-consent-input {
-    width: 24px;
-    height: 24px;
-    min-width: 24px;
+    width: 16px;
+    height: 16px;
+    min-width: 16px;
     margin: 2px 0 0;
     accent-color: var(--sv-accent);
     cursor: pointer;
@@ -692,7 +701,7 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
    because the spec §2 copy is fixed and its explanation continues the label. */
 .sv-consent-copy {
     display: block;
-    font-size: 15px;
+    font-size: var(--ork-font-size-base);
     line-height: 1.5;
     color: var(--sv-text-muted);
 }
@@ -739,7 +748,7 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
 
     .sv-matrix-echo {
         display: inline;
-        font-size: 15px;
+        font-size: var(--ork-font-size-base);
         color: var(--sv-text);
         line-height: 1.35;
         overflow-wrap: anywhere;
@@ -751,7 +760,7 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
     .sv-title { font-size: 20px; }
 
     .sv-scale { gap: 4px; }
-    .sv-scale-face { min-width: 44px; padding: 0 4px; font-size: 15px; }
+    .sv-scale-face { padding: 0 4px; font-size: var(--ork-font-size-base); }
     .sv-scale-nps .sv-scale-opt { flex: 1 0 auto; }
 
     .sv-choices-inline { flex-direction: column; }
@@ -822,9 +831,9 @@ html[data-theme="dark"] .sv-figure-empty { color: var(--ork-text-muted); }
     border: 1px solid var(--ork-alert-warning-border);
     color: var(--ork-alert-warning-text);
     border-radius: var(--ork-radius-md);
-    padding: 10px 14px;
+    padding: 8px 12px;
     margin-bottom: var(--sv-gap);
-    font-size: 14px;
+    font-size: var(--ork-font-size-base);
     line-height: 1.4;
 }
 
@@ -833,7 +842,7 @@ html[data-theme="dark"] .sv-figure-empty { color: var(--ork-text-muted); }
 .sv-preview-link {
     display: inline-flex;
     align-items: center;
-    min-height: 44px;
+    min-height: 30px;
     padding: 0 12px;
     color: inherit;
     font-weight: var(--ork-font-weight-semibold);
@@ -845,14 +854,16 @@ html[data-theme="dark"] .sv-figure-empty { color: var(--ork-text-muted); }
 .sv-page { display: block; }
 
 .sv-page-title {
-    font-size: 19px;
+    font-size: 14px;
     font-weight: var(--ork-font-weight-bold);
 }
 
 .sv-page-desc { margin-bottom: var(--sv-gap); }
 
+/* Welcome / thank-you card heading — the one place the module goes above the
+   14px card title, and 18px is its ceiling (spec §7 Density). */
 .sv-card-title {
-    font-size: 19px;
+    font-size: 18px;
     font-weight: var(--ork-font-weight-bold);
 }
 
@@ -863,19 +874,19 @@ html[data-theme="dark"] .sv-figure-empty { color: var(--ork-text-muted); }
 .sv-check {
     display: flex;
     align-items: flex-start;
-    gap: 12px;
-    min-height: 44px;
-    padding: 10px 0;
-    font-size: 14px;
+    gap: 10px;
+    min-height: 30px;
+    padding: 6px 0;
+    font-size: var(--ork-font-size-base);
     line-height: 1.45;
     color: var(--sv-text-body);
     cursor: pointer;
 }
 
 .sv-check-input {
-    width: 22px;
-    height: 22px;
-    min-width: 22px;
+    width: 16px;
+    height: 16px;
+    min-width: 16px;
     margin: 0;
     accent-color: var(--sv-accent);
     cursor: pointer;
@@ -905,8 +916,8 @@ html[data-theme="dark"] .sv-md h5, html[data-theme="dark"] .sv-md h6 {
 }
 
 .sv-md h1 { font-size: 18px; }
-.sv-md h2 { font-size: 16px; }
-.sv-md h3, .sv-md h4, .sv-md h5, .sv-md h6 { font-size: 14px; }
+.sv-md h2 { font-size: 14px; }
+.sv-md h3, .sv-md h4, .sv-md h5, .sv-md h6 { font-size: var(--ork-font-size-base); }
 
 .sv-md > :first-child { margin-top: 0; }
 .sv-md p { margin: 0 0 10px; }
@@ -918,7 +929,7 @@ html[data-theme="dark"] .sv-md h5, html[data-theme="dark"] .sv-md h6 {
     border-collapse: collapse;
     width: 100%;
     margin: 10px 0;
-    font-size: 13px;
+    font-size: var(--ork-font-size-sm);
 }
 
 .sv-md th,
@@ -960,6 +971,60 @@ html[data-theme="dark"] .sv-md h5, html[data-theme="dark"] .sv-md h6 {
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
     border: 0;
+}
+
+/* ── Runner touch sizing (spec §7 "Density", added 2026-09-10) ───────────
+   Everything above is the app's own compact scale — 13px base, 32px controls
+   — which is what the builder canvas and the results page want. The RUNNER is
+   the documented exception: a survey is filled in by players on phones, so at
+   touch widths (and on any coarse pointer) .sv-root puts back its 44px tap
+   targets and 16px real form controls, 16px being the size below which iOS
+   zooms the page on focus. Labels and helper text around those controls stay
+   on the 13/12px scale — only the controls themselves grow.
+
+   Scoped to .sv-root, so the builder's .sv-scope previews and the results
+   page keep the compact scale at every width. */
+@media (max-width: 700px), (pointer: coarse) {
+    .sv-root .sv-input,
+    .sv-root .sv-textarea,
+    .sv-root .sv-select {
+        min-height: 44px;
+        padding: 10px 12px;
+        font-size: 16px;
+    }
+
+    .sv-root .sv-textarea { min-height: 110px; }
+    .sv-root .sv-select { padding-right: 36px; }
+
+    .sv-root .sv-btn {
+        min-height: 44px;
+        padding: 10px 20px;
+        font-size: 14px;
+    }
+
+    .sv-root .sv-choice { min-height: 44px; padding: 8px 12px; gap: 12px; }
+    .sv-root .sv-choice-input { width: 22px; height: 22px; min-width: 22px; }
+    .sv-root .sv-choice-label { font-size: 14px; }
+
+    .sv-root .sv-scale-face { min-width: 44px; min-height: 44px; font-size: 16px; }
+    .sv-root .sv-scale-star .sv-scale-face { font-size: 26px; padding: 0 4px; }
+    .sv-root .sv-scale-clear { min-height: 44px; min-width: 44px; }
+
+    .sv-root .sv-matrix-opt { min-height: 44px; }
+    .sv-root .sv-matrix-input { width: 22px; height: 22px; }
+
+    .sv-root .sv-rank-item { min-height: 48px; padding: 6px 8px; }
+    .sv-root .sv-rank-btn { width: 44px; height: 44px; font-size: 14px; }
+    .sv-root .sv-rank-label { font-size: 14px; }
+
+    .sv-root .sv-consent-opt { min-height: 44px; padding: 14px; gap: 12px; }
+    .sv-root .sv-consent-input { width: 22px; height: 22px; min-width: 22px; }
+    .sv-root .sv-consent-copy { font-size: 14px; }
+
+    .sv-root .sv-check { min-height: 44px; padding: 10px 0; }
+    .sv-root .sv-check-input { width: 22px; height: 22px; min-width: 22px; }
+
+    .sv-root .sv-preview-link { min-height: 44px; }
 }
 
 @media (max-width: 420px) {

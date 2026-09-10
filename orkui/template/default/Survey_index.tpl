@@ -68,13 +68,14 @@ html[data-theme="dark"] .sv-status-pill-closed   { background: #744210; color: #
 html[data-theme="dark"] .sv-status-pill-archived { background: #2d3748; color: #a0aec0; }
 
 /* Both the <a> and the <button> variants land on the same box so the row reads
-   as one control strip, and both clear the 44px tap-target floor. Colours come
-   from the theme-aware --rp- and --ork- tokens, so there is no dark override. */
+   as one control strip. 28px on a desktop (spec §7 Density); the coarse-pointer
+   block at the bottom restores the 44px tap-target floor. Colours come from the
+   theme-aware --rp- and --ork- tokens, so there is no dark override. */
 .sv-row-btn {
 	display: inline-flex; align-items: center; justify-content: center; gap: 5px;
-	padding: 5px 10px; min-height: 44px; box-sizing: border-box; border-radius: 5px;
+	padding: 4px 9px; min-height: 28px; box-sizing: border-box; border-radius: 5px;
 	border: 1px solid var(--rp-border-mid); background: var(--ork-card-bg); color: var(--rp-text-body);
-	font-size: 11.5px; font-weight: 600; line-height: 1.2; cursor: pointer; white-space: nowrap; text-decoration: none;
+	font-size: var(--ork-font-size-sm); font-weight: 600; line-height: 1.2; cursor: pointer; white-space: nowrap; text-decoration: none;
 }
 .sv-row-btn:hover  { background: var(--rp-bg-light); border-color: var(--rp-border-strong); color: var(--rp-text); }
 .sv-row-btn i      { font-size: 11px; }
@@ -85,15 +86,15 @@ html[data-theme="dark"] .sv-status-pill-archived { background: #2d3748; color: #
    (font, line-height, text-align) are normalised here. */
 button.rp-filter-pill { font: inherit; font-size: 11px; font-weight: 600; line-height: 1.4; text-align: center; }
 
-.sv-empty-state { padding: 40px 16px; text-align: center; color: var(--rp-text-muted); font-size: 14px; }
-.sv-empty-state i { font-size: 30px; display: block; margin-bottom: 12px; opacity: 0.4; }
+.sv-empty-state { padding: 32px 16px; text-align: center; color: var(--rp-text-muted); font-size: var(--ork-font-size-base); }
+.sv-empty-state i { font-size: 26px; display: block; margin-bottom: 12px; opacity: 0.4; }
 
 .sv-survey-table { width: 100%; border-collapse: collapse; }
 .sv-survey-table th {
 	text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
 	color: var(--rp-text-muted); border-bottom: 1px solid var(--rp-border); padding: 8px 10px;
 }
-.sv-survey-table td { padding: 10px; border-bottom: 1px solid var(--rp-border); font-size: 13px; vertical-align: middle; }
+.sv-survey-table td { padding: 7px 10px; border-bottom: 1px solid var(--rp-border); font-size: var(--ork-font-size-base); vertical-align: middle; }
 .sv-survey-table tr:last-child td { border-bottom: none; }
 .sv-survey-table tr[hidden] { display: none; }
 .sv-survey-title a { color: var(--rp-text); font-weight: 700; text-decoration: none; }
@@ -109,19 +110,19 @@ html[data-theme="dark"] .sv-survey-title a { color: #e2e8f0; }
    the site-wide overlays (nav 9999, What's New 10000) like every other modal. */
 .sv-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: var(--z-modal-backdrop, 10040); align-items: center; justify-content: center; padding: 16px; }
 .sv-overlay.sv-open { display: flex; }
-.sv-modal { position: relative; z-index: var(--z-modal, 10100); background: #fff; border-radius: 8px; padding: 22px 24px; box-sizing: border-box; max-width: 440px; width: 100%; box-shadow: 0 4px 24px rgba(0,0,0,0.18); max-height: 82vh; overflow-y: auto; }
+.sv-modal { position: relative; z-index: var(--z-modal, 10100); background: #fff; border-radius: 8px; padding: 18px 20px; box-sizing: border-box; max-width: 440px; width: 100%; box-shadow: 0 4px 24px rgba(0,0,0,0.18); max-height: 82vh; overflow-y: auto; }
 /* .sv-scope on the panel already resets the global h1–h6 pill box in both
    themes (survey.css); this only re-states the type scale and spacing. */
-.sv-modal > .sv-modal-title { margin: 0 0 14px; font-size: 1.05rem; font-weight: 700; color: #2d3748; }
-.sv-modal-body { font-size: 0.9rem; color: #4a5568; line-height: 1.5; }
-.sv-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
-.sv-field label { font-size: 12px; font-weight: 700; color: #4a5568; }
+.sv-modal > .sv-modal-title { margin: 0 0 12px; font-size: 14px; font-weight: 700; color: #2d3748; }
+.sv-modal-body { font-size: var(--ork-font-size-base); color: #4a5568; line-height: 1.5; }
+.sv-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.sv-field label { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #4a5568; }
 .sv-field input[type=text], .sv-field select {
-	font-size: 16px; padding: 9px 10px; border: 1px solid var(--rp-border-mid); border-radius: 5px;
-	min-height: 44px; background: #fff; color: #2d3748;
+	font-size: var(--ork-font-size-base); padding: 6px 10px; border: 1px solid var(--rp-border-mid); border-radius: 5px;
+	min-height: 32px; box-sizing: border-box; background: #fff; color: #2d3748;
 }
 .sv-modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 6px; }
-.sv-modal-btn { padding: 9px 18px; min-height: 40px; border-radius: 5px; font-size: 0.85rem; font-weight: 600; cursor: pointer; border: none; }
+.sv-modal-btn { padding: 6px 16px; min-height: 32px; border-radius: 5px; font-size: var(--ork-font-size-base); font-weight: 600; cursor: pointer; border: none; }
 .sv-modal-cancel { background: #e2e8f0; color: #2d3748; }
 .sv-modal-cancel:hover { background: #cbd5e0; }
 .sv-modal-ok { background: #2b6cb0; color: #fff; }
@@ -147,11 +148,27 @@ html[data-theme="dark"] .sv-modal-cancel:hover { background: #718096; }
 .sv-toast {
 	position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
 	background: #2d3748; color: #fff; padding: 9px 18px; border-radius: 20px;
-	font-size: 12.5px; font-weight: 600; z-index: var(--z-modal-top, 10200); opacity: 0; pointer-events: none;
+	font-size: var(--ork-font-size-sm); font-weight: 600; z-index: var(--z-modal-top, 10200); opacity: 0; pointer-events: none;
 	transition: opacity 0.2s;
 }
 .sv-toast.sv-toast-show { opacity: 1; }
 html[data-theme="dark"] .sv-toast { background: #1a202c; border: 1px solid #4a5568; }
+
+/* reports.css paints .rp-btn-ghost at 34px (7px 14px / 13px). On a fine
+   pointer this page's header button trims to the 30px / 12px scale spec §7
+   Density asks for; reports.css keeps its own touch sizing under 600px. */
+@media (min-width: 601px) and (pointer: fine) {
+	.rp-root .rp-header-actions .rp-btn-ghost { min-height: 30px; box-sizing: border-box; padding: 5px 12px; font-size: var(--ork-font-size-sm); }
+}
+
+/* The compact sizes above are the desktop scale. On a coarse pointer the row
+   buttons and the modal controls go back to 44px tap targets, and the modal's
+   text field back to 16px so iOS does not zoom the page on focus. */
+@media (pointer: coarse) {
+	.sv-row-btn { min-height: 44px; padding: 8px 12px; }
+	.sv-field input[type=text], .sv-field select { min-height: 44px; font-size: 16px; padding: 9px 10px; }
+	.sv-modal-btn { min-height: 44px; padding: 9px 18px; }
+}
 
 @media (max-width: 640px) {
 	.sv-row-actions { justify-content: flex-start; }
