@@ -48,14 +48,15 @@ class Controller_Survey extends Controller
             return;
         }
 
+        // The picker list (manageable_scopes) only carries active kingdoms/parks,
+        // so deriving the label from it left a blank scope chip for a retired org
+        // or a hand-typed/bookmarked scope. scope_name() answers from
+        // ork_kingdom/ork_park regardless of active.
         $scopeName = 'All of Amtgard';
         if ($scopeType !== null) {
-            $scopeName = '';
-            foreach ($scopes as $s) {
-                if ($s['scope_type'] === $scopeType && (int) $s['scope_id'] === $scopeId) {
-                    $scopeName = $s['name'];
-                    break;
-                }
+            $scopeName = $this->Survey->scope_name($scopeType, $scopeId);
+            if ($scopeName === '') {
+                $scopeName = ucfirst($scopeType) . ' not found';
             }
         }
 
