@@ -56,7 +56,7 @@ The right option's points are `1 − value_num`. Rows are inserted in the order 
 
 `SurveyTypes` gains:
 - `pairwise` in `TYPES` (palette position after `ranking`) and `ANSWERABLE`. Not in `SHOW_IF_SOURCES`.
-- `OPTION_ROLES['pairwise'] = ['choice']`, `minOptions('pairwise') = ['choice' => 3]`, `seedOptions('pairwise')` = three options ("Option 1" … "Option 3"). `defaultSettings('pairwise') = []`, so `validateSettings` accepts only an empty object.
+- `OPTION_ROLES['pairwise'] = ['choice']`, `minOptions('pairwise') = ['choice' => 3]`, `seedOptions('pairwise')` = three options ("Option 1" … "Option 3"). `defaultSettings('pairwise') = []`, so `validateSettings` drops any keys it is sent.
 - `PAIRWISE_SMALL_MAX = 30` and `PAIRWISE_BANDS`, the one table everything reads:
 
 ```php
@@ -98,7 +98,7 @@ Worked values:
 | 26 | 325 | 301+ | 33 · 49 · 65 · 82 |
 | 30 | 435 | 301+ | 44 · 66 · 87 · 109 |
 
-**Shipping the plan to the browser.** `Model_Survey::catalog()` adds `pairwise_bands` and `pairwise_small_max`, so the builder can recompute the plan live as the author types. `SurveyResponse::definitionForRespondent()` adds `pairwise: pairwisePlan(n)` to every pairwise question it returns, so the runner reads the server's numbers. `SvRender.pairwisePlan(n, bands, smallMax)` in `survey-render.js` is the JS port used by the builder. A node parity test (§9) pins it to the PHP function for every n from 0 to 60.
+**Shipping the plan to the browser.** `survey-render.js` mirrors the table as `PW_SMALL_MAX` / `PW_BANDS`, the same way it already mirrors `SurveyTypes::ANSWERABLE` and `OTHER_MAX_LENGTH`, and exposes `SvRender.pairwisePlan(n)`. The builder uses it to recompute the plan live as the author types. `SurveyResponse::definitionForRespondent()` adds `pairwise: pairwisePlan(n)` to every pairwise question it returns, and the runner prefers that server-sent plan, so the gate a respondent sees is the gate the server enforces. A node parity test (§9) pins the JS copy to the PHP function for every n from 0 to 60.
 
 ### 3. Answer shape and validation
 
@@ -120,7 +120,7 @@ Raw answer (client → `draft_save` / `submit`), in answer order:
 
 Each valid entry becomes `row(a, b, null, w == a ? 1.0 : (w == 0 ? 0.5 : 0.0))`.
 
-`Survey::optionSet()` additionally refuses, for a pairwise question, two labels equal after trim and case-fold: "“{label}” is listed twice." On retype into `pairwise`, `is_other` is cleared on the kept choice options (pairwise takes no "Other").
+`Survey::optionSet()` additionally refuses, for a pairwise question, two labels equal after trim and case-fold ("“{label}” is listed twice.") and any `is_other` option ('A pairwise question cannot have an "other" option.'). Retype into `pairwise` already clears `is_other` (`retypeQuestion()` keeps it only on single / multi / dropdown); a test pins that.
 
 ### 4. Randomization (runner)
 
@@ -135,7 +135,7 @@ Nothing is seeded, so a respondent who resumes gets a fresh random order over th
 
 ### 5. Builder
 
-**Option entry (P6).** A pairwise card's option area is one `<textarea class="svb-pw-lines">`, one option per line, pre-filled from the current options in `sort_order`. It saves on blur (and on the card's existing save path) through `option_set` with role `choice`:
+**Option entry (P6).** A pairwise card's option area is one `<textarea class="svb-pw-lines">`, one option per line, pre-filled from the current options in `sort_order`. Like every builder field it saves as the author types, through the builder's debounced `save()` and `option_set` with role `choice`. A multi-line paste has bullets ("- ", "* ", "• ") stripped before it lands, as the option-row paste already does:
 - Lines are trimmed; blank lines are dropped.
 - **Unlocked survey:** each line whose text exactly matches an existing option's label reuses that option's id (first match wins), so reordering and inserting keep ids. Other lines are sent without an id (new options), and options no line matched are omitted (deleted).
 - **Locked survey:** line *i* maps to option *i* by position. If the line count differs, the textarea shows the lock message inline and does not save; otherwise the relabels are sent with their ids.
@@ -163,7 +163,7 @@ Nothing is seeded, so a respondent who resumes gets a fresh random order over th
 
 **Progress.** Below the stage: a bar, a counter ("12 of 66 matchups") and one `aria-live="polite"` message line. The bar is a `role="progressbar"` with `aria-valuenow/max`.
 
-*Small set (possible ≤ 30):* a plain bar whose fill color follows completion: red below 34%, yellow 34–66%, light green 67–99%, dark green at 100%. No tier messages. A required question shows "Finish all {possible} matchups to continue." until done.
+*Small set (possible ≤ 30):* a plain bar whose fill color follows completion: red below a third, yellow from a third, light green from two thirds, dark green at 100% (integer math: `3k ≥ M`, `3k ≥ 2M`). No tier messages. A required question shows "Finish all {possible} matchups to continue." until done.
 
 *Larger set:* tick marks at the four tier counts. The fill color and message follow the highest tier reached:
 
@@ -216,7 +216,7 @@ returns {
 Rows naming an option that no longer exists are ignored (defensive; the structure lock prevents it). MIN_CELL suppression, report filters and test-row exclusion apply unchanged because they sit around `aggregateType()`.
 
 **Results card** (`survey-results.js`):
-- Four stat tiles: **Possible matchups**; **Average % of matchups** ("45%", sub-line "avg 30 of 66"); **Respondents**; **Matchups judged**.
+- **Respondents** is the card's existing "n = 42 of 60" badge. Under the chart, the existing callout row (`calloutsFor`) shows **Possible matchups**, **Average % of matchups** ("45%"), **Avg per respondent** ("30 of 66") and **Matchups judged**.
 - A horizontal Highcharts bar chart (`specPairwise`) of win % in rank order, 0–100 axis, data labels "62.5%", tooltip with W / T / L and appearances. Tall variant (`svr-chart-tall`) like ranking and matrix.
 - A DataTable: Rank · Option · Win % · W · T · L · Matchups, default order Rank ascending, never-matched rows showing "—" and sorting last (`data-order`).
 - The type label map adds `pairwise: 'Pairwise'`.
@@ -227,8 +227,7 @@ Rows naming an option that no longer exists are ignored (defensive; the structur
 ### 8. Seed, docs, release note
 
 - `bin/seed-survey-example.php` adds a pairwise question ("Which event should the kingdom add next?", 8 options, optional) and gives each seeded response a random 0–100% of its matchups with a weighted preference, so the demo ranking is non-trivial.
-- `docs/survey-guide.md`: a Pairwise section (what it is, bands table, gate, tips).
-- `orkui/template/default/docs_modal.tpl`: the survey article gains the pairwise type.
+- `docs/survey-guide.md`: a Pairwise row in the types table and a "Pairwise questions" section (what it is, bands table, gate, tips). The builder's in-app help (`SurveyAjax/help`) renders this file, so it is the in-app doc too.
 - `orkui/whats_new_content.php`: the existing Survey release entry lists the new type (the module is unreleased, so no new version entry).
 
 ### 9. Testing
@@ -236,7 +235,7 @@ Rows naming an option that no longer exists are ignored (defensive; the structur
 - **`tests/Unit/SurveyTypesTest.php`:** `pairwisePlan` at n = 0, 1, 2, 3, 8, 9, 15, 16, 20, 21, 25, 26, 30 (every band boundary: 28/36, 105/120, 190/210, 300/325); catalog membership (answerable, not a show-if source, choice role, min 3, seeds 3); `validatePairwise`: valid list, tie, unknown option, `a == b`, bad `w`, repeated pair in both orders, required below the gate, required at exactly the gate, small-set required needing all, optional empty.
 - **`tests/Unit/SurveyAggregateTest.php`:** `aggPairwise` win % with ties, shared competition ranks, sort tie-breaks, a never-matched option, `avg_pct` over respondents with different counts, n = 0.
 - **`tests/Unit/SurveyPairwisePlanScriptTest.php` + `tests/Unit/js/survey-pairwise-harness.js`:** runs `SvRender.pairwisePlan` under node for n = 0…60 against `SurveyTypes::pairwisePlan`; also asserts the queue builder yields every pair exactly once, excludes already-answered pairs in either order, and never repeats an option back to back when the pair set allows it.
-- **`tests/Integration/SurveyTest.php`:** create a pairwise question, `option_set` with a duplicate label is refused, submit a required pairwise below the gate is refused and at the gate succeeds, stored rows match §1, draft round-trip keeps the list, CSV cell format, retype single-with-Other → pairwise clears `is_other`.
+- **`tests/Integration/SurveyTest.php`:** create a pairwise question, `option_set` with a duplicate label is refused, submit a required pairwise below the gate is refused and at the gate succeeds, stored rows match §1, the respondent definition carries `pairwise`, retype single-with-Other → pairwise clears `is_other` (drafts store answers as opaque JSON, so resume is checked in the browser pass).
 - **Browser (serial, headless Playwright per the module's verification gotchas):** builder paste of 20 lines, readout, >30 warning, (?) modal content with the right highlighted band; runner at 1280 and 360 in light and dark: pick / tie / undo / keys, bar colors and every message, the required gate on Next, resume from draft, 100% state; results tiles, chart and DataTable.
 
 ### 10. Acceptance criteria
