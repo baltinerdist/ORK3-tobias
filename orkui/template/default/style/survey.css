@@ -839,7 +839,6 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
     cursor: pointer;
     transition: border-color .12s, background-color .12s, transform .12s;
 }
-.sv-pw-pick:hover { border-color: var(--sv-accent); background: var(--sv-l3-hover); }
 .sv-pw-tie {
     align-self: center;
     min-height: 44px;
@@ -853,7 +852,13 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
     font-size: var(--ork-font-size-sm);
     cursor: pointer;
 }
-.sv-pw-tie:hover { border-style: solid; border-color: var(--sv-accent); color: var(--sv-text); }
+/* Hover only where a pointer hovers: the widget keeps its buttons and swaps
+   their labels, so on a touch screen the sticky :hover of the side just tapped
+   made the next matchup's option on that side look already picked. */
+@media (hover: hover) {
+    .sv-pw-pick:hover { border-color: var(--sv-accent); background: var(--sv-l3-hover); }
+    .sv-pw-tie:hover { border-style: solid; border-color: var(--sv-accent); color: var(--sv-text); }
+}
 .sv-pw-pick:focus-visible,
 .sv-pw-tie:focus-visible,
 .sv-pw-undo:focus-visible,
@@ -908,7 +913,11 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
     opacity: .7;
 }
 
-.sv-pw-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+/* The bar, the count row and the message are spaced by the column gap (the
+   ticks reach 3px under the bar), and the count row is always as tall as Undo,
+   so the first pick, which shows Undo, moves nothing below it. */
+.sv-pw-progress { display: flex; flex-direction: column; gap: 6px; }
+.sv-pw-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; }
 .sv-pw-count { font-size: var(--ork-font-size-sm); color: var(--sv-text-muted); font-variant-numeric: tabular-nums; }
 .sv-pw-undo {
     min-height: 32px;
@@ -929,6 +938,7 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
 }
 @media (pointer: coarse) {
     .sv-pw-undo { min-height: 44px; padding: 0 10px; }
+    .sv-pw-meta { min-height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) {
     .sv-pw-pick, .sv-pw-fill { transition: none; }
