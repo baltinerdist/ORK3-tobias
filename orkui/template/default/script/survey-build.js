@@ -90,6 +90,7 @@
     var inflightWrites = 0; // ...of which change something (not READ_ACTIONS)
     var retyping  = {};     // question_id -> type a retype is on the wire for
     var held      = {};     // save key -> { msg, loc }: a value deliberately NOT sent (blank)
+    var pwBase    = {};     // question_id -> pairwise options before the save waiting in its debounce
     var failed    = {};     // save key -> { msg, loc }: a change the server refused / never got
     var idleWaiters = [];   // run once nothing is on the wire (see whenIdle)
     var events    = null;   // SurveyAjax/event_options, lazy; null = not loaded yet
@@ -1707,6 +1708,16 @@
             problem = 'While the survey is open you can fix wording, but not add or remove options.';
         }
         if (problem) {
+            // The save an earlier keystroke queued carries this line half
+            // typed ("Fall feas" on the way to a duplicate "Fall feast"). It
+            // must not go out either (spec §5: nothing saves until fixed), and
+            // S goes back to the list the last sent save had.
+            if (pending[key]) {
+                window.clearTimeout(pending[key].timer);
+                delete pending[key];
+                if (pwBase[questionId]) { q.options = pwBase[questionId]; }
+            }
+            delete pwBase[questionId];
             held[key] = { msg: problem, loc: locOf(area), text: area.value, pw: true };
             fieldError(area, problem);
             refreshPill();
@@ -1733,7 +1744,10 @@
             });
         }
 
-        // S follows the textarea at once, so a preview drawn before the reply shows what was typed.
+        // S follows the textarea at once, so a preview drawn before the reply
+        // shows what was typed. The list it replaces is kept while this save
+        // waits in its debounce, so a hold can take the queued save back.
+        if (!pending[key]) { pwBase[questionId] = q.options; }
         q.options = list.map(function (o, i) {
             return { option_id: o.option_id, question_id: q.question_id, role: 'choice', sort_order: i,
                      label: o.label, value_num: null, is_other: 0 };
@@ -1747,6 +1761,8 @@
             var cur = questionById(questionId);
             if (!cur) { return; }
             cur.options = data.options || [];
+            // A newer save already queued would fall back to this, the saved list.
+            if (pending[key]) { pwBase[questionId] = cur.options; }
             if (parseInt(questionId, 10) !== sel) { refreshCard(questionId); }
         }, { node: area });
         refreshPill();
@@ -1799,7 +1815,7 @@
         stages += '<li data-level="4"><span class="svb-pw-swatch" aria-hidden="true"></span><span><strong>At 100%:</strong> “' +
                   esc(SvRender.PW_DONE_MESSAGE) + '”</span></li>';
 
-        return '<div class="svb-pw-help sv-scope">' +
+        return '<div class="svb-pw-helpbody sv-scope">' +
             '<p>Respondents see two options at a time and pick the one they prefer, or call it a tie. A win scores 1 point, ' +
             'a tie ½ to each, a loss 0. Results rank the options by <strong>win %</strong>: points divided by the matchups ' +
             'the option appeared in.</p>' +
@@ -2086,6 +2102,9 @@
             area = el('.svb-prompt', fresh);
             if (area) { area.focus(); area.setSelectionRange(area.value.length, area.value.length); }
         }
+        // The open card's fields were redrawn (+ Add help text, an image, a
+        // show-if): a held list or refused field gets its reason back beside it.
+        if (parseInt(questionId, 10) === sel) { syncMarks(); }
     }
 
     /** Redraw only the type-specific editor of the selected card (settings changed). */
@@ -3912,6 +3931,16 @@
             lines = pairwiseLines(text).join('\n');
             start = typeof t.selectionStart === 'number' ? t.selectionStart : t.value.length;
             end   = typeof t.selectionEnd === 'number' ? t.selectionEnd : t.value.length;
+            // A line break at either end of the clipboard is kept, as a native
+            // paste would: pasting "\nHarvest games" after "Youth day" adds a
+            // line instead of making "Youth dayHarvest games".
+            if (/^[ \t]*[\r\n]/.test(text) && start > 0 && !/[\r\n]$/.test(t.value.slice(0, start))) {
+                lines = '\n' + lines;
+            }
+            if (/[\r\n][ \t]*$/.test(text) && end < t.value.length && !/^[\r\n]/.test(t.value.slice(end)) &&
+                lines !== '' && lines !== '\n') {
+                lines += '\n';
+            }
             t.value = t.value.slice(0, start) + lines + t.value.slice(end);
             try { t.setSelectionRange(start + lines.length, start + lines.length); } catch (err) { /* not text */ }
             autoGrow(t);

@@ -2105,9 +2105,9 @@ html[data-theme="dark"] .svb-consent-quote {
 .svb-pw-warn:not([hidden]) { display: flex; gap: 6px; align-items: baseline; }
 
 /* The (?) modal. Its h3s already drop orkui.css's pill box via .svb-modal-body h3. */
-.svb-pw-help { display: flex; flex-direction: column; gap: 10px; font-size: var(--ork-font-size-base); line-height: 1.5; }
-.svb-pw-help p { margin: 0; text-align: left; }
-.svb-pw-help h3 { font-size: var(--ork-font-size-base); margin-top: 6px; }
+.svb-pw-helpbody { display: flex; flex-direction: column; gap: 10px; font-size: var(--ork-font-size-base); line-height: 1.5; }
+.svb-pw-helpbody p { margin: 0; text-align: left; }
+.svb-pw-helpbody h3 { font-size: var(--ork-font-size-base); margin-top: 6px; }
 .svb-pw-tablewrap { overflow-x: auto; }
 .svb-pw-bands { width: 100%; border-collapse: collapse; font-size: var(--ork-font-size-sm); font-variant-numeric: tabular-nums; }
 /* border: 0 first: .svb-modal-body th/td draw a full grid; this table keeps row rules only. */
