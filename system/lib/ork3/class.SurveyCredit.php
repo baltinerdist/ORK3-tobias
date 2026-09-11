@@ -723,8 +723,15 @@ class SurveyCredit
         $n = 0;
         $noPark = 0;
         $noNotice = 0;
+        // Un-told respondents this credit would reach. In home-park mode that
+        // includes someone with no Active home park: they get nothing either
+        // way, and counting them here keeps the warning's total the same as
+        // event mode's rather than dropping them from every count.
         foreach ($this->owedResponses((int) $survey['survey_id'], false) as $r) {
-            $noNotice += self::coverage(array_merge($configs, [$hyp]), $r, $survey, $parentOf)['credit_id'] === PHP_INT_MAX ? 1 : 0;
+            $cov = self::coverage(array_merge($configs, [$hyp]), $r, $survey, $parentOf);
+            $noNotice += ($cov['credit_id'] === PHP_INT_MAX
+                || ($cov['credit_id'] === null && $mode === 'home_park'
+                    && self::coverage([$hyp], $r, $survey, $parentOf)['no_home_park'])) ? 1 : 0;
         }
         foreach ($this->owedResponses((int) $survey['survey_id']) as $r) {
             $cov = self::coverage(array_merge($configs, [$hyp]), $r, $survey, $parentOf);

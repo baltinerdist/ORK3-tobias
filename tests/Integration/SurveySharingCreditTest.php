@@ -698,6 +698,25 @@ final class SurveySharingCreditTest extends TestCase
         $this->assertFalse($this->credit()->creditAvailableFor($this->row($ks), $uid), 'and the runner does not promise one');
     }
 
+    /**
+     * An un-told respondent at a retired park is still one the credit would
+     * have reached: the home-park warning counts them as no_notice, the same
+     * as event mode does, instead of dropping them from both counts.
+     */
+    public function testHomeParkPreviewCountsUntoldRespondentsAtARetiredPark(): void
+    {
+        $retired = $this->park($this->k, 'retired2');
+        $uid = $this->player('untold', $retired, $this->k);
+        $this->pdo->exec('UPDATE ' . DB_PREFIX . "park SET active = 'Retired' WHERE park_id = " . $retired);
+        $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);
+        $this->pdo->exec('INSERT INTO ' . DB_PREFIX . "survey_response (survey_id, consent, mundane_id, kingdom_id, park_id, credit_notice, is_test, submitted_at)
+                          VALUES ({$ks}, 'full', {$uid}, {$this->k}, {$retired}, 0, 0, NOW())");
+
+        $preview = $this->credit()->status($this->kOfficer, $ks, ['type' => 'kingdom', 'id' => $this->k])['Credit']['mine']['preview'];
+        $this->assertSame(['eligible_now' => 0, 'no_home_park' => 0, 'no_notice' => 1], $preview['home_park']);
+        $this->assertSame(1, $preview['event']['no_notice'], 'both modes agree');
+    }
+
     /** A deleted draft takes its credit configs and their generated event with it. */
     public function testDeletingADraftRemovesItsCreditConfigsAndEvent(): void
     {
@@ -1010,6 +1029,16 @@ final class SurveySharingCreditTest extends TestCase
         $copy = $this->fx['survey'][] = (int) $c['SurveyId'];
         $this->assertSame('1', (string) $this->scalar('SELECT COUNT(*) FROM ' . DB_PREFIX . 'survey_credit WHERE survey_id = ' . $ks));
         $this->assertSame('0', (string) $this->scalar('SELECT COUNT(*) FROM ' . DB_PREFIX . 'survey_credit WHERE survey_id = ' . $copy));
+    }
+
+    /** Clone copies the results-sharing setting like every other survey setting. */
+    public function testCloneKeepsResultsSharing(): void
+    {
+        $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k, ['results_share' => 'scoped']);
+        $c = (new Survey())->cloneSurvey($ks, $this->kOfficer);
+        $this->assertSame(0, $c['Status'], (string) ($c['Error'] ?? ''));
+        $copy = $this->fx['survey'][] = (int) $c['SurveyId'];
+        $this->assertSame('scoped', (string) $this->row($copy)['results_share']);
     }
 
     public function testGateCannotBeTurnedOffOnceCreditsExist(): void

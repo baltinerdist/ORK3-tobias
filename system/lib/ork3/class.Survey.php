@@ -986,13 +986,13 @@ class Survey
              (scope_type, scope_id, title, slug, description, welcome_md, thanks_md, status,
               open_at, close_at, audience_kingdom_ids, audience_active_only, audience_min_tenure_months,
               audience_recent_months, audience_event_calendardetail_id,
-              data_gate_enabled, show_banner, show_progress, allow_resume, accent_color,
+              data_gate_enabled, results_share, show_banner, show_progress, allow_resume, accent_color,
               created_by, updated_by, created_at, updated_at)
              SELECT scope_type, scope_id, \'' . $this->esc($title) . '\', \'' . $this->esc($slug) . '\',
                     description, welcome_md, thanks_md, \'draft\',
                     open_at, close_at, audience_kingdom_ids, audience_active_only, audience_min_tenure_months,
                     audience_recent_months, audience_event_calendardetail_id,
-                    data_gate_enabled, show_banner, show_progress, allow_resume, accent_color,
+                    data_gate_enabled, results_share, show_banner, show_progress, allow_resume, accent_color,
                     ' . (int) $uid . ', ' . (int) $uid . ', NOW(), NOW()
              FROM ' . DB_PREFIX . 'survey WHERE survey_id = ' . $surveyId
         );
