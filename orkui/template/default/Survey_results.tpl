@@ -148,6 +148,8 @@ $_svr_show_kingdoms = count($_svr_kingdoms) > 1;
 			<button type="button" class="rp-btn-ghost" id="svr-summary-toggle" aria-pressed="false" data-tip="Charts only, with the filters and response count in a caption: no row-level data and no written comments. Safe to print for court."><i class="fas fa-file-lines"></i> Summary for sharing</button>
 <?php if (!$_svr_shared) : ?>
 			<button type="button" class="rp-btn-ghost" id="svr-print"><i class="fas fa-print"></i> Print</button>
+<?php else : /* Spec §2: a shared viewer's Print is the summary's own — survey-results.css shows it only in Summary for sharing. */ ?>
+			<button type="button" class="rp-btn-ghost svr-print-summary" id="svr-print" data-tip="Print the summary for sharing"><i class="fas fa-print"></i> Print summary</button>
 <?php endif; ?>
 		</div>
 	</div>
@@ -169,7 +171,11 @@ $_svr_show_kingdoms = count($_svr_kingdoms) > 1;
 	<!-- Context strip -->
 	<div class="rp-context">
 		<i class="fas fa-info-circle rp-context-icon"></i>
+<?php if ($_svr_shared) : /* Shared viewers never see personal details (D2): no line about them. */ ?>
+		<span>Aggregated answers for every response that matches the filters. Any group of fewer than 5 responses is hidden so no one can be singled out.</span>
+<?php else : ?>
 		<span>Aggregated answers for every response that matches the filters. Personal details are shown only for respondents who chose to share them &mdash; anonymous responses carry no kingdom, no persona and a date-only timestamp. Any group of fewer than 5 responses is hidden so no one can be singled out.</span>
+<?php endif; ?>
 	</div>
 
 	<!-- Security-token / transport notice (#43). Kept outside .rp-body so it is

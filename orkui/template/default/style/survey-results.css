@@ -61,7 +61,13 @@
 
 /* ── Shared-viewer lens strip (sharing-and-credits spec §5) ── */
 
-.svr-lens { border-left: 3px solid var(--ork-accent, #3182ce); }
+/* A shared viewer's Print button prints the Summary for sharing only (spec §2),
+   so it shows only while that mode is on. */
+.svr-root:not(.svr-summary-mode) .svr-print-summary { display: none; }
+
+/* .rp-context.svr-lens, and --svr-accent (the page accent, which swaps with
+   --rp-accent in dark mode) rather than the undefined --ork-accent. */
+.rp-context.svr-lens { border-left: 3px solid var(--svr-accent); }
 
 
 /* ── Consent split inside a stat card ────────────────────── */
@@ -734,7 +740,13 @@ html[data-theme="dark"] .svr-root { --svr-text-muted: var(--ork-text-muted, #a0a
 
 html[data-theme="dark"] .svr-status-pill { color: #fff; }
 
-html[data-theme="dark"] .svr-lens { background: rgba(49, 130, 206, 0.10); }
+/* reports.css's `html[data-theme="dark"] .rp-context { border-color }` (0,2,1)
+   repaints all four sides grey; restate the accent edge above it (0,3,1).
+   The wash is --rp-accent's dark value (#818cf8) at 10%. */
+html[data-theme="dark"] .rp-context.svr-lens {
+    border-left-color: var(--svr-accent);
+    background       : rgba(129, 140, 248, 0.10);
+}
 
 html[data-theme="dark"] .svr-xt-btn[aria-pressed="true"] { background: var(--svr-accent); color: #1a202c; }
 html[data-theme="dark"] .svr-root .rp-header-actions .rp-btn-ghost[aria-pressed="true"] {
