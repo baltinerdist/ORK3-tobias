@@ -156,10 +156,13 @@ $_svr_show_kingdoms = count($_svr_kingdoms) > 1;
 
 <?php if ($_svr_shared) :
 	$_org = htmlspecialchars((string) ($ResultsAccess['org_name'] ?? ''));
+	/* An ORK survey's $OwnerName is the scope label "All of Amtgard", which
+	   does not read as a sharer ("Shared by All of Amtgard"), so name the ORK. */
+	$_owner = $_svr_scope_type === 'ork' ? 'the ORK' : htmlspecialchars((string) $OwnerName);
 	$_lens_text = [
 		'kingdom' => 'Showing responses from players of ' . $_org . ' who chose Any ORK Data or My Kingdom and How Long I’ve Been Playing. Anonymous responses can’t be attributed to a kingdom.',
 		'park'    => 'Showing responses from ' . $_org . ' players who chose Any ORK Data. Other responses can’t be attributed to a park.',
-		'all'     => 'Shared by ' . htmlspecialchars((string) $OwnerName) . ': all respondents.',
+		'all'     => 'Shared by ' . $_owner . ': all respondents.',
 	][$_svr_lens] ?? '';
 ?>
 	<div class="rp-context svr-lens" role="note">
@@ -349,7 +352,9 @@ window.SvConfig = {
 	csrf     : <?=json_encode($SurveyCsrf ?? '')?>,
 	questions: <?=json_encode($_svr_js_qs)?>,
 	access   : <?=json_encode($_svr_shared ? 'shared' : 'manage')?>,
-	context  : <?=json_encode((string) ($ResultsContext ?? ''))?>
+	context  : <?=json_encode((string) ($ResultsContext ?? ''))?>,
+	lens     : <?=json_encode($_svr_shared ? (string) $_svr_lens : '')?>,
+	lensOrg  : <?=json_encode($_svr_shared ? (string) ($ResultsAccess['org_name'] ?? '') : '')?>
 };
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.js"></script>

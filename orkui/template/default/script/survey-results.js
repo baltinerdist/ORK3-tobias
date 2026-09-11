@@ -1433,6 +1433,16 @@
         var f = state.appliedFilters || DEFAULT_FILTERS;
         var s = state.payload.summary || {};
         var bits = [];
+        /* A shared viewer's lens is a filter the server always applies, so the
+           caption names it — "None — every response" would contradict the lens
+           strip printed on the same page. The label comes from the payload
+           (summary.lens), the org name from the page. */
+        var lens = SHARED ? ((s.lens && s.lens.label) || CFG.lens || '') : '';
+        if (lens === 'kingdom') {
+            bits.push('Players of ' + (CFG.lensOrg || 'your kingdom') + ' only');
+        } else if (lens === 'park') {
+            bits.push((CFG.lensOrg || 'Your park') + ' players only');
+        }
         if (f.kingdom_ids && f.kingdom_ids.length) {
             var names = [];
             Array.prototype.forEach.call(document.querySelectorAll('.svr-kingdom'), function (cb) {
