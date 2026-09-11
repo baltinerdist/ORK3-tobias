@@ -197,4 +197,33 @@ final class SurveySharingCreditTest extends TestCase
         $this->assertSame(2, (int) $out['summary']['responses']);
         $this->assertTrue((bool) $out['summary']['suppressed'], 'a lens view under 5 is suppressed');
     }
+
+    public function testAddSystemCreditWritesEveryColumnAndBustsNothingElse(): void
+    {
+        $uid = $this->player('credit', $this->parkA, $this->k);
+        $r = Ork3::$Lib->attendance->AddSystemCredit([
+            'MundaneId' => $uid, 'ClassId' => 6, 'Date' => '2026-09-05', 'ParkId' => $this->parkA, 'KingdomId' => $this->k,
+            'EventId' => 0, 'EventCalendarDetailId' => 0, 'Credits' => 1, 'Note' => 'Survey #1', 'ByWhomId' => $this->kOfficer,
+            'EntryMethod' => 'survey',
+        ]);
+        $this->assertSame(0, $r['Status'], (string) ($r['Error'] ?? ''));
+        $row = $this->pdo->query('SELECT * FROM ' . DB_PREFIX . 'attendance WHERE attendance_id = ' . (int) $r['AttendanceId'])->fetch(PDO::FETCH_ASSOC);
+        $this->assertSame('2026-09-05', $row['date']);
+        $this->assertSame('survey', $row['entry_method']);
+        $this->assertSame('Survey #1', $row['note']);
+        $this->assertSame((string) $this->kOfficer, (string) $row['by_whom_id']);
+        $this->assertSame('2026', (string) $row['date_year']);
+        $this->assertSame('9', (string) $row['date_month']);
+        $this->assertNotSame('0', (string) $row['date_week3']);
+        $this->pdo->exec('DELETE FROM ' . DB_PREFIX . 'attendance WHERE attendance_id = ' . (int) $r['AttendanceId']);
+    }
+
+    public function testAddSystemCreditRefusesAnyOtherEntryMethodOrABadRequest(): void
+    {
+        $uid = $this->player('credit2', $this->parkA, $this->k);
+        $base = ['MundaneId' => $uid, 'ClassId' => 6, 'Date' => '2026-09-05', 'ParkId' => $this->parkA, 'KingdomId' => $this->k,
+                 'EventId' => 0, 'EventCalendarDetailId' => 0, 'Credits' => 1, 'Note' => 'x', 'ByWhomId' => 1];
+        $this->assertSame(1, Ork3::$Lib->attendance->AddSystemCredit($base + ['EntryMethod' => 'manual'])['Status']);
+        $this->assertSame(1, Ork3::$Lib->attendance->AddSystemCredit(['Date' => 'nope', 'EntryMethod' => 'survey'] + $base)['Status']);
+    }
 }
