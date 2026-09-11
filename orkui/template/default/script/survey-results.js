@@ -904,8 +904,13 @@
         if (reached === null || reached < n) {
             return '<span class="svr-badge">n = ' + n + '</span>';
         }
-        var tip = (TEXT_TYPES[q.type] ? plural(n, 'person', 'people') + ' answered. '
-            : 'Percentages are of the ' + plural(n, 'person', 'people') + ' who answered. ') +
+        /* Pairwise percentages are of matchups (win % over the matchups an
+           option appeared in, the average over the possible ones); a ranking
+           card shows none. Only the choice types' percentages are of people. */
+        var who = plural(n, 'person', 'people');
+        var tip = (q.type === 'pairwise' ? who + ' answered. The percentages here are of matchups, not people. '
+            : (TEXT_TYPES[q.type] || q.type === 'ranking' ? who + ' answered. '
+            : 'Percentages are of the ' + who + ' who answered. ')) +
             plural(reached, 'response', 'responses') + ' reached this question' +
             (reached > n ? '; ' + (reached - n) + ' left it blank.' : '.');
         return '<span class="svr-badge" data-tip="' + esc(tip) + '" tabindex="0">n = ' + n + ' of ' + reached + '</span>';

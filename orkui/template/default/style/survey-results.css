@@ -942,6 +942,17 @@ html[data-theme="dark"] .svr-card .highcharts-data-label tspan {
 .svr-pw-table td:nth-child(n+3),
 .svr-pw-table th:nth-child(n+3) { text-align: right; font-variant-numeric: tabular-nums; }
 .svr-pw-table abbr { text-decoration: none; cursor: help; }
+/* DataTables gives every header 10px + a 26px sort-arrow gutter and every cell
+   10px a side: seven columns of that outgrew a half-width card and pushed
+   Matchups out of view. Tighter cells, the arrows tucked in, numbers on one
+   line; the Option column takes what is left and wraps. These selectors
+   outrank jquery.dataTables.css, which loads after this file. */
+.svr-card table.svr-pw-table.dataTable thead > tr > th,
+.svr-card table.svr-pw-table.dataTable tbody > tr > td { padding: 6px; }
+.svr-card table.svr-pw-table.dataTable thead > tr > th { padding-right: 16px; white-space: nowrap; }
+.svr-card table.svr-pw-table.dataTable thead > tr > th:before,
+.svr-card table.svr-pw-table.dataTable thead > tr > th:after { right: 4px; }
+.svr-pw-table td:nth-child(n+3) { white-space: nowrap; }
 /* The sort-key column; DataTables drops it from the DOM, this covers the page without DataTables. */
 .svr-pw-table .svr-pw-sortkey { display: none; }
 .svr-cell-clamp {
