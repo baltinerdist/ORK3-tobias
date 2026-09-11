@@ -148,6 +148,57 @@ final class SurveyPureTest extends TestCase
         $this->assertSame([], $db->writes);
     }
 
+    // ---------------------------------- results sharing timing (after close)
+
+    private function at(string $stamp): int
+    {
+        return (int) strtotime($stamp);
+    }
+
+    public function testSharingDoesNotOpenWhileTheSurveyIsTakingResponses(): void
+    {
+        $now = $this->at('2026-09-20 12:00:00');
+        $this->assertNull(Survey::sharingOpensAt(['status' => 'open', 'close_at' => null, 'closed_at' => null], $now));
+        $this->assertNull(Survey::sharingOpensAt(['status' => 'open', 'close_at' => '2026-09-25 00:00:00', 'closed_at' => null], $now));
+    }
+
+    public function testSharingOpensADayAfterAManualClose(): void
+    {
+        $now = $this->at('2026-09-20 12:00:00');
+        $row = ['status' => 'closed', 'close_at' => null, 'closed_at' => '2026-09-18 15:30:00'];
+        $this->assertSame('2026-09-19 15:30:00', Survey::sharingOpensAt($row, $now));
+    }
+
+    public function testSharingOpensADayAfterAScheduledCloseThatHasPassed(): void
+    {
+        $now = $this->at('2026-09-20 12:00:00');
+        $row = ['status' => 'open', 'close_at' => '2026-09-20 09:00:00', 'closed_at' => null];
+        $this->assertSame('2026-09-21 09:00:00', Survey::sharingOpensAt($row, $now));
+    }
+
+    public function testTheEarlierEndWinsWhenBothExist(): void
+    {
+        $now = $this->at('2026-09-20 12:00:00');
+        $closedEarly = ['status' => 'closed', 'close_at' => '2026-09-30 00:00:00', 'closed_at' => '2026-09-15 10:00:00'];
+        $this->assertSame('2026-09-16 10:00:00', Survey::sharingOpensAt($closedEarly, $now));
+        $closedLate = ['status' => 'closed', 'close_at' => '2026-09-10 00:00:00', 'closed_at' => '2026-09-12 08:00:00'];
+        $this->assertSame('2026-09-11 00:00:00', Survey::sharingOpensAt($closedLate, $now));
+    }
+
+    public function testAReopenedSurveyHidesSharingAgainUntilItEnds(): void
+    {
+        // setStatus('open') clears closed_at; a future close date is not an end.
+        $now = $this->at('2026-09-20 12:00:00');
+        $this->assertNull(Survey::sharingOpensAt(['status' => 'open', 'close_at' => '2026-10-01 00:00:00', 'closed_at' => null], $now));
+    }
+
+    public function testDraftsAndArchivedSurveysNeverOpenSharing(): void
+    {
+        $now = $this->at('2026-09-20 12:00:00');
+        $this->assertNull(Survey::sharingOpensAt(['status' => 'draft', 'close_at' => '2026-09-01 00:00:00', 'closed_at' => null], $now));
+        $this->assertNull(Survey::sharingOpensAt(['status' => 'archived', 'close_at' => null, 'closed_at' => '2026-09-01 00:00:00'], $now));
+    }
+
     // -------------------------------------------- manageable scopes (#47)
 
     /**

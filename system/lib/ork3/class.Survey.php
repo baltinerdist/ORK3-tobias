@@ -61,6 +61,7 @@ class Survey
         'AudienceEventCalendardetailId' => ['audience_event_calendardetail_id', 'event'],
         'DataGateEnabled'          => ['data_gate_enabled', 'bool'],
         'ResultsShare'             => ['results_share', 'share'],
+        'ResultsShareTiming'       => ['results_share_timing', 'share_timing'],
         'ShowBanner'               => ['show_banner', 'bool'],
         'ShowProgress'             => ['show_progress', 'bool'],
         'AllowResume'              => ['allow_resume', 'bool'],
@@ -217,11 +218,79 @@ class Survey
      * @param ?array{type:string,id:int} $context
      * @return ?array{level:string, lens:array, label:string, org_name:string}
      */
+    /** Hours after a survey stops taking responses before after-close sharing opens. */
+    public const SHARE_DELAY_HOURS = 24;
+
+    /**
+     * PURE. When results open to shared viewers of an after-close survey:
+     * SHARE_DELAY_HOURS after it stopped taking responses — the earlier of a
+     * manual close (closed_at) and a scheduled close_at that has passed. Null
+     * while it still takes responses (setStatus('open') clears closed_at, so a
+     * reopened survey hides shared results again) and for drafts and archived
+     * surveys, which never roll down. 'Y-m-d H:i:s' on the PHP clock, like
+     * every other survey stamp.
+     */
+    public static function sharingOpensAt(array $surveyRow, int $now): ?string
+    {
+        $status = (string) ($surveyRow['status'] ?? '');
+        if (!in_array($status, ['open', 'closed'], true)) {
+            return null;
+        }
+        $ends = [];
+        $closedAt = strtotime((string) ($surveyRow['closed_at'] ?? ''));
+        if ($status === 'closed' && $closedAt) {
+            $ends[] = $closedAt;
+        }
+        $closeAt = strtotime((string) ($surveyRow['close_at'] ?? ''));
+        if ($closeAt && $closeAt <= $now) {
+            $ends[] = $closeAt;
+        }
+        if (!$ends) {
+            return null;
+        }
+        return date('Y-m-d H:i:s', min($ends) + self::SHARE_DELAY_HOURS * 3600);
+    }
+
     public function resultsAccess(int $uid, array $surveyRow, ?array $context): ?array
     {
         if ($this->canManage($uid, $surveyRow)) {
             return ['level' => 'manage', 'lens' => [], 'label' => '', 'org_name' => ''];
         }
+        $shared = $this->sharedAccess($uid, $surveyRow, $context);
+        if ($shared === null || !$this->sharingOpen($surveyRow)) {
+            return null;
+        }
+        return $shared;
+    }
+
+    /**
+     * A viewer who WOULD get shared results but is held by after-close timing:
+     * ['opens_at' => 'Y-m-d H:i:s'] once the survey has ended, ['opens_at' =>
+     * null] while it still takes responses. Null for everyone else (managers,
+     * shared viewers already let in, and anyone the sharing rules refuse).
+     */
+    public function resultsPending(int $uid, array $surveyRow, ?array $context): ?array
+    {
+        if ($this->canManage($uid, $surveyRow) || $this->sharingOpen($surveyRow)
+            || $this->sharedAccess($uid, $surveyRow, $context) === null) {
+            return null;
+        }
+        return ['opens_at' => self::sharingOpensAt($surveyRow, time())];
+    }
+
+    /** Ongoing sharing is always open; after-close opens at sharingOpensAt(). */
+    private function sharingOpen(array $surveyRow): bool
+    {
+        if ((string) ($surveyRow['results_share_timing'] ?? 'after_close') === 'ongoing') {
+            return true;
+        }
+        $opens = self::sharingOpensAt($surveyRow, time());
+        return $opens !== null && strtotime($opens) <= time();
+    }
+
+    /** resultsAccess() for a non-manager, minus the timing gate. */
+    private function sharedAccess(int $uid, array $surveyRow, ?array $context): ?array
+    {
         $share = (string) ($surveyRow['results_share'] ?? 'none');
         if ($share === 'none' || $context === null
             || !in_array((string) ($surveyRow['status'] ?? ''), ['open', 'closed'], true)) {
@@ -594,6 +663,10 @@ class Survey
             $row['CanResults']     = $manage || $acc !== null;
             $row['ResultsContext'] = $acc !== null ? ucfirst($page['type']) . '/' . $page['id'] : null;
             $row['ResultsLabel']   = $acc['label'] ?? '';
+            // Held by after-close timing: the list says when results open.
+            $pending               = ($page !== null && !$manage && $acc === null) ? $this->resultsPending($uid, $row, $page) : null;
+            $row['ResultsPending'] = $pending !== null;
+            $row['ResultsOpensAt'] = $pending['opens_at'] ?? null;
             $row['CreditGrantor']  = $grantor !== null ? ucfirst($grantor['type']) . '/' . $grantor['id'] : null;
             // CreditOn: the grantor's own config. CreditCoveredBy: an earlier
             // config (the kingdom's, or the owner's event) already covers the
@@ -837,6 +910,14 @@ class Survey
                     $sets[] = $column . ' = \'' . $v . '\'';
                     break;
 
+                case 'share_timing':
+                    $v = (string) $raw;
+                    if (!in_array($v, ['ongoing', 'after_close'], true)) {
+                        return $this->fail('Choose when shared results open.');
+                    }
+                    $sets[] = $column . ' = \'' . $v . '\'';
+                    break;
+
                 case 'color':
                     $v = trim((string) $raw);
                     if ($v === '') {
@@ -986,13 +1067,13 @@ class Survey
              (scope_type, scope_id, title, slug, description, welcome_md, thanks_md, status,
               open_at, close_at, audience_kingdom_ids, audience_active_only, audience_min_tenure_months,
               audience_recent_months, audience_event_calendardetail_id,
-              data_gate_enabled, results_share, show_banner, show_progress, allow_resume, accent_color,
+              data_gate_enabled, results_share, results_share_timing, show_banner, show_progress, allow_resume, accent_color,
               created_by, updated_by, created_at, updated_at)
              SELECT scope_type, scope_id, \'' . $this->esc($title) . '\', \'' . $this->esc($slug) . '\',
                     description, welcome_md, thanks_md, \'draft\',
                     open_at, close_at, audience_kingdom_ids, audience_active_only, audience_min_tenure_months,
                     audience_recent_months, audience_event_calendardetail_id,
-                    data_gate_enabled, results_share, show_banner, show_progress, allow_resume, accent_color,
+                    data_gate_enabled, results_share, results_share_timing, show_banner, show_progress, allow_resume, accent_color,
                     ' . (int) $uid . ', ' . (int) $uid . ', NOW(), NOW()
              FROM ' . DB_PREFIX . 'survey WHERE survey_id = ' . $surveyId
         );

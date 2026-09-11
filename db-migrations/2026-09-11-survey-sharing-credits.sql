@@ -5,7 +5,9 @@
 -- After applying: docker restart ork3-php8-app (APCu schema cache).
 
 ALTER TABLE ork_survey
-  ADD COLUMN IF NOT EXISTS results_share ENUM('none','scoped','all') NOT NULL DEFAULT 'none' AFTER data_gate_enabled;
+  ADD COLUMN IF NOT EXISTS results_share ENUM('none','scoped','all') NOT NULL DEFAULT 'none' AFTER data_gate_enabled,
+  -- When shared viewers get results: live, or 24h after the survey stops taking responses.
+  ADD COLUMN IF NOT EXISTS results_share_timing ENUM('ongoing','after_close') NOT NULL DEFAULT 'after_close' AFTER results_share;
 
 ALTER TABLE ork_survey_response
   ADD COLUMN IF NOT EXISTS park_id INT NULL AFTER kingdom_id,

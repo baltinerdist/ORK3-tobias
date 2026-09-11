@@ -65,7 +65,7 @@ final class SurveySharingCreditTest extends TestCase
         $this->assertSame('manage', $s->resultsAccess($this->kOfficer, $this->row($ks), null)['level']);
         $this->assertNull($s->resultsAccess($this->pOfficerA, $this->row($ks), $parkCtx), 'none shares nothing');
 
-        $s->update($ks, ['ResultsShare' => 'scoped']);
+        $s->update($ks, ['ResultsShare' => 'scoped', 'ResultsShareTiming' => 'ongoing']);
         $acc = $s->resultsAccess($this->pOfficerA, $this->row($ks), $parkCtx);
         $this->assertSame('shared', $acc['level']);
         $this->assertSame(['shared' => true, 'park_id' => $this->parkA], $acc['lens']);
@@ -83,12 +83,81 @@ final class SurveySharingCreditTest extends TestCase
     public function testOrkSurveyRollsDownToKingdomsOnlyAndRespectsTheAudienceList(): void
     {
         $s = new Survey();
-        $os = $this->openSurvey($this->kOfficer, 'ork', $this->k, ['results_share' => 'scoped', 'audience_kingdom_ids' => json_encode([$this->k])]);
+        $os = $this->openSurvey($this->kOfficer, 'ork', $this->k, ['results_share' => 'scoped', 'results_share_timing' => 'ongoing', 'audience_kingdom_ids' => json_encode([$this->k])]);
         $acc = $s->resultsAccess($this->kOfficer, $this->row($os), ['type' => 'kingdom', 'id' => $this->k]);
         $this->assertSame('kingdom', $acc['label']);
         $this->assertSame([$this->k], $acc['lens']['kingdom_ids']);
         $this->assertNull($s->resultsAccess($this->kOtherOfficer, $this->row($os), ['type' => 'kingdom', 'id' => $this->kOther]), 'outside the audience list');
         $this->assertNull($s->resultsAccess($this->pOfficerA, $this->row($os), ['type' => 'park', 'id' => $this->parkA]), 'ORK never rolls to parks');
+    }
+
+    // ------------------------------------------------ sharing timing
+
+    public function testResultsShareTimingIsValidatedAndDefaultsToAfterClose(): void
+    {
+        $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);
+        $this->assertSame('after_close', (string) $this->row($ks)['results_share_timing']);
+        $this->assertSame(1, (new Survey())->update($ks, ['ResultsShareTiming' => 'someday'])['Status']);
+        $this->assertSame(0, (new Survey())->update($ks, ['ResultsShareTiming' => 'ongoing'])['Status']);
+        $this->assertSame('ongoing', (string) $this->row($ks)['results_share_timing']);
+    }
+
+    public function testAfterCloseHoldsSharedResultsUntilADayAfterTheSurveyEnds(): void
+    {
+        $s = new Survey();
+        $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k, ['results_share' => 'scoped']);
+        $ctx = ['type' => 'park', 'id' => $this->parkA];
+
+        // Still taking responses: refused, and pending with no date yet.
+        $this->assertNull($s->resultsAccess($this->pOfficerA, $this->row($ks), $ctx));
+        $this->assertSame(['opens_at' => null], $s->resultsPending($this->pOfficerA, $this->row($ks), $ctx));
+
+        // Closed an hour ago: still refused, and pending opens 23 hours from now.
+        $closed = date('Y-m-d H:i:s', time() - 3600);
+        $this->pdo->exec('UPDATE ' . DB_PREFIX . "survey SET status = 'closed', closed_at = '{$closed}' WHERE survey_id = {$ks}");
+        $this->assertNull($s->resultsAccess($this->pOfficerA, $this->row($ks), $ctx));
+        $this->assertSame(['opens_at' => date('Y-m-d H:i:s', strtotime($closed) + 86400)], $s->resultsPending($this->pOfficerA, $this->row($ks), $ctx));
+
+        // Closed two days ago: shared, and no longer pending.
+        $this->pdo->exec('UPDATE ' . DB_PREFIX . "survey SET closed_at = '" . date('Y-m-d H:i:s', time() - 2 * 86400) . "' WHERE survey_id = {$ks}");
+        $this->assertSame('shared', $s->resultsAccess($this->pOfficerA, $this->row($ks), $ctx)['level']);
+        $this->assertNull($s->resultsPending($this->pOfficerA, $this->row($ks), $ctx));
+
+        // The owner never waits.
+        $this->pdo->exec('UPDATE ' . DB_PREFIX . "survey SET status = 'open', closed_at = NULL WHERE survey_id = {$ks}");
+        $this->assertSame('manage', $s->resultsAccess($this->kOfficer, $this->row($ks), null)['level']);
+    }
+
+    public function testOngoingSharesWhileTheSurveyIsOpenAndPendingNeedsAQualifyingViewer(): void
+    {
+        $s = new Survey();
+        $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k, ['results_share' => 'scoped', 'results_share_timing' => 'ongoing']);
+        $this->assertSame('shared', $s->resultsAccess($this->pOfficerA, $this->row($ks), ['type' => 'park', 'id' => $this->parkA])['level']);
+
+        $held = $this->openSurvey($this->kOfficer, 'kingdom', $this->k, ['results_share' => 'scoped']);
+        $this->assertNull($s->resultsPending($this->kOtherOfficer, $this->row($held), ['type' => 'park', 'id' => $this->parkOther]), 'not reached: not pending, just refused');
+        $this->assertNull($s->resultsPending($this->pOfficerA, $this->row($this->openSurvey($this->kOfficer, 'kingdom', $this->k)), ['type' => 'park', 'id' => $this->parkA]), "results_share 'none' is never pending");
+    }
+
+    public function testListRowSaysWhenHeldResultsOpen(): void
+    {
+        $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k, ['results_share' => 'scoped']);
+        $closed = date('Y-m-d H:i:s', time() - 3600);
+        $this->pdo->exec('UPDATE ' . DB_PREFIX . "survey SET status = 'closed', closed_at = '{$closed}' WHERE survey_id = {$ks}");
+
+        $rows = (new Survey())->listForScope($this->pOfficerA, 'park', $this->parkA)['Rows']['kingdom'];
+        $this->assertCount(1, $rows);
+        $this->assertFalse($rows[0]['CanResults']);
+        $this->assertTrue($rows[0]['ResultsPending']);
+        $this->assertSame(date('Y-m-d H:i:s', strtotime($closed) + 86400), $rows[0]['ResultsOpensAt']);
+    }
+
+    public function testCloneKeepsResultsShareTiming(): void
+    {
+        $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k, ['results_share' => 'scoped', 'results_share_timing' => 'ongoing']);
+        $c = (new Survey())->cloneSurvey($ks, $this->kOfficer);
+        $copy = $this->fx['survey'][] = (int) $c['SurveyId'];
+        $this->assertSame('ongoing', (string) $this->row($copy)['results_share_timing']);
     }
 
     public function testKingdomFamilyIncludesPrincipalities(): void
@@ -134,8 +203,8 @@ final class SurveySharingCreditTest extends TestCase
 
     public function testParkPageSeesOrkOwnKingdomAndOwnParkOnly(): void
     {
-        $ork   = $this->openSurvey($this->kOfficer, 'ork', $this->k, ['results_share' => 'scoped']);
-        $kings = $this->openSurvey($this->kOfficer, 'kingdom', $this->k, ['results_share' => 'scoped']);
+        $ork   = $this->openSurvey($this->kOfficer, 'ork', $this->k, ['results_share' => 'scoped', 'results_share_timing' => 'ongoing']);
+        $kings = $this->openSurvey($this->kOfficer, 'kingdom', $this->k, ['results_share' => 'scoped', 'results_share_timing' => 'ongoing']);
         $away  = $this->openSurvey($this->kOtherOfficer, 'kingdom', $this->kOther);
         $mineP = $this->openSurvey($this->pOfficerA, 'park', $this->parkA);
         $sibP  = $this->openSurvey($this->pOfficerB, 'park', $this->parkB);
@@ -187,7 +256,7 @@ final class SurveySharingCreditTest extends TestCase
     /** §1: a shared row's response count reaches the page only under results_share = 'all'. */
     public function testSharedRowsCarryTheResponseCountOnlyWhenResultsAreSharedWithEveryone(): void
     {
-        $kings = $this->openSurvey($this->kOfficer, 'kingdom', $this->k, ['results_share' => 'scoped']);
+        $kings = $this->openSurvey($this->kOfficer, 'kingdom', $this->k, ['results_share' => 'scoped', 'results_share_timing' => 'ongoing']);
         $mineP = $this->openSurvey($this->pOfficerA, 'park', $this->parkA);
         $this->answer($kings, $this->player('cnt1', $this->parkB, $this->k), 'full');
         $this->answer($mineP, $this->player('cnt2', $this->parkA, $this->k), 'anonymous');
@@ -222,7 +291,7 @@ final class SurveySharingCreditTest extends TestCase
 
     public function testKingdomLensKeepsTheKingdomsRowsUnderTheExistingSmallGroupRules(): void
     {
-        $os = $this->openSurvey($this->kOfficer, 'ork', $this->k, ['results_share' => 'scoped']);
+        $os = $this->openSurvey($this->kOfficer, 'ork', $this->k, ['results_share' => 'scoped', 'results_share_timing' => 'ongoing']);
         // 5 full + 2 partial + 1 anonymous at home; 2 full away.
         foreach (['full', 'full', 'full', 'full', 'full', 'partial', 'partial', 'anonymous'] as $i => $c) {
             $this->answer($os, $this->player('home' . $i, $this->parkA, $this->k), $c);
@@ -253,7 +322,7 @@ final class SurveySharingCreditTest extends TestCase
 
     public function testParkLensCountsOnlyAnyOrkDataFromThatParkAndSuppressesUnderFive(): void
     {
-        $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k, ['results_share' => 'scoped']);
+        $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k, ['results_share' => 'scoped', 'results_share_timing' => 'ongoing']);
         foreach (['full', 'full', 'partial', 'anonymous'] as $i => $c) {
             $this->answer($ks, $this->player('pa' . $i, $this->parkA, $this->k), $c);
         }
@@ -273,7 +342,7 @@ final class SurveySharingCreditTest extends TestCase
      */
     public function testSharedViewersGetNoDateWindowsPerDayCountsOrParkSlices(): void
     {
-        $ks = $this->openSurvey($this->kOfficer, 'ork', $this->k, ['results_share' => 'scoped']);
+        $ks = $this->openSurvey($this->kOfficer, 'ork', $this->k, ['results_share' => 'scoped', 'results_share_timing' => 'ongoing']);
         for ($i = 0; $i < 6; $i++) {
             $this->answer($ks, $this->player('dw' . $i, $i < 5 ? $this->parkA : $this->parkB, $this->k), 'full');
         }
@@ -1002,7 +1071,7 @@ final class SurveySharingCreditTest extends TestCase
     /** Spec §8 / AC 3: rows and export stay manager-only; shared access never opens them. */
     public function testSharedViewersCannotReachRowsOrExport(): void
     {
-        $ks  = $this->openSurvey($this->kOfficer, 'kingdom', $this->k, ['results_share' => 'all']);
+        $ks  = $this->openSurvey($this->kOfficer, 'kingdom', $this->k, ['results_share' => 'all', 'results_share_timing' => 'ongoing']);
         $acc = (new Survey())->resultsAccess($this->pOfficerA, $this->row($ks), ['type' => 'park', 'id' => $this->parkA]);
         $this->assertSame('shared', $acc['level'], 'the park officer may read charts');
         $this->assertFalse((new Survey())->canManage($this->pOfficerA, $this->row($ks)), 'but fails the gate rows and export use');
@@ -1034,7 +1103,7 @@ final class SurveySharingCreditTest extends TestCase
     /** Clone copies the results-sharing setting like every other survey setting. */
     public function testCloneKeepsResultsSharing(): void
     {
-        $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k, ['results_share' => 'scoped']);
+        $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k, ['results_share' => 'scoped', 'results_share_timing' => 'ongoing']);
         $c = (new Survey())->cloneSurvey($ks, $this->kOfficer);
         $this->assertSame(0, $c['Status'], (string) ($c['Error'] ?? ''));
         $copy = $this->fx['survey'][] = (int) $c['SurveyId'];
