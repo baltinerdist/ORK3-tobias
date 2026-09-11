@@ -935,3 +935,16 @@ html[data-theme="dark"] .svr-card .highcharts-data-label tspan {
 
 /* Header actions: the .rp-btn-ghost sizing every survey .rp-* page needs is
    declared once in survey.css, which this page also loads. */
+
+/* Pairwise (pairwise spec §7): the ranking table under the chart, and a
+   long matchup list clamped in the rows table (the response panel shows it all). */
+.svr-pw-tablewrap { margin-top: 12px; overflow-x: auto; }
+.svr-pw-table td:nth-child(n+3),
+.svr-pw-table th:nth-child(n+3) { text-align: right; font-variant-numeric: tabular-nums; }
+.svr-pw-table abbr { text-decoration: none; cursor: help; }
+.svr-cell-clamp {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}

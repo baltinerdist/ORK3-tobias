@@ -149,7 +149,7 @@
     function typeLabel(t) {
         var map = {
             single: 'Single choice', multi: 'Multiple choice', dropdown: 'Dropdown', yesno: 'Yes / No',
-            rating: 'Rating', nps: 'Net promoter', matrix: 'Matrix', ranking: 'Ranking',
+            rating: 'Rating', nps: 'Net promoter', matrix: 'Matrix', ranking: 'Ranking', pairwise: 'Pairwise',
             short_text: 'Short text', paragraph: 'Paragraph', number: 'Number', date: 'Date'
         };
         return map[t] || t;
@@ -482,6 +482,39 @@
         return cfg;
     }
 
+    /* Win % in rank order (pairwise spec §7): the server already sorted the
+       options, never-matched ones last with a null bar. */
+    function specPairwise(q, theme) {
+        var opts = ((q.agg && q.agg.options) || []).slice();
+        var cfg = baseCfg(theme, 'bar');
+        cfg.chart.height = barHeight(opts.length, 1);
+        cfg.xAxis.categories = opts.map(function (o) { return o.label; });
+        cfg.yAxis.min = 0;
+        cfg.yAxis.max = 100;
+        cfg.yAxis.labels.format = '{value}%';
+        cfg.yAxis.title = { text: 'Win % (a tie counts half)', style: { color: theme.muted, fontSize: '11px' } };
+        cfg.plotOptions.bar = {
+            borderRadius: 4,
+            dataLabels  : {
+                enabled  : true,
+                style    : labelStyle(theme),
+                formatter: function () { return this.y === null ? null : num(this.y, 1) + '%'; }
+            }
+        };
+        cfg.tooltip.formatter = function () {
+            var o = opts[this.point.index] || {};
+            return '<b>' + esc(o.label) + '</b><br/>Win %: <b>' + num(o.win_pct, 1) + '%</b><br/>' +
+                'Won ' + (o.wins || 0) + ' · Tied ' + (o.ties || 0) + ' · Lost ' + (o.losses || 0) + '<br/>' +
+                'Matchups: <b>' + (o.appearances || 0) + '</b>';
+        };
+        cfg.series = [{
+            name : 'Win %',
+            color: theme.colors[0],
+            data : opts.map(function (o) { return o.win_pct === null ? null : o.win_pct; })
+        }];
+        return cfg;
+    }
+
     /* Number answers (#30). mode 'values': whole numbers with few distinct
        values, one column per value, with the integer gaps between them filled
        so the axis reads as a number line. mode 'bins': a histogram whose labels
@@ -782,6 +815,7 @@
             case 'nps':     return specNps(q, theme);
             case 'matrix':  return specMatrix(q, theme);
             case 'ranking': return specRanking(q, theme);
+            case 'pairwise': return specPairwise(q, theme);
             case 'number':  return specNumber(q, theme);
             case 'date':    return specDate(q, theme);
             default:        return null;
@@ -819,6 +853,12 @@
                         out.push([r.label, num(r.weighted_mean, 2)]);
                     }
                 });
+                break;
+            case 'pairwise':
+                out.push(['Possible matchups', num(a.possible)],
+                    ['Average % of matchups', a.avg_pct === null || a.avg_pct === undefined ? '—' : num(a.avg_pct, 1) + '%'],
+                    ['Avg per respondent', a.avg_count === null || a.avg_count === undefined ? '—' : num(a.avg_count, 1) + ' of ' + num(a.possible)],
+                    ['Matchups judged', num(a.judged)]);
                 break;
             default:
                 break;
@@ -882,6 +922,49 @@
             btn('pct', '% within group') + btn('count', 'Count') + '</div>';
     }
 
+    /* The ranking as a sortable table (tabular data = DataTables). Rank sorts
+       ascending by default; never-matched options sort last on every column. */
+    function pairwiseTableHtml(q) {
+        var opts = (q.agg && q.agg.options) || [];
+        var html = '<div class="svr-pw-tablewrap"><table class="display svr-pw-table" style="width:100%" ' +
+            'aria-labelledby="svr-title-' + q.question_id + '"><thead><tr>' +
+            '<th scope="col">Rank</th><th scope="col">Option</th><th scope="col">Win %</th>' +
+            '<th scope="col"><abbr title="Wins">W</abbr></th><th scope="col"><abbr title="Ties">T</abbr></th>' +
+            '<th scope="col"><abbr title="Losses">L</abbr></th><th scope="col">Matchups</th></tr></thead><tbody>';
+        opts.forEach(function (o, i) {
+            var unranked = o.rank === null || o.rank === undefined;
+            html += '<tr>' +
+                '<td data-order="' + (unranked ? 100000 + i : o.rank) + '">' + (unranked ? '—' : o.rank) + '</td>' +
+                '<td>' + esc(o.label) + '</td>' +
+                '<td data-order="' + (unranked ? -1 : o.win_pct) + '">' + (unranked ? '—' : num(o.win_pct, 1) + '%') + '</td>' +
+                '<td>' + (o.wins || 0) + '</td><td>' + (o.ties || 0) + '</td><td>' + (o.losses || 0) + '</td>' +
+                '<td>' + (o.appearances || 0) + '</td></tr>';
+        });
+        return html + '</tbody></table></div>';
+    }
+
+    function destroyPairwiseTables() {
+        (state.pwTables || []).forEach(function (t) { try { t.destroy(); } catch (e) { /* gone */ } });
+        state.pwTables = [];
+    }
+
+    function initPairwiseTables(host) {
+        var jq = window.jQuery;   // not `$`: this file's `$` is getElementById
+        if (!jq || !jq.fn || !jq.fn.DataTable) { return; }
+        Array.prototype.forEach.call(host.querySelectorAll('.svr-pw-table'), function (table) {
+            var many = table.tBodies[0] && table.tBodies[0].rows.length > 25;
+            state.pwTables.push(jq(table).DataTable({
+                order       : [[0, 'asc']],
+                paging      : many,
+                pageLength  : 25,
+                searching   : many,
+                info        : false,
+                lengthChange: false,
+                autoWidth   : false
+            }));
+        });
+    }
+
     function cardHtml(q) {
         var a   = q.agg || {};
         var n   = Number(q.n || a.n || 0);
@@ -936,9 +1019,10 @@
            writes its own aria-label onto this container, and labelledby wins
            the accessible-name computation, so every chart region is announced
            with the question it belongs to instead of a generic label. */
-        html += '<div class="svr-chart' + (q.type === 'matrix' || q.type === 'ranking' ? ' svr-chart-tall' : '') +
+        html += '<div class="svr-chart' + (q.type === 'matrix' || q.type === 'ranking' || q.type === 'pairwise' ? ' svr-chart-tall' : '') +
             '" id="svr-chart-' + qid + '" data-qid="' + qid + '" aria-labelledby="svr-title-' + qid + '"></div>';
         html += calloutsFor(q);
+        if (q.type === 'pairwise') { html += pairwiseTableHtml(q); }
 
         var others = a.other_texts || [];
         if (others.length) {
@@ -964,6 +1048,7 @@
         payload       : null,
         charts        : {},       /* question_id → Highcharts instance */
         table         : null,
+        pwTables      : [],       /* pairwise ranking DataTable instances, one per card */
         loading       : false,
         seq           : 0,        /* results request sequence: the latest Apply wins (#27) */
         abort         : null,
@@ -1479,12 +1564,14 @@
 
     function renderCards(questions) {
         var host = $('svr-cards');
+        destroyPairwiseTables();
         if (!questions.length) {
             host.innerHTML = '<div class="rp-chart-card svr-card"><div class="svr-empty">' +
                 'This survey has no answerable questions yet.</div></div>';
             return;
         }
         host.innerHTML = questions.map(cardHtml).join('');
+        initPairwiseTables(host);
     }
 
     function announceCards(payload) {
@@ -1576,7 +1663,8 @@
         qids.forEach(function (qid) {
             var v = (row.answers || {})[qid];
             out.push(v === undefined || v === null || v === '' ? '<span class="svr-cell-anon">—</span>' :
-                '<span class="svr-cell-answer">' + esc(answerText(questionById(qid), v)) + '</span>');
+                '<span class="svr-cell-answer' + ((questionById(qid) || {}).type === 'pairwise' ? ' svr-cell-clamp' : '') + '">' +
+                esc(answerText(questionById(qid), v)) + '</span>');
         });
         return out;
     }
