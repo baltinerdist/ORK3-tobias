@@ -498,6 +498,12 @@ class Survey
             return [];
         }
 
+        return $this->decorateRows($rows);
+    }
+
+    /** ScopeName, ResponseCount and Locked for a list of survey rows, in two name queries. */
+    private function decorateRows(array $rows): array
+    {
         // Resolve scope names in two queries rather than one per row.
         $kIds = [];
         $pIds = [];
@@ -537,6 +543,107 @@ class Survey
         }
 
         return $rows;
+    }
+
+    /**
+     * The survey list for one org page, in three sections (sharing spec §1).
+     * Kingdom K: ORK surveys reaching K (open/closed; ORK admins see every
+     * status), K's and its principalities' surveys, and every park survey in
+     * that family. Park P: ORK surveys reaching P's kingdom and kingdom surveys
+     * reaching P's players (both open/closed), and P's own surveys. Unscoped:
+     * everything the viewer manages, grouped by scope. Refuses (empty) an org
+     * the viewer holds no CREATE authority for.
+     */
+    public function listForScope(int $uid, ?string $scopeType, ?int $scopeId): array
+    {
+        $out = [
+            'Rows'   => ['ork' => [], 'kingdom' => [], 'park' => []],
+            'Labels' => ['ork' => 'Amtgard', 'kingdom' => 'Kingdoms', 'park' => 'Parks'],
+        ];
+        if ($uid <= 0) {
+            return $out;
+        }
+
+        $credit = new SurveyCredit();
+        $page   = null;
+        if ($scopeType === null) {
+            $rows = $this->listManageable($uid);
+        } else {
+            $scopeId = (int) $scopeId;
+            if (!in_array($scopeType, ['kingdom', 'park'], true) || !$this->canCreate($uid, $scopeType, $scopeId)) {
+                return $out;
+            }
+            $page = ['type' => $scopeType, 'id' => $scopeId];
+            $rows = $this->decorateRows($this->scopeRows($uid, $page, $credit, $out['Labels']));
+        }
+
+        $keys = $credit->configKeys(array_column($rows, 'survey_id'));
+        foreach ($rows as $row) {
+            $sid    = (int) $row['survey_id'];
+            $manage = $this->canManage($uid, $row);
+            $acc    = ($page !== null && !$manage) ? $this->resultsAccess($uid, $row, $page) : null;
+
+            $grantor = null;
+            if ($page !== null && $credit->validGrantor($row, $page['type'], $page['id'])) {
+                $grantor = $page;
+            } elseif ($manage && in_array((string) $row['scope_type'], ['kingdom', 'park'], true)) {
+                $grantor = ['type' => (string) $row['scope_type'], 'id' => (int) $row['scope_id']];
+            }
+
+            $row['Access']         = $manage ? 'manage' : 'shared';
+            $row['CanResults']     = $manage || $acc !== null;
+            $row['ResultsContext'] = $acc !== null ? ucfirst($page['type']) . '/' . $page['id'] : null;
+            $row['ResultsLabel']   = $acc['label'] ?? '';
+            $row['CreditGrantor']  = $grantor !== null ? ucfirst($grantor['type']) . '/' . $grantor['id'] : null;
+            $row['CreditOn']       = $grantor !== null && isset($keys[$sid . ':' . $grantor['type'] . ':' . $grantor['id']]);
+
+            $out['Rows'][(string) $row['scope_type']][] = $row;
+        }
+        return $out;
+    }
+
+    /**
+     * Raw ork_survey rows for one org page (listForScope), plus its section labels.
+     *
+     * @param array{type:string,id:int} $page
+     * @param array<string,string>      $labels filled in place
+     */
+    private function scopeRows(int $uid, array $page, SurveyCredit $credit, array &$labels): array
+    {
+        $live  = $this->isOrkAdmin($uid) ? '' : ' AND status IN (\'open\', \'closed\')';
+        $order = ' ORDER BY created_at DESC, survey_id DESC';
+        $rows  = [];
+
+        // Amtgard: ORK surveys whose audience reaches this org (JSON list, so filtered here).
+        foreach ($this->fetchAll('SELECT * FROM ' . DB_PREFIX . 'survey WHERE scope_type = \'ork\'' . $live . $order) as $r) {
+            if ($credit->validGrantor($r, $page['type'], $page['id'])) {
+                $rows[] = $r;
+            }
+        }
+
+        if ($page['type'] === 'kingdom') {
+            $fam = implode(',', array_map('intval', $this->kingdomFamily($page['id'])));
+            $labels['kingdom'] = $this->scopeName('kingdom', $page['id']);
+            $labels['park']    = 'Parks';
+            $rows = array_merge(
+                $rows,
+                $this->fetchAll('SELECT * FROM ' . DB_PREFIX . 'survey WHERE scope_type = \'kingdom\' AND scope_id IN (' . $fam . ')' . $order),
+                $this->fetchAll('SELECT * FROM ' . DB_PREFIX . 'survey WHERE scope_type = \'park\' AND scope_id IN (
+                                    SELECT park_id FROM ' . DB_PREFIX . 'park WHERE kingdom_id IN (' . $fam . '))' . $order)
+            );
+            return $rows;
+        }
+
+        [$kingdomId, $parentId] = $credit->orgKingdom('park', $page['id']);
+        $reach = array_filter([$kingdomId, $parentId]);
+        $labels['kingdom'] = $kingdomId > 0 ? $this->scopeName('kingdom', $kingdomId) : 'Kingdom';
+        $labels['park']    = $this->scopeName('park', $page['id']);
+        if ($reach) {
+            $rows = array_merge($rows, $this->fetchAll('SELECT * FROM ' . DB_PREFIX . 'survey WHERE scope_type = \'kingdom\'
+                                                         AND scope_id IN (' . implode(',', array_map('intval', $reach)) . ')' . $live . $order));
+        }
+        return array_merge($rows, $this->fetchAll('SELECT * FROM ' . DB_PREFIX . 'survey WHERE scope_type = \'park\'
+                                                   AND scope_id = ' . (int) $page['id'] . $order));
     }
 
     // -----------------------------------------------------------------------

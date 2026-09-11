@@ -199,6 +199,21 @@ class SurveyCredit
         return self::grantorReaches($surveyRow, $type, $id, $kingdom, $parent);
     }
 
+    /** @return array<string,true> "<survey_id>:<grantor_type>:<grantor_id>" for every config of these surveys */
+    public function configKeys(array $surveyIds): array
+    {
+        $ids = array_values(array_filter(array_map('intval', $surveyIds)));
+        if (!$ids) {
+            return [];
+        }
+        $out = [];
+        foreach ($this->fetchAll('SELECT survey_id, grantor_type, grantor_id FROM ' . DB_PREFIX . 'survey_credit
+                                  WHERE survey_id IN (' . implode(',', $ids) . ')') as $r) {
+            $out[(int) $r['survey_id'] . ':' . $r['grantor_type'] . ':' . (int) $r['grantor_id']] = true;
+        }
+        return $out;
+    }
+
     // -----------------------------------------------------------------------
     // SQL helpers (same contract as class.Survey.php)
     // -----------------------------------------------------------------------
