@@ -111,8 +111,8 @@ button.rp-filter-pill { font: inherit; font-size: 11px; font-weight: 600; line-h
    not 760px, so a 17px classic scrollbar at 1121px (wrapper ~750px) still
    fits. The wrapper keeps overflow-x as a safety net only. */
 .sv-dt-scroll { clear: both; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-#sv-table { min-width: 740px; }
-#sv-table tr[hidden] { display: none; }
+#theme_container .sv-survey-table { min-width: 740px; }
+#theme_container .sv-survey-table tr[hidden] { display: none; }
 
 /* Hidden text that stays in the accessibility tree: the Actions column
    header, and each row button's label in the icon-only table (last blocks). */
@@ -195,12 +195,14 @@ html[data-theme="dark"] .sv-toast { background: #1a202c; border: 1px solid #4a55
    ~30px ones; survey.css holds the header button on every coarse pointer,
    and #sv-new-btn here covers a 601-640px fine-pointer window. The text
    fields also go to 16px so iOS does not zoom the page on focus. The
-   DataTables selectors are ID-scoped to outrank reports.css's
-   .rp-table-area rules. */
+   DataTables selectors are class + #theme_container scoped to outrank
+   reports.css's .rp-table-area rules. Up to three tables now share one
+   DataTables_wrapper class (sv-table-{key}_wrapper has no single id to
+   hook), so the wrapper is targeted by that shared class instead. */
 @media (pointer: coarse), (max-width: 640px) {
 	#sv-new-btn { min-height: 44px; box-sizing: border-box; }
-	#sv-table_wrapper .dataTables_length select,
-	#sv-table_wrapper .dataTables_filter input {
+	#theme_container .dataTables_wrapper .dataTables_length select,
+	#theme_container .dataTables_wrapper .dataTables_filter input {
 		min-height: 44px; box-sizing: border-box; font-size: 16px; padding: 8px 10px;
 	}
 	.sv-row-btn { min-height: 44px; padding: 8px 12px; }
@@ -209,12 +211,12 @@ html[data-theme="dark"] .sv-toast { background: #1a202c; border: 1px solid #4a55
 		display: inline-flex; align-items: center; justify-content: center;
 		min-height: 44px; min-width: 44px; box-sizing: border-box; padding: 6px 14px; border-radius: 22px;
 	}
-	#sv-table_wrapper .dataTables_paginate .paginate_button {
+	#theme_container .dataTables_wrapper .dataTables_paginate .paginate_button {
 		display: inline-flex; align-items: center; justify-content: center;
 		min-height: 44px; min-width: 44px; box-sizing: border-box; padding: 6px 12px;
 		margin: 2px;
 	}
-	#sv-table_wrapper .dataTables_paginate .ellipsis {
+	#theme_container .dataTables_wrapper .dataTables_paginate .ellipsis {
 		display: inline-flex; align-items: center; min-height: 44px; vertical-align: top;
 	}
 }
@@ -230,52 +232,54 @@ html[data-theme="dark"] .sv-toast { background: #1a202c; border: 1px solid #4a55
    shows its column name from data-label. The buttons are laid out on a grid.
    Sizes here are the compact desktop scale; the touch block above and the
    sort-chip block below restore the 44px floor on touch and at phone width.
-   The ID selectors outrank reports.css's .rp-table-area table.dataTable
-   rules, including their dark-mode variants. Colours are the theme-aware
-   --rp-/--ork- tokens, so no dark override is needed. */
+   The class + #theme_container selectors outrank reports.css's
+   .rp-table-area table.dataTable rules, including their dark-mode variants.
+   Colours are the theme-aware --rp-/--ork- tokens, so no dark override is
+   needed. */
 @media (max-width: 1120px), (max-width: 1400px) and (pointer: coarse) {
-	#sv-table { min-width: 0; border-bottom: 0; }
+	#theme_container .sv-survey-table { min-width: 0; border-bottom: 0; }
 	/* A card list, not a table: no table surface behind the sort strip or in the
-	   gaps between cards (dark mode painted a lighter band there). Two IDs outrank
-	   the theme's dark table rules. */
-	#theme_container #sv-table, #theme_container #sv-table thead, #theme_container #sv-table thead tr,
-	html[data-theme="dark"] #theme_container #sv-table,
-	html[data-theme="dark"] #theme_container #sv-table thead,
-	html[data-theme="dark"] #theme_container #sv-table thead tr { background: transparent; }
-	#sv-table, #sv-table thead, #sv-table tbody, #sv-table tbody tr, #sv-table tbody td {
+	   gaps between cards (dark mode painted a lighter band there). ID + class
+	   outrank the theme's dark table rules. */
+	#theme_container .sv-survey-table, #theme_container .sv-survey-table thead, #theme_container .sv-survey-table thead tr,
+	html[data-theme="dark"] #theme_container .sv-survey-table,
+	html[data-theme="dark"] #theme_container .sv-survey-table thead,
+	html[data-theme="dark"] #theme_container .sv-survey-table thead tr { background: transparent; }
+	#theme_container .sv-survey-table, #theme_container .sv-survey-table thead, #theme_container .sv-survey-table tbody,
+	#theme_container .sv-survey-table tbody tr, #theme_container .sv-survey-table tbody td {
 		display: block; width: 100%; box-sizing: border-box;
 	}
-	#sv-table tr[hidden] { display: none; }
+	#theme_container .sv-survey-table tr[hidden] { display: none; }
 
-	#sv-table thead tr { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 0 10px; }
-	#sv-table thead tr::before {
+	#theme_container .sv-survey-table thead tr { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 0 10px; }
+	#theme_container .sv-survey-table thead tr::before {
 		content: "Sort by"; font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
 		text-transform: uppercase; color: var(--ork-text-secondary); margin-right: 2px;
 	}
-	#sv-table thead th {
+	#theme_container .sv-survey-table thead th {
 		position: relative; display: inline-flex; align-items: center; box-sizing: border-box;
 		min-height: 30px; padding: 4px 26px 4px 12px; border: 1px solid var(--rp-border-mid);
 		border-radius: 15px; white-space: nowrap;
 	}
-	#sv-table thead th.sorting_disabled,
-	#sv-table thead th:last-child { display: none; }
+	#theme_container .sv-survey-table thead th.sorting_disabled,
+	#theme_container .sv-survey-table thead th:last-child { display: none; }
 
-	#sv-table tbody tr {
+	#theme_container .sv-survey-table tbody tr {
 		margin: 0 0 10px; border: 1px solid var(--rp-border-mid); border-radius: 8px;
 		overflow: hidden; background: var(--rp-bg-table, #fff);
 	}
-	#sv-table tbody td {
+	#theme_container .sv-survey-table tbody td {
 		display: flex; justify-content: space-between; align-items: center; gap: 12px;
 		padding: 5px 12px; border-bottom: 0; text-align: right;
 	}
-	#sv-table tbody td[data-label]::before {
+	#theme_container .sv-survey-table tbody td[data-label]::before {
 		content: attr(data-label); flex: 0 0 auto; text-align: left;
 		font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
 		color: var(--ork-text-secondary);
 	}
-	#sv-table tbody td.sv-survey-title { display: block; text-align: left; padding-top: 12px; font-size: 14px; }
-	#sv-table tbody td.sv-row-actions-cell { display: block; padding: 10px 12px 12px; }
-	#sv-table tbody td.dataTables_empty { display: block; text-align: center; padding: 16px 12px; }
+	#theme_container .sv-survey-table tbody td.sv-survey-title { display: block; text-align: left; padding-top: 12px; font-size: 14px; }
+	#theme_container .sv-survey-table tbody td.sv-row-actions-cell { display: block; padding: 10px 12px 12px; }
+	#theme_container .sv-survey-table tbody td.dataTables_empty { display: block; text-align: center; padding: 16px 12px; }
 
 	.sv-row-actions {
 		display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 6px;
@@ -297,12 +301,12 @@ html[data-theme="dark"] .sv-toast { background: #1a202c; border: 1px solid #4a55
    sort chips go back to a 44px tap target. The row buttons already get theirs
    from the touch block above. */
 @media (max-width: 640px), (max-width: 1400px) and (pointer: coarse) {
-	#sv-table thead th { min-height: 44px; padding-top: 6px; padding-bottom: 6px; border-radius: 22px; }
+	#theme_container .sv-survey-table thead th { min-height: 44px; padding-top: 6px; padding-bottom: 6px; border-radius: 22px; }
 }
 /* The full table on a touch screen wider than 1400px: its sortable headers are
    tap targets too. */
 @media (min-width: 1401px) and (pointer: coarse) {
-	#sv-table thead th { height: 44px; box-sizing: border-box; }
+	#theme_container .sv-survey-table thead th { height: 44px; box-sizing: border-box; }
 }
 
 /* The full table on a fine pointer: the six row buttons go icon-only (28px
@@ -313,14 +317,34 @@ html[data-theme="dark"] .sv-toast { background: #1a202c; border: 1px solid #4a55
    A coarse pointer never gets here: it has cards to 1400px and, past that,
    the labelled 44px buttons (a tip cannot be hovered on touch). */
 @media (min-width: 1121px) and (pointer: fine) {
-	#sv-table .sv-row-actions { flex-wrap: nowrap; gap: 4px; }
-	#sv-table .sv-row-btn { width: 28px; padding: 0; }
-	#sv-table .sv-row-btn i { font-size: 12px; }
-	#sv-table .sv-row-btn-label {
+	#theme_container .sv-survey-table .sv-row-actions { flex-wrap: nowrap; gap: 4px; }
+	#theme_container .sv-survey-table .sv-row-btn { width: 28px; padding: 0; }
+	#theme_container .sv-survey-table .sv-row-btn i { font-size: 12px; }
+	#theme_container .sv-survey-table .sv-row-btn-label {
 		position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
 		overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 	}
 }
+
+/* ---- Org sections (Amtgard / Kingdom / Park) ----
+   The h2 must reset orkui.css's global heading pill box (background, border,
+   padding, radius, box-shadow) in both themes: html[data-theme="dark"]
+   h1..h6 carries more type selectors than a plain class and wins the tie. */
+.sv-list-section { margin: 0 0 22px; }
+#theme_container .sv-list-section-title,
+html[data-theme="dark"] #theme_container .sv-list-section-title {
+	display: flex; align-items: center; gap: 8px; margin: 0 0 10px; padding: 0;
+	background: none; border: 0; border-radius: 0; box-shadow: none;
+	font-size: 14px; font-weight: 700; color: var(--rp-text-body, var(--ork-text));
+}
+.sv-list-section-count {
+	font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 10px;
+	background: var(--ork-surface-light, #edf2f7); color: var(--ork-text-secondary);
+}
+.sv-list-section-empty { margin: 0; padding: 12px 14px; font-size: 13px; color: var(--ork-text-secondary);
+	border: 1px dashed var(--rp-border-mid); border-radius: 8px; }
+.sv-row-btn.sv-row-btn-on { color: var(--ork-accent, #b7791f); }
+html[data-theme="dark"] .sv-list-section-count { background: #2d3748; }
 </style>
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
 
@@ -412,30 +436,49 @@ html[data-theme="dark"] .sv-toast { background: #1a202c; border: 1px solid #4a55
 			<div class="sv-notice sv-notice-error" id="sv-csrf-notice" role="alert" hidden>
 				Your security token expired. <a href="" class="sv-notice-link" id="sv-csrf-reload">Reload the page</a> and try again.
 			</div>
-<?php if ($_total === 0): ?>
+<?php if ($ScopeType === null && $_total === 0): ?>
 			<div class="sv-empty-state">
 				<i class="fas fa-poll"></i>
 				No surveys yet for this scope.<br>
 				<button type="button" class="sv-row-btn" id="sv-empty-new-btn" style="margin-top:14px;"><i class="fas fa-plus"></i> Create your first survey</button>
 			</div>
+<?php else:
+	$_sec_icon  = ['ork' => 'fa-globe', 'kingdom' => 'fa-crown', 'park' => 'fa-campground'];
+	$_sec_empty = [
+		'ork'     => 'No Amtgard-wide surveys right now.',
+		'kingdom' => 'No kingdom surveys right now.',
+		'park'    => 'No park surveys yet.',
+	];
+	foreach (['ork', 'kingdom', 'park'] as $_key):
+		$_rows = $Buckets['Rows'][$_key] ?? [];
+		if ($ScopeType === null && !$_rows) { continue; }   // unscoped: only sections with rows
+?>
+			<section class="sv-list-section" data-sv-section="<?=$_key?>" aria-labelledby="sv-sec-<?=$_key?>">
+				<h2 class="sv-list-section-title" id="sv-sec-<?=$_key?>">
+					<i class="fas <?=$_sec_icon[$_key]?>" aria-hidden="true"></i>
+					<?=htmlspecialchars($Buckets['Labels'][$_key])?>
+					<span class="sv-list-section-count"><?=count($_rows)?></span>
+				</h2>
+<?php if (!$_rows): ?>
+				<p class="sv-list-section-empty"><?=$_sec_empty[$_key]?></p>
 <?php else: ?>
-			<!-- Explicit table roles: up to 1120px (1400px on touch) every row is a
-			     display:block card, and some browsers (WebKit) drop a table's
-			     semantics once its parts stop being display:table-*. The roles keep
-			     it a table with headers for screen readers at every width. -->
-			<table class="sv-survey-table dataTable" id="sv-table" role="table" style="width:100%">
-				<thead role="rowgroup">
-					<tr role="row">
-						<th role="columnheader">Title</th>
-						<th role="columnheader">Scope</th>
-						<th role="columnheader">Status</th>
-						<th role="columnheader" class="dt-right">Responses</th>
-						<th role="columnheader">Opened / Closes</th>
-						<th role="columnheader"><span class="sv-sr-only">Actions</span></th>
-					</tr>
-				</thead>
-				<tbody role="rowgroup">
-<?php foreach ($Surveys as $_row):
+				<!-- Explicit table roles: up to 1120px (1400px on touch) every row is a
+				     display:block card, and some browsers (WebKit) drop a table's
+				     semantics once its parts stop being display:table-*. The roles keep
+				     it a table with headers for screen readers at every width. -->
+				<table class="sv-survey-table dataTable" id="sv-table-<?=$_key?>" role="table" style="width:100%">
+					<thead role="rowgroup">
+						<tr role="row">
+							<th role="columnheader">Title</th>
+							<th role="columnheader">Scope</th>
+							<th role="columnheader">Status</th>
+							<th role="columnheader" class="dt-right">Responses</th>
+							<th role="columnheader">Opened / Closes</th>
+							<th role="columnheader"><span class="sv-sr-only">Actions</span></th>
+						</tr>
+					</thead>
+					<tbody role="rowgroup">
+<?php foreach ($_rows as $_row):
 	$_sid    = (int) $_row['survey_id'];
 	$_status = (string) $_row['status'];
 	$_label  = $_status_labels[$_status] ?? ucfirst($_status);
@@ -449,44 +492,61 @@ html[data-theme="dark"] .sv-toast { background: #1a202c; border: 1px solid #4a55
 	// their count arrives as null unless results_share = 'all' (Survey::listForScope).
 	$_shared = ($_row['Access'] ?? 'manage') === 'shared';
 ?>
-					<tr role="row" data-sv-status="<?=htmlspecialchars($_status)?>" data-sv-slug="<?=htmlspecialchars((string)$_row['slug'])?>">
-						<td role="cell" class="sv-survey-title" data-order="<?=htmlspecialchars(mb_strtolower((string)$_row['title']))?>">
+						<tr role="row" data-sv-status="<?=htmlspecialchars($_status)?>" data-sv-slug="<?=htmlspecialchars((string)$_row['slug'])?>">
+							<td role="cell" class="sv-survey-title" data-order="<?=htmlspecialchars(mb_strtolower((string)$_row['title']))?>">
 <?php if ($_shared): ?>
-							<?=htmlspecialchars((string)$_row['title'])?>
+								<?=htmlspecialchars((string)$_row['title'])?>
 <?php else: ?>
-							<a href="<?=UIR?>Survey/build/<?=$_sid?>"><?=htmlspecialchars((string)$_row['title'])?></a>
+								<a href="<?=UIR?>Survey/build/<?=$_sid?>"><?=htmlspecialchars((string)$_row['title'])?></a>
 <?php endif; ?>
-							<div class="sv-survey-meta">Created <?=date('M j, Y', strtotime((string)$_row['created_at']))?></div>
-						</td>
-						<td role="cell" data-label="Scope"><?=htmlspecialchars($_row['scope_type'] === 'ork' ? 'All of Amtgard' : (string)$_row['ScopeName'])?></td>
-						<td role="cell" data-label="Status" data-order="<?=$_status_rank?>" data-search="<?=htmlspecialchars($_status)?>"><span class="sv-status-pill sv-status-pill-<?=htmlspecialchars($_status)?>"><?=$_label?></span></td>
+								<div class="sv-survey-meta">Created <?=date('M j, Y', strtotime((string)$_row['created_at']))?></div>
+							</td>
+							<td role="cell" data-label="Scope"><?=htmlspecialchars($_row['scope_type'] === 'ork' ? 'All of Amtgard' : (string)$_row['ScopeName'])?></td>
+							<td role="cell" data-label="Status" data-order="<?=$_status_rank?>" data-search="<?=htmlspecialchars($_status)?>"><span class="sv-status-pill sv-status-pill-<?=htmlspecialchars($_status)?>"><?=$_label?></span></td>
 <?php if ($_shared && ($_row['results_share'] ?? 'none') !== 'all'): ?>
-						<td role="cell" class="dt-right" data-label="Responses" data-order="-1">&mdash;</td>
+							<td role="cell" class="dt-right" data-label="Responses" data-order="-1">&mdash;</td>
 <?php else: ?>
-						<td role="cell" class="dt-right" data-label="Responses" data-order="<?=(int)$_row['ResponseCount']?>"><?=number_format((int)$_row['ResponseCount'])?></td>
+							<td role="cell" class="dt-right" data-label="Responses" data-order="<?=(int)$_row['ResponseCount']?>"><?=number_format((int)$_row['ResponseCount'])?></td>
 <?php endif; ?>
-						<td role="cell" data-label="Opened / Closes" data-order="<?=$_close_key?>"><span><span class="sv-nowrap"><?=$_opened?></span> &rarr; <span class="sv-nowrap"><?=$_closes?></span></span></td>
+							<td role="cell" data-label="Opened / Closes" data-order="<?=$_close_key?>"><span><span class="sv-nowrap"><?=$_opened?></span> &rarr; <span class="sv-nowrap"><?=$_closes?></span></span></td>
 <?php /* Each label is in its own span: the full table shows the buttons
 	icon-only (the span is visually hidden, so it stays the accessible name)
 	and data-tip names the action on hover and keyboard focus. */ ?>
-						<td role="cell" class="sv-row-actions-cell">
-							<div class="sv-row-actions">
-<?php if (!$_shared): ?>
-								<a class="sv-row-btn" href="<?=UIR?>Survey/build/<?=$_sid?>" data-tip="Build: edit the questions and pages"><i class="fas fa-hammer" aria-hidden="true"></i> <span class="sv-row-btn-label">Build</span></a>
-								<a class="sv-row-btn" href="<?=UIR?>Survey/results/<?=$_sid?>" data-tip="Results: charts, responses and export"><i class="fas fa-chart-bar" aria-hidden="true"></i> <span class="sv-row-btn-label">Results</span></a>
-								<a class="sv-row-btn" href="<?=UIR?>Survey/take/<?=$_sid?>/preview" target="_blank" rel="noopener" data-tip="Preview: take the survey without saving (opens a new tab)"><i class="fas fa-eye" aria-hidden="true"></i> <span class="sv-row-btn-label">Preview</span></a>
-								<button type="button" class="sv-row-btn sv-clone-btn" data-sid="<?=$_sid?>" data-tip="Clone: copy it into a new draft"><i class="fas fa-clone" aria-hidden="true"></i> <span class="sv-row-btn-label">Clone</span></button>
-								<button type="button" class="sv-row-btn sv-copylink-btn" data-slug="<?=htmlspecialchars((string)$_row['slug'])?>" data-tip="Copy link: copy the share link to your clipboard"><i class="fas fa-link" aria-hidden="true"></i> <span class="sv-row-btn-label">Copy link</span></button>
+							<td role="cell" class="sv-row-actions-cell">
+								<div class="sv-row-actions">
+<?php if ($_row['Access'] === 'manage'): ?>
+									<a class="sv-row-btn" href="<?=UIR?>Survey/build/<?=$_sid?>" data-tip="Build: edit the questions and pages"><i class="fas fa-hammer" aria-hidden="true"></i> <span class="sv-row-btn-label">Build</span></a>
+									<a class="sv-row-btn" href="<?=UIR?>Survey/results/<?=$_sid?>" data-tip="Results: charts, responses and export"><i class="fas fa-chart-bar" aria-hidden="true"></i> <span class="sv-row-btn-label">Results</span></a>
+									<a class="sv-row-btn" href="<?=UIR?>Survey/take/<?=$_sid?>/preview" target="_blank" rel="noopener" data-tip="Preview: take the survey without saving (opens a new tab)"><i class="fas fa-eye" aria-hidden="true"></i> <span class="sv-row-btn-label">Preview</span></a>
+									<button type="button" class="sv-row-btn sv-clone-btn" data-sid="<?=$_sid?>" data-tip="Clone: copy it into a new draft"><i class="fas fa-clone" aria-hidden="true"></i> <span class="sv-row-btn-label">Clone</span></button>
+									<button type="button" class="sv-row-btn sv-copylink-btn" data-slug="<?=htmlspecialchars((string)$_row['slug'])?>" data-tip="Copy link: copy the share link to your clipboard"><i class="fas fa-link" aria-hidden="true"></i> <span class="sv-row-btn-label">Copy link</span></button>
 <?php if ($_status !== 'archived'): ?>
-								<button type="button" class="sv-row-btn sv-archive-btn" data-sid="<?=$_sid?>" data-title="<?=htmlspecialchars((string)$_row['title'])?>" data-tip="Archive: stop collecting responses and hide it"><i class="fas fa-box-archive" aria-hidden="true"></i> <span class="sv-row-btn-label">Archive</span></button>
+									<button type="button" class="sv-row-btn sv-archive-btn" data-sid="<?=$_sid?>" data-title="<?=htmlspecialchars((string)$_row['title'])?>" data-tip="Archive: stop collecting responses and hide it"><i class="fas fa-box-archive" aria-hidden="true"></i> <span class="sv-row-btn-label">Archive</span></button>
 <?php endif; ?>
-<?php endif; /* !$_shared */ ?>
-							</div>
-						</td>
-					</tr>
+<?php endif; /* Access === manage */ ?>
+<?php if ($_row['Access'] === 'shared'): ?>
+<?php if ($_status === 'open'): ?>
+									<a class="sv-row-btn" href="<?=UIR?>Survey/s/<?=htmlspecialchars((string)$_row['slug'])?>" data-tip="Take this survey"><i class="fas fa-pen-to-square" aria-hidden="true"></i> <span class="sv-row-btn-label">Take</span></a>
+<?php endif; ?>
+<?php if (!empty($_row['CanResults'])): ?>
+									<a class="sv-row-btn" href="<?=UIR?>Survey/results/<?=$_sid?>/<?=htmlspecialchars((string)$_row['ResultsContext'])?>"
+									   data-tip="<?=$_row['ResultsLabel'] === 'all' ? 'Results (shared: all respondents)' : 'Results (your ' . htmlspecialchars($_row['ResultsLabel']) . ')'?>"><i class="fas fa-chart-bar" aria-hidden="true"></i> <span class="sv-row-btn-label"><?=$_row['ResultsLabel'] === 'all' ? 'Results' : 'Results (your ' . htmlspecialchars($_row['ResultsLabel']) . ')'?></span></a>
+<?php endif; ?>
+<?php endif; /* Access === shared */ ?>
+<?php if (!empty($_row['CreditGrantor']) && $_status !== 'archived'): ?>
+									<button type="button" class="sv-row-btn<?=!empty($_row['CreditOn']) ? ' sv-row-btn-on' : ''?>" data-sv-credit="<?=$_sid?>"
+									        data-sv-grantor="<?=htmlspecialchars((string)$_row['CreditGrantor'])?>" data-sv-title="<?=htmlspecialchars((string)$_row['title'])?>"
+									        data-tip="<?=!empty($_row['CreditOn']) ? 'Attendance credit is on' : 'Attendance credit'?>"><i class="fas fa-award" aria-hidden="true"></i> <span class="sv-row-btn-label">Credits</span></button>
+<?php endif; ?>
+								</div>
+							</td>
+						</tr>
 <?php endforeach; ?>
-				</tbody>
-			</table>
+					</tbody>
+				</table>
+<?php endif; ?>
+			</section>
+<?php endforeach; ?>
 <?php endif; ?>
 		</div><!-- /.rp-table-area -->
 
@@ -562,6 +622,9 @@ html[data-theme="dark"] .sv-toast { background: #1a202c; border: 1px solid #4a55
 </div>
 
 <div class="sv-toast" id="sv-toast" role="status" aria-live="polite"></div>
+
+<script>window.SvCreditConfig = { uir: <?=json_encode(UIR)?>, csrf: <?=json_encode((string)($SurveyCsrf ?? '')) ?> };</script>
+<?php include __DIR__ . '/_survey_credit_modal.tpl'; ?>
 
 <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
 <script>
@@ -662,43 +725,45 @@ html[data-theme="dark"] .sv-toast { background: #1a202c; border: 1px solid #4a55
 		}
 	});
 
-	// ----- Survey list DataTable -----
+	// ----- Survey list DataTables -----
+	// Up to three tables now, one per org section (Amtgard / Kingdom / Park).
 	// Columns: 0 Title, 1 Scope, 2 Status, 3 Responses, 4 Opened / Closes,
 	// 5 row actions. Status and close date sort on the cells' data-order keys
 	// (live first, soonest close first); the status pills search column 2's
-	// data-search value.
+	// data-search value on every table at once.
 	var STATUS_COL = 2;
-	var tableEl = document.getElementById('sv-table');
-	var dt = null;
-	if (tableEl && window.jQuery && window.jQuery.fn && window.jQuery.fn.DataTable) {
-		dt = window.jQuery(tableEl).DataTable({
-			dom        : 'lfr<"sv-dt-scroll"t>ip',
-			pageLength : 25,
-			lengthMenu : [[10, 25, 50, 100, -1], [10, 25, 50, 100, 'All']],
-			order      : [[STATUS_COL, 'asc'], [4, 'asc']],
-			autoWidth  : false,
-			columnDefs : [
-				{ targets: [0], type: 'html' },
-				{ targets: [3], type: 'num', className: 'dt-right' },
-				{ targets: [5], orderable: false, searchable: false }
-			],
-			language   : {
-				search           : 'Search:',
-				searchPlaceholder: 'Search surveys',
-				lengthMenu       : 'Show _MENU_ surveys',
-				info             : 'Showing _START_ to _END_ of _TOTAL_ surveys',
-				infoEmpty        : 'No surveys to show',
-				infoFiltered     : '(filtered from _MAX_)',
-				zeroRecords      : 'No surveys match this filter.',
-				emptyTable       : 'No surveys yet for this scope.'
-			},
-			// DataTables' own "no match" row has no ARIA roles; in the card
-			// layout (display:block) it would drop out of the table for
-			// WebKit screen readers like an unmarked server row would.
-			drawCallback: function() {
-				tableEl.querySelectorAll('tbody tr:not([role])').forEach(function(tr) { tr.setAttribute('role', 'row'); });
-				tableEl.querySelectorAll('tbody td:not([role])').forEach(function(td) { td.setAttribute('role', 'cell'); });
-			}
+	var dts = [];
+	if (window.jQuery && window.jQuery.fn && window.jQuery.fn.DataTable) {
+		document.querySelectorAll('.sv-survey-table').forEach(function(tableEl) {
+			dts.push(window.jQuery(tableEl).DataTable({
+				dom        : 'lfr<"sv-dt-scroll"t>ip',
+				pageLength : 25,
+				lengthMenu : [[10, 25, 50, 100, -1], [10, 25, 50, 100, 'All']],
+				order      : [[STATUS_COL, 'asc'], [4, 'asc']],
+				autoWidth  : false,
+				columnDefs : [
+					{ targets: [0], type: 'html' },
+					{ targets: [3], type: 'num', className: 'dt-right' },
+					{ targets: [5], orderable: false, searchable: false }
+				],
+				language   : {
+					search           : 'Search:',
+					searchPlaceholder: 'Search surveys',
+					lengthMenu       : 'Show _MENU_ surveys',
+					info             : 'Showing _START_ to _END_ of _TOTAL_ surveys',
+					infoEmpty        : 'No surveys to show',
+					infoFiltered     : '(filtered from _MAX_)',
+					zeroRecords      : 'No surveys match this filter.',
+					emptyTable       : 'No surveys yet for this scope.'
+				},
+				// DataTables' own "no match" row has no ARIA roles; in the card
+				// layout (display:block) it would drop out of the table for
+				// WebKit screen readers like an unmarked server row would.
+				drawCallback: function() {
+					tableEl.querySelectorAll('tbody tr:not([role])').forEach(function(tr) { tr.setAttribute('role', 'row'); });
+					tableEl.querySelectorAll('tbody td:not([role])').forEach(function(td) { td.setAttribute('role', 'cell'); });
+				}
+			}));
 		});
 	}
 
@@ -709,7 +774,7 @@ html[data-theme="dark"] .sv-toast { background: #1a202c; border: 1px solid #4a55
 	// is on the button, so a tip would just repeat it.
 	var tipEl = null, tipFor = null;
 	function tipTarget(node) {
-		var t = node && node.closest ? node.closest('#sv-table [data-tip]') : null;
+		var t = node && node.closest ? node.closest('.sv-survey-table [data-tip]') : null;
 		if (!t) { return null; }
 		var lbl = t.querySelector('.sv-row-btn-label');
 		return (lbl && lbl.getBoundingClientRect().width > 1) ? null : t;
@@ -776,12 +841,12 @@ html[data-theme="dark"] .sv-toast { background: #1a202c; border: 1px solid #4a55
 			pill.classList.add('active');
 			pill.setAttribute('aria-pressed', 'true');
 			var f = pill.getAttribute('data-sv-filter');
-			if (dt) {
-				dt.column(STATUS_COL).search(f === 'all' ? '' : '^' + f + '$', true, false).draw();
+			if (dts.length) {
+				dts.forEach(function(dt) { dt.column(STATUS_COL).search(f === 'all' ? '' : '^' + f + '$', true, false).draw(); });
 				return;
 			}
 			// No DataTables (CDN blocked): fall back to hiding rows in place.
-			document.querySelectorAll('#sv-table tbody tr').forEach(function(row) {
+			document.querySelectorAll('.sv-survey-table tbody tr').forEach(function(row) {
 				row.hidden = (f !== 'all' && row.getAttribute('data-sv-status') !== f);
 			});
 		});
@@ -883,6 +948,18 @@ html[data-theme="dark"] .sv-toast { background: #1a202c; border: 1px solid #4a55
 		} else {
 			showLink(url);
 		}
+	});
+
+	// ----- Attendance credit -----
+	document.addEventListener('click', function (e) {
+		var b = e.target.closest('[data-sv-credit]');
+		if (!b || !window.SvCredit) { return; }
+		window.SvCredit.open({
+			surveyId: parseInt(b.getAttribute('data-sv-credit'), 10),
+			grantor: b.getAttribute('data-sv-grantor') || '',
+			title: b.getAttribute('data-sv-title') || '',
+			onChange: function () { b.classList.add('sv-row-btn-on'); b.setAttribute('data-tip', 'Attendance credit is on'); }
+		});
 	});
 
 	// ----- Archive -----
