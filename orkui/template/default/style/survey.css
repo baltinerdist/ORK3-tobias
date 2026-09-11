@@ -1403,6 +1403,13 @@ html[data-theme="dark"] .sv-modal-cancel:hover { background: #718096; }
 .sv-credit-lead { margin: 0 0 8px; font-size: 14px; }
 .sv-credit-sub { margin: 10px 0 4px; font-size: 12px; color: var(--ork-text-secondary); }
 .sv-credit-list { margin: 0 0 12px; padding-left: 18px; font-size: 13px; line-height: 1.5; }
+/* The event link: orkui.css's bare `a { color: #333; text-decoration: none }`
+   made it darker than the text around it and not read as a link in light
+   mode. --ork-link swaps in dark mode on its own. */
+.sv-credit-list a { color: var(--ork-link); text-decoration: underline; }
+/* A status message holds focus only so a re-render never drops it behind the
+   dialog (survey-credit.js keepFocusInside); it is not a control, so no ring. */
+.sv-credit-modal .sv-notice[tabindex="-1"]:focus { outline: none; }
 .sv-credit-modes { border: 0; margin: 8px 0; padding: 0; min-width: 0; }
 .sv-credit-modes legend { font-size: 13px; margin-bottom: 6px; padding: 0; }
 .sv-credit-mode { display: flex; gap: 8px; align-items: flex-start; min-height: 32px; padding: 6px 8px; border: 1px solid var(--sv-line-3); border-radius: 4px; margin-bottom: 6px; background: var(--sv-l3); cursor: pointer; font-size: 13px; box-sizing: border-box; }

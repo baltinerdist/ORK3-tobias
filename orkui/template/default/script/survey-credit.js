@@ -2,7 +2,8 @@
   survey-credit.js — the Attendance credit modal (sharing-and-credits spec §3.6).
   Shared by the survey list and the builder. Configured by
   window.SvCreditConfig = {uir, csrf}; opened with
-  SvCredit.open({surveyId, grantor, title, onChange}). No native dialogs;
+  SvCredit.open({surveyId, grantor, title, onChange}); SvCredit.status(surveyId,
+  grantor) reads the state quietly for a host page's label. No native dialogs;
   focus is trapped while open and restored on close. Configs are permanent,
   so the only mutation is "Turn on credits", gated by an explicit checkbox.
 */
@@ -140,14 +141,30 @@
         enableBtn.disabled = !(mode && ack && ack.checked);
     }
 
+    /* A re-render can take away the control that had focus (Turn on credits is
+       disabled while it posts, then hidden once credits are on), which drops
+       focus to <body> behind an aria-modal dialog. Put it back inside: on the
+       new status message when there is one (so it is read out), else Close. */
+    function keepFocusInside() {
+        if (!ov || !ov.classList.contains('sv-open') || ov.contains(document.activeElement)) { return; }
+        var note = body.querySelector('.sv-notice');
+        if (note) {
+            note.setAttribute('tabindex', '-1');
+            note.focus();
+        } else {
+            closeBtn.focus();
+        }
+    }
+
     function load(extraHtml) {
         var forSurvey = current.surveyId;
         return post('credit_status', { SurveyId: forSurvey, Grantor: current.grantor || '' }).then(function (j) {
             // The modal may have been closed, or reopened for another survey, while this was in flight.
             if (!current || current.surveyId !== forSurvey) { return; }
-            if (!j || j.status !== 0) { body.innerHTML = errorHtml(j); return; }
+            if (!j || j.status !== 0) { body.innerHTML = errorHtml(j); keepFocusInside(); return; }
             data = j.credit;
             render(extraHtml);
+            keepFocusInside();
             if ((data.pending | 0) > 0 && !reconciled) {
                 reconciled = true;
                 var cur = current;
@@ -175,6 +192,7 @@
                 if (current !== cur) { return; }
                 body.insertAdjacentHTML('afterbegin', errorHtml(j));
                 syncEnable();
+                keepFocusInside();
                 return;
             }
             var msg = 'Credits are on. Posted ' + plural(j.granted | 0, 'credit', 'credits') + '.';
@@ -201,7 +219,25 @@
         if (e.key !== 'Tab') { return; }
         var f = focusables();
         if (!f.length) { return; }
-        if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
+        var a = document.activeElement;
+        if (f.indexOf(a) === -1) {
+            // Focus on something that is not in the tab order: the status
+            // message keepFocusInside() parked it on, or <body> if it slipped
+            // out. Step to the neighbouring control inside the dialog, and
+            // wrap round rather than let the browser walk the page behind.
+            e.preventDefault();
+            var next = null, k;
+            if (ov.contains(a)) {
+                if (e.shiftKey) {
+                    for (k = f.length - 1; k >= 0 && !next; k--) { if (a.compareDocumentPosition(f[k]) & Node.DOCUMENT_POSITION_PRECEDING) { next = f[k]; } }
+                } else {
+                    for (k = 0; k < f.length && !next; k++) { if (a.compareDocumentPosition(f[k]) & Node.DOCUMENT_POSITION_FOLLOWING) { next = f[k]; } }
+                }
+            }
+            (next || (e.shiftKey ? f[f.length - 1] : f[0])).focus();
+            return;
+        }
+        if (e.shiftKey && a === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
         else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
     }
 
@@ -236,5 +272,15 @@
         if (ov && ov.classList.contains('sv-open') && (e.target.name === 'sv-credit-mode' || e.target.id === 'sv-credit-ack')) { syncEnable(); }
     });
 
-    window.SvCredit = { open: open };
+    /* Read-only credit state for a host page's own label (the builder's card
+       button). Resolves to the credit_status payload, or null on any failure —
+       a quiet read, so nothing is shown when it cannot be fetched. */
+    function status(surveyId, grantor) {
+        CFG = window.SvCreditConfig || CFG;
+        return post('credit_status', { SurveyId: surveyId, Grantor: grantor || '' }).then(function (j) {
+            return (j && j.status === 0) ? j.credit : null;
+        });
+    }
+
+    window.SvCredit = { open: open, status: status };
 }());
