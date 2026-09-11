@@ -46,6 +46,28 @@
                                    and aria-disable its end buttons.
      touchRank(listEl) -> void     Mark a ranking answered (drag onEnd calls it).
 
+     pairwisePlan(optionCount) -> {possible, small, band_pcts, tiers, gate}
+                                   Mirrors SurveyTypes::pairwisePlan(), key for
+                                   key. Pinned to the PHP by
+                                   SurveyPairwisePlanScriptTest.
+     pairwiseGateMessage(plan) -> string
+                                   What a required pairwise question says
+                                   below its gate.
+     pairwiseStage(plan, doneCount, required) -> {level, message, complete}
+                                   Where a respondent stands (spec §6): bar
+                                   colour, message under the bar, done flag.
+     pairwiseQueue(ids, done, rand|null) -> [{a, b}, …]
+                                   Matchups still to judge: every unordered
+                                   pair of ids not in done, shuffled with rand
+                                   (null keeps authored order — the builder
+                                   preview).
+     pairKey(a, b) -> 'min:max'   Canonical key for an unordered option pair.
+     PW_SMALL_MAX, PW_BANDS, PW_TIER_MESSAGES, PW_DONE_MESSAGE,
+     PW_OPTIONAL_MESSAGE          The pairwise constants pairwisePlan() and
+                                   pairwiseStage() read, mirroring
+                                   SurveyTypes::PAIRWISE_SMALL_MAX /
+                                   PAIRWISE_BANDS and the pairwise spec §6 copy.
+
    --------------------------------------------------------------------------
    HTML STRUCTURE PER TYPE  (style against this; do not guess)
    --------------------------------------------------------------------------
@@ -236,6 +258,25 @@
     var NPS_MIN = 0;
     var NPS_MAX = 10;
 
+    /* Pairwise (pairwise spec §2): mirrors SurveyTypes::PAIRWISE_SMALL_MAX and
+       PAIRWISE_BANDS the way OTHER_MAX mirrors OTHER_MAX_LENGTH.
+       SurveyPairwisePlanScriptTest pins this copy to the PHP. */
+    var PW_SMALL_MAX = 30;
+    var PW_BANDS = [
+        [105,  [30, 40, 50, 60]],
+        [200,  [20, 30, 40, 50]],
+        [300,  [10, 20, 30, 40]],
+        [null, [10, 15, 20, 25]]
+    ];
+    var PW_TIER_MESSAGES = [
+        'This is a great start. You can move on, but you can make our survey better by doing a few more matchups!',
+        'Even better! You can keep going for better results or continue.',
+        'Awesome! This is a great sample. Feel free to keep ranking or continue on.',
+        'Fantastic! You\'ve given us a great sample size, so you can keep going or continue on. Your choice!'
+    ];
+    var PW_DONE_MESSAGE = 'Whoa, you ranked them all! Incredible job, we thank you!';
+    var PW_OPTIONAL_MESSAGE = 'Every matchup helps. Do as many as you like.';
+
     var seq = 0;                  // makes radio group names unique per render
 
     // ---------------------------------------------------------------- helpers
@@ -326,6 +367,98 @@
 
     function attrIf(name, value) {
         return (value === null || value === undefined || value === '') ? '' : ' ' + name + '="' + escapeHtml(value) + '"';
+    }
+
+    // ---------------------------------------------------------- pairwise core
+
+    /** SurveyTypes::pairwisePlan(), key for key (integer ceilings, never floats). */
+    function pairwisePlan(optionCount) {
+        var n = Math.max(0, parseInt(optionCount, 10) || 0);
+        var possible = n < 2 ? 0 : n * (n - 1) / 2;
+        var pcts = [], tiers = [], i;
+        if (possible <= PW_SMALL_MAX) {
+            return { possible: possible, small: true, band_pcts: [], tiers: [], gate: possible };
+        }
+        for (i = 0; i < PW_BANDS.length; i++) {
+            if (PW_BANDS[i][0] === null || possible <= PW_BANDS[i][0]) { pcts = PW_BANDS[i][1].slice(); break; }
+        }
+        for (i = 0; i < pcts.length; i++) { tiers.push(Math.floor((pcts[i] * possible + 99) / 100)); }
+        return { possible: possible, small: false, band_pcts: pcts, tiers: tiers, gate: tiers[0] };
+    }
+
+    /** SurveyTypes::pairwiseGateMessage(): what a required question says below its gate. */
+    function pairwiseGateMessage(plan) {
+        return plan.small
+            ? 'Please finish all ' + plan.possible + ' matchups to continue.'
+            : 'Please complete at least ' + plan.gate + ' matchups to continue.';
+    }
+
+    /**
+     * Where a respondent stands (spec §6). level 0-4 picks the bar colour;
+     * message is the line under the bar ('' for none); complete once every
+     * matchup is judged. Small sets colour by thirds, larger ones by tier.
+     */
+    function pairwiseStage(plan, doneCount, required) {
+        var k = Math.max(0, parseInt(doneCount, 10) || 0), level = 0, i, left;
+        if (plan.possible > 0 && k >= plan.possible) {
+            return { level: 4, message: PW_DONE_MESSAGE, complete: true };
+        }
+        if (plan.small) {
+            level = k * 3 >= plan.possible * 2 ? 2 : (k * 3 >= plan.possible ? 1 : 0);
+            return { level: level, message: required ? 'Finish all ' + plan.possible + ' matchups to continue.' : '', complete: false };
+        }
+        for (i = 0; i < plan.tiers.length; i++) { if (k >= plan.tiers[i]) { level = i + 1; } }
+        if (level > 0) { return { level: level, message: PW_TIER_MESSAGES[level - 1], complete: false }; }
+        left = plan.gate - k;
+        return {
+            level: 0,
+            message: required
+                ? left + (left === 1 ? ' more matchup' : ' more matchups') + ' to go before you can continue.'
+                : PW_OPTIONAL_MESSAGE,
+            complete: false
+        };
+    }
+
+    function pairKey(a, b) {
+        a = parseInt(a, 10); b = parseInt(b, 10);
+        return a < b ? a + ':' + b : b + ':' + a;
+    }
+
+    function sharesOption(m, n) { return m.a === n.a || m.a === n.b || m.b === n.a || m.b === n.b; }
+
+    /**
+     * The matchups still to judge (spec §4): every unordered pair of `ids` not
+     * already in `done`, Fisher-Yates shuffled with a coin toss for sides, then
+     * one greedy pass that swaps a later pair forward when the next one would
+     * repeat an option from the matchup before it. rand = null keeps authored
+     * order and sides (the builder preview).
+     */
+    function pairwiseQueue(ids, done, rand) {
+        var seen = {}, out = [], i, j, k, t, prev;
+        (done || []).forEach(function (m) { seen[pairKey(m.a, m.b)] = true; });
+        for (i = 0; i < ids.length; i++) {
+            for (j = i + 1; j < ids.length; j++) {
+                if (!seen[pairKey(ids[i], ids[j])]) { out.push({ a: ids[i], b: ids[j] }); }
+            }
+        }
+        if (!rand) { return out; }
+        for (i = out.length - 1; i > 0; i--) {
+            j = Math.floor(rand() * (i + 1));
+            t = out[i]; out[i] = out[j]; out[j] = t;
+        }
+        for (i = 0; i < out.length; i++) {
+            if (rand() < 0.5) { t = out[i].a; out[i].a = out[i].b; out[i].b = t; }
+        }
+        prev = (done && done.length) ? done[done.length - 1] : null;
+        for (i = 0; i < out.length; i++) {
+            if (prev && sharesOption(out[i], prev)) {
+                for (k = i + 1; k < out.length; k++) {
+                    if (!sharesOption(out[k], prev)) { t = out[i]; out[i] = out[k]; out[k] = t; break; }
+                }
+            }
+            prev = out[i];
+        }
+        return out;
     }
 
     // ------------------------------------------------------------- type bodies
@@ -1082,6 +1215,16 @@
         reindexRank: reindexRank,
         touchRank: touchRank,
         ANSWERABLE: ANSWERABLE,
-        OTHER_MAX: OTHER_MAX
+        OTHER_MAX: OTHER_MAX,
+        pairwisePlan: pairwisePlan,
+        pairwiseGateMessage: pairwiseGateMessage,
+        pairwiseStage: pairwiseStage,
+        pairwiseQueue: pairwiseQueue,
+        pairKey: pairKey,
+        PW_SMALL_MAX: PW_SMALL_MAX,
+        PW_BANDS: PW_BANDS,
+        PW_TIER_MESSAGES: PW_TIER_MESSAGES,
+        PW_DONE_MESSAGE: PW_DONE_MESSAGE,
+        PW_OPTIONAL_MESSAGE: PW_OPTIONAL_MESSAGE
     };
 }(window, document));
