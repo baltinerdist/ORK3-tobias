@@ -1807,8 +1807,12 @@
             lo = (hi || 0) + 1;
         }
 
+        // The exact line a required respondent sees at zero picks, so the count is this question's own.
+        var firstRequired = n < 3
+            ? 'A count of the matchups left before they can continue'
+            : '“' + esc(SvRender.pairwiseStage(plan, 0, true).message) + '”';
         stages = '<li data-level="0"><span class="svb-pw-swatch" aria-hidden="true"></span><span><strong>Before the first mark:</strong> ' +
-                 '“8 more matchups to go before you can continue.” (required) or “' + esc(SvRender.PW_OPTIONAL_MESSAGE) + '” (optional)</span></li>';
+                 firstRequired + ' (required) or “' + esc(SvRender.PW_OPTIONAL_MESSAGE) + '” (optional)</span></li>';
         SvRender.PW_TIER_MESSAGES.forEach(function (m, idx) {
             stages += '<li data-level="' + (idx + 1) + '"><span class="svb-pw-swatch" aria-hidden="true"></span><span>“' + esc(m) + '”</span></li>';
         });
