@@ -349,7 +349,7 @@ final class SurveySharingCreditTest extends TestCase
                 }
             }
         }
-        $this->assertSame(2, $found, 'both token-free system writers are covered');
+        $this->assertSame(4, $found, 'every token-free system writer is covered (credit, event create, delete, re-date)');
         $this->assertFalse(method_exists(Attendance::class, 'AddSystemCredit'), 'no JSON-callable spelling may exist');
         $this->assertFalse(method_exists(EventPlanning::class, 'CreateSystemEvent'), 'no JSON-callable spelling may exist');
     }
@@ -523,6 +523,112 @@ final class SurveySharingCreditTest extends TestCase
         }
     }
 
+    /**
+     * Two requests that read an event config before either links an event
+     * (enable's backfill beside a live submit, the sweep) each create one. The
+     * link is conditional and the loser deletes its own, so one event remains
+     * and no orphan "Survey Credit" occurrence is left to nudge attendance pages.
+     */
+    public function testConcurrentEventCreationLeavesOneLinkedEventAndNoOrphan(): void
+    {
+        $s   = new Survey();
+        $sid = $this->fx['survey'][] = (int) $s->create($this->kOfficer, 'kingdom', $this->k, 'T11SHARE race')['SurveyId'];
+        $this->assertSame(0, $this->credit()->enable($this->kOfficer, $sid, ['type' => 'kingdom', 'id' => $this->k], 'event', true)['Status']);
+        $this->pdo->exec('UPDATE ' . DB_PREFIX . "survey SET status = 'open', opened_at = NOW() WHERE survey_id = " . $sid);
+        $name = SurveyCredit::eventName('T11SHARE race');
+        $countEvents = fn (): int => (int) $this->scalar('SELECT COUNT(*) FROM ' . DB_PREFIX . 'event WHERE kingdom_id = ' . $this->k
+            . ' AND name = ' . $this->pdo->quote($name));
+
+        try {
+            // Both read the unlinked config first, then each ensures its event.
+            $stale  = $this->credit()->configs($sid)[0];
+            $row    = $this->row($sid);
+            $ensure = new ReflectionMethod(SurveyCredit::class, 'ensureEvent');
+            $ensure->setAccessible(true);
+            $a = $ensure->invoke(new SurveyCredit(), $stale, $row);
+            $b = $ensure->invoke(new SurveyCredit(), $stale, $row);
+
+            $linked = (int) $this->scalar('SELECT event_calendardetail_id FROM ' . DB_PREFIX . 'survey_credit WHERE survey_id = ' . $sid);
+            $this->assertGreaterThan(0, $linked);
+            $this->assertSame($linked, (int) $a['event_calendardetail_id']);
+            $this->assertSame($linked, (int) $b['event_calendardetail_id'], 'the loser uses the winner\'s event');
+            $this->assertSame(1, $countEvents(), 'the losing event was deleted');
+
+            $active = (new Event())->GetActiveEventsAtScope(['Scope' => 'kingdom', 'ScopeId' => $this->k, 'Date' => SurveyCredit::startDate($row)]);
+            $this->assertNotContains($name, array_column($active['Events'], 'Name'), 'no survey credit occurrence nudges');
+        } finally {
+            foreach ($this->pdo->query('SELECT event_id FROM ' . DB_PREFIX . 'event WHERE kingdom_id = ' . $this->k . ' AND name = '
+                . $this->pdo->quote($name))->fetchAll(PDO::FETCH_COLUMN) as $eid) {
+                $this->pdo->exec('DELETE FROM ' . DB_PREFIX . 'event_calendardetail WHERE event_id = ' . (int) $eid);
+                $this->pdo->exec('DELETE FROM ' . DB_PREFIX . 'event WHERE event_id = ' . (int) $eid);
+            }
+        }
+    }
+
+    /**
+     * The credit event is dated the start date, and open_at stays editable. It
+     * follows an open_at change while it holds no credits, so clearing a far-off
+     * open_at no longer dates today's credits weeks in the future; once credits
+     * exist it stays where they are.
+     */
+    public function testCreditEventFollowsOpenAtUntilItHoldsCredits(): void
+    {
+        $future = date('Y-m-d', strtotime('+20 days'));
+        $today  = date('Y-m-d');
+        $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k, ['open_at' => $future . ' 09:00:00']);
+        $this->assertSame(0, $this->credit()->enable($this->kOfficer, $ks, ['type' => 'kingdom', 'id' => $this->k], 'event', true)['Status']);
+        $eventDate = fn (): string => (string) $this->scalar('SELECT DATE(cd.event_start) FROM ' . DB_PREFIX . 'event_calendardetail cd
+            JOIN ' . DB_PREFIX . 'survey_credit c ON c.event_calendardetail_id = cd.event_calendardetail_id WHERE c.survey_id = ' . $ks);
+        $this->assertSame($future, $eventDate(), 'dated the scheduled start');
+
+        $this->assertSame(0, (new Survey())->update($ks, ['OpenAt' => ''])['Status']);
+        $this->assertSame($today, $eventDate(), 'clearing open_at moves the empty event to the real start');
+
+        $uid = $this->player('redate', $this->parkA, $this->k);
+        $this->assertSame('granted', $this->answer($ks, $uid, 'full')['Credit']);
+        $this->assertSame($today, (string) $this->grants($ks)[0]['date'], 'the credit is dated today, not in the future');
+
+        $this->assertSame(0, (new Survey())->update($ks, ['OpenAt' => date('Y-m-d', strtotime('+5 days')) . ' 09:00:00'])['Status']);
+        $this->assertSame($today, $eventDate(), 'an event holding credits keeps its date');
+    }
+
+    /** A retired home park is no home park: no automatic credit at a park that closed. */
+    public function testRetiredHomeParkIsTreatedAsNoHomePark(): void
+    {
+        $retired = $this->park($this->k, 'retired');
+        $uid = $this->player('retired', $retired, $this->k);
+        $this->pdo->exec('UPDATE ' . DB_PREFIX . "park SET active = 'Retired' WHERE park_id = " . $retired);
+        $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);
+        $this->answer($ks, $uid, 'full');
+        $g = ['type' => 'kingdom', 'id' => $this->k];
+
+        $pre = $this->credit()->status($this->kOfficer, $ks, $g)['Credit']['mine']['preview']['home_park'];
+        $this->assertSame(['eligible_now' => 0, 'no_home_park' => 1], $pre, 'the preview counts them as having no home park');
+
+        $r = $this->credit()->enable($this->kOfficer, $ks, $g, 'home_park', true);
+        $this->assertSame(0, $r['Status'], (string) ($r['Error'] ?? ''));
+        $this->assertSame(0, $r['Granted']);
+        $this->assertSame(1, $r['SkippedNoPark']);
+        $this->assertSame('0', (string) $this->scalar('SELECT COUNT(*) FROM ' . DB_PREFIX . 'attendance WHERE park_id = ' . $retired));
+        $this->assertFalse($this->credit()->creditAvailableFor($this->row($ks), $uid), 'and the runner does not promise one');
+    }
+
+    /** A deleted draft takes its credit configs and their generated event with it. */
+    public function testDeletingADraftRemovesItsCreditConfigsAndEvent(): void
+    {
+        $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);   // opened: it has a start date
+        $this->assertSame(0, (new Survey())->setStatus($ks, 'draft')['Status']);
+        $this->assertSame(0, $this->credit()->enable($this->kOfficer, $ks, ['type' => 'kingdom', 'id' => $this->k], 'event', true)['Status']);
+        $eventId = (int) $this->scalar('SELECT event_id FROM ' . DB_PREFIX . 'survey_credit WHERE survey_id = ' . $ks);
+        $this->assertGreaterThan(0, $eventId, 'the draft owner\'s event exists');
+
+        $this->assertSame(0, (new Survey())->delete($ks)['Status']);
+        $this->assertSame('0', (string) $this->scalar('SELECT COUNT(*) FROM ' . DB_PREFIX . 'survey_credit WHERE survey_id = ' . $ks));
+        $this->assertSame('0', (string) $this->scalar('SELECT COUNT(*) FROM ' . DB_PREFIX . 'event WHERE event_id = ' . $eventId));
+        $this->assertSame('0', (string) $this->scalar('SELECT COUNT(*) FROM ' . DB_PREFIX . 'event_calendardetail WHERE event_id = ' . $eventId));
+        $this->assertNotContains($ks, $this->credit()->surveysWithConfigs(), 'out of the sweep\'s work list');
+    }
+
     public function testDraftOwnerConfigGetsItsEventOnFirstOpen(): void
     {
         $s = new Survey();
@@ -579,9 +685,91 @@ final class SurveySharingCreditTest extends TestCase
         $park = $this->credit()->status($this->pOfficerA, $os, ['type' => 'park', 'id' => $this->parkA]);
         $this->assertSame(1, $park['Credit']['pending'], 'a park sees its own kingdom\'s config and its owed credit');
 
-        // Reconcile still posts everything owed, whoever asked.
-        $this->assertSame(2, $this->credit()->reconcileAs($this->kOfficer, $os, ['type' => 'kingdom', 'id' => $this->k])['Granted']);
+        // Reconcile still posts everything owed, whoever asked, but reports
+        // only the credits under the configs the caller's panel shows.
+        $this->assertSame(1, $this->credit()->reconcileAs($this->kOfficer, $os, ['type' => 'kingdom', 'id' => $this->k])['Granted'], "the other kingdom's credit is posted but not counted");
+        $this->assertCount(2, $this->grants($os), 'both owed credits were posted');
         $this->assertSame(0, $this->credit()->status($this->kOfficer, $os, ['type' => 'kingdom', 'id' => $this->k])['Credit']['pending']);
+        $this->assertSame(0, $this->credit()->status($this->kOtherOfficer, $os, ['type' => 'kingdom', 'id' => $this->kOther])['Credit']['pending']);
+    }
+
+    /**
+     * credit_reconcile and credit_enable answer with counts, and a hidden
+     * config's must not leak through them any more than through status():
+     * Granted, Pending and SkippedNoPark cover the caller's visible configs.
+     */
+    public function testReconcileAndEnableCountOnlyTheConfigsTheCallerCanSee(): void
+    {
+        $os = $this->openSurvey($this->kOfficer, 'ork', $this->k);
+        $this->assertSame(0, $this->credit()->enable($this->kOtherOfficer, $os, ['type' => 'kingdom', 'id' => $this->kOther], 'home_park', true)['Status']);
+        // The other kingdom: one owed credit, and one full respondent with no home park (owed for ever).
+        $away   = $this->player('awayowed', $this->parkOther, $this->kOther);
+        $noPark = $this->player('awaynopark', $this->parkOther, $this->kOther);
+        $this->pdo->exec('INSERT INTO ' . DB_PREFIX . "survey_response (survey_id, consent, mundane_id, kingdom_id, park_id, is_test, submitted_at)
+                          VALUES ({$os}, 'full', {$away}, {$this->kOther}, {$this->parkOther}, 0, NOW()),
+                                 ({$os}, 'full', {$noPark}, {$this->kOther}, NULL, 0, NOW())");
+        $this->answer($os, $this->player('homeenable', $this->parkA, $this->k), 'full');
+
+        $r = $this->credit()->enable($this->kOfficer, $os, ['type' => 'kingdom', 'id' => $this->k], 'home_park', true);
+        $this->assertSame(0, $r['Status'], (string) ($r['Error'] ?? ''));
+        $this->assertSame(1, $r['Granted'], "only this kingdom's backfill is reported");
+        $this->assertSame(0, $r['SkippedNoPark'], "the other kingdom's unplaceable respondent is not");
+        $this->assertCount(2, $this->grants($os), 'the owed credit elsewhere was still posted');
+
+        $again = $this->credit()->reconcileAs($this->kOfficer, $os, ['type' => 'kingdom', 'id' => $this->k]);
+        $this->assertSame(['Granted' => 0, 'SkippedNoPark' => 0, 'Pending' => 0], array_intersect_key($again, array_flip(['Granted', 'SkippedNoPark', 'Pending'])));
+        $theirs = $this->credit()->reconcileAs($this->kOtherOfficer, $os, ['type' => 'kingdom', 'id' => $this->kOther]);
+        $this->assertSame(1, $theirs['SkippedNoPark'], 'the kingdom whose config it is still sees it');
+        $this->assertSame(1, $this->credit()->reconcile($os)['SkippedNoPark'], 'the sweep counts everything');
+
+        // The activity log records the new config's own backfill (§3.5).
+        $act = $this->pdo->query('SELECT action, detail FROM ' . DB_PREFIX . "survey_activity
+                                  WHERE survey_id = {$os} AND action = 'credit' ORDER BY activity_id")->fetchAll(PDO::FETCH_ASSOC);
+        $this->assertCount(2, $act, 'one credit entry per enable');
+        $detail = json_decode((string) $act[1]['detail'], true);
+        $this->assertSame(['credit_id', 'grantor_type', 'grantor_id', 'mode', 'backfilled'], array_keys($detail));
+        $this->assertSame(['kingdom', $this->k, 'home_park', 1], [$detail['grantor_type'], $detail['grantor_id'], $detail['mode'], $detail['backfilled']]);
+        $this->assertSame((int) $r['CreditId'], $detail['credit_id']);
+    }
+
+    /**
+     * D5: other orgs never see a draft and archived is hidden. The panel
+     * endpoints (status, reconcile) used to answer any officer below the
+     * owner with the draft's title, status, event name and preview counts.
+     */
+    public function testCreditPanelHidesDraftsAndArchivedSurveysFromOtherOrgs(): void
+    {
+        $ks     = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);
+        $orkRow = $this->openSurvey($this->kOfficer, 'ork', $this->k);
+        $park   = ['type' => 'park', 'id' => $this->parkA];
+        $kg     = ['type' => 'kingdom', 'id' => $this->k];
+        $this->assertSame(0, $this->credit()->status($this->pOfficerA, $ks, $park)['Status'], 'open: a park below may look');
+
+        foreach (['draft', 'archived'] as $st) {
+            $this->pdo->exec('UPDATE ' . DB_PREFIX . "survey SET status = '{$st}' WHERE survey_id IN ({$ks}, {$orkRow})");
+            $p = $this->credit()->status($this->pOfficerA, $ks, $park);
+            $this->assertSame(3, $p['Status'], "a park officer on the kingdom's {$st}");
+            $this->assertArrayNotHasKey('Credit', $p, 'and learns nothing about it');
+            $this->assertSame(3, $this->credit()->reconcileAs($this->pOfficerA, $ks, $park)['Status']);
+            $this->assertSame(3, $this->credit()->status($this->kOfficer, $orkRow, $kg)['Status'], "a kingdom officer on an ORK {$st}");
+            $this->assertSame(0, $this->credit()->status($this->kOfficer, $ks, $kg)['Status'], "the owner's own {$st} stays readable");
+        }
+    }
+
+    /** §3.2: the owner may configure a draft, but nobody backfills an archived survey. */
+    public function testOwnerCannotTurnCreditsOnForAnArchivedSurvey(): void
+    {
+        $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);
+        $this->answer($ks, $this->player('arch', $this->parkA, $this->k), 'full');
+        $this->assertSame(0, (new Survey())->setStatus($ks, 'archived')['Status']);
+        $r = $this->credit()->enable($this->kOfficer, $ks, ['type' => 'kingdom', 'id' => $this->k], 'home_park', true);
+        $this->assertSame(1, $r['Status']);
+        $this->assertStringContainsString('archived', $r['Error']);
+        $this->assertSame('0', (string) $this->scalar('SELECT COUNT(*) FROM ' . DB_PREFIX . 'survey_credit WHERE survey_id = ' . $ks));
+        $this->assertCount(0, $this->grants($ks));
+        $st = $this->credit()->status($this->kOfficer, $ks, ['type' => 'kingdom', 'id' => $this->k]);
+        $this->assertFalse($st['Credit']['mine']['can_enable']);
+        $this->assertStringContainsString('archived', $st['Credit']['mine']['blocked_reason']);
     }
 
     public function testCreditAvailableForFollowsCoverage(): void

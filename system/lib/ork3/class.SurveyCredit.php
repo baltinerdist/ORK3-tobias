@@ -26,6 +26,7 @@ class SurveyCredit
     /** ork_event.name is varchar(100). */
     public const EVENT_NAME_MAX = 100;
 
+
     private $db;
 
     /** @var array<int,int>|null kingdom_id => parent_kingdom_id, non-zero parents only */
@@ -157,6 +158,17 @@ class SurveyCredit
         return ['credit_id' => null, 'no_home_park' => $noPark];
     }
 
+    /**
+     * SQL for a home park that counts only while the park is Active, given
+     * $column and the ork_park row LEFT JOINed on it as `p`. A retired park is
+     * treated as no home park, as orgKingdom() treats it as no org: a credit
+     * there would feed the attendance of a park that closed years ago.
+     */
+    private static function activeParkSql(string $column): string
+    {
+        return 'CASE WHEN p.active = \'Active\' THEN ' . $column . ' ELSE NULL END';
+    }
+
     // -----------------------------------------------------------------------
     // Org lookups
     // -----------------------------------------------------------------------
@@ -286,7 +298,7 @@ class SurveyCredit
         }
         $manage = $this->survey()->canManage($uid, $survey);
         $acting = $this->canActFor($uid, $survey, $grantor);
-        if (!$manage && !$acting) {
+        if (!$this->mayView($survey, $manage, $acting)) {
             return $this->denied('You cannot manage attendance credits for this survey.');
         }
         if (!$acting) {
@@ -301,12 +313,11 @@ class SurveyCredit
             $counts[(int) $r['credit_id']] = (int) $r['n'];
         }
 
+        $visibleId = $this->visibleIds($configs, $survey, $manage, $grantor);
         $visible   = [];
-        $visibleId = [];
         foreach ($configs as $c) {
-            if ($manage || $this->related($c, $grantor, $survey)) {
+            if (isset($visibleId[(int) $c['credit_id']])) {
                 $visible[] = $this->configOut($c, $counts[(int) $c['credit_id']] ?? 0);
-                $visibleId[(int) $c['credit_id']] = true;
             }
         }
 
@@ -385,13 +396,17 @@ class SurveyCredit
             . ' AND grantor_type = \'' . $grantor['type'] . '\' AND grantor_id = ' . (int) $grantor['id']);
         $creditId = $row ? (int) $row['credit_id'] : 0;
 
-        $res = $this->reconcile($sid);
+        // The backfill posts every owed credit, but the caller reads counts
+        // only for the configs its panel shows (status()): another kingdom's
+        // numbers would leak how many of that kingdom answered.
+        $visible = $this->visibleIds($this->configs($sid), $survey, $this->survey()->canManage($uid, $survey), $grantor);
+        [$res, $byCredit] = $this->reconcileRun($sid, $visible);
 
         $log = $this->survey();
         $log->setActor($uid);
         $log->logActivity($sid, 'credit', [
             'credit_id' => $creditId, 'grantor_type' => $grantor['type'], 'grantor_id' => (int) $grantor['id'],
-            'mode' => $mode, 'backfilled' => $res['Granted'],
+            'mode' => $mode, 'backfilled' => $byCredit[$creditId] ?? 0,
         ]);
 
         return $this->ok(['CreditId' => $creditId] + $res);
@@ -404,10 +419,14 @@ class SurveyCredit
         if ($survey === null) {
             return $this->fail('Survey not found.');
         }
-        if (!$this->survey()->canManage($uid, $survey) && !$this->canActFor($uid, $survey, $grantor)) {
+        $manage = $this->survey()->canManage($uid, $survey);
+        $acting = $this->canActFor($uid, $survey, $grantor);
+        if (!$this->mayView($survey, $manage, $acting)) {
             return $this->denied('You cannot manage attendance credits for this survey.');
         }
-        return $this->ok($this->reconcile($surveyId));
+        // Posts everything owed; reports only what the caller's panel shows.
+        $visible = $this->visibleIds($this->configs($surveyId), $survey, $manage, $acting ? $grantor : null);
+        return $this->ok($this->reconcileRun($surveyId, $visible)[0]);
     }
 
     // -----------------------------------------------------------------------
@@ -423,32 +442,54 @@ class SurveyCredit
      */
     public function reconcile(int $surveyId): array
     {
-        $out    = ['Granted' => 0, 'SkippedNoPark' => 0, 'Pending' => 0];
-        $survey = $this->survey()->getRow($surveyId);
+        return $this->reconcileRun($surveyId, null)[0];
+    }
+
+    /**
+     * reconcile(), counting only the owed credits whose winning config is in
+     * $countIds (credit_id => true; null counts every config). Every owed
+     * credit is still posted. A no-home-park skip counts when a config in
+     * $countIds is the one that could not place the player.
+     *
+     * @return array{0: array{Granted:int, SkippedNoPark:int, Pending:int}, 1: array<int,int>}
+     *         the counts, and credits granted per credit_id (every config)
+     */
+    private function reconcileRun(int $surveyId, ?array $countIds): array
+    {
+        $out      = ['Granted' => 0, 'SkippedNoPark' => 0, 'Pending' => 0];
+        $byCredit = [];
+        $survey   = $this->survey()->getRow($surveyId);
         if ($survey === null) {
-            return $out;
+            return [$out, $byCredit];
         }
         $configs = $this->withEvents($this->configs($surveyId), $survey);
         if (!$configs) {
-            return $out;
+            return [$out, $byCredit];
         }
         $byId     = array_column($configs, null, 'credit_id');
         $parentOf = $this->parentMap();
+        $counted  = $countIds === null ? $configs
+            : array_values(array_filter($configs, static fn (array $c): bool => isset($countIds[(int) $c['credit_id']])));
 
         foreach ($this->owedResponses($surveyId) as $r) {
             $cov = self::coverage($configs, $r, $survey, $parentOf);
             if ($cov['credit_id'] === null) {
-                $out['SkippedNoPark'] += $cov['no_home_park'] ? 1 : 0;
+                if ($cov['no_home_park'] && ($countIds === null || self::coverage($counted, $r, $survey, $parentOf)['no_home_park'])) {
+                    $out['SkippedNoPark']++;
+                }
                 continue;
             }
-            $res = $this->grant($survey, $byId[$cov['credit_id']], $r);
+            $cid   = (int) $cov['credit_id'];
+            $count = $countIds === null || isset($countIds[$cid]);
+            $res   = $this->grant($survey, $byId[$cid], $r);
             if ($res === 'granted') {
-                $out['Granted']++;
+                $byCredit[$cid] = ($byCredit[$cid] ?? 0) + 1;
+                $out['Granted'] += $count ? 1 : 0;
             } elseif ($res === 'pending') {
-                $out['Pending']++;
+                $out['Pending'] += $count ? 1 : 0;
             }
         }
-        return $out;
+        return [$out, $byCredit];
     }
 
     /** The live grant after a submit commits (§3.5). Never throws for a missing config. */
@@ -463,10 +504,11 @@ class SurveyCredit
             return 'granted';
         }
         // Only a non-test Any ORK Data response is ever credited (D1).
-        $r = $this->fetchRow('SELECT response_id, mundane_id, park_id, kingdom_id, submitted_at
-                                FROM ' . DB_PREFIX . 'survey_response
-                               WHERE survey_id = ' . (int) $surveyId . ' AND mundane_id = ' . (int) $uid . '
-                                 AND consent = \'full\' AND is_test = 0 LIMIT 1');
+        $r = $this->fetchRow('SELECT r.response_id, r.mundane_id, ' . self::activeParkSql('r.park_id') . ' AS park_id, r.kingdom_id, r.submitted_at
+                                FROM ' . DB_PREFIX . 'survey_response r
+                                LEFT JOIN ' . DB_PREFIX . 'park p ON p.park_id = r.park_id
+                               WHERE r.survey_id = ' . (int) $surveyId . ' AND r.mundane_id = ' . (int) $uid . '
+                                 AND r.consent = \'full\' AND r.is_test = 0 LIMIT 1');
         if ($r === null) {
             return 'none';
         }
@@ -486,6 +528,17 @@ class SurveyCredit
         if ($survey !== null) {
             $this->withEvents($this->configs($surveyId), $survey);
         }
+    }
+
+    /**
+     * open_at changed (Survey::update): the start date may have moved, so each
+     * event-mode event follows it while it holds no attendance (ensureEvent()).
+     * Without this a credit event made while open_at was weeks out kept that
+     * date after open_at was cleared, and dated today's credits in the future.
+     */
+    public function onStartChanged(int $surveyId): void
+    {
+        $this->onOpened($surveyId);
     }
 
     /** Would this player be credited if they chose Any ORK Data? (the runner's credit line) */
@@ -525,7 +578,10 @@ class SurveyCredit
         if (!$bySurvey) {
             return $out;
         }
-        $p = $this->fetchRow('SELECT park_id, kingdom_id FROM ' . DB_PREFIX . 'mundane WHERE mundane_id = ' . (int) $uid);
+        $p = $this->fetchRow('SELECT ' . self::activeParkSql('m.park_id') . ' AS park_id, m.kingdom_id
+                                FROM ' . DB_PREFIX . 'mundane m
+                                LEFT JOIN ' . DB_PREFIX . 'park p ON p.park_id = m.park_id
+                               WHERE m.mundane_id = ' . (int) $uid);
         if ($p === null) {
             return $out;
         }
@@ -559,14 +615,46 @@ class SurveyCredit
             && $this->survey()->canCreate($uid, (string) $grantor['type'], (int) $grantor['id']);
     }
 
+    /**
+     * May this caller read the panel (status, reconcile)? A manager always; an
+     * officer acting for a grantor below the owner only while the survey is
+     * open or closed. Other orgs never see drafts and archived is hidden (D5),
+     * the rule listForScope() and resultsAccess() apply.
+     */
+    private function mayView(array $survey, bool $manage, bool $acting): bool
+    {
+        return $manage || ($acting && in_array((string) $survey['status'], ['open', 'closed'], true));
+    }
+
+    /**
+     * credit_id => true for the configs a caller's panel shows: every config
+     * for a manager, else the ones related() to the org they act for.
+     */
+    private function visibleIds(array $configs, array $survey, bool $manage, ?array $grantor): array
+    {
+        $ids = [];
+        foreach ($configs as $c) {
+            if ($manage || $this->related($c, $grantor, $survey)) {
+                $ids[(int) $c['credit_id']] = true;
+            }
+        }
+        return $ids;
+    }
+
     /** '' when $grantor may switch credits on now, else the reason shown in the panel. */
     private function enableProblem(array $survey, array $grantor): string
     {
         if (empty($survey['data_gate_enabled'])) {
             return 'Turn on the data gate (Privacy) so respondents can choose Any ORK Data; credits are only given to them.';
         }
+        // §3.2: other grantors need an open or closed survey; the owner may
+        // also set up a draft. Nobody backfills credits for an archived one.
+        $status  = (string) $survey['status'];
         $isOwner = (string) $survey['scope_type'] === $grantor['type'] && (int) $survey['scope_id'] === (int) $grantor['id'];
-        if (!$isOwner && !in_array((string) $survey['status'], ['open', 'closed'], true)) {
+        if ($status === 'archived') {
+            return 'Credits cannot be turned on for an archived survey.';
+        }
+        if (!$isOwner && $status !== 'open' && $status !== 'closed') {
             return 'Credits can be turned on once this survey is open.';
         }
         $own = $this->fetchRow('SELECT 1 AS ok FROM ' . DB_PREFIX . 'survey_credit WHERE survey_id = ' . (int) $survey['survey_id']
@@ -599,13 +687,13 @@ class SurveyCredit
         return false;
     }
 
-    /** An earlier config that already covers ALL of $grantor's players, as {credit_id, name}. */
     /** scopeName(), memoized: the list page asks for the same few orgs on every row. */
     private function orgName(string $type, int $id): string
     {
         return $this->nameMemo[$type . ':' . $id] ??= $this->survey()->scopeName($type, $id);
     }
 
+    /** An earlier config that already covers ALL of $grantor's players, as {credit_id, name}. */
     private function coveredBy(array $configs, array $grantor, array $survey): ?array
     {
         [$gk, $gp] = $this->orgKingdom($grantor['type'], (int) $grantor['id']);
@@ -659,12 +747,13 @@ class SurveyCredit
         return $n;
     }
 
-    /** Non-test Any ORK Data responses whose player has no credit for this survey yet. */
+    /** Non-test Any ORK Data responses whose player has no credit for this survey yet (park_id: Active parks only). */
     private function owedResponses(int $surveyId): array
     {
         return $this->fetchAll(
-            'SELECT r.response_id, r.mundane_id, r.park_id, r.kingdom_id, r.submitted_at
+            'SELECT r.response_id, r.mundane_id, ' . self::activeParkSql('r.park_id') . ' AS park_id, r.kingdom_id, r.submitted_at
                FROM ' . DB_PREFIX . 'survey_response r
+               LEFT JOIN ' . DB_PREFIX . 'park p ON p.park_id = r.park_id
                LEFT JOIN ' . DB_PREFIX . 'survey_credit_grant g ON g.survey_id = r.survey_id AND g.mundane_id = r.mundane_id
               WHERE r.survey_id = ' . (int) $surveyId . ' AND r.is_test = 0 AND r.consent = \'full\'
                 AND r.mundane_id IS NOT NULL AND g.mundane_id IS NULL
@@ -689,15 +778,34 @@ class SurveyCredit
         return $configs;
     }
 
-    /** Never call inside a transaction: create_system_event opens its own. */
+    /**
+     * Give an event config its event, or re-date the one it has when the start
+     * date moved (open_at edited, a reopened survey restamped) and nobody has
+     * attendance on it yet. Never call inside a transaction:
+     * create_system_event opens its own.
+     *
+     * $config may be stale: another request (enable's backfill beside a live
+     * submit, the sweep) can create and link an event after this one read it.
+     * The link is therefore conditional on the row still holding what was
+     * read; the loser deletes its own new event, which holds nothing yet, and
+     * uses the winner's, so no orphan "Survey Credit" event is left behind.
+     */
     private function ensureEvent(array $config, array $survey): array
     {
+        $start    = self::startDate($survey);
         $detailId = (int) ($config['event_calendardetail_id'] ?? 0);
-        if ($detailId > 0 && $this->fetchRow('SELECT 1 AS ok FROM ' . DB_PREFIX . 'event_calendardetail
-                                              WHERE event_calendardetail_id = ' . $detailId) !== null) {
-            return $config;
+        if ($detailId > 0) {
+            $occ = $this->fetchRow('SELECT DATE(event_start) AS d FROM ' . DB_PREFIX . 'event_calendardetail
+                                     WHERE event_calendardetail_id = ' . $detailId);
+            if ($occ !== null) {
+                if ($start !== null && (string) $occ['d'] !== $start) {
+                    // Refused (and left alone) once the occurrence holds attendance:
+                    // credits already posted keep the date they were given.
+                    Ork3::$Lib->eventplanning->redate_system_event($detailId, $start);
+                }
+                return $config;
+            }
         }
-        $start = self::startDate($survey);
         if ($start === null) {
             return $config;
         }
@@ -717,8 +825,22 @@ class SurveyCredit
             $this->logFailure((int) $survey['survey_id'], 0, 'create_event', (string) ($r['Error'] ?? ''));
             return $config;
         }
+        $creditId = (int) $config['credit_id'];
         $this->exec('UPDATE ' . DB_PREFIX . 'survey_credit SET event_id = ' . (int) $r['EventId']
-            . ', event_calendardetail_id = ' . (int) $r['DetailId'] . ' WHERE credit_id = ' . (int) $config['credit_id']);
+            . ', event_calendardetail_id = ' . (int) $r['DetailId'] . ' WHERE credit_id = ' . $creditId
+            . ' AND (event_calendardetail_id IS NULL OR event_calendardetail_id = ' . $detailId . ')');
+        $now    = $this->fetchRow('SELECT event_id, event_calendardetail_id FROM ' . DB_PREFIX . 'survey_credit WHERE credit_id = ' . $creditId);
+        $linked = $now ? (int) $now['event_calendardetail_id'] : 0;
+        if ($linked !== (int) $r['DetailId']) {
+            Ork3::$Lib->eventplanning->delete_system_event((int) $r['EventId']);
+            if ($linked <= 0) {
+                $this->logFailure((int) $survey['survey_id'], 0, 'link_event', '');
+                return $config;
+            }
+            $config['event_id']                = (int) $now['event_id'];
+            $config['event_calendardetail_id'] = $linked;
+            return $config;
+        }
         // Event::GetActiveEventsAtScope() (the attendance pages' "currently
         // happening" nudge) skips occurrences a config points at. create_system_event
         // busted that cache before this UPDATE linked the ids, so bust it again.
@@ -756,7 +878,8 @@ class SurveyCredit
             $where = ['Date' => (string) $occ['d'], 'ParkId' => (int) $occ['at_park_id'], 'KingdomId' => (int) $occ['kingdom_id'],
                       'EventId' => (int) $occ['event_id'], 'EventCalendarDetailId' => (int) $config['event_calendardetail_id']];
         } else {
-            $park = $this->fetchRow('SELECT kingdom_id FROM ' . DB_PREFIX . 'park WHERE park_id = ' . (int) $response['park_id']);
+            $park = $this->fetchRow('SELECT kingdom_id FROM ' . DB_PREFIX . 'park WHERE park_id = ' . (int) $response['park_id']
+                . ' AND active = \'Active\'');
             if ($park === null) {
                 return 'pending';
             }

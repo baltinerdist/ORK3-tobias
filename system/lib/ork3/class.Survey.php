@@ -863,6 +863,12 @@ class Survey
             $this->purgeDrafts($surveyId);
         }
 
+        // open_at feeds the credit event's date (SurveyCredit::startDate): an
+        // event made while it was weeks out must follow it when it moves.
+        if ($sets && array_key_exists('OpenAt', $fields)) {
+            (new SurveyCredit())->onStartChanged($surveyId);
+        }
+
         return $this->ok(['Survey' => $this->getRow($surveyId)]);
     }
 
@@ -1131,11 +1137,21 @@ class Survey
         }
 
         $images = $this->fetchAll('SELECT * FROM ' . DB_PREFIX . 'survey_image WHERE survey_id = ' . $surveyId);
+        // The owner may set up credits on a draft (sharing spec §3.2). Their
+        // configs, and the "Survey Credit" events made for them, go with it:
+        // left behind, the config stays in the sweep's work list for ever and
+        // the published event links to a survey that no longer exists.
+        $creditEvents = array_map('intval', array_column($this->fetchAll(
+            'SELECT event_id FROM ' . DB_PREFIX . 'survey_credit WHERE survey_id = ' . $surveyId . ' AND event_id > 0'
+        ), 'event_id'));
 
         // The activity log is deliberately NOT deleted: it is the record that
         // this survey existed and who removed it.
         $statements = [
             'START TRANSACTION',
+            // No grants can exist (no non-test responses), but never leave one pointing nowhere.
+            'DELETE FROM ' . DB_PREFIX . 'survey_credit_grant WHERE survey_id = ' . $surveyId,
+            'DELETE FROM ' . DB_PREFIX . 'survey_credit WHERE survey_id = ' . $surveyId,
             'DELETE o FROM ' . DB_PREFIX . 'survey_option o
              JOIN ' . DB_PREFIX . 'survey_question q ON q.question_id = o.question_id
              WHERE q.survey_id = ' . $surveyId,
@@ -1147,12 +1163,20 @@ class Survey
             'DELETE FROM ' . DB_PREFIX . 'survey_start WHERE survey_id = ' . $surveyId,
             'DELETE FROM ' . DB_PREFIX . 'survey_image WHERE survey_id = ' . $surveyId,
             'DELETE FROM ' . DB_PREFIX . 'survey WHERE survey_id = ' . $surveyId,
-            'COMMIT',
         ];
         foreach ($statements as $sql) {
             if (!$this->exec($sql)) {
                 return $this->abort('Could not delete the survey.');
             }
+        }
+        // Inside the transaction (delete_system_event opens none). One that
+        // somebody has since entered attendance on is an ordinary event now,
+        // and stays.
+        foreach ($creditEvents as $eventId) {
+            Ork3::$Lib->eventplanning->delete_system_event($eventId);
+        }
+        if (!$this->exec('COMMIT')) {
+            return $this->abort('Could not delete the survey.');
         }
 
         foreach ($images as $img) {
