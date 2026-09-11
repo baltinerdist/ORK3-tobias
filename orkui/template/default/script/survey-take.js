@@ -75,6 +75,10 @@
     // answers a sensitive question assuming their name is already attached.
     var GATE_NOTE = 'At the end you\'ll choose whether your answers are linked to your profile, ' +
         'kept to your kingdom and years played, or fully anonymous.';
+    // Fixed copy — spec §3.7. Do not reword.
+    var CREDIT_NOTE = 'This survey gives an attendance credit, which will appear on your public attendance record. ' +
+        'It is only given when you choose ';
+    var CREDIT_CHIP = 'Earns an attendance credit';
 
     /** The three consent options, with the full option naming who runs the survey. */
     function consentOptions(s) {
@@ -670,7 +674,12 @@
     }
 
     function gateNoteHtml(cls) {
-        return '<p class="' + cls + '"><i class="fas fa-user-shield" aria-hidden="true"></i> ' + esc(GATE_NOTE) + '</p>';
+        // Without a data gate there is no credit, and credit_available is
+        // false server-side anyway — the chip only ever rides along here.
+        var chip = (def && def.survey && def.survey.credit_available)
+            ? '<span class="sv-chip sv-chip-credit"><i class="fas fa-award" aria-hidden="true"></i> ' + esc(CREDIT_CHIP) + '</span> '
+            : '';
+        return chip + '<p class="' + cls + '"><i class="fas fa-user-shield" aria-hidden="true"></i> ' + esc(GATE_NOTE) + '</p>';
     }
 
     function renderWelcome() {
@@ -801,6 +810,10 @@
                     '<span class="sv-consent-desc">' + esc(o.desc) + '</span></span></label>';
             }
             html += '</div>';
+            if (s.credit_available) {
+                html += '<p class="sv-credit-note"><i class="fas fa-award" aria-hidden="true"></i> ' +
+                    esc(CREDIT_NOTE) + '<strong>Any ORK Data</strong>.</p>';
+            }
         } else {
             html += '<h2 class="sv-card-title">Ready to send</h2>';
             html += '<p class="sv-intro">Your answers are recorded anonymously. Nothing about you is stored with them.</p>';
@@ -818,7 +831,7 @@
         return html;
     }
 
-    function renderThanks(html) {
+    function renderThanks(html, credit) {
         var out = '<section class="sv-card sv-thanks">';
         finished = true;
         if (draftTimer) { window.clearTimeout(draftTimer); draftTimer = null; }
@@ -826,6 +839,11 @@
         setSaveStatus('');
         out += '<h2 class="sv-card-title"><i class="fas fa-circle-check" aria-hidden="true"></i> Thank you</h2>';
         out += '<div class="sv-intro">' + (html ? safe(html) : '<p>Your response has been recorded.</p>') + '</div>';
+        if (credit === 'granted') {
+            out += '<p class="sv-credit-note"><i class="fas fa-award" aria-hidden="true"></i> Your attendance credit has been added.</p>';
+        } else if (credit === 'pending') {
+            out += '<p class="sv-credit-note"><i class="fas fa-award" aria-hidden="true"></i> Your attendance credit will be added shortly.</p>';
+        }
         out += '</section>';
         out += '<div class="sv-actions"><a class="sv-btn sv-btn-primary" href="' + esc(UIR) + 'Player/index">Back to My Amtgard</a></div>';
         stage.innerHTML = out;
@@ -1150,7 +1168,7 @@
 
             if (r && r.status === 0) {
                 mirrorClear();
-                renderThanks(r.thanks_html || s.thanks_html || '');
+                renderThanks(r.thanks_html || s.thanks_html || '', r.credit || 'none');
                 return;
             }
             if (r && r.status === 5) {

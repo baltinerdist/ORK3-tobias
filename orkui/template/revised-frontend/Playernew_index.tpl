@@ -303,6 +303,7 @@ if (!in_array($_pnNameFont, $_pnFontAllowed)) $_pnNameFont = '';
 .pna-survey-cta{margin-left:auto;flex-shrink:0;display:inline-flex;align-items:center;min-height:44px;padding:0 10px;font-weight:600;font-size:12px;color:var(--ork-link);text-decoration:none}
 .pna-survey-cta:hover{text-decoration:underline}
 .pna-feed-rank{display:inline-block;background:#e9d8fd;color:#553c9a;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:4px;vertical-align:middle}
+.pna-survey-credit{display:inline-flex;align-items:center;gap:4px;margin-left:6px;padding:0 6px;border-radius:8px;font-size:11px;font-weight:600;background:var(--ork-surface-light,#edf2f7);color:var(--ork-text-secondary)}
 .pna-feed-more{font-size:11px;color:var(--ork-text-muted);padding-top:6px;text-align:center}
 .pna-congrats-banner{background:linear-gradient(90deg,#fffff0,#fefcbf);border:1px solid #f6e05e;border-radius:6px;padding:9px 13px;font-size:12.5px;font-weight:600;color:#744210;margin-bottom:10px;display:flex;align-items:center;gap:8px}
 .pna-welcome-banner{background:linear-gradient(135deg,#1a3d2b,#276749);border-radius:10px;padding:20px 24px;margin-bottom:18px;color:#fff;display:flex;align-items:flex-start;gap:16px}
@@ -421,6 +422,7 @@ html[data-theme="dark"] .pna-feed-date { color: var(--ork-text-muted); }
 html[data-theme="dark"] .pna-feed-label { color: var(--ork-text); }
 html[data-theme="dark"] .pna-feed-label a { color: var(--ork-link); }
 html[data-theme="dark"] .pna-feed-sub { color: var(--ork-text-muted); }
+html[data-theme="dark"] .pna-survey-credit { background: #2d3748; }
 html[data-theme="dark"] .pna-ev-col-hdr { color: var(--ork-text-secondary); border-color: var(--ork-border); }
 html[data-theme="dark"] .pna-ev-park { color: var(--ork-text-muted); }
 html[data-theme="dark"] .pna-assoc-group { color: var(--ork-text-muted); border-color: var(--ork-border); }
@@ -7425,6 +7427,8 @@ $(function() {
 							byCell = '<em title="Player signed in via PM-issued QR / link" style="color:var(--ork-text-muted)">Self via Sign-in Link</em>';
 						} else if (d.EntryMethod === 'self_reg') {
 							byCell = '<em title="Awarded on account creation" style="color:var(--ork-text-muted)">Self-registration</em>';
+						} else if (d.EntryMethod === 'survey') {
+							byCell = '<em style="color:var(--ork-text-muted)">Survey credit</em>';
 						} else if (parseInt(d.EnteredById) > 0 && d.EnteredBy) {
 							byCell = '<a href="' + uir + 'Player/profile/' + parseInt(d.EnteredById) + '">' + esc(d.EnteredBy) + '</a>';
 						} else {
@@ -7487,6 +7491,7 @@ $(function() {
 							}
 							svHtml += '<div class="pna-feed-row pna-survey-row">'
 								+ '<span class="pna-feed-label">' + esc(sv.title) + '</span>'
+								+ (sv.credit_available ? '<span class="pna-survey-credit"><i class="fas fa-award" aria-hidden="true"></i> Credit</span>' : '')
 								+ '<span class="pna-survey-meta">'
 								+ (sub ? '<span class="pna-feed-sub">' + sub + '</span>' : '')
 								+ '<a class="pna-survey-cta" aria-label="' + escAttr((sv.in_progress ? 'Continue' : 'Take survey') + ': ' + (sv.title || '')) + '" href="' + PnConfig.uir + 'Survey/take/' + parseInt(sv.survey_id) + '">' + (sv.in_progress ? 'Continue' : 'Take survey') + '</a>'
