@@ -26,7 +26,7 @@ class Controller_SurveyAjax extends Controller
      */
     private const CSRF_EXEMPT = [
         'available', 'definition', 'get', 'scopes', 'results', 'rows', 'help',
-        'preview_md', 'dismiss_banner', 'event_options',
+        'preview_md', 'dismiss_banner', 'event_options', 'credit_status',
     ];
 
     public function __construct($call = null, $id = null)
@@ -129,6 +129,15 @@ class Controller_SurveyAjax extends Controller
     private function truthy($v): bool
     {
         return $v === true || $v === 1 || $v === '1' || $v === 'on' || $v === 'true';
+    }
+
+    /** 'Kingdom/17' | 'Park/1049' -> ['type'=>'kingdom'|'park','id'=>int], anything else -> null. */
+    private function orgParam($raw): ?array
+    {
+        if (!preg_match('~^(Kingdom|Park)/(\d+)$~', trim((string) $raw), $m)) {
+            return null;
+        }
+        return ['type' => strtolower($m[1]), 'id' => (int) $m[2]];
     }
 
     /** Map a Survey-domain envelope {Status,Error,...} straight through on failure. */
@@ -623,7 +632,7 @@ class Controller_SurveyAjax extends Controller
         // The banner is memoised per viewer in the session; a finished survey
         // must stop being promoted on the very next page load.
         $this->bust_survey_banner_cache();
-        $this->jsonOut(['status' => 0, 'thanks_html' => $r['ThanksHtml']]);
+        $this->jsonOut(['status' => 0, 'thanks_html' => $r['ThanksHtml'], 'credit' => $r['Credit'] ?? 'none']);
     }
 
     public function available($p = null)
@@ -649,12 +658,22 @@ class Controller_SurveyAjax extends Controller
     {
         $uid      = $this->requireLogin();
         $surveyId = (int) ($_POST['SurveyId'] ?? 0);
-        $this->requireManage($uid, $surveyId);
-
+        $row      = $this->Survey->get_row($surveyId);
+        if ($row === null) {
+            $this->jsonOut(['status' => 1, 'error' => 'Survey not found.']);
+        }
+        // Managers read everything; one org level down reads charts and stats
+        // through the lens the domain decides (sharing spec §2).
+        $access = $this->Survey->results_access($uid, $row, $this->orgParam($_POST['Context'] ?? ''));
+        if ($access === null) {
+            $this->jsonOut(['status' => 3, 'error' => 'You do not have permission to view results for this survey.']);
+        }
         $filters = $this->jsonField('Filters', []);
-        $out     = $this->Survey->results($surveyId, $filters);
+        $out = $access['level'] === 'manage'
+            ? $this->Survey->results($surveyId, $filters)
+            : $this->Survey->shared_results($surveyId, $filters, $access['lens']);
 
-        $this->jsonOut(['status' => 0, 'summary' => $out['summary'], 'questions' => $out['questions']]);
+        $this->jsonOut(['status' => 0, 'summary' => $out['summary'], 'questions' => $out['questions'], 'access' => $access['level']]);
     }
 
     public function rows($p = null)
@@ -678,5 +697,46 @@ class Controller_SurveyAjax extends Controller
         }
 
         $this->jsonOut(['status' => 0, 'total' => $out['total'], 'columns' => $out['columns'], 'rows' => $out['rows']]);
+    }
+
+    // =========================================================================
+    // Attendance credits (sharing-and-credits spec §3, §5)
+    // =========================================================================
+
+    public function credit_status($p = null)
+    {
+        $uid = $this->requireLogin();
+        $r   = $this->Survey->credit_status($uid, (int) ($_POST['SurveyId'] ?? 0), $this->orgParam($_POST['Grantor'] ?? ''));
+        if ((int) $r['Status'] !== 0) {
+            $this->envelopeFail($r);
+        }
+        $this->jsonOut(['status' => 0, 'credit' => $r['Credit']]);
+    }
+
+    public function credit_enable($p = null)
+    {
+        $uid = $this->requireLogin();
+        $r   = $this->Survey->credit_enable(
+            $uid,
+            (int) ($_POST['SurveyId'] ?? 0),
+            $this->orgParam($_POST['Grantor'] ?? ''),
+            (string) ($_POST['Mode'] ?? ''),
+            $this->truthy($_POST['Confirm'] ?? 0)
+        );
+        if ((int) $r['Status'] !== 0) {
+            $this->envelopeFail($r);
+        }
+        $this->jsonOut(['status' => 0, 'credit_id' => $r['CreditId'], 'granted' => $r['Granted'],
+                        'skipped_no_park' => $r['SkippedNoPark'], 'pending' => $r['Pending']]);
+    }
+
+    public function credit_reconcile($p = null)
+    {
+        $uid = $this->requireLogin();
+        $r   = $this->Survey->credit_reconcile($uid, (int) ($_POST['SurveyId'] ?? 0), $this->orgParam($_POST['Grantor'] ?? ''));
+        if ((int) $r['Status'] !== 0) {
+            $this->envelopeFail($r);
+        }
+        $this->jsonOut(['status' => 0, 'granted' => $r['Granted'], 'skipped_no_park' => $r['SkippedNoPark'], 'pending' => $r['Pending']]);
     }
 }

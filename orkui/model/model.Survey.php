@@ -358,6 +358,40 @@ class Model_Survey extends Model
     }
 
     // -----------------------------------------------------------------------
+    // Org sections, sharing, credits (sharing-and-credits spec)
+    // -----------------------------------------------------------------------
+
+    public function list_for_scope(int $uid, ?string $scopeType, ?int $scopeId): array
+    {
+        return $this->_survey()->listForScope($uid, $scopeType, $scopeId);
+    }
+
+    public function results_access(int $uid, array $surveyRow, ?array $context): ?array
+    {
+        return $this->_survey()->resultsAccess($uid, $surveyRow, $context);
+    }
+
+    public function shared_results(int $surveyId, $filters, array $lens): array
+    {
+        return $this->_report()->sharedResults($surveyId, $filters, $lens);
+    }
+
+    public function credit_status(int $uid, int $surveyId, ?array $grantor): array
+    {
+        return $this->_credit()->status($uid, $surveyId, $grantor);
+    }
+
+    public function credit_enable(int $uid, int $surveyId, ?array $grantor, string $mode, bool $confirm): array
+    {
+        return $this->_credit()->enable($uid, $surveyId, $grantor, $mode, $confirm);
+    }
+
+    public function credit_reconcile(int $uid, int $surveyId, ?array $grantor): array
+    {
+        return $this->_credit()->reconcileAs($uid, $surveyId, $grantor);
+    }
+
+    // -----------------------------------------------------------------------
     // Factories
     // -----------------------------------------------------------------------
 
@@ -377,5 +411,10 @@ class Model_Survey extends Model
     private function _report(): SurveyReport
     {
         return new SurveyReport();
+    }
+
+    private function _credit(): SurveyCredit
+    {
+        return new SurveyCredit();
     }
 }

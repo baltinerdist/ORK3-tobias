@@ -51,6 +51,13 @@ class Controller_Survey extends Controller
             return;
         }
 
+        // An org page needs CREATE on that org (sharing spec §1); the picker's
+        // scope list stays the create-modal's source.
+        if ($scopeType !== null && !$this->Survey->is_ork_admin($uid) && !$this->Survey->can_create($uid, $scopeType, (int) $scopeId)) {
+            $this->no_authorization('', 'You do not have permission to see surveys for this ' . $scopeType . '.');
+            return;
+        }
+
         // The picker list (manageable_scopes) only carries active kingdoms/parks,
         // so deriving the label from it left a blank scope chip for a retired org
         // or a hand-typed/bookmarked scope. scope_name() answers from
@@ -63,7 +70,9 @@ class Controller_Survey extends Controller
             }
         }
 
-        $this->data['Surveys']    = $this->Survey->list_manageable($uid, $scopeType, $scopeId);
+        $buckets = $this->Survey->list_for_scope($uid, $scopeType, $scopeId);
+        $this->data['Buckets']    = $buckets;
+        $this->data['Surveys']    = array_merge($buckets['Rows']['ork'], $buckets['Rows']['kingdom'], $buckets['Rows']['park']);
         $this->data['Scopes']     = $scopes;
         $this->data['ScopeType']  = $scopeType;
         $this->data['ScopeId']    = $scopeId;
@@ -162,15 +171,24 @@ class Controller_Survey extends Controller
     // -----------------------------------------------------------------------
     public function results($id = null)
     {
-        $uid      = $this->uid();
-        $surveyId = (int) preg_replace('/[^0-9]/', '', (string) $id);
+        $uid = $this->uid();
+
+        // Survey/results/{id}[/Kingdom|Park/{orgId}] — segments past the third
+        // collapse into this one string, so split before reading the id.
+        $parts    = explode('/', trim((string) $id, '/'));
+        $surveyId = (int) preg_replace('/[^0-9]/', '', $parts[0] ?? '');
+        $context  = null;
+        if (isset($parts[1]) && in_array($parts[1], ['Kingdom', 'Park'], true)) {
+            $context = ['type' => strtolower($parts[1]), 'id' => (int) preg_replace('/[^0-9]/', '', $parts[2] ?? '')];
+        }
 
         $row = $this->Survey->get_row($surveyId);
         if ($row === null) {
             $this->data['Error'] = 'Survey not found.';
             return;
         }
-        if (!$this->Survey->can_manage($uid, $row)) {
+        $access = $this->Survey->results_access($uid, $row, $context);
+        if ($access === null) {
             $this->no_authorization('', 'You do not have permission to view results for this survey.');
             return;
         }
@@ -181,17 +199,23 @@ class Controller_Survey extends Controller
         // survey's responses, with counts (#33) — not every kingdom the viewer
         // manages. scope_type/scope_id are kept as aliases of kingdom_id so the
         // existing template keeps rendering until it reads kingdom_id/count.
+        // Under a kingdom or park lens, the filter is already fixed by the lens.
         $kingdoms = [];
-        foreach ($this->Survey->kingdoms_present($surveyId) as $k) {
-            $k['scope_type'] = 'kingdom';
-            $k['scope_id']   = (int) $k['kingdom_id'];
-            $kingdoms[]      = $k;
+        if (empty($access['lens']['kingdom_ids']) && empty($access['lens']['park_id'])) {
+            foreach ($this->Survey->kingdoms_present($surveyId) as $k) {
+                $k['scope_type'] = 'kingdom';
+                $k['scope_id']   = (int) $k['kingdom_id'];
+                $kingdoms[]      = $k;
+            }
         }
 
-        $this->data['SurveyId']  = $surveyId;
-        $this->data['Survey']    = $result;
-        $this->data['Kingdoms']  = $kingdoms;
-        $this->data['Questions'] = $result['Questions'] ?? [];
+        $this->data['SurveyId']       = $surveyId;
+        $this->data['Survey']         = $result;
+        $this->data['Kingdoms']       = $kingdoms;
+        $this->data['Questions']      = $result['Questions'] ?? [];
+        $this->data['ResultsAccess']  = $access;
+        $this->data['ResultsContext'] = $context !== null ? ucfirst($context['type']) . '/' . $context['id'] : '';
+        $this->data['OwnerName']      = $this->Survey->scope_name((string) $row['scope_type'], (int) $row['scope_id']) ?: 'All of Amtgard';
     }
 
     // -----------------------------------------------------------------------
