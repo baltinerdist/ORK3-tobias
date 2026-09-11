@@ -2096,13 +2096,13 @@ html[data-theme="dark"] .svb-consent-quote {
 .svb-pw-foot { display: flex; align-items: flex-start; gap: 6px; }
 .svb-pw-readout { flex: 1 1 auto; margin: 0; }
 .svb-pw-warn {
-    display: flex;
-    gap: 6px;
-    align-items: baseline;
     margin: 0;
     font-size: var(--ork-font-size-sm);
     color: var(--sv-warn-text);
 }
+/* :not([hidden]) as at the top of this file: a bare display:flex would beat
+   the UA's [hidden] rule and draw an empty warning on every normal card. */
+.svb-pw-warn:not([hidden]) { display: flex; gap: 6px; align-items: baseline; }
 
 /* The (?) modal. Its h3s already drop orkui.css's pill box via .svb-modal-body h3. */
 .svb-pw-help { display: flex; flex-direction: column; gap: 10px; font-size: var(--ork-font-size-base); line-height: 1.5; }
