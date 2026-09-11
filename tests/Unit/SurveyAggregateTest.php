@@ -90,7 +90,25 @@ final class SurveyAggregateTest extends TestCase
         $a = SurveyReport::aggregateType('single', [], [$this->opt(10, 'Alpha')], []);
         $this->assertSame(0, $a['n']);
         $this->assertSame(0, $a['counts'][0]['count']);
-        $this->assertSame(0.0, $a['counts'][0]['pct']);
+        // Nobody answered: no percentage at all, never a plotted 0% (review #29).
+        $this->assertNull($a['counts'][0]['pct']);
+    }
+
+    public function testAggregateEmptyGroupsReportNullNotZero(): void
+    {
+        $multi = SurveyReport::aggregateType('multi', [], [$this->opt(10, 'Alpha')], []);
+        $this->assertSame(0, $multi['n']);
+        $this->assertNull($multi['mean_selected']);
+
+        $nps = SurveyReport::aggregateType('nps', [], [], []);
+        $this->assertSame(0, $nps['n']);
+        $this->assertNull($nps['score']);
+        $this->assertNull($nps['mean']);
+
+        $rating = SurveyReport::aggregateType('rating', [], [], ['min' => 1, 'max' => 5]);
+        $this->assertSame(0, $rating['n']);
+        $this->assertNull($rating['mean']);
+        $this->assertNull($rating['median']);
     }
 
     public function testAggregateYesNoUsesSingleShape(): void
@@ -134,6 +152,19 @@ final class SurveyAggregateTest extends TestCase
         $this->assertSame(4.0, $a['median']);
         $this->assertSame([1, 2, 3, 4, 5], array_column($a['distribution'], 'value'));
         $this->assertSame([0, 1, 0, 2, 1], array_column($a['distribution'], 'count'));
+    }
+
+    public function testAggregateRatingIgnoresOutOfRangeValues(): void
+    {
+        // A 9 stored before the scale was narrowed to 1..5 must not reach n or
+        // the mean when the histogram cannot show it (review #32).
+        $rows = [$this->row(1, null, 5.0), $this->row(2, null, 3.0), $this->row(3, null, 9.0), $this->row(4, null, 0.0)];
+        $a = SurveyReport::aggregateType('rating', $rows, [], ['min' => 1, 'max' => 5]);
+
+        $this->assertSame(2, $a['n']);
+        $this->assertSame(4.0, $a['mean']);
+        $this->assertSame(4.0, $a['median']);
+        $this->assertSame($a['n'], array_sum(array_column($a['distribution'], 'count')));
     }
 
     // -------------------------------------------------------------------- nps
@@ -221,49 +252,148 @@ final class SurveyAggregateTest extends TestCase
 
     // ----------------------------------------------------------------- number
 
-    public function testAggregateNumberHistogram(): void
+    public function testAggregateNumberFewDistinctIntegersListsEachValue(): void
     {
         $rows = [
             $this->row(1, null, 1.0), $this->row(2, null, 2.0), $this->row(3, null, 3.0),
-            $this->row(4, null, 4.0), $this->row(5, null, 100.0),
+            $this->row(4, null, 3.0), $this->row(5, null, 100.0),
         ];
         $a = SurveyReport::aggregateType('number', $rows, [], []);
 
         $this->assertSame(5, $a['n']);
-        $this->assertSame(22.0, $a['mean']);
+        $this->assertSame(21.8, $a['mean']);
         $this->assertSame(3.0, $a['median']);
         $this->assertSame(1.0, $a['min']);
         $this->assertSame(100.0, $a['max']);
-        $this->assertCount(10, $a['histogram']);
-        $this->assertSame(5, array_sum(array_column($a['histogram'], 'count')));
-        $this->assertSame(4, $a['histogram'][0]['count']);
-        $this->assertSame(1, $a['histogram'][9]['count']);
+        $this->assertSame('values', $a['mode']);
+        $this->assertSame(
+            [['value' => 1, 'count' => 1], ['value' => 2, 'count' => 1], ['value' => 3, 'count' => 2], ['value' => 100, 'count' => 1]],
+            $a['values']
+        );
+        // Bins are still supplied, with whole-number edges.
+        $this->assertSame(5, array_sum(array_column($a['bins'], 'count')));
+        foreach ($a['bins'] as $b) {
+            $this->assertIsInt($b['from']);
+            $this->assertIsInt($b['to']);
+        }
+    }
+
+    public function testAggregateNumberManyIntegersUseIntegerAlignedBins(): void
+    {
+        // 0..24 years played: 25 distinct whole numbers => binned, never '3.1–6.2'.
+        $rows = [];
+        for ($i = 0; $i <= 24; $i++) {
+            $rows[] = $this->row($i + 1, null, (float)$i);
+        }
+        $a = SurveyReport::aggregateType('number', $rows, [], []);
+
+        $this->assertSame('bins', $a['mode']);
+        $this->assertSame([], $a['values']);
+        $this->assertLessThanOrEqual(SurveyReport::NUMBER_MAX_BINS, count($a['bins']));
+        $this->assertSame(0, $a['bins'][0]['from']);
+        $this->assertSame(2, $a['bins'][0]['to']);
+        $this->assertSame("0\u{2013}2", $a['bins'][0]['label']);
+        $this->assertSame(3, $a['bins'][1]['from']);
+        $this->assertSame(3, $a['bins'][0]['count']);
+        $this->assertSame(25, array_sum(array_column($a['bins'], 'count')));
+        // Contiguous, equal-width, integer edges.
+        for ($i = 1, $c = count($a['bins']); $i < $c; $i++) {
+            $this->assertSame($a['bins'][$i - 1]['to'] + 1, $a['bins'][$i]['from']);
+        }
+    }
+
+    public function testAggregateNumberFractionalValuesUseEqualBins(): void
+    {
+        $rows = [$this->row(1, null, 0.5), $this->row(2, null, 1.25), $this->row(3, null, 5.5)];
+        $a = SurveyReport::aggregateType('number', $rows, [], []);
+
+        $this->assertSame('bins', $a['mode']);
+        $this->assertSame([], $a['values']);
+        $this->assertCount(SurveyReport::NUMBER_MAX_BINS, $a['bins']);
+        $this->assertSame(0.5, $a['bins'][0]['from']);
+        $this->assertSame("0.5\u{2013}1", $a['bins'][0]['label']);
+        $this->assertSame(1, $a['bins'][9]['count']);   // the maximum lands in the last bin
+        $this->assertSame(3, array_sum(array_column($a['bins'], 'count')));
     }
 
     public function testAggregateNumberSingleValueDoesNotDivideByZero(): void
     {
-        $a = SurveyReport::aggregateType('number', [$this->row(1, null, 7.0), $this->row(2, null, 7.0)], [], []);
-        $this->assertSame(7.0, $a['mean']);
-        $this->assertSame(2, array_sum(array_column($a['histogram'], 'count')));
+        $a = SurveyReport::aggregateType('number', [$this->row(1, null, 7.5), $this->row(2, null, 7.5)], [], []);
+        $this->assertSame(7.5, $a['mean']);
+        $this->assertCount(1, $a['bins']);
+        $this->assertSame(2, $a['bins'][0]['count']);
+
+        $int = SurveyReport::aggregateType('number', [$this->row(1, null, 7.0), $this->row(2, null, 7.0)], [], []);
+        $this->assertSame('values', $int['mode']);
+        $this->assertSame([['value' => 7, 'count' => 2]], $int['values']);
+    }
+
+    public function testAggregateNumberEmpty(): void
+    {
+        $a = SurveyReport::aggregateType('number', [], [], []);
+        $this->assertSame(0, $a['n']);
+        $this->assertNull($a['mean']);
+        $this->assertSame([], $a['values']);
+        $this->assertSame([], $a['bins']);
     }
 
     // ------------------------------------------------------------------- date
 
-    public function testAggregateDateByMonth(): void
+    public function testAggregateDateFillsEmptyMonths(): void
     {
         $rows = [
             $this->row(1, null, null, '2026-01-05'),
             $this->row(2, null, null, '2026-01-20'),
-            $this->row(3, null, null, '2026-02-11'),
+            $this->row(3, null, null, '2026-04-11'),
         ];
         $a = SurveyReport::aggregateType('date', $rows, [], []);
 
         $this->assertSame(3, $a['n']);
         $this->assertSame('2026-01-05', $a['min']);
-        $this->assertSame('2026-02-11', $a['max']);
-        $this->assertCount(2, $a['by_month']);
-        $this->assertSame(['2026-01', '2026-02'], array_column($a['by_month'], 'month'));
-        $this->assertSame([2, 1], array_column($a['by_month'], 'count'));
+        $this->assertSame('2026-04-11', $a['max']);
+        $this->assertSame('month', $a['granularity']);
+        $this->assertSame(['2026-01', '2026-02', '2026-03', '2026-04'], array_column($a['periods'], 'period'));
+        $this->assertSame(['Jan 2026', 'Feb 2026', 'Mar 2026', 'Apr 2026'], array_column($a['periods'], 'label'));
+        $this->assertSame([2, 0, 0, 1], array_column($a['periods'], 'count'));
+    }
+
+    public function testAggregateDateMonthFillCrossesYearBoundary(): void
+    {
+        $rows = [$this->row(1, null, null, '2025-11-30'), $this->row(2, null, null, '2026-02-01')];
+        $a = SurveyReport::aggregateType('date', $rows, [], []);
+        $this->assertSame(['2025-11', '2025-12', '2026-01', '2026-02'], array_column($a['periods'], 'period'));
+        $this->assertSame([1, 0, 0, 1], array_column($a['periods'], 'count'));
+    }
+
+    public function testAggregateDateLongSpanGroupsByYear(): void
+    {
+        // First-event dates across years: > 36 months => one bar per year,
+        // empty years included.
+        $rows = [
+            $this->row(1, null, null, '2019-03-01'),
+            $this->row(2, null, null, '2019-09-12'),
+            $this->row(3, null, null, '2022-06-30'),
+        ];
+        $a = SurveyReport::aggregateType('date', $rows, [], []);
+
+        $this->assertSame('year', $a['granularity']);
+        $this->assertSame(['2019', '2020', '2021', '2022'], array_column($a['periods'], 'period'));
+        $this->assertSame(['2019', '2020', '2021', '2022'], array_column($a['periods'], 'label'));
+        $this->assertSame([2, 0, 0, 1], array_column($a['periods'], 'count'));
+    }
+
+    public function testAggregateDateExactlyThirtySixMonthsStaysMonthly(): void
+    {
+        $a = SurveyReport::aggregateType('date', [$this->row(1, null, null, '2023-01-01'), $this->row(2, null, null, '2026-01-31')], [], []);
+        $this->assertSame('month', $a['granularity']);
+        $this->assertCount(37, $a['periods']);
+    }
+
+    public function testAggregateDateAbsurdSpanDoesNotExplode(): void
+    {
+        $a = SurveyReport::aggregateType('date', [$this->row(1, null, null, '0001-01-01'), $this->row(2, null, null, '2026-01-01')], [], []);
+        $this->assertSame('year', $a['granularity']);
+        $this->assertCount(2, $a['periods']);
     }
 
     // ------------------------------------------------------------------- text
@@ -326,5 +456,423 @@ final class SurveyAggregateTest extends TestCase
         $this->assertSame('Well met', SurveyReport::displayAnswer('short_text', [$this->row(1, null, null, 'Well met')], []));
         $this->assertSame('2026-02-28', SurveyReport::displayAnswer('date', [$this->row(1, null, null, '2026-02-28')], []));
         $this->assertSame('', SurveyReport::displayAnswer('single', [], []));
+    }
+
+    // ------------------------------------------------- min cell / narrowing (#4)
+
+    public function testIsNarrowing(): void
+    {
+        $this->assertFalse(SurveyReport::isNarrowing([]));
+        $this->assertFalse(SurveyReport::isNarrowing(['include_test' => true, 'crosstab_question_id' => 9]));
+        $this->assertTrue(SurveyReport::isNarrowing(['kingdom_ids' => [17]]));
+        $this->assertTrue(SurveyReport::isNarrowing(['consent' => 'anonymous']));
+        $this->assertTrue(SurveyReport::isNarrowing(['date_from' => '2026-01-01']));
+        $this->assertTrue(SurveyReport::isNarrowing(['date_to' => '2026-01-01']));
+        $this->assertFalse(SurveyReport::isNarrowing(['consent' => 'any', 'kingdom_ids' => []]));
+    }
+
+    public function testIsSuppressedOnlyForNarrowedSmallTotals(): void
+    {
+        $this->assertTrue(SurveyReport::isSuppressed(true, SurveyReport::MIN_CELL - 1));
+        $this->assertTrue(SurveyReport::isSuppressed(true, 0));
+        $this->assertFalse(SurveyReport::isSuppressed(true, SurveyReport::MIN_CELL));
+        // The whole survey is never suppressed, however small.
+        $this->assertFalse(SurveyReport::isSuppressed(false, 1));
+    }
+
+    public function testCrosstabGroupSuppressesSmallCellsButKeepsEmptyAndLarge(): void
+    {
+        $small = SurveyReport::aggregateType('rating', [$this->row(1, null, 5.0), $this->row(2, null, 1.0)], [], ['min' => 1, 'max' => 5]);
+        $g = SurveyReport::crosstabGroup(10, 'Druid', $small);
+        $this->assertSame(['option_id' => 10, 'label' => 'Druid', 'n' => null, 'suppressed' => true], $g);
+        $this->assertArrayNotHasKey('agg', $g);
+
+        $empty = SurveyReport::aggregateType('nps', [], [], []);
+        $g = SurveyReport::crosstabGroup(11, 'Paladin', $empty);
+        $this->assertSame(0, $g['n']);
+        $this->assertNull($g['agg']['score']);
+        $this->assertArrayNotHasKey('suppressed', $g);
+
+        $rows = [];
+        for ($i = 1; $i <= SurveyReport::MIN_CELL; $i++) {
+            $rows[] = $this->row($i, null, 4.0);
+        }
+        $big = SurveyReport::aggregateType('rating', $rows, [], ['min' => 1, 'max' => 5]);
+        $g = SurveyReport::crosstabGroup(12, 'Bard', $big);
+        $this->assertSame(SurveyReport::MIN_CELL, $g['n']);
+        $this->assertSame(4.0, $g['agg']['mean']);
+    }
+
+    public function testCrosstabSourcesAreSingleBucketTypesOnly(): void
+    {
+        $this->assertSame(['single', 'dropdown', 'yesno'], SurveyReport::CROSSTAB_SOURCES);
+        $this->assertNotContains('multi', SurveyReport::CROSSTAB_SOURCES);
+        $this->assertNotContains('ranking', SurveyReport::CROSSTAB_SOURCES);
+    }
+
+    public function testPartialVisibilityNeedsMinCellPeers(): void
+    {
+        $cells = [
+            'k'  => ['17' => 7, '4' => 2],
+            'kb' => ['17|36' => 5, '17|72' => 2, '4|0' => 2],
+        ];
+        // Kingdom shown (7 share it); band 3–5 shown (5 share it). 40 months folds into the 36 band.
+        $this->assertSame(['kingdom' => true, 'tenure' => true], SurveyReport::partialVisibility(17, 40, $cells));
+        // Kingdom shown but band 6–10 has only 2 peers.
+        $this->assertSame(['kingdom' => true, 'tenure' => false], SurveyReport::partialVisibility(17, 80, $cells));
+        // A 2-person kingdom hides both.
+        $this->assertSame(['kingdom' => false, 'tenure' => false], SurveyReport::partialVisibility(4, 3, $cells));
+        // Nothing stored, nothing to show.
+        $this->assertSame(['kingdom' => false, 'tenure' => false], SurveyReport::partialVisibility(null, null, $cells));
+    }
+
+    public function testComplementaryCellsStopABandBeingRecoveredByElimination(): void
+    {
+        // Kingdom 17 shows 4 of the 5 bands; one row sits alone in 3–5 years.
+        // With only one band unshown the hidden row's band is certain, so the
+        // smallest shown band (0, 5 rows; tie with 72 broken by key) goes too.
+        $cells = [
+            'k'  => ['17' => 26],
+            'kb' => ['17|0' => 5, '17|12' => 7, '17|36' => 1, '17|72' => 5, '17|132' => 8],
+        ];
+        $forced = SurveyReport::complementaryCells($cells, 1);
+        $this->assertSame([], $forced['k']);
+        $this->assertSame(['17|0' => true], $forced['kb']);
+
+        $cells['forced_k'] = $forced['k'];
+        $cells['forced_kb'] = $forced['kb'];
+        $this->assertSame(['kingdom' => true, 'tenure' => false], SurveyReport::partialVisibility(17, 3, $cells));
+        $this->assertSame(['kingdom' => true, 'tenure' => true], SurveyReport::partialVisibility(17, 20, $cells));
+
+        // Three bands shown leaves two candidate bands, but the lone masked row
+        // is still fewer than MIN_CELL people: the smallest shown band (72, 5
+        // rows) is masked with it, so the masked group is 6 rows.
+        $three = ['k' => ['17' => 19], 'kb' => ['17|12' => 7, '17|36' => 1, '17|72' => 5, '17|132' => 6]];
+        $this->assertSame(['k' => [], 'kb' => ['17|72' => true]], SurveyReport::complementaryCells($three, 1));
+
+        // Two candidate bands AND a masked group of MIN_CELL: nothing extra withheld.
+        $enough = ['k' => ['17' => 23], 'kb' => ['17|12' => 7, '17|36' => 3, '17|72' => 2, '17|132' => 11]];
+        $this->assertSame(['k' => [], 'kb' => []], SurveyReport::complementaryCells($enough, 1));
+
+        // No withheld band, nothing to protect, even with all five shown.
+        $all = ['k' => ['17' => 25], 'kb' => ['17|0' => 5, '17|12' => 5, '17|36' => 5, '17|72' => 5, '17|132' => 5]];
+        $this->assertSame(['k' => [], 'kb' => []], SurveyReport::complementaryCells($all, 1));
+    }
+
+    public function testComplementaryCellsMaskUntilTheMaskedRowsReachMinCell(): void
+    {
+        // Kingdom 17: two lone rows (0 and 36) hidden, three bands shown. Two
+        // masked rows are "not in 12, 72 or 132" — a group of 2. The smallest
+        // shown band (72, 5) goes first, making 7 masked rows; that is enough.
+        $cells = [
+            'k'  => ['17' => 26, '9' => 12],
+            'kb' => [
+                '17|0' => 1, '17|12' => 9, '17|36' => 1, '17|72' => 5, '17|132' => 10,
+                // Kingdom 9 has no small band at all: never touched.
+                '9|12' => 6, '9|72' => 6,
+            ],
+        ];
+        $forced = SurveyReport::complementaryCells($cells, 40);
+        $this->assertSame([], $forced['k']);
+        $this->assertSame(['17|72' => true], $forced['kb']);
+
+        $cells['forced_k'] = $forced['k'];
+        $cells['forced_kb'] = $forced['kb'];
+        $this->assertSame(['kingdom' => true, 'tenure' => false], SurveyReport::partialVisibility(17, 80, $cells));
+        $this->assertSame(['kingdom' => true, 'tenure' => true], SurveyReport::partialVisibility(17, 20, $cells));
+        $this->assertSame(['kingdom' => true, 'tenure' => true], SurveyReport::partialVisibility(9, 80, $cells));
+
+        // One masked row beside two 5-row bands: the first 5-row band (key
+        // order breaks the tie) brings the masked group to 6 — enough.
+        $tie = ['k' => ['17' => 11], 'kb' => ['17|12' => 5, '17|36' => 1, '17|72' => 5]];
+        $this->assertSame(['17|12' => true], SurveyReport::complementaryCells($tie, 1)['kb']);
+
+        // A kingdom with a single shown band and one lone row: the shown band
+        // goes too, so every band in the kingdom is masked.
+        $one = ['k' => ['17' => 6], 'kb' => ['17|12' => 1, '17|36' => 5]];
+        $this->assertSame(['17|36' => true], SurveyReport::complementaryCells($one, 1)['kb']);
+    }
+
+    public function testViewForcedCellsReapplyTheRuleToAFilteredView(): void
+    {
+        // Survey-wide, kingdom 17 is two healthy bands: nothing is withheld.
+        $surveyCells = ['k' => ['17' => 30], 'kb' => ['17|12' => 20, '17|36' => 10]];
+        $surveyForced = SurveyReport::complementaryCells($surveyCells, 1);
+        $this->assertSame(['k' => [], 'kb' => []], $surveyForced);
+
+        // A date filter leaves 6 rows in 1–2 years and 2 in 3–5 years. The
+        // survey-wide set alone would show the 6 and mask only the 2 — two
+        // people "in kingdom 17, not 1–2 years". The view's own rule masks
+        // the 6 as well, so the masked group is 8.
+        $viewCells = ['k' => ['17' => 8], 'kb' => ['17|12' => 6, '17|36' => 2]];
+        $forced = SurveyReport::viewForcedCells($surveyForced, $viewCells, 1);
+        $this->assertSame([], $forced['k']);
+        $this->assertSame(['17|12' => true], $forced['kb']);
+
+        $viewCells['forced_k'] = $forced['k'];
+        $viewCells['forced_kb'] = $forced['kb'];
+        $this->assertSame(['kingdom' => true, 'tenure' => false], SurveyReport::partialVisibility(17, 20, $viewCells));
+        $this->assertSame(['kingdom' => true, 'tenure' => false], SurveyReport::partialVisibility(17, 40, $viewCells));
+
+        // The survey-wide set always survives into the view, even where the
+        // view's own counts would not force it (never less masking than before).
+        $wide = ['k' => [], 'kb' => ['17|72' => true]];
+        $healthy = ['k' => ['17' => 15], 'kb' => ['17|72' => 5, '17|132' => 10]];
+        $this->assertSame(['k' => [], 'kb' => ['17|72' => true]], SurveyReport::viewForcedCells($wide, $healthy, 1));
+
+        // An unfiltered view (same cells as the survey) adds nothing new.
+        $this->assertSame($surveyForced, SurveyReport::viewForcedCells($surveyForced, $surveyCells, 1));
+    }
+
+    public function testCrosstabGroupsWithholdAComplementSoSubtractionCannotRecoverASmallGroup(): void
+    {
+        $rating = function (int $n, float $v): array {
+            $rows = [];
+            for ($i = 1; $i <= $n; $i++) {
+                $rows[] = $this->row($i, null, $v);
+            }
+            return SurveyReport::aggregateType('rating', $rows, [], ['min' => 1, 'max' => 5]);
+        };
+
+        // Druid 2 (withheld), Paladin 0 (empty), Bard 6, Healer 9. Overall minus
+        // Bard minus Healer would give Druid exactly, so Bard (the smallest
+        // visible non-empty group) goes too: 8 withheld answers.
+        $groups = SurveyReport::crosstabGroups([
+            ['option_id' => 10, 'label' => 'Druid',   'sub' => $rating(2, 1.0)],
+            ['option_id' => 11, 'label' => 'Paladin', 'sub' => $rating(0, 1.0)],
+            ['option_id' => 12, 'label' => 'Bard',    'sub' => $rating(6, 4.0)],
+            ['option_id' => 13, 'label' => 'Healer',  'sub' => $rating(9, 5.0)],
+        ]);
+        $this->assertSame([10, 11, 12, 13], array_column($groups, 'option_id'));
+        $this->assertTrue($groups[0]['suppressed']);
+        $this->assertSame(0, $groups[1]['n']);
+        $this->assertArrayNotHasKey('suppressed', $groups[1]);
+        $this->assertSame(['option_id' => 12, 'label' => 'Bard', 'n' => null, 'suppressed' => true], $groups[2]);
+        $this->assertSame(9, $groups[3]['n']);
+        $this->assertSame(5.0, $groups[3]['agg']['mean']);
+
+        // Two small groups already total MIN_CELL: nothing else is withheld.
+        $groups = SurveyReport::crosstabGroups([
+            ['option_id' => 1, 'label' => 'A', 'sub' => $rating(3, 2.0)],
+            ['option_id' => 2, 'label' => 'B', 'sub' => $rating(2, 2.0)],
+            ['option_id' => 3, 'label' => 'C', 'sub' => $rating(7, 3.0)],
+        ]);
+        $this->assertTrue($groups[0]['suppressed']);
+        $this->assertTrue($groups[1]['suppressed']);
+        $this->assertSame(7, $groups[2]['n']);
+
+        // One tiny group beside one visible group: both go (nothing may stay
+        // visible whose complement is a group of 1).
+        $groups = SurveyReport::crosstabGroups([
+            ['option_id' => 1, 'label' => 'Yes', 'sub' => $rating(1, 2.0)],
+            ['option_id' => 2, 'label' => 'No',  'sub' => $rating(20, 3.0)],
+        ]);
+        $this->assertTrue($groups[0]['suppressed']);
+        $this->assertTrue($groups[1]['suppressed']);
+
+        // Ties go to the earlier option.
+        $groups = SurveyReport::crosstabGroups([
+            ['option_id' => 1, 'label' => 'A', 'sub' => $rating(1, 2.0)],
+            ['option_id' => 2, 'label' => 'B', 'sub' => $rating(5, 2.0)],
+            ['option_id' => 3, 'label' => 'C', 'sub' => $rating(5, 2.0)],
+        ]);
+        $this->assertTrue($groups[1]['suppressed']);
+        $this->assertSame(5, $groups[2]['n']);
+
+        // No withheld group: nothing changes.
+        $groups = SurveyReport::crosstabGroups([
+            ['option_id' => 1, 'label' => 'A', 'sub' => $rating(5, 2.0)],
+            ['option_id' => 2, 'label' => 'B', 'sub' => $rating(0, 2.0)],
+        ]);
+        $this->assertSame(5, $groups[0]['n']);
+        $this->assertSame(0, $groups[1]['n']);
+    }
+
+    public function testCrosstabGroupsCountTheSkippedSourceResidualAsWithheld(): void
+    {
+        $rating = function (int $n, float $v): array {
+            $rows = [];
+            for ($i = 1; $i <= $n; $i++) {
+                $rows[] = $this->row($i, null, $v);
+            }
+            return SurveyReport::aggregateType('rating', $rows, [], ['min' => 1, 'max' => 5]);
+        };
+
+        // 22 answered the target; Yes 11, No 10, so 1 person skipped the
+        // source question. Overall minus Yes minus No would isolate that one
+        // person, so No (the smallest visible group) is withheld: 11 hidden.
+        $groups = SurveyReport::crosstabGroups([
+            ['option_id' => 1, 'label' => 'Yes', 'sub' => $rating(11, 4.0)],
+            ['option_id' => 2, 'label' => 'No',  'sub' => $rating(10, 2.0)],
+        ], 1);
+        $this->assertSame(11, $groups[0]['n']);
+        $this->assertArrayNotHasKey('suppressed', $groups[0]);
+        $this->assertSame(['option_id' => 2, 'label' => 'No', 'n' => null, 'suppressed' => true], $groups[1]);
+
+        // A residual of MIN_CELL with no small group: nothing is withheld.
+        $groups = SurveyReport::crosstabGroups([
+            ['option_id' => 1, 'label' => 'Yes', 'sub' => $rating(11, 4.0)],
+            ['option_id' => 2, 'label' => 'No',  'sub' => $rating(10, 2.0)],
+        ], SurveyReport::MIN_CELL);
+        $this->assertSame(11, $groups[0]['n']);
+        $this->assertSame(10, $groups[1]['n']);
+
+        // A residual of 2 beside a withheld group of 1: 3 hidden is still
+        // under MIN_CELL, so the smallest visible group goes too.
+        $groups = SurveyReport::crosstabGroups([
+            ['option_id' => 1, 'label' => 'A', 'sub' => $rating(1, 2.0)],
+            ['option_id' => 2, 'label' => 'B', 'sub' => $rating(6, 3.0)],
+            ['option_id' => 3, 'label' => 'C', 'sub' => $rating(9, 4.0)],
+        ], 2);
+        $this->assertTrue($groups[0]['suppressed']);
+        $this->assertTrue($groups[1]['suppressed']);
+        $this->assertSame(9, $groups[2]['n']);
+
+        // A negative residual is treated as 0 (the default behaviour).
+        $groups = SurveyReport::crosstabGroups([
+            ['option_id' => 1, 'label' => 'Yes', 'sub' => $rating(11, 4.0)],
+            ['option_id' => 2, 'label' => 'No',  'sub' => $rating(10, 2.0)],
+        ], -3);
+        $this->assertSame(11, $groups[0]['n']);
+        $this->assertSame(10, $groups[1]['n']);
+    }
+
+    public function testComplementaryCellsWithholdAKingdomWhenTheScopeLeavesOneCandidate(): void
+    {
+        // A kingdom survey whose kingdom has one principality: the kingdom
+        // shows, the principality's lone partial row is hidden — and by scope
+        // it can only be the principality. The kingdom is withheld with it.
+        $cells = [
+            'k'  => ['17' => 9, '40' => 1],
+            'kb' => ['17|12' => 5, '17|72' => 4, '40|0' => 1],
+        ];
+        $forced = SurveyReport::complementaryCells($cells, 2);
+        $this->assertSame(['17' => true], $forced['k']);
+        $this->assertSame([], $forced['kb']);
+
+        $cells['forced_k'] = $forced['k'];
+        $cells['forced_kb'] = $forced['kb'];
+        // The withheld kingdom takes its (otherwise visible) band with it.
+        $this->assertSame(['kingdom' => false, 'tenure' => false], SurveyReport::partialVisibility(17, 20, $cells));
+
+        // Two principalities leave two candidates: nothing extra withheld.
+        $this->assertSame([], SurveyReport::complementaryCells(
+            ['k' => ['17' => 9, '40' => 1], 'kb' => []],
+            3
+        )['k']);
+    }
+
+    public function testSmallPartialKingdomsAreThoseWithOneToFourPartialRows(): void
+    {
+        // 17 has 7 (kept), 4 has 2 and 9 has 4 (left out), 12 has exactly 5 (kept),
+        // 3 has none (nothing to leave out), 0 is not a kingdom.
+        $this->assertSame(
+            [4, 9],
+            SurveyReport::smallPartialKingdoms([17 => 7, 9 => 4, 4 => 2, 12 => 5, 3 => 0, 0 => 1])
+        );
+        $this->assertSame([], SurveyReport::smallPartialKingdoms([]));
+    }
+
+    public function testKingdomFilterCountDropsSmallPartialCells(): void
+    {
+        // A principality with 2 partial and no full rows shows nothing at all.
+        $this->assertSame(0, SurveyReport::kingdomFilterCount(0, 2));
+        // Its full rows still count; its 4 partial rows do not.
+        $this->assertSame(3, SurveyReport::kingdomFilterCount(3, 4));
+        // At MIN_CELL the partial rows count too.
+        $this->assertSame(8, SurveyReport::kingdomFilterCount(3, SurveyReport::MIN_CELL));
+        $this->assertSame(10, SurveyReport::kingdomFilterCount(10, 0));
+    }
+
+    public function testTenureLabelExactForFullBandForPartial(): void
+    {
+        $this->assertSame('14 years', SurveyReport::tenureLabel('full', 14 * 12 + 5));
+        $this->assertSame('1 year', SurveyReport::tenureLabel('full', 12));
+        $this->assertSame('0 years', SurveyReport::tenureLabel('full', 7));
+        $this->assertSame("3\u{2013}5 years", SurveyReport::tenureLabel('partial', 40));
+        $this->assertSame('Over 10 years', SurveyReport::tenureLabel('partial', 168));
+        $this->assertSame('Under 1 year', SurveyReport::tenureLabel('partial', 0));
+    }
+
+    // ------------------------------------------------------ completion (#28)
+
+    public function testCompletionRate(): void
+    {
+        $this->assertSame(0.75, SurveyReport::completionRate(30, 40, false));
+        $this->assertNull(SurveyReport::completionRate(30, 0, false));     // no starts recorded
+        $this->assertNull(SurveyReport::completionRate(30, 20, false));    // responses predate start tracking
+        $this->assertNull(SurveyReport::completionRate(30, 40, true));     // starts cannot be filtered
+        $this->assertSame(1.0, SurveyReport::completionRate(40, 40, false));
+    }
+
+    // ------------------------------------------------------- reached (#35)
+
+    public function testReachedCountHonoursQuestionAndPageShowIf(): void
+    {
+        // Q5 (yes/no): r1 and r2 chose Yes (option 50), r3 chose No (51).
+        $answers = [
+            5 => [$this->row(1, 50), $this->row(2, 50), $this->row(3, 51)],
+            6 => [$this->row(1, 60), $this->row(3, 61)],
+        ];
+        $sel = SurveyReport::selectionsByResponse($answers);
+        $this->assertSame([5 => [50], 6 => [60]], $sel[1]);
+
+        $plain = ['show_if_question_id' => 0, 'show_if_option_id' => 0, 'page_show_if_question_id' => 0, 'page_show_if_option_id' => 0];
+        $this->assertSame(10, SurveyReport::reachedCount($plain, 10, $sel));
+
+        $ifYes = ['show_if_question_id' => 5, 'show_if_option_id' => 50] + $plain;
+        $this->assertSame(2, SurveyReport::reachedCount($ifYes, 10, $sel));
+
+        // The page's rule AND the question's rule must both hold: only r1.
+        $both = ['page_show_if_question_id' => 6, 'page_show_if_option_id' => 60] + $ifYes;
+        $this->assertSame(1, SurveyReport::reachedCount($both, 10, $sel));
+
+        // A half-set rule is no rule (SurveyTypes::isShown semantics).
+        $half = ['show_if_question_id' => 5, 'show_if_option_id' => 0] + $plain;
+        $this->assertSame(10, SurveyReport::reachedCount($half, 10, $sel));
+    }
+
+    // ------------------------------------------------- display order (#1)
+
+    public function testDisplayOrderIsKeyedNotSubmissionOrder(): void
+    {
+        $key = 'test-order-key';
+        $rows = [];
+        for ($rid = 1; $rid <= 12; $rid++) {
+            $rows[] = ['response_id' => $rid, 'day' => '2026-09-10', 'value_text' => 'r' . $rid];
+        }
+        $out = SurveyReport::displayOrder($rows, $key);
+
+        $ids = array_column($out, 'response_id');
+        $this->assertNotSame(range(1, 12), $ids, 'text lists must not come back in answer_id order');
+        $this->assertEqualsCanonicalizing(range(1, 12), $ids);
+
+        // Exactly the permutation responsePage's SQL applies: MD5(CONCAT(response_id, key)).
+        $expected = range(1, 12);
+        usort($expected, static function ($a, $b) use ($key) {
+            return strcmp(md5($a . $key), md5($b . $key));
+        });
+        $this->assertSame($expected, $ids);
+
+        // Deterministic for a key, different for another.
+        $this->assertSame($ids, array_column(SurveyReport::displayOrder(array_reverse($rows), $key), 'response_id'));
+        $this->assertNotSame($ids, array_column(SurveyReport::displayOrder($rows, 'other-key'), 'response_id'));
+    }
+
+    public function testDisplayOrderSortsByDayFirstAndKeepsAResponsesRowsTogether(): void
+    {
+        $rows = [
+            ['response_id' => 1, 'day' => '2026-09-11', 'option_id' => 1],
+            ['response_id' => 2, 'day' => '2026-09-10', 'option_id' => 2],
+            ['response_id' => 1, 'day' => '2026-09-11', 'option_id' => 3],
+        ];
+        $out = SurveyReport::displayOrder($rows, 'k');
+        $this->assertSame([2, 1, 3], array_column($out, 'option_id'));
+    }
+
+    public function testAggregateTextKeepsTheOrderItIsGiven(): void
+    {
+        $rows = [$this->row(3, null, null, 'third'), $this->row(1, null, null, 'first'), $this->row(2, null, null, 'second')];
+        $this->assertSame(['third', 'first', 'second'], SurveyReport::aggregateType('paragraph', $rows, [], [])['texts']);
     }
 }

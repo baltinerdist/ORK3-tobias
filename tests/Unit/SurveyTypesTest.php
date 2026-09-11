@@ -71,7 +71,7 @@ final class SurveyTypesTest extends TestCase
             SurveyTypes::defaultSettings('nps')
         );
         $this->assertSame(['require_all_rows' => false], SurveyTypes::defaultSettings('matrix'));
-        $this->assertSame(['rank_all' => true], SurveyTypes::defaultSettings('ranking'));
+        $this->assertSame(['randomize' => true, 'rank_all' => true], SurveyTypes::defaultSettings('ranking'));
         $this->assertSame(['max_length' => 200, 'placeholder' => ''], SurveyTypes::defaultSettings('short_text'));
         $this->assertSame(['max_length' => 4000, 'placeholder' => ''], SurveyTypes::defaultSettings('paragraph'));
         $this->assertSame(
@@ -114,6 +114,19 @@ final class SurveyTypesTest extends TestCase
         $d = SurveyTypes::validateSettings('multi', null);
         $this->assertTrue($d['ok']);
         $this->assertSame(SurveyTypes::defaultSettings('multi'), $d['settings']);
+    }
+
+    public function testRankingRandomizeDefaultsOnAndCanBeTurnedOff(): void
+    {
+        // Stored settings from before the key existed read back as randomized.
+        $legacy = SurveyTypes::validateSettings('ranking', '{"rank_all":false}');
+        $this->assertTrue($legacy['ok']);
+        $this->assertTrue($legacy['settings']['randomize']);
+        $this->assertFalse($legacy['settings']['rank_all']);
+
+        $off = SurveyTypes::validateSettings('ranking', ['randomize' => '0']);
+        $this->assertTrue($off['ok']);
+        $this->assertFalse($off['settings']['randomize']);
     }
 
     public function testValidateSettingsRejectsBadValues(): void
@@ -361,6 +374,71 @@ final class SurveyTypesTest extends TestCase
         $all = ['type' => 'ranking', 'required' => 1, 'settings' => ['rank_all' => true]];
         $this->assertFalse(SurveyTypes::validateAnswer($all, $opts, [10, 11])['ok']);
         $this->assertTrue(SurveyTypes::validateAnswer($all, $opts, [10, 11, 12])['ok']);
+    }
+
+    // ------------------------------- optional matrix / ranking (review #18)
+
+    public function testOptionalMatrixMayBePartialOrBlank(): void
+    {
+        $opts = [
+            ['option_id' => 1, 'role' => 'row', 'is_other' => 0, 'label' => 'Row 1'],
+            ['option_id' => 2, 'role' => 'row', 'is_other' => 0, 'label' => 'Row 2'],
+            ['option_id' => 20, 'role' => 'column', 'is_other' => 0, 'label' => 'Agree'],
+            ['option_id' => 21, 'role' => 'column', 'is_other' => 0, 'label' => 'Disagree'],
+        ];
+        $q = ['type' => 'matrix', 'required' => 0, 'settings' => ['require_all_rows' => true]];
+
+        // Partial: require_all_rows binds only a required grid.
+        $partial = SurveyTypes::validateAnswer($q, $opts, [1 => 20]);
+        $this->assertTrue($partial['ok']);
+        $this->assertCount(1, $partial['rows']);
+
+        // Every row blank: a non-empty payload with no usable row stores nothing.
+        $blank = SurveyTypes::validateAnswer($q, $opts, [1 => '', 2 => null]);
+        $this->assertTrue($blank['ok']);
+        $this->assertSame([], $blank['rows']);
+
+        // Empty payload.
+        $this->assertTrue(SurveyTypes::validateAnswer($q, $opts, [])['ok']);
+
+        // Foreign ids are still refused on an optional grid.
+        $this->assertFalse(SurveyTypes::validateAnswer($q, $opts, [1 => 99])['ok']);
+
+        // The same blank payload on a REQUIRED grid is refused.
+        $req = ['type' => 'matrix', 'required' => 1, 'settings' => ['require_all_rows' => false]];
+        $this->assertFalse(SurveyTypes::validateAnswer($req, $opts, [1 => '', 2 => null])['ok']);
+    }
+
+    public function testOptionalRankingMayBePartialOrBlank(): void
+    {
+        $opts = [
+            ['option_id' => 10, 'role' => 'choice', 'is_other' => 0, 'label' => 'A'],
+            ['option_id' => 11, 'role' => 'choice', 'is_other' => 0, 'label' => 'B'],
+            ['option_id' => 12, 'role' => 'choice', 'is_other' => 0, 'label' => 'C'],
+        ];
+        $q = ['type' => 'ranking', 'required' => 0, 'settings' => ['rank_all' => true]];
+
+        // Partial: rank_all binds only a required ranking.
+        $partial = SurveyTypes::validateAnswer($q, $opts, [11]);
+        $this->assertTrue($partial['ok']);
+        $this->assertSame([11], array_column($partial['rows'], 'option_id'));
+
+        // Only blank entries: stores nothing.
+        $blank = SurveyTypes::validateAnswer($q, $opts, ['', null]);
+        $this->assertTrue($blank['ok']);
+        $this->assertSame([], $blank['rows']);
+
+        // Skipped entirely (the runner sends nothing for an untouched ranking).
+        $this->assertTrue(SurveyTypes::validateAnswer($q, $opts, null)['ok']);
+
+        // Duplicates and foreign ids are still refused.
+        $this->assertFalse(SurveyTypes::validateAnswer($q, $opts, [10, 10])['ok']);
+        $this->assertFalse(SurveyTypes::validateAnswer($q, $opts, [99])['ok']);
+
+        // Required + rank_all still demands every option.
+        $req = ['type' => 'ranking', 'required' => 1, 'settings' => ['rank_all' => true]];
+        $this->assertFalse(SurveyTypes::validateAnswer($req, $opts, [11])['ok']);
+        $this->assertFalse(SurveyTypes::validateAnswer($req, $opts, ['', null])['ok']);
     }
 
     // ------------------------------------------- answer: text, number, date

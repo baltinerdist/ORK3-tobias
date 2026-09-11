@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -17,10 +18,13 @@ use PHPUnit\Framework\TestCase;
  *   ------------------+-------+--------------------+--------------------
  *   mundane_id        | set   | NULL               | NULL
  *   kingdom_id        | set   | set                | NULL
- *   tenure_months     | set   | set                | NULL
+ *   tenure_months     | set   | band floor         | NULL
  *   started_at        | set   | NULL               | NULL
  *   submitted_at      | exact | DATE 00:00:00      | DATE 00:00:00
- *   duration_seconds  | set   | set                | NULL
+ *   duration_seconds  | set   | NULL               | NULL
+ *
+ * "band floor" = the TENURE_BANDS floor in months (0, 12, 36, 72, 132), so a
+ * partial row says "6–10 years", never "7 years 3 months" (review #2).
  */
 final class SurveyConsentTest extends TestCase
 {
@@ -44,15 +48,71 @@ final class SurveyConsentTest extends TestCase
         $this->assertSame($this->row(), SurveyResponse::scrubForConsent($this->row(), 'full'));
     }
 
-    public function testPartialDropsIdentityAndTruncatesDay(): void
+    public function testPartialDropsIdentityBandsTenureAndTruncatesDay(): void
     {
         $r = SurveyResponse::scrubForConsent($this->row(), 'partial');
         $this->assertNull($r['mundane_id']);
         $this->assertSame(17, $r['kingdom_id']);
-        $this->assertSame(87, $r['tenure_months']);
+        $this->assertSame(72, $r['tenure_months'], '87 months is stored as the 6–10 years band floor');
         $this->assertNull($r['started_at']);
         $this->assertSame('2026-09-09 00:00:00', $r['submitted_at']);
-        $this->assertSame(449, $r['duration_seconds']);
+        $this->assertNull($r['duration_seconds'], 'partial copy never promises to keep a duration');
+    }
+
+    /** @return list<array{int, int}> [exact months, stored band floor] */
+    public static function tenureBandCases(): array
+    {
+        return [
+            [0, 0], [11, 0],
+            [12, 12], [35, 12],
+            [36, 36], [71, 36],
+            [72, 72], [131, 72],
+            [132, 132], [480, 132],
+        ];
+    }
+
+    #[DataProvider('tenureBandCases')]
+    public function testPartialStoresTheBandFloorNeverTheExactMonths(int $months, int $floor): void
+    {
+        $in = $this->row();
+        $in['tenure_months'] = $months;
+        $this->assertSame($floor, SurveyResponse::scrubForConsent($in, 'partial')['tenure_months']);
+        $this->assertSame($floor, SurveyResponse::tenureBandFloor($months));
+        // full is the one level that keeps the exact figure.
+        $this->assertSame($months, SurveyResponse::scrubForConsent($in, 'full')['tenure_months']);
+    }
+
+    public function testPartialKeepsAnUnknownTenureUnknown(): void
+    {
+        $in = $this->row();
+        $in['tenure_months'] = null;
+        $this->assertNull(SurveyResponse::scrubForConsent($in, 'partial')['tenure_months']);
+    }
+
+    public function testNegativeMonthsFallInTheFirstBand(): void
+    {
+        $this->assertSame(0, SurveyResponse::tenureBandFloor(-5));
+    }
+
+    public function testTenureBandLabels(): void
+    {
+        $this->assertSame('Under 1 year', SurveyResponse::tenureBandLabel(0));
+        $this->assertSame('1–2 years', SurveyResponse::tenureBandLabel(12));
+        $this->assertSame('3–5 years', SurveyResponse::tenureBandLabel(36));
+        $this->assertSame('6–10 years', SurveyResponse::tenureBandLabel(72));
+        $this->assertSame('Over 10 years', SurveyResponse::tenureBandLabel(132));
+        // Any month count resolves to its band.
+        $this->assertSame('6–10 years', SurveyResponse::tenureBandLabel(87));
+    }
+
+    public function testTenureBandsAreAscendingAndStartAtZero(): void
+    {
+        $floors = array_column(SurveyResponse::TENURE_BANDS, 0);
+        $this->assertSame(0, $floors[0]);
+        $sorted = $floors;
+        sort($sorted);
+        $this->assertSame($sorted, $floors);
+        $this->assertSame([0, 12, 36, 72, 132], $floors);
     }
 
     public function testAnonymousDropsAll(): void
@@ -110,6 +170,52 @@ final class SurveyConsentTest extends TestCase
         $in['submitted_at'] = '';
         $r = SurveyResponse::scrubForConsent($in, 'anonymous');
         $this->assertSame(date('Y-m-d') . ' 00:00:00', $r['submitted_at']);
+    }
+
+    // --------------------------------------------------- respondent option order
+
+    /** @return list<array{option_id: int, role: string, label: string, is_other: int}> */
+    private function options(int $count, ?int $otherAt = null): array
+    {
+        $out = [];
+        for ($i = 1; $i <= $count; $i++) {
+            $out[] = ['option_id' => 100 + $i, 'role' => 'choice', 'label' => 'O' . $i, 'is_other' => ($i === $otherAt) ? 1 : 0];
+        }
+        return $out;
+    }
+
+    public function testShuffleIsDeterministicForASeedAndKeepsEveryOption(): void
+    {
+        $opts = $this->options(8);
+        $a = SurveyResponse::shuffleOptions($opts, 12345);
+        $b = SurveyResponse::shuffleOptions($opts, 12345);
+        $this->assertSame($a, $b, 'a resumed draft must see the same order');
+        $ids = array_column($a, 'option_id');
+        sort($ids);
+        $this->assertSame(array_column($opts, 'option_id'), $ids);
+    }
+
+    public function testShuffleAnchorsOtherAtTheEnd(): void
+    {
+        // "Other (please specify)" authored in the middle still ends up last,
+        // for every seed (review #21).
+        $opts = $this->options(6, 3);
+        foreach ([1, 7, 99, 12345, 987654321, -42] as $seed) {
+            $out = SurveyResponse::shuffleOptions($opts, $seed);
+            $this->assertCount(6, $out);
+            $this->assertSame(103, $out[5]['option_id'], 'seed ' . $seed);
+            $this->assertSame(1, $out[5]['is_other']);
+        }
+    }
+
+    public function testShuffleActuallyReordersTheOrdinaryOptions(): void
+    {
+        $opts = $this->options(8);
+        $orders = [];
+        foreach ([1, 2, 3, 4, 5, 6] as $seed) {
+            $orders[] = implode(',', array_column(SurveyResponse::shuffleOptions($opts, $seed), 'option_id'));
+        }
+        $this->assertGreaterThan(1, count(array_unique($orders)));
     }
 
     public function testConsentsConstantIsTheSpecList(): void

@@ -304,6 +304,29 @@ final class SurveyTest extends TestCase
         $this->assertSame(0, $copy['Status'], (string) ($copy['Error'] ?? ''));
     }
 
+    public function testRecentAttendanceMonthsRefusesNonNumericInput(): void
+    {
+        $ctx = $this->buildSurvey();
+        $stored = fn (): int => (int) $this->pdo->query(
+            'SELECT audience_recent_months FROM ' . DB_PREFIX . 'survey WHERE survey_id = ' . $ctx['survey_id']
+        )->fetchColumn();
+
+        $this->assertSame(0, $this->survey->update($ctx['survey_id'], ['AudienceRecentMonths' => '6'])['Status']);
+        $this->assertSame(6, $stored());
+
+        // Non-numeric must not be cast to 0 (which would switch the rule off).
+        foreach (['abc', '121', '-1', '1.5'] as $bad) {
+            $r = $this->survey->update($ctx['survey_id'], ['AudienceRecentMonths' => $bad]);
+            $this->assertSame(1, $r['Status'], 'Accepted ' . $bad);
+            $this->assertSame('Recent attendance must be between 0 and 120 months.', $r['Error']);
+        }
+        $this->assertSame(6, $stored());
+
+        // A cleared box switches the rule off.
+        $this->assertSame(0, $this->survey->update($ctx['survey_id'], ['AudienceRecentMonths' => ''])['Status']);
+        $this->assertSame(0, $stored());
+    }
+
     // ------------------------------------------------------------------
     // Case 3 — submissions and the consent data gate
     // ------------------------------------------------------------------
@@ -338,13 +361,23 @@ final class SurveyTest extends TestCase
             'A full-consent response keeps the exact submission time.'
         );
 
-        // partial — kingdom and tenure only, timestamp truncated to the day.
+        // partial — kingdom and a years-played BAND floor only, no duration,
+        // timestamp truncated to the day.
         $partial = $rows['partial'];
         $this->assertNull($partial['mundane_id']);
         $this->assertSame($this->kingdomId, (int) $partial['kingdom_id']);
         $this->assertNotNull($partial['tenure_months']);
+        $this->assertContains(
+            (int) $partial['tenure_months'],
+            array_column(SurveyResponse::TENURE_BANDS, 0),
+            'A partial-consent response stores a tenure band floor, never exact months.'
+        );
+        $this->assertSame(
+            SurveyResponse::tenureBandFloor((new SurveyResponse())->tenureMonths($this->players['p2'])),
+            (int) $partial['tenure_months']
+        );
         $this->assertNull($partial['started_at']);
-        $this->assertSame(90, (int) $partial['duration_seconds']);
+        $this->assertNull($partial['duration_seconds']);
         $this->assertSame(date('Y-m-d') . ' 00:00:00', (string) $partial['submitted_at']);
 
         // anonymous — nothing about the player at all.
@@ -416,9 +449,13 @@ final class SurveyTest extends TestCase
         $this->assertSame(0, $summary['excluded_anonymous']);
 
         // A kingdom filter can never match an anonymous row; the page must say so.
+        // It also leaves out the partial rows of a kingdom with fewer than
+        // MIN_CELL of them (review #4), so only the full row remains.
         $filtered = $this->report->summary($surveyId, ['kingdom_ids' => [$this->kingdomId]]);
-        $this->assertSame(2, $filtered['responses']);
+        $this->assertSame(1, $filtered['responses']);
         $this->assertSame(1, $filtered['excluded_anonymous']);
+        $this->assertTrue($filtered['partial_cell_rule']);
+        $this->assertTrue($filtered['suppressed']);
 
         // Aggregation of the single-choice question mirrors what was submitted.
         $agg = $this->report->aggregate($surveyId, []);
@@ -450,9 +487,13 @@ final class SurveyTest extends TestCase
         }
         $this->assertNotNull($byConsent['full']['persona']);
         $this->assertSame($this->players['p1'], (int) $byConsent['full']['mundane_id']);
+        $this->assertFalse($byConsent['full']['masked']);
         $this->assertNull($byConsent['partial']['persona']);
         $this->assertNull($byConsent['partial']['mundane_id']);
-        $this->assertNotNull($byConsent['partial']['kingdom']);
+        // One partial row is a cell below MIN_CELL: kingdom and band withheld.
+        $this->assertNull($byConsent['partial']['kingdom']);
+        $this->assertNull($byConsent['partial']['tenure_label']);
+        $this->assertTrue($byConsent['partial']['masked']);
         $this->assertNull($byConsent['anonymous']['persona']);
         $this->assertNull($byConsent['anonymous']['kingdom']);
         $this->assertNotSame('', (string) $byConsent['full']['answers'][$ctx['q_paragraph']]);
@@ -463,6 +504,51 @@ final class SurveyTest extends TestCase
         $lines = array_values(array_filter(explode("\r\n", $csv), static fn ($l) => $l !== ''));
         $this->assertCount(4, $lines);
         $this->assertStringContainsString('Consent', $lines[0]);
+    }
+
+    public function testLegacyImageNamesUpgradeRenamesFileAndMarkdown(): void
+    {
+        $ctx = $this->buildSurvey();
+        $surveyId = $ctx['survey_id'];
+        $p = DB_PREFIX;
+
+        // An image stored before the token column: sequential, guessable name.
+        $this->pdo->exec(
+            "INSERT INTO {$p}survey_image (survey_id, ext, token, width, height, created_by, created_at)
+             VALUES ({$surveyId}, 'png', '', 1, 1, {$this->officerId}, NOW())"
+        );
+        $imageId = (int) $this->pdo->lastInsertId();
+        $legacy = sprintf('%06d.png', $imageId);
+        if (!is_dir(DIR_SURVEY_IMAGE)) {
+            mkdir(DIR_SURVEY_IMAGE, 0775, true);
+        }
+        file_put_contents(DIR_SURVEY_IMAGE . $legacy, 'x');
+
+        // Markdown names it by URL; a longer id that merely ends in the same
+        // digits must be left alone.
+        $md = '![map](' . HTTP_SURVEY_IMAGE . $legacy . ') and 1' . $legacy;
+        $this->pdo->prepare("UPDATE {$p}survey SET welcome_md = ? WHERE survey_id = ?")->execute([$md, $surveyId]);
+
+        $result = $this->survey->upgradeLegacyImageNames();
+        $this->assertSame(0, $result['failed']);
+        $this->assertGreaterThanOrEqual(1, $result['upgraded']);
+
+        $token = (string) $this->pdo->query("SELECT token FROM {$p}survey_image WHERE image_id = {$imageId}")->fetchColumn();
+        $this->assertMatchesRegularExpression('/^[0-9a-f]{16}$/', $token);
+        $renamed = sprintf('%06d-%s.png', $imageId, $token);
+        $this->assertFileDoesNotExist(DIR_SURVEY_IMAGE . $legacy);
+        $this->assertFileExists(DIR_SURVEY_IMAGE . $renamed);
+
+        $welcome = (string) $this->pdo->query("SELECT welcome_md FROM {$p}survey WHERE survey_id = {$surveyId}")->fetchColumn();
+        $this->assertSame('![map](' . HTTP_SURVEY_IMAGE . $renamed . ') and 1' . $legacy, $welcome);
+
+        // Idempotent: a second run leaves the upgraded row alone.
+        $this->survey->upgradeLegacyImageNames();
+        $this->assertSame(
+            $token,
+            (string) $this->pdo->query("SELECT token FROM {$p}survey_image WHERE image_id = {$imageId}")->fetchColumn()
+        );
+        $this->assertFileExists(DIR_SURVEY_IMAGE . $renamed);
     }
 
     // ------------------------------------------------------------------
@@ -763,10 +849,12 @@ final class SurveyTest extends TestCase
         $this->pdo->exec("DELETE FROM {$p}survey_question WHERE survey_id = {$surveyId}");
         $this->pdo->exec("DELETE FROM {$p}survey_page WHERE survey_id = {$surveyId}");
 
-        $stmt = $this->pdo->query("SELECT image_id, ext FROM {$p}survey_image WHERE survey_id = {$surveyId}");
+        $stmt = $this->pdo->query("SELECT image_id, ext, token FROM {$p}survey_image WHERE survey_id = {$surveyId}");
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $img) {
+            $token = (string) $img['token'];
             $file = defined('DIR_SURVEY_IMAGE')
-                ? DIR_SURVEY_IMAGE . sprintf('%06d', (int) $img['image_id']) . '.' . (string) $img['ext']
+                ? DIR_SURVEY_IMAGE . sprintf('%06d', (int) $img['image_id'])
+                    . ($token !== '' ? '-' . $token : '') . '.' . (string) $img['ext']
                 : '';
             if ($file !== '' && is_file($file)) {
                 @unlink($file);
