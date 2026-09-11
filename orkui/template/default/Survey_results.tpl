@@ -5,11 +5,14 @@
  * Plain PHP template — NOT Smarty.
  *
  * Data supplied by Controller_Survey::results():
- *   $SurveyId  int
- *   $Survey    envelope from Model_Survey::get() — ['Survey'=>row, 'Pages'=>[], 'Questions'=>[], ...]
- *   $Questions list of question rows (DB columns + decoded settings + Options)
- *   $Kingdoms  list of ['scope_type'=>'kingdom','scope_id'=>int,'name'=>string]
- *   $Error     optional error string
+ *   $SurveyId   int
+ *   $Survey     envelope from Model_Survey::get() — ['Survey'=>row, 'Pages'=>[], 'Questions'=>[], ...]
+ *   $Questions  list of question rows (DB columns + decoded settings + Options)
+ *   $Kingdoms   kingdoms present in this survey's responses (Model_Survey::kingdoms_present):
+ *               list of ['kingdom_id'=>int,'name'=>string,'count'=>int] (+ scope_type/scope_id aliases)
+ *   $SurveyCsrf session token for SurveyAjax POSTs (X-CSRF-Token)
+ *   $ScopeName  optional display name for the survey's scope
+ *   $Error      optional error string
  *
  * Everything on the page beyond this shell is drawn by survey-results.js from
  * SurveyAjax/results and SurveyAjax/rows. This file only emits the frame, the
@@ -26,18 +29,21 @@ $_svr_error    = isset($Error) ? trim((string) $Error) : '';
 $_svr_title  = isset($_svr_row['title']) && $_svr_row['title'] !== '' ? (string) $_svr_row['title'] : 'Survey';
 $_svr_status = isset($_svr_row['status']) ? (string) $_svr_row['status'] : '';
 
-/* Scope chip. The controller hands us the kingdoms the viewer manages; use that
-   for the name when the survey is kingdom-scoped, otherwise label the type. */
+/* Scope chip. $Kingdoms lists the kingdoms present in the responses, so it names
+   a kingdom-scoped survey's own kingdom whenever anyone from it answered; a
+   controller-supplied $ScopeName wins when there is one. */
 $_svr_scope_type = isset($_svr_row['scope_type']) ? (string) $_svr_row['scope_type'] : '';
 $_svr_scope_id   = isset($_svr_row['scope_id']) ? (int) $_svr_row['scope_id'] : 0;
-$_svr_scope_name = '';
+$_svr_scope_name = isset($ScopeName) ? trim((string) $ScopeName) : '';
 $_svr_scope_icon = 'fa-globe';
 if ($_svr_scope_type === 'kingdom') {
 	$_svr_scope_icon = 'fa-crown';
-	foreach ($_svr_kingdoms as $_k) {
-		if ((int) ($_k['scope_id'] ?? 0) === $_svr_scope_id) {
-			$_svr_scope_name = (string) ($_k['name'] ?? '');
-			break;
+	if ($_svr_scope_name === '') {
+		foreach ($_svr_kingdoms as $_k) {
+			if ((int) ($_k['kingdom_id'] ?? ($_k['scope_id'] ?? 0)) === $_svr_scope_id) {
+				$_svr_scope_name = (string) ($_k['name'] ?? '');
+				break;
+			}
 		}
 	}
 	if ($_svr_scope_name === '') {
@@ -45,13 +51,17 @@ if ($_svr_scope_type === 'kingdom') {
 	}
 } elseif ($_svr_scope_type === 'park') {
 	$_svr_scope_icon = 'fa-shield-alt';
-	$_svr_scope_name = 'Park';
-} elseif ($_svr_scope_type !== '') {
-	$_svr_scope_name = ucfirst($_svr_scope_type);
+	if ($_svr_scope_name === '') {
+		$_svr_scope_name = 'Park';
+	}
+} elseif ($_svr_scope_type !== '' && $_svr_scope_name === '') {
+	$_svr_scope_name = $_svr_scope_type === 'ork' ? 'ORK-wide' : ucfirst($_svr_scope_type);
 }
 
 /* Question list for the client: answerable questions only (section / image blocks
-   collect no answers, so they get no chart and no row column). */
+   collect no answers, so they get no chart and no row column). `num` is the
+   Q1..Qn label shared by the chart cards, the row-table headers and the
+   response panel. */
 $_svr_skip     = ['section' => true, 'image' => true];
 $_svr_js_qs    = [];
 $_svr_crosstab = [];
@@ -64,6 +74,7 @@ foreach ($_svr_qs as $_q) {
 		'question_id' => (int) ($_q['question_id'] ?? 0),
 		'type'        => $_t,
 		'prompt'      => (string) ($_q['prompt'] ?? ''),
+		'num'         => count($_svr_js_qs) + 1,
 	];
 	/* Cross-tab sources are single-answer choice questions: every response falls
 	   in exactly one bucket. */
@@ -71,12 +82,18 @@ foreach ($_svr_qs as $_q) {
 		$_svr_crosstab[] = [
 			'question_id' => (int) ($_q['question_id'] ?? 0),
 			'prompt'      => (string) ($_q['prompt'] ?? ''),
+			'num'         => count($_svr_js_qs),
 		];
 	}
 }
+
+/* The kingdom filter only earns its space when the responses span more than
+   one kingdom (#33). */
+$_svr_show_kingdoms = count($_svr_kingdoms) > 1;
 ?>
 <link rel="stylesheet" href="<?=HTTP_TEMPLATE?>default/style/reports.css?v=<?=filemtime(__DIR__ . '/style/reports.css')?>">
 <link rel="stylesheet" href="<?=HTTP_TEMPLATE?>default/style/survey.css?v=<?=filemtime(__DIR__ . '/style/survey.css')?>">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.css">
 <link rel="stylesheet" href="<?=HTTP_TEMPLATE?>default/style/survey-results.css?v=<?=filemtime(__DIR__ . '/style/survey-results.css')?>">
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
 
@@ -97,7 +114,7 @@ foreach ($_svr_qs as $_q) {
 </div>
 <?php else : ?>
 
-<div class="rp-root svr-root">
+<div class="rp-root svr-root" id="svr-root">
 
 	<!-- Header -->
 	<div class="rp-header">
@@ -120,14 +137,21 @@ foreach ($_svr_qs as $_q) {
 			<a class="rp-btn-ghost" id="svr-export" href="<?=UIR?>Survey/export/<?=$_svr_id?>"><i class="fas fa-download"></i> Export CSV</a>
 			<a class="rp-btn-ghost" href="<?=UIR?>Survey/build/<?=$_svr_id?>"><i class="fas fa-pen-to-square"></i> Builder</a>
 			<a class="rp-btn-ghost" href="<?=UIR?>Survey/take/<?=$_svr_id?>/preview"><i class="fas fa-eye"></i> Preview</a>
-			<button type="button" class="rp-btn-ghost" onclick="window.print()"><i class="fas fa-print"></i> Print</button>
+			<button type="button" class="rp-btn-ghost" id="svr-summary-toggle" aria-pressed="false" data-tip="Charts only, with the filters and response count in a caption: no row-level data and no written comments. Safe to print for court."><i class="fas fa-file-lines"></i> Summary for sharing</button>
+			<button type="button" class="rp-btn-ghost" id="svr-print"><i class="fas fa-print"></i> Print</button>
 		</div>
 	</div>
 
 	<!-- Context strip -->
 	<div class="rp-context">
 		<i class="fas fa-info-circle rp-context-icon"></i>
-		<span>Aggregated answers for every response that matches the filters. Personal details are shown only for respondents who chose to share them &mdash; anonymous responses carry no kingdom, no persona and a date-only timestamp.</span>
+		<span>Aggregated answers for every response that matches the filters. Personal details are shown only for respondents who chose to share them &mdash; anonymous responses carry no kingdom, no persona and a date-only timestamp. Any group of fewer than 5 responses is hidden so no one can be singled out.</span>
+	</div>
+
+	<!-- Security-token / transport notice (#43). Kept outside .rp-body so it is
+	     the first thing read after the header. -->
+	<div class="sv-scope">
+		<div class="sv-notice sv-notice-error svr-csrf" id="svr-csrf" role="alert" hidden></div>
 	</div>
 
 	<!-- Stats -->
@@ -135,7 +159,13 @@ foreach ($_svr_qs as $_q) {
 		<div class="rp-stat-card">
 			<div class="rp-stat-icon"><i class="fas fa-inbox"></i></div>
 			<div class="rp-stat-number" id="svr-stat-responses">&mdash;</div>
-			<div class="rp-stat-label">Responses</div>
+			<div class="rp-stat-label" id="svr-stat-responses-label">Responses</div>
+		</div>
+		<div class="rp-stat-card">
+			<div class="rp-stat-icon"><i class="fas fa-users"></i></div>
+			<div class="rp-stat-number" id="svr-stat-rate">&mdash;</div>
+			<div class="rp-stat-label">Response rate</div>
+			<div class="rp-stat-hint" id="svr-stat-rate-hint">of the current audience</div>
 		</div>
 		<div class="rp-stat-card">
 			<div class="rp-stat-icon"><i class="fas fa-circle-check"></i></div>
@@ -161,18 +191,24 @@ foreach ($_svr_qs as $_q) {
 
 	<div class="rp-body sv-scope">
 
-		<!-- Filters -->
-		<div class="rp-sidebar">
+		<!-- Filters. Below 900px the card collapses behind the disclosure button
+		     so the first chart is not pushed a screen and a half down (#33). -->
+		<div class="rp-sidebar svr-sidebar" id="svr-sidebar">
+			<button type="button" class="sv-btn svr-filters-toggle" id="svr-filters-toggle" aria-expanded="true" aria-controls="svr-filters">
+				<span><i class="fas fa-filter"></i> <span id="svr-filters-toggle-label">Filters</span></span>
+				<i class="fas fa-chevron-down svr-chev" aria-hidden="true"></i>
+			</button>
 			<form class="rp-filter-card" id="svr-filters" onsubmit="return false;">
 				<div class="rp-filter-card-header"><i class="fas fa-filter"></i> Filters</div>
 				<div class="rp-filter-card-body">
 
-<?php if ($_svr_kingdoms) : ?>
+<?php if ($_svr_show_kingdoms) : ?>
 					<fieldset class="svr-fieldset">
 						<legend class="svr-field-label">Kingdom</legend>
 						<div class="svr-checklist" aria-describedby="svr-kingdom-hint">
 <?php foreach ($_svr_kingdoms as $_k) : ?>
-							<label class="svr-check"><input type="checkbox" class="svr-kingdom" value="<?=(int) ($_k['scope_id'] ?? 0)?>"> <span><?=htmlspecialchars((string) ($_k['name'] ?? ''))?></span></label>
+<?php 	$_kid = (int) ($_k['kingdom_id'] ?? ($_k['scope_id'] ?? 0)); $_kname = (string) ($_k['name'] ?? ''); ?>
+							<label class="svr-check"><input type="checkbox" class="svr-kingdom" value="<?=$_kid?>" data-name="<?=htmlspecialchars($_kname)?>"> <span><?=htmlspecialchars($_kname)?> <span class="svr-count">(<?=(int) ($_k['count'] ?? 0)?>)</span></span></label>
 <?php endforeach; ?>
 						</div>
 						<p class="svr-field-hint" id="svr-kingdom-hint">Anonymous responses have no kingdom and are excluded when this filter is set.</p>
@@ -184,19 +220,25 @@ foreach ($_svr_qs as $_q) {
 						<select class="sv-select" id="svr-consent">
 							<option value="any">Any</option>
 							<option value="full">Full &mdash; name shared</option>
-							<option value="partial">Partial &mdash; kingdom only</option>
+							<option value="partial">Partial &mdash; kingdom and years played</option>
 							<option value="anonymous">Anonymous</option>
 						</select>
 					</div>
 
 					<div class="svr-field">
-						<label class="svr-field-label" for="svr-date-from">Submitted from</label>
-						<input type="date" class="sv-input" id="svr-date-from">
+						<div class="svr-label-row">
+							<label class="svr-field-label" for="svr-date-from">Submitted from</label>
+							<button type="button" class="svr-date-clear" data-clear="svr-date-from" hidden>Clear</button>
+						</div>
+						<input type="text" class="sv-input svr-date" id="svr-date-from" placeholder="Any date" autocomplete="off">
 					</div>
 
 					<div class="svr-field">
-						<label class="svr-field-label" for="svr-date-to">Submitted to</label>
-						<input type="date" class="sv-input" id="svr-date-to">
+						<div class="svr-label-row">
+							<label class="svr-field-label" for="svr-date-to">Submitted to</label>
+							<button type="button" class="svr-date-clear" data-clear="svr-date-to" hidden>Clear</button>
+						</div>
+						<input type="text" class="sv-input svr-date" id="svr-date-to" placeholder="Any date" autocomplete="off">
 					</div>
 
 					<div class="svr-field">
@@ -204,7 +246,7 @@ foreach ($_svr_qs as $_q) {
 						<select class="sv-select" id="svr-crosstab">
 							<option value="">&mdash; None &mdash;</option>
 <?php foreach ($_svr_crosstab as $_c) : ?>
-							<option value="<?=(int) $_c['question_id']?>"><?=htmlspecialchars($_c['prompt'] !== '' ? $_c['prompt'] : ('Question ' . $_c['question_id']))?></option>
+							<option value="<?=(int) $_c['question_id']?>">Q<?=(int) $_c['num']?> &middot; <?=htmlspecialchars($_c['prompt'] !== '' ? $_c['prompt'] : ('Question ' . $_c['question_id']))?></option>
 <?php endforeach; ?>
 						</select>
 					</div>
@@ -225,17 +267,22 @@ foreach ($_svr_qs as $_q) {
 		<!-- Charts + rows -->
 		<div class="svr-main">
 			<div class="sv-notice sv-notice-warn" id="svr-notice" role="status" hidden></div>
+			<!-- Page-level minimum-cell notice (#4). -->
+			<div class="sv-notice svr-suppressed-notice" id="svr-suppressed" role="status" hidden></div>
+			<p class="svr-field-hint svr-rule-note" id="svr-rule-note" hidden></p>
+			<!-- Summary-for-sharing caption (#5): what the charts below describe. -->
+			<div class="svr-caption" id="svr-caption" hidden></div>
 			<!--
 				The live region is this short status line, NOT the card grid:
 				every filter apply replaces the whole grid, and a live region
 				around it would read every chart card end to end.
 			-->
 			<p class="sv-visually-hidden" id="svr-live" role="status" aria-live="polite"></p>
-			<div class="svr-cards" id="svr-cards"></div>
+			<div class="svr-cards" id="svr-cards" aria-busy="false"></div>
 
 			<div class="rp-table-area svr-rows-area">
 				<h2 class="svr-section-title"><i class="fas fa-table"></i> Responses</h2>
-				<p class="svr-field-hint" id="svr-rows-hint">Row-level data for the filtered responses. Persona links appear only for respondents who shared their name.</p>
+				<p class="svr-field-hint" id="svr-rows-hint">Row-level data for the filtered responses. Select a row to read that whole response. Persona links appear only for respondents who shared their name; Q1, Q2&hellip; match the chart cards above.</p>
 				<div class="svr-table-scroll">
 					<table class="display" id="svr-rows" style="width:100%"></table>
 				</div>
@@ -243,15 +290,31 @@ foreach ($_svr_qs as $_q) {
 		</div>
 
 	</div><!-- /.rp-body -->
+
+	<!-- One response, read as prompt / answer pairs (#36). Non-modal side sheet:
+	     the table stays usable behind it; Escape or Close returns focus to the row. -->
+	<aside class="svr-panel sv-scope" id="svr-panel" role="dialog" aria-modal="false" aria-labelledby="svr-panel-title" hidden>
+		<div class="svr-panel-head">
+			<h2 class="svr-panel-title" id="svr-panel-title" tabindex="-1">Response</h2>
+			<div class="svr-panel-nav">
+				<button type="button" class="sv-btn" id="svr-panel-prev" aria-label="Previous response"><i class="fas fa-chevron-left" aria-hidden="true"></i> Prev</button>
+				<button type="button" class="sv-btn" id="svr-panel-next" aria-label="Next response">Next <i class="fas fa-chevron-right" aria-hidden="true"></i></button>
+				<button type="button" class="sv-btn" id="svr-panel-close" aria-label="Close response"><i class="fas fa-xmark" aria-hidden="true"></i></button>
+			</div>
+		</div>
+		<div class="svr-panel-body" id="svr-panel-body"></div>
+	</aside>
 </div><!-- /.rp-root -->
 
 <script>
 window.SvConfig = {
 	uir      : <?=json_encode(UIR)?>,
 	surveyId : <?=$_svr_id?>,
+	csrf     : <?=json_encode($SurveyCsrf ?? '')?>,
 	questions: <?=json_encode($_svr_js_qs)?>
 };
 </script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
 <!--
 	orkui.js inlines Highcharts 3.0.7 and defines window.Highcharts before this

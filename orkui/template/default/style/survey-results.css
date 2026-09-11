@@ -30,6 +30,12 @@
 }
 
 
+/* Several .svr-* blocks below set their own display; the UA's [hidden] rule
+   is weaker than any class, so restate it for everything this page toggles
+   with the hidden attribute. */
+.svr-root [hidden] { display: none !important; }
+
+
 /* ── Status pill in the header ───────────────────────────── */
 
 .svr-status-pill {
@@ -155,6 +161,44 @@
     margin-top: 12px;
 }
 
+/* Kingdom counts beside each name (#33). */
+.svr-count {
+    color      : var(--svr-text-muted);
+    font-size  : 12px;
+    white-space: nowrap;
+}
+
+/* Date filter label + its Clear link on one line. */
+.svr-label-row {
+    display        : flex;
+    align-items    : baseline;
+    justify-content: space-between;
+    gap            : 8px;
+}
+
+.svr-date-clear {
+    border     : 0;
+    background : none;
+    padding    : 0 2px;
+    font       : inherit;
+    font-size  : 12px;
+    font-weight: 600;
+    color      : var(--svr-accent);
+    cursor     : pointer;
+}
+
+.svr-date-clear:hover { text-decoration: underline; }
+.svr-date-clear:focus-visible { outline: 2px solid var(--svr-accent); outline-offset: 2px; border-radius: 3px; }
+
+/* Flatpickr's visible alt input is readonly; keep it looking like a field. */
+.svr-root .svr-date-alt { width: 100%; box-sizing: border-box; cursor: pointer; background: var(--svr-input-bg); }
+
+/* Filters disclosure (#33): the toggle only exists below 900px, where the
+   sidebar stacks above the charts. */
+.svr-filters-toggle { display: none; }
+.svr-filters-toggle .svr-chev { transition: transform 0.15s; }
+.svr-filters-toggle[aria-expanded="false"] .svr-chev { transform: rotate(-90deg); }
+
 /* ── Main column ─────────────────────────────────────────── */
 
 .svr-main {
@@ -231,6 +275,140 @@
     font-style : italic;
     color      : var(--svr-text-muted);
 }
+
+/* Busy while a results request is in flight (#27). */
+.svr-cards[aria-busy="true"] { opacity: 0.55; transition: opacity 0.15s; }
+
+/* Minimum cell size (#4): a statement in place of the chart. */
+.svr-suppressed {
+    display      : flex;
+    align-items  : center;
+    justify-content: center;
+    gap          : 8px;
+    padding      : 22px 12px;
+    font-size    : var(--ork-font-size-base);
+    color        : var(--svr-text-muted);
+    background   : var(--sv-l2);
+    border       : 1px dashed var(--sv-line-3);
+    border-radius: var(--sv-radius-l2);
+    text-align   : center;
+}
+
+.svr-suppressed-notice { display: flex; align-items: flex-start; gap: 8px; }
+
+/* Zero matches (distinct from the 1-4 minimum-cell case): the notice carries
+   a Reset filters action, which wraps under the text on a narrow screen. The
+   button is an .sv-btn, so its colours already follow the theme tokens. */
+.svr-nomatch-notice { align-items: center; flex-wrap: wrap; }
+.svr-nomatch-notice > span { flex: 1 1 12em; }
+.svr-nomatch-reset { margin-left: auto; }
+.svr-empty-nomatch { font-style: normal; }
+.svr-empty-nomatch > i { margin-right: 4px; }
+.svr-rule-note { margin: -6px 0 12px; }
+
+/* Cross-tab head: the split question + the % / count switch (#29). */
+.svr-xt-head {
+    display        : flex;
+    flex-wrap      : wrap;
+    align-items    : center;
+    justify-content: space-between;
+    gap            : 6px 10px;
+    margin-bottom  : 6px;
+}
+
+.svr-xt-head .svr-field-hint { margin: 0; }
+
+.svr-xt-toggle {
+    display      : inline-flex;
+    border       : 1px solid var(--sv-line-1);
+    border-radius: var(--ork-radius-md, 6px);
+    overflow     : hidden;
+    flex-shrink  : 0;
+}
+
+.svr-xt-btn {
+    border     : 0;
+    background : var(--sv-l3);
+    color      : var(--svr-text-muted);
+    font       : inherit;
+    font-size  : 12px;
+    font-weight: 600;
+    padding    : 4px 10px;
+    min-height : 28px;
+    cursor     : pointer;
+}
+
+.svr-xt-btn + .svr-xt-btn { border-left: 1px solid var(--sv-line-1); }
+.svr-xt-btn:hover { background: var(--ork-surface-hover, #edf2f7); }
+.svr-xt-btn[aria-pressed="true"] { background: var(--svr-accent); color: #fff; }
+.svr-xt-btn:focus-visible { outline: 2px solid var(--svr-accent); outline-offset: -2px; }
+
+.svr-card-note {
+    margin     : 0 0 8px;
+    font-size  : 12px;
+    line-height: 1.45;
+    color      : var(--svr-text-muted);
+}
+
+/* Summary for sharing (#5): comments counted, never listed. */
+.svr-comment-count {
+    display    : flex;
+    align-items: center;
+    gap        : 8px;
+    margin     : 4px 0 0;
+    padding    : 12px;
+    font-size  : var(--ork-font-size-base);
+    color      : var(--svr-text);
+    background : var(--sv-l2);
+    border-radius: var(--sv-radius-l2);
+}
+
+.svr-comment-count i { color: var(--svr-accent); }
+
+.svr-caption {
+    margin       : 0 0 14px;
+    padding      : 12px 14px;
+    background   : var(--sv-l1);
+    border       : 1px solid var(--sv-line-1);
+    border-left  : 4px solid var(--svr-accent);
+    border-radius: var(--sv-radius-l2);
+    font-size    : var(--ork-font-size-base);
+    line-height  : 1.5;
+    color        : var(--svr-text);
+}
+
+.svr-caption p { margin: 4px 0 0; }
+
+.svr-caption-title {
+    font-size     : 11px;
+    font-weight   : 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color         : var(--svr-text-muted);
+}
+
+.svr-caption-title i { color: var(--svr-accent); margin-right: 4px; }
+.svr-caption-foot { font-size: 12px; color: var(--svr-text-muted); }
+
+.svr-summary-mode .svr-rows-area { display: none; }
+
+/* Pressed state of the header's Summary toggle (on the indigo header band). */
+.svr-root .rp-header-actions .rp-btn-ghost[aria-pressed="true"] {
+    background  : rgba(255,255,255,0.92);
+    border-color: #fff;
+    color       : #312e81;
+}
+
+/* Security-token notice (#43). */
+/* The Reload link reuses survey.css's .sv-notice-link. */
+.svr-csrf { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 12px 0 0; }
+
+/* A stat whose value is withheld: the dash explains itself on hover/focus. */
+.svr-stat-na { cursor: help; }
+.svr-stat-na:focus-visible,
+.svr-badge[tabindex]:focus-visible,
+.svr-qhead:focus-visible { outline: 2px solid var(--svr-accent); outline-offset: 2px; border-radius: 3px; }
+.svr-badge[data-tip] { cursor: help; }
 
 
 /* ── Callout figures under a chart ───────────────────────── */
@@ -352,6 +530,178 @@
 
 .svr-cell-anon { color: var(--svr-text-muted); }
 
+/* Row-level table (#31, #36). */
+#svr-rows tbody tr.svr-row { cursor: pointer; }
+#svr-rows tbody tr.svr-row:focus-visible { outline: 2px solid var(--svr-accent); outline-offset: -2px; }
+#svr-rows tbody tr.svr-row-active > td { background: var(--sv-accent-soft) !important; }
+
+.svr-qhead {
+    border-bottom: 1px dotted currentColor;
+    cursor       : help;
+    white-space  : nowrap;
+}
+
+.svr-when { white-space: nowrap; }
+.svr-when-time { display: block; font-size: 12px; color: var(--svr-text-muted); }
+.svr-when-icon { font-size: 11px; color: var(--svr-text-muted); margin-left: 2px; }
+.svr-masked { cursor: help; font-style: italic; }
+
+/* Long answers wrap inside a readable column instead of stretching the table. */
+.svr-cell-answer {
+    display    : inline-block;
+    min-width  : 120px;
+    max-width  : 260px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+
+/* ── Individual response panel (#36) ─────────────────────── */
+
+.svr-panel {
+    position     : fixed;
+    top          : 0;
+    right        : 0;
+    bottom       : 0;
+    z-index      : var(--z-modal, 10100);
+    width        : min(460px, 100vw);
+    box-sizing   : border-box;
+    display      : flex;
+    flex-direction: column;
+    background   : var(--sv-l1);
+    border-left  : 1px solid var(--sv-line-1);
+    box-shadow   : -8px 0 24px rgba(0,0,0,0.14);
+    color        : var(--svr-text);
+}
+
+.svr-panel-head {
+    display        : flex;
+    flex-wrap      : wrap;
+    align-items    : center;
+    justify-content: space-between;
+    gap            : 8px;
+    padding        : 14px 16px;
+    border-bottom  : 1px solid var(--sv-line-1);
+    background     : var(--sv-l1);
+}
+
+.svr-root .svr-panel-title {
+    margin        : 0;
+    font-size     : 14px;
+    font-weight   : 700;
+    color         : var(--svr-text);
+    /* Fight the global orkui.css h1–h6 pill box. */
+    background    : transparent;
+    border        : none;
+    padding       : 0;
+    border-radius : 0;
+}
+
+.svr-panel-title:focus { outline: none; }
+.svr-panel-title:focus-visible { outline: 2px solid var(--svr-accent); outline-offset: 3px; }
+
+.svr-panel-nav { display: flex; gap: 6px; }
+
+.svr-panel-body {
+    flex      : 1;
+    overflow-y: auto;
+    padding   : 14px 16px 24px;
+    background: var(--sv-l0);
+}
+
+.svr-panel-meta {
+    display              : grid;
+    grid-template-columns: 1fr 1fr;
+    gap                  : 8px;
+    margin               : 0 0 14px;
+}
+
+.svr-panel-meta-row {
+    min-width    : 0;
+    padding      : 8px 10px;
+    background   : var(--sv-l1);
+    border       : 1px solid var(--sv-line-2);
+    border-radius: var(--sv-radius-l2);
+}
+
+.svr-panel-meta dt {
+    font-size     : 11px;
+    font-weight   : 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color         : var(--svr-text-muted);
+}
+
+.svr-panel-meta dd {
+    margin       : 3px 0 0;
+    font-size    : var(--ork-font-size-base);
+    overflow-wrap: anywhere;
+}
+
+.svr-panel-answers { list-style: none; margin: 0; padding: 0; }
+
+.svr-panel-qa {
+    padding      : 10px 12px;
+    margin       : 0 0 8px;
+    background   : var(--sv-l2);
+    border       : 1px solid var(--sv-line-2);
+    border-radius: var(--sv-radius-l2);
+}
+
+.svr-panel-q {
+    font-size  : 12px;
+    font-weight: 600;
+    line-height: 1.4;
+    color      : var(--svr-text-muted);
+}
+
+.svr-panel-qnum {
+    display      : inline-block;
+    margin-right : 4px;
+    padding      : 0 6px;
+    border-radius: 20px;
+    background   : var(--svr-badge-bg);
+    font-size    : 11px;
+    font-weight  : 700;
+    color        : var(--svr-text-muted);
+}
+
+.svr-panel-a {
+    margin-top   : 4px;
+    font-size    : var(--ork-font-size-base);
+    line-height  : 1.5;
+    color        : var(--svr-text);
+    white-space  : pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.svr-panel-a.svr-cell-anon { color: var(--svr-text-muted); font-style: italic; }
+
+
+/* ── data-tip tooltip (one fixed node on <body>, placed by JS) ── */
+
+.svr-tip {
+    position     : fixed;
+    z-index      : var(--z-modal-top, 10200);
+    max-width    : 260px;
+    width        : max-content;
+    padding      : 6px 9px;
+    border-radius: 5px;
+    background   : #1a202c;
+    color        : #fff;
+    font-size    : 12px;
+    font-weight  : 500;
+    line-height  : 1.35;
+    text-align   : left;
+    white-space  : normal;
+    pointer-events: none;
+    box-shadow   : 0 4px 12px rgba(0,0,0,0.2);
+}
+
+/* If a stylesheet ever ships a global [data-tip]::after tip, this page's JS
+   tip must not be doubled by it. */
+.svr-root [data-tip]::after { content: none !important; }
+
 .svr-tag {
     display       : inline-block;
     font-size     : 11px;
@@ -379,10 +729,52 @@ html[data-theme="dark"] .svr-root { --svr-text-muted: var(--ork-text-muted, #a0a
 
 html[data-theme="dark"] .svr-status-pill { color: #fff; }
 
+html[data-theme="dark"] .svr-xt-btn[aria-pressed="true"] { background: var(--svr-accent); color: #1a202c; }
+html[data-theme="dark"] .svr-root .rp-header-actions .rp-btn-ghost[aria-pressed="true"] {
+    background  : #e2e8f0;
+    border-color: #e2e8f0;
+    color       : #1e1b4b;
+}
+html[data-theme="dark"] .svr-panel { box-shadow: -8px 0 24px rgba(0,0,0,0.5); }
+html[data-theme="dark"] .svr-tip {
+    background: #0f1420;
+    color     : #e2e8f0;
+    border    : 1px solid #4a5568;
+}
+
+/* Flatpickr hangs its calendar off <body>, outside every scoped selector, and
+   no .rp-* page loads revised.css; the same dark palette survey-build.css
+   restates for the builder, trimmed to the date-only calendar used here. */
+html[data-theme="dark"] .flatpickr-calendar {
+    background  : var(--ork-card-bg);
+    border-color: var(--ork-border);
+    box-shadow  : 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+html[data-theme="dark"] .flatpickr-months,
+html[data-theme="dark"] .flatpickr-month,
+html[data-theme="dark"] .flatpickr-current-month .flatpickr-monthDropdown-months {
+    background: var(--ork-bg-tertiary);
+    color     : var(--ork-text);
+}
+html[data-theme="dark"] .flatpickr-months .flatpickr-prev-month svg,
+html[data-theme="dark"] .flatpickr-months .flatpickr-next-month svg { fill: var(--ork-text-secondary); }
+html[data-theme="dark"] .flatpickr-current-month input.cur-year { color: var(--ork-text); }
+html[data-theme="dark"] .flatpickr-weekdays,
+html[data-theme="dark"] span.flatpickr-weekday { background: var(--ork-bg-secondary); color: var(--ork-text-muted); }
+html[data-theme="dark"] .flatpickr-day { color: var(--ork-text); }
+html[data-theme="dark"] .flatpickr-day:hover { background: var(--ork-bg-tertiary); border-color: var(--ork-bg-tertiary); }
+html[data-theme="dark"] .flatpickr-day.today { border-color: #63b3ed; }
+html[data-theme="dark"] .flatpickr-day.selected,
+html[data-theme="dark"] .flatpickr-day.selected:hover { background: #2b6cb0; border-color: #2b6cb0; color: #fff; }
+html[data-theme="dark"] .flatpickr-day.prevMonthDay,
+html[data-theme="dark"] .flatpickr-day.nextMonthDay,
+html[data-theme="dark"] .flatpickr-day.flatpickr-disabled { color: var(--ork-text-lighter); }
+
 /* Fight the global html[data-theme="dark"] h1–h6 pill box, which carries more
    type selectors than a bare class and otherwise wins the tie. */
 html[data-theme="dark"] .svr-card-title,
-html[data-theme="dark"] .svr-root .svr-section-title {
+html[data-theme="dark"] .svr-root .svr-section-title,
+html[data-theme="dark"] .svr-root .svr-panel-title {
     background-color: transparent !important;
     border          : none !important;
     padding         : 0 !important;
@@ -407,6 +799,16 @@ html[data-theme="dark"] .svr-card .highcharts-data-label tspan {
 
 @media (max-width: 900px) {
     .svr-cards { grid-template-columns: 1fr; }
+
+    /* Filters collapse behind a "Filters (N active)" disclosure (#33). */
+    .svr-filters-toggle {
+        display        : flex;
+        width          : 100%;
+        justify-content: space-between;
+        margin-bottom  : 10px;
+    }
+    .svr-sidebar .rp-filter-card-header { display: none; }
+    .svr-sidebar.svr-collapsed .rp-filter-card { display: none; }
 }
 
 @media (max-width: 768px) {
@@ -419,6 +821,7 @@ html[data-theme="dark"] .svr-card .highcharts-data-label tspan {
 @media (max-width: 420px) {
     .svr-card-head { flex-direction: column; gap: 6px; }
     .svr-callout { flex: 1 1 100%; }
+    .svr-panel-meta { grid-template-columns: 1fr; }
 }
 
 
@@ -428,8 +831,21 @@ html[data-theme="dark"] .svr-card .highcharts-data-label tspan {
     .rp-sidebar,
     .rp-header-actions,
     .svr-showmore,
+    .svr-panel,
+    .svr-tip,
+    .svr-csrf,
+    .svr-xt-toggle,
     .svr-rows-area .dataTables_paginate,
     .svr-rows-area .dataTables_info { display: none !important; }
+
+    /* Summary for sharing (#5): charts and the caption only. */
+    .svr-summary-mode .svr-rows-area,
+    .svr-summary-mode .svr-other,
+    .svr-summary-mode .svr-textlist { display: none !important; }
+    .svr-caption { border-color: #999; border-left-color: #000; background: #fff; }
+    .svr-root .svr-caption,
+    .svr-root .svr-caption-foot,
+    .svr-root .svr-caption-title { color: #000; }
 
     .svr-cards { grid-template-columns: 1fr; }
     .svr-card { break-inside: avoid; page-break-inside: avoid; }
@@ -483,6 +899,18 @@ html[data-theme="dark"] .svr-card .highcharts-data-label tspan {
     .svr-check { min-height: 44px; }
     .svr-check input[type="checkbox"] { width: 20px; height: 20px; }
     .svr-other > summary { min-height: 44px; }
+    /* Apply / Reset, the disclosure, the panel's nav and the cross-tab
+       switch were 28-32px (#33). */
+    .svr-filter-actions .sv-btn,
+    .svr-nomatch-reset,
+    .svr-filters-toggle,
+    .svr-panel-nav .sv-btn,
+    .svr-showmore { min-height: 44px; }
+    .svr-xt-btn { min-height: 44px; padding: 8px 12px; }
+    .svr-date-clear { min-height: 44px; padding: 0 8px; }
+    /* iOS zooms into any control under 16px on focus. */
+    .svr-root .svr-date-alt,
+    .svr-root .sv-select { font-size: 16px; min-height: 44px; }
 }
 
 
