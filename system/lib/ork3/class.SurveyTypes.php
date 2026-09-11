@@ -80,7 +80,9 @@ final class SurveyTypes
             case 'matrix':
                 return ['require_all_rows' => false];
             case 'ranking':
-                return ['rank_all' => true];
+                // Shuffled per respondent by default: a fixed start order biases
+                // every ranking toward whatever the builder listed first.
+                return ['randomize' => true, 'rank_all' => true];
             case 'short_text':
                 return ['max_length' => 200, 'placeholder' => ''];
             case 'paragraph':
@@ -178,6 +180,7 @@ final class SurveyTypes
                 break;
 
             case 'ranking':
+                $out['randomize'] = self::toBool($in['randomize'] ?? $out['randomize']);
                 $out['rank_all'] = self::toBool($in['rank_all'] ?? $out['rank_all']);
                 break;
 
@@ -337,10 +340,10 @@ final class SurveyTypes
                 return self::validateScale($value, self::NPS_MIN, self::NPS_MAX);
 
             case 'matrix':
-                return self::validateMatrix($options, $value, $settings);
+                return self::validateMatrix($options, $value, $settings, $required);
 
             case 'ranking':
-                return self::validateRanking($options, $value, $settings);
+                return self::validateRanking($options, $value, $settings, $required);
 
             case 'short_text':
             case 'paragraph':
@@ -480,12 +483,16 @@ final class SurveyTypes
     }
 
     /**
+     * The ">= 1 row" and `require_all_rows` rules apply only to a REQUIRED grid
+     * (mirrors validateMulti): an optional grid may be left partly or wholly
+     * blank. Unknown rows/columns are rejected either way.
+     *
      * @param  list<array<string, mixed>> $options
      * @param  mixed $value
      * @param  array<string, mixed> $settings
      * @return array{ok: bool, error: ?string, rows: list<array<string, mixed>>}
      */
-    private static function validateMatrix(array $options, $value, array $settings): array
+    private static function validateMatrix(array $options, $value, array $settings, bool $required): array
     {
         if (!is_array($value)) {
             return self::answerError('Please answer the grid.');
@@ -517,10 +524,10 @@ final class SurveyTypes
             $rows[] = self::row($colId, $rowId, null, null);
         }
 
-        if (!empty($settings['require_all_rows']) && count($rows) < count($rowIds)) {
+        if ($required && !empty($settings['require_all_rows']) && count($rows) < count($rowIds)) {
             return self::answerError('Please answer every row.');
         }
-        if (0 === count($rows)) {
+        if ($required && 0 === count($rows)) {
             return self::answerError('Please answer at least one row.');
         }
 
@@ -528,12 +535,15 @@ final class SurveyTypes
     }
 
     /**
+     * The ">= 1 option" and `rank_all` rules apply only to a REQUIRED ranking
+     * (mirrors validateMulti). Unknown or repeated options are rejected either way.
+     *
      * @param  list<array<string, mixed>> $options
      * @param  mixed $value
      * @param  array<string, mixed> $settings
      * @return array{ok: bool, error: ?string, rows: list<array<string, mixed>>}
      */
-    private static function validateRanking(array $options, $value, array $settings): array
+    private static function validateRanking(array $options, $value, array $settings, bool $required): array
     {
         if (!is_array($value)) {
             return self::answerError('Please rank the options.');
@@ -565,10 +575,10 @@ final class SurveyTypes
             $rows[] = self::row($id, null, null, (float) $rank);
         }
 
-        if (!empty($settings['rank_all']) && count($rows) < count($choiceIds)) {
+        if ($required && !empty($settings['rank_all']) && count($rows) < count($choiceIds)) {
             return self::answerError('Please rank every option.');
         }
-        if (0 === count($rows)) {
+        if ($required && 0 === count($rows)) {
             return self::answerError('Please rank at least one option.');
         }
 

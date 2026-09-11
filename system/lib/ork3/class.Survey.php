@@ -23,8 +23,26 @@ class Survey
     private const IMAGE_MAX_EDGE  = 1600;      // longest edge after the GD re-encode
     private const IMAGE_MAX_PIXELS = 40000000; // 40 MP: GD needs ~4 bytes/pixel to decode
 
+    /** Per-survey image budget; unreferenced images are swept before an upload is refused. */
+    public const MAX_IMAGES_PER_SURVEY      = 40;
+    public const MAX_IMAGE_BYTES_PER_SURVEY = 41943040; // 40 MB
+
+    /** An unreferenced image younger than this may be mid-attach (upload, then pick): never swept. */
+    private const IMAGE_ORPHAN_GRACE_MINUTES = 60;
+
     /** Days an untouched in-progress answer set survives (spec §2: pre-consent data). */
     private const DRAFT_RETENTION_DAYS = 60;
+
+    /** Actions the activity log records (ork_survey_activity.action). */
+    private const ACTIVITY_ACTIONS = ['create', 'update', 'structure', 'status', 'clone', 'delete', 'rows_view', 'export'];
+
+    /**
+     * Actions an autosaving builder or a scrolling results table repeats: an entry
+     * identical to one the same person wrote in the last ACTIVITY_COALESCE_MINUTES
+     * is dropped, so the log records who touched what without one row per keystroke.
+     */
+    private const ACTIVITY_COALESCE         = ['update', 'structure', 'rows_view'];
+    private const ACTIVITY_COALESCE_MINUTES = 15;
 
     /** Fields `update()` accepts, mapped to their column and coercion. */
     private const UPDATE_FIELDS = [
@@ -39,6 +57,8 @@ class Survey
         'AudienceKingdomIds'       => ['audience_kingdom_ids', 'intlist'],
         'AudienceActiveOnly'       => ['audience_active_only', 'bool'],
         'AudienceMinTenureMonths'  => ['audience_min_tenure_months', 'months'],
+        'AudienceRecentMonths'     => ['audience_recent_months', 'recent_months'],
+        'AudienceEventCalendardetailId' => ['audience_event_calendardetail_id', 'event'],
         'DataGateEnabled'          => ['data_gate_enabled', 'bool'],
         'ShowBanner'               => ['show_banner', 'bool'],
         'ShowProgress'             => ['show_progress', 'bool'],
@@ -48,10 +68,67 @@ class Survey
 
     private $db;
 
+    /** Mundane id every write is attributed to (updated_by, activity log); 0 = unattributed. */
+    private int $actor = 0;
+
     public function __construct()
     {
         global $DB;
         $this->db = $DB;
+    }
+
+    // -----------------------------------------------------------------------
+    // Activity log (who edited, opened/closed, viewed or exported a survey)
+    // -----------------------------------------------------------------------
+
+    /** Attribute every subsequent write to $uid (the model sets the session user). */
+    public function setActor(int $uid): void
+    {
+        $this->actor = max(0, $uid);
+    }
+
+    /**
+     * Append one row to ork_survey_activity. A no-op with no actor, for an
+     * unknown action, or when it would repeat (same person, action and detail)
+     * an entry written in the last ACTIVITY_COALESCE_MINUTES for a coalescing
+     * action. Never fails the caller: the audit row is best-effort.
+     *
+     * @param array<string, mixed>|null $detail  small JSON-able context (fields, ids, filters)
+     */
+    public function logActivity(int $surveyId, string $action, ?array $detail = null): void
+    {
+        if ($this->actor <= 0 || $surveyId <= 0 || !in_array($action, self::ACTIVITY_ACTIONS, true)) {
+            return;
+        }
+
+        $json = null;
+        if ($detail !== null && $detail !== []) {
+            $enc = json_encode($detail, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PARTIAL_OUTPUT_ON_ERROR);
+            if (is_string($enc)) {
+                $json = strlen($enc) > 60000 ? '{"truncated":true}' : $enc;
+            }
+        }
+        $detailSql = $json === null ? 'NULL' : '\'' . $this->esc($json) . '\'';
+
+        if (in_array($action, self::ACTIVITY_COALESCE, true)) {
+            $dup = $this->fetchRow(
+                'SELECT activity_id FROM ' . DB_PREFIX . 'survey_activity
+                 WHERE survey_id = ' . (int) $surveyId . '
+                   AND created_at >= NOW() - INTERVAL ' . self::ACTIVITY_COALESCE_MINUTES . ' MINUTE
+                   AND mundane_id = ' . $this->actor . '
+                   AND action = \'' . $action . '\'
+                   AND detail <=> ' . $detailSql . '
+                 LIMIT 1'
+            );
+            if ($dup !== null) {
+                return;
+            }
+        }
+
+        $this->exec(
+            'INSERT INTO ' . DB_PREFIX . 'survey_activity (survey_id, mundane_id, action, detail, created_at)
+             VALUES (' . (int) $surveyId . ', ' . $this->actor . ', \'' . $action . '\', ' . $detailSql . ', NOW())'
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -128,9 +205,11 @@ class Survey
             return $scopes;
         }
 
-        // Officers: every kingdom they hold CREATE/ADMIN in, its principalities, and
-        // the parks under those kingdoms (canCreate would allow all of them via the
-        // authority walk, so the picker must offer them), plus their own parks.
+        // Officers. The grant rows only nominate CANDIDATES; the decision is
+        // canCreate()'s — the same HasAuthority walk create() is gated by — so the
+        // picker can never offer a scope create() would then refuse (a
+        // penalty-boxed officer, a principality more than one level down, any
+        // future change to HasAuthority).
         $rows = $this->fetchAll(
             'SELECT park_id, kingdom_id FROM ' . DB_PREFIX . 'authorization
              WHERE mundane_id = ' . (int) $uid . ' AND role IN (\'create\', \'admin\')'
@@ -148,31 +227,52 @@ class Survey
             return [];
         }
 
-        if ($kingdomIds) {
-            $ids = implode(',', array_map('intval', array_keys($kingdomIds)));
+        // Principalities (at any depth) under a candidate kingdom are candidates too.
+        $frontier = array_keys($kingdomIds);
+        for ($depth = 0; $frontier && $depth < 5; $depth++) {
+            $next = [];
             foreach ($this->fetchAll('SELECT kingdom_id FROM ' . DB_PREFIX . 'kingdom
-                                      WHERE parent_kingdom_id IN (' . $ids . ') AND active = \'Active\'') as $c) {
-                $kingdomIds[(int) $c['kingdom_id']] = true;
+                                      WHERE parent_kingdom_id IN (' . implode(',', array_map('intval', $frontier)) . ')') as $c) {
+                $cid = (int) $c['kingdom_id'];
+                if (!isset($kingdomIds[$cid])) {
+                    $kingdomIds[$cid] = true;
+                    $next[] = $cid;
+                }
             }
+            $frontier = $next;
         }
 
+        $allowedKingdoms = [];
         if ($kingdomIds) {
             $ids = implode(',', array_map('intval', array_keys($kingdomIds)));
             foreach ($this->fetchAll('SELECT kingdom_id, name FROM ' . DB_PREFIX . 'kingdom
                                       WHERE kingdom_id IN (' . $ids . ') AND active = \'Active\' ORDER BY name') as $k) {
-                $scopes[] = ['scope_type' => 'kingdom', 'scope_id' => (int) $k['kingdom_id'], 'name' => (string) $k['name']];
-            }
-            foreach ($this->fetchAll('SELECT park_id FROM ' . DB_PREFIX . 'park
-                                      WHERE kingdom_id IN (' . $ids . ') AND active = \'Active\'') as $p) {
-                $parkIds[(int) $p['park_id']] = true;
+                $kid = (int) $k['kingdom_id'];
+                if ($this->canCreate($uid, 'kingdom', $kid)) {
+                    $allowedKingdoms[$kid] = true;
+                    $scopes[] = ['scope_type' => 'kingdom', 'scope_id' => $kid, 'name' => (string) $k['name']];
+                }
             }
         }
 
+        // Parks: every park of an allowed kingdom is allowed without a per-park
+        // call, because HasAuthority(AUTH_PARK) itself resolves a park to its
+        // kingdom and asks exactly the canCreate('kingdom') question that just
+        // passed. A park held directly, outside those kingdoms, is asked on its own.
+        $parkWhere = [];
+        if ($allowedKingdoms) {
+            $parkWhere[] = 'kingdom_id IN (' . implode(',', array_map('intval', array_keys($allowedKingdoms))) . ')';
+        }
         if ($parkIds) {
-            $ids = implode(',', array_map('intval', array_keys($parkIds)));
-            foreach ($this->fetchAll('SELECT park_id, name FROM ' . DB_PREFIX . 'park
-                                      WHERE park_id IN (' . $ids . ') AND active = \'Active\' ORDER BY name') as $p) {
-                $scopes[] = ['scope_type' => 'park', 'scope_id' => (int) $p['park_id'], 'name' => (string) $p['name']];
+            $parkWhere[] = 'park_id IN (' . implode(',', array_map('intval', array_keys($parkIds))) . ')';
+        }
+        if ($parkWhere) {
+            foreach ($this->fetchAll('SELECT park_id, kingdom_id, name FROM ' . DB_PREFIX . 'park
+                                      WHERE (' . implode(' OR ', $parkWhere) . ') AND active = \'Active\' ORDER BY name') as $p) {
+                $pid = (int) $p['park_id'];
+                if (isset($allowedKingdoms[(int) $p['kingdom_id']]) || $this->canCreate($uid, 'park', $pid)) {
+                    $scopes[] = ['scope_type' => 'park', 'scope_id' => $pid, 'name' => (string) $p['name']];
+                }
             }
         }
 
@@ -397,23 +497,26 @@ class Survey
             return $this->fail('Could not generate a share link. Please try again.');
         }
 
-        $this->exec('START TRANSACTION');
-        $this->exec(
-            'INSERT INTO ' . DB_PREFIX . 'survey
-             (scope_type, scope_id, title, slug, status, created_by, created_at, updated_at)
-             VALUES (\'' . $scopeType . '\', ' . $scopeId . ', \'' . $this->esc($title) . '\', \'' . $this->esc($slug) . '\',
-                     \'draft\', ' . (int) $uid . ', NOW(), NOW())'
-        );
-        $surveyId = $this->lastInsertId();
-        if ($surveyId <= 0) {
-            $this->exec('ROLLBACK');
+        if (!$this->exec('START TRANSACTION')) {
             return $this->fail('Could not create the survey.');
         }
-        $this->exec(
+        $ok = $this->exec(
+            'INSERT INTO ' . DB_PREFIX . 'survey
+             (scope_type, scope_id, title, slug, status, created_by, updated_by, created_at, updated_at)
+             VALUES (\'' . $scopeType . '\', ' . $scopeId . ', \'' . $this->esc($title) . '\', \'' . $this->esc($slug) . '\',
+                     \'draft\', ' . (int) $uid . ', ' . (int) $uid . ', NOW(), NOW())'
+        );
+        $surveyId = $ok ? $this->lastInsertId() : 0;
+        if ($surveyId <= 0) {
+            return $this->abort('Could not create the survey.');
+        }
+        if (!$this->exec(
             'INSERT INTO ' . DB_PREFIX . 'survey_page (survey_id, sort_order, title)
              VALUES (' . $surveyId . ', 0, NULL)'
-        );
-        $this->exec('COMMIT');
+        ) || !$this->exec('COMMIT')) {
+            return $this->abort('Could not create the survey.');
+        }
+        $this->logActivity($surveyId, 'create', ['scope_type' => $scopeType, 'scope_id' => $scopeId, 'title' => $title]);
 
         return $this->ok(['SurveyId' => $surveyId]);
     }
@@ -499,6 +602,36 @@ class Survey
                     $sets[] = $column . ' = ' . $m;
                     break;
 
+                case 'recent_months':
+                    // Whole months only: '' (a cleared box) means off, but a
+                    // non-numeric value is refused rather than cast to 0, which
+                    // would silently switch the rule off.
+                    $v = is_int($raw) ? (string) $raw : trim((string) $raw);
+                    if ($v === '') {
+                        $v = '0';
+                    }
+                    if (!preg_match('/^\d{1,3}$/', $v) || (int) $v > 120) {
+                        return $this->fail('Recent attendance must be between 0 and 120 months.');
+                    }
+                    $sets[] = $column . ' = ' . (int) $v;
+                    break;
+
+                case 'event':
+                    $id = (int) $raw;
+                    if ($id <= 0) {
+                        $sets[] = $column . ' = NULL';
+                        break;
+                    }
+                    // The id must be a real occurrence AND one this survey's scope
+                    // owns: an event audience replaces the home park/kingdom match,
+                    // so an unchecked id would let a park officer survey another
+                    // kingdom's event attendees.
+                    if ($this->fetchRow($this->eventOccurrenceSql($survey, 'cd.event_calendardetail_id = ' . $id)) === null) {
+                        return $this->fail('Choose an event run by this survey\'s ' . ((string) $survey['scope_type'] === 'park' ? 'park' : 'kingdom') . '.');
+                    }
+                    $sets[] = $column . ' = ' . $id;
+                    break;
+
                 case 'color':
                     $v = trim((string) $raw);
                     if ($v === '') {
@@ -514,8 +647,11 @@ class Survey
         }
 
         if ($sets) {
-            $this->exec('UPDATE ' . DB_PREFIX . 'survey SET ' . implode(', ', $sets)
-                . ', updated_at = NOW() WHERE survey_id = ' . $surveyId);
+            if (!$this->exec('UPDATE ' . DB_PREFIX . 'survey SET ' . implode(', ', $sets)
+                . ', ' . $this->stampSql() . ' WHERE survey_id = ' . $surveyId)) {
+                return $this->fail('Could not save the survey.');
+            }
+            $this->logActivity($surveyId, 'update', ['fields' => array_values(array_intersect(array_keys(self::UPDATE_FIELDS), array_keys($fields)))]);
         }
 
         // Turning resume off means the saved half-answers can never be resumed;
@@ -562,8 +698,11 @@ class Survey
             $sets[] = 'closed_at = NOW()';
         }
 
-        $this->exec('UPDATE ' . DB_PREFIX . 'survey SET ' . implode(', ', $sets)
-            . ', updated_at = NOW() WHERE survey_id = ' . $surveyId);
+        if (!$this->exec('UPDATE ' . DB_PREFIX . 'survey SET ' . implode(', ', $sets)
+            . ', ' . $this->stampSql() . ' WHERE survey_id = ' . $surveyId)) {
+            return $this->fail('Could not change the survey status.');
+        }
+        $this->logActivity($surveyId, 'status', ['from' => (string) $survey['status'], 'to' => $status]);
 
         if ($status !== 'open') {
             // Nobody can finish this survey any more, so the half-finished
@@ -620,60 +759,62 @@ class Survey
         $images    = $this->fetchAll('SELECT * FROM ' . DB_PREFIX . 'survey_image
                                       WHERE survey_id = ' . $surveyId . ' ORDER BY image_id');
 
-        $this->exec('START TRANSACTION');
-
-        $this->exec(
-            'INSERT INTO ' . DB_PREFIX . 'survey
-             (scope_type, scope_id, title, slug, description, welcome_md, thanks_md, status,
-              open_at, close_at, audience_kingdom_ids, audience_active_only, audience_min_tenure_months,
-              data_gate_enabled, show_banner, show_progress, allow_resume, accent_color,
-              created_by, created_at, updated_at)
-             SELECT scope_type, scope_id, \'' . $this->esc($title) . '\', \'' . $this->esc($slug) . '\',
-                    description, welcome_md, thanks_md, \'draft\',
-                    open_at, close_at, audience_kingdom_ids, audience_active_only, audience_min_tenure_months,
-                    data_gate_enabled, show_banner, show_progress, allow_resume, accent_color,
-                    ' . (int) $uid . ', NOW(), NOW()
-             FROM ' . DB_PREFIX . 'survey WHERE survey_id = ' . $surveyId
-        );
-        $newId = $this->lastInsertId();
-        if ($newId <= 0) {
-            $this->exec('ROLLBACK');
+        if (!$this->exec('START TRANSACTION')) {
             return $this->fail('Could not copy the survey.');
         }
 
+        $ok = $this->exec(
+            'INSERT INTO ' . DB_PREFIX . 'survey
+             (scope_type, scope_id, title, slug, description, welcome_md, thanks_md, status,
+              open_at, close_at, audience_kingdom_ids, audience_active_only, audience_min_tenure_months,
+              audience_recent_months, audience_event_calendardetail_id,
+              data_gate_enabled, show_banner, show_progress, allow_resume, accent_color,
+              created_by, updated_by, created_at, updated_at)
+             SELECT scope_type, scope_id, \'' . $this->esc($title) . '\', \'' . $this->esc($slug) . '\',
+                    description, welcome_md, thanks_md, \'draft\',
+                    open_at, close_at, audience_kingdom_ids, audience_active_only, audience_min_tenure_months,
+                    audience_recent_months, audience_event_calendardetail_id,
+                    data_gate_enabled, show_banner, show_progress, allow_resume, accent_color,
+                    ' . (int) $uid . ', ' . (int) $uid . ', NOW(), NOW()
+             FROM ' . DB_PREFIX . 'survey WHERE survey_id = ' . $surveyId
+        );
+        $newId = $ok ? $this->lastInsertId() : 0;
+        if ($newId <= 0) {
+            return $this->abort('Could not copy the survey.');
+        }
+
         // Images first: questions and the welcome/thanks screens point at them.
-        $imageMap = [];
+        // Files are copied after COMMIT so a rolled-back clone leaves none behind.
+        $imageMap   = [];
+        $imageFiles = [];
         foreach ($images as $img) {
-            $this->exec(
-                'INSERT INTO ' . DB_PREFIX . 'survey_image (survey_id, ext, width, height, created_by, created_at)
-                 VALUES (' . $newId . ', \'' . $this->esc((string) $img['ext']) . '\', ' . (int) $img['width'] . ',
-                         ' . (int) $img['height'] . ', ' . (int) $uid . ', NOW())'
+            $token = $this->newImageToken();
+            $ok    = $this->exec(
+                'INSERT INTO ' . DB_PREFIX . 'survey_image (survey_id, ext, token, width, height, created_by, created_at)
+                 VALUES (' . $newId . ', \'' . $this->esc((string) $img['ext']) . '\', \'' . $token . '\',
+                         ' . (int) $img['width'] . ', ' . (int) $img['height'] . ', ' . (int) $uid . ', NOW())'
             );
-            $newImageId = $this->lastInsertId();
+            $newImageId = $ok ? $this->lastInsertId() : 0;
             if ($newImageId <= 0) {
-                $this->exec('ROLLBACK');
-                return $this->fail('Could not copy the survey images.');
+                return $this->abort('Could not copy the survey images.');
             }
             $imageMap[(int) $img['image_id']] = $newImageId;
-            $src = $this->imagePath($img);
-            $dst = DIR_SURVEY_IMAGE . sprintf('%06d', $newImageId) . '.' . $this->imageExt($img);
-            if (is_readable($src)) {
-                $this->ensureImageDir();
-                @copy($src, $dst);
-            }
+            $imageFiles[] = [
+                $this->imagePath($img),
+                $this->imagePath(['image_id' => $newImageId, 'ext' => $img['ext'], 'token' => $token]),
+            ];
         }
 
         $pageMap = [];
         foreach ($pages as $p) {
-            $this->exec(
+            $ok = $this->exec(
                 'INSERT INTO ' . DB_PREFIX . 'survey_page (survey_id, sort_order, title, description_md)
                  VALUES (' . $newId . ', ' . (int) $p['sort_order'] . ', '
                 . $this->nullableText($p['title']) . ', ' . $this->nullableText($p['description_md']) . ')'
             );
-            $newPageId = $this->lastInsertId();
+            $newPageId = $ok ? $this->lastInsertId() : 0;
             if ($newPageId <= 0) {
-                $this->exec('ROLLBACK');
-                return $this->fail('Could not copy the survey pages.');
+                return $this->abort('Could not copy the survey pages.');
             }
             $pageMap[(int) $p['page_id']] = $newPageId;
         }
@@ -684,7 +825,7 @@ class Survey
             $oldQid  = (int) $q['question_id'];
             $imageId = (int) ($q['image_id'] ?? 0);
             $newImg  = ($imageId > 0 && isset($imageMap[$imageId])) ? $imageMap[$imageId] : null;
-            $this->exec(
+            $ok      = $this->exec(
                 'INSERT INTO ' . DB_PREFIX . 'survey_question
                  (survey_id, page_id, sort_order, type, prompt, help_md, image_id, required, settings, created_at, updated_at)
                  VALUES (' . $newId . ', ' . (int) ($pageMap[(int) $q['page_id']] ?? 0) . ', ' . (int) $q['sort_order'] . ',
@@ -692,52 +833,42 @@ class Survey
                          ' . $this->nullableText($q['help_md']) . ', ' . ($newImg === null ? 'NULL' : $newImg) . ',
                          ' . ((int) $q['required'] ? 1 : 0) . ', ' . $this->nullableText($q['settings']) . ', NOW(), NOW())'
             );
-            $newQid = $this->lastInsertId();
+            $newQid = $ok ? $this->lastInsertId() : 0;
             if ($newQid <= 0) {
-                $this->exec('ROLLBACK');
-                return $this->fail('Could not copy the survey questions.');
+                return $this->abort('Could not copy the survey questions.');
             }
             $questionMap[$oldQid] = $newQid;
 
-            foreach ($this->fetchAll('SELECT * FROM ' . DB_PREFIX . 'survey_option
-                                      WHERE question_id = ' . $oldQid . ' ORDER BY role, sort_order, option_id') as $o) {
-                $this->exec(
-                    'INSERT INTO ' . DB_PREFIX . 'survey_option (question_id, role, sort_order, label, value_num, is_other)
-                     VALUES (' . $newQid . ', \'' . $this->esc((string) $o['role']) . '\', ' . (int) $o['sort_order'] . ',
-                             \'' . $this->esc((string) $o['label']) . '\',
-                             ' . ($o['value_num'] === null ? 'NULL' : (float) $o['value_num']) . ',
-                             ' . ((int) $o['is_other'] ? 1 : 0) . ')'
-                );
-                $newOid = $this->lastInsertId();
-                if ($newOid <= 0) {
-                    $this->exec('ROLLBACK');
-                    return $this->fail('Could not copy the survey options.');
-                }
-                $optionMap[(int) $o['option_id']] = $newOid;
+            $copied = $this->copyOptions($oldQid, $newQid);
+            if ($copied === null) {
+                return $this->abort('Could not copy the survey options.');
             }
+            $optionMap += $copied;
         }
 
         // Re-point the show_if conditions and the welcome/thanks images at the copies.
         foreach ($questions as $q) {
             $srcQ = (int) ($q['show_if_question_id'] ?? 0);
             $srcO = (int) ($q['show_if_option_id'] ?? 0);
-            if ($srcQ > 0 && isset($questionMap[$srcQ], $optionMap[$srcO], $questionMap[(int) $q['question_id']])) {
-                $this->exec(
+            if ($srcQ > 0 && isset($questionMap[$srcQ], $optionMap[$srcO], $questionMap[(int) $q['question_id']])
+                && !$this->exec(
                     'UPDATE ' . DB_PREFIX . 'survey_question
                      SET show_if_question_id = ' . $questionMap[$srcQ] . ', show_if_option_id = ' . $optionMap[$srcO] . '
                      WHERE question_id = ' . $questionMap[(int) $q['question_id']]
-                );
+                )) {
+                return $this->abort('Could not copy the survey conditions.');
             }
         }
         foreach ($pages as $p) {
             $srcQ = (int) ($p['show_if_question_id'] ?? 0);
             $srcO = (int) ($p['show_if_option_id'] ?? 0);
-            if ($srcQ > 0 && isset($questionMap[$srcQ], $optionMap[$srcO], $pageMap[(int) $p['page_id']])) {
-                $this->exec(
+            if ($srcQ > 0 && isset($questionMap[$srcQ], $optionMap[$srcO], $pageMap[(int) $p['page_id']])
+                && !$this->exec(
                     'UPDATE ' . DB_PREFIX . 'survey_page
                      SET show_if_question_id = ' . $questionMap[$srcQ] . ', show_if_option_id = ' . $optionMap[$srcO] . '
                      WHERE page_id = ' . $pageMap[(int) $p['page_id']]
-                );
+                )) {
+                return $this->abort('Could not copy the survey conditions.');
             }
         }
         $wImg = (int) ($survey['welcome_image_id'] ?? 0);
@@ -749,11 +880,21 @@ class Survey
         if ($tImg > 0 && isset($imageMap[$tImg])) {
             $imgSets[] = 'thanks_image_id = ' . $imageMap[$tImg];
         }
-        if ($imgSets) {
-            $this->exec('UPDATE ' . DB_PREFIX . 'survey SET ' . implode(', ', $imgSets) . ' WHERE survey_id = ' . $newId);
+        if ($imgSets && !$this->exec('UPDATE ' . DB_PREFIX . 'survey SET ' . implode(', ', $imgSets) . ' WHERE survey_id = ' . $newId)) {
+            return $this->abort('Could not copy the survey images.');
         }
 
-        $this->exec('COMMIT');
+        if (!$this->exec('COMMIT')) {
+            return $this->abort('Could not copy the survey.');
+        }
+
+        foreach ($imageFiles as [$src, $dst]) {
+            if (is_readable($src)) {
+                $this->ensureImageDir();
+                @copy($src, $dst);
+            }
+        }
+        $this->logActivity($newId, 'clone', ['from_survey_id' => $surveyId]);
 
         return $this->ok(['SurveyId' => $newId]);
     }
@@ -781,18 +922,28 @@ class Survey
 
         $images = $this->fetchAll('SELECT * FROM ' . DB_PREFIX . 'survey_image WHERE survey_id = ' . $surveyId);
 
-        $this->exec('START TRANSACTION');
-        $this->exec('DELETE o FROM ' . DB_PREFIX . 'survey_option o
-                     JOIN ' . DB_PREFIX . 'survey_question q ON q.question_id = o.question_id
-                     WHERE q.survey_id = ' . $surveyId);
-        $this->exec('DELETE FROM ' . DB_PREFIX . 'survey_question WHERE survey_id = ' . $surveyId);
-        $this->exec('DELETE FROM ' . DB_PREFIX . 'survey_page WHERE survey_id = ' . $surveyId);
-        $this->exec('DELETE FROM ' . DB_PREFIX . 'survey_draft WHERE survey_id = ' . $surveyId);
-        $this->exec('DELETE FROM ' . DB_PREFIX . 'survey_dismissal WHERE survey_id = ' . $surveyId);
-        $this->exec('DELETE FROM ' . DB_PREFIX . 'survey_participation WHERE survey_id = ' . $surveyId);
-        $this->exec('DELETE FROM ' . DB_PREFIX . 'survey_image WHERE survey_id = ' . $surveyId);
-        $this->exec('DELETE FROM ' . DB_PREFIX . 'survey WHERE survey_id = ' . $surveyId);
-        $this->exec('COMMIT');
+        // The activity log is deliberately NOT deleted: it is the record that
+        // this survey existed and who removed it.
+        $statements = [
+            'START TRANSACTION',
+            'DELETE o FROM ' . DB_PREFIX . 'survey_option o
+             JOIN ' . DB_PREFIX . 'survey_question q ON q.question_id = o.question_id
+             WHERE q.survey_id = ' . $surveyId,
+            'DELETE FROM ' . DB_PREFIX . 'survey_question WHERE survey_id = ' . $surveyId,
+            'DELETE FROM ' . DB_PREFIX . 'survey_page WHERE survey_id = ' . $surveyId,
+            'DELETE FROM ' . DB_PREFIX . 'survey_draft WHERE survey_id = ' . $surveyId,
+            'DELETE FROM ' . DB_PREFIX . 'survey_dismissal WHERE survey_id = ' . $surveyId,
+            'DELETE FROM ' . DB_PREFIX . 'survey_participation WHERE survey_id = ' . $surveyId,
+            'DELETE FROM ' . DB_PREFIX . 'survey_start WHERE survey_id = ' . $surveyId,
+            'DELETE FROM ' . DB_PREFIX . 'survey_image WHERE survey_id = ' . $surveyId,
+            'DELETE FROM ' . DB_PREFIX . 'survey WHERE survey_id = ' . $surveyId,
+            'COMMIT',
+        ];
+        foreach ($statements as $sql) {
+            if (!$this->exec($sql)) {
+                return $this->abort('Could not delete the survey.');
+            }
+        }
 
         foreach ($images as $img) {
             $path = $this->imagePath($img);
@@ -800,6 +951,7 @@ class Survey
                 @unlink($path);
             }
         }
+        $this->logActivity($surveyId, 'delete', ['title' => (string) $survey['title']]);
 
         return $this->ok();
     }
@@ -823,12 +975,12 @@ class Survey
         $max = $this->fetchRow('SELECT COALESCE(MAX(sort_order), -1) AS mx FROM ' . DB_PREFIX . 'survey_page
                                 WHERE survey_id = ' . $surveyId);
         $order = ($max === null ? 0 : (int) $max['mx'] + 1);
-        $this->exec('INSERT INTO ' . DB_PREFIX . 'survey_page (survey_id, sort_order) VALUES (' . $surveyId . ', ' . $order . ')');
-        $pageId = $this->lastInsertId();
+        $ok     = $this->exec('INSERT INTO ' . DB_PREFIX . 'survey_page (survey_id, sort_order) VALUES (' . $surveyId . ', ' . $order . ')');
+        $pageId = $ok ? $this->lastInsertId() : 0;
         if ($pageId <= 0) {
             return $this->fail('Could not add the page.');
         }
-        $this->touch($surveyId);
+        $this->touch($surveyId, 'structure', ['op' => 'page_add', 'page_id' => $pageId]);
 
         return $this->ok(['Page' => $this->pageRow($pageId)]);
     }
@@ -880,8 +1032,15 @@ class Survey
         }
 
         if ($sets) {
-            $this->exec('UPDATE ' . DB_PREFIX . 'survey_page SET ' . implode(', ', $sets) . ' WHERE page_id = ' . $pageId);
-            $this->touch($surveyId);
+            if (!$this->exec('UPDATE ' . DB_PREFIX . 'survey_page SET ' . implode(', ', $sets) . ' WHERE page_id = ' . $pageId)) {
+                return $this->fail('Could not save the page.');
+            }
+            $keys = array_values(array_intersect(['Title', 'DescriptionMd', 'ShowIfQuestionId', 'ShowIfOptionId'], array_keys($fields)));
+            $this->touch(
+                $surveyId,
+                !$locked && array_intersect($keys, ['ShowIfQuestionId', 'ShowIfOptionId']) ? 'structure' : 'update',
+                ['op' => 'page_update', 'page_id' => $pageId, 'fields' => $keys]
+            );
         }
 
         return $this->ok(['Page' => $this->pageRow($pageId)]);
@@ -925,15 +1084,19 @@ class Survey
                                 WHERE page_id = ' . $target);
         $offset = ($max === null ? 0 : (int) $max['mx'] + 1);
 
-        $this->exec('START TRANSACTION');
-        $this->exec('UPDATE ' . DB_PREFIX . 'survey_question
-                     SET page_id = ' . $target . ', sort_order = sort_order + ' . $offset . ', updated_at = NOW()
-                     WHERE page_id = ' . $pageId);
-        $this->exec('DELETE FROM ' . DB_PREFIX . 'survey_page WHERE page_id = ' . $pageId);
-        $this->exec('COMMIT');
+        if (!$this->execAll([
+            'START TRANSACTION',
+            'UPDATE ' . DB_PREFIX . 'survey_question
+             SET page_id = ' . $target . ', sort_order = sort_order + ' . $offset . ', updated_at = NOW()
+             WHERE page_id = ' . $pageId,
+            'DELETE FROM ' . DB_PREFIX . 'survey_page WHERE page_id = ' . $pageId,
+            'COMMIT',
+        ])) {
+            return $this->abort('Could not delete the page.');
+        }
 
         $this->resequencePages($surveyId);
-        $this->touch($surveyId);
+        $this->touch($surveyId, 'structure', ['op' => 'page_delete', 'page_id' => $pageId]);
 
         return $this->ok();
     }
@@ -954,18 +1117,21 @@ class Survey
         foreach ($this->fetchAll('SELECT page_id FROM ' . DB_PREFIX . 'survey_page WHERE survey_id = ' . $surveyId) as $p) {
             $known[(int) $p['page_id']] = true;
         }
-        $order = 0;
-        $this->exec('START TRANSACTION');
+        $order      = 0;
+        $statements = ['START TRANSACTION'];
         foreach ($pageIds as $pid) {
             $pid = (int) $pid;
             if (!isset($known[$pid])) {
                 continue;
             }
-            $this->exec('UPDATE ' . DB_PREFIX . 'survey_page SET sort_order = ' . $order . ' WHERE page_id = ' . $pid);
+            $statements[] = 'UPDATE ' . DB_PREFIX . 'survey_page SET sort_order = ' . $order . ' WHERE page_id = ' . $pid;
             $order++;
         }
-        $this->exec('COMMIT');
-        $this->touch($surveyId);
+        $statements[] = 'COMMIT';
+        if (!$this->execAll($statements)) {
+            return $this->abort('Could not reorder the pages.');
+        }
+        $this->touch($surveyId, 'structure', ['op' => 'page_reorder']);
 
         return $this->ok();
     }
@@ -1013,34 +1179,96 @@ class Survey
         $settings = json_encode(SurveyTypes::defaultSettings($type));
         $prompt   = ($type === 'section') ? 'Section heading' : (($type === 'image') ? 'Image' : 'Untitled question');
 
-        $this->exec('START TRANSACTION');
-        $this->exec('UPDATE ' . DB_PREFIX . 'survey_question SET sort_order = sort_order + 1
-                     WHERE page_id = ' . $pageId . ' AND sort_order >= ' . $order);
-        $this->exec(
+        $ok = $this->execAll([
+            'START TRANSACTION',
+            'UPDATE ' . DB_PREFIX . 'survey_question SET sort_order = sort_order + 1
+             WHERE page_id = ' . $pageId . ' AND sort_order >= ' . $order,
             'INSERT INTO ' . DB_PREFIX . 'survey_question
              (survey_id, page_id, sort_order, type, prompt, required, settings, created_at, updated_at)
              VALUES (' . $surveyId . ', ' . $pageId . ', ' . $order . ', \'' . $this->esc($type) . '\',
-                     \'' . $this->esc($prompt) . '\', 0, \'' . $this->esc($settings) . '\', NOW(), NOW())'
-        );
-        $questionId = $this->lastInsertId();
+                     \'' . $this->esc($prompt) . '\', 0, \'' . $this->esc($settings) . '\', NOW(), NOW())',
+        ]);
+        $questionId = $ok ? $this->lastInsertId() : 0;
         if ($questionId <= 0) {
-            $this->exec('ROLLBACK');
-            return $this->fail('Could not add the question.');
+            return $this->abort('Could not add the question.');
         }
-        $seedOrder = ['choice' => 0, 'row' => 0, 'column' => 0];
+        $seedOrder  = ['choice' => 0, 'row' => 0, 'column' => 0];
+        $statements = [];
         foreach (SurveyTypes::seedOptions($type) as $seed) {
             $role = (string) $seed['role'];
-            $this->exec(
-                'INSERT INTO ' . DB_PREFIX . 'survey_option (question_id, role, sort_order, label)
-                 VALUES (' . $questionId . ', \'' . $this->esc($role) . '\', ' . $seedOrder[$role] . ',
-                         \'' . $this->esc((string) $seed['label']) . '\')'
-            );
+            $statements[] = 'INSERT INTO ' . DB_PREFIX . 'survey_option (question_id, role, sort_order, label)
+                             VALUES (' . $questionId . ', \'' . $this->esc($role) . '\', ' . $seedOrder[$role] . ',
+                                     \'' . $this->esc((string) $seed['label']) . '\')';
             $seedOrder[$role]++;
         }
-        $this->exec('COMMIT');
-        $this->touch($surveyId);
+        $statements[] = 'COMMIT';
+        if (!$this->execAll($statements)) {
+            return $this->abort('Could not add the question.');
+        }
+        $this->touch($surveyId, 'structure', ['op' => 'question_add', 'question_id' => $questionId, 'type' => $type]);
 
         return $this->ok(['Question' => $this->questionRow($questionId)]);
+    }
+
+    /**
+     * Copy one question to the slot right after itself on the same page, in one
+     * transaction: prompt, help, illustration, required, settings, show-if and
+     * every option (#15). Structural: refused on a locked survey.
+     *
+     * @return array{Status: int, Error: string, Question?: array, Order?: list<int>}
+     */
+    public function questionDuplicate(int $questionId): array
+    {
+        $question = $this->fetchRow('SELECT * FROM ' . DB_PREFIX . 'survey_question WHERE question_id = ' . (int) $questionId);
+        if ($question === null) {
+            return $this->fail('Question not found.');
+        }
+        $questionId = (int) $question['question_id'];
+        $surveyId   = (int) $question['survey_id'];
+        $pageId     = (int) $question['page_id'];
+        $survey     = $this->getRow($surveyId);
+        if ($survey === null) {
+            return $this->fail('Survey not found.');
+        }
+        if ($this->isStructureLocked($survey)) {
+            return $this->fail(self::LOCKED_ERROR);
+        }
+
+        $order   = (int) $question['sort_order'] + 1;
+        $imageId = (int) ($question['image_id'] ?? 0);
+        $srcQ    = (int) ($question['show_if_question_id'] ?? 0);
+        $srcO    = (int) ($question['show_if_option_id'] ?? 0);
+
+        $ok = $this->execAll([
+            'START TRANSACTION',
+            'UPDATE ' . DB_PREFIX . 'survey_question SET sort_order = sort_order + 1
+             WHERE page_id = ' . $pageId . ' AND sort_order >= ' . $order,
+            'INSERT INTO ' . DB_PREFIX . 'survey_question
+             (survey_id, page_id, sort_order, type, prompt, help_md, image_id, required, settings,
+              show_if_question_id, show_if_option_id, created_at, updated_at)
+             VALUES (' . $surveyId . ', ' . $pageId . ', ' . $order . ', \'' . $this->esc((string) $question['type']) . '\',
+                     \'' . $this->esc((string) $question['prompt']) . '\', ' . $this->nullableText($question['help_md']) . ',
+                     ' . ($imageId > 0 ? $imageId : 'NULL') . ', ' . ((int) $question['required'] ? 1 : 0) . ',
+                     ' . $this->nullableText($question['settings']) . ',
+                     ' . ($srcQ > 0 && $srcO > 0 ? $srcQ : 'NULL') . ', ' . ($srcQ > 0 && $srcO > 0 ? $srcO : 'NULL') . ',
+                     NOW(), NOW())',
+        ]);
+        $newId = $ok ? $this->lastInsertId() : 0;
+        if ($newId <= 0) {
+            return $this->abort('Could not duplicate the question.');
+        }
+        if ($this->copyOptions($questionId, $newId) === null || !$this->exec('COMMIT')) {
+            return $this->abort('Could not duplicate the question.');
+        }
+        $this->touch($surveyId, 'structure', ['op' => 'question_duplicate', 'question_id' => $newId, 'from_question_id' => $questionId]);
+
+        $orderIds = [];
+        foreach ($this->fetchAll('SELECT question_id FROM ' . DB_PREFIX . 'survey_question
+                                  WHERE page_id = ' . $pageId . ' ORDER BY sort_order, question_id') as $q) {
+            $orderIds[] = (int) $q['question_id'];
+        }
+
+        return $this->ok(['Question' => $this->questionRow($newId), 'Order' => $orderIds]);
     }
 
     /**
@@ -1065,6 +1293,7 @@ class Survey
 
         // Retype first: everything below validates against the type the question
         // ends up with, not the one it arrived as.
+        $retyped = false;
         if (array_key_exists('Type', $fields)) {
             $newType = trim((string) $fields['Type']);
             if ($newType !== '' && $newType !== $type) {
@@ -1074,7 +1303,10 @@ class Survey
                 if ($locked) {
                     return $this->fail(self::LOCKED_ERROR);
                 }
-                $this->retypeQuestion($question, $newType);
+                if (!$this->retypeQuestion($question, $newType)) {
+                    return $this->fail('Could not change the question type.');
+                }
+                $retyped  = true;
                 $question = $this->fetchRow('SELECT * FROM ' . DB_PREFIX . 'survey_question
                                              WHERE question_id = ' . $questionId);
                 if ($question === null) {
@@ -1158,10 +1390,21 @@ class Survey
             }
         }
 
-        if ($sets) {
-            $this->exec('UPDATE ' . DB_PREFIX . 'survey_question SET ' . implode(', ', $sets)
-                . ', updated_at = NOW() WHERE question_id = ' . $questionId);
-            $this->touch($surveyId);
+        if ($sets && !$this->exec('UPDATE ' . DB_PREFIX . 'survey_question SET ' . implode(', ', $sets)
+            . ', updated_at = NOW() WHERE question_id = ' . $questionId)) {
+            return $this->fail('Could not save the question.');
+        }
+        if ($sets || $retyped) {
+            $keys       = array_values(array_intersect(
+                ['Type', 'Prompt', 'HelpMd', 'ImageId', 'Required', 'Settings', 'ShowIfQuestionId', 'ShowIfOptionId'],
+                array_keys($fields)
+            ));
+            $structural = $retyped || array_intersect($keys, ['Required', 'Settings', 'ShowIfQuestionId', 'ShowIfOptionId']);
+            $this->touch(
+                $surveyId,
+                $structural && !$locked ? 'structure' : 'update',
+                ['op' => 'question_update', 'question_id' => $questionId, 'fields' => $keys]
+            );
         }
 
         return $this->ok(['Question' => $this->questionRow($questionId)]);
@@ -1181,17 +1424,21 @@ class Survey
             return $this->fail(self::LOCKED_ERROR);
         }
 
-        $this->exec('START TRANSACTION');
-        $this->exec('UPDATE ' . DB_PREFIX . 'survey_question
-                     SET show_if_question_id = NULL, show_if_option_id = NULL, updated_at = NOW()
-                     WHERE show_if_question_id = ' . $questionId);
-        $this->exec('UPDATE ' . DB_PREFIX . 'survey_page
-                     SET show_if_question_id = NULL, show_if_option_id = NULL
-                     WHERE show_if_question_id = ' . $questionId);
-        $this->exec('DELETE FROM ' . DB_PREFIX . 'survey_option WHERE question_id = ' . $questionId);
-        $this->exec('DELETE FROM ' . DB_PREFIX . 'survey_question WHERE question_id = ' . $questionId);
-        $this->exec('COMMIT');
-        $this->touch($surveyId);
+        if (!$this->execAll([
+            'START TRANSACTION',
+            'UPDATE ' . DB_PREFIX . 'survey_question
+             SET show_if_question_id = NULL, show_if_option_id = NULL, updated_at = NOW()
+             WHERE show_if_question_id = ' . $questionId,
+            'UPDATE ' . DB_PREFIX . 'survey_page
+             SET show_if_question_id = NULL, show_if_option_id = NULL
+             WHERE show_if_question_id = ' . $questionId,
+            'DELETE FROM ' . DB_PREFIX . 'survey_option WHERE question_id = ' . $questionId,
+            'DELETE FROM ' . DB_PREFIX . 'survey_question WHERE question_id = ' . $questionId,
+            'COMMIT',
+        ])) {
+            return $this->abort('Could not delete the question.');
+        }
+        $this->touch($surveyId, 'structure', ['op' => 'question_delete', 'question_id' => $questionId]);
 
         return $this->ok();
     }
@@ -1212,10 +1459,9 @@ class Survey
      *   - conditions elsewhere in the survey that pointed at this question let go when
      *     it can no longer be a show-if source, or when their option is now gone.
      */
-    private function retypeQuestion(array $question, string $newType): void
+    private function retypeQuestion(array $question, string $newType): bool
     {
         $questionId = (int) $question['question_id'];
-        $surveyId   = (int) $question['survey_id'];
 
         $roles    = SurveyTypes::OPTION_ROLES[$newType] ?? [];
         $minimums = SurveyTypes::minOptions($newType);
@@ -1227,21 +1473,29 @@ class Survey
             $seedsByRole[(string) $seed['role']][] = (string) $seed['label'];
         }
 
-        $this->exec('START TRANSACTION');
+        // Every write is checked: the first failure rolls the whole retype back
+        // rather than committing a half-converted question (#37).
+        if (!$this->exec('START TRANSACTION')) {
+            return false;
+        }
 
         if (!$roles) {
-            $this->exec('DELETE FROM ' . DB_PREFIX . 'survey_option WHERE question_id = ' . $questionId);
+            $sql = 'DELETE FROM ' . DB_PREFIX . 'survey_option WHERE question_id = ' . $questionId;
         } else {
             $quoted = [];
             foreach ($roles as $role) {
                 $quoted[] = '\'' . $this->esc((string) $role) . '\'';
             }
-            $this->exec('DELETE FROM ' . DB_PREFIX . 'survey_option
-                         WHERE question_id = ' . $questionId . ' AND role NOT IN (' . implode(', ', $quoted) . ')');
+            $sql = 'DELETE FROM ' . DB_PREFIX . 'survey_option
+                    WHERE question_id = ' . $questionId . ' AND role NOT IN (' . implode(', ', $quoted) . ')';
+        }
+        if (!$this->exec($sql)) {
+            return $this->rollbackFalse();
         }
 
-        if (!in_array($newType, ['single', 'multi', 'dropdown'], true)) {
-            $this->exec('UPDATE ' . DB_PREFIX . 'survey_option SET is_other = 0 WHERE question_id = ' . $questionId);
+        if (!in_array($newType, ['single', 'multi', 'dropdown'], true)
+            && !$this->exec('UPDATE ' . DB_PREFIX . 'survey_option SET is_other = 0 WHERE question_id = ' . $questionId)) {
+            return $this->rollbackFalse();
         }
 
         if ($newType === 'yesno') {
@@ -1254,15 +1508,19 @@ class Survey
             foreach (array_slice($keep, 2) as $row) {
                 $extra[] = (int) $row['option_id'];
             }
+            $statements = [];
             if ($extra) {
-                $this->exec('DELETE FROM ' . DB_PREFIX . 'survey_option
-                             WHERE option_id IN (' . implode(', ', $extra) . ')');
+                $statements[] = 'DELETE FROM ' . DB_PREFIX . 'survey_option
+                                 WHERE option_id IN (' . implode(', ', $extra) . ')';
             }
             foreach (array_slice($keep, 0, 2) as $i => $row) {
-                $this->exec('UPDATE ' . DB_PREFIX . 'survey_option
-                             SET label = \'' . $this->esc($seedsByRole['choice'][$i] ?? 'Yes') . '\',
-                                 sort_order = ' . (int) $i . '
-                             WHERE option_id = ' . (int) $row['option_id']);
+                $statements[] = 'UPDATE ' . DB_PREFIX . 'survey_option
+                                 SET label = \'' . $this->esc($seedsByRole['choice'][$i] ?? 'Yes') . '\',
+                                     sort_order = ' . (int) $i . '
+                                 WHERE option_id = ' . (int) $row['option_id'];
+            }
+            if (!$this->execAll($statements)) {
+                return $this->rollbackFalse();
             }
         }
 
@@ -1283,46 +1541,61 @@ class Survey
                                       WHERE question_id = ' . $questionId . ' AND role = \'' . $this->esc($role) . '\'');
             $order = ($max === null ? 0 : (int) $max['mx'] + 1);
             $noun  = $role === 'choice' ? 'Option' : ucfirst($role);
+            $statements = [];
             for ($i = $have; $i < $want; $i++) {
                 $label = $seedsByRole[$role][$i] ?? ($noun . ' ' . ($i + 1));
-                $this->exec(
-                    'INSERT INTO ' . DB_PREFIX . 'survey_option (question_id, role, sort_order, label)
-                     VALUES (' . $questionId . ', \'' . $this->esc($role) . '\', ' . $order . ',
-                             \'' . $this->esc($label) . '\')'
-                );
+                $statements[] = 'INSERT INTO ' . DB_PREFIX . 'survey_option (question_id, role, sort_order, label)
+                                 VALUES (' . $questionId . ', \'' . $this->esc($role) . '\', ' . $order . ',
+                                         \'' . $this->esc($label) . '\')';
                 $order++;
+            }
+            if (!$this->execAll($statements)) {
+                return $this->rollbackFalse();
             }
         }
 
         if (!in_array($newType, SurveyTypes::SHOW_IF_SOURCES, true)) {
-            $this->exec('UPDATE ' . DB_PREFIX . 'survey_question
-                         SET show_if_question_id = NULL, show_if_option_id = NULL, updated_at = NOW()
-                         WHERE show_if_question_id = ' . $questionId);
-            $this->exec('UPDATE ' . DB_PREFIX . 'survey_page
-                         SET show_if_question_id = NULL, show_if_option_id = NULL
-                         WHERE show_if_question_id = ' . $questionId);
+            $statements = [
+                'UPDATE ' . DB_PREFIX . 'survey_question
+                 SET show_if_question_id = NULL, show_if_option_id = NULL, updated_at = NOW()
+                 WHERE show_if_question_id = ' . $questionId,
+                'UPDATE ' . DB_PREFIX . 'survey_page
+                 SET show_if_question_id = NULL, show_if_option_id = NULL
+                 WHERE show_if_question_id = ' . $questionId,
+            ];
         } else {
-            $this->exec('UPDATE ' . DB_PREFIX . 'survey_question
-                         SET show_if_question_id = NULL, show_if_option_id = NULL, updated_at = NOW()
-                         WHERE show_if_question_id = ' . $questionId . '
-                           AND show_if_option_id NOT IN (SELECT option_id FROM ' . DB_PREFIX . 'survey_option
-                                                          WHERE question_id = ' . $questionId . ')');
-            $this->exec('UPDATE ' . DB_PREFIX . 'survey_page
-                         SET show_if_question_id = NULL, show_if_option_id = NULL
-                         WHERE show_if_question_id = ' . $questionId . '
-                           AND show_if_option_id NOT IN (SELECT option_id FROM ' . DB_PREFIX . 'survey_option
-                                                          WHERE question_id = ' . $questionId . ')');
+            $statements = [
+                'UPDATE ' . DB_PREFIX . 'survey_question
+                 SET show_if_question_id = NULL, show_if_option_id = NULL, updated_at = NOW()
+                 WHERE show_if_question_id = ' . $questionId . '
+                   AND show_if_option_id NOT IN (SELECT option_id FROM ' . DB_PREFIX . 'survey_option
+                                                  WHERE question_id = ' . $questionId . ')',
+                'UPDATE ' . DB_PREFIX . 'survey_page
+                 SET show_if_question_id = NULL, show_if_option_id = NULL
+                 WHERE show_if_question_id = ' . $questionId . '
+                   AND show_if_option_id NOT IN (SELECT option_id FROM ' . DB_PREFIX . 'survey_option
+                                                  WHERE question_id = ' . $questionId . ')',
+            ];
+        }
+        $statements[] = 'UPDATE ' . DB_PREFIX . 'survey_question
+                         SET type = \'' . $this->esc($newType) . '\',
+                             settings = \'' . $this->esc((string) $settings) . '\',
+                             required = ' . $required . ',
+                             updated_at = NOW()
+                         WHERE question_id = ' . $questionId;
+        $statements[] = 'COMMIT';
+        if (!$this->execAll($statements)) {
+            return $this->rollbackFalse();
         }
 
-        $this->exec('UPDATE ' . DB_PREFIX . 'survey_question
-                     SET type = \'' . $this->esc($newType) . '\',
-                         settings = \'' . $this->esc((string) $settings) . '\',
-                         required = ' . $required . ',
-                         updated_at = NOW()
-                     WHERE question_id = ' . $questionId);
+        return true;
+    }
 
-        $this->exec('COMMIT');
-        $this->touch($surveyId);
+    /** ROLLBACK and return false (for helpers that report success as a bool). */
+    private function rollbackFalse(): bool
+    {
+        $this->exec('ROLLBACK');
+        return false;
     }
 
     /** Reorder the questions on one page. Structural. */
@@ -1343,19 +1616,22 @@ class Survey
         foreach ($this->fetchAll('SELECT question_id FROM ' . DB_PREFIX . 'survey_question WHERE page_id = ' . $pageId) as $q) {
             $known[(int) $q['question_id']] = true;
         }
-        $order = 0;
-        $this->exec('START TRANSACTION');
+        $order      = 0;
+        $statements = ['START TRANSACTION'];
         foreach ($questionIds as $qid) {
             $qid = (int) $qid;
             if (!isset($known[$qid])) {
                 continue;
             }
-            $this->exec('UPDATE ' . DB_PREFIX . 'survey_question SET sort_order = ' . $order . ', updated_at = NOW()
-                         WHERE question_id = ' . $qid);
+            $statements[] = 'UPDATE ' . DB_PREFIX . 'survey_question SET sort_order = ' . $order . ', updated_at = NOW()
+                             WHERE question_id = ' . $qid;
             $order++;
         }
-        $this->exec('COMMIT');
-        $this->touch($surveyId);
+        $statements[] = 'COMMIT';
+        if (!$this->execAll($statements)) {
+            return $this->abort('Could not reorder the questions.');
+        }
+        $this->touch($surveyId, 'structure', ['op' => 'question_reorder', 'page_id' => $pageId]);
 
         return $this->ok();
     }
@@ -1380,9 +1656,13 @@ class Survey
         $pageId = (int) $page['page_id'];
         $index  = max(0, $index);
 
-        $this->exec('START TRANSACTION');
-        $this->exec('UPDATE ' . DB_PREFIX . 'survey_question SET page_id = ' . $pageId . ', sort_order = 32000, updated_at = NOW()
-                     WHERE question_id = ' . $questionId);
+        if (!$this->execAll([
+            'START TRANSACTION',
+            'UPDATE ' . DB_PREFIX . 'survey_question SET page_id = ' . $pageId . ', sort_order = 32000, updated_at = NOW()
+             WHERE question_id = ' . $questionId,
+        ])) {
+            return $this->abort('Could not move the question.');
+        }
         $ids = [];
         foreach ($this->fetchAll('SELECT question_id FROM ' . DB_PREFIX . 'survey_question
                                   WHERE page_id = ' . $pageId . ' AND question_id <> ' . $questionId . '
@@ -1390,12 +1670,16 @@ class Survey
             $ids[] = (int) $q['question_id'];
         }
         array_splice($ids, min($index, count($ids)), 0, [$questionId]);
+        $statements = [];
         foreach ($ids as $order => $qid) {
-            $this->exec('UPDATE ' . DB_PREFIX . 'survey_question SET sort_order = ' . (int) $order . ', updated_at = NOW()
-                         WHERE question_id = ' . (int) $qid);
+            $statements[] = 'UPDATE ' . DB_PREFIX . 'survey_question SET sort_order = ' . (int) $order . ', updated_at = NOW()
+                             WHERE question_id = ' . (int) $qid;
         }
-        $this->exec('COMMIT');
-        $this->touch($surveyId);
+        $statements[] = 'COMMIT';
+        if (!$this->execAll($statements)) {
+            return $this->abort('Could not move the question.');
+        }
+        $this->touch($surveyId, 'structure', ['op' => 'question_move', 'question_id' => $questionId, 'page_id' => $pageId]);
 
         return $this->ok();
     }
@@ -1516,43 +1800,42 @@ class Survey
             }
         }
 
-        $this->exec('START TRANSACTION');
         $delete = 'DELETE FROM ' . DB_PREFIX . 'survey_option
                    WHERE question_id = ' . $questionId . ' AND role = \'' . $this->esc($role) . '\'';
         if ($keep) {
             $delete .= ' AND option_id NOT IN (' . implode(',', array_map('intval', $keep)) . ')';
         }
-        $this->exec($delete);
+        $statements = ['START TRANSACTION', $delete];
 
         if ($dropped) {
             $list = implode(',', $dropped);
-            $this->exec('UPDATE ' . DB_PREFIX . 'survey_question
-                         SET show_if_question_id = NULL, show_if_option_id = NULL, updated_at = NOW()
-                         WHERE show_if_option_id IN (' . $list . ')');
-            $this->exec('UPDATE ' . DB_PREFIX . 'survey_page
-                         SET show_if_question_id = NULL, show_if_option_id = NULL
-                         WHERE show_if_option_id IN (' . $list . ')');
+            $statements[] = 'UPDATE ' . DB_PREFIX . 'survey_question
+                             SET show_if_question_id = NULL, show_if_option_id = NULL, updated_at = NOW()
+                             WHERE show_if_option_id IN (' . $list . ')';
+            $statements[] = 'UPDATE ' . DB_PREFIX . 'survey_page
+                             SET show_if_question_id = NULL, show_if_option_id = NULL
+                             WHERE show_if_option_id IN (' . $list . ')';
         }
 
         foreach ($clean as $order => $c) {
             $valueNum = $c['value_num'] === null ? 'NULL' : (float) $c['value_num'];
             if ($c['option_id'] > 0) {
-                $this->exec(
-                    'UPDATE ' . DB_PREFIX . 'survey_option
-                     SET sort_order = ' . (int) $order . ', label = \'' . $this->esc($c['label']) . '\',
-                         value_num = ' . $valueNum . ', is_other = ' . (int) $c['is_other'] . '
-                     WHERE option_id = ' . (int) $c['option_id']
-                );
+                $statements[] = 'UPDATE ' . DB_PREFIX . 'survey_option
+                                 SET sort_order = ' . (int) $order . ', label = \'' . $this->esc($c['label']) . '\',
+                                     value_num = ' . $valueNum . ', is_other = ' . (int) $c['is_other'] . '
+                                 WHERE option_id = ' . (int) $c['option_id'];
             } else {
-                $this->exec(
-                    'INSERT INTO ' . DB_PREFIX . 'survey_option (question_id, role, sort_order, label, value_num, is_other)
-                     VALUES (' . $questionId . ', \'' . $this->esc($role) . '\', ' . (int) $order . ',
-                             \'' . $this->esc($c['label']) . '\', ' . $valueNum . ', ' . (int) $c['is_other'] . ')'
-                );
+                $statements[] = 'INSERT INTO ' . DB_PREFIX . 'survey_option (question_id, role, sort_order, label, value_num, is_other)
+                                 VALUES (' . $questionId . ', \'' . $this->esc($role) . '\', ' . (int) $order . ',
+                                         \'' . $this->esc($c['label']) . '\', ' . $valueNum . ', ' . (int) $c['is_other'] . ')';
             }
         }
-        $this->exec('COMMIT');
-        $this->touch($surveyId);
+        $statements[] = 'COMMIT';
+        if (!$this->execAll($statements)) {
+            return $this->abort('Could not save the options.');
+        }
+        $locked = $survey !== null && $this->isStructureLocked($survey);
+        $this->touch($surveyId, $locked ? 'update' : 'structure', ['op' => 'option_set', 'question_id' => $questionId, 'role' => $role]);
 
         return $this->ok([
             'Options' => $this->fetchAll('SELECT * FROM ' . DB_PREFIX . 'survey_option
@@ -1595,6 +1878,18 @@ class Survey
             return $this->fail('Only JPEG and PNG images are supported.');
         }
 
+        // Per-survey budget (#46). Unreferenced images are swept first, so an
+        // officer who replaced illustrations many times is not refused for
+        // files nothing shows any more.
+        $budget = $this->imageBudgetProblem($surveyId, (int) $size);
+        if ($budget !== '') {
+            $this->sweepOrphanImages($surveyId);
+            $budget = $this->imageBudgetProblem($surveyId, (int) $size);
+            if ($budget !== '') {
+                return $this->fail($budget);
+            }
+        }
+
         // exif_imagetype sniffs the magic bytes, not the pixel dimensions, and the
         // 2 MB cap is on the COMPRESSED file: a 40 KB single-colour 30000x30000
         // PNG decodes to gigabytes and takes the worker with it. Read the header
@@ -1627,21 +1922,21 @@ class Survey
         }
         $ext = ($detected === IMAGETYPE_PNG) ? 'png' : 'jpg';
 
-        $this->exec('START TRANSACTION');
-        $this->exec(
-            'INSERT INTO ' . DB_PREFIX . 'survey_image (survey_id, ext, width, height, created_by, created_at)
-             VALUES (' . $surveyId . ', \'' . $ext . '\', ' . (int) $width . ', ' . (int) $height . ',
+        $token = $this->newImageToken();
+        $ok    = $this->exec('START TRANSACTION') && $this->exec(
+            'INSERT INTO ' . DB_PREFIX . 'survey_image (survey_id, ext, token, width, height, created_by, created_at)
+             VALUES (' . $surveyId . ', \'' . $ext . '\', \'' . $token . '\', ' . (int) $width . ', ' . (int) $height . ',
                      ' . (int) $uid . ', NOW())'
         );
-        $imageId = $this->lastInsertId();
+        $imageId = $ok ? $this->lastInsertId() : 0;
         if ($imageId <= 0) {
-            $this->exec('ROLLBACK');
             imagedestroy($img);
-            return $this->fail('Could not save the image.');
+            return $this->abort('Could not save the image.');
         }
 
         $this->ensureImageDir();
-        $path = DIR_SURVEY_IMAGE . sprintf('%06d', $imageId) . '.' . $ext;
+        $row  = ['image_id' => $imageId, 'ext' => $ext, 'token' => $token];
+        $path = $this->imagePath($row);
         if ($ext === 'png') {
             imagealphablending($img, false);
             imagesavealpha($img, true);
@@ -1651,17 +1946,149 @@ class Survey
         }
         imagedestroy($img);
         if (!$written) {
-            $this->exec('ROLLBACK');
-            return $this->fail('Could not write the image file.');
+            return $this->abort('Could not write the image file.');
         }
-        $this->exec('COMMIT');
+        if (!$this->exec('COMMIT')) {
+            @unlink($path);
+            return $this->abort('Could not save the image.');
+        }
+        $this->touch($surveyId, 'update', ['op' => 'image_add', 'image_id' => $imageId]);
 
         return $this->ok([
             'ImageId' => $imageId,
-            'Url'     => $this->imageUrl(['image_id' => $imageId, 'ext' => $ext]),
+            'Url'     => $this->imageUrl($row),
             'Width'   => (int) $width,
             'Height'  => (int) $height,
         ]);
+    }
+
+    /**
+     * '' when one more upload of about $incomingBytes fits this survey's image
+     * budget, otherwise the message to show.
+     */
+    private function imageBudgetProblem(int $surveyId, int $incomingBytes): string
+    {
+        $rows = $this->fetchAll('SELECT image_id, ext, token FROM ' . DB_PREFIX . 'survey_image
+                                 WHERE survey_id = ' . (int) $surveyId);
+        if (count($rows) >= self::MAX_IMAGES_PER_SURVEY) {
+            return 'This survey already has ' . self::MAX_IMAGES_PER_SURVEY
+                . ' images. Remove one you no longer use before adding another.';
+        }
+        $bytes = 0;
+        foreach ($rows as $r) {
+            $size = @filesize($this->imagePath($r));
+            $bytes += $size === false ? 0 : (int) $size;
+        }
+        if ($bytes + max(0, $incomingBytes) > self::MAX_IMAGE_BYTES_PER_SURVEY) {
+            return 'This survey\'s images already use '
+                . (int) round($bytes / 1048576) . ' MB of its '
+                . (int) (self::MAX_IMAGE_BYTES_PER_SURVEY / 1048576) . ' MB. Remove one you no longer use before adding another.';
+        }
+        return '';
+    }
+
+    /**
+     * Delete this survey's images that nothing shows: not a question's image,
+     * not the welcome/thanks image, and not named (by URL or file name) in any
+     * markdown copy of the survey. An image younger than
+     * IMAGE_ORPHAN_GRACE_MINUTES is kept — the builder uploads first and
+     * attaches second. The DELETE re-checks the id references itself, so an
+     * image attached between the read and the delete survives.
+     *
+     * @return int number of images removed
+     */
+    private function sweepOrphanImages(int $surveyId): int
+    {
+        $surveyId = (int) $surveyId;
+        $images   = $this->fetchAll(
+            'SELECT image_id, ext, token FROM ' . DB_PREFIX . 'survey_image
+             WHERE survey_id = ' . $surveyId . '
+               AND created_at < NOW() - INTERVAL ' . self::IMAGE_ORPHAN_GRACE_MINUTES . ' MINUTE'
+        );
+        if (!$images) {
+            return 0;
+        }
+
+        $used = [];
+        foreach ($this->fetchAll('SELECT image_id FROM ' . DB_PREFIX . 'survey_question
+                                  WHERE survey_id = ' . $surveyId . ' AND image_id IS NOT NULL') as $r) {
+            $used[(int) $r['image_id']] = true;
+        }
+        $survey = $this->getRow($surveyId);
+        if ($survey !== null) {
+            $used[(int) ($survey['welcome_image_id'] ?? 0)] = true;
+            $used[(int) ($survey['thanks_image_id'] ?? 0)]  = true;
+        }
+
+        $orphans = [];
+        foreach ($images as $img) {
+            if (!isset($used[(int) $img['image_id']])) {
+                $orphans[(int) $img['image_id']] = $img;
+            }
+        }
+        if (!$orphans) {
+            return 0;
+        }
+
+        // Markdown copy can name an image by URL. Look in EVERY survey's copy,
+        // not just this one's: a clone carries the source's markdown verbatim,
+        // so the source's file may be what the copy displays. File names are
+        // digits, hex, '-' and '.', so they need no LIKE escaping.
+        $likes = [];
+        foreach ($orphans as $img) {
+            $likes[] = '%' . $this->imageFileName($img) . '%';
+        }
+        $match = static function (string $column) use ($likes): string {
+            $or = [];
+            foreach ($likes as $l) {
+                $or[] = $column . ' LIKE \'' . $l . '\'';
+            }
+            return '(' . implode(' OR ', $or) . ')';
+        };
+        $md = '';
+        foreach ($this->fetchAll(
+            'SELECT welcome_md AS md FROM ' . DB_PREFIX . 'survey WHERE ' . $match('welcome_md') . '
+             UNION ALL SELECT thanks_md FROM ' . DB_PREFIX . 'survey WHERE ' . $match('thanks_md') . '
+             UNION ALL SELECT description FROM ' . DB_PREFIX . 'survey WHERE ' . $match('description') . '
+             UNION ALL SELECT description_md FROM ' . DB_PREFIX . 'survey_page WHERE ' . $match('description_md') . '
+             UNION ALL SELECT help_md FROM ' . DB_PREFIX . 'survey_question WHERE ' . $match('help_md')
+        ) as $r) {
+            $md .= "\n" . (string) $r['md'];
+        }
+        if ($md !== '') {
+            foreach ($orphans as $id => $img) {
+                if (strpos($md, $this->imageFileName($img)) !== false) {
+                    unset($orphans[$id]);
+                }
+            }
+        }
+        if (!$orphans) {
+            return 0;
+        }
+
+        $ids = implode(',', array_keys($orphans));
+        if (!$this->exec(
+            'DELETE FROM ' . DB_PREFIX . 'survey_image
+             WHERE survey_id = ' . $surveyId . ' AND image_id IN (' . $ids . ')
+               AND image_id NOT IN (SELECT image_id FROM ' . DB_PREFIX . 'survey_question
+                                    WHERE survey_id = ' . $surveyId . ' AND image_id IS NOT NULL)
+               AND image_id NOT IN (SELECT COALESCE(welcome_image_id, 0) FROM ' . DB_PREFIX . 'survey WHERE survey_id = ' . $surveyId . ')
+               AND image_id NOT IN (SELECT COALESCE(thanks_image_id, 0) FROM ' . DB_PREFIX . 'survey WHERE survey_id = ' . $surveyId . ')'
+        )) {
+            return 0;
+        }
+
+        // Unlink only the files whose row the DELETE actually removed.
+        foreach ($this->fetchAll('SELECT image_id FROM ' . DB_PREFIX . 'survey_image WHERE image_id IN (' . $ids . ')') as $r) {
+            unset($orphans[(int) $r['image_id']]);
+        }
+        foreach ($orphans as $img) {
+            $path = $this->imagePath($img);
+            if (is_file($path)) {
+                @unlink($path);
+            }
+        }
+        return count($orphans);
     }
 
     /** Delete an image, its file, and every reference to it. */
@@ -1674,19 +2101,23 @@ class Survey
         $imageId  = (int) $img['image_id'];
         $surveyId = (int) $img['survey_id'];
 
-        $this->exec('START TRANSACTION');
-        $this->exec('UPDATE ' . DB_PREFIX . 'survey_question SET image_id = NULL, updated_at = NOW()
-                     WHERE image_id = ' . $imageId);
-        $this->exec('UPDATE ' . DB_PREFIX . 'survey SET welcome_image_id = NULL WHERE welcome_image_id = ' . $imageId);
-        $this->exec('UPDATE ' . DB_PREFIX . 'survey SET thanks_image_id = NULL WHERE thanks_image_id = ' . $imageId);
-        $this->exec('DELETE FROM ' . DB_PREFIX . 'survey_image WHERE image_id = ' . $imageId);
-        $this->exec('COMMIT');
+        if (!$this->execAll([
+            'START TRANSACTION',
+            'UPDATE ' . DB_PREFIX . 'survey_question SET image_id = NULL, updated_at = NOW()
+             WHERE image_id = ' . $imageId,
+            'UPDATE ' . DB_PREFIX . 'survey SET welcome_image_id = NULL WHERE welcome_image_id = ' . $imageId,
+            'UPDATE ' . DB_PREFIX . 'survey SET thanks_image_id = NULL WHERE thanks_image_id = ' . $imageId,
+            'DELETE FROM ' . DB_PREFIX . 'survey_image WHERE image_id = ' . $imageId,
+            'COMMIT',
+        ])) {
+            return $this->abort('Could not remove the image.');
+        }
 
         $path = $this->imagePath($img);
         if (is_file($path)) {
             @unlink($path);
         }
-        $this->touch($surveyId);
+        $this->touch($surveyId, 'update', ['op' => 'image_delete', 'image_id' => $imageId]);
 
         return $this->ok();
     }
@@ -1694,7 +2125,77 @@ class Survey
     /** Public URL of a survey image row. PURE. */
     public function imageUrl(array $imageRow): string
     {
-        return HTTP_SURVEY_IMAGE . sprintf('%06d', (int) ($imageRow['image_id'] ?? 0)) . '.' . $this->imageExt($imageRow);
+        return HTTP_SURVEY_IMAGE . $this->imageFileName($imageRow);
+    }
+
+    /**
+     * One-off backfill for images stored before ork_survey_image.token
+     * (review #44): give each a random token, rename its file to the token
+     * name, and rewrite markdown that names the old file — in EVERY survey's
+     * copy, since a clone carries its source's markdown verbatim. A SQL
+     * migration cannot rename files, so the 2026-09-10 migration header says
+     * to run this once after applying it. Idempotent: only token = '' rows are
+     * touched; a row whose file is already gone still gets a token.
+     *
+     * @return array{upgraded:int,missing_files:int,failed:int}
+     */
+    public function upgradeLegacyImageNames(): array
+    {
+        $out = ['upgraded' => 0, 'missing_files' => 0, 'failed' => 0];
+        foreach ($this->fetchAll('SELECT image_id, ext, token FROM ' . DB_PREFIX . 'survey_image WHERE token = \'\'') as $img) {
+            $old     = ['image_id' => (int) $img['image_id'], 'ext' => (string) $img['ext'], 'token' => ''];
+            $new     = ['token' => $this->newImageToken()] + $old;
+            $oldPath = $this->imagePath($old);
+            $newPath = $this->imagePath($new);
+            $hasFile = is_file($oldPath);
+
+            if ($hasFile && !@rename($oldPath, $newPath)) {
+                $out['failed']++;
+                continue;
+            }
+            if (!$this->exec('UPDATE ' . DB_PREFIX . 'survey_image SET token = \'' . $new['token'] . '\'
+                              WHERE image_id = ' . $old['image_id'] . ' AND token = \'\'')) {
+                if ($hasFile) {
+                    @rename($newPath, $oldPath);
+                }
+                $out['failed']++;
+                continue;
+            }
+            $this->rewriteImageReferences($this->imageFileName($old), $this->imageFileName($new));
+            $out[$hasFile ? 'upgraded' : 'missing_files']++;
+        }
+        return $out;
+    }
+
+    /**
+     * Replace the file name $from with $to in every survey markdown column the
+     * orphan sweep reads (sweepOrphanImages()). A legacy name is digits, so the
+     * match refuses a preceding digit: '000005.png' must not hit '1000005.png'.
+     */
+    private function rewriteImageReferences(string $from, string $to): void
+    {
+        $pattern = '/(?<![0-9])' . preg_quote($from, '/') . '/';
+        $targets = [
+            ['survey', 'survey_id', 'welcome_md'],
+            ['survey', 'survey_id', 'thanks_md'],
+            ['survey', 'survey_id', 'description'],
+            ['survey_page', 'page_id', 'description_md'],
+            ['survey_question', 'question_id', 'help_md'],
+        ];
+        foreach ($targets as [$table, $pk, $column]) {
+            $rows = $this->fetchAll(
+                'SELECT ' . $pk . ' AS id, ' . $column . ' AS md FROM ' . DB_PREFIX . $table
+                . ' WHERE ' . $column . ' LIKE \'%' . $this->esc($from) . '%\''
+            );
+            foreach ($rows as $r) {
+                $md = (string) $r['md'];
+                $rewritten = preg_replace($pattern, $to, $md);
+                if (is_string($rewritten) && $rewritten !== $md) {
+                    $this->exec('UPDATE ' . DB_PREFIX . $table . ' SET ' . $column . ' = \'' . $this->esc($rewritten) . '\'
+                                 WHERE ' . $pk . ' = ' . (int) $r['id']);
+                }
+            }
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -1982,9 +2483,114 @@ class Survey
         }
     }
 
-    private function touch(int $surveyId): void
+    /**
+     * Stamp the survey as edited now by the actor, and — when $action is given —
+     * record the edit in the activity log ('structure' for structural edits,
+     * 'update' for copy edits).
+     *
+     * @param array<string, mixed> $detail
+     */
+    private function touch(int $surveyId, string $action = '', array $detail = []): void
     {
-        $this->exec('UPDATE ' . DB_PREFIX . 'survey SET updated_at = NOW() WHERE survey_id = ' . (int) $surveyId);
+        $this->exec('UPDATE ' . DB_PREFIX . 'survey SET ' . $this->stampSql() . ' WHERE survey_id = ' . (int) $surveyId);
+        if ($action !== '') {
+            $this->logActivity($surveyId, $action, $detail ?: null);
+        }
+    }
+
+    /** SET fragment marking a survey row edited now, by the actor when there is one. */
+    private function stampSql(): string
+    {
+        return 'updated_at = NOW()' . ($this->actor > 0 ? ', updated_by = ' . $this->actor : '');
+    }
+
+    // -----------------------------------------------------------------------
+    // Event audience (#12)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Event occurrences this survey's scope owns: any event for an `ork` survey;
+     * events of the kingdom or its principalities for a kingdom survey; events of
+     * the park for a park survey. Draft (unpublished) events are never offered.
+     * $window limits to 12 months back .. 6 months ahead (the builder picker);
+     * update() validates a saved id WITHOUT the window so an older choice re-saves.
+     */
+    private function eventOccurrenceSql(array $survey, string $extraWhere = '', bool $window = false): string
+    {
+        $scopeId = (int) ($survey['scope_id'] ?? 0);
+        switch ((string) ($survey['scope_type'] ?? '')) {
+            case 'ork':
+                $scope = '1 = 1';
+                break;
+            case 'kingdom':
+                $scope = '(e.kingdom_id = ' . $scopeId . ' OR e.kingdom_id IN (SELECT kingdom_id FROM ' . DB_PREFIX . 'kingdom
+                                                                         WHERE parent_kingdom_id = ' . $scopeId . '))';
+                break;
+            case 'park':
+                $scope = 'e.park_id = ' . $scopeId;
+                break;
+            default:
+                $scope = '1 = 0';
+        }
+        if ($scopeId <= 0 && (string) ($survey['scope_type'] ?? '') !== 'ork') {
+            $scope = '1 = 0';
+        }
+
+        return 'SELECT cd.event_calendardetail_id, cd.event_start, e.name
+                FROM ' . DB_PREFIX . 'event_calendardetail cd
+                JOIN ' . DB_PREFIX . 'event e ON e.event_id = cd.event_id
+                WHERE e.status = \'published\' AND ' . $scope
+            . ($extraWhere !== '' ? ' AND ' . $extraWhere : '')
+            . ($window ? ' AND cd.event_start BETWEEN NOW() - INTERVAL 12 MONTH AND NOW() + INTERVAL 6 MONTH' : '')
+            . ' ORDER BY cd.event_start DESC, cd.event_calendardetail_id DESC LIMIT 100';
+    }
+
+    /**
+     * Occurrences the builder's "attended event" audience picker offers: in the
+     * survey's scope, starting between 12 months ago and 6 months ahead, newest
+     * first, at most 100. The currently saved occurrence is always included, so
+     * an older choice still shows as selected.
+     *
+     * @return list<array{event_calendardetail_id: int, label: string}>
+     */
+    public function eventOptions(array $surveyRow): array
+    {
+        $rows = $this->fetchAll($this->eventOccurrenceSql($surveyRow, '', true));
+        $current = (int) ($surveyRow['audience_event_calendardetail_id'] ?? 0);
+        if ($current > 0) {
+            $seen = false;
+            foreach ($rows as $r) {
+                if ((int) $r['event_calendardetail_id'] === $current) {
+                    $seen = true;
+                    break;
+                }
+            }
+            if (!$seen) {
+                $saved = $this->fetchRow($this->eventOccurrenceSql($surveyRow, 'cd.event_calendardetail_id = ' . $current));
+                if ($saved !== null) {
+                    $rows[] = $saved;
+                }
+            }
+        }
+
+        $out = [];
+        foreach ($rows as $r) {
+            $out[] = [
+                'event_calendardetail_id' => (int) $r['event_calendardetail_id'],
+                'label'                   => self::eventLabel((string) $r['name'], (string) $r['event_start']),
+            ];
+        }
+        return $out;
+    }
+
+    /** 'Coronation — March 14, 2026'. PURE. */
+    public static function eventLabel(string $name, string $start): string
+    {
+        $name = trim($name) !== '' ? trim($name) : 'Event';
+        $ts   = strtotime($start);
+        return $ts === false || $start === '' || strpos($start, '0000-00-00') === 0
+            ? $name
+            : $name . ' — ' . date('F j, Y', $ts);
     }
 
     /** @return array<string, mixed> */
@@ -2005,7 +2611,59 @@ class Survey
 
     private function imagePath(array $imageRow): string
     {
-        return DIR_SURVEY_IMAGE . sprintf('%06d', (int) ($imageRow['image_id'] ?? 0)) . '.' . $this->imageExt($imageRow);
+        return DIR_SURVEY_IMAGE . $this->imageFileName($imageRow);
+    }
+
+    /**
+     * On-disk / public file name of an image row: '000123-<16 hex>.png' when the
+     * row has a token (an unguessable name, so draft and restricted surveys'
+     * illustrations cannot be enumerated), the legacy '000123.png' when it has
+     * none (rows written before the token column). PURE.
+     */
+    private function imageFileName(array $imageRow): string
+    {
+        $id    = (int) ($imageRow['image_id'] ?? 0);
+        $ext   = $this->imageExt($imageRow);
+        $token = strtolower((string) ($imageRow['token'] ?? ''));
+        if (preg_match('/^[0-9a-f]{16}$/', $token)) {
+            return sprintf('%06d-%s.%s', $id, $token, $ext);
+        }
+        return sprintf('%06d.%s', $id, $ext);
+    }
+
+    /** 16 hex chars for ork_survey_image.token. */
+    private function newImageToken(): string
+    {
+        return bin2hex(random_bytes(8));
+    }
+
+    /**
+     * Copy every option of $fromQuestionId onto $toQuestionId (same roles, order,
+     * labels, values and "other" flags). Returns old option_id => new option_id,
+     * or null on the first failed insert — the caller owns the transaction and
+     * rolls it back.
+     *
+     * @return array<int, int>|null
+     */
+    private function copyOptions(int $fromQuestionId, int $toQuestionId): ?array
+    {
+        $map = [];
+        foreach ($this->fetchAll('SELECT * FROM ' . DB_PREFIX . 'survey_option
+                                  WHERE question_id = ' . (int) $fromQuestionId . ' ORDER BY role, sort_order, option_id') as $o) {
+            $ok = $this->exec(
+                'INSERT INTO ' . DB_PREFIX . 'survey_option (question_id, role, sort_order, label, value_num, is_other)
+                 VALUES (' . (int) $toQuestionId . ', \'' . $this->esc((string) $o['role']) . '\', ' . (int) $o['sort_order'] . ',
+                         \'' . $this->esc((string) $o['label']) . '\',
+                         ' . ($o['value_num'] === null ? 'NULL' : (float) $o['value_num']) . ',
+                         ' . ((int) $o['is_other'] ? 1 : 0) . ')'
+            );
+            $newId = $ok ? $this->lastInsertId() : 0;
+            if ($newId <= 0) {
+                return null;
+            }
+            $map[(int) $o['option_id']] = $newId;
+        }
+        return $map;
     }
 
     private function ensureImageDir(): void
@@ -2114,10 +2772,41 @@ class Survey
         return null;
     }
 
-    private function exec(string $sql): void
+    /**
+     * Run one write. Returns false when the statement really failed, so a
+     * transactional block can ROLLBACK instead of committing a half-mutation
+     * (Execute() alone reports nothing — PDO runs in ERRMODE_WARNING).
+     */
+    private function exec(string $sql): bool
     {
         $this->db->Clear();
+        if (method_exists($this->db, 'ExecuteChecked')) {
+            return (bool) $this->db->ExecuteChecked($sql);
+        }
         $this->db->Execute($sql);
+        return true;
+    }
+
+    /**
+     * Run a list of writes in order, stopping at the first failure.
+     *
+     * @param list<string> $statements
+     */
+    private function execAll(array $statements): bool
+    {
+        foreach ($statements as $sql) {
+            if (!$this->exec($sql)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** ROLLBACK the open transaction and report $error. */
+    private function abort(string $error): array
+    {
+        $this->exec('ROLLBACK');
+        return $this->fail($error);
     }
 
     private function lastInsertId(): int

@@ -19,6 +19,9 @@ class Controller_Survey extends Controller
     {
         parent::__construct($call, $id);
         $this->load_model('Survey');
+        // Every survey page posts to SurveyAjax, whose mutations require this
+        // token in X-CSRF-Token (the templates hand it to SvConfig.csrf).
+        $this->data['SurveyCsrf'] = $this->Survey->csrf_token();
     }
 
     private function uid(): int
@@ -174,11 +177,15 @@ class Controller_Survey extends Controller
 
         $result = $this->Survey->get($surveyId);
 
+        // The kingdom filter offers only kingdoms that actually appear in this
+        // survey's responses, with counts (#33) — not every kingdom the viewer
+        // manages. scope_type/scope_id are kept as aliases of kingdom_id so the
+        // existing template keeps rendering until it reads kingdom_id/count.
         $kingdoms = [];
-        foreach ($this->Survey->manageable_scopes($uid) as $s) {
-            if ($s['scope_type'] === 'kingdom') {
-                $kingdoms[] = $s;
-            }
+        foreach ($this->Survey->kingdoms_present($surveyId) as $k) {
+            $k['scope_type'] = 'kingdom';
+            $k['scope_id']   = (int) $k['kingdom_id'];
+            $kingdoms[]      = $k;
         }
 
         $this->data['SurveyId']  = $surveyId;
@@ -215,13 +222,32 @@ class Controller_Survey extends Controller
             $decoded = json_decode((string) $_GET['filters'], true);
             $filters = is_array($decoded) ? $decoded : [];
         }
+        $filters = $this->Survey->normalize_filters($filters);
 
-        $csv = $this->Survey->csv($surveyId, $filters);
+        // Audit every export that can carry identity or demographics (#6); an
+        // anonymous-only export carries neither.
+        if ($filters['consent'] !== 'anonymous') {
+            $this->Survey->log_activity($surveyId, 'export', $filters);
+        }
 
         header('Content-Type: text/csv; charset=utf-8');
         header('Content-Disposition: attachment; filename="survey-' . $surveyId . '.csv"');
         header('Cache-Control: no-cache, must-revalidate');
-        echo $csv;
+        header('X-Content-Type-Options: nosniff');
+
+        // Stream each 500-row batch as it is built (#42) rather than holding
+        // the whole file in memory. Drop any output buffers first so flush()
+        // actually reaches the client and stray buffered output cannot
+        // corrupt the CSV. Release the session lock too, so a long export does
+        // not block the viewer's other tabs.
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+        session_write_close();
+        $this->Survey->csv_stream($surveyId, $filters, function (string $chunk): void {
+            echo $chunk;
+            flush();
+        });
         exit();
     }
 }

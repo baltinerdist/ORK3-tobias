@@ -12,6 +12,27 @@
  * only for 'full' rows, kingdom and tenure for 'full' and 'partial', nothing for
  * 'anonymous'. A kingdom filter therefore drops every anonymous row, and
  * summary() reports how many were excluded for exactly that reason.
+ *
+ * Minimum cell size (review #4): a NARROWING filter (kingdom, consent or date)
+ * that leaves fewer than MIN_CELL responses suppresses every per-question
+ * aggregate; cross-tab groups of 1..MIN_CELL-1 answers are always suppressed,
+ * with the smallest visible groups withheld beside them until the withheld
+ * set (counting the people who skipped the source question, who sit in no
+ * group) holds MIN_CELL answers (crosstabGroups(), so subtraction from the
+ * question's overall aggregate cannot recover a small group);
+ * a partial row's kingdom / years-played band is shown only when at least
+ * MIN_CELL partial rows in the filtered set share it; and a kingdom filter
+ * leaves out the partial rows of kingdoms with fewer than MIN_CELL of them
+ * (reportWhere()), on every surface, so the filter cannot undo that masking.
+ *
+ * Complementary suppression (complementaryCells()): a withheld band or
+ * kingdom must never be the only one the reader cannot see, or it is
+ * recovered by elimination ("4 of the 5 bands are shown, so the hidden row is
+ * in the fifth"), and the masked rows in a kingdom must total MIN_CELL. When
+ * that would fail the smallest shown cell is withheld too. The decision is
+ * taken over the survey's whole partial set, so no filtered view can show a
+ * cell the unfiltered view hides, AND again over each filtered view's own
+ * cells (viewForcedCells()), so a filter cannot leave a handful of masked rows.
  */
 class SurveyReport
 {
@@ -27,10 +48,43 @@ class SurveyReport
     /** Types that may be split by a cross-tab question. */
     public const CROSSTAB_TARGETS = ['single', 'dropdown', 'yesno', 'multi', 'rating', 'nps'];
 
+    /**
+     * Types that may BE the cross-tab question (review #34): each puts a
+     * respondent in exactly one group. multi/ranking would put one person in
+     * several, so the server refuses them whatever the <select> offered.
+     */
+    public const CROSSTAB_SOURCES = ['single', 'dropdown', 'yesno'];
+
+    /** Smallest count a filtered aggregate, cross-tab group or quasi-identifier may show (review #4). */
+    public const MIN_CELL = 5;
+
     /** Cap on the inline text list returned by aggregateType() for text questions. */
     public const TEXT_SAMPLE_LIMIT = 500;
 
+    /** Number questions list each value when all are integers and at most this many are distinct (review #30). */
+    public const NUMBER_VALUES_MAX_DISTINCT = 20;
+
+    /** Number histograms have at most this many bins. */
+    public const NUMBER_MAX_BINS = 10;
+
+    /** Date answers spanning more than this many months are grouped by year (review #30). */
+    public const DATE_YEAR_SPAN_MONTHS = 36;
+
+    /** A date chart never fills more than this many empty periods (one absurd answer cannot explode it). */
+    public const DATE_MAX_PERIODS = 240;
+
+    /** Lifetime of the cached summary()/aggregate() payloads, in seconds (review #40). */
+    public const CACHE_TTL = 120;
+
+    private const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
     private $db;
+
+    /** @var array<int,array{k:array<string,bool>,kb:array<string,bool>}> per-request memo of forcedCells() */
+    private $forcedMemo = [];
+
+    /** @var array<int,int> per-request memo of kingdomUniverse(), filled by forcedCells() */
+    private $universeMemo = [];
 
     public function __construct()
     {
@@ -101,20 +155,96 @@ class SurveyReport
         return checkdate((int)$m[2], (int)$m[3], (int)$m[1]);
     }
 
+    /**
+     * PURE. Does this filter carve a subset out of the survey's responses? A
+     * kingdom, consent level or date bound does; include_test and the cross-tab
+     * question do not. Narrowed totals below MIN_CELL are suppressed (review #4).
+     */
+    public static function isNarrowing(array $filters): bool
+    {
+        $f = self::normalizeFilters($filters);
+        return $f['kingdom_ids'] !== []
+            || $f['consent'] !== 'any'
+            || $f['date_from'] !== null
+            || $f['date_to'] !== null;
+    }
+
+    // -----------------------------------------------------------------------
+    // Cache (review #40)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Serve $build() through GhettoCache for CACHE_TTL seconds.
+     *
+     * The key carries the normalized filters plus a fingerprint that moves on
+     * every new response (test ones included), every new start and every
+     * survey edit (Survey::touch bumps updated_at), so a submission or an edit
+     * is visible on the next Apply rather than after the TTL. The newest
+     * response id rides along with the count so clearing test responses and
+     * re-submitting the same number cannot reuse a stale key.
+     */
+    private function cached(string $what, int $surveyId, array $f, callable $build): array
+    {
+        $lib = class_exists('Ork3', false) ? Ork3::$Lib : null;
+        if (!is_object($lib) || !isset($lib->ghettocache)) {
+            return $build();
+        }
+
+        $this->db->Clear();
+        $rs = $this->db->DataSet(
+            'SELECT s.updated_at,
+                    (SELECT COUNT(*) FROM ' . DB_PREFIX . 'survey_response r WHERE r.survey_id = s.survey_id) AS response_count,
+                    (SELECT COALESCE(MAX(r.response_id), 0) FROM ' . DB_PREFIX . 'survey_response r WHERE r.survey_id = s.survey_id) AS max_response_id,
+                    (SELECT COUNT(*) FROM ' . DB_PREFIX . 'survey_start st WHERE st.survey_id = s.survey_id) AS starts
+               FROM ' . DB_PREFIX . 'survey s
+              WHERE s.survey_id = ' . (int)$surveyId
+        );
+        if (!$rs || !$rs->Next()) {
+            return $build();
+        }
+        $key = implode('.', [
+            (int)$surveyId,
+            md5((string)json_encode($f)),
+            (int)$rs->response_count,
+            (int)$rs->max_response_id,
+            (int)$rs->starts,
+            md5((string)$rs->updated_at),
+        ]);
+        $call = __CLASS__ . '.' . $what;
+
+        $hit = $lib->ghettocache->get($call, $key, self::CACHE_TTL);
+        if (is_array($hit)) {
+            return $hit;
+        }
+        return $lib->ghettocache->cache($call, $key, $build());
+    }
+
     // -----------------------------------------------------------------------
     // Summary
     // -----------------------------------------------------------------------
 
     /**
-     * @return array{responses:int,completion:float,median_duration:?int,
-     *               consent_breakdown:array{full:int,partial:int,anonymous:int},
-     *               excluded_anonymous:int,by_day:list<array{day:string,count:int}>}
+     * When suppressed, median_duration, consent_breakdown and by_day are null.
+     *
+     * @return array{responses:int,starts:int,completion:?float,median_duration:?int,
+     *               consent_breakdown:?array{full:int,partial:int,anonymous:int},
+     *               excluded_anonymous:int,by_day:?list<array{day:string,count:int}>,
+     *               audience:?int,response_rate:?float,suppressed:bool,min_cell:int,narrowing:bool,
+     *               partial_cell_rule:bool}
      */
     public function summary(int $surveyId, array $filters): array
     {
         $surveyId = (int)$surveyId;
         $f = self::normalizeFilters($filters);
-        $where = $this->responseWhere($surveyId, $f);
+        return $this->cached('summary', $surveyId, $f, function () use ($surveyId, $f): array {
+            return $this->buildSummary($surveyId, $f);
+        });
+    }
+
+    private function buildSummary(int $surveyId, array $f): array
+    {
+        $where = $this->reportWhere($surveyId, $f);
+        $narrowing = self::isNarrowing($f);
 
         $responses = 0;
         $consent = ['full' => 0, 'partial' => 0, 'anonymous' => 0];
@@ -134,69 +264,91 @@ class SurveyReport
                 }
             }
         }
+        $suppressed = self::isSuppressed($narrowing, $responses);
 
-        // Open drafts are the denominator's other half: completion = finished /
-        // started. Both halves must describe the SAME population, so the drafts
-        // carry the kingdom and date filters too (a draft's kingdom is the
-        // player's current one, the same value a response records at submit).
-        // The consent filter has no draft analogue — nobody has consented while
-        // they are still answering — so it is dropped from BOTH halves rather
-        // than shrinking the numerator alone.
+        // Completion = finished / started (review #28). Starts come from
+        // ork_survey_start: one keyed, timestamp-free row per player the first
+        // time an eligible, non-preview player opens the runner, whether or not
+        // the survey allows resuming. A start carries no kingdom, consent or
+        // date, so a narrowing filter has no matching denominator and
+        // completion is withheld (null) rather than computed over mismatched
+        // populations. Finished counts real responses only, whatever
+        // include_test says (previews never record a start). Surveys whose
+        // responses predate start tracking have starts < finished: null too.
+        $starts = 0;
+        $this->db->Clear();
+        $rs = $this->db->DataSet(
+            'SELECT COUNT(*) AS c FROM ' . DB_PREFIX . 'survey_start WHERE survey_id = ' . $surveyId
+        );
+        if ($rs && $rs->Next()) {
+            $starts = (int)$rs->c;
+        }
+
         $finished = $responses;
-        if (!empty($f['consent']) && $f['consent'] !== 'any') {
+        if (!empty($f['include_test'])) {
             $finished = 0;
             $this->db->Clear();
             $rs = $this->db->DataSet(
                 'SELECT COUNT(*) AS c
                    FROM ' . DB_PREFIX . 'survey_response r
-                  WHERE ' . $this->responseWhere($surveyId, $f, false, true)
+                  WHERE ' . $this->reportWhere($surveyId, ['include_test' => false] + $f)
             );
             if ($rs && $rs->Next()) {
                 $finished = (int)$rs->c;
             }
         }
+        $completion = self::completionRate($finished, $starts, $narrowing);
 
-        $drafts = 0;
-        $this->db->Clear();
-        $rs = $this->db->DataSet(
-            'SELECT COUNT(*) AS c
-               FROM ' . DB_PREFIX . 'survey_draft d
-               LEFT JOIN ' . DB_PREFIX . 'mundane m ON m.mundane_id = d.mundane_id
-              WHERE ' . $this->draftWhere($surveyId, $f)
-        );
-        if ($rs && $rs->Next()) {
-            $drafts = (int)$rs->c;
-        }
-        $started = $finished + $drafts;
-        $completion = $started > 0 ? round($finished / $started, 4) : 0.0;
-
-        $durations = [];
-        $this->db->Clear();
-        $rs = $this->db->DataSet(
-            'SELECT r.duration_seconds
-               FROM ' . DB_PREFIX . 'survey_response r
-              WHERE ' . $where . ' AND r.duration_seconds IS NOT NULL
-              ORDER BY r.duration_seconds ASC'
-        );
-        if ($rs) {
-            while ($rs->Next()) {
-                $durations[] = (int)$rs->duration_seconds;
+        // Response rate against the CURRENT eligible audience (review #35).
+        // Like completion, it is a whole-survey figure: null under a narrowing
+        // filter, whose subset has no matching audience.
+        $audience = null;
+        $responseRate = null;
+        $surveyRow = $this->surveyRow($surveyId);
+        if ($surveyRow !== null) {
+            $audience = (new SurveyResponse())->audienceCount($surveyRow);
+            if (!$narrowing && $audience > 0) {
+                $responseRate = round($finished / $audience, 4);
             }
         }
-        $medianDuration = $durations ? (int)round(self::median($durations)) : null;
 
-        $byDay = [];
-        $this->db->Clear();
-        $rs = $this->db->DataSet(
-            'SELECT DATE(r.submitted_at) AS d, COUNT(*) AS c
-               FROM ' . DB_PREFIX . 'survey_response r
-              WHERE ' . $where . '
-              GROUP BY DATE(r.submitted_at)
-              ORDER BY d ASC'
-        );
-        if ($rs) {
-            while ($rs->Next()) {
-                $byDay[] = ['day' => (string)$rs->d, 'count' => (int)$rs->c];
+        // A suppressed subset (review #4) reports its size and nothing else:
+        // its per-day counts would tie the implied kingdom to days that can be
+        // matched against the rows table, and its consent split and median
+        // duration describe the same fewer-than-MIN_CELL people.
+        $medianDuration = null;
+        $byDay = null;
+        if (!$suppressed) {
+            // Durations are a full-consent datum (rows() shows no other); rows
+            // stored before scrubForConsent nulled it for partial stay out.
+            $durations = [];
+            $this->db->Clear();
+            $rs = $this->db->DataSet(
+                'SELECT r.duration_seconds
+                   FROM ' . DB_PREFIX . 'survey_response r
+                  WHERE ' . $where . " AND r.consent = 'full' AND r.duration_seconds IS NOT NULL
+                  ORDER BY r.duration_seconds ASC"
+            );
+            if ($rs) {
+                while ($rs->Next()) {
+                    $durations[] = (int)$rs->duration_seconds;
+                }
+            }
+            $medianDuration = $durations ? (int)round(self::median($durations)) : null;
+
+            $byDay = [];
+            $this->db->Clear();
+            $rs = $this->db->DataSet(
+                'SELECT DATE(r.submitted_at) AS d, COUNT(*) AS c
+                   FROM ' . DB_PREFIX . 'survey_response r
+                  WHERE ' . $where . '
+                  GROUP BY DATE(r.submitted_at)
+                  ORDER BY d ASC'
+            );
+            if ($rs) {
+                while ($rs->Next()) {
+                    $byDay[] = ['day' => (string)$rs->d, 'count' => (int)$rs->c];
+                }
             }
         }
 
@@ -216,12 +368,310 @@ class SurveyReport
 
         return [
             'responses'          => $responses,
+            'starts'             => $starts,
             'completion'         => $completion,
             'median_duration'    => $medianDuration,
-            'consent_breakdown'  => $consent,
+            'consent_breakdown'  => $suppressed ? null : $consent,
             'excluded_anonymous' => $excluded,
             'by_day'             => $byDay,
+            'audience'           => $audience,
+            'response_rate'      => $responseRate,
+            'suppressed'         => $suppressed,
+            'min_cell'           => self::MIN_CELL,
+            'narrowing'          => $narrowing,
+            // A kingdom filter always leaves out partial rows from kingdoms
+            // with fewer than MIN_CELL of them (reportWhere()). Stated as a
+            // standing rule, never as a count: a count would re-reveal the
+            // small cells that masking and kingdomsPresent() hide.
+            'partial_cell_rule'  => $f['kingdom_ids'] !== [],
         ];
+    }
+
+    /**
+     * PURE. finished / starts, or null when the ratio would be meaningless:
+     * no starts, fewer starts than finishes (responses predating start
+     * tracking), or a narrowing filter (starts cannot be filtered).
+     */
+    public static function completionRate(int $finished, int $starts, bool $narrowing): ?float
+    {
+        if ($narrowing || $starts <= 0 || $starts < $finished) {
+            return null;
+        }
+        return round($finished / $starts, 4);
+    }
+
+    /** PURE. A narrowed response total below MIN_CELL hides every per-question aggregate (review #4). */
+    public static function isSuppressed(bool $narrowing, int $total): bool
+    {
+        return $narrowing && $total < self::MIN_CELL;
+    }
+
+    /**
+     * Kingdoms present in the survey's real responses, with counts, for the
+     * results kingdom filter (review #33). Anonymous rows carry no kingdom and
+     * so never appear. A kingdom's partial rows count only when at least
+     * MIN_CELL share it (kingdomFilterCount()) — the same rows a kingdom
+     * filter keeps (reportWhere()) — so the list neither names nor sizes a
+     * small partial cell; a kingdom with nothing countable is left out. A
+     * kingdom withheld by complementary suppression counts like a small one.
+     *
+     * @return list<array{kingdom_id:int,name:string,count:int}>
+     */
+    public function kingdomsPresent(int $surveyId): array
+    {
+        $forced = $this->forcedCells((int)$surveyId);
+        $this->db->Clear();
+        $rs = $this->db->DataSet(
+            "SELECT r.kingdom_id, k.name, COUNT(*) AS c,
+                    SUM(CASE WHEN r.consent = 'partial' THEN 1 ELSE 0 END) AS partial_c
+               FROM " . DB_PREFIX . 'survey_response r
+               LEFT JOIN ' . DB_PREFIX . 'kingdom k ON k.kingdom_id = r.kingdom_id
+              WHERE r.survey_id = ' . (int)$surveyId . '
+                AND r.is_test = 0
+                AND r.kingdom_id IS NOT NULL
+              GROUP BY r.kingdom_id, k.name
+              ORDER BY k.name ASC, r.kingdom_id ASC'
+        );
+        $out = [];
+        if ($rs) {
+            while ($rs->Next()) {
+                $partial = (int)$rs->partial_c;
+                $countable = isset($forced['k'][(string)(int)$rs->kingdom_id]) ? 0 : $partial;
+                $count = self::kingdomFilterCount((int)$rs->c - $partial, $countable);
+                if ($count < 1) {
+                    continue;
+                }
+                $out[] = [
+                    'kingdom_id' => (int)$rs->kingdom_id,
+                    'name'       => $rs->name === null ? ('Kingdom #' . (int)$rs->kingdom_id) : (string)$rs->name,
+                    'count'      => $count,
+                ];
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * PURE. How many of a kingdom's responses a kingdom filter shows: every
+     * non-partial row (full consented to it), plus its partial rows only when
+     * at least MIN_CELL of them share the kingdom (review #4).
+     */
+    public static function kingdomFilterCount(int $nonPartial, int $partial): int
+    {
+        return max(0, $nonPartial) + ($partial >= self::MIN_CELL ? $partial : 0);
+    }
+
+    /**
+     * PURE. Kingdoms whose partial rows a kingdom filter must leave out: those
+     * with 1..MIN_CELL-1 partial rows in the filtered set (review #4).
+     *
+     * @param  array<int,int> $partialByKingdom kingdom_id => partial rows in the filtered set
+     * @return list<int>
+     */
+    public static function smallPartialKingdoms(array $partialByKingdom): array
+    {
+        $out = [];
+        foreach ($partialByKingdom as $kingdomId => $c) {
+            if ((int)$kingdomId > 0 && (int)$c > 0 && (int)$c < self::MIN_CELL) {
+                $out[] = (int)$kingdomId;
+            }
+        }
+        sort($out);
+        return $out;
+    }
+
+    /**
+     * PURE. Complementary suppression over a survey's partial cells (the
+     * shape partialCells() returns): which cells that DO reach MIN_CELL must
+     * be withheld anyway so a withheld cell cannot be recovered by elimination.
+     *
+     * Bands: within each kingdom with at least one withheld band, the reader
+     * knows the TENURE_BANDS list, so every band not shown is a candidate for
+     * the hidden rows. While fewer than two bands are unshown, OR the masked
+     * rows in that kingdom total fewer than MIN_CELL, the smallest shown band
+     * is withheld as well (so a masked group is never a handful of people).
+     *
+     * Kingdoms: the same rule against the kingdoms the survey's audience can
+     * come from ($kingdomUniverse: 1 for a park, the kingdom and its
+     * principalities for a kingdom). A withheld kingdom takes all its bands
+     * with it — a band shown on a kingdom-less row would otherwise tell the
+     * withheld kingdom's rows apart from the small one's.
+     *
+     * Ties go to the lower count, then the lower key, so the choice is stable.
+     *
+     * @param  array{k:array<string,int>,kb:array<string,int>} $cells
+     * @return array{k:array<string,bool>,kb:array<string,bool>} cell keys to withhold
+     */
+    public static function complementaryCells(array $cells, int $kingdomUniverse): array
+    {
+        $forced = ['k' => [], 'kb' => []];
+        $pickSmallest = static function (array $shown): string {
+            uksort($shown, static function ($a, $b) use ($shown) {
+                return [$shown[$a], (string)$a] <=> [$shown[$b], (string)$b];
+            });
+            return (string)array_key_first($shown);
+        };
+
+        $shown = [];
+        $hidden = false;
+        foreach ($cells['k'] ?? [] as $k => $c) {
+            $k = (string)$k;
+            if ($k === 'none' || (int)$c <= 0) {
+                continue;
+            }
+            if ((int)$c >= self::MIN_CELL) {
+                $shown[$k] = (int)$c;
+            } else {
+                $hidden = true;
+            }
+        }
+        if ($hidden) {
+            while ($shown && $kingdomUniverse - count($shown) < 2) {
+                $k = $pickSmallest($shown);
+                $forced['k'][$k] = true;
+                unset($shown[$k]);
+            }
+        }
+
+        $byKingdom = [];
+        foreach ($cells['kb'] ?? [] as $kb => $c) {
+            $parts = explode('|', (string)$kb, 2);
+            if (count($parts) !== 2 || $parts[1] === 'none' || (int)$c <= 0) {
+                continue;
+            }
+            $byKingdom[$parts[0]][(string)$kb] = (int)$c;
+        }
+        $bandCount = count(SurveyResponse::TENURE_BANDS);
+        foreach ($byKingdom as $k => $bands) {
+            if (isset($forced['k'][(string)$k])) {
+                continue;
+            }
+            $shownBands = array_filter($bands, static fn ($c) => $c >= self::MIN_CELL);
+            if (count($shownBands) === count($bands)) {
+                continue;
+            }
+            // Masked rows in the kingdom (every band not shown) must also
+            // total at least MIN_CELL: 2 masked rows beside four shown bands
+            // still tell the reader "these 2 people are not in any band you
+            // can see", which narrows them to a handful of named-band peers.
+            $maskedRows = array_sum($bands) - array_sum($shownBands);
+            while ($shownBands && ($bandCount - count($shownBands) < 2 || $maskedRows < self::MIN_CELL)) {
+                $kb = $pickSmallest($shownBands);
+                $forced['kb'][$kb] = true;
+                $maskedRows += $shownBands[$kb];
+                unset($shownBands[$kb]);
+            }
+        }
+
+        return $forced;
+    }
+
+    /**
+     * complementaryCells() over the survey's WHOLE partial set (test rows are
+     * always stored 'full', so they never count). A filtered view only ever
+     * has smaller cells, so with this set it can never show a cell the
+     * unfiltered view hides; partialCells() adds the view's own set on top
+     * (viewForcedCells()). Also memoises kingdomUniverse() for that call.
+     *
+     * @return array{k:array<string,bool>,kb:array<string,bool>}
+     */
+    private function forcedCells(int $surveyId): array
+    {
+        $surveyId = (int)$surveyId;
+        if (isset($this->forcedMemo[$surveyId])) {
+            return $this->forcedMemo[$surveyId];
+        }
+        $forced = ['k' => [], 'kb' => []];
+        $universe = 1;
+        $surveyRow = $this->surveyRow($surveyId);
+        if ($surveyRow !== null) {
+            $universe = $this->kingdomUniverse($surveyRow);
+            $cells = $this->countPartialCells($this->responseWhere($surveyId, self::DEFAULT_FILTERS));
+            $forced = self::complementaryCells($cells, $universe);
+        }
+        $this->universeMemo[$surveyId] = $universe;
+        return $this->forcedMemo[$surveyId] = $forced;
+    }
+
+    /**
+     * PURE. The withheld set for ONE filtered view: the survey-wide set
+     * (forcedCells()) plus complementaryCells() over the view's own cells.
+     *
+     * The survey-wide set alone keeps a filtered view from showing a cell the
+     * unfiltered view hides, but it does not keep the view's OWN masked rows
+     * in a group of MIN_CELL: a date or consent filter can leave a kingdom
+     * with one 6-row band shown and 2 masked rows, and those 2 are then "in
+     * this kingdom, not in that band" — a handful. Re-running the rule on the
+     * view's counts closes that; the union only ever masks more, so no view
+     * shows anything the survey-wide rule alone would have hidden.
+     *
+     * @param  array{k:array<string,bool>,kb:array<string,bool>} $surveyForced from forcedCells()
+     * @param  array{k:array<string,int>,kb:array<string,int>} $viewCells from countPartialCells() over the view
+     * @return array{k:array<string,bool>,kb:array<string,bool>}
+     */
+    public static function viewForcedCells(array $surveyForced, array $viewCells, int $kingdomUniverse): array
+    {
+        $view = self::complementaryCells($viewCells, $kingdomUniverse);
+        return [
+            'k'  => ($surveyForced['k'] ?? []) + $view['k'],
+            'kb' => ($surveyForced['kb'] ?? []) + $view['kb'],
+        ];
+    }
+
+    /**
+     * How many kingdoms the survey's respondents can come from: 1 for a park
+     * survey, the kingdom plus its principalities for a kingdom survey (or an
+     * ORK survey limited to a kingdom list), every kingdom otherwise —
+     * including any survey with an event audience, whose visitors may come
+     * from anywhere.
+     *
+     * @param array<string,mixed> $surveyRow
+     */
+    private function kingdomUniverse(array $surveyRow): int
+    {
+        $scopeType = (string)($surveyRow['scope_type'] ?? '');
+        $roots = null;
+        if ((int)($surveyRow['audience_event_calendardetail_id'] ?? 0) <= 0) {
+            if ($scopeType === 'park') {
+                return 1;
+            }
+            if ($scopeType === 'kingdom') {
+                $roots = [(int)($surveyRow['scope_id'] ?? 0)];
+            } elseif ($scopeType === 'ork') {
+                $list = json_decode((string)($surveyRow['audience_kingdom_ids'] ?? ''), true);
+                if (is_array($list)) {
+                    $roots = array_values(array_filter(array_map('intval', $list), static fn ($id) => $id > 0));
+                    $roots = $roots ?: null;
+                }
+            }
+        }
+
+        // Active kingdoms only: a reader reasoning by elimination would not
+        // count a retired principality, so neither may we.
+        $in = $roots === null ? '' : implode(',', $roots);
+        $this->db->Clear();
+        $rs = $this->db->DataSet(
+            'SELECT COUNT(*) AS c FROM ' . DB_PREFIX . 'kingdom WHERE '
+            . ($roots === null
+                ? "active = 'Active'"
+                : 'kingdom_id IN (' . $in . ") OR (parent_kingdom_id IN (" . $in . ") AND active = 'Active')")
+        );
+        $n = ($rs && $rs->Next()) ? (int)$rs->c : 0;
+        return max(1, $n);
+    }
+
+    /** @return ?array<string,mixed> the raw ork_survey row, for SurveyResponse::audienceCount() */
+    private function surveyRow(int $surveyId): ?array
+    {
+        $this->db->Clear();
+        $rs = $this->db->DataSet(
+            'SELECT * FROM ' . DB_PREFIX . 'survey WHERE survey_id = ' . (int)$surveyId
+        );
+        if (!$rs || !$rs->Next()) {
+            return null;
+        }
+        $row = $rs->CurrentFieldSet();
+        return is_array($row) && $row ? $row : null;
     }
 
     // -----------------------------------------------------------------------
@@ -231,24 +681,70 @@ class SurveyReport
     /**
      * Per-question aggregation for every answerable question in the survey.
      *
-     * @return array{questions:list<array{question_id:int,type:string,prompt:string,n:int,agg:array,crosstab?:array}>}
+     * Each entry carries `reached` — how many filtered responses were shown the
+     * question (its page's and its own show-if held), so n can be read as
+     * "n of reached" (review #35). Under a narrowing filter that leaves fewer
+     * than MIN_CELL responses, every entry is {agg:{suppressed:true}, n:null,
+     * reached:null} and no answer row is even loaded (review #4).
+     *
+     * @return array{questions:list<array{question_id:int,type:string,prompt:string,n:?int,reached:?int,agg:array,crosstab?:array}>}
      */
     public function aggregate(int $surveyId, array $filters): array
     {
         $surveyId = (int)$surveyId;
         $f = self::normalizeFilters($filters);
+        return $this->cached('aggregate', $surveyId, $f, function () use ($surveyId, $f): array {
+            return $this->buildAggregate($surveyId, $f);
+        });
+    }
 
+    private function buildAggregate(int $surveyId, array $f): array
+    {
         $questions = $this->questions($surveyId);
         if (!$questions) {
             return ['questions' => []];
         }
+
+        $total = 0;
+        $this->db->Clear();
+        $rs = $this->db->DataSet(
+            'SELECT COUNT(*) AS c FROM ' . DB_PREFIX . 'survey_response r WHERE ' . $this->reportWhere($surveyId, $f)
+        );
+        if ($rs && $rs->Next()) {
+            $total = (int)$rs->c;
+        }
+
+        if (self::isSuppressed(self::isNarrowing($f), $total)) {
+            $out = [];
+            foreach ($questions as $qid => $q) {
+                if (!SurveyTypes::isAnswerable($q['type'])) {
+                    continue;
+                }
+                $out[] = [
+                    'question_id' => $qid,
+                    'type'        => $q['type'],
+                    'prompt'      => $q['prompt'],
+                    'n'           => null,
+                    'reached'     => null,
+                    'agg'         => ['suppressed' => true],
+                ];
+            }
+            return ['questions' => $out];
+        }
+
         $options = $this->options($surveyId);
-
         $answers = $this->answerRows($surveyId, $f);
+        $selections = self::selectionsByResponse($answers);
 
+        // The cross-tab source must put each respondent in exactly one group
+        // (review #34); anything else is ignored rather than multi-bucketed.
         $crosstabQid = $f['crosstab_question_id'];
         $partitions = [];
-        if ($crosstabQid && isset($questions[$crosstabQid])) {
+        if (
+            $crosstabQid
+            && isset($questions[$crosstabQid])
+            && in_array($questions[$crosstabQid]['type'], self::CROSSTAB_SOURCES, true)
+        ) {
             $partitions = $this->crosstabPartitions($questions[$crosstabQid], $options, $answers);
         }
 
@@ -260,17 +756,23 @@ class SurveyReport
             $qRows = $answers[$qid] ?? [];
             $qOpts = $options[$qid] ?? [];
             $agg = self::aggregateType($q['type'], $qRows, $qOpts, $q['settings']);
+            $n = (int)($agg['n'] ?? 0);
 
             $entry = [
                 'question_id' => $qid,
                 'type'        => $q['type'],
                 'prompt'      => $q['prompt'],
-                'n'           => (int)($agg['n'] ?? 0),
+                'n'           => $n,
+                // Never below n: an answer given before a show-if was added
+                // still counts as the respondent having seen the question.
+                'reached'     => max($n, self::reachedCount($q, $total, $selections)),
                 'agg'         => $agg,
             ];
 
+            // Every group is returned, in option order (no slicing); an empty
+            // group is n=0 with null means/scores, never a plotted 0 (review #29).
             if ($partitions && $qid !== $crosstabQid && in_array($q['type'], self::CROSSTAB_TARGETS, true)) {
-                $groups = [];
+                $parts = [];
                 foreach ($partitions['groups'] as $g) {
                     $subset = [];
                     foreach ($qRows as $r) {
@@ -278,18 +780,25 @@ class SurveyReport
                             $subset[] = $r;
                         }
                     }
-                    $sub = self::aggregateType($q['type'], $subset, $qOpts, $q['settings']);
-                    $groups[] = [
+                    $parts[] = [
                         'option_id' => $g['option_id'],
                         'label'     => $g['label'],
-                        'n'         => (int)($sub['n'] ?? 0),
-                        'agg'       => $sub,
+                        'sub'       => self::aggregateType($q['type'], $subset, $qOpts, $q['settings']),
                     ];
+                }
+                // Respondents who answered this question but skipped the
+                // source question sit in no group, yet overall minus the
+                // visible groups gives their answers exactly. The source is
+                // single-select, so the groups are disjoint and this is the
+                // exact hidden residual.
+                $grouped = 0;
+                foreach ($parts as $p) {
+                    $grouped += (int)($p['sub']['n'] ?? 0);
                 }
                 $entry['crosstab'] = [
                     'question_id' => $crosstabQid,
                     'prompt'      => $partitions['prompt'],
-                    'groups'      => $groups,
+                    'groups'      => self::crosstabGroups($parts, max(0, $n - $grouped)),
                 ];
             }
 
@@ -297,6 +806,133 @@ class SurveyReport
         }
 
         return ['questions' => $out];
+    }
+
+    /**
+     * PURE. One cross-tab group. A group of 1..MIN_CELL-1 answers would show a
+     * handful of identifiable people's answers, so it is returned with no
+     * aggregate at all (review #4). An empty group is safe and stays n=0.
+     */
+    public static function crosstabGroup(int $optionId, string $label, array $sub): array
+    {
+        $n = (int)($sub['n'] ?? 0);
+        if ($n > 0 && $n < self::MIN_CELL) {
+            return ['option_id' => $optionId, 'label' => $label, 'n' => null, 'suppressed' => true];
+        }
+        return ['option_id' => $optionId, 'label' => $label, 'n' => $n, 'agg' => $sub];
+    }
+
+    /**
+     * PURE. Every cross-tab group of one target question, with COMPLEMENTARY
+     * suppression. The question's overall aggregate is on screen next to the
+     * groups, so a lone small group withheld by crosstabGroup() is recovered
+     * by subtraction (overall minus the visible groups). Whenever any group is
+     * withheld and the withheld groups together hold fewer than MIN_CELL
+     * answers, the smallest visible non-empty group is withheld too (ties to
+     * the earlier option), repeating until the withheld set reaches MIN_CELL
+     * or nothing non-empty is left to withhold. Subtraction then only ever
+     * yields a blend of at least MIN_CELL people. Empty groups stay n=0.
+     *
+     * $residual is the number of people who answered the target question but
+     * belong to no group (they skipped the single-select source question).
+     * They are never shown as a group, yet overall minus the visible groups
+     * isolates them, so they count as already withheld: a residual of
+     * 1..MIN_CELL-1 alone forces the smallest visible groups to be withheld.
+     *
+     * @param  list<array{option_id:int,label:string,sub:array}> $parts in option order
+     * @param  int $residual answered the target, in no group (>= 0)
+     * @return list<array> crosstabGroup() shapes, same order
+     */
+    public static function crosstabGroups(array $parts, int $residual = 0): array
+    {
+        $groups = [];
+        $counts = [];
+        $residual = max(0, $residual);
+        $withheld = $residual;
+        $anyWithheld = $residual > 0;
+        foreach (array_values($parts) as $i => $p) {
+            $n = (int)($p['sub']['n'] ?? 0);
+            $counts[$i] = $n;
+            $groups[$i] = self::crosstabGroup((int)$p['option_id'], (string)$p['label'], $p['sub']);
+            if (!empty($groups[$i]['suppressed'])) {
+                $anyWithheld = true;
+                $withheld += $n;
+            }
+        }
+
+        while ($anyWithheld && $withheld < self::MIN_CELL) {
+            $pick = null;
+            foreach ($groups as $i => $g) {
+                if (empty($g['suppressed']) && $counts[$i] > 0 && ($pick === null || $counts[$i] < $counts[$pick])) {
+                    $pick = $i;
+                }
+            }
+            if ($pick === null) {
+                break;
+            }
+            $groups[$pick] = [
+                'option_id'  => $groups[$pick]['option_id'],
+                'label'      => $groups[$pick]['label'],
+                'n'          => null,
+                'suppressed' => true,
+            ];
+            $withheld += $counts[$pick];
+        }
+
+        return $groups;
+    }
+
+    /**
+     * PURE. The option ids each response selected, per question — the answers
+     * map SurveyTypes::isShown() evaluates show-if conditions against.
+     *
+     * @param  array<int,list<array>> $answers answer rows grouped by question_id
+     * @return array<int,array<int,list<int>>> response_id => question_id => option ids
+     */
+    public static function selectionsByResponse(array $answers): array
+    {
+        $out = [];
+        foreach ($answers as $qid => $rows) {
+            foreach ($rows as $r) {
+                if ($r['option_id'] === null) {
+                    continue;
+                }
+                $out[(int)$r['response_id']][(int)$qid][] = (int)$r['option_id'];
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * PURE. How many of $total responses were shown $question: its page's
+     * show-if and its own both held (SurveyTypes::isShown, the rule the runner
+     * applies). Unconditional questions reached everyone; a conditional one can
+     * only be reached by a response that selected something.
+     *
+     * @param array $question  carries show_if_* and page_show_if_* ids
+     * @param array<int,array<int,list<int>>> $selections from selectionsByResponse()
+     */
+    public static function reachedCount(array $question, int $total, array $selections): int
+    {
+        $page = [
+            'show_if_question_id' => $question['page_show_if_question_id'] ?? null,
+            'show_if_option_id'   => $question['page_show_if_option_id'] ?? null,
+        ];
+        // Same "is there a rule at all" test isShown() applies: both ids set.
+        $hasRule = static function (array $item): bool {
+            return (int)($item['show_if_question_id'] ?? 0) > 0 && (int)($item['show_if_option_id'] ?? 0) > 0;
+        };
+        if (!$hasRule($page) && !$hasRule($question)) {
+            return $total;
+        }
+
+        $reached = 0;
+        foreach ($selections as $answerMap) {
+            if (SurveyTypes::isShown($page, $answerMap) && SurveyTypes::isShown($question, $answerMap)) {
+                $reached++;
+            }
+        }
+        return $reached;
     }
 
     /**
@@ -406,20 +1042,24 @@ class SurveyReport
 
         $n = $multi ? count($respondents) : $selections;
 
+        // With nobody answering there is no percentage: null, never a real 0
+        // (an empty cross-tab group must not plot as 0%, review #29).
         $list = [];
         foreach ($counts as $oid => $c) {
             $list[] = [
                 'option_id' => $oid,
                 'label'     => $labels[$oid],
                 'count'     => $c,
-                'pct'       => $n > 0 ? round($c / $n * 100, 1) : 0.0,
+                'pct'       => $n > 0 ? round($c / $n * 100, 1) : null,
                 'is_other'  => $isOther[$oid] ? 1 : 0,
             ];
         }
 
+        // other_texts keep the input order, which answerRows() has already put
+        // through the keyed display permutation (review #1).
         $out = ['n' => $n, 'counts' => $list, 'other_texts' => $otherTexts];
         if ($multi) {
-            $out['mean_selected'] = $n > 0 ? round($selections / $n, 3) : 0.0;
+            $out['mean_selected'] = $n > 0 ? round($selections / $n, 3) : null;
         }
         return $out;
     }
@@ -438,17 +1078,21 @@ class SurveyReport
             $dist[$v] = 0;
         }
 
+        // A value outside the CURRENT min..max (the scale was narrowed after
+        // test rows were stored) is ignored entirely, as aggNps does, so n and
+        // the mean always agree with the bars (review #32).
         $values = [];
         foreach ($rows as $r) {
             if ($r['value_num'] === null) {
                 continue;
             }
             $v = (float)$r['value_num'];
-            $values[] = $v;
             $k = (int)round($v);
-            if (isset($dist[$k])) {
-                $dist[$k]++;
+            if (!isset($dist[$k])) {
+                continue;
             }
+            $values[] = $v;
+            $dist[$k]++;
         }
 
         $out = [];
@@ -507,7 +1151,7 @@ class SurveyReport
             'detractors'   => $det,
             'passives'     => $pas,
             'promoters'    => $pro,
-            'score'        => $n ? round(($pro / $n * 100) - ($det / $n * 100), 1) : 0.0,
+            'score'        => $n ? round(($pro / $n * 100) - ($det / $n * 100), 1) : null,
             'mean'         => $n ? round(array_sum($values) / $n, 2) : null,
         ];
     }
@@ -654,47 +1298,123 @@ class SurveyReport
         }
         $n = count($values);
         if ($n === 0) {
-            return ['n' => 0, 'mean' => null, 'median' => null, 'min' => null, 'max' => null, 'histogram' => []];
+            return [
+                'n' => 0, 'mean' => null, 'median' => null, 'min' => null, 'max' => null,
+                'mode' => 'bins', 'values' => [], 'bins' => [],
+            ];
         }
 
-        $min = min($values);
-        $max = max($values);
-        $bins = 10;
-        $width = ($max - $min) / $bins;
+        $allInt = true;
+        foreach ($values as $v) {
+            if (abs($v - round($v)) > 0.0000001) {
+                $allInt = false;
+                break;
+            }
+        }
 
-        $hist = [];
-        for ($i = 0; $i < $bins; $i++) {
-            $hist[] = [
-                'from'  => $width > 0 ? round($min + $i * $width, 3) : $min,
-                'to'    => $width > 0 ? round($min + ($i + 1) * $width, 3) : $max,
+        // Whole numbers with few distinct values (years played, events
+        // attended) are plotted value by value, not binned (review #30).
+        $valueList = [];
+        if ($allInt) {
+            $counts = [];
+            foreach ($values as $v) {
+                $k = (int)round($v);
+                $counts[$k] = ($counts[$k] ?? 0) + 1;
+            }
+            if (count($counts) <= self::NUMBER_VALUES_MAX_DISTINCT) {
+                ksort($counts);
+                foreach ($counts as $v => $c) {
+                    $valueList[] = ['value' => (int)$v, 'count' => $c];
+                }
+            }
+        }
+
+        return [
+            'n'      => $n,
+            'mean'   => round(array_sum($values) / $n, 3),
+            'median' => round(self::median($values), 3),
+            'min'    => min($values),
+            'max'    => max($values),
+            'mode'   => $valueList ? 'values' : 'bins',
+            'values' => $valueList,
+            'bins'   => $allInt ? self::integerBins($values) : self::equalBins($values),
+        ];
+    }
+
+    /**
+     * Histogram with whole-number edges: equal-width bins of >= 1 integer, at
+     * most NUMBER_MAX_BINS of them, each labelled with its inclusive range
+     * ('3–5', or '4' for a one-value bin) so years never read '3.1–6.2'.
+     *
+     * @param  list<float> $values every one integral
+     * @return list<array{from:int,to:int,label:string,count:int}>
+     */
+    private static function integerBins(array $values): array
+    {
+        $lo = (int)round(min($values));
+        $hi = (int)round(max($values));
+        $span = $hi - $lo + 1;
+        $width = max(1, (int)ceil($span / self::NUMBER_MAX_BINS));
+        $count = (int)ceil($span / $width);
+
+        $bins = [];
+        for ($i = 0; $i < $count; $i++) {
+            $from = $lo + $i * $width;
+            $to = $from + $width - 1;
+            $bins[] = [
+                'from'  => $from,
+                'to'    => $to,
+                'label' => $width === 1 ? (string)$from : ($from . "\u{2013}" . $to),
                 'count' => 0,
             ];
         }
         foreach ($values as $v) {
-            if ($width > 0) {
-                $idx = (int)floor(($v - $min) / $width);
-                if ($idx >= $bins) {
-                    $idx = $bins - 1;   // the maximum lands in the last bin
-                }
-                if ($idx < 0) {
-                    $idx = 0;
-                }
-            } else {
-                $idx = 0;               // every value identical
-            }
-            $hist[$idx]['count']++;
+            $idx = intdiv((int)round($v) - $lo, $width);
+            $bins[min($count - 1, max(0, $idx))]['count']++;
         }
-
-        return [
-            'n'         => $n,
-            'mean'      => round(array_sum($values) / $n, 3),
-            'median'    => round(self::median($values), 3),
-            'min'       => $min,
-            'max'       => $max,
-            'histogram' => $hist,
-        ];
+        return $bins;
     }
 
+    /**
+     * NUMBER_MAX_BINS equal-width bins for fractional data; [from, to) except
+     * the last, which holds the maximum. Identical values make one bin.
+     *
+     * @param  list<float> $values
+     * @return list<array{from:float,to:float,label:string,count:int}>
+     */
+    private static function equalBins(array $values): array
+    {
+        $min = min($values);
+        $max = max($values);
+        $bins = $max > $min ? self::NUMBER_MAX_BINS : 1;
+        $width = ($max - $min) / $bins;
+
+        $hist = [];
+        for ($i = 0; $i < $bins; $i++) {
+            $from = $width > 0 ? round($min + $i * $width, 3) : $min;
+            $to = $width > 0 ? round($min + ($i + 1) * $width, 3) : $max;
+            $hist[] = [
+                'from'  => $from,
+                'to'    => $to,
+                'label' => $from == $to
+                    ? self::formatNumber($from)
+                    : (self::formatNumber($from) . "\u{2013}" . self::formatNumber($to)),
+                'count' => 0,
+            ];
+        }
+        foreach ($values as $v) {
+            $idx = $width > 0 ? (int)floor(($v - $min) / $width) : 0;
+            $hist[min($bins - 1, max(0, $idx))]['count']++;   // the maximum lands in the last bin
+        }
+        return $hist;
+    }
+
+    /**
+     * Date answers as a continuous series (review #30): every period between
+     * the earliest and latest answer is present, empty ones with count 0, so
+     * gaps read as gaps. Month granularity up to DATE_YEAR_SPAN_MONTHS, year
+     * granularity beyond.
+     */
     private static function aggDate(array $rows): array
     {
         $dates = [];
@@ -707,25 +1427,61 @@ class SurveyReport
         }
         $n = count($dates);
         if ($n === 0) {
-            return ['n' => 0, 'min' => null, 'max' => null, 'by_month' => []];
+            return ['n' => 0, 'min' => null, 'max' => null, 'granularity' => 'month', 'periods' => []];
         }
         sort($dates);
+        $first = $dates[0];
+        $last = $dates[$n - 1];
 
-        $byMonth = [];
+        $y0 = (int)substr($first, 0, 4);
+        $m0 = (int)substr($first, 5, 2);
+        $y1 = (int)substr($last, 0, 4);
+        $m1 = (int)substr($last, 5, 2);
+        $spanMonths = ($y1 * 12 + $m1) - ($y0 * 12 + $m0);
+        $byYear = $spanMonths > self::DATE_YEAR_SPAN_MONTHS;
+
+        $counts = [];
         foreach ($dates as $d) {
-            $m = substr($d, 0, 7);
-            $byMonth[$m] = ($byMonth[$m] ?? 0) + 1;
-        }
-        ksort($byMonth);
-
-        $out = [];
-        foreach ($byMonth as $m => $c) {
-            $out[] = ['month' => (string)$m, 'count' => $c];
+            $p = $byYear ? substr($d, 0, 4) : substr($d, 0, 7);
+            $counts[$p] = ($counts[$p] ?? 0) + 1;
         }
 
-        return ['n' => $n, 'min' => $dates[0], 'max' => $dates[$n - 1], 'by_month' => $out];
+        $periods = [];
+        if ($byYear) {
+            if ($y1 - $y0 + 1 > self::DATE_MAX_PERIODS) {
+                // One absurd answer (year 0001) must not emit 2,000 empty bars.
+                foreach ($counts as $p => $c) {
+                    $periods[] = ['period' => (string)$p, 'label' => (string)$p, 'count' => $c];
+                }
+            } else {
+                for ($y = $y0; $y <= $y1; $y++) {
+                    $p = sprintf('%04d', $y);
+                    $periods[] = ['period' => $p, 'label' => $p, 'count' => $counts[$p] ?? 0];
+                }
+            }
+        } else {
+            for ($i = $y0 * 12 + $m0 - 1, $end = $y1 * 12 + $m1 - 1; $i <= $end; $i++) {
+                $y = intdiv($i, 12);
+                $m = $i % 12 + 1;
+                $p = sprintf('%04d-%02d', $y, $m);
+                $periods[] = [
+                    'period' => $p,
+                    'label'  => self::MONTH_ABBR[$m - 1] . ' ' . sprintf('%04d', $y),
+                    'count'  => $counts[$p] ?? 0,
+                ];
+            }
+        }
+
+        return [
+            'n'           => $n,
+            'min'         => $first,
+            'max'         => $last,
+            'granularity' => $byYear ? 'year' : 'month',
+            'periods'     => $periods,
+        ];
     }
 
+    /** Texts keep the input order — answerRows()' keyed permutation, never answer_id (review #1). */
     private static function aggText(array $rows): array
     {
         $texts = [];
@@ -763,7 +1519,7 @@ class SurveyReport
     // -----------------------------------------------------------------------
 
     /**
-     * @return array{total:int,columns:list<array{question_id:int,prompt:string,type:string}>,rows:list<array>}
+     * @return array{total:int,columns:list<array{question_id:int,prompt:string,type:string}>,rows:list<array>,partial_cell_rule:bool}
      */
     public function rows(int $surveyId, array $filters, int $offset, int $limit): array
     {
@@ -787,7 +1543,7 @@ class SurveyReport
             $columns[] = ['question_id' => $qid, 'prompt' => $q['prompt'], 'type' => $q['type']];
         }
 
-        $where = $this->responseWhere($surveyId, $f);
+        $where = $this->reportWhere($surveyId, $f);
 
         $total = 0;
         $this->db->Clear();
@@ -798,25 +1554,47 @@ class SurveyReport
             $total = (int)$rs->c;
         }
 
-        $rows = $this->responsePage($surveyId, $where, $offset, $limit);
+        $rows = $this->responsePage($surveyId, $where, $offset, $limit, $this->partialCells($where, $surveyId));
         if ($rows) {
             $this->attachAnswers($rows, $questions, $this->options($surveyId));
         }
 
-        return ['total' => $total, 'columns' => $columns, 'rows' => array_values($rows)];
+        return [
+            'total'             => $total,
+            'columns'           => $columns,
+            'rows'              => array_values($rows),
+            'partial_cell_rule' => $f['kingdom_ids'] !== [],
+        ];
+    }
+
+    /**
+     * CSV of the filtered rows as one string (see csvStream()).
+     */
+    public function csv(int $surveyId, array $filters): string
+    {
+        $out = '';
+        $this->csvStream($surveyId, $filters, function (string $chunk) use (&$out): void {
+            $out .= $chunk;
+        });
+        return $out;
     }
 
     /**
      * CSV of the filtered rows, RFC 4180 with CRLF line endings and a UTF-8 BOM
-     * so Excel opens personas with accents correctly.
+     * so Excel opens personas with accents correctly. Emitted through $emit as
+     * the header, then one chunk per 500-row batch, so an export never holds
+     * the whole file in memory (review #42). Same masking as rows().
+     *
+     * @param callable(string):void $emit
      */
-    public function csv(int $surveyId, array $filters): string
+    public function csvStream(int $surveyId, array $filters, callable $emit): void
     {
         $surveyId = (int)$surveyId;
         $f = self::normalizeFilters($filters);
         $questions = $this->questions($surveyId);
         $options = $this->options($surveyId);
-        $where = $this->responseWhere($surveyId, $f);
+        $where = $this->reportWhere($surveyId, $f);
+        $cells = $this->partialCells($where, $surveyId);
 
         $columns = [];
         foreach ($questions as $qid => $q) {
@@ -825,21 +1603,25 @@ class SurveyReport
             }
         }
 
-        $header = ['Response', 'Consent', 'Persona', 'Mundane ID', 'Kingdom', 'Tenure (years)', 'Submitted', 'Duration (s)'];
+        $header = [
+            'Response', 'Consent', 'Persona', 'Mundane ID', 'Kingdom', 'Years played',
+            'Withheld (small group)', 'Submitted', 'Duration (s)',
+        ];
         foreach ($columns as $c) {
             $header[] = $c['prompt'];
         }
 
-        $out = "\xEF\xBB\xBF" . self::csvLine($header);
+        $emit("\xEF\xBB\xBF" . self::csvLine($header));
 
         $offset = 0;
         $batch = 500;
         while (true) {
-            $rows = $this->responsePage($surveyId, $where, $offset, $batch);
+            $rows = $this->responsePage($surveyId, $where, $offset, $batch, $cells);
             if (!$rows) {
                 break;
             }
             $this->attachAnswers($rows, $questions, $options);
+            $chunk = '';
             foreach ($rows as $r) {
                 $line = [
                     (string)$r['response_id'],
@@ -847,22 +1629,22 @@ class SurveyReport
                     $r['persona'] ?? '',
                     $r['mundane_id'] === null ? '' : (string)$r['mundane_id'],
                     $r['kingdom'] ?? '',
-                    $r['tenure_years'] === null ? '' : (string)$r['tenure_years'],
+                    $r['tenure_label'] ?? '',
+                    $r['masked'] ? 'yes' : '',
                     $r['submitted_at'],
                     $r['duration_seconds'] === null ? '' : (string)$r['duration_seconds'],
                 ];
                 foreach ($columns as $c) {
                     $line[] = $r['answers'][$c['question_id']] ?? '';
                 }
-                $out .= self::csvLine($line);
+                $chunk .= self::csvLine($line);
             }
+            $emit($chunk);
             if (count($rows) < $batch) {
                 break;
             }
             $offset += $batch;
         }
-
-        return $out;
     }
 
     /** @param list<string> $fields */
@@ -919,11 +1701,20 @@ class SurveyReport
      * submission order and undoes the day-truncation of `submitted_at` that
      * keeps anonymous responses unlinkable. Order is submission DAY, then an
      * install-keyed hash; the array key stays the real id so answers can be
-     * attached.
+     * attached. answerRows() applies the same permutation in PHP
+     * (displayOrder()) so aggregate text lists match it (review #1).
      *
+     * Partial rows (review #2/#4/#31): the kingdom shows only when at least
+     * MIN_CELL partial rows in the filtered set share it, the years-played band
+     * only when MIN_CELL share (kingdom, band); otherwise null and
+     * `masked:true`. Partial and anonymous rows show the submission DAY
+     * ('Y-m-d', `time_withheld:true`) and no duration. Full rows consented to
+     * all of it and are never masked.
+     *
+     * @param  array{k:array<string,int>,kb:array<string,int>,forced_k:array<string,bool>,forced_kb:array<string,bool>} $cells from partialCells()
      * @return array<int,array> keyed by the real response_id
      */
-    private function responsePage(int $surveyId, string $where, int $offset, int $limit): array
+    private function responsePage(int $surveyId, string $where, int $offset, int $limit, array $cells): array
     {
         $offset = max(0, (int)$offset);
         $this->db->Clear();
@@ -947,8 +1738,21 @@ class SurveyReport
                 $seq++;
                 $consent = (string)$rs->consent;
                 $full = ($consent === 'full');
-                $identified = ($consent === 'full' || $consent === 'partial');
-                $tenure = $rs->tenure_months;
+                $partial = ($consent === 'partial');
+                $kingdomId = $rs->kingdom_id === null ? null : (int)$rs->kingdom_id;
+                $tenure = $rs->tenure_months === null ? null : (int)$rs->tenure_months;
+
+                $showKingdom = $full;
+                $showTenure = $full;
+                $masked = false;
+                if ($partial) {
+                    $vis = self::partialVisibility($kingdomId, $tenure, $cells);
+                    $showKingdom = $vis['kingdom'];
+                    $showTenure = $vis['tenure'];
+                    $masked = ($kingdomId !== null && !$showKingdom) || ($tenure !== null && !$showTenure);
+                }
+
+                $submitted = (string)$rs->submitted_at;
                 $rid = (int)$rs->response_id;
                 $rows[$rid] = [
                     // Display ordinal within this filtered listing, NOT the DB id.
@@ -957,15 +1761,148 @@ class SurveyReport
                     'is_test'          => (int)$rs->is_test,
                     'persona'          => $full ? ($rs->persona ?? null) : null,
                     'mundane_id'       => $full && $rs->mundane_id !== null ? (int)$rs->mundane_id : null,
-                    'kingdom'          => $identified ? ($rs->kingdom_name ?? null) : null,
-                    'kingdom_id'       => $identified && $rs->kingdom_id !== null ? (int)$rs->kingdom_id : null,
-                    'tenure_years'     => ($identified && $tenure !== null) ? (int)floor((int)$tenure / 12) : null,
-                    'submitted_at'     => (string)$rs->submitted_at,
-                    'duration_seconds' => $rs->duration_seconds === null ? null : (int)$rs->duration_seconds,
+                    'kingdom'          => $showKingdom ? ($rs->kingdom_name ?? null) : null,
+                    'kingdom_id'       => $showKingdom ? $kingdomId : null,
+                    // Exact whole years for full consent only; a partial row
+                    // carries a band label and nothing finer.
+                    'tenure_years'     => ($full && $tenure !== null) ? intdiv($tenure, 12) : null,
+                    'tenure_label'     => ($showTenure && $tenure !== null) ? self::tenureLabel($consent, $tenure) : null,
+                    'masked'           => $masked,
+                    'submitted_at'     => $full ? $submitted : substr($submitted, 0, 10),
+                    'time_withheld'    => !$full,
+                    // Durations are a full-consent datum; rows stored before
+                    // scrubForConsent nulled it for partial must not show one.
+                    'duration_seconds' => ($full && $rs->duration_seconds !== null) ? (int)$rs->duration_seconds : null,
                     'answers'          => [],
                 ];
             }
         }
+        return $rows;
+    }
+
+    /**
+     * How many PARTIAL rows in the filtered set share each kingdom, and each
+     * (kingdom, years-played band). Band from SurveyResponse::tenureBandFloor,
+     * so rows stored before banding (exact months) fold into the same cells.
+     * Carries the complementary-suppression set for this view (the survey-wide
+     * forcedCells() plus the view's own, viewForcedCells()) as forced_k /
+     * forced_kb for partialVisibility().
+     *
+     * @return array{k:array<string,int>,kb:array<string,int>,forced_k:array<string,bool>,forced_kb:array<string,bool>}
+     */
+    private function partialCells(string $where, int $surveyId): array
+    {
+        $cells = $this->countPartialCells($where);
+        $forced = self::viewForcedCells(
+            $this->forcedCells($surveyId),
+            $cells,
+            $this->universeMemo[(int)$surveyId] ?? 1
+        );
+        $cells['forced_k'] = $forced['k'];
+        $cells['forced_kb'] = $forced['kb'];
+        return $cells;
+    }
+
+    /** @return array{k:array<string,int>,kb:array<string,int>} partial-row counts per kingdom and per (kingdom, band) */
+    private function countPartialCells(string $where): array
+    {
+        $cells = ['k' => [], 'kb' => []];
+        $this->db->Clear();
+        $rs = $this->db->DataSet(
+            'SELECT r.kingdom_id, r.tenure_months, COUNT(*) AS c
+               FROM ' . DB_PREFIX . 'survey_response r
+              WHERE ' . $where . " AND r.consent = 'partial'
+              GROUP BY r.kingdom_id, r.tenure_months"
+        );
+        if ($rs) {
+            while ($rs->Next()) {
+                $kingdomId = $rs->kingdom_id === null ? null : (int)$rs->kingdom_id;
+                $tenure = $rs->tenure_months === null ? null : (int)$rs->tenure_months;
+                $c = (int)$rs->c;
+                $k = self::kingdomCell($kingdomId);
+                $kb = self::bandCell($kingdomId, $tenure);
+                $cells['k'][$k] = ($cells['k'][$k] ?? 0) + $c;
+                $cells['kb'][$kb] = ($cells['kb'][$kb] ?? 0) + $c;
+            }
+        }
+        return $cells;
+    }
+
+    /** partialCells()/partialVisibility() key for a kingdom. */
+    private static function kingdomCell(?int $kingdomId): string
+    {
+        return $kingdomId === null ? 'none' : (string)$kingdomId;
+    }
+
+    /** partialCells()/partialVisibility() key for a (kingdom, years-played band) pair. */
+    private static function bandCell(?int $kingdomId, ?int $tenureMonths): string
+    {
+        $band = $tenureMonths === null ? 'none' : (string)SurveyResponse::tenureBandFloor($tenureMonths);
+        return self::kingdomCell($kingdomId) . '|' . $band;
+    }
+
+    /**
+     * PURE. Which quasi-identifiers a PARTIAL row may show, given how many
+     * partial rows in the filtered set share them (review #2/#4): the kingdom
+     * when MIN_CELL share the kingdom, the band when MIN_CELL share
+     * (kingdom, band). Either can therefore only show alongside at least
+     * MIN_CELL-1 other partial respondents with the same value. A cell in
+     * the optional forced_k / forced_kb sets (complementaryCells()) is
+     * withheld whatever its count, and a withheld kingdom withholds its bands.
+     *
+     * @param  array{k:array<string,int>,kb:array<string,int>,forced_k?:array<string,bool>,forced_kb?:array<string,bool>} $cells
+     * @return array{kingdom:bool,tenure:bool}
+     */
+    public static function partialVisibility(?int $kingdomId, ?int $tenureMonths, array $cells): array
+    {
+        $k = self::kingdomCell($kingdomId);
+        $kb = self::bandCell($kingdomId, $tenureMonths);
+        $kingdomForced = !empty($cells['forced_k'][$k]);
+        return [
+            'kingdom' => $kingdomId !== null && ($cells['k'][$k] ?? 0) >= self::MIN_CELL && !$kingdomForced,
+            'tenure'  => $tenureMonths !== null && ($cells['kb'][$kb] ?? 0) >= self::MIN_CELL
+                && !$kingdomForced && empty($cells['forced_kb'][$kb]),
+        ];
+    }
+
+    /**
+     * PURE. Years played as shown in rows/CSV: exact whole years for full
+     * consent ('1 year', '14 years'), the band label for partial ('3–5 years').
+     */
+    public static function tenureLabel(string $consent, int $tenureMonths): string
+    {
+        if ($consent === 'full') {
+            $years = intdiv(max(0, $tenureMonths), 12);
+            return $years === 1 ? '1 year' : ($years . ' years');
+        }
+        return SurveyResponse::tenureBandLabel($tenureMonths);
+    }
+
+    /**
+     * PURE. Put answer rows into the display permutation responsePage() uses:
+     * submission DAY, then md5(response_id . orderKey) — the PHP twin of its
+     * `ORDER BY DATE(r.submitted_at), MD5(CONCAT(r.response_id, key))`. Stable,
+     * so a response's own rows keep their relative order. Rows need
+     * `response_id` and `day` ('Y-m-d').
+     *
+     * Without it every text list on the results page is a submission timeline
+     * that can date an anonymous comment between two named ones (review #1).
+     *
+     * @param  list<array> $rows
+     * @return list<array>
+     */
+    public static function displayOrder(array $rows, string $orderKey): array
+    {
+        $sortKey = [];
+        foreach ($rows as $r) {
+            $rid = (int)$r['response_id'];
+            if (!isset($sortKey[$rid])) {
+                $sortKey[$rid] = (string)($r['day'] ?? '') . '|' . md5($rid . $orderKey);
+            }
+        }
+        usort($rows, static function ($a, $b) use ($sortKey) {
+            return strcmp($sortKey[(int)$a['response_id']], $sortKey[(int)$b['response_id']]);
+        });
         return $rows;
     }
 
@@ -1111,14 +2048,14 @@ class SurveyReport
      * WHERE fragment over `ork_survey_response r` for the given filters.
      * $ignoreKingdom drops only the kingdom clause (used for excluded_anonymous).
      */
-    private function responseWhere(int $surveyId, array $f, bool $ignoreKingdom = false, bool $ignoreConsent = false): string
+    private function responseWhere(int $surveyId, array $f, bool $ignoreKingdom = false): string
     {
         $w = ['r.survey_id = ' . (int)$surveyId];
 
         if (empty($f['include_test'])) {
             $w[] = 'r.is_test = 0';
         }
-        if (!$ignoreConsent && !empty($f['consent']) && $f['consent'] !== 'any') {
+        if (!empty($f['consent']) && $f['consent'] !== 'any') {
             $w[] = "r.consent = '" . $this->esc((string)$f['consent']) . "'";
         }
         if (!$ignoreKingdom && !empty($f['kingdom_ids'])) {
@@ -1136,34 +2073,53 @@ class SurveyReport
     }
 
     /**
-     * The draft half of the completion denominator, filtered to match the
-     * response half. Assumes the caller joined `mundane m` for the kingdom.
-     *
-     * `consent` and `include_test` have no draft equivalent: a draft has no
-     * consent yet and cannot be a test row.
-     *
-     * @param array<string,mixed> $f
+     * The response set every report surface (summary, aggregate, rows, CSV)
+     * reads: responseWhere(), minus — under a kingdom filter — the partial rows
+     * of any kingdom with fewer than MIN_CELL partial rows in the filtered set
+     * (review #4). Masking blanks such a row's kingdom, but a kingdom filter
+     * would put it back (every row it returns is from the picked kingdom), and
+     * the filtered aggregate minus the visible full rows would give their
+     * answers; leaving those rows out of the kingdom-filtered set closes both.
+     * Unfiltered views keep them, kingdom masked.
      */
-    private function draftWhere(int $surveyId, array $f): string
+    private function reportWhere(int $surveyId, array $f): string
     {
-        $w = ['d.survey_id = ' . (int)$surveyId];
-
-        if (!empty($f['kingdom_ids'])) {
-            $ids = array_map('intval', $f['kingdom_ids']);
-            $w[] = 'm.kingdom_id IN (' . implode(',', $ids) . ')';
-        }
-        if (!empty($f['date_from'])) {
-            $w[] = "d.started_at >= '" . $this->esc((string)$f['date_from']) . " 00:00:00'";
-        }
-        if (!empty($f['date_to'])) {
-            $w[] = "d.started_at <= '" . $this->esc((string)$f['date_to']) . " 23:59:59'";
+        $where = $this->responseWhere($surveyId, $f);
+        if (empty($f['kingdom_ids'])) {
+            return $where;
         }
 
-        return implode(' AND ', $w);
+        $partialByKingdom = [];
+        $this->db->Clear();
+        $rs = $this->db->DataSet(
+            'SELECT r.kingdom_id, COUNT(*) AS c
+               FROM ' . DB_PREFIX . 'survey_response r
+              WHERE ' . $where . " AND r.consent = 'partial'
+              GROUP BY r.kingdom_id"
+        );
+        if ($rs) {
+            while ($rs->Next()) {
+                $partialByKingdom[(int)$rs->kingdom_id] = (int)$rs->c;
+            }
+        }
+
+        // A kingdom withheld by complementary suppression goes the same way as
+        // a small one: a filter on it would name every row it returns.
+        $small = self::smallPartialKingdoms($partialByKingdom);
+        foreach (array_keys($this->forcedCells($surveyId)['k']) as $k) {
+            if ((int)$k > 0 && !in_array((int)$k, $small, true)) {
+                $small[] = (int)$k;
+            }
+        }
+        if (!$small) {
+            return $where;
+        }
+        return $where . " AND NOT (r.consent = 'partial' AND r.kingdom_id IN (" . implode(',', $small) . '))';
     }
 
     /**
-     * Survey questions in presentation order (page order, then question order).
+     * Survey questions in presentation order (page order, then question order),
+     * with the question's and its page's show-if (for reachedCount()).
      *
      * @return array<int,array{question_id:int,type:string,prompt:string,settings:array,page_id:int}>
      */
@@ -1171,7 +2127,10 @@ class SurveyReport
     {
         $this->db->Clear();
         $rs = $this->db->DataSet(
-            'SELECT q.question_id, q.page_id, q.type, q.prompt, q.settings
+            'SELECT q.question_id, q.page_id, q.type, q.prompt, q.settings,
+                    q.show_if_question_id, q.show_if_option_id,
+                    p.show_if_question_id AS page_show_if_question_id,
+                    p.show_if_option_id AS page_show_if_option_id
                FROM ' . DB_PREFIX . 'survey_question q
                LEFT JOIN ' . DB_PREFIX . 'survey_page p ON p.page_id = q.page_id
               WHERE q.survey_id = ' . (int)$surveyId . '
@@ -1190,11 +2149,15 @@ class SurveyReport
                 }
                 $qid = (int)$rs->question_id;
                 $out[$qid] = [
-                    'question_id' => $qid,
-                    'page_id'     => (int)$rs->page_id,
-                    'type'        => (string)$rs->type,
-                    'prompt'      => (string)$rs->prompt,
-                    'settings'    => $settings,
+                    'question_id'              => $qid,
+                    'page_id'                  => (int)$rs->page_id,
+                    'type'                     => (string)$rs->type,
+                    'prompt'                   => (string)$rs->prompt,
+                    'settings'                 => $settings,
+                    'show_if_question_id'      => (int)$rs->show_if_question_id,
+                    'show_if_option_id'        => (int)$rs->show_if_option_id,
+                    'page_show_if_question_id' => (int)$rs->page_show_if_question_id,
+                    'page_show_if_option_id'   => (int)$rs->page_show_if_option_id,
                 ];
             }
         }
@@ -1234,30 +2197,41 @@ class SurveyReport
     }
 
     /**
-     * Every answer row for the filtered response set, grouped by question.
-     * Joined to the response table rather than an IN list so a large survey does
-     * not build a multi-megabyte id list.
+     * Every answer row for the filtered response set, grouped by question, in
+     * the keyed display permutation (displayOrder()) rather than answer_id
+     * order, so text and write-in lists are never a submission timeline
+     * (review #1). Joined to the response table rather than an IN list so a
+     * large survey does not build a multi-megabyte id list.
      *
      * @return array<int,list<array>>
      */
     private function answerRows(int $surveyId, array $f): array
     {
-        $where = $this->responseWhere((int)$surveyId, $f);
+        $where = $this->reportWhere((int)$surveyId, $f);
 
         $this->db->Clear();
         $rs = $this->db->DataSet(
-            'SELECT a.response_id, a.question_id, a.option_id, a.row_option_id, a.value_text, a.value_num
+            'SELECT a.response_id, a.question_id, a.option_id, a.row_option_id, a.value_text, a.value_num,
+                    DATE(r.submitted_at) AS day
                FROM ' . DB_PREFIX . 'survey_answer a
                JOIN ' . DB_PREFIX . 'survey_response r ON r.response_id = a.response_id
               WHERE ' . $where . '
               ORDER BY a.answer_id ASC'
         );
 
-        $out = [];
+        $flat = [];
         if ($rs) {
             while ($rs->Next()) {
-                $out[(int)$rs->question_id][] = self::answerRow($rs);
+                $row = self::answerRow($rs);
+                $row['question_id'] = (int)$rs->question_id;
+                $row['day'] = (string)$rs->day;
+                $flat[] = $row;
             }
+        }
+
+        $out = [];
+        foreach (self::displayOrder($flat, self::orderKey($surveyId)) as $row) {
+            $out[$row['question_id']][] = $row;
         }
         return $out;
     }

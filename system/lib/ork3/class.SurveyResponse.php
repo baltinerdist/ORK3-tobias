@@ -20,6 +20,9 @@
  *    respondent already consented to a profile link.
  *  - `ork_survey_draft` is keyed by player and is deleted inside the submit
  *    transaction; it is never readable by a survey manager.
+ *  - a `partial` response keeps only a years-played BAND (TENURE_BANDS), never
+ *    the exact month count, and no duration — in a park-scoped survey an exact
+ *    tenure beside a constant kingdom column points at one specific veteran.
  *
  * Layering: all SQL for the survey module lives in system/lib/ork3. Callers
  * reach this class through orkui/model/model.Survey.php only.
@@ -28,6 +31,19 @@ class SurveyResponse
 {
     /** Consent levels, most permissive first (spec §2). */
     public const CONSENTS = ['full', 'partial', 'anonymous'];
+
+    /**
+     * Years-played bands stored for a `partial` response (spec §2, review #2):
+     * [floor in whole months, label], ascending. `scrubForConsent()` stores the
+     * floor; reporting shows the label. Full consent keeps the exact months.
+     */
+    public const TENURE_BANDS = [
+        [0, 'Under 1 year'],
+        [12, '1–2 years'],
+        [36, '3–5 years'],
+        [72, '6–10 years'],
+        [132, 'Over 10 years'],
+    ];
 
     /** Guard rails on values the client supplies. */
     public const MAX_DRAFT_BYTES = 262144;      // 256 KB of answers JSON is already absurd
@@ -86,19 +102,52 @@ class SurveyResponse
             return $row;
         }
 
-        // partial and anonymous both lose the profile link, the start time and
-        // the exact clock time of the submission.
-        $row['mundane_id']   = null;
-        $row['started_at']   = null;
-        $row['submitted_at'] = self::truncateToDay($row['submitted_at']);
+        // partial and anonymous both lose the profile link, the start time, the
+        // exact clock time of the submission and how long it took (a duration is
+        // not something the partial copy promises to keep).
+        $row['mundane_id']       = null;
+        $row['started_at']       = null;
+        $row['submitted_at']     = self::truncateToDay($row['submitted_at']);
+        $row['duration_seconds'] = null;
 
         if ('anonymous' === $consent) {
-            $row['kingdom_id']       = null;
-            $row['tenure_months']    = null;
-            $row['duration_seconds'] = null;
+            $row['kingdom_id']    = null;
+            $row['tenure_months'] = null;
+        } elseif (null !== $row['tenure_months'] && '' !== $row['tenure_months']) {
+            // partial: coarsen to the band floor — never the exact month count.
+            $row['tenure_months'] = self::tenureBandFloor((int) $row['tenure_months']);
+        } else {
+            $row['tenure_months'] = null;
         }
 
         return $row;
+    }
+
+    /** The TENURE_BANDS floor (in months) that $months falls in. PURE. */
+    public static function tenureBandFloor(int $months): int
+    {
+        $floor = 0;
+        foreach (self::TENURE_BANDS as $band) {
+            if ($months >= $band[0]) {
+                $floor = $band[0];
+            }
+        }
+        return $floor;
+    }
+
+    /**
+     * Label for a band floor, e.g. 36 => '3–5 years'. Any month count is
+     * accepted and resolved to its band first. PURE.
+     */
+    public static function tenureBandLabel(int $floorMonths): string
+    {
+        $floor = self::tenureBandFloor($floorMonths);
+        foreach (self::TENURE_BANDS as $band) {
+            if ($band[0] === $floor) {
+                return $band[1];
+            }
+        }
+        return self::TENURE_BANDS[0][1];
     }
 
     /**
@@ -203,9 +252,16 @@ class SurveyResponse
     /**
      * May this player answer this survey right now? (spec §1 "Audience".)
      *
+     * Audience rules (review #12): `audience_event_calendardetail_id` REPLACES
+     * the home park/kingdom match with "has an attendance credit at that event",
+     * so visitors qualify; `audience_recent_months` additionally requires an
+     * attendance credit inside the survey scope within the last N months.
+     * `audienceCount()` is the set-based mirror of these rules — keep them in step.
+     *
      * @param  array<string, mixed> $surveyRow raw ork_survey row
      * @return array{eligible: bool, reason: string}
-     *         reason ∈ ok · closed · not_open_yet · scope · inactive · tenure · completed · banned
+     *         reason ∈ ok · closed · not_open_yet · scope · inactive · event_attendance ·
+     *                  recent_attendance · tenure · completed · banned
      */
     public function eligibility(array $surveyRow, int $uid): array
     {
@@ -254,8 +310,18 @@ class SurveyResponse
             return self::ineligible('inactive');
         }
 
-        if (!$this->matchesScope($surveyRow, $player)) {
+        $eventId = (int) ($surveyRow['audience_event_calendardetail_id'] ?? 0);
+        if ($eventId > 0) {
+            if (!$this->attendedEvent($uid, $eventId)) {
+                return self::ineligible('event_attendance');
+            }
+        } elseif (!$this->matchesScope($surveyRow, $player)) {
             return self::ineligible('scope');
+        }
+
+        $recentMonths = (int) ($surveyRow['audience_recent_months'] ?? 0);
+        if ($recentMonths > 0 && !$this->attendedRecently($surveyRow, $uid, $recentMonths)) {
+            return self::ineligible('recent_attendance');
         }
 
         $minTenure = (int) ($surveyRow['audience_min_tenure_months'] ?? 0);
@@ -297,6 +363,143 @@ class SurveyResponse
         }
 
         return false;
+    }
+
+    /** Has this player an attendance credit at this event occurrence? */
+    private function attendedEvent(int $uid, int $eventCalendardetailId): bool
+    {
+        $this->db->Clear();
+        $r = $this->db->DataSet(
+            'SELECT 1 AS ok FROM ' . DB_PREFIX . 'attendance
+             WHERE mundane_id = ' . (int) $uid . '
+               AND event_calendardetail_id = ' . (int) $eventCalendardetailId . ' LIMIT 1'
+        );
+        return (bool) ($r && $r->Next());
+    }
+
+    /**
+     * Has this player attended inside the survey scope in the last $months months?
+     *
+     * @param array<string, mixed> $surveyRow
+     */
+    private function attendedRecently(array $surveyRow, int $uid, int $months): bool
+    {
+        $this->db->Clear();
+        $r = $this->db->DataSet(
+            'SELECT 1 AS ok FROM ' . DB_PREFIX . 'attendance a
+             WHERE a.mundane_id = ' . (int) $uid . '
+               AND a.date >= \'' . self::monthsAgoDate($months) . '\''
+               . self::attendanceScopeSql($surveyRow, 'a') . ' LIMIT 1'
+        );
+        return (bool) ($r && $r->Next());
+    }
+
+    /**
+     * SQL fragment (leading " AND ...", or '' for no restriction) that limits an
+     * ork_attendance alias to the survey's scope: the park for a park survey,
+     * the kingdom or any of its principalities for a kingdom survey, anywhere
+     * for an ORK-wide survey. An unknown scope matches nothing.
+     *
+     * @param array<string, mixed> $surveyRow
+     */
+    private static function attendanceScopeSql(array $surveyRow, string $alias): string
+    {
+        $scopeType = (string) ($surveyRow['scope_type'] ?? '');
+        $scopeId   = (int) ($surveyRow['scope_id'] ?? 0);
+        if ('ork' === $scopeType) {
+            return '';
+        }
+        if ('park' === $scopeType && $scopeId > 0) {
+            return ' AND ' . $alias . '.park_id = ' . $scopeId;
+        }
+        if ('kingdom' === $scopeType && $scopeId > 0) {
+            return ' AND ' . $alias . '.kingdom_id IN (
+                        SELECT kk.kingdom_id FROM ' . DB_PREFIX . 'kingdom kk
+                        WHERE kk.kingdom_id = ' . $scopeId . ' OR kk.parent_kingdom_id = ' . $scopeId . ')';
+        }
+        return ' AND 1 = 0';
+    }
+
+    /**
+     * 'Y-m-d' exactly $months calendar months before today (PHP clock — see
+     * nowStamp()), with the day clamped to the target month's length so that
+     * "date <= this" is the same test as tenureMonths() >= $months.
+     */
+    private static function monthsAgoDate(int $months): string
+    {
+        $months = max(0, $months);
+        $y = (int) date('Y');
+        $m = (int) date('n') - $months;
+        $d = (int) date('j');
+        while ($m < 1) {
+            $m += 12;
+            $y--;
+        }
+        $dim = (int) date('t', mktime(0, 0, 0, $m, 1, $y));
+        return sprintf('%04d-%02d-%02d', $y, $m, min($d, $dim));
+    }
+
+    /**
+     * How many players the survey's audience rules currently admit: the
+     * set-based mirror of eligibility() without the schedule/status and "already
+     * completed" checks. Used for the results page's response rate.
+     *
+     * @param array<string, mixed> $surveyRow raw ork_survey row
+     */
+    public function audienceCount(array $surveyRow): int
+    {
+        $where = ['m.penalty_box = 0'];
+
+        if (!empty($surveyRow['audience_active_only'])) {
+            $where[] = 'm.active = 1';
+        }
+
+        $scopeType = (string) ($surveyRow['scope_type'] ?? '');
+        $scopeId   = (int) ($surveyRow['scope_id'] ?? 0);
+        $eventId   = (int) ($surveyRow['audience_event_calendardetail_id'] ?? 0);
+        if ($eventId > 0) {
+            $where[] = 'EXISTS (SELECT 1 FROM ' . DB_PREFIX . 'attendance ae
+                                WHERE ae.mundane_id = m.mundane_id
+                                  AND ae.event_calendardetail_id = ' . $eventId . ')';
+        } elseif ('park' === $scopeType && $scopeId > 0) {
+            $where[] = 'm.park_id = ' . $scopeId;
+        } elseif ('kingdom' === $scopeType && $scopeId > 0) {
+            $where[] = '(m.kingdom_id = ' . $scopeId . ' OR k.parent_kingdom_id = ' . $scopeId . ')';
+        } elseif ('ork' === $scopeType) {
+            $list = self::kingdomIdList($surveyRow['audience_kingdom_ids'] ?? null);
+            if (null !== $list) {
+                $in = implode(', ', array_map('intval', $list));
+                $where[] = '(m.kingdom_id IN (' . $in . ') OR k.parent_kingdom_id IN (' . $in . '))';
+            }
+        } else {
+            return 0;
+        }
+
+        $recentMonths = (int) ($surveyRow['audience_recent_months'] ?? 0);
+        if ($recentMonths > 0) {
+            $where[] = 'EXISTS (SELECT 1 FROM ' . DB_PREFIX . 'attendance ar
+                                WHERE ar.mundane_id = m.mundane_id
+                                  AND ar.date >= \'' . self::monthsAgoDate($recentMonths) . '\''
+                                  . self::attendanceScopeSql($surveyRow, 'ar') . ')';
+        }
+
+        $minTenure = (int) ($surveyRow['audience_min_tenure_months'] ?? 0);
+        if ($minTenure > 0) {
+            // tenureMonths() >= N  <=>  "playing since" <= N months ago (see monthsAgoDate()).
+            $where[] = 'COALESCE(
+                            CASE WHEN m.player_since_override >= \'1000-01-01\' THEN m.player_since_override END,
+                            (SELECT MIN(att.date) FROM ' . DB_PREFIX . 'attendance att
+                             WHERE att.mundane_id = m.mundane_id AND att.date >= \'1988-01-01\')
+                        ) <= \'' . self::monthsAgoDate($minTenure) . '\'';
+        }
+
+        $this->db->Clear();
+        $r = $this->db->DataSet(
+            'SELECT COUNT(*) AS n FROM ' . DB_PREFIX . 'mundane m
+             LEFT JOIN ' . DB_PREFIX . 'kingdom k ON k.kingdom_id = m.kingdom_id
+             WHERE ' . implode(' AND ', $where)
+        );
+        return ($r && $r->Next()) ? (int) $r->n : 0;
     }
 
     /**
@@ -474,11 +677,32 @@ class SurveyResponse
             ];
         }
 
-        $public = $this->publicSurveyFields($survey);
+        if (!$preview) {
+            // Completion-rate denominator (review #28): one keyed, timestamp-free
+            // row the first time an eligible player opens the runner, whether or
+            // not the survey allows resuming. IGNORE makes a reload a no-op.
+            $this->db->Clear();
+            $this->db->Execute(
+                'INSERT IGNORE INTO ' . DB_PREFIX . 'survey_start (survey_id, mundane_id)
+                 VALUES (' . $surveyId . ', ' . $uid . ')'
+            );
+        }
 
         $pages = $this->loadStructure($surveyId);
+
+        // Every image this view shows, resolved in ONE query (review #38).
+        $imageIds = [(int) ($survey['welcome_image_id'] ?? 0), (int) ($survey['thanks_image_id'] ?? 0)];
+        foreach ($pages as $page) {
+            foreach ($page['questions'] as $q) {
+                $imageIds[] = (int) ($q['image_id'] ?? 0);
+            }
+        }
+        $imageUrls = $this->imageUrlMap($imageIds);
+
+        $public = $this->publicSurveyFields($survey, $imageUrls);
+
         $seed  = (int) crc32($surveyId . '-' . $uid);
-        $pages = $this->renderPagesForRespondent($pages, $seed);
+        $pages = $this->renderPagesForRespondent($pages, $seed, $imageUrls);
 
         $draft = $preview ? null : $this->draftLoad($surveyId, $uid);
         if ($draft && empty($survey['allow_resume'])) {
@@ -501,7 +725,9 @@ class SurveyResponse
      *
      * True for a draft (nobody outside the builder may see unpublished copy) and
      * for a player the audience never covered — those get "Survey not found."
-     * rather than a survey they may not answer.
+     * rather than a survey they may not answer. For an event-audience survey the
+     * audience is the home scope PLUS anyone who attended the event, so a
+     * visiting attendee who already answered still gets "already completed".
      *
      * @param array<string, mixed> $survey raw ork_survey row
      */
@@ -514,18 +740,34 @@ class SurveyResponse
             return true;
         }
         $player = $this->player($uid);
-        return null === $player || !$this->matchesScope($survey, $player);
+        if (null === $player) {
+            return true;
+        }
+        if ($this->matchesScope($survey, $player)) {
+            return false;
+        }
+        $eventId = (int) ($survey['audience_event_calendardetail_id'] ?? 0);
+        return !($eventId > 0 && $this->attendedEvent($uid, $eventId));
     }
 
     /**
-     * Presentation fields only — no audience rules, no schedule internals, no
-     * created_by, nothing a respondent has no business seeing.
+     * Presentation fields only — no schedule internals, no created_by, nothing
+     * a respondent has no business seeing. `scope_label` names who runs the
+     * survey in the consent copy ("The {scope} officers…"). Of the audience
+     * rules only the two the contract lists for get/definition ride along
+     * (recent-attendance months and the event occurrence id): both describe
+     * who was invited, not who answered, and an eligible respondent already
+     * satisfies them.
      *
      * @param  array<string, mixed> $survey
+     * @param  array<int, string>   $imageUrls image_id => URL, from imageUrlMap()
      * @return array<string, mixed>
      */
-    private function publicSurveyFields(array $survey): array
+    private function publicSurveyFields(array $survey, array $imageUrls): array
     {
+        $welcomeImage = (int) ($survey['welcome_image_id'] ?? 0);
+        $thanksImage  = (int) ($survey['thanks_image_id'] ?? 0);
+
         return [
             'survey_id'         => (int) $survey['survey_id'],
             'slug'              => (string) $survey['slug'],
@@ -533,13 +775,19 @@ class SurveyResponse
             'description'       => (string) ($survey['description'] ?? ''),
             'welcome_html'      => $this->markdown($survey['welcome_md'] ?? null),
             'thanks_html'       => $this->thanksHtml($survey),
-            'welcome_image_url' => $this->imageUrlById($survey['welcome_image_id'] ?? null),
-            'thanks_image_url'  => $this->imageUrlById($survey['thanks_image_id'] ?? null),
+            'welcome_image_url' => $imageUrls[$welcomeImage] ?? null,
+            'thanks_image_url'  => $imageUrls[$thanksImage] ?? null,
             'show_progress'     => (int) $survey['show_progress'],
             'allow_resume'      => (int) $survey['allow_resume'],
             'data_gate_enabled' => (int) $survey['data_gate_enabled'],
             'accent_color'      => $survey['accent_color'] ?: null,
             'close_at'          => $survey['close_at'] ?: null,
+            'scope_type'        => (string) $survey['scope_type'],
+            'scope_label'       => $this->scopeLabel((string) $survey['scope_type'], (int) $survey['scope_id']),
+            'audience_recent_months'           => (int) ($survey['audience_recent_months'] ?? 0),
+            'audience_event_calendardetail_id' => (int) ($survey['audience_event_calendardetail_id'] ?? 0) > 0
+                ? (int) $survey['audience_event_calendardetail_id']
+                : null,
         ];
     }
 
@@ -549,9 +797,10 @@ class SurveyResponse
      * resumed draft does not reshuffle underneath them.
      *
      * @param  list<array<string, mixed>> $pages
+     * @param  array<int, string>         $imageUrls image_id => URL, from imageUrlMap()
      * @return list<array<string, mixed>>
      */
-    private function renderPagesForRespondent(array $pages, int $seed): array
+    private function renderPagesForRespondent(array $pages, int $seed, array $imageUrls): array
     {
         $out = [];
         foreach ($pages as $page) {
@@ -559,14 +808,14 @@ class SurveyResponse
             foreach ($page['questions'] as $q) {
                 $options = $q['options'];
                 if (!empty($q['settings']['randomize'])) {
-                    $options = self::seededShuffle($options, $seed ^ (int) $q['question_id']);
+                    $options = self::shuffleOptions($options, $seed ^ (int) $q['question_id']);
                 }
                 $questions[] = [
                     'question_id'         => (int) $q['question_id'],
                     'type'                => $q['type'],
                     'prompt'              => $q['prompt'],
                     'help_html'           => $this->markdown($q['help_md']),
-                    'image_url'           => $this->imageUrlById($q['image_id']),
+                    'image_url'           => $imageUrls[(int) $q['image_id']] ?? null,
                     'required'            => (int) $q['required'],
                     'settings'            => $q['settings'],
                     'show_if_question_id' => $q['show_if_question_id'],
@@ -584,6 +833,29 @@ class SurveyResponse
             ];
         }
         return $out;
+    }
+
+    /**
+     * Respondent order for a question's options when `randomize` is on: the
+     * ordinary options are shuffled with the respondent's seed and every
+     * "Other (please specify)" option stays anchored at the end, in its
+     * authored order (review #21). PURE and deterministic for a given seed.
+     *
+     * @param  list<array<string, mixed>> $options
+     * @return list<array<string, mixed>>
+     */
+    public static function shuffleOptions(array $options, int $seed): array
+    {
+        $movable = [];
+        $anchored = [];
+        foreach ($options as $opt) {
+            if (!empty($opt['is_other'])) {
+                $anchored[] = $opt;
+            } else {
+                $movable[] = $opt;
+            }
+        }
+        return array_merge(self::seededShuffle($movable, $seed), $anchored);
     }
 
     /**
@@ -967,6 +1239,7 @@ class SurveyResponse
         $this->db->Execute('START TRANSACTION');
 
         $this->db->Clear();
+        error_clear_last(); // so rollback() reports THIS statement's PDO warning, not an older one
         $ok = $this->exec(
             'INSERT INTO ' . DB_PREFIX . 'survey_response
              (survey_id, consent, mundane_id, kingdom_id, tenure_months, is_test, started_at, submitted_at, duration_seconds)
@@ -981,14 +1254,14 @@ class SurveyResponse
                      ' . self::sqlInt($row['duration_seconds']) . ')'
         );
         if (!$ok) {
-            return $this->rollback('Your response could not be saved.');
+            return $this->rollback('Your response could not be saved.', 'insert_response', $surveyId, $uid);
         }
 
         $this->db->Clear();
         $ir = $this->db->DataSet('SELECT LAST_INSERT_ID() AS new_id');
         $responseId = ($ir && $ir->Next()) ? (int) $ir->new_id : 0;
         if ($responseId <= 0) {
-            return $this->rollback('Your response could not be saved.');
+            return $this->rollback('Your response could not be saved.', 'response_id', $surveyId, $uid);
         }
 
         if ($check['rows']) {
@@ -1005,12 +1278,13 @@ class SurveyResponse
                         . self::sqlNum($r['value_num'] ?? null) . ')';
                 }
                 $this->db->Clear();
+                error_clear_last();
                 if (!$this->exec(
                     'INSERT INTO ' . DB_PREFIX . 'survey_answer
                      (response_id, question_id, option_id, row_option_id, value_text, value_num)
                      VALUES ' . implode(', ', $values)
                 )) {
-                    return $this->rollback('Your answers could not be saved.');
+                    return $this->rollback('Your answers could not be saved.', 'insert_answers', $surveyId, $uid);
                 }
             }
         }
@@ -1019,11 +1293,12 @@ class SurveyResponse
             // The double-submission lock. A duplicate here means a concurrent
             // submit won the race; roll back rather than store a second response.
             $this->db->Clear();
+            error_clear_last();
             if (!$this->exec(
                 'INSERT INTO ' . DB_PREFIX . 'survey_participation (survey_id, mundane_id)
                  VALUES (' . $surveyId . ', ' . $uid . ')'
             )) {
-                return $this->rollback('You have already completed this survey.');
+                return $this->rollback('You have already completed this survey.', 'insert_participation', $surveyId, $uid);
             }
 
             $this->db->Clear();
@@ -1052,11 +1327,49 @@ class SurveyResponse
         ];
     }
 
-    /** @return array<string, mixed> */
-    private function rollback(string $error): array
+    /**
+     * Roll the submit transaction back and leave a server-side trace of WHICH
+     * statement failed (review #39): survey, player, stage and the database's
+     * own error text when PDO raised one. The respondent still sees only the
+     * generic message.
+     *
+     * Logged twice on purpose — logtrace() for the ORK trace when TRACE is on,
+     * and one structured error_log line because TRACE is usually off in
+     * production. Quoted literals in the DB message are redacted (identifiers
+     * such as column and key names are kept) so an answer fragment quoted by
+     * the server can never land in a log line beside a player id.
+     *
+     * @return array<string, mixed>
+     */
+    private function rollback(string $error, string $stage, int $surveyId, int $uid): array
     {
+        $dbError = '';
+        $last = error_get_last();
+        if (is_array($last) && isset($last['message']) && false !== strpos((string) $last['message'], 'SQLSTATE')) {
+            $dbError = (string) preg_replace_callback(
+                "/'([^']*)'/",
+                static function (array $m): string {
+                    return preg_match('/^[A-Za-z0-9_.]{1,64}$/', $m[1]) ? $m[0] : "'?'";
+                },
+                (string) $last['message']
+            );
+            $dbError = mb_substr(trim($dbError), 0, 500);
+        }
+
         $this->db->Clear();
         $this->db->Execute('ROLLBACK');
+
+        $trace = [
+            'survey_id' => (int) $surveyId,
+            'uid'       => (int) $uid,
+            'stage'     => $stage,
+            'db_error'  => $dbError,
+        ];
+        if (function_exists('logtrace')) {
+            logtrace('SurveyResponse::submit', $trace);
+        }
+        error_log('[survey] submit rolled back ' . json_encode($trace, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+
         return ['Status' => 1, 'Error' => $error];
     }
 
@@ -1087,7 +1400,11 @@ class SurveyResponse
             case 'completed':
                 return 'You have already completed this survey.';
             case 'inactive':
-                return 'This survey is open to active players only.';
+                return 'This survey is not open to retired accounts.';
+            case 'event_attendance':
+                return 'This survey is open to players who attended the event.';
+            case 'recent_attendance':
+                return 'This survey is open to players who have attended recently.';
             case 'tenure':
                 return 'This survey is open to players who have been playing longer.';
             case 'banned':
@@ -1109,13 +1426,21 @@ class SurveyResponse
      */
     public function availableFor(int $uid): array
     {
-        $rows = $this->candidateSurveys($uid, false, 0);
-        $out = [];
-        foreach ($rows as $survey) {
-            if (!$this->eligibility($survey, $uid)['eligible']) {
-                continue;
+        $eligible = [];
+        foreach ($this->candidateSurveys($uid, false, 0) as $survey) {
+            if ($this->eligibility($survey, $uid)['eligible']) {
+                $eligible[] = $survey;
             }
-            $out[] = $this->widgetRow($survey, $uid);
+        }
+        if (!$eligible) {
+            return [];
+        }
+
+        // Scope names in at most two queries, not one per survey (review #38).
+        $labels = $this->scopeLabels($eligible);
+        $out = [];
+        foreach ($eligible as $survey) {
+            $out[] = $this->widgetRow($survey, $uid, $labels[(int) $survey['survey_id']] ?? null);
         }
         return $out;
     }
@@ -1124,9 +1449,9 @@ class SurveyResponse
      * The one banner-flagged survey to promote to this player, or null.
      *
      * A handful of candidates are fetched rather than one, because the SQL only
-     * pre-filters (scope, schedule, dismissal, participation) — active-only,
-     * tenure and the ork-scope kingdom list are decided by eligibility() so that
-     * every surface agrees with the runner.
+     * pre-filters (scope or event attendance, schedule, dismissal, participation)
+     * — active-only, tenure, recent attendance and the ork-scope kingdom list are
+     * decided by eligibility() so that every surface agrees with the runner.
      *
      * @return ?array<string, mixed>
      */
@@ -1158,7 +1483,9 @@ class SurveyResponse
 
     /**
      * Open surveys whose scope could reach this player, already excluding ones
-     * they finished (and, for the banner, ones they dismissed).
+     * they finished (and, for the banner, ones they dismissed). An event-audience
+     * survey reaches anyone with attendance at that event, wherever they live,
+     * so it is a candidate outside the home scope too (review #12).
      *
      * @return list<array<string, mixed>>
      */
@@ -1185,6 +1512,11 @@ class SurveyResponse
                         s.scope_type = \'ork\'
                      OR (s.scope_type = \'kingdom\' AND s.scope_id IN (' . $kingdomList . '))
                      OR (s.scope_type = \'park\' AND s.scope_id = ' . $parkId . ')
+                     OR (s.audience_event_calendardetail_id > 0 AND EXISTS (
+                            SELECT 1 FROM ' . DB_PREFIX . 'attendance a
+                            WHERE a.mundane_id = ' . $uid . '
+                              AND a.event_calendardetail_id = s.audience_event_calendardetail_id
+                        ))
                   )
                   AND NOT EXISTS (
                         SELECT 1 FROM ' . DB_PREFIX . 'survey_participation p
@@ -1215,16 +1547,17 @@ class SurveyResponse
 
     /**
      * @param  array<string, mixed> $survey
+     * @param  ?string              $scopeLabel pre-resolved label (availableFor batches them), or null to look it up
      * @return array{survey_id: int, title: string, description: string, scope_label: string, close_at: ?string, in_progress: bool}
      */
-    private function widgetRow(array $survey, int $uid): array
+    private function widgetRow(array $survey, int $uid, ?string $scopeLabel = null): array
     {
         return [
             'survey_id'   => (int) $survey['survey_id'],
             'slug'        => (string) $survey['slug'],
             'title'       => (string) $survey['title'],
             'description' => (string) ($survey['description'] ?? ''),
-            'scope_label' => $this->scopeLabel((string) $survey['scope_type'], (int) $survey['scope_id']),
+            'scope_label' => $scopeLabel ?? $this->scopeLabel((string) $survey['scope_type'], (int) $survey['scope_id']),
             'close_at'    => $survey['close_at'] ?: null,
             'in_progress' => !empty($survey['allow_resume']) && $this->hasDraft((int) $survey['survey_id'], $uid),
         ];
@@ -1238,6 +1571,68 @@ class SurveyResponse
              WHERE survey_id = ' . (int) $surveyId . ' AND mundane_id = ' . (int) $uid . ' LIMIT 1'
         );
         return (bool) ($r && $r->Next());
+    }
+
+    /**
+     * scopeLabel() for many surveys at once: one kingdom and one park query.
+     *
+     * @param  list<array<string, mixed>> $surveys raw ork_survey rows
+     * @return array<int, string> survey_id => label
+     */
+    private function scopeLabels(array $surveys): array
+    {
+        $kIds = [];
+        $pIds = [];
+        foreach ($surveys as $sv) {
+            $id = (int) $sv['scope_id'];
+            if ('kingdom' === $sv['scope_type'] && $id > 0) {
+                $kIds[$id] = $id;
+            } elseif ('park' === $sv['scope_type'] && $id > 0) {
+                $pIds[$id] = $id;
+            }
+        }
+        $kNames = [];
+        if ($kIds) {
+            $this->db->Clear();
+            $r = $this->db->DataSet(
+                'SELECT kingdom_id, name FROM ' . DB_PREFIX . 'kingdom
+                 WHERE kingdom_id IN (' . implode(', ', array_map('intval', $kIds)) . ')'
+            );
+            while ($r && $r->Next()) {
+                $kNames[(int) $r->kingdom_id] = (string) $r->name;
+            }
+        }
+        $pNames = [];
+        if ($pIds) {
+            $this->db->Clear();
+            $r = $this->db->DataSet(
+                'SELECT park_id, name FROM ' . DB_PREFIX . 'park
+                 WHERE park_id IN (' . implode(', ', array_map('intval', $pIds)) . ')'
+            );
+            while ($r && $r->Next()) {
+                $pNames[(int) $r->park_id] = (string) $r->name;
+            }
+        }
+
+        $out = [];
+        foreach ($surveys as $sv) {
+            $id = (int) $sv['scope_id'];
+            switch ((string) $sv['scope_type']) {
+                case 'ork':
+                    $label = 'All of Amtgard';
+                    break;
+                case 'kingdom':
+                    $label = $kNames[$id] ?? 'Kingdom';
+                    break;
+                case 'park':
+                    $label = $pNames[$id] ?? 'Park';
+                    break;
+                default:
+                    $label = '';
+            }
+            $out[(int) $sv['survey_id']] = $label;
+        }
+        return $out;
     }
 
     private function scopeLabel(string $scopeType, int $scopeId): string
@@ -1310,27 +1705,44 @@ class SurveyResponse
         return '<p>' . nl2br(htmlspecialchars((string) $md, ENT_QUOTES, 'UTF-8')) . '</p>';
     }
 
-    /** @param mixed $imageId */
-    private function imageUrlById($imageId): ?string
+    /**
+     * Resolve many survey images in ONE query.
+     *
+     * @param  list<int|null> $imageIds (zeros/nulls/duplicates are ignored)
+     * @return array<int, string> image_id => public URL
+     */
+    private function imageUrlMap(array $imageIds): array
     {
-        $id = (int) $imageId;
-        if ($id <= 0) {
-            return null;
+        $ids = [];
+        foreach ($imageIds as $id) {
+            $id = (int) $id;
+            if ($id > 0) {
+                $ids[$id] = $id;
+            }
         }
+        if (!$ids) {
+            return [];
+        }
+
         $this->db->Clear();
         $r = $this->db->DataSet(
-            'SELECT image_id, ext FROM ' . DB_PREFIX . 'survey_image WHERE image_id = ' . $id . ' LIMIT 1'
+            'SELECT image_id, ext, token FROM ' . DB_PREFIX . 'survey_image
+             WHERE image_id IN (' . implode(', ', array_map('intval', $ids)) . ')'
         );
-        if (!$r || !$r->Next()) {
-            return null;
-        }
-        $row = ['image_id' => (int) $r->image_id, 'ext' => (string) $r->ext];
-
         $s = $this->survey();
-        if ($s && method_exists($s, 'imageUrl')) {
-            return (string) $s->imageUrl($row);
+        $out = [];
+        if ($r) {
+            while ($r->Next()) {
+                $row = ['image_id' => (int) $r->image_id, 'ext' => (string) $r->ext, 'token' => (string) $r->token];
+                if ($s && method_exists($s, 'imageUrl')) {
+                    $out[$row['image_id']] = (string) $s->imageUrl($row);
+                } else {
+                    $out[$row['image_id']] = HTTP_SURVEY_IMAGE . sprintf('%06d', $row['image_id'])
+                        . ('' !== $row['token'] ? '-' . $row['token'] : '') . '.' . $row['ext'];
+                }
+            }
         }
-        return HTTP_SURVEY_IMAGE . sprintf('%06d', $row['image_id']) . '.' . $row['ext'];
+        return $out;
     }
 
     /** @param array<string, mixed> $survey */

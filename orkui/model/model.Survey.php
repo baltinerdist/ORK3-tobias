@@ -158,6 +158,27 @@ class Model_Survey extends Model
         return $this->_survey()->optionSet($questionId, $role, $options);
     }
 
+    /** Server-side copy of one question (and its options) in one transaction. */
+    public function question_duplicate(int $questionId): array
+    {
+        return $this->_survey()->questionDuplicate($questionId);
+    }
+
+    /** Event occurrences in the survey's scope, for the builder's event-audience picker. */
+    public function event_options(array $surveyRow): array
+    {
+        return $this->_survey()->eventOptions($surveyRow);
+    }
+
+    /**
+     * Append one row to ork_survey_activity as the session user (the actor is
+     * set in _survey()). $detail is stored as JSON; null stores no detail.
+     */
+    public function log_activity(int $surveyId, string $action, ?array $detail = null): void
+    {
+        $this->_survey()->logActivity($surveyId, $action, $detail);
+    }
+
     public function image_add(int $surveyId, int $uid, string $tmpPath, string $clientName): array
     {
         return $this->_survey()->imageAdd($surveyId, $uid, $tmpPath, $clientName);
@@ -260,6 +281,29 @@ class Model_Survey extends Model
     }
 
     // -----------------------------------------------------------------------
+    // CSRF — per-session token for SurveyAjax POST mutations (X-CSRF-Token)
+    // -----------------------------------------------------------------------
+
+    /** Mint the session's survey CSRF token once, then keep returning it. */
+    public function csrf_token(): string
+    {
+        $token = $this->session->survey_csrf;
+        if (!is_string($token) || strlen($token) !== 64) {
+            $token = bin2hex(random_bytes(32));
+            $this->session->survey_csrf = $token;
+        }
+        return $token;
+    }
+
+    /** True when $presented matches the session token. Never mints one. */
+    public function csrf_valid($presented): bool
+    {
+        $token = $this->session->survey_csrf;
+        return is_string($token) && strlen($token) === 64
+            && is_string($presented) && hash_equals($token, $presented);
+    }
+
+    // -----------------------------------------------------------------------
     // SurveyReport — aggregation, rows, CSV
     // -----------------------------------------------------------------------
 
@@ -273,7 +317,11 @@ class Model_Survey extends Model
         return $this->_report()->aggregate($surveyId, $filters);
     }
 
-    /** Composite for SurveyAjax/results: summary + per-question aggregation in one call. */
+    /**
+     * Composite for SurveyAjax/results: summary + per-question aggregation in
+     * one call. The summary already carries audience and response_rate (null
+     * under a narrowing filter), so nothing is filled in here.
+     */
     public function results(int $surveyId, array $filters): array
     {
         $out = $this->_report()->aggregate($surveyId, $filters);
@@ -291,13 +339,34 @@ class Model_Survey extends Model
         return $this->_report()->csv($surveyId, $filters);
     }
 
+    /** Emit the CSV (header, then 500-row batches) through $emit instead of one string. */
+    public function csv_stream(int $surveyId, array $filters, callable $emit): void
+    {
+        $this->_report()->csvStream($surveyId, $filters, $emit);
+    }
+
+    /** Kingdoms present in the survey's non-test responses, with counts (results filter). */
+    public function kingdoms_present(int $surveyId): array
+    {
+        return $this->_report()->kingdomsPresent($surveyId);
+    }
+
+    /** The report's filter shape, so a controller can read the consent filter it will apply. */
+    public function normalize_filters($filters): array
+    {
+        return SurveyReport::normalizeFilters($filters);
+    }
+
     // -----------------------------------------------------------------------
     // Factories
     // -----------------------------------------------------------------------
 
+    /** Every Survey instance acts as the session user, so writes carry updated_by and log activity. */
     private function _survey(): Survey
     {
-        return new Survey();
+        $survey = new Survey();
+        $survey->setActor(isset($this->session->user_id) ? (int) $this->session->user_id : 0);
+        return $survey;
     }
 
     private function _response(): SurveyResponse

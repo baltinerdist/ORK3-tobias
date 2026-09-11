@@ -16,10 +16,24 @@
  */
 class Controller_SurveyAjax extends Controller
 {
+    /**
+     * Read-only actions exempt from the CSRF check. Every other action mutates
+     * state (or, for submit/draft_save, binds identity and spends the player's
+     * one response), so it must present the session token in X-CSRF-Token — a
+     * header a cross-site form cannot set (#43). Exactly the contract's list:
+     * `types`, though a pure read, is not on it, so the builder sends the
+     * token with it like every other builder call.
+     */
+    private const CSRF_EXEMPT = [
+        'available', 'definition', 'get', 'scopes', 'results', 'rows', 'help',
+        'preview_md', 'dismiss_banner', 'event_options',
+    ];
+
     public function __construct($call = null, $id = null)
     {
         parent::__construct($call, $id);
         $this->load_model('Survey');
+        $this->requireCsrf(strtolower((string) $this->method));
     }
 
     // -----------------------------------------------------------------------
@@ -39,6 +53,28 @@ class Controller_SurveyAjax extends Controller
             $this->jsonOut(['status' => 5, 'error' => 'Not logged in.']);
         }
         return (int) $this->session->user_id;
+    }
+
+    /**
+     * Refuse a non-exempt action whose X-CSRF-Token does not match the session
+     * token. A logged-out caller is left to the action's requireLogin(), so it
+     * still gets status 5 rather than a token error.
+     */
+    private function requireCsrf(string $action): void
+    {
+        if (in_array($action, self::CSRF_EXEMPT, true)) {
+            return;
+        }
+        if (!isset($this->session->user_id) || (int) $this->session->user_id <= 0) {
+            return;
+        }
+        if (!$this->Survey->csrf_valid($_SERVER['HTTP_X_CSRF_TOKEN'] ?? null)) {
+            $this->jsonOut([
+                'status' => 3,
+                'csrf'   => true,
+                'error'  => 'Your security token expired. Reload the page and try again.',
+            ]);
+        }
     }
 
     /** Loads the survey by id and checks canManage against ITS OWN scope. */
@@ -219,6 +255,7 @@ class Controller_SurveyAjax extends Controller
         foreach ([
             'Title', 'Description', 'WelcomeMd', 'WelcomeImageId', 'ThanksMd', 'ThanksImageId',
             'OpenAt', 'CloseAt', 'AudienceActiveOnly', 'AudienceMinTenureMonths',
+            'AudienceRecentMonths', 'AudienceEventCalendardetailId',
             'DataGateEnabled', 'ShowBanner', 'ShowProgress', 'AllowResume', 'AccentColor',
         ] as $key) {
             if (array_key_exists($key, $_POST)) {
@@ -234,6 +271,19 @@ class Controller_SurveyAjax extends Controller
             $this->envelopeFail($r);
         }
         $this->jsonOut(['status' => 0, 'survey' => $r['Survey']]);
+    }
+
+    /**
+     * Event occurrences in the survey's scope (12 months back to 6 ahead) for
+     * the builder's "attended event" audience picker.
+     */
+    public function event_options($p = null)
+    {
+        $uid      = $this->requireLogin();
+        $surveyId = (int) ($_POST['SurveyId'] ?? 0);
+        $survey   = $this->requireManage($uid, $surveyId);
+
+        $this->jsonOut(['status' => 0, 'events' => $this->Survey->event_options($survey)]);
     }
 
     public function set_status($p = null)
@@ -384,6 +434,29 @@ class Controller_SurveyAjax extends Controller
             $this->envelopeFail($r);
         }
         $this->jsonOut(['status' => 0, 'question' => $this->renderQuestion($r['Question'])]);
+    }
+
+    /**
+     * Copy one question (prompt, help, image, required, settings, show-if and
+     * options) to just after itself in one server-side transaction, replacing
+     * the builder's serial add/update/option_set chain (#15).
+     */
+    public function question_duplicate($p = null)
+    {
+        $uid        = $this->requireLogin();
+        $questionId = (int) ($_POST['QuestionId'] ?? 0);
+        $survey     = $this->requireManageRow($uid, $this->Survey->survey_for_question($questionId));
+        $this->requireUnlocked($survey);
+
+        $r = $this->Survey->question_duplicate($questionId);
+        if ((int) $r['Status'] !== 0) {
+            $this->envelopeFail($r);
+        }
+        $this->jsonOut([
+            'status'   => 0,
+            'question' => $this->renderQuestion($r['Question']),
+            'order'    => array_map('intval', $r['Order'] ?? []),
+        ]);
     }
 
     public function question_delete($p = null)
@@ -590,11 +663,19 @@ class Controller_SurveyAjax extends Controller
         $surveyId = (int) ($_POST['SurveyId'] ?? 0);
         $this->requireManage($uid, $surveyId);
 
-        $filters = $this->jsonField('Filters', []);
+        $filters = $this->Survey->normalize_filters($this->jsonField('Filters', []));
         $offset  = (int) ($_POST['Offset'] ?? 0);
         $limit   = (int) ($_POST['Limit'] ?? 100);
 
         $out = $this->Survey->rows($surveyId, $filters, $offset, $limit);
+
+        // Audit every read of individual rows that can carry identity or
+        // demographics (#6); an anonymous-only view carries neither. The detail
+        // is the filter set alone (no offset/limit) so an infinite-scrolling
+        // table coalesces into one entry instead of one per 100-row page.
+        if ($filters['consent'] !== 'anonymous') {
+            $this->Survey->log_activity($surveyId, 'rows_view', $filters);
+        }
 
         $this->jsonOut(['status' => 0, 'total' => $out['total'], 'columns' => $out['columns'], 'rows' => $out['rows']]);
     }
