@@ -155,6 +155,36 @@ final class SurveySharingCreditTest extends TestCase
         $this->assertFalse($list['Rows']['ork'][0]['CanResults'], 'ORK results never reach parks');
     }
 
+    /** §1: a shared row's response count reaches the page only under results_share = 'all'. */
+    public function testSharedRowsCarryTheResponseCountOnlyWhenResultsAreSharedWithEveryone(): void
+    {
+        $kings = $this->openSurvey($this->kOfficer, 'kingdom', $this->k, ['results_share' => 'scoped']);
+        $mineP = $this->openSurvey($this->pOfficerA, 'park', $this->parkA);
+        $this->answer($kings, $this->player('cnt1', $this->parkB, $this->k), 'full');
+        $this->answer($mineP, $this->player('cnt2', $this->parkA, $this->k), 'anonymous');
+        $rowFor = function (int $sid): array {
+            $list = (new Survey())->listForScope($this->pOfficerA, 'park', $this->parkA);
+            foreach (array_merge(...array_values($list['Rows'])) as $r) {
+                if ((int) $r['survey_id'] === $sid) {
+                    return $r;
+                }
+            }
+            $this->fail('survey ' . $sid . ' not listed');
+        };
+
+        $shared = $rowFor($kings);
+        $this->assertSame('shared', $shared['Access']);
+        $this->assertNull($shared['ResponseCount'], 'scoped: no count');
+        $this->assertNull($shared['response_count'], 'and not the raw column either');
+        $this->assertSame(1, $rowFor($mineP)['ResponseCount'], 'a managed row keeps its count');
+
+        (new Survey())->update($kings, ['ResultsShare' => 'all']);
+        $this->assertSame(1, $rowFor($kings)['ResponseCount'], "'all': the count is shown");
+
+        (new Survey())->update($kings, ['ResultsShare' => 'none']);
+        $this->assertNull($rowFor($kings)['ResponseCount'], "'none': no count");
+    }
+
     public function testListForScopeRefusesAnOrgTheViewerCannotActFor(): void
     {
         $list = (new Survey())->listForScope($this->pOfficerA, 'park', $this->parkB);

@@ -26,7 +26,11 @@ foreach ($Surveys as $_s) {
 	if ($_s['status'] === 'draft') {
 		$_drafts++;
 	}
-	$_responses += (int) $_s['ResponseCount'];
+	// Responses to surveys this viewer manages only; an inherited (shared)
+	// survey's responses belong to its owner (sharing spec §1).
+	if (($_s['Access'] ?? 'manage') === 'manage') {
+		$_responses += (int) $_s['ResponseCount'];
+	}
 }
 
 $_scope_icon = 'fa-globe';
@@ -466,21 +470,33 @@ html[data-theme="dark"] .sv-toast { background: #1a202c; border: 1px solid #4a55
 	// sorts live-first, then by close date soonest-first with no close date last.
 	$_status_rank = $_status_rank_map[$_status] ?? 9;
 	$_close_key   = !empty($_row['close_at']) ? date('Y-m-d H:i:s', strtotime((string) $_row['close_at'])) : '9999-12-31 23:59:59';
+	// Inherited rows (sharing spec §1) get none of the manager's actions, and
+	// their count arrives as null unless results_share = 'all' (Survey::listForScope).
+	$_shared = ($_row['Access'] ?? 'manage') === 'shared';
 ?>
 					<tr role="row" data-sv-status="<?=htmlspecialchars($_status)?>" data-sv-slug="<?=htmlspecialchars((string)$_row['slug'])?>">
 						<td role="cell" class="sv-survey-title" data-order="<?=htmlspecialchars(mb_strtolower((string)$_row['title']))?>">
+<?php if ($_shared): ?>
+							<?=htmlspecialchars((string)$_row['title'])?>
+<?php else: ?>
 							<a href="<?=UIR?>Survey/build/<?=$_sid?>"><?=htmlspecialchars((string)$_row['title'])?></a>
+<?php endif; ?>
 							<div class="sv-survey-meta">Created <?=date('M j, Y', strtotime((string)$_row['created_at']))?></div>
 						</td>
 						<td role="cell" data-label="Scope"><?=htmlspecialchars($_row['scope_type'] === 'ork' ? 'All of Amtgard' : (string)$_row['ScopeName'])?></td>
 						<td role="cell" data-label="Status" data-order="<?=$_status_rank?>" data-search="<?=htmlspecialchars($_status)?>"><span class="sv-status-pill sv-status-pill-<?=htmlspecialchars($_status)?>"><?=$_label?></span></td>
+<?php if ($_shared && ($_row['results_share'] ?? 'none') !== 'all'): ?>
+						<td role="cell" class="dt-right" data-label="Responses" data-order="-1">&mdash;</td>
+<?php else: ?>
 						<td role="cell" class="dt-right" data-label="Responses" data-order="<?=(int)$_row['ResponseCount']?>"><?=number_format((int)$_row['ResponseCount'])?></td>
+<?php endif; ?>
 						<td role="cell" data-label="Opened / Closes" data-order="<?=$_close_key?>"><span><span class="sv-nowrap"><?=$_opened?></span> &rarr; <span class="sv-nowrap"><?=$_closes?></span></span></td>
 <?php /* Each label is in its own span: the full table shows the buttons
 	icon-only (the span is visually hidden, so it stays the accessible name)
 	and data-tip names the action on hover and keyboard focus. */ ?>
 						<td role="cell" class="sv-row-actions-cell">
 							<div class="sv-row-actions">
+<?php if (!$_shared): ?>
 								<a class="sv-row-btn" href="<?=UIR?>Survey/build/<?=$_sid?>" data-tip="Build: edit the questions and pages"><i class="fas fa-hammer" aria-hidden="true"></i> <span class="sv-row-btn-label">Build</span></a>
 								<a class="sv-row-btn" href="<?=UIR?>Survey/results/<?=$_sid?>" data-tip="Results: charts, responses and export"><i class="fas fa-chart-bar" aria-hidden="true"></i> <span class="sv-row-btn-label">Results</span></a>
 								<a class="sv-row-btn" href="<?=UIR?>Survey/take/<?=$_sid?>/preview" target="_blank" rel="noopener" data-tip="Preview: take the survey without saving (opens a new tab)"><i class="fas fa-eye" aria-hidden="true"></i> <span class="sv-row-btn-label">Preview</span></a>
@@ -489,6 +505,7 @@ html[data-theme="dark"] .sv-toast { background: #1a202c; border: 1px solid #4a55
 <?php if ($_status !== 'archived'): ?>
 								<button type="button" class="sv-row-btn sv-archive-btn" data-sid="<?=$_sid?>" data-title="<?=htmlspecialchars((string)$_row['title'])?>" data-tip="Archive: stop collecting responses and hide it"><i class="fas fa-box-archive" aria-hidden="true"></i> <span class="sv-row-btn-label">Archive</span></button>
 <?php endif; ?>
+<?php endif; /* !$_shared */ ?>
 							</div>
 						</td>
 					</tr>

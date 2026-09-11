@@ -596,6 +596,12 @@ class Survey
             $row['ResultsLabel']   = $acc['label'] ?? '';
             $row['CreditGrantor']  = $grantor !== null ? ucfirst($grantor['type']) . '/' . $grantor['id'] : null;
             $row['CreditOn']       = $grantor !== null && isset($keys[$sid . ':' . $grantor['type'] . ':' . $grantor['id']]);
+            // §1: a shared row shows its response count only when the owner
+            // shares results with everyone; otherwise it never leaves here.
+            if (!$manage && (string) ($row['results_share'] ?? 'none') !== 'all') {
+                $row['ResponseCount']  = null;
+                $row['response_count'] = null;
+            }
 
             $out['Rows'][(string) $row['scope_type']][] = $row;
         }
