@@ -1346,3 +1346,67 @@ html[data-theme="dark"] #theme_container .rp-header-actions a.rp-btn-ghost {
 html[data-theme="dark"] #theme_container .rp-header-actions a.rp-btn-ghost:hover {
     color: #fff;
 }
+
+/* ---- Modal (shared: list page, builder credit panel) ----
+   Non-native modal shell (no alert/confirm/prompt anywhere). Moved verbatim
+   from Survey_index.tpl's inline <style> so the builder's Attendance credit
+   panel (_survey_credit_modal.tpl) wears the same box. z-index comes from the
+   shared --z-* scale in tokens.css, so these sit above the site-wide overlays
+   (nav 9999, What's New 10000) like every other modal. */
+.sv-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: var(--z-modal-backdrop, 10040); align-items: center; justify-content: center; padding: 16px; }
+.sv-overlay.sv-open { display: flex; }
+.sv-modal { position: relative; z-index: var(--z-modal, 10100); background: #fff; border-radius: 8px; padding: 18px 20px; box-sizing: border-box; max-width: 440px; width: 100%; box-shadow: 0 4px 24px rgba(0,0,0,0.18); max-height: 82vh; overflow-y: auto; }
+/* .sv-scope on the panel already resets the global h1–h6 pill box in both
+   themes (above); this only re-states the type scale and spacing, and drops
+   orkui.css's white text-shadow that the shared reset does not cover. */
+.sv-modal > .sv-modal-title { margin: 0 0 12px; font-size: 14px; font-weight: 700; color: #2d3748; }
+.sv-modal > .sv-modal-title,
+html[data-theme="dark"] .sv-modal > .sv-modal-title { text-shadow: none; box-shadow: none; }
+.sv-modal-body { font-size: var(--ork-font-size-base); color: #4a5568; line-height: 1.5; }
+.sv-modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 6px; }
+.sv-modal-btn { padding: 6px 16px; min-height: 32px; border-radius: 5px; font-size: var(--ork-font-size-base); font-weight: 600; cursor: pointer; border: none; }
+.sv-modal-btn[disabled], .sv-modal-btn.sv-is-busy { opacity: 0.55; cursor: not-allowed; }
+.sv-modal-cancel { background: #e2e8f0; color: #2d3748; }
+.sv-modal-cancel:hover { background: #cbd5e0; }
+.sv-modal-ok { background: #2b6cb0; color: #fff; }
+.sv-modal-ok:hover { background: #2c5282; }
+.sv-modal-ok.sv-modal-danger { background: #e53e3e; }
+.sv-modal-ok.sv-modal-danger:hover { background: #c53030; }
+.sv-modal-error { color: #c53030; font-size: 12px; margin-top: 4px; display: none; }
+html[data-theme="dark"] .sv-modal { background: var(--ork-bg-secondary, #2d3748); }
+html[data-theme="dark"] .sv-modal > .sv-modal-title { color: var(--ork-text, #e2e8f0); }
+/* #c53030 is 2.19:1 on the dark panel — the same swap this file makes for
+   .sv-notice-error / .sv-q-error. */
+html[data-theme="dark"] .sv-modal-error { color: #feb2b2; }
+html[data-theme="dark"] .sv-modal-body { color: var(--ork-text-secondary, #cbd5e0); }
+html[data-theme="dark"] .sv-modal-cancel { background: #4a5568; color: #e2e8f0; }
+html[data-theme="dark"] .sv-modal-cancel:hover { background: #718096; }
+/* Touch and phone width: the modal buttons go back to a 44px tap target
+   (same breakpoint as the list page's other touch rules). */
+@media (pointer: coarse), (max-width: 640px) {
+    .sv-modal-btn { min-height: 44px; padding: 9px 18px; }
+}
+
+/* ---- Attendance credit modal (sharing-and-credits spec §3.6) ----
+   Surfaces come from the L-ladder tokens, which already swap in dark mode
+   (--sv-l3 is the control face, --sv-line-3 its hairline); the warning uses
+   the global alert-warning tokens, softened in dark mode the same way
+   .sv-notice-warn is. */
+.sv-credit-modal { max-width: 560px; overflow-wrap: anywhere; }
+.sv-credit-lead { margin: 0 0 8px; font-size: 14px; }
+.sv-credit-sub { margin: 10px 0 4px; font-size: 12px; color: var(--ork-text-secondary); }
+.sv-credit-list { margin: 0 0 12px; padding-left: 18px; font-size: 13px; line-height: 1.5; }
+.sv-credit-modes { border: 0; margin: 8px 0; padding: 0; min-width: 0; }
+.sv-credit-modes legend { font-size: 13px; margin-bottom: 6px; padding: 0; }
+.sv-credit-mode { display: flex; gap: 8px; align-items: flex-start; min-height: 32px; padding: 6px 8px; border: 1px solid var(--sv-line-3); border-radius: 4px; margin-bottom: 6px; background: var(--sv-l3); cursor: pointer; font-size: 13px; box-sizing: border-box; }
+.sv-credit-mode:hover { background: var(--sv-l3-hover); }
+.sv-credit-mode input { margin-top: 2px; flex: 0 0 auto; accent-color: var(--sv-accent); }
+.sv-credit-mode span { min-width: 0; }
+.sv-credit-warning { margin: 8px 0; padding: 8px 10px; border-left: 3px solid var(--ork-alert-warning-border); background: var(--ork-alert-warning-bg); font-size: 12px; line-height: 1.5; }
+html[data-theme="dark"] .sv-credit-warning { background: rgba(214, 158, 46, 0.12); color: var(--ork-text); }
+@media (max-width: 700px), (pointer: coarse) {
+    .sv-credit-mode { min-height: 44px; align-items: center; }
+    .sv-credit-mode input { margin-top: 0; width: 20px; height: 20px; }
+    .sv-credit-confirm { min-height: 44px; align-items: center; }
+    .sv-credit-confirm .sv-check-input { width: 22px; height: 22px; min-width: 22px; }
+}

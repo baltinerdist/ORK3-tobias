@@ -158,43 +158,19 @@ html[data-theme="dark"] .sv-survey-meta { color: var(--ork-text-muted); }
 html[data-theme="dark"] #theme_container .rp-table-area table.dataTable tbody .sv-survey-title a { color: #e2e8f0; }
 html[data-theme="dark"] #theme_container .rp-table-area table.dataTable tbody .sv-survey-title a:hover { color: var(--rp-accent); }
 
-/* ---- Non-native modal shell (no alert/confirm/prompt anywhere) ---- */
-/* z-index comes from the shared --z-* scale in tokens.css, so these sit above
-   the site-wide overlays (nav 9999, What's New 10000) like every other modal. */
-.sv-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: var(--z-modal-backdrop, 10040); align-items: center; justify-content: center; padding: 16px; }
-.sv-overlay.sv-open { display: flex; }
-.sv-modal { position: relative; z-index: var(--z-modal, 10100); background: #fff; border-radius: 8px; padding: 18px 20px; box-sizing: border-box; max-width: 440px; width: 100%; box-shadow: 0 4px 24px rgba(0,0,0,0.18); max-height: 82vh; overflow-y: auto; }
-/* .sv-scope on the panel already resets the global h1–h6 pill box in both
-   themes (survey.css); this only re-states the type scale and spacing. */
-.sv-modal > .sv-modal-title { margin: 0 0 12px; font-size: 14px; font-weight: 700; color: #2d3748; }
-.sv-modal-body { font-size: var(--ork-font-size-base); color: #4a5568; line-height: 1.5; }
+/* ---- New Survey modal fields ----
+   The modal shell itself (.sv-overlay / .sv-modal*) is shared with the
+   builder's Attendance credit panel and lives in survey.css. */
 .sv-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
 .sv-field label { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #4a5568; }
 .sv-field input[type=text], .sv-field select {
 	font-size: var(--ork-font-size-base); padding: 6px 10px; border: 1px solid var(--rp-border-mid); border-radius: 5px;
 	min-height: 32px; box-sizing: border-box; background: #fff; color: #2d3748;
 }
-.sv-modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 6px; }
-.sv-modal-btn { padding: 6px 16px; min-height: 32px; border-radius: 5px; font-size: var(--ork-font-size-base); font-weight: 600; cursor: pointer; border: none; }
-.sv-modal-cancel { background: #e2e8f0; color: #2d3748; }
-.sv-modal-cancel:hover { background: #cbd5e0; }
-.sv-modal-ok { background: #2b6cb0; color: #fff; }
-.sv-modal-ok:hover { background: #2c5282; }
-.sv-modal-ok.sv-modal-danger { background: #e53e3e; }
-.sv-modal-ok.sv-modal-danger:hover { background: #c53030; }
-.sv-modal-error { color: #c53030; font-size: 12px; margin-top: 4px; display: none; }
-html[data-theme="dark"] .sv-modal { background: var(--ork-bg-secondary, #2d3748); }
-html[data-theme="dark"] .sv-modal > .sv-modal-title { color: var(--ork-text, #e2e8f0); }
-/* #c53030 is 2.19:1 on the dark panel — the same swap survey.css makes for
-   .sv-notice-error / .sv-q-error. */
-html[data-theme="dark"] .sv-modal-error { color: #feb2b2; }
-html[data-theme="dark"] .sv-modal-body { color: var(--ork-text-secondary, #cbd5e0); }
 html[data-theme="dark"] .sv-field label { color: #cbd5e0; }
 html[data-theme="dark"] .sv-field input[type=text], html[data-theme="dark"] .sv-field select {
 	background: #1a202c; color: #e2e8f0; border-color: #4a5568;
 }
-html[data-theme="dark"] .sv-modal-cancel { background: #4a5568; color: #e2e8f0; }
-html[data-theme="dark"] .sv-modal-cancel:hover { background: #718096; }
 
 /* Named .sv-toast, not .sv-notice: survey.css owns .sv-notice as an in-flow
    alert block, and a single-class collision would be settled by load order. */
@@ -229,7 +205,6 @@ html[data-theme="dark"] .sv-toast { background: #1a202c; border: 1px solid #4a55
 	}
 	.sv-row-btn { min-height: 44px; padding: 8px 12px; }
 	.sv-field input[type=text], .sv-field select { min-height: 44px; font-size: 16px; padding: 9px 10px; }
-	.sv-modal-btn { min-height: 44px; padding: 9px 18px; }
 	button.rp-filter-pill[data-sv-filter] {
 		display: inline-flex; align-items: center; justify-content: center;
 		min-height: 44px; min-width: 44px; box-sizing: border-box; padding: 6px 14px; border-radius: 22px;
