@@ -396,4 +396,60 @@ final class SurveySharingCreditTest extends TestCase
         $this->credit()->enable($this->kOfficer, $ks, ['type' => 'kingdom', 'id' => $this->k], 'home_park', true);
         $this->assertTrue($this->credit()->creditAvailableFor($this->row($ks), $uid));
     }
+
+    public function testSubmitGrantsAfterCommitAndReportsIt(): void
+    {
+        $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);
+        $this->credit()->enable($this->kOfficer, $ks, ['type' => 'kingdom', 'id' => $this->k], 'home_park', true);
+        $this->assertSame('granted', $this->answer($ks, $this->player('s1', $this->parkA, $this->k), 'full')['Credit']);
+        $this->assertSame('none', $this->answer($ks, $this->player('s2', $this->parkA, $this->k), 'partial')['Credit']);
+        $this->assertSame('none', $this->answer($ks, $this->player('s3', $this->parkA, $this->k), 'anonymous')['Credit']);
+        $this->assertCount(1, $this->grants($ks));
+    }
+
+    public function testGateCannotBeTurnedOffOnceCreditsExist(): void
+    {
+        $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);
+        $this->credit()->enable($this->kOfficer, $ks, ['type' => 'kingdom', 'id' => $this->k], 'home_park', true);
+        $this->assertSame(1, (new Survey())->update($ks, ['DataGateEnabled' => 0])['Status']);
+        $this->assertSame('1', (string) $this->row($ks)['data_gate_enabled']);
+    }
+
+    public function testOpeningCreatesTheEventThroughSetStatus(): void
+    {
+        $s = new Survey();
+        $sid = $this->fx['survey'][] = (int) $s->create($this->kOfficer, 'kingdom', $this->k, 'T11SHARE hook')['SurveyId'];
+        $page = (int) $this->scalar('SELECT page_id FROM ' . DB_PREFIX . 'survey_page WHERE survey_id = ' . $sid . ' LIMIT 1');
+        $q = $s->questionAdd($sid, $page, 'single', null);
+        $s->questionUpdate((int) $q['Question']['question_id'], ['Prompt' => 'T11SHARE q']);
+        $this->credit()->enable($this->kOfficer, $sid, ['type' => 'kingdom', 'id' => $this->k], 'event', true);
+        $s->setStatus($sid, 'open');
+        $this->assertGreaterThan(0, (int) $this->scalar('SELECT event_id FROM ' . DB_PREFIX . 'survey_credit WHERE survey_id = ' . $sid));
+    }
+
+    public function testRunnerSeesCreditAvailableOnlyWhenCovered(): void
+    {
+        $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);
+        $uid = $this->player('runner', $this->parkA, $this->k);
+        $def = (new SurveyResponse())->definitionForRespondent($ks, $uid, false);
+        $this->assertFalse($def['Survey']['credit_available']);
+        $this->credit()->enable($this->kOfficer, $ks, ['type' => 'kingdom', 'id' => $this->k], 'home_park', true);
+        $def = (new SurveyResponse())->definitionForRespondent($ks, $uid, false);
+        $this->assertTrue($def['Survey']['credit_available']);
+        $rows = array_values(array_filter((new SurveyResponse())->availableFor($uid), static fn ($r) => $r['survey_id'] === $ks));
+        $this->assertTrue($rows[0]['credit_available']);
+    }
+
+    public function testSurveyCreditsDoNotCountAsRecentAttendance(): void
+    {
+        $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);
+        $this->credit()->enable($this->kOfficer, $ks, ['type' => 'kingdom', 'id' => $this->k], 'home_park', true);
+        $uid = $this->player('recent', $this->parkA, $this->k);
+        $this->answer($ks, $uid, 'full');   // earns a survey credit dated today
+
+        $recent = $this->openSurvey($this->kOfficer, 'kingdom', $this->k, ['audience_recent_months' => 6]);
+        $e = (new SurveyResponse())->eligibility($this->row($recent), $uid);
+        $this->assertFalse($e['eligible']);
+        $this->assertSame('recent_attendance', $e['reason']);
+    }
 }

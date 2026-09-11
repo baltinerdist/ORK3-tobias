@@ -707,6 +707,13 @@ class Survey
         }
         $surveyId = (int) $survey['survey_id'];
 
+        // A credit config promises a credit to respondents who choose Any ORK
+        // Data; without the gate nobody can (sharing spec §3.5).
+        if (array_key_exists('DataGateEnabled', $fields) && !$this->truthy($fields['DataGateEnabled'])
+            && (new SurveyCredit())->hasConfigs($surveyId)) {
+            return $this->fail('This survey gives attendance credits, which need respondents to be able to choose Any ORK Data.');
+        }
+
         $sets = [];
         foreach (self::UPDATE_FIELDS as $key => $spec) {
             if (!array_key_exists($key, $fields)) {
@@ -896,6 +903,8 @@ class Survey
             $this->purgeDrafts($surveyId);
         } else {
             $this->purgeStaleDrafts($surveyId);
+            // Event-mode credit configs get their event once a start date exists (§3.4).
+            (new SurveyCredit())->onOpened($surveyId);
         }
 
         return $this->ok(['Survey' => $this->getRow($surveyId)]);

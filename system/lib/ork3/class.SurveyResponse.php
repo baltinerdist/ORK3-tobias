@@ -389,7 +389,8 @@ class SurveyResponse
         $r = $this->db->DataSet(
             'SELECT 1 AS ok FROM ' . DB_PREFIX . 'attendance a
              WHERE a.mundane_id = ' . (int) $uid . '
-               AND a.date >= \'' . self::monthsAgoDate($months) . '\''
+               AND a.date >= \'' . self::monthsAgoDate($months) . '\'
+               AND a.entry_method <> \'survey\'' // a survey credit is not attendance (sharing spec §3.5)
                . self::attendanceScopeSql($surveyRow, 'a') . ' LIMIT 1'
         );
         return (bool) ($r && $r->Next());
@@ -480,7 +481,8 @@ class SurveyResponse
         if ($recentMonths > 0) {
             $where[] = 'EXISTS (SELECT 1 FROM ' . DB_PREFIX . 'attendance ar
                                 WHERE ar.mundane_id = m.mundane_id
-                                  AND ar.date >= \'' . self::monthsAgoDate($recentMonths) . '\''
+                                  AND ar.date >= \'' . self::monthsAgoDate($recentMonths) . '\'
+                                  AND ar.entry_method <> \'survey\'' // a survey credit is not attendance (sharing spec §3.5)
                                   . self::attendanceScopeSql($surveyRow, 'ar') . ')';
         }
 
@@ -701,6 +703,12 @@ class SurveyResponse
         $imageUrls = $this->imageUrlMap($imageIds);
 
         $public = $this->publicSurveyFields($survey, $imageUrls);
+
+        // The data gate's credit line (§3.7). In preview the builder sees it whenever any config exists.
+        $credit = new SurveyCredit();
+        $public['credit_available'] = $preview
+            ? $credit->hasConfigs($surveyId)
+            : $credit->creditAvailableFor($survey, $uid);
 
         $seed  = (int) crc32($surveyId . '-' . $uid);
         $pages = $this->renderPagesForRespondent($pages, $seed, $imageUrls);
@@ -1321,12 +1329,26 @@ class SurveyResponse
         $this->db->Clear();
         $this->db->Execute('COMMIT');
 
+        // Attendance credit (sharing spec §3.5): after the commit, so a credit
+        // problem can never cost the player their response. Only Any ORK Data
+        // earns one (D1).
+        $credit = 'none';
+        if (!$isTest && 'full' === $storedConsent) {
+            try {
+                $credit = (new SurveyCredit())->grantFor($surveyId, $uid);
+            } catch (\Throwable $e) {
+                error_log('[survey-credit] grant threw ' . json_encode(['survey_id' => $surveyId, 'uid' => $uid, 'error' => get_class($e)]));
+                $credit = 'pending';
+            }
+        }
+
         return [
             'Status'     => 0,
             'Error'      => '',
             'ResponseId' => $responseId,
             'Consent'    => $storedConsent,
             'ThanksHtml' => $this->thanksHtml($survey),
+            'Credit'     => $credit,
         ];
     }
 
@@ -1563,6 +1585,7 @@ class SurveyResponse
             'scope_label' => $scopeLabel ?? $this->scopeLabel((string) $survey['scope_type'], (int) $survey['scope_id']),
             'close_at'    => $survey['close_at'] ?: null,
             'in_progress' => !empty($survey['allow_resume']) && $this->hasDraft((int) $survey['survey_id'], $uid),
+            'credit_available' => (new SurveyCredit())->creditAvailableFor($survey, $uid),
         ];
     }
 
