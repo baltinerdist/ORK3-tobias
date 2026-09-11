@@ -1312,8 +1312,17 @@ body:has(#svb-toc) { overflow-x: clip; }
     cursor: pointer;
 }
 
-.svb-check input[type="checkbox"] { width: 16px; height: 16px; flex: 0 0 auto; accent-color: var(--sv-accent); }
+.svb-check input[type="checkbox"],
+.svb-check input[type="radio"] { width: 16px; height: 16px; flex: 0 0 auto; accent-color: var(--sv-accent); }
 .svb-check input[disabled] { cursor: not-allowed; }
+
+/* A sidebar radio group (radioRow): one option per line, long labels wrap
+   beside the dot instead of being cut short like a closed select. */
+.svb-radios { border: 0; margin-inline: 0; padding: 0; min-width: 0; }
+.svb-radios > legend { padding: 0; }
+.svb-radio { display: flex; align-items: flex-start; }
+.svb-radio input[type="radio"] { margin: 2px 0 0; }
+.svb-radio > span { min-width: 0; line-height: 1.4; }
 
 .svb-multi { min-height: 132px; padding: 6px; }
 
@@ -1747,7 +1756,10 @@ html[data-theme="dark"] .flatpickr-time .numInputWrapper span.arrowDown:after { 
     .svb-switch input:checked + .svb-switch-track::after { transform: translateX(20px); }
     .svb-switchlabel { font-size: var(--ork-font-size-base); }
     .svb-check { min-height: 44px; }
-    .svb-check input[type="checkbox"] { width: 20px; height: 20px; }
+    .svb-check input[type="checkbox"],
+    .svb-check input[type="radio"] { width: 20px; height: 20px; }
+    .svb-radio { align-items: center; }
+    .svb-radio input[type="radio"] { margin: 0; }
     .svb-color-input { height: 44px; }
     .svb-settingline .sv-input,
     .svb-settingline .sv-select,

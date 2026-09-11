@@ -84,6 +84,7 @@
 
     var sel       = 0;      // selected question_id, 0 = nothing selected
     var scopes    = null;   // SurveyAjax/scopes, lazy
+    var creditOn  = false;  // the owner's attendance credit is on (credit_status mine.config_id)
     var pending   = {};     // debounce buckets, keyed
     var inflight  = 0;      // every request on the wire
     var inflightWrites = 0; // ...of which change something (not READ_ACTIONS)
@@ -967,6 +968,17 @@
         });
         html += '</select>';
         return fieldRow(html, label, hint);
+    }
+
+    /** A labelled radio group; every radio carries `extra` (its data-sv-field), and change saves the checked one. */
+    function radioRow(label, name, options, value, extra, hint) {
+        var html = '<fieldset class="svb-field svb-radios"><legend class="svb-label">' + esc(label) + '</legend>';
+        options.forEach(function (o) {
+            html += '<label class="svb-check svb-radio"><input type="radio" name="' + esc(name) + '" value="' + esc(o[0]) + '" ' + extra +
+                    (String(o[0]) === String(value) ? ' checked' : '') + '><span>' + esc(o[1]) + '</span></label>';
+        });
+        html += (hint ? '<p class="svb-hint">' + esc(hint) + '</p>' : '') + '</fieldset>';
+        return html;
     }
 
     /** A markdown textarea with the B / I / • / link / image toolbar and a live preview. */
@@ -2080,9 +2092,12 @@
         if (s.scope_type === 'ork' || s.scope_type === 'kingdom') {
             var down = s.scope_type === 'ork' ? 'kingdoms' : 'parks';
             var each = s.scope_type === 'ork' ? 'Each kingdom sees its own players' : 'Each park sees its own players';
-            body += selectRow('Share results with ' + down,
+            /* Radios, not a select: in the sidebar a closed select cut the
+               chosen option short ("Each park sees its own pl…"), so the saved
+               setting could not be read without opening it. */
+            body += radioRow('Share results with ' + down, 'svb-results-share',
                 [['none', 'Don’t share'], ['scoped', each], ['all', 'Every ' + down.replace(/s$/, '') + ' sees all results']],
-                s.results_share || 'none', 'data-sv-field="ResultsShare"', false,
+                s.results_share || 'none', 'data-sv-field="ResultsShare"',
                 'Shared ' + down + ' see charts and stats only — never names, individual responses or the spreadsheet.');
         }
         html += section('privacy', 'Privacy', 'fa-user-shield', body);
@@ -2092,7 +2107,7 @@
            owner just reads what kingdoms and parks have turned on. */
         body  = '<p class="svb-hint">Give respondents who choose Any ORK Data an attendance credit — at their home park, or at a generated “Survey Credit” event. Once on, it can’t be turned off.</p>';
         body += '<button type="button" class="sv-btn" id="svb-credit-open"><i class="fas fa-award" aria-hidden="true"></i> ' +
-                (s.scope_type === 'ork' ? 'See credits' : 'Set up attendance credit') + '</button>';
+                '<span id="svb-credit-label">' + esc(creditButtonLabel()) + '</span></button>';
         html += section('credit', 'Attendance credit', 'fa-award', body);
 
         /* Promotion */
@@ -3884,6 +3899,32 @@
         saveSurveyField(key, t);
     }
 
+    /* ------------------------------------------------- attendance credit card */
+
+    /** The survey's owner acts for its own org; an ORK survey's owner only reads. */
+    function creditGrantor() {
+        var s = S.survey || {};
+        return s.scope_type === 'ork' ? '' : (s.scope_type === 'kingdom' ? 'Kingdom/' : 'Park/') + s.scope_id;
+    }
+
+    /** The card button says whether the owner's credit is already on (creditOn, from credit_status). */
+    function creditButtonLabel() {
+        if ((S.survey || {}).scope_type === 'ork') { return 'See credits'; }
+        return creditOn ? 'View attendance credit' : 'Set up attendance credit';
+    }
+
+    /** Ask the server once on load, and again whenever the modal changes something. */
+    function loadCreditState() {
+        if (!window.SvCredit || !window.SvCredit.status || (S.survey || {}).scope_type === 'ork') { return; }
+        window.SvCredit.status(SURVEY_ID, creditGrantor()).then(function (c) {
+            var label;
+            if (!c) { return; }
+            creditOn = !!(c.mine && c.mine.config_id);
+            label = $('svb-credit-label');
+            if (label) { label.textContent = creditButtonLabel(); }
+        });
+    }
+
     function onSettingsClick(e) {
         var head = e.target.closest ? e.target.closest('[data-sec-toggle]') : null;
         var btn;
@@ -3895,8 +3936,9 @@
         if (e.target.closest('#svb-credit-open') && window.SvCredit) {
             window.SvCredit.open({
                 surveyId: SURVEY_ID,
-                grantor: S.survey.scope_type === 'ork' ? '' : (S.survey.scope_type === 'kingdom' ? 'Kingdom/' : 'Park/') + S.survey.scope_id,
-                title: S.survey.title
+                grantor: creditGrantor(),
+                title: S.survey.title,
+                onChange: loadCreditState
             });
             return;
         }
@@ -4212,6 +4254,9 @@
 
         // The "Attended an event" audience picker's list (#12).
         loadEvents();
+
+        // Whether the Attendance credit card's button reads "Set up" or "View".
+        loadCreditState();
 
         /* Leaving the page (#10). Debounced edits go out as keepalive requests,
            which outlive the page where a plain fetch is cancelled. If anything
