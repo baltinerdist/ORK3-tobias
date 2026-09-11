@@ -841,6 +841,92 @@ final class SurveySharingCreditTest extends TestCase
         $this->assertCount(1, $this->grants($ks));
     }
 
+    /** One ordinary attendance row (every NOT NULL column named). */
+    private function manualAttendance(int $uid, string $date, int $parkId, int $kingdomId, int $classId, string $note): int
+    {
+        $st = $this->pdo->prepare('INSERT INTO ' . DB_PREFIX . 'attendance
+            (mundane_id, class_id, date, date_year, date_month, date_week3, date_week6, park_id, kingdom_id,
+             event_id, event_calendardetail_id, credits, persona, flavor, note, by_whom_id, entry_method, entered_at)
+            VALUES (?, ?, ?, YEAR(?), MONTH(?), 1, 1, ?, ?, 0, 0, 1, \'\', \'\', ?, ?, \'manual\', NOW())');
+        $st->execute([$uid, $classId, $date, $date, $date, $parkId, $kingdomId, $note, $this->kOfficer]);
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    /**
+     * AC 7 / D6: a credit failure never costs the response. The attendance
+     * insert is made to fail (an identical row already holds its unique key);
+     * submit still commits and answers Status 0 with Credit 'pending', and
+     * reconcile posts the credit once the obstacle is gone.
+     */
+    public function testACreditFailureNeverLosesTheResponseAndReconcileRepairsIt(): void
+    {
+        $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);
+        $this->assertSame(0, $this->credit()->enable($this->kOfficer, $ks, ['type' => 'kingdom', 'id' => $this->k], 'home_park', true)['Status']);
+        $uid   = $this->player('pending', $this->parkA, $this->k);
+        $block = $this->manualAttendance($uid, date('Y-m-d'), $this->parkA, $this->k, 6, 'Survey #' . $ks);
+
+        $log = ini_set('error_log', '/dev/null');   // the grant failure is logged on purpose
+        try {
+            $r = (new SurveyResponse())->submit($ks, $uid, [], 'full', 30, false);
+        } finally {
+            ini_set('error_log', (string) $log);
+        }
+        $this->assertSame(0, $r['Status'], (string) ($r['Error'] ?? ''));
+        $this->assertSame('pending', $r['Credit']);
+        $this->assertSame('1', (string) $this->scalar('SELECT COUNT(*) FROM ' . DB_PREFIX . "survey_response
+                                                       WHERE survey_id = {$ks} AND mundane_id = {$uid} AND consent = 'full'"), 'the response is kept');
+        $this->assertCount(0, $this->grants($ks));
+        $this->assertSame(1, $this->credit()->status($this->kOfficer, $ks, ['type' => 'kingdom', 'id' => $this->k])['Credit']['pending']);
+
+        $this->pdo->exec('DELETE FROM ' . DB_PREFIX . 'attendance WHERE attendance_id = ' . $block);
+        $this->assertSame(['Granted' => 1, 'SkippedNoPark' => 0, 'Pending' => 0], $this->credit()->reconcile($ks));
+        $this->assertCount(1, $this->grants($ks));
+        $this->assertSame(['Granted' => 0, 'SkippedNoPark' => 0, 'Pending' => 0], $this->credit()->reconcile($ks), 'and re-running changes nothing');
+    }
+
+    /** §8: a live grant uses the player's last class, not Color, when they have one. */
+    public function testLiveGrantUsesThePlayersLastClass(): void
+    {
+        $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);
+        $this->credit()->enable($this->kOfficer, $ks, ['type' => 'kingdom', 'id' => $this->k], 'home_park', true);
+        $uid = $this->player('lastclass', $this->parkA, $this->k);
+        $this->manualAttendance($uid, date('Y-m-d', strtotime('-7 days')), $this->parkA, $this->k, 3, 'T11SHARE prior');
+        $this->assertSame('granted', $this->answer($ks, $uid, 'full')['Credit']);
+        $this->assertSame('3', (string) $this->grants($ks)[0]['class_id'], 'the class of their last attendance');
+    }
+
+    /** Spec §8 / AC 3: rows and export stay manager-only; shared access never opens them. */
+    public function testSharedViewersCannotReachRowsOrExport(): void
+    {
+        $ks  = $this->openSurvey($this->kOfficer, 'kingdom', $this->k, ['results_share' => 'all']);
+        $acc = (new Survey())->resultsAccess($this->pOfficerA, $this->row($ks), ['type' => 'park', 'id' => $this->parkA]);
+        $this->assertSame('shared', $acc['level'], 'the park officer may read charts');
+        $this->assertFalse((new Survey())->canManage($this->pOfficerA, $this->row($ks)), 'but fails the gate rows and export use');
+
+        // The gates themselves: SurveyAjax/rows and Survey/export check can_manage,
+        // never results_access (a shared viewer passes that one).
+        $ajax  = (string) file_get_contents(DIR_UI . 'controller/controller.SurveyAjax.php');
+        $rows  = substr($ajax, (int) strpos($ajax, 'public function rows('), 700);
+        $this->assertMatchesRegularExpression('/requireManage\(\$uid, \$surveyId\);.*\$this->Survey->rows\(/s', $rows);
+        $this->assertStringNotContainsString('results_access', $rows);
+        $page   = (string) file_get_contents(DIR_UI . 'controller/controller.Survey.php');
+        $export = substr($page, (int) strpos($page, 'public function export('), 900);
+        $this->assertMatchesRegularExpression('/if \(!\$this->Survey->can_manage\(\$uid, \$row\)\).*http_response_code\(403\)/s', $export);
+        $this->assertStringNotContainsString('results_access', $export);
+    }
+
+    /** §3.5: Clone copies no credit configs; a new draft inherits no promise. */
+    public function testCloneDoesNotCopyCreditConfigs(): void
+    {
+        $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);
+        $this->credit()->enable($this->kOfficer, $ks, ['type' => 'kingdom', 'id' => $this->k], 'home_park', true);
+        $c = (new Survey())->cloneSurvey($ks, $this->kOfficer);
+        $this->assertSame(0, $c['Status'], (string) ($c['Error'] ?? ''));
+        $copy = $this->fx['survey'][] = (int) $c['SurveyId'];
+        $this->assertSame('1', (string) $this->scalar('SELECT COUNT(*) FROM ' . DB_PREFIX . 'survey_credit WHERE survey_id = ' . $ks));
+        $this->assertSame('0', (string) $this->scalar('SELECT COUNT(*) FROM ' . DB_PREFIX . 'survey_credit WHERE survey_id = ' . $copy));
+    }
+
     public function testGateCannotBeTurnedOffOnceCreditsExist(): void
     {
         $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);
@@ -1019,5 +1105,10 @@ final class SurveySharingCreditTest extends TestCase
         $e = (new SurveyResponse())->eligibility($this->row($recent), $uid);
         $this->assertFalse($e['eligible']);
         $this->assertSame('recent_attendance', $e['reason']);
+
+        // The set-based mirror (the builder's audience count and response rate) too.
+        $this->assertSame(0, (new SurveyResponse())->audienceCount($this->row($recent)), 'a survey credit alone puts nobody in the audience');
+        $this->manualAttendance($uid, date('Y-m-d', strtotime('-3 days')), $this->parkA, $this->k, 6, 'T11SHARE park day');
+        $this->assertSame(1, (new SurveyResponse())->audienceCount($this->row($recent)), 'control: a real park day does');
     }
 }
