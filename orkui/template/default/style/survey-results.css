@@ -963,6 +963,20 @@ html[data-theme="dark"] .svr-card .highcharts-data-label tspan {
 .svr-pw-table td:nth-child(n+3) { white-space: nowrap; }
 /* The sort-key column; DataTables drops it from the DOM, this covers the page without DataTables. */
 .svr-pw-table .svr-pw-sortkey { display: none; }
+/* Phones: the card is the whole width (~330px), and five one-line number
+   columns left Option one character wide, so nearly every label broke
+   mid-word and the table still overflowed. Rank, Option, Win % and Matchups
+   carry the ranking; the W / T / L split stays in the chart's tooltip, and
+   Option breaks only between words. */
+@media (max-width: 600px) {
+    .svr-card table.svr-pw-table th:nth-child(4),
+    .svr-card table.svr-pw-table th:nth-child(5),
+    .svr-card table.svr-pw-table th:nth-child(6),
+    .svr-card table.svr-pw-table td:nth-child(4),
+    .svr-card table.svr-pw-table td:nth-child(5),
+    .svr-card table.svr-pw-table td:nth-child(6) { display: none; }
+    .svr-card table.svr-pw-table td:nth-child(2) { overflow-wrap: break-word; }
+}
 .svr-cell-clamp {
     display: -webkit-box;
     -webkit-line-clamp: 3;

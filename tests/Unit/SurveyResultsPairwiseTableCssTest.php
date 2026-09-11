@@ -60,6 +60,34 @@ final class SurveyResultsPairwiseTableCssTest extends TestCase
         $this->assertSame('nowrap', $this->rule(self::HEAD)['white-space'] ?? null);
     }
 
+    /**
+     * On a phone the card is the whole width (~330px). Five one-line number
+     * columns left Option one character wide: nearly every label broke
+     * mid-word ("Tourna|ment") and the table still overflowed at 360-400px.
+     * Phones drop the W / T / L split (the chart tooltip keeps it), so
+     * Option has room to break only between words.
+     */
+    public function testPhonesDropTheWinTieLossSplitSoLabelsBreakBetweenWords(): void
+    {
+        $this->rule(self::HEAD);   // loads the stylesheet
+        $this->assertSame(
+            1,
+            preg_match('/@media \(max-width: 600px\)\s*\{((?:[^{}]*\{[^}]*\})+)\s*\}/', (string) self::$css, $m),
+            'no phone block for the pairwise table'
+        );
+        $block = $m[1];
+        foreach ([4, 5, 6] as $col) {
+            foreach (['th', 'td'] as $cell) {
+                $this->assertStringContainsString('.svr-card table.svr-pw-table ' . $cell . ':nth-child(' . $col . ')', $block);
+            }
+        }
+        $this->assertMatchesRegularExpression('/:nth-child\(6\)\s*\{\s*display:\s*none;/', $block);
+        $this->assertMatchesRegularExpression(
+            '/\.svr-card table\.svr-pw-table td:nth-child\(2\)\s*\{\s*overflow-wrap:\s*break-word;/',
+            $block
+        );
+    }
+
     public function testSortArrowsDoNotRunIntoTheHeaderText(): void
     {
         // The arrows are about 8px wide at DataTables' .8em: they need the
