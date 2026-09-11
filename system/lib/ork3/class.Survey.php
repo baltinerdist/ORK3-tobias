@@ -872,6 +872,11 @@ class Survey
         }
 
         $sets = ['status = \'' . $status . '\''];
+        // PHP's clock, never SQL NOW(): the DB server runs its own zone (UTC in
+        // the shipped stack) and opened_at becomes the credit event's date and
+        // attendance date (SurveyCredit::startDate), so a US-evening open would
+        // otherwise land on the next day. Same rule as SurveyResponse::nowStamp().
+        $now = date('Y-m-d H:i:s');
 
         if ($status === 'open') {
             $problems = $this->validateDefinition($surveyId);
@@ -883,11 +888,11 @@ class Survey
                 ];
             }
             if (!$this->isStructureLocked($survey)) {
-                $sets[] = 'opened_at = NOW()';
+                $sets[] = 'opened_at = \'' . $now . '\'';
             }
             $sets[] = 'closed_at = NULL';
         } elseif ($status === 'closed') {
-            $sets[] = 'closed_at = NOW()';
+            $sets[] = 'closed_at = \'' . $now . '\'';
         }
 
         if (!$this->exec('UPDATE ' . DB_PREFIX . 'survey SET ' . implode(', ', $sets)

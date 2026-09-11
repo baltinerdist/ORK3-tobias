@@ -458,6 +458,36 @@ final class SurveySharingCreditTest extends TestCase
         $this->assertGreaterThan(0, (int) $this->scalar('SELECT event_id FROM ' . DB_PREFIX . 'survey_credit WHERE survey_id = ' . $sid));
     }
 
+    /**
+     * opened_at feeds SurveyCredit::startDate(), which dates event-mode credits
+     * on players' public records. It must be written on the module's one clock
+     * (PHP's, SurveyResponse::nowStamp()), not SQL NOW(): the DB server runs
+     * UTC, so a US-evening open used to date the event the next day. A zone
+     * 14 hours from UTC makes any NOW() write show up regardless of the DB zone.
+     */
+    public function testOpenAndCloseStampsUseThePhpClockSoTheStartDateIsTheLocalDay(): void
+    {
+        $tz = date_default_timezone_get();
+        date_default_timezone_set('Pacific/Kiritimati');
+        try {
+            $s = new Survey();
+            $sid = $this->fx['survey'][] = (int) $s->create($this->kOfficer, 'kingdom', $this->k, 'T11SHARE clock')['SurveyId'];
+            $page = (int) $this->scalar('SELECT page_id FROM ' . DB_PREFIX . 'survey_page WHERE survey_id = ' . $sid . ' LIMIT 1');
+            $q = $s->questionAdd($sid, $page, 'single', null);
+            $s->questionUpdate((int) $q['Question']['question_id'], ['Prompt' => 'T11SHARE q']);
+
+            $this->assertSame(0, $s->setStatus($sid, 'open')['Status']);
+            $row = $this->row($sid);
+            $this->assertLessThan(120, abs(strtotime((string) $row['opened_at']) - time()), 'opened_at is on the PHP clock');
+            $this->assertSame(date('Y-m-d'), SurveyCredit::startDate($row), 'the start date is the local day');
+
+            $this->assertSame(0, $s->setStatus($sid, 'closed')['Status']);
+            $this->assertLessThan(120, abs(strtotime((string) $this->row($sid)['closed_at']) - time()), 'closed_at is on the PHP clock');
+        } finally {
+            date_default_timezone_set($tz);
+        }
+    }
+
     public function testRunnerSeesCreditAvailableOnlyWhenCovered(): void
     {
         $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);
