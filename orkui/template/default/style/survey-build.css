@@ -2088,3 +2088,37 @@ html[data-theme="dark"] .svb-consent-quote {
 
 /* Header actions: the .rp-btn-ghost sizing every survey .rp-* page needs is
    declared once in survey.css, which this page also loads. */
+
+/* ------------------------------------------------ pairwise option entry */
+
+.svb-pw { display: flex; flex-direction: column; gap: 6px; }
+.svb-pw-lines { width: 100%; min-height: 96px; line-height: 1.5; box-sizing: border-box; }
+.svb-pw-foot { display: flex; align-items: flex-start; gap: 6px; }
+.svb-pw-readout { flex: 1 1 auto; margin: 0; }
+.svb-pw-warn {
+    display: flex;
+    gap: 6px;
+    align-items: baseline;
+    margin: 0;
+    font-size: var(--ork-font-size-sm);
+    color: var(--sv-warn-text);
+}
+
+/* The (?) modal. Its h3s already drop orkui.css's pill box via .svb-modal-body h3. */
+.svb-pw-help { display: flex; flex-direction: column; gap: 10px; font-size: var(--ork-font-size-base); line-height: 1.5; }
+.svb-pw-help p { margin: 0; text-align: left; }
+.svb-pw-help h3 { font-size: var(--ork-font-size-base); margin-top: 6px; }
+.svb-pw-tablewrap { overflow-x: auto; }
+.svb-pw-bands { width: 100%; border-collapse: collapse; font-size: var(--ork-font-size-sm); font-variant-numeric: tabular-nums; }
+/* border: 0 first: .svb-modal-body th/td draw a full grid; this table keeps row rules only. */
+.svb-pw-bands th,
+.svb-pw-bands td { padding: 6px 8px; border: 0; border-bottom: 1px solid var(--sv-line-2); text-align: left; white-space: nowrap; }
+.svb-pw-bands thead th { color: var(--sv-text-muted); font-weight: 600; }
+.svb-pw-bands tr.svb-pw-here > * { background: var(--sv-accent-soft); font-weight: 600; }
+.svb-pw-stages { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.svb-pw-stages li { display: flex; gap: 8px; align-items: baseline; }
+.svb-pw-swatch { flex: 0 0 auto; width: 12px; height: 12px; border-radius: 3px; background: var(--sv-pw-0); transform: translateY(1px); }
+.svb-pw-stages li[data-level="1"] .svb-pw-swatch { background: var(--sv-pw-1); }
+.svb-pw-stages li[data-level="2"] .svb-pw-swatch { background: var(--sv-pw-2); }
+.svb-pw-stages li[data-level="3"] .svb-pw-swatch { background: var(--sv-pw-3); }
+.svb-pw-stages li[data-level="4"] .svb-pw-swatch { background: var(--sv-pw-4); }

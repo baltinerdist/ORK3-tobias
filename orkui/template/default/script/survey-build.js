@@ -129,6 +129,7 @@
         nps:        { label: 'NPS 0–10',        icon: 'fa-gauge-high',        hint: 'Net promoter score, fixed 0–10.' },
         matrix:     { label: 'Matrix',          icon: 'fa-table-cells',       hint: 'Rows scored against shared columns.' },
         ranking:    { label: 'Ranking',         icon: 'fa-arrow-down-1-9',    hint: 'Put the options in order.' },
+        pairwise:   { label: 'Pairwise',        icon: 'fa-code-compare',      hint: 'Pick the better of two, many times.' },
         short_text: { label: 'Short text',      icon: 'fa-i-cursor',          hint: 'One line of text.' },
         paragraph:  { label: 'Paragraph',       icon: 'fa-align-left',        hint: 'A longer written answer.' },
         number:     { label: 'Number',          icon: 'fa-hashtag',           hint: 'A numeric answer.' },
@@ -166,10 +167,12 @@
         column: { label: 'Columns', min: 2, other: false, weight: true }
     };
 
-    /** Per-type departures from ROLE_UI (yes/no labels are fixed at two; ranking takes no "Other"). */
+    /** Per-type departures from ROLE_UI (yes/no labels are fixed at two; ranking and
+        pairwise take no "Other"; pairwise needs at least three options). */
     var ROLE_UI_BY_TYPE = {
-        yesno:   { choice: { label: 'Labels', other: false, fixed: true } },
-        ranking: { choice: { other: false } }
+        yesno:    { choice: { label: 'Labels', other: false, fixed: true } },
+        ranking:  { choice: { other: false } },
+        pairwise: { choice: { other: false, min: 3 } }
     };
 
     /**
@@ -242,6 +245,7 @@
             { key: 'rank_all', kind: 'bool', where: 'more', def: true,
               label: 'Every option must be ranked' }
         ],
+        pairwise: [],
         short_text: [
             { key: 'max_length', kind: 'int', where: 'inline', label: 'Maximum characters', def: 200, min: 1, max: 255 },
             { key: 'placeholder', kind: 'text', where: 'inline', label: 'Placeholder', def: '', max: 120 }
@@ -772,6 +776,8 @@
             if (!oid) { return null; }   // a brand-new row has no address yet
             sel2 = '.svb-optrow[data-oid="' + oid + '"] .' +
                    (node.classList.contains('svb-optlabel') ? 'svb-optlabel' : 'svb-optweight');
+        } else if (node.classList.contains('svb-pw-lines')) {
+            sel2 = '.svb-pw-lines';
         } else if (node.classList.contains('svb-opts')) {
             sel2 = '.svb-opts[data-role="' + node.getAttribute('data-role') + '"]';
         } else if (node.classList.contains('svb-typesel')) {
@@ -1465,6 +1471,8 @@
             case 'yesno':
             case 'ranking':
                 return optionRowsHtml(q, specFor(q, 'choice'));
+            case 'pairwise':
+                return pairwiseEditorHtml(q);
             case 'matrix':
                 return matrixEditorHtml(q);
             case 'rating':
@@ -1594,6 +1602,197 @@
         html += optionGroupHtml(q, specFor(q, 'row'), 'Rows', null);
         html += '</div>';
         return html;
+    }
+
+    /* ------------------------------------------------------- pairwise editor */
+
+    /** One option per line: trimmed, list bullets stripped, blanks dropped, 255 chars max. */
+    function pairwiseLines(text) {
+        return String(text || '').split(/\r\n|\r|\n/).map(function (line) {
+            return line.replace(/^\s*[-*•]\s+/, '').trim().slice(0, 255);
+        }).filter(function (line) { return line !== ''; });
+    }
+
+    function pairwiseReadout(n) {
+        var p = SvRender.pairwisePlan(n);
+        if (n < 3) { return 'Add at least 3 options, one per line.'; }
+        return n + ' options → ' + p.possible.toLocaleString() + ' matchups · required respondents do ' +
+               (p.small ? 'all ' + p.possible : 'at least ' + p.gate.toLocaleString());
+    }
+
+    function pairwiseWarning(n) {
+        return n > 30
+            ? 'Over 30 options makes for a long question: ' + n + ' options is ' +
+              SvRender.pairwisePlan(n).possible.toLocaleString() + ' matchups.'
+            : '';
+    }
+
+    /**
+     * Pairwise options are one textarea, one per line (pairwise spec §5), so a
+     * list can be pasted in one go. The readout under it recomputes the plan
+     * live; the (?) explains the gate and the bands with this question's numbers.
+     */
+    function pairwiseEditorHtml(q) {
+        var qid   = parseInt(q.question_id, 10);
+        var lines = optionsOf(q, 'choice').map(function (o) { return String(o.label || ''); });
+        var id    = 'svb-pw-lines-' + qid;
+        var warn  = pairwiseWarning(lines.length);
+        var html  = '<div class="svb-field svb-pw">';
+        html += '<label class="svb-label" for="' + id + '">Options, one per line</label>';
+        html += '<textarea class="sv-textarea svb-pw-lines svb-autogrow" id="' + id + '" rows="' +
+                Math.min(14, Math.max(4, lines.length + 1)) + '" spellcheck="true">' + esc(lines.join('\n')) + '</textarea>';
+        html += '<div class="svb-pw-foot">';
+        html += '<p class="svb-hint svb-pw-readout" aria-live="polite">' + esc(pairwiseReadout(lines.length)) + '</p>';
+        html += '<button type="button" class="svb-icon-btn svb-pw-help" data-act="pw-help" ' +
+                'data-tip="How pairwise questions work" aria-label="How pairwise questions work">' +
+                '<i class="fas fa-circle-question" aria-hidden="true"></i></button>';
+        html += '</div>';
+        html += '<p class="svb-pw-warn"' + (warn ? '' : ' hidden') + '>' +
+                '<i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <span>' + esc(warn) + '</span></p>';
+        if (S.locked) { html += '<p class="svb-hint">Wording fixes only, while the survey is open.</p>'; }
+        html += '</div>';
+        return html;
+    }
+
+    function paintPairwiseReadout(area) {
+        var wrap = area.closest('.svb-pw'), n = pairwiseLines(area.value).length, warn, text;
+        if (!wrap) { return; }
+        el('.svb-pw-readout', wrap).textContent = pairwiseReadout(n);
+        warn = el('.svb-pw-warn', wrap);
+        text = pairwiseWarning(n);
+        el('span', warn).textContent = text;
+        warn.hidden = text === '';
+    }
+
+    /**
+     * Save the textarea through option_set (replace-all). Unlocked, a line that
+     * matches a saved label reuses that option's id, so reordering or inserting
+     * lines keeps ids; locked, line i is option i and only wording may change.
+     * A duplicate, too few lines, or a locked line-count change is held inline
+     * and the pill reads "Not saved" until it is fixed.
+     */
+    function commitPairwise(questionId) {
+        var card  = cardEl(questionId);
+        var area  = card ? el('.svb-pw-lines', card) : null;
+        var q     = questionById(questionId);
+        var key   = 'opts:' + questionId + ':choice';
+        var seen  = {}, byLabel = {}, used = {}, dup = null, problem = '', lines, saved, list;
+        if (!area || !q) { return; }
+
+        lines = pairwiseLines(area.value);
+        saved = optionsOf(q, 'choice');
+        lines.forEach(function (l) {
+            var k = l.toLowerCase();
+            if (seen[k] && dup === null) { dup = l; }
+            seen[k] = true;
+        });
+        if (dup !== null) {
+            problem = '“' + dup + '” is listed twice.';
+        } else if (lines.length < 3) {
+            problem = 'A pairwise question needs at least 3 options.';
+        } else if (S.locked && lines.length !== saved.length) {
+            problem = 'While the survey is open you can fix wording, but not add or remove options.';
+        }
+        if (problem) {
+            held[key] = { msg: '', loc: locOf(area) };
+            fieldError(area, problem);
+            refreshPill();
+            return;
+        }
+        delete held[key];
+        fieldError(area, '');
+
+        if (S.locked) {
+            list = lines.map(function (l, i) {
+                return { option_id: parseInt(saved[i].option_id, 10), label: l, value_num: null, is_other: 0 };
+            });
+        } else {
+            saved.forEach(function (o) {
+                var k = String(o.label || '').trim();
+                var oid = parseInt(o.option_id, 10) || 0;
+                if (oid && !Object.prototype.hasOwnProperty.call(byLabel, k)) { byLabel[k] = oid; }
+            });
+            list = lines.map(function (l) {
+                var oid = Object.prototype.hasOwnProperty.call(byLabel, l) ? byLabel[l] : 0;
+                if (oid && used[oid]) { oid = 0; }
+                if (oid) { used[oid] = true; }
+                return { option_id: oid, label: l, value_num: null, is_other: 0 };
+            });
+        }
+
+        // S follows the textarea at once, so a preview drawn before the reply shows what was typed.
+        q.options = list.map(function (o, i) {
+            return { option_id: o.option_id, question_id: q.question_id, role: 'choice', sort_order: i,
+                     label: o.label, value_num: null, is_other: 0 };
+        });
+
+        save(key, 'option_set', {
+            QuestionId: questionId,
+            Role:       'choice',
+            Options:    JSON.stringify(list)
+        }, function (data) {
+            var cur = questionById(questionId);
+            if (!cur) { return; }
+            cur.options = data.options || [];
+            if (parseInt(questionId, 10) !== sel) { refreshCard(questionId); }
+        }, { node: area });
+        refreshPill();
+    }
+
+    /** The (?) explanation (pairwise spec §5 Help), built from this question's plan. */
+    function pairwiseHelpHtml(n) {
+        var plan = SvRender.pairwisePlan(n), bands = SvRender.PW_BANDS, lo = 31, rows = '', sentence, stages, i;
+
+        if (n < 3) {
+            sentence = 'Add at least 3 options to see this question\'s numbers.';
+        } else if (plan.small) {
+            sentence = 'Your ' + n + ' options make ' + plan.possible + ' matchups. Respondents see a plain progress bar, ' +
+                       'and a required question asks for all ' + plan.possible + '.';
+        } else {
+            sentence = 'Your ' + n + ' options make ' + plan.possible.toLocaleString() + ' matchups. Required respondents do at least ' +
+                       plan.gate + ' (' + plan.band_pcts[0] + '%), then see encouragement at ' +
+                       plan.tiers[1] + ', ' + plan.tiers[2] + ' and ' + plan.tiers[3] + '.';
+        }
+
+        rows += '<tr' + (n >= 3 && plan.small ? ' class="svb-pw-here"' : '') + '><th scope="row">30 or fewer</th>' +
+                '<td colspan="4">A plain bar; required means every matchup</td></tr>';
+        for (i = 0; i < bands.length; i++) {
+            var hi = bands[i][0];
+            var here = n >= 3 && !plan.small && plan.possible >= lo && (hi === null || plan.possible <= hi);
+            rows += '<tr' + (here ? ' class="svb-pw-here"' : '') + '><th scope="row">' +
+                    (hi === null ? lo + ' or more' : lo + '–' + hi) + '</th>' +
+                    bands[i][1].map(function (p) { return '<td>' + p + '%</td>'; }).join('') + '</tr>';
+            lo = (hi || 0) + 1;
+        }
+
+        stages = '<li data-level="0"><span class="svb-pw-swatch" aria-hidden="true"></span><span><strong>Before the first mark:</strong> ' +
+                 '“8 more matchups to go before you can continue.” (required) or “' + esc(SvRender.PW_OPTIONAL_MESSAGE) + '” (optional)</span></li>';
+        SvRender.PW_TIER_MESSAGES.forEach(function (m, idx) {
+            stages += '<li data-level="' + (idx + 1) + '"><span class="svb-pw-swatch" aria-hidden="true"></span><span>“' + esc(m) + '”</span></li>';
+        });
+        stages += '<li data-level="4"><span class="svb-pw-swatch" aria-hidden="true"></span><span><strong>At 100%:</strong> “' +
+                  esc(SvRender.PW_DONE_MESSAGE) + '”</span></li>';
+
+        return '<div class="svb-pw-help sv-scope">' +
+            '<p>Respondents see two options at a time and pick the one they prefer, or call it a tie. A win scores 1 point, ' +
+            'a tie ½ to each, a loss 0. Results rank the options by <strong>win %</strong>: points divided by the matchups ' +
+            'the option appeared in.</p>' +
+            '<p>Every respondent gets their own random order of matchups, with sides picked at random, so no option is ' +
+            'favored by where it sits in your list.</p>' +
+            '<h3>How many they\'re asked to do</h3>' +
+            '<p>' + esc(sentence) + '</p>' +
+            '<div class="svb-pw-tablewrap"><table class="svb-pw-bands"><thead><tr><th scope="col">Matchups</th>' +
+            '<th scope="col">Can continue</th><th scope="col">Even better</th><th scope="col">Awesome</th>' +
+            '<th scope="col">Fantastic</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+            '<h3>Required or optional</h3>' +
+            '<p>A <strong>required</strong> pairwise question keeps Next locked until the respondent reaches “Can continue”. ' +
+            'With 30 matchups or fewer, that means every one. An <strong>optional</strong> question can be skipped, and any ' +
+            'matchups a respondent does still count.</p>' +
+            '<h3>What respondents see</h3>' +
+            '<ol class="svb-pw-stages">' + stages + '</ol>' +
+            '<p class="svb-hint">Keep it to 30 options or fewer when you can. Past that, each respondent covers a small ' +
+            'slice of the matchups, so the ranking needs more respondents to settle.</p>' +
+            '</div>';
     }
 
     /** The spec object for one role of a question's type. */
@@ -3400,6 +3599,13 @@
                 if (area) { area.focus(); }
                 break;
 
+            case 'pw-help':
+                if (!q) { return; }
+                area = el('.svb-pw-lines', cardEl(q.question_id));
+                openModal('How pairwise questions work',
+                          pairwiseHelpHtml(area ? pairwiseLines(area.value).length : optionsOf(q, 'choice').length));
+                break;
+
             case 'more-toggle':
                 more = el('.svb-more', btn.closest('.svb-edit'));
                 if (more) {
@@ -3571,6 +3777,11 @@
             if (t.getAttribute('data-q-setting') === 'caption') { tocLiveText(); }
             return;
         }
+        if (t.classList && t.classList.contains('svb-pw-lines') && q) {
+            paintPairwiseReadout(t);
+            commitPairwise(q.question_id);
+            return;
+        }
         if (t.classList && (t.classList.contains('svb-optlabel') || t.classList.contains('svb-optweight')) && q) {
             commitOptions(q.question_id, t.closest('.svb-opts').getAttribute('data-role'));
         }
@@ -3662,6 +3873,22 @@
 
     function onCanvasPaste(e) {
         var t = e.target, q = questionById(sel), wrap, row, cb, text, lines, first, start, end, after, last;
+        /* A pasted list lands clean: bullets stripped and blank lines dropped,
+           the same rule the option-row paste uses. */
+        if (t.classList && t.classList.contains('svb-pw-lines') && q) {
+            cb   = e.clipboardData || window.clipboardData;
+            text = cb ? String(cb.getData('text') || '') : '';
+            if (!/[\r\n]/.test(text) && !/^\s*[-*•]\s+/.test(text)) { return; }
+            e.preventDefault();
+            lines = pairwiseLines(text).join('\n');
+            start = typeof t.selectionStart === 'number' ? t.selectionStart : t.value.length;
+            end   = typeof t.selectionEnd === 'number' ? t.selectionEnd : t.value.length;
+            t.value = t.value.slice(0, start) + lines + t.value.slice(end);
+            try { t.setSelectionRange(start + lines.length, start + lines.length); } catch (err) { /* not text */ }
+            autoGrow(t);
+            fire(t, 'input');
+            return;
+        }
         if (!t.classList || !t.classList.contains('svb-optlabel') || !q || S.locked) { return; }
         wrap = t.closest('.svb-opts');
         row  = t.closest('.svb-optrow');
