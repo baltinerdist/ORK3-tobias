@@ -192,6 +192,26 @@ final class SurveyPureTest extends TestCase
     }
 
     /**
+     * SurveyAjax/update forwards an explicit allowlist of POST keys. A field the
+     * domain accepts but the allowlist omits is silently dropped while update
+     * still answers status 0 (ResultsShare was, sharing-and-credits review).
+     * Every scalar Survey::update() field must be forwarded; AudienceKingdomIds
+     * is the one field the controller JSON-decodes separately.
+     */
+    public function testSurveyAjaxUpdateForwardsEveryFieldTheDomainAccepts(): void
+    {
+        require_once DIR_UI . 'controller/controller.SurveyAjax.php';
+        $domain = array_keys((new ReflectionClass(Survey::class))->getConstant('UPDATE_FIELDS'));
+        $domain = array_values(array_diff($domain, ['AudienceKingdomIds']));
+        $forwarded = (new ReflectionClass(Controller_SurveyAjax::class))->getConstant('UPDATE_SCALAR_FIELDS');
+        $this->assertIsArray($forwarded, 'the controller allowlist is a class constant');
+        sort($domain);
+        sort($forwarded);
+        $this->assertSame($domain, $forwarded);
+        $this->assertContains('ResultsShare', $forwarded);
+    }
+
+    /**
      * Run $fn with $GLOBALS['DB'] (and optionally Ork3::$Lib->authorization)
      * replaced by fakes, restoring both afterwards.
      */

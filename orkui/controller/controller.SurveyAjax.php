@@ -29,6 +29,19 @@ class Controller_SurveyAjax extends Controller
         'preview_md', 'dismiss_banner', 'event_options', 'credit_status',
     ];
 
+    /**
+     * POST keys `update` forwards verbatim to Survey::update(). It must list
+     * every scalar field the domain accepts (a missing one is dropped while the
+     * call still answers status 0); AudienceKingdomIds is JSON-decoded
+     * separately. SurveyPureTest pins this list to Survey::UPDATE_FIELDS.
+     */
+    private const UPDATE_SCALAR_FIELDS = [
+        'Title', 'Description', 'WelcomeMd', 'WelcomeImageId', 'ThanksMd', 'ThanksImageId',
+        'OpenAt', 'CloseAt', 'AudienceActiveOnly', 'AudienceMinTenureMonths',
+        'AudienceRecentMonths', 'AudienceEventCalendardetailId',
+        'DataGateEnabled', 'ResultsShare', 'ShowBanner', 'ShowProgress', 'AllowResume', 'AccentColor',
+    ];
+
     public function __construct($call = null, $id = null)
     {
         parent::__construct($call, $id);
@@ -261,12 +274,7 @@ class Controller_SurveyAjax extends Controller
         $this->requireManage($uid, $surveyId);
 
         $fields = [];
-        foreach ([
-            'Title', 'Description', 'WelcomeMd', 'WelcomeImageId', 'ThanksMd', 'ThanksImageId',
-            'OpenAt', 'CloseAt', 'AudienceActiveOnly', 'AudienceMinTenureMonths',
-            'AudienceRecentMonths', 'AudienceEventCalendardetailId',
-            'DataGateEnabled', 'ShowBanner', 'ShowProgress', 'AllowResume', 'AccentColor',
-        ] as $key) {
+        foreach (self::UPDATE_SCALAR_FIELDS as $key) {
             if (array_key_exists($key, $_POST)) {
                 $fields[$key] = $_POST[$key];
             }
