@@ -182,4 +182,6 @@ window.SvConfig = {
 <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
 <script src="<?= HTTP_TEMPLATE ?>default/script/survey-render.js?v=<?= filemtime(__DIR__ . '/script/survey-render.js') ?>"></script>
+<script>window.SvCreditConfig = { uir: <?=json_encode(UIR)?>, csrf: <?=json_encode((string)($SurveyCsrf ?? ''))?> };</script>
+<?php include __DIR__ . '/_survey_credit_modal.tpl'; ?>
 <script src="<?= HTTP_TEMPLATE ?>default/script/survey-build.js?v=<?= filemtime(__DIR__ . '/script/survey-build.js') ?>"></script>

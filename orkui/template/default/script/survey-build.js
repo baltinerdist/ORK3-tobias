@@ -112,7 +112,8 @@
         full:    'Link my answers to my ORK profile. The {scope} officers and ORK administrators who run this survey, now and in future reigns, will see my name beside my answers, including in exported spreadsheets.',
         fullOrk: 'Link my answers to my ORK profile. The ORK administrators who run this survey, now and in future administrations, will see my name beside my answers, including in exported spreadsheets.',
         partial: 'Record only my kingdom and a years-played range, such as 3–5 years. No name, no profile link.',
-        anon:    'Record nothing about me.'
+        anon:    'Record nothing about me.',
+        credit:  'This survey gives an attendance credit, which will appear on your public attendance record. It is only given when you choose Any ORK Data.'
     };
 
     /* ------------------------------------------------------------- catalogue */
@@ -570,7 +571,11 @@
         p.action = action;
         p.onOk   = onOk;
         p.node   = (opts && opts.node) || p.node || null;
-        p.onFail = function (data) { saveFailed(p.node, data); };
+        p.onFailExtra = (opts && opts.onFail) || p.onFailExtra || null;
+        p.onFail = function (data) {
+            saveFailed(p.node, data);
+            if (p.onFailExtra) { p.onFailExtra(data); }
+        };
         Object.keys(fields).forEach(function (k) { p.fields[k] = fields[k]; });
 
         if (p.timer) { window.clearTimeout(p.timer); }
@@ -2072,7 +2077,23 @@
                          truthy(s.data_gate_enabled), 'data-sv-field="DataGateEnabled"', false,
                          'Turn this off and every response is stored anonymously.');
         body += consentQuote(s);
+        if (s.scope_type === 'ork' || s.scope_type === 'kingdom') {
+            var down = s.scope_type === 'ork' ? 'kingdoms' : 'parks';
+            var each = s.scope_type === 'ork' ? 'Each kingdom sees its own players' : 'Each park sees its own players';
+            body += selectRow('Share results with ' + down,
+                [['none', 'Don’t share'], ['scoped', each], ['all', 'Every ' + down.replace(/s$/, '') + ' sees all results']],
+                s.results_share || 'none', 'data-sv-field="ResultsShare"', false,
+                'Shared ' + down + ' see charts and stats only — never names, individual responses or the spreadsheet.');
+        }
         html += section('privacy', 'Privacy', 'fa-user-shield', body);
+
+        /* Attendance credit (sharing-and-credits spec §3.6). The card only opens
+           the shared modal; the owner acts for its own org, and an ORK survey's
+           owner just reads what kingdoms and parks have turned on. */
+        body  = '<p class="svb-hint">Give respondents who choose Any ORK Data an attendance credit — at their home park, or at a generated “Survey Credit” event. Once on, it can’t be turned off.</p>';
+        body += '<button type="button" class="sv-btn" id="svb-credit-open"><i class="fas fa-award" aria-hidden="true"></i> ' +
+                (s.scope_type === 'ork' ? 'See credits' : 'Set up attendance credit') + '</button>';
+        html += section('credit', 'Attendance credit', 'fa-award', body);
 
         /* Promotion */
         body  = checkRow('Promote with a site banner', truthy(s.show_banner), 'data-sv-field="ShowBanner"', false,
@@ -2145,7 +2166,8 @@
         for (i = 0; i < opts.length; i++) {
             html += '<li><strong>' + esc(opts[i][0]) + '</strong> — ' + esc(opts[i][1]) + '</li>';
         }
-        return html + '</ul></div>';
+        return html + '</ul><p class="svb-consent-lead">' + esc(CONSENT_COPY.credit) +
+               ' <span class="svb-hint">(shown when this survey gives a credit)</span></p></div>';
     }
 
     function scopeIcon(type) {
@@ -3839,7 +3861,9 @@
         save('survey:' + key, 'update', fields, function (data) {
             S.survey = data.survey || S.survey;
             renderHeader();
-        }, { node: node });
+        }, { node: node, onFail: function () {
+            if (node.type === 'checkbox') { node.checked = !node.checked; }
+        } });
     }
 
     function onSettingsInput(e) {
@@ -3856,6 +3880,14 @@
         if (head) {
             e.preventDefault();
             toggleSection(head.getAttribute('data-sec-toggle'));
+            return;
+        }
+        if (e.target.closest('#svb-credit-open') && window.SvCredit) {
+            window.SvCredit.open({
+                surveyId: SURVEY_ID,
+                grantor: S.survey.scope_type === 'ork' ? '' : (S.survey.scope_type === 'kingdom' ? 'Kingdom/' : 'Park/') + S.survey.scope_id,
+                title: S.survey.title
+            });
             return;
         }
         btn = e.target.closest ? e.target.closest('[data-act], [data-upload], [data-imgclear], [data-md-cmd]') : null;
