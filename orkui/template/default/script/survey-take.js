@@ -811,8 +811,10 @@
             }
             html += '</div>';
             if (s.credit_available) {
-                html += '<p class="sv-credit-note"><i class="fas fa-award" aria-hidden="true"></i> ' +
-                    esc(CREDIT_NOTE) + '<strong>Any ORK Data</strong>.</p>';
+                // One <span> around the text: .sv-credit-note is a flex row, so bare
+                // text and the <strong> would otherwise become separate flex items.
+                html += '<p class="sv-credit-note"><i class="fas fa-award" aria-hidden="true"></i><span>' +
+                    esc(CREDIT_NOTE) + '<strong>Any ORK Data</strong>.</span></p>';
             }
         } else {
             html += '<h2 class="sv-card-title">Ready to send</h2>';
@@ -840,9 +842,9 @@
         out += '<h2 class="sv-card-title"><i class="fas fa-circle-check" aria-hidden="true"></i> Thank you</h2>';
         out += '<div class="sv-intro">' + (html ? safe(html) : '<p>Your response has been recorded.</p>') + '</div>';
         if (credit === 'granted') {
-            out += '<p class="sv-credit-note"><i class="fas fa-award" aria-hidden="true"></i> Your attendance credit has been added.</p>';
+            out += '<p class="sv-credit-note"><i class="fas fa-award" aria-hidden="true"></i><span>Your attendance credit has been added.</span></p>';
         } else if (credit === 'pending') {
-            out += '<p class="sv-credit-note"><i class="fas fa-award" aria-hidden="true"></i> Your attendance credit will be added shortly.</p>';
+            out += '<p class="sv-credit-note"><i class="fas fa-award" aria-hidden="true"></i><span>Your attendance credit will be added shortly.</span></p>';
         }
         out += '</section>';
         out += '<div class="sv-actions"><a class="sv-btn sv-btn-primary" href="' + esc(UIR) + 'Player/index">Back to My Amtgard</a></div>';

@@ -926,6 +926,13 @@ html[data-theme="dark"] .sv-q-error {
 html[data-theme="dark"] .sv-progress { background: var(--ork-bg-tertiary); }
 
 html[data-theme="dark"] .sv-btn-primary { color: #1a202c; }
+/* An <a class="sv-btn sv-btn-primary"> (the thank-you screen's "Back to My
+   Amtgard") also matches default.theme's `html[data-theme="dark"]
+   #theme_container a` (1,1,2) and its :hover (1,2,2), which outrank the rule
+   above and paint the label link-blue on the accent fill — invisible. The same
+   #theme_container qualifier .sv-preview-link uses below restores it. */
+html[data-theme="dark"] #theme_container a.sv-btn-primary,
+html[data-theme="dark"] #theme_container a.sv-btn-primary:hover { color: #1a202c; }
 
 html[data-theme="dark"] .sv-figure-empty { color: var(--ork-text-muted); }
 
@@ -1416,6 +1423,9 @@ html[data-theme="dark"] .sv-credit-warning { background: rgba(214, 158, 46, 0.12
    :root / html[data-theme="dark"] blocks above), so these need no dark twin. */
 .sv-credit-note { display: flex; gap: 8px; align-items: flex-start; margin: 12px 0 0; padding: 8px 10px;
     border-radius: 4px; background: var(--sv-l2); font-size: 13px; line-height: 1.5; }
-.sv-credit-note i { margin-top: 3px; color: var(--sv-accent); }
+.sv-credit-note i { flex: 0 0 auto; margin-top: 3px; color: var(--sv-accent); }
+/* survey-take.js wraps the text in ONE <span>: in a flex row, bare text and a
+   <strong> each become their own flex item and break into side-by-side columns. */
+.sv-credit-note > span { flex: 1 1 auto; min-width: 0; }
 .sv-chip-credit { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 12px;
     font-size: 12px; font-weight: 600; background: var(--sv-l2); border: 1px solid var(--sv-border); }
