@@ -124,8 +124,9 @@ let fixReport = null
 let recheck = null
 if (confirmed.length) {
   phase('Fix')
-  fixReport = await agent(COMMON + '\n\n## YOU ARE THE FIXER. Apply EVERY confirmed finding below (all severities). For each behavioural fix add or extend a test that fails before and passes after. Follow the plan\'s Global Constraints (normalize-first for PHP, explicit path-limited commits `git add <paths> && git commit -m "Enhancement: Survey — …" -- <paths>` with the trailer lines ' +
-    '"Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>" and "Claude-Session: https://claude.ai/code/session_015f7Q1rwtQLdNo6Sx1YwLqm"; never stage class.Authorization.php; never push/stash). ' +
+  const RESUME = A.resumeNote ? '\n\n## RESUMED RUN — READ FIRST\n' + String(A.resumeNote) + '\n' : ''
+  fixReport = await agent(COMMON + RESUME + '\n\n## YOU ARE THE FIXER. Apply EVERY confirmed finding below (all severities). For each behavioural fix add or extend a test that fails before and passes after. Follow the plan\'s Global Constraints (normalize-first for PHP, explicit path-limited commits `git add <paths> && git commit -m "Enhancement: Survey — …" -- <paths>` with the trailer lines ' +
+    '"Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>" and "Claude-Session: https://claude.ai/code/' + (A.session || 'session_015f7Q1rwtQLdNo6Sx1YwLqm') + '"; never stage class.Authorization.php; never push/stash). ' +
     'If a finding needs the browser to confirm, you may use Claude-in-Chrome (you are alone) — load its tools with one ToolSearch call and open a new tab. Report per finding id: fixed | not-fixed (why) and the commit hash.\n\n' + JSON.stringify(confirmed, null, 2),
     { label: 'fix', phase: 'Fix', model: 'opus', effort: 'high' })
 
