@@ -169,16 +169,19 @@ final class SurveySharingCreditTest extends TestCase
         };
         $this->assertFalse($rowFor()['CreditOn']);
         $this->assertNull($rowFor()['CreditCoveredBy']);
+        $this->assertFalse($rowFor()['CreditShownOn']);
 
         $this->assertSame(0, $this->credit()->enable($this->kOfficer, $kings, ['type' => 'kingdom', 'id' => $this->k], 'home_park', true)['Status']);
         $row = $rowFor();
         $this->assertFalse($row['CreditOn'], 'the park has no config of its own');
         $this->assertSame((new Survey())->scopeName('kingdom', $this->k), $row['CreditCoveredBy']);
+        $this->assertTrue($row['CreditShownOn'], 'covered: the row shows the credit as on (the domain decides, not the template)');
 
         $this->assertSame(0, $this->credit()->enable($this->pOfficerA, $kings, ['type' => 'park', 'id' => $this->parkA], 'home_park', true)['Status']);
         $row = $rowFor();
         $this->assertTrue($row['CreditOn']);
         $this->assertNull($row['CreditCoveredBy']);
+        $this->assertTrue($row['CreditShownOn']);
     }
 
     /** §1: a shared row's response count reaches the page only under results_share = 'all'. */

@@ -339,12 +339,17 @@ html[data-theme="dark"] #theme_container .sv-list-section-title {
 }
 .sv-list-section-count {
 	font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 10px;
-	background: var(--ork-surface-light, #edf2f7); color: var(--ork-text-secondary);
+	/* The rp chip surface: #e2e8f0 on the white table area, #374151 on the dark
+	   one (reports.css swaps it), so the pill reads in both themes. */
+	background: var(--rp-bg-tertiary); color: var(--ork-text-secondary);
 }
 .sv-list-section-empty { margin: 0; padding: 12px 14px; font-size: 13px; color: var(--ork-text-secondary);
 	border: 1px dashed var(--rp-border-mid); border-radius: 8px; }
-.sv-row-btn.sv-row-btn-on { color: var(--ork-accent, #b7791f); }
-html[data-theme="dark"] .sv-list-section-count { background: #2d3748; }
+/* Credits on: the survey accent (--sv-accent = --ork-blue-primary, which
+   swaps per theme: 8.4:1 on the light button, 5.3:1 on the dark one) plus a
+   check icon and ", on" in the accessible name, so the state never rests on
+   colour alone. */
+.sv-row-btn.sv-row-btn-on { color: var(--sv-accent); border-color: var(--sv-accent); }
 </style>
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
 
@@ -503,7 +508,7 @@ html[data-theme="dark"] .sv-list-section-count { background: #2d3748; }
 							</td>
 							<td role="cell" data-label="Scope"><?=htmlspecialchars($_row['scope_type'] === 'ork' ? 'All of Amtgard' : (string)$_row['ScopeName'])?></td>
 							<td role="cell" data-label="Status" data-order="<?=$_status_rank?>" data-search="<?=htmlspecialchars($_status)?>"><span class="sv-status-pill sv-status-pill-<?=htmlspecialchars($_status)?>"><?=$_label?></span></td>
-<?php if ($_shared && ($_row['results_share'] ?? 'none') !== 'all'): ?>
+<?php if ($_row['ResponseCount'] === null): /* the domain withholds a shared row's count unless results are shared with everyone */ ?>
 							<td role="cell" class="dt-right" data-label="Responses" data-order="-1">&mdash;</td>
 <?php else: ?>
 							<td role="cell" class="dt-right" data-label="Responses" data-order="<?=(int)$_row['ResponseCount']?>"><?=number_format((int)$_row['ResponseCount'])?></td>
@@ -529,21 +534,25 @@ html[data-theme="dark"] .sv-list-section-count { background: #2d3748; }
 									<a class="sv-row-btn" href="<?=UIR?>Survey/s/<?=htmlspecialchars((string)$_row['slug'])?>" data-tip="Take this survey"><i class="fas fa-pen-to-square" aria-hidden="true"></i> <span class="sv-row-btn-label">Take</span></a>
 <?php endif; ?>
 <?php if (!empty($_row['CanResults'])): ?>
+<?php /* The visible label stays "Results" so it fits a ~100px card cell at
+	phone width; the lens rides in the tip and the accessible name. */
+	$_lens_note = $_row['ResultsLabel'] === 'all' ? 'shared: all respondents' : 'your ' . htmlspecialchars($_row['ResultsLabel']); ?>
 									<a class="sv-row-btn" href="<?=UIR?>Survey/results/<?=$_sid?>/<?=htmlspecialchars((string)$_row['ResultsContext'])?>"
-									   data-tip="<?=$_row['ResultsLabel'] === 'all' ? 'Results (shared: all respondents)' : 'Results (your ' . htmlspecialchars($_row['ResultsLabel']) . ')'?>"><i class="fas fa-chart-bar" aria-hidden="true"></i> <span class="sv-row-btn-label"><?=$_row['ResultsLabel'] === 'all' ? 'Results' : 'Results (your ' . htmlspecialchars($_row['ResultsLabel']) . ')'?></span></a>
+									   data-tip="Results (<?=$_lens_note?>)"><i class="fas fa-chart-bar" aria-hidden="true"></i> <span class="sv-row-btn-label">Results</span><span class="sv-sr-only"> (<?=$_lens_note?>)</span></a>
 <?php endif; ?>
 <?php endif; /* Access === shared */ ?>
 <?php if (!empty($_row['CreditGrantor']) && $_status !== 'archived'):
-	/* On when this org has its own config, or an earlier one (its kingdom's,
-	   the owner's event) already covers its players (spec §1 CreditChip). */
+	/* CreditShownOn (domain): this org's own config, or an earlier one (its
+	   kingdom's, the owner's event) already covers its players (spec §1
+	   CreditChip). The tip says which. */
 	$_cov      = (string)($_row['CreditCoveredBy'] ?? '');
-	$_cred_on  = !empty($_row['CreditOn']) || $_cov !== '';
+	$_cred_on  = !empty($_row['CreditShownOn']);
 	$_cred_tip = !empty($_row['CreditOn']) ? 'Attendance credit is on'
 		: ($_cov !== '' ? 'Attendance credit is on: your players are covered by ' . $_cov . '’s credit' : 'Attendance credit');
 ?>
 									<button type="button" class="sv-row-btn<?=$_cred_on ? ' sv-row-btn-on' : ''?>" data-sv-credit="<?=$_sid?>"
 									        data-sv-grantor="<?=htmlspecialchars((string)$_row['CreditGrantor'])?>" data-sv-title="<?=htmlspecialchars((string)$_row['title'])?>"
-									        data-tip="<?=htmlspecialchars($_cred_tip)?>"><i class="fas fa-award" aria-hidden="true"></i> <span class="sv-row-btn-label">Credits</span></button>
+									        data-tip="<?=htmlspecialchars($_cred_tip)?>"><i class="fas <?=$_cred_on ? 'fa-circle-check' : 'fa-award'?>" aria-hidden="true"></i> <span class="sv-row-btn-label">Credits</span><span class="sv-sr-only sv-credit-state"><?=$_cred_on ? ', on' : ''?></span></button>
 <?php endif; ?>
 								</div>
 							</td>
@@ -965,7 +974,15 @@ html[data-theme="dark"] .sv-list-section-count { background: #2d3748; }
 			surveyId: parseInt(b.getAttribute('data-sv-credit'), 10),
 			grantor: b.getAttribute('data-sv-grantor') || '',
 			title: b.getAttribute('data-sv-title') || '',
-			onChange: function () { b.classList.add('sv-row-btn-on'); b.setAttribute('data-tip', 'Attendance credit is on'); }
+			// Called only after this org's credit is turned on (survey-credit.js).
+			onChange: function () {
+				b.classList.add('sv-row-btn-on');
+				b.setAttribute('data-tip', 'Attendance credit is on');
+				var ic = b.querySelector('i');
+				if (ic) { ic.className = 'fas fa-circle-check'; }
+				var st = b.querySelector('.sv-credit-state');
+				if (st) { st.textContent = ', on'; }
+			}
 		});
 	});
 

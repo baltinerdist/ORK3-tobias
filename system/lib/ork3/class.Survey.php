@@ -601,8 +601,10 @@ class Survey
             $state = $grantor !== null ? $credit->rowState($row, $configs[$sid] ?? [], $grantor) : ['on' => false, 'covered_by' => null];
             $row['CreditOn']        = $state['on'];
             $row['CreditCoveredBy'] = $state['covered_by'];
+            $row['CreditShownOn']   = $state['on'] || $state['covered_by'] !== null;
             // §1: a shared row shows its response count only when the owner
-            // shares results with everyone; otherwise it never leaves here.
+            // shares results with everyone; otherwise it never leaves here, and
+            // a null ResponseCount is what the page renders as "—".
             if (!$manage && (string) ($row['results_share'] ?? 'none') !== 'all') {
                 $row['ResponseCount']  = null;
                 $row['response_count'] = null;
