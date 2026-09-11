@@ -2166,8 +2166,11 @@
         for (i = 0; i < opts.length; i++) {
             html += '<li><strong>' + esc(opts[i][0]) + '</strong> — ' + esc(opts[i][1]) + '</li>';
         }
-        return html + '</ul><p class="svb-consent-lead">' + esc(CONSENT_COPY.credit) +
-               ' <span class="svb-hint">(shown when this survey gives a credit)</span></p></div>';
+        /* The credit line is conditional, so it gets its own label like the two
+           parts above rather than sitting under the last option as if it were
+           part of it. */
+        return html + '</ul><span class="svb-label svb-consent-credit-label">Shown when this survey gives a credit</span>' +
+               '<p class="svb-consent-lead">' + esc(CONSENT_COPY.credit) + '</p></div>';
     }
 
     function scopeIcon(type) {
@@ -3862,7 +3865,14 @@
             S.survey = data.survey || S.survey;
             renderHeader();
         }, { node: node, onFail: function () {
-            if (node.type === 'checkbox') { node.checked = !node.checked; }
+            if (node.type !== 'checkbox') { return; }
+            /* A refused toggle (e.g. the data-gate lock while credits are on)
+               goes back to the server's value, so nothing is left unsaved:
+               keep the inline reason, but clear the "Not saved" pill and the
+               leave-page prompt that post() armed for this key. */
+            node.checked = !node.checked;
+            delete failed['survey:' + key];
+            refreshPill();
         } });
     }
 

@@ -1483,6 +1483,15 @@ body:has(#svb-toc) { overflow-x: clip; }
 .svb-consent-quote ul { margin: 0; padding-left: 16px; }
 .svb-consent-quote li { margin-bottom: 4px; }
 .svb-consent-quote li:last-child { margin-bottom: 0; }
+/* The conditional credit line sits after the option list: a rule and a gap
+   keep it from reading as part of the last option. Three classes (0,3,0) so
+   the dark-mode `.svb-label` pill-box reset below (0,2,1: border 0,
+   padding 0) cannot strip the rule in dark mode. */
+.svb-consent-quote .svb-label.svb-consent-credit-label {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--ork-border);
+}
 
 .svb-sharelink { display: flex; gap: 6px; align-items: stretch; }
 .svb-sharelink .sv-input { flex: 1 1 auto; min-width: 0; }
