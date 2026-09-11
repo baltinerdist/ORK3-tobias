@@ -214,6 +214,17 @@ function seed_plan(): array
                     ],
                 ],
                 [
+                    'key'     => 'q9p',
+                    'type'    => 'pairwise',
+                    'prompt'  => 'Which event should the kingdom add next?',
+                    'help'    => 'Pick the one you would rather attend, or call it a tie. Do as many as you like.',
+                    'choices' => [
+                        ['label' => 'Spring war'], ['label' => 'Tournament of champions'], ['label' => 'Quest weekend'],
+                        ['label' => 'Fall feast'], ['label' => 'Camping campaign'], ['label' => 'Fighter practice weekend'],
+                        ['label' => 'Arts & Sciences faire'], ['label' => 'Newcomer demo day'], ['label' => 'Youth day'],
+                    ],
+                ],
+                [
                     'key'      => 'q10',
                     'type'     => 'date',
                     'prompt'   => 'When did you attend your first Amtgard event?',
@@ -575,6 +586,35 @@ function seed_answers(array $b): array
             static fn ($label) => $b['q9']['choice'][(string) $label],
             $order
         );
+    }
+
+    // 9p. pairwise — each respondent judges a random share of the 36 matchups;
+    // a hidden strength per event decides most picks, so the ranking is real.
+    if (!$skip()) {
+        $strength = [
+            'Spring war' => 9, 'Tournament of champions' => 8, 'Quest weekend' => 7, 'Fall feast' => 6,
+            'Camping campaign' => 5, 'Fighter practice weekend' => 4, 'Arts & Sciences faire' => 3,
+            'Newcomer demo day' => 2, 'Youth day' => 2,
+        ];
+        $labels = array_keys($strength);
+        $pairs = [];
+        foreach ($labels as $i => $x) {
+            foreach (array_slice($labels, $i + 1) as $y) {
+                $pairs[] = [$x, $y];
+            }
+        }
+        shuffle($pairs);
+        $list = [];
+        foreach (array_slice($pairs, 0, random_int(4, count($pairs))) as [$x, $y]) {
+            if (random_int(0, 1) === 1) {
+                [$x, $y] = [$y, $x];
+            }
+            $roll = random_int(1, $strength[$x] + $strength[$y] + 2);
+            $idX = $b['q9p']['choice'][$x];
+            $idY = $b['q9p']['choice'][$y];
+            $list[] = ['a' => $idX, 'b' => $idY, 'w' => $roll <= 2 ? 0 : ($roll - 2 <= $strength[$x] ? $idX : $idY)];
+        }
+        $a[$b['q9p']['id']] = $list;
     }
 
     // 10. first event — spread across three decades of play.

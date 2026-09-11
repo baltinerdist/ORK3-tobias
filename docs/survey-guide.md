@@ -58,6 +58,7 @@ the upload is refused and the message says which limit you hit.
 | NPS | The standard 0–10 "how likely are you to recommend…" scale |
 | Matrix | A grid: several rows, each answered against the same set of columns |
 | Ranking | Put a list of options in order. Shuffled for each player by default, so nobody is nudged toward the order you typed. A list the player never moved isn't counted as an answer; on a required ranking they can press **Keep this order** |
+| Pairwise | Two options at a time: the player picks one or calls a tie. Results rank every option by how often it wins. See **Pairwise questions** below |
 | Short text / Paragraph | Free text, one line or several |
 | Number | A numeric answer, with optional min/max/step/unit |
 | Date | A calendar date |
@@ -70,6 +71,35 @@ always stays at the bottom.
 Any Multiple choice, Dropdown, Yes / No or Checkboxes question can drive **skip logic**: a later
 question or page can be set to show only when a chosen option was picked. Skip logic is one level
 deep, so a question that depends on another can't itself be a dependency.
+
+### Pairwise questions
+
+Pairwise asks "this or that?" over and over, instead of making anyone sort a long list at once. Type or
+paste the options into the box, one per line. The (?) beside the box explains everything below with
+your question's own numbers.
+
+- **Scoring.** A win is 1 point, a tie is ½ to each option, a loss is 0. An option's **win %** is its
+  points divided by the matchups it appeared in, and results rank options by win %.
+- **Random for everyone.** Each player gets their own random order of matchups, with sides picked at
+  random.
+- **How many matchups.** N options make N × (N − 1) ÷ 2 matchups: 10 options is 45, 30 options is 435.
+  Players aren't asked to do them all. A progress bar shows how far they've got and cheers them on at
+  four marks:
+
+| Matchups | Can continue | Even better | Awesome | Fantastic |
+|---|---|---|---|---|
+| 30 or fewer | every matchup, if required (a plain bar) | | | |
+| 31–105 | 30% | 40% | 50% | 60% |
+| 106–200 | 20% | 30% | 40% | 50% |
+| 201–300 | 10% | 20% | 30% | 40% |
+| 301 or more | 10% | 15% | 20% | 25% |
+
+- **Required or optional.** A required pairwise question won't let the player move on until they reach
+  "Can continue". An optional one can be skipped, and whatever matchups the player did still count.
+- **Keep it short.** Over 30 options the builder warns you. It still works, but each player covers a
+  small slice of the matchups, so you need more players for the ranking to settle.
+- **Results** show the possible matchups, the average share of matchups each player did, and every
+  option's win % as a chart and a sortable table. The CSV lists each player's matchups, winner first.
 
 ### Structure lock
 
