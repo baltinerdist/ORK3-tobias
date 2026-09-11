@@ -11,7 +11,7 @@
  * anonymous response would re-identify it.
  *
  * All credit SQL lives here. Attendance and event rows are written by
- * Attendance::AddSystemCredit() and EventPlanning::CreateSystemEvent(), which
+ * Attendance::add_system_credit() and EventPlanning::create_system_event(), which
  * trust this class to have authorized the write.
  */
 class SurveyCredit
@@ -381,7 +381,7 @@ class SurveyCredit
     /**
      * Post every owed credit (§3.5). Idempotent: the ledger holds one row per
      * player per survey, so re-running changes nothing. Creates missing events
-     * first, outside any transaction (CreateSystemEvent opens its own).
+     * first, outside any transaction (create_system_event opens its own).
      *
      * @return array{Granted:int, SkippedNoPark:int, Pending:int}
      */
@@ -600,7 +600,7 @@ class SurveyCredit
         return $configs;
     }
 
-    /** Never call inside a transaction: CreateSystemEvent opens its own. */
+    /** Never call inside a transaction: create_system_event opens its own. */
     private function ensureEvent(array $config, array $survey): array
     {
         $detailId = (int) ($config['event_calendardetail_id'] ?? 0);
@@ -614,7 +614,7 @@ class SurveyCredit
         }
         $isPark = $config['grantor_type'] === 'park';
         $title  = (string) $survey['title'];
-        $r = Ork3::$Lib->eventplanning->CreateSystemEvent([
+        $r = Ork3::$Lib->eventplanning->create_system_event([
             'KingdomId'   => $isPark ? 0 : (int) $config['grantor_id'],
             'ParkId'      => $isPark ? (int) $config['grantor_id'] : 0,
             'Name'        => self::eventName($title),
@@ -674,7 +674,7 @@ class SurveyCredit
             $this->logFailure($sid, $uid, 'begin', '');
             return 'pending';
         }
-        $att = Ork3::$Lib->attendance->AddSystemCredit($where + [
+        $att = Ork3::$Lib->attendance->add_system_credit($where + [
             'MundaneId' => $uid, 'ClassId' => $class, 'Credits' => 1, 'Note' => self::noteFor($sid),
             'ByWhomId' => (int) $config['enabled_by'], 'EntryMethod' => 'survey',
         ]);

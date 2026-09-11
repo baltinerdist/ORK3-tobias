@@ -1505,8 +1505,12 @@ class EventPlanning extends Ork3
      * kingdom is always the park's own. The one-day window keeps the attendance
      * pages from offering it as "currently happening". Opens its own
      * transaction: never call it inside another.
+     *
+     * The snake_case name keeps it off the public JSON service should this
+     * class ever be whitelisted there: JsonServer refuses only names that
+     * contain '_' (see Attendance::add_system_credit()).
      */
-    public function CreateSystemEvent(array $r): array
+    public function create_system_event(array $r): array
     {
         $parkId    = (int) ($r['ParkId'] ?? 0);
         $kingdomId = (int) ($r['KingdomId'] ?? 0);

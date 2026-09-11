@@ -201,7 +201,7 @@ final class SurveySharingCreditTest extends TestCase
     public function testAddSystemCreditWritesEveryColumnAndBustsNothingElse(): void
     {
         $uid = $this->player('credit', $this->parkA, $this->k);
-        $r = Ork3::$Lib->attendance->AddSystemCredit([
+        $r = Ork3::$Lib->attendance->add_system_credit([
             'MundaneId' => $uid, 'ClassId' => 6, 'Date' => '2026-09-05', 'ParkId' => $this->parkA, 'KingdomId' => $this->k,
             'EventId' => 0, 'EventCalendarDetailId' => 0, 'Credits' => 1, 'Note' => 'Survey #1', 'ByWhomId' => $this->kOfficer,
             'EntryMethod' => 'survey',
@@ -223,13 +223,44 @@ final class SurveySharingCreditTest extends TestCase
         $uid = $this->player('credit2', $this->parkA, $this->k);
         $base = ['MundaneId' => $uid, 'ClassId' => 6, 'Date' => '2026-09-05', 'ParkId' => $this->parkA, 'KingdomId' => $this->k,
                  'EventId' => 0, 'EventCalendarDetailId' => 0, 'Credits' => 1, 'Note' => 'x', 'ByWhomId' => 1];
-        $this->assertSame(1, Ork3::$Lib->attendance->AddSystemCredit($base + ['EntryMethod' => 'manual'])['Status']);
-        $this->assertSame(1, Ork3::$Lib->attendance->AddSystemCredit(['Date' => 'nope', 'EntryMethod' => 'survey'] + $base)['Status']);
+        $this->assertSame(1, Ork3::$Lib->attendance->add_system_credit($base + ['EntryMethod' => 'manual'])['Status']);
+        $this->assertSame(1, Ork3::$Lib->attendance->add_system_credit(['Date' => 'nope', 'EntryMethod' => 'survey'] + $base)['Status']);
+    }
+
+    /**
+     * The token-free system writers must never be callable through the public
+     * JSON service (orkservice/Json/index.php whitelists whole classes, and
+     * Attendance is one of them). JsonServer refuses any requested method name
+     * containing '_'; PHP method names are case-insensitive, so a lower-case
+     * first letter alone would NOT keep a camelCase name off the endpoint.
+     */
+    public function testTokenFreeSystemWritersAreNotCallableThroughTheJsonService(): void
+    {
+        require_once ORK3_ROOT . '/system/lib/system/class.JsonServer.php';
+        $server   = new JsonServer(['Attendance', 'EventPlanning']);
+        $validate = new ReflectionMethod(JsonServer::class, 'validate_method');
+        $validate->setAccessible(true);
+
+        $found = 0;
+        foreach ([Attendance::class, EventPlanning::class] as $class) {
+            foreach ((new ReflectionClass($class))->getMethods(ReflectionMethod::IS_PUBLIC) as $m) {
+                if (strpos((string) $m->getDocComment(), 'NO TOKEN') === false) {
+                    continue;
+                }
+                $found++;
+                foreach ([$m->getName(), ucfirst($m->getName()), strtoupper($m->getName())] as $spelling) {
+                    $this->assertFalse($validate->invoke($server, $class, $spelling), $class . '::' . $spelling . ' is reachable through JsonServer');
+                }
+            }
+        }
+        $this->assertSame(2, $found, 'both token-free system writers are covered');
+        $this->assertFalse(method_exists(Attendance::class, 'AddSystemCredit'), 'no JSON-callable spelling may exist');
+        $this->assertFalse(method_exists(EventPlanning::class, 'CreateSystemEvent'), 'no JSON-callable spelling may exist');
     }
 
     public function testCreateSystemEventMakesAOneDayPublishedParkEvent(): void
     {
-        $r = Ork3::$Lib->eventplanning->CreateSystemEvent([
+        $r = Ork3::$Lib->eventplanning->create_system_event([
             'KingdomId' => $this->kOther,            // ignored for a park event
             'ParkId' => $this->parkA, 'Name' => 'Survey Credit - T11SHARE', 'Date' => '2026-09-05',
             'Description' => 'desc', 'Url' => 'javascript:alert(1)', 'UrlName' => 'Take the survey',

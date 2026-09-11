@@ -166,7 +166,7 @@ The acting officer needs `canCreate(uid, type, id)`. For a grantor other than th
 
 #### 3.3 The credit row
 
-New internal method `Attendance::AddSystemCredit(array $r): array` in `class.Attendance.php`. It takes no token: **the caller is responsible for authorization** (`SurveyCredit` checks the config was created by an authorized officer). It computes the date partitions the same way as `AddAttendance`, stamps `entered_at`, calls `bustPlayerAttendanceCaches()`, and returns `['Status'=>0,'AttendanceId'=>n]` or a failure envelope. Values:
+New internal method `Attendance::add_system_credit(array $r): array` in `class.Attendance.php`. The snake_case name is required: `orkservice/Json/index.php` exposes every public method of `Attendance`, and `JsonServer` refuses only names containing `_` (PHP method names are case-insensitive, so a camelCase name would be callable there without a login). It takes no token: **the caller is responsible for authorization** (`SurveyCredit` checks the config was created by an authorized officer). It computes the date partitions the same way as `AddAttendance`, stamps `entered_at`, calls `bustPlayerAttendanceCaches()`, and returns `['Status'=>0,'AttendanceId'=>n]` or a failure envelope. Values:
 
 | Column | Home-park mode | Event mode |
 |---|---|---|
@@ -188,7 +188,7 @@ A respondent with no snapshotted park (0/NULL) cannot be placed in home-park mod
 
 #### 3.4 The event (event mode)
 
-New internal method `EventPlanning::CreateSystemEvent(array $r): array`, modelled on `CreateEventWithCopy`'s raw inserts. It takes no token and does no geocoding, fills every NOT NULL column explicitly, and busts the scope caches the copy flow busts.
+New internal method `EventPlanning::create_system_event(array $r): array` (snake_case for the same reason), modelled on `CreateEventWithCopy`'s raw inserts. It takes no token and does no geocoding, fills every NOT NULL column explicitly, and busts the scope caches the copy flow busts.
 - **Survey start date** (`SurveyCredit::startDate($row)`): `DATE(opened_at)`, or `DATE(open_at)` when that is later. It is null while the survey has never opened.
 - **`ork_event`**:
   - `name` = `'Survey Credit - ' . title`, cut to 100 characters (multibyte-safe) with a trailing `…` when cut.
@@ -291,8 +291,8 @@ After applying: `docker restart ork3-php8-app` (APCu schema cache), then refresh
   - `class.Survey.php`: `listForScope`, `resultsAccess`, the `results_share` field in `update`, the `onOpened` hook in `setStatus`, the gate lock.
   - `class.SurveyResponse.php`: park snapshot, `credit` on submit, `credit_available`, the survey-credit exclusion in the audience rule.
   - `class.SurveyReport.php`: `applyLens`, the `park_id` filter, `isNarrowing`.
-  - `class.Attendance.php`: `AddSystemCredit`.
-  - `class.EventPlanning.php`: `CreateSystemEvent`.
+  - `class.Attendance.php`: `add_system_credit`.
+  - `class.EventPlanning.php`: `create_system_event`.
 - **Model**: `Model_Survey` gains thin delegates (`list_for_scope`, `results_access`, `credit_status`, `credit_enable`, `credit_reconcile`) and a `_credit()` factory.
 - **Controllers**: `Controller_Survey::index` renders the three buckets; `results` parses the context and gates on `results_access`. `Controller_SurveyAjax` gets the `results` context and the three credit actions.
 - **Templates/assets**: `Survey_index.tpl` (sections, row actions, Credits modal), `Survey_results.tpl` + `survey-results.js` (shared mode, lens strip), `Survey_build.tpl` + `survey-build.js` (Results sharing select, Attendance credit card, the credit line in the consent quote), `survey-take.js` (gate line, chips, thanks line), `survey.css` / `survey-build.css` / `survey-results.css` (chips, strip, modal; dark mode), `Playernew_index.tpl` (the "Survey credit" By label and the widget chip). The Credits modal markup and JS live in one shared include so the list page and builder use the same component.
@@ -368,5 +368,5 @@ After applying: `docker restart ork3-php8-app` (APCu schema cache), then refresh
 - **Earliest-attendance / "playing since".** For a player with no prior attendance, a survey credit becomes their first attendance and moves `get_earliest_attendance_date`. Accepted; not special-cased.
 - **Stale snapshots.** Backfilled `park_id` on pre-migration `full` rows uses the player's current park, not the park at submission.
 - **APCu schema cache.** Restart the app after the migration, or inserts into the new columns and tables silently fail.
-- **`sql_mode=''`.** `CreateSystemEvent` and `AddSystemCredit` must name every NOT NULL column; an omitted one is silently `''` or 0.
+- **`sql_mode=''`.** `create_system_event` and `add_system_credit` must name every NOT NULL column; an omitted one is silently `''` or 0.
 - **Cron is optional.** Without it, a grant that failed at submit waits for the next panel open or enable; the thank-you screen says "will be added shortly".

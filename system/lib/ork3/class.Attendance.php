@@ -177,8 +177,13 @@ class Attendance extends Ork3
      * may be written here. Every NOT NULL column is named because production
      * runs sql_mode='' (an omitted column would silently become '' or 0).
      * Does not open a transaction: the caller's transaction covers it.
+     *
+     * The snake_case name is load-bearing: orkservice/Json/index.php exposes
+     * every public method of this class, and JsonServer refuses only names
+     * that contain '_' (PHP method names are case-insensitive, so a camelCase
+     * name of any capitalization would be callable there with no login).
      */
-    public function AddSystemCredit(array $r): array
+    public function add_system_credit(array $r): array
     {
         $mundaneId = (int) ($r['MundaneId'] ?? 0);
         $classId   = (int) ($r['ClassId'] ?? 0);
