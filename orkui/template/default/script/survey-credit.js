@@ -2,7 +2,10 @@
   survey-credit.js — the Attendance credit modal (sharing-and-credits spec §3.6).
   Shared by the survey list and the builder. Configured by
   window.SvCreditConfig = {uir, csrf}; opened with
-  SvCredit.open({surveyId, grantor, title, onChange}); SvCredit.status(surveyId,
+  SvCredit.open({surveyId, grantor, title, onChange}); onChange runs only after
+  "Turn on credits" succeeds, i.e. once the grantor's own credit is on (the
+  panel's automatic reconcile posts credits owed under existing configs,
+  possibly another org's, and changes no one's on/off state). SvCredit.status(surveyId,
   grantor) reads the state quietly for a host page's label. No native dialogs;
   focus is trapped while open and restored on close. Configs are permanent,
   so the only mutation is "Turn on credits", gated by an explicit checkbox.
@@ -169,11 +172,10 @@
                 reconciled = true;
                 var cur = current;
                 post('credit_reconcile', { SurveyId: cur.surveyId, Grantor: cur.grantor || '' }).then(function (r) {
-                    if (r && r.status === 0 && (r.granted | 0) > 0) {
-                        if (current === cur) {
-                            load('<div class="sv-notice" role="status">Posted ' + plural(r.granted | 0, 'owed credit', 'owed credits') + '.</div>');
-                        }
-                        if (cur.onChange) { cur.onChange(); }
+                    // No onChange here: the credits posted may be another org's,
+                    // and this org's credit is exactly as on (or off) as it was.
+                    if (r && r.status === 0 && (r.granted | 0) > 0 && current === cur) {
+                        load('<div class="sv-notice" role="status">Posted ' + plural(r.granted | 0, 'owed credit', 'owed credits') + '.</div>');
                     }
                 });
             }
