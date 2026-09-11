@@ -132,7 +132,7 @@ for (let round = 1; round <= 2; round++) {
     '3. The layering grep from Task 11 Step 6.\n' +
     '4. The Task 11 Step 7 curl contract from a FRESH cookie jar, plus: credit_enable without X-CSRF-Token -> csrf:true; credit_status as a player with no authority (find a non-officer mundane in kingdom 17, log in as them) -> status 3; SurveyAjax/rows and Survey/export for a shared-only viewer -> refused.\n' +
     '5. Privacy by READING code: the only INSERT into ork_survey_credit_grant is in SurveyCredit::grant(); grantFor()/reconcile() only ever select consent=\'full\' AND is_test=0; submit() calls grantFor after COMMIT and only for full; AddSystemCredit and CreateSystemEvent are only called from SurveyCredit.\n' +
-    '6. Idempotency: on the scratch survey from T11 (or a new one you create and clone), run docker exec ork3-php8-app php /var/www/ork.amtgard.com/bin/survey-credit-sweep.php twice and show the ork_attendance count for note=\'Survey #<id>\' is unchanged by the second run.\n' +
+    '6. Idempotency: on the scratch survey from T11 (or a new one you create and clone), run docker exec -e HTTP_HOST=localhost:19080 ork3-php8-app php /var/www/ork.amtgard.com/bin/survey-credit-sweep.php twice (the sweep exits 2 without a host) and show the ork_attendance count for note=\'Survey #<id>\' is unchanged by the second run.\n' +
     '7. Migration re-run on dev is silent; ork_test has the same columns.\n' +
     'Builder reports:\n' + reports.slice(0, 9000) +
     (round > 1 ? '\n\nA fixer just addressed these findings:\n' + JSON.stringify(fixes).slice(0, 3000) + '\nRe-verify EVERYTHING, not only the fixed items.' : '') +

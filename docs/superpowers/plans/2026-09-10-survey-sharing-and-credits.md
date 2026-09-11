@@ -1885,6 +1885,11 @@ git commit -m "Enhancement: Survey — token-free one-day system event"
   - `creditAvailableFor(array $surveyRow, int $uid): bool`
   - `$grantor` is always `['type'=>'kingdom'|'park','id'=>int]` or `null`.
 
+> **Amended by the Tasks 1–11 fixer** (the code below is the original draft; the repo is authoritative):
+> - `enable()` checks the grantor before authority: an org the survey does not reach (or a null / non-org grantor) is status 1, and a real grantor without `canCreate` is status 3 (spec §5). A private `isGrantor()` holds the grantor half of `canActFor()`.
+> - `status()`'s `pending` counts an owed response only when its winning config (coverage over every config) is one the viewer is shown, so a hidden config's count never leaks.
+> - New `creditAvailableMap(array $surveyRows, int $uid): array<int,bool>` resolves a list in at most three queries; `creditAvailableFor()` delegates to it and `SurveyResponse::availableFor()` uses it (no per-survey query pair).
+
 - [ ] **Step 1: Write the failing tests** (append)
 
 ```php
@@ -2739,7 +2744,7 @@ git commit -m "Enhancement: Survey — credits hook into submit, open, the data 
     - `Survey_index.tpl`: `$Buckets` (listForScope shape), `$Surveys` (flattened rows, for the stats row)
     - `Survey_results.tpl`: `$ResultsAccess` (resultsAccess shape), `$ResultsContext` (`'Kingdom/17'|'Park/9'|''`), `$OwnerName`
   - JSON:
-    - `results` gains `access`
+    - `results` gains `access` and `summary.lens` (`{label}` for a shared viewer, from `SurveyReport::sharedResults()`; `null` for a manager)
     - `submit` gains `credit`
     - `credit_status` returns `{status:0, credit:{…§5}}`
     - `credit_enable` / `credit_reconcile` return `{status:0, credit_id?, granted, skipped_no_park, pending}`
@@ -2883,7 +2888,13 @@ Helper:
             ? $this->Survey->results($surveyId, $filters)
             : $this->Survey->shared_results($surveyId, $filters, $access['lens']);
 
-        $this->jsonOut(['status' => 0, 'summary' => $out['summary'], 'questions' => $out['questions'], 'access' => $access['level']]);
+        // summary.lens is {label} for a shared viewer (spec §5), null for a manager.
+        $this->jsonOut([
+            'status'    => 0,
+            'summary'   => $out['summary'] + ['lens' => null],
+            'questions' => $out['questions'],
+            'access'    => $access['level'],
+        ]);
     }
 ```
 
@@ -2936,9 +2947,12 @@ New actions:
 
 - [ ] **Step 5: CLI sweep** (`bin/survey-credit-sweep.php`)
 
+The sweep requires the site's public host (`HTTP_HOST` in the environment or `--host=`) and exits 2 without one: the config builds every URL from `$_SERVER['HTTP_HOST']`, which a CLI run lacks, and a credit event the sweep creates links to its survey through it.
+
 ```php
 #!/usr/bin/env php
 <?php
+
 /**
  * Posts owed survey attendance credits
  * (docs/superpowers/specs/2026-09-10-survey-sharing-and-credits-design.md §3.5).
@@ -2949,18 +2963,49 @@ New actions:
  * harmless. Optional cron:
  *
  *     # /etc/cron.d/ork-survey-credit-sweep
- *     15 * * * * www-data /usr/bin/php /var/www/ORK3/bin/survey-credit-sweep.php >> /var/log/ork-survey-credit-sweep.log 2>&1
+ *     15 * * * * www-data HTTP_HOST=ork.amtgard.com /usr/bin/php /var/www/ORK3/bin/survey-credit-sweep.php >> /var/log/ork-survey-credit-sweep.log 2>&1
+ *
+ * The site's public host is required (HTTP_HOST in the environment, or
+ * --host=ork.amtgard.com). The config builds every URL from
+ * $_SERVER['HTTP_HOST'], which a CLI run does not have, and a credit event the
+ * sweep creates links to its survey through it; without a host that link would
+ * be dropped. Add HTTPS=on too when the site is served over TLS and its config
+ * is scheme-aware. Exits 2 when the host is missing or malformed.
  */
+
+$host = '';
+foreach (array_slice($argv ?? [], 1) as $arg) {
+    if (strncmp($arg, '--host=', 7) === 0) {
+        $host = substr($arg, 7);
+    }
+}
+if ($host === '') {
+    $host = (string) (getenv('HTTP_HOST') ?: '');
+}
+$host = strtolower(trim($host));
+if (!preg_match('/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::\d{1,5})?$/', $host)) {
+    fwrite(STDERR, "survey-credit-sweep: set the site's public host with HTTP_HOST=ork.amtgard.com or --host=ork.amtgard.com"
+        . " (credit events link to their survey through it).\n");
+    exit(2);
+}
+$_SERVER['HTTP_HOST'] = $host;
 
 require_once dirname(__DIR__) . '/startup.php';
 
 $credit = Ork3::$Lib->surveycredit;
 foreach ($credit->surveysWithConfigs() as $surveyId) {
-	$r = $credit->reconcile($surveyId);
-	if ($r['Granted'] > 0 || $r['Pending'] > 0) {
-		fprintf(STDOUT, "[%s] survey=%d granted=%d pending=%d skipped_no_park=%d\n",
-			date('Y-m-d H:i:s'), $surveyId, $r['Granted'], $r['Pending'], $r['SkippedNoPark']);
-	}
+    $r = $credit->reconcile($surveyId);
+    if ($r['Granted'] > 0 || $r['Pending'] > 0) {
+        fprintf(
+            STDOUT,
+            "[%s] survey=%d granted=%d pending=%d skipped_no_park=%d\n",
+            date('Y-m-d H:i:s'),
+            $surveyId,
+            $r['Granted'],
+            $r['Pending'],
+            $r['SkippedNoPark']
+        );
+    }
 }
 exit(0);
 ```
@@ -2970,9 +3015,10 @@ exit(0);
 ```bash
 php -l orkui/model/model.Survey.php orkui/controller/controller.Survey.php orkui/controller/controller.SurveyAjax.php bin/survey-credit-sweep.php
 grep -rnE '\$DB->|Ork3::\$Lib|new (Survey|SurveyResponse|SurveyReport|SurveyCredit)\(' orkui --include='*.php' --include='*.tpl' | grep -v 'orkui/model/model.Survey.php' | grep -i survey
-docker exec ork3-php8-app php /var/www/ork.amtgard.com/bin/survey-credit-sweep.php; echo "exit=$?"
+docker exec ork3-php8-app php /var/www/ork.amtgard.com/bin/survey-credit-sweep.php; echo "exit=$?"                                  # no host
+docker exec -e HTTP_HOST=localhost:19080 ork3-php8-app php /var/www/ork.amtgard.com/bin/survey-credit-sweep.php; echo "exit=$?"
 ```
-Expected: lint clean; the grep prints nothing new (the known `default.theme` `ListSessionsForToken` hit is pre-existing and not survey-related); the sweep exits 0.
+Expected: lint clean; the grep prints nothing new (the known `default.theme` `ListSessionsForToken` hit is pre-existing and not survey-related); the sweep exits 2 with no host (the `HTTP_HOST` message on stderr) and 0 with `-e HTTP_HOST=localhost:19080` (or `--host=localhost`).
 
 - [ ] **Step 7: Curl contract check** (dev mirror; run before any browser work)
 
@@ -2988,7 +3034,7 @@ curl -s -b $J "$B?Route=Survey/index/Kingdom/17" -o /dev/null -w '%{http_code}\n
 Expected:
 - `credit_status` returns `{"status":0,"credit":{…"mine":{…"can_enable":true…`.
 - `credit_enable` with no token returns `{"status":3,"csrf":true,…}`.
-- `results` returns `"access":"manage"` (heraldsbridge is an ORK admin).
+- `results` returns `"access":"manage"` and `summary.lens` `null` (heraldsbridge is an ORK admin).
 - The index returns `200`.
 
 Do **not** enable a credit on fixture 999051 here: configs are permanent. Enable-path curl belongs to a scratch survey. Create one in the builder, e.g. by cloning 999051 (`SurveyAjax/clone` with the token), then call `credit_enable` on the clone with `-H "X-CSRF-Token: $TOKEN"`, expecting `{"status":0,"credit_id":…,"granted":0,…}`. Check it with `docker exec ork3-php8-db mariadb -uroot -proot ork -e "SELECT * FROM ork_survey_credit ORDER BY credit_id DESC LIMIT 1"`.
@@ -3339,6 +3385,8 @@ git commit -m "Enhancement: Survey — shared Attendance credit modal"
 - Consumes: `$Buckets` / `$Surveys` (Task 11), `SvCredit.open` (Task 12).
 - Produces: `section.sv-list-section[data-sv-section=ork|kingdom|park]`, each with `table.sv-survey-table#sv-table-{key}`.
 
+> **Already in place (Tasks 1–11 fixer):** `Survey::listForScope()` sends `ResponseCount`/`response_count` as `null` on a shared row unless `results_share = 'all'`, and the current single-table template already hides the manager's action set and the Build title link on shared rows (`$_shared`), shows `—` (`data-order="-1"`) for a withheld count, and totals the Responses stat over `Access = 'manage'` rows only. Keep all three when restructuring into sections; Step 3 adds the shared set beside the existing `$_shared` guard.
+
 - [ ] **Step 1: Selectors to classes.** The page now has up to three tables, so ids cannot carry the styling. In the inline `<style>`, replace every `#sv-table` with `#theme_container .sv-survey-table`. That is ID + class, which still outranks `reports.css`'s `.rp-table-area table.dataTable` rules and their dark-mode variants, the reason the old comment gives for using an ID. Replace `#theme_container #sv-table` with `#theme_container .sv-survey-table`, and `html[data-theme="dark"] #theme_container #sv-table…` likewise. Update the comment to say "class + #theme_container".
 
 ```bash
@@ -3569,7 +3617,7 @@ Browser: on the draft fixture 999048 (a kingdom survey), the select saves and re
 - Modify: `orkui/template/default/style/survey-results.css` (the lens strip)
 
 **Interfaces:**
-- Consumes: `$ResultsAccess`, `$ResultsContext`, `$OwnerName` (Task 11); `results` → `access`.
+- Consumes: `$ResultsAccess`, `$ResultsContext`, `$OwnerName` (Task 11); `results` → `access` and `summary.lens` (`{label}` for a shared viewer; the lens strip reads the label and org name from `$ResultsAccess`).
 
 - [ ] **Step 1: Template.** At the top: `$_svr_shared = ($ResultsAccess['level'] ?? 'manage') === 'shared';` and `$_svr_lens = $ResultsAccess['label'] ?? '';`. Wrap these in `<?php if (!$_svr_shared): ?> … <?php endif; ?>`:
   - the `#svr-export` link and `#svr-print` button (keep `#svr-summary-toggle`)
