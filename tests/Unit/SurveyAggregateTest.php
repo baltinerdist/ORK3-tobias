@@ -875,4 +875,65 @@ final class SurveyAggregateTest extends TestCase
         $rows = [$this->row(3, null, null, 'third'), $this->row(1, null, null, 'first'), $this->row(2, null, null, 'second')];
         $this->assertSame(['third', 'first', 'second'], SurveyReport::aggregateType('paragraph', $rows, [], [])['texts']);
     }
+
+    public function testApplyLensFoldsAKingdomLensIntoAnEmptyPick(): void
+    {
+        $f = SurveyReport::applyLens([], ['shared' => true, 'kingdom_ids' => [17, 44]]);
+        $this->assertSame([17, 44], $f['kingdom_ids']);
+        $this->assertFalse($f['impossible']);
+        $this->assertFalse($f['include_test']);
+    }
+
+    public function testApplyLensIntersectsTheViewersKingdomPick(): void
+    {
+        $f = SurveyReport::applyLens(['kingdom_ids' => [44, 99]], ['shared' => true, 'kingdom_ids' => [17, 44]]);
+        $this->assertSame([44], $f['kingdom_ids']);
+        $this->assertFalse($f['impossible']);
+    }
+
+    public function testApplyLensMakesADisjointPickImpossibleRatherThanWidening(): void
+    {
+        $f = SurveyReport::applyLens(['kingdom_ids' => [99]], ['shared' => true, 'kingdom_ids' => [17]]);
+        $this->assertSame([17], $f['kingdom_ids']);
+        $this->assertTrue($f['impossible']);
+    }
+
+    public function testParkLensForcesFullConsentAndRefusesAnotherTier(): void
+    {
+        $f = SurveyReport::applyLens([], ['shared' => true, 'park_id' => 1049]);
+        $this->assertSame(1049, $f['park_id']);
+        $this->assertSame('full', $f['consent']);
+        $this->assertFalse($f['impossible']);
+
+        $g = SurveyReport::applyLens(['consent' => 'partial'], ['shared' => true, 'park_id' => 1049]);
+        $this->assertTrue($g['impossible']);
+    }
+
+    public function testSharedLensForcesTestRowsOffEvenWithNoFilterLens(): void
+    {
+        $f = SurveyReport::applyLens(['include_test' => true], ['shared' => true]);
+        $this->assertFalse($f['include_test']);
+        $this->assertNull($f['park_id']);
+        $this->assertSame([], $f['kingdom_ids']);
+    }
+
+    public function testLensKeysSurviveRenormalizingAndCountAsNarrowing(): void
+    {
+        $f = SurveyReport::normalizeFilters(SurveyReport::applyLens([], ['shared' => true, 'park_id' => 9]));
+        $this->assertSame(9, $f['park_id']);
+        $this->assertTrue(SurveyReport::isNarrowing(['park_id' => 9]));
+        $this->assertTrue(SurveyReport::isNarrowing(['impossible' => true]));
+        $this->assertFalse(SurveyReport::isNarrowing([]));
+    }
+
+    public function testRedactForLensHidesSurveyWideCountsOnlyUnderALens(): void
+    {
+        $summary = ['responses' => 12, 'starts' => 80, 'audience' => 400, 'excluded_anonymous' => 9, 'response_rate' => 0.2, 'completion' => 0.5];
+        $lensed = SurveyReport::redactForLens($summary, ['shared' => true, 'kingdom_ids' => [17]]);
+        $this->assertSame(12, $lensed['responses']);
+        foreach (['starts', 'audience', 'excluded_anonymous', 'response_rate', 'completion'] as $k) {
+            $this->assertNull($lensed[$k], $k);
+        }
+        $this->assertSame($summary, SurveyReport::redactForLens($summary, ['shared' => true]));
+    }
 }

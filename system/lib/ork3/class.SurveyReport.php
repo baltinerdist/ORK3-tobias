@@ -43,6 +43,8 @@ class SurveyReport
         'date_to'              => null,
         'crosstab_question_id' => null,
         'include_test'         => false,
+        'park_id'              => null,   // lens only: Any ORK Data rows snapshotted at this park (sharing spec §2)
+        'impossible'           => false,  // lens only: the viewer's picks and the lens do not overlap
     ];
 
     /** Types that may be split by a cross-tab question. */
@@ -144,6 +146,15 @@ class SurveyReport
             $out['include_test'] = ($v === true || $v === 1 || $v === '1' || $v === 'true');
         }
 
+        if (!empty($filters['park_id'])) {
+            $pid = (int)$filters['park_id'];
+            $out['park_id'] = $pid > 0 ? $pid : null;
+        }
+
+        if (!empty($filters['impossible'])) {
+            $out['impossible'] = true;
+        }
+
         return $out;
     }
 
@@ -166,7 +177,83 @@ class SurveyReport
         return $f['kingdom_ids'] !== []
             || $f['consent'] !== 'any'
             || $f['date_from'] !== null
-            || $f['date_to'] !== null;
+            || $f['date_to'] !== null
+            || $f['park_id'] !== null
+            || $f['impossible'];
+    }
+
+    /**
+     * PURE. Fold a shared viewer's lens (Survey::resultsAccess) into the filters,
+     * so every surface reads one filter set and the viewer cannot widen it. The
+     * result is normalized and stays valid through any later normalizeFilters().
+     * A pick that does not overlap the lens becomes `impossible` (no rows) rather
+     * than falling back to a wider set.
+     */
+    public static function applyLens($filters, array $lens): array
+    {
+        $f = self::normalizeFilters($filters);
+
+        if (!empty($lens['shared'])) {
+            $f['include_test'] = false;
+        }
+
+        if (!empty($lens['kingdom_ids']) && is_array($lens['kingdom_ids'])) {
+            $allowed = [];
+            foreach ($lens['kingdom_ids'] as $id) {
+                $id = (int)$id;
+                if ($id > 0 && !in_array($id, $allowed, true)) {
+                    $allowed[] = $id;
+                }
+            }
+            if ($f['kingdom_ids'] === []) {
+                $f['kingdom_ids'] = $allowed;
+            } else {
+                $keep = array_values(array_intersect($f['kingdom_ids'], $allowed));
+                if ($keep === []) {
+                    $f['kingdom_ids'] = $allowed;
+                    $f['impossible']  = true;
+                } else {
+                    $f['kingdom_ids'] = $keep;
+                }
+            }
+        }
+
+        if (!empty($lens['park_id'])) {
+            $f['park_id'] = (int)$lens['park_id'];
+            if ($f['consent'] === 'any') {
+                $f['consent'] = 'full';
+            } elseif ($f['consent'] !== 'full') {
+                $f['impossible'] = true;
+            }
+        }
+
+        return $f;
+    }
+
+    /**
+     * PURE. A lens viewer sees counts for their own players only: the survey-wide
+     * starts, audience, anonymous total and the rates built on them go.
+     */
+    public static function redactForLens(array $summary, array $lens): array
+    {
+        if (empty($lens['kingdom_ids']) && empty($lens['park_id'])) {
+            return $summary;
+        }
+        foreach (['starts', 'audience', 'excluded_anonymous', 'response_rate', 'completion'] as $k) {
+            if (array_key_exists($k, $summary)) {
+                $summary[$k] = null;
+            }
+        }
+        return $summary;
+    }
+
+    /** Charts and stats for a shared viewer (sharing spec §2): lens folded in, survey-wide counts removed. */
+    public function sharedResults(int $surveyId, $filters, array $lens): array
+    {
+        $f   = self::applyLens($filters, $lens);
+        $out = $this->aggregate($surveyId, $f);
+        $out['summary'] = self::redactForLens($this->summary($surveyId, $f), $lens);
+        return $out;
     }
 
     // -----------------------------------------------------------------------
@@ -2067,6 +2154,12 @@ class SurveyReport
         }
         if (!empty($f['date_to'])) {
             $w[] = "r.submitted_at <= '" . $this->esc((string)$f['date_to']) . " 23:59:59'";
+        }
+        if (!empty($f['impossible'])) {
+            $w[] = '1 = 0';
+        }
+        if (!empty($f['park_id'])) {
+            $w[] = 'r.park_id = ' . (int)$f['park_id'];
         }
 
         return implode(' AND ', $w);
