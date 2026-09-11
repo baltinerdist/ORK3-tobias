@@ -986,4 +986,85 @@ final class SurveyAggregateTest extends TestCase
         $this->assertSame('all', SurveyReport::lensLabel(['shared' => true]));
         $this->assertSame('all', SurveyReport::lensLabel(['shared' => true, 'kingdom_ids' => [], 'park_id' => 0]));
     }
+
+    // --------------------------------------------------------------- pairwise
+
+    public function testAggregatePairwiseWinPctTiesAndRanks(): void
+    {
+        // A, B, C, D (4 options = 6 possible matchups).
+        $options = [$this->opt(10, 'A'), $this->opt(11, 'B'), $this->opt(12, 'C'), $this->opt(13, 'D')];
+        $rows = [
+            // response 1: A beats B, A ties C, C beats B (right side wins)
+            $this->row(1, 10, 1.0, null, 11),
+            $this->row(1, 10, 0.5, null, 12),
+            $this->row(1, 11, 0.0, null, 12),
+            // response 2: B beats A, C beats A
+            $this->row(2, 11, 1.0, null, 10),
+            $this->row(2, 12, 1.0, null, 10),
+        ];
+        $a = SurveyReport::aggregateType('pairwise', $rows, $options, []);
+
+        $this->assertSame(2, $a['n']);
+        $this->assertSame(6, $a['possible']);
+        $this->assertSame(5, $a['judged']);
+        $this->assertSame(2.5, $a['avg_count']);
+        $this->assertSame(41.7, $a['avg_pct']);   // (3/6 + 2/6) / 2
+
+        $byLabel = [];
+        foreach ($a['options'] as $o) {
+            $byLabel[$o['label']] = $o;
+        }
+        // C: beat B, beat A, tied A = 2.5 / 3
+        $this->assertSame(
+            ['appearances' => 3, 'wins' => 2, 'ties' => 1, 'losses' => 0, 'win_pct' => 83.3, 'rank' => 1],
+            array_intersect_key($byLabel['C'], array_flip(['appearances', 'wins', 'ties', 'losses', 'win_pct', 'rank']))
+        );
+        // A: beat B, tied C, lost to B, lost to C = 1.5 / 4
+        $this->assertSame(37.5, $byLabel['A']['win_pct']);
+        // B: lost to A, lost to C, beat A = 1 / 3
+        $this->assertSame(33.3, $byLabel['B']['win_pct']);
+        // D never came up: unranked, last.
+        $this->assertNull($byLabel['D']['win_pct']);
+        $this->assertNull($byLabel['D']['rank']);
+        $this->assertSame(['C', 'A', 'B', 'D'], array_column($a['options'], 'label'));
+    }
+
+    public function testAggregatePairwiseSharedRankAndTieBreaks(): void
+    {
+        $options = [$this->opt(10, 'Zed'), $this->opt(11, 'Amy'), $this->opt(12, 'Bo')];
+        // Zed beats Bo, Amy beats Bo, Zed ties Amy: Zed and Amy both 1.5 / 2 = 75.0
+        // over 2 appearances each, Bo 0 / 2.
+        $rows = [
+            $this->row(1, 10, 1.0, null, 12),
+            $this->row(1, 11, 1.0, null, 12),
+            $this->row(1, 10, 0.5, null, 11),
+        ];
+        $a = SurveyReport::aggregateType('pairwise', $rows, $options, []);
+        $this->assertSame(['Amy', 'Zed', 'Bo'], array_column($a['options'], 'label'), 'equal win % sorts by label');
+        $this->assertSame([1, 1, 3], array_column($a['options'], 'rank'), 'competition ranking: 1, 1, 3');
+    }
+
+    public function testAggregatePairwiseEmpty(): void
+    {
+        $a = SurveyReport::aggregateType('pairwise', [], [$this->opt(10, 'A'), $this->opt(11, 'B'), $this->opt(12, 'C')], []);
+        $this->assertSame(0, $a['n']);
+        $this->assertSame(3, $a['possible']);
+        $this->assertNull($a['avg_pct']);
+        $this->assertNull($a['avg_count']);
+        $this->assertSame([null, null, null], array_column($a['options'], 'rank'));
+    }
+
+    public function testDisplayAnswerPairwiseWinnerFirst(): void
+    {
+        $byId = [10 => $this->opt(10, 'Hawk'), 11 => $this->opt(11, 'Owl'), 12 => $this->opt(12, 'Wolf')];
+        $rows = [
+            $this->row(1, 10, 1.0, null, 11),   // Hawk > Owl
+            $this->row(1, 12, 0.5, null, 10),   // Wolf = Hawk
+            $this->row(1, 11, 0.0, null, 12),   // Wolf > Owl
+        ];
+        $this->assertSame(
+            '3 of 3: Hawk > Owl; Wolf = Hawk; Wolf > Owl',
+            SurveyReport::displayAnswer('pairwise', $rows, $byId, 3)
+        );
+    }
 }

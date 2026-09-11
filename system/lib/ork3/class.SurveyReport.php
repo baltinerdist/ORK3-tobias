@@ -1121,6 +1121,8 @@ class SurveyReport
                 return self::aggMatrix($answerRows, $options);
             case 'ranking':
                 return self::aggRanking($answerRows, $options);
+            case 'pairwise':
+                return self::aggPairwise($answerRows, $options);
             case 'number':
                 return self::aggNumber($answerRows);
             case 'date':
@@ -1416,6 +1418,116 @@ class SurveyReport
         }
 
         return ['n' => count($respondents), 'options' => $out];
+    }
+
+    /**
+     * pairwise (pairwise spec §7): one row per judged matchup, option_id the
+     * left option, row_option_id the right, value_num the left's points (1,
+     * 0.5, 0). Win % = points / appearances, ties counting half. Ranks are
+     * competition ranks (1, 2, 2, 4) by win %; an option that never came up is
+     * unranked and sorts last. n is respondents with at least one matchup.
+     */
+    private static function aggPairwise(array $rows, array $options): array
+    {
+        $stats = [];
+        foreach ($options as $o) {
+            if (($o['role'] ?? 'choice') !== 'choice') {
+                continue;
+            }
+            $oid = (int)$o['option_id'];
+            $stats[$oid] = [
+                'option_id'   => $oid,
+                'label'       => (string)$o['label'],
+                'appearances' => 0,
+                'wins'        => 0,
+                'ties'        => 0,
+                'losses'      => 0,
+                'points'      => 0.0,
+                'win_pct'     => null,
+                'rank'        => null,
+            ];
+        }
+        $plan = SurveyTypes::pairwisePlan(count($stats));
+
+        $perResponse = [];
+        $judged = 0;
+        foreach ($rows as $r) {
+            $left  = $r['option_id'] === null ? 0 : (int)$r['option_id'];
+            $right = $r['row_option_id'] === null ? 0 : (int)$r['row_option_id'];
+            if ($left === $right || !isset($stats[$left], $stats[$right]) || $r['value_num'] === null) {
+                continue;   // a row for an option that no longer exists (defensive)
+            }
+            $p = (float)$r['value_num'];
+            $judged++;
+            $rid = (int)$r['response_id'];
+            $perResponse[$rid] = ($perResponse[$rid] ?? 0) + 1;
+            $stats[$left]['appearances']++;
+            $stats[$right]['appearances']++;
+            $stats[$left]['points']  += $p;
+            $stats[$right]['points'] += 1.0 - $p;
+            if ($p >= 1.0) {
+                $stats[$left]['wins']++;
+                $stats[$right]['losses']++;
+            } elseif ($p <= 0.0) {
+                $stats[$right]['wins']++;
+                $stats[$left]['losses']++;
+            } else {
+                $stats[$left]['ties']++;
+                $stats[$right]['ties']++;
+            }
+        }
+
+        foreach ($stats as $oid => $s) {
+            if ($s['appearances'] > 0) {
+                $stats[$oid]['win_pct'] = round($s['points'] / $s['appearances'] * 100, 1);
+            }
+        }
+
+        $list = array_values($stats);
+        usort($list, static function (array $x, array $y): int {
+            if (($x['win_pct'] === null) !== ($y['win_pct'] === null)) {
+                return $x['win_pct'] === null ? 1 : -1;
+            }
+            if ($x['win_pct'] !== $y['win_pct']) {
+                return $y['win_pct'] <=> $x['win_pct'];
+            }
+            if ($x['appearances'] !== $y['appearances']) {
+                return $y['appearances'] <=> $x['appearances'];
+            }
+            return strcmp($x['label'], $y['label']);
+        });
+
+        $rank = 0;
+        $prev = null;
+        foreach ($list as $i => $s) {
+            if ($s['win_pct'] === null) {
+                break;
+            }
+            if ($prev === null || $s['win_pct'] !== $prev) {
+                $rank = $i + 1;
+                $prev = $s['win_pct'];
+            }
+            $list[$i]['rank'] = $rank;
+        }
+
+        $n = count($perResponse);
+        $avgPct = null;
+        if ($n > 0 && $plan['possible'] > 0) {
+            $sum = 0.0;
+            foreach ($perResponse as $count) {
+                $sum += min(1.0, $count / $plan['possible']);
+            }
+            $avgPct = round($sum / $n * 100, 1);
+        }
+
+        return [
+            'n'         => $n,
+            'possible'  => $plan['possible'],
+            'judged'    => $judged,
+            'avg_count' => $n > 0 ? round($judged / $n, 1) : null,
+            'avg_pct'   => $avgPct,
+            'options'   => $list,
+        ];
     }
 
     private static function aggNumber(array $rows): array
@@ -2057,6 +2169,15 @@ class SurveyReport
             }
         }
 
+        $choiceCounts = [];
+        foreach ($options as $qid => $list) {
+            foreach ($list as $o) {
+                if ((string)$o['role'] === 'choice') {
+                    $choiceCounts[(int)$qid] = ($choiceCounts[(int)$qid] ?? 0) + 1;
+                }
+            }
+        }
+
         $grouped = [];
         $this->db->Clear();
         $rs = $this->db->DataSet(
@@ -2076,7 +2197,7 @@ class SurveyReport
                 if (!isset($questions[$qid])) {
                     continue;
                 }
-                $rows[$rid]['answers'][$qid] = self::displayAnswer($questions[$qid]['type'], $qRows, $optionsById);
+                $rows[$rid]['answers'][$qid] = self::displayAnswer($questions[$qid]['type'], $qRows, $optionsById, $choiceCounts[$qid] ?? 0);
             }
         }
     }
@@ -2087,8 +2208,9 @@ class SurveyReport
      *
      * @param list<array> $rowsForQuestion
      * @param array<int,array> $optionsById
+     * @param int $choiceCount the question's choice-option count (pairwise needs it for "k of M")
      */
-    public static function displayAnswer(string $type, array $rowsForQuestion, array $optionsById): string
+    public static function displayAnswer(string $type, array $rowsForQuestion, array $optionsById, int $choiceCount = 0): string
     {
         if (!$rowsForQuestion) {
             return '';
@@ -2150,6 +2272,21 @@ class SurveyReport
                     $parts[] = ((int)round((float)$r['value_num'])) . '. ' . $label;
                 }
                 return implode(' ', $parts);
+
+            case 'pairwise':
+                $label = static function (?int $id) use ($optionsById): string {
+                    return isset($optionsById[(int)$id]) ? (string)$optionsById[(int)$id]['label'] : ('#' . (int)$id);
+                };
+                $parts = [];
+                foreach ($rowsForQuestion as $r) {
+                    $a = $label($r['option_id']);
+                    $b = $label($r['row_option_id']);
+                    $p = (float)$r['value_num'];
+                    // Winner first: "Hawk > Owl"; a tie keeps the shown order.
+                    $parts[] = $p >= 1.0 ? $a . ' > ' . $b : ($p <= 0.0 ? $b . ' > ' . $a : $a . ' = ' . $b);
+                }
+                return count($rowsForQuestion) . ' of ' . SurveyTypes::pairwisePlan($choiceCount)['possible'] . ': '
+                    . implode('; ', $parts);
 
             default:
                 foreach ($rowsForQuestion as $r) {
