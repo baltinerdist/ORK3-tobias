@@ -727,6 +727,12 @@
     function syncMarks() {
         Object.keys(held).forEach(function (key) {
             var h = held[key], node = locate(h.loc);
+            if (h.pw) {
+                // The pairwise textarea was redrawn with the held text
+                // (pairwiseEditorHtml); gone means the card closed.
+                if (node) { fieldError(node, h.msg); } else { dropPairwiseHold(key.split(':')[1]); }
+                return;
+            }
             if (key.indexOf('opts:') === 0) {
                 if (!node || !markBlankRows(node)) { delete held[key]; }
                 return;
@@ -1634,15 +1640,20 @@
      */
     function pairwiseEditorHtml(q) {
         var qid   = parseInt(q.question_id, 10);
-        var lines = optionsOf(q, 'choice').map(function (o) { return String(o.label || ''); });
+        var hold  = held['opts:' + qid + ':choice'];
+        // A held list (a duplicate, too few lines, a locked count change) is in
+        // neither S nor the server, so a redraw puts the author's text back.
+        var text  = hold && typeof hold.text === 'string' ? hold.text
+                  : optionsOf(q, 'choice').map(function (o) { return String(o.label || ''); }).join('\n');
+        var n     = pairwiseLines(text).length;
         var id    = 'svb-pw-lines-' + qid;
-        var warn  = pairwiseWarning(lines.length);
+        var warn  = pairwiseWarning(n);
         var html  = '<div class="svb-field svb-pw">';
         html += '<label class="svb-label" for="' + id + '">Options, one per line</label>';
         html += '<textarea class="sv-textarea svb-pw-lines svb-autogrow" id="' + id + '" rows="' +
-                Math.min(14, Math.max(4, lines.length + 1)) + '" spellcheck="true">' + esc(lines.join('\n')) + '</textarea>';
+                Math.min(14, Math.max(4, n + 1)) + '" spellcheck="true">' + esc(text) + '</textarea>';
         html += '<div class="svb-pw-foot">';
-        html += '<p class="svb-hint svb-pw-readout" aria-live="polite">' + esc(pairwiseReadout(lines.length)) + '</p>';
+        html += '<p class="svb-hint svb-pw-readout" aria-live="polite">' + esc(pairwiseReadout(n)) + '</p>';
         html += '<button type="button" class="svb-icon-btn svb-pw-help" data-act="pw-help" ' +
                 'data-tip="How pairwise questions work" aria-label="How pairwise questions work">' +
                 '<i class="fas fa-circle-question" aria-hidden="true"></i></button>';
@@ -1669,7 +1680,9 @@
      * matches a saved label reuses that option's id, so reordering or inserting
      * lines keeps ids; locked, line i is option i and only wording may change.
      * A duplicate, too few lines, or a locked line-count change is held inline
-     * and the pill reads "Not saved" until it is fixed.
+     * and the pill reads "Not saved" until it is fixed. The hold keeps the
+     * textarea's text, so a redraw of the open card puts it back, and closing
+     * the card says the last saved options were kept (dropPairwiseHold).
      */
     function commitPairwise(questionId) {
         var card  = cardEl(questionId);
@@ -1694,7 +1707,7 @@
             problem = 'While the survey is open you can fix wording, but not add or remove options.';
         }
         if (problem) {
-            held[key] = { msg: '', loc: locOf(area) };
+            held[key] = { msg: problem, loc: locOf(area), text: area.value, pw: true };
             fieldError(area, problem);
             refreshPill();
             return;
@@ -1737,6 +1750,19 @@
             if (parseInt(questionId, 10) !== sel) { refreshCard(questionId); }
         }, { node: area });
         refreshPill();
+    }
+
+    /**
+     * Let go of a held pairwise list whose textarea is going away. Its text was
+     * never sent, so the card falls back to the last saved options, and the
+     * author is told why (the same way a held blank prompt is).
+     */
+    function dropPairwiseHold(questionId) {
+        var key = 'opts:' + parseInt(questionId, 10) + ':choice';
+        var h   = held[key];
+        if (!h || !h.pw) { return; }
+        delete held[key];
+        notice('Those pairwise options were not saved: ' + h.msg + ' The last saved options were kept.', 'warn');
     }
 
     /** The (?) explanation (pairwise spec §5 Help), built from this question's plan. */
@@ -1977,8 +2003,9 @@
     /**
      * A card is closing: nothing of it may stay held. Option rows need no
      * work (a blank new row was never sent, and a cleared existing row was
-     * sent with its last label), so only a held blank prompt is let go — the
-     * preview redraws the last saved wording, and the author is told why.
+     * sent with its last label). A held blank prompt and a held pairwise
+     * option list are let go — the preview redraws the last saved wording or
+     * options, and the author is told why.
      */
     function settleCard(questionId) {
         var qid = parseInt(questionId, 10);
@@ -1989,6 +2016,7 @@
             notice((q && q.type === 'section' ? 'A section needs a heading' : 'A question needs a prompt') +
                    ', so its last saved wording was kept.', 'warn');
         }
+        dropPairwiseHold(qid);
         Object.keys(held).forEach(function (k) {
             if (k.indexOf('opts:' + qid + ':') === 0) { delete held[k]; }
         });
@@ -3244,6 +3272,7 @@
                 } else {
                     pruneShowIf(qid, (function (ids) { return function (oid) { return !!ids[oid]; }; }(optionIdSet(now))));
                 }
+                dropPairwiseHold(qid);
                 Object.keys(held).forEach(function (k) { if (k.indexOf('opts:' + qid + ':') === 0) { delete held[k]; } });
                 renderCanvas();
                 // Keep the keyboard on the picker the author just used — but
