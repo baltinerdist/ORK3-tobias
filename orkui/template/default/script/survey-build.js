@@ -6,6 +6,7 @@
 
      SvConfig = {
        uir:       'index.php?Route=',
+       csrf:      '<64 hex>',   // sent as X-CSRF-Token on every SurveyAjax POST
        surveyId:  999020,
        survey:    { survey:{…}, pages:[…], questions:[…], images:[…], locked:bool }
      }
@@ -42,7 +43,17 @@
 
    Saving: every field change goes through save(), which coalesces edits to the
    same target for 400 ms and drives the .svb-savestate pill. Structural
-   actions (add / delete / duplicate / reorder / retype) post immediately.
+   actions (add / delete / duplicate / reorder / retype) post immediately and
+   splice the rows they get back into local state; the full SurveyAjax/get
+   re-fetch is kept for resyncing after an error.
+
+   NO LOST KEYSTROKES. A value the server would refuse (a blank prompt, a
+   blank title, a cleared option label) is HELD: it is never sent, the field
+   carries an inline aria-invalid hint and the pill reads "Not saved" until a
+   real value arrives. A refused save shows its error next to the field and
+   never repaints the canvas. Any canvas repaint puts the focused field, its
+   text and its caret back (snapFocus / restoreSnap), and the leave-page
+   prompt fires while anything is pending, held, refused or in flight.
 
    Locked (`opened_at IS NOT NULL`): structural controls are disabled with a
    data-tip explaining why; prompts, help text, option labels and every survey
@@ -54,6 +65,7 @@
 
     var CFG       = window.SvConfig || {};
     var UIR       = CFG.uir || 'index.php?Route=';
+    var CSRF      = String(CFG.csrf || '');
     var SURVEY_ID = parseInt(CFG.surveyId, 10) || 0;
     var SAVE_MS   = 400;
     var NARROW    = 900;
@@ -73,23 +85,34 @@
     var sel       = 0;      // selected question_id, 0 = nothing selected
     var scopes    = null;   // SurveyAjax/scopes, lazy
     var pending   = {};     // debounce buckets, keyed
-    var inflight  = 0;
+    var inflight  = 0;      // every request on the wire
+    var inflightWrites = 0; // ...of which change something (not READ_ACTIONS)
+    var retyping  = {};     // question_id -> type a retype is on the wire for
+    var held      = {};     // save key -> { msg, loc }: a value deliberately NOT sent (blank)
+    var failed    = {};     // save key -> { msg, loc }: a change the server refused / never got
+    var idleWaiters = [];   // run once nothing is on the wire (see whenIdle)
+    var events    = null;   // SurveyAjax/event_options, lazy; null = not loaded yet
+    var eventsFailed = false;
     var fileJob   = null;   // what the file input is for
     var sortables = [];     // page + item lists
     var optSorts  = [];     // option rows inside the selected card
     var helpOpen  = {};     // question_id -> the help editor is showing
     var modalOpener  = null; // what to hand focus back to when the modal closes
 
-    /* The data-gate wording the runner shows (survey-take.js CONSENT_*). Kept
-       here read-only for the Privacy section so a builder can see exactly what
-       they are asking; the runner remains the single place it is authored. */
+    /* The data-gate wording the runner shows (survey-take.js CONSENT_*, spec
+       §2). Kept here read-only for the Privacy section so a builder can see
+       exactly what they are asking; the runner remains the single place it is
+       authored, so any change there is repeated here word for word. The "full"
+       option names who will see the respondent's name: the scope's officers
+       for a park or kingdom survey, the ORK administrators for an ORK-wide one
+       (consentOptions). */
     var CONSENT_COPY = {
-        intro: 'Your answers are recorded either way. Choose what the ORK may attach to them:',
-        options: [
-            ['Any ORK Data', 'link this response to my ORK profile so analysts can slice results by things like awards, attendance, and class history.'],
-            ['My Kingdom and How Long I\'ve Been Playing', 'record only my kingdom and how many years I\'ve played. No name, no profile link.'],
-            ['Nothing About Me', 'store this response with no identifying data at all.']
-        ]
+        intro:   'Your answers are recorded either way. Choose what the ORK may attach to them:',
+        notice:  'At the end you\'ll choose whether your answers are linked to your profile, kept to your kingdom and years played, or fully anonymous.',
+        full:    'Link my answers to my ORK profile. The {scope} officers and ORK administrators who run this survey, now and in future reigns, will see my name beside my answers, including in exported spreadsheets.',
+        fullOrk: 'Link my answers to my ORK profile. The ORK administrators who run this survey, now and in future administrations, will see my name beside my answers, including in exported spreadsheets.',
+        partial: 'Record only my kingdom and a years-played range, such as 3–5 years. No name, no profile link.',
+        anon:    'Record nothing about me.'
     };
 
     /* ------------------------------------------------------------- catalogue */
@@ -343,6 +366,8 @@
 
     /* ----------------------------------------------------------- networking */
 
+    function hasKeys(o) { return Object.keys(o).length > 0; }
+
     function setSaveState(what) {
         var pill = $('svb-savestate');
         if (!pill) { return; }
@@ -350,26 +375,98 @@
         pill.textContent = what === 'saving' ? 'Saving…' : (what === 'error' ? 'Not saved' : 'Saved');
     }
 
-    function notice(message, kind) {
+    /**
+     * The pill says what is true right now: "Saving…" while an edit waits in
+     * its debounce or is on the wire, "Not saved" while any field is held
+     * (blank) or refused, "Saved" only when neither is the case.
+     */
+    function refreshPill() {
+        if (inflightWrites > 0 || hasKeys(pending)) { setSaveState('saving'); return; }
+        setSaveState(hasKeys(held) || hasKeys(failed) ? 'error' : 'saved');
+    }
+
+    /** Where a page reload leaves the author: this page, without any #hash. */
+    function reloadHref() {
+        return String(window.location.href).split('#')[0];
+    }
+
+    /**
+     * The page-level notice. `link` is an optional {href, text} rendered after
+     * the message. Error notices pin under the site bar (survey-build.css) and
+     * every notice carries its own Dismiss button.
+     */
+    function notice(message, kind, link) {
         var box = $('svb-notice');
         if (!box) { return; }
         if (!message) {
             box.hidden = true;
-            box.textContent = '';
+            box.innerHTML = '';
             return;
         }
-        box.className = 'sv-notice ' + (kind === 'error' ? 'sv-notice-error' : (kind === 'warn' ? 'sv-notice-warn' : ''));
-        box.textContent = message;
+        box.className = 'sv-notice svb-notice-slot' +
+                        (kind === 'error' ? ' sv-notice-error' : (kind === 'warn' ? ' sv-notice-warn' : ''));
+        box.innerHTML = '<span class="svb-notice-text">' + esc(message) +
+                        (link ? ' <a class="sv-notice-link svb-notice-link" href="' + esc(link.href) + '">' + esc(link.text) + '</a>' : '') +
+                        '</span>' +
+                        '<button type="button" class="svb-notice-close" aria-label="Dismiss this message" data-tip="Dismiss">' +
+                        '<i class="fas fa-xmark" aria-hidden="true"></i></button>';
         box.hidden = false;
+    }
+
+    /** A refused CSRF token: nothing more can save until the page reloads. */
+    function csrfNotice() {
+        // The server's own text already says "Reload the page and try again.";
+        // printing it before a link that reads the same doubled the phrase.
+        notice('Your security token expired. Anything typed in the field you are editing may not have saved.',
+               'error', { href: reloadHref(), text: 'Reload the page' });
+    }
+
+    /** SurveyAjax actions that change nothing (a failure loses no work). */
+    var READ_ACTIONS = { get: 1, types: 1, scopes: 1, help: 1, event_options: 1 };
+
+    /** Run fn once no request is on the wire (flush() first to include debounced edits). */
+    function whenIdle(fn) {
+        if (inflight === 0) { fn(); return; }
+        idleWaiters.push(fn);
+    }
+
+    function drainIdle() {
+        var list;
+        if (inflight !== 0 || !idleWaiters.length) { return; }
+        list = idleWaiters;
+        idleWaiters = [];
+        list.forEach(function (fn) { fn(); });
+    }
+
+    /** Record a lost change. Keyed saves remember where to show it again. */
+    function markFailed(key, loc, action, msg) {
+        if (key) {
+            failed[key] = { msg: msg, loc: loc || (failed[key] && failed[key].loc) || null };
+        } else if (!READ_ACTIONS[action]) {
+            failed._ = { msg: msg, loc: null };
+        }
     }
 
     /**
      * POST one SurveyAjax action. `fields` is a plain object or a FormData.
      * onOk receives the decoded payload; failures raise a notice and, unless
      * onFail says otherwise, re-sync from the server so the UI never drifts.
+     *
+     * opts: { key: save bucket (failure bookkeeping), node: the field the edit
+     * came from (a refusal is shown beside it), keepalive: survive unload,
+     * noLoss: a refusal loses no edit (e.g. Open survey refused by
+     * validation), so it does not turn the pill to "Not saved" }.
+     * Every request carries X-CSRF-Token; a csrf:true refusal shows a notice
+     * with a Reload link and re-syncs nothing (nothing else would save either).
      */
-    function post(action, fields, onOk, onFail) {
-        var body;
+    function post(action, fields, onOk, onFail, opts) {
+        var body, key, node, keepalive, write, done = false, init;
+        opts      = opts || {};
+        key       = opts.key || '';
+        node      = opts.node || null;
+        keepalive = !!opts.keepalive;
+        write     = !READ_ACTIONS[action];
+
         if (fields instanceof window.FormData) {
             body = fields;
         } else {
@@ -380,70 +477,135 @@
             });
         }
 
-        inflight++;
-        setSaveState('saving');
+        function finish() {
+            if (done) { return; }
+            done = true;
+            inflight--;
+            if (write) { inflightWrites--; }
+        }
 
-        return window.fetch(UIR + 'SurveyAjax/' + action, {
-            method: 'POST',
-            body: body,
-            credentials: 'same-origin'
-        }).then(function (r) {
+        inflight++;
+        if (write) { inflightWrites++; }
+        refreshPill();
+
+        init = {
+            method:      'POST',
+            body:        body,
+            credentials: 'same-origin',
+            headers:     { 'X-CSRF-Token': CSRF }
+        };
+        if (keepalive) { init.keepalive = true; }
+
+        return window.fetch(UIR + 'SurveyAjax/' + action, init).then(function (r) {
             return r.json();
         }).then(function (data) {
-            inflight--;
+            var msg;
+            finish();
             if (data && parseInt(data.status, 10) === 0) {
-                if (inflight === 0) { setSaveState('saved'); }
+                if (key) {
+                    delete failed[key];
+                    if (node && !held[key]) { fieldError(node, ''); }
+                } else if (!READ_ACTIONS[action] || action === 'get') {
+                    delete failed._;
+                }
                 if (onOk) { onOk(data); }
+                refreshPill();
+                drainIdle();
                 return data;
             }
-            setSaveState('error');
-            if (data && parseInt(data.status, 10) === 5) {
+            msg = (data && data.error) || 'That change could not be saved.';
+            if (!opts.noLoss) { markFailed(key, node ? locOf(node) : null, action, msg); }
+            refreshPill();
+            if (data && data.csrf) {
+                csrfNotice();
+            } else if (data && parseInt(data.status, 10) === 5) {
                 notice('Your session expired — log in again to keep editing.', 'error');
-                return data;
-            }
-            if (onFail) {
+            } else if (onFail) {
                 onFail(data || {});
             } else {
-                notice((data && data.error) || 'That change could not be saved.', 'error');
+                notice(msg, 'error');
                 reload();
             }
+            drainIdle();
             return data;
-        })['catch'](function () {
-            inflight--;
-            setSaveState('error');
-            notice('The ORK could not be reached. Your last change was not saved.', 'error');
+        })['catch'](function (err) {
+            // `done` already set means the request succeeded and a handler
+            // threw: that is a bug to see in the console, not a lost change.
+            if (done) {
+                if (window.console) { window.console.error(err); }
+                refreshPill();
+                drainIdle();
+                return null;
+            }
+            finish();
+            if (!opts.noLoss) { markFailed(key, node ? locOf(node) : null, action, 'The ORK could not be reached.'); }
+            refreshPill();
+            // A read that fails loses no edit, so it does not claim one.
+            notice(write ? 'The ORK could not be reached. Your last change was not saved.'
+                         : 'The ORK could not be reached. Check your connection and reload the page.', 'error');
+            drainIdle();
             return null;
         });
+    }
+
+    /** A debounced save the server refused: say so beside the field, never repaint. */
+    function saveFailed(node, data) {
+        var msg = (data && data.error) || 'That change could not be saved.';
+        if (node && document.contains(node)) {
+            fieldError(node, msg);
+        } else {
+            notice(msg, 'error');
+        }
     }
 
     /**
      * Coalesce repeated edits to the same target. `key` identifies the target
      * (e.g. 'q:12:Prompt'), so typing in a prompt fires one request, not one
      * per keystroke, while two different questions never share a bucket.
+     * opts.node is the field the edit came from: a refusal is drawn beside it.
      */
-    function save(key, action, fields, onOk) {
+    function save(key, action, fields, onOk, opts) {
         var p = pending[key];
-        if (!p) { p = pending[key] = { action: action, fields: {}, timer: null, onOk: onOk }; }
+        if (!p) { p = pending[key] = { action: action, fields: {}, timer: null }; }
         p.action = action;
         p.onOk   = onOk;
+        p.node   = (opts && opts.node) || p.node || null;
+        p.onFail = function (data) { saveFailed(p.node, data); };
         Object.keys(fields).forEach(function (k) { p.fields[k] = fields[k]; });
 
-        setSaveState('saving');
         if (p.timer) { window.clearTimeout(p.timer); }
         p.timer = window.setTimeout(function () {
             delete pending[key];
-            post(p.action, p.fields, p.onOk);
+            post(p.action, p.fields, p.onOk, p.onFail, { key: key, node: p.node });
         }, SAVE_MS);
+        refreshPill();
     }
 
-    /** Flush every debounced edit now (used before a status change). */
-    function flush() {
+    /**
+     * Send every debounced edit now. keepalive (leave-page / tab hidden) lets
+     * the requests outlive the page, which a plain fetch does not.
+     */
+    function flush(keepalive) {
         Object.keys(pending).forEach(function (key) {
             var p = pending[key];
             if (p.timer) { window.clearTimeout(p.timer); }
             delete pending[key];
-            post(p.action, p.fields, p.onOk);
+            post(p.action, p.fields, p.onOk, p.onFail, { key: key, node: p.node, keepalive: !!keepalive });
         });
+    }
+
+    /** Forget every queued, held or refused edit of a question that no longer exists. */
+    function dropEditsFor(questionId) {
+        var qid = parseInt(questionId, 10);
+        var mine = new RegExp('^(q|qset|opts):' + qid + '(:|$)');
+        Object.keys(pending).forEach(function (key) {
+            if (!mine.test(key)) { return; }
+            if (pending[key].timer) { window.clearTimeout(pending[key].timer); }
+            delete pending[key];
+        });
+        Object.keys(held).forEach(function (key) { if (mine.test(key)) { delete held[key]; } });
+        Object.keys(failed).forEach(function (key) { if (mine.test(key)) { delete failed[key]; } });
+        refreshPill();
     }
 
     function adopt(data) {
@@ -454,12 +616,216 @@
         S.locked    = !!data.locked;
     }
 
+    /**
+     * Full re-sync from the server — the error path. Debounced edits are sent
+     * first and the fetch waits until they land, so the snapshot it adopts
+     * already holds them; the repaint then puts the focused field back.
+     */
     function reload(after) {
-        return post('get', { SurveyId: SURVEY_ID }, function (data) {
-            adopt(data);
-            renderAll();
-            if (after) { after(); }
+        flush();
+        whenIdle(function () {
+            post('get', { SurveyId: SURVEY_ID }, function (data) {
+                adopt(data);
+                renderAll();
+                if (after) { after(); }
+            });
         });
+    }
+
+    /* ------------------------------------------- held / refused field marks */
+
+    var errSeq = 0;
+
+    function isControl(node) {
+        return /^(INPUT|TEXTAREA|SELECT)$/.test(node.tagName || '');
+    }
+
+    /** Where a field's hint goes: inside its option row, under the prompt row, or at the end of its field. */
+    function placeHint(node, hint) {
+        var row  = node.closest('.svb-optrow');
+        var top  = node.closest('.svb-card-top');
+        var head = node.closest('.rp-header-icon-title');
+        var ph   = node.closest('.svb-page-head');
+        var fld  = node.closest('.svb-field');
+        if (row)  { row.appendChild(hint); return; }
+        if (top)  { top.parentNode.insertBefore(hint, top.nextSibling); return; }
+        if (head) { head.parentNode.insertBefore(hint, head.nextSibling); return; }
+        if (ph)   { ph.appendChild(hint); return; }
+        if (fld)  { fld.appendChild(hint); return; }
+        if (node.classList.contains('svb-opts')) { node.appendChild(hint); return; }
+        node.parentNode.insertBefore(hint, node.nextSibling);
+    }
+
+    /**
+     * Mark one field with a message right beside it, or clear the mark.
+     * `neutral` draws a plain note (no aria-invalid) instead of an error.
+     */
+    function fieldError(node, message, neutral) {
+        var id, hint, host;
+        if (!node || !node.getAttribute) { return; }
+        id   = node.getAttribute('data-err-id');
+        hint = id ? document.getElementById(id) : null;
+        host = node.closest('.svb-optrow') || node.closest('.svb-page-head');
+
+        if (!message) {
+            if (hint && hint.parentNode) { hint.parentNode.removeChild(hint); }
+            node.removeAttribute('data-err-id');
+            node.removeAttribute('aria-invalid');
+            if (id && node.getAttribute('aria-describedby') === id) { node.removeAttribute('aria-describedby'); }
+            if (host) { host.classList.remove('svb-has-err'); }
+            return;
+        }
+        if (!hint) {
+            id   = 'svb-err-' + (++errSeq);
+            hint = document.createElement('span');
+            hint.id = id;
+            node.setAttribute('data-err-id', id);
+            placeHint(node, hint);
+        }
+        hint.className   = 'svb-field-err' + (neutral ? ' svb-field-note' : '');
+        hint.textContent = message;
+        if (isControl(node)) {
+            if (neutral) { node.removeAttribute('aria-invalid'); } else { node.setAttribute('aria-invalid', 'true'); }
+            node.setAttribute('aria-describedby', id);
+        }
+        if (host) { host.classList.add('svb-has-err'); }
+    }
+
+    /** Hold a blank value instead of sending it: inline hint, pill "Not saved". */
+    function holdBlank(key, node, msg) {
+        // A debounced edit already queued for this field carries the last
+        // NON-blank text the author typed, so it is left to send; only the
+        // blank itself is held back.
+        held[key] = { msg: msg, loc: locOf(node) };
+        fieldError(node, msg);
+        refreshPill();
+    }
+
+    function releaseHold(key, node) {
+        if (!held[key]) { return; }
+        delete held[key];
+        if (node) { fieldError(node, ''); }
+        refreshPill();
+    }
+
+    /**
+     * After any repaint, put every held / refused mark back on its field. A
+     * held blank whose field now shows real text (the repaint drew the saved
+     * value) is released: nothing unsaved is on screen any more.
+     */
+    function syncMarks() {
+        Object.keys(held).forEach(function (key) {
+            var h = held[key], node = locate(h.loc);
+            if (key.indexOf('opts:') === 0) {
+                if (!node || !markBlankRows(node)) { delete held[key]; }
+                return;
+            }
+            if (!node || String(node.value || '').trim() !== '') { delete held[key]; return; }
+            fieldError(node, h.msg);
+        });
+        Object.keys(failed).forEach(function (key) {
+            var f = failed[key], node = f.loc ? locate(f.loc) : null;
+            if (node && !node.getAttribute('data-err-id')) { fieldError(node, f.msg); }
+        });
+        refreshPill();
+    }
+
+    /* ------------------------------------------------ focus across repaints */
+
+    /**
+     * A stable address for a field that survives the canvas being rebuilt:
+     * the card or page it sits in plus a selector inside it. Header and
+     * sidebar fields are addressed by id / data-sv-field.
+     */
+    function locOf(node) {
+        var canvas = $('svb-canvas'), settings = $('svb-settings');
+        var item, page, row, oid, sel2 = null, extra = '';
+        if (!node || !node.getAttribute) { return null; }
+        if (node.id === 'svb-title') { return { id: 'svb-title' }; }
+        if (settings && settings.contains(node)) {
+            if (node.hasAttribute('data-sv-field')) {
+                return { root: 'settings', selector: '[data-sv-field="' + node.getAttribute('data-sv-field') + '"]' };
+            }
+            return node.id ? { id: node.id } : null;
+        }
+        if (!canvas || !canvas.contains(node)) { return node.id ? { id: node.id } : null; }
+
+        item = node.closest('.svb-item');
+        page = node.closest('.svb-page');
+
+        if (node.hasAttribute('data-q-field')) {
+            sel2 = '[data-q-field="' + node.getAttribute('data-q-field') + '"]';
+        } else if (node.hasAttribute('data-p-field')) {
+            sel2 = '[data-p-field="' + node.getAttribute('data-p-field') + '"]';
+        } else if (node.hasAttribute('data-q-setting')) {
+            sel2 = '[data-q-setting="' + node.getAttribute('data-q-setting') + '"]';
+        } else if (node.classList.contains('svb-optlabel') || node.classList.contains('svb-optweight')) {
+            row = node.closest('.svb-optrow');
+            oid = row ? (parseInt(row.getAttribute('data-oid'), 10) || 0) : 0;
+            if (!oid) { return null; }   // a brand-new row has no address yet
+            sel2 = '.svb-optrow[data-oid="' + oid + '"] .' +
+                   (node.classList.contains('svb-optlabel') ? 'svb-optlabel' : 'svb-optweight');
+        } else if (node.classList.contains('svb-opts')) {
+            sel2 = '.svb-opts[data-role="' + node.getAttribute('data-role') + '"]';
+        } else if (node.classList.contains('svb-typesel')) {
+            sel2 = '.svb-typesel';
+        } else if (node.hasAttribute('data-act')) {
+            ['data-page', 'data-after', 'data-qid'].forEach(function (a) {
+                if (node.hasAttribute(a)) { extra += '[' + a + '="' + node.getAttribute(a) + '"]'; }
+            });
+            sel2 = '[data-act="' + node.getAttribute('data-act') + '"]' + extra;
+        } else if (item && node === item) {
+            sel2 = '';
+        } else {
+            return null;
+        }
+        return {
+            qid:      item ? parseInt(item.getAttribute('data-qid'), 10) : 0,
+            pid:      page ? parseInt(page.getAttribute('data-page'), 10) : 0,
+            selector: sel2
+        };
+    }
+
+    function locate(loc) {
+        var root;
+        if (!loc) { return null; }
+        if (loc.id) { return $(loc.id); }
+        if (loc.root === 'settings') { return el(loc.selector, $('svb-settings')); }
+        root = loc.qid ? cardEl(loc.qid)
+                       : (loc.pid ? el('.svb-page[data-page="' + loc.pid + '"]') : null);
+        if (!root) { return null; }
+        return loc.selector ? el(loc.selector, root) : root;
+    }
+
+    /** What has the keyboard inside the canvas, with its text and caret. */
+    function snapFocus() {
+        var a = document.activeElement, canvas = $('svb-canvas'), snap, loc;
+        if (!a || !canvas || a === canvas || !canvas.contains(a)) { return null; }
+        loc = locOf(a);
+        if (!loc) { return null; }
+        snap = { loc: loc, value: null, start: null, end: null };
+        if (isControl(a) && a.type !== 'checkbox' && a.type !== 'radio' && a.type !== 'file') {
+            snap.value = a.value;
+            try { snap.start = a.selectionStart; snap.end = a.selectionEnd; } catch (e) { /* not a text control */ }
+        }
+        return snap;
+    }
+
+    /** Put the keyboard, the typed text and the caret back after a repaint. */
+    function restoreSnap(snap) {
+        var node;
+        if (!snap) { return; }
+        node = locate(snap.loc);
+        if (!node || !node.focus) { return; }
+        if (snap.value !== null && !node.disabled && node.value !== snap.value &&
+                (node.tagName !== 'SELECT' || els('option', node).some(function (o) { return o.value === snap.value; }))) {
+            node.value = snap.value;
+            if (node.classList.contains('svb-autogrow')) { autoGrow(node); }
+        }
+        node.focus({ preventScroll: true });
+        if (snap.start !== null && node.setSelectionRange) {
+            try { node.setSelectionRange(snap.start, snap.end); } catch (e) { /* not a text control */ }
+        }
     }
 
     function replaceQuestion(fresh) {
@@ -685,10 +1051,17 @@
 
     /* --------------------------------------------------------------- canvas */
 
+    /**
+     * Rebuild the whole canvas from S. Whatever field held the keyboard gets
+     * it back afterwards — with the text on screen (which may be ahead of S
+     * while an edit is still in its debounce, or held because it is blank) and
+     * the caret where it was — and every held / refused mark is redrawn.
+     */
     function renderCanvas() {
         var canvas = $('svb-canvas');
-        var html = '', i, j, page, qs;
+        var html = '', i, j, page, qs, snap;
         if (!canvas) { return; }
+        snap = snapFocus();
 
         for (i = 0; i < S.pages.length; i++) {
             page = S.pages[i];
@@ -721,6 +1094,8 @@
         wireSortables();
         wireOptionSortables();
         renderToc();
+        restoreSnap(snap);
+        syncMarks();
     }
 
     /* ------------------------------------------------------------- outline */
@@ -937,13 +1312,13 @@
         html += '<span class="svb-page-count">' + count + (count === 1 ? ' item' : ' items') + '</span>';
         html += '<span class="svb-page-actions">';
         html += iconBtn('page-more', 'fa-ellipsis', 'Page description and skip logic', '', false,
-                        ' data-page="' + pid + '"');
+                        ' data-page="' + pid + '" aria-expanded="false" aria-controls="svb-pmore-' + pid + '"');
         html += iconBtn('page-delete', 'fa-trash', 'Delete this page', 'svb-icon-danger',
                         S.locked || S.pages.length < 2, ' data-page="' + pid + '"');
         html += '</span>';
         html += '</header>';
 
-        html += '<div class="svb-page-more" data-page="' + pid + '" hidden>';
+        html += '<div class="svb-page-more" id="svb-pmore-' + pid + '" data-page="' + pid + '" hidden>';
         html += mdEditor('svb-pdesc-' + pid, 'Page introduction (markdown)', page.description_md,
                          'data-p-field="DescriptionMd"');
         html += showIfEditor(page, firstQuestionIndexOfPage(page.page_id), 'p');
@@ -1291,7 +1666,7 @@
 
     function moreMenuHtml(q) {
         var defs = (FIELD_DEFS[q.type] || []).filter(function (d) { return d.where === 'more'; });
-        var html = '<div class="svb-more" hidden>';
+        var html = '<div class="svb-more" id="svb-more-' + parseInt(q.question_id, 10) + '" hidden>';
 
         if (defs.length) {
             html += '<h4 class="svb-sub">Behaviour</h4>';
@@ -1312,9 +1687,14 @@
 
     /**
      * The Type picker that sits at the top-right of the open card. It is a
-     * plain <select class="svb-typesel"> — the same element onCanvasChange
-     * listens for — with the type's icon and a caret drawn behind it by
-     * survey-build.css, so it reads as "icon + label + caret" at 34px.
+     * plain <select class="svb-typesel"> with the type's icon and a caret
+     * drawn behind it by survey-build.css, so it reads as "icon + label +
+     * caret" at 34px. A retype is COMMITTED, not fired per change event:
+     * a pick with the pointer (or a phone's picker) commits at once, but a
+     * keyboard walk through the closed select — which on Windows fires
+     * `change` at every arrow press — only commits on Enter or on leaving
+     * the control (commitType). A retype that would lose options or skip
+     * rules asks first.
      */
     function typePickerHtml(q) {
         var html = '<span class="svb-typepick">';
@@ -1352,7 +1732,8 @@
         }
 
         html += '<span class="svb-foot-div" aria-hidden="true"></span>';
-        html += iconBtn('more-toggle', 'fa-ellipsis', 'More settings', '', false, '');
+        html += iconBtn('more-toggle', 'fa-ellipsis', 'More settings', '', false,
+                        ' aria-expanded="false" aria-controls="svb-more-' + qid + '"');
         html += '</div>';
         return html;
     }
@@ -1364,6 +1745,7 @@
         var next = parseInt(id, 10) || 0;
         // Re-selecting the open card would redraw it under the user's caret.
         if (next === prev && !focusPrompt) { return; }
+        if (prev && prev !== next) { settleCard(prev); }
         sel = next;
         if (prev && prev !== sel) { refreshCard(prev); }
         if (sel) { refreshCard(sel, focusPrompt); }
@@ -1372,6 +1754,28 @@
         // at the new one before the outline can say where we are.
         wireTocSpy();
         markToc();
+        syncMarks();
+    }
+
+    /**
+     * A card is closing: nothing of it may stay held. Option rows need no
+     * work (a blank new row was never sent, and a cleared existing row was
+     * sent with its last label), so only a held blank prompt is let go — the
+     * preview redraws the last saved wording, and the author is told why.
+     */
+    function settleCard(questionId) {
+        var qid = parseInt(questionId, 10);
+        var q   = questionById(qid);
+        var key = 'q:' + qid + ':Prompt';
+        if (held[key]) {
+            delete held[key];
+            notice((q && q.type === 'section' ? 'A section needs a heading' : 'A question needs a prompt') +
+                   ', so its last saved wording was kept.', 'warn');
+        }
+        Object.keys(held).forEach(function (k) {
+            if (k.indexOf('opts:' + qid + ':') === 0) { delete held[k]; }
+        });
+        refreshPill();
     }
 
     /** Open the ⋯ menu of a card and focus one control inside it. */
@@ -1382,7 +1786,7 @@
         var node;
         if (!more) { return; }
         more.hidden = false;
-        if (btn) { btn.classList.add('svb-icon-on'); }
+        if (btn) { btn.classList.add('svb-icon-on'); btn.setAttribute('aria-expanded', 'true'); }
         node = focusSelector ? el(focusSelector, more) : null;
         if (node) { node.focus(); }
     }
@@ -1394,9 +1798,30 @@
         var node;
         if (!panel) { return; }
         panel.hidden = false;
-        if (btn) { btn.classList.add('svb-icon-on'); }
+        if (btn) { btn.classList.add('svb-icon-on'); btn.setAttribute('aria-expanded', 'true'); }
         node = focusSelector ? el(focusSelector, panel) : null;
         if (node) { node.focus(); }
+    }
+
+    /**
+     * Redraw one page's header and ⋯ panel in place (its skip-logic chip
+     * changed) — never the items under it, and never while it has the focus.
+     */
+    function refreshPageHead(pageId) {
+        var pid  = parseInt(pageId, 10);
+        var sec  = el('.svb-page[data-page="' + pid + '"]');
+        var page = pageById(pid);
+        var head = sec ? el('.svb-page-head', sec) : null;
+        var more = sec ? el('.svb-page-more', sec) : null;
+        var tmp, wasOpen;
+        if (!sec || !page || !head || !more) { return; }
+        if (head.contains(document.activeElement) || more.contains(document.activeElement)) { return; }
+        wasOpen = !more.hidden;
+        tmp = document.createElement('div');
+        tmp.innerHTML = renderPageHead(page, S.pages.indexOf(page), questionsOfPage(pid).length);
+        sec.replaceChild(tmp.children[0], head);
+        sec.replaceChild(tmp.children[0], more);
+        if (wasOpen) { openPageMore(pid); }
     }
 
     /** Redraw one card in place. Never called on a card the user is typing into. */
@@ -1447,7 +1872,11 @@
         var openBtn = $('svb-openclose');
         var lockBar = $('svb-lockbar');
 
-        if (title && document.activeElement !== title) { title.value = s.title || ''; }
+        // Never over the author's own text: not while they are in the box, not
+        // while a newer title waits in its debounce, not while a blank is held.
+        if (title && document.activeElement !== title && !pending['survey:Title'] && !held['survey:Title']) {
+            title.value = s.title || '';
+        }
         if (pill) {
             pill.className = 'svb-status-pill svb-status-' + status;
             pill.textContent = status.charAt(0).toUpperCase() + status.slice(1);
@@ -1521,13 +1950,14 @@
         } catch (e) { /* private browsing: the sidebar still works, it just forgets */ }
     }
 
-    /** Basics and About on desktop; nothing at all once the sidebar sits on
-        top of the canvas. */
+    /** Basics and About on desktop. Under 900px the settings are their own
+        view (the Questions | Settings switch), so they no longer bury the
+        canvas: Basics opens there too, and About stays folded. */
     function sectionOpen(id) {
         var st  = sectionState();
         var key = stateKey(id);
         if (Object.prototype.hasOwnProperty.call(st, key)) { return !!st[key]; }
-        return (id === 'basics' || id === 'about') && !isNarrow();
+        return id === 'basics' || (id === 'about' && !isNarrow());
     }
 
     /** One collapsible .rp-filter-card. `icon` is a FontAwesome class;
@@ -1603,7 +2033,23 @@
             kingdomList = (scopes || []).filter(function (x) { return x.scope_type === 'kingdom'; });
             body += fieldRow(kingdomPicker(s, kingdomList), 'Kingdoms', 'Select none to invite every kingdom.');
         }
-        body += checkRow('Active players only', truthy(s.audience_active_only), 'data-sv-field="AudienceActiveOnly"', false);
+        /* The account flag is "not retired", not "has played lately" — the
+           label says exactly that, and the attendance rule below is the one
+           that looks at sign-ins. */
+        body += checkRow('Exclude retired accounts', truthy(s.audience_active_only), 'data-sv-field="AudienceActiveOnly"', false,
+                         'Leaves out accounts marked retired. It does not look at attendance; use the rule below for that.');
+        body += fieldRow(textInput({ id: 'svb-f-recent', type: 'number', min: 0, hi: 120, step: 1 },
+                                   parseInt(s.audience_recent_months, 10) || 0,
+                                   'data-sv-field="AudienceRecentMonths" inputmode="numeric"'),
+                         'Attended in the last … months',
+                         '0 = any. Otherwise a player needs a sign-in ' +
+                         (String(s.scope_type) === 'ork' ? 'anywhere' : 'in this ' + (String(s.scope_type) === 'park' ? 'park' : 'kingdom')) +
+                         ' within that many months (up to 120).', 'svb-f-recent');
+        body += fieldRow(eventPickerHtml(s), 'Attended an event',
+                         String(s.scope_type) === 'ork'
+                             ? 'Only players signed in at this event can answer, wherever they play.'
+                             : 'Only players signed in at this event can answer — and that includes visitors from other parks and kingdoms, ' +
+                               'who are otherwise outside this survey\'s scope.', 'svb-f-event');
         body += fieldRow(textInput({ id: 'svb-f-tenure', type: 'number', min: 0, hi: 1200, step: 1 },
                                    s.audience_min_tenure_months, 'data-sv-field="AudienceMinTenureMonths" inputmode="numeric"'),
                          'Minimum months played', '0 lets everyone in scope answer.', 'svb-f-tenure');
@@ -1625,7 +2071,7 @@
         body  = checkRow('Ask the data-gate consent question before submitting',
                          truthy(s.data_gate_enabled), 'data-sv-field="DataGateEnabled"', false,
                          'Turn this off and every response is stored anonymously.');
-        body += consentQuote();
+        body += consentQuote(s);
         html += section('privacy', 'Privacy', 'fa-user-shield', body);
 
         /* Promotion */
@@ -1662,17 +2108,42 @@
         destroySchedulePickers();
         box.innerHTML = html;
         initSchedulePickers();
+        if (eventsFailed) { fillEventPicker(); }
+        syncMarks();
+    }
+
+    /**
+     * The three consent options exactly as the runner words them for this
+     * survey. {scope} is the scope's name; a name that already starts with
+     * "The" ("The Kingdom of …") replaces the copy's own "The" instead of
+     * doubling it.
+     */
+    function consentOptions(s) {
+        // Until `scopes` lands there is no real name: read as the runner does
+        // with no label ("The survey's officers…"), not "The Kingdom officers…".
+        var name = scopes === null ? 'survey\'s' : scopeName(s);
+        var full = String(s.scope_type) === 'ork'
+            ? CONSENT_COPY.fullOrk
+            : (/^the\s/i.test(name)
+                ? CONSENT_COPY.full.replace('The {scope}', name)
+                : CONSENT_COPY.full.replace('{scope}', name));
+        return [
+            ['Any ORK Data', full],
+            ['My Kingdom and How Long I\'ve Been Playing', CONSENT_COPY.partial],
+            ['Anonymous Only', CONSENT_COPY.anon]
+        ];
     }
 
     /* The consent wording is fixed in the runner (survey-take.js) and repeated
        here read-only, so a builder can see exactly what they are asking. */
-    function consentQuote() {
-        var i, html;
-        html = '<div class="svb-consent-quote"><span class="svb-label">Respondents are asked</span>' +
+    function consentQuote(s) {
+        var opts = consentOptions(s), i, html;
+        html = '<div class="svb-consent-quote"><span class="svb-label">Before the first question, respondents read</span>' +
+               '<p class="svb-consent-lead">“' + esc(CONSENT_COPY.notice) + '”</p>' +
+               '<span class="svb-label">At the end they are asked</span>' +
                '<p class="svb-consent-lead">' + esc(CONSENT_COPY.intro) + '</p><ul>';
-        for (i = 0; i < CONSENT_COPY.options.length; i++) {
-            html += '<li><strong>' + esc(CONSENT_COPY.options[i][0]) + '</strong> — ' +
-                    esc(CONSENT_COPY.options[i][1]) + '</li>';
+        for (i = 0; i < opts.length; i++) {
+            html += '<li><strong>' + esc(opts[i][0]) + '</strong> — ' + esc(opts[i][1]) + '</li>';
         }
         return html + '</ul></div>';
     }
@@ -1719,6 +2190,64 @@
         }
         html += '</select>';
         return html;
+    }
+
+    /**
+     * The "attended an event" audience picker. The empty option means no
+     * event rule (anyone in scope); the list is SurveyAjax/event_options,
+     * which always includes the saved occurrence even when it is old.
+     */
+    function eventPickerHtml(s) {
+        var cur  = parseInt(s.audience_event_calendardetail_id, 10) || 0;
+        var html = '<select class="sv-select" id="svb-f-event" data-sv-field="AudienceEventCalendardetailId"' +
+                   (events === null && !eventsFailed ? ' disabled' : '') + '>';
+        html += eventOptionsHtml(cur);
+        return html + '</select>';
+    }
+
+    function eventOptionsHtml(cur) {
+        var html = '<option value=""' + (cur ? '' : ' selected') + '>Any player in scope</option>';
+        var seen = false;
+        if (events === null) {
+            return html + (cur ? '<option value="' + cur + '" selected>' +
+                   (eventsFailed ? 'The saved event (the list could not load)' : 'Loading events…') + '</option>' : '');
+        }
+        events.forEach(function (ev) {
+            var id = parseInt(ev.event_calendardetail_id, 10) || 0;
+            if (!id) { return; }
+            if (id === cur) { seen = true; }
+            html += '<option value="' + id + '"' + (id === cur ? ' selected' : '') + '>' + esc(ev.label) + '</option>';
+        });
+        if (cur && !seen) { html += '<option value="' + cur + '" selected>The saved event</option>'; }
+        return html;
+    }
+
+    /** Fill the picker in place once the list lands — never a sidebar repaint. */
+    function fillEventPicker() {
+        var node = $('svb-f-event');
+        var cur  = parseInt((S.survey || {}).audience_event_calendardetail_id, 10) || 0;
+        if (!node) { return; }
+        if (document.activeElement === node) { return; }
+        node.innerHTML = eventOptionsHtml(cur);
+        node.disabled  = events === null && !eventsFailed;
+        fieldError(node, eventsFailed ? 'The event list could not load. Reload the page to choose an event.' : '', true);
+    }
+
+    function loadEvents() {
+        function failed() {
+            events = null;
+            eventsFailed = true;
+            fillEventPicker();
+        }
+        post('event_options', { SurveyId: SURVEY_ID }, function (data) {
+            events = data.events || [];
+            eventsFailed = false;
+            fillEventPicker();
+        }, failed).then(function () {
+            // A network error, an expired token or session resolve without
+            // reaching onFail — the picker must not sit on "Loading events…".
+            if (events === null && !eventsFailed) { failed(); }
+        });
     }
 
     /* --------------------------------------------------------- date helpers */
@@ -1842,8 +2371,9 @@
 
     /* ------------------------------------------------------------- settings */
 
-    /** Rebuild the whole settings object for a question from its card and save it. */
-    function saveSettings(q) {
+    /** Rebuild the whole settings object for a question from its card and save it.
+        `node` is the control that changed: a refusal is shown beside it. */
+    function saveSettings(q, node) {
         var defs = FIELD_DEFS[q.type] || [];
         var card = cardEl(q.question_id);
         var out  = {};
@@ -1882,9 +2412,10 @@
             QuestionId: q.question_id,
             Settings:   JSON.stringify(out)
         }, function (data) {
-            var fresh = data.question;
-            if (fresh) { q.settings = fresh.settings; }
-        });
+            // By id, not the captured q: a re-sync may have replaced the object.
+            var fresh = data.question, cur = fresh ? questionById(fresh.question_id) : null;
+            if (cur) { cur.settings = fresh.settings; }
+        }, { node: node });
     }
 
     /* --------------------------------------------------------------- images */
@@ -1958,25 +2489,58 @@
 
     /* ------------------------------------------------------- confirm strip */
 
-    var confirmAction = null;
+    /* The strip is a sticky role="alertdialog" (Survey_build.tpl) labelled by
+       its own text, so it is announced with its question and stays in view
+       wherever the author is scrolled. It never scrolls the page to itself
+       (preventScroll), and every way out hands the keyboard back: Cancel and
+       Escape to whatever opened it, Confirm to the opener too unless the
+       action moves focus somewhere better (a delete focuses the neighbour). */
 
-    function askConfirm(text, buttonLabel, danger, action) {
+    var confirmAction = null;
+    var confirmOpener = null;
+    var confirmCancel = null;
+
+    function confirmOpen() {
+        var bar = $('svb-confirm');
+        return !!(bar && !bar.hidden);
+    }
+
+    /**
+     * opts.onCancel runs on Cancel / Escape (e.g. put the type picker back).
+     * opts.opener is where focus goes back to when the focused element is not
+     * the opener — a strip raised from a blur, where activeElement is <body>.
+     * It may be a function, resolved on close, so a repainted field is found.
+     */
+    function askConfirm(text, buttonLabel, danger, action, opts) {
         var bar  = $('svb-confirm');
         var copy = $('svb-confirm-text');
         var yes  = $('svb-confirm-yes');
         if (!bar) { return; }
+        if (confirmOpen() && confirmCancel) { confirmCancel(); }
         confirmAction = action;
+        confirmCancel = (opts && opts.onCancel) || null;
+        if (!confirmOpen()) { confirmOpener = (opts && opts.opener) || document.activeElement; }
         copy.textContent = text;
         yes.textContent = buttonLabel;
         yes.className = 'sv-btn ' + (danger ? 'svb-danger' : 'sv-btn-primary');
         bar.hidden = false;
-        yes.focus();
+        yes.focus({ preventScroll: true });
     }
 
-    function hideConfirm() {
-        var bar = $('svb-confirm');
+    /** Close the strip. cancelled = Cancel / Escape: undo and restore focus. */
+    function hideConfirm(cancelled) {
+        var bar    = $('svb-confirm');
+        var opener = confirmOpener;
+        var cancel = confirmCancel;
         confirmAction = null;
+        confirmOpener = null;
+        confirmCancel = null;
         if (bar) { bar.hidden = true; }
+        if (cancelled && cancel) { cancel(); }
+        if (typeof opener === 'function') { opener = opener(); }
+        if (opener && opener.focus && document.contains(opener) && opener !== document.body) {
+            opener.focus();
+        }
     }
 
     /* --------------------------------------------------------------- modal */
@@ -2106,14 +2670,23 @@
 
         // Index from the DOM, not evt.newIndex: the list also holds the between-card
         // add buttons, which would shift Sortable's own count. questionMove renumbers
-        // the target page itself, so one call is enough.
+        // the target page itself, so one call is enough. The move is applied
+        // locally at once; a refusal falls back to the full re-sync.
+        moveLocal(qid, toPage, ids);
+        renderCanvas();
         post('question_move', {
             QuestionId: qid,
             PageId:     toPage,
             Index:      Math.max(0, ids.indexOf(qid))
-        }, function () {
-            reload();
-        });
+        }, null);
+    }
+
+    /** Put a question on another page, in the given order of that page's ids. */
+    function moveLocal(questionId, pageId, orderedIds) {
+        var q = questionById(questionId);
+        if (!q) { return; }
+        q.page_id = pageId;
+        reorderLocal(pageId, orderedIds);
     }
 
     function reorderLocal(pageId, ids) {
@@ -2173,13 +2746,18 @@
 
         target = S.pages[pageIdx + dir];
         if (!target) { return; }
+        ids = questionsOfPage(target.page_id).map(function (n) { return parseInt(n.question_id, 10); });
         post('question_move', {
             QuestionId: questionId,
             PageId:     parseInt(target.page_id, 10),
-            Index:      dir < 0 ? questionsOfPage(target.page_id).length : 0
-        }, function () {
-            reload(function () { focusMove(questionId, dir); });
-        });
+            Index:      dir < 0 ? ids.length : 0
+        }, null);
+        // Applied locally at once (the domain renumbers the same way); a
+        // refusal falls back to the full re-sync.
+        if (dir < 0) { ids.push(parseInt(questionId, 10)); } else { ids.unshift(parseInt(questionId, 10)); }
+        moveLocal(questionId, parseInt(target.page_id, 10), ids);
+        renderCanvas();
+        focusMove(questionId, dir);
     }
 
     /** Keep the keyboard on the control the author just used. */
@@ -2228,6 +2806,154 @@
 
     /* ----------------------------------------------------------- structure */
 
+    /* Every structural action below applies the rows its reply carries to S
+       and repaints the canvas locally — no SurveyAjax/get. The full re-fetch
+       is only the error path (post()'s default onFail → reload()). */
+
+    /**
+     * Put a question row into S.questions right after `afterId`, or after the
+     * last question of its page. S.questions order IS the in-page order.
+     */
+    function placeQuestion(fresh, afterId) {
+        var qid = parseInt(fresh.question_id, 10);
+        var pid = parseInt(fresh.page_id, 10);
+        var at = -1, i;
+        S.questions = S.questions.filter(function (x) { return parseInt(x.question_id, 10) !== qid; });
+        for (i = 0; i < S.questions.length; i++) {
+            if (afterId && parseInt(S.questions[i].question_id, 10) === parseInt(afterId, 10)) { at = i; break; }
+            if (!afterId && parseInt(S.questions[i].page_id, 10) === pid) { at = i; }
+        }
+        if (at < 0) { S.questions.push(fresh); } else { S.questions.splice(at + 1, 0, fresh); }
+    }
+
+    /**
+     * Mirror the domain's show-if cleanup: every question and page whose
+     * condition reads `sourceId` lets go when `keep` says its option is gone.
+     * Each one that changed is redrawn in place (never the card being edited).
+     */
+    function pruneShowIf(sourceId, keep) {
+        var src = parseInt(sourceId, 10);
+        S.questions.forEach(function (x) {
+            if (parseInt(x.show_if_question_id, 10) !== src || keep(parseInt(x.show_if_option_id, 10) || 0)) { return; }
+            x.show_if_question_id = null;
+            x.show_if_option_id   = null;
+            if (parseInt(x.question_id, 10) !== sel) { refreshCard(x.question_id); }
+        });
+        S.pages.forEach(function (p) {
+            if (parseInt(p.show_if_question_id, 10) !== src || keep(parseInt(p.show_if_option_id, 10) || 0)) { return; }
+            p.show_if_question_id = null;
+            p.show_if_option_id   = null;
+            refreshPageHead(p.page_id);
+        });
+    }
+
+    /** Option ids a question still has, as a lookup. */
+    function optionIdSet(q) {
+        var set = {};
+        ((q && q.options) || []).forEach(function (o) { set[parseInt(o.option_id, 10)] = true; });
+        return set;
+    }
+
+    /** Questions + pages whose skip rule reads this option (or, oid 0, this question at all). */
+    function showIfDependents(sourceId, test) {
+        var src = parseInt(sourceId, 10), n = 0;
+        S.questions.concat(S.pages).forEach(function (x) {
+            if (parseInt(x.show_if_question_id, 10) === src && test(parseInt(x.show_if_option_id, 10) || 0)) { n++; }
+        });
+        return n;
+    }
+
+    function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
+
+    function joinAnd(list) {
+        if (list.length < 2) { return list.join(''); }
+        return list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1];
+    }
+
+    /**
+     * What a retype would destroy, worked out from S exactly the way
+     * Survey::retypeQuestion does it: options of a role the new type does not
+     * own are deleted, Yes / No keeps and renames the first two choices, "Other"
+     * turns into a plain option outside single / multi / dropdown, and every
+     * skip rule that reads a deleted option — or this question at all, when the
+     * new type cannot be a show-if source — is cleared. '' = nothing is lost.
+     */
+    function retypeLoss(q, newType) {
+        var roles  = (OPTION_ROLES[newType] || []).map(function (s) { return s.role; });
+        var nouns  = { choice: ['option', 'options'], row: ['row', 'rows'], column: ['column', 'columns'] };
+        var lost   = {}, counts = {}, parts = [], extra = [], rules, renamed = false, otherLost = false;
+        var label  = (TYPE_META[newType] || {}).label || newType;
+        var keepsOther = ['single', 'multi', 'dropdown'].indexOf(newType) !== -1;
+
+        Object.keys(nouns).forEach(function (role) {
+            optionsOf(q, role).forEach(function (o, i) {
+                var oid = parseInt(o.option_id, 10);
+                if (roles.indexOf(role) === -1 || (newType === 'yesno' && role === 'choice' && i >= 2)) {
+                    lost[oid] = true;
+                    counts[role] = (counts[role] || 0) + 1;
+                    return;
+                }
+                if (newType === 'yesno' && role === 'choice' && q.type !== 'yesno' &&
+                        String(o.label).trim().toLowerCase() !== (i === 0 ? 'yes' : 'no')) {
+                    renamed = true;
+                }
+                if (truthy(o.is_other) && !keepsOther) { otherLost = true; }
+            });
+        });
+
+        Object.keys(counts).forEach(function (role) {
+            parts.push(plural(counts[role], nouns[role][0], nouns[role][1]));
+        });
+        rules = SHOW_IF_SOURCES.indexOf(newType) === -1
+            ? showIfDependents(q.question_id, function () { return true; })
+            : showIfDependents(q.question_id, function (oid) { return !!lost[oid]; });
+        if (rules) { parts.push(plural(rules, 'skip rule', 'skip rules')); }
+
+        if (renamed)   { extra.push('Its first two options are renamed Yes and No.'); }
+        if (otherLost) { extra.push('The “Other” write-in becomes a plain option.'); }
+        if (!parts.length && !extra.length) { return ''; }
+
+        return 'Switching to ' + label + (parts.length ? ' removes ' + joinAnd(parts) + '.' : '.') +
+               (extra.length ? ' ' + extra.join(' ') : '');
+    }
+
+    /**
+     * Commit the Type picker's value. Nothing happens when it still shows the
+     * question's type; a retype that loses anything asks first, and Cancel
+     * puts the picker back. `opener` (a node or a function returning one) is
+     * where Cancel / Escape sends focus when the commit came from a blur.
+     */
+    var retypeAsk = null;   // {qid, type} while the strip is asking about a retype
+
+    function commitType(selEl, opener) {
+        var card = selEl.closest('.svb-item');
+        var q    = card ? questionById(card.getAttribute('data-qid')) : null;
+        var next = String(selEl.value);
+        var loss;
+        fieldError(selEl, '');
+        if (!q || next === String(q.type) || S.locked) { return; }
+        // The same retype already on the wire (a pick, then a blur before the
+        // reply) must not go out twice.
+        if (retyping[parseInt(q.question_id, 10)] === next) { return; }
+        if (retypeAsk && retypeAsk.qid === parseInt(q.question_id, 10) && retypeAsk.type === next && confirmOpen()) {
+            return;
+        }
+        loss = retypeLoss(q, next);
+        if (!loss) { retype(q, next); return; }
+        retypeAsk = { qid: parseInt(q.question_id, 10), type: next };
+        askConfirm(loss, 'Switch type', true, function () {
+            retypeAsk = null;
+            retype(q, next);
+        }, {
+            opener: opener || null,
+            onCancel: function () {
+                var pick = cardEl(q.question_id) ? el('.svb-typesel', cardEl(q.question_id)) : null;
+                retypeAsk = null;
+                if (pick) { pick.value = String(q.type); fieldError(pick, ''); }
+            }
+        });
+    }
+
     /** "+ Add Element" — a starter single-choice card, selected, prompt focused. */
     function addElement(pageId, afterQuestionId) {
         if (!pageId) { notice('This survey has no pages yet.', 'error'); return; }
@@ -2237,16 +2963,51 @@
             Type:            STARTER_TYPE,
             AfterQuestionId: afterQuestionId || ''
         }, function (data) {
-            var newId = data.question ? parseInt(data.question.question_id, 10) : 0;
-            sel = newId;
-            reload(function () { focusPrompt(newId); scrollToSelection(); });
+            var fresh = data.question;
+            if (!fresh) { reload(); return; }
+            if (sel) { settleCard(sel); }
+            placeQuestion(fresh, afterQuestionId || 0);
+            sel = parseInt(fresh.question_id, 10);
+            renderCanvas();
+            focusPrompt(sel);
+            scrollToSelection();
         });
     }
 
-    /** Retype in place. The domain keeps the prompt and reuses whatever options fit. */
+    /**
+     * Retype in place. The domain keeps the prompt and reuses whatever options
+     * fit; the reply is the retyped row, and the skip rules the domain cleared
+     * are cleared here the same way. Debounced edits to this card are sent
+     * first — one arriving after the retype would hit the new type.
+     */
     function retype(q, newType) {
-        post('question_update', { QuestionId: q.question_id, Type: newType }, function () {
-            reload(function () { focusPrompt(q.question_id); });
+        var qid = parseInt(q.question_id, 10);
+        retyping[qid] = String(newType);
+        flush();
+        whenIdle(function () {
+            post('question_update', { QuestionId: qid, Type: newType }, function (data) {
+                var fresh = data.question, now, pick;
+                if (!fresh) { reload(); return; }
+                replaceQuestion(fresh);
+                now = questionById(qid);
+                if (SHOW_IF_SOURCES.indexOf(String(newType)) === -1) {
+                    pruneShowIf(qid, function () { return false; });
+                } else {
+                    pruneShowIf(qid, (function (ids) { return function (oid) { return !!ids[oid]; }; }(optionIdSet(now))));
+                }
+                Object.keys(held).forEach(function (k) { if (k.indexOf('opts:' + qid + ':') === 0) { delete held[k]; } });
+                renderCanvas();
+                // Keep the keyboard on the picker the author just used — but
+                // only if the repaint left it nowhere; an author who has
+                // already moved on to another field keeps that field.
+                pick = cardEl(qid) ? el('.svb-typesel', cardEl(qid)) : null;
+                if (pick && (!document.activeElement || document.activeElement === document.body)) {
+                    pick.focus({ preventScroll: true });
+                }
+            }).then(function () {
+                // Settled either way (a refusal re-syncs through post()).
+                delete retyping[qid];
+            });
         });
     }
 
@@ -2257,158 +3018,272 @@
     }
 
     /**
-     * Duplicate = add a card of the same type after this one, copy the copy
-     * fields onto it, then replay each option role. show_if is deliberately not
-     * copied: a duplicate almost never wants the original's condition.
+     * Duplicate = one question_duplicate call: the domain copies the prompt,
+     * help, illustration, required, settings, skip rule and every option in a
+     * single transaction and replies with the copy plus the page's new order.
+     * Debounced edits to the original are sent first so the copy has them.
      */
     function duplicateQuestion(q) {
-        var newId = 0;
+        var qid = parseInt(q.question_id, 10);
+        flush();
+        whenIdle(function () {
+            post('question_duplicate', { QuestionId: qid }, function (data) {
+                var fresh = data.question, pid;
+                if (!fresh) { reload(); return; }
+                pid = parseInt(fresh.page_id, 10);
+                placeQuestion(fresh, qid);
+                if (data.order && data.order.length) {
+                    reorderLocal(pid, data.order.map(function (n) { return parseInt(n, 10); }));
+                }
+                if (sel) { settleCard(sel); }
+                sel = parseInt(fresh.question_id, 10);
+                renderCanvas();
+                focusPrompt(sel);
+                scrollToSelection();
+            });
+        });
+    }
 
-        post('question_add', {
-            SurveyId:        SURVEY_ID,
-            PageId:          q.page_id,
-            Type:            q.type,
-            AfterQuestionId: q.question_id
-        }, function (data) {
-            newId = data.question ? parseInt(data.question.question_id, 10) : 0;
-        }).then(function () {
-            if (!newId) { return null; }
-            return post('question_update', {
-                QuestionId: newId,
-                Prompt:     q.prompt || 'Untitled question',
-                HelpMd:     q.help_md || '',
-                ImageId:    parseInt(q.image_id, 10) || 0,
-                Required:   truthy(q.required) ? 1 : 0,
-                Settings:   JSON.stringify(q.settings || {})
-            });
-        }).then(function () {
-            var specs = OPTION_ROLES[q.type] || [];
-            var chain = window.Promise.resolve();
-            if (!newId) { return null; }
-            specs.forEach(function (spec) {
-                var list = optionsOf(q, spec.role).map(function (o) {
-                    return {
-                        label:     o.label,
-                        value_num: (o.value_num === null || o.value_num === undefined || o.value_num === '')
-                            ? null : Number(o.value_num),
-                        is_other:  truthy(o.is_other) ? 1 : 0
-                    };
-                });
-                chain = chain.then(function () {
-                    return post('option_set', {
-                        QuestionId: newId,
-                        Role:       spec.role,
-                        Options:    JSON.stringify(list)
-                    });
-                });
-            });
-            return chain;
-        }).then(function () {
-            sel = newId || sel;
-            reload(function () { if (newId) { focusPrompt(newId); scrollToSelection(); } });
+    /**
+     * Delete one question locally after the domain confirms, clear the skip
+     * rules that read it (the domain does the same), and put the keyboard on
+     * the next card, else the previous one, else the page's Add Element.
+     */
+    function deleteQuestion(questionId) {
+        var qid   = parseInt(questionId, 10);
+        var q     = questionById(qid);
+        var order = orderedQuestions();
+        var pid   = q ? parseInt(q.page_id, 10) : 0;
+        var idx   = -1, next = 0, i;
+        for (i = 0; i < order.length; i++) {
+            if (parseInt(order[i].question_id, 10) === qid) { idx = i; break; }
+        }
+        if (idx >= 0) {
+            next = order[idx + 1] ? parseInt(order[idx + 1].question_id, 10)
+                                  : (order[idx - 1] ? parseInt(order[idx - 1].question_id, 10) : 0);
+        }
+        dropEditsFor(qid);
+        post('question_delete', { QuestionId: qid }, function () {
+            var card, add;
+            if (sel === qid) { sel = 0; }
+            S.questions = S.questions.filter(function (x) { return parseInt(x.question_id, 10) !== qid; });
+            pruneShowIf(qid, function () { return false; });
+            renderCanvas();
+            card = next ? cardEl(next) : null;
+            if (card) {
+                card.focus({ preventScroll: true });
+                if (card.scrollIntoView) { card.scrollIntoView({ block: 'nearest' }); }
+                return;
+            }
+            add = el('.svb-page[data-page="' + pid + '"] .svb-addbtn') || el('.svb-addbtn');
+            if (add) { add.focus({ preventScroll: true }); }
         });
     }
 
     /* ------------------------------------------------------------- options */
 
+    /** The last label S has for an option (what a cleared row falls back to). */
+    function savedLabel(q, role, oid) {
+        var list = optionsOf(q, role), i;
+        for (i = 0; i < list.length; i++) {
+            if (parseInt(list[i].option_id, 10) === oid) { return String(list[i].label || ''); }
+        }
+        return '';
+    }
+
+    /**
+     * Flag every EXISTING option row whose label has been cleared. Returns how
+     * many there are (0 = nothing held). A brand-new blank row is not flagged:
+     * it was never sent, holds nothing back, and goes away on blur.
+     */
+    function markBlankRows(wrap) {
+        var n = 0;
+        els('.svb-optrow', wrap).forEach(function (row) {
+            var input = el('.svb-optlabel', row);
+            var oid   = parseInt(row.getAttribute('data-oid'), 10) || 0;
+            if (!input) { return; }
+            if (oid && String(input.value || '').trim() === '') {
+                n++;
+                fieldError(input, 'Give this option a label to save it.');
+            } else if (input.getAttribute('aria-invalid') === 'true') {
+                fieldError(input, '');
+            }
+        });
+        return n;
+    }
+
     /**
      * Read one role's rows straight out of the selected card and replace-all.
-     * The reply carries the real option ids, which are written back onto the DOM
-     * rows in place (never a re-render) so the caret and focus survive — and so
-     * the next commit updates those options instead of recreating them.
+     * The reply carries the real option ids, which are written back onto the
+     * rows that were sent (never a re-render) so the caret and focus survive —
+     * and so the next commit updates those options instead of recreating them.
+     *
+     * Blank labels never block the rest (#11). The domain deletes every option
+     * missing from the payload, so:
+     *   - a NEW row with no label yet is simply left out (nothing to lose);
+     *   - an EXISTING row whose label was cleared is sent with its last saved
+     *     label, so its id — and any answers or skip rule on it — survives;
+     *     that row is flagged inline and the pill reads "Not saved" until it
+     *     gets a label again.
+     * Every other relabel, reorder and removal commits as usual.
      */
     function commitOptions(questionId, role) {
         var card = cardEl(questionId);
         var wrap = card ? el('.svb-opts[data-role="' + role + '"]', card) : null;
         var q    = questionById(questionId);
-        var list = [];
-        var blank = false;
+        var list = [], sent = [], other = [], key;
         if (!wrap || !q) { return; }
 
-        // A row whose label is momentarily empty (the author cleared it to
-        // retype) must not be sent: the domain deletes every option missing
-        // from the payload, which would drop a live option id mid-keystroke
-        // and wedge every later save on "That option does not belong to this
-        // question." Hold the commit until no row is blank.
         els('.svb-optrow', wrap).forEach(function (row) {
             var labelEl  = el('.svb-optlabel', row);
             var weightEl = el('.svb-optweight', row);
+            var oid      = parseInt(row.getAttribute('data-oid'), 10) || 0;
             var label    = labelEl ? String(labelEl.value || '').trim() : '';
-            if (label === '') { blank = true; return; }
+            if (label === '') {
+                if (!oid) { return; }
+                label = savedLabel(q, role, oid);
+                if (label === '') { return; }
+            }
+            sent.push(row);
             list.push({
-                option_id: parseInt(row.getAttribute('data-oid'), 10) || 0,
+                option_id: oid,
                 label:     label,
                 value_num: weightEl && String(weightEl.value).trim() !== '' ? Number(weightEl.value) : null,
                 is_other:  row.getAttribute('data-other') === '1' ? 1 : 0
             });
         });
-        if (blank) { return; }
 
-        save('opts:' + questionId + ':' + role, 'option_set', {
+        key = 'opts:' + questionId + ':' + role;
+        if (markBlankRows(wrap)) {
+            held[key] = { msg: '', loc: locOf(wrap) };
+        } else {
+            delete held[key];
+        }
+
+        // S follows the card at once, so a preview drawn before the reply
+        // (the card closing) shows what was typed, not the old labels.
+        (q.options || []).forEach(function (o) { if (String(o.role || 'choice') !== role) { other.push(o); } });
+        q.options = other.concat(list.map(function (o, i) {
+            return {
+                option_id: o.option_id, question_id: q.question_id, role: role, sort_order: i,
+                label: o.label, value_num: o.value_num, is_other: o.is_other
+            };
+        }));
+
+        save(key, 'option_set', {
             QuestionId: questionId,
             Role:       role,
             Options:    JSON.stringify(list)
         }, function (data) {
-            var kept = [], i;
-            for (i = 0; i < q.options.length; i++) {
-                if (String(q.options[i].role) !== role) { kept.push(q.options[i]); }
-            }
-            q.options = kept.concat(data.options || []);
-            syncOptionIds(questionId, role, data.options || []);
-        });
+            var cur  = questionById(questionId);
+            var opts = data.options || [];
+            var kept = [];
+            if (!cur) { return; }
+            (cur.options || []).forEach(function (o) { if (String(o.role || 'choice') !== role) { kept.push(o); } });
+            cur.options = kept.concat(opts);
+            sent.forEach(function (row, i) {
+                if (opts[i] && document.contains(row)) { row.setAttribute('data-oid', parseInt(opts[i].option_id, 10)); }
+            });
+            if (document.contains(wrap)) { refreshOptionRowStates(wrap); }
+            // The domain cleared every skip rule that read a removed option.
+            pruneShowIf(questionId, (function (ids) { return function (oid) { return !!ids[oid]; }; }(optionIdSet(cur))));
+            // A card that closed while this was in flight shows the saved rows.
+            if (parseInt(questionId, 10) !== sel) { refreshCard(questionId); }
+        }, { node: wrap });
+        refreshPill();
     }
 
-    /** Write server ids back onto the rows we sent, in the order we sent them. */
-    function syncOptionIds(questionId, role, options) {
-        var card = cardEl(questionId);
-        var wrap = card ? el('.svb-opts[data-role="' + role + '"]', card) : null;
-        var rows;
-        if (!wrap) { return; }
-        rows = els('.svb-optrow', wrap).filter(function (row) {
-            var labelEl = el('.svb-optlabel', row);
-            return labelEl && String(labelEl.value || '').trim() !== '';
-        });
-        rows.forEach(function (row, i) {
-            if (options[i]) { row.setAttribute('data-oid', parseInt(options[i].option_id, 10)); }
-        });
-        refreshOptionRowStates(wrap);
-    }
-
-    /** Recompute the remove-button disabled states after a structural change. */
+    /**
+     * Recompute each row's remove / move states, its number glyph and its
+     * "Option N" name after rows were added, removed or reordered.
+     */
     function refreshOptionRowStates(wrap) {
         var rows = els('.svb-optrow', wrap);
         var min  = parseInt(wrap.getAttribute('data-min'), 10) || 0;
         rows.forEach(function (row, i) {
-            var rm = el('[data-act="opt-remove"]', row);
-            var up = el('[data-act="opt-up"]', row);
-            var dn = el('[data-act="opt-down"]', row);
-            if (rm) { rm.disabled = S.locked || rows.length <= min; }
+            var rm    = el('[data-act="opt-remove"]', row);
+            var up    = el('[data-act="opt-up"]', row);
+            var dn    = el('[data-act="opt-down"]', row);
+            var glyph = el('.svb-glyph-num', row);
+            var input = el('.svb-optlabel', row);
+            var wt    = el('.svb-optweight', row);
+            var name  = input ? String(input.getAttribute('aria-label') || '').replace(/\s+\d+$/, '') : '';
+            var wname = wt ? String(wt.getAttribute('aria-label') || '').replace(/\s+\d+$/, '') : '';
+            if (rm) { rm.disabled = S.locked || rows.length <= min || wrap.getAttribute('data-fixed') === '1'; }
             if (up) { up.disabled = S.locked || i === 0; }
             if (dn) { dn.disabled = S.locked || i === rows.length - 1; }
+            if (glyph) { glyph.textContent = String(i + 1); }
+            if (input && name) { input.setAttribute('aria-label', name + ' ' + (i + 1)); }
+            if (wt && wname) { wt.setAttribute('aria-label', wname + ' ' + (i + 1)); }
         });
     }
 
-    /** Append a blank option row to a role's list and focus it. */
-    function addOptionRow(q, wrap, isOther) {
+    /**
+     * Add a new option row and (by default) focus it. opts: { label, after
+     * (insert after this row instead of at the end), focus: false }.
+     */
+    function addOptionRow(q, wrap, isOther, opts) {
         var role = wrap.getAttribute('data-role');
         var host = el('.svb-optlist', wrap);
         var spec = specFor(q, role);
-        var count, input;
+        var count, html, row, input;
+        opts = opts || {};
         if (!host || !q) { return null; }
 
         count = els('.svb-optrow', host).length;
         if (role === 'choice' && q.type !== 'matrix') { spec = optionRowsHtmlSpec(spec); }
-        host.insertAdjacentHTML('beforeend', optionRowHtml(q, spec, {
+        html = optionRowHtml(q, spec, {
             option_id: 0,
-            label:     isOther ? 'Other' : '',
+            label:     opts.label !== undefined ? opts.label : (isOther ? 'Other' : ''),
             is_other:  isOther ? 1 : 0,
             value_num: null
-        }, count, count + 1));
+        }, count, count + 1);
+
+        if (opts.after && opts.after.parentNode === host) {
+            opts.after.insertAdjacentHTML('afterend', html);
+            row = opts.after.nextElementSibling;
+        } else {
+            host.insertAdjacentHTML('beforeend', html);
+            row = host.lastElementChild;
+        }
 
         refreshOptionRowStates(wrap);
-        input = el('.svb-optrow:last-child .svb-optlabel', host);
-        if (input) { input.focus(); input.select(); }
-        return input;
+        input = row ? el('.svb-optlabel', row) : null;
+        if (input && opts.focus !== false) { input.focus(); input.select(); }
+        return row;
+    }
+
+    /**
+     * Remove one option row. An existing option some skip rule reads asks
+     * first (the domain would clear those rules with it); the keyboard then
+     * lands on the neighbouring row, or on "Add option" when none is left.
+     */
+    function removeOptionRow(q, wrap, row, preferPrev) {
+        var oid   = parseInt(row.getAttribute('data-oid'), 10) || 0;
+        var input = el('.svb-optlabel', row);
+        var label = (input && String(input.value).trim()) || savedLabel(q, wrap.getAttribute('data-role'), oid) || 'this option';
+        var deps  = oid ? showIfDependents(q.question_id, function (x) { return x === oid; }) : 0;
+
+        function go() {
+            var prev = row.previousElementSibling, next = row.nextElementSibling;
+            var land = preferPrev ? (prev || next) : (next || prev);
+            var target;
+            if (!row.parentNode) { return; }
+            row.parentNode.removeChild(row);
+            refreshOptionRowStates(wrap);
+            commitOptions(q.question_id, wrap.getAttribute('data-role'));
+            target = land && land.classList.contains('svb-optrow') ? el('.svb-optlabel', land) : el('[data-act="opt-add"]', wrap);
+            if (target) {
+                target.focus();
+                if (target.setSelectionRange && target.value !== undefined) {
+                    try { target.setSelectionRange(target.value.length, target.value.length); } catch (e) { /* not text */ }
+                }
+            }
+        }
+
+        if (!deps) { go(); return; }
+        askConfirm('Removing “' + label + '” also removes ' + plural(deps, 'skip rule', 'skip rules') +
+                   ' that ' + (deps === 1 ? 'depends' : 'depend') + ' on it.', 'Remove option', true, go);
     }
 
     /** A choice spec with the control glyph turned on (see optionRowsHtml). */
@@ -2480,6 +3355,7 @@
                 if (more) {
                     more.hidden = !more.hidden;
                     btn.classList.toggle('svb-icon-on', !more.hidden);
+                    btn.setAttribute('aria-expanded', more.hidden ? 'false' : 'true');
                 }
                 break;
 
@@ -2497,9 +3373,7 @@
                 row  = btn.closest('.svb-optrow');
                 wrap = btn.closest('.svb-opts');
                 if (!row || !wrap) { return; }
-                row.parentNode.removeChild(row);
-                refreshOptionRowStates(wrap);
-                commitOptions(q.question_id, wrap.getAttribute('data-role'));
+                removeOptionRow(q, wrap, row, false);
                 break;
 
             case 'q-up':
@@ -2523,11 +3397,9 @@
 
             case 'q-delete':
                 qid = parseInt(btn.getAttribute('data-qid'), 10);
-                askConfirm('Delete this element and everything on it?', 'Delete', true, function () {
-                    post('question_delete', { QuestionId: qid }, function () {
-                        if (sel === qid) { sel = 0; }
-                        reload();
-                    });
+                askConfirm('Delete “' + (tocTitle(questionById(qid)) || 'this element') +
+                           '” and everything on it?', 'Delete', true, function () {
+                    deleteQuestion(qid);
                 });
                 break;
 
@@ -2537,13 +3409,40 @@
                 if (more) {
                     more.hidden = !more.hidden;
                     btn.classList.toggle('svb-icon-on', !more.hidden);
+                    btn.setAttribute('aria-expanded', more.hidden ? 'false' : 'true');
                 }
                 break;
 
             case 'page-delete':
                 pid = parseInt(btn.getAttribute('data-page'), 10);
                 askConfirm('Delete this page? Any questions on it move to the page before.', 'Delete page', true, function () {
-                    post('page_delete', { PageId: pid }, function () { reload(); });
+                    var at = -1, i, land;
+                    for (i = 0; i < S.pages.length; i++) {
+                        if (parseInt(S.pages[i].page_id, 10) === pid) { at = i; }
+                    }
+                    land = S.pages[at - 1] || S.pages[at + 1];
+                    if (!land) { return; }
+                    // A title edit still queued for this page goes out first,
+                    // or it would land on a deleted page and read as lost.
+                    flush();
+                    whenIdle(function () {
+                        post('page_delete', { PageId: pid }, function () {
+                            var to = parseInt(land.page_id, 10), moved = [], title;
+                            // Mirror Survey::pageDelete — the page's questions
+                            // follow the target page's own, in their order —
+                            // so no full re-read is needed (#15).
+                            S.questions = S.questions.filter(function (x) {
+                                if (parseInt(x.page_id, 10) !== pid) { return true; }
+                                x.page_id = to;
+                                moved.push(x);
+                                return false;
+                            }).concat(moved);
+                            S.pages = S.pages.filter(function (p) { return parseInt(p.page_id, 10) !== pid; });
+                            renderCanvas();
+                            title = el('.svb-page[data-page="' + to + '"] .svb-page-title');
+                            if (title) { title.focus(); }
+                        });
+                    });
                 });
                 break;
 
@@ -2553,7 +3452,17 @@
                 break;
 
             case 'page-add':
-                post('page_add', { SurveyId: SURVEY_ID }, function () { reload(); });
+                post('page_add', { SurveyId: SURVEY_ID }, function (data) {
+                    var title;
+                    if (!data.page) { reload(); return; }
+                    S.pages.push(data.page);
+                    renderCanvas();
+                    title = el('.svb-page[data-page="' + parseInt(data.page.page_id, 10) + '"] .svb-page-title');
+                    if (title) {
+                        title.focus({ preventScroll: true });
+                        if (title.scrollIntoView) { title.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+                    }
+                });
                 break;
 
             case 'share-copy':
@@ -2561,9 +3470,7 @@
                 break;
 
             case 'help':
-                post('help', { Doc: 'surveys' }, function (data) {
-                    openModal('Building surveys', data.html || '');
-                });
+                openHelp();
                 break;
 
             case 'date-clear':
@@ -2610,7 +3517,7 @@
             return;
         }
         if (t.hasAttribute('data-q-setting') && q) {
-            saveSettings(q);
+            saveSettings(q, t);
             if (t.getAttribute('data-q-setting') === 'caption') { tocLiveText(); }
             return;
         }
@@ -2619,23 +3526,126 @@
         }
     }
 
+    /* The type picker commits on a pointer pick at once, but a keyboard walk
+       (arrow / letter keys on the closed select) only on Enter or blur. */
+    var typeKeyNav = false;
+
     function onCanvasChange(e) {
         var t = e.target;
         var q = questionById(sel);
         var kind;
 
         if (t.classList && t.classList.contains('svb-typesel')) {
-            if (q && String(t.value) !== String(q.type)) { retype(q, String(t.value)); }
+            if (!typeKeyNav) { commitType(t); return; }
+            if (q && String(t.value) !== String(q.type)) {
+                fieldError(t, 'Press Enter to switch to ' + ((TYPE_META[t.value] || {}).label || t.value) +
+                              ', or Escape to keep ' + ((TYPE_META[q.type] || {}).label || q.type) + '.', true);
+            } else {
+                fieldError(t, '');
+            }
             return;
         }
         if (t.hasAttribute('data-q-setting') && q) {
             kind = t.getAttribute('data-kind');
-            saveSettings(q);
+            saveSettings(q, t);
             // A picker that changes what the respondent sees redraws the preview.
             if (kind === 'select') { refreshTypeEditor(q, t.getAttribute('data-q-setting')); }
             return;
         }
         onCanvasInput(e);
+    }
+
+    function onCanvasPointerDown(e) {
+        if (e.target.classList && e.target.classList.contains('svb-typesel')) { typeKeyNav = false; }
+    }
+
+    /**
+     * Leaving a field. The type picker commits a keyboard-walked value; a
+     * still-blank option row lets go — a new one is dropped, a cleared
+     * existing one gets its saved label back — and the rest is committed.
+     */
+    function onCanvasFocusOut(e) {
+        var t = e.target, to = e.relatedTarget, row, wrap, item, q, oid, role, min;
+        // A field that left because a repaint removed it is not the author leaving it.
+        if (!t.classList || !document.contains(t)) { return; }
+        if (t.classList.contains('svb-typesel')) {
+            typeKeyNav = false;
+            if (!(to && $('svb-confirm') && $('svb-confirm').contains(to))) {
+                // activeElement is <body> mid-blur, so name the opener: the
+                // field the author was heading to, else this card's picker.
+                q = questionById((t.closest('.svb-item') || t).getAttribute('data-qid'));
+                commitType(t, function () {
+                    var card = q ? cardEl(q.question_id) : null;
+                    if (to && document.contains(to) && !to.disabled && to !== document.body) { return to; }
+                    return card ? el('.svb-typesel', card) : null;
+                });
+            }
+            return;
+        }
+        if (!t.classList.contains('svb-optlabel') || String(t.value || '').trim() !== '' || S.locked) { return; }
+        row  = t.closest('.svb-optrow');
+        wrap = t.closest('.svb-opts');
+        item = t.closest('.svb-item');
+        if (!row || !wrap || !item || !row.parentNode) { return; }
+        if (to && row.contains(to)) { return; }   // on its way to this row's own buttons
+        q    = questionById(item.getAttribute('data-qid'));
+        if (!q) { return; }
+        oid  = parseInt(row.getAttribute('data-oid'), 10) || 0;
+        role = wrap.getAttribute('data-role');
+        min  = parseInt(wrap.getAttribute('data-min'), 10) || 0;
+        if (oid) {
+            t.value = savedLabel(q, role, oid);
+            fieldError(t, '');
+        } else if (els('.svb-optrow', wrap).length > min && wrap.getAttribute('data-fixed') !== '1') {
+            row.parentNode.removeChild(row);
+            refreshOptionRowStates(wrap);
+        }
+        commitOptions(q.question_id, role);
+    }
+
+    /**
+     * Pasting a multi-line list into an option label makes one row per line
+     * (bullets stripped, blanks skipped): the first line lands in this row, the
+     * rest become new rows right after it, and the role commits once.
+     */
+    var PASTE_MAX = 100;
+
+    function onCanvasPaste(e) {
+        var t = e.target, q = questionById(sel), wrap, row, cb, text, lines, first, start, end, after, last;
+        if (!t.classList || !t.classList.contains('svb-optlabel') || !q || S.locked) { return; }
+        wrap = t.closest('.svb-opts');
+        row  = t.closest('.svb-optrow');
+        if (!wrap || !row || wrap.getAttribute('data-fixed') === '1') { return; }
+        cb   = e.clipboardData || window.clipboardData;
+        text = cb ? String(cb.getData('text') || '') : '';
+        if (!/[\r\n]/.test(text)) { return; }
+
+        lines = text.split(/\r\n|\r|\n/).map(function (line) {
+            return line.replace(/^\s*[-*•]\s+/, '').trim().slice(0, 255);
+        }).filter(function (line) { return line !== ''; });
+        if (!lines.length) { return; }
+        e.preventDefault();
+        if (lines.length > PASTE_MAX) {
+            notice('Only the first ' + PASTE_MAX + ' lines were added as options.', 'warn');
+            lines = lines.slice(0, PASTE_MAX);
+        }
+
+        first = lines.shift();
+        start = typeof t.selectionStart === 'number' ? t.selectionStart : t.value.length;
+        end   = typeof t.selectionEnd === 'number' ? t.selectionEnd : t.value.length;
+        t.value = (t.value.slice(0, start) + first + t.value.slice(end)).slice(0, 255);
+        fieldError(t, '');
+
+        after = row;
+        last  = t;
+        lines.forEach(function (label) {
+            after = addOptionRow(q, wrap, false, { label: label, after: after, focus: false }) || after;
+            last  = el('.svb-optlabel', after) || last;
+        });
+        refreshOptionRowStates(wrap);
+        commitOptions(q.question_id, wrap.getAttribute('data-role'));
+        last.focus();
+        try { last.setSelectionRange(last.value.length, last.value.length); } catch (err) { /* not text */ }
     }
 
     function pageOfNode(node) {
@@ -2650,7 +3660,38 @@
     function onCanvasKeydown(e) {
         var t = e.target;
         var q = questionById(sel);
-        var wrap, row, prev, prevInput, item;
+        var wrap, row, prev, item, closing, card;
+
+        if (t.classList && t.classList.contains('svb-typesel')) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                typeKeyNav = false;
+                commitType(t);
+                return;
+            }
+            if (e.key === 'Escape' && q && String(t.value) !== String(q.type)) {
+                // Put the picker back; the card stays open.
+                e.preventDefault();
+                e.stopPropagation();
+                t.value = String(q.type);
+                fieldError(t, '');
+                typeKeyNav = false;
+                return;
+            }
+            if (/^(Arrow|Page|Home|End)/.test(e.key) || e.key.length === 1) { typeKeyNav = true; }
+        }
+
+        // Escape closes the open card and hands the keyboard to it (never to
+        // <body>). While the confirm strip is asking, Escape belongs to it.
+        if (e.key === 'Escape' && sel && !confirmOpen()) {
+            e.preventDefault();
+            closing = sel;
+            flush();
+            select(0);
+            card = cardEl(closing);
+            if (card) { card.focus({ preventScroll: true }); }
+            return;
+        }
 
         if (t.classList && t.classList.contains('svb-optlabel') && q) {
             wrap = t.closest('.svb-opts');
@@ -2658,8 +3699,10 @@
             if (e.key === 'Enter') {
                 e.preventDefault();
                 if (wrap.getAttribute('data-fixed') === '1' || S.locked) { return; }
+                // A blank row does not spawn another blank row.
+                if (String(t.value).trim() === '') { return; }
                 commitOptions(q.question_id, wrap.getAttribute('data-role'));
-                addOptionRow(q, wrap, false);
+                addOptionRow(q, wrap, false, { after: row });
                 return;
             }
             if (e.key === 'Backspace' && String(t.value) === '' && !S.locked &&
@@ -2668,23 +3711,9 @@
                 if (prev && prev.classList.contains('svb-optrow') &&
                         els('.svb-optrow', wrap).length > (parseInt(wrap.getAttribute('data-min'), 10) || 0)) {
                     e.preventDefault();
-                    prevInput = el('.svb-optlabel', prev);
-                    row.parentNode.removeChild(row);
-                    refreshOptionRowStates(wrap);
-                    commitOptions(q.question_id, wrap.getAttribute('data-role'));
-                    if (prevInput) {
-                        prevInput.focus();
-                        prevInput.setSelectionRange(prevInput.value.length, prevInput.value.length);
-                    }
+                    removeOptionRow(q, wrap, row, true);
                 }
             }
-            return;
-        }
-
-        if (e.key === 'Escape' && sel) {
-            e.preventDefault();
-            flush();
-            select(0);
             return;
         }
 
@@ -2697,8 +3726,19 @@
 
     /* ------------------------------------------------------------- persistence */
 
+    /** The question columns each data-q-field writes (see saveQuestionField). */
+    var FIELD_COLUMNS = {
+        Prompt:           ['prompt'],
+        HelpMd:           ['help_md'],
+        Required:         ['required'],
+        ShowIfQuestionId: ['show_if_question_id', 'show_if_option_id'],
+        ShowIfOptionId:   ['show_if_question_id', 'show_if_option_id']
+    };
+
     function saveQuestionField(q, key, node) {
         var fields = { QuestionId: q.question_id };
+        var bucket = 'q:' + q.question_id + ':' + key;
+        var qid    = parseInt(q.question_id, 10);
         if (node.type === 'checkbox') {
             fields[key] = node.checked ? 1 : 0;
             if (key === 'Required') { q.required = node.checked ? 1 : 0; }
@@ -2709,25 +3749,38 @@
             fields.ShowIfQuestionId = q.show_if_question_id || 0;
             fields.ShowIfOptionId   = node.value;
         } else {
+            // A blank prompt is refused by the domain, so it is never sent:
+            // hold it with an inline hint until the next real character, and
+            // keep S (the preview, the outline) on the last real wording.
+            if (key === 'Prompt' && String(node.value).trim() === '') {
+                holdBlank(bucket, node, q.type === 'section'
+                    ? 'A section needs a heading. Type one to save.'
+                    : 'A question needs a prompt. Type one to save.');
+                return;
+            }
+            if (key === 'Prompt') { releaseHold(bucket, node); }
             fields[key] = node.value;
             if (key === 'Prompt') { q.prompt = node.value; }
             if (key === 'HelpMd') { q.help_md = node.value; }
         }
 
-        save('q:' + q.question_id + ':' + key, 'question_update', fields, function (data) {
-            var fresh = data.question;
-            if (fresh) {
-                fresh.options = fresh.options && fresh.options.length ? fresh.options : q.options;
-                replaceQuestion(fresh);
+        save(bucket, 'question_update', fields, function (data) {
+            var fresh = data.question, cur = questionById(qid);
+            // Take back only the columns this save wrote. Replacing the whole
+            // row would roll S back over the card's other edits still in
+            // their own debounce (options, settings), and a newer keystroke
+            // queued for this same field is newer than this reply.
+            if (fresh && cur && !pending[bucket] && !held[bucket]) {
+                (FIELD_COLUMNS[key] || []).forEach(function (c) { cur[c] = fresh[c]; });
             }
             if (key === 'ShowIfQuestionId' || key === 'ShowIfOptionId') {
                 // The condition changed which controls the menu needs, and the
                 // card's chip; redraw, then put the menu back where it was.
-                refreshCard(q.question_id);
+                refreshCard(qid);
                 wireOptionSortables();
-                openMore(q.question_id, '[data-q-field="' + key + '"]');
+                openMore(qid, '[data-q-field="' + key + '"]');
             }
-        });
+        }, { node: node });
     }
 
     function savePageField(page, key, node) {
@@ -2744,18 +3797,21 @@
             if (key === 'DescriptionMd') { page.description_md = node.value; }
         }
 
-        save('p:' + page.page_id + ':' + key, 'page_update', fields, function (data) {
-            var fresh = data.page, i;
-            if (fresh) {
-                for (i = 0; i < S.pages.length; i++) {
-                    if (parseInt(S.pages[i].page_id, 10) === parseInt(fresh.page_id, 10)) { S.pages[i] = fresh; }
-                }
+        var bucket = 'p:' + page.page_id + ':' + key;
+        var cols   = key === 'Title' ? ['title'] : (key === 'DescriptionMd' ? ['description_md']
+                   : ['show_if_question_id', 'show_if_option_id']);
+        save(bucket, 'page_update', fields, function (data) {
+            var fresh = data.page, cur = fresh ? pageById(fresh.page_id) : null;
+            // Only the columns this save wrote, and not while a newer
+            // keystroke for the same field is still queued.
+            if (fresh && cur && !pending[bucket]) {
+                cols.forEach(function (c) { cur[c] = fresh[c]; });
             }
             if (key === 'ShowIfQuestionId' || key === 'ShowIfOptionId') {
                 renderCanvas();
                 openPageMore(page.page_id, '[data-p-field="' + key + '"]');
             }
-        });
+        }, { node: node });
     }
 
     function firstOptionOf(questionId) {
@@ -2783,7 +3839,7 @@
         save('survey:' + key, 'update', fields, function (data) {
             S.survey = data.survey || S.survey;
             renderHeader();
-        });
+        }, { node: node });
     }
 
     function onSettingsInput(e) {
@@ -2833,15 +3889,18 @@
             renderAll();
         }, function (data) {
             showOpenErrors(data);
-        });
+        }, { noLoss: true });
     }
 
     function showOpenErrors(data) {
         var errors = (data && data.errors) || {};
         var ids = Object.keys(errors);
         var first;
-        // Errors are drawn onto the SvRender preview, so drop the open editor first.
+        // Errors are drawn onto the SvRender preview, so drop the open editor
+        // first — and under 900px make sure the canvas is the view on screen.
+        if (sel) { settleCard(sel); }
         sel = 0;
+        setView('questions');
         renderCanvas();
         notice((data && data.error) || 'This survey is not ready to open yet.', 'error');
         ids.forEach(function (qid) {
@@ -2859,14 +3918,37 @@
     function wireHeader() {
         var title = $('svb-title');
 
+        // A blank title is refused by the domain, so it is held, never sent:
+        // inline hint + "Not saved" until the next real character (#7).
         if (title) {
             title.addEventListener('input', function () {
+                if (String(title.value).trim() === '') {
+                    holdBlank('survey:Title', title, 'A survey needs a title. Type one to save.');
+                    return;
+                }
+                releaseHold('survey:Title', title);
                 S.survey.title = title.value;
                 save('survey:Title', 'update', { SurveyId: SURVEY_ID, Title: title.value }, function (data) {
                     S.survey = data.survey || S.survey;
-                });
+                }, { node: title });
             });
         }
+
+        wireNarrowChrome();
+
+        // Every notice carries its own Dismiss button.
+        on($('svb-notice'), 'click', function (e) {
+            var x = e.target.closest ? e.target.closest('.svb-notice-close') : null;
+            if (!x) { return; }
+            e.preventDefault();
+            notice('');
+        });
+
+        // Preview opens a new tab that reads the saved survey: send whatever
+        // is still in its debounce first so the preview shows the last edit.
+        on($('svb-preview'), 'click', function () {
+            if (hasKeys(pending)) { flush(); }
+        });
 
         on($('svb-openclose'), 'click', function (e) {
             e.preventDefault();
@@ -2880,9 +3962,7 @@
 
         on($('svb-help'), 'click', function (e) {
             e.preventDefault();
-            post('help', { Doc: 'surveys' }, function (data) {
-                openModal('Building surveys', data.html || '');
-            });
+            openHelp();
         });
 
         on($('svb-confirm-yes'), 'click', function (e) {
@@ -2891,7 +3971,7 @@
             hideConfirm();
             if (action) { action(); }
         });
-        on($('svb-confirm-no'), 'click', function (e) { e.preventDefault(); hideConfirm(); });
+        on($('svb-confirm-no'), 'click', function (e) { e.preventDefault(); hideConfirm(true); });
 
         on($('svb-file'), 'change', onFileChosen);
 
@@ -2909,7 +3989,114 @@
             if (e.key !== 'Escape') { return; }
             var m = $('svb-modal');
             if (m && !m.hidden) { closeModal(); return; }
-            if ($('svb-confirm') && !$('svb-confirm').hidden) { hideConfirm(); }
+            if (confirmOpen()) { e.preventDefault(); hideConfirm(true); return; }
+            if (overflowOpen()) { e.preventDefault(); setOverflow(false, true); }
+        });
+    }
+
+    /** The builder's help guide in the modal. */
+    function openHelp() {
+        post('help', { Doc: 'surveys' }, function (data) {
+            openModal('Building surveys', data.html || '');
+        });
+    }
+
+    /* ------------------------------------------------ narrow-width chrome (#13) */
+
+    /* Under 900px (survey-build.css) the canvas and the settings sidebar are
+       two views behind a Questions | Settings switch, so the first question
+       is not buried under seven settings sections; and Results, Copy link and
+       Help fold into one "More" disclosure. Above 900px both controls are
+       display:none and the page is unchanged. */
+
+    function setView(view) {
+        var root = $('svb-root');
+        view = view === 'settings' ? 'settings' : 'questions';
+        if (!root) { return; }
+        root.setAttribute('data-svb-view', view);
+        els('.svb-viewseg-btn').forEach(function (b) {
+            b.setAttribute('aria-pressed', b.getAttribute('data-view') === view ? 'true' : 'false');
+        });
+    }
+
+    function overflowOpen() {
+        var menu = $('svb-overflow-menu');
+        return !!(menu && !menu.hidden);
+    }
+
+    /** Open or close the More menu; `refocus` hands the keyboard back to its button. */
+    function setOverflow(open, refocus) {
+        var btn  = $('svb-overflow-btn');
+        var menu = $('svb-overflow-menu');
+        var first;
+        if (!btn || !menu) { return; }
+        menu.hidden = !open;
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (open) {
+            alignOverflow();
+            first = el('.svb-overflow-item', menu);
+            if (first) { first.focus(); }
+        } else if (refocus) {
+            btn.focus();
+        }
+    }
+
+    /**
+     * Keep the open More menu inside the viewport. It hangs from the button's
+     * right edge by default; when the header wraps More to the left of its row
+     * (phones) that would push the menu past the left edge, so it flips to hang
+     * from the button's left edge instead (data-align="start" in the CSS).
+     */
+    function alignOverflow() {
+        var menu = $('svb-overflow-menu');
+        var gutter = 8;
+        var r;
+        if (!menu || menu.hidden) { return; }
+        menu.removeAttribute('data-align');
+        r = menu.getBoundingClientRect();
+        if (r.left < gutter) { menu.setAttribute('data-align', 'start'); }
+    }
+
+    function wireNarrowChrome() {
+        var btn  = $('svb-overflow-btn');
+        var menu = $('svb-overflow-menu');
+
+        // A rotate or resize can move the button to the other end of its row.
+        window.addEventListener('resize', alignOverflow, false);
+
+        els('.svb-viewseg-btn').forEach(function (b) {
+            b.addEventListener('click', function (e) {
+                e.preventDefault();
+                setView(b.getAttribute('data-view'));
+            });
+        });
+
+        on(btn, 'click', function (e) {
+            e.preventDefault();
+            setOverflow(!overflowOpen());
+        });
+
+        on(menu, 'click', function (e) {
+            var item = e.target.closest ? e.target.closest('[data-overflow]') : null;
+            var what;
+            if (!item) { return; }   // the Results link just navigates
+            e.preventDefault();
+            what = item.getAttribute('data-overflow');
+            // Close first and put the keyboard on the button, so the help
+            // modal hands focus back to something that is still on screen.
+            setOverflow(false, true);
+            if (what === 'copy') { copyLink(shareLink()); }
+            if (what === 'help') { openHelp(); }
+        });
+
+        // A click anywhere else, or focus leaving the menu, closes it.
+        document.addEventListener('click', function (e) {
+            var box = btn ? btn.closest('.svb-overflow') : null;
+            if (overflowOpen() && box && !box.contains(e.target)) { setOverflow(false); }
+        }, false);
+        on(menu, 'focusout', function (e) {
+            var box = btn ? btn.closest('.svb-overflow') : null;
+            if (overflowOpen() && box && e.relatedTarget && !box.contains(e.relatedTarget)) { setOverflow(false); }
         });
     }
 
@@ -2955,6 +4142,9 @@
         canvas.addEventListener('input', onCanvasInput, false);
         canvas.addEventListener('change', onCanvasChange, false);
         canvas.addEventListener('keydown', onCanvasKeydown, false);
+        canvas.addEventListener('paste', onCanvasPaste, false);
+        canvas.addEventListener('focusout', onCanvasFocusOut, false);
+        canvas.addEventListener('pointerdown', onCanvasPointerDown, false);
 
         if (toc) { toc.addEventListener('click', onTocClick, false); }
 
@@ -2978,8 +4168,25 @@
             renderSettings();
         });
 
-        window.addEventListener('beforeunload', function () {
-            if (Object.keys(pending).length) { flush(); }
+        // The "Attended an event" audience picker's list (#12).
+        loadEvents();
+
+        /* Leaving the page (#10). Debounced edits go out as keepalive requests,
+           which outlive the page where a plain fetch is cancelled. If anything
+           was still unsent, on the wire, held (blank) or refused, the browser's
+           own leave-page prompt asks first — a browser prompt, not a JS dialog. */
+        window.addEventListener('beforeunload', function (e) {
+            var dirty = hasKeys(pending) || inflightWrites > 0 || hasKeys(held) || hasKeys(failed);
+            if (hasKeys(pending)) { flush(true); }
+            if (!dirty) { return undefined; }
+            e.preventDefault();
+            e.returnValue = '';
+            return '';
+        }, false);
+
+        // A phone backgrounding the tab may never come back to fire the timer.
+        document.addEventListener('visibilitychange', function () {
+            if (document.visibilityState === 'hidden' && hasKeys(pending)) { flush(true); }
         }, false);
     }
 

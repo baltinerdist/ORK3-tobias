@@ -144,7 +144,180 @@
 
 .svb-confirm-text { flex: 1 1 260px; }
 
+/* The confirm strip is a role="alertdialog" that has to stay in view wherever
+   the author has scrolled (a Delete at the bottom of a long canvas used to
+   jump the page to the top). It pins 8px under #newmenu, the 48px fixed site
+   bar, the same offset the outline rail uses. Sticky binds to the viewport
+   because `body:has(#svb-toc) { overflow-x: clip }` (below) keeps body from
+   becoming a scrollport. Opaque card fill in both themes, so nothing on the
+   canvas shows through it. */
+.svb-confirm:not([hidden]) {
+    position: sticky;
+    top: 56px;
+    z-index: var(--z-dropdown);
+    box-shadow: var(--ork-shadow-dropdown);
+}
+
 .svb-notice-slot { margin-bottom: 12px; }
+
+/* Every notice carries its own Dismiss button beside the message. */
+.svb-notice-slot:not([hidden]) {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.svb-notice-text { flex: 1 1 auto; min-width: 0; }
+
+.svb-notice-close {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    margin: -4px -6px -4px 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--ork-radius-sm);
+    background: transparent;
+    color: inherit;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.svb-notice-close:hover { background: rgba(0, 0, 0, 0.06); }
+
+/* An error notice ("could not be saved", "security token expired") pins
+   under the site bar like the confirm strip, so it is never scrolled away
+   from the author it is talking to. One step under the confirm strip. */
+.svb-notice-slot.sv-notice-error:not([hidden]) {
+    position: sticky;
+    top: 56px;
+    z-index: calc(var(--z-dropdown) - 1);
+    box-shadow: var(--ork-shadow-dropdown);
+}
+
+/* default.theme colours every #theme_container link; the Reload link keeps
+   the notice's own (already AA) colour, underlined by .sv-notice-link. */
+#theme_container .svb-notice-link { color: inherit; }
+
+/* ── Held / refused field marks ───────────────────────────────────────── */
+
+/* survey-build.js fieldError(): a value the builder is holding back (a blank
+   prompt, title or option label) or one the server refused gets a line of
+   text right beside it, and the control carries aria-invalid + an
+   aria-describedby that points at this line. .svb-field-note is the neutral
+   variant (no aria-invalid) — e.g. "Press Enter to switch to …". */
+.svb-field-err {
+    display: block;
+    margin: 3px 0 0;
+    font-size: var(--ork-font-size-sm);
+    font-weight: var(--ork-font-weight-semibold);
+    line-height: 1.4;
+    color: #c53030;   /* 5.9:1 on white; --sv-danger (#e53e3e) is 4.0:1, under AA at 12px */
+}
+
+.svb-field-err::before {
+    font-family: "Font Awesome 6 Free", "Font Awesome 5 Free";
+    font-weight: 900;
+    content: "\f06a";
+    margin-right: 5px;
+}
+
+.svb-field-note {
+    font-weight: normal;
+    color: var(--sv-text-muted, var(--ork-text-muted));
+}
+
+.svb-field-note::before { content: "\f05a"; }
+
+/* An option row wraps so its hint sits on its own line under the label,
+   indented past the 18px glyph + 4px gap. */
+.svb-optrow.svb-has-err { flex-wrap: wrap; }
+
+.svb-optrow > .svb-field-err {
+    flex: 1 1 100%;
+    order: 99;
+    margin-top: 0;
+    padding-left: 22px;
+}
+
+.svb-page-head > .svb-field-err { flex: 1 1 100%; margin-top: 0; }
+
+/* The survey title's hint sits on the navy .rp-header. */
+.rp-header .svb-field-err { color: #feb2b2; margin-top: 4px; }
+
+.svb-prompt[aria-invalid="true"],
+.svb-optrow .svb-optlabel[aria-invalid="true"],
+.svb-page-title[aria-invalid="true"] { border-bottom-color: #c53030; }
+
+.svb-title-input[aria-invalid="true"] { border-color: #feb2b2; }
+
+.svb-settings .sv-input[aria-invalid="true"],
+.svb-settings .sv-select[aria-invalid="true"],
+.svb-settings .sv-textarea[aria-invalid="true"],
+.svb-more .sv-input[aria-invalid="true"],
+.svb-more .sv-select[aria-invalid="true"] { border-color: #c53030; }
+
+/* ── Narrow-width chrome (#13) ────────────────────────────────────────── */
+
+/* Under 900px the canvas and the settings sidebar are two views behind a
+   Questions | Settings switch (survey-build.js setView writes
+   data-svb-view on .svb-root), and Results / Copy link / Help fold into one
+   "More" disclosure. Above 900px neither control exists. */
+.svb-viewseg,
+.svb-overflow { display: none; }
+
+.svb-overflow { position: relative; }
+
+.svb-overflow-menu:not([hidden]) {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    z-index: var(--z-dropdown);
+    display: flex;
+    flex-direction: column;
+    min-width: 180px;
+    padding: 4px;
+    background: var(--ork-card-bg);
+    border: 1px solid var(--ork-border);
+    border-radius: var(--ork-radius-md);
+    box-shadow: var(--ork-shadow-dropdown);
+}
+
+/* On a phone the header actions wrap and More can land at the LEFT of its
+   row, where a right-anchored menu would open past the viewport edge.
+   survey-build.js alignOverflow() measures on open and flips the anchor. */
+.svb-overflow-menu[data-align="start"]:not([hidden]) { left: 0; right: auto; }
+
+/* #theme_container outranks default.theme's link colour on the Results <a>. */
+#theme_container .svb-overflow-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 44px;
+    margin: 0;
+    padding: 0 12px;
+    border: 0;
+    border-radius: var(--ork-radius-sm);
+    background: transparent;
+    color: var(--ork-text);
+    font: inherit;
+    font-size: var(--ork-font-size-base);
+    font-weight: var(--ork-font-weight-semibold);
+    text-align: left;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+#theme_container .svb-overflow-item:hover,
+#theme_container .svb-overflow-item:focus-visible { background: var(--ork-surface-hover); }
+
+.svb-overflow-item i { width: 16px; text-align: center; color: var(--ork-text-muted); }
 
 .svb-danger {
     border-color: var(--sv-danger);
@@ -1578,6 +1751,7 @@ html[data-theme="dark"] .flatpickr-time .numInputWrapper span.arrowDown:after { 
     .svb-settings .sv-btn { min-height: 44px; font-size: 16px; }
 
     .svb-sec-head { min-height: 44px; }
+    .svb-notice-close { width: 44px; height: 44px; margin: -12px -10px -12px 0; }
 
     .svb-addinline { height: 16px; }
     .svb-addinline-btn { width: 44px; height: 44px; margin-top: -14px; border-radius: 50%; }
@@ -1593,15 +1767,60 @@ html[data-theme="dark"] .flatpickr-time .numInputWrapper span.arrowDown:after { 
 @media (max-width: 900px) {
     .svb-title-input { width: 100%; }
 
-    /* reports.css stacks .rp-body, so the sidebar lands ON TOP of the canvas.
-       renderSettings() starts every section collapsed at this width, and the
-       cap keeps even an all-expanded sidebar from burying the questions. */
-    .svb-settings {
-        max-height: 60vh;
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
-        padding-bottom: 0;
+    /* The Questions | Settings switch: one of the two at a time, Questions
+       first, so the first question sits right under the header instead of
+       ~1,000px down behind seven settings sections. */
+    .svb-viewseg {
+        display: flex;
+        gap: 4px;
+        margin: 10px 0;
+        padding: 3px;
+        background: var(--sv-l1);
+        border: 1px solid var(--sv-line-1);
+        border-radius: var(--ork-radius-lg);
     }
+
+    .svb-viewseg-btn {
+        flex: 1 1 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        min-height: 44px;
+        margin: 0;
+        padding: 0 12px;
+        border: 0;
+        border-radius: var(--ork-radius-md);
+        background: transparent;
+        color: var(--ork-text-secondary);
+        font: inherit;
+        font-size: var(--ork-font-size-base);
+        font-weight: var(--ork-font-weight-semibold);
+        cursor: pointer;
+    }
+
+    .svb-viewseg-btn:hover { background: var(--ork-surface-hover); }
+
+    .svb-viewseg-btn[aria-pressed="true"],
+    .svb-viewseg-btn[aria-pressed="true"]:hover {
+        background: var(--rp-accent-dark);
+        color: #fff;
+    }
+
+    .svb-root[data-svb-view="questions"] .svb-settings,
+    .svb-root[data-svb-view="settings"] .svb-canvas { display: none; }
+
+    /* Its guidance repeats in Settings → About This Tool; on a phone it was
+       one more strip between the header and the first question. */
+    .svb-root > .rp-context { display: none; }
+
+    /* Results / Copy link / Help live in the More menu at this width. */
+    .rp-root .rp-header-actions .svb-wide-only { display: none; }
+    .svb-overflow { display: block; }
+
+    /* The settings are their own view now, so they no longer need the old
+       60vh cap that kept them from burying the canvas. */
+    .svb-settings { padding-bottom: 0; }
 
     /* reports.css gives the stacked .rp-sidebar width:100%; the canvas is this
        file's own column, so it has to claim the row for itself or flex-start
@@ -1633,6 +1852,54 @@ html[data-theme="dark"] .svb-confirm {
     background: var(--ork-card-bg);
     border-color: var(--ork-border);
     color: var(--ork-text);
+}
+
+/* survey.css paints the dark error notice as a 14% red wash — translucent,
+   which a pinned notice cannot be (the canvas would scroll through it). The
+   same wash laid over the page ground keeps the colour and goes opaque. */
+html[data-theme="dark"] .svb-notice-slot.sv-notice-error {
+    background: linear-gradient(rgba(229, 62, 62, 0.14), rgba(229, 62, 62, 0.14)), var(--ork-bg);
+}
+
+html[data-theme="dark"] .svb-notice-close:hover { background: rgba(255, 255, 255, 0.10); }
+
+html[data-theme="dark"] #theme_container .svb-notice-link { color: inherit; }
+
+html[data-theme="dark"] .svb-field-err { color: #feb2b2; }
+html[data-theme="dark"] .svb-field-note { color: var(--ork-text-muted); }
+
+html[data-theme="dark"] .svb-prompt[aria-invalid="true"],
+html[data-theme="dark"] .svb-optrow .svb-optlabel[aria-invalid="true"],
+html[data-theme="dark"] .svb-page-title[aria-invalid="true"] { border-bottom-color: #fc8181; }
+
+html[data-theme="dark"] .svb-settings .sv-input[aria-invalid="true"],
+html[data-theme="dark"] .svb-settings .sv-select[aria-invalid="true"],
+html[data-theme="dark"] .svb-settings .sv-textarea[aria-invalid="true"],
+html[data-theme="dark"] .svb-more .sv-input[aria-invalid="true"],
+html[data-theme="dark"] .svb-more .sv-select[aria-invalid="true"] { border-color: #fc8181; }
+
+html[data-theme="dark"] .svb-overflow-menu {
+    background: var(--ork-card-bg);
+    border-color: var(--ork-border);
+}
+
+html[data-theme="dark"] #theme_container .svb-overflow-item { color: var(--ork-text); }
+
+html[data-theme="dark"] #theme_container .svb-overflow-item:hover,
+html[data-theme="dark"] #theme_container .svb-overflow-item:focus-visible { background: var(--ork-surface-hover); }
+
+html[data-theme="dark"] .svb-viewseg {
+    background: var(--sv-l1);
+    border-color: var(--sv-line-1);
+}
+
+html[data-theme="dark"] .svb-viewseg-btn { color: var(--ork-text-secondary); }
+html[data-theme="dark"] .svb-viewseg-btn:hover { background: var(--ork-surface-hover); }
+
+html[data-theme="dark"] .svb-viewseg-btn[aria-pressed="true"],
+html[data-theme="dark"] .svb-viewseg-btn[aria-pressed="true"]:hover {
+    background: var(--rp-accent-dark);
+    color: #fff;
 }
 
 /* .svb-page, .svb-item and .svb-page-head used to be re-stated here; they now
@@ -1786,6 +2053,9 @@ html[data-theme="dark"] .svb-consent-quote {
     .svb-settings,
     .svb-toc,
     .svb-modal,
+    .svb-viewseg,
+    .svb-overflow,
+    .svb-notice-close,
     .svb-confirm { display: none !important; }
 
     .svb-page, .svb-item { box-shadow: none; break-inside: avoid; }

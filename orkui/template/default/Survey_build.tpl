@@ -70,7 +70,9 @@ $_svShareLink = HTTP_UI_REMOTE . 'index.php?Route=Survey/s/' . rawurlencode((str
      shows its dates human-readably through altInput/altFormat. -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 
-<div class="rp-root">
+<!-- data-svb-view: under 900px the Questions | Settings switch shows one of
+     the canvas and the settings sidebar at a time (survey-build.js setView). -->
+<div class="rp-root svb-root" id="svb-root" data-svb-view="questions">
 
 	<!-- Header -->
 	<div class="rp-header">
@@ -79,7 +81,7 @@ $_svShareLink = HTTP_UI_REMOTE . 'index.php?Route=Survey/s/' . rawurlencode((str
 				<i class="fas fa-poll rp-header-icon" aria-hidden="true"></i>
 				<h1 class="rp-header-title">
 					<label class="sv-visually-hidden" for="svb-title">Survey title</label>
-					<input type="text" id="svb-title" class="svb-title-input" maxlength="200"
+					<input type="text" id="svb-title" class="svb-title-input" maxlength="200" aria-required="true"
 						placeholder="Untitled survey" value="<?= htmlspecialchars((string) ($_svSurvey['title'] ?? '')) ?>">
 				</h1>
 				<span class="svb-status-pill svb-status-<?= htmlspecialchars($_svStatus) ?>" id="svb-statuspill"><?= htmlspecialchars(ucfirst($_svStatus)) ?></span>
@@ -94,12 +96,27 @@ $_svShareLink = HTTP_UI_REMOTE . 'index.php?Route=Survey/s/' . rawurlencode((str
 		</div>
 		<div class="rp-header-actions">
 			<span class="svb-savestate svb-savestate-saved" id="svb-savestate" role="status" aria-live="polite">Saved</span>
-			<a class="rp-btn-ghost" href="<?= UIR ?>Survey/take/<?= (int) $SurveyId ?>/preview" target="_blank" rel="noopener" data-tip="Take the survey without saving anything"><i class="fas fa-eye" aria-hidden="true"></i> Preview</a>
+			<a class="rp-btn-ghost" id="svb-preview" href="<?= UIR ?>Survey/take/<?= (int) $SurveyId ?>/preview" target="_blank" rel="noopener" data-tip="Take the survey without saving anything"><i class="fas fa-eye" aria-hidden="true"></i> Preview</a>
 			<button type="button" class="rp-btn-ghost" id="svb-openclose" data-target="open"><i class="fas fa-paper-plane" aria-hidden="true"></i> Open survey</button>
-			<a class="rp-btn-ghost" href="<?= UIR ?>Survey/results/<?= (int) $SurveyId ?>"><i class="fas fa-chart-column" aria-hidden="true"></i> Results</a>
-			<button type="button" class="rp-btn-ghost" id="svb-copylink" data-link="<?= htmlspecialchars($_svShareLink) ?>" data-tip="Copy the share link for this survey"><i class="fas fa-link" aria-hidden="true"></i> Copy link</button>
-			<button type="button" class="rp-btn-ghost" id="svb-help"><i class="fas fa-circle-question" aria-hidden="true"></i> Help</button>
+			<a class="rp-btn-ghost svb-wide-only" href="<?= UIR ?>Survey/results/<?= (int) $SurveyId ?>"><i class="fas fa-chart-column" aria-hidden="true"></i> Results</a>
+			<button type="button" class="rp-btn-ghost svb-wide-only" id="svb-copylink" data-link="<?= htmlspecialchars($_svShareLink) ?>" data-tip="Copy the share link for this survey"><i class="fas fa-link" aria-hidden="true"></i> Copy link</button>
+			<button type="button" class="rp-btn-ghost svb-wide-only" id="svb-help"><i class="fas fa-circle-question" aria-hidden="true"></i> Help</button>
+			<!-- Under 900px the three buttons above fold into this one menu. -->
+			<div class="svb-overflow">
+				<button type="button" class="rp-btn-ghost svb-overflow-btn" id="svb-overflow-btn" aria-expanded="false" aria-controls="svb-overflow-menu"><i class="fas fa-ellipsis" aria-hidden="true"></i> More</button>
+				<div class="svb-overflow-menu" id="svb-overflow-menu" hidden>
+					<a class="svb-overflow-item" href="<?= UIR ?>Survey/results/<?= (int) $SurveyId ?>"><i class="fas fa-chart-column" aria-hidden="true"></i> Results</a>
+					<button type="button" class="svb-overflow-item" data-overflow="copy"><i class="fas fa-link" aria-hidden="true"></i> Copy link</button>
+					<button type="button" class="svb-overflow-item" data-overflow="help"><i class="fas fa-circle-question" aria-hidden="true"></i> Help</button>
+				</div>
+			</div>
 		</div>
+	</div>
+
+	<!-- Under 900px: one of the canvas and the settings at a time. -->
+	<div class="svb-viewseg" role="group" aria-label="Show">
+		<button type="button" class="svb-viewseg-btn" data-view="questions" aria-pressed="true" aria-controls="svb-canvas"><i class="fas fa-list-check" aria-hidden="true"></i> Questions</button>
+		<button type="button" class="svb-viewseg-btn" data-view="settings" aria-pressed="false" aria-controls="svb-settings"><i class="fas fa-sliders" aria-hidden="true"></i> Settings</button>
 	</div>
 
 	<!-- Context strip -->
@@ -113,7 +130,8 @@ $_svShareLink = HTTP_UI_REMOTE . 'index.php?Route=Survey/s/' . rawurlencode((str
 		<span>This survey has been opened, so its questions, options and pages are locked. Wording, help text, option labels and every survey setting stay editable.</span>
 	</div>
 
-	<div class="svb-confirm sv-scope" id="svb-confirm" hidden>
+	<!-- Sticky, so it stays in view however far down the canvas the author is. -->
+	<div class="svb-confirm sv-scope" id="svb-confirm" role="alertdialog" aria-labelledby="svb-confirm-text" hidden>
 		<span class="svb-confirm-text" id="svb-confirm-text"></span>
 		<button type="button" class="sv-btn sv-btn-primary" id="svb-confirm-yes">Confirm</button>
 		<button type="button" class="sv-btn" id="svb-confirm-no">Cancel</button>
@@ -154,6 +172,7 @@ $_svShareLink = HTTP_UI_REMOTE . 'index.php?Route=Survey/s/' . rawurlencode((str
 <script>
 window.SvConfig = {
 	uir:      <?= json_encode(UIR) ?>,
+	csrf:     <?= json_encode($SurveyCsrf ?? '') ?>,
 	surveyId: <?= (int) $SurveyId ?>,
 	survey:   <?= json_encode($_svBoot) ?>
 };
