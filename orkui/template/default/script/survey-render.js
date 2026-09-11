@@ -38,9 +38,13 @@
          Renders the presentational types 'section' and 'image'.
 
      escape(s) -> string           HTML-escape a value for text/attribute use.
-     md(html) -> string            Passthrough for already-rendered markdown.
+     sanitize(html) -> string      DOMPurify.sanitize() when DOMPurify is loaded
+                                   (the runner), else the server-sanitised HTML
+                                   unchanged (the builder). md() is an alias.
      isAnswerable(type) -> bool    Mirrors SurveyTypes::ANSWERABLE.
-     reindexRank(listEl) -> void   Renumber a .sv-rank list's position badges.
+     reindexRank(listEl) -> void   Renumber a .sv-rank list's position badges
+                                   and aria-disable its end buttons.
+     touchRank(listEl) -> void     Mark a ranking answered (drag onEnd calls it).
 
    --------------------------------------------------------------------------
    HTML STRUCTURE PER TYPE  (style against this; do not guess)
@@ -54,7 +58,7 @@
          Prompt text<span class="sv-q-required" aria-hidden="true">*</span>
          <span class="sv-visually-hidden"> (required)</span>       (required only)
        </div>
-       <div class="sv-q-help">…rendered markdown HTML…</div>       (optional)
+       <div class="sv-q-help" id="sv-h-12-N">…markdown HTML…</div> (optional)
        <div class="sv-q-image"><img class="sv-q-image-img" …></div> (optional)
        <div class="sv-q-body"> …type-specific, described below… </div>
        <div class="sv-q-error" role="alert" id="sv-e-12-N" hidden></div>
@@ -63,8 +67,10 @@
    The .sv-q-error element is always present but starts `hidden`; setError()
    only toggles it (and aria-invalid on the control). Nothing outside
    .sv-q-body varies by type. Every type's control — or, for the composite
-   types, its group wrapper — carries aria-describedby="<the error id>" and,
-   when the question is required, aria-required="true".
+   types, its group wrapper — carries aria-describedby="<help id> <hint id>
+   <error id>" (help and hint only when present; a hint is the
+   <div class="sv-choice-hint" id="sv-hint-12-N"> a multi or ranking shows)
+   and, when the question is required, aria-required="true".
 
    single / yesno  ─ radio list
      <div class="sv-choices" role="radiogroup" aria-labelledby="sv-p-12">
@@ -146,9 +152,10 @@
      wide screens and revealed at ≤700 px, where survey.css collapses <thead>
      and turns each row into a stacked card.
 
-   ranking  ─ ordered list; the DOM order IS the answer
+   ranking  ─ ordered list; the DOM order IS the answer, once touched
+     <div class="sv-choice-hint" id="sv-hint-12-N">Use the arrows or drag…</div>
      <div class="sv-rank-group" role="group" aria-labelledby="sv-p-12">
-     <ol class="sv-rank" data-qid="12">
+     <ol class="sv-rank" data-qid="12" [data-touched="1"]>
        <li class="sv-rank-item" data-option="101">
          <span class="sv-rank-handle" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>
          <span class="sv-rank-pos">1</span>
@@ -159,11 +166,14 @@
          </span>
        </li>…
      </ol>
+     <button type="button" class="sv-btn sv-rank-keep">Keep this order</button>
+                                                  (required only; hidden once touched)
      </div>
      The ▲▼ buttons are handled by this file (one delegated listener) and fire
      a bubbling `change` from the <ol> afterwards, so autosave just listens for
-     `change` on the form. Attach SortableJS to .sv-rank for drag if wanted;
-     call SvRender.reindexRank(ol) from its onEnd.
+     `change` on the form. The first item's ▲ and the last item's ▼ carry
+     aria-disabled="true". The runner attaches SortableJS to .sv-rank (handle:
+     .sv-rank-handle) and calls reindexRank(ol) + touchRank(ol) from its onEnd.
 
    short_text   <input type="text" class="sv-input" maxlength=… placeholder=…>
    paragraph    <textarea class="sv-textarea" rows="4" maxlength=… …></textarea>
@@ -202,10 +212,10 @@
      paragraph             : String, trimmed. undefined when ''.
      matrix                : { row_option_id: column_option_id } for ANSWERED
                              rows only. undefined when no row is answered.
-     ranking               : [option_id, …] in list order — ALWAYS returned
-                             when the question has options, because a visible
-                             order is itself an answer. (A required ranking is
-                             therefore always satisfied; that is deliberate.)
+     ranking               : [option_id, …] in list order once the respondent
+                             has touched the list (an arrow, a drag, or "Keep
+                             this order"); undefined until then, because the
+                             order it arrived in is not a vote.
      section / image       : undefined, always.
 
    Round trip: for every answerable type, read(el, q) after
@@ -279,9 +289,22 @@
 
     function isOther(opt) { return !!(opt && (opt.is_other === 1 || opt.is_other === true || opt.is_other === '1')); }
 
+    /* Builder-authored HTML (help, section bodies, welcome/thanks copy) arrives
+       as Parsedown safe-mode output. When DOMPurify is on the page (the runner
+       loads it) that HTML is sanitised again before it reaches innerHTML. The
+       builder does not load DOMPurify, so there the server-sanitised HTML is
+       used as it came. */
+    function sanitize(html) {
+        var s = (html === null || html === undefined) ? '' : String(html);
+        if (s !== '' && window.DOMPurify && typeof window.DOMPurify.sanitize === 'function') {
+            return String(window.DOMPurify.sanitize(s));
+        }
+        return s;
+    }
+
     /** Help HTML: prefer server-rendered help_html, fall back to escaped help_md. */
     function helpHtml(q) {
-        if (q && typeof q.help_html === 'string' && q.help_html !== '') { return q.help_html; }
+        if (q && typeof q.help_html === 'string' && q.help_html !== '') { return sanitize(q.help_html); }
         if (q && typeof q.help_md === 'string' && q.help_md !== '') {
             return '<p>' + escapeHtml(q.help_md).replace(/\n{2,}/g, '</p><p>').replace(/\n/g, '<br>') + '</p>';
         }
@@ -307,6 +330,22 @@
 
     // ------------------------------------------------------------- type bodies
 
+    /* The instruction line a question shows above its control, or ''. It gets
+       an id and joins the control's aria-describedby (with the help text and
+       the error), so a screen reader hears the selection limit too. */
+    function hintFor(q, type) {
+        var s, minSel, maxSel;
+        if (type === 'ranking') { return 'Use the arrows or drag to put these in order.'; }
+        if (type !== 'multi') { return ''; }
+        s = settingsOf(q);
+        minSel = num(s.min_select, 0);
+        maxSel = num(s.max_select, 0);
+        if (minSel > 1 && maxSel > 0) { return 'Choose between ' + minSel + ' and ' + maxSel + '.'; }
+        if (maxSel > 0) { return 'Choose up to ' + maxSel + '.'; }
+        if (minSel > 1) { return 'Choose at least ' + minSel + '.'; }
+        return '';
+    }
+
     function bodyChoices(q, state, ctx) {
         var multi = q.type === 'multi';
         var opts = optionsOf(q, 'choice');
@@ -324,22 +363,8 @@
             if (one) { selected[one.id] = one.other; }
         }
 
-        var s = settingsOf(q);
-        var minSel = multi ? num(s.min_select, 0) : 0;
-        var maxSel = multi ? num(s.max_select, 0) : 0;
-        var hint = '';
-        if (multi && (minSel > 1 || maxSel > 0)) {
-            if (minSel > 1 && maxSel > 0) {
-                hint = 'Choose between ' + minSel + ' and ' + maxSel + '.';
-            } else if (maxSel > 0) {
-                hint = 'Choose up to ' + maxSel + '.';
-            } else {
-                hint = 'Choose at least ' + minSel + '.';
-            }
-        }
-
         var inline = (q.type === 'yesno') ? ' sv-choices-inline' : '';
-        html += hint ? '<div class="sv-choice-hint">' + escapeHtml(hint) + '</div>' : '';
+        html += ctx.hint ? '<div class="sv-choice-hint" id="' + ctx.hintId + '">' + escapeHtml(ctx.hint) + '</div>' : '';
         html += '<div class="sv-choices' + inline + '" role="' + (multi ? 'group' : 'radiogroup') +
                 '" aria-labelledby="' + ctx.promptId + '"' + ctx.req + ctx.desc + '>';
 
@@ -414,7 +439,7 @@
         html += '<div class="sv-scale-wrap">';
         html += '<div class="sv-scale' + (nps ? ' sv-scale-nps' : '') + ' sv-scale-' + icon +
                 '" role="radiogroup" aria-labelledby="' + ctx.promptId + '"' + ctx.req +
-                ' aria-describedby="' + (hasEnds ? endsId + ' ' : '') + ctx.errId + '">';
+                ' aria-describedby="' + (hasEnds ? endsId + ' ' : '') + ctx.descIds + '">';
         for (v = min; v <= max; v++) {
             var vLabel = v + ' of ' + max;
             if (v === min && minLabel) { vLabel += ', ' + minLabel; }
@@ -496,31 +521,51 @@
             if (!seen[id]) { seen[id] = true; order.push(opts[i]); }
         }
 
+        // An order the respondent never touched is NOT an answer: it is just
+        // the order the list arrived in. data-touched is set by an arrow press,
+        // a drag, or "Keep this order"; a stored answer (draft resume) means the
+        // list was touched in an earlier sitting.
+        var touched = Array.isArray(state) && state.length > 0;
+
+        html += ctx.hint ? '<div class="sv-choice-hint" id="' + ctx.hintId + '">' + escapeHtml(ctx.hint) + '</div>' : '';
         // The group attributes go on a wrapper, not on the <ol>: role="group"
         // on the list itself would strip its list semantics ("list, 6 items"),
         // and aria-required is not valid on a list role.
         html += '<div class="sv-rank-group" role="group" aria-labelledby="' + ctx.promptId + '"' +
                 ctx.req + ctx.desc + '>';
-        html += '<ol class="sv-rank" data-qid="' + ctx.qid + '">';
+        html += '<ol class="sv-rank" data-qid="' + ctx.qid + '"' + (touched ? ' data-touched="1"' : '') + '>';
         for (i = 0; i < order.length; i++) {
             o = order[i];
+            var first = i === 0;
+            var last = i === order.length - 1;
             // Every item gets the SAME "Move up"/"Move down" name unless the
             // item's own label is folded in — a screen reader's button list is
             // otherwise N indistinguishable pairs.
             var moveUp = escapeHtml('Move ' + o.label + ' up');
             var moveDn = escapeHtml('Move ' + o.label + ' down');
-            html += '<li class="sv-rank-item" data-option="' + parseInt(o.option_id, 10) +
-                    '" data-label="' + escapeHtml(o.label) + '">';
+            html += '<li class="sv-rank-item' + (first ? ' sv-rank-first' : '') + (last ? ' sv-rank-last' : '') +
+                    '" data-option="' + parseInt(o.option_id, 10) + '" data-label="' + escapeHtml(o.label) + '">';
             html += '<span class="sv-rank-handle" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>';
             html += '<span class="sv-rank-pos">' + (i + 1) + '</span>';
             html += '<span class="sv-rank-label">' + escapeHtml(o.label) + '</span>';
+            // aria-disabled, not disabled: the end buttons stay focusable, so
+            // focus is not dropped when a move lands an item at either end.
             html += '<span class="sv-rank-btns">' +
-                    '<button type="button" class="sv-rank-btn sv-rank-up" data-tip="Move up" aria-label="' + moveUp + '"' + ctx.tab + '><i class="fas fa-chevron-up" aria-hidden="true"></i></button>' +
-                    '<button type="button" class="sv-rank-btn sv-rank-down" data-tip="Move down" aria-label="' + moveDn + '"' + ctx.tab + '><i class="fas fa-chevron-down" aria-hidden="true"></i></button>' +
+                    '<button type="button" class="sv-rank-btn sv-rank-up" data-tip="Move up" aria-label="' + moveUp + '"' +
+                    (first ? ' aria-disabled="true"' : '') + ctx.tab + '><i class="fas fa-chevron-up" aria-hidden="true"></i></button>' +
+                    '<button type="button" class="sv-rank-btn sv-rank-down" data-tip="Move down" aria-label="' + moveDn + '"' +
+                    (last ? ' aria-disabled="true"' : '') + ctx.tab + '><i class="fas fa-chevron-down" aria-hidden="true"></i></button>' +
                     '</span>';
             html += '</li>';
         }
-        html += '</ol></div>';
+        html += '</ol>';
+        // A required ranking must be touched to count, so a respondent who
+        // already agrees with the order needs a way to say so.
+        if (ctx.required) {
+            html += '<button type="button" class="sv-btn sv-rank-keep"' + (touched ? ' hidden' : '') + ctx.tab + '>' +
+                    '<i class="fas fa-check" aria-hidden="true"></i> Keep this order</button>';
+        }
+        html += '</div>';
         return html;
     }
 
@@ -611,13 +656,19 @@
             tab: preview ? ' tabindex="-1"' : '',
             required: required
         };
-        // Requiredness and the validation message must be exposed
-        // programmatically, not by a red asterisk and a detached error box:
-        // every body renderer stamps ctx.req + ctx.desc onto its control (or,
-        // for the composite types, onto the group wrapper).
+        // Requiredness, the help text, the instruction hint and the validation
+        // message must all be exposed programmatically, not only drawn near the
+        // control: every body renderer stamps ctx.req + ctx.desc onto its
+        // control (or, for the composite types, onto the group wrapper), and
+        // ctx.desc points at help + hint + error, in reading order.
+        var help = helpHtml(q);
+        ctx.hint = hintFor(q, type);
+        ctx.helpId = help ? 'sv-h-' + qid + '-' + seq : '';
+        ctx.hintId = ctx.hint ? 'sv-hint-' + qid + '-' + seq : '';
         ctx.errId = 'sv-e-' + qid + '-' + seq;
         ctx.req = required ? ' aria-required="true"' : '';
-        ctx.desc = ' aria-describedby="' + ctx.errId + '"';
+        ctx.descIds = [ctx.helpId, ctx.hintId, ctx.errId].filter(function (x) { return x !== ''; }).join(' ');
+        ctx.desc = ' aria-describedby="' + ctx.descIds + '"';
 
         var body;
         switch (type) {
@@ -637,13 +688,12 @@
                 body = '<div class="sv-notice">Unsupported question type.</div>';
         }
 
-        var help = helpHtml(q);
         var html = '<div class="sv-q sv-q-' + escapeHtml(type || 'unknown') + (preview ? ' sv-q-preview' : '') +
                    '" data-qid="' + qid + '" data-type="' + escapeHtml(type) + '" data-required="' + (required ? 1 : 0) + '">';
         html += '<div class="sv-q-prompt" id="' + ctx.promptId + '">' + escapeHtml(q.prompt || '') +
                 (required ? '<span class="sv-q-required" aria-hidden="true">*</span>' +
                             '<span class="sv-visually-hidden"> (required)</span>' : '') + '</div>';
-        if (help) { html += '<div class="sv-q-help">' + help + '</div>'; }
+        if (help) { html += '<div class="sv-q-help" id="' + ctx.helpId + '">' + help + '</div>'; }
         if (q.image_url) {
             html += '<div class="sv-q-image"><img class="sv-q-image-img" src="' + escapeHtml(q.image_url) + '" alt=""></div>';
         }
@@ -701,7 +751,10 @@
     }
 
     function readRanking(root) {
-        var items = root.querySelectorAll('.sv-rank .sv-rank-item'), i, out = [];
+        var ol = root.querySelector('.sv-rank');
+        // Untouched = unanswered: the arrival order is not the respondent's vote.
+        if (!ol || !ol.hasAttribute('data-touched')) { return undefined; }
+        var items = ol.querySelectorAll('.sv-rank-item'), i, out = [];
         for (i = 0; i < items.length; i++) {
             out.push(parseInt(items[i].getAttribute('data-option'), 10));
         }
@@ -812,7 +865,11 @@
 
     function writeRanking(root, value) {
         var ol = root.querySelector('.sv-rank');
-        if (!ol || !Array.isArray(value)) { return; }
+        if (!ol) { return; }
+        if (!Array.isArray(value) || !value.length) {
+            untouchRank(ol);
+            return;
+        }
         var i, id, item;
         for (i = 0; i < value.length; i++) {
             var c = splitChoice(value[i]);
@@ -822,6 +879,7 @@
             if (item) { ol.appendChild(item); }     // append in requested order
         }
         reindexRank(ol);
+        touchRank(ol);
     }
 
     function write(root, q, value) {
@@ -881,22 +939,44 @@
 
     // ------------------------------------------------------- ranking controls
 
+    function setDisabled(btn, off) {
+        if (!btn) { return; }
+        if (off) { btn.setAttribute('aria-disabled', 'true'); } else { btn.removeAttribute('aria-disabled'); }
+    }
+
     function reindexRank(ol) {
         if (!ol) { return; }
-        var items = ol.querySelectorAll('.sv-rank-item'), i, pos;
+        var items = ol.querySelectorAll('.sv-rank-item'), i, pos, first, last;
         for (i = 0; i < items.length; i++) {
+            first = i === 0;
+            last = i === items.length - 1;
             pos = items[i].querySelector('.sv-rank-pos');
             if (pos) { pos.textContent = String(i + 1); }
-            items[i].classList.toggle('sv-rank-first', i === 0);
-            items[i].classList.toggle('sv-rank-last', i === items.length - 1);
+            items[i].classList.toggle('sv-rank-first', first);
+            items[i].classList.toggle('sv-rank-last', last);
+            setDisabled(items[i].querySelector('.sv-rank-up'), first);
+            setDisabled(items[i].querySelector('.sv-rank-down'), last);
         }
     }
 
-    // A reorder only rewrites a position badge, which is not part of any
-    // control's name — without this the refocused button just says "Move X up"
-    // again and the user has no idea whether anything moved.
-    function announceRank(item, ol) {
-        if (!item || !ol) { return; }
+    /** Mark a ranking as answered: from here on read() returns its order. */
+    function touchRank(ol) {
+        if (!ol) { return; }
+        ol.setAttribute('data-touched', '1');
+        var group = ol.closest ? ol.closest('.sv-rank-group') : null;
+        var keep = group ? group.querySelector('.sv-rank-keep') : null;
+        if (keep) { keep.hidden = true; }
+    }
+
+    function untouchRank(ol) {
+        if (!ol) { return; }
+        ol.removeAttribute('data-touched');
+        var group = ol.closest ? ol.closest('.sv-rank-group') : null;
+        var keep = group ? group.querySelector('.sv-rank-keep') : null;
+        if (keep) { keep.hidden = false; }
+    }
+
+    function rankLive(msg) {
         var live = document.getElementById('sv-rank-live');
         if (!live) {
             live = document.createElement('div');
@@ -906,10 +986,18 @@
             live.setAttribute('aria-live', 'polite');
             document.body.appendChild(live);
         }
+        live.textContent = msg;
+    }
+
+    // A reorder only rewrites a position badge, which is not part of any
+    // control's name — without this the refocused button just says "Move X up"
+    // again and the user has no idea whether anything moved.
+    function announceRank(item, ol) {
+        if (!item || !ol) { return; }
         var items = ol.querySelectorAll('.sv-rank-item');
         var pos = Array.prototype.indexOf.call(items, item) + 1;
         var label = item.getAttribute('data-label') || '';
-        live.textContent = label + ', position ' + pos + ' of ' + items.length + '.';
+        rankLive(label + ', position ' + pos + ' of ' + items.length + '.');
     }
 
     function fireChange(el) {
@@ -931,16 +1019,35 @@
         if (rankBtn) {
             var item = rankBtn.closest('.sv-rank-item');
             var ol = rankBtn.closest('.sv-rank');
-            if (item && ol && !ol.closest('.sv-q-preview')) {
+            // An end button (aria-disabled) moves nothing and answers nothing.
+            if (item && ol && !ol.closest('.sv-q-preview') && rankBtn.getAttribute('aria-disabled') !== 'true') {
                 if (rankBtn.classList.contains('sv-rank-up')) {
                     if (item.previousElementSibling) { ol.insertBefore(item, item.previousElementSibling); }
                 } else if (item.nextElementSibling) {
                     ol.insertBefore(item.nextElementSibling, item);
                 }
                 reindexRank(ol);
+                touchRank(ol);
                 fireChange(ol);
                 rankBtn.focus();
                 announceRank(item, ol);
+            }
+            e.preventDefault();
+            return;
+        }
+
+        var keep = t.closest('.sv-rank-keep');
+        if (keep) {
+            var group = keep.closest('.sv-rank-group');
+            var list = group ? group.querySelector('.sv-rank') : null;
+            if (list && !keep.closest('.sv-q-preview')) {
+                touchRank(list);
+                // The button just hid itself from under focus; land on the list
+                // it answered for rather than dropping the user at <body>.
+                list.setAttribute('tabindex', '-1');
+                try { list.focus({ preventScroll: true }); } catch (err) { list.focus(); }
+                fireChange(list);
+                rankLive('Order kept.');
             }
             e.preventDefault();
             return;
@@ -969,9 +1076,11 @@
         write: write,
         setError: setError,
         escape: escapeHtml,
-        md: function (html) { return html === null || html === undefined ? '' : String(html); },
+        md: sanitize,
+        sanitize: sanitize,
         isAnswerable: isAnswerable,
         reindexRank: reindexRank,
+        touchRank: touchRank,
         ANSWERABLE: ANSWERABLE,
         OTHER_MAX: OTHER_MAX
     };
