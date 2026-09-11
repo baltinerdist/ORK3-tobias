@@ -60,6 +60,7 @@ class Survey
         'AudienceRecentMonths'     => ['audience_recent_months', 'recent_months'],
         'AudienceEventCalendardetailId' => ['audience_event_calendardetail_id', 'event'],
         'DataGateEnabled'          => ['data_gate_enabled', 'bool'],
+        'ResultsShare'             => ['results_share', 'share'],
         'ShowBanner'               => ['show_banner', 'bool'],
         'ShowProgress'             => ['show_progress', 'bool'],
         'AllowResume'              => ['allow_resume', 'bool'],
@@ -178,6 +179,72 @@ class Survey
             return false;
         }
         return $this->canCreate($uid, (string) ($surveyRow['scope_type'] ?? ''), (int) ($surveyRow['scope_id'] ?? 0));
+    }
+
+    /** A kingdom and every principality under it (to depth 5), for lenses and list sections. */
+    public function kingdomFamily(int $kingdomId): array
+    {
+        if ($kingdomId <= 0) {
+            return [];
+        }
+        $ids      = [$kingdomId => true];
+        $frontier = [$kingdomId];
+        for ($depth = 0; $frontier && $depth < 5; $depth++) {
+            $next = [];
+            foreach ($this->fetchAll('SELECT kingdom_id FROM ' . DB_PREFIX . 'kingdom
+                                      WHERE parent_kingdom_id IN (' . implode(',', array_map('intval', $frontier)) . ')') as $c) {
+                $cid = (int) $c['kingdom_id'];
+                if (!isset($ids[$cid])) {
+                    $ids[$cid] = true;
+                    $next[]    = $cid;
+                }
+            }
+            $frontier = $next;
+        }
+        return array_keys($ids);
+    }
+
+    /**
+     * Who may read this survey's results, and through what lens (sharing spec §2).
+     *   manage — canManage on the survey's own scope: everything, as before.
+     *   shared — one org level down (ORK -> kingdom, kingdom -> park) when
+     *            results_share allows it: charts and stats only, filtered by lens.
+     *   null   — nothing.
+     * $context is the viewer's org from the results URL, never trusted on its
+     * own: it must be the survey's direct child type, be reached by the survey
+     * (SurveyCredit::validGrantor) and be an org the viewer holds CREATE on.
+     *
+     * @param ?array{type:string,id:int} $context
+     * @return ?array{level:string, lens:array, label:string, org_name:string}
+     */
+    public function resultsAccess(int $uid, array $surveyRow, ?array $context): ?array
+    {
+        if ($this->canManage($uid, $surveyRow)) {
+            return ['level' => 'manage', 'lens' => [], 'label' => '', 'org_name' => ''];
+        }
+        $share = (string) ($surveyRow['results_share'] ?? 'none');
+        if ($share === 'none' || $context === null
+            || !in_array((string) ($surveyRow['status'] ?? ''), ['open', 'closed'], true)) {
+            return null;
+        }
+        $childType = ['ork' => 'kingdom', 'kingdom' => 'park'][(string) ($surveyRow['scope_type'] ?? '')] ?? '';
+        $type      = (string) ($context['type'] ?? '');
+        $id        = (int) ($context['id'] ?? 0);
+        if ($childType === '' || $type !== $childType || $id <= 0) {
+            return null;
+        }
+        if (!(new SurveyCredit())->validGrantor($surveyRow, $type, $id) || !$this->canCreate($uid, $type, $id)) {
+            return null;
+        }
+
+        $name = $this->scopeName($type, $id);
+        if ($share === 'all') {
+            return ['level' => 'shared', 'lens' => ['shared' => true], 'label' => 'all', 'org_name' => $name];
+        }
+        if ($type === 'kingdom') {
+            return ['level' => 'shared', 'lens' => ['shared' => true, 'kingdom_ids' => $this->kingdomFamily($id)], 'label' => 'kingdom', 'org_name' => $name];
+        }
+        return ['level' => 'shared', 'lens' => ['shared' => true, 'park_id' => $id], 'label' => 'park', 'org_name' => $name];
     }
 
     /**
@@ -630,6 +697,17 @@ class Survey
                         return $this->fail('Choose an event run by this survey\'s ' . ((string) $survey['scope_type'] === 'park' ? 'park' : 'kingdom') . '.');
                     }
                     $sets[] = $column . ' = ' . $id;
+                    break;
+
+                case 'share':
+                    $v = (string) $raw;
+                    if (!in_array($v, ['none', 'scoped', 'all'], true)) {
+                        return $this->fail('Choose who may see the results.');
+                    }
+                    if ($v !== 'none' && (string) $survey['scope_type'] === 'park') {
+                        return $this->fail('A park survey has no level below it to share results with.');
+                    }
+                    $sets[] = $column . ' = \'' . $v . '\'';
                     break;
 
                 case 'color':
