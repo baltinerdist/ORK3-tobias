@@ -409,9 +409,19 @@
         var required = parseInt(q.required, 10) === 1;
         var missing = value === undefined || value === null || value === '' ||
             (Array.isArray(value) && value.length === 0);
-        var count, min, max, rows, answeredRows, k;
+        var count, min, max, rows, answeredRows, k, plan;
 
         if (!R.isAnswerable(type)) { return null; }
+
+        /* Pairwise owns its empty case too: a required one names the gate, as
+           SurveyTypes::validatePairwise() does, rather than "required". */
+        if (type === 'pairwise') {
+            plan = q.pairwise || R.pairwisePlan((q.options || []).filter(function (o) {
+                return String(o.role || 'choice') === 'choice';
+            }).length);
+            count = Array.isArray(value) ? value.length : 0;
+            return required && count < plan.gate ? R.pairwiseGateMessage(plan) : null;
+        }
 
         if (missing) {
             if (!required) { return null; }

@@ -91,7 +91,8 @@
    .sv-q-body varies by type. Every type's control — or, for the composite
    types, its group wrapper — carries aria-describedby="<help id> <hint id>
    <error id>" (help and hint only when present; a hint is the
-   <div class="sv-choice-hint" id="sv-hint-12-N"> a multi or ranking shows)
+   <div class="sv-choice-hint" id="sv-hint-12-N"> a multi, ranking or
+   pairwise shows)
    and, when the question is required, aria-required="true".
 
    single / yesno  ─ radio list
@@ -197,6 +198,33 @@
      aria-disabled="true". The runner attaches SortableJS to .sv-rank (handle:
      .sv-rank-handle) and calls reindexRank(ol) + touchRank(ol) from its onEnd.
 
+   pairwise ─ two options at a time, a Tie between, a progress bar under
+     <div class="sv-choice-hint" id="sv-hint-12-N">Pick the one you prefer…</div>
+     <div class="sv-pw" data-pw="svqN_12" role="group" aria-labelledby="sv-p-12" …>
+       <div class="sv-pw-stage" [data-chose="a|b|tie"] [hidden when complete]>
+         <button type="button" class="sv-pw-pick sv-pw-a" data-pw-pick="a"><span class="sv-pw-label">Hawk</span></button>
+         <button type="button" class="sv-pw-tie" data-pw-pick="tie">Tie</button>
+         <button type="button" class="sv-pw-pick sv-pw-b" data-pw-pick="b"><span class="sv-pw-label">Owl</span></button>
+       </div>
+       <p class="sv-pw-done" tabindex="-1" [hidden until complete]>…100% message…</p>
+       <div class="sv-pw-progress">
+         <div class="sv-pw-bar" role="progressbar" aria-valuemin="0" aria-valuemax="M"
+              aria-valuenow="k" aria-valuetext="k of M matchups" data-level="0-4">
+           <span class="sv-pw-fill" style="width:…%"></span>
+           <span class="sv-pw-tick" style="left:…%"></span> ×4   (sets over 30 only)
+         </div>
+         <div class="sv-pw-meta"><span class="sv-pw-count">12 of 66 matchups</span>
+           <button type="button" class="sv-pw-undo" [hidden]>Undo</button></div>
+         <p class="sv-pw-msg" aria-live="polite">stage message</p>
+       </div>
+     </div>
+     The widget's state (plan, answered list, queue) lives in this file, keyed
+     by data-pw; the buttons are repainted in place. A pick, a Tie or an Undo
+     (one delegated click listener; ← / → / ↓ while focus is on the stage)
+     fires a bubbling `change` from .sv-pw, so autosave just listens for it.
+     Preview renders the first two options in authored order and records
+     nothing.
+
    short_text   <input type="text" class="sv-input" maxlength=… placeholder=…>
    paragraph    <textarea class="sv-textarea" rows="4" maxlength=… …></textarea>
    number       <div class="sv-number-wrap">
@@ -238,6 +266,9 @@
                              has touched the list (an arrow, a drag, or "Keep
                              this order"); undefined until then, because the
                              order it arrived in is not a vote.
+     pairwise              : [{a, b, w}, …] in answer order (a = left id,
+                             b = right id, w = winner id, 0 = tie);
+                             undefined before the first pick.
      section / image       : undefined, always.
 
    Round trip: for every answerable type, read(el, q) after
@@ -250,7 +281,7 @@
     if (window.SvRender) { return; }
 
     var ANSWERABLE = [
-        'single', 'multi', 'dropdown', 'yesno', 'rating', 'nps', 'matrix', 'ranking',
+        'single', 'multi', 'dropdown', 'yesno', 'rating', 'nps', 'matrix', 'ranking', 'pairwise',
         'short_text', 'paragraph', 'number', 'date'
     ];
     var BLOCKS = ['section', 'image'];
@@ -468,6 +499,7 @@
        the error), so a screen reader hears the selection limit too. */
     function hintFor(q, type) {
         var s, minSel, maxSel;
+        if (type === 'pairwise') { return 'Pick the one you prefer, or call it a tie. The arrow keys work too.'; }
         if (type === 'ranking') { return 'Use the arrows or drag to put these in order.'; }
         if (type !== 'multi') { return ''; }
         s = settingsOf(q);
@@ -702,6 +734,171 @@
         return html;
     }
 
+    // ------------------------------------------------------------- pairwise
+
+    var PW = {};                  // data-pw key -> the live state of one rendered pairwise question
+    var PW_FLASH_MS = 140;        // how long the picked side stays lit before the next matchup
+
+    function pwIds(q) {
+        return optionsOf(q, 'choice').map(function (o) { return parseInt(o.option_id, 10); });
+    }
+
+    /** A restored answer, cleaned: known ids, a != b, w in {a, b, 0}, each pair once, order kept. */
+    function pwClean(value, ids) {
+        var known = {}, seen = {}, out = [];
+        ids.forEach(function (id) { known[id] = true; });
+        (Array.isArray(value) ? value : []).forEach(function (m) {
+            var a, b, w, k;
+            if (!m || typeof m !== 'object') { return; }
+            a = parseInt(m.a, 10); b = parseInt(m.b, 10); w = parseInt(m.w, 10);
+            if (!known[a] || !known[b] || a === b || !(w === a || w === b || w === 0)) { return; }
+            k = pairKey(a, b);
+            if (seen[k]) { return; }
+            seen[k] = true;
+            out.push({ a: a, b: b, w: w });
+        });
+        return out;
+    }
+
+    function pwState(el) { return el ? (PW[el.getAttribute('data-pw')] || null) : null; }
+
+    /** Everything the widget shows, derived from its state (the string render and repaints share it). */
+    function pwView(st) {
+        var k = st.done.length, m = st.queue[0] || null;
+        var stage = pairwiseStage(st.plan, k, st.required);
+        return {
+            labelA: m ? st.labels[m.a] : '',
+            labelB: m ? st.labels[m.b] : '',
+            pct: st.plan.possible ? Math.min(100, k / st.plan.possible * 100) : 0,
+            count: k + ' of ' + st.plan.possible + ' matchups',
+            level: stage.level,
+            message: m ? stage.message : '',
+            complete: !m
+        };
+    }
+
+    function bodyPairwise(q, state, ctx) {
+        var ids = pwIds(q), labels = {}, st, v, i, html;
+        optionsOf(q, 'choice').forEach(function (o) { labels[parseInt(o.option_id, 10)] = String(o.label || ''); });
+        st = {
+            plan: (q.pairwise && typeof q.pairwise === 'object') ? q.pairwise : pairwisePlan(ids.length),
+            required: ctx.required,
+            labels: labels,
+            done: pwClean(state, ids),
+            queue: [],
+            busy: false
+        };
+        st.queue = pairwiseQueue(ids, st.done, ctx.preview ? null : Math.random);
+        PW[ctx.name] = st;
+        v = pwView(st);
+
+        html = ctx.hint ? '<div class="sv-choice-hint" id="' + ctx.hintId + '">' + escapeHtml(ctx.hint) + '</div>' : '';
+        html += '<div class="sv-pw" data-pw="' + ctx.name + '" role="group" aria-labelledby="' + ctx.promptId + '"' +
+                ctx.req + ctx.desc + '>';
+        html += '<div class="sv-pw-stage"' + (v.complete ? ' hidden' : '') + '>';
+        html += '<button type="button" class="sv-pw-pick sv-pw-a" data-pw-pick="a"' + ctx.tab + '>' +
+                '<span class="sv-pw-label">' + escapeHtml(v.labelA) + '</span></button>';
+        html += '<button type="button" class="sv-pw-tie" data-pw-pick="tie"' + ctx.tab + '>Tie</button>';
+        html += '<button type="button" class="sv-pw-pick sv-pw-b" data-pw-pick="b"' + ctx.tab + '>' +
+                '<span class="sv-pw-label">' + escapeHtml(v.labelB) + '</span></button>';
+        html += '</div>';
+        html += '<p class="sv-pw-done" tabindex="-1"' + (v.complete ? '' : ' hidden') + '>' +
+                '<i class="fas fa-trophy" aria-hidden="true"></i> ' + escapeHtml(PW_DONE_MESSAGE) + '</p>';
+        html += '<div class="sv-pw-progress">';
+        html += '<div class="sv-pw-bar" role="progressbar" aria-label="Matchups done" aria-valuemin="0" aria-valuemax="' +
+                st.plan.possible + '" aria-valuenow="' + st.done.length + '" aria-valuetext="' + escapeHtml(v.count) +
+                '" data-level="' + v.level + '">';
+        html += '<span class="sv-pw-fill" style="width:' + v.pct.toFixed(2) + '%"></span>';
+        for (i = 0; i < st.plan.tiers.length; i++) {
+            html += '<span class="sv-pw-tick" aria-hidden="true" style="left:' +
+                    (st.plan.tiers[i] / st.plan.possible * 100).toFixed(2) + '%"></span>';
+        }
+        html += '</div>';
+        html += '<div class="sv-pw-meta"><span class="sv-pw-count" aria-hidden="true">' + escapeHtml(v.count) + '</span>' +
+                '<button type="button" class="sv-pw-undo"' + (st.done.length ? '' : ' hidden') + ctx.tab + '>' +
+                '<i class="fas fa-rotate-left" aria-hidden="true"></i> Undo</button></div>';
+        html += '<p class="sv-pw-msg" aria-live="polite">' + escapeHtml(v.message) + '</p>';
+        html += '</div></div>';
+        return html;
+    }
+
+    /** Repaint in place: the buttons stay put, so focus never drops to <body> mid-question. */
+    function pwPaint(el, st, moveFocus) {
+        var v = pwView(st);
+        var stage = el.querySelector('.sv-pw-stage');
+        var done = el.querySelector('.sv-pw-done');
+        var bar = el.querySelector('.sv-pw-bar');
+        var undo = el.querySelector('.sv-pw-undo');
+        var msg = el.querySelector('.sv-pw-msg');
+        var active = document.activeElement;
+        var wasHidden = stage.hidden;
+
+        el.querySelector('.sv-pw-a .sv-pw-label').textContent = v.labelA;
+        el.querySelector('.sv-pw-b .sv-pw-label').textContent = v.labelB;
+        stage.hidden = v.complete;
+        done.hidden = !v.complete;
+        el.querySelector('.sv-pw-fill').style.width = v.pct.toFixed(2) + '%';
+        bar.setAttribute('aria-valuenow', String(st.done.length));
+        bar.setAttribute('aria-valuetext', v.count);
+        bar.setAttribute('data-level', String(v.level));
+        el.querySelector('.sv-pw-count').textContent = v.count;
+        undo.hidden = st.done.length === 0;
+        if (msg.textContent !== v.message) { msg.textContent = v.message; }
+
+        if (!moveFocus) { return; }
+        if (v.complete) {
+            done.focus();
+            return;
+        }
+        if (wasHidden || active === undo && undo.hidden) { el.querySelector('.sv-pw-a').focus(); }
+        // The focused button's label changed under it; say the new matchup (the module's one polite region).
+        rankLive(v.labelA + ' or ' + v.labelB + '?');
+    }
+
+    function reducedMotion() {
+        return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    }
+
+    function pairwisePick(el, side) {
+        var st = pwState(el), m, stage;
+        if (!st || st.busy || !st.queue.length) { return; }
+        m = st.queue.shift();
+        st.done.push({ a: m.a, b: m.b, w: side === 'a' ? m.a : (side === 'b' ? m.b : 0) });
+        fireChange(el);                       // recorded now, whatever the animation does
+        if (reducedMotion()) { pwPaint(el, st, true); return; }
+        stage = el.querySelector('.sv-pw-stage');
+        st.busy = true;
+        stage.setAttribute('data-chose', side);
+        window.setTimeout(function () {
+            st.busy = false;
+            stage.removeAttribute('data-chose');
+            pwPaint(el, st, true);
+        }, PW_FLASH_MS);
+    }
+
+    function pairwiseUndo(el) {
+        var st = pwState(el), last;
+        if (!st || st.busy || !st.done.length) { return; }
+        last = st.done.pop();
+        st.queue.unshift({ a: last.a, b: last.b });
+        fireChange(el);
+        pwPaint(el, st, true);
+    }
+
+    function readPairwise(root) {
+        var st = pwState(root.querySelector('.sv-pw'));
+        if (!st || !st.done.length) { return undefined; }
+        return st.done.map(function (m) { return { a: m.a, b: m.b, w: m.w }; });
+    }
+
+    function writePairwise(root, q, value) {
+        var el = root.querySelector('.sv-pw'), st = pwState(el), ids = pwIds(q);
+        if (!st) { return; }
+        st.done = pwClean(value, ids);
+        st.queue = pairwiseQueue(ids, st.done, root.classList.contains('sv-q-preview') ? null : Math.random);
+        pwPaint(el, st, false);
+    }
+
     function bodyText(q, state, ctx) {
         var s = settingsOf(q);
         var v = (state === null || state === undefined) ? '' : String(state);
@@ -787,6 +984,7 @@
             name: 'svq' + (++seq) + '_' + qid,
             promptId: 'sv-p-' + qid + '-' + seq,
             tab: preview ? ' tabindex="-1"' : '',
+            preview: preview,
             required: required
         };
         // Requiredness, the help text, the instruction hint and the validation
@@ -813,6 +1011,7 @@
             case 'nps':       body = bodyScale(q, state, ctx); break;
             case 'matrix':    body = bodyMatrix(q, state, ctx); break;
             case 'ranking':   body = bodyRanking(q, state, ctx); break;
+            case 'pairwise':  body = bodyPairwise(q, state, ctx); break;
             case 'short_text':
             case 'paragraph': body = bodyText(q, state, ctx); break;
             case 'number':    body = bodyNumber(q, state, ctx); break;
@@ -930,6 +1129,7 @@
             case 'nps':       return readScale(root);
             case 'matrix':    return readMatrix(root);
             case 'ranking':   return readRanking(root);
+            case 'pairwise':  return readPairwise(root);
             case 'short_text':
             case 'paragraph': return readText(root, q);
             case 'number':    return readNumber(root);
@@ -1028,6 +1228,7 @@
             case 'nps':       writeScale(root, value); break;
             case 'matrix':    writeMatrix(root, value); break;
             case 'ranking':   writeRanking(root, value); break;
+            case 'pairwise':  writePairwise(root, q, value); break;
             case 'short_text':
             case 'number':
             case 'date':
@@ -1045,7 +1246,7 @@
 
     // The control (or group wrapper) that carries aria-describedby to the error
     // box, so aria-invalid lands on the same element the reader is focused in.
-    var INVALID_TARGETS = '.sv-choices, .sv-select, .sv-scale, .sv-matrix-wrap, .sv-rank-group, .sv-input:not(.sv-other-input), .sv-textarea';
+    var INVALID_TARGETS = '.sv-choices, .sv-select, .sv-scale, .sv-matrix-wrap, .sv-rank-group, .sv-pw, .sv-input:not(.sv-other-input), .sv-textarea';
 
     function setError(root, message) {
         if (!root) { return; }
@@ -1148,6 +1349,20 @@
         var t = e.target;
         if (!t || !t.closest) { return; }
 
+        var pwBtn = t.closest('[data-pw-pick], .sv-pw-undo');
+        if (pwBtn) {
+            var pw = pwBtn.closest('.sv-pw');
+            if (pw && !pw.closest('.sv-q-preview')) {
+                if (pwBtn.classList.contains('sv-pw-undo')) {
+                    pairwiseUndo(pw);
+                } else {
+                    pairwisePick(pw, pwBtn.getAttribute('data-pw-pick'));
+                }
+            }
+            e.preventDefault();
+            return;
+        }
+
         var rankBtn = t.closest('.sv-rank-up, .sv-rank-down');
         if (rankBtn) {
             var item = rankBtn.closest('.sv-rank-item');
@@ -1198,7 +1413,22 @@
         }
     }
 
+    /* ← picks left, → picks right, ↓ ties: only while focus is on the matchup
+       itself, so arrow keys never get taken from a text field or the page. */
+    function onDocKeydown(e) {
+        var t = e.target, side, pw;
+        if (!t || !t.closest || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) { return; }
+        if (!t.closest('.sv-pw-stage')) { return; }
+        side = e.key === 'ArrowLeft' ? 'a' : (e.key === 'ArrowRight' ? 'b' : (e.key === 'ArrowDown' ? 'tie' : null));
+        if (!side) { return; }
+        pw = t.closest('.sv-pw');
+        if (!pw || pw.closest('.sv-q-preview')) { return; }
+        e.preventDefault();
+        pairwisePick(pw, side);
+    }
+
     document.addEventListener('click', onDocClick, false);
+    document.addEventListener('keydown', onDocKeydown, false);
 
     // ------------------------------------------------------------------ export
 

@@ -112,6 +112,13 @@ html[data-theme="dark"] {
     --sv-star-off:        #7b8ba0;               /* 3.3:1 on the L2 tint, 3.5:1 on white (non-text 3:1 floor) */
     --sv-star-on:         #d69e2e;
     --sv-warn-text:       #975a16;               /* >5:1 on the header wash — "Couldn't save" */
+    /* Pairwise progress (pairwise spec §6): red → yellow → yellow-green → green → dark green. */
+    --sv-pw-0:            #e53e3e;
+    --sv-pw-1:            #ecc94b;
+    --sv-pw-2:            #9ae66e;
+    --sv-pw-3:            #38a169;
+    --sv-pw-4:            #276749;
+    --sv-pw-track:        var(--sv-line-2);
     --sv-radius:          var(--ork-radius-lg);
     --sv-gap:             16px;
 
@@ -130,6 +137,12 @@ html[data-theme="dark"] .sv-scope {
     --sv-star-off:    #8592a5;
     --sv-text-muted:  var(--ork-text-muted);
     --sv-warn-text:   #fbd38d;
+    --sv-pw-0:        #f56565;
+    --sv-pw-1:        #ecc94b;
+    --sv-pw-2:        #b5e48c;
+    --sv-pw-3:        #68d391;
+    --sv-pw-4:        #38a169;
+    --sv-pw-track:    #1f2733;
 }
 
 /* orkui.css carries a global `p { text-align: justify }` (orkui.css:786). That
@@ -795,6 +808,132 @@ html[data-theme="dark"] .sv-scope h3, html[data-theme="dark"] .sv-scope h4 {
    Three classes, so it also beats the touch-width `.sv-root .sv-rank-handle`
    rule further down that turns the grip into a 44px inline-flex target. */
 .sv-root .sv-nodrag .sv-rank-handle { display: none; }
+
+/* ── Pairwise ─────────────────────────────────────────────────────────── */
+
+.sv-pw { display: flex; flex-direction: column; gap: 12px; }
+
+.sv-pw-stage {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: stretch;
+    gap: 10px;
+}
+/* The grid outranks the UA's [hidden] rule, and the builder canvas (.sv-scope)
+   has no .sv-root to make `hidden` authoritative: a preview with fewer than
+   two options is already "complete" and must not show an empty matchup. */
+.sv-pw-stage[hidden] { display: none; }
+.sv-pw-pick {
+    min-height: 88px;
+    padding: 12px 14px;
+    border: 1px solid var(--sv-line-3);
+    border-radius: var(--sv-radius-l3);
+    background: var(--sv-l3);
+    color: var(--sv-text);
+    font: inherit;
+    font-size: var(--ork-font-size-base);
+    font-weight: 600;
+    line-height: 1.35;
+    text-align: center;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+    transition: border-color .12s, background-color .12s, transform .12s;
+}
+.sv-pw-pick:hover { border-color: var(--sv-accent); background: var(--sv-l3-hover); }
+.sv-pw-tie {
+    align-self: center;
+    min-height: 44px;
+    min-width: 64px;
+    padding: 0 14px;
+    border: 1px dashed var(--sv-line-3);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--sv-text-body);
+    font: inherit;
+    font-size: var(--ork-font-size-sm);
+    cursor: pointer;
+}
+.sv-pw-tie:hover { border-style: solid; border-color: var(--sv-accent); color: var(--sv-text); }
+.sv-pw-pick:focus-visible,
+.sv-pw-tie:focus-visible,
+.sv-pw-undo:focus-visible,
+.sv-pw-done:focus-visible { outline: 2px solid var(--sv-accent); outline-offset: 2px; }
+
+.sv-pw-stage[data-chose="a"] .sv-pw-a,
+.sv-pw-stage[data-chose="b"] .sv-pw-b,
+.sv-pw-stage[data-chose="tie"] .sv-pw-pick {
+    border-color: var(--sv-accent);
+    background: var(--sv-accent-soft);
+    transform: scale(.98);
+}
+
+/* Two classes: `.sv-root p` / `.sv-scope p` (text-align: left) would beat one. */
+.sv-pw .sv-pw-done {
+    margin: 0;
+    padding: 14px;
+    border-radius: var(--sv-radius-l3);
+    background: var(--sv-accent-soft);
+    color: var(--sv-text);
+    font-weight: 600;
+    text-align: center;
+}
+.sv-pw-done .fa-trophy { color: var(--sv-star-on); }
+
+.sv-pw-bar {
+    position: relative;
+    height: 10px;
+    border-radius: 999px;
+    background: var(--sv-pw-track);
+    overflow: visible;
+}
+.sv-pw-fill {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: var(--sv-pw-0);
+    transition: width .2s ease, background-color .2s ease;
+}
+.sv-pw-bar[data-level="1"] .sv-pw-fill { background: var(--sv-pw-1); }
+.sv-pw-bar[data-level="2"] .sv-pw-fill { background: var(--sv-pw-2); }
+.sv-pw-bar[data-level="3"] .sv-pw-fill { background: var(--sv-pw-3); }
+.sv-pw-bar[data-level="4"] .sv-pw-fill { background: var(--sv-pw-4); }
+.sv-pw-tick {
+    position: absolute;
+    top: -3px;
+    bottom: -3px;
+    width: 2px;
+    margin-left: -1px;
+    border-radius: 1px;
+    background: var(--sv-text-muted);
+    opacity: .7;
+}
+
+.sv-pw-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sv-pw-count { font-size: var(--ork-font-size-sm); color: var(--sv-text-muted); font-variant-numeric: tabular-nums; }
+.sv-pw-undo {
+    min-height: 32px;
+    padding: 0 6px;
+    border: 0;
+    background: none;
+    color: var(--sv-accent);
+    font: inherit;
+    font-size: var(--ork-font-size-sm);
+    cursor: pointer;
+}
+.sv-pw-msg { margin: 0; min-height: 1.4em; font-size: var(--ork-font-size-sm); color: var(--sv-text-body); }
+
+@media (max-width: 480px) {
+    .sv-pw-stage { grid-template-columns: minmax(0, 1fr); }
+    .sv-pw-pick { min-height: 64px; }
+    .sv-pw-tie { justify-self: center; }
+}
+@media (pointer: coarse) {
+    .sv-pw-undo { min-height: 44px; padding: 0 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .sv-pw-pick, .sv-pw-fill { transition: none; }
+    .sv-pw-stage[data-chose] .sv-pw-pick { transform: none; }
+}
 
 /* ── Consent (data gate) ──────────────────────────────────────────────── */
 
