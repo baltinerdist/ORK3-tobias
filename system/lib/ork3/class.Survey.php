@@ -251,6 +251,20 @@ class Survey
         return date('Y-m-d H:i:s', min($ends) + self::SHARE_DELAY_HOURS * 3600);
     }
 
+    /**
+     * PURE. What a viewer held by after-close timing is told (results page,
+     * SurveyAjax/results refusal, list-row tip), from sharingOpensAt().
+     */
+    public static function sharingPendingText(?string $opensAt): string
+    {
+        $t = $opensAt !== null ? strtotime($opensAt) : false;
+        if (!$t) {
+            return 'Results will be shared with you ' . self::SHARE_DELAY_HOURS . ' hours after the survey closes.';
+        }
+        return 'Results will be shared with you on ' . date('F j, Y', $t) . ' at ' . date('g:i A', $t)
+            . ', ' . self::SHARE_DELAY_HOURS . ' hours after the survey closed.';
+    }
+
     public function resultsAccess(int $uid, array $surveyRow, ?array $context): ?array
     {
         if ($this->canManage($uid, $surveyRow)) {
@@ -667,6 +681,7 @@ class Survey
             $pending               = ($page !== null && !$manage && $acc === null) ? $this->resultsPending($uid, $row, $page) : null;
             $row['ResultsPending'] = $pending !== null;
             $row['ResultsOpensAt'] = $pending['opens_at'] ?? null;
+            $row['ResultsPendingText'] = $pending !== null ? self::sharingPendingText($row['ResultsOpensAt']) : '';
             $row['CreditGrantor']  = $grantor !== null ? ucfirst($grantor['type']) . '/' . $grantor['id'] : null;
             // CreditOn: the grantor's own config. CreditCoveredBy: an earlier
             // config (the kingdom's, or the owner's event) already covers the

@@ -1323,6 +1323,10 @@ body:has(#svb-toc) { overflow-x: clip; }
 .svb-radio { display: flex; align-items: flex-start; }
 .svb-radio input[type="radio"] { margin: 2px 0 0; }
 .svb-radio > span { min-width: 0; line-height: 1.4; }
+/* A radio group that does not apply yet (sharing timing while nothing is
+   shared): muted label, no pointer. --ork-text-secondary swaps per theme. */
+.svb-radio:has(input:disabled) { cursor: not-allowed; }
+.svb-radio input:disabled + span { color: var(--ork-text-secondary); }
 
 .svb-multi { min-height: 132px; padding: 6px; }
 

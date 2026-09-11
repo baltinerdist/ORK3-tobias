@@ -150,6 +150,7 @@ final class SurveySharingCreditTest extends TestCase
         $this->assertFalse($rows[0]['CanResults']);
         $this->assertTrue($rows[0]['ResultsPending']);
         $this->assertSame(date('Y-m-d H:i:s', strtotime($closed) + 86400), $rows[0]['ResultsOpensAt']);
+        $this->assertSame(Survey::sharingPendingText($rows[0]['ResultsOpensAt']), $rows[0]['ResultsPendingText']);
     }
 
     public function testCloneKeepsResultsShareTiming(): void

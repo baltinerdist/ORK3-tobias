@@ -189,6 +189,14 @@ class Controller_Survey extends Controller
         }
         $access = $this->Survey->results_access($uid, $row, $context);
         if ($access === null) {
+            // Held by after-close timing: say when, rather than "no permission".
+            $pending = $this->Survey->results_pending($uid, $row, $context);
+            if ($pending !== null) {
+                $this->data['SurveyId']           = $surveyId;
+                $this->data['Survey']             = ['Survey' => $row];
+                $this->data['ResultsPendingText'] = $this->Survey->sharing_pending_text($pending['opens_at']);
+                return;
+            }
             $this->no_authorization('', 'You do not have permission to view results for this survey.');
             return;
         }

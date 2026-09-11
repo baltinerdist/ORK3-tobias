@@ -376,6 +376,17 @@ class Model_Survey extends Model
         return $this->_survey()->resultsAccess($uid, $surveyRow, $context);
     }
 
+    /** ['opens_at' => ?string] for a shared viewer held by after-close timing, else null. */
+    public function results_pending(int $uid, array $surveyRow, ?array $context): ?array
+    {
+        return $this->_survey()->resultsPending($uid, $surveyRow, $context);
+    }
+
+    public function sharing_pending_text(?string $opensAt): string
+    {
+        return Survey::sharingPendingText($opensAt);
+    }
+
     public function shared_results(int $surveyId, $filters, array $lens): array
     {
         return $this->_report()->sharedResults($surveyId, $filters, $lens);

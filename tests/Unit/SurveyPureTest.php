@@ -199,6 +199,19 @@ final class SurveyPureTest extends TestCase
         $this->assertNull(Survey::sharingOpensAt(['status' => 'archived', 'close_at' => null, 'closed_at' => '2026-09-01 00:00:00'], $now));
     }
 
+    public function testPendingTextNamesTheOpeningTimeOnceTheSurveyHasEnded(): void
+    {
+        $this->assertSame(
+            'Results will be shared with you on September 21, 2026 at 3:00 PM, 24 hours after the survey closed.',
+            Survey::sharingPendingText('2026-09-21 15:00:00')
+        );
+    }
+
+    public function testPendingTextWhileTheSurveyIsStillOpen(): void
+    {
+        $this->assertSame('Results will be shared with you 24 hours after the survey closes.', Survey::sharingPendingText(null));
+    }
+
     // -------------------------------------------- manageable scopes (#47)
 
     /**

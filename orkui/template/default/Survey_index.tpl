@@ -350,6 +350,10 @@ html[data-theme="dark"] #theme_container .sv-list-section-title {
    check icon and ", on" in the accessible name, so the state never rests on
    colour alone. */
 .sv-row-btn.sv-row-btn-on { color: var(--sv-accent); border-color: var(--sv-accent); }
+/* Results not open yet (after-close sharing): muted, dashed, no hover lift —
+   it explains itself on hover/focus through its tip and does nothing on click. */
+.sv-row-btn.sv-row-btn-wait,
+.sv-row-btn.sv-row-btn-wait:hover { color: var(--ork-text-secondary); border-style: dashed; background: transparent; cursor: default; }
 </style>
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
 
@@ -539,6 +543,12 @@ html[data-theme="dark"] #theme_container .sv-list-section-title {
 	$_lens_note = $_row['ResultsLabel'] === 'all' ? 'shared: all respondents' : 'your ' . htmlspecialchars($_row['ResultsLabel']); ?>
 									<a class="sv-row-btn" href="<?=UIR?>Survey/results/<?=$_sid?>/<?=htmlspecialchars((string)$_row['ResultsContext'])?>"
 									   data-tip="Results (<?=$_lens_note?>)"><i class="fas fa-chart-bar" aria-hidden="true"></i> <span class="sv-row-btn-label">Results</span><span class="sv-sr-only"> (<?=$_lens_note?>)</span></a>
+<?php elseif (!empty($_row['ResultsPending'])): ?>
+<?php /* Held by after-close sharing timing: a focusable, inert control whose
+	tip and accessible name say when results open (the label stays short for
+	the phone card cell). */ ?>
+									<button type="button" class="sv-row-btn sv-row-btn-wait" aria-disabled="true"
+									        data-tip="<?=htmlspecialchars((string)$_row['ResultsPendingText'])?>"><i class="fas fa-clock" aria-hidden="true"></i> <span class="sv-row-btn-label">Results</span><span class="sv-sr-only"> — <?=htmlspecialchars((string)$_row['ResultsPendingText'])?></span></button>
 <?php endif; ?>
 <?php endif; /* Access === shared */ ?>
 <?php if (!empty($_row['CreditGrantor']) && $_status !== 'archived'):

@@ -25,6 +25,8 @@ $_svr_row      = (isset($_svr_envelope['Survey']) && is_array($_svr_envelope['Su
 $_svr_qs       = (isset($Questions) && is_array($Questions)) ? $Questions : [];
 $_svr_kingdoms = (isset($Kingdoms) && is_array($Kingdoms)) ? $Kingdoms : [];
 $_svr_error    = isset($Error) ? trim((string) $Error) : '';
+/* Held by after-close sharing timing (sharing spec §2): a notice, not an error. */
+$_svr_pending  = isset($ResultsPendingText) ? trim((string) $ResultsPendingText) : '';
 
 $_svr_title  = isset($_svr_row['title']) && $_svr_row['title'] !== '' ? (string) $_svr_row['title'] : 'Survey';
 $_svr_status = isset($_svr_row['status']) ? (string) $_svr_row['status'] : '';
@@ -103,7 +105,7 @@ $_svr_show_kingdoms = count($_svr_kingdoms) > 1;
 <link rel="stylesheet" href="<?=HTTP_TEMPLATE?>default/style/survey-results.css?v=<?=filemtime(__DIR__ . '/style/survey-results.css')?>">
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
 
-<?php if ($_svr_error !== '') : ?>
+<?php if ($_svr_error !== '' || $_svr_pending !== '') : ?>
 <div class="rp-root">
 	<div class="rp-header">
 		<div class="rp-header-left">
@@ -114,8 +116,13 @@ $_svr_show_kingdoms = count($_svr_kingdoms) > 1;
 		</div>
 	</div>
 	<div class="rp-context">
+<?php if ($_svr_pending !== '') : ?>
+		<i class="fas fa-clock rp-context-icon" aria-hidden="true"></i>
+		<span><strong><?=htmlspecialchars((string) ($_svr_row['title'] ?? 'This survey'))?></strong> — <?=htmlspecialchars($_svr_pending)?></span>
+<?php else : ?>
 		<i class="fas fa-exclamation-triangle rp-context-icon"></i>
 		<span><?=htmlspecialchars($_svr_error)?></span>
+<?php endif; ?>
 	</div>
 </div>
 <?php else : ?>

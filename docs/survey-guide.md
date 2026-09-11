@@ -150,6 +150,16 @@ own players**, or **everyone sees everyone's results**. A park survey has no one
 this option doesn't appear for one. Sharing is one level only — a park never gets results shared
 down from an Amtgard-wide survey.
 
+You also choose **when** the shared levels see results:
+
+- **Ongoing** — as results come in, while the survey is still open.
+- **After close** (the default) — 24 hours after the survey ends. A survey ends when you close it
+  or when its closing date passes, whichever comes first. If you reopen it, shared results are
+  hidden again until it ends again.
+
+Until then, a shared kingdom or park sees a clock where its Results button would be, saying when
+results open. Your own results are always live.
+
 Shared results always show charts and stats, never the responses table, the individual-response
 view, or exported spreadsheets, and the include-test-responses option is turned off for a shared
 viewer. Nobody's name ever appears to a shared viewer, no matter what a respondent chose.

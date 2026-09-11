@@ -674,9 +674,13 @@ class Controller_SurveyAjax extends Controller
         }
         // Managers read everything; one org level down reads charts and stats
         // through the lens the domain decides (sharing spec §2).
-        $access = $this->Survey->results_access($uid, $row, $this->orgParam($_POST['Context'] ?? ''));
+        $context = $this->orgParam($_POST['Context'] ?? '');
+        $access  = $this->Survey->results_access($uid, $row, $context);
         if ($access === null) {
-            $this->jsonOut(['status' => 3, 'error' => 'You do not have permission to view results for this survey.']);
+            $pending = $this->Survey->results_pending($uid, $row, $context);
+            $this->jsonOut($pending !== null
+                ? ['status' => 3, 'pending' => true, 'opens_at' => $pending['opens_at'], 'error' => $this->Survey->sharing_pending_text($pending['opens_at'])]
+                : ['status' => 3, 'error' => 'You do not have permission to view results for this survey.']);
         }
         $filters = $this->jsonField('Filters', []);
         $out = $access['level'] === 'manage'

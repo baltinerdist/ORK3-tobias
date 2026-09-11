@@ -2100,6 +2100,13 @@
                 [['none', 'Don’t share'], ['scoped', each], ['all', 'Every ' + down.replace(/s$/, '') + ' sees all results']],
                 s.results_share || 'none', 'data-sv-field="ResultsShare"',
                 'Shared ' + down + ' see charts and stats only — never names, individual responses or the spreadsheet.');
+            /* When the shared levels get them (sharing spec §2). Disabled while
+               nothing is shared; onSettingsInput re-enables it live. */
+            body += radioRow('When shared ' + down + ' see results', 'svb-results-timing',
+                [['ongoing', 'Ongoing — as results come in'], ['after_close', 'After close — 24 hours after the survey ends']],
+                s.results_share_timing || 'after_close',
+                'data-sv-field="ResultsShareTiming"' + ((s.results_share || 'none') === 'none' ? ' disabled' : ''),
+                'The survey ends when you close it or its closing date passes, whichever comes first. Your own results are always live.');
         }
         html += section('privacy', 'Privacy', 'fa-user-shield', body);
 
@@ -3900,6 +3907,11 @@
         if (!t.hasAttribute('data-sv-field')) { return; }
         key = t.getAttribute('data-sv-field');
         saveSurveyField(key, t);
+        if (key === 'ResultsShare') {
+            Array.prototype.forEach.call(document.querySelectorAll('input[name="svb-results-timing"]'), function (r) {
+                r.disabled = t.value === 'none';
+            });
+        }
     }
 
     /* ------------------------------------------------- attendance credit card */
