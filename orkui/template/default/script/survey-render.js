@@ -789,7 +789,9 @@
             busy: false
         };
         st.queue = pairwiseQueue(ids, st.done, ctx.preview ? null : Math.random);
-        PW[ctx.name] = st;
+        // A preview only draws its first matchup and never takes input, so its
+        // state is not kept: the builder redraws previews all session long.
+        if (!ctx.preview) { PW[ctx.name] = st; }
         v = pwView(st);
 
         html = ctx.hint ? '<div class="sv-choice-hint" id="' + ctx.hintId + '">' + escapeHtml(ctx.hint) + '</div>' : '';
@@ -865,9 +867,15 @@
         m = st.queue.shift();
         st.done.push({ a: m.a, b: m.b, w: side === 'a' ? m.a : (side === 'b' ? m.b : 0) });
         fireChange(el);                       // recorded now, whatever the animation does
-        if (reducedMotion()) { pwPaint(el, st, true); return; }
-        stage = el.querySelector('.sv-pw-stage');
+        // The busy window holds on both paths, so a double click never lands
+        // on the matchup that just appeared; reduced motion only drops the flash.
         st.busy = true;
+        if (reducedMotion()) {
+            pwPaint(el, st, true);
+            window.setTimeout(function () { st.busy = false; }, PW_FLASH_MS);
+            return;
+        }
+        stage = el.querySelector('.sv-pw-stage');
         stage.setAttribute('data-chose', side);
         window.setTimeout(function () {
             st.busy = false;
@@ -1424,6 +1432,9 @@
         pw = t.closest('.sv-pw');
         if (!pw || pw.closest('.sv-q-preview')) { return; }
         e.preventDefault();
+        // A held key auto-repeats; only a fresh press picks, so no matchup is
+        // decided before the respondent has read it.
+        if (e.repeat) { return; }
         pairwisePick(pw, side);
     }
 
