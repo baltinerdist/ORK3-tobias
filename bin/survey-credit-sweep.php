@@ -19,7 +19,17 @@
  * sweep creates links to its survey through it; without a host that link would
  * be dropped. Add HTTPS=on too when the site is served over TLS and its config
  * is scheme-aware. Exits 2 when the host is missing or malformed.
+ *
+ * CLI only. bin/ sits under the web docroot, and under FPM getenv('HTTP_HOST')
+ * is the request's own Host header, so without this guard any anonymous GET
+ * would run the whole credit engine and could plant a spoofed host in the
+ * link of an event it creates.
  */
+
+if ('cli' !== PHP_SAPI) {
+    header('HTTP/1.1 404 Not Found');
+    exit(1);
+}
 
 $host = '';
 foreach (array_slice($argv ?? [], 1) as $arg) {

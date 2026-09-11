@@ -751,6 +751,30 @@ final class SurveySharingCreditTest extends TestCase
         );
     }
 
+    /**
+     * bin/ is under the web docroot. The sweep must refuse every non-CLI SAPI
+     * before startup.php: under FPM getenv('HTTP_HOST') is the request's Host
+     * header, so an anonymous GET used to run the whole credit engine (200).
+     */
+    public function testSweepRefusesToRunOverHttp(): void
+    {
+        $src = (string) file_get_contents(ORK3_ROOT . '/bin/survey-credit-sweep.php');
+        $guard = strpos($src, "'cli' !== PHP_SAPI");
+        $this->assertNotFalse($guard, 'a PHP_SAPI guard');
+        $this->assertLessThan(strpos($src, "\$host = '';"), $guard, 'the guard runs before the host is read');
+        $this->assertLessThan(strpos($src, 'require_once'), $guard, 'and before startup.php');
+
+        $base = rtrim((string) (getenv('ORK3_E2E_BASE_URL') ?: 'http://127.0.0.1:19080/orkui/'), '/');
+        $url  = preg_replace('#/orkui$#', '', $base) . '/bin/survey-credit-sweep.php';
+        $ctx  = stream_context_create(['http' => ['method' => 'GET', 'timeout' => 5, 'ignore_errors' => true]]);
+        $body = @file_get_contents($url, false, $ctx);
+        $head = $http_response_header[0] ?? '';
+        if ($body === false && $head === '') {
+            $this->markTestSkipped('The local web server is not reachable.');
+        }
+        $this->assertMatchesRegularExpression('#\s404\s#', $head . ' ', 'served over HTTP the sweep answers 404 and runs nothing');
+    }
+
     public function testRunnerSeesCreditAvailableOnlyWhenCovered(): void
     {
         $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);
