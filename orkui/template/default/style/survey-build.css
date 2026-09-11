@@ -1326,7 +1326,7 @@ body:has(#svb-toc) { overflow-x: clip; }
 /* A radio group that does not apply yet (sharing timing while nothing is
    shared): muted label, no pointer. --ork-text-secondary swaps per theme. */
 .svb-radio:has(input:disabled) { cursor: not-allowed; }
-.svb-radio input:disabled + span { color: var(--ork-text-secondary); }
+.svb-radio input:disabled + span { color: var(--ork-text-secondary); opacity: 0.55; }
 
 .svb-multi { min-height: 132px; padding: 6px; }
 

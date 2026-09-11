@@ -353,7 +353,22 @@ html[data-theme="dark"] #theme_container .sv-list-section-title {
 /* Results not open yet (after-close sharing): muted, dashed, no hover lift —
    it explains itself on hover/focus through its tip and does nothing on click. */
 .sv-row-btn.sv-row-btn-wait,
-.sv-row-btn.sv-row-btn-wait:hover { color: var(--ork-text-secondary); border-style: dashed; background: transparent; cursor: default; }
+.sv-row-btn.sv-row-btn-wait:hover {
+	color: var(--ork-text-muted); border: 1px dashed var(--rp-border-strong);
+	background: transparent; cursor: default;
+}
+/* When held results open. The tip says it where labels are icon-only (wide,
+   fine pointer); in the card layout tips never show, so a line under the
+   buttons says it instead. The button's aria-describedby points here at
+   every width, so screen readers hear it once. */
+.sv-row-wait-note { display: none; }
+@media (max-width: 1120px), (max-width: 1400px) and (pointer: coarse) {
+	.sv-row-wait-note {
+		display: flex; gap: 6px; align-items: baseline; margin: 8px 0 0;
+		font-size: var(--ork-font-size-sm); line-height: 1.45; text-align: left;
+		color: var(--ork-text-secondary);
+	}
+}
 </style>
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
 
@@ -547,8 +562,8 @@ html[data-theme="dark"] #theme_container .sv-list-section-title {
 <?php /* Held by after-close sharing timing: a focusable, inert control whose
 	tip and accessible name say when results open (the label stays short for
 	the phone card cell). */ ?>
-									<button type="button" class="sv-row-btn sv-row-btn-wait" aria-disabled="true"
-									        data-tip="<?=htmlspecialchars((string)$_row['ResultsPendingText'])?>"><i class="fas fa-clock" aria-hidden="true"></i> <span class="sv-row-btn-label">Results</span><span class="sv-sr-only"> — <?=htmlspecialchars((string)$_row['ResultsPendingText'])?></span></button>
+									<button type="button" class="sv-row-btn sv-row-btn-wait" aria-disabled="true" aria-describedby="sv-wait-<?=$_key?>-<?=$_sid?>"
+									        data-tip="<?=htmlspecialchars((string)$_row['ResultsPendingText'])?>"><i class="fas fa-clock" aria-hidden="true"></i> <span class="sv-row-btn-label">Results</span></button>
 <?php endif; ?>
 <?php endif; /* Access === shared */ ?>
 <?php if (!empty($_row['CreditGrantor']) && $_status !== 'archived'):
@@ -565,6 +580,9 @@ html[data-theme="dark"] #theme_container .sv-list-section-title {
 									        data-tip="<?=htmlspecialchars($_cred_tip)?>"><i class="fas <?=$_cred_on ? 'fa-circle-check' : 'fa-award'?>" aria-hidden="true"></i> <span class="sv-row-btn-label">Credits</span><span class="sv-sr-only sv-credit-state"><?=$_cred_on ? ', on' : ''?></span></button>
 <?php endif; ?>
 								</div>
+<?php if (!empty($_row['ResultsPending'])): ?>
+								<p class="sv-row-wait-note" id="sv-wait-<?=$_key?>-<?=$_sid?>"><i class="fas fa-clock" aria-hidden="true"></i> <?=htmlspecialchars((string)$_row['ResultsPendingText'])?></p>
+<?php endif; ?>
 							</td>
 						</tr>
 <?php endforeach; ?>
@@ -813,7 +831,8 @@ html[data-theme="dark"] #theme_container .sv-list-section-title {
 			tipEl.setAttribute('role', 'tooltip');
 			document.body.appendChild(tipEl);
 		}
-		if (tipFor && tipFor !== target) { tipFor.removeAttribute('aria-describedby'); }
+		if (tipFor && tipFor !== target) { tipRestore(tipFor); }
+		if (tipFor !== target) { target.setAttribute('data-sv-own-desc', target.getAttribute('aria-describedby') || ''); }
 		tipFor = target;
 		tipEl.textContent = target.getAttribute('data-tip');
 		tipEl.hidden = false;
@@ -828,8 +847,15 @@ html[data-theme="dark"] #theme_container .sv-list-section-title {
 		tipEl.style.left = Math.round(left) + 'px';
 		tipEl.style.top = Math.round(top) + 'px';
 	}
+	// Put back the description a control had before the tip borrowed it (the
+	// held-results button describes itself with its wait note).
+	function tipRestore(el) {
+		var own = el.getAttribute('data-sv-own-desc');
+		if (own) { el.setAttribute('aria-describedby', own); } else { el.removeAttribute('aria-describedby'); }
+		el.removeAttribute('data-sv-own-desc');
+	}
 	function tipHide() {
-		if (tipFor) { tipFor.removeAttribute('aria-describedby'); }
+		if (tipFor) { tipRestore(tipFor); }
 		tipFor = null;
 		if (tipEl) { tipEl.hidden = true; }
 	}
