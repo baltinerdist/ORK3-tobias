@@ -343,6 +343,19 @@ final class SurveySharingCreditTest extends TestCase
         $this->assertSame(1, $this->credit()->enable($this->kOfficer, $gateOff, $g, 'home_park', true)['Status']);
     }
 
+    /** Spec §5: an invalid grantor is status 1 even for someone who holds CREATE there; status 3 is only a missing canCreate. */
+    public function testEnableRefusesAnInvalidGrantorAsABadRequestAndAMissingCreateAsUnauthorized(): void
+    {
+        $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);
+        $outside = $this->credit()->enable($this->kOtherOfficer, $ks, ['type' => 'kingdom', 'id' => $this->kOther], 'home_park', true);
+        $this->assertSame(1, $outside['Status'], 'a kingdom outside the survey is not a grantor, though its officer holds CREATE there');
+        $this->assertSame(1, $this->credit()->enable($this->kOfficer, $ks, ['type' => 'park', 'id' => $this->parkOther], 'home_park', true)['Status'], 'a park outside the survey');
+        $this->assertSame(1, $this->credit()->enable($this->kOfficer, $ks, null, 'home_park', true)['Status'], 'no grantor');
+        $this->assertSame(1, $this->credit()->enable($this->kOfficer, $ks, ['type' => 'unit', 'id' => $this->k], 'home_park', true)['Status'], 'not a grantor type');
+        $this->assertSame(3, $this->credit()->enable($this->pOfficerA, $ks, ['type' => 'park', 'id' => $this->parkB], 'home_park', true)['Status'], 'a valid grantor without CREATE');
+        $this->assertSame('0', (string) $this->scalar('SELECT COUNT(*) FROM ' . DB_PREFIX . 'survey_credit WHERE survey_id = ' . $ks));
+    }
+
     public function testLiveGrantAfterEnableAndReconcileIsIdempotent(): void
     {
         $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);

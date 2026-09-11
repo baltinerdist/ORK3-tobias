@@ -329,7 +329,12 @@ class SurveyCredit
         if (!$confirm) {
             return $this->fail('Confirm that you understand this cannot be undone.');
         }
-        if (!$this->canActFor($uid, $survey, $grantor)) {
+        // §5: an org the survey does not reach is a bad request (1); a real
+        // grantor the caller cannot act for is not authorized (3).
+        if (!$this->isGrantor($survey, $grantor)) {
+            return $this->fail('That organization cannot give credits for this survey.');
+        }
+        if (!$this->survey()->canCreate($uid, (string) $grantor['type'], (int) $grantor['id'])) {
             return $this->denied('You cannot turn on credits for this survey.');
         }
         $problem = $this->enableProblem($survey, $grantor);
@@ -475,11 +480,17 @@ class SurveyCredit
         return new Survey();
     }
 
-    private function canActFor(int $uid, array $survey, ?array $grantor): bool
+    /** Is $grantor a well-formed org this survey reaches (§3.2), whoever is asking? */
+    private function isGrantor(array $survey, ?array $grantor): bool
     {
         return $grantor !== null
             && in_array($grantor['type'] ?? '', ['kingdom', 'park'], true)
-            && $this->validGrantor($survey, (string) $grantor['type'], (int) $grantor['id'])
+            && $this->validGrantor($survey, (string) $grantor['type'], (int) ($grantor['id'] ?? 0));
+    }
+
+    private function canActFor(int $uid, array $survey, ?array $grantor): bool
+    {
+        return $this->isGrantor($survey, $grantor)
             && $this->survey()->canCreate($uid, (string) $grantor['type'], (int) $grantor['id']);
     }
 
