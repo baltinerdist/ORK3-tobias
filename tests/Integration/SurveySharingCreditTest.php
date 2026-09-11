@@ -438,6 +438,35 @@ final class SurveySharingCreditTest extends TestCase
         $this->assertArrayHasKey('home_park', $st['Credit']['mine']['preview']);
     }
 
+    /** A hidden config's owed credits must not leak through `pending` either. */
+    public function testStatusPendingCountsOnlyTheConfigsTheViewerCanSee(): void
+    {
+        $os = $this->openSurvey($this->kOfficer, 'ork', $this->k);
+        $this->assertSame(0, $this->credit()->enable($this->kOfficer, $os, ['type' => 'kingdom', 'id' => $this->k], 'home_park', true)['Status']);
+        $this->assertSame(0, $this->credit()->enable($this->kOtherOfficer, $os, ['type' => 'kingdom', 'id' => $this->kOther], 'home_park', true)['Status']);
+        // Owed but not yet granted (a failed live grant): one player in each kingdom.
+        $home = $this->player('owedhome', $this->parkA, $this->k);
+        $away = $this->player('owedaway', $this->parkOther, $this->kOther);
+        $this->pdo->exec('INSERT INTO ' . DB_PREFIX . "survey_response (survey_id, consent, mundane_id, kingdom_id, park_id, is_test, submitted_at)
+                          VALUES ({$os}, 'full', {$home}, {$this->k}, {$this->parkA}, 0, NOW()),
+                                 ({$os}, 'full', {$away}, {$this->kOther}, {$this->parkOther}, 0, NOW())");
+
+        $mine = $this->credit()->status($this->kOfficer, $os, ['type' => 'kingdom', 'id' => $this->k]);
+        $this->assertSame(0, $mine['Status']);
+        $this->assertCount(1, $mine['Credit']['configs'], "the other kingdom's config stays hidden");
+        $this->assertSame(1, $mine['Credit']['pending'], "only this kingdom's owed credit is counted");
+
+        $theirs = $this->credit()->status($this->kOtherOfficer, $os, ['type' => 'kingdom', 'id' => $this->kOther]);
+        $this->assertSame(1, $theirs['Credit']['pending']);
+
+        $park = $this->credit()->status($this->pOfficerA, $os, ['type' => 'park', 'id' => $this->parkA]);
+        $this->assertSame(1, $park['Credit']['pending'], 'a park sees its own kingdom\'s config and its owed credit');
+
+        // Reconcile still posts everything owed, whoever asked.
+        $this->assertSame(2, $this->credit()->reconcileAs($this->kOfficer, $os, ['type' => 'kingdom', 'id' => $this->k])['Granted']);
+        $this->assertSame(0, $this->credit()->status($this->kOfficer, $os, ['type' => 'kingdom', 'id' => $this->k])['Credit']['pending']);
+    }
+
     public function testCreditAvailableForFollowsCoverage(): void
     {
         $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);

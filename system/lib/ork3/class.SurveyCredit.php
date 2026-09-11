@@ -273,10 +273,12 @@ class SurveyCredit
             $counts[(int) $r['credit_id']] = (int) $r['n'];
         }
 
-        $visible = [];
+        $visible   = [];
+        $visibleId = [];
         foreach ($configs as $c) {
             if ($manage || $this->related($c, $grantor, $survey)) {
                 $visible[] = $this->configOut($c, $counts[(int) $c['credit_id']] ?? 0);
+                $visibleId[(int) $c['credit_id']] = true;
             }
         }
 
@@ -312,7 +314,8 @@ class SurveyCredit
             'gate_enabled'  => !empty($survey['data_gate_enabled']),
             'configs'       => $visible,
             'mine'          => $mine,
-            'pending'       => $this->pendingCount($survey, $configs, $parentOf),
+            // Owed credits under the configs shown, never a hidden one's count.
+            'pending'       => $this->pendingCount($survey, $configs, $parentOf, $visibleId),
         ]]);
     }
 
@@ -569,14 +572,21 @@ class SurveyCredit
         return ['eligible_now' => $n, 'no_home_park' => $noPark];
     }
 
-    private function pendingCount(array $survey, array $configs, array $parentOf): int
+    /**
+     * Owed credits whose winning config is in $countIds (credit_id => true).
+     * Coverage still runs over EVERY config, so precedence is the real one: a
+     * player owed under a hidden earlier config is not counted against a later
+     * visible one.
+     */
+    private function pendingCount(array $survey, array $configs, array $parentOf, array $countIds): int
     {
-        if (!$configs) {
+        if (!$configs || !$countIds) {
             return 0;
         }
         $n = 0;
         foreach ($this->owedResponses((int) $survey['survey_id']) as $r) {
-            $n += self::coverage($configs, $r, $survey, $parentOf)['credit_id'] !== null ? 1 : 0;
+            $id = self::coverage($configs, $r, $survey, $parentOf)['credit_id'];
+            $n += ($id !== null && isset($countIds[$id])) ? 1 : 0;
         }
         return $n;
     }
