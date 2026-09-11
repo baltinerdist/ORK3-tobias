@@ -304,6 +304,139 @@ final class SurveyTest extends TestCase
         $this->assertSame(0, $copy['Status'], (string) ($copy['Error'] ?? ''));
     }
 
+    // ------------------------------------------------------------------
+    // Pairwise (pairwise spec §1, §3)
+    // ------------------------------------------------------------------
+
+    /** @return array{survey_id:int, page:int, q:int, ids:list<int>} a draft survey with one pairwise question of $n options */
+    private function buildPairwise(int $n, bool $required): array
+    {
+        $r = $this->survey->create($this->officerId, 'kingdom', $this->kingdomId, self::MARKER . ' Pairwise');
+        $this->assertSame(0, $r['Status'], (string) ($r['Error'] ?? ''));
+        $surveyId = (int) $r['SurveyId'];
+        $this->surveyIds[] = $surveyId;
+        $page = (int) $this->pdo->query(
+            'SELECT page_id FROM ' . DB_PREFIX . 'survey_page WHERE survey_id = ' . $surveyId . ' ORDER BY sort_order LIMIT 1'
+        )->fetchColumn();
+
+        $q = $this->addQuestion($surveyId, $page, 'pairwise', 'Which is better?');
+        $this->assertCount(3, $this->optionIds($q, 'choice'), 'a new pairwise question seeds three options');
+        if ($required) {
+            $this->assertSame(0, $this->survey->questionUpdate($q, ['Required' => 1])['Status']);
+        }
+        $labels = [];
+        for ($i = 1; $i <= $n; $i++) {
+            $labels[] = ['label' => 'Item ' . $i];
+        }
+        $set = $this->survey->optionSet($q, 'choice', $labels);
+        $this->assertSame(0, $set['Status'], (string) ($set['Error'] ?? ''));
+
+        return ['survey_id' => $surveyId, 'page' => $page, 'q' => $q, 'ids' => $this->optionIds($q, 'choice')];
+    }
+
+    /** @return list<array{a:int,b:int,w:int}> the first $count pairs of $ids, left winning */
+    private function pairwiseAnswer(array $ids, int $count): array
+    {
+        $out = [];
+        foreach ($ids as $i => $a) {
+            foreach (array_slice($ids, $i + 1) as $b) {
+                if (count($out) >= $count) {
+                    return $out;
+                }
+                $out[] = ['a' => $a, 'b' => $b, 'w' => $a];
+            }
+        }
+        return $out;
+    }
+
+    public function testPairwiseOptionSetRefusesDuplicateLabelsAndOther(): void
+    {
+        $ctx = $this->buildPairwise(3, false);
+
+        $dup = $this->survey->optionSet($ctx['q'], 'choice', [['label' => 'Hawk'], ['label' => 'Owl'], ['label' => ' hawk ']]);
+        $this->assertSame(1, $dup['Status']);
+        $this->assertSame('“hawk” is listed twice.', $dup['Error']);
+
+        $other = $this->survey->optionSet($ctx['q'], 'choice', [['label' => 'A'], ['label' => 'B'], ['label' => 'C', 'is_other' => 1]]);
+        $this->assertSame(1, $other['Status']);
+        $this->assertSame('A pairwise question cannot have an "other" option.', $other['Error']);
+
+        $two = $this->survey->optionSet($ctx['q'], 'choice', [['label' => 'A'], ['label' => 'B']]);
+        $this->assertSame(1, $two['Status'], 'pairwise needs at least three options');
+    }
+
+    public function testPairwiseRequiredGateOnSubmitAndStoredRows(): void
+    {
+        // 9 options = 36 matchups: gate 11.
+        $ctx = $this->buildPairwise(9, true);
+        $this->assertSame(0, $this->survey->setStatus($ctx['survey_id'], 'open')['Status']);
+
+        $below = (new SurveyResponse())->submit(
+            $ctx['survey_id'],
+            $this->players['p1'],
+            [$ctx['q'] => $this->pairwiseAnswer($ctx['ids'], 10)],
+            'full',
+            60,
+            false
+        );
+        $this->assertSame(1, $below['Status']);
+        $this->assertSame('Please complete at least 11 matchups to continue.', $below['Errors'][$ctx['q']] ?? null);
+
+        $answer = $this->pairwiseAnswer($ctx['ids'], 11);
+        $answer[1]['w'] = 0;                      // one tie
+        $answer[2]['w'] = $answer[2]['b'];        // one right-side win
+        $ok = (new SurveyResponse())->submit(
+            $ctx['survey_id'],
+            $this->players['p1'],
+            [$ctx['q'] => $answer],
+            'full',
+            60,
+            false
+        );
+        $this->assertSame(0, $ok['Status'], (string) ($ok['Error'] ?? ''));
+
+        $rows = $this->pdo->query(
+            'SELECT a.option_id, a.row_option_id, a.value_num FROM ' . DB_PREFIX . 'survey_answer a
+               JOIN ' . DB_PREFIX . 'survey_response r ON r.response_id = a.response_id
+              WHERE r.survey_id = ' . $ctx['survey_id'] . ' ORDER BY a.answer_id'
+        )->fetchAll(PDO::FETCH_ASSOC);
+        $this->assertCount(11, $rows);
+        $this->assertSame(
+            [(int) $answer[0]['a'], (int) $answer[0]['b'], 1.0],
+            [(int) $rows[0]['option_id'], (int) $rows[0]['row_option_id'], (float) $rows[0]['value_num']]
+        );
+        $this->assertSame(0.5, (float) $rows[1]['value_num']);
+        $this->assertSame(0.0, (float) $rows[2]['value_num']);
+    }
+
+    public function testPairwiseDefinitionCarriesThePlan(): void
+    {
+        $ctx = $this->buildPairwise(12, false);
+        $def = (new SurveyResponse())->definitionForRespondent($ctx['survey_id'], $this->officerId, true);
+        $this->assertSame(0, $def['Status'], (string) ($def['Error'] ?? ''));
+        $q = null;
+        foreach ($def['Pages'] as $page) {
+            foreach ($page['questions'] as $cand) {
+                if ((int) $cand['question_id'] === $ctx['q']) {
+                    $q = $cand;
+                }
+            }
+        }
+        $this->assertNotNull($q);
+        $this->assertSame(SurveyTypes::pairwisePlan(12), $q['pairwise']);
+        $this->assertSame(20, $q['pairwise']['gate']);
+    }
+
+    public function testRetypeSingleWithOtherToPairwiseClearsOther(): void
+    {
+        $ctx = $this->buildSurvey();   // q_single carries an "other" option
+        $r = $this->survey->questionUpdate($ctx['q_single'], ['Type' => 'pairwise']);
+        $this->assertSame(0, $r['Status'], (string) ($r['Error'] ?? ''));
+        $others = array_map(static fn ($o) => (int) $o['is_other'], $r['Question']['Options']);
+        $this->assertCount(3, $others);
+        $this->assertSame([0, 0, 0], $others);
+    }
+
     public function testRecentAttendanceMonthsRefusesNonNumericInput(): void
     {
         $ctx = $this->buildSurvey();

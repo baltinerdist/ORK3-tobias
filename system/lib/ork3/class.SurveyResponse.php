@@ -819,7 +819,7 @@ class SurveyResponse
                 if (!empty($q['settings']['randomize'])) {
                     $options = self::shuffleOptions($options, $seed ^ (int) $q['question_id']);
                 }
-                $questions[] = [
+                $entry = [
                     'question_id'         => (int) $q['question_id'],
                     'type'                => $q['type'],
                     'prompt'              => $q['prompt'],
@@ -831,6 +831,18 @@ class SurveyResponse
                     'show_if_option_id'   => $q['show_if_option_id'],
                     'options'             => $options,
                 ];
+                if ('pairwise' === $q['type']) {
+                    // The runner's gate and bar read the server's plan, so what a
+                    // respondent is told is exactly what submit enforces (spec §2).
+                    $choices = 0;
+                    foreach ($options as $o) {
+                        if ('choice' === (string) ($o['role'] ?? 'choice')) {
+                            $choices++;
+                        }
+                    }
+                    $entry['pairwise'] = SurveyTypes::pairwisePlan($choices);
+                }
+                $questions[] = $entry;
             }
             $out[] = [
                 'page_id'             => (int) $page['page_id'],

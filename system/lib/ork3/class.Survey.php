@@ -2087,6 +2087,21 @@ class Survey
                 }
             }
         }
+        if ($type === 'pairwise') {
+            // A matchup of an item against itself is meaningless (pairwise spec §3),
+            // and a write-in has no place in a head-to-head.
+            $labels = [];
+            foreach ($clean as $c) {
+                if ($c['is_other']) {
+                    return $this->fail('A pairwise question cannot have an "other" option.');
+                }
+                $key = mb_strtolower($c['label']);
+                if (isset($labels[$key])) {
+                    return $this->fail('“' . $c['label'] . '” is listed twice.');
+                }
+                $labels[$key] = true;
+            }
+        }
 
         $survey = $this->getRow($surveyId);
         if ($survey !== null && $this->isStructureLocked($survey)) {
