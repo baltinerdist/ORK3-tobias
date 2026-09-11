@@ -103,8 +103,10 @@ Rolldown is exactly one level. Park officers get no results for ORK surveys.
 **Park snapshot.** New `ork_survey_response.park_id INT NULL`. `submit()` passes the player's current `ork_mundane.park_id` into the row, and `scrubForConsent()` nulls it for `partial` and `anonymous`, so it survives only on `full` rows (D3). The migration backfills existing `full` rows from `ork_mundane.park_id`, which is the best value available.
 
 **Shared results page.** `Controller_Survey::results` accepts the context and calls `results_access`. `null` gets `no_authorization()`. `SvConfig` gains `access` (`manage|shared`), `context` and `lensLabel`. In shared mode:
-- **Shown:** the stat row, charts, free-text and "Other" lists, cross-tab, consent and date filters, Summary for sharing.
+- **Shown:** the stat row, charts, free-text and "Other" lists, cross-tab, the consent filter, Summary for sharing.
 - **Hidden:** the Responses table, the individual-response panel, Export CSV, Print (Summary for sharing's print stays), the include-test toggle (forced off server-side for shared viewers), and the kingdom filter under a kingdom lens.
+- **No date filters and no per-day counts** (`summary.by_day` is null), for every shared viewer including an `all` share; `applyLens` drops `date_from`/`date_to` server-side. Home-park credits are public and dated the day taken (D1), so comparing two date windows (`[.., D]` and `[.., D-1]`, each over the minimum cell) would give the answers and free text of the one respondent on day D whom a credit names. Suppression is per view and cannot catch that. (Review fix, 2026-09-11.)
+- `park_id` and `impossible` are lens-only filter keys. `SurveyReport::clientFilters()` drops them from any client's Filters, so only `applyLens` sets them and no viewer can slice results to one park.
 - **Lens strip** under the header:
   - Kingdom lens: *"Showing responses from players of {Kingdom} who chose Any ORK Data or My Kingdom and How Long I've Been Playing. Anonymous responses can't be attributed to a kingdom."*
   - Park lens: *"Showing responses from {Park} players who chose Any ORK Data. Other responses can't be attributed to a park."*

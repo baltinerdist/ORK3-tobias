@@ -324,6 +324,7 @@ class Model_Survey extends Model
      */
     public function results(int $surveyId, array $filters): array
     {
+        $filters = SurveyReport::clientFilters($filters);   // park_id / impossible are lens-only
         $out = $this->_report()->aggregate($surveyId, $filters);
         $out['summary'] = $this->_report()->summary($surveyId, $filters);
         return $out;
@@ -351,10 +352,14 @@ class Model_Survey extends Model
         return $this->_report()->kingdomsPresent($surveyId);
     }
 
-    /** The report's filter shape, so a controller can read the consent filter it will apply. */
+    /**
+     * The report's filter shape for a client's filters (rows, export), so a
+     * controller can read the consent filter it will apply. Lens-only keys are
+     * dropped: only SurveyReport::applyLens() sets them.
+     */
     public function normalize_filters($filters): array
     {
-        return SurveyReport::normalizeFilters($filters);
+        return SurveyReport::clientFilters($filters);
     }
 
     // -----------------------------------------------------------------------

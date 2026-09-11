@@ -258,6 +258,7 @@ $_svr_show_kingdoms = count($_svr_kingdoms) > 1;
 						</select>
 					</div>
 
+<?php if (!$_svr_shared) : /* No date bounds for a shared viewer: home-park credits are public and dated the day taken, so two date windows would name a respondent's answers (the server drops them too). */ ?>
 					<div class="svr-field">
 						<div class="svr-label-row">
 							<label class="svr-field-label" for="svr-date-from">Submitted from</label>
@@ -273,6 +274,7 @@ $_svr_show_kingdoms = count($_svr_kingdoms) > 1;
 						</div>
 						<input type="text" class="sv-input svr-date" id="svr-date-to" placeholder="Any date" autocomplete="off">
 					</div>
+<?php endif; ?>
 
 					<div class="svr-field">
 						<label class="svr-field-label" for="svr-crosstab">Cross-tab by</label>

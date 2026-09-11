@@ -937,6 +937,48 @@ final class SurveyAggregateTest extends TestCase
         $this->assertSame($summary, SurveyReport::redactForLens($summary, ['shared' => true]));
     }
 
+    /**
+     * Home-park credits are public and dated the day taken, so two date windows
+     * ([.., D] and [.., D-1], each over MIN_CELL) would hand a shared viewer the
+     * answers of the one respondent a credit names on day D. No shared viewer
+     * gets date bounds, whatever the lens.
+     */
+    public function testApplyLensDropsDateBoundsForEverySharedViewer(): void
+    {
+        $dated = ['date_from' => '2026-09-01', 'date_to' => '2026-09-09'];
+        foreach ([['shared' => true], ['shared' => true, 'kingdom_ids' => [17]], ['shared' => true, 'park_id' => 917]] as $lens) {
+            $f = SurveyReport::applyLens($dated, $lens);
+            $this->assertNull($f['date_from'], json_encode($lens));
+            $this->assertNull($f['date_to'], json_encode($lens));
+        }
+    }
+
+    /** park_id and impossible are lens-only: a client that sends them is ignored. */
+    public function testClientCannotSetTheLensOnlyKeys(): void
+    {
+        $f = SurveyReport::applyLens(['park_id' => 917], ['shared' => true, 'kingdom_ids' => [17]]);
+        $this->assertNull($f['park_id'], 'a kingdom lens cannot be narrowed to one park');
+        $this->assertSame([17], $f['kingdom_ids']);
+
+        $this->assertNull(SurveyReport::applyLens(['park_id' => 1049], ['shared' => true])['park_id'], "nor an 'all' share to any park anywhere");
+        $this->assertFalse(SurveyReport::applyLens(['impossible' => true], ['shared' => true])['impossible']);
+        $this->assertSame(917, SurveyReport::applyLens(['park_id' => 5], ['shared' => true, 'park_id' => 917])['park_id'], 'the lens still sets it');
+
+        $c = SurveyReport::clientFilters(['park_id' => 5, 'impossible' => true, 'consent' => 'full']);
+        $this->assertNull($c['park_id']);
+        $this->assertFalse($c['impossible']);
+        $this->assertSame('full', $c['consent']);
+    }
+
+    public function testRedactForLensDropsPerDayCountsForEverySharedViewer(): void
+    {
+        $summary = ['responses' => 12, 'by_day' => [['day' => '2026-09-10', 'count' => 12]], 'median_duration' => 300];
+        $this->assertNull(SurveyReport::redactForLens($summary, ['shared' => true])['by_day'], "an 'all' share too");
+        $this->assertNull(SurveyReport::redactForLens($summary, ['shared' => true, 'park_id' => 9])['by_day']);
+        $this->assertSame(12, SurveyReport::redactForLens($summary, ['shared' => true])['responses']);
+        $this->assertSame($summary, SurveyReport::redactForLens($summary, []), 'a manager keeps them');
+    }
+
     public function testLensLabelMatchesTheAccessLabels(): void
     {
         $this->assertSame('park', SurveyReport::lensLabel(['shared' => true, 'park_id' => 1049]));

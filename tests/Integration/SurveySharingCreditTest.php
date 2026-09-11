@@ -262,6 +262,38 @@ final class SurveySharingCreditTest extends TestCase
         $this->assertSame(['label' => 'park'], $out['summary']['lens']);
     }
 
+    /**
+     * A shared viewer gets no per-day counts and no date bounds: a public
+     * home-park credit is dated the day taken, so two date windows would
+     * isolate the named respondent of a one-response day (D2). A client's
+     * park_id cannot narrow a kingdom lens to one park either.
+     */
+    public function testSharedViewersGetNoDateWindowsPerDayCountsOrParkSlices(): void
+    {
+        $ks = $this->openSurvey($this->kOfficer, 'ork', $this->k, ['results_share' => 'scoped']);
+        for ($i = 0; $i < 6; $i++) {
+            $this->answer($ks, $this->player('dw' . $i, $i < 5 ? $this->parkA : $this->parkB, $this->k), 'full');
+        }
+        $yesterday = date('Y-m-d', strtotime('-1 day'));
+        $this->pdo->exec('UPDATE ' . DB_PREFIX . "survey_response SET submitted_at = '{$yesterday} 12:00:00'
+                          WHERE survey_id = {$ks} ORDER BY response_id LIMIT 5");
+
+        $manager = (new SurveyReport())->summary($ks, SurveyReport::normalizeFilters(['date_to' => $yesterday]));
+        $this->assertSame(5, (int) $manager['responses'], 'control: the date bound works for a manager');
+        $this->assertNotNull($manager['by_day']);
+
+        $acc = (new Survey())->resultsAccess($this->kOfficer, $this->row($ks), ['type' => 'kingdom', 'id' => $this->k]);
+        $this->assertSame('shared', $acc['level']);
+        $all = (new SurveyReport())->sharedResults($ks, [], $acc['lens']);
+        $cut = (new SurveyReport())->sharedResults($ks, ['date_to' => $yesterday], $acc['lens']);
+        $this->assertSame(6, (int) $all['summary']['responses']);
+        $this->assertSame(6, (int) $cut['summary']['responses'], 'the date bound is ignored');
+        $this->assertNull($all['summary']['by_day'], 'no per-day counts');
+
+        $park = (new SurveyReport())->sharedResults($ks, ['park_id' => $this->parkB], $acc['lens']);
+        $this->assertSame(6, (int) $park['summary']['responses'], "a client's park_id is ignored");
+    }
+
     public function testAddSystemCreditWritesEveryColumnAndBustsNothingElse(): void
     {
         $uid = $this->player('credit', $this->parkA, $this->k);

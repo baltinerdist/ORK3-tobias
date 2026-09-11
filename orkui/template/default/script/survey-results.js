@@ -1857,6 +1857,17 @@
        and the URL are synced by the request that actually renders. */
     function load() {
         var filters = state.appliedFilters || DEFAULT_FILTERS;
+        /* A shared viewer has no date bounds (the server drops them: a public
+           home-park credit is dated the day taken). A #filters= hash from a
+           manager's link may still carry them, so drop them here as well, or
+           the caption would describe a filter that was never applied. */
+        if (SHARED && (filters.date_from || filters.date_to)) {
+            var undated = {};
+            Object.keys(filters).forEach(function (k) { undated[k] = filters[k]; });
+            undated.date_from = null;
+            undated.date_to = null;
+            filters = state.appliedFilters = undated;
+        }
         var seq = ++state.seq;
         if (state.abort) { try { state.abort.abort(); } catch (e) { /* done */ } }
         state.abort = window.AbortController ? new AbortController() : null;

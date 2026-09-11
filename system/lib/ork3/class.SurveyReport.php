@@ -191,10 +191,16 @@ class SurveyReport
      */
     public static function applyLens($filters, array $lens): array
     {
-        $f = self::normalizeFilters($filters);
+        $f = self::clientFilters($filters);
 
         if (!empty($lens['shared'])) {
             $f['include_test'] = false;
+            // No date bounds for a shared viewer. Home-park credits are public
+            // and dated DATE(submitted_at), so comparing [.., D] with [.., D-1]
+            // (each over MIN_CELL) would hand over the answers, free text
+            // included, of the one respondent on day D whom a credit names (D2).
+            $f['date_from'] = null;
+            $f['date_to']   = null;
         }
 
         if (!empty($lens['kingdom_ids']) && is_array($lens['kingdom_ids'])) {
@@ -231,11 +237,31 @@ class SurveyReport
     }
 
     /**
+     * PURE. normalizeFilters() for a filter set a CLIENT sent. park_id and
+     * impossible are lens-only keys (applyLens sets them from the viewer's
+     * access): a request that carries them is ignored, so no one can slice
+     * results to a single park the spec never gives them.
+     */
+    public static function clientFilters($filters): array
+    {
+        $f = self::normalizeFilters($filters);
+        $f['park_id']    = null;
+        $f['impossible'] = false;
+        return $f;
+    }
+
+    /**
      * PURE. A lens viewer sees counts for their own players only: the survey-wide
-     * starts, audience, anonymous total and the rates built on them go.
+     * starts, audience, anonymous total and the rates built on them go. Every
+     * shared viewer, an unfiltered 'all' share included, also loses the per-day
+     * counts: a day with one response beside a public home-park credit dated
+     * that day names the respondent.
      */
     public static function redactForLens(array $summary, array $lens): array
     {
+        if (!empty($lens['shared']) && array_key_exists('by_day', $summary)) {
+            $summary['by_day'] = null;
+        }
         if (empty($lens['kingdom_ids']) && empty($lens['park_id'])) {
             return $summary;
         }
