@@ -1461,11 +1461,14 @@ class SurveyResponse
             return [];
         }
 
-        // Scope names in at most two queries, not one per survey (review #38).
+        // Scope names in at most two queries, not one per survey (review #38),
+        // and the credit flags in at most three.
         $labels = $this->scopeLabels($eligible);
+        $credit = (new SurveyCredit())->creditAvailableMap($eligible, $uid);
         $out = [];
         foreach ($eligible as $survey) {
-            $out[] = $this->widgetRow($survey, $uid, $labels[(int) $survey['survey_id']] ?? null);
+            $sid   = (int) $survey['survey_id'];
+            $out[] = $this->widgetRow($survey, $uid, $labels[$sid] ?? null, $credit[$sid] ?? false);
         }
         return $out;
     }
@@ -1572,10 +1575,11 @@ class SurveyResponse
 
     /**
      * @param  array<string, mixed> $survey
-     * @param  ?string              $scopeLabel pre-resolved label (availableFor batches them), or null to look it up
-     * @return array{survey_id: int, title: string, description: string, scope_label: string, close_at: ?string, in_progress: bool}
+     * @param  ?string              $scopeLabel      pre-resolved label (availableFor batches them), or null to look it up
+     * @param  ?bool                $creditAvailable pre-resolved credit flag (availableFor batches them), or null to look it up
+     * @return array{survey_id: int, title: string, description: string, scope_label: string, close_at: ?string, in_progress: bool, credit_available: bool}
      */
-    private function widgetRow(array $survey, int $uid, ?string $scopeLabel = null): array
+    private function widgetRow(array $survey, int $uid, ?string $scopeLabel = null, ?bool $creditAvailable = null): array
     {
         return [
             'survey_id'   => (int) $survey['survey_id'],
@@ -1585,7 +1589,7 @@ class SurveyResponse
             'scope_label' => $scopeLabel ?? $this->scopeLabel((string) $survey['scope_type'], (int) $survey['scope_id']),
             'close_at'    => $survey['close_at'] ?: null,
             'in_progress' => !empty($survey['allow_resume']) && $this->hasDraft((int) $survey['survey_id'], $uid),
-            'credit_available' => (new SurveyCredit())->creditAvailableFor($survey, $uid),
+            'credit_available' => $creditAvailable ?? (new SurveyCredit())->creditAvailableFor($survey, $uid),
         ];
     }
 

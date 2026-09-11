@@ -463,15 +463,49 @@ class SurveyCredit
     /** Would this player be credited if they chose Any ORK Data? (the runner's credit line) */
     public function creditAvailableFor(array $surveyRow, int $uid): bool
     {
-        $configs = $this->configs((int) $surveyRow['survey_id']);
-        if (!$configs || empty($surveyRow['data_gate_enabled'])) {
-            return false;
+        return $this->creditAvailableMap([$surveyRow], $uid)[(int) $surveyRow['survey_id']] ?? false;
+    }
+
+    /**
+     * creditAvailableFor() for a whole list (My Amtgard's Available Surveys):
+     * one config query and one player lookup however many surveys, none when no
+     * survey has its data gate on.
+     *
+     * @param list<array<string,mixed>> $surveyRows ork_survey rows
+     * @return array<int,bool> survey_id => available
+     */
+    public function creditAvailableMap(array $surveyRows, int $uid): array
+    {
+        $out   = [];
+        $gated = [];
+        foreach ($surveyRows as $s) {
+            $sid       = (int) ($s['survey_id'] ?? 0);
+            $out[$sid] = false;
+            if ($sid > 0 && !empty($s['data_gate_enabled'])) {
+                $gated[$sid] = $s;
+            }
+        }
+        if (!$gated || $uid <= 0) {
+            return $out;
+        }
+        $bySurvey = [];
+        foreach ($this->fetchAll('SELECT * FROM ' . DB_PREFIX . 'survey_credit
+                                  WHERE survey_id IN (' . implode(',', array_keys($gated)) . ')
+                                  ORDER BY enabled_at ASC, credit_id ASC') as $c) {
+            $bySurvey[(int) $c['survey_id']][] = $c;
+        }
+        if (!$bySurvey) {
+            return $out;
         }
         $p = $this->fetchRow('SELECT park_id, kingdom_id FROM ' . DB_PREFIX . 'mundane WHERE mundane_id = ' . (int) $uid);
         if ($p === null) {
-            return false;
+            return $out;
         }
-        return self::coverage($configs, $p, $surveyRow, $this->parentMap())['credit_id'] !== null;
+        $parentOf = $this->parentMap();
+        foreach ($bySurvey as $sid => $configs) {
+            $out[$sid] = self::coverage($configs, $p, $gated[$sid], $parentOf)['credit_id'] !== null;
+        }
+        return $out;
     }
 
     // -----------------------------------------------------------------------

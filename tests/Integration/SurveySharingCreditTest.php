@@ -508,6 +508,54 @@ final class SurveySharingCreditTest extends TestCase
         $this->assertTrue($this->credit()->creditAvailableFor($this->row($ks), $uid));
     }
 
+    /** SELECTs run so far on the app's own connection (the one SurveyCredit uses). */
+    private function appSelects(): int
+    {
+        global $DB;
+        $DB->Clear();
+        $rs = $DB->DataSet("SHOW SESSION STATUS LIKE 'Com_select'");
+        $this->assertTrue($rs && $rs->Next());
+        return (int) $rs->CurrentFieldSet()['Value'];
+    }
+
+    /** My Amtgard's list resolves every credit flag in a fixed number of queries, not one pair per survey. */
+    public function testCreditAvailableMapAgreesWithTheSingleCheckInAFixedNumberOfQueries(): void
+    {
+        $uid     = $this->player('mapper', $this->parkB, $this->k);
+        $covered = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);
+        $parkA   = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);
+        $plain   = [$this->openSurvey($this->kOfficer, 'kingdom', $this->k), $this->openSurvey($this->kOfficer, 'kingdom', $this->k)];
+        $gateOff = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);
+        $this->credit()->enable($this->kOfficer, $covered, ['type' => 'kingdom', 'id' => $this->k], 'home_park', true);
+        $this->credit()->enable($this->pOfficerA, $parkA, ['type' => 'park', 'id' => $this->parkA], 'home_park', true);
+        $this->credit()->enable($this->kOfficer, $gateOff, ['type' => 'kingdom', 'id' => $this->k], 'home_park', true);
+        $this->pdo->exec('UPDATE ' . DB_PREFIX . 'survey SET data_gate_enabled = 0 WHERE survey_id = ' . $gateOff);
+
+        $rows = array_map([$this, 'row'], array_merge([$covered, $parkA, $gateOff], $plain));
+        $want = [$covered => true, $parkA => false, $gateOff => false, $plain[0] => false, $plain[1] => false];
+        $c = $this->credit();
+
+        $before = $this->appSelects();
+        $map = $c->creditAvailableMap($rows, $uid);
+        $used = $this->appSelects() - $before;
+        $this->assertSame($want, $map);
+        $this->assertLessThanOrEqual(3, $used, 'configs + player + parent map, whatever the list length');
+
+        foreach ($rows as $r) {
+            $this->assertSame($want[(int) $r['survey_id']], $this->credit()->creditAvailableFor($r, $uid), 'survey ' . $r['survey_id']);
+        }
+
+        $plainRows = array_map([$this, 'row'], $plain);
+        $before = $this->appSelects();
+        $this->assertSame([$plain[0] => false, $plain[1] => false], $this->credit()->creditAvailableMap($plainRows, $uid));
+        $this->assertSame(1, $this->appSelects() - $before, 'no configs: the player is never looked up');
+
+        $gateOffOnly = $this->row($gateOff);
+        $before = $this->appSelects();
+        $this->assertSame([$gateOff => false], $this->credit()->creditAvailableMap([$gateOffOnly], $uid));
+        $this->assertSame(0, $this->appSelects() - $before, 'no gated survey: no query at all');
+    }
+
     public function testSubmitGrantsAfterCommitAndReportsIt(): void
     {
         $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);
