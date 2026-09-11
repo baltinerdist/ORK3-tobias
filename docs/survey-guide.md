@@ -125,6 +125,96 @@ A player can never answer the same survey twice. When they finish, the ORK keeps
 
 ---
 
+## Surveys from other levels
+
+The Surveys list is organized by level: **Amtgard**, your **Kingdom**, and your **Park** each get
+their own table. A kingdom officer sees every Amtgard-wide survey that reaches the kingdom, every
+survey the kingdom or its principalities run, and every survey any park in the kingdom runs. A
+park officer sees Amtgard-wide surveys that reach them, kingdom surveys that reach their park, and
+their own park's surveys.
+
+Surveys you didn't create show up alongside your own, with fewer actions: no Build, Preview,
+Clone, or Archive, since you don't own the structure. You can still **Take** an open one, and
+you'll see **Results** on it when its owner has shared them with you (see the next section) or
+**Credits** when it offers an attendance credit. A shared row's response count shows as **—**
+unless the owner shared results with everyone, since you can't see counts you weren't given
+access to.
+
+---
+
+## Sharing results with kingdoms and parks
+
+An Amtgard-wide survey's owner, or a kingdom survey's owner, can share its results one level down
+from the survey's own **Privacy** section: **Don't share**, **each kingdom (or park) sees only its
+own players**, or **everyone sees everyone's results**. A park survey has no one to share with, so
+this option doesn't appear for one. Sharing is one level only — a park never gets results shared
+down from an Amtgard-wide survey.
+
+Shared results always show charts and stats, never the responses table, the individual-response
+view, or exported spreadsheets, and the include-test-responses option is turned off for a shared
+viewer. Nobody's name ever appears to a shared viewer, no matter what a respondent chose.
+
+What counts toward a kingdom's or park's own view depends on what a respondent chose:
+
+- A **kingdom's** shared view counts respondents who chose **Any ORK Data** and are in that
+  kingdom, plus respondents who chose **My Kingdom and How Long I've Been Playing** and named that
+  kingdom. Anonymous responses can't be attributed to a kingdom, so they're left out.
+- A **park's** shared view counts respondents who chose **Any ORK Data** and whose home park at the
+  time was that park. Only Any ORK Data records a park, so that's the only choice a park's view
+  can count.
+
+The usual "fewer than 5 responses" protection still applies to a shared view — a chart, or a group
+within it, that would show fewer than 5 people is withheld the same way it is for the survey's own
+managers.
+
+---
+
+## Attendance credits
+
+A survey can post an automatic attendance credit to everyone who answers it and chooses to link
+their answers to their profile.
+
+**Who can turn it on.** The survey's own officers, and officers of any kingdom or park the survey
+reaches — for an Amtgard-wide survey, any kingdom or park in its audience; for a kingdom survey,
+the kingdom, its principalities, or any park in them; for a park survey, that park only. Each
+eligible org can turn on its own credit from the **Credits** action on the survey list, or the
+survey's own officers from the **Attendance credit** card in the builder.
+
+**The two modes.**
+
+- **At the player's home park, on the day they took the survey.** Credits use each respondent's
+  home park at the time they answered and the date they submitted.
+- **At a new event**, created automatically and named after the survey, on the day the survey
+  first opened (or the day it opens, if it hasn't yet). Credits use that event's date and park.
+
+**Only Any ORK Data earns a credit.** A respondent who chooses My Kingdom and How Long I've Been
+Playing or Anonymous Only is never credited, because there's no profile to attach it to. Anyone
+answering a survey that offers a credit is told so, right on the consent screen, before they
+choose.
+
+**One credit per player per survey.** If more than one org turns credits on for the same survey —
+say, a kingdom and one of its parks — a player only ever gets one credit for it. Whichever org
+turned its credit on first covers that player, even if a later org's credit would have covered
+them too.
+
+**It can't be turned off.** Once an org turns its credit on, that's permanent: no disabling it,
+no switching modes, no deleting the config. It isn't retroactive to anyone the survey already
+credited under an earlier config, either.
+
+**Credits post automatically**, both for people who already answered when the credit turns on and
+for everyone who answers afterward. An individual credit, once posted, is an ordinary attendance
+entry — an officer can edit or delete it the same way they would any other attendance credit.
+
+**Known effects to keep in mind:**
+
+- A survey credit still only counts as one attendance for the day, the same as any other
+  attendance entry — it doesn't stack with a park sign-in on the same day.
+- Survey credits count toward a player's park attendance the same as any other credit.
+- A survey credit is public on the player's attendance record, the same as any other credit —
+  it isn't hidden the way the survey's own answers are.
+
+---
+
 ## The data gate: what players choose, and who sees what
 
 Every survey ends with a **data gate** unless you turn it off under Privacy. Its wording is fixed.

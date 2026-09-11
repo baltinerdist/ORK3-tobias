@@ -20,7 +20,7 @@ if (!defined('ORK_VERSION')) {
 // version matches the ORK_VERSION above, and that the date is in YYYY-MM-DD format and matches the WHATS_NEW_VERSION above.
 $WHATS_NEW_ITEMS = [
     ['version' => '3.5.6 Survey', 'date' => '2026-09-10', 'items' => [
-        ['icon' => 'fas fa-square-poll-vertical', 'title' => 'Surveys', 'body' => 'Kingdoms and parks can now build their own mobile-friendly surveys, right down to a welcome screen, branching pages, and a Highcharts-powered results dashboard with filters and CSV export. Every survey ends with a data gate letting the respondent choose how much of their identity is attached to their answers, and reporting always respects that choice.'],
+        ['icon' => 'fas fa-square-poll-vertical', 'title' => 'Surveys', 'body' => 'Kingdoms and parks can now build their own mobile-friendly surveys, right down to a welcome screen, branching pages, and a Highcharts-powered results dashboard with filters and CSV export. Every survey ends with a data gate letting the respondent choose how much of their identity is attached to their answers, and reporting always respects that choice. Kingdoms and parks see surveys from every level, and can be shared results for their own players. Reward respondents with an attendance credit at their home park or a Survey Credit event.'],
     ]],
     ['version' => '3.5.5 Hydra', 'date' => '2026-08-22', 'items' => [
         ['icon' => 'fas fa-bug-slash', 'title' => 'Cutting Off Technical Issues One Head at a Time', 'body' => 'Hydra is all about enhancing the engine underneath the ORK to ensure it runs smoothly. You won\'t notice most of what Hydra has accomplished under the hood, but it will make the system easier to maintain and update over time.'],
