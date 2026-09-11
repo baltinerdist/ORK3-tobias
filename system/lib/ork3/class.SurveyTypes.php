@@ -21,13 +21,13 @@ final class SurveyTypes
 {
     /** Every question type, in builder palette order. */
     public const TYPES = [
-        'single', 'multi', 'dropdown', 'yesno', 'rating', 'nps', 'matrix', 'ranking',
+        'single', 'multi', 'dropdown', 'yesno', 'rating', 'nps', 'matrix', 'ranking', 'pairwise',
         'short_text', 'paragraph', 'number', 'date', 'section', 'image',
     ];
 
     /** Types that record answers (TYPES minus the presentational 'section' and 'image'). */
     public const ANSWERABLE = [
-        'single', 'multi', 'dropdown', 'yesno', 'rating', 'nps', 'matrix', 'ranking',
+        'single', 'multi', 'dropdown', 'yesno', 'rating', 'nps', 'matrix', 'ranking', 'pairwise',
         'short_text', 'paragraph', 'number', 'date',
     ];
 
@@ -42,6 +42,7 @@ final class SurveyTypes
         'yesno'    => ['choice'],
         'matrix'   => ['row', 'column'],
         'ranking'  => ['choice'],
+        'pairwise' => ['choice'],
     ];
 
     /** Maximum stored length of an "Other (please specify)" write-in (column is VARCHAR(255)). */
@@ -51,6 +52,22 @@ final class SurveyTypes
     public const NPS_MIN = 0;
     public const NPS_MAX = 10;
 
+    /** A pairwise set at or under this many matchups shows the plain bar; a required one needs every matchup. */
+    public const PAIRWISE_SMALL_MAX = 30;
+
+    /**
+     * Encouragement bands for a pairwise question by its matchup count (pairwise
+     * spec P5): [upper bound or null, [tier 1..4 percent]]. Tier 1 is the gate a
+     * REQUIRED respondent must reach. survey-render.js mirrors this table as
+     * PW_BANDS; SurveyPairwisePlanScriptTest pins the two together.
+     */
+    public const PAIRWISE_BANDS = [
+        [105,  [30, 40, 50, 60]],
+        [200,  [20, 30, 40, 50]],
+        [300,  [10, 20, 30, 40]],
+        [null, [10, 15, 20, 25]],
+    ];
+
     public static function isType(string $type): bool
     {
         return in_array($type, self::TYPES, true);
@@ -59,6 +76,42 @@ final class SurveyTypes
     public static function isAnswerable(string $type): bool
     {
         return in_array($type, self::ANSWERABLE, true);
+    }
+
+    /**
+     * The matchup plan for a pairwise question with $optionCount options
+     * (pairwise spec §2). Tier counts are integer ceilings, so float rounding
+     * can never move a threshold.
+     *
+     * @return array{possible: int, small: bool, band_pcts: list<int>, tiers: list<int>, gate: int}
+     */
+    public static function pairwisePlan(int $optionCount): array
+    {
+        $n = max(0, $optionCount);
+        $possible = $n < 2 ? 0 : intdiv($n * ($n - 1), 2);
+        if ($possible <= self::PAIRWISE_SMALL_MAX) {
+            return ['possible' => $possible, 'small' => true, 'band_pcts' => [], 'tiers' => [], 'gate' => $possible];
+        }
+        $pcts = [];
+        foreach (self::PAIRWISE_BANDS as [$max, $bandPcts]) {
+            if (null === $max || $possible <= $max) {
+                $pcts = $bandPcts;
+                break;
+            }
+        }
+        $tiers = [];
+        foreach ($pcts as $pct) {
+            $tiers[] = intdiv($pct * $possible + 99, 100);
+        }
+        return ['possible' => $possible, 'small' => false, 'band_pcts' => $pcts, 'tiers' => $tiers, 'gate' => $tiers[0]];
+    }
+
+    /** What a REQUIRED pairwise question says below its gate (the runner copies it). */
+    public static function pairwiseGateMessage(array $plan): string
+    {
+        return !empty($plan['small'])
+            ? 'Please finish all ' . (int) $plan['possible'] . ' matchups to continue.'
+            : 'Please complete at least ' . (int) $plan['gate'] . ' matchups to continue.';
     }
 
     /**
@@ -260,6 +313,12 @@ final class SurveyTypes
                     ['role' => 'choice', 'label' => 'Option 1'],
                     ['role' => 'choice', 'label' => 'Option 2'],
                 ];
+            case 'pairwise':
+                return [
+                    ['role' => 'choice', 'label' => 'Option 1'],
+                    ['role' => 'choice', 'label' => 'Option 2'],
+                    ['role' => 'choice', 'label' => 'Option 3'],
+                ];
             case 'matrix':
                 return [
                     ['role' => 'row', 'label' => 'Row 1'],
@@ -287,6 +346,8 @@ final class SurveyTypes
             case 'yesno':
             case 'ranking':
                 return ['choice' => 2];
+            case 'pairwise':
+                return ['choice' => 3];
             case 'matrix':
                 return ['row' => 1, 'column' => 2];
             default:
@@ -316,6 +377,11 @@ final class SurveyTypes
         $required = !empty($question['required']);
         $sv = self::validateSettings($type, $question['settings'] ?? []);
         $settings = $sv['ok'] ? $sv['settings'] : self::defaultSettings($type);
+
+        // Pairwise owns its empty case: a required one names the gate, not "required".
+        if ('pairwise' === $type) {
+            return self::validatePairwise($options, $value, $required);
+        }
 
         if (self::isEmptyValue($value)) {
             if ($required) {
@@ -582,6 +648,60 @@ final class SurveyTypes
             return self::answerError('Please rank at least one option.');
         }
 
+        return self::answerOk($rows);
+    }
+
+    /**
+     * A list of {a, b, w} matchups in answer order (pairwise spec §3): a is the
+     * left option, b the right, w the winner's id or 0 for a tie. Each unordered
+     * pair may appear once. A REQUIRED question must reach the plan's gate; an
+     * optional one may be empty (skipped).
+     *
+     * @param  list<array<string, mixed>> $options
+     * @param  mixed $value
+     * @return array{ok: bool, error: ?string, rows: list<array<string, mixed>>}
+     */
+    private static function validatePairwise(array $options, $value, bool $required): array
+    {
+        $choiceIds = self::optionIds($options, 'choice');
+        $plan = self::pairwisePlan(count($choiceIds));
+
+        if (self::isEmptyValue($value)) {
+            return $required ? self::answerError(self::pairwiseGateMessage($plan)) : self::answerOk([]);
+        }
+        if (!is_array($value)) {
+            return self::answerError('Please make your picks again.');
+        }
+
+        $rows = [];
+        $seen = [];
+        foreach (array_values($value) as $entry) {
+            if (
+                !is_array($entry) || !isset($entry['a'], $entry['b'], $entry['w'])
+                || !is_numeric($entry['a']) || !is_numeric($entry['b']) || !is_numeric($entry['w'])
+            ) {
+                return self::answerError('Please make your picks again.');
+            }
+            $a = (int) $entry['a'];
+            $b = (int) $entry['b'];
+            $w = (int) $entry['w'];
+            if (!in_array($a, $choiceIds, true) || !in_array($b, $choiceIds, true)) {
+                return self::answerError('That option is not part of this question.');
+            }
+            if ($a === $b || (0 !== $w && $w !== $a && $w !== $b)) {
+                return self::answerError('Please make your picks again.');
+            }
+            $pair = min($a, $b) . ':' . max($a, $b);
+            if (isset($seen[$pair])) {
+                return self::answerError('Each matchup may be answered only once.');
+            }
+            $seen[$pair] = true;
+            $rows[] = self::row($a, $b, null, $w === $a ? 1.0 : (0 === $w ? 0.5 : 0.0));
+        }
+
+        if ($required && count($rows) < $plan['gate']) {
+            return self::answerError(self::pairwiseGateMessage($plan));
+        }
         return self::answerOk($rows);
     }
 

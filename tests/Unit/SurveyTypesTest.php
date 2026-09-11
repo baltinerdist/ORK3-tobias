@@ -28,14 +28,14 @@ final class SurveyTypesTest extends TestCase
     public function testTypesAndAnswerable(): void
     {
         $this->assertSame(
-            ['single','multi','dropdown','yesno','rating','nps','matrix','ranking',
+            ['single','multi','dropdown','yesno','rating','nps','matrix','ranking','pairwise',
                 'short_text','paragraph','number','date','section','image'],
             SurveyTypes::TYPES
         );
         $this->assertNotContains('section', SurveyTypes::ANSWERABLE);
         $this->assertNotContains('image', SurveyTypes::ANSWERABLE);
         $this->assertContains('single', SurveyTypes::ANSWERABLE);
-        $this->assertCount(12, SurveyTypes::ANSWERABLE);
+        $this->assertCount(13, SurveyTypes::ANSWERABLE);
 
         $this->assertTrue(SurveyTypes::isType('matrix'));
         $this->assertFalse(SurveyTypes::isType('bogus'));
@@ -45,6 +45,8 @@ final class SurveyTypesTest extends TestCase
 
         $this->assertSame(['single','dropdown','yesno','multi'], SurveyTypes::SHOW_IF_SOURCES);
         $this->assertSame(['row','column'], SurveyTypes::OPTION_ROLES['matrix']);
+        $this->assertNotContains('pairwise', SurveyTypes::SHOW_IF_SOURCES);
+        $this->assertSame(['choice'], SurveyTypes::OPTION_ROLES['pairwise']);
     }
 
     // ------------------------------------------------------- default settings
@@ -82,6 +84,7 @@ final class SurveyTypesTest extends TestCase
         $this->assertSame([], SurveyTypes::defaultSettings('section'));
         $this->assertSame(['caption' => ''], SurveyTypes::defaultSettings('image'));
         $this->assertSame([], SurveyTypes::defaultSettings('bogus'));
+        $this->assertSame([], SurveyTypes::defaultSettings('pairwise'));
     }
 
     // ---------------------------------------------------- settings validation
@@ -177,6 +180,7 @@ final class SurveyTypesTest extends TestCase
         $this->assertSame(['row' => 1, 'column' => 2], SurveyTypes::minOptions('matrix'));
         $this->assertSame([], SurveyTypes::minOptions('rating'));
         $this->assertSame([], SurveyTypes::minOptions('section'));
+        $this->assertSame(['choice' => 3], SurveyTypes::minOptions('pairwise'));
     }
 
     // -------------------------------------------------------- answer: choices
@@ -517,5 +521,140 @@ final class SurveyTypesTest extends TestCase
         $this->assertFalse(SurveyTypes::selects([], 10));
         $this->assertFalse(SurveyTypes::selects(null, 10));
         $this->assertFalse(SurveyTypes::selects('hello', 10));
+    }
+
+    // --------------------------------------------------------------- pairwise
+
+    /** @return list<array{option_id:int,role:string,is_other:int,label:string}> */
+    private function pairwiseOptions(int $count): array
+    {
+        $out = [];
+        for ($i = 0; $i < $count; $i++) {
+            $out[] = ['option_id' => 100 + $i, 'role' => 'choice', 'is_other' => 0, 'label' => 'O' . $i];
+        }
+        return $out;
+    }
+
+    public function testPairwiseSeedsThreeOptionsAndDropsSettings(): void
+    {
+        $this->assertSame(
+            [
+                ['role' => 'choice', 'label' => 'Option 1'],
+                ['role' => 'choice', 'label' => 'Option 2'],
+                ['role' => 'choice', 'label' => 'Option 3'],
+            ],
+            SurveyTypes::seedOptions('pairwise')
+        );
+        $v = SurveyTypes::validateSettings('pairwise', ['randomize' => true]);
+        $this->assertTrue($v['ok']);
+        $this->assertSame([], $v['settings']);
+    }
+
+    /** Every band boundary (spec §2 worked values): 28/36, 105/120, 190/210, 300/325. */
+    public function testPairwisePlanAtEveryBandBoundary(): void
+    {
+        $expect = [
+            0  => [0, true, [], [], 0],
+            1  => [0, true, [], [], 0],
+            2  => [1, true, [], [], 1],
+            3  => [3, true, [], [], 3],
+            8  => [28, true, [], [], 28],
+            9  => [36, false, [30, 40, 50, 60], [11, 15, 18, 22], 11],
+            12 => [66, false, [30, 40, 50, 60], [20, 27, 33, 40], 20],
+            15 => [105, false, [30, 40, 50, 60], [32, 42, 53, 63], 32],
+            16 => [120, false, [20, 30, 40, 50], [24, 36, 48, 60], 24],
+            20 => [190, false, [20, 30, 40, 50], [38, 57, 76, 95], 38],
+            21 => [210, false, [10, 20, 30, 40], [21, 42, 63, 84], 21],
+            25 => [300, false, [10, 20, 30, 40], [30, 60, 90, 120], 30],
+            26 => [325, false, [10, 15, 20, 25], [33, 49, 65, 82], 33],
+            30 => [435, false, [10, 15, 20, 25], [44, 66, 87, 109], 44],
+        ];
+        foreach ($expect as $n => [$possible, $small, $pcts, $tiers, $gate]) {
+            $this->assertSame(
+                ['possible' => $possible, 'small' => $small, 'band_pcts' => $pcts, 'tiers' => $tiers, 'gate' => $gate],
+                SurveyTypes::pairwisePlan($n),
+                'n=' . $n
+            );
+        }
+    }
+
+    public function testPairwiseGateMessages(): void
+    {
+        $this->assertSame('Please finish all 15 matchups to continue.', SurveyTypes::pairwiseGateMessage(SurveyTypes::pairwisePlan(6)));
+        $this->assertSame('Please complete at least 20 matchups to continue.', SurveyTypes::pairwiseGateMessage(SurveyTypes::pairwisePlan(12)));
+    }
+
+    public function testPairwiseValidAnswerBecomesOneRowPerMatchup(): void
+    {
+        $q = ['type' => 'pairwise', 'required' => 0];
+        $r = SurveyTypes::validateAnswer($q, $this->pairwiseOptions(3), [
+            ['a' => 100, 'b' => 101, 'w' => 100],
+            ['a' => 102, 'b' => 100, 'w' => 0],
+            ['a' => 101, 'b' => 102, 'w' => 102],
+        ]);
+        $this->assertTrue($r['ok'], (string) $r['error']);
+        $this->assertSame([
+            ['option_id' => 100, 'row_option_id' => 101, 'value_text' => null, 'value_num' => 1.0],
+            ['option_id' => 102, 'row_option_id' => 100, 'value_text' => null, 'value_num' => 0.5],
+            ['option_id' => 101, 'row_option_id' => 102, 'value_text' => null, 'value_num' => 0.0],
+        ], $r['rows']);
+    }
+
+    public function testPairwiseRejectsBadEntries(): void
+    {
+        $q = ['type' => 'pairwise', 'required' => 0];
+        $opts = $this->pairwiseOptions(3);
+        $cases = [
+            'unknown option' => [[['a' => 100, 'b' => 999, 'w' => 100]], 'That option is not part of this question.'],
+            'same option'    => [[['a' => 100, 'b' => 100, 'w' => 100]], 'Please make your picks again.'],
+            'bad winner'     => [[['a' => 100, 'b' => 101, 'w' => 102]], 'Please make your picks again.'],
+            'not a list'     => ['hello', 'Please make your picks again.'],
+            'missing key'    => [[['a' => 100, 'b' => 101]], 'Please make your picks again.'],
+            'repeat pair'    => [[['a' => 100, 'b' => 101, 'w' => 100], ['a' => 101, 'b' => 100, 'w' => 0]], 'Each matchup may be answered only once.'],
+        ];
+        foreach ($cases as $label => [$value, $error]) {
+            $r = SurveyTypes::validateAnswer($q, $opts, $value);
+            $this->assertFalse($r['ok'], $label);
+            $this->assertSame($error, $r['error'], $label);
+        }
+    }
+
+    public function testPairwiseRequiredGate(): void
+    {
+        // 9 options = 36 matchups, gate 11.
+        $opts = $this->pairwiseOptions(9);
+        $pairs = [];
+        for ($i = 0; $i < 9; $i++) {
+            for ($j = $i + 1; $j < 9; $j++) {
+                $pairs[] = ['a' => 100 + $i, 'b' => 100 + $j, 'w' => 0];
+            }
+        }
+        $req = ['type' => 'pairwise', 'required' => 1];
+
+        $below = SurveyTypes::validateAnswer($req, $opts, array_slice($pairs, 0, 10));
+        $this->assertFalse($below['ok']);
+        $this->assertSame('Please complete at least 11 matchups to continue.', $below['error']);
+
+        $at = SurveyTypes::validateAnswer($req, $opts, array_slice($pairs, 0, 11));
+        $this->assertTrue($at['ok']);
+        $this->assertCount(11, $at['rows']);
+
+        $empty = SurveyTypes::validateAnswer($req, $opts, []);
+        $this->assertSame('Please complete at least 11 matchups to continue.', $empty['error']);
+
+        $optional = SurveyTypes::validateAnswer(['type' => 'pairwise', 'required' => 0], $opts, []);
+        $this->assertTrue($optional['ok']);
+        $this->assertSame([], $optional['rows']);
+    }
+
+    public function testPairwiseSmallRequiredSetNeedsEveryMatchup(): void
+    {
+        $opts = $this->pairwiseOptions(3);   // 3 matchups
+        $req = ['type' => 'pairwise', 'required' => 1];
+        $two = SurveyTypes::validateAnswer($req, $opts, [
+            ['a' => 100, 'b' => 101, 'w' => 100],
+            ['a' => 100, 'b' => 102, 'w' => 100],
+        ]);
+        $this->assertSame('Please finish all 3 matchups to continue.', $two['error']);
     }
 }
