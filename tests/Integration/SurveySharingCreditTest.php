@@ -226,4 +226,29 @@ final class SurveySharingCreditTest extends TestCase
         $this->assertSame(1, Ork3::$Lib->attendance->AddSystemCredit($base + ['EntryMethod' => 'manual'])['Status']);
         $this->assertSame(1, Ork3::$Lib->attendance->AddSystemCredit(['Date' => 'nope', 'EntryMethod' => 'survey'] + $base)['Status']);
     }
+
+    public function testCreateSystemEventMakesAOneDayPublishedParkEvent(): void
+    {
+        $r = Ork3::$Lib->eventplanning->CreateSystemEvent([
+            'KingdomId' => $this->kOther,            // ignored for a park event
+            'ParkId' => $this->parkA, 'Name' => 'Survey Credit - T11SHARE', 'Date' => '2026-09-05',
+            'Description' => 'desc', 'Url' => 'javascript:alert(1)', 'UrlName' => 'Take the survey',
+        ]);
+        $this->assertSame(0, $r['Status'], (string) ($r['Error'] ?? ''));
+        $e = $this->pdo->query('SELECT * FROM ' . DB_PREFIX . 'event WHERE event_id = ' . (int) $r['EventId'])->fetch(PDO::FETCH_ASSOC);
+        $d = $this->pdo->query('SELECT * FROM ' . DB_PREFIX . 'event_calendardetail WHERE event_calendardetail_id = ' . (int) $r['DetailId'])->fetch(PDO::FETCH_ASSOC);
+        try {
+            $this->assertSame((string) $this->k, (string) $e['kingdom_id'], 'kingdom comes from the park');
+            $this->assertSame((string) $this->parkA, (string) $e['park_id']);
+            $this->assertSame('published', $e['status']);
+            $this->assertSame('2026-09-05 00:00:00', $d['event_start']);
+            $this->assertSame('2026-09-05 23:59:59', $d['event_end']);
+            $this->assertSame((string) $this->parkA, (string) $d['at_park_id']);
+            $this->assertSame('Other', $d['event_type']);
+            $this->assertSame('', $d['url'], 'non-http(s) URLs are dropped');
+        } finally {
+            $this->pdo->exec('DELETE FROM ' . DB_PREFIX . 'event_calendardetail WHERE event_id = ' . (int) $r['EventId']);
+            $this->pdo->exec('DELETE FROM ' . DB_PREFIX . 'event WHERE event_id = ' . (int) $r['EventId']);
+        }
+    }
 }

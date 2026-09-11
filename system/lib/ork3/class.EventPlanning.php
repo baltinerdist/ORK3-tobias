@@ -1495,6 +1495,84 @@ class EventPlanning extends Ork3
         ];
     }
 
+    /**
+     * Create a published one-day event + occurrence on the SYSTEM's behalf
+     * (survey credit events, sharing-and-credits spec §3.4).
+     *
+     * NO TOKEN AND NO AUTHORITY CHECK: the caller (SurveyCredit) has already
+     * authorized it. Raw inserts like CreateEventWithCopy: every NOT NULL column
+     * named (sql_mode=''), no geocoding call, scope caches busted. A park event's
+     * kingdom is always the park's own. The one-day window keeps the attendance
+     * pages from offering it as "currently happening". Opens its own
+     * transaction: never call it inside another.
+     */
+    public function CreateSystemEvent(array $r): array
+    {
+        $parkId    = (int) ($r['ParkId'] ?? 0);
+        $kingdomId = (int) ($r['KingdomId'] ?? 0);
+        $name      = mb_substr(trim((string) ($r['Name'] ?? '')), 0, 100);
+        $ts        = strtotime((string) ($r['Date'] ?? ''));
+        if ($parkId > 0) {
+            $this->db->Clear();
+            $pk = $this->db->DataSet('SELECT kingdom_id FROM ' . DB_PREFIX . 'park WHERE park_id = ' . $parkId . ' LIMIT 1');
+            $kingdomId = ($pk && $pk->Next()) ? (int) $pk->kingdom_id : 0;
+        }
+        if ($kingdomId <= 0 || $name === '' || !$ts) {
+            return ['Status' => 1, 'Error' => 'Invalid system event request.'];
+        }
+
+        $day = date('Y-m-d', $ts);
+        $url = trim((string) ($r['Url'] ?? ''));
+        if ($url !== '' && !in_array(strtolower((string) parse_url($url, PHP_URL_SCHEME)), ['http', 'https'], true)) {
+            $url = '';
+        }
+
+        $this->db->Clear();
+        $this->db->Execute('START TRANSACTION');
+        $this->db->Clear();
+        $ok = $this->db->ExecuteChecked(
+            'INSERT INTO ' . DB_PREFIX . "event (kingdom_id, park_id, mundane_id, unit_id, name, has_heraldry, status)
+             VALUES (" . $kingdomId . ', ' . $parkId . ", 0, 0, '" . $this->sq($name) . "', 0, 'published')"
+        );
+        $eventId = $ok ? $this->lastId() : 0;
+        if ($eventId <= 0) {
+            $this->db->Clear();
+            $this->db->Execute('ROLLBACK');
+            return ['Status' => 1, 'Error' => 'The event could not be created.'];
+        }
+
+        $this->db->Clear();
+        $ok = $this->db->ExecuteChecked(
+            'INSERT INTO ' . DB_PREFIX . "event_calendardetail
+             (event_id, at_park_id, current, price, event_start, event_end, description, url, url_name,
+              address, province, postal_code, city, country, map_url, map_url_name,
+              google_geocode, location, latitude, longitude, event_type)
+             VALUES (" . $eventId . ', ' . ($parkId > 0 ? $parkId : 'NULL') . ", 1, 0, '"
+            . $day . " 00:00:00', '" . $day . " 23:59:59', '" . $this->sq((string) ($r['Description'] ?? '')) . "', '"
+            . $this->sq($url) . "', '" . $this->sq(mb_substr((string) ($r['UrlName'] ?? ''), 0, 40)) . "',
+              '', '', '', '', '', '', '', '', '', 0, 0, 'Other')"
+        );
+        $detailId = $ok ? $this->lastId() : 0;
+        if ($detailId <= 0) {
+            $this->db->Clear();
+            $this->db->Execute('ROLLBACK');
+            return ['Status' => 1, 'Error' => 'The event occurrence could not be created.'];
+        }
+
+        $this->db->Clear();
+        $this->db->Execute('COMMIT');
+        $this->bustEventScopeCaches($eventId);
+
+        return ['Status' => 0, 'Error' => '', 'EventId' => $eventId, 'DetailId' => $detailId];
+    }
+
+    private function lastId(): int
+    {
+        $this->db->Clear();
+        $rs = $this->db->DataSet('SELECT LAST_INSERT_ID() AS new_id');
+        return ($rs && $rs->Next()) ? (int) $rs->new_id : 0;
+    }
+
     public function ScheduleFeastAllowed(int $mundaneId, int $eventId, int $detailId, string $category): bool
     {
         $isFeast = ($category === 'Feast and Food');
