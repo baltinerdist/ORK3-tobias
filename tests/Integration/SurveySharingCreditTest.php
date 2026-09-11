@@ -494,7 +494,25 @@ final class SurveySharingCreditTest extends TestCase
         }
         $name = (string) $this->scalar('SELECT name FROM ' . DB_PREFIX . 'event WHERE event_id = ' . (int) $cfg['event_id']);
         $this->assertSame('Survey Credit - T11SHARE survey', $name);
-        $this->assertSame('1', (string) $this->scalar('SELECT COUNT(*) FROM ' . DB_PREFIX . 'event WHERE name = ' . $this->pdo->quote($name) . ' AND event_id = ' . (int) $cfg['event_id']));
+        // Exactly one (§8), counted by name in the grantor kingdom, not by the
+        // config's own id, so an orphan left by a re-created event would show.
+        $kingdomEvents = fn (): int => (int) $this->scalar('SELECT COUNT(*) FROM ' . DB_PREFIX . 'event WHERE kingdom_id = ' . $this->k
+            . ' AND park_id = 0 AND name = ' . $this->pdo->quote($name));
+        $this->assertSame(1, $kingdomEvents());
+        $ev = $this->pdo->query('SELECT e.status, cd.event_start, cd.event_end FROM ' . DB_PREFIX . 'event e
+                                 JOIN ' . DB_PREFIX . 'event_calendardetail cd ON cd.event_id = e.event_id
+                                 WHERE e.event_id = ' . (int) $cfg['event_id'])->fetchAll(PDO::FETCH_ASSOC);
+        $this->assertCount(1, $ev, 'one occurrence');
+        $this->assertSame('published', $ev[0]['status']);
+        $this->assertSame($start . ' 00:00:00', $ev[0]['event_start'], 'one day: the start date');
+        $this->assertSame($start . ' 23:59:59', $ev[0]['event_end']);
+
+        // Reconcile is idempotent in event mode too: the linked event is reused.
+        $this->assertSame(['Granted' => 0, 'SkippedNoPark' => 0, 'Pending' => 0], $this->credit()->reconcile($ks));
+        $this->assertSame(['Granted' => 0, 'SkippedNoPark' => 0, 'Pending' => 0], $this->credit()->reconcile($ks));
+        $this->assertSame(1, $kingdomEvents(), 'a second reconcile creates no second event');
+        $this->assertSame((string) $cfg['event_calendardetail_id'], (string) $this->scalar('SELECT event_calendardetail_id FROM ' . DB_PREFIX
+            . 'survey_credit WHERE credit_id = ' . (int) $cfg['credit_id']), 'the config keeps its event');
 
         // The one-day event covers its own start date (today here), yet the
         // attendance pages' "currently happening" nudge must never offer it (§3.4):

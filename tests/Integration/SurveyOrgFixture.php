@@ -51,6 +51,16 @@ trait SurveyOrgFixture
             $this->pdo->exec("DELETE FROM {$p}survey_page WHERE survey_id = {$sid}");
             $this->pdo->exec("DELETE FROM {$p}survey WHERE survey_id = {$sid}");
         }
+        // Generated credit events no config links any more (a regression's
+        // orphans) would otherwise outlive the fixture kingdoms.
+        foreach ($this->fx['kingdom'] as $kid) {
+            foreach ($this->pdo->query("SELECT event_id FROM {$p}event WHERE kingdom_id = " . (int) $kid
+                . " AND name LIKE 'Survey Credit - T11SHARE%'")->fetchAll(PDO::FETCH_COLUMN) as $eid) {
+                $this->pdo->exec("DELETE FROM {$p}attendance WHERE event_id = " . (int) $eid);
+                $this->pdo->exec("DELETE FROM {$p}event_calendardetail WHERE event_id = " . (int) $eid);
+                $this->pdo->exec("DELETE FROM {$p}event WHERE event_id = " . (int) $eid);
+            }
+        }
         foreach ($this->fx['auth'] as $id) {
             $this->pdo->exec("DELETE FROM {$p}authorization WHERE authorization_id = " . (int) $id);
         }
