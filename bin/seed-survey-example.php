@@ -217,7 +217,7 @@ function seed_plan(): array
                     'key'     => 'q9p',
                     'type'    => 'pairwise',
                     'prompt'  => 'Which event should the kingdom add next?',
-                    'help'    => 'Pick the one you would rather attend, or call it a tie. Do as many as you like.',
+                    'help'    => 'The calendar has room for one new event next year. Think about which one you would travel to.',
                     'choices' => [
                         ['label' => 'Spring war'], ['label' => 'Tournament of champions'], ['label' => 'Quest weekend'],
                         ['label' => 'Fall feast'], ['label' => 'Camping campaign'], ['label' => 'Fighter practice weekend'],
