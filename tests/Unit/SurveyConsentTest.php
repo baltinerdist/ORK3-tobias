@@ -34,6 +34,7 @@ final class SurveyConsentTest extends TestCase
         return [
             'mundane_id'       => 46193,
             'kingdom_id'       => 17,
+            'park_id'          => 1049,
             'tenure_months'    => 87,
             'started_at'       => '2026-09-09 14:02:11',
             'submitted_at'     => '2026-09-09 14:09:40',
@@ -252,5 +253,29 @@ final class SurveyConsentTest extends TestCase
         $this->assertSame('anonymous', SurveyResponse::effectiveConsent(true, 'FULL', false));
         $this->assertSame('anonymous', SurveyResponse::effectiveConsent(true, '', false));
         $this->assertSame('anonymous', SurveyResponse::effectiveConsent(true, 'everything', false));
+    }
+
+    public function testParkSnapshotSurvivesOnlyFullConsent(): void
+    {
+        $row = [
+            'mundane_id' => 5, 'kingdom_id' => 17, 'park_id' => 1049, 'tenure_months' => 40,
+            'started_at' => '2026-09-10 10:00:00', 'submitted_at' => '2026-09-10 10:05:00', 'duration_seconds' => 300,
+        ];
+        $this->assertSame(1049, SurveyResponse::scrubForConsent($row, 'full')['park_id']);
+        $this->assertNull(SurveyResponse::scrubForConsent($row, 'partial')['park_id']);
+        $this->assertNull(SurveyResponse::scrubForConsent($row, 'anonymous')['park_id']);
+    }
+
+    public function testScrubAddsAMissingParkKeyAsNull(): void
+    {
+        $out = SurveyResponse::scrubForConsent(['mundane_id' => 5, 'submitted_at' => '2026-09-10 10:05:00'], 'full');
+        $this->assertArrayHasKey('park_id', $out);
+        $this->assertNull($out['park_id']);
+    }
+
+    public function testKingdomIdListIsPublicAndDecodesLists(): void
+    {
+        $this->assertNull(SurveyResponse::kingdomIdList(null));
+        $this->assertSame([17, 4], SurveyResponse::kingdomIdList('[17,4]'));
     }
 }

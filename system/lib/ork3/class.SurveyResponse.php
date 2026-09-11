@@ -78,7 +78,7 @@ class SurveyResponse
      * through untouched, and the six it does name are always present in the
      * result so a caller cannot accidentally omit one from its INSERT.
      *
-     * @param  array<string, mixed> $row      mundane_id, kingdom_id, tenure_months,
+     * @param  array<string, mixed> $row      mundane_id, kingdom_id, park_id, tenure_months,
      *                                        started_at, submitted_at ('Y-m-d H:i:s'),
      *                                        duration_seconds
      * @param  string               $consent  one of self::CONSENTS
@@ -92,7 +92,7 @@ class SurveyResponse
             throw new InvalidArgumentException('Unknown consent level: ' . $consent);
         }
 
-        foreach (['mundane_id', 'kingdom_id', 'tenure_months', 'started_at', 'submitted_at', 'duration_seconds'] as $k) {
+        foreach (['mundane_id', 'kingdom_id', 'park_id', 'tenure_months', 'started_at', 'submitted_at', 'duration_seconds'] as $k) {
             if (!array_key_exists($k, $row)) {
                 $row[$k] = null;
             }
@@ -102,10 +102,11 @@ class SurveyResponse
             return $row;
         }
 
-        // partial and anonymous both lose the profile link, the start time, the
-        // exact clock time of the submission and how long it took (a duration is
-        // not something the partial copy promises to keep).
+        // partial and anonymous both lose the profile link, the home-park
+        // snapshot (a park is a far smaller crowd than a kingdom; sharing spec
+        // D3), the start time, the exact clock time and the duration.
         $row['mundane_id']       = null;
+        $row['park_id']          = null;
         $row['started_at']       = null;
         $row['submitted_at']     = self::truncateToDay($row['submitted_at']);
         $row['duration_seconds'] = null;
@@ -510,7 +511,7 @@ class SurveyResponse
      * @param  mixed $raw
      * @return ?list<int>
      */
-    private static function kingdomIdList($raw): ?array
+    public static function kingdomIdList($raw): ?array
     {
         if (null === $raw) {
             return null;
@@ -1229,6 +1230,7 @@ class SurveyResponse
         $row = self::scrubForConsent([
             'mundane_id'       => $uid,
             'kingdom_id'       => $player ? (int) $player['kingdom_id'] : null,
+            'park_id'          => ($player && (int) $player['park_id'] > 0) ? (int) $player['park_id'] : null,
             'tenure_months'    => $this->tenureMonths($uid),
             'started_at'       => ($draft && !empty($draft['started_at'])) ? $draft['started_at'] : self::nowStamp(),
             'submitted_at'     => self::nowStamp(),
@@ -1242,11 +1244,12 @@ class SurveyResponse
         error_clear_last(); // so rollback() reports THIS statement's PDO warning, not an older one
         $ok = $this->exec(
             'INSERT INTO ' . DB_PREFIX . 'survey_response
-             (survey_id, consent, mundane_id, kingdom_id, tenure_months, is_test, started_at, submitted_at, duration_seconds)
+             (survey_id, consent, mundane_id, kingdom_id, park_id, tenure_months, is_test, started_at, submitted_at, duration_seconds)
              VALUES (' . $surveyId . ',
                      \'' . $storedConsent . '\',
                      ' . self::sqlInt($row['mundane_id']) . ',
                      ' . self::sqlInt($row['kingdom_id']) . ',
+                     ' . self::sqlInt($row['park_id']) . ',
                      ' . self::sqlInt($row['tenure_months']) . ',
                      ' . ($isTest ? 1 : 0) . ',
                      ' . $this->sqlStr($row['started_at']) . ',
