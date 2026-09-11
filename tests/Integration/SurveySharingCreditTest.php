@@ -183,6 +183,13 @@ final class SurveySharingCreditTest extends TestCase
         $this->assertFalse((bool) $out['summary']['suppressed']);
         $this->assertNull($out['summary']['starts']);
         $this->assertNull($out['summary']['excluded_anonymous']);
+        $this->assertSame(['label' => 'kingdom'], $out['summary']['lens'], 'summary.lens = {label} (spec §5)');
+        $this->assertSame($acc['label'], $out['summary']['lens']['label'], 'the JSON label agrees with resultsAccess');
+
+        (new Survey())->update($os, ['ResultsShare' => 'all']);
+        $all = (new Survey())->resultsAccess($this->kOfficer, $this->row($os), ['type' => 'kingdom', 'id' => $this->k]);
+        $this->assertSame(['label' => 'all'], (new SurveyReport())->sharedResults($os, [], $all['lens'])['summary']['lens']);
+        $this->assertArrayNotHasKey('lens', (new SurveyReport())->summary($os, SurveyReport::normalizeFilters([])), 'a manager view carries no lens');
     }
 
     public function testParkLensCountsOnlyAnyOrkDataFromThatParkAndSuppressesUnderFive(): void
@@ -196,6 +203,7 @@ final class SurveySharingCreditTest extends TestCase
         $out = (new SurveyReport())->sharedResults($ks, [], $acc['lens']);
         $this->assertSame(2, (int) $out['summary']['responses']);
         $this->assertTrue((bool) $out['summary']['suppressed'], 'a lens view under 5 is suppressed');
+        $this->assertSame(['label' => 'park'], $out['summary']['lens']);
     }
 
     public function testAddSystemCreditWritesEveryColumnAndBustsNothingElse(): void

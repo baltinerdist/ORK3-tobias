@@ -681,7 +681,13 @@ class Controller_SurveyAjax extends Controller
             ? $this->Survey->results($surveyId, $filters)
             : $this->Survey->shared_results($surveyId, $filters, $access['lens']);
 
-        $this->jsonOut(['status' => 0, 'summary' => $out['summary'], 'questions' => $out['questions'], 'access' => $access['level']]);
+        // summary.lens is {label} for a shared viewer (spec §5), null for a manager.
+        $this->jsonOut([
+            'status'    => 0,
+            'summary'   => $out['summary'] + ['lens' => null],
+            'questions' => $out['questions'],
+            'access'    => $access['level'],
+        ]);
     }
 
     public function rows($p = null)

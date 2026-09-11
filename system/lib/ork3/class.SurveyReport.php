@@ -247,12 +247,30 @@ class SurveyReport
         return $summary;
     }
 
-    /** Charts and stats for a shared viewer (sharing spec §2): lens folded in, survey-wide counts removed. */
+    /**
+     * PURE. Which lens a shared viewer reads through, the same key
+     * Survey::resultsAccess() labels it with: 'park', 'kingdom', or 'all' for
+     * an unfiltered share.
+     */
+    public static function lensLabel(array $lens): string
+    {
+        if (!empty($lens['park_id'])) {
+            return 'park';
+        }
+        return !empty($lens['kingdom_ids']) ? 'kingdom' : 'all';
+    }
+
+    /**
+     * Charts and stats for a shared viewer (sharing spec §2): lens folded in,
+     * survey-wide counts removed, and summary.lens = {label} (§5) so the page
+     * can say whose players it is looking at.
+     */
     public function sharedResults(int $surveyId, $filters, array $lens): array
     {
         $f   = self::applyLens($filters, $lens);
         $out = $this->aggregate($surveyId, $f);
         $out['summary'] = self::redactForLens($this->summary($surveyId, $f), $lens);
+        $out['summary']['lens'] = ['label' => self::lensLabel($lens)];
         return $out;
     }
 

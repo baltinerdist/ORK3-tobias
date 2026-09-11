@@ -936,4 +936,12 @@ final class SurveyAggregateTest extends TestCase
         }
         $this->assertSame($summary, SurveyReport::redactForLens($summary, ['shared' => true]));
     }
+
+    public function testLensLabelMatchesTheAccessLabels(): void
+    {
+        $this->assertSame('park', SurveyReport::lensLabel(['shared' => true, 'park_id' => 1049]));
+        $this->assertSame('kingdom', SurveyReport::lensLabel(['shared' => true, 'kingdom_ids' => [17, 44]]));
+        $this->assertSame('all', SurveyReport::lensLabel(['shared' => true]));
+        $this->assertSame('all', SurveyReport::lensLabel(['shared' => true, 'kingdom_ids' => [], 'park_id' => 0]));
+    }
 }
