@@ -488,6 +488,86 @@ final class SurveySharingCreditTest extends TestCase
         }
     }
 
+    /** Run bin/survey-credit-sweep.php in a clean CLI process against the sandbox. */
+    private function runSweep(array $env, array $args = []): array
+    {
+        // Host-side PHP has no memcached extension; startup constructs Ghettocache
+        // unconditionally, so the child gets the same stub tests/bootstrap.php uses.
+        $prepend = null;
+        $php = [PHP_BINARY, '-d', 'error_reporting=8191'];   // E_ALL minus deprecations; warnings still show
+        if (!extension_loaded('memcached')) {
+            $prepend = tempnam(sys_get_temp_dir(), 'sweepstub');
+            file_put_contents($prepend, '<?php if (!class_exists("Memcached", false)) { class Memcached {
+                public function addServer($h, $p) { return true; }
+                public function get($k) { return false; }
+                public function set($k, $v, $e = 0) { return true; }
+                public function delete($k) { return true; }
+                public function getStats() { return ["localhost:11211" => ["time" => time()]]; }
+            } }');
+            array_push($php, '-d', 'auto_prepend_file=' . $prepend);
+        }
+        $cmd = array_merge($php, [ORK3_ROOT . '/bin/survey-credit-sweep.php'], $args);
+        $env = $env + ['ENVIRONMENT' => 'TEST', 'PATH' => (string) getenv('PATH')];
+        foreach (['ORK3_TEST_DB_HOST', 'ORK3_TEST_DB_PORT'] as $k) {
+            if (getenv($k) !== false) {
+                $env[$k] = (string) getenv($k);
+            }
+        }
+        // Files, not pipes: a full pipe the parent is not draining deadlocks the child.
+        $outFile = tempnam(sys_get_temp_dir(), 'sweep');
+        $errFile = tempnam(sys_get_temp_dir(), 'sweep');
+        $proc = proc_open($cmd, [1 => ['file', $outFile, 'w'], 2 => ['file', $errFile, 'w']], $pipes, ORK3_ROOT, $env);
+        $exit = proc_close($proc);
+        $out = (string) file_get_contents($outFile);
+        $err = (string) file_get_contents($errFile);
+        unlink($outFile);
+        unlink($errFile);
+        if ($prepend !== null) {
+            unlink($prepend);
+        }
+        return ['exit' => $exit, 'out' => $out, 'err' => $err];
+    }
+
+    /**
+     * The config builds every URL from $_SERVER['HTTP_HOST'], which the CLI does
+     * not have: the sweep used to print undefined-key warnings and create
+     * credit events whose survey link was dropped ('http:///orkui/...' has no
+     * scheme). It now requires the public host and refuses to run without it.
+     */
+    public function testSweepRequiresTheSiteHostAndLinksTheEventsItCreates(): void
+    {
+        $none = $this->runSweep([]);
+        $this->assertSame(2, $none['exit'], $none['out'] . $none['err']);
+        $this->assertStringContainsString('HTTP_HOST', $none['err']);
+        $this->assertStringNotContainsString('Undefined array key', $none['out'] . $none['err']);
+
+        $bad = $this->runSweep(['HTTP_HOST' => 'bad host/x']);
+        $this->assertSame(2, $bad['exit'], 'a malformed host is refused');
+
+        // An event-mode config whose survey opened without the setStatus hook,
+        // so the sweep is what creates the event.
+        $s = new Survey();
+        $sid = $this->fx['survey'][] = (int) $s->create($this->kOfficer, 'kingdom', $this->k, 'T11SHARE sweep')['SurveyId'];
+        $page = (int) $this->scalar('SELECT page_id FROM ' . DB_PREFIX . 'survey_page WHERE survey_id = ' . $sid . ' LIMIT 1');
+        $q = $s->questionAdd($sid, $page, 'single', null);
+        $s->questionUpdate((int) $q['Question']['question_id'], ['Prompt' => 'T11SHARE q']);
+        $en = $this->credit()->enable($this->kOfficer, $sid, ['type' => 'kingdom', 'id' => $this->k], 'event', true);
+        $this->assertSame(0, $en['Status'], (string) ($en['Error'] ?? ''));
+        $this->assertSame(0, (int) $this->scalar('SELECT COALESCE(event_id, 0) FROM ' . DB_PREFIX . 'survey_credit WHERE survey_id = ' . $sid));
+        $this->pdo->exec('UPDATE ' . DB_PREFIX . "survey SET status = 'open', opened_at = '2026-09-05 10:00:00' WHERE survey_id = " . $sid);
+
+        $run = $this->runSweep(['HTTP_HOST' => 'sweep.example.test']);
+        $this->assertSame(0, $run['exit'], $run['out'] . $run['err']);
+        $this->assertStringNotContainsString('Warning', $run['out'] . $run['err']);
+        $detail = (int) $this->scalar('SELECT COALESCE(event_calendardetail_id, 0) FROM ' . DB_PREFIX . 'survey_credit WHERE survey_id = ' . $sid);
+        $this->assertGreaterThan(0, $detail, 'the sweep created the event');
+        $slug = (string) $this->scalar('SELECT slug FROM ' . DB_PREFIX . 'survey WHERE survey_id = ' . $sid);
+        $this->assertSame(
+            'http://sweep.example.test/orkui/index.php?Route=Survey/s/' . $slug,
+            (string) $this->scalar('SELECT url FROM ' . DB_PREFIX . 'event_calendardetail WHERE event_calendardetail_id = ' . $detail)
+        );
+    }
+
     public function testRunnerSeesCreditAvailableOnlyWhenCovered(): void
     {
         $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);

@@ -11,8 +11,32 @@
  * harmless. Optional cron:
  *
  *     # /etc/cron.d/ork-survey-credit-sweep
- *     15 * * * * www-data /usr/bin/php /var/www/ORK3/bin/survey-credit-sweep.php >> /var/log/ork-survey-credit-sweep.log 2>&1
+ *     15 * * * * www-data HTTP_HOST=ork.amtgard.com /usr/bin/php /var/www/ORK3/bin/survey-credit-sweep.php >> /var/log/ork-survey-credit-sweep.log 2>&1
+ *
+ * The site's public host is required (HTTP_HOST in the environment, or
+ * --host=ork.amtgard.com). The config builds every URL from
+ * $_SERVER['HTTP_HOST'], which a CLI run does not have, and a credit event the
+ * sweep creates links to its survey through it; without a host that link would
+ * be dropped. Add HTTPS=on too when the site is served over TLS and its config
+ * is scheme-aware. Exits 2 when the host is missing or malformed.
  */
+
+$host = '';
+foreach (array_slice($argv ?? [], 1) as $arg) {
+    if (strncmp($arg, '--host=', 7) === 0) {
+        $host = substr($arg, 7);
+    }
+}
+if ($host === '') {
+    $host = (string) (getenv('HTTP_HOST') ?: '');
+}
+$host = strtolower(trim($host));
+if (!preg_match('/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::\d{1,5})?$/', $host)) {
+    fwrite(STDERR, "survey-credit-sweep: set the site's public host with HTTP_HOST=ork.amtgard.com or --host=ork.amtgard.com"
+        . " (credit events link to their survey through it).\n");
+    exit(2);
+}
+$_SERVER['HTTP_HOST'] = $host;
 
 require_once dirname(__DIR__) . '/startup.php';
 
