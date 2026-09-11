@@ -923,14 +923,19 @@
     }
 
     /* The ranking as a sortable table (tabular data = DataTables). Rank sorts
-       ascending by default; never-matched options sort last on every column. */
+       ascending by default; never-matched options sort last on every column,
+       in either direction: the hidden last column (0 ranked, 1 never matched)
+       is pinned ahead of whatever the reader sorts by (orderFixed.pre). */
+    var PW_SORTKEY_COL = 7;
+
     function pairwiseTableHtml(q) {
         var opts = (q.agg && q.agg.options) || [];
         var html = '<div class="svr-pw-tablewrap"><table class="display svr-pw-table" style="width:100%" ' +
             'aria-labelledby="svr-title-' + q.question_id + '"><thead><tr>' +
             '<th scope="col">Rank</th><th scope="col">Option</th><th scope="col">Win %</th>' +
             '<th scope="col"><abbr title="Wins">W</abbr></th><th scope="col"><abbr title="Ties">T</abbr></th>' +
-            '<th scope="col"><abbr title="Losses">L</abbr></th><th scope="col">Matchups</th></tr></thead><tbody>';
+            '<th scope="col"><abbr title="Losses">L</abbr></th><th scope="col">Matchups</th>' +
+            '<th scope="col" class="svr-pw-sortkey">Never matched</th></tr></thead><tbody>';
         opts.forEach(function (o, i) {
             var unranked = o.rank === null || o.rank === undefined;
             html += '<tr>' +
@@ -938,7 +943,8 @@
                 '<td>' + esc(o.label) + '</td>' +
                 '<td data-order="' + (unranked ? -1 : o.win_pct) + '">' + (unranked ? '—' : num(o.win_pct, 1) + '%') + '</td>' +
                 '<td>' + (o.wins || 0) + '</td><td>' + (o.ties || 0) + '</td><td>' + (o.losses || 0) + '</td>' +
-                '<td>' + (o.appearances || 0) + '</td></tr>';
+                '<td>' + (o.appearances || 0) + '</td>' +
+                '<td class="svr-pw-sortkey">' + (unranked ? 1 : 0) + '</td></tr>';
         });
         return html + '</tbody></table></div>';
     }
@@ -955,6 +961,12 @@
             var many = table.tBodies[0] && table.tBodies[0].rows.length > 25;
             state.pwTables.push(jq(table).DataTable({
                 order       : [[0, 'asc']],
+                orderFixed  : { pre: [[PW_SORTKEY_COL, 'asc']] },
+                columnDefs  : [
+                    { targets: PW_SORTKEY_COL, visible: false, searchable: false },
+                    // Win %, W, T, L and Matchups read high to low on the first click.
+                    { targets: [2, 3, 4, 5, 6], orderSequence: ['desc', 'asc'] }
+                ],
                 paging      : many,
                 pageLength  : 25,
                 searching   : many,

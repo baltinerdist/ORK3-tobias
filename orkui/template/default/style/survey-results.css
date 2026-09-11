@@ -942,6 +942,8 @@ html[data-theme="dark"] .svr-card .highcharts-data-label tspan {
 .svr-pw-table td:nth-child(n+3),
 .svr-pw-table th:nth-child(n+3) { text-align: right; font-variant-numeric: tabular-nums; }
 .svr-pw-table abbr { text-decoration: none; cursor: help; }
+/* The sort-key column; DataTables drops it from the DOM, this covers the page without DataTables. */
+.svr-pw-table .svr-pw-sortkey { display: none; }
 .svr-cell-clamp {
     display: -webkit-box;
     -webkit-line-clamp: 3;
