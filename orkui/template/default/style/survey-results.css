@@ -59,6 +59,11 @@
 .svr-status-archived { background: rgba(113,128,150,0.34); border-color: rgba(113,128,150,0.55); }
 
 
+/* ── Shared-viewer lens strip (sharing-and-credits spec §5) ── */
+
+.svr-lens { border-left: 3px solid var(--ork-accent, #3182ce); }
+
+
 /* ── Consent split inside a stat card ────────────────────── */
 
 .svr-consent-split {
@@ -728,6 +733,8 @@
 html[data-theme="dark"] .svr-root { --svr-text-muted: var(--ork-text-muted, #a0aec0); }
 
 html[data-theme="dark"] .svr-status-pill { color: #fff; }
+
+html[data-theme="dark"] .svr-lens { background: rgba(49, 130, 206, 0.10); }
 
 html[data-theme="dark"] .svr-xt-btn[aria-pressed="true"] { background: var(--svr-accent); color: #1a202c; }
 html[data-theme="dark"] .svr-root .rp-header-actions .rp-btn-ghost[aria-pressed="true"] {

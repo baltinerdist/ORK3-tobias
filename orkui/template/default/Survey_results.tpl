@@ -29,6 +29,12 @@ $_svr_error    = isset($Error) ? trim((string) $Error) : '';
 $_svr_title  = isset($_svr_row['title']) && $_svr_row['title'] !== '' ? (string) $_svr_row['title'] : 'Survey';
 $_svr_status = isset($_svr_row['status']) ? (string) $_svr_row['status'] : '';
 
+/* Sharing lens (sharing-and-credits spec §2, §5). A shared viewer (one org
+   level down, results_share allowing it) reads charts and stats only —
+   no rows, no export, no per-response panel. */
+$_svr_shared = ($ResultsAccess['level'] ?? 'manage') === 'shared';
+$_svr_lens   = $ResultsAccess['label'] ?? '';
+
 /* Scope chip. $Kingdoms lists the kingdoms present in the responses, so it names
    a kingdom-scoped survey's own kingdom whenever anyone from it answered; a
    controller-supplied $ScopeName wins when there is one. */
@@ -134,13 +140,31 @@ $_svr_show_kingdoms = count($_svr_kingdoms) > 1;
 <?php endif; ?>
 		</div>
 		<div class="rp-header-actions">
+<?php if (!$_svr_shared) : ?>
 			<a class="rp-btn-ghost" id="svr-export" href="<?=UIR?>Survey/export/<?=$_svr_id?>"><i class="fas fa-download"></i> Export CSV</a>
 			<a class="rp-btn-ghost" href="<?=UIR?>Survey/build/<?=$_svr_id?>"><i class="fas fa-pen-to-square"></i> Builder</a>
 			<a class="rp-btn-ghost" href="<?=UIR?>Survey/take/<?=$_svr_id?>/preview"><i class="fas fa-eye"></i> Preview</a>
+<?php endif; ?>
 			<button type="button" class="rp-btn-ghost" id="svr-summary-toggle" aria-pressed="false" data-tip="Charts only, with the filters and response count in a caption: no row-level data and no written comments. Safe to print for court."><i class="fas fa-file-lines"></i> Summary for sharing</button>
+<?php if (!$_svr_shared) : ?>
 			<button type="button" class="rp-btn-ghost" id="svr-print"><i class="fas fa-print"></i> Print</button>
+<?php endif; ?>
 		</div>
 	</div>
+
+<?php if ($_svr_shared) :
+	$_org = htmlspecialchars((string) ($ResultsAccess['org_name'] ?? ''));
+	$_lens_text = [
+		'kingdom' => 'Showing responses from players of ' . $_org . ' who chose Any ORK Data or My Kingdom and How Long I’ve Been Playing. Anonymous responses can’t be attributed to a kingdom.',
+		'park'    => 'Showing responses from ' . $_org . ' players who chose Any ORK Data. Other responses can’t be attributed to a park.',
+		'all'     => 'Shared by ' . htmlspecialchars((string) $OwnerName) . ': all respondents.',
+	][$_svr_lens] ?? '';
+?>
+	<div class="rp-context svr-lens" role="note">
+		<i class="fas fa-share-nodes rp-context-icon" aria-hidden="true"></i>
+		<span><?=$_lens_text?> Charts and stats only; individual responses stay with the survey’s owners.</span>
+	</div>
+<?php endif; ?>
 
 	<!-- Context strip -->
 	<div class="rp-context">
@@ -202,7 +226,7 @@ $_svr_show_kingdoms = count($_svr_kingdoms) > 1;
 				<div class="rp-filter-card-header"><i class="fas fa-filter"></i> Filters</div>
 				<div class="rp-filter-card-body">
 
-<?php if ($_svr_show_kingdoms) : ?>
+<?php if ($_svr_show_kingdoms && !($_svr_lens === 'kingdom' || $_svr_lens === 'park')) : ?>
 					<fieldset class="svr-fieldset">
 						<legend class="svr-field-label">Kingdom</legend>
 						<div class="svr-checklist" aria-describedby="svr-kingdom-hint">
@@ -251,9 +275,11 @@ $_svr_show_kingdoms = count($_svr_kingdoms) > 1;
 						</select>
 					</div>
 
+<?php if (!$_svr_shared) : ?>
 					<div class="svr-field">
 						<label class="svr-check"><input type="checkbox" id="svr-include-test"> <span>Include test responses</span></label>
 					</div>
+<?php endif; ?>
 
 					<div class="svr-filter-actions">
 						<button type="button" class="sv-btn sv-btn-primary" id="svr-apply"><i class="fas fa-check"></i> Apply</button>
@@ -280,6 +306,7 @@ $_svr_show_kingdoms = count($_svr_kingdoms) > 1;
 			<p class="sv-visually-hidden" id="svr-live" role="status" aria-live="polite"></p>
 			<div class="svr-cards" id="svr-cards" aria-busy="false"></div>
 
+<?php if (!$_svr_shared) : ?>
 			<div class="rp-table-area svr-rows-area">
 				<h2 class="svr-section-title"><i class="fas fa-table"></i> Responses</h2>
 				<p class="svr-field-hint" id="svr-rows-hint">Row-level data for the filtered responses. Select a row to read that whole response. Persona links appear only for respondents who shared their name; Q1, Q2&hellip; match the chart cards above.</p>
@@ -287,10 +314,12 @@ $_svr_show_kingdoms = count($_svr_kingdoms) > 1;
 					<table class="display" id="svr-rows" style="width:100%"></table>
 				</div>
 			</div>
+<?php endif; ?>
 		</div>
 
 	</div><!-- /.rp-body -->
 
+<?php if (!$_svr_shared) : ?>
 	<!-- One response, read as prompt / answer pairs (#36). Non-modal side sheet:
 	     the table stays usable behind it; Escape or Close returns focus to the row. -->
 	<aside class="svr-panel sv-scope" id="svr-panel" role="dialog" aria-modal="false" aria-labelledby="svr-panel-title" hidden>
@@ -304,6 +333,7 @@ $_svr_show_kingdoms = count($_svr_kingdoms) > 1;
 		</div>
 		<div class="svr-panel-body" id="svr-panel-body"></div>
 	</aside>
+<?php endif; ?>
 </div><!-- /.rp-root -->
 
 <script>
@@ -311,7 +341,9 @@ window.SvConfig = {
 	uir      : <?=json_encode(UIR)?>,
 	surveyId : <?=$_svr_id?>,
 	csrf     : <?=json_encode($SurveyCsrf ?? '')?>,
-	questions: <?=json_encode($_svr_js_qs)?>
+	questions: <?=json_encode($_svr_js_qs)?>,
+	access   : <?=json_encode($_svr_shared ? 'shared' : 'manage')?>,
+	context  : <?=json_encode((string) ($ResultsContext ?? ''))?>
 };
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.js"></script>

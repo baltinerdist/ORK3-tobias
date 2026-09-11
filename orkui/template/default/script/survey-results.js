@@ -45,6 +45,11 @@
     var SURVEY_ID = parseInt(CFG.surveyId, 10) || 0;
     var CSRF      = typeof CFG.csrf === 'string' ? CFG.csrf : '';
     var QUESTIONS = Array.isArray(CFG.questions) ? CFG.questions : [];
+    /* A shared viewer (sharing-and-credits spec §2, §5) reads charts and
+       stats only: no rows table, export, print or response panel — those
+       elements are not on the page (Survey_results.tpl), so every listener
+       and reload against them must be skipped rather than fail quietly. */
+    var SHARED    = (window.SvConfig || {}).access === 'shared';
 
     if (!SURVEY_ID) { return; }
 
@@ -1567,6 +1572,7 @@
     }
 
     function initRows() {
+        if (SHARED) { return; }
         var table = $('svr-rows');
         if (!table || !window.jQuery || !window.jQuery.fn || !window.jQuery.fn.DataTable) { return; }
 
@@ -1846,7 +1852,7 @@
         state.abort = window.AbortController ? new AbortController() : null;
         setBusy(true);
 
-        post('results', { SurveyId: SURVEY_ID, Filters: JSON.stringify(filters) }, state.abort ? state.abort.signal : null)
+        post('results', { SurveyId: SURVEY_ID, Filters: JSON.stringify(filters), Context: CFG.context || '' }, state.abort ? state.abort.signal : null)
             .then(function (r) {
                 if (seq !== state.seq) { return; }
                 setBusy(false);
