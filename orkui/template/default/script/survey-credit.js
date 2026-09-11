@@ -86,6 +86,12 @@
         if (mode === 'home_park' && (p.no_home_park | 0) > 0) {
             t += ' ' + plural(p.no_home_park | 0, 'player', 'players') + ' can’t be credited at a home park because they have none.';
         }
+        // Spec D1: a credit is public, so nobody gets one who chose Any ORK
+        // Data before the survey said anything about credits.
+        if ((p.no_notice | 0) > 0) {
+            t += ' ' + plural(p.no_notice | 0, 'player', 'players') +
+                ' chose Any ORK Data before this survey said anything about credits, so they won’t get one.';
+        }
         return t;
     }
 

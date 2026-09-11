@@ -11,6 +11,12 @@ ALTER TABLE ork_survey_response
   ADD COLUMN IF NOT EXISTS park_id INT NULL AFTER kingdom_id,
   ADD INDEX IF NOT EXISTS idx_survey_park (survey_id, park_id);
 
+-- 1 when the data gate showed this Any ORK Data respondent an attendance-credit
+-- line before they chose (spec D1). Only such responses are ever credited, by
+-- the live grant or a backfill. No backfill: existing rows were never told.
+ALTER TABLE ork_survey_response
+  ADD COLUMN IF NOT EXISTS credit_notice TINYINT(1) NOT NULL DEFAULT 0 AFTER park_id;
+
 -- Park snapshot for existing Any ORK Data rows only; never overwrites a snapshot.
 UPDATE ork_survey_response r
   JOIN ork_mundane m ON m.mundane_id = r.mundane_id

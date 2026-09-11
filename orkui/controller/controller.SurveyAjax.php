@@ -632,8 +632,10 @@ class Controller_SurveyAjax extends Controller
         $consent  = (string) ($_POST['Consent'] ?? 'anonymous');
         $duration = (int) ($_POST['DurationSeconds'] ?? 0);
         $isTest   = $this->truthy($_POST['IsTest'] ?? 0);
+        // The runner showed an attendance-credit line on the data gate (spec D1).
+        $notice   = $this->truthy($_POST['CreditNotice'] ?? 0);
 
-        $r = $this->Survey->submit($surveyId, $uid, $answers, $consent, $duration, $isTest);
+        $r = $this->Survey->submit($surveyId, $uid, $answers, $consent, $duration, $isTest, $notice);
         if ((int) $r['Status'] !== 0) {
             $this->envelopeFail($r);
         }

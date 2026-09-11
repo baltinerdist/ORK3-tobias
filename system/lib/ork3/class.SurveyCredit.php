@@ -503,12 +503,13 @@ class SurveyCredit
         if ($this->isGranted($surveyId, $uid)) {
             return 'granted';
         }
-        // Only a non-test Any ORK Data response is ever credited (D1).
+        // Only a non-test Any ORK Data response whose data gate showed a credit
+        // line is ever credited (D1).
         $r = $this->fetchRow('SELECT r.response_id, r.mundane_id, ' . self::activeParkSql('r.park_id') . ' AS park_id, r.kingdom_id, r.submitted_at
                                 FROM ' . DB_PREFIX . 'survey_response r
                                 LEFT JOIN ' . DB_PREFIX . 'park p ON p.park_id = r.park_id
                                WHERE r.survey_id = ' . (int) $surveyId . ' AND r.mundane_id = ' . (int) $uid . '
-                                 AND r.consent = \'full\' AND r.is_test = 0 LIMIT 1');
+                                 AND r.consent = \'full\' AND r.is_test = 0 AND r.credit_notice = 1 LIMIT 1');
         if ($r === null) {
             return 'none';
         }
@@ -709,13 +710,22 @@ class SurveyCredit
         return null;
     }
 
-    /** Dry run: how many owed responses a new config for $grantor would credit now. */
+    /**
+     * Dry run: how many owed responses a new config for $grantor would credit
+     * now, how many of those it cannot place (no home park), and how many of
+     * its players chose Any ORK Data without being shown a credit line, who
+     * therefore get none (no_notice, D1).
+     */
     private function preview(array $survey, array $configs, array $grantor, string $mode, array $parentOf): array
     {
         $hyp = ['credit_id' => PHP_INT_MAX, 'grantor_type' => $grantor['type'], 'grantor_id' => (int) $grantor['id'],
                 'mode' => $mode, 'enabled_at' => '9999-12-31 23:59:59'];
         $n = 0;
         $noPark = 0;
+        $noNotice = 0;
+        foreach ($this->owedResponses((int) $survey['survey_id'], false) as $r) {
+            $noNotice += self::coverage(array_merge($configs, [$hyp]), $r, $survey, $parentOf)['credit_id'] === PHP_INT_MAX ? 1 : 0;
+        }
         foreach ($this->owedResponses((int) $survey['survey_id']) as $r) {
             $cov = self::coverage(array_merge($configs, [$hyp]), $r, $survey, $parentOf);
             if ($cov['credit_id'] === PHP_INT_MAX) {
@@ -725,7 +735,7 @@ class SurveyCredit
                 $noPark++;
             }
         }
-        return ['eligible_now' => $n, 'no_home_park' => $noPark];
+        return ['eligible_now' => $n, 'no_home_park' => $noPark, 'no_notice' => $noNotice];
     }
 
     /**
@@ -747,8 +757,14 @@ class SurveyCredit
         return $n;
     }
 
-    /** Non-test Any ORK Data responses whose player has no credit for this survey yet (park_id: Active parks only). */
-    private function owedResponses(int $surveyId): array
+    /**
+     * Non-test Any ORK Data responses whose player has no credit for this
+     * survey yet (park_id: Active parks only). Only those whose data gate
+     * showed a credit line are owed (D1): a backfill never puts a public,
+     * dated credit on someone who chose Any ORK Data without being told.
+     * $noticed = false lists the others instead (the panel's no_notice count).
+     */
+    private function owedResponses(int $surveyId, bool $noticed = true): array
     {
         return $this->fetchAll(
             'SELECT r.response_id, r.mundane_id, ' . self::activeParkSql('r.park_id') . ' AS park_id, r.kingdom_id, r.submitted_at
@@ -756,6 +772,7 @@ class SurveyCredit
                LEFT JOIN ' . DB_PREFIX . 'park p ON p.park_id = r.park_id
                LEFT JOIN ' . DB_PREFIX . 'survey_credit_grant g ON g.survey_id = r.survey_id AND g.mundane_id = r.mundane_id
               WHERE r.survey_id = ' . (int) $surveyId . ' AND r.is_test = 0 AND r.consent = \'full\'
+                AND r.credit_notice = ' . ($noticed ? 1 : 0) . '
                 AND r.mundane_id IS NOT NULL AND g.mundane_id IS NULL
               ORDER BY r.response_id'
         );

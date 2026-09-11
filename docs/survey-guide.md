@@ -188,9 +188,10 @@ survey's own officers from the **Attendance credit** card in the builder.
   first opened (or the day it opens, if it hasn't yet). Credits use that event's date and park.
 
 **Only Any ORK Data earns a credit.** A respondent who chooses My Kingdom and How Long I've Been
-Playing or Anonymous Only is never credited, because there's no profile to attach it to. Anyone
-answering a survey that offers a credit is told so, right on the consent screen, before they
-choose.
+Playing or Anonymous Only is never credited, because there's no profile to attach it to. The
+consent screen always tells them before they choose: *"This survey gives an attendance credit…"*
+when a credit covers them, or *"This survey may later give an attendance credit…"* when none does
+yet. A credit is public, so only respondents who were shown one of those lines are ever credited.
 
 **One credit per player per survey.** If more than one org turns credits on for the same survey —
 say, a kingdom and one of its parks — a player only ever gets one credit for it. Whichever org
@@ -202,7 +203,9 @@ no switching modes, no deleting the config. It isn't retroactive to anyone the s
 credited under an earlier config, either.
 
 **Credits post automatically**, both for people who already answered when the credit turns on and
-for everyone who answers afterward. An individual credit, once posted, is an ordinary attendance
+for everyone who answers afterward. The one exception: someone who chose Any ORK Data before the
+consent screen said anything about credits never gets one, and the Credits panel tells you how
+many that is before you turn a credit on. An individual credit, once posted, is an ordinary attendance
 entry — an officer can edit or delete it the same way they would any other attendance credit.
 
 **Known effects to keep in mind:**

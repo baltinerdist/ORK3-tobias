@@ -260,9 +260,9 @@ class Model_Survey extends Model
         return $this->_response()->validateSubmission($definition, $answers);
     }
 
-    public function submit(int $surveyId, int $uid, array $answers, string $consent, int $durationSeconds, bool $isTest): array
+    public function submit(int $surveyId, int $uid, array $answers, string $consent, int $durationSeconds, bool $isTest, bool $creditNotice = false): array
     {
-        return $this->_response()->submit($surveyId, $uid, $answers, $consent, $durationSeconds, $isTest);
+        return $this->_response()->submit($surveyId, $uid, $answers, $consent, $durationSeconds, $isTest, $creditNotice);
     }
 
     public function available_for(int $uid): array

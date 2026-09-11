@@ -420,6 +420,70 @@ final class SurveySharingCreditTest extends TestCase
         $this->assertSame('1.00', number_format((float) $g[0]['credits'], 2));
     }
 
+    /**
+     * D1: a credit is public and dated, so only a respondent whose data gate
+     * showed a credit line is ever credited, by the backfill or live. Someone
+     * who chose Any ORK Data without being told (an older runner, another
+     * client) gets nothing, and the panel counts them as no_notice. The flag
+     * is never kept on a partial or anonymous row.
+     */
+    public function testOnlyRespondentsTheGateToldAboutCreditsAreCredited(): void
+    {
+        $ks     = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);
+        $told   = $this->player('told', $this->parkA, $this->k);
+        $untold = $this->player('untold', $this->parkA, $this->k);
+        $part   = $this->player('toldpart', $this->parkA, $this->k);
+        $anon   = $this->player('toldanon', $this->parkA, $this->k);
+        $this->answer($ks, $told, 'full');
+        $this->answer($ks, $untold, 'full', false);
+        $this->answer($ks, $part, 'partial');
+        $this->answer($ks, $anon, 'anonymous');
+
+        $notice = $this->pdo->query('SELECT consent, credit_notice FROM ' . DB_PREFIX . 'survey_response WHERE survey_id = ' . $ks
+            . ' ORDER BY response_id')->fetchAll(PDO::FETCH_ASSOC);
+        $this->assertSame(
+            [['full', '1'], ['full', '0'], ['partial', '0'], ['anonymous', '0']],
+            array_map(static fn (array $r): array => [$r['consent'], (string) $r['credit_notice']], $notice)
+        );
+
+        $g   = ['type' => 'park', 'id' => $this->parkA];
+        $pre = $this->credit()->status($this->pOfficerA, $ks, $g)['Credit']['mine']['preview']['home_park'];
+        $this->assertSame(['eligible_now' => 1, 'no_home_park' => 0, 'no_notice' => 1], $pre);
+
+        $r = $this->credit()->enable($this->pOfficerA, $ks, $g, 'home_park', true);
+        $this->assertSame(0, $r['Status'], (string) ($r['Error'] ?? ''));
+        $this->assertSame(1, $r['Granted'], 'the backfill credits only the respondent who was told');
+        $this->assertSame([(string) $told], array_map(static fn (array $x): string => (string) $x['mundane_id'], $this->grants($ks)));
+        $this->assertSame(['Granted' => 0, 'SkippedNoPark' => 0, 'Pending' => 0], $this->credit()->reconcile($ks));
+        $this->assertSame(0, $this->credit()->status($this->pOfficerA, $ks, $g)['Credit']['pending'], 'nobody untold is owed');
+        $this->assertSame('none', $this->credit()->grantFor($ks, $untold));
+
+        $late = $this->player('lateuntold', $this->parkA, $this->k);
+        $this->assertSame('none', $this->answer($ks, $late, 'full', false)['Credit'], 'no live credit without the line either');
+        $this->assertSame('granted', $this->answer($ks, $this->player('latetold', $this->parkA, $this->k), 'full')['Credit']);
+        $this->assertCount(2, $this->grants($ks));
+    }
+
+    /**
+     * The notice reaches the domain: the runner always shows a credit line on
+     * a gated survey and posts CreditNotice, and SurveyAjax/submit forwards it
+     * through the model (without it every live credit would be refused).
+     */
+    public function testTheRunnerReportsTheCreditLineAndSubmitForwardsIt(): void
+    {
+        $take = (string) file_get_contents(DIR_UI . 'template/default/script/survey-take.js');
+        $final = substr($take, (int) strpos($take, 'function renderFinal('), 3000);
+        $this->assertMatchesRegularExpression('/esc\(s\.credit_available \? CREDIT_NOTE : CREDIT_MAYBE\).*creditNoticeShown = true;/s', $final, 'every gate shows one of the two lines');
+        $this->assertStringContainsString('CreditNotice: (gate && creditNoticeShown) ? 1 : 0', $take);
+
+        $ajax   = (string) file_get_contents(DIR_UI . 'controller/controller.SurveyAjax.php');
+        $submit = substr($ajax, (int) strpos($ajax, 'public function submit('), 900);
+        $this->assertMatchesRegularExpression('/\$notice\s*=\s*\$this->truthy\(\$_POST\[\'CreditNotice\'\] \?\? 0\);/', $submit);
+        $this->assertStringContainsString('->submit($surveyId, $uid, $answers, $consent, $duration, $isTest, $notice)', $submit);
+        $model = (string) file_get_contents(DIR_UI . 'model/model.Survey.php');
+        $this->assertStringContainsString('->submit($surveyId, $uid, $answers, $consent, $durationSeconds, $isTest, $creditNotice)', $model);
+    }
+
     public function testEnableIsPermanentAndRefusedTwiceOrUnconfirmedOrGateOff(): void
     {
         $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);
@@ -478,8 +542,8 @@ final class SurveySharingCreditTest extends TestCase
         $visitor = $this->player('visitor', $this->parkOther, $this->kOther);
         $this->answer($ks, $this->player('local', $this->parkA, $this->k), 'full');
         // A visitor can only answer an event-audience survey; the coverage rule is what's under test here.
-        $this->pdo->exec('INSERT INTO ' . DB_PREFIX . "survey_response (survey_id, consent, mundane_id, kingdom_id, park_id, is_test, submitted_at)
-                          VALUES ({$ks}, 'full', {$visitor}, {$this->kOther}, {$this->parkOther}, 0, NOW())");
+        $this->pdo->exec('INSERT INTO ' . DB_PREFIX . "survey_response (survey_id, consent, mundane_id, kingdom_id, park_id, credit_notice, is_test, submitted_at)
+                          VALUES ({$ks}, 'full', {$visitor}, {$this->kOther}, {$this->parkOther}, 1, 0, NOW())");
 
         $r = $this->credit()->enable($this->kOfficer, $ks, ['type' => 'kingdom', 'id' => $this->k], 'event', true);
         $this->assertSame(0, $r['Status'], (string) ($r['Error'] ?? ''));
@@ -624,7 +688,7 @@ final class SurveySharingCreditTest extends TestCase
         $g = ['type' => 'kingdom', 'id' => $this->k];
 
         $pre = $this->credit()->status($this->kOfficer, $ks, $g)['Credit']['mine']['preview']['home_park'];
-        $this->assertSame(['eligible_now' => 0, 'no_home_park' => 1], $pre, 'the preview counts them as having no home park');
+        $this->assertSame(['eligible_now' => 0, 'no_home_park' => 1, 'no_notice' => 0], $pre, 'the preview counts them as having no home park');
 
         $r = $this->credit()->enable($this->kOfficer, $ks, $g, 'home_park', true);
         $this->assertSame(0, $r['Status'], (string) ($r['Error'] ?? ''));
@@ -691,9 +755,9 @@ final class SurveySharingCreditTest extends TestCase
         // Owed but not yet granted (a failed live grant): one player in each kingdom.
         $home = $this->player('owedhome', $this->parkA, $this->k);
         $away = $this->player('owedaway', $this->parkOther, $this->kOther);
-        $this->pdo->exec('INSERT INTO ' . DB_PREFIX . "survey_response (survey_id, consent, mundane_id, kingdom_id, park_id, is_test, submitted_at)
-                          VALUES ({$os}, 'full', {$home}, {$this->k}, {$this->parkA}, 0, NOW()),
-                                 ({$os}, 'full', {$away}, {$this->kOther}, {$this->parkOther}, 0, NOW())");
+        $this->pdo->exec('INSERT INTO ' . DB_PREFIX . "survey_response (survey_id, consent, mundane_id, kingdom_id, park_id, credit_notice, is_test, submitted_at)
+                          VALUES ({$os}, 'full', {$home}, {$this->k}, {$this->parkA}, 1, 0, NOW()),
+                                 ({$os}, 'full', {$away}, {$this->kOther}, {$this->parkOther}, 1, 0, NOW())");
 
         $mine = $this->credit()->status($this->kOfficer, $os, ['type' => 'kingdom', 'id' => $this->k]);
         $this->assertSame(0, $mine['Status']);
@@ -726,9 +790,9 @@ final class SurveySharingCreditTest extends TestCase
         // The other kingdom: one owed credit, and one full respondent with no home park (owed for ever).
         $away   = $this->player('awayowed', $this->parkOther, $this->kOther);
         $noPark = $this->player('awaynopark', $this->parkOther, $this->kOther);
-        $this->pdo->exec('INSERT INTO ' . DB_PREFIX . "survey_response (survey_id, consent, mundane_id, kingdom_id, park_id, is_test, submitted_at)
-                          VALUES ({$os}, 'full', {$away}, {$this->kOther}, {$this->parkOther}, 0, NOW()),
-                                 ({$os}, 'full', {$noPark}, {$this->kOther}, NULL, 0, NOW())");
+        $this->pdo->exec('INSERT INTO ' . DB_PREFIX . "survey_response (survey_id, consent, mundane_id, kingdom_id, park_id, credit_notice, is_test, submitted_at)
+                          VALUES ({$os}, 'full', {$away}, {$this->kOther}, {$this->parkOther}, 1, 0, NOW()),
+                                 ({$os}, 'full', {$noPark}, {$this->kOther}, NULL, 1, 0, NOW())");
         $this->answer($os, $this->player('homeenable', $this->parkA, $this->k), 'full');
 
         $r = $this->credit()->enable($this->kOfficer, $os, ['type' => 'kingdom', 'id' => $this->k], 'home_park', true);
@@ -888,7 +952,7 @@ final class SurveySharingCreditTest extends TestCase
 
         $log = ini_set('error_log', '/dev/null');   // the grant failure is logged on purpose
         try {
-            $r = (new SurveyResponse())->submit($ks, $uid, [], 'full', 30, false);
+            $r = (new SurveyResponse())->submit($ks, $uid, [], 'full', 30, false, true);
         } finally {
             ini_set('error_log', (string) $log);
         }

@@ -114,7 +114,8 @@
         fullOrk: 'Link my answers to my ORK profile. The ORK administrators who run this survey, now and in future administrations, will see my name beside my answers, including in exported spreadsheets.',
         partial: 'Record only my kingdom and a years-played range, such as 3–5 years. No name, no profile link.',
         anon:    'Record nothing about me.',
-        credit:  'This survey gives an attendance credit, which will appear on your public attendance record. It is only given when you choose Any ORK Data.'
+        credit:  'This survey gives an attendance credit, which will appear on your public attendance record. It is only given when you choose Any ORK Data.',
+        creditMaybe: 'This survey may later give an attendance credit, which would appear on your public attendance record. It is only given when you choose Any ORK Data.'
     };
 
     /* ------------------------------------------------------------- catalogue */
@@ -2184,8 +2185,10 @@
         /* The credit line is conditional, so it gets its own label like the two
            parts above rather than sitting under the last option as if it were
            part of it. */
-        return html + '</ul><span class="svb-label svb-consent-credit-label">Shown when this survey gives a credit</span>' +
-               '<p class="svb-consent-lead">' + esc(CONSENT_COPY.credit) + '</p></div>';
+        return html + '</ul><span class="svb-label svb-consent-credit-label">Shown when this survey gives the respondent a credit</span>' +
+               '<p class="svb-consent-lead">' + esc(CONSENT_COPY.credit) + '</p>' +
+               '<span class="svb-label svb-consent-credit-label">Shown otherwise (only respondents told about credits are ever given one)</span>' +
+               '<p class="svb-consent-lead">' + esc(CONSENT_COPY.creditMaybe) + '</p></div>';
     }
 
     function scopeIcon(type) {

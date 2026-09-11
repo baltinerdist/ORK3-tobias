@@ -1183,10 +1183,16 @@ class SurveyResponse
      * reason above all: a participation row without a stored response would lock
      * a player out of a survey they never actually finished.
      *
+     * $creditNotice: the runner showed an attendance-credit line on the data
+     * gate before the respondent chose (sharing spec D1). It is stored only on
+     * a non-test Any ORK Data row, and only such a row is ever credited: a
+     * respondent who was never told a credit goes on their public attendance
+     * record is never given one, live or by a later backfill.
+     *
      * @param  array<int|string, mixed> $answers
      * @return array<string, mixed> QualTest-style envelope; +ResponseId, Consent, ThanksHtml
      */
-    public function submit(int $surveyId, int $uid, array $answers, string $consent, int $durationSeconds, bool $isTest): array
+    public function submit(int $surveyId, int $uid, array $answers, string $consent, int $durationSeconds, bool $isTest, bool $creditNotice = false): array
     {
         $surveyId = (int) $surveyId;
         $uid = (int) $uid;
@@ -1226,6 +1232,9 @@ class SurveyResponse
         }
 
         $storedConsent = self::effectiveConsent(!empty($survey['data_gate_enabled']), $consent, $isTest);
+        // Never on a partial or anonymous row: which line a player saw depends
+        // on their park and kingdom, so it would narrow who they are.
+        $notice = $creditNotice && !$isTest && 'full' === $storedConsent;
 
         $player = $this->player($uid);
         $draft  = $this->draftLoad($surveyId, $uid);
@@ -1252,12 +1261,13 @@ class SurveyResponse
         error_clear_last(); // so rollback() reports THIS statement's PDO warning, not an older one
         $ok = $this->exec(
             'INSERT INTO ' . DB_PREFIX . 'survey_response
-             (survey_id, consent, mundane_id, kingdom_id, park_id, tenure_months, is_test, started_at, submitted_at, duration_seconds)
+             (survey_id, consent, mundane_id, kingdom_id, park_id, credit_notice, tenure_months, is_test, started_at, submitted_at, duration_seconds)
              VALUES (' . $surveyId . ',
                      \'' . $storedConsent . '\',
                      ' . self::sqlInt($row['mundane_id']) . ',
                      ' . self::sqlInt($row['kingdom_id']) . ',
                      ' . self::sqlInt($row['park_id']) . ',
+                     ' . ($notice ? 1 : 0) . ',
                      ' . self::sqlInt($row['tenure_months']) . ',
                      ' . ($isTest ? 1 : 0) . ',
                      ' . $this->sqlStr($row['started_at']) . ',
@@ -1331,9 +1341,9 @@ class SurveyResponse
 
         // Attendance credit (sharing spec §3.5): after the commit, so a credit
         // problem can never cost the player their response. Only Any ORK Data
-        // earns one (D1).
+        // chosen after a credit line earns one (D1).
         $credit = 'none';
-        if (!$isTest && 'full' === $storedConsent) {
+        if ($notice) {
             try {
                 $credit = (new SurveyCredit())->grantFor($surveyId, $uid);
             } catch (\Throwable $e) {

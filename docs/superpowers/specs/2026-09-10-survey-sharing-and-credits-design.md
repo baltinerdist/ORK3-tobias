@@ -6,7 +6,7 @@
 **Scope:** Three additions to the survey module:
 1. The survey list page shows a kingdom's or park's surveys in three sections (Amtgard, Kingdom, Park).
 2. A per-survey **results sharing** setting rolls results down one org level (ORK → kingdoms, kingdom → parks), either filtered to the viewer's own players or unfiltered.
-3. **Attendance credits** for completing a survey: at the player's home park on the day they took it, or at a generated "Survey Credit - {title}" event. Credits are backfilled for earlier respondents and granted automatically to new ones.
+3. **Attendance credits** for completing a survey: at the player's home park on the day they took it, or at a generated "Survey Credit - {title}" event. Credits are backfilled for earlier respondents whose data gate told them about credits, and granted automatically to new ones.
 
 ## Problem
 
@@ -16,7 +16,7 @@ Surveys are visible only to the org that owns them. A kingdom cannot see the ORK
 
 | # | Question | Decision |
 |---|---|---|
-| D1 | How are credits dated, given the anonymity model? | Home-park credits are dated **the day the survey was taken**. **Only respondents who choose *Any ORK Data* earn a credit.** The data gate tells respondents so. A partial response (day + kingdom + years-played band) next to a dated public credit would single most people out, so the middle tier earns no credit either. Event credits are dated the event's start date (forced by `AddAttendance`, see Constraints). |
+| D1 | How are credits dated, given the anonymity model? | Home-park credits are dated **the day the survey was taken**. **Only respondents who choose *Any ORK Data* earn a credit.** The data gate tells respondents so, and only a respondent it told is ever credited (`credit_notice`, §3.7; review fix 2026-09-11: a backfill had put public, dated credits on people who chose Any ORK Data before any credit line existed, and named them to a non-owner park). A partial response (day + kingdom + years-played band) next to a dated public credit would single most people out, so the middle tier earns no credit either. Event credits are dated the event's start date (forced by `AddAttendance`, see Constraints). |
 | D2 | What do rolled-down viewers see? | **Charts and stats only**: summary, charts, free-text lists, cross-tab, Summary for sharing. No rows table, names, individual-response panel or CSV. The consent copy stays as written. |
 | D3 | How is a respondent's park known for "Park only"? | A **home-park snapshot on the response, for *Any ORK Data* rows only**. A park view counts only those rows. |
 | D4 | Who can turn on credits? | **Any org in the chain**: the owner, plus kingdoms and parks below it, for their own players. **One credit per player per survey**; the config switched on first wins. |
@@ -160,7 +160,7 @@ A config is **permanent**: no disable, no delete, no mode change (the owner's "c
 The acting officer needs `canCreate(uid, type, id)`. For a grantor other than the owner, the survey must be `open` or `closed`, because those officers cannot see drafts (D5). The owner may also configure a `draft`.
 
 **Who a config covers** (pure `SurveyCredit::coveringCredit(array $configs, array $respondent, array $surveyRow, array $parentOf): ?int`):
-- Only non-test responses with `consent = 'full'` (D1). A player who never had a `full` response is never covered.
+- Only non-test responses with `consent = 'full'` and `credit_notice = 1` (D1). A player who never had such a response is never covered.
 - A **park** grantor G covers a respondent whose snapshotted `park_id = G`.
 - A **kingdom** grantor G covers a respondent whose snapshotted `kingdom_id` is G or has parent G.
 - In **event** mode, a config whose grantor **is the survey's owner** also covers every respondent, so visitors reached by an event audience (base §1) get credit at the owner's event.
@@ -207,10 +207,10 @@ New internal method `EventPlanning::create_system_event(array $r): array` (snake
 
 #### 3.5 Pipeline (D6)
 
-- **Live grant:** after `SurveyResponse::submit()` commits, and only for a non-test `full` response, it calls `SurveyCredit::grantFor($surveyId, $mundaneId)`. The call is best-effort: a failure is logged as `[survey-credit] grant failed {survey_id, uid, stage, db_error}` (values redacted, like the submit rollback log) and never changes the submit result. `submit` returns a new `credit` field: `granted`, `pending` (a config covers the player but the grant failed or needs an event that does not exist yet) or `none`.
+- **Live grant:** after `SurveyResponse::submit()` commits, and only for a non-test `full` response with `credit_notice = 1`, it calls `SurveyCredit::grantFor($surveyId, $mundaneId)`. The call is best-effort: a failure is logged as `[survey-credit] grant failed {survey_id, uid, stage, db_error}` (values redacted, like the submit rollback log) and never changes the submit result. `submit` returns a new `credit` field: `granted`, `pending` (a config covers the player but the grant failed or needs an event that does not exist yet) or `none`.
 - **Reconcile** `SurveyCredit::reconcile($surveyId): array{granted:int, skipped_no_park:int, pending:int}`:
   - Creates any missing events.
-  - Posts every owed credit: a non-test `full` response whose player has no grant row and is covered by a config.
+  - Posts every owed credit: a non-test `full` response with `credit_notice = 1` whose player has no grant row and is covered by a config. A `full` response with `credit_notice = 0` is never owed.
   - Is idempotent; the ledger guarantees at most one credit per player.
   - Runs on enable (the backfill), on first open, when the Credits panel opens with `pending > 0` (the panel posts `credit_reconcile`), and from the optional cron `bin/survey-credit-sweep.php`. The cron reconciles every survey with configs and pending credits and has a header documenting the cron line, like `compute-weekly-recap.php`.
 - **Audience rule:** `SurveyResponse::attendedRecently()` and its set-based mirror in `audienceCount()` ignore rows with `entry_method = 'survey'`, so a survey credit never qualifies a player for another survey's "attended in the last N months" audience.
@@ -231,7 +231,7 @@ Contents, from `credit_status`:
    - **Covered by an earlier config:** *"Your players are already covered by {org}'s credit."* Enabling stays possible, because it covers players the other config does not; the dry-run count says how many.
    - **Off:** the form:
      - Mode (radio): **At the player's home park, on the day they took the survey**, or **At a new event "Survey Credit - {title}" on {start date}** ("on the day this survey opens" when not yet open).
-     - Live warning, filled from `credit_status.preview`: *"{N} players who already chose Any ORK Data will get a credit now. While this survey is open, everyone who completes it with Any ORK Data and is covered by this credit will get one automatically. This can't be turned off or changed, and credits already given stay on players' records."* When some are unplaceable: *"{M} can't be credited at a home park because they have none."*
+     - Live warning, filled from `credit_status.preview`: *"{N} players who already chose Any ORK Data will get a credit now. While this survey is open, everyone who completes it with Any ORK Data and is covered by this credit will get one automatically. This can't be turned off or changed, and credits already given stay on players' records."* When some are unplaceable: *"{M} can't be credited at a home park because they have none."* When some chose Any ORK Data without being told about credits (`preview.no_notice`): *"{K} players chose Any ORK Data before this survey said anything about credits, so they won't get one."*
      - Checkbox **"I understand this can't be undone"** enables the **Turn on credits** button.
 3. **Gate off:** the form is replaced by *"Turn on the data gate (Privacy) so respondents can choose Any ORK Data; credits are only given to them."*
 
@@ -240,11 +240,17 @@ After a successful enable the panel re-renders with the result (*"Posted 41 cred
 #### 3.7 Respondent side
 
 - `definitionForRespondent()` adds `credit_available: bool`: a config would cover this player if they chose Any ORK Data. `available` adds the same flag per survey.
-- **Data gate** (`survey-take.js`), when `credit_available`, adds one fixed line under the three options:
+- **Data gate** (`survey-take.js`) always adds one fixed line under the three options. When `credit_available`:
 
   > This survey gives an attendance credit, which will appear on your public attendance record. It is only given when you choose **Any ORK Data**.
 
-  The builder's Privacy quote (`consentQuote`) shows the same line, marked "(shown when this survey gives a credit)".
+  Otherwise (a kingdom or park may still turn credits on later, and a backfill would then reach this respondent):
+
+  > This survey may later give an attendance credit, which would appear on your public attendance record. It is only given when you choose **Any ORK Data**.
+
+  `submit` posts `CreditNotice=1` once the gate has shown either line. The server stores `ork_survey_response.credit_notice = 1` only on a non-test `full` row (never on partial or anonymous rows, where which line a player saw would narrow who they are), and only such rows are credited, live or by a backfill (D1). A response from before this column, or from a client that showed no line, stays 0 and is counted in the panel's `preview.no_notice`.
+
+  The builder's Privacy quote (`consentQuote`) shows both lines, each marked with when it is shown.
 - **Welcome screen / first screen** and the **My Amtgard** Available Surveys row show a small chip, *Earns an attendance credit*, when `credit_available`.
 - **Thank-you screen** adds one line from `submit.credit`: `granted` → *"Your attendance credit has been added."*; `pending` → *"Your attendance credit will be added shortly."*; `none` → nothing.
 
@@ -259,6 +265,11 @@ ALTER TABLE ork_survey
 ALTER TABLE ork_survey_response
   ADD COLUMN IF NOT EXISTS park_id INT NULL AFTER kingdom_id,
   ADD KEY IF NOT EXISTS idx_survey_park (survey_id, park_id);
+
+-- D1 / §3.7: the data gate showed this Any ORK Data respondent a credit line.
+-- No backfill: existing rows were never told.
+ALTER TABLE ork_survey_response
+  ADD COLUMN IF NOT EXISTS credit_notice TINYINT(1) NOT NULL DEFAULT 0 AFTER park_id;
 
 -- Guarded backfill: full rows only, never overwrites a snapshot.
 UPDATE ork_survey_response r
@@ -280,11 +291,11 @@ After applying: `docker restart ork3-php8-app` (APCu schema cache), then refresh
 | Action | CSRF | POST | Returns |
 |---|---|---|---|
 | `results` (changed) | read allowlist | `+ Context` (`Kingdom/17` \| `Park/1049`, optional) | as base §6, filtered through the lens for shared viewers; `summary.lens = {label}` |
-| `credit_status` | read allowlist | `SurveyId, Grantor` (`Kingdom/17` \| `Park/1049`) | `{start_date, gate_enabled, configs:[{credit_id, grantor_type, grantor_id, grantor_name, mode, event_id, event_calendardetail_id, event_label, enabled_at, granted}], mine:{grantor_type, grantor_id, name, can_enable, config_id\|null, covered_by\|null, preview:{eligible_now, no_home_park}}, pending}`. **Writes nothing.** |
+| `credit_status` | read allowlist | `SurveyId, Grantor` (`Kingdom/17` \| `Park/1049`) | `{survey_title, survey_status, event_name, start_date, gate_enabled, configs:[{credit_id, grantor_type, grantor_id, grantor_name, mode, event_id, event_calendardetail_id, event_label, enabled_at, granted}], mine:{grantor_type, grantor_id, name, can_enable, blocked_reason, config_id\|null, covered_by:{credit_id, name}\|null, preview:{home_park:{eligible_now, no_home_park, no_notice}, event:{eligible_now, no_home_park, no_notice}}\|null}\|null, pending}`. `mine` is null when the caller does not act for `Grantor`; `blocked_reason` is the panel's inline refusal ('' when `can_enable`); `covered_by` names the earlier config that already covers the grantor's players; `preview` is per mode (null once the grantor has its own config), because the no-home-park count only applies to home-park mode. **Writes nothing.** |
 | `credit_enable` | required | `SurveyId, Grantor, Mode, Confirm=1` | `{credit_id, granted, skipped_no_park, pending}`; status 1 for gate off, an invalid grantor, a missing confirmation, an existing config or an unknown mode; status 3 without `canCreate` on the grantor |
-| `credit_reconcile` | required | `SurveyId, Grantor` (optional) | `{granted, skipped_no_park, pending}`; allowed when the caller `canManage`s the survey **or** acts for `Grantor` (`validGrantor` + `canCreate`), the same gate as `credit_status` (reconcile only posts credits already owed, so any legitimate panel viewer may trigger it); otherwise status 3 |
+| `credit_reconcile` | required | `SurveyId, Grantor` (optional) | `{granted, skipped_no_park, pending}` (counts only the configs the caller's panel shows); allowed when the caller `canManage`s the survey **or** acts for `Grantor` (`validGrantor` + `canCreate`), the same gate as `credit_status` (reconcile only posts credits already owed, so any legitimate panel viewer may trigger it); otherwise status 3 |
 
-`update` gains `ResultsShare` (`none|scoped|all`; must be `none` on a park survey). `submit` gains the `credit` field. `definition` and `available` gain `credit_available`.
+`update` gains `ResultsShare` (`none|scoped|all`; must be `none` on a park survey). `submit` takes `CreditNotice` (0/1, §3.7) and gains the `credit` field. `definition` and `available` gain `credit_available`.
 
 ### 6. Layers and files
 
@@ -333,6 +344,7 @@ After applying: `docker restart ork3-php8-app` (APCu schema cache), then refresh
 - `rows` and `export` refused for shared viewers.
 - Credits:
   - enable backfills `full` only; partial and anonymous respondents get nothing;
+  - only `full` respondents the gate told (`credit_notice = 1`) are credited, by the backfill or live; the others are counted as `no_notice` and never owed;
   - a second enable for the same grantor is refused;
   - precedence across a kingdom and a park config;
   - a live submit grants, dated `DATE(submitted_at)`, with `entry_method='survey'`, `note='Survey #id'`, class = last class or 6, `by_whom_id = enabled_by`;
@@ -356,9 +368,9 @@ After applying: `docker restart ork3-php8-app` (APCu schema cache), then refresh
 1. `Survey/index/Kingdom/K` shows Amtgard, Kingdom and Park sections per §1; `Survey/index/Park/P` shows the ORK, its own-kingdom and its own-park surveys, and nothing from other kingdoms or parks. Inherited sections list open and closed only.
 2. An ORK survey set to "Each kingdom sees its own players" gives a kingdom officer a results page filtered to that kingdom's full and partial respondents, with charts and stats only. "Every kingdom sees all results" is unfiltered but still charts-only. "Don't share" gives no results link and a 403 on the URL. The same holds for kingdom → park with "Each park sees its own players" counting Any ORK Data respondents from that park.
 3. Shared viewers can never reach rows, the individual-response panel, CSV or any builder action (server-enforced). Lens views under 5 responses are suppressed.
-4. An authorized officer at any valid grantor level can turn on credits once, per survey, after an irreversible-action warning showing the live backfill count. On enable, every earlier Any ORK Data respondent the config covers gets exactly one credit. While open, new Any ORK Data respondents get theirs on submit. Nobody gets two credits for one survey.
+4. An authorized officer at any valid grantor level can turn on credits once, per survey, after an irreversible-action warning showing the live backfill count. On enable, every earlier Any ORK Data respondent the config covers, and whose data gate showed a credit line, gets exactly one credit; the warning counts the ones who were not told, who get none. While open, new Any ORK Data respondents get theirs on submit. Nobody gets two credits for one survey.
 5. Home-park credits are 1.00 credit at the respondent's snapshotted home park, dated the day they took the survey, in their last class or Color. Event credits land on a single published one-day "Survey Credit - {title}" event dated the survey's start date. Both carry `entry_method='survey'`, and the player page labels them "Survey credit".
-6. Respondents covered by a credit see the fixed data-gate line saying credits need Any ORK Data. Partial and anonymous respondents are never credited.
+6. Respondents covered by a credit see the fixed data-gate line saying credits need Any ORK Data; every other gate says a credit may come later. Only respondents shown one of those lines are ever credited. Partial and anonymous respondents are never credited.
 7. A credit failure never loses a response; `reconcile` repairs it, and re-running it changes nothing.
 8. `php -l` clean; unit and integration suites green; the migration is classified and `drift-check --strict` passes; no `$DB`, `Ork3::$Lib` or `new SurveyCredit(` under `orkui/` outside `orkui/model/`; dark-mode checklist and 360 px pass on every touched surface.
 
@@ -367,7 +379,7 @@ After applying: `docker restart ork3-php8-app` (APCu schema cache), then refresh
 - **Consent bias.** Rewarding only Any ORK Data will shift the consent mix toward `full`. This is an owner decision, recorded here so results readers know the consent split is not a neutral signal on credit-bearing surveys.
 - **Class progress.** A home-park credit on a day the player also signed in adds a credit row but no class progress, because only the first row per date counts (`class.Player.php:1724`).
 - **Park attendance statistics.** Home-park and park-event credits count as attendance at that park and feed park attendance reports and any park-status thresholds built on them.
-- **Public record.** A credit shows on the player's public attendance history, revealing that they took the survey and, in home-park mode, on which day. The data-gate line says so, and only `full` respondents (who consented to identification) are credited.
+- **Public record.** A credit shows on the player's public attendance history, revealing that they took the survey and, in home-park mode, on which day. The data-gate line says so (on every gated survey, as a "may later" line when no credit is on yet), and only `full` respondents who were shown it are credited.
 - **Earliest-attendance / "playing since".** For a player with no prior attendance, a survey credit becomes their first attendance and moves `get_earliest_attendance_date`. Accepted; not special-cased.
 - **Stale snapshots.** Backfilled `park_id` on pre-migration `full` rows uses the player's current park, not the park at submission.
 - **APCu schema cache.** Restart the app after the migration, or inserts into the new columns and tables silently fail.

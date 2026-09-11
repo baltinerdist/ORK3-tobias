@@ -148,10 +148,14 @@ trait SurveyOrgFixture
         return $sid;
     }
 
-    /** Submit an empty (all-optional) response with the given consent. */
-    private function answer(int $surveyId, int $uid, string $consent): array
+    /**
+     * Submit an empty (all-optional) response with the given consent. $told:
+     * the runner's data gate showed a credit line, as it does on every gated
+     * survey (spec D1); false stands for a respondent who was never told.
+     */
+    private function answer(int $surveyId, int $uid, string $consent, bool $told = true): array
     {
-        $r = (new SurveyResponse())->submit($surveyId, $uid, [], $consent, 30, false);
+        $r = (new SurveyResponse())->submit($surveyId, $uid, [], $consent, 30, false, $told);
         $this->assertSame(0, $r['Status'], (string) ($r['Error'] ?? ''));
         return $r;
     }

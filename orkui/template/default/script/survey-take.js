@@ -78,6 +78,11 @@
     // Fixed copy — spec §3.7. Do not reword.
     var CREDIT_NOTE = 'This survey gives an attendance credit, which will appear on your public attendance record. ' +
         'It is only given when you choose ';
+    // Every other data gate: a kingdom or park may turn credits on after this
+    // respondent answers, and a backfill then credits only those who were told
+    // (spec D1), so the gate always says one or the other.
+    var CREDIT_MAYBE = 'This survey may later give an attendance credit, which would appear on your public attendance record. ' +
+        'It is only given when you choose ';
     var CREDIT_CHIP = 'Earns an attendance credit';
 
     /** The three consent options, with the full option naming who runs the survey. */
@@ -116,6 +121,7 @@
     var idx = 0;
     var startedAt = Date.now();
     var consent = null;      // 'full' | 'partial' | 'anonymous'
+    var creditNoticeShown = false;   // the data gate showed a credit line (sent as CreditNotice)
     var submitting = false;
     var resumed = false;     // show the "picked up where you left off" note once
     var serverErrors = null; // { question_id: message } pending paint after a jump
@@ -810,12 +816,11 @@
                     '<span class="sv-consent-desc">' + esc(o.desc) + '</span></span></label>';
             }
             html += '</div>';
-            if (s.credit_available) {
-                // One <span> around the text: .sv-credit-note is a flex row, so bare
-                // text and the <strong> would otherwise become separate flex items.
-                html += '<p class="sv-credit-note"><i class="fas fa-award" aria-hidden="true"></i><span>' +
-                    esc(CREDIT_NOTE) + '<strong>Any ORK Data</strong>.</span></p>';
-            }
+            // One <span> around the text: .sv-credit-note is a flex row, so bare
+            // text and the <strong> would otherwise become separate flex items.
+            html += '<p class="sv-credit-note"><i class="fas fa-award" aria-hidden="true"></i><span>' +
+                esc(s.credit_available ? CREDIT_NOTE : CREDIT_MAYBE) + '<strong>Any ORK Data</strong>.</span></p>';
+            creditNoticeShown = true;
         } else {
             html += '<h2 class="sv-card-title">Ready to send</h2>';
             html += '<p class="sv-intro">Your answers are recorded anonymously. Nothing about you is stored with them.</p>';
@@ -1163,7 +1168,9 @@
             Answers: JSON.stringify(visibleAnswers()),
             Consent: gate ? (consent || 'anonymous') : 'anonymous',
             DurationSeconds: Math.max(0, Math.round((Date.now() - startedAt) / 1000)),
-            IsTest: isTest ? 1 : 0
+            IsTest: isTest ? 1 : 0,
+            // Only a respondent the gate told about credits is ever given one (D1).
+            CreditNotice: (gate && creditNoticeShown) ? 1 : 0
         }).then(function (r) {
             submitting = false;
             if (btn) { btn.classList.remove('sv-is-busy'); btn.disabled = false; }
