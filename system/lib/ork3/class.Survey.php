@@ -34,7 +34,7 @@ class Survey
     private const DRAFT_RETENTION_DAYS = 60;
 
     /** Actions the activity log records (ork_survey_activity.action). */
-    private const ACTIVITY_ACTIONS = ['create', 'update', 'structure', 'status', 'clone', 'delete', 'rows_view', 'export'];
+    private const ACTIVITY_ACTIONS = ['create', 'update', 'structure', 'status', 'clone', 'delete', 'rows_view', 'export', 'credit'];
 
     /**
      * Actions an autosaving builder or a scrolling results table repeats: an entry

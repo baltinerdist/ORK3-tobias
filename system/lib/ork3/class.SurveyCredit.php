@@ -215,6 +215,523 @@ class SurveyCredit
     }
 
     // -----------------------------------------------------------------------
+    // Configs
+    // -----------------------------------------------------------------------
+
+    /** @return list<array<string,mixed>> every config of a survey, earliest first */
+    public function configs(int $surveyId): array
+    {
+        return $this->fetchAll('SELECT * FROM ' . DB_PREFIX . 'survey_credit WHERE survey_id = ' . (int) $surveyId
+            . ' ORDER BY enabled_at ASC, credit_id ASC');
+    }
+
+    public function hasConfigs(int $surveyId): bool
+    {
+        return $this->fetchRow('SELECT 1 AS ok FROM ' . DB_PREFIX . 'survey_credit WHERE survey_id = ' . (int) $surveyId . ' LIMIT 1') !== null;
+    }
+
+    /** @return list<int> surveys with at least one config (the cron sweep's work list) */
+    public function surveysWithConfigs(): array
+    {
+        return array_map('intval', array_column(
+            $this->fetchAll('SELECT DISTINCT survey_id FROM ' . DB_PREFIX . 'survey_credit ORDER BY survey_id'),
+            'survey_id'
+        ));
+    }
+
+    // -----------------------------------------------------------------------
+    // Panel
+    // -----------------------------------------------------------------------
+
+    /**
+     * Everything the Attendance credit panel shows (§3.6). A manager of the
+     * survey sees every config; anyone acting for $grantor sees the configs
+     * related to their org (their own, their kingdom chain, parks under their
+     * kingdom, and the owner's). Other kingdoms' configs never show, because
+     * their credit counts would leak how many of that kingdom answered.
+     */
+    public function status(int $uid, int $surveyId, ?array $grantor): array
+    {
+        $survey = $this->survey()->getRow($surveyId);
+        if ($survey === null) {
+            return $this->fail('Survey not found.');
+        }
+        $manage = $this->survey()->canManage($uid, $survey);
+        $acting = $this->canActFor($uid, $survey, $grantor);
+        if (!$manage && !$acting) {
+            return $this->denied('You cannot manage attendance credits for this survey.');
+        }
+        if (!$acting) {
+            $grantor = null;
+        }
+
+        $configs  = $this->configs($surveyId);
+        $parentOf = $this->parentMap();
+        $counts   = [];
+        foreach ($this->fetchAll('SELECT credit_id, COUNT(*) AS n FROM ' . DB_PREFIX . 'survey_credit_grant
+                                  WHERE survey_id = ' . (int) $surveyId . ' GROUP BY credit_id') as $r) {
+            $counts[(int) $r['credit_id']] = (int) $r['n'];
+        }
+
+        $visible = [];
+        foreach ($configs as $c) {
+            if ($manage || $this->related($c, $grantor, $survey)) {
+                $visible[] = $this->configOut($c, $counts[(int) $c['credit_id']] ?? 0);
+            }
+        }
+
+        $mine = null;
+        if ($grantor !== null) {
+            $own = null;
+            foreach ($configs as $c) {
+                if ($c['grantor_type'] === $grantor['type'] && (int) $c['grantor_id'] === (int) $grantor['id']) {
+                    $own = $c;
+                }
+            }
+            $problem = $own !== null ? '' : $this->enableProblem($survey, $grantor);
+            $mine = [
+                'grantor_type'   => $grantor['type'],
+                'grantor_id'     => (int) $grantor['id'],
+                'name'           => $this->survey()->scopeName($grantor['type'], (int) $grantor['id']),
+                'config_id'      => $own !== null ? (int) $own['credit_id'] : null,
+                'can_enable'     => $own === null && $problem === '',
+                'blocked_reason' => $problem,
+                'covered_by'     => $own === null ? $this->coveredBy($configs, $grantor, $survey) : null,
+                'preview'        => $own === null ? [
+                    'home_park' => $this->preview($survey, $configs, $grantor, 'home_park', $parentOf),
+                    'event'     => $this->preview($survey, $configs, $grantor, 'event', $parentOf),
+                ] : null,
+            ];
+        }
+
+        return $this->ok(['Credit' => [
+            'survey_title'  => (string) $survey['title'],
+            'survey_status' => (string) $survey['status'],
+            'event_name'    => self::eventName((string) $survey['title']),
+            'start_date'    => self::startDate($survey),
+            'gate_enabled'  => !empty($survey['data_gate_enabled']),
+            'configs'       => $visible,
+            'mine'          => $mine,
+            'pending'       => $this->pendingCount($survey, $configs, $parentOf),
+        ]]);
+    }
+
+    /** Turn credits on for $grantor (§3.1: permanent), then backfill. */
+    public function enable(int $uid, int $surveyId, ?array $grantor, string $mode, bool $confirm): array
+    {
+        $survey = $this->survey()->getRow($surveyId);
+        if ($survey === null) {
+            return $this->fail('Survey not found.');
+        }
+        if (!in_array($mode, self::MODES, true)) {
+            return $this->fail('Choose where the credit is given.');
+        }
+        if (!$confirm) {
+            return $this->fail('Confirm that you understand this cannot be undone.');
+        }
+        if (!$this->canActFor($uid, $survey, $grantor)) {
+            return $this->denied('You cannot turn on credits for this survey.');
+        }
+        $problem = $this->enableProblem($survey, $grantor);
+        if ($problem !== '') {
+            return $this->fail($problem);
+        }
+
+        $sid = (int) $survey['survey_id'];
+        if (!$this->exec('INSERT INTO ' . DB_PREFIX . 'survey_credit
+                          (survey_id, grantor_type, grantor_id, mode, enabled_by, enabled_at)
+                          VALUES (' . $sid . ', \'' . $grantor['type'] . '\', ' . (int) $grantor['id'] . ', \''
+                          . $mode . '\', ' . $uid . ', \'' . date('Y-m-d H:i:s') . '\')')) {
+            return $this->fail('Credits are already on for this organization.');
+        }
+        // Read back by the unique key: LAST_INSERT_ID() is not a duplicate signal.
+        $row = $this->fetchRow('SELECT credit_id FROM ' . DB_PREFIX . 'survey_credit WHERE survey_id = ' . $sid
+            . ' AND grantor_type = \'' . $grantor['type'] . '\' AND grantor_id = ' . (int) $grantor['id']);
+        $creditId = $row ? (int) $row['credit_id'] : 0;
+
+        $res = $this->reconcile($sid);
+
+        $log = $this->survey();
+        $log->setActor($uid);
+        $log->logActivity($sid, 'credit', [
+            'credit_id' => $creditId, 'grantor_type' => $grantor['type'], 'grantor_id' => (int) $grantor['id'],
+            'mode' => $mode, 'backfilled' => $res['Granted'],
+        ]);
+
+        return $this->ok(['CreditId' => $creditId] + $res);
+    }
+
+    /** reconcile() for a panel viewer: a manager, or someone acting for $grantor. */
+    public function reconcileAs(int $uid, int $surveyId, ?array $grantor): array
+    {
+        $survey = $this->survey()->getRow($surveyId);
+        if ($survey === null) {
+            return $this->fail('Survey not found.');
+        }
+        if (!$this->survey()->canManage($uid, $survey) && !$this->canActFor($uid, $survey, $grantor)) {
+            return $this->denied('You cannot manage attendance credits for this survey.');
+        }
+        return $this->ok($this->reconcile($surveyId));
+    }
+
+    // -----------------------------------------------------------------------
+    // Engine
+    // -----------------------------------------------------------------------
+
+    /**
+     * Post every owed credit (§3.5). Idempotent: the ledger holds one row per
+     * player per survey, so re-running changes nothing. Creates missing events
+     * first, outside any transaction (CreateSystemEvent opens its own).
+     *
+     * @return array{Granted:int, SkippedNoPark:int, Pending:int}
+     */
+    public function reconcile(int $surveyId): array
+    {
+        $out    = ['Granted' => 0, 'SkippedNoPark' => 0, 'Pending' => 0];
+        $survey = $this->survey()->getRow($surveyId);
+        if ($survey === null) {
+            return $out;
+        }
+        $configs = $this->withEvents($this->configs($surveyId), $survey);
+        if (!$configs) {
+            return $out;
+        }
+        $byId     = array_column($configs, null, 'credit_id');
+        $parentOf = $this->parentMap();
+
+        foreach ($this->owedResponses($surveyId) as $r) {
+            $cov = self::coverage($configs, $r, $survey, $parentOf);
+            if ($cov['credit_id'] === null) {
+                $out['SkippedNoPark'] += $cov['no_home_park'] ? 1 : 0;
+                continue;
+            }
+            $res = $this->grant($survey, $byId[$cov['credit_id']], $r);
+            if ($res === 'granted') {
+                $out['Granted']++;
+            } elseif ($res === 'pending') {
+                $out['Pending']++;
+            }
+        }
+        return $out;
+    }
+
+    /** The live grant after a submit commits (§3.5). Never throws for a missing config. */
+    public function grantFor(int $surveyId, int $uid): string
+    {
+        $survey = $this->survey()->getRow($surveyId);
+        $configs = $survey ? $this->configs($surveyId) : [];
+        if (!$configs) {
+            return 'none';
+        }
+        if ($this->isGranted($surveyId, $uid)) {
+            return 'granted';
+        }
+        // Only a non-test Any ORK Data response is ever credited (D1).
+        $r = $this->fetchRow('SELECT response_id, mundane_id, park_id, kingdom_id, submitted_at
+                                FROM ' . DB_PREFIX . 'survey_response
+                               WHERE survey_id = ' . (int) $surveyId . ' AND mundane_id = ' . (int) $uid . '
+                                 AND consent = \'full\' AND is_test = 0 LIMIT 1');
+        if ($r === null) {
+            return 'none';
+        }
+        $configs = $this->withEvents($configs, $survey);
+        $cov = self::coverage($configs, $r, $survey, $this->parentMap());
+        if ($cov['credit_id'] === null) {
+            return 'none';
+        }
+        $res = $this->grant($survey, array_column($configs, null, 'credit_id')[$cov['credit_id']], $r);
+        return $res === 'pending' ? 'pending' : 'granted';
+    }
+
+    /** First (and any) transition to open: give event configs their event now that a start date exists. */
+    public function onOpened(int $surveyId): void
+    {
+        $survey = $this->survey()->getRow($surveyId);
+        if ($survey !== null) {
+            $this->withEvents($this->configs($surveyId), $survey);
+        }
+    }
+
+    /** Would this player be credited if they chose Any ORK Data? (the runner's credit line) */
+    public function creditAvailableFor(array $surveyRow, int $uid): bool
+    {
+        $configs = $this->configs((int) $surveyRow['survey_id']);
+        if (!$configs || empty($surveyRow['data_gate_enabled'])) {
+            return false;
+        }
+        $p = $this->fetchRow('SELECT park_id, kingdom_id FROM ' . DB_PREFIX . 'mundane WHERE mundane_id = ' . (int) $uid);
+        if ($p === null) {
+            return false;
+        }
+        return self::coverage($configs, $p, $surveyRow, $this->parentMap())['credit_id'] !== null;
+    }
+
+    // -----------------------------------------------------------------------
+    // Internals
+    // -----------------------------------------------------------------------
+
+    private function survey(): Survey
+    {
+        return new Survey();
+    }
+
+    private function canActFor(int $uid, array $survey, ?array $grantor): bool
+    {
+        return $grantor !== null
+            && in_array($grantor['type'] ?? '', ['kingdom', 'park'], true)
+            && $this->validGrantor($survey, (string) $grantor['type'], (int) $grantor['id'])
+            && $this->survey()->canCreate($uid, (string) $grantor['type'], (int) $grantor['id']);
+    }
+
+    /** '' when $grantor may switch credits on now, else the reason shown in the panel. */
+    private function enableProblem(array $survey, array $grantor): string
+    {
+        if (empty($survey['data_gate_enabled'])) {
+            return 'Turn on the data gate (Privacy) so respondents can choose Any ORK Data; credits are only given to them.';
+        }
+        $isOwner = (string) $survey['scope_type'] === $grantor['type'] && (int) $survey['scope_id'] === (int) $grantor['id'];
+        if (!$isOwner && !in_array((string) $survey['status'], ['open', 'closed'], true)) {
+            return 'Credits can be turned on once this survey is open.';
+        }
+        $own = $this->fetchRow('SELECT 1 AS ok FROM ' . DB_PREFIX . 'survey_credit WHERE survey_id = ' . (int) $survey['survey_id']
+            . ' AND grantor_type = \'' . $grantor['type'] . '\' AND grantor_id = ' . (int) $grantor['id']);
+        return $own !== null ? 'Credits are already on for this organization.' : '';
+    }
+
+    /** Is config $c shown to someone acting for $grantor? */
+    private function related(array $c, ?array $grantor, array $survey): bool
+    {
+        if ((string) $c['grantor_type'] === (string) $survey['scope_type'] && (int) $c['grantor_id'] === (int) $survey['scope_id']) {
+            return true;   // the owner's config
+        }
+        if ($grantor === null) {
+            return false;
+        }
+        $type = (string) $c['grantor_type'];
+        $id   = (int) $c['grantor_id'];
+        if ($type === $grantor['type'] && $id === (int) $grantor['id']) {
+            return true;
+        }
+        [$gk, $gp] = $this->orgKingdom($grantor['type'], (int) $grantor['id']);
+        if ($type === 'kingdom' && ($id === $gk || ($gp > 0 && $id === $gp))) {
+            return true;   // a kingdom above the viewer
+        }
+        if ($type === 'park' && $grantor['type'] === 'kingdom') {
+            [$pk, $pp] = $this->orgKingdom('park', $id);
+            return $pk === (int) $grantor['id'] || $pp === (int) $grantor['id'];   // a park below the viewer
+        }
+        return false;
+    }
+
+    /** An earlier config that already covers ALL of $grantor's players, as {credit_id, name}. */
+    private function coveredBy(array $configs, array $grantor, array $survey): ?array
+    {
+        [$gk, $gp] = $this->orgKingdom($grantor['type'], (int) $grantor['id']);
+        foreach ($configs as $c) {   // earliest first
+            $type  = (string) $c['grantor_type'];
+            $id    = (int) $c['grantor_id'];
+            $owner = $type === (string) $survey['scope_type'] && $id === (int) $survey['scope_id'];
+            $above = $type === 'kingdom' && ($grantor['type'] === 'park' ? ($id === $gk || ($gp > 0 && $id === $gp)) : ($gp > 0 && $id === $gp));
+            if (($owner && $c['mode'] === 'event') || $above) {
+                return ['credit_id' => (int) $c['credit_id'], 'name' => $this->survey()->scopeName($type, $id)];
+            }
+        }
+        return null;
+    }
+
+    /** Dry run: how many owed responses a new config for $grantor would credit now. */
+    private function preview(array $survey, array $configs, array $grantor, string $mode, array $parentOf): array
+    {
+        $hyp = ['credit_id' => PHP_INT_MAX, 'grantor_type' => $grantor['type'], 'grantor_id' => (int) $grantor['id'],
+                'mode' => $mode, 'enabled_at' => '9999-12-31 23:59:59'];
+        $n = 0;
+        $noPark = 0;
+        foreach ($this->owedResponses((int) $survey['survey_id']) as $r) {
+            $cov = self::coverage(array_merge($configs, [$hyp]), $r, $survey, $parentOf);
+            if ($cov['credit_id'] === PHP_INT_MAX) {
+                $n++;
+            } elseif ($cov['credit_id'] === null && $mode === 'home_park'
+                && self::coverage([$hyp], $r, $survey, $parentOf)['no_home_park']) {
+                $noPark++;
+            }
+        }
+        return ['eligible_now' => $n, 'no_home_park' => $noPark];
+    }
+
+    private function pendingCount(array $survey, array $configs, array $parentOf): int
+    {
+        if (!$configs) {
+            return 0;
+        }
+        $n = 0;
+        foreach ($this->owedResponses((int) $survey['survey_id']) as $r) {
+            $n += self::coverage($configs, $r, $survey, $parentOf)['credit_id'] !== null ? 1 : 0;
+        }
+        return $n;
+    }
+
+    /** Non-test Any ORK Data responses whose player has no credit for this survey yet. */
+    private function owedResponses(int $surveyId): array
+    {
+        return $this->fetchAll(
+            'SELECT r.response_id, r.mundane_id, r.park_id, r.kingdom_id, r.submitted_at
+               FROM ' . DB_PREFIX . 'survey_response r
+               LEFT JOIN ' . DB_PREFIX . 'survey_credit_grant g ON g.survey_id = r.survey_id AND g.mundane_id = r.mundane_id
+              WHERE r.survey_id = ' . (int) $surveyId . ' AND r.is_test = 0 AND r.consent = \'full\'
+                AND r.mundane_id IS NOT NULL AND g.mundane_id IS NULL
+              ORDER BY r.response_id'
+        );
+    }
+
+    private function isGranted(int $surveyId, int $uid): bool
+    {
+        return $this->fetchRow('SELECT 1 AS ok FROM ' . DB_PREFIX . 'survey_credit_grant
+                                WHERE survey_id = ' . (int) $surveyId . ' AND mundane_id = ' . (int) $uid) !== null;
+    }
+
+    /** $configs with every event config given its event where the survey has a start date. */
+    private function withEvents(array $configs, array $survey): array
+    {
+        foreach ($configs as $i => $c) {
+            if ($c['mode'] === 'event') {
+                $configs[$i] = $this->ensureEvent($c, $survey);
+            }
+        }
+        return $configs;
+    }
+
+    /** Never call inside a transaction: CreateSystemEvent opens its own. */
+    private function ensureEvent(array $config, array $survey): array
+    {
+        $detailId = (int) ($config['event_calendardetail_id'] ?? 0);
+        if ($detailId > 0 && $this->fetchRow('SELECT 1 AS ok FROM ' . DB_PREFIX . 'event_calendardetail
+                                              WHERE event_calendardetail_id = ' . $detailId) !== null) {
+            return $config;
+        }
+        $start = self::startDate($survey);
+        if ($start === null) {
+            return $config;
+        }
+        $isPark = $config['grantor_type'] === 'park';
+        $title  = (string) $survey['title'];
+        $r = Ork3::$Lib->eventplanning->CreateSystemEvent([
+            'KingdomId'   => $isPark ? 0 : (int) $config['grantor_id'],
+            'ParkId'      => $isPark ? (int) $config['grantor_id'] : 0,
+            'Name'        => self::eventName($title),
+            'Date'        => $start,
+            'Description' => 'Attendance credit for completing the survey "' . $title . '". Credits are entered automatically '
+                . 'for respondents who chose to link their answers to their ORK profile.',
+            'Url'         => (defined('UIR') ? UIR : HTTP_UI_REMOTE . 'index.php?Route=') . 'Survey/s/' . (string) $survey['slug'],
+            'UrlName'     => 'Take the survey',
+        ]);
+        if ((int) ($r['Status'] ?? 1) !== 0) {
+            $this->logFailure((int) $survey['survey_id'], 0, 'create_event', (string) ($r['Error'] ?? ''));
+            return $config;
+        }
+        $this->exec('UPDATE ' . DB_PREFIX . 'survey_credit SET event_id = ' . (int) $r['EventId']
+            . ', event_calendardetail_id = ' . (int) $r['DetailId'] . ' WHERE credit_id = ' . (int) $config['credit_id']);
+        $config['event_id']                = (int) $r['EventId'];
+        $config['event_calendardetail_id'] = (int) $r['DetailId'];
+        return $config;
+    }
+
+    /**
+     * One credit: attendance row + ledger row in ONE transaction, rolled back on
+     * either failure. Callers pass only non-test `full` responses (owedResponses(),
+     * grantFor()). Opens no nested transaction: events already exist by now.
+     *
+     * @return 'granted'|'already'|'pending'
+     */
+    private function grant(array $survey, array $config, array $response): string
+    {
+        $sid = (int) $survey['survey_id'];
+        $uid = (int) $response['mundane_id'];
+
+        if ($config['mode'] === 'event') {
+            $occ = (int) ($config['event_calendardetail_id'] ?? 0) > 0 ? $this->fetchRow(
+                'SELECT e.event_id, e.kingdom_id, COALESCE(cd.at_park_id, 0) AS at_park_id, DATE(cd.event_start) AS d
+                   FROM ' . DB_PREFIX . 'event_calendardetail cd
+                   JOIN ' . DB_PREFIX . 'event e ON e.event_id = cd.event_id
+                  WHERE cd.event_calendardetail_id = ' . (int) $config['event_calendardetail_id']
+            ) : null;
+            if ($occ === null) {
+                return 'pending';
+            }
+            $where = ['Date' => (string) $occ['d'], 'ParkId' => (int) $occ['at_park_id'], 'KingdomId' => (int) $occ['kingdom_id'],
+                      'EventId' => (int) $occ['event_id'], 'EventCalendarDetailId' => (int) $config['event_calendardetail_id']];
+        } else {
+            $park = $this->fetchRow('SELECT kingdom_id FROM ' . DB_PREFIX . 'park WHERE park_id = ' . (int) $response['park_id']);
+            if ($park === null) {
+                return 'pending';
+            }
+            $where = ['Date' => substr((string) $response['submitted_at'], 0, 10), 'ParkId' => (int) $response['park_id'],
+                      'KingdomId' => (int) $park['kingdom_id'], 'EventId' => 0, 'EventCalendarDetailId' => 0];
+        }
+
+        $class = self::classFor((int) Ork3::$Lib->attendance->GetPlayerLastClass(['MundaneId' => $uid]));
+
+        if (!$this->exec('START TRANSACTION')) {
+            $this->logFailure($sid, $uid, 'begin', '');
+            return 'pending';
+        }
+        $att = Ork3::$Lib->attendance->AddSystemCredit($where + [
+            'MundaneId' => $uid, 'ClassId' => $class, 'Credits' => 1, 'Note' => self::noteFor($sid),
+            'ByWhomId' => (int) $config['enabled_by'], 'EntryMethod' => 'survey',
+        ]);
+        if ((int) $att['Status'] !== 0) {
+            $this->exec('ROLLBACK');
+            // A concurrent grant for this player trips the attendance unique key
+            // before the ledger key: that is "already granted", not a failure (§7).
+            if ($this->isGranted($sid, $uid)) {
+                return 'already';
+            }
+            $this->logFailure($sid, $uid, 'attendance', (string) $att['Error']);
+            return 'pending';
+        }
+        if (!$this->exec('INSERT INTO ' . DB_PREFIX . 'survey_credit_grant (survey_id, mundane_id, credit_id, attendance_id)
+                          VALUES (' . $sid . ', ' . $uid . ', ' . (int) $config['credit_id'] . ', ' . (int) $att['AttendanceId'] . ')')) {
+            $this->exec('ROLLBACK');
+            return $this->isGranted($sid, $uid) ? 'already' : 'pending';   // a concurrent grant won
+        }
+        if (!$this->exec('COMMIT')) {
+            $this->exec('ROLLBACK');
+            $this->logFailure($sid, $uid, 'commit', '');
+            return 'pending';
+        }
+        return 'granted';
+    }
+
+    private function configOut(array $c, int $granted): array
+    {
+        $eventLabel = '';
+        if ((int) ($c['event_id'] ?? 0) > 0) {
+            $e = $this->fetchRow('SELECT name FROM ' . DB_PREFIX . 'event WHERE event_id = ' . (int) $c['event_id']);
+            $eventLabel = $e ? (string) $e['name'] : '';
+        }
+        return [
+            'credit_id'               => (int) $c['credit_id'],
+            'grantor_type'            => (string) $c['grantor_type'],
+            'grantor_id'              => (int) $c['grantor_id'],
+            'grantor_name'            => $this->survey()->scopeName((string) $c['grantor_type'], (int) $c['grantor_id']),
+            'mode'                    => (string) $c['mode'],
+            'event_id'                => (int) ($c['event_id'] ?? 0) ?: null,
+            'event_calendardetail_id' => (int) ($c['event_calendardetail_id'] ?? 0) ?: null,
+            'event_label'             => $eventLabel,
+            'enabled_at'              => (string) $c['enabled_at'],
+            'granted'                 => $granted,
+        ];
+    }
+
+    /** One structured line; quoted literals in DB messages are redacted like SurveyResponse::rollback(). */
+    private function logFailure(int $surveyId, int $uid, string $stage, string $error): void
+    {
+        error_log('[survey-credit] grant failed ' . json_encode([
+            'survey_id' => $surveyId, 'uid' => $uid, 'stage' => $stage,
+            'db_error'  => preg_replace("/'[^']*'/", "'?'", $error),
+        ]));
+    }
+
+    // -----------------------------------------------------------------------
     // SQL helpers (same contract as class.Survey.php)
     // -----------------------------------------------------------------------
 

@@ -251,4 +251,149 @@ final class SurveySharingCreditTest extends TestCase
             $this->pdo->exec('DELETE FROM ' . DB_PREFIX . 'event WHERE event_id = ' . (int) $r['EventId']);
         }
     }
+
+    private function credit(): SurveyCredit
+    {
+        return new SurveyCredit();
+    }
+
+    private function grants(int $surveyId): array
+    {
+        return $this->pdo->query('SELECT g.mundane_id, a.* FROM ' . DB_PREFIX . 'survey_credit_grant g
+                                  JOIN ' . DB_PREFIX . 'attendance a ON a.attendance_id = g.attendance_id
+                                  WHERE g.survey_id = ' . $surveyId . ' ORDER BY g.mundane_id')->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function testEnableBackfillsAnyOrkDataOnlyAtTheHomeParkOnTheDayTaken(): void
+    {
+        $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);
+        $full = $this->player('full', $this->parkA, $this->k);
+        $this->answer($ks, $full, 'full');
+        $this->answer($ks, $this->player('part', $this->parkA, $this->k), 'partial');
+        $this->answer($ks, $this->player('anon', $this->parkA, $this->k), 'anonymous');
+        $submitted = (string) $this->scalar('SELECT DATE(submitted_at) FROM ' . DB_PREFIX . 'survey_response WHERE survey_id = ' . $ks . ' AND mundane_id = ' . $full);
+
+        $r = $this->credit()->enable($this->kOfficer, $ks, ['type' => 'kingdom', 'id' => $this->k], 'home_park', true);
+        $this->assertSame(0, $r['Status'], (string) ($r['Error'] ?? ''));
+        $this->assertSame(1, $r['Granted']);
+
+        $g = $this->grants($ks);
+        $this->assertCount(1, $g);
+        $this->assertSame((string) $full, (string) $g[0]['mundane_id']);
+        $this->assertSame($submitted, $g[0]['date']);
+        $this->assertSame((string) $this->parkA, (string) $g[0]['park_id']);
+        $this->assertSame((string) $this->k, (string) $g[0]['kingdom_id']);
+        $this->assertSame('6', (string) $g[0]['class_id'], 'no prior attendance: Color');
+        $this->assertSame('Survey #' . $ks, $g[0]['note']);
+        $this->assertSame('survey', $g[0]['entry_method']);
+        $this->assertSame((string) $this->kOfficer, (string) $g[0]['by_whom_id']);
+        $this->assertSame('1.00', number_format((float) $g[0]['credits'], 2));
+    }
+
+    public function testEnableIsPermanentAndRefusedTwiceOrUnconfirmedOrGateOff(): void
+    {
+        $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);
+        $g = ['type' => 'kingdom', 'id' => $this->k];
+        $this->assertSame(1, $this->credit()->enable($this->kOfficer, $ks, $g, 'home_park', false)['Status'], 'needs confirmation');
+        $this->assertSame(1, $this->credit()->enable($this->kOfficer, $ks, $g, 'teleport', true)['Status'], 'unknown mode');
+        $this->assertSame(3, $this->credit()->enable($this->pOfficerA, $ks, $g, 'home_park', true)['Status'], 'not a kingdom officer');
+        $this->assertSame(0, $this->credit()->enable($this->kOfficer, $ks, $g, 'home_park', true)['Status']);
+        $this->assertSame(1, $this->credit()->enable($this->kOfficer, $ks, $g, 'event', true)['Status'], 'configs are permanent');
+
+        $gateOff = $this->openSurvey($this->kOfficer, 'kingdom', $this->k, ['data_gate_enabled' => 0]);
+        $this->assertSame(1, $this->credit()->enable($this->kOfficer, $gateOff, $g, 'home_park', true)['Status']);
+    }
+
+    public function testLiveGrantAfterEnableAndReconcileIsIdempotent(): void
+    {
+        $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);
+        $this->credit()->enable($this->kOfficer, $ks, ['type' => 'kingdom', 'id' => $this->k], 'home_park', true);
+        $uid = $this->player('live', $this->parkB, $this->k);
+        $this->answer($ks, $uid, 'full');
+        $this->assertSame('granted', $this->credit()->grantFor($ks, $uid));
+        $this->assertSame('granted', $this->credit()->grantFor($ks, $uid), 'second call is a no-op');
+        $this->assertCount(1, $this->grants($ks));
+        $this->assertSame(['Granted' => 0, 'SkippedNoPark' => 0, 'Pending' => 0], $this->credit()->reconcile($ks));
+        $this->assertSame('1', (string) $this->scalar('SELECT COUNT(*) FROM ' . DB_PREFIX . 'attendance WHERE note = \'Survey #' . $ks . '\''));
+    }
+
+    public function testOneCreditPerPlayerWhenKingdomAndParkBothGrant(): void
+    {
+        $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);
+        $uid = $this->player('both', $this->parkA, $this->k);
+        $this->answer($ks, $uid, 'full');
+        $this->assertSame(0, $this->credit()->enable($this->pOfficerA, $ks, ['type' => 'park', 'id' => $this->parkA], 'home_park', true)['Status']);
+        $this->assertSame(0, $this->credit()->enable($this->kOfficer, $ks, ['type' => 'kingdom', 'id' => $this->k], 'event', true)['Status']);
+        $g = $this->grants($ks);
+        $this->assertCount(1, $g);
+        $this->assertSame('0', (string) $g[0]['event_id'], 'the park config came first');
+    }
+
+    public function testEventModeCreatesOneEventDatedTheStartAndCreditsVisitors(): void
+    {
+        $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);
+        $visitor = $this->player('visitor', $this->parkOther, $this->kOther);
+        $this->answer($ks, $this->player('local', $this->parkA, $this->k), 'full');
+        // A visitor can only answer an event-audience survey; the coverage rule is what's under test here.
+        $this->pdo->exec('INSERT INTO ' . DB_PREFIX . "survey_response (survey_id, consent, mundane_id, kingdom_id, park_id, is_test, submitted_at)
+                          VALUES ({$ks}, 'full', {$visitor}, {$this->kOther}, {$this->parkOther}, 0, NOW())");
+
+        $r = $this->credit()->enable($this->kOfficer, $ks, ['type' => 'kingdom', 'id' => $this->k], 'event', true);
+        $this->assertSame(0, $r['Status'], (string) ($r['Error'] ?? ''));
+        $this->assertSame(2, $r['Granted']);
+
+        $cfg = $this->pdo->query('SELECT * FROM ' . DB_PREFIX . 'survey_credit WHERE survey_id = ' . $ks)->fetch(PDO::FETCH_ASSOC);
+        $this->assertGreaterThan(0, (int) $cfg['event_calendardetail_id']);
+        $start = SurveyCredit::startDate($this->row($ks));
+        foreach ($this->grants($ks) as $g) {
+            $this->assertSame($start, $g['date']);
+            $this->assertSame((string) $cfg['event_id'], (string) $g['event_id']);
+        }
+        $name = (string) $this->scalar('SELECT name FROM ' . DB_PREFIX . 'event WHERE event_id = ' . (int) $cfg['event_id']);
+        $this->assertSame('Survey Credit - T11SHARE survey', $name);
+        $this->assertSame('1', (string) $this->scalar('SELECT COUNT(*) FROM ' . DB_PREFIX . 'event WHERE name = ' . $this->pdo->quote($name) . ' AND event_id = ' . (int) $cfg['event_id']));
+    }
+
+    public function testDraftOwnerConfigGetsItsEventOnFirstOpen(): void
+    {
+        $s = new Survey();
+        $r = $s->create($this->kOfficer, 'kingdom', $this->k, 'T11SHARE draft');
+        $sid = $this->fx['survey'][] = (int) $r['SurveyId'];
+        $this->assertSame(0, $this->credit()->enable($this->kOfficer, $sid, ['type' => 'kingdom', 'id' => $this->k], 'event', true)['Status']);
+        $this->assertNull($this->scalar('SELECT event_id FROM ' . DB_PREFIX . 'survey_credit WHERE survey_id = ' . $sid) ?: null);
+
+        $page = (int) $this->scalar('SELECT page_id FROM ' . DB_PREFIX . 'survey_page WHERE survey_id = ' . $sid . ' LIMIT 1');
+        $q = $s->questionAdd($sid, $page, 'single', null);
+        $s->questionUpdate((int) $q['Question']['question_id'], ['Prompt' => 'T11SHARE q']);
+        $this->credit()->onOpened($sid);   // Task 10 wires this into setStatus(); called directly here
+        $this->assertNull($this->scalar('SELECT event_id FROM ' . DB_PREFIX . 'survey_credit WHERE survey_id = ' . $sid) ?: null, 'still a draft: no start date');
+        $s->setStatus($sid, 'open');
+        $this->credit()->onOpened($sid);
+        $this->assertGreaterThan(0, (int) $this->scalar('SELECT event_id FROM ' . DB_PREFIX . 'survey_credit WHERE survey_id = ' . $sid));
+    }
+
+    public function testNonOwnerCannotEnableOnADraftAndStatusHidesUnrelatedConfigs(): void
+    {
+        $os = $this->openSurvey($this->kOfficer, 'ork', $this->k, ['status' => 'draft']);
+        $this->assertSame(1, $this->credit()->enable($this->kOfficer, $os, ['type' => 'kingdom', 'id' => $this->k], 'home_park', true)['Status']);
+
+        $open = $this->openSurvey($this->kOfficer, 'ork', $this->k);
+        $this->credit()->enable($this->kOtherOfficer, $open, ['type' => 'kingdom', 'id' => $this->kOther], 'home_park', true);
+        $st = $this->credit()->status($this->kOfficer, $open, ['type' => 'kingdom', 'id' => $this->k]);
+        $this->assertSame(0, $st['Status']);
+        $this->assertSame([], $st['Credit']['configs'], "another kingdom's config is not shown");
+        $this->assertTrue($st['Credit']['mine']['can_enable']);
+        $this->assertArrayHasKey('home_park', $st['Credit']['mine']['preview']);
+    }
+
+    public function testCreditAvailableForFollowsCoverage(): void
+    {
+        $ks = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);
+        $uid = $this->player('avail', $this->parkB, $this->k);
+        $this->assertFalse($this->credit()->creditAvailableFor($this->row($ks), $uid));
+        $this->credit()->enable($this->pOfficerA, $ks, ['type' => 'park', 'id' => $this->parkA], 'home_park', true);
+        $this->assertFalse($this->credit()->creditAvailableFor($this->row($ks), $uid), 'park A does not cover park B');
+        $this->credit()->enable($this->kOfficer, $ks, ['type' => 'kingdom', 'id' => $this->k], 'home_park', true);
+        $this->assertTrue($this->credit()->creditAvailableFor($this->row($ks), $uid));
+    }
 }
