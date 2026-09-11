@@ -195,7 +195,7 @@ New internal method `EventPlanning::create_system_event(array $r): array` (snake
   - For a kingdom grantor: `kingdom_id` = grantor, `park_id` 0. For a park grantor: `park_id` = grantor and `kingdom_id` = the park's kingdom (derived, never taken from the request).
   - `mundane_id` 0, `unit_id` 0, `status` `'published'`.
 - **`ork_event_calendardetail`**:
-  - One day: `event_start` = start date 00:00:00, `event_end` = start date 23:59:59, so the attendance pages never show a "currently happening" prompt.
+  - One day: `event_start` = start date 00:00:00, `event_end` = start date 23:59:59. The window alone does not keep it off the attendance pages' "currently happening" prompt, since it covers its own start date (often today). `Event::GetActiveEventsAtScope()` therefore skips any occurrence an `ork_survey_credit` config points at, and `SurveyCredit` busts that cache once it links the ids.
   - `current` 1, `price` 0, `event_type` `'Other'`, `at_park_id` = the park grantor (NULL for a kingdom grantor).
   - `description`: *"Attendance credit for completing the survey "{title}". Credits are entered automatically for respondents who chose to link their answers to their ORK profile."*
   - `url` = the survey share link, `url_name` = "Take the survey".
@@ -293,6 +293,7 @@ After applying: `docker restart ork3-php8-app` (APCu schema cache), then refresh
   - `class.SurveyReport.php`: `applyLens`, the `park_id` filter, `isNarrowing`.
   - `class.Attendance.php`: `add_system_credit`.
   - `class.EventPlanning.php`: `create_system_event`.
+  - `class.Event.php`: `GetActiveEventsAtScope` skips survey credit occurrences (§3.4).
 - **Model**: `Model_Survey` gains thin delegates (`list_for_scope`, `results_access`, `credit_status`, `credit_enable`, `credit_reconcile`) and a `_credit()` factory.
 - **Controllers**: `Controller_Survey::index` renders the three buckets; `results` parses the context and gates on `results_access`. `Controller_SurveyAjax` gets the `results` context and the three credit actions.
 - **Templates/assets**: `Survey_index.tpl` (sections, row actions, Credits modal), `Survey_results.tpl` + `survey-results.js` (shared mode, lens strip), `Survey_build.tpl` + `survey-build.js` (Results sharing select, Attendance credit card, the credit line in the consent quote), `survey-take.js` (gate line, chips, thanks line), `survey.css` / `survey-build.css` / `survey-results.css` (chips, strip, modal; dark mode), `Playernew_index.tpl` (the "Survey credit" By label and the widget chip). The Credits modal markup and JS live in one shared include so the list page and builder use the same component.

@@ -33,6 +33,8 @@ class SurveyCredit
 
     /** @var array<string,array{0:int,1:int}> "type:id" => [kingdom_id, parent_kingdom_id] */
     private array $orgMemo = [];
+    /** @var array<string,string> "type:id" => org name */
+    private array $nameMemo = [];
 
     public function __construct()
     {
@@ -199,19 +201,45 @@ class SurveyCredit
         return self::grantorReaches($surveyRow, $type, $id, $kingdom, $parent);
     }
 
-    /** @return array<string,true> "<survey_id>:<grantor_type>:<grantor_id>" for every config of these surveys */
-    public function configKeys(array $surveyIds): array
+    /**
+     * Every config of these surveys in ONE query (the list page), grouped by
+     * survey and earliest first, the order coveredBy() and precedence rely on.
+     *
+     * @return array<int,list<array<string,mixed>>> survey_id => configs
+     */
+    public function configsFor(array $surveyIds): array
     {
         $ids = array_values(array_filter(array_map('intval', $surveyIds)));
         if (!$ids) {
             return [];
         }
         $out = [];
-        foreach ($this->fetchAll('SELECT survey_id, grantor_type, grantor_id FROM ' . DB_PREFIX . 'survey_credit
-                                  WHERE survey_id IN (' . implode(',', $ids) . ')') as $r) {
-            $out[(int) $r['survey_id'] . ':' . $r['grantor_type'] . ':' . (int) $r['grantor_id']] = true;
+        foreach ($this->fetchAll('SELECT * FROM ' . DB_PREFIX . 'survey_credit
+                                  WHERE survey_id IN (' . implode(',', $ids) . ')
+                                  ORDER BY enabled_at ASC, credit_id ASC') as $c) {
+            $out[(int) $c['survey_id']][] = $c;
         }
         return $out;
+    }
+
+    /**
+     * A list row's credit state for $grantor (spec §1 CreditChip): `on` when
+     * the grantor has its own config, else `covered_by` names the earlier
+     * config that already covers the grantor's players (the panel's
+     * "already covered" line), else both empty.
+     *
+     * @param list<array<string,mixed>> $configs this survey's, earliest first (configsFor())
+     * @return array{on: bool, covered_by: ?string}
+     */
+    public function rowState(array $surveyRow, array $configs, array $grantor): array
+    {
+        foreach ($configs as $c) {
+            if ($c['grantor_type'] === $grantor['type'] && (int) $c['grantor_id'] === (int) $grantor['id']) {
+                return ['on' => true, 'covered_by' => null];
+            }
+        }
+        $cov = $this->coveredBy($configs, $grantor, $surveyRow);
+        return ['on' => false, 'covered_by' => $cov['name'] ?? null];
     }
 
     // -----------------------------------------------------------------------
@@ -572,6 +600,12 @@ class SurveyCredit
     }
 
     /** An earlier config that already covers ALL of $grantor's players, as {credit_id, name}. */
+    /** scopeName(), memoized: the list page asks for the same few orgs on every row. */
+    private function orgName(string $type, int $id): string
+    {
+        return $this->nameMemo[$type . ':' . $id] ??= $this->survey()->scopeName($type, $id);
+    }
+
     private function coveredBy(array $configs, array $grantor, array $survey): ?array
     {
         [$gk, $gp] = $this->orgKingdom($grantor['type'], (int) $grantor['id']);
@@ -581,7 +615,7 @@ class SurveyCredit
             $owner = $type === (string) $survey['scope_type'] && $id === (int) $survey['scope_id'];
             $above = $type === 'kingdom' && ($grantor['type'] === 'park' ? ($id === $gk || ($gp > 0 && $id === $gp)) : ($gp > 0 && $id === $gp));
             if (($owner && $c['mode'] === 'event') || $above) {
-                return ['credit_id' => (int) $c['credit_id'], 'name' => $this->survey()->scopeName($type, $id)];
+                return ['credit_id' => (int) $c['credit_id'], 'name' => $this->orgName($type, $id)];
             }
         }
         return null;
@@ -685,6 +719,13 @@ class SurveyCredit
         }
         $this->exec('UPDATE ' . DB_PREFIX . 'survey_credit SET event_id = ' . (int) $r['EventId']
             . ', event_calendardetail_id = ' . (int) $r['DetailId'] . ' WHERE credit_id = ' . (int) $config['credit_id']);
+        // Event::GetActiveEventsAtScope() (the attendance pages' "currently
+        // happening" nudge) skips occurrences a config points at. create_system_event
+        // busted that cache before this UPDATE linked the ids, so bust it again.
+        // A park event is park-scoped only (its park_id is set).
+        Ork3::$Lib->ghettocache->bust('Event.GetActiveEventsAtScope', Ork3::$Lib->ghettocache->key([
+            'Scope' => $isPark ? 'park' : 'kingdom', 'ScopeId' => (int) $config['grantor_id'], 'Date' => $start,
+        ]));
         $config['event_id']                = (int) $r['EventId'];
         $config['event_calendardetail_id'] = (int) $r['DetailId'];
         return $config;

@@ -533,10 +533,17 @@ html[data-theme="dark"] .sv-list-section-count { background: #2d3748; }
 									   data-tip="<?=$_row['ResultsLabel'] === 'all' ? 'Results (shared: all respondents)' : 'Results (your ' . htmlspecialchars($_row['ResultsLabel']) . ')'?>"><i class="fas fa-chart-bar" aria-hidden="true"></i> <span class="sv-row-btn-label"><?=$_row['ResultsLabel'] === 'all' ? 'Results' : 'Results (your ' . htmlspecialchars($_row['ResultsLabel']) . ')'?></span></a>
 <?php endif; ?>
 <?php endif; /* Access === shared */ ?>
-<?php if (!empty($_row['CreditGrantor']) && $_status !== 'archived'): ?>
-									<button type="button" class="sv-row-btn<?=!empty($_row['CreditOn']) ? ' sv-row-btn-on' : ''?>" data-sv-credit="<?=$_sid?>"
+<?php if (!empty($_row['CreditGrantor']) && $_status !== 'archived'):
+	/* On when this org has its own config, or an earlier one (its kingdom's,
+	   the owner's event) already covers its players (spec §1 CreditChip). */
+	$_cov      = (string)($_row['CreditCoveredBy'] ?? '');
+	$_cred_on  = !empty($_row['CreditOn']) || $_cov !== '';
+	$_cred_tip = !empty($_row['CreditOn']) ? 'Attendance credit is on'
+		: ($_cov !== '' ? 'Attendance credit is on: your players are covered by ' . $_cov . '’s credit' : 'Attendance credit');
+?>
+									<button type="button" class="sv-row-btn<?=$_cred_on ? ' sv-row-btn-on' : ''?>" data-sv-credit="<?=$_sid?>"
 									        data-sv-grantor="<?=htmlspecialchars((string)$_row['CreditGrantor'])?>" data-sv-title="<?=htmlspecialchars((string)$_row['title'])?>"
-									        data-tip="<?=!empty($_row['CreditOn']) ? 'Attendance credit is on' : 'Attendance credit'?>"><i class="fas fa-award" aria-hidden="true"></i> <span class="sv-row-btn-label">Credits</span></button>
+									        data-tip="<?=htmlspecialchars($_cred_tip)?>"><i class="fas fa-award" aria-hidden="true"></i> <span class="sv-row-btn-label">Credits</span></button>
 <?php endif; ?>
 								</div>
 							</td>

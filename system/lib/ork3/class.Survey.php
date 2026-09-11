@@ -577,7 +577,7 @@ class Survey
             $rows = $this->decorateRows($this->scopeRows($uid, $page, $credit, $out['Labels']));
         }
 
-        $keys = $credit->configKeys(array_column($rows, 'survey_id'));
+        $configs = $credit->configsFor(array_column($rows, 'survey_id'));
         foreach ($rows as $row) {
             $sid    = (int) $row['survey_id'];
             $manage = $this->canManage($uid, $row);
@@ -595,7 +595,12 @@ class Survey
             $row['ResultsContext'] = $acc !== null ? ucfirst($page['type']) . '/' . $page['id'] : null;
             $row['ResultsLabel']   = $acc['label'] ?? '';
             $row['CreditGrantor']  = $grantor !== null ? ucfirst($grantor['type']) . '/' . $grantor['id'] : null;
-            $row['CreditOn']       = $grantor !== null && isset($keys[$sid . ':' . $grantor['type'] . ':' . $grantor['id']]);
+            // CreditOn: the grantor's own config. CreditCoveredBy: an earlier
+            // config (the kingdom's, or the owner's event) already covers the
+            // grantor's players — the row shows the credit as on either way.
+            $state = $grantor !== null ? $credit->rowState($row, $configs[$sid] ?? [], $grantor) : ['on' => false, 'covered_by' => null];
+            $row['CreditOn']        = $state['on'];
+            $row['CreditCoveredBy'] = $state['covered_by'];
             // §1: a shared row shows its response count only when the owner
             // shares results with everyone; otherwise it never leaves here.
             if (!$manage && (string) ($row['results_share'] ?? 'none') !== 'all') {

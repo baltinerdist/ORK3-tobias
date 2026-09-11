@@ -1502,9 +1502,11 @@ class EventPlanning extends Ork3
      * NO TOKEN AND NO AUTHORITY CHECK: the caller (SurveyCredit) has already
      * authorized it. Raw inserts like CreateEventWithCopy: every NOT NULL column
      * named (sql_mode=''), no geocoding call, scope caches busted. A park event's
-     * kingdom is always the park's own. The one-day window keeps the attendance
-     * pages from offering it as "currently happening". Opens its own
-     * transaction: never call it inside another.
+     * kingdom is always the park's own. The one-day window alone does NOT keep
+     * it off the attendance pages' "currently happening" nudge (it covers its
+     * own start date): Event::GetActiveEventsAtScope() excludes occurrences an
+     * ork_survey_credit config points at. Opens its own transaction: never
+     * call it inside another.
      *
      * The snake_case name keeps it off the public JSON service should this
      * class ever be whitelisted there: JsonServer refuses only names that

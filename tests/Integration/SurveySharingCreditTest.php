@@ -155,6 +155,32 @@ final class SurveySharingCreditTest extends TestCase
         $this->assertFalse($list['Rows']['ork'][0]['CanResults'], 'ORK results never reach parks');
     }
 
+    /** §1 CreditChip: a park page shows the credit as on when its kingdom's config already covers it. */
+    public function testParkRowShowsTheKingdomsCreditAsCovering(): void
+    {
+        $kings = $this->openSurvey($this->kOfficer, 'kingdom', $this->k);
+        $rowFor = function () use ($kings): array {
+            foreach ((new Survey())->listForScope($this->pOfficerA, 'park', $this->parkA)['Rows']['kingdom'] as $r) {
+                if ((int) $r['survey_id'] === $kings) {
+                    return $r;
+                }
+            }
+            $this->fail('survey ' . $kings . ' not listed');
+        };
+        $this->assertFalse($rowFor()['CreditOn']);
+        $this->assertNull($rowFor()['CreditCoveredBy']);
+
+        $this->assertSame(0, $this->credit()->enable($this->kOfficer, $kings, ['type' => 'kingdom', 'id' => $this->k], 'home_park', true)['Status']);
+        $row = $rowFor();
+        $this->assertFalse($row['CreditOn'], 'the park has no config of its own');
+        $this->assertSame((new Survey())->scopeName('kingdom', $this->k), $row['CreditCoveredBy']);
+
+        $this->assertSame(0, $this->credit()->enable($this->pOfficerA, $kings, ['type' => 'park', 'id' => $this->parkA], 'home_park', true)['Status']);
+        $row = $rowFor();
+        $this->assertTrue($row['CreditOn']);
+        $this->assertNull($row['CreditCoveredBy']);
+    }
+
     /** §1: a shared row's response count reaches the page only under results_share = 'all'. */
     public function testSharedRowsCarryTheResponseCountOnlyWhenResultsAreSharedWithEveryone(): void
     {
@@ -434,6 +460,35 @@ final class SurveySharingCreditTest extends TestCase
         $name = (string) $this->scalar('SELECT name FROM ' . DB_PREFIX . 'event WHERE event_id = ' . (int) $cfg['event_id']);
         $this->assertSame('Survey Credit - T11SHARE survey', $name);
         $this->assertSame('1', (string) $this->scalar('SELECT COUNT(*) FROM ' . DB_PREFIX . 'event WHERE name = ' . $this->pdo->quote($name) . ' AND event_id = ' . (int) $cfg['event_id']));
+
+        // The one-day event covers its own start date (today here), yet the
+        // attendance pages' "currently happening" nudge must never offer it (§3.4):
+        // not the kingdom's, and not a park grantor's park-scoped one either.
+        $pe = $this->credit()->enable($this->pOfficerA, $ks, ['type' => 'park', 'id' => $this->parkA], 'event', true);
+        $this->assertSame(0, $pe['Status'], (string) ($pe['Error'] ?? ''));
+        $parkDetail = (int) $this->scalar('SELECT event_calendardetail_id FROM ' . DB_PREFIX . "survey_credit
+                                           WHERE survey_id = {$ks} AND grantor_type = 'park'");
+        $this->assertGreaterThan(0, $parkDetail);
+        // Control: an ordinary published one-day event on the same day still nudges.
+        $plain = Ork3::$Lib->eventplanning->create_system_event([
+            'KingdomId' => $this->k, 'ParkId' => 0, 'Name' => 'T11SHARE plain event', 'Date' => $start,
+            'Description' => 'desc', 'Url' => '', 'UrlName' => '',
+        ]);
+        $this->assertSame(0, $plain['Status'], (string) ($plain['Error'] ?? ''));
+        try {
+            $ev = new Event();
+            foreach ([['kingdom', $this->k, (int) $cfg['event_calendardetail_id']], ['park', $this->parkA, $parkDetail]] as [$scope, $id, $detail]) {
+                $active = $ev->GetActiveEventsAtScope(['Scope' => $scope, 'ScopeId' => $id, 'Date' => $start]);
+                $this->assertSame(0, (int) ($active['Status']['Status'] ?? 1));
+                $this->assertNotContains($detail, array_column($active['Events'], 'EventCalendarDetailId'), "no {$scope} nudge for a survey credit event");
+                if ($scope === 'kingdom') {
+                    $this->assertContains((int) $plain['DetailId'], array_column($active['Events'], 'EventCalendarDetailId'), 'ordinary events still nudge');
+                }
+            }
+        } finally {
+            $this->pdo->exec('DELETE FROM ' . DB_PREFIX . 'event_calendardetail WHERE event_id = ' . (int) $plain['EventId']);
+            $this->pdo->exec('DELETE FROM ' . DB_PREFIX . 'event WHERE event_id = ' . (int) $plain['EventId']);
+        }
     }
 
     public function testDraftOwnerConfigGetsItsEventOnFirstOpen(): void
