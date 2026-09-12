@@ -17,12 +17,21 @@
 class Controller_SurveyAjax extends Controller
 {
     /**
-     * Read-only actions exempt from the CSRF check. Every other action mutates
-     * state (or, for submit/draft_save, binds identity and spends the player's
-     * one response), so it must present the session token in X-CSRF-Token — a
-     * header a cross-site form cannot set (#43). Exactly the contract's list:
-     * `types`, though a pure read, is not on it, so the builder sends the
-     * token with it like every other builder call.
+     * Actions exempt from the CSRF check: read-only, except `dismiss_banner`.
+     * Every other action mutates state (or, for submit/draft_save, binds
+     * identity and spends the player's one response), so it must present the
+     * session token in X-CSRF-Token — a header a cross-site form cannot set
+     * (#43). Exactly the contract's list: `types`, though a pure read, is not
+     * on it, so the builder sends the token with it like every other builder
+     * call.
+     *
+     * `dismiss_banner` is the one deliberate WRITE exemption: the survey banner
+     * renders site-wide (default.theme svBannerDismiss) on pages that load no
+     * survey CSRF token, and the worst a forged request can do is hide one
+     * survey's banner for the victim. The session cookie is set with no
+     * SameSite attribute (class.Session.php), so only a browser's own Lax
+     * default, where it has one, stops a cross-site POST carrying it; do not
+     * count on that.
      */
     private const CSRF_EXEMPT = [
         'available', 'definition', 'get', 'scopes', 'results', 'rows', 'help',
@@ -590,8 +599,8 @@ class Controller_SurveyAjax extends Controller
         $preview  = $this->truthy($_POST['Preview'] ?? 0);
 
         if ($preview) {
-            // The caller (this controller) checks canManage before bypassing the
-            // audience gate — the domain trusts $preview unconditionally.
+            // Early 'not found' / permission envelope; the domain re-checks
+            // canManage itself before bypassing the audience gate.
             $this->requireManage($uid, $surveyId);
         }
 
@@ -683,14 +692,11 @@ class Controller_SurveyAjax extends Controller
                 : ['status' => 3, 'error' => 'You do not have permission to view results for this survey.']);
         }
         $filters = $this->jsonField('Filters', []);
-        $out = $access['level'] === 'manage'
-            ? $this->Survey->results($surveyId, $filters)
-            : $this->Survey->shared_results($surveyId, $filters, $access['lens']);
-
         // summary.lens is {label} for a shared viewer (spec §5), null for a manager.
+        $out = $this->Survey->results_for($surveyId, $filters, $access);
         $this->jsonOut([
             'status'    => 0,
-            'summary'   => $out['summary'] + ['lens' => null],
+            'summary'   => $out['summary'],
             'questions' => $out['questions'],
             'access'    => $access['level'],
         ]);
@@ -702,19 +708,11 @@ class Controller_SurveyAjax extends Controller
         $surveyId = (int) ($_POST['SurveyId'] ?? 0);
         $this->requireManage($uid, $surveyId);
 
-        $filters = $this->Survey->normalize_filters($this->jsonField('Filters', []));
         $offset  = (int) ($_POST['Offset'] ?? 0);
         $limit   = (int) ($_POST['Limit'] ?? 100);
 
-        $out = $this->Survey->rows($surveyId, $filters, $offset, $limit);
-
-        // Audit every read of individual rows that can carry identity or
-        // demographics (#6); an anonymous-only view carries neither. The detail
-        // is the filter set alone (no offset/limit) so an infinite-scrolling
-        // table coalesces into one entry instead of one per 100-row page.
-        if ($filters['consent'] !== 'anonymous') {
-            $this->Survey->log_activity($surveyId, 'rows_view', $filters);
-        }
+        // The domain normalizes the filters and writes the rows_view audit row.
+        $out = $this->Survey->rows($surveyId, $this->jsonField('Filters', []), $offset, $limit);
 
         $this->jsonOut(['status' => 0, 'total' => $out['total'], 'columns' => $out['columns'], 'rows' => $out['rows']]);
     }

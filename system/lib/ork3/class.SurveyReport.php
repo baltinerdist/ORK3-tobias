@@ -300,6 +300,30 @@ class SurveyReport
         return $out;
     }
 
+    /**
+     * Charts and stats for whatever $access (Survey::resultsAccess()) grants:
+     * a manager reads everything through the client filters (park_id and
+     * impossible are lens-only, so stripped) with summary.lens = null; anyone
+     * else reads through sharedResults() and their lens.
+     */
+    public function resultsFor(int $surveyId, $filters, array $access): array
+    {
+        if (($access['level'] ?? null) !== 'manage') {
+            // Fail closed: an empty lens would read like a manager's (no
+            // kingdom/park restriction, test rows and dates allowed, nothing
+            // redacted). Every shared lens resultsAccess() builds says so.
+            $lens = $access['lens'] ?? null;
+            if (!is_array($lens) || empty($lens['shared'])) {
+                throw new InvalidArgumentException('Shared results need a shared lens.');
+            }
+            return $this->sharedResults($surveyId, $filters, $lens);
+        }
+        $f   = self::clientFilters($filters);
+        $out = $this->aggregate($surveyId, $f);
+        $out['summary'] = $this->summary($surveyId, $f) + ['lens' => null];
+        return $out;
+    }
+
     // -----------------------------------------------------------------------
     // Cache (review #40)
     // -----------------------------------------------------------------------
@@ -1343,7 +1367,7 @@ class SurveyReport
                     'option_id' => $cid,
                     'label'     => $columns[$cid]['label'],
                     'count'     => $c,
-                    'pct'       => $rowN > 0 ? round($c / $rowN * 100, 1) : 0.0,
+                    'pct'       => $rowN > 0 ? round($c / $rowN * 100, 1) : null,
                 ];
                 if ($weighted) {
                     $weightSum += $c * (float)$columns[$cid]['value_num'];
@@ -1764,10 +1788,19 @@ class SurveyReport
     /**
      * @return array{total:int,columns:list<array{question_id:int,prompt:string,type:string}>,rows:list<array>,partial_cell_rule:bool}
      */
-    public function rows(int $surveyId, array $filters, int $offset, int $limit): array
+    public function rows(int $surveyId, array $filters, int $offset, int $limit, int $actorId = 0): array
     {
         $surveyId = (int)$surveyId;
-        $f = self::normalizeFilters($filters);
+        $f = self::clientFilters($filters);   // manager path: lens-only keys dropped
+        // Audit every read of individual rows that can carry identity or
+        // demographics (#6); an anonymous-only view carries neither. The detail
+        // is the filter set alone (no offset/limit) so an infinite-scrolling
+        // table coalesces into one entry instead of one per page.
+        if ($actorId > 0 && $f['consent'] !== 'anonymous') {
+            $log = new Survey();
+            $log->setActor($actorId);
+            $log->logActivity($surveyId, 'rows_view', $f);
+        }
         $offset = max(0, (int)$offset);
         $limit = (int)$limit;
         if ($limit < 1) {
@@ -1786,7 +1819,8 @@ class SurveyReport
             $columns[] = ['question_id' => $qid, 'prompt' => $q['prompt'], 'type' => $q['type']];
         }
 
-        $where = $this->reportWhere($surveyId, $f);
+        $ctx = $this->rowContext($surveyId, $f);
+        $where = $ctx['where'];
 
         $total = 0;
         $this->db->Clear();
@@ -1797,7 +1831,7 @@ class SurveyReport
             $total = (int)$rs->c;
         }
 
-        $rows = $this->responsePage($surveyId, $where, $offset, $limit, $this->partialCells($where, $surveyId));
+        $rows = $this->responsePage($surveyId, $where, $offset, $limit, $ctx['cells']);
         if ($rows) {
             $this->attachAnswers($rows, $questions, $this->options($surveyId));
         }
@@ -1813,12 +1847,12 @@ class SurveyReport
     /**
      * CSV of the filtered rows as one string (see csvStream()).
      */
-    public function csv(int $surveyId, array $filters): string
+    public function csv(int $surveyId, array $filters, int $actorId = 0): string
     {
         $out = '';
         $this->csvStream($surveyId, $filters, function (string $chunk) use (&$out): void {
             $out .= $chunk;
-        });
+        }, $actorId);
         return $out;
     }
 
@@ -1830,14 +1864,22 @@ class SurveyReport
      *
      * @param callable(string):void $emit
      */
-    public function csvStream(int $surveyId, array $filters, callable $emit): void
+    public function csvStream(int $surveyId, array $filters, callable $emit, int $actorId = 0): void
     {
         $surveyId = (int)$surveyId;
-        $f = self::normalizeFilters($filters);
+        $f = self::clientFilters($filters);   // manager path: lens-only keys dropped
+        // Audit every export that can carry identity or demographics (#6); an
+        // anonymous-only export carries neither.
+        if ($actorId > 0 && $f['consent'] !== 'anonymous') {
+            $log = new Survey();
+            $log->setActor($actorId);
+            $log->logActivity($surveyId, 'export', $f);
+        }
         $questions = $this->questions($surveyId);
         $options = $this->options($surveyId);
-        $where = $this->reportWhere($surveyId, $f);
-        $cells = $this->partialCells($where, $surveyId);
+        $ctx = $this->rowContext($surveyId, $f);
+        $where = $ctx['where'];
+        $cells = $ctx['cells'];
 
         $columns = [];
         foreach ($questions as $qid => $q) {
@@ -1856,12 +1898,15 @@ class SurveyReport
 
         $emit("\xEF\xBB\xBF" . self::csvLine($header));
 
-        $offset = 0;
+        // One sort for the whole export: the ordered id list, then 500-id
+        // batches fetched by id (a LIMIT offset per batch re-sorted the full
+        // filtered set every time).
+        $orderedIds = $this->orderedResponseIds($surveyId, $where);
         $batch = 500;
-        while (true) {
-            $rows = $this->responsePage($surveyId, $where, $offset, $batch, $cells);
+        for ($offset = 0; $offset < count($orderedIds); $offset += $batch) {
+            $rows = $this->responsePage($surveyId, $where, $offset, $batch, $cells, array_slice($orderedIds, $offset, $batch));
             if (!$rows) {
-                break;
+                continue;
             }
             $this->attachAnswers($rows, $questions, $options);
             $chunk = '';
@@ -1883,10 +1928,6 @@ class SurveyReport
                 $chunk .= self::csvLine($line);
             }
             $emit($chunk);
-            if (count($rows) < $batch) {
-                break;
-            }
-            $offset += $batch;
         }
     }
 
@@ -1954,12 +1995,28 @@ class SurveyReport
      * ('Y-m-d', `time_withheld:true`) and no duration. Full rows consented to
      * all of it and are never masked.
      *
+     * With $ids (a slice of orderedResponseIds() starting at $offset) the
+     * page is fetched by id instead of re-sorted, and put back in $ids order.
+     *
      * @param  array{k:array<string,int>,kb:array<string,int>,forced_k:array<string,bool>,forced_kb:array<string,bool>} $cells from partialCells()
+     * @param  list<int>|null $ids
      * @return array<int,array> keyed by the real response_id
      */
-    private function responsePage(int $surveyId, string $where, int $offset, int $limit, array $cells): array
+    private function responsePage(int $surveyId, string $where, int $offset, int $limit, array $cells, ?array $ids = null): array
     {
         $offset = max(0, (int)$offset);
+        if ($ids !== null) {
+            $ids = array_map('intval', $ids);
+            if (!$ids) {
+                return [];
+            }
+            $tail = ' AND r.response_id IN (' . implode(',', $ids) . ')';
+        } else {
+            $tail = '
+              ORDER BY DATE(r.submitted_at) ASC,
+                       MD5(CONCAT(r.response_id, \'' . self::orderKey($surveyId) . '\')) ASC
+              LIMIT ' . $offset . ', ' . (int)$limit;
+        }
         $this->db->Clear();
         $rs = $this->db->DataSet(
             'SELECT r.response_id, r.consent, r.mundane_id, r.kingdom_id, r.tenure_months,
@@ -1968,17 +2025,15 @@ class SurveyReport
                FROM ' . DB_PREFIX . 'survey_response r
                LEFT JOIN ' . DB_PREFIX . 'mundane m ON m.mundane_id = r.mundane_id
                LEFT JOIN ' . DB_PREFIX . 'kingdom k ON k.kingdom_id = r.kingdom_id
-              WHERE ' . $where . '
-              ORDER BY DATE(r.submitted_at) ASC,
-                       MD5(CONCAT(r.response_id, \'' . self::orderKey($surveyId) . '\')) ASC
-              LIMIT ' . $offset . ', ' . (int)$limit
+              WHERE ' . $where . $tail
         );
 
+        $position = $ids === null ? null : array_flip($ids);
         $rows = [];
         $seq = $offset;
         if ($rs) {
             while ($rs->Next()) {
-                $seq++;
+                $seq = $position === null ? $seq + 1 : $offset + $position[(int)$rs->response_id] + 1;
                 $consent = (string)$rs->consent;
                 $full = ($consent === 'full');
                 $partial = ($consent === 'partial');
@@ -2020,7 +2075,58 @@ class SurveyReport
                 ];
             }
         }
+        if ($position !== null) {
+            $ordered = [];
+            foreach ($ids as $rid) {
+                if (isset($rows[$rid])) {
+                    $ordered[$rid] = $rows[$rid];
+                }
+            }
+            $rows = $ordered;
+        }
         return $rows;
+    }
+
+    /**
+     * Every response id in $where, in responsePage()'s display permutation
+     * (the same ORDER BY, so the privacy order of review #1 is unchanged).
+     *
+     * @return list<int>
+     */
+    private function orderedResponseIds(int $surveyId, string $where): array
+    {
+        $ids = [];
+        $this->db->Clear();
+        $rs = $this->db->DataSet(
+            'SELECT r.response_id
+               FROM ' . DB_PREFIX . 'survey_response r
+              WHERE ' . $where . '
+              ORDER BY DATE(r.submitted_at) ASC,
+                       MD5(CONCAT(r.response_id, \'' . self::orderKey($surveyId) . '\')) ASC'
+        );
+        if ($rs) {
+            while ($rs->Next()) {
+                $ids[] = (int)$rs->response_id;
+            }
+        }
+        return $ids;
+    }
+
+    /**
+     * The row listing's WHERE and partialCells() for one filtered view,
+     * through cached() like summary/aggregate, so a DataTable page turn or an
+     * export within the TTL does not redo forcedCells() and the partial-cell
+     * GROUP BYs.
+     *
+     * @return array{where:string,cells:array}
+     */
+    private function rowContext(int $surveyId, array $f): array
+    {
+        $surveyId = (int)$surveyId;
+        return $this->cached('rowContext', $surveyId, $f, function () use ($surveyId, $f): array {
+            $where = $this->reportWhere($surveyId, $f);
+            return ['where' => $where, 'cells' => $this->partialCells($where, $surveyId)];
+        });
     }
 
     /**

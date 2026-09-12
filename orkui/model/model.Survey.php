@@ -170,15 +170,6 @@ class Model_Survey extends Model
         return $this->_survey()->eventOptions($surveyRow);
     }
 
-    /**
-     * Append one row to ork_survey_activity as the session user (the actor is
-     * set in _survey()). $detail is stored as JSON; null stores no detail.
-     */
-    public function log_activity(int $surveyId, string $action, ?array $detail = null): void
-    {
-        $this->_survey()->logActivity($surveyId, $action, $detail);
-    }
-
     public function image_add(int $surveyId, int $uid, string $tmpPath, string $clientName): array
     {
         return $this->_survey()->imageAdd($surveyId, $uid, $tmpPath, $clientName);
@@ -213,6 +204,12 @@ class Model_Survey extends Model
             'option_roles'     => SurveyTypes::OPTION_ROLES,
             'other_max_length' => SurveyTypes::OTHER_MAX_LENGTH,
         ];
+    }
+
+    /** @return string[] Question types that record answers (no section / image). */
+    public function answerable_types(): array
+    {
+        return SurveyTypes::ANSWERABLE;
     }
 
     // -----------------------------------------------------------------------
@@ -307,6 +304,12 @@ class Model_Survey extends Model
     // SurveyReport — aggregation, rows, CSV
     // -----------------------------------------------------------------------
 
+    /** @return string[] Question types aggregate() accepts as a cross-tab source. */
+    public function crosstab_sources(): array
+    {
+        return SurveyReport::CROSSTAB_SOURCES;
+    }
+
     public function summary(int $surveyId, array $filters): array
     {
         return $this->_report()->summary($surveyId, $filters);
@@ -317,49 +320,32 @@ class Model_Survey extends Model
         return $this->_report()->aggregate($surveyId, $filters);
     }
 
-    /**
-     * Composite for SurveyAjax/results: summary + per-question aggregation in
-     * one call. The summary already carries audience and response_rate (null
-     * under a narrowing filter), so nothing is filled in here.
-     */
-    public function results(int $surveyId, array $filters): array
+    /** Summary + per-question aggregation for the access level results_access() granted. */
+    public function results_for(int $surveyId, $filters, array $access): array
     {
-        $filters = SurveyReport::clientFilters($filters);   // park_id / impossible are lens-only
-        $out = $this->_report()->aggregate($surveyId, $filters);
-        $out['summary'] = $this->_report()->summary($surveyId, $filters);
-        return $out;
+        return $this->_report()->resultsFor($surveyId, $filters, $access);
     }
 
     public function rows(int $surveyId, array $filters, int $offset, int $limit): array
     {
-        return $this->_report()->rows($surveyId, $filters, $offset, $limit);
+        return $this->_report()->rows($surveyId, $filters, $offset, $limit, (int) ($this->session->user_id ?? 0));
     }
 
     public function csv(int $surveyId, array $filters): string
     {
-        return $this->_report()->csv($surveyId, $filters);
+        return $this->_report()->csv($surveyId, $filters, (int) ($this->session->user_id ?? 0));
     }
 
     /** Emit the CSV (header, then 500-row batches) through $emit instead of one string. */
     public function csv_stream(int $surveyId, array $filters, callable $emit): void
     {
-        $this->_report()->csvStream($surveyId, $filters, $emit);
+        $this->_report()->csvStream($surveyId, $filters, $emit, (int) ($this->session->user_id ?? 0));
     }
 
     /** Kingdoms present in the survey's non-test responses, with counts (results filter). */
     public function kingdoms_present(int $surveyId): array
     {
         return $this->_report()->kingdomsPresent($surveyId);
-    }
-
-    /**
-     * The report's filter shape for a client's filters (rows, export), so a
-     * controller can read the consent filter it will apply. Lens-only keys are
-     * dropped: only SurveyReport::applyLens() sets them.
-     */
-    public function normalize_filters($filters): array
-    {
-        return SurveyReport::clientFilters($filters);
     }
 
     // -----------------------------------------------------------------------
@@ -385,11 +371,6 @@ class Model_Survey extends Model
     public function sharing_pending_text(?string $opensAt): string
     {
         return Survey::sharingPendingText($opensAt);
-    }
-
-    public function shared_results(int $surveyId, $filters, array $lens): array
-    {
-        return $this->_report()->sharedResults($surveyId, $filters, $lens);
     }
 
     public function credit_status(int $uid, int $surveyId, ?array $grantor): array

@@ -339,8 +339,8 @@ plus the partial-consent backfill described in §2. After applying: `docker rest
 | `status` | `setStatus()` | `{from, to}` |
 | `clone` | `cloneSurvey()` (on the new survey) | `{from_survey_id}` |
 | `delete` | `delete()` | title |
-| `rows_view` | `SurveyAjax/rows` | the normalized filters |
-| `export` | `Survey/export` | the normalized filters |
+| `rows_view` | `SurveyReport::rows()` (given an actor; the model passes the session user) | the normalized filters |
+| `export` | `SurveyReport::csvStream()` (given an actor; the model passes the session user) | the normalized filters |
 
 `rows_view` and `export` are skipped when the consent filter is `anonymous` (no identity or demographics in that view). `results` (aggregates only) is not logged. `update`, `structure` and `rows_view` coalesce: an entry identical (same person, action and detail) to one written in the last 15 minutes is dropped, so autosave and a scrolling table do not write one row per keystroke or page. Logging is best-effort and never fails the caller. The log is **not** deleted with its survey: it is the record that the survey existed and who removed it. There is no UI for it yet; read it with SQL.
 
@@ -396,7 +396,7 @@ Required semantics: `single/dropdown/yesno/rating/nps/number/date/short_text/par
 **Model — `orkui/model/model.Survey.php`**: `Model_Survey extends Model`, thin typed snake_case delegates to the three domain classes (`_survey()`, `_response()`, `_report()`), no logic.
 
 **Controllers — `orkui/controller/`**:
-- `controller.Survey.php` (pages). The constructor sets `$SurveyCsrf = $this->Survey->csrf_token()` (an instance method on `Model_Survey`) for **every** page action, and each template emits it as `SvConfig.csrf`. Actions: `index($scope = null)` — manageable surveys list (`Survey/index`, `Survey/index/Kingdom/17`, `Survey/index/Park/1049`); `build($id = null)`; `take($p = null)` (`Survey/take/{id}` or `Survey/take/{id}/preview`); `s($slug = null)` → resolves slug and renders the take page; `results($id = null)`; `export($id = null)` (`Survey/export/{id}?filters=<json>`, written `index.php?Route=Survey/export/{id}&filters=<json>` because the route itself rides in the query string: normalizes the filters, logs `export` unless consent = anonymous, drops output buffers, releases the session lock, streams the CSV, `exit`). `results` passes `$Kingdoms = kingdoms_present()` (not every kingdom the viewer manages). Permission failures use `no_authorization()` for pages.
+- `controller.Survey.php` (pages). The constructor sets `$SurveyCsrf = $this->Survey->csrf_token()` (an instance method on `Model_Survey`) for **every** page action, and each template emits it as `SvConfig.csrf`. Actions: `index($scope = null)` — manageable surveys list (`Survey/index`, `Survey/index/Kingdom/17`, `Survey/index/Park/1049`); `build($id = null)`; `take($p = null)` (`Survey/take/{id}` or `Survey/take/{id}/preview`); `s($slug = null)` → resolves slug and renders the take page; `results($id = null)`; `export($id = null)` (`Survey/export/{id}?filters=<json>`, written `index.php?Route=Survey/export/{id}&filters=<json>` because the route itself rides in the query string: drops output buffers, releases the session lock, streams the CSV, `exit`). `results` passes `$Kingdoms = kingdoms_present()` (not every kingdom the viewer manages). Permission failures use `no_authorization()` for pages.
 - `controller.SurveyAjax.php` (JSON, `$_POST`, `jsonOut`/`requireLogin`/`requireManage($surveyId)`, and `requireCsrf()` in the constructor; **the full contract is in §6**).
 
 **Templates — `orkui/template/default/`**: `Survey_index.tpl`, `Survey_build.tpl`, `Survey_take.tpl`, `Survey_results.tpl`. Each links `reports.css` (`.rp-*` shell for index/build/results; the take page uses only the base survey stylesheet so it stays lean on phones).

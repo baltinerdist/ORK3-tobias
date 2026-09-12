@@ -227,6 +227,22 @@ final class SurveyAggregateTest extends TestCase
         $this->assertNull($a['rows'][0]['weighted_mean']);
     }
 
+    public function testAggregateMatrixUnansweredRowHasNullPct(): void
+    {
+        $options = [
+            $this->opt(100, 'Fighting', 'row'),
+            $this->opt(101, 'Arts', 'row'),
+            $this->opt(200, 'Never', 'column'),
+            $this->opt(201, 'Always', 'column'),
+        ];
+        $a = SurveyReport::aggregateType('matrix', [$this->row(1, 201, null, null, 100)], $options, []);
+
+        $this->assertSame([0.0, 100.0], array_column($a['rows'][0]['counts'], 'pct'));
+        $this->assertSame(0, $a['rows'][1]['n']);
+        $this->assertSame([0, 0], array_column($a['rows'][1]['counts'], 'count'));
+        $this->assertSame([null, null], array_column($a['rows'][1]['counts'], 'pct'));
+    }
+
     // ---------------------------------------------------------------- ranking
 
     public function testAggregateRankingBordaAndMeanRank(): void

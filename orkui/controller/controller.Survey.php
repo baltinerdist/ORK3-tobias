@@ -224,6 +224,8 @@ class Controller_Survey extends Controller
         $this->data['ResultsAccess']  = $access;
         $this->data['ResultsContext'] = $context !== null ? ucfirst($context['type']) . '/' . $context['id'] : '';
         $this->data['OwnerName']      = $this->Survey->scope_name((string) $row['scope_type'], (int) $row['scope_id']) ?: 'All of Amtgard';
+        $this->data['AnswerableTypes'] = $this->Survey->answerable_types();
+        $this->data['CrosstabSources'] = $this->Survey->crosstab_sources();
     }
 
     // -----------------------------------------------------------------------
@@ -254,13 +256,7 @@ class Controller_Survey extends Controller
             $decoded = json_decode((string) $_GET['filters'], true);
             $filters = is_array($decoded) ? $decoded : [];
         }
-        $filters = $this->Survey->normalize_filters($filters);
-
-        // Audit every export that can carry identity or demographics (#6); an
-        // anonymous-only export carries neither.
-        if ($filters['consent'] !== 'anonymous') {
-            $this->Survey->log_activity($surveyId, 'export', $filters);
-        }
+        // The domain normalizes the filters and writes the export audit row.
 
         header('Content-Type: text/csv; charset=utf-8');
         header('Content-Disposition: attachment; filename="survey-' . $surveyId . '.csv"');
