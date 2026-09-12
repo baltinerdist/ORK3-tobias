@@ -689,25 +689,7 @@
 .svr-panel-a.svr-cell-anon { color: var(--svr-text-muted); font-style: italic; }
 
 
-/* ── data-tip tooltip (one fixed node on <body>, placed by JS) ── */
-
-.svr-tip {
-    position     : fixed;
-    z-index      : var(--z-modal-top, 10200);
-    max-width    : 260px;
-    width        : max-content;
-    padding      : 6px 9px;
-    border-radius: 5px;
-    background   : #1a202c;
-    color        : #fff;
-    font-size    : 12px;
-    font-weight  : 500;
-    line-height  : 1.35;
-    text-align   : left;
-    white-space  : normal;
-    pointer-events: none;
-    box-shadow   : 0 4px 12px rgba(0,0,0,0.2);
-}
+/* ── data-tip tooltip: survey-tip.js and survey.css's .sv-tip ── */
 
 /* If a stylesheet ever ships a global [data-tip]::after tip, this page's JS
    tip must not be doubled by it. */
@@ -755,39 +737,6 @@ html[data-theme="dark"] .svr-root .rp-header-actions .rp-btn-ghost[aria-pressed=
     color       : #1e1b4b;
 }
 html[data-theme="dark"] .svr-panel { box-shadow: -8px 0 24px rgba(0,0,0,0.5); }
-html[data-theme="dark"] .svr-tip {
-    background: #0f1420;
-    color     : #e2e8f0;
-    border    : 1px solid #4a5568;
-}
-
-/* Flatpickr hangs its calendar off <body>, outside every scoped selector, and
-   no .rp-* page loads revised.css; the same dark palette survey-build.css
-   restates for the builder, trimmed to the date-only calendar used here. */
-html[data-theme="dark"] .flatpickr-calendar {
-    background  : var(--ork-card-bg);
-    border-color: var(--ork-border);
-    box-shadow  : 0 4px 16px rgba(0, 0, 0, 0.4);
-}
-html[data-theme="dark"] .flatpickr-months,
-html[data-theme="dark"] .flatpickr-month,
-html[data-theme="dark"] .flatpickr-current-month .flatpickr-monthDropdown-months {
-    background: var(--ork-bg-tertiary);
-    color     : var(--ork-text);
-}
-html[data-theme="dark"] .flatpickr-months .flatpickr-prev-month svg,
-html[data-theme="dark"] .flatpickr-months .flatpickr-next-month svg { fill: var(--ork-text-secondary); }
-html[data-theme="dark"] .flatpickr-current-month input.cur-year { color: var(--ork-text); }
-html[data-theme="dark"] .flatpickr-weekdays,
-html[data-theme="dark"] span.flatpickr-weekday { background: var(--ork-bg-secondary); color: var(--ork-text-muted); }
-html[data-theme="dark"] .flatpickr-day { color: var(--ork-text); }
-html[data-theme="dark"] .flatpickr-day:hover { background: var(--ork-bg-tertiary); border-color: var(--ork-bg-tertiary); }
-html[data-theme="dark"] .flatpickr-day.today { border-color: #63b3ed; }
-html[data-theme="dark"] .flatpickr-day.selected,
-html[data-theme="dark"] .flatpickr-day.selected:hover { background: #2b6cb0; border-color: #2b6cb0; color: #fff; }
-html[data-theme="dark"] .flatpickr-day.prevMonthDay,
-html[data-theme="dark"] .flatpickr-day.nextMonthDay,
-html[data-theme="dark"] .flatpickr-day.flatpickr-disabled { color: var(--ork-text-lighter); }
 
 /* Fight the global html[data-theme="dark"] h1–h6 pill box, which carries more
    type selectors than a bare class and otherwise wins the tie. */
@@ -851,7 +800,6 @@ html[data-theme="dark"] .svr-card .highcharts-data-label tspan {
     .rp-header-actions,
     .svr-showmore,
     .svr-panel,
-    .svr-tip,
     .svr-csrf,
     .svr-xt-toggle,
     .svr-rows-area .dataTables_paginate,
@@ -941,7 +889,7 @@ html[data-theme="dark"] .svr-card .highcharts-data-label tspan {
 .svr-pw-tablewrap { margin-top: 12px; overflow-x: auto; }
 .svr-pw-table td:nth-child(n+3),
 .svr-pw-table th:nth-child(n+3) { text-align: right; font-variant-numeric: tabular-nums; }
-.svr-pw-table abbr { text-decoration: none; cursor: help; }
+.svr-pw-table .svr-pw-abbr { cursor: help; }
 /* DataTables gives every header 10px + a 26px sort-arrow gutter and every cell
    10px a side: seven columns of that outgrew a half-width card and pushed
    Matchups out of view. Tighter cells, the arrows tucked in, numbers on one

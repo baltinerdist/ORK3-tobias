@@ -70,12 +70,11 @@ if ($_svr_scope_type === 'kingdom') {
    collect no answers, so they get no chart and no row column). `num` is the
    Q1..Qn label shared by the chart cards, the row-table headers and the
    response panel. */
-$_svr_skip     = ['section' => true, 'image' => true];
 $_svr_js_qs    = [];
 $_svr_crosstab = [];
 foreach ($_svr_qs as $_q) {
 	$_t = (string) ($_q['type'] ?? '');
-	if ($_t === '' || isset($_svr_skip[$_t])) {
+	if ($_t === '' || !in_array($_t, $AnswerableTypes ?? [], true)) {
 		continue;
 	}
 	$_svr_js_qs[] = [
@@ -86,7 +85,7 @@ foreach ($_svr_qs as $_q) {
 	];
 	/* Cross-tab sources are single-answer choice questions: every response falls
 	   in exactly one bucket. */
-	if ($_t === 'single' || $_t === 'dropdown' || $_t === 'yesno') {
+	if (in_array($_t, $CrosstabSources ?? [], true)) {
 		$_svr_crosstab[] = [
 			'question_id' => (int) ($_q['question_id'] ?? 0),
 			'prompt'      => (string) ($_q['prompt'] ?? ''),
@@ -393,6 +392,7 @@ window.SvHighcharts = window.Highcharts;
 if (window.__svPrevHighcharts) { window.Highcharts = window.__svPrevHighcharts; }
 try { delete window.__svPrevHighcharts; } catch (e) { window.__svPrevHighcharts = undefined; }
 </script>
+<script src="<?=HTTP_TEMPLATE?>default/script/survey-tip.js?v=<?=filemtime(__DIR__ . '/script/survey-tip.js')?>"></script>
 <script src="<?=HTTP_TEMPLATE?>default/script/survey-results.js?v=<?=filemtime(__DIR__ . '/script/survey-results.js')?>"></script>
 
 <?php endif; ?>

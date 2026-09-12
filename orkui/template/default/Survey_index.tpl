@@ -47,8 +47,6 @@ if ($ScopeType === 'kingdom') {
    the shared .rp-* shell (header/context/stats/sidebar/table) comes from
    reports.css, and the module vocabulary (.sv-scope tokens + heading/paragraph
    resets, .sv-md for the rendered guide) comes from survey.css. */
-.sv-scope-select-wrap { display: flex; flex-direction: column; gap: 4px; }
-
 /* Survey-only contrast bump for the active status filter pill: the shared
    dark-mode #4f86c6 is 3.78:1 under white, #3a6ea8 keeps the hue at 5.28:1.
    Scoped to this page's pills so the shared .rp-filter-pill rule (used by
@@ -84,7 +82,9 @@ html[data-theme="dark"] .sv-status-pill-archived { background: #2d3748; color: #
 	border: 1px solid var(--rp-border-mid); background: var(--ork-card-bg); color: var(--rp-text-body);
 	font-size: var(--ork-font-size-sm); font-weight: 600; line-height: 1.2; cursor: pointer; white-space: nowrap; text-decoration: none;
 }
-.sv-row-btn:hover  { background: var(--rp-bg-light); border-color: var(--rp-border-strong); color: var(--rp-text); }
+/* :where() keeps this at (0,2,0), so the later .sv-row-btn-on state still wins under the pointer. */
+.sv-row-btn:hover:where(:not([disabled]))  { background: var(--rp-bg-light); border-color: var(--rp-border-strong); color: var(--rp-text); }
+.sv-row-btn[disabled], .sv-row-btn.sv-is-busy { opacity: 0.55; cursor: not-allowed; }
 .sv-row-btn i      { font-size: 11px; }
 .sv-row-actions    { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
 
@@ -114,30 +114,12 @@ button.rp-filter-pill { font: inherit; font-size: 11px; font-weight: 600; line-h
 #theme_container .sv-survey-table { min-width: 740px; }
 #theme_container .sv-survey-table tr[hidden] { display: none; }
 
-/* Hidden text that stays in the accessibility tree: the Actions column
-   header, and each row button's label in the icon-only table (last blocks). */
-.sv-sr-only {
-	position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
-	overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
-}
 /* A date never breaks inside itself ("Oct 1, / 2026"); the Opened / Closes
    cell breaks at the arrow instead. Both dates and the arrow share one outer
    span so the card layout's flex cell sees a single value, not three items
    spread across the row by justify-content: space-between. */
 .sv-nowrap { white-space: nowrap; }
 
-/* data-tip tooltip: one position:fixed node on <body>, placed by the script
-   below. A pseudo-element tip would be clipped by .sv-dt-scroll's overflow
-   (and, laid out at opacity 0, would grow the wrapper's scroll height). Same
-   pattern and z-index as survey-results.css's .svr-tip. */
-.sv-tip {
-	position: fixed; z-index: var(--z-modal-top, 10200);
-	width: max-content; max-width: 240px; padding: 6px 9px; border-radius: 5px;
-	background: #1a202c; color: #fff; font-size: 12px; font-weight: 500;
-	line-height: 1.35; text-align: left; white-space: normal;
-	pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-}
-html[data-theme="dark"] .sv-tip { border: 1px solid #4a5568; }
 /* reports.css paints every tbody <a> in the accent colour; the title and the
    row buttons carry their own look, so re-assert it at a matching specificity. */
 .rp-table-area table.dataTable tbody .sv-survey-title a { color: var(--rp-text); font-weight: 700; text-decoration: none; }
@@ -162,15 +144,7 @@ html[data-theme="dark"] #theme_container .rp-table-area table.dataTable tbody .s
    The modal shell itself (.sv-overlay / .sv-modal*) is shared with the
    builder's Attendance credit panel and lives in survey.css. */
 .sv-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
-.sv-field label { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #4a5568; }
-.sv-field input[type=text], .sv-field select {
-	font-size: var(--ork-font-size-base); padding: 6px 10px; border: 1px solid var(--rp-border-mid); border-radius: 5px;
-	min-height: 32px; box-sizing: border-box; background: #fff; color: #2d3748;
-}
-html[data-theme="dark"] .sv-field label { color: #cbd5e0; }
-html[data-theme="dark"] .sv-field input[type=text], html[data-theme="dark"] .sv-field select {
-	background: #1a202c; color: #e2e8f0; border-color: #4a5568;
-}
+.sv-field label { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--sv-text-body); }
 
 /* Named .sv-toast, not .sv-notice: survey.css owns .sv-notice as an in-flow
    alert block, and a single-class collision would be settled by load order. */
@@ -206,7 +180,8 @@ html[data-theme="dark"] .sv-toast { background: #1a202c; border: 1px solid #4a55
 		min-height: 44px; box-sizing: border-box; font-size: 16px; padding: 8px 10px;
 	}
 	.sv-row-btn { min-height: 44px; padding: 8px 12px; }
-	.sv-field input[type=text], .sv-field select { min-height: 44px; font-size: 16px; padding: 9px 10px; }
+	.sv-field .sv-input, .sv-field .sv-select { min-height: 44px; font-size: 16px; padding: 9px 10px; }
+	.sv-field .sv-select { padding-right: 36px; }
 	button.rp-filter-pill[data-sv-filter] {
 		display: inline-flex; align-items: center; justify-content: center;
 		min-height: 44px; min-width: 44px; box-sizing: border-box; padding: 6px 14px; border-radius: 22px;
@@ -311,7 +286,7 @@ html[data-theme="dark"] .sv-toast { background: #1a202c; border: 1px solid #4a55
 
 /* The full table on a fine pointer: the six row buttons go icon-only (28px
    squares on one line) so the Actions column stays ~190px and the title,
-   scope and dates keep their width. Each label moves to .sv-sr-only's
+   scope and dates keep their width. Each label moves to .sv-visually-hidden's
    visually-hidden box, so it stays the button's accessible name, and the
    script's data-tip tooltip names the action on hover and keyboard focus.
    A coarse pointer never gets here: it has cards to 1400px and, past that,
@@ -498,7 +473,7 @@ html[data-theme="dark"] #theme_container .sv-list-section-title {
 							<th role="columnheader">Status</th>
 							<th role="columnheader" class="dt-right">Responses</th>
 							<th role="columnheader">Opened / Closes</th>
-							<th role="columnheader"><span class="sv-sr-only">Actions</span></th>
+							<th role="columnheader"><span class="sv-visually-hidden">Actions</span></th>
 						</tr>
 					</thead>
 					<tbody role="rowgroup">
@@ -557,7 +532,7 @@ html[data-theme="dark"] #theme_container .sv-list-section-title {
 	phone width; the lens rides in the tip and the accessible name. */
 	$_lens_note = $_row['ResultsLabel'] === 'all' ? 'shared: all respondents' : 'your ' . htmlspecialchars($_row['ResultsLabel']); ?>
 									<a class="sv-row-btn" href="<?=UIR?>Survey/results/<?=$_sid?>/<?=htmlspecialchars((string)$_row['ResultsContext'])?>"
-									   data-tip="Results (<?=$_lens_note?>)"><i class="fas fa-chart-bar" aria-hidden="true"></i> <span class="sv-row-btn-label">Results</span><span class="sv-sr-only"> (<?=$_lens_note?>)</span></a>
+									   data-tip="Results (<?=$_lens_note?>)"><i class="fas fa-chart-bar" aria-hidden="true"></i> <span class="sv-row-btn-label">Results</span><span class="sv-visually-hidden"> (<?=$_lens_note?>)</span></a>
 <?php elseif (!empty($_row['ResultsPending'])): ?>
 <?php /* Held by after-close sharing timing: a focusable, inert control whose
 	tip and accessible name say when results open (the label stays short for
@@ -577,7 +552,7 @@ html[data-theme="dark"] #theme_container .sv-list-section-title {
 ?>
 									<button type="button" class="sv-row-btn<?=$_cred_on ? ' sv-row-btn-on' : ''?>" data-sv-credit="<?=$_sid?>"
 									        data-sv-grantor="<?=htmlspecialchars((string)$_row['CreditGrantor'])?>" data-sv-title="<?=htmlspecialchars((string)$_row['title'])?>"
-									        data-tip="<?=htmlspecialchars($_cred_tip)?>"><i class="fas <?=$_cred_on ? 'fa-circle-check' : 'fa-award'?>" aria-hidden="true"></i> <span class="sv-row-btn-label">Credits</span><span class="sv-sr-only sv-credit-state"><?=$_cred_on ? ', on' : ''?></span></button>
+									        data-tip="<?=htmlspecialchars($_cred_tip)?>"><i class="fas <?=$_cred_on ? 'fa-circle-check' : 'fa-award'?>" aria-hidden="true"></i> <span class="sv-row-btn-label">Credits</span><span class="sv-visually-hidden sv-credit-state"><?=$_cred_on ? ', on' : ''?></span></button>
 <?php endif; ?>
 								</div>
 <?php if (!empty($_row['ResultsPending'])): ?>
@@ -605,11 +580,11 @@ html[data-theme="dark"] #theme_container .sv-list-section-title {
 		<div class="sv-modal-body">
 			<div class="sv-field">
 				<label for="sv-new-title">Title</label>
-				<input type="text" id="sv-new-title" maxlength="200" placeholder="e.g. Fall 2026 Feedback">
+				<input type="text" id="sv-new-title" class="sv-input" maxlength="200" placeholder="e.g. Fall 2026 Feedback">
 			</div>
 			<div class="sv-field">
 				<label for="sv-new-scope">Scope</label>
-				<select id="sv-new-scope">
+				<select id="sv-new-scope" class="sv-select">
 <?php foreach ($Scopes as $_sc): ?>
 					<option value="<?=htmlspecialchars($_sc['scope_type'])?>:<?=(int)$_sc['scope_id']?>"<?php if ($_sc['scope_type'] === $ScopeType && (int)$_sc['scope_id'] === (int)$ScopeId) { echo ' selected'; } ?>><?=htmlspecialchars($_sc['name'])?></option>
 <?php endforeach; ?>
@@ -656,7 +631,7 @@ html[data-theme="dark"] #theme_container .sv-list-section-title {
 		<div class="sv-modal-body">
 			<div class="sv-field">
 				<label for="sv-link-input">Copy this link</label>
-				<input type="text" id="sv-link-input" readonly>
+				<input type="text" id="sv-link-input" class="sv-input" readonly>
 			</div>
 		</div>
 		<div class="sv-modal-footer">
@@ -671,6 +646,7 @@ html[data-theme="dark"] #theme_container .sv-list-section-title {
 <?php include __DIR__ . '/_survey_credit_modal.tpl'; ?>
 
 <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+<script src="<?=HTTP_TEMPLATE?>default/script/survey-tip.js?v=<?=filemtime(__DIR__.'/script/survey-tip.js')?>"></script>
 <script>
 (function() {
 	'use strict';
@@ -811,79 +787,7 @@ html[data-theme="dark"] #theme_container .sv-list-section-title {
 		});
 	}
 
-	// ----- data-tip tooltips -----
-	// One position:fixed node on <body> (the .sv-tip rule above), placed on
-	// hover and keyboard focus. A row button only tips while its label is
-	// visually hidden (the icon-only full table); in the card layout the label
-	// is on the button, so a tip would just repeat it.
-	var tipEl = null, tipFor = null;
-	function tipTarget(node) {
-		var t = node && node.closest ? node.closest('.sv-survey-table [data-tip]') : null;
-		if (!t) { return null; }
-		var lbl = t.querySelector('.sv-row-btn-label');
-		return (lbl && lbl.getBoundingClientRect().width > 1) ? null : t;
-	}
-	function tipShow(target) {
-		if (!tipEl) {
-			tipEl = document.createElement('div');
-			tipEl.className = 'sv-tip';
-			tipEl.id = 'sv-tip';
-			tipEl.setAttribute('role', 'tooltip');
-			document.body.appendChild(tipEl);
-		}
-		if (tipFor && tipFor !== target) { tipRestore(tipFor); }
-		if (tipFor !== target) { target.setAttribute('data-sv-own-desc', target.getAttribute('aria-describedby') || ''); }
-		tipFor = target;
-		tipEl.textContent = target.getAttribute('data-tip');
-		tipEl.hidden = false;
-		target.setAttribute('aria-describedby', 'sv-tip');
-		var r = target.getBoundingClientRect();
-		var w = tipEl.offsetWidth, h = tipEl.offsetHeight;
-		// Centred over the button, clamped on-screen: the Actions column is
-		// the table's last, so a centred tip would otherwise clip right.
-		var left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), window.innerWidth - w - 8);
-		var top = r.top - h - 8;
-		if (top < 8) { top = r.bottom + 8; }
-		tipEl.style.left = Math.round(left) + 'px';
-		tipEl.style.top = Math.round(top) + 'px';
-	}
-	// Put back the description a control had before the tip borrowed it (the
-	// held-results button describes itself with its wait note).
-	function tipRestore(el) {
-		var own = el.getAttribute('data-sv-own-desc');
-		if (own) { el.setAttribute('aria-describedby', own); } else { el.removeAttribute('aria-describedby'); }
-		el.removeAttribute('data-sv-own-desc');
-	}
-	function tipHide() {
-		if (tipFor) { tipRestore(tipFor); }
-		tipFor = null;
-		if (tipEl) { tipEl.hidden = true; }
-	}
-	function tipHover(e) {
-		var t = tipTarget(e.target);
-		if (t && (t !== tipFor || (tipEl && tipEl.hidden))) { tipShow(t); } else if (!t && tipFor) { tipHide(); }
-	}
-	document.addEventListener('mouseover', tipHover);
-	// A scroll under a still pointer hides the tip (tipReflow) and mouseover will
-	// not fire again on the same button, so the next pointer movement restores it.
-	document.addEventListener('mousemove', tipHover, { passive: true });
-	document.addEventListener('focusin', function(e) {
-		var t = tipTarget(e.target);
-		if (t) { tipShow(t); } else if (tipFor) { tipHide(); }
-	});
-	document.addEventListener('focusout', tipHide);
-	document.addEventListener('click', tipHide);
-	document.addEventListener('keydown', function(e) {
-		if ((e.key === 'Escape' || e.key === 'Esc') && tipFor) { tipHide(); }
-	});
-	// Tabbing to an off-screen button scrolls it into view, and that scroll
-	// event lands after focusin: follow the focused button instead of
-	// dropping its tip. A hover tip just hides.
-	function tipReflow() {
-		if (tipFor && document.activeElement === tipFor && tipTarget(tipFor)) { tipShow(tipFor); } else { tipHide(); }
-	}
-	window.addEventListener('scroll', tipReflow, true);
-	window.addEventListener('resize', tipReflow);
+	// data-tip tooltips are shown by the shared script/survey-tip.js.
 
 	// ----- Status filter pills -----
 	var pills = document.querySelectorAll('[data-sv-filter]');

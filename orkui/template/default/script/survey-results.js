@@ -905,11 +905,13 @@
             return '<span class="svr-badge">n = ' + n + '</span>';
         }
         /* Pairwise percentages are of matchups (win % over the matchups an
-           option appeared in, the average over the possible ones); a ranking
-           card shows none. Only the choice types' percentages are of people. */
+           option appeared in, the average over the possible ones); a ranking,
+           rating, number or date card shows none. Only the choice types'
+           percentages are of people. */
         var who = plural(n, 'person', 'people');
         var tip = (q.type === 'pairwise' ? who + ' answered. The percentages here are of matchups, not people. '
-            : (TEXT_TYPES[q.type] || q.type === 'ranking' ? who + ' answered. '
+            : (TEXT_TYPES[q.type] || q.type === 'ranking' || q.type === 'rating' ||
+                q.type === 'number' || q.type === 'date' ? who + ' answered. '
             : 'Percentages are of the ' + who + ' who answered. ')) +
             plural(reached, 'response', 'responses') + ' reached this question' +
             (reached > n ? '; ' + (reached - n) + ' left it blank.' : '.');
@@ -938,8 +940,11 @@
         var html = '<div class="svr-pw-tablewrap"><table class="display svr-pw-table" style="width:100%" ' +
             'aria-labelledby="svr-title-' + q.question_id + '"><thead><tr>' +
             '<th scope="col">Rank</th><th scope="col">Option</th><th scope="col">Win %</th>' +
-            '<th scope="col"><abbr title="Wins">W</abbr></th><th scope="col"><abbr title="Ties">T</abbr></th>' +
-            '<th scope="col"><abbr title="Losses">L</abbr></th><th scope="col">Matchups</th>' +
+            /* W / T / L: the house data-tip for sighted users, the full word for screen readers. */
+            '<th scope="col"><span class="svr-pw-abbr" data-tip="Wins" aria-hidden="true">W</span><span class="sv-visually-hidden">Wins</span></th>' +
+            '<th scope="col"><span class="svr-pw-abbr" data-tip="Ties" aria-hidden="true">T</span><span class="sv-visually-hidden">Ties</span></th>' +
+            '<th scope="col"><span class="svr-pw-abbr" data-tip="Losses" aria-hidden="true">L</span><span class="sv-visually-hidden">Losses</span></th>' +
+            '<th scope="col">Matchups</th>' +
             '<th scope="col" class="svr-pw-sortkey">Never matched</th></tr></thead><tbody>';
         opts.forEach(function (o, i) {
             var unranked = o.rank === null || o.rank === undefined;
@@ -1876,52 +1881,7 @@
         state.panelReturn = null;
     }
 
-    /* ---------------------------------------------------------
-       Tooltips — one fixed node on <body> (house data-tip pattern)
-
-       A CSS ::after tip is clipped by the scrolling table area and grows its
-       scrollHeight even while invisible, so every data-tip on this page is
-       shown through a single position:fixed element placed from JS.
-       --------------------------------------------------------- */
-
-    var tipEl = null;
-    var tipFor = null;
-
-    function tipShow(target) {
-        var text = target.getAttribute('data-tip');
-        if (!text) { return; }
-        if (!tipEl) {
-            tipEl = document.createElement('div');
-            tipEl.className = 'svr-tip';
-            tipEl.id = 'svr-tip';
-            tipEl.setAttribute('role', 'tooltip');
-            document.body.appendChild(tipEl);
-        }
-        tipFor = target;
-        tipEl.textContent = text;
-        tipEl.hidden = false;
-        target.setAttribute('aria-describedby', 'svr-tip');
-        var r = target.getBoundingClientRect();
-        var w = tipEl.offsetWidth;
-        var h = tipEl.offsetHeight;
-        var left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), window.innerWidth - w - 8);
-        var top = r.top - h - 8;
-        if (top < 8) { top = r.bottom + 8; }
-        tipEl.style.left = Math.round(left) + 'px';
-        tipEl.style.top = Math.round(top) + 'px';
-    }
-
-    function tipHide() {
-        if (tipFor) { tipFor.removeAttribute('aria-describedby'); }
-        tipFor = null;
-        if (tipEl) { tipEl.hidden = true; }
-    }
-
-    function tipTarget(node) {
-        var t = node && node.closest ? node.closest('[data-tip]') : null;
-        if (!t) { return null; }
-        return t.closest('#svr-root') ? t : null;
-    }
+    /* data-tip tooltips are shown by the shared script/survey-tip.js. */
 
     /* ---------------------------------------------------------
        Summary for sharing (#5)
@@ -2191,22 +2151,9 @@
 
         document.addEventListener('keydown', function (e) {
             if (e.key !== 'Escape') { return; }
-            if (tipFor) { tipHide(); }
             var panel = $('svr-panel');
             if (panel && !panel.hidden) { closePanel(true); }
         });
-
-        /* data-tip tooltips (hover, keyboard focus, and tap on focusable ones). */
-        document.addEventListener('mouseover', function (e) {
-            var t = tipTarget(e.target);
-            if (t && t !== tipFor) { tipShow(t); } else if (!t && tipFor) { tipHide(); }
-        });
-        document.addEventListener('focusin', function (e) {
-            var t = tipTarget(e.target);
-            if (t) { tipShow(t); } else if (tipFor) { tipHide(); }
-        });
-        document.addEventListener('focusout', function () { tipHide(); });
-        window.addEventListener('scroll', tipHide, true);
 
         /* A pasted link in the same tab only changes the hash. */
         window.addEventListener('hashchange', function () {
