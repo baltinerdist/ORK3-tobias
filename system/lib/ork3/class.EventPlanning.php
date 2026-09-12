@@ -1592,8 +1592,11 @@ class EventPlanning extends Ork3
         if ($rs && $rs->Next()) {
             return ['Status' => 1, 'Error' => 'This event has attendance and cannot be deleted.'];
         }
-        // Before the rows go: the bust reads the event's scope and dates.
-        $this->bustEventScopeCaches($eventId);
+        // Read the keys before the rows go (they come from the event's scope and
+        // dates); bust only after the DELETEs, so a read in between cannot
+        // re-cache the event. A caller running this inside its own transaction
+        // busts CacheKeys again after its COMMIT (bust_deleted_system_event()).
+        $keys = $this->eventScopeCacheKeys($eventId);
         $this->db->Clear();
         $this->db->Execute('UPDATE ' . DB_PREFIX . 'attendance_link SET expires_at = NOW() - INTERVAL 1 SECOND
                             WHERE event_calendardetail_id IN (SELECT event_calendardetail_id FROM '
@@ -1602,7 +1605,22 @@ class EventPlanning extends Ork3
         $ok = $this->db->ExecuteChecked('DELETE FROM ' . DB_PREFIX . 'event_calendardetail WHERE event_id = ' . $eventId);
         $this->db->Clear();
         $ok = $ok && $this->db->ExecuteChecked('DELETE FROM ' . DB_PREFIX . 'event WHERE event_id = ' . $eventId);
-        return $ok ? ['Status' => 0, 'Error' => ''] : ['Status' => 1, 'Error' => 'The event could not be deleted.'];
+        $this->bust_deleted_system_event($eventId, $keys);
+        return $ok ? ['Status' => 0, 'Error' => '', 'CacheKeys' => $keys]
+                   : ['Status' => 1, 'Error' => 'The event could not be deleted.', 'CacheKeys' => $keys];
+    }
+
+    /**
+     * Bust the caches of an event delete_system_event() removed, from the
+     * CacheKeys it returned (the rows are gone, so they cannot be read again).
+     * The '_' keeps it off the token-free JSON surface.
+     */
+    public function bust_deleted_system_event(int $eventId, array $cacheKeys): void
+    {
+        Ork3::$Lib->ghettocache->bust_event_search($eventId);
+        foreach ($cacheKeys as $k) {
+            Ork3::$Lib->ghettocache->bust('Event.GetActiveEventsAtScope', (string) $k);
+        }
     }
 
     /**
@@ -2221,14 +2239,19 @@ class EventPlanning extends Ork3
 
     private function bustEventScopeCaches(int $eventId): void
     {
-        Ork3::$Lib->ghettocache->bust_event_search($eventId);
+        $this->bust_deleted_system_event($eventId, $this->eventScopeCacheKeys($eventId));
+    }
 
+    /** The Event.GetActiveEventsAtScope keys an event's upcoming occurrences sit under. */
+    private function eventScopeCacheKeys(int $eventId): array
+    {
+        $keys = [];
         $this->db->Clear();
         $evRow = $this->db->DataSet(
             'SELECT park_id, kingdom_id FROM ' . DB_PREFIX . 'event WHERE event_id = ' . $eventId . ' LIMIT 1'
         );
         if (!$evRow || !$evRow->Next()) {
-            return;
+            return $keys;
         }
 
         $parkId = (int) $evRow->park_id;
@@ -2241,14 +2264,13 @@ class EventPlanning extends Ork3
         while ($dates && $dates->Next()) {
             $d = (string) $dates->d;
             if ($parkId > 0) {
-                $k = Ork3::$Lib->ghettocache->key(['Scope' => 'park', 'ScopeId' => $parkId, 'Date' => $d]);
-                Ork3::$Lib->ghettocache->bust('Event.GetActiveEventsAtScope', $k);
+                $keys[] = Ork3::$Lib->ghettocache->key(['Scope' => 'park', 'ScopeId' => $parkId, 'Date' => $d]);
             }
             if ($kingdomId > 0) {
-                $k = Ork3::$Lib->ghettocache->key(['Scope' => 'kingdom', 'ScopeId' => $kingdomId, 'Date' => $d]);
-                Ork3::$Lib->ghettocache->bust('Event.GetActiveEventsAtScope', $k);
+                $keys[] = Ork3::$Lib->ghettocache->key(['Scope' => 'kingdom', 'ScopeId' => $kingdomId, 'Date' => $d]);
             }
         }
+        return $keys;
     }
 
     private function sq(string $s): string

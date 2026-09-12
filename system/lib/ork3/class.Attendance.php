@@ -176,7 +176,10 @@ class Attendance extends Ork3
      * on, whose id arrives as ByWhomId). Only the entry methods listed below
      * may be written here. Every NOT NULL column is named because production
      * runs sql_mode='' (an omitted column would silently become '' or 0).
-     * Does not open a transaction: the caller's transaction covers it.
+     * Does not open a transaction: the caller's transaction covers it. For the
+     * same reason it busts no cache: the caller calls
+     * bust_player_attendance_caches() after its COMMIT (a bust before the commit
+     * lets a concurrent read re-cache the pre-credit state).
      *
      * The snake_case name is load-bearing: orkservice/Json/index.php exposes
      * every public method of this class, and JsonServer refuses only names
@@ -226,8 +229,17 @@ class Attendance extends Ork3
             return ['Status' => 1, 'Error' => 'The credit could not be saved.'];
         }
 
-        $this->bustPlayerAttendanceCaches($mundaneId);
         return ['Status' => 0, 'Error' => '', 'AttendanceId' => $id];
+    }
+
+    /**
+     * Bust one player's attendance caches, for a caller that wrote attendance
+     * inside its own transaction (add_system_credit()) and has now committed.
+     * The '_' keeps it off the token-free JSON surface (see add_system_credit()).
+     */
+    public function bust_player_attendance_caches(int $mundaneId): void
+    {
+        $this->bustPlayerAttendanceCaches($mundaneId);
     }
 
     public function SetAttendance($request)

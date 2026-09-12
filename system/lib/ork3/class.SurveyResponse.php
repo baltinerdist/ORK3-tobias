@@ -259,12 +259,13 @@ class SurveyResponse
      * attendance credit inside the survey scope within the last N months.
      * `audienceCount()` is the set-based mirror of these rules — keep them in step.
      *
-     * @param  array<string, mixed> $surveyRow raw ork_survey row
+     * @param  array<string, mixed> $surveyRow    raw ork_survey row
+     * @param  ?bool                $participated pre-fetched "already answered" (availableFor batches it), or null to look it up
      * @return array{eligible: bool, reason: string}
      *         reason ∈ ok · closed · not_open_yet · scope · inactive · event_attendance ·
      *                  recent_attendance · tenure · completed · banned
      */
-    public function eligibility(array $surveyRow, int $uid): array
+    public function eligibility(array $surveyRow, int $uid, ?bool $participated = null): array
     {
         $uid = (int) $uid;
         $surveyId = (int) ($surveyRow['survey_id'] ?? 0);
@@ -303,7 +304,7 @@ class SurveyResponse
 
         // Checked before scope so a player who answered and then transferred
         // still gets the accurate "you already completed this" message.
-        if ($this->hasParticipated($surveyId, $uid)) {
+        if ($participated ?? $this->hasParticipated($surveyId, $uid)) {
             return self::ineligible('completed');
         }
 
@@ -621,6 +622,34 @@ class SurveyResponse
         return (bool) ($r && $r->Next());
     }
 
+    /**
+     * Batched hasParticipated(): the ids among $surveyIds this player has answered.
+     *
+     * @param  array<int|string, mixed> $surveyIds
+     * @return array<int, true> survey_id => true
+     */
+    private function participatedMap(array $surveyIds, int $uid): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $surveyIds), static function (int $id): bool {
+            return $id > 0;
+        })));
+        if (!$ids || $uid <= 0) {
+            return [];
+        }
+        $this->db->Clear();
+        $r = $this->db->DataSet(
+            'SELECT survey_id FROM ' . DB_PREFIX . 'survey_participation
+             WHERE mundane_id = ' . (int) $uid . ' AND survey_id IN (' . implode(', ', $ids) . ')'
+        );
+        $out = [];
+        if ($r) {
+            while ($r->Next()) {
+                $out[(int) $r->survey_id] = true;
+            }
+        }
+        return $out;
+    }
+
     // -----------------------------------------------------------------------
     // Respondent view of a definition
     // -----------------------------------------------------------------------
@@ -631,7 +660,7 @@ class SurveyResponse
      * player's saved draft attached.
      *
      * `$preview` bypasses the audience check for a manager previewing their own
-     * survey — the CALLER is responsible for having checked `canManage` first.
+     * survey; a caller who may not manage it gets Status 3.
      *
      * @return array<string, mixed> QualTest-style envelope + Survey, Pages, Draft, Eligible, Reason
      */
@@ -643,6 +672,10 @@ class SurveyResponse
         $survey = $this->surveyRow($surveyId);
         if (null === $survey) {
             return ['Status' => 1, 'Error' => 'Survey not found.'];
+        }
+
+        if ($preview && !$this->canManageSurvey($uid, $survey)) {
+            return ['Status' => 3, 'Error' => 'You do not have permission to preview this survey.'];
         }
 
         if ($preview) {
@@ -769,7 +802,7 @@ class SurveyResponse
      * satisfies them.
      *
      * @param  array<string, mixed> $survey
-     * @param  array<int, string>   $imageUrls image_id => URL, from imageUrlMap()
+     * @param  array<int, array<string, mixed>> $imageUrls image_id => payload, from imageUrlMap()
      * @return array<string, mixed>
      */
     private function publicSurveyFields(array $survey, array $imageUrls): array
@@ -784,8 +817,10 @@ class SurveyResponse
             'description'       => (string) ($survey['description'] ?? ''),
             'welcome_html'      => $this->markdown($survey['welcome_md'] ?? null),
             'thanks_html'       => $this->thanksHtml($survey),
-            'welcome_image_url' => $imageUrls[$welcomeImage] ?? null,
-            'thanks_image_url'  => $imageUrls[$thanksImage] ?? null,
+            'welcome_image_url' => $imageUrls[$welcomeImage]['url'] ?? null,
+            'thanks_image_url'  => $imageUrls[$thanksImage]['url'] ?? null,
+            'welcome_image'     => $imageUrls[$welcomeImage] ?? null,
+            'thanks_image'      => $imageUrls[$thanksImage] ?? null,
             'show_progress'     => (int) $survey['show_progress'],
             'allow_resume'      => (int) $survey['allow_resume'],
             'data_gate_enabled' => (int) $survey['data_gate_enabled'],
@@ -806,7 +841,7 @@ class SurveyResponse
      * resumed draft does not reshuffle underneath them.
      *
      * @param  list<array<string, mixed>> $pages
-     * @param  array<int, string>         $imageUrls image_id => URL, from imageUrlMap()
+     * @param  array<int, array<string, mixed>> $imageUrls image_id => payload, from imageUrlMap()
      * @return list<array<string, mixed>>
      */
     private function renderPagesForRespondent(array $pages, int $seed, array $imageUrls): array
@@ -824,7 +859,8 @@ class SurveyResponse
                     'type'                => $q['type'],
                     'prompt'              => $q['prompt'],
                     'help_html'           => $this->markdown($q['help_md']),
-                    'image_url'           => $imageUrls[(int) $q['image_id']] ?? null,
+                    'image_url'           => $imageUrls[(int) $q['image_id']]['url'] ?? null,
+                    'image'               => $imageUrls[(int) $q['image_id']] ?? null,
                     'required'            => (int) $q['required'],
                     'settings'            => $q['settings'],
                     'show_if_question_id' => $q['show_if_question_id'],
@@ -1051,7 +1087,7 @@ class SurveyResponse
         $nowStamp  = self::nowStamp();
 
         $this->db->Clear();
-        $this->db->Execute(
+        $ok = $this->exec(
             'INSERT INTO ' . DB_PREFIX . 'survey_draft
              (survey_id, mundane_id, answers_json, page_index, started_at, updated_at)
              VALUES (' . $surveyId . ', ' . $uid . ', \'' . $this->esc($json) . '\', ' . $pageIndex . ',
@@ -1061,6 +1097,9 @@ class SurveyResponse
                 page_index   = VALUES(page_index),
                 updated_at   = VALUES(updated_at)'
         );
+        if (!$ok) {
+            return ['Status' => 1, 'Error' => 'Answers could not be saved.', 'Saved' => false];
+        }
 
         return ['Status' => 0, 'Error' => '', 'Saved' => true];
     }
@@ -1267,7 +1306,12 @@ class SurveyResponse
         ], $storedConsent);
 
         $this->db->Clear();
-        $this->db->Execute('START TRANSACTION');
+        error_clear_last();
+        if (!$this->exec('START TRANSACTION')) {
+            // Fail closed: without a transaction each INSERT would autocommit
+            // and a later rollback could not undo the response row.
+            return $this->rollback('Your response could not be saved.', 'start_transaction', $surveyId, $uid);
+        }
 
         $this->db->Clear();
         error_clear_last(); // so rollback() reports THIS statement's PDO warning, not an older one
@@ -1335,21 +1379,31 @@ class SurveyResponse
             }
 
             $this->db->Clear();
-            $this->db->Execute(
+            error_clear_last();
+            if (!$this->exec(
                 'UPDATE ' . DB_PREFIX . 'survey
                  SET response_count = response_count + 1
                  WHERE survey_id = ' . $surveyId
-            );
+            )) {
+                return $this->rollback('Your answers could not be saved.', 'response_count', $surveyId, $uid);
+            }
         }
 
         $this->db->Clear();
-        $this->db->Execute(
+        error_clear_last();
+        if (!$this->exec(
             'DELETE FROM ' . DB_PREFIX . 'survey_draft
              WHERE survey_id = ' . $surveyId . ' AND mundane_id = ' . $uid
-        );
+        )) {
+            return $this->rollback('Your answers could not be saved.', 'delete_draft', $surveyId, $uid);
+        }
 
         $this->db->Clear();
-        $this->db->Execute('COMMIT');
+        error_clear_last();
+        if (!$this->exec('COMMIT')) {
+            // Nothing was stored, so no attendance credit either.
+            return $this->rollback('Your answers could not be saved.', 'commit', $surveyId, $uid);
+        }
 
         // Attendance credit (sharing spec §3.5): after the commit, so a credit
         // problem can never cost the player their response. Only Any ORK Data
@@ -1473,9 +1527,13 @@ class SurveyResponse
      */
     public function availableFor(int $uid): array
     {
+        $candidates = $this->candidateSurveys($uid, false, 0);
+        // The "already answered" check every survey pays, in one query rather
+        // than one per candidate; rule-specific checks stay in eligibility().
+        $participated = $this->participatedMap(array_column($candidates, 'survey_id'), $uid);
         $eligible = [];
-        foreach ($this->candidateSurveys($uid, false, 0) as $survey) {
-            if ($this->eligibility($survey, $uid)['eligible']) {
+        foreach ($candidates as $survey) {
+            if ($this->eligibility($survey, $uid, isset($participated[(int) $survey['survey_id']]))['eligible']) {
                 $eligible[] = $survey;
             }
         }
@@ -1760,8 +1818,12 @@ class SurveyResponse
     /**
      * Resolve many survey images in ONE query.
      *
+     * Each entry is Survey::imagePayload(): the master URL, the phone rendition
+     * URL (null for images uploaded before renditions existed) and both pixel
+     * sizes, so the runner can emit srcset and intrinsic width/height (#11).
+     *
      * @param  list<int|null> $imageIds (zeros/nulls/duplicates are ignored)
-     * @return array<int, string> image_id => public URL
+     * @return array<int, array<string, mixed>> image_id => payload
      */
     private function imageUrlMap(array $imageIds): array
     {
@@ -1778,19 +1840,32 @@ class SurveyResponse
 
         $this->db->Clear();
         $r = $this->db->DataSet(
-            'SELECT image_id, ext, token FROM ' . DB_PREFIX . 'survey_image
+            'SELECT image_id, ext, token, width, height FROM ' . DB_PREFIX . 'survey_image
              WHERE image_id IN (' . implode(', ', array_map('intval', $ids)) . ')'
         );
         $s = $this->survey();
         $out = [];
         if ($r) {
             while ($r->Next()) {
-                $row = ['image_id' => (int) $r->image_id, 'ext' => (string) $r->ext, 'token' => (string) $r->token];
-                if ($s && method_exists($s, 'imageUrl')) {
-                    $out[$row['image_id']] = (string) $s->imageUrl($row);
+                $row = [
+                    'image_id' => (int) $r->image_id,
+                    'ext'      => (string) $r->ext,
+                    'token'    => (string) $r->token,
+                    'width'    => (int) $r->width,
+                    'height'   => (int) $r->height,
+                ];
+                if ($s && method_exists($s, 'imagePayload')) {
+                    $out[$row['image_id']] = $s->imagePayload($row);
                 } else {
-                    $out[$row['image_id']] = HTTP_SURVEY_IMAGE . sprintf('%06d', $row['image_id'])
-                        . ('' !== $row['token'] ? '-' . $row['token'] : '') . '.' . $row['ext'];
+                    $out[$row['image_id']] = [
+                        'url' => HTTP_SURVEY_IMAGE . sprintf('%06d', $row['image_id'])
+                            . ('' !== $row['token'] ? '-' . $row['token'] : '') . '.' . $row['ext'],
+                        'small_url'    => null,
+                        'width'        => $row['width'],
+                        'height'       => $row['height'],
+                        'small_width'  => null,
+                        'small_height' => null,
+                    ];
                 }
             }
         }

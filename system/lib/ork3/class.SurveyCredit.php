@@ -856,7 +856,11 @@ class SurveyCredit
         $now    = $this->fetchRow('SELECT event_id, event_calendardetail_id FROM ' . DB_PREFIX . 'survey_credit WHERE credit_id = ' . $creditId);
         $linked = $now ? (int) $now['event_calendardetail_id'] : 0;
         if ($linked !== (int) $r['DetailId']) {
-            Ork3::$Lib->eventplanning->delete_system_event((int) $r['EventId']);
+            $del = Ork3::$Lib->eventplanning->delete_system_event((int) $r['EventId']);
+            if ((int) ($del['Status'] ?? 1) !== 0) {
+                // The losing event stays published and unlinked: say so in the log.
+                $this->logFailure((int) $survey['survey_id'], 0, 'delete_losing_event', (string) ($del['Error'] ?? ''));
+            }
             if ($linked <= 0) {
                 $this->logFailure((int) $survey['survey_id'], 0, 'link_event', '');
                 return $config;
@@ -941,6 +945,7 @@ class SurveyCredit
             $this->logFailure($sid, $uid, 'commit', '');
             return 'pending';
         }
+        Ork3::$Lib->attendance->bust_player_attendance_caches($uid);   // after COMMIT, never inside it
         return 'granted';
     }
 

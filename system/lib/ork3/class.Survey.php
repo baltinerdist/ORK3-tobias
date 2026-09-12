@@ -21,6 +21,7 @@ class Survey
     /** Upload limits for survey illustrations (spec §3). */
     private const IMAGE_MAX_BYTES = 2097152;   // 2 MB
     private const IMAGE_MAX_EDGE  = 1600;      // longest edge after the GD re-encode
+    private const IMAGE_SMALL_EDGE = 800;      // longest edge of the phone rendition written beside the master
     private const IMAGE_MAX_PIXELS = 40000000; // 40 MP: GD needs ~4 bytes/pixel to decode
 
     /** Per-survey image budget; unreferenced images are swept before an upload is refused. */
@@ -520,7 +521,8 @@ class Survey
         $images    = $this->fetchAll('SELECT * FROM ' . DB_PREFIX . 'survey_image
                                       WHERE survey_id = ' . $surveyId . ' ORDER BY image_id');
         foreach ($images as $i => $img) {
-            $images[$i]['Url'] = $this->imageUrl($img);
+            $images[$i]['Url']      = $this->imageUrl($img);
+            $images[$i]['SmallUrl'] = $this->imageSmallUrl($img);
         }
 
         return $this->ok([
@@ -1113,10 +1115,9 @@ class Survey
                 return $this->abort('Could not copy the survey images.');
             }
             $imageMap[(int) $img['image_id']] = $newImageId;
-            $imageFiles[] = [
-                $this->imagePath($img),
-                $this->imagePath(['image_id' => $newImageId, 'ext' => $img['ext'], 'token' => $token]),
-            ];
+            $newRow       = ['image_id' => $newImageId, 'ext' => $img['ext'], 'token' => $token];
+            $imageFiles[] = [$this->imagePath($img), $this->imagePath($newRow)];
+            $imageFiles[] = [$this->imageSmallPath($img), $this->imageSmallPath($newRow)];
         }
 
         $pageMap = [];
@@ -1250,6 +1251,12 @@ class Survey
             // No grants can exist (no non-test responses), but never leave one pointing nowhere.
             'DELETE FROM ' . DB_PREFIX . 'survey_credit_grant WHERE survey_id = ' . $surveyId,
             'DELETE FROM ' . DB_PREFIX . 'survey_credit WHERE survey_id = ' . $surveyId,
+            // Only test rows can be left (the guard above refused real ones); they
+            // are full-consent and identified, so they must not outlive the survey.
+            'DELETE a FROM ' . DB_PREFIX . 'survey_answer a
+             JOIN ' . DB_PREFIX . 'survey_response r ON r.response_id = a.response_id
+             WHERE r.survey_id = ' . $surveyId,
+            'DELETE FROM ' . DB_PREFIX . 'survey_response WHERE survey_id = ' . $surveyId,
             'DELETE o FROM ' . DB_PREFIX . 'survey_option o
              JOIN ' . DB_PREFIX . 'survey_question q ON q.question_id = o.question_id
              WHERE q.survey_id = ' . $surveyId,
@@ -1270,11 +1277,21 @@ class Survey
         // Inside the transaction (delete_system_event opens none). One that
         // somebody has since entered attendance on is an ordinary event now,
         // and stays.
+        $deletedEvents = [];
         foreach ($creditEvents as $eventId) {
-            Ork3::$Lib->eventplanning->delete_system_event($eventId);
+            $del = Ork3::$Lib->eventplanning->delete_system_event($eventId);
+            if ((int) ($del['Status'] ?? 1) !== 0) {
+                error_log('Survey::delete(' . $surveyId . '): credit event ' . $eventId . ' left in place: ' . (string) ($del['Error'] ?? ''));
+            }
+            $deletedEvents[$eventId] = (array) ($del['CacheKeys'] ?? []);
         }
         if (!$this->exec('COMMIT')) {
             return $this->abort('Could not delete the survey.');
+        }
+        // Again after the COMMIT: a read between delete_system_event's own bust
+        // and the commit could have re-cached the events.
+        foreach ($deletedEvents as $eventId => $keys) {
+            Ork3::$Lib->eventplanning->bust_deleted_system_event((int) $eventId, $keys);
         }
 
         foreach ($images as $img) {
@@ -1282,6 +1299,7 @@ class Survey
             if (is_file($path)) {
                 @unlink($path);
             }
+            @unlink($this->imageSmallPath($img));
         }
         $this->logActivity($surveyId, 'delete', ['title' => (string) $survey['title']]);
 
@@ -2291,21 +2309,29 @@ class Survey
         } else {
             $written = @imagejpeg($img, $path, 88);
         }
+        // A phone paints this at ~800 CSS px at most on a DPR-2 screen, so write a
+        // second, smaller raster beside the master (#11). Best effort: if it does
+        // not get written the runner simply serves the master.
+        if ($written) {
+            $this->writeSmallRendition($img, $row, (int) $width, (int) $height);
+        }
         imagedestroy($img);
         if (!$written) {
             return $this->abort('Could not write the image file.');
         }
         if (!$this->exec('COMMIT')) {
             @unlink($path);
+            @unlink($this->imageSmallPath($row));
             return $this->abort('Could not save the image.');
         }
         $this->touch($surveyId, 'update', ['op' => 'image_add', 'image_id' => $imageId]);
 
         return $this->ok([
-            'ImageId' => $imageId,
-            'Url'     => $this->imageUrl($row),
-            'Width'   => (int) $width,
-            'Height'  => (int) $height,
+            'ImageId'  => $imageId,
+            'Url'      => $this->imageUrl($row),
+            'SmallUrl' => $this->imageSmallUrl($row),
+            'Width'    => (int) $width,
+            'Height'   => (int) $height,
         ]);
     }
 
@@ -2434,6 +2460,7 @@ class Survey
             if (is_file($path)) {
                 @unlink($path);
             }
+            @unlink($this->imageSmallPath($img));
         }
         return count($orphans);
     }
@@ -2464,6 +2491,7 @@ class Survey
         if (is_file($path)) {
             @unlink($path);
         }
+        @unlink($this->imageSmallPath($img));
         $this->touch($surveyId, 'update', ['op' => 'image_delete', 'image_id' => $imageId]);
 
         return $this->ok();
@@ -2473,6 +2501,86 @@ class Survey
     public function imageUrl(array $imageRow): string
     {
         return HTTP_SURVEY_IMAGE . $this->imageFileName($imageRow);
+    }
+
+    /**
+     * Public URL of the phone rendition of an image row, or null when there is
+     * none on disk — which is every image uploaded before renditions existed.
+     * Callers must fall back to imageUrl() and emit no srcset (#11).
+     */
+    public function imageSmallUrl(array $imageRow): ?string
+    {
+        $name = $this->imageSmallFileName($imageRow);
+        return is_file(DIR_SURVEY_IMAGE . $name) ? HTTP_SURVEY_IMAGE . $name : null;
+    }
+
+    /**
+     * Pixel size of the phone rendition of a master $width x $height, or null
+     * when the master is already small enough that none is written. PURE.
+     *
+     * @return array{width:int,height:int}|null
+     */
+    public function imageSmallSize(int $width, int $height): ?array
+    {
+        $longest = max($width, $height);
+        if ($longest <= 0 || $longest <= self::IMAGE_SMALL_EDGE) {
+            return null;
+        }
+        $scale = self::IMAGE_SMALL_EDGE / $longest;
+        return [
+            'width'  => max(1, (int) round($width * $scale)),
+            'height' => max(1, (int) round($height * $scale)),
+        ];
+    }
+
+    /**
+     * Everything the runner and builder need to lay an illustration out without
+     * reflow: both URLs and both pixel sizes. `small_url` is null for images
+     * that predate renditions, and then so are `small_width`/`small_height`.
+     *
+     * @param  array<string, mixed> $imageRow
+     * @return array{url:string,small_url:?string,width:int,height:int,small_width:?int,small_height:?int}
+     */
+    public function imagePayload(array $imageRow): array
+    {
+        $width  = (int) ($imageRow['width'] ?? 0);
+        $height = (int) ($imageRow['height'] ?? 0);
+        $small  = $this->imageSmallUrl($imageRow);
+        $size   = $small === null ? null : $this->imageSmallSize($width, $height);
+
+        return [
+            'url'          => $this->imageUrl($imageRow),
+            'small_url'    => $small,
+            'width'        => $width,
+            'height'       => $height,
+            'small_width'  => $size === null ? null : $size['width'],
+            'small_height' => $size === null ? null : $size['height'],
+        ];
+    }
+
+    /**
+     * Write the phone rendition of a just-encoded upload beside its master.
+     * Failure is not an error: the runner falls back to the master.
+     */
+    private function writeSmallRendition($img, array $imageRow, int $width, int $height): void
+    {
+        $size = $this->imageSmallSize($width, $height);
+        if ($size === null) {
+            return;
+        }
+        $small = @imagescale($img, $size['width'], $size['height']);
+        if (!$small) {
+            return;
+        }
+        $path = $this->imageSmallPath($imageRow);
+        if ($this->imageExt($imageRow) === 'png') {
+            imagealphablending($small, false);
+            imagesavealpha($small, true);
+            @imagepng($small, $path, 6);
+        } else {
+            @imagejpeg($small, $path, 82);
+        }
+        imagedestroy($small);
     }
 
     /**
@@ -2870,8 +2978,8 @@ class Survey
                 $scope = '1 = 1';
                 break;
             case 'kingdom':
-                $scope = '(e.kingdom_id = ' . $scopeId . ' OR e.kingdom_id IN (SELECT kingdom_id FROM ' . DB_PREFIX . 'kingdom
-                                                                         WHERE parent_kingdom_id = ' . $scopeId . '))';
+                // Every level of principality, as everywhere else in this file.
+                $scope = 'e.kingdom_id IN (' . implode(',', array_map('intval', $this->kingdomFamily($scopeId) ?: [0])) . ')';
                 break;
             case 'park':
                 $scope = 'e.park_id = ' . $scopeId;
@@ -2976,6 +3084,22 @@ class Survey
             return sprintf('%06d-%s.%s', $id, $token, $ext);
         }
         return sprintf('%06d.%s', $id, $ext);
+    }
+
+    private function imageSmallPath(array $imageRow): string
+    {
+        return DIR_SURVEY_IMAGE . $this->imageSmallFileName($imageRow);
+    }
+
+    /**
+     * Name of the phone rendition beside a master: the master's name with '-s'
+     * before the extension ('000123-<token>-s.png'). Same id/extension
+     * convention, so nothing that resolves images by id has to change. PURE.
+     */
+    private function imageSmallFileName(array $imageRow): string
+    {
+        $name = $this->imageFileName($imageRow);
+        return substr($name, 0, strrpos($name, '.')) . '-s' . substr($name, strrpos($name, '.'));
     }
 
     /** 16 hex chars for ork_survey_image.token. */
