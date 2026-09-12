@@ -11,6 +11,16 @@ class Controller
     public $session = null;
     public $template = null;
 
+    /** Session slot + lifetime for the memoised survey promotion banner. */
+    public const SURVEY_BANNER_CACHE_KEY = 'survey_banner_cache';
+    public const SURVEY_BANNER_TTL = 300;
+
+    /** Drop the memoised banner so the next page load recomputes it. */
+    protected function bust_survey_banner_cache(): void
+    {
+        unset($this->session->{self::SURVEY_BANNER_CACHE_KEY});
+    }
+
     // Status 5 is NoAuthorization -- "you are not allowed to do that". It is NOT
     // "your session expired". Controllers uniformly mapped it to a redirect to
     // Login/login/..., so a still-logged-in officer who hit a permission boundary
@@ -117,6 +127,36 @@ class Controller
             }
             if ($this->data['WhatsNewRelease'] !== null) {
                 $this->data['ShowWhatsNew'] = !$this->Player->get_whats_new_seen($_uid, WHATS_NEW_VERSION);
+            }
+        }
+
+        // Survey promotion banner — the one show_banner survey the viewer is
+        // eligible for and has not dismissed. This is NOT a single lookup: it
+        // reads the player, fetches up to ten candidate surveys and walks each
+        // one through eligibility (tenure, participation, scope), so it is
+        // memoised per viewer in the session for SURVEY_BANNER_TTL seconds
+        // rather than recomputed on every page load. Controller_SurveyAjax
+        // busts the entry when the viewer dismisses a banner or submits a
+        // response, so those stay immediate. Skipped on Ajax controllers so
+        // the banner never rides along on a JSON response.
+        $this->data['SurveyBanner'] = null;
+        if ($_uid > 0 && substr(get_class($this), -4) !== 'Ajax') {
+            $_banner_cache = $this->session->{self::SURVEY_BANNER_CACHE_KEY};
+            if (
+                is_array($_banner_cache)
+                && (int) ($_banner_cache['uid'] ?? 0) === $_uid
+                && (time() - (int) ($_banner_cache['at'] ?? 0)) < self::SURVEY_BANNER_TTL
+            ) {
+                $this->data['SurveyBanner'] = $_banner_cache['banner'];
+            } else {
+                $this->load_model('Survey');
+                $_banner = $this->Survey->banner_for($_uid);
+                $this->session->{self::SURVEY_BANNER_CACHE_KEY} = [
+                    'uid'    => $_uid,
+                    'at'     => time(),
+                    'banner' => $_banner,
+                ];
+                $this->data['SurveyBanner'] = $_banner;
             }
         }
 

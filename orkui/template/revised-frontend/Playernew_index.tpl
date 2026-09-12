@@ -290,7 +290,28 @@ if (!in_array($_pnNameFont, $_pnFontAllowed)) $_pnNameFont = '';
 .pna-feed-label a{color:#2d3748;text-decoration:none}
 .pna-feed-label a:hover{text-decoration:underline}
 .pna-feed-sub{flex-shrink:0;color:var(--ork-text-muted);font-size:11px}
+/* Survey rows carry a full kingdom name in .pna-feed-sub, which the other feeds
+   never do; on one baseline row that un-shrinkable subtitle crushes the title
+   (the only flexible child) to 0-28px. Stack them instead. */
+.pna-survey-row{flex-direction:column;align-items:stretch;gap:2px}
+.pna-survey-row .pna-feed-label{flex:0 0 auto;white-space:normal;overflow:visible;text-overflow:clip}
+.pna-survey-meta{display:flex;align-items:center;gap:8px;min-height:44px}
+.pna-survey-meta .pna-feed-sub{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+/* The close date is the only token in the subtitle that drives a decision, so
+   it never ellipsizes: the scope name (which the player already knows) is the
+   one allowed to truncate at 320px. */
+.pna-survey-meta .pna-survey-scope{flex:0 1 auto}
+.pna-survey-meta .pna-survey-close{flex:0 0 auto;overflow:visible;text-overflow:clip}
+/* The generic .pna-feed-sub is display:none under 420px; the survey row is the
+   mobile entry point for the module and its scope + close date is the whole
+   subtitle, so it stays visible (two-class rule wins the cascade). */
+.pna-survey-cta{margin-left:auto;flex-shrink:0;display:inline-flex;align-items:center;min-height:44px;padding:0 10px;font-weight:600;font-size:12px;color:var(--ork-link);text-decoration:none}
+.pna-survey-cta:hover{text-decoration:underline}
 .pna-feed-rank{display:inline-block;background:#e9d8fd;color:#553c9a;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:4px;vertical-align:middle}
+/* The row is a column flex box, so the chip sits on its own line under the
+   title and must not stretch to the full width. Hover surface + border
+   tokens both swap in dark mode, so the pill edge shows on either card. */
+.pna-survey-credit{display:inline-flex;align-self:flex-start;align-items:center;gap:4px;padding:1px 8px;border:1px solid var(--ork-border);border-radius:8px;font-size:11px;font-weight:600;background:var(--ork-surface-hover);color:var(--ork-text-secondary)}
 .pna-feed-more{font-size:11px;color:var(--ork-text-muted);padding-top:6px;text-align:center}
 .pna-congrats-banner{background:linear-gradient(90deg,#fffff0,#fefcbf);border:1px solid #f6e05e;border-radius:6px;padding:9px 13px;font-size:12.5px;font-weight:600;color:#744210;margin-bottom:10px;display:flex;align-items:center;gap:8px}
 .pna-welcome-banner{background:linear-gradient(135deg,#1a3d2b,#276749);border-radius:10px;padding:20px 24px;margin-bottom:18px;color:#fff;display:flex;align-items:flex-start;gap:16px}
@@ -1555,6 +1576,8 @@ html[data-theme="dark"] .dp-no-restrict-row:hover{background:rgba(255,255,255,.0
 
 					<!-- Sidebar -->
 					<div class="pna-sidebar">
+
+						<div id="pna-surveys-body"></div>
 
 						<!-- Tenure -->
 						<?php $_maFirstDate = (!empty($Player['PlayerSinceDate']) && $Player['PlayerSinceDate'] !== '0000-00-00' && $Player['PlayerSinceDate'] !== '1970-01-01') ? $Player['PlayerSinceDate'] : null; ?>
@@ -7411,6 +7434,8 @@ $(function() {
 							byCell = '<em title="Player signed in via PM-issued QR / link" style="color:var(--ork-text-muted)">Self via Sign-in Link</em>';
 						} else if (d.EntryMethod === 'self_reg') {
 							byCell = '<em title="Awarded on account creation" style="color:var(--ork-text-muted)">Self-registration</em>';
+						} else if (d.EntryMethod === 'survey') {
+							byCell = '<em style="color:var(--ork-text-muted)">Survey credit</em>';
 						} else if (parseInt(d.EnteredById) > 0 && d.EnteredBy) {
 							byCell = '<a href="' + uir + 'Player/profile/' + parseInt(d.EnteredById) + '">' + esc(d.EnteredBy) + '</a>';
 						} else {
@@ -7450,6 +7475,41 @@ $(function() {
 
 			// ---- My Amtgard sections (own profile only) ----
 			if (!PnConfig.isOwnProfile) return;
+
+			// Available Surveys
+			var svBody = document.getElementById('pna-surveys-body');
+			if (svBody) {
+				fetch(PnConfig.uir + 'SurveyAjax/available', { method: 'POST', body: new FormData() })
+					.then(function(resp) { return resp.json(); })
+					.then(function(r) {
+						var surveys = (r.status === 0) ? (r.surveys || []) : [];
+						if (!surveys.length) { svBody.innerHTML = ''; return; }
+						var months3 = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+						var esc = function(s) { return $('<div>').text(s || '').html(); };
+						var escAttr = function(s) { return esc(s).replace(/"/g, '&quot;'); };
+						var svHtml = '<div class="pna-card"><div class="pna-card-title"><i class="fas fa-poll"></i> Available Surveys</div>';
+						surveys.forEach(function(sv) {
+							var subScope = esc(sv.scope_label || '');
+							var subClose = '';
+							if (sv.close_at) {
+								var cd = new Date(sv.close_at.replace(' ', 'T'));
+								if (!isNaN(cd.getTime())) {
+									subClose = 'closes ' + months3[cd.getMonth()] + ' ' + cd.getDate();
+								}
+							}
+							svHtml += '<div class="pna-feed-row pna-survey-row">'
+								+ '<span class="pna-feed-label">' + esc(sv.title) + '</span>'
+								+ (sv.credit_available ? '<span class="pna-survey-credit"><i class="fas fa-award" aria-hidden="true"></i> Earns an attendance credit</span>' : '')
+								+ '<span class="pna-survey-meta">'
+								+ (subScope ? '<span class="pna-feed-sub pna-survey-scope">' + subScope + '</span>' : '')
+								+ (subClose ? '<span class="pna-feed-sub pna-survey-close">' + (subScope ? '&middot; ' : '') + subClose + '</span>' : '')
+								+ '<a class="pna-survey-cta" aria-label="' + escAttr((sv.in_progress ? 'Continue' : 'Take survey') + ': ' + (sv.title || '')) + '" href="' + PnConfig.uir + 'Survey/take/' + parseInt(sv.survey_id) + '">' + (sv.in_progress ? 'Continue' : 'Take survey') + '</a>'
+								+ '</span></div>';
+						});
+						svBody.innerHTML = svHtml + '</div>';
+					})
+					.catch(function() { /* widget silently omits itself on error */ });
+			}
 
 			// Class Progress
 			var cpBody = document.getElementById('pna-class-progress-body');
