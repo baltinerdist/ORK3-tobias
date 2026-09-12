@@ -964,6 +964,13 @@ body:has(#svb-toc) { overflow-x: clip; }
     opacity: 0.92;
 }
 
+/* An unselected card draws the whole question through SvRender, whose touch
+   sizing is .sv-root-scoped — so a preview handed the canvas ~70 live 16px
+   checkboxes and radios a thumb could land on instead of the card. The card
+   itself must still be selectable, so only the CONTROLS go dead: the tap falls
+   through to the card. survey-build.js takes them out of the tab order. */
+.svb-canvas .svb-q-preview :is(input, select, textarea, button, a) { pointer-events: none; }
+
 /* ── Option rows ──────────────────────────────────────────────────────── */
 
 .svb-opts + .svb-opts { margin-top: 14px; }
@@ -1180,7 +1187,9 @@ body:has(#svb-toc) { overflow-x: clip; }
     background: var(--ork-bg-secondary);
 }
 
-.svb-sub {
+/* Two classes: the dark heading reset in survey.css is (0,1,2) and would
+   otherwise repaint this muted label the full text colour in dark mode. */
+.svb-more .svb-sub {
     font-family: var(--ork-font-heading);
     font-size: 11px;
     font-weight: var(--ork-font-weight-bold);
@@ -1533,90 +1542,6 @@ body:has(#svb-toc) { overflow-x: clip; }
 .svb-date-clear { margin: 2px 0 0 -6px; font-size: var(--ork-font-size-sm); }
 .svb-date-clear .fa-xmark { font-size: 11px; }
 
-/* Flatpickr hangs its calendar off <body>, so this page's copy of the dark
-   palette cannot be scoped to .sv-scope. revised.css already carries these
-   rules for the event pages, but no .rp-* page loads that sheet (it is a
-   whole-frontend stylesheet and would restyle this one), so the calendar's
-   dark palette is restated here against the same tokens. */
-html[data-theme="dark"] .flatpickr-calendar {
-    background: var(--ork-card-bg);
-    border-color: var(--ork-border);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-}
-
-html[data-theme="dark"] .flatpickr-months,
-html[data-theme="dark"] .flatpickr-month {
-    background: var(--ork-bg-tertiary);
-    color: var(--ork-text);
-}
-
-html[data-theme="dark"] .flatpickr-months .flatpickr-prev-month,
-html[data-theme="dark"] .flatpickr-months .flatpickr-next-month { fill: var(--ork-text-secondary); }
-html[data-theme="dark"] .flatpickr-months .flatpickr-prev-month svg,
-html[data-theme="dark"] .flatpickr-months .flatpickr-next-month svg { fill: var(--ork-text-secondary); }
-html[data-theme="dark"] .flatpickr-months .flatpickr-prev-month:hover svg,
-html[data-theme="dark"] .flatpickr-months .flatpickr-next-month:hover svg { fill: var(--ork-text); }
-
-html[data-theme="dark"] .flatpickr-current-month .flatpickr-monthDropdown-months {
-    background: var(--ork-bg-tertiary);
-    color: var(--ork-text);
-}
-
-html[data-theme="dark"] .flatpickr-current-month input.cur-year { color: var(--ork-text); }
-
-html[data-theme="dark"] .flatpickr-weekdays { background: var(--ork-bg-secondary); }
-
-html[data-theme="dark"] span.flatpickr-weekday {
-    color: var(--ork-text-muted);
-    background: var(--ork-bg-secondary);
-}
-
-html[data-theme="dark"] .flatpickr-day { color: var(--ork-text); }
-
-html[data-theme="dark"] .flatpickr-day:hover {
-    background: var(--ork-bg-tertiary);
-    border-color: var(--ork-bg-tertiary);
-}
-
-html[data-theme="dark"] .flatpickr-day.today { border-color: #63b3ed; }
-
-html[data-theme="dark"] .flatpickr-day.today:hover {
-    background: rgba(99, 179, 237, 0.15);
-    border-color: #63b3ed;
-    color: #63b3ed;
-}
-
-html[data-theme="dark"] .flatpickr-day.selected,
-html[data-theme="dark"] .flatpickr-day.selected:hover {
-    background: #2b6cb0;
-    border-color: #2b6cb0;
-    color: #fff;
-}
-
-html[data-theme="dark"] .flatpickr-day.prevMonthDay,
-html[data-theme="dark"] .flatpickr-day.nextMonthDay,
-html[data-theme="dark"] .flatpickr-day.flatpickr-disabled { color: var(--ork-text-lighter); }
-
-html[data-theme="dark"] .flatpickr-time {
-    background: var(--ork-card-bg);
-    border-top-color: var(--ork-border);
-}
-
-html[data-theme="dark"] .flatpickr-time input,
-html[data-theme="dark"] .flatpickr-time .numInputWrapper,
-html[data-theme="dark"] .flatpickr-time .flatpickr-am-pm {
-    background: var(--ork-card-bg);
-    color: var(--ork-text);
-}
-
-html[data-theme="dark"] .flatpickr-time input:hover,
-html[data-theme="dark"] .flatpickr-time input:focus,
-html[data-theme="dark"] .flatpickr-time .flatpickr-am-pm:hover,
-html[data-theme="dark"] .flatpickr-time .flatpickr-am-pm:focus { background: var(--ork-bg-tertiary); }
-
-html[data-theme="dark"] .flatpickr-time .numInputWrapper span.arrowUp:after { border-bottom-color: var(--ork-text-secondary); }
-html[data-theme="dark"] .flatpickr-time .numInputWrapper span.arrowDown:after { border-top-color: var(--ork-text-secondary); }
-
 /* ── Help modal ───────────────────────────────────────────────────────── */
 
 .svb-modal { position: fixed; inset: 0; z-index: var(--z-modal); }
@@ -1634,7 +1559,12 @@ html[data-theme="dark"] .flatpickr-time .numInputWrapper span.arrowDown:after { 
     position: relative;
     max-width: 720px;
     width: calc(100% - 32px);
+    /* 100dvh, not 100vh: on mobile Safari/Chrome 100vh is the LARGE viewport,
+       so with the toolbars shown the panel ran past the visible area and the
+       bottom of its own scroller could not be reached. vh stays as the
+       fallback for anything that does not know dvh. */
     max-height: calc(100vh - 64px);
+    max-height: calc(100dvh - 64px);
     margin: 32px auto;
     display: flex;
     flex-direction: column;
@@ -1724,8 +1654,6 @@ html[data-theme="dark"] .flatpickr-time .numInputWrapper span.arrowDown:after { 
         height: auto;
     }
 
-    .svb-move-btn { min-width: 34px; }
-
     /* No hover on touch: nothing may hide behind it. */
     .svb-grip .svb-handle,
     .svb-grip-keys,
@@ -1775,6 +1703,26 @@ html[data-theme="dark"] .flatpickr-time .numInputWrapper span.arrowDown:after { 
     .svb-settings .sv-select,
     .svb-settings .sv-btn { min-height: 44px; font-size: 16px; }
 
+    /* The confirm strip was the one card control still at 32px, and its pair
+       wrapped with Delete leading — the destructive button first under the
+       thumb. The message takes its own line, then Cancel comes first. */
+    .svb-confirm .sv-btn { min-height: 44px; padding-inline: 14px; }
+    .svb-confirm-text { flex: 0 0 100%; }
+    /* Cancel leads by DOM order (Survey_build.tpl); `order` here would reorder
+       the whole strip and float a button above the sentence it answers. */
+
+    /* Flatpickr's calendar hangs off <body>, so it is reached through the class
+       survey-build.js stamps on this module's own instances (initSchedulePickers)
+       — never through a bare .flatpickr-day that would resize every other ORK
+       date field on the site. */
+    .svb-fp .flatpickr-day { height: 44px; line-height: 44px; max-width: 44px; }
+    .svb-fp .flatpickr-prev-month,
+    .svb-fp .flatpickr-next-month { min-width: 44px; }
+    .svb-fp .numInputWrapper input { min-height: 44px; font-size: 16px; }
+
+    /* The share-link copy button is icon-only, so nothing else gives it width. */
+    .svb-sharelink .sv-btn { min-width: 44px; }
+
     .svb-sec-head { min-height: 44px; }
     .svb-notice-close { width: 44px; height: 44px; margin: -12px -10px -12px 0; }
 
@@ -1790,7 +1738,29 @@ html[data-theme="dark"] .flatpickr-time .numInputWrapper span.arrowDown:after { 
 /* ── Narrow ───────────────────────────────────────────────────────────── */
 
 @media (max-width: 900px) {
-    .svb-title-input { width: 100%; }
+    /* reports.css stacks .rp-header with align-items:flex-start, so the header
+       column is shrink-to-fit and the input's width:100% resolved against its
+       own content — the title was cut mid-word with dead space beside it.
+       Stretching the chain lets the field actually claim the row. */
+    .svb-root .rp-header-left { flex: 1 1 auto; align-self: stretch; min-width: 0; }
+    .svb-root .rp-header-icon-title { flex-wrap: wrap; min-width: 0; }
+    .svb-root .rp-header-title { flex: 1 1 180px; min-width: 0; }
+    /* The 420px cap stays: between 601 and 900 the header is still one row, and
+       without it the stretched chain would run the field the whole way across. */
+    .svb-title-input { width: 100%; max-width: 420px; }
+
+    /* The matrix column editor was a 900px horizontal scroller inside a 265px
+       window, and an overlay scrollbar paints nothing at rest — column 2 was
+       cut mid-word with no cue that 3–5 existed. Below the rail's width the
+       columns stack full-width exactly as the row list already does. */
+    .svb-mx-colstrip { flex-wrap: wrap; overflow-x: visible; }
+    .svb-mx-colstrip .svb-optrow-col { flex: 1 1 100%; }
+
+    /* Wrapped option rows put each row's own controls 4px under its label and
+       only 2px from the NEXT option's field, so proximity pointed at the wrong
+       owner. Space the units apart (the card treatment that binds each row's
+       two lines is in the 420px block, where the wrap happens). */
+    .svb-optlist { gap: 12px; }
 
     /* The Questions | Settings switch: one of the two at a time, Questions
        first, so the first question sits right under the header instead of
@@ -1803,6 +1773,15 @@ html[data-theme="dark"] .flatpickr-time .numInputWrapper span.arrowDown:after { 
         background: var(--sv-l1);
         border: 1px solid var(--sv-line-1);
         border-radius: var(--ork-radius-lg);
+        /* The canvas is thousands of pixels tall (one 9-option card is 828px at
+           320), and this switch was the only way back to Settings. It pins just
+           under #newmenu, the 48px site bar. Only the switch, not the whole
+           header row: that band would cost ~90px of a 568px viewport. Opaque
+           fill and one step below the confirm strip, which still stacks over
+           it. */
+        position: sticky;
+        top: 48px;
+        z-index: calc(var(--z-dropdown) - 2);
     }
 
     .svb-viewseg-btn {
@@ -1857,6 +1836,11 @@ html[data-theme="dark"] .flatpickr-time .numInputWrapper span.arrowDown:after { 
 }
 
 @media (max-width: 420px) {
+    /* The title takes the rest of its own line (past the 18px icon and the
+       10px gap) and the status pill drops below it, instead of the field being
+       squeezed to 174px and cut mid-word. */
+    .svb-root .rp-header-title { flex: 1 1 calc(100% - 28px); }
+
     .svb-items { padding: 8px 8px 4px; }
     .svb-item-body { padding: 0 10px 10px; }
     .svb-page-head { padding: 8px; }
@@ -1865,10 +1849,28 @@ html[data-theme="dark"] .flatpickr-time .numInputWrapper span.arrowDown:after { 
     .svb-card-top { flex-wrap: wrap; }
     .svb-typepick { flex: 1 1 100%; width: 100%; }
     .svb-settingline .svb-field { flex: 1 1 100%; }
-    .svb-mx-colstrip .svb-optrow-col { flex: 0 0 160px; }
+    /* Four 44px controls (grip, up, down, ×) leave a ~275px row about 60px of
+       label, and nothing at all beside an "Other" tag. The label keeps the
+       first line (the 18px glyph + 4px gap stay beside it); the controls drop
+       to a second line together, right-aligned under it. The basis leaves 8px
+       of slack past the glyph so sub-pixel rounding cannot bump the label off
+       its own glyph's line, yet far less than any 44px control needs. */
+    .svb-optrow:not(.svb-optrow-col) { flex-wrap: wrap; justify-content: flex-end; }
+    .svb-optrow:not(.svb-optrow-col) .svb-optlabel { flex-basis: calc(100% - 30px); }
+    /* Wrapped, the label and its control strip are two lines that have to read
+       as ONE option. A tinted panel spanning both says which controls belong to
+       which field; the 12px list gap above keeps the next option well clear. */
+    .svb-optlist .svb-optrow:not(.svb-optrow-col) {
+        /* L2, not L1: the selected card is already L1-lift, so an L1 panel
+           painted nothing at all. */
+        background: var(--sv-l2);
+        border: 1px solid var(--sv-line-2);
+        border-radius: var(--ork-radius-md);
+        padding: 2px 4px;
+    }
     .svb-scale-ends { flex-direction: column; gap: 4px; }
     .svb-endlabel-max .sv-input { text-align: left; }
-    .svb-modal-panel { width: 100%; margin: 0; max-height: 100vh; border-radius: 0; border: 0; }
+    .svb-modal-panel { width: 100%; margin: 0; max-height: 100vh; max-height: 100dvh; border-radius: 0; border: 0; }
 }
 
 /* ── Dark mode ────────────────────────────────────────────────────────── */
@@ -1889,6 +1891,10 @@ html[data-theme="dark"] .svb-notice-slot.sv-notice-error {
 html[data-theme="dark"] .svb-notice-close:hover { background: rgba(255, 255, 255, 0.10); }
 
 html[data-theme="dark"] #theme_container .svb-notice-link { color: inherit; }
+
+/* A transparent PNG drawn in dark ink disappears against the dark card, so the
+   thumbnails carry their own white backdrop the way a print proof would. */
+html[data-theme="dark"] :where(.svb-cardimg-thumb, .svb-imgpick-thumb) { background: #fff; }
 
 html[data-theme="dark"] .svb-field-err { color: #feb2b2; }
 html[data-theme="dark"] .svb-field-note { color: var(--ork-text-muted); }
@@ -2108,11 +2114,17 @@ html[data-theme="dark"] .svb-consent-quote {
 .svb-pw-helpbody { display: flex; flex-direction: column; gap: 10px; font-size: var(--ork-font-size-base); line-height: 1.5; }
 .svb-pw-helpbody p { margin: 0; text-align: left; }
 .svb-pw-helpbody h3 { font-size: var(--ork-font-size-base); margin-top: 6px; }
-.svb-pw-tablewrap { overflow-x: auto; }
+.svb-pw-tablewrap { overflow-x: auto; scrollbar-width: thin; }
 .svb-pw-bands { width: 100%; border-collapse: collapse; font-size: var(--ork-font-size-sm); font-variant-numeric: tabular-nums; }
 /* border: 0 first: .svb-modal-body th/td draw a full grid; this table keeps row rules only. */
 .svb-pw-bands th,
-.svb-pw-bands td { padding: 6px 8px; border: 0; border-bottom: 1px solid var(--sv-line-2); text-align: left; white-space: nowrap; }
+.svb-pw-bands td { padding: 6px 8px; border: 0; border-bottom: 1px solid var(--sv-line-2); text-align: left; }
+/* Only the band ranges ("1,001–5,000") and the percentages may not break. The
+   column labels and the prose cell in the first body row wrap, so the table
+   reflows inside the 288px sheet instead of hiding its last column behind an
+   overlay scrollbar that paints nothing at rest. */
+.svb-pw-bands tbody th[scope="row"],
+.svb-pw-bands tbody td:not([colspan]) { white-space: nowrap; }
 .svb-pw-bands thead th { color: var(--sv-text-muted); font-weight: 600; }
 .svb-pw-bands tr.svb-pw-here > * { background: var(--sv-accent-soft); font-weight: 600; }
 .svb-pw-stages { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }

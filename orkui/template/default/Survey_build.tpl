@@ -65,10 +65,12 @@ $_svShareLink = HTTP_UI_REMOTE . 'index.php?Route=Survey/s/' . rawurlencode((str
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>default/style/reports.css?v=<?= filemtime(__DIR__ . '/style/reports.css') ?>">
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>default/style/survey.css?v=<?= filemtime(__DIR__ . '/style/survey.css') ?>">
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>default/style/survey-build.css?v=<?= filemtime(__DIR__ . '/style/survey-build.css') ?>">
-<!-- Flatpickr: the same CDN build every other ORK date field uses (see
-     Eventnew_index.tpl / Reports_roster.tpl). The Schedule sidebar section
-     shows its dates human-readably through altInput/altFormat. -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<!-- Flatpickr: the same build Survey_results.tpl uses. Every third-party file on
+     this page comes from cdnjs at an exact version with an SRI hash, so the
+     browser opens ONE extra connection and a swapped-out build cannot run. -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.css"
+	integrity="sha512-MQXduO8IQnJVq1qmySpN87QQkiR1bZHtorbJBD0tzy7/0U9+YIC93QWHeGTEoojMVHWWNkoCp8V6OzVSYrX0oQ=="
+	crossorigin="anonymous" referrerpolicy="no-referrer">
 
 <!-- data-svb-view: under 900px the Questions | Settings switch shows one of
      the canvas and the settings sidebar at a time (survey-build.js setView). -->
@@ -133,8 +135,10 @@ $_svShareLink = HTTP_UI_REMOTE . 'index.php?Route=Survey/s/' . rawurlencode((str
 	<!-- Sticky, so it stays in view however far down the canvas the author is. -->
 	<div class="svb-confirm sv-scope" id="svb-confirm" role="alertdialog" aria-labelledby="svb-confirm-text" hidden>
 		<span class="svb-confirm-text" id="svb-confirm-text"></span>
+		<!-- Cancel first in the DOM: when the strip wraps on a phone the safe
+		     choice leads, and paint order matches tab order. -->
+		<button type="button" class="sv-btn svb-confirm-cancel" id="svb-confirm-no">Cancel</button>
 		<button type="button" class="sv-btn sv-btn-primary" id="svb-confirm-yes">Confirm</button>
-		<button type="button" class="sv-btn" id="svb-confirm-no">Cancel</button>
 	</div>
 
 	<div class="sv-notice svb-notice-slot" id="svb-notice" role="status" aria-live="polite" hidden></div>
@@ -177,11 +181,23 @@ window.SvConfig = {
 	survey:   <?= json_encode($_svBoot) ?>
 };
 </script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+<!-- No `defer` on these four: survey-build.js is a plain script that renders the
+     settings (flatpickr) and the markdown previews (marked + DOMPurify) during
+     its own boot, so it would run before anything deferred. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"
+	integrity="sha512-TelkP3PCMJv+viMWynjKcvLsQzx6dJHvIGhfqzFtZKgAjKM1YPqcwzzDEoTc/BHjf43PcPzTQOjuTr4YdE8lNQ=="
+	crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.js"
+	integrity="sha512-K/oyQtMXpxI4+K0W7H25UopjM8pzq0yrVdFdG21Fh5dBe91I40pDd9A4lzNlHPHBIP2cwZuoxaUSX0GJSObvGA=="
+	crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"
+	integrity="sha512-xeUh+KxNyTufZOje++oQHstlMQ8/rpyzPuM+gjMFYK3z5ILJGE7l2NvYL+XfliKURMpBIKKp1XoPN/qswlSMFA=="
+	crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"
+	integrity="sha512-jB0TkTBeQC9ZSkBqDhdmfTv1qdfbWpGE72yJ/01Srq6hEzZIz2xkz1e57p9ai7IeHMwEG7HpzG6NdptChif5Pg=="
+	crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="<?= HTTP_TEMPLATE ?>default/script/survey-render.js?v=<?= filemtime(__DIR__ . '/script/survey-render.js') ?>"></script>
+<script src="<?= HTTP_TEMPLATE ?>default/script/survey-tip.js?v=<?= filemtime(__DIR__ . '/script/survey-tip.js') ?>"></script>
 <script>window.SvCreditConfig = { uir: <?=json_encode(UIR)?>, csrf: <?=json_encode((string)($SurveyCsrf ?? ''))?> };</script>
 <?php include __DIR__ . '/_survey_credit_modal.tpl'; ?>
 <script src="<?= HTTP_TEMPLATE ?>default/script/survey-build.js?v=<?= filemtime(__DIR__ . '/script/survey-build.js') ?>"></script>

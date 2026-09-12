@@ -918,7 +918,9 @@
 
     function iconBtn(act, icon, tip, extraClass, disabled, dataAttrs) {
         return '<button type="button" class="svb-icon-btn ' + (extraClass || '') + '" data-act="' + act + '"' +
-               (dataAttrs || '') + ' data-tip="' + esc(disabled ? LOCK_TIP : tip) + '" aria-label="' + esc(tip) + '"' +
+               // Only the lock earns the lock tip: a button at its floor (one
+               // page, the minimum options) keeps its own words.
+               (dataAttrs || '') + ' data-tip="' + esc(disabled && S.locked ? LOCK_TIP : tip) + '" aria-label="' + esc(tip) + '"' +
                (disabled ? ' disabled' : '') + '><i class="fas ' + icon + '" aria-hidden="true"></i></button>';
     }
 
@@ -1122,6 +1124,8 @@
 
         canvas.innerHTML = html;
         els('.svb-autogrow', canvas).forEach(autoGrow);
+        // See refreshCard(): preview controls leave the tab order too.
+        els('.svb-q-preview :is(input, select, textarea, button, a)', canvas).forEach(function (c) { c.tabIndex = -1; });
         wireSortables();
         wireOptionSortables();
         renderToc();
@@ -1176,7 +1180,7 @@
         var qid  = parseInt(q.question_id, 10);
         var text = tocTitle(q);
         return '<a class="svb-toc-item" href="#svb-item-' + qid + '" data-qid="' + qid +
-               '" title="' + esc(text) + '">' +
+               '" data-tip="' + esc(text) + '">' +
                '<i class="fas ' + esc(typeIcon(q.type)) + ' svb-toc-icon" aria-hidden="true"></i>' +
                '<span class="svb-toc-text">' + esc(text) + '</span></a>';
     }
@@ -1200,7 +1204,7 @@
                 qs    = questionsOfPage(page.page_id);
                 label = tocPageLabel(page, i);
                 html += '<div class="svb-toc-page" data-page="' + parseInt(page.page_id, 10) +
-                        '" title="' + esc(label) + '">' + esc(label) + '</div>';
+                        '" data-tip="' + esc(label) + '">' + esc(label) + '</div>';
                 if (!qs.length) {
                     html += '<p class="svb-toc-none">Nothing here yet</p>';
                     continue;
@@ -1293,7 +1297,7 @@
                 node = el('.svb-toc-text', row);
                 if (node && node.textContent !== text) {
                     node.textContent = text;
-                    row.setAttribute('title', text);
+                    row.setAttribute('data-tip', text);
                 }
             }
             for (i = 0; i < S.pages.length; i++) {
@@ -1302,7 +1306,7 @@
                 label = tocPageLabel(page, i);
                 if (row && row.textContent !== label) {
                     row.textContent = label;
-                    row.setAttribute('title', label);
+                    row.setAttribute('data-tip', label);
                 }
             }
         }, TOC_MS);
@@ -1409,7 +1413,15 @@
         if (!selected) { html += showIfFlag(q); }
 
         html += '<div class="svb-item-body">';
-        html += selected ? editCardHtml(q) : SvRender.question(forRender(q), undefined, 'preview');
+        /* An unselected card is a PREVIEW: its controls are drawn by SvRender,
+           whose touch sizing only applies inside .sv-root, so they arrived here
+           full-size, live and focusable. The wrapper is what survey-build.css
+           kills pointer events on; the two tabIndex sweeps that take them out
+           of the tab order run in renderCanvas() and refreshCard(), so a third
+           insertion path has to sweep too — the card itself stays selectable. */
+        html += selected
+            ? editCardHtml(q)
+            : '<div class="svb-q-preview">' + SvRender.question(forRender(q), undefined, 'preview') + '</div>';
         html += '</div>';
 
         html += '</article>';
@@ -2102,6 +2114,9 @@
         node.parentNode.removeChild(node);
 
         els('.svb-autogrow', fresh).forEach(autoGrow);
+        // A preview's controls are dead to the pointer in CSS; this is the
+        // keyboard half, so Tab walks the cards and not ~70 inert checkboxes.
+        els('.svb-q-preview :is(input, select, textarea, button, a)', fresh).forEach(function (c) { c.tabIndex = -1; });
         if (focusPrompt) {
             area = el('.svb-prompt', fresh);
             if (area) { area.focus(); area.setSelectionRange(area.value.length, area.value.length); }
@@ -2132,6 +2147,16 @@
 
     /* ---------------------------------------------------------- header bits */
 
+    /**
+     * An <input> gives no ellipsis, so on a narrow header a long title simply
+     * ends mid-word with no sign there is more. The native tooltip puts the
+     * whole string one hover or long-press away. (The visually-hidden <label>
+     * stays the accessible name — the value is not a label.)
+     */
+    function mirrorTitleTip(node) {
+        if (node) { node.title = String(node.value || ''); }
+    }
+
     function renderHeader() {
         var s       = S.survey || {};
         var status  = String(s.status || 'draft');
@@ -2145,6 +2170,7 @@
         if (title && document.activeElement !== title && !pending['survey:Title'] && !held['survey:Title']) {
             title.value = s.title || '';
         }
+        mirrorTitleTip(title);
         if (pill) {
             pill.className = 'svb-status-pill svb-status-' + status;
             pill.textContent = status.charAt(0).toUpperCase() + status.slice(1);
@@ -2373,7 +2399,7 @@
                          'Shows a dismissible strip at the top of every page for everyone in scope.');
         body += fieldRow('<div class="svb-sharelink">' +
                          '<input type="text" class="sv-input" id="svb-f-share" readonly value="' + esc(shareLink()) + '">' +
-                         '<button type="button" class="sv-btn" data-act="share-copy" data-tip="Copy the share link">' +
+                         '<button type="button" class="sv-btn" data-act="share-copy" data-tip="Copy the share link" aria-label="Copy the share link">' +
                          '<i class="fas fa-link" aria-hidden="true"></i></button></div>',
                          'Share link', null, 'svb-f-share');
         html += section('promotion', 'Promotion', 'fa-bullhorn', body);
@@ -2600,7 +2626,14 @@
                 altFormat:     FP_PRETTY,
                 altInputClass: 'sv-input svb-date svb-date-alt',
                 time_24hr:     false,
-                allowInput:    false
+                allowInput:    false,
+                /* The calendar hangs off <body>, outside this module's markup.
+                   The class is how survey-build.css reaches it to give the day
+                   cells and the month arrows a 44px tap target on touch without
+                   resizing every other ORK date field on the site. */
+                onReady: function (dates, str, inst) {
+                    if (inst.calendarContainer) { inst.calendarContainer.classList.add('svb-fp'); }
+                }
             });
             /* Flatpickr copies the placeholder onto the alt input at build
                time only, so restate it for the empty state. */
@@ -3038,7 +3071,7 @@
             list.splice(idx + dir, 0, list.splice(idx, 1)[0]);
             ids = list.map(function (n) { return parseInt(n.question_id, 10); });
             reorderLocal(parseInt(q.page_id, 10), ids);
-            renderCanvas();
+            if (!stepCardInPlace(questionId, dir)) { renderCanvas(); }
             focusMove(questionId, dir);
             post('question_reorder', { PageId: parseInt(q.page_id, 10), QuestionIds: JSON.stringify(ids) }, null);
             return;
@@ -3058,6 +3091,67 @@
         moveLocal(questionId, parseInt(target.page_id, 10), ids);
         renderCanvas();
         focusMove(questionId, dir);
+    }
+
+    /**
+     * One step up or down, done by moving the card's own nodes instead of
+     * rebuilding the canvas. On touch ▲/▼ IS the reorder affordance, and a full
+     * renderCanvas() threw away and rebuilt every page, every card and every
+     * live preview control in the survey for one tap.
+     *
+     * The canvas lays each element out as [card][its "+ add here" marker], and
+     * the marker is keyed to the card it follows, so the two travel together.
+     *
+     * Returns false — take the full repaint — when a card is open: the inline
+     * editor's "show if" list is built from positions in the survey, so moving
+     * anything can change what it may offer.
+     */
+    function stepCardInPlace(questionId, dir) {
+        var card = cardEl(questionId);
+        var mark, host, sibCard, sibMark;
+        if (sel || !card) { return false; }
+
+        mark = card.nextElementSibling;
+        if (!mark || !mark.classList.contains('svb-addinline')) { return false; }
+        host = card.parentNode;
+
+        if (dir < 0) {
+            sibMark = card.previousElementSibling;
+            sibCard = sibMark ? sibMark.previousElementSibling : null;
+        } else {
+            sibCard = mark.nextElementSibling;
+            sibMark = sibCard ? sibCard.nextElementSibling : null;
+        }
+        if (!sibCard || !sibCard.classList.contains('svb-item') ||
+                !sibMark || !sibMark.classList.contains('svb-addinline')) { return false; }
+
+        // Lift the OTHER pair over this one; this card keeps its DOM node, so
+        // focus, scroll position and its preview controls all survive.
+        if (dir < 0) {
+            host.insertBefore(sibCard, mark.nextSibling);
+            host.insertBefore(sibMark, sibCard.nextSibling);
+        } else {
+            host.insertBefore(sibCard, card);
+            host.insertBefore(sibMark, card);
+        }
+
+        refreshMoveStates();
+        renderToc();
+        return true;
+    }
+
+    /** After an in-place step: only the two ends of the survey disable ▲/▼. */
+    function refreshMoveStates() {
+        var canvas = $('svb-canvas');
+        var total  = orderedQuestions().length;
+        if (!canvas) { return; }
+        els('.svb-item', canvas).forEach(function (node) {
+            var pos  = questionIndex(parseInt(node.getAttribute('data-qid'), 10));
+            var up   = el('[data-act="q-up"]', node);
+            var down = el('[data-act="q-down"]', node);
+            if (up)   { up.disabled   = !!S.locked || pos === 0; }
+            if (down) { down.disabled = !!S.locked || pos >= total - 1; }
+        });
     }
 
     /** Keep the keyboard on the control the author just used. */
@@ -4310,6 +4404,7 @@
         // inline hint + "Not saved" until the next real character (#7).
         if (title) {
             title.addEventListener('input', function () {
+                mirrorTitleTip(title);
                 if (String(title.value).trim() === '') {
                     holdBlank('survey:Title', title, 'A survey needs a title. Type one to save.');
                     return;
