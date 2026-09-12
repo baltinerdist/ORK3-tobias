@@ -7,8 +7,9 @@ use PHPUnit\Framework\TestCase;
 /**
  * survey-render.js's pairwise input guards under node
  * (tests/Unit/js/survey-pairwise-input-harness.js): a pick is only ever
- * recorded for a matchup the respondent saw, and a builder preview keeps no
- * live state behind it.
+ * recorded for a matchup the respondent saw, a re-render replaces the
+ * question's live state instead of leaking another entry, and a builder
+ * preview keeps no live state behind it.
  */
 final class SurveyPairwiseInputScriptTest extends TestCase
 {
@@ -43,6 +44,15 @@ final class SurveyPairwiseInputScriptTest extends TestCase
         $this->assertSame(1, $out['reducedDouble']);
         $this->assertSame(2, $out['reducedAfterWindow'], 'after the short window a pick counts again');
         $this->assertSame(1, $out['motionDouble']);
+    }
+
+    public function testReRenderReplacesTheQuestionsLiveState(): void
+    {
+        $h = $this->harness()['rerender'];
+        $this->assertSame(1, $h['firstPicks']);
+        $this->assertTrue($h['sameKey'], 'a re-render of the same question reuses its data-pw key');
+        $this->assertSame(0, $h['oldMountReads'], 'the fresh render replaced the old entry; none is left behind');
+        $this->assertTrue($h['otherQuestionKeyDiffers'], 'two questions never share a key');
     }
 
     public function testPreviewKeepsNoLiveState(): void

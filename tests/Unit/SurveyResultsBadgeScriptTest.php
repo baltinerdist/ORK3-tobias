@@ -7,7 +7,8 @@ use PHPUnit\Framework\TestCase;
 /**
  * The results card's "n = 59 of 61" tip says what the card's percentages are
  * of (tests/Unit/js/survey-results-badge-harness.js). A pairwise card's are of
- * matchups, a ranking card has none, and only the choice types' are of people.
+ * matchups, a ranking or rating card has none, and only the choice types' are
+ * of people.
  */
 final class SurveyResultsBadgeScriptTest extends TestCase
 {
@@ -39,6 +40,11 @@ final class SurveyResultsBadgeScriptTest extends TestCase
     public function testRankingTipClaimsNoPercentages(): void
     {
         $this->assertSame('59 people answered. 61 responses reached this question; 2 left it blank.', $this->harness()['ranking']);
+    }
+
+    public function testRatingTipClaimsNoPercentages(): void
+    {
+        $this->assertSame('59 people answered. 61 responses reached this question; 2 left it blank.', $this->harness()['rating']);
     }
 
     public function testChoiceAndTextTipsAreUnchanged(): void

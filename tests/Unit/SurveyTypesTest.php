@@ -268,7 +268,7 @@ final class SurveyTypesTest extends TestCase
 
     // ------------------------------------------------------- answer: required
 
-    public function testRequiredMissingFails_NotRequiredMissingOk(): void
+    public function testRequiredAnswerIsMandatoryButOptionalOneIsNot(): void
     {
         $req = ['type' => 'rating', 'required' => 1, 'settings' => []];
         $this->assertFalse(SurveyTypes::validateAnswer($req, [], null)['ok']);

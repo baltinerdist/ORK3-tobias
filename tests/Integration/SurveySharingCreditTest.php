@@ -2,8 +2,6 @@
 
 declare(strict_types=1);
 
-require_once __DIR__ . '/SurveyOrgFixture.php';
-
 use PHPUnit\Framework\TestCase;
 
 /** Sharing and credits (spec 2026-09-10-survey-sharing-and-credits-design.md). */

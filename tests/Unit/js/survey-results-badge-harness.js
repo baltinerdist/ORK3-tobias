@@ -43,7 +43,7 @@ vm.runInContext(
     box);
 
 var out = {};
-['pairwise', 'ranking', 'single', 'multi', 'short_text'].forEach(function (type) {
+['pairwise', 'ranking', 'rating', 'single', 'multi', 'short_text'].forEach(function (type) {
     var html = vm.runInContext('badgeHtml({ type: ' + JSON.stringify(type) + ', n: 59, reached: 61, agg: {} })', box);
     var m = /data-tip="([^"]*)"/.exec(html);
     out[type] = m ? m[1] : null;

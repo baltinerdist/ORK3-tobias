@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Org + survey fixture for the sharing-and-credits integration tests. Owns
+ * Org + survey fixture for the survey integration tests. Owns
  * every row it creates and removes them in tearDownFixture(), attendance and
  * generated events included.
  */

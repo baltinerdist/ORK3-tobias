@@ -2,8 +2,9 @@
 /* Loads survey-render.js under node with a small hand-made DOM stub and
    drives the pairwise widget through its document click / keydown handlers.
    Prints JSON for SurveyPairwiseInputScriptTest: how many picks each input
-   sequence records (a held arrow key, a double click with reduced motion)
-   and whether a builder preview keeps any live state. */
+   sequence records (a held arrow key, a double click with reduced motion),
+   whether a re-render replaces the question's live state rather than adding
+   another entry, and whether a builder preview keeps any live state. */
 var fs = require('fs');
 var path = require('path');
 var vm = require('vm');
@@ -138,6 +139,27 @@ var m3 = mount('take');
 click(m3.b);
 click(m3.b);
 out.motionDouble = picks(m3);
+
+/* A re-render of the same question (the runner redraws the page on every
+   Next / Back) reuses its data-pw key, so the fresh state replaces the old
+   entry instead of adding one: the old mount now reads the fresh, empty state.
+   A different question never shares the key. */
+reduced = true;
+var r1 = mount('take');
+click(r1.a);
+runTimers();
+var r1Picks = picks(r1);
+var r2 = mount('take');
+var Q2 = JSON.parse(JSON.stringify(Q));
+Q2.question_id = 8;
+var otherKey = (/data-pw="([^"]+)"/.exec(R.question(Q2, undefined, 'take')) || [])[1];
+out.rerender = {
+    firstPicks: r1Picks,
+    sameKey: r1.key === r2.key,
+    oldMountReads: picks(r1),
+    otherQuestionKeyDiffers: !!otherKey && otherKey !== r1.key
+};
+reduced = false;
 
 /* A builder preview keeps no live state: write() has nothing to fill, so a
    read comes back empty, and the markup still shows the first authored matchup. */

@@ -14,9 +14,9 @@ use PHPUnit\Framework\TestCase;
  */
 final class SurveyTest extends TestCase
 {
-    private const MARKER = 'T07SURVEY';
+    use SurveyOrgFixture;
 
-    private PDO $pdo;
+    private const MARKER = 'T07SURVEY';
 
     private Survey $survey;
 
@@ -26,18 +26,6 @@ final class SurveyTest extends TestCase
 
     /** @var list<int> */
     private array $surveyIds = [];
-
-    /** @var list<int> */
-    private array $mundaneIds = [];
-
-    /** @var list<int> */
-    private array $authIds = [];
-
-    /** @var list<int> */
-    private array $parkIds = [];
-
-    /** @var list<int> */
-    private array $kingdomIds = [];
 
     private int $kingdomId = 0;
 
@@ -56,23 +44,7 @@ final class SurveyTest extends TestCase
 
     protected function setUp(): void
     {
-        if (!ork3_test_db_available()) {
-            $this->markTestSkipped('Test database is not available.');
-        }
-
-        unset($_SESSION['is_authorized_mundane_id']);
-
-        $this->pdo = new PDO(
-            sprintf(
-                'mysql:host=%s;port=%d;dbname=%s;charset=utf8',
-                DB_HOSTNAME,
-                DB_PORT,
-                DB_DATABASE,
-            ),
-            DB_USERNAME,
-            DB_PASSWORD,
-            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION],
-        );
+        $this->setUpFixture();
 
         $this->survey = new Survey();
         $this->response = new SurveyResponse();
@@ -81,51 +53,39 @@ final class SurveyTest extends TestCase
         // Own the whole org tree so the fixture never depends on seeded data and
         // the "other kingdom" is genuinely unreachable through the authority walk
         // (both are root kingdoms: parent_kingdom_id = 0).
-        $this->kingdomId = $this->createKingdom('home');
-        $this->otherKingdomId = $this->createKingdom('away');
-        $this->parkId = $this->createPark($this->kingdomId, 'home');
+        $this->kingdomId = $this->kingdom('home');
+        $this->otherKingdomId = $this->kingdom('away');
+        $this->parkId = $this->park($this->kingdomId, 'home');
 
-        $this->officerId = $this->createPlayer('officer');
-        $this->insertAuth($this->officerId, AUTH_KINGDOM, $this->kingdomId, AUTH_CREATE);
+        $this->officerId = $this->player('officer', $this->parkId, $this->kingdomId);
+        $this->officer($this->officerId, AUTH_KINGDOM, $this->kingdomId, AUTH_CREATE);
 
-        $this->editorId = $this->createPlayer('editor');
-        $this->insertAuth($this->editorId, AUTH_KINGDOM, $this->kingdomId, AUTH_EDIT);
+        $this->editorId = $this->player('editor', $this->parkId, $this->kingdomId);
+        $this->officer($this->editorId, AUTH_KINGDOM, $this->kingdomId, AUTH_EDIT);
 
-        $this->outsiderId = $this->createPlayer('outsider');
-        $this->insertAuth($this->outsiderId, AUTH_KINGDOM, $this->otherKingdomId, AUTH_CREATE);
+        $this->outsiderId = $this->player('outsider', $this->parkId, $this->kingdomId);
+        $this->officer($this->outsiderId, AUTH_KINGDOM, $this->otherKingdomId, AUTH_CREATE);
 
         foreach (['p1', 'p2', 'p3'] as $key) {
-            $this->players[$key] = $this->createPlayer($key);
+            $this->players[$key] = $this->player($key, $this->parkId, $this->kingdomId);
         }
     }
 
     protected function tearDown(): void
     {
-        unset($_SESSION['is_authorized_mundane_id']);
-
+        // Surveys go first through deleteSurvey(), which also removes their
+        // image rows and files; the fixture then removes the org tree.
         foreach ($this->surveyIds as $id) {
             $this->deleteSurvey($id);
         }
-        foreach ($this->authIds as $id) {
-            $this->pdo->exec('DELETE FROM ' . DB_PREFIX . 'authorization WHERE authorization_id = ' . (int) $id);
-        }
-        foreach ($this->mundaneIds as $id) {
+        $this->surveyIds = [];
+
+        // Authorizations the code under test granted to fixture players.
+        foreach ($this->fx['mundane'] as $id) {
             $this->pdo->exec('DELETE FROM ' . DB_PREFIX . 'authorization WHERE mundane_id = ' . (int) $id);
-            $this->pdo->exec('DELETE FROM ' . DB_PREFIX . 'session WHERE mundane_id = ' . (int) $id);
-            $this->pdo->exec('DELETE FROM ' . DB_PREFIX . 'mundane WHERE mundane_id = ' . (int) $id);
-        }
-        foreach ($this->parkIds as $id) {
-            $this->pdo->exec('DELETE FROM ' . DB_PREFIX . 'park WHERE park_id = ' . (int) $id);
-        }
-        foreach ($this->kingdomIds as $id) {
-            $this->pdo->exec('DELETE FROM ' . DB_PREFIX . 'kingdom WHERE kingdom_id = ' . (int) $id);
         }
 
-        $this->surveyIds = [];
-        $this->authIds = [];
-        $this->mundaneIds = [];
-        $this->parkIds = [];
-        $this->kingdomIds = [];
+        $this->tearDownFixture();
     }
 
     // ------------------------------------------------------------------
@@ -870,94 +830,6 @@ final class SurveyTest extends TestCase
         $stmt->execute([$questionId, $role]);
 
         return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN, 0));
-    }
-
-    private function createKingdom(string $suffix): int
-    {
-        $stmt = $this->pdo->prepare(
-            'INSERT INTO ' . DB_PREFIX . 'kingdom (name, abbreviation, parent_kingdom_id, active)
-             VALUES (?, ?, 0, \'Active\')'
-        );
-        $stmt->execute([
-            self::MARKER . ' ' . $suffix . ' ' . bin2hex(random_bytes(3)),
-            strtoupper(substr(bin2hex(random_bytes(2)), 0, 3)),
-        ]);
-        $id = (int) $this->pdo->lastInsertId();
-        $this->kingdomIds[] = $id;
-
-        return $id;
-    }
-
-    private function createPark(int $kingdomId, string $suffix): int
-    {
-        $stmt = $this->pdo->prepare(
-            'INSERT INTO ' . DB_PREFIX . 'park
-             (kingdom_id, name, abbreviation, url, address, city, province, postal_code,
-              google_geocode, latitude, longitude, location, map_url, description, directions, active)
-             VALUES (?, ?, ?, \'\', \'\', \'\', \'\', \'\', \'\', 0, 0, \'\', \'\', \'\', \'\', \'Active\')'
-        );
-        $stmt->execute([
-            $kingdomId,
-            self::MARKER . ' ' . $suffix . ' ' . bin2hex(random_bytes(3)),
-            strtoupper(substr(bin2hex(random_bytes(2)), 0, 3)),
-        ]);
-        $id = (int) $this->pdo->lastInsertId();
-        $this->parkIds[] = $id;
-
-        return $id;
-    }
-
-    private function createPlayer(string $suffix): int
-    {
-        $token = md5(self::MARKER . $suffix . bin2hex(random_bytes(8)));
-        $username = strtolower(self::MARKER . '_' . $suffix . '_' . substr($token, 0, 8));
-        $persona = self::MARKER . ' ' . $suffix;
-
-        $stmt = $this->pdo->prepare(
-            'INSERT INTO ' . DB_PREFIX . 'mundane
-             (given_name, surname, other_name, username, persona, email, park_id, kingdom_id, token,
-              waiver_ext, password_expires, password_salt, xtoken, reeve_qualified_until,
-              penalty_box, active, suspended)
-             VALUES (?, ?, \'\', ?, ?, ?, ?, ?, ?, \'\', NOW(), \'\', ?, \'0000-00-00\', 0, 1, 0)'
-        );
-        $stmt->execute([
-            'Test',
-            $suffix,
-            $username,
-            $persona,
-            $username . '@example.test',
-            $this->parkId,
-            $this->kingdomId,
-            $token,
-            md5($token),
-        ]);
-
-        $id = (int) $this->pdo->lastInsertId();
-        $this->mundaneIds[] = $id;
-
-        return $id;
-    }
-
-    private function insertAuth(int $mundaneId, string $type, int $scopeId, string $role): int
-    {
-        $kingdomId = 0;
-        $parkId = 0;
-        match ($type) {
-            AUTH_KINGDOM => $kingdomId = $scopeId,
-            AUTH_PARK => $parkId = $scopeId,
-            default => null,
-        };
-
-        $stmt = $this->pdo->prepare(
-            'INSERT INTO ' . DB_PREFIX . 'authorization
-             (mundane_id, park_id, kingdom_id, event_id, unit_id, role)
-             VALUES (?, ?, ?, 0, 0, ?)'
-        );
-        $stmt->execute([$mundaneId, $parkId, $kingdomId, $role]);
-        $id = (int) $this->pdo->lastInsertId();
-        $this->authIds[] = $id;
-
-        return $id;
     }
 
     private function deleteSurvey(int $surveyId): void
