@@ -51,6 +51,12 @@
     var SS_KEY = 'sv:answers:' + SURVEY_ID + (IS_PREVIEW ? ':preview' : '');
     var MIRROR_DELAY = 300;   // ms — sessionStorage write debounce (#25)
     var DRAFT_DELAY = 1500;   // ms — server draft autosave debounce (#26)
+    // Pairwise picks land every 1.5-2.5s for 36-78 matchups, so the 1500ms
+    // debounce never coalesced anything: nearly every pick became its own POST
+    // of the whole answer map. A longer window while the respondent is picking
+    // turns a burst into one save; the payload and the contract are unchanged.
+    var DRAFT_DELAY_PAIRWISE = 5000;
+    var DRAFT_MAX_WAIT = 12000;   // ms — an answer never sits unsent longer than this
 
     // Ineligibility reasons come from SurveyResponse::eligibility().
     var REASONS = {
@@ -129,6 +135,7 @@
     var mirrorTimer = null;  // pending debounced sessionStorage write
     var draftTimer = null;   // pending debounced server draft save
     var draftSeq = 0;        // only the newest draft_save reply paints the status
+    var deferredSince = 0;   // when the pending save was first asked for (DRAFT_MAX_WAIT)
     var saveState = '';      // '' | 'saved' | 'failed' — what the status line shows
 
     var stage, titleEl, metaEl, progressEl, barEl, progressTextEl, liveEl, politeEl, saveEl;
@@ -470,8 +477,13 @@
      * Pull every VISIBLE question on screen into `answers`. A question hidden
      * by show-if keeps its DOM (and its last answer, in case it comes back) but
      * is never read; visibleAnswers() keeps it out of anything sent.
+     *
+     * `only` is a .sv-q element: read just that question. Typing re-read every
+     * question on the page — a 5x5 matrix's 25 radios and a ranking — on every
+     * character, and only the question that fired can have changed. Page turns,
+     * show-if rebuilds and submit still call collect() with no argument.
      */
-    function collect() {
+    function collect(only) {
         var scr = screens[idx];
         var i, root, q, v, qid;
         if (!scr || scr.kind !== 'page') { return; }
@@ -480,6 +492,7 @@
             qid = toInt(q.question_id);
             root = stage.querySelector('.sv-q[data-qid="' + qid + '"]');
             if (!root || root.hidden) { continue; }
+            if (only && root !== only) { continue; }
             v = R.read(root, q);
             if (v === undefined) {
                 delete answers[qid];
@@ -593,7 +606,9 @@
 
         progressEl.hidden = false;
         progressTextEl.hidden = false;
-        barEl.style.width = pct + '%';
+        // scaleX, not width: headerPaint() runs on every answer, and a layout
+        // pass per keystroke/pick is the one thing the header must not cost.
+        barEl.style.transform = 'scaleX(' + (pct / 100) + ')';
         progressEl.setAttribute('role', 'progressbar');
         progressEl.setAttribute('aria-valuemin', '0');
         progressEl.setAttribute('aria-valuemax', '100');
@@ -848,6 +863,14 @@
         return html;
     }
 
+    /* The one way onward from a screen the runner cannot continue past — the
+       thank-you, and equally "already completed" / "closed" / "not eligible",
+       which otherwise left the browser Back button as the only exit. */
+    function homeActionHtml() {
+        return '<div class="sv-actions"><a class="sv-btn sv-btn-primary" href="' +
+            esc(UIR) + 'Player/index">Back to My Amtgard</a></div>';
+    }
+
     function renderThanks(html, credit) {
         var out = '<section class="sv-card sv-thanks">';
         finished = true;
@@ -862,7 +885,7 @@
             out += '<p class="sv-credit-note"><i class="fas fa-award" aria-hidden="true"></i><span>Your attendance credit will be added shortly.</span></p>';
         }
         out += '</section>';
-        out += '<div class="sv-actions"><a class="sv-btn sv-btn-primary" href="' + esc(UIR) + 'Player/index">Back to My Amtgard</a></div>';
+        out += homeActionHtml();
         stage.innerHTML = out;
         progressEl.hidden = true;
         progressTextEl.hidden = true;
@@ -923,13 +946,38 @@
         window.scrollTo(0, 0);
     }
 
-    /* Drag for every ranking on the page (SortableJS, loaded by Survey_take.tpl;
+    /* SortableJS is dead weight on the great majority of surveys, so it is not
+       in the page: it is fetched — same pinned version and SRI hash the template
+       used to carry — the first time a screen actually holds a ranking, and the
+       ▲▼ buttons carry the question if it never lands. */
+    var SORTABLE_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js';
+    var SORTABLE_SRI = 'sha512-TelkP3PCMJv+viMWynjKcvLsQzx6dJHvIGhfqzFtZKgAjKM1YPqcwzzDEoTc/BHjf43PcPzTQOjuTr4YdE8lNQ==';
+    var sortableAsked = false;
+
+    function loadSortable() {
+        var s;
+        if (sortableAsked || window.Sortable) { return; }
+        sortableAsked = true;
+        s = document.createElement('script');
+        s.src = SORTABLE_SRC;
+        s.integrity = SORTABLE_SRI;
+        s.crossOrigin = 'anonymous';
+        s.referrerPolicy = 'no-referrer';
+        s.async = true;
+        // Whatever is on screen when it arrives gets its drag wired; a failure
+        // leaves .sv-nodrag in place and nothing else changes.
+        s.onload = function () { wireRankings(); };
+        document.head.appendChild(s);
+    }
+
+    /* Drag for every ranking on the page (SortableJS, fetched on demand above;
        the ▲▼ buttons work without it). A drop renumbers the badges, marks the
        list answered, and fires the same bubbling `change` the arrows do. */
     function wireRankings() {
         var lists = stage.querySelectorAll('.sv-rank');
         var i;
         stage.classList.toggle('sv-nodrag', !window.Sortable);
+        if (lists.length && !window.Sortable) { loadSortable(); }
         for (i = 0; i < lists.length; i++) {
             R.reindexRank(lists[i]);
             if (!window.Sortable || lists[i].getAttribute('data-sortable') === '1') { continue; }
@@ -1009,6 +1057,7 @@
     function draftSave() {
         var mySeq;
         if (draftTimer) { window.clearTimeout(draftTimer); draftTimer = null; }
+        deferredSince = 0;
         if (IS_PREVIEW || finished || !resumeAllowed()) { return; }
         mySeq = ++draftSeq;
         post('draft_save', {
@@ -1035,10 +1084,18 @@
     /* On a resumable survey the server draft follows the player as they
        answer (#26), not only on page turns, so switching device mid-page
        loses nothing. */
-    function draftSaveSoon() {
+    function draftSaveSoon(delay) {
         if (IS_PREVIEW || finished || !resumeAllowed()) { return; }
+        // A pairwise run asks for a longer delay so a burst of matchup picks
+        // coalesces into one save. Re-arming on every pick would defer the save
+        // for ever, though — picks land faster than the delay — so DRAFT_MAX_WAIT
+        // caps how long an answer may sit unsent: switching device mid-page
+        // still loses at most that window, not the whole question.
+        if (deferredSince === 0) { deferredSince = Date.now(); }
+        if (delay > 0 && Date.now() - deferredSince >= DRAFT_MAX_WAIT) { delay = 0; }
         if (draftTimer) { window.clearTimeout(draftTimer); }
-        draftTimer = window.setTimeout(function () { draftTimer = null; draftSave(); }, DRAFT_DELAY);
+        draftTimer = window.setTimeout(function () { draftTimer = null; draftSave(); },
+            delay > 0 ? delay : DRAFT_DELAY);
     }
 
     function validateCurrentPage() {
@@ -1260,6 +1317,11 @@
 
     // ------------------------------------------------------------- listeners
 
+    /** The .sv-q an event came from, or null. */
+    function qRootOf(target) {
+        return target && target.closest ? target.closest('.sv-q') : null;
+    }
+
     function onStageClick(e) {
         var btn = e.target.closest ? e.target.closest('[data-sv-act]') : null;
         if (!btn) { return; }
@@ -1270,6 +1332,7 @@
 
     function onStageChange(e) {
         var scr = screens[idx];
+        var qRoot = qRootOf(e.target);
         var pageId, errEl, group;
 
         if (e.target && e.target.name === 'sv-consent') {
@@ -1296,13 +1359,13 @@
             syncVisibility();
             clearFixedError(e.target);
         }
-        draftSaveSoon();
+        draftSaveSoon(qRoot && qRoot.getAttribute('data-type') === 'pairwise' ? DRAFT_DELAY_PAIRWISE : 0);
     }
 
     function onStageInput(e) {
         var scr = screens[idx];
         if (!scr || scr.kind !== 'page') { return; }
-        collect();
+        collect(qRootOf(e.target));
         clearFixedError(e.target);
         draftSaveSoon();
     }
@@ -1418,7 +1481,7 @@
             if (!def.eligible) {
                 // Nothing typed on a shared event laptop outlives a closed door.
                 mirrorClear();
-                renderNotice(REASONS[def.reason] || REASON_FALLBACK, 'sv-notice-warn');
+                renderNotice(REASONS[def.reason] || REASON_FALLBACK, 'sv-notice-warn', homeActionHtml());
                 return;
             }
 

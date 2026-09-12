@@ -11,6 +11,7 @@
          q     : a question object as it arrives from SurveyAjax/definition
                  (respondent view) or SurveyAjax/get (builder view):
                  { question_id, type, prompt, help_html | help_md, image_url,
+                   image{url, small_url, width, height, small_width, small_height},
                    required, settings{}, options[{option_id, role, label,
                    value_num, is_other}] }
          state : the current raw answer (spec §6 "Answers JSON shape") or
@@ -200,7 +201,7 @@
 
    pairwise ─ two options at a time, a Tie between, a progress bar under
      <div class="sv-choice-hint" id="sv-hint-12-N">Pick the one you prefer…</div>
-     <div class="sv-pw" data-pw="svqN_12" role="group" aria-labelledby="sv-p-12" …>
+     <div class="sv-pw" data-pw="pwq12" role="group" aria-labelledby="sv-p-12" …>
        <div class="sv-pw-stage" [data-chose="a|b|tie"] [hidden when complete]>
          <button type="button" class="sv-pw-pick sv-pw-a" data-pw-pick="a"><span class="sv-pw-label">Hawk</span></button>
          <button type="button" class="sv-pw-tie" data-pw-pick="tie">Tie</button>
@@ -219,7 +220,8 @@
        </div>
      </div>
      The widget's state (plan, answered list, queue) lives in this file, keyed
-     by data-pw; the buttons are repainted in place. A pick, a Tie or an Undo
+     by data-pw (one entry per question id, so a re-render replaces it); the
+     buttons are repainted in place. A pick, a Tie or an Undo
      (one delegated click listener; ← / → / ↓ while focus is on the stage)
      fires a bubbling `change` from .sv-pw, so autosave just listens for it.
      Preview renders the first two options in authored order and records
@@ -383,6 +385,41 @@
         return '';
     }
 
+    /* True on a touch screen. Guarded: the unit harnesses run this file under
+       node with a DOM stub that has no matchMedia. */
+    function coarsePointer() {
+        try {
+            return !!(typeof window !== 'undefined' && window.matchMedia &&
+                      window.matchMedia('(pointer: coarse)').matches);
+        } catch (e) {
+            return false;
+        }
+    }
+
+    /* One illustration's <img>. The server sends q.image = {url, small_url,
+       width, height, small_width, small_height}; when it wrote a phone
+       rendition we offer both in srcset, and when it did not (every image
+       uploaded before renditions existed) we emit the master alone — never a
+       srcset entry that would 404. Intrinsic width/height keep a late image
+       from reflowing the page below it. */
+    function imageTag(q, className, alt) {
+        var info = (q && q.image) || null;
+        var src = (info && info.url) || (q && q.image_url) || '';
+        var w = info ? (parseInt(info.width, 10) || 0) : 0;
+        var h = info ? (parseInt(info.height, 10) || 0) : 0;
+        var sw = info ? (parseInt(info.small_width, 10) || 0) : 0;
+        var html;
+        if (!src) { return ''; }
+        html = '<img class="' + className + '" src="' + escapeHtml(src) + '"';
+        if (info && info.small_url && sw > 0 && w > sw) {
+            html += ' srcset="' + escapeHtml(info.small_url) + ' ' + sw + 'w, ' +
+                    escapeHtml(info.url) + ' ' + w + 'w"' +
+                    ' sizes="(max-width: 680px) 100vw, 640px"';
+        }
+        if (w > 0 && h > 0) { html += ' width="' + w + '" height="' + h + '"'; }
+        return html + ' loading="lazy" decoding="async" alt="' + escapeHtml(alt || '') + '">';
+    }
+
     /** Split a raw choice value into {id, other}. Accepts 5, "5", {option_id:5, other:"x"}. */
     function splitChoice(value) {
         if (value === null || value === undefined || value === '') { return null; }
@@ -499,7 +536,14 @@
        the error), so a screen reader hears the selection limit too. */
     function hintFor(q, type) {
         var s, minSel, maxSel;
-        if (type === 'pairwise') { return 'Pick the one you prefer, or call it a tie. The arrow keys work too.'; }
+        if (type === 'pairwise') {
+            // The author's own help text already says what to do: one instruction
+            // line, not two near-identical ones. And a touch device has no arrow
+            // keys to hear about.
+            if (helpHtml(q)) { return ''; }
+            return 'Pick the one you prefer, or call it a tie.' +
+                   (coarsePointer() ? '' : ' The arrow keys work too.');
+        }
         if (type === 'ranking') { return 'Use the arrows or drag to put these in order.'; }
         if (type !== 'multi') { return ''; }
         s = settingsOf(q);
@@ -736,7 +780,7 @@
 
     // ------------------------------------------------------------- pairwise
 
-    var PW = {};                  // data-pw key -> the live state of one rendered pairwise question
+    var PW = {};                  // data-pw key ('pwq' + question id) -> the live state of that pairwise question
     var PW_FLASH_MS = 140;        // how long the picked side stays lit before the next matchup
 
     function pwIds(q) {
@@ -779,6 +823,9 @@
 
     function bodyPairwise(q, state, ctx) {
         var ids = pwIds(q), labels = {}, st, v, i, html;
+        // Keyed by question id, not the per-render name: the runner redraws the
+        // page on every Next / Back, and a fresh render must replace the old entry.
+        var key = ctx.preview ? ctx.name : 'pwq' + ctx.qid;
         optionsOf(q, 'choice').forEach(function (o) { labels[parseInt(o.option_id, 10)] = String(o.label || ''); });
         st = {
             plan: (q.pairwise && typeof q.pairwise === 'object') ? q.pairwise : pairwisePlan(ids.length),
@@ -791,11 +838,11 @@
         st.queue = pairwiseQueue(ids, st.done, ctx.preview ? null : Math.random);
         // A preview only draws its first matchup and never takes input, so its
         // state is not kept: the builder redraws previews all session long.
-        if (!ctx.preview) { PW[ctx.name] = st; }
+        if (!ctx.preview) { PW[key] = st; }
         v = pwView(st);
 
         html = ctx.hint ? '<div class="sv-choice-hint" id="' + ctx.hintId + '">' + escapeHtml(ctx.hint) + '</div>' : '';
-        html += '<div class="sv-pw" data-pw="' + ctx.name + '" role="group" aria-labelledby="' + ctx.promptId + '"' +
+        html += '<div class="sv-pw" data-pw="' + key + '" role="group" aria-labelledby="' + ctx.promptId + '"' +
                 ctx.req + ctx.desc + '>';
         html += '<div class="sv-pw-stage"' + (v.complete ? ' hidden' : '') + '>';
         html += '<button type="button" class="sv-pw-pick sv-pw-a" data-pw-pick="a"' + ctx.tab + '>' +
@@ -961,7 +1008,7 @@
         if (type === 'image') {
             html += '<figure class="sv-figure">';
             if (q.image_url) {
-                html += '<img class="sv-figure-img" src="' + escapeHtml(q.image_url) + '" alt="' + escapeHtml(q.prompt || '') + '">';
+                html += imageTag(q, 'sv-figure-img', q.prompt || '');
             } else {
                 html += '<div class="sv-figure-empty">No image selected</div>';
             }
@@ -971,8 +1018,7 @@
             if (q.prompt) { html += '<h3 class="sv-block-title">' + escapeHtml(q.prompt) + '</h3>'; }
             if (help) { html += '<div class="sv-block-body">' + help + '</div>'; }
             if (q.image_url) {
-                html += '<div class="sv-q-image"><img class="sv-q-image-img" src="' + escapeHtml(q.image_url) +
-                        '" alt=""></div>';
+                html += '<div class="sv-q-image">' + imageTag(q, 'sv-q-image-img', '') + '</div>';
             }
         }
         html += '</div>';
@@ -1035,7 +1081,7 @@
                             '<span class="sv-visually-hidden"> (required)</span>' : '') + '</div>';
         if (help) { html += '<div class="sv-q-help" id="' + ctx.helpId + '">' + help + '</div>'; }
         if (q.image_url) {
-            html += '<div class="sv-q-image"><img class="sv-q-image-img" src="' + escapeHtml(q.image_url) + '" alt=""></div>';
+            html += '<div class="sv-q-image">' + imageTag(q, 'sv-q-image-img', '') + '</div>';
         }
         html += '<div class="sv-q-body">' + body + '</div>';
         html += '<div class="sv-q-error" role="alert" id="' + ctx.errId + '" hidden></div>';

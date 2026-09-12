@@ -4,10 +4,14 @@
  *
  * Plain PHP, never Smarty. This page deliberately loads NO .rp-* report shell
  * and no chart library: it is the one survey surface a player opens on a phone,
- * so it links only survey.css plus the shared renderer and its own IIFE, and
- * two pinned cdnjs helpers: DOMPurify (builder-authored HTML is sanitised again
- * before innerHTML) and SortableJS (drag for ranking questions). Both are
- * optional at runtime — the page works, minus drag, if either fails to load.
+ * so it links only survey.css plus the shared renderer, the shared tip engine
+ * (script/survey-tip.js) and its own IIFE, and
+ * one pinned cdnjs helper: DOMPurify (builder-authored HTML is sanitised again
+ * before innerHTML). Every script is `defer`: nothing here may block the first
+ * paint of the frame. SortableJS (drag for ranking questions) is not loaded
+ * here at all — survey-take.js pulls it in, same pinned version and SRI hash,
+ * only when the definition actually contains a ranking question, and the page
+ * works minus drag if it never arrives.
  *
  * Everything below #sv-stage is drawn by script/survey-take.js from the JSON
  * that SurveyAjax/definition returns; the server renders only the frame.
@@ -39,8 +43,12 @@ $_svCsrf       = isset($SurveyCsrf) ? (string) $SurveyCsrf : '';
 		<?php if ($_svIsPreview) : ?>
 			<div class="sv-preview-strip" role="note">
 				<i class="fas fa-eye" aria-hidden="true"></i>
-				<span class="sv-preview-text">Preview — nothing will be saved unless you submit a test response.</span>
-				<a class="sv-preview-link" href="<?= UIR ?>Survey/build/<?= $_svSurveyId ?>">Back to builder</a>
+				<span class="sv-preview-text">Preview — nothing will be saved<span class="sv-preview-text-more"> unless you submit a test response</span>.</span>
+				<a class="sv-preview-link" href="<?= UIR ?>Survey/build/<?= $_svSurveyId ?>" aria-label="Back to builder">
+					<i class="fas fa-arrow-left" aria-hidden="true"></i>
+					<span class="sv-preview-link-text">Back to builder</span>
+					<span class="sv-preview-link-abbr" aria-hidden="true">Builder</span>
+				</a>
 			</div>
 		<?php endif; ?>
 
@@ -73,12 +81,10 @@ $_svCsrf       = isset($SurveyCsrf) ? (string) $SurveyCsrf : '';
 			csrf: <?= json_encode($_svCsrf) ?>
 		};
 	</script>
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"
+	<script defer src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"
 		integrity="sha512-jB0TkTBeQC9ZSkBqDhdmfTv1qdfbWpGE72yJ/01Srq6hEzZIz2xkz1e57p9ai7IeHMwEG7HpzG6NdptChif5Pg=="
 		crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"
-		integrity="sha512-TelkP3PCMJv+viMWynjKcvLsQzx6dJHvIGhfqzFtZKgAjKM1YPqcwzzDEoTc/BHjf43PcPzTQOjuTr4YdE8lNQ=="
-		crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-	<script src="<?= HTTP_TEMPLATE ?>default/script/survey-render.js?v=<?= filemtime($_svRenderJs) ?>"></script>
-	<script src="<?= HTTP_TEMPLATE ?>default/script/survey-take.js?v=<?= filemtime($_svTakeJs) ?>"></script>
+	<script defer src="<?= HTTP_TEMPLATE ?>default/script/survey-render.js?v=<?= filemtime($_svRenderJs) ?>"></script>
+	<script defer src="<?= HTTP_TEMPLATE ?>default/script/survey-tip.js?v=<?= filemtime(__DIR__ . '/script/survey-tip.js') ?>"></script>
+	<script defer src="<?= HTTP_TEMPLATE ?>default/script/survey-take.js?v=<?= filemtime($_svTakeJs) ?>"></script>
 <?php endif; ?>
