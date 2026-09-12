@@ -297,6 +297,11 @@ if (!in_array($_pnNameFont, $_pnFontAllowed)) $_pnNameFont = '';
 .pna-survey-row .pna-feed-label{flex:0 0 auto;white-space:normal;overflow:visible;text-overflow:clip}
 .pna-survey-meta{display:flex;align-items:center;gap:8px;min-height:44px}
 .pna-survey-meta .pna-feed-sub{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+/* The close date is the only token in the subtitle that drives a decision, so
+   it never ellipsizes: the scope name (which the player already knows) is the
+   one allowed to truncate at 320px. */
+.pna-survey-meta .pna-survey-scope{flex:0 1 auto}
+.pna-survey-meta .pna-survey-close{flex:0 0 auto;overflow:visible;text-overflow:clip}
 /* The generic .pna-feed-sub is display:none under 420px; the survey row is the
    mobile entry point for the module and its scope + close date is the whole
    subtitle, so it stays visible (two-class rule wins the cascade). */
@@ -7484,18 +7489,20 @@ $(function() {
 						var escAttr = function(s) { return esc(s).replace(/"/g, '&quot;'); };
 						var svHtml = '<div class="pna-card"><div class="pna-card-title"><i class="fas fa-poll"></i> Available Surveys</div>';
 						surveys.forEach(function(sv) {
-							var sub = esc(sv.scope_label || '');
+							var subScope = esc(sv.scope_label || '');
+							var subClose = '';
 							if (sv.close_at) {
 								var cd = new Date(sv.close_at.replace(' ', 'T'));
 								if (!isNaN(cd.getTime())) {
-									sub += (sub ? ' &middot; ' : '') + 'closes ' + months3[cd.getMonth()] + ' ' + cd.getDate();
+									subClose = 'closes ' + months3[cd.getMonth()] + ' ' + cd.getDate();
 								}
 							}
 							svHtml += '<div class="pna-feed-row pna-survey-row">'
 								+ '<span class="pna-feed-label">' + esc(sv.title) + '</span>'
 								+ (sv.credit_available ? '<span class="pna-survey-credit"><i class="fas fa-award" aria-hidden="true"></i> Earns an attendance credit</span>' : '')
 								+ '<span class="pna-survey-meta">'
-								+ (sub ? '<span class="pna-feed-sub">' + sub + '</span>' : '')
+								+ (subScope ? '<span class="pna-feed-sub pna-survey-scope">' + subScope + '</span>' : '')
+								+ (subClose ? '<span class="pna-feed-sub pna-survey-close">' + (subScope ? '&middot; ' : '') + subClose + '</span>' : '')
 								+ '<a class="pna-survey-cta" aria-label="' + escAttr((sv.in_progress ? 'Continue' : 'Take survey') + ': ' + (sv.title || '')) + '" href="' + PnConfig.uir + 'Survey/take/' + parseInt(sv.survey_id) + '">' + (sv.in_progress ? 'Continue' : 'Take survey') + '</a>'
 								+ '</span></div>';
 						});
