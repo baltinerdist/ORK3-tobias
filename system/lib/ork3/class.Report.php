@@ -4359,6 +4359,91 @@ class Report extends Ork3
     }
 
     /**
+     * JSON-service usage over the last N days (ork_api_tally, written by
+     * JsonServer::call_endpoint), as TWO small summaries rather than one long
+     * client-x-endpoint grid.
+     *
+     * GetCommunityAppVersions answers "who is logged in"; this answers "who is
+     * actually CALLING us", which for a client that authenticates once a month
+     * is a completely different question.
+     *
+     * Returns ['Clients' => [...], 'Endpoints' => [...]] because those are two
+     * separate questions -- "who uses the service" and "what does it cost us" --
+     * and a combined grid answers neither at a glance. The full client-x-endpoint
+     * detail stays in the table for ad-hoc queries; it just is not a thing anyone
+     * should have to read forty rows of every week.
+     *
+     * Endpoints are ranked by TOTAL TIME, not call count, because that is the
+     * number worth acting on: one answering in 4ms half a million times and one
+     * taking 900ms a hundred times rank identically by popularity and could
+     * hardly differ more by cost. AvgMs rides alongside so a slow-but-rare
+     * endpoint stays visible instead of being buried.
+     *
+     * Aggregate counts only, no identities -- see the table's own comment.
+     *
+     * @param int $days how far back to sum (default 7)
+     * @return array{Clients: array, Endpoints: array}
+     */
+    public function GetApiUsage($days = 7)
+    {
+        $days = max(1, min(90, (int)$days));
+        $key  = Ork3::$Lib->ghettocache->key(array('api-usage-v2', $days));
+        if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 1800)) !== false) {
+            return $cache;
+        }
+        $since = "day >= DATE_SUB(CURDATE(), INTERVAL " . $days . " DAY)";
+        $out   = array('Clients' => array(), 'Endpoints' => array());
+
+        // Who is calling: one row per client. Short by construction -- `client`
+        // is the collapsed bucket from ork_session_client_label().
+        $r = $this->db->query(
+            "SELECT client,
+			        SUM(calls)             AS calls,
+			        COUNT(DISTINCT endpoint) AS endpoints,
+			        SUM(ms_total)          AS total_ms
+			   FROM " . DB_PREFIX . "api_tally
+			  WHERE {$since}
+			  GROUP BY client
+			  ORDER BY calls DESC
+			  LIMIT 15"
+        );
+        if ($r !== false && $r->size() > 0) {
+            while ($r->next()) {
+                $out['Clients'][] = array(
+                    'Client'    => (string)$r->client,
+                    'Calls'     => (int)$r->calls,
+                    'Endpoints' => (int)$r->endpoints,
+                    'TotalMs'   => (int)$r->total_ms,
+                );
+            }
+        }
+
+        // What it costs: top endpoints across all clients.
+        $r2 = $this->db->query(
+            "SELECT endpoint,
+			        SUM(calls)    AS calls,
+			        SUM(ms_total) AS total_ms
+			   FROM " . DB_PREFIX . "api_tally
+			  WHERE {$since}
+			  GROUP BY endpoint
+			  ORDER BY total_ms DESC, calls DESC
+			  LIMIT 10"
+        );
+        if ($r2 !== false && $r2->size() > 0) {
+            while ($r2->next()) {
+                $calls = (int)$r2->calls;
+                $out['Endpoints'][] = array(
+                    'Endpoint' => (string)$r2->endpoint,
+                    'Calls'    => $calls,
+                    'TotalMs'  => (int)$r2->total_ms,
+                    'AvgMs'    => $calls > 0 ? round((int)$r2->total_ms / $calls, 1) : 0.0,
+                );
+            }
+        }
+        return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $out);
+    }
+
+    /**
      * Distinct players credited with attendance per week (Monday-anchored,
      * matching the recap window), across all recorded history — the long
      * participation curve of the game itself, independent of web analytics.
