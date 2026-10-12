@@ -368,6 +368,15 @@ class Controller_Event extends Controller
                 $depCounts = $this->Event->get_detail_dependency_counts($detail_id);
                 if ($depCounts['attendance'] === 0 && $depCounts['rsvp'] === 0) {
                     $this->Event->delete_calendar_detail($this->session->token, $detail_id);
+                    // The event_site_map row is FK ON DELETE CASCADE, but the physical
+                    // site-map image is not — unlink it here (mirror site_map_delete).
+                    $siteMapBase = DIR_SITEMAP . sprintf('%05d', (int)$detail_id);
+                    if (file_exists($siteMapBase . '.jpg')) {
+                        @unlink($siteMapBase . '.jpg');
+                    }
+                    if (file_exists($siteMapBase . '.png')) {
+                        @unlink($siteMapBase . '.png');
+                    }
                 }
             }
             $scope = $this->Event->get_event_redirect_scope($event_id);
@@ -572,6 +581,7 @@ class Controller_Event extends Controller
             && ($this->Authorization->has_authority($uid, AUTH_EVENT, $event_id, AUTH_EDIT) || $uid_staff_can_manage || $uid_staff_can_schedule);
         $this->data['CanManageFeast'] = $uid > 0
             && ($this->Authorization->has_authority($uid, AUTH_EVENT, $event_id, AUTH_EDIT) || $uid_staff_can_manage || $uid_staff_can_feast);
+        $this->data['CanManageSite'] = $this->data['CanManageEvent'];
 
         $occurrencePage = $this->Event->get_occurrence_page_data(
             $event_id,
@@ -618,6 +628,67 @@ class Controller_Event extends Controller
             $this->data['ScheduleList'],
             fn ($s) => ($s['Category'] ?? '') === 'Feast and Food' || ($s['SecondaryCategory'] ?? '') === 'Feast and Food'
         ));
+
+        // ---- Site Details: rules, tagged locations, uploaded site map ----
+        global $DB;
+        $DB->Clear();
+        $siteRuleRows = $DB->DataSet(
+            'SELECT event_site_rule_id AS RuleId, rule_key AS RuleKey, value AS Value, title AS Title, details AS Details, sort_order AS SortOrder
+			FROM ' . DB_PREFIX . 'event_site_rule
+			WHERE event_calendardetail_id = ' . $detail_id . '
+			ORDER BY sort_order, event_site_rule_id'
+        );
+        $siteRules = [];
+        if ($siteRuleRows) {
+            while ($siteRuleRows->Next()) {
+                $siteRules[] = [
+                    'RuleId'    => (int)$siteRuleRows->RuleId,
+                    'RuleKey'   => $siteRuleRows->RuleKey !== null ? (string)$siteRuleRows->RuleKey : null,
+                    'Value'     => (string)($siteRuleRows->Value ?? ''),
+                    'Title'     => (string)($siteRuleRows->Title ?? ''),
+                    'Details'   => (string)($siteRuleRows->Details ?? ''),
+                    'SortOrder' => (int)$siteRuleRows->SortOrder,
+                ];
+            }
+        }
+        $this->data['SiteRules'] = $siteRules;
+
+        $DB->Clear();
+        $siteLocRows = $DB->DataSet(
+            'SELECT event_site_location_id AS LocationId, name AS Name, category AS Category, description AS Description, x AS X, y AS Y
+			FROM ' . DB_PREFIX . 'event_site_location
+			WHERE event_calendardetail_id = ' . $detail_id . '
+			ORDER BY sort_order, name'
+        );
+        $siteLocations = [];
+        if ($siteLocRows) {
+            while ($siteLocRows->Next()) {
+                $siteLocations[] = [
+                    'LocationId'  => (int)$siteLocRows->LocationId,
+                    'Name'        => (string)$siteLocRows->Name,
+                    'Category'    => (string)$siteLocRows->Category,
+                    'Description' => (string)($siteLocRows->Description ?? ''),
+                    'X'           => (float)$siteLocRows->X,
+                    'Y'           => (float)$siteLocRows->Y,
+                ];
+            }
+        }
+        $this->data['SiteLocations'] = $siteLocations;
+
+        $siteMap = null;
+        $DB->Clear();
+        $siteMapRow = $DB->DataSet('SELECT ext, width, height FROM ' . DB_PREFIX . 'event_site_map WHERE event_calendardetail_id = ' . $detail_id . ' LIMIT 1');
+        if ($siteMapRow && $siteMapRow->Next()) {
+            $smFile = sprintf('%05d', $detail_id) . '.' . $siteMapRow->ext;
+            if (file_exists(DIR_SITEMAP . $smFile)) {
+                $siteMap = [
+                    'Url'    => HTTP_SITEMAP . $smFile . '?v=' . filemtime(DIR_SITEMAP . $smFile),
+                    'Width'  => (int)$siteMapRow->width,
+                    'Height' => (int)$siteMapRow->height,
+                ];
+            }
+        }
+        $this->data['SiteMap'] = $siteMap;
 
         $this->data['DietarySummary'] = null;
         if ($this->data['CanManageFeast'] && $detail_id > 0) {
