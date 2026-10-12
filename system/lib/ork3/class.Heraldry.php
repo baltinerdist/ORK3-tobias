@@ -218,6 +218,15 @@ class Heraldry extends Ork3
                 }
                 $this->kingdom->has_heraldry = 0;
                 $this->kingdom->save();
+                // Removing heraldry unlinks a file from disk; it wrote no audit row.
+                Ork3::$Lib->dangeraudit->audit(
+                    __CLASS__ . '::' . __FUNCTION__,
+                    $request,
+                    'Kingdom',
+                    (int)$request['KingdomId'],
+                    ['has_heraldry' => 1],
+                    ['has_heraldry' => 0]
+                );
                 return Success();
             } else {
                 return InvalidParameter();
@@ -263,6 +272,15 @@ class Heraldry extends Ork3
                 }
                 $this->park->has_heraldry = 0;
                 $this->park->save();
+                // Removing heraldry unlinks a file from disk; it wrote no audit row.
+                Ork3::$Lib->dangeraudit->audit(
+                    __CLASS__ . '::' . __FUNCTION__,
+                    $request,
+                    'Park',
+                    (int)$request['ParkId'],
+                    ['has_heraldry' => 1],
+                    ['has_heraldry' => 0]
+                );
                 return Success();
             } else {
                 return InvalidParameter();
@@ -308,6 +326,15 @@ class Heraldry extends Ork3
                 }
                 $this->unit->has_heraldry = 0;
                 $this->unit->save();
+                // Removing heraldry unlinks a file from disk; it wrote no audit row.
+                Ork3::$Lib->dangeraudit->audit(
+                    __CLASS__ . '::' . __FUNCTION__,
+                    $request,
+                    'Unit',
+                    (int)$request['UnitId'],
+                    ['has_heraldry' => 1],
+                    ['has_heraldry' => 0]
+                );
                 return Success();
             } else {
                 return InvalidParameter();
@@ -317,16 +344,62 @@ class Heraldry extends Ork3
         }
     }
 
+    public function RemoveEventHeraldry($request)
+    {
+        $mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token'] ?? '');
+        $eventId = (int)($request['EventId'] ?? 0);
+        if ($mundane_id <= 0) {
+            return BadToken();
+        }
+        if (!valid_id($eventId)) {
+            return InvalidParameter();
+        }
+
+        $planning = new EventPlanning();
+        if (!Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_EVENT, $eventId, AUTH_EDIT)
+                && !$planning->CanManageEventDetail($mundane_id, $eventId, 0, 'manage')) {
+            return NoAuthorization();
+        }
+
+        $this->event->clear();
+        $this->event->event_id = $eventId;
+        if (!$this->event->find()) {
+            return InvalidParameter();
+        }
+
+        $base = DIR_EVENT_HERALDRY . sprintf('%05d', $eventId);
+        if (file_exists($base . '.jpg')) {
+            @unlink($base . '.jpg');
+        }
+        if (file_exists($base . '.png')) {
+            @unlink($base . '.png');
+        }
+        $this->event->has_heraldry = 0;
+        $this->event->save();
+        Ork3::$Lib->ghettocache->bust_event_search($eventId);
+
+        return Success();
+    }
+
     public function SetEventHeraldry($request)
     {
-        if (($mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token'])) > 0
-                && Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_EVENT, $request['EventId'], AUTH_EDIT)) {
+        $mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+        $eventId = (int)($request['EventId'] ?? 0);
+        // Same authority rule as RemoveEventHeraldry below: an ork_authorization
+        // event grant OR event-staff can_manage. The staff path was missing here,
+        // so a fully-granted event staffer could remove the event's logo (and set
+        // its banner — class.Banner accepts staff) but not upload a logo.
+        $planning = new EventPlanning();
+        if ($mundane_id > 0
+                && (Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_EVENT, $eventId, AUTH_EDIT)
+                    || $planning->CanManageEventDetail($mundane_id, $eventId, 0, 'manage'))) {
             $this->event->clear();
             $this->event->event_id = $request['EventId'];
             if ($this->event->find()) {
                 $request = $this->fetch_url_heraldry($request);
                 $this->store_heraldry($request, DIR_EVENT_HERALDRY, 5, 'event');
                 $this->event->save();
+                Ork3::$Lib->ghettocache->bust_event_search((int) $request['EventId']);
                 return Success();
             } else {
                 return InvalidParameter();

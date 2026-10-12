@@ -1,19 +1,6 @@
 <?php
 /* ── Auth check ──────────────────────────────────────────── */
-$can_delete = false;
-if ($this->__session->user_id) {
-	if (Ork3::$Lib->authorization->HasAuthority($this->__session->user_id, AUTH_ADMIN, 0, AUTH_ADMIN)) {
-		$can_delete = true;
-	} else if (isset($this->__session->park_id)) {
-		if (Ork3::$Lib->authorization->HasAuthority($this->__session->user_id, AUTH_PARK, $this->__session->park_id, AUTH_EDIT)) {
-			$can_delete = true;
-		}
-	} else if (isset($this->__session->kingdom_id)) {
-		if (Ork3::$Lib->authorization->HasAuthority($this->__session->user_id, AUTH_KINGDOM, $this->__session->kingdom_id, AUTH_EDIT)) {
-			$can_delete = true;
-		}
-	}
-}
+$can_delete = !empty($CanDeleteRecommendation);
 
 /* ── Pre-compute stats & scope ────────────────────────────── */
 $total               = 0;
@@ -87,7 +74,7 @@ if (is_array($AwardRecommendations) && count($AwardRecommendations) > 1) {
 }
 .rp-rec-filter-btn:hover { background:#eef2f8; border-color:#b9c2d0; }
 .rp-rec-filter-btn.rp-rec-filter-active { background:#1a365d; border-color:#1a365d; color:#fff; }
-.rp-rec-filter-help { margin:14px 0 0; padding:12px 0 0; border-top:1px solid #e2e8f0; }
+.rp-rec-filter-help { margin:14px 0 0; padding:12px 0 0; border-top:1px solid var(--ork-divider); }
 .rp-rec-filter-help dt { font-size:12px; font-weight:700; color:#2d3748; margin-top:8px; }
 .rp-rec-filter-help dt:first-child { margin-top:0; }
 .rp-rec-filter-help dd { margin:2px 0 0; font-size:11.5px; line-height:1.45; color:#718096; }
@@ -307,25 +294,25 @@ html[data-theme="dark"] .rp-rec-filter-help-default { color:#718096; }
 	background: rgba(0,0,0,0.5); align-items: center; justify-content: center;
 }
 #del-rec-box {
-	background: #fff; border-radius: 12px; max-width: 400px; width: 90%;
+	background: var(--ork-card-bg); border-radius: 12px; max-width: 400px; width: 90%;
 	box-shadow: 0 8px 32px rgba(0,0,0,0.22); overflow: hidden;
 }
 #del-rec-header {
 	display: flex; align-items: center; justify-content: space-between;
-	padding: 16px 20px; border-bottom: 1px solid #e2e8f0;
+	padding: 16px 20px; border-bottom: 1px solid var(--ork-divider);
 }
 #del-rec-header h4 {
-	margin: 0; font-size: 16px; font-weight: 600; color: #1a202c;
-	background: none; border: none; padding: 0;
+	margin: 0; font-size: 16px; font-weight: 600; color: var(--ork-text);
+	background: none; border: none; padding: 0; text-shadow: none;
 }
 #del-rec-body { padding: 18px 20px 8px; }
-#del-rec-body p { margin: 0; font-size: 14px; color: #4a5568; text-align: left; line-height: 1.5; }
+#del-rec-body p { margin: 0; font-size: 14px; color: var(--ork-text-secondary); text-align: left; line-height: 1.5; }
 .del-rec-actions { display: flex; gap: 10px; justify-content: flex-end; padding: 12px 20px 18px; }
 .del-rec-actions button {
-	padding: 8px 18px; border-radius: 6px; border: 1px solid #cbd5e0;
-	font-size: 14px; cursor: pointer; background: #edf2f7; color: #4a5568; font-weight: 500;
+	padding: 8px 18px; border-radius: 6px; border: 1px solid var(--ork-input-border);
+	font-size: 14px; cursor: pointer; background: var(--ork-bg-tertiary); color: var(--ork-text-secondary); font-weight: 500;
 }
-.del-rec-actions button:hover { background: #e2e8f0; }
+.del-rec-actions button:hover { background: var(--ork-badge-gray-bg); }
 .del-rec-actions button.del-rec-ok {
 	background: #c53030; color: #fff; border-color: #c53030;
 }
@@ -354,6 +341,7 @@ html[data-theme="dark"] .rp-rec-filter-help-default { color:#718096; }
 <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.print.min.js"></script>
 <script src="https://cdn.datatables.net/fixedheader/3.4.0/js/dataTables.fixedHeader.min.js"></script>
 <script src="https://cdn.datatables.net/fixedcolumns/4.3.0/js/dataTables.fixedColumns.min.js"></script>
+<script src="<?=HTTP_TEMPLATE?>default/script/ork-print.js"></script>
 
 <script>
 $(function() {
@@ -400,7 +388,7 @@ $(function() {
 	$('#rec-table-wrap').css('opacity', '1');
 
 	$('.rp-btn-export').on('click', function() { table.button(0).trigger(); });
-	$('.rp-btn-print' ).on('click', function() { table.button(1).trigger(); });
+	$('.rp-btn-print' ).on('click', function() { orkPrintTable(table); });
 
 	$('.rp-rec-filter-btn').on('click', function() {
 		$('.rp-rec-filter-btn').removeClass('rp-rec-filter-active');

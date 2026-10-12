@@ -68,111 +68,19 @@ function _jsonDecode($json, $fallbackKeys = []) {
 	return [];
 }
 
-// ── Batch ID → Name lookups ──────────────────────────────────
-// Collect all IDs from the 50 rendered rows upfront, then resolve
-// in three IN queries so the page never issues per-row DB calls.
-global $DB;
-$_parkIds = []; $_kingdomIds = []; $_mundaneIds = []; $_eventIds = []; $_kawardIds = []; $_unitIds = [];
-foreach ($AuditRows as $_lr) {
-	foreach ([$_lr['Parameters'], $_lr['PriorState'], $_lr['PostState']] as $_js) {
-		$_d = @json_decode($_js, true);
-		if (!is_array($_d)) $_d = _jsonExtract($_js ?? '', ['ParkId','park_id','KingdomId','kingdom_id','MundaneId','mundane_id','given_by_id','stripped_from','RecipientId','FromMundaneId','ToMundaneId','event_id','at_park_id','at_kingdom_id','at_event_id','kingdomaward_id','KingdomAwardId','old_kingdom_id','new_kingdom_id','from_park_id','to_park_id','from_kingdom_id','to_kingdom_id','from_mundane_id','to_mundane_id']);
-		foreach (['park_id','at_park_id','ParkId','from_park_id','to_park_id'] as $_k) if (!empty($_d[$_k])) $_parkIds[(int)$_d[$_k]] = true;
-		foreach (['kingdom_id','at_kingdom_id','KingdomId','old_kingdom_id','new_kingdom_id','from_kingdom_id','to_kingdom_id'] as $_k) if (!empty($_d[$_k])) $_kingdomIds[(int)$_d[$_k]] = true;
-		foreach (['mundane_id','given_by_id','given_by','stripped_from','MundaneId','RecipientId','FromMundaneId','ToMundaneId','SuspendedById','recommended_by_id','SupporterMundaneId','supporter_mundane_id','from_mundane_id','to_mundane_id'] as $_k) if (!empty($_d[$_k]) && is_numeric($_d[$_k])) $_mundaneIds[(int)$_d[$_k]] = true;
-	// Route entity_id into the correct lookup map based on the audit row's
-	// `entity` column. Defaults to mundane when entity is unset (older rows).
-	if (!empty($_lr['EntityId'])) {
-		$_e = (int)$_lr['EntityId'];
-		switch ($_lr['Entity'] ?? 'Player') {
-			case 'Park':    $_parkIds[$_e]    = true; break;
-			case 'Kingdom': $_kingdomIds[$_e] = true; break;
-			case 'Event':   $_eventIds[$_e]   = true; break;
-			case 'Unit':    $_unitIds[$_e]    = true; break;
-			default:        $_mundaneIds[$_e] = true; break;
-		}
-	}
-		foreach (['event_id','at_event_id','EventId'] as $_k) if (!empty($_d[$_k]) && (int)$_d[$_k] > 0) $_eventIds[(int)$_d[$_k]] = true;
-		foreach (['kingdomaward_id','KingdomAwardId'] as $_k) if (!empty($_d[$_k])) $_kawardIds[(int)$_d[$_k]] = true;
-		foreach (['unit_id','UnitId'] as $_k) if (!empty($_d[$_k]) && (int)$_d[$_k] > 0) $_unitIds[(int)$_d[$_k]] = true;
-	}
-}
-$_parkMap = []; $_kingdomMap = []; $_mundaneMap = []; $_eventMap = []; $_kawardMap = []; $_classMap = []; $_unitMap = [];
-if ($_parkIds) {
-	$_ids = implode(',', array_keys($_parkIds));
-	$DB->Clear(); $_r = $DB->DataSet("SELECT park_id, name FROM ork_park WHERE park_id IN ($_ids)");
-	if ($_r && $_r->Size() > 0) do { $_parkMap[(int)$_r->park_id] = $_r->name; } while ($_r->Next());
-}
-if ($_kingdomIds) {
-	$_ids = implode(',', array_keys($_kingdomIds));
-	$DB->Clear(); $_r = $DB->DataSet("SELECT kingdom_id, name FROM ork_kingdom WHERE kingdom_id IN ($_ids)");
-	if ($_r && $_r->Size() > 0) do { $_kingdomMap[(int)$_r->kingdom_id] = $_r->name; } while ($_r->Next());
-}
-if ($_mundaneIds) {
-	$_ids = implode(',', array_keys($_mundaneIds));
-	$DB->Clear(); $_r = $DB->DataSet("SELECT mundane_id, persona FROM ork_mundane WHERE mundane_id IN ($_ids)");
-	if ($_r && $_r->Size() > 0) do { $_mundaneMap[(int)$_r->mundane_id] = $_r->persona; } while ($_r->Next());
-}
-if ($_eventIds) {
-	$_ids = implode(',', array_keys($_eventIds));
-	$DB->Clear(); $_r = $DB->DataSet("SELECT event_id, name FROM ork_event WHERE event_id IN ($_ids)");
-	if ($_r && $_r->Size() > 0) do { $_eventMap[(int)$_r->event_id] = $_r->name; } while ($_r->Next());
-}
-if ($_kawardIds) {
-	$_ids = implode(',', array_keys($_kawardIds));
-	$DB->Clear(); $_r = $DB->DataSet("SELECT kingdomaward_id, name FROM ork_kingdomaward WHERE kingdomaward_id IN ($_ids)");
-	if ($_r && $_r->Size() > 0) do { $_kawardMap[(int)$_r->kingdomaward_id] = $_r->name; } while ($_r->Next());
-}
-if ($_unitIds) {
-	$_ids = implode(',', array_keys($_unitIds));
-	$DB->Clear(); $_r = $DB->DataSet("SELECT unit_id, name FROM ork_unit WHERE unit_id IN ($_ids)");
-	if ($_r && $_r->Size() > 0) do { $_unitMap[(int)$_r->unit_id] = $_r->name; } while ($_r->Next());
-}
-$DB->Clear(); $_r = $DB->DataSet("SELECT class_id, name FROM ork_class ORDER BY class_id");
-if ($_r && $_r->Size() > 0) do { $_classMap[(int)$_r->class_id] = $_r->name; } while ($_r->Next());
-$DB->Clear();
-
-// Resolve names for the current filter IDs so the picker shows names, not raw numbers.
-// ByWhom is always a player; EntityFilter is resolved against whichever table the
-// EntityType column points at (Player/Park/Kingdom/Event).
-$_filterPlayerNames = [];
-$_entityFilterName  = '';
+// ── Batch ID → Name lookups (precomputed in Controller_Admin::auditlog) ──
+$_parkMap = $AuditParkMap ?? [];
+$_kingdomMap = $AuditKingdomMap ?? [];
+$_mundaneMap = $AuditMundaneMap ?? [];
+$_eventMap = $AuditEventMap ?? [];
+$_kawardMap = $AuditKawardMap ?? [];
+$_unitMap = $AuditUnitMap ?? [];
+$_classMap = $AuditClassMap ?? [];
+$_filterPlayerNames = $AuditFilterPlayerNames ?? [];
+$_entityFilterName = $AuditEntityFilterName ?? '';
 $_bywhomInt = (int)($ByWhomFilter ?? 0);
 $_entityInt = (int)($EntityFilter ?? 0);
 $_entityType = $EntityTypeFilter ?? '';
-// "By Whom" lookup (always a player)
-$_playerIds = $_bywhomInt > 0 ? [$_bywhomInt] : [];
-// "Affected Record" lookup — only treat as a player when scope is Player (or unset)
-if ($_entityInt > 0 && ($_entityType === '' || $_entityType === 'Player')) {
-	$_playerIds[] = $_entityInt;
-}
-if (!empty($_playerIds)) {
-	$_ids = implode(',', array_unique($_playerIds));
-	$DB->Clear(); $_r = $DB->DataSet("SELECT mundane_id, persona FROM ork_mundane WHERE mundane_id IN ($_ids)");
-	while ($_r && $_r->Next()) { $_filterPlayerNames[(int)$_r->mundane_id] = $_r->persona; }
-	$DB->Clear();
-}
-if ($_entityInt > 0) {
-	if ($_entityType === 'Park') {
-		$DB->Clear();
-		$_r = $DB->DataSet("SELECT name FROM ork_park WHERE park_id = {$_entityInt}");
-		if ($_r && $_r->Next()) $_entityFilterName = $_r->name;
-	} elseif ($_entityType === 'Kingdom') {
-		$DB->Clear();
-		$_r = $DB->DataSet("SELECT name FROM ork_kingdom WHERE kingdom_id = {$_entityInt}");
-		if ($_r && $_r->Next()) $_entityFilterName = $_r->name;
-	} elseif ($_entityType === 'Event') {
-		$DB->Clear();
-		$_r = $DB->DataSet("SELECT name FROM ork_event WHERE event_id = {$_entityInt}");
-		if ($_r && $_r->Next()) $_entityFilterName = $_r->name;
-	} elseif ($_entityType === 'Unit') {
-		$DB->Clear();
-		$_r = $DB->DataSet("SELECT name FROM ork_unit WHERE unit_id = {$_entityInt}");
-		if ($_r && $_r->Next()) $_entityFilterName = $_r->name;
-	} elseif ($_entityType === '' || $_entityType === 'Player') {
-		$_entityFilterName = $_filterPlayerNames[$_entityInt] ?? '';
-	}
-}
 
 // Helper: render an ID cell as "Name (link)" or plain "#id" fallback
 function _auditIdLink($type, $id, $nameMap) {
@@ -1373,25 +1281,29 @@ function _auditPageUrl($page, $start, $end, $method, $bywhom, $entity, $entityTy
 .al-layout        { display:flex; gap:18px; align-items:flex-start; margin-top:16px; }
 .al-sidebar       { width:220px; flex-shrink:0; }
 .al-main          { flex:1; min-width:0; }
-.al-filter-card   { background:#fff; border:1px solid var(--rp-border); border-radius:8px; padding:16px; }
+.al-filter-card   { background:var(--ork-card-bg); border:1px solid var(--ork-border); border-radius:8px; padding:16px; }
 .al-filter-card h3 { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em;
                      color:var(--rp-text-muted); margin:0 0 12px; background:transparent; border:none; text-shadow:none; padding:0; }
 .al-form-group    { display:flex; flex-direction:column; gap:3px; margin-bottom:10px; }
 .al-form-group label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--rp-text-muted); }
-.al-form-input    { border:1px solid var(--rp-border); border-radius:5px; padding:6px 8px; font-size:13px;
-                    color:var(--rp-text); background:#fff; box-sizing:border-box; width:100%; }
-.al-form-input:focus { outline:none; border-color:#6366f1; }
+.al-form-input    { border:1px solid var(--ork-input-border); border-radius:5px; padding:6px 8px; font-size:13px;
+                    color:var(--rp-text); background:var(--ork-input-bg); box-sizing:border-box; width:100%; }
+.al-form-input:focus { outline:none; border-color:#6366f1; background:var(--ork-card-bg); }
 .al-btn-run       { width:100%; padding:8px 0; background:#4338ca; color:#fff; border:none; border-radius:6px;
                     font-size:13px; font-weight:700; cursor:pointer; margin-top:4px; }
 .al-btn-run:hover { background:#3730a3; }
 .al-btn-clear     { width:100%; padding:6px 0; background:transparent; color:var(--rp-text-muted);
                     border:1px solid var(--rp-border); border-radius:6px; font-size:12px; cursor:pointer; margin-top:6px; }
 .al-table-wrap    { overflow-x:auto; }
+/* Light only: the results table sits in .al-main with no card, so give its wrap
+   the L1 card treatment (row dividers would vanish on the gray ground otherwise).
+   Dark keeps its existing transparent look. */
+html:not([data-theme="dark"]) .al-table-wrap { background:var(--ork-card-bg); border:1px solid var(--ork-border); border-radius:8px; box-shadow:var(--ork-shadow-card); }
 .al-table         { width:100%; border-collapse:collapse; font-size:13px; }
-.al-table th      { background:#f7fafc; border-bottom:2px solid var(--rp-border); padding:8px 10px;
+.al-table th      { background:var(--ork-bg-secondary); border-bottom:2px solid var(--rp-divider); padding:8px 10px;
                     text-align:left; font-size:11px; font-weight:700; text-transform:uppercase;
                     letter-spacing:.04em; color:var(--rp-text-muted); white-space:nowrap; }
-.al-table td      { padding:8px 10px; border-bottom:1px solid var(--rp-border); vertical-align:top; }
+.al-table td      { padding:8px 10px; border-bottom:1px solid var(--rp-divider); vertical-align:top; }
 .al-table tbody tr:hover { background:#fafafa; }
 .al-action-badge  { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:12px;
                     font-size:11px; font-weight:600; white-space:nowrap; }
@@ -1417,7 +1329,7 @@ html[data-theme="dark"] .al-badge-default { background:#2d3748; color:#a0aec0; }
 .al-detail-row td { background:#f7fafc; border-bottom:1px solid var(--rp-border); padding:12px 16px; }
 .al-diff-table    { width:100%; border-collapse:collapse; font-size:12px; }
 .al-diff-table th { background:#edf2f7; padding:5px 8px; text-align:left; font-weight:700; color:#4a5568; }
-.al-diff-table td { padding:5px 8px; border-top:1px solid #e2e8f0; }
+.al-diff-table td { padding:5px 8px; border-top:1px solid var(--ork-divider); }
 .al-diff-field    { font-weight:600; color:#4a5568; width:130px; }
 .al-diff-old      { color:#c53030; text-decoration:line-through; max-width:220px; word-break:break-all; }
 .al-diff-new      { color:#276749; max-width:220px; word-break:break-all; }
@@ -1433,8 +1345,8 @@ html[data-theme="dark"] .al-badge-default { background:#2d3748; color:#a0aec0; }
 .al-page-link:hover { background:#eef2ff; }
 .al-page-link.al-page-active { background:var(--rp-accent); color:#fff; border-color:var(--rp-accent); font-weight:700; }
 .al-page-link.al-page-disabled { color:var(--rp-text-muted); pointer-events:none; }
-.al-page-info     { color:var(--rp-text-muted); font-size:12px; margin-left:auto; }
-.al-empty         { padding:40px 20px; text-align:center; color:var(--rp-text-muted); font-size:14px; }
+.al-page-info     { color:var(--ork-text-on-ground); font-size:12px; margin-left:auto; }
+.al-empty         { padding:40px 20px; text-align:center; color:var(--ork-text-on-ground); font-size:14px; }
 .al-empty i       { font-size:32px; display:block; margin-bottom:10px; opacity:.4; }
 .al-entity-note   { font-size:10px; color:var(--rp-text-hint); display:block; }
 
@@ -1670,7 +1582,7 @@ html[data-theme="dark"] .al-table         { color:#e2e8f0; }
 				$_prev = null;
 				foreach ($_showPages as $_pg):
 					if ($_prev !== null && $_pg - $_prev > 1): ?>
-					<span style="color:var(--rp-text-muted)">…</span>
+					<span style="color:var(--ork-text-on-ground)">…</span>
 					<?php endif;
 					$_pUrl = _auditPageUrl($_pg, $StartDate, $EndDate, $MethodFilter, $ByWhomFilter, $EntityFilter, $EntityTypeFilter ?? '');
 				?>
