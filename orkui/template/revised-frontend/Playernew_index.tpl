@@ -1056,6 +1056,9 @@ html[data-theme="dark"] .pna-notif-clearall { color: #718096; }
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
 <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.dataTables.min.css">
 
+<!-- Voting banner — only renders for own profile when there's an active eligible event -->
+<div id="pn-voting-banner" style="display:none; max-width:1200px; margin: 0 auto 12px auto;"></div>
+
 <!-- =============================================
      ZONE 1: Profile Hero Header
      ============================================= -->
@@ -3998,6 +4001,73 @@ var PnConfig = {
 };
 // Use the viewed player's kingdom for nav search prioritization if the user has no home kingdom
 if (typeof nsKid !== 'undefined' && nsKid === 0 && PnConfig.kingdomId) nsKid = PnConfig.kingdomId;
+
+// ─── Voting banner for own profile ──────────────────────────────────────
+window.VOTING_CSRF = <?= json_encode($VotingCsrf ?? '') ?>;
+(function(){
+	if (!PnConfig.isOwnProfile || !PnConfig.playerId) return;
+	var host = document.getElementById('pn-voting-banner');
+	if (!host) return;
+	fetch(PnConfig.uir + 'VotingAjax/banner/' + PnConfig.playerId, { credentials:'same-origin' })
+		.then(function(r){ return r.json(); })
+		.then(function(j){
+			if (!j || j.status !== 0) return;
+			var events = j.events || [];
+			var notices = j.notices || [];
+			if (!events.length && !notices.length) return;
+			var html = '';
+			notices.forEach(function(n){
+				html += '<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:#c05621;color:#fff;border-radius:10px;margin-bottom:10px;">'
+					+ '<i class="fas fa-file-signature" style="font-size:20px;"></i>'
+					+ '<div style="flex:1;"><div style="font-weight:600;">A paper ballot replaced your online vote</div>'
+					+ '<div style="font-size:13px;opacity:0.95;">An event runner recorded a paper ballot for you in "' + escapeHtml(n.title) + '", replacing the vote you cast online.</div></div>'
+					+ '<button data-ack-ballot="' + parseInt(n.voting_ballot_id,10) + '" class="pn-ack-paper" style="background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:6px;padding:6px 10px;cursor:pointer;">Dismiss</button>'
+					+ '</div>';
+			});
+			events.forEach(function(e){
+				var endDate = new Date(e.end_date);
+				var endStr  = endDate.toLocaleString(undefined, { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+				var isRevote = e.pending_revote && e.pending_race_count > 0;
+				var isVoted  = !isRevote && e.voted;
+				var headline = isRevote ? 'Re-vote needed: ' + escapeHtml(e.title)
+							: isVoted   ? 'You voted: ' + escapeHtml(e.title)
+										: 'Voting open: ' + escapeHtml(e.title);
+				var subline  = isRevote ? 'Configuration changed — please re-vote on ' + e.pending_race_count + ' race' + (e.pending_race_count === 1 ? '' : 's') + ' · Closes ' + escapeHtml(endStr)
+							: isVoted   ? 'You can change your vote until ' + escapeHtml(endStr)
+										: 'Closes ' + escapeHtml(endStr) + ' · Click to vote';
+				var bg = isRevote ? 'linear-gradient(90deg,#d69e2e,#975a16)'
+					  : isVoted   ? 'linear-gradient(90deg,#38a169,#276749)'
+								  : 'linear-gradient(90deg,#3182ce,#2c5282)';
+				var icon = isRevote ? 'fa-exclamation-circle' : (isVoted ? 'fa-check-circle' : 'fa-vote-yea');
+				html += '<a href="' + PnConfig.uir + 'Voting/event/' + e.voting_event_id + '" style="display:flex;align-items:center;gap:14px;padding:14px 18px;background:' + bg + ';color:#fff;border-radius:10px;text-decoration:none;margin-bottom:10px;box-shadow:0 2px 6px rgba(49,130,206,0.25);">'
+					 + '<i class="fas ' + icon + '" style="font-size:22px;"></i>'
+					 + '<div style="flex:1;"><div style="font-weight:600;font-size:15px;">' + headline + '</div>'
+					 + '<div style="font-size:12px;opacity:0.9;">' + subline + '</div></div>'
+					 + '<i class="fas fa-arrow-right" style="opacity:0.85;"></i></a>';
+			});
+			host.innerHTML = html;
+			host.style.display = 'block';
+			Array.prototype.forEach.call(host.querySelectorAll('.pn-ack-paper'), function(btn){
+				btn.addEventListener('click', function(e){
+					e.preventDefault(); e.stopPropagation();
+					var bid = parseInt(btn.getAttribute('data-ack-ballot'),10);
+					fetch(PnConfig.uir + 'VotingAjax/ack_paper_notice/' + bid, { method:'POST', headers:{'X-CSRF-Token': (window.VOTING_CSRF||'')}, credentials:'same-origin' })
+						.then(function(response){
+							if (!response.ok) return;
+							return response.json().then(function(data){
+								if (data && typeof data.status !== 'undefined' && parseInt(data.status, 10) !== 0) return;
+								var w = btn.closest('div'); if (w && w.parentNode) w.parentNode.removeChild(w);
+							}).catch(function(){
+								var w = btn.closest('div'); if (w && w.parentNode) w.parentNode.removeChild(w);
+							});
+						})
+						.catch(function(){});
+				});
+			});
+		})
+		.catch(function(){});
+	function escapeHtml(s){ return String(s).replace(/[&<>"']/g, function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+})();
 </script>
 <?php if ($pnCanManageBanner): ?>
 <script>

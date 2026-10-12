@@ -281,6 +281,9 @@ class Controller_Player extends Controller
     public function profile($id = null)
     {
         $this->template = '../revised-frontend/Playernew_index.tpl';
+        // Per-session CSRF token for VotingAjax POST mutations invoked from the voting banner
+        // (e.g. ack_paper_notice). Same token the VotingAjax constructor validates.
+        $this->data['VotingCsrf'] = $this->_csrfToken();
         $this->load_model('QualTest');
 
         $params    = explode('/', $id ?? '');
