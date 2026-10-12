@@ -44,6 +44,59 @@ class YapoMysql extends YapoDb
         return array(trim((string) $host, " \t;"), $port);
     }
 
+    // Transaction helpers. These MUST live here (not only on YapoDb): YapoMysql declares
+    // its own private $DBH, so the inherited YapoDb::Begin/Commit/Rollback would operate on
+    // YapoDb's (never-initialised) $DBH and fatal with "inTransaction() on null". Same
+    // contract as YapoDb: Begin() returns false (without starting one) if a txn is already
+    // open or cannot start, so callers can fall back / abort; the normal WARNING error mode
+    // is restored on Commit/Rollback.
+    public function Begin()
+    {
+        if ($this->DBH->inTransaction()) {
+            return false; // do not nest; caller proceeds non-transactionally
+        }
+        $this->DBH->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        try {
+            return $this->DBH->beginTransaction();
+        } catch (\Throwable $e) {
+            error_log('YapoMysql::Begin() transaction start failed: ' . $e->getMessage());
+            $this->DBH->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_WARNING);
+            return false;
+        }
+    }
+
+    public function Commit()
+    {
+        try {
+            if ($this->DBH->inTransaction()) {
+                return $this->DBH->commit();
+            }
+            return false;
+        } catch (\Throwable $e) {
+            // Log the commit failure so a production failure leaves a trace,
+            // then preserve the original propagation contract by re-throwing.
+            error_log('YapoMysql::Commit() failed: ' . $e->getMessage());
+            throw $e;
+        } finally {
+            $this->DBH->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_WARNING);
+        }
+    }
+
+    public function Rollback()
+    {
+        try {
+            if ($this->DBH->inTransaction()) {
+                return $this->DBH->rollBack();
+            }
+            return false;
+        } catch (\Throwable $e) {
+            error_log('YapoMysql::Rollback() failed: ' . $e->getMessage());
+            return false;
+        } finally {
+            $this->DBH->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_WARNING);
+        }
+    }
+
     public function TableDescription($table)
     {
         if (isset(self::$schema_cache[$table])) {
