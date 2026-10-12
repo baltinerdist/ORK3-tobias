@@ -11,6 +11,28 @@ class Controller
     public $session = null;
     public $template = null;
 
+    // Status 5 is NoAuthorization -- "you are not allowed to do that". It is NOT
+    // "your session expired". Controllers uniformly mapped it to a redirect to
+    // Login/login/..., so a still-logged-in officer who hit a permission boundary
+    // was dropped on a bare login page with no message and read it as having been
+    // logged out. It paired especially badly with pages that render every control
+    // and only reject the click server-side.
+    //
+    // Only genuinely unauthenticated visitors are sent to log in; everyone else
+    // gets told what actually happened.
+    public function no_authorization($login_route, $detail = null)
+    {
+        if (!isset($this->session->user_id) || (int) $this->session->user_id <= 0) {
+            header('Location: ' . UIR . 'Login/login/' . ltrim($login_route, '/'));
+            exit;
+        }
+        $message = (is_string($detail) && trim($detail) !== '')
+            ? trim($detail)
+            : 'You do not have permission to perform that action.';
+        $this->data[ 'Error' ] = $message;
+        return $message;
+    }
+
     public function __construct($method = null, $action = null)
     {
         $this->method = is_null($method) ? 'index' : $method;
@@ -26,6 +48,11 @@ class Controller
         $this->Report = new APIModel('Report');
         $this->Search = new JSONModel('Search');
         $this->data[ 'no_index' ] = false;
+        // Per-page OpenGraph overrides for link-preview cards (Discord etc.);
+        // rendered by ork_og_meta_tags() in the theme head.
+        $this->data[ 'og' ] = array();
+        // Per-page schema.org JSON-LD (search-engine structured data).
+        $this->data[ 'jsonld' ] = null;
 
         if (get_class($this) == "Controller") {
             $this->data[ 'page_title' ] = "Home";
@@ -41,6 +68,7 @@ class Controller
             'Controller_SearchAjax',
             'Controller_AttendanceAjax',
             'Controller_EventAjax',
+            'Controller_EventEmbed',
             'Controller_KingdomAjax',
             'Controller_ParkAjax',
             'Controller_PlayerAjax',
@@ -48,12 +76,14 @@ class Controller
             'Controller_WnAjax',
         ]);
         if (!$_skipTokenCheck && isset($this->session->user_id) && isset($this->session->token)) {
-            global $DB;
-            $DB->Clear();
             $_uid_check = (int)$this->session->user_id;
             $_tok_check = $this->session->token;
-            $_rs = $DB->DataSet("SELECT token FROM " . DB_PREFIX . "mundane WHERE mundane_id = {$_uid_check} LIMIT 1");
-            if (!$_rs || !$_rs->Next() || $_rs->token !== $_tok_check) {
+            // Multi-device: per-request validation runs against ork_session (up to 3
+            // concurrent device sessions), not the single vestigial ork_mundane.token
+            // slot. ValidateSessionByToken also enforces expiry and slides last_seen.
+            $_owner = Ork3::$Lib->authorization->ValidateSessionByToken($_tok_check);
+            if ($_owner === 0 || $_owner !== $_uid_check) {
+                $_returnRoute = trim($_GET['Route'] ?? '');
                 unset($_SESSION['is_authorized_mundane_id']);
                 session_unset();
                 session_destroy();
@@ -66,14 +96,12 @@ class Controller
                     echo json_encode(['error' => 'session_replaced']);
                     exit;
                 }
-                $_returnRoute = trim($_GET['Route'] ?? '');
                 $_returnParam = (strlen($_returnRoute) > 0 && strncasecmp($_returnRoute, 'Login', 5) !== 0)
                     ? '&return=' . urlencode($_returnRoute)
                     : '';
                 header('Location: ' . UIR . 'Login/login&msg=session_replaced' . $_returnParam);
                 exit;
             }
-            $DB->Clear();
         }
 
         $_uid = isset($this->session->user_id) ? (int)$this->session->user_id : 0;
@@ -81,15 +109,24 @@ class Controller
         // Viewer accessibility-font preferences — read once and surface to every template
         $this->data['ViewerBasicFonts']    = 0;
         $this->data['ViewerDyslexiaFonts'] = 0;
+        $this->data['ShowWhatsNew']        = false;
+        $this->data['WhatsNewRelease']     = null;
         if ($_uid > 0) {
-            global $DB;
-            $DB->Clear();
-            $_prefRs = $DB->DataSet("SELECT basic_fonts, dyslexia_fonts FROM " . DB_PREFIX . "mundane WHERE mundane_id = {$_uid} LIMIT 1");
-            if ($_prefRs && $_prefRs->Next()) {
-                $this->data['ViewerBasicFonts']    = (int)$_prefRs->basic_fonts;
-                $this->data['ViewerDyslexiaFonts'] = (int)$_prefRs->dyslexia_fonts;
+            $this->load_model('Player');
+            $prefs = $this->Player->get_viewer_preferences($_uid);
+            $this->data['ViewerBasicFonts']    = (int) ($prefs['BasicFonts'] ?? 0);
+            $this->data['ViewerDyslexiaFonts'] = (int) ($prefs['DyslexiaFonts'] ?? 0);
+
+            require_once(DIR_UI . 'whats_new_content.php');
+            foreach ($WHATS_NEW_ITEMS as $_release) {
+                if ($_release['date'] === WHATS_NEW_VERSION) {
+                    $this->data['WhatsNewRelease'] = $_release;
+                    break;
+                }
             }
-            $DB->Clear();
+            if ($this->data['WhatsNewRelease'] !== null) {
+                $this->data['ShowWhatsNew'] = !$this->Player->get_whats_new_seen($_uid, WHATS_NEW_VERSION);
+            }
         }
 
         $this->data[ 'controller_title' ] = get_class($this);
@@ -97,27 +134,28 @@ class Controller
 
         $this->data[ 'menu' ] = [ ];
         $this->data[ 'menu' ][ 'home' ] = [ 'url' => UIR, 'display' => 'Home <i class="fas fa-home"></i> ', 'no-crumb' => 'no-crumb' ];
-        if ($_uid > 0 && Ork3::$Lib->authorization->HasAuthority($_uid, AUTH_ADMIN, null, null)) {
+        $this->load_model('Authorization');
+        $this->data['NavIsOrkAdmin'] = $_uid > 0 && $this->Authorization->has_authority($_uid, AUTH_ADMIN, 0, AUTH_ADMIN);
+        if ($_uid > 0 && $this->Authorization->has_authority($_uid, AUTH_ADMIN, null, null)) {
             $this->data[ 'menu' ][ 'admin' ] = [ 'url' => UIR . 'Admin', 'display' => 'Admin Panel', 'no-crumb' => 'no-crumb' ];
         }
 
         if (isset($this->session->kingdom_id)) {
             $this->data[ 'menu' ][ 'kingdom' ] = [ 'url' => UIR . 'Kingdom/profile/' . $this->session->kingdom_id, 'display' => $this->session->kingdom_name ];
-            if ($_uid > 0 && Ork3::$Lib->authorization->HasAuthority($_uid, AUTH_KINGDOM, (int)$this->session->kingdom_id, AUTH_EDIT)) {
+            if ($_uid > 0 && $this->Authorization->has_authority($_uid, AUTH_KINGDOM, (int)$this->session->kingdom_id, AUTH_EDIT)) {
                 $this->data[ 'menu' ][ 'admin' ] = [ 'url' => UIR . 'Admin/kingdom/' . $this->session->kingdom_id, 'display' => 'Admin Panel <i class="fas fa-cog"></i>', 'no-crumb' => 'no-crumb' ];
             }
         }
 
         if (isset($this->session->park_id)) {
             $this->data[ 'menu' ][ 'park' ] = [ 'url' => UIR . 'Park/profile/' . $this->session->park_id, 'display' => $this->session->park_name ];
-            if ($_uid > 0 && Ork3::$Lib->authorization->HasAuthority($_uid, AUTH_PARK, (int)$this->session->park_id, AUTH_EDIT)) {
+            if ($_uid > 0 && $this->Authorization->has_authority($_uid, AUTH_PARK, (int)$this->session->park_id, AUTH_EDIT)) {
                 $this->data[ 'menu' ][ 'admin' ] = [ 'url' => UIR . 'Admin/park/' . $this->session->park_id, 'display' => 'Admin Panel <i class="fas fa-cog"></i>', 'no-crumb' => 'no-crumb' ];
             }
         }
         // HasAuthority uses the auth ORM which shares the global DB connection.
         // Clear after all auth checks so subclass methods start with a clean DB state.
-        global $DB;
-        $DB->Clear();
+        $this->Authorization->clear_db_after_auth_checks();
     }
 
     public function load_model($name)
@@ -157,21 +195,11 @@ class Controller
         // Determine the logged-in user's home kingdom from their profile in the DB.
         // Fall back to the session-cached value only when not logged in.
         if ($this->data['LoggedIn'] && isset($this->session->user_id)) {
-            global $DB;
             $uid = (int) $this->session->user_id;
-            $hkRow = $DB->DataSet(
-                "SELECT p.kingdom_id, k.parent_kingdom_id FROM ork_mundane m
-				 INNER JOIN ork_park p ON p.park_id = m.park_id
-				 INNER JOIN ork_kingdom k ON k.kingdom_id = p.kingdom_id
-				 WHERE m.mundane_id = {$uid} LIMIT 1"
-            );
-            if ($hkRow && $hkRow->Size() > 0 && $hkRow->Next()) {
-                $this->data['UserKingdomId']       = (int) $hkRow->kingdom_id;
-                $this->data['UserParentKingdomId'] = (int) $hkRow->parent_kingdom_id;
-            } else {
-                $this->data['UserKingdomId']       = 0;
-                $this->data['UserParentKingdomId'] = 0;
-            }
+            $this->load_model('Player');
+            $home = $this->Player->get_home_kingdom($uid);
+            $this->data['UserKingdomId']       = (int) ($home['KingdomId'] ?? 0);
+            $this->data['UserParentKingdomId'] = (int) ($home['ParentKingdomId'] ?? 0);
         } else {
             $this->data['UserKingdomId'] = 0;
         }
@@ -186,18 +214,10 @@ class Controller
         $this->data[ 'week_recap' ] = $this->Recap->get();
         $eventSummary = $this->Search->Search_Event(null, null, 0, null, null, 15, null, true);
         if (!empty($eventSummary)) {
-            global $DB;
             $detailIds = array_filter(array_column($eventSummary, 'NextDetailId'));
             if (!empty($detailIds)) {
-                $idList = implode(',', array_map('intval', $detailIds));
-                $DB->Clear();
-                $rsvpResult = $DB->DataSet("SELECT event_calendardetail_id, COUNT(*) AS cnt FROM " . DB_PREFIX . "event_rsvp WHERE event_calendardetail_id IN ($idList) GROUP BY event_calendardetail_id");
-                $rsvpCounts = [];
-                if ($rsvpResult) {
-                    while ($rsvpResult->Next()) {
-                        $rsvpCounts[(int)$rsvpResult->event_calendardetail_id] = (int)$rsvpResult->cnt;
-                    }
-                }
+                $this->load_model('Event');
+                $rsvpCounts = $this->Event->get_rsvp_total_counts_batch($detailIds);
                 foreach ($eventSummary as &$ev) {
                     $ev['RsvpCount'] = $rsvpCounts[(int)($ev['NextDetailId'] ?? 0)] ?? 0;
                 }

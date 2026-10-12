@@ -6,13 +6,8 @@ define('UIR', HTTP_UI_REMOTE . 'index.php?Route=');
 ini_set("error_reporting", E_ALL & ~E_DEPRECATED & ~E_NOTICE & ~E_WARNING);
 
 if (isset($_REQUEST['Route']) && $_REQUEST['Route'] === 'Health') {
-    $ok = false;
-    try {
-        $r = $DB->query("SELECT 1 AS ok");
-        $ok = ($r && $r->size() > 0);
-    } catch (Throwable $e) {
-        $ok = false;
-    }
+    require_once DIR_MODEL . 'model.Health.php';
+    $ok = (new Model_Health())->ping_db();
     http_response_code($ok ? 200 : 503);
     if ($_SERVER['REQUEST_METHOD'] !== 'HEAD') {
         header('Content-Type: text/plain');
@@ -83,19 +78,17 @@ if (preg_match('#^ArtsComp/(\d+)$#i', $_REQUEST['Route'], $_m)) {
 // Redirect Event/index/{id} to the kingdom event attendance report with the event name as filter
 if (preg_match('#^Event/index/(\d+)#i', $_REQUEST['Route'], $_m)) {
     $_event_id = (int)$_m[1];
-    $_eq = $DB->query("SELECT name, kingdom_id FROM " . DB_PREFIX . "event WHERE event_id = $_event_id LIMIT 1");
-    if ($_eq && $_eq->size() > 0 && $_eq->next()) {
-        $_event_name    = $_eq->name;
-        $_event_kingdom = (int)$_eq->kingdom_id;
-        header('Location: ' . UIR . 'Reports/event_attendance/Kingdom/' . $_event_kingdom . '&filter=' . rawurlencode($_event_name), true, 302);
+    require_once DIR_MODEL . 'model.Event.php';
+    $_summary = (new Model_Event())->get_event_summary_for_redirect($_event_id);
+    if ($_summary['KingdomId'] > 0 && $_summary['Name'] !== '') {
+        header('Location: ' . UIR . 'Reports/event_attendance/Kingdom/' . $_summary['KingdomId'] . '&filter=' . rawurlencode($_summary['Name']), true, 302);
         exit;
     }
 }
 
 $route = explode('/', $_REQUEST[ "Route" ]);
 logtrace('Index: Route', $route);
-Ork3::$Lib->session = $Session;
-Ork3::$Lib->session->times[ 'Route' ] = time();
+$Session->times['Route'] = time();
 if (file_exists(DIR_CONTROLLER . 'controller.' . trim($route[ 0 ]) . '.php')) {
     include_once(DIR_CONTROLLER . 'controller.' . trim($route[ 0 ]) . '.php');
     $class = 'Controller_' . trim($route[ 0 ]);
@@ -137,15 +130,15 @@ if (file_exists(DIR_CONTROLLER . 'controller.' . trim($route[ 0 ]) . '.php')) {
     $C = new Controller("index");
     $C->index();
 }
-Ork3::$Lib->session->times[ 'Route Complete' ] = time();
+$Session->times['Route Complete'] = time();
 
 $CONTENT = $C->view();
 
-Ork3::$Lib->session->times[ 'Composite' ] = time();
+$Session->times['Composite'] = time();
 
 echo $CONTENT;
 
-logtrace("Timing Information", Ork3::$Lib->session->times);
+logtrace("Timing Information", $Session->times);
 
 if (DUMPTRACE) {
     logtrace('Session', $_SESSION);
