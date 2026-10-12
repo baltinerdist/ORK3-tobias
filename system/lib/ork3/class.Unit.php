@@ -30,60 +30,76 @@ class Unit extends Ork3
             return InvalidParameter('Invalid unit IDs for merge.');
         }
 
-        $this->db->BeginTrans();
-        try {
-            $sql = "update " . DB_PREFIX . "unit_mundane set unit_id = '" . $to . "' where unit_id = '" . $from . "'";
-            if (!$this->db->query($sql)) {
-                throw new Exception('unit_mundane update failed');
-            }
+        // Snapshot the unit row before deleting it -- this hard-delete previously
+        // ran with no audit call at all, so a merged-away unit left no record of
+        // what it had been.
+        $this->unit->clear();
+        $this->unit->unit_id = $from;
+        if (!$this->unit->find()) {
+            return InvalidParameter('Source unit not found.');
+        }
+        $prior_state = [
+            'unit_id'     => (int)$this->unit->unit_id,
+            'name'        => $this->unit->name,
+            'type'        => $this->unit->type,
+            'description' => $this->unit->description,
+            'history'     => $this->unit->history,
+            'url'         => $this->unit->url,
+            'active'      => $this->unit->active,
+        ];
+        $member_ids = array_keys($this->_active_member_roles($from));
 
-            $sql = "update " . DB_PREFIX . "authorization set unit_id = '" . $to . "' where unit_id = '" . $from . "'";
-            if (!$this->db->query($sql)) {
-                throw new Exception('authorization update failed');
-            }
-
-            $sql = "update " . DB_PREFIX . "awards set unit_id = '" . $to . "' where unit_id = '" . $from . "'";
-            if (!$this->db->query($sql)) {
-                throw new Exception('awards update failed');
-            }
-
-            $sql = "update " . DB_PREFIX . "event set unit_id = '" . $to . "' where unit_id = '" . $from . "'";
-            if (!$this->db->query($sql)) {
-                throw new Exception('event update failed');
-            }
-
-            $sql = "update " . DB_PREFIX . "participant set unit_id = '" . $to . "' where unit_id = '" . $from . "'";
-            if (!$this->db->query($sql)) {
-                throw new Exception('participant update failed');
-            }
-
-            $sql = "update " . DB_PREFIX . "mundane set company_id = '" . $to . "' where company_id = '" . $from . "'";
-            if (!$this->db->query($sql)) {
-                throw new Exception('mundane update failed');
-            }
-
+        // BeginTrans/CommitTrans/RollbackTrans did not exist on the DB layer at
+        // all, so this method fataled on line one with "Call to undefined method
+        // YapoMysql::BeginTrans()" and had never executed. They are implemented
+        // on YapoMysql now. The old guards used query(), which always returns a
+        // YapoResultSet object and is therefore always truthy -- so even once the
+        // transaction worked, a failed statement would have gone unnoticed.
+        // ExecuteChecked reports real failure.
+        $statements = [
+            'unit_mundane update' => "update " . DB_PREFIX . "unit_mundane set unit_id = " . $to . " where unit_id = " . $from,
+            'authorization update' => "update `" . DB_PREFIX . "authorization` set unit_id = " . $to . " where unit_id = " . $from,
+            'awards update' => "update " . DB_PREFIX . "awards set unit_id = " . $to . " where unit_id = " . $from,
+            'event update' => "update " . DB_PREFIX . "event set unit_id = " . $to . " where unit_id = " . $from,
+            'participant update' => "update " . DB_PREFIX . "participant set unit_id = " . $to . " where unit_id = " . $from,
+            'mundane update' => "update " . DB_PREFIX . "mundane set company_id = " . $to . " where company_id = " . $from,
             // Relocate authored custom milestones to the surviving unit. fk_unit_milestone_unit
             // is ON DELETE CASCADE, so without this the source unit's milestones would be
             // silently dropped when the row is deleted below.
-            $this->db->Clear();
-            $sql = "update " . DB_PREFIX . "unit_milestones set unit_id = '" . (int)$to . "' where unit_id = '" . (int)$from . "'";
-            if (!$this->db->query($sql)) {
-                throw new Exception('unit_milestones update failed');
-            }
-
+            'unit_milestones update' => "update " . DB_PREFIX . "unit_milestones set unit_id = " . $to . " where unit_id = " . $from,
             // The source unit's design row (cosmetic colors/overlay/about) is intentionally
             // left to cascade-delete — the surviving unit keeps its own design.
-            $sql = "delete from " . DB_PREFIX . "unit where unit_id = '" . $from . "'";
-            if (!$this->db->query($sql)) {
-                throw new Exception('unit delete failed');
-            }
+            'unit delete' => "delete from " . DB_PREFIX . "unit where unit_id = " . $from,
+        ];
 
+        $this->db->BeginTrans();
+        try {
+            foreach ($statements as $label => $sql) {
+                $this->db->Clear();
+                if (!$this->db->ExecuteChecked($sql)) {
+                    throw new Exception($label . ' failed');
+                }
+            }
             $this->db->CommitTrans();
-            return Success();
         } catch (Exception $e) {
             $this->db->RollbackTrans();
             return array('Status' => 1, 'Error' => 'MergeUnits failed', 'Detail' => $e->getMessage());
         }
+
+        Ork3::$Lib->dangeraudit->audit(
+            __CLASS__ . '::' . __FUNCTION__,
+            $request,
+            'Unit',
+            $from,
+            $prior_state,
+            ['merged_into_unit_id' => $to, 'members_moved' => count($member_ids)]
+        );
+
+        foreach ($member_ids as $mid) {
+            $ck = Ork3::$Lib->ghettocache->key(['MundaneId' => $mid, 'IncludeCompanies' => 1, 'IncludeHouseHolds' => 1, 'IncludeEvents' => 1, 'ActiveOnly' => 1, 'Lightweight' => 1]);
+            Ork3::$Lib->ghettocache->bust('Report.UnitSummary', $ck);
+        }
+        return Success();
     }
 
     public function ConvertToHousehold($request)
@@ -315,9 +331,27 @@ class Unit extends Ork3
             $mundane_id = $this->members->mundane_id;
             $unit_id = $this->members->unit_id;
             logtrace("RetireMember()", array($mundane_id, $unit_id));
+            $prior_state = [
+                'unit_mundane_id' => (int)$this->members->unit_mundane_id,
+                'unit_id'         => (int)$unit_id,
+                'mundane_id'      => (int)$mundane_id,
+                'role'            => $this->members->role,
+                'title'           => $this->members->title,
+                'active'          => $this->members->active,
+            ];
             $this->members->active = 'Retired';
             $this->members->save();
             logtrace("RetireMember()", $this->members->lastSql());
+            // Retiring a member also strips their unit authority below, and wrote
+            // no audit row at all.
+            Ork3::$Lib->dangeraudit->audit(
+                __CLASS__ . '::' . __FUNCTION__,
+                $request,
+                'Unit',
+                (int)$unit_id,
+                $prior_state,
+                ['unit_id' => (int)$unit_id, 'mundane_id' => (int)$mundane_id, 'active' => 'Retired']
+            );
             $auths = Ork3::$Lib->authorization->GetAuthorizations(array('MundaneId' => $mundane_id));
             foreach ($auths['Authorizations'] as $k => $auth) {
                 if ($auth['Type'] == AUTH_UNIT && $auth['Id'] == $unit_id) {
@@ -344,7 +378,24 @@ class Unit extends Ork3
             if ($this->members->unit_id != $request['UnitId']) {
                 return NoAuthorization();
             }
+            // Hard-deleting a roster row wrote no audit record of who was removed.
+            $prior_state = [
+                'unit_mundane_id' => (int)$this->members->unit_mundane_id,
+                'unit_id'         => (int)$unit_id,
+                'mundane_id'      => (int)$mundane_id,
+                'role'            => $this->members->role,
+                'title'           => $this->members->title,
+                'active'          => $this->members->active,
+            ];
             $this->members->delete();
+            Ork3::$Lib->dangeraudit->audit(
+                __CLASS__ . '::' . __FUNCTION__,
+                $request,
+                'Unit',
+                (int)$unit_id,
+                $prior_state,
+                null
+            );
             $auths = Ork3::$Lib->authorization->GetAuthorizations(array('MundaneId' => $mundane_id));
             foreach ($auths['Authorizations'] as $k => $auth) {
                 if ($auth['Type'] == AUTH_UNIT && $auth['Id'] == $unit_id) {
@@ -391,6 +442,26 @@ class Unit extends Ork3
                 $_design_seed->our_history = trim((string)$request['History']);
             }
             $_design_seed->save();
+
+            // Unit creation wrote no audit row. Placed here so it fires on every
+            // path, including the Anonymous early return below. Heraldry is a
+            // base64 image blob and is deliberately kept out of the audit payload.
+            $_audit_req = $request;
+            unset($_audit_req['Heraldry']);
+            Ork3::$Lib->dangeraudit->audit(
+                __CLASS__ . '::' . __FUNCTION__,
+                $_audit_req,
+                'Unit',
+                (int)$this->unit->unit_id,
+                null,
+                [
+                    'unit_id'     => (int)$this->unit->unit_id,
+                    'name'        => $this->unit->name,
+                    'type'        => $this->unit->type,
+                    'url'         => $this->unit->url,
+                    'created_by'  => (int)$mundane_id,
+                ]
+            );
 
             if (strlen($request['Heraldry']) > 0) {
                 logtrace("CreateUnit() :2", $request);
@@ -596,16 +667,18 @@ class Unit extends Ork3
             return InvalidParameter();
         }
         $unit_id    = (int)$request['UnitId'];
-        $actor_id   = isset($request['ActorId']) ? (int)$request['ActorId'] : null;
+        $prior_active = $this->unit->active;
         $member_ids = array_keys($this->_active_member_roles($unit_id));
         $this->unit->active = $waffle;
         $this->unit->save();
+        // The actor was previously passed in the prior_state slot, which both
+        // lost the real prior state and duplicated by_whom_id.
         Ork3::$Lib->dangeraudit->audit(
             'Unit::' . ($waffle === 'Retired' ? 'RetireUnit' : 'RestoreUnit'),
             $request,
             'Unit',
             $unit_id,
-            $actor_id,
+            ['unit_id' => $unit_id, 'active' => $prior_active],
             ['unit_id' => $unit_id, 'active' => $waffle]
         );
         foreach ($member_ids as $mid) {
@@ -622,14 +695,14 @@ class Unit extends Ork3
         if ($mundane_id === 0) {
             return NoAuthorization();
         }
-        $mundane  = Ork3::$Lib->player->player_info($request['Token']);
         $unit_id  = (int)$request['UnitId'];
 
         $is_manager = Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_UNIT, $unit_id, AUTH_CREATE);
-        $is_officer = $mundane && (
-            Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_KINGDOM, $mundane['KingdomId'], AUTH_EDIT) ||
-            Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_PARK, $mundane['ParkId'], AUTH_EDIT)
-        );
+        // Officer authority is evaluated against the parks/kingdoms the unit's
+        // roster actually sits in. It used to be evaluated against the
+        // requester's own park/kingdom, so any park monarch anywhere could
+        // retire any unit in the world.
+        $is_officer = Ork3::$Lib->authorization->HasUnitOfficerAuthority($mundane_id, $unit_id);
         // Sole-member exception: the only remaining active roster member may
         // retire even without management rights.
         $members = $this->_active_member_roles($unit_id);
@@ -648,12 +721,10 @@ class Unit extends Ork3
         if ($mundane_id === 0) {
             return NoAuthorization();
         }
-        $mundane = Ork3::$Lib->player->player_info($request['Token']);
-        // Reactivation is monarchy-only — mirrors the KPM unit-auth bypass scope.
-        if ($mundane && (
-            Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_KINGDOM, $mundane['KingdomId'], AUTH_EDIT) ||
-            Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_PARK, $mundane['ParkId'], AUTH_EDIT)
-        )) {
+        // Reactivation is monarchy-only — mirrors the KPM unit-auth bypass scope,
+        // evaluated against the unit's own roster scope rather than the
+        // requester's park/kingdom.
+        if (Ork3::$Lib->authorization->HasUnitOfficerAuthority($mundane_id, (int)$request['UnitId'])) {
             return $this->WaffleUnit($request + ['ActorId' => $mundane_id], 'Active');
         }
         return NoAuthorization();
