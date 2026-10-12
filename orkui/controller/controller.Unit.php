@@ -225,8 +225,30 @@ class Controller_Unit extends Controller
             exit;
         }
         $_uid = isset($this->session->user_id) ? (int)$this->session->user_id : 0;
+        // CanEdit stays on AUTH_EDIT: it gates the long-standing member/manager
+        // controls, and narrowing it would silently revoke those from anyone
+        // holding only an 'edit' unit auth row.
         $_canEdit = $_uid > 0 && $this->Authorization->has_authority($_uid, AUTH_UNIT, (int)$unit_id, AUTH_EDIT);
         $this->data['CanEdit'] = $_canEdit;
+        // The Mask II design/milestone surfaces need AUTH_CREATE, matching what
+        // Unit::SetUnitDesign and the milestone writers enforce server-side.
+        $_canManage = $_uid > 0 && $this->Authorization->has_authority($_uid, AUTH_UNIT, (int)$unit_id, AUTH_CREATE);
+        $this->data['CanManageUnit'] = $_canManage;
+
+        // Custom + derived milestones, merged into one timeline-ready array.
+        // The timeline only renders when the org has opted into the new About
+        // design (AboutEnabled) or the viewer can manage the unit, so only pay
+        // for the fetch+merge in those cases.
+        $milestones = [];
+        $_msAboutEnabled = (int)($this->data['Unit']['Details']['Unit']['AboutEnabled'] ?? 0);
+        if ($_msAboutEnabled === 1 || $_canManage) {
+            $milestones = $this->Unit->get_merged_unit_milestones($unit_id_int);
+        }
+        $this->data['Milestones'] = $milestones;
+
+        // Authoritative social-platform slugs, so the template's icon/label table
+        // can never offer an input the domain would silently discard on save.
+        $this->data['OdSocialPlatformSlugs'] = $this->Unit->unit_design_social_platforms();
 
         // ── Retire / Claim / Transfer state ───────────────────────────────
         // Whether this unit is currently active (vs. retired/soft-deleted).
