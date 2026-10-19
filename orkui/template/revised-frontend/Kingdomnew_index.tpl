@@ -926,6 +926,12 @@
 						<li><a href="#" onclick="knOpenClaimParkModal();return false;">Claim Park</a></li>
 					</ul>
 				</div>
+				<div class="kn-report-group">
+					<h5><i class="fas fa-vote-yea"></i> Voting</h5>
+					<ul>
+						<li><a href="<?= UIR ?>Voting/index/Kingdom_<?= $kingdom_id ?>">Elections &amp; Althings</a></li>
+					</ul>
+				</div>
 				<?php endif; ?>
 				<?php if (($CanManageKingdom ?? false) || !empty($CanManageTests)): ?>
 				<div class="kn-report-group">

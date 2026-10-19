@@ -149,6 +149,18 @@ class Controller
         $this->Authorization->clear_db_after_auth_checks();
     }
 
+    /**
+     * Per-session CSRF synchronizer token. Lazily minted, stable for the session.
+     * Mirrors the CMS X-CSRF-Token pattern. Used by VotingAjax mutation gating.
+     */
+    public function _csrfToken()
+    {
+        if (!isset($this->session->csrf_token) || !is_string($this->session->csrf_token) || strlen($this->session->csrf_token) !== 64) {
+            $this->session->csrf_token = bin2hex(random_bytes(32));
+        }
+        return $this->session->csrf_token;
+    }
+
     public function load_model($name)
     {
         if (file_exists(DIR_MODEL . 'model.' . $name . '.php')) {

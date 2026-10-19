@@ -324,6 +324,7 @@ class Treasury extends Ork3 {
 		$debit = 0.0;
 		$credit = 0.0;
 		
+		$dues_payers = [];
 		foreach ($splits as $s => $split) {
 			$this->split->clear();
 			$this->split->transaction_id = $this->transaction->transaction_id;
@@ -332,14 +333,26 @@ class Treasury extends Ork3 {
 			$this->split->src_mundane_id = $split['SrcMundaneId'];
 			$this->split->dues_through = strlen($split['DuesThrough'])>0?$split['DuesThrough']:null;
 			$this->split->amount = round($split['DrCr']==$this->dr_cr_sign_convention($split['AccountType'], $split['Amount'])?$split['Amount']:-$split['Amount'],3);
-			
+
 			$this->split->save();
-			
+
 			if ($this->dr_cr_sign_convention($split['AccountType'], $split['Amount']) == TreasuryDrCr::Dr) {
 				$debit += $this->split->amount;
 			} else {
 				$credit += $this->split->amount;
 			}
+			if (!empty($split['IsDues']) && !empty($split['SrcMundaneId'])) {
+				$dues_payers[(int)$split['SrcMundaneId']] = true;
+			}
+		}
+		// Re-evaluate provisional voting ballots for any player whose dues row was just written.
+		// Best-effort: a Voting failure must not roll back the transaction.
+		foreach (array_keys($dues_payers) as $_dpid) {
+			try {
+				if (class_exists('Voting')) {
+					(new Voting())->reevaluate_provisional_for_player($_dpid);
+				}
+			} catch (Throwable $_e) { /* swallow */ }
 		}
 		
 		if (abs($debit - $credit) > 0.005) {
