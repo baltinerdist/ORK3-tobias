@@ -777,7 +777,7 @@ class EventPlanning extends Ork3
         $scheduleRows = $this->db->DataSet(
             'SELECT event_schedule_id AS EventScheduleId, title AS Title,
                     start_time AS StartTime, end_time AS EndTime,
-                    location AS Location, description AS Description, category AS Category,
+                    location AS Location, site_location_id AS SiteLocationId, description AS Description, category AS Category,
                     secondary_category AS SecondaryCategory,
                     menu AS Menu, cost AS Cost, dietary AS Dietary, allergens AS Allergens
              FROM ' . DB_PREFIX . 'event_schedule
@@ -792,6 +792,7 @@ class EventPlanning extends Ork3
                 'StartTime' => $scheduleRows->StartTime,
                 'EndTime' => $scheduleRows->EndTime,
                 'Location' => $scheduleRows->Location,
+                'SiteLocationId' => $scheduleRows->SiteLocationId !== null ? (int) $scheduleRows->SiteLocationId : null,
                 'Description' => $scheduleRows->Description,
                 'Category' => $scheduleRows->Category,
                 'SecondaryCategory' => $scheduleRows->SecondaryCategory ?? '',
@@ -1530,6 +1531,7 @@ class EventPlanning extends Ork3
         $startTime = trim((string) ($request['StartTime'] ?? ''));
         $endTime = trim((string) ($request['EndTime'] ?? ''));
         $location = trim((string) ($request['Location'] ?? ''));
+        $siteLocationId = (int) ($request['SiteLocationId'] ?? 0);
         $description = trim((string) ($request['Description'] ?? ''));
         $category = trim((string) ($request['Category'] ?? 'Other'));
         $secondaryCategory = trim((string) ($request['SecondaryCategory'] ?? ''));
@@ -1601,12 +1603,30 @@ class EventPlanning extends Ork3
             $allergens = $existRow->allergens;
         }
 
+        // Optional link to a tagged site-map location. Must belong to this
+        // same occurrence; anything else silently degrades to free text.
+        if ($siteLocationId > 0) {
+            $this->db->Clear();
+            $slRow = $this->db->DataSet(
+                'SELECT name FROM ' . DB_PREFIX . 'event_site_location
+                 WHERE event_site_location_id = ' . $siteLocationId . ' AND event_calendardetail_id = ' . $detailId . ' LIMIT 1'
+            );
+            if ($slRow && $slRow->Next()) {
+                if ($location === '') {
+                    $location = (string) $slRow->name;
+                }
+            } else {
+                $siteLocationId = 0;
+            }
+        }
+
         if ($isUpdate) {
             $setParts = ['title = \'' . $this->sq($title) . '\''];
             if ($caps['can_schedule']) {
                 $setParts[] = 'start_time = \'' . $startFmt . '\'';
                 $setParts[] = 'end_time = \'' . $endFmt . '\'';
                 $setParts[] = 'location = \'' . $this->sq($location) . '\'';
+                $setParts[] = 'site_location_id = ' . ($siteLocationId > 0 ? $siteLocationId : 'NULL');
                 $setParts[] = 'description = \'' . $this->sq($description) . '\'';
                 $setParts[] = 'category = \'' . $this->sq($category) . '\'';
                 $setParts[] = 'secondary_category = \'' . $this->sq($secondaryCategory) . '\'';
@@ -1631,11 +1651,12 @@ class EventPlanning extends Ork3
             $this->db->Execute(
                 'INSERT INTO ' . DB_PREFIX . 'event_schedule
                  (event_calendardetail_id, title, start_time, end_time, location, description,
-                  category, secondary_category, menu, cost, dietary, allergens)
+                  category, secondary_category, menu, cost, dietary, allergens, site_location_id)
                  VALUES (' . $detailId . ', \'' . $this->sq($title) . '\', \'' . $startFmt . '\', \''
                 . $endFmt . '\', \'' . $this->sq($location) . '\', \'' . $this->sq($description) . '\', \''
                 . $this->sq($category) . '\', \'' . $this->sq($secondaryCategory) . '\', '
-                . $menuSql . ', ' . $costSql . ', ' . $dietarySql . ', ' . $allergensSql . ')'
+                . $menuSql . ', ' . $costSql . ', ' . $dietarySql . ', ' . $allergensSql . ', '
+                . ($siteLocationId > 0 ? $siteLocationId : 'NULL') . ')'
             );
             $this->db->Clear();
             $idrow = $this->db->DataSet(
@@ -1676,6 +1697,7 @@ class EventPlanning extends Ork3
                 'StartTime' => $startFmt,
                 'EndTime' => $endFmt,
                 'Location' => $location,
+                'SiteLocationId' => ((!$isUpdate || $caps['can_schedule']) && $siteLocationId > 0) ? $siteLocationId : null,
                 'Description' => $description,
                 'Category' => $category,
                 'SecondaryCategory' => $secondaryCategory,

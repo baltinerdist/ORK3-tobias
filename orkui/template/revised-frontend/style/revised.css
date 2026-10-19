@@ -7341,8 +7341,8 @@ html[data-theme="dark"] .fc-scrollgrid th,
 html[data-theme="dark"] #pk-events-cal .fc-theme-standard td,
 html[data-theme="dark"] #pk-events-cal .fc-theme-standard th,
 html[data-theme="dark"] #pk-events-cal .fc-theme-standard .fc-scrollgrid,
-/* Map tab iframe border */
-html[data-theme="dark"] #ev-tab-map div[style*="border"] {
+/* Site tab: Getting There iframe wrapper + noscript map-image scroll container */
+html[data-theme="dark"] #ev-tab-site div[style*="border"] {
   border-color: var(--ork-border) !important;
 }
 html[data-theme="dark"] .fc-button-primary {
