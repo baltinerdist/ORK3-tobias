@@ -331,6 +331,43 @@ if (!in_array($_pnNameFont, $_pnFontAllowed)) $_pnNameFont = '';
 .pna-ev-park{color:var(--ork-text-muted);font-size:11px;font-weight:500;margin-left:2px}
 .pna-spark-months{display:flex;gap:3px;margin-top:2px}
 .pna-spark-month-lbl{flex:1;font-size:9px;color:var(--ork-text-hint);text-align:left;white-space:nowrap;overflow:hidden;min-width:0}
+/* Recent Arts & Sciences Entries (own-profile dashboard card + results modal) */
+.pna-as-row{flex-wrap:wrap}
+.pna-as-tax{color:#718096;font-size:11px;font-weight:500}
+.pna-as-status{flex-shrink:0;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;border-radius:10px;padding:1px 8px}
+.pna-as-status-registered{background:#ebf8ff;color:#2b6cb0}
+.pna-as-status-checked_in{background:#f0fff4;color:#276749}
+.pna-as-status-withdrawn{background:#edf2f7;color:#4a5568}
+.pna-as-status-disqualified{background:#fff5f5;color:#c53030}
+.pna-as-view-btn{flex-shrink:0}
+.pna-as-summary{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px}
+.pna-as-summary span{display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:600;color:#2d3748;background:#f7fafc;border:1px solid #e2e8f0;border-radius:6px;padding:5px 10px}
+.pna-as-summary i{color:#dd6b20}
+.pna-as-section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#718096;margin:14px 0 8px;display:flex;align-items:center;gap:6px}
+.pna-as-score-table{width:100%;border-collapse:collapse}
+.pna-as-score-table td{padding:5px 8px;border-bottom:1px solid #edf2f7;font-size:13px;color:#2d3748}
+.pna-as-feedback{background:#f7fafc;border:1px solid #e2e8f0;border-left:3px solid #4299e1;border-radius:4px;padding:9px 12px;font-size:13px;line-height:1.5;color:#2d3748;margin-bottom:8px;white-space:pre-wrap}
+/* Results overlay header: the entry title is injected into the modal title. min-width:0 is
+   width-agnostic (the header is display:flex) and lets the title shrink instead of pushing the
+   close button out; the ellipsis clamp and the 44px floor are phone-only -- see below. */
+#pn-as-results-overlay .pn-modal-title{min-width:0}
+#pn-as-results-overlay .pn-modal-close-btn{flex-shrink:0}
+/* Narrow screens: stack the A&S entry row so the title gets a full-width wrapping line
+   and the competition name, category, date, status and action stay visible. */
+@media(max-width:600px){
+/* Only here does the injected title actually crowd the close button out: on a wide screen the
+   title should keep wrapping inside the 560px box rather than truncating, and the close button
+   should keep the shared 30px circle every other pn modal on this page uses. */
+#pn-as-results-overlay .pn-modal-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#pn-as-results-overlay .pn-modal-close-btn{min-width:44px;min-height:44px}
+.pna-as-row{flex-direction:column;align-items:stretch;gap:4px}
+.pna-as-row .pna-feed-label{order:1;white-space:normal;overflow:visible;text-overflow:clip;line-height:1.35}
+.pna-as-row .pna-feed-sub,
+.pna-as-row .pna-as-tax{display:block}
+.pna-as-row .pna-feed-date{order:2;min-width:0}
+.pna-as-row .pna-as-status{order:3;align-self:flex-start}
+.pna-as-row .pna-as-view-btn{order:4;display:flex;align-items:center;justify-content:center;gap:6px;width:100%;min-height:44px}
+}
 @media(max-width:700px){
 .pna-layout{flex-direction:column;align-items:stretch}
 .pna-sidebar{flex:none;width:100%}
@@ -431,6 +468,15 @@ html[data-theme="dark"] .pna-ev-park { color: var(--ork-text-muted); }
 html[data-theme="dark"] .pna-assoc-group { color: var(--ork-text-muted); border-color: var(--ork-border); }
 html[data-theme="dark"] .pna-alert-warning { background: var(--ork-alert-warning-bg, #744210); border-color: var(--ork-alert-warning-border, #975a16); color: var(--ork-alert-warning-text, #fbd38d); }
 html[data-theme="dark"] .pna-alert-danger { background: var(--ork-alert-danger-bg, #742a2a); border-color: var(--ork-alert-danger-border, #9b2c2c); color: var(--ork-alert-danger-text, #feb2b2); }
+html[data-theme="dark"] .pna-as-tax { color: var(--ork-text-muted); }
+html[data-theme="dark"] .pna-as-status-registered { background: rgba(66,153,225,.15); color: #90cdf4; }
+html[data-theme="dark"] .pna-as-status-checked_in { background: rgba(72,187,120,.15); color: #9ae6b4; }
+html[data-theme="dark"] .pna-as-status-withdrawn { background: var(--ork-bg-tertiary); color: var(--ork-text-secondary); }
+html[data-theme="dark"] .pna-as-status-disqualified { background: rgba(229,62,62,.15); color: #feb2b2; }
+html[data-theme="dark"] .pna-as-summary span { background: var(--ork-bg-secondary); border-color: var(--ork-border); color: var(--ork-text); }
+html[data-theme="dark"] .pna-as-section-title { color: var(--ork-text-muted); }
+html[data-theme="dark"] .pna-as-score-table td { color: var(--ork-text); border-color: var(--ork-border); }
+html[data-theme="dark"] .pna-as-feedback { background: var(--ork-bg-secondary); border-color: var(--ork-border); border-left-color: var(--ork-link); color: var(--ork-text); }
 html[data-theme="dark"] .pna-alert-info { background: var(--ork-alert-info-bg, #1a365d); border-color: var(--ork-alert-info-border, #2a4365); color: var(--ork-alert-info-text, #90cdf4); }
 html[data-theme="dark"] .pna-spark-off,
 html[data-theme="dark"] .pna-spark-swatch-off { background: var(--ork-bg-tertiary); border-color: var(--ork-border); }
@@ -1752,6 +1798,12 @@ html[data-theme="dark"] .pna-notif-clearall { color: #718096; }
 						</div>
 						<?php endif; ?>
 
+						<!-- Recent Arts & Sciences Entries (own profile only; JS-populated, hidden until entries load) -->
+						<div class="pna-card" id="pna-as-card" style="display:none">
+							<div class="pna-card-title"><i class="fas fa-palette"></i> Recent Arts &amp; Sciences Entries</div>
+							<div id="pna-as-body"></div>
+						</div>
+
 						<!-- Upcoming Events: two-column -->
 						<?php if (!empty($UpcomingRsvps) || !empty($KingdomEvents)): ?>
 						<div class="pna-card">
@@ -2868,6 +2920,28 @@ html[data-theme="dark"] .pna-notif-clearall { color: #718096; }
 		</div>
 		<div class="pn-modal-footer">
 			<button class="pn-btn pn-btn-secondary" id="pn-dues-history-cancel">Close</button>
+		</div>
+	</div>
+</div>
+<?php endif; ?>
+
+<!-- =============================================
+     Arts & Sciences Entry Results Modal
+     Opt-in: nothing loads until the entrant clicks
+     "View scores & feedback". Judge identity is never shown.
+     ============================================= -->
+<?php if ($isOwnProfile): ?>
+<div class="pn-overlay" id="pn-as-results-overlay">
+	<div class="pn-modal-box" style="width:560px;max-width:calc(100vw - 40px);">
+		<div class="pn-modal-header">
+			<h3 class="pn-modal-title"><i class="fas fa-clipboard-check pn-modal-title-icon"></i>Scores &amp; Feedback</h3>
+			<button class="pn-modal-close-btn" id="pn-as-results-close-btn" aria-label="Close">&times;</button>
+		</div>
+		<div class="pn-acct-modal-body">
+			<div id="pn-as-results-body"><div class="pn-empty"><i class="fas fa-spinner fa-spin"></i> Loading&hellip;</div></div>
+		</div>
+		<div class="pn-modal-footer">
+			<button class="pn-btn pn-btn-secondary" id="pn-as-results-cancel">Close</button>
 		</div>
 	</div>
 </div>
@@ -7881,6 +7955,126 @@ $(function() {
 	// Allow OrkRsCfg.reload (set above) to force a recs reload after seconds actions.
 	window.pnReloadRecs = function() { pnRecsLoaded = false; pnLoadRecs(); };
 	window.pnReloadNotes = function() { pnNotesLoaded = false; pnLoadNotes(); };
+
+	// ---- Recent Arts & Sciences Entries (own profile only) ----
+	// Lists the caller's recent A&S entries. Rows the competition has opted to
+	// share (Shareable=true) expose a "View scores & feedback" button that opens
+	// an opt-in modal — nothing is fetched or shown until the entrant clicks.
+	// Judge identity is never surfaced (the lib returns blind scores/feedback).
+	if (PnConfig.isOwnProfile) {
+		(function() {
+			var asEsc = function(s) { return $('<div>').text(s == null ? '' : s).html(); };
+			var asStatusLabels = { registered: 'Registered', checked_in: 'Checked In', withdrawn: 'Withdrawn', disqualified: 'Disqualified' };
+
+			function pnRenderAsEntries(entries) {
+				var card = document.getElementById('pna-as-card');
+				var body = document.getElementById('pna-as-body');
+				if (!card || !body) return;
+				if (!entries || !entries.length) { card.style.display = 'none'; return; }
+				var html = '';
+				entries.forEach(function(e) {
+					var eid   = parseInt(e.EntryId) || 0;
+					var title = asEsc(e.Title || 'Untitled entry');
+					var comp  = e.CompetitionName ? asEsc(e.CompetitionName) : '';
+					var tax   = e.TaxonomyName ? asEsc(e.TaxonomyName) : '';
+					var dt    = e.CompetitionDate ? asEsc(e.CompetitionDate) : '';
+					var st    = String(e.Status || '').toLowerCase();
+					var stLbl = asStatusLabels[st] || (e.Status || '');
+					html += '<div class="pna-feed-row pna-as-row">'
+						+ '<span class="pna-feed-date">' + dt + '</span>'
+						+ '<span class="pna-feed-label">' + title
+						+ (comp ? ' <span class="pna-feed-sub">' + comp + '</span>' : '')
+						+ (tax ? ' <span class="pna-as-tax">' + tax + '</span>' : '')
+						+ '</span>';
+					if (stLbl) html += '<span class="pna-as-status pna-as-status-' + asEsc(st) + '">' + asEsc(stLbl) + '</span>';
+					if (e.Shareable) {
+						html += ' <button type="button" class="pn-btn pn-btn-ghost pn-btn-sm pna-as-view-btn" data-eid="' + eid + '" data-title="' + asEsc(e.Title || '').replace(/"/g, '&quot;') + '"><i class="fas fa-clipboard-check"></i> View scores &amp; feedback</button>';
+					}
+					html += '</div>';
+				});
+				body.innerHTML = html;
+				card.style.display = '';
+			}
+
+			function pnRenderAsResults(res) {
+				res = res || {};
+				var out = '';
+				var overall   = (res.OverallScore != null) ? res.OverallScore : ((res.AverageScore != null) ? res.AverageScore : ((res.TotalScore != null) ? res.TotalScore : null));
+				var placement = (res.Placement != null) ? res.Placement : ((res.Rank != null) ? res.Rank : null);
+				var awardName = res.Award || res.AwardName || res.WinnerTitle || '';
+				if (overall != null || placement != null || awardName) {
+					out += '<div class="pna-as-summary">';
+					if (overall != null)   out += '<span><i class="fas fa-star"></i> ' + asEsc(overall) + '</span>';
+					if (placement != null) out += '<span><i class="fas fa-trophy"></i> Placement: ' + asEsc(placement) + '</span>';
+					if (awardName)          out += '<span><i class="fas fa-medal"></i> ' + asEsc(awardName) + '</span>';
+					out += '</div>';
+				}
+				var scores = res.Scores || res.CriterionScores || [];
+				if (scores && scores.length) {
+					out += '<div class="pna-as-section-title"><i class="fas fa-list-ol"></i> Scores</div>';
+					out += '<table class="pna-as-score-table"><tbody>';
+					scores.forEach(function(s) {
+						var name = s.CriterionName || s.Criterion || s.Name || 'Criterion';
+						var val  = (s.Score != null) ? s.Score : ((s.Value != null) ? s.Value : ((s.Average != null) ? s.Average : ''));
+						out += '<tr><td>' + asEsc(name) + '</td><td class="pn-col-numeric">' + asEsc(val) + '</td></tr>';
+					});
+					out += '</tbody></table>';
+				}
+				var feedback = res.Feedback || res.Comments || [];
+				if (typeof feedback === 'string') feedback = feedback ? [feedback] : [];
+				if (feedback && feedback.length) {
+					out += '<div class="pna-as-section-title"><i class="fas fa-comment-dots"></i> Feedback</div>';
+					feedback.forEach(function(f) {
+						var txt = (typeof f === 'string') ? f : (f.Comment || f.Feedback || f.Text || f.Note || '');
+						if (txt) out += '<div class="pna-as-feedback">' + asEsc(txt) + '</div>';
+					});
+				}
+				if (!out) out = '<div class="pn-empty">No scores or feedback have been shared for this entry.</div>';
+				return out;
+			}
+
+			var asOverlay = document.getElementById('pn-as-results-overlay');
+			function pnCloseAsResults() {
+				if (asOverlay) asOverlay.classList.remove('pn-open');
+				document.body.style.overflow = '';
+			}
+			function pnOpenAsResults(eid, title) {
+				if (!asOverlay || !(parseInt(eid) > 0)) return;
+				var body    = document.getElementById('pn-as-results-body');
+				var titleEl = asOverlay.querySelector('.pn-modal-title');
+				if (titleEl) titleEl.innerHTML = '<i class="fas fa-clipboard-check pn-modal-title-icon"></i>' + (title ? asEsc(title) : 'Scores &amp; Feedback');
+				if (body) body.innerHTML = '<div class="pn-empty"><i class="fas fa-spinner fa-spin"></i> Loading&hellip;</div>';
+				asOverlay.classList.add('pn-open');
+				document.body.style.overflow = 'hidden';
+				$.getJSON(PnConfig.uir + 'ArtsSciencesAjax/my_entry_results/' + parseInt(eid), function(r) {
+					if (!body) return;
+					if (!r || r.status !== 0) {
+						body.innerHTML = '<div class="pn-empty">' + asEsc((r && r.error) || 'Scores and feedback are not available for this entry.') + '</div>';
+						return;
+					}
+					body.innerHTML = pnRenderAsResults(r.result || {});
+				}).fail(function() {
+					if (body) body.innerHTML = '<div class="pn-empty">Unable to load scores and feedback.</div>';
+				});
+			}
+
+			$.getJSON(PnConfig.uir + 'ArtsSciencesAjax/my_entries', function(r) {
+				pnRenderAsEntries((r && r.status === 0) ? (r.result || []) : []);
+			});
+
+			$(document).on('click', '.pna-as-view-btn', function() {
+				pnOpenAsResults(this.getAttribute('data-eid'), this.getAttribute('data-title') || '');
+			});
+			var asCloseBtn  = document.getElementById('pn-as-results-close-btn');
+			var asCancelBtn = document.getElementById('pn-as-results-cancel');
+			if (asCloseBtn)  asCloseBtn.addEventListener('click', pnCloseAsResults);
+			if (asCancelBtn) asCancelBtn.addEventListener('click', pnCloseAsResults);
+			if (asOverlay)   asOverlay.addEventListener('click', function(e) { if (e.target === asOverlay) pnCloseAsResults(); });
+			document.addEventListener('keydown', function(e) {
+				if ((e.key === 'Escape' || e.keyCode === 27) && asOverlay && asOverlay.classList.contains('pn-open')) pnCloseAsResults();
+			});
+		})();
+	}
 
 	// Hook tab clicks to trigger lazy loading
 	$(document).on('click', '.pn-tab-nav li', function() {

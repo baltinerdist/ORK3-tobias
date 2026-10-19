@@ -87,6 +87,15 @@ class Controller
                 unset($_SESSION['is_authorized_mundane_id']);
                 session_unset();
                 session_destroy();
+                // The A&S Ajax controller is served over XHR, where a header() redirect
+                // would be swallowed as an opaque cross-origin response and the stale
+                // session would silently keep writing. Emit a JSON 401 instead so the
+                // client can detect the replacement and stop.
+                if (get_class($this) === 'Controller_ArtsSciencesAjax') {
+                    header('Content-Type: application/json', true, 401);
+                    echo json_encode(['error' => 'session_replaced']);
+                    exit;
+                }
                 $_returnParam = (strlen($_returnRoute) > 0 && strncasecmp($_returnRoute, 'Login', 5) !== 0)
                     ? '&return=' . urlencode($_returnRoute)
                     : '';
@@ -166,6 +175,19 @@ class Controller
     {
         $imgbinary = fread(fopen($tmpname, "r"), filesize($tmpname));
         return base64_encode($imgbinary);
+    }
+
+    // Per-session CSRF token, lazily minted and stored in shared session state so every
+    // controller that emits it (window.AS_CSRF etc.) and every Ajax controller that
+    // validates it read the exact same value. Mirrors the CMS X-CSRF-Token pattern; lives
+    // on the base controller so unrelated controllers (ArtsSciences, ArtsSciencesAjax,
+    // Kingdom) can all agree on one token without duplicating the mint/read logic.
+    protected function _csrfToken()
+    {
+        if (empty($this->session->as_csrf)) {
+            $this->session->as_csrf = bin2hex(random_bytes(32));
+        }
+        return $this->session->as_csrf;
     }
 
     public function index($action = null)

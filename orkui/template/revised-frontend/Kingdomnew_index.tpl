@@ -765,6 +765,59 @@
 				</div><!-- /kn-events-list-view -->
 
 				<?php /* [TOURNAMENTS HIDDEN] */ ?>
+
+				<!-- ========== Arts & Sciences Competitions section ========== -->
+				<style>
+				/* --- A&S create modal: pin header/footer, scroll only the body ---
+				   Without a max-height the box grows past the viewport once the
+				   validation feedback appears, pushing the title off the top and
+				   the Create button off the bottom with nothing to scroll. */
+				#kn-as-modal .kn-emod-box{display:flex;flex-direction:column;max-height:calc(100vh - 40px);max-height:calc(100dvh - 40px)}
+				#kn-as-modal .kn-emod-header,
+				#kn-as-modal .kn-emod-footer{flex:0 0 auto}
+				#kn-as-modal .kn-emod-body{flex:1 1 auto;min-height:0;overflow-y:auto}
+				/* --- A&S competition card + status pill (classes, not JS-inlined colours) --- */
+				.kn-as-card{border:1px solid var(--ork-border,#e2e8f0);border-left:4px solid #a0aec0}
+				.kn-as-pill{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;padding:2px 8px;border-radius:999px;white-space:nowrap;background:rgba(226,232,240,0.92);color:#4a5568}
+				.kn-as-status-draft{border-left-color:#a0aec0}
+				.kn-as-status-open{border-left-color:#38a169}
+				.kn-as-status-judging{border-left-color:#d69e2e}
+				.kn-as-status-closed{border-left-color:#e53e3e}
+				.kn-as-status-draft   .kn-as-pill{background:rgba(226,232,240,0.92);color:#4a5568}
+				.kn-as-status-open    .kn-as-pill{background:rgba(198,246,213,0.94);color:#22543d}
+				.kn-as-status-judging .kn-as-pill{background:rgba(250,240,199,0.96);color:#975a16}
+				.kn-as-status-closed  .kn-as-pill{background:rgba(254,215,215,0.96);color:#9b2c2c}
+				html[data-theme="dark"] .kn-as-status-draft   .kn-as-pill{background:rgba(45,55,72,0.85);color:#cbd5e0}
+				html[data-theme="dark"] .kn-as-status-open    .kn-as-pill{background:rgba(34,84,61,0.90);color:#9ae6b4}
+				html[data-theme="dark"] .kn-as-status-judging .kn-as-pill{background:rgba(116,66,16,0.92);color:#fbd38d}
+				html[data-theme="dark"] .kn-as-status-closed  .kn-as-pill{background:rgba(120,30,30,0.92);color:#feb2b2}
+				/* --- A&S icon-only workspace link: sizing parity with its button siblings ---
+				   This one is an <a>, which does NOT inherit the border-box sizing the
+				   <button> siblings get, so revised.css's 30x30 + 1px border rendered larger.
+				   Border-box makes the anchor measure exactly 30x30 like every sibling. */
+				.kn-as-section .kn-view-btn{box-sizing:border-box}
+				/* --- A&S icon-only workspace link: 44px minimum tap target ---
+				   Scoped to phones ONLY. min-width/min-height beat the width/height in
+				   revised.css, so as a base rule this grew the one A&S .kn-view-btn to 44px on
+				   desktop while every other .kn-view-btn on the page stayed 30px. */
+				@media (max-width: 600px) {
+				.kn-as-section .kn-view-btn{min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+				}
+				</style>
+				<div class="kn-as-section" style="margin-top:24px;border-top:1px solid var(--ork-border,#e2e8f0);padding-top:18px">
+					<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+						<h4 class="kn-bare-heading" style="margin:0;font-size:14px;font-weight:700"><i class="fas fa-palette" style="margin-right:6px;color:#a0aec0"></i>Arts &amp; Sciences Competitions</h4>
+						<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+							<a class="kn-view-btn" href="<?= UIR ?>ArtsSciences/index/<?= (int)$kingdom_id ?>" title="Open A&amp;S workspace"><i class="fas fa-external-link-alt"></i></a>
+							<?php if ($CanManageKingdom ?? false): ?>
+							<button onclick="knOpenAsModal()" style="display:inline-flex;align-items:center;gap:5px;background:linear-gradient(135deg,#5a67d8,#805ad5);color:#fff;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:600;border:none;cursor:pointer">
+								<i class="fas fa-plus"></i> Add A&amp;S Competition
+							</button>
+							<?php endif; ?>
+						</div>
+					</div>
+					<div id="kn-as-list" style="min-height:48px;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px"><div class="kn-empty" style="grid-column:1/-1">Loading…</div></div>
+				</div>
 			</div>
 
 
@@ -1750,6 +1803,42 @@ var KnBannerConfig = {
 			</button>
 			<button class="kn-emod-btn-go" id="kn-emod-go-btn" onclick="knCreateEvent()" disabled>
 				<span id="kn-emod-go-label">Create Event</span> <i class="fas fa-arrow-right"></i>
+			</button>
+		</div>
+	</div>
+</div>
+
+<!-- A&S Competition create modal -->
+<div class="kn-emod-overlay" id="kn-as-modal">
+	<div class="kn-emod-box">
+		<div class="kn-emod-header">
+			<h3><i class="fas fa-palette" style="margin-right:8px;color:#5a67d8"></i>Create A&amp;S Competition</h3>
+			<button class="kn-emod-close" onclick="knCloseAsModal()">&times;</button>
+		</div>
+		<div class="kn-emod-body">
+			<div class="kn-emod-field">
+				<label class="kn-emod-label">Competition Name <span style="color:#e53e3e">*</span></label>
+				<input type="text" class="kn-emod-input" id="kn-as-name" autocomplete="off" placeholder="e.g. Crown Quals A&amp;S 2026">
+			</div>
+			<div class="kn-emod-field" style="margin-top:12px">
+				<label class="kn-emod-label">Description <span style="color:#a0aec0;font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+				<textarea class="kn-emod-input" id="kn-as-desc" rows="3" style="resize:vertical"></textarea>
+			</div>
+			<div class="kn-emod-field" style="margin-top:12px">
+				<label class="kn-emod-label">Tied to Event <span style="color:#a0aec0;font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+				<select class="kn-emod-input" id="kn-as-event">
+					<option value="">— Standalone competition (no event) —</option>
+					<?php foreach (($eventList ?? []) as $_ev): ?>
+					<option value="<?= (int)$_ev['EventId'] ?>"><?= htmlspecialchars($_ev['Name']) ?><?php if (!empty($_ev['NextDate']) && $_ev['NextDate'] !== '0000-00-00'): ?> · <?= htmlspecialchars(date('M j, Y', strtotime($_ev['NextDate']))) ?><?php endif; ?></option>
+					<?php endforeach; ?>
+				</select>
+			</div>
+			<div class="kn-emod-feedback" id="kn-as-feedback" style="display:none"></div>
+		</div>
+		<div class="kn-emod-footer">
+			<button class="kn-emod-btn-cancel" onclick="knCloseAsModal()">Cancel</button>
+			<button class="kn-emod-btn-go" id="kn-as-go-btn" onclick="knCreateAsCompetition()">
+				Create Competition <i class="fas fa-arrow-right"></i>
 			</button>
 		</div>
 	</div>
@@ -3542,6 +3631,124 @@ window.knUsernameCheck = initUsernameAvailabilityCheck({
 		if (window.knUsernameCheck && window.knUsernameCheck.reset) window.knUsernameCheck.reset();
 		return r;
 	};
+})();
+
+// ========== Arts & Sciences Competitions section (Events tab) ==========
+window.AS_CSRF = <?= json_encode($AsCsrf ?? '') ?>;
+(function(){
+	var UIR = <?= json_encode(UIR) ?>;
+	var KINGDOM_ID = <?= (int)$kingdom_id ?>;
+	var canManage = <?= !empty($CanManageKingdom) ? 'true' : 'false' ?>;
+
+	function escHtml(s){ return String(s == null ? '' : s).replace(/[&<>\"']/g, function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c];}); }
+
+	function loadAsCompetitions(){
+		var host = document.getElementById('kn-as-list');
+		if (!host) return;
+		fetch(UIR + 'ArtsSciencesAjax/kingdom/' + KINGDOM_ID, { credentials: 'same-origin', headers: { 'X-CSRF-Token': (window.AS_CSRF || '') } })
+			.then(function(r){ return r.json(); })
+			.then(function(j){
+				var list = (j && j.status === 0 && Array.isArray(j.result)) ? j.result : [];
+				if (!list.length) {
+					host.innerHTML = '<div class=\"kn-empty\" style=\"grid-column:1/-1\">No A&amp;S competitions yet'
+						+ (canManage ? '. Click <strong>+ Add A&amp;S Competition</strong> to create one.' : '.')
+						+ '</div>';
+					return;
+				}
+				// Label map, not the raw value: the card CLASS is coerced to a known status, so
+				// printing escHtml(c.Status) let an unknown/empty status show its own literal
+				// text inside a draft-grey pill -- label and colour disagreeing.
+				var statusLabels = { draft:'Draft', open:'Open', judging:'Judging', closed:'Closed' };
+				host.innerHTML = list.map(function(c){
+					var status = statusLabels[c.Status] ? c.Status : 'draft';
+					var dateStr = c.StartDateTime ? new Date(c.StartDateTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+					return '<a class=\"kn-as-card kn-as-status-' + status + '\" href=\"' + UIR + 'ArtsComp/' + c.CompetitionId + '\" '
+						+ 'style=\"display:flex;flex-direction:column;gap:6px;padding:12px 14px;background:var(--ork-card-bg,#fff);border-radius:8px;text-decoration:none;color:inherit;transition:transform 0.15s,box-shadow 0.15s\" '
+						+ 'onmouseover=\"this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 4px 12px rgba(0,0,0,0.08)\'\" '
+						+ 'onmouseout=\"this.style.transform=\'\';this.style.boxShadow=\'\'\">'
+						+ '<div style=\"display:flex;justify-content:space-between;align-items:flex-start;gap:8px\">'
+						+ '<div style=\"font-weight:600;font-size:13px\">' + escHtml(c.Name) + '</div>'
+						+ '<span class=\"kn-as-pill\">' + escHtml(statusLabels[status]) + '</span>'
+						+ '</div>'
+						+ '<div style=\"font-size:11px;color:var(--ork-text-muted,#718096);display:flex;gap:10px;flex-wrap:wrap\">'
+						+ (dateStr ? '<span><i class=\"far fa-calendar\"></i> ' + escHtml(dateStr) + '</span>' : '')
+						+ '<span><i class=\"fas fa-users\"></i> ' + (c.ParticipantCount || 0) + '</span>'
+						+ '<span><i class=\"fas fa-scroll\"></i> ' + (c.EntryCount || 0) + '</span>'
+						+ '</div></a>';
+				}).join('');
+			})
+			.catch(function(err){ console.error('[KN A&S list] failed', err); host.innerHTML = '<div class=\"kn-empty\" style=\"grid-column:1/-1\">Failed to load competitions.</div>'; });
+	}
+
+	window.knOpenAsModal = function(){
+		var modal = document.getElementById('kn-as-modal'); if (!modal) return;
+		document.getElementById('kn-as-name').value  = '';
+		document.getElementById('kn-as-desc').value  = '';
+		document.getElementById('kn-as-event').value = '';
+		document.getElementById('kn-as-feedback').style.display = 'none';
+		modal.classList.add('kn-emod-open');
+		document.body.style.overflow = 'hidden';
+		setTimeout(function(){ document.getElementById('kn-as-name').focus(); }, 60);
+	};
+	window.knCloseAsModal = function(){
+		var modal = document.getElementById('kn-as-modal'); if (!modal) return;
+		modal.classList.remove('kn-emod-open');
+		document.body.style.overflow = '';
+	};
+	window.knCreateAsCompetition = function(){
+		var name = document.getElementById('kn-as-name').value.trim();
+		var fb = document.getElementById('kn-as-feedback');
+		if (!name) { fb.textContent = 'Competition name is required.'; fb.style.display = 'block'; fb.style.color = '#e53e3e'; return; }
+		var btn = document.getElementById('kn-as-go-btn');
+		btn.disabled = true;
+		var fd = new FormData();
+		fd.append('KingdomId',   KINGDOM_ID);
+		fd.append('Name',        name);
+		fd.append('Description', document.getElementById('kn-as-desc').value);
+		var eid = document.getElementById('kn-as-event').value;
+		if (eid) fd.append('EventId', eid);
+		fetch(UIR + 'ArtsSciencesAjax/create', { method: 'POST', body: fd, credentials: 'same-origin', headers: { 'X-CSRF-Token': (window.AS_CSRF || '') } })
+			.then(function(r){ return r.json(); })
+			.then(function(j){
+				if (j && j.status === 0 && j.result) {
+					window.location = UIR + 'ArtsComp/' + j.result;
+				} else {
+					fb.textContent = 'Error: ' + (j.error || 'Unknown'); fb.style.display = 'block'; fb.style.color = '#e53e3e';
+					btn.disabled = false;
+				}
+			})
+			.catch(function(err){ console.error(err); fb.textContent = 'Network error: ' + err; fb.style.display = 'block'; fb.style.color = '#e53e3e'; btn.disabled = false; });
+	};
+	// Close on backdrop or Escape
+	var mEl = document.getElementById('kn-as-modal');
+	if (mEl) mEl.addEventListener('click', function(e){ if (e.target === mEl) knCloseAsModal(); });
+	document.addEventListener('keydown', function(e){ if (e.key === 'Escape') { var m = document.getElementById('kn-as-modal'); if (m && m.classList.contains('kn-emod-open')) knCloseAsModal(); } });
+
+	// Lazy-load the A&S competition list the first time the Events tab is
+	// activated, matching how the Recommendations/Players tabs defer heavy work.
+	// Fetching on every kingdom-profile load was needless work for the many
+	// visitors who never open the Events tab.
+	var asListLoaded = false;
+	function knMaybeLoadAsCompetitions(){
+		if (asListLoaded) return;
+		asListLoaded = true;
+		loadAsCompetitions();
+	}
+	// Hook the page's tab-activation so any path that opens Events (tab click,
+	// stat-card shortcut, deep-link) triggers the fetch exactly once. revised.js
+	// (loaded above) defines knActivateTab synchronously; its jQuery-ready
+	// deep-link handler runs after this inline block, so the wrapper is in place.
+	if (typeof window.knActivateTab === 'function') {
+		var knOrigActivateTab = window.knActivateTab;
+		window.knActivateTab = function(tab){
+			var r = knOrigActivateTab.apply(this, arguments);
+			if (tab === 'events') knMaybeLoadAsCompetitions();
+			return r;
+		};
+	}
+	// Safety net: if the Events panel is already visible at this point, load now.
+	var knEventsPanel = document.getElementById('kn-tab-events');
+	if (knEventsPanel && knEventsPanel.style.display !== 'none') knMaybeLoadAsCompetitions();
 })();
 </script>
 

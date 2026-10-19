@@ -221,6 +221,10 @@ class Controller_Kingdom extends Controller
         $this->load_model('Recap');
         $this->data['week_recap'] = $this->Recap->get();
 
+        // CSRF token for the A&S section's mutating fetch() calls (window.AS_CSRF).
+        // Must match the token Controller_ArtsSciencesAjax validates on POST.
+        $this->data['AsCsrf'] = $this->_csrfToken();
+
         $this->data['menu']['kingdom'] = [
             'url'     => UIR . 'Kingdom/profile/' . $kingdom_id,
             'display' => $this->session->kingdom_name,
