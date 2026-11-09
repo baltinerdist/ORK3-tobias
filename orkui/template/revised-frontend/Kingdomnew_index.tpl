@@ -940,6 +940,8 @@
 					<ul>
 						<li><a href="<?= UIR ?>Scrollery/create/kingdom/<?= $kingdom_id ?>">Print a Scroll</a></li>
 						<li><a href="<?= UIR ?>Scrollery/bulk/kingdom/<?= $kingdom_id ?>">Print Bulk Scrolls</a></li>
+						<li><a href="<?= UIR ?>Scroll/admin">Scroll Templates</a></li>
+						<li><a href="<?= UIR ?>ScrollGraphics/manage">Scroll Artwork Library</a></li>
 					</ul>
 				</div>
 				<?php endif; ?>
