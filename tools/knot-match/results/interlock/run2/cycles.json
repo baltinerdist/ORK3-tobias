@@ -1,0 +1,224 @@
+{
+	"ref": "analyze/refs/interlock-two-corners.png",
+	"seed": "analyze/seed-two-corners.json",
+	"target": 0.85,
+	"ceiling": {
+		"TL": 0.874,
+		"BL": 0.8751,
+		"left": 0.92,
+		"top": 0.8809,
+		"bottom": 0.8808
+	},
+	"cycles": [
+		{
+			"cycle": 0,
+			"nominal": {
+				"TL": 0.915,
+				"BL": 0.9198,
+				"left": 0.9191,
+				"top": 0.923,
+				"bottom": 0.9202
+			},
+			"mean": {
+				"TL": 0.918,
+				"BL": 0.9193,
+				"left": 0.9186,
+				"top": 0.9204,
+				"bottom": 0.92
+			},
+			"minNominal": 0.915,
+			"minMean": 0.918,
+			"avgMean": 0.9192,
+			"gates": {
+				"sitesValid": true,
+				"closed": true,
+				"alternates": true
+			},
+			"loops": 36,
+			"params": {
+				"s": 25.3854,
+				"origin": [
+					52.186,
+					46.244
+				],
+				"w": 13.0000481,
+				"ink": 3.4007390399999995,
+				"u": 0.5900000000000001,
+				"k": 0.2699999999999999,
+				"tightU": 0.65,
+				"tightK": 0.75,
+				"flip": false
+			},
+			"evals": 1,
+			"note": "seed"
+		},
+		{
+			"cycle": 1,
+			"nominal": {
+				"TL": 0.9335,
+				"BL": 0.9334,
+				"left": 0.9377,
+				"top": 0.9433,
+				"bottom": 0.9347
+			},
+			"mean": {
+				"TL": 0.9323,
+				"BL": 0.9336,
+				"left": 0.9358,
+				"top": 0.9369,
+				"bottom": 0.9364
+			},
+			"minNominal": 0.9334,
+			"minMean": 0.9323,
+			"avgMean": 0.935,
+			"gates": {
+				"sitesValid": true,
+				"closed": true,
+				"alternates": true
+			},
+			"loops": 36,
+			"params": {
+				"s": 25.3854,
+				"origin": [
+					52.186,
+					46.244
+				],
+				"w": 13.5000481,
+				"ink": 3.2007390399999993,
+				"u": 0.5900000000000001,
+				"k": 0.2399999999999999,
+				"tightU": 0.65,
+				"tightK": 0.71,
+				"flip": false
+			},
+			"evals": 23,
+			"note": "kept 5 moves"
+		},
+		{
+			"cycle": 2,
+			"nominal": {
+				"TL": 0.9378,
+				"BL": 0.9389,
+				"left": 0.942,
+				"top": 0.9488,
+				"bottom": 0.9383
+			},
+			"mean": {
+				"TL": 0.9363,
+				"BL": 0.9379,
+				"left": 0.9403,
+				"top": 0.9412,
+				"bottom": 0.9401
+			},
+			"minNominal": 0.9378,
+			"minMean": 0.9363,
+			"avgMean": 0.9392,
+			"gates": {
+				"sitesValid": true,
+				"closed": true,
+				"alternates": true
+			},
+			"loops": 36,
+			"params": {
+				"s": 25.3854,
+				"origin": [
+					52.186,
+					46.244
+				],
+				"w": 13.7500481,
+				"ink": 3.2007390399999993,
+				"u": 0.5900000000000001,
+				"k": 0.2399999999999999,
+				"tightU": 0.65,
+				"tightK": 0.71,
+				"flip": false
+			},
+			"evals": 41,
+			"note": "kept 1 moves"
+		},
+		{
+			"cycle": 3,
+			"nominal": {
+				"TL": 0.9378,
+				"BL": 0.9389,
+				"left": 0.942,
+				"top": 0.9488,
+				"bottom": 0.9383
+			},
+			"mean": {
+				"TL": 0.9363,
+				"BL": 0.9379,
+				"left": 0.9403,
+				"top": 0.9412,
+				"bottom": 0.9401
+			},
+			"minNominal": 0.9378,
+			"minMean": 0.9363,
+			"avgMean": 0.9392,
+			"gates": {
+				"sitesValid": true,
+				"closed": true,
+				"alternates": true
+			},
+			"loops": 36,
+			"params": {
+				"s": 25.3854,
+				"origin": [
+					52.186,
+					46.244
+				],
+				"w": 13.7500481,
+				"ink": 3.2007390399999993,
+				"u": 0.5900000000000001,
+				"k": 0.2399999999999999,
+				"tightU": 0.65,
+				"tightK": 0.71,
+				"flip": false
+			},
+			"evals": 58,
+			"note": "no move; steps halved"
+		}
+	],
+	"stalled": true,
+	"gates": {
+		"closed": true,
+		"sitesValid": true,
+		"alternates": true,
+		"inkInBand": true,
+		"inkOutsideFrac": 0,
+		"loopsPerPeriod": true,
+		"oursSide": {
+			"window": [
+				23,
+				29
+			],
+			"loops": 3,
+			"perPeriod": 3,
+			"sizes": [
+				24,
+				24,
+				24
+			]
+		},
+		"refSide": {
+			"window": [
+				23,
+				29
+			],
+			"loops": 3,
+			"perPeriod": 3,
+			"sizes": [
+				24,
+				24,
+				24
+			]
+		},
+		"noFallback": true,
+		"fallbackSites": 0,
+		"fairness": true,
+		"curves": 248,
+		"wigglyCurves": 0,
+		"all": true
+	},
+	"met": true
+}

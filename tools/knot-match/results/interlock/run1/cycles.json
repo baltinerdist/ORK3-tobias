@@ -1,0 +1,99 @@
+{
+	"ref": "analyze/refs/interlock-two-corners.png",
+	"seed": "analyze/seed-two-corners.json",
+	"target": 0.85,
+	"ceiling": {
+		"TL": 0.874,
+		"BL": 0.8751,
+		"left": 0.92,
+		"top": 0.8809,
+		"bottom": 0.8808
+	},
+	"cycles": [
+		{
+			"cycle": 0,
+			"nominal": {
+				"TL": 0.8024,
+				"BL": 0.8057,
+				"left": 0.7631,
+				"top": 0.7682,
+				"bottom": 0.7673
+			},
+			"mean": {
+				"TL": 0.8031,
+				"BL": 0.8061,
+				"left": 0.7657,
+				"top": 0.7699,
+				"bottom": 0.7699
+			},
+			"minNominal": 0.7631,
+			"minMean": 0.7657,
+			"avgMean": 0.7829,
+			"gates": {
+				"sitesValid": true,
+				"closed": true,
+				"alternates": true
+			},
+			"loops": 36,
+			"params": {
+				"s": 25.3854,
+				"origin": [
+					51.936,
+					45.994
+				],
+				"w": 14.0000481,
+				"ink": 4.00073904,
+				"u": 0.5,
+				"k": 0.39,
+				"tightU": 0.5,
+				"tightK": 0.39,
+				"flip": false
+			},
+			"evals": 1,
+			"note": "seed"
+		},
+		{
+			"cycle": 1,
+			"nominal": {
+				"TL": 0.9077,
+				"BL": 0.9121,
+				"left": 0.9191,
+				"top": 0.923,
+				"bottom": 0.9202
+			},
+			"mean": {
+				"TL": 0.9105,
+				"BL": 0.9116,
+				"left": 0.9186,
+				"top": 0.9204,
+				"bottom": 0.92
+			},
+			"minNominal": 0.9077,
+			"minMean": 0.9105,
+			"avgMean": 0.9162,
+			"gates": {
+				"sitesValid": true,
+				"closed": true,
+				"alternates": true
+			},
+			"loops": 36,
+			"params": {
+				"s": 25.3854,
+				"origin": [
+					52.186,
+					46.244
+				],
+				"w": 13.0000481,
+				"ink": 3.4007390399999995,
+				"u": 0.5900000000000001,
+				"k": 0.2699999999999999,
+				"tightU": 0.5,
+				"tightK": 0.39,
+				"flip": false
+			},
+			"evals": 34,
+			"note": "kept 16 moves"
+		}
+	],
+	"met": true
+}

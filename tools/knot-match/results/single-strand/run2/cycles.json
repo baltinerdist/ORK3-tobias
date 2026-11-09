@@ -1,0 +1,199 @@
+{
+	"ref": "analyze/refs/single-strand-dark-corners.png",
+	"seed": "analyze/seed-single-strand.json",
+	"target": 0.85,
+	"band": 70,
+	"ceiling": {
+		"TL": 0.8824,
+		"TR": 0.9052,
+		"BL": 0.8923,
+		"BR": 0.9053,
+		"left": 0.862,
+		"right": 0.8649,
+		"top": 0.8346,
+		"bottom": 0.8321
+	},
+	"fairnessRef": 19,
+	"cycles": [
+		{
+			"cycle": 0,
+			"nominal": {
+				"TL": 0.8846,
+				"TR": 0.8631,
+				"BL": 0.8702,
+				"BR": 0.855,
+				"left": 0.8611,
+				"right": 0.9748,
+				"top": 0.915,
+				"bottom": 0.9464
+			},
+			"mean": {
+				"TL": 0.8794,
+				"TR": 0.8703,
+				"BL": 0.8666,
+				"BR": 0.852,
+				"left": 0.8562,
+				"right": 0.9606,
+				"top": 0.8986,
+				"bottom": 0.9104
+			},
+			"minNominal": 0.855,
+			"minMean": 0.852,
+			"avgMean": 0.8868,
+			"evals": 1,
+			"note": "seed",
+			"stroke": {
+				"w": 6,
+				"ink": 1.75,
+				"wS": 7,
+				"inkS": 1.75
+			},
+			"sideOffsets": {
+				"L": 0,
+				"R": 0,
+				"T": 0,
+				"B": 0
+			},
+			"inkOutside": 0
+		},
+		{
+			"cycle": 1,
+			"nominal": {
+				"TL": 0.9027,
+				"TR": 0.873,
+				"BL": 0.8748,
+				"BR": 0.8699,
+				"left": 0.8682,
+				"right": 0.9462,
+				"top": 0.9274,
+				"bottom": 0.9457
+			},
+			"mean": {
+				"TL": 0.8869,
+				"TR": 0.8816,
+				"BL": 0.8726,
+				"BR": 0.8707,
+				"left": 0.8993,
+				"right": 0.9605,
+				"top": 0.9092,
+				"bottom": 0.9134
+			},
+			"minNominal": 0.8682,
+			"minMean": 0.8707,
+			"avgMean": 0.8993,
+			"evals": 381,
+			"note": "kept 53 moves",
+			"stroke": {
+				"w": 6,
+				"ink": 1.75,
+				"wS": 7,
+				"inkS": 1.75
+			},
+			"sideOffsets": {
+				"L": 0.125,
+				"R": -0.125,
+				"T": 0,
+				"B": 0
+			},
+			"inkOutside": 0
+		},
+		{
+			"cycle": 2,
+			"nominal": {
+				"TL": 0.9083,
+				"TR": 0.8763,
+				"BL": 0.8797,
+				"BR": 0.8722,
+				"left": 0.8718,
+				"right": 0.9462,
+				"top": 0.9322,
+				"bottom": 0.9457
+			},
+			"mean": {
+				"TL": 0.8918,
+				"TR": 0.886,
+				"BL": 0.8787,
+				"BR": 0.875,
+				"left": 0.9014,
+				"right": 0.9604,
+				"top": 0.9117,
+				"bottom": 0.9128
+			},
+			"minNominal": 0.8718,
+			"minMean": 0.875,
+			"avgMean": 0.9022,
+			"evals": 736,
+			"note": "kept 27 moves",
+			"stroke": {
+				"w": 6,
+				"ink": 1.75,
+				"wS": 7,
+				"inkS": 1.75
+			},
+			"sideOffsets": {
+				"L": 0.125,
+				"R": -0.125,
+				"T": 0,
+				"B": 0
+			},
+			"inkOutside": 0
+		},
+		{
+			"cycle": 3,
+			"nominal": {
+				"TL": 0.9093,
+				"TR": 0.8786,
+				"BL": 0.883,
+				"BR": 0.8721,
+				"left": 0.8718,
+				"right": 0.9462,
+				"top": 0.9322,
+				"bottom": 0.9457
+			},
+			"mean": {
+				"TL": 0.8947,
+				"TR": 0.8871,
+				"BL": 0.8798,
+				"BR": 0.8793,
+				"left": 0.9015,
+				"right": 0.9604,
+				"top": 0.9117,
+				"bottom": 0.9128
+			},
+			"minNominal": 0.8718,
+			"minMean": 0.8793,
+			"avgMean": 0.9034,
+			"evals": 1088,
+			"note": "kept 24 moves",
+			"stroke": {
+				"w": 6,
+				"ink": 1.75,
+				"wS": 7,
+				"inkS": 1.75
+			},
+			"sideOffsets": {
+				"L": 0.125,
+				"R": -0.125,
+				"T": 0,
+				"B": 0
+			},
+			"inkOutside": 0
+		}
+	],
+	"stalled": true,
+	"gates": {
+		"closed": true,
+		"singleStrand": true,
+		"topology": true,
+		"crossingsPerCorner": 10,
+		"alternates": true,
+		"inkInBand": true,
+		"inkOutsideFrac": 0,
+		"noFallback": true,
+		"fairness": true,
+		"curvatureSignChanges": 19,
+		"curvatureSignChangesRef": 19,
+		"all": true
+	},
+	"met": true
+}

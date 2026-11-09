@@ -1,0 +1,8 @@
+{
+	"seed": "analyze/seed-two-corners.json",
+	"params": "results/interlock/run2/best-params.json (origin moved to [40, 40])",
+	"frame": { "AW": 46, "AH": 58, "pagePx": [1248, 1552], "aspect": 0.804 },
+	"cuts": { "top": 14, "bottom": 14, "rule": "end wall at column E and AW - E; E = 2 (mod 6) closes the band on a complete piece; E = 0 (mod 6) gives a pinched single wrap; odd E is invalid on the lattice; E = 8 runs the corner straight into the end" },
+	"openingPx": { "top": 462, "fractionOfWidth": 0.37, "ashReference": "about 0.42 (end origin x 367 of 1275)" },
+	"gates": { "sitesValid": true, "closed": true, "alternates": true, "loops": 30 }
+}

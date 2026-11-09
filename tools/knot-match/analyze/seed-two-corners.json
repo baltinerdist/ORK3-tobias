@@ -1,0 +1,94 @@
+{
+	"version": 1,
+	"source": "analyze/refs/interlock-two-corners.png",
+	"image": {
+		"w": 586,
+		"h": 1404
+	},
+	"grid": {
+		"s": 25.3854,
+		"originPx": [
+			51.936,
+			45.994
+		],
+		"angle": 0,
+		"latticeResidualPx": 0.616,
+		"parity": 1
+	},
+	"stroke": {
+		"strand": 0.5515,
+		"ink": 0.1576,
+		"strandPx": 14,
+		"inkPx": 4
+	},
+	"curve": {
+		"u": 0.5,
+		"k": 0.39,
+		"tightU": 0.5,
+		"tightK": 0.39
+	},
+	"side": {
+		"width": 4,
+		"period": 6,
+		"rows": [
+			" X X ",
+			"E X W",
+			" X X ",
+			"E X W",
+			" X X ",
+			"E H W"
+		],
+		"periodSupport": 53
+	},
+	"top": {
+		"width": 4,
+		"period": 6,
+		"rows": [
+			" X X ",
+			"S X N",
+			" X X ",
+			"S X N",
+			" X X ",
+			"S V N"
+		],
+		"transposeOfSide": true
+	},
+	"corner": {
+		"size": 7,
+		"rows": [
+			" S S S ",
+			"E X X X",
+			" X X V ",
+			"E X X X",
+			" X X X ",
+			"E H X W",
+			" X X N "
+		],
+		"transposeSymmetric": true
+	},
+	"symmetry": {
+		"BL": "mirrorY",
+		"mirrorY": {
+			"ok": 286,
+			"n": 286,
+			"frac": 1
+		},
+		"rot90": {
+			"ok": 195,
+			"n": 231,
+			"frac": 0.8441558441558441
+		},
+		"right": "mirrorX (assumed: not in the reference)"
+	},
+	"over": {
+		"rule": "'\\\\' over where b is odd",
+		"flip": false,
+		"consistency": 1,
+		"crossings": 118
+	},
+	"frame": {
+		"H": 52,
+		"Hmod": 4,
+		"aVisible": 20
+	}
+}
