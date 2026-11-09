@@ -68,7 +68,10 @@
 		// re-render non-editable so token chips don't print
 		R.renderPage(page, current, { tokens: B.tokens || {}, heraldry: B.heraldry || {}, packBase: B.packBase, libBase: B.libBase, editable: false });
 		R.autoscaleZones(page);
-		html2canvas(page, { scale: 3, useCORS: true, backgroundColor: null }).then(function (canvas) {
+		// the knot border fetches its sprite on first use; rasterise only once it has drawn
+		(window.ScrollBorder ? window.ScrollBorder.ready(page) : Promise.resolve()).then(function () {
+			return html2canvas(page, { scale: 3, useCORS: true, backgroundColor: null });
+		}).then(function (canvas) {
 			var land = (current.orientation === 'landscape');
 			var pdf = new jspdf.jsPDF({ orientation: land ? 'landscape' : 'portrait', unit: 'in', format: 'letter' });
 			var w = land ? 11 : 8.5, h = land ? 8.5 : 11;

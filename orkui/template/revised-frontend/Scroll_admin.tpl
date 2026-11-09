@@ -151,7 +151,8 @@ window.SA = {
 };
 </script>
 <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
-<script src="<?= HTTP_TEMPLATE ?>revised-frontend/scroll/scroll-knot.js?v=<?= filemtime(DIR_TEMPLATE.'revised-frontend/scroll/scroll-knot.js') ?>"></script>
+<script>window.SC_KNOT = <?= json_encode($knot_config ?? null, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
+<script src="<?= HTTP_TEMPLATE ?>revised-frontend/scroll/scroll-border.js?v=<?= filemtime(DIR_TEMPLATE.'revised-frontend/scroll/scroll-border.js') ?>"></script>
 <script src="<?= HTTP_TEMPLATE ?>revised-frontend/scroll/scroll-render.js?v=<?= filemtime(DIR_TEMPLATE.'revised-frontend/scroll/scroll-render.js') ?>"></script>
 <script>
 (function () {

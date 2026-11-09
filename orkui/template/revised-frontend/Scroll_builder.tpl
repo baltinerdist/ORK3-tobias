@@ -30,6 +30,7 @@ window.SC_BUILDER = {
 </script>
 <script src="<?= HTTP_TEMPLATE ?>revised-frontend/vendor/html2canvas.min.js?v=<?= filemtime(DIR_TEMPLATE.'revised-frontend/vendor/html2canvas.min.js') ?>"></script>
 <script src="<?= HTTP_TEMPLATE ?>revised-frontend/vendor/jspdf.umd.min.js?v=<?= filemtime(DIR_TEMPLATE.'revised-frontend/vendor/jspdf.umd.min.js') ?>"></script>
-<script src="<?= HTTP_TEMPLATE ?>revised-frontend/scroll/scroll-knot.js?v=<?= filemtime(DIR_TEMPLATE.'revised-frontend/scroll/scroll-knot.js') ?>"></script>
+<script>window.SC_KNOT = <?= json_encode($knot_config ?? null, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
+<script src="<?= HTTP_TEMPLATE ?>revised-frontend/scroll/scroll-border.js?v=<?= filemtime(DIR_TEMPLATE.'revised-frontend/scroll/scroll-border.js') ?>"></script>
 <script src="<?= HTTP_TEMPLATE ?>revised-frontend/scroll/scroll-render.js?v=<?= filemtime(DIR_TEMPLATE.'revised-frontend/scroll/scroll-render.js') ?>"></script>
 <script src="<?= HTTP_TEMPLATE ?>revised-frontend/scroll/scroll-builder.js?v=<?= filemtime(DIR_TEMPLATE.'revised-frontend/scroll/scroll-builder.js') ?>"></script>

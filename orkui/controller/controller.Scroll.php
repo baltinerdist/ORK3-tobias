@@ -10,6 +10,18 @@ class Controller_Scroll extends Controller
         $this->load_model('Kingdom');
         $this->load_model('Park');
 
+        // The designer's knotwork border draws Scrollery's Custom Border knots
+        // (scroll-border.js); every Scroll page that renders a template needs the list.
+        $knotStyles = array();
+        foreach (Scroll::KNOT_STYLES as $n => $def) {
+            $knotStyles[(string)$n] = array('sprite' => $def['sprite'], 'symbol' => $def['symbol']);
+        }
+        $this->data['knot_config'] = array(
+            'base'     => HTTP_ASSETS . 'scrolls/',
+            'styles'   => $knotStyles,
+            'defaults' => array('color1' => Scroll::DEFAULT_DESIGN['color1'], 'color2' => Scroll::DEFAULT_DESIGN['color2']),
+        );
+
         $this->data['menu']['scroll'] = array( 'url' => UIR.'Scroll/builder', 'display' => 'Scroll Generator' );
         $this->data['page_title'] = 'Scroll Generator';
     }

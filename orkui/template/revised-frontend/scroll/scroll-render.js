@@ -58,10 +58,9 @@
 		var op = (tpl.bg_opacity == null || isNaN(+tpl.bg_opacity)) ? 100 : Math.max(0, Math.min(100, +tpl.bg_opacity));
 		if (op < 100) { bg.style.opacity = (op / 100).toFixed(3); }
 		pageEl.appendChild(bg);
-		// knotwork border layer (parametric, drawn between bg and slots)
-		if (tpl.knot && tpl.knot.enabled && w.ScrollKnot) {
-			var kd = (tpl.orientation === 'landscape') ? [1056, 816] : [816, 1056];
-			pageEl.appendChild(w.ScrollKnot.render(tpl.knot, kd[0], kd[1], tpl.slots || []));
+		// knotwork border layer (Scrollery's Custom Border knots, drawn between bg and slots)
+		if (tpl.knot && tpl.knot.enabled && w.ScrollBorder) {
+			pageEl.appendChild(w.ScrollBorder.render(tpl.knot, tpl.orientation, tpl.slots || []));
 		}
 		// slots
 		(tpl.slots || []).forEach(function (s) {

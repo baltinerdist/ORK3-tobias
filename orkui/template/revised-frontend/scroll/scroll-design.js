@@ -42,26 +42,13 @@
 	var LOCATIONS = ['full_border', 'border_side', 'center_image', 'background'];
 	var PLACEMENT_LABELS = { full_border: 'Full Border', border_side: 'Side Border', center_image: 'Floating Image', background: 'Background' };
 
+	// colour pairs for the knot border (style is chosen separately)
 	var KNOT_PRESETS = {
-		Flame: { enabled: true, pattern: 'plait', band: { inset: 1.8, width: 5.5 }, strands: { count: 3, thickness: 0.48, scale: 0.85 },
-			colors: { strands: ['#b3231a', '#e4670f', '#f5a623'], outline: '#2a0c05' },
-			gradient: { enabled: true, angle: 90, stops: [{ at: 0, color: '#a11212' }, { at: 0.55, color: '#e4670f' }, { at: 1, color: '#f7c948' }] },
-			corners: 'pointed',
-			breaks: [{ edge: 'top', at: 50, width: 10 }, { edge: 'bottom', at: 50, width: 26 }], autoBreak: { enabled: true, padding: 2 } },
-		Dragon: { enabled: true, pattern: 'openweave', band: { inset: 2, width: 6.2 }, strands: { count: 4, thickness: 0.55, scale: 1 },
-			colors: { strands: ['#2e6b2f', '#e9b840'], outline: '#12240f' }, gradient: { enabled: false, angle: 90, stops: [{ at: 0, color: '#2e6b2f' }, { at: 1, color: '#e9b840' }] },
-			corners: 'woven',
-			breaks: [{ edge: 'bottom', at: 50, width: 26 }], autoBreak: { enabled: true, padding: 2 } },
-		Crown: { enabled: true, pattern: 'openweave', band: { inset: 2, width: 6 }, strands: { count: 4, thickness: 0.55, scale: 1 },
-			colors: { strands: ['#2b2b2e', '#e7b83b'], outline: '#101012' }, gradient: { enabled: false, angle: 90, stops: [{ at: 0, color: '#2b2b2e' }, { at: 1, color: '#e7b83b' }] },
-			corners: 'woven',
-			breaks: [{ edge: 'bottom', at: 50, width: 30 }], autoBreak: { enabled: true, padding: 2 } },
-		Smith: { enabled: true, pattern: 'twist', band: { inset: 2, width: 5.8 }, strands: { count: 2, thickness: 0.6, scale: 1 },
-			colors: { strands: ['#8a6844', '#7b8494'], outline: '#241a10' }, gradient: { enabled: false, angle: 90, stops: [{ at: 0, color: '#8a6844' }, { at: 1, color: '#7b8494' }] },
-			corners: 'woven',
-			breaks: [{ edge: 'bottom', at: 50, width: 30 }], autoBreak: { enabled: true, padding: 2 } }
+		Flame:  { color1: '#b3231a', color2: '#f5a623' },
+		Dragon: { color1: '#2e6b2f', color2: '#e9b840' },
+		Crown:  { color1: '#2b2b2e', color2: '#e7b83b' },
+		Smith:  { color1: '#8a6844', color2: '#7b8494' }
 	};
-	var KNOT_PATTERNS = ['plait', 'openweave', 'twist'];
 
 	// which catalog collection suits a given slot placement
 	function collectionForPlacement(loc) {
@@ -204,14 +191,14 @@
 		R.autoscaleZones(page); R.fitToStage(page, stage);
 		mountGrid(); wireDrag(); markSelected(); refreshPresetChips();
 	}
-	// preset chips highlight only while tpl.knot still deep-equals that preset;
-	// any manual border edit clears the highlight without rebuilding the section
+	// a colour-pair chip stays highlighted while the border still uses exactly that pair
 	function refreshPresetChips() {
 		var row = document.querySelector('#scKnot .sc-presets');
-		if (!row) { return; }
-		var cur = JSON.stringify(tpl.knot || null);
+		if (!row || !window.ScrollBorder) { return; }
+		var k = window.ScrollBorder.normalize(tpl.knot);
 		row.querySelectorAll('.sc-type').forEach(function (b) {
-			b.classList.toggle('is-sel', JSON.stringify(KNOT_PRESETS[b.textContent]) === cur);
+			var p = KNOT_PRESETS[b.textContent];
+			b.classList.toggle('is-sel', !!p && p.color1.toLowerCase() === k.color1.toLowerCase() && p.color2.toLowerCase() === k.color2.toLowerCase());
 		});
 	}
 	function pageRect() { return page.getBoundingClientRect(); }
@@ -449,8 +436,9 @@
 	}
 
 	// ---- inspector: Border (knotwork) ----
+	// Scrollery's Custom Border knots (scroll-border.js): a style and two colours.
 	function knotCfg() {
-		if (!tpl.knot) { tpl.knot = { enabled: false }; }
+		tpl.knot = window.ScrollBorder ? window.ScrollBorder.normalize(tpl.knot) : (tpl.knot || { enabled: false });
 		return tpl.knot;
 	}
 	function checkbox(labelText, val, on) {
@@ -475,114 +463,36 @@
 	function buildKnot() {
 		var box = document.getElementById('scKnot'); if (!box) { return; }
 		box.innerHTML = '';
-		if (!window.ScrollKnot) { box.appendChild(el('p', 'sc-empty', 'Border engine failed to load.')); return; }
+		if (!window.ScrollBorder) { box.appendChild(el('p', 'sc-empty', 'Border failed to load.')); return; }
 		var k = knotCfg();
-		// presets — applying one replaces the whole knot config, so a customized border
-		// (one that no longer matches any preset) is gated behind an in-product confirm.
-		function knotIsCustomized() {
-			if (!tpl.knot || !tpl.knot.enabled) { return false; }
-			var cur = JSON.stringify(tpl.knot);
-			return Object.keys(KNOT_PRESETS).every(function (n) { return JSON.stringify(KNOT_PRESETS[n]) !== cur; });
-		}
-		var pr = el('div', 'sc-type-row sc-presets');
-		Object.keys(KNOT_PRESETS).forEach(function (name) {
-			var applied = JSON.stringify(tpl.knot || null) === JSON.stringify(KNOT_PRESETS[name]);
-			var b = el('button', 'sc-type' + (applied ? ' is-sel' : ''), name); b.type = 'button';
-			function apply() { tpl.knot = JSON.parse(JSON.stringify(KNOT_PRESETS[name])); render(); buildKnot(); }
-			b.onclick = function () {
-				if (knotIsCustomized()) {
-					scConfirm({
-						title: 'Replace border settings?',
-						body: 'Applying the ' + name + ' preset replaces your current border customizations.',
-						confirmLabel: 'Apply preset', onConfirm: apply
-					});
-				} else { apply(); }
-			};
-			pr.appendChild(b);
-		});
-		box.appendChild(field('Presets', pr));
 		box.appendChild(checkbox('Knotwork border', k.enabled, function (v) { k.enabled = v; render(); buildKnot(); }));
 		if (!k.enabled) { return; }
-		// normalize once so sub-objects exist for editing
-		var full = window.ScrollKnot._geom.norm(k);
-		if (k.corners === 'hook') { k.corners = full.corners; }   // legacy value -> pointed
-		['pattern', 'band', 'strands', 'colors', 'gradient', 'corners', 'breaks', 'autoBreak'].forEach(function (key) {
-			if (k[key] == null) { k[key] = full[key]; }
+		var st = el('div', 'sc-type-row');
+		window.ScrollBorder.styles().forEach(function (key) {
+			var n = parseInt(key, 10);
+			var b = el('button', 'sc-type' + (k.style === n ? ' is-sel' : ''), String(n)); b.type = 'button';
+			b.setAttribute('aria-pressed', k.style === n ? 'true' : 'false');
+			b.onclick = function () { k.style = n; render(); buildKnot(); };
+			st.appendChild(b);
 		});
-		k.enabled = true;
-		// pattern thumbnails
-		var pats = el('div', 'sc-knot-pats');
-		KNOT_PATTERNS.forEach(function (p) {
-			var b = el('button', 'sc-knot-pat' + (k.pattern === p ? ' is-sel' : '')); b.type = 'button'; b.setAttribute('data-tip', p);
-			var cfg = JSON.parse(JSON.stringify(k)); cfg.pattern = p;
-			b.appendChild(window.ScrollKnot.swatch(cfg, 150, 34));
-			b.onclick = function () { k.pattern = p; render(); buildKnot(); };
-			pats.appendChild(b);
-		});
-		box.appendChild(field('Pattern', pats));
-		var row1 = el('div', 'sc-row');
-		row1.appendChild(slider('Inset', k.band.inset, 0.5, 6, 0.1, function (v) { k.band.inset = v; render(); }));
-		row1.appendChild(slider('Width', k.band.width, 3, 10, 0.1, function (v) { k.band.width = v; render(); }));
-		box.appendChild(row1);
-		var row2 = el('div', 'sc-row');
-		row2.appendChild(slider('Strands', k.strands.count, 2, 4, 1, function (v) { k.strands.count = v; render(); buildKnot(); }));
-		row2.appendChild(slider('Thickness', k.strands.thickness, 0.3, 0.9, 0.05, function (v) { k.strands.thickness = v; render(); }));
-		box.appendChild(row2);
-		var row3 = el('div', 'sc-row');
-		row3.appendChild(slider('Density', k.strands.scale, 0.6, 1.8, 0.05, function (v) { k.strands.scale = v; render(); }));
-		box.appendChild(row3);
-		// strand colors
+		box.appendChild(field('Style', st));
 		var cc = el('div', 'sc-chips');
-		k.colors.strands.forEach(function (hex, i) {
-			var swatchWrap = el('span', 'sc-knot-color');
-			var ci = el('input'); ci.type = 'color'; ci.value = hex;
-			ci.addEventListener('input', function () { k.colors.strands[i] = ci.value || hex; render(); });
-			swatchWrap.appendChild(ci);
-			if (k.colors.strands.length > 1) {
-				var x = el('button', 'sc-knot-color__del', '×'); x.type = 'button'; x.setAttribute('data-tip', 'Remove color');
-				x.onclick = function () { k.colors.strands.splice(i, 1); render(); buildKnot(); };
-				swatchWrap.appendChild(x);
-			}
-			cc.appendChild(swatchWrap);
+		[['color1', 'Primary'], ['color2', 'Secondary']].forEach(function (pair) {
+			var wrap = el('span', 'sc-knot-color');
+			var ci = el('input'); ci.type = 'color'; ci.value = k[pair[0]];
+			ci.setAttribute('aria-label', pair[1] + ' colour'); ci.setAttribute('data-tip', pair[1]);
+			ci.addEventListener('input', function () { k[pair[0]] = ci.value || k[pair[0]]; render(); });
+			wrap.appendChild(ci); cc.appendChild(wrap);
 		});
-		if (k.colors.strands.length < 4) {
-			var add = el('button', 'sc-chip', '+'); add.type = 'button'; add.setAttribute('data-tip', 'Add strand color');
-			add.onclick = function () { k.colors.strands.push('#888888'); render(); buildKnot(); };
-			cc.appendChild(add);
-		}
-		box.appendChild(field('Strand colors', cc));
-		box.appendChild(field('Outline', input(k.colors.outline || '#1a1a1a', 'color', function (v) { k.colors.outline = v || '#1a1a1a'; render(); })));
-		// gradient
-		box.appendChild(checkbox('Gradient tint', k.gradient.enabled, function (v) { k.gradient.enabled = v; render(); buildKnot(); }));
-		if (k.gradient.enabled) {
-			box.appendChild(slider('Angle', k.gradient.angle, 0, 360, 5, function (v) { k.gradient.angle = v; render(); }));
-			var gs = el('div', 'sc-chips');
-			k.gradient.stops.forEach(function (st, i) {
-				var gi = el('input'); gi.type = 'color'; gi.value = st.color;
-				gi.addEventListener('input', function () { st.color = gi.value || st.color; render(); });
-				gs.appendChild(gi);
-			});
-			box.appendChild(field('Gradient colors', gs));
-		}
-		box.appendChild(field('Corners', select([{ value: 'woven', label: 'Woven' }, { value: 'pointed', label: 'Pointed' }],
-			k.corners, function (v) { k.corners = v; render(); })));
-		// manual breaks
-		var brBox = el('div');
-		k.breaks.forEach(function (b, i) {
-			var row = el('div', 'sc-knot-feat');
-			row.appendChild(field('Edge', select(['top', 'bottom', 'left', 'right'], b.edge, function (v) { b.edge = v; render(); })));
-			row.appendChild(slider('Position', b.at, 0, 100, 1, function (v) { b.at = v; render(); }));
-			row.appendChild(slider('Width', b.width, 4, 60, 1, function (v) { b.width = v; render(); }));
-			var del = el('button', 'sc-chip', 'Remove'); del.type = 'button';
-			del.onclick = function () { k.breaks.splice(i, 1); render(); buildKnot(); };
-			row.appendChild(del);
-			brBox.appendChild(row);
+		box.appendChild(field('Colours', cc));
+		var pr = el('div', 'sc-type-row sc-presets');
+		Object.keys(KNOT_PRESETS).forEach(function (name) {
+			var b = el('button', 'sc-type', name); b.type = 'button';
+			b.onclick = function () { k.color1 = KNOT_PRESETS[name].color1; k.color2 = KNOT_PRESETS[name].color2; render(); buildKnot(); };
+			pr.appendChild(b);
 		});
-		brBox.appendChild(checkbox('Auto-break border around flagged art', k.autoBreak.enabled, function (v) { k.autoBreak.enabled = v; render(); }));
-		var addBr = el('button', 'sc-chip', '+ Break'); addBr.type = 'button';
-		addBr.onclick = function () { k.breaks.push({ edge: 'bottom', at: 50, width: 20 }); render(); buildKnot(); };
-		brBox.appendChild(addBr);
-		box.appendChild(field('Breaks', brBox));
+		box.appendChild(field('Colour presets', pr));
+		refreshPresetChips();
 	}
 
 	// ---- inspector: Elements list ----
@@ -729,8 +639,8 @@
 			box.appendChild(checkbox('Break the border around this art', !!s.break_border, function (v) {
 				s.break_border = v; render();
 			}));
-			if (s.break_border) {
-				box.appendChild(el('p', 'sc-hint', 'Requires auto-break to be on in Border \u2192 Breaks.'));
+			if (s.break_border && !(tpl.knot && tpl.knot.enabled)) {
+				box.appendChild(el('p', 'sc-hint', 'Takes effect when the knotwork border is on.'));
 			}
 			if (s.source_type === 'heraldry') {
 				buildHeraldry(box, s);
