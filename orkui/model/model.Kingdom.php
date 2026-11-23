@@ -177,6 +177,12 @@ class Model_Kingdom extends Model
         return $this->Report->GetKingdomParkAverages(array('KingdomId' => $kingdom_id));
     }
 
+    /** About-tab "Our Next Event": the kingdom's own next published events. */
+    public function get_kingdom_next_events($kingdom_id, $limit = 2)
+    {
+        return $this->Kingdom->GetKingdomNextEvents((int)$kingdom_id, (int)$limit);
+    }
+
     public function get_kingdom_events($kingdom_id)
     {
         $t = array();

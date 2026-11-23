@@ -384,6 +384,71 @@ trait OrgDesign
     }
 
     // ---------------------------------------------------------------------
+    // "Our Next Event" (About tab widget)
+    // ---------------------------------------------------------------------
+
+    /**
+     * The next upcoming published events for an org, one row per event (its
+     * next occurrence), soonest first. An event already under way counts.
+     * Location falls back from the occurrence's own city/province to the park
+     * it is held at, then to the event's home park.
+     *
+     * @param string $scopeSql trusted WHERE fragment on alias e (callers build it from ints)
+     * @param int    $limit
+     * @return array list of ['EventId','DetailId','Name','Start','End','City','Province','InProgress']
+     */
+    protected function GetNextDesignEvents($scopeSql, $limit = 2)
+    {
+        $limit = max(1, (int)$limit);
+        $sql = 'SELECT e.event_id, e.name, cd.event_calendardetail_id, cd.event_start, cd.event_end,
+                       COALESCE(NULLIF(cd.city, \'\'), NULLIF(ap.city, \'\'), NULLIF(ep.city, \'\'), \'\') AS city,
+                       COALESCE(NULLIF(cd.province, \'\'), NULLIF(ap.province, \'\'), NULLIF(ep.province, \'\'), \'\') AS province
+                FROM ' . DB_PREFIX . 'event e
+                JOIN ' . DB_PREFIX . 'event_calendardetail cd ON cd.event_id = e.event_id
+                LEFT JOIN ' . DB_PREFIX . 'park ap ON ap.park_id = cd.at_park_id AND cd.at_park_id > 0
+                LEFT JOIN ' . DB_PREFIX . 'park ep ON ep.park_id = e.park_id AND e.park_id > 0
+                WHERE ' . $scopeSql . '
+                  AND (e.status IS NULL OR e.status <> \'draft\')
+                  AND (cd.event_end >= NOW()
+                       OR ((cd.event_end IS NULL OR cd.event_end < cd.event_start) AND cd.event_start >= CURDATE()))
+                ORDER BY cd.event_start, cd.event_calendardetail_id
+                LIMIT ' . ($limit * 5);
+        $this->db->Clear();
+        $rs = $this->db->DataSet($sql);
+        $out = [];
+        $seen = [];
+        $now = time();
+        while ($rs && $rs->Next()) {
+            $eid = (int)$rs->event_id;
+            if ($eid <= 0 || isset($seen[$eid])) {
+                continue;
+            }
+            $seen[$eid] = true;
+            $start = (string)$rs->event_start;
+            $end   = (string)$rs->event_end;
+            $startTs = strtotime($start);
+            $endTs   = ($end !== '' && strpos($end, '0000') !== 0) ? strtotime($end) : false;
+            if ($endTs !== false && $endTs < $startTs) {
+                $endTs = false;
+            }
+            $out[] = [
+                'EventId'    => $eid,
+                'DetailId'   => (int)$rs->event_calendardetail_id,
+                'Name'       => (string)$rs->name,
+                'Start'      => $start,
+                'End'        => $endTs !== false ? $end : '',
+                'City'       => trim((string)$rs->city),
+                'Province'   => trim((string)$rs->province),
+                'InProgress' => $startTs !== false && $startTs <= $now && $endTs !== false && $endTs >= $now,
+            ];
+            if (count($out) >= $limit) {
+                break;
+            }
+        }
+        return $out;
+    }
+
+    // ---------------------------------------------------------------------
     // Custom-milestone CRUD (generic)
     // ---------------------------------------------------------------------
 

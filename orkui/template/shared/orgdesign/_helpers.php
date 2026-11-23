@@ -210,3 +210,32 @@ if (!function_exists('org_design_reign_theme')) {
         return array_key_exists($key, org_design_reign_themes()) ? $key : 'gold';
     }
 }
+
+if (!function_exists('org_design_event_when')) {
+    /**
+     * Human-readable event dates for the "Our Next Event" widget:
+     *   one day           Sat, Mar 14, 2026
+     *   same month        Mar 14–16, 2026
+     *   across months     Mar 30 – Apr 2, 2026
+     *   across years      Dec 30, 2026 – Jan 2, 2027
+     * $short drops the weekday on a single day (the smaller second slot).
+     */
+    function org_design_event_when(string $start, string $end = '', bool $short = false): string
+    {
+        $s = strtotime($start);
+        if ($s === false) {
+            return '';
+        }
+        $e = ($end !== '') ? strtotime($end) : false;
+        if ($e === false || date('Y-m-d', $e) === date('Y-m-d', $s)) {
+            return date($short ? 'M j, Y' : 'D, M j, Y', $s);
+        }
+        if (date('Y', $s) !== date('Y', $e)) {
+            return date('M j, Y', $s) . ' – ' . date('M j, Y', $e);
+        }
+        if (date('m', $s) !== date('m', $e)) {
+            return date('M j', $s) . ' – ' . date('M j, Y', $e);
+        }
+        return date('M j', $s) . '–' . date('j, Y', $e);
+    }
+}

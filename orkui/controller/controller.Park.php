@@ -293,6 +293,7 @@ class Controller_Park extends Controller
         $this->data['event_summary']        = $eventBundle['event_summary'];
         $this->data['pkEventMapLocations']  = $eventBundle['pkEventMapLocations'];
         $this->data['pkEventMapNoLocCount'] = $eventBundle['pkEventMapNoLocCount'];
+        $this->data['NextEvents']           = $this->Park->get_park_next_events($pid);
         $this->data['park_players']         = $this->ParkProfile->players_roster($pid);
 
         $averages = $this->ParkProfile->attendance_averages($pid);

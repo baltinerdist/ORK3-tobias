@@ -101,6 +101,12 @@ class Model_Park extends Model
         return $r['ParkInfo']['ParkName'];
     }
 
+    /** About-tab "Our Next Event": this park's next published events. */
+    public function get_park_next_events($park_id, $limit = 2)
+    {
+        return $this->Park->GetParkNextEvents((int)$park_id, (int)$limit);
+    }
+
     public function get_park_events($park_id)
     {
         $r = $this->Search->Search_Event(null, null, $park_id, null, null, null);

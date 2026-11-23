@@ -1090,6 +1090,12 @@ class Kingdom extends Ork3
      * shared common-field validators (trait) -> Kingdom-specific extra fields
      * (reign dates + reign lore) -> about_enabled opt-in -> save.
      */
+    /** "Our Next Event": the kingdom's own events only (no park-hosted ones). */
+    public function GetKingdomNextEvents($kingdomId, $limit = 2)
+    {
+        return $this->GetNextDesignEvents('e.kingdom_id = ' . (int)$kingdomId . ' AND e.park_id = 0', $limit);
+    }
+
     /** Current Reign banner styles, key => label (shared with the picker). */
     public static function reignThemes()
     {

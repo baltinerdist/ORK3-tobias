@@ -683,7 +683,7 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
 				<div class="od-reign-banner <?= $knReignThemeClass ?>">
 					<div class="od-reign-head"><i class="fas fa-crown"></i><span><?= htmlspecialchars($knReignTitle) ?></span></div>
 					<div class="od-reign-empty">
-						Showcase the current Monarch &amp; Regent. <a href="#" class="od-reign-link" onclick="event.preventDefault();odOpenDesignModal('about')">Set reign-start dates</a>, add a Message from the Crown, or add lore.
+						Showcase the current Monarch &amp; Regent. <a href="#" class="od-reign-link" onclick="event.preventDefault();odOpenDesignModal('about')">Set reign-start dates</a>, add a Message from the Crown, or share reign details.
 					</div>
 				</div>
 				<?php endif; ?>
@@ -710,6 +710,12 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
 					</div>
 					<?php endif; ?>
 				</div>
+
+				<?php if ($knShowNewAbout):
+					$odNextEvents  = $NextEvents ?? [];
+					$odEventsTabJs = "knActivateTab('events')";
+					include DIR_TEMPLATE . 'shared/orgdesign/_next_events.tpl';
+				endif; ?>
 
 				<?php if (!empty($ourHistoryText) || ($CanManageKingdom ?? false)): ?>
 				<div class="od-about-section od-history-section">

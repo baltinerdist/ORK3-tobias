@@ -371,6 +371,7 @@ class Controller_Kingdom extends Controller
         $this->data['knEventMapLocations']  = $eventBundle['knEventMapLocations'];
         $this->data['knEventMapNoLocCount'] = $eventBundle['knEventMapNoLocCount'];
         $this->data['HasMoreEvents']        = $eventBundle['HasMoreEvents'];
+        $this->data['NextEvents']           = $this->Kingdom->get_kingdom_next_events($kid);
         $this->data['kingdom_park_days']    = $this->KingdomProfile->park_days($kid);
 
         $uid = $kn_uid;

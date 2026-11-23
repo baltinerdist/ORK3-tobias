@@ -950,3 +950,55 @@ html[data-theme="dark"] .od-dm-reign-theme[data-tip]::after { background: var(--
     .od-dm-reign-theme { height: 44px; }
     .od-dm-reign-theme[data-tip]::after { display: none; }
 }
+
+/* --- "Our Next Event" About tile (Kingdom / Park) -------------------------
+   The tile is an .od-about-section; the next-event card inside it recesses
+   to --ork-card-bg (layer convention). The date badge takes the org accent. */
+.od-nextevt-main {
+    display: flex; align-items: center; gap: 14px; margin-top: 10px;
+    padding: 12px 14px; border-radius: 8px;
+    background: var(--ork-card-bg); border: 1px solid var(--ork-border);
+    text-decoration: none; color: var(--ork-text);
+    transition: border-color 0.15s, transform 0.12s;
+}
+.od-nextevt-main:hover { border-color: var(--od-accent, var(--ork-link)); transform: translateY(-1px); text-decoration: none; }
+.od-nextevt-main:focus-visible, .od-nextevt-then:focus-visible, .od-nextevt-all:focus-visible { outline: 2px solid var(--ork-link); outline-offset: 2px; }
+.od-nextevt-cal {
+    flex-shrink: 0; width: 56px; border-radius: 8px; overflow: hidden; text-align: center;
+    border: 1px solid var(--od-accent, var(--ork-link)); background: var(--ork-card-bg);
+}
+.od-nextevt-cal-mon {
+    display: block; padding: 2px 0; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+    background: var(--od-accent, var(--ork-link)); color: #fff; text-shadow: 0 1px 1px rgba(0,0,0,0.35);
+}
+.od-nextevt-cal-day { display: block; padding: 3px 0 5px; font-size: 22px; font-weight: 700; line-height: 1.1; color: var(--ork-text); }
+.od-nextevt-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.od-nextevt-now {
+    align-self: flex-start; padding: 1px 8px; border-radius: 999px;
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+    background: rgba(56, 161, 105, 0.14); color: #276749;
+}
+html[data-theme="dark"] .od-nextevt-now { background: rgba(72, 187, 120, 0.22); color: #9ae6b4; }
+.od-nextevt-name { font-size: 17px; font-weight: 700; line-height: 1.25; color: var(--ork-text); overflow-wrap: anywhere; }
+.od-nextevt-meta { display: flex; align-items: baseline; gap: 7px; font-size: 13px; color: var(--ork-text-secondary); }
+.od-nextevt-meta i { width: 13px; text-align: center; color: var(--ork-text-muted); }
+.od-nextevt-then {
+    display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+    margin-top: 8px; padding: 6px 4px; border-radius: 6px;
+    font-size: 13px; text-decoration: none; color: var(--ork-text-secondary);
+}
+.od-nextevt-then:hover { background: var(--ork-card-bg); text-decoration: none; }
+html[data-theme="dark"] .od-nextevt-then:hover { background: var(--ork-border); }
+.od-nextevt-then-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ork-text-muted); }
+.od-nextevt-then-name { font-weight: 600; color: var(--ork-link); overflow-wrap: anywhere; }
+.od-nextevt-then-date { color: var(--ork-text-muted); }
+.od-nextevt-foot { margin-top: 10px; }
+.od-nextevt-all { font-size: 13px; font-weight: 600; color: var(--ork-link); text-decoration: none; }
+.od-nextevt-all:hover { text-decoration: underline; }
+.od-nextevt-all i { font-size: 11px; margin-left: 2px; }
+.od-nextevt-empty { margin-top: 6px; font-size: 13px; color: var(--ork-text-secondary); }
+@media (max-width: 600px) {
+    .od-nextevt-main { padding: 10px 12px; gap: 12px; }
+    .od-nextevt-then, .od-nextevt-all { min-height: 44px; display: inline-flex; align-items: center; }
+    .od-nextevt-then { display: flex; }
+}

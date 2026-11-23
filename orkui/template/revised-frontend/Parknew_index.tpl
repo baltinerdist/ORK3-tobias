@@ -931,6 +931,12 @@ html[data-theme="dark"] .pk-tab-nav li.pk-tab-active { color: <?= htmlspecialcha
 					<?php endif; ?>
 				</div>
 
+				<?php if ($pkShowNewAbout):
+					$odNextEvents  = $NextEvents ?? [];
+					$odEventsTabJs = "pkActivateTab('events')";
+					include DIR_TEMPLATE . 'shared/orgdesign/_next_events.tpl';
+				endif; ?>
+
 				<?php if ($pkShowNewAbout && (!empty($ourHistoryText) || !empty($CanAdminPark))): ?>
 				<div class="od-about-section pk-about-section pk-history-section">
 					<div class="od-about-section-head">

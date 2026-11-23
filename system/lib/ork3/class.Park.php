@@ -1368,6 +1368,12 @@ class Park extends Ork3
     /**
      * Custom (officer-authored) park milestones. Stored rows; mirrors GetCustomMilestones on Player.
      */
+    /** "Our Next Event": events hosted by this park. */
+    public function GetParkNextEvents($parkId, $limit = 2)
+    {
+        return $this->GetNextDesignEvents('e.park_id = ' . (int)$parkId, $limit);
+    }
+
     public function GetParkMilestones($request)
     {
         return $this->GetDesignMilestones((int)($request[ 'ParkId' ] ?? 0));

@@ -263,7 +263,7 @@ $_odIcons = ['fa-star', 'fa-trophy', 'fa-flag', 'fa-chess-rook', 'fa-crown', 'fa
 				<?php if ($_odHasReign): ?>
 				<div class="od-dm-field">
 					<label>Reign Banner</label>
-					<div class="od-dm-hint" style="margin-bottom:8px">Personae are derived from current Monarch &amp; Regent on the Officers list. Set the header, style, reign-start dates, a Message from the Crown and optional lore (Markdown supported, 2,000 char max).</div>
+					<div class="od-dm-hint" style="margin-bottom:8px">Personae are derived from current Monarch &amp; Regent on the Officers list. Set the header, style, reign-start dates, a Message from the Crown and optional reign details (Markdown supported, 2,000 char max).</div>
 					<label for="od-dm-reign-title" class="od-dm-sublabel">Header</label>
 					<input type="text" id="od-dm-reign-title" maxlength="60" placeholder="Current Reign" value="<?= htmlspecialchars($_odReignTitle) ?>" />
 					<div class="od-dm-counter" id="od-dm-reign-title-counter" aria-live="polite"></div>
@@ -288,7 +288,7 @@ $_odIcons = ['fa-star', 'fa-trophy', 'fa-flag', 'fa-chess-rook', 'fa-crown', 'fa
 						</div>
 					</div>
 					<div class="od-dm-md-toolbar">
-						<label style="margin-bottom:0;font-size:11px;text-transform:none;letter-spacing:0">Reign Lore (optional, Markdown)</label>
+						<label style="margin-bottom:0;font-size:11px;text-transform:none;letter-spacing:0">Reign Details, Theme, Lore, etc. (optional, Markdown)</label>
 						<div class="od-dm-md-toggle">
 							<button type="button" class="od-active" data-odmd-target="edit" data-odmd-field="reign">Write</button>
 							<button type="button" data-odmd-target="preview" data-odmd-field="reign">Preview</button>
