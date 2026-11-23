@@ -430,8 +430,8 @@ html[data-theme="dark"] .pk-tab-nav li.pk-tab-active { color: <?= htmlspecialcha
    and milestones timeline are now provided by the shared design stylesheet
    shared/orgdesign/orgdesign.css (od- prefixed) + its partials. The Our History
    section keeps its Park-specific dashed-divider wrapper. */
-/* About tiles: .od-about-section (orgdesign.css). The two-up grid spaces its own tiles. */
-.pk-about-grid { margin-bottom: 14px; }
+/* About tiles: .od-about-section (orgdesign.css). The two-up grid spaces its
+   own tiles; the surrounding .od-about-row owns the space below. */
 .pk-about-grid > .od-about-section { margin-bottom: 0; }
 </style>
 
@@ -880,6 +880,7 @@ html[data-theme="dark"] .pk-tab-nav li.pk-tab-active { color: <?= htmlspecialcha
 					$_addrLine2 = trim(implode(' ', array_filter([trim($parkInfo['Province'] ?? ''), trim($parkInfo['PostalCode'] ?? '')])));
 					$_addrFull  = implode(', ', array_filter([$_addrLine1, $_addrLine2]));
 				?>
+				<div class="od-about-row">
 				<div class="pk-about-grid">
 					<?php if ($pkShowNewAbout): ?>
 					<?php if (!empty($aboutText) || !empty($CanAdminPark)): ?>
@@ -936,6 +937,7 @@ html[data-theme="dark"] .pk-tab-nav li.pk-tab-active { color: <?= htmlspecialcha
 					$odEventsTabJs = "pkActivateTab('events')";
 					include DIR_TEMPLATE . 'shared/orgdesign/_next_events.tpl';
 				endif; ?>
+				</div><!-- /.od-about-row -->
 
 				<?php if ($pkShowNewAbout && (!empty($ourHistoryText) || !empty($CanAdminPark))): ?>
 				<div class="od-about-section pk-about-section pk-history-section">

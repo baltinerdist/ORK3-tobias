@@ -689,6 +689,7 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
 				<?php endif; ?>
 				<?php endif; ?>
 
+				<div class="od-about-row">
 				<div class="od-about-grid">
 					<?php if (!empty($aboutText) || ($CanManageKingdom ?? false)): ?>
 					<div class="od-about-section">
@@ -716,6 +717,7 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
 					$odEventsTabJs = "knActivateTab('events')";
 					include DIR_TEMPLATE . 'shared/orgdesign/_next_events.tpl';
 				endif; ?>
+				</div><!-- /.od-about-row -->
 
 				<?php if (!empty($ourHistoryText) || ($CanManageKingdom ?? false)): ?>
 				<div class="od-about-section od-history-section">

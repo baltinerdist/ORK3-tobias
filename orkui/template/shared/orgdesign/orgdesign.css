@@ -951,6 +951,16 @@ html[data-theme="dark"] .od-dm-reign-theme[data-tip]::after { background: var(--
     .od-dm-reign-theme[data-tip]::after { display: none; }
 }
 
+/* About row: the About block takes ~3/4 and "Our Next Event" ~1/4 of a
+   four-column width, side by side; the event tile only drops below when the
+   row is too narrow for both (flex-wrap at the basis widths). */
+.od-about-row { display: flex; flex-wrap: wrap; align-items: stretch; gap: 14px; margin-bottom: 14px; }
+.od-about-row > * { margin-bottom: 0; min-width: 0; }
+.od-about-row > .od-about-grid,
+.od-about-row > .pk-about-grid { flex: 3 1 0; min-width: min(100%, 420px); }
+.od-about-row > .od-about-grid > .od-about-section { height: 100%; box-sizing: border-box; }
+.od-about-row > .od-nextevt { flex: 1 1 0; min-width: min(100%, 230px); }
+
 /* --- "Our Next Event" About tile (Kingdom / Park) -------------------------
    The tile is an .od-about-section; the next-event card inside it recesses
    to --ork-card-bg (layer convention). The date badge takes the org accent. */
