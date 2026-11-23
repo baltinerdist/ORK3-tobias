@@ -367,7 +367,13 @@ if (!in_array($_pnNameFont, $_pnFontAllowed)) $_pnNameFont = '';
 .pna-ev-park{color:var(--ork-text-muted);font-size:11px;font-weight:500;margin-left:2px}
 .pna-spark-months{display:flex;gap:3px;margin-top:2px}
 .pna-spark-month-lbl{flex:1;font-size:9px;color:var(--ork-text-hint);text-align:left;white-space:nowrap;overflow:hidden;min-width:0}
-@media(max-width:700px){
+/* Profile tab layouts switch on the TAB PANEL's width, not the viewport: a
+   4:3 foldable or small tablet keeps the profile's 300px sidebar beside the
+   tabs, leaving a ~480px panel that a viewport query still split in two
+   (2026-11-22, Galaxy Z Fold inner screen). The panel is the container
+   (the rule right below). */
+.pn-tab-panel{container:pn-tab / inline-size}
+@container pn-tab (max-width:560px){
 .pna-layout{flex-direction:column;align-items:stretch}
 .pna-sidebar{flex:none;width:100%}
 .pna-ev-cols{flex-direction:column}
@@ -422,7 +428,7 @@ html[data-theme="dark"] .pn-mini-table td { color: var(--ork-text); border-color
 html[data-theme="dark"] .pn-mini-table tbody tr:hover { background: var(--ork-bg-tertiary); }
 html[data-theme="dark"] .pn-badge-green { background: var(--ork-badge-green-bg, #1c4532); color: var(--ork-badge-green-text, #9ae6b4); }
 html[data-theme="dark"] .pn-badge-red { background: var(--ork-badge-red-bg, #742a2a); color: var(--ork-badge-red-text, #feb2b2); }
-html[data-theme="dark"] .pn-badge-gray { background: #374151; color: var(--ork-text-hint); }
+html[data-theme="dark"] .pn-badge-gray { background: var(--ork-bg-tertiary); color: var(--ork-text-hint); }
 html[data-theme="dark"] .pn-badge-blue { background: #1a365d; color: #90cdf4; }
 html[data-theme="dark"] .pn-badge-yellow { background: #744210; color: #fbd38d; }
 html[data-theme="dark"] .pn-badge-orange { background: #7b341e; color: #fbd38d; }
@@ -444,14 +450,22 @@ html[data-theme="dark"] .pn-acct-field input[type="url"],
 html[data-theme="dark"] .pn-acct-field input[type="password"],
 html[data-theme="dark"] .pn-acct-field select,
 html[data-theme="dark"] .pn-acct-field textarea { background: var(--ork-input-bg); border-color: var(--ork-input-border); color: var(--ork-text); }
-html[data-theme="dark"] .pna-card { background: var(--ork-card-bg); border-color: var(--ork-border); }
+/* Profile cards (My Amtgard dashboard, About tab sidebar + My Story quote):
+   light mode sets them off the white panel with --ork-bg-inset, which is the
+   panel colour in dark mode; --ork-bg-tertiary is dark mode's one-step-up
+   layer (the same token every other nested dark surface uses). */
+html[data-theme="dark"] .pna-card,
+html[data-theme="dark"] .pn-belt-card,
+html[data-theme="dark"] .pn-cms-card { background: var(--ork-bg-tertiary); border-color: var(--ork-border); }
+html[data-theme="dark"] .pn-about-content blockquote { background: var(--ork-bg-tertiary); } /* keeps its accent left border */
 html[data-theme="dark"] .pna-card-title { color: var(--ork-text-muted); }
 html[data-theme="dark"] .pna-tenure-years { color: var(--ork-link); }
 html[data-theme="dark"] .pna-tenure-label,
 html[data-theme="dark"] .pna-tenure-since { color: var(--ork-text-muted); }
 html[data-theme="dark"] .pna-class-name { color: var(--ork-text); }
 html[data-theme="dark"] .pna-class-level { color: #68d391; }
-html[data-theme="dark"] .pna-bar-wrap { background: var(--ork-bg-tertiary); }
+/* On the raised (bg-tertiary) cards, tracks and empty cells recess to the panel colour. */
+html[data-theme="dark"] .pna-bar-wrap { background: var(--ork-card-bg); }
 html[data-theme="dark"] .pna-bar { background: linear-gradient(90deg,#48bb78,#38a169) !important; }
 html[data-theme="dark"] .pna-bar-max { background: linear-gradient(90deg,#f6ad55,#c05621) !important; }
 html[data-theme="dark"] .pna-class-credits { color: var(--ork-text-muted); }
@@ -469,7 +483,8 @@ html[data-theme="dark"] .pna-alert-warning { background: var(--ork-alert-warning
 html[data-theme="dark"] .pna-alert-danger { background: var(--ork-alert-danger-bg, #742a2a); border-color: var(--ork-alert-danger-border, #9b2c2c); color: var(--ork-alert-danger-text, #feb2b2); }
 html[data-theme="dark"] .pna-alert-info { background: var(--ork-alert-info-bg, #1a365d); border-color: var(--ork-alert-info-border, #2a4365); color: var(--ork-alert-info-text, #90cdf4); }
 html[data-theme="dark"] .pna-spark-off,
-html[data-theme="dark"] .pna-spark-swatch-off { background: var(--ork-bg-tertiary); border-color: var(--ork-border); }
+html[data-theme="dark"] .pna-spark-swatch-off { background: var(--ork-card-bg); border-color: var(--ork-border); }
+html[data-theme="dark"] .pna-card .pna-survey-credit { background: var(--ork-card-bg); }
 html[data-theme="dark"] .pna-spark-legend { color: var(--ork-text-muted); }
 html[data-theme="dark"] .pna-congrats-banner { background: linear-gradient(90deg,#3d3300,#4a3c00); border-color: #975a16; color: #fbd38d; }
 html[data-theme="dark"] .pna-anni-banner { color: #fbd38d; }
@@ -565,7 +580,7 @@ html[data-theme="dark"] .pn-about-edit-btn:hover,html[data-theme="dark"] .pn-abo
 .pn-icons-option-body{flex:1;min-width:0}
 .pn-icons-option-title{font-size:13px;font-weight:600;color:#2d3748;margin-bottom:2px}
 .pn-icons-option-desc{font-size:11px;color:#718096;line-height:1.35}
-@media(max-width:700px){.pn-about-layout{flex-direction:column}.pn-about-main{width:100%}.pn-about-sidebar{flex:none;width:100%}}
+@container pn-tab (max-width:560px){.pn-about-layout{flex-direction:column}.pn-about-main{width:100%}.pn-about-sidebar{flex:none;width:100%}}
 /* ===== Milestones Timeline ===== */
 .pn-timeline-section{margin-top:32px;padding-top:24px;border-top:1px solid var(--ork-divider)}
 .pn-timeline-heading{font-size:18px;font-weight:700;color:#2d3748;margin:0 0 20px;background:transparent;border:none;padding:0;border-radius:0;text-shadow:none;display:flex;align-items:center;gap:8px}
@@ -586,7 +601,7 @@ html[data-theme="dark"] .pn-about-edit-btn:hover,html[data-theme="dark"] .pn-abo
 .pn-tl-item:nth-child(even) .pn-tl-right{order:1;text-align:right;padding-right:16px;padding-left:0}
 .pn-tl-item:nth-child(even) .pn-tl-node{order:2}
 .pn-tl-empty{text-align:center;padding:24px 16px;color:#a0aec0;font-size:13px}
-@media(max-width:700px){
+@container pn-tab (max-width:560px){
 .pn-timeline::before{left:18px}
 .pn-tl-item{flex-wrap:nowrap}
 .pn-tl-node{position:relative;left:auto;top:auto;transform:none;flex-shrink:0;order:1!important;width:32px;height:32px;font-size:12px}
@@ -596,7 +611,7 @@ html[data-theme="dark"] .pn-about-edit-btn:hover,html[data-theme="dark"] .pn-abo
 .pn-tl-item:nth-child(even) .pn-tl-right{order:2!important;text-align:left!important;padding-left:12px!important;padding-right:0!important}
 .pn-tl-date-mobile{display:block;font-size:11px;color:var(--pn-accent,#4299e1);margin-top:2px;opacity:.8}
 }
-@media(min-width:701px){.pn-tl-date-mobile{display:none}}
+@container pn-tab (min-width:561px){.pn-tl-date-mobile{display:none}}
 /* ===== Milestones Config (Design Modal) ===== */
 .pn-ms-toggle-list{display:flex;flex-direction:column;gap:8px;margin-bottom:20px}
 .pn-ms-toggle{display:flex;align-items:center;gap:10px;font-size:13px;color:#4a5568}
@@ -866,11 +881,10 @@ html[data-theme="dark"] .pn-about-content h3,
 html[data-theme="dark"] .pn-about-content h4,
 html[data-theme="dark"] .pn-about-content h5,
 html[data-theme="dark"] .pn-about-content h6 { color: var(--ork-text); }
-html[data-theme="dark"] .pn-about-content blockquote { background: var(--ork-bg-secondary); color: var(--ork-text-muted); /* --pn-accent flows through from light rule */ }
+html[data-theme="dark"] .pn-about-content blockquote { color: var(--ork-text-muted); /* background: the profile-cards rule; --pn-accent flows through from the light rule */ }
 html[data-theme="dark"] .pn-about-content code { background: var(--ork-bg-tertiary); color: var(--ork-text); }
 html[data-theme="dark"] .pn-about-content pre { background: #1a202c; color: #e2e8f0; }
 html[data-theme="dark"] .pn-about-empty { color: var(--ork-text-muted); }
-html[data-theme="dark"] .pn-belt-card { background: var(--ork-card-bg); border-color: var(--ork-border); }
 html[data-theme="dark"] .pn-belt-card-title { color: var(--ork-text); }
 html[data-theme="dark"] .pn-belt-group { color: var(--ork-text-muted); border-top-color: var(--ork-border); }
 html[data-theme="dark"] .pn-belt-title { color: var(--ork-text-muted); }
@@ -1008,7 +1022,6 @@ html[data-theme="dark"] .pn-dm-hint i { color: var(--ork-link-bright); }
 html[data-theme="dark"] .pn-dm-hint strong { color: var(--ork-text); }
 
 /* Currently-active milestones summary card */
-html[data-theme="dark"] .pn-cms-card { background: var(--ork-card-bg); border-color: var(--ork-border); }
 html[data-theme="dark"] .pn-cms-title { color: var(--ork-text); }
 html[data-theme="dark"] .pn-cms-item { border-bottom-color: var(--ork-border); }
 html[data-theme="dark"] .pn-cms-line { color: var(--ork-text-secondary); }
@@ -1077,8 +1090,8 @@ html[data-theme="dark"] .dp-anon-row{border-bottom-color:var(--ork-border)}
 .dp-no-restrict-sub{font-size:11px;color:#a0aec0;margin-top:1px}
 #dp-prefs-body{transition:opacity .15s}
 #dp-prefs-body.dp-locked{opacity:.35;pointer-events:none;user-select:none}
-html[data-theme="dark"] .dp-no-restrict-row{background:rgba(255,255,255,.04);border-color:var(--ork-border)}
-html[data-theme="dark"] .dp-no-restrict-row:hover{background:rgba(255,255,255,.08)}
+html[data-theme="dark"] .dp-no-restrict-row{background:var(--ork-bg-tertiary);border-color:var(--ork-border)}
+html[data-theme="dark"] .dp-no-restrict-row:hover{background:var(--ork-border)}
 .pna-notif-card { padding: 0; overflow: hidden; }
 .pna-notif-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid #e2e8f0; }
 .pna-notif-title { font-weight: 700; font-size: 14px; color: #2d3748; }
@@ -3364,6 +3377,8 @@ html[data-theme="dark"] #pn-qual-overlay input[type="date"] { accent-color: #63b
      Design My Profile Modal
      ============================================= -->
 <?php if ($isOwnProfile || $ViewerIsOrkAdmin): ?>
+<link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>shared/mdtoolbar/mdtoolbar.css?v=<?= filemtime(DIR_TEMPLATE . 'shared/mdtoolbar/mdtoolbar.css') ?>">
+<script src="<?= HTTP_TEMPLATE ?>shared/mdtoolbar/mdtoolbar.js?v=<?= filemtime(DIR_TEMPLATE . 'shared/mdtoolbar/mdtoolbar.js') ?>" defer></script>
 <div class="pn-overlay" id="pn-design-overlay">
 	<div class="pn-modal-box" style="width:720px;max-width:calc(100vw - 40px);">
 		<div class="pn-modal-header">
@@ -3517,7 +3532,7 @@ html[data-theme="dark"] #pn-qual-overlay input[type="date"] { accent-color: #63b
 							<button type="button" class="pn-md-quick-btn" data-quickadd="findmelinks" data-target-field="persona"><i class="fas fa-share-alt"></i> Find Me Links</button>
 						</div>
 					</div>
-					<textarea id="pn-design-about-persona" maxlength="10000" placeholder="Ex. Hi there! I'm an archer in the Northern Kingdom who loves brewing mead and singing bardic songs. You can find me in the Barony of..."><?= htmlspecialchars($Player['AboutPersona'] ?? '') ?></textarea>
+					<textarea id="pn-design-about-persona" data-md-toolbar maxlength="10000" placeholder="Ex. Hi there! I'm an archer in the Northern Kingdom who loves brewing mead and singing bardic songs. You can find me in the Barony of..."><?= htmlspecialchars($Player['AboutPersona'] ?? '') ?></textarea>
 					<span class="pn-char-count" id="pn-design-about-persona-charcount" style="display:none"></span>
 					<div class="pn-md-preview" id="pn-design-about-persona-preview" style="display:none"></div>
 					<div class="pn-design-hint">Supports <strong>Markdown</strong> <button type="button" class="kn-md-help-btn" onclick="document.getElementById('pn-md-help-overlay').classList.add('kn-open')" title="Markdown reference">?</button>: **bold**, *italic*, [links](url), ## headings, lists, etc.</div>
@@ -3534,7 +3549,7 @@ html[data-theme="dark"] #pn-qual-overlay input[type="date"] { accent-color: #63b
 							<button type="button" class="pn-md-quick-btn" data-quickadd="signaturequote" data-target-field="story"><i class="fas fa-quote-left"></i> Signature Quote</button>
 						</div>
 					</div>
-					<textarea id="pn-design-about-story" maxlength="10000" placeholder="Ex. Feywild the Brewer has been traveling the realms looking for the Amulet of Fireballs. After his village was destroyed in a rock giant stampede..."><?= htmlspecialchars($Player['AboutStory'] ?? '') ?></textarea>
+					<textarea id="pn-design-about-story" data-md-toolbar maxlength="10000" placeholder="Ex. Feywild the Brewer has been traveling the realms looking for the Amulet of Fireballs. After his village was destroyed in a rock giant stampede..."><?= htmlspecialchars($Player['AboutStory'] ?? '') ?></textarea>
 					<span class="pn-char-count" id="pn-design-about-story-charcount" style="display:none"></span>
 					<div class="pn-md-preview" id="pn-design-about-story-preview" style="display:none"></div>
 					<div class="pn-design-hint">Supports <strong>Markdown</strong> <button type="button" class="kn-md-help-btn" onclick="document.getElementById('pn-md-help-overlay').classList.add('kn-open')" title="Markdown reference">?</button>: **bold**, *italic*, [links](url), ## headings, lists, etc.</div>
@@ -7350,6 +7365,10 @@ function pnOpenTestChooser() {
 				<label>Class</label>
 				<select id="pn-player-att-class" style="width:100%"></select>
 			</div>
+			<div class="pn-acct-field">
+				<span id="pn-player-att-online-switch"></span>
+				<span class="orn-online-hint" id="pn-player-att-online-hint" style="display:none"></span>
+			</div>
 		</div>
 		<div class="pn-modal-footer">
 			<button class="pn-btn pn-btn-secondary" id="pn-player-att-cancel">Cancel</button>
@@ -7384,6 +7403,9 @@ function pnOpenTestChooser() {
 					<input type="number" id="pn-att-edit-credits" value="1" min="0.5" max="4" step="0.5" style="width:100%">
 				</div>
 			</div>
+			<label class="orn-online-check" for="pn-att-edit-online">
+				<input type="checkbox" id="pn-att-edit-online" value="1"> Online?
+			</label>
 		</div>
 		<div class="pn-modal-footer">
 			<button class="pn-btn pn-btn-secondary" id="pn-att-edit-cancel">Cancel</button>
@@ -7586,6 +7608,10 @@ $(function() {
 				else if (r.active_member === false) sub = 'Contributing';
 				var $sub = $('#pn-voting-badge-sub');
 				if (sub) { $sub.html(sub).show(); }
+				if (r.exclude_online) {
+					var $vb = $('#pn-voting-badge');
+					$vb.attr('data-tip', (($vb.attr('data-tip') || '') + ' Online sign-ins are not counted (Kingdom setting).').trim());
+				}
 				$('#pn-voting-badge').show();
 			}
 		});
@@ -7771,6 +7797,7 @@ $(function() {
 						+ '<th data-sorttype="text">Park</th><th data-sorttype="text">Event</th>'
 						+ '<th data-sorttype="text">Class</th><th data-sorttype="numeric">Credits</th>'
 						+ '<th data-sorttype="text">By</th>'
+						+ '<th class="pn-export-only">Online</th>'
 						+ (canEditAny ? '<th class="pn-nosort" style="width:52px;min-width:52px"></th>' : '')
 						+ '</tr></thead><tbody>';
 					att.forEach(function(d) {
@@ -7782,6 +7809,7 @@ $(function() {
 							: '<a href="' + uir + 'Event/detail/' + eid + '/' + ecid + '">' + esc(d.Date) + '</a>';
 						var classLabel = (d.Flavor && d.Flavor.trim()) ? esc(d.Flavor) : esc(d.ClassName);
 						var canEditThis = !!(parkAuth[pid] && eid === 0);
+						var isOnline = parseInt(d.Online, 10) === 1;
 						// "By" cell: show the entry source. signin_link / self_reg
 						// surface as labels (not a link to the player themselves —
 						// that would be redundant and look like "John entered
@@ -7799,11 +7827,12 @@ $(function() {
 						html += '<tr>'
 							+ '<td class="pn-col-nowrap">' + dateLink + '</td>'
 							+ '<td><a href="' + uir + 'Kingdom/profile/' + esc(d.KingdomId) + '">' + esc(d.KingdomName) + '</a></td>'
-							+ '<td><a href="' + uir + 'Park/profile/' + pid + '">' + esc(d.ParkName) + '</a></td>'
+							+ '<td><a href="' + uir + 'Park/profile/' + pid + '">' + esc(d.ParkName) + '</a>' + (isOnline ? ' ' + ornOnlineBadge() : '') + '</td>'
 							+ '<td>' + (eid > 0 ? '<a href="' + uir + 'Event/detail/' + eid + '/' + ecid + '">' + esc(d.EventName) + '</a>' : '') + '</td>'
 							+ '<td>' + classLabel + '</td>'
 							+ '<td class="pn-col-numeric">' + esc(d.Credits) + '</td>'
-							+ '<td>' + byCell + '</td>';
+							+ '<td>' + byCell + '</td>'
+							+ '<td>' + (isOnline ? 'Yes' : '') + '</td>';
 						if (canEditAny) {
 							html += '<td class="pn-award-actions-cell">';
 							if (canEditThis) {
@@ -7813,6 +7842,7 @@ $(function() {
 									+ ' data-credits="' + parseFloat(d.Credits) + '"'
 									+ ' data-class-id="' + parseInt(d.ClassId) + '"'
 									+ ' data-mundane-id="' + parseInt(d.MundaneId) + '"'
+									+ ' data-online="' + (isOnline ? 1 : 0) + '"'
 									+ ' title="Edit attendance"><i class="fas fa-pencil-alt"></i></button>'
 									+ ' <button class="pn-award-action-btn pn-award-del-btn pn-att-del-btn"'
 									+ ' data-att-id="' + parseInt(d.AttendanceId) + '"'

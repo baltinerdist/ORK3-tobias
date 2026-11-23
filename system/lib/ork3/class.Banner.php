@@ -47,9 +47,19 @@ class Banner extends Ork3
         }
         file_put_contents($tmp, $raw);
         $detectedType = @exif_imagetype($tmp);
+        $dims = @getimagesize($tmp);
         @unlink($tmp);
         if ($detectedType !== IMAGETYPE_JPEG && $detectedType !== IMAGETYPE_PNG) {
             return InvalidParameter('Only JPEG and PNG images are supported.');
+        }
+        // Reject decompression-bomb images on the org hero banners: a 1 MB PNG can
+        // still decode to hundreds of megapixels, so cap the pixel dimensions in
+        // addition to the byte-size check above. Scoped to the org entities that
+        // shipped this guard; Player/Event banners keep their prior behavior.
+        if (in_array($type, ['Kingdom', 'Park', 'Unit'], true)) {
+            if ($dims === false || $dims[0] > 4000 || $dims[1] > 1500 || ($dims[0] * $dims[1]) > 6000000) {
+                return InvalidParameter('Image dimensions too large (max 4000x1500).');
+            }
         }
 
         $meta = $this->entityMeta($type);

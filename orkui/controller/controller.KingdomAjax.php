@@ -1,13 +1,26 @@
 <?php
 
+require_once(DIR_CONTROLLER . 'trait.OrgDesignAjax.php');
+require_once(DIR_CONTROLLER . 'trait.OrgSocialReveal.php');
+
 class Controller_KingdomAjax extends Controller
 {
+    use OrgDesignAjax;
+    use OrgSocialReveal;
+
     public function kingdom($p = null)
     {
         header('Content-Type: application/json');
         $parts      = explode('/', $p ?? '');
         $kingdom_id = (int)preg_replace('/[^0-9]/', '', $parts[0] ?? '');
         $action     = $parts[1] ?? '';
+
+        // Social link reveal is for anonymous visitors too; it has its own
+        // anti-harvest gate (session token, origin, bot UA, rate limit).
+        if ($action === 'socialreveal') {
+            $this->load_model('Kingdom');
+            $this->org_social_reveal($this->Kingdom, 'kingdom_design_social_link', 'kingdom', $kingdom_id);
+        }
 
         if (!isset($this->session->user_id)) {
             echo json_encode(['status' => 5, 'error' => 'Not logged in']);
@@ -777,6 +790,28 @@ class Controller_KingdomAjax extends Controller
             echo $conflictName !== null
                 ? json_encode(['status' => 0, 'taken' => true, 'name' => $conflictName])
                 : json_encode(['status' => 0, 'taken' => false]);
+
+        } elseif ($action === 'savedesign') {
+            $this->load_model('Kingdom');
+            $this->org_save_design(
+                $this->Kingdom,
+                'set_kingdom_design',
+                'KingdomId',
+                $kingdom_id,
+                $this->Kingdom->kingdom_design_save_fields()
+            );
+
+        } elseif ($action === 'addmilestone') {
+            $this->load_model('Kingdom');
+            $this->org_add_milestone($this->Kingdom, 'add_kingdom_milestone', 'KingdomId', $kingdom_id);
+
+        } elseif ($action === 'updatemilestone') {
+            $this->load_model('Kingdom');
+            $this->org_update_milestone($this->Kingdom, 'update_kingdom_milestone', 'KingdomId', $kingdom_id);
+
+        } elseif ($action === 'deletemilestone') {
+            $this->load_model('Kingdom');
+            $this->org_delete_milestone($this->Kingdom, 'delete_kingdom_milestone', 'KingdomId', $kingdom_id);
 
         } else {
             echo json_encode(['status' => 1, 'error' => 'Unknown action']);

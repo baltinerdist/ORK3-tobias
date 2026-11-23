@@ -1,7 +1,11 @@
 <?php
 
+require_once(DIR_CONTROLLER . 'trait.OrgSocialReveal.php');
+
 class Controller_Kingdom extends Controller
 {
+    use OrgSocialReveal;
+
     // Data endpoints that must NOT repaint the visitor's navigation context.
     // The kingdom profile page background-fetches several of these for each
     // child principality (Kingdomnew_index.tpl ~line 2660), and the last async
@@ -87,8 +91,10 @@ class Controller_Kingdom extends Controller
         $kid     = (int)$kingdom_id;
         $uid     = (int)($this->session->user_id ?? 0);
         $isAdmin = $uid > 0 && $this->Authorization->has_authority($uid, AUTH_KINGDOM, $kid, AUTH_EDIT);
+        // In-Person / Online / All (default All): informational only, never the kingdom setting.
+        $type    = isset($_GET['AttendanceType']) && is_string($_GET['AttendanceType']) ? $_GET['AttendanceType'] : 'all';
         $this->load_model('KingdomProfile');
-        $result = $this->KingdomProfile->extended_park_averages($kid, $isAdmin);
+        $result = $this->KingdomProfile->extended_park_averages($kid, $isAdmin, $type);
         header('Content-Type: application/json');
         echo json_encode($result);
         exit();
@@ -369,6 +375,7 @@ class Controller_Kingdom extends Controller
         $this->data['knEventMapLocations']  = $eventBundle['knEventMapLocations'];
         $this->data['knEventMapNoLocCount'] = $eventBundle['knEventMapNoLocCount'];
         $this->data['HasMoreEvents']        = $eventBundle['HasMoreEvents'];
+        $this->data['NextEvents']           = $this->Kingdom->get_kingdom_next_events($kid);
         $this->data['kingdom_park_days']    = $this->KingdomProfile->park_days($kid);
 
         $uid = $kn_uid;
@@ -382,6 +389,11 @@ class Controller_Kingdom extends Controller
         $this->data['knCanManageBanner'] = $this->data['CanEditKingdom'];
         $this->data['CanManageKingdom'] = $uid > 0
             && $this->Authorization->has_authority($uid, AUTH_KINGDOM, (int)$kingdom_id, AUTH_CREATE);
+        // Social links: visitors get a reveal token, never the URLs; only a
+        // manager's page carries the full map (for the edit form).
+        $this->data['SocialRevealToken'] = $this->org_social_reveal_token('kingdom', (int)$kingdom_id);
+        $this->data['DesignSocialLinks'] = $this->data['CanManageKingdom']
+            ? $this->Kingdom->kingdom_design_social_links((int)$kingdom_id) : [];
         // Bonus Credits button + modal: kingdom EDIT hands credits out, CREATE
         // also defines them, and a named manager does both with no kingdom row.
         $this->load_model('BonusCredit');
@@ -497,6 +509,10 @@ class Controller_Kingdom extends Controller
                 if (($cfg['Key'] ?? '') === 'IncludePrincipalityInStatistics' && !$hasChildPrinz) {
                     continue;
                 }
+                // CountOnlineAttendance only affects Voting Eligibility — hide it where there are no voting rules.
+                if (($cfg['Key'] ?? '') === 'CountOnlineAttendance' && empty($this->data['ShowVotingEligibleLink'])) {
+                    continue;
+                }
                 $adminConfig[] = $cfg;
             }
             $this->data['AdminConfig']     = $adminConfig;
@@ -549,6 +565,21 @@ class Controller_Kingdom extends Controller
         $this->data['PronounList']          = $this->Pronoun->fetch_pronoun_list();
         $this->data['PronounOptionsCreate'] = $this->Pronoun->fetch_pronoun_option_list(null);
         $this->data['IcsUrl'] = self::ics_feed_url((int)$kingdom_id);
+
+        // Custom + derived milestones, merged into one timeline-ready array.
+        // The timeline only renders when the org has opted into the new About
+        // design (AboutEnabled) or the viewer can manage the kingdom, so only
+        // pay for the fetch+merge in those cases.
+        $milestones = [];
+        $_msAboutEnabled = (int)($this->data['kingdom_info']['Info']['KingdomInfo']['AboutEnabled'] ?? 0);
+        if ($_msAboutEnabled === 1 || !empty($this->data['CanManageKingdom'])) {
+            $milestones = $this->Kingdom->get_merged_kingdom_milestones((int)$kingdom_id);
+        }
+        $this->data['Milestones'] = $milestones;
+
+        // Authoritative social-platform slugs, so the template's icon/label table
+        // can never offer an input the domain would silently discard on save.
+        $this->data['OdSocialPlatformSlugs'] = $this->Kingdom->kingdom_design_social_platforms();
     }
 
     // ------------------------------------------------------------------ ICS Feed

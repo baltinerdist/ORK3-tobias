@@ -1,7 +1,11 @@
 <?php
 
+require_once(DIR_CONTROLLER . 'trait.OrgSocialReveal.php');
+
 class Controller_Park extends Controller
 {
+    use OrgSocialReveal;
+
     public function __construct($call = null, $id = null)
     {
         parent::__construct($call, $id);
@@ -55,6 +59,26 @@ class Controller_Park extends Controller
         $_park_officers = $this->Park->get_officers($park_id, $this->session->token);
         $this->data[ 'park_officers' ] = array('Officers' => is_array($_park_officers) ? $_park_officers : array());
         // [TOURNAMENTS HIDDEN] $this->data['park_tournaments'] = [];
+    }
+
+    /**
+     * Park hero Avg / Week and Avg / Month for the In-Person / Online / All control
+     * (default All). Informational only; the kingdom CountOnlineAttendance setting
+     * never applies. Public, like the profile it refreshes.
+     */
+    public function attendance_averages_json($park_id = null)
+    {
+        session_write_close(); // release session lock so navigation is not blocked
+        $pid  = (int)preg_replace('/[^0-9]/', '', (string)$park_id);
+        $type = isset($_GET['AttendanceType']) && is_string($_GET['AttendanceType']) ? $_GET['AttendanceType'] : 'all';
+        $this->load_model('ParkProfile');
+        $averages = $pid > 0 ? $this->ParkProfile->attendance_averages($pid, $type) : ['MonthlyAvg' => 0, 'WeeklyAvg' => 0];
+        header('Content-Type: application/json');
+        echo json_encode([
+            'WeeklyAvg'  => (float)$averages['WeeklyAvg'],
+            'MonthlyAvg' => (float)$averages['MonthlyAvg'],
+        ]);
+        exit();
     }
 
     public function profile($park_id = null)
@@ -273,6 +297,7 @@ class Controller_Park extends Controller
         $this->data['event_summary']        = $eventBundle['event_summary'];
         $this->data['pkEventMapLocations']  = $eventBundle['pkEventMapLocations'];
         $this->data['pkEventMapNoLocCount'] = $eventBundle['pkEventMapNoLocCount'];
+        $this->data['NextEvents']           = $this->Park->get_park_next_events($pid);
         $this->data['park_players']         = $this->ParkProfile->players_roster($pid);
 
         $averages = $this->ParkProfile->attendance_averages($pid);
@@ -290,12 +315,32 @@ class Controller_Park extends Controller
         $this->data['CanBonusCredits'] = $uid > 0 && $this->BonusCredit->can_grant($uid, (int)$park_id);
         $this->data['CanAdminPark']  = $uid > 0
             && $this->Authorization->has_authority($uid, AUTH_PARK, (int)$park_id, AUTH_CREATE);
+        // Social links: visitors get a reveal token, never the URLs; only a
+        // manager's page carries the full map (for the edit form).
+        $this->data['SocialRevealToken'] = $this->org_social_reveal_token('park', (int)$park_id);
+        $this->data['DesignSocialLinks'] = $this->data['CanAdminPark']
+            ? $this->Park->park_design_social_links((int)$park_id) : [];
         // Park admins can merge two players who both belong to THIS park.
         // Cross-park or cross-kingdom merges still need higher rights and are
         // performed from the kingdom profile. The server-side MergePlayer
         // enforces this scope; the flag is just for showing the UI button.
         $this->data['CanMergePlayers'] = $uid > 0
             && $this->Authorization->has_authority($uid, AUTH_PARK, (int)$park_id, AUTH_CREATE);
+
+        // Custom + derived milestones, merged into one timeline-ready array.
+        // The timeline only renders when the org has opted into the new About
+        // design (AboutEnabled) or the viewer can admin the park, so only pay
+        // for the fetch+merge in those cases.
+        $milestones = [];
+        $_msAboutEnabled = (int)($this->data['park_info']['ParkInfo']['AboutEnabled'] ?? 0);
+        if ($_msAboutEnabled === 1 || !empty($this->data['CanAdminPark'])) {
+            $milestones = $this->Park->get_merged_park_milestones((int)$park_id);
+        }
+        $this->data['Milestones'] = $milestones;
+
+        // Authoritative social-platform slugs, so the template's icon/label table
+        // can never offer an input the domain would silently discard on save.
+        $this->data['OdSocialPlatformSlugs'] = $this->Park->park_design_social_platforms();
 
         $knConfigs  = Common::get_configs($this->session->kingdom_id, CFG_KINGDOM);
         $recsPublic = isset($knConfigs['AwardRecsPublic'])
