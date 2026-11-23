@@ -132,6 +132,7 @@
     "2026-05-19-org-design-audit-and-announce.sql": { "class": "S", "render": "full" },
     "2026-06-01-about-design-opt-in.sql": { "class": "S", "render": "full" },
     "2026-08-20-kingdom-reign-holder.sql": { "class": "S", "render": "full" },
+    "2026-11-23-kingdom-reign-banner-extras.sql": { "class": "S", "render": "full", "notes": "reign_title / crown_message / reign_theme on ork_kingdom_design; idempotent" },
     "2026-11-23-org-design-pride-and-name-shadow.sql": { "class": "S", "render": "full", "notes": "hero_gradient (Amtpride key) + name_shadow on the three org *_design tables; idempotent" }
   }
 }

@@ -64,6 +64,12 @@ apply order and the dependencies between them.
    column list in APCu for 24h (`yapo_schema_*`), and until it re-reads the
    schema the profile reads return the new columns as empty, so a saved flag
    or shadow looks like it didn't stick.
+13. **`2026-11-23-kingdom-reign-banner-extras.sql`** — adds `reign_title`,
+   `crown_message` and `reign_theme` to `ork_kingdom_design` for the Current
+   Reign banner. **Must sort AFTER the `2026-05-18` extras migration** (step 7),
+   which creates `reign_lore`; the new columns are positioned after it. Sorts
+   before step 12 ('k' < 'o') and is independent of it. Reload php-fpm after,
+   as for step 12.
 
 ## Deploy / operational notes
 

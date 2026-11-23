@@ -430,8 +430,9 @@ html[data-theme="dark"] .pk-tab-nav li.pk-tab-active { color: <?= htmlspecialcha
    and milestones timeline are now provided by the shared design stylesheet
    shared/orgdesign/orgdesign.css (od- prefixed) + its partials. The Our History
    section keeps its Park-specific dashed-divider wrapper. */
-.pk-history-section { margin-top: 18px; padding-top: 18px; border-top: 1px dashed #e2e8f0; }
-html[data-theme="dark"] .pk-history-section { border-top-color: var(--ork-border); }
+/* About tiles: .od-about-section (orgdesign.css). The two-up grid spaces its own tiles. */
+.pk-about-grid { margin-bottom: 14px; }
+.pk-about-grid > .od-about-section { margin-bottom: 0; }
 </style>
 
 <!-- =============================================
@@ -882,7 +883,7 @@ html[data-theme="dark"] .pk-history-section { border-top-color: var(--ork-border
 				<div class="pk-about-grid">
 					<?php if ($pkShowNewAbout): ?>
 					<?php if (!empty($aboutText) || !empty($CanAdminPark)): ?>
-					<div class="pk-about-section">
+					<div class="od-about-section pk-about-section">
 						<?php if (!empty($CanAdminPark) && $pkAboutEnabled !== 1): ?>
 						<div class="od-about-unpublished" data-tip="Only managers can see this. Enable the About Page in Customize to publish it.">
 							<i class="fas fa-eye-slash"></i> Unpublished &mdash; only managers can see this
@@ -907,7 +908,7 @@ html[data-theme="dark"] .pk-history-section { border-top-color: var(--ork-border
 					<?php endif; ?>
 					<?php else: ?>
 					<?php if (!empty($description)): ?>
-					<div class="pk-about-section">
+					<div class="od-about-section pk-about-section">
 						<div class="pk-about-label">About</div>
 						<div class="od-about-text pk-about-text"><?= org_design_markdown($description) ?></div>
 					</div>
@@ -915,7 +916,7 @@ html[data-theme="dark"] .pk-history-section { border-top-color: var(--ork-border
 					<?php endif; ?>
 
 					<?php if (!empty($directions) || !empty($_addrFull)): ?>
-					<div class="pk-about-section">
+					<div class="od-about-section pk-about-section">
 						<div class="pk-about-label">Directions</div>
 						<?php if (!empty($_addrFull)): ?>
 						<div class="pk-about-meta-row" style="margin-bottom:10px">
@@ -931,7 +932,7 @@ html[data-theme="dark"] .pk-history-section { border-top-color: var(--ork-border
 				</div>
 
 				<?php if ($pkShowNewAbout && (!empty($ourHistoryText) || !empty($CanAdminPark))): ?>
-				<div class="pk-about-section pk-history-section">
+				<div class="od-about-section pk-about-section pk-history-section">
 					<div class="od-about-section-head">
 						<div class="pk-about-label"><i class="fas fa-scroll" style="margin-right:6px;color:#a0aec0"></i>Our History</div>
 						<?php if (!empty($CanAdminPark)): ?>
@@ -951,7 +952,7 @@ html[data-theme="dark"] .pk-history-section { border-top-color: var(--ork-border
 				<?php endif; ?>
 
 				<?php if (!empty($websiteUrl) || !empty($parkInfo['MapUrl'])): ?>
-				<div class="pk-about-section pk-about-meta" style="margin-top:12px">
+				<div class="od-about-section pk-about-section pk-about-meta">
 					<?php if (!empty($websiteUrl)): ?>
 					<div class="pk-about-meta-row">
 						<i class="fas fa-globe"></i>
@@ -973,7 +974,7 @@ html[data-theme="dark"] .pk-history-section { border-top-color: var(--ork-border
 				<?php endif; ?>
 
 				<!-- Schedule sub-section -->
-				<div class="pk-about-section pk-about-schedule">
+				<div class="od-about-section pk-about-section pk-about-schedule">
 					<div class="pk-about-label" style="display:flex;align-items:center;justify-content:space-between;">
 						<span><i class="fas fa-calendar" style="margin-right:6px;color:#a0aec0;"></i>Schedule</span>
 						<?php if (!empty($CanAdminPark)): ?>

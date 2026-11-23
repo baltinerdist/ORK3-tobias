@@ -381,6 +381,36 @@
     var nameShadowCb = gid('od-dm-name-shadow');
     if (nameShadowCb) nameShadowCb.addEventListener('change', function () { updatePreview(); });
 
+    /* --- Current Reign banner style (radio group of swatches) -------------- */
+    var reignThemeGrid = gid('od-dm-reign-themes');
+    if (reignThemeGrid) {
+        var reignThemeBtns = Array.prototype.slice.call(reignThemeGrid.querySelectorAll('.od-dm-reign-theme'));
+        var selectReignTheme = function (btn, focus) {
+            reignThemeBtns.forEach(function (b) {
+                var on = b === btn;
+                b.classList.toggle('od-selected', on);
+                b.setAttribute('aria-checked', on ? 'true' : 'false');
+                b.tabIndex = on ? 0 : -1;
+            });
+            gid('od-dm-reign-theme').value = btn.dataset.reignTheme;
+            if (focus) btn.focus();
+        };
+        var curTheme = reignThemeGrid.querySelector('.od-selected') || reignThemeBtns[0];
+        reignThemeBtns.forEach(function (b) { b.tabIndex = b === curTheme ? 0 : -1; });
+        reignThemeGrid.addEventListener('click', function (e) {
+            var b = e.target.closest('.od-dm-reign-theme');
+            if (b) selectReignTheme(b, false);
+        });
+        reignThemeGrid.addEventListener('keydown', function (e) {
+            var i = reignThemeBtns.indexOf(document.activeElement);
+            if (i < 0) return;
+            var step = (e.key === 'ArrowRight' || e.key === 'ArrowDown') ? 1 : (e.key === 'ArrowLeft' || e.key === 'ArrowUp') ? -1 : 0;
+            if (!step) return;
+            e.preventDefault();
+            selectReignTheme(reignThemeBtns[(i + step + reignThemeBtns.length) % reignThemeBtns.length], true);
+        });
+    }
+
     /* --- Reset colors to default (FE#17) ---------------------------------- */
     var colorResetBtn = gid('od-dm-color-reset');
     if (colorResetBtn) {
@@ -514,6 +544,8 @@
     bindCounter('od-dm-tagline',      'od-dm-tagline-counter',      160);
     bindCounter('od-dm-announcement', 'od-dm-announcement-counter', 280);
     bindCounter('od-dm-reign-text',   'od-dm-reign-counter',        2000, '2,000');
+    bindCounter('od-dm-reign-title',  'od-dm-reign-title-counter',  60);
+    bindCounter('od-dm-crown-message','od-dm-crown-message-counter', 600);
     bindCounter('od-dm-about-text',   'od-dm-about-counter',        10000, '10,000');
     bindCounter('od-dm-history-text', 'od-dm-history-counter',      10000, '10,000');
     bindCounter('od-dm-join-text',    'od-dm-join-counter',         5000,  '5,000');
@@ -920,6 +952,10 @@
             if (mr) fd.append('MonarchReignStarted', mr.value);
             if (rr) fd.append('RegentReignStarted', rr.value);
             if (rl) fd.append('ReignLore', rl.value);
+            var rtt = gid('od-dm-reign-title'), cmsg = gid('od-dm-crown-message'), rth = gid('od-dm-reign-theme');
+            if (rtt)  fd.append('ReignTitle', rtt.value);
+            if (cmsg) fd.append('CrownMessage', cmsg.value);
+            if (rth)  fd.append('ReignTheme', rth.value);
         }
         // Recruitment + How to Join (Unit)
         if (FEATURES.recruitment) {

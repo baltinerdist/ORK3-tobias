@@ -85,6 +85,9 @@ class Kingdom extends Ork3
             $response['KingdomInfo']['MonarchReignMundaneId'] = (int)$design->monarch_reign_mundane_id;
             $response['KingdomInfo']['RegentReignMundaneId']  = (int)$design->regent_reign_mundane_id;
             $response['KingdomInfo']['ReignLore']           = (string)$design->reign_lore;
+            $response['KingdomInfo']['ReignTitle']          = (string)$design->reign_title;
+            $response['KingdomInfo']['CrownMessage']        = (string)$design->crown_message;
+            $response['KingdomInfo']['ReignTheme']          = (string)$design->reign_theme;
             $response['KingdomInfo']['AboutEnabled']        = (int)$design->about_enabled;
         } else {
             $response['Status'] = InvalidParameter();
@@ -390,6 +393,9 @@ class Kingdom extends Ork3
             $response['KingdomInfo']['MonarchReignMundaneId'] = (int)$design->monarch_reign_mundane_id;
             $response['KingdomInfo']['RegentReignMundaneId']  = (int)$design->regent_reign_mundane_id;
             $response['KingdomInfo']['ReignLore']           = (string)$design->reign_lore;
+            $response['KingdomInfo']['ReignTitle']          = (string)$design->reign_title;
+            $response['KingdomInfo']['CrownMessage']        = (string)$design->crown_message;
+            $response['KingdomInfo']['ReignTheme']          = (string)$design->reign_theme;
             $response['KingdomInfo']['AboutEnabled']        = (int)$design->about_enabled;
 
             // Fetch configs
@@ -1070,7 +1076,7 @@ class Kingdom extends Ork3
                 'AboutText', 'OurHistory', 'ColorPrimary', 'ColorAccent', 'ColorSecondary',
                 'HeroOverlay', 'HeroGradient', 'NameShadow', 'NameFont', 'MilestoneConfig', 'Tagline', 'SocialLinks',
                 'Announcement', 'AnnouncementUntil', 'AnnouncementStarts',
-                'MonarchReignStarted', 'RegentReignStarted', 'ReignLore', 'AboutEnabled',
+                'MonarchReignStarted', 'RegentReignStarted', 'ReignLore', 'ReignTitle', 'CrownMessage', 'ReignTheme', 'AboutEnabled',
             ],
             'derived'          => [$this, 'getDerivedKingdomMilestoneRows'],
         ];
@@ -1084,6 +1090,16 @@ class Kingdom extends Ork3
      * shared common-field validators (trait) -> Kingdom-specific extra fields
      * (reign dates + reign lore) -> about_enabled opt-in -> save.
      */
+    /** Current Reign banner styles, key => label (shared with the picker). */
+    public static function reignThemes()
+    {
+        static $map = null;
+        if ($map === null) {
+            $map = require __DIR__ . '/reign_themes.php';
+        }
+        return $map;
+    }
+
     public function SetKingdomDesign($request)
     {
         $kingdom_id = (int)($request['KingdomId'] ?? 0);
@@ -1152,6 +1168,34 @@ class Kingdom extends Ork3
                 return InvalidParameter('ReignLore', ProfanityFilter::ERROR_MESSAGE);
             }
             $design->reign_lore = trim($rl) === '' ? '' : $rl;
+        }
+
+        if (array_key_exists('ReignTitle', $request)) {
+            $rt = trim((string)$request['ReignTitle']);
+            if (mb_strlen($rt) > 60) {
+                return InvalidParameter('The reign header is limited to 60 characters.');
+            }
+            if ($rt !== '' && $pf->containsProfanity($rt)) {
+                return InvalidParameter('ReignTitle', ProfanityFilter::ERROR_MESSAGE);
+            }
+            $design->reign_title = $rt;
+        }
+
+        if (array_key_exists('CrownMessage', $request)) {
+            $cm = trim(str_replace("\r\n", "\n", (string)$request['CrownMessage']));
+            if (mb_strlen($cm) > 600) {
+                return InvalidParameter('The Message from the Crown is limited to 600 characters.');
+            }
+            if ($cm !== '' && $pf->containsProfanity($cm)) {
+                return InvalidParameter('CrownMessage', ProfanityFilter::ERROR_MESSAGE);
+            }
+            $design->crown_message = $cm;
+        }
+
+        if (array_key_exists('ReignTheme', $request)) {
+            $th = trim((string)$request['ReignTheme']);
+            // Unknown keys fall back to the default style rather than failing the save.
+            $design->reign_theme = array_key_exists($th, self::reignThemes()) ? $th : '';
         }
 
         if (array_key_exists('AboutEnabled', $request)) {

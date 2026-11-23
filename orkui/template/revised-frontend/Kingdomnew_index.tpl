@@ -175,7 +175,12 @@
 	$knMonarchReignMundaneId = (int)($_kInfo['MonarchReignMundaneId'] ?? 0);
 	$knRegentReignMundaneId  = (int)($_kInfo['RegentReignMundaneId']  ?? 0);
 	$knReignLore           = (string)($_kInfo['ReignLore'] ?? '');
-	$knHasReignContent     = ($monarch && !empty($monarch['MundaneId'])) || ($regent && !empty($regent['MundaneId'])) || trim($knReignLore) !== '';
+	$knReignTitleRaw       = trim((string)($_kInfo['ReignTitle'] ?? ''));
+	$knReignTitle          = $knReignTitleRaw !== '' ? $knReignTitleRaw : 'Current Reign';
+	$knCrownMessage        = trim((string)($_kInfo['CrownMessage'] ?? ''));
+	$knReignThemeRaw       = (string)($_kInfo['ReignTheme'] ?? '');
+	$knReignThemeClass     = 'od-reign-theme-' . org_design_reign_theme($knReignThemeRaw);
+	$knHasReignContent     = ($monarch && !empty($monarch['MundaneId'])) || ($regent && !empty($regent['MundaneId'])) || trim($knReignLore) !== '' || $knCrownMessage !== '';
 
 	// --- Opt-in: new About design gating ---
 	$knAboutEnabled  = (int)($_kInfo['AboutEnabled'] ?? 0);
@@ -237,6 +242,9 @@
 			'monarch_started' => $knMonarchReignStarted,
 			'regent_started'  => $knRegentReignStarted,
 			'lore'            => $knReignLore,
+			'title'           => $knReignTitleRaw,
+			'message'         => $knCrownMessage,
+			'theme'           => $knReignThemeRaw,
 		],
 	];
 ?>
@@ -267,6 +275,10 @@
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
 <link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>revised-frontend/style/ork-datatables.css?v=<?= filemtime(__DIR__ . '/style/ork-datatables.css') ?>">
 
+<?php if ($knCrownMessage !== '' && $knShowNewAbout): /* Message from the Crown is set in IM Fell English */ ?>
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&display=swap"></noscript>
+<?php endif; ?>
 <?php if ($knNameFont !== ''): ?>
 <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=<?= rawurlencode($knNameFont) ?>&display=swap" onload="this.onload=null;this.rel='stylesheet'">
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=<?= rawurlencode($knNameFont) ?>&display=swap"></noscript>
@@ -616,10 +628,10 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
 				<?php endif; ?>
 				<?php if ($knHasReignContent || ($CanManageKingdom ?? false)): ?>
 				<?php if ($knHasReignContent): ?>
-				<div class="od-reign-banner">
+				<div class="od-reign-banner <?= $knReignThemeClass ?>">
 					<div class="od-reign-head">
 						<i class="fas fa-crown"></i>
-						<span>Current Reign</span>
+						<span><?= htmlspecialchars($knReignTitle) ?></span>
 						<?php if ($CanManageKingdom ?? false): ?>
 						<button class="od-about-edit-btn od-reign-edit-btn" type="button" onclick="odOpenDesignModal('about')" data-tip="Edit Reign" style="margin-left:auto">
 							<i class="fas fa-pencil-alt"></i> Edit
@@ -660,15 +672,18 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
 						<?php endif; ?>
 					</div>
 					<?php endif; ?>
+					<?php if ($knCrownMessage !== ''): ?>
+					<blockquote class="od-reign-message" aria-label="Message from the Crown"><?= nl2br(htmlspecialchars($knCrownMessage)) ?></blockquote>
+					<?php endif; ?>
 					<?php if (trim($knReignLore) !== ''): ?>
 					<div class="od-reign-lore kn-description-body"><?= org_design_markdown($knReignLore) ?></div>
 					<?php endif; ?>
 				</div>
 				<?php elseif ($CanManageKingdom ?? false): ?>
-				<div class="od-reign-banner">
-					<div class="od-reign-head"><i class="fas fa-crown"></i><span>Current Reign</span></div>
+				<div class="od-reign-banner <?= $knReignThemeClass ?>">
+					<div class="od-reign-head"><i class="fas fa-crown"></i><span><?= htmlspecialchars($knReignTitle) ?></span></div>
 					<div class="od-reign-empty">
-						Showcase the current Monarch &amp; Regent. <a href="#" class="od-reign-link" onclick="event.preventDefault();odOpenDesignModal('about')">Set reign-start dates</a> or add lore.
+						Showcase the current Monarch &amp; Regent. <a href="#" class="od-reign-link" onclick="event.preventDefault();odOpenDesignModal('about')">Set reign-start dates</a>, add a Message from the Crown, or add lore.
 					</div>
 				</div>
 				<?php endif; ?>

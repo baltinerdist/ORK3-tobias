@@ -612,17 +612,22 @@ html[data-theme="dark"] .un-tab-nav li.un-tab-active { background: var(--ork-car
 html[data-theme="dark"] .un-tab-count { color: var(--ork-text-muted); }
 
 /* About tab inner sections — section dividers */
-.un-about-section { margin-bottom: 6px; }
-.un-tab-panel .un-fullwidth-section {
+.un-tab-panel .un-fullwidth-section:not(.od-about-section) {
 	background: transparent; border: none; box-shadow: none;
 	padding: 0; margin-bottom: 0;
 }
-.un-tab-panel .un-fullwidth-section + .un-fullwidth-section,
-.un-tab-panel .un-about-section + .un-fullwidth-section {
+.un-tab-panel .un-fullwidth-section:not(.od-about-section) + .un-fullwidth-section:not(.od-about-section) {
 	margin-top: 18px; padding-top: 18px; border-top: 1px dashed #e2e8f0;
 }
-html[data-theme="dark"] .un-tab-panel .un-fullwidth-section + .un-fullwidth-section,
-html[data-theme="dark"] .un-tab-panel .un-about-section + .un-fullwidth-section { border-top-color: var(--ork-border); }
+html[data-theme="dark"] .un-tab-panel .un-fullwidth-section:not(.od-about-section) + .un-fullwidth-section:not(.od-about-section) { border-top-color: var(--ork-border); }
+/* About tab blocks are .od-about-section tiles (orgdesign.css); the base
+   .un-fullwidth-section white card would otherwise override the tile color. */
+html .un-tab-panel .od-about-section.un-fullwidth-section {
+	background: var(--ork-bg-inset); border: 1px solid var(--ork-border);
+	padding: 16px 18px; margin-bottom: 14px;
+}
+html[data-theme="dark"] .un-tab-panel .od-about-section.un-fullwidth-section { background: var(--ork-bg-tertiary); border-color: var(--ork-border); }
+.un-tab-panel .od-about-section.un-fullwidth-section:last-child { margin-bottom: 0; }
 
 /* Managers section inside About tab — officer-style list */
 .un-managers-list { list-style: none; margin: 0; padding: 0; }
@@ -918,7 +923,7 @@ html[data-theme="dark"] .un-btn-danger { color: #fc8181 !important; border-color
 <?php endif; ?>
 
 <?php if ($_is_retired): ?>
-		<div class="un-fullwidth-section un-retired-card">
+		<div class="od-about-section un-fullwidth-section un-retired-card">
 			<div class="un-fullwidth-head">
 				<h3 class="un-fullwidth-title"><i class="fas fa-archive"></i> Retired</h3>
 			</div>
@@ -939,7 +944,7 @@ html[data-theme="dark"] .un-btn-danger { color: #fc8181 !important; border-color
 <?php include DIR_TEMPLATE . 'shared/orgdesign/_connect_block.tpl'; ?>
 
 <?php if (trim($_about_text) !== '' || $_can_manage): ?>
-		<div class="un-about-section">
+		<div class="od-about-section un-about-section">
 			<div class="un-fullwidth-head">
 				<h3 class="un-fullwidth-title"><i class="fas fa-align-left"></i> About</h3>
 				<?php if ($_can_manage): ?>
@@ -961,7 +966,7 @@ html[data-theme="dark"] .un-btn-danger { color: #fc8181 !important; border-color
 <?php endif; ?>
 
 <?php if (!$_is_retired && (trim($_unHowToJoin) !== '' || $_can_manage)): ?>
-		<div class="un-fullwidth-section un-howto-section">
+		<div class="od-about-section un-fullwidth-section un-howto-section">
 			<div class="un-fullwidth-head">
 				<h3 class="un-fullwidth-title"><i class="fas fa-handshake"></i> How to Join</h3>
 				<?php if ($_can_manage): ?>
@@ -982,7 +987,7 @@ html[data-theme="dark"] .un-btn-danger { color: #fc8181 !important; border-color
 
 <?php if (trim($_our_history) !== '' || $_can_manage): ?>
 		<!-- Our History -->
-		<div class="un-fullwidth-section">
+		<div class="od-about-section un-fullwidth-section">
 			<div class="un-fullwidth-head">
 				<h3 class="un-fullwidth-title"><i class="fas fa-scroll"></i> Our History</h3>
 				<?php if ($_can_manage): ?>
@@ -1010,7 +1015,7 @@ $_auths = $Unit['Authorizations']['Authorizations'] ?? [];
 if ($_can_edit || count($_auths) > 0):
 ?>
 		<!-- Managers -->
-		<div class="un-fullwidth-section">
+		<div class="od-about-section un-fullwidth-section">
 			<div class="un-fullwidth-head">
 				<h3 class="un-fullwidth-title"><i class="fas fa-user-shield"></i> Managers</h3>
 				<?php if ($_can_edit): ?>
@@ -1057,9 +1062,9 @@ if ($_can_edit || count($_auths) > 0):
 
 <!-- ── Claim / Add-Manager Card (unmanaged units) ───────── -->
 <?php if ($_show_claim): ?>
-		<div class="un-fullwidth-section un-claim-card">
+		<div class="od-about-section un-fullwidth-section un-claim-card">
 <?php if ($_can_claim): ?>
-			<h4 style="display:flex;align-items:center;justify-content:space-between;"><span><i class="fas fa-hands-helping"></i> Claim This <?=htmlspecialchars($_type)?></span></h4>
+			<div class="un-fullwidth-head"><h3 class="un-fullwidth-title"><i class="fas fa-hands-helping"></i> Claim This <?=htmlspecialchars($_type)?></h3></div>
 			<p class="un-card-text">This <?=htmlspecialchars($_type_l)?> has no manager. As a leader of <?=htmlspecialchars($_name)?>, you can take over managing it.</p>
 			<form method="post" action="<?=htmlspecialchars($_base_url)?>">
 				<input type="hidden" name="Action" value="claim_unit">
@@ -1068,7 +1073,7 @@ if ($_can_edit || count($_auths) > 0):
 				</button>
 			</form>
 <?php else: ?>
-			<h4 style="display:flex;align-items:center;justify-content:space-between;"><span><i class="fas fa-user-slash"></i> Unmanaged <?=htmlspecialchars($_type)?></span></h4>
+			<div class="un-fullwidth-head"><h3 class="un-fullwidth-title"><i class="fas fa-user-slash"></i> Unmanaged <?=htmlspecialchars($_type)?></h3></div>
 <?php if (!$_can_officer): ?>
 			<p class="un-card-text">It looks like no players currently have permission to manage this <?=htmlspecialchars($_type_l)?>. If you feel you should be given access to do so, please contact a member of monarchy for your park or kingdom and ask them to transfer the unit to you.</p>
 <?php endif; ?>
@@ -1087,8 +1092,8 @@ if ($_can_edit || count($_auths) > 0):
 
 <!-- ── Retire Card ──────────────────────────────────────── -->
 <?php if ($_show_retire): ?>
-		<div class="un-fullwidth-section un-retire-card">
-			<h4 style="display:flex;align-items:center;justify-content:space-between;"><span><i class="fas fa-archive"></i> Retire <?=htmlspecialchars($_type)?></span></h4>
+		<div class="od-about-section un-fullwidth-section un-retire-card">
+			<div class="un-fullwidth-head"><h3 class="un-fullwidth-title"><i class="fas fa-archive"></i> Retire <?=htmlspecialchars($_type)?></h3></div>
 			<p class="un-card-text">If <?=htmlspecialchars($_name)?> is no longer active or has disbanded, you can retire it here.</p>
 			<button type="button" class="pn-btn pn-btn-ghost" style="width:100%;color:#c05621;border-color:#c05621;" onclick="unOpenModal('un-modal-retire')">
 				<i class="fas fa-archive"></i> Retire This Unit

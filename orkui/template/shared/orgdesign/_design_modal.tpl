@@ -74,6 +74,9 @@ $_odReign = isset($ctx['reign']) && is_array($ctx['reign']) ? $ctx['reign'] : []
 $_odMonarchStarted = trim((string)($_odReign['monarch_started'] ?? ''));
 $_odRegentStarted  = trim((string)($_odReign['regent_started'] ?? ''));
 $_odReignLore      = (string)($_odReign['lore'] ?? '');
+$_odReignTitle     = (string)($_odReign['title'] ?? '');
+$_odCrownMessage   = (string)($_odReign['message'] ?? '');
+$_odReignTheme     = $_odHasReign ? org_design_reign_theme((string)($_odReign['theme'] ?? '')) : 'gold';
 
 $_odRecruitStatus = '';
 if ($_odHasRecruit) {
@@ -260,7 +263,20 @@ $_odIcons = ['fa-star', 'fa-trophy', 'fa-flag', 'fa-chess-rook', 'fa-crown', 'fa
 				<?php if ($_odHasReign): ?>
 				<div class="od-dm-field">
 					<label>Reign Banner</label>
-					<div class="od-dm-hint" style="margin-bottom:8px">Personae are derived from current Monarch &amp; Regent on the Officers list. Set reign-start dates and add optional lore (Markdown supported, 2,000 char max).</div>
+					<div class="od-dm-hint" style="margin-bottom:8px">Personae are derived from current Monarch &amp; Regent on the Officers list. Set the header, style, reign-start dates, a Message from the Crown and optional lore (Markdown supported, 2,000 char max).</div>
+					<label for="od-dm-reign-title" class="od-dm-sublabel">Header</label>
+					<input type="text" id="od-dm-reign-title" maxlength="60" placeholder="Current Reign" value="<?= htmlspecialchars($_odReignTitle) ?>" />
+					<div class="od-dm-counter" id="od-dm-reign-title-counter" aria-live="polite"></div>
+					<div class="od-dm-sublabel" id="od-dm-reign-theme-label">Banner style</div>
+					<div class="od-dm-reign-themes" id="od-dm-reign-themes" role="radiogroup" aria-labelledby="od-dm-reign-theme-label">
+						<?php foreach (org_design_reign_themes() as $_odRtKey => $_odRtName): ?>
+						<button type="button" role="radio" class="od-dm-reign-theme od-reign-theme-<?= htmlspecialchars($_odRtKey) ?><?= $_odReignTheme === $_odRtKey ? ' od-selected' : '' ?>" data-reign-theme="<?= htmlspecialchars($_odRtKey) ?>" aria-checked="<?= $_odReignTheme === $_odRtKey ? 'true' : 'false' ?>" data-tip="<?= htmlspecialchars($_odRtName) ?>" aria-label="<?= htmlspecialchars($_odRtName) ?>"><i class="fas fa-crown" aria-hidden="true"></i></button>
+						<?php endforeach; ?>
+					</div>
+					<input type="hidden" id="od-dm-reign-theme" value="<?= htmlspecialchars($_odReignTheme) ?>" />
+					<label for="od-dm-crown-message" class="od-dm-sublabel">Message from the Crown</label>
+					<textarea id="od-dm-crown-message" maxlength="600" placeholder="A few words from the Monarch and Regent to the kingdom. Shown as a quote under their photos." style="min-height:80px"><?= htmlspecialchars($_odCrownMessage) ?></textarea>
+					<div class="od-dm-counter" id="od-dm-crown-message-counter" aria-live="polite"></div>
 					<div class="od-dm-date-pair">
 						<div>
 							<label style="font-size:11px;text-transform:none;letter-spacing:0">Monarch reign started</label>

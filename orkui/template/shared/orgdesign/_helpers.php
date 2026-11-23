@@ -190,3 +190,23 @@ if (!function_exists('org_design_hero_extras')) {
         return '<style>' . $css . '</style>';
     }
 }
+
+if (!function_exists('org_design_reign_themes')) {
+    /** Current Reign banner styles, key => label (same file the domain validates against). */
+    function org_design_reign_themes(): array
+    {
+        static $map = null;
+        if ($map === null) {
+            $map = require DIR_ORK3 . 'reign_themes.php';
+        }
+        return $map;
+    }
+}
+
+if (!function_exists('org_design_reign_theme')) {
+    /** A saved style key, or 'gold' when empty or unknown. */
+    function org_design_reign_theme(string $key): string
+    {
+        return array_key_exists($key, org_design_reign_themes()) ? $key : 'gold';
+    }
+}
