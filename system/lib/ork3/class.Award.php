@@ -562,6 +562,200 @@ class Award extends Ork3
             6403, 6297, 7273, 7070, 6311, 6310, 7277, 6411, 6771,
             6577, 94, 7084, 6171, 6574, 7254,
             7513, // Hunter (The Painted Skies) -- added 2026-10-04
+            7531, // Order of the Marksman (13 Roads) -- added 2026-11-05
         ];
+    }
+
+    /**
+     * THE answer to "is this kingdomaward a ladder?", for PHP callers.
+     *
+     * Three cases, any one of which is sufficient:
+     *   1. the kingdom's own row says so (ork_kingdomaward.is_ladder)
+     *   2. the base catalog row says so (ork_award.is_ladder)
+     *   3. it is a kingdom-original ladder, which has no catalog row at all and
+     *      so can only be recognised by pseudoLadderKingdomAwardIds()
+     *
+     * GREATEST/"either side says so", not COALESCE: both is_ladder columns are
+     * `NOT NULL DEFAULT 0`, so COALESCE never falls through to the catalog.
+     *
+     * Callers previously each guessed instead, and the most common guess was
+     * `Rank > 0` -- "it has a rank, so it must be a ladder". That is circular:
+     * a ladder recommendation saved before its award was recognised has no rank,
+     * so it reads as non-ladder, so the UI hides the rank picker, so the rank can
+     * never be added. Use this, never the rank.
+     */
+    public static function effectiveIsLadder($kingdomaward_id, $kaIsLadder = 0, $awardIsLadder = 0): bool
+    {
+        if ((int) $kaIsLadder === 1 || (int) $awardIsLadder === 1) {
+            return true;
+        }
+        return in_array((int) $kingdomaward_id, self::pseudoLadderKingdomAwardIds(), true);
+    }
+
+    /**
+     * Kingdom-original ladders grouped by the SAME slug rule the State of Amtgard
+     * grid uses: the name with a leading "Order of the" stripped. Returns
+     * kingdomaward_id => ['Slug', 'Name', 'Kingdom'].
+     *
+     * Why this exists: held ranks are keyed "k<kingdomaward_id>" for these awards
+     * (Player::GetAwardMaxRanks), so a principality's own row of a ladder is a
+     * different bucket from its parent kingdom's row -- Painted Skies' "Hunter" and
+     * Northern Lights' "Order of the Hunter" do not see each other. The grid
+     * deliberately merges them ("a principality that splits off keeps running the
+     * parent's ladder"), so the two disagree.
+     *
+     * This is NOT used to merge the buckets. Measured on production: only 2 of the
+     * 5 multi-kingdom slug groups are parent/child, and only 9 players are affected,
+     * so merging would change suggested ranks far more widely than the problem
+     * warrants. It is used to TELL the officer what the recipient holds elsewhere
+     * and let them decide. The one place they ARE merged is a recommendation's
+     * "already has" test -- see pseudoLadderEquivalenceGroups().
+     *
+     * @return array<int, array{Slug: string, Name: string, Kingdom: string}>
+     */
+    public function pseudoLadderSiblings(): array
+    {
+        $ids = array_map('intval', self::pseudoLadderKingdomAwardIds());
+        if (!$ids) {
+            return [];
+        }
+        $out = [];
+        $this->db->Clear();
+        $rs = $this->db->DataSet(
+            'SELECT ka.kingdomaward_id, ka.name, k.name AS kingdom_name
+               FROM ' . DB_PREFIX . 'kingdomaward ka
+               LEFT JOIN ' . DB_PREFIX . 'kingdom k ON k.kingdom_id = ka.kingdom_id
+              WHERE ka.kingdomaward_id IN (' . implode(',', $ids) . ')'
+        );
+        if (!$rs) {
+            return [];
+        }
+        while ($rs->Next()) {
+            $name = (string) $rs->name;
+            // Same expression as Report::StateOfAmtgard's pseudoGroups.
+            $out[(int) $rs->kingdomaward_id] = [
+                'Slug'    => strtolower(trim(preg_replace('/^Order of (?:the )?/i', '', $name))),
+                'Name'    => $name,
+                'Kingdom' => (string) ($rs->kingdom_name ?? ''),
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * Kingdom-original ladders that are one award under another kingdom's name.
+     * The Amtgard Rules do not stratify the archery ladder yet, so kingdoms run it
+     * as Hunter, Marksman, Sharpshooter or Archer. Keyed by pseudoLadderSiblings slug.
+     */
+    private const PSEUDO_LADDER_SLUG_ALIASES = [
+        'marksman'     => 'hunter',
+        'sharpshooter' => 'hunter',
+        'archer'       => 'hunter',
+    ];
+
+    /**
+     * Kingdom-original Masters (kingdomaward_id => ladder slug) that cover every
+     * kingdom's row of their ladder, as GetLadderMasterMap's peerages cover theirs.
+     */
+    private const PSEUDO_LADDER_MASTERS = [
+        7250 => 'hunter', // Master Hunter (Crystal Groves)
+    ];
+
+    private static $sharedAwardIds = null;
+
+    /**
+     * Kingdom-original ladders that are the same award across kingdoms: the same
+     * slug (Desert Winds' and Crimson Sands' Roach), or slugs aliased together
+     * (every kingdom's archery ladder). Holding any member at rank N is holding
+     * the award at rank N, and holding the group's Master covers it.
+     *
+     * Their award_id is 0 or Custom Award, shared with unrelated awards, so the
+     * kingdomaward_ids are the only thing that can tie them together. Groups of one
+     * kingdomaward with no Master are left out: a caller's own kingdomaward_id
+     * match already covers those.
+     *
+     * @return list<array{KaIds: list<int>, MasterKaIds: list<int>}>
+     */
+    public function pseudoLadderEquivalenceGroups(): array
+    {
+        $bySlug = [];
+        foreach ($this->pseudoLadderSiblings() as $kaId => $sibling) {
+            $slug = self::PSEUDO_LADDER_SLUG_ALIASES[$sibling['Slug']] ?? $sibling['Slug'];
+            $bySlug[$slug]['KaIds'][] = (int) $kaId;
+        }
+        foreach (self::PSEUDO_LADDER_MASTERS as $kaId => $slug) {
+            if (isset($bySlug[$slug])) {
+                $bySlug[$slug]['MasterKaIds'][] = (int) $kaId;
+            }
+        }
+        $groups = [];
+        foreach ($bySlug as $group) {
+            $group += ['MasterKaIds' => []];
+            if (count($group['KaIds']) > 1 || $group['MasterKaIds']) {
+                $groups[] = $group;
+            }
+        }
+        return $groups;
+    }
+
+    /**
+     * SQL predicate: held award row `$held` is the recommendation's kingdom-original
+     * ladder (kingdomaward alias `$ka`) under any kingdom's name, at rank
+     * `$minRank` or above, or that ladder's Master. With $minRank null it matches
+     * ladder rows at any rank and leaves Masters out, for highest-rank lookups.
+     * '0' when there are no groups.
+     */
+    public function sqlPseudoLadderEquivalentHeld(string $held, string $ka, ?string $minRank = null): string
+    {
+        $parts = [];
+        foreach ($this->pseudoLadderEquivalenceGroups() as $group) {
+            $members = implode(',', $group['KaIds']);
+            $match = $held . '.kingdomaward_id IN (' . $members . ')'
+                . ($minRank !== null ? ' AND ' . $held . '.rank >= ' . $minRank : '');
+            if ($minRank !== null && $group['MasterKaIds']) {
+                $match = '(' . $match . ') OR ' . $held . '.kingdomaward_id IN (' . implode(',', $group['MasterKaIds']) . ')';
+            }
+            $parts[] = '(' . $ka . '.kingdomaward_id IN (' . $members . ') AND (' . $match . '))';
+        }
+        return $parts ? '(' . implode(' OR ', $parts) . ')' : '0';
+    }
+
+    /**
+     * award_ids that many unrelated kingdom awards share: 0 (a kingdom-original
+     * award with no catalog row), Custom Award and Custom Title. Two award rows
+     * agreeing on one of these are not thereby the same award, so an award_id
+     * match must skip them.
+     *
+     * @return list<int>
+     */
+    public function sharedAwardIds(): array
+    {
+        if (self::$sharedAwardIds !== null) {
+            return self::$sharedAwardIds;
+        }
+        $ids = [0];
+        $this->db->Clear();
+        $rs = $this->db->DataSet(
+            "SELECT award_id FROM " . DB_PREFIX . "award WHERE name IN ('Custom Award', 'Custom Title')"
+        );
+        if ($rs) {
+            while ($rs->Next()) {
+                $ids[] = (int) $rs->award_id;
+            }
+        }
+        return self::$sharedAwardIds = $ids;
+    }
+
+    /**
+     * The same three cases as a SQL fragment, for queries that must filter or
+     * select on it. Expects the kingdomaward and award table aliases.
+     */
+    public static function sqlEffectiveIsLadder(string $ka = 'ka', string $a = 'a'): string
+    {
+        $ids = array_map('intval', self::pseudoLadderKingdomAwardIds());
+        $pseudo = $ids
+            ? ', CASE WHEN ' . $ka . '.kingdomaward_id IN (' . implode(',', $ids) . ') THEN 1 ELSE 0 END'
+            : '';
+        return 'GREATEST(COALESCE(' . $ka . '.is_ladder, 0), COALESCE(' . $a . '.is_ladder, 0)' . $pseudo . ')';
     }
 }

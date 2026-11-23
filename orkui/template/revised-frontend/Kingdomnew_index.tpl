@@ -422,6 +422,11 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
 					<i class="fas fa-medal"></i> Enter Awards
 				</button>
 			<?php endif; ?>
+			<?php if (!empty($CanBonusCredits)): ?>
+				<button class="kn-btn kn-btn-outline" onclick="bcOpen()">
+					<i class="fas fa-star"></i> Bonus Credits
+				</button>
+			<?php endif; ?>
 			<a class="kn-btn kn-btn-outline" href="#" onclick="knActivateTab('map');return false;">
 				<i class="fas fa-map"></i> Map
 			</a>
@@ -541,6 +546,16 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
 			<?php include DIR_TEMPLATE . 'shared/orgdesign/_connect_block.tpl'; ?>
 			<?php endif; ?>
 		</div>
+
+		<?php
+		// Available Surveys: this kingdom's and Amtgard-wide ones the viewer is
+		// eligible for (SurveyAvailable is empty for a logged-out visitor).
+		$_svcRows = array_values(array_filter($SurveyAvailable ?? [], function ($s) use ($kingdom_id) {
+			$t = (string) ($s['scope_type'] ?? '');
+			return $t === 'ork' || ($t === 'kingdom' && (int) ($s['scope_id'] ?? 0) === (int) $kingdom_id);
+		}));
+		if ($_svcRows) { $_svcWrap = 'kn-card'; $_svcHead = 'kn'; include __DIR__ . '/_survey_available_card.tpl'; }
+		?>
 
 	</div>
 
@@ -750,6 +765,11 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
 
 					<!-- Toolbar -->
 					<div class="kn-parks-toolbar">
+						<div class="kn-avg-type" id="kn-avg-type">
+							<span class="kn-avg-type-label">Averages</span>
+							<?= ork_attendance_type_control('all') ?>
+							<span class="kn-avg-type-note" id="kn-avg-type-note" aria-live="polite"></span>
+						</div>
 						<button class="kn-view-btn" id="kn-view-tiles" title="Tile view">
 							<i class="fas fa-th-large"></i>
 						</button>
@@ -760,7 +780,7 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
 							<i class="fas fa-map"></i>
 						</button>
 						<?php if ($CanAddPark ?? false): ?>
-						<button onclick="knOpenAddParkModal()" style="margin-left:auto;display:inline-flex;align-items:center;gap:5px;background:#276749;color:#fff;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:600;border:none;cursor:pointer;">
+						<button onclick="knOpenAddParkModal()" style="margin-left:8px;display:inline-flex;align-items:center;gap:5px;background:#276749;color:#fff;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:600;border:none;cursor:pointer;">
 							<i class="fas fa-plus"></i> Add Park
 						</button>
 						<?php endif; ?>
@@ -1201,6 +1221,7 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
 							<li><a href="<?= UIR ?>Reports/corpora/Kingdom&id=<?= $kingdom_id ?>">Corpora Qualified</a></li>
 							<li><a href="<?= UIR ?>Reports/player_status_reconciliation/Kingdom&id=<?= $kingdom_id ?>">Player Status Reconciliation</a></li>
 							<li><a href="<?= UIR ?>Reports/guilds&KingdomId=<?= $kingdom_id ?>"><?= $entityLabel ?> Guilds</a></li>
+							<li><a href="<?= UIR ?>Reports/population_explorer&KingdomId=<?= $kingdom_id ?>"><i class="fas fa-users-viewfinder"></i> Population Explorer</a></li>
 							<?php endif; ?>
 							<li><a href="<?= UIR ?>Reports/kingdom_officer_directory&KingdomId=<?= $kingdom_id ?>"><i class="fas fa-crown"></i> Park Officer Directory</a></li>
 						</ul>
@@ -1213,8 +1234,8 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
 							<li><a href="<?= UIR ?>Reports/player_award_recommendations&KingdomId=<?= $kingdom_id ?>">Recommendations</a></li>
 							<?php endif; ?>
 							<li><a href="<?= UIR ?>Reports/knights_and_masters&KingdomId=<?= $kingdom_id ?>">Knights &amp; Masters</a></li>
-							<li><a href="<?= UIR ?>Reports/courts&KingdomId=<?= $kingdom_id ?>"><i class="fas fa-gavel"></i> Court Report</a></li>
 							<?php if ($IsLoggedIn): ?>
+							<li><a href="<?= UIR ?>Reports/courts&KingdomId=<?= $kingdom_id ?>"><i class="fas fa-gavel"></i> Court Report</a></li>
 							<li><a href="<?= UIR ?>Reports/knights_list&KingdomId=<?= $kingdom_id ?>">Knights</a></li>
 							<li><a href="<?= UIR ?>Reports/masters_list&KingdomId=<?= $kingdom_id ?>">Masters</a></li>
 							<li><a href="<?= UIR ?>Reports/player_awards&Ladder=8&KingdomId=<?= $kingdom_id ?>"><?= $entityLabel ?>-level Awards</a></li>
@@ -1222,6 +1243,7 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
 							<li><a href="<?= UIR ?>Reports/ladder_grid&KingdomId=<?= $kingdom_id ?>">Ladder Award Grid</a></li>
 											<li><a href="<?= UIR ?>Reports/custom_awards&KingdomId=<?= $kingdom_id ?>">Custom Awards</a></li>
 							<li><a href="<?= UIR ?>Reports/beltline_explorer&KingdomId=<?= $kingdom_id ?>"><i class="fas fa-sitemap"></i> Beltline Explorer</a></li>
+							<li><a href="<?= UIR ?>Reports/award_explorer&KingdomId=<?= $kingdom_id ?>"><i class="fas fa-award"></i> Award Explorer</a></li>
 							<?php endif; ?>
 						</ul>
 					</div>
@@ -1279,7 +1301,6 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
 		<!-- Admin Tab (now also hosts Court Planner as a collapsible subsection) -->
 		<?php if (($CanManageKingdom ?? false) || !empty($CanManageTests) || ($CanManageCourt ?? false)): ?>
 		<div class="kn-tab-panel" id="kn-tab-admin" style="display:none">
-			<?php if ($CanManageKingdom ?? false): ?>
 			<div class="kn-report-cols">
 				<?php if ($CanManageKingdom ?? false): ?>
 				<div class="kn-report-group">
@@ -1296,6 +1317,12 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
 					<ul>
 						<li><a href="<?= UIR ?>Admin/permissions/Kingdom/<?= $kingdom_id ?>">Roles &amp; Permissions</a></li>
 						<li><a href="#" onclick="knOpenClaimParkModal();return false;">Claim Park</a></li>
+					</ul>
+				</div>
+				<div class="kn-report-group">
+					<h5><i class="fas fa-poll"></i> Surveys</h5>
+					<ul>
+						<li><a href="<?= UIR ?>Survey/index/Kingdom/<?= $kingdom_id ?>">Manage Surveys</a></li>
 					</ul>
 				</div>
 				<?php endif; ?>
@@ -1328,7 +1355,6 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
 				</div>
 				<?php endif; ?>
 			</div>
-			<?php endif; ?>
 
 			<!-- Court Planner subsection (relocated from former top-level tab) -->
 			<?php if ($CanManageCourt ?? false): ?>
@@ -1353,11 +1379,7 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
 			.kn-cp-btn-link { background:none; border:1px solid #cbd5e0; color:#4a5568; padding:5px 12px; border-radius:5px; font-size:12px; cursor:pointer; text-decoration:none; display:inline-block; }
 			.kn-cp-btn-link:hover { background:#f7fafc; color:#2d3748; }
 			.kn-cp-empty { text-align:center; padding:48px 24px; color:#718096; font-size:15px; border:1px dashed #e2e8f0; border-radius:8px; }
-			.kn-rec-age-badge { font-size:11px; padding:1px 6px; border-radius:10px; font-weight:600; margin-left:4px; }
-			.kn-rec-age-green  { background:#c6f6d5; color:#22543d; }
-			.kn-rec-age-yellow { background:#fefcbf; color:#744210; }
-			.kn-rec-age-orange { background:#fed7aa; color:#7b341e; }
-			.kn-rec-age-red    { background:#fed7d7; color:#742a2a; }
+			/* .kn-rec-age-* live in revised.css: this block only renders for court managers. */
 			/* Collapsible subsection chrome (relocated court) */
 			.kn-cp-section { border-top:1px solid #e2e8f0; margin-top:24px; padding-top:4px; }
 			.kn-cp-header { display:flex; align-items:center; justify-content:space-between; width:100%; background:none; border:none; cursor:pointer; padding:10px 4px; font-size:15px; font-weight:700; color:#2d3748; text-align:left; }
@@ -1711,6 +1733,7 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
      JavaScript
      ============================================= -->
 <script>
+window.tnPseudoLadderInfo = <?= json_encode(is_array($PseudoLadderSiblings ?? null) ? $PseudoLadderSiblings : (object)[]) ?>;
 var KnConfig = {
 	uir:              '<?= UIR ?>',
 	httpService:      '<?= HTTP_SERVICE ?>',
@@ -1720,6 +1743,7 @@ var KnConfig = {
 	canManage:        <?= !empty($CanManageKingdom) ? 'true' : 'false' ?>,
 	canAddPark:       <?= !empty($CanAddPark) ? 'true' : 'false' ?>,
 	loggedIn:         <?= !empty($IsLoggedIn) ? 'true' : 'false' ?>,
+	viewerId:         <?= (int)($CurrentUserId ?? 0) ?>,
 	parkTitleOptions: <?= json_encode($ParkTitleId_options ?? [], JSON_HEX_TAG | JSON_HEX_AMP) ?>,
 	parkEditLookup:   <?= json_encode($CanManageKingdom ? array_values($park_edit_lookup ?? []) : [], JSON_HEX_TAG | JSON_HEX_AMP) ?>,
 	officerList:      <?= json_encode($CanManageKingdom ? array_map(function($o) { return ['OfficerRole' => $o['OfficerRole'], 'MundaneId' => (int)$o['MundaneId'], 'Persona' => $o['Persona']]; }, $officerList) : [], JSON_HEX_TAG | JSON_HEX_AMP) ?>,
@@ -1940,6 +1964,15 @@ var KnBannerConfig = {
 				</label>
 				<div style="font-size:11px;color:#718096;margin-top:3px;padding-left:24px">Your name will not be visible to others on this recommendation</div>
 			</div>
+			<?php if (!empty($CanMonarchyOnlyRec)): ?>
+			<div class="pk-acct-field" style="margin-top:12px">
+				<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:normal">
+					<input type="checkbox" id="kn-rec-monarchy" value="1" style="width:16px;height:16px;cursor:pointer">
+					<span>Monarchy Only</span>
+				</label>
+				<div class="mo-check-hint">Only officers will see this recommendation; the player will not.</div>
+			</div>
+			<?php endif; ?>
 		</div>
 		<div class="kn-modal-footer">
 			<button class="pk-btn-ghost" id="kn-rec-cancel">Cancel</button>
@@ -2257,7 +2290,7 @@ var KnBannerConfig = {
 		</div>
 		<div class="kn-modal-body">
 			<div id="kn-editoff-feedback" style="display:none"></div>
-			<p class="kn-editoff-hint">Search and select a player for each role. Leave a field empty to skip that role. Use <strong>Vacate</strong> to remove the current holder.</p>
+			<p class="kn-editoff-hint">Search and select a player for each role; picking someone for an occupied role replaces the current holder when you save, so there is no need to vacate first. Leave a field empty to skip that role. <strong>Vacate</strong> empties the role immediately and ends that officer's access, including your own if it is your role.</p>
 			<div id="kn-editoff-rows">
 				<!-- Built by JS from KnConfig.officerList -->
 			</div>
@@ -2391,7 +2424,7 @@ var KnBannerConfig = {
 						<thead>
 							<tr>
 								<th>Title</th>
-								<th><span class="kn-admin-th-tip" title="Title Class determines rank precedence. Higher values = higher rank (e.g. 20=Knight, 30=Lord, 50=Baron, 90=Duke).">Class <i class="fas fa-question-circle" style="font-size:9px;color:#a0aec0;cursor:help"></i></span></th>
+								<th><span class="kn-admin-th-tip" data-tip="Title Class determines rank precedence. Higher values = higher rank (e.g. 20=Knight, 30=Lord, 50=Baron, 90=Duke).">Class <i class="fas fa-question-circle" style="font-size:9px;color:#a0aec0;cursor:help"></i></span></th>
 								<th>Min Att.</th>
 								<th>Cutoff</th>
 								<th>Period</th>
@@ -2492,7 +2525,7 @@ var KnBannerConfig = {
 								<input type="checkbox" id="kn-admin-new-istitle">
 							</div>
 							<div class="kn-admin-field">
-								<label>Title Class <i class="fas fa-question-circle" title="Title Class determines rank precedence. Higher values = higher rank (e.g. 20=Knight, 30=Lord, 50=Baron, 90=Duke)." style="font-size:10px;color:#a0aec0;cursor:help"></i></label>
+								<label>Title Class <i class="fas fa-question-circle" data-tip="Title Class determines rank precedence. Higher values = higher rank (e.g. 20=Knight, 30=Lord, 50=Baron, 90=Duke)." style="font-size:10px;color:#a0aec0;cursor:help"></i></label>
 								<input type="number" id="kn-admin-new-tclass" min="0" value="0" style="width:64px" disabled>
 							</div>
 						</div>
@@ -2524,7 +2557,7 @@ var KnBannerConfig = {
 								<input type="checkbox" id="kn-admin-custom-istitle">
 							</div>
 							<div class="kn-admin-field">
-								<label>Title Class <i class="fas fa-question-circle" title="Title Class determines rank precedence. Higher values = higher rank (e.g. 20=Knight, 30=Lord, 50=Baron, 90=Duke)." style="font-size:10px;color:#a0aec0;cursor:help"></i></label>
+								<label>Title Class <i class="fas fa-question-circle" data-tip="Title Class determines rank precedence. Higher values = higher rank (e.g. 20=Knight, 30=Lord, 50=Baron, 90=Duke)." style="font-size:10px;color:#a0aec0;cursor:help"></i></label>
 								<input type="number" id="kn-admin-custom-tclass" min="0" value="0" style="width:64px" disabled>
 							</div>
 						</div>
@@ -3290,33 +3323,55 @@ html[data-theme="dark"] #kn-cfe-results .kn-ac-empty { color: var(--ork-text-mut
 		}
 	}
 
-	// Kingdom's own parks (stat cards + kingdom footer)
-	fetch('<?= UIR ?>Kingdom/park_averages_json/' + kingdomId)
-		.then(function(r) { return r.json(); })
-		.then(function(data) {
-			knFillAverages(data, {
-				scope: document,
-				footer: { avgwk: 'kn-total-avgwk', avgmo: 'kn-total-avgmo', tp: 'kn-total-tp', tm: 'kn-total-tm' },
-				statCards: true
-			});
-		})
-		.catch(function(err) { console.error('Kingdom park_averages_json failed:', err); });
-
-	// Principality parks — one fetch per principality id; park ids are globally unique so
-	// document-scoped fills land on the right tiles/rows, and per-section footer ids keep totals separate.
+	// Kingdom's own parks + principality parks. One fetch per kingdom/principality id;
+	// park ids are globally unique so document-scoped fills land on the right tiles/rows,
+	// and per-section footer ids keep totals separate. The hero stat cards always show
+	// All; the Parks tab In-Person / Online / All control (informational only, never the
+	// kingdom's Count Online Attendance setting) refetches the tab's figures.
 	var knPrinzIds = (KnConfig.principalityIds || []);
-	knPrinzIds.forEach(function(prId) {
-		fetch('<?= UIR ?>Kingdom/park_averages_json/' + prId)
-			.then(function(r) { return r.json(); })
-			.then(function(data) {
-				knFillAverages(data, {
-					scope: document,
-					footer: { avgwk: 'kn-prinz-' + prId + '-avgwk', avgmo: 'kn-prinz-' + prId + '-avgmo', tp: 'kn-prinz-' + prId + '-tp', tm: 'kn-prinz-' + prId + '-tm' },
-					statCards: false
-				});
-			})
-			.catch(function(err) { console.error('Principality park_averages_json failed (' + prId + '):', err); });
-	});
+	var knAvgSeq = 0;
+	function knLoadAverages(type) {
+		var seq = ++knAvgSeq;
+		var qs = type && type !== 'all' ? '&AttendanceType=' + encodeURIComponent(type) : '';
+		var panel = document.getElementById('kn-tab-parks');
+		var pending = 1 + knPrinzIds.length;
+		if (panel) panel.classList.add('kn-avg-loading');
+		function done() {
+			if (seq === knAvgSeq && --pending === 0 && panel) panel.classList.remove('kn-avg-loading');
+		}
+		function load(id, opts, label) {
+			fetch('<?= UIR ?>Kingdom/park_averages_json/' + id + qs)
+				.then(function(r) { return r.json(); })
+				.then(function(data) { if (seq === knAvgSeq) knFillAverages(data, opts); })
+				.catch(function(err) { console.error(label + ' park_averages_json failed (' + id + '):', err); })
+				.then(done);
+		}
+		load(kingdomId, {
+			scope: document,
+			footer: { avgwk: 'kn-total-avgwk', avgmo: 'kn-total-avgmo', tp: 'kn-total-tp', tm: 'kn-total-tm' },
+			statCards: !qs
+		}, 'Kingdom');
+		knPrinzIds.forEach(function(prId) {
+			load(prId, {
+				scope: document,
+				footer: { avgwk: 'kn-prinz-' + prId + '-avgwk', avgmo: 'kn-prinz-' + prId + '-avgmo', tp: 'kn-prinz-' + prId + '-tp', tm: 'kn-prinz-' + prId + '-tm' },
+				statCards: false
+			}, 'Principality');
+		});
+	}
+	knLoadAverages('all');
+
+	var knAvgTypeEl = document.querySelector('#kn-avg-type .orn-type-control');
+	if (knAvgTypeEl && typeof window.ornAttendanceTypeControl === 'function') {
+		window.ornAttendanceTypeControl(knAvgTypeEl, {
+			value: 'all',
+			onChange: function(type) {
+				var note = document.getElementById('kn-avg-type-note');
+				if (note) note.textContent = window.ornAttendanceTypeControl.note(type);
+				knLoadAverages(type);
+			}
+		});
+	}
 
 	// ---- Players tab: lazy-load on first click ----
 	function knHtmlEsc(s) {
@@ -3859,6 +3914,8 @@ $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
 window.knInitRecsTab = function() {
 	var $tbl = $('#kn-rec-table');
 	if (!$tbl.length) return;
+	// No pill bar rendered for this viewer: don't silently hide 'already' recs behind an invisible filter.
+	if (!document.querySelector('#kn-tab-recommendations .kn-rec-filter-bar')) window.knRecActiveFilter = 'all';
 	window.knRecCircleAwardIds = (function() { try { return JSON.parse($tbl.attr('data-circle-ids') || '[]'); } catch (e) { return []; } })();
 	if ($.fn.dataTable.isDataTable('#kn-rec-table')) {
 		$tbl.DataTable().destroy();
@@ -3927,6 +3984,19 @@ window.OrkRsCfg = {
 };
 </script>
 <?php include __DIR__ . '/_recommendation_seconds_assets.tpl'; ?>
+<?php include __DIR__ . '/_monarchy_only_assets.tpl'; ?>
+<?php endif; ?>
+<?php if (!empty($CanBonusCredits)): ?>
+<script>
+window.OrkBcCfg = {
+	uir:       '<?= UIR ?>',
+	scopeType: 'kingdom',
+	scopeId:   <?= (int)($kingdom_id ?? 0) ?>,
+	scopeName: <?= json_encode($kingdom_name ?? '') ?>,
+	kingdomId: <?= (int)($kingdom_id ?? 0) ?>
+};
+</script>
+<?php include __DIR__ . '/_bonus_credit_assets.tpl'; ?>
 <?php endif; ?>
 
 <?php

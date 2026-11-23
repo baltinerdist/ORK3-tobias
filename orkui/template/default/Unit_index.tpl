@@ -263,7 +263,9 @@ if ($_odNeedsCss): ?>
 	max-height: none;
 }
 .un-heraldry-edit-btn {
-	position: absolute;
+	/* !important: the generic [data-tip] rule in revised.css sets position:relative
+	   at higher specificity, which dropped the button out of the frame's corner. */
+	position: absolute !important;
 	bottom: 4px;
 	right: 4px;
 	width: 24px;
@@ -281,6 +283,13 @@ if ($_odNeedsCss): ?>
 }
 .un-heraldry-wrap:hover .un-heraldry-edit-btn { opacity: 1; }
 .un-heraldry-edit-btn i { color: #fff; font-size: 11px; pointer-events: none; }
+/* A touch screen has no hover, so the button never appeared; keep it showing
+   there and give it a finger-sized target. Keyed on the pointer, not the
+   width, so a phone in "desktop site" mode still gets it. */
+@media (hover: none), (pointer: coarse) {
+	.un-heraldry-edit-btn { opacity: 1; width: 32px; height: 32px; }
+	.un-heraldry-edit-btn i { font-size: 13px; }
+}
 
 .un-hero-info {
 	flex: 1;
@@ -671,7 +680,8 @@ html[data-theme="dark"] .un-howto-section .un-fullwidth-title i { color: #68d391
 /* In-product CSS tooltip for [data-tip] — mirrors the revised.css pattern.
    Native title="" causes a 1–2s browser delay and clashes with our dark theme,
    so all Unit buttons use data-tip instead. */
-.un-heraldry-edit-btn[data-tip],
+/* .un-heraldry-edit-btn is left out of this rule: it is absolutely positioned,
+   which already anchors its tooltip. */
 .pn-card-edit-btn[data-tip],
 .pn-btn[data-tip],
 .kn-md-help-btn[data-tip] { position: relative; }
@@ -692,6 +702,55 @@ html[data-theme="dark"] .pn-btn[data-tip]:hover::after,
 html[data-theme="dark"] .kn-md-help-btn[data-tip]:hover::after {
 	background: #4a5568; color: #f7fafc;
 }
+/* Actions column is the right-most cell: anchor tips to the button's right edge
+   so they grow leftwards instead of overflowing the page. !important beats the
+   long :not() chain in revised.css's generic [data-tip] rule. */
+.un-action-btns .pn-btn[data-tip]:hover::after {
+	left: auto !important; right: 0 !important; transform: none !important;
+	white-space: normal !important; min-width: 0 !important;
+	width: max-content; max-width: 200px;
+}
+
+/* Suspended members: same light-red row treatment as the reports
+   (reports.css .rp-row-suspended), restated here because this page does
+   not load that stylesheet. */
+#un-roster-table tbody tr.un-row-suspended > td { background-color: #fff5f5; color: #742a2a; }
+#un-roster-table tbody tr.un-row-suspended:hover > td { background-color: #fed7d7; }
+html[data-theme="dark"] #un-roster-table tbody tr.un-row-suspended > td { background-color: #3b1515; color: #feb2b2; }
+html[data-theme="dark"] #un-roster-table tbody tr.un-row-suspended:hover > td { background-color: #4a1e1e; }
+
+/* Roster search box: wide enough to show its whole placeholder
+   ("Persona, or park (3+ letters)"). DataTables' default is ~10em. */
+#un-roster-table_filter input { width: 17em; max-width: 100%; box-sizing: border-box; }
+@media (max-width: 600px) {
+	#un-roster-table_filter label { display: block; }
+	#un-roster-table_filter input { width: 100%; margin-left: 0; }
+}
+
+/* The roster is a DataTables scrollX table: its body is an overflow box, so the
+   CSS ::after tip on the Actions buttons is clipped at the box's top edge
+   (reported by a user 2026-10-26: the bubble appeared as a dark sliver above
+   the row). Those tips are drawn instead by the script below as a
+   position:fixed bubble on <body>, the same approach as the recommendation
+   seconding buttons. html.un-jstip is set by that script, so without JS the
+   CSS tip still appears. */
+html.un-jstip #un-roster-table [data-tip]:hover::after { display: none !important; }
+.un-jstip-bubble {
+	position: fixed; z-index: 10000; pointer-events: none;
+	background: #1a202c; color: #fff; padding: 6px 10px; border-radius: 4px;
+	font-size: 11px; line-height: 1.4; box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+	max-width: 240px; width: max-content; white-space: normal; text-align: center;
+}
+.un-jstip-bubble[hidden] { display: none; }
+.un-jstip-bubble::before {
+	content: ''; position: absolute; left: var(--un-arrow-x, 50%); transform: translateX(-50%);
+	border: 5px solid transparent;
+}
+.un-jstip-bubble.un-jstip-above::before { top: 100%; border-top-color: #1a202c; }
+.un-jstip-bubble.un-jstip-below::before { bottom: 100%; border-bottom-color: #1a202c; }
+html[data-theme="dark"] .un-jstip-bubble { background: #4a5568; color: #f7fafc; }
+html[data-theme="dark"] .un-jstip-bubble.un-jstip-above::before { border-top-color: #4a5568; }
+html[data-theme="dark"] .un-jstip-bubble.un-jstip-below::before { border-bottom-color: #4a5568; }
 
 /* Destructive-action color preserved across themes. Inline color:#e53e3e on
    buttons gets stomped by a dark-mode rule in revised.css; this class wins. */
@@ -1281,9 +1340,10 @@ if ($_can_edit && (count($_auths) > 0 || true)):
 	$_persona_js  = addslashes($_persona);
 	$_last_signin = $_m['LastSignIn'] ?? '';
 	$_is_active   = !empty($_last_signin) && $_last_signin >= $_cutoff;
+	$_is_susp     = !empty($_m['Suspended']);
 ?>
-				<tr>
-					<td>
+				<tr<?=$_is_susp ? ' class="un-row-suspended" title="This player is currently under suspension"' : ''?>>
+					<td data-persona="<?=htmlspecialchars($_persona, ENT_QUOTES)?>">
 						<a href="<?=UIR?>Player/profile/<?=(int)$_m['MundaneId']?>"
 							style="color:var(--ork-link);text-decoration:none;font-weight:500;">
 							<?=htmlspecialchars($_persona)?>
@@ -1901,9 +1961,82 @@ var UnBannerConfig = {
 <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.print.min.js"></script>
 
 <script>
+// Roster action-button tooltips, drawn position:fixed on <body> so the
+// DataTables scroll box cannot clip them (see the .un-jstip-bubble CSS).
+// Delegated, so rows DataTables redraws need no rebinding.
+(function () {
+	if (!document.getElementById('un-roster-table')) return;
+	var bubble = null, cur = null;
+	function ensure() {
+		if (!bubble) {
+			bubble = document.createElement('div');
+			bubble.className = 'un-jstip-bubble';
+			bubble.setAttribute('role', 'tooltip');
+			bubble.hidden = true;
+			document.body.appendChild(bubble);
+		}
+		return bubble;
+	}
+	function show(el) {
+		var text = el.getAttribute('data-tip');
+		if (!text) return;
+		var b = ensure();
+		b.textContent = text;
+		b.className = 'un-jstip-bubble';
+		b.hidden = false;
+		var r = el.getBoundingClientRect(), bw = b.offsetWidth, bh = b.offsetHeight, vw = window.innerWidth;
+		var above = r.top - bh - 8 >= 4;
+		var top = above ? r.top - bh - 8 : r.bottom + 8;
+		// Actions sit in the right-most column: hang the bubble from the button's
+		// right edge when centring it would run past the viewport.
+		var centred = r.left + r.width / 2 - bw / 2;
+		var left = (centred + bw > vw - 6) ? r.right - bw : centred;
+		left = Math.max(6, Math.min(left, vw - bw - 6));
+		b.style.top = top + 'px';
+		b.style.left = left + 'px';
+		b.style.setProperty('--un-arrow-x', Math.max(8, Math.min(bw - 8, r.left + r.width / 2 - left)) + 'px');
+		b.classList.add(above ? 'un-jstip-above' : 'un-jstip-below');
+		cur = el;
+	}
+	function hide() { if (bubble) bubble.hidden = true; cur = null; }
+	function target(e) { return e.target.closest ? e.target.closest('#un-roster-table [data-tip]') : null; }
+	document.addEventListener('mouseover', function (e) { var el = target(e); if (el && el !== cur) show(el); });
+	document.addEventListener('mouseout', function (e) {
+		if (!cur) return;
+		if (e.relatedTarget && cur.contains(e.relatedTarget)) return;
+		if (e.target === cur || cur.contains(e.target)) hide();
+	});
+	document.addEventListener('focusin', function (e) { var el = target(e); if (el) show(el); });
+	document.addEventListener('focusout', hide);
+	document.addEventListener('scroll', hide, true);
+	document.addEventListener('click', hide, true);
+	document.documentElement.classList.add('un-jstip');
+})();
 $(function () {
 	if ($('#un-roster-table').length) {
-		$('#un-roster-table').DataTable({
+		// Roster search: persona only, widening to persona OR park once the
+		// query is 3+ characters. Most units sit in one park, so letting the
+		// box read the Park column (or Kingdom, Role, Title, sign-in date, or
+		// the "(inactive)" badge) made single letters match the whole roster.
+		// Large households do span many parks, hence the 3+ character widening.
+		var unRosterQuery = '';
+		var UN_PARK_MIN = 3;
+		$.fn.dataTable.ext.search.push(function (settings, searchData, index) {
+			if (settings.nTable.id !== 'un-roster-table') { return true; }
+			var q = unRosterQuery;
+			if (!q) { return true; }
+			var tr = settings.aoData[index].nTr;
+			if (!tr) { return true; }
+			var persona = (tr.cells[0].getAttribute('data-persona') || tr.cells[0].textContent || '').toLowerCase();
+			if (persona.indexOf(q) !== -1) { return true; }
+			if (q.length >= UN_PARK_MIN) {
+				var park = (tr.cells[1].textContent || '').trim().toLowerCase();
+				if (park.indexOf(q) !== -1) { return true; }
+			}
+			return false;
+		});
+
+		var unRoster = $('#un-roster-table').DataTable({
 			dom         : 'lfrtip',
 			scrollX: true,
 			orderClasses: false,
@@ -1913,13 +2046,28 @@ $(function () {
 			],
 			pageLength: 25,
 			order     : [[3, 'asc'], [0, 'asc']],
+			language  : { searchPlaceholder: 'Persona, or park (3+ letters)' },
 			columnDefs: [
+				// Every column is unsearchable so DataTables' own global search
+				// is a no-op; the ext.search function above does the filtering.
+				{ targets: '_all', searchable: false },
 				{ targets: 5, type: 'date' },
 <?php if ($_can_edit): ?>
-				{ targets: -1, orderable: false, searchable: false, width: '90px' }
+				{ targets: -1, orderable: false, width: '90px' }
 <?php endif; ?>
 			]
 		});
+
+		// Take over the search box: DataTables' built-in handler would run its
+		// global search (which, with no searchable columns, hides everything).
+		$('#un-roster-table_filter input')
+			.off()
+			.on('input keyup change', function () {
+				var v = $.trim(String(this.value || '')).toLowerCase();
+				if (v === unRosterQuery) { return; }
+				unRosterQuery = v;
+				unRoster.draw();
+			});
 	}
 
 	// ── Tab switching (About / Members) ──────────────────────

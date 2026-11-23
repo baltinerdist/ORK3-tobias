@@ -21,6 +21,9 @@ if ($grid_view && ($mode ?? '') === 'all_parks' && !empty($attendance)) {
         $period_totals[$period] = ($period_totals[$period] ?? 0) + $val;
         if (!in_array($period, $grid_periods)) $grid_periods[] = $period;
     }
+    // Merge in the full expected period list (empty periods render as 0), then sort chronologically.
+    foreach ((array)($all_periods ?? []) as $ap) { if (!in_array($ap, $grid_periods)) $grid_periods[] = $ap; }
+    sort($grid_periods, SORT_STRING);
     uasort($grid_parks, function($a, $b) { return strcmp($a['ParkName'], $b['ParkName']); });
     $grid_kingdom_row = ['ParkId' => 0, 'ParkName' => isset($kingdom_name) ? $kingdom_name : 'Kingdom', 'periods' => $period_totals];
 }
@@ -75,7 +78,7 @@ if ($has_results && ($mode ?? '') == 'all_parks') {
 	<!-- ── Context strip ──────────────────────────────────── -->
 	<div class="rp-context">
 		<i class="fas fa-info-circle rp-context-icon"></i>
-		<span>Explore park attendance data by period. Select <strong>All Parks</strong> for a kingdom summary, or choose a specific park for a player-level pivot view.</span>
+		<span>Explore park attendance data by period. Select <strong>All Parks</strong> for a kingdom summary, or choose a specific park for a player-level pivot view.<?php $_type_note = ork_attendance_type_note($form['AttendanceType'] ?? 'all'); if ($_type_note !== '') : ?> <strong><?=htmlspecialchars($_type_note)?></strong><?php endif; ?></span>
 	</div>
 
 <?php if ($has_results) : ?>
@@ -164,6 +167,11 @@ if ($has_results && ($mode ?? '') == 'all_parks') {
 							<label><input type="checkbox" id="LocalPlayersOnly" name="LocalPlayersOnly" value="1"<?=!empty($form['LocalPlayersOnly']) ? ' checked' : ''?>> Local Players Only?</label>
 						</div>
 						<div class="rp-form-group">
+							<label>Attendance Type</label>
+							<?=ork_attendance_type_control((string)($form['AttendanceType'] ?? 'all'))?>
+							<input type="hidden" name="AttendanceType" value="<?=htmlspecialchars((string)($form['AttendanceType'] ?? 'all'))?>">
+						</div>
+						<div class="rp-form-group">
 							<button type="submit" name="RunReport" value="1" class="rp-btn-run">Run Report</button>
 						</div>
 					</form>
@@ -181,6 +189,7 @@ if ($has_results && ($mode ?? '') == 'all_parks') {
 					<p><strong>Minimum Sign-Ins</strong> filters players in the single-park view to only those with at least that many total sign-ins.</p>
 					<p><strong>Local Players Only</strong> (single park) restricts results to players whose home park matches the selected park.</p>
 					<p><strong>Average by Uniques</strong> uses Unique Players as the numerator for Avg Weekly/Monthly instead of Total Sign-Ins.</p>
+					<p><strong>Attendance Type</strong> limits every figure to In-Person or Online sign-ins; <strong>All</strong> counts both.</p>
 					<p><strong>Grid View</strong> pivots the All Parks table so each park is a row and each period is a column, with an average column shown first.</p>
 				</div>
 			</div>
@@ -215,7 +224,7 @@ if ($has_results && ($mode ?? '') == 'all_parks') {
 <?php foreach ($grid_parks as $gpark) : ?>
 				<tr>
 					<td><a href="<?=UIR.'Park/profile/'.$gpark['ParkId']?>"><?=htmlspecialchars($gpark['ParkName'])?></a></td>
-					<?php $_gvals = array_values($gpark['periods']); $_gcnt = count($_gvals); ?>
+					<?php $_gvals = array_values($gpark['periods']); $_gcnt = count($grid_periods); /* every rendered period counts (empty = 0) */ ?>
 					<td><?=$_gcnt > 0 ? number_format(array_sum($_gvals) / $_gcnt, 1) : '0'?></td>
 <?php foreach ($grid_periods as $gp) : ?>
 					<td><?=(int)($gpark['periods'][$gp] ?? 0)?></td>
@@ -225,7 +234,7 @@ if ($has_results && ($mode ?? '') == 'all_parks') {
 <?php if (!empty($grid_kingdom_row)) : ?>
 				<tr class="rp-row-summary">
 					<td><strong><?=htmlspecialchars($grid_kingdom_row['ParkName'])?></strong></td>
-					<?php $_gkvals = array_values($grid_kingdom_row['periods']); $_gkcnt = count($_gkvals); ?>
+					<?php $_gkvals = array_values($grid_kingdom_row['periods']); $_gkcnt = count($grid_periods); ?>
 					<td><strong><?=$_gkcnt > 0 ? number_format(array_sum($_gkvals) / $_gkcnt, 1) : '0'?></strong></td>
 <?php foreach ($grid_periods as $gp) : ?>
 					<td><strong><?=(int)($grid_kingdom_row['periods'][$gp] ?? 0)?></strong></td>
@@ -426,10 +435,14 @@ $(function() {
 			{ extend: 'print', exportOptions: { columns: ':visible' } }
 		],
 		columnDefs: [
-			{ targets: spNumericCols, type: 'num', className: 'dt-center' }
+			// html-num: the Total cell is wrapped in <strong>, which plain 'num' reads as NaN.
+			{ targets: spNumericCols, type: 'html-num', className: 'dt-center' }
 		],
 		pageLength: 25,
-		order: [[-1, 'desc'], [0, 'asc']],
+		// Sort by the Total column (last). DataTables does not accept -1 as a
+		// column index here; it threw during init, which also skipped the
+		// Export/Print bindings below.
+		order: [[3 + periodCount, 'desc'], [0, 'asc']],
 		fixedHeader : { headerOffset: 48 },
 		scrollX     : true,
 		fixedColumns: { left: 1 }
@@ -463,3 +476,7 @@ html[data-theme="dark"] .rp-row-summary td { background-color: var(--ork-bg-tert
 #explorer-grid-table th:nth-child(2),
 #explorer-grid-table td:nth-child(2) { font-weight: 600; border-right: 2px solid var(--rp-border); }
 </style>
+<script>
+/* In-Person / Online / All: keep the hidden field in step; re-run the report when it has already run. */
+if (window.ornBindAttendanceTypeForm) window.ornBindAttendanceTypeForm(document.querySelector('.rp-explorer-form'), <?=isset($form) ? 'true' : 'false'?>);
+</script>

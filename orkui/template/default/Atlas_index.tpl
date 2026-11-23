@@ -404,6 +404,7 @@ window.atInitMap = async function() {
 	atMapObj = new google.maps.Map(document.getElementById('at-map'), {
 		center: { lat: 39, lng: -98 },
 		zoom: 3,
+		gestureHandling: (window.matchMedia && matchMedia('(pointer: coarse)').matches) ? 'greedy' : 'auto', // one-finger pan on touch
 		mapId: 'ORK3_MAP_ID'
 	});
 
@@ -424,9 +425,13 @@ window.atInitMap = async function() {
 			content: pinGlyph.element
 		});
 
+		// A pale Kingdom colour disappears against the basemap, so its ring
+		// is drawn in a dark neutral instead.
+		var ringColor = (loc.color && loc.color.length === 6 && atColorIsLight(loc.color)) ? '#1a202c' : color;
 		var circle = new google.maps.Circle({
-			fillOpacity: 0,
-			strokeColor: color,
+			fillColor: ringColor,
+			fillOpacity: 0.07,
+			strokeColor: ringColor,
 			strokeOpacity: 0.7,
 			strokeWeight: 1,
 			center: marker.position,

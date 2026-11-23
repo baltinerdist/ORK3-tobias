@@ -46,7 +46,6 @@ class ParkProfile extends Ork3
             LEFT JOIN ' . DB_PREFIX . 'park p ON p.park_id = e.park_id
             JOIN ' . DB_PREFIX . 'event_calendardetail cd ON cd.event_id = e.event_id
                 AND cd.event_start >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-                AND cd.event_start <= DATE_ADD(NOW(), INTERVAL 12 MONTH)
             LEFT JOIN (
                 SELECT event_calendardetail_id,
                     SUM(status = \'going\') AS rsvp_going,
@@ -210,11 +209,16 @@ class ParkProfile extends Ork3
     }
 
     /**
+     * Park hero averages. $type (in_person | online | all, default all) filters the
+     * sign-ins counted. Informational only: the kingdom CountOnlineAttendance setting
+     * never applies here, and no park status/size is derived from these figures.
+     *
      * @return array{MonthlyAvg: float, WeeklyAvg: float}
      */
-    public function GetParkAttendanceAverages(int $parkId): array
+    public function GetParkAttendanceAverages(int $parkId, string $type = 'all'): array
     {
         $pid = (int) $parkId;
+        $typeClause = Attendance::TypeClause($type, 'a');
         $monthlyAvg = 0.0;
         $this->db->Clear();
         $maResult = $this->db->DataSet(
@@ -223,7 +227,7 @@ class ParkProfile extends Ork3
                 FROM ' . DB_PREFIX . 'attendance a
                 WHERE a.park_id = ' . $pid . '
                   AND a.date > DATE_SUB(CURDATE(), INTERVAL 1 YEAR)
-                  AND a.mundane_id > 0
+                  AND a.mundane_id > 0' . $typeClause . '
                 GROUP BY a.date_year, a.date_month
             ) sub'
         );
@@ -248,7 +252,7 @@ class ParkProfile extends Ork3
                 WHERE a.park_id = ' . $pid . "
                   AND a.date >= '{$escapedWkStart}'
                   AND a.date <= '{$escapedWkEnd}'
-                  AND a.mundane_id > 0
+                  AND a.mundane_id > 0{$typeClause}
                 GROUP BY a.date_year, a.date_week3, a.mundane_id
             ) sub"
         );
@@ -360,7 +364,6 @@ class ParkProfile extends Ork3
             LEFT JOIN ' . DB_PREFIX . 'kingdom k ON k.kingdom_id = ci.kingdom_id
             WHERE (ci.park_id = ' . $pid . ' OR (ci.park_id = 0 AND ci.kingdom_id = ' . $kid . '))
               AND ci.event_end >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-              AND ci.event_start <= DATE_ADD(NOW(), INTERVAL 12 MONTH)
             ORDER BY ci.event_start';
         $this->db->Clear();
         $ciResult = $this->db->DataSet($ciSql);
