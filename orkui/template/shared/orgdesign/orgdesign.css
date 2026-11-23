@@ -951,16 +951,32 @@ html[data-theme="dark"] .od-dm-reign-theme[data-tip]::after { background: var(--
     .od-dm-reign-theme[data-tip]::after { display: none; }
 }
 
-/* About row: the About block takes ~3/4 and "Our Next Event" ~1/4 of a
-   four-column width, side by side; the event tile only drops below when the
-   row is too narrow for both (flex-wrap at the basis widths). */
-.od-about-row { display: flex; flex-wrap: wrap; align-items: stretch; gap: 14px; margin-bottom: 14px; }
-.od-about-row > * { margin-bottom: 0; min-width: 0; }
-.od-about-row > .od-about-grid,
-.od-about-row > .pk-about-grid { flex: 3 1 0; min-width: min(100%, 420px); }
-.od-about-row > .od-about-grid > .od-about-section { height: 100%; box-sizing: border-box; }
-.od-about-row > .od-nextevt { flex: 1 1 0; min-width: min(100%, 230px); }
-
+/* --- About tab layout (Kingdom / Park) -----------------------------------
+   Two columns on a four-column idea: the narrative (About, Schedule, History,
+   Milestones) in a 3/4 main column, quick facts (Our Next Event, Directions,
+   links) in a 1/4 rail. The switch keys off the tab panel's own width (a size
+   container), not the viewport, because the profile sidebar eats a variable
+   share of the screen. When the panel is narrow the two columns dissolve
+   (display: contents) into ONE column ordered by what a visitor needs first,
+   instead of dumping the whole rail after the milestones. */
+.od-about-layout { container: od-about / inline-size; margin-bottom: 14px; }
+.od-about-cols {
+    display: grid; grid-template-columns: minmax(0, 3fr) minmax(240px, 1fr);
+    gap: 14px; align-items: start;
+}
+.od-about-main, .od-about-rail { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.od-about-main > *, .od-about-rail > *, .od-about-main > .od-about-grid > .od-about-section { margin: 0; }
+@container od-about (max-width: 760px) {
+    .od-about-cols { display: flex; flex-direction: column; }
+    .od-about-main, .od-about-rail { display: contents; }
+    .od-about-intro, .od-about-grid       { order: 1; }
+    .pk-about-schedule                    { order: 2; }
+    .od-nextevt                           { order: 3; }
+    .pk-directions-section                { order: 4; }
+    .od-history-section, .pk-history-section { order: 5; }
+    .od-timeline-section                  { order: 6; }
+    .od-about-meta, .pk-about-meta        { order: 7; }
+}
 /* --- "Our Next Event" About tile (Kingdom / Park) -------------------------
    The tile is an .od-about-section; the next-event card inside it recesses
    to --ork-card-bg (layer convention). The date badge takes the org accent. */

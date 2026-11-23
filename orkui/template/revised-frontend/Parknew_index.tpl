@@ -430,9 +430,6 @@ html[data-theme="dark"] .pk-tab-nav li.pk-tab-active { color: <?= htmlspecialcha
    and milestones timeline are now provided by the shared design stylesheet
    shared/orgdesign/orgdesign.css (od- prefixed) + its partials. The Our History
    section keeps its Park-specific dashed-divider wrapper. */
-/* About tiles: .od-about-section (orgdesign.css). The two-up grid spaces its
-   own tiles; the surrounding .od-about-row owns the space below. */
-.pk-about-grid > .od-about-section { margin-bottom: 0; }
 </style>
 
 <!-- =============================================
@@ -880,258 +877,261 @@ html[data-theme="dark"] .pk-tab-nav li.pk-tab-active { color: <?= htmlspecialcha
 					$_addrLine2 = trim(implode(' ', array_filter([trim($parkInfo['Province'] ?? ''), trim($parkInfo['PostalCode'] ?? '')])));
 					$_addrFull  = implode(', ', array_filter([$_addrLine1, $_addrLine2]));
 				?>
-				<div class="od-about-row">
-				<div class="pk-about-grid">
-					<?php if ($pkShowNewAbout): ?>
-					<?php if (!empty($aboutText) || !empty($CanAdminPark)): ?>
-					<div class="od-about-section pk-about-section">
-						<?php if (!empty($CanAdminPark) && $pkAboutEnabled !== 1): ?>
-						<div class="od-about-unpublished" data-tip="Only managers can see this. Enable the About Page in Customize to publish it.">
-							<i class="fas fa-eye-slash"></i> Unpublished &mdash; only managers can see this
-						</div>
-						<?php endif; ?>
-						<div class="od-about-section-head">
-							<div class="pk-about-label">About</div>
-							<?php if (!empty($CanAdminPark)): ?>
-							<button class="od-about-edit-btn" type="button" onclick="odOpenDesignModal('about')" data-tip="Edit About">
-								<i class="fas fa-pencil-alt"></i> Edit
-							</button>
-							<?php endif; ?>
-						</div>
-						<?php if (!empty($aboutText)): ?>
-						<div class="od-about-text pk-about-text"><?= org_design_markdown($aboutText) ?></div>
-						<?php elseif (!empty($CanAdminPark)): ?>
-						<div class="pk-empty" style="text-align:left;font-size:13px;color:#a0aec0">
-							No About content yet. <a href="#" onclick="event.preventDefault();odOpenDesignModal('about')">Add some</a> to introduce <?= htmlspecialchars($park_name) ?> to visitors.
-						</div>
-						<?php endif; ?>
-					</div>
-					<?php endif; ?>
-					<?php else: ?>
-					<?php if (!empty($description)): ?>
-					<div class="od-about-section pk-about-section">
-						<div class="pk-about-label">About</div>
-						<div class="od-about-text pk-about-text"><?= org_design_markdown($description) ?></div>
-					</div>
-					<?php endif; ?>
-					<?php endif; ?>
-
-					<?php if (!empty($directions) || !empty($_addrFull)): ?>
-					<div class="od-about-section pk-about-section">
-						<div class="pk-about-label">Directions</div>
-						<?php if (!empty($_addrFull)): ?>
-						<div class="pk-about-meta-row" style="margin-bottom:10px">
-							<i class="fas fa-map-marker-alt"></i>
-							<span><?= htmlspecialchars($_addrFull) ?></span>
-						</div>
-						<?php endif; ?>
-						<?php if (!empty($directions)): ?>
-						<div class="od-about-text pk-about-text"><?= org_design_markdown($directions) ?></div>
-						<?php endif; ?>
-					</div>
-					<?php endif; ?>
-				</div>
-
-				<?php if ($pkShowNewAbout):
-					$odNextEvents  = $NextEvents ?? [];
-					$odEventsTabJs = "pkActivateTab('events')";
-					include DIR_TEMPLATE . 'shared/orgdesign/_next_events.tpl';
-				endif; ?>
-				</div><!-- /.od-about-row -->
-
-				<?php if ($pkShowNewAbout && (!empty($ourHistoryText) || !empty($CanAdminPark))): ?>
-				<div class="od-about-section pk-about-section pk-history-section">
-					<div class="od-about-section-head">
-						<div class="pk-about-label"><i class="fas fa-scroll" style="margin-right:6px;color:#a0aec0"></i>Our History</div>
-						<?php if (!empty($CanAdminPark)): ?>
-						<button class="od-about-edit-btn" type="button" onclick="odOpenDesignModal('about')" data-tip="Edit Our History">
-							<i class="fas fa-pencil-alt"></i> Edit
-						</button>
-						<?php endif; ?>
-					</div>
-					<?php if (!empty($ourHistoryText)): ?>
-					<div class="od-about-text pk-about-text"><?= org_design_markdown($ourHistoryText) ?></div>
-					<?php elseif (!empty($CanAdminPark)): ?>
-					<div class="pk-empty" style="text-align:left;font-size:13px;color:#a0aec0">
-						Share the founding story, past officers, or notable moments. <a href="#" onclick="event.preventDefault();odOpenDesignModal('about')">Add Our History</a>.
-					</div>
-					<?php endif; ?>
-				</div>
-				<?php endif; ?>
-
-				<?php if (!empty($websiteUrl) || !empty($parkInfo['MapUrl'])): ?>
-				<div class="od-about-section pk-about-section pk-about-meta">
-					<?php if (!empty($websiteUrl)): ?>
-					<div class="pk-about-meta-row">
-						<i class="fas fa-globe"></i>
-						<a href="<?= htmlspecialchars($websiteUrl) ?>" target="_blank" rel="noopener"><?= htmlspecialchars($websiteUrl) ?></a>
-					</div>
-					<?php endif; ?>
-					<?php if (!empty($parkInfo['MapUrl'])): ?>
-					<div class="pk-about-meta-row">
-						<i class="fas fa-map"></i>
-						<a href="<?= htmlspecialchars($parkInfo['MapUrl']) ?>" target="_blank" rel="noopener">View on Map</a>
-					</div>
-					<?php endif; ?>
-				</div>
-				<?php endif; ?>
-
-				<!-- Milestones timeline (derived + custom) -->
-				<?php if ($pkShowNewAbout && ($pkHasMilestones || !empty($CanAdminPark))): ?>
-				<?php include DIR_TEMPLATE . 'shared/orgdesign/_milestones_timeline.tpl'; ?>
-				<?php endif; ?>
-
-				<!-- Schedule sub-section -->
-				<div class="od-about-section pk-about-section pk-about-schedule">
-					<div class="pk-about-label" style="display:flex;align-items:center;justify-content:space-between;">
-						<span><i class="fas fa-calendar" style="margin-right:6px;color:#a0aec0;"></i>Schedule</span>
-						<?php if (!empty($CanAdminPark)): ?>
-						<button class="pk-btn pk-btn-primary pk-btn-sm" onclick="pkOpenAddDayModal()">
-							<i class="fas fa-plus"></i> Add Park Day
-						</button>
-						<?php endif; ?>
-					</div>
-					<?php if (count($parkDayList) > 0): ?>
-					<div class="pk-schedule-grid">
-						<?php foreach ($parkDayList as $day): ?>
-						<?php
-							if (!function_exists('pk_ordinal')) {
-								function pk_ordinal($n) {
-									$n = (int)$n; $m = $n % 100;
-									if ($m >= 11 && $m <= 13) return $n . 'th';
-									return $n . (['th','st','nd','rd'][$n % 10] ?? 'th');
-								}
-							}
-							switch ($day['Recurrence']) {
-								case 'weekly':        $recText = 'Every ' . $day['WeekDay']; break;
-								case 'week-of-month': $recText = 'Every ' . pk_ordinal($day['WeekOfMonth']) . ' ' . $day['WeekDay']; break;
-								case 'every-x-weeks':
-									$_wi = (int)($day['WeekInterval'] ?? 0);
-									$recText = ($_wi === 2)
-										? 'Every other ' . $day['WeekDay']
-										: 'Every ' . $_wi . ' weeks on ' . $day['WeekDay'] . 's';
-									break;
-								case 'monthly':       $recText = 'Monthly on the ' . pk_ordinal($day['MonthDay']); break;
-								default:              $recText = $day['Recurrence'];
-							}
-							switch ($day['Purpose']) {
-								case 'park-day':         $purposeLabel = 'Park Day';          $purposeCls = 'purpose-parkday'; $iconCls = 'icon-parkday'; $iconFa = 'fa-shield-alt'; break;
-								case 'fighter-practice': $purposeLabel = 'Fighter Practice';  $purposeCls = 'purpose-fighter'; $iconCls = 'icon-fighter'; $iconFa = 'fa-user-shield'; break;
-								case 'arts-day':         $purposeLabel = 'A&S Day';           $purposeCls = 'purpose-arts';    $iconCls = 'icon-arts';    $iconFa = 'fa-palette';    break;
-								case 'other':            $purposeLabel = 'Other';             $purposeCls = 'purpose-other';   $iconCls = 'icon-other';   $iconFa = 'fa-star';       break;
-								default:                 $purposeLabel = 'Park Day';          $purposeCls = 'purpose-parkday'; $iconCls = 'icon-parkday'; $iconFa = 'fa-shield-alt';
-							}
-							// Day-specific map URL
-							$dayMapUrl = null;
-							if (!empty($day['Location'])) {
-								$dl = @json_decode(stripslashes($day['Location']));
-								if ($dl) {
-									$dlatlng = isset($dl->location) ? $dl->location : (isset($dl->bounds->northeast) ? $dl->bounds->northeast : null);
-									if ($dlatlng && is_numeric($dlatlng->lat ?? null))
-										$dayMapUrl = 'https://maps.google.com/maps?z=14&t=m&q=loc:' . $dlatlng->lat . '+' . $dlatlng->lng;
-								}
-							} elseif (!empty($day['MapUrl'])) {
-								$dayMapUrl = $day['MapUrl'];
-							} elseif ($parkMapUrl) {
-								$dayMapUrl = $parkMapUrl;
-							}
-						?>
-						<div class="pk-schedule-card"
-					data-day-id="<?= (int)$day['ParkDayId'] ?>"
-					data-purpose="<?= htmlspecialchars($day['Purpose'] ?? '') ?>"
-					data-recurrence="<?= htmlspecialchars($day['Recurrence'] ?? '') ?>"
-					data-weekday="<?= htmlspecialchars($day['WeekDay'] ?? '') ?>"
-					data-weekof="<?= (int)($day['WeekOfMonth'] ?? 0) ?>"
-					data-monthday="<?= (int)($day['MonthDay'] ?? 0) ?>"
-					data-startdate="<?= htmlspecialchars($day['StartDate'] ?? '') ?>"
-					data-interval="<?= (int)($day['WeekInterval'] ?? 0) ?>"
-					data-time="<?= htmlspecialchars($day['Time'] ?? '') ?>"
-					data-desc="<?= htmlspecialchars($day['Description'] ?? '', ENT_QUOTES) ?>"
-					data-online="<?= (int)($day['Online'] ?? 0) ?>"
-					data-altloc="<?= (int)($day['AlternateLocation'] ?? 0) ?>"
-					data-address="<?= htmlspecialchars($day['Address'] ?? '', ENT_QUOTES) ?>"
-					data-city="<?= htmlspecialchars($day['City'] ?? '', ENT_QUOTES) ?>"
-					data-province="<?= htmlspecialchars($day['Province'] ?? '', ENT_QUOTES) ?>"
-					data-postal="<?= htmlspecialchars($day['PostalCode'] ?? '', ENT_QUOTES) ?>">
-				<?php if (!empty($CanAdminPark)): ?>
-				<button class="pk-schedule-card-edit" data-tip="Edit park day"><i class="fas fa-pencil-alt"></i></button>
-				<?php endif; ?>
-							<div class="pk-schedule-icon <?= $iconCls ?>">
-								<i class="fas <?= $iconFa ?>"></i>
-							</div>
-							<div class="pk-schedule-info">
-								<div class="pk-schedule-when"><?= htmlspecialchars($recText) ?></div>
-								<div class="pk-schedule-time"><?= date('g:i A', strtotime($day['Time'])) ?></div>
-								<?php $_pdNextDate = $pdNextDateById[(int)$day['ParkDayId']] ?? null; ?>
-								<?php if ($_pdNextDate): ?>
-									<div class="pk-schedule-next" style="font-size:12px;color:var(--ork-text-muted,#718096);margin-top:2px">
-										<i class="fas fa-calendar-day" style="margin-right:4px;opacity:.7"></i>Next: <strong style="color:var(--ork-text,#2d3748);font-weight:600"><?= ($_pdNextDate === $parkLocalToday) ? 'Today' : date('D, M j', strtotime($_pdNextDate)) ?></strong>
-									</div>
-								<?php endif; ?>
-								<span class="pk-schedule-purpose <?= $purposeCls ?>"><?= $purposeLabel ?></span>
-								<?php if (!empty($day['Online'])): ?>
-									<span class="pk-schedule-online-badge"><i class="fas fa-wifi"></i> Online</span>
-								<?php else: ?>
-									<?php
-										$_dayAddr   = trim($day['Address'] ?? '');
-										$_dayCity   = trim($day['City'] ?? '');
-										if ($_dayCity && stripos($_dayAddr, $_dayCity) !== false) {
-											$_dayAddrStr = $_dayAddr;
-										} else {
-											$_dayAddrStr = implode(', ', array_filter([$_dayAddr, $_dayCity, trim($day['Province'] ?? ''), trim($day['PostalCode'] ?? '')]));
-										}
-									?>
-									<?php if (!empty($_dayAddrStr)): ?>
-										<div class="pk-schedule-address"><?= htmlspecialchars($_dayAddrStr) ?></div>
-									<?php endif; ?>
-									<?php if ($dayMapUrl): ?>
-										<a class="pk-schedule-map-link" href="<?= htmlspecialchars($dayMapUrl) ?>" target="_blank" rel="noopener">
-											<i class="fas fa-map-marker-alt"></i> Map
-										</a>
-									<?php endif; ?>
-								<?php endif; ?>
-							<?php
-								// Forecast for the next occurrence of THIS park day, when in-person and within the 7-day cache window
-								$_pdNext = $pdNextDateById[(int)$day['ParkDayId']] ?? null;
-								$_pdFC   = (empty($day['Online']) && $_pdNext)
-									? wx_forecast_for_date($park_id, $_pdNext)
-									: null;
-								if ($_pdFC && $_pdFC['hi_f'] !== null):
-									$c = (int)$_pdFC['code'];
-									$ic = ($c===0)?'☀️':(($c===1)?'🌤️':(($c===2)?'⛅':(($c===3)?'☁️':(($c===45||$c===48)?'🌫️':(($c>=51&&$c<=57)?'🌦️':(($c>=61&&$c<=67)?'🌧️':(($c>=71&&$c<=77)?'❄️':(($c>=80&&$c<=82)?'🌦️':(($c===85||$c===86)?'🌨️':(($c>=95)?'⛈️':'🌡️'))))))))));
-									$hiC = round(($_pdFC['hi_f']-32)*5/9);
-									$loC = $_pdFC['lo_f'] !== null ? round(($_pdFC['lo_f']-32)*5/9) : null;
-							?>
-								<?php $_pdBadges = wx_badges_for_date($park_id, $_pdNext); ?>
-								<div class="pk-schedule-forecast" style="margin-top:6px;padding:6px 8px;background:var(--ork-card-bg,#fff);border-radius:4px;font-size:11px;color:var(--ork-text-muted,#718096)">
-									<?php if ($_pdNext !== $parkLocalToday): ?><em style="opacity:.75;margin-right:3px">forecast</em><?php endif; ?>
-									<span style="font-size:13px"><?= $ic ?></span>
-									<span style="color:var(--ork-text,#2d3748);font-weight:600;margin-left:4px"><?= round($_pdFC['hi_f']) ?>/<?= $hiC ?>°</span>
-									<?php if ($_pdFC['lo_f'] !== null): ?>
-										<span style="margin-left:6px">L <?= round($_pdFC['lo_f']) ?>/<?= $loC ?>°</span>
-									<?php endif; ?>
-									<?php if (!empty($_pdFC['precip_pct']) && $_pdFC['precip_pct'] >= 20): ?>
-										<span style="margin-left:6px"><?= (int)$_pdFC['precip_pct'] ?>% rain</span>
-									<?php endif; ?>
-									<?php foreach ($_pdBadges as $_b): ?>
-										<span class="pk-wx-badge pk-wx-<?= $_b['severity'] ?>" title="<?= htmlspecialchars($_b['label']) ?>" style="margin-left:6px"<?= wx_safety_attrs($_b['label']) ?>><?= $_b['icon'] ?> <?= htmlspecialchars($_b['label']) ?><?= wx_safety_icon_html($_b['label']) ?></span>
-									<?php endforeach; ?>
-									<a href="https://open-meteo.com/" target="_blank" rel="noopener"
-									   title="Weather data by Open-Meteo.com" aria-label="Weather data by Open-Meteo.com"
-									   style="font-size:10px;color:var(--ork-text-muted,#a0aec0);text-decoration:none;margin-left:6px;opacity:.6">ⓘ</a>
+				<!-- About layout: narrative in the main column, quick facts in the rail;
+				     one interleaved column when the panel is narrow (orgdesign.css). -->
+				<div class="od-about-layout"><div class="od-about-cols">
+					<div class="od-about-main">
+							<?php if ($pkShowNewAbout): ?>
+							<?php if (!empty($aboutText) || !empty($CanAdminPark)): ?>
+							<div class="od-about-section pk-about-section od-about-intro">
+								<?php if (!empty($CanAdminPark) && $pkAboutEnabled !== 1): ?>
+								<div class="od-about-unpublished" data-tip="Only managers can see this. Enable the About Page in Customize to publish it.">
+									<i class="fas fa-eye-slash"></i> Unpublished &mdash; only managers can see this
 								</div>
-							<?php endif; ?>
-							<?php if (!empty($day['Description'])): ?>
-								<p class="pk-schedule-desc"><?= htmlspecialchars($day['Description']) ?></p>
-							<?php endif; ?>
+								<?php endif; ?>
+								<div class="od-about-section-head">
+									<div class="pk-about-label">About</div>
+									<?php if (!empty($CanAdminPark)): ?>
+									<button class="od-about-edit-btn" type="button" onclick="odOpenDesignModal('about')" data-tip="Edit About">
+										<i class="fas fa-pencil-alt"></i> Edit
+									</button>
+									<?php endif; ?>
+								</div>
+								<?php if (!empty($aboutText)): ?>
+								<div class="od-about-text pk-about-text"><?= org_design_markdown($aboutText) ?></div>
+								<?php elseif (!empty($CanAdminPark)): ?>
+								<div class="pk-empty" style="text-align:left;font-size:13px;color:#a0aec0">
+									No About content yet. <a href="#" onclick="event.preventDefault();odOpenDesignModal('about')">Add some</a> to introduce <?= htmlspecialchars($park_name) ?> to visitors.
+								</div>
+								<?php endif; ?>
 							</div>
+							<?php endif; ?>
+							<?php else: ?>
+							<?php if (!empty($description)): ?>
+							<div class="od-about-section pk-about-section od-about-intro">
+								<div class="pk-about-label">About</div>
+								<div class="od-about-text pk-about-text"><?= org_design_markdown($description) ?></div>
+							</div>
+							<?php endif; ?>
+							<?php endif; ?>
+
+						<!-- Schedule sub-section -->
+						<div class="od-about-section pk-about-section pk-about-schedule">
+							<div class="pk-about-label" style="display:flex;align-items:center;justify-content:space-between;">
+								<span><i class="fas fa-calendar" style="margin-right:6px;color:#a0aec0;"></i>Schedule</span>
+								<?php if (!empty($CanAdminPark)): ?>
+								<button class="pk-btn pk-btn-primary pk-btn-sm" onclick="pkOpenAddDayModal()">
+									<i class="fas fa-plus"></i> Add Park Day
+								</button>
+								<?php endif; ?>
+							</div>
+							<?php if (count($parkDayList) > 0): ?>
+							<div class="pk-schedule-grid">
+								<?php foreach ($parkDayList as $day): ?>
+								<?php
+									if (!function_exists('pk_ordinal')) {
+										function pk_ordinal($n) {
+											$n = (int)$n; $m = $n % 100;
+											if ($m >= 11 && $m <= 13) return $n . 'th';
+											return $n . (['th','st','nd','rd'][$n % 10] ?? 'th');
+										}
+									}
+									switch ($day['Recurrence']) {
+										case 'weekly':        $recText = 'Every ' . $day['WeekDay']; break;
+										case 'week-of-month': $recText = 'Every ' . pk_ordinal($day['WeekOfMonth']) . ' ' . $day['WeekDay']; break;
+										case 'every-x-weeks':
+											$_wi = (int)($day['WeekInterval'] ?? 0);
+											$recText = ($_wi === 2)
+												? 'Every other ' . $day['WeekDay']
+												: 'Every ' . $_wi . ' weeks on ' . $day['WeekDay'] . 's';
+											break;
+										case 'monthly':       $recText = 'Monthly on the ' . pk_ordinal($day['MonthDay']); break;
+										default:              $recText = $day['Recurrence'];
+									}
+									switch ($day['Purpose']) {
+										case 'park-day':         $purposeLabel = 'Park Day';          $purposeCls = 'purpose-parkday'; $iconCls = 'icon-parkday'; $iconFa = 'fa-shield-alt'; break;
+										case 'fighter-practice': $purposeLabel = 'Fighter Practice';  $purposeCls = 'purpose-fighter'; $iconCls = 'icon-fighter'; $iconFa = 'fa-user-shield'; break;
+										case 'arts-day':         $purposeLabel = 'A&S Day';           $purposeCls = 'purpose-arts';    $iconCls = 'icon-arts';    $iconFa = 'fa-palette';    break;
+										case 'other':            $purposeLabel = 'Other';             $purposeCls = 'purpose-other';   $iconCls = 'icon-other';   $iconFa = 'fa-star';       break;
+										default:                 $purposeLabel = 'Park Day';          $purposeCls = 'purpose-parkday'; $iconCls = 'icon-parkday'; $iconFa = 'fa-shield-alt';
+									}
+									// Day-specific map URL
+									$dayMapUrl = null;
+									if (!empty($day['Location'])) {
+										$dl = @json_decode(stripslashes($day['Location']));
+										if ($dl) {
+											$dlatlng = isset($dl->location) ? $dl->location : (isset($dl->bounds->northeast) ? $dl->bounds->northeast : null);
+											if ($dlatlng && is_numeric($dlatlng->lat ?? null))
+												$dayMapUrl = 'https://maps.google.com/maps?z=14&t=m&q=loc:' . $dlatlng->lat . '+' . $dlatlng->lng;
+										}
+									} elseif (!empty($day['MapUrl'])) {
+										$dayMapUrl = $day['MapUrl'];
+									} elseif ($parkMapUrl) {
+										$dayMapUrl = $parkMapUrl;
+									}
+								?>
+								<div class="pk-schedule-card"
+							data-day-id="<?= (int)$day['ParkDayId'] ?>"
+							data-purpose="<?= htmlspecialchars($day['Purpose'] ?? '') ?>"
+							data-recurrence="<?= htmlspecialchars($day['Recurrence'] ?? '') ?>"
+							data-weekday="<?= htmlspecialchars($day['WeekDay'] ?? '') ?>"
+							data-weekof="<?= (int)($day['WeekOfMonth'] ?? 0) ?>"
+							data-monthday="<?= (int)($day['MonthDay'] ?? 0) ?>"
+							data-startdate="<?= htmlspecialchars($day['StartDate'] ?? '') ?>"
+							data-interval="<?= (int)($day['WeekInterval'] ?? 0) ?>"
+							data-time="<?= htmlspecialchars($day['Time'] ?? '') ?>"
+							data-desc="<?= htmlspecialchars($day['Description'] ?? '', ENT_QUOTES) ?>"
+							data-online="<?= (int)($day['Online'] ?? 0) ?>"
+							data-altloc="<?= (int)($day['AlternateLocation'] ?? 0) ?>"
+							data-address="<?= htmlspecialchars($day['Address'] ?? '', ENT_QUOTES) ?>"
+							data-city="<?= htmlspecialchars($day['City'] ?? '', ENT_QUOTES) ?>"
+							data-province="<?= htmlspecialchars($day['Province'] ?? '', ENT_QUOTES) ?>"
+							data-postal="<?= htmlspecialchars($day['PostalCode'] ?? '', ENT_QUOTES) ?>">
+						<?php if (!empty($CanAdminPark)): ?>
+						<button class="pk-schedule-card-edit" data-tip="Edit park day"><i class="fas fa-pencil-alt"></i></button>
+						<?php endif; ?>
+									<div class="pk-schedule-icon <?= $iconCls ?>">
+										<i class="fas <?= $iconFa ?>"></i>
+									</div>
+									<div class="pk-schedule-info">
+										<div class="pk-schedule-when"><?= htmlspecialchars($recText) ?></div>
+										<div class="pk-schedule-time"><?= date('g:i A', strtotime($day['Time'])) ?></div>
+										<?php $_pdNextDate = $pdNextDateById[(int)$day['ParkDayId']] ?? null; ?>
+										<?php if ($_pdNextDate): ?>
+											<div class="pk-schedule-next" style="font-size:12px;color:var(--ork-text-muted,#718096);margin-top:2px">
+												<i class="fas fa-calendar-day" style="margin-right:4px;opacity:.7"></i>Next: <strong style="color:var(--ork-text,#2d3748);font-weight:600"><?= ($_pdNextDate === $parkLocalToday) ? 'Today' : date('D, M j', strtotime($_pdNextDate)) ?></strong>
+											</div>
+										<?php endif; ?>
+										<span class="pk-schedule-purpose <?= $purposeCls ?>"><?= $purposeLabel ?></span>
+										<?php if (!empty($day['Online'])): ?>
+											<span class="pk-schedule-online-badge"><i class="fas fa-wifi"></i> Online</span>
+										<?php else: ?>
+											<?php
+												$_dayAddr   = trim($day['Address'] ?? '');
+												$_dayCity   = trim($day['City'] ?? '');
+												if ($_dayCity && stripos($_dayAddr, $_dayCity) !== false) {
+													$_dayAddrStr = $_dayAddr;
+												} else {
+													$_dayAddrStr = implode(', ', array_filter([$_dayAddr, $_dayCity, trim($day['Province'] ?? ''), trim($day['PostalCode'] ?? '')]));
+												}
+											?>
+											<?php if (!empty($_dayAddrStr)): ?>
+												<div class="pk-schedule-address"><?= htmlspecialchars($_dayAddrStr) ?></div>
+											<?php endif; ?>
+											<?php if ($dayMapUrl): ?>
+												<a class="pk-schedule-map-link" href="<?= htmlspecialchars($dayMapUrl) ?>" target="_blank" rel="noopener">
+													<i class="fas fa-map-marker-alt"></i> Map
+												</a>
+											<?php endif; ?>
+										<?php endif; ?>
+									<?php
+										// Forecast for the next occurrence of THIS park day, when in-person and within the 7-day cache window
+										$_pdNext = $pdNextDateById[(int)$day['ParkDayId']] ?? null;
+										$_pdFC   = (empty($day['Online']) && $_pdNext)
+											? wx_forecast_for_date($park_id, $_pdNext)
+											: null;
+										if ($_pdFC && $_pdFC['hi_f'] !== null):
+											$c = (int)$_pdFC['code'];
+											$ic = ($c===0)?'☀️':(($c===1)?'🌤️':(($c===2)?'⛅':(($c===3)?'☁️':(($c===45||$c===48)?'🌫️':(($c>=51&&$c<=57)?'🌦️':(($c>=61&&$c<=67)?'🌧️':(($c>=71&&$c<=77)?'❄️':(($c>=80&&$c<=82)?'🌦️':(($c===85||$c===86)?'🌨️':(($c>=95)?'⛈️':'🌡️'))))))))));
+											$hiC = round(($_pdFC['hi_f']-32)*5/9);
+											$loC = $_pdFC['lo_f'] !== null ? round(($_pdFC['lo_f']-32)*5/9) : null;
+									?>
+										<?php $_pdBadges = wx_badges_for_date($park_id, $_pdNext); ?>
+										<div class="pk-schedule-forecast" style="margin-top:6px;padding:6px 8px;background:var(--ork-card-bg,#fff);border-radius:4px;font-size:11px;color:var(--ork-text-muted,#718096)">
+											<?php if ($_pdNext !== $parkLocalToday): ?><em style="opacity:.75;margin-right:3px">forecast</em><?php endif; ?>
+											<span style="font-size:13px"><?= $ic ?></span>
+											<span style="color:var(--ork-text,#2d3748);font-weight:600;margin-left:4px"><?= round($_pdFC['hi_f']) ?>/<?= $hiC ?>°</span>
+											<?php if ($_pdFC['lo_f'] !== null): ?>
+												<span style="margin-left:6px">L <?= round($_pdFC['lo_f']) ?>/<?= $loC ?>°</span>
+											<?php endif; ?>
+											<?php if (!empty($_pdFC['precip_pct']) && $_pdFC['precip_pct'] >= 20): ?>
+												<span style="margin-left:6px"><?= (int)$_pdFC['precip_pct'] ?>% rain</span>
+											<?php endif; ?>
+											<?php foreach ($_pdBadges as $_b): ?>
+												<span class="pk-wx-badge pk-wx-<?= $_b['severity'] ?>" title="<?= htmlspecialchars($_b['label']) ?>" style="margin-left:6px"<?= wx_safety_attrs($_b['label']) ?>><?= $_b['icon'] ?> <?= htmlspecialchars($_b['label']) ?><?= wx_safety_icon_html($_b['label']) ?></span>
+											<?php endforeach; ?>
+											<a href="https://open-meteo.com/" target="_blank" rel="noopener"
+											   title="Weather data by Open-Meteo.com" aria-label="Weather data by Open-Meteo.com"
+											   style="font-size:10px;color:var(--ork-text-muted,#a0aec0);text-decoration:none;margin-left:6px;opacity:.6">ⓘ</a>
+										</div>
+									<?php endif; ?>
+									<?php if (!empty($day['Description'])): ?>
+										<p class="pk-schedule-desc"><?= htmlspecialchars($day['Description']) ?></p>
+									<?php endif; ?>
+									</div>
+								</div>
+								<?php endforeach; ?>
+							</div>
+						<?php else: ?>
+							<div class="pk-empty">No park days scheduled</div>
+						<?php endif; ?>
+						</div><!-- /pk-about-schedule -->
+
+						<?php if ($pkShowNewAbout && (!empty($ourHistoryText) || !empty($CanAdminPark))): ?>
+						<div class="od-about-section pk-about-section pk-history-section">
+							<div class="od-about-section-head">
+								<div class="pk-about-label"><i class="fas fa-scroll" style="margin-right:6px;color:#a0aec0"></i>Our History</div>
+								<?php if (!empty($CanAdminPark)): ?>
+								<button class="od-about-edit-btn" type="button" onclick="odOpenDesignModal('about')" data-tip="Edit Our History">
+									<i class="fas fa-pencil-alt"></i> Edit
+								</button>
+								<?php endif; ?>
+							</div>
+							<?php if (!empty($ourHistoryText)): ?>
+							<div class="od-about-text pk-about-text"><?= org_design_markdown($ourHistoryText) ?></div>
+							<?php elseif (!empty($CanAdminPark)): ?>
+							<div class="pk-empty" style="text-align:left;font-size:13px;color:#a0aec0">
+								Share the founding story, past officers, or notable moments. <a href="#" onclick="event.preventDefault();odOpenDesignModal('about')">Add Our History</a>.
+							</div>
+							<?php endif; ?>
 						</div>
-						<?php endforeach; ?>
+						<?php endif; ?>
+
+						<!-- Milestones timeline (derived + custom) -->
+						<?php if ($pkShowNewAbout && ($pkHasMilestones || !empty($CanAdminPark))): ?>
+						<?php include DIR_TEMPLATE . 'shared/orgdesign/_milestones_timeline.tpl'; ?>
+						<?php endif; ?>
 					</div>
-				<?php else: ?>
-					<div class="pk-empty">No park days scheduled</div>
-				<?php endif; ?>
-				</div><!-- /pk-about-schedule -->
+					<div class="od-about-rail">
+						<?php if ($pkShowNewAbout):
+							$odNextEvents  = $NextEvents ?? [];
+							$odEventsTabJs = "pkActivateTab('events')";
+							include DIR_TEMPLATE . 'shared/orgdesign/_next_events.tpl';
+						endif; ?>
+
+							<?php if (!empty($directions) || !empty($_addrFull)): ?>
+							<div class="od-about-section pk-about-section pk-directions-section">
+								<div class="pk-about-label">Directions</div>
+								<?php if (!empty($_addrFull)): ?>
+								<div class="pk-about-meta-row" style="margin-bottom:10px">
+									<i class="fas fa-map-marker-alt"></i>
+									<span><?= htmlspecialchars($_addrFull) ?></span>
+								</div>
+								<?php endif; ?>
+								<?php if (!empty($directions)): ?>
+								<div class="od-about-text pk-about-text"><?= org_design_markdown($directions) ?></div>
+								<?php endif; ?>
+							</div>
+							<?php endif; ?>
+
+						<?php if (!empty($websiteUrl) || !empty($parkInfo['MapUrl'])): ?>
+						<div class="od-about-section pk-about-section pk-about-meta">
+							<?php if (!empty($websiteUrl)): ?>
+							<div class="pk-about-meta-row">
+								<i class="fas fa-globe"></i>
+								<a href="<?= htmlspecialchars($websiteUrl) ?>" target="_blank" rel="noopener"><?= htmlspecialchars($websiteUrl) ?></a>
+							</div>
+							<?php endif; ?>
+							<?php if (!empty($parkInfo['MapUrl'])): ?>
+							<div class="pk-about-meta-row">
+								<i class="fas fa-map"></i>
+								<a href="<?= htmlspecialchars($parkInfo['MapUrl']) ?>" target="_blank" rel="noopener">View on Map</a>
+							</div>
+							<?php endif; ?>
+						</div>
+						<?php endif; ?>
+					</div>
+				</div></div><!-- /.od-about-layout -->
 			</div><!-- /pk-tab-about -->
 
 			<!-- Events Tab -->

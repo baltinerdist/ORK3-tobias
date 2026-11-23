@@ -620,6 +620,30 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
 
 			<!-- About Tab -->
 			<div class="kn-tab-panel" id="kn-tab-about">
+				<?php ob_start(); ?>
+				<?php
+					$_knWebsiteUrl = trim((string)($_kInfo['Url'] ?? ''));
+					$_knParentId   = (int)($_kInfo['ParentKingdomId'] ?? ($ParentKingdomId ?? 0));
+					$_knParentName = trim((string)($ParentKingdomName ?? ''));
+				?>
+				<?php if ($_knWebsiteUrl !== '' || $_knParentId > 0): ?>
+				<div class="od-about-section od-about-meta">
+					<?php if ($_knWebsiteUrl !== ''): ?>
+					<div class="od-about-meta-row">
+						<i class="fas fa-globe"></i>
+						<a href="<?= htmlspecialchars($_knWebsiteUrl) ?>" target="_blank" rel="noopener"><?= htmlspecialchars($_knWebsiteUrl) ?></a>
+					</div>
+					<?php endif; ?>
+					<?php if ($_knParentId > 0): ?>
+					<div class="od-about-meta-row">
+						<i class="fas fa-chess-rook"></i>
+						<a href="<?= UIR ?>Kingdom/profile/<?= $_knParentId ?>"><?= htmlspecialchars($_knParentName !== '' ? $_knParentName : 'Parent kingdom') ?></a>
+					</div>
+					<?php endif; ?>
+				</div>
+				<?php endif; ?>
+				<?php $_knMetaHtml = ob_get_clean(); ?>
+
 				<?php if ($knShowNewAbout): ?>
 				<?php if (($CanManageKingdom ?? false) && $knAboutEnabled !== 1): ?>
 				<div class="od-about-unpublished" data-tip="Only managers can see this. Enable the About Page in Customize to publish it.">
@@ -689,88 +713,75 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
 				<?php endif; ?>
 				<?php endif; ?>
 
-				<div class="od-about-row">
-				<div class="od-about-grid">
-					<?php if (!empty($aboutText) || ($CanManageKingdom ?? false)): ?>
-					<div class="od-about-section">
-						<div class="od-about-section-head">
-							<div class="od-about-label">About</div>
-							<?php if ($CanManageKingdom ?? false): ?>
-							<button class="od-about-edit-btn" type="button" onclick="odOpenDesignModal('about')" data-tip="Edit About">
-								<i class="fas fa-pencil-alt"></i> Edit
-							</button>
+				<!-- About layout: narrative in the main column, quick facts in the rail;
+				     one interleaved column when the panel is narrow (orgdesign.css). -->
+				<div class="od-about-layout"><div class="od-about-cols">
+					<div class="od-about-main">
+						<div class="od-about-grid">
+							<?php if (!empty($aboutText) || ($CanManageKingdom ?? false)): ?>
+							<div class="od-about-section od-about-intro">
+								<div class="od-about-section-head">
+									<div class="od-about-label">About</div>
+									<?php if ($CanManageKingdom ?? false): ?>
+									<button class="od-about-edit-btn" type="button" onclick="odOpenDesignModal('about')" data-tip="Edit About">
+										<i class="fas fa-pencil-alt"></i> Edit
+									</button>
+									<?php endif; ?>
+								</div>
+								<?php if (!empty($aboutText)): ?>
+								<div class="od-about-text kn-description-body"><?= org_design_markdown($aboutText) ?></div>
+								<?php elseif ($CanManageKingdom ?? false): ?>
+								<div class="kn-empty" style="text-align:left;font-size:13px;color:#a0aec0">
+									No About content yet. <a href="#" onclick="event.preventDefault();odOpenDesignModal('about')">Add some</a> to introduce <?= htmlspecialchars($kingdom_name) ?> to visitors.
+								</div>
+								<?php endif; ?>
+							</div>
 							<?php endif; ?>
 						</div>
-						<?php if (!empty($aboutText)): ?>
-						<div class="od-about-text kn-description-body"><?= org_design_markdown($aboutText) ?></div>
-						<?php elseif ($CanManageKingdom ?? false): ?>
-						<div class="kn-empty" style="text-align:left;font-size:13px;color:#a0aec0">
-							No About content yet. <a href="#" onclick="event.preventDefault();odOpenDesignModal('about')">Add some</a> to introduce <?= htmlspecialchars($kingdom_name) ?> to visitors.
+
+						<?php if (!empty($ourHistoryText) || ($CanManageKingdom ?? false)): ?>
+						<div class="od-about-section od-history-section">
+							<div class="od-about-section-head">
+								<div class="od-about-label"><i class="fas fa-scroll" style="margin-right:6px;color:#a0aec0"></i>Our History</div>
+								<?php if ($CanManageKingdom ?? false): ?>
+								<button class="od-about-edit-btn" type="button" onclick="odOpenDesignModal('about')" data-tip="Edit Our History">
+									<i class="fas fa-pencil-alt"></i> Edit
+								</button>
+								<?php endif; ?>
+							</div>
+							<?php if (!empty($ourHistoryText)): ?>
+							<div class="od-about-text kn-description-body"><?= org_design_markdown($ourHistoryText) ?></div>
+							<?php elseif ($CanManageKingdom ?? false): ?>
+							<div class="kn-empty" style="text-align:left;font-size:13px;color:#a0aec0">
+								Share the founding story, past officers, or notable moments. <a href="#" onclick="event.preventDefault();odOpenDesignModal('about')">Add Our History</a>.
+							</div>
+							<?php endif; ?>
 						</div>
 						<?php endif; ?>
-					</div>
-					<?php endif; ?>
-				</div>
 
-				<?php if ($knShowNewAbout):
-					$odNextEvents  = $NextEvents ?? [];
-					$odEventsTabJs = "knActivateTab('events')";
-					include DIR_TEMPLATE . 'shared/orgdesign/_next_events.tpl';
-				endif; ?>
-				</div><!-- /.od-about-row -->
-
-				<?php if (!empty($ourHistoryText) || ($CanManageKingdom ?? false)): ?>
-				<div class="od-about-section od-history-section">
-					<div class="od-about-section-head">
-						<div class="od-about-label"><i class="fas fa-scroll" style="margin-right:6px;color:#a0aec0"></i>Our History</div>
-						<?php if ($CanManageKingdom ?? false): ?>
-						<button class="od-about-edit-btn" type="button" onclick="odOpenDesignModal('about')" data-tip="Edit Our History">
-							<i class="fas fa-pencil-alt"></i> Edit
-						</button>
+						<?php if ($knShowNewAbout && ($knHasMilestones || ($CanManageKingdom ?? false))): ?>
+						<?php include DIR_TEMPLATE . 'shared/orgdesign/_milestones_timeline.tpl'; ?>
 						<?php endif; ?>
 					</div>
-					<?php if (!empty($ourHistoryText)): ?>
-					<div class="od-about-text kn-description-body"><?= org_design_markdown($ourHistoryText) ?></div>
-					<?php elseif ($CanManageKingdom ?? false): ?>
-					<div class="kn-empty" style="text-align:left;font-size:13px;color:#a0aec0">
-						Share the founding story, past officers, or notable moments. <a href="#" onclick="event.preventDefault();odOpenDesignModal('about')">Add Our History</a>.
+					<div class="od-about-rail">
+						<?php if ($knShowNewAbout):
+							$odNextEvents  = $NextEvents ?? [];
+							$odEventsTabJs = "knActivateTab('events')";
+							include DIR_TEMPLATE . 'shared/orgdesign/_next_events.tpl';
+						endif; ?>
+
+						<?= $_knMetaHtml ?>
 					</div>
-					<?php endif; ?>
-				</div>
-				<?php endif; ?>
+				</div></div><!-- /.od-about-layout -->
 				<?php else: // $knShowNewAbout false: public, not opted in ?>
 				<?php if (trim($_knLegacyDesc) !== ''): ?>
 				<div class="od-about-section">
 					<div class="od-about-text kn-description-body"><?= org_design_markdown($_knLegacyDesc) ?></div>
 				</div>
 				<?php endif; ?>
+				<?= $_knMetaHtml ?>
 				<?php endif; // /$knShowNewAbout ?>
 
-				<?php
-					$_knWebsiteUrl = trim((string)($_kInfo['Url'] ?? ''));
-					$_knParentId   = (int)($_kInfo['ParentKingdomId'] ?? ($ParentKingdomId ?? 0));
-					$_knParentName = trim((string)($ParentKingdomName ?? ''));
-				?>
-				<?php if ($_knWebsiteUrl !== '' || $_knParentId > 0): ?>
-				<div class="od-about-section od-about-meta">
-					<?php if ($_knWebsiteUrl !== ''): ?>
-					<div class="od-about-meta-row">
-						<i class="fas fa-globe"></i>
-						<a href="<?= htmlspecialchars($_knWebsiteUrl) ?>" target="_blank" rel="noopener"><?= htmlspecialchars($_knWebsiteUrl) ?></a>
-					</div>
-					<?php endif; ?>
-					<?php if ($_knParentId > 0): ?>
-					<div class="od-about-meta-row">
-						<i class="fas fa-chess-rook"></i>
-						<a href="<?= UIR ?>Kingdom/profile/<?= $_knParentId ?>"><?= htmlspecialchars($_knParentName !== '' ? $_knParentName : 'Parent kingdom') ?></a>
-					</div>
-					<?php endif; ?>
-				</div>
-				<?php endif; ?>
-
-				<?php if ($knShowNewAbout && ($knHasMilestones || ($CanManageKingdom ?? false))): ?>
-				<?php include DIR_TEMPLATE . 'shared/orgdesign/_milestones_timeline.tpl'; ?>
-				<?php endif; ?>
 			</div><!-- /kn-tab-about -->
 
 			<!-- Parks Tab -->
