@@ -52,7 +52,7 @@ if (!isset($OD_SOCIAL_CHROME) || !is_array($OD_SOCIAL_CHROME)) {
         'bluesky'   => ['label' => 'Bluesky',   'icon' => 'fas fa-cloud',     'bg' => '#1185fe', 'placeholder' => 'https://bsky.app/...'],
         'twitter'   => ['label' => 'X',         'icon' => 'fab fa-twitter',   'bg' => '#000000', 'placeholder' => 'https://x.com/...'],
         'youtube'   => ['label' => 'YouTube',   'icon' => 'fab fa-youtube',   'bg' => '#ff0000', 'placeholder' => 'https://youtube.com/...'],
-        'amtwiki'   => ['label' => 'AmtWiki',   'icon' => 'fas fa-book',      'bg' => '#6b7280', 'placeholder' => 'https://amtwiki.net/...'],
+        'amtwiki'   => ['label' => 'AmtWiki',   'icon' => 'fas fa-book',      'bg' => '#6b7280', 'placeholder' => 'https://wiki.amtgard.com/...'],
     ];
 }
 
@@ -237,5 +237,23 @@ if (!function_exists('org_design_event_when')) {
             return date('M j', $s) . ' – ' . date('M j, Y', $e);
         }
         return date('M j', $s) . '–' . date('j, Y', $e);
+    }
+}
+
+if (!function_exists('org_design_visible_socials')) {
+    /**
+     * Platform slugs from a public read (SocialPlatforms), filtered to the ones
+     * we can render and put in display order. Returns slug => true: no URLs.
+     */
+    function org_design_visible_socials($platforms, array $catalog): array
+    {
+        $have = is_array($platforms) ? array_flip(array_map('strval', $platforms)) : [];
+        $out = [];
+        foreach ($catalog as $slug => $_meta) {
+            if (isset($have[$slug])) {
+                $out[$slug] = true;
+            }
+        }
+        return $out;
     }
 }

@@ -1028,3 +1028,8 @@ html[data-theme="dark"] .od-nextevt-then:hover { background: var(--ork-border); 
     .od-nextevt-then, .od-nextevt-all { min-height: 44px; display: inline-flex; align-items: center; }
     .od-nextevt-then { display: flex; }
 }
+
+/* Connect pill: brief error state when a reveal is refused (rate limit, stale page). */
+.od-connect-pill.od-connect-pill-err { outline: 2px solid #e53e3e; outline-offset: 2px; }
+.od-connect-pill.od-connect-pill-err[data-tip]::after { opacity: 1; transition-delay: 0s; }
+.od-connect-pill[aria-busy="true"] { opacity: 0.6; cursor: progress; }

@@ -1,10 +1,12 @@
 <?php
 
 require_once(DIR_CONTROLLER . 'trait.OrgDesignAjax.php');
+require_once(DIR_CONTROLLER . 'trait.OrgSocialReveal.php');
 
 class Controller_KingdomAjax extends Controller
 {
     use OrgDesignAjax;
+    use OrgSocialReveal;
 
     public function kingdom($p = null)
     {
@@ -12,6 +14,13 @@ class Controller_KingdomAjax extends Controller
         $parts      = explode('/', $p ?? '');
         $kingdom_id = (int)preg_replace('/[^0-9]/', '', $parts[0] ?? '');
         $action     = $parts[1] ?? '';
+
+        // Social link reveal is for anonymous visitors too; it has its own
+        // anti-harvest gate (session token, origin, bot UA, rate limit).
+        if ($action === 'socialreveal') {
+            $this->load_model('Kingdom');
+            $this->org_social_reveal($this->Kingdom, 'kingdom_design_social_link', 'kingdom', $kingdom_id);
+        }
 
         if (!isset($this->session->user_id)) {
             echo json_encode(['status' => 5, 'error' => 'Not logged in']);

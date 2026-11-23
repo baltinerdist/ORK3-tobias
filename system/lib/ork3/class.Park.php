@@ -616,7 +616,7 @@ class Park extends Ork3
             $response[ 'NameFont' ]          = $design->name_font;
             $response[ 'MilestoneConfig' ]   = $design->milestone_config;
             $response[ 'Tagline' ]           = (string)$design->tagline;
-            $response[ 'SocialLinks' ]       = (string)$design->social_links;
+            $response[ 'SocialPlatforms' ]   = $this->designSocialPlatforms($design);
             $response[ 'Announcement' ]      = (string)$design->announcement;
             $response[ 'AnnouncementUntil' ] = $design->announcement_until;
             $response[ 'AnnouncementStarts' ] = $design->announcement_starts;

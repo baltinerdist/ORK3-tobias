@@ -146,25 +146,8 @@
 	// Whether the announcement is live is a business rule, answered once by
 	// Park::announcementActive() and surfaced as AnnouncementActive.
 	$pkShowAnnouncement  = ((int)($parkInfo['AnnouncementActive'] ?? 0) === 1);
-	$pkSocialRaw   = (string)($parkInfo['SocialLinks'] ?? '');
-	$pkSocialLinks = [];
-	if ($pkSocialRaw !== '') {
-		$_sl = json_decode($pkSocialRaw, true);
-		if (is_array($_sl)) {
-			foreach ($_sl as $_k => $_v) {
-				$_v = trim((string)$_v);
-				if ($_v !== '' && preg_match('#^https?://#i', $_v)) {
-					$pkSocialLinks[(string)$_k] = $_v;
-				}
-			}
-		}
-	}
-	// Social platform metadata now lives in shared/orgdesign/_helpers.php ($OD_SOCIAL_PLATFORMS).
-	$pkVisibleSocials = [];
-	foreach ($OD_SOCIAL_PLATFORMS as $_slug => $_meta) {
-		$_u = trim((string)($pkSocialLinks[$_slug] ?? ''));
-		if ($_u !== '') $pkVisibleSocials[$_slug] = $_u;
-	}
+	// Social links: slugs only in the public read; URLs revealed per click.
+	$pkVisibleSocials = org_design_visible_socials($parkInfo['SocialPlatforms'] ?? [], $OD_SOCIAL_PLATFORMS);
 	$pkHasSocial = !empty($pkVisibleSocials);
 
 	// --- Shared Org Design $ctx contract (helpers required at top) -------------
@@ -192,7 +175,9 @@
 		'announcement'       => $pkAnnouncement,
 		'announcement_starts' => $pkAnnouncementStarts,
 		'announcement_until' => $pkAnnouncementUntil,
-		'social_links'       => $pkVisibleSocials,
+		'social_platforms'   => $pkVisibleSocials,
+		'social_links'       => $DesignSocialLinks ?? [],
+		'social_reveal'      => ['url' => UIR . 'ParkAjax/park/' . (int)$park_id . '/socialreveal', 'token' => $SocialRevealToken ?? ''],
 		'about_enabled'      => $pkAboutEnabled,
 		'milestone_config'   => $pkMilestoneCfg,
 		'milestones'         => $pkVisibleMilestones,

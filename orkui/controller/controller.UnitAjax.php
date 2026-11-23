@@ -1,6 +1,7 @@
 <?php
 
 require_once(DIR_CONTROLLER . 'trait.OrgDesignAjax.php');
+require_once(DIR_CONTROLLER . 'trait.OrgSocialReveal.php');
 
 /**
  * AJAX endpoints for the Unit "About" customization tools (Mask II).
@@ -15,6 +16,7 @@ require_once(DIR_CONTROLLER . 'trait.OrgDesignAjax.php');
 class Controller_UnitAjax extends Controller
 {
     use OrgDesignAjax;
+    use OrgSocialReveal;
 
     public function unit($p = null)
     {
@@ -22,6 +24,13 @@ class Controller_UnitAjax extends Controller
         $parts   = explode('/', $p ?? '');
         $unit_id = (int)preg_replace('/[^0-9]/', '', $parts[0] ?? '');
         $action  = $parts[1] ?? '';
+
+        // Social link reveal is for anonymous visitors too; it has its own
+        // anti-harvest gate (session token, origin, bot UA, rate limit).
+        if ($action === 'socialreveal') {
+            $this->load_model('Unit');
+            $this->org_social_reveal($this->Unit, 'unit_design_social_link', 'unit', $unit_id);
+        }
 
         if (!isset($this->session->user_id)) {
             echo json_encode(['status' => 5, 'error' => 'Not logged in']);

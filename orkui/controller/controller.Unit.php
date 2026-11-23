@@ -1,7 +1,11 @@
 <?php
 
+require_once(DIR_CONTROLLER . 'trait.OrgSocialReveal.php');
+
 class Controller_Unit extends Controller
 {
+    use OrgSocialReveal;
+
     public function __construct($call = null, $id = null)
     {
         parent::__construct($call, $id);
@@ -234,6 +238,10 @@ class Controller_Unit extends Controller
         // Unit::SetUnitDesign and the milestone writers enforce server-side.
         $_canManage = $_uid > 0 && $this->Authorization->has_authority($_uid, AUTH_UNIT, (int)$unit_id, AUTH_CREATE);
         $this->data['CanManageUnit'] = $_canManage;
+        // Social links: visitors get a reveal token, never the URLs; only a
+        // manager's page carries the full map (for the edit form).
+        $this->data['SocialRevealToken'] = $this->org_social_reveal_token('unit', (int)$unit_id);
+        $this->data['DesignSocialLinks'] = $_canManage ? $this->Unit->unit_design_social_links((int)$unit_id) : [];
 
         // Custom + derived milestones, merged into one timeline-ready array.
         // The timeline only renders when the org has opted into the new About

@@ -1,7 +1,11 @@
 <?php
 
+require_once(DIR_CONTROLLER . 'trait.OrgSocialReveal.php');
+
 class Controller_Kingdom extends Controller
 {
+    use OrgSocialReveal;
+
     // Data endpoints that must NOT repaint the visitor's navigation context.
     // The kingdom profile page background-fetches several of these for each
     // child principality (Kingdomnew_index.tpl ~line 2660), and the last async
@@ -385,6 +389,11 @@ class Controller_Kingdom extends Controller
         $this->data['knCanManageBanner'] = $this->data['CanEditKingdom'];
         $this->data['CanManageKingdom'] = $uid > 0
             && $this->Authorization->has_authority($uid, AUTH_KINGDOM, (int)$kingdom_id, AUTH_CREATE);
+        // Social links: visitors get a reveal token, never the URLs; only a
+        // manager's page carries the full map (for the edit form).
+        $this->data['SocialRevealToken'] = $this->org_social_reveal_token('kingdom', (int)$kingdom_id);
+        $this->data['DesignSocialLinks'] = $this->data['CanManageKingdom']
+            ? $this->Kingdom->kingdom_design_social_links((int)$kingdom_id) : [];
         // Bonus Credits button + modal: kingdom EDIT hands credits out, CREATE
         // also defines them, and a named manager does both with no kingdom row.
         $this->load_model('BonusCredit');

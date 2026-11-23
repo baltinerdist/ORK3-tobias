@@ -119,24 +119,9 @@ $_unAnnouncementUntil  = trim((string)($_unit['AnnouncementUntil'] ?? ''));
 // Whether the announcement is live is a business rule, answered once by
 // Unit::announcementActive() and surfaced as AnnouncementActive.
 $_unShowAnnouncement   = ((int)($_unit['AnnouncementActive'] ?? 0) === 1);
-$_unSocialRaw   = (string)($_unit['SocialLinks'] ?? '');
-$_unSocialLinks = [];
-if ($_unSocialRaw !== '') {
-	$_sl = json_decode($_unSocialRaw, true);
-	if (is_array($_sl)) {
-		foreach ($_sl as $_k => $_v) {
-			$_v = trim((string)$_v);
-			if ($_v !== '' && preg_match('#^https?://#i', $_v)) {
-				$_unSocialLinks[(string)$_k] = $_v;
-			}
-		}
-	}
-}
-// Social platform metadata now lives in shared/orgdesign/_helpers.php ($OD_SOCIAL_PLATFORMS).
-$_unHasSocial = false;
-foreach ($OD_SOCIAL_PLATFORMS as $_slug => $_meta) {
-	if (!empty($_unSocialLinks[$_slug])) { $_unHasSocial = true; break; }
-}
+// Social links: slugs only in the public read; URLs revealed per click.
+$_unVisibleSocials = org_design_visible_socials($_unit['SocialPlatforms'] ?? [], $OD_SOCIAL_PLATFORMS);
+$_unHasSocial      = !empty($_unVisibleSocials);
 $_unRecruitmentStatus = strtolower(trim((string)($_unit['RecruitmentStatus'] ?? '')));
 if (!in_array($_unRecruitmentStatus, ['open','invite','closed'], true)) $_unRecruitmentStatus = '';
 // Stored value still feeds the design modal so a manager save can't wipe it.
@@ -177,7 +162,9 @@ $ctx = [
 	'announcement'       => $_unAnnouncement,
 	'announcement_starts' => $_unAnnouncementStarts,
 	'announcement_until' => $_unAnnouncementUntil,
-	'social_links'       => $_unSocialLinks,
+	'social_platforms'   => $_unVisibleSocials,
+	'social_links'       => $DesignSocialLinks ?? [],
+	'social_reveal'      => ['url' => UIR . 'UnitAjax/unit/' . (int)$_unit_id . '/socialreveal', 'token' => $SocialRevealToken ?? ''],
 	'about_enabled'      => $_unAboutEnabled,
 	'milestone_config'   => $_un_milestone_cfg,
 	'milestones'         => $_un_visible_ms,

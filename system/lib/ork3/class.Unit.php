@@ -255,7 +255,7 @@ class Unit extends Ork3
             $response['Unit']['NameFont']        = $design->name_font;
             $response['Unit']['MilestoneConfig'] = $design->milestone_config;
             $response['Unit']['Tagline']            = (string)$design->tagline;
-            $response['Unit']['SocialLinks']        = (string)$design->social_links;
+            $response['Unit']['SocialPlatforms']    = $this->designSocialPlatforms($design);
             $response['Unit']['Announcement']       = (string)$design->announcement;
             $response['Unit']['AnnouncementUntil']  = $design->announcement_until;
             $response['Unit']['AnnouncementStarts'] = $design->announcement_starts;

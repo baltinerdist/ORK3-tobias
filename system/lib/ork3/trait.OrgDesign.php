@@ -164,7 +164,8 @@ trait OrgDesign
             'bluesky'   => ['bsky.app'],
             'twitter'   => ['x.com', 'twitter.com'],
             'youtube'   => ['youtube.com', 'youtu.be'],
-            'amtwiki'   => ['amtwiki.net'],
+            // AmtWiki lives at wiki.amtgard.com; amtwiki.net is its old domain.
+            'amtwiki'   => ['wiki.amtgard.com', 'amtwiki.amtgard.com', 'amtwiki.net'],
         ];
     }
 
@@ -189,6 +190,58 @@ trait OrgDesign
      *
      * @return array list of slugs
      */
+    // ---------------------------------------------------------------------
+    // Social links: never in a public read
+    // ---------------------------------------------------------------------
+    // Public read paths expose only WHICH platforms an org links to
+    // (SocialPlatforms). The URLs themselves (a Discord invite above all) are
+    // scraper bait, so they come only from the two underscore-named methods
+    // below. JsonServer::validate_method refuses any method name containing
+    // '_', so neither is reachable over the public JSON service; the UI reaches
+    // them through its model, behind the manager gate (edit form) or the
+    // session-token + rate-limited reveal endpoint (trait.OrgSocialReveal).
+
+    /** slug => url for every platform the org has set (manager edit form). */
+    public function get_design_social_links($id)
+    {
+        $design = $this->loadDesignRow((int)$id);
+        $raw = trim((string)$design->social_links);
+        $map = $raw !== '' ? json_decode($raw, true) : [];
+        $out = [];
+        if (is_array($map)) {
+            foreach (self::orgSocialPlatformHosts() as $slug => $_hosts) {
+                $u = trim((string)($map[$slug] ?? ''));
+                if ($u !== '' && preg_match('#^https://#i', $u)) {
+                    $out[$slug] = $u;
+                }
+            }
+        }
+        return $out;
+    }
+
+    /** One platform's URL, or '' (the public reveal endpoint). */
+    public function get_design_social_link($id, $slug)
+    {
+        $links = $this->get_design_social_links($id);
+        return (string)($links[(string)$slug] ?? '');
+    }
+
+    /** The platform slugs an org links to, in display order. Safe to publish. */
+    protected function designSocialPlatforms($design)
+    {
+        $raw = trim((string)$design->social_links);
+        $map = $raw !== '' ? json_decode($raw, true) : [];
+        $out = [];
+        if (is_array($map)) {
+            foreach (self::orgSocialPlatformHosts() as $slug => $_hosts) {
+                if (trim((string)($map[$slug] ?? '')) !== '') {
+                    $out[] = $slug;
+                }
+            }
+        }
+        return $out;
+    }
+
     public function GetDesignSocialPlatforms()
     {
         return array_keys(self::orgSocialPlatformHosts());

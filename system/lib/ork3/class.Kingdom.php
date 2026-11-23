@@ -75,7 +75,7 @@ class Kingdom extends Ork3
             $response['KingdomInfo']['NameFont']        = $design->name_font;
             $response['KingdomInfo']['MilestoneConfig'] = $design->milestone_config;
             $response['KingdomInfo']['Tagline']             = (string)$design->tagline;
-            $response['KingdomInfo']['SocialLinks']         = (string)$design->social_links;
+            $response['KingdomInfo']['SocialPlatforms']     = $this->designSocialPlatforms($design);
             $response['KingdomInfo']['Announcement']        = (string)$design->announcement;
             $response['KingdomInfo']['AnnouncementUntil']   = $design->announcement_until;
             $response['KingdomInfo']['AnnouncementStarts']  = $design->announcement_starts;
@@ -383,7 +383,7 @@ class Kingdom extends Ork3
             $response['KingdomInfo']['NameFont']        = $design->name_font;
             $response['KingdomInfo']['MilestoneConfig'] = $design->milestone_config;
             $response['KingdomInfo']['Tagline']             = (string)$design->tagline;
-            $response['KingdomInfo']['SocialLinks']         = (string)$design->social_links;
+            $response['KingdomInfo']['SocialPlatforms']     = $this->designSocialPlatforms($design);
             $response['KingdomInfo']['Announcement']        = (string)$design->announcement;
             $response['KingdomInfo']['AnnouncementUntil']   = $design->announcement_until;
             $response['KingdomInfo']['AnnouncementStarts']  = $design->announcement_starts;

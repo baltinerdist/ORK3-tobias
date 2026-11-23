@@ -148,18 +148,10 @@
 
 	// --- Phase 2 extras: tagline, social links, announcement, reign banner ---
 	$knTagline         = trim((string)($_kInfo['Tagline'] ?? ''));
-	$_knSocialRaw      = trim((string)($_kInfo['SocialLinks'] ?? ''));
-	$knSocialLinks     = [];
-	if ($_knSocialRaw !== '') {
-		$_dec = json_decode($_knSocialRaw, true);
-		if (is_array($_dec)) $knSocialLinks = $_dec;
-	}
-	// Social platform metadata now lives in shared/orgdesign/_helpers.php ($OD_SOCIAL_PLATFORMS).
-	$knVisibleSocials = [];
-	foreach ($OD_SOCIAL_PLATFORMS as $_slug => $_meta) {
-		$_u = trim((string)($knSocialLinks[$_slug] ?? ''));
-		if ($_u !== '') $knVisibleSocials[$_slug] = $_u;
-	}
+	// Social links: the public read carries only platform slugs; the URLs are
+	// revealed per click (trait.OrgSocialReveal). Managers' full map is
+	// $DesignSocialLinks, for the edit form only.
+	$knVisibleSocials = org_design_visible_socials($_kInfo['SocialPlatforms'] ?? [], $OD_SOCIAL_PLATFORMS);
 
 	$knAnnouncement       = trim((string)($_kInfo['Announcement'] ?? ''));
 	$knAnnouncementStarts = trim((string)($_kInfo['AnnouncementStarts'] ?? ''));
@@ -232,7 +224,9 @@
 		'announcement'       => $knAnnouncement,
 		'announcement_starts' => $knAnnouncementStarts,
 		'announcement_until' => $knAnnouncementUntil,
-		'social_links'       => $knVisibleSocials,
+		'social_platforms'   => $knVisibleSocials,
+		'social_links'       => $DesignSocialLinks ?? [],
+		'social_reveal'      => ['url' => UIR . 'KingdomAjax/kingdom/' . (int)$kingdom_id . '/socialreveal', 'token' => $SocialRevealToken ?? ''],
 		'about_enabled'      => $knAboutEnabled,
 		'milestone_config'   => $knMilestoneCfg,
 		'milestones'         => $knVisibleMilestones,

@@ -119,6 +119,18 @@ class Model_Park extends Model
     }
 
     /** Social platform slugs the domain will persist, in display order. */
+    /** Full slug => url map, for the manager edit form only (never a public read). */
+    public function park_design_social_links($id)
+    {
+        return $this->Park->get_design_social_links((int)$id);
+    }
+
+    /** One platform URL for the rate-limited reveal endpoint. */
+    public function park_design_social_link($id, $slug)
+    {
+        return $this->Park->get_design_social_link((int)$id, (string)$slug);
+    }
+
     public function park_design_social_platforms()
     {
         return $this->Park->GetDesignSocialPlatforms();

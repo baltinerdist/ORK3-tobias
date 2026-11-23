@@ -1,7 +1,11 @@
 <?php
 
+require_once(DIR_CONTROLLER . 'trait.OrgSocialReveal.php');
+
 class Controller_Park extends Controller
 {
+    use OrgSocialReveal;
+
     public function __construct($call = null, $id = null)
     {
         parent::__construct($call, $id);
@@ -311,6 +315,11 @@ class Controller_Park extends Controller
         $this->data['CanBonusCredits'] = $uid > 0 && $this->BonusCredit->can_grant($uid, (int)$park_id);
         $this->data['CanAdminPark']  = $uid > 0
             && $this->Authorization->has_authority($uid, AUTH_PARK, (int)$park_id, AUTH_CREATE);
+        // Social links: visitors get a reveal token, never the URLs; only a
+        // manager's page carries the full map (for the edit form).
+        $this->data['SocialRevealToken'] = $this->org_social_reveal_token('park', (int)$park_id);
+        $this->data['DesignSocialLinks'] = $this->data['CanAdminPark']
+            ? $this->Park->park_design_social_links((int)$park_id) : [];
         // Park admins can merge two players who both belong to THIS park.
         // Cross-park or cross-kingdom merges still need higher rights and are
         // performed from the kingdom profile. The server-side MergePlayer
