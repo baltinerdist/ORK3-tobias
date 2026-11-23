@@ -118,6 +118,8 @@
 	$knColorPrimary   = trim((string)($_kInfo['ColorPrimary']   ?? ''));
 	$knColorAccent    = trim((string)($_kInfo['ColorAccent']    ?? ''));
 	$knColorSecondary = trim((string)($_kInfo['ColorSecondary'] ?? ''));
+	$knHeroGradient = trim((string)($_kInfo['HeroGradient'] ?? ''));
+	$knNameShadow = (int)($_kInfo['NameShadow'] ?? 0) === 1;
 	$knOverlay        = strtolower(trim((string)($_kInfo['HeroOverlay'] ?? 'med')));
 	if (!in_array($knOverlay, ['low','med','high','vignette'], true)) $knOverlay = 'med';
 	$knNameFont       = trim((string)($_kInfo['NameFont'] ?? ''));
@@ -217,6 +219,8 @@
 		'color_primary'      => $knColorPrimary,
 		'color_accent'       => $knColorAccent,
 		'color_secondary'    => $knColorSecondary,
+		'hero_gradient'      => $knHeroGradient,
+		'name_shadow'        => $knNameShadow,
 		'overlay'            => $knOverlay,
 		'name_font'          => $knNameFont,
 		'tagline'            => $knTagline,
@@ -357,6 +361,7 @@ html[data-theme="dark"] .kn-tab-nav li.kn-tab-active { color: <?= htmlspecialcha
 		}
 	}
 ?>
+<?= org_design_hero_extras('.kn-hero', '.kn-kingdom-name', $knHeroGradient, $knNameShadow, '.kn-hero-info') ?>
 <div class="<?= $_heroClasses ?>" id="kn-hero">
 	<div class="kn-hero-bg"<?php if ($_bgStyle): ?> style="<?= $_bgStyle ?>"<?php endif; ?>></div>
 	<?php if ($knCanManageBanner): ?>

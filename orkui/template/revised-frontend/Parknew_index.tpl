@@ -106,6 +106,8 @@
 	$pkColorPrimary   = trim((string)($parkInfo['ColorPrimary']   ?? ''));
 	$pkColorAccent    = trim((string)($parkInfo['ColorAccent']    ?? ''));
 	$pkColorSecondary = trim((string)($parkInfo['ColorSecondary'] ?? ''));
+	$pkHeroGradient = trim((string)($parkInfo['HeroGradient'] ?? ''));
+	$pkNameShadow = (int)($parkInfo['NameShadow'] ?? 0) === 1;
 	$pkOverlay        = strtolower(trim((string)($parkInfo['HeroOverlay'] ?? 'med')));
 	if (!in_array($pkOverlay, ['low','med','high','vignette'], true)) $pkOverlay = 'med';
 	$pkNameFont       = trim((string)($parkInfo['NameFont'] ?? ''));
@@ -182,6 +184,8 @@
 		'color_primary'      => $pkColorPrimary,
 		'color_accent'       => $pkColorAccent,
 		'color_secondary'    => $pkColorSecondary,
+		'hero_gradient'      => $pkHeroGradient,
+		'name_shadow'        => $pkNameShadow,
 		'overlay'            => $pkOverlay,
 		'name_font'          => $pkNameFont,
 		'tagline'            => $pkTagline,
@@ -476,6 +480,7 @@ html[data-theme="dark"] .pk-history-section { border-top-color: var(--ork-border
 		}
 	}
 ?>
+<?= org_design_hero_extras('.pk-hero', '.pk-park-name', $pkHeroGradient, $pkNameShadow, '.pk-hero-center') ?>
 <div class="<?= $_heroClasses ?>" id="pk-hero">
 	<div class="pk-hero-bg"<?php if ($_bgStyle): ?> style="<?= $_bgStyle ?>"<?php endif; ?>></div>
 	<?php if ($pkCanManageBanner): ?>

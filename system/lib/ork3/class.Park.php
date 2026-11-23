@@ -611,6 +611,8 @@ class Park extends Ork3
             $response[ 'ColorAccent' ]     = $design->color_accent;
             $response[ 'ColorSecondary' ]  = $design->color_secondary;
             $response[ 'HeroOverlay' ]     = $design->hero_overlay ?: 'med';
+            $response[ 'HeroGradient' ]    = (string)$design->hero_gradient;
+            $response[ 'NameShadow' ]      = (int)$design->name_shadow;
             $response[ 'NameFont' ]          = $design->name_font;
             $response[ 'MilestoneConfig' ]   = $design->milestone_config;
             $response[ 'Tagline' ]           = (string)$design->tagline;
@@ -1309,7 +1311,7 @@ class Park extends Ork3
             // this list rather than repeating it, so adding a field here is enough.
             'save_fields'      => [
                 'AboutText', 'AboutEnabled', 'OurHistory', 'ColorPrimary', 'ColorAccent',
-                'ColorSecondary', 'HeroOverlay', 'NameFont', 'MilestoneConfig', 'Tagline',
+                'ColorSecondary', 'HeroOverlay', 'HeroGradient', 'NameShadow', 'NameFont', 'MilestoneConfig', 'Tagline',
                 'SocialLinks', 'Announcement', 'AnnouncementUntil', 'AnnouncementStarts',
             ],
             'derived'          => [ $this, 'getDerivedParkMilestoneRows' ],

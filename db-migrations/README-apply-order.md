@@ -55,6 +55,15 @@ apply order and the dependencies between them.
    the columns are positioned `AFTER monarch_reign_started` /
    `AFTER regent_reign_started`, which that migration creates, so the ALTER
    fails outright without it.
+12. **`2026-11-23-org-design-pride-and-name-shadow.sql`** — adds `hero_gradient`
+   (Amtpride preset key) and `name_shadow` to all three `*_design` tables, the
+   same shapes as on `ork_mundane_design`. **Must sort AFTER the three
+   `*_design` CREATE migrations** (steps 1, 3, 4); the columns are positioned
+   `AFTER color_secondary` / `AFTER name_font`, which those create.
+   After applying it, **flush APCu / reload php-fpm**: yapo caches each table's
+   column list in APCu for 24h (`yapo_schema_*`), and until it re-reads the
+   schema the profile reads return the new columns as empty, so a saved flag
+   or shadow looks like it didn't stick.
 
 ## Deploy / operational notes
 

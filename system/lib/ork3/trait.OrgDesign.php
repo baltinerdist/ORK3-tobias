@@ -141,6 +141,19 @@ trait OrgDesign
      *
      * @return array slug => array of allowed hosts (or null for any)
      */
+    /**
+     * Amtpride nameplate presets, shared with the player profile.
+     * key => ['name' => label, 'colors' => [hex stops]].
+     */
+    public static function orgPrideGradients()
+    {
+        static $map = null;
+        if ($map === null) {
+            $map = require __DIR__ . '/pride_gradients.php';
+        }
+        return $map;
+    }
+
     public static function orgSocialPlatformHosts()
     {
         return [
@@ -234,6 +247,14 @@ trait OrgDesign
                 $ho = 'med';
             }
             $design->hero_overlay = $ho;
+        }
+        if (array_key_exists('HeroGradient', $request)) {
+            // Amtpride preset key; anything not in the shared map clears it.
+            $hg = trim((string)$request['HeroGradient']);
+            $design->hero_gradient = array_key_exists($hg, self::orgPrideGradients()) ? $hg : '';
+        }
+        if (array_key_exists('NameShadow', $request)) {
+            $design->name_shadow = ((string)$request['NameShadow'] === '1') ? 1 : 0;
         }
         if (array_key_exists('NameFont', $request)) {
             $nf = trim((string)$request['NameFont']);

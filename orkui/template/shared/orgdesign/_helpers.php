@@ -126,3 +126,67 @@ if (!function_exists('org_design_avatar_url')) {
         return HTTP_PLAYER_IMAGE . Common::resolve_image_ext(DIR_PLAYER_IMAGE, sprintf('%06d', (int)$mundaneId));
     }
 }
+
+/**
+ * Amtpride nameplate presets (key => ['name', 'colors']), the same map the
+ * player profile uses. The domain validates saved keys against this file too
+ * (OrgDesign::orgPrideGradients), so the picker and the save path agree.
+ */
+if (!function_exists('org_design_pride_gradients')) {
+    function org_design_pride_gradients(): array
+    {
+        static $map = null;
+        if ($map === null) {
+            $map = require DIR_ORK3 . 'pride_gradients.php';
+        }
+        return $map;
+    }
+}
+
+if (!function_exists('org_design_pride_css')) {
+    /** CSS gradient for a pride key, or '' when the key is unknown. */
+    function org_design_pride_css(string $key): string
+    {
+        $map = org_design_pride_gradients();
+        if ($key === '' || !isset($map[$key])) {
+            return '';
+        }
+        return 'linear-gradient(90deg, ' . implode(', ', $map[$key]['colors']) . ')';
+    }
+}
+
+if (!function_exists('org_design_hero_extras')) {
+    /**
+     * Inline <style> for the Amtpride nameplate and the name shadow on an org
+     * hero. Emitted right before the hero so it wins over the primary/secondary
+     * rules above it. Flags render as-is in dark mode (no brightness filter):
+     * the colors are identity-bearing. A pride flag always gets the name halo,
+     * since light flag stops wash out a soft shadow (same rule as the player).
+     *
+     * @param string $heroSel e.g. '.kn-hero'
+     * @param string $nameSel e.g. '.kn-kingdom-name'
+     * @param string $infoSel the hero's text column, e.g. '.kn-hero-info'. With a
+     *                        flag active its smaller lines (monarch, meta) get a
+     *                        soft shadow too, as the player subline does.
+     */
+    function org_design_hero_extras(string $heroSel, string $nameSel, string $prideKey, bool $nameShadow, string $infoSel = ''): string
+    {
+        $pride = org_design_pride_css($prideKey);
+        if ($pride === '' && !$nameShadow) {
+            return '';
+        }
+        $h   = 'html body ' . $heroSel;
+        $css = '';
+        if ($pride !== '') {
+            $css .= $h . '{background:' . $pride . ' !important;}'
+                . 'html[data-theme="dark"] body ' . $heroSel . '{background:' . $pride . ' !important;filter:none !important;}';
+            if ($infoSel !== '') {
+                $css .= $h . ' ' . $infoSel . '{text-shadow:0 1px 3px rgba(0,0,0,.7);}';
+            }
+        }
+        $halo = '0 0 2px rgba(0,0,0,.55),1px 1px 1px rgba(0,0,0,.5),-1px 1px 1px rgba(0,0,0,.5),'
+            . '1px -1px 1px rgba(0,0,0,.5),-1px -1px 1px rgba(0,0,0,.5),0 2px 4px rgba(0,0,0,.45)';
+        $css .= $h . ' ' . $nameSel . ',' . $h . ' .od-tagline{text-shadow:' . $halo . ' !important;}';
+        return '<style>' . $css . '</style>';
+    }
+}

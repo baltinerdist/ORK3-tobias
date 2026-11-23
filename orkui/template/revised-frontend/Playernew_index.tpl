@@ -3364,6 +3364,8 @@ html[data-theme="dark"] #pn-qual-overlay input[type="date"] { accent-color: #63b
      Design My Profile Modal
      ============================================= -->
 <?php if ($isOwnProfile || $ViewerIsOrkAdmin): ?>
+<link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>shared/mdtoolbar/mdtoolbar.css?v=<?= filemtime(DIR_TEMPLATE . 'shared/mdtoolbar/mdtoolbar.css') ?>">
+<script src="<?= HTTP_TEMPLATE ?>shared/mdtoolbar/mdtoolbar.js?v=<?= filemtime(DIR_TEMPLATE . 'shared/mdtoolbar/mdtoolbar.js') ?>" defer></script>
 <div class="pn-overlay" id="pn-design-overlay">
 	<div class="pn-modal-box" style="width:720px;max-width:calc(100vw - 40px);">
 		<div class="pn-modal-header">
@@ -3517,7 +3519,7 @@ html[data-theme="dark"] #pn-qual-overlay input[type="date"] { accent-color: #63b
 							<button type="button" class="pn-md-quick-btn" data-quickadd="findmelinks" data-target-field="persona"><i class="fas fa-share-alt"></i> Find Me Links</button>
 						</div>
 					</div>
-					<textarea id="pn-design-about-persona" maxlength="10000" placeholder="Ex. Hi there! I'm an archer in the Northern Kingdom who loves brewing mead and singing bardic songs. You can find me in the Barony of..."><?= htmlspecialchars($Player['AboutPersona'] ?? '') ?></textarea>
+					<textarea id="pn-design-about-persona" data-md-toolbar maxlength="10000" placeholder="Ex. Hi there! I'm an archer in the Northern Kingdom who loves brewing mead and singing bardic songs. You can find me in the Barony of..."><?= htmlspecialchars($Player['AboutPersona'] ?? '') ?></textarea>
 					<span class="pn-char-count" id="pn-design-about-persona-charcount" style="display:none"></span>
 					<div class="pn-md-preview" id="pn-design-about-persona-preview" style="display:none"></div>
 					<div class="pn-design-hint">Supports <strong>Markdown</strong> <button type="button" class="kn-md-help-btn" onclick="document.getElementById('pn-md-help-overlay').classList.add('kn-open')" title="Markdown reference">?</button>: **bold**, *italic*, [links](url), ## headings, lists, etc.</div>
@@ -3534,7 +3536,7 @@ html[data-theme="dark"] #pn-qual-overlay input[type="date"] { accent-color: #63b
 							<button type="button" class="pn-md-quick-btn" data-quickadd="signaturequote" data-target-field="story"><i class="fas fa-quote-left"></i> Signature Quote</button>
 						</div>
 					</div>
-					<textarea id="pn-design-about-story" maxlength="10000" placeholder="Ex. Feywild the Brewer has been traveling the realms looking for the Amulet of Fireballs. After his village was destroyed in a rock giant stampede..."><?= htmlspecialchars($Player['AboutStory'] ?? '') ?></textarea>
+					<textarea id="pn-design-about-story" data-md-toolbar maxlength="10000" placeholder="Ex. Feywild the Brewer has been traveling the realms looking for the Amulet of Fireballs. After his village was destroyed in a rock giant stampede..."><?= htmlspecialchars($Player['AboutStory'] ?? '') ?></textarea>
 					<span class="pn-char-count" id="pn-design-about-story-charcount" style="display:none"></span>
 					<div class="pn-md-preview" id="pn-design-about-story-preview" style="display:none"></div>
 					<div class="pn-design-hint">Supports <strong>Markdown</strong> <button type="button" class="kn-md-help-btn" onclick="document.getElementById('pn-md-help-overlay').classList.add('kn-open')" title="Markdown reference">?</button>: **bold**, *italic*, [links](url), ## headings, lists, etc.</div>

@@ -70,6 +70,8 @@ class Kingdom extends Ork3
             $response['KingdomInfo']['ColorAccent']     = $design->color_accent;
             $response['KingdomInfo']['ColorSecondary']  = $design->color_secondary;
             $response['KingdomInfo']['HeroOverlay']     = $design->hero_overlay ?: 'med';
+            $response['KingdomInfo']['HeroGradient']    = (string)$design->hero_gradient;
+            $response['KingdomInfo']['NameShadow']      = (int)$design->name_shadow;
             $response['KingdomInfo']['NameFont']        = $design->name_font;
             $response['KingdomInfo']['MilestoneConfig'] = $design->milestone_config;
             $response['KingdomInfo']['Tagline']             = (string)$design->tagline;
@@ -373,6 +375,8 @@ class Kingdom extends Ork3
             $response['KingdomInfo']['ColorAccent']     = $design->color_accent;
             $response['KingdomInfo']['ColorSecondary']  = $design->color_secondary;
             $response['KingdomInfo']['HeroOverlay']     = $design->hero_overlay ?: 'med';
+            $response['KingdomInfo']['HeroGradient']    = (string)$design->hero_gradient;
+            $response['KingdomInfo']['NameShadow']      = (int)$design->name_shadow;
             $response['KingdomInfo']['NameFont']        = $design->name_font;
             $response['KingdomInfo']['MilestoneConfig'] = $design->milestone_config;
             $response['KingdomInfo']['Tagline']             = (string)$design->tagline;
@@ -1064,7 +1068,7 @@ class Kingdom extends Ork3
             // this list rather than repeating it, so adding a field here is enough.
             'save_fields'      => [
                 'AboutText', 'OurHistory', 'ColorPrimary', 'ColorAccent', 'ColorSecondary',
-                'HeroOverlay', 'NameFont', 'MilestoneConfig', 'Tagline', 'SocialLinks',
+                'HeroOverlay', 'HeroGradient', 'NameShadow', 'NameFont', 'MilestoneConfig', 'Tagline', 'SocialLinks',
                 'Announcement', 'AnnouncementUntil', 'AnnouncementStarts',
                 'MonarchReignStarted', 'RegentReignStarted', 'ReignLore', 'AboutEnabled',
             ],

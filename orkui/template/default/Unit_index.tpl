@@ -83,6 +83,8 @@ if (trim($_our_history) === '') { $_our_history = (string)$_history; }
 $_un_color_primary   = trim((string)($_unit['ColorPrimary']   ?? ''));
 $_un_color_accent    = trim((string)($_unit['ColorAccent']    ?? ''));
 $_un_color_secondary = trim((string)($_unit['ColorSecondary'] ?? ''));
+$_un_hero_gradient = trim((string)($_unit['HeroGradient'] ?? ''));
+$_un_name_shadow = (int)($_unit['NameShadow'] ?? 0) === 1;
 $_un_overlay         = strtolower(trim((string)($_unit['HeroOverlay'] ?? 'med')));
 if (!in_array($_un_overlay, ['low','med','high','vignette'], true)) $_un_overlay = 'med';
 $_un_name_font       = trim((string)($_unit['NameFont'] ?? ''));
@@ -167,6 +169,8 @@ $ctx = [
 	'color_primary'      => $_un_color_primary,
 	'color_accent'       => $_un_color_accent,
 	'color_secondary'    => $_un_color_secondary,
+	'hero_gradient'      => $_un_hero_gradient,
+	'name_shadow'        => $_un_name_shadow,
 	'overlay'            => $_un_overlay,
 	'name_font'          => $_un_name_font,
 	'tagline'            => $_unTagline,
@@ -809,6 +813,7 @@ html[data-theme="dark"] .un-btn-danger { color: #fc8181 !important; border-color
 		}
 	}
 ?>
+<?= org_design_hero_extras('.un-hero', '.un-hero-name', $_un_hero_gradient, $_un_name_shadow, '.un-hero-info') ?>
 <div class="<?= $_heroClasses ?>" id="un-hero">
 	<div class="un-hero-bg"<?php if ($_bgStyle): ?> style="<?= $_bgStyle ?>"<?php endif; ?>></div>
 	<?php if ($unCanManageBanner): ?>

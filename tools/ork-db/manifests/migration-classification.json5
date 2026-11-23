@@ -119,6 +119,19 @@
     "2026-10-27-bonus-credit-accept-outside.sql": { "class": "S", "render": "full", "notes": "Per-kingdom yes/no: may other kingdoms' bonus credits reach its players; CREATE TABLE IF NOT EXISTS, idempotent" },
     "2026-11-15-event-staff-category-leads.sql": { "class": "S", "render": "full", "notes": "Category leads on event staff; auto-filled flag on schedule leads. Idempotent." },
     "2026-11-16-event-schedule-batch-tokens.sql": { "class": "S", "render": "full", "notes": "Request tokens for schedule batches and copies, so a retried request applies once; CREATE TABLE IF NOT EXISTS, idempotent" },
-    "2026-11-15-online-attendance.sql": { "class": "S+RC", "render": "full", "notes": "Online flag on ork_attendance/ork_attendance_link plus per-kingdom CountOnlineAttendance config seed; idempotent" }
+    "2026-11-15-online-attendance.sql": { "class": "S+RC", "render": "full", "notes": "Online flag on ork_attendance/ork_attendance_link plus per-kingdom CountOnlineAttendance config seed; idempotent" },
+    "README-apply-order.md": { "class": "ES", "render": "skip", "notes": "Apply-order notes for the Mask II org design migrations; not a migration" },
+    "2026-05-16-ork-park-design.sql": { "class": "S", "render": "full", "notes": "Converts the parent org table to InnoDB, creates the design table and seeds one row per org from that table; self-contained, idempotent" },
+    "2026-05-16-ork-park-milestones.sql": { "class": "S", "render": "full" },
+    "2026-05-17-ork-kingdom-design.sql": { "class": "S", "render": "full", "notes": "Converts the parent org table to InnoDB, creates the design table and seeds one row per org from that table; self-contained, idempotent" },
+    "2026-05-17-ork-kingdom-milestones.sql": { "class": "S", "render": "full" },
+    "2026-05-17-ork-unit-design.sql": { "class": "S", "render": "full", "notes": "Converts the parent org table to InnoDB, creates the design table and seeds one row per org from that table; self-contained, idempotent" },
+    "2026-05-17-ork-unit-milestones.sql": { "class": "S", "render": "full" },
+    "2026-05-18-org-design-extras.sql": { "class": "S", "render": "full" },
+    "2026-05-18-org-design-widen-about-text.sql": { "class": "S", "render": "full" },
+    "2026-05-19-org-design-audit-and-announce.sql": { "class": "S", "render": "full" },
+    "2026-06-01-about-design-opt-in.sql": { "class": "S", "render": "full" },
+    "2026-08-20-kingdom-reign-holder.sql": { "class": "S", "render": "full" },
+    "2026-11-23-org-design-pride-and-name-shadow.sql": { "class": "S", "render": "full", "notes": "hero_gradient (Amtpride key) + name_shadow on the three org *_design tables; idempotent" }
   }
 }

@@ -250,6 +250,8 @@ class Unit extends Ork3
             $response['Unit']['ColorAccent']     = $design->color_accent;
             $response['Unit']['ColorSecondary']  = $design->color_secondary;
             $response['Unit']['HeroOverlay']     = $design->hero_overlay ?: 'med';
+            $response['Unit']['HeroGradient']    = (string)$design->hero_gradient;
+            $response['Unit']['NameShadow']      = (int)$design->name_shadow;
             $response['Unit']['NameFont']        = $design->name_font;
             $response['Unit']['MilestoneConfig'] = $design->milestone_config;
             $response['Unit']['Tagline']            = (string)$design->tagline;
@@ -826,7 +828,7 @@ class Unit extends Ork3
             // this list rather than repeating it, so adding a field here is enough.
             'save_fields'      => [
                 'AboutText', 'OurHistory', 'ColorPrimary', 'ColorAccent', 'ColorSecondary',
-                'HeroOverlay', 'NameFont', 'MilestoneConfig', 'Tagline', 'SocialLinks',
+                'HeroOverlay', 'HeroGradient', 'NameShadow', 'NameFont', 'MilestoneConfig', 'Tagline', 'SocialLinks',
                 'Announcement', 'AnnouncementUntil', 'AnnouncementStarts',
                 'RecruitmentStatus', 'HowToJoin', 'AboutEnabled',
             ],

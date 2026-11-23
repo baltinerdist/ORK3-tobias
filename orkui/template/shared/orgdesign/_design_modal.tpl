@@ -39,6 +39,11 @@ $_odAjax    = (string)($ctx['ajax'] ?? '');
 $_odName    = (string)($ctx['org_name'] ?? '');
 $_odAbout   = (string)($ctx['about_text'] ?? '');
 $_odHistory = (string)($ctx['our_history'] ?? '');
+// Units (companies, households) aren't "the kingdom"; give each org its own prompt.
+$_odHistoryPh = ([
+    'kingdom' => 'The kingdom was founded in...',
+    'park'    => 'The park was founded in...',
+][$_odOrg] ?? 'We were founded in...') . ' (Markdown supported)';
 $_odPrimary = trim((string)($ctx['color_primary'] ?? ''));
 $_odAccent  = trim((string)($ctx['color_accent'] ?? ''));
 $_odSecond  = trim((string)($ctx['color_secondary'] ?? ''));
@@ -47,6 +52,12 @@ if (!in_array($_odOverlay, ['low', 'med', 'high', 'vignette'], true)) {
     $_odOverlay = 'med';
 }
 $_odFont      = (string)($ctx['name_font'] ?? '');
+$_odPrideMap  = org_design_pride_gradients();
+$_odPride     = (string)($ctx['hero_gradient'] ?? '');
+if (!isset($_odPrideMap[$_odPride])) {
+    $_odPride = '';
+}
+$_odShadow    = !empty($ctx['name_shadow']);
 $_odTagline   = (string)($ctx['tagline'] ?? '');
 $_odAnnounce  = (string)($ctx['announcement'] ?? '');
 $_odAnnStarts = (string)($ctx['announcement_starts'] ?? '');
@@ -89,6 +100,8 @@ $_odMsNewestFirst = !empty($_odMsCfg['newest_first']);
 
 $_odIcons = ['fa-star', 'fa-trophy', 'fa-flag', 'fa-chess-rook', 'fa-crown', 'fa-medal', 'fa-shield-alt', 'fa-fire', 'fa-bolt', 'fa-scroll', 'fa-campground', 'fa-map-marker-alt', 'fa-users', 'fa-dragon', 'fa-hammer', 'fa-heart'];
 ?>
+<link rel="stylesheet" href="<?= HTTP_TEMPLATE ?>shared/mdtoolbar/mdtoolbar.css?v=<?= filemtime(DIR_TEMPLATE . 'shared/mdtoolbar/mdtoolbar.css') ?>">
+<script src="<?= HTTP_TEMPLATE ?>shared/mdtoolbar/mdtoolbar.js?v=<?= filemtime(DIR_TEMPLATE . 'shared/mdtoolbar/mdtoolbar.js') ?>" defer></script>
 <div class="od-dm-overlay" id="od-dm-overlay"
      data-od-org="<?= htmlspecialchars($_odOrg) ?>"
      data-od-id="<?= $_odId ?>"
@@ -142,6 +155,18 @@ $_odIcons = ['fa-star', 'fa-trophy', 'fa-flag', 'fa-chess-rook', 'fa-crown', 'fa
 				<div class="od-dm-field">
 					<label>Gradient Presets</label>
 					<div class="od-dm-preset-grid" id="od-dm-gradient-presets"></div>
+				</div>
+
+				<div class="od-dm-field">
+					<label id="od-dm-pride-label">Amtpride Nameplate</label>
+					<div class="od-dm-hint" style="margin-bottom:6px">Show a pride flag as the hero background. While it's on, it replaces the colors below, and the name gets a shadow so it stays readable. Picking a color or gradient preset turns it off.</div>
+					<div class="od-dm-pride-grid" id="od-dm-pride-presets" role="group" aria-labelledby="od-dm-pride-label">
+						<?php foreach ($_odPrideMap as $_odPk => $_odPg): ?>
+						<button type="button" class="od-dm-pride-swatch<?= $_odPride === $_odPk ? ' od-selected' : '' ?>" data-pride="<?= htmlspecialchars($_odPk) ?>" data-pride-css="<?= htmlspecialchars(org_design_pride_css($_odPk)) ?>" data-tip="<?= htmlspecialchars($_odPg['name']) ?>" aria-label="<?= htmlspecialchars($_odPg['name']) ?>" aria-pressed="<?= $_odPride === $_odPk ? 'true' : 'false' ?>" style="background:<?= htmlspecialchars(org_design_pride_css($_odPk)) ?>"></button>
+						<?php endforeach; ?>
+					</div>
+					<button type="button" class="od-dm-color-reset" id="od-dm-pride-clear"<?= $_odPride === '' ? ' hidden' : '' ?>><i class="fas fa-times"></i> Remove pride flag</button>
+					<input type="hidden" id="od-dm-hero-gradient" value="<?= htmlspecialchars($_odPride) ?>" />
 				</div>
 
 				<div class="od-dm-field">
@@ -200,6 +225,11 @@ $_odIcons = ['fa-star', 'fa-trophy', 'fa-flag', 'fa-chess-rook', 'fa-crown', 'fa
 					<label>Name Font</label>
 					<div class="od-dm-hint" style="margin-bottom:6px">A decorative font for the name in the hero. Viewers with accessibility fonts enabled will see their preferred font instead.</div>
 					<div class="od-dm-font-picker" id="od-dm-font-picker"></div>
+					<label class="od-dm-check" style="margin-top:10px">
+						<input type="checkbox" id="od-dm-name-shadow"<?= $_odShadow ? ' checked' : '' ?> />
+						Add a shadow behind the name
+					</label>
+					<div class="od-dm-hint">Helps the name and tagline stand out over busy heraldry or light colors. Always on with a pride flag.</div>
 				</div>
 
 				<div class="od-dm-field">
@@ -248,7 +278,7 @@ $_odIcons = ['fa-star', 'fa-trophy', 'fa-flag', 'fa-chess-rook', 'fa-crown', 'fa
 							<button type="button" data-odmd-target="preview" data-odmd-field="reign">Preview</button>
 						</div>
 					</div>
-					<textarea id="od-dm-reign-text" maxlength="2000" placeholder="Our Monarchy welcomes you to our kingdom! The theme for this reign is..." style="width:100%;min-height:120px"><?= htmlspecialchars($_odReignLore) ?></textarea>
+					<textarea id="od-dm-reign-text" data-md-toolbar maxlength="2000" placeholder="Our Monarchy welcomes you to our kingdom! The theme for this reign is..." style="width:100%;min-height:120px"><?= htmlspecialchars($_odReignLore) ?></textarea>
 					<div class="od-dm-md-preview" id="od-dm-reign-preview" style="display:none"></div>
 					<div class="od-dm-counter" id="od-dm-reign-counter">0 / 2,000</div>
 				</div>
@@ -296,8 +326,9 @@ $_odIcons = ['fa-star', 'fa-trophy', 'fa-flag', 'fa-chess-rook', 'fa-crown', 'fa
 							</div>
 						</div>
 					</div>
-					<textarea id="od-dm-about-text" maxlength="10000" placeholder="Welcome... (Markdown supported)"><?= htmlspecialchars($_odAbout) ?></textarea>
+					<textarea id="od-dm-about-text" data-md-toolbar maxlength="10000" placeholder="Welcome... (Markdown supported)"><?= htmlspecialchars($_odAbout) ?></textarea>
 					<div class="od-dm-md-preview" id="od-dm-about-preview" style="display:none"></div>
+					<div class="od-dm-counter" id="od-dm-about-counter" aria-live="polite"></div>
 				</div>
 
 				<div class="od-dm-field">
@@ -315,8 +346,9 @@ $_odIcons = ['fa-star', 'fa-trophy', 'fa-flag', 'fa-chess-rook', 'fa-crown', 'fa
 							</div>
 						</div>
 					</div>
-					<textarea id="od-dm-history-text" maxlength="10000" placeholder="The kingdom was founded in... (Markdown supported)"><?= htmlspecialchars($_odHistory) ?></textarea>
+					<textarea id="od-dm-history-text" data-md-toolbar maxlength="10000" placeholder="<?= htmlspecialchars($_odHistoryPh) ?>"><?= htmlspecialchars($_odHistory) ?></textarea>
 					<div class="od-dm-md-preview" id="od-dm-history-preview" style="display:none"></div>
+					<div class="od-dm-counter" id="od-dm-history-counter" aria-live="polite"></div>
 				</div>
 
 				<?php if ($_odHasJoin): ?>
@@ -328,8 +360,9 @@ $_odIcons = ['fa-star', 'fa-trophy', 'fa-flag', 'fa-chess-rook', 'fa-crown', 'fa
 							<button type="button" data-odmd-target="preview" data-odmd-field="join">Preview</button>
 						</div>
 					</div>
-					<textarea id="od-dm-join-text" maxlength="5000" placeholder="How prospective members can get involved... (Markdown supported)"><?= htmlspecialchars($_odHowToJoin) ?></textarea>
+					<textarea id="od-dm-join-text" data-md-toolbar maxlength="5000" placeholder="How prospective members can get involved... (Markdown supported)"><?= htmlspecialchars($_odHowToJoin) ?></textarea>
 					<div class="od-dm-md-preview" id="od-dm-join-preview" style="display:none"></div>
+					<div class="od-dm-counter" id="od-dm-join-counter" aria-live="polite"></div>
 				</div>
 				<?php endif; ?>
 			</div>
